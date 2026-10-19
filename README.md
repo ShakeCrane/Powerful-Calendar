@@ -2,6 +2,8 @@
 
 一款 **Kotlin + Jetpack Compose** 的本地优先日历、事件、提醒和系统闹钟管理 App。
 
+> **研究阶段的新产品方向（2026-10-19）**：参见 [G1–G5 产品架构决策基线](docs/PRODUCT_BASELINE_G1-G5.md) 与 [Temporal Protocol v0 研究草案](docs/PROTOCOL_V0_RESEARCH.md)。本 README 下面的 v0.1 功能与原后续计划是历史 MVP 记录；特别是原“账户级双向同步”规划已被**一次性异步迁入、PowerCal 本地唯一主数据源**取代。新方向尚未开发。
+
 ## 当前功能 (MVP v0.1)
 
 - **今日**：查看全天安排、重点数量、事件时间/优先级/备注/地点，编辑和删除。
