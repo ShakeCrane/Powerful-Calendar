@@ -1,95 +1,201 @@
-# Temporal Protocol v0 — 研究草案与验证矩阵
+# PowerCal Temporal Protocol v0.3 — Research Specification and Verification
 
-状态：**PROPOSAL / NOT IMPLEMENTED / NOT YET FROZEN**
-所属仓库：Powerful Calendar (Android)。本文件只提供数据语义、约束与验证场景，不包含可执行实现。
-对应产品原则：见 [PRODUCT_BASELINE_G1-G5.md](./PRODUCT_BASELINE_G1-G5.md)。
+**Status:** Candidate protocol, NOT IMPLEMENTED or empirically validated.
+**Updated:** 2026-10-20. **Authority:** [Unified G1–G11 Product Baseline](./PRODUCT_BASELINE_G1-G11.md).
+Replaces conflicting details of the preceding research sketch. Names are logical concepts; no promise of one Kotlin type/table per entry.
 
-## A. 必须分开的实体
+## 1. Model boundaries
 
-| 概念 | 身份 / 职责 | 禁止混淆 |
+Define a controlled TemporalObject inheritance model with **AlarmEvent** (start/point), **ActivityEvent** (start/end range), and **DeadlineEvent** (end/deadline point). They share eventSeq, identity, revisions, title/metadata, provenance, temporal specification and reusable execution abilities. External Android/ICS/JSON formats enter through adapters; they are not internal authoritative schema.
+
+Do not resurrect the earlier general unscheduled-task entity as a fourth type. **Draft Deck is proposal state, not an event kind.** Time boundaries are semantics, not nullable fields from which ringing or completion can be implicitly derived. An ActivityEvent may have a Trigger without a second AlarmEvent; visual left-side projections still refer to the same owner identity. A date-only Deadline is fully representable.
+
+### Logical entities
+
+| Entity | Key fields | Domain role |
 | --- | --- | --- |
-| TemporalObject | 全局稳定 objectId；type、revision、生命周期；ActivityEvent / AlarmEvent / TaskEvent | 不得用外部日历 ID 或 UI 位置当 objectId |
-| TemporalSpecification | 时间意图：时刻、时段、全天、截止时间；墙上时间、时区、绝对时刻策略 | 不得仅将“每天 07:30”存成下次 epoch millis |
-| RecurrenceSeries | 规则、时区策略、单次例外、系列版号 | 不得把未来一年实例作为唯一事实 |
-| Occurrence | 由系列规则 + 发生原始身份生成的稳定实例 key | 修改本次开始时间不得导致实例 key 丢失 |
-| Trigger | 关联对象/实例的通知、响铃或其他执行意图，可独立于 AlarmEvent | 在 UI 左侧显示一个关联 Trigger 不等于多出一个新闹钟 |
-| ScheduleIntent | 所需下次触发的持久化指令/版本，可与 Android 实际状态 reconcile | 不等于 event.saved |
-| ExecutionRecord | 实际发起、执行、贪睡、结束、错过、失败的历史 | 不得拿一次执行状态覆盖整个系列 |
-| IngressRecord | 外部来源、原始 UID、文件 hash、已迁入批次、失败原因 | 迁入之后不作为持续主数据源 |
-| DraftOperation | 待用户确认的新增、修改、删除，含 baseRevision/来源与候选字段 | 未确认前绝不产生响铃或更改正式数据 |
-| ExportJob | 明确的用户/规则派发目标、状态和结果 | 输出副本不反向接管本地对象 |
+| EventIdentity | eventSeq, allocationTime, retiredAt?, lineageId | Permanent unique, never reused within this store lineage |
+| TemporalObject | eventSeq, kind, revision, snapshot, createdAt, updatedAt, lifecycle | Exactly one current formal snapshot for one event |
+| TemporalSpec | precision, timeKind, start?, end?, zoneStrategy, zoneId?, wallRule?, resolvedInstants? | Intent, timezone and DST policies |
+| RecurrenceSeries | eventSeq, seriesRule, exceptions, seriesRevision | Owns recurrence; normal future instances are derived |
+| Occurrence | seriesId + originalSlotKey, effectiveStart?, effectiveEnd?, exception | Stable occurrence identity across moving one instance |
+| Trigger | triggerId, ownerEventSeq, occurrenceScope, mode, offsetOrInstant, enabled | Attached notification/ringing behavior |
+| ScheduleIntent | ownerEventSeq, revision, triggerId, occurrenceKey, instant, requirement, desiredState | Durable intent reconciled to Android scheduler |
+| ExecutionRecord | executionId, scheduledRevision, occurrenceKey, result, snoozeState, timestamp | Actual execution and failure evidence |
+| DraftCard | draftId, eventSeq, queueOrder, operation, baseRevision?, proposedSnapshot, draftVersion, state | Independently editable card; one event may have many cards |
+| CommitRecord | commitId, eventSeq, previousRevision?, newRevision, actor, operation, timestamp | Durable idempotent formal update |
+| AiBatchSession | sessionId, lockEpoch, authorizedDraftIds, allowedOperations, state, cancellation | Single-AI batch ownership and recovery |
+| MigrationRecord | source, externalUid?, contentFingerprint, batchId, validation, commitRef? | Import provenance; no long-term source authority |
+| OutboundRecord | eventSeq, target, projectionRef, idempotencyKey, outcome | Explicit outward dispatch, without making target authoritative |
 
-## B. 建议的序列化外形（说明性，非最终 JSON Schema）
+### Sequence allocation and binding
 
-- envelope: schemaVersion、objectId、revision、kind、createdAt、updatedAt、archivedAt?、provenance[]
-- common: title、description、location?、priority、tags[]、timeSpec?、recurrence?、triggerRefs[]
-- ActivityEvent: start/end 或全天等时间规范；可选关联 AlarmEvent
-- AlarmEvent: alarm wall-time / date-time、repeat、ringtoneProfile、snoozePolicy、enabled
-- TaskEvent: dueAt?、scheduledStart?、scheduledEnd?、completedAt?、taskStatus；没有时间锚点则不渲染到时间轴
-- Trigger: triggerId、ownerRef、occurrenceScope、relative/absolute time、deliveryMode、enabled、policy
-- occurrenceKey: seriesId + original recurrence-id（原始发生槽位标识，而非修改后的实际开始时间）
-- occurrenceException: occurrenceKey、overrideFields、skipFlag；“本次及以后”需要系列切分/连接语义，规则尚需决定
-- draft: draftBatchId、pageId、candidateOperation、baseRevision?、validationIssues[]、userEditedFields[]、status
-- scheduleIntent: triggerId、occurrenceKey、objectRevision、whenInstant、precisionRequirement、scheduleState、retryMetadata
+1. Allocate eventSeq **atomically** from a monotone high-water allocator at first creation of a new event draft. G11-01=A means discarded/unpublished events still permanently consume a sequence. Structured direct import allocates at its first authoritative ingest transaction; a recognized existing event must reuse its existing eventSeq.
+2. Allocation of eventSeq and DraftCard identity/order is an atomic local operation. A draft referring to a **pre-existing** event receives no new eventSeq, only a new draftId and queueOrder.
+3. Use a monotone queueOrder per DraftCard creation. The UI lists ascending queueOrder. eventSeq does **not** control queue position. Two cards #0042 may be separated by #0067.
+4. Discarding a card does not delete the eventSeq registry entry. Deleting the current formal TemporalObject creates a tombstone/retirement state; never reuse its eventSeq.
+5. Imported source UID and fuzzy-match candidates resolve identity **before or at** sequence allocation; external records do not magically contain internal PowerCal eventSeq.
+6. If two restored offline forks produce the same numeric eventSeq, no unsupported silent merge; detect lineage mismatch. Future multi-device design must add stable namespace or conflict resolution.
 
-这里的字段是研究草案，不要求立即在 Kotlin 中采用上述一对一类结构。公共字段不得强迫 TaskEvent 拥有“结束时间”，也不得强迫 AlarmEvent 拥有持续时间。
+## 2. Draft operation semantics: full replacement, not field merge
 
-## C. 状态机候选
+**Final choice: G11-02=B**. Each Create, Replace, Convert, Delete proposal is a card; for Replace and Convert its proposedSnapshot is a **complete intended TemporalObject**, not a patch automatically merged by field. The most recent **valid committed** snapshot is authoritative.
 
-1. object: draft（单独草稿区）→ active ↔ paused → archived；deleted 需明确软删除/墓碑语义，未决定。
-2. recurrence occurrence: pending / overridden / skipped / completed / expired；实例身份不随拖动改变。
-3. scheduler: desired → reconciling → scheduled / degraded / blocked / failed → fired / canceled / missed。
-4. alarm firing: eligible → ringing → snoozed → ringing → dismissed；所有转移在当前 occurrence 执行记录上。
-5. draft page: proposed → edited → validated → committed → removedFromQueue；跳过/退出/重试不应改变其它页状态。
-6. migration: discovered → staged → normalized → reviewed → committed → handoffChecklist / partialFailure。
+- A card carries baseRevision from when proposed; its own draftVersion increments during editing, separate from the official event revision.
+- On publish, atomically check authorization, current AI lock token, draft state, baseRevision, event lifecycle and unique commitId.
+- If current formal revision differs from the card's baseRevision: mark CONFLICT; display a **complete snapshot diff** and require explicit human approval of replacement against the now-current revision. After approval, issue a new, version-current commit; **do not silently merge unrelated fields**. This can intentionally overwrite fields modified in between. Indicate that loss clearly.
+- In AI batch mode, when such conflict arises, **leave card pending for human review**; no automatic overwrite or repeated blind retry. User can accept after AI lock is released.
+- An authorized AI batch can publish eligible selected drafts directly, but cannot change authorization scope or bypass stale-revision protection.
+- If two cards of the same event are both valid against v4, committing one to v5 makes the other stale. There is always **one** current formal object; never two.
+- CommitRecord and desired ScheduleIntent must be durably and atomically associated with the revision, but Android AlarmManager side effects happen later asynchronously.
+- Duplicate commitId is idempotent: return the original outcome, not a second revision or second exported event.
+- User-visible Undo of an already committed update cannot erase evidence or pretend side effects never occurred: issue an explicit compensating **new revision** (with proper scheduler reconcile). Undo of merely discarded draft can restore the same draftId/queueOrder if retention policy allows.
+- If formal event is deleted, later proposals referencing the eventSeq stay blocked until **explicit restoration approval**, reactivating the same identity. Do not silently create a replacement event under a different number or resurrect.
 
-## D. 协议不变量（待以测试形式固化）
+### Representative full-snapshot conflict
 
-**INV-01 Identity**：objectId 在修改、类型切换、来源记录解绑时稳定；kind 变化带 revision；同一导入来源原始 ID 只映射到一个可追踪本地对象。
-**INV-02 Time semantics**：wall-clock repeat 和 fixed-instant 单次事件语义分离，时区偏移/DST 折叠、缺失时间需要明确政策；展示时也不得偷偷改变实际 Instant。
-**INV-03 Occurrence identity**：occurrenceKey 来自原始系列槽位；单次重排不改变该 key；新实例不得复用已经跳过的 key。
-**INV-04 No side effects from drafts**：未确认的 AI/手动/拖动草稿不得创建或修改执行计划；多页各自原子提交。
-**INV-05 Revision fencing**：执行前必须核验最新 object revision 和 trigger/occurrence 的有效性；旧 PendingIntent 即使迟到也不得唤醒已经废弃的闹钟。
-**INV-06 Durable scheduling**：对象更新和其对应调度意图须有持久化关联；失败可恢复、幂等，禁止 silent success。
-**INV-07 Permission awareness**：精准权限不可用时准确闹钟不可伪称 scheduled；普通提醒近似调度应显式标记风险。
-**INV-08 One-way ownership**：迁入后 PowerCal 为主源；默认不得擅自删除原始平台对象、自动开启循环同步或广播全部目标。
-**INV-09 Export compatibility**：原生恢复保存全部语义；ICS 等有损投影需要事先说明不可表示的字段。
-**INV-10 Context privacy**：AI 仅收到当前任务经授权的必要事件资料；API Key 不随备份导出明文或写进事件日志。
-**INV-11 UI identity**：同一对象在左侧投影、右侧本体、Popup、收件箱中的可视引用不得产生额外对象。
-**INV-12 Coordinate continuity**：y(t) 在实际时间轴上连续，缩放时固定手指焦点下的绝对时刻；视图重排不应修改时间源数据。
+v1: meeting at 15:00, location Room A.
+Card D1 from v1 proposes full {16:00, Room A}.
+Card D2 from v1 proposes full {14:00, Room A}; D2 validly commits v2.
+A human later approves D1 while v2 exists: UI must show 14:00 → 16:00 and all other differing fields, then allow explicit full-snapshot replacement as v3.
+No automatic field-level merging is performed, and a slow AI response alone cannot accept D1.
 
-## E. 高优先级反例 / 异常验证矩阵
+## 3. Draft Deck UX is a projection of persisted operations
 
-| 场景 | 预期结果 |
+The single Popup/inbox is named **待处理**. Open via dedicated pending launcher; exact button position remains design work. Search current drafts; optional search of formal events creates Update proposals. Foreground card identity tracked by draftId, not page index; visible numbered event is eventSeq.
+
+- Stable ascending queueOrder, oldest at top. AI new results append tail, without jumping selected draft.
+- Centered glass card: compact mode; tap card to expand full form. Background 2–3 fan-rotated layers. Follow Android system light/dark themes at runtime.
+- Horizontal swipe **inside** card: left next, right previous, one page per physical swipe; input fields/text selection take precedence. Vertical swipe inside expanded body scrolls content. Card **outside** area permits inertial multi-page browse but must not steal Android system back gesture or accidentally dismiss unsaved edits.
+- Before any finalized navigation/dismiss, flush latest edits to persistent draftVersion. Input UI can respond instantly without blocking each keystroke; if storage fails, retain edits and block transition with retry.
+- Checkmark accepts this proposal and commits a formal event operation; X discards proposal (undo supported); outside/back dismisses editor with draft saved. A Delete proposal's checkmark deletes formal event, X does not.
+- Post-action remove only the successfully finalized card, promote next card. A rejected or conflicted card remains.
+- When queue empty and **no AI batch is still running**, enter completion state with accurate published/discarded counts, richer tasteful congratulation animation, skip & undo; after animation return to precisely the prior timeline viewport+scale.
+- Theme transitions preserve draftId, cursor, input content and internal card scroll. Reduce blur/motion gracefully.
+
+### DraftCard states (logical)
+
+DRAFT_CREATED → EDITING ↔ STAGED → VALIDATING → COMMITTING → COMMITTED → REMOVED_FROM_QUEUE
+Branches: INVALID (missing legal time, no commit), CONFLICT (stale official version), SAVE_FAILED (stay on card), DISCARDED (undoable retention), CANCELED. Actual UI animation phases are **not** persistence states.
+
+Taskless/unscheduled **drafts** may be retained indefinitely by user policy, but formal publish requires valid time semantics. Deadline date-only is valid. There is no independently published no-time event projected onto timeline.
+
+## 4. One-AI global batch exclusion and failure recovery
+
+Only **one AI** is supported. Not multiple AI workers or multi-agent coordinators. AI can propose card updates and, with explicitly bounded one-off authorization, process selected DraftCards.
+
+Session state:
+REQUESTED → USER_AUTHORIZED → ACQUIRING_LOCK → RUNNING → (CANCEL_REQUESTED | COMPLETED | FAILED) → RECONCILING → LOCK_RELEASED.
+On process death: RECOVERY inspects persisted session and fencing, rejects stale worker responses/commit attempts, reconciles idempotent work, and releases or explicitly reports lock failure. Never leave an infinite lock.
+
+**Global Deck lock** during an authorized AI batch forbids human Deck edits, publication, discards and entry through other routes targeting affected formal events. Read-only timeline and unrelated views remain available; system alarm execution and maintenance continue independently.
+
+Session authorizes an exact selected draftId set (or explicitly user-selected defined batch scope), allowed action types and permission epoch. It never expands authorization silently when another card arrives. Single AI processes this scope in serial or in a carefully serialized commit loop; no competing batch writer.
+
+Every AI commit requires current sessionId + lockEpoch + authorized item membership and eventRevision checks. Cancellation:
+- invalidate epoch / prevent **new** writes;
+- let already completed atomic commits stand;
+- retain unprocessed/conflict/failed cards and counts;
+- reconcile schedule desired state;
+- release lock deterministically;
+- show accurate partial report.
+
+Race: cancel and commit at same time. The commit either linearizes **before** cancellation fencing (then is an accepted completed result) or **after** (then is rejected); cannot have ambiguous partial state.
+
+AI completion message must not appear while job active, even if pending cards temporarily equal zero. G11-06=A: completion only after batch ends, lock released, and queue is truly empty. Otherwise show progress/partial failure report rather than misleading success.
+
+## 5. Timeline temporal geometry and type projection
+
+Rendering contract: vertical time axis fixed horizontally at screen center; elapsed time maps continuously to y, earlier above/later below. Alarm start point on left; Activity range and Deadline point/date-band on right. NOW is horizontal across screen at current actual y.
+
+Initial camera center at 12:00 today only on first opening/default reset; ordinary return persists camera. **Today** moves to actual NOW (not noon) by explicit later decision. No separate Now action.
+
+Continuous anchored pinch zoom, bounded to 4–48 hours per viewport height; day/date labels adjusted around DST. Overflow lanes fold rather than rearrange unpredictably; inside card edit requires confirmation. For a single repeated occurrence moved across date boundary, its stable key is still the original occurrence slot.
+
+Fuzzy times are inferred by AI into candidate time semantics, but cannot bypass validation: a date-only Deadline is valid; a Deadline with no date or a required Activity missing an endpoint remains a draft.
+
+## 6. Scheduling, imports, backups and permissions
+
+- Preserve separate object lifecycle (active/paused/tombstoned), schedule lifecycle (desired/pending/scheduled/blocked/missed), and actual firing lifecycle (ringing/snoozed/dismissed).
+- Desired alarm keyed by eventSeq, revision, original occurrence key and triggerId. Android broadcast must revalidate these against current authoritative store **before audible side effects**. Outdated broadcast does nothing and is logged.
+- Reliable audible exact alarms use eligible Android APIs and runtime permission checks. If unavailable, show BLOCKED, with grant guidance or external-clock fallback; never silently substitute an approximate alarm and label it exact. Calendar reminders may be approximate with explicit disclosure.
+- Restart, permission changes, app upgrade and timezone change must reconcile. Each recurrence is a semantic rule, not a giant stored list of future occurrences. DST policy for gaps/folds needs dedicated edge tests.
+- Structured migration may direct commit after validation & dedup; imported alarms are initially disabled until user confirms handoff, avoiding double ringing. A system clock's stored alarms cannot generally be enumerated via public universal API.
+- Native backup/restore preserves eventSeq allocator and retired record, event snapshots/revisions, occurrence exceptions, triggers, drafts/queueOrder, authorization recovery records and source history as applicable. Restoration must **not replay old AI batch authority** or restore stale system alarm handles; rebuild desired schedules after permissions are checked.
+- API credentials must not be embedded in exported data, unencrypted event records or public logs. AI context sharing requires user authorization for relevant events.
+
+## 7. Testable invariants (candidate freeze criteria)
+
+| ID | Invariant |
 | --- | --- |
-| Android 日历同一活动通过 Instances 和 ICS 各导入一次 | 准确来源 ID 去重；跨源疑似重复排队人工确认 |
-| 外部一次迁入 600 条中途断电 | 事务边界清晰，重试不重复；仍可看到失败批次 |
-| 重复闹钟本次拖动 07:30→08:00 | 本次 exception 生效；下一天仍按规则 07:30 |
-| 系列本次发生被迁至前一天 | occurrenceKey 仍指原始发生槽位；无重复产生 |
-| 用户刚编辑，AI 基于旧 revision 返回修改结果 | 展示冲突差异，不覆盖用户新版本 |
-| 已保存多页草稿中的第 2 页，应用崩溃 | 已保存页面仅提交一次；其它未保存页恢复 |
-| 旧 07:30 PendingIntent 在已改 08:00 后触发 | revision 失效，被丢弃并记录，不播放铃声 |
-| Android 14 设备精确闹钟权限被拒绝或撤销 | alarm 显示 blocked；普通提醒如降级需告知风险 |
-| 手机关机 1 小时后启动 | 超过待定宽限阈值则记 missed，而非突然补响 |
-| 夏令时跳过 02:30，用户设本地 02:30 每天闹钟 | 根据明确的 DST policy 决定跳过或调整，不能无记录地偷偷偏移 |
-| “01:30” 在秋季时钟回拨重复两次 | 明确第一次/第二次/两次 policy，并有唯一 occurrence 执行标识 |
-| 时间轴跨午夜拖动并迅速连续双指缩放 | 缩放锚点与拖动预览连续；取消不写数据 |
-| 缩到 48h，多个 5 分钟事件重叠 | 使用视觉简化/折叠，点击命中不改变时间坐标 |
-| 收件箱无时间任务拖到时间轴 | 保留原 TaskEvent 身份；候选 scheduleTime 先走统一 Popup 确认 |
-| 截图 OCR 识别出 4 条，其中 1 条时间不明 | 四页独立校验；已保存页消失，未保存页仍可恢复 |
-| 备份→清空测试环境→恢复 | object/occurrence/trigger/drafts/索引关系保持；必须重建 Android 实际调度，不导入已失效 PendingIntent |
-| 迁移旧系统闹钟但 API 不支持读取 | UI 清楚说明限制，给截图或手动迁移入口，不伪造已完成迁移 |
+| I-01 | eventSeq is unique, monotone on new-event allocation, never reused, even after failed first draft / deletion |
+| I-02 | draftId and queueOrder independent of eventSeq; repeated same eventSeq across multiple cards is legal |
+| I-03 | one committed current snapshot per eventSeq, despite arbitrarily many simultaneous proposals |
+| I-04 | last valid **committed full snapshot** wins; stale proposal must show diff and have explicit confirmation before full replacement |
+| I-05 | no unconfirmed/unauthorized draft write may affect formal object, delivery intent or outgoing publication |
+| I-06 | AI batch is globally exclusive for Deck, one AI only; all commits fenced with session + epoch + selected scope |
+| I-07 | cancel/crash rejects late AI results; completed commits stay, remaining cards remain, lock is eventually released |
+| I-08 | browser position maps by draftId and queueOrder, never by fragile current list index |
+| I-09 | card swipe finalized only when editing data is durably staged, or fails safely without losing memory input |
+| I-10 | formally deleting object retires identity; explicit restoration reactivates same eventSeq, never silently |
+| I-11 | changed event revision fences any old pending alarm before ringtone is activated |
+| I-12 | occurrence identity survives single-instance rescheduling; skipped/snoozed execution not whole-series mutation |
+| I-13 | date-only Deadline does not acquire fabricated 23:59; incomplete unanchored draft not published |
+| I-14 | new AI cards append, existing card focus stays stable; searches preserve queueOrder |
+| I-15 | completion feedback implies AI finished, Deck unlocked, no pending cards, accurate outcome totals |
+| I-16 | native restore prevents duplicate committed operations and stale locks; external sources do not regain authority |
+| I-17 | system dark/light switch preserves active editor identity/input/focus, with readable contrast and fallback glass |
+| I-18 | full replacement conflict re-confirmation is **not** silently converted to a field-wise merge |
 
-## F. 下一轮重点：Popup + 未安排收件箱（尚未决议）
+## 8. Read-only verification and prototype test matrix
 
-Popup：底部 sheet vs 居中浮层、显示级别、跨页滑动与文本表单手势冲突、保存页关闭后焦点保留、手动/AI/拖动复用、版本冲突可视化。
-Inbox：无时间任务与 AI 未确认草稿是否同一个概念、从时间轴如何呼出、拖放到时间轴的语义、层级/优先级排序、任务完成后行为、隐藏与恢复入口。
-建议将该问题先作为 UX 语义层设计，而不要在此阶段就锁死 Compose 组件或视觉样式。
+| Scenario | Expected outcome |
+| --- | --- |
+| First draft #0042 never published then discarded; new event created | #0042 never reused; allocator advances |
+| New AI card targets old #0042 after #0071 is in queue | Its eventSeq=#0042 but queueOrder larger than #0071; appended |
+| D1 and D2 on same event v2; D2 commits first | D1 stale, requires human diff/rebase for whole snapshot |
+| D1 overrides newer v3 after explicit confirmation | One v4 snapshot for same eventSeq; full specified payload replaces v3 |
+| Deleted #0042 receives delayed AI edit | proposal retained as conflict; no silent restoration |
+| AI batch of 10 selected cards, user attempts to edit #0042 | Deck locked, affected event edit denied; other pages read-only available |
+| User cancels AI at exact time of seventh commit | seventh either fully committed before fence, or not committed; never ambiguous |
+| AI receives HTTP response after cancellation | rejected by session/epoch token, no later write |
+| AI batch crashes with six success, four pending | safe recovery unlock, six remain committed, four remain, report partial |
+| AI batch emptied queue while AI is still running | no complete-success animation yet |
+| AI batch ends, queue empty, lock released | accurate success animation, skip/undo possible, prior timeline viewport preserved |
+| 100-card queue, user editing #0009, AI appends 12 | current draftId stays, new cards appear at end, stable queue order |
+| Type Convert Deadline(date-only) → Activity | date anchor retained; missing start/end fields require explicit review |
+| Imported alarm is already active on old OEM clock | PowerCal migrated alarm disabled until safe handoff |
+| Android precise permission denied after formal commit | alarm schedule BLOCKED, not silently approximated |
+| Android delivers old scheduled alarm after object revision change | no obsolete ring; execution record indicates ignored stale trigger |
+| Active card edits a final character then user outside fast-flings | last input staged before final navigation; no disappearing text |
+| Keyboard open, user selects text and swipes horizontally inside field | text input wins; no unintended page change |
+| Card X undo during final completion animation | card restored, completion canceled, no false empty-queue claim |
+| System switches to night mode mid-input | caret/text/keyboard/card identity preserved; color and contrast update |
+| Native backup restore (no current jobs) | allocator, eventSeq, queueOrder, historical commits and drafts preserved; schedules recomputed |
+| 60 Hz / 120 Hz phones and 100 cards | measure frame timing/jank; no incorrect page identity, lost data or duplicate action |
 
-## G. 外部平台事实来源
+## 9. Prototype freeze assessment and outstanding research
 
-- Android CalendarContract（Events/Instances/Reminders 不同概念）：https://developer.android.com/reference/android/provider/CalendarContract
-- Android exact alarms 权限：https://developer.android.com/about/versions/14/changes/schedule-exact-alarms
-- AlarmManager 行为：https://developer.android.com/reference/android/app/AlarmManager
-- Compose gesture detector 只检测，不自动变换：https://developer.android.com/develop/ui/compose/touch-input/pointer-input/multi-touch
-- Compose ModalBottomSheet API：https://developer.android.com/develop/ui/compose/components/bottom-sheets
+**Frozen for a UI prototype (not implemented):**
+- centered compact-to-expanded translucent card, fan-stacked background, night-mode-aware glass theme;
+- within-card one-page swipe, outside-card fast browsing, text/vertical scroll priority;
+- permanent event number displayed separately from queue order;
+- full snapshot review, per-card check/X, undoable discard, durable edits and truthful completion;
+- one-AI batch Deck exclusion and read-only status.
+
+**Still unresolved (must not be guessed into backend):**
+- mobile UX for readable **full snapshot** conflict diff, especially stale cards in AI batch;
+- import identity matching without PowerCal numbers from source;
+- date-only Deadline's precise visual anchor and conversion UX;
+- cancel/recovery UI and exact lock-expiration mechanism;
+- grace interval and same-time multi-alarm behavior, DST gaps/folds;
+- cross-lineage future database/backup merge; duplicate external source handling;
+- verification of OEM UI and exact-alarm permission behavior on physical Android devices.
+
+Android documentation for context:
+https://developer.android.com/reference/android/provider/CalendarContract
+https://developer.android.com/develop/background-work/services/alarms
+https://developer.android.com/develop/ui/compose/layouts/pager
+https://developer.android.com/develop/ui/compose/touch-input/pointer-input
+
+**No source-code changes authorized as part of this research document.**

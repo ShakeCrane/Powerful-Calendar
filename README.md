@@ -2,7 +2,7 @@
 
 一款 **Kotlin + Jetpack Compose** 的本地优先日历、事件、提醒和系统闹钟管理 App。
 
-> **研究阶段的新产品方向（2026-10-19）**：参见 [G1–G5 产品架构决策基线](docs/PRODUCT_BASELINE_G1-G5.md) 与 [Temporal Protocol v0 研究草案](docs/PROTOCOL_V0_RESEARCH.md)。本 README 下面的 v0.1 功能与原后续计划是历史 MVP 记录；特别是原“账户级双向同步”规划已被**一次性异步迁入、PowerCal 本地唯一主数据源**取代。新方向尚未开发。
+> **研究阶段的统一产品方向（2026-10-20）**：参见 [G1–G11 产品与交互基线](docs/PRODUCT_BASELINE_G1-G11.md) 和 [Temporal Protocol v0.3 研究与验证](docs/PROTOCOL_V0_RESEARCH.md)。本 README 的 v0.1 功能是历史 MVP，不代表新架构已实现。目标为 **PowerCal 本地唯一数据源、异步一次性导入、中央时间轴、Alarm/Activity/Deadline 三类对象、统一 Draft Deck、单 AI 限权处理**；旧“双向实时同步”路线不再适用。
 
 ## 当前功能 (MVP v0.1)
 
@@ -18,7 +18,7 @@
 ## Android Studio 编译
 
 1. 使用支持 Android Gradle Plugin 8.13 的 Android Studio，安装 Android SDK 36，JDK 17 或 21。
-2. 打开项目根目录 `D:\Project\Powerful-Calendar`。
+2. 在 Android Studio 打开本机的项目根目录（台式机当前为 `E:\Project\Powerful-Calendar`；其他主机路径可能不同）。
 3. 等待 Gradle 同步，运行 `gradlew.bat :app:assembleDebug`（或通过 Android Studio 运行）。
 4. 调试版 APK 路径：`app/build/outputs/apk/debug/app-debug.apk`。
 5. Android 8.0 (API 26) 及以上设备可安装。测试通知需给予通知权限。
@@ -47,10 +47,10 @@ app/src/main/java/dev/powerfulcalendar/
 └── ui/                       # 月历、事件卡片、编辑表单
 ```
 
-## 后续计划
+## 研究阶段：下一步（未开发）
 
-1. 单向系统日历刷新升级为真正的账户级双向同步，处理冲突与删除。
-2. ICS RFC5545 完整解析、RRULE/EXDATE 展开、会议邀请与日历颜色。
-3. 更强自然语言时间解析，识别截图内多个事件，新增可选云端 OCR/LLM API 提供商。
-4. 独立的应用内闹钟实体（重复响铃、响铃界面、贪睡），以及提醒历史与开关。
-5. Room + ViewModel + 协程数据库 I/O 分层、通知操作、桌面小组件、多日视图、搜索过滤。
+1. 验证三种时间语义与 eventSeq 永久身份、同序号多草稿、完整快照覆盖及冲突确认。
+2. 原型验证 PowerCal Glass Draft Deck：整卡滑动、卡外快速浏览、编辑自动暂存、系统明暗主题和完成动画。
+3. 原型验证中央竖直时间轴：今日定位当前时刻、双指 4–48 小时缩放、稳定重叠分轨及日期精度 Deadline。
+4. 设计单 AI 独占批处理的范围授权、取消恢复、版本防护和崩溃后解锁机制。
+5. 验证 Android 可靠闹钟、一次性异步迁移、完整原生备份和结构化数据输出。详细标准参见上方两份研究文档。
