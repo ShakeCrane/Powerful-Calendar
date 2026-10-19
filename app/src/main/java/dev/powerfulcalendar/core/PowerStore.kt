@@ -38,12 +38,6 @@ class PowerStore(
      */
     private val processToken: String get() = PROCESS_TOKEN
 
-    init {
-        // Any session owned by another process token is unrecoverable: fence it before the UI can
-        // start a new batch. This is why a crash can never leave a permanent deck lock.
-        runCatching { recoverInterruptedAi() }
-    }
-
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
             """CREATE TABLE meta(
@@ -510,8 +504,9 @@ class PowerStore(
             return@tx StageResult.Locked
         }
         val updated = db.compileStatement(
-            """UPDATE drafts SET payload=?, draft_version=draft_version+1, updated_ms=?
-               WHERE draft_id=? AND draft_version=? AND status IN ('PENDING','CONFLICT')"""
+            """UPDATE drafts SET payload=?, draft_version=draft_version+1, updated_ms=?,
+                      status=CASE WHEN status='INVALID' THEN 'PENDING' ELSE status END
+               WHERE draft_id=? AND draft_version=? AND status IN ('PENDING','CONFLICT','INVALID')"""
         ).apply {
             bindString(1, encodeForm(form))
             bindLong(2, System.currentTimeMillis())
@@ -536,7 +531,7 @@ class PowerStore(
     fun pendingDrafts(): List<DraftCard> {
         val db = readableDatabase
         val ids = db.rawQuery(
-            "SELECT draft_id FROM drafts WHERE status IN ('PENDING','CONFLICT') ORDER BY queue_order ASC",
+            "SELECT draft_id FROM drafts WHERE status IN ('PENDING','CONFLICT','INVALID') ORDER BY queue_order ASC",
             null
         ).use { cursor ->
             buildList { while (cursor.moveToNext()) add(cursor.getLong(0)) }
@@ -560,7 +555,7 @@ class PowerStore(
         val db = readableDatabase
         val ids = db.rawQuery(
             """SELECT draft_id FROM drafts
-               WHERE event_seq=? AND status IN ('PENDING','CONFLICT') ORDER BY queue_order ASC""",
+               WHERE event_seq=? AND status IN ('PENDING','CONFLICT','INVALID') ORDER BY queue_order ASC""",
             arrayOf(eventSeq.toString())
         ).use { cursor -> buildList { while (cursor.moveToNext()) add(cursor.getLong(0)) } }
         return ids.mapNotNull { readDraft(db, it) }
@@ -575,11 +570,15 @@ class PowerStore(
         }
         val card = readDraft(db, draftId) ?: return@tx false
         if (card.status == DraftStatus.COMMITTED) return@tx false
-        db.execSQL(
-            "UPDATE drafts SET status='DISCARDED', updated_ms=? WHERE draft_id=? AND status IN ('PENDING','CONFLICT')",
-            arrayOf(System.currentTimeMillis(), draftId)
-        )
-        true
+        val updated = db.compileStatement(
+            """UPDATE drafts SET status='DISCARDED', updated_ms=?
+               WHERE draft_id=? AND status IN ('PENDING','CONFLICT','INVALID')"""
+        ).apply {
+            bindLong(1, System.currentTimeMillis())
+            bindLong(2, draftId)
+        }.executeUpdateDelete()
+        // Report the row count, not the earlier read: a concurrent discard must not look successful.
+        updated == 1
     }
 
     /** Undo keeps the same draftId and queueOrder, so the card returns to its old place. */
@@ -602,7 +601,8 @@ class PowerStore(
         draftId: Long,
         approveStale: Boolean = false,
         actor: String = "user",
-        aiSession: AiSession? = null
+        aiSession: AiSession? = null,
+        idempotencyKey: String? = null
     ): CommitOutcome = tx { db ->
         if (aiSession != null) {
             val authorization = authorize(db, aiSession, draftId)
@@ -612,10 +612,18 @@ class PowerStore(
         }
 
         // Idempotency: a card has at most one commit record; repeating the click returns it.
-        db.rawQuery(
-            "SELECT event_seq,new_revision,commit_id FROM commits WHERE draft_id=?",
+        // A caller-supplied key (AI task, retry) is honoured before touching anything.
+        val existingSql = if (idempotencyKey != null) {
+            "SELECT event_seq,new_revision,commit_id FROM commits WHERE draft_id=? OR commit_id=? LIMIT 1"
+        } else {
+            "SELECT event_seq,new_revision,commit_id FROM commits WHERE draft_id=?"
+        }
+        val existingArgs = if (idempotencyKey != null) {
+            arrayOf(draftId.toString(), idempotencyKey)
+        } else {
             arrayOf(draftId.toString())
-        ).use { cursor ->
+        }
+        db.rawQuery(existingSql, existingArgs).use { cursor ->
             if (cursor.moveToFirst()) {
                 return@tx CommitOutcome.Committed(
                     cursor.getLong(0), cursor.getLong(1), cursor.getString(2), duplicate = true
@@ -634,6 +642,8 @@ class PowerStore(
             else CommitOutcome.Invalid("目标事件不存在")
         }
         if (draft.operation == DraftOperation.CREATE && current != null) {
+            db.execSQL("UPDATE drafts SET status='INVALID', updated_ms=? WHERE draft_id=?",
+                arrayOf(System.currentTimeMillis(), draftId))
             return@tx CommitOutcome.Invalid("该事件序号已存在正式对象，不能用新建操作覆盖")
         }
         if (draft.operation == DraftOperation.CREATE && retired) {
@@ -666,8 +676,16 @@ class PowerStore(
         } else {
             val built = draft.form.build(draft.eventSeq, newRevision, now)
             when (built) {
-                is FormBuild.Incomplete -> return@tx CommitOutcome.Invalid(built.message)
-                is FormBuild.Invalid -> return@tx CommitOutcome.Invalid(built.reason)
+                is FormBuild.Incomplete -> {
+                    db.execSQL("UPDATE drafts SET status='INVALID', updated_ms=? WHERE draft_id=?",
+                        arrayOf(now, draftId))
+                    return@tx CommitOutcome.Invalid(built.message)
+                }
+                is FormBuild.Invalid -> {
+                    db.execSQL("UPDATE drafts SET status='INVALID', updated_ms=? WHERE draft_id=?",
+                        arrayOf(now, draftId))
+                    return@tx CommitOutcome.Invalid(built.reason)
+                }
                 is FormBuild.Ready -> {
                     val record = built.record.copy(
                         // Creation time is identity metadata, not user content: never rewritten
@@ -684,7 +702,7 @@ class PowerStore(
             }
         }
 
-        val commitId = UUID.randomUUID().toString()
+        val commitId = idempotencyKey ?: UUID.randomUUID().toString()
         db.insertOrThrow("commits", null, ContentValues().apply {
             put("commit_id", commitId)
             put("draft_id", draftId)
@@ -704,31 +722,36 @@ class PowerStore(
     }
 
     /**
-     * Explicit resurrection of a retired identity. Never implicit: the user has decided to
-     * reuse the SAME eventSeq, and the new snapshot becomes the next revision.
+     * Explicit resurrection of a retired identity, driven by the card that proposed it. The card is
+     * committed in the same transaction, so it cannot survive as a stale duplicate proposal.
+     * AI cannot restore: resurrection always requires an explicit human confirmation on a card.
      */
     @Synchronized
-    fun restore(
-        eventSeq: Long,
+    fun restoreDraft(
+        draftId: Long,
         form: DraftForm,
-        actor: String = "user",
-        aiSession: AiSession? = null
+        actor: String = "user"
     ): CommitOutcome = tx { db ->
-        if (aiSession != null) {
-            val check = authorize(db, aiSession, null)
-            if (check != null) return@tx check
-        } else if (isLocked(db)) {
-            return@tx CommitOutcome.Locked
-        }
+        if (isLocked(db)) return@tx CommitOutcome.Locked
+        val card = readDraft(db, draftId) ?: return@tx CommitOutcome.Invalid("草稿不存在")
+        if (!card.isActionable) return@tx CommitOutcome.Invalid("草稿已经处理")
+        val eventSeq = card.eventSeq
         val retiredRecord = readObject(db, eventSeq, includeRetired = true)
             ?: return@tx CommitOutcome.Invalid("该事件序号从未存在")
         if (!isRetired(db, eventSeq)) return@tx CommitOutcome.Invalid("该事件未被删除，无需恢复")
         val now = System.currentTimeMillis()
         val newRevision = CommitRules.nextRevision(retiredRecord.revision)
-        val built = form.build(eventSeq, newRevision, now)
-        return@tx when (built) {
-            is FormBuild.Incomplete -> CommitOutcome.Invalid(built.message)
-            is FormBuild.Invalid -> CommitOutcome.Invalid(built.reason)
+        return@tx when (val built = form.build(eventSeq, newRevision, now)) {
+            is FormBuild.Incomplete -> {
+                db.execSQL("UPDATE drafts SET status='INVALID', updated_ms=? WHERE draft_id=?",
+                    arrayOf(now, draftId))
+                CommitOutcome.Invalid(built.message)
+            }
+            is FormBuild.Invalid -> {
+                db.execSQL("UPDATE drafts SET status='INVALID', updated_ms=? WHERE draft_id=?",
+                    arrayOf(now, draftId))
+                CommitOutcome.Invalid(built.reason)
+            }
             is FormBuild.Ready -> {
                 upsertObject(db, built.record.copy(
                     createdAtMillis = retiredRecord.createdAtMillis.takeIf { it > 0 } ?: now,
@@ -738,7 +761,7 @@ class PowerStore(
                 val commitId = UUID.randomUUID().toString()
                 db.insertOrThrow("commits", null, ContentValues().apply {
                     put("commit_id", commitId)
-                    putNull("draft_id") // restoration has no card; NULL keeps UNIQUE honest
+                    put("draft_id", draftId)
                     put("event_seq", eventSeq)
                     put("previous_revision", retiredRecord.revision)
                     put("new_revision", newRevision)
@@ -746,6 +769,8 @@ class PowerStore(
                     put("operation", "RESTORE")
                     put("created_ms", now)
                 })
+                db.execSQL("UPDATE drafts SET status='COMMITTED', updated_ms=? WHERE draft_id=?",
+                    arrayOf(now, draftId))
                 writeDesiredIntent(db, readObject(db, eventSeq), now)
                 CommitOutcome.Committed(eventSeq, newRevision, commitId)
             }
@@ -950,51 +975,77 @@ class PowerStore(
         state: AiState = AiState.COMPLETED,
         report: JSONObject? = null
     ): Boolean = tx { db ->
-        db.rawQuery("SELECT lock_epoch,owner_token FROM ai_sessions WHERE session_id=?",
+        var persistedState = ""
+        db.rawQuery("SELECT lock_epoch,owner_token,state FROM ai_sessions WHERE session_id=?",
             arrayOf(sessionId)).use { cursor ->
             if (!cursor.moveToFirst()) return@tx false
             val epoch = cursor.getLong(0)
             val owner = cursor.getString(1)
+            persistedState = cursor.getString(2)
             if (owner != processToken) return@tx false
             if (epoch != currentEpoch(db)) return@tx false
+        }
+        // Already terminal: finishing twice would bump the epoch again and mask a bug.
+        if (persistedState in setOf(
+                AiState.COMPLETED.name, AiState.CANCELLED.name,
+                AiState.FAILED.name, AiState.INTERRUPTED.name
+            )
+        ) {
+            return@tx false
+        }
+        // A cancelled batch cannot be reported as a clean completion.
+        val effective = if (persistedState == AiState.CANCEL_REQUESTED.name && state == AiState.COMPLETED) {
+            AiState.CANCELLED
+        } else {
+            state
         }
         val now = System.currentTimeMillis()
         db.execSQL(
             "UPDATE ai_sessions SET state=?, updated_ms=?, report=? WHERE session_id=?",
-            arrayOf(state.name, now, report?.toString(), sessionId)
+            arrayOf(effective.name, now, report?.toString(), sessionId)
         )
         db.execSQL("UPDATE meta SET ai_locked=0, ai_epoch=? WHERE id=1", arrayOf(currentEpoch(db) + 1))
         true
     }
 
     /**
-     * Startup recovery. A session owned by a previous process cannot still be running, so it is
-     * fenced and unlocked exactly once. This is safe to call while a live batch from THIS process
-     * is running: the owner token matches and nothing is touched.
+     * Startup/runtime recovery. A session is an orphan when it is owned by another process, or when
+     * its heartbeat is older than [staleAfterMillis] (a cancelled coroutine, a dead worker or a
+     * frozen process). Recovery is explicit rather than a constructor side effect, and it always
+     * moves the epoch so late responses cannot continue.
      */
     @Synchronized
-    fun recoverInterruptedAi(): Boolean = tx { db ->
+    fun recoverInterruptedAi(staleAfterMillis: Long = DEFAULT_STALE_MS): Boolean = tx { db ->
         if (!isLocked(db)) return@tx false
+        val now = System.currentTimeMillis()
         val orphan = db.rawQuery(
-            "SELECT session_id,lock_epoch,owner_token FROM ai_sessions WHERE state IN ('REQUESTED','RUNNING','CANCEL_REQUESTED')",
-            null
+            """SELECT session_id FROM ai_sessions
+               WHERE state IN ('REQUESTED','RUNNING','CANCEL_REQUESTED')
+                 AND (owner_token<>? OR updated_ms< ?)""",
+            arrayOf(processToken, (now - staleAfterMillis).toString())
         ).use { cursor ->
-            buildList {
-                while (cursor.moveToNext()) {
-                    if (cursor.getString(2) != processToken) {
-                        add(cursor.getString(0) to cursor.getLong(1))
-                    }
-                }
-            }
+            buildList { while (cursor.moveToNext()) add(cursor.getString(0)) }
         }
         if (orphan.isEmpty()) return@tx false
-        val now = System.currentTimeMillis()
-        orphan.forEach { (id, _) ->
+        orphan.forEach { id ->
             db.execSQL(
                 "UPDATE ai_sessions SET state='INTERRUPTED', updated_ms=? WHERE session_id=?",
                 arrayOf(now, id)
             )
         }
+        db.execSQL("UPDATE meta SET ai_locked=0, ai_epoch=? WHERE id=1", arrayOf(currentEpoch(db) + 1))
+        true
+    }
+
+    /** Explicit user escape hatch for a stuck batch; fences the epoch before unlocking. */
+    @Synchronized
+    fun releaseStuckAiBatch(): Boolean = tx { db ->
+        if (!isLocked(db)) return@tx false
+        val now = System.currentTimeMillis()
+        db.execSQL(
+            "UPDATE ai_sessions SET state='FAILED', updated_ms=?, report=? WHERE state IN ('REQUESTED','RUNNING','CANCEL_REQUESTED')",
+            arrayOf(now, "{\"released\":\"user\"}")
+        )
         db.execSQL("UPDATE meta SET ai_locked=0, ai_epoch=? WHERE id=1", arrayOf(currentEpoch(db) + 1))
         true
     }
@@ -1044,8 +1095,11 @@ class PowerStore(
     @Synchronized
     fun stats(sinceMillis: Long, actor: String? = null): DeckStats {
         val db = readableDatabase
+        // Only card-driven commits count: imports and restorations are not "published" cards and
+        // would inflate a completion claim (G10-08 wants accurate numbers, not a score).
         val published = db.rawQuery(
-            "SELECT COUNT(*) FROM commits WHERE created_ms>=?" + if (actor != null) " AND actor=?" else "",
+            "SELECT COUNT(*) FROM commits WHERE created_ms>=? AND draft_id IS NOT NULL" +
+                if (actor != null) " AND actor=?" else "",
             if (actor != null) arrayOf(sinceMillis.toString(), actor)
             else arrayOf(sinceMillis.toString())
         ).use { it.moveToFirst(); it.getInt(0) }
@@ -1062,7 +1116,7 @@ class PowerStore(
     @Synchronized
     fun pendingCount(): Int =
         readableDatabase.rawQuery(
-            "SELECT COUNT(*) FROM drafts WHERE status IN ('PENDING','CONFLICT')", null
+            "SELECT COUNT(*) FROM drafts WHERE status IN ('PENDING','CONFLICT','INVALID')", null
         ).use { it.moveToFirst(); it.getInt(0) }
 
     // ---------------------------------------------------------------- scheduling intent
@@ -1075,6 +1129,9 @@ class PowerStore(
         if (record == null) return
         cancelIntents(db, record.eventSeq, now)
         if (!record.enabled) return
+        // A date-precision deadline has no minute to fire on. Scheduling it at start-of-day would
+        // fabricate a 00:00 trigger, which the protocol explicitly forbids.
+        if (record.isDateOnlyDeadline()) return
         val occurrence = RecurrenceEngine.nextOccurrence(record, now) ?: return
         val offset = when {
             record.kind == TemporalKind.ALARM && record.reminderMinutes < 0 -> 0L
@@ -1108,34 +1165,50 @@ class PowerStore(
     }
 
     @Synchronized
-    fun dueIntents(limit: Int = 64): List<ScheduleIntent> =
+    fun dueIntents(limit: Int = 400): List<ScheduleIntent> =
         readableDatabase.rawQuery(
             """SELECT event_seq,trigger_id,revision,occurrence_key,instant_ms,requirement,desired_state,android_hint
                FROM schedule_intents WHERE desired_state IN ('PENDING','SCHEDULED')
                ORDER BY instant_ms ASC LIMIT ?""",
             arrayOf(limit.toString())
-        ).use { cursor ->
-            buildList {
-                while (cursor.moveToNext()) {
-                    add(
-                        ScheduleIntent(
-                            eventSeq = cursor.getLong(0),
-                            triggerId = cursor.getString(1),
-                            revision = cursor.getLong(2),
-                            occurrenceKey = cursor.getString(3),
-                            instantMillis = cursor.getLong(4),
-                            requirement = runCatching {
-                                TriggerRequirement.valueOf(cursor.getString(5))
-                            }.getOrDefault(TriggerRequirement.INEXACT),
-                            desired = runCatching {
-                                DesiredSchedule.valueOf(cursor.getString(6))
-                            }.getOrDefault(DesiredSchedule.PENDING),
-                            androidHint = if (cursor.isNull(7)) null else cursor.getString(7)
-                        )
-                    )
-                }
-            }
+        ).use { cursor -> readIntents(cursor) }
+
+    @Synchronized
+    fun intentsInState(state: DesiredSchedule, limit: Int = 100): List<ScheduleIntent> =
+        readableDatabase.rawQuery(
+            """SELECT event_seq,trigger_id,revision,occurrence_key,instant_ms,requirement,desired_state,android_hint
+               FROM schedule_intents WHERE desired_state=? ORDER BY instant_ms ASC LIMIT ?""",
+            arrayOf(state.name, limit.toString())
+        ).use { cursor -> readIntents(cursor) }
+
+    @Synchronized
+    fun deleteIntent(eventSeq: Long, triggerId: String) {
+        writableDatabase.delete(
+            "schedule_intents", "event_seq=? AND trigger_id=?",
+            arrayOf(eventSeq.toString(), triggerId)
+        )
+    }
+
+    private fun readIntents(cursor: android.database.Cursor): List<ScheduleIntent> = buildList {
+        while (cursor.moveToNext()) {
+            add(
+                ScheduleIntent(
+                    eventSeq = cursor.getLong(0),
+                    triggerId = cursor.getString(1),
+                    revision = cursor.getLong(2),
+                    occurrenceKey = cursor.getString(3),
+                    instantMillis = cursor.getLong(4),
+                    requirement = runCatching {
+                        TriggerRequirement.valueOf(cursor.getString(5))
+                    }.getOrDefault(TriggerRequirement.INEXACT),
+                    desired = runCatching {
+                        DesiredSchedule.valueOf(cursor.getString(6))
+                    }.getOrDefault(DesiredSchedule.PENDING),
+                    androidHint = if (cursor.isNull(7)) null else cursor.getString(7)
+                )
+            )
         }
+    }
 
     @Synchronized
     fun intentFor(eventSeq: Long, triggerId: String = "primary"): ScheduleIntent? =
@@ -1160,12 +1233,36 @@ class PowerStore(
         eventSeq: Long,
         triggerId: String,
         state: DesiredSchedule,
-        hint: String? = null
-    ) {
-        writableDatabase.execSQL(
-            "UPDATE schedule_intents SET desired_state=?, android_hint=?, updated_ms=? WHERE event_seq=? AND trigger_id=?",
-            arrayOf(state.name, hint, System.currentTimeMillis(), eventSeq, triggerId)
+        hint: String? = null,
+        revision: Long? = null,
+        occurrenceKey: String? = null
+    ): Boolean {
+        val sql = buildString {
+            append("UPDATE schedule_intents SET desired_state=?, android_hint=?, updated_ms=? ")
+            append("WHERE event_seq=? AND trigger_id=?")
+            if (revision != null) append(" AND revision=?")
+            if (occurrenceKey != null) append(" AND occurrence_key=?")
+        }
+        val args = mutableListOf<Any?>(
+            state.name, hint, System.currentTimeMillis(), eventSeq, triggerId
         )
+        if (revision != null) args.add(revision)
+        if (occurrenceKey != null) args.add(occurrenceKey)
+        val updated = writableDatabase.compileStatement(sql).apply {
+            args.forEachIndexed { index, value ->
+                val slot = index + 1
+                when (value) {
+                    null -> bindNull(slot)
+                    is String -> bindString(slot, value)
+                    is Long -> bindLong(slot, value)
+                    is Int -> bindLong(slot, value.toLong())
+                    else -> bindString(slot, value.toString())
+                }
+            }
+        }.executeUpdateDelete()
+        // Zero rows means the row was replaced by a newer revision; the caller must not claim it
+        // scheduled (or cancelled) the current one.
+        return updated == 1
     }
 
     /** Advances a fired occurrence to the next slot without touching the committed snapshot. */
@@ -1243,11 +1340,14 @@ class PowerStore(
             )
             return@tx ImportOutcome.AlreadyImported(existing)
         }
+        if (isLocked(db)) {
+            return@tx ImportOutcome.Rejected("AI 批次运行中，暂不接受结构化导入")
+        }
         val now = System.currentTimeMillis()
-        val seq = allocateIdentity(db, source)
         val prefersDisabled = record.kind == TemporalKind.ALARM && alarmNeedsHandoff
+        // Validate BEFORE allocating: a rejected import must not burn a permanent event number.
         val candidate = record.copy(
-            eventSeq = seq,
+            eventSeq = 0L,
             revision = 1L,
             enabled = record.enabled && !prefersDisabled,
             source = source,
@@ -1255,7 +1355,9 @@ class PowerStore(
             updatedAtMillis = now
         )
         candidate.validate()?.let { return@tx ImportOutcome.Rejected(it) }
-        upsertObject(db, candidate)
+        val seq = allocateIdentity(db, source)
+        val stored = candidate.copy(eventSeq = seq)
+        upsertObject(db, stored)
         db.insertOrThrow("source_links", null, ContentValues().apply {
             put("source", source)
             put("external_id", externalId)
@@ -1275,7 +1377,7 @@ class PowerStore(
             "UPDATE migrations SET imported=imported+1 WHERE batch_id=?",
             arrayOf(batchId)
         )
-        writeDesiredIntent(db, candidate, now)
+        writeDesiredIntent(db, stored, now)
         ImportOutcome.Imported(seq, candidate.enabled)
     }
 
@@ -1358,33 +1460,54 @@ class PowerStore(
         })
         put("drafts", JSONArray().apply {
             readableDatabase.rawQuery(
-                """SELECT event_seq,queue_order,base_rev,op,payload,status,draft_version,created_ms,updated_ms
+                """SELECT draft_id,event_seq,queue_order,base_rev,op,payload,status,draft_version,created_ms,updated_ms
                    FROM drafts ORDER BY queue_order""", null
             ).use { cursor ->
                 while (cursor.moveToNext()) put(JSONObject().apply {
-                    put("eventSeq", cursor.getLong(0))
-                    put("queueOrder", cursor.getLong(1))
-                    if (cursor.isNull(2)) put("baseRev", JSONObject.NULL) else put("baseRev", cursor.getLong(2))
-                    put("op", cursor.getString(3))
-                    put("payload", JSONObject(cursor.getString(4)))
-                    put("status", cursor.getString(5))
-                    put("draftVersion", cursor.getLong(6))
-                    put("createdMs", cursor.getLong(7))
-                    put("updatedMs", cursor.getLong(8))
+                    put("draftId", cursor.getLong(0))
+                    put("eventSeq", cursor.getLong(1))
+                    put("queueOrder", cursor.getLong(2))
+                    if (cursor.isNull(3)) put("baseRev", JSONObject.NULL) else put("baseRev", cursor.getLong(3))
+                    put("op", cursor.getString(4))
+                    put("payload", JSONObject(cursor.getString(5)))
+                    put("status", cursor.getString(6))
+                    put("draftVersion", cursor.getLong(7))
+                    put("createdMs", cursor.getLong(8))
+                    put("updatedMs", cursor.getLong(9))
                 })
             }
         })
         put("commits", JSONArray().apply {
             readableDatabase.rawQuery(
-                "SELECT commit_id,event_seq,new_revision,actor,operation,created_ms FROM commits", null
+                """SELECT commit_id,draft_id,event_seq,previous_revision,new_revision,actor,operation,created_ms
+                   FROM commits""", null
             ).use { cursor ->
                 while (cursor.moveToNext()) put(JSONObject().apply {
                     put("commitId", cursor.getString(0))
-                    put("eventSeq", cursor.getLong(1))
-                    put("revision", cursor.getLong(2))
-                    put("actor", cursor.getString(3))
-                    put("operation", cursor.getString(4))
-                    put("createdMs", cursor.getLong(5))
+                    if (cursor.isNull(1)) put("draftId", JSONObject.NULL) else put("draftId", cursor.getLong(1))
+                    put("eventSeq", cursor.getLong(2))
+                    if (cursor.isNull(3)) put("previousRevision", JSONObject.NULL)
+                    else put("previousRevision", cursor.getLong(3))
+                    put("revision", cursor.getLong(4))
+                    put("actor", cursor.getString(5))
+                    put("operation", cursor.getString(6))
+                    put("createdMs", cursor.getLong(7))
+                })
+            }
+        })
+        put("migrations", JSONArray().apply {
+            readableDatabase.rawQuery(
+                """SELECT batch_id,source,started_ms,finished_ms,imported,skipped,warnings
+                   FROM migrations""", null
+            ).use { cursor ->
+                while (cursor.moveToNext()) put(JSONObject().apply {
+                    put("batchId", cursor.getString(0))
+                    put("source", cursor.getString(1))
+                    put("startedMs", cursor.getLong(2))
+                    if (cursor.isNull(3)) put("finishedMs", JSONObject.NULL) else put("finishedMs", cursor.getLong(3))
+                    put("imported", cursor.getInt(4))
+                    put("skipped", cursor.getInt(5))
+                    put("warnings", cursor.getString(6))
                 })
             }
         })
@@ -1464,6 +1587,7 @@ class PowerStore(
             val order = item.getLong("queueOrder")
             maxOrder = maxOf(maxOrder, order + 1)
             db.insertOrThrow("drafts", null, ContentValues().apply {
+                if (item.has("draftId")) put("draft_id", item.getLong("draftId"))
                 put("event_seq", item.getLong("eventSeq"))
                 put("queue_order", order)
                 if (item.isNull("baseRev")) putNull("base_rev") else put("base_rev", item.getLong("baseRev"))
@@ -1482,9 +1606,15 @@ class PowerStore(
             val item = commits.getJSONObject(index)
             db.insertOrThrow("commits", null, ContentValues().apply {
                 put("commit_id", item.getString("commitId"))
-                putNull("draft_id")
+                // Preserve the card linkage so the restored audit trail is not anonymised.
+                if (item.isNull("draftId") || !item.has("draftId")) putNull("draft_id")
+                else put("draft_id", item.getLong("draftId"))
                 put("event_seq", item.getLong("eventSeq"))
-                putNull("previous_revision")
+                if (item.has("previousRevision") && !item.isNull("previousRevision")) {
+                    put("previous_revision", item.getLong("previousRevision"))
+                } else {
+                    putNull("previous_revision")
+                }
                 put("new_revision", item.getLong("revision"))
                 put("actor", item.optString("actor", "restore"))
                 put("operation", item.optString("operation", "RESTORE"))
@@ -1501,6 +1631,23 @@ class PowerStore(
                 put("event_seq", item.getLong("eventSeq"))
             }, SQLiteDatabase.CONFLICT_IGNORE)
         }
+        val migrations = snapshot.optJSONArray("migrations") ?: JSONArray()
+        for (index in 0 until migrations.length()) {
+            val item = migrations.getJSONObject(index)
+            db.insertWithOnConflict("migrations", null, ContentValues().apply {
+                put("batch_id", item.getString("batchId"))
+                put("source", item.getString("source"))
+                put("started_ms", item.optLong("startedMs", System.currentTimeMillis()))
+                if (item.has("finishedMs") && !item.isNull("finishedMs")) {
+                    put("finished_ms", item.getLong("finishedMs"))
+                } else {
+                    putNull("finished_ms")
+                }
+                put("imported", item.optInt("imported", 0))
+                put("skipped", item.optInt("skipped", 0))
+                put("warnings", item.optString("warnings", "[]"))
+            }, SQLiteDatabase.CONFLICT_REPLACE)
+        }
         db.execSQL(
             "UPDATE meta SET next_seq=?, next_order=?, ai_locked=0, ai_epoch=ai_epoch+1 WHERE id=1",
             arrayOf(maxSeq, maxOrder)
@@ -1508,12 +1655,23 @@ class PowerStore(
         // Schedules are rebuilt from scratch after a restore; never replay stale Android handles.
         db.execSQL("DELETE FROM schedule_intents")
         db.execSQL("DELETE FROM ai_sessions")
+        db.execSQL("DELETE FROM executions")
+        // Rebuild the desired schedule for every restored active event (I-16).
+        db.rawQuery("SELECT payload FROM objects WHERE retired=0", null).use { cursor ->
+            while (cursor.moveToNext()) {
+                val restored = decodeRecord(cursor.getString(0))
+                if (restored.enabled) writeDesiredIntent(db, restored, System.currentTimeMillis())
+            }
+        }
         RestoreReport(identities.length(), objectCount, draftCount, commitCount)
     }
 
     companion object {
         const val DATABASE_NAME = "powercal-v2.db"
         const val VERSION = 1
+
+        /** A batch whose heartbeat is older than this cannot still be running. */
+        const val DEFAULT_STALE_MS = 10 * 60_000L
 
         /** One token per OS process; every PowerStore instance in the process shares it. */
         private val PROCESS_TOKEN: String = UUID.randomUUID().toString()

@@ -48,17 +48,28 @@ object ReminderScheduler {
     /** Idempotent: safe to call after boot, timezone change, permission change or a commit. */
     fun reconcile(context: Context, store: PowerStore) {
         val now = System.currentTimeMillis()
-        store.dueIntents().forEach { intent ->
+        // One pass over a generous window; `markIntent` is revision-guarded so a row replaced by a
+        // concurrent commit is never mislabelled.
+        store.dueIntents(limit = 400).forEach { intent ->
             runCatching { apply(context, store, intent, now) }
                 .onFailure { Log.w(TAG, "reconcile #${intent.eventSeq} failed", it) }
+        }
+        // Cancelled intents may still have an armed PendingIntent (delete/disable). Disarm it once.
+        store.intentsInState(PowerStore.DesiredSchedule.CANCELLED, limit = 100).forEach { intent ->
+            cancel(context, intent.eventSeq)
+            store.deleteIntent(intent.eventSeq, intent.triggerId)
         }
     }
 
     private fun apply(context: Context, store: PowerStore, intent: PowerStore.ScheduleIntent, now: Long) {
         val record = store.get(intent.eventSeq)
         if (record == null || record.revision != intent.revision || !record.enabled) {
-            cancel(context, intent.eventSeq)
-            store.markIntent(intent.eventSeq, intent.triggerId, PowerStore.DesiredSchedule.CANCELLED)
+            // Only disarm when the row still belongs to this revision; a newer schedule must survive.
+            val owned = store.markIntent(
+                intent.eventSeq, intent.triggerId, PowerStore.DesiredSchedule.CANCELLED,
+                "事件已更新或删除", intent.revision, intent.occurrenceKey
+            )
+            if (owned) cancel(context, intent.eventSeq)
             return
         }
         if (intent.instantMillis < now - AlarmContract.GRACE_MILLIS) {
@@ -71,11 +82,11 @@ object ReminderScheduler {
             return
         }
         if (intent.requirement == PowerStore.TriggerRequirement.EXACT && !exactAlarmAllowed(context)) {
-            store.markIntent(
+            val owned = store.markIntent(
                 intent.eventSeq, intent.triggerId, PowerStore.DesiredSchedule.BLOCKED,
-                "缺少精确闹钟权限"
+                "缺少精确闹钟权限", intent.revision, intent.occurrenceKey
             )
-            NotificationHelper.postExactAlarmBlocked(context, record)
+            if (owned) NotificationHelper.postExactAlarmBlocked(context, record)
             return
         }
         if (!notificationsAllowed(context)) {
@@ -93,13 +104,17 @@ object ReminderScheduler {
             } else {
                 manager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, intent.instantMillis, pending)
             }
-            store.markIntent(intent.eventSeq, intent.triggerId, PowerStore.DesiredSchedule.SCHEDULED)
-        } catch (security: SecurityException) {
+            // Zero rows means the row was replaced; do not claim we scheduled the current revision.
             store.markIntent(
-                intent.eventSeq, intent.triggerId, PowerStore.DesiredSchedule.BLOCKED,
-                "系统拒绝精确闹钟"
+                intent.eventSeq, intent.triggerId, PowerStore.DesiredSchedule.SCHEDULED,
+                null, intent.revision, intent.occurrenceKey
             )
-            NotificationHelper.postExactAlarmBlocked(context, record)
+        } catch (security: SecurityException) {
+            val owned = store.markIntent(
+                intent.eventSeq, intent.triggerId, PowerStore.DesiredSchedule.BLOCKED,
+                "系统拒绝精确闹钟", intent.revision, intent.occurrenceKey
+            )
+            if (owned) NotificationHelper.postExactAlarmBlocked(context, record)
         }
     }
 
@@ -118,20 +133,29 @@ object ReminderScheduler {
     }
 
     /** Snooze is an occurrence execution change, never a recurrence-series change. */
-    fun scheduleSnooze(context: Context, record: TemporalRecord, occurrenceKey: String, triggerId: String) {
+    fun scheduleSnooze(
+        context: Context,
+        record: TemporalRecord,
+        occurrenceKey: String,
+        triggerId: String
+    ): Boolean {
         val at = System.currentTimeMillis() + AlarmContract.SNOOZE_MILLIS
         val pending = alarmPendingIntent(
             context, record.eventSeq, record.revision, occurrenceKey, triggerId, at, snooze = true
         )
-        val manager = context.getSystemService(AlarmManager::class.java) ?: return
-        try {
+        val manager = context.getSystemService(AlarmManager::class.java) ?: return false
+        return try {
             if (exactAlarmAllowed(context)) {
                 manager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pending)
+                true
             } else {
+                // Never claim exactness: the caller records the downgrade as evidence.
                 manager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pending)
+                false
             }
         } catch (_: SecurityException) {
             manager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pending)
+            false
         }
     }
 

@@ -18,7 +18,13 @@ data class AiSettings(
     val endpoint: String = "",
     val model: String = "",
     val apiKey: String = "",
-    val enabled: Boolean = false
+    val enabled: Boolean = false,
+    /**
+     * Context sharing is an explicit opt-in, not a side effect of configuring a key. When false the
+     * model only sees the text the user typed; when true it sees a bounded slice of events and the
+     * UI reports the count.
+     */
+    val shareContext: Boolean = false
 ) {
     val configured: Boolean
         get() = enabled && endpoint.isNotBlank() && model.isNotBlank()
@@ -45,6 +51,7 @@ object AiSettingsStore {
     private const val KEY_MODEL = "model"
     private const val KEY_KEY = "api_key"
     private const val KEY_ENABLED = "enabled"
+    private const val KEY_SHARE_CONTEXT = "share_context"
 
     fun load(context: Context): AiSettings {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -52,7 +59,8 @@ object AiSettingsStore {
             endpoint = prefs.getString(KEY_ENDPOINT, "").orEmpty(),
             model = prefs.getString(KEY_MODEL, "").orEmpty(),
             apiKey = prefs.getString(KEY_KEY, "").orEmpty(),
-            enabled = prefs.getBoolean(KEY_ENABLED, false)
+            enabled = prefs.getBoolean(KEY_ENABLED, false),
+            shareContext = prefs.getBoolean(KEY_SHARE_CONTEXT, false)
         )
     }
 
@@ -62,6 +70,7 @@ object AiSettingsStore {
             putString(KEY_MODEL, settings.model)
             putString(KEY_KEY, settings.apiKey)
             putBoolean(KEY_ENABLED, settings.enabled)
+            putBoolean(KEY_SHARE_CONTEXT, settings.shareContext)
         }.apply()
     }
 }
@@ -70,7 +79,9 @@ data class AiProposal(
     val operation: DraftOperation,
     val eventSeq: Long?,
     val form: DraftForm,
-    val rationale: String = ""
+    val rationale: String = "",
+    /** Non-null when the proposal cannot be turned into a card (e.g. unknown target event). */
+    val blocked: String? = null
 )
 
 data class AiInterpretation(
@@ -115,22 +126,42 @@ object AiResponseParser {
             var op = operation ?: DraftOperation.CREATE
 
             var eventSeq: Long? = if (item.isNull("eventSeq")) null else item.optLong("eventSeq").takeIf { it > 0 }
+            // A REPLACE/CONVERT/DELETE that names an event outside the shared context must never
+            // be turned into a CREATE: that would allocate a second permanent number for the same
+            // real-world event. It becomes a blocked proposal the UI reports instead.
+            var target: TemporalRecord? = null
+            var blocked: String? = null
             if (op != DraftOperation.CREATE) {
-                val target = eventSeq?.let { knownBySeq[it] }
+                target = eventSeq?.let { knownBySeq[it] }
                 if (target == null) {
-                    warnings.add("第 ${index + 1} 项引用了不存在的事件 #$eventSeq，已改为新建草稿")
-                    op = DraftOperation.CREATE
-                    eventSeq = null
+                    blocked = "第 ${index + 1} 项引用的 #$eventSeq 不在本次上下文里，未生成草稿"
+                    warnings.add(blocked)
                 }
             }
             val title = item.optString("title").trim()
             if (title.isEmpty() && op != DraftOperation.DELETE) {
                 warnings.add("第 ${index + 1} 项缺少标题，已保留为待补全草稿")
             }
-            val start = item.optString("start").trim().ifBlank { null }
-            val end = item.optString("end").trim().ifBlank { null }
+            val rawStart = item.optString("start").trim().ifBlank { null }
+            val rawEnd = item.optString("end").trim().ifBlank { null }
             val deadlineDate = item.optString("deadlineDate").trim().ifBlank { null }
-            val deadlineTime = item.optString("deadlineTime").trim().ifBlank { null }
+            val rawDeadlineTime = item.optString("deadlineTime").trim().ifBlank { null }
+
+            // The model answers in the device's wall clock. If the event lives in another zone,
+            // translate the instant so the same moment is written, not the same clock reading.
+            val answerZone = zone
+            val recordZone = target?.zone ?: zone
+            fun retarget(text: String?): String? {
+                if (text == null) return null
+                val local = DraftForm.parseLocalDateTime(text) ?: return null
+                if (recordZone == answerZone) return text
+                return local.atZone(answerZone).withZoneSameInstant(recordZone)
+                    .toLocalDateTime()
+                    .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
+            }
+            val start = rawStart?.let { retarget(it) ?: it }
+            val end = rawEnd?.let { retarget(it) ?: it }
+            val deadlineTime = rawDeadlineTime?.let { retarget(it) ?: it }
 
             val startText = when {
                 start == null -> ""
@@ -175,11 +206,13 @@ object AiResponseParser {
                 location = item.optString("location"),
                 reminderMinutes = reminder,
                 enabled = item.optBoolean("enabled", true),
-                source = "ai",
-                zoneId = zone.id,
+                // Provenance is never rewritten by the AI: a REPLACE keeps the original source, and
+                // only a brand-new event is marked as AI-authored.
+                source = if (op == DraftOperation.CREATE) "ai" else (target?.source ?: "ai"),
+                zoneId = recordZone.id,
                 recurrence = recurrence
             )
-            if (op != DraftOperation.DELETE && form.missingFields().isNotEmpty()) {
+            if (op != DraftOperation.DELETE && blocked == null && form.missingFields().isNotEmpty()) {
                 warnings.add(
                     "第 ${index + 1} 项还缺 " +
                         form.missingFields().joinToString("、") { it.label } + "，已保留为草稿"
@@ -190,7 +223,8 @@ object AiResponseParser {
                     operation = op,
                     eventSeq = eventSeq,
                     form = form,
-                    rationale = item.optString("rationale")
+                    rationale = item.optString("rationale"),
+                    blocked = blocked
                 )
             )
         }

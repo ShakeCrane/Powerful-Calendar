@@ -110,6 +110,14 @@ object PowerCalStores {
     @Volatile
     private var instance: PowerStore? = null
 
+    /**
+     * Batch work outlives the composition that started it. A rotation or a dismissed dialog must
+     * not cancel a batch mid-flight and leave the deck locked behind a dead coroutine.
+     */
+    val appScope = kotlinx.coroutines.CoroutineScope(
+        kotlinx.coroutines.SupervisorJob() + Dispatchers.IO
+    )
+
     fun get(context: Context): PowerStore = instance ?: synchronized(this) {
         instance ?: PowerStore(context.applicationContext).also { instance = it }
     }
@@ -121,7 +129,8 @@ private data class AppData(
     val records: List<TemporalRecord>,
     val pending: Int,
     val locked: Boolean,
-    val session: PowerStore.AiSession?
+    val session: PowerStore.AiSession?,
+    val operationCounts: Map<DraftOperation, Int>
 )
 
 @Composable
@@ -146,6 +155,7 @@ fun PowerCalApp(store: PowerStore) {
     var aiBusy by remember { mutableStateOf(false) }
     var confirmBatch by remember { mutableStateOf<AiBatchRunner.Mode?>(null) }
     var confirmingLegacy by remember { mutableStateOf(false) }
+    var operationCounts by remember { mutableStateOf<Map<DraftOperation, Int>>(emptyMap()) }
 
     val initialCamera = remember { TimelineCoordinate.initialCamera(System.currentTimeMillis(), zone) }
     var anchorMillis by rememberSaveable { mutableLongStateOf(initialCamera.anchorMillis) }
@@ -155,17 +165,22 @@ fun PowerCalApp(store: PowerStore) {
 
     suspend fun reload() {
         val data = withContext(Dispatchers.IO) {
+            val pending = store.pendingDrafts()
             AppData(
                 records = store.all(),
-                pending = store.pendingCount(),
+                pending = pending.size,
                 locked = store.isLocked(),
-                session = store.currentAiSession()
+                session = store.currentAiSession(),
+                operationCounts = pending.groupingBy { it.operation }.eachCount()
             )
         }
-        records = data.records
-        pendingCount = data.pending
-        aiLocked = data.locked
-        aiSession = data.session
+        withContext(Dispatchers.Main) {
+            records = data.records
+            pendingCount = data.pending
+            aiLocked = data.locked
+            aiSession = data.session
+            operationCounts = data.operationCounts
+        }
     }
 
     suspend fun reconcile() {
@@ -182,7 +197,8 @@ fun PowerCalApp(store: PowerStore) {
         reload()
         reconcile()
         // A process that died mid-batch is fenced and unlocked here; never leave a permanent lock.
-        if (store.isLocked()) {
+        val locked = withContext(Dispatchers.IO) { store.isLocked() }
+        if (locked) {
             withContext(Dispatchers.IO) { store.recoverInterruptedAi() }
             reload()
         }
@@ -220,12 +236,15 @@ fun PowerCalApp(store: PowerStore) {
             source = source,
             zoneId = zone.id
         )
-        val card = withContext(Dispatchers.IO) {
-            store.newDraft(form, actor = "user")
+        runCatching {
+            withContext(Dispatchers.IO) { store.newDraft(form, actor = "user") }
+        }.onSuccess { card ->
+            reload()
+            openDeckAt(card.draftId)
+            message = parsed.note
+        }.onFailure {
+            message = it.message ?: "暂时无法创建草稿（AI 批次可能正在独占卡组）"
         }
-        reload()
-        openDeckAt(card.draftId)
-        message = parsed.note
     }
 
     // ------------------------------------------------------------------ import launchers
@@ -399,6 +418,12 @@ fun PowerCalApp(store: PowerStore) {
 
     val tools = page == Page.TOOLS.name
 
+    // System back on the tools page returns to the timeline instead of leaving the app.
+    androidx.activity.compose.BackHandler(enabled = tools) {
+        page = Page.TIMELINE.name
+        scope.launch { reload() }
+    }
+
     Box(
         Modifier
             .fillMaxSize()
@@ -472,23 +497,44 @@ fun PowerCalApp(store: PowerStore) {
                                 message = "请先配置 AI 端点、模型与密钥"
                                 return@launch
                             }
-                            val result = AiClient(settings, zone).interpret(text, records)
+                            // Context sharing is opt-in. When disabled the endpoint only receives
+                            // the text the user typed.
+                            val contextForAi = if (settings.shareContext) {
+                                val horizon = nowMillis + 14L * 24 * 3_600_000
+                                records.filter { (it.anchorMillis() ?: 0L) <= horizon }.take(60)
+                            } else {
+                                emptyList()
+                            }
+                            val result = AiClient(settings, zone).interpret(text, contextForAi)
                             val created = withContext(Dispatchers.IO) {
                                 AiDraftService(store).createDrafts(result)
                             }
                             reload()
+                            val sharedNote = if (contextForAi.isEmpty()) {
+                                "未共享事件上下文"
+                            } else {
+                                "已共享 ${contextForAi.size} 条事件作为本次上下文"
+                            }
                             if (created.draftIds.isEmpty()) {
-                                message = result.warnings.firstOrNull() ?: "AI 没有返回可用的结构化草稿"
+                                message = (result.warnings.firstOrNull()
+                                    ?: "AI 没有返回可用的结构化草稿") + " · " + sharedNote
                             } else {
                                 openDeckAt(created.draftIds.first())
-                                message = "AI 生成了 ${created.draftIds.size} 张待确认草稿"
+                                message = "AI 生成了 ${created.draftIds.size} 张待确认草稿 · " + sharedNote
                             }
                         } finally {
                             aiBusy = false
                         }
                     }
                 },
-                aiBusy = aiBusy
+                aiBusy = aiBusy,
+                onReleaseStuck = {
+                    scope.launch {
+                        withContext(Dispatchers.IO) { store.releaseStuckAiBatch() }
+                        reload()
+                        message = "已强制解除 AI 独占；旧批次的结果被作废，剩余卡片保留"
+                    }
+                }
             )
         } else {
             TimelineScreen(
@@ -520,36 +566,50 @@ fun PowerCalApp(store: PowerStore) {
                     }
                 },
                 onMoveEvent = { record, target ->
-                    scope.launch {
-                        val moved = withContext(Dispatchers.IO) {
-                            val base = DraftForm.from(record)
-                            val form = when (record.kind) {
-                                TemporalKind.ALARM -> base.copy(
-                                    startText = DraftForm.formatInstant(target, zone)
+                    if (record.recurrence.isRepeating) {
+                        // Moving one instance of a series needs an occurrence-specific proposal.
+                        // Until that editor exists, refuse rather than silently moving the series.
+                        message = "重复事件暂不支持逐实例拖动；打开卡片可以修改整条重复规则"
+                    } else scope.launch {
+                        runCatching {
+                            withContext(Dispatchers.IO) {
+                                val base = DraftForm.from(record)
+                                val form = when (record.kind) {
+                                    TemporalKind.ALARM -> base.copy(
+                                        startText = DraftForm.formatInstant(target, zone)
+                                    )
+                                    TemporalKind.ACTIVITY -> {
+                                        val duration = (record.endMillis ?: target) -
+                                            (record.startMillis ?: target)
+                                        base.copy(
+                                            startText = DraftForm.formatInstant(target, zone),
+                                            endText = DraftForm.formatInstant(target + duration, zone)
+                                        )
+                                    }
+                                    TemporalKind.DEADLINE -> if (record.isDateOnlyDeadline()) {
+                                        base.copy(
+                                            endText = Instant.ofEpochMilli(target)
+                                                .atZone(zone).toLocalDate().toString()
+                                        )
+                                    } else {
+                                        base.copy(
+                                            endText = DraftForm.formatInstant(target, zone)
+                                        )
+                                    }
+                                }
+                                store.newDraft(
+                                    form,
+                                    record.eventSeq,
+                                    DraftOperation.REPLACE,
+                                    actor = "user"
                                 )
-                                TemporalKind.ACTIVITY -> {
-                                    val duration = (record.endMillis ?: target) -
-                                        (record.startMillis ?: target)
-                                    base.copy(
-                                        startText = DraftForm.formatInstant(target, zone),
-                                        endText = DraftForm.formatInstant(target + duration, zone)
-                                    )
-                                }
-                                TemporalKind.DEADLINE -> if (record.isDateOnlyDeadline()) {
-                                    base.copy(
-                                        endText = Instant.ofEpochMilli(target)
-                                            .atZone(zone).toLocalDate().toString()
-                                    )
-                                } else {
-                                    base.copy(
-                                        endText = DraftForm.formatInstant(target, zone)
-                                    )
-                                }
                             }
-                            store.newDraft(form, record.eventSeq, DraftOperation.REPLACE, actor = "user")
+                        }.onSuccess { card ->
+                            reload()
+                            openDeckAt(card.draftId)
+                        }.onFailure {
+                            message = it.message ?: "暂时无法创建修改草稿"
                         }
-                        reload()
-                        openDeckAt(moved.draftId)
                     }
                 },
                 onCreate = { kind, millis ->
@@ -615,8 +675,10 @@ fun PowerCalApp(store: PowerStore) {
                 scope.launch {
                     runCatching {
                         withContext(Dispatchers.IO) {
-                            store.pendingDraftsFor(record.eventSeq).firstOrNull()
-                                ?: store.proposeReplace(record.eventSeq)
+                            store.pendingDraftsFor(record.eventSeq).firstOrNull {
+                                it.operation == DraftOperation.REPLACE ||
+                                    it.operation == DraftOperation.CONVERT
+                            } ?: store.proposeReplace(record.eventSeq)
                         }
                     }.onSuccess { card ->
                         deckOpen = false
@@ -665,52 +727,74 @@ fun PowerCalApp(store: PowerStore) {
 
     confirmBatch?.let { mode ->
         val label = if (mode == AiBatchRunner.Mode.PUBLISH) "发布" else "丢弃"
+        val deleteCount = operationCounts[DraftOperation.DELETE] ?: 0
+        val convertCount = operationCounts[DraftOperation.CONVERT] ?: 0
         AlertDialog(
             onDismissRequest = { confirmBatch = null },
             title = { Text("授权 AI 批量$label？") },
             text = {
-                Text(
-                    "将处理当前 $pendingCount 张待处理卡片。期间整个卡组对你是只读的，" +
-                        "时间轴仍可查看；你可以随时停止。已成功的提交会保留，" +
-                        "有版本冲突的卡片会留给你确认，不会被 AI 静默覆盖。"
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "将处理当前 $pendingCount 张待处理卡片。期间整个卡组对你是只读的，" +
+                            "时间轴仍可查看；你可以随时停止。已成功的提交会保留，" +
+                            "有版本冲突的卡片会留给你确认，不会被 AI 静默覆盖。"
+                    )
+                    if (deleteCount > 0) {
+                        Text(
+                            "其中 $deleteCount 张是删除提案：确认会永久删除正式事件并退役序号。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                    if (convertCount > 0) {
+                        Text(
+                            "其中 $convertCount 张会改变事件类型，序号保持不变。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             },
             confirmButton = {
                 TextButton(onClick = {
                     confirmBatch = null
-                    scope.launch {
-                        val pending = withContext(Dispatchers.IO) { store.pendingDrafts() }
+                    // Runs on the process scope so a rotation or a closed dialog cannot cancel a
+                    // batch mid-flight and strand the deck lock.
+                    PowerCalStores.appScope.launch {
+                        val pending = store.pendingDrafts()
                         if (pending.isEmpty()) {
-                            message = "没有待处理卡片"
+                            withContext(Dispatchers.Main) { message = "没有待处理卡片" }
                             return@launch
                         }
                         val session = runCatching {
-                            withContext(Dispatchers.IO) {
-                                store.beginAiBatch(
-                                    pending.map { it.draftId }.toSet(),
-                                    DraftOperation.entries.toSet()
-                                )
-                            }
+                            store.beginAiBatch(
+                                pending.map { it.draftId }.toSet(),
+                                DraftOperation.entries.toSet()
+                            )
                         }.getOrElse {
-                            message = "无法开始批次：" + (it.message ?: "")
+                            withContext(Dispatchers.Main) {
+                                message = "无法开始批次：" + (it.message ?: "")
+                            }
                             return@launch
                         }
-                        reload()
+                        withContext(Dispatchers.Main) { reload() }
                         val report = AiBatchRunner(store).run(session, mode)
-                        reload()
-                        withContext(Dispatchers.IO) { controller.refresh() }
-                        message = buildString {
-                            append("AI 批次结束：")
-                            if (mode == AiBatchRunner.Mode.PUBLISH) {
-                                append("发布 ${report.published} 张")
-                            } else {
-                                append("丢弃 ${report.discarded} 张")
+                        controller.refresh()
+                        withContext(Dispatchers.Main) {
+                            reload()
+                            message = buildString {
+                                append("AI 批次结束：")
+                                if (mode == AiBatchRunner.Mode.PUBLISH) {
+                                    append("发布 ${report.published} 张")
+                                } else {
+                                    append("丢弃 ${report.discarded} 张")
+                                }
+                                append("，保留 ${report.kept} 张")
+                                if (report.cancelled) append("（已停止）")
+                                if (report.failures.isNotEmpty()) append("；").append(report.failures.first())
                             }
-                            append("，保留 ${report.kept} 张")
-                            if (report.cancelled) append("（已停止）")
-                            if (report.failures.isNotEmpty()) append("；").append(report.failures.first())
                         }
-                        reconcile()
+                        ReminderScheduler.reconcile(appContext, store)
                     }
                 }) { Text("授权并开始") }
             },
@@ -817,13 +901,17 @@ private fun ToolsPage(
     onCancelBatch: () -> Unit,
     onReconcile: () -> Unit,
     onAiDraft: (String) -> Unit,
-    aiBusy: Boolean
+    aiBusy: Boolean,
+    onReleaseStuck: () -> Unit
 ) {
     val context = LocalContext.current
     val appContext = context.applicationContext
     var settings by remember { mutableStateOf(AiSettingsStore.load(appContext)) }
     var aiText by remember { mutableStateOf("") }
     var dirty by remember { mutableStateOf(false) }
+    // Diagnostics are read once per data change instead of on every recomposition.
+    val nextSequence = remember(records) { store.nextSequencePreview() }
+    val identityCount = remember(records) { store.identityCount() }
 
     Column(
         Modifier
@@ -859,7 +947,10 @@ private fun ToolsPage(
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.tertiary
                 )
-                TextButton(onClick = onCancelBatch) { Text("停止当前批次") }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = onCancelBatch) { Text("停止当前批次") }
+                    TextButton(onClick = onReleaseStuck) { Text("强制解除独占") }
+                }
             }
             aiSession?.report?.let { report ->
                 HorizontalDivider()
@@ -905,6 +996,20 @@ private fun ToolsPage(
                 Switch(
                     checked = settings.enabled,
                     onCheckedChange = { settings = settings.copy(enabled = it); dirty = true }
+                )
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("允许共享事件上下文", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        "关闭时只发送你输入的文字；开启后最多发送 60 条相关事件（标题与时间）。",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = settings.shareContext,
+                    onCheckedChange = { settings = settings.copy(shareContext = it); dirty = true }
                 )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -976,8 +1081,8 @@ private fun ToolsPage(
 
         SectionCard("诊断", "只读") {
             StatusLine("正式事件", "${records.size} 条", false)
-            StatusLine("下一个事件序号", TemporalRecord.formatSeq(store.nextSequencePreview()), false)
-            StatusLine("已分配序号", "${store.identityCount()} 个（含退役）", false)
+            StatusLine("下一个事件序号", TemporalRecord.formatSeq(nextSequence), false)
+            StatusLine("已分配序号", "$identityCount 个（含退役）", false)
             StatusLine("数据库版本", "v${PowerStore.VERSION} · ${PowerStore.DATABASE_NAME}", false)
             StatusLine("视觉效果", if (effects.blur) "玻璃效果开启" else "低端设备降级", false)
             StatusLine("减少动画", if (effects.reduceMotion) "已遵循系统设置" else "未启用", false)

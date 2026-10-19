@@ -15,9 +15,14 @@ class AiDraftService(private val store: PowerStore) {
         val ids = mutableListOf<Long>()
         val warnings = interpretation.warnings.toMutableList()
         interpretation.proposals.forEachIndexed { index, proposal ->
+            if (proposal.blocked != null) {
+                warnings.add(proposal.blocked)
+                return@forEachIndexed
+            }
             val operation = proposal.operation
             val target = proposal.eventSeq
-            val form = proposal.form.copy(source = "ai")
+            // `source` is already correct: CREATE is AI-authored, REPLACE keeps the real provenance.
+            val form = proposal.form
             if (operation != DraftOperation.CREATE && (target == null || store.get(target) == null)) {
                 warnings.add("第 ${index + 1} 项目标事件不存在，未生成草稿")
                 return@forEachIndexed
@@ -81,6 +86,7 @@ class AiBatchRunner(private val store: PowerStore) {
         var kept = 0
         var cancelled = false
         val failures = mutableListOf<String>()
+        var report: Report? = null
         try {
             for (draftId in scope) {
                 val current = store.refreshSession(session.sessionId)
@@ -116,16 +122,40 @@ class AiBatchRunner(private val store: PowerStore) {
                 onProgress(done, scope.size)
                 delay(120)
             }
+            // Build the report only after the loop finishes so `finally` can distinguish a clean
+            // finish from an abort.
+            report = Report(mode, published, discarded, kept, cancelled, failures)
+        } catch (cancelledByCaller: kotlinx.coroutines.CancellationException) {
+            cancelled = true
+            throw cancelledByCaller
         } catch (error: Exception) {
             failures.add(error.message ?: error.javaClass.simpleName)
+        } finally {
+            // The lock must be released even when the coroutine was cancelled or threw: a stuck
+            // epoch would make the whole deck permanently read-only (PROTOCOL §4).
+            val finalReport = report ?: Report(
+                mode = mode,
+                published = published,
+                discarded = discarded,
+                kept = kept,
+                cancelled = true,
+                failures = failures
+            )
+            runCatching {
+                withContext(kotlinx.coroutines.NonCancellable) {
+                    store.finishAiBatch(
+                        session.sessionId,
+                        if (finalReport.cancelled || finalReport.failures.isNotEmpty()) {
+                            PowerStore.AiState.CANCELLED
+                        } else {
+                            PowerStore.AiState.COMPLETED
+                        },
+                        finalReport.toJson()
+                    )
+                }
+            }
+            report = finalReport
         }
-        val report = Report(mode, published, discarded, kept, cancelled, failures)
-        store.finishAiBatch(
-            session.sessionId,
-            if (cancelled || failures.isNotEmpty()) PowerStore.AiState.CANCELLED
-            else PowerStore.AiState.COMPLETED,
-            report.toJson()
-        )
-        report
+        report ?: Report(mode, published, discarded, kept, cancelled = true, failures = failures)
     }
 }

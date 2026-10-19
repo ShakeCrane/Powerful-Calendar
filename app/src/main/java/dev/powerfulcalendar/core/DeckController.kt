@@ -27,7 +27,12 @@ interface DeckPersistence {
     fun pendingCount(): Int
     fun stats(sinceMillis: Long): PowerStore.DeckStats
     fun isAiLocked(): Boolean
-    fun restore(eventSeq: Long, form: DraftForm): PowerStore.CommitOutcome
+
+    /** Restoration is driven by the proposing card so it cannot survive as a stale duplicate. */
+    fun restoreDraft(draftId: Long, form: DraftForm): PowerStore.CommitOutcome
+
+    /** Current formal snapshot, used to re-verify a conflict prompt before overwriting. */
+    fun record(eventSeq: Long): TemporalRecord?
 }
 
 class DeckController(
@@ -39,7 +44,11 @@ class DeckController(
         val eventSeq: Long,
         val current: TemporalRecord?,
         val changes: List<FieldChange>,
-        val card: DraftCard
+        val card: DraftCard,
+        /** Revision the diff was computed against; re-verified before the overwrite. */
+        val currentRevision: Long?,
+        /** Exact snapshot the user was shown and approved. */
+        val approvedForm: DraftForm
     )
 
     data class RestorePrompt(
@@ -63,12 +72,15 @@ class DeckController(
         val error: String? = null,
         val conflict: ConflictPrompt? = null,
         val restore: RestorePrompt? = null,
-        val completion: Completion? = null
+        val completion: Completion? = null,
+        /** Set after a discard so the card's slot can be restored before the queue empties. */
+        val lastDiscardId: Long? = null
     ) {
         val position: Int get() = cards.indexOfFirst { it.draftId == currentId }.coerceAtLeast(0)
         val canGoPrevious: Boolean get() = position > 0
         val canGoNext: Boolean get() = position < cards.lastIndex
         val isEmpty: Boolean get() = cards.isEmpty()
+        val canUndoDiscard: Boolean get() = lastDiscardId != null
     }
 
     @Volatile
@@ -76,8 +88,19 @@ class DeckController(
         private set
 
     private var listener: ((DeckState) -> Unit)? = null
-    private val openedAt: Long = clock()
+    private var sessionStartedAt: Long = clock()
     private var undoDraftId: Long? = null
+    private var processedInSession = 0
+
+    /**
+     * Terminal actions are rate-limited. A double tap on 发布 would otherwise fall through to the
+     * next card that just became current and publish two proposals from one intent.
+     */
+    private var lastTerminalActionAt = 0L
+    private val terminalActionGuardMillis = 600L
+
+    private fun terminalActionAllowed(now: Long): Boolean =
+        now - lastTerminalActionAt >= terminalActionGuardMillis
 
     fun observe(block: (DeckState) -> Unit) {
         listener = block
@@ -91,6 +114,10 @@ class DeckController(
     @Synchronized
     fun open(preferDraftId: Long? = null) {
         undoDraftId = null
+        lastTerminalActionAt = 0L
+        processedInSession = 0
+        sessionStartedAt = clock()
+        publish(state.copy(lastDiscardId = null, completion = null))
         refreshInternal(preferDraftId)
     }
 
@@ -111,6 +138,13 @@ class DeckController(
             ?: cards.firstOrNull()?.draftId
         val card = cards.firstOrNull { it.draftId == targetId }
         val keepDirtyForm = state.currentId == targetId && state.dirty && card != null
+        val pendingInStore = persistence.pendingCount()
+        // A batch that empties the queue must still produce a truthful completion card (G11-06),
+        // and a batch that just ended must give the deck its editing rights back (M4).
+        val justEmptied = state.cards.isNotEmpty() && cards.isEmpty()
+        val finished = cards.isEmpty() && !aiLocked && pendingInStore == 0 &&
+            (processedInSession > 0 || justEmptied || state.completion != null)
+        val stats = if (finished) persistence.stats(sessionStartedAt) else null
         publish(
             state.copy(
                 cards = cards,
@@ -128,12 +162,12 @@ class DeckController(
                 },
                 dirty = keepDirtyForm,
                 aiLocked = aiLocked,
-                completion = if (state.completion != null &&
-                    (cards.isNotEmpty() || aiLocked || persistence.pendingCount() > 0)
-                ) {
-                    null
-                } else {
-                    state.completion
+                lastDiscardId = state.lastDiscardId,
+                completion = when {
+                    !finished -> null
+                    state.completion != null -> state.completion
+                    stats != null -> Completion(stats.published, stats.discarded, stats.conflicts)
+                    else -> null
                 }
             )
         )
@@ -295,6 +329,8 @@ class DeckController(
     @Synchronized
     fun commit(approveStale: Boolean = false): Boolean {
         val id = state.currentId ?: return false
+        val now = clock()
+        if (!terminalActionAllowed(now)) return false
         if (state.aiLocked) {
             publish(state.copy(error = "AI 批量处理期间不能发布卡片"))
             return false
@@ -303,21 +339,26 @@ class DeckController(
         val order = state.current?.queueOrder ?: Long.MAX_VALUE
         return when (val outcome = persistence.commit(id, approveStale)) {
             is PowerStore.CommitOutcome.Committed -> {
+                lastTerminalActionAt = clock()
+                processedInSession++
                 publish(state.copy(conflict = null, restore = null, dirty = false))
                 afterRemoval(order)
                 true
             }
             is PowerStore.CommitOutcome.Conflict -> {
+                val form = state.form ?: DraftForm(TemporalKind.ACTIVITY)
                 val prompt = ConflictPrompt(
                     draftId = id,
                     eventSeq = state.current?.eventSeq ?: 0L,
                     current = outcome.current,
                     changes = DraftDiff.between(
                         outcome.current,
-                        state.form ?: DraftForm(TemporalKind.ACTIVITY),
+                        form,
                         state.current?.eventSeq ?: 0L
                     ),
-                    card = state.current ?: return false
+                    card = state.current ?: return false,
+                    currentRevision = outcome.current?.revision,
+                    approvedForm = form
                 )
                 publish(state.copy(conflict = prompt, error = null))
                 false
@@ -360,6 +401,24 @@ class DeckController(
             publish(state.copy(conflict = null, error = "冲突卡片已切换，请重新检查"))
             return false
         }
+        // Re-verify what the user actually saw: another card may have committed, or the user may
+        // have kept typing while the dialog was open. Never overwrite a diff that no longer holds.
+        val latest = persistence.record(prompt.eventSeq)
+        val form = state.form ?: prompt.approvedForm
+        if (latest?.revision != prompt.currentRevision || form != prompt.approvedForm) {
+            publish(
+                state.copy(
+                    conflict = prompt.copy(
+                        current = latest,
+                        changes = DraftDiff.between(latest, form, prompt.eventSeq),
+                        currentRevision = latest?.revision,
+                        approvedForm = form
+                    ),
+                    error = "正式对象或本卡内容已变化，请重新检查差异后再确认"
+                )
+            )
+            return false
+        }
         val result = commit(approveStale = true)
         publish(state.copy(conflict = null))
         return result
@@ -373,15 +432,20 @@ class DeckController(
     @Synchronized
     fun requestRestore(): Boolean {
         val prompt = state.restore ?: return false
+        if (!flush()) return false
         val form = state.form ?: return false
-        return when (val outcome = persistence.restore(prompt.eventSeq, form)) {
+        val order = state.current?.queueOrder ?: Long.MAX_VALUE
+        return when (val outcome = persistence.restoreDraft(prompt.card.draftId, form)) {
             is PowerStore.CommitOutcome.Committed -> {
+                processedInSession++
+                lastTerminalActionAt = clock()
                 publish(
                     state.copy(
                         restore = null,
                         notice = "已恢复事件 #${prompt.eventSeq} 并生成 v${outcome.revision}"
                     )
                 )
+                afterRemoval(order)
                 true
             }
             is PowerStore.CommitOutcome.Invalid -> {
@@ -404,6 +468,8 @@ class DeckController(
     @Synchronized
     fun discard(): Boolean {
         val id = state.currentId ?: return false
+        val now = clock()
+        if (!terminalActionAllowed(now)) return false
         if (state.aiLocked) {
             publish(state.copy(error = "AI 批量处理期间不能丢弃卡片"))
             return false
@@ -415,7 +481,9 @@ class DeckController(
             return false
         }
         undoDraftId = id
-        afterRemoval(order)
+        lastTerminalActionAt = clock()
+        processedInSession++
+        afterRemoval(order, discardedId = id)
         return true
     }
 
@@ -425,15 +493,15 @@ class DeckController(
         if (!persistence.undo(id)) return false
         undoDraftId = null
         // Undoing the last action cancels a completion card that claimed the queue was finished.
-        publish(state.copy(completion = null, notice = "已撤销丢弃"))
+        publish(state.copy(completion = null, notice = "已撤销丢弃", lastDiscardId = null))
         refreshInternal(id)
         return true
     }
 
-    private fun afterRemoval(removedOrder: Long) {
+    private fun afterRemoval(removedOrder: Long, discardedId: Long? = null) {
         val remaining = persistence.pending()
         val next = remaining.firstOrNull { it.queueOrder > removedOrder } ?: remaining.firstOrNull()
-        val stats = persistence.stats(openedAt)
+        val stats = persistence.stats(sessionStartedAt)
         val aiLocked = persistence.isAiLocked()
         val finished = remaining.isEmpty() && !aiLocked && persistence.pendingCount() == 0
         publish(
@@ -448,6 +516,7 @@ class DeckController(
                 error = null,
                 notice = null,
                 aiLocked = aiLocked,
+                lastDiscardId = discardedId ?: state.lastDiscardId,
                 completion = when {
                     finished -> Completion(stats.published, stats.discarded, stats.conflicts)
                     else -> null

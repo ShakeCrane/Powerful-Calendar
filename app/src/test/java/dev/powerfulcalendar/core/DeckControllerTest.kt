@@ -14,6 +14,18 @@ import org.junit.Test
  */
 class DeckControllerTest {
 
+    /** Controllable clock so the terminal-action rate limit is deterministic. */
+    private var now = 1_000L
+
+    private fun controller(fake: Fake): DeckController {
+        now = 1_000L
+        return DeckController(fake) { now }
+    }
+
+    private fun tick() {
+        now += 1_000L
+    }
+
     private class Fake : DeckPersistence {
         val cards = LinkedHashMap<Long, DraftCard>()
         var nextDraftId = 1L
@@ -21,6 +33,7 @@ class DeckControllerTest {
         var locked = false
         var failStage = false
         var conflictOnCommit = false
+        var currentRevisionForRecord: Long? = null
         var published = 0
         var discarded = 0
         var stageCalls = 0
@@ -66,7 +79,7 @@ class DeckControllerTest {
             commitCalls++
             if (locked) return PowerStore.CommitOutcome.Locked
             if (conflictOnCommit && !approveStale) {
-                return PowerStore.CommitOutcome.Conflict(null)
+                return PowerStore.CommitOutcome.Conflict(record(1L))
             }
             val card = cards.remove(draftId) ?: return PowerStore.CommitOutcome.Invalid("不存在")
             published++
@@ -102,8 +115,23 @@ class DeckControllerTest {
 
         override fun isAiLocked(): Boolean = locked
 
-        override fun restore(eventSeq: Long, form: DraftForm): PowerStore.CommitOutcome =
-            PowerStore.CommitOutcome.Committed(eventSeq, 3, "restore")
+        override fun restoreDraft(draftId: Long, form: DraftForm): PowerStore.CommitOutcome {
+            val card = cards.remove(draftId) ?: return PowerStore.CommitOutcome.Invalid("不存在")
+            published++
+            return PowerStore.CommitOutcome.Committed(card.eventSeq, 3, "restore-$draftId")
+        }
+
+        override fun record(eventSeq: Long): TemporalRecord? =
+            currentRevisionForRecord?.let { revision ->
+                TemporalRecord(
+                    eventSeq = eventSeq,
+                    revision = revision,
+                    kind = TemporalKind.ACTIVITY,
+                    title = "磁盘上的当前内容",
+                    startMillis = 1_000L,
+                    endMillis = 2_000L
+                )
+            }
     }
 
     @Test
@@ -111,7 +139,7 @@ class DeckControllerTest {
         val fake = Fake()
         val first = fake.add("第一张")
         fake.add("第二张")
-        val controller = DeckController(fake)
+        val controller = controller(fake)
         controller.open()
 
         controller.edit(controller.state.form!!.copy(title = "第一张改过"))
@@ -128,7 +156,7 @@ class DeckControllerTest {
         val fake = Fake()
         fake.add("第一张")
         fake.add("第二张")
-        val controller = DeckController(fake)
+        val controller = controller(fake)
         controller.open()
 
         controller.edit(controller.state.form!!.copy(title = "不能丢的字"))
@@ -145,7 +173,7 @@ class DeckControllerTest {
     fun insideSwipeMovesExactlyOneCardAndClampsAtTheEdges() {
         val fake = Fake()
         repeat(3) { fake.add("卡 $it") }
-        val controller = DeckController(fake)
+        val controller = controller(fake)
         controller.open()
 
         assertEquals(1L, controller.state.currentId)
@@ -163,7 +191,7 @@ class DeckControllerTest {
     fun outsideFlingCanJumpSeveralCardsButStillFlushesOnce() {
         val fake = Fake()
         repeat(5) { fake.add("卡 $it") }
-        val controller = DeckController(fake)
+        val controller = controller(fake)
         controller.open()
         controller.edit(controller.state.form!!.copy(title = "已编辑"))
 
@@ -176,7 +204,7 @@ class DeckControllerTest {
     fun completionAppearsOnlyForAnEmptyUnlockedQueueWithRealCounts() {
         val fake = Fake()
         fake.add("唯一一张")
-        val controller = DeckController(fake)
+        val controller = controller(fake)
         controller.open()
 
         assertTrue(controller.commit())
@@ -191,7 +219,7 @@ class DeckControllerTest {
     fun completionIsSuppressedWhileAnAiBatchIsLocked() {
         val fake = Fake()
         fake.add("唯一一张")
-        val controller = DeckController(fake)
+        val controller = controller(fake)
         controller.open()
         fake.locked = true
 
@@ -204,7 +232,7 @@ class DeckControllerTest {
     fun undoingTheLastDiscardCancelsCompletion() {
         val fake = Fake()
         val only = fake.add("唯一一张")
-        val controller = DeckController(fake)
+        val controller = controller(fake)
         controller.open()
 
         assertTrue(controller.discard())
@@ -223,7 +251,7 @@ class DeckControllerTest {
         val fake = Fake()
         fake.add("第一张")
         fake.add("第二张")
-        val controller = DeckController(fake)
+        val controller = controller(fake)
         controller.open()
         assertTrue(controller.move(1))
         val current = controller.state.currentId
@@ -241,7 +269,7 @@ class DeckControllerTest {
         val fake = Fake()
         fake.add("旧卡")
         fake.conflictOnCommit = true
-        val controller = DeckController(fake)
+        val controller = controller(fake)
         controller.open()
 
         assertFalse(controller.commit())
@@ -261,7 +289,7 @@ class DeckControllerTest {
         fake.add("A")
         fake.add("B")
         fake.add("C")
-        val controller = DeckController(fake)
+        val controller = controller(fake)
         controller.open()
 
         // Move to B, commit it: the next card should be C (next in queue order).
@@ -270,19 +298,79 @@ class DeckControllerTest {
         assertEquals("C", controller.state.form!!.title)
 
         // Commit C: only A remains even though it is "older" than the card just handled.
+        tick()
         assertTrue(controller.commit())
         assertEquals("A", controller.state.form!!.title)
         assertTrue(controller.move(1))
+        tick()
         assertTrue(controller.commit())
         assertNotNull(controller.state.completion)
         assertEquals(3, controller.state.completion!!.published)
     }
 
     @Test
+    fun twoRapidClicksPublishOnlyOneCard() {
+        val fake = Fake()
+        fake.add("A")
+        fake.add("B")
+        val controller = controller(fake)
+        controller.open()
+
+        assertTrue(controller.commit())
+        // The second click lands before the UI can re-target the button; it must not fall through
+        // to the card that just became current.
+        assertFalse(controller.commit())
+        assertEquals(1, fake.published)
+        assertEquals("B", controller.state.form!!.title)
+    }
+
+    @Test
+    fun aConflictIsRevalidatedBeforeOverwritingAnything() {
+        val fake = Fake()
+        fake.add("旧卡")
+        fake.conflictOnCommit = true
+        fake.currentRevisionForRecord = 2L
+        val controller = controller(fake)
+        controller.open()
+
+        assertFalse(controller.commit())
+        assertNotNull(controller.state.conflict)
+        assertEquals(2L, controller.state.conflict!!.currentRevision)
+
+        // Another writer commits while the dialog is open: the shown diff is now stale.
+        fake.currentRevisionForRecord = 3L
+        assertFalse(controller.confirmConflictReplacement())
+        assertNotNull("the prompt must be recomputed, not applied", controller.state.conflict)
+        assertEquals(3L, controller.state.conflict!!.currentRevision)
+        assertEquals(0, fake.published)
+
+        // After re-reading the new diff the user can confirm for real.
+        assertTrue(controller.confirmConflictReplacement())
+        assertEquals(1, fake.published)
+        assertNull(controller.state.conflict)
+    }
+
+    @Test
+    fun editingWhileTheConflictDialogIsOpenAlsoForcesAReconfirmation() {
+        val fake = Fake()
+        fake.add("旧卡")
+        fake.conflictOnCommit = true
+        fake.currentRevisionForRecord = 2L
+        val controller = controller(fake)
+        controller.open()
+
+        assertFalse(controller.commit())
+        controller.edit(controller.state.form!!.copy(title = "对话框打开时又改了一次"))
+        assertFalse(controller.confirmConflictReplacement())
+        assertNotNull(controller.state.conflict)
+        assertEquals(0, fake.published)
+    }
+
+    @Test
     fun repeatedClicksCannotPublishTwice() {
         val fake = Fake()
         fake.add("唯一一张")
-        val controller = DeckController(fake)
+        val controller = controller(fake)
         controller.open()
 
         assertTrue(controller.commit())
@@ -295,7 +383,7 @@ class DeckControllerTest {
     fun editingDuringAnAiLockIsRejected() {
         val fake = Fake()
         fake.add("锁定卡")
-        val controller = DeckController(fake)
+        val controller = controller(fake)
         controller.open()
         fake.locked = true
         controller.setAiLocked(true)

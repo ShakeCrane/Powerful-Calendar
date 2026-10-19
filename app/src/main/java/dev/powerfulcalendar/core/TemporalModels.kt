@@ -48,7 +48,7 @@ enum class DraftOperation(val label: String, val requiresExisting: Boolean) {
     DELETE("删除", true)
 }
 
-enum class DraftStatus { PENDING, CONFLICT, DISCARDED, COMMITTED }
+enum class DraftStatus { PENDING, CONFLICT, DISCARDED, COMMITTED, INVALID }
 
 /** The field a card is still missing before it may legally publish. */
 enum class DraftField(val label: String) {
@@ -224,12 +224,18 @@ object RecurrenceEngine {
         }
 
         val firstLocal = Instant.ofEpochMilli(anchor).atZone(zone).toLocalDateTime()
-        val firstStart = anchor
         val countLimit = rule.count ?: Int.MAX_VALUE
         val results = ArrayList<Occurrence>()
         // Jump close to the requested window instead of walking the whole series from slot 0.
         var index = startIndexNear(firstLocal, rule, fromMillis, zone, countLimit)
-        while (index < countLimit && index < limit) {
+        // `index` is an ABSOLUTE series position while `limit` caps the number of RESULTS. An old
+        // daily series can legitimately have an index in the thousands; conflating the two made
+        // every recurrence older than `limit` slots silently produce nothing.
+        var emitted = 0
+        var iterations = 0
+        val iterationCap = limit * 4
+        while (index < countLimit && emitted < limit && iterations < iterationCap) {
+            iterations++
             val slotLocal = slotAt(firstLocal, rule, index)
             index++
             val slotStart = slotLocal.atZone(zone).toInstant().toEpochMilli()
@@ -243,6 +249,7 @@ object RecurrenceEngine {
                 ?: if (record.kind == TemporalKind.ACTIVITY) start + duration else null
             if ((end ?: start) < fromMillis) continue
             results.add(Occurrence(slotKey, start, end, moved = override != null))
+            emitted++
         }
         return results
     }
@@ -339,7 +346,10 @@ data class DraftCard(
     val createdAtMillis: Long = 0L,
     val updatedAtMillis: Long = 0L
 ) {
-    val isActionable: Boolean get() = status == DraftStatus.PENDING || status == DraftStatus.CONFLICT
+    val isActionable: Boolean
+        get() = status == DraftStatus.PENDING ||
+            status == DraftStatus.CONFLICT ||
+            status == DraftStatus.INVALID
 }
 
 /**
@@ -601,6 +611,15 @@ object TemporalConversion {
             else -> form.copy(kind = target)
         }
         val required = next.missingFields()
+        val normalized = if (target == TemporalKind.DEADLINE &&
+            DraftForm.parseDateOnly(next.endText) != null
+        ) {
+            // A date-precision deadline has no minute to trigger on; carrying a reminder over
+            // would fabricate midnight.
+            next.copy(reminderMinutes = -1)
+        } else {
+            next
+        }
         val note = when {
             target == TemporalKind.ACTIVITY && DraftField.END in required ->
                 "转换为活动需要补全结束时间；原有时刻已保留为开始。"
@@ -612,9 +631,11 @@ object TemporalConversion {
                 "日期级截止已保留为结束日期，开始时刻需要你确认。"
             form.kind == TemporalKind.ACTIVITY && target == TemporalKind.ALARM ->
                 "已保留开始时刻；结束时刻不再属于闹钟。"
+            target == TemporalKind.DEADLINE && DraftForm.parseDateOnly(next.endText) != null ->
+                "日期级截止没有具体分钟，提醒已随之关闭。"
             else -> "事件序号保持不变。"
         }
-        return Result(next, required, note)
+        return Result(normalized, required, note)
     }
 }
 

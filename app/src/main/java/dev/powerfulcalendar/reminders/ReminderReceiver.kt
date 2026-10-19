@@ -53,9 +53,15 @@ class ReminderReceiver : BroadcastReceiver() {
                             "SNOOZED", "用户选择 ${AlarmContract.SNOOZE_MILLIS / 60_000} 分钟后提醒"
                         )
                         NotificationHelper.cancelReminder(context, eventSeq)
-                        ReminderScheduler.scheduleSnooze(
+                        val exact = ReminderScheduler.scheduleSnooze(
                             context, validation.record, occurrenceKey, triggerId
                         )
+                        if (!exact) {
+                            store.recordExecution(
+                                eventSeq, revision, occurrenceKey, triggerId,
+                                "SNOOZE_INEXACT", "精确闹钟不可用，稍后提醒按非精确方式安排"
+                            )
+                        }
                     }
                 }
                 return

@@ -48,15 +48,44 @@ class AiResponseParserTest {
     }
 
     @Test
-    fun aReplaceWithoutARealEventFallsBackToCreateInsteadOfGuessing() {
+    fun aReplaceWithAnUnknownEventIsBlockedInsteadOfBecomingADuplicate() {
         val raw = """
             {"events":[{"operation":"REPLACE","eventSeq":99,"kind":"ALARM","title":"幽灵",
             "start":"2026-10-21 07:30"}]}
         """.trimIndent()
         val result = AiResponseParser.parse(raw, known, zone)
-        assertEquals(DraftOperation.CREATE, result.proposals.single().operation)
-        assertNull(result.proposals.single().eventSeq)
-        assertTrue(result.warnings.any { it.contains("不存在的事件") })
+        val proposal = result.proposals.single()
+        // Never a CREATE: that would allocate a second permanent number for the same real event.
+        assertEquals(DraftOperation.REPLACE, proposal.operation)
+        assertEquals(99L, proposal.eventSeq)
+        assertNotNull(proposal.blocked)
+        assertTrue(result.warnings.any { it.contains("不在本次上下文") })
+    }
+
+    @Test
+    fun aReplaceKeepsTheOriginalProvenanceAndZone() {
+        val tokyo = ZoneId.of("Asia/Tokyo")
+        val target = TemporalRecord(
+            eventSeq = 5, revision = 2, kind = TemporalKind.ALARM, title = "东京闹钟",
+            startMillis = LocalDateTime.of(2026, 10, 23, 7, 30).atZone(tokyo).toInstant().toEpochMilli(),
+            source = "ics",
+            zoneId = tokyo.id
+        )
+        val raw = """
+            {"events":[{"operation":"REPLACE","eventSeq":5,"kind":"ALARM","title":"东京闹钟",
+            "start":"2026-10-23 08:30"}]}
+        """.trimIndent()
+        val proposal = AiResponseParser.parse(raw, listOf(target), zone).proposals.single()
+        assertEquals("ics", proposal.form.source)
+        assertEquals(tokyo.id, proposal.form.zoneId)
+        // 08:30 in the device zone (Asia/Shanghai) is 09:30 in Tokyo, not 08:30.
+        val built = proposal.form.build(5, 3)
+        assertTrue(built is dev.powerfulcalendar.core.FormBuild.Ready)
+        val stored = (built as dev.powerfulcalendar.core.FormBuild.Ready).record
+        assertEquals(
+            LocalDateTime.of(2026, 10, 23, 9, 30).atZone(tokyo).toInstant().toEpochMilli(),
+            stored.startMillis
+        )
     }
 
     @Test

@@ -9,6 +9,9 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -18,6 +21,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -35,6 +39,7 @@ import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Today
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -42,6 +47,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -126,8 +132,10 @@ fun TimelineScreen(
         val widthPx = with(density) { viewportWidth.toPx() }
         val hours = camera.hours
         val anchor = camera.anchorMillis
-        val millisPerPx = TimelineCoordinate.spanMillis(hours) / heightPx
         val maxLanes = if (viewportWidth < 380.dp) 2 else 3
+        // Gesture nodes are keyed on Unit; these holders keep them reading current values.
+        val heightNow by rememberUpdatedState(heightPx)
+        val hoursNow by rememberUpdatedState(hours)
 
         val layout = remember(records, maxLanes) {
             TimelineLayout.layout(records, maxLanesPerSide = maxLanes)
@@ -161,15 +169,18 @@ fun TimelineScreen(
         val gestureModifier = Modifier.pointerInput(Unit) {
             panZoomGestures(
                 latestCamera = { latestCamera },
-                heightPx = heightPx,
+                heightPx = { heightNow },
                 onCamera = { c -> onCameraChange(c) },
-                onFlingEnd = { velocityY -> scope.launch { fling(velocityY, heightPx) } }
+                onFlingEnd = { velocityY -> scope.launch { fling(velocityY, heightNow) } }
             )
         }
 
         var draggedSeq by remember { mutableStateOf<Long?>(null) }
         var dragOffsetY by remember { mutableStateOf(0f) }
         var dragTarget by remember { mutableStateOf<Long?>(null) }
+        // A long-press drag must not also count as a tap that opens the editor.
+        var suppressClickUntil by remember { mutableStateOf(0L) }
+        var overflowSide by remember { mutableStateOf<AxisSide?>(null) }
 
         Box(
             Modifier
@@ -207,7 +218,7 @@ fun TimelineScreen(
                     dragging = dragging,
                     modifier = Modifier
                         .zIndex(if (dragging) 12f else 1f)
-                        .pointerInput(item.record.eventSeq, item.record.revision, camera.hours) {
+                        .pointerInput(item.record.eventSeq, item.record.revision) {
                             detectDragGesturesAfterLongPress(
                                 onDragStart = {
                                     draggedSeq = item.record.eventSeq
@@ -217,11 +228,13 @@ fun TimelineScreen(
                                 onDrag = { change, amount ->
                                     change.consume()
                                     dragOffsetY += amount.y
-                                    val raw = item.anchorMillis + (dragOffsetY * millisPerPx).toLong()
+                                    val perPx = TimelineCoordinate.spanMillis(hoursNow) /
+                                        heightNow.coerceAtLeast(1f)
+                                    val raw = item.anchorMillis + (dragOffsetY * perPx).toLong()
                                     dragTarget = if (item.dateOnly) {
                                         instantToDayStart(raw, zone)
                                     } else {
-                                        TimelineCoordinate.snap(raw, hours, zone)
+                                        TimelineCoordinate.snap(raw, hoursNow, zone)
                                     }
                                 },
                                 onDragEnd = {
@@ -229,6 +242,7 @@ fun TimelineScreen(
                                     draggedSeq = null
                                     dragOffsetY = 0f
                                     dragTarget = null
+                                    suppressClickUntil = System.currentTimeMillis() + 450
                                     if (target != null && target != item.anchorMillis) {
                                         onMoveEvent(item.record, target)
                                     }
@@ -237,10 +251,15 @@ fun TimelineScreen(
                                     draggedSeq = null
                                     dragOffsetY = 0f
                                     dragTarget = null
+                                    suppressClickUntil = System.currentTimeMillis() + 450
                                 }
                             )
                         }
-                        .clickable { onOpenEvent(item.record) }
+                        .clickable {
+                            if (System.currentTimeMillis() > suppressClickUntil) {
+                                onOpenEvent(item.record)
+                            }
+                        }
                 )
             }
 
@@ -259,7 +278,14 @@ fun TimelineScreen(
             }
 
             if (layout.overflow.isNotEmpty()) {
-                OverflowBadges(layout.overflow, anchor, hours, heightPx, widthPx)
+                OverflowBadges(
+                    overflow = layout.overflow,
+                    anchor = anchor,
+                    hours = hours,
+                    heightPx = heightPx,
+                    widthPx = widthPx,
+                    onClick = { side -> overflowSide = side }
+                )
             }
 
             if (records.isEmpty()) {
@@ -322,24 +348,75 @@ fun TimelineScreen(
                 )
             }
         }
+
+        // Overflow is not a dead end: the hidden events are reachable from the badge.
+        overflowSide?.let { side ->
+            val hidden = layout.overflow[side].orEmpty()
+            AlertDialog(
+                onDismissRequest = { overflowSide = null },
+                title = {
+                    Text(
+                        if (side == AxisSide.LEFT) "折叠的 ${hidden.size} 个闹钟"
+                        else "折叠的 ${hidden.size} 个事件"
+                    )
+                },
+                text = {
+                    Column(
+                        Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        hidden.forEach { record ->
+                            TextButton(
+                                onClick = {
+                                    overflowSide = null
+                                    onOpenEvent(record)
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(Modifier.fillMaxWidth()) {
+                                    Text(
+                                        TemporalRecord.formatSeq(record.eventSeq) + "  " + record.title,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        TemporalText.summarize(record),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { overflowSide = null }) { Text("关闭") }
+                }
+            )
+        }
     }
 }
 
 /** Zoom is anchored to the gesture centroid; single-finger pan comes from the same event stream. */
 private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.panZoomGestures(
     latestCamera: () -> TimelineCoordinate.Camera,
-    heightPx: Float,
+    heightPx: () -> Float,
     onCamera: (TimelineCoordinate.Camera) -> Unit,
     onFlingEnd: (Float) -> Unit
 ) {
     val tracker = VelocityTracker()
+    val touchSlop = viewConfiguration.touchSlop
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false)
         tracker.resetTracking()
         tracker.addPosition(down.uptimeMillis, down.position)
         var lastCentroidY = down.position.y
+        var lastPointerCount = 1
         var moved = false
         var zooming = false
+        var pastSlop = false
+        var slopTravel = 0f
         while (true) {
             val event: PointerEvent = awaitPointerEvent()
             val pressed = event.changes.filter { it.pressed }
@@ -349,21 +426,38 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.panZoomG
                 continue
             }
             val centroidY = pressed.map { it.position.y }.average().toFloat()
+            if (pressed.size != lastPointerCount) {
+                // Adding or lifting a finger moves the centroid instantly; that is not a pan.
+                lastPointerCount = pressed.size
+                lastCentroidY = centroidY
+                continue
+            }
             val panY = centroidY - lastCentroidY
             val zoom = event.calculateZoom()
             if (pressed.size >= 2) zooming = true
+            // A tap must reach the chip or toolbar button beneath this node. Never consume the
+            // first pixels: wait for the platform touch slop (or a real pinch) before panning.
+            if (!zooming && !pastSlop) {
+                slopTravel += kotlin.math.abs(panY)
+                if (slopTravel < touchSlop) {
+                    lastCentroidY = centroidY
+                    tracker.addPosition(pressed.first().uptimeMillis, pressed.first().position)
+                    continue
+                }
+                pastSlop = true
+            }
             var camera = latestCamera()
             var changed = false
             if (zooming && zoom != 1f && zoom > 0f) {
                 val newHours = TimelineCoordinate.clampHours(camera.hours / zoom)
                 val newAnchor = TimelineCoordinate.anchorPreservingFocus(
-                    camera.anchorMillis, camera.hours, newHours, centroidY, heightPx
+                    camera.anchorMillis, camera.hours, newHours, centroidY, heightPx()
                 )
                 camera = TimelineCoordinate.Camera(newAnchor, newHours)
                 changed = true
             }
             if (panY != 0f) {
-                val millisPerPx = TimelineCoordinate.spanMillis(camera.hours) / heightPx
+                val millisPerPx = TimelineCoordinate.spanMillis(camera.hours) / heightPx()
                 camera = camera.copy(anchorMillis = camera.anchorMillis - (panY * millisPerPx).toLong())
                 changed = true
                 pressed.forEach { if (it.positionChanged()) it.consume() }
@@ -515,7 +609,6 @@ private fun TimelineCanvas(
                 topLeft = Offset(centerX - measured.size.width / 2f, nowY - measured.size.height / 2f)
             )
         }
-        if (widthPx <= 0f) Unit
     }
 }
 
@@ -633,7 +726,8 @@ private fun OverflowBadges(
     anchor: Long,
     hours: Double,
     heightPx: Float,
-    widthPx: Float
+    widthPx: Float,
+    onClick: (AxisSide) -> Unit
 ) {
     val density = LocalDensity.current
     overflow.forEach { (side, items) ->
@@ -645,6 +739,7 @@ private fun OverflowBadges(
             with(density) { (widthPx / 2).toDp() } + 28.dp
         }
         Surface(
+            onClick = { onClick(side) },
             modifier = Modifier.offset(x = x, y = with(density) { y.toDp() } - 11.dp),
             shape = GlassShapes.chip,
             color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.95f),
@@ -652,7 +747,7 @@ private fun OverflowBadges(
         ) {
             Text(
                 "+${items.size}",
-                modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
                 style = MaterialTheme.typography.labelSmall
             )
         }
@@ -684,57 +779,62 @@ private fun TimelineTopBar(
         ) {
             Text("时间轴", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 6.dp))
             Spacer(Modifier.weight(1f))
-            IconButton(onClick = onZoomOut, modifier = Modifier.size(40.dp)) {
-                Icon(Icons.Default.Remove, "缩小时间范围", modifier = Modifier.size(18.dp))
-            }
-            Text(
-                "${formatHours(cameraHours)}/屏",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            IconButton(onClick = onZoomIn, modifier = Modifier.size(40.dp)) {
-                Icon(Icons.Default.Add, "放大时间范围", modifier = Modifier.size(18.dp))
-            }
-            Surface(
-                onClick = onToday,
-                shape = GlassShapes.chip,
-                color = MaterialTheme.colorScheme.primaryContainer,
-                modifier = Modifier.padding(start = 2.dp)
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Default.Today, null, modifier = Modifier.size(15.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("今日", style = MaterialTheme.typography.labelMedium)
+                IconButton(onClick = onZoomOut, modifier = Modifier.size(40.dp)) {
+                    Icon(Icons.Default.Remove, "缩小时间范围", modifier = Modifier.size(18.dp))
                 }
-            }
-            Spacer(Modifier.width(6.dp))
-            BadgedBox(
-                badge = {
-                    if (pendingCount > 0) Badge { Text(pendingCount.coerceAtMost(99).toString()) }
+                Text(
+                    "${formatHours(cameraHours)}/屏",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                IconButton(onClick = onZoomIn, modifier = Modifier.size(40.dp)) {
+                    Icon(Icons.Default.Add, "放大时间范围", modifier = Modifier.size(18.dp))
                 }
-            ) {
                 Surface(
-                    onClick = onOpenDeck,
+                    onClick = onToday,
                     shape = GlassShapes.chip,
-                    color = if (aiLocked) MaterialTheme.colorScheme.tertiaryContainer
-                    else MaterialTheme.colorScheme.surfaceContainerHigh
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    modifier = Modifier.padding(start = 2.dp)
                 ) {
                     Row(
                         Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.Layers, null, modifier = Modifier.size(15.dp))
+                        Icon(Icons.Default.Today, null, modifier = Modifier.size(15.dp))
                         Spacer(Modifier.width(4.dp))
-                        Text("待处理", style = MaterialTheme.typography.labelMedium)
+                        Text("今日", style = MaterialTheme.typography.labelMedium)
                     }
                 }
-            }
-            Spacer(Modifier.width(4.dp))
-            IconButton(onClick = onOpenTools, modifier = Modifier.size(40.dp)) {
-                Icon(Icons.Default.MoreVert, "导入、AI 与设置", modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(6.dp))
+                BadgedBox(
+                    badge = {
+                        if (pendingCount > 0) Badge { Text(pendingCount.coerceAtMost(99).toString()) }
+                    }
+                ) {
+                    Surface(
+                        onClick = onOpenDeck,
+                        shape = GlassShapes.chip,
+                        color = if (aiLocked) MaterialTheme.colorScheme.tertiaryContainer
+                        else MaterialTheme.colorScheme.surfaceContainerHigh
+                    ) {
+                        Row(
+                            Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Layers, null, modifier = Modifier.size(15.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("待处理", style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+                }
+                Spacer(Modifier.width(4.dp))
+                IconButton(onClick = onOpenTools, modifier = Modifier.size(40.dp)) {
+                    Icon(Icons.Default.MoreVert, "导入、AI 与设置", modifier = Modifier.size(20.dp))
+                }
             }
         }
     }

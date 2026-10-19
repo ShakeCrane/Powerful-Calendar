@@ -74,6 +74,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -181,7 +182,7 @@ fun DraftDeckDialog(
         },
         properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false)
     ) {
-        Box(Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             // Dimmed backdrop: taps close (after flush), horizontal drags browse several cards.
             Box(
                 Modifier
@@ -201,12 +202,12 @@ fun DraftDeckDialog(
             )
             Column(
                 Modifier
-                    .fillMaxWidth()
-                    .fillMaxHeight(0.98f)
+                    .fillMaxWidth(0.94f)
+                    .fillMaxHeight(0.90f)
                     .statusBarsPadding()
                     .navigationBarsPadding()
                     .imePadding()
-                    .padding(horizontal = 14.dp, vertical = 10.dp)
+                    .padding(horizontal = 8.dp, vertical = 8.dp)
                     // Absorb taps inside the popup so they never reach the dismiss backdrop.
                     .pointerInput(Unit) { detectTapGestures { } },
                 horizontalAlignment = Alignment.CenterHorizontally
@@ -236,7 +237,9 @@ fun DraftDeckDialog(
                         scope.launch { withContext(Dispatchers.IO) { controller.select(id) } }
                         query = ""
                     },
-                    formalResults = remember(query) { if (query.isBlank()) emptyList() else formalSearch(query) },
+                    // Called directly: memoising only on `query` would show stale results after an
+                    // event was committed elsewhere.
+                    formalResults = if (query.isBlank()) emptyList() else formalSearch(query),
                     onPickFormal = { record ->
                         query = ""
                         onOpenFormalEvent(record)
@@ -253,6 +256,7 @@ fun DraftDeckDialog(
                         state.completion != null -> CompletionCard(
                             completion = state.completion!!,
                             animated = !effects.reduceMotion,
+                            canUndo = state.canUndoDiscard,
                             onUndo = {
                                 scope.launch {
                                     if (withContext(Dispatchers.IO) { controller.undoDiscard() }) {
@@ -283,49 +287,70 @@ fun DraftDeckDialog(
                                     scope.launch { withContext(Dispatchers.IO) { controller.move(-1) } }
                                 }
                             ) {
-                                DeckCardBody(
-                                    card = card,
-                                    form = form,
-                                    position = state.position,
-                                    total = state.cards.size,
-                                    expanded = expanded,
-                                    aiLocked = state.aiLocked,
-                                    error = state.error,
-                                    conversionNote = conversionNote,
-                                    dirty = state.dirty,
-                                    onExpandToggle = { expanded = !expanded },
-                                    onFormChange = { controller.edit(it) },
-                                    onTypeChange = { target ->
-                                        val result = TemporalConversion.convert(form, target)
-                                        controller.edit(result.form)
-                                        conversionNote = result.note.ifBlank { null }
-                                        typeMenu = false
-                                    },
-                                    typeMenuExpanded = typeMenu,
-                                    onTypeMenuChange = { typeMenu = it },
-                                    onPrevious = {
-                                        scope.launch { withContext(Dispatchers.IO) { controller.move(-1) } }
-                                    },
-                                    onNext = {
-                                        scope.launch { withContext(Dispatchers.IO) { controller.move(1) } }
-                                    },
-                                    canGoPrevious = state.canGoPrevious,
-                                    canGoNext = state.canGoNext,
-                                    onCommit = {
-                                        scope.launch {
-                                            withContext(Dispatchers.IO) { controller.commit() }
-                                            onDeckChanged()
+                                // Keyed by draftId so caret, selection and scroll never leak from
+                                // one card into the next.
+                                key(card.draftId) {
+                                    DeckCardBody(
+                                        card = card,
+                                        form = form,
+                                        position = state.position,
+                                        total = state.cards.size,
+                                        expanded = expanded,
+                                        aiLocked = state.aiLocked,
+                                        error = state.error,
+                                        conversionNote = conversionNote,
+                                        dirty = state.dirty,
+                                        onExpandToggle = { expanded = !expanded },
+                                        onFormChange = { controller.edit(it) },
+                                        onTypeChange = { target ->
+                                            val result = TemporalConversion.convert(form, target)
+                                            controller.edit(result.form)
+                                            conversionNote = result.note.ifBlank { null }
+                                            typeMenu = false
+                                        },
+                                        typeMenuExpanded = typeMenu,
+                                        onTypeMenuChange = { typeMenu = it },
+                                        onPrevious = {
+                                            scope.launch {
+                                                withContext(Dispatchers.IO) { controller.move(-1) }
+                                            }
+                                        },
+                                        onNext = {
+                                            scope.launch {
+                                                withContext(Dispatchers.IO) { controller.move(1) }
+                                            }
+                                        },
+                                        canGoPrevious = state.canGoPrevious,
+                                        canGoNext = state.canGoNext,
+                                        onCommit = {
+                                            scope.launch {
+                                                withContext(Dispatchers.IO) { controller.commit() }
+                                                onDeckChanged()
+                                            }
+                                        },
+                                        onDiscard = {
+                                            scope.launch {
+                                                withContext(Dispatchers.IO) { controller.discard() }
+                                                onDeckChanged()
+                                            }
                                         }
-                                    },
-                                    onDiscard = {
-                                        scope.launch {
-                                            withContext(Dispatchers.IO) { controller.discard() }
-                                            onDeckChanged()
-                                        }
-                                    }
-                                )
+                                    )
+                                }
                             }
                         }
+                    }
+                }
+
+                if (state.canUndoDiscard && state.completion == null) {
+                    TextButton(onClick = {
+                        scope.launch {
+                            withContext(Dispatchers.IO) { controller.undoDiscard() }
+                            onDeckChanged()
+                        }
+                    }) {
+                        Icon(Icons.Default.Undo, null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("撤销上一次丢弃")
                     }
                 }
 
@@ -589,7 +614,9 @@ private fun FanStack(
  * left to the scroller.
  */
 private fun Modifier.cardSwipe(onNext: () -> Unit, onPrevious: () -> Unit): Modifier =
-    pointerInput(onNext, onPrevious) {
+    // Keyed on Unit so recompositions (debounce label, now ticker, search) do not restart the
+    // pointer node mid-gesture. The captured controller callbacks are stable objects.
+    pointerInput(Unit) {
         val threshold = 84.dp.toPx()
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false)
@@ -718,7 +745,7 @@ private fun DeckCardBody(
                     enabled = !aiLocked,
                     onChange = { onFormChange(form.copy(startText = it)) },
                     onPickDate = { base ->
-                        pickDate(context, base) { date ->
+                        pickDate(context, base, form.zone) { date ->
                             val time = form.parseStart()
                                 ?.let { Instant.ofEpochMilli(it).atZone(form.zone).toLocalTime() }
                                 ?: LocalTime.of(9, 0)
@@ -733,7 +760,7 @@ private fun DeckCardBody(
                         }
                     },
                     onPickTime = { base ->
-                        pickTime(context, base) { hour, minute ->
+                        pickTime(context, base, form.zone) { hour, minute ->
                             val date = form.parseStart()
                                 ?.let { Instant.ofEpochMilli(it).atZone(form.zone).toLocalDate() }
                                 ?: LocalDate.now()
@@ -763,7 +790,7 @@ private fun DeckCardBody(
                     },
                     onChange = { onFormChange(form.copy(endText = it)) },
                     onPickDate = { base ->
-                        pickDate(context, base) { date ->
+                        pickDate(context, base, form.zone) { date ->
                             if (form.kind == TemporalKind.DEADLINE &&
                                 form.endText.trim().length == 10
                             ) {
@@ -785,7 +812,7 @@ private fun DeckCardBody(
                         }
                     },
                     onPickTime = { base ->
-                        pickTime(context, base) { hour, minute ->
+                        pickTime(context, base, form.zone) { hour, minute ->
                             val date = form.parseEnd()
                                 ?.let { Instant.ofEpochMilli(it).atZone(form.zone).toLocalDate() }
                                 ?: LocalDate.now()
@@ -962,7 +989,7 @@ private fun DeckCardBody(
             conversionNote?.let {
                 Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
             }
-            if (missing.isNotEmpty()) {
+            if (missing.isNotEmpty() && card.operation != DraftOperation.DELETE) {
                 Text(
                     "还需要：" + missing.joinToString("、") { it.label },
                     style = MaterialTheme.typography.labelSmall,
@@ -981,13 +1008,17 @@ private fun DeckCardBody(
             verticalAlignment = Alignment.CenterVertically
         ) {
             FilledTonalButton(
-                onClick = { showDeleteConfirm = true },
+                onClick = {
+                    // X always means "do not apply this proposal". On a Delete card that is
+                    // explicitly "do not delete", never "delete".
+                    if (card.operation == DraftOperation.DELETE) onDiscard() else showDeleteConfirm = true
+                },
                 enabled = !aiLocked,
                 modifier = Modifier.heightIn(min = 48.dp)
             ) {
-                Icon(Icons.Default.Close, "丢弃这张草稿")
+                Icon(Icons.Default.Close, "不执行这张草稿")
                 Spacer(Modifier.width(4.dp))
-                Text("丢弃")
+                Text(if (card.operation == DraftOperation.DELETE) "不删除" else "丢弃")
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onPrevious, enabled = canGoPrevious && !aiLocked) {
@@ -1070,12 +1101,12 @@ private fun TimeRow(
         IconButton(
             onClick = { onPickDate(parsed ?: System.currentTimeMillis()) },
             enabled = enabled,
-            modifier = Modifier.size(46.dp)
+            modifier = Modifier.size(48.dp)
         ) { Icon(Icons.Default.CalendarToday, "选择 $label 日期", modifier = Modifier.size(18.dp)) }
         IconButton(
             onClick = { onPickTime(parsed ?: System.currentTimeMillis()) },
             enabled = enabled,
-            modifier = Modifier.size(46.dp)
+            modifier = Modifier.size(48.dp)
         ) { Icon(Icons.Default.Schedule, "选择 $label 时间", modifier = Modifier.size(18.dp)) }
     }
 }
@@ -1142,6 +1173,7 @@ private fun AiHoldCard(session: PowerStore.AiSession?, onCancel: () -> Unit, onC
 private fun CompletionCard(
     completion: DeckController.Completion,
     animated: Boolean,
+    canUndo: Boolean,
     onUndo: () -> Unit,
     onDone: () -> Unit
 ) {
@@ -1206,7 +1238,7 @@ private fun CompletionCard(
             )
             AnimatedVisibility(visible = showActions) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    if (completion.discarded > 0) {
+                    if (canUndo) {
                         TextButton(onClick = onUndo) {
                             Icon(Icons.Default.Undo, null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(4.dp))
@@ -1271,7 +1303,7 @@ private fun ConflictDialog(
 
 /** Tap outside closes (after flush); horizontal drag outside browses several cards at once. */
 private fun Modifier.outsideGesture(onTap: () -> Unit, onBrowse: (Int) -> Unit): Modifier =
-    pointerInput(onTap, onBrowse) {
+    pointerInput(Unit) {
         val pageWidth = 110.dp.toPx()
         val slop = 24.dp.toPx()
         awaitEachGesture {
@@ -1307,8 +1339,12 @@ private fun kindHint(kind: TemporalKind): String = when (kind) {
     TemporalKind.DEADLINE -> "时刻或日期"
 }
 
-private fun pickDate(context: android.content.Context, baseMillis: Long, onPick: (LocalDate) -> Unit) {
-    val zone = ZoneId.systemDefault()
+private fun pickDate(
+    context: android.content.Context,
+    baseMillis: Long,
+    zone: ZoneId = ZoneId.systemDefault(),
+    onPick: (LocalDate) -> Unit
+) {
     val base = Instant.ofEpochMilli(baseMillis).atZone(zone)
     DatePickerDialog(
         context,
@@ -1317,8 +1353,12 @@ private fun pickDate(context: android.content.Context, baseMillis: Long, onPick:
     ).show()
 }
 
-private fun pickTime(context: android.content.Context, baseMillis: Long, onPick: (Int, Int) -> Unit) {
-    val zone = ZoneId.systemDefault()
+private fun pickTime(
+    context: android.content.Context,
+    baseMillis: Long,
+    zone: ZoneId = ZoneId.systemDefault(),
+    onPick: (Int, Int) -> Unit
+) {
     val base = Instant.ofEpochMilli(baseMillis).atZone(zone)
     TimePickerDialog(
         context,

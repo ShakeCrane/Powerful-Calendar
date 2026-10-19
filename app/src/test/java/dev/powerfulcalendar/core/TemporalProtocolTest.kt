@@ -3,6 +3,7 @@ package dev.powerfulcalendar.core
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -262,6 +263,30 @@ class TemporalProtocolTest {
     }
 
     // ---------------------------------------------------------------- recurrence
+
+    @Test
+    fun anOldRecurringSeriesStillMaterialisesInACurrentWindow() {
+        // Regression: `limit` used to be compared against the absolute series index, so any daily
+        // series older than ~512 slots silently produced nothing and its alarm stopped forever.
+        val first = LocalDateTime.of(2024, 1, 1, 7, 30)
+        val record = TemporalRecord(
+            eventSeq = 1, revision = 1, kind = TemporalKind.ALARM, title = "起床",
+            startMillis = first.atZone(shanghai).toInstant().toEpochMilli(),
+            zoneId = shanghai.id,
+            recurrence = Recurrence(freq = RecurrenceFreq.DAILY)
+        )
+        val windowStart = LocalDateTime.of(2026, 10, 20, 0, 0)
+            .atZone(shanghai).toInstant().toEpochMilli()
+        val windowEnd = LocalDateTime.of(2026, 10, 22, 0, 0)
+            .atZone(shanghai).toInstant().toEpochMilli()
+        val occurrences = RecurrenceEngine.occurrences(record, windowStart, windowEnd)
+        assertEquals(2, occurrences.size)
+        assertTrue(occurrences.all {
+            Instant.ofEpochMilli(it.startMillis).atZone(shanghai).toLocalTime() == LocalTime.of(7, 30)
+        })
+        val next = RecurrenceEngine.nextOccurrence(record, windowStart)
+        assertNotNull(next)
+    }
 
     @Test
     fun dailyRecurrenceKeepsWallClockTimeAcrossDst() {

@@ -22,6 +22,8 @@ class StoreDeckPersistence(private val store: PowerStore) : DeckPersistence {
 
     override fun isAiLocked(): Boolean = store.isLocked()
 
-    override fun restore(eventSeq: Long, form: DraftForm): PowerStore.CommitOutcome =
-        store.restore(eventSeq, form, actor = "user")
+    override fun restoreDraft(draftId: Long, form: DraftForm): PowerStore.CommitOutcome =
+        store.restoreDraft(draftId, form, actor = "user")
+
+    override fun record(eventSeq: Long): TemporalRecord? = store.get(eventSeq)
 }

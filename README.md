@@ -1,56 +1,74 @@
-# Powerful Calendar — Android 原生日程管理
+# Powerful Calendar — PowerCal 0.2
 
-一款 **Kotlin + Jetpack Compose** 的本地优先日历、事件、提醒和系统闹钟管理 App。
+**Kotlin + Jetpack Compose** 的本地优先个人时间系统：中央纵向时间轴、三种时间对象、
+统一「待处理」草稿卡组（Draft Deck）、单 AI 授权批处理与可验证的提醒调度。
 
-> **研究阶段的统一产品方向（2026-10-20）**：参见 [G1–G11 产品与交互基线](docs/PRODUCT_BASELINE_G1-G11.md) 和 [Temporal Protocol v0.3 研究与验证](docs/PROTOCOL_V0_RESEARCH.md)。本 README 的 v0.1 功能是历史 MVP，不代表新架构已实现。目标为 **PowerCal 本地唯一数据源、异步一次性导入、中央时间轴、Alarm/Activity/Deadline 三类对象、统一 Draft Deck、单 AI 限权处理**；旧“双向实时同步”路线不再适用。
+> 产品依据：[G1–G11 产品基线](docs/PRODUCT_BASELINE_G1-G11.md) ·
+> [Temporal Protocol v0.3](docs/PROTOCOL_V0_RESEARCH.md) ·
+> [P0 现状审计](docs/AUDIT_P0.md) ·
+> [v0.2 实施与验证记录](docs/IMPLEMENTATION_V0_2.md)
 
-## 当前功能 (MVP v0.1)
+## 已实现（v0.2）
 
-- **今日**：查看全天安排、重点数量、事件时间/优先级/备注/地点，编辑和删除。
-- **月历**：逐日展示事件标记、切换月份、选择日期查看明细。
-- **离线事件管理**：SQLite 存储，不要求登录或云服务器；事件分紧急、重要、普通、低优先级。
-- **提醒**：采用 Android AlarmManager 配合通知频道；支持事件前 0/5/10/30/60/1440 分钟提醒或关闭，重启后恢复未来提醒。
-- **系统日历**：经 READ_CALENDAR 授权读取 Android 日历未来一年和过去 30 天事件到本地；也可通过系统编辑器添加选定事件。
-- **ICS 文件**：通过文件选择器导入/导出 `.ics`；基础 VEVENT 适配 Outlook、Google Calendar、Apple Calendar 等常见导出格式。
-- **系统闹钟**：通过 AlarmClock Intent 创建闹钟并进入系统闹钟列表。
-- **智能创建**：截图经本地 ML Kit 中文文字识别后，再由简单中文规则解析为事件草稿，由用户确认。也支持直接输入文本。
+- **统一时间协议**：`AlarmEvent`（仅开始，左轴）/ `ActivityEvent`（区间，右轴）/
+  `DeadlineEvent`（截止点或日期，右轴）。日期级截止保持日期精度，不会变成 23:59 或 00:00。
+- **永久事件序号**：`eventSeq` 在首张草稿创建时分配，删除/丢弃后永不复用；
+  `draftId` 与 `queueOrder` 独立，同一事件可有多张卡片。
+- **整份快照提交**：最后一次合法提交覆盖整个对象；过期卡片必须查看完整差异并显式确认，
+  绝不按字段自动合并。提交具备幂等键，重复点击不会重复发布。
+- **待处理卡组**：中央玻璃弹窗、扇形背卡、卡内单步/卡外多步滑动、纵向滚动、
+  防抖暂存与切页前 flush、勾号发布、叉号丢弃（可撤销）、完成动画与真实统计。
+- **中央时间轴**：连续滚动（无日期边界）、真实 NOW 线、4–48 小时手势锚定缩放、
+  左右稳定分轨与溢出折叠、长按拖动按缩放吸附并进入同一草稿编辑器、今日跳到当前时刻。
+- **单 AI**：可配置 OpenAI 兼容端点/模型/密钥；自然语言 → 严格校验的结构化草稿；
+  用户显式授权后由同一 AI 独占卡组批量发布或丢弃，带 sessionId、lockEpoch、范围与幂等提交，
+  取消/崩溃/重启后安全解锁，迟到响应被 fencing 拒绝。
+- **数据接入**：ICS 与系统日历一次性迁移（幂等、可重启）、旧版 v0.1 只读迁移、
+  原生完整备份（不含密钥、AI 授权与 Android 调度句柄；仅恢复到空库）。
+- **提醒可靠性**：提交后写入持久化期望调度；广播触发前校验事件序号、修订、
+  发生实例与触发时刻；精确闹钟不可用显示 BLOCKED 而非静默降级；重启/时区/权限变化重建调度。
 
-## Android Studio 编译
+## 编译与测试
 
-1. 使用支持 Android Gradle Plugin 8.13 的 Android Studio，安装 Android SDK 36，JDK 17 或 21。
-2. 在 Android Studio 打开本机的项目根目录（台式机当前为 `E:\Project\Powerful-Calendar`；其他主机路径可能不同）。
-3. 等待 Gradle 同步，运行 `gradlew.bat :app:assembleDebug`（或通过 Android Studio 运行）。
-4. 调试版 APK 路径：`app/build/outputs/apk/debug/app-debug.apk`。
-5. Android 8.0 (API 26) 及以上设备可安装。测试通知需给予通知权限。
+1. 安装 Android SDK 36（platforms;android-36、build-tools;36.0.0、platform-tools）与 JDK 17+。
+2. 在未入库的 `local.properties` 写入 `sdk.dir=...`。
+3. 构建与单元测试：
 
-项目使用 Gradle 8.14.3 / Kotlin 2.2.20 / Compose BOM 2025.10.00，SDK 路径通过不入库的 local.properties 配置。
+```bat
+.\gradlew.bat :app:assembleDebug :app:testDebugUnitTest --no-daemon --console=plain
+```
+
+当前结果：`BUILD SUCCESSFUL`，**97 个单元测试，0 失败**（Robolectric 真实 SQLite）。
+APK：`app/build/outputs/apk/debug/app-debug.apk`。
 
 ## 权限与限制
 
-- 通知权限（Android 13+）由用户在创建提醒时授权；未授权会影响提醒的显示。
-- Android 12+ 若应用无“精确闹钟”权限，提醒会使用 **近似触发**，可能延迟；与系统闹钟不同。
-- Android 没有对所有厂商时钟 App 的现存闹钟进行通用读写的标准接口。本 App 使用系统 Intent 委托创建/打开，不伪称可完整读取现有闹钟。
-- **日历读取是手动快照，不是双向实时同步**。从本地删除导入的系统事件不会删除系统事件。点击事件上的外部图标可手动写入系统日历（由系统界面确认）。
-- ICS 支持基本事件字段与时区，暂不展开 RRULE、RECURRENCE-ID 或复杂会议邀请；遇到重复日程会提示。ICS 导入以 UID 去重，重复导入会更新对应记录。
-- OCR 全程在 Android 端运行，使用 ML Kit 中文识别依赖；首个版本尚未加入在线 OCR/API Key 配置。
-- 删除本地事件只删除 App 内部记录，请按需导出 .ics 备份。
-- 以上功能尚需真机测试 OEM 后台保活/省电行为。
+- **通知**（Android 13+）由用户在工具页授权；未授权时触发会记录为 `BLOCKED`，不会假装已提醒。
+- **精确闹钟**（Android 12+）需要用户授权。缺失时精确闹钟显示为受阻并提供设置入口，
+  PowerCal 不会把近似闹钟冒充精确闹钟。厂商后台限制无法被本应用绕过，不承诺所有设备 100% 准点。
+- 系统日历与 ICS 均为**手动一次性迁移**，不是双向实时同步；删除本地记录不会删除外部记录。
+- ICS 导出仅包含活动事件（该格式无法表达"只有开始"或日期级截止）；不展开 RRULE。
+- Android 没有读取所有厂商时钟 App 现有闹钟的通用接口，迁移的旧闹钟默认停用等待人工交接。
+- AI 密钥仅保存在应用私有存储，不进入备份与日志；上下文共享默认关闭，开启后最多 60 条。
 
 ## 结构
 
 ```text
 app/src/main/java/dev/powerfulcalendar/
-├── MainActivity.kt           # Compose 主界面、权限、文件选择、OCR
-├── data/                     # Event / SQLite
-├── interop/                  # ICS、Android 日历、中文文本解析
-├── reminders/                # 提醒调度、通知、开机重建
-└── ui/                       # 月历、事件卡片、编辑表单
+├── MainActivity.kt            # 单 Activity 宿主、系统深浅色、动效偏好
+├── core/                      # 协议：时间模型、SQLite 存储、卡组交互内核
+├── ai/                        # 单 AI 客户端、严格解析、独占批处理
+├── data/                      # 旧版只读迁移、v0.1 历史类型
+├── interop/                   # ICS、系统日历、离线中文解析
+├── reminders/                 # 期望调度、触发校验、通知、重建
+└── ui/v2/                     # PowerCal Glass、时间轴、待处理、工具页
 ```
 
-## 研究阶段：下一步（未开发）
+`ui/CalendarScreens.kt`、`ui/EventEditor.kt` 与 `data/EventStore.kt` 属于 v0.1 历史原型，
+保留用于对照，不再进入导航。
 
-1. 验证三种时间语义与 eventSeq 永久身份、同序号多草稿、完整快照覆盖及冲突确认。
-2. 原型验证 PowerCal Glass Draft Deck：整卡滑动、卡外快速浏览、编辑自动暂存、系统明暗主题和完成动画。
-3. 原型验证中央竖直时间轴：今日定位当前时刻、双指 4–48 小时缩放、稳定重叠分轨及日期精度 Deadline。
-4. 设计单 AI 独占批处理的范围授权、取消恢复、版本防护和崩溃后解锁机制。
-5. 验证 Android 可靠闹钟、一次性异步迁移、完整原生备份和结构化数据输出。详细标准参见上方两份研究文档。
+## 未验证（需真机）
+
+实际响铃与厂商限制、手势手感（缩放锚定/长按拖动/文本选择优先级）、深浅色运行时切换、
+TalkBack 与触控目标实测、进程被杀后的恢复、横屏布局、`uiMode` 变更不重建 Activity 的实际表现。
+详见 [实施记录 §5](docs/IMPLEMENTATION_V0_2.md)。

@@ -216,12 +216,20 @@ class PowerStoreTest {
         val createAgain = store.newDraft(activityForm("新事件"))
         assertTrue(createAgain.eventSeq != seq)
 
-        val restored = store.restore(seq, DraftForm.from(store.getIncludingRetired(seq)!!).copy(title = "复活"))
+        // Restoration is driven by the card that proposed it and removes that card from the queue.
+        val restored = store.restoreDraft(
+            lateEdit.draftId,
+            DraftForm.from(store.getIncludingRetired(seq)!!).copy(title = "复活")
+        )
         assertTrue(restored is PowerStore.CommitOutcome.Committed)
         assertEquals(seq, (restored as PowerStore.CommitOutcome.Committed).eventSeq)
         assertFalse(store.isRetired(seq))
         assertEquals("复活", store.get(seq)!!.title)
         assertEquals(3L, store.get(seq)!!.revision)
+        assertEquals(DraftStatus.COMMITTED, store.draft(lateEdit.draftId)!!.status)
+        assertEquals(0, store.pendingDraftsFor(seq).size)
+        // The restored audit trail keeps the card linkage.
+        assertEquals(1, store.history(seq).count { it.operation == "RESTORE" })
     }
 
     // ---------------------------------------------------------------- optimistic staging
@@ -446,6 +454,122 @@ class PowerStoreTest {
             restored.close()
             context.deleteDatabase(name)
         }
+    }
+
+    @Test
+    fun scheduledIntentIsNotMislabelledWhenTheRowWasReplaced() {
+        val card = store.newDraft(alarmForm(minutesAhead = 120))
+        commit(card)
+        val intent = store.intentFor(card.eventSeq)!!
+        // A stale scheduler pass must not claim it scheduled/cancelled a newer revision.
+        assertFalse(
+            store.markIntent(
+                card.eventSeq, intent.triggerId, PowerStore.DesiredSchedule.CANCELLED,
+                "stale", revision = intent.revision + 1, occurrenceKey = intent.occurrenceKey
+            )
+        )
+        assertEquals(PowerStore.DesiredSchedule.PENDING, store.intentFor(card.eventSeq)!!.desired)
+        assertTrue(
+            store.markIntent(
+                card.eventSeq, intent.triggerId, PowerStore.DesiredSchedule.SCHEDULED,
+                null, revision = intent.revision, occurrenceKey = intent.occurrenceKey
+            )
+        )
+        assertEquals(PowerStore.DesiredSchedule.SCHEDULED, store.intentFor(card.eventSeq)!!.desired)
+    }
+
+    @Test
+    fun aDateOnlyDeadlineWithAReminderGetsNoFabricatedMidnightAlarm() {
+        val card = store.newDraft(
+            DraftForm(
+                TemporalKind.DEADLINE, "交材料",
+                endText = "2026-12-24",
+                reminderMinutes = 30,
+                zoneId = zone.id
+            )
+        )
+        assertTrue(commit(card) is PowerStore.CommitOutcome.Committed)
+        assertNull(store.intentFor(card.eventSeq))
+    }
+
+    @Test
+    fun aStaleSameProcessBatchIsReleasedByTheLease() {
+        val card = store.newDraft(activityForm("僵死批次"))
+        val session = store.beginAiBatch(setOf(card.draftId), setOf(DraftOperation.CREATE))
+        // A live batch with a fresh heartbeat is not an orphan.
+        assertFalse(store.recoverInterruptedAi())
+        // Simulate a cancelled runner: same owner, heartbeat long past the lease.
+        store.writableDatabase.execSQL(
+            "UPDATE ai_sessions SET updated_ms=? WHERE session_id=?",
+            arrayOf(System.currentTimeMillis() - 2 * PowerStore.DEFAULT_STALE_MS, session.sessionId)
+        )
+        assertTrue(store.recoverInterruptedAi())
+        assertFalse(store.isLocked())
+        assertEquals(PowerStore.AiState.INTERRUPTED, store.currentAiSession()!!.state)
+        // The deck is usable again immediately.
+        assertNotNull(store.newDraft(activityForm("之后")))
+    }
+
+    @Test
+    fun aRestoredBackupRebuildsItsDesiredSchedule() {
+        val card = store.newDraft(alarmForm(minutesAhead = 300))
+        commit(card)
+        val snapshot = store.exportBackup()
+        val restored = newStore()
+        try {
+            restored.restoreBackup(snapshot)
+            val intent = restored.intentFor(card.eventSeq)
+            assertNotNull("restore must rebuild schedule intents", intent)
+            assertEquals(PowerStore.DesiredSchedule.PENDING, intent!!.desired)
+        } finally {
+            val name = restored.databaseName
+            restored.close()
+            context.deleteDatabase(name)
+        }
+    }
+
+    @Test
+    fun theAiRunnerReleasesTheLockAndPublishesOnlyItsScope() = kotlinx.coroutines.runBlocking {
+        val first = store.newDraft(alarmForm("A", minutesAhead = 200))
+        val second = store.newDraft(alarmForm("B", minutesAhead = 260))
+        val session = store.beginAiBatch(
+            setOf(first.draftId, second.draftId),
+            DraftOperation.entries.toSet()
+        )
+        val report = dev.powerfulcalendar.ai.AiBatchRunner(store)
+            .run(session, dev.powerfulcalendar.ai.AiBatchRunner.Mode.PUBLISH)
+        assertEquals(2, report.published)
+        assertEquals(0, report.kept)
+        assertFalse(store.isLocked())
+        assertEquals(0, store.pendingCount())
+        assertNotNull(store.get(first.eventSeq))
+        assertNotNull(store.get(second.eventSeq))
+        assertEquals(PowerStore.AiState.COMPLETED, store.currentAiSession()!!.state)
+    }
+
+    @Test
+    fun theAiRunnerKeepsAConflictedCardForHumanReview() = kotlinx.coroutines.runBlocking {
+        val base = store.newDraft(activityForm("冲突"))
+        commit(base)
+        val seq = base.eventSeq
+        val stale = store.newDraft(
+            DraftForm.from(store.get(seq)!!).copy(title = "AI 旧提案"), seq, DraftOperation.REPLACE
+        )
+        // Another card commits first, making `stale` outdated.
+        val winner = store.newDraft(
+            DraftForm.from(store.get(seq)!!).copy(title = "人工胜出"), seq, DraftOperation.REPLACE
+        )
+        commit(winner)
+
+        val session = store.beginAiBatch(setOf(stale.draftId), DraftOperation.entries.toSet())
+        val report = dev.powerfulcalendar.ai.AiBatchRunner(store)
+            .run(session, dev.powerfulcalendar.ai.AiBatchRunner.Mode.PUBLISH)
+        assertEquals(0, report.published)
+        assertEquals(1, report.kept)
+        // Never silently overwritten; the card is retained and flagged.
+        assertEquals("人工胜出", store.get(seq)!!.title)
+        assertEquals(DraftStatus.CONFLICT, store.draft(stale.draftId)!!.status)
+        assertFalse(store.isLocked())
     }
 
     @Test
