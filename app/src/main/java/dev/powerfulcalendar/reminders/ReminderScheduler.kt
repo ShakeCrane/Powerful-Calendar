@@ -1,38 +1,261 @@
 package dev.powerfulcalendar.reminders
 
+import android.Manifest
 import android.app.AlarmManager
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
-import dev.powerfulcalendar.data.CalendarEvent
+import android.provider.Settings
+import android.util.Log
+import dev.powerfulcalendar.core.PowerStore
+import dev.powerfulcalendar.core.RecurrenceEngine
+import dev.powerfulcalendar.core.TemporalKind
+import dev.powerfulcalendar.core.TemporalRecord
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
+/**
+ * Reconciles durable [PowerStore.ScheduleIntent] rows to Android alarms.
+ *
+ * Guarantees:
+ *  - a committed revision owns the schedule; an obsolete revision is cancelled, never rewritten;
+ *  - exact alarms are only claimed when the OS actually grants exactness; otherwise the intent is
+ *    marked BLOCKED with visible guidance instead of silently downgrading a required alarm;
+ *  - a pending broadcast carries revision + occurrence + trigger so a stale alarm can be rejected
+ *    when it fires (Android will still deliver it; we choose not to ring).
+ */
 object ReminderScheduler {
-    fun schedule(context: Context, event: CalendarEvent) {
-        cancel(context, event.id)
-        if (event.reminderMinutes < 0) return
-        val whenMillis = event.startMillis - event.reminderMinutes * 60_000L
-        if (whenMillis <= System.currentTimeMillis()) return
-        val manager = context.getSystemService(AlarmManager::class.java)
-        val pending = pendingIntent(context, event.id, event.title)
-        if (Build.VERSION.SDK_INT >= 31 && !manager.canScheduleExactAlarms()) {
-            manager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, whenMillis, pending)
-        } else {
-            manager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, whenMillis, pending)
+    private const val TAG = "PowerCalScheduler"
+
+    fun exactAlarmAllowed(context: Context): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return true
+        val manager = context.getSystemService(AlarmManager::class.java) ?: return false
+        return manager.canScheduleExactAlarms()
+    }
+
+    fun notificationsAllowed(context: Context): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return true
+        return context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+    }
+
+    /** Idempotent: safe to call after boot, timezone change, permission change or a commit. */
+    fun reconcile(context: Context, store: PowerStore) {
+        val now = System.currentTimeMillis()
+        store.dueIntents().forEach { intent ->
+            runCatching { apply(context, store, intent, now) }
+                .onFailure { Log.w(TAG, "reconcile #${intent.eventSeq} failed", it) }
         }
     }
 
-    fun cancel(context: Context, id: Long) {
-        val manager = context.getSystemService(AlarmManager::class.java)
-        manager.cancel(pendingIntent(context, id, ""))
+    private fun apply(context: Context, store: PowerStore, intent: PowerStore.ScheduleIntent, now: Long) {
+        val record = store.get(intent.eventSeq)
+        if (record == null || record.revision != intent.revision || !record.enabled) {
+            cancel(context, intent.eventSeq)
+            store.markIntent(intent.eventSeq, intent.triggerId, PowerStore.DesiredSchedule.CANCELLED)
+            return
+        }
+        if (intent.instantMillis < now - AlarmContract.GRACE_MILLIS) {
+            // The window has passed while we were not running. Ringing now would be a lie.
+            store.recordExecution(
+                intent.eventSeq, record.revision, intent.occurrenceKey, intent.triggerId,
+                "MISSED", "错过宽限窗口，未补响"
+            )
+            store.advanceIntentAfterFiring(intent.eventSeq, intent.occurrenceKey)
+            return
+        }
+        if (intent.requirement == PowerStore.TriggerRequirement.EXACT && !exactAlarmAllowed(context)) {
+            store.markIntent(
+                intent.eventSeq, intent.triggerId, PowerStore.DesiredSchedule.BLOCKED,
+                "缺少精确闹钟权限"
+            )
+            NotificationHelper.postExactAlarmBlocked(context, record)
+            return
+        }
+        if (!notificationsAllowed(context)) {
+            // The alarm can still be scheduled; delivery will be silent until permission returns.
+            Log.w(TAG, "POST_NOTIFICATIONS missing; alarm #${intent.eventSeq} will be silent")
+        }
+        val pending = alarmPendingIntent(
+            context, intent.eventSeq, record.revision, intent.occurrenceKey,
+            intent.triggerId, intent.instantMillis, snooze = false
+        )
+        val manager = context.getSystemService(AlarmManager::class.java) ?: return
+        try {
+            if (intent.requirement == PowerStore.TriggerRequirement.EXACT) {
+                manager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, intent.instantMillis, pending)
+            } else {
+                manager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, intent.instantMillis, pending)
+            }
+            store.markIntent(intent.eventSeq, intent.triggerId, PowerStore.DesiredSchedule.SCHEDULED)
+        } catch (security: SecurityException) {
+            store.markIntent(
+                intent.eventSeq, intent.triggerId, PowerStore.DesiredSchedule.BLOCKED,
+                "系统拒绝精确闹钟"
+            )
+            NotificationHelper.postExactAlarmBlocked(context, record)
+        }
     }
 
-    private fun pendingIntent(context: Context, id: Long, title: String): PendingIntent =
-        PendingIntent.getBroadcast(
-            context, id.toInt(),
-            Intent(context, ReminderReceiver::class.java)
-                .putExtra("event_id", id)
-                .putExtra("event_title", title),
+    fun cancel(context: Context, eventSeq: Long) {
+        val manager = context.getSystemService(AlarmManager::class.java) ?: return
+        val pending = PendingIntent.getBroadcast(
+            context,
+            requestCode(eventSeq),
+            Intent(context, ReminderReceiver::class.java).apply {
+                action = AlarmContract.ACTION_FIRE
+            },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+        manager.cancel(pending)
+        pending.cancel()
+    }
+
+    /** Snooze is an occurrence execution change, never a recurrence-series change. */
+    fun scheduleSnooze(context: Context, record: TemporalRecord, occurrenceKey: String, triggerId: String) {
+        val at = System.currentTimeMillis() + AlarmContract.SNOOZE_MILLIS
+        val pending = alarmPendingIntent(
+            context, record.eventSeq, record.revision, occurrenceKey, triggerId, at, snooze = true
+        )
+        val manager = context.getSystemService(AlarmManager::class.java) ?: return
+        try {
+            if (exactAlarmAllowed(context)) {
+                manager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pending)
+            } else {
+                manager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pending)
+            }
+        } catch (_: SecurityException) {
+            manager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pending)
+        }
+    }
+
+    private fun requestCode(eventSeq: Long): Int = (eventSeq % Int.MAX_VALUE).toInt()
+
+    private fun alarmPendingIntent(
+        context: Context,
+        eventSeq: Long,
+        revision: Long,
+        occurrenceKey: String,
+        triggerId: String,
+        instant: Long,
+        snooze: Boolean
+    ): PendingIntent = PendingIntent.getBroadcast(
+        context,
+        requestCode(eventSeq),
+        Intent(context, ReminderReceiver::class.java).apply {
+            action = AlarmContract.ACTION_FIRE
+            putExtra(AlarmContract.EXTRA_EVENT_SEQ, eventSeq)
+            putExtra(AlarmContract.EXTRA_REVISION, revision)
+            putExtra(AlarmContract.EXTRA_OCCURRENCE_KEY, occurrenceKey)
+            putExtra(AlarmContract.EXTRA_TRIGGER_ID, triggerId)
+            putExtra(AlarmContract.EXTRA_INSTANT, instant)
+            putExtra(AlarmContract.EXTRA_SNOOZE, snooze)
+        },
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+    )
+
+    /** Offset from the occurrence start to the moment the trigger should fire. */
+    fun triggerOffsetMillis(record: TemporalRecord): Long? = when {
+        record.kind == TemporalKind.ALARM && record.reminderMinutes < 0 -> 0L
+        record.reminderMinutes >= 0 -> record.reminderMinutes.toLong() * 60_000L
+        else -> null
+    }
+
+    /**
+     * Verifies a broadcast against the authoritative store. Returns the occurrence when the
+     * alarm is still legitimate; `null` means it must not ring.
+     */
+    fun validate(
+        store: PowerStore,
+        eventSeq: Long,
+        expectedRevision: Long,
+        occurrenceKey: String,
+        requestedInstant: Long,
+        snooze: Boolean
+    ): ReminderScheduler.Validation {
+        val record = store.get(eventSeq)
+            ?: return Validation.Rejected("事件不存在或已删除")
+        if (!record.enabled) return Validation.Rejected("事件已停用")
+        if (record.revision != expectedRevision) {
+            return Validation.Rejected("版本已更新至 v${record.revision}")
+        }
+        val offset = triggerOffsetMillis(record)
+            ?: return Validation.Rejected("该事件不再需要提醒")
+        val anchor = record.anchorMillis() ?: return Validation.Rejected("事件缺少合法时刻")
+        val span = (record.spanEndMillis() ?: anchor) - anchor
+        val occurrence = RecurrenceEngine.occurrences(
+            record, requestedInstant - span - 86_400_000L, requestedInstant + span + 86_400_000L
+        ).firstOrNull { it.key == occurrenceKey }
+            ?: return Validation.Rejected("发生实例已失效")
+        if (!snooze) {
+            val expected = occurrence.startMillis - offset
+            if (expected != requestedInstant) {
+                return Validation.Rejected("触发时刻与当前版本不一致")
+            }
+        }
+        return Validation.Valid(record, occurrence)
+    }
+
+    sealed interface Validation {
+        data class Valid(
+            val record: TemporalRecord,
+            val occurrence: dev.powerfulcalendar.core.Occurrence
+        ) : Validation
+
+        data class Rejected(val reason: String) : Validation
+    }
+
+    fun openExactAlarmSettings(context: Context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+        runCatching {
+            context.startActivity(
+                Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                    data = Uri.parse("package:" + context.packageName)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+            )
+        }
+    }
+
+    /** Human-readable status for the timeline editor / diagnostics panel. */
+    fun statusText(store: PowerStore, record: TemporalRecord): String {
+        val intent = store.intentFor(record.eventSeq) ?: return "无待调度提醒"
+        val time = Instant.ofEpochMilli(intent.instantMillis)
+            .atZone(ZoneId.systemDefault())
+            .format(DateTimeFormatter.ofPattern("M月d日 HH:mm"))
+        return when (intent.desired) {
+            PowerStore.DesiredSchedule.SCHEDULED -> "已安排 · $time"
+            PowerStore.DesiredSchedule.PENDING -> "等待调度 · $time"
+            PowerStore.DesiredSchedule.BLOCKED -> "调度受阻 · $time（" + (intent.androidHint ?: "") + "）"
+            PowerStore.DesiredSchedule.CANCELLED -> "已取消"
+            PowerStore.DesiredSchedule.FIRED -> "已触发 · $time"
+        }
+    }
+
+    fun ensureChannels(context: Context) {
+        val manager = context.getSystemService(NotificationManager::class.java) ?: return
+        manager.createNotificationChannel(
+            NotificationChannel(
+                AlarmContract.CHANNEL_ALARMS,
+                "时间提醒",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "闹钟、活动与截止的提醒"
+                enableVibration(true)
+            }
+        )
+        manager.createNotificationChannel(
+            NotificationChannel(
+                AlarmContract.CHANNEL_STATUS,
+                "调度状态",
+                NotificationManager.IMPORTANCE_DEFAULT
+            ).apply { description = "权限与调度受阻提示" }
+        )
+    }
 }
