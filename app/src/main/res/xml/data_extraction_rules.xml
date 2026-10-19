@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- PowerCal keeps its own complete native export. Platform auto-backup must never smuggle a
+     stale AI lock or a stale Android alarm handle back into a restored install. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="database" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="database" path="." />
+    </device-transfer>
+</data-extraction-rules>
