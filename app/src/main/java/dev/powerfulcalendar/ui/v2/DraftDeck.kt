@@ -243,6 +243,7 @@ fun DraftDeckDialog(
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Box(Modifier.fillMaxSize().testTag("deck-backdrop")
                 .background(Color.Black.copy(alpha = 0.42f))
+                .skinBackdrop(SkinSlot.DECK_BACKDROP)
                 .outsideGesture(onTap = { leave() }, onBrowse = { steps -> command { controller.jump(steps) } }))
             BoxWithConstraints(
                 Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding().padding(horizontal = 24.dp, vertical = 8.dp),
@@ -1135,12 +1136,16 @@ private fun CompletionCard(
                     ),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    Icons.Default.Check,
-                    null,
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                    modifier = Modifier.size(30.dp)
-                )
+                if (skinArt(SkinSlot.COMPLETION_EMBLEM) != null) {
+                    SkinImage(SkinSlot.COMPLETION_EMBLEM, Modifier.size(46.dp))
+                } else {
+                    Icon(
+                        Icons.Default.Check,
+                        null,
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.size(30.dp)
+                    )
+                }
             }
             Text("待处理已清空", style = MaterialTheme.typography.headlineSmall)
             Text(

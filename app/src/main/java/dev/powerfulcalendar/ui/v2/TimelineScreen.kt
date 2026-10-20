@@ -83,10 +83,13 @@ fun TimelineScreen(
     }
     fun changeCamera(updated: TimelineCoordinate.Camera) { inertia?.cancel(); onCameraChange(updated) }
 
-    Column(modifier.fillMaxSize().background(axisBackground())) {
+    Column(modifier.fillMaxSize().background(axisBackground()).skinBackdrop(SkinSlot.TIMELINE_BACKGROUND)) {
         Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("PowerCal", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SkinImage(SkinSlot.BRAND_MARK, Modifier.size(24.dp))
+                    Text("PowerCal", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                }
                 Text(day.format(DAY_FORMAT), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             IconButton(onClick = onOpenMonth) { Icon(Icons.Default.CalendarMonth, "打开月历") }

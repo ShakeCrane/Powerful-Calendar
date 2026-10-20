@@ -47,7 +47,7 @@ internal fun MonthScreen(
     }
     val daily = remember(entries, month, zone) { (1..month.lengthOfMonth()).associate { day -> month.atDay(day) to entriesOn(month.atDay(day)) } }
     val today = LocalDate.now(zone)
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    LazyColumn(Modifier.fillMaxSize().skinBackdrop(SkinSlot.MONTH_BACKGROUND), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回时间轴，保留原视角") }

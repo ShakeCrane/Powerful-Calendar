@@ -148,10 +148,11 @@ private val PowerTypography = Typography().let { base ->
 fun PowerCalTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     effects: GlassEffects = GlassEffects(),
+    skin: PowerCalSkinPack = PowerCalSkinRegistry.active,
     content: @Composable () -> Unit
 ) {
-    val scheme = if (darkTheme) DarkColors else LightColors
-    val palette = if (darkTheme) {
+    val scheme = if (darkTheme) skin.darkColors ?: DarkColors else skin.lightColors ?: LightColors
+    val basePalette = if (darkTheme) {
         AxisPalette(
             alarm = Color(0xFF9DB8FF),
             activity = Color(0xFF7FD6C2),
@@ -174,11 +175,13 @@ fun PowerCalTheme(
             glassHighlight = Color(0x80FFFFFF)
         )
     }
+    val palette = (if (darkTheme) skin.darkAxis else skin.lightAxis) ?: basePalette
     CompositionLocalProvider(
         LocalGlassEffects provides effects,
+        LocalSkinArtwork provides skin.artworkFor(darkTheme),
         LocalAxisPalette provides if (effects.blur) palette else palette.copy(glassFill = scheme.surface, glassHighlight = Color.Transparent)
     ) {
-        MaterialTheme(colorScheme = scheme, typography = PowerTypography) {
+        MaterialTheme(colorScheme = scheme, typography = skin.typography ?: PowerTypography) {
             CompositionLocalProvider(LocalContentColor provides scheme.onBackground, content = content)
         }
     }
