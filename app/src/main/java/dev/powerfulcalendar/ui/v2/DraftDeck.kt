@@ -818,8 +818,8 @@ private fun DeckCardBody(
                         readOnly = aiLocked,
                         label = { Text("备注") }
                     )
-                    if (form.kind != TemporalKind.DEADLINE) {
-                        Text("提醒", style = MaterialTheme.typography.labelLarge)
+                    run {
+                        Text("提醒时间（相对于事件开始或截止）", style = MaterialTheme.typography.labelLarge)
                         Row(
                             Modifier.horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -840,6 +840,30 @@ private fun DeckCardBody(
                                         )
                                     }
                                 )
+                            }
+                        }
+                        if (form.kind == TemporalKind.DEADLINE && DraftForm.parseDateOnly(form.endText) != null) {
+                            Text("仅日期的截止没有具体触发时刻，因此暂不会调度提醒。请选择准确截止时刻后再设置提前提醒。",
+                                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
+                        }
+                        var customOffset by remember(card.draftId) { mutableStateOf("") }
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(
+                                value = customOffset,
+                                onValueChange = { input ->
+                                    if (input.length <= 6 && input.all(Char::isDigit)) customOffset = input
+                                },
+                                label = { Text("自定义分钟") },
+                                singleLine = true,
+                                modifier = Modifier.width(150.dp),
+                                keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                                enabled = !aiLocked
+                            )
+                            val offset = customOffset.toIntOrNull()
+                            TextButton(onClick = {
+                                if (offset != null) onFormChange(form.copy(reminderMinutes = offset))
+                            }, enabled = !aiLocked && offset != null && offset in 0..10080) {
+                                Text("应用")
                             }
                         }
                     }

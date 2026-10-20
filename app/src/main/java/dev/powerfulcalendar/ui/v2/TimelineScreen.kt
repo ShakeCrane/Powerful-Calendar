@@ -52,12 +52,16 @@ fun TimelineScreen(
     pendingCount: Int, aiLocked: Boolean, onCameraChange: (TimelineCoordinate.Camera) -> Unit,
     onOpenEvent: (TemporalRecord) -> Unit, onMoveEvent: (TemporalRecord, Long) -> Unit,
     onCreate: (TemporalKind, Long) -> Unit, onToday: () -> Unit, onOpenDeck: () -> Unit,
-    onOpenTools: () -> Unit, onOpenMonth: () -> Unit, modifier: Modifier = Modifier, blockedReminders: Int = 0
+    onOpenTools: () -> Unit, onOpenMonth: () -> Unit = {},
+    modifier: Modifier = Modifier, blockedReminders: Int = 0,
+    horizontalScale: Float = 1f, onHorizontalScaleChange: (Float) -> Unit = {}
 ) {
     val scope = rememberCoroutineScope()
     val effects = LocalGlassEffects.current
     val motion = glassMotion()
     val latestCamera by rememberUpdatedState(camera)
+    val latestHorizontalScale by rememberUpdatedState(horizontalScale)
+    val horizontalScaleChange by rememberUpdatedState(onHorizontalScaleChange)
     var inertia by remember { mutableStateOf<Job?>(null) }
     var hidden by remember { mutableStateOf<List<TemporalRecord>?>(null) }
     var inspected by remember { mutableStateOf<TemporalRecord?>(null) }
@@ -84,16 +88,44 @@ fun TimelineScreen(
     fun changeCamera(updated: TimelineCoordinate.Camera) { inertia?.cancel(); onCameraChange(updated) }
 
     Column(modifier.fillMaxSize().background(axisBackground()).skinBackdrop(SkinSlot.TIMELINE_BACKGROUND)) {
-        Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        // Single actionable toolbar. Page navigation lives ONLY in the bottom tab bar.
+        var createMenu by remember { mutableStateOf(false) }
+        Row(
+            Modifier.fillMaxWidth().padding(start = 14.dp, end = 6.dp, top = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SkinImage(SkinSlot.BRAND_MARK, Modifier.size(24.dp))
-                    Text("PowerCal", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    SkinImage(SkinSlot.BRAND_MARK, Modifier.size(19.dp))
+                    Text("Powerful Calendar", style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                Text(day.format(DAY_FORMAT), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(day.format(DAY_FORMAT), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            IconButton(onClick = onOpenMonth) { Icon(Icons.Default.CalendarMonth, "打开月历") }
-            IconButton(onClick = onOpenTools) { Icon(Icons.Default.Tune, "工具与设置") }
+            IconButton(onClick = { inertia?.cancel(); onToday() }, modifier = Modifier.size(44.dp)) {
+                Icon(Icons.Default.Today, "今日 · 复位为全天")
+            }
+            IconButton(onClick = { inertia?.cancel(); onOpenDeck() }, modifier = Modifier.size(44.dp)) {
+                BadgedBox(badge = {
+                    if (pendingCount > 0) Badge { Text(pendingCount.toString()) }
+                }) {
+                    Icon(if (aiLocked) Icons.Default.Lock else Icons.Default.Layers, "待处理 $pendingCount")
+                }
+            }
+            Box {
+                IconButton(onClick = { createMenu = true }, enabled = !aiLocked, modifier = Modifier.size(44.dp)) {
+                    Icon(Icons.Default.Add, "新建事件")
+                }
+                DropdownMenu(expanded = createMenu, onDismissRequest = { createMenu = false }) {
+                    TemporalKind.entries.forEach { kind ->
+                        DropdownMenuItem(text = { Text(kind.label) }, onClick = {
+                            createMenu = false
+                            onCreate(kind, TimelineCoordinate.snap(camera.anchorMillis, camera.hours, zone))
+                        })
+                    }
+                }
+            }
         }
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { changeCamera(camera.copy(hours = TimelineCoordinate.clampHours(camera.hours * 1.5))) }, enabled = camera.hours < 48) {
@@ -105,7 +137,7 @@ fun TimelineScreen(
                 Icon(Icons.Default.Add, "放大，显示更短时间")
             }
             Spacer(Modifier.weight(1f))
-            Text(if (aiLocked) "AI 处理中 · 可查看" else "闹钟   │   活动 · 截止", style = MaterialTheme.typography.labelSmall,
+            Text(if (aiLocked) "AI 处理中" else "↕ 时间 · ↔ 事件轴", style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(end = 8.dp))
         }
         if (blockedReminders > 0) Surface(onClick = onOpenTools, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
@@ -157,7 +189,9 @@ fun TimelineScreen(
             val cameraChange by rememberUpdatedState(onCameraChange)
 
             Box(Modifier.fillMaxSize().testTag("timeline-viewport").pointerInput(Unit) {
-                timelineGestures({ latestCamera }, { heightNow }, { inertia?.cancel() }, { cameraChange(it) }, { velocity, releasedCamera ->
+                timelineGestures({ latestCamera }, { heightNow }, { inertia?.cancel() }, { cameraChange(it) },
+                    { factor -> horizontalScaleChange((latestHorizontalScale * factor).coerceIn(0.7f, 1.85f)) },
+                    { velocity, releasedCamera ->
                     inertia?.cancel()
                     inertia = scope.launch {
                         var cam = releasedCamera
@@ -181,7 +215,8 @@ fun TimelineScreen(
                 )
             }) {
                 TimelineCanvas(camera.anchorMillis, camera.hours, height, width, nowMillis, zone)
-                val gutter = 36.dp
+                // Horizontal pinch controls event-column spacing; vertical pinch controls time.
+                val gutter = 36.dp * horizontalScale.coerceIn(0.7f, 1.85f)
                 val sideWidth = viewportWidth / 2 - gutter - 12.dp
                 val laneWidth = (sideWidth - 6.dp * (maxLanes - 1)) / maxLanes
                 layout.items.forEach { item ->
@@ -193,10 +228,16 @@ fun TimelineScreen(
                     val cardHeight = with(density) { (endY - startY).coerceAtLeast(60.dp.toPx()).coerceAtMost(height).toDp() }
                     val x = if (item.side == AxisSide.LEFT) viewportWidth / 2 - gutter - laneWidth * (item.lane + 1) - 6.dp * item.lane
                         else viewportWidth / 2 + gutter + (laneWidth + 6.dp) * item.lane
+                    val point = item.record.kind != TemporalKind.ACTIVITY
+                    val pointHeight = 56.dp
+                    val topPx = if (item.record.kind == TemporalKind.DEADLINE) {
+                        y - with(density) { pointHeight.toPx() }
+                    } else if (item.record.kind == TemporalKind.ALARM) y else startY
                     key(key) {
                         Surface(
                             onClick = { if (dragKey == null) open(item.record) },
-                            modifier = Modifier.offset(x, with(density) { startY.toDp() }).width(laneWidth).heightIn(min = 48.dp).height(cardHeight)
+                            modifier = Modifier.offset(x, with(density) { topPx.toDp() }).width(laneWidth)
+                                .heightIn(min = 48.dp).height(if (point) pointHeight else cardHeight)
                                 .pointerInput(key, item.record.revision, item.anchorMillis, aiLocked) {
                                     if (!unlocked) return@pointerInput
                                     detectDragGesturesAfterLongPress(
@@ -212,10 +253,17 @@ fun TimelineScreen(
                                         }, onDragCancel = { dragKey = null; dragTarget = null })
                                 }
                                 .semantics { contentDescription = "${item.record.kind.label}，${item.record.title}，${TemporalText.summarize(item.record)}，${item.record.displaySeq()}" },
-                            shape = RoundedCornerShape(14.dp),
-                            color = if (dragKey == key) MaterialTheme.colorScheme.surfaceContainerHighest else LocalAxisPalette.current.glassFill,
-                            border = BorderStroke(1.dp, kindColor(item.record.kind).copy(alpha = 0.36f))
+                            shape = if (point) RoundedCornerShape(0.dp) else RoundedCornerShape(14.dp),
+                            color = if (point) androidx.compose.ui.graphics.Color.Transparent
+                                else if (dragKey == key) MaterialTheme.colorScheme.surfaceContainerHighest
+                                else LocalAxisPalette.current.glassFill,
+                            border = if (point) null else BorderStroke(
+                                1.dp, kindColor(item.record.kind).copy(alpha = 0.36f)
+                            )
                         ) {
+                            if (point) {
+                                AxisPointMarker(item.record, item.anchorMillis, zone)
+                            } else {
                             Row(Modifier.fillMaxSize().padding(8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Box(Modifier.width(3.dp).fillMaxHeight().background(kindColor(item.record.kind), RoundedCornerShape(2.dp)))
                                 Column(Modifier.weight(1f)) {
@@ -223,6 +271,7 @@ fun TimelineScreen(
                                     Text(TemporalText.summarize(item.record), style = MaterialTheme.typography.labelSmall, color = kindColor(item.record.kind), maxLines = 2, overflow = TextOverflow.Ellipsis)
                                     if (cardHeight > 100.dp) Text(item.record.displaySeq() + if (item.record.recurrence.isRepeating) " · 重复" else "", style = MaterialTheme.typography.labelSmall)
                                 }
+                            }
                             }
                         }
                     }
@@ -245,47 +294,15 @@ fun TimelineScreen(
                         Text("${Instant.ofEpochMilli(target).atZone(zone).format(CLOCK_FORMAT)} · 松开后确认草稿", Modifier.padding(10.dp), style = MaterialTheme.typography.labelMedium)
                     }
                 }
-                if (records.isEmpty()) GlassPanel(Modifier.align(Alignment.Center).padding(24.dp).widthIn(max = 360.dp)) {
-                    Text("把时间，留给重要的事", style = MaterialTheme.typography.titleLarge)
-                    Spacer(Modifier.height(10.dp))
-                    Text("新建一个闹钟、一段活动，或一个截止日期。草稿会在待处理中等你确认。", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+                if (records.isEmpty()) Text(
+                    "还没有事件 · 点击右上角 + 开始",
+                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 24.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
-        Surface(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), shape = GlassShapes.bar,
-            color = MaterialTheme.colorScheme.surfaceContainer, border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))) {
-            Row(Modifier.fillMaxWidth().padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = {
-                    inertia?.cancel()
-                    if (effects.reduceMotion) onToday() else {
-                        val start = latestCamera
-                        inertia = scope.launch {
-                            animate(0f, 1f, animationSpec = motion) { fraction, _ ->
-                                onCameraChange(start.copy(anchorMillis = start.anchorMillis + ((nowMillis - start.anchorMillis) * fraction.toDouble()).toLong()))
-                            }
-                            onToday()
-                        }
-                    }
-                }, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
-                    Icon(Icons.Default.Today, null, Modifier.size(20.dp)); Spacer(Modifier.width(6.dp)); Text("今日")
-                }
-                TextButton(onClick = { inertia?.cancel(); onOpenDeck() }, modifier = Modifier.weight(1.4f).heightIn(min = 48.dp)) {
-                    Icon(if (aiLocked) Icons.Default.Lock else Icons.Default.Layers, null, Modifier.size(20.dp)); Spacer(Modifier.width(6.dp))
-                    Text("待处理 $pendingCount", maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-                var menu by remember { mutableStateOf(false) }
-                Box(Modifier.weight(1f)) {
-                    FilledTonalButton(onClick = { menu = true }, enabled = !aiLocked, contentPadding = PaddingValues(horizontal = 8.dp), modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                        Icon(Icons.Default.Add, null, Modifier.size(20.dp)); Text("新建")
-                    }
-                    DropdownMenu(menu, { menu = false }) {
-                        TemporalKind.entries.forEach { kind -> DropdownMenuItem(text = { Text(kind.label) }, onClick = {
-                            menu = false; onCreate(kind, TimelineCoordinate.snap(camera.anchorMillis, camera.hours, zone))
-                        }) }
-                    }
-                }
-            }
-        }
+
     }
     hidden?.let { list ->
         AlertDialog(onDismissRequest = { hidden = null }, title = { Text("重叠事件 · ${list.size}") }, text = {
@@ -304,9 +321,46 @@ fun TimelineScreen(
         confirmButton = { TextButton(onClick = { inspected = null }) { Text("完成") } }) }
 }
 
+/**
+ * Different temporal primitives must never share the same rectangle.
+ * ALARM = line at the top with its label BELOW.
+ * DEADLINE = label ABOVE a line exactly at its occurrence instant.
+ * ACTIVITY is the only interval rectangle, rendered in the viewport loop.
+ */
+@Composable
+private fun AxisPointMarker(record: TemporalRecord, occurrenceMillis: Long, zone: ZoneId) {
+    val color = kindColor(record.kind)
+    val label = Instant.ofEpochMilli(occurrenceMillis).atZone(zone).format(CLOCK_FORMAT) +
+        " · " + record.title
+    Column(Modifier.fillMaxSize()) {
+        if (record.kind == TemporalKind.DEADLINE) {
+            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.BottomStart) {
+                Text(
+                    label,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = color,
+                    modifier = Modifier.padding(bottom = 5.dp),
+                    maxLines = 2, overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+        HorizontalDivider(color = color, thickness = 2.dp)
+        if (record.kind == TemporalKind.ALARM) {
+            Text(
+                label,
+                style = MaterialTheme.typography.labelMedium,
+                color = color,
+                modifier = Modifier.padding(top = 5.dp),
+                maxLines = 2, overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
 private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.timelineGestures(
     camera: () -> TimelineCoordinate.Camera, height: () -> Float, onStart: () -> Unit,
-    onCamera: (TimelineCoordinate.Camera) -> Unit, onFling: (Float, TimelineCoordinate.Camera) -> Unit
+    onCamera: (TimelineCoordinate.Camera) -> Unit,
+    onHorizontalZoom: (Float) -> Unit, onFling: (Float, TimelineCoordinate.Camera) -> Unit
 ) {
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false)
@@ -343,7 +397,21 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.timeline
                 previousY = y; tracker.addPosition(pressed.first().uptimeMillis, pressed.first().position); continue
             }
             active = true
-            cam = transformedCamera(cam, previousY, y, if (pressed.size >= 2) event.calculateZoom() else 1f, height())
+            // Standard radial zoom treats X and Y identically; use independent spans instead.
+            var zoomY = 1f
+            if (pressed.size >= 2) {
+                val a = pressed[0]
+                val b = pressed[1]
+                val threshold = viewConfiguration.touchSlop * 3f
+                val oldX = abs(a.previousPosition.x - b.previousPosition.x)
+                val newX = abs(a.position.x - b.position.x)
+                val oldY = abs(a.previousPosition.y - b.previousPosition.y)
+                val newY = abs(a.position.y - b.position.y)
+                val zoomX = AxisPinch.ratio(oldX, newX, threshold)
+                zoomY = AxisPinch.ratio(oldY, newY, threshold)
+                if (zoomX != 1f) onHorizontalZoom(zoomX)
+            }
+            cam = transformedCamera(cam, previousY, y, zoomY, height())
             onCamera(cam)
             pressed.forEach { it.consume() }
             previousY = y

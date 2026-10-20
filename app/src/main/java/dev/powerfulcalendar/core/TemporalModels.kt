@@ -852,7 +852,7 @@ data class DraftForm(
         ): DraftForm = when (kind) {
             TemporalKind.ALARM -> DraftForm(
                 kind, startText = formatInstant(day.atTime(at).atZone(zone).toInstant().toEpochMilli(), zone),
-                zoneId = zone.id
+                reminderMinutes = 0, zoneId = zone.id
             )
             TemporalKind.ACTIVITY -> DraftForm(
                 kind,
@@ -860,7 +860,7 @@ data class DraftForm(
                 endText = formatInstant(
                     day.atTime(at).plusHours(1).atZone(zone).toInstant().toEpochMilli(), zone
                 ),
-                zoneId = zone.id
+                reminderMinutes = 10, zoneId = zone.id
             )
             TemporalKind.DEADLINE -> DraftForm(kind, endText = day.toString(), zoneId = zone.id)
         }
@@ -869,10 +869,10 @@ data class DraftForm(
         fun atInstant(kind: TemporalKind, millis: Long, zone: ZoneId = ZoneId.systemDefault()): DraftForm {
             val local = Instant.ofEpochMilli(millis).atZone(zone)
             return when (kind) {
-                TemporalKind.ALARM -> DraftForm(kind, startText = formatInstant(millis, zone), zoneId = zone.id)
+                TemporalKind.ALARM -> DraftForm(kind, startText = formatInstant(millis, zone), reminderMinutes = 0, zoneId = zone.id)
                 TemporalKind.ACTIVITY -> DraftForm(
                     kind, startText = formatInstant(millis, zone),
-                    endText = formatInstant(millis + 3_600_000L, zone), zoneId = zone.id
+                    endText = formatInstant(millis + 3_600_000L, zone), reminderMinutes = 10, zoneId = zone.id
                 )
                 TemporalKind.DEADLINE -> DraftForm(
                     kind, endText = local.toLocalDate().toString(), zoneId = zone.id

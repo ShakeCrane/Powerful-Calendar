@@ -54,7 +54,7 @@ class GlassComposeTest {
         } }
         ui.onNodeWithText("提交设计稿").assertIsDisplayed().performClick()
         ui.runOnIdle { assertEquals(record, opened) }
-        ui.onNodeWithContentDescription("打开月历").assertIsDisplayed()
+        ui.onNodeWithContentDescription("今日 · 复位为全天").assertIsDisplayed()
     }
 
     @Test fun aiLockKeepsTimelineReadableButDisablesNewEvent() {
@@ -62,9 +62,9 @@ class GlassComposeTest {
             TimelineScreen(emptyList(), TimelineCoordinate.Camera(noon, 24.0), noon, zone, 100, true,
                 {}, {}, { _, _ -> }, { _, _ -> }, {}, {}, {}, {})
         } }
-        ui.onNodeWithText("新建").assertIsNotEnabled()
-        ui.onNodeWithText("待处理 100").assertIsEnabled()
-        ui.onNodeWithText("AI 处理中 · 可查看").assertIsDisplayed()
+        ui.onNodeWithContentDescription("新建事件").assertIsNotEnabled()
+        ui.onNodeWithContentDescription("待处理 100").assertIsEnabled()
+        ui.onNodeWithText("AI 处理中").assertIsDisplayed()
     }
 
     @Test fun hundredCardDeckFlushesLastCharacterBeforeNavigationAndKeepsStableIdentity() {
@@ -188,7 +188,7 @@ class GlassComposeTest {
         }
         ui.runOnIdle { assertTrue(camera.value.hours in 4.0..48.0); assertTrue(camera.value.hours < 24.0) }
         ui.onNodeWithTag("timeline-viewport").performTouchInput { swipeUp() }
-        ui.onNodeWithText("今日").performClick()
+        ui.onNodeWithContentDescription("今日 · 复位为全天").performClick()
         ui.mainClock.advanceTimeBy(2000)
         ui.runOnIdle { assertEquals(noon, camera.value.anchorMillis) }
     }

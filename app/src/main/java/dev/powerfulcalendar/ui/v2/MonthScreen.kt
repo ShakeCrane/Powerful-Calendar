@@ -101,7 +101,6 @@ internal fun MonthScreen(
         item {
             Column {
                 Text(selected.format(DateTimeFormatter.ofPattern("M月d日 EEEE")), style = MaterialTheme.typography.titleMedium)
-                TextButton(onClick = { onDate(selected) }) { Text("在时间轴查看这一天") }
             }
         }
         val selectedEntries = daily[selected].orEmpty()
@@ -116,5 +115,10 @@ internal fun MonthScreen(
             }
         }
         item { OutlinedButton(onClick = { onCreate(selected) }, enabled = !aiLocked, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Icon(Icons.Default.Add, null); Text("为这一天新建活动") } }
+        item {
+            TextButton(onClick = { onDate(selected) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                Text("在时间轴查看这一天")
+            }
+        }
     }
 }

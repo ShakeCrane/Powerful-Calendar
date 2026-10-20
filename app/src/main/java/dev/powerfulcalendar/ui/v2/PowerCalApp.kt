@@ -60,6 +60,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableDoubleStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -177,6 +178,8 @@ fun PowerCalApp(store: PowerStore) {
     val initialCamera = remember { TimelineCoordinate.initialCamera(System.currentTimeMillis(), zone) }
     var anchorMillis by rememberSaveable { mutableLongStateOf(initialCamera.anchorMillis) }
     var hours by rememberSaveable { mutableDoubleStateOf(initialCamera.hours) }
+    // Independent axis spacing: horizontal pinch must not change displayed hours.
+    var horizontalScale by rememberSaveable { mutableFloatStateOf(1f) }
 
     val camera = TimelineCoordinate.Camera(anchorMillis, TimelineCoordinate.clampHours(hours))
 
@@ -749,6 +752,8 @@ fun PowerCalApp(store: PowerStore) {
                     anchorMillis = updated.anchorMillis
                     hours = updated.hours
                 },
+                horizontalScale = horizontalScale,
+                onHorizontalScaleChange = { horizontalScale = it.coerceIn(0.7f, 1.85f) },
                 onOpenEvent = { record ->
                     if (aiLocked) monthInspection = record else selectedFormalEvent = record
                 },
@@ -801,11 +806,7 @@ fun PowerCalApp(store: PowerStore) {
                     hours = today.hours
                 },
                 onOpenDeck = { scope.launch { openDeckAt(null) } },
-                onOpenTools = {
-                    page = Page.TOOLS.name
-                    scope.launch { reload() }
-                },
-                onOpenMonth = { page = Page.MONTH.name },
+                onOpenTools = { page = Page.TOOLS.name },
                 blockedReminders = diagnostics.reminders.count { it.intent?.desired == PowerStore.DesiredSchedule.BLOCKED }
             )
         }
