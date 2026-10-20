@@ -125,7 +125,7 @@ class GlassComposeTest {
                 }
             }
         } }
-        ui.onNodeWithText("月历").assertIsDisplayed()
+        ui.onNodeWithText("日历").assertIsDisplayed()
         ui.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("在时间轴查看这一天"))
         ui.onNodeWithText("在时间轴查看这一天").assertIsDisplayed()
     }

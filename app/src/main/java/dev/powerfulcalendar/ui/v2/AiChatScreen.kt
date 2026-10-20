@@ -142,6 +142,13 @@ fun AiChatScreen(
                                     style = MaterialTheme.typography.bodyMedium,
                                     maxLines = 75,
                                     overflow = TextOverflow.Ellipsis)
+                                if (!mine && msg.proposalSource != null) {
+                                    TextButton(onClick = {
+                                        onPropose(msg.proposalSource)
+                                    }, enabled = !busy) {
+                                        Text("从此消息创建事件草稿")
+                                    }
+                                }
                             }
                         }
                         DropdownMenu(

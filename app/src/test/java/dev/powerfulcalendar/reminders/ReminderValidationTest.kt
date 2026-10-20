@@ -48,6 +48,7 @@ class ReminderValidationTest {
                 kind = TemporalKind.ALARM,
                 title = "起床",
                 startText = DraftForm.formatInstant(start, zone),
+                reminderMinutes = 0,
                 zoneId = zone.id
             )
         )
@@ -200,6 +201,7 @@ class ReminderValidationTest {
                 kind = TemporalKind.ALARM,
                 title = "每日",
                 startText = DraftForm.formatInstant(start, zone),
+                reminderMinutes = 0,
                 zoneId = zone.id,
                 recurrence = dev.powerfulcalendar.core.Recurrence(
                     freq = dev.powerfulcalendar.core.RecurrenceFreq.DAILY

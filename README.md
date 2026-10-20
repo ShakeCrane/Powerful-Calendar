@@ -1,82 +1,59 @@
-# Powerful Calendar — PowerCal 0.2
+# Powerful Calendar (PowerCal)
 
-**Kotlin + Jetpack Compose** 的本地优先个人时间系统：中央纵向时间轴、三种时间对象、
-统一「待处理」草稿卡组（Draft Deck）、单 AI 授权批处理与可验证的提醒调度。
+PowerCal 是一个 **Android-first、本地优先、AI 驱动的个人时间信息系统**。它把活动、闹钟时间点和截止日期管理为同一套可验证的时间对象，通过对话、文件、截图或手动操作完成创建、修改、批处理和提醒。用户数据以设备上的 PowerCal 数据库为权威来源。
 
-> 产品依据：[G1–G11 产品基线](docs/PRODUCT_BASELINE_G1-G11.md) ·
-> [Temporal Protocol v0.3](docs/PROTOCOL_V0_RESEARCH.md) ·
-> [P0 现状审计](docs/AUDIT_P0.md) ·
-> [v0.2 实施与验证记录](docs/IMPLEMENTATION_V0_2.md) ·
-> [Glass 设计体系](docs/POWERCAL_GLASS_DESIGN.md) ·
-> [UI 交接契约](docs/GEMINI_UI_HANDOFF.md) ·
-> [UI 交付报告](docs/GLASS_UI_DELIVERY.md)
+> Android 应用名称：**PowerCal**。应用内完整名称：**Powerful Calendar**。
 
-## 已实现（v0.2 + Glass UI）
+## 产品结构
 
-Glass UI 新增月历与日程列表、可读的日期截止带、活动时长、固定批量授权清单、完整冲突快照、输入优先手势、实时减少动画设置与受阻提醒入口。UI 改造未修改 core / ai / reminders 或原有测试。
+**时间轴**以中央纵向时间尺为中心，左侧展示点状闹钟，右侧展示活动区间和截止标记。上下滚动跨越日期；纵向双指缩放调整时间跨度，横向分量调整右侧事件区域。事件重叠使用稳定分轨和折叠计数。**日历**支持按年、按月跳转与横向切换月份。
 
-- **统一时间协议**：`AlarmEvent`（仅开始，左轴）/ `ActivityEvent`（区间，右轴）/
-  `DeadlineEvent`（截止点或日期，右轴）。日期级截止保持日期精度，不会变成 23:59 或 00:00。
-- **永久事件序号**：`eventSeq` 在首张草稿创建时分配，删除/丢弃后永不复用；
-  `draftId` 与 `queueOrder` 独立，同一事件可有多张卡片。
-- **整份快照提交**：最后一次合法提交覆盖整个对象；过期卡片必须查看完整差异并显式确认，
-  绝不按字段自动合并。提交具备幂等键，重复点击不会重复发布。
-- **待处理卡组**：中央玻璃弹窗、扇形背卡、卡内单步/卡外多步滑动、纵向滚动、
-  防抖暂存与切页前 flush、勾号发布、叉号丢弃（可撤销）、完成动画与真实统计。
-- **中央时间轴**：连续滚动（无日期边界）、真实 NOW 线、4–48 小时手势锚定缩放、
-  左右稳定分轨与溢出折叠、长按拖动按缩放吸附并进入同一草稿编辑器、今日跳到当前时刻。
-- **单 AI**：可配置 OpenAI 兼容端点/模型/密钥；自然语言 → 严格校验的结构化草稿；
-  用户显式授权后由同一 AI 独占卡组批量发布或丢弃，带 sessionId、lockEpoch、范围与幂等提交，
-  取消/崩溃/重启后安全解锁，迟到响应被 fencing 拒绝。
-- **数据接入**：ICS 与系统日历一次性迁移（幂等、可重启）、旧版 v0.1 只读迁移、
-  原生完整备份（不含密钥、AI 授权与 Android 调度句柄；仅恢复到空库）。
-- **提醒可靠性**：提交后写入持久化期望调度；广播触发前校验事件序号、修订、
-  发生实例与触发时刻；精确闹钟不可用显示 BLOCKED 而非静默降级；重启/时区/权限变化重建调度。
+**AI 助手**既是普通多轮聊天，也负责理解来自自然语言、ICS、图片 OCR、DOCX、XLSX 等来源的事件信息。结构化操作先生成待处理草稿，重要字段缺失时必须澄清。支持按具体草稿与版本执行经授权的批量发布/丢弃。AI 与日历内核职责分离：模型负责理解和提案，确定性执行层负责事件身份、时区、重复规则、验证、持久化与授权。
 
-## 编译与测试
+**待处理**是唯一的事件草稿编辑与审核中心。创建、替换、删除、类型转换均采用可验证的草稿协议；正式提交使用永久 `eventSeq`、递增修订和幂等提交标识。一个无限或有限的重复系列只有一个永久事件序号，视窗中派生发生实例并用 `occurrenceKey` 区分单次例外。
 
-1. 安装 Android SDK 36（platforms;android-36、build-tools;36.0.0、platform-tools）与 JDK 17+。
-2. 在未入库的 `local.properties` 写入 `sdk.dir=...`。
-3. 构建与单元测试：
+**提醒**与事件类型独立：可选择普通消息或需要系统精确闹钟能力的闹钟方式。活动默认在开始时发消息；只有日期的截止默认在当日 00:00 发消息，同时继续保留“截止只有日期”的原始精度。可自定义提前分钟数或按发生日期当地零点提醒。实际触发仍受 Android 权限、节电策略和设备环境影响，App 会记录调度与执行状态，不伪称静默失败为成功。
 
-```bat
-.\gradlew.bat :app:assembleDebug :app:testDebugUnitTest --no-daemon --console=plain
+**皮肤**采用可导入的纯数据 `.pcskin` ZIP：调色板、几何尺度、文字比例和 PNG/WebP 素材可替换；原生玻璃皮肤始终可恢复。皮肤不获得脚本、网络、存储或日历操作权限。
+
+## 构建
+
+需要 **JDK 17+、Android SDK 及 Android SDK Build Tools**。SDK 路径写入不纳入版本控制的 `local.properties`。Windows：
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --no-daemon --console=plain
 ```
 
-当前结果：`BUILD SUCCESSFUL`，**130 项测试，0 失败**（原有 97 项保持不变，新增 33 项 UI 投影、Compose 模拟与软件渲染测试）。
-`lintDebug`：0 错误、13 项警告；错误会阻断构建。
-软件渲染截图：[UI 证据](docs/ui-evidence/README.md)；真机验收：[设备清单](docs/GLASS_DEVICE_QA.md)。
-APK：`app/build/outputs/apk/debug/app-debug.apk`。
+Debug APK：`app/build/outputs/apk/debug/app-debug.apk`。
 
-## 权限与限制
+发布版本号由 `gradle/version.properties` 管理，`applicationId` 固定为 `dev.powerfulcalendar`。正式 Release 需要独立签名证书及验收；**Debug APK 不等于稳定发布版**。
 
-- **通知**（Android 13+）由用户在工具页授权；未授权时触发会记录为 `BLOCKED`，不会假装已提醒。
-- **精确闹钟**（Android 12+）需要用户授权。缺失时精确闹钟显示为受阻并提供设置入口，
-  PowerCal 不会把近似闹钟冒充精确闹钟。厂商后台限制无法被本应用绕过，不承诺所有设备 100% 准点。
-- 系统日历与 ICS 均为**手动一次性迁移**，不是双向实时同步；删除本地记录不会删除外部记录。
-- ICS 导出仅包含活动事件（该格式无法表达"只有开始"或日期级截止）；不展开 RRULE。
-- Android 没有读取所有厂商时钟 App 现有闹钟的通用接口，迁移的旧闹钟默认停用等待人工交接。
-- AI 密钥仅保存在应用私有存储，不进入备份与日志；上下文共享默认关闭，开启后最多 60 条。
+## 开放接口与开发规范
 
-## 结构
+- [产品语义与时间模型](docs/PRODUCT_BASELINE_G1-G11.md) — 描述产品来源；若与后续实现契约冲突，以明确记录的新决策和实际版本化接口为准。
+- [AI Agent、Skills、结构化事件与授权契约 v2](docs/AI_AGENT_PROTOCOL_V2.md)
+- [皮肤与 UI 扩展契约 v2](docs/UI_SKIN_EXTENSION_CONTRACT_V2.md)
+- [可直接导入的 .pcskin 格式 v1](docs/SKIN_PACK_V1.md)
+- [本地存储与稳定数据契约](docs/STABLE_DATA_CONTRACT_V1.md)
+- [APK 版本与签名](docs/RELEASE_VERSIONING.md)
+
+## 项目结构
 
 ```text
 app/src/main/java/dev/powerfulcalendar/
-├── MainActivity.kt            # 单 Activity 宿主、系统深浅色、动效偏好
-├── core/                      # 协议：时间模型、SQLite 存储、卡组交互内核
-├── ai/                        # 单 AI 客户端、严格解析、独占批处理
-├── data/                      # 旧版只读迁移、v0.1 历史类型
-├── interop/                   # ICS、系统日历、离线中文解析
-├── reminders/                 # 期望调度、触发校验、通知、重建
-└── ui/v2/                     # PowerCal Glass、时间轴、待处理、工具页
+├── core/          事件、重复实例、草稿、SQLite、备份和事务
+├── ai/            LLM 适配器、响应验证、批次范围与执行
+├── interop/       ICS、系统日历、文档与图片的输入适配
+├── reminders/     期望调度、通知与广播交付验证
+├── ui/v2/         Compose 时间轴、日历、AI 助手、待处理与皮肤
+└── MainActivity.kt
 ```
 
-`ui/CalendarScreens.kt`、`ui/EventEditor.kt` 与 `data/EventStore.kt` 属于 v0.1 历史原型，
-保留用于对照，不再进入导航。
+## 已知边界
 
-## 未验证（需真机）
-
-实际响铃与厂商限制、手势手感（缩放锚定/长按拖动/文本选择优先级）、设备上的深浅色运行时切换、
-TalkBack、原生键盘/横屏布局、100 卡在 60/120Hz 下的帧时长、进程强杀恢复。
-部分布局、焦点、颜色对比度和合成手势已有 Compose/Robolectric 证据；这些不等于真机验收。
-详见 [实施记录 §5](docs/IMPLEMENTATION_V0_2.md)。
+- PowerCal 不会通过非公开 Android API 读取任意厂商的闹钟记录；系统日历导入是一次性迁移，不是双向实时同步。
+- ICS 支持一组经测试的重复规则；复杂的 `RECURRENCE-ID`、`RDATE`、特定 `BYSETPOS` 等仍需进一步适配，不允许静默丢弃约束。
+- AI 模型的普通聊天 API **不代表已经有联网搜索能力**；带来源的实时搜索需要额外启用和验证 `web.search` 工具适配器。当前实现尚未开放这一工具。
+- 现阶段普通聊天中的结构化意图按钮是候选提案入口，并非完整的自动 Function Calling / 自主执行闭环。
+- 皮肤包 v1 支持声明式参数和静态图片。任意 Compose 组件替换要经编译时 UI 扩展接口，不能通过从 ZIP 运行不可信脚本实现。
+- 程序与设备都可能失败：高风险批量变更、网络超时、断电/重启、签名升级和厂商后台限制需要专门验证。

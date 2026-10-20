@@ -384,8 +384,8 @@ fun PowerCalApp(store: PowerStore) {
         }
     }
 
-    fun appendChat(role: String, text: String) {
-        chatHistory = chatHistory + AiChatMessage(role, text.take(6000))
+    fun appendChat(role: String, text: String, proposalSource: String? = null) {
+        chatHistory = (chatHistory + AiChatMessage(role, text.take(6000), proposalSource)).takeLast(200)
     }
 
     fun beginBatchConversation(mode: AiBatchRunner.Mode) {
@@ -404,7 +404,7 @@ fun PowerCalApp(store: PowerStore) {
         val text = input.trim()
         if (text.isEmpty() || chatBusy || aiBusy) return
         appendChat("user", text)
-        val currentHistory = chatHistory.takeLast(12)
+        val currentHistory = chatHistory.takeLast(80)
         val mode = pendingBatchMode
         chatBusy = true
         scope.launch {
@@ -412,7 +412,8 @@ fun PowerCalApp(store: PowerStore) {
                 if (mode == null) {
                     val response = AiClient(AiSettingsStore.load(appContext), zone).chat(currentHistory)
                     appendChat("assistant", if (response.succeeded) response.reply
-                        else "AI 请求未完成：" + response.error.orEmpty())
+                        else "AI 请求未完成：" + response.error.orEmpty(),
+                        proposalSource = if (response.succeeded) response.proposalSource else null)
                 } else {
                     reload()
                     val snapshot = pendingCards.filter { it.isActionable }
@@ -481,7 +482,8 @@ fun PowerCalApp(store: PowerStore) {
                         prior)
                 appendChat("assistant", if (reply.succeeded) reply.reply
                     else "分析未完成：" + reply.error.orEmpty() +
-                        "；源文件没有被导入，日历数据未修改。")
+                        "；源文件没有被导入，日历数据未修改。",
+                    proposalSource = if (reply.succeeded) reply.proposalSource else null)
             } catch (error: kotlinx.coroutines.CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -923,7 +925,7 @@ fun PowerCalApp(store: PowerStore) {
                     hours = updated.hours
                 },
                 horizontalScale = horizontalScale,
-                onHorizontalScaleChange = { horizontalScale = it.coerceIn(0.7f, 1.85f) },
+                onHorizontalScaleChange = { horizontalScale = it.coerceIn(0.65f, 3f) },
                 onOpenEvent = { record ->
                     if (aiLocked) monthInspection = record else selectedFormalEvent = record
                 },
@@ -996,7 +998,7 @@ fun PowerCalApp(store: PowerStore) {
                 selected = page == Page.MONTH.name,
                 onClick = { page = Page.MONTH.name },
                 icon = { Icon(Icons.Default.CalendarMonth, contentDescription = null) },
-                label = { Text("月历") }
+                label = { Text("日历") }
             )
             NavigationBarItem(
                 selected = page == Page.AI.name,

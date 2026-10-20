@@ -4,6 +4,10 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -33,6 +37,14 @@ internal fun MonthScreen(
     var monthText by rememberSaveable { mutableStateOf(YearMonth.from(initialDate).toString()) }
     val selected = LocalDate.parse(selectedText)
     val month = YearMonth.parse(monthText)
+    var yearPickerOpen by remember { mutableStateOf(false) }
+    var monthPickerOpen by remember { mutableStateOf(false) }
+    var yearInput by remember(monthText) { mutableStateOf(month.year.toString()) }
+    fun showMonth(target: YearMonth) {
+        require(target.year in 1900..2100)
+        monthText = target.toString()
+        selectedText = target.atDay(1).toString()
+    }
     val from = month.atDay(1).atStartOfDay(zone).toInstant().toEpochMilli()
     val to = month.plusMonths(1).atDay(1).atStartOfDay(zone).toInstant().toEpochMilli()
     val entries = remember(records, from, to, zone) { displayOccurrences(records, from, to) }
@@ -47,11 +59,34 @@ internal fun MonthScreen(
     }
     val daily = remember(entries, month, zone) { (1..month.lengthOfMonth()).associate { day -> month.atDay(day) to entriesOn(month.atDay(day)) } }
     val today = LocalDate.now(zone)
-    LazyColumn(Modifier.fillMaxSize().skinBackdrop(SkinSlot.MONTH_BACKGROUND), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    var swipeDistance by remember { mutableFloatStateOf(0f) }
+    LazyColumn(
+        Modifier.fillMaxSize().skinBackdrop(SkinSlot.MONTH_BACKGROUND)
+            .pointerInput(monthText) {
+                detectHorizontalDragGestures(
+                    onDragStart = { swipeDistance = 0f },
+                    onHorizontalDrag = { change, drag ->
+                        swipeDistance += drag
+                        change.consume()
+                    },
+                    onDragEnd = {
+                        if (kotlin.math.abs(swipeDistance) > 72.dp.toPx()) {
+                            val delta = if (swipeDistance < 0f) 1L else -1L
+                            val next = month.plusMonths(delta)
+                            if (next.year in 1900..2100) showMonth(next)
+                        }
+                        swipeDistance = 0f
+                    },
+                    onDragCancel = { swipeDistance = 0f }
+                )
+            },
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回时间轴，保留原视角") }
-                Text("月历", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f).semantics { heading() })
+                Text("日历", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f).semantics { heading() })
                 TextButton(onClick = { selectedText = today.toString(); monthText = YearMonth.from(today).toString() }) { Text("今天") }
             }
         }
@@ -59,11 +94,19 @@ internal fun MonthScreen(
             GlassPanel(contentPadding = PaddingValues(0.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { monthText = month.minusMonths(1).toString(); selectedText = month.minusMonths(1).atDay(1).toString() }) { Icon(Icons.Default.ChevronLeft, "上个月") }
-                    Text(month.format(DateTimeFormatter.ofPattern("yyyy 年 M 月")), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                    Row(Modifier.weight(1f), horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(onClick = { yearPickerOpen = true }) {
+                            Text("${month.year} 年", style = MaterialTheme.typography.titleMedium)
+                        }
+                        TextButton(onClick = { monthPickerOpen = true }) {
+                            Text("${month.monthValue} 月", style = MaterialTheme.typography.titleMedium)
+                        }
+                    }
                     IconButton(onClick = { monthText = month.plusMonths(1).toString(); selectedText = month.plusMonths(1).atDay(1).toString() }) { Icon(Icons.Default.ChevronRight, "下个月") }
                 }
                 BoxWithConstraints(Modifier.fillMaxWidth()) {
-                Column(Modifier.align(Alignment.Center).horizontalScroll(rememberScrollState()).width(336.dp)) {
+                Column(Modifier.align(Alignment.Center).fillMaxWidth().widthIn(max = 336.dp)) {
                 Row(Modifier.fillMaxWidth()) { listOf("一", "二", "三", "四", "五", "六", "日").forEach { Text(it, Modifier.weight(1f).padding(vertical = 10.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center, style = MaterialTheme.typography.labelMedium) } }
                 val offset = month.atDay(1).dayOfWeek.value - 1
                 val cells = ((offset + month.lengthOfMonth() + 6) / 7) * 7
@@ -94,7 +137,7 @@ internal fun MonthScreen(
                     }
                 }
                 }
-                if (maxWidth < 336.dp) Text("左右滑动查看完整星期", Modifier.align(Alignment.BottomCenter).padding(4.dp), style = MaterialTheme.typography.labelSmall)
+                // The day grid fits the viewport; swiping changes MONTH, never scrolls a cropped grid.
                 }
             }
         }
@@ -120,5 +163,53 @@ internal fun MonthScreen(
                 Text("在时间轴查看这一天")
             }
         }
+    }
+    if (yearPickerOpen) {
+        val year = yearInput.toIntOrNull()
+        AlertDialog(
+            onDismissRequest = { yearPickerOpen = false },
+            title = { Text("选择年份") },
+            text = {
+                OutlinedTextField(
+                    value = yearInput,
+                    onValueChange = { if (it.length <= 4 && it.all(Char::isDigit)) yearInput = it },
+                    label = { Text("1900～2100") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (year != null && year in 1900..2100) showMonth(month.withYear(year))
+                        yearPickerOpen = false
+                    },
+                    enabled = year != null && year in 1900..2100
+                ) { Text("跳转") }
+            },
+            dismissButton = { TextButton(onClick = { yearPickerOpen = false }) { Text("取消") } }
+        )
+    }
+    if (monthPickerOpen) {
+        AlertDialog(
+            onDismissRequest = { monthPickerOpen = false },
+            title = { Text("选择月份 · ${month.year} 年") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    repeat(4) { row ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                            repeat(3) { column ->
+                                val value = row * 3 + column + 1
+                                TextButton(onClick = {
+                                    showMonth(YearMonth.of(month.year, value))
+                                    monthPickerOpen = false
+                                }) { Text("${value} 月") }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { monthPickerOpen = false }) { Text("关闭") } }
+        )
     }
 }

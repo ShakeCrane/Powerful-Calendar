@@ -46,7 +46,7 @@ object SystemCalendar {
                     endMillis = end,
                     notes = cursor.getString(4) ?: "",
                     location = cursor.getString(5) ?: "",
-                    reminderMinutes = -1,
+                    reminderMinutes = 0,
                     allDay = cursor.getInt(6) == 1,
                     source = "android-calendar",
                     externalId = eventId.toString() + ":" + begin.toString()

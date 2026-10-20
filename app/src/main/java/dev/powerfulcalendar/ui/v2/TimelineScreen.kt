@@ -179,9 +179,28 @@ fun TimelineScreen(
             val width = with(density) { viewportWidth.toPx() }
             val heightNow by rememberUpdatedState(height)
             val unlocked by rememberUpdatedState(!aiLocked)
-            val maxLanes = when { maxWidth >= 1000.dp -> 3; maxWidth >= 580.dp -> 2; else -> 1 }
+            // Zooming the RIGHT EVENT HALF reveals additional overlapping lanes.
+            // The left alarm side remains a fixed, point-only stack.
+            val maxLanes = when {
+                maxWidth >= 1000.dp -> 3
+                horizontalScale >= 2.1f -> 3
+                horizontalScale >= 1.35f || maxWidth >= 580.dp -> 2
+                else -> 1
+            }
             val minSpan = (TimelineCoordinate.spanMillis(camera.hours) * with(density) { 66.dp.toPx() } / height).toLong().coerceAtLeast(12 * 60_000L)
-            val layout = remember(projection, maxLanes, minSpan) { TimelineLayout.layout(projection.map { it.record }.filterNot { it.isDateOnlyDeadline() }, maxLanes, minSpan) }
+            val layout = remember(projection, maxLanes, minSpan) {
+                val projected = projection.map { it.record }.filterNot { it.isDateOnlyDeadline() }
+                val fixedLeft = TimelineLayout.layout(projected, 1, minSpan)
+                val expandableRight = TimelineLayout.layout(projected, maxLanes, minSpan)
+                TimelineLayout.LayoutResult(
+                    items = fixedLeft.items.filter { it.side == AxisSide.LEFT } +
+                        expandableRight.items.filter { it.side == AxisSide.RIGHT },
+                    overflow = mapOf(
+                        AxisSide.LEFT to fixedLeft.overflow[AxisSide.LEFT].orEmpty(),
+                        AxisSide.RIGHT to expandableRight.overflow[AxisSide.RIGHT].orEmpty()
+                    )
+                )
+            }
             val groups = remember(layout) { overflowGroups(layout.overflow, minSpan) }
             var dragKey by remember { mutableStateOf<String?>(null) }
             var dragTarget by remember { mutableStateOf<Long?>(null) }
@@ -190,7 +209,7 @@ fun TimelineScreen(
 
             Box(Modifier.fillMaxSize().testTag("timeline-viewport").pointerInput(Unit) {
                 timelineGestures({ latestCamera }, { heightNow }, { inertia?.cancel() }, { cameraChange(it) },
-                    { factor -> horizontalScaleChange((latestHorizontalScale * factor).coerceIn(0.7f, 1.85f)) },
+                    { factor -> horizontalScaleChange((latestHorizontalScale * factor).coerceIn(0.65f, 3f)) },
                     { velocity, releasedCamera ->
                     inertia?.cancel()
                     inertia = scope.launch {
@@ -215,29 +234,42 @@ fun TimelineScreen(
                 )
             }) {
                 TimelineCanvas(camera.anchorMillis, camera.hours, height, width, nowMillis, zone)
-                // Horizontal pinch controls event-column spacing; vertical pinch controls time.
-                val gutter = 36.dp * horizontalScale.coerceIn(0.7f, 1.85f)
-                val sideWidth = viewportWidth / 2 - gutter - 12.dp
-                val laneWidth = (sideWidth - 6.dp * (maxLanes - 1)) / maxLanes
+                // RULER LOCK: X=0 of the right event content is fixed relative to the
+                // center axis. Horizontal scale only stretches its right-hand extent.
+                val gutter = 20.dp
+                val leftLaneWidth = (viewportWidth / 2 - gutter - 12.dp).coerceAtLeast(48.dp)
+                val rightSide = (viewportWidth / 2 - gutter - 12.dp).coerceAtLeast(48.dp)
+                val rightLaneWidth = ((rightSide * horizontalScale.coerceIn(0.65f, 3f)) -
+                    6.dp * (maxLanes - 1)) / maxLanes
                 layout.items.forEach { item ->
                     val y = TimelineCoordinate.yOf(item.anchorMillis, camera.anchorMillis, height, camera.hours)
                     val endY = TimelineCoordinate.yOf(item.record.spanEndMillis() ?: item.anchorMillis, camera.anchorMillis, height, camera.hours)
                     if (endY < -80 || y > height + 80) return@forEach
                     val key = slotKeys[item.record] ?: "${item.record.eventSeq}:${item.anchorMillis}"
-                    val startY = y.coerceAtLeast(0f)
-                    val cardHeight = with(density) { (endY - startY).coerceAtLeast(60.dp.toPx()).coerceAtMost(height).toDp() }
-                    val x = if (item.side == AxisSide.LEFT) viewportWidth / 2 - gutter - laneWidth * (item.lane + 1) - 6.dp * item.lane
-                        else viewportWidth / 2 + gutter + (laneWidth + 6.dp) * item.lane
+                    // Activities use real start/end projected onto the same ruler.
+                    // Never inflate a short interval to fit typography or the touch target.
+                    val activitySpan = if (item.record.kind == TemporalKind.ACTIVITY) {
+                        ActivityGeometry.visible(item.anchorMillis,
+                            item.record.endMillis ?: item.anchorMillis,
+                            camera.anchorMillis, height, camera.hours)
+                    } else null
+                    if (item.record.kind == TemporalKind.ACTIVITY && activitySpan == null) return@forEach
+                    val cardHeight = with(density) {
+                        (activitySpan?.heightPx ?: 0f).toDp()
+                    }
+                    val laneWidth = if (item.side == AxisSide.LEFT) leftLaneWidth else rightLaneWidth
+                    val x = if (item.side == AxisSide.LEFT) viewportWidth / 2 - gutter - leftLaneWidth
+                        else viewportWidth / 2 + gutter + (rightLaneWidth + 6.dp) * item.lane
                     val point = item.record.kind != TemporalKind.ACTIVITY
                     val pointHeight = 56.dp
                     val topPx = if (item.record.kind == TemporalKind.DEADLINE) {
                         y - with(density) { pointHeight.toPx() }
-                    } else if (item.record.kind == TemporalKind.ALARM) y else startY
+                    } else if (item.record.kind == TemporalKind.ALARM) y else activitySpan!!.topPx
                     key(key) {
                         Surface(
                             onClick = { if (dragKey == null) open(item.record) },
                             modifier = Modifier.offset(x, with(density) { topPx.toDp() }).width(laneWidth)
-                                .heightIn(min = 48.dp).height(if (point) pointHeight else cardHeight)
+                                .height(if (point) pointHeight else cardHeight)
                                 .pointerInput(key, item.record.revision, item.anchorMillis, aiLocked) {
                                     if (!unlocked) return@pointerInput
                                     detectDragGesturesAfterLongPress(
@@ -264,15 +296,34 @@ fun TimelineScreen(
                             if (point) {
                                 AxisPointMarker(item.record, item.anchorMillis, zone)
                             } else {
-                            Row(Modifier.fillMaxSize().padding(8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Box(Modifier.width(3.dp).fillMaxHeight().background(kindColor(item.record.kind), RoundedCornerShape(2.dp)))
-                                if (skinPainter(SkinSlot.ACTIVITY_BADGE) != null && cardHeight >= 75.dp) {
-                                    SkinImage(SkinSlot.ACTIVITY_BADGE, Modifier.size(20.dp))
-                                }
-                                Column(Modifier.weight(1f)) {
-                                    Text(item.record.title, style = MaterialTheme.typography.labelLarge, maxLines = if (cardHeight > 110.dp) 3 else 1, overflow = TextOverflow.Ellipsis)
-                                    Text(TemporalText.summarize(item.record), style = MaterialTheme.typography.labelSmall, color = kindColor(item.record.kind), maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                    if (cardHeight > 100.dp) Text(item.record.displaySeq() + if (item.record.recurrence.isRepeating) " · 重复" else "", style = MaterialTheme.typography.labelSmall)
+                            // The colored interval is geometrically exact; text appears
+                            // only when there is room and must never resize its boundaries.
+                            Box(Modifier.fillMaxSize().clip(RoundedCornerShape(0.dp))) {
+                                Box(Modifier.align(Alignment.CenterStart).width(3.dp).fillMaxHeight()
+                                    .background(kindColor(item.record.kind)))
+                                if (cardHeight >= 24.dp) {
+                                    Row(Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 2.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        if (skinPainter(SkinSlot.ACTIVITY_BADGE) != null && cardHeight >= 55.dp) {
+                                            SkinImage(SkinSlot.ACTIVITY_BADGE, Modifier.size(18.dp))
+                                        }
+                                        Column(Modifier.weight(1f)) {
+                                            Text(item.record.title, style = MaterialTheme.typography.labelLarge,
+                                                maxLines = if (cardHeight >= 100.dp) 3 else 1,
+                                                overflow = TextOverflow.Ellipsis)
+                                            if (cardHeight >= 62.dp) {
+                                                Text(TemporalText.summarize(item.record),
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = kindColor(item.record.kind),
+                                                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                            }
+                                            if (cardHeight >= 105.dp) {
+                                                Text(item.record.displaySeq() +
+                                                    if (item.record.recurrence.isRepeating) " · 重复" else "",
+                                                    style = MaterialTheme.typography.labelSmall)
+                                            }
+                                        }
+                                    }
                                 }
                             }
                             }
@@ -284,10 +335,17 @@ fun TimelineScreen(
                     val end = TimelineCoordinate.yOf(group.end, camera.anchorMillis, height, camera.hours)
                     if (end >= 0 && y <= height) Surface(onClick = { hidden = group.records }, shape = GlassShapes.chip,
                         color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        modifier = Modifier.align(if (group.side == AxisSide.LEFT) Alignment.TopStart else Alignment.TopEnd)
-                            .offset(y = with(density) { y.coerceIn(0f, (height - 48.dp.toPx()).coerceAtLeast(0f)).toDp() })
-                            .size(48.dp).zIndex(3f).semantics { contentDescription = "展开 ${group.records.size} 个重叠事件" }) {
-                        Box(contentAlignment = Alignment.Center) { Text("+${group.records.size}", style = MaterialTheme.typography.labelLarge) }
+                        modifier = Modifier.align(Alignment.TopStart)
+                            .offset(
+                                x = if (group.side == AxisSide.LEFT)
+                                    viewportWidth / 2 - gutter - 48.dp
+                                else viewportWidth / 2 + gutter,
+                                y = with(density) { y.coerceIn(0f, (height - 48.dp.toPx()).coerceAtLeast(0f)).toDp() }
+                            )
+                            .size(48.dp).zIndex(3f).semantics { contentDescription = "展开 ${group.records.size} 个被折叠的事件" }) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text("×${group.records.size + 1}", style = MaterialTheme.typography.labelLarge)
+                        }
                     }
                 }
                 TimelineCanvas(camera.anchorMillis, camera.hours, height, width, nowMillis, zone, nowOnly = true)
@@ -416,13 +474,15 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.timeline
                 val a = pressed[0]
                 val b = pressed[1]
                 val threshold = viewConfiguration.touchSlop * 3f
-                val oldX = abs(a.previousPosition.x - b.previousPosition.x)
-                val newX = abs(a.position.x - b.position.x)
-                val oldY = abs(a.previousPosition.y - b.previousPosition.y)
-                val newY = abs(a.position.y - b.position.y)
-                val zoomX = AxisPinch.ratio(oldX, newX, threshold)
-                zoomY = AxisPinch.ratio(oldY, newY, threshold)
-                if (zoomX != 1f) onHorizontalZoom(zoomX)
+                val components = AxisPinch.decompose(
+                    a.previousPosition.x - b.previousPosition.x,
+                    a.previousPosition.y - b.previousPosition.y,
+                    a.position.x - b.position.x,
+                    a.position.y - b.position.y,
+                    viewConfiguration.touchSlop
+                )
+                zoomY = components.y
+                if (components.x != 1f) onHorizontalZoom(components.x)
             }
             cam = transformedCamera(cam, previousY, y, zoomY, height())
             onCamera(cam)

@@ -53,6 +53,7 @@ class PowerStoreTest {
             kind = TemporalKind.ALARM,
             title = title,
             startText = DraftForm.formatInstant(start, zone),
+            reminderMinutes = 0,
             zoneId = zone.id
         )
     }
@@ -421,7 +422,7 @@ class PowerStoreTest {
         assertNotNull(intent)
         assertEquals(card.eventSeq, intent!!.eventSeq)
         assertEquals(PowerStore.DesiredSchedule.PENDING, intent.desired)
-        assertEquals(PowerStore.TriggerRequirement.EXACT, intent.requirement)
+        assertEquals(PowerStore.TriggerRequirement.INEXACT, intent.requirement)
 
         val deleteForm = DraftForm.from(store.get(card.eventSeq)!!)
         val delete = store.newDraft(deleteForm, card.eventSeq, DraftOperation.DELETE)
@@ -542,7 +543,7 @@ class PowerStoreTest {
     }
 
     @Test
-    fun aDateOnlyDeadlineWithAReminderGetsNoFabricatedMidnightAlarm() {
+    fun aDateOnlyDeadlineCanScheduleRelativeReminderWithoutChangingDatePrecision() {
         val card = store.newDraft(
             DraftForm(
                 TemporalKind.DEADLINE, "交材料",
@@ -552,7 +553,12 @@ class PowerStoreTest {
             )
         )
         assertTrue(commit(card) is PowerStore.CommitOutcome.Committed)
-        assertNull(store.intentFor(card.eventSeq))
+        val saved = store.get(card.eventSeq)!!
+        assertEquals("2026-12-24", saved.deadlineDate)
+        assertNull(saved.deadlineMillis)
+        val expected = java.time.LocalDate.of(2026, 12, 24)
+            .atStartOfDay(zone).toInstant().toEpochMilli() - 30 * 60_000L
+        assertEquals(expected, store.intentFor(card.eventSeq)?.instantMillis)
     }
 
     @Test

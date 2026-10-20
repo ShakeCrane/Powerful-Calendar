@@ -80,6 +80,8 @@ data class TemporalRecord(
     val recurrence: Recurrence = Recurrence.NONE,
     /** Reminder offset in minutes before the anchor; negative means no reminder. */
     val reminderMinutes: Int = -1,
+    val reminderMethod: ReminderMethod = ReminderMethod.MESSAGE,
+    val reminderTiming: ReminderTiming = ReminderTiming.OFFSET,
     val enabled: Boolean = true,
     /** Provenance of the record itself; replaced snapshots keep this unless the user changes it. */
     val source: String = "local",
@@ -116,6 +118,7 @@ data class TemporalRecord(
     fun validate(): String? {
         if (title.isBlank()) return "请输入事件标题"
         if (recurrence.interval < 1) return "重复间隔必须至少为 1"
+        if (reminderMinutes !in -1..10080) return "提醒提前量必须在 0～10080 分钟，或选择关闭"
         return when (kind) {
             TemporalKind.ALARM -> when {
                 startMillis == null -> "闹钟需要开始时刻"
@@ -686,6 +689,8 @@ data class DraftForm(
     val notes: String = "",
     val location: String = "",
     val reminderMinutes: Int = -1,
+    val reminderMethod: ReminderMethod = ReminderMethod.MESSAGE,
+    val reminderTiming: ReminderTiming = ReminderTiming.OFFSET,
     val enabled: Boolean = true,
     val source: String = "local",
     val zoneId: String = ZoneId.systemDefault().id,
@@ -767,6 +772,8 @@ data class DraftForm(
             location = location.trim(),
             recurrence = recurrence,
             reminderMinutes = reminderMinutes,
+            reminderMethod = reminderMethod,
+            reminderTiming = reminderTiming,
             enabled = enabled,
             source = source.ifBlank { "local" },
             zoneId = zone.id,
@@ -838,6 +845,8 @@ data class DraftForm(
             notes = record.notes,
             location = record.location,
             reminderMinutes = record.reminderMinutes,
+            reminderMethod = record.reminderMethod,
+            reminderTiming = record.reminderTiming,
             enabled = record.enabled,
             source = record.source,
             zoneId = record.zoneId,
@@ -860,9 +869,10 @@ data class DraftForm(
                 endText = formatInstant(
                     day.atTime(at).plusHours(1).atZone(zone).toInstant().toEpochMilli(), zone
                 ),
-                reminderMinutes = 10, zoneId = zone.id
+                reminderMinutes = 0, zoneId = zone.id
             )
-            TemporalKind.DEADLINE -> DraftForm(kind, endText = day.toString(), zoneId = zone.id)
+            TemporalKind.DEADLINE -> DraftForm(kind, endText = day.toString(),
+                reminderMinutes = 0, reminderTiming = ReminderTiming.DAY_START, zoneId = zone.id)
         }
 
         /** Used by the timeline when the user long-presses "+ here". */
@@ -872,7 +882,7 @@ data class DraftForm(
                 TemporalKind.ALARM -> DraftForm(kind, startText = formatInstant(millis, zone), reminderMinutes = 0, zoneId = zone.id)
                 TemporalKind.ACTIVITY -> DraftForm(
                     kind, startText = formatInstant(millis, zone),
-                    endText = formatInstant(millis + 3_600_000L, zone), reminderMinutes = 10, zoneId = zone.id
+                    endText = formatInstant(millis + 3_600_000L, zone), reminderMinutes = 0, zoneId = zone.id
                 )
                 TemporalKind.DEADLINE -> DraftForm(
                     kind, endText = local.toLocalDate().toString(), zoneId = zone.id

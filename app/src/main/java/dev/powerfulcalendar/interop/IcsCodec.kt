@@ -76,7 +76,7 @@ object IcsCodec {
                                 notes = decode(fields["DESCRIPTION"]?.second ?: ""),
                                 location = decode(fields["LOCATION"]?.second ?: ""),
                                 priority = priority,
-                                reminderMinutes = -1,
+                                reminderMinutes = 0,
                                 allDay = allDay,
                                 source = "ics",
                                 externalId = uid ?: UUID.randomUUID().toString()
@@ -238,9 +238,12 @@ object IcsCodec {
             },
             reminderMinutes = when (kind) {
                 TemporalKind.ALARM -> 0
-                TemporalKind.ACTIVITY -> 10
-                TemporalKind.DEADLINE -> if (dateOnly) -1 else 10
+                TemporalKind.ACTIVITY -> 0
+                TemporalKind.DEADLINE -> 0
             },
+            reminderTiming = if (kind == TemporalKind.DEADLINE && dateOnly)
+                dev.powerfulcalendar.core.ReminderTiming.DAY_START
+                else dev.powerfulcalendar.core.ReminderTiming.OFFSET,
             source = "ics", zoneId = zone.id, recurrence = recurrence
         )
         require(form.isPublishable()) { "重复系列仍有未填写的必填字段" }

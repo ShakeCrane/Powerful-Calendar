@@ -7,6 +7,12 @@ import dev.powerfulcalendar.core.Recurrence
 import dev.powerfulcalendar.core.RecurrenceFreq
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
+import dev.powerfulcalendar.core.ReminderMethod
+import dev.powerfulcalendar.core.ReminderTiming
+import java.time.DayOfWeek
+import java.time.LocalDateTime
+import java.time.LocalTime
+import java.time.format.DateTimeFormatter
 import java.time.LocalDate
 import java.time.ZoneId
 
@@ -110,20 +116,16 @@ object AiResponseParser {
             ?: return AiInterpretation(warnings = listOf("AI 回复缺少 events 数组"), rawReply = raw)
         val knownBySeq = known.associateBy { it.eventSeq }
         val proposals = mutableListOf<AiProposal>()
-        for (index in 0 until array.length()) {
+        if (array.length() > 100) warnings.add("模型一次返回超过 100 项，后续条目未处理")
+        for (index in 0 until minOf(array.length(), 100)) {
             val item = array.optJSONObject(index) ?: continue
             val kindText = item.optString("kind").uppercase()
-            val kind = runCatching { TemporalKind.valueOf(kindText) }.getOrNull()
-            if (kind == null) {
-                warnings.add("第 ${index + 1} 项类型未知，已忽略")
-                continue
-            }
             val operationText = item.optString("operation", "CREATE").uppercase()
             val operation = runCatching { DraftOperation.valueOf(operationText) }.getOrNull()
             if (operation == null) {
                 warnings.add("第 ${index + 1} 项操作未知，已按新建处理")
             }
-            var op = operation ?: DraftOperation.CREATE
+            val op = operation ?: DraftOperation.CREATE
 
             var eventSeq: Long? = if (item.isNull("eventSeq")) null else item.optLong("eventSeq").takeIf { it > 0 }
             // A REPLACE/CONVERT/DELETE that names an event outside the shared context must never
@@ -138,12 +140,20 @@ object AiResponseParser {
                     warnings.add(blocked)
                 }
             }
-            val title = item.optString("title").trim()
+            val kind = runCatching { TemporalKind.valueOf(kindText) }.getOrNull()
+                ?: target?.kind
+            if (kind == null) {
+                warnings.add("第 ${index + 1} 项类型未知且没有可参照的事件，已忽略")
+                continue
+            }
+            val existing = target?.let(DraftForm::from)
+            val title = if (item.has("title")) item.optString("title").trim()
+                else existing?.title.orEmpty()
             if (title.isEmpty() && op != DraftOperation.DELETE) {
                 warnings.add("第 ${index + 1} 项缺少标题，已保留为待补全草稿")
             }
-            val rawStart = item.optString("start").trim().ifBlank { null }
-            val rawEnd = item.optString("end").trim().ifBlank { null }
+            val rawStart = (if (item.has("start")) item.optString("start") else existing?.startText.orEmpty()).trim().ifBlank { null }
+            val rawEnd = (if (item.has("end")) item.optString("end") else existing?.endText.orEmpty()).trim().ifBlank { null }
             val deadlineDate = item.optString("deadlineDate").trim().ifBlank { null }
             val rawDeadlineTime = item.optString("deadlineTime").trim().ifBlank { null }
 
@@ -175,6 +185,7 @@ object AiResponseParser {
                 TemporalKind.DEADLINE -> when {
                     deadlineDate != null && DraftForm.parseDateOnly(deadlineDate) != null -> deadlineDate
                     deadlineTime != null && DraftForm.parseLocalDateTime(deadlineTime) != null -> deadlineTime
+                    end != null && DraftForm.parseDateOnly(end) != null -> end
                     end != null && DraftForm.parseLocalDateTime(end) != null -> end
                     else -> ""
                 }
@@ -187,30 +198,54 @@ object AiResponseParser {
                     }
                 }
             }
-            val reminder = if (item.has("reminderMinutes")) item.optInt("reminderMinutes", -1) else -1
-            val recurrenceJson = item.optJSONObject("recurrence")
-            val recurrence = if (recurrenceJson == null) {
-                Recurrence.NONE
-            } else {
-                val freq = runCatching {
-                    RecurrenceFreq.valueOf(recurrenceJson.optString("freq", "NONE").uppercase())
-                }.getOrDefault(RecurrenceFreq.NONE)
-                Recurrence(freq = freq, interval = recurrenceJson.optInt("interval", 1).coerceAtLeast(1))
+            val reminder = if (item.has("reminderMinutes")) item.optInt("reminderMinutes", 0)
+                else existing?.reminderMinutes ?: 0
+            if (reminder !in -1..10080) {
+                blocked = "提醒提前量超出 0～10080 分钟范围"
+                warnings.add("第 ${index + 1} 项提醒提前量不合法，禁止执行")
             }
+            val method = runCatching {
+                ReminderMethod.valueOf(item.optString("reminderMethod", existing?.reminderMethod?.name ?: "MESSAGE").uppercase())
+            }.getOrNull()
+            val defaultTiming = if (kind == TemporalKind.DEADLINE &&
+                DraftForm.parseDateOnly(endText) != null) ReminderTiming.DAY_START
+                else existing?.reminderTiming ?: ReminderTiming.OFFSET
+            val timing = runCatching {
+                ReminderTiming.valueOf(item.optString("reminderTiming", defaultTiming.name).uppercase())
+            }.getOrNull()
+            if (method == null || timing == null) {
+                blocked = "提醒方式或提醒时机不支持"
+                warnings.add("第 ${index + 1} 项提醒策略不合法")
+            }
+            val recurrenceJson = item.optJSONObject("recurrence")
+            val recurrence = if (recurrenceJson == null) existing?.recurrence ?: Recurrence.NONE
+                else parseRecurrence(recurrenceJson, recordZone)
+            if (recurrence == null) {
+                blocked = "重复规则缺少有效参数或超出支持范围"
+                warnings.add("第 ${index + 1} 项重复规则无法安全转换，需要澄清")
+            }
+            val participants = item.optJSONArray("participants")
+                ?.let { a -> (0 until minOf(a.length(), 20)).map { a.optString(it).trim() }.filter { it.isNotBlank() } }
+                .orEmpty()
+            val notes = if (item.has("notes")) item.optString("notes") else existing?.notes.orEmpty()
+            val enrichedNotes = if (participants.isEmpty()) notes
+                else (notes + "\n参与人：" + participants.joinToString("、")).trim().take(4000)
             val form = DraftForm(
                 kind = kind,
                 title = title,
                 startText = startText,
                 endText = endText,
-                notes = item.optString("notes"),
-                location = item.optString("location"),
-                reminderMinutes = reminder,
-                enabled = item.optBoolean("enabled", true),
+                notes = enrichedNotes,
+                location = if (item.has("location")) item.optString("location") else existing?.location.orEmpty(),
+                reminderMinutes = reminder.coerceIn(-1, 10080),
+                reminderMethod = method ?: ReminderMethod.MESSAGE,
+                reminderTiming = timing ?: defaultTiming,
+                enabled = if (item.has("enabled")) item.optBoolean("enabled") else existing?.enabled ?: true,
                 // Provenance is never rewritten by the AI: a REPLACE keeps the original source, and
                 // only a brand-new event is marked as AI-authored.
                 source = if (op == DraftOperation.CREATE) "ai" else (target?.source ?: "ai"),
                 zoneId = recordZone.id,
-                recurrence = recurrence
+                recurrence = recurrence ?: Recurrence.NONE
             )
             if (op != DraftOperation.DELETE && blocked == null && form.missingFields().isNotEmpty()) {
                 warnings.add(
@@ -229,6 +264,55 @@ object AiResponseParser {
             )
         }
         return AiInterpretation(proposals, warnings, raw)
+    }
+
+    /**
+     * Strict declarative recurrence semantics. Never turn an unknown rule into NONE:
+     * that would silently turn a recurring course into a single occurrence.
+     */
+    private fun parseRecurrence(json: org.json.JSONObject, zone: ZoneId): Recurrence? {
+        return runCatching {
+            val freq = RecurrenceFreq.valueOf(json.getString("freq").uppercase())
+            val interval = json.optInt("interval", 1)
+            require(interval in 1..1000)
+            val count = if (json.has("count") && !json.isNull("count")) {
+                json.getInt("count").also { require(it in 1..1_000_000) }
+            } else null
+            val untilText = if (!json.has("until") || json.isNull("until")) "" else json.optString("until").trim()
+            val until = if (untilText.isEmpty()) null else {
+                if (DraftForm.parseDateOnly(untilText) != null) {
+                    DraftForm.parseDateOnly(untilText)!!.plusDays(1)
+                        .atStartOfDay(zone).toInstant().toEpochMilli() - 1
+                } else DraftForm.parseInstantIn(untilText, zone)
+                    ?: error("until date format invalid")
+            }
+            require(count == null || until == null)
+            val byDays = mutableSetOf<DayOfWeek>()
+            val dayArray = json.optJSONArray("byDay")
+            if (dayArray != null) {
+                require(dayArray.length() <= 7)
+                for (index in 0 until dayArray.length()) {
+                    val label = dayArray.getString(index).uppercase()
+                    byDays += when (label) {
+                        "MO", "MONDAY" -> DayOfWeek.MONDAY
+                        "TU", "TUESDAY" -> DayOfWeek.TUESDAY
+                        "WE", "WEDNESDAY" -> DayOfWeek.WEDNESDAY
+                        "TH", "THURSDAY" -> DayOfWeek.THURSDAY
+                        "FR", "FRIDAY" -> DayOfWeek.FRIDAY
+                        "SA", "SATURDAY" -> DayOfWeek.SATURDAY
+                        "SU", "SUNDAY" -> DayOfWeek.SUNDAY
+                        else -> error("unknown BYDAY: " + label.take(20))
+                    }
+                }
+            }
+            require(freq == RecurrenceFreq.WEEKLY || byDays.isEmpty())
+            val allowed = setOf("freq", "interval", "count", "until", "byDay")
+            val keys = json.keys()
+            while (keys.hasNext()) require(keys.next() in allowed) {
+                "unknown recurrence constraint"
+            }
+            Recurrence(freq, interval, count, until, byDays)
+        }.getOrNull()
     }
 
     /**

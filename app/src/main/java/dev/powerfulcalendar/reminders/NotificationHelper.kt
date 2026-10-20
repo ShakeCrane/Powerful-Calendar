@@ -47,9 +47,11 @@ object NotificationHelper {
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        val builder = Notification.Builder(context, AlarmContract.CHANNEL_ALARMS)
+        val ringing = record.reminderMethod == dev.powerfulcalendar.core.ReminderMethod.ALARM
+        val builder = Notification.Builder(context,
+            if (ringing) AlarmContract.CHANNEL_ALARMS else AlarmContract.CHANNEL_MESSAGES)
             .setSmallIcon(android.R.drawable.ic_popup_reminder)
-            .setContentTitle(if (record.kind.label.isBlank()) "提醒" else "闹钟 · ${record.title}")
+            .setContentTitle((if (ringing) "闹钟 · " else "提醒 · ") + record.title)
             .setContentText(
                 TemporalText.summarize(record) + if (snoozed) " · 稍后提醒" else ""
             )
@@ -66,7 +68,7 @@ object NotificationHelper {
             )
             .setContentIntent(open)
             .setAutoCancel(true)
-            .setCategory(Notification.CATEGORY_ALARM)
+            .setCategory(if (ringing) Notification.CATEGORY_ALARM else Notification.CATEGORY_REMINDER)
             .setVisibility(Notification.VISIBILITY_PRIVATE)
             .addAction(
                 Notification.Action.Builder(

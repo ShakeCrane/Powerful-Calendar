@@ -17,6 +17,7 @@ object AlarmContract {
     const val EXTRA_SNOOZE = "is_snooze"
 
     const val CHANNEL_ALARMS = "powercal-alarms"
+    const val CHANNEL_MESSAGES = "powercal-messages"
     const val CHANNEL_STATUS = "powercal-status"
     const val NOTIFICATION_STATUS_ID = 4100
 

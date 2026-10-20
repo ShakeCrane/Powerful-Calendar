@@ -239,6 +239,8 @@ class PowerStore(
         put("notes", form.notes)
         put("location", form.location)
         put("reminder", form.reminderMinutes)
+        put("reminderMethod", form.reminderMethod.name)
+        put("reminderTiming", form.reminderTiming.name)
         put("enabled", form.enabled)
         put("source", form.source)
         put("zone", form.zoneId)
@@ -254,7 +256,12 @@ class PowerStore(
             endText = json.optString("end"),
             notes = json.optString("notes"),
             location = json.optString("location"),
-            reminderMinutes = json.optInt("reminder", -1),
+            reminderMinutes = if (!json.has("reminderMethod") &&
+                json.optString("kind") == "ALARM" && json.optInt("reminder", -1) < 0) 0
+                else json.optInt("reminder", -1),
+            reminderMethod = runCatching { ReminderMethod.valueOf(json.optString("reminderMethod",
+                if (json.optString("kind") == "ALARM" && !json.has("reminderMethod")) "ALARM" else "MESSAGE")) }.getOrDefault(ReminderMethod.MESSAGE),
+            reminderTiming = runCatching { ReminderTiming.valueOf(json.optString("reminderTiming", "OFFSET")) }.getOrDefault(ReminderTiming.OFFSET),
             enabled = json.optBoolean("enabled", true),
             source = json.optString("source", "local"),
             zoneId = json.optString("zone", ZoneId.systemDefault().id),
@@ -327,6 +334,8 @@ class PowerStore(
         record.deadlineDate?.let { put("deadlineDate", it) }
         put("recurrence", encodeRecurrence(record.recurrence))
         put("reminder", record.reminderMinutes)
+        put("reminderMethod", record.reminderMethod.name)
+        put("reminderTiming", record.reminderTiming.name)
         put("enabled", record.enabled)
         put("source", record.source)
         put("zone", record.zoneId)
@@ -348,7 +357,12 @@ class PowerStore(
             deadlineMillis = if (json.has("deadlineMs")) json.getLong("deadlineMs") else null,
             deadlineDate = if (json.has("deadlineDate")) json.getString("deadlineDate") else null,
             recurrence = decodeRecurrence(json.optJSONObject("recurrence")),
-            reminderMinutes = json.optInt("reminder", -1),
+            reminderMinutes = if (!json.has("reminderMethod") &&
+                json.optString("kind") == "ALARM" && json.optInt("reminder", -1) < 0) 0
+                else json.optInt("reminder", -1),
+            reminderMethod = runCatching { ReminderMethod.valueOf(json.optString("reminderMethod",
+                if (json.optString("kind") == "ALARM" && !json.has("reminderMethod")) "ALARM" else "MESSAGE")) }.getOrDefault(ReminderMethod.MESSAGE),
+            reminderTiming = runCatching { ReminderTiming.valueOf(json.optString("reminderTiming", "OFFSET")) }.getOrDefault(ReminderTiming.OFFSET),
             enabled = json.optBoolean("enabled", true),
             source = json.optString("source", "local"),
             zoneId = json.optString("zone", ZoneId.systemDefault().id),
@@ -1279,17 +1293,11 @@ class PowerStore(
         if (record == null) return
         cancelIntents(db, record.eventSeq, now)
         if (!record.enabled) return
-        // A date-precision deadline has no minute to fire on. Scheduling it at start-of-day would
-        // fabricate a 00:00 trigger, which the protocol explicitly forbids.
-        if (record.isDateOnlyDeadline()) return
+        // The user chose date-only deadline 00:00 notifications. Date precision is preserved:
+        // midnight is a reminder POLICY, never an invented event deadline time.
         val occurrence = RecurrenceEngine.nextOccurrence(record, now) ?: return
-        val offset = when {
-            record.kind == TemporalKind.ALARM && record.reminderMinutes < 0 -> 0L
-            record.reminderMinutes >= 0 -> record.reminderMinutes.toLong() * 60_000L
-            else -> return
-        }
-        val triggerInstant = occurrence.startMillis - offset
-        val requirement = if (record.kind == TemporalKind.ALARM) {
+        val triggerInstant = ReminderPolicy.instant(record, occurrence.startMillis) ?: return
+        val requirement = if (record.reminderMethod == ReminderMethod.ALARM) {
             TriggerRequirement.EXACT
         } else {
             TriggerRequirement.INEXACT

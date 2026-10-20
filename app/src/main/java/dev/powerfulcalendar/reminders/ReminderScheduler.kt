@@ -184,12 +184,10 @@ object ReminderScheduler {
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
     )
 
-    /** Offset from the occurrence start to the moment the trigger should fire. */
-    fun triggerOffsetMillis(record: TemporalRecord): Long? = when {
-        record.kind == TemporalKind.ALARM && record.reminderMinutes < 0 -> 0L
-        record.reminderMinutes >= 0 -> record.reminderMinutes.toLong() * 60_000L
-        else -> null
-    }
+    /** Legacy offset helper retained for existing diagnostic clients. */
+    fun triggerOffsetMillis(record: TemporalRecord): Long? =
+        if (record.reminderMinutes < 0) null
+        else record.reminderMinutes.toLong() * 60_000L
 
     /**
      * Verifies a broadcast against the authoritative store. Returns the occurrence when the
@@ -209,12 +207,14 @@ object ReminderScheduler {
         if (record.revision != expectedRevision) {
             return Validation.Rejected("版本已更新至 v${record.revision}")
         }
-        val offset = triggerOffsetMillis(record)
-            ?: return Validation.Rejected("该事件不再需要提醒")
+        if (record.reminderMinutes < 0) {
+            return Validation.Rejected("该事件不再需要提醒")
+        }
         val occurrence = RecurrenceEngine.occurrenceForKey(record, occurrenceKey)
             ?: return Validation.Rejected("发生实例已失效")
         if (!snooze) {
-            val expected = occurrence.startMillis - offset
+            val expected = dev.powerfulcalendar.core.ReminderPolicy.instant(record, occurrence.startMillis)
+                ?: return Validation.Rejected("提醒策略已关闭")
             if (expected != requestedInstant) {
                 return Validation.Rejected("触发时刻与当前版本不一致")
             }
@@ -268,6 +268,15 @@ object ReminderScheduler {
             ).apply {
                 description = "闹钟、活动与截止的提醒"
                 enableVibration(true)
+            }
+        )
+        manager.createNotificationChannel(
+            NotificationChannel(
+                AlarmContract.CHANNEL_MESSAGES,
+                "日程消息提醒",
+                NotificationManager.IMPORTANCE_DEFAULT
+            ).apply {
+                description = "普通活动、截止和默认闹钟的消息通知"
             }
         )
         manager.createNotificationChannel(

@@ -819,7 +819,27 @@ private fun DeckCardBody(
                         label = { Text("备注") }
                     )
                     run {
-                        Text("提醒时间（相对于事件开始或截止）", style = MaterialTheme.typography.labelLarge)
+                        Text("提醒方式与时间（与事件类型分别设置）", style = MaterialTheme.typography.labelLarge)
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            dev.powerfulcalendar.core.ReminderMethod.entries.forEach { mode ->
+                                FilterChip(
+                                    selected = form.reminderMethod == mode,
+                                    onClick = { onFormChange(form.copy(reminderMethod = mode)) },
+                                    enabled = !aiLocked,
+                                    label = { Text(if (mode == dev.powerfulcalendar.core.ReminderMethod.MESSAGE) "消息" else "闹钟（精确）") }
+                                )
+                            }
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            dev.powerfulcalendar.core.ReminderTiming.entries.forEach { timing ->
+                                FilterChip(
+                                    selected = form.reminderTiming == timing,
+                                    onClick = { onFormChange(form.copy(reminderTiming = timing, reminderMinutes = if (form.reminderMinutes < 0) 0 else form.reminderMinutes)) },
+                                    enabled = !aiLocked,
+                                    label = { Text(if (timing == dev.powerfulcalendar.core.ReminderTiming.DAY_START) "当天 00:00" else "相对开始/截止") }
+                                )
+                            }
+                        }
                         Row(
                             Modifier.horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -828,7 +848,8 @@ private fun DeckCardBody(
                                 FilterChip(
                                     selected = form.reminderMinutes == minutes,
                                     onClick = { onFormChange(form.copy(reminderMinutes = minutes)) },
-                                    enabled = !aiLocked,
+                                    enabled = !aiLocked &&
+                                        (form.reminderTiming == dev.powerfulcalendar.core.ReminderTiming.OFFSET || minutes == -1),
                                     label = {
                                         Text(
                                             when (minutes) {
@@ -843,7 +864,7 @@ private fun DeckCardBody(
                             }
                         }
                         if (form.kind == TemporalKind.DEADLINE && DraftForm.parseDateOnly(form.endText) != null) {
-                            Text("仅日期的截止没有具体触发时刻，因此暂不会调度提醒。请选择准确截止时刻后再设置提前提醒。",
+                            Text("只有日期的截止仍保持日期精度；默认提醒在该日期 00:00，并非把截止时刻改成零点。",
                                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
                         }
                         var customOffset by remember(card.draftId) { mutableStateOf("") }
@@ -857,12 +878,15 @@ private fun DeckCardBody(
                                 singleLine = true,
                                 modifier = Modifier.width(150.dp),
                                 keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
-                                enabled = !aiLocked
+                                enabled = !aiLocked &&
+                                    form.reminderTiming == dev.powerfulcalendar.core.ReminderTiming.OFFSET
                             )
                             val offset = customOffset.toIntOrNull()
                             TextButton(onClick = {
                                 if (offset != null) onFormChange(form.copy(reminderMinutes = offset))
-                            }, enabled = !aiLocked && offset != null && offset in 0..10080) {
+                            }, enabled = !aiLocked &&
+                                form.reminderTiming == dev.powerfulcalendar.core.ReminderTiming.OFFSET &&
+                                offset != null && offset in 0..10080) {
                                 Text("应用")
                             }
                         }
