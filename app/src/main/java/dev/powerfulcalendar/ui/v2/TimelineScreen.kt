@@ -64,11 +64,11 @@ fun TimelineScreen(
     val owners = remember(records) { records.associateBy { it.eventSeq } }
     val day = Instant.ofEpochMilli(camera.anchorMillis).atZone(zone).toLocalDate()
     val projection = remember(records, day, zone) {
-        // Cache an overscan window independently from pixel scroll. Nonrepeating records retain
-        // full-set lane assignment; repeated slots use the domain's read-only materializer.
+        // Cache an overscan window independently from pixel scroll. Repeating slots and one-off
+        // overrides/exceptions share the same read-only occurrence projection.
         val from = day.minusDays(8).atStartOfDay(zone).toInstant().toEpochMilli()
         val to = day.plusDays(9).atStartOfDay(zone).toInstant().toEpochMilli()
-        records.filter { !it.recurrence.isRepeating }.map { DisplayOccurrence(it, it, "${it.eventSeq}:single") } +
+        records.filter { !it.recurrence.isRepeating }.mapNotNull(::singleDisplayOccurrence) +
             displayOccurrences(records.filter { it.recurrence.isRepeating }, from, to)
     }
     val slotKeys = remember(projection) {

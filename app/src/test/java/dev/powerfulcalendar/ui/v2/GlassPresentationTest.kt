@@ -49,6 +49,43 @@ class GlassPresentationTest {
         assertEquals("2026-10-20", projection.single().record.deadlineDate)
     }
 
+    @Test fun oneOffOccurrenceProjectionHonorsTheCoreOverrideAndExceptionKey() {
+        val original = event(7)
+        val key = RecurrenceEngine.keyFor(
+            Instant.ofEpochMilli(original.startMillis!!).atZone(zone).toLocalDateTime()
+        )
+        val movedTo = instant("2026-10-22T11:00")
+        val overridden = original.copy(
+            recurrence = Recurrence(overrides = mapOf(
+                key to OccurrenceOverride(movedTo, movedTo + 3_600_000L, "已移动")
+            ))
+        )
+
+        assertEquals(movedTo, singleDisplayOccurrence(overridden)!!.record.startMillis)
+        assertTrue(displayOccurrences(listOf(overridden), instant("2026-10-20T00:00"), instant("2026-10-21T00:00")).isEmpty())
+        val moved = displayOccurrences(listOf(overridden), instant("2026-10-22T00:00"), instant("2026-10-23T00:00")).single()
+        assertEquals("7:$key", moved.key)
+        assertEquals(movedTo, moved.record.startMillis)
+        assertEquals("已移动", moved.record.title)
+
+        val excepted = overridden.copy(recurrence = overridden.recurrence.copy(exceptions = setOf(key)))
+        assertTrue(displayOccurrences(listOf(excepted), instant("2026-10-22T00:00"), instant("2026-10-23T00:00")).isEmpty())
+    }
+
+    @Test fun dayWindowTreatsActivityIntervalsAsHalfOpenAndPointsAsSingleDay() {
+        val begin = instant("2026-10-20T00:00")
+        val end = instant("2026-10-21T00:00")
+        val endsAtMidnight = event(1, "2026-10-19T22:00", "2026-10-20T00:00")
+        val crossesMidnight = event(2, "2026-10-19T22:00", "2026-10-20T01:00")
+        val pointAtStart = TemporalRecord(3, 1, TemporalKind.ALARM, "起点", startMillis = begin, zoneId = zone.id)
+        val pointAtEnd = TemporalRecord(4, 1, TemporalKind.ALARM, "终点", startMillis = end, zoneId = zone.id)
+
+        assertFalse(overlapsDayWindow(endsAtMidnight, begin, end))
+        assertTrue(overlapsDayWindow(crossesMidnight, begin, end))
+        assertTrue(overlapsDayWindow(pointAtStart, begin, end))
+        assertFalse(overlapsDayWindow(pointAtEnd, begin, end))
+    }
+
     @Test fun repeatingSlotsKeepFormalOwnerAndOriginalSlotIdentity() {
         val owner = event(42, "2026-01-01T09:00", "2026-01-01T10:00").copy(recurrence = Recurrence(RecurrenceFreq.DAILY))
         val slots = displayOccurrences(listOf(owner), instant("2026-10-20T00:00"), instant("2026-10-22T00:00"))

@@ -156,7 +156,7 @@ class AiAuthorizationTest {
     fun upgradingAVersionOneDatabaseAddsTheReviewTableWithoutDataLoss() {
         // Simulate a database created by the previous build: same schema minus the new table.
         val name = store.databaseName
-        store.pendingDrafts() // force onCreate before touching the raw file
+        val preUpgrade = store.newDraft(activityForm("升级前的既有草稿"))
         store.close()
         val raw = android.database.sqlite.SQLiteDatabase.openDatabase(
             context.getDatabasePath(name).path,
@@ -168,7 +168,9 @@ class AiAuthorizationTest {
         raw.close()
 
         store = PowerStore(context, name)
-        val card = store.newDraft(activityForm("升级后仍可用"))
+        val card = store.pendingDrafts().single()
+        assertEquals(preUpgrade.draftId, card.draftId)
+        assertEquals("升级前的既有草稿", card.form.title)
         val session = store.beginAiBatch(reviewedVersions(card), setOf(DraftOperation.CREATE))
         assertTrue(store.isLocked())
         assertEquals(card.draftVersion, session.reviewedVersions[card.draftId])

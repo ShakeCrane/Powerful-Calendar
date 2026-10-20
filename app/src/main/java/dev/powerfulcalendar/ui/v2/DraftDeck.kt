@@ -221,7 +221,7 @@ fun DraftDeckDialog(
             // Controller synchronization protects the snapshot; asynchronous controller APIs are
             // still needed from DSH to eliminate contention on genuinely slow storage.
             try {
-                withContext(Dispatchers.IO) { controller.flush() }
+                withContext(Dispatchers.IO) { controller.flush(lockEdits = false) }
             } catch (error: Exception) {
                 if (error is kotlinx.coroutines.CancellationException) throw error
                 state = controller.state.copy(error = "暂存失败，请重试：${error.message.orEmpty()}")

@@ -8,6 +8,37 @@ import kotlin.math.abs
 /** Read-only occurrence projection. Keep the formal owner separate from its displayed slot. */
 internal data class DisplayOccurrence(val owner: TemporalRecord, val record: TemporalRecord, val key: String)
 
+private fun occurrenceDisplayRecord(owner: TemporalRecord, slot: Occurrence): TemporalRecord {
+    val projected = when (owner.kind) {
+        TemporalKind.ALARM -> owner.copy(startMillis = slot.startMillis)
+        TemporalKind.ACTIVITY -> owner.copy(startMillis = slot.startMillis, endMillis = slot.endMillis)
+        TemporalKind.DEADLINE -> if (owner.isDateOnlyDeadline()) {
+            owner.copy(deadlineDate = Instant.ofEpochMilli(slot.startMillis).atZone(owner.zone).toLocalDate().toString())
+        } else {
+            owner.copy(deadlineMillis = slot.startMillis)
+        }
+    }
+    return projected.copy(title = owner.recurrence.overrides[slot.key]?.title ?: owner.title)
+}
+
+internal fun singleDisplayOccurrence(owner: TemporalRecord): DisplayOccurrence? {
+    val anchor = owner.anchorMillis() ?: return null
+    val originalKey = RecurrenceEngine.keyFor(Instant.ofEpochMilli(anchor).atZone(owner.zone).toLocalDateTime())
+    val slot = RecurrenceEngine.occurrenceForKey(owner, originalKey) ?: return null
+    return DisplayOccurrence(
+        owner,
+        occurrenceDisplayRecord(owner, slot),
+        "${owner.eventSeq}:${slot.key}"
+    )
+}
+
+/** Half-open interval intersection; point events belong to exactly one day. */
+internal fun overlapsDayWindow(record: TemporalRecord, begin: Long, end: Long): Boolean {
+    val start = record.anchorMillis() ?: return false
+    val finish = record.spanEndMillis() ?: start
+    return if (finish > start) start < end && finish > begin else start >= begin && start < end
+}
+
 /** A drag only fills an uncommitted form, preserving the formal owner's wall-clock zone. */
 internal fun movedDraftForm(record: TemporalRecord, target: Long): DraftForm {
     val base = DraftForm.from(record)
@@ -27,22 +58,21 @@ internal fun displayOccurrences(
     records: List<TemporalRecord>, from: Long, to: Long
 ): List<DisplayOccurrence> = records.flatMap { owner ->
     if (!owner.recurrence.isRepeating) {
-        val start = owner.anchorMillis() ?: return@flatMap emptyList()
-        val end = if (owner.isDateOnlyDeadline()) {
-            LocalDate.parse(owner.deadlineDate).plusDays(1).atStartOfDay(owner.zone).toInstant().toEpochMilli()
-        } else owner.spanEndMillis() ?: start
-        if (start < to && (if (end > start) end > from else start >= from)) listOf(DisplayOccurrence(owner, owner, "${owner.eventSeq}:$start"))
-        else emptyList()
+        val occurrence = singleDisplayOccurrence(owner) ?: return@flatMap emptyList()
+        val display = occurrence.record
+        val start = display.anchorMillis() ?: return@flatMap emptyList()
+        val end = if (display.isDateOnlyDeadline()) {
+            LocalDate.parse(display.deadlineDate).plusDays(1).atStartOfDay(owner.zone).toInstant().toEpochMilli()
+        } else display.spanEndMillis() ?: start
+        if (start < to && (if (end > start) end > from else start >= from)) {
+            listOf(occurrence)
+        } else emptyList()
     } else {
         val queryFrom = if (owner.isDateOnlyDeadline()) Instant.ofEpochMilli(from).atZone(owner.zone).toLocalDate().atStartOfDay(owner.zone).toInstant().toEpochMilli() else from
-        RecurrenceEngine.occurrences(owner, queryFrom, to, limit = 2048).map { slot ->
-            val display = when (owner.kind) {
-                TemporalKind.ALARM -> owner.copy(startMillis = slot.startMillis)
-                TemporalKind.ACTIVITY -> owner.copy(startMillis = slot.startMillis, endMillis = slot.endMillis)
-                TemporalKind.DEADLINE -> if (owner.isDateOnlyDeadline()) {
-                    owner.copy(deadlineDate = Instant.ofEpochMilli(slot.startMillis).atZone(owner.zone).toLocalDate().toString())
-                } else owner.copy(deadlineMillis = slot.startMillis)
-            }.copy(title = owner.recurrence.overrides[slot.key]?.title ?: owner.title)
+        RecurrenceEngine.occurrences(
+            owner, queryFrom, to, limit = 2048, prioritizeWindowStarts = true
+        ).map { slot ->
+            val display = occurrenceDisplayRecord(owner, slot)
             DisplayOccurrence(owner, display, "${owner.eventSeq}:${slot.key}")
         }
     }

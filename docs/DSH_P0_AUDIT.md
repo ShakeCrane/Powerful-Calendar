@@ -33,7 +33,7 @@
 
 修复前实测（红）：`DshRedProbeTest.editingIsNotBlockedByInFlightStorage` —
 持久化层在 `stage()` 内阻塞，后台线程发起 `flush()` 后，主线程 `edit()` **等待 302ms** 才返回。
-永久回归测试为 `DeckControllerConcurrencyTest.editingNeverWaitsForStorageIo`（修复后 <200ms 断言）。
+永久回归测试为 `DeckControllerConcurrencyTest.editingNeverWaitsForBackgroundAutosaveIo`（修复后 <200ms 断言）。
 
 ---
 
@@ -92,13 +92,15 @@
 
 ## 4. 最小修复方案
 
-### 4.1 DSH-07：串行化、可取消、不丢输入的命令接口
+### 4.1 DSH-07：串行命令与可恢复暂存
 
 - 所有**带 IO 的命令改为 `suspend`**，由 controller 内部的 `Mutex` 串行化；`edit()` 保持同步，只做内存更新。
 - 状态写入改为“原子变换”（`update { it.copy(...) }`），状态锁只在内存临界区持有，**绝不在锁内做 IO**。
-- 持久化调用放进 `withContext(ioDispatcher + NonCancellable)`：命令在**排队时**可取消；一旦开始原子写入就完成并记录结果（不会出现“已写库但状态未记”）。
+- 持久化命令通过 `withContext(ioDispatcher)` 派发，不把整段操作包进 `NonCancellable`。等待 `Mutex` 和尚未开始执行的 dispatcher 工作可取消；同步存储调用开始后不能被 Kotlin 中断，代码会完成并记录版本/dirty 状态。
+- 暂存抛出异常时保留 dirty 文本并发布可重试错误。300ms 防抖与 `ON_STOP` flush 都是尽力暂存；进程在成功 flush 前被强杀时不能保证恢复内存中的尾部输入。
+- 自动暂存用 `flush(lockEdits = false)`；导航和终态命令锁定编辑，刷新最新状态后有限重试再切卡。
 - 新增 `ioDispatcher` 构造参数，测试可注入确定性调度器。
-- UI 仅把 `command{}`/`leave()` 的 lambda 类型改为 `suspend`（不涉及布局/动画）。
+- UI 命令调用改为挂起调用，并在 `ON_STOP` 通过进程级 scope 排队尽力暂存（不涉及布局/动画）。
 
 **接口变化（破坏性，需记录）：**
 `open/refresh/flush/select/move/jump/commit/discard/undoDiscard/requestRestore/confirmConflictReplacement` → `suspend`。
@@ -129,12 +131,13 @@ fun beginAiBatch(
 ### 4.3 DSH-09：有效时间窗口语义
 
 - `occurrences()` 改为**有效时间**语义：
-  1. 先收集所有 override 中有效时间与窗口相交的实例（不受原始槽位位置限制）；
+  1. 先收集有效时间与窗口相交的 override；并验证原始 key 确实属于重复规则，满足 `count` / `until`，且没有被 exception 排除；
   2. 再扫描原始槽位在窗口内的自然实例，跳过已 override / exception 的键；
   3. 统一按有效开始时间过滤上界、按下界过滤；按有效开始时间排序；
-  4. 身份仍是 `Occurrence.key`（原始槽位键）。
-- `nextOccurrence()` 取“自然实例”与“override 实例”中最早的有效开始时间，override 不受 400 天窗口限制。
-- 增加长活动（跨窗口起点）的回看槽位数。
+  4. `limit` 限制返回条数；扫描预算同时考虑 exception / override key 数量，密集排除项不会让窗口内结果被静默截断；
+  5. 身份仍是 `Occurrence.key`（原始槽位键）。
+- `nextOccurrence()` 直接找 `after` 之后最早的合法自然起点，并与所有满足原始规则的未来 override 比较；不设固定天数 horizon，长活动不会用历史起点耗尽结果限额。
+- 新增 `occurrenceForKey()`，提醒验证按精确原始 key 定位实例，不依赖大窗口的结果条数上限。
 
 **接口变化：** 仅语义收紧，签名不变；UI 与调度层自动受益。
 
@@ -154,3 +157,18 @@ fun beginAiBatch(
 3. 全量：`:app:assembleDebug :app:testDebugUnitTest :app:lintDebug`。
 4. 独立 Reviewer 只读审查；按发现修复。
 5. 提交到 `dsh/p0-interfaces`，不合并 `main`、不发布 APK。
+
+---
+
+## 7. 当前工作树复审补充
+
+以当前 `d7356c4` 加未提交改动为基线复查时，原有 DSH-07/08/09 定向回归通过；Reviewer 复核另指出：
+
+- `ON_STOP` flush 是 `appScope` 中的非阻塞任务，排在 Controller 命令队列后执行；它不能证明进程强杀时数据已落盘。当前失败会把输入留为 dirty 并发布错误，设备强杀仍需真机验证。
+- override 投影未校验原始 key 的 `count` / `until` 边界；长活动会让 `nextOccurrence` 的 512 条结果限额被 `after` 前的起点耗尽；固定 `limit * 4` 扫描预算会被密集 exception 消耗。以上均已补回归并修复。
+- ReminderScheduler 过去通过按活动跨度扩大窗口并筛选 key，仍会被通用结果 limit 截断；现已改为按 key 精确校验。
+- 后续复审发现合法自然间隔超过 400 天仍受 horizon 限制，现已移除固定 horizon，并改为按原始槽位直接搜索；同时修正单次实例投影与核心 exception/override 语义不一致，以及月历午夜半开区间边界。
+- 时间轴原先绕过单次记录的共享投影，现已接入同一 helper；有界 UI 查询会优先保留窗口内开始的实例，再选择最近的跨窗活动。
+- UI 时间轴仍保留 2048 个 occurrence 的渲染上限；若窗口内本身超过该值（例如大量 override 同时移入）仍会截断，作为有界渲染限制记录。
+
+修复后 `OccurrenceWindowTest` 覆盖 count/until、weekly byDay/interval、长活动与密集 exception；`ReminderValidationTest` 覆盖长活动提醒定位；`DeckControllerConcurrencyTest` 覆盖慢自动暂存期间的生命周期 flush 排队及存储异常。全量结果见交付记录。

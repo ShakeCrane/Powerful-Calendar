@@ -211,11 +211,7 @@ object ReminderScheduler {
         }
         val offset = triggerOffsetMillis(record)
             ?: return Validation.Rejected("该事件不再需要提醒")
-        val anchor = record.anchorMillis() ?: return Validation.Rejected("事件缺少合法时刻")
-        val span = (record.spanEndMillis() ?: anchor) - anchor
-        val occurrence = RecurrenceEngine.occurrences(
-            record, requestedInstant - span - 86_400_000L, requestedInstant + span + 86_400_000L
-        ).firstOrNull { it.key == occurrenceKey }
+        val occurrence = RecurrenceEngine.occurrenceForKey(record, occurrenceKey)
             ?: return Validation.Rejected("发生实例已失效")
         if (!snooze) {
             val expected = occurrence.startMillis - offset

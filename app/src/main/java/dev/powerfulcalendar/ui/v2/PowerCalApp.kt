@@ -226,7 +226,11 @@ fun PowerCalApp(store: PowerStore) {
     DisposableEffect(hostLifecycle) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) scope.launch { reconcile(); reload() }
-            if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP && deckVisible) PowerCalStores.appScope.launch { controller.flush() }
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP && deckVisible) {
+                // Best effort: the controller serializes this after any autosave, and a failed
+                // stage keeps the draft dirty with a retryable error for the next visible session.
+                PowerCalStores.appScope.launch { controller.flush() }
+            }
         }
         hostLifecycle?.addObserver(observer)
         onDispose { hostLifecycle?.removeObserver(observer) }

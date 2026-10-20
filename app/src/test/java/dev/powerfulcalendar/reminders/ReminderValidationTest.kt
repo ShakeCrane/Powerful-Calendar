@@ -99,6 +99,33 @@ class ReminderValidationTest {
     }
 
     @Test
+    fun longActivityReminderValidationFindsItsExactOccurrenceKey() {
+        val now = System.currentTimeMillis()
+        val start = now - 1_000L * 24 * 60 * 60 * 1_000
+        val card = store.newDraft(
+            DraftForm(
+                kind = TemporalKind.ACTIVITY,
+                title = "跨期活动",
+                startText = DraftForm.formatInstant(start, zone),
+                endText = DraftForm.formatInstant(start + 600L * 24 * 60 * 60 * 1_000, zone),
+                reminderMinutes = 0,
+                zoneId = zone.id,
+                recurrence = dev.powerfulcalendar.core.Recurrence(
+                    freq = dev.powerfulcalendar.core.RecurrenceFreq.DAILY
+                )
+            )
+        )
+        store.commit(card.draftId)
+        val intent = store.intentFor(card.eventSeq)!!
+
+        val validation = ReminderScheduler.validate(
+            store, card.eventSeq, intent.revision, intent.occurrenceKey, intent.instantMillis, snooze = false
+        )
+
+        assertTrue(validation is ReminderScheduler.Validation.Valid)
+    }
+
+    @Test
     fun aChangedTriggerInstantIsRejected() {
         val seq = createAlarm(60)
         val intent = store.intentFor(seq)!!

@@ -1160,14 +1160,18 @@ class PowerStore(
                     val card = readDraft(db, draftId)
                     // The reviewed version is part of the authorization. A card edited after the
                     // user confirmed the batch cannot be committed under that decision.
-                    val reviewedVersion = db.rawQuery(
-                        "SELECT draft_version FROM ai_session_drafts WHERE session_id=? AND draft_id=?",
+                    val reviewed = db.rawQuery(
+                        "SELECT draft_version,operation FROM ai_session_drafts WHERE session_id=? AND draft_id=?",
                         arrayOf(session.sessionId, draftId.toString())
-                    ).use { if (it.moveToFirst()) it.getLong(0) else null }
+                    ).use { cursor ->
+                        if (!cursor.moveToFirst()) null
+                        else cursor.getLong(0) to cursor.getString(1)
+                    }
                     when {
                         card == null -> CommitOutcome.Invalid("草稿不存在")
-                        reviewedVersion == null -> CommitOutcome.NotAuthorized
-                        card.draftVersion != reviewedVersion -> CommitOutcome.NotAuthorized
+                        reviewed == null -> CommitOutcome.NotAuthorized
+                        card.draftVersion != reviewed.first -> CommitOutcome.NotAuthorized
+                        card.operation.name != reviewed.second -> CommitOutcome.NotAuthorized
                         card.operation !in ops -> CommitOutcome.NotAuthorized
                         else -> null
                     }

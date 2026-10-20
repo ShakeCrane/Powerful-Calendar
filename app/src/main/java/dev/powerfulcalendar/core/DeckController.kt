@@ -2,7 +2,6 @@ package dev.powerfulcalendar.core
 
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -31,11 +30,12 @@ import kotlin.coroutines.coroutineContext
  *  - **Commands** (open/refresh/flush/navigation/commit/discard/restore) are `suspend` functions
  *    serialized by [commands]. Each one runs the durable work on [ioDispatcher].
  *
- * Cancellation is cooperative: a command can be cancelled while it is still queued. Once the atomic
- * storage write has started it runs to completion under [NonCancellable] and its result is recorded,
- * so a cancelled screen can never leave a write that the state does not know about ("accepted input
- * is never lost"). There is exactly one controller and one command queue; no second lifecycle
- * manager, and the UI keeps a single serialization point for gestures.
+ * Cancellation is cooperative: a command can be cancelled while queued or before it is dispatched
+ * to [ioDispatcher]. Once a synchronous SQLite operation has started, Kotlin cannot pre-empt that
+ * call; the command records its version/dirty result before returning. Accepted edits remain in
+ * memory while dirty, but an OS process kill before a successful flush can still lose unsaved text.
+ * There is exactly one controller and one command queue; no second lifecycle manager, and the UI
+ * keeps one serialization point for gestures.
  *
  * The controller never talks to SQLite directly: [DeckPersistence] is the seam tests replace.
  */
@@ -113,7 +113,10 @@ class DeckController(
         private set
 
     private val stateLock = Any()
+    private val listenerLock = Any()
     private val commands = Mutex()
+    private var stateGeneration = 0L
+    private var notifiedGeneration = 0L
 
     private var listener: ((DeckState) -> Unit)? = null
     private var sessionStartedAt: Long = clock()
@@ -131,22 +134,43 @@ class DeckController(
         now - lastTerminalActionAt >= terminalActionGuardMillis
 
     fun observe(block: (DeckState) -> Unit) {
-        synchronized(stateLock) { listener = block }
+        // Serialize the initial snapshot with later notifications. Otherwise a concurrent update
+        // could notify v2 and then this initial callback could arrive last with stale v1.
+        synchronized(listenerLock) {
+            val snapshot = synchronized(stateLock) {
+                listener = block
+                notifiedGeneration = stateGeneration
+                state
+            }
+            block(snapshot)
+        }
     }
 
     /**
      * Atomic state transition. Only memory work happens here: no storage call may ever be made
-     * while holding [stateLock].
+     * while holding [stateLock]. Listener callbacks are serialized, but invoked after releasing the
+     * state lock; a stale callback is skipped rather than publishing over a newer edit.
      */
     private fun update(transform: (DeckState) -> DeckState): DeckState {
         val next: DeckState
-        val target: ((DeckState) -> Unit)?
+        val generation: Long
         synchronized(stateLock) {
             next = transform(state)
             state = next
-            target = listener
+            stateGeneration++
+            generation = stateGeneration
         }
-        target?.invoke(next)
+        synchronized(listenerLock) {
+            val target = synchronized(stateLock) {
+                if (generation <= notifiedGeneration) null else listener
+            }
+            if (target != null) {
+                target(next)
+                synchronized(stateLock) {
+                    if (generation > notifiedGeneration) notifiedGeneration = generation
+                }
+            }
+        }
         return next
     }
 
@@ -154,11 +178,20 @@ class DeckController(
      * Serializes one durable command. Cancellation is honoured while queued; once the write
      * starts it completes and records its result so the state and the storage never disagree.
      */
-    private suspend fun <T> command(block: () -> T): T = commands.withLock {
+    private suspend fun <T> command(lockEdits: Boolean = true, block: () -> T): T = commands.withLock {
         coroutineContext.ensureActive()
-        update { it.copy(busy = true) }
+        // Background autosave is serialized but must not make the editor read-only while the IME
+        // is typing. Navigation and terminal commands use the default lockEdits=true.
+        update { it.copy(busy = lockEdits) }
         try {
-            withContext(NonCancellable + ioDispatcher) { block() }
+            // Dispatch remains cancellable: if the parent is cancelled after the mutex is acquired
+            // but before this command reaches storage, the block never starts. The block itself is
+            // synchronous; once an atomic SQLite call begins it cannot be pre-empted, and it records
+            // its resulting state before returning to this cancellable boundary.
+            withContext(ioDispatcher) {
+                coroutineContext.ensureActive()
+                block()
+            }
         } finally {
             update { it.copy(busy = false) }
         }
@@ -168,10 +201,10 @@ class DeckController(
 
     fun edit(form: DraftForm) {
         update { current ->
-            if (current.aiLocked) {
-                current.copy(error = "AI 批量处理期间不能编辑卡片")
-            } else {
-                current.copy(form = form, dirty = true, error = null)
+            when {
+                current.aiLocked -> current.copy(error = "AI 批量处理期间不能编辑卡片")
+                current.busy -> current.copy(error = "卡片正在保存或切换，请稍候再输入")
+                else -> current.copy(form = form, dirty = true, error = null)
             }
         }
     }
@@ -216,7 +249,11 @@ class DeckController(
     suspend fun refresh(preferDraftId: Long? = null) = command { refreshInternal(preferDraftId) }
 
     /** Durably stages the latest text. Returns false when the caller must not navigate away. */
-    suspend fun flush(): Boolean = command { flushInternal() }
+    /**
+     * `lockEdits=false` is reserved for the debounce autosave: it is serialized with navigation,
+     * but the editor remains writable so IME keystrokes do not lose their focus/selection.
+     */
+    suspend fun flush(lockEdits: Boolean = true): Boolean = command(lockEdits = lockEdits) { flushInternal() }
 
     suspend fun select(draftId: Long): Boolean = command { selectInternal(draftId) }
 
@@ -319,7 +356,22 @@ class DeckController(
     private fun stageWithRetry(draftId: Long, formToSave: DraftForm): Boolean {
         var version = state.version
         repeat(2) { attempt ->
-            when (val result = persistence.stage(draftId, formToSave, version)) {
+            val result = try {
+                persistence.stage(draftId, formToSave, version)
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                // Lifecycle-triggered best-effort flushes have no synchronous caller waiting to
+                // display a thrown SQLite error. Keep the input dirty and publish a retryable error.
+                update {
+                    it.copy(
+                        saving = false,
+                        error = "草稿暂存失败，输入仍保留，请重试：${error.message.orEmpty()}"
+                    )
+                }
+                return false
+            }
+            when (result) {
                 is PowerStore.StageResult.Saved -> {
                     // If the user kept typing while the write was in flight, the newest text is
                     // still dirty and is staged by the next debounce tick.

@@ -1,6 +1,7 @@
 package dev.powerfulcalendar.core
 
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
@@ -9,10 +10,13 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.CoroutineContext
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -21,6 +25,27 @@ import java.util.concurrent.atomic.AtomicInteger
  * command queue: it only mutates in-memory state.
  */
 class DeckControllerConcurrencyTest {
+
+    /** Holds a dispatched command before its body begins, so cancellation-before-storage is testable. */
+    private class GateDispatcher : CoroutineDispatcher() {
+        @Volatile var gated = false
+        val entered = CountDownLatch(1)
+        private val queued = ArrayBlockingQueue<Runnable>(4)
+
+        override fun dispatch(context: CoroutineContext, block: Runnable) {
+            if (!gated) {
+                block.run()
+            } else {
+                queued.put(block)
+                entered.countDown()
+            }
+        }
+
+        fun runQueued() {
+            val task = queued.poll(5, TimeUnit.SECONDS) ?: error("no dispatcher task queued")
+            task.run()
+        }
+    }
 
     private class Fake : DeckPersistence {
         val cards = LinkedHashMap<Long, DraftCard>()
@@ -31,6 +56,7 @@ class DeckControllerConcurrencyTest {
         val releaseStage = CountDownLatch(1)
         @Volatile var blockStage = false
         @Volatile var blockOnlyFirstStage = false
+        @Volatile var stageFailure: Exception? = null
         val stageCalls = AtomicInteger()
         val pendingCalls = AtomicInteger()
 
@@ -59,6 +85,7 @@ class DeckControllerConcurrencyTest {
 
         override fun stage(draftId: Long, form: DraftForm, expectedVersion: Long): PowerStore.StageResult {
             val call = stageCalls.incrementAndGet()
+            stageFailure?.let { throw it }
             if (blockStage || (blockOnlyFirstStage && call == 1)) {
                 stageEntered.countDown()
                 releaseStage.await(10, TimeUnit.SECONDS)
@@ -91,7 +118,7 @@ class DeckControllerConcurrencyTest {
     private fun controller(fake: Fake) = DeckController(fake, ioDispatcher = Dispatchers.IO)
 
     @Test
-    fun editingNeverWaitsForStorageIo() = runBlocking {
+    fun editingNeverWaitsForBackgroundAutosaveIo() = runBlocking {
         val fake = Fake()
         fake.add("初始")
         fake.blockStage = true
@@ -99,7 +126,8 @@ class DeckControllerConcurrencyTest {
         controller.open()
         controller.edit(controller.state.form!!.copy(title = "第一版"))
 
-        val flush = launch(Dispatchers.IO) { controller.flush() }
+        // Debounced autosave must not lock fields; command serialization still protects navigation.
+        val flush = launch(Dispatchers.IO) { controller.flush(lockEdits = false) }
         assertTrue("flush should reach storage", fake.stageEntered.await(5, TimeUnit.SECONDS))
 
         val elapsed = CompletableDeferred<Long>()
@@ -114,6 +142,71 @@ class DeckControllerConcurrencyTest {
 
         fake.releaseStage.countDown()
         flush.join()
+        assertTrue("newer text remains dirty for the next debounce save", controller.state.dirty)
+        assertTrue(controller.flush(lockEdits = false))
+        assertEquals("第二版", fake.cards[1L]!!.form.title)
+    }
+
+    @Test
+    fun lifecycleFlushQueuedBehindAutosavePersistsTheLatestAcceptedEdit() = runBlocking {
+        val fake = Fake()
+        val first = fake.add("初始")
+        fake.blockOnlyFirstStage = true
+        val controller = controller(fake)
+        controller.open()
+        controller.edit(controller.state.form!!.copy(title = "自动暂存快照"))
+
+        val autosave = launch(Dispatchers.IO) { controller.flush(lockEdits = false) }
+        assertTrue("autosave should reach storage", fake.stageEntered.await(5, TimeUnit.SECONDS))
+        controller.edit(controller.state.form!!.copy(title = "后台前最后输入"))
+        val onStop = launch(Dispatchers.IO) { controller.flush() }
+        delay(20) // let the lifecycle command reach the held command mutex before releasing storage
+        assertEquals(1, fake.stageCalls.get())
+
+        fake.releaseStage.countDown()
+        autosave.join()
+        onStop.join()
+
+        assertEquals("后台前最后输入", fake.cards[first.draftId]!!.form.title)
+        assertFalse(controller.state.dirty)
+    }
+
+    @Test
+    fun cancellationAfterMutexButBeforeStorageDispatchDoesNotRunTheCommand() = runBlocking {
+        val fake = Fake()
+        fake.add("唯一")
+        val dispatcher = GateDispatcher()
+        val controller = DeckController(fake, ioDispatcher = dispatcher)
+        controller.open() // gate is open; initialize the state synchronously
+        controller.edit(controller.state.form!!.copy(title = "待暂存"))
+
+        dispatcher.gated = true
+        val job = launch(Dispatchers.Default) { controller.flush(lockEdits = false) }
+        assertTrue("command should reach the IO dispatch gate", dispatcher.entered.await(5, TimeUnit.SECONDS))
+        job.cancel()
+        dispatcher.runQueued() // the cancelled continuation must not invoke persistence.stage
+        withTimeout(2_000) { job.join() }
+
+        assertEquals("storage was never entered", 0, fake.stageCalls.get())
+        assertTrue("accepted input remains dirty for a later command", controller.state.dirty)
+        assertFalse(controller.state.busy)
+    }
+
+    @Test
+    fun storageFailureKeepsAcceptedInputDirtyAndPublishesRetryState() = runBlocking {
+        val fake = Fake()
+        fake.add("唯一")
+        val controller = controller(fake)
+        controller.open()
+        controller.edit(controller.state.form!!.copy(title = "仍保留的输入"))
+        fake.stageFailure = IllegalStateException("disk unavailable")
+
+        assertFalse(controller.flush())
+
+        assertEquals("仍保留的输入", controller.state.form!!.title)
+        assertTrue(controller.state.dirty)
+        assertTrue(controller.state.error!!.contains("disk unavailable"))
+        assertFalse(controller.state.busy)
     }
 
     @Test
@@ -180,19 +273,23 @@ class DeckControllerConcurrencyTest {
     }
 
     @Test
-    fun navigationRacingAnEditStagesTheLastCharacterBeforeSwitching() = runBlocking {
+    fun navigationSavesTheLastAcceptedCharacterAndRejectsEditsDuringTheTransition() = runBlocking {
         val fake = Fake()
         val first = fake.add("第一张")
         fake.add("第二张")
         fake.blockOnlyFirstStage = true
         val controller = controller(fake)
         controller.open()
-        controller.edit(controller.state.form!!.copy(title = "第一版"))
+        // This last character was accepted before the navigation command began.
+        controller.edit(controller.state.form!!.copy(title = "最后一字"))
 
         val move = launch(Dispatchers.IO) { controller.move(1) }
         assertTrue("first stage should be slow", fake.stageEntered.await(5, TimeUnit.SECONDS))
-        // The user keeps typing while the first save is still in flight.
-        controller.edit(controller.state.form!!.copy(title = "最后一字"))
+        // A stale IME event arriving after the command has claimed the card is explicitly refused,
+        // not accepted and then lost when the next card is promoted.
+        controller.edit(controller.state.form!!.copy(title = "不应覆盖"))
+        assertEquals("最后一字", controller.state.form!!.title)
+        assertNotNull(controller.state.error)
         fake.releaseStage.countDown()
         move.join()
 

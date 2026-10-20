@@ -42,7 +42,7 @@ internal fun MonthScreen(
         return entries.filter {
             val record = it.record
             if (record.isDateOnlyDeadline()) record.deadlineDate == day.toString()
-            else (record.anchorMillis() ?: Long.MAX_VALUE) < end && (record.spanEndMillis() ?: Long.MIN_VALUE) >= begin
+            else overlapsDayWindow(record, begin, end)
         }.sortedBy { it.record.anchorMillis() }
     }
     val daily = remember(entries, month, zone) { (1..month.lengthOfMonth()).associate { day -> month.atDay(day) to entriesOn(month.atDay(day)) } }

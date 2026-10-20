@@ -72,6 +72,23 @@ class PowerStoreTest {
     // ---------------------------------------------------------------- permanent identity
 
     @Test
+    fun stagedLastCharacterSurvivesStoreReopen() {
+        val card = store.newDraft(activityForm("前缀"))
+        val latest = card.form.copy(title = "最后一个字：好")
+        val staged = store.stageDraft(card.draftId, latest, card.draftVersion)
+        assertTrue(staged is PowerStore.StageResult.Saved)
+
+        // Simulates a process restart boundary after the durable stage (not an OS force-kill test).
+        val name = store.databaseName
+        store.close()
+        store = PowerStore(context, name)
+        val reopened = store.draft(card.draftId)!!
+        assertEquals("最后一个字：好", reopened.form.title)
+        assertEquals(1L, reopened.draftVersion)
+        assertEquals(card.eventSeq, reopened.eventSeq)
+    }
+
+    @Test
     fun firstDraftAllocatesASequenceEvenIfItIsDiscarded() {
         val first = store.newDraft(alarmForm())
         assertEquals(1L, first.eventSeq)

@@ -36,7 +36,9 @@ class OccurrenceWindowTest {
         startLocal: String,
         zone: ZoneId = shanghai,
         overrides: Map<String, OccurrenceOverride> = emptyMap(),
-        exceptions: Set<String> = emptySet()
+        exceptions: Set<String> = emptySet(),
+        count: Int? = null,
+        untilMillis: Long? = null
     ) = TemporalRecord(
         eventSeq = 1,
         revision = 1,
@@ -46,6 +48,8 @@ class OccurrenceWindowTest {
         zoneId = zone.id,
         recurrence = Recurrence(
             freq = RecurrenceFreq.DAILY,
+            count = count,
+            untilMillis = untilMillis,
             overrides = overrides,
             exceptions = exceptions
         )
@@ -231,6 +235,162 @@ class OccurrenceWindowTest {
         val occurrences = RecurrenceEngine.occurrences(record, day.first, day.last + 1)
 
         assertEquals(0, occurrences.size)
+    }
+
+    @Test
+    fun overridesMustReferToSlotsWithinTheCountAndUntilBounds() {
+        val movedTo = local(shanghai, "2026-10-21 09:00")
+        val countBounded = daily(
+            startLocal = "2026-10-18 07:30",
+            overrides = mapOf(key("2026-10-20 07:30") to OccurrenceOverride(movedTo, null)),
+            count = 2
+        )
+        val untilBounded = daily(
+            startLocal = "2026-10-18 07:30",
+            overrides = mapOf(key("2026-10-20 07:30") to OccurrenceOverride(movedTo, null)),
+            untilMillis = local(shanghai, "2026-10-19 07:29")
+        )
+        val validCountBounded = daily(
+            startLocal = "2026-10-18 07:30",
+            overrides = mapOf(
+                key("2026-10-19 07:30") to OccurrenceOverride(movedTo, null)
+            ),
+            count = 2
+        )
+        val day = window(shanghai, "2026-10-21")
+
+        assertTrue(RecurrenceEngine.occurrences(countBounded, day.first, day.last + 1).isEmpty())
+        assertTrue(RecurrenceEngine.occurrences(untilBounded, day.first, day.last + 1).isEmpty())
+        assertEquals("2026-10-19T07:30", RecurrenceEngine.occurrences(
+            validCountBounded, day.first, day.last + 1
+        ).single().key)
+    }
+
+    @Test
+    fun weeklyOverridesMustMatchTheByDayAndIntervalSequence() {
+        val movedTo = local(shanghai, "2026-11-20 09:00")
+        val record = TemporalRecord(
+            eventSeq = 4,
+            revision = 1,
+            kind = TemporalKind.ALARM,
+            title = "隔周",
+            startMillis = local(shanghai, "2026-10-21 09:00"), // Wednesday
+            zoneId = shanghai.id,
+            recurrence = Recurrence(
+                freq = RecurrenceFreq.WEEKLY,
+                interval = 2,
+                byDay = setOf(
+                    java.time.DayOfWeek.MONDAY,
+                    java.time.DayOfWeek.WEDNESDAY,
+                    java.time.DayOfWeek.FRIDAY
+                ),
+                exceptions = setOf(key("2026-11-20 09:00")),
+                overrides = mapOf(
+                    key("2026-10-23 09:00") to OccurrenceOverride(movedTo, null), // first week extra
+                    key("2026-10-26 09:00") to OccurrenceOverride(movedTo, null) // inactive week
+                )
+            )
+        )
+        val day = window(shanghai, "2026-11-20")
+
+        val occurrences = RecurrenceEngine.occurrences(record, day.first, day.last + 1)
+
+        assertEquals(listOf("2026-10-23T09:00"), occurrences.map { it.key })
+    }
+
+    @Test
+    fun nextOccurrenceIgnoresOverridesOutsideCountAndUntilBounds() {
+        val movedTo = local(shanghai, "2026-10-21 09:00")
+        val countBounded = daily(
+            startLocal = "2026-10-18 07:30",
+            overrides = mapOf(key("2026-10-20 07:30") to OccurrenceOverride(movedTo, null)),
+            count = 2
+        )
+        val untilBounded = daily(
+            startLocal = "2026-10-18 07:30",
+            overrides = mapOf(key("2026-10-20 07:30") to OccurrenceOverride(movedTo, null)),
+            untilMillis = local(shanghai, "2026-10-19 07:29")
+        )
+        val afterSeries = local(shanghai, "2026-10-20 00:00")
+
+        assertEquals(null, RecurrenceEngine.nextOccurrence(countBounded, afterSeries))
+        assertEquals(null, RecurrenceEngine.nextOccurrence(untilBounded, afterSeries))
+    }
+
+    @Test
+    fun nextNaturalOccurrenceMayBeMoreThanFourHundredDaysAway() {
+        val base = daily("2026-10-18 07:30")
+        val interval = base.copy(
+            recurrence = base.recurrence.copy(interval = 500)
+        )
+        val after = local(shanghai, "2026-10-18 08:00")
+        val expected = LocalDateTime.parse("2026-10-18T07:30")
+            .plusDays(500).atZone(shanghai).toInstant().toEpochMilli()
+
+        val next = RecurrenceEngine.nextOccurrence(interval, after)
+
+        assertNotNull(next)
+        assertEquals(expected, next!!.startMillis)
+    }
+
+    @Test
+    fun nextOccurrenceForALongActivityDoesNotSpendItsLimitOnPastStarts() {
+        val start = local(shanghai, "2020-01-01 09:00")
+        val record = TemporalRecord(
+            eventSeq = 3,
+            revision = 1,
+            kind = TemporalKind.ACTIVITY,
+            title = "长活动",
+            startMillis = start,
+            endMillis = start + 600L * 24 * 60 * 60 * 1_000,
+            zoneId = shanghai.id,
+            recurrence = Recurrence(freq = RecurrenceFreq.DAILY)
+        )
+        val after = local(shanghai, "2025-01-01 00:00")
+
+        val next = RecurrenceEngine.nextOccurrence(record, after)
+
+        assertNotNull(next)
+        assertEquals(local(shanghai, "2025-01-01 09:00"), next!!.startMillis)
+    }
+
+    @Test
+    fun resultLimitDoesNotStopAtAConstantNumberOfExceptedSlots() {
+        val exceptions = (20..24).map { day -> key("2026-10-${day}T07:30") }.toSet()
+        val record = daily("2026-10-01 07:30", exceptions = exceptions)
+        val from = local(shanghai, "2026-10-20 00:00")
+        val to = local(shanghai, "2026-11-01 00:00")
+
+        val occurrences = RecurrenceEngine.occurrences(record, from, to, limit = 1)
+
+        assertEquals(1, occurrences.size)
+        assertEquals("2026-10-25T07:30", occurrences.single().key)
+    }
+
+    @Test
+    fun boundedProjectionPrioritizesWindowStartsBeforeLongActivityCarryIns() {
+        val start = local(shanghai, "2026-10-01 09:00")
+        val record = TemporalRecord(
+            eventSeq = 5,
+            revision = 1,
+            kind = TemporalKind.ACTIVITY,
+            title = "超长重复活动",
+            startMillis = start,
+            endMillis = start + 20L * 24 * 60 * 60 * 1_000,
+            zoneId = shanghai.id,
+            recurrence = Recurrence(freq = RecurrenceFreq.DAILY)
+        )
+        val from = local(shanghai, "2026-10-10 00:00")
+        val to = local(shanghai, "2026-10-12 00:00")
+
+        val occurrences = RecurrenceEngine.occurrences(
+            record, from, to, limit = 3, prioritizeWindowStarts = true
+        )
+
+        assertEquals(
+            listOf("2026-10-09T09:00", "2026-10-10T09:00", "2026-10-11T09:00"),
+            occurrences.map { it.key }
+        )
     }
 
     @Test
