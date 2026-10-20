@@ -21,7 +21,7 @@ data class VerifiedBackup(
 )
 
 /** The caller must get an explicit user confirmation before retrying a legacy un-hashed backup. */
-class LegacyBackupConsentRequired : IllegalArgumentException(
+class LegacyBackupConsentRequired : Exception(
     "这是早期 flat backup v2 文件，不包含 SHA-256。确认来源可信后，才可显式继续恢复"
 )
 
@@ -34,6 +34,12 @@ object BackupEnvelope {
     const val FORMAT_VERSION = 1
     const val MAX_BYTES = 64 * 1024 * 1024
 
+    /**
+     * Ordered logical tables carried by a backup. Execution history is deliberately excluded: it
+     * records what fired on the OLD device and must not read as "already scheduled" after restore.
+     */
+    val TABLES = listOf("identities", "objects", "drafts", "commits", "sourceLinks", "migrations")
+
     fun create(
         payload: JSONObject,
         databaseSchemaVersion: Int,
@@ -44,8 +50,10 @@ object BackupEnvelope {
         require(databaseSchemaVersion > 0) { "databaseSchemaVersion 必须为正数" }
         require(appVersionCode >= 0) { "appVersionCode 不可为负数" }
         require(exportedAtEpochMs > 0) { "exportedAtEpochMs 必须为正数" }
-        require(runCatching { UUID.fromString(storeLineageId) }.isSuccess) { "storeLineageId 必须是 UUID" }
-        val payloadBytes = canonicalPayloadBytes(payload)
+        requireValidLineage(storeLineageId, "storeLineageId 必须是 UUID")
+        // Detach from the caller's mutable payload: the stored hash must describe the stored bytes.
+        val detached = JSONObject(payload.toString())
+        val payloadBytes = canonicalPayloadBytes(detached)
         require(payloadBytes.size <= MAX_BYTES) { "备份 payload 超过大小上限" }
         return JSONObject().apply {
             put("format", FORMAT)
@@ -55,7 +63,7 @@ object BackupEnvelope {
             put("exportedAtEpochMs", exportedAtEpochMs)
             put("storeLineageId", storeLineageId)
             put("payloadSha256", sha256Hex(payloadBytes))
-            put("payload", payload)
+            put("payload", detached)
         }
     }
 
@@ -82,7 +90,7 @@ object BackupEnvelope {
         val exportedAt = envelope.optLong("exportedAtEpochMs", -1L)
         require(exportedAt > 0L) { "备份缺少有效 exportedAtEpochMs" }
         val lineage = envelope.optString("storeLineageId")
-        require(runCatching { UUID.fromString(lineage) }.isSuccess) { "备份 lineageId 无效" }
+        requireValidLineage(lineage, "备份 lineageId 无效")
         val inputPayload = envelope.optJSONObject("payload")
             ?: throw IllegalArgumentException("备份缺少 payload 对象")
         // Detach from the caller's mutable JSONObject before verifying/using it.
@@ -109,9 +117,45 @@ object BackupEnvelope {
         )
     }
 
+    /**
+     * Read-back verification for a just-written file: re-verifies the hash and confirms that every
+     * logical table and both high-water marks survived the provider's write path unchanged.
+     */
+    fun verifyReadback(original: JSONObject, reread: JSONObject, currentDatabaseSchemaVersion: Int): VerifiedBackup {
+        val first = verify(original, currentDatabaseSchemaVersion)
+        val second = verify(reread, currentDatabaseSchemaVersion)
+        require(first.storeLineageId == second.storeLineageId) { "回读的 lineageId 与导出时不一致" }
+        require(first.databaseSchemaVersion == second.databaseSchemaVersion) { "回读的 schema 版本不一致" }
+        require(first.exportedAtEpochMs == second.exportedAtEpochMs) { "回读的导出时间不一致" }
+        TABLES.forEach { table ->
+            val before = first.payload.getJSONArray(table).length()
+            val after = second.payload.getJSONArray(table).length()
+            require(before == after) { "回读的 $table 数量不一致：$before → $after" }
+        }
+        require(first.payload.getLong("nextSeq") == second.payload.getLong("nextSeq")) { "回读的 nextSeq 不一致" }
+        require(first.payload.getLong("nextOrder") == second.payload.getLong("nextOrder")) { "回读的 nextOrder 不一致" }
+        return second
+    }
+
     private fun verifyLegacyV2(envelope: JSONObject, allowLegacyV2: Boolean): VerifiedBackup {
-        require(envelope.optInt("version", -1) == 2) {
-            "不支持的旧式备份版本：${envelope.opt("version")}"
+        val version = envelope.optInt("version", -1)
+        if (version == 1) {
+            throw IllegalArgumentException(
+                "0.1.0 的 flat backup v1 尚未提供受控迁移，已拒绝读取；请保留原文件，不要当作 v2 处理"
+            )
+        }
+        require(version == 2) { "不支持的旧式备份版本：${envelope.opt("version")}" }
+        // Refuse ambiguous documents: an Envelope stripped of its version must not silently become
+        // an unverified legacy import.
+        require(!envelope.has("payload") && !envelope.has("payloadSha256")) {
+            "文件同时包含 Envelope 字段与旧式字段，格式模糊，已拒绝"
+        }
+        val allowed = setOf(
+            "format", "version", "exportedMs", "exportedAtEpochMs", "nextSeq", "nextOrder",
+            "identities", "objects", "drafts", "commits", "sourceLinks", "migrations", "note"
+        )
+        require(envelope.keys().asSequence().all { it in allowed }) {
+            "旧式备份包含未知字段，已拒绝以免静默丢弃数据"
         }
         if (!allowLegacyV2) throw LegacyBackupConsentRequired()
 
@@ -122,15 +166,14 @@ object BackupEnvelope {
             nextOrder = maxOf(nextOrder, order + 1)
         }
         val payload = JSONObject().apply {
-            copyArrayIfPresent(envelope, this, "identities")
-            copyArrayIfPresent(envelope, this, "objects")
-            copyArrayIfPresent(envelope, this, "drafts")
-            copyArrayIfPresent(envelope, this, "commits")
-            copyArrayIfPresent(envelope, this, "sourceLinks")
-            copyArrayIfPresent(envelope, this, "migrations")
-            put("executions", JSONArray())
+            TABLES.forEach { table ->
+                val array = envelope.optJSONArray(table) ?: return@forEach
+                // Detach: callers must not be able to mutate arrays after verification.
+                put(table, JSONArray(array.toString()))
+            }
             put("nextSeq", envelope.optLong("nextSeq", 1L))
-            put("nextOrder", nextOrder)
+            // Older flat files only carried nextSeq; honour nextOrder when a file does have it.
+            put("nextOrder", maxOf(nextOrder, envelope.optLong("nextOrder", 1L)))
         }
         return VerifiedBackup(
             payload = payload,
@@ -138,7 +181,7 @@ object BackupEnvelope {
             databaseSchemaVersion = 2,
             appVersionCode = 0L,
             exportedAtEpochMs = envelope.optLong("exportedMs", 0L),
-            // Flat v2 had no lineage. A new UUID explicitly marks this as a restored fork.
+            // Flat v2 had no lineage. A new UUID marks this as a new lineage with no source identity.
             storeLineageId = UUID.randomUUID().toString(),
             legacyUnverified = true,
             warnings = listOf(
@@ -147,9 +190,8 @@ object BackupEnvelope {
         )
     }
 
-    private fun copyArrayIfPresent(source: JSONObject, target: JSONObject, key: String) {
-        val array = source.optJSONArray(key)
-        if (array != null) target.put(key, array)
+    private fun requireValidLineage(value: String, message: String) {
+        require(runCatching { UUID.fromString(value) }.isSuccess) { message }
     }
 
     fun canonicalPayloadBytes(payload: JSONObject): ByteArray =

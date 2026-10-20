@@ -1,3 +1,5 @@
+import java.security.KeyStore
+import java.security.MessageDigest
 import java.util.Properties
 
 plugins {
@@ -46,6 +48,16 @@ val hasReleaseSigning = releaseStoreFile != null &&
     releaseStorePassword != null &&
     releaseKeyAlias != null &&
     releaseKeyPassword != null
+
+// Recorded after the user generates the long-term certificate; release builds refuse to run while
+// it is empty, so the signing identity cannot silently change between releases.
+val expectedCertificateSha256 = rootProject.file("gradle/expected-signing-sha256.txt")
+    .takeIf { it.exists() }
+    ?.readLines()
+    ?.map { it.trim() }
+    ?.firstOrNull { it.isNotEmpty() && !it.startsWith("#") }
+    ?.replace(":", "")
+    ?.lowercase()
 
 android {
     namespace = "dev.powerfulcalendar"
@@ -139,6 +151,39 @@ if (!hasReleaseSigning) {
     }
     tasks.matching { it.name == "preReleaseBuild" }.configureEach {
         dependsOn("verifyReleaseSigning")
+    }
+} else {
+    tasks.register("verifyReleaseCertificate") {
+        group = "verification"
+        description = "Compares the release keystore certificate with the recorded SHA-256."
+        doLast {
+            val expected = expectedCertificateSha256
+            if (expected.isNullOrBlank() || !Regex("^[0-9a-f]{64}$").matches(expected)) {
+                throw GradleException(
+                    "首次发行前请把长期证书的 SHA-256（64 位小写十六进制）写入 " +
+                        "gradle/expected-signing-sha256.txt；它用于证明后续版本仍由同一证书签名。"
+                )
+            }
+            val storeFile = releaseStoreFile ?: throw GradleException("缺少 release keystore")
+            val storePassword = releaseStorePassword ?: throw GradleException("缺少 keystore 密码")
+            val alias = releaseKeyAlias ?: throw GradleException("缺少 key alias")
+            val keyStore = KeyStore.getInstance(storeFile, storePassword.toCharArray())
+            val certificate = keyStore.getCertificate(alias)
+                ?: throw GradleException("keystore 中不存在别名 $alias")
+            val actual = MessageDigest.getInstance("SHA-256")
+                .digest(certificate.encoded)
+                .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+            if (!actual.equals(expected, ignoreCase = true)) {
+                throw GradleException(
+                    "签名证书 SHA-256 与记录不一致：实际 $actual，记录 $expected。" +
+                        "禁止在更换证书后覆盖安装；请恢复原证书。"
+                )
+            }
+            logger.lifecycle("Release certificate verified: SHA-256 $actual")
+        }
+    }
+    tasks.matching { it.name == "preReleaseBuild" }.configureEach {
+        dependsOn("verifyReleaseCertificate")
     }
 }
 

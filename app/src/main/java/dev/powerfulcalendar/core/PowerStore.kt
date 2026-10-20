@@ -203,7 +203,8 @@ class PowerStore(
     }
 
     /**
-     * v2→v3: additive lineage identity for backup fork detection; no business row is rewritten.
+     * v2→v3: additive lineage identity carried into backups for provenance; no business row is
+     * rewritten. Nothing consumes it for merge decisions yet.
      * Idempotent on purpose: a process killed between ALTER TABLE and the version bump must be able
      * to retry the same upgrade instead of being locked out of its own database.
      */
@@ -361,22 +362,19 @@ class PowerStore(
 
     // ---------------------------------------------------------------- transactions
 
-    private inline fun <T> tx(block: (SQLiteDatabase) -> T): T {
-        val db = writableDatabase
-        db.beginTransaction()
-        return try {
-            val value = block(db)
-            db.setTransactionSuccessful()
-            value
-        } finally {
-            db.endTransaction()
-        }
-    }
+    private inline fun <T> tx(block: (SQLiteDatabase) -> T): T =
+        inTransaction(writableDatabase, exclusive = true, block = block)
 
     /** One SQLite read snapshot, so a multi-table export cannot mix revisions across connections. */
-    private inline fun <T> readSnapshot(block: (SQLiteDatabase) -> T): T {
-        val db = readableDatabase
-        db.beginTransactionNonExclusive()
+    private inline fun <T> readSnapshot(block: (SQLiteDatabase) -> T): T =
+        inTransaction(readableDatabase, exclusive = false, block = block)
+
+    private inline fun <T> inTransaction(
+        db: SQLiteDatabase,
+        exclusive: Boolean,
+        block: (SQLiteDatabase) -> T
+    ): T {
+        if (exclusive) db.beginTransaction() else db.beginTransactionNonExclusive()
         return try {
             val value = block(db)
             db.setTransactionSuccessful()
@@ -1677,25 +1675,15 @@ class PowerStore(
                     })
                 }
             })
-            put("executions", JSONArray().apply {
-                db.rawQuery(
-                    """SELECT execution_id,event_seq,revision,occurrence_key,trigger_id,result,detail,at_ms
-                       FROM executions ORDER BY at_ms,execution_id""", null
-                ).use { cursor ->
-                    while (cursor.moveToNext()) put(JSONObject().apply {
-                        put("executionId", cursor.getString(0))
-                        put("eventSeq", cursor.getLong(1))
-                        put("revision", cursor.getLong(2))
-                        put("occurrenceKey", cursor.getString(3))
-                        put("triggerId", cursor.getString(4))
-                        put("result", cursor.getString(5))
-                        put("detail", cursor.getString(6))
-                        put("atMs", cursor.getLong(7))
-                    })
-                }
-            })
             put("nextSeq", metaLong(db, "next_seq"))
             put("nextOrder", metaLong(db, "next_order"))
+        }
+        // The writer must never produce a file the same build would refuse to restore.
+        BackupEnvelope.TABLES.forEach { table ->
+            val rows = payload.getJSONArray(table).length()
+            require(rows <= MAX_BACKUP_ROWS) {
+                "数据量超过单次备份上限 $MAX_BACKUP_ROWS（$table=$rows），请先归档后再导出"
+            }
         }
         BackupEnvelope.create(
             payload = payload,
@@ -1713,7 +1701,6 @@ class PowerStore(
         val objects: Int,
         val drafts: Int,
         val commits: Int,
-        val executions: Int = 0,
         val legacyUnverified: Boolean = false,
         val warnings: List<String> = emptyList()
     )
@@ -1726,11 +1713,16 @@ class PowerStore(
      */
     @Synchronized
     fun restoreBackup(input: JSONObject, allowLegacyV2: Boolean = false): RestoreReport {
+        // Cheap rejection first: never parse/verify a large envelope against a live user database.
+        require(!hasAnyUserData(readableDatabase)) {
+            "目标数据库已有事件：为避免覆盖，恢复只允许在空数据库中进行"
+        }
         val verified = BackupEnvelope.verify(input, VERSION, allowLegacyV2)
         val payload = verified.payload
         validateBackupPayload(payload)
         return tx { db ->
-            require(identityCount() == 0L && nextSequencePreview() == 1L) {
+            // Re-check inside the transaction: another connection may have written since preflight.
+            require(!hasAnyUserData(db)) {
                 "目标数据库已有事件：为避免覆盖，恢复只允许在空数据库中进行"
             }
             val identities = payload.getJSONArray("identities")
@@ -1830,20 +1822,9 @@ class PowerStore(
                 })
             }
 
-            val executions = payload.optJSONArray("executions") ?: JSONArray()
-            for (index in 0 until executions.length()) {
-                val item = executions.getJSONObject(index)
-                db.insertOrThrow("executions", null, ContentValues().apply {
-                    put("execution_id", item.getString("executionId"))
-                    put("event_seq", item.getLong("eventSeq"))
-                    put("revision", item.getLong("revision"))
-                    put("occurrence_key", item.getString("occurrenceKey"))
-                    put("trigger_id", item.getString("triggerId"))
-                    put("result", item.getString("result"))
-                    put("detail", item.optString("detail"))
-                    put("at_ms", item.optLong("atMs", System.currentTimeMillis()))
-                })
-            }
+            // Execution history belongs to the old device: never import it, so a restored alarm is
+            // not displayed as "already fired/scheduled" on this device.
+            db.execSQL("DELETE FROM executions")
 
             // High-water marks come from the verified payload; they are never recomputed downward.
             db.execSQL(
@@ -1872,11 +1853,26 @@ class PowerStore(
                 objects = objects.length(),
                 drafts = drafts.length(),
                 commits = commits.length(),
-                executions = executions.length(),
                 legacyUnverified = verified.legacyUnverified,
                 warnings = verified.warnings
             )
         }
+    }
+
+    /** A restore target must have no business row, no high-water movement and no AI authority. */
+    private fun hasAnyUserData(db: SQLiteDatabase): Boolean {
+        val tables = listOf(
+            "identities", "objects", "drafts", "commits", "source_links",
+            "migrations", "schedule_intents", "executions", "ai_sessions", "ai_session_drafts"
+        )
+        tables.forEach { table ->
+            val count = db.rawQuery("SELECT COUNT(*) FROM $table", null).use {
+                it.moveToFirst()
+                it.getLong(0)
+            }
+            if (count > 0) return true
+        }
+        return metaLong(db, "next_seq") != 1L || metaLong(db, "next_order") != 1L
     }
 
     /**
@@ -1887,13 +1883,14 @@ class PowerStore(
         require(!payload.has("ai_sessions") && !payload.has("ai_session_drafts")) {
             "备份包含不应导入的 AI 授权数据"
         }
-        val keys = listOf("identities", "objects", "drafts", "commits", "sourceLinks", "migrations")
+        val keys = BackupEnvelope.TABLES
         keys.forEach { key ->
             val array = payload.optJSONArray(key)
                 ?: throw IllegalArgumentException("备份缺少 $key 数组")
             require(array.length() <= MAX_BACKUP_ROWS) { "备份 $key 数量超过上限 $MAX_BACKUP_ROWS" }
         }
         payload.optJSONArray("executions")?.let {
+            // Older v1 files may still carry this array; it is ignored on purpose, not restored.
             require(it.length() <= MAX_BACKUP_ROWS) { "备份 executions 数量超过上限 $MAX_BACKUP_ROWS" }
         }
 
@@ -1940,6 +1937,9 @@ class PowerStore(
             require(commitId.isNotBlank() && commitIds.add(commitId)) { "提交 ID 重复或为空：$commitId" }
             require(item.getLong("eventSeq") in seqs) { "提交 $commitId 引用了不存在的身份" }
             require(item.getLong("revision") >= 1L) { "提交 $commitId 的修订号非法" }
+            if (item.has("draftId") && !item.isNull("draftId")) {
+                require(item.getLong("draftId") in draftIds) { "提交 $commitId 引用了不存在的草稿" }
+            }
         }
 
         val links = payload.getJSONArray("sourceLinks")
@@ -1948,19 +1948,15 @@ class PowerStore(
             require(item.getLong("eventSeq") in seqs) { "来源链接引用了不存在的身份" }
         }
 
-        val executions = payload.optJSONArray("executions") ?: JSONArray()
-        for (index in 0 until executions.length()) {
-            val item = executions.getJSONObject(index)
-            require(item.getLong("eventSeq") in seqs) { "执行记录引用了不存在的身份" }
-        }
-
         val maxSeq = seqs.maxOrNull() ?: 0L
         val maxOrder = orders.maxOrNull() ?: 0L
-        require(payload.optLong("nextSeq", -1L) >= maxSeq + 1) {
-            "备份 nextSeq 低于已分配序号，可能已损坏"
+        val restoredNextSeq = payload.optLong("nextSeq", -1L)
+        val restoredNextOrder = payload.optLong("nextOrder", -1L)
+        require(restoredNextSeq in (maxSeq + 1)..MAX_ALLOCATED_SEQ) {
+            "备份 nextSeq 低于已分配序号或超出合理上限，可能已损坏"
         }
-        require(payload.optLong("nextOrder", -1L) >= maxOrder + 1) {
-            "备份 nextOrder 低于草稿队列高水位，可能已损坏"
+        require(restoredNextOrder in (maxOrder + 1)..MAX_ALLOCATED_ORDER) {
+            "备份 nextOrder 低于草稿队列高水位或超出合理上限，可能已损坏"
         }
     }
 
@@ -1970,6 +1966,10 @@ class PowerStore(
 
         /** Defensive bound for restore input; a personal calendar stays far below this. */
         const val MAX_BACKUP_ROWS = 200_000
+
+        /** Sanity ceiling for restored counters: far above any real calendar, below overflow. */
+        private const val MAX_ALLOCATED_SEQ = 1L shl 62
+        private const val MAX_ALLOCATED_ORDER = 1L shl 62
 
         /** A batch whose heartbeat is older than this cannot still be running. */
         const val DEFAULT_STALE_MS = 10 * 60_000L

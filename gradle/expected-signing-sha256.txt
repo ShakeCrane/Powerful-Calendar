@@ -1,0 +1,8 @@
+# Release certificate SHA-256 (lowercase hex, colons optional).
+# Fill this ONLY after you have generated the long-term release keystore and confirmed its
+# fingerprint with: keytool -list -v -keystore <file> -alias <alias>
+# Release builds refuse to run while this file has no 64-hex value, and refuse if the certificate
+# does not match. That is what prevents an accidental Debug/other-key release.
+#
+# Example (not a real certificate):
+# 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef

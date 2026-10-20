@@ -49,7 +49,7 @@ class PowerStoreSchemaUpgradeTest {
         context.deleteDatabase(dbFile.name)
     }
 
-    private fun createFixture(file: File, version: Int, withReviewedTable: Boolean) {
+    private fun createFixture(file: File, version: Int, withReviewedTable: Boolean, withLineageColumn: Boolean = false) {
         val db = SQLiteDatabase.openOrCreateDatabase(file, null)
         db.execSQL("""CREATE TABLE meta(id INTEGER PRIMARY KEY CHECK(id=1), next_seq INTEGER NOT NULL, next_order INTEGER NOT NULL, ai_epoch INTEGER NOT NULL DEFAULT 0, ai_locked INTEGER NOT NULL DEFAULT 0)""")
         db.execSQL("INSERT INTO meta(id,next_seq,next_order,ai_epoch,ai_locked) VALUES(1,43,3,9,0)")
@@ -117,6 +117,15 @@ class PowerStoreSchemaUpgradeTest {
                      PRIMARY KEY(session_id, draft_id))"""
             )
         }
+        if (withLineageColumn) {
+            // Simulates a crash after ALTER TABLE but before SQLiteOpenHelper bumped user_version:
+            // the retry must be idempotent rather than fail on a duplicate column.
+            db.execSQL("ALTER TABLE meta ADD COLUMN lineage_id TEXT NOT NULL DEFAULT ''")
+            db.execSQL(
+                "UPDATE meta SET lineage_id=? WHERE id=1",
+                arrayOf(UUID.randomUUID().toString())
+            )
+        }
         db.version = version
         db.close()
     }
@@ -158,6 +167,23 @@ class PowerStoreSchemaUpgradeTest {
             setOf(DraftOperation.REPLACE)
         )
         assertTrue(store.finishAiBatch(session.sessionId))
+    }
+
+    @Test
+    fun retryingAHalfAppliedLineageMigrationSucceedsWithoutTouchingRows() {
+        val file = context.getDatabasePath("half-v2-" + UUID.randomUUID() + ".db")
+        createFixture(file, version = 2, withReviewedTable = true, withLineageColumn = true)
+        val half = PowerStore(context, file.name)
+        try {
+            assertEquals("v1 已提交", half.get(41L)!!.title)
+            assertEquals(1, half.pendingCount())
+            assertEquals(PowerStore.VERSION, half.readableDatabase.version)
+            assertNotNull(UUID.fromString(half.exportBackup().getString("storeLineageId")))
+        } finally {
+            val name = half.databaseName
+            half.close()
+            context.deleteDatabase(name)
+        }
     }
 
     @Test

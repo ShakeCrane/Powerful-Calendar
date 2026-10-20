@@ -121,7 +121,7 @@ class BackupEnvelopeTest {
         assertTrue(payload.getJSONArray("objects").length() >= 2)
         assertTrue(payload.getJSONArray("drafts").length() >= 1)
         assertTrue(payload.getJSONArray("commits").length() >= 2)
-        assertTrue(payload.getJSONArray("executions").length() >= 1)
+        assertFalse("execution history must stay on the old device", payload.has("executions"))
         assertTrue(payload.getJSONArray("migrations").length() >= 1)
         assertFalse(payload.has("ai_sessions"))
         assertFalse(envelope.toString().contains("owner_token"))
@@ -143,7 +143,7 @@ class BackupEnvelopeTest {
             assertEquals("待处理草稿", target.pendingDrafts().single().form.title)
             assertEquals(expectedNextSeq, target.nextSequencePreview())
             assertEquals(expectedNextOrder, target.exportBackup().getJSONObject("payload").getLong("nextOrder"))
-            assertEquals("FIRED", target.lastExecution(alarmSeq))
+            assertNull("old execution history must not be imported", target.lastExecution(alarmSeq))
             assertNotNull("restored enabled alarm should be scheduled again", target.intentFor(alarmSeq))
             assertFalse(target.isLocked())
             assertNull(target.currentAiSession())
@@ -222,26 +222,25 @@ class BackupEnvelopeTest {
 
     @Test
     fun aMidWriteConstraintFailureRollsBackTheWholeRestore() {
-        val (activitySeq, _, _) = seed()
+        val (activitySeq, alarmSeq, _) = seed()
         val envelope = source.exportBackup()
         val payload = JSONObject(envelope.getJSONObject("payload").toString())
+        // Duplicate (source, external_id) is not hash-visible but violates SQLite's primary key, so
+        // the failure happens after identities/objects/drafts have been inserted in the transaction.
         val duplicate = JSONObject().apply {
-            put("executionId", "forced-duplicate")
+            put("source", "forced")
+            put("externalId", "same")
             put("eventSeq", activitySeq)
-            put("revision", 1L)
-            put("occurrenceKey", "k")
-            put("triggerId", "primary")
-            put("result", "FIRED")
-            put("detail", "")
-            put("atMs", System.currentTimeMillis())
         }
-        payload.getJSONArray("executions").put(duplicate)
-        payload.getJSONArray("executions").put(JSONObject(duplicate.toString()))
+        payload.getJSONArray("sourceLinks").put(duplicate)
+        payload.getJSONArray("sourceLinks").put(
+            JSONObject(duplicate.toString()).put("eventSeq", alarmSeq)
+        )
         val invalid = forged(payload, envelope.getString("storeLineageId"))
 
         usingStore { target ->
             val outcome = runCatching { target.restoreBackup(invalid) }
-            assertTrue("duplicate execution must fail the insert", outcome.isFailure)
+            assertTrue("duplicate source link must fail the insert", outcome.isFailure)
             assertEquals(0L, target.identityCount())
             assertEquals(1L, target.nextSequencePreview())
             assertTrue(target.all().isEmpty())
@@ -303,6 +302,73 @@ class BackupEnvelopeTest {
             assertTrue(runCatching { target.restoreBackup(withoutHash) }.isFailure)
             assertTrue(runCatching { target.restoreBackup(withoutPayload) }.isFailure)
             assertEquals(0L, target.identityCount())
+        }
+    }
+
+    @Test
+    fun readbackVerificationComparesTableCountsAndWatermarks() {
+        seed()
+        val envelope = source.exportBackup()
+        val alteredPayload = JSONObject(envelope.getJSONObject("payload").toString())
+        alteredPayload.getJSONArray("drafts").remove(0)
+        val altered = BackupEnvelope.create(
+            alteredPayload,
+            PowerStore.VERSION,
+            1,
+            envelope.getLong("exportedAtEpochMs"),
+            envelope.getString("storeLineageId")
+        )
+        val outcome = runCatching {
+            BackupEnvelope.verifyReadback(envelope, altered, PowerStore.VERSION)
+        }
+        assertTrue(outcome.isFailure)
+        assertTrue(outcome.exceptionOrNull()!!.message!!.contains("drafts"))
+        // An untouched read-back still passes.
+        BackupEnvelope.verifyReadback(envelope, JSONObject(envelope.toString()), PowerStore.VERSION)
+    }
+
+    @Test
+    fun flatV1BackupIsExplicitlyRejectedAndEnvelopeCannotBeDowngradedToLegacy() {
+        seed()
+        val flatV1 = JSONObject()
+            .put("format", "powercal-native")
+            .put("version", 1)
+            .put("identities", JSONArray())
+        val stripped = JSONObject(source.exportBackup().toString()).apply {
+            remove("backupFormatVersion")
+            put("version", 2)
+        }
+        usingStore { target ->
+            val v1 = runCatching { target.restoreBackup(flatV1, allowLegacyV2 = true) }
+            assertTrue(v1.exceptionOrNull()!!.message!!.contains("flat backup v1"))
+
+            val downgraded = runCatching { target.restoreBackup(stripped, allowLegacyV2 = true) }
+            assertTrue("stripped envelope must not become an unverified legacy import", downgraded.isFailure)
+            assertEquals(0L, target.identityCount())
+        }
+    }
+
+    @Test
+    fun legacyImportRejectsUnknownFieldsButPreservesItsNextOrder() {
+        seed()
+        val payload = source.exportBackup().getJSONObject("payload")
+        fun legacy(): JSONObject = JSONObject().apply {
+            put("format", "powercal-native")
+            put("version", 2)
+            put("exportedMs", System.currentTimeMillis())
+            payload.keys().forEach { key ->
+                if (key != "nextSeq" && key != "nextOrder") put(key, payload.get(key))
+            }
+            put("nextSeq", payload.getLong("nextSeq"))
+            put("nextOrder", 50L)
+        }
+
+        usingStore { target ->
+            val unknown = legacy().put("futureField", true)
+            assertTrue(runCatching { target.restoreBackup(unknown, allowLegacyV2 = true) }.isFailure)
+
+            target.restoreBackup(legacy(), allowLegacyV2 = true)
+            assertEquals(50L, target.exportBackup().getJSONObject("payload").getLong("nextOrder"))
         }
     }
 

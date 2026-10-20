@@ -205,7 +205,7 @@ fun PowerCalApp(store: PowerStore) {
     }
 
     /** Hardware-safe read: a crafted or corrupt file cannot exhaust memory before verification. */
-    suspend fun readBackupText(uri: android.net.Uri): String = withContext(Dispatchers.IO) {
+    suspend fun readBackupText(uri: Uri): String = withContext(Dispatchers.IO) {
         appContext.contentResolver.openInputStream(uri)?.use { input ->
             val buffer = ByteArray(64 * 1024)
             val output = java.io.ByteArrayOutputStream()
@@ -221,6 +221,19 @@ fun PowerCalApp(store: PowerStore) {
             }
             output.toByteArray().toString(Charsets.UTF_8)
         } ?: error("无法读取备份文件")
+    }
+
+    /** Shared restore tail: one place for reload, schedule rebuild and report wording. */
+    suspend fun finishRestore(parsed: JSONObject, allowLegacy: Boolean, prefix: String) {
+        val report = withContext(Dispatchers.IO) { store.restoreBackup(parsed, allowLegacy) }
+        reload()
+        reconcile()
+        message = buildString {
+            append(prefix)
+            append("${report.objects} 个事件、${report.drafts} 张草稿、${report.commits} 条提交")
+            append("；调度已重建，旧授权与旧执行记录未恢复")
+            report.warnings.firstOrNull()?.let { append("。").append(it) }
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -422,18 +435,13 @@ fun PowerCalApp(store: PowerStore) {
                         it.write(json)
                     } ?: error("无法写入目标文件")
                 }
-                // Read back through the same URI when the provider supports it; only then claim
-                // success with a verified hash. Some cloud providers allow write-only streams.
-                val reread = withContext(Dispatchers.IO) {
-                    runCatching {
-                        appContext.contentResolver.openInputStream(uri)
-                            ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
-                    }.getOrNull()
-                }
+                // Read back through the same bounded reader so a hostile provider cannot bypass the
+                // size guard; only a hash-verified read-back may be reported as success.
+                val reread = runCatching { readBackupText(uri) }.getOrNull()
                 if (reread == null) {
                     message = "备份已写入，但该文件提供方不支持回读校验；请自行保留并验证文件"
                 } else {
-                    BackupEnvelope.verify(JSONObject(reread), PowerStore.VERSION)
+                    BackupEnvelope.verifyReadback(envelope, JSONObject(reread), PowerStore.VERSION)
                     message = "原生备份已导出并回读校验（SHA-256 匹配）；文件为明文敏感数据"
                 }
             }.onFailure { message = "备份失败：" + it.message }
@@ -449,15 +457,7 @@ fun PowerCalApp(store: PowerStore) {
                 text = loaded
                 val parsed = runCatching { JSONObject(loaded) }
                     .getOrElse { throw IllegalArgumentException("备份文件不是有效 JSON") }
-                val report = withContext(Dispatchers.IO) { store.restoreBackup(parsed) }
-                reload()
-                reconcile()
-                message = buildString {
-                    append("已恢复 ${report.objects} 个事件、${report.drafts} 张草稿、${report.commits} 条提交")
-                    if (report.executions > 0) append("、${report.executions} 条执行记录")
-                    append("；调度已重建，旧授权未恢复")
-                    report.warnings.firstOrNull()?.let { append("。").append(it) }
-                }
+                finishRestore(parsed, allowLegacy = false, prefix = "已恢复 ")
             }.onFailure { error ->
                 when (error) {
                     is LegacyBackupConsentRequired -> {
@@ -915,13 +915,12 @@ fun PowerCalApp(store: PowerStore) {
                         runCatching {
                             val parsed = runCatching { JSONObject(legacyText) }
                                 .getOrElse { throw IllegalArgumentException("备份文件不是有效 JSON") }
-                            withContext(Dispatchers.IO) {
-                                store.restoreBackup(parsed, allowLegacyV2 = true)
-                            }
-                        }.onSuccess {
-                            reload()
-                            reconcile()
-                            message = "旧格式备份已恢复（未验证完整性）；建议立即导出新的 Envelope 备份"
+                            finishRestore(
+                                parsed,
+                                allowLegacy = true,
+                                prefix = "旧格式备份已恢复（未验证完整性）："
+                            )
+                            message = (message ?: "") + "；建议立即导出新的 Envelope 备份"
                         }.onFailure { error ->
                             message = "恢复失败：" + (error.message ?: error.javaClass.simpleName)
                         }

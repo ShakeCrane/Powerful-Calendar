@@ -43,6 +43,24 @@ POWERCAL_KEY_PASSWORD
 - 证书须由用户本人在受控设备生成，至少一份离线备份；密码不得进入仓库、聊天记录或日志。
 - 同一份证书必须用于此后所有稳定升级；更换证书会导致无法覆盖安装。
 
+### 证书指纹连续性
+
+生成长期证书后，立即把其 SHA-256 写入 `gradle/expected-signing-sha256.txt`（64 位小写十六进制，
+可带冒号）。之后每次 Release 构建都会读取 keystore 证书并与该记录比对：
+
+- 记录为空：`verifyReleaseCertificate` 失败，提示先记录指纹；首次发行前必须完成。
+- 记录不一致：构建失败，提示禁止换证书覆盖安装。
+- 一致：输出 `Release certificate verified: SHA-256 …` 并继续打包。
+
+获取指纹：
+
+```powershell
+keytool -list -v -keystore D:\secure\powercal-release.jks -alias powercal
+# 读取 "SHA256:" 一行
+```
+
+该记录是“证书身份”的提交内证据；证书本体与密码仍只在仓库外。
+
 ### 用户需自行执行的操作（本 Agent 不代做）
 
 1. 在安全环境生成长期 keystore（RSA 2048+，有效期 ≥ 25 年），离线保存。
