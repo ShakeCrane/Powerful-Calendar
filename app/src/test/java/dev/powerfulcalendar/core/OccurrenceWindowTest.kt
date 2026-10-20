@@ -219,6 +219,21 @@ class OccurrenceWindowTest {
     }
 
     @Test
+    fun anExceptedInstanceStaysAbsentEvenIfItAlsoHasAnOverride() {
+        val original = key("2026-10-20 07:30")
+        val record = daily(
+            "2026-10-20 07:30",
+            overrides = mapOf(original to OccurrenceOverride(local(shanghai, "2026-10-20 09:00"), null)),
+            exceptions = setOf(original)
+        )
+        val day = window(shanghai, "2026-10-20")
+
+        val occurrences = RecurrenceEngine.occurrences(record, day.first, day.last + 1)
+
+        assertEquals(0, occurrences.size)
+    }
+
+    @Test
     fun activitiesStartingBeforeTheWindowAreIncludedWhileTheyStillOverlap() {
         val record = TemporalRecord(
             eventSeq = 2,

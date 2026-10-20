@@ -77,6 +77,15 @@ class AiAuthorizationTest {
             outcome.isFailure
         )
         assertFalse(store.isLocked())
+
+        // A rejected attempt leaves nothing behind: re-review and authorize again successfully.
+        val fresh = store.pendingDrafts().single()
+        val session = store.beginAiBatch(
+            mapOf(fresh.draftId to fresh.draftVersion),
+            setOf(DraftOperation.CREATE)
+        )
+        assertTrue(store.isLocked())
+        assertTrue(store.finishAiBatch(session.sessionId))
     }
 
     @Test

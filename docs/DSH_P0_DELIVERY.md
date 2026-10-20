@@ -16,7 +16,7 @@
 | DSH-08 | 已修复 | 批量授权与“用户审阅的那个 `draftVersion`”绑定，在同一事务内校验并可被提交期复查 |
 | DSH-09 | 已修复 | 重复实例按**有效时间**检索，远距离移入/移出、DST、跨月、重复修改都不会漏或泄漏 |
 
-验证：**151 项单元测试，0 失败**；`assembleDebug` 成功；`lintDebug` **0 错误、13 警告**（与 UI 交付基线持平，无新增类别）。
+验证：**152 项单元测试，0 失败**；`assembleDebug` 成功；`lintDebug` **0 错误、13 警告**（与 UI 交付基线持平，无新增类别）。
 真机项仍未验证（本轮无设备）。
 
 ---
@@ -200,7 +200,7 @@ override 不受 400 天常规窗口限制。
 ```powershell
 .\gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug --no-daemon --console=plain
 # BUILD SUCCESSFUL
-# 151 tests / 13 suites / 0 failures / 0 skipped
+# 152 tests / 13 suites / 0 failures / 0 skipped
 # lintDebug: 0 errors, 13 warnings
 ```
 
