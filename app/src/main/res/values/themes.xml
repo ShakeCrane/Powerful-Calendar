@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Window chrome only; all product colour lives in PowerCalTheme. -->
-    <style name="Theme.PowerCal" parent="@android:style/Theme.Material.Light.NoActionBar">
+    <style name="Base.Theme.PowerCal" parent="@android:style/Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@color/powercal_background</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowLightStatusBar">true</item>
-        <item name="android:windowLightNavigationBar">true</item>
         <item name="android:windowDrawsSystemBarBackgrounds">true</item>
         <item name="android:windowActionModeOverlay">true</item>
     </style>
+    <style name="Theme.PowerCal" parent="Base.Theme.PowerCal" />
 </resources>

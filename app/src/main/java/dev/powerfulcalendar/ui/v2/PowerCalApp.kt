@@ -1,7 +1,6 @@
 package dev.powerfulcalendar.ui.v2
 
 import android.Manifest
-import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -27,17 +26,11 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.ErrorOutline
-import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Restore
-import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -52,9 +45,15 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.semantics.*
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -62,11 +61,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -76,7 +73,6 @@ import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
 import dev.powerfulcalendar.ai.AiBatchRunner
 import dev.powerfulcalendar.ai.AiClient
 import dev.powerfulcalendar.ai.AiDraftService
-import dev.powerfulcalendar.ai.AiSettings
 import dev.powerfulcalendar.ai.AiSettingsStore
 import dev.powerfulcalendar.core.DeckController
 import dev.powerfulcalendar.core.DraftForm
@@ -89,9 +85,7 @@ import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.TemporalText
 import dev.powerfulcalendar.core.TimelineCoordinate
 import dev.powerfulcalendar.data.CalendarEvent
-import dev.powerfulcalendar.data.EventStore
 import dev.powerfulcalendar.data.LegacyImporter
-import dev.powerfulcalendar.data.Priority
 import dev.powerfulcalendar.interop.IcsCodec
 import dev.powerfulcalendar.interop.SystemCalendar
 import dev.powerfulcalendar.interop.TextParser
@@ -123,14 +117,20 @@ object PowerCalStores {
     }
 }
 
-private enum class Page { TIMELINE, TOOLS }
+private enum class Page { TIMELINE, MONTH, TOOLS }
+
+private data class BatchReview(val mode: AiBatchRunner.Mode, val cards: List<dev.powerfulcalendar.core.DraftCard>)
+
+internal data class ReminderDisplay(val record: TemporalRecord, val intent: PowerStore.ScheduleIntent?, val execution: String?)
+internal data class UiDiagnostics(val nextSequence: Long = 1, val identities: Long = 0, val reminders: List<ReminderDisplay> = emptyList())
 
 private data class AppData(
     val records: List<TemporalRecord>,
     val pending: Int,
     val locked: Boolean,
     val session: PowerStore.AiSession?,
-    val operationCounts: Map<DraftOperation, Int>
+    val cards: List<dev.powerfulcalendar.core.DraftCard>,
+    val diagnostics: UiDiagnostics
 )
 
 @Composable
@@ -153,9 +153,11 @@ fun PowerCalApp(store: PowerStore) {
     var deckInitialId by rememberSaveable { mutableStateOf<Long?>(null) }
     var textDialogOpen by remember { mutableStateOf(false) }
     var aiBusy by remember { mutableStateOf(false) }
-    var confirmBatch by remember { mutableStateOf<AiBatchRunner.Mode?>(null) }
+    var confirmBatch by remember { mutableStateOf<BatchReview?>(null) }
+    var pendingCards by remember { mutableStateOf<List<dev.powerfulcalendar.core.DraftCard>>(emptyList()) }
+    var diagnostics by remember { mutableStateOf(UiDiagnostics()) }
+    var monthInspection by remember { mutableStateOf<TemporalRecord?>(null) }
     var confirmingLegacy by remember { mutableStateOf(false) }
-    var operationCounts by remember { mutableStateOf<Map<DraftOperation, Int>>(emptyMap()) }
 
     val initialCamera = remember { TimelineCoordinate.initialCamera(System.currentTimeMillis(), zone) }
     var anchorMillis by rememberSaveable { mutableLongStateOf(initialCamera.anchorMillis) }
@@ -166,12 +168,16 @@ fun PowerCalApp(store: PowerStore) {
     suspend fun reload() {
         val data = withContext(Dispatchers.IO) {
             val pending = store.pendingDrafts()
+            val formal = store.all()
             AppData(
-                records = store.all(),
+                records = formal,
                 pending = pending.size,
                 locked = store.isLocked(),
                 session = store.currentAiSession(),
-                operationCounts = pending.groupingBy { it.operation }.eachCount()
+                cards = pending,
+                diagnostics = UiDiagnostics(store.nextSequencePreview(), store.identityCount(), formal.filter { it.enabled && it.reminderMinutes >= 0 }.take(40).map {
+                    ReminderDisplay(it, store.intentFor(it.eventSeq), store.lastExecution(it.eventSeq))
+                })
             )
         }
         withContext(Dispatchers.Main) {
@@ -179,7 +185,8 @@ fun PowerCalApp(store: PowerStore) {
             pendingCount = data.pending
             aiLocked = data.locked
             aiSession = data.session
-            operationCounts = data.operationCounts
+            pendingCards = data.cards
+            diagnostics = data.diagnostics
         }
     }
 
@@ -194,8 +201,9 @@ fun PowerCalApp(store: PowerStore) {
     }
 
     LaunchedEffect(Unit) {
-        reload()
         reconcile()
+        reload()
+        if (deckOpen) withContext(Dispatchers.IO) { controller.open(deckInitialId) }
         // A process that died mid-batch is fenced and unlocked here; never leave a permanent lock.
         val locked = withContext(Dispatchers.IO) { store.isLocked() }
         if (locked) {
@@ -204,10 +212,24 @@ fun PowerCalApp(store: PowerStore) {
         }
     }
 
-    LaunchedEffect(deckOpen, deckInitialId) {
-        if (deckOpen) {
-            withContext(Dispatchers.IO) { controller.open(deckInitialId) }
+    LaunchedEffect(aiLocked) {
+        withContext(Dispatchers.IO) { controller.refresh() }
+        while (aiLocked) {
+            delay(750)
+            reload()
+            withContext(Dispatchers.IO) { controller.refresh() }
         }
+    }
+    // Refresh permissions and desired scheduling after the user returns from Android settings.
+    val hostLifecycle = (context as? androidx.activity.ComponentActivity)?.lifecycle
+    val deckVisible by rememberUpdatedState(deckOpen)
+    DisposableEffect(hostLifecycle) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) scope.launch { reconcile(); reload() }
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP && deckVisible) PowerCalStores.appScope.launch { controller.flush() }
+        }
+        hostLifecycle?.addObserver(observer)
+        onDispose { hostLifecycle?.removeObserver(observer) }
     }
 
     LaunchedEffect(Unit) {
@@ -351,8 +373,10 @@ fun PowerCalApp(store: PowerStore) {
                 )
             }
             runCatching {
-                appContext.contentResolver.openOutputStream(uri)?.writer(Charsets.UTF_8)?.use {
-                    it.write(body)
+                withContext(Dispatchers.IO) {
+                    appContext.contentResolver.openOutputStream(uri)?.writer(Charsets.UTF_8)?.use {
+                        it.write(body)
+                    } ?: error("无法写入所选文件")
                 }
             }.onSuccess {
                 message = "已导出活动类事件（闹钟与截止不进入 ICS，因为该格式会丢失它们的语义）"
@@ -419,7 +443,7 @@ fun PowerCalApp(store: PowerStore) {
     val tools = page == Page.TOOLS.name
 
     // System back on the tools page returns to the timeline instead of leaving the app.
-    androidx.activity.compose.BackHandler(enabled = tools) {
+    androidx.activity.compose.BackHandler(enabled = page != Page.TIMELINE.name && !deckOpen) {
         page = Page.TIMELINE.name
         scope.launch { reload() }
     }
@@ -433,7 +457,7 @@ fun PowerCalApp(store: PowerStore) {
     ) {
         if (tools) {
             ToolsPage(
-                store = store,
+                diagnostics = diagnostics,
                 records = records,
                 pendingCount = pendingCount,
                 aiLocked = aiLocked,
@@ -465,12 +489,17 @@ fun PowerCalApp(store: PowerStore) {
                 onExportBackup = { createBackup.launch("powercal-backup.json") },
                 onRestoreBackup = { restoreBackup.launch(arrayOf("application/json", "*/*")) },
                 onRequestNotificationPermission = {
-                    notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    if (android.os.Build.VERSION.SDK_INT >= 33) {
+                        notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    } else {
+                        context.startActivity(Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                            .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, appContext.packageName))
+                    }
                 },
                 onOpenExactAlarmSettings = {
                     ReminderScheduler.openExactAlarmSettings(appContext)
                 },
-                onRunBatch = { mode -> confirmBatch = mode },
+                onRunBatch = { mode -> confirmBatch = BatchReview(mode, pendingCards.toList()) },
                 onCancelBatch = {
                     scope.launch {
                         val session = aiSession
@@ -488,7 +517,7 @@ fun PowerCalApp(store: PowerStore) {
                         message = "已按当前数据重建提醒调度"
                     }
                 },
-                onAiDraft = { text ->
+                onAiDraft = { text, shareForRequest ->
                     aiBusy = true
                     scope.launch {
                         try {
@@ -499,7 +528,7 @@ fun PowerCalApp(store: PowerStore) {
                             }
                             // Context sharing is opt-in. When disabled the endpoint only receives
                             // the text the user typed.
-                            val contextForAi = if (settings.shareContext) {
+                            val contextForAi = if (settings.shareContext && shareForRequest) {
                                 val horizon = nowMillis + 14L * 24 * 3_600_000
                                 records.filter { (it.anchorMillis() ?: 0L) <= horizon }.take(60)
                             } else {
@@ -522,6 +551,9 @@ fun PowerCalApp(store: PowerStore) {
                                 openDeckAt(created.draftIds.first())
                                 message = "AI 生成了 ${created.draftIds.size} 张待确认草稿 · " + sharedNote
                             }
+                        } catch (error: Exception) {
+                            if (error is kotlinx.coroutines.CancellationException) throw error
+                            message = "AI 未完成：" + (error.message ?: "请检查配置后重试，已有草稿已保留")
                         } finally {
                             aiBusy = false
                         }
@@ -536,6 +568,20 @@ fun PowerCalApp(store: PowerStore) {
                     }
                 }
             )
+        } else if (page == Page.MONTH.name) {
+            MonthScreen(records, Instant.ofEpochMilli(anchorMillis).atZone(zone).toLocalDate(), zone, aiLocked,
+                onBack = { page = Page.TIMELINE.name },
+                onDate = { date -> anchorMillis = date.atTime(12, 0).atZone(zone).toInstant().toEpochMilli(); page = Page.TIMELINE.name },
+                onOpen = { record ->
+                    if (aiLocked) monthInspection = record else scope.launch {
+                        runCatching { withContext(Dispatchers.IO) { store.pendingDraftsFor(record.eventSeq).firstOrNull { it.operation == DraftOperation.REPLACE || it.operation == DraftOperation.CONVERT } ?: store.proposeReplace(record.eventSeq) } }
+                            .onSuccess { reload(); openDeckAt(it.draftId) }.onFailure { message = it.message ?: "无法打开事件" }
+                    }
+                },
+                onCreate = { date -> scope.launch {
+                    runCatching { withContext(Dispatchers.IO) { store.newDraft(DraftForm.fresh(TemporalKind.ACTIVITY, date, zone)) } }
+                        .onSuccess { reload(); openDeckAt(it.draftId) }.onFailure { message = it.message ?: "无法创建草稿" }
+                } })
         } else {
             TimelineScreen(
                 records = records,
@@ -573,30 +619,7 @@ fun PowerCalApp(store: PowerStore) {
                     } else scope.launch {
                         runCatching {
                             withContext(Dispatchers.IO) {
-                                val base = DraftForm.from(record)
-                                val form = when (record.kind) {
-                                    TemporalKind.ALARM -> base.copy(
-                                        startText = DraftForm.formatInstant(target, zone)
-                                    )
-                                    TemporalKind.ACTIVITY -> {
-                                        val duration = (record.endMillis ?: target) -
-                                            (record.startMillis ?: target)
-                                        base.copy(
-                                            startText = DraftForm.formatInstant(target, zone),
-                                            endText = DraftForm.formatInstant(target + duration, zone)
-                                        )
-                                    }
-                                    TemporalKind.DEADLINE -> if (record.isDateOnlyDeadline()) {
-                                        base.copy(
-                                            endText = Instant.ofEpochMilli(target)
-                                                .atZone(zone).toLocalDate().toString()
-                                        )
-                                    } else {
-                                        base.copy(
-                                            endText = DraftForm.formatInstant(target, zone)
-                                        )
-                                    }
-                                }
+                                val form = movedDraftForm(record, target)
                                 store.newDraft(
                                     form,
                                     record.eventSeq,
@@ -637,7 +660,9 @@ fun PowerCalApp(store: PowerStore) {
                 onOpenTools = {
                     page = Page.TOOLS.name
                     scope.launch { reload() }
-                }
+                },
+                onOpenMonth = { page = Page.MONTH.name },
+                blockedReminders = diagnostics.reminders.count { it.intent?.desired == PowerStore.DesiredSchedule.BLOCKED }
             )
         }
 
@@ -652,7 +677,7 @@ fun PowerCalApp(store: PowerStore) {
             ) {
                 Text(
                     text,
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp).semantics { liveRegion = LiveRegionMode.Polite },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.inverseOnSurface
                 )
@@ -667,8 +692,8 @@ fun PowerCalApp(store: PowerStore) {
             onDismissRequest = {
                 deckOpen = false
                 scope.launch {
-                    reload()
                     reconcile()
+                    reload()
                 }
             },
             onOpenFormalEvent = { record ->
@@ -701,8 +726,8 @@ fun PowerCalApp(store: PowerStore) {
             },
             onDeckChanged = {
                 scope.launch {
-                    reload()
                     reconcile()
+                    reload()
                 }
             },
             formalSearch = { query ->
@@ -725,79 +750,58 @@ fun PowerCalApp(store: PowerStore) {
         )
     }
 
-    confirmBatch?.let { mode ->
+    monthInspection?.let { record ->
+        AlertDialog(onDismissRequest = { monthInspection = null }, title = { Text(record.title) },
+            text = { Column { Text(TemporalText.summarize(record)); Text(record.notes); Text("AI 处理中，卡组只读。") } },
+            confirmButton = { TextButton(onClick = { monthInspection = null }) { Text("关闭") } })
+    }
+    confirmBatch?.let { review ->
+        val mode = review.mode
         val label = if (mode == AiBatchRunner.Mode.PUBLISH) "发布" else "丢弃"
-        val deleteCount = operationCounts[DraftOperation.DELETE] ?: 0
-        val convertCount = operationCounts[DraftOperation.CONVERT] ?: 0
         AlertDialog(
-            onDismissRequest = { confirmBatch = null },
-            title = { Text("授权 AI 批量$label？") },
+            onDismissRequest = { confirmBatch = null }, title = { Text("一次性授权 AI $label") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        "将处理当前 $pendingCount 张待处理卡片。期间整个卡组对你是只读的，" +
-                            "时间轴仍可查看；你可以随时停止。已成功的提交会保留，" +
-                            "有版本冲突的卡片会留给你确认，不会被 AI 静默覆盖。"
-                    )
-                    if (deleteCount > 0) {
-                        Text(
-                            "其中 $deleteCount 张是删除提案：确认会永久删除正式事件并退役序号。",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error
-                        )
+                Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("范围固定为下列 ${review.cards.size} 张草稿。卡组在处理期间只读，时间轴可以查看。你可随时停止，已完成结果会保留。")
+                    Text(if (mode == AiBatchRunner.Mode.DISCARD) "丢弃只是不执行这些提案，不会删除正式事件。" else "发布会执行每张提案的完整操作；冲突会保留给你确认。", style = MaterialTheme.typography.bodyMedium)
+                    review.cards.groupingBy { it.operation }.eachCount().forEach { (operation, count) ->
+                        Text("${operation.label}提案 · $count 张", style = MaterialTheme.typography.labelLarge)
                     }
-                    if (convertCount > 0) {
-                        Text(
-                            "其中 $convertCount 张会改变事件类型，序号保持不变。",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                    if (mode == AiBatchRunner.Mode.PUBLISH && review.cards.any { it.operation == DraftOperation.DELETE }) {
+                        Text("包含正式删除操作：事件序号会退役，当前没有发布撤销功能。", color = MaterialTheme.colorScheme.error)
+                    }
+                    HorizontalDivider()
+                    review.cards.forEachIndexed { index, card ->
+                        Text("${index + 1}. ${TemporalRecord.formatSeq(card.eventSeq)} · ${card.operation.label} · ${card.form.title.ifBlank { "未命名" }}", style = MaterialTheme.typography.bodyMedium)
                     }
                 }
             },
-            confirmButton = {
-                TextButton(onClick = {
-                    confirmBatch = null
-                    // Runs on the process scope so a rotation or a closed dialog cannot cancel a
-                    // batch mid-flight and strand the deck lock.
-                    PowerCalStores.appScope.launch {
-                        val pending = store.pendingDrafts()
-                        if (pending.isEmpty()) {
-                            withContext(Dispatchers.Main) { message = "没有待处理卡片" }
-                            return@launch
-                        }
-                        val session = runCatching {
-                            store.beginAiBatch(
-                                pending.map { it.draftId }.toSet(),
-                                DraftOperation.entries.toSet()
-                            )
-                        }.getOrElse {
-                            withContext(Dispatchers.Main) {
-                                message = "无法开始批次：" + (it.message ?: "")
-                            }
-                            return@launch
-                        }
-                        withContext(Dispatchers.Main) { reload() }
-                        val report = AiBatchRunner(store).run(session, mode)
-                        controller.refresh()
-                        withContext(Dispatchers.Main) {
-                            reload()
-                            message = buildString {
-                                append("AI 批次结束：")
-                                if (mode == AiBatchRunner.Mode.PUBLISH) {
-                                    append("发布 ${report.published} 张")
-                                } else {
-                                    append("丢弃 ${report.discarded} 张")
-                                }
-                                append("，保留 ${report.kept} 张")
-                                if (report.cancelled) append("（已停止）")
-                                if (report.failures.isNotEmpty()) append("；").append(report.failures.first())
-                            }
-                        }
-                        ReminderScheduler.reconcile(appContext, store)
+            confirmButton = { TextButton(enabled = review.cards.isNotEmpty() && !aiLocked, onClick = {
+                confirmBatch = null
+                PowerCalStores.appScope.launch {
+                    // Revalidate precisely what was reviewed; never reread-and-enlarge scope.
+                    val reviewedIds = review.cards.map { it.draftId }.toSet()
+                    val latest = store.pendingDrafts().filter { it.draftId in reviewedIds }.associateBy { it.draftId }
+                    if (review.cards.any { latest[it.draftId] != it }) {
+                        withContext(Dispatchers.Main) { reload(); message = "授权清单已变化，请重新检查后授权" }
+                        return@launch
                     }
-                }) { Text("授权并开始") }
-            },
+                    val session = runCatching { store.beginAiBatch(reviewedIds, review.cards.map { it.operation }.toSet()) }.getOrElse {
+                        withContext(Dispatchers.Main) { message = "无法开始批次：${it.message.orEmpty()}" }
+                        return@launch
+                    }
+                    withContext(Dispatchers.Main) { reload() }
+                    val report = AiBatchRunner(store).run(session, mode)
+                    controller.refresh()
+                    withContext(Dispatchers.Main) {
+                        reload()
+                        message = "AI 批次结束：发布 ${report.published} 张，丢弃 ${report.discarded} 张，保留 ${report.kept} 张" +
+                            (if (report.cancelled) "（已停止）" else "") + (report.failures.firstOrNull()?.let { "；$it" } ?: "")
+                    }
+                    ReminderScheduler.reconcile(appContext, store)
+                    withContext(Dispatchers.Main) { reload() }
+                }
+            }) { Text("授权并$label ${review.cards.size} 张") } },
             dismissButton = { TextButton(onClick = { confirmBatch = null }) { Text("取消") } }
         )
     }
@@ -809,7 +813,7 @@ fun PowerCalApp(store: PowerStore) {
             text = {
                 Text(
                     "旧版数据库只会被只读打开，不会被删除或修改。每条旧事件会获得新的永久序号，" +
-                        "并标记来源为旧版迁移；重复执行不会产生重复记录。"
+                        "并标记来源为旧版迁移；重复执行不会产生重复记录。旧闹钟可能仍在原时钟中运行，迁入后请先检查并关闭旧闹钟，再启用 PowerCal 提醒，避免重复响铃。"
                 )
             },
             confirmButton = {
@@ -879,7 +883,7 @@ private fun TextDraftDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit) 
 
 @Composable
 private fun ToolsPage(
-    store: PowerStore,
+    diagnostics: UiDiagnostics,
     records: List<TemporalRecord>,
     pendingCount: Int,
     aiLocked: Boolean,
@@ -900,46 +904,38 @@ private fun ToolsPage(
     onRunBatch: (AiBatchRunner.Mode) -> Unit,
     onCancelBatch: () -> Unit,
     onReconcile: () -> Unit,
-    onAiDraft: (String) -> Unit,
+    onAiDraft: (String, Boolean) -> Unit,
     aiBusy: Boolean,
     onReleaseStuck: () -> Unit
 ) {
     val context = LocalContext.current
     val appContext = context.applicationContext
     var settings by remember { mutableStateOf(AiSettingsStore.load(appContext)) }
-    var aiText by remember { mutableStateOf("") }
+    var aiText by rememberSaveable { mutableStateOf("") }
+    var shareForRequest by rememberSaveable { mutableStateOf(false) }
     var dirty by remember { mutableStateOf(false) }
     // Diagnostics are read once per data change instead of on every recomposition.
-    val nextSequence = remember(records) { store.nextSequencePreview() }
-    val identityCount = remember(records) { store.identityCount() }
+    val nextSequence = diagnostics.nextSequence
+    val identityCount = diagnostics.identities
+    var modelExpanded by rememberSaveable { mutableStateOf(false) }
 
     Column(
         Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
             .imePadding()
+            .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp)
     ) {
         Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "返回时间轴") }
+            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回时间轴") }
             Text("工具与设置", style = MaterialTheme.typography.headlineSmall)
         }
 
         SectionCard("待处理", "$pendingCount 张草稿") {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onOpenDeck, modifier = Modifier.weight(1f)) {
-                    Text("打开待处理")
-                }
-                OutlinedButton(
-                    onClick = { onRunBatch(AiBatchRunner.Mode.PUBLISH) },
-                    modifier = Modifier.weight(1f),
-                    enabled = pendingCount > 0 && !aiLocked
-                ) { Text("AI 批量发布") }
-                OutlinedButton(
-                    onClick = { onRunBatch(AiBatchRunner.Mode.DISCARD) },
-                    modifier = Modifier.weight(1f),
-                    enabled = pendingCount > 0 && !aiLocked
-                ) { Text("AI 批量丢弃") }
+            OutlinedButton(onClick = onOpenDeck, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("打开待处理 · $pendingCount 张") }
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                OutlinedButton(onClick = { onRunBatch(AiBatchRunner.Mode.PUBLISH) }, modifier = Modifier.fillMaxWidth(), enabled = pendingCount > 0 && !aiLocked) { Text("一次性授权 AI 批量发布") }
+                TextButton(onClick = { onRunBatch(AiBatchRunner.Mode.DISCARD) }, modifier = Modifier.fillMaxWidth(), enabled = pendingCount > 0 && !aiLocked) { Text("一次性授权 AI 批量丢弃") }
             }
             if (aiLocked) {
                 Text(
@@ -964,11 +960,16 @@ private fun ToolsPage(
             if (settings.configured) "已配置 · 模型 ${settings.model}" else "未配置"
         ) {
             Text(
-                "PowerCal 只有一个 AI。它只生成待确认草稿，或在一次显式授权的批次内发布/丢弃选中的卡片。" +
+                "描述计划，先生成待确认草稿；批量发布或丢弃需要一次性授权。" +
                     "密钥保存在应用私有存储，不进入备份，也不会写入日志。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            TextButton(onClick = { modelExpanded = !modelExpanded }) {
+                Icon(if (modelExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore, null)
+                Text(if (modelExpanded) "收起模型配置" else "配置端点、模型与密钥")
+            }
+            if (modelExpanded) {
             OutlinedTextField(
                 value = settings.endpoint,
                 onValueChange = { settings = settings.copy(endpoint = it); dirty = true },
@@ -1000,9 +1001,9 @@ private fun ToolsPage(
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("允许共享事件上下文", style = MaterialTheme.typography.bodyMedium)
+                    Text("允许按次共享事件上下文", style = MaterialTheme.typography.bodyMedium)
                     Text(
-                        "关闭时只发送你输入的文字；开启后最多发送 60 条相关事件（标题与时间）。",
+                        "开启后，每次请求仍需单独选择是否共享，最多 60 条事件。",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -1028,6 +1029,7 @@ private fun ToolsPage(
                     }
                 ) { Text("保存并启用") }
             }
+            }
             HorizontalDivider()
             OutlinedTextField(
                 value = aiText,
@@ -1035,9 +1037,17 @@ private fun ToolsPage(
                 label = { Text("用自然语言描述，例如：把周五的组会改到 16:00") },
                 modifier = Modifier.fillMaxWidth().heightIn(min = 96.dp)
             )
+            if (settings.shareContext) Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("本次共享事件上下文", style = MaterialTheme.typography.bodyMedium)
+                    Text("向配置的端点发送至多 60 条事件的标题与时间；默认只发送输入文字。", style = MaterialTheme.typography.bodySmall)
+                }
+                Switch(shareForRequest, { shareForRequest = it }, enabled = !aiBusy && !aiLocked)
+            }
+            if (dirty) Text("先保存模型配置，再发送本次请求。", style = MaterialTheme.typography.bodySmall)
             Button(
-                onClick = { onAiDraft(aiText) },
-                enabled = !aiBusy && aiText.isNotBlank() && settings.configured
+                onClick = { onAiDraft(aiText, shareForRequest); shareForRequest = false },
+                enabled = !aiBusy && !aiLocked && !dirty && aiText.isNotBlank() && settings.configured
             ) {
                 Icon(Icons.Default.AutoAwesome, null, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(6.dp))
@@ -1046,16 +1056,16 @@ private fun ToolsPage(
         }
 
         SectionCard("导入", "结构化数据严格校验后可直接发布") {
-            ToolRow("从系统日历一次性导入", "读取未来一年与过去 30 天，不是双向同步", onImportSystem)
-            ToolRow("导入 ICS 文件", "支持折叠行、TZID 与转义；不展开 RRULE", onImportIcs)
-            ToolRow("从旧版 PowerCal 迁移", "只读打开旧数据库，保留原文件", onMigrateLegacy)
-            ToolRow("从截图识别", "本地中文 OCR，识别结果为待确认草稿", onPickImage)
-            ToolRow("用文字创建草稿", "离线解析器，不需要联网", onTextDraft)
+            ToolRow("从系统日历一次性导入", "读取未来一年与过去 30 天，不是双向同步", onImportSystem, enabled = !aiLocked)
+            ToolRow("导入 ICS 文件", "支持折叠行、TZID 与转义；不展开 RRULE", onImportIcs, enabled = !aiLocked)
+            ToolRow("从旧版 PowerCal 迁移", "只读打开旧数据库，保留原文件", onMigrateLegacy, enabled = !aiLocked)
+            ToolRow("从截图识别", "本地中文 OCR，识别结果为待确认草稿", onPickImage, enabled = !aiLocked)
+            ToolRow("用文字创建草稿", "离线解析器，不需要联网", onTextDraft, enabled = !aiLocked)
         }
 
         SectionCard("备份与导出", "原生备份优先于有损格式") {
             ToolRow("导出原生备份", "包含序号水位、草稿顺序与提交历史；不含密钥", onExportBackup)
-            ToolRow("从备份恢复", "只允许恢复到空数据库，避免覆盖现有数据", onRestoreBackup)
+            ToolRow("从备份恢复", "只允许恢复到空数据库，避免覆盖现有数据", onRestoreBackup, enabled = !aiLocked)
             ToolRow("导出 ICS", "仅活动类事件；闹钟与截止的语义会被该格式丢失", onExportIcs)
         }
 
@@ -1079,12 +1089,31 @@ private fun ToolsPage(
             }
         }
 
+        SectionCard("执行状态", "最近的期望调度与执行记录，最多 40 项") {
+            if (diagnostics.reminders.isEmpty()) Text("还没有启用的提醒。", style = MaterialTheme.typography.bodyMedium)
+            diagnostics.reminders.forEach { row ->
+                Column(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("${row.record.displaySeq()} · ${row.record.title}", style = MaterialTheme.typography.titleSmall)
+                    val state = row.intent?.desired
+                    Text("调度：" + when (state) {
+                        PowerStore.DesiredSchedule.PENDING -> "等待调度"
+                        PowerStore.DesiredSchedule.SCHEDULED -> "已交给系统"
+                        PowerStore.DesiredSchedule.BLOCKED -> "受阻，请检查权限"
+                        PowerStore.DesiredSchedule.CANCELLED -> "已取消"
+                        PowerStore.DesiredSchedule.FIRED -> "已触发"
+                        null -> "无待执行调度"
+                    }, style = MaterialTheme.typography.bodyMedium, color = if (state == PowerStore.DesiredSchedule.BLOCKED) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
+                    row.intent?.androidHint?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                    row.execution?.let { Text("最近执行：$it", style = MaterialTheme.typography.bodySmall) }
+                }
+            }
+        }
         SectionCard("诊断", "只读") {
             StatusLine("正式事件", "${records.size} 条", false)
             StatusLine("下一个事件序号", TemporalRecord.formatSeq(nextSequence), false)
             StatusLine("已分配序号", "$identityCount 个（含退役）", false)
             StatusLine("数据库版本", "v${PowerStore.VERSION} · ${PowerStore.DATABASE_NAME}", false)
-            StatusLine("视觉效果", if (effects.blur) "玻璃效果开启" else "低端设备降级", false)
+            StatusLine("视觉效果", if (effects.blur) "分层玻璃" else "简化实色界面", false)
             StatusLine("减少动画", if (effects.reduceMotion) "已遵循系统设置" else "未启用", false)
             records.filter { it.recurrence.isRepeating }.take(3).forEach { record ->
                 val next = RecurrenceEngine.nextOccurrence(record, System.currentTimeMillis())
@@ -1114,9 +1143,8 @@ private fun SectionCard(title: String, subtitle: String, content: @Composable ()
             Modifier.fillMaxWidth().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(title, style = MaterialTheme.typography.titleMedium)
-                Spacer(Modifier.weight(1f))
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
                 Text(
                     subtitle,
                     style = MaterialTheme.typography.labelSmall,
@@ -1129,12 +1157,13 @@ private fun SectionCard(title: String, subtitle: String, content: @Composable ()
 }
 
 @Composable
-private fun ToolRow(title: String, description: String, onClick: () -> Unit) {
+private fun ToolRow(title: String, description: String, onClick: () -> Unit, enabled: Boolean = true) {
     Surface(
         onClick = onClick,
+        enabled = enabled,
         shape = GlassShapes.chip,
         color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.7f),
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)
     ) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
             Text(title, style = MaterialTheme.typography.bodyMedium)
@@ -1149,21 +1178,13 @@ private fun ToolRow(title: String, description: String, onClick: () -> Unit) {
 
 @Composable
 private fun StatusLine(label: String, value: String, warn: Boolean) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Icon(
-            if (warn) Icons.Default.ErrorOutline else Icons.Default.CheckCircle,
-            null,
-            modifier = Modifier.size(15.dp),
-            tint = if (warn) MaterialTheme.colorScheme.error
-            else MaterialTheme.colorScheme.secondary
-        )
-        Spacer(Modifier.width(8.dp))
-        Text(label, style = MaterialTheme.typography.labelMedium)
-        Spacer(Modifier.weight(1f))
-        Text(
-            value,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.Top) {
+        Icon(if (warn) Icons.Default.ErrorOutline else Icons.Default.CheckCircle, null, Modifier.size(20.dp),
+            tint = if (warn) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary)
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.labelLarge)
+            Text(value, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }

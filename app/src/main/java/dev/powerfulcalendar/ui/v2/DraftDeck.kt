@@ -2,13 +2,13 @@ package dev.powerfulcalendar.ui.v2
 
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.focusable
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.unit.Dp
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -16,16 +16,25 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.semantics.*
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -38,20 +47,19 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -65,29 +73,37 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.animation.core.snap
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.PointerEvent
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -95,13 +111,10 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import dev.powerfulcalendar.core.DeckController
 import dev.powerfulcalendar.core.DraftCard
-import dev.powerfulcalendar.core.DraftDiff
-import dev.powerfulcalendar.core.DraftField
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.DraftStatus
@@ -118,9 +131,19 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.LocalDate
-import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.ZoneId
+
+private val LocalDeckInputs = staticCompositionLocalOf<MutableMap<Any, Rect>> { mutableMapOf() }
+
+/** Explicit field hit regions keep paging away from selection, caret and picker gestures. */
+@Composable
+private fun Modifier.deckInput(): Modifier {
+    val regions = LocalDeckInputs.current
+    val token = remember { Any() }
+    DisposableEffect(regions) { onDispose { regions.remove(token) } }
+    return onGloballyPositioned { regions[token] = it.boundsInRoot() }
+}
 
 /**
  * 待处理: one centred glass popup that is both the pending inbox and every event editor.
@@ -129,8 +152,8 @@ import java.time.ZoneId
  *  - one swipe INSIDE the card moves exactly one queue card, and only after the text is durably
  *    staged; a failed save keeps the card and the text (handled by [DeckController.flush]);
  *  - a swipe OUTSIDE the card may fling several cards, still staging first;
- *  - vertical drag inside the expanded body scrolls; text selection wins because the gesture
- *    reader never consumes pointer changes itself.
+ *  - vertical drag inside the expanded body scrolls; registered input hit regions keep text
+ *    selection and caret gestures out of paging.
  */
 @Composable
 fun DraftDeckDialog(
@@ -143,265 +166,154 @@ fun DraftDeckDialog(
     formalSearch: (String) -> List<TemporalRecord>
 ) {
     var state by remember { mutableStateOf(controller.state) }
-    var query by remember { mutableStateOf("") }
-    var expanded by remember { mutableStateOf(false) }
+    var query by rememberSaveable { mutableStateOf("") }
+    var expanded by rememberSaveable { mutableStateOf(false) }
     var typeMenu by remember { mutableStateOf(false) }
     var conversionNote by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val effects = LocalGlassEffects.current
+    val density = LocalDensity.current
+    val keyboard = WindowInsets.ime.getBottom(density) > 0
+    val popupFocus = remember { FocusRequester() }
+    var focusPlaced by remember { mutableStateOf(false) }
+
+    // Claim the command on the main thread before launching IO: rapid gestures cannot queue
+    // terminal actions for a card which has already been promoted by another command.
+    fun command(changed: Boolean = false, block: () -> Unit) {
+        if (busy) return
+        busy = true
+        scope.launch {
+            try {
+                withContext(Dispatchers.IO) { block() }
+                state = controller.state
+                if (changed) onDeckChanged()
+            } catch (error: Exception) {
+                if (error is kotlinx.coroutines.CancellationException) throw error
+                state = controller.state.copy(error = error.message ?: "操作未完成，草稿已保留，请重试")
+            } finally { busy = false }
+        }
+    }
+    fun leave(afterSave: () -> Unit = onDismissRequest) {
+        if (busy) return
+        busy = true
+        scope.launch {
+            try {
+                if (withContext(Dispatchers.IO) { controller.flush() }) afterSave()
+                state = controller.state
+            } catch (error: Exception) {
+                if (error is kotlinx.coroutines.CancellationException) throw error
+                state = controller.state.copy(error = "暂存失败，请重试：${error.message.orEmpty()}")
+            } finally { busy = false }
+        }
+    }
 
     DisposableEffect(controller) {
-        // Marshal controller publications (which may happen on an IO thread) onto the UI thread.
         controller.observe { next -> scope.launch { state = next } }
+        state = controller.state
         onDispose { controller.observe { } }
     }
-
-    // Debounced durable staging. Nothing here blocks per-keystroke typing.
     LaunchedEffect(state.currentId, state.form, state.dirty, state.aiLocked) {
-        if (!state.dirty || state.aiLocked) return@LaunchedEffect
-        delay(300)
-        withContext(Dispatchers.IO) { controller.flush() }
+        if (state.dirty && !state.aiLocked) {
+            delay(300)
+            // Background staging must not toggle the editor read-only while the IME is typing.
+            // Controller synchronization protects the snapshot; asynchronous controller APIs are
+            // still needed from DSH to eliminate contention on genuinely slow storage.
+            try {
+                withContext(Dispatchers.IO) { controller.flush() }
+            } catch (error: Exception) {
+                if (error is kotlinx.coroutines.CancellationException) throw error
+                state = controller.state.copy(error = "暂存失败，请重试：${error.message.orEmpty()}")
+            }
+        }
     }
-
-    // Keep local UI flags tied to card identity, never to list position.
     LaunchedEffect(state.currentId) {
         expanded = false
         typeMenu = false
         conversionNote = null
     }
-
     val card = state.current
     val form = state.form
 
     Dialog(
-        onDismissRequest = {
-            scope.launch {
-                withContext(Dispatchers.IO) { controller.flush() }
-                onDismissRequest()
-            }
-        },
-        properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false)
+        onDismissRequest = { leave() },
+        properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false, decorFitsSystemWindows = false)
     ) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            // Dimmed backdrop: taps close (after flush), horizontal drags browse several cards.
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = if (effects.blur) 0.38f else 0.5f))
-                    .outsideGesture(
-                        onTap = {
-                            scope.launch {
-                                val saved = withContext(Dispatchers.IO) { controller.flush() }
-                                if (saved) onDismissRequest()
-                            }
-                        },
-                        onBrowse = { steps ->
-                            scope.launch { withContext(Dispatchers.IO) { controller.jump(steps) } }
-                        }
-                    )
-            )
-            Column(
-                Modifier
-                    .fillMaxWidth(0.94f)
-                    .fillMaxHeight(0.90f)
-                    .statusBarsPadding()
-                    .navigationBarsPadding()
-                    .imePadding()
-                    .padding(horizontal = 8.dp, vertical = 8.dp)
-                    // Absorb taps inside the popup so they never reach the dismiss backdrop.
-                    .pointerInput(Unit) { detectTapGestures { } },
-                horizontalAlignment = Alignment.CenterHorizontally
+            Box(Modifier.fillMaxSize().testTag("deck-backdrop")
+                .background(Color.Black.copy(alpha = 0.42f))
+                .outsideGesture(onTap = { leave() }, onBrowse = { steps -> command { controller.jump(steps) } }))
+            BoxWithConstraints(
+                Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding().padding(horizontal = 24.dp, vertical = 8.dp),
+                contentAlignment = Alignment.Center
             ) {
-                DeckHeader(
-                    total = state.cards.size,
-                    aiLocked = state.aiLocked,
-                    session = aiSession,
-                    onClose = {
-                        scope.launch {
-                            val saved = withContext(Dispatchers.IO) { controller.flush() }
-                            if (saved) onDismissRequest()
-                        }
-                    },
-                    onCancelAi = onCancelAiBatch
-                )
-
-                if (aiSession?.isActive == true) {
-                    AiProgressBanner(aiSession, state.cards.size, onCancelAiBatch)
-                }
-
-                DeckSearch(
-                    query = query,
-                    onChange = { query = it },
-                    drafts = state.cards,
-                    onPickDraft = { id ->
-                        scope.launch { withContext(Dispatchers.IO) { controller.select(id) } }
-                        query = ""
-                    },
-                    // Called directly: memoising only on `query` would show stale results after an
-                    // event was committed elsewhere.
-                    formalResults = if (query.isBlank()) emptyList() else formalSearch(query),
-                    onPickFormal = { record ->
-                        query = ""
-                        onOpenFormalEvent(record)
+                val short = maxHeight < 500.dp || keyboard
+                Column(Modifier.widthIn(max = 600.dp).fillMaxWidth().fillMaxHeight().focusRequester(popupFocus).focusable()
+                    .onGloballyPositioned {
+                        // Dialog content has a separate owner: request only after its focus node
+                        // is attached and placed, rather than racing the dialog composition.
+                        if (!focusPlaced) { focusPlaced = true; popupFocus.requestFocus() }
                     }
-                )
-
-                Spacer(Modifier.height(10.dp))
-
-                Box(
-                    Modifier.fillMaxWidth().weight(1f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    when {
-                        state.completion != null -> CompletionCard(
-                            completion = state.completion!!,
-                            animated = !effects.reduceMotion,
-                            canUndo = state.canUndoDiscard,
-                            onUndo = {
-                                scope.launch {
-                                    if (withContext(Dispatchers.IO) { controller.undoDiscard() }) {
-                                        onDeckChanged()
-                                    }
-                                }
-                            },
-                            onDone = onDismissRequest
-                        )
-
-                        state.aiLocked && card == null -> AiHoldCard(
-                            session = aiSession,
-                            onCancel = onCancelAiBatch,
-                            onClose = onDismissRequest
-                        )
-
-                        card == null || form == null -> EmptyDeckCard(onClose = onDismissRequest)
-
-                        else -> {
-                            FanStack(
-                                count = state.cards.size,
-                                position = state.position,
-                                expanded = expanded,
-                                onNext = {
-                                    scope.launch { withContext(Dispatchers.IO) { controller.move(1) } }
-                                },
-                                onPrevious = {
-                                    scope.launch { withContext(Dispatchers.IO) { controller.move(-1) } }
-                                }
-                            ) {
-                                // Keyed by draftId so caret, selection and scroll never leak from
-                                // one card into the next.
+                    .pointerInput(Unit) { detectTapGestures { } }, horizontalAlignment = Alignment.CenterHorizontally) {
+                    DeckHeader(state.cards.size, state.aiLocked, aiSession, { leave() }, onCancelAiBatch)
+                    if (state.aiLocked && !short && aiSession != null) AiProgressBanner(aiSession, state.cards.count { it.draftId in aiSession.scope }, onCancelAiBatch)
+                    if (!short && state.completion == null) {
+                        DeckSearch(query, { query = it }, state.cards, { id ->
+                            command { controller.select(id) }; query = ""
+                        }, if (query.isBlank()) emptyList() else formalSearch(query), { record ->
+                            leave { query = ""; onOpenFormalEvent(record) }
+                        })
+                    }
+                    Box(Modifier.fillMaxWidth().weight(1f).padding(vertical = if (short) 0.dp else 12.dp), contentAlignment = Alignment.Center) {
+                        when {
+                            state.completion != null -> CompletionCard(state.completion!!, !effects.reduceMotion, state.canUndoDiscard,
+                                { command(true) { controller.undoDiscard() } }, { leave() })
+                            card == null && state.aiLocked -> AiHoldCard(aiSession, onCancelAiBatch, { leave() })
+                            card == null || form == null -> EmptyDeckCard { leave() }
+                            else -> FanStack(state.cards.size, state.position, expanded || short,
+                                { command { controller.move(1) } }, { command { controller.move(-1) } }) {
                                 key(card.draftId) {
-                                    DeckCardBody(
-                                        card = card,
-                                        form = form,
-                                        position = state.position,
-                                        total = state.cards.size,
-                                        expanded = expanded,
-                                        aiLocked = state.aiLocked,
-                                        error = state.error,
-                                        conversionNote = conversionNote,
-                                        dirty = state.dirty,
-                                        onExpandToggle = { expanded = !expanded },
-                                        onFormChange = { controller.edit(it) },
-                                        onTypeChange = { target ->
-                                            val result = TemporalConversion.convert(form, target)
-                                            controller.edit(result.form)
-                                            conversionNote = result.note.ifBlank { null }
-                                            typeMenu = false
-                                        },
-                                        typeMenuExpanded = typeMenu,
-                                        onTypeMenuChange = { typeMenu = it },
-                                        onPrevious = {
-                                            scope.launch {
-                                                withContext(Dispatchers.IO) { controller.move(-1) }
+                                    DeckCardBody(card, form, state.position, state.cards.size, expanded,
+                                        state.aiLocked || busy, state.error, conversionNote, state.dirty,
+                                        { expanded = !expanded },
+                                        { if (!busy && !state.aiLocked) controller.edit(it) },
+                                        { target ->
+                                            if (!busy && !state.aiLocked) {
+                                                val result = TemporalConversion.convert(form, target)
+                                                controller.edit(result.form)
+                                                conversionNote = result.note.ifBlank { null }
+                                                typeMenu = false
                                             }
-                                        },
-                                        onNext = {
-                                            scope.launch {
-                                                withContext(Dispatchers.IO) { controller.move(1) }
-                                            }
-                                        },
-                                        canGoPrevious = state.canGoPrevious,
-                                        canGoNext = state.canGoNext,
-                                        onCommit = {
-                                            scope.launch {
-                                                withContext(Dispatchers.IO) { controller.commit() }
-                                                onDeckChanged()
-                                            }
-                                        },
-                                        onDiscard = {
-                                            scope.launch {
-                                                withContext(Dispatchers.IO) { controller.discard() }
-                                                onDeckChanged()
-                                            }
-                                        }
-                                    )
+                                        }, typeMenu, { typeMenu = it },
+                                        { command { controller.move(-1) } }, { command { controller.move(1) } },
+                                        state.canGoPrevious, state.canGoNext,
+                                        { command(true) { controller.commit() } }, { command(true) { controller.discard() } }, { command { controller.flush() } })
                                 }
                             }
                         }
                     }
-                }
-
-                if (state.canUndoDiscard && state.completion == null) {
-                    TextButton(onClick = {
-                        scope.launch {
-                            withContext(Dispatchers.IO) { controller.undoDiscard() }
-                            onDeckChanged()
+                    if (state.canUndoDiscard && state.completion == null && !short) {
+                        TextButton(onClick = { command(true) { controller.undoDiscard() } }, enabled = !state.aiLocked && !busy) {
+                            Icon(Icons.AutoMirrored.Filled.Undo, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("撤销上一次丢弃")
                         }
-                    }) {
-                        Icon(Icons.Default.Undo, null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("撤销上一次丢弃")
+                    }
+                    if (!short) Surface(shape = GlassShapes.chip, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)) {
+                        Text("卡内逐张 · 卡外快速浏览 · 点外部保存退出", style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
                     }
                 }
-
-                HorizontalDivider(Modifier.padding(top = 8.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-                Text(
-                    "卡内左右滑动逐张 · 卡外快速滑动浏览 · 点外部保存并退出",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 6.dp)
-                )
             }
         }
     }
-
     state.conflict?.let { prompt ->
-        ConflictDialog(
-            prompt = prompt,
-            onConfirm = {
-                scope.launch {
-                    withContext(Dispatchers.IO) { controller.confirmConflictReplacement() }
-                    onDeckChanged()
-                }
-            },
-            onKeep = { controller.dismissConflict() }
-        )
+        ConflictDialog(prompt, { command(true) { controller.confirmConflictReplacement() } }, { controller.dismissConflict() })
     }
-
     state.restore?.let { prompt ->
-        AlertDialog(
-            onDismissRequest = { controller.dismissRestore() },
-            title = { Text("恢复已删除的事件 #${prompt.eventSeq}？") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(prompt.message)
-                    Text(
-                        "恢复后会生成新的正式版本，旧记录保留为历史。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    scope.launch {
-                        withContext(Dispatchers.IO) { controller.requestRestore() }
-                        onDeckChanged()
-                    }
-                }) { Text("用同一序号恢复") }
-            },
-            dismissButton = { TextButton(onClick = { controller.dismissRestore() }) { Text("保留草稿") } }
-        )
+        AlertDialog(onDismissRequest = { controller.dismissRestore() },
+            title = { Text("恢复 ${TemporalRecord.formatSeq(prompt.eventSeq)}？") },
+            text = { Text(prompt.message) },
+            confirmButton = { TextButton(onClick = { command(true) { controller.requestRestore() } }, enabled = !busy) { Text("恢复同一事件") } },
+            dismissButton = { TextButton(onClick = { controller.dismissRestore() }) { Text("保留草稿") } })
     }
 }
 
@@ -413,14 +325,15 @@ private fun DeckHeader(
     onClose: () -> Unit,
     onCancelAi: () -> Unit
 ) {
+    Surface(shape = GlassShapes.bar, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.97f)) {
     Row(
-        Modifier.fillMaxWidth(),
+        Modifier.fillMaxWidth().padding(start = 14.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text("待处理", style = MaterialTheme.typography.headlineSmall)
+        Text("待处理", style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
         Spacer(Modifier.width(8.dp))
         Text(
-            if (total == 0) "已清空" else "$total 张",
+            if (aiLocked) "只读" else if (total == 0) "0 张" else "$total 张",
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -431,9 +344,10 @@ private fun DeckHeader(
                 label = { Text("AI 进行中 · 停止") }
             )
         }
-        IconButton(onClick = onClose) {
+        IconButton(onClick = onClose, modifier = Modifier.size(48.dp)) {
             Icon(Icons.Default.Close, "保存并退出待处理")
         }
+    }
     }
 }
 
@@ -453,13 +367,13 @@ private fun AiProgressBanner(
                 Icon(Icons.Default.AutoAwesome, null, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(6.dp))
                 Text(
-                    "AI 正在处理 ${session.scope.size} 张授权草稿 · 剩余 $remaining",
+                    "本次授权 ${session.scope.size} 张 · 仍待处理 $remaining 张",
                     style = MaterialTheme.typography.labelMedium
                 )
                 Spacer(Modifier.weight(1f))
                 TextButton(onClick = onCancel) { Text("停止") }
             }
-            LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 4.dp))
+            if (!LocalGlassEffects.current.reduceMotion) LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 4.dp))
             Text(
                 "期间卡组为只读；已提交的结果会保留，未处理的卡片继续等待你。",
                 style = MaterialTheme.typography.labelSmall
@@ -484,6 +398,10 @@ private fun DeckSearch(
         modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
         singleLine = true,
         shape = RoundedCornerShape(18.dp),
+        colors = OutlinedTextFieldDefaults.colors(
+            unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+            focusedContainerColor = MaterialTheme.colorScheme.surface
+        ),
         leadingIcon = { Icon(Icons.Default.Search, null) },
         placeholder = { Text("查找草稿标题或事件序号") },
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
@@ -500,7 +418,7 @@ private fun DeckSearch(
             shape = GlassShapes.chip,
             color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.95f)
         ) {
-            Column(Modifier.padding(vertical = 4.dp)) {
+            Column(Modifier.heightIn(max = 240.dp).verticalScroll(rememberScrollState()).padding(vertical = 4.dp)) {
                 if (draftHits.isEmpty() && formalResults.isEmpty()) {
                     Text(
                         "没有匹配的草稿或正式事件",
@@ -511,7 +429,7 @@ private fun DeckSearch(
                 draftHits.take(4).forEach { hit ->
                     Row(
                         Modifier.fillMaxWidth()
-                            .clickable { onPickDraft(hit.draftId) }
+                            .clickable { onPickDraft(hit.draftId) }.heightIn(min = 48.dp)
                             .padding(horizontal = 12.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -534,7 +452,7 @@ private fun DeckSearch(
                 formalResults.take(4).forEach { hit ->
                     Row(
                         Modifier.fillMaxWidth()
-                            .clickable { onPickFormal(hit) }
+                            .clickable { onPickFormal(hit) }.heightIn(min = 48.dp)
                             .padding(horizontal = 12.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -568,14 +486,22 @@ private fun FanStack(
     onPrevious: () -> Unit,
     content: @Composable () -> Unit
 ) {
+    val regions = remember { mutableMapOf<Any, Rect>() }
+    var origin by remember { mutableStateOf(Offset.Zero) }
+    var drag by remember { mutableFloatStateOf(0f) }
+    var dragging by remember { mutableStateOf(false) }
+    val displacement by animateFloatAsState(drag, if (dragging) snap() else glassMotion(), label = "deckSwipe")
+    val heightFraction by animateFloatAsState(if (expanded) 1f else 0.90f, glassMotion(), label = "deckExpand")
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         // Background fan: decoration only. It never owns identity or hit targets.
-        for (layer in 2 downTo 1) {
+        for (layer in (if (LocalGlassEffects.current.blur) minOf(2, count - 1) else 0) downTo 1) {
             val rotation = if (layer % 2 == 0) 4.2f else -3.4f
             Surface(
                 modifier = Modifier
-                    .fillMaxWidth(0.9f)
-                    .fillMaxHeight(if (expanded) 0.9f else 0.66f)
+                    .fillMaxWidth(0.94f)
+                    .heightIn(max = if (expanded) Dp.Infinity else 460.dp)
+                    .fillMaxHeight(if (expanded) 0.94f else 0.90f)
+                    .offset(y = (layer * 8).dp)
                     .scale(1f - layer * 0.045f)
                     .rotate(rotation)
                     .alpha(0.55f - layer * 0.12f),
@@ -587,59 +513,68 @@ private fun FanStack(
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(if (expanded) 0.96f else 0.74f)
-                .cardSwipe(onNext = onNext, onPrevious = onPrevious),
+                .heightIn(max = if (expanded) Dp.Infinity else 460.dp)
+                .fillMaxHeight(heightFraction)
+                .testTag("draft-card")
+                .onGloballyPositioned { origin = it.positionInRoot() }
+                .graphicsLayer { translationX = displacement }
+                .cardSwipe(regions, { origin }, { x, active -> drag = x.coerceIn(-24f, 24f); dragging = active }, onNext, onPrevious),
             shape = GlassShapes.card,
             color = MaterialTheme.colorScheme.surface.copy(alpha = 0.97f),
-            tonalElevation = 8.dp,
-            shadowElevation = 16.dp,
+            tonalElevation = 0.dp,
+            shadowElevation = if (LocalGlassEffects.current.blur) 3.dp else 0.dp,
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f))
         ) {
-            content()
+            CompositionLocalProvider(LocalDeckInputs provides regions) { content() }
         }
-        if (count > 1) {
-            Text(
-                "${position + 1} / $count",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.align(Alignment.TopEnd).padding(top = 2.dp, end = 4.dp)
-            )
-        }
+
     }
 }
 
 /**
- * One swipe inside the card = exactly one queue card. The detector never consumes changes, so a
- * text field keeps the gesture for selection/caret; a two-finger or vertically dominant gesture is
- * left to the scroller.
+ * Claim only horizontal travel outside registered input fields. Text selection and vertical
+ * scrolling retain ownership; one claimed physical swipe can finish at most one page.
  */
-private fun Modifier.cardSwipe(onNext: () -> Unit, onPrevious: () -> Unit): Modifier =
-    // Keyed on Unit so recompositions (debounce label, now ticker, search) do not restart the
-    // pointer node mid-gesture. The captured controller callbacks are stable objects.
-    pointerInput(Unit) {
-        val threshold = 84.dp.toPx()
+@Composable
+private fun Modifier.cardSwipe(
+    regions: Map<Any, Rect>, origin: () -> Offset, onDrag: (Float, Boolean) -> Unit,
+    onNext: () -> Unit, onPrevious: () -> Unit
+): Modifier {
+    val next by rememberUpdatedState(onNext)
+    val previous by rememberUpdatedState(onPrevious)
+    val drag by rememberUpdatedState(onDrag)
+    return pointerInput(Unit) {
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false)
-            var total = 0f
-            var lastX = down.position.x
+            if (regions.values.any { it.contains(down.position + origin()) }) return@awaitEachGesture
+            var last = down.position
+            var travel = Offset.Zero
             var blocked = false
-            var maxPointers = 1
-            while (true) {
-                val event = awaitPointerEvent()
-                val pressed = event.changes.filter { it.pressed }
-                if (event.changes.any { it.isConsumed }) blocked = true
-                if (pressed.isEmpty()) break
-                maxPointers = maxOf(maxPointers, pressed.size)
-                val x = pressed.map { it.position.x }.average().toFloat()
-                total += x - lastX
-                lastX = x
-            }
-            if (!blocked && maxPointers == 1 && abs(total) > threshold) {
-                if (total < 0) onNext() else onPrevious()
-            }
+            var claimed = false
+            var pointers = 1
+            try {
+                while (true) {
+                    val event = awaitPointerEvent()
+                    pointers = maxOf(pointers, event.changes.count { it.pressed })
+                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                    travel += change.position - last
+                    last = change.position
+                    if (pointers > 1 || (!claimed && change.isConsumed && change.pressed)) blocked = true
+                    if (!claimed && abs(travel.y) > viewConfiguration.touchSlop && abs(travel.y) > abs(travel.x)) blocked = true
+                    if (!blocked && !claimed && abs(travel.x) > viewConfiguration.touchSlop * 1.4f && abs(travel.x) > abs(travel.y) * 1.4f) claimed = true
+                    if (claimed && !blocked) { change.consume(); drag(travel.x * 0.14f, true) }
+                    if (!change.pressed) break
+                }
+                if (claimed && !blocked) when (horizontalPageSteps(travel.x, travel.y, 72.dp.toPx(), size.width.toFloat(), false)) {
+                    1 -> next()
+                    -1 -> previous()
+                }
+            } finally { drag(0f, false) }
         }
     }
+}
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun DeckCardBody(
     card: DraftCard,
@@ -661,22 +596,28 @@ private fun DeckCardBody(
     canGoPrevious: Boolean,
     canGoNext: Boolean,
     onCommit: () -> Unit,
-    onDiscard: () -> Unit
+    onDiscard: () -> Unit,
+    onRetrySave: () -> Unit
 ) {
     val context = LocalContext.current
     val missing = form.missingFields()
-    val publishable = missing.isEmpty()
+    val publishable = form.isPublishable()
     var showDeleteConfirm by remember(card.draftId) { mutableStateOf(false) }
+    var arrived by remember(card.draftId) { mutableStateOf(false) }
+    LaunchedEffect(card.draftId) { arrived = true }
+    val entrance by animateFloatAsState(if (arrived) 1f else 0.86f, glassMotion(), label = "deckArrival")
 
-    Column(Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 14.dp)) {
+    BoxWithConstraints(Modifier.fillMaxSize().graphicsLayer { alpha = entrance }) {
+    val tiny = maxHeight < 320.dp
+    Column(Modifier.fillMaxSize().then(if (tiny) Modifier.verticalScroll(rememberScrollState()) else Modifier).padding(horizontal = 14.dp, vertical = 10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            FlowRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
                 TemporalRecord.formatSeq(card.eventSeq),
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.SemiBold
             )
-            Spacer(Modifier.width(8.dp))
             Box {
                 AssistChip(
                     onClick = { if (!aiLocked) onTypeMenuChange(true) },
@@ -694,7 +635,6 @@ private fun DeckCardBody(
                     }
                 }
             }
-            Spacer(Modifier.width(6.dp))
             Surface(
                 shape = RoundedCornerShape(8.dp),
                 color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f)
@@ -705,16 +645,8 @@ private fun DeckCardBody(
                     style = MaterialTheme.typography.labelSmall
                 )
             }
-            Spacer(Modifier.weight(1f))
-            if (dirty) {
-                Text(
-                    "暂存中",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(Modifier.width(6.dp))
             }
-            IconButton(onClick = onExpandToggle) {
+            IconButton(onClick = onExpandToggle, modifier = Modifier.size(48.dp)) {
                 Icon(
                     if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                     if (expanded) "收起详细编辑" else "展开完整编辑"
@@ -724,16 +656,25 @@ private fun DeckCardBody(
 
         Column(
             Modifier
-                .weight(1f)
-                .verticalScroll(rememberScrollState()),
+                .then(if (tiny) Modifier else Modifier.weight(1f).verticalScroll(rememberScrollState())),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            if (!expanded) {
+                Column(Modifier.fillMaxWidth().clickable(onClickLabel = "展开完整编辑", onClick = onExpandToggle).padding(vertical = 14.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(form.title.ifBlank { "给这段时间起个名字" }, style = MaterialTheme.typography.headlineSmall)
+                    Text(if (form.kind == TemporalKind.ALARM) form.startText else if (form.kind == TemporalKind.ACTIVITY) "${form.startText}\n${form.endText}" else "${form.endText} · 截止",
+                        style = MaterialTheme.typography.bodyLarge, color = kindColor(form.kind))
+                    if (form.location.isNotBlank()) Text(form.location, style = MaterialTheme.typography.bodyMedium)
+                    Text(if (aiLocked) "卡组只读 · 可浏览详情" else "轻点卡片，展开完整编辑", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            } else {
             OutlinedTextField(
                 value = form.title,
                 onValueChange = { onFormChange(form.copy(title = it)) },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().deckInput(),
                 singleLine = true,
-                enabled = !aiLocked,
+                readOnly = aiLocked,
                 label = { Text("标题") },
                 isError = form.title.isBlank()
             )
@@ -741,6 +682,7 @@ private fun DeckCardBody(
             if (form.kind != TemporalKind.DEADLINE) {
                 TimeRow(
                     label = "开始",
+                    zone = form.zone,
                     value = form.startText,
                     enabled = !aiLocked,
                     onChange = { onFormChange(form.copy(startText = it)) },
@@ -781,6 +723,7 @@ private fun DeckCardBody(
             if (form.kind != TemporalKind.ALARM) {
                 TimeRow(
                     label = if (form.kind == TemporalKind.DEADLINE) "截止" else "结束",
+                    zone = form.zone,
                     value = form.endText,
                     enabled = !aiLocked,
                     hint = if (form.kind == TemporalKind.DEADLINE) {
@@ -841,43 +784,34 @@ private fun DeckCardBody(
                     if (DraftForm.parseDateOnly(form.endText) != null) {
                         AssistChip(
                             onClick = {
-                                val date = DraftForm.parseDateOnly(form.endText) ?: LocalDate.now()
-                                onFormChange(
-                                    form.copy(
-                                        endText = DraftForm.formatInstant(
-                                            date.atTime(18, 0).atZone(form.zone)
-                                                .toInstant().toEpochMilli(),
-                                            form.zone
-                                        )
-                                    )
-                                )
+                                val date = DraftForm.parseDateOnly(form.endText) ?: LocalDate.now(form.zone)
+                                pickTime(context, date.atStartOfDay(form.zone).toInstant().toEpochMilli(), form.zone) { hour, minute ->
+                                    onFormChange(form.copy(endText = DraftForm.formatInstant(date.atTime(hour, minute).atZone(form.zone).toInstant().toEpochMilli(), form.zone)))
+                                }
                             },
+                            enabled = !aiLocked,
                             label = { Text("改为精确时刻") }
                         )
                     }
                 }
             }
 
-            AnimatedVisibility(
-                visible = expanded,
-                enter = expandVertically(spring()) + fadeIn(),
-                exit = shrinkVertically(spring()) + fadeOut()
-            ) {
+            if (expanded) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
                         value = form.location,
                         onValueChange = { onFormChange(form.copy(location = it)) },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().deckInput(),
                         singleLine = true,
-                        enabled = !aiLocked,
+                        readOnly = aiLocked,
                         label = { Text("地点（可选）") }
                     )
                     OutlinedTextField(
                         value = form.notes,
                         onValueChange = { onFormChange(form.copy(notes = it)) },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().deckInput(),
                         minLines = 2,
-                        enabled = !aiLocked,
+                        readOnly = aiLocked,
                         label = { Text("备注") }
                     )
                     if (form.kind != TemporalKind.DEADLINE) {
@@ -948,11 +882,13 @@ private fun DeckCardBody(
                             )
                         }
                         Switch(
+                            modifier = Modifier.semantics { contentDescription = "启用事件提醒调度" },
                             checked = form.enabled,
                             onCheckedChange = { onFormChange(form.copy(enabled = it)) },
                             enabled = !aiLocked
                         )
                     }
+                    Text("时区 · ${form.zoneId}", style = MaterialTheme.typography.bodySmall)
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             "来源 · " + TemporalText.sourceLabel(form.source),
@@ -961,7 +897,7 @@ private fun DeckCardBody(
                         )
                         Spacer(Modifier.weight(1f))
                         Text(
-                            "draft v${card.draftVersion}",
+                            "草稿版本 ${card.draftVersion}",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -976,6 +912,7 @@ private fun DeckCardBody(
                 }
             }
 
+            } // expanded editor
             if (!expanded && form.notes.isNotBlank()) {
                 Text(
                     form.notes,
@@ -989,6 +926,8 @@ private fun DeckCardBody(
             conversionNote?.let {
                 Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
             }
+            if (form.recurrence.isRepeating) Text("当前编辑整条重复规则；本次 / 此后范围编辑尚未支持。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.tertiary)
+            if (form.kind == TemporalKind.ACTIVITY && missing.isEmpty() && !publishable) Text("结束时刻需要晚于开始时刻", color = MaterialTheme.colorScheme.error)
             if (missing.isNotEmpty() && card.operation != DraftOperation.DELETE) {
                 Text(
                     "还需要：" + missing.joinToString("、") { it.label },
@@ -997,56 +936,34 @@ private fun DeckCardBody(
                 )
             }
             error?.let {
-                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+                TextButton(onClick = onRetrySave, enabled = !aiLocked) { Text("重试暂存") }
             }
         }
 
-        Spacer(Modifier.height(8.dp))
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            FilledTonalButton(
-                onClick = {
-                    // X always means "do not apply this proposal". On a Delete card that is
-                    // explicitly "do not delete", never "delete".
-                    if (card.operation == DraftOperation.DELETE) onDiscard() else showDeleteConfirm = true
-                },
-                enabled = !aiLocked,
-                modifier = Modifier.heightIn(min = 48.dp)
-            ) {
-                Icon(Icons.Default.Close, "不执行这张草稿")
-                Spacer(Modifier.width(4.dp))
+        HorizontalDivider(Modifier.padding(top = 8.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onPrevious, enabled = canGoPrevious, modifier = Modifier.size(48.dp)) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, "上一张草稿") }
+            Text("${position + 1} / ${total.coerceAtLeast(1)} · " + if (dirty) "待暂存" else "已暂存",
+                style = MaterialTheme.typography.labelMedium, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+            IconButton(onClick = onNext, enabled = canGoNext, modifier = Modifier.size(48.dp)) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, "下一张草稿") }
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            FilledTonalButton(onClick = { onDiscard() }, enabled = !aiLocked, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
+                Icon(Icons.Default.Close, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp))
                 Text(if (card.operation == DraftOperation.DELETE) "不删除" else "丢弃")
             }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onPrevious, enabled = canGoPrevious && !aiLocked) {
-                    Icon(Icons.Default.KeyboardArrowLeft, "上一张草稿")
-                }
-                Text(
-                    "$position / ${total.coerceAtLeast(1)}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                IconButton(onClick = onNext, enabled = canGoNext && !aiLocked) {
-                    Icon(Icons.Default.KeyboardArrowRight, "下一张草稿")
-                }
-            }
-            Button(
-                onClick = {
-                    if (card.operation == DraftOperation.DELETE) showDeleteConfirm = true else onCommit()
-                },
-                enabled = !aiLocked && (publishable || card.operation == DraftOperation.DELETE),
-                modifier = Modifier.heightIn(min = 48.dp)
-            ) {
-                Icon(Icons.Default.Check, null)
-                Spacer(Modifier.width(4.dp))
+            Button(onClick = { if (card.operation == DraftOperation.DELETE) showDeleteConfirm = true else onCommit() },
+                enabled = !aiLocked && (publishable || card.operation == DraftOperation.DELETE), modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
+                Icon(Icons.Default.Check, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp))
                 Text(if (card.operation == DraftOperation.DELETE) "确认删除" else "发布")
             }
         }
+
     }
 
+    } // short-viewport constraints
     if (showDeleteConfirm) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
@@ -1059,7 +976,7 @@ private fun DeckCardBody(
             text = {
                 Text(
                     if (card.operation == DraftOperation.DELETE) {
-                        "删除后事件 #${card.eventSeq} 的序号将永久退役，不会复用。可以在完成页撤销。"
+                        "删除会将事件 #${card.eventSeq} 的序号永久退役。当前版本不支持撤销正式删除，请确认。"
                     } else {
                         "草稿会被丢弃但可以撤销；事件 #${card.eventSeq} 的正式内容不受影响。"
                     }
@@ -1082,20 +999,22 @@ private fun TimeRow(
     value: String,
     enabled: Boolean,
     hint: String = "yyyy-MM-dd HH:mm",
+    zone: ZoneId = ZoneId.systemDefault(),
     onChange: (String) -> Unit,
     onPickDate: (Long) -> Unit,
     onPickTime: (Long) -> Unit
 ) {
-    val parsed = DraftForm.parseInstant(value)
-    Row(verticalAlignment = Alignment.Bottom) {
+    val parsed = DraftForm.parseInstantIn(value, zone)
+    Row(Modifier.deckInput(), verticalAlignment = Alignment.Bottom) {
         OutlinedTextField(
             value = value,
             onValueChange = onChange,
             modifier = Modifier.weight(1f),
             singleLine = true,
-            enabled = enabled,
-            label = { Text("$label · $hint") },
-            isError = value.isNotBlank() && parsed == null && DraftForm.parseDateOnly(value) == null,
+            readOnly = !enabled,
+            label = { Text(label) },
+            placeholder = { Text(hint) },
+            isError = value.isNotBlank() && parsed == null && !(label == "截止" && DraftForm.parseDateOnly(value) != null),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text)
         )
         IconButton(
@@ -1120,7 +1039,7 @@ private fun EmptyDeckCard(onClose: () -> Unit) {
         tonalElevation = 6.dp
     ) {
         Column(
-            Modifier.padding(28.dp),
+            Modifier.verticalScroll(rememberScrollState()).padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
@@ -1144,7 +1063,7 @@ private fun AiHoldCard(session: PowerStore.AiSession?, onCancel: () -> Unit, onC
         tonalElevation = 6.dp
     ) {
         Column(
-            Modifier.padding(28.dp),
+            Modifier.verticalScroll(rememberScrollState()).padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
@@ -1178,22 +1097,19 @@ private fun CompletionCard(
     onDone: () -> Unit
 ) {
     var entered by remember { mutableStateOf(!animated) }
-    var showActions by remember { mutableStateOf(!animated) }
     LaunchedEffect(animated) {
         if (animated) {
             entered = true
-            delay(420)
         }
-        showActions = true
     }
     val scale by animateFloatAsState(
         targetValue = if (entered) 1f else 0.86f,
-        animationSpec = spring(dampingRatio = 0.52f, stiffness = 340f),
+        animationSpec = glassMotion(),
         label = "completionScale"
     )
     val alpha by animateFloatAsState(
         targetValue = if (entered) 1f else 0f,
-        animationSpec = spring(dampingRatio = 0.8f, stiffness = 400f),
+        animationSpec = glassMotion(),
         label = "completionAlpha"
     )
     Surface(
@@ -1203,10 +1119,10 @@ private fun CompletionCard(
         shape = GlassShapes.card,
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.97f),
         tonalElevation = 10.dp,
-        shadowElevation = 18.dp
+        shadowElevation = 3.dp
     ) {
         Column(
-            Modifier.fillMaxWidth().padding(28.dp),
+            Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
@@ -1228,19 +1144,18 @@ private fun CompletionCard(
             Text("待处理已清空", style = MaterialTheme.typography.headlineSmall)
             Text(
                 "已提交 ${completion.published} 项 · 已丢弃 ${completion.discarded} 项" +
-                    if (completion.conflicts > 0) " · 仍有 ${completion.conflicts} 张冲突卡" else "",
+                    if (completion.conflicts > 0) " · 本次记录 ${completion.conflicts} 项冲突" else "",
                 style = MaterialTheme.typography.bodyMedium
             )
             Text(
-                "每个数字都来自已落库的提交记录。",
+                "为接下来的时间，留一点从容。",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            AnimatedVisibility(visible = showActions) {
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     if (canUndo) {
                         TextButton(onClick = onUndo) {
-                            Icon(Icons.Default.Undo, null, modifier = Modifier.size(16.dp))
+                            Icon(Icons.AutoMirrored.Filled.Undo, null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(4.dp))
                             Text("撤销丢弃")
                         }
@@ -1250,7 +1165,6 @@ private fun CompletionCard(
                         Spacer(Modifier.width(4.dp))
                         Text("返回时间轴")
                     }
-                }
             }
         }
     }
@@ -1264,74 +1178,76 @@ private fun ConflictDialog(
 ) {
     AlertDialog(
         onDismissRequest = onKeep,
-        title = { Text("这张卡基于旧版本 #${prompt.eventSeq}") },
+        title = { Text("正式内容已变化 ${TemporalRecord.formatSeq(prompt.eventSeq)}") },
         text = {
             Column(
                 Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
-                    "确认后会用这张卡的全部字段替换当前正式对象，不自动合并、不保留中间字段。",
+                    if (prompt.card.operation == DraftOperation.DELETE) "这是一张删除提案。确认会删除当前正式版本，序号退役；下方展示当前内容与提案原快照。"
+                    else "确认后用本卡的完整快照替换当前正式对象。请检查全部差异，未展示过的新版本需要重新确认。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error
                 )
                 HorizontalDivider()
                 Text("完整差异", style = MaterialTheme.typography.labelLarge)
-                prompt.changes.forEach { change ->
-                    Column(Modifier.fillMaxWidth()) {
-                        Text(change.label, style = MaterialTheme.typography.labelMedium)
-                        Text(
-                            "现在：" + change.before,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            "本卡：" + change.after,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary
-                        )
+                Text("当前 v${prompt.currentRevision ?: 0} → 本卡完整快照", style = MaterialTheme.typography.labelMedium)
+                SelectionContainer {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        snapshotRows(prompt.current, prompt.approvedForm).forEach { row ->
+                            Surface(shape = GlassShapes.chip,
+                                color = if (row.changed) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f) else MaterialTheme.colorScheme.surfaceContainerLow) {
+                                Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                                    Text(row.label + if (row.changed) " · 将更改" else " · 保持", style = MaterialTheme.typography.labelLarge)
+                                    Text("现在：${row.before}", style = MaterialTheme.typography.bodyMedium)
+                                    Text("本卡：${row.after}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+                                }
+                            }
+                        }
                     }
                 }
             }
         },
         confirmButton = {
-            TextButton(onClick = onConfirm) { Text("确认整份覆盖") }
+            TextButton(onClick = onConfirm) { Text(if (prompt.card.operation == DraftOperation.DELETE) "确认删除当前版本" else "确认整份覆盖") }
         },
         dismissButton = { TextButton(onClick = onKeep) { Text("保留待处理") } }
     )
 }
 
 /** Tap outside closes (after flush); horizontal drag outside browses several cards at once. */
-private fun Modifier.outsideGesture(onTap: () -> Unit, onBrowse: (Int) -> Unit): Modifier =
-    pointerInput(Unit) {
-        val pageWidth = 110.dp.toPx()
-        val slop = 24.dp.toPx()
+@Composable
+private fun Modifier.outsideGesture(onTap: () -> Unit, onBrowse: (Int) -> Unit): Modifier {
+    val tap by rememberUpdatedState(onTap)
+    val browse by rememberUpdatedState(onBrowse)
+    return pointerInput(Unit) {
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false)
-            var total = 0f
-            var lastX = down.position.x
-            var pointerCount = 1
+            val tracker = VelocityTracker()
+            tracker.addPosition(down.uptimeMillis, down.position)
+            var travel = Offset.Zero
+            var last = down.position
+            var maxTravel = 0f
+            var pointers = 1
             while (true) {
-                val event: PointerEvent = awaitPointerEvent()
-                val pressed = event.changes.filter { it.pressed }
-                if (pressed.isEmpty()) break
-                pointerCount = maxOf(pointerCount, pressed.size)
-                val x = pressed.map { it.position.x }.average().toFloat()
-                total += x - lastX
-                lastX = x
+                val event = awaitPointerEvent()
+                pointers = maxOf(pointers, event.changes.count { it.pressed })
+                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                travel += change.position - last
+                last = change.position
+                maxTravel = maxOf(maxTravel, travel.getDistance())
+                tracker.addPosition(change.uptimeMillis, change.position)
+                if (!change.pressed) break
             }
-            if (pointerCount == 1) {
-                when {
-                    abs(total) > 72.dp.toPx() -> {
-                        // Inertial browse: one card per ~110dp of travel, at most three.
-                        val steps = (abs(total) / pageWidth).toInt().coerceIn(1, 3)
-                        onBrowse(if (total < 0) steps else -steps)
-                    }
-                    abs(total) < slop -> onTap()
-                }
+            if (pointers == 1) {
+                val steps = horizontalPageSteps(travel.x, travel.y, 60.dp.toPx(), 110.dp.toPx(), true, tracker.calculateVelocity().x)
+                if (steps != 0) browse(steps)
+                else if (maxTravel < viewConfiguration.touchSlop) tap()
             }
         }
     }
+}
 
 private fun kindHint(kind: TemporalKind): String = when (kind) {
     TemporalKind.ALARM -> "只有开始时刻"

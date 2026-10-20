@@ -1,0 +1,196 @@
+{
+  "base_commit": "f991243b0e6b9b7861c400baee6a6e2c47be576c",
+  "generated_at_shanghai": "2026-10-20T09:11:40.065720+08:00",
+  "command": ".\\gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug --no-daemon --console=plain",
+  "build_result": "BUILD SUCCESSFUL",
+  "total_tests": 130,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "suites": [
+    {
+      "suite": "dev.powerfulcalendar.ai.AiResponseParserTest",
+      "tests": 9,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "simulation_elapsed_seconds": 1.718
+    },
+    {
+      "suite": "dev.powerfulcalendar.core.DeckControllerTest",
+      "tests": 15,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "simulation_elapsed_seconds": 0.01
+    },
+    {
+      "suite": "dev.powerfulcalendar.core.PowerStoreTest",
+      "tests": 27,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "simulation_elapsed_seconds": 1.673
+    },
+    {
+      "suite": "dev.powerfulcalendar.core.TemporalProtocolTest",
+      "tests": 29,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "simulation_elapsed_seconds": 0.026
+    },
+    {
+      "suite": "dev.powerfulcalendar.data.LegacyMigrationTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "simulation_elapsed_seconds": 0.12
+    },
+    {
+      "suite": "dev.powerfulcalendar.interop.InteropTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "simulation_elapsed_seconds": 0.005
+    },
+    {
+      "suite": "dev.powerfulcalendar.reminders.ReminderValidationTest",
+      "tests": 9,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "simulation_elapsed_seconds": 0.273
+    },
+    {
+      "suite": "dev.powerfulcalendar.ui.v2.GlassComposeTest",
+      "tests": 15,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "simulation_elapsed_seconds": 5.176
+    },
+    {
+      "suite": "dev.powerfulcalendar.ui.v2.GlassPresentationTest",
+      "tests": 15,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "simulation_elapsed_seconds": 0.011
+    },
+    {
+      "suite": "dev.powerfulcalendar.ui.v2.GlassRenderTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "simulation_elapsed_seconds": 4.432
+    }
+  ],
+  "lint": {
+    "errors": 0,
+    "warnings": 13,
+    "issues": [
+      {
+        "id": "OldTargetApi",
+        "severity": "Warning"
+      },
+      {
+        "id": "UnusedAttribute",
+        "severity": "Warning"
+      },
+      {
+        "id": "AndroidGradlePluginVersion",
+        "severity": "Warning"
+      },
+      {
+        "id": "GradleDependency",
+        "severity": "Warning"
+      },
+      {
+        "id": "GradleDependency",
+        "severity": "Warning"
+      },
+      {
+        "id": "GradleDependency",
+        "severity": "Warning"
+      },
+      {
+        "id": "NewerVersionAvailable",
+        "severity": "Warning"
+      },
+      {
+        "id": "NewerVersionAvailable",
+        "severity": "Warning"
+      },
+      {
+        "id": "ObsoleteSdkInt",
+        "severity": "Warning"
+      },
+      {
+        "id": "UnusedResources",
+        "severity": "Warning"
+      },
+      {
+        "id": "UseKtx",
+        "severity": "Warning"
+      },
+      {
+        "id": "UseKtx",
+        "severity": "Warning"
+      },
+      {
+        "id": "UseKtx",
+        "severity": "Warning"
+      }
+    ]
+  },
+  "contrast": [
+    "Light glass text contrast: [17.996655, 17.996655, 7.734972, 5.398081, 5.163912, 5.394808]",
+    "Dark glass text contrast: [14.299276, 14.299276, 9.028495, 8.812976, 10.098922, 10.116845]"
+  ],
+  "graphics": "Robolectric API 34 native graphics, software Canvas, fixture data; not physical device or GPU performance",
+  "compose_functional": "Robolectric API 35, synthetic gestures/semantics/layout; not TalkBack",
+  "device_connected": false,
+  "frame_timing_measured": false,
+  "apk": {
+    "path": "app\\build\\outputs\\apk\\debug\\app-debug.apk",
+    "bytes": 63648715,
+    "sha256": "188ab6534cec80b661308ce9fae96c174d78c8f1f0309bd4d78299222af56086"
+  },
+  "screenshots": [
+    {
+      "file": "deck-compact-light.png",
+      "bytes": 71712,
+      "sha256": "f756866dcc27f1d2c223382a1c3ec639f5be199d923aaf1bc07f6e25a57963c4"
+    },
+    {
+      "file": "deck-expanded-dark.png",
+      "bytes": 78228,
+      "sha256": "9ff2b860f1132de5183fe4d0893c35c7cbc05359dd848ffb7efaa404054cb60d"
+    },
+    {
+      "file": "deck-expanded-light.png",
+      "bytes": 76705,
+      "sha256": "7fc771c7b5f0b654415aba243c35b5e28c55522be5decf7a797cddcdf812e5e4"
+    },
+    {
+      "file": "month-light.png",
+      "bytes": 39005,
+      "sha256": "a11271dad715328876734caa504b01c0cde1f91d6d94704a9c6aab8c63d666f1"
+    },
+    {
+      "file": "timeline-dark.png",
+      "bytes": 52907,
+      "sha256": "f959a5e7ebb7c1c1425a0d054be8b1c32ef8242c2a12d345049399bd210153d9"
+    },
+    {
+      "file": "timeline-light.png",
+      "bytes": 50850,
+      "sha256": "4c501e94d41310f367b05f8c2783d40e6ca5c774aaa5d5c691dcbd01e3a88435"
+    }
+  ],
+  "focus_initialization_warnings": 0
+}

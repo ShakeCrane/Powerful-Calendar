@@ -31,7 +31,7 @@ android {
         }
     }
 
-    lint { abortOnError = false }
+    lint { abortOnError = true }
 }
 
 dependencies {
@@ -48,6 +48,9 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.14.1")
     testImplementation("androidx.test:core:1.6.1")
+    testImplementation(bom)
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
 
 /**

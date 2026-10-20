@@ -6,9 +6,14 @@
 > 产品依据：[G1–G11 产品基线](docs/PRODUCT_BASELINE_G1-G11.md) ·
 > [Temporal Protocol v0.3](docs/PROTOCOL_V0_RESEARCH.md) ·
 > [P0 现状审计](docs/AUDIT_P0.md) ·
-> [v0.2 实施与验证记录](docs/IMPLEMENTATION_V0_2.md)
+> [v0.2 实施与验证记录](docs/IMPLEMENTATION_V0_2.md) ·
+> [Glass 设计体系](docs/POWERCAL_GLASS_DESIGN.md) ·
+> [UI 交接契约](docs/GEMINI_UI_HANDOFF.md) ·
+> [UI 交付报告](docs/GLASS_UI_DELIVERY.md)
 
-## 已实现（v0.2）
+## 已实现（v0.2 + Glass UI）
+
+Glass UI 新增月历与日程列表、可读的日期截止带、活动时长、固定批量授权清单、完整冲突快照、输入优先手势、实时减少动画设置与受阻提醒入口。UI 改造未修改 core / ai / reminders 或原有测试。
 
 - **统一时间协议**：`AlarmEvent`（仅开始，左轴）/ `ActivityEvent`（区间，右轴）/
   `DeadlineEvent`（截止点或日期，右轴）。日期级截止保持日期精度，不会变成 23:59 或 00:00。
@@ -38,7 +43,9 @@
 .\gradlew.bat :app:assembleDebug :app:testDebugUnitTest --no-daemon --console=plain
 ```
 
-当前结果：`BUILD SUCCESSFUL`，**97 个单元测试，0 失败**（Robolectric 真实 SQLite）。
+当前结果：`BUILD SUCCESSFUL`，**130 项测试，0 失败**（原有 97 项保持不变，新增 33 项 UI 投影、Compose 模拟与软件渲染测试）。
+`lintDebug`：0 错误、13 项警告；错误会阻断构建。
+软件渲染截图：[UI 证据](docs/ui-evidence/README.md)；真机验收：[设备清单](docs/GLASS_DEVICE_QA.md)。
 APK：`app/build/outputs/apk/debug/app-debug.apk`。
 
 ## 权限与限制
@@ -69,6 +76,7 @@ app/src/main/java/dev/powerfulcalendar/
 
 ## 未验证（需真机）
 
-实际响铃与厂商限制、手势手感（缩放锚定/长按拖动/文本选择优先级）、深浅色运行时切换、
-TalkBack 与触控目标实测、进程被杀后的恢复、横屏布局、`uiMode` 变更不重建 Activity 的实际表现。
+实际响铃与厂商限制、手势手感（缩放锚定/长按拖动/文本选择优先级）、设备上的深浅色运行时切换、
+TalkBack、原生键盘/横屏布局、100 卡在 60/120Hz 下的帧时长、进程强杀恢复。
+部分布局、焦点、颜色对比度和合成手势已有 Compose/Robolectric 证据；这些不等于真机验收。
 详见 [实施记录 §5](docs/IMPLEMENTATION_V0_2.md)。

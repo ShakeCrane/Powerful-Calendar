@@ -1,476 +1,355 @@
 package dev.powerfulcalendar.ui.v2
 
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.calculateZoom
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.animation.core.animate
+import androidx.compose.foundation.*
+import androidx.compose.foundation.gestures.*
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Alarm
-import androidx.compose.material.icons.filled.Flag
-import androidx.compose.material.icons.filled.Layers
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Remove
-import androidx.compose.material.icons.filled.Schedule
-import androidx.compose.material.icons.filled.Today
-import androidx.compose.material3.Badge
-import androidx.compose.material3.BadgedBox
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameNanos
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.pointer.PointerEvent
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.positionChanged
+import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
-import dev.powerfulcalendar.core.AxisSide
-import dev.powerfulcalendar.core.TemporalKind
-import dev.powerfulcalendar.core.TemporalRecord
-import dev.powerfulcalendar.core.TemporalText
-import dev.powerfulcalendar.core.TimelineCoordinate
-import dev.powerfulcalendar.core.TimelineItem
-import dev.powerfulcalendar.core.TimelineLayout
-import java.time.Duration
+import dev.powerfulcalendar.core.*
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.exp
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 private val CLOCK_FORMAT = DateTimeFormatter.ofPattern("HH:mm")
-private val DAY_FORMAT = DateTimeFormatter.ofPattern("M月d日 EEE")
+private val DAY_FORMAT = DateTimeFormatter.ofPattern("M月d日 EEE", java.util.Locale.SIMPLIFIED_CHINESE)
 
-/**
- * The central vertical axis: earlier above, later below, alarms left, activities and deadlines
- * right. There is deliberately no day container and no midnight lock: the camera is a continuous
- * (instant, zoom) pair, which is also exactly what survives a 待处理 round trip.
- */
+/** Every UI projection retains its formal owner; moving a repeating slot is never a series edit. */
 @Composable
 fun TimelineScreen(
-    records: List<TemporalRecord>,
-    camera: TimelineCoordinate.Camera,
-    nowMillis: Long,
-    zone: ZoneId,
-    pendingCount: Int,
-    aiLocked: Boolean,
-    onCameraChange: (TimelineCoordinate.Camera) -> Unit,
-    onOpenEvent: (TemporalRecord) -> Unit,
-    onMoveEvent: (TemporalRecord, Long) -> Unit,
-    onCreate: (TemporalKind, Long) -> Unit,
-    onToday: () -> Unit,
-    onOpenDeck: () -> Unit,
-    onOpenTools: () -> Unit,
-    modifier: Modifier = Modifier
+    records: List<TemporalRecord>, camera: TimelineCoordinate.Camera, nowMillis: Long, zone: ZoneId,
+    pendingCount: Int, aiLocked: Boolean, onCameraChange: (TimelineCoordinate.Camera) -> Unit,
+    onOpenEvent: (TemporalRecord) -> Unit, onMoveEvent: (TemporalRecord, Long) -> Unit,
+    onCreate: (TemporalKind, Long) -> Unit, onToday: () -> Unit, onOpenDeck: () -> Unit,
+    onOpenTools: () -> Unit, onOpenMonth: () -> Unit, modifier: Modifier = Modifier, blockedReminders: Int = 0
 ) {
-    val density = LocalDensity.current
-    val effects = LocalGlassEffects.current
     val scope = rememberCoroutineScope()
+    val effects = LocalGlassEffects.current
+    val motion = glassMotion()
     val latestCamera by rememberUpdatedState(camera)
-
-    BoxWithConstraints(modifier.fillMaxSize()) {
-        val viewportWidth = maxWidth
-        val heightPx = with(density) { maxHeight.toPx() }.coerceAtLeast(1f)
-        val widthPx = with(density) { viewportWidth.toPx() }
-        val hours = camera.hours
-        val anchor = camera.anchorMillis
-        val maxLanes = if (viewportWidth < 380.dp) 2 else 3
-        // Gesture nodes are keyed on Unit; these holders keep them reading current values.
-        val heightNow by rememberUpdatedState(heightPx)
-        val hoursNow by rememberUpdatedState(hours)
-
-        val layout = remember(records, maxLanes) {
-            TimelineLayout.layout(records, maxLanesPerSide = maxLanes)
-        }
-
-        fun cam(newAnchor: Long, newHours: Double) = TimelineCoordinate.Camera(
-            newAnchor,
-            TimelineCoordinate.clampHours(newHours)
-        )
-
-        suspend fun fling(velocityY: Float, viewportHeight: Float) {
-            if (abs(velocityY) < 120f) return
-            var velocity = velocityY
-            var lastFrame = withFrameNanos { it }
-            while (abs(velocity) > 24f) {
-                val frame = withFrameNanos { it }
-                val dt = ((frame - lastFrame) / 1_000_000_000.0).toFloat().coerceIn(0f, 0.05f)
-                lastFrame = frame
-                val current = latestCamera
-                val perPx = TimelineCoordinate.spanMillis(current.hours) / viewportHeight
-                onCameraChange(
-                    TimelineCoordinate.Camera(
-                        current.anchorMillis - (velocity * dt * perPx).toLong(),
-                        current.hours
-                    )
-                )
-                velocity *= exp(-3.4f * dt)
-            }
-        }
-
-        val gestureModifier = Modifier.pointerInput(Unit) {
-            panZoomGestures(
-                latestCamera = { latestCamera },
-                heightPx = { heightNow },
-                onCamera = { c -> onCameraChange(c) },
-                onFlingEnd = { velocityY -> scope.launch { fling(velocityY, heightNow) } }
-            )
-        }
-
-        var draggedSeq by remember { mutableStateOf<Long?>(null) }
-        var dragOffsetY by remember { mutableStateOf(0f) }
-        var dragTarget by remember { mutableStateOf<Long?>(null) }
-        // A long-press drag must not also count as a tap that opens the editor.
-        var suppressClickUntil by remember { mutableStateOf(0L) }
-        var overflowSide by remember { mutableStateOf<AxisSide?>(null) }
-
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(axisBackground())
-                .then(gestureModifier)
-        ) {
-            TimelineCanvas(
-                anchor = anchor,
-                hours = hours,
-                heightPx = heightPx,
-                widthPx = widthPx,
-                nowMillis = nowMillis,
-                zone = zone
-            )
-
-            layout.items.forEach { item ->
-                val itemY = TimelineCoordinate.yOf(item.anchorMillis, anchor, heightPx, hours)
-                if (itemY < -140f || itemY > heightPx + 140f) return@forEach
-                val dragging = draggedSeq == item.record.eventSeq
-                val laneShift = 36.dp * item.lane
-                val laneOffset: Dp = 10.dp + laneShift
-                val available = viewportWidth / 2 - 12.dp - laneShift
-                val chipWidth = available.coerceIn(90.dp, 230.dp)
-                val x = if (item.side == AxisSide.LEFT) {
-                    viewportWidth / 2 - laneOffset - chipWidth
-                } else {
-                    viewportWidth / 2 + laneOffset
-                }
-                TimelineChip(
-                    item = item,
-                    y = itemY,
-                    x = x,
-                    width = chipWidth,
-                    dragging = dragging,
-                    modifier = Modifier
-                        .zIndex(if (dragging) 12f else 1f)
-                        .pointerInput(item.record.eventSeq, item.record.revision) {
-                            detectDragGesturesAfterLongPress(
-                                onDragStart = {
-                                    draggedSeq = item.record.eventSeq
-                                    dragOffsetY = 0f
-                                    dragTarget = item.anchorMillis
-                                },
-                                onDrag = { change, amount ->
-                                    change.consume()
-                                    dragOffsetY += amount.y
-                                    val perPx = TimelineCoordinate.spanMillis(hoursNow) /
-                                        heightNow.coerceAtLeast(1f)
-                                    val raw = item.anchorMillis + (dragOffsetY * perPx).toLong()
-                                    dragTarget = if (item.dateOnly) {
-                                        instantToDayStart(raw, zone)
-                                    } else {
-                                        TimelineCoordinate.snap(raw, hoursNow, zone)
-                                    }
-                                },
-                                onDragEnd = {
-                                    val target = dragTarget
-                                    draggedSeq = null
-                                    dragOffsetY = 0f
-                                    dragTarget = null
-                                    suppressClickUntil = System.currentTimeMillis() + 450
-                                    if (target != null && target != item.anchorMillis) {
-                                        onMoveEvent(item.record, target)
-                                    }
-                                },
-                                onDragCancel = {
-                                    draggedSeq = null
-                                    dragOffsetY = 0f
-                                    dragTarget = null
-                                    suppressClickUntil = System.currentTimeMillis() + 450
-                                }
-                            )
-                        }
-                        .clickable {
-                            if (System.currentTimeMillis() > suppressClickUntil) {
-                                onOpenEvent(item.record)
-                            }
-                        }
-                )
-            }
-
-            draggedSeq?.let { seq ->
-                dragTarget?.let { target ->
-                    DragPreview(
-                        millis = target,
-                        anchor = anchor,
-                        hours = hours,
-                        heightPx = heightPx,
-                        widthPx = widthPx,
-                        zone = zone,
-                        seq = seq
-                    )
-                }
-            }
-
-            if (layout.overflow.isNotEmpty()) {
-                OverflowBadges(
-                    overflow = layout.overflow,
-                    anchor = anchor,
-                    hours = hours,
-                    heightPx = heightPx,
-                    widthPx = widthPx,
-                    onClick = { side -> overflowSide = side }
-                )
-            }
-
-            if (records.isEmpty()) {
-                Surface(
-                    modifier = Modifier.align(Alignment.Center).padding(24.dp),
-                    shape = GlassShapes.card,
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
-                    tonalElevation = 2.dp
-                ) {
-                    Column(
-                        Modifier.padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Text("时间轴还是空的", style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            "点右下角 + 创建闹钟、活动或截止；也可以用自然语言或截图生成待确认草稿。",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-
-            TimelineTopBar(
-                cameraHours = hours,
-                pendingCount = pendingCount,
-                aiLocked = aiLocked,
-                onToday = onToday,
-                onOpenDeck = onOpenDeck,
-                onOpenTools = onOpenTools,
-                onZoomIn = {
-                    val newHours = TimelineCoordinate.clampHours(hours / 1.5)
-                    val newAnchor = TimelineCoordinate.anchorPreservingFocus(
-                        anchor, hours, newHours, heightPx / 2f, heightPx
-                    )
-                    onCameraChange(cam(newAnchor, newHours))
-                },
-                onZoomOut = {
-                    val newHours = TimelineCoordinate.clampHours(hours * 1.5)
-                    val newAnchor = TimelineCoordinate.anchorPreservingFocus(
-                        anchor, hours, newHours, heightPx / 2f, heightPx
-                    )
-                    onCameraChange(cam(newAnchor, newHours))
-                },
-                modifier = Modifier.align(Alignment.TopCenter)
-            )
-
-            AddButton(
-                onCreate = { kind -> onCreate(kind, TimelineCoordinate.snap(anchor, hours, zone)) },
-                modifier = Modifier.align(Alignment.BottomEnd).padding(18.dp)
-            )
-
-            if (effects.reduceMotion) {
-                Text(
-                    "已遵循系统减少动画设置",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp)
-                )
-            }
-        }
-
-        // Overflow is not a dead end: the hidden events are reachable from the badge.
-        overflowSide?.let { side ->
-            val hidden = layout.overflow[side].orEmpty()
-            AlertDialog(
-                onDismissRequest = { overflowSide = null },
-                title = {
-                    Text(
-                        if (side == AxisSide.LEFT) "折叠的 ${hidden.size} 个闹钟"
-                        else "折叠的 ${hidden.size} 个事件"
-                    )
-                },
-                text = {
-                    Column(
-                        Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(2.dp)
-                    ) {
-                        hidden.forEach { record ->
-                            TextButton(
-                                onClick = {
-                                    overflowSide = null
-                                    onOpenEvent(record)
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Column(Modifier.fillMaxWidth()) {
-                                    Text(
-                                        TemporalRecord.formatSeq(record.eventSeq) + "  " + record.title,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Text(
-                                        TemporalText.summarize(record),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                        }
-                    }
-                },
-                confirmButton = {
-                    TextButton(onClick = { overflowSide = null }) { Text("关闭") }
-                }
-            )
+    var inertia by remember { mutableStateOf<Job?>(null) }
+    var hidden by remember { mutableStateOf<List<TemporalRecord>?>(null) }
+    var inspected by remember { mutableStateOf<TemporalRecord?>(null) }
+    val owners = remember(records) { records.associateBy { it.eventSeq } }
+    val day = Instant.ofEpochMilli(camera.anchorMillis).atZone(zone).toLocalDate()
+    val projection = remember(records, day, zone) {
+        // Cache an overscan window independently from pixel scroll. Nonrepeating records retain
+        // full-set lane assignment; repeated slots use the domain's read-only materializer.
+        val from = day.minusDays(8).atStartOfDay(zone).toInstant().toEpochMilli()
+        val to = day.plusDays(9).atStartOfDay(zone).toInstant().toEpochMilli()
+        records.filter { !it.recurrence.isRepeating }.map { DisplayOccurrence(it, it, "${it.eventSeq}:single") } +
+            displayOccurrences(records.filter { it.recurrence.isRepeating }, from, to)
+    }
+    val slotKeys = remember(projection) {
+        java.util.IdentityHashMap<TemporalRecord, String>().apply {
+            projection.forEach { put(it.record, it.key) }
         }
     }
+    fun open(record: TemporalRecord) {
+        inertia?.cancel()
+        val owner = owners[record.eventSeq] ?: record
+        if (aiLocked) inspected = record else onOpenEvent(owner)
+    }
+    fun changeCamera(updated: TimelineCoordinate.Camera) { inertia?.cancel(); onCameraChange(updated) }
+
+    Column(modifier.fillMaxSize().background(axisBackground())) {
+        Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("PowerCal", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                Text(day.format(DAY_FORMAT), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            IconButton(onClick = onOpenMonth) { Icon(Icons.Default.CalendarMonth, "打开月历") }
+            IconButton(onClick = onOpenTools) { Icon(Icons.Default.Tune, "工具与设置") }
+        }
+        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = { changeCamera(camera.copy(hours = TimelineCoordinate.clampHours(camera.hours * 1.5))) }, enabled = camera.hours < 48) {
+                Icon(Icons.Default.Remove, "缩小，显示更长时间")
+            }
+            Text("${if (camera.hours % 1.0 == 0.0) camera.hours.toInt().toString() else String.format(java.util.Locale.US, "%.1f", camera.hours)} 小时 / 屏",
+                style = MaterialTheme.typography.labelMedium, modifier = Modifier.semantics { stateDescription = "时间轴缩放 ${camera.hours} 小时" })
+            IconButton(onClick = { changeCamera(camera.copy(hours = TimelineCoordinate.clampHours(camera.hours / 1.5))) }, enabled = camera.hours > 4) {
+                Icon(Icons.Default.Add, "放大，显示更短时间")
+            }
+            Spacer(Modifier.weight(1f))
+            Text(if (aiLocked) "AI 处理中 · 可查看" else "闹钟   │   活动 · 截止", style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(end = 8.dp))
+        }
+        if (blockedReminders > 0) Surface(onClick = onOpenTools, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+            shape = GlassShapes.chip, color = MaterialTheme.colorScheme.errorContainer) {
+            Row(Modifier.heightIn(min = 48.dp).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.ErrorOutline, null, Modifier.size(20.dp)); Spacer(Modifier.width(8.dp))
+                Text("$blockedReminders 项提醒受阻 · 查看权限与状态", style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+        val halfSpan = (TimelineCoordinate.spanMillis(camera.hours) / 2).toLong()
+        val visibleDates = projection.filter { entry ->
+            val record = entry.record
+            if (!record.isDateOnlyDeadline()) false else {
+                val start = LocalDate.parse(record.deadlineDate).atStartOfDay(record.zone).toInstant().toEpochMilli()
+                val end = LocalDate.parse(record.deadlineDate).plusDays(1).atStartOfDay(record.zone).toInstant().toEpochMilli()
+                start < camera.anchorMillis + halfSpan && end > camera.anchorMillis - halfSpan
+            }
+        }
+        if (records.any { it.isDateOnlyDeadline() }) Box(Modifier.fillMaxWidth().height(64.dp * LocalDensity.current.fontScale), contentAlignment = Alignment.Center) {
+        if (visibleDates.isEmpty()) Text("可见日期内没有日期级截止", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        LazyRow(Modifier.fillMaxWidth().padding(bottom = 8.dp), contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(visibleDates, key = { it.key }) { entry ->
+                Surface(onClick = { open(entry.record) }, shape = GlassShapes.chip, color = MaterialTheme.colorScheme.tertiaryContainer) {
+                    Row(Modifier.heightIn(min = 48.dp).padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Flag, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp))
+                        Column(Modifier.widthIn(max = 240.dp)) {
+                            Text(entry.record.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelLarge)
+                            Text("${entry.record.deadlineDate} · 截止，无具体时刻", style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                }
+            }
+        }
+        }
+        BoxWithConstraints(Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(0.dp))) {
+            val density = LocalDensity.current
+            val height = with(density) { maxHeight.toPx() }.coerceAtLeast(1f)
+            val viewportWidth = maxWidth
+            val width = with(density) { viewportWidth.toPx() }
+            val heightNow by rememberUpdatedState(height)
+            val unlocked by rememberUpdatedState(!aiLocked)
+            val maxLanes = when { maxWidth >= 1000.dp -> 3; maxWidth >= 580.dp -> 2; else -> 1 }
+            val minSpan = (TimelineCoordinate.spanMillis(camera.hours) * with(density) { 66.dp.toPx() } / height).toLong().coerceAtLeast(12 * 60_000L)
+            val layout = remember(projection, maxLanes, minSpan) { TimelineLayout.layout(projection.map { it.record }.filterNot { it.isDateOnlyDeadline() }, maxLanes, minSpan) }
+            val groups = remember(layout) { overflowGroups(layout.overflow, minSpan) }
+            var dragKey by remember { mutableStateOf<String?>(null) }
+            var dragTarget by remember { mutableStateOf<Long?>(null) }
+            var dragTravel by remember { mutableFloatStateOf(0f) }
+            val cameraChange by rememberUpdatedState(onCameraChange)
+
+            Box(Modifier.fillMaxSize().testTag("timeline-viewport").pointerInput(Unit) {
+                timelineGestures({ latestCamera }, { heightNow }, { inertia?.cancel() }, { cameraChange(it) }, { velocity, releasedCamera ->
+                    inertia?.cancel()
+                    inertia = scope.launch {
+                        var cam = releasedCamera
+                        var speed = velocity
+                        var last = withFrameNanos { it }
+                        while (abs(speed) > 24f) {
+                            val frame = withFrameNanos { it }
+                            val dt = ((frame - last) / 1_000_000_000f).coerceIn(0f, 0.05f)
+                            last = frame
+                            cam = cam.copy(anchorMillis = cam.anchorMillis - (speed * dt * TimelineCoordinate.spanMillis(cam.hours) / heightNow).toLong())
+                            cameraChange(cam)
+                            speed *= exp(-4.2f * dt)
+                        }
+                    }
+                })
+            }.semantics {
+                contentDescription = "中央时间轴，左侧闹钟，右侧活动和截止"
+                customActions = listOf(
+                    CustomAccessibilityAction("向后浏览半屏") { changeCamera(camera.copy(anchorMillis = camera.anchorMillis + halfSpan)); true },
+                    CustomAccessibilityAction("向前浏览半屏") { changeCamera(camera.copy(anchorMillis = camera.anchorMillis - halfSpan)); true }
+                )
+            }) {
+                TimelineCanvas(camera.anchorMillis, camera.hours, height, width, nowMillis, zone)
+                val gutter = 36.dp
+                val sideWidth = viewportWidth / 2 - gutter - 12.dp
+                val laneWidth = (sideWidth - 6.dp * (maxLanes - 1)) / maxLanes
+                layout.items.forEach { item ->
+                    val y = TimelineCoordinate.yOf(item.anchorMillis, camera.anchorMillis, height, camera.hours)
+                    val endY = TimelineCoordinate.yOf(item.record.spanEndMillis() ?: item.anchorMillis, camera.anchorMillis, height, camera.hours)
+                    if (endY < -80 || y > height + 80) return@forEach
+                    val key = slotKeys[item.record] ?: "${item.record.eventSeq}:${item.anchorMillis}"
+                    val startY = y.coerceAtLeast(0f)
+                    val cardHeight = with(density) { (endY - startY).coerceAtLeast(60.dp.toPx()).coerceAtMost(height).toDp() }
+                    val x = if (item.side == AxisSide.LEFT) viewportWidth / 2 - gutter - laneWidth * (item.lane + 1) - 6.dp * item.lane
+                        else viewportWidth / 2 + gutter + (laneWidth + 6.dp) * item.lane
+                    key(key) {
+                        Surface(
+                            onClick = { if (dragKey == null) open(item.record) },
+                            modifier = Modifier.offset(x, with(density) { startY.toDp() }).width(laneWidth).heightIn(min = 48.dp).height(cardHeight)
+                                .pointerInput(key, item.record.revision, item.anchorMillis, aiLocked) {
+                                    if (!unlocked) return@pointerInput
+                                    detectDragGesturesAfterLongPress(
+                                        onDragStart = { inertia?.cancel(); dragKey = key; dragTarget = item.anchorMillis; dragTravel = 0f },
+                                        onDrag = { change, amount ->
+                                            change.consume(); dragTravel += amount.y
+                                            dragTarget = TimelineCoordinate.snap(item.anchorMillis + (dragTravel * TimelineCoordinate.spanMillis(latestCamera.hours) / heightNow).toLong(), latestCamera.hours, zone)
+                                        },
+                                        onDragEnd = {
+                                            val target = dragTarget
+                                            dragKey = null; dragTarget = null
+                                            if (target != null && target != item.anchorMillis) onMoveEvent(owners[item.record.eventSeq] ?: item.record, target)
+                                        }, onDragCancel = { dragKey = null; dragTarget = null })
+                                }
+                                .semantics { contentDescription = "${item.record.kind.label}，${item.record.title}，${TemporalText.summarize(item.record)}，${item.record.displaySeq()}" },
+                            shape = RoundedCornerShape(14.dp),
+                            color = if (dragKey == key) MaterialTheme.colorScheme.surfaceContainerHighest else LocalAxisPalette.current.glassFill,
+                            border = BorderStroke(1.dp, kindColor(item.record.kind).copy(alpha = 0.36f))
+                        ) {
+                            Row(Modifier.fillMaxSize().padding(8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Box(Modifier.width(3.dp).fillMaxHeight().background(kindColor(item.record.kind), RoundedCornerShape(2.dp)))
+                                Column(Modifier.weight(1f)) {
+                                    Text(item.record.title, style = MaterialTheme.typography.labelLarge, maxLines = if (cardHeight > 110.dp) 3 else 1, overflow = TextOverflow.Ellipsis)
+                                    Text(TemporalText.summarize(item.record), style = MaterialTheme.typography.labelSmall, color = kindColor(item.record.kind), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    if (cardHeight > 100.dp) Text(item.record.displaySeq() + if (item.record.recurrence.isRepeating) " · 重复" else "", style = MaterialTheme.typography.labelSmall)
+                                }
+                            }
+                        }
+                    }
+                }
+                groups.forEach { group ->
+                    val y = TimelineCoordinate.yOf(group.start, camera.anchorMillis, height, camera.hours)
+                    val end = TimelineCoordinate.yOf(group.end, camera.anchorMillis, height, camera.hours)
+                    if (end >= 0 && y <= height) Surface(onClick = { hidden = group.records }, shape = GlassShapes.chip,
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        modifier = Modifier.align(if (group.side == AxisSide.LEFT) Alignment.TopStart else Alignment.TopEnd)
+                            .offset(y = with(density) { y.coerceIn(0f, (height - 48.dp.toPx()).coerceAtLeast(0f)).toDp() })
+                            .size(48.dp).zIndex(3f).semantics { contentDescription = "展开 ${group.records.size} 个重叠事件" }) {
+                        Box(contentAlignment = Alignment.Center) { Text("+${group.records.size}", style = MaterialTheme.typography.labelLarge) }
+                    }
+                }
+                TimelineCanvas(camera.anchorMillis, camera.hours, height, width, nowMillis, zone, nowOnly = true)
+                dragTarget?.let { target ->
+                    val y = TimelineCoordinate.yOf(target, camera.anchorMillis, height, camera.hours)
+                    Surface(Modifier.align(Alignment.TopCenter).offset(y = with(density) { y.toDp() }), shape = GlassShapes.chip, color = MaterialTheme.colorScheme.primaryContainer) {
+                        Text("${Instant.ofEpochMilli(target).atZone(zone).format(CLOCK_FORMAT)} · 松开后确认草稿", Modifier.padding(10.dp), style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+                if (records.isEmpty()) GlassPanel(Modifier.align(Alignment.Center).padding(24.dp).widthIn(max = 360.dp)) {
+                    Text("把时间，留给重要的事", style = MaterialTheme.typography.titleLarge)
+                    Spacer(Modifier.height(10.dp))
+                    Text("新建一个闹钟、一段活动，或一个截止日期。草稿会在待处理中等你确认。", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        Surface(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), shape = GlassShapes.bar,
+            color = MaterialTheme.colorScheme.surfaceContainer, border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))) {
+            Row(Modifier.fillMaxWidth().padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = {
+                    inertia?.cancel()
+                    if (effects.reduceMotion) onToday() else {
+                        val start = latestCamera
+                        inertia = scope.launch {
+                            animate(0f, 1f, animationSpec = motion) { fraction, _ ->
+                                onCameraChange(start.copy(anchorMillis = start.anchorMillis + ((nowMillis - start.anchorMillis) * fraction.toDouble()).toLong()))
+                            }
+                            onToday()
+                        }
+                    }
+                }, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
+                    Icon(Icons.Default.Today, null, Modifier.size(20.dp)); Spacer(Modifier.width(6.dp)); Text("今日")
+                }
+                TextButton(onClick = { inertia?.cancel(); onOpenDeck() }, modifier = Modifier.weight(1.4f).heightIn(min = 48.dp)) {
+                    Icon(if (aiLocked) Icons.Default.Lock else Icons.Default.Layers, null, Modifier.size(20.dp)); Spacer(Modifier.width(6.dp))
+                    Text("待处理 $pendingCount", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                var menu by remember { mutableStateOf(false) }
+                Box(Modifier.weight(1f)) {
+                    FilledTonalButton(onClick = { menu = true }, enabled = !aiLocked, contentPadding = PaddingValues(horizontal = 8.dp), modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                        Icon(Icons.Default.Add, null, Modifier.size(20.dp)); Text("新建")
+                    }
+                    DropdownMenu(menu, { menu = false }) {
+                        TemporalKind.entries.forEach { kind -> DropdownMenuItem(text = { Text(kind.label) }, onClick = {
+                            menu = false; onCreate(kind, TimelineCoordinate.snap(camera.anchorMillis, camera.hours, zone))
+                        }) }
+                    }
+                }
+            }
+        }
+    }
+    hidden?.let { list ->
+        AlertDialog(onDismissRequest = { hidden = null }, title = { Text("重叠事件 · ${list.size}") }, text = {
+            Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState())) {
+                list.forEach { record -> TextButton(onClick = { hidden = null; open(record) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                    Column(Modifier.fillMaxWidth()) {
+                        Text("${record.displaySeq()} · ${record.title}", style = MaterialTheme.typography.bodyLarge)
+                        Text(TemporalText.summarize(record), style = MaterialTheme.typography.bodySmall)
+                    }
+                } }
+            }
+        }, confirmButton = { TextButton(onClick = { hidden = null }) { Text("关闭") } })
+    }
+    inspected?.let { record -> AlertDialog(onDismissRequest = { inspected = null }, title = { Text(record.title) },
+        text = { Column { Text(TemporalText.summarize(record)); Text(record.notes); Text("AI 正在处理卡组，暂时只可查看。") } },
+        confirmButton = { TextButton(onClick = { inspected = null }) { Text("完成") } }) }
 }
 
-/** Zoom is anchored to the gesture centroid; single-finger pan comes from the same event stream. */
-private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.panZoomGestures(
-    latestCamera: () -> TimelineCoordinate.Camera,
-    heightPx: () -> Float,
-    onCamera: (TimelineCoordinate.Camera) -> Unit,
-    onFlingEnd: (Float) -> Unit
+private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.timelineGestures(
+    camera: () -> TimelineCoordinate.Camera, height: () -> Float, onStart: () -> Unit,
+    onCamera: (TimelineCoordinate.Camera) -> Unit, onFling: (Float, TimelineCoordinate.Camera) -> Unit
 ) {
-    val tracker = VelocityTracker()
-    val touchSlop = viewConfiguration.touchSlop
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false)
-        tracker.resetTracking()
+        onStart()
+        var cam = camera()
+        var previousY = down.position.y
+        var count = 1
+        var travel = 0f
+        var active = false
+        var zoomed = false
+        var ownedByChild = false
+        val tracker = VelocityTracker()
         tracker.addPosition(down.uptimeMillis, down.position)
-        var lastCentroidY = down.position.y
-        var lastPointerCount = 1
-        var moved = false
-        var zooming = false
-        var pastSlop = false
-        var slopTravel = 0f
         while (true) {
-            val event: PointerEvent = awaitPointerEvent()
+            val event = awaitPointerEvent()
             val pressed = event.changes.filter { it.pressed }
-            if (pressed.isEmpty()) break
-            if (event.changes.any { it.isConsumed }) {
-                // A card being moved or a text field owns the gesture.
+            if (pressed.isEmpty()) {
+                event.changes.firstOrNull()?.let { tracker.addPosition(it.uptimeMillis, it.position) }
+                break
+            }
+            if (event.changes.any { it.isConsumed }) { ownedByChild = true; continue }
+            if (ownedByChild) continue
+            val y = pressed.map { it.position.y }.average().toFloat()
+            if (pressed.size != count) {
+                count = pressed.size; previousY = y
+                if (count > 1) zoomed = true
+                tracker.resetTracking()
                 continue
             }
-            val centroidY = pressed.map { it.position.y }.average().toFloat()
-            if (pressed.size != lastPointerCount) {
-                // Adding or lifting a finger moves the centroid instantly; that is not a pan.
-                lastPointerCount = pressed.size
-                lastCentroidY = centroidY
-                continue
+            val pan = y - previousY
+            travel += abs(pan)
+            if (pressed.size >= 2) zoomed = true
+            if (!active && !zoomed && travel < viewConfiguration.touchSlop) {
+                previousY = y; tracker.addPosition(pressed.first().uptimeMillis, pressed.first().position); continue
             }
-            val panY = centroidY - lastCentroidY
-            val zoom = event.calculateZoom()
-            if (pressed.size >= 2) zooming = true
-            // A tap must reach the chip or toolbar button beneath this node. Never consume the
-            // first pixels: wait for the platform touch slop (or a real pinch) before panning.
-            if (!zooming && !pastSlop) {
-                slopTravel += kotlin.math.abs(panY)
-                if (slopTravel < touchSlop) {
-                    lastCentroidY = centroidY
-                    tracker.addPosition(pressed.first().uptimeMillis, pressed.first().position)
-                    continue
-                }
-                pastSlop = true
-            }
-            var camera = latestCamera()
-            var changed = false
-            if (zooming && zoom != 1f && zoom > 0f) {
-                val newHours = TimelineCoordinate.clampHours(camera.hours / zoom)
-                val newAnchor = TimelineCoordinate.anchorPreservingFocus(
-                    camera.anchorMillis, camera.hours, newHours, centroidY, heightPx()
-                )
-                camera = TimelineCoordinate.Camera(newAnchor, newHours)
-                changed = true
-            }
-            if (panY != 0f) {
-                val millisPerPx = TimelineCoordinate.spanMillis(camera.hours) / heightPx()
-                camera = camera.copy(anchorMillis = camera.anchorMillis - (panY * millisPerPx).toLong())
-                changed = true
-                pressed.forEach { if (it.positionChanged()) it.consume() }
-            }
-            if (zooming) pressed.forEach { it.consume() }
-            if (changed) {
-                onCamera(camera)
-                moved = true
-            }
-            lastCentroidY = centroidY
+            active = true
+            cam = transformedCamera(cam, previousY, y, if (pressed.size >= 2) event.calculateZoom() else 1f, height())
+            onCamera(cam)
+            pressed.forEach { it.consume() }
+            previousY = y
             tracker.addPosition(pressed.first().uptimeMillis, pressed.first().position)
         }
-        if (moved) onFlingEnd(tracker.calculateVelocity().y)
+        if (active && !zoomed && !ownedByChild) {
+            val velocity = tracker.calculateVelocity().y
+            if (abs(velocity) > 120f) onFling(velocity.coerceIn(-8000f, 8000f), cam)
+        }
     }
 }
 
@@ -481,13 +360,14 @@ private fun TimelineCanvas(
     heightPx: Float,
     widthPx: Float,
     nowMillis: Long,
-    zone: ZoneId
+    zone: ZoneId,
+    nowOnly: Boolean = false
 ) {
     val palette = LocalAxisPalette.current
     val scheme = MaterialTheme.colorScheme
     val measurer = rememberTextMeasurer()
     val density = LocalDensity.current
-    val tickStyle = TextStyle(color = scheme.onSurfaceVariant, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+    val tickStyle = TextStyle(color = scheme.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.Medium)
     val dayStyle = TextStyle(color = scheme.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
     val centerX = widthPx / 2f
     val spanMillis = TimelineCoordinate.spanMillis(hours)
@@ -501,6 +381,7 @@ private fun TimelineCanvas(
     }
 
     Canvas(Modifier.fillMaxSize()) {
+        if (!nowOnly) {
         drawLine(
             brush = Brush.verticalGradient(
                 listOf(
@@ -532,20 +413,20 @@ private fun TimelineCanvas(
                     pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f))
                 )
                 val measured = measurer.measure(day.format(DAY_FORMAT), dayStyle)
-                drawText(measured, topLeft = Offset(centerX + 12f, y + 4f))
+                drawText(measured, topLeft = Offset(12.dp.toPx(), y + 4.dp.toPx()))
             }
             day = day.plusDays(1)
             guard++
         }
 
         // Hour ticks computed in wall-clock minutes so labels match the ruler through DST.
-        var tickLocal = Instant.ofEpochMilli(from.toLong()).atZone(zone).toLocalDateTime()
+        var tickLocal = Instant.ofEpochMilli(from.toLong()).atZone(zone)
         tickLocal = tickLocal.withSecond(0).withNano(0)
-        val remainder = tickLocal.minute % tickMinutes
+        val remainder = (tickLocal.hour * 60L + tickLocal.minute) % tickMinutes
         tickLocal = tickLocal.minusMinutes(remainder.toLong())
         var ticks = 0
         while (ticks < 400) {
-            val tickMillis = tickLocal.atZone(zone).toInstant().toEpochMilli()
+            val tickMillis = tickLocal.toInstant().toEpochMilli()
             if (tickMillis > to) break
             val y = TimelineCoordinate.yOf(tickMillis, anchor, heightPx, hours)
             if (y > -20f && y < size.height + 20f) {
@@ -561,19 +442,22 @@ private fun TimelineCanvas(
                     end = Offset(centerX + 8f, y),
                     strokeWidth = 1.dp.toPx()
                 )
-                val measured = measurer.measure(tickLocal.format(CLOCK_FORMAT), tickStyle)
-                drawText(
+                val ambiguous = zone.rules.getValidOffsets(tickLocal.toLocalDateTime()).size > 1
+                val tickLabel = tickLocal.format(CLOCK_FORMAT) + if (ambiguous) "\n${tickLocal.offset}" else ""
+                val measured = measurer.measure(tickLabel, tickStyle)
+                if (y > measured.size.height / 2 && y < size.height - measured.size.height / 2) drawText(
                     measured,
-                    topLeft = Offset(centerX - 13f - measured.size.width, y - measured.size.height / 2f)
+                    topLeft = Offset(centerX - measured.size.width / 2f, y - measured.size.height / 2f)
                 )
             }
             tickLocal = tickLocal.plusMinutes(tickMinutes)
             ticks++
         }
 
+        }
         // NOW at its true position, never pinned to the centre.
         val nowY = TimelineCoordinate.yOf(nowMillis, anchor, heightPx, hours)
-        if (nowY in 0f..size.height) {
+        if (nowOnly && nowY in 0f..size.height) {
             drawLine(
                 brush = Brush.horizontalGradient(
                     listOf(
@@ -611,292 +495,3 @@ private fun TimelineCanvas(
         }
     }
 }
-
-@Composable
-private fun TimelineChip(
-    item: TimelineItem,
-    y: Float,
-    x: Dp,
-    width: Dp,
-    dragging: Boolean,
-    modifier: Modifier = Modifier
-) {
-    val palette = LocalAxisPalette.current
-    val accent = kindColor(item.record.kind)
-    val chipHeight = if (item.dateOnly) 32.dp else 38.dp
-    val density = LocalDensity.current
-    val offsetY: Dp = with(density) { y.toDp() } - chipHeight / 2
-    val visibleAlpha by animateFloatAsState(if (dragging) 0.28f else 1f, label = "chipDrag")
-    Surface(
-        modifier = modifier
-            .offset(x = x, y = offsetY)
-            .width(width)
-            .height(chipHeight)
-            .alpha(visibleAlpha),
-        shape = GlassShapes.chip,
-        color = palette.glassFill,
-        tonalElevation = 0.dp,
-        shadowElevation = 1.dp,
-        border = BorderStroke(0.9.dp, accent.copy(alpha = 0.36f))
-    ) {
-        Row(
-            Modifier.fillMaxSize().padding(horizontal = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                Modifier
-                    .width(3.dp)
-                    .height(if (item.dateOnly) 16.dp else 22.dp)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(accent)
-            )
-            Spacer(Modifier.width(6.dp))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
-                Text(
-                    item.record.title.ifBlank { "未命名" },
-                    style = MaterialTheme.typography.labelLarge,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    if (item.dateOnly) "日期 · " + (item.record.deadlineDate ?: "")
-                    else TemporalText.summarize(item.record),
-                    style = MaterialTheme.typography.labelSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    color = accent
-                )
-            }
-            if (item.record.recurrence.isRepeating) {
-                Icon(
-                    Icons.Default.Schedule,
-                    contentDescription = "重复事件",
-                    modifier = Modifier.size(13.dp),
-                    tint = accent.copy(alpha = 0.85f)
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun DragPreview(
-    millis: Long,
-    anchor: Long,
-    hours: Double,
-    heightPx: Float,
-    widthPx: Float,
-    zone: ZoneId,
-    seq: Long
-) {
-    val palette = LocalAxisPalette.current
-    val density = LocalDensity.current
-    val y = TimelineCoordinate.yOf(millis, anchor, heightPx, hours)
-    val label = Instant.ofEpochMilli(millis).atZone(zone).format(CLOCK_FORMAT)
-    Canvas(Modifier.fillMaxSize()) {
-        drawLine(
-            color = palette.nowLine.copy(alpha = 0.7f),
-            start = Offset(0f, y),
-            end = Offset(size.width, y),
-            strokeWidth = 1.2.dp.toPx(),
-            pathEffect = PathEffect.dashPathEffect(floatArrayOf(14f, 8f))
-        )
-    }
-    Surface(
-        modifier = Modifier.offset(
-            x = with(density) { (widthPx / 2).toDp() } + 18.dp,
-            y = with(density) { y.toDp() } - 17.dp
-        ),
-        shape = GlassShapes.chip,
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 4.dp
-    ) {
-        Text(
-            "吸附 $label · ${TemporalRecord.formatSeq(seq)}",
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-            style = MaterialTheme.typography.labelMedium
-        )
-    }
-}
-
-@Composable
-private fun OverflowBadges(
-    overflow: Map<AxisSide, List<TemporalRecord>>,
-    anchor: Long,
-    hours: Double,
-    heightPx: Float,
-    widthPx: Float,
-    onClick: (AxisSide) -> Unit
-) {
-    val density = LocalDensity.current
-    overflow.forEach { (side, items) ->
-        val firstAnchor = items.mapNotNull { it.anchorMillis() }.minOrNull() ?: anchor
-        val y = TimelineCoordinate.yOf(firstAnchor, anchor, heightPx, hours)
-        val x = if (side == AxisSide.LEFT) {
-            with(density) { (widthPx / 2).toDp() } - 42.dp
-        } else {
-            with(density) { (widthPx / 2).toDp() } + 28.dp
-        }
-        Surface(
-            onClick = { onClick(side) },
-            modifier = Modifier.offset(x = x, y = with(density) { y.toDp() } - 11.dp),
-            shape = GlassShapes.chip,
-            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.95f),
-            tonalElevation = 2.dp
-        ) {
-            Text(
-                "+${items.size}",
-                modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
-                style = MaterialTheme.typography.labelSmall
-            )
-        }
-    }
-}
-
-@Composable
-private fun TimelineTopBar(
-    cameraHours: Double,
-    pendingCount: Int,
-    aiLocked: Boolean,
-    onToday: () -> Unit,
-    onOpenDeck: () -> Unit,
-    onOpenTools: () -> Unit,
-    onZoomIn: () -> Unit,
-    onZoomOut: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Surface(
-        modifier = modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 10.dp),
-        shape = GlassShapes.bar,
-        color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.9f),
-        tonalElevation = 3.dp,
-        shadowElevation = 6.dp
-    ) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text("时间轴", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 6.dp))
-            Spacer(Modifier.weight(1f))
-            Row(
-                modifier = Modifier.horizontalScroll(rememberScrollState()),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onZoomOut, modifier = Modifier.size(40.dp)) {
-                    Icon(Icons.Default.Remove, "缩小时间范围", modifier = Modifier.size(18.dp))
-                }
-                Text(
-                    "${formatHours(cameraHours)}/屏",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                IconButton(onClick = onZoomIn, modifier = Modifier.size(40.dp)) {
-                    Icon(Icons.Default.Add, "放大时间范围", modifier = Modifier.size(18.dp))
-                }
-                Surface(
-                    onClick = onToday,
-                    shape = GlassShapes.chip,
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    modifier = Modifier.padding(start = 2.dp)
-                ) {
-                    Row(
-                        Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Default.Today, null, modifier = Modifier.size(15.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("今日", style = MaterialTheme.typography.labelMedium)
-                    }
-                }
-                Spacer(Modifier.width(6.dp))
-                BadgedBox(
-                    badge = {
-                        if (pendingCount > 0) Badge { Text(pendingCount.coerceAtMost(99).toString()) }
-                    }
-                ) {
-                    Surface(
-                        onClick = onOpenDeck,
-                        shape = GlassShapes.chip,
-                        color = if (aiLocked) MaterialTheme.colorScheme.tertiaryContainer
-                        else MaterialTheme.colorScheme.surfaceContainerHigh
-                    ) {
-                        Row(
-                            Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(Icons.Default.Layers, null, modifier = Modifier.size(15.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text("待处理", style = MaterialTheme.typography.labelMedium)
-                        }
-                    }
-                }
-                Spacer(Modifier.width(4.dp))
-                IconButton(onClick = onOpenTools, modifier = Modifier.size(40.dp)) {
-                    Icon(Icons.Default.MoreVert, "导入、AI 与设置", modifier = Modifier.size(20.dp))
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun AddButton(onCreate: (TemporalKind) -> Unit, modifier: Modifier = Modifier) {
-    var menu by remember { mutableStateOf(false) }
-    Box(modifier) {
-        Surface(
-            onClick = { menu = true },
-            shape = RoundedCornerShape(50),
-            color = MaterialTheme.colorScheme.primary,
-            shadowElevation = 8.dp
-        ) {
-            Box(Modifier.size(56.dp), contentAlignment = Alignment.Center) {
-                Icon(Icons.Default.Add, "新建事件", tint = MaterialTheme.colorScheme.onPrimary)
-            }
-        }
-        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-            KindItem("闹钟 · 只有开始时刻", Icons.Default.Alarm, TemporalKind.ALARM) {
-                menu = false; onCreate(TemporalKind.ALARM)
-            }
-            KindItem("活动 · 开始到结束", Icons.Default.PlayArrow, TemporalKind.ACTIVITY) {
-                menu = false; onCreate(TemporalKind.ACTIVITY)
-            }
-            KindItem("截止 · 时刻或日期", Icons.Default.Flag, TemporalKind.DEADLINE) {
-                menu = false; onCreate(TemporalKind.DEADLINE)
-            }
-        }
-    }
-}
-
-@Composable
-private fun KindItem(
-    label: String,
-    icon: ImageVector,
-    kind: TemporalKind,
-    onClick: () -> Unit
-) {
-    DropdownMenuItem(
-        text = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(icon, null, modifier = Modifier.size(18.dp), tint = kindColor(kind))
-                Spacer(Modifier.width(10.dp))
-                Text(label)
-            }
-        },
-        onClick = onClick
-    )
-}
-
-private fun instantToDayStart(millis: Long, zone: ZoneId): Long =
-    Instant.ofEpochMilli(millis).atZone(zone).toLocalDate()
-        .atStartOfDay(zone).toInstant().toEpochMilli()
-
-private fun formatHours(hours: Double): String =
-    if (hours == hours.toInt().toDouble()) "${hours.toInt()}h"
-    else String.format(Locale.US, "%.1fh", hours)
-
-/** Kept for callers that need the elapsed span of a visible window in tests/debug overlays. */
-internal fun visibleSpanMillis(hours: Double): Long = (hours * 3_600_000.0).toLong()
-
-internal fun Duration.asReadableHours(): String =
-    String.format(Locale.US, "%.1f", toMinutes() / 60.0)

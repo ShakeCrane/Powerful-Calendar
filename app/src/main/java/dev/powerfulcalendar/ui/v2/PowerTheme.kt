@@ -1,8 +1,19 @@
 package dev.powerfulcalendar.ui.v2
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.animation.core.FiniteAnimationSpec
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.material3.Surface
+import androidx.compose.ui.Modifier
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -75,6 +86,8 @@ private val LightColors = lightColorScheme(
     secondaryContainer = Color(0xFFD3EFE7),
     onSecondaryContainer = Color(0xFF0B3A30),
     tertiary = Color(0xFF9A4A1F),
+    tertiaryContainer = Color(0xFFFFE4CE),
+    onTertiaryContainer = Color(0xFF5E2D0D),
     background = Color(0xFFF3F5FA),
     onBackground = Color(0xFF11151C),
     surface = Color(0xFFFFFFFF),
@@ -101,6 +114,8 @@ private val DarkColors = darkColorScheme(
     secondaryContainer = Color(0xFF173B33),
     onSecondaryContainer = Color(0xFFD3EFE7),
     tertiary = Color(0xFFFFB68C),
+    tertiaryContainer = Color(0xFF4A2A18),
+    onTertiaryContainer = Color(0xFFFFDCC1),
     background = Color(0xFF0A0D13),
     onBackground = Color(0xFFE6EAF2),
     surface = Color(0xFF12161E),
@@ -161,9 +176,11 @@ fun PowerCalTheme(
     }
     CompositionLocalProvider(
         LocalGlassEffects provides effects,
-        LocalAxisPalette provides palette
+        LocalAxisPalette provides if (effects.blur) palette else palette.copy(glassFill = scheme.surface, glassHighlight = Color.Transparent)
     ) {
-        MaterialTheme(colorScheme = scheme, typography = PowerTypography, content = content)
+        MaterialTheme(colorScheme = scheme, typography = PowerTypography) {
+            CompositionLocalProvider(LocalContentColor provides scheme.onBackground, content = content)
+        }
     }
 }
 
@@ -199,6 +216,22 @@ fun axisBackground(): Brush {
 object PowerMotion {
     const val PressScale = 0.972f
     const val CardLift = 1.012f
+}
+
+@Composable
+internal fun glassMotion(): FiniteAnimationSpec<Float> =
+    if (LocalGlassEffects.current.reduceMotion) snap() else spring(dampingRatio = 0.86f, stiffness = 380f)
+
+@Composable
+internal fun GlassPanel(modifier: Modifier = Modifier, contentPadding: PaddingValues = PaddingValues(20.dp), content: @Composable ColumnScope.() -> Unit) {
+    val effects = LocalGlassEffects.current
+    Surface(
+        modifier = modifier,
+        shape = GlassShapes.card,
+        color = if (effects.blur) LocalAxisPalette.current.glassFill else MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)),
+        shadowElevation = if (effects.blur) 2.dp else 0.dp
+    ) { Column(Modifier.padding(contentPadding), content = content) }
 }
 
 /** Body text minimum used in cards; kept here so accessibility review has one number to check. */
