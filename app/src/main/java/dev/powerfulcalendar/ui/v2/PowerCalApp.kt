@@ -97,6 +97,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
 import java.time.Instant
 import java.time.ZoneId
 import java.util.UUID
@@ -208,7 +209,7 @@ fun PowerCalApp(store: PowerStore) {
     suspend fun readBackupText(uri: Uri): String = withContext(Dispatchers.IO) {
         appContext.contentResolver.openInputStream(uri)?.use { input ->
             val buffer = ByteArray(64 * 1024)
-            val output = java.io.ByteArrayOutputStream()
+            val output = ByteArrayOutputStream()
             var total = 0
             while (true) {
                 val read = input.read(buffer)
@@ -223,18 +224,29 @@ fun PowerCalApp(store: PowerStore) {
         } ?: error("无法读取备份文件")
     }
 
-    /** Shared restore tail: one place for reload, schedule rebuild and report wording. */
-    suspend fun finishRestore(parsed: JSONObject, allowLegacy: Boolean, prefix: String) {
+    /**
+     * Restore is already committed when this returns. Refresh or scheduling problems are returned as
+     * warnings instead of being reported as "restore failed", which would invite a destructive retry.
+     */
+    suspend fun restoreAndRefresh(
+        parsed: JSONObject,
+        allowLegacy: Boolean
+    ): Pair<PowerStore.RestoreReport, List<String>> {
         val report = withContext(Dispatchers.IO) { store.restoreBackup(parsed, allowLegacy) }
-        reload()
-        reconcile()
-        message = buildString {
-            append(prefix)
-            append("${report.objects} 个事件、${report.drafts} 张草稿、${report.commits} 条提交")
-            append("；调度已重建，旧授权与旧执行记录未恢复")
-            report.warnings.firstOrNull()?.let { append("。").append(it) }
-        }
+        val problems = mutableListOf<String>()
+        runCatching { reload() }.onFailure { problems += "界面刷新失败，请重启应用查看已恢复数据" }
+        runCatching { reconcile() }.onFailure { problems += "提醒调度重建失败，请稍后重试" }
+        return report to problems
     }
+
+    fun restoreMessage(report: PowerStore.RestoreReport, prefix: String): String = buildString {
+        append(prefix)
+        append("${report.objects} 个事件、${report.drafts} 张草稿、${report.commits} 条提交")
+        append("；调度已重建，旧授权与旧执行记录未恢复")
+        report.warnings.firstOrNull()?.let { append("。").append(it) }
+    }
+
+    fun Throwable.readable(): String = message ?: javaClass.simpleName
 
     LaunchedEffect(Unit) {
         reconcile()
@@ -444,7 +456,7 @@ fun PowerCalApp(store: PowerStore) {
                     BackupEnvelope.verifyReadback(envelope, JSONObject(reread), PowerStore.VERSION)
                     message = "原生备份已导出并回读校验（SHA-256 匹配）；文件为明文敏感数据"
                 }
-            }.onFailure { message = "备份失败：" + it.message }
+            }.onFailure { message = "备份失败：" + it.readable() }
         }
     }
     val restoreBackup = rememberLauncherForActivityResult(
@@ -457,14 +469,15 @@ fun PowerCalApp(store: PowerStore) {
                 text = loaded
                 val parsed = runCatching { JSONObject(loaded) }
                     .getOrElse { throw IllegalArgumentException("备份文件不是有效 JSON") }
-                finishRestore(parsed, allowLegacy = false, prefix = "已恢复 ")
+                val (report, problems) = restoreAndRefresh(parsed, allowLegacy = false)
+                message = restoreMessage(report, "已恢复 ") + problems.joinToString("", "；", "") { it }
             }.onFailure { error ->
                 when (error) {
                     is LegacyBackupConsentRequired -> {
                         legacyRestoreText = text
                         message = "该备份是早期 flat v2 格式，缺少 SHA-256；需要你确认来源可信后才能恢复"
                     }
-                    else -> message = "恢复失败：" + (error.message ?: error.javaClass.simpleName)
+                    else -> message = "恢复失败：" + error.readable()
                 }
             }
         }
@@ -915,14 +928,12 @@ fun PowerCalApp(store: PowerStore) {
                         runCatching {
                             val parsed = runCatching { JSONObject(legacyText) }
                                 .getOrElse { throw IllegalArgumentException("备份文件不是有效 JSON") }
-                            finishRestore(
-                                parsed,
-                                allowLegacy = true,
-                                prefix = "旧格式备份已恢复（未验证完整性）："
-                            )
-                            message = (message ?: "") + "；建议立即导出新的 Envelope 备份"
+                            val (report, problems) = restoreAndRefresh(parsed, allowLegacy = true)
+                            message = restoreMessage(report, "旧格式备份已恢复（未验证完整性）：") +
+                                problems.joinToString("", "；", "") { it } +
+                                "；建议立即导出新的 Envelope 备份"
                         }.onFailure { error ->
-                            message = "恢复失败：" + (error.message ?: error.javaClass.simpleName)
+                            message = "恢复失败：" + error.readable()
                         }
                     }
                 }) { Text("仍要恢复") }
@@ -1163,7 +1174,7 @@ private fun ToolsPage(
         SectionCard("备份与导出", "原生备份优先于有损格式") {
             ToolRow(
                 "导出原生备份（Envelope v1）",
-                "单一致性快照 + SHA-256；含序号水位、草稿、提交与执行记录；不含密钥。文件为明文敏感数据，请自行保管",
+                "单一致性快照 + SHA-256；含序号水位、草稿、提交与迁移记录；不含密钥。文件为明文敏感数据，请自行保管",
                 onExportBackup
             )
             ToolRow(

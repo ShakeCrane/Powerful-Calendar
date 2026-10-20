@@ -151,7 +151,7 @@ object BackupEnvelope {
             "文件同时包含 Envelope 字段与旧式字段，格式模糊，已拒绝"
         }
         val allowed = setOf(
-            "format", "version", "exportedMs", "exportedAtEpochMs", "nextSeq", "nextOrder",
+            "format", "version", "exportedMs", "nextSeq", "nextOrder",
             "identities", "objects", "drafts", "commits", "sourceLinks", "migrations", "note"
         )
         require(envelope.keys().asSequence().all { it in allowed }) {

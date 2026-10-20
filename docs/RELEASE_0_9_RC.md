@@ -144,6 +144,10 @@ minSdk 26、targetSdk 35。`apksigner verify --print-certs`：仅 Android Debug 
 - **真实设备进程强杀 / 低存储 / WAL 恢复**：未注入真实存储故障。
 - **SAF/云盘写入中断与回读失败**：代码路径有处理，未对真实提供方验证。
 - **从实际用户设备导出的匿名 DB/备份样本**：本轮没有样本，fixture 依据历史 DDL 构造。
+- **哈希语义**：`payloadSha256` 按契约只覆盖 payload，是损坏/篡改检测，不是密码学签名；
+  `databaseSchemaVersion`/`storeLineageId` 等包裹字段本身不被哈希保护。
+- **规范化实现依赖**：canonical JSON 由本项目 `BackupEnvelope` 定义并测试，但底层字符串转义/数字
+  处理依赖 Android `org.json`；未来重写编解码器必须复用同一 canonical 实现。
 - 导入旧闹钟 handoff（DSH-05）、重复范围编辑（DSH-01）、observable snapshot（DSH-03）仍未实现；
   与本轮 P0 无冲突，不影响现有数据安全。
 
@@ -161,6 +165,6 @@ minSdk 26、targetSdk 35。`apksigner verify --print-certs`：仅 Android Debug 
 
 - 测试：`app/build/test-results/testDebugUnitTest/*.xml`（17 套件 / 191 项 / 0 失败）。
 - Lint：`app/build/reports/lint-results-debug.html`（0 error / 13 warning）。
-- Debug APK：`app/build/outputs/apk/debug/app-debug.apk`，63,430,546 bytes，
-  SHA-256 `B60FDB53DA42B1686653A5429F91F073F23E30B4094F043D10FF834FD70B856A`。
+- Debug APK：`app/build/outputs/apk/debug/app-debug.apk`，63,431,830 bytes，
+  SHA-256 `EFAFEA31DB211B1C81D6EBAF4E5B07C866EE87802A26D23F7AD88DEC278DB6C3`。
 - Release：按设计被 `verifyReleaseSigning` 阻断，未生成签名包。

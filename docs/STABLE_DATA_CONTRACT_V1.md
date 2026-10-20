@@ -79,6 +79,22 @@
 
 上例仅示意**字段结构**，零值不是发行版本、没有可用的 hash；实际 writer 必须填入真实值并自测。把 backup format 从 DB 版本分离以后，即使 SQLite 表发生增量变化，也可独立维持向后导入兼容。
 
+### 4.1 Canonical payload 与哈希边界（0.9 RC 已实现，冻结候选）
+
+为避免平台/序列化顺序导致同一数据产生不同摘要，`payloadSha256` 定义为：
+
+1. 仅对 `payload` 对象计算；包裹字段不参与。
+2. 对象键按 Unicode 码点升序排列；数组顺序保持不变（顺序有业务含义）。
+3. 字符串按 JSON 转义；布尔与 `null` 使用字面量。
+4. 数字先按十进制文本解析为 `BigDecimal`，`stripTrailingZeros()` 后用 `toPlainString()` 输出，
+   因此 `1`、`1.0`、`1e0` 的规范化结果均为 `1`。
+5. 规范化结果为 UTF-8 字节，SHA-256 后输出 64 位小写十六进制。
+
+`databaseSchemaVersion`、`appVersionCode`、`exportedAtEpochMs`、`storeLineageId` 由 reader 单独
+校验格式/范围，但**不被 payload SHA-256 覆盖**：该哈希用于检测损坏/篡改，不是密码学签名或来源认证。
+reader/writer 必须复用同一 canonical 实现；任何规范化规则变化都必须提升 `backupFormatVersion`，
+不能在同一版本内静默改变摘要语义。
+
 - 导出：在 SQLite **单一一致性读快照**中读取相关实体和 high-water marks，生成结构化 payload，再制作 hash；文件写入返回成功后需重新读取并验证 hash/字段数量，才显示“备份成功”。通过 SAF URI 写入时，注意云存储/中断写入可能无法原子化；失败不得给出成功文案。
 - 恢复：**预检版本、hash、JSON 尺寸/结构、身份引用、重复字段与限额**，明确拒绝未知未来格式或提供显式迁移。恢复只能进入空库或通过用户显式“先备份现有库再执行替换”事务化流程；0.9 优先保留空库恢复。
 - 恢复必须保留完整事件快照、身份及墓碑、草稿及队列、提交历史、重复例外、来源与迁移必要证据、高水位；不能只恢复 Event 列表。

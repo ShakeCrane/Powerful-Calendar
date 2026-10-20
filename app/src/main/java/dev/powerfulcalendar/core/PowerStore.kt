@@ -1682,7 +1682,8 @@ class PowerStore(
         BackupEnvelope.TABLES.forEach { table ->
             val rows = payload.getJSONArray(table).length()
             require(rows <= MAX_BACKUP_ROWS) {
-                "数据量超过单次备份上限 $MAX_BACKUP_ROWS（$table=$rows），请先归档后再导出"
+                "数据量超过单次备份上限 $MAX_BACKUP_ROWS（$table=$rows）；当前版本不支持自动归档，" +
+                    "请先导出并清理部分历史数据，或联系维护者处理"
             }
         }
         BackupEnvelope.create(
@@ -1715,7 +1716,7 @@ class PowerStore(
     fun restoreBackup(input: JSONObject, allowLegacyV2: Boolean = false): RestoreReport {
         // Cheap rejection first: never parse/verify a large envelope against a live user database.
         require(!hasAnyUserData(readableDatabase)) {
-            "目标数据库已有事件：为避免覆盖，恢复只允许在空数据库中进行"
+            "目标数据库不是空库（可能已有事件、草稿、导入或迁移记录）；为避免覆盖，请先导出并清空应用数据后再恢复"
         }
         val verified = BackupEnvelope.verify(input, VERSION, allowLegacyV2)
         val payload = verified.payload
@@ -1723,7 +1724,7 @@ class PowerStore(
         return tx { db ->
             // Re-check inside the transaction: another connection may have written since preflight.
             require(!hasAnyUserData(db)) {
-                "目标数据库已有事件：为避免覆盖，恢复只允许在空数据库中进行"
+                "目标数据库不是空库（可能已有事件、草稿、导入或迁移记录）；为避免覆盖，请先导出并清空应用数据后再恢复"
             }
             val identities = payload.getJSONArray("identities")
             for (index in 0 until identities.length()) {
@@ -1952,10 +1953,10 @@ class PowerStore(
         val maxOrder = orders.maxOrNull() ?: 0L
         val restoredNextSeq = payload.optLong("nextSeq", -1L)
         val restoredNextOrder = payload.optLong("nextOrder", -1L)
-        require(restoredNextSeq in (maxSeq + 1)..MAX_ALLOCATED_SEQ) {
+        require(restoredNextSeq in (maxSeq + 1)..MAX_WATERMARK) {
             "备份 nextSeq 低于已分配序号或超出合理上限，可能已损坏"
         }
-        require(restoredNextOrder in (maxOrder + 1)..MAX_ALLOCATED_ORDER) {
+        require(restoredNextOrder in (maxOrder + 1)..MAX_WATERMARK) {
             "备份 nextOrder 低于草稿队列高水位或超出合理上限，可能已损坏"
         }
     }
@@ -1968,8 +1969,7 @@ class PowerStore(
         const val MAX_BACKUP_ROWS = 200_000
 
         /** Sanity ceiling for restored counters: far above any real calendar, below overflow. */
-        private const val MAX_ALLOCATED_SEQ = 1L shl 62
-        private const val MAX_ALLOCATED_ORDER = 1L shl 62
+        private const val MAX_WATERMARK = 1L shl 62
 
         /** A batch whose heartbeat is older than this cannot still be running. */
         const val DEFAULT_STALE_MS = 10 * 60_000L
