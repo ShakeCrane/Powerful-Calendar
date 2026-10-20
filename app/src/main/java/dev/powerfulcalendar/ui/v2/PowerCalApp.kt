@@ -31,6 +31,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Timeline
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -39,6 +42,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -72,6 +77,7 @@ import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
 import dev.powerfulcalendar.ai.AiBatchRunner
 import dev.powerfulcalendar.ai.AiClient
+import dev.powerfulcalendar.ai.AiChatMessage
 import dev.powerfulcalendar.ai.AiDraftService
 import dev.powerfulcalendar.ai.AiSettingsStore
 import dev.powerfulcalendar.core.BackupEnvelope
@@ -120,7 +126,7 @@ object PowerCalStores {
     }
 }
 
-private enum class Page { TIMELINE, MONTH, TOOLS }
+private enum class Page { TIMELINE, MONTH, AI, TOOLS }
 
 private data class BatchReview(val mode: AiBatchRunner.Mode, val cards: List<dev.powerfulcalendar.core.DraftCard>)
 
@@ -157,6 +163,8 @@ fun PowerCalApp(store: PowerStore) {
     var textDialogOpen by remember { mutableStateOf(false) }
     var ocrReviewText by remember { mutableStateOf<String?>(null) }
     var aiBusy by remember { mutableStateOf(false) }
+    var chatBusy by remember { mutableStateOf(false) }
+    var chatHistory by remember { mutableStateOf<List<AiChatMessage>>(emptyList()) }
     var confirmBatch by remember { mutableStateOf<BatchReview?>(null) }
     var pendingCards by remember { mutableStateOf<List<dev.powerfulcalendar.core.DraftCard>>(emptyList()) }
     var diagnostics by remember { mutableStateOf(UiDiagnostics()) }
@@ -323,6 +331,43 @@ fun PowerCalApp(store: PowerStore) {
             message = parsed.note
         }.onFailure {
             message = it.message ?: "暂时无法创建草稿（AI 批次可能正在独占卡组）"
+        }
+    }
+
+    /** Explicit Skill entry only. It is never invoked from ordinary chat model text. */
+    suspend fun generateAiDraft(text: String, shareForRequest: Boolean) {
+        if (aiBusy || chatBusy) return
+        aiBusy = true
+        try {
+            val settings = AiSettingsStore.load(appContext)
+            if (!settings.configured) {
+                message = "请先在设置页配置 AI 端点、模型与密钥"
+                return
+            }
+            // Context sharing is opt-in and the AI Center defaults to zero context.
+            val contextForAi = if (settings.shareContext && shareForRequest) {
+                val horizon = nowMillis + 14L * 24 * 3_600_000
+                records.filter { (it.anchorMillis() ?: 0L) <= horizon }.take(60)
+            } else emptyList()
+            val result = AiClient(settings, zone).interpret(text, contextForAi)
+            val created = withContext(Dispatchers.IO) {
+                AiDraftService(store).createDrafts(result)
+            }
+            reload()
+            val sharedNote = if (contextForAi.isEmpty()) "未共享事件上下文"
+                else "已共享 ${contextForAi.size} 条事件作为本次上下文"
+            if (created.draftIds.isEmpty()) {
+                message = (result.warnings.firstOrNull()
+                    ?: "AI 没有返回可用的结构化草稿") + " · " + sharedNote
+            } else {
+                openDeckAt(created.draftIds.first())
+                message = "AI 生成 ${created.draftIds.size} 张待确认草稿 · " + sharedNote
+            }
+        } catch (error: Exception) {
+            if (error is kotlinx.coroutines.CancellationException) throw error
+            message = "AI 未完成：" + (error.message ?: "检查配置后重试；已有草稿保留")
+        } finally {
+            aiBusy = false
         }
     }
 
@@ -565,6 +610,7 @@ fun PowerCalApp(store: PowerStore) {
             .statusBarsPadding()
             .navigationBarsPadding()
     ) {
+        Box(Modifier.fillMaxSize().padding(bottom = 80.dp)) {
         if (tools) {
             ToolsPage(
                 diagnostics = diagnostics,
@@ -635,46 +681,7 @@ fun PowerCalApp(store: PowerStore) {
                     }
                 },
                 onAiDraft = { text, shareForRequest ->
-                    aiBusy = true
-                    scope.launch {
-                        try {
-                            val settings = AiSettingsStore.load(appContext)
-                            if (!settings.configured) {
-                                message = "请先配置 AI 端点、模型与密钥"
-                                return@launch
-                            }
-                            // Context sharing is opt-in. When disabled the endpoint only receives
-                            // the text the user typed.
-                            val contextForAi = if (settings.shareContext && shareForRequest) {
-                                val horizon = nowMillis + 14L * 24 * 3_600_000
-                                records.filter { (it.anchorMillis() ?: 0L) <= horizon }.take(60)
-                            } else {
-                                emptyList()
-                            }
-                            val result = AiClient(settings, zone).interpret(text, contextForAi)
-                            val created = withContext(Dispatchers.IO) {
-                                AiDraftService(store).createDrafts(result)
-                            }
-                            reload()
-                            val sharedNote = if (contextForAi.isEmpty()) {
-                                "未共享事件上下文"
-                            } else {
-                                "已共享 ${contextForAi.size} 条事件作为本次上下文"
-                            }
-                            if (created.draftIds.isEmpty()) {
-                                message = (result.warnings.firstOrNull()
-                                    ?: "AI 没有返回可用的结构化草稿") + " · " + sharedNote
-                            } else {
-                                openDeckAt(created.draftIds.first())
-                                message = "AI 生成了 ${created.draftIds.size} 张待确认草稿 · " + sharedNote
-                            }
-                        } catch (error: Exception) {
-                            if (error is kotlinx.coroutines.CancellationException) throw error
-                            message = "AI 未完成：" + (error.message ?: "请检查配置后重试，已有草稿已保留")
-                        } finally {
-                            aiBusy = false
-                        }
-                    }
+                    scope.launch { generateAiDraft(text, shareForRequest) }
                 },
                 aiBusy = aiBusy,
                 onReleaseStuck = {
@@ -684,6 +691,40 @@ fun PowerCalApp(store: PowerStore) {
                         message = "已强制解除 AI 独占；旧批次的结果被作废，剩余卡片保留"
                     }
                 }
+            )
+        } else if (page == Page.AI.name) {
+            AiChatScreen(
+                messages = chatHistory,
+                busy = chatBusy || aiBusy,
+                onSend = { text ->
+                    if (!chatBusy && !aiBusy && text.isNotBlank()) {
+                        val userMessage = AiChatMessage("user", text.trim().take(6000))
+                        val history = (chatHistory + userMessage).takeLast(12)
+                        chatHistory = chatHistory + userMessage
+                        chatBusy = true
+                        scope.launch {
+                            try {
+                                val result = AiClient(AiSettingsStore.load(appContext), zone).chat(history)
+                                val answer = if (result.succeeded) result.reply
+                                    else "AI 请求未完成：" + result.error.orEmpty()
+                                chatHistory = chatHistory + AiChatMessage("assistant", answer.take(6000))
+                            } catch (error: kotlinx.coroutines.CancellationException) {
+                                throw error
+                            } catch (error: Exception) {
+                                chatHistory = chatHistory + AiChatMessage("assistant",
+                                    "无法完成本次聊天：" + error.javaClass.simpleName)
+                            } finally {
+                                chatBusy = false
+                            }
+                        }
+                    }
+                },
+                onPropose = { text ->
+                    scope.launch { generateAiDraft(text, shareForRequest = false) }
+                },
+                onClear = { chatHistory = emptyList() },
+                onSettings = { page = Page.TOOLS.name },
+                onOpenDeck = { scope.launch { openDeckAt(null) } }
             )
         } else if (page == Page.MONTH.name) {
             MonthScreen(records, Instant.ofEpochMilli(anchorMillis).atZone(zone).toLocalDate(), zone, aiLocked,
@@ -768,12 +809,44 @@ fun PowerCalApp(store: PowerStore) {
                 blockedReminders = diagnostics.reminders.count { it.intent?.desired == PowerStore.DesiredSchedule.BLOCKED }
             )
         }
+        } // page content above the persistent bottom navigation
+        NavigationBar(
+            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
+            containerColor = MaterialTheme.colorScheme.surface,
+            tonalElevation = 4.dp
+        ) {
+            NavigationBarItem(
+                selected = page == Page.TIMELINE.name,
+                onClick = { page = Page.TIMELINE.name },
+                icon = { Icon(Icons.Default.Timeline, contentDescription = null) },
+                label = { Text("时间轴") }
+            )
+            NavigationBarItem(
+                selected = page == Page.MONTH.name,
+                onClick = { page = Page.MONTH.name },
+                icon = { Icon(Icons.Default.CalendarMonth, contentDescription = null) },
+                label = { Text("月历") }
+            )
+            NavigationBarItem(
+                selected = page == Page.AI.name,
+                onClick = { page = Page.AI.name },
+                icon = { Icon(Icons.Default.AutoAwesome, contentDescription = null) },
+                label = { Text("AI 助手") }
+            )
+            NavigationBarItem(
+                selected = page == Page.TOOLS.name,
+                onClick = { page = Page.TOOLS.name },
+                icon = { Icon(Icons.Default.Settings, contentDescription = null) },
+                label = { Text("设置") }
+            )
+        }
 
         message?.let { text ->
             Surface(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(horizontal = 16.dp, vertical = 22.dp),
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 92.dp),
                 shape = GlassShapes.chip,
                 color = MaterialTheme.colorScheme.inverseSurface,
                 tonalElevation = 6.dp
