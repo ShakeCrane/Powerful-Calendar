@@ -231,14 +231,38 @@ object AiResponseParser {
         return AiInterpretation(proposals, warnings, raw)
     }
 
-    /** Tolerates ```json fences and leading prose without accepting arbitrary text as JSON. */
+    /**
+     * Extract the first complete JSON object without a platform regex.
+     * Android's ICU regex compiler rejects the old unescaped closing brace pattern.
+     * Balanced scanning also handles nested event objects and braces inside quoted strings.
+     */
     private fun extractJson(raw: String): String? {
-        val fenced = Regex("```(?:json)?\\s*(\\{[\\s\\S]*?})\\s*```").find(raw)?.groupValues?.get(1)
-        if (fenced != null) return fenced
         val start = raw.indexOf('{')
-        val end = raw.lastIndexOf('}')
-        if (start < 0 || end <= start) return null
-        return raw.substring(start, end + 1)
+        if (start < 0) return null
+        var depth = 0
+        var quoted = false
+        var escaped = false
+        for (index in start until raw.length) {
+            val char = raw[index]
+            if (quoted) {
+                when {
+                    escaped -> escaped = false
+                    char == '\\' -> escaped = true
+                    char == '"' -> quoted = false
+                }
+            } else {
+                when (char) {
+                    '"' -> quoted = true
+                    '{' -> depth++
+                    '}' -> {
+                        depth--
+                        if (depth == 0) return raw.substring(start, index + 1)
+                        if (depth < 0) return null
+                    }
+                }
+            }
+        }
+        return null
     }
 
     /** Converts a validated proposal into a draft form the card editor can open. */

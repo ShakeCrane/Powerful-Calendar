@@ -129,6 +129,35 @@ class AiResponseParserTest {
     }
 
     @Test
+    fun fencedNestedJsonWithQuotedBracesAndEscapesIsAccepted() {
+        val answer = """
+            Here is the structured proposal:
+            ```json
+            {"events":[{"operation":"CREATE","kind":"ACTIVITY",
+            "title":"含 { } 标记的活动",
+            "start":"2026-10-20 19:00",
+            "end":"2026-10-20 20:00",
+            "notes":"literal } and \"quote\" inside text"}]}
+            ```
+            Further explanation that must not become part of JSON.
+        """.trimIndent()
+        val parsed = AiResponseParser.parse(answer, known, zone)
+        assertEquals(1, parsed.proposals.size)
+        assertEquals("含 { } 标记的活动", parsed.proposals.single().form.title)
+        assertEquals("literal } and \"quote\" inside text", parsed.proposals.single().form.notes)
+    }
+
+    @Test
+    fun incompleteObjectIsRejectedWithoutThrowing() {
+        val broken = """```json
+            {"events":[{"operation":"CREATE","kind":"ACTIVITY","title":"partial"}
+            ```""".trimIndent()
+        val parsed = AiResponseParser.parse(broken, known, zone)
+        assertTrue(parsed.proposals.isEmpty())
+        assertTrue(parsed.warnings.isNotEmpty())
+    }
+
+    @Test
     fun dateOnlyDeadlineIsNotTurnedIntoANightTime() {
         val raw = """
             {"events":[{"operation":"CREATE","kind":"DEADLINE","title":"截止",
