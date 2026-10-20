@@ -650,6 +650,6 @@ class PowerStoreTest {
                 .atZone(tokyo).toInstant().toEpochMilli(),
             stored.startMillis
         )
-        assertTrue(JSONObject(store.exportBackup().toString()).has("objects"))
+        assertTrue(JSONObject(store.exportBackup().toString()).getJSONObject("payload").has("objects"))
     }
 }

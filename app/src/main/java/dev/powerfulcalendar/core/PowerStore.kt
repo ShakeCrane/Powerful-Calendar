@@ -29,7 +29,8 @@ import java.util.UUID
 class PowerStore(
     context: Context,
     databaseName: String = DATABASE_NAME
-) : SQLiteOpenHelper(context, databaseName, null, VERSION) {
+) : SQLiteOpenHelper(context.applicationContext, databaseName, null, VERSION) {
+    private val appContext = context.applicationContext
 
     /**
      * Distinguishes this process from an earlier one, so a restart can prove a batch is orphaned.
@@ -45,10 +46,14 @@ class PowerStore(
                  next_seq INTEGER NOT NULL,
                  next_order INTEGER NOT NULL,
                  ai_epoch INTEGER NOT NULL DEFAULT 0,
-                 ai_locked INTEGER NOT NULL DEFAULT 0
+                 ai_locked INTEGER NOT NULL DEFAULT 0,
+                 lineage_id TEXT NOT NULL
                )"""
         )
-        db.execSQL("INSERT INTO meta(id,next_seq,next_order) VALUES(1,1,1)")
+        db.execSQL(
+            "INSERT INTO meta(id,next_seq,next_order,lineage_id) VALUES(1,1,1,?)",
+            arrayOf(UUID.randomUUID().toString())
+        )
         db.execSQL(
             """CREATE TABLE identities(
                  event_seq INTEGER PRIMARY KEY,
@@ -180,14 +185,45 @@ class PowerStore(
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // Only strictly additive, already-reviewed migrations are allowed here. Anything that could
-        // drop snapshots, drafts or the sequence high-water mark still fails loudly.
-        if (oldVersion == 1 && newVersion == 2) {
+        // Every step is additive and ordered. A real v1/v2 user database upgrades in place; nothing
+        // is recreated, and a gap in the known chain fails loudly instead of producing an empty DB.
+        require(oldVersion in 1 until newVersion) { "不支持的数据库升级 v$oldVersion → v$newVersion" }
+        var version = oldVersion
+        if (version < 2 && newVersion >= 2) {
             createReviewedAuthorizationTable(db)
-            return
+            version = 2
         }
-        error("PowerCal 数据库需要显式迁移 (v$oldVersion → v$newVersion)，已拒绝破坏性升级")
+        if (version < 3 && newVersion >= 3) {
+            addStoreLineageColumn(db)
+            version = 3
+        }
+        require(version == newVersion) {
+            "PowerCal 数据库升级路径不完整 (v$oldVersion → v$newVersion)，已拒绝打开"
+        }
     }
+
+    /**
+     * v2→v3: additive lineage identity for backup fork detection; no business row is rewritten.
+     * Idempotent on purpose: a process killed between ALTER TABLE and the version bump must be able
+     * to retry the same upgrade instead of being locked out of its own database.
+     */
+    private fun addStoreLineageColumn(db: SQLiteDatabase) {
+        if (!hasColumn(db, "meta", "lineage_id")) {
+            db.execSQL("ALTER TABLE meta ADD COLUMN lineage_id TEXT NOT NULL DEFAULT ''")
+        }
+        db.execSQL(
+            "UPDATE meta SET lineage_id=? WHERE lineage_id IS NULL OR lineage_id=''",
+            arrayOf(UUID.randomUUID().toString())
+        )
+    }
+
+    private fun hasColumn(db: SQLiteDatabase, table: String, column: String): Boolean =
+        db.rawQuery("PRAGMA table_info($table)", null).use { cursor ->
+            while (cursor.moveToNext()) {
+                if (cursor.getString(1) == column) return@use true
+            }
+            false
+        }
 
     override fun onDowngrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) =
         error("拒绝降级 PowerCal 数据库")
@@ -337,11 +373,36 @@ class PowerStore(
         }
     }
 
+    /** One SQLite read snapshot, so a multi-table export cannot mix revisions across connections. */
+    private inline fun <T> readSnapshot(block: (SQLiteDatabase) -> T): T {
+        val db = readableDatabase
+        db.beginTransactionNonExclusive()
+        return try {
+            val value = block(db)
+            db.setTransactionSuccessful()
+            value
+        } finally {
+            db.endTransaction()
+        }
+    }
+
     private fun metaLong(db: SQLiteDatabase, column: String): Long =
         db.rawQuery("SELECT $column FROM meta WHERE id=1", null).use {
             check(it.moveToFirst()) { "PowerCal meta 表损坏" }
             it.getLong(0)
         }
+
+    private fun metaString(db: SQLiteDatabase, column: String): String =
+        db.rawQuery("SELECT $column FROM meta WHERE id=1", null).use {
+            check(it.moveToFirst()) { "PowerCal meta 表损坏" }
+            it.getString(0)
+        }
+
+    /** Version code recorded in a backup; 0 when running under an environment without package info. */
+    private fun installedVersionCode(): Long = runCatching {
+        val info = appContext.packageManager.getPackageInfo(appContext.packageName, 0)
+        if (android.os.Build.VERSION.SDK_INT >= 28) info.longVersionCode else info.versionCode.toLong()
+    }.getOrDefault(0L)
 
     private fun bump(db: SQLiteDatabase, column: String): Long {
         val current = metaLong(db, column)
@@ -1522,98 +1583,127 @@ class PowerStore(
             arrayOf(source, externalId)
         ).use { if (it.moveToFirst()) it.getLong(0) else null }
 
-    /** Full native snapshot for backup; deliberately excludes live Android handles. */
+    /**
+     * BackupEnvelope v1 from one SQLite snapshot. It deliberately excludes AI authorization,
+     * Android PendingIntent handles and API keys. The payload hash is created only after every
+     * logical table and both high-water marks were read in the same transaction.
+     */
     @Synchronized
-    fun exportBackup(): JSONObject = JSONObject().apply {
-        put("format", "powercal-native")
-        put("version", VERSION)
-        put("exportedMs", System.currentTimeMillis())
-        put("nextSeq", nextSequencePreview())
-        put("identities", JSONArray().apply {
-            readableDatabase.rawQuery(
-                "SELECT event_seq,allocated_ms,retired_ms,origin FROM identities ORDER BY event_seq", null
-            ).use { cursor ->
-                while (cursor.moveToNext()) put(JSONObject().apply {
-                    put("seq", cursor.getLong(0))
-                    put("allocatedMs", cursor.getLong(1))
-                    if (!cursor.isNull(2)) put("retiredMs", cursor.getLong(2))
-                    put("origin", cursor.getString(3))
-                })
-            }
-        })
-        put("objects", JSONArray().apply {
-            readableDatabase.rawQuery("SELECT payload,retired FROM objects", null).use { cursor ->
-                while (cursor.moveToNext()) put(JSONObject().apply {
-                    put("payload", JSONObject(cursor.getString(0)))
-                    put("retired", cursor.getInt(1))
-                })
-            }
-        })
-        put("drafts", JSONArray().apply {
-            readableDatabase.rawQuery(
-                """SELECT draft_id,event_seq,queue_order,base_rev,op,payload,status,draft_version,created_ms,updated_ms
-                   FROM drafts ORDER BY queue_order""", null
-            ).use { cursor ->
-                while (cursor.moveToNext()) put(JSONObject().apply {
-                    put("draftId", cursor.getLong(0))
-                    put("eventSeq", cursor.getLong(1))
-                    put("queueOrder", cursor.getLong(2))
-                    if (cursor.isNull(3)) put("baseRev", JSONObject.NULL) else put("baseRev", cursor.getLong(3))
-                    put("op", cursor.getString(4))
-                    put("payload", JSONObject(cursor.getString(5)))
-                    put("status", cursor.getString(6))
-                    put("draftVersion", cursor.getLong(7))
-                    put("createdMs", cursor.getLong(8))
-                    put("updatedMs", cursor.getLong(9))
-                })
-            }
-        })
-        put("commits", JSONArray().apply {
-            readableDatabase.rawQuery(
-                """SELECT commit_id,draft_id,event_seq,previous_revision,new_revision,actor,operation,created_ms
-                   FROM commits""", null
-            ).use { cursor ->
-                while (cursor.moveToNext()) put(JSONObject().apply {
-                    put("commitId", cursor.getString(0))
-                    if (cursor.isNull(1)) put("draftId", JSONObject.NULL) else put("draftId", cursor.getLong(1))
-                    put("eventSeq", cursor.getLong(2))
-                    if (cursor.isNull(3)) put("previousRevision", JSONObject.NULL)
-                    else put("previousRevision", cursor.getLong(3))
-                    put("revision", cursor.getLong(4))
-                    put("actor", cursor.getString(5))
-                    put("operation", cursor.getString(6))
-                    put("createdMs", cursor.getLong(7))
-                })
-            }
-        })
-        put("migrations", JSONArray().apply {
-            readableDatabase.rawQuery(
-                """SELECT batch_id,source,started_ms,finished_ms,imported,skipped,warnings
-                   FROM migrations""", null
-            ).use { cursor ->
-                while (cursor.moveToNext()) put(JSONObject().apply {
-                    put("batchId", cursor.getString(0))
-                    put("source", cursor.getString(1))
-                    put("startedMs", cursor.getLong(2))
-                    if (cursor.isNull(3)) put("finishedMs", JSONObject.NULL) else put("finishedMs", cursor.getLong(3))
-                    put("imported", cursor.getInt(4))
-                    put("skipped", cursor.getInt(5))
-                    put("warnings", cursor.getString(6))
-                })
-            }
-        })
-        put("sourceLinks", JSONArray().apply {
-            readableDatabase.rawQuery("SELECT source,external_id,event_seq FROM source_links", null).use {
-                while (it.moveToNext()) put(JSONObject().apply {
-                    put("source", it.getString(0))
-                    put("externalId", it.getString(1))
-                    put("eventSeq", it.getLong(2))
-                })
-            }
-        })
-        // AI authority is intentionally NOT exported: restoring a backup must never revive a
-        // stale batch lock or a stale authorization scope.
-        put("note", "AI 批次授权、Android 调度句柄与 API 密钥不包含在备份中")
+    fun exportBackup(): JSONObject = readSnapshot { db ->
+        val exportedAt = System.currentTimeMillis()
+        val payload = JSONObject().apply {
+            put("identities", JSONArray().apply {
+                db.rawQuery(
+                    "SELECT event_seq,allocated_ms,retired_ms,origin FROM identities ORDER BY event_seq", null
+                ).use { cursor ->
+                    while (cursor.moveToNext()) put(JSONObject().apply {
+                        put("seq", cursor.getLong(0))
+                        put("allocatedMs", cursor.getLong(1))
+                        if (!cursor.isNull(2)) put("retiredMs", cursor.getLong(2))
+                        put("origin", cursor.getString(3))
+                    })
+                }
+            })
+            put("objects", JSONArray().apply {
+                db.rawQuery("SELECT payload,retired FROM objects ORDER BY event_seq", null).use { cursor ->
+                    while (cursor.moveToNext()) put(JSONObject().apply {
+                        put("payload", JSONObject(cursor.getString(0)))
+                        put("retired", cursor.getInt(1))
+                    })
+                }
+            })
+            put("drafts", JSONArray().apply {
+                db.rawQuery(
+                    """SELECT draft_id,event_seq,queue_order,base_rev,op,payload,status,draft_version,created_ms,updated_ms
+                       FROM drafts ORDER BY queue_order""", null
+                ).use { cursor ->
+                    while (cursor.moveToNext()) put(JSONObject().apply {
+                        put("draftId", cursor.getLong(0))
+                        put("eventSeq", cursor.getLong(1))
+                        put("queueOrder", cursor.getLong(2))
+                        if (cursor.isNull(3)) put("baseRev", JSONObject.NULL) else put("baseRev", cursor.getLong(3))
+                        put("op", cursor.getString(4))
+                        put("payload", JSONObject(cursor.getString(5)))
+                        put("status", cursor.getString(6))
+                        put("draftVersion", cursor.getLong(7))
+                        put("createdMs", cursor.getLong(8))
+                        put("updatedMs", cursor.getLong(9))
+                    })
+                }
+            })
+            put("commits", JSONArray().apply {
+                db.rawQuery(
+                    """SELECT commit_id,draft_id,event_seq,previous_revision,new_revision,actor,operation,created_ms
+                       FROM commits ORDER BY created_ms,commit_id""", null
+                ).use { cursor ->
+                    while (cursor.moveToNext()) put(JSONObject().apply {
+                        put("commitId", cursor.getString(0))
+                        if (cursor.isNull(1)) put("draftId", JSONObject.NULL) else put("draftId", cursor.getLong(1))
+                        put("eventSeq", cursor.getLong(2))
+                        if (cursor.isNull(3)) put("previousRevision", JSONObject.NULL)
+                        else put("previousRevision", cursor.getLong(3))
+                        put("revision", cursor.getLong(4))
+                        put("actor", cursor.getString(5))
+                        put("operation", cursor.getString(6))
+                        put("createdMs", cursor.getLong(7))
+                    })
+                }
+            })
+            put("sourceLinks", JSONArray().apply {
+                db.rawQuery(
+                    "SELECT source,external_id,event_seq FROM source_links ORDER BY source,external_id", null
+                ).use { cursor ->
+                    while (cursor.moveToNext()) put(JSONObject().apply {
+                        put("source", cursor.getString(0))
+                        put("externalId", cursor.getString(1))
+                        put("eventSeq", cursor.getLong(2))
+                    })
+                }
+            })
+            put("migrations", JSONArray().apply {
+                db.rawQuery(
+                    """SELECT batch_id,source,started_ms,finished_ms,imported,skipped,warnings
+                       FROM migrations ORDER BY started_ms,batch_id""", null
+                ).use { cursor ->
+                    while (cursor.moveToNext()) put(JSONObject().apply {
+                        put("batchId", cursor.getString(0))
+                        put("source", cursor.getString(1))
+                        put("startedMs", cursor.getLong(2))
+                        if (cursor.isNull(3)) put("finishedMs", JSONObject.NULL)
+                        else put("finishedMs", cursor.getLong(3))
+                        put("imported", cursor.getInt(4))
+                        put("skipped", cursor.getInt(5))
+                        put("warnings", cursor.getString(6))
+                    })
+                }
+            })
+            put("executions", JSONArray().apply {
+                db.rawQuery(
+                    """SELECT execution_id,event_seq,revision,occurrence_key,trigger_id,result,detail,at_ms
+                       FROM executions ORDER BY at_ms,execution_id""", null
+                ).use { cursor ->
+                    while (cursor.moveToNext()) put(JSONObject().apply {
+                        put("executionId", cursor.getString(0))
+                        put("eventSeq", cursor.getLong(1))
+                        put("revision", cursor.getLong(2))
+                        put("occurrenceKey", cursor.getString(3))
+                        put("triggerId", cursor.getString(4))
+                        put("result", cursor.getString(5))
+                        put("detail", cursor.getString(6))
+                        put("atMs", cursor.getLong(7))
+                    })
+                }
+            })
+            put("nextSeq", metaLong(db, "next_seq"))
+            put("nextOrder", metaLong(db, "next_order"))
+        }
+        BackupEnvelope.create(
+            payload = payload,
+            databaseSchemaVersion = VERSION,
+            appVersionCode = installedVersionCode(),
+            exportedAtEpochMs = exportedAt,
+            storeLineageId = metaString(db, "lineage_id")
+        )
     }
 
     // ---------------------------------------------------------------- native backup
@@ -1622,145 +1712,264 @@ class PowerStore(
         val identities: Int,
         val objects: Int,
         val drafts: Int,
-        val commits: Int
+        val commits: Int,
+        val executions: Int = 0,
+        val legacyUnverified: Boolean = false,
+        val warnings: List<String> = emptyList()
     )
 
     /**
-     * Restores a native snapshot into an EMPTY store only. Overwriting a live database would be an
-     * irreversible action the user did not ask for, so it is refused instead of "helpfully" wiped.
-     * AI authority is never restored: the new install starts unlocked and unscheduled.
+     * Restores a verified BackupEnvelope v1 (or an explicitly confirmed legacy flat v2 file) into an
+     * EMPTY store only. The envelope is verified and the payload's referential integrity is checked
+     * before a single row is written; the insert itself is one transaction, so an interrupted
+     * restore rolls back to the empty store. AI authority and Android handles are never restored.
      */
     @Synchronized
-    fun restoreBackup(snapshot: JSONObject): RestoreReport = tx { db ->
-        require(identityCount() == 0L && nextSequencePreview() == 1L) {
-            "目标数据库已有事件：为避免覆盖，恢复只允许在空数据库中进行"
-        }
-        require(snapshot.optString("format") == "powercal-native") { "不是 PowerCal 原生备份" }
-        val identities = snapshot.optJSONArray("identities") ?: JSONArray()
-        val objects = snapshot.optJSONArray("objects") ?: JSONArray()
-        var maxSeq = 1L
-        for (index in 0 until identities.length()) {
-            val item = identities.getJSONObject(index)
-            val seq = item.getLong("seq")
-            maxSeq = maxOf(maxSeq, seq + 1)
-            db.insertOrThrow("identities", null, ContentValues().apply {
-                put("event_seq", seq)
-                put("allocated_ms", item.optLong("allocatedMs", System.currentTimeMillis()))
-                if (item.has("retiredMs")) put("retired_ms", item.getLong("retiredMs"))
-                put("origin", item.optString("origin", "local"))
-            })
-        }
-        var objectCount = 0
-        for (index in 0 until objects.length()) {
-            val wrapper = objects.getJSONObject(index)
-            val payload = wrapper.getJSONObject("payload")
-            val record = decodeRecord(payload.toString())
-            val retired = wrapper.optInt("retired", 0) == 1
-            val values = ContentValues().apply {
-                put("event_seq", record.eventSeq)
-                put("revision", record.revision)
-                put("kind", record.kind.name)
-                put("anchor_ms", record.anchorMillis())
-                put("span_end_ms", record.spanEndMillis())
-                put("payload", payload.toString())
-                put("retired", if (retired) 1 else 0)
-                put("created_ms", record.createdAtMillis)
-                put("updated_ms", record.updatedAtMillis)
+    fun restoreBackup(input: JSONObject, allowLegacyV2: Boolean = false): RestoreReport {
+        val verified = BackupEnvelope.verify(input, VERSION, allowLegacyV2)
+        val payload = verified.payload
+        validateBackupPayload(payload)
+        return tx { db ->
+            require(identityCount() == 0L && nextSequencePreview() == 1L) {
+                "目标数据库已有事件：为避免覆盖，恢复只允许在空数据库中进行"
             }
-            db.insertWithOnConflict("objects", null, values, SQLiteDatabase.CONFLICT_REPLACE)
-            objectCount++
+            val identities = payload.getJSONArray("identities")
+            for (index in 0 until identities.length()) {
+                val item = identities.getJSONObject(index)
+                db.insertOrThrow("identities", null, ContentValues().apply {
+                    put("event_seq", item.getLong("seq"))
+                    put("allocated_ms", item.optLong("allocatedMs", System.currentTimeMillis()))
+                    if (item.has("retiredMs") && !item.isNull("retiredMs")) {
+                        put("retired_ms", item.getLong("retiredMs"))
+                    }
+                    put("origin", item.optString("origin", "local"))
+                })
+            }
+
+            val objects = payload.getJSONArray("objects")
+            for (index in 0 until objects.length()) {
+                val wrapper = objects.getJSONObject(index)
+                val snapshot = wrapper.getJSONObject("payload")
+                val record = decodeRecord(snapshot.toString())
+                val retired = wrapper.optInt("retired", 0) == 1
+                db.insertOrThrow("objects", null, ContentValues().apply {
+                    put("event_seq", record.eventSeq)
+                    put("revision", record.revision)
+                    put("kind", record.kind.name)
+                    put("anchor_ms", record.anchorMillis())
+                    put("span_end_ms", record.spanEndMillis())
+                    put("payload", snapshot.toString())
+                    put("retired", if (retired) 1 else 0)
+                    put("created_ms", record.createdAtMillis.takeIf { it > 0 } ?: System.currentTimeMillis())
+                    put("updated_ms", record.updatedAtMillis.takeIf { it > 0 } ?: System.currentTimeMillis())
+                })
+            }
+
+            val drafts = payload.getJSONArray("drafts")
+            for (index in 0 until drafts.length()) {
+                val item = drafts.getJSONObject(index)
+                db.insertOrThrow("drafts", null, ContentValues().apply {
+                    put("draft_id", item.getLong("draftId"))
+                    put("event_seq", item.getLong("eventSeq"))
+                    put("queue_order", item.getLong("queueOrder"))
+                    if (item.isNull("baseRev")) putNull("base_rev") else put("base_rev", item.getLong("baseRev"))
+                    put("op", item.getString("op"))
+                    put("payload", item.getJSONObject("payload").toString())
+                    put("status", item.optString("status", "PENDING"))
+                    put("draft_version", item.optLong("draftVersion", 0L))
+                    put("created_ms", item.optLong("createdMs", System.currentTimeMillis()))
+                    put("updated_ms", item.optLong("updatedMs", System.currentTimeMillis()))
+                })
+            }
+
+            val commits = payload.getJSONArray("commits")
+            for (index in 0 until commits.length()) {
+                val item = commits.getJSONObject(index)
+                db.insertOrThrow("commits", null, ContentValues().apply {
+                    put("commit_id", item.getString("commitId"))
+                    if (!item.has("draftId") || item.isNull("draftId")) putNull("draft_id")
+                    else put("draft_id", item.getLong("draftId"))
+                    put("event_seq", item.getLong("eventSeq"))
+                    if (!item.has("previousRevision") || item.isNull("previousRevision")) {
+                        putNull("previous_revision")
+                    } else {
+                        put("previous_revision", item.getLong("previousRevision"))
+                    }
+                    put("new_revision", item.getLong("revision"))
+                    put("actor", item.optString("actor", "restore"))
+                    put("operation", item.optString("operation", "RESTORE"))
+                    put("created_ms", item.optLong("createdMs", System.currentTimeMillis()))
+                })
+            }
+
+            val links = payload.getJSONArray("sourceLinks")
+            for (index in 0 until links.length()) {
+                val item = links.getJSONObject(index)
+                db.insertOrThrow("source_links", null, ContentValues().apply {
+                    put("source", item.getString("source"))
+                    put("external_id", item.getString("externalId"))
+                    put("event_seq", item.getLong("eventSeq"))
+                })
+            }
+
+            val migrations = payload.getJSONArray("migrations")
+            for (index in 0 until migrations.length()) {
+                val item = migrations.getJSONObject(index)
+                db.insertOrThrow("migrations", null, ContentValues().apply {
+                    put("batch_id", item.getString("batchId"))
+                    put("source", item.getString("source"))
+                    put("started_ms", item.optLong("startedMs", System.currentTimeMillis()))
+                    if (item.has("finishedMs") && !item.isNull("finishedMs")) {
+                        put("finished_ms", item.getLong("finishedMs"))
+                    } else {
+                        putNull("finished_ms")
+                    }
+                    put("imported", item.optInt("imported", 0))
+                    put("skipped", item.optInt("skipped", 0))
+                    put("warnings", item.optString("warnings", "[]"))
+                })
+            }
+
+            val executions = payload.optJSONArray("executions") ?: JSONArray()
+            for (index in 0 until executions.length()) {
+                val item = executions.getJSONObject(index)
+                db.insertOrThrow("executions", null, ContentValues().apply {
+                    put("execution_id", item.getString("executionId"))
+                    put("event_seq", item.getLong("eventSeq"))
+                    put("revision", item.getLong("revision"))
+                    put("occurrence_key", item.getString("occurrenceKey"))
+                    put("trigger_id", item.getString("triggerId"))
+                    put("result", item.getString("result"))
+                    put("detail", item.optString("detail"))
+                    put("at_ms", item.optLong("atMs", System.currentTimeMillis()))
+                })
+            }
+
+            // High-water marks come from the verified payload; they are never recomputed downward.
+            db.execSQL(
+                """UPDATE meta
+                   SET next_seq=?, next_order=?, lineage_id=?, ai_locked=0, ai_epoch=ai_epoch+1
+                   WHERE id=1""",
+                arrayOf(
+                    payload.getLong("nextSeq"),
+                    payload.getLong("nextOrder"),
+                    verified.storeLineageId
+                )
+            )
+            // Android authority is rebuilt, never restored: no AI session, no stale PendingIntent.
+            db.execSQL("DELETE FROM schedule_intents")
+            db.execSQL("DELETE FROM ai_sessions")
+            db.execSQL("DELETE FROM ai_session_drafts")
+            db.rawQuery("SELECT payload FROM objects WHERE retired=0", null).use { cursor ->
+                while (cursor.moveToNext()) {
+                    val restored = decodeRecord(cursor.getString(0))
+                    if (restored.enabled) writeDesiredIntent(db, restored, System.currentTimeMillis())
+                }
+            }
+
+            RestoreReport(
+                identities = identities.length(),
+                objects = objects.length(),
+                drafts = drafts.length(),
+                commits = commits.length(),
+                executions = executions.length(),
+                legacyUnverified = verified.legacyUnverified,
+                warnings = verified.warnings
+            )
         }
-        val drafts = snapshot.optJSONArray("drafts") ?: JSONArray()
-        var draftCount = 0
-        var maxOrder = 1L
+    }
+
+    /**
+     * Pre-flight validation. It runs before the write transaction, so a corrupted or inconsistent
+     * envelope is rejected without touching the destination database.
+     */
+    private fun validateBackupPayload(payload: JSONObject) {
+        require(!payload.has("ai_sessions") && !payload.has("ai_session_drafts")) {
+            "备份包含不应导入的 AI 授权数据"
+        }
+        val keys = listOf("identities", "objects", "drafts", "commits", "sourceLinks", "migrations")
+        keys.forEach { key ->
+            val array = payload.optJSONArray(key)
+                ?: throw IllegalArgumentException("备份缺少 $key 数组")
+            require(array.length() <= MAX_BACKUP_ROWS) { "备份 $key 数量超过上限 $MAX_BACKUP_ROWS" }
+        }
+        payload.optJSONArray("executions")?.let {
+            require(it.length() <= MAX_BACKUP_ROWS) { "备份 executions 数量超过上限 $MAX_BACKUP_ROWS" }
+        }
+
+        val seqs = HashSet<Long>()
+        val identities = payload.getJSONArray("identities")
+        for (index in 0 until identities.length()) {
+            val seq = identities.getJSONObject(index).getLong("seq")
+            require(seq > 0 && seqs.add(seq)) { "备份身份序号非法或重复：$seq" }
+        }
+
+        val objectSeqs = HashSet<Long>()
+        val objects = payload.getJSONArray("objects")
+        for (index in 0 until objects.length()) {
+            val record = decodeRecord(objects.getJSONObject(index).getJSONObject("payload").toString())
+            require(record.eventSeq in seqs) { "对象 #${record.eventSeq} 缺少身份记录" }
+            require(objectSeqs.add(record.eventSeq)) { "对象 #${record.eventSeq} 重复" }
+        }
+
+        val draftIds = HashSet<Long>()
+        val orders = HashSet<Long>()
+        val drafts = payload.getJSONArray("drafts")
         for (index in 0 until drafts.length()) {
             val item = drafts.getJSONObject(index)
+            val draftId = item.getLong("draftId")
             val order = item.getLong("queueOrder")
-            maxOrder = maxOf(maxOrder, order + 1)
-            db.insertOrThrow("drafts", null, ContentValues().apply {
-                if (item.has("draftId")) put("draft_id", item.getLong("draftId"))
-                put("event_seq", item.getLong("eventSeq"))
-                put("queue_order", order)
-                if (item.isNull("baseRev")) putNull("base_rev") else put("base_rev", item.getLong("baseRev"))
-                put("op", item.getString("op"))
-                put("payload", item.getJSONObject("payload").toString())
-                put("status", item.optString("status", "PENDING"))
-                put("draft_version", item.optLong("draftVersion", 0L))
-                put("created_ms", item.optLong("createdMs", System.currentTimeMillis()))
-                put("updated_ms", item.optLong("updatedMs", System.currentTimeMillis()))
-            })
-            draftCount++
+            require(draftId > 0 && draftIds.add(draftId)) { "草稿 ID 非法或重复：$draftId" }
+            require(order > 0 && orders.add(order)) { "草稿 queueOrder 非法或重复：$order" }
+            require(item.getLong("eventSeq") in seqs) { "草稿 #$draftId 引用了不存在的身份" }
+            require(runCatching { DraftOperation.valueOf(item.getString("op")) }.isSuccess) {
+                "草稿 #$draftId 的操作类型无效"
+            }
+            require(runCatching { DraftStatus.valueOf(item.getString("status")) }.isSuccess) {
+                "草稿 #$draftId 的状态无效"
+            }
+            // Decoding the form here rejects malformed structured fields before any write.
+            decodeForm(item.getJSONObject("payload").toString())
         }
-        val commits = snapshot.optJSONArray("commits") ?: JSONArray()
-        var commitCount = 0
+
+        val commitIds = HashSet<String>()
+        val commits = payload.getJSONArray("commits")
         for (index in 0 until commits.length()) {
             val item = commits.getJSONObject(index)
-            db.insertOrThrow("commits", null, ContentValues().apply {
-                put("commit_id", item.getString("commitId"))
-                // Preserve the card linkage so the restored audit trail is not anonymised.
-                if (item.isNull("draftId") || !item.has("draftId")) putNull("draft_id")
-                else put("draft_id", item.getLong("draftId"))
-                put("event_seq", item.getLong("eventSeq"))
-                if (item.has("previousRevision") && !item.isNull("previousRevision")) {
-                    put("previous_revision", item.getLong("previousRevision"))
-                } else {
-                    putNull("previous_revision")
-                }
-                put("new_revision", item.getLong("revision"))
-                put("actor", item.optString("actor", "restore"))
-                put("operation", item.optString("operation", "RESTORE"))
-                put("created_ms", item.optLong("createdMs", System.currentTimeMillis()))
-            })
-            commitCount++
+            val commitId = item.getString("commitId")
+            require(commitId.isNotBlank() && commitIds.add(commitId)) { "提交 ID 重复或为空：$commitId" }
+            require(item.getLong("eventSeq") in seqs) { "提交 $commitId 引用了不存在的身份" }
+            require(item.getLong("revision") >= 1L) { "提交 $commitId 的修订号非法" }
         }
-        val links = snapshot.optJSONArray("sourceLinks") ?: JSONArray()
+
+        val links = payload.getJSONArray("sourceLinks")
         for (index in 0 until links.length()) {
             val item = links.getJSONObject(index)
-            db.insertWithOnConflict("source_links", null, ContentValues().apply {
-                put("source", item.getString("source"))
-                put("external_id", item.getString("externalId"))
-                put("event_seq", item.getLong("eventSeq"))
-            }, SQLiteDatabase.CONFLICT_IGNORE)
+            require(item.getLong("eventSeq") in seqs) { "来源链接引用了不存在的身份" }
         }
-        val migrations = snapshot.optJSONArray("migrations") ?: JSONArray()
-        for (index in 0 until migrations.length()) {
-            val item = migrations.getJSONObject(index)
-            db.insertWithOnConflict("migrations", null, ContentValues().apply {
-                put("batch_id", item.getString("batchId"))
-                put("source", item.getString("source"))
-                put("started_ms", item.optLong("startedMs", System.currentTimeMillis()))
-                if (item.has("finishedMs") && !item.isNull("finishedMs")) {
-                    put("finished_ms", item.getLong("finishedMs"))
-                } else {
-                    putNull("finished_ms")
-                }
-                put("imported", item.optInt("imported", 0))
-                put("skipped", item.optInt("skipped", 0))
-                put("warnings", item.optString("warnings", "[]"))
-            }, SQLiteDatabase.CONFLICT_REPLACE)
+
+        val executions = payload.optJSONArray("executions") ?: JSONArray()
+        for (index in 0 until executions.length()) {
+            val item = executions.getJSONObject(index)
+            require(item.getLong("eventSeq") in seqs) { "执行记录引用了不存在的身份" }
         }
-        db.execSQL(
-            "UPDATE meta SET next_seq=?, next_order=?, ai_locked=0, ai_epoch=ai_epoch+1 WHERE id=1",
-            arrayOf(maxSeq, maxOrder)
-        )
-        // Schedules are rebuilt from scratch after a restore; never replay stale Android handles.
-        db.execSQL("DELETE FROM schedule_intents")
-        db.execSQL("DELETE FROM ai_sessions")
-        db.execSQL("DELETE FROM ai_session_drafts")
-        db.execSQL("DELETE FROM executions")
-        // Rebuild the desired schedule for every restored active event (I-16).
-        db.rawQuery("SELECT payload FROM objects WHERE retired=0", null).use { cursor ->
-            while (cursor.moveToNext()) {
-                val restored = decodeRecord(cursor.getString(0))
-                if (restored.enabled) writeDesiredIntent(db, restored, System.currentTimeMillis())
-            }
+
+        val maxSeq = seqs.maxOrNull() ?: 0L
+        val maxOrder = orders.maxOrNull() ?: 0L
+        require(payload.optLong("nextSeq", -1L) >= maxSeq + 1) {
+            "备份 nextSeq 低于已分配序号，可能已损坏"
         }
-        RestoreReport(identities.length(), objectCount, draftCount, commitCount)
+        require(payload.optLong("nextOrder", -1L) >= maxOrder + 1) {
+            "备份 nextOrder 低于草稿队列高水位，可能已损坏"
+        }
     }
 
     companion object {
         const val DATABASE_NAME = "powercal-v2.db"
-        const val VERSION = 2
+        const val VERSION = 3
+
+        /** Defensive bound for restore input; a personal calendar stays far below this. */
+        const val MAX_BACKUP_ROWS = 200_000
 
         /** A batch whose heartbeat is older than this cannot still be running. */
         const val DEFAULT_STALE_MS = 10 * 60_000L

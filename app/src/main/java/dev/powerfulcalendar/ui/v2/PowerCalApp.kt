@@ -74,9 +74,11 @@ import dev.powerfulcalendar.ai.AiBatchRunner
 import dev.powerfulcalendar.ai.AiClient
 import dev.powerfulcalendar.ai.AiDraftService
 import dev.powerfulcalendar.ai.AiSettingsStore
+import dev.powerfulcalendar.core.BackupEnvelope
 import dev.powerfulcalendar.core.DeckController
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.DraftOperation
+import dev.powerfulcalendar.core.LegacyBackupConsentRequired
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.RecurrenceEngine
 import dev.powerfulcalendar.core.StoreDeckPersistence
@@ -158,6 +160,8 @@ fun PowerCalApp(store: PowerStore) {
     var diagnostics by remember { mutableStateOf(UiDiagnostics()) }
     var monthInspection by remember { mutableStateOf<TemporalRecord?>(null) }
     var confirmingLegacy by remember { mutableStateOf(false) }
+    // Holds an early flat v2 file until the user explicitly accepts its unverified nature.
+    var legacyRestoreText by remember { mutableStateOf<String?>(null) }
 
     val initialCamera = remember { TimelineCoordinate.initialCamera(System.currentTimeMillis(), zone) }
     var anchorMillis by rememberSaveable { mutableLongStateOf(initialCamera.anchorMillis) }
@@ -198,6 +202,25 @@ fun PowerCalApp(store: PowerStore) {
         withContext(Dispatchers.IO) { controller.open(draftId) }
         deckInitialId = draftId
         deckOpen = true
+    }
+
+    /** Hardware-safe read: a crafted or corrupt file cannot exhaust memory before verification. */
+    suspend fun readBackupText(uri: android.net.Uri): String = withContext(Dispatchers.IO) {
+        appContext.contentResolver.openInputStream(uri)?.use { input ->
+            val buffer = ByteArray(64 * 1024)
+            val output = java.io.ByteArrayOutputStream()
+            var total = 0
+            while (true) {
+                val read = input.read(buffer)
+                if (read < 0) break
+                total += read
+                if (total > BackupEnvelope.MAX_BYTES) {
+                    throw IllegalArgumentException("备份文件超过 64MB 上限，已拒绝读取")
+                }
+                output.write(buffer, 0, read)
+            }
+            output.toByteArray().toString(Charsets.UTF_8)
+        } ?: error("无法读取备份文件")
     }
 
     LaunchedEffect(Unit) {
@@ -392,32 +415,58 @@ fun PowerCalApp(store: PowerStore) {
     ) { uri ->
         if (uri != null) scope.launch {
             runCatching {
-                val json = withContext(Dispatchers.IO) { store.exportBackup().toString(2) }
+                val envelope = withContext(Dispatchers.IO) { store.exportBackup() }
+                val json = envelope.toString(2)
                 withContext(Dispatchers.IO) {
                     appContext.contentResolver.openOutputStream(uri)?.writer(Charsets.UTF_8)?.use {
                         it.write(json)
                     } ?: error("无法写入目标文件")
                 }
-            }.onSuccess { message = "原生备份已导出（不含密钥与 Android 调度句柄）" }
-                .onFailure { message = "备份失败：" + it.message }
+                // Read back through the same URI when the provider supports it; only then claim
+                // success with a verified hash. Some cloud providers allow write-only streams.
+                val reread = withContext(Dispatchers.IO) {
+                    runCatching {
+                        appContext.contentResolver.openInputStream(uri)
+                            ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+                    }.getOrNull()
+                }
+                if (reread == null) {
+                    message = "备份已写入，但该文件提供方不支持回读校验；请自行保留并验证文件"
+                } else {
+                    BackupEnvelope.verify(JSONObject(reread), PowerStore.VERSION)
+                    message = "原生备份已导出并回读校验（SHA-256 匹配）；文件为明文敏感数据"
+                }
+            }.onFailure { message = "备份失败：" + it.message }
         }
     }
     val restoreBackup = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri ->
         if (uri != null) scope.launch {
+            var text: String? = null
             runCatching {
-                val text = withContext(Dispatchers.IO) {
-                    appContext.contentResolver.openInputStream(uri)
-                        ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
-                } ?: error("无法读取备份文件")
-                val report = withContext(Dispatchers.IO) {
-                    store.restoreBackup(JSONObject(text))
-                }
+                val loaded = readBackupText(uri)
+                text = loaded
+                val parsed = runCatching { JSONObject(loaded) }
+                    .getOrElse { throw IllegalArgumentException("备份文件不是有效 JSON") }
+                val report = withContext(Dispatchers.IO) { store.restoreBackup(parsed) }
                 reload()
                 reconcile()
-                message = "已恢复 ${report.objects} 个事件、${report.drafts} 张草稿；调度已重建，旧授权未恢复"
-            }.onFailure { message = "恢复失败：" + it.message }
+                message = buildString {
+                    append("已恢复 ${report.objects} 个事件、${report.drafts} 张草稿、${report.commits} 条提交")
+                    if (report.executions > 0) append("、${report.executions} 条执行记录")
+                    append("；调度已重建，旧授权未恢复")
+                    report.warnings.firstOrNull()?.let { append("。").append(it) }
+                }
+            }.onFailure { error ->
+                when (error) {
+                    is LegacyBackupConsentRequired -> {
+                        legacyRestoreText = text
+                        message = "该备份是早期 flat v2 格式，缺少 SHA-256；需要你确认来源可信后才能恢复"
+                    }
+                    else -> message = "恢复失败：" + (error.message ?: error.javaClass.simpleName)
+                }
+            }
         }
     }
     val ocrPicker = rememberLauncherForActivityResult(
@@ -847,6 +896,43 @@ fun PowerCalApp(store: PowerStore) {
             dismissButton = { TextButton(onClick = { confirmingLegacy = false }) { Text("取消") } }
         )
     }
+
+    legacyRestoreText?.let { legacyText ->
+        AlertDialog(
+            onDismissRequest = { legacyRestoreText = null },
+            title = { Text("恢复早期格式备份？") },
+            text = {
+                Text(
+                    "该文件是早期 flat backup v2，没有 SHA-256 或 lineageId，无法验证是否被修改。" +
+                        "仅在你能确认文件来源和完整性时继续。恢复后会被视为新的数据库 lineage，" +
+                        "并重建提醒调度；AI 授权不会恢复。"
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    legacyRestoreText = null
+                    scope.launch {
+                        runCatching {
+                            val parsed = runCatching { JSONObject(legacyText) }
+                                .getOrElse { throw IllegalArgumentException("备份文件不是有效 JSON") }
+                            withContext(Dispatchers.IO) {
+                                store.restoreBackup(parsed, allowLegacyV2 = true)
+                            }
+                        }.onSuccess {
+                            reload()
+                            reconcile()
+                            message = "旧格式备份已恢复（未验证完整性）；建议立即导出新的 Envelope 备份"
+                        }.onFailure { error ->
+                            message = "恢复失败：" + (error.message ?: error.javaClass.simpleName)
+                        }
+                    }
+                }) { Text("仍要恢复") }
+            },
+            dismissButton = {
+                TextButton(onClick = { legacyRestoreText = null }) { Text("取消") }
+            }
+        )
+    }
 }
 
 private fun CalendarEvent.toRecord(): TemporalRecord = TemporalRecord(
@@ -1076,8 +1162,17 @@ private fun ToolsPage(
         }
 
         SectionCard("备份与导出", "原生备份优先于有损格式") {
-            ToolRow("导出原生备份", "包含序号水位、草稿顺序与提交历史；不含密钥", onExportBackup)
-            ToolRow("从备份恢复", "只允许恢复到空数据库，避免覆盖现有数据", onRestoreBackup, enabled = !aiLocked)
+            ToolRow(
+                "导出原生备份（Envelope v1）",
+                "单一致性快照 + SHA-256；含序号水位、草稿、提交与执行记录；不含密钥。文件为明文敏感数据，请自行保管",
+                onExportBackup
+            )
+            ToolRow(
+                "从备份恢复",
+                "校验版本/哈希/引用；只允许恢复到空数据库；旧 flat v2 需显式确认",
+                onRestoreBackup,
+                enabled = !aiLocked
+            )
             ToolRow("导出 ICS", "仅活动类事件；闹钟与截止的语义会被该格式丢失", onExportIcs)
         }
 

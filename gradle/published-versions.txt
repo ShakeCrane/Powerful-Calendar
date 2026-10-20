@@ -1,0 +1,4 @@
+# Published Android versionCode history (append-only, one "code=name" per released install).
+# Debug-only builds 0.1.0/0.2.0 used code 2 but were never a stable user-data install.
+# The build refuses any versionCode that is not greater than the maximum here.
+2=0.2.0
