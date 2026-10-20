@@ -1,5 +1,7 @@
 package dev.powerfulcalendar.core
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -17,9 +19,13 @@ class DeckControllerTest {
     /** Controllable clock so the terminal-action rate limit is deterministic. */
     private var now = 1_000L
 
+    /**
+     * Unconfined dispatcher so durable commands run inline in the calling `runBlocking`; the tests
+     * assert ordering and cancellation without depending on a thread pool.
+     */
     private fun controller(fake: Fake): DeckController {
         now = 1_000L
-        return DeckController(fake) { now }
+        return DeckController(fake, { now }, Dispatchers.Unconfined)
     }
 
     private fun tick() {
@@ -135,7 +141,7 @@ class DeckControllerTest {
     }
 
     @Test
-    fun movingFlushesTheLatestTextFirst() {
+    fun movingFlushesTheLatestTextFirst() = runBlocking {
         val fake = Fake()
         val first = fake.add("第一张")
         fake.add("第二张")
@@ -152,7 +158,7 @@ class DeckControllerTest {
     }
 
     @Test
-    fun failedSaveBlocksTheTransitionAndKeepsText() {
+    fun failedSaveBlocksTheTransitionAndKeepsText() = runBlocking {
         val fake = Fake()
         fake.add("第一张")
         fake.add("第二张")
@@ -170,7 +176,7 @@ class DeckControllerTest {
     }
 
     @Test
-    fun insideSwipeMovesExactlyOneCardAndClampsAtTheEdges() {
+    fun insideSwipeMovesExactlyOneCardAndClampsAtTheEdges() = runBlocking {
         val fake = Fake()
         repeat(3) { fake.add("卡 $it") }
         val controller = controller(fake)
@@ -188,7 +194,7 @@ class DeckControllerTest {
     }
 
     @Test
-    fun outsideFlingCanJumpSeveralCardsButStillFlushesOnce() {
+    fun outsideFlingCanJumpSeveralCardsButStillFlushesOnce() = runBlocking {
         val fake = Fake()
         repeat(5) { fake.add("卡 $it") }
         val controller = controller(fake)
@@ -201,7 +207,7 @@ class DeckControllerTest {
     }
 
     @Test
-    fun completionAppearsOnlyForAnEmptyUnlockedQueueWithRealCounts() {
+    fun completionAppearsOnlyForAnEmptyUnlockedQueueWithRealCounts() = runBlocking {
         val fake = Fake()
         fake.add("唯一一张")
         val controller = controller(fake)
@@ -216,7 +222,7 @@ class DeckControllerTest {
     }
 
     @Test
-    fun completionIsSuppressedWhileAnAiBatchIsLocked() {
+    fun completionIsSuppressedWhileAnAiBatchIsLocked() = runBlocking {
         val fake = Fake()
         fake.add("唯一一张")
         val controller = controller(fake)
@@ -229,7 +235,7 @@ class DeckControllerTest {
     }
 
     @Test
-    fun undoingTheLastDiscardCancelsCompletion() {
+    fun undoingTheLastDiscardCancelsCompletion() = runBlocking {
         val fake = Fake()
         val only = fake.add("唯一一张")
         val controller = controller(fake)
@@ -247,7 +253,7 @@ class DeckControllerTest {
     }
 
     @Test
-    fun aiAppendingCardsDoesNotStealTheCurrentCard() {
+    fun aiAppendingCardsDoesNotStealTheCurrentCard() = runBlocking {
         val fake = Fake()
         fake.add("第一张")
         fake.add("第二张")
@@ -265,7 +271,7 @@ class DeckControllerTest {
     }
 
     @Test
-    fun aConflictKeepsTheCardAndAsksForExplicitReplacement() {
+    fun aConflictKeepsTheCardAndAsksForExplicitReplacement() = runBlocking {
         val fake = Fake()
         fake.add("旧卡")
         fake.conflictOnCommit = true
@@ -284,7 +290,7 @@ class DeckControllerTest {
     }
 
     @Test
-    fun promoteAfterCommitUsesQueueOrderNotTheOldIndex() {
+    fun promoteAfterCommitUsesQueueOrderNotTheOldIndex() = runBlocking {
         val fake = Fake()
         fake.add("A")
         fake.add("B")
@@ -309,7 +315,7 @@ class DeckControllerTest {
     }
 
     @Test
-    fun twoRapidClicksPublishOnlyOneCard() {
+    fun twoRapidClicksPublishOnlyOneCard() = runBlocking {
         val fake = Fake()
         fake.add("A")
         fake.add("B")
@@ -325,7 +331,7 @@ class DeckControllerTest {
     }
 
     @Test
-    fun aConflictIsRevalidatedBeforeOverwritingAnything() {
+    fun aConflictIsRevalidatedBeforeOverwritingAnything() = runBlocking {
         val fake = Fake()
         fake.add("旧卡")
         fake.conflictOnCommit = true
@@ -351,7 +357,7 @@ class DeckControllerTest {
     }
 
     @Test
-    fun editingWhileTheConflictDialogIsOpenAlsoForcesAReconfirmation() {
+    fun editingWhileTheConflictDialogIsOpenAlsoForcesAReconfirmation() = runBlocking {
         val fake = Fake()
         fake.add("旧卡")
         fake.conflictOnCommit = true
@@ -367,7 +373,7 @@ class DeckControllerTest {
     }
 
     @Test
-    fun repeatedClicksCannotPublishTwice() {
+    fun repeatedClicksCannotPublishTwice() = runBlocking {
         val fake = Fake()
         fake.add("唯一一张")
         val controller = controller(fake)
@@ -380,7 +386,7 @@ class DeckControllerTest {
     }
 
     @Test
-    fun editingDuringAnAiLockIsRejected() {
+    fun editingDuringAnAiLockIsRejected() = runBlocking {
         val fake = Fake()
         fake.add("锁定卡")
         val controller = controller(fake)

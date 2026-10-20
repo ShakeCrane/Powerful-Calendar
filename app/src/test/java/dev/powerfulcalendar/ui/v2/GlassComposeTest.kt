@@ -35,6 +35,16 @@ class GlassComposeTest {
     }
     @After fun closeStore() { store.close() }
 
+    /**
+     * DSH-07 commands are suspend and run on the controller's dispatcher. Tests use an unconfined
+     * dispatcher so a `runBlocking { open(...) }` executes inline on the test thread and cannot
+     * depend on a background thread that Robolectric does not pump.
+     */
+    private fun newController(persistence: DeckPersistence): DeckController =
+        DeckController(persistence, ioDispatcher = kotlinx.coroutines.Dispatchers.Unconfined)
+
+    private fun DeckController.openNow(draftId: Long?) = kotlinx.coroutines.runBlocking { open(draftId) }
+
     @Test fun dateOnlyDeadlineCanBeOpenedFromNoonAtFourHourZoom() {
         val record = TemporalRecord(42, 1, TemporalKind.DEADLINE, "提交设计稿", deadlineDate = "2026-10-20", zoneId = zone.id)
         var opened: TemporalRecord? = null
@@ -59,8 +69,8 @@ class GlassComposeTest {
 
     @Test fun hundredCardDeckFlushesLastCharacterBeforeNavigationAndKeepsStableIdentity() {
         val cards = (1..100).map { store.newDraft(DraftForm.fresh(TemporalKind.ACTIVITY, LocalDate.of(2026, 10, 20), zone).copy(title = "草稿 $it")) }
-        val controller = DeckController(StoreDeckPersistence(store))
-        controller.open(cards.first().draftId)
+        val controller = newController(StoreDeckPersistence(store))
+        controller.openNow(cards.first().draftId)
         ui.setContent { PowerCalTheme {
             DraftDeckDialog(controller, null, {}, {}, {}, {}, { emptyList() })
         } }
@@ -79,8 +89,8 @@ class GlassComposeTest {
         val persistence = object : DeckPersistence by StoreDeckPersistence(store) {
             override fun stage(draftId: Long, form: DraftForm, expectedVersion: Long): PowerStore.StageResult = PowerStore.StageResult.Locked
         }
-        val controller = DeckController(persistence)
-        controller.open(card.draftId)
+        val controller = newController(persistence)
+        controller.openNow(card.draftId)
         controller.edit(controller.state.form!!.copy(title = "保留我的编辑"))
         var closed = false
         ui.setContent { PowerCalTheme { DraftDeckDialog(controller, null, { closed = true }, {}, {}, {}, { emptyList() }) } }
@@ -97,7 +107,7 @@ class GlassComposeTest {
 
     @Test fun darkModeChangesWhileExpandedWithoutLosingDraftText() {
         val card = store.newDraft(DraftForm.fresh(TemporalKind.ACTIVITY, LocalDate.of(2026, 10, 20), zone).copy(title = "切换前"))
-        val controller = DeckController(StoreDeckPersistence(store)).also { it.open(card.draftId) }
+        val controller = newController(StoreDeckPersistence(store)).also { it.openNow(card.draftId) }
         val dark = mutableStateOf(false)
         ui.setContent { PowerCalTheme(darkTheme = dark.value) { DraftDeckDialog(controller, null, {}, {}, {}, {}, { emptyList() }) } }
         ui.onNodeWithText("轻点卡片，展开完整编辑").performClick()
@@ -122,7 +132,7 @@ class GlassComposeTest {
 
     @Test fun cardSwipeIsOneStepAndTextFieldAndVerticalDragsKeepTheirCard() {
         val cards = (1..4).map { store.newDraft(DraftForm.fresh(TemporalKind.ACTIVITY, LocalDate.of(2026, 10, 20), zone).copy(title = "手势草稿 $it")) }
-        val controller = DeckController(StoreDeckPersistence(store)).also { it.open(cards.first().draftId) }
+        val controller = newController(StoreDeckPersistence(store)).also { it.openNow(cards.first().draftId) }
         ui.setContent { PowerCalTheme { DraftDeckDialog(controller, null, {}, {}, {}, {}, { emptyList() }) } }
         ui.onNodeWithTag("draft-card").performTouchInput { swipeLeft() }
         ui.waitUntil(10_000) { controller.state.currentId == cards[1].draftId }
@@ -135,7 +145,7 @@ class GlassComposeTest {
 
     @Test fun outsideVerticalDragDoesNotDismissAndHorizontalFlingCanBrowseMany() {
         val cards = (1..20).map { store.newDraft(DraftForm.fresh(TemporalKind.ACTIVITY, LocalDate.of(2026, 10, 20), zone).copy(title = "外侧 $it")) }
-        val controller = DeckController(StoreDeckPersistence(store)).also { it.open(cards.first().draftId) }
+        val controller = newController(StoreDeckPersistence(store)).also { it.openNow(cards.first().draftId) }
         var dismissed = false
         ui.setContent { PowerCalTheme { DraftDeckDialog(controller, null, { dismissed = true }, {}, {}, {}, { emptyList() }) } }
         ui.onNodeWithTag("deck-backdrop").performTouchInput {
@@ -151,7 +161,7 @@ class GlassComposeTest {
 
     @Test fun finalDiscardShowsDurableCountsAndUndoReturnsTheSameIdentity() {
         val card = store.newDraft(DraftForm.fresh(TemporalKind.ACTIVITY, LocalDate.of(2026, 10, 20), zone).copy(title = "最后一张"))
-        val controller = DeckController(StoreDeckPersistence(store)).also { it.open(card.draftId) }
+        val controller = newController(StoreDeckPersistence(store)).also { it.openNow(card.draftId) }
         ui.setContent { PowerCalTheme { DraftDeckDialog(controller, null, {}, {}, {}, {}, { emptyList() }) } }
         ui.onNodeWithText("丢弃").performClick()
         ui.waitUntil(10_000) { controller.state.completion != null }
@@ -220,7 +230,10 @@ class GlassComposeTest {
         val stale = store.proposeReplace(first.eventSeq)
         val latest = store.newDraft(stale.form.copy(title = "新版本", recurrence = Recurrence(RecurrenceFreq.WEEKLY)), first.eventSeq, DraftOperation.REPLACE)
         store.commit(latest.draftId)
-        val controller = DeckController(StoreDeckPersistence(store)).also { it.open(stale.draftId); it.commit() }
+        val controller = newController(StoreDeckPersistence(store)).also {
+            it.openNow(stale.draftId)
+            kotlinx.coroutines.runBlocking { it.commit() }
+        }
         ui.setContent { PowerCalTheme { DraftDeckDialog(controller, null, {}, {}, {}, {}, { emptyList() }) } }
         ui.onNodeWithText("重复频率 · 将更改").performScrollTo().assertIsDisplayed()
         ui.runOnIdle { assertEquals("新版本", store.get(first.eventSeq)?.title) }
@@ -234,7 +247,7 @@ class GlassComposeTest {
     @Config(sdk = [35], qualifiers = "w320dp-h480dp-mdpi")
     fun smallScreenDeckHasFullSizedNavigationTargetsAndReachablePublish() {
         val card = store.newDraft(DraftForm.fresh(TemporalKind.ACTIVITY, LocalDate.of(2026, 10, 20), zone).copy(title = "小屏编辑"))
-        val controller = DeckController(StoreDeckPersistence(store)).also { it.open(card.draftId) }
+        val controller = newController(StoreDeckPersistence(store)).also { it.openNow(card.draftId) }
         ui.setContent { PowerCalTheme { DraftDeckDialog(controller, null, {}, {}, {}, {}, { emptyList() }) } }
         ui.onNodeWithText("轻点卡片，展开完整编辑").performClick()
         ui.onNodeWithText("发布").assertIsDisplayed()

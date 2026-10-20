@@ -179,8 +179,9 @@ fun DraftDeckDialog(
     var focusPlaced by remember { mutableStateOf(false) }
 
     // Claim the command on the main thread before launching IO: rapid gestures cannot queue
-    // terminal actions for a card which has already been promoted by another command.
-    fun command(changed: Boolean = false, block: () -> Unit) {
+    // terminal actions for a card which has already been promoted by another command. The
+    // controller serializes internally as well; this flag only keeps the UI honest.
+    fun command(changed: Boolean = false, block: suspend () -> Unit) {
         if (busy) return
         busy = true
         scope.launch {

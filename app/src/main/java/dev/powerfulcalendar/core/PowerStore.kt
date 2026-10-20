@@ -159,11 +159,33 @@ class PowerStore(
                )"""
         )
         db.execSQL("CREATE INDEX executions_event ON executions(event_seq, at_ms)")
+        createReviewedAuthorizationTable(db)
+    }
+
+    /**
+     * DSH-08: authorizations are about a reviewed snapshot, so the exact `draftVersion` the user
+     * confirmed must be durable for the lifetime of the batch. Kept as its own table so the
+     * session row stays compatible with earlier builds that only stored id/operation sets.
+     */
+    private fun createReviewedAuthorizationTable(db: SQLiteDatabase) {
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS ai_session_drafts(
+                 session_id TEXT NOT NULL,
+                 draft_id INTEGER NOT NULL,
+                 draft_version INTEGER NOT NULL,
+                 operation TEXT NOT NULL,
+                 PRIMARY KEY(session_id, draft_id)
+               )"""
+        )
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // Never improvise a migration that could drop snapshots, drafts or the sequence high-water
-        // mark. A real migration must be written, reviewed and versioned explicitly.
+        // Only strictly additive, already-reviewed migrations are allowed here. Anything that could
+        // drop snapshots, drafts or the sequence high-water mark still fails loudly.
+        if (oldVersion == 1 && newVersion == 2) {
+            createReviewedAuthorizationTable(db)
+            return
+        }
         error("PowerCal 数据库需要显式迁移 (v$oldVersion → v$newVersion)，已拒绝破坏性升级")
     }
 
@@ -411,7 +433,12 @@ class PowerStore(
         val state: AiState,
         val startedAtMillis: Long,
         val updatedAtMillis: Long,
-        val report: String? = null
+        val report: String? = null,
+        /**
+         * The exact `draftVersion` the user reviewed for each authorized card. A batch may only
+         * commit content whose version still matches; anything newer needs a fresh review.
+         */
+        val reviewedVersions: Map<Long, Long> = emptyMap()
     ) {
         val isActive: Boolean
             get() = state == AiState.RUNNING || state == AiState.CANCEL_REQUESTED
@@ -489,6 +516,9 @@ class PowerStore(
     /**
      * Optimistic concurrency: a save only lands if the caller edited the version it read.
      * A mismatch returns the newer card instead of overwriting someone else's text.
+     *
+     * A batch session may not rewrite cards at all: the authorization covers the reviewed
+     * snapshots, and the AI's own output is always a *new* draft card created before the batch.
      */
     @Synchronized
     fun stageDraft(
@@ -498,9 +528,9 @@ class PowerStore(
         aiSession: AiSession? = null
     ): StageResult = tx { db ->
         if (aiSession != null) {
-            val denial = authorize(db, aiSession, draftId)
-            if (denial != null) return@tx StageResult.NotAuthorized
-        } else if (isLocked(db)) {
+            return@tx StageResult.NotAuthorized
+        }
+        if (isLocked(db)) {
             return@tx StageResult.Locked
         }
         val updated = db.compileStatement(
@@ -873,14 +903,18 @@ class PowerStore(
     private fun currentEpoch(db: SQLiteDatabase): Long = metaLong(db, "ai_epoch")
 
     @Synchronized
-    fun currentAiSession(): AiSession? =
-        readableDatabase.rawQuery(
+    fun currentAiSession(): AiSession? {
+        val session = readableDatabase.rawQuery(
             """SELECT session_id,lock_epoch,scope,allowed_ops,state,started_ms,updated_ms,report
                FROM ai_sessions ORDER BY started_ms DESC LIMIT 1""",
             null
         ).use { cursor ->
             if (!cursor.moveToFirst()) null else cursor.toAiSession()
-        }
+        } ?: return null
+        return session.copy(
+            reviewedVersions = reviewedVersionsFor(readableDatabase, session.sessionId)
+        )
+    }
 
     private fun android.database.Cursor.toAiSession(): AiSession {
         val ops = getString(3).split(',').mapNotNull {
@@ -899,24 +933,37 @@ class PowerStore(
     }
 
     /**
-     * Acquires the single-AI deck lock. Only one batch can exist; the epoch fences every write
-     * that was authorized by an earlier batch.
+     * Acquires the single-AI deck lock **for an exact reviewed snapshot**.
+     *
+     * `reviewed` is the map of `draftId -> draftVersion` the user actually saw. Everything is
+     * checked inside one transaction: the card still exists, it is still actionable, its operation
+     * is authorized, and its `draftVersion` still equals the reviewed one. Any edit, discard or
+     * replacement between review and authorization therefore makes the call fail instead of
+     * silently widening what the AI may commit.
+     *
+     * Only one batch can exist; the epoch fences writes authorized by an earlier batch.
      */
     @Synchronized
     fun beginAiBatch(
-        scope: Set<Long>,
+        reviewed: Map<Long, Long>,
         allowedOperations: Set<DraftOperation>,
         sessionId: String = UUID.randomUUID().toString()
     ): AiSession = tx { db ->
-        require(scope.isNotEmpty()) { "请选择要交给 AI 的草稿" }
+        require(reviewed.isNotEmpty()) { "请选择要交给 AI 的草稿" }
         require(allowedOperations.isNotEmpty()) { "请选择允许 AI 执行的操作" }
         check(!isLocked(db)) { "已有 AI 批次正在运行" }
-        scope.forEach { draftId ->
+        val cards = reviewed.mapValues { (draftId, reviewedVersion) ->
             val card = readDraft(db, draftId)
-            require(card != null && card.isActionable) { "批次范围内包含不存在或已处理的草稿 #$draftId" }
+            require(card != null && card.isActionable) {
+                "批次范围内包含不存在或已处理的草稿 #$draftId"
+            }
             require(card.operation in allowedOperations) {
                 "草稿 #$draftId 的 ${card.operation.label} 操作未获得授权"
             }
+            require(card.draftVersion == reviewedVersion) {
+                "草稿 #$draftId 在审阅后被修改（当前 v${card.draftVersion}，审阅 v$reviewedVersion），请重新审阅后再授权"
+            }
+            card
         }
         val epoch = currentEpoch(db) + 1
         db.execSQL("UPDATE meta SET ai_locked=1, ai_epoch=? WHERE id=1", arrayOf(epoch))
@@ -924,24 +971,56 @@ class PowerStore(
         db.insertOrThrow("ai_sessions", null, ContentValues().apply {
             put("session_id", sessionId)
             put("lock_epoch", epoch)
-            put("scope", scope.sorted().joinToString(","))
+            put("scope", reviewed.keys.sorted().joinToString(","))
             put("allowed_ops", allowedOperations.map { it.name }.sorted().joinToString(","))
             put("state", AiState.RUNNING.name)
             put("owner_token", processToken)
             put("started_ms", now)
             put("updated_ms", now)
         })
-        AiSession(sessionId, epoch, scope, allowedOperations, AiState.RUNNING, now, now)
+        reviewed.forEach { (draftId, version) ->
+            db.insertOrThrow("ai_session_drafts", null, ContentValues().apply {
+                put("session_id", sessionId)
+                put("draft_id", draftId)
+                put("draft_version", version)
+                put("operation", cards.getValue(draftId).operation.name)
+            })
+        }
+        AiSession(
+            sessionId = sessionId,
+            lockEpoch = epoch,
+            scope = reviewed.keys,
+            allowedOperations = allowedOperations,
+            state = AiState.RUNNING,
+            startedAtMillis = now,
+            updatedAtMillis = now,
+            reviewedVersions = reviewed
+        )
     }
+
+    /** Reviewed versions recorded for a session, empty for sessions created by older builds. */
+    private fun reviewedVersionsFor(db: SQLiteDatabase, sessionId: String): Map<Long, Long> =
+        db.rawQuery(
+            "SELECT draft_id,draft_version FROM ai_session_drafts WHERE session_id=?",
+            arrayOf(sessionId)
+        ).use { cursor ->
+            buildMap {
+                while (cursor.moveToNext()) put(cursor.getLong(0), cursor.getLong(1))
+            }
+        }
 
     /** Re-reads the persisted session so callers cannot keep a stale in-memory snapshot. */
     @Synchronized
-    fun refreshSession(sessionId: String): AiSession? =
-        readableDatabase.rawQuery(
+    fun refreshSession(sessionId: String): AiSession? {
+        val session = readableDatabase.rawQuery(
             """SELECT session_id,lock_epoch,scope,allowed_ops,state,started_ms,updated_ms,report
                FROM ai_sessions WHERE session_id=?""",
             arrayOf(sessionId)
-        ).use { if (it.moveToFirst()) it.toAiSession() else null }
+        ).use { if (it.moveToFirst()) it.toAiSession() else null } ?: return null
+        return session.copy(
+            reviewedVersions = reviewedVersionsFor(readableDatabase, sessionId)
+        )
+    }
 
     @Synchronized
     fun heartbeat(sessionId: String): Boolean = tx { db ->
@@ -1002,7 +1081,7 @@ class PowerStore(
         val now = System.currentTimeMillis()
         db.execSQL(
             "UPDATE ai_sessions SET state=?, updated_ms=?, report=? WHERE session_id=?",
-            arrayOf(effective.name, now, report?.toString(), sessionId)
+            arrayOf<Any?>(effective.name, now, report?.toString(), sessionId)
         )
         db.execSQL("UPDATE meta SET ai_locked=0, ai_epoch=? WHERE id=1", arrayOf(currentEpoch(db) + 1))
         true
@@ -1044,7 +1123,7 @@ class PowerStore(
         val now = System.currentTimeMillis()
         db.execSQL(
             "UPDATE ai_sessions SET state='FAILED', updated_ms=?, report=? WHERE state IN ('REQUESTED','RUNNING','CANCEL_REQUESTED')",
-            arrayOf(now, "{\"released\":\"user\"}")
+            arrayOf<Any?>(now, "{\"released\":\"user\"}")
         )
         db.execSQL("UPDATE meta SET ai_locked=0, ai_epoch=? WHERE id=1", arrayOf(currentEpoch(db) + 1))
         true
@@ -1079,8 +1158,16 @@ class PowerStore(
                 draftId !in scope -> CommitOutcome.NotAuthorized
                 else -> {
                     val card = readDraft(db, draftId)
+                    // The reviewed version is part of the authorization. A card edited after the
+                    // user confirmed the batch cannot be committed under that decision.
+                    val reviewedVersion = db.rawQuery(
+                        "SELECT draft_version FROM ai_session_drafts WHERE session_id=? AND draft_id=?",
+                        arrayOf(session.sessionId, draftId.toString())
+                    ).use { if (it.moveToFirst()) it.getLong(0) else null }
                     when {
                         card == null -> CommitOutcome.Invalid("草稿不存在")
+                        reviewedVersion == null -> CommitOutcome.NotAuthorized
+                        card.draftVersion != reviewedVersion -> CommitOutcome.NotAuthorized
                         card.operation !in ops -> CommitOutcome.NotAuthorized
                         else -> null
                     }
@@ -1403,7 +1490,7 @@ class PowerStore(
     fun finishMigration(batchId: String, warnings: List<String> = emptyList()) {
         writableDatabase.execSQL(
             "UPDATE migrations SET finished_ms=?, warnings=? WHERE batch_id=?",
-            arrayOf(
+            arrayOf<Any?>(
                 System.currentTimeMillis(),
                 JSONArray(warnings).toString(),
                 batchId
@@ -1655,6 +1742,7 @@ class PowerStore(
         // Schedules are rebuilt from scratch after a restore; never replay stale Android handles.
         db.execSQL("DELETE FROM schedule_intents")
         db.execSQL("DELETE FROM ai_sessions")
+        db.execSQL("DELETE FROM ai_session_drafts")
         db.execSQL("DELETE FROM executions")
         // Rebuild the desired schedule for every restored active event (I-16).
         db.rawQuery("SELECT payload FROM objects WHERE retired=0", null).use { cursor ->
@@ -1668,7 +1756,7 @@ class PowerStore(
 
     companion object {
         const val DATABASE_NAME = "powercal-v2.db"
-        const val VERSION = 1
+        const val VERSION = 2
 
         /** A batch whose heartbeat is older than this cannot still be running. */
         const val DEFAULT_STALE_MS = 10 * 60_000L

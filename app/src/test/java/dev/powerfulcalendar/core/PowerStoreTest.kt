@@ -256,7 +256,7 @@ class PowerStoreTest {
     fun aiBatchLocksEveryHumanDeckWrite() {
         val card = store.newDraft(activityForm("AI 处理"))
         val session = store.beginAiBatch(
-            setOf(card.draftId),
+            mapOf(card.draftId to card.draftVersion),
             setOf(DraftOperation.CREATE, DraftOperation.REPLACE)
         )
         assertTrue(store.isLocked())
@@ -280,7 +280,10 @@ class PowerStoreTest {
     fun aiCannotWriteOutsideItsScopeOrAfterTheEpochIsFenced() {
         val inside = store.newDraft(activityForm("在范围内"))
         val outside = store.newDraft(activityForm("不在范围内"))
-        val session = store.beginAiBatch(setOf(inside.draftId), setOf(DraftOperation.CREATE))
+        val session = store.beginAiBatch(
+            mapOf(inside.draftId to inside.draftVersion),
+            setOf(DraftOperation.CREATE)
+        )
 
         val denied = store.commit(outside.draftId, actor = "ai", aiSession = session)
         assertTrue(denied is PowerStore.CommitOutcome.NotAuthorized)
@@ -297,7 +300,7 @@ class PowerStoreTest {
         val first = store.newDraft(activityForm("第一张"))
         val second = store.newDraft(activityForm("第二张"))
         val session = store.beginAiBatch(
-            setOf(first.draftId, second.draftId),
+            mapOf(first.draftId to first.draftVersion, second.draftId to second.draftVersion),
             setOf(DraftOperation.CREATE)
         )
         assertTrue(store.commit(first.draftId, actor = "ai", aiSession = session) is PowerStore.CommitOutcome.Committed)
@@ -313,7 +316,10 @@ class PowerStoreTest {
     @Test
     fun orphanedBatchIsFencedAndUnlockedOnRecovery() {
         val card = store.newDraft(activityForm("孤儿批次"))
-        val session = store.beginAiBatch(setOf(card.draftId), setOf(DraftOperation.CREATE))
+        val session = store.beginAiBatch(
+            mapOf(card.draftId to card.draftVersion),
+            setOf(DraftOperation.CREATE)
+        )
         // A live batch owned by THIS process must not be treated as an orphan.
         assertFalse(store.recoverInterruptedAi())
         assertTrue(store.isLocked())
@@ -407,7 +413,10 @@ class PowerStoreTest {
         commit(committed)
         val pending = store.newDraft(activityForm("备份待处理"))
         store.discard(store.newDraft(activityForm("已丢弃")).draftId)
-        val session = store.beginAiBatch(setOf(pending.draftId), setOf(DraftOperation.CREATE))
+        val session = store.beginAiBatch(
+            mapOf(pending.draftId to pending.draftVersion),
+            setOf(DraftOperation.CREATE)
+        )
 
         val snapshot = store.exportBackup()
         assertFalse(snapshot.toString().contains("owner_token"))
@@ -437,7 +446,10 @@ class PowerStoreTest {
     @Test
     fun restorationDoesNotResurrectStaleClearedAuthorization() {
         val card = store.newDraft(activityForm("授权不复活"))
-        val session = store.beginAiBatch(setOf(card.draftId), setOf(DraftOperation.CREATE))
+        val session = store.beginAiBatch(
+            mapOf(card.draftId to card.draftVersion),
+            setOf(DraftOperation.CREATE)
+        )
         val snapshot = store.exportBackup()
         store.finishAiBatch(session.sessionId)
         val restored = newStore()
@@ -495,13 +507,16 @@ class PowerStoreTest {
     @Test
     fun aStaleSameProcessBatchIsReleasedByTheLease() {
         val card = store.newDraft(activityForm("僵死批次"))
-        val session = store.beginAiBatch(setOf(card.draftId), setOf(DraftOperation.CREATE))
+        val session = store.beginAiBatch(
+            mapOf(card.draftId to card.draftVersion),
+            setOf(DraftOperation.CREATE)
+        )
         // A live batch with a fresh heartbeat is not an orphan.
         assertFalse(store.recoverInterruptedAi())
         // Simulate a cancelled runner: same owner, heartbeat long past the lease.
         store.writableDatabase.execSQL(
             "UPDATE ai_sessions SET updated_ms=? WHERE session_id=?",
-            arrayOf(System.currentTimeMillis() - 2 * PowerStore.DEFAULT_STALE_MS, session.sessionId)
+            arrayOf<Any?>(System.currentTimeMillis() - 2 * PowerStore.DEFAULT_STALE_MS, session.sessionId)
         )
         assertTrue(store.recoverInterruptedAi())
         assertFalse(store.isLocked())
@@ -533,7 +548,7 @@ class PowerStoreTest {
         val first = store.newDraft(alarmForm("A", minutesAhead = 200))
         val second = store.newDraft(alarmForm("B", minutesAhead = 260))
         val session = store.beginAiBatch(
-            setOf(first.draftId, second.draftId),
+            mapOf(first.draftId to first.draftVersion, second.draftId to second.draftVersion),
             DraftOperation.entries.toSet()
         )
         val report = dev.powerfulcalendar.ai.AiBatchRunner(store)
@@ -561,7 +576,10 @@ class PowerStoreTest {
         )
         commit(winner)
 
-        val session = store.beginAiBatch(setOf(stale.draftId), DraftOperation.entries.toSet())
+        val session = store.beginAiBatch(
+            mapOf(stale.draftId to stale.draftVersion),
+            DraftOperation.entries.toSet()
+        )
         val report = dev.powerfulcalendar.ai.AiBatchRunner(store)
             .run(session, dev.powerfulcalendar.ai.AiBatchRunner.Mode.PUBLISH)
         assertEquals(0, report.published)

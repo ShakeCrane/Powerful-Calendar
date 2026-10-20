@@ -73,7 +73,10 @@ class GlassRenderTest {
         )
         val first = database.newDraft(base)
         repeat(3) { database.newDraft(base.copy(title = "待确认计划 ${it + 2}")) }
-        val controller = DeckController(StoreDeckPersistence(database)).also { it.open(first.draftId) }
+        val controller = DeckController(
+            StoreDeckPersistence(database),
+            ioDispatcher = kotlinx.coroutines.Dispatchers.Unconfined
+        ).also { kotlinx.coroutines.runBlocking { it.open(first.draftId) } }
         val dark = mutableStateOf(false)
         val noon = LocalDate.of(2026, 10, 20).atTime(12, 0).atZone(zone).toInstant().toEpochMilli()
         ui.setContent { PowerCalTheme(darkTheme = dark.value, effects = GlassEffects(reduceMotion = true)) {

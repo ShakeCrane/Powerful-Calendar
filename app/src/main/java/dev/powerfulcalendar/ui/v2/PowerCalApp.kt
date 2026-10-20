@@ -499,7 +499,14 @@ fun PowerCalApp(store: PowerStore) {
                 onOpenExactAlarmSettings = {
                     ReminderScheduler.openExactAlarmSettings(appContext)
                 },
-                onRunBatch = { mode -> confirmBatch = BatchReview(mode, pendingCards.toList()) },
+                onRunBatch = { mode ->
+                    // Show the review with the freshest versions: authorization itself is still
+                    // atomic, but a stale dialog would only fail after the user read it.
+                    scope.launch {
+                        reload()
+                        confirmBatch = BatchReview(mode, pendingCards.toList())
+                    }
+                },
                 onCancelBatch = {
                     scope.launch {
                         val session = aiSession
@@ -779,15 +786,16 @@ fun PowerCalApp(store: PowerStore) {
             confirmButton = { TextButton(enabled = review.cards.isNotEmpty() && !aiLocked, onClick = {
                 confirmBatch = null
                 PowerCalStores.appScope.launch {
-                    // Revalidate precisely what was reviewed; never reread-and-enlarge scope.
-                    val reviewedIds = review.cards.map { it.draftId }.toSet()
-                    val latest = store.pendingDrafts().filter { it.draftId in reviewedIds }.associateBy { it.draftId }
-                    if (review.cards.any { latest[it.draftId] != it }) {
-                        withContext(Dispatchers.Main) { reload(); message = "授权清单已变化，请重新检查后授权" }
-                        return@launch
-                    }
-                    val session = runCatching { store.beginAiBatch(reviewedIds, review.cards.map { it.operation }.toSet()) }.getOrElse {
-                        withContext(Dispatchers.Main) { message = "无法开始批次：${it.message.orEmpty()}" }
+                    // Authorize the exact reviewed snapshots in ONE transaction: the domain layer
+                    // re-checks every draftVersion, so a change after this dialog cannot slip in.
+                    val reviewed = review.cards.associate { it.draftId to it.draftVersion }
+                    val session = runCatching {
+                        store.beginAiBatch(reviewed, review.cards.map { it.operation }.toSet())
+                    }.getOrElse {
+                        withContext(Dispatchers.Main) {
+                            reload()
+                            message = "无法开始批次：${it.message.orEmpty()}"
+                        }
                         return@launch
                     }
                     withContext(Dispatchers.Main) { reload() }
