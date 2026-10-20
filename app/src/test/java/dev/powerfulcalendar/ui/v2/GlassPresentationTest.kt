@@ -23,7 +23,7 @@ class GlassPresentationTest {
         val camera = TimelineCoordinate.Camera(instant("2026-10-20T12:00"), 24.0)
         for (zoom in listOf(0.01f, 20f)) {
             val next = transformedCamera(camera, 100f, 100f, zoom, 800f)
-            assertTrue(next.hours in 4.0..48.0)
+            assertTrue(next.hours in TimelineCoordinate.MIN_HOURS..48.0)
             assertEquals(TimelineCoordinate.timeAt(100f, camera.anchorMillis, 800f, 24.0), TimelineCoordinate.timeAt(100f, next.anchorMillis, 800f, next.hours))
         }
     }

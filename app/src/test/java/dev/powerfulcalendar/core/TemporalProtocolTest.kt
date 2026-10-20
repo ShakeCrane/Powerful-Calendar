@@ -205,6 +205,40 @@ class TemporalProtocolTest {
         assertEquals(3, result.overflow[AxisSide.RIGHT]?.size)
     }
 
+    @Test
+    fun adjacentClassesNeverBecomeOverlappingWhenZoomedOut() {
+        val first = activity(101, "2026-10-20 08:00", "2026-10-20 09:35", "化学原理")
+        val second = activity(102, "2026-10-20 09:50", "2026-10-20 10:35", "下一节课")
+        // Even an old zoom-dependent minimum visual span must not affect semantics.
+        val farZoom = TimelineLayout.layout(
+            listOf(second, first), maxLanesPerSide = 1, minVisibleMillis = 6 * 3_600_000L)
+        val nearZoom = TimelineLayout.layout(
+            listOf(second, first), maxLanesPerSide = 1, minVisibleMillis = 1L)
+        assertEquals(listOf(0, 0), farZoom.items.map { it.lane })
+        assertEquals(nearZoom.items.map { it.lane }, farZoom.items.map { it.lane })
+        assertTrue(farZoom.overflow.isEmpty())
+    }
+
+    @Test
+    fun crossMidnightActivityKeepsItsTrueEndAndReusesLaneOnlyAfterItEnds() {
+        val night = activity(131, "2026-10-20 23:30", "2026-10-21 01:15", "夜间实验")
+        val middle = activity(132, "2026-10-21 00:30", "2026-10-21 01:30", "夜间值班")
+        val later = activity(133, "2026-10-21 01:30", "2026-10-21 02:00", "离开")
+        val result = TimelineLayout.layout(listOf(later, night, middle))
+        assertEquals(mapOf("夜间实验" to 0, "夜间值班" to 1, "离开" to 0),
+            result.items.associate { it.record.title to it.lane })
+        assertTrue(result.overflow.isEmpty())
+    }
+
+    @Test
+    fun realCollisionsStillAllocateMultipleLanesAndOnlyThenOverflow() {
+        val a = activity(111, "2026-10-20 09:00", "2026-10-20 10:00", "A")
+        val b = activity(112, "2026-10-20 09:30", "2026-10-20 10:30", "B")
+        val result = TimelineLayout.layout(listOf(a, b), maxLanesPerSide = 1)
+        assertEquals(listOf(111L), result.items.map { it.record.eventSeq })
+        assertEquals(listOf(112L), result.overflow[AxisSide.RIGHT]?.map { it.eventSeq })
+    }
+
     // ---------------------------------------------------------------- geometry
 
     @Test
@@ -233,8 +267,8 @@ class TemporalProtocolTest {
     }
 
     @Test
-    fun zoomIsBoundedToFourThroughFortyEightHours() {
-        assertEquals(4.0, TimelineCoordinate.clampHours(0.5), 0.0)
+    fun zoomAllowsQuarterHourThroughFortyEightHours() {
+        assertEquals(0.5, TimelineCoordinate.clampHours(0.5), 0.0)
         assertEquals(48.0, TimelineCoordinate.clampHours(200.0), 0.0)
         assertEquals(12.0, TimelineCoordinate.clampHours(12.0), 0.0)
     }

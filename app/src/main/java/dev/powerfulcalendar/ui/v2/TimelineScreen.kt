@@ -44,6 +44,7 @@ import kotlinx.coroutines.launch
 
 private val CLOCK_FORMAT = DateTimeFormatter.ofPattern("HH:mm")
 private val DAY_FORMAT = DateTimeFormatter.ofPattern("M月d日 EEE", java.util.Locale.SIMPLIFIED_CHINESE)
+private val HEADER_DAY_FORMAT = DateTimeFormatter.ofPattern("yyyy年M月d日 EEE", java.util.Locale.SIMPLIFIED_CHINESE)
 
 /** Every UI projection retains its formal owner; moving a repeating slot is never a series edit. */
 @Composable
@@ -100,7 +101,7 @@ fun TimelineScreen(
                     Text("Powerful Calendar", style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                Text(day.format(DAY_FORMAT), style = MaterialTheme.typography.bodySmall,
+                Text(day.format(HEADER_DAY_FORMAT), style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             IconButton(onClick = { inertia?.cancel(); onToday() }, modifier = Modifier.size(44.dp)) {
@@ -133,7 +134,7 @@ fun TimelineScreen(
             }
             Text("${if (camera.hours % 1.0 == 0.0) camera.hours.toInt().toString() else String.format(java.util.Locale.US, "%.1f", camera.hours)} 小时 / 屏",
                 style = MaterialTheme.typography.labelMedium, modifier = Modifier.semantics { stateDescription = "时间轴缩放 ${camera.hours} 小时" })
-            IconButton(onClick = { changeCamera(camera.copy(hours = TimelineCoordinate.clampHours(camera.hours / 1.5))) }, enabled = camera.hours > 4) {
+            IconButton(onClick = { changeCamera(camera.copy(hours = TimelineCoordinate.clampHours(camera.hours / 1.5))) }, enabled = camera.hours > TimelineCoordinate.MIN_HOURS) {
                 Icon(Icons.Default.Add, "放大，显示更短时间")
             }
             Spacer(Modifier.weight(1f))
@@ -181,17 +182,13 @@ fun TimelineScreen(
             val unlocked by rememberUpdatedState(!aiLocked)
             // Zooming the RIGHT EVENT HALF reveals additional overlapping lanes.
             // The left alarm side remains a fixed, point-only stack.
-            val maxLanes = when {
-                maxWidth >= 1000.dp -> 3
-                horizontalScale >= 2.1f -> 3
-                horizontalScale >= 1.35f || maxWidth >= 580.dp -> 2
-                else -> 1
-            }
-            val minSpan = (TimelineCoordinate.spanMillis(camera.hours) * with(density) { 66.dp.toPx() } / height).toLong().coerceAtLeast(12 * 60_000L)
-            val layout = remember(projection, maxLanes, minSpan) {
+            // NEVER change the number of lanes during a pinch. It would cause discrete
+            // reflow at scale thresholds and create phantom collisions as zoom changes.
+            val maxLanes = if (maxWidth >= 840.dp) 3 else 2
+            val layout = remember(projection, maxLanes) {
                 val projected = projection.map { it.record }.filterNot { it.isDateOnlyDeadline() }
-                val fixedLeft = TimelineLayout.layout(projected, 1, minSpan)
-                val expandableRight = TimelineLayout.layout(projected, maxLanes, minSpan)
+                val fixedLeft = TimelineLayout.layout(projected, 1)
+                val expandableRight = TimelineLayout.layout(projected, maxLanes)
                 TimelineLayout.LayoutResult(
                     items = fixedLeft.items.filter { it.side == AxisSide.LEFT } +
                         expandableRight.items.filter { it.side == AxisSide.RIGHT },
@@ -201,7 +198,7 @@ fun TimelineScreen(
                     )
                 )
             }
-            val groups = remember(layout) { overflowGroups(layout.overflow, minSpan) }
+            val groups = remember(layout) { overflowGroups(layout.overflow, 0L) }
             var dragKey by remember { mutableStateOf<String?>(null) }
             var dragTarget by remember { mutableStateOf<Long?>(null) }
             var dragTravel by remember { mutableFloatStateOf(0f) }
@@ -209,7 +206,8 @@ fun TimelineScreen(
 
             Box(Modifier.fillMaxSize().testTag("timeline-viewport").pointerInput(Unit) {
                 timelineGestures({ latestCamera }, { heightNow }, { inertia?.cancel() }, { cameraChange(it) },
-                    { factor -> horizontalScaleChange((latestHorizontalScale * factor).coerceIn(0.65f, 3f)) },
+                    { target -> horizontalScaleChange(target.coerceIn(0.65f, 4.2f)) },
+                    { latestHorizontalScale },
                     { velocity, releasedCamera ->
                     inertia?.cancel()
                     inertia = scope.launch {
@@ -239,8 +237,10 @@ fun TimelineScreen(
                 val gutter = 20.dp
                 val leftLaneWidth = (viewportWidth / 2 - gutter - 12.dp).coerceAtLeast(48.dp)
                 val rightSide = (viewportWidth / 2 - gutter - 12.dp).coerceAtLeast(48.dp)
-                val rightLaneWidth = ((rightSide * horizontalScale.coerceIn(0.65f, 3f)) -
-                    6.dp * (maxLanes - 1)) / maxLanes
+                val rightLaneWidth = (((rightSide - 6.dp * (maxLanes - 1)) / maxLanes) *
+                    horizontalScale.coerceIn(0.65f, 4.2f)).coerceAtLeast(24.dp)
+                // Floating titles have their own visual positions; time rectangles NEVER grow.
+                var nextFloatingTitleY = 0f
                 layout.items.forEach { item ->
                     val y = TimelineCoordinate.yOf(item.anchorMillis, camera.anchorMillis, height, camera.hours)
                     val endY = TimelineCoordinate.yOf(item.record.spanEndMillis() ?: item.anchorMillis, camera.anchorMillis, height, camera.hours)
@@ -328,6 +328,30 @@ fun TimelineScreen(
                             }
                             }
                         }
+                        // A 1-minute event must remain a 1-minute rectangle. Render its
+                        // readable title as a separate overlay that has NO effect on time geometry.
+                        if (!point && (cardHeight < 28.dp || laneWidth < 116.dp)) {
+                            val sourceY = activitySpan!!.topPx
+                            val limit = (height - with(density) { 30.dp.toPx() }).coerceAtLeast(0f)
+                            val titleY = maxOf(sourceY, nextFloatingTitleY).coerceIn(0f, limit)
+                            nextFloatingTitleY = titleY + with(density) { 31.dp.toPx() }
+                            val titleX = x.coerceAtMost((viewportWidth - 144.dp).coerceAtLeast(viewportWidth / 2 + gutter))
+                            val titleWidth = (viewportWidth - titleX - 6.dp)
+                                .coerceAtLeast(64.dp).coerceAtMost(230.dp)
+                            Surface(
+                                onClick = { open(item.record) },
+                                modifier = Modifier.offset(titleX, with(density) { titleY.toDp() })
+                                    .width(titleWidth).height(29.dp).zIndex(4f),
+                                shape = RoundedCornerShape(7.dp),
+                                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
+                                border = BorderStroke(1.dp, kindColor(item.record.kind))
+                            ) {
+                                Text(item.record.title, Modifier.padding(horizontal = 6.dp, vertical = 5.dp),
+                                    maxLines = 1, softWrap = false,
+                                    overflow = TextOverflow.Ellipsis,
+                                    style = MaterialTheme.typography.labelMedium)
+                            }
+                        }
                     }
                 }
                 groups.forEach { group ->
@@ -344,7 +368,8 @@ fun TimelineScreen(
                             )
                             .size(48.dp).zIndex(3f).semantics { contentDescription = "展开 ${group.records.size} 个被折叠的事件" }) {
                         Box(contentAlignment = Alignment.Center) {
-                            Text("×${group.records.size + 1}", style = MaterialTheme.typography.labelLarge)
+                            Text(if (group.side == AxisSide.LEFT) "×${group.records.size + 1}"
+                                else "+${group.records.size}", style = MaterialTheme.typography.labelLarge)
                         }
                     }
                 }
@@ -431,7 +456,8 @@ private fun AxisPointMarker(record: TemporalRecord, occurrenceMillis: Long, zone
 private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.timelineGestures(
     camera: () -> TimelineCoordinate.Camera, height: () -> Float, onStart: () -> Unit,
     onCamera: (TimelineCoordinate.Camera) -> Unit,
-    onHorizontalZoom: (Float) -> Unit, onFling: (Float, TimelineCoordinate.Camera) -> Unit
+    onHorizontalScale: (Float) -> Unit, currentHorizontalScale: () -> Float,
+    onFling: (Float, TimelineCoordinate.Camera) -> Unit
 ) {
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false)
@@ -443,6 +469,11 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.timeline
         var active = false
         var zoomed = false
         var ownedByChild = false
+        var gestureCamera = cam
+        var gestureScale = currentHorizontalScale()
+        var gestureStartY = previousY
+        var initialDx = 0f
+        var initialDy = 0f
         val tracker = VelocityTracker()
         tracker.addPosition(down.uptimeMillis, down.position)
         while (true) {
@@ -452,12 +483,23 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.timeline
                 event.changes.firstOrNull()?.let { tracker.addPosition(it.uptimeMillis, it.position) }
                 break
             }
-            if (event.changes.any { it.isConsumed }) { ownedByChild = true; continue }
+            // Two-finger zoom is a viewport gesture even if the first finger landed on
+            // a clickable title or event. A single-finger child drag still owns its input.
+            if (pressed.size >= 2) ownedByChild = false
+            else if (event.changes.any { it.isConsumed }) { ownedByChild = true; continue }
             if (ownedByChild) continue
             val y = pressed.map { it.position.y }.average().toFloat()
             if (pressed.size != count) {
                 count = pressed.size; previousY = y
-                if (count > 1) zoomed = true
+                if (count > 1) {
+                    zoomed = true
+                    val a = pressed[0]; val b = pressed[1]
+                    initialDx = a.position.x - b.position.x
+                    initialDy = a.position.y - b.position.y
+                    gestureCamera = cam
+                    gestureScale = currentHorizontalScale()
+                    gestureStartY = y
+                }
                 tracker.resetTracking()
                 continue
             }
@@ -468,24 +510,27 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.timeline
                 previousY = y; tracker.addPosition(pressed.first().uptimeMillis, pressed.first().position); continue
             }
             active = true
-            // Standard radial zoom treats X and Y identically; use independent spans instead.
-            var zoomY = 1f
             if (pressed.size >= 2) {
-                val a = pressed[0]
-                val b = pressed[1]
-                val threshold = viewConfiguration.touchSlop * 3f
+                val a = pressed[0]; val b = pressed[1]
                 val components = AxisPinch.decompose(
-                    a.previousPosition.x - b.previousPosition.x,
-                    a.previousPosition.y - b.previousPosition.y,
-                    a.position.x - b.position.x,
-                    a.position.y - b.position.y,
+                    initialDx, initialDy,
+                    a.position.x - b.position.x, a.position.y - b.position.y,
                     viewConfiguration.touchSlop
                 )
-                zoomY = components.y
-                if (components.x != 1f) onHorizontalZoom(components.x)
+                // Absolute gesture baseline: no frame-by-frame multiplying,
+                // no sudden snapping to a different lane count.
+                onHorizontalScale((gestureScale * components.x).coerceIn(0.65f, 4.2f))
+                cam = transformedCamera(
+                    gestureCamera, gestureStartY,
+                    gestureStartY + AxisPinch.dampCentroidPan(y - gestureStartY),
+                    components.y, height()
+                )
+            } else {
+                cam = transformedCamera(cam, previousY, y, 1f, height())
             }
-            cam = transformedCamera(cam, previousY, y, zoomY, height())
-            onCamera(cam)
+            if (cam != camera()) {
+                onCamera(cam)
+            }
             pressed.forEach { it.consume() }
             previousY = y
             tracker.addPosition(pressed.first().uptimeMillis, pressed.first().position)
@@ -518,6 +563,9 @@ private fun TimelineCanvas(
     val from = anchor - spanMillis / 2
     val to = anchor + spanMillis / 2
     val tickMinutes = when {
+        hours <= 0.75 -> 1L
+        hours <= 2 -> 5L
+        hours <= 4 -> 10L
         hours <= 6 -> 30L
         hours <= 12 -> 60L
         hours <= 26 -> 120L

@@ -1051,7 +1051,7 @@ object TimelineLayout {
     fun layout(
         records: List<TemporalRecord>,
         maxLanesPerSide: Int = DEFAULT_MAX_LANES,
-        minVisibleMillis: Long = 12 * 60_000L
+        @Suppress("UNUSED_PARAMETER") minVisibleMillis: Long = 12 * 60_000L
     ): LayoutResult {
         val items = ArrayList<TimelineItem>(records.size)
         val overflow = HashMap<AxisSide, MutableList<TemporalRecord>>()
@@ -1061,7 +1061,10 @@ object TimelineLayout {
                 .mapNotNull { record ->
                     val anchor = record.anchorMillis() ?: return@mapNotNull null
                     val end = record.spanEndMillis() ?: anchor
-                    record to (anchor to maxOf(end, anchor + minVisibleMillis))
+                    // Visual label/touch size MUST NOT influence semantic overlap.
+                    // A duration interval ends exactly at END; point events collide
+                    // only when they share an identical timestamp.
+                    record to (anchor to maxOf(end, anchor + 1L))
                 }
                 .sortedWith(compareBy({ it.second.first }, { it.first.eventSeq }))
             onSide.forEach { (record, span) ->
@@ -1103,7 +1106,8 @@ object TimelineLayout {
  * millisecond value never loses a hundred seconds to Float precision.
  */
 object TimelineCoordinate {
-    const val MIN_HOURS = 4.0
+    // Allow close inspection of short events without changing their true interval geometry.
+    const val MIN_HOURS = 0.25
     const val MAX_HOURS = 48.0
     const val HOUR_MILLIS = 3_600_000.0
 

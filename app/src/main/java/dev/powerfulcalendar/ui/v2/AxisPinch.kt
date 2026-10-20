@@ -1,12 +1,15 @@
 package dev.powerfulcalendar.ui.v2
 
 import kotlin.math.abs
+import kotlin.math.exp
 import kotlin.math.hypot
+import kotlin.math.ln
+import kotlin.math.sqrt
 
 /**
- * Decompose a TWO-FINGER relative displacement into perpendicular X and Y scale factors.
- * No direction arbitration/threshold cone: a diagonal pinch changes both dimensions smoothly.
- * Softening near zero finger separation avoids jumps. X and Y each have their own axis.
+ * Absolute two-finger X/Y decomposition. Always compare to the gesture's original
+ * separation, NEVER accumulate individually rounded frame ratios. This removes
+ * FPS-dependent drift and keeps diagonal fingers continuously two-dimensional.
  */
 internal object AxisPinch {
     data class Components(val x: Float, val y: Float)
@@ -16,15 +19,25 @@ internal object AxisPinch {
     ): Components {
         if (!listOf(oldDx, oldDy, newDx, newDy, touchSlop).all(Float::isFinite) ||
             hypot(oldDx, oldDy) < touchSlop * 2f) return Components(1f, 1f)
-        val softness = touchSlop.coerceAtLeast(12f)
-        fun factor(before: Float, after: Float): Float {
-            val value = (abs(after) + softness) / (abs(before) + softness)
-            return if (abs(value - 1f) < 0.004f) 1f else value.coerceIn(0.75f, 1.25f)
+        // Regularize near-axis orientations. Smooth everywhere including near zero.
+        val softness = 42.0
+        fun factor(before: Float, after: Float, gain: Double): Float {
+            val b = sqrt(before.toDouble() * before + softness * softness)
+            val a = sqrt(after.toDouble() * after + softness * softness)
+            return exp((ln(a / b) * gain).coerceIn(-3.0, 3.0)).toFloat()
         }
-        return Components(factor(oldDx, newDx), factor(oldDy, newDy))
+        // Horizontal zoom is deliberately more responsive than vertical time zoom.
+        return Components(
+            x = factor(oldDx, newDx, 1.2),
+            y = factor(oldDy, newDy, 0.32)
+        )
     }
 
-    /** Preserved for old callers, but gesture recognition should use vector decomposition. */
+    /** Smoothly damp accidental centroid wobble while retaining intentional pan. */
+    fun dampCentroidPan(deltaPx: Float): Float =
+        deltaPx * abs(deltaPx) / (abs(deltaPx) + 28f)
+
+    /** Legacy ratio retained for backwards-compatible contracts/tests. */
     fun ratio(before: Float, after: Float, minimumSpan: Float): Float {
         if (!before.isFinite() || !after.isFinite() ||
             before < minimumSpan || after < minimumSpan) return 1f

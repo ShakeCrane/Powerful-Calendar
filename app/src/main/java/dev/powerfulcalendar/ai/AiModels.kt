@@ -140,8 +140,27 @@ object AiResponseParser {
                     warnings.add(blocked)
                 }
             }
+            // Event kind is inferred from semantic evidence when the model omits its label.
+            // Never invent an activity end: an unknown start-only item stays incomplete
+            // unless the wording explicitly describes a point alarm/reminder.
+            val titleHint = item.optString("title") + " " + item.optString("notes")
+            val rescuedTime = if (op == DraftOperation.CREATE) AiTimeEvidence.recover(item.optString("notes")) else null
             val kind = runCatching { TemporalKind.valueOf(kindText) }.getOrNull()
-                ?: target?.kind
+                ?: target?.kind ?: when {
+                    item.optString("deadlineDate").isNotBlank() ||
+                        item.optString("deadlineTime").isNotBlank() ||
+                        item.optString("dueDate").isNotBlank() -> TemporalKind.DEADLINE
+                    item.optString("end").isNotBlank() ||
+                        item.optString("endTime").isNotBlank() -> TemporalKind.ACTIVITY
+                    item.optString("start").isNotBlank() || rescuedTime != null -> {
+                        if (Regex("截止|ddl|due", RegexOption.IGNORE_CASE).containsMatchIn(titleHint))
+                            TemporalKind.DEADLINE
+                        else if (Regex("闹钟|定时提醒|提醒我|alarm", RegexOption.IGNORE_CASE)
+                                .containsMatchIn(titleHint)) TemporalKind.ALARM
+                        else TemporalKind.ACTIVITY
+                    }
+                    else -> null
+                }
             if (kind == null) {
                 warnings.add("第 ${index + 1} 项类型未知且没有可参照的事件，已忽略")
                 continue
@@ -152,10 +171,24 @@ object AiResponseParser {
             if (title.isEmpty() && op != DraftOperation.DELETE) {
                 warnings.add("第 ${index + 1} 项缺少标题，已保留为待补全草稿")
             }
-            val rawStart = (if (item.has("start")) item.optString("start") else existing?.startText.orEmpty()).trim().ifBlank { null }
-            val rawEnd = (if (item.has("end")) item.optString("end") else existing?.endText.orEmpty()).trim().ifBlank { null }
-            val deadlineDate = item.optString("deadlineDate").trim().ifBlank { null }
-            val rawDeadlineTime = item.optString("deadlineTime").trim().ifBlank { null }
+            val startInput = if (item.has("start")) item.optString("start")
+                else if (item.has("startTime")) item.optString("startTime")
+                else existing?.startText.orEmpty()
+            val endInput = if (item.has("end")) item.optString("end")
+                else if (item.has("endTime")) item.optString("endTime")
+                else existing?.endText.orEmpty()
+            val rawStart = startInput.trim().ifBlank {
+                if (kind != TemporalKind.DEADLINE) rescuedTime?.start else null
+            }
+            val rawEnd = endInput.trim().ifBlank { rescuedTime?.end }
+            val deadlineDate = item.optString("deadlineDate",
+                item.optString("dueDate")).trim().ifBlank { null }
+            val rawDeadlineTime = item.optString("deadlineTime").trim().ifBlank {
+                if (kind == TemporalKind.DEADLINE) rescuedTime?.start else null
+            }
+            if (rescuedTime != null && startInput.isBlank() && endInput.isBlank()) {
+                warnings.add("第 ${index + 1} 项从备注中恢复了完整日期和时刻，请核对原始材料")
+            }
 
             // The model answers in the device's wall clock. If the event lives in another zone,
             // translate the instant so the same moment is written, not the same clock reading.

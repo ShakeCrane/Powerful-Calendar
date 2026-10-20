@@ -925,7 +925,7 @@ fun PowerCalApp(store: PowerStore) {
                     hours = updated.hours
                 },
                 horizontalScale = horizontalScale,
-                onHorizontalScaleChange = { horizontalScale = it.coerceIn(0.65f, 3f) },
+                onHorizontalScaleChange = { horizontalScale = it.coerceIn(0.65f, 4.2f) },
                 onOpenEvent = { record ->
                     if (aiLocked) monthInspection = record else selectedFormalEvent = record
                 },
@@ -1200,29 +1200,27 @@ fun PowerCalApp(store: PowerStore) {
                 }
             },
             confirmButton = {
+                val direct = ics && !evidence.truncated && localText == evidence.text &&
+                    parsed != null && parsed.warnings.isEmpty() &&
+                    (parsed.events.isNotEmpty() || parsed.series.isNotEmpty())
                 TextButton(
                     enabled = localText.isNotBlank() && !chatBusy,
                     onClick = {
                         pendingFileReview = null
-                        val report = if (ics) {
-                            parsed?.warnings?.take(5)?.joinToString("; ").orEmpty()
-                        } else ""
-                        submitEvidence(evidence.copy(text = localText), report)
+                        if (direct) {
+                            // Standard formats are processed by the deterministic importer FIRST.
+                            scope.launch { importIcs(uri) }
+                        } else {
+                            // Only unsupported, partial or edited evidence takes the AI route.
+                            val report = if (ics) parsed?.warnings?.take(5)
+                                ?.joinToString("; ").orEmpty() else ""
+                            submitEvidence(evidence.copy(text = localText), report)
+                        }
                     }
-                ) { Text("发送给 AI 分析") }
+                ) { Text(if (direct) "按 ICS 规则生成草稿" else "交给 AI 分析并澄清") }
             },
             dismissButton = {
-                Row {
-                    if (ics && !evidence.truncated && parsed != null &&
-                        (parsed.events.isNotEmpty() || parsed.series.isNotEmpty()) &&
-                        parsed.warnings.isEmpty()) {
-                        TextButton(onClick = {
-                            pendingFileReview = null
-                            scope.launch { importIcs(uri) }
-                        }) { Text("直接生成草稿") }
-                    }
-                    TextButton(onClick = { pendingFileReview = null }) { Text("取消") }
-                }
+                TextButton(onClick = { pendingFileReview = null }) { Text("取消") }
             }
         )
     }
