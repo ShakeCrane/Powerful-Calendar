@@ -96,6 +96,8 @@ import dev.powerfulcalendar.core.TimelineCoordinate
 import dev.powerfulcalendar.data.CalendarEvent
 import dev.powerfulcalendar.data.LegacyImporter
 import dev.powerfulcalendar.interop.IcsCodec
+import dev.powerfulcalendar.interop.AiFileEvidence
+import dev.powerfulcalendar.interop.AiFileEvidenceReader
 import dev.powerfulcalendar.interop.SystemCalendar
 import dev.powerfulcalendar.interop.TextParser
 import dev.powerfulcalendar.reminders.ReminderScheduler
@@ -163,10 +165,13 @@ fun PowerCalApp(store: PowerStore) {
     var deckInitialId by rememberSaveable { mutableStateOf<Long?>(null) }
     var textDialogOpen by remember { mutableStateOf(false) }
     var ocrReviewText by remember { mutableStateOf<String?>(null) }
+    var pendingFileReview by remember { mutableStateOf<Pair<Uri, AiFileEvidence>?>(null) }
     var aiBusy by remember { mutableStateOf(false) }
     var chatBusy by remember { mutableStateOf(false) }
     var chatHistory by remember { mutableStateOf<List<AiChatMessage>>(emptyList()) }
     var confirmBatch by remember { mutableStateOf<BatchReview?>(null) }
+    // Choosing a batch mode only starts a conversation; it is never the commit authorization.
+    var pendingBatchMode by remember { mutableStateOf<AiBatchRunner.Mode?>(null) }
     var pendingCards by remember { mutableStateOf<List<dev.powerfulcalendar.core.DraftCard>>(emptyList()) }
     var diagnostics by remember { mutableStateOf(UiDiagnostics()) }
     var monthInspection by remember { mutableStateOf<TemporalRecord?>(null) }
@@ -374,6 +379,115 @@ fun PowerCalApp(store: PowerStore) {
         }
     }
 
+    fun appendChat(role: String, text: String) {
+        chatHistory = chatHistory + AiChatMessage(role, text.take(6000))
+    }
+
+    fun beginBatchConversation(mode: AiBatchRunner.Mode) {
+        if (chatBusy || aiBusy || aiLocked) return
+        pendingBatchMode = mode
+        page = Page.AI.name
+        appendChat("assistant",
+            if (mode == AiBatchRunner.Mode.PUBLISH) {
+                "准备批量发布。请告诉我要处理哪些草稿：可以说“全部”，也可以按标题、类型或草稿编号筛选。接下来我会列出具体清单，只有你在审核弹窗确认后才会执行。"
+            } else {
+                "准备批量丢弃草稿（不会删除已经发布的正式事件）。你希望丢弃哪些？可以说“全部”，或描述要筛选的草稿。随后仍需单独审核确认。"
+            })
+    }
+
+    fun submitAiChatInput(input: String) {
+        val text = input.trim()
+        if (text.isEmpty() || chatBusy || aiBusy) return
+        appendChat("user", text)
+        val currentHistory = chatHistory.takeLast(12)
+        val mode = pendingBatchMode
+        chatBusy = true
+        scope.launch {
+            try {
+                if (mode == null) {
+                    val response = AiClient(AiSettingsStore.load(appContext), zone).chat(currentHistory)
+                    appendChat("assistant", if (response.succeeded) response.reply
+                        else "AI 请求未完成：" + response.error.orEmpty())
+                } else {
+                    reload()
+                    val snapshot = pendingCards.filter { it.isActionable }
+                    if (snapshot.isEmpty()) {
+                        pendingBatchMode = null
+                        appendChat("assistant", "待处理已经为空，没有可授权的草稿。")
+                    } else if (snapshot.size > 100) {
+                        appendChat("assistant", "待处理超过 100 张，本次不会默认选择前 100 张。请先在待处理中缩小范围。")
+                    } else {
+                        val all = text in setOf("全部", "所有", "全部草稿", "全选", "所有待处理")
+                        val selection = if (all) {
+                            dev.powerfulcalendar.ai.AiBatchSelection(
+                                selectedIds = snapshot.map { it.draftId },
+                                reply = "按用户明确的“全部”选择全部待处理草稿"
+                            )
+                        } else {
+                            AiClient(AiSettingsStore.load(appContext), zone)
+                                .planBatchSelection(text, snapshot)
+                        }
+                        when {
+                            selection.ready -> {
+                                val ids = selection.selectedIds.toSet()
+                                val selected = snapshot.filter { it.draftId in ids }
+                                if (selected.size != ids.size) {
+                                    appendChat("assistant", "部分目标已发生变化，请重新选择；没有执行任何操作。")
+                                } else {
+                                    pendingBatchMode = null
+                                    appendChat("assistant", "已根据要求选择 " + selected.size +
+                                        " 张草稿。下面会弹出包含编号和操作类型的最终审核；取消不会修改事件。")
+                                    confirmBatch = BatchReview(mode, selected)
+                                }
+                            }
+                            selection.question != null ->
+                                appendChat("assistant", selection.question)
+                            else -> appendChat("assistant",
+                                "暂时不能安全选定目标：" + (selection.error ?: "没有明确的草稿") +
+                                    "。请补充范围或回复“全部”。")
+                        }
+                    }
+                }
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                appendChat("assistant", "本次处理未完成：" + error.javaClass.simpleName +
+                    "；没有批准任何批量操作。")
+            } finally {
+                chatBusy = false
+            }
+        }
+    }
+
+    /** AI receives only the text whose preview the user explicitly approved. */
+    fun submitEvidence(evidence: AiFileEvidence, hint: String = "") {
+        if (chatBusy || aiBusy) return
+        page = Page.AI.name
+        chatBusy = true
+        appendChat("user", "上传并确认分析：" + evidence.filename +
+            "（" + evidence.format + "）" +
+            if (evidence.truncated) " · 内容已截断" else "")
+        val prior = chatHistory.takeLast(7)
+        scope.launch {
+            try {
+                val reply = AiClient(AiSettingsStore.load(appContext), zone)
+                    .analyzeEvidence(evidence.filename,
+                        (if (hint.isBlank()) "" else "文件预检信息：$hint\n") + evidence.text,
+                        prior)
+                appendChat("assistant", if (reply.succeeded) reply.reply
+                    else "分析未完成：" + reply.error.orEmpty() +
+                        "；源文件没有被导入，日历数据未修改。")
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                appendChat("assistant", "无法完成文件分析：" + error.javaClass.simpleName +
+                    "；原始数据没有发布。")
+            } finally {
+                chatBusy = false
+            }
+        }
+    }
+
     // ------------------------------------------------------------------ import launchers
 
     suspend fun importIcs(uri: Uri) {
@@ -493,6 +607,21 @@ fun PowerCalApp(store: PowerStore) {
     val openIcs = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri -> if (uri != null) scope.launch { importIcs(uri) } }
+    val openAiDocument = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) scope.launch {
+            try {
+                val evidence = withContext(Dispatchers.IO) {
+                    AiFileEvidenceReader.read(appContext, uri)
+                }
+                pendingFileReview = uri to evidence
+            } catch (error: Exception) {
+                message = "无法安全提取文件：" + (error.message ?: error.javaClass.simpleName) +
+                    "；没有上传给 AI，也没有创建事件。"
+            }
+        }
+    }
     val exportIcs = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("text/calendar")
     ) { uri ->
@@ -699,35 +828,24 @@ fun PowerCalApp(store: PowerStore) {
             AiChatScreen(
                 messages = chatHistory,
                 busy = chatBusy || aiBusy,
-                onSend = { text ->
-                    if (!chatBusy && !aiBusy && text.isNotBlank()) {
-                        val userMessage = AiChatMessage("user", text.trim().take(6000))
-                        val history = (chatHistory + userMessage).takeLast(12)
-                        chatHistory = chatHistory + userMessage
-                        chatBusy = true
-                        scope.launch {
-                            try {
-                                val result = AiClient(AiSettingsStore.load(appContext), zone).chat(history)
-                                val answer = if (result.succeeded) result.reply
-                                    else "AI 请求未完成：" + result.error.orEmpty()
-                                chatHistory = chatHistory + AiChatMessage("assistant", answer.take(6000))
-                            } catch (error: kotlinx.coroutines.CancellationException) {
-                                throw error
-                            } catch (error: Exception) {
-                                chatHistory = chatHistory + AiChatMessage("assistant",
-                                    "无法完成本次聊天：" + error.javaClass.simpleName)
-                            } finally {
-                                chatBusy = false
-                            }
-                        }
-                    }
-                },
+                pendingCount = pendingCount,
+                onSend = { submitAiChatInput(it) },
                 onPropose = { text ->
                     scope.launch { generateAiDraft(text, shareForRequest = false) }
                 },
-                onClear = { chatHistory = emptyList() },
+                onClear = {
+                    chatHistory = emptyList()
+                    pendingBatchMode = null
+                },
                 onSettings = { page = Page.TOOLS.name },
-                onOpenDeck = { scope.launch { openDeckAt(null) } }
+                onOpenDeck = { scope.launch { openDeckAt(null) } },
+                onPickImage = { ocrPicker.launch("image/*") },
+                onPickFile = { openAiDocument.launch(arrayOf("*/*")) },
+                onPrepareBatch = { beginBatchConversation(it) },
+                onRewind = { lastIndex ->
+                    chatHistory = chatHistory.take((lastIndex + 1).coerceAtLeast(0))
+                    pendingBatchMode = null
+                }
             )
         } else if (page == Page.MONTH.name) {
             MonthScreen(records, Instant.ofEpochMilli(anchorMillis).atZone(zone).toLocalDate(), zone, aiLocked,
@@ -970,13 +1088,71 @@ fun PowerCalApp(store: PowerStore) {
         )
     }
 
+    pendingFileReview?.let { (uri, evidence) ->
+        var localText by remember(uri) { mutableStateOf(evidence.text) }
+        val ics = evidence.format == "ics"
+        val parsed = remember(uri, evidence.text) {
+            if (ics) runCatching { IcsCodec.parse(evidence.text) }.getOrNull() else null
+        }
+        AlertDialog(
+            onDismissRequest = { pendingFileReview = null },
+            title = { Text("核对文件 · " + evidence.filename) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("本地提取，不会自动发布。发送给 AI 前请确认文本没有敏感信息，文件中的指令不会被执行。",
+                        style = MaterialTheme.typography.bodySmall)
+                    if (ics) Text(
+                        "ICS 本地预检：可解析 " + (parsed?.events?.size ?: 0) +
+                            " 项；需要澄清 " + (parsed?.warnings?.size ?: 0) + " 项。" +
+                            (parsed?.warnings?.firstOrNull()?.let { "\n例如：$it" } ?: ""),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Text(evidence.note, style = MaterialTheme.typography.labelSmall,
+                        color = if (evidence.truncated) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.onSurfaceVariant)
+                    OutlinedTextField(
+                        value = localText,
+                        onValueChange = { if (it.length <= 24_000) localText = it },
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 130.dp, max = 310.dp),
+                        label = { Text("本次将发送的提取文本（可删除隐私内容）") },
+                        maxLines = 16
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = localText.isNotBlank() && !chatBusy,
+                    onClick = {
+                        pendingFileReview = null
+                        val report = if (ics) {
+                            parsed?.warnings?.take(5)?.joinToString("; ").orEmpty()
+                        } else ""
+                        submitEvidence(evidence.copy(text = localText), report)
+                    }
+                ) { Text("发送给 AI 分析") }
+            },
+            dismissButton = {
+                Row {
+                    if (ics && !evidence.truncated && parsed != null &&
+                        parsed.events.isNotEmpty() && parsed.warnings.isEmpty()) {
+                        TextButton(onClick = {
+                            pendingFileReview = null
+                            scope.launch { importIcs(uri) }
+                        }) { Text("直接生成草稿") }
+                    }
+                    TextButton(onClick = { pendingFileReview = null }) { Text("取消") }
+                }
+            }
+        )
+    }
+
     ocrReviewText?.let { extracted ->
         AlertDialog(
             onDismissRequest = { ocrReviewText = null },
             title = { Text("核对 OCR 识别原文") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("请先修正识别错误。离线解析只生成草稿，缺少日期、时刻或结束时间时保持空白。",
+                    Text("先修正 OCR 错字，然后发送给 AI 理解；缺少日期、时刻或结束时间时 AI 应先追问。不会自动创建或发布事件。",
                         style = MaterialTheme.typography.bodySmall)
                     OutlinedTextField(
                         value = extracted,
@@ -989,8 +1165,11 @@ fun PowerCalApp(store: PowerStore) {
             confirmButton = {
                 TextButton(enabled = extracted.isNotBlank(), onClick = {
                     ocrReviewText = null
-                    scope.launch { createDraftFromText(extracted, "ocr") }
-                }) { Text("生成待确认草稿") }
+                    submitEvidence(AiFileEvidence(
+                        filename = "OCR 图片文字", format = "ocr", text = extracted,
+                        truncated = false, note = "OCR 文本由用户核对后发送"
+                    ))
+                }) { Text("发送给 AI 理解") }
             },
             dismissButton = { TextButton(onClick = { ocrReviewText = null }) { Text("取消") } }
         )
@@ -1212,28 +1391,25 @@ private fun ToolsPage(
             Text("工具与设置", style = MaterialTheme.typography.headlineSmall)
         }
 
-        SectionCard("待处理", "$pendingCount 张草稿") {
-            OutlinedButton(onClick = onOpenDeck, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("打开待处理 · $pendingCount 张") }
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                OutlinedButton(onClick = { onRunBatch(AiBatchRunner.Mode.PUBLISH) }, modifier = Modifier.fillMaxWidth(), enabled = pendingCount > 0 && !aiLocked) { Text("一次性授权 AI 批量发布") }
-                TextButton(onClick = { onRunBatch(AiBatchRunner.Mode.DISCARD) }, modifier = Modifier.fillMaxWidth(), enabled = pendingCount > 0 && !aiLocked) { Text("一次性授权 AI 批量丢弃") }
+        SectionCard("个人信息", "本机资料 · 不上传给 AI") {
+            var displayName by remember {
+                mutableStateOf(appContext.getSharedPreferences("powercal-profile", Context.MODE_PRIVATE)
+                    .getString("displayName", "").orEmpty())
             }
-            if (aiLocked) {
-                Text(
-                    "AI 批次正在运行：卡组只读。可以停止，已提交结果会保留。",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.tertiary
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = onCancelBatch) { Text("停止当前批次") }
-                    TextButton(onClick = onReleaseStuck) { Text("强制解除独占") }
-                }
-            }
-            aiSession?.report?.let { report ->
-                HorizontalDivider()
-                Text("上一次批次报告", style = MaterialTheme.typography.labelMedium)
-                Text(report, style = MaterialTheme.typography.labelSmall)
-            }
+            Text("头像与云端资料将在皮肤系统完成后支持；个人资料不是日历业务数据。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            OutlinedTextField(
+                value = displayName,
+                onValueChange = { if (it.length <= 80) displayName = it },
+                label = { Text("你的名字（可选）") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
+            )
+            OutlinedButton(onClick = {
+                appContext.getSharedPreferences("powercal-profile", Context.MODE_PRIVATE).edit()
+                    .putString("displayName", displayName).apply()
+            }) { Text("保存个人信息") }
         }
 
         SectionCard(
@@ -1311,37 +1487,14 @@ private fun ToolsPage(
                 ) { Text("保存并启用") }
             }
             }
-            HorizontalDivider()
-            OutlinedTextField(
-                value = aiText,
-                onValueChange = { aiText = it },
-                label = { Text("用自然语言描述，例如：把周五的组会改到 16:00") },
-                modifier = Modifier.fillMaxWidth().heightIn(min = 96.dp)
-            )
-            if (settings.shareContext) Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("本次共享事件上下文", style = MaterialTheme.typography.bodyMedium)
-                    Text("向配置的端点发送至多 60 条事件的标题与时间；默认只发送输入文字。", style = MaterialTheme.typography.bodySmall)
-                }
-                Switch(shareForRequest, { shareForRequest = it }, enabled = !aiBusy && !aiLocked)
-            }
-            if (dirty) Text("先保存模型配置，再发送本次请求。", style = MaterialTheme.typography.bodySmall)
-            Button(
-                onClick = { onAiDraft(aiText, shareForRequest); shareForRequest = false },
-                enabled = !aiBusy && !aiLocked && !dirty && aiText.isNotBlank() && settings.configured
-            ) {
-                Icon(Icons.Default.AutoAwesome, null, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(6.dp))
-                Text(if (aiBusy) "解析中…" else "生成待确认草稿")
-            }
+            Text("聊天、OCR、ICS 和文档都从底部 AI 助手进入。日历变更在待处理确认，设置页只管理模型连接与隐私权限。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
 
-        SectionCard("导入", "结构化数据严格校验后可直接发布") {
-            ToolRow("从系统日历一次性导入", "读取未来一年与过去 30 天，不是双向同步", onImportSystem, enabled = !aiLocked)
-            ToolRow("导入 ICS 文件", "支持折叠行、TZID 与转义；不展开 RRULE", onImportIcs, enabled = !aiLocked)
-            ToolRow("从旧版 PowerCal 迁移", "只读打开旧数据库，保留原文件", onMigrateLegacy, enabled = !aiLocked)
-            ToolRow("从截图识别", "本地中文 OCR，识别结果为待确认草稿", onPickImage, enabled = !aiLocked)
-            ToolRow("用文字创建草稿", "离线解析器，不需要联网", onTextDraft, enabled = !aiLocked)
+        SectionCard("导入", "仅保留系统级来源，其他文件请从 AI 助手 ＋ 添加") {
+            ToolRow("从系统日历一次性导入", "读取过去 30 天与未来一年；不是双向同步", onImportSystem, enabled = !aiLocked)
+            ToolRow("从旧版 PowerCal 迁移", "只读旧数据库，保留原文件", onMigrateLegacy, enabled = !aiLocked)
         }
 
         SectionCard("备份与导出", "原生备份优先于有损格式") {

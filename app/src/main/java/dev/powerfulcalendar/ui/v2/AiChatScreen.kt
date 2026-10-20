@@ -1,151 +1,223 @@
 package dev.powerfulcalendar.ui.v2
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.padding
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.Button
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import dev.powerfulcalendar.ai.AiBatchRunner
 import dev.powerfulcalendar.ai.AiChatMessage
 
 /**
- * Chat is a pure conversation view. Calendar proposal is an explicit, separate action.
- * No model text in this component is a PowerStore authorization or a tool invocation.
+ * Compact messenger-style shell. Text is ordinary chat; no ordinary message authorizes writes.
+ * Explicit long-press on one message is the current scoped calendar-proposal entry.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun AiChatScreen(
     messages: List<AiChatMessage>,
     busy: Boolean,
+    pendingCount: Int,
     onSend: (String) -> Unit,
     onPropose: (String) -> Unit,
     onClear: () -> Unit,
     onSettings: () -> Unit,
-    onOpenDeck: () -> Unit
+    onOpenDeck: () -> Unit,
+    onPickImage: () -> Unit,
+    onPickFile: () -> Unit,
+    onPrepareBatch: (AiBatchRunner.Mode) -> Unit,
+    onRewind: (Int) -> Unit
 ) {
     var composer by rememberSaveable { mutableStateOf("") }
+    var attachmentMenu by remember { mutableStateOf(false) }
+    var pendingMenu by remember { mutableStateOf(false) }
+    var selectedIndex by remember { mutableIntStateOf(-1) }
     val listState = rememberLazyListState()
+    val context = LocalContext.current
+
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) listState.animateScrollToItem(messages.lastIndex)
     }
-
     Column(
-        Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(7.dp)
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("AI 助手", style = MaterialTheme.typography.headlineMedium)
-                Text("正常聊天不读取日历，日程操作需单独生成草稿",
-                    style = MaterialTheme.typography.bodySmall,
+                Text("AI 助手", style = MaterialTheme.typography.titleLarge)
+                Text("聊天 · 文件理解 · 日程 Skills",
+                    style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             TextButton(onClick = onSettings) { Text("配置") }
-            TextButton(onClick = onOpenDeck) { Text("待处理") }
+            Box {
+                TextButton(onClick = { pendingMenu = true }) {
+                    Text("待处理 " + pendingCount)
+                    Icon(Icons.Default.MoreVert, null)
+                }
+                DropdownMenu(expanded = pendingMenu, onDismissRequest = { pendingMenu = false }) {
+                    DropdownMenuItem(text = { Text("处理事件") }, onClick = {
+                        pendingMenu = false
+                        onOpenDeck()
+                    })
+                    DropdownMenuItem(text = { Text("AI 批量发布 · 先选择范围") }, onClick = {
+                        pendingMenu = false
+                        onPrepareBatch(AiBatchRunner.Mode.PUBLISH)
+                    }, enabled = !busy && pendingCount > 0)
+                    DropdownMenuItem(text = { Text("AI 批量丢弃 · 先选择范围") }, onClick = {
+                        pendingMenu = false
+                        onPrepareBatch(AiBatchRunner.Mode.DISCARD)
+                    }, enabled = !busy && pendingCount > 0)
+                    HorizontalDivider()
+                    DropdownMenuItem(text = { Text("清空聊天（不改变事件）") }, onClick = {
+                        pendingMenu = false
+                        onClear()
+                    }, enabled = !busy && messages.isNotEmpty())
+                }
+            }
         }
 
         if (messages.isEmpty()) {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = GlassShapes.card,
-                color = MaterialTheme.colorScheme.surfaceContainerLow
-            ) {
-                Text(
-                    "可以直接聊天、提问、讨论计划。需要修改日历时，在下方使用“生成草稿”，" +
-                        "结果会进入待处理，不会自动发布。\n\n" +
-                        "本阶段聊天暂存于当前 App 会话；不会自动备份聊天记录。",
-                    modifier = Modifier.padding(16.dp),
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            }
+            Text(
+                "在这里直接聊天，或点 + 上传图片、ICS、文档和表格。" +
+                    " 长按任意消息可编辑、回退或从该消息生成待确认日程。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 6.dp, vertical = 10.dp)
+            )
         }
 
         LazyColumn(
             modifier = Modifier.weight(1f).fillMaxWidth(),
             state = listState,
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             itemsIndexed(messages) { index, msg ->
+                val mine = msg.role == "user"
                 Row(
                     Modifier.fillMaxWidth(),
-                    horizontalArrangement = if (msg.role == "user") Arrangement.End else Arrangement.Start
+                    horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start
                 ) {
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(0.94f),
-                        color = if (msg.role == "user")
-                            MaterialTheme.colorScheme.primaryContainer
-                        else MaterialTheme.colorScheme.surfaceContainerHigh,
-                        shape = GlassShapes.card
-                    ) {
-                        Column(Modifier.padding(12.dp)) {
-                            Text(if (msg.role == "user") "我" else "AI",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(msg.content, style = MaterialTheme.typography.bodyMedium)
+                    Box(Modifier.fillMaxWidth(0.9f)) {
+                        Surface(
+                            modifier = Modifier.combinedClickable(
+                                onClick = {},
+                                onLongClick = { selectedIndex = index }
+                            ),
+                            color = if (mine) MaterialTheme.colorScheme.primaryContainer
+                                else MaterialTheme.colorScheme.surfaceContainer,
+                            shape = RoundedCornerShape(
+                                topStart = 16.dp, topEnd = 16.dp,
+                                bottomEnd = if (mine) 4.dp else 16.dp,
+                                bottomStart = if (mine) 16.dp else 4.dp
+                            )
+                        ) {
+                            Column(Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
+                                Text(if (mine) "我" else "PowerCal AI",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(msg.content,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    maxLines = 75,
+                                    overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                        DropdownMenu(
+                            expanded = selectedIndex == index,
+                            onDismissRequest = { selectedIndex = -1 }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("从此消息创建事件草稿") },
+                                onClick = {
+                                    selectedIndex = -1
+                                    onPropose(msg.content)
+                                }, enabled = !busy
+                            )
+                            if (mine) DropdownMenuItem(
+                                text = { Text("编辑并重新发送") },
+                                onClick = {
+                                    selectedIndex = -1
+                                    composer = msg.content
+                                    onRewind(index - 1)
+                                }, enabled = !busy
+                            )
+                            DropdownMenuItem(
+                                text = { Text(if (mine) "撤回此消息及后续对话" else "回退到此消息") },
+                                onClick = {
+                                    selectedIndex = -1
+                                    onRewind(if (mine) index - 1 else index)
+                                }, enabled = !busy
+                            )
+                            DropdownMenuItem(text = { Text("复制文字") }, onClick = {
+                                selectedIndex = -1
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                clipboard.setPrimaryClip(ClipData.newPlainText("PowerCal 消息", msg.content))
+                            })
                         }
                     }
                 }
             }
         }
 
-        OutlinedTextField(
-            value = composer,
-            onValueChange = { if (it.length <= 6000) composer = it },
-            modifier = Modifier.fillMaxWidth().heightIn(min = 78.dp),
-            maxLines = 4,
-            label = { Text("消息或日程要求") },
-            placeholder = { Text("例如：帮我分析一下这周的安排思路") },
-            enabled = !busy
-        )
+        if (busy) Text("正在处理…", style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            OutlinedButton(
-                enabled = !busy && (composer.isNotBlank() || messages.any { it.role == "user" }),
+            Box {
+                IconButton(onClick = { attachmentMenu = true }, enabled = !busy) {
+                    Icon(Icons.Default.Add, "添加图片或文件")
+                }
+                DropdownMenu(expanded = attachmentMenu, onDismissRequest = { attachmentMenu = false }) {
+                    DropdownMenuItem(text = { Text("添加图片 · OCR") }, onClick = {
+                        attachmentMenu = false
+                        onPickImage()
+                    })
+                    DropdownMenuItem(text = { Text("添加 ICS / 文档 / 表格") }, onClick = {
+                        attachmentMenu = false
+                        onPickFile()
+                    })
+                }
+            }
+            OutlinedTextField(
+                value = composer,
+                onValueChange = { if (it.length <= 6000) composer = it },
+                modifier = Modifier.weight(1f).heightIn(min = 52.dp),
+                maxLines = 4,
+                placeholder = { Text("发送消息…") },
+                enabled = !busy,
+                shape = RoundedCornerShape(19.dp)
+            )
+            Button(
                 onClick = {
-                    val selected = composer.ifBlank {
-                        messages.lastOrNull { it.role == "user" }?.content.orEmpty()
-                    }
-                    if (selected.isNotBlank()) {
-                        onPropose(selected)
+                    if (composer.isNotBlank()) {
+                        onSend(composer.trim())
                         composer = ""
                     }
-                }
-            ) { Text("生成草稿") }
-            Spacer(Modifier.weight(1f))
-            TextButton(onClick = onClear, enabled = !busy && messages.isNotEmpty()) {
-                Text("清空聊天")
-            }
-            Button(
+                },
                 enabled = !busy && composer.isNotBlank(),
-                onClick = {
-                    onSend(composer)
-                    composer = ""
-                }
-            ) { Text(if (busy) "请求中" else "发送") }
+                contentPadding = PaddingValues(horizontal = 12.dp),
+                modifier = Modifier.heightIn(min = 52.dp)
+            ) { Text("发送") }
         }
-        if (busy) Text("AI 正在回复…", style = MaterialTheme.typography.labelSmall)
     }
 }
