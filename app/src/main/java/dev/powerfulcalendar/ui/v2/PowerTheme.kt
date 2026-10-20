@@ -151,7 +151,9 @@ fun PowerCalTheme(
     skin: PowerCalSkinPack = PowerCalSkinRegistry.active,
     content: @Composable () -> Unit
 ) {
-    val scheme = if (darkTheme) skin.darkColors ?: DarkColors else skin.lightColors ?: LightColors
+    val baseScheme = if (darkTheme) DarkColors else LightColors
+    val scheme = (if (darkTheme) skin.darkColors else skin.lightColors)
+        ?: skin.visual?.scheme(baseScheme, darkTheme) ?: baseScheme
     val basePalette = if (darkTheme) {
         AxisPalette(
             alarm = Color(0xFF9DB8FF),
@@ -175,13 +177,27 @@ fun PowerCalTheme(
             glassHighlight = Color(0x80FFFFFF)
         )
     }
-    val palette = (if (darkTheme) skin.darkAxis else skin.lightAxis) ?: basePalette
+    val palette = (if (darkTheme) skin.darkAxis else skin.lightAxis)
+        ?: skin.visual?.axis(basePalette, darkTheme) ?: basePalette
+    val tokens = skin.visual ?: SkinVisualTokens.default
+    val baseTypography = skin.typography ?: PowerTypography
+    val scaledTypography = if (tokens.fontScale == 1f) baseTypography else baseTypography.copy(
+        bodySmall = baseTypography.bodySmall.copy(fontSize = baseTypography.bodySmall.fontSize * tokens.fontScale),
+        bodyMedium = baseTypography.bodyMedium.copy(fontSize = baseTypography.bodyMedium.fontSize * tokens.fontScale),
+        bodyLarge = baseTypography.bodyLarge.copy(fontSize = baseTypography.bodyLarge.fontSize * tokens.fontScale),
+        titleMedium = baseTypography.titleMedium.copy(fontSize = baseTypography.titleMedium.fontSize * tokens.fontScale),
+        titleLarge = baseTypography.titleLarge.copy(fontSize = baseTypography.titleLarge.fontSize * tokens.fontScale),
+        labelSmall = baseTypography.labelSmall.copy(fontSize = baseTypography.labelSmall.fontSize * tokens.fontScale),
+        labelMedium = baseTypography.labelMedium.copy(fontSize = baseTypography.labelMedium.fontSize * tokens.fontScale)
+    )
     CompositionLocalProvider(
         LocalGlassEffects provides effects,
         LocalSkinArtwork provides skin.artworkFor(darkTheme),
+        LocalSkinBitmaps provides skin.bitmapFor(darkTheme),
+        LocalSkinVisual provides tokens,
         LocalAxisPalette provides if (effects.blur) palette else palette.copy(glassFill = scheme.surface, glassHighlight = Color.Transparent)
     ) {
-        MaterialTheme(colorScheme = scheme, typography = skin.typography ?: PowerTypography) {
+        MaterialTheme(colorScheme = scheme, typography = scaledTypography) {
             CompositionLocalProvider(LocalContentColor provides scheme.onBackground, content = content)
         }
     }
@@ -195,6 +211,12 @@ fun kindColor(kind: TemporalKind): Color = when (kind) {
 }
 
 /** Shared corner language: generous, but never so round that dense rows look like pills. */
+@Composable
+fun skinCardShape() = RoundedCornerShape(LocalSkinVisual.current.cardRadiusDp.dp)
+
+@Composable
+fun skinBarShape() = RoundedCornerShape(LocalSkinVisual.current.barRadiusDp.dp)
+
 object GlassShapes {
     val card = RoundedCornerShape(28.dp)
     val cardCompact = RoundedCornerShape(24.dp)
@@ -230,7 +252,7 @@ internal fun GlassPanel(modifier: Modifier = Modifier, contentPadding: PaddingVa
     val effects = LocalGlassEffects.current
     Surface(
         modifier = modifier,
-        shape = GlassShapes.card,
+        shape = skinCardShape(),
         color = if (effects.blur) LocalAxisPalette.current.glassFill else MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)),
         shadowElevation = if (effects.blur) 2.dp else 0.dp

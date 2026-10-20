@@ -80,12 +80,14 @@ class InteropTest {
         assertTrue(parsed.warnings.any { it.contains("DTEND") })
     }
 
-    @Test fun warnsWhenRecurrenceIsNotExpanded() {
+    @Test fun weeklyRecurrenceIsRepresentedAsOneSeriesInsteadOfExplodedEvents() {
         val content = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:1\n" +
             "DTSTART:20261009T153000Z\nDTEND:20261009T163000Z\n" +
             "RRULE:FREQ=WEEKLY;COUNT=8\nSUMMARY:例会\nEND:VEVENT\nEND:VCALENDAR"
         val result = IcsCodec.parse(content)
         assertTrue(result.events.isEmpty())
-        assertTrue(result.warnings.any { it.contains("RRULE") })
+        assertTrue(result.warnings.toString(), result.warnings.isEmpty())
+        assertEquals(1, result.series.size)
+        assertEquals(8, result.series.single().form.recurrence.count)
     }
 }

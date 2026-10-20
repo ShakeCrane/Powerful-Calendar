@@ -8,6 +8,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.paint
 import androidx.compose.ui.graphics.painter.Painter
@@ -21,7 +23,8 @@ import androidx.compose.ui.res.painterResource
  *
  * Claude can supply packaged PNG/WebP/XML vector resources, then register their R.drawable IDs
  * through a SkinPack. A missing slot ALWAYS falls back to the current Compose presentation.
- * This is not a downloaded skin loader; packaged resources require a new APK build.
+ * Compiled resources stay available, and validated external .pcskin bitmaps may be provided
+ * by SkinPackageManager at runtime. Unavailable slots fall back to native Compose.
  *
  * No domain, database, AI or alarm code may depend on this file.
  */
@@ -30,7 +33,12 @@ enum class SkinSlot {
     DECK_BACKDROP,
     MONTH_BACKGROUND,
     COMPLETION_EMBLEM,
-    BRAND_MARK
+    BRAND_MARK,
+    ALARM_MARKER,
+    ACTIVITY_BADGE,
+    DEADLINE_MARKER,
+    AI_AVATAR,
+    SETTINGS_ICON
 }
 
 @Immutable
@@ -58,6 +66,7 @@ data class SkinArtwork(
         SkinSlot.MONTH_BACKGROUND -> monthBackground
         SkinSlot.COMPLETION_EMBLEM -> completionEmblem
         SkinSlot.BRAND_MARK -> brandMark
+        else -> null
     }
 }
 
@@ -74,11 +83,16 @@ data class PowerCalSkinPack(
     val darkColors: ColorScheme? = null,
     val lightAxis: AxisPalette? = null,
     val darkAxis: AxisPalette? = null,
-    val typography: Typography? = null
+    val typography: Typography? = null,
+    val visual: SkinVisualTokens? = null,
+    val lightBitmaps: Map<SkinSlot, SkinBitmapArt> = emptyMap(),
+    val darkBitmaps: Map<SkinSlot, SkinBitmapArt> = emptyMap()
 ) {
     init { require(key.isNotBlank()) { "Skin pack key must not be empty" } }
 
     fun artworkFor(darkTheme: Boolean): SkinArtwork = if (darkTheme) darkArtwork else lightArtwork
+    fun bitmapFor(darkTheme: Boolean): Map<SkinSlot, SkinBitmapArt> =
+        if (darkTheme) darkBitmaps else lightBitmaps
 }
 
 /**
@@ -95,37 +109,48 @@ object PowerCalSkinRegistry {
     fun reset() { active = default }
 }
 
+/** Decoded, size-verified, non-executable images loaded from a .pcskin ZIP. */
+data class SkinBitmapArt(val bitmap: ImageBitmap, val alpha: Float = 1f)
+
 val LocalSkinArtwork = staticCompositionLocalOf { SkinArtwork() }
+val LocalSkinBitmaps = staticCompositionLocalOf<Map<SkinSlot, SkinBitmapArt>> { emptyMap() }
+
+@Composable
+fun skinBitmap(slot: SkinSlot): SkinBitmapArt? = LocalSkinBitmaps.current[slot]
 
 @Composable
 fun skinArt(slot: SkinSlot): SkinArt? = LocalSkinArtwork.current.find(slot)
 
 @Composable
-fun skinPainter(slot: SkinSlot): Painter? = skinArt(slot)?.let { painterResource(it.drawableId) }
+fun skinPainter(slot: SkinSlot): Painter? =
+    skinBitmap(slot)?.let { BitmapPainter(it.bitmap) }
+        ?: skinArt(slot)?.let { painterResource(it.drawableId) }
 
 /** Transparent overlay for a named wallpaper/deck backdrop; no-op for an empty slot. */
 @Composable
 fun Modifier.skinBackdrop(slot: SkinSlot): Modifier {
     // Background decoration is optional on low-RAM and reduced-effects devices.
     if (!LocalGlassEffects.current.blur) return this
-    val resource = skinArt(slot) ?: return this
+    val painter = skinPainter(slot) ?: return this
+    val alpha = skinBitmap(slot)?.alpha ?: skinArt(slot)?.alpha ?: 1f
     return paint(
-        painter = painterResource(resource.drawableId),
+        painter = painter,
         sizeToIntrinsics = false, // Never let artwork dimensions change the layout geometry.
         contentScale = ContentScale.Crop,
-        alpha = resource.alpha
+        alpha = alpha
     )
 }
 
 /** Use for replaceable, purely decorative noninteractive illustrations. */
 @Composable
 fun SkinImage(slot: SkinSlot, modifier: Modifier = Modifier, contentScale: ContentScale = ContentScale.Fit) {
-    val resource = skinArt(slot) ?: return
+    val painter = skinPainter(slot) ?: return
+    val alpha = skinBitmap(slot)?.alpha ?: skinArt(slot)?.alpha ?: 1f
     Image(
-        painter = painterResource(resource.drawableId),
+        painter = painter,
         contentDescription = null,
         modifier = modifier,
         contentScale = contentScale,
-        alpha = resource.alpha
+        alpha = alpha
     )
 }

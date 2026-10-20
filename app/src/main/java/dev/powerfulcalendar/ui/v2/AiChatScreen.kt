@@ -129,9 +129,15 @@ fun AiChatScreen(
                             )
                         ) {
                             Column(Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
-                                Text(if (mine) "我" else "PowerCal AI",
+                                Row(verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                                    if (!mine && skinPainter(SkinSlot.AI_AVATAR) != null) {
+                                        SkinImage(SkinSlot.AI_AVATAR, Modifier.size(19.dp))
+                                    }
+                                    Text(if (mine) "我" else "PowerCal AI",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
                                 Text(msg.content,
                                     style = MaterialTheme.typography.bodyMedium,
                                     maxLines = 75,

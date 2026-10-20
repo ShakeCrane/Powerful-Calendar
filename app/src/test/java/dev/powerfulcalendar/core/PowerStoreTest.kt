@@ -14,7 +14,9 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import dev.powerfulcalendar.interop.IcsCodec
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.util.UUID
 
@@ -86,6 +88,38 @@ class PowerStoreTest {
         assertEquals("最后一个字：好", reopened.form.title)
         assertEquals(1L, reopened.draftVersion)
         assertEquals(card.eventSeq, reopened.eventSeq)
+    }
+
+    @Test
+    fun indefiniteIcsSeriesUsesOnePermanentEventIdentityForAllOccurrences() {
+        val text = listOf(
+            "BEGIN:VCALENDAR", "BEGIN:VEVENT",
+            "DTSTART:20261019T100000Z", "DTEND:20261019T110000Z",
+            "SUMMARY:Weekly Research", "RRULE:FREQ=WEEKLY",
+            "END:VEVENT", "END:VCALENDAR"
+        ).joinToString("\r\n")
+        val imported = IcsCodec.parse(text)
+        assertTrue(imported.warnings.toString(), imported.warnings.isEmpty())
+        assertEquals(1, imported.series.size)
+        val card = store.newDraft(imported.series.single().form)
+        val committed = commit(card)
+        assertTrue(committed is PowerStore.CommitOutcome.Committed)
+        assertEquals(card.eventSeq, (committed as PowerStore.CommitOutcome.Committed).eventSeq)
+        assertEquals(1L, store.identityCount())
+        assertEquals(2L, store.nextSequencePreview())
+        assertEquals(1, store.all().size)
+        val record = store.get(card.eventSeq)!!
+        assertNull(record.recurrence.count)
+        assertNull(record.recurrence.untilMillis)
+        val start = LocalDate.of(2026, 10, 19).atStartOfDay(ZoneId.of("UTC"))
+            .toInstant().toEpochMilli()
+        val end = LocalDate.of(2027, 1, 19).atStartOfDay(ZoneId.of("UTC"))
+            .toInstant().toEpochMilli()
+        val occurrences = RecurrenceEngine.occurrences(record, start, end, 80)
+        assertTrue("Window should contain many occurrences", occurrences.size > 10)
+        assertEquals(occurrences.size, occurrences.map { it.key }.toSet().size)
+        assertEquals(1L, store.identityCount())
+        assertEquals(2L, store.nextSequencePreview())
     }
 
     @Test

@@ -38,6 +38,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -153,6 +154,10 @@ fun PowerCalApp(store: PowerStore) {
     val scope = rememberCoroutineScope()
     val controller = remember(store) { DeckController(StoreDeckPersistence(store)) }
     val effects = LocalGlassEffects.current
+    val skins = remember(appContext) { SkinPackageManager(appContext) }
+    var skinChoices by remember { mutableStateOf(skins.installed()) }
+    var selectedSkin by remember { mutableStateOf(skins.currentId()) }
+    var skinToDelete by remember { mutableStateOf<InstalledSkin?>(null) }
 
     var page by rememberSaveable { mutableStateOf(Page.TIMELINE.name) }
     var records by remember { mutableStateOf<List<TemporalRecord>>(emptyList()) }
@@ -513,51 +518,49 @@ fun PowerCalApp(store: PowerStore) {
                 message = "ICS 未导入：包含 ${parsed.warnings.size} 项无法安全解析的内容。首项：${parsed.warnings.first().take(180)}"
                 return
             }
-            if (parsed.events.isEmpty()) {
-                message = "文件里没有可导入的事件"
+            if (parsed.events.isEmpty() && parsed.series.isEmpty()) {
+                message = "文件里没有可导入的单次事件或重复系列"
                 return
             }
-            require(parsed.events.size <= 300) { "一次最多预览 300 条日程，请先拆分文件" }
+            // The quota counts SERIES, never occurrences. An infinite RRULE is one card.
+            require(parsed.events.size + parsed.series.size <= 300) {
+                "一次最多预览 300 个单次事件/重复系列，请先拆分文件"
+            }
             val result = withContext(Dispatchers.IO) {
                 // Exact title/start/end comparison is only an import guard, not a promise
                 // of cross-device identity or a substitute for permanent invocation receipts.
-                val key: (String, Long, Long) -> Triple<String, Long, Long> =
-                    { title, start, end -> Triple(title.trim(), start, end) }
-                val known = store.all().mapNotNull { record ->
-                    if (record.kind == TemporalKind.ACTIVITY && record.startMillis != null && record.endMillis != null) {
-                        key(record.title, record.startMillis, record.endMillis)
-                    } else null
-                }.toMutableSet()
-                val pending = store.pendingDrafts()
-                pending.forEach { card ->
-                    if (card.operation == DraftOperation.CREATE && card.form.kind == TemporalKind.ACTIVITY) {
-                        val start = runCatching { java.time.LocalDateTime.parse(card.form.startText.replace(" ", "T")).atZone(zone).toInstant().toEpochMilli() }.getOrNull()
-                        val end = runCatching { java.time.LocalDateTime.parse(card.form.endText.replace(" ", "T")).atZone(zone).toInstant().toEpochMilli() }.getOrNull()
-                        if (start != null && end != null) known += key(card.form.title, start, end)
-                    }
-                }
+                fun identity(form: DraftForm): List<Any?> = listOf(
+                    form.kind, form.title.trim(), form.parseStart(), form.parseEnd(),
+                    form.parseDeadline(), form.recurrence, form.zoneId
+                )
+                val known = (
+                    store.all().map { DraftForm.from(it) } +
+                        store.pendingDrafts().filter { it.operation == DraftOperation.CREATE }
+                            .map { it.form }
+                    ).map(::identity).toMutableSet()
                 var duplicated = 0
-                val forms = parsed.events.mapNotNull { event ->
-                    if (!known.add(key(event.title, event.startMillis, event.endMillis))) {
-                        duplicated++
-                        null
-                    } else DraftForm(
+                val singletonForms = parsed.events.map { event ->
+                    DraftForm(
                         kind = TemporalKind.ACTIVITY,
                         title = event.title,
                         startText = DraftForm.formatInstant(event.startMillis, zone),
                         endText = DraftForm.formatInstant(event.endMillis, zone),
-                        notes = event.notes,
-                        location = event.location,
-                        source = "ics",
-                        zoneId = zone.id
+                        notes = event.notes, location = event.location,
+                        reminderMinutes = event.reminderMinutes,
+                        source = "ics", zoneId = zone.id
                     )
+                }
+                // Each series is represented by ONE DraftForm -> ONE allocated eventSeq.
+                val forms = (singletonForms + parsed.series.map { it.form }).filter { form ->
+                    if (known.add(identity(form))) true
+                    else { duplicated++; false }
                 }
                 val created = forms.map { form -> store.newDraft(form, actor = "user") }
                 created to duplicated
             }
             reload()
             result.first.firstOrNull()?.let { openDeckAt(it.draftId) }
-            message = "ICS 已生成 ${result.first.size} 张待确认草稿；按标题及起止时间跳过 ${result.second} 条疑似重复。没有发布正式日程。"
+            message = "ICS 已生成 ${result.first.size} 张待确认草稿（其中 ${parsed.series.size} 个重复系列，每系列仅占一个序号）；跳过 ${result.second} 条疑似重复。尚未正式发布。"
         } catch (error: Exception) {
             message = "ICS 预览失败：" + (error.message ?: "未知错误") + "；请检查待处理是否有已生成草稿"
         }
@@ -622,6 +625,38 @@ fun PowerCalApp(store: PowerStore) {
             }
         }
     }
+    val importSkin = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) scope.launch {
+            runCatching { withContext(Dispatchers.IO) { skins.install(uri) } }
+                .onSuccess { result ->
+                    runCatching { skins.select(result.id) }
+                        .onSuccess {
+                            selectedSkin = result.id
+                            skinChoices = skins.installed()
+                            message = "皮肤已校验、导入并启用：" + result.name
+                        }
+                        .onFailure { error ->
+                            message = "皮肤已导入但无法启用：" + error.message
+                        }
+                }
+                .onFailure { error ->
+                    message = "皮肤导入已拒绝：" + (error.message ?: "未知错误") +
+                        "。原生主题保持不变。"
+                }
+        }
+    }
+    val exportOriginalSkin = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/zip")
+    ) { uri ->
+        if (uri != null) scope.launch {
+            runCatching { withContext(Dispatchers.IO) { skins.exportOriginal(uri) } }
+                .onSuccess { message = "PowerCal 原生玻璃皮肤模板已导出，可交给 Claude 修改" }
+                .onFailure { error -> message = "导出皮肤模板失败：" + error.message }
+        }
+    }
+
     val exportIcs = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("text/calendar")
     ) { uri ->
@@ -751,6 +786,23 @@ fun PowerCalApp(store: PowerStore) {
                 aiLocked = aiLocked,
                 aiSession = aiSession,
                 effects = effects,
+                skinChoices = skinChoices,
+                selectedSkin = selectedSkin,
+                onSelectSkin = { id ->
+                    runCatching { skins.select(id) }
+                        .onSuccess {
+                            selectedSkin = id
+                            message = "已切换皮肤：" + skinChoices.firstOrNull { it.id == id }?.name
+                        }
+                        .onFailure { error -> message = "无法切换皮肤：" + error.message }
+                },
+                onImportSkin = {
+                    importSkin.launch(arrayOf("application/zip", "application/octet-stream", "*/*"))
+                },
+                onExportOriginalSkin = { exportOriginalSkin.launch("PowerCal-Original.pcskin") },
+                onDeleteSkin = { id ->
+                    skinToDelete = skinChoices.firstOrNull { it.id == id && !it.builtIn }
+                },
                 onBack = {
                     page = Page.TIMELINE.name
                     scope.launch { reload() }
@@ -955,7 +1007,11 @@ fun PowerCalApp(store: PowerStore) {
             NavigationBarItem(
                 selected = page == Page.TOOLS.name,
                 onClick = { page = Page.TOOLS.name },
-                icon = { Icon(Icons.Default.Settings, contentDescription = null) },
+                icon = {
+                    if (skinPainter(SkinSlot.SETTINGS_ICON) != null) {
+                        SkinImage(SkinSlot.SETTINGS_ICON, Modifier.size(24.dp))
+                    } else Icon(Icons.Default.Settings, contentDescription = null)
+                },
                 label = { Text("设置") }
             )
         }
@@ -1045,6 +1101,27 @@ fun PowerCalApp(store: PowerStore) {
         )
     }
 
+    skinToDelete?.let { item ->
+        AlertDialog(
+            onDismissRequest = { skinToDelete = null },
+            title = { Text("删除皮肤？") },
+            text = { Text("确认删除“" + item.name + "”？此操作仅删除皮肤素材，日历事件不会改变。") },
+            confirmButton = {
+                TextButton(onClick = {
+                    skinToDelete = null
+                    runCatching { skins.delete(item.id) }
+                        .onSuccess {
+                            selectedSkin = skins.currentId()
+                            skinChoices = skins.installed()
+                            message = "已删除皮肤：" + item.name
+                        }
+                        .onFailure { error -> message = "删除皮肤失败：" + error.message }
+                }) { Text("确认删除") }
+            },
+            dismissButton = { TextButton(onClick = { skinToDelete = null }) { Text("取消") } }
+        )
+    }
+
     selectedFormalEvent?.let { record ->
         fun choose(operation: DraftOperation) {
             selectedFormalEvent = null
@@ -1102,8 +1179,9 @@ fun PowerCalApp(store: PowerStore) {
                     Text("本地提取，不会自动发布。发送给 AI 前请确认文本没有敏感信息，文件中的指令不会被执行。",
                         style = MaterialTheme.typography.bodySmall)
                     if (ics) Text(
-                        "ICS 本地预检：可解析 " + (parsed?.events?.size ?: 0) +
-                            " 项；需要澄清 " + (parsed?.warnings?.size ?: 0) + " 项。" +
+                        "ICS 本地预检：单次 " + (parsed?.events?.size ?: 0) +
+                            " 条、重复系列 " + (parsed?.series?.size ?: 0) +
+                            " 个；需要澄清 " + (parsed?.warnings?.size ?: 0) + " 项。" +
                             (parsed?.warnings?.firstOrNull()?.let { "\n例如：$it" } ?: ""),
                         style = MaterialTheme.typography.bodySmall
                     )
@@ -1134,7 +1212,8 @@ fun PowerCalApp(store: PowerStore) {
             dismissButton = {
                 Row {
                     if (ics && !evidence.truncated && parsed != null &&
-                        parsed.events.isNotEmpty() && parsed.warnings.isEmpty()) {
+                        (parsed.events.isNotEmpty() || parsed.series.isNotEmpty()) &&
+                        parsed.warnings.isEmpty()) {
                         TextButton(onClick = {
                             pendingFileReview = null
                             scope.launch { importIcs(uri) }
@@ -1349,6 +1428,12 @@ private fun ToolsPage(
     aiLocked: Boolean,
     aiSession: PowerStore.AiSession?,
     effects: GlassEffects,
+    skinChoices: List<InstalledSkin>,
+    selectedSkin: String,
+    onSelectSkin: (String) -> Unit,
+    onImportSkin: () -> Unit,
+    onExportOriginalSkin: () -> Unit,
+    onDeleteSkin: (String) -> Unit,
     onBack: () -> Unit,
     onOpenDeck: () -> Unit,
     onImportIcs: () -> Unit,
@@ -1492,6 +1577,31 @@ private fun ToolsPage(
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
 
+        SectionCard("皮肤", "支持独立 .pcskin 包、即时切换、重启保留；原生主题始终可用") {
+            skinChoices.forEach { item ->
+                Row(verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()) {
+                    FilterChip(
+                        selected = selectedSkin == item.id,
+                        onClick = { onSelectSkin(item.id) },
+                        label = { Text(item.name, maxLines = 1) }
+                    )
+                    Spacer(Modifier.weight(1f))
+                    if (!item.builtIn) {
+                        TextButton(onClick = { onDeleteSkin(item.id) }) { Text("删除") }
+                    }
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onImportSkin) { Text("导入皮肤包") }
+                TextButton(onClick = onExportOriginalSkin) { Text("导出原生皮肤") }
+            }
+            Text("仅加载受校验的 JSON 与 PNG/WebP。字体缩放、颜色、圆角、时间标记线宽和装饰素材可配置；不执行外部脚本。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+
         SectionCard("导入", "仅保留系统级来源，其他文件请从 AI 助手 ＋ 添加") {
             ToolRow("从系统日历一次性导入", "读取过去 30 天与未来一年；不是双向同步", onImportSystem, enabled = !aiLocked)
             ToolRow("从旧版 PowerCal 迁移", "只读旧数据库，保留原文件", onMigrateLegacy, enabled = !aiLocked)
@@ -1576,7 +1686,7 @@ private fun ToolsPage(
 private fun SectionCard(title: String, subtitle: String, content: @Composable () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-        shape = GlassShapes.card,
+        shape = skinCardShape(),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerLow
         ),

@@ -329,7 +329,7 @@ private fun DeckHeader(
     onClose: () -> Unit,
     onCancelAi: () -> Unit
 ) {
-    Surface(shape = GlassShapes.bar, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.97f)) {
+    Surface(shape = skinBarShape(), color = MaterialTheme.colorScheme.surface.copy(alpha = 0.97f)) {
     Row(
         Modifier.fillMaxWidth().padding(start = 14.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -509,7 +509,7 @@ private fun FanStack(
                     .scale(1f - layer * 0.045f)
                     .rotate(rotation)
                     .alpha(0.55f - layer * 0.12f),
-                shape = GlassShapes.card,
+                shape = skinCardShape(),
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
             ) { Box(Modifier.fillMaxSize()) }
@@ -523,7 +523,7 @@ private fun FanStack(
                 .onGloballyPositioned { origin = it.positionInRoot() }
                 .graphicsLayer { translationX = displacement }
                 .cardSwipe(regions, { origin }, { x, active -> drag = x.coerceIn(-24f, 24f); dragging = active }, onNext, onPrevious),
-            shape = GlassShapes.card,
+            shape = skinCardShape(),
             color = MaterialTheme.colorScheme.surface.copy(alpha = 0.97f),
             tonalElevation = 0.dp,
             shadowElevation = if (LocalGlassEffects.current.blur) 3.dp else 0.dp,
@@ -1062,7 +1062,7 @@ private fun TimeRow(
 private fun EmptyDeckCard(onClose: () -> Unit) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = GlassShapes.card,
+        shape = skinCardShape(),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
         tonalElevation = 6.dp
     ) {
@@ -1086,7 +1086,7 @@ private fun EmptyDeckCard(onClose: () -> Unit) {
 private fun AiHoldCard(session: PowerStore.AiSession?, onCancel: () -> Unit, onClose: () -> Unit) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = GlassShapes.card,
+        shape = skinCardShape(),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
         tonalElevation = 6.dp
     ) {
@@ -1144,7 +1144,7 @@ private fun CompletionCard(
         modifier = Modifier.fillMaxWidth()
             .scale(if (animated) scale else 1f)
             .alpha(if (animated) alpha else 1f),
-        shape = GlassShapes.card,
+        shape = skinCardShape(),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.97f),
         tonalElevation = 10.dp,
         shadowElevation = 3.dp
@@ -1162,7 +1162,7 @@ private fun CompletionCard(
                     ),
                 contentAlignment = Alignment.Center
             ) {
-                if (skinArt(SkinSlot.COMPLETION_EMBLEM) != null) {
+                if (skinPainter(SkinSlot.COMPLETION_EMBLEM) != null) {
                     SkinImage(SkinSlot.COMPLETION_EMBLEM, Modifier.size(46.dp))
                 } else {
                     Icon(

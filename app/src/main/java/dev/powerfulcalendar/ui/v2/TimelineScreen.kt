@@ -266,6 +266,9 @@ fun TimelineScreen(
                             } else {
                             Row(Modifier.fillMaxSize().padding(8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Box(Modifier.width(3.dp).fillMaxHeight().background(kindColor(item.record.kind), RoundedCornerShape(2.dp)))
+                                if (skinPainter(SkinSlot.ACTIVITY_BADGE) != null && cardHeight >= 75.dp) {
+                                    SkinImage(SkinSlot.ACTIVITY_BADGE, Modifier.size(20.dp))
+                                }
                                 Column(Modifier.weight(1f)) {
                                     Text(item.record.title, style = MaterialTheme.typography.labelLarge, maxLines = if (cardHeight > 110.dp) 3 else 1, overflow = TextOverflow.Ellipsis)
                                     Text(TemporalText.summarize(item.record), style = MaterialTheme.typography.labelSmall, color = kindColor(item.record.kind), maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -335,6 +338,10 @@ private fun AxisPointMarker(record: TemporalRecord, occurrenceMillis: Long, zone
     Column(Modifier.fillMaxSize()) {
         if (record.kind == TemporalKind.DEADLINE) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.BottomStart) {
+                if (skinPainter(SkinSlot.DEADLINE_MARKER) != null) {
+                    SkinImage(SkinSlot.DEADLINE_MARKER,
+                        Modifier.align(Alignment.TopEnd).size(18.dp))
+                }
                 Text(
                     label,
                     style = MaterialTheme.typography.labelMedium,
@@ -344,15 +351,21 @@ private fun AxisPointMarker(record: TemporalRecord, occurrenceMillis: Long, zone
                 )
             }
         }
-        HorizontalDivider(color = color, thickness = 2.dp)
+        HorizontalDivider(color = color, thickness = LocalSkinVisual.current.pointLineDp.dp)
         if (record.kind == TemporalKind.ALARM) {
-            Text(
-                label,
-                style = MaterialTheme.typography.labelMedium,
-                color = color,
-                modifier = Modifier.padding(top = 5.dp),
-                maxLines = 2, overflow = TextOverflow.Ellipsis
-            )
+            Row(verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (skinPainter(SkinSlot.ALARM_MARKER) != null) {
+                    SkinImage(SkinSlot.ALARM_MARKER, Modifier.size(18.dp))
+                }
+                Text(
+                    label,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = color,
+                    modifier = Modifier.padding(top = 5.dp),
+                    maxLines = 2, overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
 }

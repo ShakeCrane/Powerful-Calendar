@@ -8,6 +8,7 @@ import dev.powerfulcalendar.reminders.ReminderScheduler
 import dev.powerfulcalendar.ui.v2.PowerCalApp
 import dev.powerfulcalendar.ui.v2.PowerCalStores
 import dev.powerfulcalendar.ui.v2.PowerCalTheme
+import dev.powerfulcalendar.ui.v2.SkinPackageManager
 import dev.powerfulcalendar.ui.v2.rememberSystemGlassEffects
 
 /**
@@ -21,6 +22,8 @@ class MainActivity : ComponentActivity() {
 
         ReminderScheduler.ensureChannels(this)
         val store = PowerCalStores.get(applicationContext)
+        // Restore only pre-validated, data-only presentation; corrupt packages fail to default.
+        SkinPackageManager(applicationContext).restoreSelection()
 
         setContent {
             PowerCalTheme(effects = rememberSystemGlassEffects()) {
