@@ -35,8 +35,9 @@ object IcsCodec {
                             val allDay = startField.first.contains("VALUE=DATE") ||
                                 (startField.second.length == 8)
                             val start = parseDate(startField.first, startField.second)
+                            // A missing end has no safe duration. Reject instead of inventing 1h.
                             val end = endField?.let { parseDate(it.first, it.second) }
-                                ?: start + if (allDay) 86_400_000L else 3_600_000L
+                                ?: error("缺少 DTEND；不能猜测持续时间")
                             val uid = fields["UID"]?.second
                             val title = decode(fields["SUMMARY"]?.second ?: "未命名事件")
                             val priority = when (fields["PRIORITY"]?.second?.toIntOrNull()) {
@@ -46,12 +47,13 @@ object IcsCodec {
                                 else -> Priority.NORMAL
                             }
                             if ("RRULE" in fields || "RECURRENCE-ID" in fields) {
-                                warnings.add("重复日程「" + title + "」仅导入当前 VEVENT，尚不支持 RRULE 展开")
+                                error("重复日程「" + title + "」需要 RRULE/RECURRENCE-ID 展开，本版不支持")
                             }
+                            require(end > start) { "DTEND 不得早于或等于 DTSTART" }
                             events.add(CalendarEvent(
                                 title = title,
                                 startMillis = start,
-                                endMillis = end.coerceAtLeast(start + 60_000L),
+                                endMillis = end,
                                 notes = decode(fields["DESCRIPTION"]?.second ?: ""),
                                 location = decode(fields["LOCATION"]?.second ?: ""),
                                 priority = priority,
@@ -83,7 +85,7 @@ object IcsCodec {
         val tzid = key.split(';').firstOrNull { it.startsWith("TZID=", true) }
             ?.substringAfter('=')?.trim('"')
         val zone = tzid?.let {
-            try { ZoneId.of(it) } catch (_: Exception) { ZoneId.systemDefault() }
+            try { ZoneId.of(it) } catch (_: Exception) { error("未知 TZID：$it") }
         } ?: ZoneId.systemDefault()
         if (dateOnly) return LocalDate.parse(input.take(8), dateFormat)
             .atStartOfDay(zone).toInstant().toEpochMilli()

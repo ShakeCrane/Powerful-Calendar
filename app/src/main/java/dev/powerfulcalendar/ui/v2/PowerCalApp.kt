@@ -155,11 +155,13 @@ fun PowerCalApp(store: PowerStore) {
     var deckOpen by rememberSaveable { mutableStateOf(false) }
     var deckInitialId by rememberSaveable { mutableStateOf<Long?>(null) }
     var textDialogOpen by remember { mutableStateOf(false) }
+    var ocrReviewText by remember { mutableStateOf<String?>(null) }
     var aiBusy by remember { mutableStateOf(false) }
     var confirmBatch by remember { mutableStateOf<BatchReview?>(null) }
     var pendingCards by remember { mutableStateOf<List<dev.powerfulcalendar.core.DraftCard>>(emptyList()) }
     var diagnostics by remember { mutableStateOf(UiDiagnostics()) }
     var monthInspection by remember { mutableStateOf<TemporalRecord?>(null) }
+    var selectedFormalEvent by remember { mutableStateOf<TemporalRecord?>(null) }
     var confirmingLegacy by remember { mutableStateOf(false) }
     // Holds an early flat v2 file until the user explicitly accepts its unverified nature.
     var legacyRestoreText by remember { mutableStateOf<String?>(null) }
@@ -304,8 +306,11 @@ fun PowerCalApp(store: PowerStore) {
         val form = DraftForm(
             kind = TemporalKind.ACTIVITY,
             title = event.title,
-            startText = DraftForm.formatInstant(event.startMillis, zone),
-            endText = DraftForm.formatInstant(event.endMillis, zone),
+            startText = if (parsed.hasExplicitDate && parsed.hasUnambiguousTime) {
+                DraftForm.formatInstant(event.startMillis, zone)
+            } else "",
+            // An arbitrary 1-hour default must not look like a confirmed appointment duration.
+            endText = "",
             notes = ("原始文本：" + text.trim()).take(800),
             source = source,
             zoneId = zone.id
@@ -325,36 +330,74 @@ fun PowerCalApp(store: PowerStore) {
 
     suspend fun importIcs(uri: Uri) {
         try {
+            // A file provider may stream arbitrary input. Bound memory before parsing.
             val text = withContext(Dispatchers.IO) {
-                appContext.contentResolver.openInputStream(uri)
-                    ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+                appContext.contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { reader ->
+                    val output = StringBuilder()
+                    val chunk = CharArray(8192)
+                    while (true) {
+                        val count = reader.read(chunk)
+                        if (count < 0) break
+                        require(output.length + count <= 2_000_000) { "ICS 文件超过 200 万字符上限" }
+                        output.append(chunk, 0, count)
+                    }
+                    output.toString()
+                }
             } ?: error("无法读取所选文件")
             val parsed = IcsCodec.parse(text)
+            // A partial ICS import is worse than a clear refusal: RRULE, unsupported TZID,
+            // missing DTEND and invalid VEVENTs must not silently lose calendar occurrences.
+            if (parsed.warnings.isNotEmpty()) {
+                message = "ICS 未导入：包含 ${parsed.warnings.size} 项无法安全解析的内容。首项：${parsed.warnings.first().take(180)}"
+                return
+            }
             if (parsed.events.isEmpty()) {
                 message = "文件里没有可导入的事件"
                 return
             }
-            val batchId = withContext(Dispatchers.IO) { store.beginMigration("ics") }
-            var imported = 0
-            var skipped = 0
-            withContext(Dispatchers.IO) {
-                parsed.events.forEach { event ->
-                    val record = event.toRecord()
-                    val external = event.externalId ?: UUID.randomUUID().toString()
-                    when (store.importStructured(record, external, batchId, "ics")) {
-                        is PowerStore.ImportOutcome.Imported -> imported++
-                        else -> skipped++
+            require(parsed.events.size <= 300) { "一次最多预览 300 条日程，请先拆分文件" }
+            val result = withContext(Dispatchers.IO) {
+                // Exact title/start/end comparison is only an import guard, not a promise
+                // of cross-device identity or a substitute for permanent invocation receipts.
+                val key: (String, Long, Long) -> Triple<String, Long, Long> =
+                    { title, start, end -> Triple(title.trim(), start, end) }
+                val known = store.all().mapNotNull { record ->
+                    if (record.kind == TemporalKind.ACTIVITY && record.startMillis != null && record.endMillis != null) {
+                        key(record.title, record.startMillis, record.endMillis)
+                    } else null
+                }.toMutableSet()
+                val pending = store.pendingDrafts()
+                pending.forEach { card ->
+                    if (card.operation == DraftOperation.CREATE && card.form.kind == TemporalKind.ACTIVITY) {
+                        val start = runCatching { java.time.LocalDateTime.parse(card.form.startText.replace(" ", "T")).atZone(zone).toInstant().toEpochMilli() }.getOrNull()
+                        val end = runCatching { java.time.LocalDateTime.parse(card.form.endText.replace(" ", "T")).atZone(zone).toInstant().toEpochMilli() }.getOrNull()
+                        if (start != null && end != null) known += key(card.form.title, start, end)
                     }
                 }
-                store.finishMigration(batchId, parsed.warnings.take(30))
+                var duplicated = 0
+                val forms = parsed.events.mapNotNull { event ->
+                    if (!known.add(key(event.title, event.startMillis, event.endMillis))) {
+                        duplicated++
+                        null
+                    } else DraftForm(
+                        kind = TemporalKind.ACTIVITY,
+                        title = event.title,
+                        startText = DraftForm.formatInstant(event.startMillis, zone),
+                        endText = DraftForm.formatInstant(event.endMillis, zone),
+                        notes = event.notes,
+                        location = event.location,
+                        source = "ics",
+                        zoneId = zone.id
+                    )
+                }
+                val created = forms.map { form -> store.newDraft(form, actor = "user") }
+                created to duplicated
             }
             reload()
-            reconcile()
-            message = "ICS 导入 $imported 条" +
-                (if (skipped > 0) "，跳过 $skipped 条重复或无效记录" else "") +
-                (if (parsed.warnings.isEmpty()) "" else "；${parsed.warnings.first()}")
+            result.first.firstOrNull()?.let { openDeckAt(it.draftId) }
+            message = "ICS 已生成 ${result.first.size} 张待确认草稿；按标题及起止时间跳过 ${result.second} 条疑似重复。没有发布正式日程。"
         } catch (error: Exception) {
-            message = "ICS 导入失败：" + (error.message ?: "未知错误")
+            message = "ICS 预览失败：" + (error.message ?: "未知错误") + "；请检查待处理是否有已生成草稿"
         }
     }
 
@@ -497,7 +540,8 @@ fun PowerCalApp(store: PowerStore) {
                         if (result.text.isBlank()) {
                             message = "没有识别到文字，可以手动输入"
                         } else {
-                            scope.launch { createDraftFromText(result.text, "ocr") }
+                            // OCR is evidence, not authorization to create records.
+                            ocrReviewText = result.text
                         }
                     }
                     .addOnFailureListener { message = "OCR 失败：" + it.message }
@@ -646,10 +690,7 @@ fun PowerCalApp(store: PowerStore) {
                 onBack = { page = Page.TIMELINE.name },
                 onDate = { date -> anchorMillis = date.atTime(12, 0).atZone(zone).toInstant().toEpochMilli(); page = Page.TIMELINE.name },
                 onOpen = { record ->
-                    if (aiLocked) monthInspection = record else scope.launch {
-                        runCatching { withContext(Dispatchers.IO) { store.pendingDraftsFor(record.eventSeq).firstOrNull { it.operation == DraftOperation.REPLACE || it.operation == DraftOperation.CONVERT } ?: store.proposeReplace(record.eventSeq) } }
-                            .onSuccess { reload(); openDeckAt(it.draftId) }.onFailure { message = it.message ?: "无法打开事件" }
-                    }
+                    if (aiLocked) monthInspection = record else selectedFormalEvent = record
                 },
                 onCreate = { date -> scope.launch {
                     runCatching { withContext(Dispatchers.IO) { store.newDraft(DraftForm.fresh(TemporalKind.ACTIVITY, date, zone)) } }
@@ -668,21 +709,7 @@ fun PowerCalApp(store: PowerStore) {
                     hours = updated.hours
                 },
                 onOpenEvent = { record ->
-                    scope.launch {
-                        runCatching {
-                            withContext(Dispatchers.IO) {
-                                store.pendingDraftsFor(record.eventSeq).firstOrNull {
-                                    it.operation == DraftOperation.REPLACE ||
-                                        it.operation == DraftOperation.CONVERT
-                                } ?: store.proposeReplace(record.eventSeq)
-                            }
-                        }.onSuccess { card ->
-                            reload()
-                            openDeckAt(card.draftId)
-                        }.onFailure {
-                            message = it.message ?: "无法打开事件编辑"
-                        }
-                    }
+                    if (aiLocked) monthInspection = record else selectedFormalEvent = record
                 },
                 onMoveEvent = { record, target ->
                     if (record.recurrence.isRepeating) {
@@ -727,7 +754,10 @@ fun PowerCalApp(store: PowerStore) {
                 },
                 onToday = {
                     nowMillis = System.currentTimeMillis()
-                    anchorMillis = nowMillis
+                    // Today means the entire local day, not a zoomed view around this minute.
+                    val today = TimelineCoordinate.initialCamera(nowMillis, zone)
+                    anchorMillis = today.anchorMillis
+                    hours = today.hours
                 },
                 onOpenDeck = { scope.launch { openDeckAt(null) } },
                 onOpenTools = {
@@ -820,6 +850,75 @@ fun PowerCalApp(store: PowerStore) {
                 textDialogOpen = false
                 scope.launch { createDraftFromText(text, "text") }
             }
+        )
+    }
+
+    selectedFormalEvent?.let { record ->
+        fun choose(operation: DraftOperation) {
+            selectedFormalEvent = null
+            scope.launch {
+                runCatching {
+                    withContext(Dispatchers.IO) {
+                        store.pendingDraftsFor(record.eventSeq)
+                            .firstOrNull { it.operation == operation && it.isActionable }
+                            ?: store.proposeReplace(record.eventSeq, operation)
+                    }
+                }.onSuccess { card ->
+                    reload()
+                    openDeckAt(card.draftId)
+                }.onFailure { error ->
+                    message = error.message ?: "无法创建${operation.label}提案"
+                }
+            }
+        }
+        AlertDialog(
+            onDismissRequest = { selectedFormalEvent = null },
+            title = { Text("正式事件 ${record.displaySeq()}") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(record.title, style = MaterialTheme.typography.titleMedium)
+                    Text(TemporalText.summarize(record))
+                    Text("编辑和删除都会先生成待确认草稿；取消草稿不会影响正式事件。",
+                        style = MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { choose(DraftOperation.REPLACE) }) { Text("编辑") }
+            },
+            dismissButton = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = { selectedFormalEvent = null }) { Text("返回") }
+                    TextButton(onClick = { choose(DraftOperation.DELETE) }) {
+                        Text("创建删除提案", color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            }
+        )
+    }
+
+    ocrReviewText?.let { extracted ->
+        AlertDialog(
+            onDismissRequest = { ocrReviewText = null },
+            title = { Text("核对 OCR 识别原文") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("请先修正识别错误。离线解析只生成草稿，缺少日期、时刻或结束时间时保持空白。",
+                        style = MaterialTheme.typography.bodySmall)
+                    OutlinedTextField(
+                        value = extracted,
+                        onValueChange = { ocrReviewText = it },
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 160.dp, max = 360.dp),
+                        label = { Text("识别原文（可编辑）") }
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = extracted.isNotBlank(), onClick = {
+                    ocrReviewText = null
+                    scope.launch { createDraftFromText(extracted, "ocr") }
+                }) { Text("生成待确认草稿") }
+            },
+            dismissButton = { TextButton(onClick = { ocrReviewText = null }) { Text("取消") } }
         )
     }
 

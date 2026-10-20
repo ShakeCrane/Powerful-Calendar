@@ -5,7 +5,12 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 
-data class ParsedText(val event: CalendarEvent, val note: String)
+data class ParsedText(
+    val event: CalendarEvent,
+    val note: String,
+    val hasExplicitDate: Boolean,
+    val hasUnambiguousTime: Boolean
+)
 
 object TextParser {
     // Deliberately small, deterministic Chinese parser: the user always reviews its output.
@@ -53,6 +58,9 @@ object TextParser {
             else -> hour
         }
         val validTime = hour != null && correctedHour in 0..23 && minute in 0..59
+        // A bare 3:00 is ambiguous in a calendar: preserve the source rather than silently
+        // selecting 03:00. 13:00 and an explicit period such as 下午3点 are unambiguous.
+        val unambiguousTime = validTime && (period.isNotBlank() || hour!! >= 13)
         val inferred = if (validTime) date.atTime(correctedHour, minute)
             else if (dateMatched) date.atTime(9, 0) else now.plusHours(1).withMinute(0).withSecond(0)
         val startDateTime = if (validTime && !dateMatched && inferred.isBefore(now)) inferred.plusDays(1) else inferred
@@ -67,11 +75,11 @@ object TextParser {
         val event = CalendarEvent(title = title, startMillis = start,
             endMillis = start + 3_600_000L)
         val note = when {
-            !dateMatched && !validTime -> "没有识别出日期或时间，请检查默认时间"
-            !validTime -> "未识别出具体时间，默认 09:00"
-            !dateMatched -> "未识别出日期，已选择今天或明天最近的对应时间"
-            else -> "已提取日期和时间，请确认后保存"
+            !dateMatched && !unambiguousTime -> "缺少明确日期和时间；原文已保留，请补全后发布"
+            !dateMatched -> "缺少明确日期；不会把推算的今天或明天填进草稿"
+            !unambiguousTime -> "时间缺失或上午/下午不明确；不会自动填写默认时间"
+            else -> "已识别开始时间；结束时间仍需确认，不会自动补一小时"
         }
-        return ParsedText(event, note)
+        return ParsedText(event, note, dateMatched, unambiguousTime)
     }
 }

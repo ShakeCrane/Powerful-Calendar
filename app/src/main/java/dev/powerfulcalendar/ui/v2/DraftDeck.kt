@@ -256,7 +256,9 @@ fun DraftDeckDialog(
                         // is attached and placed, rather than racing the dialog composition.
                         if (!focusPlaced) { focusPlaced = true; popupFocus.requestFocus() }
                     }
-                    .pointerInput(Unit) { detectTapGestures { } }, horizontalAlignment = Alignment.CenterHorizontally) {
+                    // Do not install a full-screen no-op tap detector here. It steals hits
+                    // from the actual backdrop and makes outside-tap-to-save impossible.
+                    , horizontalAlignment = Alignment.CenterHorizontally) {
                     DeckHeader(state.cards.size, state.aiLocked, aiSession, { leave() }, onCancelAiBatch)
                     if (state.aiLocked && !short && aiSession != null) AiProgressBanner(aiSession, state.cards.count { it.draftId in aiSession.scope }, onCancelAiBatch)
                     if (!short && state.completion == null) {
