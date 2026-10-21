@@ -1,3 +1,17 @@
+## Runtime-importable full UI skins (.pcskin v2)
+
+PowerCal now accepts **schemaVersion 2** skin ZIP files that define real Android Compose
+component trees, safe button intents, layout and per-node motion, plus page enter/exit
+transitions. Download the working Nebula Flux sample at
+[tools/skin-studio/examples/Nebula-Flux-v2.pcskin](tools/skin-studio/examples/Nebula-Flux-v2.pcskin).
+It can be installed into the upgraded Android APK; changing skins afterwards requires no
+rebuild. Existing v1 ZIPs are still supported.
+
+[Build your own v2 ZIP / protocol and security limits](docs/SKIN_PACK_V2.md).
+The browser Studio retains its v1 editor; v2 UI authoring uses an editable ui.json and
+the build-v2 CLI. Runtime component vocabulary is deliberately finite; advanced gesture
+drawing still uses the separately compiled Kotlin skin SDK.
+
 # Powerful Calendar (PowerCal)
 
 PowerCal 是一个 **Android-first、本地优先、AI 驱动的个人时间信息系统**。它把活动、闹钟时间点和截止日期管理为同一套可验证的时间对象，通过对话、文件、截图或手动操作完成创建、修改、批处理和提醒。用户数据以设备上的 PowerCal 数据库为权威来源。

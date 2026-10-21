@@ -18,7 +18,8 @@ import java.util.zip.ZipOutputStream
 data class InstalledSkin(val id: String, val name: String, val builtIn: Boolean = false)
 
 /**
- * Data-only PowerCal skin ZIP format v1. No code, scripts, native libraries or fonts are loaded.
+ * PowerCal skin ZIP v1/v2. v2 has a bounded declarative UI tree loaded at runtime.
+ * No code, scripts, native libraries or fonts are loaded.
  * Image pixels, uncompressed ZIP bytes and theme overrides are independently bounded.
  */
 class SkinPackageManager(private val context: Context) {
@@ -137,7 +138,7 @@ class SkinPackageManager(private val context: Context) {
             while (true) {
                 val e = zip.nextEntry ?: break
                 require(entries.size < 24) { "压缩包条目过多" }
-                require(!e.isDirectory && (e.name == "manifest.json" || IMAGE.matches(e.name))) {
+                require(!e.isDirectory && (e.name == "manifest.json" || e.name == UI_FILE || IMAGE.matches(e.name))) {
                     "皮肤包包含非法文件名：" + e.name.take(70)
                 }
                 require(!entries.containsKey(e.name)) { "压缩包路径重复" }
@@ -148,7 +149,7 @@ class SkinPackageManager(private val context: Context) {
                     if (n < 0) break
                     inflated += n
                     require(inflated <= 12_000_000 && dest.size() + n <=
-                        if (e.name == "manifest.json") 80_000 else 3_000_000) {
+                        if (e.name == "manifest.json") 80_000 else if (e.name == UI_FILE) 120_000 else 3_000_000) {
                         "压缩数据超过上限"
                     }
                     dest.write(buf, 0, n)
@@ -159,8 +160,18 @@ class SkinPackageManager(private val context: Context) {
         }
         val json = entries["manifest.json"]?.let { JSONObject(String(it, Charsets.UTF_8)) }
             ?: error("缺少 manifest.json")
-        require(json.optString("format") == FORMAT && json.optInt("schemaVersion") == 1) {
-            "皮肤包格式/版本不兼容"
+        val version = json.optInt("schemaVersion")
+        require(json.optString("format") == FORMAT && version in 1..2) {
+            "Unsupported skin package version"
+        }
+        val runtime = if (version == 2) {
+            require(json.optString("runtimeUi") == UI_FILE) { "v2 must declare ui.json" }
+            RuntimeSkinSchema.parse(entries[UI_FILE] ?: error("Missing ui.json"))
+        } else {
+            require(!entries.containsKey(UI_FILE) && !json.has("runtimeUi")) {
+                "v1 does not accept UI declarations"
+            }
+            null
         }
         val id = json.optString("id")
         val name = json.optString("name").trim()
@@ -177,10 +188,12 @@ class SkinPackageManager(private val context: Context) {
         val light = readImageList(json.optJSONObject("imagesLight"))
         val dark = readImageList(json.optJSONObject("imagesDark"))
         val paths = (light.values + dark.values).toSet()
-        require(entries.keys == paths + "manifest.json") { "皮肤包存在未声明资源或缺失的素材文件" }
+        val declared = paths + "manifest.json" + (if (version == 2) setOf(UI_FILE) else emptySet())
+        require(entries.keys == declared) { "Undeclared or missing skin resources" }
+        val secured = paths + (if (version == 2) setOf(UI_FILE) else emptySet())
         val hashes = json.optJSONObject("sha256") ?: JSONObject()
-        require(hashes.length() == paths.size) { "SHA-256 资源清单不完整" }
-        for (path in paths) {
+        require(hashes.length() == secured.size) { "Incomplete SHA256 manifest" }
+        for (path in secured) {
             val hash = hashes.optString(path)
             require(hash.matches(Regex("[a-fA-F0-9]{64}")) &&
                 digest(entries.getValue(path)).equals(hash, ignoreCase = true)) {
@@ -194,7 +207,7 @@ class SkinPackageManager(private val context: Context) {
                 decoded.getOrPut(path) { decodeImage(entries.getValue(path)) }
             }
         return Verified(name, PowerCalSkinPack(
-            key = id, visual = tokens,
+            key = id, visual = tokens, runtime = runtime,
             lightBitmaps = buildImages(light), darkBitmaps = buildImages(dark)
         ))
     }
@@ -264,6 +277,7 @@ class SkinPackageManager(private val context: Context) {
 
     companion object {
         private const val FORMAT = "powercal-skin"
+        private const val UI_FILE = "ui.json"
         private const val MAX_ARCHIVE = 10_000_000
         private val ID = Regex("[a-z0-9][a-z0-9_-]{2,47}")
         private val IMAGE = Regex("images/[a-z0-9_-]+[.](png|webp)")

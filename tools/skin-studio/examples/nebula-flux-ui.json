@@ -1,0 +1,503 @@
+{
+  "format": "powercal-runtime-ui",
+  "version": 1,
+  "transition": "slide-left",
+  "durationMs": 260,
+  "screens": {
+    "timeline": {
+      "type": "column",
+      "gap": 10,
+      "padding": 12,
+      "children": [
+        {
+          "type": "card",
+          "color": "surfaceContainerHigh",
+          "children": [
+            {
+              "type": "text",
+              "text": "NEBULA / DAILY COMMAND",
+              "motion": "slide-up"
+            },
+            {
+              "type": "text",
+              "text": "待办 {pending} · Memo {memo}",
+              "motion": "fade"
+            }
+          ]
+        },
+        {
+          "type": "row",
+          "gap": 8,
+          "children": [
+            {
+              "type": "button",
+              "text": "今天",
+              "action": "today"
+            },
+            {
+              "type": "button",
+              "text": "Memo",
+              "action": "memo"
+            },
+            {
+              "type": "button",
+              "text": "待办",
+              "action": "deck"
+            }
+          ]
+        },
+        {
+          "type": "row",
+          "gap": 8,
+          "children": [
+            {
+              "type": "button",
+              "text": "日历",
+              "action": "month"
+            },
+            {
+              "type": "button",
+              "text": "设置",
+              "action": "settings"
+            }
+          ]
+        },
+        {
+          "type": "row",
+          "gap": 8,
+          "children": [
+            {
+              "type": "button",
+              "text": "新建活动",
+              "action": "new-activity"
+            },
+            {
+              "type": "button",
+              "text": "新建提醒",
+              "action": "new-alarm"
+            }
+          ]
+        },
+        {
+          "type": "scroll",
+          "grow": true,
+          "gap": 10,
+          "children": [
+            {
+              "type": "text",
+              "text": "EVENT STREAM",
+              "motion": "none"
+            },
+            {
+              "type": "events",
+              "motion": "fade",
+              "durationMs": 270
+            }
+          ]
+        },
+        {
+          "type": "button",
+          "text": "查看完整原生页面",
+          "action": "native"
+        }
+      ]
+    },
+    "month": {
+      "type": "column",
+      "gap": 10,
+      "padding": 12,
+      "children": [
+        {
+          "type": "card",
+          "color": "surfaceContainerHigh",
+          "children": [
+            {
+              "type": "text",
+              "text": "LUNAR / MONTH",
+              "motion": "slide-up"
+            },
+            {
+              "type": "text",
+              "text": "日期 {date}",
+              "motion": "none"
+            }
+          ]
+        },
+        {
+          "type": "row",
+          "gap": 8,
+          "children": [
+            {
+              "type": "button",
+              "text": "返回",
+              "action": "back"
+            },
+            {
+              "type": "button",
+              "text": "新建活动",
+              "action": "new"
+            }
+          ]
+        },
+        {
+          "type": "scroll",
+          "grow": true,
+          "gap": 10,
+          "children": [
+            {
+              "type": "events"
+            }
+          ]
+        },
+        {
+          "type": "button",
+          "text": "查看完整原生页面",
+          "action": "native"
+        }
+      ]
+    },
+    "memo": {
+      "type": "column",
+      "gap": 10,
+      "padding": 12,
+      "children": [
+        {
+          "type": "card",
+          "color": "surfaceContainerHigh",
+          "children": [
+            {
+              "type": "text",
+              "text": "MEMO / TRACKER",
+              "motion": "slide-up"
+            },
+            {
+              "type": "text",
+              "text": "未完成 {count}",
+              "motion": "none"
+            }
+          ]
+        },
+        {
+          "type": "row",
+          "gap": 8,
+          "children": [
+            {
+              "type": "button",
+              "text": "返回",
+              "action": "back"
+            },
+            {
+              "type": "button",
+              "text": "新建 Memo",
+              "action": "new"
+            }
+          ]
+        },
+        {
+          "type": "scroll",
+          "grow": true,
+          "gap": 10,
+          "children": [
+            {
+              "type": "todos"
+            }
+          ]
+        },
+        {
+          "type": "button",
+          "text": "查看完整原生页面",
+          "action": "native"
+        }
+      ]
+    },
+    "ai": {
+      "type": "column",
+      "gap": 10,
+      "padding": 12,
+      "children": [
+        {
+          "type": "card",
+          "color": "surfaceContainerHigh",
+          "children": [
+            {
+              "type": "text",
+              "text": "SYNAPSE / CHAT",
+              "motion": "slide-up"
+            },
+            {
+              "type": "text",
+              "text": "待审草稿 {pending}",
+              "motion": "none"
+            }
+          ]
+        },
+        {
+          "type": "row",
+          "gap": 8,
+          "children": [
+            {
+              "type": "button",
+              "text": "AI 设置",
+              "action": "settings"
+            },
+            {
+              "type": "button",
+              "text": "附件",
+              "action": "pick-file"
+            },
+            {
+              "type": "button",
+              "text": "待办",
+              "action": "deck"
+            }
+          ]
+        },
+        {
+          "type": "scroll",
+          "grow": true,
+          "gap": 10,
+          "children": [
+            {
+              "type": "chats"
+            }
+          ]
+        },
+        {
+          "type": "chat-input"
+        },
+        {
+          "type": "button",
+          "text": "查看完整原生页面",
+          "action": "native"
+        }
+      ]
+    },
+    "settings": {
+      "type": "scroll",
+      "padding": 12,
+      "gap": 12,
+      "children": [
+        {
+          "type": "card",
+          "color": "surfaceContainerHigh",
+          "children": [
+            {
+              "type": "text",
+              "text": "CONTROL / SETTINGS",
+              "motion": "slide-up"
+            },
+            {
+              "type": "text",
+              "text": "待处理草稿 {pending}",
+              "motion": "none"
+            }
+          ]
+        },
+        {
+          "type": "row",
+          "gap": 8,
+          "children": [
+            {
+              "type": "button",
+              "text": "返回",
+              "action": "back"
+            },
+            {
+              "type": "button",
+              "text": "打开待办",
+              "action": "deck"
+            }
+          ]
+        },
+        {
+          "type": "skins"
+        },
+        {
+          "type": "row",
+          "gap": 8,
+          "children": [
+            {
+              "type": "button",
+              "text": "导入皮肤",
+              "action": "import-skin"
+            },
+            {
+              "type": "button",
+              "text": "导出模板",
+              "action": "export-skin"
+            }
+          ]
+        },
+        {
+          "type": "card",
+          "color": "surfaceContainerHigh",
+          "children": [
+            {
+              "type": "text",
+              "text": "LOCAL PROFILE",
+              "motion": "none"
+            },
+            {
+              "type": "profile"
+            }
+          ]
+        },
+        {
+          "type": "card",
+          "color": "surfaceContainerHigh",
+          "children": [
+            {
+              "type": "text",
+              "text": "SECURE AI",
+              "motion": "none"
+            },
+            {
+              "type": "credentials"
+            }
+          ]
+        },
+        {
+          "type": "row",
+          "gap": 8,
+          "children": [
+            {
+              "type": "button",
+              "text": "导出 ICS",
+              "action": "export-ics"
+            },
+            {
+              "type": "button",
+              "text": "备份",
+              "action": "export-backup"
+            }
+          ]
+        },
+        {
+          "type": "button",
+          "text": "恢复备份",
+          "action": "restore-backup"
+        },
+        {
+          "type": "button",
+          "text": "查看完整原生页面",
+          "action": "native"
+        }
+      ]
+    },
+    "deck": {
+      "type": "column",
+      "gap": 10,
+      "padding": 12,
+      "children": [
+        {
+          "type": "card",
+          "color": "surfaceContainerHigh",
+          "children": [
+            {
+              "type": "text",
+              "text": "DRAFT / ATELIER",
+              "motion": "slide-up"
+            },
+            {
+              "type": "text",
+              "text": "{title} · {count} 张草稿",
+              "motion": "none"
+            }
+          ]
+        },
+        {
+          "type": "deck-actions"
+        },
+        {
+          "type": "row",
+          "gap": 8,
+          "children": [
+            {
+              "type": "button",
+              "text": "提交草稿",
+              "action": "commit"
+            },
+            {
+              "type": "button",
+              "text": "关闭",
+              "action": "back"
+            }
+          ]
+        },
+        {
+          "type": "button",
+          "text": "查看完整原生页面",
+          "action": "native"
+        }
+      ]
+    },
+    "navigation": {
+      "type": "nav-items"
+    },
+    "overlay": {
+      "type": "card",
+      "color": "surfaceContainerHigh",
+      "children": [
+        {
+          "type": "overlay-title"
+        },
+        {
+          "type": "overlay-body"
+        },
+        {
+          "type": "row",
+          "gap": 8,
+          "children": [
+            {
+              "type": "overlay-dismiss"
+            },
+            {
+              "type": "overlay-confirm"
+            }
+          ]
+        },
+        {
+          "type": "window-content"
+        }
+      ]
+    },
+    "chrome": {
+      "type": "box",
+      "children": [
+        {
+          "type": "native"
+        }
+      ]
+    },
+    "picker": {
+      "type": "card",
+      "gap": 10,
+      "color": "surfaceContainerHigh",
+      "children": [
+        {
+          "type": "picker-title",
+          "motion": "fade",
+          "durationMs": 210
+        },
+        {
+          "type": "picker-date"
+        },
+        {
+          "type": "picker-time"
+        },
+        {
+          "type": "row",
+          "gap": 12,
+          "children": [
+            {
+              "type": "picker-dismiss"
+            },
+            {
+              "type": "picker-confirm"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -43,11 +43,16 @@ internal object SkinPickers {
             }, base.year, base.monthValue - 1, base.dayOfMonth).show()
         }
         val renderer = PresentationSkinRegistry.picker
-        if (renderer == null) native() else renderer.Render(PickerVisualContext(
+        val runtime = RuntimeSkinSurfaces.enabled("picker")
+        if (!runtime && renderer == null) native()
+        else {
+            val request = PickerVisualContext(
             kind = PickerKind.DATE, initialDate = date, initialHour = base.hour,
             initialMinute = base.minute, zone = zone, androidContext = context,
             onDate = onPick, onTime = { _, _ -> }, fallback = native
-        ))
+            )
+            if (runtime) RuntimePickerRequest.show(request) else renderer!!.Render(request)
+        }
     }
 
     fun pickTime(context: Context, baseMillis: Long, zone: ZoneId, onPick: (Int, Int) -> Unit) {
@@ -57,10 +62,15 @@ internal object SkinPickers {
                 base.hour, base.minute, true).show()
         }
         val renderer = PresentationSkinRegistry.picker
-        if (renderer == null) native() else renderer.Render(PickerVisualContext(
+        val runtime = RuntimeSkinSurfaces.enabled("picker")
+        if (!runtime && renderer == null) native()
+        else {
+            val request = PickerVisualContext(
             kind = PickerKind.TIME, initialDate = base.toLocalDate(),
             initialHour = base.hour, initialMinute = base.minute, zone = zone,
             androidContext = context, onDate = {}, onTime = onPick, fallback = native
-        ))
+            )
+            if (runtime) RuntimePickerRequest.show(request) else renderer!!.Render(request)
+        }
     }
 }

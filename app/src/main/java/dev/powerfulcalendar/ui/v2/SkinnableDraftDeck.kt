@@ -76,7 +76,8 @@ fun DraftDeckDialog(
     formalSearch: (String) -> List<TemporalRecord>
 ) {
     val renderer = DeckPresentationSkinRegistry.active
-    if (renderer == null) {
+    val runtime = RuntimeSkinSurfaces.enabled("deck")
+    if (renderer == null && !runtime) {
         NativeDraftDeckDialog(controller, aiSession, onDismissRequest,
             onOpenFormalEvent, onCancelAiBatch, onDeckChanged, formalSearch)
         return
@@ -157,5 +158,5 @@ fun DraftDeckDialog(
                 onOpenFormalEvent, onCancelAiBatch, onDeckChanged, formalSearch)
         }
     )
-    renderer.Render(context)
+    if (runtime) RuntimeSkinSurfaces.deck(context) else renderer!!.Render(context)
 }

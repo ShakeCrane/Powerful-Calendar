@@ -85,6 +85,7 @@ data class PowerCalSkinPack(
     val darkAxis: AxisPalette? = null,
     val typography: Typography? = null,
     val visual: SkinVisualTokens? = null,
+    val runtime: RuntimeSkinDocument? = null,
     val lightBitmaps: Map<SkinSlot, SkinBitmapArt> = emptyMap(),
     val darkBitmaps: Map<SkinSlot, SkinBitmapArt> = emptyMap()
 ) {

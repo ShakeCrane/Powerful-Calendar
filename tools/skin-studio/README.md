@@ -1,3 +1,19 @@
+## Runtime UI packages (.pcskin v2)
+
+**v2 is implemented.** An upgraded PowerCal can import a .pcskin file and interpret its
+bounded UI component tree, action bindings, enter animations and page transitions without
+rebuilding the APK. Ready sample: examples/Nebula-Flux-v2.pcskin.
+
+Build a new pack by editing examples/nebula-flux-manifest.json and
+examples/nebula-flux-ui.json, then run from repository root:
+
+    python tools/skin-studio/skin_studio.py build-v2 --manifest tools/skin-studio/examples/nebula-flux-manifest.json --ui tools/skin-studio/examples/nebula-flux-ui.json --out my-skin.pcskin
+    python tools/skin-studio/skin_studio.py validate my-skin.pcskin
+
+Full v2 scene/actions/motion contract: docs/SKIN_PACK_V2.md.
+The web-based visual editor remains a v1 theme + design-planning editor; it does
+not yet provide visual drag-and-drop editing of v2 node trees.
+
 # PowerCal Skin Studio — 使用与开发
 
 2026-10-21。分为两个工具：本地网页**设计编辑器**与**完整 Android Compose 皮肤代码生成器**。

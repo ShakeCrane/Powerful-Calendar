@@ -1,3 +1,11 @@
+## Post-v4 implementation update: runtime v2
+
+As of 2026-10-21, the presentation host additionally interprets signed-by-integrity
+(not author-signed) .pcskin v2 ZIP payloads: see [SKIN_PACK_V2.md](SKIN_PACK_V2.md).
+They can live-switch ten existing screen surfaces with a strict built-in node/action
+library, animation and route transitions. The v4 compiled skin interfaces and native
+fallback contract remain available and unchanged.
+
 # PowerCal Visual Skin Contract v4 — as built
 
 Updated 2026-10-21. This document records executable Android source interfaces, not a proposal or a promised future plugin format.

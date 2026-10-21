@@ -797,8 +797,10 @@ fun PowerCalApp(store: PowerStore) {
 
     SkinAppShell {
         val keyboardVisible = WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current) > 0
-        Box(Modifier.fillMaxSize().padding(bottom = if (keyboardVisible) 0.dp else 80.dp)) {
-        if (tools) {
+        SkinPageTransition(
+            page, Modifier.fillMaxSize().padding(bottom = if (keyboardVisible) 0.dp else 80.dp)
+        ) { presentedPage ->
+        if (presentedPage == Page.TOOLS.name) {
             ToolsPage(
                 diagnostics = diagnostics,
                 records = records,
@@ -896,7 +898,7 @@ fun PowerCalApp(store: PowerStore) {
                     }
                 }
             )
-        } else if (page == Page.AI.name) {
+        } else if (presentedPage == Page.AI.name) {
             AiChatScreen(
                 messages = chatHistory,
                 busy = chatBusy || aiBusy,
@@ -992,7 +994,7 @@ fun PowerCalApp(store: PowerStore) {
                     pendingBatchMode = null
                 }
             )
-        } else if (page == Page.MEMO.name) {
+        } else if (presentedPage == Page.MEMO.name) {
             MemoCenterScreen(
                 items = todoEntries, zone = zone, busy = aiLocked,
                 onBack = { page = Page.TIMELINE.name },
@@ -1021,7 +1023,7 @@ fun PowerCalApp(store: PowerStore) {
                     if (aiLocked) monthInspection = record else selectedFormalEvent = record
                 }
             )
-        } else if (page == Page.MONTH.name) {
+        } else if (presentedPage == Page.MONTH.name) {
             MonthScreen(records, Instant.ofEpochMilli(anchorMillis).atZone(zone).toLocalDate(), zone, aiLocked,
                 onBack = { page = Page.TIMELINE.name },
                 onDate = { date -> anchorMillis = date.atTime(12, 0).atZone(zone).toInstant().toEpochMilli(); page = Page.TIMELINE.name },

@@ -1,3 +1,11 @@
+## Runtime .pcskin v2 packages
+
+- [Runtime skin v2 specification, template, builder and safety](SKIN_PACK_V2.md)
+- [Ready-to-import ten-scene Nebula Flux sample](../tools/skin-studio/examples/Nebula-Flux-v2.pcskin)
+
+A package can now replace UI trees, animation and navigation transitions live in an upgraded
+PowerCal app. The original compiled-source skin remains the trusted fallback.
+
 # PowerCal 文档总索引
 
 > 更新：2026-10-21。**设计规范、已实现代码、历史交付报告是三类不同证据**。历史报告的 BUILD SUCCESSFUL、测试数和版本状态不自动代表最新 HEAD。代码行为以实际验证为准；发现规范冲突时须显式记录、评审，而非静默选一份。

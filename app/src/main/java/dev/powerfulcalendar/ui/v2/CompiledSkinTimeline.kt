@@ -137,7 +137,8 @@ fun SkinnableTimelineScreen(
         onOpenMemo, onTitlesOutsideChange
     )
     val renderer = CompiledSkinRuntime.timeline
-    if (renderer == null) context.Native() else renderer.Render(context)
+    if (RuntimeSkinSurfaces.enabled("timeline")) RuntimeSkinSurfaces.timeline(context)
+    else if (renderer == null) context.Native() else renderer.Render(context)
 }
 
 /** Motion is style policy only, never a clock coordinate change. */

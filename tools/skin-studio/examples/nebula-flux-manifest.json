@@ -1,0 +1,48 @@
+{
+  "format": "powercal-skin",
+  "schemaVersion": 2,
+  "runtimeUi": "ui.json",
+  "id": "nebula-flux-v2",
+  "name": "Nebula Flux · Runtime v2",
+  "light": {
+    "primary": "#334C90",
+    "onPrimary": "#FFFFFF",
+    "primaryContainer": "#DDE4FF",
+    "onPrimaryContainer": "#172A60",
+    "background": "#F4F6FF",
+    "onBackground": "#151B2D",
+    "surface": "#FFFFFF",
+    "onSurface": "#151B2D",
+    "surfaceContainerHigh": "#E6EBFD",
+    "surfaceContainerLow": "#F0F2FF",
+    "outline": "#7B8397",
+    "alarm": "#3858C6",
+    "activity": "#0A8C81",
+    "deadline": "#A85B20"
+  },
+  "dark": {
+    "primary": "#ACC5FF",
+    "onPrimary": "#172D69",
+    "primaryContainer": "#273C70",
+    "onPrimaryContainer": "#E1E9FF",
+    "background": "#0B1122",
+    "onBackground": "#E2E8FC",
+    "surface": "#141C2C",
+    "onSurface": "#E3E8F6",
+    "surfaceContainerHigh": "#253047",
+    "surfaceContainerLow": "#1A253B",
+    "outline": "#8793AE",
+    "alarm": "#8CA7FF",
+    "activity": "#67D0BF",
+    "deadline": "#FFB474"
+  },
+  "layout": {
+    "cardRadiusDp": 30,
+    "barRadiusDp": 22,
+    "pointLineDp": 2,
+    "fontScale": 1
+  },
+  "imagesLight": {},
+  "imagesDark": {},
+  "sha256": {}
+}

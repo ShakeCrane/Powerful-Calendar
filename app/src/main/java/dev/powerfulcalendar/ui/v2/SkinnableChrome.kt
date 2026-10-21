@@ -55,11 +55,18 @@ internal fun SkinAppShell(content: @Composable BoxScope.() -> Unit) {
         )
     }
     val renderer = PresentationSkinRegistry.chrome
-    if (renderer == null) native()
-    else renderer.Render(ChromeVisualContext(
+    Box(Modifier.fillMaxSize()) {
+    if (renderer == null && !RuntimeSkinSurfaces.enabled("chrome")) native()
+    else {
+        val context = ChromeVisualContext(
         type = ChromeType.ROOT, message = null, modifier = Modifier,
         body = content, native = native
-    ))
+        )
+        if (RuntimeSkinSurfaces.enabled("chrome")) RuntimeSkinSurfaces.chrome(context)
+        else renderer!!.Render(context)
+    }
+    RuntimeSkinPickerHost()
+    }
 }
 
 @Composable
@@ -81,9 +88,13 @@ internal fun SkinNotice(message: String, modifier: Modifier = Modifier) {
         }
     }
     val renderer = PresentationSkinRegistry.chrome
-    if (renderer == null) native()
-    else renderer.Render(ChromeVisualContext(
+    if (renderer == null && !RuntimeSkinSurfaces.enabled("chrome")) native()
+    else {
+        val context = ChromeVisualContext(
         type = ChromeType.NOTICE, message = message,
         modifier = modifier, body = null, native = native
-    ))
+        )
+        if (RuntimeSkinSurfaces.enabled("chrome")) RuntimeSkinSurfaces.chrome(context)
+        else renderer!!.Render(context)
+    }
 }

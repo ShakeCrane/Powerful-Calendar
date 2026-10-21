@@ -1,3 +1,15 @@
+## Update: runtime-importable .pcskin v2
+
+The source-compiled ten-renderer SDK described below remains available, but it is
+no longer the only way to change real layouts. The upgraded Android host also supports
+a **v2 declarative runtime interpreter**. Using ui.json inside a .pcskin ZIP, an Agent
+can rearrange built-in Compose components, host-bound buttons, display widgets,
+entry animations and page transitions with no Kotlin rebuild between skin switches.
+
+First read [SKIN_PACK_V2.md](SKIN_PACK_V2.md) for ZIP build instructions, supported
+node types, widget/action scope and security invariants. New unsupported custom
+widgets/gestures still require a reviewed compiled renderer source change.
+
 # PowerCal 编译式皮肤开发手册（给任何人 / Agent）
 
 更新：2026-10-21。目标是让第一次接手仓库的开发者**只读本文件、使用生成器、编辑 skins 目录的文件**，即可重构应用的 Compose 视觉层，而不用碰日历核心、AI、提醒、数据库或宿主业务回调。

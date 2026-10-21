@@ -100,7 +100,8 @@ internal fun MonthScreen(
 ) {
     val context = MonthVisualContext(records, initialDate, zone, aiLocked, onBack, onDate, onOpen, onCreate)
     val renderer = PresentationSkinRegistry.month
-    if (renderer == null) context.Native() else renderer.Render(context)
+    if (RuntimeSkinSurfaces.enabled("month")) RuntimeSkinSurfaces.month(context)
+    else if (renderer == null) context.Native() else renderer.Render(context)
 }
 
 internal class MemoVisualContext internal constructor(
@@ -125,7 +126,8 @@ internal fun MemoCenterScreen(
 ) {
     val context = MemoVisualContext(items, zone, busy, onBack, onCreateMemo, onToggle, onOpen)
     val renderer = PresentationSkinRegistry.memo
-    if (renderer == null) context.Native() else renderer.Render(context)
+    if (RuntimeSkinSurfaces.enabled("memo")) RuntimeSkinSurfaces.memo(context)
+    else if (renderer == null) context.Native() else renderer.Render(context)
 }
 
 internal class AiVisualContext internal constructor(
@@ -173,7 +175,8 @@ fun AiChatScreen(
         onSupplementProposals, onSettings, onOpenDeck, onPickImage, onPickFile,
         onPrepareBatch, onRewind)
     val renderer = PresentationSkinRegistry.ai
-    if (renderer == null) context.Native() else renderer.Render(context)
+    if (RuntimeSkinSurfaces.enabled("ai")) RuntimeSkinSurfaces.ai(context)
+    else if (renderer == null) context.Native() else renderer.Render(context)
 }
 
 /**
@@ -269,7 +272,8 @@ internal fun ToolsPage(
         onCancelBatch, onReconcile, onAiDraft, aiBusy, onReleaseStuck
     )
     val renderer = PresentationSkinRegistry.settings
-    if (renderer == null) context.Native() else renderer.Render(context)
+    if (RuntimeSkinSurfaces.enabled("settings")) RuntimeSkinSurfaces.settings(context)
+    else if (renderer == null) context.Native() else renderer.Render(context)
 }
 
 internal enum class VisualTab(val title: String) {
@@ -287,5 +291,6 @@ internal class NavigationVisualContext internal constructor(
 internal fun PowerCalNavigation(selected: VisualTab?, onSelect: (VisualTab) -> Unit) {
     val context = NavigationVisualContext(selected, onSelect)
     val renderer = PresentationSkinRegistry.navigation
-    if (renderer == null) context.Native() else renderer.Render(context)
+    if (RuntimeSkinSurfaces.enabled("navigation")) RuntimeSkinSurfaces.navigation(context)
+    else if (renderer == null) context.Native() else renderer.Render(context)
 }

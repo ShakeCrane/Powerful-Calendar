@@ -262,10 +262,35 @@ def main():
     serve.add_argument("--port", type=int, default=8765)
     chk = sub.add_parser("validate", help="validate an existing .pcskin")
     chk.add_argument("file", type=Path)
+    build2 = sub.add_parser("build-v2", help="compile declarative runtime UI into an importable ZIP")
+    build2.add_argument("--manifest", type=Path, required=True)
+    build2.add_argument("--ui", type=Path, required=True)
+    build2.add_argument("--out", type=Path, required=True)
+    build2.add_argument("--assets-dir", type=Path)
     args = parser.parse_args()
     if args.command == "validate":
-        m, images = unpack(args.file.read_bytes())
-        print(f"OK: {m['id']} / {m['name']} / {len(images)} assets")
+        payload = args.file.read_bytes()
+        # Do not decompress attacker-provided manifest without a size cap.
+        with ZipFile(io.BytesIO(payload)) as archive:
+            head = archive.getinfo("manifest.json")
+            check(head.file_size <= 80_000, "Manifest too large")
+            with archive.open(head) as source:
+                manifest = json.loads(source.read(80_001).decode("utf8"))
+        if manifest.get("schemaVersion") == 2:
+            from runtime_package import unpack as unpack_v2
+            m, ui = unpack_v2(payload)
+            print(f"OK: {m['id']} / {m['name']} / runtime v2 / {len(ui['screens'])} scenes")
+        else:
+            m, images = unpack(payload)
+            print(f"OK: {m['id']} / {m['name']} / v1 / {len(images)} assets")
+    elif args.command == "build-v2":
+        from runtime_package import build, read_assets
+        manifest = json.loads(args.manifest.read_text("utf8"))
+        ui = json.loads(args.ui.read_text("utf8"))
+        result = build(manifest, ui, read_assets(manifest, args.assets_dir))
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        args.out.write_bytes(result)
+        print(f"Built {args.out} ({len(result)} bytes)")
     else:
         port = getattr(args, "port", 8765)
         with ThreadingHTTPServer(("127.0.0.1", port), Handler) as server:

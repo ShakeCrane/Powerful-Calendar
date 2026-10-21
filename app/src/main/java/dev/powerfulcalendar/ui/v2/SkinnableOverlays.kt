@@ -67,13 +67,17 @@ internal fun SkinAlertDialog(
         )
     }
     val renderer = PresentationSkinRegistry.overlay
-    if (renderer == null) native()
-    else renderer.Render(OverlayVisualContext(
+    if (renderer == null && !RuntimeSkinSurfaces.enabled("overlay")) native()
+    else {
+        val context = OverlayVisualContext(
         type = OverlayType.ALERT,
         onDismissRequest = onDismissRequest, modifier = modifier,
         properties = properties, title = title, text = text, confirmButton = confirmButton,
         dismissButton = dismissButton, icon = icon, content = null, firstParty = native
-    ))
+        )
+        if (RuntimeSkinSurfaces.enabled("overlay")) RuntimeSkinSurfaces.overlay(context)
+        else renderer!!.Render(context)
+    }
 }
 
 @Composable
@@ -86,11 +90,15 @@ internal fun SkinWindowDialog(
         Dialog(onDismissRequest = onDismissRequest, properties = properties, content = content)
     }
     val renderer = PresentationSkinRegistry.overlay
-    if (renderer == null) native()
-    else renderer.Render(OverlayVisualContext(
+    if (renderer == null && !RuntimeSkinSurfaces.enabled("overlay")) native()
+    else {
+        val context = OverlayVisualContext(
         type = OverlayType.WINDOW, onDismissRequest = onDismissRequest,
         modifier = Modifier, properties = properties, title = null, text = null,
         confirmButton = null, dismissButton = null, icon = null, content = content,
         firstParty = native
-    ))
+        )
+        if (RuntimeSkinSurfaces.enabled("overlay")) RuntimeSkinSurfaces.overlay(context)
+        else renderer!!.Render(context)
+    }
 }
