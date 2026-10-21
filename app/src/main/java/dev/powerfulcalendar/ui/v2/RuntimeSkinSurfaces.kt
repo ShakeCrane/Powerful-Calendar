@@ -143,6 +143,7 @@ internal object RuntimeSkinSurfaces {
             native = { context.Native() },
             actions = mapOf(
                 "back" to context.onBack, "deck" to context.onOpenDeck,
+                "__restore_original" to { context.onSelectSkin("powercal-default") },
                 "import-skin" to context.onImportSkin,
                 "export-skin" to context.onExportOriginalSkin,
                 "import-ics" to context.onImportIcs,
@@ -158,7 +159,7 @@ internal object RuntimeSkinSurfaces {
                     "profile" -> context.ProtectedProfile()
                     "credentials" -> context.ProtectedAiCredentials()
                     "skins" -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        context.skinChoices.forEach { skin ->
+                        context.skinChoices.filterNot { it.builtIn }.forEach { skin ->
                             FilledTonalButton(
                                 onClick = { context.onSelectSkin(skin.id) },
                                 modifier = Modifier.fillMaxWidth(),

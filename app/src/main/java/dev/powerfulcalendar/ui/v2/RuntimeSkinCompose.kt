@@ -42,41 +42,45 @@ internal object RuntimeSkinCompose {
         modifier: Modifier = Modifier,
         manageRecovery: Boolean = true
     ) {
-        val node = PowerCalSkinRegistry.active.runtime?.screens?.get(screen)
-        if (node == null) bindings.native()
-        else if (!manageRecovery) {
-            node(node, bindings, modifier)
-        } else {
-            // An always-accessible recovery route even when imported UI lacks a Native node.
-            var recovery by rememberSaveable(screen, PowerCalSkinRegistry.active.key) {
-                mutableStateOf(false)
-            }
-            if (recovery) {
-                Box(modifier.fillMaxSize()) {
-                    bindings.native()
-                    TextButton(
-                        onClick = { recovery = false },
-                        modifier = Modifier.align(Alignment.TopEnd)
-                    ) { Text("返回皮肤") }
-                }
-            } else {
-                val mapped = RuntimeSkinBindings(
-                    native = bindings.native,
-                    actions = bindings.actions + ("native" to { recovery = true }),
-                    values = bindings.values,
-                    widget = bindings.widget
-                )
-                if (screen == "settings") {
-                    Box(modifier.fillMaxSize()) {
-                        node(node, mapped, Modifier.fillMaxSize())
-                        TextButton(
-                            onClick = { recovery = true },
-                            modifier = Modifier.align(Alignment.BottomEnd)
-                        ) { Text("Native settings / restore skin") }
-                    }
-                } else node(node, mapped, modifier)
-            }
+        val skinNode = PowerCalSkinRegistry.active.runtime?.screens?.get(screen)
+        if (skinNode == null) {
+            bindings.native()
+            return
         }
+        if (!manageRecovery) {
+            node(skinNode, bindings, modifier)
+            return
+        }
+        // A skin-provided "native" action previews the first-party renderer for this page.
+        // It never draws a floating "return" button over controls. Leaving and returning
+        // to the route resets the preview, while a permanent reset lives at Settings bottom.
+        var nativePreview by remember(screen, PowerCalSkinRegistry.active.key) {
+            mutableStateOf(false)
+        }
+        if (nativePreview) {
+            bindings.native()
+            return
+        }
+        val mapped = RuntimeSkinBindings(
+            native = bindings.native,
+            actions = bindings.actions + ("native" to { nativePreview = true }),
+            values = bindings.values,
+            widget = bindings.widget
+        )
+        val displayed = if (screen == "settings") {
+            // Host-owned recovery at the END of settings content, NOT a floating overlay.
+            // The action name is internal; imported UI cannot bind it through the DSL.
+            val restore = RuntimeSkinNode(
+                type = "button", text = "返回原生", action = "__restore_original", padding = 8
+            )
+            if (skinNode.type == "scroll" || skinNode.type == "column") {
+                skinNode.copy(children = skinNode.children + restore)
+            } else {
+                RuntimeSkinNode(type = "column", gap = 12,
+                    children = listOf(skinNode, restore))
+            }
+        } else skinNode
+        node(displayed, mapped, modifier)
     }
 
     @Composable

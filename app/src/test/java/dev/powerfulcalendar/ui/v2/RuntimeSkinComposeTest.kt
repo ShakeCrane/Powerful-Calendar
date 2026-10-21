@@ -97,8 +97,30 @@ class RuntimeSkinComposeTest {
         } }
         ui.onNodeWithText("查看完整原生页面").performClick()
         ui.onNodeWithContentDescription("今日 · 复位为全天").assertExists()
-        ui.onNodeWithText("返回皮肤").performClick()
-        ui.onNodeWithText("NEBULA / DAILY COMMAND").assertExists()
+        ui.onNodeWithText("返回皮肤").assertDoesNotExist()
+        ui.onNodeWithText("Native settings / restore skin").assertDoesNotExist()
+    }
+
+    @Test fun nativeRecoveryLivesAtSettingsScrollEndAndChangesSelectedSkin() {
+        val manager = SkinPackageManager(ApplicationProvider.getApplicationContext())
+        ui.setContent { PowerCalTheme {
+            RuntimeSkinCompose.scene("settings", RuntimeSkinBindings(
+                native = { Text("NATIVE SETTINGS") },
+                actions = mapOf("__restore_original" to { manager.select("powercal-default") }),
+                widget = { kind ->
+                    when (kind) {
+                        "profile" -> Text("PROFILE")
+                        "credentials" -> Text("CREDENTIALS")
+                        "skins" -> Text("SKINS")
+                    }
+                }
+            ), Modifier.fillMaxSize())
+        } }
+        ui.onNodeWithText("Native settings / restore skin").assertDoesNotExist()
+        ui.onNodeWithText("返回皮肤").assertDoesNotExist()
+        ui.onNodeWithText("返回原生").performScrollTo().assertIsDisplayed().performClick()
+        ui.runOnIdle { assertEquals("powercal-default", PowerCalSkinRegistry.active.key) }
+        ui.onNodeWithText("NATIVE SETTINGS").assertExists()
     }
 
     @Test fun v2DialogKeepsConfirmationAndDismissActions() {
