@@ -1256,7 +1256,7 @@ private fun CompletionCard(
                     Button(onClick = onDone) {
                         Icon(Icons.Default.Restore, null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(4.dp))
-                        Text("返回时间轴")
+                        Text("退出待处理")
                     }
             }
         }
