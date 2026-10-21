@@ -35,6 +35,8 @@ Debug APK：`app/build/outputs/apk/debug/app-debug.apk`。
 
 - [产品语义与时间模型](docs/PRODUCT_BASELINE_G1-G11.md) — 描述产品来源；若与后续实现契约冲突，以明确记录的新决策和实际版本化接口为准。
 - [AI Agent、Skills、结构化事件与授权契约 v2](docs/AI_AGENT_PROTOCOL_V2.md)
+- [皮肤与 UI 扩展契约 v3：功能/表现分层](docs/UI_SKIN_EXTENSION_CONTRACT_V3.md)
+- [Skin Studio 皮肤开发工具与说明](tools/skin-studio/README.md)
 - [皮肤与 UI 扩展契约 v2](docs/UI_SKIN_EXTENSION_CONTRACT_V2.md)
 - [可直接导入的 .pcskin 格式 v1](docs/SKIN_PACK_V1.md)
 - [本地存储与稳定数据契约](docs/STABLE_DATA_CONTRACT_V1.md)

@@ -12,8 +12,8 @@
 
     <application
         android:label="@string/app_name"
-        android:icon="@mipmap/ic_launcher"
-        android:roundIcon="@mipmap/ic_launcher_round"
+        android:icon="@drawable/powercal_brand"
+        android:roundIcon="@drawable/powercal_brand"
         android:theme="@style/Theme.PowerCal"
         android:allowBackup="false"
         android:fullBackupContent="false"

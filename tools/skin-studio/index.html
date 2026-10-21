@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PowerCal Skin Studio</title><link rel="stylesheet" href="/style.css">
+</head><body>
+<header class="topbar"><div><strong>PowerCal <span>Skin Studio</span></strong><small>独立表现层工作台 · .pcskin v1 + Compose 设计项目</small></div>
+<div class="actions"><label class="fileButton">导入 .pcskin<input id="importZip" type="file" accept=".pcskin,.zip" hidden></label>
+<label class="fileButton">打开项目<input id="importProject" type="file" accept=".json,.pcstudio" hidden></label>
+<button id="exportProject">保存设计项目</button><button id="exportPack" class="primary">导出 .pcskin</button></div></header>
+<div id="toast" class="toast" role="status" aria-live="polite">就绪。更改会即时反映在结构预览中。</div>
+<main>
+<aside class="sidebar">
+<section><h2>皮肤信息</h2><label>Skin ID<input id="skinId" value="new-powercal-skin" pattern="[a-z0-9][a-z0-9_-]{2,47}"></label><label>显示名称<input id="skinName" value="My PowerCal Skin"></label></section>
+<section><h2>场景</h2><div id="pageTabs" class="pageTabs"></div><p class="hint">页面结构与动效保存在设计项目中；导入安卓的 .pcskin v1 仅包含颜色、圆角、字号和图片。深度布局需要编译 Compose Renderer。</p></section>
+<section><h2>主题</h2><div class="inline"><label><input name="mode" type="radio" value="light" checked> 浅色</label><label><input name="mode" type="radio" value="dark"> 深色</label><label><input id="reduced" type="checkbox"> 减少动效</label></div><div id="palette"></div></section>
+<section><h2>圆角与字号（v1）</h2><div id="geometry"></div></section>
+</aside>
+<section class="previewCol"><div class="previewTop"><h2>结构与交互预览</h2><span class="hint">概念预览 ≠ Android Compose 像素级截图</span></div>
+<div class="phoneWrap"><div id="phone" class="phone"><div id="deviceStatus" class="deviceStatus">12:15　▴ ▮ ▰</div><div id="scene" class="scene"></div><div id="deviceNav">──────</div></div></div>
+<div class="feedback"><strong>Intent 观察台</strong><div id="intentLog" role="log" aria-live="polite">点击预览中的功能按钮，验证其 Intent 名称。</div></div>
+</section>
+<aside class="editor">
+<section><h2>页面结构（Compiled）</h2><p class="hint">更改排列、区域及纯装饰元素可见性；不可删除或隐藏必要交互及语义槽。</p><div id="slots"></div></section>
+<section><h2>动效（Compiled）</h2><label>选择组件<select id="motionTarget"></select></label><label>预设<select id="motionPreset"><option value="none">无</option><option value="fade">淡入</option><option value="slide">平移</option><option value="scale">缩放</option></select></label><label>时长 <output id="durationValue"></output> ms<input id="motionDuration" type="range" min="0" max="600" step="25"></label><button id="replay">重播预览</button><p class="hint">遵循系统减少动画时，强制以静态呈现；时间轴的几何位置不能被动画篡改。</p></section>
+<section><h2>PNG / WebP 资源（v1）</h2><label>目标槽<select id="assetSlot"></select></label><label>所属主题<select id="assetMode"><option value="imagesLight">浅色</option><option value="imagesDark">深色</option></select></label><label class="fileButton">选择图片<input id="assetFile" type="file" accept="image/png,image/webp" hidden></label><button id="clearAsset">移除此槽素材</button><div id="assetStatus" class="hint"></div></section>
+<section><h2>验证</h2><button id="validate">检查皮肤包</button><p class="hint">校验 ZIP ABI、SHA-256、文件/像素尺寸、键名与布局范围；真机渲染及可访问性仍需独立验收。</p></section>
+</aside></main>
+<script src="/app.js" defer></script>
+</body></html>

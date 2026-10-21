@@ -1040,7 +1040,7 @@ fun PowerCalApp(store: PowerStore) {
                         .onSuccess { reload(); openDeckAt(it.draftId) }.onFailure { message = it.message ?: "无法创建草稿" }
                 } })
         } else {
-            TimelineScreen(
+            SkinnableTimelineScreen(
                 records = records,
                 camera = camera,
                 nowMillis = nowMillis,
