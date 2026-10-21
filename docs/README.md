@@ -37,3 +37,9 @@
 2. 单一主题尽量维护一个当前入口；阶段性审计及交付合并时保留原始正文与时间基线，避免丢失失败证据。
 3. 新决策优先更新当前冻结契约并标注所覆盖的旧规则；不直接擦除历史研究。
 4. 修改文档链接后验证目标存在；提交时只暂存相关文档，避免卷入其他开发者的代码改动。
+
+### Compiled visual skins
+
+- [Skin SDK complete authoring handbook](SKIN_AUTHORING_HANDBOOK.md) ? first read for humans/Agents, scaffold and verification.
+- [Visual Skin Contract v4](UI_SKIN_EXTENSION_CONTRACT_V4.md) ? as-built typed presentation contexts for all ten surfaces.
+- [Skin Studio README](../tools/skin-studio/README.md) ? web design editor, source-compiled generator and ZIP distinction.

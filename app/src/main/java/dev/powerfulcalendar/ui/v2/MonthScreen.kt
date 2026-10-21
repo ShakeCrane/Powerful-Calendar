@@ -28,7 +28,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 @Composable
-internal fun MonthScreen(
+internal fun NativeMonthScreen(
     records: List<TemporalRecord>, initialDate: LocalDate, zone: ZoneId, aiLocked: Boolean,
     onBack: () -> Unit, onDate: (LocalDate) -> Unit, onOpen: (TemporalRecord) -> Unit,
     onCreate: (LocalDate) -> Unit
@@ -166,7 +166,7 @@ internal fun MonthScreen(
     }
     if (yearPickerOpen) {
         val year = yearInput.toIntOrNull()
-        AlertDialog(
+        SkinAlertDialog(
             onDismissRequest = { yearPickerOpen = false },
             title = { Text("选择年份") },
             text = {
@@ -191,7 +191,7 @@ internal fun MonthScreen(
         )
     }
     if (monthPickerOpen) {
-        AlertDialog(
+        SkinAlertDialog(
             onDismissRequest = { monthPickerOpen = false },
             title = { Text("选择月份 · ${month.year} 年") },
             text = {

@@ -1,75 +1,49 @@
-# PowerCal Skin Studio — 使用说明
+# PowerCal Skin Studio — 使用与开发
 
-**状态：本地可视化设计工具 + .pcskin v1 打包器 + 编译式时间轴 Renderer Adapter。**
+2026-10-21。分为两个工具：本地网页**设计编辑器**与**完整 Android Compose 皮肤代码生成器**。
 
-## 启动
+## A. 可视化设计与静态主题 ZIP
 
-在仓库根目录运行：
+从仓库根目录：
 
     python tools/skin-studio/skin_studio.py serve --port 8765
 
-浏览器打开 http://127.0.0.1:8765 。仅绑定 127.0.0.1，无需 pip/npm/账户或网络服务。Ctrl+C 退出。Studio 不访问生产日历数据库。
+浏览器打开 http://127.0.0.1:8765 。无需安装 pip/npm、无需联网，默认只监听 127.0.0.1，不访问正式日历数据库。
 
-现有 .pcskin 校验：
+你可以编辑明暗色板、字号比例、圆角、十张 PNG/WebP 固定插图，导出 Android 直接支持的 .pcskin v1；也可以在六页场景中编排槽位顺序、区域、显示与 fade/slide/scale 动效，保存包含完整设计元数据的 .pcstudio.json。内置六个模拟页面，可预览按钮 intent，但它们不会修改正式日历，且不是 Android 像素级渲染。
+
+检查已有数据包：
 
     python tools/skin-studio/skin_studio.py validate "C:\skins\my-skin.pcskin"
 
-## 使用流程
+**注意：** .pcskin 仅支持纯数据的配色、图片和尺寸，没有任意 Compose 页面布局和动态代码。网页 .pcstudio.json 仅是设计文件，不是可执行皮肤安装包。
 
-1. Android PowerCal 设置 → 皮肤 → 导出原生皮肤，然后在 Studio 选择「导入 .pcskin」。
-2. 选择时间轴/月历/Memo/AI/设置/草稿卡组页面，设计组件位置、区域（background/header/content/overlay/footer）和顺序。必要的语义/功能槽不可隐藏。
-3. 切换明/暗模式配置颜色、卡片圆角、线宽、字号；按槽位上传 PNG/WebP 图。所有文件随项目保存在本地。
-4. 给各组件指定无/淡入/平移/缩放动效（0–600ms）。勾选减少动效即可预览静态退化。
-5. 点击结构预览中的按钮观察 Intent 标识。此时不会提交事件、调用 AI 或修改资料。
-6. 「保存设计项目」导出 .pcstudio.json，保存 v1 颜色/素材以及编译式皮肤的布局/动效方案。此文件不可直接装进 Android。
-7. 「检查皮肤包」对 ZIP ABI、安全限制、图片尺寸、素材声明进行检查。
-8. 「导出 .pcskin」生成**当前 Android 支持**的 v1 数据包；仅包含配色、布局数值、字号与图片，不含完整页面排版和动效。把该文件导入 Android 测试。
+## B. 任意布局、任意动画的编译式皮肤
 
-网页模拟仅用于创作与检查结构，**不是 Compose 真实像素预览**。不要根据网页视觉直接声称完成 Android 适配。
+要让任何人/Agent 能通过修改文件重构真实 Android UI：
 
-## Compose 任意布局入口
+    python tools/skin-studio/new_compiled_skin.py aurora-glass --activate
 
-文件：app/src/main/java/dev/powerfulcalendar/ui/v2/CompiledSkinTimeline.kt
+生成文件：app/src/main/java/dev/powerfulcalendar/ui/v2/skins/AuroraGlassSkin.kt，并在同目录的 ActiveVisualSkin.kt 激活它。模板涵盖十个可替换入口：时间轴、月历、Memo、AI、设置、草稿卡组、导航、全局弹窗、日期时间选择器、APP 根容器及提示。
 
-目前时间轴已连接 SkinnableTimelineScreen，它默认直接使用原始 TimelineScreen，故默认皮肤行为不变。开发者可在随 APK 编译、经人工审核的 Kotlin 源码中实现 CompiledTimelineSkin.Render(context)，用任意 Compose Row/Column/Canvas/Animation 绘制新页面，也可先调用 context.Native() 作为可靠的回退。
+每个入口在空白模板里都调用原生 fallback context.Native()，因此可逐个改写而不丢失功能。
 
-示例 Kotlin：
+将设计项目转成给编程 Agent 的实现任务书：
 
-    class MyTimeline : CompiledTimelineSkin {
-        override val rendererId = "my-timeline-v1"
+    python tools/skin-studio/new_compiled_skin.py aurora-glass --activate --design "C:\skins\design.pcstudio.json"
 
-        @Composable
-        override fun Render(context: TimelineSkinContext) {
-            context.Native() // 替换为自己的 Compose 页面
-        }
-    }
+额外输出 AuroraGlassDESIGN_BRIEF.md，其中包含每页槽位、顺序、区域、动效提示。生成器**不会宣称自动把 JSON 变成 Compose**；必须自行修改 Render(context) 真正实现。
 
-    // 可信应用启动代码中注册，而非从外部 ZIP 加载：
-    CompiledSkinRuntime.registerTimeline(MyTimeline())
+皮肤源码默认只是 APK 的可信一部分；普通用户无法通过导入 ZIP 在手机上执行 Kotlin。新皮肤需编译和审查。不应修改 PowerCalApp/Core/Ai/Reminders 代码，宿主操作通过 context.on... 回调触发。
 
-在 Android Studio 预览 SkinStudioNativeLightPreview 和 SkinStudioNativeDarkPreview，使用真实 Compose 和 ALARM/ACTIVITY/DEADLINE 示例数据；网页结构预览不取代这两个原生预览。
+完整入门 + API：docs/SKIN_AUTHORING_HANDBOOK.md
+已实现正式契约：docs/UI_SKIN_EXTENSION_CONTRACT_V4.md
+静态 ZIP ABI：docs/SKIN_PACK_V1.md
 
-重要：CompiledTimelineSkin 使用只读数据和宿主提供的回调。不能私自重写日历数据库、AI 草稿发布、闹钟调度流程。context.yOf(instantMillis,heightPx) 使用唯一时间轴坐标映射；活动区间的上/下边应严格等于开始/结束时刻映射，触摸目标与短矩形的真实几何独立。
-
-skinMotion() 尊重系统减少动效；renderer 自定义动画也必须遵从 reduced-motion 设置，并不得用动画改变事件时间位置的真实性。
-
-## 当前状态和边界
-
-| 类型 | 自定义范围 | Android 直接导入 | 状态 |
-| --- | --- | --- | --- |
-| .pcskin v1 | 颜色、图片、字号、圆角、点线宽 | 是 | 已支持 |
-| .pcstudio.json | 六页组件顺序、区域、动效设计 | 否 | 可编辑、保存与打开 |
-| 编译式 Timeline Renderer | 任意 Compose 时间轴页面及动效 | 否，需编译 APK | 接口已接入 |
-| 其他页面编译式 Renderer | 月历、Memo、AI、设置、草稿卡组 | 否 | 设计契约，运行时尚未迁移 |
-
-.pcskin 无法逆向还原 .pcstudio.json 的布局和动效，请保存工程文件。编译式 Renderer 不是从不受信任 ZIP 运行代码的机制。
-
-所有 Android 新渲染器需测试：空/密集事件、重复实例、跨日、DST、闹钟点、活动真实时长、截止点、1 分钟活动、缩放和手势、暗色、0.85/1.2 字号、TalkBack、减少动效、草稿确认/取消和进程重启。
-
-运行测试：
+## 测试
 
     python -m unittest discover -s tools/skin-studio/tests -v
     node --check tools/skin-studio/app.js
-    .\gradlew.bat :app:testDebugUnitTest
+    .\gradlew.bat :app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --console=plain
 
-素材必须拥有合法授权。SHA-256 只校验完整性，不校验作者身份。该工具不加载第三方脚本/字体、不提供远程下载或动态 Dex 执行接口。
+还必须在 Android 真机验证读屏、暗色、减动效、输入法、重复发生、1 分钟活动的真实时间轴高度、草稿提交冲突/恢复和 AI 锁。设计 Mock 和编译成功不代表视觉验收完成。

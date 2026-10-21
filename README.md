@@ -62,3 +62,18 @@ app/src/main/java/dev/powerfulcalendar/
 - 现阶段普通聊天中的结构化意图按钮是候选提案入口，并非完整的自动 Function Calling / 自主执行闭环。
 - 皮肤包 v1 支持声明式参数和静态图片。任意 Compose 组件替换要经编译时 UI 扩展接口，不能通过从 ZIP 运行不可信脚本实现。
 - 程序与设备都可能失败：高风险批量变更、网络超时、断电/重启、签名升级和厂商后台限制需要专门验证。
+
+### Full visual skin authoring
+
+The complete source-compiled skin SDK now exposes ten swappable Compose/Android presentation
+surfaces: timeline, month, Memo, AI, settings, draft deck, navigation, modal windows,
+date/time pickers, and application chrome/notices. Business logic remains in the host.
+
+- [Start here: full skin authoring handbook](docs/SKIN_AUTHORING_HANDBOOK.md)
+- [Actual renderer contract v4](docs/UI_SKIN_EXTENSION_CONTRACT_V4.md)
+- [Local Skin Studio and compiled Kotlin generator](tools/skin-studio/README.md)
+
+Example: python tools/skin-studio/new_compiled_skin.py aurora-glass --activate
+
+The source-compiled skin requires an APK rebuild; portable .pcskin v1 remains a data-only
+theme ZIP. Studio design JSON is a blueprint, not a runtime Android layout.

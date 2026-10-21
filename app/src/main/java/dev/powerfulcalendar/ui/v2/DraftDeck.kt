@@ -156,7 +156,7 @@ private fun Modifier.deckInput(): Modifier {
  *    selection and caret gestures out of paging.
  */
 @Composable
-fun DraftDeckDialog(
+fun NativeDraftDeckDialog(
     controller: DeckController,
     aiSession: PowerStore.AiSession?,
     onDismissRequest: () -> Unit,
@@ -236,7 +236,7 @@ fun DraftDeckDialog(
     val card = state.current
     val form = state.form
 
-    Dialog(
+    SkinWindowDialog(
         onDismissRequest = { leave() },
         properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false, decorFitsSystemWindows = false)
     ) {
@@ -313,7 +313,7 @@ fun DraftDeckDialog(
         ConflictDialog(prompt, { command(true) { controller.confirmConflictReplacement() } }, { controller.dismissConflict() })
     }
     state.restore?.let { prompt ->
-        AlertDialog(onDismissRequest = { controller.dismissRestore() },
+        SkinAlertDialog(onDismissRequest = { controller.dismissRestore() },
             title = { Text("恢复 ${TemporalRecord.formatSeq(prompt.eventSeq)}？") },
             text = { Text(prompt.message) },
             confirmButton = { TextButton(onClick = { command(true) { controller.requestRestore() } }, enabled = !busy) { Text("恢复同一事件") } },
@@ -1054,7 +1054,7 @@ private fun DeckCardBody(
 
     } // short-viewport constraints
     if (showDeleteConfirm) {
-        AlertDialog(
+        SkinAlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
             title = {
                 Text(
@@ -1269,7 +1269,7 @@ private fun ConflictDialog(
     onConfirm: () -> Unit,
     onKeep: () -> Unit
 ) {
-    AlertDialog(
+    SkinAlertDialog(
         onDismissRequest = onKeep,
         title = { Text("正式内容已变化 ${TemporalRecord.formatSeq(prompt.eventSeq)}") },
         text = {
@@ -1354,27 +1354,13 @@ private fun pickDate(
     baseMillis: Long,
     zone: ZoneId = ZoneId.systemDefault(),
     onPick: (LocalDate) -> Unit
-) {
-    val base = Instant.ofEpochMilli(baseMillis).atZone(zone)
-    DatePickerDialog(
-        context,
-        { _, year, month, day -> onPick(LocalDate.of(year, month + 1, day)) },
-        base.year, base.monthValue - 1, base.dayOfMonth
-    ).show()
-}
+) = SkinPickers.pickDate(context, baseMillis, zone, onPick)
 
 private fun pickTime(
     context: android.content.Context,
     baseMillis: Long,
     zone: ZoneId = ZoneId.systemDefault(),
     onPick: (Int, Int) -> Unit
-) {
-    val base = Instant.ofEpochMilli(baseMillis).atZone(zone)
-    TimePickerDialog(
-        context,
-        { _, hour, minute -> onPick(hour, minute) },
-        base.hour, base.minute, true
-    ).show()
-}
+) = SkinPickers.pickTime(context, baseMillis, zone, onPick)
 
 private fun abs(value: Float): Float = kotlin.math.abs(value)

@@ -365,7 +365,7 @@ fun TimelineScreen(
         }
 
     }
-    inspected?.let { record -> AlertDialog(onDismissRequest = { inspected = null }, title = { Text(record.title) },
+    inspected?.let { record -> SkinAlertDialog(onDismissRequest = { inspected = null }, title = { Text(record.title) },
         text = { Column { Text(TemporalText.summarize(record)); Text(record.notes); Text("AI 正在处理卡组，暂时只可查看。") } },
         confirmButton = { TextButton(onClick = { inspected = null }) { Text("完成") } }) }
 }

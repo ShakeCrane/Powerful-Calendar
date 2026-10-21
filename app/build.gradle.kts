@@ -211,3 +211,37 @@ tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
     }
 }
+
+
+/**
+ * Compile-time boundary gate: agent-authored skins may render arbitrary Compose but must not
+ * gain direct persistence, AI execution, scheduler or credential API references.
+ * This is a review aid, NOT a sandbox for untrusted Kotlin code.
+ */
+val skinForbiddenApis = listOf(
+    "PowerStore", "PowerCalStores", "DeckController", "AiSettingsStore", "AiClient",
+    "ReminderScheduler", "getSharedPreferences", "ContentResolver", "SQLiteDatabase",
+    "java.io.", "java.net.", "android.database.", "DexClassLoader",
+    "Runtime.getRuntime(", "ProcessBuilder(", "System.load", "kotlin.reflect."
+)
+val verifySkinSourceBoundary = tasks.register("verifySkinSourceBoundary") {
+    group = "verification"
+    description = "Enforce presentation-only compiled skin source imports and calls."
+    doLast {
+        fileTree("src/main/java/dev/powerfulcalendar/ui/v2/skins") {
+            include("**/*.kt")
+        }.forEach { source ->
+            val withoutComments = source.readText()
+                .replace(Regex("""(?s)/\*.*?\*/"""), "")
+                .replace(Regex("""(?m)//[^\n]*"""), "")
+            val violation = skinForbiddenApis.firstOrNull { withoutComments.contains(it) }
+            if (violation != null) {
+                throw GradleException(
+                    "Compiled skin " + source.name + " references forbidden service " + violation +
+                        "; use only the host-provided action callbacks."
+                )
+            }
+        }
+    }
+}
+tasks.named("preBuild").configure { dependsOn(verifySkinSourceBoundary) }

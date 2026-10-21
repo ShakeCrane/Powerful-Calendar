@@ -795,14 +795,7 @@ fun PowerCalApp(store: PowerStore) {
         scope.launch { reload() }
     }
 
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .statusBarsPadding()
-            .navigationBarsPadding()
-            .imePadding()
-    ) {
+    SkinAppShell {
         val keyboardVisible = WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current) > 0
         Box(Modifier.fillMaxSize().padding(bottom = if (keyboardVisible) 0.dp else 80.dp)) {
         if (tools) {
@@ -1115,58 +1108,28 @@ fun PowerCalApp(store: PowerStore) {
             )
         }
         } // page content above the persistent bottom navigation
-        if (!keyboardVisible) NavigationBar(
-            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
-            containerColor = MaterialTheme.colorScheme.surface,
-            tonalElevation = 4.dp
-        ) {
-            NavigationBarItem(
-                selected = page == Page.TIMELINE.name,
-                onClick = { page = Page.TIMELINE.name },
-                icon = { Icon(Icons.Default.Timeline, contentDescription = null) },
-                label = { Text("时间轴") }
-            )
-            NavigationBarItem(
-                selected = page == Page.MONTH.name,
-                onClick = { page = Page.MONTH.name },
-                icon = { Icon(Icons.Default.CalendarMonth, contentDescription = null) },
-                label = { Text("日历") }
-            )
-            NavigationBarItem(
-                selected = page == Page.AI.name,
-                onClick = { page = Page.AI.name },
-                icon = { Icon(Icons.Default.AutoAwesome, contentDescription = null) },
-                label = { Text("AI 助手") }
-            )
-            NavigationBarItem(
-                selected = page == Page.TOOLS.name,
-                onClick = { page = Page.TOOLS.name },
-                icon = {
-                    if (skinPainter(SkinSlot.SETTINGS_ICON) != null) {
-                        SkinImage(SkinSlot.SETTINGS_ICON, Modifier.size(24.dp))
-                    } else Icon(Icons.Default.Settings, contentDescription = null)
-                },
-                label = { Text("设置") }
-            )
+        if (!keyboardVisible) {
+            Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
+                PowerCalNavigation(
+                    selected = when (page) {
+                        Page.MONTH.name -> VisualTab.MONTH
+                        Page.AI.name -> VisualTab.AI
+                        Page.TOOLS.name -> VisualTab.TOOLS
+                        Page.MEMO.name -> null
+                        else -> VisualTab.TIMELINE
+                    },
+                    onSelect = { tab -> page = tab.name }
+                )
+            }
         }
 
         message?.let { text ->
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
+            SkinNotice(
+                text,
+                Modifier.align(Alignment.BottomCenter)
                     .padding(horizontal = 16.dp)
-                    .padding(bottom = 92.dp),
-                shape = GlassShapes.chip,
-                color = MaterialTheme.colorScheme.inverseSurface,
-                tonalElevation = 6.dp
-            ) {
-                Text(
-                    text,
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp).semantics { liveRegion = LiveRegionMode.Polite },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.inverseOnSurface
-                )
-            }
+                    .padding(bottom = 92.dp)
+            )
         }
     }
 
@@ -1236,7 +1199,7 @@ fun PowerCalApp(store: PowerStore) {
     }
 
     skinToDelete?.let { item ->
-        AlertDialog(
+        SkinAlertDialog(
             onDismissRequest = { skinToDelete = null },
             title = { Text("删除皮肤？") },
             text = { Text("确认删除“" + item.name + "”？此操作仅删除皮肤素材，日历事件不会改变。") },
@@ -1274,7 +1237,7 @@ fun PowerCalApp(store: PowerStore) {
                 }
             }
         }
-        AlertDialog(
+        SkinAlertDialog(
             onDismissRequest = { selectedFormalEvent = null },
             title = { Text("正式事件 ${record.displaySeq()}") },
             text = {
@@ -1305,7 +1268,7 @@ fun PowerCalApp(store: PowerStore) {
         val parsed = remember(uri, evidence.text) {
             if (ics) runCatching { IcsCodec.parse(evidence.text) }.getOrNull() else null
         }
-        AlertDialog(
+        SkinAlertDialog(
             onDismissRequest = { pendingFileReview = null },
             title = { Text("核对文件 · " + evidence.filename) },
             text = {
@@ -1358,7 +1321,7 @@ fun PowerCalApp(store: PowerStore) {
     }
 
     pendingImageReview?.let { uri ->
-        AlertDialog(
+        SkinAlertDialog(
             onDismissRequest = { pendingImageReview = null },
             title = { Text("图片识别方式") },
             text = {
@@ -1426,7 +1389,7 @@ fun PowerCalApp(store: PowerStore) {
     }
 
     ocrReviewText?.let { extracted ->
-        AlertDialog(
+        SkinAlertDialog(
             onDismissRequest = { ocrReviewText = null },
             title = { Text("核对 OCR 识别原文") },
             text = {
@@ -1455,14 +1418,14 @@ fun PowerCalApp(store: PowerStore) {
     }
 
     monthInspection?.let { record ->
-        AlertDialog(onDismissRequest = { monthInspection = null }, title = { Text(record.title) },
+        SkinAlertDialog(onDismissRequest = { monthInspection = null }, title = { Text(record.title) },
             text = { Column { Text(TemporalText.summarize(record)); Text(record.notes); Text("AI 处理中，卡组只读。") } },
             confirmButton = { TextButton(onClick = { monthInspection = null }) { Text("关闭") } })
     }
     confirmBatch?.let { review ->
         val mode = review.mode
         val label = if (mode == AiBatchRunner.Mode.PUBLISH) "发布" else "丢弃"
-        AlertDialog(
+        SkinAlertDialog(
             onDismissRequest = { confirmBatch = null }, title = { Text("一次性授权 AI $label") },
             text = {
                 Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1512,7 +1475,7 @@ fun PowerCalApp(store: PowerStore) {
     }
 
     if (confirmingLegacy) {
-        AlertDialog(
+        SkinAlertDialog(
             onDismissRequest = { confirmingLegacy = false },
             title = { Text("迁移旧版事件？") },
             text = {
@@ -1542,7 +1505,7 @@ fun PowerCalApp(store: PowerStore) {
     }
 
     legacyRestoreText?.let { legacyText ->
-        AlertDialog(
+        SkinAlertDialog(
             onDismissRequest = { legacyRestoreText = null },
             title = { Text("恢复早期格式备份？") },
             text = {
@@ -1593,7 +1556,7 @@ private fun CalendarEvent.toRecord(): TemporalRecord = TemporalRecord(
 @Composable
 private fun TextDraftDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
     var text by remember { mutableStateOf("") }
-    AlertDialog(
+    SkinAlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("用文字创建草稿") },
         text = {
@@ -1621,7 +1584,7 @@ private fun TextDraftDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit) 
 }
 
 @Composable
-private fun ToolsPage(
+internal fun NativeToolsPage(
     diagnostics: UiDiagnostics,
     records: List<TemporalRecord>,
     pendingCount: Int,
@@ -1655,14 +1618,11 @@ private fun ToolsPage(
 ) {
     val context = LocalContext.current
     val appContext = context.applicationContext
-    var settings by remember { mutableStateOf(AiSettingsStore.load(appContext)) }
     var aiText by rememberSaveable { mutableStateOf("") }
     var shareForRequest by rememberSaveable { mutableStateOf(false) }
-    var dirty by remember { mutableStateOf(false) }
     // Diagnostics are read once per data change instead of on every recomposition.
     val nextSequence = diagnostics.nextSequence
     val identityCount = diagnostics.identities
-    var modelExpanded by rememberSaveable { mutableStateOf(false) }
 
     Column(
         Modifier
@@ -1676,106 +1636,8 @@ private fun ToolsPage(
             Text("工具与设置", style = MaterialTheme.typography.headlineSmall)
         }
 
-        SectionCard("个人信息", "本机资料 · 不上传给 AI") {
-            var displayName by remember {
-                mutableStateOf(appContext.getSharedPreferences("powercal-profile", Context.MODE_PRIVATE)
-                    .getString("displayName", "").orEmpty())
-            }
-            Text("头像与云端资料将在皮肤系统完成后支持；个人资料不是日历业务数据。",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-            OutlinedTextField(
-                value = displayName,
-                onValueChange = { if (it.length <= 80) displayName = it },
-                label = { Text("你的名字（可选）") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
-            OutlinedButton(onClick = {
-                appContext.getSharedPreferences("powercal-profile", Context.MODE_PRIVATE).edit()
-                    .putString("displayName", displayName).apply()
-            }) { Text("保存个人信息") }
-        }
-
-        SectionCard(
-            "单一 AI",
-            if (settings.configured) "已配置 · 模型 ${settings.model}" else "未配置"
-        ) {
-            Text(
-                "描述计划，先生成待确认草稿；批量发布或丢弃需要一次性授权。" +
-                    "密钥保存在应用私有存储，不进入备份，也不会写入日志。",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            TextButton(onClick = { modelExpanded = !modelExpanded }) {
-                Icon(if (modelExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore, null)
-                Text(if (modelExpanded) "收起模型配置" else "配置端点、模型与密钥")
-            }
-            if (modelExpanded) {
-            OutlinedTextField(
-                value = settings.endpoint,
-                onValueChange = { settings = settings.copy(endpoint = it); dirty = true },
-                label = { Text("端点 · https://api.example.com/v1") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
-            OutlinedTextField(
-                value = settings.model,
-                onValueChange = { settings = settings.copy(model = it); dirty = true },
-                label = { Text("模型名") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
-            OutlinedTextField(
-                value = settings.apiKey,
-                onValueChange = { settings = settings.copy(apiKey = it); dirty = true },
-                label = { Text("API Key") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                visualTransformation = PasswordVisualTransformation()
-            )
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("启用 AI", modifier = Modifier.weight(1f))
-                Switch(
-                    checked = settings.enabled,
-                    onCheckedChange = { settings = settings.copy(enabled = it); dirty = true }
-                )
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("允许按次共享事件上下文", style = MaterialTheme.typography.bodyMedium)
-                    Text(
-                        "开启后，每次请求仍需单独选择是否共享，最多 60 条事件。",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Switch(
-                    checked = settings.shareContext,
-                    onCheckedChange = { settings = settings.copy(shareContext = it); dirty = true }
-                )
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(
-                    onClick = {
-                        AiSettingsStore.save(appContext, settings)
-                        dirty = false
-                    },
-                    enabled = dirty
-                ) { Text("保存") }
-                OutlinedButton(
-                    onClick = {
-                        AiSettingsStore.save(appContext, settings.copy(enabled = true))
-                        settings = settings.copy(enabled = true)
-                        dirty = false
-                    }
-                ) { Text("保存并启用") }
-            }
-            }
-            Text("聊天、OCR、ICS 和文档都从底部 AI 助手进入。日历变更在待处理确认，设置页只管理模型连接与隐私权限。",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+        ProtectedProfileSection()
+        ProtectedAiSettingsSection()
 
         SectionCard("皮肤", "支持独立 .pcskin 包、即时切换、重启保留；原生主题始终可用") {
             skinChoices.forEach { item ->
@@ -1880,6 +1742,124 @@ private fun ToolsPage(
 
         Spacer(Modifier.height(24.dp))
     }
+}
+
+/** Placement-safe profile editor. The visual context never receives raw private preferences. */
+@Composable
+internal fun ProtectedProfileSection() {
+    val appContext = LocalContext.current.applicationContext
+    SectionCard("个人信息", "本机资料 · 不上传给 AI") {
+        var displayName by remember {
+            mutableStateOf(appContext.getSharedPreferences("powercal-profile", Context.MODE_PRIVATE)
+                .getString("displayName", "").orEmpty())
+        }
+        Text("头像与云端资料将在皮肤系统完成后支持；个人资料不是日历业务数据。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        OutlinedTextField(
+            value = displayName,
+            onValueChange = { if (it.length <= 80) displayName = it },
+            label = { Text("你的名字（可选）") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true
+        )
+        OutlinedButton(onClick = {
+            appContext.getSharedPreferences("powercal-profile", Context.MODE_PRIVATE).edit()
+                .putString("displayName", displayName).apply()
+        }) { Text("保存个人信息") }
+    }
+
+
+}
+
+/** Credentials are rendered by this host-owned control; skins cannot read the value. */
+@Composable
+internal fun ProtectedAiSettingsSection() {
+    val appContext = LocalContext.current.applicationContext
+    var settings by remember { mutableStateOf(AiSettingsStore.load(appContext)) }
+    var dirty by remember { mutableStateOf(false) }
+    var modelExpanded by rememberSaveable { mutableStateOf(false) }
+    SectionCard(
+        "单一 AI",
+        if (settings.configured) "已配置 · 模型 ${settings.model}" else "未配置"
+    ) {
+        Text(
+            "描述计划，先生成待确认草稿；批量发布或丢弃需要一次性授权。" +
+                "密钥保存在应用私有存储，不进入备份，也不会写入日志。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        TextButton(onClick = { modelExpanded = !modelExpanded }) {
+            Icon(if (modelExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore, null)
+            Text(if (modelExpanded) "收起模型配置" else "配置端点、模型与密钥")
+        }
+        if (modelExpanded) {
+        OutlinedTextField(
+            value = settings.endpoint,
+            onValueChange = { settings = settings.copy(endpoint = it); dirty = true },
+            label = { Text("端点 · https://api.example.com/v1") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true
+        )
+        OutlinedTextField(
+            value = settings.model,
+            onValueChange = { settings = settings.copy(model = it); dirty = true },
+            label = { Text("模型名") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true
+        )
+        OutlinedTextField(
+            value = settings.apiKey,
+            onValueChange = { settings = settings.copy(apiKey = it); dirty = true },
+            label = { Text("API Key") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            visualTransformation = PasswordVisualTransformation()
+        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("启用 AI", modifier = Modifier.weight(1f))
+            Switch(
+                checked = settings.enabled,
+                onCheckedChange = { settings = settings.copy(enabled = it); dirty = true }
+            )
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("允许按次共享事件上下文", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    "开启后，每次请求仍需单独选择是否共享，最多 60 条事件。",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Switch(
+                checked = settings.shareContext,
+                onCheckedChange = { settings = settings.copy(shareContext = it); dirty = true }
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                onClick = {
+                    AiSettingsStore.save(appContext, settings)
+                    dirty = false
+                },
+                enabled = dirty
+            ) { Text("保存") }
+            OutlinedButton(
+                onClick = {
+                    AiSettingsStore.save(appContext, settings.copy(enabled = true))
+                    settings = settings.copy(enabled = true)
+                    dirty = false
+                }
+            ) { Text("保存并启用") }
+        }
+        }
+        Text("聊天、OCR、ICS 和文档都从底部 AI 助手进入。日历变更在待处理确认，设置页只管理模型连接与隐私权限。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+
+
 }
 
 @Composable

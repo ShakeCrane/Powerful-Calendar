@@ -31,7 +31,7 @@ import dev.powerfulcalendar.ai.AiInterpretation
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun AiChatScreen(
+fun NativeAiChatScreen(
     messages: List<AiChatMessage>,
     busy: Boolean,
     pendingCount: Int,

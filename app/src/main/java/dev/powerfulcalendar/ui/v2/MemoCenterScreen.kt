@@ -57,7 +57,7 @@ internal object TodoProjection {
 }
 
 @Composable
-internal fun MemoCenterScreen(
+internal fun NativeMemoCenterScreen(
     items: List<TodoEntry>,
     zone: ZoneId,
     busy: Boolean,
