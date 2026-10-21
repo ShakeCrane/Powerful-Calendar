@@ -208,6 +208,7 @@ fun kindColor(kind: TemporalKind): Color = when (kind) {
     TemporalKind.ALARM -> LocalAxisPalette.current.alarm
     TemporalKind.ACTIVITY -> LocalAxisPalette.current.activity
     TemporalKind.DEADLINE -> LocalAxisPalette.current.deadline
+    TemporalKind.MEMO -> LocalAxisPalette.current.activity
 }
 
 /** Shared corner language: generous, but never so round that dense rows look like pills. */

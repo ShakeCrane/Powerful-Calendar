@@ -23,6 +23,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.powerfulcalendar.ai.AiBatchRunner
 import dev.powerfulcalendar.ai.AiChatMessage
+import dev.powerfulcalendar.ai.AiInterpretation
 
 /**
  * Compact messenger-style shell. Text is ordinary chat; no ordinary message authorizes writes.
@@ -37,6 +38,11 @@ fun AiChatScreen(
     onSend: (String) -> Unit,
     onPropose: (String) -> Unit,
     onClear: () -> Unit,
+    onClearCache: () -> Unit,
+    proposalReview: AiInterpretation? = null,
+    onApplyProposals: (Set<Int>, Boolean) -> Unit = { _, _ -> },
+    onDiscardProposals: (Set<Int>) -> Unit = {},
+    onSupplementProposals: () -> Unit = {},
     onSettings: () -> Unit,
     onOpenDeck: () -> Unit,
     onPickImage: () -> Unit,
@@ -52,7 +58,12 @@ fun AiChatScreen(
     val context = LocalContext.current
 
     LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) listState.animateScrollToItem(messages.lastIndex)
+        if (messages.isNotEmpty()) {
+            val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+            if (lastVisible < 0 || lastVisible >= messages.lastIndex - 2) {
+                listState.animateScrollToItem(messages.lastIndex)
+            }
+        }
     }
     Column(
         Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp),
@@ -85,6 +96,10 @@ fun AiChatScreen(
                         onPrepareBatch(AiBatchRunner.Mode.DISCARD)
                     }, enabled = !busy && pendingCount > 0)
                     HorizontalDivider()
+                    DropdownMenuItem(text = { Text("清理 AI 临时缓存（保留聊天与事件）") }, onClick = {
+                        pendingMenu = false
+                        onClearCache()
+                    }, enabled = !busy)
                     DropdownMenuItem(text = { Text("清空聊天（不改变事件）") }, onClick = {
                         pendingMenu = false
                         onClear()
@@ -96,7 +111,7 @@ fun AiChatScreen(
         if (messages.isEmpty()) {
             Text(
                 "在这里直接聊天，或点 + 上传图片、ICS、文档和表格。" +
-                    " 长按任意消息可编辑、回退或从该消息生成待确认日程。",
+                    " 通常 AI 会主动提供结构化提案；长按消息创建仅用于识别失败后的手动补救。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 10.dp)
@@ -188,6 +203,11 @@ fun AiChatScreen(
             }
         }
 
+        proposalReview?.takeIf { it.proposals.isNotEmpty() }?.let { preview ->
+            AiProposalReview(preview, busy, onApplyProposals, onDiscardProposals,
+                onSupplementProposals)
+        }
+
         if (busy) Text("正在处理…", style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
 
@@ -201,7 +221,7 @@ fun AiChatScreen(
                     Icon(Icons.Default.Add, "添加图片或文件")
                 }
                 DropdownMenu(expanded = attachmentMenu, onDismissRequest = { attachmentMenu = false }) {
-                    DropdownMenuItem(text = { Text("添加图片 · OCR") }, onClick = {
+                    DropdownMenuItem(text = { Text("添加图片 · 智能识别") }, onClick = {
                         attachmentMenu = false
                         onPickImage()
                     })

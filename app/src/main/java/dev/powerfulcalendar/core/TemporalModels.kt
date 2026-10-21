@@ -29,7 +29,8 @@ import kotlin.math.roundToLong
 enum class TemporalKind(val label: String) {
     ALARM("闹钟"),
     ACTIVITY("活动"),
-    DEADLINE("截止");
+    DEADLINE("截止"),
+    MEMO("备忘");
 
     val side: AxisSide get() = if (this == ALARM) AxisSide.LEFT else AxisSide.RIGHT
 }
@@ -77,6 +78,13 @@ data class TemporalRecord(
     val deadlineMillis: Long? = null,
     /** DEADLINE expressed as a calendar date only. */
     val deadlineDate: String? = null,
+    /** MEMO is a date-only todo; either boundary may be absent for undated tasks. */
+    val memoStartDate: String? = null,
+    val memoEndDate: String? = null,
+    /** Legacy events do not automatically become unfinished tasks. */
+    val trackingEnabled: Boolean = kind == TemporalKind.MEMO,
+    /** Stable original recurrence occurrence keys; "single" for non-repeating events. */
+    val completedKeys: Set<String> = emptySet(),
     val recurrence: Recurrence = Recurrence.NONE,
     /** Reminder offset in minutes before the anchor; negative means no reminder. */
     val reminderMinutes: Int = -1,
@@ -103,6 +111,8 @@ data class TemporalRecord(
         TemporalKind.DEADLINE -> deadlineMillis
             ?: deadlineDate?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
                 ?.atStartOfDay(inZone)?.toInstant()?.toEpochMilli()
+        TemporalKind.MEMO -> memoStartDate?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+            ?.atStartOfDay(inZone)?.toInstant()?.toEpochMilli()
     }
 
     /** Instant-based end used for lane overlap and drag ghosts; never used to fake precision. */
@@ -110,6 +120,8 @@ data class TemporalRecord(
         TemporalKind.ACTIVITY -> endMillis ?: startMillis
         TemporalKind.ALARM -> startMillis
         TemporalKind.DEADLINE -> anchorMillis(inZone)
+        TemporalKind.MEMO -> memoEndDate?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+            ?.plusDays(1)?.atStartOfDay(inZone)?.toInstant()?.toEpochMilli() ?: anchorMillis(inZone)
     }
 
     fun isDateOnlyDeadline(): Boolean = precision == TimePrecision.DATE
@@ -118,6 +130,22 @@ data class TemporalRecord(
     fun validate(): String? {
         if (title.isBlank()) return "请输入事件标题"
         if (recurrence.interval < 1) return "重复间隔必须至少为 1"
+        if (recurrence.activeFromDate != null &&
+            runCatching { LocalDate.parse(recurrence.activeFromDate) }.isFailure)
+            return "重复开始日期无效"
+        if (recurrence.activeUntilDate != null &&
+            runCatching { LocalDate.parse(recurrence.activeUntilDate) }.isFailure)
+            return "重复结束日期无效"
+        if (recurrence.activeFromDate != null && recurrence.activeUntilDate != null &&
+            recurrence.activeUntilDate < recurrence.activeFromDate) return "重复日期范围顺序无效"
+        if (recurrence.activeFromDate != null &&
+            runCatching { LocalDate.parse(recurrence.activeFromDate) }.isFailure)
+            return "重复开始日期无效"
+        if (recurrence.activeUntilDate != null &&
+            runCatching { LocalDate.parse(recurrence.activeUntilDate) }.isFailure)
+            return "重复结束日期无效"
+        if (recurrence.activeFromDate != null && recurrence.activeUntilDate != null &&
+            recurrence.activeUntilDate < recurrence.activeFromDate) return "重复日期范围顺序无效"
         if (reminderMinutes !in -1..10080) return "提醒提前量必须在 0～10080 分钟，或选择关闭"
         return when (kind) {
             TemporalKind.ALARM -> when {
@@ -140,6 +168,20 @@ data class TemporalRecord(
                 startMillis != null || endMillis != null -> "截止事件不能带开始/结束区间"
                 else -> null
             }
+            TemporalKind.MEMO -> when {
+                startMillis != null || endMillis != null || deadlineMillis != null ||
+                    deadlineDate != null -> "备忘不能使用精确时间或截止字段"
+                memoStartDate != null && runCatching { LocalDate.parse(memoStartDate) }.isFailure ->
+                    "备忘开始日期无效"
+                memoEndDate != null && runCatching { LocalDate.parse(memoEndDate) }.isFailure ->
+                    "备忘结束日期无效"
+                memoEndDate != null && memoStartDate == null -> "备忘结束日期需要开始日期"
+                memoEndDate != null && memoEndDate < memoStartDate!! -> "备忘结束日期不能早于开始日期"
+                recurrence.isRepeating && memoStartDate == null -> "重复备忘需要日期作为周期起点"
+                reminderMinutes >= 0 && memoStartDate == null -> "无日期备忘不能凭空生成提醒时刻"
+                !trackingEnabled -> "备忘必须启用完成跟踪"
+                else -> null
+            }
         }
     }
 
@@ -159,6 +201,9 @@ data class Recurrence(
     /** Total number of occurrences including the first, or null for unbounded. */
     val count: Int? = null,
     val untilMillis: Long? = null,
+    /** Inclusive local-date effective range; independent from stable recurrence anchor. */
+    val activeFromDate: String? = null,
+    val activeUntilDate: String? = null,
     /** Weekly filter; empty means "same weekday as the first occurrence". */
     val byDay: Set<DayOfWeek> = emptySet(),
     /**
@@ -188,6 +233,13 @@ data class Occurrence(
 )
 
 object RecurrenceEngine {
+    /** Compare against ORIGINAL slot, not an overridden display instant. */
+    fun activeOnOriginalKey(rule: Recurrence, key: String): Boolean {
+        val localDate = key.take(10)
+        return (rule.activeFromDate == null || localDate >= rule.activeFromDate) &&
+            (rule.activeUntilDate == null || localDate <= rule.activeUntilDate)
+    }
+
     private val KEY_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm")
 
     fun keyFor(local: LocalDateTime): String = local.format(KEY_FORMAT)
@@ -240,7 +292,7 @@ object RecurrenceEngine {
         if (prioritizeWindowStarts) {
             return occurrencesPrioritizingWindowStarts(
                 record, fromMillis, toMillis, limit, anchor, duration, rule
-            )
+            ).filter { activeOnOriginalKey(rule, it.key) }.filter { activeOnOriginalKey(rule, it.key) }
         }
 
         val results = ArrayList<Occurrence>()
@@ -248,7 +300,8 @@ object RecurrenceEngine {
         // is found regardless of where its original slot sits in the series. The original key must
         // still identify a real slot within count/until; an override cannot extend the series.
         rule.overrides.forEach { (key, override) ->
-            if (key in rule.exceptions || seriesSlotIndex(record, key) == null) return@forEach
+            if (key in rule.exceptions || !activeOnOriginalKey(rule, key) ||
+                seriesSlotIndex(record, key) == null) return@forEach
             val occurrence = overrideOccurrence(record, key, override, duration)
             if (overlapsWindow(occurrence.startMillis, occurrence.endMillis, fromMillis, toMillis)) {
                 results.add(occurrence)
@@ -275,7 +328,8 @@ object RecurrenceEngine {
             if (slotStart >= toMillis) break
             val slotKey = keyFor(slotLocal)
             // An overridden slot already contributed (or was correctly excluded) in step (A).
-            if (slotKey in rule.overrides || slotKey in rule.exceptions) continue
+            if (slotKey in rule.overrides || slotKey in rule.exceptions ||
+                !activeOnOriginalKey(rule, slotKey)) continue
             val end = if (record.kind == TemporalKind.ACTIVITY) slotStart + duration else null
             if (!overlapsWindow(slotStart, end, fromMillis, toMillis)) continue
             results.add(Occurrence(slotKey, slotStart, end))
@@ -303,7 +357,8 @@ object RecurrenceEngine {
         val zone = record.zone
 
         rule.overrides.forEach { (key, override) ->
-            if (key in rule.exceptions || seriesSlotIndex(record, key) == null) return@forEach
+            if (key in rule.exceptions || !activeOnOriginalKey(rule, key) ||
+                seriesSlotIndex(record, key) == null) return@forEach
             val occurrence = overrideOccurrence(record, key, override, duration)
             if (!overlapsWindow(occurrence.startMillis, occurrence.endMillis, fromMillis, toMillis)) {
                 return@forEach
@@ -622,7 +677,8 @@ object RecurrenceEngine {
 
         var best: Occurrence? = null
         rule.overrides.forEach { (key, moved) ->
-            if (key in rule.exceptions || moved.startMillis < afterMillis || seriesSlotIndex(record, key) == null) {
+            if (key in rule.exceptions || moved.startMillis < afterMillis ||
+                !activeOnOriginalKey(rule, key) || seriesSlotIndex(record, key) == null) {
                 return@forEach
             }
             val occurrence = overrideOccurrence(record, key, moved, duration)
@@ -637,7 +693,10 @@ object RecurrenceEngine {
         // result limit with hundreds of historical starts before the actual next one.
         val firstLocal = Instant.ofEpochMilli(anchor).atZone(record.zone).toLocalDateTime()
         val countLimit = rule.count ?: Int.MAX_VALUE
-        var index = startIndexNear(firstLocal, rule, afterMillis, record.zone, countLimit)
+        val rangeStart = rule.activeFromDate?.let {
+            LocalDate.parse(it).atStartOfDay(record.zone).toInstant().toEpochMilli()
+        } ?: afterMillis
+        var index = startIndexNear(firstLocal, rule, maxOf(afterMillis, rangeStart), record.zone, countLimit)
         while (index < countLimit) {
             val slotLocal = runCatching { slotAt(firstLocal, rule, index) }.getOrNull() ?: break
             index++
@@ -645,7 +704,10 @@ object RecurrenceEngine {
             if (rule.untilMillis != null && slotStart > rule.untilMillis) break
             if (slotStart < afterMillis) continue
             val slotKey = keyFor(slotLocal)
-            if (slotKey in rule.exceptions || slotKey in rule.overrides) continue
+            if (rule.activeUntilDate != null &&
+                slotLocal.toLocalDate().toString() > rule.activeUntilDate) break
+            if (slotKey in rule.exceptions || slotKey in rule.overrides ||
+                !activeOnOriginalKey(rule, slotKey)) continue
             val end = if (record.kind == TemporalKind.ACTIVITY) slotStart + duration else null
             val current = best
             if (current == null || slotStart < current.startMillis) {
@@ -694,7 +756,9 @@ data class DraftForm(
     val enabled: Boolean = true,
     val source: String = "local",
     val zoneId: String = ZoneId.systemDefault().id,
-    val recurrence: Recurrence = Recurrence.NONE
+    val recurrence: Recurrence = Recurrence.NONE,
+    val trackingEnabled: Boolean = kind == TemporalKind.MEMO,
+    val completedKeys: Set<String> = emptySet()
 ) {
     val zone: ZoneId get() = runCatching { ZoneId.of(zoneId) }.getOrDefault(ZoneId.systemDefault())
 
@@ -709,6 +773,7 @@ data class DraftForm(
                 if (parseEnd() == null) missing.add(DraftField.END)
             }
             TemporalKind.DEADLINE -> if (parseDeadline() == null) missing.add(DraftField.DEADLINE)
+            TemporalKind.MEMO -> { /* Undated Memo is valid. */ }
         }
         return missing
     }
@@ -766,11 +831,19 @@ data class DraftForm(
                     deadlineMillis = deadline.millis
                 )
             }
+            TemporalKind.MEMO -> TemporalRecord(
+                eventSeq = seq, revision = revision, kind = kind, title = title.trim(),
+                memoStartDate = startText.trim().ifEmpty { null },
+                memoEndDate = endText.trim().ifEmpty { null },
+                trackingEnabled = true
+            )
         }
         val record = base.copy(
             notes = notes.trim(),
             location = location.trim(),
             recurrence = recurrence,
+            trackingEnabled = if (kind == TemporalKind.MEMO) true else trackingEnabled,
+            completedKeys = completedKeys,
             reminderMinutes = reminderMinutes,
             reminderMethod = reminderMethod,
             reminderTiming = reminderTiming,
@@ -836,10 +909,12 @@ data class DraftForm(
         fun from(record: TemporalRecord): DraftForm = DraftForm(
             kind = record.kind,
             title = record.title,
-            startText = formatInstant(record.startMillis, record.zone),
+            startText = if (record.kind == TemporalKind.MEMO) record.memoStartDate.orEmpty()
+                else formatInstant(record.startMillis, record.zone),
             endText = when (record.kind) {
                 TemporalKind.DEADLINE -> record.deadlineDate
                     ?: formatInstant(record.deadlineMillis, record.zone)
+                TemporalKind.MEMO -> record.memoEndDate.orEmpty()
                 else -> formatInstant(record.endMillis, record.zone)
             },
             notes = record.notes,
@@ -850,7 +925,9 @@ data class DraftForm(
             enabled = record.enabled,
             source = record.source,
             zoneId = record.zoneId,
-            recurrence = record.recurrence
+            recurrence = record.recurrence,
+            trackingEnabled = record.trackingEnabled,
+            completedKeys = record.completedKeys
         )
 
         fun fresh(
@@ -873,6 +950,7 @@ data class DraftForm(
             )
             TemporalKind.DEADLINE -> DraftForm(kind, endText = day.toString(),
                 reminderMinutes = 0, reminderTiming = ReminderTiming.DAY_START, zoneId = zone.id)
+            TemporalKind.MEMO -> DraftForm(kind, trackingEnabled = true, zoneId = zone.id)
         }
 
         /** Used by the timeline when the user long-presses "+ here". */
@@ -887,6 +965,8 @@ data class DraftForm(
                 TemporalKind.DEADLINE -> DraftForm(
                     kind, endText = local.toLocalDate().toString(), zoneId = zone.id
                 )
+                TemporalKind.MEMO -> DraftForm(kind, startText = local.toLocalDate().toString(),
+                    trackingEnabled = true, zoneId = zone.id)
             }
         }
     }
@@ -1005,12 +1085,17 @@ object DraftDiff {
                 add("开始", current?.startMillis?.let { DraftForm.formatInstant(it, zone) }, form.startText)
                 add("结束", current?.endMillis?.let { DraftForm.formatInstant(it, zone) }, form.endText)
             }
+            TemporalKind.MEMO -> {
+                add("开始日期", current?.memoStartDate, form.startText)
+                add("结束日期", current?.memoEndDate, form.endText)
+            }
             TemporalKind.DEADLINE -> add(
                 "截止",
                 current?.deadlineDate ?: current?.deadlineMillis?.let { DraftForm.formatInstant(it, zone) },
                 form.endText
             )
         }
+        add("完成跟踪", current?.trackingEnabled?.toString(), form.trackingEnabled.toString())
         add("地点", current?.location, form.location)
         add("备注", current?.notes, form.notes)
         add("提醒", reminderLabel(current?.reminderMinutes), reminderLabel(form.reminderMinutes))
@@ -1037,7 +1122,8 @@ data class TimelineItem(
     val endMillis: Long,
     val lane: Int,
     val side: AxisSide,
-    val dateOnly: Boolean
+    val dateOnly: Boolean,
+    val clusterLanes: Int = 1
 )
 
 /**
@@ -1092,7 +1178,26 @@ object TimelineLayout {
                 }
             }
         }
-        return LayoutResult(items, overflow.mapValues { it.value.toList() })
+        val clustered = items.groupBy { it.side }.flatMap { (_, sideItems) ->
+            val sorted = sideItems.sortedWith(compareBy({ it.anchorMillis }, { it.record.eventSeq }))
+            val result = ArrayList<TimelineItem>(sorted.size)
+            var group = ArrayList<TimelineItem>()
+            var groupEnd = Long.MIN_VALUE
+            fun flush() {
+                if (group.isEmpty()) return
+                val count = group.maxOf { it.lane } + 1
+                result.addAll(group.map { it.copy(clusterLanes = count) })
+                group = ArrayList()
+            }
+            for (item in sorted) {
+                if (item.anchorMillis >= groupEnd) { flush(); groupEnd = Long.MIN_VALUE }
+                group.add(item)
+                groupEnd = maxOf(groupEnd, item.endMillis)
+            }
+            flush()
+            result
+        }
+        return LayoutResult(clustered, overflow.mapValues { it.value.toList() })
     }
 
     data class LayoutResult(
@@ -1212,6 +1317,11 @@ object TemporalText {
                     from.format(DATE) + " " + from.format(TIME) + " – " + to.format(DATE) + " " + to.format(TIME)
                 }
             }
+        }
+        TemporalKind.MEMO -> when {
+            record.memoStartDate == null -> "无日期 · 待办"
+            record.memoEndDate == null -> record.memoStartDate + " · 待办"
+            else -> record.memoStartDate + " ～ " + record.memoEndDate + " · 待办"
         }
         TemporalKind.DEADLINE ->
             record.deadlineDate?.let { runCatching { LocalDate.parse(it) }.getOrNull() }

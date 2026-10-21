@@ -235,11 +235,13 @@ object IcsCodec {
                     Instant.ofEpochMilli(start).atZone(zone).toLocalDate().toString()
                 } else DraftForm.formatInstant(start, zone)
                 TemporalKind.ALARM -> ""
+                TemporalKind.MEMO -> ""
             },
             reminderMinutes = when (kind) {
                 TemporalKind.ALARM -> 0
                 TemporalKind.ACTIVITY -> 0
                 TemporalKind.DEADLINE -> 0
+                TemporalKind.MEMO -> -1
             },
             reminderTiming = if (kind == TemporalKind.DEADLINE && dateOnly)
                 dev.powerfulcalendar.core.ReminderTiming.DAY_START

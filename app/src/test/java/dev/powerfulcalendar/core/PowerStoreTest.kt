@@ -72,6 +72,32 @@ class PowerStoreTest {
     private fun commit(card: DraftCard): PowerStore.CommitOutcome =
         store.commit(card.draftId, actor = "test")
 
+    @Test
+    fun undatedMemoPersistsAndCompletionCanBeReopenedAfterRestart() {
+        val card = store.newDraft(DraftForm(
+            kind = TemporalKind.MEMO, title = "无日期事项", zoneId = zone.id
+        ))
+        assertTrue(commit(card) is PowerStore.CommitOutcome.Committed)
+        val memo = store.get(card.eventSeq)!!
+        assertNull(memo.anchorMillis())
+        assertTrue(memo.trackingEnabled)
+        assertTrue(store.all().any { it.eventSeq == card.eventSeq })
+        assertTrue(store.setCompleted(card.eventSeq, "single", true, memo.revision))
+        assertFalse(store.setCompleted(card.eventSeq, "single", false, memo.revision))
+
+        val database = store.databaseName
+        store.close()
+        store = PowerStore(context, database)
+        val reopened = store.get(card.eventSeq)!!
+        assertTrue("single" in reopened.completedKeys)
+        assertEquals(2L, reopened.revision)
+        assertTrue(store.setCompleted(card.eventSeq, "single", false, reopened.revision))
+        val pending = store.get(card.eventSeq)!!
+        assertTrue(pending.completedKeys.isEmpty())
+        assertEquals(3L, pending.revision)
+        assertEquals(3, store.history(card.eventSeq).size)
+    }
+
     // ---------------------------------------------------------------- permanent identity
 
     @Test

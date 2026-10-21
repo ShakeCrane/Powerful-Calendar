@@ -683,7 +683,18 @@ private fun DeckCardBody(
                 isError = form.title.isBlank()
             )
 
-            if (form.kind != TemporalKind.DEADLINE) {
+            if (form.kind == TemporalKind.MEMO) {
+                Text("备忘可完全不指定日期；也可以填连续的自然日区间。", style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(value = form.startText,
+                    onValueChange = { onFormChange(form.copy(startText = it)) },
+                    modifier = Modifier.fillMaxWidth().deckInput(), singleLine = true,
+                    label = { Text("开始日期（可选，yyyy-MM-dd）") }, readOnly = aiLocked)
+                OutlinedTextField(value = form.endText,
+                    onValueChange = { onFormChange(form.copy(endText = it)) },
+                    modifier = Modifier.fillMaxWidth().deckInput(), singleLine = true,
+                    label = { Text("结束日期（可选，含当天）") }, readOnly = aiLocked)
+            }
+            if (form.kind != TemporalKind.DEADLINE && form.kind != TemporalKind.MEMO) {
                 TimeRow(
                     label = "开始",
                     zone = form.zone,
@@ -724,7 +735,7 @@ private fun DeckCardBody(
                 )
             }
 
-            if (form.kind != TemporalKind.ALARM) {
+            if (form.kind != TemporalKind.ALARM && form.kind != TemporalKind.MEMO) {
                 TimeRow(
                     label = if (form.kind == TemporalKind.DEADLINE) "截止" else "结束",
                     zone = form.zone,
@@ -891,7 +902,33 @@ private fun DeckCardBody(
                             }
                         }
                     }
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("加入待办（完成跟踪）", style = MaterialTheme.typography.labelLarge)
+                        Switch(checked = form.trackingEnabled || form.kind == TemporalKind.MEMO,
+                            onCheckedChange = { onFormChange(form.copy(trackingEnabled = it)) },
+                            enabled = !aiLocked && form.kind != TemporalKind.MEMO)
+                    }
+                    if (form.kind == TemporalKind.MEMO && form.startText.isBlank()) {
+                        Text("无日期备忘不设置基于时刻的提醒或重复周期。",
+                            style = MaterialTheme.typography.labelSmall)
+                    }
                     Text("重复", style = MaterialTheme.typography.labelLarge)
+                    if (form.recurrence.isRepeating) {
+                        OutlinedTextField(
+                            value = form.recurrence.activeFromDate.orEmpty(),
+                            onValueChange = { onFormChange(form.copy(recurrence =
+                                form.recurrence.copy(activeFromDate = it.ifBlank { null }))) },
+                            label = { Text("从该日期起有效（可留空 yyyy-MM-dd）") },
+                            singleLine = true, readOnly = aiLocked,
+                            modifier = Modifier.fillMaxWidth().deckInput())
+                        OutlinedTextField(
+                            value = form.recurrence.activeUntilDate.orEmpty(),
+                            onValueChange = { onFormChange(form.copy(recurrence =
+                                form.recurrence.copy(activeUntilDate = it.ifBlank { null }))) },
+                            label = { Text("截至该日期有效（含当天，可留空）") },
+                            singleLine = true, readOnly = aiLocked,
+                            modifier = Modifier.fillMaxWidth().deckInput())
+                    }
                     Row(
                         Modifier.horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -1309,6 +1346,7 @@ private fun kindHint(kind: TemporalKind): String = when (kind) {
     TemporalKind.ALARM -> "只有开始时刻"
     TemporalKind.ACTIVITY -> "开始到结束"
     TemporalKind.DEADLINE -> "时刻或日期"
+    TemporalKind.MEMO -> "按天待办或无日期"
 }
 
 private fun pickDate(

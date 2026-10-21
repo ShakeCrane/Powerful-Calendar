@@ -12,6 +12,8 @@ private fun occurrenceDisplayRecord(owner: TemporalRecord, slot: Occurrence): Te
     val projected = when (owner.kind) {
         TemporalKind.ALARM -> owner.copy(startMillis = slot.startMillis)
         TemporalKind.ACTIVITY -> owner.copy(startMillis = slot.startMillis, endMillis = slot.endMillis)
+        TemporalKind.MEMO -> owner.copy(memoStartDate =
+            Instant.ofEpochMilli(slot.startMillis).atZone(owner.zone).toLocalDate().toString())
         TemporalKind.DEADLINE -> if (owner.isDateOnlyDeadline()) {
             owner.copy(deadlineDate = Instant.ofEpochMilli(slot.startMillis).atZone(owner.zone).toLocalDate().toString())
         } else {
@@ -48,6 +50,8 @@ internal fun movedDraftForm(record: TemporalRecord, target: Long): DraftForm {
             val duration = (record.endMillis ?: target) - (record.startMillis ?: target)
             base.copy(startText = DraftForm.formatInstant(target, record.zone), endText = DraftForm.formatInstant(target + duration, record.zone))
         }
+        TemporalKind.MEMO -> base.copy(startText =
+            Instant.ofEpochMilli(target).atZone(record.zone).toLocalDate().toString())
         TemporalKind.DEADLINE -> base.copy(endText = if (record.isDateOnlyDeadline()) {
             Instant.ofEpochMilli(target).atZone(record.zone).toLocalDate().toString()
         } else DraftForm.formatInstant(target, record.zone))

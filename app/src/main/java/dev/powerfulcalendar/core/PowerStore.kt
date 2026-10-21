@@ -245,6 +245,8 @@ class PowerStore(
         put("source", form.source)
         put("zone", form.zoneId)
         put("recurrence", encodeRecurrence(form.recurrence))
+        put("tracking", form.trackingEnabled)
+        put("completedKeys", JSONArray(form.completedKeys.sorted()))
     }.toString()
 
     private fun decodeForm(raw: String): DraftForm {
@@ -265,7 +267,11 @@ class PowerStore(
             enabled = json.optBoolean("enabled", true),
             source = json.optString("source", "local"),
             zoneId = json.optString("zone", ZoneId.systemDefault().id),
-            recurrence = decodeRecurrence(json.optJSONObject("recurrence"))
+            recurrence = decodeRecurrence(json.optJSONObject("recurrence")),
+            trackingEnabled = json.optBoolean("tracking", json.optString("kind") == "MEMO"),
+            completedKeys = json.optJSONArray("completedKeys")?.let { a ->
+                (0 until a.length()).map { a.getString(it) }.toSet()
+            } ?: emptySet()
         )
     }
 
@@ -274,6 +280,8 @@ class PowerStore(
         put("interval", rule.interval)
         rule.count?.let { put("count", it) }
         rule.untilMillis?.let { put("until", it) }
+        rule.activeFromDate?.let { put("activeFromDate", it) }
+        rule.activeUntilDate?.let { put("activeUntilDate", it) }
         put("byDay", JSONArray(rule.byDay.sortedBy { it.value }.map { it.value }))
         put("exceptions", JSONArray(rule.exceptions.sorted()))
         put("overrides", JSONObject().apply {
@@ -315,6 +323,8 @@ class PowerStore(
             interval = json.optInt("interval", 1).coerceAtLeast(1),
             count = if (json.has("count")) json.getInt("count") else null,
             untilMillis = if (json.has("until")) json.getLong("until") else null,
+            activeFromDate = json.optString("activeFromDate").ifEmpty { null },
+            activeUntilDate = json.optString("activeUntilDate").ifEmpty { null },
             byDay = days,
             exceptions = exceptions,
             overrides = overrides
@@ -333,6 +343,10 @@ class PowerStore(
         record.deadlineMillis?.let { put("deadlineMs", it) }
         record.deadlineDate?.let { put("deadlineDate", it) }
         put("recurrence", encodeRecurrence(record.recurrence))
+        record.memoStartDate?.let { put("memoStartDate", it) }
+        record.memoEndDate?.let { put("memoEndDate", it) }
+        put("tracking", record.trackingEnabled)
+        put("completedKeys", JSONArray(record.completedKeys.sorted()))
         put("reminder", record.reminderMinutes)
         put("reminderMethod", record.reminderMethod.name)
         put("reminderTiming", record.reminderTiming.name)
@@ -357,6 +371,12 @@ class PowerStore(
             deadlineMillis = if (json.has("deadlineMs")) json.getLong("deadlineMs") else null,
             deadlineDate = if (json.has("deadlineDate")) json.getString("deadlineDate") else null,
             recurrence = decodeRecurrence(json.optJSONObject("recurrence")),
+            memoStartDate = json.optString("memoStartDate").ifEmpty { null },
+            memoEndDate = json.optString("memoEndDate").ifEmpty { null },
+            trackingEnabled = json.optBoolean("tracking", json.optString("kind") == "MEMO"),
+            completedKeys = json.optJSONArray("completedKeys")?.let { a ->
+                (0 until a.length()).map { a.getString(it) }.toSet()
+            } ?: emptySet(),
             reminderMinutes = if (!json.has("reminderMethod") &&
                 json.optString("kind") == "ALARM" && json.optInt("reminder", -1) < 0) 0
                 else json.optInt("reminder", -1),
@@ -900,6 +920,36 @@ class PowerStore(
     @Synchronized
     fun get(eventSeq: Long): TemporalRecord? = readObject(readableDatabase, eventSeq)
 
+    /** Explicit user checkbox only; version checked, atomic payload and audit commit. */
+    @Synchronized
+    fun setCompleted(eventSeq: Long, occurrenceKey: String, completed: Boolean,
+                     expectedRevision: Long): Boolean = tx { db ->
+        if (isLocked(db)) return@tx false
+        val current = readObject(db, eventSeq) ?: return@tx false
+        if (current.revision != expectedRevision || !current.trackingEnabled) return@tx false
+        if (current.recurrence.isRepeating) {
+            if (RecurrenceEngine.occurrenceForKey(current, occurrenceKey) == null) return@tx false
+        } else if (occurrenceKey != "single") return@tx false
+        val keys = if (completed) current.completedKeys + occurrenceKey
+            else current.completedKeys - occurrenceKey
+        if (keys == current.completedKeys) return@tx true
+        val now = System.currentTimeMillis()
+        val updated = current.copy(revision = current.revision + 1,
+            completedKeys = keys, updatedAtMillis = now)
+        upsertObject(db, updated)
+        db.insertOrThrow("commits", null, ContentValues().apply {
+            put("commit_id", UUID.randomUUID().toString())
+            putNull("draft_id")
+            put("event_seq", eventSeq)
+            put("previous_revision", current.revision)
+            put("new_revision", updated.revision)
+            put("actor", "user")
+            put("operation", if (completed) "COMPLETE" else "REOPEN")
+            put("created_ms", now)
+        })
+        true
+    }
+
     @Synchronized
     fun getIncludingRetired(eventSeq: Long): TemporalRecord? =
         readObject(readableDatabase, eventSeq, includeRetired = true)
@@ -911,7 +961,7 @@ class PowerStore(
     @Synchronized
     fun all(): List<TemporalRecord> =
         readableDatabase.rawQuery(
-            "SELECT payload FROM objects WHERE retired=0 AND anchor_ms IS NOT NULL ORDER BY anchor_ms ASC",
+            "SELECT payload FROM objects WHERE retired=0 ORDER BY CASE WHEN anchor_ms IS NULL THEN 1 ELSE 0 END, anchor_ms ASC",
             null
         ).use { cursor ->
             buildList { while (cursor.moveToNext()) add(decodeRecord(cursor.getString(0))) }

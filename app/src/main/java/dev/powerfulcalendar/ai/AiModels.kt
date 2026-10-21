@@ -159,6 +159,8 @@ object AiResponseParser {
                                 .containsMatchIn(titleHint)) TemporalKind.ALARM
                         else TemporalKind.ACTIVITY
                     }
+                    Regex("备忘|待办|清单|记事|memo|to.?do", RegexOption.IGNORE_CASE)
+                        .containsMatchIn(titleHint) -> TemporalKind.MEMO
                     else -> null
                 }
             if (kind == null) {
@@ -207,6 +209,10 @@ object AiResponseParser {
             val deadlineTime = rawDeadlineTime?.let { retarget(it) ?: it }
 
             val startText = when {
+                kind == TemporalKind.MEMO -> {
+                    val date = item.optString("memoStartDate", startInput).trim()
+                    if (date.isBlank() || DraftForm.parseDateOnly(date) != null) date else ""
+                }
                 start == null -> ""
                 DraftForm.parseLocalDateTime(start) != null -> start
                 else -> {
@@ -215,6 +221,10 @@ object AiResponseParser {
                 }
             }
             val endText = when (kind) {
+                TemporalKind.MEMO -> {
+                    val date = item.optString("memoEndDate", endInput).trim()
+                    if (date.isBlank() || DraftForm.parseDateOnly(date) != null) date else ""
+                }
                 TemporalKind.DEADLINE -> when {
                     deadlineDate != null && DraftForm.parseDateOnly(deadlineDate) != null -> deadlineDate
                     deadlineTime != null && DraftForm.parseLocalDateTime(deadlineTime) != null -> deadlineTime
@@ -231,8 +241,8 @@ object AiResponseParser {
                     }
                 }
             }
-            val reminder = if (item.has("reminderMinutes")) item.optInt("reminderMinutes", 0)
-                else existing?.reminderMinutes ?: 0
+            val reminder = if (item.has("reminderMinutes")) item.optInt("reminderMinutes", -1)
+                else existing?.reminderMinutes ?: if (kind == TemporalKind.MEMO) -1 else 0
             if (reminder !in -1..10080) {
                 blocked = "提醒提前量超出 0～10080 分钟范围"
                 warnings.add("第 ${index + 1} 项提醒提前量不合法，禁止执行")
@@ -278,7 +288,11 @@ object AiResponseParser {
                 // only a brand-new event is marked as AI-authored.
                 source = if (op == DraftOperation.CREATE) "ai" else (target?.source ?: "ai"),
                 zoneId = recordZone.id,
-                recurrence = recurrence ?: Recurrence.NONE
+                recurrence = recurrence ?: Recurrence.NONE,
+                trackingEnabled = if (kind == TemporalKind.MEMO) true
+                    else if (item.has("trackingEnabled")) item.optBoolean("trackingEnabled")
+                    else existing?.trackingEnabled ?: false,
+                completedKeys = existing?.completedKeys ?: emptySet()
             )
             if (op != DraftOperation.DELETE && blocked == null && form.missingFields().isNotEmpty()) {
                 warnings.add(
@@ -339,12 +353,19 @@ object AiResponseParser {
                 }
             }
             require(freq == RecurrenceFreq.WEEKLY || byDays.isEmpty())
-            val allowed = setOf("freq", "interval", "count", "until", "byDay")
+            val allowed = setOf("freq", "interval", "count", "until", "byDay",
+                "activeFromDate", "activeUntilDate")
             val keys = json.keys()
             while (keys.hasNext()) require(keys.next() in allowed) {
                 "unknown recurrence constraint"
             }
-            Recurrence(freq, interval, count, until, byDays)
+            val fromDate = json.optString("activeFromDate").takeUnless { it.isBlank() || it == "null" }
+            val untilDate = json.optString("activeUntilDate").takeUnless { it.isBlank() || it == "null" }
+            require(fromDate == null || DraftForm.parseDateOnly(fromDate) != null)
+            require(untilDate == null || DraftForm.parseDateOnly(untilDate) != null)
+            require(fromDate == null || untilDate == null || fromDate <= untilDate)
+            Recurrence(freq = freq, interval = interval, count = count, untilMillis = until,
+                activeFromDate = fromDate, activeUntilDate = untilDate, byDay = byDays)
         }.getOrNull()
     }
 
