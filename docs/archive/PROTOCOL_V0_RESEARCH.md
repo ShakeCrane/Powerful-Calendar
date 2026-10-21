@@ -1,7 +1,7 @@
 # PowerCal Temporal Protocol v0.3 — Research Specification and Verification
 
 **Status:** Candidate protocol, NOT IMPLEMENTED or empirically validated.
-**Updated:** 2026-10-20. **Authority:** [Unified G1–G11 Product Baseline](./PRODUCT_BASELINE_G1-G11.md).
+**Updated:** 2026-10-20. **Authority:** [Unified G1–G11 Product Baseline](../PRODUCT_BASELINE_G1-G11.md).
 Replaces conflicting details of the preceding research sketch. Names are logical concepts; no promise of one Kotlin type/table per entry.
 
 ## 1. Model boundaries

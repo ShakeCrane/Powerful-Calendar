@@ -6,7 +6,7 @@ core、ai、reminders、数据接入/迁移实现以及原有 97 项测试保持
 
 ## 1. 设计体系与关键决策
 
-设计先于修改落盘：[设计体系](POWERCAL_GLASS_DESIGN.md)；实际接口约束：[UI 交接契约](GEMINI_UI_HANDOFF.md)。
+设计先于修改落盘：[设计体系](POWERCAL_GLASS_DESIGN.md)；实际接口约束：[UI 交接契约](archive/GEMINI_UI_HANDOFF.md)。
 
 采用雾白/石墨两个实时系统主题，蓝色闹钟、绿色活动、琥珀色截止；类型文字、图标与颜色共同表达语义。
 主卡直立、背卡小角度旋转；玻璃用高不透明度承载面、细边与轻微层次模拟，不使用重阴影或昂贵背景采样。
@@ -119,5 +119,5 @@ Controller 的同步锁内部仍执行存储 IO，慢设备上 edit 可能等待
 | DSH-08 | beginAiBatch 在事务中校验已审阅 draftVersion 后授权 | ID/操作固定，授权前重读；极短版本竞争窗口交给领域层关闭 |
 | DSH-09 | 按有效时间检索跨很远日期的 recurrence overrides | 不另造重复引擎；已知窗口检索限制如实保留 |
 
-详细接口依据与当前方法签名见 [GEMINI_UI_HANDOFF.md](GEMINI_UI_HANDOFF.md)。
+详细接口依据与当前方法签名见 [GEMINI_UI_HANDOFF.md](archive/GEMINI_UI_HANDOFF.md)。
 测试方法参考 [Android Compose 测试常用模式](https://developer.android.com/develop/ui/compose/testing/common-patterns)；软件模拟与真实设备验证始终分开报告。

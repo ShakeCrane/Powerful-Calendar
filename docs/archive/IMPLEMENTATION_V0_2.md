@@ -1,7 +1,7 @@
 # PowerCal v0.2 — 实施记录与验证
 
 **日期:** 2026-10-20 · **基线:** `6a894fd` → 本次提交 · **依据:** `docs/PRODUCT_BASELINE_G1-G11.md`, `docs/PROTOCOL_V0_RESEARCH.md`
-**前置审计:** [AUDIT_P0.md](./AUDIT_P0.md)
+**前置审计:** [AUDIT_P0.md](AUDIT_P0.md)
 
 ---
 

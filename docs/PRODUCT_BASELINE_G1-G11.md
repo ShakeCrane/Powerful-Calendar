@@ -135,6 +135,6 @@ Later explicit custom decisions supersede older questionnaire choices; don't res
 - Android alarm permission and background constraints: https://developer.android.com/develop/background-work/services/alarms
 - Compose gesture recognition: https://developer.android.com/develop/ui/compose/touch-input/pointer-input
 - Compose paging: https://developer.android.com/develop/ui/compose/layouts/pager
-- Companion protocol & tests: [PROTOCOL_V0_RESEARCH.md](./PROTOCOL_V0_RESEARCH.md)
+- Companion protocol & tests: [PROTOCOL_V0_RESEARCH.md](archive/PROTOCOL_V0_RESEARCH.md)
 
 **Do not treat this documentation as an Android implementation.** Android MVP v0.1 source remains a historical prototype and may not implement permanent eventSeq, this inheritance design, Draft Deck, or AI exclusive batches.
