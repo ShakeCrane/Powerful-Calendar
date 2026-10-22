@@ -82,6 +82,9 @@ class SkinPackageManager(private val context: Context) {
                 output.flush()
                 output.fd.sync()
             }
+            val readBack = readBounded(temp.inputStream())
+            require(digest(readBack) == digest(bytes)) { "Skin install readback hash mismatch" }
+            decode(readBack, false)
             require(temp.renameTo(target)) { "存储皮肤失败" }
         } finally {
             if (temp.exists()) temp.delete()
@@ -99,22 +102,36 @@ class SkinPackageManager(private val context: Context) {
 
     /** Exports a complete importable template of the original glass theme. */
     fun exportOriginal(uri: Uri) {
+        val source = linkedMapOf(
+            "project.json" to """{"projectVersion":3,"mode":"simple","slots":[{"id":"primary","label":"Primary","type":"color","value":"#315ecf","editable":true}]}""".toByteArray(),
+            "web/index.html" to """<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="style.css"></head><body><main id="app"><h1>PowerCal</h1><section id="events"></section></main><script src="app.js"></script></body></html>""".toByteArray(),
+            "web/style.css" to """body{margin:0;font:16px system-ui;background:#f4f6fb;color:#11151c}main{padding:16px}button{min-height:48px}@media(prefers-reduced-motion:reduce){*{animation:none!important}}""".toByteArray(),
+            "web/app.js" to """(()=>{'use strict';let port;window.addEventListener('message',e=>{if(e.data==='powercal-port'&&e.ports[0]){port=e.ports[0];port.onmessage=m=>{const x=JSON.parse(m.data);if(x.type==='state')document.getElementById('events').textContent=(x.payload.events||[]).map(v=>v.title).join(' · ')}}})})();""".toByteArray()
+        )
         val target = context.contentResolver.openOutputStream(uri) ?: error("无法写入目标文件")
         target.use { stream ->
             ZipOutputStream(stream).use { zip ->
                 val json = JSONObject()
-                    .put("format", FORMAT).put("schemaVersion", 1)
+                    .put("format", FORMAT).put("schemaVersion", 3)
                     .put("id", "powercal-original-template")
-                    .put("name", "PowerCal 原生玻璃 · 模板")
+                    .put("name", "PowerCal Web Base v3")
+                    .put("entrypoint", "web/index.html").put("project", "project.json")
+                    .put("fullCanvas", false)
+                    .put("capabilities", org.json.JSONArray(listOf("host.read", "host.action")))
                     .put("light", JSONObject()).put("dark", JSONObject())
                     .put("layout", JSONObject().put("cardRadiusDp", 28)
                         .put("barRadiusDp", 20).put("pointLineDp", 2)
                         .put("fontScale", 1.0))
                     .put("imagesLight", JSONObject()).put("imagesDark", JSONObject())
-                    .put("sha256", JSONObject())
+                    .put("sha256", JSONObject().apply {
+                        source.forEach { (path, bytes) -> put(path, digest(bytes)) }
+                    })
                 zip.putNextEntry(ZipEntry("manifest.json"))
                 zip.write(json.toString(2).toByteArray(Charsets.UTF_8))
                 zip.closeEntry()
+                source.forEach { (path, bytes) ->
+                    zip.putNextEntry(ZipEntry(path)); zip.write(bytes); zip.closeEntry()
+                }
             }
         }
     }
@@ -137,9 +154,13 @@ class SkinPackageManager(private val context: Context) {
         ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
             while (true) {
                 val e = zip.nextEntry ?: break
-                require(entries.size < 24) { "压缩包条目过多" }
-                require(!e.isDirectory && (e.name == "manifest.json" || e.name == UI_FILE || IMAGE.matches(e.name))) {
+                require(entries.size < 97) { "压缩包条目过多" }
+                require(!e.isDirectory && (e.name == "manifest.json" || e.name == UI_FILE ||
+                    IMAGE.matches(e.name) || V3_RESOURCE.matches(e.name))) {
                     "皮肤包包含非法文件名：" + e.name.take(70)
+                }
+                require('\\' !in e.name && e.name.split('/').none { it == ".." }) {
+                    "Skin resource path traversal is forbidden"
                 }
                 require(!entries.containsKey(e.name)) { "压缩包路径重复" }
                 val dest = ByteArrayOutputStream()
@@ -148,8 +169,13 @@ class SkinPackageManager(private val context: Context) {
                     val n = zip.read(buf)
                     if (n < 0) break
                     inflated += n
-                    require(inflated <= 12_000_000 && dest.size() + n <=
-                        if (e.name == "manifest.json") 80_000 else if (e.name == UI_FILE) 120_000 else 3_000_000) {
+                    require(inflated <= 16_000_000 && dest.size() + n <= when {
+                        e.name == "manifest.json" -> 80_000
+                        e.name == UI_FILE -> 120_000
+                        e.name.endsWith(".html") || e.name.endsWith(".css") ||
+                            e.name.endsWith(".js") || e.name.endsWith(".json") -> 600_000
+                        else -> 3_000_000
+                    }) {
                         "压缩数据超过上限"
                     }
                     dest.write(buf, 0, n)
@@ -161,18 +187,19 @@ class SkinPackageManager(private val context: Context) {
         val json = entries["manifest.json"]?.let { JSONObject(String(it, Charsets.UTF_8)) }
             ?: error("缺少 manifest.json")
         val version = json.optInt("schemaVersion")
-        require(json.optString("format") == FORMAT && version in 1..2) {
+        require(json.optString("format") == FORMAT && version in 1..3) {
             "Unsupported skin package version"
         }
         val runtime = if (version == 2) {
             require(json.optString("runtimeUi") == UI_FILE) { "v2 must declare ui.json" }
             RuntimeSkinSchema.parse(entries[UI_FILE] ?: error("Missing ui.json"))
-        } else {
+        } else if (version == 1) {
             require(!entries.containsKey(UI_FILE) && !json.has("runtimeUi")) {
                 "v1 does not accept UI declarations"
             }
             null
-        }
+        } else null
+        val web = if (version == 3) parseWebBundle(json, entries) else null
         val id = json.optString("id")
         val name = json.optString("name").trim()
         require(ID.matches(id) && name.length in 1..60) { "皮肤 ID 或名称不合法" }
@@ -188,9 +215,10 @@ class SkinPackageManager(private val context: Context) {
         val light = readImageList(json.optJSONObject("imagesLight"))
         val dark = readImageList(json.optJSONObject("imagesDark"))
         val paths = (light.values + dark.values).toSet()
-        val declared = paths + "manifest.json" + (if (version == 2) setOf(UI_FILE) else emptySet())
+        val webPaths = web?.files?.keys ?: emptySet()
+        val declared = paths + webPaths + "manifest.json" + (if (version == 2) setOf(UI_FILE) else emptySet())
         require(entries.keys == declared) { "Undeclared or missing skin resources" }
-        val secured = paths + (if (version == 2) setOf(UI_FILE) else emptySet())
+        val secured = paths + webPaths + (if (version == 2) setOf(UI_FILE) else emptySet())
         val hashes = json.optJSONObject("sha256") ?: JSONObject()
         require(hashes.length() == secured.size) { "Incomplete SHA256 manifest" }
         for (path in secured) {
@@ -207,9 +235,33 @@ class SkinPackageManager(private val context: Context) {
                 decoded.getOrPut(path) { decodeImage(entries.getValue(path)) }
             }
         return Verified(name, PowerCalSkinPack(
-            key = id, visual = tokens, runtime = runtime,
+            key = id, visual = tokens, runtime = runtime, web = web,
             lightBitmaps = buildImages(light), darkBitmaps = buildImages(dark)
         ))
+    }
+
+    private fun parseWebBundle(json: JSONObject, entries: Map<String, ByteArray>): WebSkinBundle {
+        val entrypoint = json.optString("entrypoint")
+        val project = json.optString("project")
+        require(entrypoint == "web/index.html" && project == "project.json") {
+            "v3 requires packaged web/index.html and project.json"
+        }
+        val files = entries.filterKeys { V3_RESOURCE.matches(it) }
+        require(files.keys.containsAll(setOf("web/index.html", "web/style.css", "web/app.js", "project.json"))) {
+            "v3 package is not self-contained"
+        }
+        val projectJson = JSONObject(String(files.getValue(project), Charsets.UTF_8))
+        require(projectJson.optInt("projectVersion") == 3 &&
+            projectJson.optString("mode") in setOf("simple", "advanced")) { "Invalid v3 project" }
+        val html = String(files.getValue(entrypoint), Charsets.UTF_8).lowercase()
+        require("http://" !in html && "https://" !in html) { "Remote Web skin resources are forbidden" }
+        require("<iframe" !in html && "<object" !in html) { "Embedded frames/objects are forbidden" }
+        val capsJson = json.optJSONArray("capabilities") ?: org.json.JSONArray()
+        val capabilities = (0 until capsJson.length()).map { capsJson.getString(it) }.toSet()
+        require(capabilities.all { it in setOf("host.read", "host.action", "host.edit") }) {
+            "Unsupported Web skin capability"
+        }
+        return WebSkinBundle(entrypoint, files, capabilities, json.optBoolean("fullCanvas", false))
     }
 
     private fun readPalette(json: JSONObject?): Map<String, Color> {
@@ -281,5 +333,6 @@ class SkinPackageManager(private val context: Context) {
         private const val MAX_ARCHIVE = 10_000_000
         private val ID = Regex("[a-z0-9][a-z0-9_-]{2,47}")
         private val IMAGE = Regex("images/[a-z0-9_-]+[.](png|webp)")
+        private val V3_RESOURCE = Regex("(?:web|assets)/[A-Za-z0-9][A-Za-z0-9_./-]{0,119}|project[.]json")
     }
 }

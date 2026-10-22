@@ -86,6 +86,7 @@ data class PowerCalSkinPack(
     val typography: Typography? = null,
     val visual: SkinVisualTokens? = null,
     val runtime: RuntimeSkinDocument? = null,
+    val web: WebSkinBundle? = null,
     val lightBitmaps: Map<SkinSlot, SkinBitmapArt> = emptyMap(),
     val darkBitmaps: Map<SkinSlot, SkinBitmapArt> = emptyMap()
 ) {
@@ -95,6 +96,14 @@ data class PowerCalSkinPack(
     fun bitmapFor(darkTheme: Boolean): Map<SkinSlot, SkinBitmapArt> =
         if (darkTheme) darkBitmaps else lightBitmaps
 }
+
+@Immutable
+data class WebSkinBundle(
+    val entrypoint: String,
+    val files: Map<String, ByteArray>,
+    val capabilities: Set<String>,
+    val fullCanvas: Boolean
+)
 
 /**
  * Simple in-process selection point. The default pack is visually identical to PowerCal Glass.

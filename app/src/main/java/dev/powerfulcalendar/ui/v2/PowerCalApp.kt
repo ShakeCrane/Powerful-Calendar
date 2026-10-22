@@ -90,6 +90,7 @@ import dev.powerfulcalendar.core.BackupEnvelope
 import dev.powerfulcalendar.core.DeckController
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.DraftOperation
+import dev.powerfulcalendar.core.EditSession
 import dev.powerfulcalendar.core.LegacyBackupConsentRequired
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.RecurrenceEngine
@@ -191,7 +192,7 @@ fun PowerCalApp(store: PowerStore) {
     var pendingCards by remember { mutableStateOf<List<dev.powerfulcalendar.core.DraftCard>>(emptyList()) }
     var diagnostics by remember { mutableStateOf(UiDiagnostics()) }
     var monthInspection by remember { mutableStateOf<TemporalRecord?>(null) }
-    var selectedFormalEvent by remember { mutableStateOf<TemporalRecord?>(null) }
+    var editSession by remember { mutableStateOf<EditSession?>(null) }
     var confirmingLegacy by remember { mutableStateOf(false) }
     // Holds an early flat v2 file until the user explicitly accepts its unverified nature.
     var legacyRestoreText by remember { mutableStateOf<String?>(null) }
@@ -232,6 +233,13 @@ fun PowerCalApp(store: PowerStore) {
             aiSession = data.session
             pendingCards = data.cards
             diagnostics = data.diagnostics
+        }
+    }
+
+    suspend fun openFormalEditor(record: TemporalRecord) {
+        val opened = runCatching { withContext(Dispatchers.IO) { EditSession.open(store, record) } }
+        opened.onSuccess { editSession = it }.onFailure {
+            message = it.message ?: "Unable to open editor"
         }
     }
 
@@ -289,6 +297,7 @@ fun PowerCalApp(store: PowerStore) {
     fun Throwable.readable(): String = message ?: javaClass.simpleName
 
     LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) { store.recoverAbandonedHumanEdit() }
         reconcile()
         reload()
         if (deckOpen) withContext(Dispatchers.IO) { controller.open(deckInitialId) }
@@ -311,6 +320,7 @@ fun PowerCalApp(store: PowerStore) {
     // Refresh permissions and desired scheduling after the user returns from Android settings.
     val hostLifecycle = (context as? androidx.activity.ComponentActivity)?.lifecycle
     val deckVisible by rememberUpdatedState(deckOpen)
+    val activeEditSession by rememberUpdatedState(editSession)
     DisposableEffect(hostLifecycle) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) scope.launch { reconcile(); reload() }
@@ -318,6 +328,13 @@ fun PowerCalApp(store: PowerStore) {
                 // Best effort: the controller serializes this after any autosave, and a failed
                 // stage keeps the draft dirty with a retryable error for the next visible session.
                 PowerCalStores.appScope.launch { controller.flush() }
+            }
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP) {
+                activeEditSession?.let { session ->
+                    // Keep the lease and live memory on failure; a successful checkpoint is the
+                    // one durable write for this lifecycle boundary.
+                    PowerCalStores.appScope.launch { session.checkpoint() }
+                }
             }
         }
         hostLifecycle?.addObserver(observer)
@@ -788,6 +805,30 @@ fun PowerCalApp(store: PowerStore) {
     ) { uri -> if (uri != null) pendingImageReview = uri }
 
     val tools = page == Page.TOOLS.name
+    val fullCanvasWeb = PowerCalSkinRegistry.active.web?.fullCanvas == true
+    androidx.compose.runtime.SideEffect {
+        WebSkinBridgeRuntime.actions = mapOf(
+            "timeline" to { page = Page.TIMELINE.name },
+            "month" to { page = Page.MONTH.name },
+            "ai" to { page = Page.AI.name },
+            "settings" to { page = Page.TOOLS.name },
+            "openDeck" to { scope.launch { openDeckAt(null) } },
+            "today" to {
+                val today = TimelineCoordinate.initialCamera(System.currentTimeMillis(), zone)
+                anchorMillis = today.anchorMillis; hours = today.hours
+            }
+        )
+        WebSkinBridgeRuntime.state = {
+            JSONObject().put("bridgeVersion", 1).put("page", page)
+                .put("aiLocked", aiLocked).put("pendingCount", pendingCount)
+                .put("reducedMotion", effects.reduceMotion)
+                .put("events", org.json.JSONArray(records.take(300).map { record ->
+                    JSONObject().put("eventSeq", record.eventSeq).put("revision", record.revision)
+                        .put("kind", record.kind.name).put("title", record.title.take(300))
+                        .put("anchorMillis", record.anchorMillis()).put("endMillis", record.spanEndMillis())
+                }))
+        }
+    }
 
     // System back on the tools page returns to the timeline instead of leaving the app.
     androidx.activity.compose.BackHandler(enabled = page != Page.TIMELINE.name && !deckOpen) {
@@ -798,7 +839,8 @@ fun PowerCalApp(store: PowerStore) {
     SkinAppShell {
         val keyboardVisible = WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current) > 0
         SkinPageTransition(
-            page, Modifier.fillMaxSize().padding(bottom = if (keyboardVisible) 0.dp else 80.dp)
+            page, Modifier.fillMaxSize().padding(bottom =
+                if (keyboardVisible || fullCanvasWeb) 0.dp else 80.dp)
         ) { presentedPage ->
         if (presentedPage == Page.TOOLS.name) {
             ToolsPage(
@@ -1020,7 +1062,7 @@ fun PowerCalApp(store: PowerStore) {
                     }
                 },
                 onOpen = { record ->
-                    if (aiLocked) monthInspection = record else selectedFormalEvent = record
+                    if (aiLocked) monthInspection = record else scope.launch { openFormalEditor(record) }
                 }
             )
         } else if (presentedPage == Page.MONTH.name) {
@@ -1028,7 +1070,7 @@ fun PowerCalApp(store: PowerStore) {
                 onBack = { page = Page.TIMELINE.name },
                 onDate = { date -> anchorMillis = date.atTime(12, 0).atZone(zone).toInstant().toEpochMilli(); page = Page.TIMELINE.name },
                 onOpen = { record ->
-                    if (aiLocked) monthInspection = record else selectedFormalEvent = record
+                    if (aiLocked) monthInspection = record else scope.launch { openFormalEditor(record) }
                 },
                 onCreate = { date -> scope.launch {
                     runCatching { withContext(Dispatchers.IO) { store.newDraft(DraftForm.fresh(TemporalKind.ACTIVITY, date, zone)) } }
@@ -1054,7 +1096,7 @@ fun PowerCalApp(store: PowerStore) {
                     preferences.edit().putBoolean("titlesOutside", outside).apply()
                 },
                 onOpenEvent = { record ->
-                    if (aiLocked) monthInspection = record else selectedFormalEvent = record
+                    if (aiLocked) monthInspection = record else scope.launch { openFormalEditor(record) }
                 },
                 onMoveEvent = { record, target ->
                     if (record.recurrence.isRepeating) {
@@ -1110,7 +1152,7 @@ fun PowerCalApp(store: PowerStore) {
             )
         }
         } // page content above the persistent bottom navigation
-        if (!keyboardVisible) {
+        if (!keyboardVisible && !fullCanvasWeb) {
             Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
                 PowerCalNavigation(
                     selected = when (page) {
@@ -1221,47 +1263,56 @@ fun PowerCalApp(store: PowerStore) {
         )
     }
 
-    selectedFormalEvent?.let { record ->
-        fun choose(operation: DraftOperation) {
-            selectedFormalEvent = null
+    editSession?.let { session ->
+        fun exitWithCheckpoint() {
             scope.launch {
-                runCatching {
-                    withContext(Dispatchers.IO) {
-                        store.pendingDraftsFor(record.eventSeq)
-                            .firstOrNull { it.operation == operation && it.isActionable }
-                            ?: store.proposeReplace(record.eventSeq, operation)
-                    }
-                }.onSuccess { card ->
+                val checkpoint = withContext(Dispatchers.IO) { session.checkpoint() }
+                if (session.lastError != null) {
+                    message = "Checkpoint failed; edits remain in memory: " + session.lastError
+                } else {
+                    withContext(Dispatchers.IO) { session.close() }
+                    editSession = null
                     reload()
-                    openDeckAt(card.draftId)
-                }.onFailure { error ->
-                    message = error.message ?: "无法创建${operation.label}提案"
+                    if (checkpoint != null) message = "Changes saved as one pending draft"
                 }
             }
         }
-        SkinAlertDialog(
-            onDismissRequest = { selectedFormalEvent = null },
-            title = { Text("正式事件 ${record.displaySeq()}") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(record.title, style = MaterialTheme.typography.titleMedium)
-                    Text(TemporalText.summarize(record))
-                    Text("编辑和删除都会先生成待确认草稿；取消草稿不会影响正式事件。",
-                        style = MaterialTheme.typography.bodySmall)
+        DirectEventEditorDialog(
+            session = session,
+            onChange = { session.edit(it) },
+            onSave = {
+                scope.launch {
+                    when (val outcome = withContext(Dispatchers.IO) { session.save() }) {
+                        is PowerStore.DirectEditOutcome.Saved -> {
+                            reload(); reconcile()
+                            message = if (outcome.changed) "Event saved" else "No changes; pending draft cleared"
+                        }
+                        is PowerStore.DirectEditOutcome.Conflict -> message = "Event changed; reopen to review"
+                        is PowerStore.DirectEditOutcome.Invalid -> message = outcome.reason
+                        PowerStore.DirectEditOutcome.Locked -> message = "Editor is locked"
+                    }
                 }
             },
-            confirmButton = {
-                TextButton(onClick = { choose(DraftOperation.REPLACE) }) { Text("编辑") }
-            },
-            dismissButton = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = { selectedFormalEvent = null }) { Text("返回") }
-                    TextButton(onClick = { choose(DraftOperation.DELETE) }) {
-                        Text("创建删除提案", color = MaterialTheme.colorScheme.error)
+            onExit = { exitWithCheckpoint() },
+            onDiscardChanges = { session.discardEditingChanges() },
+            onDelete = {
+                scope.launch {
+                    when (withContext(Dispatchers.IO) { session.delete() }) {
+                        is PowerStore.DirectEditOutcome.Saved -> {
+                            withContext(Dispatchers.IO) { session.close() }
+                            editSession = null; reload(); reconcile(); message = "Event deleted"
+                        }
+                        else -> message = session.lastError ?: "Delete failed"
                     }
                 }
             }
         )
+    }
+    LaunchedEffect(editSession) {
+        while (editSession != null) {
+            delay(30_000)
+            withContext(Dispatchers.IO) { editSession?.heartbeat() }
+        }
     }
 
     pendingFileReview?.let { (uri, evidence) ->
