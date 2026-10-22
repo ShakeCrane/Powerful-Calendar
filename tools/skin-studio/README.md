@@ -1,75 +1,70 @@
-## Runtime UI packages (.pcskin v2)
+# PowerCal Skin Studio — v3 编辑器
 
-**v2 is implemented.** An upgraded PowerCal can import a .pcskin file and interpret its
-bounded UI component tree, action bindings, enter animations and page transitions without
-rebuilding the APK. Ready sample: examples/Nebula-Flux-v2.pcskin.
+## 当前主入口：可视化 Web 皮肤编辑
 
-Build a new pack by editing examples/nebula-flux-manifest.json and
-examples/nebula-flux-ui.json, then run from repository root:
+从唯一的 PowerCal 主仓库执行：
 
-    python tools/skin-studio/skin_studio.py build-v2 --manifest tools/skin-studio/examples/nebula-flux-manifest.json --ui tools/skin-studio/examples/nebula-flux-ui.json --out my-skin.pcskin
-    python tools/skin-studio/skin_studio.py validate my-skin.pcskin
+```powershell
+python tools/skin-studio/skin_studio.py serve --port 8765
+```
 
-Full v2 scene/actions/motion contract: docs/SKIN_PACK_V2.md.
-The web-based visual editor remains a v1 theme + design-planning editor; it does
-not yet provide visual drag-and-drop editing of v2 node trees.
+然后访问 http://127.0.0.1:8765 。
 
-## Self-contained programmable packages (.pcskin v3)
+现在首页是 v3 编辑器，旧 v1 的概念场景和 `app.js` 保留作兼容与测试，但不再参与 v3 页面编辑。
 
-The Studio now uses one v3 project in simple and advanced mode. Simple mode edits declared material
-slots; advanced mode edits layers, position metadata and complete HTML/CSS/JS with a mocked typed
-host bridge. Imported v3 packages reopen as runnable source and can be exported without rebuilding
-the APK. See `docs/SKIN_PACK_V3.md`.
+**单一真源：** Studio 内正在编辑的 `web/index.html`、`web/style.css`、
+`web/app.js` 和每一项 `assets/` 都是导出包使用的原始字节。浏览器预览先执行与导出
+一致的 v3 校验，再通过一个本地、临时的只读预览地址原样加载这些文件；
+不再把源码替换成 `srcdoc` 的另一份版本。
 
-    python tools/skin-studio/skin_studio.py build-v3 --manifest tools/skin-studio/examples/v3/manifest.json --source-dir tools/skin-studio/examples/v3/source --out PowerCal-Web-v3.pcskin
-    python tools/skin-studio/skin_studio.py validate PowerCal-Web-v3.pcskin
+已实现：
 
-# PowerCal Skin Studio — 使用与开发
+- 简单模式修改已声明并已绑定的 CSS 材质变量；高级模式编辑完整 HTML/CSS/JS，
+  两者直接修改同一份源码，不需要额外点击「应用」。
+- 添加文字、图片和安全宿主按钮；修改图层位置、尺寸、不透明度及排序数值，
+  拖动预览选框后实际修改包内 CSS，并将图层元数据保存进 `project.json`。
+- 上传 PNG、WebP 和字体素材并保留字节；给已有 `data-action` 按钮设置图标素材。
+- 模拟常规、空白、密集、重复和 AI 锁定场景；用真实 v1 消息结构模拟宿主的
+  `state/action`，包括时间轴状态、重复实例身份及 `optionGroups`。
+- 通过“软件新增平行功能”场景检查通用选项列表是否自动继承新的同级选项。
+- 可导入已有的自包含 v3 ZIP，保留 `web/`、`assets/` 中的额外文件；
+  导出后仍是 Android 可安装的 `.pcskin`，可再次导入继续编辑。
+- `保存编辑工程` 输出含全部源码/图层/素材的 `.pcstudio-v3.json`。
+- v1、v2 CLI 打包与运行时仍保留，未更改 Android 皮肤 ZIP 格式。
 
-2026-10-21。分为两个工具：本地网页**设计编辑器**与**完整 Android Compose 皮肤代码生成器**。
+**画布限制：** Android 在 `fullCanvas=false` 时会用原生 Compose 内容覆盖 Web 层；
+为避免误导，Studio 不允许以非全画布模式输出一份声称“预览即使用”的 v3 包。
+没有暴露的业务能力（例如完整 Memo/AI 页、正式提交）不能被预览伪装为可用功能。
+宿主敏感操作、设置和紧急恢复仍是原生界面。
 
-## A. 可视化设计与静态主题 ZIP
+**同源文件 ≠ Android 像素级完全相同：** 浏览器与 Android WebView 的字体、
+屏幕像素比、状态栏安全区域、原生弹窗及触摸行为仍可能不同。实际发布需在 Android
+真机/模拟器进行对照验收。
 
-从仓库根目录：
+## v3 命令行与测试
 
-    python tools/skin-studio/skin_studio.py serve --port 8765
+```powershell
+python tools/skin-studio/skin_studio.py build-v3 --manifest tools/skin-studio/examples/v3/manifest.json --source-dir tools/skin-studio/examples/v3/source --out PowerCal-Web-v3.pcskin
+python tools/skin-studio/skin_studio.py validate PowerCal-Web-v3.pcskin
+python -m unittest discover -s tools/skin-studio/tests -v
+node --check tools/skin-studio/v3-studio.js
+.\gradlew.bat :app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --console=plain
+```
 
-浏览器打开 http://127.0.0.1:8765 。无需安装 pip/npm、无需联网，默认只监听 127.0.0.1，不访问正式日历数据库。
+可选浏览器端到端脚本：`tools/skin-studio/tests/e2e_v3_browser.cjs`，
+需要已安装的 Puppeteer/Chromium；运行前设置 `PUPPETEER_PATH` 指向 Puppeteer
+模块所在目录，再设置 `STUDIO_URL` 指向本地运行的 Studio。此测试验证 Bridge
+预览、材质、自由图层拖拽、PNG 真正加载以及导出/重导入文件字节一致性。
 
-你可以编辑明暗色板、字号比例、圆角、十张 PNG/WebP 固定插图，导出 Android 直接支持的 .pcskin v1；也可以在六页场景中编排槽位顺序、区域、显示与 fade/slide/scale 动效，保存包含完整设计元数据的 .pcstudio.json。内置六个模拟页面，可预览按钮 intent，但它们不会修改正式日历，且不是 Android 像素级渲染。
+## 旧版 CLI
 
-检查已有数据包：
+v2 声明式皮肤：
 
-    python tools/skin-studio/skin_studio.py validate "C:\skins\my-skin.pcskin"
+```powershell
+python tools/skin-studio/skin_studio.py build-v2 --manifest tools/skin-studio/examples/nebula-flux-manifest.json --ui tools/skin-studio/examples/nebula-flux-ui.json --out my-skin.pcskin
+```
 
-**注意：** .pcskin 仅支持纯数据的配色、图片和尺寸，没有任意 Compose 页面布局和动态代码。网页 .pcstudio.json 仅是设计文件，不是可执行皮肤安装包。
-
-## B. 任意布局、任意动画的编译式皮肤
-
-要让任何人/Agent 能通过修改文件重构真实 Android UI：
-
-    python tools/skin-studio/new_compiled_skin.py aurora-glass --activate
-
-生成文件：app/src/main/java/dev/powerfulcalendar/ui/v2/skins/AuroraGlassSkin.kt，并在同目录的 ActiveVisualSkin.kt 激活它。模板涵盖十个可替换入口：时间轴、月历、Memo、AI、设置、草稿卡组、导航、全局弹窗、日期时间选择器、APP 根容器及提示。
-
-每个入口在空白模板里都调用原生 fallback context.Native()，因此可逐个改写而不丢失功能。
-
-将设计项目转成给编程 Agent 的实现任务书：
-
-    python tools/skin-studio/new_compiled_skin.py aurora-glass --activate --design "C:\skins\design.pcstudio.json"
-
-额外输出 AuroraGlassDESIGN_BRIEF.md，其中包含每页槽位、顺序、区域、动效提示。生成器**不会宣称自动把 JSON 变成 Compose**；必须自行修改 Render(context) 真正实现。
-
-皮肤源码默认只是 APK 的可信一部分；普通用户无法通过导入 ZIP 在手机上执行 Kotlin。新皮肤需编译和审查。不应修改 PowerCalApp/Core/Ai/Reminders 代码，宿主操作通过 context.on... 回调触发。
-
-完整入门 + API：docs/SKIN_AUTHORING_HANDBOOK.md
-已实现正式契约：docs/UI_SKIN_EXTENSION_CONTRACT_V4.md
-静态 ZIP ABI：docs/SKIN_PACK_V1.md
-
-## 测试
-
-    python -m unittest discover -s tools/skin-studio/tests -v
-    node --check tools/skin-studio/app.js
-    .\gradlew.bat :app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --console=plain
-
-还必须在 Android 真机验证读屏、暗色、减动效、输入法、重复发生、1 分钟活动的真实时间轴高度、草稿提交冲突/恢复和 AI 锁。设计 Mock 和编译成功不代表视觉验收完成。
+v1 主题与编译式 Compose 皮肤仍受支持，参见
+`docs/SKIN_PACK_V1.md`、`docs/SKIN_PACK_V2.md`、`docs/SKIN_PACK_V3.md` 与
+`docs/SKIN_AUTHORING_HANDBOOK.md`。源编译式皮肤必须重新构建 APK，
+不可冒充直接可安装的动态 Web v3 包。

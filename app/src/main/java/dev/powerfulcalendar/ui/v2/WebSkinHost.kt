@@ -132,6 +132,9 @@ private fun SecureWebSkin(bundle: WebSkinBundle, modifier: Modifier, onFailure: 
                         path.endsWith(".json") -> "application/json"
                         path.endsWith(".png") -> "image/png"
                         path.endsWith(".webp") -> "image/webp"
+                        path.endsWith(".woff2") -> "font/woff2"
+                        path.endsWith(".woff") -> "font/woff"
+                        path.endsWith(".ttf") -> "font/ttf"
                         else -> "application/octet-stream"
                     }
                     return WebResourceResponse(mime, if (mime.startsWith("text") || mime.contains("json") || mime.contains("javascript")) "utf-8" else null,

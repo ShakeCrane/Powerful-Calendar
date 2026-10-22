@@ -193,12 +193,12 @@ def from_json(data):
 
 
 class Handler(BaseHTTPRequestHandler):
-    def reply(self, status, payload, mime="application/json; charset=utf-8", attachment=None):
+    def reply(self, status, payload, mime="application/json; charset=utf-8", attachment=None, csp=None):
         self.send_response(status)
         self.send_header("Content-Type", mime)
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Cache-Control", "no-store")
-        self.send_header("Content-Security-Policy",
+        self.send_header("Content-Security-Policy", csp or
                          "default-src 'self'; style-src 'self' 'unsafe-inline'; "
                          "script-src 'self'; img-src 'self' data: blob:; "
                          "connect-src 'self'; object-src 'none'; base-uri 'none'")
@@ -214,9 +214,28 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         route = self.path.split("?", 1)[0]
         files = {"/": ("index.html", "text/html; charset=utf-8"),
+                 "/v3-studio.js": ("v3-studio.js", "text/javascript; charset=utf-8"),
                  "/app.js": ("app.js", "text/javascript; charset=utf-8"),
                  "/style.css": ("style.css", "text/css; charset=utf-8"),
                  "/style-v3.css": ("style-v3.css", "text/css; charset=utf-8")}
+        if route == "/api/template-v3":
+            from runtime_package_v3 import build, unpack as unpack_v3
+            example = HERE / "examples" / "v3"
+            manifest = json.loads((example / "manifest.json").read_text("utf8"))
+            source = build(manifest, example / "source")
+            base, files = unpack_v3(source)
+            return self.send_json(200, {"manifest": base, "files": {
+                path: base64.b64encode(data).decode("ascii") for path, data in files.items()}})
+        if route.startswith("/preview/"):
+            from studio_v3_preview import resolve
+            response = resolve(route)
+            if response is None:
+                return self.send_json(404, {"error": "Preview expired or resource missing"})
+            mime, raw = response
+            return self.reply(200, raw, mime, csp=
+                "default-src 'self'; img-src 'self' data:; "
+                "style-src 'self' 'unsafe-inline'; script-src 'self'; "
+                "connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'")
         if route not in files:
             return self.send_json(404, {"error": "Not Found"})
         filename, mime = files[route]
@@ -224,7 +243,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         if self.path not in ("/api/validate", "/api/export", "/api/import",
-                             "/api/export-v3", "/api/import-v3"):
+                             "/api/export-v3", "/api/import-v3", "/api/preview-v3"):
             return self.send_json(404, {"error": "Not Found"})
         origin = self.headers.get("Origin")
         if origin and origin not in (f"http://127.0.0.1:{self.server.server_port}",
@@ -250,12 +269,15 @@ class Handler(BaseHTTPRequestHandler):
                     path: base64.b64encode(blob).decode("ascii") for path, blob in assets.items()}})
                 return
             obj = json.loads(data.decode("utf-8"))
-            if self.path == "/api/export-v3":
+            if self.path in ("/api/export-v3", "/api/preview-v3"):
                 from runtime_package_v3 import build_files
                 raw_files = obj.get("files", {})
                 check(type(raw_files) is dict and len(raw_files) <= 96, "invalid v3 files")
                 files = {path: base64.b64decode(value, validate=True)
                          for path, value in raw_files.items()}
+                if self.path == "/api/preview-v3":
+                    from studio_v3_preview import publish
+                    return self.send_json(200, {"url": publish(obj.get("manifest"), files)})
                 compiled = build_files(obj.get("manifest"), files)
                 return self.reply(200, compiled, "application/octet-stream",
                                   "PowerCal-" + obj["manifest"]["id"] + ".pcskin")

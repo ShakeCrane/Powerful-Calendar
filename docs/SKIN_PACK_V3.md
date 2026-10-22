@@ -70,6 +70,12 @@ python tools/skin-studio/skin_studio.py build-v3 --manifest manifest.json --sour
 python tools/skin-studio/skin_studio.py validate skin.pcskin
 ```
 
-Simple mode edits only base-declared material slots. Advanced mode edits the scene/layer position
-metadata and complete HTML/CSS/JS source with a mocked bridge preview. Both modes save the same v3
-source project; an imported advanced project remains a valid base for simple edits.
+Skin Studio v3 now serves and previews the same local HTML/CSS/JS/assets bytes it exports.
+Its browser editor uses one project for simple CSS-bound materials, drag-positioned managed
+layers, artwork and advanced source; the selected source is never rewritten solely for preview.
+The versioned Bridge v1 mock reproduces the transport, state, action envelope and semantic
+option groups; current host fields are documented in V3_HOST_BRIDGE_EXTENSION.md and
+SEMANTIC_OPTION_BRIDGE_V1.md. Cross-engine typography, safe areas and gesture handling still
+require separate Android WebView acceptance; browser parity is a byte-level source guarantee,
+not a pixel-perfect Android emulator. Source files with unbound material slots remain editable
+in advanced mode; Studio does not fabricate bindings for unsupported components.

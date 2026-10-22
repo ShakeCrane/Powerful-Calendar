@@ -1,36 +1,90 @@
 <!doctype html>
 <html lang="zh-CN"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>PowerCal Skin Studio</title><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/style-v3.css">
+<title>PowerCal Skin Studio v3</title>
+<link rel="stylesheet" href="/style-v3.css">
 </head><body>
-<header class="topbar"><div><strong>PowerCal <span>Skin Studio v3</span></strong><small>同一项目的简单材质与高级 Web 图层编辑器</small></div>
-<div class="actions"><label class="fileButton">导入 .pcskin<input id="importZip" type="file" accept=".pcskin,.zip" hidden></label>
-<label class="fileButton">打开项目<input id="importProject" type="file" accept=".json,.pcstudio" hidden></label>
-<button id="simpleMode">简单模式</button><button id="advancedMode">高级模式</button>
-<button id="exportProject">保存独立源项目</button><button id="exportPack" class="primary">导出 v3 .pcskin</button></div></header>
-<div id="toast" class="toast" role="status" aria-live="polite">就绪。更改会即时反映在结构预览中。</div>
-<main>
-<aside class="sidebar">
-<section><h2>皮肤信息</h2><label>Skin ID<input id="skinId" value="new-powercal-skin" pattern="[a-z0-9][a-z0-9_-]{2,47}"></label><label>显示名称<input id="skinName" value="My PowerCal Skin"></label></section>
-<section><h2>场景</h2><div id="pageTabs" class="pageTabs"></div><p class="hint">页面结构与动效保存在设计项目中；导入安卓的 .pcskin v1 仅包含颜色、圆角、字号和图片。深度布局需要编译 Compose Renderer。</p></section>
-<section><h2>主题</h2><div class="inline"><label><input name="mode" type="radio" value="light" checked> 浅色</label><label><input name="mode" type="radio" value="dark"> 深色</label><label><input id="reduced" type="checkbox"> 减少动效</label></div><div id="palette"></div></section>
-<section><h2>圆角与字号（v1）</h2><div id="geometry"></div></section>
-</aside>
-<section class="previewCol"><div class="previewTop"><h2>结构与交互预览</h2><span class="hint">概念预览 ≠ Android Compose 像素级截图</span></div>
-<div class="phoneWrap"><div id="phone" class="phone"><div id="deviceStatus" class="deviceStatus">12:15　▴ ▮ ▰</div><div id="scene" class="scene"></div><div id="deviceNav">──────</div></div></div>
-<div class="feedback"><strong>Intent 观察台</strong><div id="intentLog" role="log" aria-live="polite">点击预览中的功能按钮，验证其 Intent 名称。</div></div>
-</section>
-<aside class="editor">
-<section><h2>页面结构（Compiled）</h2><p class="hint">更改排列、区域及纯装饰元素可见性；不可删除或隐藏必要交互及语义槽。</p><div id="slots"></div></section>
-<section><h2>动效（Compiled）</h2><label>选择组件<select id="motionTarget"></select></label><label>预设<select id="motionPreset"><option value="none">无</option><option value="fade">淡入</option><option value="slide">平移</option><option value="scale">缩放</option></select></label><label>时长 <output id="durationValue"></output> ms<input id="motionDuration" type="range" min="0" max="600" step="25"></label><button id="replay">重播预览</button><p class="hint">遵循系统减少动画时，强制以静态呈现；时间轴的几何位置不能被动画篡改。</p></section>
-<section><h2>PNG / WebP 资源（v1）</h2><label>目标槽<select id="assetSlot"></select></label><label>所属主题<select id="assetMode"><option value="imagesLight">浅色</option><option value="imagesDark">深色</option></select></label><label class="fileButton">选择图片<input id="assetFile" type="file" accept="image/png,image/webp" hidden></label><button id="clearAsset">移除此槽素材</button><div id="assetStatus" class="hint"></div></section>
-<section><h2>验证</h2><button id="validate">检查皮肤包</button><p class="hint">校验 ZIP ABI、SHA-256、文件/像素尺寸、键名与布局范围；真机渲染及可访问性仍需独立验收。</p></section>
-<section id="advancedEditor" hidden><h2>高级 v3 Web 源码</h2>
-<label>图层<select id="layerTree"><option value="root">root</option><option value="header">header</option><option value="events">events</option><option value="navigation">navigation</option></select></label>
-<div class="inline"><label>X<input id="layerX" type="number" value="0"></label><label>Y<input id="layerY" type="number" value="0"></label></div>
-<label>HTML<textarea id="htmlCode" rows="8"></textarea></label><label>CSS<textarea id="cssCode" rows="8"></textarea></label><label>JavaScript<textarea id="jsCode" rows="8"></textarea></label>
-<button id="applyCode">应用到真实 Web 预览</button><p class="hint">预览使用模拟的版本化 host bridge；Android 端只开放白名单动作。</p></section>
-</aside></main>
-<section id="webPreviewPanel" class="webPreviewPanel" hidden><h2>v3 Web Preview</h2><iframe id="webPreview" sandbox="allow-scripts"></iframe></section>
-<script src="/app.js" defer></script>
+<header class="topbar">
+  <div><strong>PowerCal <em>Skin Studio v3</em></strong><small>所见即所得 · 原样导出 HTML / CSS / JS 与素材</small></div>
+  <div class="barActions">
+    <label class="fileButton">导入 .pcskin<input id="importZip" type="file" accept=".pcskin,.zip" hidden></label>
+    <label class="fileButton">打开项目<input id="importProject" type="file" accept=".json,.pcstudio" hidden></label>
+    <button id="exportProject">保存编辑工程</button><button id="validate">验证</button>
+    <button id="exportPack" class="primary">导出 .pcskin v3</button>
+  </div>
+</header>
+<div id="toast" class="toast" role="status" aria-live="polite">正在初始化同源文件预览。</div>
+<main class="studio">
+  <aside class="panel sidebar">
+    <section><h2>皮肤项目</h2>
+      <label>唯一 ID <input id="skinId" value="new-powercal-skin"></label>
+      <label>显示名称 <input id="skinName" value="My PowerCal Skin"></label>
+      <label class="check"><input id="fullCanvas" type="checkbox" checked>完整画布（宿主原生设置仍可恢复）</label>
+    </section>
+    <section><h2>编辑模式</h2><div class="tabs">
+      <button id="simpleMode" class="active">可视化</button><button id="advancedMode">源码</button>
+    </div><p class="muted">两种模式操作同一份源码。全部更改都会进入预览和导出，不需要再次点「应用」。</p></section>
+    <section id="slotSection"><h2>皮肤材质</h2><div id="materialSlots"></div>
+      <button id="addMaterial" class="secondary">新增 CSS 材质变量</button>
+    </section>
+    <section><h2>素材文件</h2>
+      <label class="fileButton">添加 PNG / WebP / 字体素材<input id="assetFile" type="file" multiple hidden></label>
+      <div id="assetList" class="list"></div>
+      <p class="muted">全部以原始字节保存于 assets/；预览和导出使用相同文件。</p>
+    </section>
+    <section><h2>宿主数据场景</h2>
+      <label>模拟场景<select id="scenario">
+        <option value="normal">正常日历</option><option value="empty">空白日历</option>
+        <option value="dense">重叠密集事件</option><option value="repeating">重复实例</option>
+        <option value="locked">AI 锁定</option><option value="future">软件新增平行功能</option>
+      </select></label>
+      <label>主题<select id="theme"><option value="light">浅色</option><option value="dark">深色</option></select></label>
+      <label class="check"><input id="reduced" type="checkbox">减少动画</label>
+    </section>
+  </aside>
+  <section class="previewPanel">
+    <div class="previewBar"><div><h2>真实 Web 文件预览</h2><small>HTML / CSS / JS 与 Android 包内相同；消息由 Mock 宿主提供</small></div>
+      <div class="barActions"><button id="editMode" class="active">编辑图层</button><button id="interactMode">测试交互</button><button id="refresh">刷新</button></div>
+    </div>
+    <div class="previewOuter"><div id="previewCanvas" class="previewCanvas">
+      <iframe id="webPreview" title="PowerCal v3 皮肤预览" sandbox="allow-scripts"></iframe>
+      <div id="dragOverlay" class="dragOverlay" aria-label="可拖拽图层"></div>
+    </div></div>
+    <div class="previewFooter"><div id="previewState">正在加载……</div>
+      <div id="bridgeLog" class="bridgeLog" aria-live="polite"></div></div>
+  </section>
+  <aside class="panel editor">
+    <section id="layerSection"><h2>自由图层</h2>
+      <div class="barActions"><button id="addText">+ 文字</button><button id="addImage">+ 图片</button><button id="addButton">+ 功能按钮</button></div>
+      <div id="layerList" class="list"></div>
+      <div id="layerEditor" hidden>
+        <label>文字 / 按钮标题 <input id="layerLabel"></label>
+        <label>素材 <select id="layerAsset"></select></label>
+        <div class="fields"><label>X<input id="layerX" type="number"></label><label>Y<input id="layerY" type="number"></label>
+          <label>宽<input id="layerWidth" type="number" min="1"></label><label>高<input id="layerHeight" type="number" min="1"></label></div>
+        <div class="fields"><label>图层序号<input id="layerZ" type="number"></label>
+          <label>不透明度<input id="layerOpacity" type="number" min="0" max="1" step=".05"></label></div>
+        <label>操作绑定<select id="layerAction"></select></label>
+        <button id="removeLayer" class="danger">删除选中图层</button>
+      </div>
+    </section>
+    <section><h2>按钮图标替换</h2>
+      <label>目标按钮操作<select id="iconTarget"></select></label>
+      <label>图标素材<select id="iconAsset"></select></label>
+      <button id="applyIcon">应用到真实 Web CSS</button>
+      <p class="muted">按 data-action 批量替换对应按钮图标。不会修改 Android 系统设置或原生权限页面。</p>
+    </section>
+    <section><h2>宿主动作（白名单）</h2>
+      <p class="muted">按钮只绑定已开放动作。新增平行选项由宿主 optionGroups 提供，样式由皮肤组件统一决定。</p>
+      <div id="actionList" class="muted"></div>
+    </section>
+    <section id="sourceEditor" hidden><h2>高级源码编辑</h2>
+      <label>HTML<textarea id="htmlCode" spellcheck="false" rows="9"></textarea></label>
+      <label>CSS<textarea id="cssCode" spellcheck="false" rows="9"></textarea></label>
+      <label>JavaScript<textarea id="jsCode" spellcheck="false" rows="9"></textarea></label>
+      <p class="muted">直接修改项目源码，实时保存与预览。导出不执行额外 HTML/CSS/JS 改写。</p>
+    </section>
+  </aside>
+</main>
+<script src="/v3-studio.js" defer></script>
 </body></html>

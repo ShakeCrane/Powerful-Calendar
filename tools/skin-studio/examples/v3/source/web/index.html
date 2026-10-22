@@ -1,1 +1,17 @@
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="style.css"></head><body><main><header><b id="brand">PowerCal</b><button data-action="today">Today</button><button data-action="openDeck">Drafts</button></header><section id="events" aria-live="polite"></section><nav><button data-action="timeline">Timeline</button><button data-action="month">Month</button><button data-action="ai">AI</button><button data-action="settings">Settings</button></nav></main><script src="app.js"></script></body></html>
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="style.css"></head>
+<body>
+<main id="app">
+<header><b id="brand">PowerCal</b><button type="button" data-action="today">今日</button>
+<button type="button" data-action="openDeck">草稿 <span id="pending"></span></button>
+<button type="button" data-action="settings" aria-label="原生设置">设置</button></header>
+<div id="pageTitle">时间轴 · 最左侧刻度</div>
+<section id="timeline" aria-label="左侧时间刻度，右侧日程事件"><div id="ruler"></div><div id="tracks"></div></section>
+<section class="optionPanel"><h2>导入选项（自动继承新增平行功能）</h2><div id="optionGroups"></div></section>
+<section id="otherPage" hidden></section>
+<nav><button data-action="timeline">时间轴</button><button data-action="month">月历</button>
+<button data-action="memo">Memo</button><button data-action="ai">AI</button></nav>
+</main><script src="app.js"></script>
+</body></html>

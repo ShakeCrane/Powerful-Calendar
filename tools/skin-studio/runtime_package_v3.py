@@ -113,6 +113,9 @@ def build_files(manifest, files):
             archive.writestr(name, files[name])
     blob = out.getvalue()
     check(len(blob) <= MAX_ARCHIVE, "ZIP is larger than 10MB")
+    # Apply the same per-file and inflated-size checks as Android and the importer.
+    # A tiny compressed ZIP may otherwise conceal an invalid oversized source.
+    unpack(blob)
     return blob
 
 
