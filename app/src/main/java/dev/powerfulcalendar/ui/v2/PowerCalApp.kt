@@ -933,15 +933,34 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                     }
                     else -> Unit
                 }
-                is WebSkinAction.InvokeOption -> when (action.id) {
-                    "calendar.import.file" -> openAiDocument.launch(arrayOf("*/*"))
-                    "calendar.import.system" -> {
+                is WebSkinAction.InvokeOption -> when {
+                    aiLocked || editSession != null -> Unit
+                    action.id == "calendar.import.file" ->
+                        openAiDocument.launch(arrayOf("*/*"))
+                    action.id == "calendar.import.system" -> {
                         if (ContextCompat.checkSelfPermission(appContext,
                                 Manifest.permission.READ_CALENDAR) == PackageManager.PERMISSION_GRANTED
                         ) scope.launch { importSystemCalendar() }
                         else calendarPermission.launch(Manifest.permission.READ_CALENDAR)
                     }
                     else -> Unit
+                }
+                is WebSkinAction.PanTimeline -> {
+                    if (page == Page.TIMELINE.name) {
+                        val next = runCatching { Math.addExact(anchorMillis,
+                            action.deltaMinutes.toLong() * 60_000L) }.getOrNull()
+                        if (next != null) {
+                            val year = java.time.Instant.ofEpochMilli(next).atZone(zone).year
+                            if (year in 1900..2200) anchorMillis = next
+                        }
+                    }
+                }
+                is WebSkinAction.JumpTimelineDay -> {
+                    if (page == Page.TIMELINE.name) {
+                        val date = java.time.LocalDate.parse(action.date)
+                        anchorMillis = date.atTime(12, 0).atZone(zone)
+                            .toInstant().toEpochMilli()
+                    }
                 }
                 is WebSkinAction.OpenEvent -> scope.launch {
                     val current = withContext(Dispatchers.IO) { store.get(action.eventSeq) }
@@ -960,13 +979,17 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
             JSONObject().put("bridgeVersion", WebSkinBridgeRuntime.VERSION).put("page", page)
                 .put("aiLocked", aiLocked).put("pendingCount", pendingCount)
                 .put("reducedMotion", effects.reduceMotion)
-                .put("optionGroups", SemanticOptions.toJson())
+                .put("optionGroups", SemanticOptions.toJson(
+                    enabled = !aiLocked && editSession == null))
+                .put("timeline", WebSkinTimelineProjection.build(
+                    records, camera, nowMillis, zone))
                 .put("events", org.json.JSONArray(records.take(300).map { record ->
                     JSONObject().put("eventSeq", record.eventSeq).put("revision", record.revision)
                         .put("kind", record.kind.name).put("title", record.title.take(300))
                         .put("anchorMillis", record.anchorMillis()).put("endMillis", record.spanEndMillis())
                 }))
         }
+        WebSkinBridgeRuntime.stateRevision++
     }
     DisposableEffect(webBridgeOwner) {
         onDispose {

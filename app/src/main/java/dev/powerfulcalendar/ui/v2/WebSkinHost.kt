@@ -20,6 +20,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import android.webkit.WebMessagePort
+import java.util.concurrent.atomic.AtomicBoolean
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
@@ -32,12 +36,19 @@ internal object WebSkinBridgeRuntime {
     var owner: Any? = null
     var onAction: (WebSkinAction) -> Unit = {}
     var state: () -> JSONObject = { JSONObject().put("bridgeVersion", VERSION) }
+    // Only the collector reads this Compose observable. Publishing from the application's
+    // SideEffect does not itself cause the owning Composable to recompose.
+    var stateRevision by androidx.compose.runtime.mutableLongStateOf(0L)
 }
 
 internal sealed interface WebSkinAction {
     data class Routed(val name: String) : WebSkinAction
     data class OpenEvent(val eventSeq: Long, val expectedRevision: Long) : WebSkinAction
     data class InvokeOption(val id: String) : WebSkinAction
+    /** Relative browsing only; cannot change the vertical time scale. */
+    data class PanTimeline(val deltaMinutes: Int) : WebSkinAction
+    /** Select a calendar day while preserving the existing time span. */
+    data class JumpTimelineDay(val date: String) : WebSkinAction
 }
 
 internal fun validateOpenEvent(
@@ -74,6 +85,9 @@ internal fun WebSkinRoot(
 private fun SecureWebSkin(bundle: WebSkinBundle, modifier: Modifier, onFailure: () -> Unit) {
     val origin = "https://skin.powercal.local/"
     val context = androidx.compose.ui.platform.LocalContext.current
+    val feed = remember(bundle) { WebSkinStateFeed() }
+    val live = remember(bundle) { AtomicBoolean(true) }
+    val session = remember(bundle) { WebSkinWebSession() }
     val webView = remember(bundle) {
         WebView(context).apply {
             setBackgroundColor(Color.TRANSPARENT)
@@ -99,11 +113,12 @@ private fun SecureWebSkin(bundle: WebSkinBundle, modifier: Modifier, onFailure: 
                     return true
                 }
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
-                    request.url.host != "skin.powercal.local"
+                    request.url.toString() != origin + bundle.entrypoint
 
                 override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
                     val uri = request.url
-                    if (uri.scheme != "https" || uri.host != "skin.powercal.local") {
+                    if (uri.scheme != "https" || uri.host != "skin.powercal.local" ||
+                        uri.port != -1 || uri.userInfo != null || uri.query != null) {
                         return WebResourceResponse("text/plain", "utf-8", 403, "Blocked", emptyMap(),
                             ByteArrayInputStream(ByteArray(0)))
                     }
@@ -129,39 +144,84 @@ private fun SecureWebSkin(bundle: WebSkinBundle, modifier: Modifier, onFailure: 
                 }
 
                 override fun onPageFinished(view: WebView, url: String) {
+                    if (!live.get()) return
                     val finished = Uri.parse(url)
-                    if (finished.scheme != "https" || finished.host != "skin.powercal.local" ||
+                    if (url != origin + bundle.entrypoint ||
                         finished.userInfo != null || finished.port != -1) {
                         onFailure()
                         return
                     }
                     val channels = view.createWebMessageChannel()
+                    feed.disconnect()
+                    session.replace(channels[0])
                     channels[0].setWebMessageCallback(object : android.webkit.WebMessagePort.WebMessageCallback() {
                         override fun onMessage(port: android.webkit.WebMessagePort, message: android.webkit.WebMessage) {
                             view.post {
-                                decodeBridgeAction(message.data.orEmpty())?.let(WebSkinBridgeRuntime.onAction)
-                                port.postMessage(android.webkit.WebMessage(stateMessage().toString()))
+                                if (!live.get() || session.port !== port ||
+                                    PowerCalSkinRegistry.active.web !== bundle ||
+                                    !bundle.capabilities.contains("host.action")) return@post
+                                decodeBridgeAction(message.data.orEmpty())
+                                    ?.let(WebSkinBridgeRuntime.onAction)
+                                runCatching { feed.publish(exposedState(bundle)) }
+                                    .onFailure { onFailure() }
                             }
                         }
                     })
                     view.postWebMessage(android.webkit.WebMessage("powercal-port", arrayOf(channels[1])), Uri.parse(origin))
-                    channels[0].postMessage(android.webkit.WebMessage(stateMessage().toString()))
+                    feed.connect { frame ->
+                        runCatching { channels[0].postMessage(android.webkit.WebMessage(frame)) }
+                            .onFailure { onFailure() }
+                    }
+                    runCatching { feed.publish(exposedState(bundle)) }
+                        .onFailure { onFailure() }
                 }
             }
             loadUrl(origin + bundle.entrypoint)
         }
     }
     AndroidView({ webView }, modifier)
+    LaunchedEffect(webView, feed) {
+        snapshotFlow {
+            // SideEffect installs a new immutable snapshot closure on every host change.
+            // Observing its explicit revision avoids stale closures without polling.
+            WebSkinBridgeRuntime.stateRevision
+            exposedState(bundle).toString()
+        }.distinctUntilChanged().collect { json ->
+            if (PowerCalSkinRegistry.active.web === bundle) {
+                runCatching { feed.publish(JSONObject(json)) }.onFailure { onFailure() }
+            }
+        }
+    }
     LaunchedEffect(webView) {
         kotlinx.coroutines.delay(5_000)
-        if (webView.progress < 100) onFailure()
+        if (live.get() && webView.progress < 100) onFailure()
     }
-    DisposableEffect(webView) { onDispose { webView.stopLoading(); webView.destroy() } }
+    DisposableEffect(webView) { onDispose {
+        live.set(false)
+        feed.disconnect()
+        session.close()
+        webView.stopLoading()
+        webView.destroy()
+    } }
 }
 
-private fun stateMessage(): JSONObject = JSONObject()
-    .put("version", WebSkinBridgeRuntime.VERSION).put("type", "state")
-    .put("payload", WebSkinBridgeRuntime.state())
+private fun exposedState(bundle: WebSkinBundle): JSONObject =
+    if ("host.read" in bundle.capabilities) WebSkinBridgeRuntime.state()
+    else JSONObject().put("bridgeVersion", WebSkinBridgeRuntime.VERSION)
+
+/** Disconnected WebViews/old page channels cannot invoke the current host. */
+private class WebSkinWebSession {
+    var port: WebMessagePort? = null
+        private set
+    fun replace(next: WebMessagePort) {
+        close()
+        port = next
+    }
+    fun close() {
+        runCatching { port?.close() }
+        port = null
+    }
+}
 
 internal fun decodeBridgeAction(raw: String): WebSkinAction? {
     if (raw.length !in 1..8_192) return null
@@ -180,6 +240,23 @@ internal fun decodeBridgeAction(raw: String): WebSkinAction? {
             if (keys != setOf("name", "id")) return null
             val id = payload.opt("id")
             if (id is String && SemanticOptions.supports(id)) WebSkinAction.InvokeOption(id)
+            else null
+        }
+        "panTimeline" -> {
+            if (keys != setOf("name", "deltaMinutes")) return null
+            val rawMinutes = payload.opt("deltaMinutes")
+            val minutes = (rawMinutes as? Int)
+            if (minutes != null && minutes != 0 && minutes in -2880..2880)
+                WebSkinAction.PanTimeline(minutes)
+            else null
+        }
+        "jumpTimelineDay" -> {
+            if (keys != setOf("name", "date")) return null
+            val date = payload.opt("date")
+            val parsed = if (date is String && date.length == 10)
+                runCatching { java.time.LocalDate.parse(date) }.getOrNull() else null
+            if (parsed != null && parsed.year in 1900..2200)
+                WebSkinAction.JumpTimelineDay(parsed.toString())
             else null
         }
         "openEvent" -> {

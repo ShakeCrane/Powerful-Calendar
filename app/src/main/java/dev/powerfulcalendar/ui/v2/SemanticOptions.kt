@@ -30,14 +30,15 @@ internal object SemanticOptions {
     )
     private val allowed = groups.flatMap { it.items }.map { it.id }.toSet()
     fun supports(id: String): Boolean = id in allowed
-    fun toJson(): JSONArray = JSONArray().apply {
-        groups.forEach { group ->
+    fun toJson(enabled: Boolean = true,
+               collection: List<SemanticOptionGroup> = groups): JSONArray = JSONArray().apply {
+        collection.forEach { group ->
             put(JSONObject().put("id", group.id).put("label", group.label)
                 .put("items", JSONArray().apply {
                     group.items.forEach { item ->
                         put(JSONObject().put("id", item.id).put("label", item.label)
                             .put("detail", item.detail).put("icon", item.icon)
-                            .put("enabled", true))
+                            .put("enabled", enabled))
                     }
                 }))
         }
