@@ -36,8 +36,21 @@ object IcsCodec {
         val series = mutableListOf<IcsSeriesDraft>()
         val warnings = mutableListOf<String>()
         var current: MutableMap<String, Pair<String, String>>? = null
+        var nestedDepth = 0
         for (line in lines) {
-            when (line.trim()) {
+            val component = line.trim()
+            // VALARM and other nested components must not overwrite VEVENT properties.
+            if (current != null && nestedDepth > 0) {
+                if (component.startsWith("BEGIN:", ignoreCase = true)) nestedDepth++
+                if (component.startsWith("END:", ignoreCase = true)) nestedDepth--
+                continue
+            }
+            if (current != null && component.startsWith("BEGIN:", ignoreCase = true) &&
+                component != "BEGIN:VEVENT" && component != "BEGIN:VTODO") {
+                nestedDepth = 1
+                continue
+            }
+            when (component) {
                 "BEGIN:VEVENT", "BEGIN:VTODO" -> current = mutableMapOf()
                 "END:VEVENT", "END:VTODO" -> {
                     current?.let { fields ->
@@ -56,9 +69,14 @@ object IcsCodec {
                             val allDay = startField.first.contains("VALUE=DATE") ||
                                 (startField.second.length == 8)
                             val start = parseDate(startField.first, startField.second)
-                            // A missing end has no safe duration. Reject instead of inventing 1h.
+                            // RFC date-only VEVENT without DTEND spans exactly one calendar
+                            // day. Timed VEVENT without end/duration cannot map to ACTIVITY.
                             val end = endField?.let { parseDate(it.first, it.second) }
-                                ?: error("缺少 DTEND；不能猜测持续时间")
+                                ?: fields["DURATION"]?.let { start + Duration.parse(it.second).toMillis() }
+                                ?: if (allDay) Instant.ofEpochMilli(start)
+                                    .atZone(ZoneId.systemDefault()).toLocalDate().plusDays(1)
+                                    .atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                                else error("缺少 DTEND/DURATION；当前活动需要可确认的持续时间")
                             val uid = fields["UID"]?.second
                             val title = decode(fields["SUMMARY"]?.second ?: "未命名事件")
                             val priority = when (fields["PRIORITY"]?.second?.toIntOrNull()) {
@@ -215,6 +233,9 @@ object IcsCodec {
         val isDeadline = fields.containsKey("DUE") && !fields.containsKey("DTSTART")
         val end = fields["DTEND"]?.let { parseDate(it.first, it.second) }
             ?: fields["DURATION"]?.let { start + Duration.parse(it.second).toMillis() }
+            ?: if (dateOnly && !isDeadline) Instant.ofEpochMilli(start).atZone(zone)
+                .toLocalDate().plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
+            else null
         val kind = when {
             isDeadline -> TemporalKind.DEADLINE
             end != null -> TemporalKind.ACTIVITY

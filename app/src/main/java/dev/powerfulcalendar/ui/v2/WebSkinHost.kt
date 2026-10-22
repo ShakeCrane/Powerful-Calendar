@@ -37,6 +37,7 @@ internal object WebSkinBridgeRuntime {
 internal sealed interface WebSkinAction {
     data class Routed(val name: String) : WebSkinAction
     data class OpenEvent(val eventSeq: Long, val expectedRevision: Long) : WebSkinAction
+    data class InvokeOption(val id: String) : WebSkinAction
 }
 
 internal fun validateOpenEvent(
@@ -175,6 +176,12 @@ internal fun decodeBridgeAction(raw: String): WebSkinAction? {
     return when (name) {
         "timeline", "month", "ai", "settings", "openDeck", "today" ->
             if (keys == setOf("name")) WebSkinAction.Routed(name) else null
+        "invokeOption" -> {
+            if (keys != setOf("name", "id")) return null
+            val id = payload.opt("id")
+            if (id is String && SemanticOptions.supports(id)) WebSkinAction.InvokeOption(id)
+            else null
+        }
         "openEvent" -> {
             if (keys != setOf("name", "eventSeq", "expectedRevision")) return null
             val seq = payload.optLong("eventSeq", -1L)

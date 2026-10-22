@@ -206,7 +206,8 @@ class AiClient(
         }
     }
 
-    private fun complete(messages: JSONArray, maxTokens: Int = 1800): String {
+    private fun complete(messages: JSONArray, maxTokens: Int = 1800,
+                         allowRetry: Boolean = true): String {
         val endpoint = AiSettings.normalizeEndpoint(settings.endpoint)
         val url = URL(endpoint)
         require(url.protocol == "https" ||
@@ -248,11 +249,27 @@ class AiClient(
                 }
                 output.toString()
             }
-            val content = JSONObject(text)
-                .getJSONArray("choices").getJSONObject(0).getJSONObject("message")
-                .optString("content")
-            require(content.isNotBlank() && content != "null") {
-                "模型没有返回文本；本阶段尚未接入 Function Calling"
+            val choice = JSONObject(text).getJSONArray("choices").getJSONObject(0)
+            val message = choice.getJSONObject("message")
+            val rawContent = message.opt("content")
+            // Providers may return a string or multipart text. Never expose reasoning/tool
+            // payloads as a visible chat reply.
+            val content = when (rawContent) {
+                is String -> rawContent
+                is JSONArray -> (0 until rawContent.length()).mapNotNull { i ->
+                    rawContent.optJSONObject(i)?.takeIf {
+                        it.optString("type") in setOf("text", "output_text")
+                    }?.optString("text")?.takeIf { it.isNotBlank() }
+                }.joinToString("\n")
+                else -> ""
+            }
+            if (content.isBlank() || content == "null") {
+                // Retry at most once with a larger output budget. Some reasoning endpoints
+                // exhaust small token budgets before emitting visible content.
+                if (allowRetry) return complete(messages,
+                    (maxTokens * 2).coerceAtMost(4096), allowRetry = false)
+                throw IOException("模型未返回可展示内容（" +
+                    choice.optString("finish_reason", "unknown").take(35) + "）")
             }
             return content
         } finally {
@@ -316,7 +333,7 @@ class AiClient(
 
         private val CHAT_SYSTEM_PROMPT = """
             你是 Powerful Calendar 的通用助手，也能提出日程操作建议。默认自然聊天，不输出 JSON。
-            **简洁**：普通问题尽量 60～180 个汉字；复杂问题最多 350 汉字。禁止复述用户大段输入、重复解释、无意义总结。
+            **表达**：通常用简短、易懂的自然语言回答，操作反馈可以参考约 200 字；复杂问题按需充分解释。字数只是软建议，不要硬截断。推理、工具调用及结构化执行结果不得混入展示正文。避免复述用户大段输入和无意义总结。
             如果出现日期、周几、课程、时间段、地点、人物等日程信息，识别为潜在结构化事件；
             区分明确事实与推测。尤其不要凭空补出学期起止日期、课程周次、结束时间、地点或人物。
             信息不足只追问最影响执行的一个问题。可自由聊天，不要求每条都涉及日历。

@@ -19,7 +19,7 @@ object AiChatHistoryStore {
         (0 until array.length()).toList().takeLast(200).mapNotNull { index ->
             val item = array.optJSONObject(index) ?: return@mapNotNull null
             val role = item.optString("role")
-            val content = item.optString("content").take(6000)
+            val content = item.optString("content")
             if (role != "user" && role != "assistant") return@mapNotNull null
             AiChatMessage(role, content, item.optString("proposalSource").ifEmpty { null })
         }

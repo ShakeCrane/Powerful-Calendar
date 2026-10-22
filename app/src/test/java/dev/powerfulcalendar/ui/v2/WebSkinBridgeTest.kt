@@ -26,6 +26,12 @@ class WebSkinBridgeTest {
             """{"version":2,"type":"action","payload":{"name":"today"}}"""))
         assertNull(decodeBridgeAction(
             """{"version":1,"type":"action","payload":{"name":"deleteEvent"}}"""))
+        assertEquals(WebSkinAction.InvokeOption("calendar.import.file"), decodeBridgeAction(
+            """{"version":1,"type":"action","payload":{"name":"invokeOption","id":"calendar.import.file"}}"""))
+        assertNull(decodeBridgeAction(
+            """{"version":1,"type":"action","payload":{"name":"invokeOption","id":"untrusted.delete"}}"""))
+        assertNull(decodeBridgeAction(
+            """{"version":1,"type":"action","payload":{"name":"invokeOption","id":"calendar.import.file","force":true}}"""))
         assertNull(decodeBridgeAction("x".repeat(8_193)))
         assertTrue(decodeBridgeAction("") == null)
     }

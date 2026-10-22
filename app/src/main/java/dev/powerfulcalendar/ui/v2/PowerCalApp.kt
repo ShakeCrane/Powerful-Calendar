@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.Timeline
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
@@ -83,6 +84,7 @@ import dev.powerfulcalendar.ai.AiBatchRunner
 import dev.powerfulcalendar.ai.AiClient
 import dev.powerfulcalendar.ai.AiChatMessage
 import dev.powerfulcalendar.ai.AiChatHistoryStore
+import dev.powerfulcalendar.ai.AiFileFallbackConsent
 import dev.powerfulcalendar.ai.AiDraftService
 import dev.powerfulcalendar.ai.AiInterpretation
 import dev.powerfulcalendar.ai.AiSettingsStore
@@ -102,6 +104,8 @@ import dev.powerfulcalendar.core.TimelineCoordinate
 import dev.powerfulcalendar.data.CalendarEvent
 import dev.powerfulcalendar.data.LegacyImporter
 import dev.powerfulcalendar.interop.IcsCodec
+import dev.powerfulcalendar.interop.IcsImportPlanner
+import dev.powerfulcalendar.interop.ImportCheckpoint
 import dev.powerfulcalendar.interop.AiFileEvidence
 import dev.powerfulcalendar.interop.AiFileEvidenceReader
 import dev.powerfulcalendar.interop.SystemCalendar
@@ -198,6 +202,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
     var ocrReviewText by remember { mutableStateOf<String?>(null) }
     var pendingImageReview by remember { mutableStateOf<Uri?>(null) }
     var pendingFileReview by remember { mutableStateOf<Pair<Uri, AiFileEvidence>?>(null) }
+    var firstCalendarImportPrompt by remember { mutableStateOf(false) }
     var aiBusy by remember { mutableStateOf(false) }
     var chatBusy by remember { mutableStateOf(false) }
     var proposalReview by remember { mutableStateOf<AiInterpretation?>(null) }
@@ -330,6 +335,10 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
         reconcile()
         reload()
         if (deckOpen) withContext(Dispatchers.IO) { controller.open(deckInitialId) }
+        val onboarding = appContext.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+        if (!onboarding.getBoolean("system-calendar-import-asked", false)) {
+            firstCalendarImportPrompt = true
+        }
         // A process that died mid-batch is fenced and unlocked here; never leave a permanent lock.
         val locked = withContext(Dispatchers.IO) { store.isLocked() }
         if (locked) {
@@ -453,7 +462,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
     }
 
     fun appendChat(role: String, text: String, proposalSource: String? = null) {
-        chatHistory = (chatHistory + AiChatMessage(role, text.take(6000), proposalSource)).takeLast(200)
+        chatHistory = (chatHistory + AiChatMessage(role, text, proposalSource)).takeLast(200)
     }
 
     fun beginBatchConversation(mode: AiBatchRunner.Mode) {
@@ -555,14 +564,36 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
         val prior = chatHistory.takeLast(7)
         scope.launch {
             try {
-                val reply = AiClient(AiSettingsStore.load(appContext), zone)
-                    .analyzeEvidence(evidence.filename,
+                val client = AiClient(AiSettingsStore.load(appContext), zone)
+                if (evidence.format == "ics-problem") {
+                    // Known RFC constructs unsupported by our domain are not candidates for
+                    // invented appointments. AI may explain and ask, never bypass the codec.
+                    val reply = client.analyzeEvidence(evidence.filename,
+                        "只解释尚未解决的日历语义，优先询问必要的一个问题。" +
+                            "不要把改单次实例当成独立新日程，不得声称已导入。\n" +
+                            evidence.text, emptyList())
+                    appendChat("assistant", if (reply.succeeded) reply.reply
+                        else "部分日历规则尚无法安全处理，已保存其他草稿。" +
+                            "AI 当前不可用，可稍后重新选择文件。")
+                    return@launch
+                }
+                // A document is a source of untrusted facts, never an execution instruction.
+                // Try the existing typed proposal parser before falling back to clarification.
+                val interpretation = client.interpret(
+                    "从以下文件提取真实日程，仅生成候选项；缺少时间不可猜测。文件：" +
+                        evidence.filename + "\n" + evidence.text, emptyList())
+                if (interpretation.proposals.isNotEmpty()) {
+                    proposalReview = interpretation
+                    appendChat("assistant", "已从文件识别 ${interpretation.proposals.size} 项候选日程，" +
+                        "请核对后选择生成草稿；尚未正式发布。" +
+                        if (evidence.truncated) " 文件内容不完整，请核对遗漏。" else "")
+                } else {
+                    val reply = client.analyzeEvidence(evidence.filename,
                         (if (hint.isBlank()) "" else "文件预检信息：$hint\n") + evidence.text,
                         prior)
-                appendChat("assistant", if (reply.succeeded) reply.reply
-                    else "分析未完成：" + reply.error.orEmpty() +
-                        "；源文件没有被导入，日历数据未修改。",
-                    proposalSource = if (reply.succeeded) reply.proposalSource else null)
+                    appendChat("assistant", if (reply.succeeded) reply.reply
+                        else "文件暂时无法完成分析，已保留现有日历数据。可以稍后重试。" )
+                }
             } catch (error: kotlinx.coroutines.CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -592,27 +623,20 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                     output.toString()
                 }
             } ?: error("无法读取所选文件")
-            val parsed = IcsCodec.parse(text)
-            // A partial ICS import is worse than a clear refusal: RRULE, unsupported TZID,
-            // missing DTEND and invalid VEVENTs must not silently lose calendar occurrences.
-            if (parsed.warnings.isNotEmpty()) {
-                message = "ICS 未导入：包含 ${parsed.warnings.size} 项无法安全解析的内容。首项：${parsed.warnings.first().take(180)}"
+            // Group by RFC UID before importing: a changed recurrence instance and its master
+            // form one atomic semantic unit. Problems in independent units cannot block good ones.
+            val plan = withContext(Dispatchers.Default) { IcsImportPlanner.prepare(text, zone) }
+            if (plan.units == 0) {
+                message = "文件里没有可导入的日历事件"
                 return
-            }
-            if (parsed.events.isEmpty() && parsed.series.isEmpty()) {
-                message = "文件里没有可导入的单次事件或重复系列"
-                return
-            }
-            // The quota counts SERIES, never occurrences. An infinite RRULE is one card.
-            require(parsed.events.size + parsed.series.size <= 300) {
-                "一次最多预览 300 个单次事件/重复系列，请先拆分文件"
             }
             val result = withContext(Dispatchers.IO) {
                 // Exact title/start/end comparison is only an import guard, not a promise
                 // of cross-device identity or a substitute for permanent invocation receipts.
                 fun identity(form: DraftForm): List<Any?> = listOf(
                     form.kind, form.title.trim(), form.parseStart(), form.parseEnd(),
-                    form.parseDeadline(), form.recurrence, form.zoneId
+                    form.parseDeadline(), form.recurrence, form.zoneId,
+                    form.location.trim(), form.notes.trim(), form.reminderMinutes
                 )
                 val known = (
                     store.all().map { DraftForm.from(it) } +
@@ -620,28 +644,56 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                             .map { it.form }
                     ).map(::identity).toMutableSet()
                 var duplicated = 0
-                val singletonForms = parsed.events.map { event ->
-                    DraftForm(
-                        kind = TemporalKind.ACTIVITY,
-                        title = event.title,
-                        startText = DraftForm.formatInstant(event.startMillis, zone),
-                        endText = DraftForm.formatInstant(event.endMillis, zone),
-                        notes = event.notes, location = event.location,
-                        reminderMinutes = event.reminderMinutes,
-                        source = "ics", zoneId = zone.id
-                    )
+                val created = mutableListOf<Long>()
+                val failed = mutableListOf<String>()
+                val receipt = ImportCheckpoint.recent(appContext)
+                    .firstOrNull { it.fingerprint == plan.fingerprint }
+                // A receipt is a recovery hint, not permission to skip missing/discarded cards.
+                receipt?.draftIds?.filter { store.draft(it) != null }?.forEach { created += it }
+                plan.candidates.forEach { candidate ->
+                    val form = candidate.form
+                    if (!known.add(identity(form))) {
+                        duplicated++
+                        return@forEach
+                    }
+                    runCatching { store.newDraft(form, actor = "user") }
+                        .onSuccess { card ->
+                            created += card.draftId
+                            ImportCheckpoint.record(appContext, ImportCheckpoint.Snapshot(
+                                plan.fingerprint, created.distinct(), plan.problems.size))
+                        }.onFailure { failed += candidate.sourceId.take(80) }
                 }
-                // Each series is represented by ONE DraftForm -> ONE allocated eventSeq.
-                val forms = (singletonForms + parsed.series.map { it.form }).filter { form ->
-                    if (known.add(identity(form))) true
-                    else { duplicated++; false }
-                }
-                val created = forms.map { form -> store.newDraft(form, actor = "user") }
-                created to duplicated
+                ImportCheckpoint.record(appContext, ImportCheckpoint.Snapshot(
+                    plan.fingerprint, created.distinct(), plan.problems.size))
+                Triple(created.distinct(), duplicated, failed)
             }
             reload()
-            result.first.firstOrNull()?.let { openDeckAt(it.draftId) }
-            message = "ICS 已生成 ${result.first.size} 张待确认草稿（其中 ${parsed.series.size} 个重复系列，每系列仅占一个序号）；跳过 ${result.second} 条疑似重复。尚未正式发布。"
+            result.first.firstOrNull()?.let { openDeckAt(it) }
+            message = "ICS 处理完成：${result.first.size} 张已保存草稿，${result.second} 项重复，" +
+                "${plan.problems.size + result.third.size} 项待处理。尚未正式发布。" +
+                (plan.problems.firstOrNull()?.reason?.let { " 首个问题：${it.take(130)}" } ?: "")
+            // Do not send the whole calendar to AI. Only explicitly unresolved components
+            // may be explained or clarified, subject to separate provider-bound consent.
+            if (plan.problems.isNotEmpty()) {
+                val settings = AiSettingsStore.load(appContext)
+                if (settings.configured) {
+                    val focused = plan.problems.take(5).mapIndexed { index, item ->
+                        "问题 ${index + 1}：${item.reason}\n" + item.evidence.take(2400)
+                    }.joinToString("\n\n").take(20_000)
+                    val partial = plan.problems.size > 5
+                    val evidence = AiFileEvidence(
+                        filename = "ICS 未解决项目",
+                        format = "ics-problem",
+                        text = focused,
+                        truncated = partial,
+                        note = "仅包含本地未解决的前 ${minOf(5, plan.problems.size)} 项；" +
+                            "已有可靠草稿不会发送给 AI。"
+                    )
+                    if (!partial && AiFileFallbackConsent.allowed(appContext, settings)) {
+                        submitEvidence(evidence)
+                    } else pendingFileReview = uri to evidence
+                }
+            }
         } catch (error: Exception) {
             message = "ICS 预览失败：" + (error.message ?: "未知错误") + "；请检查待处理是否有已生成草稿"
         }
@@ -696,10 +748,37 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
     ) { uri ->
         if (uri != null) scope.launch {
             try {
-                val evidence = withContext(Dispatchers.IO) {
-                    AiFileEvidenceReader.read(appContext, uri)
+                // Every attachment entry must route a calendar file to the full local parser,
+                // before any bounded AI text extraction or network permission check.
+                val isCalendar = withContext(Dispatchers.IO) {
+                    val mime = appContext.contentResolver.getType(uri)
+                    val name = runCatching {
+                        appContext.contentResolver.query(uri,
+                            arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),
+                            null, null, null)?.use { cursor ->
+                            if (cursor.moveToFirst()) cursor.getString(0) else ""
+                        }
+                    }.getOrNull().orEmpty()
+                    val magic = appContext.contentResolver.openInputStream(uri)?.use { stream ->
+                        val buffer = ByteArray(1024)
+                        val n = stream.read(buffer)
+                        if (n > 0) String(buffer, 0, n, Charsets.UTF_8)
+                            .trimStart('\uFEFF', ' ', '\r', '\n', '\t')
+                            .startsWith("BEGIN:VCALENDAR", ignoreCase = true)
+                        else false
+                    } ?: false
+                    mime == "text/calendar" || name.endsWith(".ics", ignoreCase = true) || magic
                 }
-                pendingFileReview = uri to evidence
+                if (isCalendar) importIcs(uri)
+                else {
+                    val evidence = withContext(Dispatchers.IO) {
+                        AiFileEvidenceReader.read(appContext, uri)
+                    }
+                    val settings = AiSettingsStore.load(appContext)
+                    if (!evidence.truncated && AiFileFallbackConsent.allowed(appContext, settings)) {
+                        submitEvidence(evidence)
+                    } else pendingFileReview = uri to evidence
+                }
             } catch (error: Exception) {
                 message = "无法安全提取文件：" + (error.message ?: error.javaClass.simpleName) +
                     "；没有上传给 AI，也没有创建事件。"
@@ -854,6 +933,16 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                     }
                     else -> Unit
                 }
+                is WebSkinAction.InvokeOption -> when (action.id) {
+                    "calendar.import.file" -> openAiDocument.launch(arrayOf("*/*"))
+                    "calendar.import.system" -> {
+                        if (ContextCompat.checkSelfPermission(appContext,
+                                Manifest.permission.READ_CALENDAR) == PackageManager.PERMISSION_GRANTED
+                        ) scope.launch { importSystemCalendar() }
+                        else calendarPermission.launch(Manifest.permission.READ_CALENDAR)
+                    }
+                    else -> Unit
+                }
                 is WebSkinAction.OpenEvent -> scope.launch {
                     val current = withContext(Dispatchers.IO) { store.get(action.eventSeq) }
                     val validated = validateOpenEvent(action, current, !aiLocked && editSession == null)
@@ -871,6 +960,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
             JSONObject().put("bridgeVersion", WebSkinBridgeRuntime.VERSION).put("page", page)
                 .put("aiLocked", aiLocked).put("pendingCount", pendingCount)
                 .put("reducedMotion", effects.reduceMotion)
+                .put("optionGroups", SemanticOptions.toJson())
                 .put("events", org.json.JSONArray(records.take(300).map { record ->
                     JSONObject().put("eventSeq", record.eventSeq).put("revision", record.revision)
                         .put("kind", record.kind.name).put("title", record.title.take(300))
@@ -1447,8 +1537,40 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
         }
     }
 
+    if (firstCalendarImportPrompt) {
+        SkinAlertDialog(
+            onDismissRequest = {
+                appContext.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                    .edit().putBoolean("system-calendar-import-asked", true).apply()
+                firstCalendarImportPrompt = false
+            },
+            title = { Text("导入系统日历？") },
+            text = { Text("可以读取设备当前的日历日程作为一次性快照。" +
+                "以后不会监测或同步原日历；也可以稍后在设置中手动导入。") },
+            confirmButton = {
+                TextButton(onClick = {
+                    appContext.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                        .edit().putBoolean("system-calendar-import-asked", true).apply()
+                    firstCalendarImportPrompt = false
+                    if (ContextCompat.checkSelfPermission(appContext,
+                            Manifest.permission.READ_CALENDAR) == PackageManager.PERMISSION_GRANTED
+                    ) scope.launch { importSystemCalendar() }
+                    else calendarPermission.launch(Manifest.permission.READ_CALENDAR)
+                }) { Text("导入一次") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    appContext.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                        .edit().putBoolean("system-calendar-import-asked", true).apply()
+                    firstCalendarImportPrompt = false
+                }) { Text("暂不导入") }
+            }
+        )
+    }
+
     pendingFileReview?.let { (uri, evidence) ->
         var localText by remember(uri) { mutableStateOf(evidence.text) }
+        var rememberFileConsent by remember(uri) { mutableStateOf(false) }
         val ics = evidence.format == "ics"
         val parsed = remember(uri, evidence.text) {
             if (ics) runCatching { IcsCodec.parse(evidence.text) }.getOrNull() else null
@@ -1470,6 +1592,14 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                     Text(evidence.note, style = MaterialTheme.typography.labelSmall,
                         color = if (evidence.truncated) MaterialTheme.colorScheme.error
                             else MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (!ics && !evidence.truncated && AiSettingsStore.load(appContext).configured) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = rememberFileConsent,
+                                onCheckedChange = { rememberFileConsent = it })
+                            Text("以后同一 AI 服务可自动分析必要的文件文本；不共享已有日历、不上传原始图片或文件。",
+                                style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
                     OutlinedTextField(
                         value = localText,
                         onValueChange = { if (it.length <= 24_000) localText = it },
@@ -1491,6 +1621,10 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                             // Standard formats are processed by the deterministic importer FIRST.
                             scope.launch { importIcs(uri) }
                         } else {
+                            if (rememberFileConsent && !evidence.truncated) {
+                                AiFileFallbackConsent.grant(appContext,
+                                    AiSettingsStore.load(appContext))
+                            }
                             // Only unsupported, partial or edited evidence takes the AI route.
                             val report = if (ics) parsed?.warnings?.take(5)
                                 ?.joinToString("; ").orEmpty() else ""
@@ -1963,6 +2097,7 @@ internal fun ProtectedAiSettingsSection() {
     val appContext = LocalContext.current.applicationContext
     var settings by remember { mutableStateOf(AiSettingsStore.load(appContext)) }
     var dirty by remember { mutableStateOf(false) }
+    var consentRevision by remember { mutableIntStateOf(0) }
     var modelExpanded by rememberSaveable { mutableStateOf(false) }
     SectionCard(
         "单一 AI",
@@ -2021,6 +2156,12 @@ internal fun ProtectedAiSettingsSection() {
                 checked = settings.shareContext,
                 onCheckedChange = { settings = settings.copy(shareContext = it); dirty = true }
             )
+        }
+        if (consentRevision >= 0 && AiFileFallbackConsent.allowed(appContext, settings)) {
+            TextButton(onClick = {
+                AiFileFallbackConsent.revoke(appContext)
+                consentRevision++
+            }) { Text("撤销文件 AI 自动处理授权") }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
