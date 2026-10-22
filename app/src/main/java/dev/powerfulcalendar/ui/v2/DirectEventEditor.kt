@@ -14,6 +14,10 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import dev.powerfulcalendar.core.DraftForm
@@ -23,15 +27,35 @@ import dev.powerfulcalendar.core.EditSession
 @Composable
 internal fun DirectEventEditorDialog(
     session: EditSession,
+    form: DraftForm,
+    error: String?,
+    hasChanges: Boolean,
     onChange: (DraftForm) -> Unit,
     onSave: () -> Unit,
     onExit: () -> Unit,
     onDiscardChanges: () -> Unit,
     onDelete: () -> Unit
 ) {
-    val form = session.form
     SkinWindowDialog(onDismissRequest = onExit) {
-        androidx.compose.material3.Surface(Modifier.fillMaxWidth().padding(12.dp)) {
+        DirectEventEditorContent(session, form, error, hasChanges, onChange, onSave, onExit,
+            onDiscardChanges, onDelete)
+    }
+}
+
+@Composable
+internal fun DirectEventEditorContent(
+    session: EditSession,
+    form: DraftForm,
+    error: String?,
+    hasChanges: Boolean,
+    onChange: (DraftForm) -> Unit,
+    onSave: () -> Unit,
+    onExit: () -> Unit,
+    onDiscardChanges: () -> Unit,
+    onDelete: () -> Unit
+) {
+    var confirmingDelete by remember(session) { mutableStateOf(false) }
+    androidx.compose.material3.Surface(Modifier.fillMaxWidth().padding(12.dp)) {
             Column(
                 Modifier.padding(16.dp).heightIn(max = 760.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -49,16 +73,30 @@ internal fun DirectEventEditorDialog(
                     Modifier.fillMaxWidth(), label = { Text("Location") })
                 OutlinedTextField(form.notes, { onChange(form.copy(notes = it)) },
                     Modifier.fillMaxWidth(), label = { Text("Notes") }, minLines = 3)
-                session.lastError?.let { Text(it, color = androidx.compose.material3.MaterialTheme.colorScheme.error) }
+                error?.let { Text(it, color = androidx.compose.material3.MaterialTheme.colorScheme.error) }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = onSave) { Text("Save") }
-                    OutlinedButton(onClick = onDiscardChanges, enabled = session.meaningfulDiff) {
+                    OutlinedButton(onClick = onDiscardChanges, enabled = hasChanges) {
                         Text("Discard editing changes")
                     }
                     TextButton(onClick = onExit) { Text("Exit") }
                 }
-                TextButton(onClick = onDelete) { Text("Delete event") }
+                TextButton(onClick = { confirmingDelete = true }) { Text("Delete event") }
             }
-        }
+    }
+    if (confirmingDelete) {
+        SkinAlertDialog(
+            onDismissRequest = { confirmingDelete = false },
+            title = { Text("Delete event?") },
+            text = { Text("This permanently deletes the event and cannot be undone.") },
+            confirmButton = {
+                TextButton(onClick = { confirmingDelete = false; onDelete() }) {
+                    Text("Confirm delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmingDelete = false }) { Text("Cancel") }
+            }
+        )
     }
 }

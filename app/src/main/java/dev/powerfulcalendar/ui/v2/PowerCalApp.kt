@@ -139,6 +139,16 @@ private enum class Page { TIMELINE, MONTH, MEMO, AI, TOOLS }
 
 private data class BatchReview(val mode: AiBatchRunner.Mode, val cards: List<dev.powerfulcalendar.core.DraftCard>)
 
+internal class LifecycleCheckpointGate {
+    private var checkpointedSession: Any? = null
+    fun onStart() { checkpointedSession = null }
+    fun shouldCheckpoint(session: Any): Boolean {
+        if (checkpointedSession === session) return false
+        checkpointedSession = session
+        return true
+    }
+}
+
 internal data class ReminderDisplay(val record: TemporalRecord, val intent: PowerStore.ScheduleIntent?, val execution: String?)
 internal data class UiDiagnostics(val nextSequence: Long = 1, val identities: Long = 0, val reminders: List<ReminderDisplay> = emptyList())
 
@@ -193,6 +203,9 @@ fun PowerCalApp(store: PowerStore) {
     var diagnostics by remember { mutableStateOf(UiDiagnostics()) }
     var monthInspection by remember { mutableStateOf<TemporalRecord?>(null) }
     var editSession by remember { mutableStateOf<EditSession?>(null) }
+    var editForm by remember { mutableStateOf<DraftForm?>(null) }
+    var editBaseline by remember { mutableStateOf<DraftForm?>(null) }
+    var editError by remember { mutableStateOf<String?>(null) }
     var confirmingLegacy by remember { mutableStateOf(false) }
     // Holds an early flat v2 file until the user explicitly accepts its unverified nature.
     var legacyRestoreText by remember { mutableStateOf<String?>(null) }
@@ -238,7 +251,12 @@ fun PowerCalApp(store: PowerStore) {
 
     suspend fun openFormalEditor(record: TemporalRecord) {
         val opened = runCatching { withContext(Dispatchers.IO) { EditSession.open(store, record) } }
-        opened.onSuccess { editSession = it }.onFailure {
+        opened.onSuccess {
+            editSession = it
+            editForm = it.form
+            editBaseline = it.baselineForm
+            editError = it.lastError
+        }.onFailure {
             message = it.message ?: "Unable to open editor"
         }
     }
@@ -321,16 +339,21 @@ fun PowerCalApp(store: PowerStore) {
     val hostLifecycle = (context as? androidx.activity.ComponentActivity)?.lifecycle
     val deckVisible by rememberUpdatedState(deckOpen)
     val activeEditSession by rememberUpdatedState(editSession)
+    val checkpointGate = remember { LifecycleCheckpointGate() }
     DisposableEffect(hostLifecycle) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
-            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) scope.launch { reconcile(); reload() }
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_START) checkpointGate.onStart()
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                editError = activeEditSession?.lastError
+                scope.launch { reconcile(); reload() }
+            }
             if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP && deckVisible) {
                 // Best effort: the controller serializes this after any autosave, and a failed
                 // stage keeps the draft dirty with a retryable error for the next visible session.
                 PowerCalStores.appScope.launch { controller.flush() }
             }
             if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP) {
-                activeEditSession?.let { session ->
+                activeEditSession?.takeIf { checkpointGate.shouldCheckpoint(it) }?.let { session ->
                     // Keep the lease and live memory on failure; a successful checkpoint is the
                     // one durable write for this lifecycle boundary.
                     PowerCalStores.appScope.launch { session.checkpoint() }
@@ -806,20 +829,38 @@ fun PowerCalApp(store: PowerStore) {
 
     val tools = page == Page.TOOLS.name
     val fullCanvasWeb = PowerCalSkinRegistry.active.web?.fullCanvas == true
+    val webBridgeOwner = remember { Any() }
     androidx.compose.runtime.SideEffect {
-        WebSkinBridgeRuntime.actions = mapOf(
-            "timeline" to { page = Page.TIMELINE.name },
-            "month" to { page = Page.MONTH.name },
-            "ai" to { page = Page.AI.name },
-            "settings" to { page = Page.TOOLS.name },
-            "openDeck" to { scope.launch { openDeckAt(null) } },
-            "today" to {
-                val today = TimelineCoordinate.initialCamera(System.currentTimeMillis(), zone)
-                anchorMillis = today.anchorMillis; hours = today.hours
+        WebSkinBridgeRuntime.owner = webBridgeOwner
+        WebSkinBridgeRuntime.onAction = { action ->
+            when (action) {
+                is WebSkinAction.Routed -> when (action.name) {
+                    "timeline" -> page = Page.TIMELINE.name
+                    "month" -> page = Page.MONTH.name
+                    "ai" -> page = Page.AI.name
+                    "settings" -> page = Page.TOOLS.name
+                    "openDeck" -> scope.launch { openDeckAt(null) }
+                    "today" -> {
+                        val today = TimelineCoordinate.initialCamera(System.currentTimeMillis(), zone)
+                        anchorMillis = today.anchorMillis; hours = today.hours
+                    }
+                    else -> Unit
+                }
+                is WebSkinAction.OpenEvent -> scope.launch {
+                    val current = withContext(Dispatchers.IO) { store.get(action.eventSeq) }
+                    val validated = validateOpenEvent(action, current, !aiLocked && editSession == null)
+                    if (current == null || current.revision != action.expectedRevision) {
+                        message = "Event changed or is no longer available"
+                    } else if (validated == null) {
+                        message = "Calendar editor is currently unavailable"
+                    } else {
+                        openFormalEditor(validated)
+                    }
+                }
             }
-        )
+        }
         WebSkinBridgeRuntime.state = {
-            JSONObject().put("bridgeVersion", 1).put("page", page)
+            JSONObject().put("bridgeVersion", WebSkinBridgeRuntime.VERSION).put("page", page)
                 .put("aiLocked", aiLocked).put("pendingCount", pendingCount)
                 .put("reducedMotion", effects.reduceMotion)
                 .put("events", org.json.JSONArray(records.take(300).map { record ->
@@ -827,6 +868,17 @@ fun PowerCalApp(store: PowerStore) {
                         .put("kind", record.kind.name).put("title", record.title.take(300))
                         .put("anchorMillis", record.anchorMillis()).put("endMillis", record.spanEndMillis())
                 }))
+        }
+    }
+    DisposableEffect(webBridgeOwner) {
+        onDispose {
+            if (WebSkinBridgeRuntime.owner === webBridgeOwner) {
+                WebSkinBridgeRuntime.owner = null
+                WebSkinBridgeRuntime.onAction = {}
+                WebSkinBridgeRuntime.state = {
+                    JSONObject().put("bridgeVersion", WebSkinBridgeRuntime.VERSION)
+                }
+            }
         }
     }
 
@@ -1272,37 +1324,66 @@ fun PowerCalApp(store: PowerStore) {
                 } else {
                     withContext(Dispatchers.IO) { session.close() }
                     editSession = null
+                    editForm = null
+                    editBaseline = null
+                    editError = null
                     reload()
                     if (checkpoint != null) message = "Changes saved as one pending draft"
                 }
             }
         }
+        val visibleForm = editForm ?: session.form
         DirectEventEditorDialog(
             session = session,
-            onChange = { session.edit(it) },
+            form = visibleForm,
+            error = editError,
+            hasChanges = visibleForm != (editBaseline ?: session.baselineForm),
+            onChange = { next ->
+                editForm = next
+                editError = null
+                session.edit(next)
+            },
             onSave = {
                 scope.launch {
                     when (val outcome = withContext(Dispatchers.IO) { session.save() }) {
                         is PowerStore.DirectEditOutcome.Saved -> {
+                            editForm = session.form
+                            editBaseline = session.baselineForm
+                            editError = null
                             reload(); reconcile()
                             message = if (outcome.changed) "Event saved" else "No changes; pending draft cleared"
                         }
-                        is PowerStore.DirectEditOutcome.Conflict -> message = "Event changed; reopen to review"
-                        is PowerStore.DirectEditOutcome.Invalid -> message = outcome.reason
-                        PowerStore.DirectEditOutcome.Locked -> message = "Editor is locked"
+                        is PowerStore.DirectEditOutcome.Conflict -> {
+                            editError = session.lastError; message = "Event changed; reopen to review"
+                        }
+                        is PowerStore.DirectEditOutcome.Invalid -> {
+                            editError = session.lastError; message = outcome.reason
+                        }
+                        PowerStore.DirectEditOutcome.Locked -> {
+                            editError = session.lastError; message = "Editor is locked"
+                        }
                     }
                 }
             },
             onExit = { exitWithCheckpoint() },
-            onDiscardChanges = { session.discardEditingChanges() },
+            onDiscardChanges = {
+                session.discardEditingChanges()
+                editForm = session.form
+                editBaseline = session.baselineForm
+                editError = null
+            },
             onDelete = {
                 scope.launch {
                     when (withContext(Dispatchers.IO) { session.delete() }) {
                         is PowerStore.DirectEditOutcome.Saved -> {
                             withContext(Dispatchers.IO) { session.close() }
-                            editSession = null; reload(); reconcile(); message = "Event deleted"
+                            editSession = null; editForm = null; editBaseline = null; editError = null
+                            reload(); reconcile(); message = "Event deleted"
                         }
-                        else -> message = session.lastError ?: "Delete failed"
+                        else -> {
+                            editError = session.lastError
+                            message = session.lastError ?: "Delete failed"
+                        }
                     }
                 }
             }

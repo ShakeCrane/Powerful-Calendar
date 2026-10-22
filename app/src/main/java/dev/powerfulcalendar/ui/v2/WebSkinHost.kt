@@ -26,8 +26,23 @@ import java.io.ByteArrayInputStream
 
 /** Versioned, deliberately tiny capability bridge. It never exposes Context or PowerStore. */
 internal object WebSkinBridgeRuntime {
-    var actions: Map<String, () -> Unit> = emptyMap()
-    var state: () -> JSONObject = { JSONObject().put("bridgeVersion", 1) }
+    const val VERSION = 1
+    var owner: Any? = null
+    var onAction: (WebSkinAction) -> Unit = {}
+    var state: () -> JSONObject = { JSONObject().put("bridgeVersion", VERSION) }
+}
+
+internal sealed interface WebSkinAction {
+    data class Routed(val name: String) : WebSkinAction
+    data class OpenEvent(val eventSeq: Long, val expectedRevision: Long) : WebSkinAction
+}
+
+internal fun validateOpenEvent(
+    action: WebSkinAction.OpenEvent,
+    current: dev.powerfulcalendar.core.TemporalRecord?,
+    writerAvailable: Boolean
+): dev.powerfulcalendar.core.TemporalRecord? = current?.takeIf {
+    writerAvailable && it.eventSeq == action.eventSeq && it.revision == action.expectedRevision
 }
 
 @Composable
@@ -96,11 +111,19 @@ private fun SecureWebSkin(bundle: WebSkinBundle, modifier: Modifier, onFailure: 
                 }
 
                 override fun onPageFinished(view: WebView, url: String) {
+                    val finished = Uri.parse(url)
+                    if (finished.scheme != "https" || finished.host != "skin.powercal.local" ||
+                        finished.userInfo != null || finished.port != -1) {
+                        onFailure()
+                        return
+                    }
                     val channels = view.createWebMessageChannel()
                     channels[0].setWebMessageCallback(object : android.webkit.WebMessagePort.WebMessageCallback() {
                         override fun onMessage(port: android.webkit.WebMessagePort, message: android.webkit.WebMessage) {
-                            handleBridge(message.data.orEmpty())
-                            port.postMessage(android.webkit.WebMessage(stateMessage().toString()))
+                            view.post {
+                                decodeBridgeAction(message.data.orEmpty())?.let(WebSkinBridgeRuntime.onAction)
+                                port.postMessage(android.webkit.WebMessage(stateMessage().toString()))
+                            }
                         }
                     })
                     view.postWebMessage(android.webkit.WebMessage("powercal-port", arrayOf(channels[1])), Uri.parse(origin))
@@ -119,14 +142,32 @@ private fun SecureWebSkin(bundle: WebSkinBundle, modifier: Modifier, onFailure: 
 }
 
 private fun stateMessage(): JSONObject = JSONObject()
-    .put("version", 1).put("type", "state").put("payload", WebSkinBridgeRuntime.state())
+    .put("version", WebSkinBridgeRuntime.VERSION).put("type", "state")
+    .put("payload", WebSkinBridgeRuntime.state())
 
-private fun handleBridge(raw: String) {
-    if (raw.length > 8_192) return
-    val message = runCatching { JSONObject(raw) }.getOrNull() ?: return
-    if (message.optInt("version") != 1 || message.optString("type") != "action") return
-    val payload = message.optJSONObject("payload") ?: return
+internal fun decodeBridgeAction(raw: String): WebSkinAction? {
+    if (raw.length !in 1..8_192) return null
+    val message = runCatching { JSONObject(raw) }.getOrNull() ?: return null
+    if (message.keys().asSequence().toSet() != setOf("version", "type", "payload")) return null
+    if (message.optInt("version") != WebSkinBridgeRuntime.VERSION ||
+        message.optString("type") != "action") return null
+    val payload = message.optJSONObject("payload") ?: return null
+    val keys = payload.keys().asSequence().toSet()
     val name = payload.optString("name")
-    if (name.length > 40) return
-    WebSkinBridgeRuntime.actions[name]?.invoke()
+    if (name.length !in 1..40) return null
+    return when (name) {
+        "timeline", "month", "ai", "settings", "openDeck", "today" ->
+            if (keys == setOf("name")) WebSkinAction.Routed(name) else null
+        "openEvent" -> {
+            if (keys != setOf("name", "eventSeq", "expectedRevision")) return null
+            val seq = payload.optLong("eventSeq", -1L)
+            val revision = payload.optLong("expectedRevision", -1L)
+            val rawSeq = payload.opt("eventSeq")
+            val rawRevision = payload.opt("expectedRevision")
+            if (seq <= 0L || revision <= 0L || rawSeq !is Number || rawRevision !is Number ||
+                rawSeq is Float || rawSeq is Double || rawRevision is Float || rawRevision is Double) null
+            else WebSkinAction.OpenEvent(seq, revision)
+        }
+        else -> null
+    }
 }

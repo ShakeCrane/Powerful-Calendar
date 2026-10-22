@@ -23,13 +23,18 @@ rename. Failed activation returns to the native skin.
 
 Messages are JSON objects `{version:1,type,payload}` over a transferred `WebMessagePort`.
 `state` exposes only a presentation projection (page, lock/reduced-motion state, pending count, and
-bounded event identity/title/kind/geometry). `action` accepts only host-registered names such as
-navigation, Today, and opening Drafts. Unknown versions, types, actions, oversized messages, and
-unknown fields have no authority. Save, delete, conflict resolution, AI authorization, credentials,
+at most 300 bounded event identity/title/kind/geometry records). `action` is a closed, typed set:
+navigation, Today, opening Drafts, or `{name:"openEvent",eventSeq,expectedRevision}`. The host
+re-reads that event, requires the presented revision to still match, checks the global writer gate,
+and only then opens the existing native editor. Event creation is intentionally not bridged because
+v3 must not create an initial draft as a side effect. Unknown versions, types, actions, extra fields,
+non-numeric/non-positive identifiers, oversized messages, and stale revisions have no authority.
+Save, delete, conflict resolution, AI authorization, credentials,
 backups, permission prompts, and confirmations remain native host surfaces.
 
 The WebView disables file/content access, DOM database/geolocation, popups, mixed content and all
-network loads. Requests are served only from `https://skin.powercal.local/`; CSP blocks connections,
+network loads. Requests and completed top-level pages are accepted only at the exact
+`https://skin.powercal.local/` origin (no alternate scheme, host, credentials, or port); CSP blocks connections,
 frames, objects and non-package scripts. A load watchdog falls back to Compose. System reduced
 motion is sent to the skin and package CSS must also honor `prefers-reduced-motion`.
 
