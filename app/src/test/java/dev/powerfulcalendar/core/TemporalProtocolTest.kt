@@ -167,6 +167,38 @@ class TemporalProtocolTest {
     }
 
     @Test
+    fun tenOverlappingEventsRemainIndependentWithoutOverflowByDefault() {
+        val events = (1..10).map { index ->
+            activity(index.toLong(), "2026-10-20 18:00", "2026-10-20 22:00", "Concurrent $index")
+        }
+        val layout = TimelineLayout.layout(events.reversed())
+        assertEquals(10, layout.items.size)
+        assertTrue(layout.overflow.isEmpty())
+        assertEquals((0..9).toList(),
+            layout.items.sortedBy { it.record.eventSeq }.map { it.lane })
+        assertEquals(10, layout.items.maxOf { it.clusterLanes })
+        assertEquals(
+            layout.items.associate { it.record.eventSeq to it.lane },
+            TimelineLayout.layout(events).items.associate { it.record.eventSeq to it.lane }
+        )
+    }
+
+    @Test
+    fun tenIdenticalAlarmTimestampsUseTenIndependentLeftLanes() {
+        val time = millis("2026-10-20 07:30")
+        val alarms = (1..10).map { n ->
+            TemporalRecord(n.toLong(), 1, TemporalKind.ALARM, "Alarm $n",
+                startMillis = time)
+        }
+        val result = TimelineLayout.layout(alarms.shuffled(java.util.Random(2026)))
+        assertEquals(10, result.items.size)
+        assertEquals((0..9).toList(),
+            result.items.sortedBy { it.record.eventSeq }.map { it.lane })
+        assertTrue(result.items.all { it.side == AxisSide.LEFT })
+        assertTrue(result.overflow.isEmpty())
+    }
+
+    @Test
     fun freedLaneIsReusedByALaterEvent() {
         val a = activity(1, "2026-10-20 09:00", "2026-10-20 10:00", "A")
         val b = activity(2, "2026-10-20 09:30", "2026-10-20 11:00", "B")

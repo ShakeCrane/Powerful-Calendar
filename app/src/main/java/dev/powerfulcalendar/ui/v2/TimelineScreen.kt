@@ -14,6 +14,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -64,7 +65,6 @@ fun TimelineScreen(
     val latestCamera by rememberUpdatedState(camera)
     var inertia by remember { mutableStateOf<Job?>(null) }
     var inspected by remember { mutableStateOf<TemporalRecord?>(null) }
-    var overflowDeck by remember { mutableStateOf<Pair<OverflowGroup, Long>?>(null) }
     val owners = remember(records) { records.associateBy { it.eventSeq } }
     val day = Instant.ofEpochMilli(camera.anchorMillis).atZone(zone).toLocalDate()
     val projection = remember(records, day, zone) {
@@ -188,7 +188,8 @@ fun TimelineScreen(
             val width = with(density) { viewportWidth.toPx() }
             val heightNow by rememberUpdatedState(height)
             val unlocked by rememberUpdatedState(!aiLocked)
-            // All true overlap participants stay visible. Width is local to each conflict cluster.
+            // All true overlapping events get independent lanes. Excess columns scroll sideways;
+            // event boxes are never compressed into 8dp stripes or replaced by an overflow band.
             // MEMO is date-only and does not occupy a minute-scale lane.
             val layout = remember(projection) {
                 val projected = projection.map { it.record }
@@ -230,7 +231,31 @@ fun TimelineScreen(
                 val gutter = 20.dp
                 val leftSide = (viewportWidth / 2 - gutter - 12.dp).coerceAtLeast(24.dp)
                 val rightSide = (viewportWidth / 2 - gutter - 12.dp).coerceAtLeast(24.dp)
-                layout.items.forEach { item ->
+                // Keep each wing's scroll independent of the vertical time camera.
+                // Left starts nearest the centre (scroll at end); right starts at scroll zero.
+                for (side in AxisSide.entries) {
+                    key(side) {
+                        val sideWidth = if (side == AxisSide.LEFT) leftSide else rightSide
+                        val spacing = 4.dp
+                        val laneWidth = minOf(84.dp, sideWidth)
+                        val lanes = (layout.items.filter { it.side == side }
+                            .maxOfOrNull { it.lane + 1 } ?: 1)
+                        val contentWidth = maxOf(sideWidth, (laneWidth + spacing) * lanes - spacing)
+                        val wingX = if (side == AxisSide.LEFT)
+                            viewportWidth / 2 - gutter - sideWidth
+                            else viewportWidth / 2 + gutter
+                        val horizontalState = rememberScrollState(
+                            if (side == AxisSide.LEFT) Int.MAX_VALUE else 0
+                        )
+                        Box(
+                            Modifier.offset(x = wingX).width(sideWidth).fillMaxHeight()
+                                .clipToBounds()
+                                .horizontalScroll(horizontalState)
+                                .testTag(if (side == AxisSide.LEFT)
+                                    "timeline-left-lanes" else "timeline-right-lanes")
+                        ) {
+                            Box(Modifier.width(contentWidth).fillMaxHeight()) {
+                    layout.items.filter { it.side == side }.forEach { item ->
                     val y = TimelineCoordinate.yOf(item.anchorMillis, camera.anchorMillis, height, camera.hours)
                     val endY = TimelineCoordinate.yOf(item.record.spanEndMillis() ?: item.anchorMillis, camera.anchorMillis, height, camera.hours)
                     if (endY < -80 || y > height + 80) return@forEach
@@ -246,13 +271,10 @@ fun TimelineScreen(
                     val cardHeight = with(density) {
                         (activitySpan?.heightPx ?: 0f).toDp()
                     }
-                    val sideWidth = if (item.side == AxisSide.LEFT) leftSide else rightSide
-                    val spacing = 3.dp
-                    val laneWidth = ((sideWidth - spacing * (item.clusterLanes - 1)) /
-                        item.clusterLanes).coerceAtLeast(8.dp)
-                    val x = if (item.side == AxisSide.LEFT)
-                        viewportWidth / 2 - gutter - (laneWidth + spacing) * (item.lane + 1)
-                        else viewportWidth / 2 + gutter + (laneWidth + spacing) * item.lane
+                    // The time axis stays fixed while only the event wing scrolls.
+                    val x = if (side == AxisSide.LEFT)
+                        contentWidth - (laneWidth + spacing) * (item.lane + 1) + spacing
+                        else (laneWidth + spacing) * item.lane
                     val point = item.record.kind != TemporalKind.ACTIVITY
                     val pointHeight = 56.dp
                     val topPx = if (item.record.kind == TemporalKind.DEADLINE) {
@@ -342,29 +364,9 @@ fun TimelineScreen(
                         }
                     }
                 }
-                overflowGroups(
-                    layout.overflow,
-                    (12 * 60_000L).coerceAtLeast((TimelineCoordinate.spanMillis(camera.hours) / height * 8).toLong())
-                ).forEach { group ->
-                    val top = TimelineCoordinate.yOf(group.start, camera.anchorMillis, height, camera.hours)
-                    val bottom = TimelineCoordinate.yOf(group.end, camera.anchorMillis, height, camera.hours)
-                    if (bottom < 0 || top > height) return@forEach
-                    val bandTop = top.coerceAtLeast(0f)
-                    val bandHeight = (bottom.coerceAtMost(height) - bandTop).coerceAtLeast(6f)
-                    val x = if (group.side == AxisSide.LEFT) viewportWidth / 2 - gutter - 8.dp
-                        else viewportWidth / 2 + gutter
-                    Surface(
-                        onClick = {
-                            val clicked = TimelineCoordinate.timeAt((bandTop + bandHeight / 2),
-                                camera.anchorMillis, height, camera.hours)
-                            overflowDeck = group to clicked
-                        },
-                        modifier = Modifier.offset(x, with(density) { bandTop.toDp() })
-                            .width(8.dp).height(with(density) { bandHeight.toDp() })
-                            .semantics { contentDescription = "${group.records.size} hidden events" },
-                        color = MaterialTheme.colorScheme.error.copy(alpha = .68f),
-                        shape = RoundedCornerShape(4.dp)
-                    ) {}
+                            }
+                        }
+                    }
                 }
                 TimelineCanvas(camera.anchorMillis, camera.hours, height, width, nowMillis, zone, nowOnly = true)
                 // Double-tap the *current-time ruler*, not anywhere on an event.
@@ -393,23 +395,7 @@ fun TimelineScreen(
     inspected?.let { record -> SkinAlertDialog(onDismissRequest = { inspected = null }, title = { Text(record.title) },
         text = { Column { Text(TemporalText.summarize(record)); Text(record.notes); Text("AI 正在处理卡组，暂时只可查看。") } },
         confirmButton = { TextButton(onClick = { inspected = null }) { Text("完成") } }) }
-    overflowDeck?.let { (group, clicked) ->
-        val members = remember(group, clicked) { orderedOverflowMembers(group, clicked) }
-        SkinAlertDialog(
-            onDismissRequest = { overflowDeck = null },
-            title = { Text("Hidden events · ${members.size}") },
-            text = {
-                Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
-                    members.forEach { record ->
-                        TextButton(onClick = { overflowDeck = null; open(record) }, Modifier.fillMaxWidth()) {
-                            Text(record.title, Modifier.fillMaxWidth(), maxLines = 2)
-                        }
-                    }
-                }
-            },
-            confirmButton = { TextButton(onClick = { overflowDeck = null }) { Text("Close") } }
-        )
-    }
+
 }
 
 /**

@@ -1138,7 +1138,8 @@ data class TimelineItem(
  * set (not the viewport), so small scrolls cannot reshuffle lanes.
  */
 object TimelineLayout {
-    const val DEFAULT_MAX_LANES = 3
+    // All overlapping events remain individually accessible. UI scrolls each wing horizontally.
+    const val DEFAULT_MAX_LANES = Int.MAX_VALUE
 
     fun layout(
         records: List<TemporalRecord>,

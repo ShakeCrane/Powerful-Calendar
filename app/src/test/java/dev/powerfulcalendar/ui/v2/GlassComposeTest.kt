@@ -57,6 +57,35 @@ class GlassComposeTest {
         ui.onNodeWithContentDescription("今日 · 复位为全天").assertIsDisplayed()
     }
 
+    @Test fun tenOverlappingEventsProvideHorizontallyScrollableWing() {
+        val events = (1..10).map { index ->
+            TemporalRecord(index.toLong(), 1, TemporalKind.ACTIVITY, "Overlap $index",
+                startMillis = noon + 6 * 3_600_000L,
+                endMillis = noon + 10 * 3_600_000L,
+                zoneId = zone.id)
+        }
+        ui.setContent { PowerCalTheme {
+            TimelineScreen(events, TimelineCoordinate.Camera(noon + 8 * 3_600_000L, 4.4),
+                noon, zone, 0, false, {}, {}, { _, _ -> }, { _, _ -> },
+                {}, {}, {}, {})
+        } }
+        val wing = ui.onNodeWithTag("timeline-right-lanes")
+        wing.assertExists()
+        wing.assert(hasScrollAction())
+        val before = wing.fetchSemanticsNode()
+            .config[androidx.compose.ui.semantics.SemanticsProperties.HorizontalScrollAxisRange]
+            .value()
+        wing.performTouchInput { swipeLeft() }
+        ui.waitForIdle()
+        val after = wing.fetchSemanticsNode()
+            .config[androidx.compose.ui.semantics.SemanticsProperties.HorizontalScrollAxisRange]
+            .value()
+        assertTrue("Horizontal swipe must expose more columns: $before -> $after",
+            after > before)
+        // Scrolling changes only the wing; the central time viewport stays on-screen.
+        ui.onNodeWithTag("timeline-viewport").assertExists()
+    }
+
     @Test fun aiLockKeepsTimelineReadableButDisablesNewEvent() {
         ui.setContent { PowerCalTheme {
             TimelineScreen(emptyList(), TimelineCoordinate.Camera(noon, 24.0), noon, zone, 100, true,

@@ -30,3 +30,27 @@ D. AI: runtime clock context, automatic structured create/modify cards and autho
 E. `:app:testDebugUnitTest :app:assembleDebug :app:lintDebug` and inspect APK/version/sha; push verified changes. Physical-device behaviors remain *unverified* until tested on a device.
 
 **Engineering note:** An implementation that merely builds but silently drops the planned autonomous operations or recurring-date semantics is incomplete. Preserve the spec and accurately report missing functionality.
+
+## Amendment ? Unbounded Horizontal Lanes (2026-10-22)
+
+This amendment supersedes the earlier three-lane cap and the associated overflow
+aggregate/bar behavior for the native time-axis display.
+
+- Show **every overlapping occurrence** as an independent event rectangle/point.
+  Never replace the fourth or later occurrence with a red overflow strip, summary,
+  count badge or a hidden-event deck.
+- Preserve stable lane assignment across viewport scroll and vertical zoom;
+  use interval overlap, deterministic start and event identity order. Reuse
+  freed lanes. Actual start/end time positions remain exact.
+- Do **not** compress unlimited lanes into the finite phone width (particularly
+  not to the old 8dp fallback). Each wing is independently horizontally
+  scrollable with a readable fixed lane width, while the central time ruler
+  and vertical time camera stay fixed.
+- Right wing starts at the axis and grows right. Left wing starts at the
+  axis and grows left, with scroll initialized nearest the axis.
+- The previous TimelineLayout(maxLanesPerSide=...) limit survives only as a
+  compatibility option for explicit legacy/test callers; the native UI calls
+  the default unbounded projection.
+
+Do not build the later default skin or the Skin Studio editor around the
+obsolete three-column/overflow-band assumption.
