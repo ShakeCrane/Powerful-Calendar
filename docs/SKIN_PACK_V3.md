@@ -38,6 +38,20 @@ network loads. Requests and completed top-level pages are accepted only at the e
 frames, objects and non-package scripts. A load watchdog falls back to Compose. System reduced
 motion is sent to the skin and package CSS must also honor `prefers-reduced-motion`.
 
+## Activation, example scope and native recovery
+
+Installing a skin adds it to the list but **does not select it**. Users explicitly enable
+a skin from the native Settings screen. All Settings/Tools pages bypass Web rendering
+even with fullCanvas=true. A small host-owned native Settings button stays above a
+full-canvas Web skin; hardware Back from its timeline is another recovery route. The
+host keeps status/navigation bar safe areas outside the Web viewport. Main-frame load
+failures and Web renderer crashes revert the persistent selection to the native theme.
+
+The examples/v3 package is a **development/demo skin**, not a complete replacement
+for PowerCal's native Glass interface or the planned final default skin. Its HTML controls
+demonstrate only the currently exposed bridge actions. Importing this demo is optional;
+it should never become the default merely because the package was imported.
+
 ## Authoring
 
 ```text

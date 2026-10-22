@@ -701,15 +701,11 @@ fun PowerCalApp(store: PowerStore) {
         if (uri != null) scope.launch {
             runCatching { withContext(Dispatchers.IO) { skins.install(uri) } }
                 .onSuccess { result ->
-                    runCatching { skins.select(result.id) }
-                        .onSuccess {
-                            selectedSkin = result.id
-                            skinChoices = skins.installed()
-                            message = "皮肤已校验、导入并启用：" + result.name
-                        }
-                        .onFailure { error ->
-                            message = "皮肤已导入但无法启用：" + error.message
-                        }
+                    // Importing must never execute an unreviewed skin automatically.
+                    skinChoices = skins.installed()
+                    selectedSkin = skins.currentId()
+                    message = "皮肤已导入，但未启用：" + result.name +
+                        "；请在设置中手动选择。"
                 }
                 .onFailure { error ->
                     message = "皮肤导入已拒绝：" + (error.message ?: "未知错误") +
@@ -722,7 +718,7 @@ fun PowerCalApp(store: PowerStore) {
     ) { uri ->
         if (uri != null) scope.launch {
             runCatching { withContext(Dispatchers.IO) { skins.exportOriginal(uri) } }
-                .onSuccess { message = "PowerCal 原生玻璃皮肤模板已导出，可交给 Claude 修改" }
+                .onSuccess { message = "已导出 Web 皮肤开发模板（不是原生 Glass 皮肤）" }
                 .onFailure { error -> message = "导出皮肤模板失败：" + error.message }
         }
     }
@@ -828,7 +824,8 @@ fun PowerCalApp(store: PowerStore) {
     ) { uri -> if (uri != null) pendingImageReview = uri }
 
     val tools = page == Page.TOOLS.name
-    val fullCanvasWeb = PowerCalSkinRegistry.active.web?.fullCanvas == true
+    // Tools/Settings is a protected native recovery page, never rendered by Web skins.
+    val fullCanvasWeb = PowerCalSkinRegistry.active.web?.fullCanvas == true && !tools
     val webBridgeOwner = remember { Any() }
     androidx.compose.runtime.SideEffect {
         WebSkinBridgeRuntime.owner = webBridgeOwner
@@ -888,7 +885,22 @@ fun PowerCalApp(store: PowerStore) {
         scope.launch { reload() }
     }
 
-    SkinAppShell {
+    // The hardware Back key is a secondary recovery route for an unusable Web skin.
+    androidx.activity.compose.BackHandler(
+        enabled = fullCanvasWeb && page == Page.TIMELINE.name &&
+            !deckOpen && editSession == null
+    ) { page = Page.TOOLS.name }
+
+    SkinAppShell(
+        forceNative = tools,
+        onOpenNativeSettings = { page = Page.TOOLS.name },
+        onWebSkinFailure = {
+            runCatching { skins.select("powercal-default") }
+            selectedSkin = skins.currentId()
+            page = Page.TOOLS.name
+            message = "皮肤加载失败，已恢复原生界面。"
+        }
+    ) {
         val keyboardVisible = WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current) > 0
         SkinPageTransition(
             page, Modifier.fillMaxSize().padding(bottom =
@@ -915,7 +927,7 @@ fun PowerCalApp(store: PowerStore) {
                 onImportSkin = {
                     importSkin.launch(arrayOf("application/zip", "application/octet-stream", "*/*"))
                 },
-                onExportOriginalSkin = { exportOriginalSkin.launch("PowerCal-Original.pcskin") },
+                onExportOriginalSkin = { exportOriginalSkin.launch("PowerCal-Web-Starter.pcskin") },
                 onDeleteSkin = { id ->
                     skinToDelete = skinChoices.firstOrNull { it.id == id && !it.builtIn }
                 },
@@ -1791,9 +1803,9 @@ internal fun NativeToolsPage(
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = onImportSkin) { Text("导入皮肤包") }
-                TextButton(onClick = onExportOriginalSkin) { Text("导出原生皮肤") }
+                TextButton(onClick = onExportOriginalSkin) { Text("导出 Web 开发模板") }
             }
-            Text("仅加载受校验的 JSON 与 PNG/WebP。字体缩放、颜色、圆角、时间标记线宽和装饰素材可配置；不执行外部脚本。",
+            Text("导入后不会自动启用。v3 皮肤可使用受限 HTML/CSS/JavaScript；原生设置随时可用。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }

@@ -43,7 +43,12 @@ internal interface ChromeVisualRenderer {
 }
 
 @Composable
-internal fun SkinAppShell(content: @Composable BoxScope.() -> Unit) {
+internal fun SkinAppShell(
+    forceNative: Boolean = false,
+    onOpenNativeSettings: () -> Unit = {},
+    onWebSkinFailure: () -> Unit = {},
+    content: @Composable BoxScope.() -> Unit
+) {
     val web = PowerCalSkinRegistry.active.web
     val native: @Composable () -> Unit = {
         Box(
@@ -57,8 +62,11 @@ internal fun SkinAppShell(content: @Composable BoxScope.() -> Unit) {
     }
     val renderer = PresentationSkinRegistry.chrome
     Box(Modifier.fillMaxSize()) {
-    if (web != null) {
-        WebSkinRoot(web, Modifier.fillMaxSize(), content)
+    if (forceNative) native()
+    else if (web != null) {
+        WebSkinRoot(web, Modifier.fillMaxSize(), content,
+            onOpenNativeSettings = onOpenNativeSettings,
+            onSkinFailure = onWebSkinFailure)
     } else if (renderer == null && !RuntimeSkinSurfaces.enabled("chrome")) native()
     else {
         val context = ChromeVisualContext(

@@ -18,7 +18,10 @@ class PresentationBoundaryTests(unittest.TestCase):
 
     def test_host_shell_and_notices_are_compiled_skin_surfaces(self):
         host = (UI / "PowerCalApp.kt").read_text("utf-8")
-        for binding in ("SkinAppShell {", "SkinNotice(", "PowerCalNavigation(",
+        self.assertRegex(host, r"SkinAppShell\s*\(")
+        self.assertIn("forceNative = tools", host)
+        self.assertIn("onOpenNativeSettings =", host)
+        for binding in ("SkinNotice(", "PowerCalNavigation(",
                         "MemoCenterScreen(", "AiChatScreen(", "DraftDeckDialog(", "ToolsPage("):
             self.assertIn(binding, host)
 

@@ -12,6 +12,17 @@ import android.webkit.WebViewClient
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Surface
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -49,14 +60,35 @@ internal fun validateOpenEvent(
 internal fun WebSkinRoot(
     bundle: WebSkinBundle,
     modifier: Modifier = Modifier,
-    native: @Composable BoxScope.() -> Unit
+    native: @Composable BoxScope.() -> Unit,
+    onOpenNativeSettings: () -> Unit = {},
+    onSkinFailure: () -> Unit = {}
 ) {
     var failed by remember(bundle) { mutableStateOf(false) }
     Box(modifier) {
-        if (!failed) SecureWebSkin(bundle, Modifier.fillMaxSize(), onFailure = { failed = true })
-        // Host-owned confirmation/editor surfaces are composed outside this root and cannot be
-        // obscured by a bridge command. Native content remains the accessibility fallback.
+        if (!failed) SecureWebSkin(
+            bundle, Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding(),
+            onFailure = {
+                failed = true
+                onSkinFailure()
+            }
+        )
         if (!bundle.fullCanvas || failed) native()
+        if (!failed && bundle.fullCanvas) {
+            // Host-owned recovery control is not rendered by untrusted skin code.
+            Surface(
+                modifier = Modifier.align(Alignment.TopEnd)
+                    .statusBarsPadding().padding(top = 8.dp, end = 12.dp),
+                shape = MaterialTheme.shapes.medium,
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
+                tonalElevation = 4.dp
+            ) {
+                IconButton(onClick = onOpenNativeSettings) {
+                    Icon(Icons.Default.Settings,
+                        contentDescription = "打开原生设置，恢复皮肤")
+                }
+            }
+        }
     }
 }
 
@@ -80,6 +112,15 @@ private fun SecureWebSkin(bundle: WebSkinBundle, modifier: Modifier, onFailure: 
             settings.blockNetworkLoads = true
             if (Build.VERSION.SDK_INT >= 26) settings.safeBrowsingEnabled = true
             webViewClient = object : WebViewClient() {
+                override fun onReceivedError(view: WebView, request: WebResourceRequest,
+                    error: android.webkit.WebResourceError) {
+                    if (request.isForMainFrame) onFailure()
+                }
+                override fun onRenderProcessGone(view: WebView,
+                    detail: android.webkit.RenderProcessGoneDetail): Boolean {
+                    onFailure()
+                    return true
+                }
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
                     request.url.host != "skin.powercal.local"
 

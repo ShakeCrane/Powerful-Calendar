@@ -18,9 +18,11 @@ import java.util.zip.ZipOutputStream
 data class InstalledSkin(val id: String, val name: String, val builtIn: Boolean = false)
 
 /**
- * PowerCal skin ZIP v1/v2. v2 has a bounded declarative UI tree loaded at runtime.
- * No code, scripts, native libraries or fonts are loaded.
- * Image pixels, uncompressed ZIP bytes and theme overrides are independently bounded.
+ * PowerCal skin ZIP v1/v2/v3: v1 resources, v2 bounded declarative UI,
+ * v3 sandboxed HTML/CSS/JS rendered in an isolated WebView presentation surface.
+ * Skin code cannot access PowerStore or host permissions directly; every operation
+ * passes through the strictly limited host action bridge.
+ * Compressed and inflated ZIP sizes, contents and resource hashes are bounded.
  */
 class SkinPackageManager(private val context: Context) {
     private val prefs = context.getSharedPreferences("powercal-skin-choice", Context.MODE_PRIVATE)
@@ -100,7 +102,7 @@ class SkinPackageManager(private val context: Context) {
         require(target.delete()) { "删除失败" }
     }
 
-    /** Exports a complete importable template of the original glass theme. */
+    /** Exports a starter Web skin, not the actual native Glass presentation. */
     fun exportOriginal(uri: Uri) {
         val source = linkedMapOf(
             "project.json" to """{"projectVersion":3,"mode":"simple","slots":[{"id":"primary","label":"Primary","type":"color","value":"#315ecf","editable":true}]}""".toByteArray(),

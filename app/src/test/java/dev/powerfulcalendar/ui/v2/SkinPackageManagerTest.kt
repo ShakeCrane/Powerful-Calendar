@@ -102,8 +102,12 @@ class SkinPackageManagerTest {
         val dbSizeBefore = if (db.isFile) db.length() else -1L
         try {
             source.writeBytes(archive)
+            // Installing any skin must leave the current selection untouched.
+            manager.select("powercal-default")
             val entry = manager.install(Uri.fromFile(source))
             assertEquals(id, entry.id)
+            assertEquals("powercal-default", manager.currentId())
+            assertEquals("powercal-default", PowerCalSkinRegistry.active.key)
             manager.select(id)
             assertEquals(id, manager.currentId())
             assertEquals(id, PowerCalSkinRegistry.active.key)
