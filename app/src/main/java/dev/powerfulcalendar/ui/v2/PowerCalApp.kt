@@ -1555,7 +1555,8 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                         it.eventSeq.toString().contains(query) ||
                         TemporalRecord.formatSeq(it.eventSeq).contains(query)
                 }.take(8)
-            }
+            },
+            initialEditorOpen = deckInitialId != null
         )
     }
 

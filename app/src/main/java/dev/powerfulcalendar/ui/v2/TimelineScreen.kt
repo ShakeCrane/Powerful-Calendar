@@ -567,20 +567,9 @@ private fun TimelineCanvas(
 
     Canvas(Modifier.fillMaxSize()) {
         if (!nowOnly) {
-        drawLine(
-            brush = Brush.verticalGradient(
-                listOf(
-                    palette.glassBorder.copy(alpha = 0f),
-                    palette.glassBorder.copy(alpha = 0.85f),
-                    palette.glassBorder.copy(alpha = 0.85f),
-                    palette.glassBorder.copy(alpha = 0f)
-                )
-            ),
-            start = Offset(centerX, 0f),
-            end = Offset(centerX, size.height),
-            strokeWidth = 1.5.dp.toPx()
-        )
-
+        // Do not draw an always-visible grey divider through the viewport.
+        // The centre is already marked by hour labels and short ticks; keeping
+        // those preserves orientation without an intrusive vertical stripe.
         // Day separators follow local midnight, so DST days stay honest.
         val startDay = Instant.ofEpochMilli(from.toLong()).atZone(zone).toLocalDate()
         val endDay = Instant.ofEpochMilli(to.toLong()).atZone(zone).toLocalDate()

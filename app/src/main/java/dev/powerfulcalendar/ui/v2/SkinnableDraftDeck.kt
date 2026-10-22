@@ -73,13 +73,15 @@ fun DraftDeckDialog(
     onOpenFormalEvent: (TemporalRecord) -> Unit,
     onCancelAiBatch: () -> Unit,
     onDeckChanged: () -> Unit,
-    formalSearch: (String) -> List<TemporalRecord>
+    formalSearch: (String) -> List<TemporalRecord>,
+    initialEditorOpen: Boolean = false
 ) {
     val renderer = DeckPresentationSkinRegistry.active
     val runtime = RuntimeSkinSurfaces.enabled("deck")
     if (renderer == null && !runtime) {
         NativeDraftDeckDialog(controller, aiSession, onDismissRequest,
-            onOpenFormalEvent, onCancelAiBatch, onDeckChanged, formalSearch)
+            onOpenFormalEvent, onCancelAiBatch, onDeckChanged, formalSearch,
+            initialEditorOpen = initialEditorOpen)
         return
     }
 
@@ -143,7 +145,8 @@ fun DraftDeckDialog(
         onDeclineRestore = { controller.dismissRestore() },
         native = {
             NativeDraftDeckDialog(controller, aiSession, onDismissRequest,
-                onOpenFormalEvent, onCancelAiBatch, onDeckChanged, formalSearch)
+                onOpenFormalEvent, onCancelAiBatch, onDeckChanged, formalSearch,
+                initialEditorOpen = initialEditorOpen)
         }
     )
     if (runtime) RuntimeSkinSurfaces.deck(context) else renderer!!.Render(context)

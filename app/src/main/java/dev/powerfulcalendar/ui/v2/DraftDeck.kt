@@ -163,11 +163,12 @@ fun NativeDraftDeckDialog(
     onOpenFormalEvent: (TemporalRecord) -> Unit,
     onCancelAiBatch: () -> Unit,
     onDeckChanged: () -> Unit,
-    formalSearch: (String) -> List<TemporalRecord>
+    formalSearch: (String) -> List<TemporalRecord>,
+    initialEditorOpen: Boolean = false
 ) {
     var state by remember { mutableStateOf(controller.state) }
     var query by rememberSaveable { mutableStateOf("") }
-    var expanded by rememberSaveable { mutableStateOf(false) }
+    var expanded by rememberSaveable { mutableStateOf(initialEditorOpen) }
     var typeMenu by remember { mutableStateOf(false) }
     var conversionNote by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
@@ -215,8 +216,10 @@ fun NativeDraftDeckDialog(
         onDispose { controller.observe { } }
     }
     // Persist only at exit/navigation/lifecycle checkpoints, not every keystroke.
-    LaunchedEffect(state.currentId) {
-        expanded = false
+    LaunchedEffect(state.currentId, initialEditorOpen) {
+        // An explicit New/Edit entry opens editable fields immediately; an
+        // ordinary visit to the pending inbox keeps the card preview mode.
+        expanded = initialEditorOpen
         typeMenu = false
         conversionNote = null
     }
@@ -565,101 +568,22 @@ private fun Modifier.cardSwipe(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+/**
+ * One authoritative Compose field UI for both new-draft cards and direct editing.
+ * Date/time pickers, reminder controls, recurrence and tracking fields share
+ * exactly the same implementation; host persistence operations remain separate.
+ */
 @Composable
-private fun DeckCardBody(
-    card: DraftCard,
+internal fun UnifiedEventFormFields(
     form: DraftForm,
-    position: Int,
-    total: Int,
     expanded: Boolean,
     aiLocked: Boolean,
-    error: String?,
-    conversionNote: String?,
-    dirty: Boolean,
-    onExpandToggle: () -> Unit,
-    onFormChange: (DraftForm) -> Unit,
-    onTypeChange: (TemporalKind) -> Unit,
-    typeMenuExpanded: Boolean,
-    onTypeMenuChange: (Boolean) -> Unit,
-    onPrevious: () -> Unit,
-    onNext: () -> Unit,
-    canGoPrevious: Boolean,
-    canGoNext: Boolean,
-    onCommit: () -> Unit,
-    onDiscard: () -> Unit,
-    onRetrySave: () -> Unit
+    card: DraftCard? = null,
+    instanceKey: Any? = card?.draftId,
+    onFormChange: (DraftForm) -> Unit
 ) {
     val context = LocalContext.current
-    val missing = form.missingFields()
-    val publishable = form.isPublishable()
-    var showDeleteConfirm by remember(card.draftId) { mutableStateOf(false) }
-    var arrived by remember(card.draftId) { mutableStateOf(false) }
-    LaunchedEffect(card.draftId) { arrived = true }
-    val entrance by animateFloatAsState(if (arrived) 1f else 0.86f, glassMotion(), label = "deckArrival")
-
-    BoxWithConstraints(Modifier.fillMaxSize().graphicsLayer { alpha = entrance }) {
-    val tiny = maxHeight < 320.dp
-    Column(Modifier.fillMaxSize().then(if (tiny) Modifier.verticalScroll(rememberScrollState()) else Modifier).padding(horizontal = 14.dp, vertical = 10.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            FlowRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(
-                TemporalRecord.formatSeq(card.eventSeq),
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.SemiBold
-            )
-            Box {
-                AssistChip(
-                    onClick = { if (!aiLocked) onTypeMenuChange(true) },
-                    label = { Text(form.kind.label + " ▾") }
-                )
-                DropdownMenu(
-                    expanded = typeMenuExpanded,
-                    onDismissRequest = { onTypeMenuChange(false) }
-                ) {
-                    TemporalKind.entries.forEach { kind ->
-                        DropdownMenuItem(
-                            text = { Text(kind.label + "  ·  " + kindHint(kind)) },
-                            onClick = { onTypeChange(kind) }
-                        )
-                    }
-                }
-            }
-            Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f)
-            ) {
-                Text(
-                    card.operation.label,
-                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
-                    style = MaterialTheme.typography.labelSmall
-                )
-            }
-            }
-            IconButton(onClick = onExpandToggle, modifier = Modifier.size(48.dp)) {
-                Icon(
-                    if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                    if (expanded) "收起详细编辑" else "展开完整编辑"
-                )
-            }
-        }
-
-        Column(
-            Modifier
-                .then(if (tiny) Modifier else Modifier.weight(1f).verticalScroll(rememberScrollState())),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            if (!expanded) {
-                Column(Modifier.fillMaxWidth().clickable(onClickLabel = "展开完整编辑", onClick = onExpandToggle).padding(vertical = 14.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(form.title.ifBlank { "给这段时间起个名字" }, style = MaterialTheme.typography.headlineSmall)
-                    Text(if (form.kind == TemporalKind.ALARM) form.startText else if (form.kind == TemporalKind.ACTIVITY) "${form.startText}\n${form.endText}" else "${form.endText} · 截止",
-                        style = MaterialTheme.typography.bodyLarge, color = kindColor(form.kind))
-                    if (form.location.isNotBlank()) Text(form.location, style = MaterialTheme.typography.bodyMedium)
-                    Text(if (aiLocked) "卡组只读 · 可浏览详情" else "轻点卡片，展开完整编辑", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            } else {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(
                 value = form.title,
                 onValueChange = { onFormChange(form.copy(title = it)) },
@@ -865,7 +789,7 @@ private fun DeckCardBody(
                             Text("只有日期的截止仍保持日期精度；默认提醒在该日期 00:00，并非把截止时刻改成零点。",
                                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
                         }
-                        var customOffset by remember(card.draftId) { mutableStateOf("") }
+                        var customOffset by remember(instanceKey) { mutableStateOf("") }
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedTextField(
                                 value = customOffset,
@@ -972,13 +896,13 @@ private fun DeckCardBody(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Spacer(Modifier.weight(1f))
-                        Text(
+                        if (card != null) Text(
                             "草稿版本 ${card.draftVersion}",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    if (card.status == DraftStatus.CONFLICT) {
+                    if (card?.status == DraftStatus.CONFLICT) {
                         Text(
                             "此卡基于旧版本，发布前会要求你确认整份覆盖。",
                             style = MaterialTheme.typography.labelSmall,
@@ -988,6 +912,107 @@ private fun DeckCardBody(
                 }
             }
 
+
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun DeckCardBody(
+    card: DraftCard,
+    form: DraftForm,
+    position: Int,
+    total: Int,
+    expanded: Boolean,
+    aiLocked: Boolean,
+    error: String?,
+    conversionNote: String?,
+    dirty: Boolean,
+    onExpandToggle: () -> Unit,
+    onFormChange: (DraftForm) -> Unit,
+    onTypeChange: (TemporalKind) -> Unit,
+    typeMenuExpanded: Boolean,
+    onTypeMenuChange: (Boolean) -> Unit,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+    canGoPrevious: Boolean,
+    canGoNext: Boolean,
+    onCommit: () -> Unit,
+    onDiscard: () -> Unit,
+    onRetrySave: () -> Unit
+) {
+    val context = LocalContext.current
+    val missing = form.missingFields()
+    val publishable = form.isPublishable()
+    var showDeleteConfirm by remember(card.draftId) { mutableStateOf(false) }
+    var arrived by remember(card.draftId) { mutableStateOf(false) }
+    LaunchedEffect(card.draftId) { arrived = true }
+    val entrance by animateFloatAsState(if (arrived) 1f else 0.86f, glassMotion(), label = "deckArrival")
+
+    BoxWithConstraints(Modifier.fillMaxSize().graphicsLayer { alpha = entrance }) {
+    val tiny = maxHeight < 320.dp
+    Column(Modifier.fillMaxSize().then(if (tiny) Modifier.verticalScroll(rememberScrollState()) else Modifier).padding(horizontal = 14.dp, vertical = 10.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            FlowRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                TemporalRecord.formatSeq(card.eventSeq),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.SemiBold
+            )
+            Box {
+                AssistChip(
+                    onClick = { if (!aiLocked) onTypeMenuChange(true) },
+                    label = { Text(form.kind.label + " ▾") }
+                )
+                DropdownMenu(
+                    expanded = typeMenuExpanded,
+                    onDismissRequest = { onTypeMenuChange(false) }
+                ) {
+                    TemporalKind.entries.forEach { kind ->
+                        DropdownMenuItem(
+                            text = { Text(kind.label + "  ·  " + kindHint(kind)) },
+                            onClick = { onTypeChange(kind) }
+                        )
+                    }
+                }
+            }
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f)
+            ) {
+                Text(
+                    card.operation.label,
+                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                    style = MaterialTheme.typography.labelSmall
+                )
+            }
+            }
+            IconButton(onClick = onExpandToggle, modifier = Modifier.size(48.dp)) {
+                Icon(
+                    if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    if (expanded) "收起详细编辑" else "展开完整编辑"
+                )
+            }
+        }
+
+        Column(
+            Modifier
+                .then(if (tiny) Modifier else Modifier.weight(1f).verticalScroll(rememberScrollState())),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            if (!expanded) {
+                Column(Modifier.fillMaxWidth().clickable(onClickLabel = "展开完整编辑", onClick = onExpandToggle).padding(vertical = 14.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(form.title.ifBlank { "给这段时间起个名字" }, style = MaterialTheme.typography.headlineSmall)
+                    Text(if (form.kind == TemporalKind.ALARM) form.startText else if (form.kind == TemporalKind.ACTIVITY) "${form.startText}\n${form.endText}" else "${form.endText} · 截止",
+                        style = MaterialTheme.typography.bodyLarge, color = kindColor(form.kind))
+                    if (form.location.isNotBlank()) Text(form.location, style = MaterialTheme.typography.bodyMedium)
+                    Text(if (aiLocked) "卡组只读 · 可浏览详情" else "轻点卡片，展开完整编辑", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            } else {
+            UnifiedEventFormFields(form = form, expanded = expanded, aiLocked = aiLocked,
+                card = card, onFormChange = onFormChange)
             } // expanded editor
             if (!expanded && form.notes.isNotBlank()) {
                 Text(

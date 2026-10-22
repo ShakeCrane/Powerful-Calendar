@@ -73,18 +73,18 @@ class DirectEventEditorComposeTest {
         render()
         titleField().performTextReplacement("Changed")
         ui.onNodeWithText("Changed").assertExists()
-        ui.onNodeWithText("Discard editing changes").assertIsEnabled()
+        ui.onNodeWithText("放弃本次修改").assertIsEnabled()
 
         ui.onNode(hasSetTextAction() and hasText("Changed")).performTextReplacement("Original")
-        ui.onNodeWithText("Discard editing changes").assertIsNotEnabled()
+        ui.onNodeWithText("放弃本次修改").assertIsNotEnabled()
         titleField().performTextReplacement("Discard me")
-        ui.onNodeWithText("Discard editing changes").performClick()
+        ui.onNodeWithText("放弃本次修改").performClick()
         titleField().assertExists()
 
         titleField().performTextReplacement("Saved in place")
-        ui.onNodeWithText("Save").performClick()
+        ui.onNodeWithText("保存修改").performClick()
         ui.onNodeWithText("Saved in place").assertExists()
-        ui.onNodeWithText("Discard editing changes").assertIsNotEnabled()
+        ui.onNodeWithText("放弃本次修改").assertIsNotEnabled()
         assertEquals("Saved in place", store.get(session.eventSeq)!!.title)
     }
 
@@ -92,19 +92,37 @@ class DirectEventEditorComposeTest {
         var deletes = 0
         render { deletes++ }
         titleField().performTextReplacement("")
-        ui.onNodeWithText("Save").performClick()
+        ui.onNodeWithText("保存修改").performClick()
         val editable = ui.onAllNodes(hasSetTextAction())[0].fetchSemanticsNode()
             .config[SemanticsProperties.EditableText].text
         assertEquals("", editable)
 
-        ui.onNodeWithText("Delete event").performClick()
-        ui.onNodeWithText("Delete event?").assertIsDisplayed()
+        ui.onNodeWithText("删除事件").performClick()
+        ui.onNodeWithText("确认删除事件？").assertIsDisplayed()
         assertEquals(0, deletes)
-        ui.onNodeWithText("Cancel").performClick()
+        ui.onNodeWithText("取消").performClick()
         assertEquals(0, deletes)
-        ui.onNodeWithText("Delete event").performClick()
-        ui.onNodeWithText("Confirm delete").performClick()
+        ui.onNodeWithText("删除事件").performClick()
+        ui.onNodeWithText("确认删除").performClick()
         assertEquals(1, deletes)
         assertFalse(store.get(session.eventSeq) == null)
+    }
+
+    @Test fun directEditUsesSameKindConversionAndReminderFieldsAsNewDraftCard() {
+        render()
+        // The same typed form and picker controls are shared by both editor modes.
+        ui.onNodeWithText("活动 ▾").performClick()
+        ui.onNodeWithText("闹钟").performClick()
+        assertEquals(TemporalKind.ALARM, session.form.kind)
+        ui.onNodeWithText("闹钟 ▾").assertExists()
+
+        ui.onNodeWithText("重复").performScrollTo()
+        ui.onNodeWithText("每天").performScrollTo()
+        ui.onNodeWithText("每天").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        assertEquals(RecurrenceFreq.DAILY, session.form.recurrence.freq)
+
+        ui.onNodeWithText("保存修改").performClick()
+        assertEquals(TemporalKind.ALARM, store.get(session.eventSeq)!!.kind)
+        assertEquals(RecurrenceFreq.DAILY, store.get(session.eventSeq)!!.recurrence.freq)
     }
 }
