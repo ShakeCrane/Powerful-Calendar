@@ -224,7 +224,7 @@ class TemporalProtocolTest {
         val deadline = TemporalRecord(2, 1, TemporalKind.DEADLINE, "截止", deadlineDate = "2026-10-24")
         val result = TimelineLayout.layout(listOf(alarm, deadline))
         assertEquals(AxisSide.LEFT, result.items.first { it.record.eventSeq == 1L }.side)
-        assertEquals(AxisSide.RIGHT, result.items.first { it.record.eventSeq == 2L }.side)
+        assertEquals(AxisSide.LEFT, result.items.first { it.record.eventSeq == 2L }.side)
     }
 
     @Test

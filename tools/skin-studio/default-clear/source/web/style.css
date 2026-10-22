@@ -44,7 +44,7 @@ button:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outl
 .tEvent.ALARM{background:var(--alarm-tint);color:var(--alarm-ink);
  border-right:3px solid var(--alarm)}
 .tEvent.DEADLINE{background:var(--deadline-tint);color:var(--deadline-ink);
- border-left:3px solid var(--deadline)}
+ border-right:3px solid var(--deadline)}
 .now-line{position:absolute;left:0;right:0;height:1.5px;background:var(--now);pointer-events:none;z-index:4}
 .timeline-buttons{display:flex;gap:10px;align-items:center;justify-content:center;padding:6px 10px;
  margin:12px auto 0;width:max-content;max-width:100%;background:var(--glass-fill);

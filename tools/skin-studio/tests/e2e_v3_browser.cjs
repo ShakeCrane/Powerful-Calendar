@@ -24,7 +24,16 @@ const URL=process.env.STUDIO_URL||"http://127.0.0.1:8875";
       css:getComputedStyle(document.documentElement).getPropertyValue("--accent").trim()
     }));
     assert.ok(normal.items>=2);assert.equal(normal.options,2);assert.ok(normal.ruler>=8);
-    assert.equal(normal.css,"#2A62E0","Clear source palette must load into the iframe");
+    const sides=await frame.evaluate(()=>({
+      deadline:document.querySelector("#timelineLeft .tEvent.DEADLINE")?.textContent,
+      alarm:document.querySelector("#timelineLeft .tEvent.ALARM")?.textContent,
+      activity:document.querySelector("#timelineRight .tEvent.ACTIVITY")?.textContent
+    }));
+    assert.ok(sides.deadline,"Deadline must render in left wing");
+    assert.ok(sides.alarm,"Alarm must render in left wing");
+    assert.ok(sides.activity,"Activity must render in right wing");
+    assert.ok(["#2A62E0","#5A8DFF"].includes(normal.css),
+      "Clear light/dark source palette must load into the iframe");
     console.log("Initial WYSIWYG preview",normal);
 
     await page.select("#scenario","future");

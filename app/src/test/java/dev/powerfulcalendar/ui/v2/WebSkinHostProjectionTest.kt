@@ -43,6 +43,26 @@ class WebSkinHostProjectionTest {
         assertFalse(payload.toString().contains("private-note-should-not-leak"))
     }
 
+    @Test fun deadlineAndAlarmStayLeftWhileActivityStaysRight() {
+        val deadline = TemporalRecord(
+            eventSeq = 21, revision = 1, kind = TemporalKind.DEADLINE,
+            title = "Deadline", deadlineMillis = start, zoneId = zone.id
+        )
+        val alarm = TemporalRecord(
+            eventSeq = 22, revision = 1, kind = TemporalKind.ALARM,
+            title = "Alarm", startMillis = start, zoneId = zone.id
+        )
+        val entries = project(listOf(activity(7), deadline, alarm))
+            .getJSONArray("items")
+        val sides = (0 until entries.length()).associate { i ->
+            val row = entries.getJSONObject(i)
+            row.getLong("eventSeq") to row.getString("side")
+        }
+        assertEquals("LEFT", sides[21L])
+        assertEquals("LEFT", sides[22L])
+        assertEquals("RIGHT", sides[7L])
+    }
+
     @Test fun recurrenceUsesOccurrenceStartNotOriginalSeriesStart() {
         val startYesterday = start - 86_400_000L
         val daily = activity(9, startYesterday).copy(

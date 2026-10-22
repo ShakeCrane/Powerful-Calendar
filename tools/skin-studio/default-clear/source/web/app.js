@@ -101,7 +101,8 @@ function renderTimeline(){
     const ms=Number(item.startMillis);
     if(!Number.isFinite(ms))continue;
     const kind=String(item.kind||"ACTIVITY").toUpperCase();
-    const side=kind==="ALARM"?left:right;
+    // Respect the host's authoritative side; keep a safe fallback for old projections.
+    const side=String(item.side || (kind==="ACTIVITY"?"RIGHT":"LEFT")).toUpperCase()==="LEFT"?left:right;
     const start=Math.max(0,Math.min(100,position(ms)));
     const stop=item.endMillis==null?start+4:Math.min(100,position(Number(item.endMillis)));
     const height=Math.min(100-start,Math.max(4,stop-start));

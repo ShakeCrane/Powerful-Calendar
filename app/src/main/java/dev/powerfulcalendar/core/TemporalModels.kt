@@ -19,7 +19,7 @@ import kotlin.math.roundToLong
  * Three user-facing shapes over one controlled inheritance:
  *  - [TemporalKind.ALARM]    has a START point only      -> left of the central axis
  *  - [TemporalKind.ACTIVITY] has START and END            -> right of the central axis
- *  - [TemporalKind.DEADLINE] has a deadline point or date -> right of the central axis
+ *  - [TemporalKind.DEADLINE] has a deadline point or date -> left of the central axis
  *
  * `eventSeq` is the permanent identity. Nothing in this file may derive identity, order or
  * ringing behaviour from nullable time fields: kind, trigger, schedule and execution state are
@@ -32,7 +32,7 @@ enum class TemporalKind(val label: String) {
     DEADLINE("截止"),
     MEMO("备忘");
 
-    val side: AxisSide get() = if (this == ALARM) AxisSide.LEFT else AxisSide.RIGHT
+    val side: AxisSide get() = if (this == ALARM || this == DEADLINE) AxisSide.LEFT else AxisSide.RIGHT
 }
 
 enum class AxisSide { LEFT, RIGHT }

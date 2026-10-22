@@ -450,7 +450,7 @@ function simulatedState(){
     {eventSeq:5,revision:1,occurrenceKey:"5:single",kind:"ALARM",
       title:"训练提醒",side:"LEFT",lane:0,startMillis:base+3600000,endMillis:base+3600000,precision:"INSTANT",deadlineDate:null},
     {eventSeq:6,revision:3,occurrenceKey:"6:single",kind:"DEADLINE",
-      title:"报告截止",side:"RIGHT",lane:1,startMillis:base+14400000,endMillis:null,precision:"DATE",deadlineDate:"2026-10-22"}
+      title:"报告截止",side:"LEFT",lane:1,startMillis:base+14400000,endMillis:null,precision:"DATE",deadlineDate:"2026-10-22"}
   ];
   if(scenario==="empty")rows=[];
   if(scenario==="dense")rows=Array.from({length:12},(_,i)=>({
