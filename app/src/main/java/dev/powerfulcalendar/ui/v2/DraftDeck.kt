@@ -214,20 +214,7 @@ fun NativeDraftDeckDialog(
         state = controller.state
         onDispose { controller.observe { } }
     }
-    LaunchedEffect(state.currentId, state.form, state.dirty, state.aiLocked) {
-        if (state.dirty && !state.aiLocked) {
-            delay(300)
-            // Background staging must not toggle the editor read-only while the IME is typing.
-            // Controller synchronization protects the snapshot; asynchronous controller APIs are
-            // still needed from DSH to eliminate contention on genuinely slow storage.
-            try {
-                withContext(Dispatchers.IO) { controller.flush(lockEdits = false) }
-            } catch (error: Exception) {
-                if (error is kotlinx.coroutines.CancellationException) throw error
-                state = controller.state.copy(error = "暂存失败，请重试：${error.message.orEmpty()}")
-            }
-        }
-    }
+    // Persist only at exit/navigation/lifecycle checkpoints, not every keystroke.
     LaunchedEffect(state.currentId) {
         expanded = false
         typeMenu = false

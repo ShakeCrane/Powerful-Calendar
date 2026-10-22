@@ -92,19 +92,7 @@ fun DraftDeckDialog(
         state = controller.state
         onDispose { controller.observe { } }
     }
-    // Custom visual renderers must inherit the exact same nonblocking autosave guarantee.
-    LaunchedEffect(state.currentId, state.form, state.dirty, state.aiLocked) {
-        if (state.dirty && !state.aiLocked) {
-            delay(300)
-            try {
-                withContext(Dispatchers.IO) { controller.flush(lockEdits = false) }
-            } catch (error: CancellationException) {
-                throw error
-            } catch (error: Exception) {
-                state = controller.state.copy(error = error.message ?: "草稿暂存失败，请重试")
-            }
-        }
-    }
+    // Persist only at exit/navigation/lifecycle checkpoints, not every keystroke.
     fun command(changed: Boolean = false, block: suspend () -> Unit) {
         if (executing || state.busy) return
         executing = true  // acquire synchronously, before coroutine dispatch

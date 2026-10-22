@@ -73,6 +73,54 @@ class PowerStoreTest {
         store.commit(card.draftId, actor = "test")
 
     @Test
+    fun directEditorCheckpointsOnceAndNoChangeSaveClearsItWithoutRevision() {
+        val created = store.newDraft(activityForm("formal"))
+        assertTrue(commit(created) is PowerStore.CommitOutcome.Committed)
+        val record = store.get(created.eventSeq)!!
+        val session = EditSession.open(store, record)
+        try {
+            session.edit(session.form.copy(title = "edited in memory"))
+            assertEquals(0, store.pendingDraftsFor(record.eventSeq).size)
+            val checkpoint = session.checkpoint()
+            assertNotNull(checkpoint)
+            assertEquals(1, store.pendingDraftsFor(record.eventSeq).size)
+            assertEquals(checkpoint!!.draftId, session.checkpoint()!!.draftId)
+
+            session.discardEditingChanges()
+            val outcome = session.save()
+            assertTrue(outcome is PowerStore.DirectEditOutcome.Saved && !outcome.changed)
+            assertEquals(record.revision, store.get(record.eventSeq)!!.revision)
+            assertEquals(0, store.pendingDraftsFor(record.eventSeq).size)
+        } finally {
+            session.close()
+        }
+    }
+
+    @Test
+    fun humanEditorBlocksAiMutationAndDirectDeleteCleansDrafts() {
+        val created = store.newDraft(activityForm("delete me"))
+        assertTrue(commit(created) is PowerStore.CommitOutcome.Committed)
+        val target = store.get(created.eventSeq)!!
+        val batchCard = store.newDraft(alarmForm("batch"))
+        val session = EditSession.open(store, target)
+        try {
+            assertTrue(runCatching { store.newDraft(alarmForm("AI"), actor = "ai") }.isFailure)
+            assertTrue(runCatching {
+                store.beginAiBatch(mapOf(batchCard.draftId to batchCard.draftVersion),
+                    setOf(DraftOperation.CREATE))
+            }.isFailure)
+            session.edit(session.form.copy(notes = "checkpoint"))
+            assertNotNull(session.checkpoint())
+            assertTrue(session.delete() is PowerStore.DirectEditOutcome.Saved)
+            assertNull(store.get(target.eventSeq))
+            assertTrue(store.isRetired(target.eventSeq))
+            assertEquals(0, store.pendingDraftsFor(target.eventSeq).size)
+        } finally {
+            session.close()
+        }
+    }
+
+    @Test
     fun undatedMemoPersistsAndCompletionCanBeReopenedAfterRestart() {
         val card = store.newDraft(DraftForm(
             kind = TemporalKind.MEMO, title = "无日期事项", zoneId = zone.id
@@ -163,21 +211,23 @@ class PowerStoreTest {
     }
 
     @Test
-    fun oneEventMayOwnManyCardsWithIndependentQueueOrder() {
+    fun oneEventReusesOneActionableCardAndItsQueueSlot() {
         val base = store.newDraft(activityForm())
         val committed = commit(base) as PowerStore.CommitOutcome.Committed
         val seq = committed.eventSeq
-
-        val d1 = store.newDraft(DraftForm.from(store.get(seq)!!), seq, DraftOperation.REPLACE)
-        val d2 = store.newDraft(DraftForm.from(store.get(seq)!!), seq, DraftOperation.REPLACE)
-
-        assertEquals(seq, d1.eventSeq)
-        assertEquals(seq, d2.eventSeq)
-        assertEquals(seq, base.eventSeq)
-        assertTrue(d1.draftId != d2.draftId)
-        assertTrue(d2.queueOrder > d1.queueOrder)
-        // eventSeq does not order the queue.
+        val form = DraftForm.from(store.get(seq)!!)
+        val d1 = store.newDraft(form.copy(title = "first"), seq, DraftOperation.REPLACE)
+        val d2 = store.newDraft(form.copy(title = "last"), seq, DraftOperation.REPLACE)
+        assertEquals(d1.draftId, d2.draftId)
+        assertEquals(d1.queueOrder, d2.queueOrder)
+        assertEquals(1, store.pendingDraftsFor(seq).size)
+        assertEquals("last", store.draft(d1.draftId)!!.form.title)
+        assertEquals(d1.draftVersion + 1, d2.draftVersion)
         assertTrue(d1.queueOrder > base.queueOrder)
+        assertTrue(store.discard(d2.draftId))
+        val d3 = store.newDraft(form.copy(title = "fresh"), seq, DraftOperation.REPLACE)
+        assertTrue(d3.draftId != d2.draftId)
+        assertFalse("Undo cannot produce two actionable drafts", store.undoDiscard(d2.draftId))
     }
 
     @Test
@@ -218,28 +268,21 @@ class PowerStoreTest {
 
     @Test
     fun staleCardCannotSilentlyOverwriteAndRequiresExplicitApproval() {
-        val card = store.newDraft(activityForm("评审"))
+        val card = store.newDraft(activityForm("Base").copy(trackingEnabled = true))
         commit(card)
         val seq = card.eventSeq
-
         val v1 = store.get(seq)!!
-        val d1 = store.newDraft(DraftForm.from(v1).copy(title = "评审 D1"), seq, DraftOperation.REPLACE)
-        val d2 = store.newDraft(DraftForm.from(v1).copy(title = "评审 D2"), seq, DraftOperation.REPLACE)
-
-        assertTrue(commit(d2) is PowerStore.CommitOutcome.Committed)
-        assertEquals("评审 D2", store.get(seq)!!.title)
-
-        val conflict = commit(d1)
-        assertTrue(conflict is PowerStore.CommitOutcome.Conflict)
-        assertEquals("评审 D2", store.get(seq)!!.title)
-        assertEquals(DraftStatus.CONFLICT, store.draft(d1.draftId)!!.status)
-
-        // The user explicitly approves replacing the now-current revision.
-        val approved = store.commit(d1.draftId, approveStale = true, actor = "test")
-        assertTrue(approved is PowerStore.CommitOutcome.Committed)
-        assertEquals("评审 D1", store.get(seq)!!.title)
+        val stale = store.newDraft(DraftForm.from(v1).copy(title = "Edited"), seq,
+            DraftOperation.REPLACE)
+        assertTrue(store.setCompleted(seq, "single", true, expectedRevision = v1.revision))
+        assertTrue(store.commit(stale.draftId) is PowerStore.CommitOutcome.Conflict)
+        assertEquals(DraftStatus.CONFLICT, store.draft(stale.draftId)!!.status)
+        assertEquals("Base", store.get(seq)!!.title)
+        assertTrue(store.commit(stale.draftId, approveStale = true, actor = "test")
+            is PowerStore.CommitOutcome.Committed)
+        assertEquals("Edited", store.get(seq)!!.title)
         assertEquals(3L, store.get(seq)!!.revision)
-        assertEquals(DraftStatus.COMMITTED, store.draft(d1.draftId)!!.status)
+        assertEquals(0, store.pendingDraftsFor(seq).size)
     }
 
     @Test
@@ -275,39 +318,24 @@ class PowerStoreTest {
     // ---------------------------------------------------------------- retirement / restore
 
     @Test
-    fun deleteRetiresTheNumberAndLateEditsNeedExplicitRestore() {
-        val card = store.newDraft(activityForm("将被删除"))
+    fun deleteRetiresTheNumberAndClearsTheOnlyDraft() {
+        val card = store.newDraft(activityForm("????"))
         commit(card)
         val seq = card.eventSeq
-        val lateEdit = store.newDraft(DraftForm.from(store.get(seq)!!), seq, DraftOperation.REPLACE)
-
-        val deleteDraft = store.newDraft(DraftForm.from(store.get(seq)!!), seq, DraftOperation.DELETE)
+        val lateEdit = store.newDraft(DraftForm.from(store.get(seq)!!), seq,
+            DraftOperation.REPLACE)
+        val deleteDraft = store.newDraft(DraftForm.from(store.get(seq)!!), seq,
+            DraftOperation.DELETE)
+        assertEquals(lateEdit.draftId, deleteDraft.draftId)
         assertTrue(commit(deleteDraft) is PowerStore.CommitOutcome.Committed)
         assertNull(store.get(seq))
         assertTrue(store.isRetired(seq))
-
-        val blocked = commit(lateEdit)
-        assertTrue(blocked is PowerStore.CommitOutcome.NeedsRestore)
-        assertNull(store.get(seq))
-
-        // CREATE cannot resurrect a retired number.
-        val createAgain = store.newDraft(activityForm("新事件"))
-        assertTrue(createAgain.eventSeq != seq)
-
-        // Restoration is driven by the card that proposed it and removes that card from the queue.
-        val restored = store.restoreDraft(
-            lateEdit.draftId,
-            DraftForm.from(store.getIncludingRetired(seq)!!).copy(title = "复活")
-        )
-        assertTrue(restored is PowerStore.CommitOutcome.Committed)
-        assertEquals(seq, (restored as PowerStore.CommitOutcome.Committed).eventSeq)
-        assertFalse(store.isRetired(seq))
-        assertEquals("复活", store.get(seq)!!.title)
-        assertEquals(3L, store.get(seq)!!.revision)
-        assertEquals(DraftStatus.COMMITTED, store.draft(lateEdit.draftId)!!.status)
         assertEquals(0, store.pendingDraftsFor(seq).size)
-        // The restored audit trail keeps the card linkage.
-        assertEquals(1, store.history(seq).count { it.operation == "RESTORE" })
+        assertEquals(DraftStatus.COMMITTED, store.draft(lateEdit.draftId)!!.status)
+        val createAgain = store.newDraft(activityForm("???"))
+        assertTrue(createAgain.eventSeq != seq)
+        assertTrue(store.restoreDraft(lateEdit.draftId, DraftForm.from(
+            store.getIncludingRetired(seq)!!)) is PowerStore.CommitOutcome.Invalid)
     }
 
     // ---------------------------------------------------------------- optimistic staging
@@ -647,28 +675,21 @@ class PowerStoreTest {
 
     @Test
     fun theAiRunnerKeepsAConflictedCardForHumanReview() = kotlinx.coroutines.runBlocking {
-        val base = store.newDraft(activityForm("冲突"))
+        val base = store.newDraft(activityForm("Base").copy(trackingEnabled = true))
         commit(base)
         val seq = base.eventSeq
-        val stale = store.newDraft(
-            DraftForm.from(store.get(seq)!!).copy(title = "AI 旧提案"), seq, DraftOperation.REPLACE
-        )
-        // Another card commits first, making `stale` outdated.
-        val winner = store.newDraft(
-            DraftForm.from(store.get(seq)!!).copy(title = "人工胜出"), seq, DraftOperation.REPLACE
-        )
-        commit(winner)
-
-        val session = store.beginAiBatch(
-            mapOf(stale.draftId to stale.draftVersion),
-            DraftOperation.entries.toSet()
-        )
+        val current = store.get(seq)!!
+        val stale = store.newDraft(DraftForm.from(current).copy(title = "AI ???"),
+            seq, DraftOperation.REPLACE)
+        assertTrue(store.setCompleted(seq, "single", true,
+            expectedRevision = current.revision))
+        val session = store.beginAiBatch(mapOf(stale.draftId to stale.draftVersion),
+            DraftOperation.entries.toSet())
         val report = dev.powerfulcalendar.ai.AiBatchRunner(store)
             .run(session, dev.powerfulcalendar.ai.AiBatchRunner.Mode.PUBLISH)
         assertEquals(0, report.published)
         assertEquals(1, report.kept)
-        // Never silently overwritten; the card is retained and flagged.
-        assertEquals("人工胜出", store.get(seq)!!.title)
+        assertEquals("Base", store.get(seq)!!.title)
         assertEquals(DraftStatus.CONFLICT, store.draft(stale.draftId)!!.status)
         assertFalse(store.isLocked())
     }

@@ -225,21 +225,25 @@ class GlassComposeTest {
     }
 
     @Test fun conflictReviewShowsRecurrenceAndCommitsOnlyAfterExplicitFullReplacement() {
-        val first = store.newDraft(DraftForm.fresh(TemporalKind.ACTIVITY, LocalDate.of(2026, 10, 20), zone).copy(title = "第一次"))
+        val first = store.newDraft(DraftForm.fresh(TemporalKind.ACTIVITY,
+            LocalDate.of(2026, 10, 20), zone).copy(title = "First", trackingEnabled = true))
         store.commit(first.draftId)
-        val stale = store.proposeReplace(first.eventSeq)
-        val latest = store.newDraft(stale.form.copy(title = "新版本", recurrence = Recurrence(RecurrenceFreq.WEEKLY)), first.eventSeq, DraftOperation.REPLACE)
-        store.commit(latest.draftId)
+        val current = store.get(first.eventSeq)!!
+        val stale = store.newDraft(DraftForm.from(current).copy(
+            recurrence = Recurrence(RecurrenceFreq.WEEKLY)), first.eventSeq,
+            DraftOperation.REPLACE)
+        assertTrue(store.setCompleted(first.eventSeq, "single", true,
+            expectedRevision = current.revision))
         val controller = newController(StoreDeckPersistence(store)).also {
             it.openNow(stale.draftId)
             kotlinx.coroutines.runBlocking { it.commit() }
         }
         ui.setContent { PowerCalTheme { DraftDeckDialog(controller, null, {}, {}, {}, {}, { emptyList() }) } }
         ui.onNodeWithText("重复频率 · 将更改").performScrollTo().assertIsDisplayed()
-        ui.runOnIdle { assertEquals("新版本", store.get(first.eventSeq)?.title) }
+        ui.runOnIdle { assertEquals("First", store.get(first.eventSeq)?.title) }
         ui.onNodeWithText("确认整份覆盖").performClick()
         ui.waitUntil(10_000) { controller.state.completion != null }
-        assertEquals("第一次", store.get(first.eventSeq)?.title)
+        assertEquals("First", store.get(first.eventSeq)?.title)
         assertEquals(3L, store.get(first.eventSeq)?.revision)
     }
 

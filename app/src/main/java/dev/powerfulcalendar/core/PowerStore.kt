@@ -19,7 +19,7 @@ import java.util.UUID
  *
  * Invariants enforced here:
  *  - eventSeq is allocated once per new event, retired forever on delete, never reused (I-01).
- *  - draftId/queueOrder are independent of eventSeq; one event may own many cards (I-02).
+ *  - draftId/queueOrder are independent of eventSeq; one current actionable card per event (schema v4).
  *  - exactly one current snapshot per eventSeq, whole-object replacement only (I-03/I-04).
  *  - a stale card cannot commit without explicit human re-approval; it is never merged (I-18).
  *  - no unauthorized write may touch a formal object while the single AI batch holds the deck
@@ -91,6 +91,9 @@ class PowerStore(
                )"""
         )
         db.execSQL("CREATE INDEX drafts_queue ON drafts(status, queue_order)")
+        createDraftMigrationAuditTable(db)
+        createUniqueActiveDraftIndex(db)
+        createHumanEditorTable(db)
         db.execSQL(
             """CREATE TABLE commits(
                  commit_id TEXT PRIMARY KEY,
@@ -197,6 +200,13 @@ class PowerStore(
             addStoreLineageColumn(db)
             version = 3
         }
+        if (version < 4 && newVersion >= 4) {
+            createDraftMigrationAuditTable(db)
+            consolidateLegacyActiveDrafts(db)
+            createUniqueActiveDraftIndex(db)
+            createHumanEditorTable(db)
+            version = 4
+        }
         require(version == newVersion) {
             "PowerCal 数据库升级路径不完整 (v$oldVersion → v$newVersion)，已拒绝打开"
         }
@@ -216,6 +226,140 @@ class PowerStore(
             "UPDATE meta SET lineage_id=? WHERE lineage_id IS NULL OR lineage_id=''",
             arrayOf(UUID.randomUUID().toString())
         )
+    }
+
+    /** v4 migration retains every old draft, while removing duplicate actionable status. */
+    private fun consolidateLegacyActiveDrafts(db: SQLiteDatabase) {
+        val losers = mutableListOf<Long>()
+        val seen = mutableSetOf<Long>()
+        db.rawQuery(
+            """SELECT draft_id,event_seq FROM drafts
+               WHERE status IN ('PENDING','CONFLICT','INVALID')
+               ORDER BY event_seq ASC, updated_ms DESC, draft_version DESC,
+                        queue_order DESC, draft_id DESC""", null
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                val id = cursor.getLong(0)
+                if (!seen.add(cursor.getLong(1))) losers.add(id)
+            }
+        }
+        losers.forEach { id ->
+            val oldStatus = db.rawQuery("SELECT status FROM drafts WHERE draft_id=?", arrayOf(id.toString()))
+                .use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else "UNKNOWN" }
+            db.insertWithOnConflict("draft_migration_audit", null, ContentValues().apply {
+                put("draft_id", id); put("old_status", oldStatus)
+                put("reason", "v4-duplicate-active-draft"); put("migrated_ms", System.currentTimeMillis())
+            }, SQLiteDatabase.CONFLICT_IGNORE)
+            // Keep payload, IDs, queue order, versions and original timestamps intact.
+            db.execSQL("UPDATE drafts SET status='DISCARDED' WHERE draft_id=?", arrayOf(id))
+        }
+    }
+
+    private fun createDraftMigrationAuditTable(db: SQLiteDatabase) {
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS draft_migration_audit(
+                 draft_id INTEGER PRIMARY KEY,
+                 old_status TEXT NOT NULL,
+                 reason TEXT NOT NULL,
+                 migrated_ms INTEGER NOT NULL
+               )"""
+        )
+    }
+
+    private fun createUniqueActiveDraftIndex(db: SQLiteDatabase) {
+        db.execSQL(
+            """CREATE UNIQUE INDEX IF NOT EXISTS drafts_one_actionable_per_event
+               ON drafts(event_seq)
+               WHERE status IN ('PENDING','CONFLICT','INVALID')"""
+        )
+    }
+
+    private fun createHumanEditorTable(db: SQLiteDatabase) {
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS human_editor(
+                 id INTEGER PRIMARY KEY CHECK(id=1),
+                 token TEXT NOT NULL,
+                 owner_token TEXT NOT NULL,
+                 event_seq INTEGER,
+                 opened_ms INTEGER NOT NULL,
+                 touched_ms INTEGER NOT NULL
+               )"""
+        )
+    }
+
+    /** A live human editor is the reciprocal half of the global calendar-writer lock. */
+    data class HumanEditLease(val token: String, val eventSeq: Long?, val openedAtMillis: Long)
+
+    @Synchronized
+    fun beginHumanEdit(eventSeq: Long? = null): HumanEditLease = tx { db ->
+        check(!isLocked(db)) { "AI mutation is active; editing is temporarily read-only" }
+        if (eventSeq != null) requireNotNull(readObject(db, eventSeq)) { "Event no longer exists" }
+        val existing = db.rawQuery(
+            "SELECT token,event_seq,opened_ms FROM human_editor WHERE id=1", null
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) null else HumanEditLease(
+                cursor.getString(0), if (cursor.isNull(1)) null else cursor.getLong(1), cursor.getLong(2)
+            )
+        }
+        if (existing != null) return@tx existing
+        val now = System.currentTimeMillis()
+        val lease = HumanEditLease(UUID.randomUUID().toString(), eventSeq, now)
+        db.insertOrThrow("human_editor", null, ContentValues().apply {
+            put("id", 1); put("token", lease.token); put("owner_token", processToken)
+            if (eventSeq == null) putNull("event_seq") else put("event_seq", eventSeq)
+            put("opened_ms", now); put("touched_ms", now)
+        })
+        lease
+    }
+
+    @Synchronized
+    fun touchHumanEdit(token: String): Boolean = tx { db ->
+        db.compileStatement("UPDATE human_editor SET touched_ms=? WHERE id=1 AND token=?").apply {
+            bindLong(1, System.currentTimeMillis()); bindString(2, token)
+        }.executeUpdateDelete() == 1
+    }
+
+    @Synchronized
+    fun endHumanEdit(token: String): Boolean = tx { db ->
+        db.delete("human_editor", "id=1 AND token=?", arrayOf(token)) == 1
+    }
+
+    @Synchronized
+    fun hasHumanEditor(): Boolean = readableDatabase.rawQuery(
+        "SELECT 1 FROM human_editor WHERE id=1", null
+    ).use { it.moveToFirst() }
+
+    /** Timeout recovery only; a fresh lease is never displaced by another process. */
+    @Synchronized
+    fun recoverAbandonedHumanEdit(staleAfterMillis: Long = 5 * 60_000L): Boolean = tx { db ->
+        require(staleAfterMillis >= 60_000L)
+        db.compileStatement(
+            "DELETE FROM human_editor WHERE id=1 AND touched_ms<?"
+        ).apply {
+            bindLong(1, System.currentTimeMillis() - staleAfterMillis)
+        }.executeUpdateDelete() == 1
+    }
+
+    private fun hasHumanEditor(db: SQLiteDatabase): Boolean = db.rawQuery(
+        "SELECT 1 FROM human_editor WHERE id=1", null
+    ).use { it.moveToFirst() }
+
+    private fun ownsHumanEditor(db: SQLiteDatabase, token: String?): Boolean {
+        if (token == null) return false
+        return db.rawQuery("SELECT 1 FROM human_editor WHERE id=1 AND token=?", arrayOf(token))
+            .use { it.moveToFirst() }
+    }
+
+    /** Must occur in the same transaction as the formal snapshot publication. */
+    private fun finishEventDrafts(db: SQLiteDatabase, seq: Long, committedId: Long, now: Long) {
+        db.execSQL(
+            """UPDATE drafts SET status='DISCARDED', updated_ms=?
+               WHERE event_seq=? AND draft_id<>?
+                 AND status IN ('PENDING','CONFLICT','INVALID')""",
+            arrayOf(now, seq, committedId)
+        )
+        db.execSQL("UPDATE drafts SET status='COMMITTED', updated_ms=? WHERE draft_id=?",
+            arrayOf(now, committedId))
     }
 
     private fun hasColumn(db: SQLiteDatabase, table: String, column: String): Boolean =
@@ -516,6 +660,13 @@ class PowerStore(
         data object NotAuthorized : CommitOutcome
     }
 
+    sealed interface DirectEditOutcome {
+        data class Saved(val eventSeq: Long, val revision: Long, val changed: Boolean) : DirectEditOutcome
+        data class Conflict(val current: TemporalRecord?) : DirectEditOutcome
+        data class Invalid(val reason: String) : DirectEditOutcome
+        data object Locked : DirectEditOutcome
+    }
+
     enum class AiState { REQUESTED, RUNNING, CANCEL_REQUESTED, COMPLETED, CANCELLED, FAILED, INTERRUPTED }
 
     data class AiSession(
@@ -565,6 +716,9 @@ class PowerStore(
         // Cards are produced *before* an authorized batch, never during it. A batch scope is
         // frozen at authorization time and must not silently grow with newly arriving cards.
         check(!isLocked(db)) { "待处理卡组正由 AI 独占，批量结束后再添加草稿" }
+        check(actor != "ai" || !hasHumanEditor(db)) {
+            "A human editor is active; AI calendar mutation was rejected"
+        }
         val seq: Long
         val base: Long?
         if (eventSeq == null) {
@@ -577,6 +731,25 @@ class PowerStore(
             requireNotNull(existing) { "事件不存在或已删除，需先显式恢复" }
             seq = eventSeq
             base = existing.revision
+        }
+        if (eventSeq != null) {
+            val existingId = db.rawQuery(
+                """SELECT draft_id FROM drafts
+                   WHERE event_seq=? AND status IN ('PENDING','CONFLICT','INVALID') LIMIT 1""",
+                arrayOf(seq.toString())
+            ).use { if (it.moveToFirst()) it.getLong(0) else null }
+            if (existingId != null) {
+                val existing = requireNotNull(readDraft(db, existingId))
+                if (existing.form != form || existing.operation != operation) {
+                    // Preserve base_rev for stale protection, preserve queue slot and ID.
+                    db.execSQL("""UPDATE drafts
+                        SET payload=?, op=?, draft_version=draft_version+1,
+                            status='PENDING', updated_ms=? WHERE draft_id=?""",
+                        arrayOf(encodeForm(form), operation.name,
+                            System.currentTimeMillis(), existingId))
+                }
+                return@tx requireNotNull(readDraft(db, existingId))
+            }
         }
         val order = bump(db, "next_order")
         val now = System.currentTimeMillis()
@@ -603,6 +776,7 @@ class PowerStore(
         actor: String = "user"
     ): DraftCard {
         val record = get(eventSeq) ?: error("事件不存在或已删除")
+        pendingDraftsFor(eventSeq).firstOrNull()?.let { return it }
         return newDraft(DraftForm.from(record), eventSeq, operation, actor)
     }
 
@@ -708,6 +882,14 @@ class PowerStore(
     @Synchronized
     fun undoDiscard(draftId: Long): Boolean = tx { db ->
         if (isLocked(db)) return@tx false
+        val existing = readDraft(db, draftId) ?: return@tx false
+        if (existing.status != DraftStatus.DISCARDED) return@tx false
+        val occupied = db.rawQuery(
+            """SELECT 1 FROM drafts WHERE event_seq=? AND draft_id<>?
+               AND status IN ('PENDING','CONFLICT','INVALID') LIMIT 1""",
+            arrayOf(existing.eventSeq.toString(), draftId.toString())
+        ).use { it.moveToFirst() }
+        if (occupied) return@tx false
         val updated = db.compileStatement(
             "UPDATE drafts SET status='PENDING', updated_ms=? WHERE draft_id=? AND status='DISCARDED'"
         ).apply {
@@ -836,8 +1018,7 @@ class PowerStore(
             put("operation", draft.operation.name)
             put("created_ms", now)
         })
-        db.execSQL("UPDATE drafts SET status='COMMITTED', updated_ms=? WHERE draft_id=?",
-            arrayOf(now, draftId))
+        finishEventDrafts(db, draft.eventSeq, draftId, now)
         if (draft.operation != DraftOperation.DELETE) {
             writeDesiredIntent(db, readObject(db, draft.eventSeq), now)
         }
@@ -892,13 +1073,133 @@ class PowerStore(
                     put("operation", "RESTORE")
                     put("created_ms", now)
                 })
-                db.execSQL("UPDATE drafts SET status='COMMITTED', updated_ms=? WHERE draft_id=?",
-                    arrayOf(now, draftId))
+                finishEventDrafts(db, eventSeq, draftId, now)
                 writeDesiredIntent(db, readObject(db, eventSeq), now)
                 CommitOutcome.Committed(eventSeq, newRevision, commitId)
             }
         }
     }
+
+    /**
+     * Explicit Save from the in-memory formal editor. It never creates a replacement draft.
+     * A semantic no-op still clears the event's actionable checkpoint, but creates no revision.
+     */
+    @Synchronized
+    fun saveFormalEdit(
+        eventSeq: Long,
+        expectedRevision: Long,
+        form: DraftForm,
+        editorToken: String
+    ): DirectEditOutcome = tx { db ->
+        if (isLocked(db) || !ownsHumanEditor(db, editorToken)) return@tx DirectEditOutcome.Locked
+        val current = readObject(db, eventSeq) ?: return@tx DirectEditOutcome.Conflict(null)
+        if (current.revision != expectedRevision) return@tx DirectEditOutcome.Conflict(current)
+        val now = System.currentTimeMillis()
+        val candidate = when (val built = form.build(eventSeq, current.revision + 1, now)) {
+            is FormBuild.Incomplete -> return@tx DirectEditOutcome.Invalid(built.message)
+            is FormBuild.Invalid -> return@tx DirectEditOutcome.Invalid(built.reason)
+            is FormBuild.Ready -> built.record.copy(
+                createdAtMillis = current.createdAtMillis,
+                updatedAtMillis = now
+            )
+        }
+        val changed = !sameFormalContent(current, candidate)
+        if (changed) {
+            upsertObject(db, candidate)
+            db.insertOrThrow("commits", null, ContentValues().apply {
+                put("commit_id", UUID.randomUUID().toString())
+                putNull("draft_id")
+                put("event_seq", eventSeq)
+                put("previous_revision", current.revision)
+                put("new_revision", candidate.revision)
+                put("actor", "user")
+                put("operation", DraftOperation.REPLACE.name)
+                put("created_ms", now)
+            })
+            writeDesiredIntent(db, candidate, now)
+        }
+        db.execSQL(
+            """UPDATE drafts SET status='DISCARDED', updated_ms=?
+               WHERE event_seq=? AND status IN ('PENDING','CONFLICT','INVALID')""",
+            arrayOf(now, eventSeq)
+        )
+        DirectEditOutcome.Saved(eventSeq, if (changed) candidate.revision else current.revision, changed)
+    }
+
+    /** Direct, confirmed formal delete with tombstone, schedule cancellation and draft cleanup. */
+    @Synchronized
+    fun deleteFormalEvent(
+        eventSeq: Long,
+        expectedRevision: Long,
+        editorToken: String
+    ): DirectEditOutcome = tx { db ->
+        if (isLocked(db) || !ownsHumanEditor(db, editorToken)) return@tx DirectEditOutcome.Locked
+        val current = readObject(db, eventSeq) ?: return@tx DirectEditOutcome.Conflict(null)
+        if (current.revision != expectedRevision) return@tx DirectEditOutcome.Conflict(current)
+        val now = System.currentTimeMillis()
+        val revision = current.revision + 1
+        upsertObject(db, current.copy(revision = revision, updatedAtMillis = now), retired = true)
+        db.execSQL("UPDATE identities SET retired_ms=? WHERE event_seq=?", arrayOf(now, eventSeq))
+        cancelIntents(db, eventSeq, now)
+        db.execSQL(
+            """UPDATE drafts SET status='DISCARDED', updated_ms=?
+               WHERE event_seq=? AND status IN ('PENDING','CONFLICT','INVALID')""",
+            arrayOf(now, eventSeq)
+        )
+        db.insertOrThrow("commits", null, ContentValues().apply {
+            put("commit_id", UUID.randomUUID().toString()); putNull("draft_id")
+            put("event_seq", eventSeq); put("previous_revision", current.revision)
+            put("new_revision", revision); put("actor", "user")
+            put("operation", DraftOperation.DELETE.name); put("created_ms", now)
+        })
+        DirectEditOutcome.Saved(eventSeq, revision, true)
+    }
+
+    /** Persist one meaningful exit checkpoint, reusing the event's sole active draft. */
+    @Synchronized
+    fun checkpointFormalEdit(
+        eventSeq: Long,
+        expectedRevision: Long,
+        original: DraftForm,
+        current: DraftForm,
+        editorToken: String
+    ): DraftCard? {
+        if (original == current) return null
+        return tx { db ->
+            check(!isLocked(db) && ownsHumanEditor(db, editorToken)) { "Editor lease is not writable" }
+            val formal = readObject(db, eventSeq) ?: error("Event no longer exists")
+            check(formal.revision == expectedRevision) { "Event changed while editing" }
+            val active = db.rawQuery(
+                """SELECT draft_id FROM drafts WHERE event_seq=?
+                   AND status IN ('PENDING','CONFLICT','INVALID') LIMIT 1""",
+                arrayOf(eventSeq.toString())
+            ).use { if (it.moveToFirst()) it.getLong(0) else null }
+            if (active != null) {
+                val old = requireNotNull(readDraft(db, active))
+                if (old.form != current || old.operation != DraftOperation.REPLACE) {
+                    db.execSQL(
+                        """UPDATE drafts SET payload=?,op='REPLACE',draft_version=draft_version+1,
+                           status='PENDING',updated_ms=? WHERE draft_id=?""",
+                        arrayOf(encodeForm(current), System.currentTimeMillis(), active)
+                    )
+                }
+                return@tx requireNotNull(readDraft(db, active))
+            }
+            val order = bump(db, "next_order")
+            val now = System.currentTimeMillis()
+            val id = db.insertOrThrow("drafts", null, ContentValues().apply {
+                put("event_seq", eventSeq); put("queue_order", order); put("base_rev", expectedRevision)
+                put("op", DraftOperation.REPLACE.name); put("payload", encodeForm(current))
+                put("status", DraftStatus.PENDING.name); put("draft_version", 0L)
+                put("created_ms", now); put("updated_ms", now)
+            })
+            requireNotNull(readDraft(db, id))
+        }
+    }
+
+    private fun sameFormalContent(a: TemporalRecord, b: TemporalRecord): Boolean =
+        a.copy(revision = 0, createdAtMillis = 0, updatedAtMillis = 0) ==
+            b.copy(revision = 0, createdAtMillis = 0, updatedAtMillis = 0)
 
     private fun upsertObject(db: SQLiteDatabase, record: TemporalRecord, retired: Boolean = false) {
         val values = ContentValues().apply {
@@ -1075,6 +1376,7 @@ class PowerStore(
         require(reviewed.isNotEmpty()) { "请选择要交给 AI 的草稿" }
         require(allowedOperations.isNotEmpty()) { "请选择允许 AI 执行的操作" }
         check(!isLocked(db)) { "已有 AI 批次正在运行" }
+        check(!hasHumanEditor(db)) { "A human editor is active; AI mutation cannot start" }
         val cards = reviewed.mapValues { (draftId, reviewedVersion) ->
             val card = readDraft(db, draftId)
             require(card != null && card.isActionable) {
@@ -1817,8 +2119,38 @@ class PowerStore(
             }
 
             val drafts = payload.getJSONArray("drafts")
+            // Normalize old backups before insertion into v4's active-draft unique index.
+            val survivors = mutableMapOf<Long, Pair<Long, List<Long>>>()
             for (index in 0 until drafts.length()) {
                 val item = drafts.getJSONObject(index)
+                if (item.optString("status", "PENDING") !in
+                    setOf("PENDING", "CONFLICT", "INVALID")) continue
+                val seq = item.getLong("eventSeq")
+                val rank = listOf(item.optLong("updatedMs", 0L),
+                    item.optLong("draftVersion", 0L), item.getLong("queueOrder"),
+                    item.getLong("draftId"))
+                val previous = survivors[seq]
+                val newer = previous == null || run {
+                    var compare = 0
+                    for (i in rank.indices) {
+                        if (rank[i] != previous.second[i]) {
+                            compare = rank[i].compareTo(previous.second[i])
+                            break
+                        }
+                    }
+                    compare > 0
+                }
+                if (newer) survivors[seq] = item.getLong("draftId") to rank
+            }
+            var deduplicated = 0
+            for (index in 0 until drafts.length()) {
+                val item = drafts.getJSONObject(index)
+                val status = item.optString("status", "PENDING")
+                val normalized = if (status in setOf("PENDING", "CONFLICT", "INVALID")
+                    && survivors[item.getLong("eventSeq")]?.first != item.getLong("draftId")) {
+                    deduplicated++
+                    "DISCARDED"
+                } else status
                 db.insertOrThrow("drafts", null, ContentValues().apply {
                     put("draft_id", item.getLong("draftId"))
                     put("event_seq", item.getLong("eventSeq"))
@@ -1826,11 +2158,18 @@ class PowerStore(
                     if (item.isNull("baseRev")) putNull("base_rev") else put("base_rev", item.getLong("baseRev"))
                     put("op", item.getString("op"))
                     put("payload", item.getJSONObject("payload").toString())
-                    put("status", item.optString("status", "PENDING"))
+                    put("status", normalized)
                     put("draft_version", item.optLong("draftVersion", 0L))
                     put("created_ms", item.optLong("createdMs", System.currentTimeMillis()))
                     put("updated_ms", item.optLong("updatedMs", System.currentTimeMillis()))
                 })
+                if (normalized != status) {
+                    db.insertOrThrow("draft_migration_audit", null, ContentValues().apply {
+                        put("draft_id", item.getLong("draftId")); put("old_status", status)
+                        put("reason", "v4-backup-duplicate-active-draft")
+                        put("migrated_ms", System.currentTimeMillis())
+                    })
+                }
             }
 
             val commits = payload.getJSONArray("commits")
@@ -1913,7 +2252,9 @@ class PowerStore(
                 drafts = drafts.length(),
                 commits = commits.length(),
                 legacyUnverified = verified.legacyUnverified,
-                warnings = verified.warnings
+                warnings = verified.warnings + if (deduplicated > 0)
+                    listOf("$deduplicated duplicate active draft(s) retained as discarded history")
+                    else emptyList()
             )
         }
     }
@@ -2021,7 +2362,7 @@ class PowerStore(
 
     companion object {
         const val DATABASE_NAME = "powercal-v2.db"
-        const val VERSION = 3
+        const val VERSION = 4
 
         /** Defensive bound for restore input; a personal calendar stays far below this. */
         const val MAX_BACKUP_ROWS = 200_000

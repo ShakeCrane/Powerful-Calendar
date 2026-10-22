@@ -204,7 +204,11 @@ class DeckController(
             when {
                 current.aiLocked -> current.copy(error = "AI 批量处理期间不能编辑卡片")
                 current.busy -> current.copy(error = "卡片正在保存或切换，请稍候再输入")
-                else -> current.copy(form = form, dirty = true, error = null)
+                else -> current.copy(
+                    form = form,
+                    dirty = form != current.current?.form,
+                    error = null
+                )
             }
         }
     }
