@@ -47,7 +47,7 @@ envelope and known fields only:
   change the time span or introduce horizontal zoom.
 - `jumpTimelineDay` accepts an ISO date from years 1900–2200 and retains
   the existing camera span.
-- Existing navigation and `openEvent(eventSeq,expectedRevision)` remain.
+- Existing navigation, the additive `memo` page action, and `openEvent(eventSeq,expectedRevision)` remain.
   Formal event opens re-read the current record and check revision/writer
   availability; an occurrence key cannot bypass those checks.
 - `invokeOption` only accepts registered host IDs. When AI/editor writes

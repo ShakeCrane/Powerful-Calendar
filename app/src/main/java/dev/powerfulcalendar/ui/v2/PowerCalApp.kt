@@ -924,6 +924,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                 is WebSkinAction.Routed -> when (action.name) {
                     "timeline" -> page = Page.TIMELINE.name
                     "month" -> page = Page.MONTH.name
+                    "memo" -> page = Page.MEMO.name
                     "ai" -> page = Page.AI.name
                     "settings" -> page = Page.TOOLS.name
                     "openDeck" -> scope.launch { openDeckAt(null) }
@@ -978,6 +979,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
         WebSkinBridgeRuntime.state = {
             JSONObject().put("bridgeVersion", WebSkinBridgeRuntime.VERSION).put("page", page)
                 .put("aiLocked", aiLocked).put("pendingCount", pendingCount)
+                .put("memoCount", todoCount)
                 .put("reducedMotion", effects.reduceMotion)
                 .put("optionGroups", SemanticOptions.toJson(
                     enabled = !aiLocked && editSession == null))

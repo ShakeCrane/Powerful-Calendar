@@ -92,6 +92,7 @@ class WebSkinHostProjectionTest {
         assertEquals(WebSkinAction.JumpTimelineDay("2026-10-22"),
             decode("""{"name":"jumpTimelineDay","date":"2026-10-22"}"""))
         assertEquals(WebSkinAction.Routed("today"), decode("""{"name":"today"}"""))
+        assertEquals(WebSkinAction.Routed("memo"), decode("""{"name":"memo"}"""))
         assertNull(decode("""{"name":"panTimeline","deltaMinutes":5000}"""))
         assertNull(decode("""{"name":"panTimeline","deltaMinutes":2.5}"""))
         assertNull(decode("""{"name":"panTimeline","deltaMinutes":"60"}"""))

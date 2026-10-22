@@ -234,7 +234,7 @@ internal fun decodeBridgeAction(raw: String): WebSkinAction? {
     val name = payload.optString("name")
     if (name.length !in 1..40) return null
     return when (name) {
-        "timeline", "month", "ai", "settings", "openDeck", "today" ->
+        "timeline", "month", "memo", "ai", "settings", "openDeck", "today" ->
             if (keys == setOf("name")) WebSkinAction.Routed(name) else null
         "invokeOption" -> {
             if (keys != setOf("name", "id")) return null
