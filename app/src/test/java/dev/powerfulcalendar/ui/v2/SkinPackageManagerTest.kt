@@ -13,6 +13,7 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.UUID
 import java.util.zip.ZipEntry
+import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 
 @RunWith(RobolectricTestRunner::class)
@@ -112,6 +113,90 @@ class SkinPackageManagerTest {
         } finally {
             manager.select("powercal-default")
         }
+    }
+
+    /**
+     * Factory-vs-user A/B regression: only the manifest identity is different.
+     * Both packages must pass the same v3 validator and produce equal executable
+     * content, host capabilities, and rendering contract after skin selection.
+     */
+    @Test fun officialClearAndReidentifiedThirdPartyCloneHaveIdenticalRuntime() {
+        val factoryBytes = context.assets.open("powercal-clear-default.pcskin")
+            .use { it.readBytes() }
+        val id = "parity-" + UUID.randomUUID().toString().take(24)
+        val entries = linkedMapOf<String, ByteArray>()
+        ZipInputStream(factoryBytes.inputStream()).use { zip ->
+            while (true) {
+                val entry = zip.nextEntry ?: break
+                entries[entry.name] = zip.readBytes()
+                zip.closeEntry()
+            }
+        }
+        val manifest = JSONObject(String(entries.getValue("manifest.json"), Charsets.UTF_8))
+        assertEquals("powercal-clear-default", manifest.getString("id"))
+        manifest.put("id", id).put("name", "Imported Clear Clone")
+        entries["manifest.json"] = manifest.toString().toByteArray(Charsets.UTF_8)
+        val cloneBytes = archive(*entries.map { it.key to it.value }.toTypedArray())
+        val cloneFile = File.createTempFile("powercal-clear-parity-", ".pcskin", context.cacheDir)
+        try {
+            cloneFile.writeBytes(cloneBytes)
+            manager.select("powercal-clear-default")
+            val official = PowerCalSkinRegistry.active
+            val officialWeb = requireNotNull(official.web)
+            assertTrue(officialWeb.fullCanvas)
+            val imported = manager.install(Uri.fromFile(cloneFile))
+            assertEquals(id, imported.id)
+            assertFalse(imported.builtIn)
+            // Installation is a distribution action, never a skin activation.
+            assertEquals("powercal-clear-default", manager.currentId())
+            manager.select(id)
+            val thirdParty = PowerCalSkinRegistry.active
+            val thirdPartyWeb = requireNotNull(thirdParty.web)
+
+            assertEquals(officialWeb.entrypoint, thirdPartyWeb.entrypoint)
+            assertEquals(officialWeb.capabilities, thirdPartyWeb.capabilities)
+            assertEquals(officialWeb.fullCanvas, thirdPartyWeb.fullCanvas)
+            assertEquals(WebSkinCapabilityPolicy.mayRead(officialWeb),
+                WebSkinCapabilityPolicy.mayRead(thirdPartyWeb))
+            assertEquals(WebSkinCapabilityPolicy.mayAct(officialWeb),
+                WebSkinCapabilityPolicy.mayAct(thirdPartyWeb))
+            assertEquals(officialWeb.files.keys, thirdPartyWeb.files.keys)
+            officialWeb.files.forEach { (path, content) ->
+                assertArrayEquals("Divergent factory/third-party runtime asset: $path",
+                    content, thirdPartyWeb.files.getValue(path))
+            }
+            assertEquals(official.runtime, thirdParty.runtime)
+            assertEquals(official.visual, thirdParty.visual)
+            assertEquals(official.lightBitmaps.keys, thirdParty.lightBitmaps.keys)
+            assertEquals(official.darkBitmaps.keys, thirdParty.darkBitmaps.keys)
+            assertEquals(id, PowerCalSkinRegistry.active.key)
+
+            manager.restoreSelection()
+            assertEquals(id, PowerCalSkinRegistry.active.key)
+            val resumed = requireNotNull(PowerCalSkinRegistry.active.web)
+            assertEquals(officialWeb.capabilities, resumed.capabilities)
+            assertEquals(officialWeb.files.keys, resumed.files.keys)
+            manager.select("powercal-clear-default")
+            assertEquals("powercal-clear-default", PowerCalSkinRegistry.active.key)
+            assertEquals(id, imported.id)
+        } finally {
+            manager.select("powercal-default")
+            runCatching { manager.delete(id) }
+            cloneFile.delete()
+        }
+    }
+
+    @Test fun webBridgeCapabilitiesDependOnDeclaredPermissionsNotSkinIdentity() {
+        val html = mapOf("web/index.html" to "<main/>".toByteArray())
+        val noPermissions = WebSkinBundle("web/index.html", html, emptySet(), true)
+        val readOnly = WebSkinBundle("web/index.html", html, setOf("host.read"), true)
+        val actionOnly = WebSkinBundle("web/index.html", html, setOf("host.action"), true)
+        assertFalse(WebSkinCapabilityPolicy.mayRead(noPermissions))
+        assertFalse(WebSkinCapabilityPolicy.mayAct(noPermissions))
+        assertTrue(WebSkinCapabilityPolicy.mayRead(readOnly))
+        assertFalse(WebSkinCapabilityPolicy.mayAct(readOnly))
+        assertFalse(WebSkinCapabilityPolicy.mayRead(actionOnly))
+        assertTrue(WebSkinCapabilityPolicy.mayAct(actionOnly))
     }
 
     @Test fun installChooseRestartAndDeleteDoNotModifyCalendarDatabase() {

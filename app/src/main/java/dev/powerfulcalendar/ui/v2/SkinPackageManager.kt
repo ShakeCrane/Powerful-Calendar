@@ -31,9 +31,11 @@ class SkinPackageManager(private val context: Context) {
     private val clearAssetName = "powercal-clear-default.pcskin"
 
     /** Same checked-in bytes that Skin Studio offers at startup. */
-    private fun readBundledClear(): Verified {
+    private fun readBundledClear(loadImages: Boolean = true): Verified {
         val bytes = context.assets.open(clearAssetName).use { readBounded(it) }
-        return decode(bytes, false).also {
+        // The catalogue does metadata-only validation for every origin. Activation
+        // always performs the exact same full resource decode for both origins.
+        return decode(bytes, loadImages).also {
             require(it.pack.key == clearCandidate.id && it.pack.web?.fullCanvas == true) {
                 "Bundled Clear skin identity/canvas mismatch"
             }
@@ -41,18 +43,22 @@ class SkinPackageManager(private val context: Context) {
     }
 
     fun exportBundledClear(uri: Uri) {
-        val verified = readBundledClear()
+        val verified = readBundledClear(loadImages = false)
         require(verified.pack.web != null)
         context.contentResolver.openOutputStream(uri)?.use { destination ->
             context.assets.open(clearAssetName).use { input -> input.copyTo(destination) }
         } ?: error("无法写入目标文件")
     }
 
+    /** Origin is only a source/retention choice, never a privilege or runtime branch. */
+    private fun loadPackage(id: String): Verified =
+        if (id == clearCandidate.id) readBundledClear() else readInstalled(id)
+
     fun currentId(): String = prefs.getString("selected", original.id) ?: original.id
 
     fun installed(): List<InstalledSkin> = buildList {
         add(original)
-        if (runCatching { readBundledClear() }.isSuccess) add(clearCandidate)
+        if (runCatching { readBundledClear(loadImages = false) }.isSuccess) add(clearCandidate)
         folder.listFiles()?.filter { it.isFile && it.name.endsWith(".pcskin") }
             ?.sortedBy { it.name }?.forEach { file ->
                 runCatching { decode(readBounded(file.inputStream()), false) }
@@ -64,37 +70,25 @@ class SkinPackageManager(private val context: Context) {
         val id = currentId()
         if (id == original.id) {
             PowerCalSkinRegistry.reset()
-        } else if (id == clearCandidate.id) {
-            runCatching { readBundledClear() }.onSuccess {
-                PowerCalSkinRegistry.activate(it.pack)
-            }.onFailure {
-                prefs.edit().putString("selected", original.id).apply()
-                PowerCalSkinRegistry.reset()
-            }
-        } else {
-            runCatching { readInstalled(id) }.onSuccess {
-                PowerCalSkinRegistry.activate(it.pack)
-            }.onFailure {
-                prefs.edit().putString("selected", original.id).apply()
-                PowerCalSkinRegistry.reset()
-            }
+            return
+        }
+        runCatching { loadPackage(id) }.onSuccess {
+            PowerCalSkinRegistry.activate(it.pack)
+        }.onFailure {
+            prefs.edit().putString("selected", original.id).apply()
+            PowerCalSkinRegistry.reset()
         }
     }
 
     fun select(id: String) {
-        if (id == clearCandidate.id) {
-            // Explicit opt-in only during bridge migration. Never auto-select.
-            val verified = readBundledClear()
-            PowerCalSkinRegistry.activate(verified.pack)
-            prefs.edit().putString("selected", id).apply()
-            return
-        }
         if (id == original.id) {
             prefs.edit().putString("selected", id).apply()
             PowerCalSkinRegistry.reset()
             return
         }
-        val verified = readInstalled(id)
+        // A factory-installed skin and a user-imported skin have precisely one
+        // activation, WebView and Host Bridge path; neither gets privileged actions.
+        val verified = loadPackage(id)
         PowerCalSkinRegistry.activate(verified.pack)
         prefs.edit().putString("selected", id).apply()
     }
@@ -143,7 +137,9 @@ class SkinPackageManager(private val context: Context) {
     internal data class Verified(val name: String, val pack: PowerCalSkinPack)
 
     private fun readInstalled(id: String): Verified {
-        require(ID.matches(id) && id != original.id) { "皮肤 ID 无效" }
+        require(ID.matches(id) && id != original.id && id != clearCandidate.id) {
+            "皮肤 ID 无效或已保留"
+        }
         val file = File(folder, id + ".pcskin")
         require(file.isFile) { "未找到皮肤文件" }
         return decode(readBounded(file.inputStream()), true).also {

@@ -30,6 +30,12 @@ import androidx.compose.ui.viewinterop.AndroidView
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
 
+/** Decisions are exclusively bundle-capability based, never tied to factory identity. */
+internal object WebSkinCapabilityPolicy {
+    fun mayRead(bundle: WebSkinBundle): Boolean = "host.read" in bundle.capabilities
+    fun mayAct(bundle: WebSkinBundle): Boolean = "host.action" in bundle.capabilities
+}
+
 /** Versioned, deliberately tiny capability bridge. It never exposes Context or PowerStore. */
 internal object WebSkinBridgeRuntime {
     const val VERSION = 1
@@ -170,7 +176,7 @@ private fun SecureWebSkin(bundle: WebSkinBundle, modifier: Modifier, onFailure: 
                             view.post {
                                 if (!live.get() || session.port !== port ||
                                     PowerCalSkinRegistry.active.web !== bundle ||
-                                    !bundle.capabilities.contains("host.action")) return@post
+                                    !WebSkinCapabilityPolicy.mayAct(bundle)) return@post
                                 decodeBridgeAction(message.data.orEmpty())
                                     ?.let(WebSkinBridgeRuntime.onAction)
                                 runCatching { feed.publish(exposedState(bundle)) }
@@ -217,7 +223,7 @@ private fun SecureWebSkin(bundle: WebSkinBundle, modifier: Modifier, onFailure: 
 }
 
 private fun exposedState(bundle: WebSkinBundle): JSONObject =
-    if ("host.read" in bundle.capabilities) WebSkinBridgeRuntime.state()
+    if (WebSkinCapabilityPolicy.mayRead(bundle)) WebSkinBridgeRuntime.state()
     else JSONObject().put("bridgeVersion", WebSkinBridgeRuntime.VERSION)
 
 /** Disconnected WebViews/old page channels cannot invoke the current host. */
