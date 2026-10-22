@@ -28,7 +28,8 @@ import java.util.UUID
  */
 class PowerStore(
     context: Context,
-    databaseName: String = DATABASE_NAME
+    databaseName: String = DATABASE_NAME,
+    private val processIdentity: String = PROCESS_TOKEN
 ) : SQLiteOpenHelper(context.applicationContext, databaseName, null, VERSION) {
     private val appContext = context.applicationContext
 
@@ -37,7 +38,7 @@ class PowerStore(
      * It must be process-wide: a receiver or boot handler opening its own [PowerStore] must not
      * mistake the running UI's AI batch for an orphan and unlock the deck behind its back.
      */
-    private val processToken: String get() = PROCESS_TOKEN
+    private val processToken: String get() = processIdentity
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
@@ -291,17 +292,24 @@ class PowerStore(
     data class HumanEditLease(val token: String, val eventSeq: Long?, val openedAtMillis: Long)
 
     @Synchronized
-    fun beginHumanEdit(eventSeq: Long? = null): HumanEditLease = tx { db ->
+    fun beginHumanEdit(eventSeq: Long? = null, authenticatedToken: String? = null): HumanEditLease = tx { db ->
         check(!isLocked(db)) { "AI mutation is active; editing is temporarily read-only" }
         if (eventSeq != null) requireNotNull(readObject(db, eventSeq)) { "Event no longer exists" }
         val existing = db.rawQuery(
-            "SELECT token,event_seq,opened_ms FROM human_editor WHERE id=1", null
+            "SELECT token,event_seq,opened_ms,owner_token FROM human_editor WHERE id=1", null
         ).use { cursor ->
-            if (!cursor.moveToFirst()) null else HumanEditLease(
+            if (!cursor.moveToFirst()) null else Pair(HumanEditLease(
                 cursor.getString(0), if (cursor.isNull(1)) null else cursor.getLong(1), cursor.getLong(2)
-            )
+            ), cursor.getString(3))
         }
-        if (existing != null) return@tx existing
+        if (existing != null) {
+            val (lease, owner) = existing
+            check(authenticatedToken != null && authenticatedToken == lease.token &&
+                owner == processToken && lease.eventSeq == eventSeq) {
+                "A human editor already owns the calendar writer lease"
+            }
+            return@tx lease
+        }
         val now = System.currentTimeMillis()
         val lease = HumanEditLease(UUID.randomUUID().toString(), eventSeq, now)
         db.insertOrThrow("human_editor", null, ContentValues().apply {
@@ -314,14 +322,14 @@ class PowerStore(
 
     @Synchronized
     fun touchHumanEdit(token: String): Boolean = tx { db ->
-        db.compileStatement("UPDATE human_editor SET touched_ms=? WHERE id=1 AND token=?").apply {
-            bindLong(1, System.currentTimeMillis()); bindString(2, token)
+        db.compileStatement("UPDATE human_editor SET touched_ms=? WHERE id=1 AND token=? AND owner_token=?").apply {
+            bindLong(1, System.currentTimeMillis()); bindString(2, token); bindString(3, processToken)
         }.executeUpdateDelete() == 1
     }
 
     @Synchronized
     fun endHumanEdit(token: String): Boolean = tx { db ->
-        db.delete("human_editor", "id=1 AND token=?", arrayOf(token)) == 1
+        db.delete("human_editor", "id=1 AND token=? AND owner_token=?", arrayOf(token, processToken)) == 1
     }
 
     @Synchronized
@@ -334,9 +342,9 @@ class PowerStore(
     fun recoverAbandonedHumanEdit(staleAfterMillis: Long = 5 * 60_000L): Boolean = tx { db ->
         require(staleAfterMillis >= 60_000L)
         db.compileStatement(
-            "DELETE FROM human_editor WHERE id=1 AND touched_ms<?"
+            "DELETE FROM human_editor WHERE id=1 AND owner_token<>? AND touched_ms<?"
         ).apply {
-            bindLong(1, System.currentTimeMillis() - staleAfterMillis)
+            bindString(1, processToken); bindLong(2, System.currentTimeMillis() - staleAfterMillis)
         }.executeUpdateDelete() == 1
     }
 
@@ -346,7 +354,10 @@ class PowerStore(
 
     private fun ownsHumanEditor(db: SQLiteDatabase, token: String?): Boolean {
         if (token == null) return false
-        return db.rawQuery("SELECT 1 FROM human_editor WHERE id=1 AND token=?", arrayOf(token))
+        return db.rawQuery(
+            "SELECT 1 FROM human_editor WHERE id=1 AND token=? AND owner_token=?",
+            arrayOf(token, processToken)
+        )
             .use { it.moveToFirst() }
     }
 
@@ -1163,12 +1174,17 @@ class PowerStore(
         original: DraftForm,
         current: DraftForm,
         editorToken: String
-    ): DraftCard? {
-        if (original == current) return null
-        return tx { db ->
+    ): DraftCard? = tx { db ->
             check(!isLocked(db) && ownsHumanEditor(db, editorToken)) { "Editor lease is not writable" }
             val formal = readObject(db, eventSeq) ?: error("Event no longer exists")
             check(formal.revision == expectedRevision) { "Event changed while editing" }
+            if (original == current) {
+                db.execSQL(
+                    "UPDATE drafts SET status='DISCARDED',updated_ms=? WHERE event_seq=? AND status IN ('PENDING','CONFLICT','INVALID')",
+                    arrayOf(System.currentTimeMillis(), eventSeq)
+                )
+                return@tx null
+            }
             val active = db.rawQuery(
                 """SELECT draft_id FROM drafts WHERE event_seq=?
                    AND status IN ('PENDING','CONFLICT','INVALID') LIMIT 1""",
@@ -1195,7 +1211,6 @@ class PowerStore(
             })
             requireNotNull(readDraft(db, id))
         }
-    }
 
     private fun sameFormalContent(a: TemporalRecord, b: TemporalRecord): Boolean =
         a.copy(revision = 0, createdAtMillis = 0, updatedAtMillis = 0) ==

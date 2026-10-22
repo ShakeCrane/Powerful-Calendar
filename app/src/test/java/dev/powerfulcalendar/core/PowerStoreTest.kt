@@ -87,12 +87,40 @@ class PowerStoreTest {
             assertEquals(checkpoint!!.draftId, session.checkpoint()!!.draftId)
 
             session.discardEditingChanges()
+            assertNull(session.checkpoint())
+            assertEquals(0, store.pendingDraftsFor(record.eventSeq).size)
             val outcome = session.save()
             assertTrue(outcome is PowerStore.DirectEditOutcome.Saved && !outcome.changed)
             assertEquals(record.revision, store.get(record.eventSeq)!!.revision)
             assertEquals(0, store.pendingDraftsFor(record.eventSeq).size)
         } finally {
             session.close()
+        }
+    }
+
+    @Test
+    fun humanLeaseNeverLeaksAcrossCallersOrProcessesAndOnlyForeignStaleLeaseRecovers() {
+        val database = "lease-" + UUID.randomUUID() + ".db"
+        val owner = PowerStore(context, database, "process-owner")
+        val intruder = PowerStore(context, database, "process-intruder")
+        try {
+            val lease = owner.beginHumanEdit()
+            assertTrue(runCatching { owner.beginHumanEdit() }.isFailure)
+            assertEquals(lease, owner.beginHumanEdit(authenticatedToken = lease.token))
+            assertTrue(runCatching { intruder.beginHumanEdit() }.isFailure)
+            assertFalse(intruder.touchHumanEdit(lease.token))
+            assertFalse(intruder.endHumanEdit(lease.token))
+            assertFalse(intruder.recoverAbandonedHumanEdit(60_000L))
+            assertTrue(owner.hasHumanEditor())
+
+            owner.writableDatabase.execSQL(
+                "UPDATE human_editor SET touched_ms=? WHERE id=1",
+                arrayOf(System.currentTimeMillis() - 120_000L)
+            )
+            assertTrue(intruder.recoverAbandonedHumanEdit(60_000L))
+            assertFalse(owner.hasHumanEditor())
+        } finally {
+            owner.close(); intruder.close(); context.deleteDatabase(database)
         }
     }
 

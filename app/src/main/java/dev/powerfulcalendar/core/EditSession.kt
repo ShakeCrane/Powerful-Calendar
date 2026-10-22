@@ -18,6 +18,7 @@ class EditSession private constructor(
         private set
 
     val meaningfulDiff: Boolean get() = form != baseline
+    val baselineForm: DraftForm get() = baseline
 
     fun edit(next: DraftForm) {
         form = next
@@ -34,7 +35,7 @@ class EditSession private constructor(
 
     /** One durable checkpoint for an explicit exit/switch/ON_STOP boundary. */
     fun checkpoint(): DraftCard? = try {
-        if (!meaningfulDiff) null else store.checkpointFormalEdit(
+        store.checkpointFormalEdit(
             eventSeq, expectedRevision, baseline, form, lease.token
         )
     } catch (error: Exception) {
