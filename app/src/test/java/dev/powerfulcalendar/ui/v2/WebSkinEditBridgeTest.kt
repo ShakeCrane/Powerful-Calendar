@@ -73,6 +73,39 @@ class WebSkinEditBridgeTest {
         assertNull(WebEditWire.decode("x".repeat(8193)))
     }
 
+    @Test fun semanticFieldsPreserveProtectedMetadataAndRejectOutOfRangeValues() {
+        val original=DraftForm(kind=TemporalKind.ACTIVITY,title="Original",
+            source="imported-ics",zoneId="Asia/Shanghai")
+        val reminded=WebEditWire.patch(original,"reminderMinutes","15")
+        assertEquals(15,reminded.reminderMinutes)
+        val timed=WebEditWire.patch(reminded,"reminderTiming","DAY_START")
+        assertEquals("DAY_START",timed.reminderTiming.name)
+        val daily=WebEditWire.patch(timed,"recurrenceFreq","DAILY")
+        val interval=WebEditWire.patch(daily,"recurrenceInterval","2")
+        val from=WebEditWire.patch(interval,"recurrenceFrom","2026-10-22")
+        assertEquals("DAILY",from.recurrence.freq.name)
+        assertEquals(2,from.recurrence.interval)
+        assertEquals("2026-10-22",from.recurrence.activeFromDate)
+        assertEquals("imported-ics",from.source)
+        assertEquals("Asia/Shanghai",from.zoneId)
+        assertThrows(IllegalArgumentException::class.java) {
+            WebEditWire.patch(original,"reminderMinutes","10081")
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            WebEditWire.patch(original,"recurrenceInterval","0")
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            WebEditWire.patch(original,"enabled","yes")
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            WebEditWire.patch(original,"source","forged")
+        }
+        assertNull(WebEditWire.decode(wire("deck.patch",
+            ""","draftId":42,"draftVersion":1,"field":"zoneId","value":"Etc/UTC"""")))
+        assertNotNull(WebEditWire.decode(wire("deck.patch",
+            ""","draftId":42,"draftVersion":1,"field":"recurrenceFreq","value":"DAILY"""")))
+    }
+
     @Test fun officialEditorSavesExactlyOnceAndKeepsLeasePrivate()= runBlocking {
         val card=store.newDraft(DraftForm(kind=TemporalKind.MEMO,title="original"))
         assertTrue(store.commit(card.draftId) is PowerStore.CommitOutcome.Committed)

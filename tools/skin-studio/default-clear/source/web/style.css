@@ -106,3 +106,52 @@ button:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outl
 #aiPage .page-head{flex-shrink:0}
 #aiPage .chat-list{flex:1;min-height:0;max-height:none;overflow-y:auto}
 #aiPage #chatForm{flex-shrink:0}
+
+/* Clear's host-driven editor and draft deck. Normal product UI remains skinnable. */
+body.editing-open{overflow:hidden}
+#skinSheet[hidden]{display:none}
+#skinSheet{position:fixed;inset:0;z-index:90;display:flex;align-items:flex-end;
+ justify-content:center}
+.sheet-shade{position:absolute;inset:0;background:var(--scrim,rgba(0,0,0,.42))}
+.sheet-panel{position:relative;width:min(100%,600px);max-height:calc(100dvh - 30px);
+ min-height:55vh;display:flex;flex-direction:column;overflow:hidden;
+ background:var(--bg-elevated);border-radius:26px 26px 0 0;
+ box-shadow:0 -12px 40px rgba(0,0,0,.18);color:var(--label)}
+.sheet-head{display:flex;align-items:center;justify-content:space-between;
+ gap:14px;padding:18px 16px 10px;border-bottom:1px solid var(--sep)}
+.sheet-head>div{display:flex;flex-direction:column;align-items:center;gap:3px;flex:1}
+.sheet-head strong{font-size:17px;font-weight:680}
+.sheet-head small{font-size:12px;color:var(--label-3)}
+.sheet-head button{border:0;border-radius:16px;min-height:40px;
+ padding:0 14px;background:var(--fill-1);font-weight:660}
+#sheetSave{background:var(--accent-fill);color:var(--on-accent)}
+#sheetStatus{font-size:12px;min-height:17px;padding:3px 18px;color:var(--label-2)}
+.sheet-fields{display:flex;flex-direction:column;overflow-y:auto;gap:13px;
+ flex:1;padding:7px 18px 25px;overscroll-behavior:contain}
+.sheet-row{display:flex;flex-direction:column;gap:6px}
+.sheet-label{font-size:13px;color:var(--label-2);font-weight:580}
+.sheet-row input,.sheet-row textarea,.sheet-row select{width:100%;max-width:100%;
+ padding:12px 13px;min-height:44px;border:1px solid var(--sep);
+ outline-offset:2px;border-radius:14px;color:var(--label);
+ background:var(--fill-1);font-size:15px}
+.sheet-row textarea{resize:vertical;min-height:76px}
+.sheet-row input:focus-visible,.sheet-row select:focus-visible,
+.sheet-row textarea:focus-visible{outline:2px solid var(--accent)}
+.sheet-actions{flex-shrink:0;display:flex;align-items:center;justify-content:center;
+ flex-wrap:wrap;gap:7px;padding:8px 13px max(18px,env(safe-area-inset-bottom));
+ border-top:1px solid var(--sep);background:var(--bg-elevated)}
+.sheet-actions>button{border:0;border-radius:24px;padding:10px 15px;
+ background:var(--fill-1);font-size:13px;min-height:42px}
+.sheet-actions .sheet-danger{color:var(--danger)}
+.sheet-actions .sheet-danger.confirming{background:var(--danger);color:#fff}
+.sheet-note,.sheet-warning{font-size:12px;color:var(--label-3);padding:4px 5px;
+ margin:0;line-height:1.5;width:100%}
+.sheet-warning{color:var(--danger)}
+.sheet-cards{display:flex;gap:7px;overflow-x:auto;padding:4px 0 9px;
+ border-bottom:1px solid var(--sep);min-height:54px}
+.sheet-card{max-width:155px;min-width:80px;white-space:nowrap;text-overflow:ellipsis;
+ overflow:hidden;border:1px solid var(--sep);border-radius:17px;
+ background:var(--fill-1);padding:9px 13px;font-size:13px}
+.sheet-card.selected{border-color:var(--accent);background:var(--accent-soft);
+ color:var(--accent);font-weight:650}
+@media (min-width:600px){.sheet-panel{border-radius:26px 26px 0 0}}

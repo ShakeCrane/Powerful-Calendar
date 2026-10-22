@@ -5,6 +5,11 @@ import dev.powerfulcalendar.core.EditSession
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.TemporalKind
+import dev.powerfulcalendar.core.RecurrenceFreq
+import dev.powerfulcalendar.core.Recurrence
+import dev.powerfulcalendar.core.ReminderMethod
+import dev.powerfulcalendar.core.ReminderTiming
+import java.time.LocalDate
 import java.time.ZoneId
 import org.json.JSONObject
 import kotlinx.coroutines.Dispatchers
@@ -12,6 +17,9 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.UUID
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 /**
  * Host-owned, capability-neutral editing contract.
@@ -48,7 +56,11 @@ internal object WebEditWire {
     private val request = Regex("[A-Za-z0-9_-]{8,64}")
     private val session = Regex("[a-f0-9-]{36}")
     private val fields = mapOf("title" to 240, "startText" to 40,
-        "endText" to 40, "notes" to 2000, "location" to 240)
+        "endText" to 40, "notes" to 2000, "location" to 240,
+        "reminderMinutes" to 6, "reminderMethod" to 20, "reminderTiming" to 20,
+        "enabled" to 5, "trackingEnabled" to 5,
+        "recurrenceFreq" to 20, "recurrenceInterval" to 3,
+        "recurrenceFrom" to 10, "recurrenceUntil" to 10)
     fun decode(raw: String): WebEditCommand? {
         if (raw.length !in 1..MAX_FRAME) return null
         val json = runCatching { JSONObject(raw) }.getOrNull() ?: return null
@@ -123,13 +135,53 @@ internal object WebEditWire {
         }
     }
 
+    /** A semantic patch may change a permitted field only, never replace hidden metadata. */
     fun patch(form: DraftForm, field: String, value: String): DraftForm = when(field) {
         "title" -> form.copy(title=value)
         "startText" -> form.copy(startText=value)
         "endText" -> form.copy(endText=value)
         "notes" -> form.copy(notes=value)
         "location" -> form.copy(location=value)
-        else -> error("Field is not writable")
+        "enabled" -> form.copy(enabled=requireBoolean(value))
+        "trackingEnabled" -> form.copy(
+            trackingEnabled=if(form.kind==TemporalKind.MEMO) true else requireBoolean(value))
+        "reminderMinutes" -> {
+            val minutes=value.toIntOrNull()?.takeIf { it in -1..10080 }
+                ?: throw IllegalArgumentException("Invalid reminder offset")
+            form.copy(reminderMinutes=minutes)
+        }
+        "reminderMethod" -> form.copy(reminderMethod=
+            ReminderMethod.entries.firstOrNull { it.name==value }
+                ?: throw IllegalArgumentException("Invalid reminder method"))
+        "reminderTiming" -> form.copy(reminderTiming=
+            ReminderTiming.entries.firstOrNull { it.name==value }
+                ?: throw IllegalArgumentException("Invalid reminder timing"))
+        "recurrenceFreq" -> {
+            val freq=RecurrenceFreq.entries.firstOrNull { it.name==value }
+                ?: throw IllegalArgumentException("Invalid recurrence frequency")
+            form.copy(recurrence=if(freq==RecurrenceFreq.NONE) Recurrence.NONE
+                else form.recurrence.copy(freq=freq))
+        }
+        "recurrenceInterval" -> {
+            val interval=value.toIntOrNull()?.takeIf { it in 1..365 }
+                ?: throw IllegalArgumentException("Invalid recurrence interval")
+            form.copy(recurrence=form.recurrence.copy(interval=interval))
+        }
+        "recurrenceFrom" -> form.copy(recurrence=form.recurrence.copy(
+            activeFromDate=readDate(value)))
+        "recurrenceUntil" -> form.copy(recurrence=form.recurrence.copy(
+            activeUntilDate=readDate(value)))
+        else -> throw IllegalArgumentException("Field is not writable")
+    }
+
+    private fun requireBoolean(value:String):Boolean = when(value) {
+        "true" -> true
+        "false" -> false
+        else -> throw IllegalArgumentException("Expected boolean")
+    }
+
+    private fun readDate(value:String): String? = value.ifBlank { return null }.also {
+        require(LocalDate.parse(it).toString()==it) { "Expected ISO local date" }
     }
 
     fun form(form: DraftForm): JSONObject = JSONObject()
@@ -142,6 +194,10 @@ internal object WebEditWire {
         .put("reminderTiming",form.reminderTiming.name)
         .put("enabled",form.enabled)
         .put("trackingEnabled",form.trackingEnabled)
+        .put("recurrenceFreq",form.recurrence.freq.name)
+        .put("recurrenceInterval",form.recurrence.interval)
+        .put("recurrenceFrom",form.recurrence.activeFromDate)
+        .put("recurrenceUntil",form.recurrence.activeUntilDate)
 }
 
 internal class WebSkinEditService(
@@ -153,6 +209,8 @@ internal class WebSkinEditService(
     private var session: EditSession? = null
     private var sessionId: String? = null
     private var deckOpen = false
+    // Compose-observable lifetime signal for reliable Android Back interception.
+    private var hasActiveUiSession by mutableStateOf(false)
     // In-process replay protection; capacity bounded. One instance per host, NOT per WebView.
     private val completed = LinkedHashMap<String, Pair<WebEditCommand, JSONObject>>()
     @Volatile private var latest: JSONObject? = null
@@ -326,7 +384,10 @@ internal class WebSkinEditService(
                     else result(cmd.requestId,"failed",deck.state.error)
             }
         } catch(e:kotlinx.coroutines.CancellationException) {throw e}
+          catch(e:java.time.DateTimeException) {result(cmd.requestId,"invalid","Invalid date")}
+          catch(e:IllegalArgumentException) {result(cmd.requestId,"invalid","Invalid field value")}
           catch(e:Exception){ result(cmd.requestId,"failed","Host operation failed; retry or recover") }
+        hasActiveUiSession=session!=null || deckOpen
         latest=reply
         completed[cmd.requestId]=cmd to JSONObject(reply.toString())
         if(completed.size>64)completed.remove(completed.keys.first())
@@ -360,8 +421,9 @@ internal class WebSkinEditService(
             session=null;sessionId=null
         }
         deckOpen=false
+        hasActiveUiSession=false
         true
     }
 
-    fun hasLiveEditor(): Boolean = session!=null || deckOpen
+    fun hasLiveEditor(): Boolean = hasActiveUiSession
 }

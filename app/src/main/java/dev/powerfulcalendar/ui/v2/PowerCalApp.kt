@@ -942,6 +942,17 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
         WebSkinBridgeRuntime.owner = webBridgeOwner
         WebSkinBridgeRuntime.onEdit = { command ->
             val response = webEditing.execute(command)
+            val status = response.optString("status")
+            if(status in setOf("created","saved","committed","discarded","restored")) {
+                // A completed host transaction must refresh the app-wide projections;
+                // an unsuccessful UI refresh must not turn success into a retryable write.
+                runCatching { reload() }
+                    .onFailure { message = "操作已完成，但界面同步失败；请刷新查看" }
+            }
+            if(status in setOf("saved","committed","restored")) {
+                runCatching { reconcile() }
+                    .onFailure { message = "操作已保存，提醒同步尚未完成" }
+            }
             // Web editor state lives in the host, not the WebView. Publish on
             // every completed command, including a conflict or failed save.
             WebSkinBridgeRuntime.stateRevision++
@@ -1128,8 +1139,20 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
     // The hardware Back key is a secondary recovery route for an unusable Web skin.
     androidx.activity.compose.BackHandler(
         enabled = fullCanvasWeb && page == Page.TIMELINE.name &&
-            !deckOpen && editSession == null
+            !deckOpen && editSession == null && !webEditing.hasLiveEditor()
     ) { page = Page.TOOLS.name }
+
+    // An active Web editor consumes Back before the native page navigation.
+    // It performs the same durable checkpoint as a skin change, without
+    // silently discarding any dirty form content.
+    androidx.activity.compose.BackHandler(
+        enabled = fullCanvasWeb && webEditing.hasLiveEditor()
+    ) {
+        scope.launch {
+            if (webEditing.prepareSkinChange()) WebSkinBridgeRuntime.stateRevision++
+            else message = "编辑内容仍未安全保存，请检查后再退出"
+        }
+    }
 
     SkinAppShell(
         forceNative = tools,

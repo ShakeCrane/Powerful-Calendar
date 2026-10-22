@@ -474,6 +474,7 @@ function simulatedState(){
   const start=anchor-hours*1800000;
   return {bridgeVersion:1,page:mockPage,memoCount:2,aiLocked:scenario==="locked",
     reducedMotion:$("reduced").checked,pendingCount:3,
+    editing:mockEditing,
     memoEntries:[
       {eventSeq:31,revision:2,occurrenceKey:"single",title:"整理会议笔记",completed:mockMemoDone,startMillis:base},
       {eventSeq:44,revision:1,occurrenceKey:"single",title:"提交报告",completed:false,startMillis:base+7200000}
@@ -501,11 +502,78 @@ function logAction(text){
   p.textContent=text;root.prepend(p);
   while(root.childElementCount>5)root.lastElementChild.remove();
 }
+const mockForm=kind=>({kind,title:"",startText:"2026-10-22 09:00",
+  endText:"2026-10-22 10:00",notes:"",location:"",
+  enabled:true,trackingEnabled:kind==="MEMO",reminderMinutes:-1,
+  reminderMethod:"MESSAGE",reminderTiming:"OFFSET",source:"local",
+  zoneId:"Asia/Shanghai",recurrenceFreq:"NONE",recurrenceInterval:1,
+  recurrenceFrom:null,recurrenceUntil:null});
+let mockEditing={editor:{open:false},deck:{open:false},lastResult:null};
+function onSkinCommand(p){
+  if(!p || !/^[A-Za-z0-9_-]{8,64}$/.test(p.requestId||""))return;
+  const result={requestId:p.requestId,status:"invalid"};
+  const editor=mockEditing.editor,deck=mockEditing.deck;
+  switch(p.name){
+    case "editor.open":
+      mockEditing.editor={open:true,sessionId:"00000000-0000-0000-0000-000000000001",
+        eventSeq:p.eventSeq,dirty:false,form:{...mockForm("ACTIVITY"),title:"测试活动"}};
+      result.status="opened";break;
+    case "editor.patch":
+      if(editor.open&&editor.sessionId===p.sessionId){
+        editor.form[p.field]=p.value;editor.dirty=true;result.status="edited";
+      }else result.status="stale";
+      break;
+    case "editor.save":
+      result.status=editor.open?"saved":"stale";break;
+    case "editor.close":
+      mockEditing.editor={open:false};result.status="closed";break;
+    case "deck.create":{
+      const id=7001;
+      const form=mockForm(p.kind);
+      mockEditing.deck={open:true,cards:[{draftId:id,title:form.title,kind:p.kind}],
+        currentId:id,version:0,dirty:false,aiLocked:false,form};
+      result.status="created";result.detail=String(id);break;
+    }
+    case "deck.open":
+      if(!deck.open){
+        mockEditing.deck={open:true,cards:[],currentId:null,version:0,
+          dirty:false,aiLocked:false,form:null};
+      }
+      result.status="opened";break;
+    case "deck.patch":
+      if(deck.open&&deck.currentId===p.draftId){
+        deck.form[p.field]=p.value;deck.dirty=true;
+        deck.cards[0].title=deck.form.title;result.status="edited";
+      }else result.status="stale";break;
+    case "deck.flush":
+      if(deck.open){deck.version++;deck.dirty=false;result.status="flushed"}
+      break;
+    case "deck.commit":
+      if(deck.open){mockEditing.deck={open:false};result.status="committed"}
+      break;
+    case "deck.discard":
+      if(deck.open){mockEditing.deck={open:false};result.status="discarded"}
+      break;
+    case "deck.close":
+      mockEditing.deck={open:false};result.status="closed";break;
+    case "deck.undo":
+      result.status="missing";break;
+    case "deck.select":
+      result.status="selected";break;
+  }
+  mockEditing.lastResult=result;
+  logAction("预览编辑命令 "+p.name+" → "+result.status);
+  try{previewPort?.postMessage(JSON.stringify({version:1,type:"result",payload:result}))}
+  catch(e){logAction("编辑回执失败 "+e.message)}
+  postState();
+}
 function onSkinAction(message){
   try{
     if(typeof message!=="string"||message.length>8192)return;
     const envelope=JSON.parse(message);
-    if(envelope.version!==1||envelope.type!=="action"||!envelope.payload)return;
+    if(envelope.version!==1||!envelope.payload)return;
+    if(envelope.type==="command"){onSkinCommand(envelope.payload);return}
+    if(envelope.type!=="action")return;
     const p=envelope.payload,name=p.name;
     if(!ACTIONS.some(([x])=>x===name)&&!["openEvent","toggleMemo","sendChat"].includes(name)){logAction("拒绝未知动作 "+String(name));return;}
     if(name==="panTimeline"){

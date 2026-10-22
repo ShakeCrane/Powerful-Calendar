@@ -36,11 +36,42 @@ const URL=process.env.STUDIO_URL||"http://127.0.0.1:8875";
       "Clear light/dark source palette must load into the iframe");
     console.log("Initial WYSIWYG preview",normal);
 
+    // The Web UI must work through the same typed command envelopes as Android,
+    // not by silently opening a native Compose editor.
+    await page.click("#interactMode");
+    await frame.click(".tEvent.ACTIVITY");
+    await frame.waitForFunction(()=>!document.querySelector("#skinSheet").hidden);
+    assert.equal(await frame.$eval("#sheetTitle",e=>e.textContent),"编辑事件");
+    await frame.$eval('#sheetFields [data-field="title"]',input=>{
+      input.value="浏览器协议编辑验证";
+      input.dispatchEvent(new Event("change",{bubbles:true}));
+    });
+    await frame.click("#sheetSave");
+    await frame.waitForFunction(()=>
+      document.querySelector("#sheetStatus").textContent.includes("事件已保存"));
+    await frame.click("#sheetClose");
+    await frame.waitForFunction(()=>document.querySelector("#skinSheet").hidden);
+    await frame.click('[data-action="createDraft"][data-kind="ACTIVITY"]');
+    await frame.waitForFunction(()=>!document.querySelector("#skinSheet").hidden &&
+      document.querySelector("#sheetTitle").textContent==="待处理草稿");
+    await frame.$eval('#sheetFields [data-field="title"]',input=>{
+      input.value="Web 草稿事务";
+      input.dispatchEvent(new Event("change",{bubbles:true}));
+    });
+    await frame.click('#sheetActions [data-do="flush"]');
+    await frame.waitForFunction(()=>
+      document.querySelector("#sheetStatus").textContent.includes("修改已暂存"));
+    await frame.click("#sheetSave");
+    await frame.waitForFunction(()=>document.querySelector("#skinSheet").hidden);
+    console.log("Clear Web editor and deck command round-trip PASS");
+    await page.click("#editMode");
+
     await page.select("#scenario","future");
     await page.waitForFunction(()=>{
       return document.querySelector("#bridgeLog").textContent.includes("预览") ||
         document.querySelector("#previewState").textContent.includes("连接成功");
     });
+    await frame.waitForFunction(()=>document.querySelectorAll(".optionRow").length===3);
     const future=await frame.evaluate(()=>document.querySelectorAll(".optionRow").length);
     assert.equal(future,3,"host-added parallel option must reuse the same row style");
 

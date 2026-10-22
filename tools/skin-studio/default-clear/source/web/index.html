@@ -17,4 +17,13 @@
 <section id="aiPage" class="page" hidden><div class="page-head"><h1>AI 助手</h1><button data-action="settings">配置</button></div><div id="chatMessages" class="chat-list" aria-live="polite"></div><form id="chatForm"><label for="chatInput">向 AI 发送消息</label><div class="composer"><textarea id="chatInput" maxlength="4000" rows="2" placeholder="描述你的日程需求…"></textarea><button id="chatSend" type="submit">发送</button></div></form></section>
 <section id="extraOptions" class="page" hidden><h1>可用选项</h1><div id="optionGroups"></div></section>
 <nav class="clear-tabbar glass" aria-label="页面导航"><button data-action="timeline" class="current">时间轴</button><button data-action="month">月历</button><button data-action="memo">Memo</button><button data-action="ai">AI</button><button data-action="settings">设置</button></nav>
-</main><script src="app.js"></script></body></html>
+<section id="skinSheet" role="dialog" aria-modal="true" aria-label="编辑" hidden>
+  <div id="sheetShade" class="sheet-shade"></div>
+  <div class="sheet-panel">
+    <header class="sheet-head"><button id="sheetClose" aria-label="保存并退出">‹</button><div><strong id="sheetTitle">编辑</strong><small id="sheetSubtitle"></small></div><button id="sheetSave">保存</button></header>
+    <div id="sheetStatus" role="status" aria-live="polite"></div>
+    <section id="sheetFields" class="sheet-fields"></section>
+    <footer id="sheetActions" class="sheet-actions"></footer>
+  </div>
+</section>
+</main><script src="app.js"></script><script src="edit.js"></script></body></html>

@@ -24,6 +24,7 @@ const dateText=(ms,zone,options)=>{
 const relativeTime=(ms,zone)=>dateText(ms,zone,{hour:"2-digit",minute:"2-digit",hour12:false});
 function onAction(button){
   const name=button.dataset.action;if(!name||button.disabled)return;
+  if(window.PowerCalEdit?.routeAction(button,state))return;
   if(name==="openEvent")send(name,{eventSeq:Number(button.dataset.eventSeq),
     expectedRevision:Number(button.dataset.revision)});
   else if(name==="createDraft")send(name,{kind:button.dataset.kind});
@@ -53,12 +54,19 @@ $("chatForm").addEventListener("submit",e=>{
 window.addEventListener("message",e=>{
   if(e.data!=="powercal-port"||!e.ports?.[0])return;
   if(port)try{port.close()}catch{}
-  port=e.ports[0];port.onmessage=event=>receive(event.data);
+  port=e.ports[0];
+  window.PowerCalEdit?.resetTransport();
+  port.onmessage=event=>receive(event.data);
 });
 function receive(raw){
   let parsed;
   try{parsed=typeof raw==="string"?JSON.parse(raw):raw}catch{return}
-  if(parsed?.version!==1||parsed?.type!=="state")return;
+  if(parsed?.version!==1)return;
+  if(parsed.type==="result"){
+    window.PowerCalEdit?.onResult(parsed.payload||{});
+    return;
+  }
+  if(parsed.type!=="state")return;
   state=parsed.payload||{};currentPage=String(state.page||"TIMELINE").toUpperCase();
   $("pendingCounter").textContent=Number(state.pendingCount)||"";
   $("memoCounter").textContent=Number(state.memoCount)||"";
@@ -81,6 +89,7 @@ function renderPage(){
   if(page==="MEMO")renderMemo();
   if(page==="AI")renderChat();
   renderOptions();
+  window.PowerCalEdit?.onState(state);
 }
 function renderTimeline(){
   const t=state.timeline;
@@ -199,5 +208,10 @@ function renderOptions(){
     }
   }
 }
-window.PowerCalSkin={receive};
+window.PowerCalSkin={receive,sendCommand:(name,requestId,extra={})=>{
+  if(!port)return false;
+  port.postMessage(JSON.stringify({version:1,type:"command",
+    payload:{name,requestId,...extra}}));
+  return true;
+}};
 })();
