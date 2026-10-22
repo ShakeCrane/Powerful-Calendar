@@ -1,0 +1,310 @@
+/* ============================================================
+   PowerCal Default Skin 01 — "Clear"
+   Apple-inspired Minimalism × Liquid Glass
+   Design-source stylesheet (tokens + materials + components).
+   Units: 1 CSS px == 1 dp at 1×.
+   ============================================================ */
+
+@font-face {
+  font-family: "PC Inter";
+  src: url("fonts/InterVariable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-display: block;
+}
+
+/* ---------- 1. Tokens — Light ---------- */
+:root, .light {
+  color-scheme: light;
+  /* Neutrals */
+  --bg-canvas: #FFFFFF;          /* timeline, month, memo, chat */
+  --bg-grouped: #F3F3F6;         /* settings, editor, sheets */
+  --bg-elevated: #FFFFFF;        /* grouped containers, cards */
+  --bg-sunken: #EDEDF1;          /* text fields on white, wells */
+  --label: #16171B;
+  --label-2: #6C6D74;            /* secondary */
+  --label-3: #A3A4AB;            /* tertiary / placeholders */
+  --label-4: #C9CACF;            /* quaternary / disabled glyphs */
+  --sep: rgba(22, 24, 35, 0.10);
+  --sep-strong: rgba(22, 24, 35, 0.16);
+  --fill-1: rgba(118, 118, 128, 0.12);   /* control fills */
+  --fill-2: rgba(118, 118, 128, 0.08);
+  --fill-3: rgba(118, 118, 128, 0.05);
+
+  /* Brand accent — "PowerCal Blue" */
+  --accent: #2A62E0;
+  --accent-press: #2252C2;
+  --accent-soft: rgba(42, 98, 224, 0.12);
+  --accent-fill: #2A62E0;        /* surfaces that carry white text */
+  --on-accent: #FFFFFF;
+
+  /* Signal — current time, today, destructive */
+  --now: #D93A2E;
+  --now-soft: rgba(217, 58, 46, 0.12);
+  --now-fill: #D93A2E;           /* now pill: white text >= 4.5:1 */
+  --danger: #CA2A20;
+  --danger-fill: #CA2A20;
+  --success: #1E9E62;
+  --warning: #C77A00;
+
+  /* Event kinds: base (bars, dots) · ink (text on tint) · tint (block fill) */
+  --alarm: #6E57E6;    --alarm-ink: #4B35BE;    --alarm-tint: rgba(110, 87, 230, 0.11);
+  --activity: #1F9E6E; --activity-ink: #0F6C49; --activity-tint: rgba(31, 158, 110, 0.12);
+  --deadline: #E8970C; --deadline-ink: #8F5600; --deadline-tint: rgba(232, 151, 12, 0.14);
+  --memo: #6B7A8F;     --memo-ink: #46546A;     --memo-tint: rgba(107, 122, 143, 0.12);
+
+  /* Liquid Glass — regular variant */
+  --glass-fill: rgba(252, 252, 254, 0.58);
+  --glass-fill-strong: rgba(252, 252, 254, 0.86); /* large surfaces: popovers, menus */
+  --glass-blur: 22px;
+  --glass-sat: 190%;
+  --glass-rim-hi: rgba(255, 255, 255, 0.95);
+  --glass-rim-lo: rgba(255, 255, 255, 0.35);
+  --glass-hairline: rgba(18, 20, 38, 0.07);
+  --glass-shadow: 0 10px 30px rgba(20, 24, 48, 0.10), 0 2px 6px rgba(20, 24, 48, 0.06);
+  --glass-select: rgba(118, 118, 128, 0.14);   /* selected item lens inside a bar */
+
+  /* Content shadows (used sparingly) */
+  --shadow-card: 0 1px 2px rgba(20, 24, 48, 0.05), 0 6px 20px rgba(20, 24, 48, 0.06);
+  --shadow-lift: 0 2px 6px rgba(20, 24, 48, 0.08), 0 18px 44px rgba(20, 24, 48, 0.16);
+  --scrim: rgba(12, 14, 24, 0.28);
+}
+
+/* ---------- 1b. Tokens — Dark ---------- */
+.dark {
+  color-scheme: dark;
+  --bg-canvas: #0C0C0E;
+  --bg-grouped: #0C0C0E;
+  --bg-elevated: #1B1B1F;
+  --bg-sunken: #242429;
+  --label: #F3F3F6;
+  --label-2: #9D9EA6;
+  --label-3: #64656C;
+  --label-4: #45464C;
+  --sep: rgba(255, 255, 255, 0.09);
+  --sep-strong: rgba(255, 255, 255, 0.15);
+  --fill-1: rgba(120, 120, 128, 0.30);
+  --fill-2: rgba(120, 120, 128, 0.20);
+  --fill-3: rgba(120, 120, 128, 0.12);
+
+  --accent: #5A8DFF;
+  --accent-press: #7AA3FF;
+  --accent-soft: rgba(90, 141, 255, 0.18);
+  --accent-fill: #356BEA;
+  --on-accent: #FFFFFF;
+
+  --now: #FF5C4F;
+  --now-soft: rgba(255, 92, 79, 0.18);
+  --now-fill: #D93A2E;
+  --danger: #FF5A4E;
+  --danger-fill: #DC3328;
+  --success: #34C27F;
+  --warning: #F0A630;
+
+  --alarm: #9683FF;    --alarm-ink: #C2B7FF;    --alarm-tint: rgba(150, 131, 255, 0.20);
+  --activity: #35C48D; --activity-ink: #8CE6C0; --activity-tint: rgba(53, 196, 141, 0.18);
+  --deadline: #F4AE35; --deadline-ink: #FFD48A; --deadline-tint: rgba(244, 174, 53, 0.19);
+  --memo: #8E9BB0;     --memo-ink: #C4CDDB;     --memo-tint: rgba(142, 155, 176, 0.18);
+
+  --glass-fill: rgba(44, 44, 50, 0.52);
+  --glass-fill-strong: rgba(40, 40, 46, 0.84);
+  --glass-rim-hi: rgba(255, 255, 255, 0.22);
+  --glass-rim-lo: rgba(255, 255, 255, 0.06);
+  --glass-hairline: rgba(0, 0, 0, 0.50);
+  --glass-shadow: 0 10px 34px rgba(0, 0, 0, 0.50), 0 2px 6px rgba(0, 0, 0, 0.30);
+  --glass-select: rgba(255, 255, 255, 0.12);
+
+  --shadow-card: 0 0 0 0.5px rgba(255,255,255,0.04);
+  --shadow-lift: 0 2px 8px rgba(0, 0, 0, 0.4), 0 22px 50px rgba(0, 0, 0, 0.6);
+  --scrim: rgba(0, 0, 0, 0.52);
+}
+
+/* ---------- 2. Base ---------- */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: #E9E9EE; }
+body {
+  font-family: "PC Inter", "Noto Sans SC", "Noto Sans CJK SC", system-ui, sans-serif;
+  font-feature-settings: "cv11", "ss03"; /* Inter: single-storey a off, open digits */
+  -webkit-font-smoothing: antialiased;
+  color: var(--label);
+}
+.tnum { font-variant-numeric: tabular-nums; font-feature-settings: "tnum", "cv11"; }
+.ic { width: 24px; height: 24px; flex: none; display: block; }
+.ic.s18 { width: 18px; height: 18px; } .ic.s20 { width: 20px; height: 20px; }
+.ic.s16 { width: 16px; height: 16px; } .ic.s14 { width: 14px; height: 14px; }
+.ic.s22 { width: 22px; height: 22px; } .ic.s28 { width: 28px; height: 28px; }
+
+/* ---------- 3. Type scale (sp) ---------- */
+.t-display { font-size: 34px; line-height: 40px; font-weight: 700; letter-spacing: -0.6px; }
+.t-title1  { font-size: 28px; line-height: 34px; font-weight: 700; letter-spacing: -0.4px; }
+.t-title2  { font-size: 22px; line-height: 28px; font-weight: 650; letter-spacing: -0.25px; }
+.t-title3  { font-size: 19px; line-height: 25px; font-weight: 600; letter-spacing: -0.15px; }
+.t-headline{ font-size: 16.5px; line-height: 22px; font-weight: 600; letter-spacing: -0.1px; }
+.t-body    { font-size: 16px; line-height: 24px; font-weight: 400; }
+.t-callout { font-size: 15px; line-height: 21px; font-weight: 400; }
+.t-sub     { font-size: 14px; line-height: 20px; font-weight: 400; }
+.t-foot    { font-size: 13px; line-height: 18px; font-weight: 400; }
+.t-cap     { font-size: 12px; line-height: 16px; font-weight: 500; }
+.t-cap2    { font-size: 11px; line-height: 13px; font-weight: 500; letter-spacing: 0.1px; }
+.c2 { color: var(--label-2); } .c3 { color: var(--label-3); } .ca { color: var(--accent); }
+.w5 { font-weight: 500; } .w6 { font-weight: 600; } .w7 { font-weight: 700; }
+
+/* ---------- 4. Device frame ---------- */
+.device {
+  position: relative; width: 412px; height: 915px; overflow: hidden;
+  background: var(--bg-canvas); color: var(--label);
+}
+.device.grouped { background: var(--bg-grouped); }
+.statusbar {
+  position: absolute; z-index: 60; top: 0; left: 0; right: 0; height: 36px;
+  display: flex; align-items: center; justify-content: space-between; padding: 0 22px 0 26px;
+  font-size: 14px; font-weight: 600; letter-spacing: 0.1px; color: var(--label); pointer-events: none;
+}
+.statusbar .sys { display: flex; gap: 6px; align-items: center; }
+.statusbar svg { width: 17px; height: 17px; }
+.gesture { position: absolute; z-index: 60; bottom: 8px; left: 50%; width: 108px; height: 4px; margin-left: -54px;
+  border-radius: 2px; background: var(--label); opacity: .82; }
+
+/* ---------- 5. Liquid Glass ----------
+   Regular variant: blur + luminosity lift + specular rim (top-left bright, bottom-right soft)
+   + 0.5px outer hairline + soft ambient shadow. Never used in the content layer. */
+.glass {
+  position: relative; isolation: isolate;
+  background: var(--glass-fill);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat)) brightness(1.03);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat)) brightness(1.03);
+  box-shadow: var(--glass-shadow), 0 0 0 0.5px var(--glass-hairline);
+}
+.glass::before { /* specular rim */
+  content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none; z-index: 2;
+  background: linear-gradient(150deg, var(--glass-rim-hi) 0%, var(--glass-rim-lo) 28%, transparent 50%, var(--glass-rim-lo) 78%, var(--glass-rim-hi) 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+}
+.glass::after { /* internal light — a faint lens bloom near the top edge */
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 1;
+  background: radial-gradient(120% 70% at 50% -12%, rgba(255,255,255,0.32), transparent 60%);
+  mix-blend-mode: soft-light;
+}
+.dark .glass::after { background: radial-gradient(120% 70% at 50% -12%, rgba(255,255,255,0.10), transparent 60%); mix-blend-mode: normal; }
+.glass > * { position: relative; z-index: 3; }
+.glass.strong { background: var(--glass-fill-strong); }
+.glass.tinted { background: color-mix(in srgb, var(--accent-fill) 92%, transparent); color: var(--on-accent);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--accent-fill) 16%, rgba(0,0,0,0.08)), 0 0 0 0.5px rgba(0,0,0,0.08); }
+.glass.tinted::before { background: linear-gradient(150deg, rgba(255,255,255,0.75), rgba(255,255,255,0.15) 30%, transparent 55%, rgba(255,255,255,0.2) 85%); }
+
+/* scroll-edge effect: content dissolves under the floating control layer */
+.edge-top, .edge-bottom { position: absolute; left: 0; right: 0; z-index: 30; pointer-events: none;
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+.edge-top { top: 0; height: var(--edge-h, 150px);
+  background: linear-gradient(to bottom, var(--bg-canvas) 0%, color-mix(in srgb, var(--bg-canvas) 82%, transparent) 45%, transparent 100%);
+  -webkit-mask: linear-gradient(to bottom, #000 55%, transparent); mask: linear-gradient(to bottom, #000 55%, transparent); }
+.edge-bottom { bottom: 0; height: var(--edge-h, 120px);
+  background: linear-gradient(to top, color-mix(in srgb, var(--bg-canvas) 70%, transparent), transparent);
+  -webkit-mask: linear-gradient(to top, #000 40%, transparent); mask: linear-gradient(to top, #000 40%, transparent); }
+.grouped .edge-top { background: linear-gradient(to bottom, var(--bg-grouped) 0%, color-mix(in srgb, var(--bg-grouped) 82%, transparent) 45%, transparent 100%); }
+.grouped .edge-bottom { background: linear-gradient(to top, color-mix(in srgb, var(--bg-grouped) 70%, transparent), transparent); }
+
+/* ---------- 6. Floating tab bar ---------- */
+.tabbar {
+  position: absolute; z-index: 50; left: 20px; right: 20px; bottom: 22px; height: 64px; border-radius: 32px;
+  display: grid; grid-template-columns: repeat(4, 1fr); align-items: center; padding: 4px;
+}
+.tab { height: 56px; border-radius: 28px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  color: var(--label); font-size: 10.5px; font-weight: 600; letter-spacing: 0.1px; }
+.tab .ic { width: 24px; height: 24px; }
+.tab.on { background: var(--glass-select); color: var(--accent); }
+
+/* ---------- 7. Toolbar buttons & groups ---------- */
+.tgroup { display: flex; align-items: center; height: 48px; border-radius: 24px; padding: 0 4px; }
+.tbtn { width: 44px; height: 44px; border-radius: 22px; display: grid; place-items: center; color: var(--label); position: relative; }
+.tbtn.solo { width: 48px; height: 48px; border-radius: 24px; }
+.tbtn.tinted, .tbtn.solo.tinted { color: var(--on-accent); }
+.badge { position: absolute; top: 3px; right: 1px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
+  font-size: 11px; line-height: 18px; font-weight: 650; text-align: center; font-variant-numeric: tabular-nums;
+  background: var(--label); color: var(--bg-canvas); box-shadow: 0 0 0 2px color-mix(in srgb, var(--bg-canvas) 70%, transparent); }
+.badge.accent { background: var(--accent-fill); color: #fff; }
+
+/* ---------- 8. Buttons ---------- */
+.btn { height: 48px; padding: 0 22px; border-radius: 24px; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  font-size: 16px; font-weight: 600; letter-spacing: -0.1px; border: 0; }
+.btn.sm { height: 36px; padding: 0 14px; border-radius: 18px; font-size: 14px; }
+.btn.primary { background: var(--accent-fill); color: var(--on-accent); }
+.btn.secondary { background: var(--fill-1); color: var(--label); }
+.btn.tonal { background: var(--accent-soft); color: var(--accent); }
+.btn.plain { background: transparent; color: var(--accent); padding: 0 8px; }
+.btn.danger { background: color-mix(in srgb, var(--danger) 10%, transparent); color: var(--danger); }
+.btn.danger-solid { background: var(--danger-fill); color: #fff; }
+.btn.disabled { background: var(--fill-2); color: var(--label-4); }
+
+/* ---------- 9. Grouped lists (Settings / forms) ---------- */
+.section-h { padding: 22px 36px 7px; font-size: 13px; line-height: 18px; color: var(--label-2); font-weight: 500; }
+.section-f { padding: 7px 36px 0; font-size: 12.5px; line-height: 17px; color: var(--label-2); }
+.group { margin: 0 16px; background: var(--bg-elevated); border-radius: 20px; overflow: hidden; box-shadow: var(--shadow-card); }
+.row { position: relative; min-height: 52px; display: flex; align-items: center; gap: 14px; padding: 0 16px; }
+.row + .row::before { content: ""; position: absolute; top: 0; right: 0; left: var(--sep-inset, 16px); height: 0.5px; background: var(--sep-strong); }
+.row.ic-inset { --sep-inset: 60px; }
+.row .grow { flex: 1; min-width: 0; padding: 13px 0; }
+.row .title { font-size: 16px; line-height: 22px; }
+.row .sub { font-size: 13px; line-height: 18px; color: var(--label-2); margin-top: 1px; }
+.row .val { font-size: 15px; color: var(--label-2); white-space: nowrap; }
+.row .chev { color: var(--label-4); width: 16px; height: 16px; }
+.tile { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; color: #fff; flex: none; }
+.tile .ic { width: 19px; height: 19px; }
+
+/* toggle */
+.toggle { width: 52px; height: 32px; border-radius: 16px; background: var(--fill-1); position: relative; flex: none; }
+.toggle::after { content: ""; position: absolute; top: 2px; left: 2px; width: 28px; height: 28px; border-radius: 14px; background: #fff;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.16), 0 0 0 0.5px rgba(0,0,0,0.04); }
+.toggle.on { background: var(--success); }
+.toggle.on::after { left: 22px; }
+.toggle.dis { opacity: .4; }
+
+/* segmented */
+.seg { display: flex; padding: 2px; border-radius: 12px; background: var(--fill-1); height: 34px; }
+.seg > span { flex: 1; display: grid; place-items: center; border-radius: 10px; font-size: 13.5px; font-weight: 500; color: var(--label); white-space: nowrap; padding: 0 10px; }
+.seg > span.on { background: var(--bg-elevated); box-shadow: 0 1px 3px rgba(0,0,0,0.10), 0 0 0 0.5px rgba(0,0,0,0.04); font-weight: 600; }
+.dark .seg > span.on { background: #46464D; }
+
+/* chips */
+.chip { height: 32px; padding: 0 12px; border-radius: 16px; display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 500;
+  background: var(--fill-2); color: var(--label); white-space: nowrap; }
+.chip.on { background: var(--accent-fill); color: #fff; }
+
+/* text field */
+.field { min-height: 48px; border-radius: 14px; background: var(--bg-sunken); display: flex; align-items: center; padding: 0 14px; gap: 10px; font-size: 16px; }
+.field.focus { box-shadow: 0 0 0 2px var(--accent); background: var(--bg-elevated); }
+.field.err { box-shadow: 0 0 0 1.5px var(--danger); }
+.ph { color: var(--label-3); }
+
+/* ---------- 10. Event kind helpers ---------- */
+.k-alarm { --k: var(--alarm); --k-ink: var(--alarm-ink); --k-tint: var(--alarm-tint); }
+.k-activity { --k: var(--activity); --k-ink: var(--activity-ink); --k-tint: var(--activity-tint); }
+.k-deadline { --k: var(--deadline); --k-ink: var(--deadline-ink); --k-tint: var(--deadline-tint); }
+.k-memo { --k: var(--memo); --k-ink: var(--memo-ink); --k-tint: var(--memo-tint); }
+.kdot { width: 8px; height: 8px; border-radius: 4px; background: var(--k); flex: none; }
+.kpill { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px 0 7px; border-radius: 12px; background: var(--k-tint); color: var(--k-ink);
+  font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+.kpill .ic { width: 14px; height: 14px; }
+.idtag { font-size: 12px; color: var(--label-3); font-variant-numeric: tabular-nums; font-weight: 500; letter-spacing: 0.2px; }
+
+/* ---------- 11. Popover / menu ---------- */
+.menu { border-radius: 22px; padding: 6px; min-width: 228px; }
+.menu .mi { height: 46px; border-radius: 16px; display: flex; align-items: center; gap: 12px; padding: 0 12px; font-size: 16px; }
+.menu .mi.hl { background: var(--glass-select); }
+.menu .mi .sub { font-size: 12.5px; color: var(--label-2); margin-left: auto; }
+.menu .msep { height: 0.5px; background: var(--sep-strong); margin: 4px 12px; }
+
+/* ---------- 12. Sheet ---------- */
+.sheet { position: absolute; left: 0; right: 0; bottom: 0; background: var(--bg-grouped); border-radius: 28px 28px 0 0; z-index: 40;
+  box-shadow: 0 -10px 40px rgba(0,0,0,0.10); }
+.dark .sheet { background: #161619; box-shadow: 0 -0.5px 0 rgba(255,255,255,0.08), 0 -10px 40px rgba(0,0,0,0.5); }
+.grabber { width: 36px; height: 5px; border-radius: 3px; background: var(--label-4); margin: 7px auto 0; }
+
+/* ---------- 13. Toast (notice banner) ---------- */
+.toast { position: absolute; left: 50%; transform: translateX(-50%); z-index: 55; height: 44px; padding: 0 18px 0 14px; border-radius: 22px;
+  display: flex; align-items: center; gap: 9px; font-size: 14px; font-weight: 500; white-space: nowrap; }
+
+/* utilities */
+.row-flex { display: flex; align-items: center; } .gap4{gap:4px}.gap6{gap:6px}.gap8{gap:8px}.gap10{gap:10px}.gap12{gap:12px}.gap16{gap:16px}
+.abs { position: absolute; } .ell { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hair { height: 0.5px; background: var(--sep-strong); }

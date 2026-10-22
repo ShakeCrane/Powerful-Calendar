@@ -1,0 +1,108 @@
+/* The source of visual tokens is clear-design.css, copied byte-for-byte from
+ * design/default-skin-01/assets/pc.css with explicit attribution.
+ * This stylesheet adds runtime layout, never recreates the visual token palette. */
+html{height:100%;background:var(--bg-canvas)}
+html.theme-dark{color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;color:var(--label);background:var(--bg-canvas);
+ font-family:"PC Inter","Noto Sans SC",system-ui,-apple-system,sans-serif;font-size:15px}
+button,textarea{font:inherit}
+button{cursor:pointer;color:inherit}
+button:disabled{opacity:.42;cursor:not-allowed}
+button:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#app{position:relative;min-height:100dvh;padding-bottom:94px}
+.clear-head{display:flex;justify-content:space-between;align-items:center;padding:14px 16px 10px;gap:10px}
+.clear-brand{display:flex;flex-direction:column;min-width:0}
+.clear-brand>span{font-weight:720;font-size:27px;letter-spacing:-.6px}
+.clear-brand>small{color:var(--label-2);font-size:12px;margin-top:1px}
+.toolbar{display:flex;align-items:center;flex-shrink:0;gap:2px;padding:4px;
+ border:1px solid var(--glass-rim-lo);border-radius:26px;background:var(--glass-fill);
+ backdrop-filter:blur(var(--glass-blur));box-shadow:var(--shadow-card)}
+.toolbar button{min-width:37px;min-height:38px;padding:6px;border:0;background:transparent;
+ border-radius:20px;font-size:12px;white-space:nowrap;font-weight:600}
+.toolbar button:active,.clear-tabbar button.current{background:var(--glass-select)}
+.toolbar small{font-weight:700;color:var(--now)}
+.page{padding:2px 12px 14px}
+.page[hidden],#extraOptions[hidden]{display:none}
+.section-label{color:var(--label-3);padding:6px 8px 9px;font-size:12px;display:flex;justify-content:space-between}
+.axis-scroll{height:min(67vh,680px);min-height:360px;overflow:auto;overscroll-behavior:contain;
+ border-radius:6px;background:var(--bg-canvas)}
+.timeline-surface{position:relative;min-height:100%;width:100%}
+.tl-axis{position:absolute;width:1.5px;background:var(--label-4);left:50%;top:0;bottom:0}
+.timeGrid{position:absolute;left:0;right:0;height:1px;
+ background:linear-gradient(90deg,transparent 5%,var(--sep),transparent 95%)}
+.timeTick{position:absolute;left:50%;transform:translate(-50%,-50%);background:var(--bg-canvas);
+ color:var(--label-3);font-size:10px;font-variant-numeric:tabular-nums;padding:3px 5px;z-index:2}
+.timelineWing{position:absolute;top:0;bottom:0;width:calc(50% - 8px)}
+.timelineWing.left{left:0}.timelineWing.right{right:0}
+.tEvent{position:absolute;display:block;text-align:left;overflow:hidden;max-width:100%;
+ min-height:26px;border-radius:10px;border:0;padding:5px 7px;
+ font-size:12px;line-height:1.25;box-shadow:var(--shadow-card);
+ text-overflow:ellipsis;white-space:normal}
+.tEvent.ACTIVITY{background:var(--activity-tint);color:var(--activity-ink);
+ border-left:3px solid var(--activity)}
+.tEvent.ALARM{background:var(--alarm-tint);color:var(--alarm-ink);
+ border-right:3px solid var(--alarm)}
+.tEvent.DEADLINE{background:var(--deadline-tint);color:var(--deadline-ink);
+ border-left:3px solid var(--deadline)}
+.now-line{position:absolute;left:0;right:0;height:1.5px;background:var(--now);pointer-events:none;z-index:4}
+.timeline-buttons{display:flex;gap:10px;align-items:center;justify-content:center;padding:6px 10px;
+ margin:12px auto 0;width:max-content;max-width:100%;background:var(--glass-fill);
+ backdrop-filter:blur(var(--glass-blur));border-radius:28px}
+.timeline-buttons button{border:0;background:transparent;color:var(--accent);padding:8px 17px;border-radius:20px}
+.page-head{display:flex;align-items:center;justify-content:space-between;padding:6px 8px 18px}
+.page-head h1{font-size:32px;font-weight:740;letter-spacing:-.6px;margin:0}
+.page-head button{background:var(--fill-1);padding:9px 15px;border:0;border-radius:24px}
+#monthTitle{padding:6px 8px;color:var(--accent);font-weight:600}
+.month-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px 0}
+.month-cell{min-height:57px;text-align:center;border:0;border-top:1px solid var(--sep);
+ background:transparent;font-variant-numeric:tabular-nums}
+.month-cell.today{color:var(--now);font-weight:700}
+.month-cell.selected{background:var(--accent-soft);border-radius:24px}
+.month-weekday{font-size:11px;color:var(--label-3);text-align:center}
+.tabs{display:flex;background:var(--fill-2);border-radius:12px;padding:3px;margin:0 8px 10px}
+.tabs button{border:0;flex:1;padding:8px;border-radius:10px;background:transparent}
+.tabs button.selected{background:var(--bg-elevated);box-shadow:var(--shadow-card);font-weight:700}
+.memo-list{display:flex;flex-direction:column;gap:1px}
+.memo-row{display:flex;gap:12px;padding:12px 10px;border:0;border-bottom:1px solid var(--sep);background:transparent}
+.memo-row button{flex-shrink:0;width:26px;height:26px;border:2px solid var(--label-3);
+ border-radius:50%;background:transparent;color:var(--accent);padding:0}
+.memo-row.done button{background:var(--accent-fill);color:var(--on-accent)}
+.memo-row>span{align-self:center;flex:1;overflow-wrap:anywhere}
+.quiet{font-size:12px;color:var(--label-3);padding:14px}
+.chat-list{display:flex;flex-direction:column;gap:12px;min-height:42vh;padding:14px 4px;overflow-y:auto;max-height:60vh}
+.chat-bubble{border-radius:18px;padding:12px 14px;max-width:86%;white-space:pre-wrap;overflow-wrap:anywhere;
+ background:var(--fill-2);align-self:flex-start}
+.chat-bubble.user{align-self:flex-end;background:var(--accent-fill);color:var(--on-accent)}
+#chatForm{padding:8px 4px}
+#chatForm label{font-size:12px;color:var(--label-2)}
+.composer{display:flex;align-items:flex-end;gap:7px;padding:8px;border-radius:22px;background:var(--fill-2)}
+.composer textarea{flex:1;resize:none;min-height:48px;background:transparent;border:0;
+ padding:8px;color:var(--label);outline:0}
+.composer button{background:var(--accent-fill);color:var(--on-accent);
+ padding:11px 14px;border:0;border-radius:20px}
+.clear-tabbar{position:fixed;z-index:30;bottom:9px;left:12px;right:12px;
+ border-radius:29px;background:var(--glass-fill);backdrop-filter:blur(var(--glass-blur));
+ border:1px solid var(--glass-rim-lo);box-shadow:var(--glass-shadow);
+ display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:3px;padding:5px}
+.clear-tabbar button{min-height:46px;padding:4px;border:0;border-radius:24px;
+ background:transparent;font-weight:600;color:var(--label-2);font-size:12px}
+.clear-tabbar button.current{color:var(--accent)}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+
+.month-bar{display:flex;align-items:center;justify-content:space-between;padding:6px 10px 12px}
+.month-bar button{width:42px;height:42px;border:0;border-radius:22px;background:var(--fill-1);font-size:28px;color:var(--accent)}
+.month-dot{display:block;font-size:11px;line-height:6px;color:var(--accent)}
+#monthAgenda{padding:18px 8px}
+#monthAgenda h2{font-size:16px;font-weight:650}
+.agenda-event{display:block;text-align:left;width:100%;min-height:46px;padding:12px 10px;
+ border:0;border-bottom:1px solid var(--sep);background:transparent}
+.optionRow{display:block;width:100%;text-align:left;background:var(--bg-elevated);
+ border:0;border-bottom:1px solid var(--sep);padding:14px;color:var(--label)}
+
+/* Keep the interactive AI composer above the floating tabbar at every viewport height. */
+#aiPage:not([hidden]){display:flex;flex-direction:column;
+ height:calc(100dvh - 170px);min-height:320px;padding-bottom:8px}
+#aiPage .page-head{flex-shrink:0}
+#aiPage .chat-list{flex:1;min-height:0;max-height:none;overflow-y:auto}
+#aiPage #chatForm{flex-shrink:0}

@@ -6,7 +6,7 @@ import io
 import json
 import re
 from pathlib import Path, PurePosixPath
-from zipfile import ZIP_DEFLATED, ZIP_STORED, ZipFile
+from zipfile import ZIP_DEFLATED, ZIP_STORED, ZipFile, ZipInfo
 
 import skin_studio
 
@@ -107,10 +107,18 @@ def build(manifest, source_dir):
 def build_files(manifest, files):
     checked = validate_manifest(manifest, files, verify_hash=False)
     out = io.BytesIO()
+    # Deterministic .pcskin bytes: APK asset, Studio starter and exported default
+    # must never disagree solely because a ZIP header contains wall-clock time.
+    def fixed_entry(name):
+        entry = ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+        entry.compress_type = ZIP_DEFLATED
+        entry.external_attr = 0o100644 << 16
+        return entry
     with ZipFile(out, "w", ZIP_DEFLATED, compresslevel=6) as archive:
-        archive.writestr("manifest.json", json.dumps(checked, ensure_ascii=False, indent=2))
+        archive.writestr(fixed_entry("manifest.json"),
+                         json.dumps(checked, ensure_ascii=False, indent=2))
         for name in sorted(files):
-            archive.writestr(name, files[name])
+            archive.writestr(fixed_entry(name), files[name])
     blob = out.getvalue()
     check(len(blob) <= MAX_ARCHIVE, "ZIP is larger than 10MB")
     # Apply the same per-file and inflated-size checks as Android and the importer.

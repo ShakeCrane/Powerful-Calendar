@@ -1,0 +1,19 @@
+{
+  "format": "powercal-skin",
+  "schemaVersion": 3,
+  "id": "powercal-clear-default",
+  "name": "PowerCal Clear · First Party",
+  "entrypoint": "web/index.html",
+  "project": "project.json",
+  "fullCanvas": true,
+  "capabilities": [
+    "host.read",
+    "host.action"
+  ],
+  "light": {},
+  "dark": {},
+  "layout": {},
+  "imagesLight": {},
+  "imagesDark": {},
+  "sha256": {}
+}

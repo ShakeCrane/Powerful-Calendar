@@ -807,8 +807,8 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
         ActivityResultContracts.CreateDocument("application/zip")
     ) { uri ->
         if (uri != null) scope.launch {
-            runCatching { withContext(Dispatchers.IO) { skins.exportOriginal(uri) } }
-                .onSuccess { message = "已导出 Web 皮肤开发模板（不是原生 Glass 皮肤）" }
+            runCatching { withContext(Dispatchers.IO) { skins.exportBundledClear(uri) } }
+                .onSuccess { message = "已导出完整 Clear v3 候选皮肤；正式替代原生版前仍需完成功能覆盖验收" }
                 .onFailure { error -> message = "导出皮肤模板失败：" + error.message }
         }
     }
@@ -957,11 +957,69 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                     }
                 }
                 is WebSkinAction.JumpTimelineDay -> {
-                    if (page == Page.TIMELINE.name) {
+                    if (page == Page.TIMELINE.name || page == Page.MONTH.name) {
                         val date = java.time.LocalDate.parse(action.date)
                         anchorMillis = date.atTime(12, 0).atZone(zone)
                             .toInstant().toEpochMilli()
+                        page = Page.TIMELINE.name
                     }
+                }
+                is WebSkinAction.BrowseMonth -> {
+                    if (page == Page.MONTH.name) {
+                        val day = Instant.ofEpochMilli(anchorMillis).atZone(zone).toLocalDate()
+                        val target = runCatching { day.plusMonths(action.deltaMonths.toLong()) }
+                            .getOrNull()
+                        if (target != null && target.year in 1900..2200) {
+                            anchorMillis = target.atTime(12,0).atZone(zone)
+                                .toInstant().toEpochMilli()
+                        }
+                    }
+                }
+                is WebSkinAction.CreateDraft -> if (!aiLocked && editSession == null) {
+                    scope.launch {
+                        val kind = TemporalKind.valueOf(action.kind)
+                        val day = Instant.ofEpochMilli(anchorMillis).atZone(zone).toLocalDate()
+                        runCatching {
+                            withContext(Dispatchers.IO) {
+                                store.newDraft(DraftForm.fresh(kind, day, zone))
+                            }
+                        }.onSuccess { reload(); openDeckAt(it.draftId) }
+                            .onFailure { message = it.message ?: "无法新建事件" }
+                    }
+                }
+                WebSkinAction.CreateMemo -> if (!aiLocked && editSession == null) {
+                    scope.launch {
+                        runCatching {
+                            withContext(Dispatchers.IO) {
+                                store.newDraft(DraftForm.fresh(TemporalKind.MEMO, zone = zone))
+                            }
+                        }.onSuccess { reload(); openDeckAt(it.draftId) }
+                            .onFailure { message = it.message ?: "无法新建 Memo" }
+                    }
+                }
+                is WebSkinAction.ToggleMemo -> if (!aiLocked && editSession == null) {
+                    scope.launch {
+                        val current = withContext(Dispatchers.IO) { store.get(action.eventSeq) }
+                        val visible = current?.let {
+                            TodoProjection.entries(listOf(it), System.currentTimeMillis(),
+                                includeCompleted = true)
+                        }?.firstOrNull { it.occurrenceKey == action.occurrenceKey }
+                        if (current == null || current.revision != action.expectedRevision ||
+                            visible == null || visible.completed != action.completed) {
+                            message = "Memo 已变化，请刷新"
+                        } else {
+                            val result = withContext(Dispatchers.IO) {
+                                store.setCompleted(action.eventSeq, action.occurrenceKey,
+                                    !action.completed, action.expectedRevision)
+                            }
+                            if (!result) message = "Memo 状态已变化，请刷新"
+                        }
+                        reload()
+                    }
+                }
+                is WebSkinAction.SendChat -> if (!aiLocked && !chatBusy &&
+                    editSession == null && proposalReview == null) {
+                    submitAiChatInput(action.text)
                 }
                 is WebSkinAction.OpenEvent -> scope.launch {
                     val current = withContext(Dispatchers.IO) { store.get(action.eventSeq) }
@@ -980,11 +1038,35 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
             JSONObject().put("bridgeVersion", WebSkinBridgeRuntime.VERSION).put("page", page)
                 .put("aiLocked", aiLocked).put("pendingCount", pendingCount)
                 .put("memoCount", todoCount)
+                .put("memoEntries", org.json.JSONArray(
+                    (if (page == Page.MEMO.name) todoEntries.take(250) else emptyList())
+                        .map { entry ->
+                        JSONObject()
+                            .put("eventSeq", entry.owner.eventSeq)
+                            .put("revision", entry.owner.revision)
+                            .put("occurrenceKey", entry.occurrenceKey)
+                            .put("title", entry.title.take(240))
+                            .put("completed", entry.completed)
+                            .put("startMillis", entry.startMillis)
+                    }
+                ))
+                .put("memoTruncated", todoEntries.size > 250)
+                .put("chatBusy", chatBusy || aiBusy)
+                .put("chatMessages", org.json.JSONArray(
+                    (if (page == Page.AI.name) chatHistory.takeLast(40) else emptyList())
+                        .map { item ->
+                        JSONObject().put("role", item.role)
+                            .put("content", item.content.take(1600))
+                    }
+                ))
                 .put("reducedMotion", effects.reduceMotion)
                 .put("optionGroups", SemanticOptions.toJson(
                     enabled = !aiLocked && editSession == null))
                 .put("timeline", WebSkinTimelineProjection.build(
                     records, camera, nowMillis, zone))
+                .put("month", if (page == Page.MONTH.name)
+                    WebSkinMonthProjection.build(records, anchorMillis, zone)
+                    else JSONObject())
                 .put("events", org.json.JSONArray(records.take(300).map { record ->
                     JSONObject().put("eventSeq", record.eventSeq).put("revision", record.revision)
                         .put("kind", record.kind.name).put("title", record.title.take(300))
@@ -1049,7 +1131,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                 onImportSkin = {
                     importSkin.launch(arrayOf("application/zip", "application/octet-stream", "*/*"))
                 },
-                onExportOriginalSkin = { exportOriginalSkin.launch("PowerCal-Web-Starter.pcskin") },
+                onExportOriginalSkin = { exportOriginalSkin.launch("PowerCal-Clear-Preview.pcskin") },
                 onDeleteSkin = { id ->
                     skinToDelete = skinChoices.firstOrNull { it.id == id && !it.builtIn }
                 },
@@ -2001,7 +2083,7 @@ internal fun NativeToolsPage(
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = onImportSkin) { Text("导入皮肤包") }
-                TextButton(onClick = onExportOriginalSkin) { Text("导出 Web 开发模板") }
+                TextButton(onClick = onExportOriginalSkin) { Text("导出 Clear 候选皮肤") }
             }
             Text("导入后不会自动启用。v3 皮肤可使用受限 HTML/CSS/JavaScript；原生设置随时可用。",
                 style = MaterialTheme.typography.bodySmall,

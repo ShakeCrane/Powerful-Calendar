@@ -185,7 +185,7 @@ private class StudioExampleSettings : SettingsVisualRenderer {
                 DemoHeading("Studio Settings", "独立布局，功能回调沿用宿主")
                 TextButton(onClick = context.onBack) { Text("← 日历") }
                 FilledTonalButton(onClick = context.onImportSkin, modifier = Modifier.fillMaxWidth()) { Text("导入数据皮肤") }
-                FilledTonalButton(onClick = context.onExportOriginalSkin, modifier = Modifier.fillMaxWidth()) { Text("导出原生模板") }
+                FilledTonalButton(onClick = context.onExportOriginalSkin, modifier = Modifier.fillMaxWidth()) { Text("导出 Clear 候选皮肤") }
                 FilledTonalButton(onClick = context.onOpenDeck, modifier = Modifier.fillMaxWidth()) { Text("草稿卡组") }
                 FilledTonalButton(onClick = context.onExportBackup, modifier = Modifier.fillMaxWidth()) { Text("导出备份") }
                 Button(onClick = { advanced = true }, modifier = Modifier.fillMaxWidth()) {

@@ -1,0 +1,41 @@
+{
+  "projectVersion": 3,
+  "mode": "simple",
+  "slots": [
+    {
+      "id": "bg-canvas",
+      "label": "背景",
+      "type": "color",
+      "value": "#FFFFFF",
+      "editable": true
+    },
+    {
+      "id": "accent",
+      "label": "强调色",
+      "type": "color",
+      "value": "#2A62E0",
+      "editable": true
+    },
+    {
+      "id": "label",
+      "label": "文字颜色",
+      "type": "color",
+      "value": "#16171B",
+      "editable": true
+    },
+    {
+      "id": "now",
+      "label": "当前时间",
+      "type": "color",
+      "value": "#D93A2E",
+      "editable": true
+    }
+  ],
+  "layers": [],
+  "authoring": {
+    "baseline": "Clear",
+    "source": "PowerCal default-skin-01",
+    "bridgeVersion": 1,
+    "productStatus": "preview - native fallback until full business coverage"
+  }
+}

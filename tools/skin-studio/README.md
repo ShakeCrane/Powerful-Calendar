@@ -10,6 +10,8 @@ python tools/skin-studio/skin_studio.py serve --port 8765
 
 然后访问 http://127.0.0.1:8765 。
 
+**默认启动：** Studio 从 APK 内置的 powercal-clear-default.pcskin 逐字节读取完整的 Clear 候选皮肤包，再自动复制为受保护 ID 之外的自定义皮肤，普通用户不用手写 HTML/CSS/JS 即可修改背景、图标及装饰，并保留包内底层源码。当前候选仍处于 Skin-First 架构迁移阶段，尚不是出厂已激活的完整 Web 产品界面；功能覆盖与迁移门槛见 docs/SKIN_FIRST_MIGRATION_STATUS_2026-10-22.md。
+
 现在首页是 v3 编辑器，旧 v1 的概念场景和 `app.js` 保留作兼容与测试，但不再参与 v3 页面编辑。
 
 **单一真源：** Studio 内正在编辑的 `web/index.html`、`web/style.css`、

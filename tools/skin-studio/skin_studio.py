@@ -219,11 +219,11 @@ class Handler(BaseHTTPRequestHandler):
                  "/style.css": ("style.css", "text/css; charset=utf-8"),
                  "/style-v3.css": ("style-v3.css", "text/css; charset=utf-8")}
         if route == "/api/template-v3":
-            from runtime_package_v3 import build, unpack as unpack_v3
-            example = HERE / "examples" / "v3"
-            manifest = json.loads((example / "manifest.json").read_text("utf8"))
-            source = build(manifest, example / "source")
-            base, files = unpack_v3(source)
+            # The Studio starter is byte-for-byte the very same bundled APK asset;
+            # never silently generate a different or reduced demo project.
+            from runtime_package_v3 import unpack as unpack_v3
+            from build_default_clear import ASSET
+            base, files = unpack_v3(ASSET.read_bytes())
             return self.send_json(200, {"manifest": base, "files": {
                 path: base64.b64encode(data).decode("ascii") for path, data in files.items()}})
         if route.startswith("/preview/"):
@@ -235,7 +235,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(200, raw, mime, csp=
                 "default-src 'self'; img-src 'self' data:; "
                 "style-src 'self' 'unsafe-inline'; script-src 'self'; "
-                "connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'")
+                "connect-src 'none'; frame-src 'none'; form-action 'none'; object-src 'none'; base-uri 'none'")
         if route not in files:
             return self.send_json(404, {"error": "Not Found"})
         filename, mime = files[route]

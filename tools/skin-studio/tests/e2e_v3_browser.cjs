@@ -16,14 +16,15 @@ const URL=process.env.STUDIO_URL||"http://127.0.0.1:8875";
     await page.waitForFunction(()=>document.querySelector("#previewState").textContent.includes("连接成功"),{timeout:30000});
     let frame=page.frames().find(f=>f.url().includes("/preview/"));
     assert.ok(frame,"live source iframe must load");
-    await frame.waitForSelector(".event");
+    await frame.waitForSelector(".tEvent");
     let normal=await frame.evaluate(()=>({
-      items:document.querySelectorAll(".event").length,
+      items:document.querySelectorAll(".tEvent").length,
       options:document.querySelectorAll(".optionRow").length,
-      ruler:document.querySelectorAll(".tick").length,
-      css:getComputedStyle(document.documentElement).getPropertyValue("--primary").trim()
+      ruler:document.querySelectorAll(".timeTick").length,
+      css:getComputedStyle(document.documentElement).getPropertyValue("--accent").trim()
     }));
-    assert.ok(normal.items>=2);assert.equal(normal.options,2);assert.equal(normal.ruler,7);
+    assert.ok(normal.items>=2);assert.equal(normal.options,2);assert.ok(normal.ruler>=8);
+    assert.equal(normal.css,"#2A62E0","Clear source palette must load into the iframe");
     console.log("Initial WYSIWYG preview",normal);
 
     await page.select("#scenario","future");
@@ -53,7 +54,7 @@ const URL=process.env.STUDIO_URL||"http://127.0.0.1:8875";
     });
     await page.waitForFunction(()=>document.querySelector("#previewState").textContent.includes("连接成功"));
     frame=page.frames().find(f=>f.url().includes("/preview/"));
-    await frame.waitForFunction(()=>getComputedStyle(document.documentElement).getPropertyValue("--surface").trim()==="#ddffaa");
+    await frame.waitForFunction(()=>getComputedStyle(document.documentElement).getPropertyValue("--bg-canvas").trim()==="#ddffaa");
 
     // Real visual dragging must persist geometry to CSS and survive a source reload.
     const handle=await page.$("#dragOverlay .dragHandle.selected");
@@ -98,6 +99,31 @@ const URL=process.env.STUDIO_URL||"http://127.0.0.1:8875";
     await frame.waitForFunction(()=>getComputedStyle(document.querySelector('[data-action="today"]'),'::before')
       .backgroundImage.includes("powercal-e2e-pixel.png"));
     console.log("Existing action button icon binding works");
+
+    await page.click("#interactMode");
+    await frame.click('.clear-tabbar [data-action="memo"]');
+    await frame.waitForFunction(()=>!document.querySelector("#memoPage").hidden);
+    let before=await frame.evaluate(()=>document.querySelectorAll(".memo-row").length);
+    assert.equal(before,2,"Memo must use real host-shaped entries");
+    await frame.click('.memo-row [data-action="toggleMemo"]');
+    await frame.waitForFunction(()=>document.querySelectorAll(".memo-row").length===1);
+    await frame.click('.clear-tabbar [data-action="month"]');
+    await frame.waitForFunction(()=>!document.querySelector("#monthPage").hidden);
+    const month=await frame.evaluate(()=>({
+      cells:document.querySelectorAll(".month-cell").length,
+      agenda:document.querySelectorAll(".agenda-event").length
+    }));
+    assert.equal(month.cells,42);
+    assert.ok(month.agenda>0);
+    await frame.click('.clear-tabbar [data-action="ai"]');
+    await frame.waitForFunction(()=>!document.querySelector("#aiPage").hidden);
+    await frame.$eval("#chatInput",e=>{e.value="给我看看今日安排"});
+    await frame.click("#chatSend");
+    await frame.waitForFunction(()=>document.querySelector("#chatMessages").textContent.includes("给我看看今日安排"));
+    await frame.click('.clear-tabbar [data-action="timeline"]');
+    await frame.waitForFunction(()=>!document.querySelector("#timelinePage").hidden);
+    await page.click("#editMode");
+    console.log("Real Bridge-shaped Memo / month / AI interactions verified");
 
     await page.click("#advancedMode");
     await page.$eval("#cssCode",e=>{e.value=e.value+"\n/* browser-proof */";e.dispatchEvent(new Event("input",{bubbles:true}))});

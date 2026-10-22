@@ -93,12 +93,44 @@ class WebSkinHostProjectionTest {
             decode("""{"name":"jumpTimelineDay","date":"2026-10-22"}"""))
         assertEquals(WebSkinAction.Routed("today"), decode("""{"name":"today"}"""))
         assertEquals(WebSkinAction.Routed("memo"), decode("""{"name":"memo"}"""))
+        assertEquals(WebSkinAction.CreateMemo,
+            decode("""{"name":"createMemo"}"""))
+        assertEquals(WebSkinAction.CreateDraft("ACTIVITY"),
+            decode("""{"name":"createDraft","kind":"ACTIVITY"}"""))
+        assertEquals(WebSkinAction.BrowseMonth(-1),
+            decode("""{"name":"browseMonth","deltaMonths":-1}"""))
+        assertNull(decode("""{"name":"browseMonth","deltaMonths":0}"""))
+        assertNull(decode("""{"name":"browseMonth","deltaMonths":50}"""))
+        assertEquals(WebSkinAction.SendChat("你好"),
+            decode("""{"name":"sendChat","text":"你好"}"""))
+        assertEquals(WebSkinAction.ToggleMemo(31,2,"single",false),
+            decode("""{"name":"toggleMemo","eventSeq":31,"expectedRevision":2,
+                "occurrenceKey":"single","completed":false}"""))
+        assertNull(decode("""{"name":"createMemo","force":true}"""))
+        assertNull(decode("""{"name":"createDraft","kind":"RAW_SQL"}"""))
+        assertNull(decode("""{"name":"sendChat","text":""}"""))
+        assertNull(decode("""{"name":"sendChat","text":123}"""))
+        assertNull(decode("""{"name":"toggleMemo","eventSeq":31,"expectedRevision":2,
+                "occurrenceKey":"single","completed":"true"}"""))
+        assertNull(decode("""{"name":"toggleMemo","eventSeq":31,"expectedRevision":2,
+                "occurrenceKey":"../../secret","completed":false}"""))
         assertNull(decode("""{"name":"panTimeline","deltaMinutes":5000}"""))
         assertNull(decode("""{"name":"panTimeline","deltaMinutes":2.5}"""))
         assertNull(decode("""{"name":"panTimeline","deltaMinutes":"60"}"""))
         assertNull(decode("""{"name":"panTimeline","deltaMinutes":60,"hours":24}"""))
         assertNull(decode("""{"name":"jumpTimelineDay","date":"2026-10-32"}"""))
         assertNull(decode("""{"name":"jumpTimelineDay","date":"2500-01-01"}"""))
+    }
+
+    @Test fun monthProjectionUsesRealHostOccurrencesAndExactDateWindow() {
+        val output = WebSkinMonthProjection.build(listOf(activity(71)), noon, zone)
+        assertEquals("2026-10", output.getString("month"))
+        assertEquals("2026-09-28", output.getString("gridFrom"))
+        val first = output.getJSONArray("items").getJSONObject(0)
+        assertEquals("2026-10-22", first.getString("date"))
+        assertEquals(71, first.getInt("eventSeq"))
+        assertEquals(2, first.getInt("revision"))
+        assertFalse(output.getBoolean("truncated"))
     }
 
     @Test fun siblingOptionsInheritGroupStateAndHostDisablesThemDuringLocks() {

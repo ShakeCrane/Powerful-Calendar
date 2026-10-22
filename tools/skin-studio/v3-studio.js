@@ -69,12 +69,18 @@ async function loadPackage(data){
   sourceFiles=files;manifest=copy(data.manifest);
   project=parseProject();
   selectedLayer=project.layers[0]?.id||null;dirty=false;
-  $("skinId").value=manifest.id;$("skinName").value=manifest.name;
+  // Fork the protected factory identity before an ordinary user exports it.
+  // Its HTML/CSS/JS/assets/project remain the exact bundled source.
+  const factory = manifest.id==="powercal-clear-default";
+  $("skinId").value=factory?"powercal-clear-custom":manifest.id;
+  $("skinName").value=factory?"我的 PowerCal Clear":manifest.name;
   $("fullCanvas").checked=manifest.fullCanvas!==false;
   switchMode(project.mode==="advanced"?"advanced":"simple");
   syncSourceInputs();renderMaterials();renderAssets();renderLayers();
   schedulePreview(0);
-  say("已加载完整 v3 项目（含所有素材）。预览与导出共享同一组源文件。");
+  say(factory
+    ?"已载入 APK 同源 Clear 基础皮肤。导出使用独立 ID，不覆盖受保护的出厂包。"
+    :"已加载完整 v3 项目（含所有素材）。预览与导出共享同一组源文件。");
 }
 function change(){dirty=true;schedulePreview()}
 function syncSourceInputs(){
@@ -213,7 +219,9 @@ async function addAssets(list){
   }catch(error){say(error.message,true);}
 }
 const ACTIONS=[
-  ["","无动作"],["today","返回今天"],["timeline","时间轴"],
+  ["","无动作"],["today","返回今天"],["createMemo","新建 Memo"],
+  ["createDraft","新建活动草稿"],["browseMonth","浏览月份"],
+  ["timeline","时间轴"],
   ["month","月历"],["memo","Memo"],["ai","AI"],
   ["settings","原生设置"],["openDeck","草稿卡组"],
   ["panTimeline","时间轴向后 30 分钟"],["jumpTimelineDay","跳到今天"],
@@ -269,6 +277,8 @@ function layerMarkup(layer){
   if(action){
     props+=' data-action="'+escapeHtml(action)+'"';
     if(action==="panTimeline")props+=' data-delta-minutes="30"';
+    if(action==="createDraft")props+=' data-kind="ACTIVITY"';
+    if(action==="browseMonth")props+=' data-delta-months="1"';
     if(action==="jumpTimelineDay")props+=' data-date="2026-10-22"';
     if(action==="invokeOption")
       props+=' data-option-id="calendar.import.file"';
@@ -310,7 +320,8 @@ function updateLayerStyle(layer){
   const opacity=Math.max(0,Math.min(1,Number(layer.opacity??1)));
   const block=start+"\n#"+layer.id+"{position:fixed;box-sizing:border-box;left:"+x+
     "px;top:"+y+"px;width:"+w+"px;height:"+h+"px;z-index:"+z+
-    ";opacity:"+opacity+";object-fit:contain;max-width:none;}\n"+end;
+    ";opacity:"+opacity+";pointer-events:"+(layer.kind==="button"?"auto":"none")+
+    ";object-fit:contain;max-width:none;}\n"+end;
   setText("web/style.css",
     replaceMarked(css,start,end,block) ?? (css+"\n"+block+"\n"));
   if(document.activeElement!==$("cssCode"))
@@ -461,14 +472,23 @@ function simulatedState(){
     detail:"模拟未来软件版本新增的平行选项",icon:"table",enabled:true
   });
   const start=anchor-hours*1800000;
-  return {bridgeVersion:1,page:"TIMELINE",memoCount:2,aiLocked:scenario==="locked",
+  return {bridgeVersion:1,page:mockPage,memoCount:2,aiLocked:scenario==="locked",
     reducedMotion:$("reduced").checked,pendingCount:3,
+    memoEntries:[
+      {eventSeq:31,revision:2,occurrenceKey:"single",title:"整理会议笔记",completed:mockMemoDone,startMillis:base},
+      {eventSeq:44,revision:1,occurrenceKey:"single",title:"提交报告",completed:false,startMillis:base+7200000}
+    ],memoTruncated:false,chatBusy:false,
+    chatMessages:[{role:"assistant",content:"你好！今天有什么安排？"},...mockChat],
     events:rows.map(r=>({eventSeq:r.eventSeq,revision:r.revision,title:r.title,kind:r.kind,
       anchorMillis:r.startMillis,endMillis:r.endMillis})),
     optionGroups:[{id:"calendar.import",label:"导入",items}],
     timeline:{zoneId:"Asia/Shanghai",anchorMillis:anchor,hours,
       visibleStartMillis:start,visibleEndMillis:anchor+hours*1800000,
-      nowMillis:base,itemLimit:300,truncated:false,items:rows}};
+      nowMillis:base,itemLimit:300,truncated:false,items:rows},
+    month:{zoneId:"Asia/Shanghai",month:"2026-10",
+      selectedDate:"2026-10-22",gridFrom:"2026-09-28",
+      itemLimit:350,truncated:false,
+      items:rows.map(r=>({...r,date:"2026-10-22"}))}};
 }
 function postState(){
   if(!previewPort)return;
@@ -487,7 +507,7 @@ function onSkinAction(message){
     const envelope=JSON.parse(message);
     if(envelope.version!==1||envelope.type!=="action"||!envelope.payload)return;
     const p=envelope.payload,name=p.name;
-    if(!ACTIONS.some(([x])=>x===name)&&name!=="openEvent"){logAction("拒绝未知动作 "+String(name));return;}
+    if(!ACTIONS.some(([x])=>x===name)&&!["openEvent","toggleMemo","sendChat"].includes(name)){logAction("拒绝未知动作 "+String(name));return;}
     if(name==="panTimeline"){
       if(!Number.isInteger(p.deltaMinutes)||Math.abs(p.deltaMinutes)>2880)return;
       const state=lastState||simulatedState();
@@ -500,16 +520,31 @@ function onSkinAction(message){
       if(Number.isFinite(date))mockAnchor=date;
     }
     if(name==="today")mockAnchor=null;
+    if(name==="browseMonth"&&Number.isInteger(p.deltaMonths)&&
+      p.deltaMonths!==0&&Math.abs(p.deltaMonths)<=12){
+      mockAnchor=(mockAnchor??new Date("2026-10-22T04:00:00Z").getTime())+
+        p.deltaMonths*30*86400000;
+    }
+    if(["timeline","month","memo","ai"].includes(name))mockPage=name.toUpperCase();
+    if(name==="toggleMemo"){
+      if(!Number.isInteger(p.eventSeq)||typeof p.completed!=="boolean"||!p.occurrenceKey)return;
+      if(p.eventSeq===31)mockMemoDone=!p.completed;
+    }
+    if(name==="sendChat"&&typeof p.text==="string"&&p.text.length<=4000)
+      mockChat.push({role:"user",content:p.text});
+    if(name==="createDraft"&&
+      !["ACTIVITY","ALARM","DEADLINE","MEMO"].includes(p.kind))return;
     if(name==="invokeOption"&&$("scenario").value==="locked"){
       logAction("锁定状态拒绝执行选项");return;
     }
     logAction("模拟宿主收到："+name+
       (p.id?" · "+p.id:"")+
       (name==="openEvent"?" · "+p.eventSeq:""));
-    if(["today","panTimeline","jumpTimelineDay"].includes(name))postState();
+    if(["today","panTimeline","jumpTimelineDay","browseMonth","timeline","month","memo","ai",
+      "toggleMemo","sendChat"].includes(name))postState();
   }catch(error){logAction("Bridge 消息错误："+error.message)}
 }
-let mockAnchor=null;
+let mockAnchor=null,mockPage="TIMELINE",mockMemoDone=false,mockChat=[];
 function connectPreview(){
   if(previewPort){try{previewPort.close()}catch{}}
   const iframe=$("webPreview");

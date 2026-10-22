@@ -11,9 +11,7 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStream
 import java.security.MessageDigest
-import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
-import java.util.zip.ZipOutputStream
 
 data class InstalledSkin(val id: String, val name: String, val builtIn: Boolean = false)
 
@@ -27,12 +25,34 @@ data class InstalledSkin(val id: String, val name: String, val builtIn: Boolean 
 class SkinPackageManager(private val context: Context) {
     private val prefs = context.getSharedPreferences("powercal-skin-choice", Context.MODE_PRIVATE)
     private val folder = File(context.filesDir, "skin-packs")
-    private val original = InstalledSkin("powercal-default", "PowerCal 原生玻璃", true)
+    private val original = InstalledSkin("powercal-default", "PowerCal 原生玻璃（安全回退）", true)
+    private val clearCandidate = InstalledSkin("powercal-clear-default",
+        "Clear · 迁移预览（部分业务仍待适配）", true)
+    private val clearAssetName = "powercal-clear-default.pcskin"
+
+    /** Same checked-in bytes that Skin Studio offers at startup. */
+    private fun readBundledClear(): Verified {
+        val bytes = context.assets.open(clearAssetName).use { readBounded(it) }
+        return decode(bytes, false).also {
+            require(it.pack.key == clearCandidate.id && it.pack.web?.fullCanvas == true) {
+                "Bundled Clear skin identity/canvas mismatch"
+            }
+        }
+    }
+
+    fun exportBundledClear(uri: Uri) {
+        val verified = readBundledClear()
+        require(verified.pack.web != null)
+        context.contentResolver.openOutputStream(uri)?.use { destination ->
+            context.assets.open(clearAssetName).use { input -> input.copyTo(destination) }
+        } ?: error("无法写入目标文件")
+    }
 
     fun currentId(): String = prefs.getString("selected", original.id) ?: original.id
 
     fun installed(): List<InstalledSkin> = buildList {
         add(original)
+        if (runCatching { readBundledClear() }.isSuccess) add(clearCandidate)
         folder.listFiles()?.filter { it.isFile && it.name.endsWith(".pcskin") }
             ?.sortedBy { it.name }?.forEach { file ->
                 runCatching { decode(readBounded(file.inputStream()), false) }
@@ -44,6 +64,13 @@ class SkinPackageManager(private val context: Context) {
         val id = currentId()
         if (id == original.id) {
             PowerCalSkinRegistry.reset()
+        } else if (id == clearCandidate.id) {
+            runCatching { readBundledClear() }.onSuccess {
+                PowerCalSkinRegistry.activate(it.pack)
+            }.onFailure {
+                prefs.edit().putString("selected", original.id).apply()
+                PowerCalSkinRegistry.reset()
+            }
         } else {
             runCatching { readInstalled(id) }.onSuccess {
                 PowerCalSkinRegistry.activate(it.pack)
@@ -55,6 +82,13 @@ class SkinPackageManager(private val context: Context) {
     }
 
     fun select(id: String) {
+        if (id == clearCandidate.id) {
+            // Explicit opt-in only during bridge migration. Never auto-select.
+            val verified = readBundledClear()
+            PowerCalSkinRegistry.activate(verified.pack)
+            prefs.edit().putString("selected", id).apply()
+            return
+        }
         if (id == original.id) {
             prefs.edit().putString("selected", id).apply()
             PowerCalSkinRegistry.reset()
@@ -70,7 +104,9 @@ class SkinPackageManager(private val context: Context) {
             ?: error("无法读取皮肤包")
         val result = decode(bytes, true)
         val id = result.pack.key
-        require(id != original.id) { "不能覆盖内置原生皮肤" }
+        require(id != original.id && id != clearCandidate.id) {
+            "不能覆盖受保护的内置皮肤"
+        }
         require(folder.isDirectory || folder.mkdirs()) { "无法创建皮肤目录" }
         require((folder.listFiles()?.count { it.extension == "pcskin" } ?: 0) < 12) {
             "皮肤超过 12 个，请先删除不需要的皮肤"
@@ -95,47 +131,13 @@ class SkinPackageManager(private val context: Context) {
     }
 
     fun delete(id: String) {
-        require(id != original.id && ID.matches(id)) { "不能删除内置皮肤" }
+        require(id != original.id && id != clearCandidate.id && ID.matches(id)) {
+            "不能删除内置皮肤"
+        }
         val target = File(folder, id + ".pcskin")
         require(target.isFile) { "皮肤包不存在" }
         if (currentId() == id) select(original.id)
         require(target.delete()) { "删除失败" }
-    }
-
-    /** Exports a starter Web skin, not the actual native Glass presentation. */
-    fun exportOriginal(uri: Uri) {
-        val source = linkedMapOf(
-            "project.json" to """{"projectVersion":3,"mode":"simple","slots":[{"id":"primary","label":"Primary","type":"color","value":"#315ecf","editable":true}]}""".toByteArray(),
-            "web/index.html" to """<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="style.css"></head><body><main id="app"><h1>PowerCal</h1><section id="events"></section></main><script src="app.js"></script></body></html>""".toByteArray(),
-            "web/style.css" to """body{margin:0;font:16px system-ui;background:#f4f6fb;color:#11151c}main{padding:16px}button{min-height:48px}@media(prefers-reduced-motion:reduce){*{animation:none!important}}""".toByteArray(),
-            "web/app.js" to """(()=>{'use strict';let port;window.addEventListener('message',e=>{if(e.data==='powercal-port'&&e.ports[0]){port=e.ports[0];port.onmessage=m=>{const x=JSON.parse(m.data);if(x.type==='state')document.getElementById('events').textContent=(x.payload.events||[]).map(v=>v.title).join(' · ')}}})})();""".toByteArray()
-        )
-        val target = context.contentResolver.openOutputStream(uri) ?: error("无法写入目标文件")
-        target.use { stream ->
-            ZipOutputStream(stream).use { zip ->
-                val json = JSONObject()
-                    .put("format", FORMAT).put("schemaVersion", 3)
-                    .put("id", "powercal-original-template")
-                    .put("name", "PowerCal Web Base v3")
-                    .put("entrypoint", "web/index.html").put("project", "project.json")
-                    .put("fullCanvas", false)
-                    .put("capabilities", org.json.JSONArray(listOf("host.read", "host.action")))
-                    .put("light", JSONObject()).put("dark", JSONObject())
-                    .put("layout", JSONObject().put("cardRadiusDp", 28)
-                        .put("barRadiusDp", 20).put("pointLineDp", 2)
-                        .put("fontScale", 1.0))
-                    .put("imagesLight", JSONObject()).put("imagesDark", JSONObject())
-                    .put("sha256", JSONObject().apply {
-                        source.forEach { (path, bytes) -> put(path, digest(bytes)) }
-                    })
-                zip.putNextEntry(ZipEntry("manifest.json"))
-                zip.write(json.toString(2).toByteArray(Charsets.UTF_8))
-                zip.closeEntry()
-                source.forEach { (path, bytes) ->
-                    zip.putNextEntry(ZipEntry(path)); zip.write(bytes); zip.closeEntry()
-                }
-            }
-        }
     }
 
     internal data class Verified(val name: String, val pack: PowerCalSkinPack)

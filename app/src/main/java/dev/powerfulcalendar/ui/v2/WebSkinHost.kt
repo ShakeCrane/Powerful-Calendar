@@ -49,6 +49,14 @@ internal sealed interface WebSkinAction {
     data class PanTimeline(val deltaMinutes: Int) : WebSkinAction
     /** Select a calendar day while preserving the existing time span. */
     data class JumpTimelineDay(val date: String) : WebSkinAction
+    data class ToggleMemo(
+        val eventSeq: Long, val expectedRevision: Long,
+        val occurrenceKey: String, val completed: Boolean
+    ) : WebSkinAction
+    data class SendChat(val text: String) : WebSkinAction
+    data object CreateMemo : WebSkinAction
+    data class CreateDraft(val kind: String) : WebSkinAction
+    data class BrowseMonth(val deltaMonths: Int) : WebSkinAction
 }
 
 internal fun validateOpenEvent(
@@ -140,7 +148,7 @@ private fun SecureWebSkin(bundle: WebSkinBundle, modifier: Modifier, onFailure: 
                     return WebResourceResponse(mime, if (mime.startsWith("text") || mime.contains("json") || mime.contains("javascript")) "utf-8" else null,
                         ByteArrayInputStream(data)).apply {
                         responseHeaders = mapOf(
-                            "Content-Security-Policy" to "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'",
+                            "Content-Security-Policy" to "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'none'; frame-src 'none'; form-action 'none'; object-src 'none'; base-uri 'none'",
                             "X-Content-Type-Options" to "nosniff"
                         )
                     }
@@ -261,6 +269,44 @@ internal fun decodeBridgeAction(raw: String): WebSkinAction? {
             if (parsed != null && parsed.year in 1900..2200)
                 WebSkinAction.JumpTimelineDay(parsed.toString())
             else null
+        }
+        "createMemo" -> if (keys == setOf("name")) WebSkinAction.CreateMemo else null
+        "browseMonth" -> {
+            if (keys != setOf("name", "deltaMonths")) return null
+            val raw = payload.opt("deltaMonths")
+            if (raw is Int && raw in -12..12 && raw != 0)
+                WebSkinAction.BrowseMonth(raw)
+            else null
+        }
+        "createDraft" -> {
+            if (keys != setOf("name", "kind")) return null
+            val kind = payload.opt("kind")
+            if (kind is String && kind in setOf("ACTIVITY", "ALARM", "DEADLINE", "MEMO"))
+                WebSkinAction.CreateDraft(kind)
+            else null
+        }
+        "sendChat" -> {
+            if (keys != setOf("name", "text")) return null
+            val text = payload.opt("text")
+            if (text is String && text.isNotBlank() && text.length <= 4000)
+                WebSkinAction.SendChat(text)
+            else null
+        }
+        "toggleMemo" -> {
+            if (keys != setOf("name", "eventSeq", "expectedRevision",
+                    "occurrenceKey", "completed")) return null
+            val seqRaw = payload.opt("eventSeq")
+            val revRaw = payload.opt("expectedRevision")
+            val key = payload.opt("occurrenceKey")
+            val done = payload.opt("completed")
+            val seq = (seqRaw as? Long) ?: (seqRaw as? Int)?.toLong()
+            val rev = (revRaw as? Long) ?: (revRaw as? Int)?.toLong()
+            if (seq != null && seq > 0 && rev != null && rev > 0 &&
+                key is String && key.length in 1..100 &&
+                key.all { it.isLetterOrDigit() || it in ":_-." } &&
+                done is Boolean) {
+                WebSkinAction.ToggleMemo(seq, rev, key, done)
+            } else null
         }
         "openEvent" -> {
             if (keys != setOf("name", "eventSeq", "expectedRevision")) return null

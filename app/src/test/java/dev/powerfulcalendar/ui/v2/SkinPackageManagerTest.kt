@@ -94,6 +94,26 @@ class SkinPackageManagerTest {
         }
     }
 
+    @Test fun bundledClearIsVerifiedProtectedAndOptInOnly() {
+        manager.select("powercal-default")
+        assertEquals("powercal-default", manager.currentId())
+        val builtin = manager.installed().single { it.id == "powercal-clear-default" }
+        assertTrue(builtin.builtIn)
+        assertThrows(IllegalArgumentException::class.java) {
+            manager.delete("powercal-clear-default")
+        }
+        try {
+            manager.select("powercal-clear-default")
+            assertEquals("powercal-clear-default", manager.currentId())
+            assertNotNull(PowerCalSkinRegistry.active.web)
+            assertTrue(PowerCalSkinRegistry.active.web!!.fullCanvas)
+            manager.restoreSelection()
+            assertEquals("powercal-clear-default", PowerCalSkinRegistry.active.key)
+        } finally {
+            manager.select("powercal-default")
+        }
+    }
+
     @Test fun installChooseRestartAndDeleteDoNotModifyCalendarDatabase() {
         val id = "test-" + UUID.randomUUID().toString().take(24)
         val archive = pack(manifest(id))
