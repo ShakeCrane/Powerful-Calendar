@@ -15,9 +15,9 @@ class VersionContractTest {
     @Test
     fun packageIdentityIsStableForInPlaceUpgrades() {
         assertEquals("dev.powerfulcalendar", BuildConfig.APPLICATION_ID)
-        assertEquals("0.9.4-rc.1", BuildConfig.VERSION_NAME)
+        assertEquals("0.9.5-rc.1", BuildConfig.VERSION_NAME)
         assertTrue("first stable RC must stay above the historical debug code 2",
-            BuildConfig.VERSION_CODE == 904)
+            BuildConfig.VERSION_CODE == 905)
     }
 
     @Test
