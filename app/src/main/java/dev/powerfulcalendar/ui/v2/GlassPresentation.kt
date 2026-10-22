@@ -149,3 +149,22 @@ internal fun overflowGroups(overflow: Map<AxisSide, List<TemporalRecord>>, minim
         if (group.isNotEmpty()) add(OverflowGroup(side, start, end, group.toList()))
     }
 }
+
+/** Stable deck order for one tapped overflow band; receives hidden members only. */
+internal fun orderedOverflowMembers(group: OverflowGroup, clickedMillis: Long): List<TemporalRecord> {
+    val virtual = TimelineLayout.layout(group.records, Int.MAX_VALUE).items
+        .associate { it.record.eventSeq to it.lane }
+    fun distance(record: TemporalRecord): Long {
+        val start = record.anchorMillis() ?: Long.MAX_VALUE
+        val end = record.spanEndMillis() ?: start
+        return when {
+            clickedMillis < start -> start - clickedMillis
+            clickedMillis > end -> clickedMillis - end
+            else -> 0L
+        }
+    }
+    return group.records.sortedWith(
+        compareBy<TemporalRecord>({ distance(it) != 0L }, { if (distance(it) == 0L) virtual[it.eventSeq] ?: Int.MAX_VALUE else 0 },
+            { distance(it) }, { virtual[it.eventSeq] ?: Int.MAX_VALUE }, { it.anchorMillis() }, { it.eventSeq })
+    )
+}

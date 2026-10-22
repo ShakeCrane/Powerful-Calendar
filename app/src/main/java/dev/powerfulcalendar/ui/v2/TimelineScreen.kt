@@ -64,6 +64,7 @@ fun TimelineScreen(
     val latestCamera by rememberUpdatedState(camera)
     var inertia by remember { mutableStateOf<Job?>(null) }
     var inspected by remember { mutableStateOf<TemporalRecord?>(null) }
+    var overflowDeck by remember { mutableStateOf<Pair<OverflowGroup, Long>?>(null) }
     val owners = remember(records) { records.associateBy { it.eventSeq } }
     val day = Instant.ofEpochMilli(camera.anchorMillis).atZone(zone).toLocalDate()
     val projection = remember(records, day, zone) {
@@ -191,8 +192,8 @@ fun TimelineScreen(
             // MEMO is date-only and does not occupy a minute-scale lane.
             val layout = remember(projection) {
                 val projected = projection.map { it.record }
-                    .filterNot { it.isDateOnlyDeadline() || it.kind == TemporalKind.MEMO }
-                TimelineLayout.layout(projected, projected.size.coerceAtLeast(1))
+                    .filterNot { it.kind == TemporalKind.MEMO }
+                TimelineLayout.layout(projected)
             }
             val textMeasurer = rememberTextMeasurer()
             var dragKey by remember { mutableStateOf<String?>(null) }
@@ -341,6 +342,30 @@ fun TimelineScreen(
                         }
                     }
                 }
+                overflowGroups(
+                    layout.overflow,
+                    (12 * 60_000L).coerceAtLeast((TimelineCoordinate.spanMillis(camera.hours) / height * 8).toLong())
+                ).forEach { group ->
+                    val top = TimelineCoordinate.yOf(group.start, camera.anchorMillis, height, camera.hours)
+                    val bottom = TimelineCoordinate.yOf(group.end, camera.anchorMillis, height, camera.hours)
+                    if (bottom < 0 || top > height) return@forEach
+                    val bandTop = top.coerceAtLeast(0f)
+                    val bandHeight = (bottom.coerceAtMost(height) - bandTop).coerceAtLeast(6f)
+                    val x = if (group.side == AxisSide.LEFT) viewportWidth / 2 - gutter - 8.dp
+                        else viewportWidth / 2 + gutter
+                    Surface(
+                        onClick = {
+                            val clicked = TimelineCoordinate.timeAt((bandTop + bandHeight / 2),
+                                camera.anchorMillis, height, camera.hours)
+                            overflowDeck = group to clicked
+                        },
+                        modifier = Modifier.offset(x, with(density) { bandTop.toDp() })
+                            .width(8.dp).height(with(density) { bandHeight.toDp() })
+                            .semantics { contentDescription = "${group.records.size} hidden events" },
+                        color = MaterialTheme.colorScheme.error.copy(alpha = .68f),
+                        shape = RoundedCornerShape(4.dp)
+                    ) {}
+                }
                 TimelineCanvas(camera.anchorMillis, camera.hours, height, width, nowMillis, zone, nowOnly = true)
                 // Double-tap the *current-time ruler*, not anywhere on an event.
                 Box(Modifier.align(Alignment.Center).width(25.dp).fillMaxHeight()
@@ -368,6 +393,23 @@ fun TimelineScreen(
     inspected?.let { record -> SkinAlertDialog(onDismissRequest = { inspected = null }, title = { Text(record.title) },
         text = { Column { Text(TemporalText.summarize(record)); Text(record.notes); Text("AI 正在处理卡组，暂时只可查看。") } },
         confirmButton = { TextButton(onClick = { inspected = null }) { Text("完成") } }) }
+    overflowDeck?.let { (group, clicked) ->
+        val members = remember(group, clicked) { orderedOverflowMembers(group, clicked) }
+        SkinAlertDialog(
+            onDismissRequest = { overflowDeck = null },
+            title = { Text("Hidden events · ${members.size}") },
+            text = {
+                Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                    members.forEach { record ->
+                        TextButton(onClick = { overflowDeck = null; open(record) }, Modifier.fillMaxWidth()) {
+                            Text(record.title, Modifier.fillMaxWidth(), maxLines = 2)
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { overflowDeck = null }) { Text("Close") } }
+        )
+    }
 }
 
 /**

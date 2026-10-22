@@ -126,6 +126,12 @@ data class TemporalRecord(
 
     fun isDateOnlyDeadline(): Boolean = precision == TimePrecision.DATE
 
+    /** Presentation anchor only; stored deadline precision/value remain unchanged. */
+    fun visualAxisMillis(inZone: ZoneId = zone): Long? =
+        if (isDateOnlyDeadline()) deadlineDate?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+            ?.plusDays(1)?.atStartOfDay(inZone)?.toInstant()?.toEpochMilli()?.minus(1)
+        else anchorMillis(inZone)
+
     /** Validation of the record as a whole. Returns a user-facing reason, or null when legal. */
     fun validate(): String? {
         if (title.isBlank()) return "请输入事件标题"
@@ -1145,7 +1151,7 @@ object TimelineLayout {
             val laneEnds = ArrayList<Long>()
             val onSide = records.filter { it.kind.side == side }
                 .mapNotNull { record ->
-                    val anchor = record.anchorMillis() ?: return@mapNotNull null
+                    val anchor = record.visualAxisMillis() ?: return@mapNotNull null
                     val end = record.spanEndMillis() ?: anchor
                     // Visual label/touch size MUST NOT influence semantic overlap.
                     // A duration interval ends exactly at END; point events collide
