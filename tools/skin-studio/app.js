@@ -31,7 +31,7 @@ function download(blob,name){const url=URL.createObjectURL(blob);const a=documen
 async function api(path,data,binary=false) {
   const res=await fetch(path,{method:"POST",headers:{"Content-Type":binary?"application/octet-stream":"application/json"},body:binary?data:JSON.stringify(data)});
   if(!res.ok){let message="请求失败";try{message=(await res.json()).error||message}catch{};throw Error(message)}
-  return path==="/api/export"?res.blob():res.json();
+  return path==="/api/export"||path==="/api/export-v3"?res.blob():res.json();
 }
 function showError(error){notify(error?.message||String(error),true)}
 function rgba(hex){return hex.length===9?"#"+hex.slice(3):hex}
@@ -197,3 +197,42 @@ function hookup(){
  renderScene();assetStatus();
 }
 hookup();
+
+// Unified v3 project: simple slots and advanced source always describe the same runnable package.
+const V3_DEFAULT={
+ html:'<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="style.css"></head><body><header><b>PowerCal</b><button data-action="today">Today</button><button data-action="openDeck">Drafts</button></header><main id="events"></main><nav><button data-action="timeline">Timeline</button><button data-action="month">Month</button><button data-action="ai">AI</button><button data-action="settings">Settings</button></nav><script src="app.js"></script></body></html>',
+ css:':root{--primary:#2457D6;--surface:#F3F5FA}*{box-sizing:border-box}body{margin:0;background:var(--surface);font:16px system-ui}header,nav{display:flex;gap:8px;padding:12px}main{min-height:70vh;padding:16px}button{min-height:48px;border:0;border-radius:14px;padding:8px 12px}header button{background:var(--primary);color:white}@media(prefers-reduced-motion:reduce){*{animation:none!important}}',
+ js:"(()=>{'use strict';let host={postMessage:m=>console.log('mock host',m)};const send=(type,payload={})=>host.postMessage(JSON.stringify({version:1,type,payload}));window.addEventListener('message',e=>{if(e.data==='powercal-port'&&e.ports[0]){host=e.ports[0];host.onmessage=m=>receive(m.data);send('ready',{minimumBridgeVersion:1})}});document.addEventListener('click',e=>{const name=e.target.closest('[data-action]')?.dataset.action;if(name)send('action',{name})});function receive(raw){const m=typeof raw==='string'?JSON.parse(raw):raw;if(m.type==='state')document.getElementById('events').textContent=(m.payload.events||[]).map(x=>x.title).join(' · ')||'No events'}window.PowerCalMockState=receive})();"
+};
+let v3Project={format:"powercal-skin-studio",projectVersion:3,mode:"simple",slots:[
+ {id:"primary",label:"Primary",type:"color",value:"#2457D6",editable:true},
+ {id:"surface",label:"Surface",type:"color",value:"#F3F5FA",editable:true}],
+ layers:[{id:"root",x:0,y:0},{id:"header",x:0,y:0},{id:"events",x:0,y:0},{id:"navigation",x:0,y:0}],source:{...V3_DEFAULT}};
+const b64=bytes=>{let s="";for(const x of bytes)s+=String.fromCharCode(x);return btoa(s)};
+const text64=text=>b64(new TextEncoder().encode(text));
+const from64=value=>new TextDecoder().decode(Uint8Array.from(atob(value),c=>c.charCodeAt(0)));
+function syncV3Editors(){
+ $("htmlCode").value=v3Project.source.html;$("cssCode").value=v3Project.source.css;$("jsCode").value=v3Project.source.js;
+ const layer=v3Project.layers.find(x=>x.id===$("layerTree").value)||v3Project.layers[0];$("layerTree").value=layer.id;$("layerX").value=layer.x;$("layerY").value=layer.y;
+ renderWebPreview();
+}
+function renderWebPreview(){
+ const mock=`<script>window.addEventListener('message',e=>{});setTimeout(()=>window.PowerCalMockState&&window.PowerCalMockState({type:'state',payload:{events:[{title:'Mock alarm'},{title:'Mock activity'}]}}),50)<\/script>`;
+ $("webPreview").srcdoc=v3Project.source.html.replace('<link rel="stylesheet" href="style.css">',`<style>${v3Project.source.css}</style>`).replace('<script src="app.js"></script>',`<script>${v3Project.source.js}<\/script>${mock}`);
+}
+function setStudioMode(next){v3Project.mode=next;const advanced=next==="advanced";$("advancedEditor").hidden=!advanced;$("webPreviewPanel").hidden=!advanced;notify(advanced?"高级模式：编辑完整 HTML/CSS/JS 与图层位置":"简单模式：只修改基底声明的材质槽");if(advanced)syncV3Editors()}
+function v3Payload(){
+ manifest.id=$("skinId").value.trim();manifest.name=$("skinName").value.trim();
+ const project={projectVersion:3,mode:v3Project.mode,slots:v3Project.slots};
+ return{manifest:{format:"powercal-skin",schemaVersion:3,id:manifest.id,name:manifest.name,entrypoint:"web/index.html",project:"project.json",fullCanvas:true,capabilities:["host.read","host.action","host.edit"],light:manifest.light,dark:manifest.dark,layout:manifest.layout,imagesLight:{},imagesDark:{},sha256:{}},files:{
+  "project.json":text64(JSON.stringify(project,null,2)),"web/index.html":text64(v3Project.source.html),"web/style.css":text64(v3Project.source.css),"web/app.js":text64(v3Project.source.js)}};
+}
+$("simpleMode").onclick=()=>setStudioMode("simple");$("advancedMode").onclick=()=>setStudioMode("advanced");
+$("layerTree").onchange=syncV3Editors;for(const id of ["layerX","layerY"]){$(id).onchange=()=>{const layer=v3Project.layers.find(x=>x.id===$("layerTree").value);layer[id==="layerX"?"x":"y"]=Number($(id).value)||0;v3Project.source.css+=`\n#${layer.id}{transform:translate(${layer.x}px,${layer.y}px)}`;syncV3Editors()}}
+$("applyCode").onclick=()=>{v3Project.source={html:$("htmlCode").value,css:$("cssCode").value,js:$("jsCode").value};renderWebPreview();notify("已应用源码；导出后 Android v3 将运行同一份 Web 源")};
+$("exportPack").onclick=async()=>{try{const blob=await api("/api/export-v3",v3Payload());download(blob,manifest.id+".pcskin");notify("已导出自包含 .pcskin v3") }catch(e){showError(e)}};
+$("validate").onclick=async()=>{try{await api("/api/export-v3",v3Payload());notify("v3 ZIP、完整哈希、项目与 Web 源验证通过") }catch(e){showError(e)}};
+$("exportProject").onclick=()=>{v3Project.source={html:$("htmlCode").value||v3Project.source.html,css:$("cssCode").value||v3Project.source.css,js:$("jsCode").value||v3Project.source.js};download(new Blob([JSON.stringify(v3Project,null,2)],{type:"application/json"}),manifest.id+".pcstudio-v3.json");notify("已保存独立 v3 源项目")};
+$("importProject").onchange=async e=>{try{const data=JSON.parse(await e.target.files[0].text());if(data.projectVersion!==3||!data.source)throw Error("不是 v3 源项目");v3Project=data;setStudioMode(data.mode);syncV3Editors();notify("v3 源项目已载入") }catch(error){showError(error)}finally{e.target.value=""}};
+$("importZip").onchange=async e=>{try{const file=e.target.files[0];const response=await api("/api/import-v3",await file.arrayBuffer(),true);manifest={...manifest,...response.manifest};$("skinId").value=manifest.id;$("skinName").value=manifest.name;const project=JSON.parse(from64(response.files["project.json"]));v3Project={...v3Project,...project,source:{html:from64(response.files["web/index.html"]),css:from64(response.files["web/style.css"]),js:from64(response.files["web/app.js"]||text64(V3_DEFAULT.js))}};setStudioMode(v3Project.mode);syncV3Editors();notify("可运行 v3 包已导入；源码和槽位均可继续编辑") }catch(error){showError(error)}finally{e.target.value=""}};
+setStudioMode("simple");syncV3Editors();

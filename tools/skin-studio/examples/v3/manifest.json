@@ -1,0 +1,11 @@
+{
+  "format": "powercal-skin",
+  "schemaVersion": 3,
+  "id": "powercal-web-base-v3",
+  "name": "PowerCal Web Base v3",
+  "entrypoint": "web/index.html",
+  "project": "project.json",
+  "fullCanvas": true,
+  "capabilities": ["host.read", "host.action", "host.edit"],
+  "light": {}, "dark": {}, "layout": {}, "imagesLight": {}, "imagesDark": {}, "sha256": {}
+}

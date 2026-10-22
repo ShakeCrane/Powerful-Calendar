@@ -14,6 +14,16 @@ Full v2 scene/actions/motion contract: docs/SKIN_PACK_V2.md.
 The web-based visual editor remains a v1 theme + design-planning editor; it does
 not yet provide visual drag-and-drop editing of v2 node trees.
 
+## Self-contained programmable packages (.pcskin v3)
+
+The Studio now uses one v3 project in simple and advanced mode. Simple mode edits declared material
+slots; advanced mode edits layers, position metadata and complete HTML/CSS/JS with a mocked typed
+host bridge. Imported v3 packages reopen as runnable source and can be exported without rebuilding
+the APK. See `docs/SKIN_PACK_V3.md`.
+
+    python tools/skin-studio/skin_studio.py build-v3 --manifest tools/skin-studio/examples/v3/manifest.json --source-dir tools/skin-studio/examples/v3/source --out PowerCal-Web-v3.pcskin
+    python tools/skin-studio/skin_studio.py validate PowerCal-Web-v3.pcskin
+
 # PowerCal Skin Studio — 使用与开发
 
 2026-10-21。分为两个工具：本地网页**设计编辑器**与**完整 Android Compose 皮肤代码生成器**。

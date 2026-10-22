@@ -1,12 +1,13 @@
 <!doctype html>
 <html lang="zh-CN"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>PowerCal Skin Studio</title><link rel="stylesheet" href="/style.css">
+<title>PowerCal Skin Studio</title><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/style-v3.css">
 </head><body>
-<header class="topbar"><div><strong>PowerCal <span>Skin Studio</span></strong><small>独立表现层工作台 · .pcskin v1 + Compose 设计项目</small></div>
+<header class="topbar"><div><strong>PowerCal <span>Skin Studio v3</span></strong><small>同一项目的简单材质与高级 Web 图层编辑器</small></div>
 <div class="actions"><label class="fileButton">导入 .pcskin<input id="importZip" type="file" accept=".pcskin,.zip" hidden></label>
 <label class="fileButton">打开项目<input id="importProject" type="file" accept=".json,.pcstudio" hidden></label>
-<button id="exportProject">保存设计项目</button><button id="exportPack" class="primary">导出 .pcskin</button></div></header>
+<button id="simpleMode">简单模式</button><button id="advancedMode">高级模式</button>
+<button id="exportProject">保存独立源项目</button><button id="exportPack" class="primary">导出 v3 .pcskin</button></div></header>
 <div id="toast" class="toast" role="status" aria-live="polite">就绪。更改会即时反映在结构预览中。</div>
 <main>
 <aside class="sidebar">
@@ -24,6 +25,12 @@
 <section><h2>动效（Compiled）</h2><label>选择组件<select id="motionTarget"></select></label><label>预设<select id="motionPreset"><option value="none">无</option><option value="fade">淡入</option><option value="slide">平移</option><option value="scale">缩放</option></select></label><label>时长 <output id="durationValue"></output> ms<input id="motionDuration" type="range" min="0" max="600" step="25"></label><button id="replay">重播预览</button><p class="hint">遵循系统减少动画时，强制以静态呈现；时间轴的几何位置不能被动画篡改。</p></section>
 <section><h2>PNG / WebP 资源（v1）</h2><label>目标槽<select id="assetSlot"></select></label><label>所属主题<select id="assetMode"><option value="imagesLight">浅色</option><option value="imagesDark">深色</option></select></label><label class="fileButton">选择图片<input id="assetFile" type="file" accept="image/png,image/webp" hidden></label><button id="clearAsset">移除此槽素材</button><div id="assetStatus" class="hint"></div></section>
 <section><h2>验证</h2><button id="validate">检查皮肤包</button><p class="hint">校验 ZIP ABI、SHA-256、文件/像素尺寸、键名与布局范围；真机渲染及可访问性仍需独立验收。</p></section>
+<section id="advancedEditor" hidden><h2>高级 v3 Web 源码</h2>
+<label>图层<select id="layerTree"><option value="root">root</option><option value="header">header</option><option value="events">events</option><option value="navigation">navigation</option></select></label>
+<div class="inline"><label>X<input id="layerX" type="number" value="0"></label><label>Y<input id="layerY" type="number" value="0"></label></div>
+<label>HTML<textarea id="htmlCode" rows="8"></textarea></label><label>CSS<textarea id="cssCode" rows="8"></textarea></label><label>JavaScript<textarea id="jsCode" rows="8"></textarea></label>
+<button id="applyCode">应用到真实 Web 预览</button><p class="hint">预览使用模拟的版本化 host bridge；Android 端只开放白名单动作。</p></section>
 </aside></main>
+<section id="webPreviewPanel" class="webPreviewPanel" hidden><h2>v3 Web Preview</h2><iframe id="webPreview" sandbox="allow-scripts"></iframe></section>
 <script src="/app.js" defer></script>
 </body></html>

@@ -1,0 +1,9 @@
+{
+  "projectVersion": 3,
+  "mode": "advanced",
+  "slots": [
+    {"id":"surface","label":"Surface","type":"color","value":"#f4f6fb","editable":true},
+    {"id":"primary","label":"Primary","type":"color","value":"#315ecf","editable":true},
+    {"id":"brand","label":"Brand","type":"text","value":"PowerCal","editable":true}
+  ]
+}

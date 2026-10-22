@@ -215,14 +215,16 @@ class Handler(BaseHTTPRequestHandler):
         route = self.path.split("?", 1)[0]
         files = {"/": ("index.html", "text/html; charset=utf-8"),
                  "/app.js": ("app.js", "text/javascript; charset=utf-8"),
-                 "/style.css": ("style.css", "text/css; charset=utf-8")}
+                 "/style.css": ("style.css", "text/css; charset=utf-8"),
+                 "/style-v3.css": ("style-v3.css", "text/css; charset=utf-8")}
         if route not in files:
             return self.send_json(404, {"error": "Not Found"})
         filename, mime = files[route]
         self.reply(200, (HERE / filename).read_bytes(), mime)
 
     def do_POST(self):
-        if self.path not in ("/api/validate", "/api/export", "/api/import"):
+        if self.path not in ("/api/validate", "/api/export", "/api/import",
+                             "/api/export-v3", "/api/import-v3"):
             return self.send_json(404, {"error": "Not Found"})
         origin = self.headers.get("Origin")
         if origin and origin not in (f"http://127.0.0.1:{self.server.server_port}",
@@ -231,18 +233,32 @@ class Handler(BaseHTTPRequestHandler):
         try:
             size = int(self.headers.get("Content-Length", "-1"))
             check(0 <= size <= 24_000_000, "请求体过大")
-            is_import = self.path == "/api/import"
+            is_import = self.path in ("/api/import", "/api/import-v3")
             mime = self.headers.get("Content-Type", "").split(";", 1)[0].strip()
             check(mime == ("application/octet-stream" if is_import else "application/json"),
                   "Content-Type 不受支持")
             data = self.rfile.read(size)
             check(len(data) == size, "传输中断")
             if is_import:
+                if self.path == "/api/import-v3":
+                    from runtime_package_v3 import unpack as unpack_v3
+                    manifest, files = unpack_v3(data)
+                    return self.send_json(200, {"manifest": manifest, "files": {
+                        path: base64.b64encode(blob).decode("ascii") for path, blob in files.items()}})
                 manifest, assets = unpack(data)
                 self.send_json(200, {"manifest": manifest, "images": {
                     path: base64.b64encode(blob).decode("ascii") for path, blob in assets.items()}})
                 return
             obj = json.loads(data.decode("utf-8"))
+            if self.path == "/api/export-v3":
+                from runtime_package_v3 import build_files
+                raw_files = obj.get("files", {})
+                check(type(raw_files) is dict and len(raw_files) <= 96, "invalid v3 files")
+                files = {path: base64.b64decode(value, validate=True)
+                         for path, value in raw_files.items()}
+                compiled = build_files(obj.get("manifest"), files)
+                return self.reply(200, compiled, "application/octet-stream",
+                                  "PowerCal-" + obj["manifest"]["id"] + ".pcskin")
             manifest, assets = from_json(obj)
             if self.path == "/api/validate":
                 m = validated(manifest, assets, verify_hash=False)
@@ -267,6 +283,10 @@ def main():
     build2.add_argument("--ui", type=Path, required=True)
     build2.add_argument("--out", type=Path, required=True)
     build2.add_argument("--assets-dir", type=Path)
+    build3 = sub.add_parser("build-v3", help="build a self-contained programmable Web skin")
+    build3.add_argument("--manifest", type=Path, required=True)
+    build3.add_argument("--source-dir", type=Path, required=True)
+    build3.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
     if args.command == "validate":
         payload = args.file.read_bytes()
@@ -276,7 +296,11 @@ def main():
             check(head.file_size <= 80_000, "Manifest too large")
             with archive.open(head) as source:
                 manifest = json.loads(source.read(80_001).decode("utf8"))
-        if manifest.get("schemaVersion") == 2:
+        if manifest.get("schemaVersion") == 3:
+            from runtime_package_v3 import unpack as unpack_v3
+            m, files = unpack_v3(payload)
+            print(f"OK: {m['id']} / {m['name']} / runtime v3 / {len(files)} source files")
+        elif manifest.get("schemaVersion") == 2:
             from runtime_package import unpack as unpack_v2
             m, ui = unpack_v2(payload)
             print(f"OK: {m['id']} / {m['name']} / runtime v2 / {len(ui['screens'])} scenes")
@@ -291,6 +315,13 @@ def main():
         args.out.parent.mkdir(parents=True, exist_ok=True)
         args.out.write_bytes(result)
         print(f"Built {args.out} ({len(result)} bytes)")
+    elif args.command == "build-v3":
+        from runtime_package_v3 import build
+        manifest = json.loads(args.manifest.read_text("utf8"))
+        result = build(manifest, args.source_dir)
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        args.out.write_bytes(result)
+        print(f"Built v3 {args.out} ({len(result)} bytes)")
     else:
         port = getattr(args, "port", 8765)
         with ThreadingHTTPServer(("127.0.0.1", port), Handler) as server:
