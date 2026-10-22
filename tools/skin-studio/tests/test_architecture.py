@@ -20,7 +20,8 @@ class PresentationBoundaryTests(unittest.TestCase):
         host = (UI / "PowerCalApp.kt").read_text("utf-8")
         self.assertRegex(host, r"SkinAppShell\s*\(")
         self.assertIn("forceNative = tools", host)
-        self.assertIn("onOpenNativeSettings =", host)
+        self.assertIn("onWebSkinFailure =", host)
+        self.assertIn("nativeRecoverySignal", host)
         for binding in ("SkinNotice(", "PowerCalNavigation(",
                         "MemoCenterScreen(", "AiChatScreen(", "DraftDeckDialog(", "ToolsPage("):
             self.assertIn(binding, host)

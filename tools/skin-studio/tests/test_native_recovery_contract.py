@@ -13,15 +13,27 @@ class NativeRecoveryContractTest(unittest.TestCase):
         self.assertIn("skins.install(uri)", snippet)
         self.assertNotIn("skins.select(result.id)", snippet)
 
-    def test_native_settings_bypasses_scripted_root(self):
+    def test_native_settings_and_hidden_activity_rescue_are_both_available(self):
         app = (UI / "PowerCalApp.kt").read_text(encoding="utf-8")
         shell = (UI / "SkinnableChrome.kt").read_text(encoding="utf-8")
         web = (UI / "WebSkinHost.kt").read_text(encoding="utf-8")
+        activity = (ROOT / "app/src/main/java/dev/powerfulcalendar/MainActivity.kt").read_text(encoding="utf-8")
         self.assertIn("forceNative = tools", app)
         self.assertIn("if (forceNative) native()", shell)
-        self.assertIn("onOpenNativeSettings", web)
+        self.assertNotIn("onOpenNativeSettings", web)
         self.assertIn("statusBarsPadding().navigationBarsPadding()", web)
         self.assertIn("onSkinFailure()", web)
+        self.assertIn("override fun dispatchTouchEvent", activity)
+        self.assertIn("AlternatingTapRecovery", activity)
+        self.assertIn('select("powercal-default")', activity)
+
+    def test_skin_switch_warns_and_requires_explicit_confirm(self):
+        app = (UI / "PowerCalApp.kt").read_text(encoding="utf-8")
+        self.assertIn("skinToActivate?.let", app)
+        self.assertIn("连续敲击 8 下", app)
+        self.assertIn("确认切换", app)
+        self.assertIn("skinToActivate = skinChoices.firstOrNull", app)
+        self.assertNotIn("skins.select(result.id)", app)
 
 
 if __name__ == "__main__":

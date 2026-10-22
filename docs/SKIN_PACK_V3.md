@@ -40,12 +40,22 @@ motion is sent to the skin and package CSS must also honor `prefers-reduced-moti
 
 ## Activation, example scope and native recovery
 
-Installing a skin adds it to the list but **does not select it**. Users explicitly enable
-a skin from the native Settings screen. All Settings/Tools pages bypass Web rendering
-even with fullCanvas=true. A small host-owned native Settings button stays above a
-full-canvas Web skin; hardware Back from its timeline is another recovery route. The
-host keeps status/navigation bar safe areas outside the Web viewport. Main-frame load
-failures and Web renderer crashes revert the persistent selection to the native theme.
+Installing a skin adds it to the list but **does not select it**. Manual skin
+switches show a host-owned confirmation warning explaining the recovery gesture.
+Settings/Tools always bypass a Web skin and are rendered natively. There is no
+extra fixed Settings icon forced into the imported visual design.
+
+Emergency rollback is a hidden Android Activity-level recognizer, observing all
+touch events *before* a WebView or Compose skin: rapidly alternate eight brief
+taps between two distinct on-screen locations (four taps per finger).
+On success, PowerCal immediately persists the built-in native skin selection,
+without deleting event data or installed skins, then opens native Settings.
+Single-location taps, long presses, slow tapping, drags and unstable locations
+cannot trigger the recognizer. Hardware Back from a Web timeline remains a
+secondary route into native Settings.
+
+The host keeps status/navigation bar safe areas outside the Web viewport.
+Main-frame load errors and renderer crashes revert the persistent selection to native.
 
 The examples/v3 package is a **development/demo skin**, not a complete replacement
 for PowerCal's native Glass interface or the planned final default skin. Its HTML controls

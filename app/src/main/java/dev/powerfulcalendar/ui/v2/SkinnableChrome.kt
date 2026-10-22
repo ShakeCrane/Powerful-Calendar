@@ -45,7 +45,6 @@ internal interface ChromeVisualRenderer {
 @Composable
 internal fun SkinAppShell(
     forceNative: Boolean = false,
-    onOpenNativeSettings: () -> Unit = {},
     onWebSkinFailure: () -> Unit = {},
     content: @Composable BoxScope.() -> Unit
 ) {
@@ -65,7 +64,6 @@ internal fun SkinAppShell(
     if (forceNative) native()
     else if (web != null) {
         WebSkinRoot(web, Modifier.fillMaxSize(), content,
-            onOpenNativeSettings = onOpenNativeSettings,
             onSkinFailure = onWebSkinFailure)
     } else if (renderer == null && !RuntimeSkinSurfaces.enabled("chrome")) native()
     else {

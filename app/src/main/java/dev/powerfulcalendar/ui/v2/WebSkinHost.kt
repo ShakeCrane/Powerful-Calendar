@@ -14,15 +14,6 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Surface
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -61,7 +52,6 @@ internal fun WebSkinRoot(
     bundle: WebSkinBundle,
     modifier: Modifier = Modifier,
     native: @Composable BoxScope.() -> Unit,
-    onOpenNativeSettings: () -> Unit = {},
     onSkinFailure: () -> Unit = {}
 ) {
     var failed by remember(bundle) { mutableStateOf(false) }
@@ -74,21 +64,7 @@ internal fun WebSkinRoot(
             }
         )
         if (!bundle.fullCanvas || failed) native()
-        if (!failed && bundle.fullCanvas) {
-            // Host-owned recovery control is not rendered by untrusted skin code.
-            Surface(
-                modifier = Modifier.align(Alignment.TopEnd)
-                    .statusBarsPadding().padding(top = 8.dp, end = 12.dp),
-                shape = MaterialTheme.shapes.medium,
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
-                tonalElevation = 4.dp
-            ) {
-                IconButton(onClick = onOpenNativeSettings) {
-                    Icon(Icons.Default.Settings,
-                        contentDescription = "打开原生设置，恢复皮肤")
-                }
-            }
-        }
+
     }
 }
 

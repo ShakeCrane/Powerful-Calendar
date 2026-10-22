@@ -162,7 +162,7 @@ private data class AppData(
 )
 
 @Composable
-fun PowerCalApp(store: PowerStore) {
+fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
     val context = LocalContext.current
     val appContext = context.applicationContext
     val zone = remember { ZoneId.systemDefault() }
@@ -173,6 +173,7 @@ fun PowerCalApp(store: PowerStore) {
     var skinChoices by remember { mutableStateOf(skins.installed()) }
     var selectedSkin by remember { mutableStateOf(skins.currentId()) }
     var skinToDelete by remember { mutableStateOf<InstalledSkin?>(null) }
+    var skinToActivate by remember { mutableStateOf<InstalledSkin?>(null) }
 
     var page by rememberSaveable { mutableStateOf(Page.TIMELINE.name) }
     var records by remember { mutableStateOf<List<TemporalRecord>>(emptyList()) }
@@ -181,6 +182,16 @@ fun PowerCalApp(store: PowerStore) {
     var aiSession by remember { mutableStateOf<PowerStore.AiSession?>(null) }
     var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var message by remember { mutableStateOf<String?>(null) }
+
+    // The Activity has persisted the native selection independently of the Web layer.
+    LaunchedEffect(nativeRecoverySignal) {
+        if (nativeRecoverySignal > 0) {
+            selectedSkin = skins.currentId()
+            skinToActivate = null
+            page = Page.TOOLS.name
+            message = "已通过双指交替敲击恢复原生皮肤，日历数据及已安装皮肤均保留。"
+        }
+    }
     var deckOpen by rememberSaveable { mutableStateOf(false) }
     var deckInitialId by rememberSaveable { mutableStateOf<Long?>(null) }
     var textDialogOpen by remember { mutableStateOf(false) }
@@ -893,7 +904,6 @@ fun PowerCalApp(store: PowerStore) {
 
     SkinAppShell(
         forceNative = tools,
-        onOpenNativeSettings = { page = Page.TOOLS.name },
         onWebSkinFailure = {
             runCatching { skins.select("powercal-default") }
             selectedSkin = skins.currentId()
@@ -917,12 +927,9 @@ fun PowerCalApp(store: PowerStore) {
                 skinChoices = skinChoices,
                 selectedSkin = selectedSkin,
                 onSelectSkin = { id ->
-                    runCatching { skins.select(id) }
-                        .onSuccess {
-                            selectedSkin = id
-                            message = "已切换皮肤：" + skinChoices.firstOrNull { it.id == id }?.name
-                        }
-                        .onFailure { error -> message = "无法切换皮肤：" + error.message }
+                    if (id != selectedSkin) {
+                        skinToActivate = skinChoices.firstOrNull { it.id == id }
+                    }
                 },
                 onImportSkin = {
                     importSkin.launch(arrayOf("application/zip", "application/octet-stream", "*/*"))
@@ -1302,6 +1309,38 @@ fun PowerCalApp(store: PowerStore) {
             onConfirm = { text ->
                 textDialogOpen = false
                 scope.launch { createDraftFromText(text, "text") }
+            }
+        )
+    }
+
+    skinToActivate?.let { item ->
+        SkinAlertDialog(
+            onDismissRequest = { skinToActivate = null },
+            title = { Text("切换皮肤前请确认") },
+            text = {
+                Text(
+                    """即将启用“${item.name}”。第三方皮肤可能遮挡设置入口，甚至导致界面无法操作。
+
+紧急回退：在屏幕上相隔的两处位置，用双指轮流快速轻点，共连续敲击 8 下（每指 4 下），即可强制恢复原生皮肤。
+
+回退不会删除日历事件、草稿或已安装皮肤。导入新皮肤本身不会自动启用。""".trimIndent()
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    skinToActivate = null
+                    runCatching { skins.select(item.id) }
+                        .onSuccess {
+                            selectedSkin = skins.currentId()
+                            message = "已切换皮肤：" + item.name
+                        }
+                        .onFailure { error ->
+                            message = "无法切换皮肤：" + error.message
+                        }
+                }) { Text("确认切换") }
+            },
+            dismissButton = {
+                TextButton(onClick = { skinToActivate = null }) { Text("取消") }
             }
         )
     }
