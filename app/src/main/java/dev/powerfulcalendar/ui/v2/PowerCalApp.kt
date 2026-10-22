@@ -222,6 +222,20 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
     var editForm by remember { mutableStateOf<DraftForm?>(null) }
     var editBaseline by remember { mutableStateOf<DraftForm?>(null) }
     var editError by remember { mutableStateOf<String?>(null) }
+    // One Web editing coordinator per host; reloading or replacing a skin
+    // must never create a new DeckController, editor lease or command queue.
+    val nativeEditingNow = androidx.compose.runtime.rememberUpdatedState(
+        editSession != null || deckOpen)
+    val webEditing = remember(store, controller) {
+        WebSkinEditService(store, controller) { nativeEditingNow.value }
+    }
+    DisposableEffect(webEditing) {
+        onDispose {
+            // UI teardown never drops a live editing lease without first trying
+            // the same durable checkpoint used for an explicit skin change.
+            PowerCalStores.appScope.launch { webEditing.prepareSkinChange() }
+        }
+    }
     var confirmingLegacy by remember { mutableStateOf(false) }
     // Holds an early flat v2 file until the user explicitly accepts its unverified nature.
     var legacyRestoreText by remember { mutableStateOf<String?>(null) }
@@ -366,6 +380,13 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
                 editError = activeEditSession?.lastError
                 scope.launch { reconcile(); reload() }
+            }
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP &&
+                webEditing.hasLiveEditor()) {
+                PowerCalStores.appScope.launch {
+                    // Keep the session/dirty input live on failure; no silent discard.
+                    webEditing.checkpoint()
+                }
             }
             if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP && deckVisible) {
                 // Best effort: the controller serializes this after any autosave, and a failed
@@ -919,6 +940,13 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
     val webBridgeOwner = remember { Any() }
     androidx.compose.runtime.SideEffect {
         WebSkinBridgeRuntime.owner = webBridgeOwner
+        WebSkinBridgeRuntime.onEdit = { command ->
+            val response = webEditing.execute(command)
+            // Web editor state lives in the host, not the WebView. Publish on
+            // every completed command, including a conflict or failed save.
+            WebSkinBridgeRuntime.stateRevision++
+            response
+        }
         WebSkinBridgeRuntime.onAction = { action ->
             when (action) {
                 is WebSkinAction.Routed -> when (action.name) {
@@ -1060,6 +1088,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                     }
                 ))
                 .put("reducedMotion", effects.reduceMotion)
+                .put("editing", webEditing.snapshot())
                 .put("optionGroups", SemanticOptions.toJson(
                     enabled = !aiLocked && editSession == null))
                 .put("timeline", WebSkinTimelineProjection.build(
@@ -1080,6 +1109,9 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
             if (WebSkinBridgeRuntime.owner === webBridgeOwner) {
                 WebSkinBridgeRuntime.owner = null
                 WebSkinBridgeRuntime.onAction = {}
+                WebSkinBridgeRuntime.onEdit = { cmd ->
+                    JSONObject().put("requestId",cmd.requestId).put("status","unavailable")
+                }
                 WebSkinBridgeRuntime.state = {
                     JSONObject().put("bridgeVersion", WebSkinBridgeRuntime.VERSION)
                 }
@@ -1102,10 +1134,14 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
     SkinAppShell(
         forceNative = tools,
         onWebSkinFailure = {
-            runCatching { skins.select("powercal-default") }
-            selectedSkin = skins.currentId()
-            page = Page.TOOLS.name
-            message = "皮肤加载失败，已恢复原生界面。"
+            scope.launch {
+                val safe = webEditing.prepareSkinChange()
+                runCatching { skins.select("powercal-default") }
+                selectedSkin = skins.currentId()
+                page = Page.TOOLS.name
+                message = if(safe) "皮肤加载失败，编辑已存档并恢复安全界面。"
+                    else "皮肤已失效，编辑检查点失败；已进入安全界面，切勿强制结束应用。"
+            }
         }
     ) {
         val keyboardVisible = WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current) > 0
@@ -1526,14 +1562,20 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
             confirmButton = {
                 TextButton(onClick = {
                     skinToActivate = null
-                    runCatching { skins.select(item.id) }
-                        .onSuccess {
-                            selectedSkin = skins.currentId()
-                            message = "已切换皮肤：" + item.name
+                    scope.launch {
+                        if(!webEditing.prepareSkinChange()) {
+                            message = "编辑内容尚未安全保存，已阻止切换皮肤"
+                            return@launch
                         }
-                        .onFailure { error ->
-                            message = "无法切换皮肤：" + error.message
-                        }
+                        runCatching { skins.select(item.id) }
+                            .onSuccess {
+                                selectedSkin = skins.currentId()
+                                message = "已切换皮肤：" + item.name
+                            }
+                            .onFailure { error ->
+                                message = "无法切换皮肤：" + error.message
+                            }
+                    }
                 }) { Text("确认切换") }
             },
             dismissButton = {

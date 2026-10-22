@@ -20,6 +20,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
 import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import android.webkit.WebMessagePort
@@ -41,6 +43,9 @@ internal object WebSkinBridgeRuntime {
     const val VERSION = 1
     var owner: Any? = null
     var onAction: (WebSkinAction) -> Unit = {}
+    var onEdit: suspend (WebEditCommand) -> JSONObject = { cmd ->
+        JSONObject().put("requestId",cmd.requestId).put("status","unavailable")
+    }
     var state: () -> JSONObject = { JSONObject().put("bridgeVersion", VERSION) }
     // Only the collector reads this Compose observable. Publishing from the application's
     // SideEffect does not itself cause the owning Composable to recompose.
@@ -177,7 +182,36 @@ private fun SecureWebSkin(bundle: WebSkinBundle, modifier: Modifier, onFailure: 
                                 if (!live.get() || session.port !== port ||
                                     PowerCalSkinRegistry.active.web !== bundle ||
                                     !WebSkinCapabilityPolicy.mayAct(bundle)) return@post
-                                decodeBridgeAction(message.data.orEmpty())
+                                val raw = message.data.orEmpty()
+                                val command = WebEditWire.decode(raw)
+                                if(command!=null) {
+                                    // The write survives WebView/composition cancellation. A
+                                    // late acknowledgement must never reach a replaced port.
+                                    val invokingOwner = WebSkinBridgeRuntime.owner
+                                    PowerCalStores.appScope.launch(Dispatchers.Main.immediate) {
+                                        // Delayed tasks cannot execute after skin/owner replacement.
+                                        if(!live.get() || session.port!==port ||
+                                            PowerCalSkinRegistry.active.web!==bundle ||
+                                            WebSkinBridgeRuntime.owner!==invokingOwner)
+                                            return@launch
+                                        val reply = runCatching {
+                                            WebSkinBridgeRuntime.onEdit(command)
+                                        }.getOrElse {
+                                            JSONObject().put("requestId",command.requestId)
+                                                .put("status","failed")
+                                        }
+                                        if(live.get() && session.port===port &&
+                                            PowerCalSkinRegistry.active.web===bundle) {
+                                            runCatching {
+                                                port.postMessage(android.webkit.WebMessage(
+                                                    JSONObject().put("version",1).put("type","result")
+                                                        .put("payload",reply).toString()))
+                                            }.onFailure { onFailure() }
+                                            runCatching { feed.publish(exposedState(bundle)) }
+                                                .onFailure { onFailure() }
+                                        }
+                                    }
+                                } else decodeBridgeAction(raw)
                                     ?.let(WebSkinBridgeRuntime.onAction)
                                 runCatching { feed.publish(exposedState(bundle)) }
                                     .onFailure { onFailure() }
