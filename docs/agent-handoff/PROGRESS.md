@@ -1,4 +1,11 @@
 # Core freeze progress
+## PC-ISSUE-107 — completion-tracking reminder core sign-off (REC-P0-017 PASS)
+
+- Re-read the candidate’s declared environment and expected result: Robolectric API 34, isolated PowerStore SQLite, pending reminder intent and same-database reopen; UI, Android system scheduling and device are explicitly outside this reconstructed row. Revalidated the existing two core regressions: both tracking directions preserve enabled/reminder state and durable intent across SQLite reopen; API 34 reconcile schedules the updated revision once and rejects the old revision.
+- Targeted tests passed 2/2. Current full offline Debug boundary/test/APK/lint run passed 460/460 across 57 suites, 0 failures/errors/skips; lint 0 errors / 58 warnings. No app or test source changed.
+- Independent report: `docs/issues/PC-ISSUE-107-tracking-reminder-core-signoff.md`. `REC-P0-017` is now PASS only for its reconstructed core acceptance; Android OS delivery and original historical-case mapping are not claimed.
+- Freeze remains HOLD: 136 PASS / 0 FAIL / 9 BLOCKED / 57 NOT TESTED / 7 SPEC UNRESOLVED; P0 112/0/1/8/5; P1 24/0/8/49/1. Structural-only validation `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-107.json`, SHA-256 `B8AEF4DE9137931A66578EEAE219EEB38CD8D7C01515E128693E5C5192ED0FE8`; ledger SHA-256 `4A83C16E8D29F918D79415FE119B27FACFB887DAE0BF65150D260C0AAE68E1F6`.
+
 ## PC-ISSUE-106 — API 35 exact-alarm denial core checkpoint (REC-P0-112 remains NOT TESTED)
 
 - Added one API 35 Robolectric `ReminderValidationTest`: exact reminder commit followed by permission-denied reconciliation persists `BLOCKED`, retains the exact-alarm permission hint, and leaves `ShadowAlarmManager` empty. Core test only; no production/UI change.
