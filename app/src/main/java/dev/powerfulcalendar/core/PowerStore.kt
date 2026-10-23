@@ -796,6 +796,46 @@ class PowerStore(
         return newDraft(DraftForm.from(record), eventSeq, operation, actor)
     }
 
+    /** Starts an explicit, reviewable proposal to restore a retired event under the same identity. */
+    @Synchronized
+    fun proposeRestoreDraft(eventSeq: Long, actor: String = "user"): DraftCard = tx { db ->
+        check(!isLocked(db)) { "待处理卡组正由 AI 独占，批量结束后再添加草稿" }
+        check(actor != "ai" || !hasHumanEditor(db)) {
+            "A human editor is active; AI calendar mutation was rejected"
+        }
+        val retired = readObject(db, eventSeq, includeRetired = true)
+            ?: error("事件序号 #$eventSeq 从未存在")
+        check(isRetired(db, eventSeq)) { "事件 #$eventSeq 尚未删除，无需恢复" }
+
+        val activeId = db.rawQuery(
+            """SELECT draft_id FROM drafts
+               WHERE event_seq=? AND status IN ('PENDING','CONFLICT','INVALID') LIMIT 1""",
+            arrayOf(eventSeq.toString())
+        ).use { if (it.moveToFirst()) it.getLong(0) else null }
+        if (activeId != null) {
+            val active = requireNotNull(readDraft(db, activeId))
+            check(active.operation == DraftOperation.REPLACE || active.operation == DraftOperation.CONVERT) {
+                "该事件已有不兼容的待处理草稿"
+            }
+            return@tx active
+        }
+
+        val now = System.currentTimeMillis()
+        val order = bump(db, "next_order")
+        val draftId = db.insertOrThrow("drafts", null, ContentValues().apply {
+            put("event_seq", eventSeq)
+            put("queue_order", order)
+            put("base_rev", retired.revision)
+            put("op", DraftOperation.REPLACE.name)
+            put("payload", encodeForm(DraftForm.from(retired)))
+            put("status", DraftStatus.PENDING.name)
+            put("draft_version", 0L)
+            put("created_ms", now)
+            put("updated_ms", now)
+        })
+        requireNotNull(readDraft(db, draftId)) { "恢复草稿写入失败" }
+    }
+
     /**
      * Optimistic concurrency: a save only lands if the caller edited the version it read.
      * A mismatch returns the newer card instead of overwriting someone else's text.
@@ -1053,8 +1093,12 @@ class PowerStore(
         actor: String = "user"
     ): CommitOutcome = tx { db ->
         if (isLocked(db)) return@tx CommitOutcome.Locked
+        if (actor != "user") return@tx CommitOutcome.NotAuthorized
         val card = readDraft(db, draftId) ?: return@tx CommitOutcome.Invalid("草稿不存在")
         if (!card.isActionable) return@tx CommitOutcome.Invalid("草稿已经处理")
+        if (card.operation != DraftOperation.REPLACE && card.operation != DraftOperation.CONVERT) {
+            return@tx CommitOutcome.Invalid("恢复必须由修改或类型转换草稿发起")
+        }
         val eventSeq = card.eventSeq
         val retiredRecord = readObject(db, eventSeq, includeRetired = true)
             ?: return@tx CommitOutcome.Invalid("该事件序号从未存在")

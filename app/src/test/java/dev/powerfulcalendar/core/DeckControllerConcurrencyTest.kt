@@ -111,6 +111,9 @@ class DeckControllerConcurrencyTest {
         override fun isAiLocked(): Boolean = false
         override fun restoreDraft(draftId: Long, form: DraftForm): PowerStore.CommitOutcome =
             PowerStore.CommitOutcome.Committed(draftId, 1, "r")
+        override fun proposeRestore(eventSeq: Long): DraftCard =
+            add("恢复提案").copy(eventSeq = eventSeq, operation = DraftOperation.REPLACE)
+                .also { cards[it.draftId] = it }
 
         override fun record(eventSeq: Long): TemporalRecord? = null
     }

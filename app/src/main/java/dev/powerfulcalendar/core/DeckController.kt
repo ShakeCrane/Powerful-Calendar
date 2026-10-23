@@ -53,6 +53,9 @@ interface DeckPersistence {
     /** Restoration is driven by the proposing card so it cannot survive as a stale duplicate. */
     fun restoreDraft(draftId: Long, form: DraftForm): PowerStore.CommitOutcome
 
+    /** Creates or resumes a proposal for a tombstone; confirmation remains a separate action. */
+    fun proposeRestore(eventSeq: Long): DraftCard
+
     /** Current formal snapshot, used to re-verify a conflict prompt before overwriting. */
     fun record(eventSeq: Long): TemporalRecord?
 }
@@ -244,6 +247,18 @@ class DeckController(
         sessionStartedAt = clock()
         update { it.copy(lastDiscardId = null, completion = null) }
         refreshInternal(preferDraftId)
+    }
+
+    /** Opens a tombstone restore proposal; it does not reactivate the formal event. */
+    suspend fun beginRestore(eventSeq: Long): Boolean = command {
+        val card = persistence.proposeRestore(eventSeq)
+        undoDraftId = null
+        lastTerminalActionAt = 0L
+        processedInSession = 0
+        sessionStartedAt = clock()
+        update { it.copy(lastDiscardId = null, completion = null) }
+        refreshInternal(card.draftId)
+        true
     }
 
     /**

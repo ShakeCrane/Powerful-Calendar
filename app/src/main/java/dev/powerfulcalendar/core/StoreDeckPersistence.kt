@@ -25,5 +25,8 @@ class StoreDeckPersistence(private val store: PowerStore) : DeckPersistence {
     override fun restoreDraft(draftId: Long, form: DraftForm): PowerStore.CommitOutcome =
         store.restoreDraft(draftId, form, actor = "user")
 
+    override fun proposeRestore(eventSeq: Long): DraftCard =
+        store.proposeRestoreDraft(eventSeq, actor = "user")
+
     override fun record(eventSeq: Long): TemporalRecord? = store.get(eventSeq)
 }

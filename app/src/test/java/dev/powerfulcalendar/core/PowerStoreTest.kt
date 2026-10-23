@@ -366,6 +366,57 @@ class PowerStoreTest {
             store.getIncludingRetired(seq)!!)) is PowerStore.CommitOutcome.Invalid)
     }
 
+    @Test
+    fun explicitRestoreProposalKeepsTombstoneUntilHumanConfirmationAndReusesIdentity() {
+        val original = store.newDraft(alarmForm("恢复后仍是同一闹钟"))
+        assertTrue(commit(original) is PowerStore.CommitOutcome.Committed)
+        val eventSeq = original.eventSeq
+        val originalRecord = store.get(eventSeq)!!
+        val delete = store.newDraft(
+            DraftForm.from(originalRecord), eventSeq, DraftOperation.DELETE
+        )
+        assertTrue(commit(delete) is PowerStore.CommitOutcome.Committed)
+
+        val tombstone = store.getIncludingRetired(eventSeq)!!
+        val nextSeqBeforeProposal = store.nextSequencePreview()
+        assertTrue(store.isRetired(eventSeq))
+        assertNull(store.get(eventSeq))
+
+        val proposal = store.proposeRestoreDraft(eventSeq)
+        assertEquals(eventSeq, proposal.eventSeq)
+        assertEquals(DraftOperation.REPLACE, proposal.operation)
+        assertEquals(tombstone.revision, proposal.baseRevision)
+        assertEquals(DraftForm.from(tombstone), proposal.form)
+        assertEquals(proposal.draftId, store.proposeRestoreDraft(eventSeq).draftId)
+        assertEquals(nextSeqBeforeProposal, store.nextSequencePreview())
+        assertTrue(store.isRetired(eventSeq))
+        assertNull(store.get(eventSeq))
+
+        assertTrue(commit(proposal) is PowerStore.CommitOutcome.NeedsRestore)
+        assertTrue(store.isRetired(eventSeq))
+        assertTrue(store.restoreDraft(
+            proposal.draftId,
+            proposal.form.copy(title = "用户确认恢复"),
+            actor = "ai"
+        ) is PowerStore.CommitOutcome.NotAuthorized)
+        assertTrue(store.isRetired(eventSeq))
+
+        val restored = store.restoreDraft(
+            proposal.draftId,
+            proposal.form.copy(title = "用户确认恢复")
+        ) as PowerStore.CommitOutcome.Committed
+        assertEquals(eventSeq, restored.eventSeq)
+        assertEquals(tombstone.revision + 1, restored.revision)
+        assertEquals(nextSeqBeforeProposal, store.nextSequencePreview())
+        assertFalse(store.isRetired(eventSeq))
+        assertEquals("用户确认恢复", store.get(eventSeq)!!.title)
+        assertEquals(originalRecord.createdAtMillis, store.get(eventSeq)!!.createdAtMillis)
+        val intent = store.intentFor(eventSeq)
+        assertNotNull(intent)
+        assertEquals(restored.revision, intent!!.revision)
+        assertEquals(PowerStore.DesiredSchedule.PENDING, intent.desired)
+    }
+
     // ---------------------------------------------------------------- optimistic staging
 
     @Test

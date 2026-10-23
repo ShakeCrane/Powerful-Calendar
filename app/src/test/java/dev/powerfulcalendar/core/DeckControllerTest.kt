@@ -39,6 +39,7 @@ class DeckControllerTest {
         var locked = false
         var failStage = false
         var conflictOnCommit = false
+        var needsRestoreOnCommit = false
         var currentRevisionForRecord: Long? = null
         var published = 0
         var discarded = 0
@@ -87,7 +88,9 @@ class DeckControllerTest {
             if (conflictOnCommit && !approveStale) {
                 return PowerStore.CommitOutcome.Conflict(record(1L))
             }
-            val card = cards.remove(draftId) ?: return PowerStore.CommitOutcome.Invalid("不存在")
+            val card = cards[draftId] ?: return PowerStore.CommitOutcome.Invalid("不存在")
+            if (needsRestoreOnCommit) return PowerStore.CommitOutcome.NeedsRestore(card.eventSeq)
+            cards.remove(draftId)
             published++
             return PowerStore.CommitOutcome.Committed(card.eventSeq, 2, "commit-$draftId")
         }
@@ -127,6 +130,10 @@ class DeckControllerTest {
             return PowerStore.CommitOutcome.Committed(card.eventSeq, 3, "restore-$draftId")
         }
 
+        override fun proposeRestore(eventSeq: Long): DraftCard =
+            cards.values.firstOrNull { it.eventSeq == eventSeq }
+                ?: add("恢复提案", eventSeq, DraftOperation.REPLACE)
+
         override fun record(eventSeq: Long): TemporalRecord? =
             currentRevisionForRecord?.let { revision ->
                 TemporalRecord(
@@ -138,6 +145,24 @@ class DeckControllerTest {
                     endMillis = 2_000L
                 )
             }
+    }
+
+    @Test
+    fun explicitRestoreEntryOpensProposalAndRequiresSeparateConfirmation() = runBlocking {
+        val fake = Fake().apply { needsRestoreOnCommit = true }
+        val controller = controller(fake)
+
+        assertTrue(controller.beginRestore(42L))
+        val card = controller.state.current!!
+        assertEquals(42L, card.eventSeq)
+        assertEquals(DraftOperation.REPLACE, card.operation)
+
+        assertFalse(controller.commit())
+        assertEquals(42L, controller.state.restore!!.eventSeq)
+        assertTrue(controller.requestRestore())
+        assertNull(controller.state.restore)
+        assertEquals(1, controller.state.completion!!.published)
+        assertEquals(1, fake.published)
     }
 
     @Test
