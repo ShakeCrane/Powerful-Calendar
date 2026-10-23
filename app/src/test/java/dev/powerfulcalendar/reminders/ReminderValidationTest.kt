@@ -121,6 +121,33 @@ class ReminderValidationTest {
     }
 
     @Test
+    fun revokingExactAlarmPermissionBlocksScheduledIntentOnNextReconcile() {
+        val alarmManager = context.getSystemService(AlarmManager::class.java)!!
+        val shadowAlarmManager = Shadows.shadowOf(alarmManager)
+        ShadowAlarmManager.setCanScheduleExactAlarms(true)
+
+        val seq = createAlarm(60)
+        val record = store.get(seq)!!
+        val exactReminder = store.newDraft(
+            DraftForm.from(record).copy(reminderMethod = ReminderMethod.ALARM),
+            seq,
+            DraftOperation.REPLACE
+        )
+        assertTrue(store.commit(exactReminder.draftId) is PowerStore.CommitOutcome.Committed)
+
+        ReminderScheduler.reconcile(context, store)
+        assertEquals(PowerStore.DesiredSchedule.SCHEDULED, store.intentFor(seq)!!.desired)
+        assertEquals(1, shadowAlarmManager.scheduledAlarms.size)
+
+        ShadowAlarmManager.setCanScheduleExactAlarms(false)
+        ReminderScheduler.reconcile(context, store)
+
+        val blocked = store.intentFor(seq)!!
+        assertEquals(PowerStore.DesiredSchedule.BLOCKED, blocked.desired)
+        assertTrue(blocked.androidHint.orEmpty().contains("精确闹钟权限"))
+    }
+
+    @Test
     fun aWrongOccurrenceKeyIsRejected() {
         val seq = createAlarm(60)
         val intent = store.intentFor(seq)!!
