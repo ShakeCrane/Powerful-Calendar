@@ -417,4 +417,68 @@ class OccurrenceWindowTest {
         assertTrue(occurrences.any { it.startMillis == local(shanghai, "2026-10-19 20:00") })
         assertTrue(occurrences.any { it.startMillis == local(shanghai, "2026-10-20 20:00") })
     }
+
+    @Test
+    fun crossMidnightActivityRecurrenceBoundsUseTheOriginalStartDate() {
+        val start = local(shanghai, "2026-10-20 23:30")
+        val end = local(shanghai, "2026-10-21 01:15")
+        val day21 = window(shanghai, "2026-10-21")
+        val activeThroughDay20 = TemporalRecord(
+            eventSeq = 201,
+            revision = 1,
+            kind = TemporalKind.ACTIVITY,
+            title = "有效期结束前开始",
+            startMillis = start,
+            endMillis = end,
+            zoneId = shanghai.id,
+            recurrence = Recurrence(
+                freq = RecurrenceFreq.DAILY,
+                activeUntilDate = "2026-10-20"
+            )
+        )
+        val activeFromDay21 = activeThroughDay20.copy(
+            eventSeq = 202,
+            title = "有效期开始后开始",
+            recurrence = Recurrence(
+                freq = RecurrenceFreq.DAILY,
+                activeFromDate = "2026-10-21"
+            )
+        )
+
+        val carryInOnly = RecurrenceEngine.occurrences(
+            activeThroughDay20, day21.first, day21.last + 1
+        )
+        val startsOnDay21 = RecurrenceEngine.occurrences(
+            activeFromDay21, day21.first, day21.last + 1
+        )
+
+        assertEquals(listOf("2026-10-20T23:30"), carryInOnly.map { it.key })
+        assertEquals(listOf("2026-10-21T23:30"), startsOnDay21.map { it.key })
+    }
+
+    @Test
+    fun crossMidnightActivityRecurrencePreservesItsTrueDuration() {
+        val start = local(shanghai, "2026-10-20 23:30")
+        val end = local(shanghai, "2026-10-21 01:15")
+        val record = TemporalRecord(
+            eventSeq = 203,
+            revision = 1,
+            kind = TemporalKind.ACTIVITY,
+            title = "每日夜间活动",
+            startMillis = start,
+            endMillis = end,
+            zoneId = shanghai.id,
+            recurrence = Recurrence(freq = RecurrenceFreq.DAILY)
+        )
+        val day21 = window(shanghai, "2026-10-21")
+
+        val occurrences = RecurrenceEngine.occurrences(
+            record, day21.first, day21.last + 1
+        )
+
+        assertEquals(listOf("2026-10-20T23:30", "2026-10-21T23:30"),
+            occurrences.map { it.key })
+        assertTrue(occurrences.all { it.endMillis!! - it.startMillis == end - start })
+        assertEquals(local(shanghai, "2026-10-21 01:15"), occurrences.first().endMillis)
+    }
 }
