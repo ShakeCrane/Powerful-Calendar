@@ -2176,6 +2176,39 @@ class PowerStoreTest {
     }
 
     @Test
+    fun icsActivityProjectionDoesNotCreateSecondFormalEventAcrossRestart() {
+        val card = store.newDraft(activityForm("ICS 只读投影", 120))
+        assertTrue(commit(card) is PowerStore.CommitOutcome.Committed)
+
+        val formal = requireNotNull(store.get(card.eventSeq))
+        val formalRows = store.all()
+        val history = store.history(card.eventSeq)
+        val intent = store.intentFor(card.eventSeq)
+        val exported = IcsCodec.exportActivities(formalRows)
+        val parsed = IcsCodec.parse(exported)
+
+        assertTrue(parsed.warnings.isEmpty())
+        assertEquals(1, parsed.events.size)
+        assertEquals(formal.title, parsed.events.single().title)
+        assertEquals(formal.startMillis, parsed.events.single().startMillis)
+        assertEquals(formal.endMillis, parsed.events.single().endMillis)
+        assertEquals(formalRows, store.all())
+        assertEquals(history, store.history(card.eventSeq))
+        assertEquals(intent, store.intentFor(card.eventSeq))
+        assertEquals(1L, store.identityCount())
+        assertEquals(2L, store.nextSequencePreview())
+
+        val database = store.databaseName
+        store.close()
+        store = PowerStore(context, database)
+        assertEquals(listOf(formal), store.all())
+        assertEquals(history, store.history(card.eventSeq))
+        assertEquals(intent, store.intentFor(card.eventSeq))
+        assertEquals(1L, store.identityCount())
+        assertEquals(2L, store.nextSequencePreview())
+    }
+
+    @Test
     fun incompleteActivityCommitStaysUnpublishedAndCanBeRepairedAfterRestart() {
         val incompleteForm = DraftForm(
             kind = TemporalKind.ACTIVITY,
