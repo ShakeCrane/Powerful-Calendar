@@ -1,4 +1,11 @@
 # Core freeze progress
+## PC-ISSUE-114 — explicit single-occurrence core override sign-off (REC-P0-078 PASS)
+
+- The explicit occurrence-key PowerStore operation moves only the selected slot from 07:30 to 09:15; the anchor, original keys, other slots, and event identity remain stable. SQLite reopen preserves the record/projection, one identity, and two history rows.
+- Targeted Robolectric API 34 regression passed 1/1. Full Debug boundary/test/APK/lint run passed 460/460 across 57 suites, zero failures/errors/skips; lint 0 errors / 58 warnings.
+- Independent report: docs/issues/PC-ISSUE-114-single-occurrence-core-signoff.md. Default-scope selection and other edit scopes are outside this sign-off.
+- Freeze remains HOLD: 143 PASS / 0 FAIL / 9 BLOCKED / 50 NOT TESTED / 7 SPEC UNRESOLVED; P0 119/0/1/1/5; P1 24/0/8/49/1. Structural-only validation .local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-114.json, SHA-256 3048D54BB5F8CCEB6762269685B535DD2AC5791EDFE0FA98744877040872B1F4; ledger SHA-256 1CC18C043E491828FCB23BCE54B02192ACECA1B63C376A9C57268EE1297BEAF1.
+
 ## PC-ISSUE-113 — AI/ICS core read-only projection sign-off (REC-P0-082 PASS)
 
 - Scoped to the core SQLite-to-ICS and AI request-snapshot projections; reading does not create a second event source or mutate formal rows, history, reminder intent, identity count, or sequence preview. The local AI stub receives one formal event and produces no proposal or draft.
