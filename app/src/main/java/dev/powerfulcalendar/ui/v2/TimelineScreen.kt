@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -26,11 +27,14 @@ import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.*
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -46,6 +50,14 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 private val CLOCK_FORMAT = DateTimeFormatter.ofPattern("HH:mm")
+
+private data class MeasuredTimelineTitle(
+    val candidate: TimelineTitleCandidate,
+    val layout: TextLayoutResult,
+    val drawWidthPx: Int,
+    val offset: IntOffset,
+    val testTag: String
+)
 
 internal fun Modifier.timeAxisResetSemantics(onReset: () -> Unit): Modifier = semantics {
     contentDescription = "双击当前时间刻度尺返回24小时视图"
@@ -308,6 +320,7 @@ fun TimelineScreen(
                                     "timeline-left-lanes" else "timeline-right-lanes")
                         ) {
                             Box(Modifier.width(contentWidth).fillMaxHeight()) {
+                    val titleCandidates = mutableListOf<MeasuredTimelineTitle>()
                     layout.items.filter { it.side == side }.forEach { item ->
                     val y = TimelineCoordinate.yOf(item.anchorMillis, camera.anchorMillis, height, camera.hours)
                     val endY = TimelineCoordinate.yOf(item.record.spanEndMillis() ?: item.anchorMillis, camera.anchorMillis, height, camera.hours)
@@ -333,10 +346,85 @@ fun TimelineScreen(
                     val topPx = if (item.record.kind == TemporalKind.DEADLINE) {
                         y - with(density) { pointHeight.toPx() }
                     } else if (item.record.kind == TemporalKind.ALARM) y else activitySpan!!.topPx
-                    val cardLeftPx = with(density) { (wingX + x).toPx() } - horizontalState.value
-                    val cardWidthPx = with(density) { laneWidth.toPx() }
+                    val cardLeftPx = with(density) {
+                        (wingX.roundToPx() + x.roundToPx() - horizontalState.value).toFloat()
+                    }
+                    val cardWidthPx = with(density) { laneWidth.roundToPx().toFloat() }
                     val cardHeightPx = with(density) {
                         if (point) pointHeight.toPx() else cardHeight.toPx()
+                    }
+                    if (!point && activitySpan != null) {
+                        val outside = titlesOutside
+                        val titleColor = if (outside) kindColor(item.record.kind)
+                            else MaterialTheme.colorScheme.onSurface
+                        val baseStyle = LocalTextStyle.current.copy(
+                            fontSize = 13.sp, color = titleColor
+                        )
+                        val laneWidthPx = with(density) { laneWidth.roundToPx() }
+                        val startPadding = if (outside) 3.dp else 5.dp
+                        val endPadding = if (outside) 3.dp else 3.dp
+                        val startPaddingPx = with(density) { startPadding.roundToPx() }
+                        val endPaddingPx = with(density) { endPadding.roundToPx() }
+                        val availablePx = laneWidthPx - startPaddingPx - endPaddingPx
+                        val measuredTitle = run {
+                            if (availablePx <= 0 || startPaddingPx >= laneWidthPx) return@run null
+                            val fontMaxPx = textMeasurer.measure("汉".repeat(10), style = baseStyle)
+                                .size.width.toFloat()
+                            val naturalWidth = textMeasurer.measure(item.record.title, style = baseStyle)
+                                .size.width.coerceAtLeast(1).toFloat()
+                            val titleLimit = minOf(availablePx.toFloat(), fontMaxPx)
+                            val fontSp = (13f * minOf(1f, titleLimit / naturalWidth))
+                                .coerceAtLeast(10f).sp
+                            val textLayout = textMeasurer.measure(
+                                text = item.record.title,
+                                style = baseStyle.copy(fontSize = fontSp),
+                                overflow = TextOverflow.Ellipsis,
+                                softWrap = false,
+                                maxLines = 1,
+                                constraints = Constraints(maxWidth = availablePx)
+                            )
+                            val drawWidthPx = minOf(textLayout.size.width, availablePx)
+                            if (drawWidthPx <= 0 || textLayout.size.height <= 0) return@run null
+                            val insetPx = with(density) { 2.dp.toPx() }
+                            val titleTopPx = when {
+                                outside -> y - textLayout.size.height - insetPx
+                                textLayout.size.height + insetPx * 2f <= cardHeightPx ->
+                                    activitySpan.topPx + (cardHeightPx - textLayout.size.height) / 2f
+                                else -> y + insetPx
+                            }
+                            val titleX = x + startPadding
+                            val localLeftPx = with(density) { titleX.roundToPx() }
+                            val localTopPx = with(density) { titleTopPx.toDp().roundToPx() }
+                            val wingLeftPx = with(density) { wingX.roundToPx() }
+                            val sideWidthPx = with(density) { sideWidth.roundToPx() }
+                            val screenLeft = wingLeftPx + localLeftPx - horizontalState.value
+                            val unclipped = Rect(
+                                left = screenLeft.toFloat(),
+                                top = localTopPx.toFloat(),
+                                right = (screenLeft + drawWidthPx).toFloat(),
+                                bottom = (localTopPx + textLayout.size.height).toFloat()
+                            )
+                            val screenRect = unclipped.intersect(
+                                Rect(wingLeftPx.toFloat(), 0f,
+                                    (wingLeftPx + sideWidthPx).toFloat(), height)
+                            )
+                            if (screenRect.width <= 0f || screenRect.height <= 0f) return@run null
+                            val stableId = "${item.record.eventSeq}:$key"
+                            MeasuredTimelineTitle(
+                                candidate = TimelineTitleCandidate(
+                                    stableId = stableId,
+                                    eventSeq = item.record.eventSeq,
+                                    regionId = "${item.side.name}:${item.lane}",
+                                    screenRect = screenRect
+                                ),
+                                layout = textLayout,
+                                drawWidthPx = drawWidthPx,
+                                offset = IntOffset(localLeftPx, localTopPx),
+                                testTag = "timeline-title-${item.record.eventSeq}-" +
+                                    stableId.hashCode().toUInt().toString(16)
+                            )
+                        }
+                        if (measuredTitle != null) titleCandidates += measuredTitle
                     }
                     nowBadgeObstacles += Rect(
                         left = cardLeftPx,
@@ -348,6 +436,8 @@ fun TimelineScreen(
                         Surface(
                             onClick = { if (dragKey == null) open(item.record) },
                             modifier = Modifier.offset(x, with(density) { topPx.toDp() }).width(laneWidth)
+                                .testTag("timeline-event-${item.record.eventSeq}-" +
+                                    key.hashCode().toUInt().toString(16))
                                 .height(if (point) pointHeight else cardHeight)
                                 .pointerInput(key, item.record.revision, item.anchorMillis, aiLocked) {
                                     if (!unlocked) return@pointerInput
@@ -378,21 +468,6 @@ fun TimelineScreen(
                             Box(Modifier.fillMaxSize()) {
                                 Box(Modifier.align(Alignment.CenterStart).width(2.dp).fillMaxHeight()
                                     .background(kindColor(item.record.kind)))
-                                val fontMaxPx = with(density) { 13.sp.toPx() }
-                                val availablePx = with(density) { (laneWidth - 10.dp).coerceAtLeast(1.dp).toPx() }
-                                val tenHanPx = textMeasurer.measure("汉".repeat(10),
-                                    style = TextStyle(fontSize = 13.sp)).size.width.toFloat()
-                                val titleLimit = minOf(availablePx, tenHanPx)
-                                val naturalWidth = textMeasurer.measure(item.record.title,
-                                    style = TextStyle(fontSize = 13.sp)).size.width.coerceAtLeast(1)
-                                val fontSp = (13f * minOf(1f, titleLimit / naturalWidth))
-                                    .coerceAtLeast(10f).sp
-                                if (!titlesOutside && cardHeight >= 56.dp) {
-                                    Text(item.record.title, Modifier.align(Alignment.CenterStart)
-                                        .padding(start = 5.dp, end = 3.dp),
-                                        fontSize = fontSp, maxLines = 1, softWrap = false,
-                                        overflow = TextOverflow.Ellipsis)
-                                }
                                 if (cardHeight >= 28.dp) {
                                     Text(Instant.ofEpochMilli(item.anchorMillis).atZone(zone).format(CLOCK_FORMAT),
                                         Modifier.align(Alignment.TopStart).padding(start = 5.dp),
@@ -409,34 +484,24 @@ fun TimelineScreen(
                             }
                             }
                         }
-                        if (!point && titlesOutside && activitySpan != null) {
-                            val titleTop = activitySpan.topPx - with(density) { 18.dp.toPx() }
-                            val collides = layout.items.any { other ->
-                                other !== item && other.side == item.side && other.lane == item.lane &&
-                                    other.anchorMillis < item.anchorMillis &&
-                                    other.endMillis > item.anchorMillis -
-                                        (18 * TimelineCoordinate.spanMillis(camera.hours) / height).toLong()
-                            }
-                            if (!collides && titleTop >= 0f) {
-                                val titleLeftPx = with(density) { (wingX + x + 3.dp).toPx() } - horizontalState.value
-                                val titleWidthPx = with(density) { (laneWidth - 6.dp).coerceAtLeast(8.dp).toPx() }
-                                val titleHeightPx = with(density) { 18.dp.toPx() }
-                                nowBadgeObstacles += Rect(
-                                    left = titleLeftPx,
-                                    top = titleTop,
-                                    right = titleLeftPx + titleWidthPx,
-                                    bottom = titleTop + titleHeightPx
-                                )
-                                Text(item.record.title,
-                                    modifier = Modifier.offset(x + 3.dp, with(density) { titleTop.toDp() })
-                                        .width((laneWidth - 6.dp).coerceAtLeast(8.dp)),
-                                    maxLines = 1, softWrap = false,
-                                    fontSize = 11.sp, overflow = TextOverflow.Ellipsis,
-                                    color = kindColor(item.record.kind))
-                            }
-                        }
                     }
                 }
+                    val titleFold = GreedyTitleFolding.fold(titleCandidates.map { it.candidate })
+                    val visibleTitles = titleFold.visibleIds
+                    titleCandidates.filter { it.candidate.stableId in visibleTitles }.forEach { title ->
+                        nowBadgeObstacles += title.candidate.screenRect
+                        Canvas(
+                            Modifier.offset { title.offset }
+                                .requiredSize(
+                                    with(density) { title.drawWidthPx.toDp() },
+                                    with(density) { title.layout.size.height.toDp() }
+                                )
+                                .clipToBounds()
+                                .testTag(title.testTag)
+                        ) {
+                            drawText(title.layout, topLeft = Offset.Zero)
+                        }
+                    }
                             }
                         }
                     }
