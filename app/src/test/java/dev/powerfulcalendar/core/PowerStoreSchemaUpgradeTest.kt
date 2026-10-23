@@ -187,6 +187,75 @@ class PowerStoreSchemaUpgradeTest {
     }
 
     @Test
+    fun failedV4MigrationRollsBackAndCanRetryWithoutLosingLegacyRows() {
+        val file = context.getDatabasePath("failed-v4-" + UUID.randomUUID() + ".db")
+        createFixture(file, version = 3, withReviewedTable = true, withLineageColumn = true)
+
+        val fixture = SQLiteDatabase.openDatabase(file.path, null, SQLiteDatabase.OPEN_READWRITE)
+        try {
+            fixture.execSQL(
+                """INSERT INTO drafts(draft_id,event_seq,queue_order,base_rev,op,payload,status,
+                   draft_version,created_ms,updated_ms)
+                   SELECT 20,event_seq,3,base_rev,op,payload,'PENDING',5,created_ms,updated_ms+1
+                   FROM drafts WHERE draft_id=19"""
+            )
+            fixture.execSQL(
+                """CREATE TRIGGER fail_v4_draft_update BEFORE UPDATE OF status ON drafts
+                   WHEN NEW.status='DISCARDED'
+                   BEGIN SELECT RAISE(ABORT,'injected v4 migration failure'); END"""
+            )
+        } finally {
+            fixture.close()
+        }
+
+        val failedOpen = PowerStore(context, file.name)
+        try {
+            val failure = runCatching { failedOpen.readableDatabase }.exceptionOrNull()
+            assertNotNull("the injected failure must interrupt the migration", failure)
+        } finally {
+            failedOpen.close()
+        }
+
+        val afterFailure = SQLiteDatabase.openDatabase(file.path, null, SQLiteDatabase.OPEN_READWRITE)
+        try {
+            assertEquals("SQLite must retain the pre-migration version", 3, afterFailure.version)
+            afterFailure.rawQuery(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='draft_migration_audit'",
+                null
+            ).use { assertFalse("DDL from the failed migration must roll back", it.moveToFirst()) }
+            afterFailure.rawQuery(
+                "SELECT COUNT(*) FROM drafts WHERE status='PENDING' AND event_seq=41", null
+            ).use {
+                assertTrue(it.moveToFirst())
+                assertEquals("both legacy drafts must survive the failed migration", 2, it.getInt(0))
+            }
+            afterFailure.execSQL("DROP TRIGGER fail_v4_draft_update")
+        } finally {
+            afterFailure.close()
+        }
+
+        val retry = PowerStore(context, file.name)
+        try {
+            assertEquals(PowerStore.VERSION, retry.readableDatabase.version)
+            assertEquals("v1 已提交", retry.get(41L)!!.title)
+            assertEquals("v1 墓碑", retry.getIncludingRetired(42L)!!.title)
+            assertEquals(1, retry.pendingCount())
+            assertEquals(43L, retry.nextSequencePreview())
+            retry.readableDatabase.rawQuery(
+                "SELECT COUNT(*) FROM draft_migration_audit WHERE reason='v4-duplicate-active-draft'",
+                null
+            ).use {
+                assertTrue(it.moveToFirst())
+                assertEquals("retry must record exactly the duplicate it retired", 1, it.getInt(0))
+            }
+        } finally {
+            val name = retry.databaseName
+            retry.close()
+            context.deleteDatabase(name)
+        }
+    }
+
+    @Test
     fun upgradingRealV2AddsLineageInPlaceWithoutTouchingBusinessRows() {
         val file = context.getDatabasePath("legacy-v2-" + UUID.randomUUID() + ".db")
         createFixture(file, version = 2, withReviewedTable = true)
