@@ -1,4 +1,11 @@
 # Core freeze progress
+## PC-ISSUE-110 — reminder recovery receiver core sign-off (REC-P0-117 PASS)
+
+- Revalidated six synthetic API 34 recovery branches: boot, package replacement, timezone/time change, exact-alarm permission change, and explicit reconciliation. Receiver async completion, one rebuilt AlarmManager registration, durable SCHEDULED state after SQLite reopen, and lock release passed.
+- Targeted regression passed 2/2. Full offline Debug boundary/test/APK/lint run passed 460/460 across 57 suites, zero failures/errors/skips; lint 0 errors / 58 warnings. No app or test source changed.
+- Independent report: `docs/issues/PC-ISSUE-110-reminder-recovery-core-signoff.md`. `REC-P0-117` is PASS for synthetic receiver core behavior only. Actual Android system broadcasts and device recovery remain untested.
+- Freeze remains HOLD: 139 PASS / 0 FAIL / 9 BLOCKED / 54 NOT TESTED / 7 SPEC UNRESOLVED; P0 115/0/1/5/5; P1 24/0/8/49/1. Structural-only validation `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-110.json`, SHA-256 `F4253D7827BFD7843976CAAF94989E5F9AEA4760119C7E900D1B1C56271899CD`; ledger SHA-256 `9F935D5F3746DAD97F8382CE0D4CCC47C0A0448EA1FD49280C6B73429118F33C`.
+
 ## PC-ISSUE-109 — date-only Deadline core sign-off (REC-P0-023 PASS)
 
 - Narrowed the reconstructed expected result from rendered START-END presentation to the core DATE-data invariant because the row declares no UI/device environment. Completion preserves `deadlineDate` and DATE precision; `deadlineMillis/startMillis/endMillis` remain null, including after SQLite reopen. Rendering is not claimed.
