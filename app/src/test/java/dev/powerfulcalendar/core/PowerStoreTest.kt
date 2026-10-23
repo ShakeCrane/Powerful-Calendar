@@ -17,6 +17,7 @@ import org.robolectric.annotation.Config
 import dev.powerfulcalendar.ai.AiDraftService
 import dev.powerfulcalendar.ai.AiInterpretation
 import dev.powerfulcalendar.ai.AiProposal
+import dev.powerfulcalendar.ai.AiResponseParser
 import dev.powerfulcalendar.interop.IcsCodec
 import java.time.Instant
 import java.time.LocalDate
@@ -677,6 +678,49 @@ class PowerStoreTest {
             assertEquals("second", controller.state.form!!.title)
             assertEquals(queue.map { it.draftId }, controller.state.cards.map { it.draftId })
         }
+
+    @Test
+    fun parsedAiCreateAndReplaceRemainDraftsUntilExplicitCommit() {
+        val originalDraft = store.newDraft(activityForm("formal before AI"), actor = "user")
+        assertTrue(commit(originalDraft) is PowerStore.CommitOutcome.Committed)
+        val original = requireNotNull(store.get(originalDraft.eventSeq))
+        val originalSeq = original.eventSeq
+
+        val raw = """
+            {"events":[
+              {"operation":"CREATE","kind":"ACTIVITY","title":"AI create",
+               "start":"2026-10-24 09:00","end":"2026-10-24 10:00"},
+              {"operation":"REPLACE","eventSeq":$originalSeq,"kind":"ACTIVITY",
+               "title":"AI replacement","start":"2026-10-24 11:00","end":"2026-10-24 12:00"}
+            ]}
+        """.trimIndent()
+        val interpretation = AiResponseParser.parse(raw, listOf(original), zone)
+
+        assertTrue(interpretation.warnings.toString(), interpretation.warnings.isEmpty())
+        assertEquals(listOf(DraftOperation.CREATE, DraftOperation.REPLACE),
+            interpretation.proposals.map { it.operation })
+        assertEquals(originalSeq, interpretation.proposals[1].eventSeq)
+
+        val result = AiDraftService(store).createDrafts(interpretation)
+
+        assertTrue(result.warnings.toString(), result.warnings.isEmpty())
+        assertEquals(2, result.draftIds.size)
+        val drafts = result.draftIds.map { requireNotNull(store.draft(it)) }
+        val createDraft = drafts.single { it.operation == DraftOperation.CREATE }
+        val replaceDraft = drafts.single { it.operation == DraftOperation.REPLACE }
+        assertEquals(originalSeq, replaceDraft.eventSeq)
+        assertEquals("AI create", createDraft.form.title)
+        assertEquals("AI replacement", replaceDraft.form.title)
+
+        // Parsing and proposal-card creation must not publish either operation as a formal event.
+        assertNull(store.get(createDraft.eventSeq))
+        val unchangedOriginal = requireNotNull(store.get(originalSeq))
+        assertEquals(original.title, unchangedOriginal.title)
+        assertEquals(original.revision, unchangedOriginal.revision)
+        assertEquals(original.startMillis, unchangedOriginal.startMillis)
+        assertEquals(listOf(createDraft.draftId, replaceDraft.draftId).toSet(),
+            store.pendingDrafts().map { it.draftId }.toSet())
+    }
 
     @Test
     fun nextDraftQueueOrderAdvancesPastCommittedAndDiscardedDraftsAfterRestart() {
