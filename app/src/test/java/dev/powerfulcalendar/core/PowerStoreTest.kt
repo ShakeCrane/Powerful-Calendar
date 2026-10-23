@@ -735,6 +735,37 @@ class PowerStoreTest {
     }
 
     @Test
+    fun separateCommitOperationsReceiveUniqueCommitIdsAcrossRestart() {
+        val initial = store.newDraft(activityForm("initial"))
+        val first = commit(initial) as PowerStore.CommitOutcome.Committed
+        assertTrue(first.commitId.isNotBlank())
+
+        val eventSeq = initial.eventSeq
+        val replacement = store.newDraft(
+            DraftForm.from(store.get(eventSeq)!!).copy(title = "replacement"),
+            eventSeq,
+            DraftOperation.REPLACE
+        )
+        val second = commit(replacement) as PowerStore.CommitOutcome.Committed
+        assertTrue(second.commitId.isNotBlank())
+        assertTrue(first.commitId != second.commitId)
+
+        val historyBeforeRestart = store.history(eventSeq).map { it.commitId }
+        assertEquals(2, historyBeforeRestart.size)
+        assertEquals(2, historyBeforeRestart.toSet().size)
+        assertTrue(historyBeforeRestart.contains(first.commitId))
+        assertTrue(historyBeforeRestart.contains(second.commitId))
+
+        val database = store.databaseName
+        store.close()
+        store = PowerStore(context, database)
+
+        val historyAfterRestart = store.history(eventSeq).map { it.commitId }
+        assertEquals(historyBeforeRestart.toSet(), historyAfterRestart.toSet())
+        assertEquals(2, historyAfterRestart.toSet().size)
+    }
+
+    @Test
     fun replacementPreservesProvenanceAndCreationTime() {
         val card = store.newDraft(
             activityForm("导入的会").copy(source = "ics", zoneId = "Asia/Tokyo")
