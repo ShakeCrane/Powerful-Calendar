@@ -27,14 +27,14 @@ Audit evidence: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-sour
 
 `docs/CORE_FREEZE_ACCEPTANCE_LEDGER.csv` contains 208 reconstructed rows and one unresolved historical slot. Proposed priority allocation is P0=126 and P1=82, grouped by risk/source area; this preserves the known aggregate for review but does not establish which historical case each row represents. All reconstructed rows are explicitly `UNMAPPED`.
 
-Structural validation: 209 unique IDs; all reconstructed rows contain source, environment, action, expected and actual fields; PASS/BLOCKED rows include evidence references. Latest validation JSON: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-011.json` (ledger SHA-256 `1A1053E865400431E3A45137960770660E7D178F41CDD91BFD86E6BB5758E435`). Structural validation does not test the app or prove the historical mapping.
+Structural validation: 209 unique IDs; all reconstructed rows contain source, environment, action, expected and actual fields; PASS/BLOCKED rows include evidence references. Latest validation JSON: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-012.json` (ledger SHA-256 `DC47A5AF2A05343D5585436C0036D7BD79C699FBF39E22D700DB7DD545C548CB`). Structural validation does not test the app or prove the historical mapping.
 
 | Candidate bucket | PASS | FAIL | BLOCKED | NOT TESTED | SPEC UNRESOLVED |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| P0 (proposed) | 37 | 0 | 1 | 84 | 4 |
+| P0 (proposed) | 38 | 0 | 1 | 83 | 4 |
 | P1 (proposed) | 19 | 0 | 8 | 54 | 1 |
 | Historical unclassified slot | 0 | 0 | 0 | 0 | 1 |
-| **Total candidate rows** | **56** | **0** | **9** | **138** | **6** |
+| **Total candidate rows** | **57** | **0** | **9** | **137** | **6** |
 
 ### Case-specific backup verification (2026-10-23)
 
@@ -141,6 +141,16 @@ Targeted class run: **19/19 PASS**, log `.local/android-test/reports/freeze-2026
 
 Targeted result: **1/1 PASS**, log `.local/android-test/reports/freeze-20261023/pc-issue-011-spanning-memo-targeted-20261023.log` (SHA-256 `AD370BF477724A308D901F97587F5CA75D595000B1705C73DD41F495559AC3CB`); JUnit XML SHA-256 `A560FF10ACEB72CBC103BFBF9AF9B1EC4B1BB9BFF11ADE25AB9898EC1CEE2321`. Full run: **378/378 PASS**, lint 0 errors / 55 warnings. See `docs/issues/PC-ISSUE-011-spanning-memo-completion.md` for complete evidence and limitations.
 
+## Case-specific preservation of legacy tracking state (2026-10-23)
+
+`REC-P0-010` is individually signed on code commit `96d692782bf8f68187edb53379a7a2cd065672bb`; Debug APK SHA-256 remains `63F8DCB69D1028B8D7061B374162F59770B86FA2FA4BEB6FDA132D4393AA8B6C`. The test opens an isolated on-disk v1 SQLite fixture under Robolectric; no user database or Android device was used.
+
+| Candidate row | Test | Result |
+| --- | --- | --- |
+| `REC-P0-010` | `PowerStoreSchemaUpgradeTest.upgradingRealV1DataInPlacePreservesRowsAndAddsOnlyTheReviewedTable` | PASS: v1 Activity payload without a tracking field remains untracked with no completion keys; manual completion is rejected and its revision stays unchanged. |
+
+Targeted result: **1/1 PASS**, log `.local/android-test/reports/freeze-20261023/pc-issue-012-legacy-untracked-targeted-final-20261023.log` (SHA-256 `EBC6ACE5862884209103552DC67B558F9D33234BAAB3738275B61BED977EE76E`); JUnit XML SHA-256 `FD92FB8B00100279524D84928833BFBE769B7979BBEB700FBBF680F547374B2E`. Full run: **378/378 PASS**, lint 0 errors / 55 warnings. See `docs/issues/PC-ISSUE-012-legacy-untracked-record-contract.md` for complete evidence and limitations.
+
 ## Historical sign-off accounting
 
 | Bucket from historical aggregate | Total | Matched to original ID | Result |
@@ -149,11 +159,11 @@ Targeted result: **1/1 PASS**, log `.local/android-test/reports/freeze-20261023/
 | P1 | 82 | 0 | Unassessed by original ID |
 | Priority unresolved | 1 | 0 | Remains unclassified and unassessed |
 
-The latest full working-tree Gradle run reports 378 tests PASS, 0 failures/errors/skips across 54 JUnit suites, successful skin-boundary verification and Debug assembly, and lint 0 errors / 55 warnings. It includes one test from protected, untracked `app/src/test/java/dev/powerfulcalendar/ui/v2/DraftDeckFeedbackTest.kt` (377 tracked tests + 1 untracked); the file was not modified or staged. Log: `.local/android-test/reports/freeze-20261023/pc-issue-011-spanning-memo-full-gradle-20261023.log` (SHA-256 `199FF0DB9F98590F08A5726C5A46B34E34F441CCDFEC2AABB48951F763C9005B`). This is neither a clean committed-tree 378-test count nor a 378-to-209 mapping.
+The latest full working-tree Gradle run reports 378 tests PASS, 0 failures/errors/skips across 54 JUnit suites, successful skin-boundary verification and Debug assembly, and lint 0 errors / 55 warnings. It includes one test from protected, untracked `app/src/test/java/dev/powerfulcalendar/ui/v2/DraftDeckFeedbackTest.kt` (377 tracked tests + 1 untracked); the file was not modified or staged. Log: `.local/android-test/reports/freeze-20261023/pc-issue-012-legacy-untracked-full-gradle-20261023.log` (SHA-256 `3CF7B670871B3B3AB6744BC9027313A779F78E6B1792EAD8FC5CFCCEAE6EAA7B`). This is neither a clean committed-tree 378-test count nor a 378-to-209 mapping.
 
 ## Required next work
 
-1. Run the 138 `NOT TESTED` rows under the environment each row requires and update only with case-specific evidence.
+1. Run the 137 `NOT TESTED` rows under the environment each row requires and update only with case-specific evidence.
 2. Resolve the one blocked P0, eight blocked P1, and five reconstructed spec-unresolved rows where feasible; retain external/physical/device dependencies as HOLD. The separate historical unclassified slot remains unresolved pending its source.
 3. Review the source-based proposed priority allocation. New IDs must never masquerade as historical IDs.
 4. Keep the one historical unclassified item visibly unresolved until its source or an explicit review decision is available.
