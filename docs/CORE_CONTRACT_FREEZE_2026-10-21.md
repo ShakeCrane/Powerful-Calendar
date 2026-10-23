@@ -54,3 +54,17 @@ aggregate/bar behavior for the native time-axis display.
 
 Do not build the later default skin or the Skin Studio editor around the
 obsolete three-column/overflow-band assumption.
+
+## Clarification — central ruler vs. horizontal decoration (2026-10-23)
+
+The central **vertical** time-axis line is required and must remain visible
+alongside its clock labels and ticks. The blue horizontal **current-time**
+indicator must also remain. The unwanted visual is a separate, **horizontal**
+pale-grey decorative stripe, not the vertical time ruler, the legitimate
+midnight/day separator, or the current-time indicator.
+
+Commit `609fc26` mistakenly deleted the continuous vertical ruler while
+trying to remove the unwanted stripe. That removal was a regression, not an
+approved product decision. Restore/preserve the vertical ruler in native
+timeline and any default-skin implementation. Identify and address the
+decorative horizontal stripe separately by visual evidence.
