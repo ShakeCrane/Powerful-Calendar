@@ -87,4 +87,79 @@ class BootReceiverRecoveryTest {
             ShadowAlarmManager.setCanScheduleExactAlarms(true)
         }
     }
+
+    @Test
+    fun recoveryBroadcastsReconcileDesiredAlarmAndFinishAsyncWork() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        ShadowAlarmManager.setCanScheduleExactAlarms(true)
+        val alarmManager = context.getSystemService(AlarmManager::class.java)!!
+        val shadowAlarmManager = Shadows.shadowOf(alarmManager)
+        var store: PowerStore? = PowerStore(context)
+        val databaseName = requireNotNull(store).databaseName
+
+        try {
+            val zone = ZoneId.systemDefault()
+            val start = System.currentTimeMillis() + 60 * 60_000L
+            val draft = requireNotNull(store).newDraft(
+                DraftForm(
+                    kind = TemporalKind.ALARM,
+                    title = "Recovery broadcast",
+                    startText = DraftForm.formatInstant(start, zone),
+                    reminderMinutes = 0,
+                    zoneId = zone.id
+                )
+            )
+            val committed = requireNotNull(store).commit(draft.draftId)
+            assertTrue(committed is PowerStore.CommitOutcome.Committed)
+            val eventSeq = draft.eventSeq
+            assertEquals(PowerStore.DesiredSchedule.PENDING, requireNotNull(store).intentFor(eventSeq)!!.desired)
+            requireNotNull(store).close()
+            store = null
+
+            val recoveryActions = listOf(
+                Intent.ACTION_MY_PACKAGE_REPLACED,
+                Intent.ACTION_TIMEZONE_CHANGED,
+                Intent.ACTION_TIME_CHANGED,
+                "android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED",
+                AlarmContract.ACTION_RECONCILE
+            )
+            recoveryActions.forEachIndexed { index, action ->
+                if (index > 0) {
+                    shadowAlarmManager.scheduledAlarms.forEach { scheduled ->
+                        scheduled.operation?.let(alarmManager::cancel)
+                    }
+                    assertTrue(shadowAlarmManager.scheduledAlarms.isEmpty())
+                }
+                dispatchAndAwait(context, action)
+                assertEquals("$action should re-arm the durable intent", 1, shadowAlarmManager.scheduledAlarms.size)
+            }
+
+            val reopened = PowerStore(context)
+            try {
+                val scheduled = reopened.intentFor(eventSeq)
+                assertNotNull(scheduled)
+                assertEquals(PowerStore.DesiredSchedule.SCHEDULED, scheduled!!.desired)
+                assertEquals("Every supported recovery action should be idempotent", 1, shadowAlarmManager.scheduledAlarms.size)
+                assertFalse(reopened.isLocked())
+            } finally {
+                reopened.close()
+            }
+        } finally {
+            store?.close()
+            context.deleteDatabase(databaseName)
+            ShadowAlarmManager.setCanScheduleExactAlarms(true)
+        }
+    }
+
+    private fun dispatchAndAwait(context: Context, action: String) {
+        val receiver = BootReceiver()
+        val pendingResult = ReflectionHelpers.callConstructor(BroadcastReceiver.PendingResult::class.java)
+        ReflectionHelpers.setField(receiver, "mPendingResult", pendingResult)
+        val shadowReceiver = Shadows.shadowOf(receiver)
+
+        shadowReceiver.onReceive(context, Intent(action), AtomicBoolean(false))
+
+        assertTrue("$action should enter goAsync()", shadowReceiver.wentAsync())
+        Shadows.shadowOf(pendingResult).getFuture().get(10, TimeUnit.SECONDS)
+    }
 }
