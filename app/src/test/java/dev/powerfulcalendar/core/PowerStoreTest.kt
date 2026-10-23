@@ -2615,6 +2615,61 @@ class PowerStoreTest {
     }
 
     @Test
+    fun theAiRunnerStopsAfterUserCancelAndPersistsPartialOutcomeAcrossRestart() =
+        kotlinx.coroutines.runBlocking {
+            val first = store.newDraft(activityForm("取消前已提交"))
+            val second = store.newDraft(activityForm("取消后保留"))
+            val session = store.beginAiBatch(
+                linkedMapOf(
+                    first.draftId to first.draftVersion,
+                    second.draftId to second.draftVersion
+                ),
+                setOf(DraftOperation.CREATE)
+            )
+
+            val report = dev.powerfulcalendar.ai.AiBatchRunner(store)
+                .run(session, dev.powerfulcalendar.ai.AiBatchRunner.Mode.PUBLISH) { done, _ ->
+                    if (done == 1) assertTrue(store.requestAiCancel(session.sessionId))
+                }
+
+            assertEquals(1, report.published)
+            assertEquals(0, report.kept)
+            assertTrue(report.cancelled)
+            assertFalse(store.isLocked())
+            assertEquals(PowerStore.AiState.CANCELLED, store.currentAiSession()!!.state)
+            assertEquals(1, store.all().size)
+            assertEquals(1, store.pendingDrafts().size)
+
+            val persistedReport = org.json.JSONObject(requireNotNull(store.currentAiSession()?.report))
+            assertEquals(1, persistedReport.getInt("published"))
+            assertEquals(0, persistedReport.getInt("kept"))
+            assertTrue(persistedReport.getBoolean("cancelled"))
+            assertTrue(
+                store.commit(second.draftId, actor = "ai", aiSession = session)
+                    is PowerStore.CommitOutcome.NotAuthorized
+            )
+
+            val database = store.databaseName
+            store.close()
+            store = PowerStore(context, database)
+
+            assertFalse(store.isLocked())
+            val reopenedSession = requireNotNull(store.currentAiSession())
+            assertEquals(PowerStore.AiState.CANCELLED, reopenedSession.state)
+            val reopenedReport = org.json.JSONObject(requireNotNull(reopenedSession.report))
+            assertEquals(1, reopenedReport.getInt("published"))
+            assertEquals(0, reopenedReport.getInt("kept"))
+            assertTrue(reopenedReport.getBoolean("cancelled"))
+            assertEquals(first.eventSeq, store.all().single().eventSeq)
+            assertEquals(second.draftId, store.pendingDrafts().single().draftId)
+            assertTrue(
+                store.commit(second.draftId, actor = "ai", aiSession = session)
+                    is PowerStore.CommitOutcome.NotAuthorized
+            )
+            assertNull(store.get(second.eventSeq))
+        }
+
+    @Test
     fun theAiRunnerKeepsAConflictedCardForHumanReview() = kotlinx.coroutines.runBlocking {
         val base = store.newDraft(activityForm("Base").copy(trackingEnabled = true))
         commit(base)
