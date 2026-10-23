@@ -2,6 +2,8 @@ package dev.powerfulcalendar.core
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import dev.powerfulcalendar.ai.AiSettings
+import dev.powerfulcalendar.ai.AiSettingsStore
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.After
@@ -157,6 +159,121 @@ class BackupEnvelopeTest {
     }
 
     @Test
+    fun roundTripPreservesDraftIdentityQueueOrderAndCommittedRevisionHistory() {
+        val (activitySeq, _, _) = seed()
+        val firstRevisionDraft = source.pendingDrafts().single()
+        assertTrue(source.commit(firstRevisionDraft.draftId) is PowerStore.CommitOutcome.Committed)
+        val nextDraft = source.newDraft(
+            DraftForm.from(source.get(activitySeq)!!).copy(title = "第二版后的待处理草稿"),
+            activitySeq,
+            DraftOperation.REPLACE
+        )
+
+        val envelope = source.exportBackup()
+        val sourcePayload = envelope.getJSONObject("payload")
+        val target = restoreIntoFresh(envelope)
+        try {
+            assertEquals(2L, target.get(activitySeq)!!.revision)
+            assertEquals(nextDraft.draftId, target.pendingDrafts().single().draftId)
+            assertEquals(nextDraft.queueOrder, target.pendingDrafts().single().queueOrder)
+
+            val restoredPayload = target.exportBackup().getJSONObject("payload")
+            assertEquals(
+                BackupEnvelope.canonicalJson(sourcePayload.getJSONArray("drafts")),
+                BackupEnvelope.canonicalJson(restoredPayload.getJSONArray("drafts"))
+            )
+            assertEquals(
+                BackupEnvelope.canonicalJson(sourcePayload.getJSONArray("commits")),
+                BackupEnvelope.canonicalJson(restoredPayload.getJSONArray("commits"))
+            )
+            val activityRevisions = (0 until restoredPayload.getJSONArray("commits").length())
+                .map { restoredPayload.getJSONArray("commits").getJSONObject(it) }
+                .filter { it.getLong("eventSeq") == activitySeq }
+                .map { it.getLong("revision") }
+                .sorted()
+            assertEquals(listOf(1L, 2L), activityRevisions)
+        } finally {
+            closeStore(target)
+        }
+    }
+
+    @Test
+    fun retiredEventExportPreservesTombstoneAndSequenceWatermark() {
+        val now = System.currentTimeMillis()
+        val created = source.newDraft(
+            DraftForm(
+                TemporalKind.ACTIVITY,
+                "需保留的墓碑",
+                DraftForm.formatInstant(now + 3_600_000, zone),
+                DraftForm.formatInstant(now + 7_200_000, zone),
+                zoneId = zone.id
+            )
+        )
+        assertTrue(source.commit(created.draftId) is PowerStore.CommitOutcome.Committed)
+        val record = source.get(created.eventSeq)!!
+        val deletion = source.newDraft(
+            DraftForm.from(record), created.eventSeq, DraftOperation.DELETE
+        )
+        assertTrue(source.commit(deletion.draftId) is PowerStore.CommitOutcome.Committed)
+        val expectedNextSeq = source.nextSequencePreview()
+        val envelope = source.exportBackup()
+        val payload = envelope.getJSONObject("payload")
+        val identity = (0 until payload.getJSONArray("identities").length())
+            .map { payload.getJSONArray("identities").getJSONObject(it) }
+            .single { it.getLong("seq") == created.eventSeq }
+        val objectRow = (0 until payload.getJSONArray("objects").length())
+            .map { payload.getJSONArray("objects").getJSONObject(it) }
+            .single { it.getJSONObject("payload").getLong("eventSeq") == created.eventSeq }
+
+        assertFalse(identity.isNull("retiredMs"))
+        assertEquals(1, objectRow.getInt("retired"))
+
+        val target = restoreIntoFresh(envelope)
+        try {
+            assertTrue(target.isRetired(created.eventSeq))
+            assertNull(target.get(created.eventSeq))
+            assertEquals("需保留的墓碑", target.getIncludingRetired(created.eventSeq)!!.title)
+            assertEquals(expectedNextSeq, target.nextSequencePreview())
+        } finally {
+            closeStore(target)
+        }
+    }
+
+    @Test
+    fun nativeBackupExcludesApiCredentialsAndSchedulerHandlesThenRebuildsSchedule() {
+        val previousSettings = AiSettingsStore.load(context)
+        val sentinelSecret = "pc-backup-secret-${UUID.randomUUID()}"
+        AiSettingsStore.save(context, previousSettings.copy(apiKey = sentinelSecret))
+        try {
+            val (_, alarmSeq, _) = seed()
+            assertNotNull(source.intentFor(alarmSeq))
+            val envelope = source.exportBackup()
+            val serialized = envelope.toString()
+            val payload = envelope.getJSONObject("payload")
+
+            assertFalse(serialized.contains(sentinelSecret))
+            assertFalse(serialized.contains("api_key"))
+            assertFalse(serialized.contains("apiKey"))
+            assertFalse(serialized.contains("PendingIntent"))
+            assertFalse(payload.has("schedule_intents"))
+            assertFalse(payload.has("ai_sessions"))
+            assertFalse(payload.has("ai_session_drafts"))
+            assertFalse(payload.has("executions"))
+
+            val target = restoreIntoFresh(envelope)
+            try {
+                assertEquals(sentinelSecret, AiSettingsStore.load(context).apiKey)
+                assertNotNull("schedule intent must be rebuilt from restored alarm data", target.intentFor(alarmSeq))
+                assertNull("old-device execution history must remain excluded", target.lastExecution(alarmSeq))
+            } finally {
+                closeStore(target)
+            }
+        } finally {
+            AiSettingsStore.save(context, previousSettings)
+        }
+    }
+
+    @Test
     fun tamperingWithPayloadIsRejectedBeforeAnyRowIsWritten() {
         seed()
         val envelope = source.exportBackup()
@@ -177,6 +294,19 @@ class BackupEnvelopeTest {
         usingStore { target ->
             assertTrue(runCatching { target.restoreBackup(envelope) }.isFailure)
             assertEquals(0L, target.identityCount())
+        }
+    }
+
+    @Test
+    fun unknownBackupFormatIsRejectedBeforeAnyRowIsWritten() {
+        seed()
+        val envelope = source.exportBackup().put("format", "powercal-other")
+        usingStore { target ->
+            val outcome = runCatching { target.restoreBackup(envelope) }
+            assertTrue(outcome.isFailure)
+            assertTrue(outcome.exceptionOrNull()!!.message!!.contains("不是 PowerCal 原生备份"))
+            assertEquals(0L, target.identityCount())
+            assertEquals(1L, target.nextSequencePreview())
         }
     }
 
@@ -216,6 +346,54 @@ class BackupEnvelopeTest {
             val outcome = runCatching { target.restoreBackup(invalid) }
             assertTrue(outcome.isFailure)
             assertTrue(outcome.exceptionOrNull()!!.message!!.contains("nextSeq"))
+            assertEquals(1L, target.nextSequencePreview())
+        }
+    }
+
+    @Test
+    fun danglingDraftAndCommitReferencesAreRejectedBeforeAnyWrite() {
+        seed()
+        val envelope = source.exportBackup()
+        val lineage = envelope.getString("storeLineageId")
+
+        val danglingDraftPayload = JSONObject(envelope.getJSONObject("payload").toString())
+        danglingDraftPayload.getJSONArray("drafts").getJSONObject(0)
+            .put("eventSeq", 9_999_999L)
+        val danglingDraft = forged(danglingDraftPayload, lineage)
+        usingStore { target ->
+            val outcome = runCatching { target.restoreBackup(danglingDraft) }
+            assertTrue(outcome.isFailure)
+            assertTrue(outcome.exceptionOrNull()!!.message!!.contains("不存在的身份"))
+            assertEquals(0L, target.identityCount())
+        }
+
+        val danglingCommitPayload = JSONObject(envelope.getJSONObject("payload").toString())
+        val existingDrafts = danglingCommitPayload.getJSONArray("drafts")
+        val missingDraftId = (0 until existingDrafts.length())
+            .maxOf { existingDrafts.getJSONObject(it).getLong("draftId") } + 1
+        danglingCommitPayload.getJSONArray("commits").getJSONObject(0)
+            .put("draftId", missingDraftId)
+        val danglingCommit = forged(danglingCommitPayload, lineage)
+        usingStore { target ->
+            val outcome = runCatching { target.restoreBackup(danglingCommit) }
+            assertTrue(outcome.isFailure)
+            assertTrue(outcome.exceptionOrNull()!!.message!!.contains("不存在的草稿"))
+            assertEquals(0L, target.identityCount())
+        }
+    }
+
+    @Test
+    fun aLowNextOrderWatermarkIsRejected() {
+        seed()
+        val envelope = source.exportBackup()
+        val payload = JSONObject(envelope.getJSONObject("payload").toString())
+        payload.put("nextOrder", 1L)
+        val invalid = forged(payload, envelope.getString("storeLineageId"))
+        usingStore { target ->
+            val outcome = runCatching { target.restoreBackup(invalid) }
+            assertTrue(outcome.isFailure)
+            assertTrue(outcome.exceptionOrNull()!!.message!!.contains("nextOrder"))
+            assertEquals(0L, target.identityCount())
             assertEquals(1L, target.nextSequencePreview())
         }
     }
