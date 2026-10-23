@@ -27,14 +27,14 @@ Audit evidence: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-sour
 
 `docs/CORE_FREEZE_ACCEPTANCE_LEDGER.csv` contains 208 reconstructed rows and one unresolved historical slot. Proposed priority allocation is P0=126 and P1=82, grouped by risk/source area; this preserves the known aggregate for review but does not establish which historical case each row represents. All reconstructed rows are explicitly `UNMAPPED`.
 
-Structural validation: 209 unique IDs; all reconstructed rows contain source, environment, action, expected and actual fields; PASS/BLOCKED rows include evidence references. Latest validation JSON: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-020.json` (ledger SHA-256 `4056113C90995EA340FD3D6D29AF76F88055EF0D87AD3796513C0FCCFA2DF35B`). Structural validation does not test the app or prove the historical mapping.
+Structural validation: 209 unique IDs; all reconstructed rows contain source, environment, action, expected and actual fields; PASS/BLOCKED rows include evidence references. Latest validation JSON: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-019.json` (ledger SHA-256 `B85AD8829141A584FC7D04687E015D172F6BFC2514B254A37F4296C3BE1B3990`). Structural validation does not test the app or prove the historical mapping.
 
 | Candidate bucket | PASS | FAIL | BLOCKED | NOT TESTED | SPEC UNRESOLVED |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| P0 (proposed) | 45 | 0 | 1 | 76 | 4 |
+| P0 (proposed) | 46 | 0 | 1 | 75 | 4 |
 | P1 (proposed) | 19 | 0 | 8 | 54 | 1 |
 | Historical unclassified slot | 0 | 0 | 0 | 0 | 1 |
-| **Total candidate rows** | **64** | **0** | **9** | **130** | **6** |
+| **Total candidate rows** | **65** | **0** | **9** | **129** | **6** |
 
 ### Case-specific backup verification (2026-10-23)
 
@@ -182,16 +182,6 @@ Targeted result: **1/1 PASS**, log `.local/android-test/reports/freeze-20261023/
 
 After the Issue020 stabilization commit, the targeted class result was **2/2 PASS**, log `.local/android-test/reports/freeze-20261023/pc-issue-020-reminder-dispatch-targeted-final-20261023.log` (SHA-256 `2010C351D82318FC0E3D1154BE91AD64FECD4CC8B1025117870DC8C5D2D2A673`); JUnit XML SHA-256 `0AB606BDA5615C40146FDEBE0B74FCDB3EC2197DC6321CA895400C5972ABD131`. Full regression: **384/384 PASS**, 55 suites, lint 0 errors / 55 warnings; full log SHA-256 `A4A67F15FCBA59BBBBE543943337501DAFD2ECA7A37ECBF3DE3A41664F155783`. The full run used the exact source later committed as `d60809b`; it includes 383 tracked tests plus one protected untracked test. See `docs/issues/PC-ISSUE-015-reminder-completion-isolation.md` and `docs/issues/PC-ISSUE-020-reminder-receiver-test-race.md` for test scope and limitations.
 
-## Case-specific reminder receiver test stabilization (2026-10-23)
-
-Issue020 fixed test-fixture concurrency in the `REC-P0-012` regression without changing receiver dispatch behavior. The source commit is `d60809b4133a45c0551019f1edabec1195d34cf3`; this does not add candidate rows or increase the PASS count.
-
-| Candidate row | Test | Result |
-| --- | --- | --- |
-| `REC-P0-012` | `ReminderCompletionIsolationTest.firedAlarmRecordsExecutionWithoutCompletingTrackedEvent` | PASS: the handler is invoked synchronously against isolated SQLite, avoiding concurrent polling during its write; Android framework `PendingResult`/`goAsync` behavior remains untested. |
-
-The independent Issue020 report preserves the original failing full-run log and JUnit XML, their SHA-256 hashes, the passing post-fix targeted run, and the passing full regression. A temporary synchronous `onReceive` experiment exposed a missing framework `PendingResult` in the old fixture; its console output was not preserved as a separately hashable artifact and is explicitly disclosed in that report. No test-fixture output is represented as Android system-delivery evidence.
-
 ## Case-specific Alarm point semantics (2026-10-23)
 
 `REC-P0-001` is individually signed on code/test commit `48c4bf5e63f6cfdbe471a7c84720cf754965d975`; Debug APK SHA-256 is `63F8DCB69D1028B8D7061B374162F59770B86FA2FA4BEB6FDA132D4393AA8B6C`. This is a pure JVM `DraftForm`/`TemporalRecord` contract test; no UI or device was used.
@@ -222,6 +212,26 @@ Post-commit targeted result: **2/2 PASS**, log `.local/android-test/reports/free
 
 Post-commit targeted result: **36/36 PASS**, log `.local/android-test/reports/freeze-20261023/pc-issue-018-deadline-point-targeted-final-20261023.log` (SHA-256 `752716BCD7F5C081AE20DDAFD703E9873E2B781A0568EFA2B4C7A529DF8BE2EA`); JUnit XML SHA-256 `9C2FB18D1F4FC38EB66282927A10F0249E668B148B8A6D48141325EC2CC86799`. Full regression: **384/384 PASS**, 55 suites, lint 0 errors / 55 warnings; full log SHA-256 `FD45C911E23DDB9CFCAB827D6FE9B49EFEBED2373440521BB6FD803747F3FA5B`. The run included the same test source later committed as `ee2e670`; 383 tracked tests plus one protected untracked test. See `docs/issues/PC-ISSUE-018-instant-deadline-point-semantics.md`.
 
+## Case-specific date-only Deadline precision (2026-10-23)
+
+`REC-P0-004` is signed on the tested code/test source commit `d60809b4133a45c0551019f1edabec1195d34cf3`; the post-commit targeted rerun was performed at docs-only commit `74cc48fb0e05ad08da2aaf457e31d93e390da1cd`. The Debug APK SHA-256 is `EA0DE99328BF66FEA302AF5A55C82B3BD7EF3F7276922979AABBF7ABEC581A53`.
+
+| Candidate row | Test | Result |
+| --- | --- | --- |
+| `REC-P0-004` | `PowerStoreTest.dateOnlyDeadlineCommitsWithoutInventingATime` | PASS: commit retains `deadlineDate=2026-10-24`, `DATE` precision, null `deadlineMillis`, and `DEADLINE` kind. |
+
+Post-commit targeted result: **1/1 PASS**, log `.local/android-test/reports/freeze-20261023/pc-issue-019-date-only-deadline-targeted-postcommit-20261023.log` (SHA-256 `8CF359ED5B02675EF95C78DC74B5A7A12A453F7BB676F4E7BC60AAAF362972E2`); JUnit XML SHA-256 `29C2B5C35ED08F5D72D8889D1BC1D84732DABC03FF3F2CE5B6B1056293973AD1`. The same method passed in the 384/384 full regression, `PowerStoreTest` XML SHA-256 `D3EFE1BDCEA6B0825D49A7ED0B9E4536FE8A3D21BCAEE00B38E133EF9DB58D71`. See `docs/issues/PC-ISSUE-019-date-only-deadline-precision.md`.
+
+## Case-specific reminder receiver test stabilization (2026-10-23)
+
+Issue020 fixed test-fixture concurrency in the `REC-P0-012` regression without changing receiver dispatch behavior. The source commit is `d60809b4133a45c0551019f1edabec1195d34cf3`; this does not add candidate rows or increase the PASS count.
+
+| Candidate row | Test | Result |
+| --- | --- | --- |
+| `REC-P0-012` | `ReminderCompletionIsolationTest.firedAlarmRecordsExecutionWithoutCompletingTrackedEvent` | PASS: the handler is invoked synchronously against isolated SQLite, avoiding concurrent polling during its write; Android framework `PendingResult`/`goAsync` behavior remains untested. |
+
+The independent Issue020 report preserves the original failing full-run log and JUnit XML, their SHA-256 hashes, the passing post-fix targeted run, and the passing full regression. A temporary synchronous `onReceive` experiment exposed a missing framework `PendingResult` in the old fixture; its console output was not preserved as a separately hashable artifact and is explicitly disclosed in that report. No test-fixture output is represented as Android system-delivery evidence.
+
 ## Historical sign-off accounting
 
 | Bucket from historical aggregate | Total | Matched to original ID | Result |
@@ -234,7 +244,7 @@ The latest full working-tree Gradle run reports 384 tests PASS, 0 failures/error
 
 ## Required next work
 
-1. Run the 130 `NOT TESTED` rows under the environment each row requires and update only with case-specific evidence.
+1. Run the 129 `NOT TESTED` rows under the environment each row requires and update only with case-specific evidence.
 2. Resolve the one blocked P0, eight blocked P1, and five reconstructed spec-unresolved rows where feasible; retain external/physical/device dependencies as HOLD. The separate historical unclassified slot remains unresolved pending its source.
 3. Review the source-based proposed priority allocation. New IDs must never masquerade as historical IDs.
 4. Keep the one historical unclassified item visibly unresolved until its source or an explicit review decision is available.
@@ -242,4 +252,4 @@ The latest full working-tree Gradle run reports 384 tests PASS, 0 failures/error
 
 ## Scope and outcome
 
-Core code and tests now have evidence for 39 reconstructed rows across backup, tombstone, migration, recurrence, reminder, and temporal model contracts; 130 remain NOT TESTED, proposed priorities still need review, and historical mapping is still absent. PC-QA-GATE-001 remains **PARTIAL / HOLD**, and overall core verdict remains **HOLD**.
+Core code and tests now have evidence for 40 reconstructed rows across backup, tombstone, migration, recurrence, reminder, and temporal model contracts; 129 remain NOT TESTED, proposed priorities still need review, and historical mapping is still absent. PC-QA-GATE-001 remains **PARTIAL / HOLD**, and overall core verdict remains **HOLD**.
