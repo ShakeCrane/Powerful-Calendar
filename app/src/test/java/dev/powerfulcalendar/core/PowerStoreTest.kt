@@ -1302,6 +1302,43 @@ class PowerStoreTest {
     }
 
     @Test
+    fun commitRollsBackFormalEventHistoryAndScheduleWhenDesiredIntentWriteFailsThenRecovers() {
+        val card = store.newDraft(alarmForm("事务原子性", minutesAhead = 90))
+        store.writableDatabase.execSQL(
+            """CREATE TRIGGER fail_desired_schedule_insert
+               BEFORE INSERT ON schedule_intents
+               BEGIN SELECT RAISE(ABORT,'injected desired schedule insert failure'); END"""
+        )
+
+        val failure = runCatching { commit(card) }.exceptionOrNull()
+        assertNotNull("the injected schedule write failure must abort commit", failure)
+        assertTrue(failure.toString(), failure.toString().contains("injected desired schedule insert failure"))
+        assertNull(store.get(card.eventSeq))
+        assertTrue(store.all().isEmpty())
+        assertTrue(store.history(card.eventSeq).isEmpty())
+        assertNull(store.intentFor(card.eventSeq))
+        assertEquals(1, store.pendingDrafts().size)
+        assertEquals(DraftStatus.PENDING, store.pendingDrafts().single().status)
+
+        store.writableDatabase.execSQL("DROP TRIGGER fail_desired_schedule_insert")
+        val committed = commit(card) as PowerStore.CommitOutcome.Committed
+        val formal = requireNotNull(store.get(card.eventSeq))
+        val intent = requireNotNull(store.intentFor(card.eventSeq))
+        assertEquals(1L, formal.revision)
+        assertEquals(formal.revision, intent.revision)
+        assertEquals(PowerStore.DesiredSchedule.PENDING, intent.desired)
+        assertEquals(listOf(committed.commitId), store.history(card.eventSeq).map { it.commitId })
+        assertTrue(store.pendingDrafts().isEmpty())
+
+        val database = store.databaseName
+        store.close()
+        store = PowerStore(context, database)
+        assertEquals(formal, store.get(card.eventSeq))
+        assertEquals(intent, store.intentFor(card.eventSeq))
+        assertEquals(listOf(committed.commitId), store.history(card.eventSeq).map { it.commitId })
+    }
+
+    @Test
     fun blockedScheduleStateDoesNotCompleteOrDeleteItsFormalEventAcrossRestart() {
         val card = store.newDraft(alarmForm("权限受阻的闹钟").copy(trackingEnabled = true))
         assertTrue(commit(card) is PowerStore.CommitOutcome.Committed)
