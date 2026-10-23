@@ -1,5 +1,7 @@
 package dev.powerfulcalendar.ai
 
+import dev.powerfulcalendar.core.TemporalKind
+import dev.powerfulcalendar.core.TemporalRecord
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.Assert.*
@@ -195,6 +197,98 @@ class AiChatClientTest {
             assertEquals("user", attachment.getString("role"))
             val attachmentContent = attachment.getString("content")
             assertTrue(attachmentContent.contains("==== 不可信文件内容开始 ====\n$injected\n==== 文件内容结束 ===="))
+        }
+    }
+
+    @Test fun interpretDoesNotSendCalendarContextWhenSharingIsDisabled() {
+        val seen = AtomicReference<String>()
+        val serverError = AtomicReference<Throwable?>()
+        val served = CountDownLatch(1)
+        ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { server ->
+            server.soTimeout = 10_000
+            val worker = Thread {
+                try {
+                    server.accept().use { socket ->
+                        socket.soTimeout = 10_000
+                        val input = socket.getInputStream().buffered()
+                        fun readHeaderLine(): String {
+                            val line = java.io.ByteArrayOutputStream()
+                            while (true) {
+                                val byte = input.read()
+                                require(byte >= 0) { "Unexpected end of HTTP headers" }
+                                if (byte == 10) break
+                                if (byte != 13) line.write(byte)
+                                require(line.size() <= 8192) { "Oversized HTTP header" }
+                            }
+                            return line.toString(Charsets.US_ASCII.name())
+                        }
+                        assertTrue(readHeaderLine().startsWith("POST /v1/chat/completions HTTP/1.1"))
+                        var contentLength = -1
+                        while (true) {
+                            val header = readHeaderLine()
+                            if (header.isEmpty()) break
+                            if (header.startsWith("Content-Length:", ignoreCase = true)) {
+                                contentLength = header.substringAfter(':').trim().toInt()
+                            }
+                        }
+                        require(contentLength in 1..100_000)
+                        val buffer = ByteArray(contentLength)
+                        var offset = 0
+                        while (offset < buffer.size) {
+                            val count = input.read(buffer, offset, buffer.size - offset)
+                            require(count > 0) { "Unexpected end of request body" }
+                            offset += count
+                        }
+                        seen.set(String(buffer, Charsets.UTF_8))
+                        val response = """{"choices":[{"message":{"role":"assistant","content":"{\"events\":[]}"}}]}"""
+                            .toByteArray(Charsets.UTF_8)
+                        val headers = ("HTTP/1.1 200 OK\r\n" +
+                            "Content-Type: application/json; charset=utf-8\r\n" +
+                            "Content-Length: ${response.size}\r\nConnection: close\r\n\r\n")
+                            .toByteArray(Charsets.US_ASCII)
+                        socket.getOutputStream().apply {
+                            write(headers)
+                            write(response)
+                            flush()
+                        }
+                    }
+                } catch (error: Throwable) {
+                    serverError.set(error)
+                } finally {
+                    served.countDown()
+                }
+            }.apply { isDaemon = true; start() }
+
+            val settings = AiSettings(
+                endpoint = "http://127.0.0.1:${server.localPort}/v1",
+                model = "stub",
+                enabled = true,
+                apiKey = "secret-test",
+                shareContext = false
+            )
+            val privateRecord = TemporalRecord(
+                eventSeq = 700, revision = 1, kind = TemporalKind.ACTIVITY,
+                title = "PRIVATE_CONTEXT_SENTINEL_070",
+                notes = "PRIVATE_NOTES_SENTINEL_070",
+                location = "PRIVATE_LOCATION_SENTINEL_070"
+            )
+            val result = runBlocking {
+                AiClient(settings).interpret("创建一条活动", listOf(privateRecord))
+            }
+            assertTrue("Server did not finish", served.await(10, TimeUnit.SECONDS))
+            assertNull("Server error: ${serverError.get()}", serverError.get())
+            assertTrue(result.warnings.toString(), result.proposals.isEmpty())
+
+            val request = JSONObject(seen.get())
+            val messages = request.getJSONArray("messages")
+            assertEquals(2, messages.length())
+            assertEquals("system", messages.getJSONObject(0).getString("role"))
+            val userContent = messages.getJSONObject(1).getString("content")
+            assertEquals("user", messages.getJSONObject(1).getString("role"))
+            assertTrue(userContent.contains("用户输入：\n创建一条活动"))
+            assertFalse(userContent.contains("PRIVATE_CONTEXT_SENTINEL_070"))
+            assertFalse(userContent.contains("PRIVATE_NOTES_SENTINEL_070"))
+            assertFalse(userContent.contains("PRIVATE_LOCATION_SENTINEL_070"))
         }
     }
 

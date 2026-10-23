@@ -167,10 +167,11 @@ class AiClient(
                 )
             }
             try {
+                val contextForRequest = context.takeIf { settings.shareContext }.orEmpty()
                 val messages = JSONArray()
                     .put(JSONObject().put("role", "system").put("content", DRAFT_SYSTEM_PROMPT))
                     .put(JSONObject().put("role", "user").put(
-                        "content", buildUserPrompt(userText, context)))
+                        "content", buildUserPrompt(userText, contextForRequest)))
                 val raw = complete(messages, diagnosticStage = "structured-proposal")
                 val result = AiResponseParser.parse(raw, context, zone)
                 if (BuildConfig.DEBUG) Log.i("PowerCalAiPerf",
