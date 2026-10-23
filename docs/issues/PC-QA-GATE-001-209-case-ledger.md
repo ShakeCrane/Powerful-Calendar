@@ -27,14 +27,14 @@ Audit evidence: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-sour
 
 `docs/CORE_FREEZE_ACCEPTANCE_LEDGER.csv` contains 208 reconstructed rows and one unresolved historical slot. Proposed priority allocation is P0=126 and P1=82, grouped by risk/source area; this preserves the known aggregate for review but does not establish which historical case each row represents. All reconstructed rows are explicitly `UNMAPPED`.
 
-Structural validation: 209 unique IDs; all reconstructed rows contain source, environment, action, expected and actual fields; PASS/BLOCKED rows include evidence references. Latest validation JSON: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-044.json`, SHA-256 `8907B937B7D0B7EF8DB08204824E977FC0FBF8EE2D6C752C5BFA49D8EA0E1197`; ledger SHA-256 `ECD95AAF86930C9693768EF22B56D774212959E75CB23994BD41D1ACAC59CD67`. Structural validation does not test the app or prove the historical mapping.
+Structural validation: 209 unique IDs; all reconstructed rows contain source, environment, action, expected and actual fields; PASS/BLOCKED rows include evidence references. Latest validation JSON: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-045.json`, SHA-256 `7B2EAA14CDD64A11D68F2211E62DC83C492C68B075C07C44BDEB7277F71BA33F`; ledger SHA-256 `1F2EF8E2283ABD4F5031ABFFE4952F0BB6E047CA35B69CCCCDB68A0DA2579BCE`. Structural validation does not test the app or prove the historical mapping.
 
 | Candidate bucket | PASS | FAIL | BLOCKED | NOT TESTED | SPEC UNRESOLVED |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| P0 (proposed) | 71 | 0 | 1 | 50 | 4 |
+| P0 (proposed) | 72 | 0 | 1 | 49 | 4 |
 | P1 (proposed) | 19 | 0 | 8 | 54 | 1 |
 | Historical unclassified slot | 0 | 0 | 0 | 0 | 1 |
-| **Total candidate rows** | **90** | **0** | **9** | **104** | **6** |
+| **Total candidate rows** | **91** | **0** | **9** | **103** | **6** |
 
 ### Case-specific backup verification (2026-10-23)
 
@@ -437,6 +437,10 @@ Targeted pre-commit and post-commit runs each passed 1/1; full Gradle passed 406
 
 Targeted pre-commit and post-commit runs each passed 1/1; full Gradle passed 407/407 tests across 55 suites, with lint 0 errors / 55 warnings. Full log SHA-256 `236ABC1658703D51D816D1D56E24ECB2A037F10E9DEEB87D0A65C79AA3CE0663`; full `PowerStoreTest` XML SHA-256 `1F9E906660EE8FC700BE0030E176A1B0D6A871BE62A8A6EFA6BA00B829357047`; APK SHA-256 `EA0DE99328BF66FEA302AF5A55C82B3BD7EF3F7276922979AABBF7ABEC581A53`. Structural-only validation JSON SHA-256 `8907B937B7D0B7EF8DB08204824E977FC0FBF8EE2D6C752C5BFA49D8EA0E1197`; updated CSV SHA-256 `ECD95AAF86930C9693768EF22B56D774212959E75CB23994BD41D1ACAC59CD67`.
 
+### Case-specific stale-field no-merge verification (2026-10-23)
+
+`REC-P0-052` maps to the same `PowerStoreTest.staleDraftRequiresExplicitReapprovalAfterRestart` assertions documented for `REC-P0-050`. A default stale commit after SQLite reopen conflicts and preserves the newer title/completion key; the completion key changes only when the complete old proposal is explicitly approved. The focused test passed targeted pre/post runs 1/1 each and is included in the latest 407/407 full Gradle run. This is a separate candidate sign-off, not an additional test. See `docs/issues/PC-ISSUE-045-no-silent-stale-field-merge.md`.
+
 ## Historical sign-off accounting
 
 | Bucket from historical aggregate | Total | Matched to original ID | Result |
@@ -449,7 +453,7 @@ The latest full working-tree Gradle run reports 407 tests PASS, 0 failures/error
 
 ## Required next work
 
-1. Run the 104 `NOT TESTED` rows under the environment each row requires and update only with case-specific evidence.
+1. Run the 103 `NOT TESTED` rows under the environment each row requires and update only with case-specific evidence.
 2. Resolve the one blocked P0, eight blocked P1, and five reconstructed spec-unresolved rows where feasible; retain external/physical/device dependencies as HOLD. The separate historical unclassified slot remains unresolved pending its source.
 3. Review the source-based proposed priority allocation. New IDs must never masquerade as historical IDs.
 4. Keep the one historical unclassified item visibly unresolved until its source or an explicit review decision is available.
@@ -457,4 +461,4 @@ The latest full working-tree Gradle run reports 407 tests PASS, 0 failures/error
 
 ## Scope and outcome
 
-Core code and tests now have evidence for 65 reconstructed rows across backup, tombstone, migration, recurrence, reminder, temporal model, draft, and core data-semantics contracts; 104 remain NOT TESTED, proposed priorities still need review, and historical mapping is still absent. PC-QA-GATE-001 remains **PARTIAL / HOLD**, and overall core verdict remains **HOLD**.
+Core code and tests now have evidence for 66 reconstructed rows across backup, tombstone, migration, recurrence, reminder, temporal model, draft, and core data-semantics contracts; 103 remain NOT TESTED, proposed priorities still need review, and historical mapping is still absent. PC-QA-GATE-001 remains **PARTIAL / HOLD**, and overall core verdict remains **HOLD**.
