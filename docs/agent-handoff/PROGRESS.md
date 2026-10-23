@@ -1,4 +1,13 @@
 # Core freeze progress
+## PC-ISSUE-095 — AI independent batch item failure and retry
+
+- Added a SQLite-trigger regression for a three-item batch whose middle commit fails. The pre-fix runner published 1 item instead of the expected 2 and skipped the later independent item. Fixed `AiBatchRunner` to isolate ordinary exceptions per item, preserve cancellation propagation, report the failure and continue; a partial-failure batch now ends as `FAILED` rather than `CANCELLED`.
+- The regression confirms first/last items commit, the failed draft transaction rolls back and remains pending, `published=2 / kept=1 / cancelled=false` and the report survive SQLite reopen, the lock releases, stale authorization is rejected, and a new batch retries the retained draft successfully.
+- Pre-fix reproduction log SHA-256 `62EF0C91214E7C38C0DABAC65B2A60571C9B17E38264239510B60D8184C950FC`. Final targeted test passed 1/1 (log SHA-256 `B7BA661157DE0E9A4DD96C5F8ACBBEE26DB826EE709CD2E981E5D2AE0B88B17A`; JUnit XML SHA-256 `0D09525904E9BF11BCD4DFB01207801C03AE5869243FACB067CE8130F79291D0`). Full Gradle passed 449/449 across 57 suites, zero failures/errors/skips; lint 0 errors / 58 warnings. Full log SHA-256 `2F809BCB7A5C03973688D09662B7809BE64DF7A333B17FDAF8C316281DC3572D`.
+- Commit `361f074538a27ad75c2a91c7da4bdee6beb46795` is pushed. Independent report: `docs/issues/PC-ISSUE-095-ai-batch-independent-item-failure.md`. `REC-P1-058` is PASS for the core runner/SQLite partial-success contract; no model or network call was made.
+- Freeze remains HOLD: 134 PASS / 0 FAIL / 9 BLOCKED / 59 NOT TESTED / 7 SPEC UNRESOLVED; P0 111/0/1/9/5; P1 23/0/8/50/1; 116 reconstructed candidates have independent evidence. Original 209 case IDs remain unmapped.
+- Next: continue a feasible core acceptance item; keep remaining failures and device gaps visible.
+
 ## PC-ISSUE-094 — Reminder recovery broadcast matrix
 
 - Added `BootReceiverRecoveryTest.recoveryBroadcastsReconcileDesiredAlarmAndFinishAsyncWork`. Five synthetic non-boot actions (app replaced, timezone changed, clock changed, exact-alarm permission changed, internal reconcile) each clear the simulated AlarmManager registration, dispatch the receiver, await `goAsync()` completion, and verify one registration is rebuilt from the durable `SCHEDULED` intent. The boot action remains covered by PC-ISSUE-093.
