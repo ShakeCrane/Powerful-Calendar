@@ -27,7 +27,7 @@ Audit evidence: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-sour
 
 `docs/CORE_FREEZE_ACCEPTANCE_LEDGER.csv` contains 208 reconstructed rows and one unresolved historical slot. Proposed priority allocation is P0=126 and P1=82, grouped by risk/source area; this preserves the known aggregate for review but does not establish which historical case each row represents. All reconstructed rows are explicitly `UNMAPPED`.
 
-Structural validation: 209 unique IDs; all reconstructed rows contain source, environment, action, expected and actual fields; PASS/BLOCKED rows include evidence references. Latest validation JSON: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-018.json` (ledger SHA-256 `C95A26AFC720F6E52EB1652E154D98643B8B926C3A01B5B6A28819FB38BEA67E`). Structural validation does not test the app or prove the historical mapping.
+Structural validation: 209 unique IDs; all reconstructed rows contain source, environment, action, expected and actual fields; PASS/BLOCKED rows include evidence references. Latest validation JSON: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-020.json` (ledger SHA-256 `4056113C90995EA340FD3D6D29AF76F88055EF0D87AD3796513C0FCCFA2DF35B`). Structural validation does not test the app or prove the historical mapping.
 
 | Candidate bucket | PASS | FAIL | BLOCKED | NOT TESTED | SPEC UNRESOLVED |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -173,14 +173,24 @@ Targeted result: **1/1 PASS**, log `.local/android-test/reports/freeze-20261023/
 
 ## Case-specific reminder completion isolation (2026-10-23)
 
-`REC-P0-012/013` are individually signed on code/test commit `d74d55a3bb05893606f7da223beaa0b5f7a5819d`; Debug APK SHA-256 is `63F8DCB69D1028B8D7061B374162F59770B86FA2FA4BEB6FDA132D4393AA8B6C`. The tests use Robolectric API 34 and an isolated SQLite database; they do not establish actual Android AlarmManager delivery or a user swipe in the system notification shade.
+`REC-P0-012/013` are individually signed on stabilized code/test commit `d60809b4133a45c0551019f1edabec1195d34cf3`; Debug APK SHA-256 is `EA0DE99328BF66FEA302AF5A55C82B3BD7EF3F7276922979AABBF7ABEC581A53`. The tests use Robolectric API 34 and an isolated SQLite database; they do not establish actual Android AlarmManager delivery or a user swipe in the system notification shade.
 
 | Candidate row | Test | Result |
 | --- | --- | --- |
-| `REC-P0-012` | `ReminderCompletionIsolationTest.firedAlarmRecordsExecutionWithoutCompletingTrackedEvent` | PASS: synthetic receiver `ACTION_FIRE` records `FIRED` and clears `intentFor`; completion keys stay empty and revision is unchanged. |
+| `REC-P0-012` | `ReminderCompletionIsolationTest.firedAlarmRecordsExecutionWithoutCompletingTrackedEvent` | PASS: synchronous call to the shared delivery handler with synthetic `ACTION_FIRE` records `FIRED` and clears `intentFor`; completion keys stay empty and revision is unchanged. It does not exercise Android `onReceive`/`goAsync` lifecycle. |
 | `REC-P0-013` | `ReminderCompletionIsolationTest.autoCancelledReminderHasNoCompletionDeleteCallback` | PASS: `FLAG_AUTO_CANCEL`, null `deleteIntent`, and unchanged completion state/revision after shadow notification cancellation. |
 
-Post-commit targeted result: **2/2 PASS**, log `.local/android-test/reports/freeze-20261023/pc-issue-015-reminder-completion-targeted-final-20261023.log` (SHA-256 `2010C351D82318FC0E3D1154BE91AD64FECD4CC8B1025117870DC8C5D2D2A673`); JUnit XML SHA-256 `912B76691F6C185AA5AEA95377663CFDE0FC2F21D2725F3627CC7BB61E7CF033`. Full regression: **382/382 PASS**, 55 suites, lint 0 errors / 55 warnings; full log SHA-256 `6719782E203DFCC6E477BFF6E5F56DFD717BEA8568514C0FB4FC14A925675CE7`. The full run used the same test source later committed as `d74d55a`; it includes 381 tracked tests plus one protected untracked test. See `docs/issues/PC-ISSUE-015-reminder-completion-isolation.md` for the precise system/device limitations.
+After the Issue020 stabilization commit, the targeted class result was **2/2 PASS**, log `.local/android-test/reports/freeze-20261023/pc-issue-020-reminder-dispatch-targeted-final-20261023.log` (SHA-256 `2010C351D82318FC0E3D1154BE91AD64FECD4CC8B1025117870DC8C5D2D2A673`); JUnit XML SHA-256 `0AB606BDA5615C40146FDEBE0B74FCDB3EC2197DC6321CA895400C5972ABD131`. Full regression: **384/384 PASS**, 55 suites, lint 0 errors / 55 warnings; full log SHA-256 `A4A67F15FCBA59BBBBE543943337501DAFD2ECA7A37ECBF3DE3A41664F155783`. The full run used the exact source later committed as `d60809b`; it includes 383 tracked tests plus one protected untracked test. See `docs/issues/PC-ISSUE-015-reminder-completion-isolation.md` and `docs/issues/PC-ISSUE-020-reminder-receiver-test-race.md` for test scope and limitations.
+
+## Case-specific reminder receiver test stabilization (2026-10-23)
+
+Issue020 fixed test-fixture concurrency in the `REC-P0-012` regression without changing receiver dispatch behavior. The source commit is `d60809b4133a45c0551019f1edabec1195d34cf3`; this does not add candidate rows or increase the PASS count.
+
+| Candidate row | Test | Result |
+| --- | --- | --- |
+| `REC-P0-012` | `ReminderCompletionIsolationTest.firedAlarmRecordsExecutionWithoutCompletingTrackedEvent` | PASS: the handler is invoked synchronously against isolated SQLite, avoiding concurrent polling during its write; Android framework `PendingResult`/`goAsync` behavior remains untested. |
+
+The independent Issue020 report preserves the original failing full-run log and JUnit XML, their SHA-256 hashes, the passing post-fix targeted run, and the passing full regression. A temporary synchronous `onReceive` experiment exposed a missing framework `PendingResult` in the old fixture; its console output was not preserved as a separately hashable artifact and is explicitly disclosed in that report. No test-fixture output is represented as Android system-delivery evidence.
 
 ## Case-specific Alarm point semantics (2026-10-23)
 
@@ -220,7 +230,7 @@ Post-commit targeted result: **36/36 PASS**, log `.local/android-test/reports/fr
 | P1 | 82 | 0 | Unassessed by original ID |
 | Priority unresolved | 1 | 0 | Remains unclassified and unassessed |
 
-The latest full working-tree Gradle run reports 384 tests PASS, 0 failures/errors/skips across 55 JUnit suites, successful skin-boundary verification and Debug assembly, and lint 0 errors / 55 warnings. It includes one test from protected, untracked `app/src/test/java/dev/powerfulcalendar/ui/v2/DraftDeckFeedbackTest.kt` (383 tracked tests + 1 untracked); the file was not modified or staged. The added test source is committed as `ee2e6707b9dc2e1b134f91109250079dedcd85bc`. Log: `.local/android-test/reports/freeze-20261023/pc-issue-018-deadline-point-full-gradle-20261023.log` (SHA-256 `FD45C911E23DDB9CFCAB827D6FE9B49EFEBED2373440521BB6FD803747F3FA5B`). This is not a 384-to-209 mapping.
+The latest full working-tree Gradle run reports 384 tests PASS, 0 failures/errors/skips across 55 JUnit suites, successful skin-boundary verification and Debug assembly, and lint 0 errors / 55 warnings. It includes one test from protected, untracked `app/src/test/java/dev/powerfulcalendar/ui/v2/DraftDeckFeedbackTest.kt` (383 tracked tests + 1 untracked); the file was not modified or staged. The tested code/test changes are committed as `d60809b4133a45c0551019f1edabec1195d34cf3`. Log: `.local/android-test/reports/freeze-20261023/pc-issue-020-reminder-dispatch-full-gradle-20261023.log` (SHA-256 `A4A67F15FCBA59BBBBE543943337501DAFD2ECA7A37ECBF3DE3A41664F155783`). This is not a 384-to-209 mapping.
 
 ## Required next work
 
