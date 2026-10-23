@@ -27,14 +27,14 @@ Audit evidence: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-sour
 
 `docs/CORE_FREEZE_ACCEPTANCE_LEDGER.csv` contains 208 reconstructed rows and one unresolved historical slot. Proposed priority allocation is P0=126 and P1=82, grouped by risk/source area; this preserves the known aggregate for review but does not establish which historical case each row represents. All reconstructed rows are explicitly `UNMAPPED`.
 
-Structural validation: 209 unique IDs; all reconstructed rows contain source, environment, action, expected and actual fields; PASS/BLOCKED rows include evidence references. Latest validation JSON: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-029.json`, SHA-256 `318ADA3BAB95430120553ACB6A14988E6A879E042297A88809DB7736CC61E5AD`; ledger SHA-256 `1E481D51E0089F26ECDCA6263ACB6C583C7411BB8465FC04420629614E22F528`. Structural validation does not test the app or prove the historical mapping.
+Structural validation: 209 unique IDs; all reconstructed rows contain source, environment, action, expected and actual fields; PASS/BLOCKED rows include evidence references. Latest validation JSON: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-030.json`, SHA-256 `ACFF4AAC80FA1DD81DD1BF29818E920F0E65B714E744182EFB0D71BD81E02CB0`; ledger SHA-256 `A207E451978543789943D577EE556FD5ACA023C93639B674BAF1E92E8E92EAF6`. Structural validation does not test the app or prove the historical mapping.
 
 | Candidate bucket | PASS | FAIL | BLOCKED | NOT TESTED | SPEC UNRESOLVED |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| P0 (proposed) | 56 | 0 | 1 | 65 | 4 |
+| P0 (proposed) | 57 | 0 | 1 | 64 | 4 |
 | P1 (proposed) | 19 | 0 | 8 | 54 | 1 |
 | Historical unclassified slot | 0 | 0 | 0 | 0 | 1 |
-| **Total candidate rows** | **75** | **0** | **9** | **119** | **6** |
+| **Total candidate rows** | **76** | **0** | **9** | **118** | **6** |
 
 ### Case-specific backup verification (2026-10-23)
 
@@ -323,6 +323,16 @@ Post-commit targeted result: **2/2 PASS**, log `.local/android-test/reports/free
 
 Post-commit targeted result: **2/2 PASS**, log `.local/android-test/reports/freeze-20261023/pc-issue-029-retired-identity-targeted-postcommit-20261023.log` (SHA-256 `A6D078A431A9870A8E89C49529A5E1F692355BB15E73A9E305C913A6325643B6`); JUnit XML SHA-256 `84C6F0785079DA67C5B5A8A13BBEF90EFFE8D30A8AFCC44FA14F991E22240E5F`. Full Gradle regression: **392/392 PASS**, 55 suites, lint 0 errors / 55 warnings; log SHA-256 `2FB780ECF6F7F4D2D81D9004FAE8437856514D1BCA31F7447948BADC3EB60A52`. The full `PowerStoreTest` XML contains 45 passing tests and SHA-256 `0731E44979C82E4C68C9DF89B03DD69EEEDD59B98CCDE77A25D4A415EC860B13`. See `docs/issues/PC-ISSUE-029-retired-identity-not-reused-after-restart.md` for exact assertions and limits.
 
+## Case-specific independent draft identities (2026-10-23)
+
+`REC-P0-031` is individually signed on code/test commit `9cfd0ee4ff71c13103dcbb7feab9d8bc6b11e6a3`; Debug APK SHA-256 `EA0DE99328BF66FEA302AF5A55C82B3BD7EF3F7276922979AABBF7ABEC581A53`. The regression uses Robolectric API 34 and an isolated PowerStore SQLite database; no UI, emulator, or physical device was used.
+
+| Candidate row | Test | Result |
+| --- | --- | --- |
+| `REC-P0-031` | `PowerStoreTest.independentCreateDraftsKeepUniqueDraftIdsAcrossRestart` | PASS: two independent create drafts have unique draft IDs and event sequences, retain the correct draft-to-event mappings, and remain in the pending queue after SQLite reopen. |
+
+Post-commit targeted result: **2/2 PASS**, including the existing same-event one-actionable-draft test; log `.local/android-test/reports/freeze-20261023/pc-issue-030-independent-draft-targeted-postcommit-20261023.log` (SHA-256 `8CF359ED5B02675EF95C78DC74B5A7A12A453F7BB676F4E7BC60AAAF362972E2`); JUnit XML SHA-256 `34B222F57CC7F2693E20472ED3BA934209DF5C83A3788B417B59DE15A63D17D2`. Full Gradle regression: **393/393 PASS**, 55 suites, lint 0 errors / 55 warnings; log SHA-256 `54E0983E3F4020CBB5453265B10815C728960E146EB60637B9DA13F57E1418CF`. The full `PowerStoreTest` XML contains 46 passing tests and SHA-256 `922B3FA40F5B3DF2FB8AA8BB6178FBC8EF8AD1072BEA38BA63A279C6D1233B19`. See `docs/issues/PC-ISSUE-030-independent-draft-identities.md` for exact assertions and limits.
+
 ## Historical sign-off accounting
 
 | Bucket from historical aggregate | Total | Matched to original ID | Result |
@@ -331,11 +341,11 @@ Post-commit targeted result: **2/2 PASS**, log `.local/android-test/reports/free
 | P1 | 82 | 0 | Unassessed by original ID |
 | Priority unresolved | 1 | 0 | Remains unclassified and unassessed |
 
-The latest full working-tree Gradle run reports 392 tests PASS, 0 failures/errors/skips across 55 JUnit suites, successful skin-boundary verification and Debug assembly, and lint 0 errors / 55 warnings. It includes one test from protected, untracked `app/src/test/java/dev/powerfulcalendar/ui/v2/DraftDeckFeedbackTest.kt` (391 tracked tests + 1 untracked); the file was not modified or staged. The tested code/test changes are committed as `8270a8a47d55ad3e91cbdadd4b2caf1d7daefb20`. Log: `.local/android-test/reports/freeze-20261023/pc-issue-029-retired-identity-full-gradle-20261023.log` (SHA-256 `2FB780ECF6F7F4D2D81D9004FAE8437856514D1BCA31F7447948BADC3EB60A52`). This is not a 392-to-209 mapping.
+The latest full working-tree Gradle run reports 393 tests PASS, 0 failures/errors/skips across 55 JUnit suites, successful skin-boundary verification and Debug assembly, and lint 0 errors / 55 warnings. It includes one test from protected, untracked `app/src/test/java/dev/powerfulcalendar/ui/v2/DraftDeckFeedbackTest.kt` (392 tracked tests + 1 untracked); the file was not modified or staged. The tested code/test changes are committed as `9cfd0ee4ff71c13103dcbb7feab9d8bc6b11e6a3`. Log: `.local/android-test/reports/freeze-20261023/pc-issue-030-independent-draft-full-gradle-20261023.log` (SHA-256 `54E0983E3F4020CBB5453265B10815C728960E146EB60637B9DA13F57E1418CF`). This is not a 393-to-209 mapping.
 
 ## Required next work
 
-1. Run the 119 `NOT TESTED` rows under the environment each row requires and update only with case-specific evidence.
+1. Run the 118 `NOT TESTED` rows under the environment each row requires and update only with case-specific evidence.
 2. Resolve the one blocked P0, eight blocked P1, and five reconstructed spec-unresolved rows where feasible; retain external/physical/device dependencies as HOLD. The separate historical unclassified slot remains unresolved pending its source.
 3. Review the source-based proposed priority allocation. New IDs must never masquerade as historical IDs.
 4. Keep the one historical unclassified item visibly unresolved until its source or an explicit review decision is available.
@@ -343,4 +353,4 @@ The latest full working-tree Gradle run reports 392 tests PASS, 0 failures/error
 
 ## Scope and outcome
 
-Core code and tests now have evidence for 50 reconstructed rows across backup, tombstone, migration, recurrence, reminder, temporal model, draft, and core data-semantics contracts; 119 remain NOT TESTED, proposed priorities still need review, and historical mapping is still absent. PC-QA-GATE-001 remains **PARTIAL / HOLD**, and overall core verdict remains **HOLD**.
+Core code and tests now have evidence for 51 reconstructed rows across backup, tombstone, migration, recurrence, reminder, temporal model, draft, and core data-semantics contracts; 118 remain NOT TESTED, proposed priorities still need review, and historical mapping is still absent. PC-QA-GATE-001 remains **PARTIAL / HOLD**, and overall core verdict remains **HOLD**.
