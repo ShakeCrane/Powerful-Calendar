@@ -1,4 +1,11 @@
 # Core freeze progress
+## PC-ISSUE-100 — mixed AI CREATE/REPLACE core checkpoint (candidate remains NOT TESTED)
+
+- Existing parser and PowerStore regressions were run directly. One structured response stays as separate CREATE and REPLACE proposals; two PENDING drafts are created, the REPLACE keeps the target eventSeq, and neither formal event is published or mutated.
+- Targeted Robolectric API 34 passed 2/2 across two suites. The same code baseline's full Gradle run passed 452/452 across 57 suites, zero failures/errors/skips; lint 0 errors / 58 warnings. No provider call or UI change.
+- Independent checkpoint report: `docs/issues/PC-ISSUE-100-mixed-ai-create-replace-core-checkpoint.md`. API 35/free-provider request and proposal-card presentation remain untested, so `REC-P1-049` stays NOT TESTED.
+- Freeze remains HOLD: 135 PASS / 0 FAIL / 9 BLOCKED / 58 NOT TESTED / 7 SPEC UNRESOLVED; P0 111/0/1/9/5; P1 24/0/8/49/1. Structural-only validation `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-100.json`, SHA-256 `CC8184361CCE7C1C4921D3FEFCD5579E0D6939B8CF591820D468F72ABBB1026A`; ledger SHA-256 `040CD2EEFAF281FA018ED465194C8D6ADCAC93CCAAE40B333CAD7BD23D18E5BC`.
+
 ## PC-ISSUE-099 — structured proposal HTTP 429 stage diagnostics
 
 - Reproduced that a local HTTP 429 returned a generic “AI request failed” warning without naming the structured-proposal stage. Updated `AiClient.interpret` to preserve the stage in the warning. The focused test also verifies no proposal/raw reply is returned and neither the provider error body nor API key is exposed.
