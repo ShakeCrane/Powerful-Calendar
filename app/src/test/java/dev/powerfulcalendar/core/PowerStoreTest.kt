@@ -14,6 +14,9 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import dev.powerfulcalendar.ai.AiDraftService
+import dev.powerfulcalendar.ai.AiInterpretation
+import dev.powerfulcalendar.ai.AiProposal
 import dev.powerfulcalendar.interop.IcsCodec
 import java.time.Instant
 import java.time.LocalDate
@@ -634,6 +637,46 @@ class PowerStoreTest {
         assertEquals(listOf(eventB.eventSeq, eventA.eventSeq), reopened.map { it.eventSeq })
         assertEquals(2, reopened.map { it.queueOrder }.toSet().size)
     }
+
+    @Test
+    fun aiProposalAppendsAtQueueTailAndRefreshPreservesCurrentFocus() =
+        kotlinx.coroutines.runBlocking {
+            val first = store.newDraft(activityForm("first"), actor = "user")
+            val second = store.newDraft(activityForm("second"), actor = "user")
+            val controller = DeckController(
+                StoreDeckPersistence(store),
+                { 1_000L },
+                kotlinx.coroutines.Dispatchers.Unconfined
+            )
+            controller.open()
+            assertTrue(controller.move(1))
+            val focusedId = controller.state.currentId
+            assertEquals(second.draftId, focusedId)
+
+            val created = AiDraftService(store).createDrafts(
+                AiInterpretation(
+                    proposals = listOf(
+                        AiProposal(
+                            operation = DraftOperation.CREATE,
+                            eventSeq = null,
+                            form = activityForm("AI proposal")
+                        )
+                    )
+                )
+            )
+
+            assertTrue(created.warnings.isEmpty())
+            assertEquals(1, created.draftIds.size)
+            val aiDraftId = created.draftIds.single()
+            val queue = store.pendingDrafts()
+            assertEquals(listOf(first.draftId, second.draftId, aiDraftId), queue.map { it.draftId })
+            assertTrue(queue.last().queueOrder > second.queueOrder)
+
+            controller.refresh()
+            assertEquals(focusedId, controller.state.currentId)
+            assertEquals("second", controller.state.form!!.title)
+            assertEquals(queue.map { it.draftId }, controller.state.cards.map { it.draftId })
+        }
 
     @Test
     fun nextDraftQueueOrderAdvancesPastCommittedAndDiscardedDraftsAfterRestart() {
