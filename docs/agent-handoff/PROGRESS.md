@@ -1,4 +1,11 @@
 # Core freeze progress
+## PC-ISSUE-097 — AI draft persistence core checkpoint (candidate remains NOT TESTED)
+
+- Added `PowerStoreTest.parsedAiCreateProposalPersistsAsAnUnpublishedDraftAcrossRestart`: a locally parsed CREATE proposal becomes a PENDING draft, creates no formal event/history, and keeps its identity, form, version, status, and queue entry after SQLite reopen. No production defect was found; this is partial core evidence only.
+- Targeted Robolectric API 34 passed 1/1. Full Gradle passed 451/451 across 57 suites, zero failures/errors/skips; lint 0 errors / 58 warnings. `adb` is unavailable; API 35/free-provider selection and device behavior were not tested. No UI was changed.
+- Test commit `0aa6fa50a00925246aff7dd13822ad1ef15ece4f` is pushed. Independent checkpoint report: `docs/issues/PC-ISSUE-097-ai-draft-persistence-process-restart.md`. `REC-P1-056` remains NOT TESTED.
+- Freeze remains HOLD: 135 PASS / 0 FAIL / 9 BLOCKED / 58 NOT TESTED / 7 SPEC UNRESOLVED; P0 111/0/1/9/5; P1 24/0/8/49/1. Structural-only validation `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-097.json` SHA-256 `66163C61D912A6B2984023F017ADD825D4E3DC346051253B955A92FEF8269EC3`; ledger SHA-256 `BC18A6B477FF77AC67EEC3F632424D294FC80410BAE18478D5F40EA8142C88A9`. Original 209 case IDs remain unmapped.
+
 ## PC-ISSUE-096 — AI proposal rejection preserves the formal event
 
 - Added `PowerStoreTest.theAiBatchDiscardOnlyRejectsProposalAndPreservesFormalEventAcrossRestart`. It publishes an Activity, creates an AI REPLACE proposal, discards it through `AiBatchRunner`, and verifies the formal snapshot and commit history remain unchanged before and after SQLite reopen; the proposal is DISCARDED and the batch unlocks.
