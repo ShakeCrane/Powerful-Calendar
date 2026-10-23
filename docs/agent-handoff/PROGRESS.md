@@ -1,4 +1,11 @@
 # Core freeze progress
+## PC-ISSUE-103 — AI missing-kind clarification (candidate remains NOT TESTED)
+
+- Reproduced that an untyped ambiguous AI item was dropped with only an “ignored” warning. The core parser now asks which of the four event kinds the user means, while creating no proposal/draft or event identity until clarified.
+- The pre-fix regression failed at the missing clarification text. Post-fix targeted Robolectric API 34 passed 4/4 across parser and PowerStore suites. Full Gradle passed 455/455 across 57 suites, zero failures/errors/skips; lint 0 errors / 58 warnings. No UI code changed.
+- Fix/test commit `d381e1dc87a6ae1fe459b50aad79dd63b391fb9c` is pushed. Independent report: `docs/issues/PC-ISSUE-103-ai-missing-kind-clarification.md`. API 35/provider/card paths remain untested, so `REC-P1-051` remains NOT TESTED.
+- Freeze remains HOLD: 135 PASS / 0 FAIL / 9 BLOCKED / 58 NOT TESTED / 7 SPEC UNRESOLVED; P0 111/0/1/9/5; P1 24/0/8/49/1. Structural-only validation `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-103.json`, SHA-256 `C96848D5A9F75692FA837532EA7D3F3D91A0FD15086F4C96412536065DD74CD6`; ledger SHA-256 `31F3050CDC00C884E89A2EC219F2C53A51F35ED1D72387F89307984E625C84AC`.
+
 ## PC-ISSUE-102 — completion tracking toggle keeps reminder scheduling (candidate remains NOT TESTED)
 
 - Added a Robolectric API 34 `ReminderValidationTest` that schedules an Activity reminder, disables completion tracking, then verifies the new revision returns to PENDING and reconciles to SCHEDULED with one Alarm; the updated revision validates and the old revision is rejected.
@@ -9,7 +16,7 @@
 ## PC-ISSUE-101 — AI missing-time proposal core checkpoint (candidate remains NOT TESTED)
 
 - Added `PowerStoreTest.parsedAiActivityWithMissingTimeRemainsRepairableDraftAcrossRestart`. The parser keeps empty ACTIVITY times blank; the proposal stays a draft, a formal commit is rejected, and the INVALID draft/form survive SQLite reopen. Filling both times restores PENDING and allows one valid commit.
-- Targeted Robolectric API 34 passed 2/2. Full Gradle passed 453/453 across 57 suites, zero failures/errors/skips; lint 0 errors / 58 warnings. Missing-type and API 35/card paths were not tested; no UI or production code changed.
+- Targeted Robolectric API 34 passed 2/2. Full Gradle passed 453/453 across 57 suites, zero failures/errors/skips; lint 0 errors / 58 warnings. At that checkpoint the missing-type and API 35/card paths were not tested; Issue 103 later added core missing-type clarification evidence, while API 35/provider/card paths remain untested. No UI changed.
 - Test commit `814f3f2c6cb2a3d451495ae8492c8629d0aa7476` is pushed. Independent report: `docs/issues/PC-ISSUE-101-ai-incomplete-proposal-missing-time.md`. `REC-P1-051` remains NOT TESTED.
 - Freeze remains HOLD: 135 PASS / 0 FAIL / 9 BLOCKED / 58 NOT TESTED / 7 SPEC UNRESOLVED; P0 111/0/1/9/5; P1 24/0/8/49/1. Structural-only validation `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-101.json`, SHA-256 `7ECF656AF47EC32029B1B525ABE4636F06190BE762BE3119163422426FC1A6F4`; ledger SHA-256 `FB88F6EC57099AD2169DEF1828116634A22C2095A945E711E3013D546F00F519`.
 
