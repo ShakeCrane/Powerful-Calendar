@@ -4,6 +4,9 @@
 目标：闭环测试、最小修复、逐项回归与签核，**满足证据标准才宣布核心基线 GO**；否则给出准确 HOLD 及阻塞。本文不是验收完成证明。
 
 ## 0. 最新执行续接（2026-10-24）
+- 已提交并推送 `PC-ISSUE-091` 核心批次取消/恢复回归：`65fb3ca8bda51cf7c6bd91794789e2b152e9603a`。runner 在首项完成后收到取消时释放锁、将批次持久化为 `CANCELLED`、保留未完成草稿；SQLite 重开后拒绝旧 session 写入。既有孤儿恢复用例覆盖旧 owner token 的 stale epoch 拒写。定向 1/1，完整 Gradle 445/445、56 suites，0 failures/errors/skips；Lint 0 errors/58 warnings。独立报告：`docs/issues/PC-ISSUE-091-ai-batch-cancellation-recovery.md`。在线 provider timeout 与 OS 级强杀未测。
+- 冻结候选统计：131 PASS / 0 FAIL / 9 BLOCKED / 62 NOT TESTED / 7 SPEC UNRESOLVED；P0 110/0/1/10/5，P1 21/0/8/52/1；113 条重建候选有独立证据。结构校验 artifact：`.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-091.json`，SHA-256 `58BDF051DFBA71E5F6ADC6F8E2BA8E9F63794F0F3FF92F580B010F720C49A5E4`；CSV SHA-256 `8DF10B48392E282895057DECFF0F51D97D2AE5B214936ADBFE26024A0C77818B`。校验仅结构性，冻结仍 HOLD，历史 209 项无映射。
+- 用户最新范围：不做 UI；变浅的横向边缘接受。当前只推进核心状态与恢复验收。设计资产、受保护的未跟踪测试与观察报告保持未改动、未暂存。
 - 已提交并推送 `PC-ISSUE-085` 核心重复序列拆分与后续计数修复：`cf1be08500f02adc0edba12c9c97bc4c7d53fea1`、`86043231d14594cce89942f8847c5fe66e7bd178`。`REC-P0-079` 仅有核心事务部分证据，仍为 NOT TESTED；编辑器范围选择/调用链、API 35 与真机未签核。独立报告：`docs/issues/PC-ISSUE-085-this-and-future-series-split.md`。
 - 严格遵循最新用户范围：不开展 UI 工作；时间标记淡化横边接受，蓝色标记覆盖中轴符合设计。Issue 002 仍按现有记录 PARTIAL/BLOCKED，不为绕过免费模型限流重复请求或调用未授权付费模型。
 - `design/`、`DraftDeckFeedbackTest.kt` 与 `PC-OBS-005` 未跟踪文件仍受保护、未修改/未提交；主分支已与 `origin/main` 同步。

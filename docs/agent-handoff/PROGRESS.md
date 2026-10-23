@@ -1,4 +1,12 @@
 # Core freeze progress
+## PC-ISSUE-091 — AI batch cancellation cleanup and stale-epoch fencing
+
+- Added and pushed `PowerStoreTest.cancelledAiBatchRunnerReleasesLockAndFencesRemainingScopeAcrossRestart`. Cancellation after the first completed item preserves that formal event and the unfinished draft, releases the batch lock, persists `CANCELLED`, and rejects the stale `AiSession` after reopening SQLite. Existing orphan recovery separately simulates a previous owner token and rejects its late write.
+- Focused Robolectric API 34 regression passed 1/1 (log SHA-256 `3D6BEDC5462DF72ADCE56A06A479A92FA2EB6521AFD400769A2C6D61554DE5DB`; JUnit XML SHA-256 `4B9C5709A0E8F9689B3E249B5CDCC5E3C5541DE507C29A95BE2BE602B2321D02`). Full Gradle passed 445/445 across 56 suites, zero failures/errors/skips; lint 0 errors / 58 warnings. Full log SHA-256 `BDEB8CB1A9047D1E30A7FEDD0A2E63AEA30B21744748F298BF90360F5F82BB5D`.
+- Test commit `65fb3ca8bda51cf7c6bd91794789e2b152e9603a` is pushed. Independent report: `docs/issues/PC-ISSUE-091-ai-batch-cancellation-recovery.md`. `REC-P1-061` is PASS for the core batch state/authorization contract; live model timeout and OS-level process-kill behavior were not exercised.
+- Latest freeze remains HOLD: 131 PASS / 0 FAIL / 9 BLOCKED / 62 NOT TESTED / 7 SPEC UNRESOLVED; 113 reconstructed candidates have independent evidence. The original 209 case IDs remain unmapped. Scope remains core-only; pale horizontal edge accepted. Protected untracked files remain unchanged and unstaged.
+- Next: continue with a feasible non-UI core acceptance item.
+
 ## PC-ISSUE-090 — ICS TZID and VTIMEZONE serialization
 
 - Mapped existing `IcsExportRecurrenceTest` fixed-offset and DST round-trip assertions to `REC-P1-078`. Focused Robolectric API 34 run passed 6/6; full Gradle at the same code/test baseline passed 444/444 across 56 suites, with zero failures/errors/skips and lint 0 errors / 58 warnings.
