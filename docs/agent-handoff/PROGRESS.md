@@ -1,4 +1,12 @@
 # Core freeze progress
+## PC-ISSUE-106 — API 35 exact-alarm denial core checkpoint (REC-P0-112 remains NOT TESTED)
+
+- Added one API 35 Robolectric `ReminderValidationTest`: exact reminder commit followed by permission-denied reconciliation persists `BLOCKED`, retains the exact-alarm permission hint, and leaves `ShadowAlarmManager` empty. Core test only; no production/UI change.
+- API 35 method passed 1/1; the complete `ReminderValidationTest` class passed 17/17. Full offline Debug boundary/test/APK/lint run passed 460/460 across 57 suites, zero failures/errors/skips; lint 0 errors / 58 warnings. APK SHA-256 `138EC1363E4D74E6153CFFA61CEE4C0DF4D51416B3BD64C954FE642ED0FD4096`.
+- Test commit `f30c1ce5c6e6c6e835365f751dc689ab245b5aca` is pushed. Independent report: `docs/issues/PC-ISSUE-106-api35-exact-alarm-denial-core.md`. adb is unavailable, so actual API 35 Android permission behavior and device guidance are untested; REC-P0-112 stays NOT TESTED.
+- Full log `.local/android-test/reports/freeze-20261024/pc-issue-106-verified-gradle.log`, SHA-256 `B14E35666D4C5B2159CCAFEFE12C6244C803B864E23172A266DC736A02BBD15B`. Structural-only ledger validation `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-106.json`, SHA-256 `BA926DB3211EF7D46F5700D4228A9577B58C4A2A8C79BC848D434495D9F72965`; ledger SHA-256 `C7912597DC9DECBBB21D5A4FB50CB8EF5665E6FA91F7A05BBBC8240AE03B2C59`.
+- Freeze remains HOLD: 135 PASS / 0 FAIL / 9 BLOCKED / 58 NOT TESTED / 7 SPEC UNRESOLVED; P0 111/0/1/9/5; P1 24/0/8/49/1.
+
 ## PC-ISSUE-105 — reminder grace-window and missed recovery core regression (REC-P0-118 remains SPEC UNRESOLVED)
 
 - Added three Robolectric API 34 core tests: receiver delivery inside the current grace constant posts `FIRED`; a late receiver records `MISSED` without notification; reconciliation records an overdue durable `PENDING` intent as `MISSED` without re-arming it. Test-only; no production or UI change.
