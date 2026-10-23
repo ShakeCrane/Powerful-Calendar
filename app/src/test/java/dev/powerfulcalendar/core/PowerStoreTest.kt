@@ -317,6 +317,35 @@ class PowerStoreTest {
     }
 
     @Test
+    fun stagingDraftEditKeepsDraftAndEventIdentitiesAcrossRestart() {
+        val original = store.newDraft(activityForm("暂存前"))
+        val revised = original.form.copy(title = "暂存后")
+
+        assertTrue(store.stageDraft(original.draftId, revised, original.draftVersion)
+            is PowerStore.StageResult.Saved)
+        val staged = store.draft(original.draftId)!!
+        assertEquals(original.draftId, staged.draftId)
+        assertEquals(original.eventSeq, staged.eventSeq)
+        assertEquals("暂存后", staged.form.title)
+        assertEquals(1L, staged.draftVersion)
+        assertEquals(1L, store.identityCount())
+        assertEquals(original.eventSeq + 1, store.nextSequencePreview())
+
+        val database = store.databaseName
+        store.close()
+        store = PowerStore(context, database)
+
+        val reopened = store.draft(original.draftId)!!
+        assertEquals(original.draftId, reopened.draftId)
+        assertEquals(original.eventSeq, reopened.eventSeq)
+        assertEquals("暂存后", reopened.form.title)
+        assertEquals(1L, reopened.draftVersion)
+        assertEquals(1L, store.identityCount())
+        assertEquals(original.eventSeq + 1, store.nextSequencePreview())
+        assertEquals(listOf(original.draftId), store.pendingDrafts().map { it.draftId })
+    }
+
+    @Test
     fun indefiniteIcsSeriesUsesOnePermanentEventIdentityForAllOccurrences() {
         val text = listOf(
             "BEGIN:VCALENDAR", "BEGIN:VEVENT",
