@@ -1,4 +1,11 @@
 # Core freeze progress
+## PC-ISSUE-115 — AI CREATE draft core persistence sign-off (REC-P1-056 PASS)
+
+- A local parsed CREATE proposal becomes one PENDING draft without formal event/history; after SQLite reopen its ID, event sequence, version, operation, form, status, and queue order remain unchanged.
+- Targeted Robolectric API 34 regression passed 1/1. Full Debug boundary/test/APK/lint run passed 460/460 across 57 suites, zero failures/errors/skips; lint 0 errors / 58 warnings.
+- Independent report: docs/issues/PC-ISSUE-115-ai-draft-core-persistence-signoff.md. API 35/provider selection is outside this sign-off.
+- Freeze remains HOLD: 144 PASS / 0 FAIL / 9 BLOCKED / 49 NOT TESTED / 7 SPEC UNRESOLVED; P0 119/0/1/1/5; P1 25/0/8/48/1. Structural-only validation .local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-115.json, SHA-256 4B62D6669634D5B6C20A4C47E05585288019D311B95C43D1D34334535E5B7030; ledger SHA-256 42386817457F1EBDFE6C5BF131D068B492E9BBC2301F68C99C28B7201B8038A2.
+
 ## PC-ISSUE-114 — explicit single-occurrence core override sign-off (REC-P0-078 PASS)
 
 - The explicit occurrence-key PowerStore operation moves only the selected slot from 07:30 to 09:15; the anchor, original keys, other slots, and event identity remain stable. SQLite reopen preserves the record/projection, one identity, and two history rows.
@@ -120,11 +127,11 @@
 - Independent checkpoint report: `docs/issues/PC-ISSUE-098-ai-approval-idempotency-core-checkpoint.md`. `REC-P1-057` remains NOT TESTED.
 - Freeze remains HOLD: 135 PASS / 0 FAIL / 9 BLOCKED / 58 NOT TESTED / 7 SPEC UNRESOLVED; P0 111/0/1/9/5; P1 24/0/8/49/1. Structural-only artifact: `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-098.json`, SHA-256 `FD48462009013801EACEF7CE707CD0D5E4D05D908F2028813BB583211AC7733E`; ledger SHA-256 `09D00A90C6CF4F49E47B5AADA8C213E12F1ABCAA877A9F7547F730183C06A8E2`.
 
-## PC-ISSUE-097 — AI draft persistence core checkpoint (candidate remains NOT TESTED)
+## PC-ISSUE-097 — AI draft persistence checkpoint (status at that time NOT TESTED)
 
 - Added `PowerStoreTest.parsedAiCreateProposalPersistsAsAnUnpublishedDraftAcrossRestart`: a locally parsed CREATE proposal becomes a PENDING draft, creates no formal event/history, and keeps its identity, form, version, status, and queue entry after SQLite reopen. No production defect was found; this is partial core evidence only.
 - Targeted Robolectric API 34 passed 1/1. Full Gradle passed 451/451 across 57 suites, zero failures/errors/skips; lint 0 errors / 58 warnings. `adb` is unavailable; API 35/free-provider selection and device behavior were not tested. No UI was changed.
-- Test commit `0aa6fa50a00925246aff7dd13822ad1ef15ece4f` is pushed. Independent checkpoint report: `docs/issues/PC-ISSUE-097-ai-draft-persistence-process-restart.md`. `REC-P1-056` remains NOT TESTED.
+- Test commit `0aa6fa50a00925246aff7dd13822ad1ef15ece4f` is pushed. Independent checkpoint report: `docs/issues/PC-ISSUE-097-ai-draft-persistence-process-restart.md`. At that checkpoint `REC-P1-056` remained NOT TESTED for the API 35/provider path; PC-ISSUE-115 later signs the narrowed core persistence criterion PASS.
 - Freeze remains HOLD: 135 PASS / 0 FAIL / 9 BLOCKED / 58 NOT TESTED / 7 SPEC UNRESOLVED; P0 111/0/1/9/5; P1 24/0/8/49/1. Structural-only validation `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-097.json` SHA-256 `66163C61D912A6B2984023F017ADD825D4E3DC346051253B955A92FEF8269EC3`; ledger SHA-256 `BC18A6B477FF77AC67EEC3F632424D294FC80410BAE18478D5F40EA8142C88A9`. Original 209 case IDs remain unmapped.
 
 ## PC-ISSUE-096 — AI proposal rejection preserves the formal event
