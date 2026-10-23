@@ -733,6 +733,52 @@ class PowerStoreTest {
     }
 
     @Test
+    fun convertingAlarmToActivityKeepsEventIdentityAcrossRestart() {
+        val startMillis = (System.currentTimeMillis() / 60_000L) * 60_000L + 3_600_000L
+        val alarm = store.newDraft(DraftForm(
+            kind = TemporalKind.ALARM,
+            title = "转换后活动",
+            startText = DraftForm.formatInstant(startMillis, zone),
+            reminderMinutes = 0,
+            zoneId = zone.id
+        ))
+        assertTrue(commit(alarm) is PowerStore.CommitOutcome.Committed)
+        val original = store.get(alarm.eventSeq)!!
+        val conversion = TemporalConversion.convert(DraftForm.from(original), TemporalKind.ACTIVITY)
+        assertEquals(listOf(DraftField.END), conversion.required)
+
+        val endMillis = startMillis + 45 * 60_000L
+        val convertedCard = store.newDraft(
+            conversion.form.copy(endText = DraftForm.formatInstant(endMillis, zone)),
+            original.eventSeq,
+            DraftOperation.CONVERT
+        )
+        assertEquals(original.eventSeq, convertedCard.eventSeq)
+        assertTrue(commit(convertedCard) is PowerStore.CommitOutcome.Committed)
+
+        val converted = store.get(original.eventSeq)!!
+        assertEquals(TemporalKind.ACTIVITY, converted.kind)
+        assertEquals(original.eventSeq, converted.eventSeq)
+        assertEquals(2L, converted.revision)
+        assertEquals(startMillis, converted.startMillis)
+        assertEquals(endMillis, converted.endMillis)
+        assertEquals(1L, store.identityCount())
+        assertEquals(2L, store.nextSequencePreview())
+
+        val database = store.databaseName
+        store.close()
+        store = PowerStore(context, database)
+        val reopened = store.get(original.eventSeq)!!
+        assertEquals(TemporalKind.ACTIVITY, reopened.kind)
+        assertEquals(original.eventSeq, reopened.eventSeq)
+        assertEquals(2L, reopened.revision)
+        assertEquals(startMillis, reopened.startMillis)
+        assertEquals(endMillis, reopened.endMillis)
+        assertEquals(1L, store.identityCount())
+        assertEquals(2L, store.nextSequencePreview())
+    }
+
+    @Test
     fun oneDateMemoRemainsOneLocalDateAcrossRestart() {
         val date = "2026-10-24"
         val card = store.newDraft(DraftForm(
