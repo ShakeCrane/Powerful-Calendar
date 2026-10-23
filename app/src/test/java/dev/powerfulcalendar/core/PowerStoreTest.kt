@@ -690,6 +690,39 @@ class PowerStoreTest {
     }
 
     @Test
+    fun oneDateMemoRemainsOneLocalDateAcrossRestart() {
+        val date = "2026-10-24"
+        val card = store.newDraft(DraftForm(
+            kind = TemporalKind.MEMO,
+            title = "单日待办",
+            startText = date,
+            zoneId = zone.id
+        ))
+
+        assertTrue(commit(card) is PowerStore.CommitOutcome.Committed)
+        val memo = store.get(card.eventSeq)!!
+        assertEquals(TemporalKind.MEMO, memo.kind)
+        assertEquals(date, memo.memoStartDate)
+        assertNull(memo.memoEndDate)
+        assertNull(memo.startMillis)
+        assertNull(memo.endMillis)
+        assertNull(memo.deadlineDate)
+        assertNull(memo.deadlineMillis)
+        assertEquals("$date · 待办", TemporalText.summarize(memo))
+
+        val database = store.databaseName
+        store.close()
+        store = PowerStore(context, database)
+        val reopened = store.get(card.eventSeq)!!
+        assertEquals(TemporalKind.MEMO, reopened.kind)
+        assertEquals(date, reopened.memoStartDate)
+        assertNull(reopened.memoEndDate)
+        assertNull(reopened.startMillis)
+        assertNull(reopened.endMillis)
+        assertEquals("$date · 待办", TemporalText.summarize(reopened))
+    }
+
+    @Test
     fun statsAreDerivedFromDurableRecords() {
         val since = System.currentTimeMillis() - 1_000
         val published = store.newDraft(activityForm("已发布"))
