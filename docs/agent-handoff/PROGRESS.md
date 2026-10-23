@@ -1,4 +1,11 @@
 # Core freeze progress
+## PC-ISSUE-096 — AI proposal rejection preserves the formal event
+
+- Added `PowerStoreTest.theAiBatchDiscardOnlyRejectsProposalAndPreservesFormalEventAcrossRestart`. It publishes an Activity, creates an AI REPLACE proposal, discards it through `AiBatchRunner`, and verifies the formal snapshot and commit history remain unchanged before and after SQLite reopen; the proposal is DISCARDED and the batch unlocks.
+- Targeted Robolectric API 34 passed 1/1. Full Gradle passed 450/450 across 57 suites, zero failures/errors/skips; lint 0 errors / 58 warnings. This was a coverage-only change; no production defect was reproduced.
+- Test commit `65f6cabd653878f77127e167a583bea31043e5e3` is pushed. Independent report: `docs/issues/PC-ISSUE-096-ai-proposal-rejection-does-not-mutate-event.md`. `REC-P1-055` is PASS for the core discard/persistence contract.
+- Freeze remains HOLD: 135 PASS / 0 FAIL / 9 BLOCKED / 58 NOT TESTED / 7 SPEC UNRESOLVED; P0 111/0/1/9/5; P1 24/0/8/49/1; 117 reconstructed candidates have independent evidence. Original 209 case IDs remain unmapped.
+- `REC-P1-059` remains NOT TESTED: AI proposal, draft, and batch authorization models do not represent dependent-group identity, and the freeze spec does not define group membership. No group semantics or UI were invented. Continue with independent non-UI core acceptance.
 ## PC-ISSUE-095 — AI independent batch item failure and retry
 
 - Added a SQLite-trigger regression for a three-item batch whose middle commit fails. The pre-fix runner published 1 item instead of the expected 2 and skipped the later independent item. Fixed `AiBatchRunner` to isolate ordinary exceptions per item, preserve cancellation propagation, report the failure and continue; a partial-failure batch now ends as `FAILED` rather than `CANCELLED`.
