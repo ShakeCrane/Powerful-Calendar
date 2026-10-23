@@ -70,6 +70,24 @@ class PowerCalMemoContractTest {
         assertEquals(initial, record.anchorMillis())
     }
 
+    @Test fun occurrenceExceptionsAreScopedToTheirOwnSeries() {
+        val start = instant("2026-10-20T07:30")
+        val skippedKey = "2026-10-21T07:30"
+        val first = TemporalRecord(eventSeq = 1, revision = 1, kind = TemporalKind.ALARM,
+            title = "第一组", startMillis = start, zoneId = zone.id,
+            recurrence = Recurrence(freq = RecurrenceFreq.DAILY, exceptions = setOf(skippedKey)))
+        val second = first.copy(eventSeq = 2, title = "第二组",
+            recurrence = Recurrence(freq = RecurrenceFreq.DAILY))
+        val from = instant("2026-10-20T00:00")
+        val until = instant("2026-10-23T00:00")
+
+        val firstKeys = RecurrenceEngine.occurrences(first, from, until).map { it.key }
+        val secondKeys = RecurrenceEngine.occurrences(second, from, until).map { it.key }
+
+        assertEquals(listOf("2026-10-20T07:30", "2026-10-22T07:30"), firstKeys)
+        assertEquals(listOf("2026-10-20T07:30", skippedKey, "2026-10-22T07:30"), secondKeys)
+    }
+
     @Test fun overlapClustersExpandIndependentlyAndDoNotCreatePhantomOverlaps() {
         val a = TemporalRecord(1, 1, TemporalKind.ACTIVITY, "A",
             startMillis = instant("2026-10-21T09:00"), endMillis = instant("2026-10-21T09:35"))

@@ -72,6 +72,8 @@ class OccurrenceWindowTest {
 
         // The series still has its natural 2026-10-20 slot; the moved instance is additional.
         assertEquals(2, occurrences.size)
+        assertTrue(occurrences.any { it.key == "2026-10-20T07:30" })
+        assertTrue(occurrences.any { it.key == "2026-08-21T07:30" })
         val moved = occurrences.single { it.key == "2026-08-21T07:30" }
         assertEquals(movedTo, moved.startMillis)
         assertTrue(moved.moved)
