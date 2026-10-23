@@ -21,6 +21,7 @@ import dev.powerfulcalendar.ai.AiResponseParser
 import dev.powerfulcalendar.interop.IcsCodec
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.ZoneId
 import java.util.TimeZone
 import java.util.UUID
@@ -114,6 +115,68 @@ class PowerStoreTest {
         } finally {
             session.close()
         }
+    }
+
+    @Test
+    fun skippingOneRecurringOccurrencePersistsWithoutChangingTheSeriesAcrossRestart() {
+        val shanghai = ZoneId.of("Asia/Shanghai")
+        val firstLocal = LocalDateTime.of(2026, 10, 20, 7, 30)
+        val firstMillis = firstLocal.atZone(shanghai).toInstant().toEpochMilli()
+        val recurrence = Recurrence(freq = RecurrenceFreq.DAILY, interval = 1, count = 5)
+        val card = store.newDraft(DraftForm(
+            kind = TemporalKind.ALARM,
+            title = "单次跳过持久化",
+            startText = DraftForm.formatInstant(firstMillis, shanghai),
+            reminderMinutes = -1,
+            zoneId = shanghai.id,
+            recurrence = recurrence
+        ))
+        assertTrue(commit(card) is PowerStore.CommitOutcome.Committed)
+
+        val before = requireNotNull(store.get(card.eventSeq))
+        val from = LocalDateTime.of(2026, 10, 20, 0, 0)
+            .atZone(shanghai).toInstant().toEpochMilli()
+        val until = LocalDateTime.of(2026, 10, 26, 0, 0)
+            .atZone(shanghai).toInstant().toEpochMilli()
+        val originalKeys = RecurrenceEngine.occurrences(before, from, until).map { it.key }
+        val skippedKey = RecurrenceEngine.keyFor(LocalDateTime.of(2026, 10, 21, 7, 30))
+        assertEquals(
+            (20..24).map { "2026-10-%02dT07:30".format(it) },
+            originalKeys
+        )
+
+        val session = EditSession.open(store, before)
+        try {
+            session.edit(session.form.copy(
+                recurrence = session.form.recurrence.copy(exceptions = setOf(skippedKey))
+            ))
+            val saved = session.save()
+            assertTrue("skip exception must be committed", saved is PowerStore.DirectEditOutcome.Saved && saved.changed)
+        } finally {
+            session.close()
+        }
+
+        val after = requireNotNull(store.get(card.eventSeq))
+        assertEquals(before.eventSeq, after.eventSeq)
+        assertEquals(before.revision + 1, after.revision)
+        assertEquals(before.startMillis, after.startMillis)
+        assertEquals(before.recurrence.copy(exceptions = setOf(skippedKey)), after.recurrence)
+        assertEquals(
+            originalKeys.filterNot { it == skippedKey },
+            RecurrenceEngine.occurrences(after, from, until).map { it.key }
+        )
+
+        val database = store.databaseName
+        store.close()
+        store = PowerStore(context, database)
+        val reopened = requireNotNull(store.get(card.eventSeq))
+        assertEquals(after, reopened)
+        assertEquals(
+            originalKeys.filterNot { it == skippedKey },
+            RecurrenceEngine.occurrences(reopened, from, until).map { it.key }
+        )
+        assertEquals(1L, store.identityCount())
+        assertEquals(2, store.history(card.eventSeq).size)
     }
 
     @Test
