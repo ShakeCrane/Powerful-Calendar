@@ -1301,6 +1301,39 @@ class PowerStoreTest {
         assertEquals(PowerStore.DesiredSchedule.CANCELLED, store.intentFor(card.eventSeq)!!.desired)
     }
 
+    @Test
+    fun blockedScheduleStateDoesNotCompleteOrDeleteItsFormalEventAcrossRestart() {
+        val card = store.newDraft(alarmForm("权限受阻的闹钟").copy(trackingEnabled = true))
+        assertTrue(commit(card) is PowerStore.CommitOutcome.Committed)
+        val formal = requireNotNull(store.get(card.eventSeq))
+        val intent = requireNotNull(store.intentFor(card.eventSeq))
+        assertTrue(formal.completedKeys.isEmpty())
+
+        assertTrue(store.markIntent(
+            card.eventSeq,
+            intent.triggerId,
+            PowerStore.DesiredSchedule.BLOCKED,
+            "缺少精确闹钟权限",
+            intent.revision,
+            intent.occurrenceKey
+        ))
+
+        val blocked = requireNotNull(store.intentFor(card.eventSeq))
+        assertEquals(PowerStore.DesiredSchedule.BLOCKED, blocked.desired)
+        assertEquals("缺少精确闹钟权限", blocked.androidHint)
+        assertEquals(formal, store.get(card.eventSeq))
+        assertEquals(listOf(card.eventSeq), store.all().map { it.eventSeq })
+
+        val database = store.databaseName
+        store.close()
+        store = PowerStore(context, database)
+
+        assertEquals(blocked, store.intentFor(card.eventSeq))
+        assertEquals(formal, store.get(card.eventSeq))
+        assertTrue(requireNotNull(store.get(card.eventSeq)).completedKeys.isEmpty())
+        assertEquals(1, store.history(card.eventSeq).size)
+    }
+
     // ---------------------------------------------------------------- statistics
 
     @Test
