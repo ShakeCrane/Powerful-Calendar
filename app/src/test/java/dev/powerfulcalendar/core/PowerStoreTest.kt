@@ -484,6 +484,42 @@ class PowerStoreTest {
         assertTrue(later.eventSeq < b.eventSeq)
     }
 
+    @Test
+    fun independentQueueOrdersPersistAcrossRestartAndDoNotFollowEventNumbers() {
+        val eventA = store.newDraft(activityForm("A"))
+        assertTrue(commit(eventA) is PowerStore.CommitOutcome.Committed)
+        val eventB = store.newDraft(activityForm("B"))
+        assertTrue(commit(eventB) is PowerStore.CommitOutcome.Committed)
+
+        val proposalB = store.newDraft(
+            DraftForm.from(store.get(eventB.eventSeq)!!).copy(title = "B proposal"),
+            eventB.eventSeq,
+            DraftOperation.REPLACE
+        )
+        val proposalA = store.newDraft(
+            DraftForm.from(store.get(eventA.eventSeq)!!).copy(title = "A proposal"),
+            eventA.eventSeq,
+            DraftOperation.REPLACE
+        )
+        assertTrue(proposalB.queueOrder > 0)
+        assertTrue(proposalA.queueOrder > proposalB.queueOrder)
+        assertTrue(proposalB.eventSeq > proposalA.eventSeq)
+        assertTrue(proposalA.queueOrder != proposalB.queueOrder)
+        assertEquals(listOf(proposalB.draftId, proposalA.draftId),
+            store.pendingDrafts().map { it.draftId })
+
+        val database = store.databaseName
+        store.close()
+        store = PowerStore(context, database)
+
+        val reopened = store.pendingDrafts()
+        assertEquals(listOf(proposalB.draftId, proposalA.draftId), reopened.map { it.draftId })
+        assertEquals(listOf(proposalB.queueOrder, proposalA.queueOrder),
+            reopened.map { it.queueOrder })
+        assertEquals(listOf(eventB.eventSeq, eventA.eventSeq), reopened.map { it.eventSeq })
+        assertEquals(2, reopened.map { it.queueOrder }.toSet().size)
+    }
+
     // ---------------------------------------------------------------- whole-snapshot commits
 
     @Test
