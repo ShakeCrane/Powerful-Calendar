@@ -2615,6 +2615,48 @@ class PowerStoreTest {
     }
 
     @Test
+    fun theAiBatchDiscardOnlyRejectsProposalAndPreservesFormalEventAcrossRestart() =
+        kotlinx.coroutines.runBlocking {
+            val originalDraft = store.newDraft(activityForm("正式事件原文"))
+            assertTrue(commit(originalDraft) is PowerStore.CommitOutcome.Committed)
+            val original = requireNotNull(store.get(originalDraft.eventSeq))
+            val originalHistory = store.history(originalDraft.eventSeq)
+            val proposal = store.newDraft(
+                DraftForm.from(original).copy(title = "AI 修改提案"),
+                original.eventSeq,
+                DraftOperation.REPLACE,
+                actor = "ai"
+            )
+            val session = store.beginAiBatch(
+                mapOf(proposal.draftId to proposal.draftVersion),
+                setOf(DraftOperation.REPLACE)
+            )
+
+            val report = dev.powerfulcalendar.ai.AiBatchRunner(store)
+                .run(session, dev.powerfulcalendar.ai.AiBatchRunner.Mode.DISCARD)
+
+            assertEquals(1, report.discarded)
+            assertEquals(0, report.published)
+            assertEquals(0, report.kept)
+            assertFalse(report.cancelled)
+            assertEquals(DraftStatus.DISCARDED, store.draft(proposal.draftId)!!.status)
+            assertEquals(original, store.get(original.eventSeq))
+            assertEquals(originalHistory, store.history(original.eventSeq))
+            assertEquals(PowerStore.AiState.COMPLETED, store.currentAiSession()!!.state)
+            assertFalse(store.isLocked())
+
+            val database = store.databaseName
+            store.close()
+            store = PowerStore(context, database)
+
+            assertEquals(original, store.get(original.eventSeq))
+            assertEquals(originalHistory, store.history(original.eventSeq))
+            assertEquals(DraftStatus.DISCARDED, store.draft(proposal.draftId)!!.status)
+            assertEquals(PowerStore.AiState.COMPLETED, store.currentAiSession()!!.state)
+            assertFalse(store.isLocked())
+        }
+
+    @Test
     fun theAiRunnerContinuesIndependentItemsAfterOneCommitFailureAndPersistsPartialReport() =
         kotlinx.coroutines.runBlocking {
             val first = store.newDraft(alarmForm("独立项 A", minutesAhead = 200))
