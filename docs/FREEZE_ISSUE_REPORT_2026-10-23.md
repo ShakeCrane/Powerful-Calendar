@@ -31,6 +31,7 @@ Issue 004 修复代码基线：`16e00d55435c5029e07784ec5d945dfd7fb37ac5`
 | FQ-16 | 旧版 Round 1/Round 2 数据操作 | **REUSED EVIDENCE** | 之前 11 组：Alarm/Activity/Deadline/Memo、草稿、撤销、删除、重复、Envelope 备份与恢复；不冒称本轮逐项重做 |
 | FQ-17 | 标题实际矩形贪心折叠、事件几何/点击/语义保持 | **PASS（API 35 隔离模拟器）** | 8 个策略单测、5 个 Compose 测试；A/B/C/D 碰撞轨迹、修复前后截图及坐标见 [`PC-ISSUE-GREEDY-LABEL-FOLDING`](issues/PC-ISSUE-GREEDY-LABEL-FOLDING.md)；真机/TalkBack 仍未验证 |
 | FQ-18 | 移除时间轴背景淡横带、固定竖屏及系统旋转请求回归 | **PASS（API 35 隔离模拟器）** | 画布背景取样 24 点 RGB 完全一致；90°旋转请求下应用仍为 1080×2400/ROTATION_0；54 套件 364 项完整回归通过。证据见 `docs/issues/PC-ISSUE-004-timeline-layout.md` 的补正记录 |
+| FQ-19 | Envelope 哈希、水位拒绝与格式降级防护（REC-P0-091/097/106） | **PASS（定点 JVM 回归 3/3）** | `BackupEnvelopeTest` 三个精确方法通过；代码基线 `574092de1046763c4aad40d7db4a2dd9123848fa`，APK SHA-256 `53C200F398D13D636125572DBD0C4876FEA1A18585323C935F9C13F8E061E103`；日志 SHA-256 `F14D6EB7B5D96678EF84B4B6177B69446C27DF46AC5820712C5E424921D4CAD9`，详见 `docs/issues/PC-QA-GATE-001-209-case-ledger.md` |
 
 注意：`FQ-01` 的 325 为单元测试用例数，`FQ-03` 的 37 为工具测试用例数，`FQ-16` 的 11 是业务检查组。它们**不能**直接映射为冻结清单中的 209 个独立项目。
 
@@ -92,8 +93,8 @@ Issue 004 修复代码基线：`16e00d55435c5029e07784ec5d945dfd7fb37ac5`
 - 当前跟踪的仓库文件中只有对“209 项”的描述，**没有找到 209 个完整编号用例及 PASS/FAIL/证据 ID 一一映射**。
 - 因此 **209 项未逐案签核**；既不能说全部未实际测试，也不能根据 325+37 单元测试声称全部通过。
 - 本轮只读审计仍未找到原始逐案清单；已建立 208 条 RECONSTRUCTED 候选项及 1 条未定义历史槽位，见 `docs/CORE_FREEZE_ACCEPTANCE_LEDGER.csv`。候选按风险给出 P0=126/P1=82 建议分配，但 0 个原始 ID 有映射，优先级仍待审核。
-- 候选逐案状态：P0 PASS 6 / BLOCKED 1 / NOT TESTED 115 / SPEC UNRESOLVED 4；P1 PASS 19 / BLOCKED 8 / NOT TESTED 54 / SPEC UNRESOLVED 1；历史未分类槽位 SPEC UNRESOLVED 1。详细 source audit、验证边界与下一步见独立报告 `docs/issues/PC-QA-GATE-001-209-case-ledger.md`。
-- 最新 364 项 Gradle 工作树结果含受保护未跟踪测试 1 项；此回归不是可由提交树单独复现的 364 项结果，也没有映射到 209 项。
+- 候选逐案状态：P0 PASS 9 / BLOCKED 1 / NOT TESTED 112 / SPEC UNRESOLVED 4；P1 PASS 19 / BLOCKED 8 / NOT TESTED 54 / SPEC UNRESOLVED 1；历史未分类槽位 SPEC UNRESOLVED 1。三条新增 PASS 对应独立、定点备份测试；详细证据、source audit、验证边界与下一步见独立报告 `docs/issues/PC-QA-GATE-001-209-case-ledger.md`。
+- 最近完整 Gradle 工作树结果含受保护未跟踪测试 1 项；另有三项定点回归通过。二者都没有映射到缺失的原始 209 个 ID。
 - 解除：执行未测候选项、处理可解阻塞并审核拟定优先级；不可声称与缺失原始表完成历史逐项签核。
 
 ### PC-QA-GATE-002 · P0 / BLOCKED · OEM 真机、其他 Android API 等级与系统权限组合

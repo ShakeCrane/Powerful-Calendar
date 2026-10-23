@@ -4,9 +4,9 @@ Date: 2026-10-23
 
 Verdict: **HOLD**
 
-Baseline before this verdict update: `b4ccaaf4770e4b6eaf39cd3288a9a6b83771e489`
+Code/test baseline for the latest candidate sign-offs: `574092de1046763c4aad40d7db4a2dd9123848fa`
 
-APK: `app/build/outputs/apk/debug/app-debug.apk`, SHA-256 `B0AB218FF70D696E25B570F0151BEC0F58B07FE545A045EE976EBD4F1173CAE1`
+APK used by the latest targeted tests: `app/build/outputs/apk/debug/app-debug.apk`, SHA-256 `53C200F398D13D636125572DBD0C4876FEA1A18585323C935F9C13F8E061E103`
 
 ## 209-case gate
 
@@ -22,13 +22,14 @@ The historical aggregate is 209 items: 126 P0, 82 P1, and one item whose priorit
 
 Audit evidence: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-source-audit.json` (SHA-256 `600A1D825E9349BCD183053CB2DB59F62A02A50BB862B554238D020FDDFC4E98`). Detailed issue: [`PC-QA-GATE-001`](issues/PC-QA-GATE-001-209-case-ledger.md).
 
-An initial **RECONSTRUCTED** candidate ledger now contains 208 specification-derived rows plus one unresolved historical slot. Candidate priorities follow risk categories and match the aggregate counts, but are proposals for review; every reconstructed row remains `UNMAPPED` to historical IDs. See [`CORE_FREEZE_ACCEPTANCE_LEDGER.csv`](CORE_FREEZE_ACCEPTANCE_LEDGER.csv). Structural validation confirms 209 unique rows and the 126/82/1 partition; it does not test product behavior or prove historical equivalence.
+The **RECONSTRUCTED** candidate ledger contains 208 specification-derived rows plus one unresolved historical slot. Candidate priorities follow risk categories and match the aggregate counts, but are proposals for review; every reconstructed row remains `UNMAPPED` to historical IDs. Three backup-contract rows now have individually mapped targeted test evidence. Structural validation confirms 209 unique rows and the 126/82/1 partition; it does not test product behavior or prove historical equivalence. Latest validation: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-backup-cases.json`.
 
 | Candidate bucket | PASS | FAIL | BLOCKED | NOT TESTED | SPEC UNRESOLVED |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| P0 (proposed) | 6 | 0 | 1 | 115 | 4 |
+| P0 (proposed) | 9 | 0 | 1 | 112 | 4 |
 | P1 (proposed) | 19 | 0 | 8 | 54 | 1 |
 | Historical unclassified slot | 0 | 0 | 0 | 0 | 1 |
+| **Total candidate rows** | **28** | **0** | **9** | **166** | **6** |
 
 ## Current grouped verification
 
@@ -38,7 +39,7 @@ An initial **RECONSTRUCTED** candidate ledger now contains 208 specification-der
 
 ## Open acceptance gates
 
-- `PC-QA-GATE-001`: execute the 169 `NOT TESTED` candidate rows where feasible, resolve the 14 blocked/spec-unresolved rows where conditions allow, and review proposed priorities. The initial 209-row candidate ledger is not the original checklist and signs off 0 original IDs.
+- `PC-QA-GATE-001`: execute the 166 `NOT TESTED` candidate rows where feasible, resolve the 9 blocked and 5 reconstructed spec-unresolved rows where conditions allow, review proposed priorities, and keep the separate historical unclassified slot unresolved pending its source. The reconstructed 209-row candidate ledger is not the original checklist and signs off 0 original IDs.
 - `PC-QA-GATE-002`: physical-device/OEM and additional Android API coverage is unavailable in this run.
 - `PC-QA-GATE-003` / `PC-ISSUE-002`: the free-model structured stage returned HTTP 429; an authorized end-to-end proposal/approval/recovery path is not yet evidenced.
 - `PC-ISSUE-001`: DST-bearing Android SAF export and independent parsing pass; external calendar import and physical-device acceptance remain open.

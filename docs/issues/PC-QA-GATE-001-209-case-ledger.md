@@ -27,15 +27,28 @@ Audit evidence: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-sour
 
 `docs/CORE_FREEZE_ACCEPTANCE_LEDGER.csv` contains 208 reconstructed rows and one unresolved historical slot. Proposed priority allocation is P0=126 and P1=82, grouped by risk/source area; this preserves the known aggregate for review but does not establish which historical case each row represents. All reconstructed rows are explicitly `UNMAPPED`.
 
-Structural validation: 209 unique IDs; all reconstructed rows contain source, environment, action, expected and actual fields; PASS/BLOCKED rows include evidence references. The validation JSON is `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation.json`. Structural validation does not test the app or prove the historical mapping.
+Structural validation: 209 unique IDs; all reconstructed rows contain source, environment, action, expected and actual fields; PASS/BLOCKED rows include evidence references. After the case-specific update below, validation JSON is `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-backup-cases.json` (ledger SHA-256 `0BEF6E07378C6500D61808FA9501F9C05B5300A90D4D90D374B1D364906AB9B5`). Structural validation does not test the app or prove the historical mapping.
 
 | Candidate bucket | PASS | FAIL | BLOCKED | NOT TESTED | SPEC UNRESOLVED |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| P0 (proposed) | 6 | 0 | 1 | 115 | 4 |
+| P0 (proposed) | 9 | 0 | 1 | 112 | 4 |
 | P1 (proposed) | 19 | 0 | 8 | 54 | 1 |
 | Historical unclassified slot | 0 | 0 | 0 | 0 | 1 |
+| **Total candidate rows** | **28** | **0** | **9** | **166** | **6** |
 
-The latest Gradle run is from the working tree and includes one test from protected, untracked `DraftDeckFeedbackTest.kt` (363 tracked tests plus 1 untracked), so it is not a clean committed-tree test count. It remains separate group-level evidence, not a 209-row sign-off.
+### Case-specific backup verification (2026-10-23)
+
+Three reconstructed P0 backup-contract rows were individually exercised in JVM SQLite fixtures on code baseline `574092de1046763c4aad40d7db4a2dd9123848fa`; no device was used for this batch. Targeted Debug APK SHA-256: `53C200F398D13D636125572DBD0C4876FEA1A18585323C935F9C13F8E061E103`.
+
+| Candidate row | Test | Result |
+| --- | --- | --- |
+| `REC-P0-091` — Envelope canonical payload hash | `BackupEnvelopeTest.exportProducesEnvelopeV1WithMatchingCanonicalHash` | PASS: `payloadSha256` matched SHA-256 over canonical payload bytes. |
+| `REC-P0-097` — reject invalid `nextSeq` watermark | `BackupEnvelopeTest.aLowSequenceWatermarkIsRejected` | PASS: rejected `nextSeq=1`; target sequence preview remained unchanged. |
+| `REC-P0-106` — reject downgrade after stripping Envelope marker | `BackupEnvelopeTest.flatV1BackupIsExplicitlyRejectedAndEnvelopeCannotBeDowngradedToLegacy` | PASS: flat v1 and stripped Envelope were rejected even with legacy consent; target identity count remained 0. |
+
+Command: `.\gradlew.bat :app:testDebugUnitTest --tests "dev.powerfulcalendar.core.BackupEnvelopeTest.exportProducesEnvelopeV1WithMatchingCanonicalHash" --tests "dev.powerfulcalendar.core.BackupEnvelopeTest.aLowSequenceWatermarkIsRejected" --tests "dev.powerfulcalendar.core.BackupEnvelopeTest.flatV1BackupIsExplicitlyRejectedAndEnvelopeCannotBeDowngradedToLegacy" --offline --rerun-tasks --console=plain`. Result: **3 passed, 0 failed/errors/skipped**. Log: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-backup-casebatch-20261023/targeted-tests.log` (SHA-256 `F14D6EB7B5D96678EF84B4B6177B69446C27DF46AC5820712C5E424921D4CAD9`). The exact method results are also present in Gradle's `TEST-dev.powerfulcalendar.core.BackupEnvelopeTest.xml`. This targeted run does not replace or inflate the separate full working-tree run.
+
+The latest full working-tree Gradle run includes one test from protected, untracked `DraftDeckFeedbackTest.kt` (363 tracked tests plus 1 untracked), so it is not a clean committed-tree test count. Neither that grouped result nor these three targeted rows establishes historical case-ID mapping.
 
 ## Historical sign-off accounting
 
@@ -49,12 +62,12 @@ The latest full working-tree Gradle run reports 364 tests PASS, 0 failures/error
 
 ## Required next work
 
-1. Run the 169 `NOT TESTED` rows under the environment each row requires and update only with case-specific evidence.
-2. Resolve the one blocked P0, eight blocked P1, and five spec-unresolved reconstructed rows where feasible; retain external/physical/device dependencies as HOLD.
+1. Run the 166 `NOT TESTED` rows under the environment each row requires and update only with case-specific evidence.
+2. Resolve the one blocked P0, eight blocked P1, and five reconstructed spec-unresolved rows where feasible; retain external/physical/device dependencies as HOLD. The separate historical unclassified slot remains unresolved pending its source.
 3. Review the source-based proposed priority allocation. New IDs must never masquerade as historical IDs.
 4. Keep the one historical unclassified item visibly unresolved until its source or an explicit review decision is available.
 5. Preserve the physical-device, permission, OEM, and specification gaps as HOLD.
 
 ## Scope and outcome
 
-No application code or business data was changed for this audit. The source audit and initial candidate ledger are complete; candidate execution, priority review, and historical mapping are not. PC-QA-GATE-001 remains **PARTIAL / HOLD**, and overall core verdict remains **HOLD**.
+No application code or business data was changed for this audit or targeted case batch. Three reconstructed candidate rows now have case-specific PASS evidence; 166 remain NOT TESTED, proposed priorities still need review, and historical mapping is still absent. PC-QA-GATE-001 remains **PARTIAL / HOLD**, and overall core verdict remains **HOLD**.
