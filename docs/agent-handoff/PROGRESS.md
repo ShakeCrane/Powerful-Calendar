@@ -1,4 +1,11 @@
 # Core freeze progress
+## PC-ISSUE-112 — API 35 exact-alarm denial core sign-off (REC-P0-112 PASS)
+
+- Revalidated the API 35 Robolectric scheduler/store denial branch: the EXACT reminder persists as BLOCKED with the exact-alarm permission hint, and ShadowAlarmManager receives no registration.
+- Targeted regression passed 1/1. Full offline Debug boundary/test/APK/lint run passed 460/460 across 57 suites, zero failures/errors/skips; lint 0 errors / 58 warnings. No app or test source changed.
+- Independent report: `docs/issues/PC-ISSUE-112-api35-exact-alarm-core-signoff.md`. `REC-P0-112` is PASS for the core denial state only. Actual Android permission behavior and hint delivery remain untested.
+- Freeze remains HOLD: 141 PASS / 0 FAIL / 9 BLOCKED / 52 NOT TESTED / 7 SPEC UNRESOLVED; P0 117/0/1/3/5; P1 24/0/8/49/1. Structural-only validation `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-112.json`, SHA-256 `EC8710582C1E00B9BB43791493D62F53F7FAE9E9E0D5553406C80F34C7B70CC3`; ledger SHA-256 `6BEF65F539959780BFE2DF917F74E44F953BE8C7A64F051F03E6ED8E4A111EBC`.
+
 ## PC-ISSUE-111 — this-and-future recurrence core sign-off (REC-P0-079 PASS)
 
 - Revalidated the four direct PowerStore transaction cases: split and migrate compatible future state, injected insert rollback, first generated slot identity retention, and first non-skipped slot/remaining-count handling.
@@ -38,7 +45,7 @@
 
 - Added one API 35 Robolectric `ReminderValidationTest`: exact reminder commit followed by permission-denied reconciliation persists `BLOCKED`, retains the exact-alarm permission hint, and leaves `ShadowAlarmManager` empty. Core test only; no production/UI change.
 - API 35 method passed 1/1; the complete `ReminderValidationTest` class passed 17/17. Full offline Debug boundary/test/APK/lint run passed 460/460 across 57 suites, zero failures/errors/skips; lint 0 errors / 58 warnings. APK SHA-256 `138EC1363E4D74E6153CFFA61CEE4C0DF4D51416B3BD64C954FE642ED0FD4096`.
-- Test commit `f30c1ce5c6e6c6e835365f751dc689ab245b5aca` is pushed. Independent report: `docs/issues/PC-ISSUE-106-api35-exact-alarm-denial-core.md`. adb is unavailable, so actual API 35 Android permission behavior and device guidance are untested; REC-P0-112 stays NOT TESTED.
+- Test commit `f30c1ce5c6e6c6e835365f751dc689ab245b5aca` is pushed. At that checkpoint, actual API 35 Android permission behavior and device guidance were untested, so REC-P0-112 remained NOT TESTED. PC-ISSUE-112 later signs the narrowed scheduler/store denial branch PASS; actual system permission behavior and guidance delivery remain untested. Reports: `docs/issues/PC-ISSUE-106-api35-exact-alarm-denial-core.md` and `docs/issues/PC-ISSUE-112-api35-exact-alarm-core-signoff.md`.
 - Full log `.local/android-test/reports/freeze-20261024/pc-issue-106-verified-gradle.log`, SHA-256 `B14E35666D4C5B2159CCAFEFE12C6244C803B864E23172A266DC736A02BBD15B`. Structural-only ledger validation `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-106.json`, SHA-256 `BA926DB3211EF7D46F5700D4228A9577B58C4A2A8C79BC848D434495D9F72965`; ledger SHA-256 `C7912597DC9DECBBB21D5A4FB50CB8EF5665E6FA91F7A05BBBC8240AE03B2C59`.
 - Freeze remains HOLD: 135 PASS / 0 FAIL / 9 BLOCKED / 58 NOT TESTED / 7 SPEC UNRESOLVED; P0 111/0/1/9/5; P1 24/0/8/49/1.
 
