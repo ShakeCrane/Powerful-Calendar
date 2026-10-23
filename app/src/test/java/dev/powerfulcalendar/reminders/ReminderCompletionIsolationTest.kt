@@ -11,6 +11,7 @@ import android.database.DatabaseErrorHandler
 import android.database.sqlite.SQLiteDatabase
 import androidx.test.core.app.ApplicationProvider
 import dev.powerfulcalendar.core.DraftForm
+import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.Recurrence
 import dev.powerfulcalendar.core.RecurrenceEngine
@@ -33,6 +34,53 @@ import java.util.UUID
 @Config(sdk = [34])
 class ReminderCompletionIsolationTest {
     private val zone = ZoneId.of("Asia/Shanghai")
+
+    @Test
+    fun oldRevisionBroadcastIsRejectedBeforeNotification() {
+        val fixture = newFixture()
+        val store = fixture.store
+        var eventSeq = -1L
+        try {
+            eventSeq = createTrackedAlarm(store)
+            val before = store.get(eventSeq)!!
+            val oldIntent = store.intentFor(eventSeq)!!
+            NotificationHelper.cancelReminder(fixture.context, eventSeq)
+
+            val replacement = store.newDraft(
+                DraftForm.from(before).copy(
+                    startText = DraftForm.formatInstant(requireNotNull(before.startMillis) + 90 * 60_000L, zone)
+                ),
+                eventSeq,
+                DraftOperation.REPLACE
+            )
+            assertTrue(store.commit(replacement.draftId) is PowerStore.CommitOutcome.Committed)
+            val current = store.get(eventSeq)!!
+            assertEquals(before.revision + 1, current.revision)
+
+            val staleBroadcast = Intent(fixture.context, ReminderReceiver::class.java).apply {
+                action = AlarmContract.ACTION_FIRE
+                putExtra(AlarmContract.EXTRA_EVENT_SEQ, eventSeq)
+                putExtra(AlarmContract.EXTRA_REVISION, oldIntent.revision)
+                putExtra(AlarmContract.EXTRA_OCCURRENCE_KEY, oldIntent.occurrenceKey)
+                putExtra(AlarmContract.EXTRA_TRIGGER_ID, oldIntent.triggerId)
+                putExtra(AlarmContract.EXTRA_INSTANT, oldIntent.instantMillis)
+            }
+            ReminderReceiver().handle(fixture.context, staleBroadcast)
+
+            assertEquals("IGNORED_STALE", store.lastExecution(eventSeq))
+            val notificationManager = fixture.context.getSystemService(NotificationManager::class.java)!!
+            assertTrue(
+                notificationManager.activeNotifications.none {
+                    it.id == NotificationHelper.notificationId(eventSeq)
+                }
+            )
+            assertEquals(current.revision, store.get(eventSeq)!!.revision)
+            assertEquals(current.title, store.get(eventSeq)!!.title)
+        } finally {
+            if (eventSeq > 0L) NotificationHelper.cancelReminder(fixture.context, eventSeq)
+            closeFixture(fixture)
+        }
+    }
 
     @Test
     fun fireWithDifferentTriggerIdentityIsRejectedBeforeNotification() {
