@@ -177,6 +177,44 @@ class ReminderValidationTest {
     }
 
     @Test
+    fun scheduledIntentIsRearmedAfterStoreReopen() {
+        val alarmManager = context.getSystemService(AlarmManager::class.java)!!
+        val shadowAlarmManager = Shadows.shadowOf(alarmManager)
+        ShadowAlarmManager.setCanScheduleExactAlarms(true)
+
+        val seq = createAlarm(60)
+        val record = store.get(seq)!!
+        val exactReminder = store.newDraft(
+            DraftForm.from(record).copy(reminderMethod = ReminderMethod.ALARM),
+            seq,
+            DraftOperation.REPLACE
+        )
+        assertTrue(store.commit(exactReminder.draftId) is PowerStore.CommitOutcome.Committed)
+
+        ReminderScheduler.reconcile(context, store)
+        val beforeRestart = store.intentFor(seq)!!
+        assertEquals(PowerStore.DesiredSchedule.SCHEDULED, beforeRestart.desired)
+        assertEquals(1, shadowAlarmManager.scheduledAlarms.size)
+
+        val database = store.databaseName
+        store.close()
+        // A device reboot clears AlarmManager registrations but leaves the durable desired row.
+        shadowAlarmManager.scheduledAlarms.forEach { scheduled ->
+            scheduled.operation?.let(alarmManager::cancel)
+        }
+        store = PowerStore(context, database)
+
+        val persisted = store.intentFor(seq)!!
+        assertEquals(beforeRestart, persisted)
+        assertTrue(shadowAlarmManager.scheduledAlarms.isEmpty())
+
+        ReminderScheduler.reconcile(context, store)
+
+        assertEquals(PowerStore.DesiredSchedule.SCHEDULED, store.intentFor(seq)!!.desired)
+        assertEquals(1, shadowAlarmManager.scheduledAlarms.size)
+    }
+
+    @Test
     fun aWrongOccurrenceKeyIsRejected() {
         val seq = createAlarm(60)
         val intent = store.intentFor(seq)!!
