@@ -1,4 +1,11 @@
 # Core freeze progress
+## PC-ISSUE-116 — repeated commit core idempotency sign-off (REC-P1-057 narrowed PASS)
+
+- Repeating `PowerStore.commit` for one draft returns the original revision/commitId with `duplicate=true`; history remains one row. API 35/provider approval-entry and device paths are outside this sign-off.
+- Targeted Robolectric API 34 regression passed 1/1. Full Debug boundary/test/APK/lint passed 460/460 across 57 suites, zero failures/errors/skips; lint 0 errors / 58 warnings.
+- Independent report: docs/issues/PC-ISSUE-116-repeat-commit-core-idempotency-signoff.md.
+- Freeze remains HOLD: 145 PASS / 0 FAIL / 9 BLOCKED / 48 NOT TESTED / 7 SPEC UNRESOLVED; P0 119/0/1/1/5; P1 26/0/8/47/1. Structural-only validation .local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-116.json, SHA-256 8293459B130547FDD612B8249859D0E09B5355FDE9CA47D3E11CB83912F47DB9; ledger SHA-256 7D76245F0CC198183152E0B404FA7B2B947258209AACA4C4130C0CC782CA865A.
+
 ## PC-ISSUE-115 — AI CREATE draft core persistence sign-off (REC-P1-056 PASS)
 
 - A local parsed CREATE proposal becomes one PENDING draft without formal event/history; after SQLite reopen its ID, event sequence, version, operation, form, status, and queue order remain unchanged.
@@ -120,11 +127,11 @@
 - Core fix/test commit `55f3c1212eafaf306ad70e89b308fa1c3b3612c5` is pushed. Independent report: `docs/issues/PC-ISSUE-099-structured-proposal-http-429-stage.md`. The API 35 success-card path is untested; `REC-P1-062` remains NOT TESTED.
 - Freeze remains HOLD: 135 PASS / 0 FAIL / 9 BLOCKED / 58 NOT TESTED / 7 SPEC UNRESOLVED; P0 111/0/1/9/5; P1 24/0/8/49/1. Structural-only artifact `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-099.json`, SHA-256 `D073E87A42F7970F8094DB7E1B2E8CF3DFF03A6B4DA9487A76076F3C0CD03D20`; ledger SHA-256 `386E2BD443FC58F9BE1D3F392CF8B3E7C5020EAB17439FE7DBCE038F26CED2B5`.
 
-## PC-ISSUE-098 — repeated approval core idempotency checkpoint (candidate remains NOT TESTED)
+## PC-ISSUE-098 — repeated approval core idempotency checkpoint (narrowed core candidate later PASS)
 
 - The existing `PowerStoreTest.repeatedCommitReturnsTheOriginalOutcome` was run directly: a second ordinary commit of the same draft returns `duplicate=true`, the same revision/commitId, and leaves one history record. No code defect was found and no source/test file changed.
 - Targeted Robolectric API 34 passed 1/1. The current code baseline's full Gradle run passed 451/451 across 57 suites, zero failures/errors/skips; lint 0 errors / 58 warnings. API 35 approval action and device behavior remain untested; no UI was changed.
-- Independent checkpoint report: `docs/issues/PC-ISSUE-098-ai-approval-idempotency-core-checkpoint.md`. `REC-P1-057` remains NOT TESTED.
+- Independent checkpoint report: `docs/issues/PC-ISSUE-098-ai-approval-idempotency-core-checkpoint.md`. PC-ISSUE-116 later signs the narrowed core commit-idempotency criterion PASS; API 35/provider approval-entry behavior remains untested.
 - Freeze remains HOLD: 135 PASS / 0 FAIL / 9 BLOCKED / 58 NOT TESTED / 7 SPEC UNRESOLVED; P0 111/0/1/9/5; P1 24/0/8/49/1. Structural-only artifact: `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-098.json`, SHA-256 `FD48462009013801EACEF7CE707CD0D5E4D05D908F2028813BB583211AC7733E`; ledger SHA-256 `09D00A90C6CF4F49E47B5AADA8C213E12F1ABCAA877A9F7547F730183C06A8E2`.
 
 ## PC-ISSUE-097 — AI draft persistence checkpoint (status at that time NOT TESTED)
