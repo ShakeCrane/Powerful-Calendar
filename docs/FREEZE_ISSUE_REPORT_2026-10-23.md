@@ -2,10 +2,10 @@
 日期：2026-10-23（北京时间）
 判定：**FREEZE HOLD / 不可正式冻结**
 仓库：`E:\Project\Powerful-Calendar`
-主代码基线：`0099a8a201dbc605ba74e1999110eec7517ec6f6`（标题贪心折叠实现）
+主代码基线：`abde8e2900b507cf1a50730b22de8ec55e4bac38`（背景灰带补正与固定竖屏）
 测试 APK：`app/build/outputs/apk/debug/app-debug.apk`
 Issue 004 修复代码基线：`16e00d55435c5029e07784ec5d945dfd7fb37ac5`
-最新测试 APK SHA-256：`95AACDBD6D2121768062A8397D97A6FC37AA5FA4E3E4AAC0E296AE7B1704171E`
+最新测试 APK SHA-256：`B0AB218FF70D696E25B570F0151BEC0F58B07FE545A045EE976EBD4F1173CAE1`
 设备：Issue 004 使用隔离的 Android 15 / API 35 `emulator-5556`；原 `emulator-5554` 保持运行且未操作。无物理真机。
 本轮改动时间轴 UI 与回归测试；未清除模拟器/业务数据，未修改或删除 `design/`。
 
@@ -30,6 +30,7 @@ Issue 004 修复代码基线：`16e00d55435c5029e07784ec5d945dfd7fb37ac5`
 | FQ-15 | 连续 12 次强制停止/启动 | **PASS 12/12** | `restart-12x.json`；Key/模型配置在重启后仍存在 |
 | FQ-16 | 旧版 Round 1/Round 2 数据操作 | **REUSED EVIDENCE** | 之前 11 组：Alarm/Activity/Deadline/Memo、草稿、撤销、删除、重复、Envelope 备份与恢复；不冒称本轮逐项重做 |
 | FQ-17 | 标题实际矩形贪心折叠、事件几何/点击/语义保持 | **PASS（API 35 隔离模拟器）** | 8 个策略单测、5 个 Compose 测试；A/B/C/D 碰撞轨迹、修复前后截图及坐标见 [`PC-ISSUE-GREEDY-LABEL-FOLDING`](issues/PC-ISSUE-GREEDY-LABEL-FOLDING.md)；真机/TalkBack 仍未验证 |
+| FQ-18 | 移除时间轴背景淡横带、固定竖屏及系统旋转请求回归 | **PASS（API 35 隔离模拟器）** | 画布背景取样 24 点 RGB 完全一致；90°旋转请求下应用仍为 1080×2400/ROTATION_0；54 套件 364 项完整回归通过。证据见 `docs/issues/PC-ISSUE-004-timeline-layout.md` 的补正记录 |
 
 注意：`FQ-01` 的 325 为单元测试用例数，`FQ-03` 的 37 为工具测试用例数，`FQ-16` 的 11 是业务检查组。它们**不能**直接映射为冻结清单中的 209 个独立项目。
 
@@ -58,12 +59,13 @@ Issue 004 修复代码基线：`16e00d55435c5029e07784ec5d945dfd7fb37ac5`
 - **证据**：`docs/ANDROID_EMULATOR_REGRESSION_QA_2026-10-23.md`（R2-ISSUE-02）。
 - **退出条件**：保持拒绝语义不变，确认 UI 提示有可操作原因与自动测试。
 
-### PC-ISSUE-004 · P2 / PARTIAL / HOLD · 横屏时间轴灰线与标签拥挤
+### PC-ISSUE-004 · P2 / PARTIAL / HOLD · 时间轴灰带、方向与标签拥挤
 - **复现**：横屏 2400×1080 时间轴中，渐变中心出现额外灰带；现时刻徽标可能压住刻度文字/事件卡。
-- **根因与修复**：`axisBackground()` 中间的 `gridLine` 渐变停靠点产生灰带；现时刻徽标原来没有避让逻辑。已移除灰色停靠点、增加徽标避让/密集标签处理，并给中央尺补无障碍点击动作。
+- **根因与修复**：最初移除 `gridLine` 中心色标后，42%–58% `surfaceContainerLow` 平带仍留下淡横带；用户复查后再次去除整个位置渐变并实测底色一致。另将 Activity 固定为不依传感器旋转的竖屏；现时刻徽标避让、密集刻度处理和中央尺无障碍动作仍保留。
 - **模拟器证据**：348/348 JVM 测试通过；`verifySkinSourceBoundary`、Debug APK、Lint 通过（0 errors/56 warnings）。最新横屏图 `.local/android-test/reports/freeze-20261023/issue004-accessibility-device-regression/landscape-fixed.png` SHA-256 `8644124407D99343364C8D80A18840F594F5B5222820178C576F6D32A802A7F3`；UI 树中尺的 `clickable=true`。独立报告：[`docs/issues/PC-ISSUE-004-timeline-layout.md`](issues/PC-ISSUE-004-timeline-layout.md)。
 - **剩余 HOLD**：TalkBack 服务虽绑定，但系统通知权限提示遮挡应用树；未授予权限，实际 TalkBack 双击仍未验证。物理真机触摸、IME 遮挡和长时稳定性未验；字体 2x 工具栏换行待真机复核。
 - **结论**：代码修复及 API 35 模拟器视觉回归 PASS；Issue 不视为完全关闭，核心冻结继续 HOLD。
+- **后续补正**：实现提交 `abde8e2900b507cf1a50730b22de8ec55e4bac38`。强制设置系统旋转到 90°后 API 35 设备仍显示竖屏，旋转设置已恢复；背景像素跨视口一致，NOW 蓝线与午夜虚线仍可见。完整回归 364/364 PASS。外部平台覆盖方向、真机、IME 与 TalkBack 仍未验。
 
 ### PC-ISSUE-GREEDY-LABEL-FOLDING · P1 / API 35 PASS · 标题间视觉冲突
 - **复现/根因**：旧逻辑以事件 anchor/end/side/lane 与固定阈值近似判断，未使用实际排版后的标题矩形；隐藏项也没有明确的 lead 语义。

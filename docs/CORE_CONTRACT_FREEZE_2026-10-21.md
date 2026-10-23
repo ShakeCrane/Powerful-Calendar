@@ -68,3 +68,16 @@ trying to remove the unwanted stripe. That removal was a regression, not an
 approved product decision. Restore/preserve the vertical ruler in native
 timeline and any default-skin implementation. Identify and address the
 decorative horizontal stripe separately by visual evidence.
+
+## Amendment — Portrait-only default orientation (2026-10-23)
+
+- PowerCal's normal Activity orientation is fixed to portrait. Do not rotate the
+  app in response to the accelerometer/gyroscope, and do not use a sensor-based
+  orientation mode.
+- If a platform, external display, or administrative policy still forces the
+  Activity into a landscape-sized window, retain usable controls and timeline
+  behavior as a compatibility fallback. Landscape is not a normal user mode.
+- Verify the fixed portrait request on supported phone-sized Android versions.
+  Before raising target SDK to 36+, reassess Android 16 large-screen behavior:
+  orientation restrictions are ignored on displays with smallest width >=600dp
+  for apps targeting API 36 or higher. See the [Android 16 behavior changes](https://developer.android.com/about/versions/16/behavior-changes-16).
