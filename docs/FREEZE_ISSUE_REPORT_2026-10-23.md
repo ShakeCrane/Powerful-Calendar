@@ -80,18 +80,19 @@ Issue 004 修复代码基线：`16e00d55435c5029e07784ec5d945dfd7fb37ac5`
 - 旧 Round 1/2 观察：某些 Publish 之后立刻采样 UI 未见结果，稍后实际提交成功。
 - 当前证据不足以证明业务写入失败；按确定性等待稳定后复现再立缺陷。
 
-### PC-TECH-006 · P3 / DEBT · Lint 有 56 个 Warning
-- 0 Errors、56 Warnings；类别主要为 `UseKtx`、`ComposableNaming`、`UnusedResources`、`IconLauncherShape` 等。
+### PC-TECH-006 · P3 / DEBT · Lint 有 55 个 Warning
+- 最新完整回归：0 Errors、55 Warnings；类别主要为 `UseKtx`、`ComposableNaming`、`UnusedResources`、`IconLauncherShape` 等。证据见 `.local/android-test/reports/freeze-20261023/issue001-dst-full-gradle-20261023.log`。
 - Kotlin 编译还存在已弃用 API 与交叉类型推断告警（未来 Kotlin 版本可能升级为编译错误）。
 - 非单独冻结阻塞，后续按真实兼容性风险排序处理。
 
 ## 3. 冻结门槛与证据缺口（BLOCKED/NOT VERIFIED，不能记为代码 FAIL）
 
-### PC-QA-GATE-001 · P0 / BLOCKED · 没有可追溯的 209 项逐案签核台账
+### PC-QA-GATE-001 · P0 / PARTIAL / HOLD · 没有可追溯的 209 项逐案签核台账
 - 历史规划明确 209 核心验收项（P0 126，P1 82，另 1 项优先级待核）。
 - 当前跟踪的仓库文件中只有对“209 项”的描述，**没有找到 209 个完整编号用例及 PASS/FAIL/证据 ID 一一映射**。
 - 因此 **209 项未逐案签核**；既不能说全部未实际测试，也不能根据 325+37 单元测试声称全部通过。
-- 解除：重建用例原始定义、逐案结果表、明确其中哪些是模拟器可测、哪些需要真机；必须满足规定的 P0/P1 全部通过要求。
+- 本轮只读审计仍未找到原始逐案清单；来源计数与限制见独立报告 `docs/issues/PC-QA-GATE-001-209-case-ledger.md` 及带哈希审计证据。现有 364 项单测和分组设备路径均未伪映射到 209 项。
+- 解除：继续从批准规格和已核验证据重建显式标记的逐案表；逐行注明来源、拟定优先级、环境、动作、预期/实际、证据与基线。拟定优先级需复核，原始 1 项未分类不能臆定归属。
 
 ### PC-QA-GATE-002 · P0 / BLOCKED · OEM 真机、其他 Android API 等级与系统权限组合
 - 当前只有 API 35 x86_64 模拟器；未有 Android 26–34、API 36、真实 OEM 通知策略、物理触摸手感和系统性能的签核证据。
@@ -115,13 +116,13 @@ Issue 004 修复代码基线：`16e00d55435c5029e07784ec5d945dfd7fb37ac5`
 
 ## 4. 推荐处理顺序与冻结裁决
 
-1. PC-ISSUE-001 的导出修复、DST SAF 与独立解析已通过；继续补齐外部日历导入和实体设备验收。同时完成 PC-ISSUE-003 的可读错误说明。
+1. PC-ISSUE-001 的导出修复、DST SAF 与独立解析已通过；继续补齐外部日历导入和实体设备验收。PC-ISSUE-003 的非空恢复拒绝说明已修复，继续补设备权限验收。
 2. 排查 PC-ISSUE-002：记录按模型区分的真实调用耗时，优先免费模型；任何付费仅限已授权的 `deepseek/deepseek-v4.1-flash`。
 3. 以已存证据重建 209 项用例矩阵，不把分组测试/单测混算为人工签核；按测试条件集中执行仍未覆盖的 Android UI 组合。
 4. 补齐真实通知在权限、后台/Doze/时区/重启下的送达证据，并在真机或多 API 环境完成门槛测试。
 5. 逐项确认全部 P0/P1 结果，闭合高危 Issue 后方可发出 **GO**；之后才进入独立 36 项的皮肤分离验收。
 
-**最终结论：HOLD。** 这是有证据支持的部分验收与 Issue 盘点，不是“209/209 全部通过”；禁止把当前测试成绩描述为正式冻结完成。
+**最终结论：HOLD。** 这是有证据支持的部分验收与 Issue 盘点，不是“209/209 全部通过”；禁止把当前测试成绩描述为正式冻结完成。逐案门槛裁决见 `docs/CORE_FREEZE_VERDICT.md`。
 
 ## 5. 证据清单与数据安全
 - 新增证据：`.local/android-test/reports/freeze-20261023/`（Git 忽略）。

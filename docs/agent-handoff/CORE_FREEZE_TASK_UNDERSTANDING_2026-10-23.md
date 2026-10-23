@@ -4,10 +4,11 @@
 目标：闭环测试、最小修复、逐项回归与签核，**满足证据标准才宣布核心基线 GO**；否则给出准确 HOLD 及阻塞。本文不是验收完成证明。
 
 ## 1. 当前真实现场与不得丢失的工作
-- 当前执行更新（覆盖下方历史快照中的旧状态）：本次变更前 `main` 与 `origin/main` 同步于 `abd7eaf5dcebe744310a10e878ba59f9d22e6b6c`。Issue 001 的 DST SAF 证据和当前回归已由该提交的前序独立文档提交 `abd7eaf` 记录。Issue 002 的 AI 代码/测试已由 `bb04bfae30dc30877d41807a71236778b16617cc` 提交并推送；本轮未发现未提交 AI 文件。Issue 002 仍 PARTIAL / BLOCKED：最新免费模型两阶段复测在聊天阶段 HTTP 200 后，于结构化阶段收到 HTTP 429；证据见独立 Issue 报告与 `.local/android-test/reports/freeze-20261023/issue002-ai-retest-20261023.json`。随后读取到 `enabled=false` 的设置快照，时间晚于请求，不能据此推断请求启动时的状态；没有改设置。
+- 当前执行更新（覆盖下方历史快照中的旧状态）：本次变更前 `main` 与 `origin/main` 同步于 `b4ccaaf4770e4b6eaf39cd3288a9a6b83771e489`。Issue 001 DST SAF 和 Issue 003 恢复 UI 的当前完整回归已记录；相关独立文档提交分别为 `abd7eaf`、`b4ccaaf`。Issue 002 的 AI 代码/测试已由 `bb04bfae30dc30877d41807a71236778b16617cc` 提交并推送；本轮未发现未提交 AI 文件。Issue 002 仍 PARTIAL / BLOCKED：最新免费模型两阶段复测在聊天阶段 HTTP 200 后，于结构化阶段收到 HTTP 429；证据见独立 Issue 报告与 `.local/android-test/reports/freeze-20261023/issue002-ai-retest-20261023.json`。随后读取到 `enabled=false` 的设置快照，时间晚于请求，不能据此推断请求启动时的状态；没有改设置。
 - 未跟踪 `design/`、`app/src/test/java/dev/powerfulcalendar/ui/v2/DraftDeckFeedbackTest.kt`、`docs/issues/PC-OBS-005-commit-feedback.md` 属于受保护的其他资产/工作，未修改、未暂存、未提交。
 - Issue 001（ICS）：代码修复已提交；本轮在隔离 `emulator-5556` 通过纽约 DST 周重复系列的 Android SAF 导出、`icalendar 7.3.0` 独立解析与本地时间跨回拨展开核对。完整 Gradle 回归 364 项通过。设备已恢复 GMT/自动时区，数据库中的两条合成验收事件仍保留。因缺外部日历导入器与实体设备，Issue 仍 PARTIAL / HOLD；证据见 `docs/issues/PC-ISSUE-001-ICS-recurrence.md`、`issue001-saf-dst-emulator5556.ics`、`issue001-dst-independent-parse-emulator5556.json` 和 `issue001-emulator5556-postcheck.json`（均位于 `.local/android-test/reports/freeze-20261023/`）。
 - Issue 003（备份）：类型化非空库拒绝与可操作错误说明已提交；API 35 的 SAF 空库恢复、篡改/无效输入拒绝、非空目标拒绝与数据指纹证据均已记录。最新完整 Gradle 回归 364 项通过；OS 实际撤销 SAF 权限和实体设备验收仍缺证，因此保持 PARTIAL / HOLD。详见 `docs/issues/PC-ISSUE-003-restore-feedback.md`。
+- PC-QA-GATE-001：历史只确认总数 209、P0 126、P1 82、未分类 1；只读检查未找到原始逐案 ID。文档规格、协议样例和 11 组设备路径计数相互重叠，不能拼成历史 209。审计证据 SHA `600A1D825E9349BCD183053CB2DB59F62A02A50BB862B554238D020FDDFC4E98`；需继续建立明确标记为 RECONSTRUCTED 的候选台账，不得把 364 单测直接映射为 209 项。
 - .local/android-test 是仓库内测试资产及模拟器工具位置；保留既有截图、日志、失败样本、只读数据库快照、AVD。
 - 原测试环境：Android 15 API 35，PowerCal_API35，emulator-5554；原生测试场景与模拟器数据可能包含历史资料，不得随意清库。破坏性恢复用独立可丢弃实例。
 - CommandCode 地址：https://api.commandcode.ai/provider/v1；模拟器已有密钥（仅检查存在，不读/输出明文）；原模型 stealth/glyph-cluster:free。
@@ -19,7 +20,8 @@
 ### P0-A 接管与可追溯验收表
 - [ ] 只读审计 Git 工作树/未提交改动/源代码与文档/运行测试进程/模拟器与现有数据库状态/API 配置状态。
 - [ ] 记录基线 SHA、Debug APK SHA256、Android 版本与 serial、测试时区、测试脚本/证据路径。
-- [ ] 核查“209 项核心验收”的真正原始清单：历史仅见 P0=126、P1=82、未分类=1 的统计；目前未找到完整 209 项带 ID/证据对应表。**不得补造历史签核或把 343 JVM 单测当 209 项**。
+- [x] P0-A 原始清单只读审计完成：在当前文件/可达 Git 历史中未找到 209 个原始 case ID；审计哈希及来源盘点见 `docs/issues/PC-QA-GATE-001-209-case-ledger.md`。
+- [ ] 从冻结规格和现有证据重建逐案台账并标记 RECONSTRUCTED；不能把 364 JVM 单测当 209 项，也不能臆造历史签核。原始 1 项未分类需保留待审。
 - [ ] 按核心冻结合同重建/找到每项定义，注明原文来源、优先级、前置条件、测试环境、自动化脚本、预期/实际、状态、证据、Git SHA、回归日期。缺少来源的新增项标为 RECONSTRUCTED / 待审核。
 - [ ] 建立当前 PASS / FAIL / BLOCKED / NOT TESTED / PREVIOUS PASS 区分、原始结果索引与统一缺陷登记。
 
@@ -56,7 +58,7 @@
 
 ### P2-E 待验证 Issue 与技术债
 - [ ] PC-OBS-005：追查“发布后 UI 立即看不到”的刷新时序，拿事务写入与界面渲染证据，复现才修。无证据标 NOT REPRODUCED。
-- [ ] PC-TECH-006：Lint 旧快照 56 Warning/0 Error；重新检查、按实际安全/兼容影响排序修复，不为零警告而大改代码。
+- [ ] PC-TECH-006：最新完整回归 55 Warning/0 Error；按实际安全/兼容影响排序评估，不为零警告而大改代码。日志见 `.local/android-test/reports/freeze-20261023/issue001-dst-full-gradle-20261023.log`。
 - [ ] 过程监控：冷启动/崩溃/内存压力、12 次进程重启、AI 会话与草稿恢复、系统重启的可靠性。
 
 ### P0-F 四类对象与核心业务全面回归
