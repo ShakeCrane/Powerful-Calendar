@@ -1,4 +1,11 @@
 # Core freeze progress
+## PC-ISSUE-117 — AI HTTP 429 client core contract sign-off (REC-P1-062 narrowed PASS)
+
+- The local loopback HTTP 429 stub yields a structured-proposal-stage/status warning, no proposal/raw reply, and no provider error body or API key disclosure. No external provider was called; API 35/provider and presentation paths remain outside this sign-off.
+- Targeted Robolectric API 34 regression passed 1/1. Full Debug boundary/test/APK/lint passed 460/460 across 57 suites, zero failures/errors/skips; lint 0 errors / 58 warnings.
+- Independent report: docs/issues/PC-ISSUE-117-ai-http429-core-signoff.md.
+- Freeze remains HOLD: 146 PASS / 0 FAIL / 9 BLOCKED / 47 NOT TESTED / 7 SPEC UNRESOLVED; P0 119/0/1/1/5; P1 27/0/8/46/1. Structural-only validation .local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-117.json, SHA-256 3AD7FA01ABB82266470A7C1C2881E421E6F227D6436EB39187E33557503A2CB0; ledger SHA-256 B932FEB0957DE7534F42418D43076DFB1B58D3FFD4D9C279DE87007BE8458816.
+
 ## PC-ISSUE-116 — repeated commit core idempotency sign-off (REC-P1-057 narrowed PASS)
 
 - Repeating `PowerStore.commit` for one draft returns the original revision/commitId with `duplicate=true`; history remains one row. API 35/provider approval-entry and device paths are outside this sign-off.
@@ -124,7 +131,7 @@
 
 - Reproduced that a local HTTP 429 returned a generic “AI request failed” warning without naming the structured-proposal stage. Updated `AiClient.interpret` to preserve the stage in the warning. The focused test also verifies no proposal/raw reply is returned and neither the provider error body nor API key is exposed.
 - Pre-fix targeted reproduction failed 1/1 on the missing stage label. Post-fix Robolectric API 34 passed 1/1. Full Gradle passed 452/452 across 57 suites, zero failures/errors/skips; lint 0 errors / 58 warnings. Used a local HTTP stub only; no external provider or UI change.
-- Core fix/test commit `55f3c1212eafaf306ad70e89b308fa1c3b3612c5` is pushed. Independent report: `docs/issues/PC-ISSUE-099-structured-proposal-http-429-stage.md`. The API 35 success-card path is untested; `REC-P1-062` remains NOT TESTED.
+- Core fix/test commit `55f3c1212eafaf306ad70e89b308fa1c3b3612c5` is pushed. Independent report: `docs/issues/PC-ISSUE-099-structured-proposal-http-429-stage.md`. PC-ISSUE-117 later signs the narrowed AI-client core HTTP 429 contract PASS; API 35/provider and presentation paths remain untested.
 - Freeze remains HOLD: 135 PASS / 0 FAIL / 9 BLOCKED / 58 NOT TESTED / 7 SPEC UNRESOLVED; P0 111/0/1/9/5; P1 24/0/8/49/1. Structural-only artifact `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-099.json`, SHA-256 `D073E87A42F7970F8094DB7E1B2E8CF3DFF03A6B4DA9487A76076F3C0CD03D20`; ledger SHA-256 `386E2BD443FC58F9BE1D3F392CF8B3E7C5020EAB17439FE7DBCE038F26CED2B5`.
 
 ## PC-ISSUE-098 — repeated approval core idempotency checkpoint (narrowed core candidate later PASS)
