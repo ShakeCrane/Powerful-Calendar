@@ -635,6 +635,58 @@ class PowerStoreTest {
     }
 
     @Test
+    fun structuredImportSourceMetadataDoesNotBecomeEventIdentity() {
+        val batch = store.beginMigration("calendar-import")
+        val startMillis = (System.currentTimeMillis() / 60_000L) * 60_000L + 3_600_000L
+        val record = TemporalRecord(
+            eventSeq = 0L,
+            revision = 0L,
+            kind = TemporalKind.ACTIVITY,
+            title = "导入活动",
+            startMillis = startMillis,
+            endMillis = startMillis + 45 * 60_000L,
+            source = "payload-origin"
+        )
+
+        fun import(source: String, externalId: String): Long {
+            val outcome = store.importStructured(
+                record, externalId, batch, source = source, alarmNeedsHandoff = false
+            )
+            assertTrue(outcome is PowerStore.ImportOutcome.Imported)
+            return (outcome as PowerStore.ImportOutcome.Imported).eventSeq
+        }
+
+        val fromCalendarA = import("calendar-a", "same-external-id")
+        val fromCalendarB = import("calendar-b", "same-external-id")
+        val secondFromCalendarA = import("calendar-a", "different-external-id")
+
+        assertTrue(fromCalendarA != fromCalendarB)
+        assertTrue(fromCalendarA != secondFromCalendarA)
+        assertTrue(fromCalendarB != secondFromCalendarA)
+        assertEquals("calendar-a", store.get(fromCalendarA)!!.source)
+        assertEquals("calendar-b", store.get(fromCalendarB)!!.source)
+        assertEquals("calendar-a", store.get(secondFromCalendarA)!!.source)
+        assertEquals(3L, store.identityCount())
+        assertEquals(4L, store.nextSequencePreview())
+
+        val duplicate = store.importStructured(
+            record, "same-external-id", batch, source = "calendar-a", alarmNeedsHandoff = false
+        )
+        assertTrue(duplicate is PowerStore.ImportOutcome.AlreadyImported)
+        assertEquals(fromCalendarA, (duplicate as PowerStore.ImportOutcome.AlreadyImported).eventSeq)
+        assertEquals(3L, store.identityCount())
+
+        val database = store.databaseName
+        store.close()
+        store = PowerStore(context, database)
+        assertEquals("calendar-a", store.get(fromCalendarA)!!.source)
+        assertEquals("calendar-b", store.get(fromCalendarB)!!.source)
+        assertEquals("calendar-a", store.get(secondFromCalendarA)!!.source)
+        assertEquals(3L, store.identityCount())
+        assertEquals(4L, store.nextSequencePreview())
+    }
+
+    @Test
     fun schedulingIntentFollowsTheCommittedRevision() {
         val card = store.newDraft(alarmForm(minutesAhead = 90))
         commit(card)
