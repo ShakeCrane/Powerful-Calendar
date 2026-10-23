@@ -724,6 +724,36 @@ class PowerStoreTest {
     }
 
     @Test
+    fun staleBaseRevisionReturnsConflictWithoutOverwritingAcrossRestart() {
+        val card = store.newDraft(activityForm("Base").copy(trackingEnabled = true))
+        assertTrue(commit(card) is PowerStore.CommitOutcome.Committed)
+        val eventSeq = card.eventSeq
+        val base = requireNotNull(store.get(eventSeq))
+        val stale = store.newDraft(
+            DraftForm.from(base).copy(title = "stale replacement"),
+            eventSeq,
+            DraftOperation.REPLACE
+        )
+
+        assertTrue(store.setCompleted(eventSeq, "single", true, expectedRevision = base.revision))
+        assertEquals(2L, store.get(eventSeq)!!.revision)
+        val historyBeforeRestart = store.history(eventSeq)
+
+        val database = store.databaseName
+        store.close()
+        store = PowerStore(context, database)
+
+        val outcome = store.commit(stale.draftId)
+        assertTrue(outcome is PowerStore.CommitOutcome.Conflict)
+        assertEquals(DraftStatus.CONFLICT, store.draft(stale.draftId)!!.status)
+        val formalAfterConflict = requireNotNull(store.get(eventSeq))
+        assertEquals(2L, formalAfterConflict.revision)
+        assertEquals("Base", formalAfterConflict.title)
+        assertTrue(formalAfterConflict.completedKeys.contains("single"))
+        assertEquals(historyBeforeRestart, store.history(eventSeq))
+    }
+
+    @Test
     fun repeatedCommitReturnsTheOriginalOutcome() {
         val card = store.newDraft(activityForm())
         val first = commit(card) as PowerStore.CommitOutcome.Committed
