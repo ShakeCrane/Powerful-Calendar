@@ -2,13 +2,23 @@
 
 Updated: 2026-10-24
 
+## PC-ISSUE-088 — date-only Deadline completion precision
+
+- Added and pushed `PowerStoreTest.completingDateOnlyDeadlinePreservesDatePrecisionAcrossRestart`. Completion changes only the completion key/revision; `deadlineDate` and DATE precision remain, and deadlineMillis/startMillis/endMillis stay null after SQLite reopen. No UI or production code changed.
+- Focused regression passed 1/1 (log SHA-256 `09908CFC9350A75119B589F1AD665E2B14626B6AF39C71ED619B127F89FBF43F`; XML SHA-256 `3EFDF79FEAA9ED6862967256710C40E1522272741CAC74B9349D000F6E02CDB5`). Full Gradle including source boundary passed 443/443 across 56 suites, zero failures/errors/skips; lint 0 errors / 58 warnings. Full log SHA-256 `84C5052C61812EFEE91155A59BFC42364DC3BEEB01701EA4DD1593F6474998CE`.
+- Test commit `d94d98b1de5d3573420c8fd9e29f58c8f73ae9f8` is pushed. Independent report: `docs/issues/PC-ISSUE-088-date-only-deadline-completion.md`. `REC-P0-023` remains NOT TESTED because the required UI rendering behavior was not tested.
+- Latest freeze remains HOLD: 129 PASS / 0 FAIL / 9 BLOCKED / 64 NOT TESTED / 7 SPEC UNRESOLVED; 110 reconstructed candidates have independent targeted evidence. Historical 209 IDs remain unmapped.
+- User scope: no UI work; faded horizontal edge is accepted, and the blue current-time marker may cover the center axis. Keep Issue 002 PARTIAL/BLOCKED and do not retry around the free-model rate limit or call unauthorized paid models.
+- Protected untracked files `DraftDeckFeedbackTest.kt`, `design/`, and `PC-OBS-005` remain unchanged and unstaged.
+- Next: continue with the next feasible non-UI core acceptance item.
+
 ## PC-ISSUE-087 — completion tracking and reminder state independence
 
 - Audited the reconstructed “Pause object” wording and found no such behavior in the approved contract or core code. Narrowed `REC-P0-017` to contract Invariant 2: tracking, reminder scheduling and event enabled state are independent.
 - Added and pushed `PowerStoreTest.changingCompletionTrackingPreservesReminderIntentAcrossRestart`. Both tracking directions preserve enabled/reminder fields and the equivalent pending intent across SQLite reopen. Test commit `5b610b7bc48951e1205cf18cc72fe83782d93fac` is pushed.
 - Focused regression passed 1/1 (log SHA-256 `486ED3A39D00EFC5B7ECAE685292F3D1CCD365BEA6AB16A6A2D9665FCC6EFBE8`; XML SHA-256 `395F805708218E12ED551E8FDD0C667E832F28A32D30677B8D1C6CEC6EBF672C`). Full Gradle including source boundary passed 442/442 across 56 suites, zero failures/errors/skips; lint 0 errors / 58 warnings. Full log SHA-256 `F36A991D37DF9CEEABD17623CFC7175740EFC05F51DDCCA882EB9ACF66FCB4CF`.
 - Independent report: `docs/issues/PC-ISSUE-087-tracking-and-reminder-state-independence.md`. `REC-P0-017` remains NOT TESTED because Android scheduler delivery and physical/OEM behavior are not covered. No UI or production code changed.
-- Latest freeze remains HOLD: 129 PASS / 0 FAIL / 9 BLOCKED / 64 NOT TESTED / 7 SPEC UNRESOLVED; 109 reconstructed candidates have independent targeted evidence. Historical 209 IDs remain unmapped.
+- At the Issue 087 snapshot, freeze remained HOLD: 129 PASS / 0 FAIL / 9 BLOCKED / 64 NOT TESTED / 7 SPEC UNRESOLVED; 109 reconstructed candidates had independent targeted evidence. Historical 209 IDs remained unmapped.
 - User scope: no UI work; faded horizontal edge is accepted, and the blue current-time marker may cover the center axis. Keep Issue 002 PARTIAL/BLOCKED and do not retry around the free-model rate limit or call unauthorized paid models.
 - Protected untracked files `DraftDeckFeedbackTest.kt`, `design/`, and `PC-OBS-005` remain unchanged and unstaged.
 - Next: continue with the next feasible non-UI core acceptance item.
