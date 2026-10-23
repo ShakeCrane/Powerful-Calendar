@@ -4,12 +4,13 @@
 目标：闭环测试、最小修复、逐项回归与签核，**满足证据标准才宣布核心基线 GO**；否则给出准确 HOLD 及阻塞。本文不是验收完成证明。
 
 ## 1. 当前真实现场与不得丢失的工作
-- 当前执行更新（覆盖下方历史快照中的旧状态）：最新已推送代码/测试基线为 `40e5dd35bd238da476f67507994b6c100b646b89`；本轮墓碑恢复核心入口修复已推送，Issue 005 与候选台账的逐案报告待本次文档提交。Issue 001 DST SAF 和 Issue 003 恢复 UI 的既有完整回归已记录；相关独立文档提交分别为 `abd7eaf`、`b4ccaaf`。Issue 002 的 AI 代码/测试已由 `bb04bfae30dc30877d41807a71236778b16617cc` 提交并推送；本轮未发现未提交 AI 文件。Issue 002 仍 PARTIAL / BLOCKED：最新免费模型两阶段复测在聊天阶段 HTTP 200 后，于结构化阶段收到 HTTP 429；证据见独立 Issue 报告与 `.local/android-test/reports/freeze-20261023/issue002-ai-retest-20261023.json`。随后读取到 `enabled=false` 的设置快照，时间晚于请求，不能据此推断请求启动时的状态；没有改设置。
+- 当前执行更新（覆盖下方历史快照中的旧状态）：最新已推送代码/测试基线为 `5df9e00b04ad50dc5c4e12154cf117cc4a159a23`；Issue 005 墓碑恢复核心入口与 Issue 006 备份引用/往返契约测试均已提交推送，Issue 006 的独立报告和冻结文档正在本次提交。Issue 001 DST SAF 和 Issue 003 恢复 UI 的既有设备回归已记录；Issue 002 AI 代码/测试由 `bb04bfae30dc30877d41807a71236778b16617cc` 提交并推送。Issue 002 仍 PARTIAL / BLOCKED：最新免费模型结构化阶段收到 HTTP 429；没有改动 AI 设置。当前工作按用户最新指示只推进 core/数据契约验收，不做 UI 修改；淡化的横向边缘可接受，蓝色当前时间标记覆盖中央轴也按设计保留。
 - 未跟踪 `design/`、`app/src/test/java/dev/powerfulcalendar/ui/v2/DraftDeckFeedbackTest.kt`、`docs/issues/PC-OBS-005-commit-feedback.md` 属于受保护的其他资产/工作，未修改、未暂存、未提交。
 - Issue 001（ICS）：代码修复已提交；本轮在隔离 `emulator-5556` 通过纽约 DST 周重复系列的 Android SAF 导出、`icalendar 7.3.0` 独立解析与本地时间跨回拨展开核对。完整工作树 Gradle 回归报告 364 项通过，其中 1 项来自受保护未跟踪测试（363 tracked + 1 untracked）；不能将其描述成已提交树的 364 项。设备已恢复 GMT/自动时区，数据库中的两条合成验收事件仍保留。因缺外部日历导入器与实体设备，Issue 仍 PARTIAL / HOLD；证据见 `docs/issues/PC-ISSUE-001-ICS-recurrence.md`、`issue001-saf-dst-emulator5556.ics`、`issue001-dst-independent-parse-emulator5556.json` 和 `issue001-emulator5556-postcheck.json`（均位于 `.local/android-test/reports/freeze-20261023/`）。
 - Issue 003（备份）：类型化非空库拒绝与可操作错误说明已提交；API 35 的 SAF 空库恢复、篡改/无效输入拒绝、非空目标拒绝与数据指纹证据均已记录。最新完整工作树 Gradle 回归报告 364 项通过，其中包含上述 1 项受保护未跟踪测试；不能将其描述成已提交树的 364 项。OS 实际撤销 SAF 权限和实体设备验收仍缺证，因此保持 PARTIAL / HOLD。详见 `docs/issues/PC-ISSUE-003-restore-feedback.md`。
 - Issue 005（墓碑恢复）：`PowerStore.proposeRestoreDraft` 与 `DeckController.beginRestore` 提供显式恢复提案路径；确认前保持 tombstone，非 user actor 被拒绝，确认后复用 eventSeq 并重建提醒。SQLite 与控制器定点测试 2/2、完整 Gradle 回归 366/366 PASS。核心代码已推送；当前没有应用动作调用 `beginRestore`，也未做设备验收，故产品路径保持 PARTIAL / HOLD。独立报告 `docs/issues/PC-ISSUE-005-retired-event-restoration.md`。
-- PC-QA-GATE-001：历史只确认总数 209、P0 126、P1 82、未分类 1；只读检查未找到原始逐案 ID。已建立 208 条 RECONSTRUCTED 候选行和 1 条未解决历史槽位；备份与墓碑批次共新增 5 条候选 PASS，状态为 PASS 30 / BLOCKED 9 / NOT TESTED 164 / SPEC UNRESOLVED 6；候选 P0/P1 分配仍待审核，0 个原始 ID 有映射。候选状态、审计和结构验证见 `docs/CORE_FREEZE_ACCEPTANCE_LEDGER.csv` 与 `docs/issues/PC-QA-GATE-001-209-case-ledger.md`。最新 366 项完整工作树回归含 1 项受保护未跟踪测试；定点回归与全量回归均不能映射为缺失的 209 个历史 ID。
+- Issue 006（备份契约证据）：8 个重建候选项已逐项签核，未知格式/版本、悬空引用、nextOrder、墓碑、草稿队列、提交历史及凭据/调度句柄排除均有定点测试。完整工作树 Gradle 372/372 PASS，Lint 0 errors/55 warnings；371 tracked + 1 项受保护未跟踪测试；只在 JVM SQLite/Robolectric 运行，未使用模拟器或真机。生产逻辑与 UI 未修改。独立报告 `docs/issues/PC-ISSUE-006-backup-roundtrip-contract.md`。
+- PC-QA-GATE-001：历史只确认总数 209、P0 126、P1 82、未分类 1；只读检查未找到原始逐案 ID。已建立 208 条 RECONSTRUCTED 候选行和 1 条未解决历史槽位；备份与墓碑批次共 13 条候选 PASS，状态为 PASS 38 / BLOCKED 9 / NOT TESTED 156 / SPEC UNRESOLVED 6；候选 P0/P1 分配仍待审核，0 个原始 ID 有映射。候选状态、审计和结构验证见 `docs/CORE_FREEZE_ACCEPTANCE_LEDGER.csv` 与 `docs/issues/PC-QA-GATE-001-209-case-ledger.md`。最新 372 项完整工作树回归含 1 项受保护未跟踪测试；定点回归与全量回归均不能映射为缺失的 209 个历史 ID。
 - .local/android-test 是仓库内测试资产及模拟器工具位置；保留既有截图、日志、失败样本、只读数据库快照、AVD。
 - 原测试环境：Android 15 API 35，PowerCal_API35，emulator-5554；原生测试场景与模拟器数据可能包含历史资料，不得随意清库。破坏性恢复用独立可丢弃实例。
 - CommandCode 地址：https://api.commandcode.ai/provider/v1；模拟器已有密钥（仅检查存在，不读/输出明文）；原模型 stealth/glyph-cluster:free。
@@ -49,7 +50,7 @@
 - [x] 移除时间轴背景的纵向色带来源；24 个画布像素样本一致。蓝色 NOW 线与午夜虚线保留；独立报告记录前次修复为何不彻底。
 - [x] 横向布局兼容截图已在 API 35 隔离设备采集；常规产品仍固定竖屏。若未来平台/窗口管理器无视方向锁，仍需在该类真实覆盖环境检查布局。
 - [ ] 横屏、小屏、字体与显示缩放、输入法、TalkBack 触摸命中/遮挡/标签重叠真实复现，再做最小布局调整。
-- [ ] **不准误删中央竖直时间轴**、时间数字/短刻度、蓝色水平当前时间线、双击当前时间刻度尺重置 24 小时。需要删除的是额外**横向灰色装饰条**；不要误删午夜分隔线。
+- [x] 用户复核确认：蓝色当前时间标记可覆盖中央轴；其淡化边缘可以保留，不再作为 UI 缺陷追修。继续保留中央轴、时间数字/短刻度、蓝色标记与午夜分隔线。本轮不做 UI 修改。
 - [ ] 保留无限重叠事件独立框及左右水平滚动，不恢复三栏上限/×N 聚合；仅保留纵向缩放，不能恢复双指水平缩放。
 
 ### P1-E PC-ISSUE-GREEDY-LABEL-FOLDING 标题视觉冲突（独立时间轴验收项）
