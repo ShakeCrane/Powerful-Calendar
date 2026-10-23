@@ -304,19 +304,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
     /** Hardware-safe read: a crafted or corrupt file cannot exhaust memory before verification. */
     suspend fun readBackupText(uri: Uri): String = withContext(Dispatchers.IO) {
         appContext.contentResolver.openInputStream(uri)?.use { input ->
-            val buffer = ByteArray(64 * 1024)
-            val output = ByteArrayOutputStream()
-            var total = 0
-            while (true) {
-                val read = input.read(buffer)
-                if (read < 0) break
-                total += read
-                if (total > BackupEnvelope.MAX_BYTES) {
-                    throw IllegalArgumentException("备份文件超过 64MB 上限，已拒绝读取")
-                }
-                output.write(buffer, 0, read)
-            }
-            output.toByteArray().toString(Charsets.UTF_8)
+            BackupEnvelope.readUtf8Bounded(input)
         } ?: error("无法读取备份文件")
     }
 

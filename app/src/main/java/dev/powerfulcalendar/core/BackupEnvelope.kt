@@ -3,6 +3,8 @@ package dev.powerfulcalendar.core
 import org.json.JSONArray
 import org.json.JSONObject
 import java.math.BigDecimal
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.util.Locale
@@ -39,6 +41,41 @@ object BackupEnvelope {
      * records what fired on the OLD device and must not read as "already scheduled" after restore.
      */
     val TABLES = listOf("identities", "objects", "drafts", "commits", "sourceLinks", "migrations")
+
+    /**
+     * Reads a backup document with a hard byte bound before the caller constructs a JSONObject.
+     * The reader consumes at most one byte beyond the limit, so a hostile provider cannot make us
+     * buffer the rest of an oversized file just to discover that it must be rejected.
+     */
+    fun readUtf8Bounded(input: InputStream, maxBytes: Int = MAX_BYTES): String {
+        require(maxBytes in 0 until Int.MAX_VALUE) { "备份读取上限无效" }
+        val output = ByteArrayOutputStream(minOf(maxBytes, 64 * 1024))
+        val buffer = ByteArray(64 * 1024)
+        var total = 0
+        while (true) {
+            val remaining = maxBytes - total
+            val count = input.read(buffer, 0, minOf(buffer.size, remaining + 1))
+            if (count < 0) break
+            if (count == 0) {
+                val byte = input.read()
+                if (byte < 0) break
+                if (remaining == 0) throw oversizedInput(maxBytes)
+                output.write(byte)
+                total++
+                continue
+            }
+            if (count > remaining) throw oversizedInput(maxBytes)
+            output.write(buffer, 0, count)
+            total += count
+        }
+        return output.toByteArray().toString(StandardCharsets.UTF_8)
+    }
+
+    private fun oversizedInput(maxBytes: Int): IllegalArgumentException =
+        IllegalArgumentException(
+            if (maxBytes == MAX_BYTES) "备份文件超过 64MB 上限，已拒绝读取"
+            else "备份文件超过 $maxBytes 字节上限，已拒绝读取"
+        )
 
     fun create(
         payload: JSONObject,

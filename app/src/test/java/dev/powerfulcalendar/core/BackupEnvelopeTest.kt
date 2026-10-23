@@ -17,6 +17,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import java.io.ByteArrayInputStream
 import java.time.LocalDate
 import java.time.ZoneId
 import java.util.UUID
@@ -43,6 +44,31 @@ class BackupEnvelopeTest {
     }
 
     private fun newStore(): PowerStore = PowerStore(context, "target-" + UUID.randomUUID() + ".db")
+
+    @Test
+    fun boundedBackupReaderAcceptsLimitAndStopsOversizedInputAtFirstExcessByte() {
+        val limit = 16
+        val exact = "x".repeat(limit).toByteArray(Charsets.UTF_8)
+        assertEquals("x".repeat(limit), BackupEnvelope.readUtf8Bounded(
+            ByteArrayInputStream(exact), maxBytes = limit
+        ))
+
+        val oversized = object : ByteArrayInputStream(ByteArray(1024) { 'x'.code.toByte() }) {
+            var bytesConsumed = 0
+
+            override fun read(buffer: ByteArray, offset: Int, length: Int): Int =
+                super.read(buffer, offset, length).also { count ->
+                    if (count > 0) bytesConsumed += count
+                }
+        }
+        val failure = runCatching {
+            BackupEnvelope.readUtf8Bounded(oversized, maxBytes = limit)
+        }.exceptionOrNull()
+
+        assertTrue(failure is IllegalArgumentException)
+        assertTrue(failure!!.message.orEmpty().contains("上限"))
+        assertEquals(limit + 1, oversized.bytesConsumed)
+    }
 
     private fun usingStore(block: (PowerStore) -> Unit) {
         val store = newStore()
