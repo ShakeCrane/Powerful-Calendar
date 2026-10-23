@@ -27,14 +27,14 @@ Audit evidence: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-sour
 
 `docs/CORE_FREEZE_ACCEPTANCE_LEDGER.csv` contains 208 reconstructed rows and one unresolved historical slot. Proposed priority allocation is P0=126 and P1=82, grouped by risk/source area; this preserves the known aggregate for review but does not establish which historical case each row represents. All reconstructed rows are explicitly `UNMAPPED`.
 
-Structural validation: 209 unique IDs; all reconstructed rows contain source, environment, action, expected and actual fields; PASS/BLOCKED rows include evidence references. Latest validation JSON: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-021.json` (ledger SHA-256 `F5EB2543E4846BC95B61CABBB9D322EA08E2A3610A26BF46EC7648CE88AD5518`). Structural validation does not test the app or prove the historical mapping.
+Structural validation: 209 unique IDs; all reconstructed rows contain source, environment, action, expected and actual fields; PASS/BLOCKED rows include evidence references. Latest validation JSON: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-022.json` (ledger SHA-256 `7EF5FFB24F5D2C51BDA53DDC2C9D5F9D208EE8A125B197BDE4751C114BCE9624`). Structural validation does not test the app or prove the historical mapping.
 
 | Candidate bucket | PASS | FAIL | BLOCKED | NOT TESTED | SPEC UNRESOLVED |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| P0 (proposed) | 47 | 0 | 1 | 74 | 4 |
+| P0 (proposed) | 48 | 0 | 1 | 73 | 4 |
 | P1 (proposed) | 19 | 0 | 8 | 54 | 1 |
 | Historical unclassified slot | 0 | 0 | 0 | 0 | 1 |
-| **Total candidate rows** | **66** | **0** | **9** | **128** | **6** |
+| **Total candidate rows** | **67** | **0** | **9** | **127** | **6** |
 
 ### Case-specific backup verification (2026-10-23)
 
@@ -242,6 +242,16 @@ The independent Issue020 report preserves the original failing full-run log and 
 
 Post-commit targeted result: **1/1 PASS**, log `.local/android-test/reports/freeze-20261023/pc-issue-021-incomplete-activity-draft-targeted-postcommit-20261023.log` (SHA-256 `2010C351D82318FC0E3D1154BE91AD64FECD4CC8B1025117870DC8C5D2D2A673`); JUnit XML SHA-256 `56D2E5EA5DEE655C4F23A3054AD3FA38AFD48CABF8674CFCDE61F3A3351459DA`. Full regression: **385/385 PASS**, 55 suites, lint 0 errors / 55 warnings; full log SHA-256 `830C3E74943993C467B5133208382E4FCED0A90FF9D699FF6D6D682BE550B5E3`. The full `PowerStoreTest` XML contains 38 passing tests including this method; SHA-256 `5046E297A5B28A13C59507A30BC012799F5AA1062A177A3C54791FE35F3629B0`. See `docs/issues/PC-ISSUE-021-incomplete-activity-draft-recovery.md` for the exact assertions and boundaries.
 
+## Case-specific one-date Memo local-date semantics (2026-10-23)
+
+`REC-P0-007` is individually signed on code/test commit `bc8c1fb8d170abbce2df029133e3c1d44e658317`; Debug APK SHA-256 `EA0DE99328BF66FEA302AF5A55C82B3BD7EF3F7276922979AABBF7ABEC581A53`. The regression uses Robolectric API 34 and an isolated PowerStore SQLite database; no emulator or physical device was used.
+
+| Candidate row | Test | Result |
+| --- | --- | --- |
+| `REC-P0-007` | `PowerStoreTest.oneDateMemoRemainsOneLocalDateAcrossRestart` | PASS: kind remains MEMO and `memoStartDate=2026-10-24`; `memoEndDate`, `startMillis`, `endMillis`, `deadlineDate`, and `deadlineMillis` remain null. The date-only task summary persists after closing and reopening SQLite. |
+
+Post-commit targeted result: **1/1 PASS**, log `.local/android-test/reports/freeze-20261023/pc-issue-022-one-date-memo-targeted-postcommit-20261023.log` (SHA-256 `752716BCD7F5C081AE20DDAFD703E9873E2B781A0568EFA2B4C7A529DF8BE2EA`); JUnit XML SHA-256 `F80D899F93000F712986536BBB9713D70542113449BDEBB7A087B6D820D18D13`. Full Gradle regression: **386/386 PASS**, 55 suites, lint 0 errors / 55 warnings; log SHA-256 `B7AFD09CEB3BEDB0A94B3AF0E11DF2ED7076854B06A8D5AE8AAC3EED4BF1BDB7`. Full `PowerStoreTest` XML has 39 passing tests; SHA-256 `B3E50D8B5F08C50EB2AF6CBB3E4F90166B34546B33C9D25C918501803BCAABFF`. See `docs/issues/PC-ISSUE-022-one-date-memo-local-date.md` for precise assertions and limitations.
+
 ## Historical sign-off accounting
 
 | Bucket from historical aggregate | Total | Matched to original ID | Result |
@@ -250,11 +260,11 @@ Post-commit targeted result: **1/1 PASS**, log `.local/android-test/reports/free
 | P1 | 82 | 0 | Unassessed by original ID |
 | Priority unresolved | 1 | 0 | Remains unclassified and unassessed |
 
-The latest full working-tree Gradle run reports 385 tests PASS, 0 failures/errors/skips across 55 JUnit suites, successful skin-boundary verification and Debug assembly, and lint 0 errors / 55 warnings. It includes one test from protected, untracked `app/src/test/java/dev/powerfulcalendar/ui/v2/DraftDeckFeedbackTest.kt` (384 tracked tests + 1 untracked); the file was not modified or staged. The tested code/test changes are committed as `02e32d21c74babb284fc41f29f2ec02fca08037e`. Log: `.local/android-test/reports/freeze-20261023/pc-issue-021-incomplete-activity-draft-full-gradle-20261023.log` (SHA-256 `830C3E74943993C467B5133208382E4FCED0A90FF9D699FF6D6D682BE550B5E3`). This is not a 385-to-209 mapping.
+The latest full working-tree Gradle run reports 386 tests PASS, 0 failures/errors/skips across 55 JUnit suites, successful skin-boundary verification and Debug assembly, and lint 0 errors / 55 warnings. It includes one test from protected, untracked `app/src/test/java/dev/powerfulcalendar/ui/v2/DraftDeckFeedbackTest.kt` (385 tracked tests + 1 untracked); the file was not modified or staged. The tested code/test changes are committed as `bc8c1fb8d170abbce2df029133e3c1d44e658317`. Log: `.local/android-test/reports/freeze-20261023/pc-issue-022-one-date-memo-full-gradle-20261023.log` (SHA-256 `B7AFD09CEB3BEDB0A94B3AF0E11DF2ED7076854B06A8D5AE8AAC3EED4BF1BDB7`). This is not a 386-to-209 mapping.
 
 ## Required next work
 
-1. Run the 128 `NOT TESTED` rows under the environment each row requires and update only with case-specific evidence.
+1. Run the 127 `NOT TESTED` rows under the environment each row requires and update only with case-specific evidence.
 2. Resolve the one blocked P0, eight blocked P1, and five reconstructed spec-unresolved rows where feasible; retain external/physical/device dependencies as HOLD. The separate historical unclassified slot remains unresolved pending its source.
 3. Review the source-based proposed priority allocation. New IDs must never masquerade as historical IDs.
 4. Keep the one historical unclassified item visibly unresolved until its source or an explicit review decision is available.
