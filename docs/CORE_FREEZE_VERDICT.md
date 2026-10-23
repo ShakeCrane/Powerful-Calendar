@@ -4,7 +4,7 @@ Date: 2026-10-23
 
 Verdict: **HOLD**
 
-Code/test baseline for the latest candidate sign-offs: `c2f2ad5efb5b84b887fb38b4ee03916c0c23906e`
+Code/test baseline for the latest candidate sign-offs: `92dd9016d7907b1e57cd4a27920332fa72e572fc`
 
 APK used by the latest full regression: `app/build/outputs/apk/debug/app-debug.apk`, SHA-256 `80521C6A833B189FF96EF11D6543B4E6877DFE8A89D64BB1269C5220E8CD3D92`
 
@@ -22,24 +22,24 @@ The historical aggregate is 209 items: 126 P0, 82 P1, and one item whose priorit
 
 Audit evidence: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-source-audit.json` (SHA-256 `600A1D825E9349BCD183053CB2DB59F62A02A50BB862B554238D020FDDFC4E98`). Detailed issue: [`PC-QA-GATE-001`](issues/PC-QA-GATE-001-209-case-ledger.md).
 
-The **RECONSTRUCTED** candidate ledger contains 208 specification-derived rows plus one unresolved historical slot. Candidate priorities follow risk categories and match the aggregate counts, but are proposals for review; every reconstructed row remains `UNMAPPED` to historical IDs. Seventy-eight backup, retirement, migration, recurrence, reminder, temporal model, draft, and core data-semantics rows now have individually mapped targeted test evidence. Structural validation confirms 209 unique rows and the 126/82/1 partition; it does not test product behavior or prove historical equivalence. `REC-P0-054` remains SPEC UNRESOLVED because the product baseline allows multiple same-event human/AI cards while SQLite v4 allows only one actionable draft. `REC-P0-058` passes the current-baseline PowerStore no-op Save regression; `REC-P0-059` passes the current-baseline recurrence start-bound/anchor regression; `REC-P0-069` passes the recurring snooze delayed-receiver regression; `REC-P0-025/027` pass the PowerStore first-draft identity allocation regression; `REC-P0-026` passes the injected first-draft transaction failure regression; `REC-P0-089/090` pass unknown backup-field and future-format/schema rejection regressions; `REC-P0-021/022` pass the pure-model conversion required-field regressions; `REC-P0-081` passes the PowerStore/SQLite current-snapshot persistence regression. Latest validation: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-055.json` (structural only; `product_behavior_tested=false`). Validation SHA-256 `CC388AA2BC2725817CB093C21289F6D6B3E850C54D3E9A8AB653798BBD24C3AE`; ledger SHA-256 `B7E704E9A4BCC2B1093C44577E558527C3A69917E2A2F9FBA2F1118C5BF41CD6`.
+The **RECONSTRUCTED** candidate ledger contains 208 specification-derived rows plus one unresolved historical slot. Candidate priorities follow risk categories and match the aggregate counts, but are proposals for review; every reconstructed row remains `UNMAPPED` to historical IDs. Seventy-nine backup, retirement, migration, recurrence, reminder, temporal model, draft, and core data-semantics rows now have individually mapped targeted test evidence. Structural validation confirms 209 unique rows and the 126/82/1 partition; it does not test product behavior or prove historical equivalence. `REC-P0-054` remains SPEC UNRESOLVED because the product baseline allows multiple same-event human/AI cards while SQLite v4 allows only one actionable draft. `REC-P0-058` passes the current-baseline PowerStore no-op Save regression; `REC-P0-059` passes the current-baseline recurrence start-bound/anchor regression; `REC-P0-069` passes the recurring snooze delayed-receiver regression; `REC-P0-025/027` pass the PowerStore first-draft identity allocation regression; `REC-P0-026` passes the injected first-draft transaction failure regression; `REC-P0-089/090` pass unknown backup-field and future-format/schema rejection regressions; `REC-P0-021/022` pass the pure-model conversion required-field regressions; `REC-P0-081` passes the PowerStore/SQLite current-snapshot persistence regression; `REC-P0-018` passes the PowerStore schedule/event state-separation regression. Latest validation: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-056.json` (structural only; `product_behavior_tested=false`). Validation SHA-256 `A83278D62871564CD5CD6431965E0E6EA7CC0687348062ABA5C93677CA786A4D`; ledger SHA-256 `A20D6F4718540835DE9BEF7D47E6E850A9A97B6793E27E4E91D000BA6E386DAA`.
 
 | Candidate bucket | PASS | FAIL | BLOCKED | NOT TESTED | SPEC UNRESOLVED |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| P0 (proposed) | 84 | 0 | 1 | 36 | 5 |
+| P0 (proposed) | 85 | 0 | 1 | 35 | 5 |
 | P1 (proposed) | 19 | 0 | 8 | 54 | 1 |
 | Historical unclassified slot | 0 | 0 | 0 | 0 | 1 |
-| **Total candidate rows** | **103** | **0** | **9** | **90** | **7** |
+| **Total candidate rows** | **104** | **0** | **9** | **89** | **7** |
 
 ## Current grouped verification
 
-- Latest full working-tree Gradle command: `:app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --offline --rerun-tasks --console=plain` — **BUILD SUCCESSFUL**, 409 tests, 0 failures/errors/skips across 55 JUnit suites; lint 0 errors and 55 warnings. This includes protected, untracked `DraftDeckFeedbackTest.kt` (408 tracked + 1 protected untracked); that file was not modified or staged. The tested code/test changes are committed as `c2f2ad5efb5b84b887fb38b4ee03916c0c23906e`.
-- Log: `.local/android-test/reports/freeze-20261023/pc-issue-052-full-gradle-20261023.log`, SHA-256 `EACE03207765FED33CD83882FAD41F9CC477BB48BD26EA5CF14D1B6FD1A07FEE`.
+- Latest full working-tree Gradle command: `:app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --offline --rerun-tasks --console=plain` — **BUILD SUCCESSFUL**, 410 tests, 0 failures/errors/skips across 55 JUnit suites; lint 0 errors and 55 warnings. This includes protected, untracked `DraftDeckFeedbackTest.kt` (409 tracked + 1 protected untracked); that file was not modified or staged. The tested code/test changes are committed as `92dd9016d7907b1e57cd4a27920332fa72e572fc`.
+- Log: `.local/android-test/reports/freeze-20261023/pc-issue-056-full-gradle-20261023.log`, SHA-256 `92E006A3038FDD32D22A806CC2D990CE6255875450256D3DAB51A23B8EE66191`.
 - These results are software/group-level evidence. They do not sign off the absent 209 case IDs.
 
 ## Open acceptance gates
 
-- `PC-QA-GATE-001`: execute the 90 `NOT TESTED` candidate rows where feasible, resolve the 9 blocked and 6 reconstructed spec-unresolved rows where conditions allow, review proposed priorities, and keep the separate historical unclassified slot unresolved pending its source. The reconstructed 209-row candidate ledger is not the original checklist and signs off 0 original IDs.
+- `PC-QA-GATE-001`: execute the 89 `NOT TESTED` candidate rows where feasible, resolve the 9 blocked and 6 reconstructed spec-unresolved rows where conditions allow, review proposed priorities, and keep the separate historical unclassified slot unresolved pending its source. The reconstructed 209-row candidate ledger is not the original checklist and signs off 0 original IDs.
 - `PC-ISSUE-047` / `REC-P0-054`: obtain an authoritative decision reconciling same-event human/AI draft coexistence in the product baseline with SQLite v4's one-actionable-draft limit. No product behavior is signed by the spec audit.
 - `PC-ISSUE-048` / `REC-P0-058`: PowerStore's unchanged formal Save returns `Saved(changed=false)` without advancing revision; storage-only regression passed, with no UI or device claim.
 - `PC-ISSUE-049` / `REC-P0-059`: recurrence projection honors an inclusive `activeFromDate` after the original cycle anchor without rephasing; time-model regression passed, with no editor/SQLite or device claim.
@@ -49,6 +49,7 @@ The **RECONSTRUCTED** candidate ledger contains 208 specification-derived rows p
 - `PC-ISSUE-053` / `REC-P0-089/090`: unknown legacy backup fields and future backup/schema versions are rejected without occupying or mutating the import target. Targeted 3/3 passed; no source or test change was required.
 - `PC-ISSUE-054` / `REC-P0-021/022`: pure-model type conversion preserves known time data, reports missing critical fields, and does not infer an instant from a date-only Deadline. Targeted 2/2 passed; UI presentation was not tested.
 - `PC-ISSUE-055` / `REC-P0-081`: PowerStore/SQLite retains exactly one current formal snapshot and the full commit history across database reopen. Targeted 1/1 passed; other projections were not tested.
+- `PC-ISSUE-056` / `REC-P0-018`: persisting a `BLOCKED` schedule intent leaves the formal event present and incomplete across SQLite reopen. Targeted 1/1 and full Gradle 410/410 passed; actual Android permission denial/regrant was not tested.
 - `PC-QA-GATE-002`: physical-device/OEM and additional Android API coverage is unavailable in this run.
 - `PC-QA-GATE-003` / `PC-ISSUE-002`: the free-model structured stage returned HTTP 429; an authorized end-to-end proposal/approval/recovery path is not yet evidenced.
 - `PC-ISSUE-001`: DST-bearing Android SAF export and independent parsing pass; external calendar import and physical-device acceptance remain open.
