@@ -27,14 +27,14 @@ Audit evidence: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-sour
 
 `docs/CORE_FREEZE_ACCEPTANCE_LEDGER.csv` contains 208 reconstructed rows and one unresolved historical slot. Proposed priority allocation is P0=126 and P1=82, grouped by risk/source area; this preserves the known aggregate for review but does not establish which historical case each row represents. All reconstructed rows are explicitly `UNMAPPED`.
 
-Structural validation: 209 unique IDs; all reconstructed rows contain source, environment, action, expected and actual fields; PASS/BLOCKED rows include evidence references. Latest validation JSON: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-040.json`, SHA-256 `7BA00CF2BA185B6F2555B1391895D8AF89207A973399D3B907B20D7A12E65279`; ledger SHA-256 `AD2FE80ED1B3E987C299014B4925AAE13CB414B5365BF6E6A3BF0DE80EA47EAE`. Structural validation does not test the app or prove the historical mapping.
+Structural validation: 209 unique IDs; all reconstructed rows contain source, environment, action, expected and actual fields; PASS/BLOCKED rows include evidence references. Latest validation JSON: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-041.json`, SHA-256 `2D90BA0C14F35EB9BE2E126D1C611437EF616721B44907EFDA5B2B87BD6C6E9D`; ledger SHA-256 `1ABF49D525C23F4818CBE2EB0B8B16D1997B8B6CBB27E07CDD4B6A34239E5235`. Structural validation does not test the app or prove the historical mapping.
 
 | Candidate bucket | PASS | FAIL | BLOCKED | NOT TESTED | SPEC UNRESOLVED |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| P0 (proposed) | 67 | 0 | 1 | 54 | 4 |
+| P0 (proposed) | 68 | 0 | 1 | 53 | 4 |
 | P1 (proposed) | 19 | 0 | 8 | 54 | 1 |
 | Historical unclassified slot | 0 | 0 | 0 | 0 | 1 |
-| **Total candidate rows** | **86** | **0** | **9** | **108** | **6** |
+| **Total candidate rows** | **87** | **0** | **9** | **107** | **6** |
 
 ### Case-specific backup verification (2026-10-23)
 
@@ -413,6 +413,12 @@ Targeted pre-commit and post-commit runs each passed 2/2; full Gradle passed 402
 
 Targeted pre-commit and post-commit runs each passed 2/2; full Gradle passed 403/403 tests across 55 suites, with lint 0 errors / 55 warnings. Full log SHA-256 `51D83DBE2B6E9129931CFD91ACDCB3FB9DB84D87F6E6237F29597987DC7CC36B`; full `PowerStoreTest` XML SHA-256 `4B419D62DFC8267929986986710907EF00A717CBECFA5FE3A5E8A8C3E09D1B7C`; APK SHA-256 `EA0DE99328BF66FEA302AF5A55C82B3BD7EF3F7276922979AABBF7ABEC581A53`. Structural-only validation JSON SHA-256 `7BA00CF2BA185B6F2555B1391895D8AF89207A973399D3B907B20D7A12E65279`; updated CSV SHA-256 `AD2FE80ED1B3E987C299014B4925AAE13CB414B5365BF6E6A3BF0DE80EA47EAE`.
 
+### Case-specific stale base-revision conflict verification (2026-10-23)
+
+`REC-P0-047` was exercised in Robolectric API 34 using an isolated PowerStore SQLite database. Test commit `e8ee3e5aad3c8a8ef353d84781d3cff40f2d4127` added `PowerStoreTest.staleBaseRevisionReturnsConflictWithoutOverwritingAcrossRestart`: a revision 1 replacement proposal becomes stale after the formal record advances to revision 2; after SQLite reopen its commit returns `CommitOutcome.Conflict`, the formal title/completion state/revision remain unchanged, and history does not grow. The reconstructed expected result is scoped to the core store contract; editor conflict presentation is not included. The candidate remains `UNMAPPED` to the original checklist. See `docs/issues/PC-ISSUE-041-stale-revision-conflict.md`.
+
+Targeted pre-commit and post-commit runs each passed 2/2; full Gradle passed 404/404 tests across 55 suites, with lint 0 errors / 55 warnings. Full log SHA-256 `02E42FD3984B649B0AC2DC6DEF8B12855A7632DA075B9E56DEEE2CF80B713AB8`; full `PowerStoreTest` XML SHA-256 `14273D8082573684B443FCA1D0F0A741CA0BF4EE5B3869774ED9FAF73ECD7CD3`; APK SHA-256 `EA0DE99328BF66FEA302AF5A55C82B3BD7EF3F7276922979AABBF7ABEC581A53`. Structural-only validation JSON SHA-256 `2D90BA0C14F35EB9BE2E126D1C611437EF616721B44907EFDA5B2B87BD6C6E9D`; updated CSV SHA-256 `1ABF49D525C23F4818CBE2EB0B8B16D1997B8B6CBB27E07CDD4B6A34239E5235`.
+
 ## Historical sign-off accounting
 
 | Bucket from historical aggregate | Total | Matched to original ID | Result |
@@ -421,7 +427,7 @@ Targeted pre-commit and post-commit runs each passed 2/2; full Gradle passed 403
 | P1 | 82 | 0 | Unassessed by original ID |
 | Priority unresolved | 1 | 0 | Remains unclassified and unassessed |
 
-The latest full working-tree Gradle run reports 403 tests PASS, 0 failures/errors/skips across 55 JUnit suites, successful skin-boundary verification and Debug assembly, and lint 0 errors / 55 warnings. It includes one test from protected, untracked `app/src/test/java/dev/powerfulcalendar/ui/v2/DraftDeckFeedbackTest.kt` (402 tracked tests + 1 untracked); the file was not modified or staged. The tested code/test changes are committed as `2f7b96bcf621e606c2f6470f7d81ee839b3a8909`. Log: `.local/android-test/reports/freeze-20261023/pc-issue-040-idempotent-commit-retry-full-gradle-20261023.log` (SHA-256 `51D83DBE2B6E9129931CFD91ACDCB3FB9DB84D87F6E6237F29597987DC7CC36B`). This is not a 403-to-209 mapping.
+The latest full working-tree Gradle run reports 404 tests PASS, 0 failures/errors/skips across 55 JUnit suites, successful skin-boundary verification and Debug assembly, and lint 0 errors / 55 warnings. It includes one test from protected, untracked `app/src/test/java/dev/powerfulcalendar/ui/v2/DraftDeckFeedbackTest.kt` (403 tracked tests + 1 untracked); the file was not modified or staged. The tested code/test changes are committed as `e8ee3e5aad3c8a8ef353d84781d3cff40f2d4127`. Log: `.local/android-test/reports/freeze-20261023/pc-issue-041-stale-revision-conflict-full-gradle-20261023.log` (SHA-256 `02E42FD3984B649B0AC2DC6DEF8B12855A7632DA075B9E56DEEE2CF80B713AB8`). This is not a 404-to-209 mapping.
 
 ## Required next work
 
