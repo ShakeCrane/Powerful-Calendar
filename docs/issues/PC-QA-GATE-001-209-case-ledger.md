@@ -27,14 +27,14 @@ Audit evidence: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-sour
 
 `docs/CORE_FREEZE_ACCEPTANCE_LEDGER.csv` contains 208 reconstructed rows and one unresolved historical slot. Proposed priority allocation is P0=126 and P1=82, grouped by risk/source area; this preserves the known aggregate for review but does not establish which historical case each row represents. All reconstructed rows are explicitly `UNMAPPED`.
 
-Structural validation: 209 unique IDs; all reconstructed rows contain source, environment, action, expected and actual fields; PASS/BLOCKED rows include evidence references. The current structural-only validation is `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-048.json`; hashes are recorded in `PC-ISSUE-048-semantic-no-op-save.md`. Structural validation does not test the app or prove the historical mapping.
+Structural validation: 209 unique IDs; all reconstructed rows contain source, environment, action, expected and actual fields; PASS/BLOCKED rows include evidence references. The current structural-only validation is `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-049.json`; hashes are recorded in `PC-ISSUE-049-recurrence-start-bound-preserves-anchor.md`. Structural validation does not test the app or prove the historical mapping.
 
 | Candidate bucket | PASS | FAIL | BLOCKED | NOT TESTED | SPEC UNRESOLVED |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| P0 (proposed) | 74 | 0 | 1 | 46 | 5 |
+| P0 (proposed) | 75 | 0 | 1 | 45 | 5 |
 | P1 (proposed) | 19 | 0 | 8 | 54 | 1 |
 | Historical unclassified slot | 0 | 0 | 0 | 0 | 1 |
-| **Total candidate rows** | **93** | **0** | **9** | **100** | **7** |
+| **Total candidate rows** | **94** | **0** | **9** | **99** | **7** |
 
 ### Case-specific backup verification (2026-10-23)
 
@@ -457,7 +457,7 @@ The latest full working-tree Gradle run reports 407 tests PASS, 0 failures/error
 
 ## Required next work
 
-1. Run the 100 `NOT TESTED` rows under the environment each row requires and update only with case-specific evidence.
+1. Run the 99 `NOT TESTED` rows under the environment each row requires and update only with case-specific evidence.
 2. Resolve the one blocked P0, eight blocked P1, and six reconstructed spec-unresolved rows where feasible; retain external/physical/device dependencies as HOLD. The separate historical unclassified slot remains unresolved pending its source.
 3. Review the source-based proposed priority allocation. New IDs must never masquerade as historical IDs.
 4. Keep the one historical unclassified item visibly unresolved until its source or an explicit review decision is available.
@@ -465,4 +465,4 @@ The latest full working-tree Gradle run reports 407 tests PASS, 0 failures/error
 
 ## Scope and outcome
 
-Core code and tests have evidence for 68 reconstructed rows across backup, tombstone, migration, recurrence, reminder, temporal model, draft, and core data-semantics contracts; 100 remain NOT TESTED, six reconstructed candidates remain SPEC UNRESOLVED, proposed priorities still need review, and historical mapping is still absent. `REC-P0-054` is unresolved because the product baseline and SQLite v4 specify conflicting same-event draft cardinality. `REC-P0-058` passes the current-baseline semantic no-op Save test. PC-QA-GATE-001 remains **PARTIAL / HOLD**, and overall core verdict remains **HOLD**.
+Core code and tests have evidence for 69 reconstructed rows across backup, tombstone, migration, recurrence, reminder, temporal model, draft, and core data-semantics contracts; 99 remain NOT TESTED, six reconstructed candidates remain SPEC UNRESOLVED, proposed priorities still need review, and historical mapping is still absent. `REC-P0-054` is unresolved because the product baseline and SQLite v4 specify conflicting same-event draft cardinality. `REC-P0-058` passes the current-baseline semantic no-op Save test; `REC-P0-059` passes the current-baseline recurrence start-bound/anchor projection test. PC-QA-GATE-001 remains **PARTIAL / HOLD**, and overall core verdict remains **HOLD**.
