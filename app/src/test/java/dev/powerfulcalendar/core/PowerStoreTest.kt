@@ -1404,13 +1404,15 @@ class PowerStoreTest {
         val batch = store.beginMigration("test")
         val record = TemporalRecord(
             eventSeq = 0, revision = 0, kind = TemporalKind.ALARM, title = "旧闹钟",
-            startMillis = System.currentTimeMillis() + 3_600_000L, enabled = true
+            startMillis = System.currentTimeMillis() + 3_600_000L, enabled = true,
+            reminderMinutes = 0, reminderMethod = ReminderMethod.ALARM
         )
         val first = store.importStructured(record, "ext-1", batch, "test")
         assertTrue(first is PowerStore.ImportOutcome.Imported)
         val imported = first as PowerStore.ImportOutcome.Imported
         assertFalse("imported alarms must wait for handoff", imported.enabled)
         assertFalse(store.get(imported.eventSeq)!!.enabled)
+        assertNull("disabled imported alarm must not create a desired schedule", store.intentFor(imported.eventSeq))
 
         val second = store.importStructured(record, "ext-1", batch, "test")
         assertTrue(second is PowerStore.ImportOutcome.AlreadyImported)
@@ -1420,6 +1422,14 @@ class PowerStoreTest {
         val summary = store.migrationSummary(batch)!!
         assertEquals(1, summary.first)
         assertEquals(1, summary.second)
+
+        val database = store.databaseName
+        store.close()
+        store = PowerStore(context, database)
+        assertFalse(requireNotNull(store.get(imported.eventSeq)).enabled)
+        assertNull(store.intentFor(imported.eventSeq))
+        assertEquals(1L, store.identityCount())
+        assertEquals(1, store.history(imported.eventSeq).size)
     }
 
     @Test
