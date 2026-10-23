@@ -78,14 +78,25 @@ class PowerStoreTest {
         val created = store.newDraft(activityForm("formal"))
         assertTrue(commit(created) is PowerStore.CommitOutcome.Committed)
         val record = store.get(created.eventSeq)!!
+        val identityCountBefore = store.identityCount()
+        val nextSequenceBefore = store.nextSequencePreview()
         val session = EditSession.open(store, record)
         try {
+            assertEquals(0, store.pendingDraftsFor(record.eventSeq).size)
+            assertEquals(identityCountBefore, store.identityCount())
+            assertEquals(nextSequenceBefore, store.nextSequencePreview())
+
             session.edit(session.form.copy(title = "edited in memory"))
             assertEquals(0, store.pendingDraftsFor(record.eventSeq).size)
+            assertEquals(identityCountBefore, store.identityCount())
+            assertEquals(nextSequenceBefore, store.nextSequencePreview())
             val checkpoint = session.checkpoint()
             assertNotNull(checkpoint)
             assertEquals(1, store.pendingDraftsFor(record.eventSeq).size)
             assertEquals(checkpoint!!.draftId, session.checkpoint()!!.draftId)
+            assertEquals(record.eventSeq, checkpoint.eventSeq)
+            assertEquals(identityCountBefore, store.identityCount())
+            assertEquals(nextSequenceBefore, store.nextSequencePreview())
 
             session.discardEditingChanges()
             assertNull(session.checkpoint())
@@ -94,6 +105,8 @@ class PowerStoreTest {
             assertTrue(outcome is PowerStore.DirectEditOutcome.Saved && !outcome.changed)
             assertEquals(record.revision, store.get(record.eventSeq)!!.revision)
             assertEquals(0, store.pendingDraftsFor(record.eventSeq).size)
+            assertEquals(identityCountBefore, store.identityCount())
+            assertEquals(nextSequenceBefore, store.nextSequencePreview())
         } finally {
             session.close()
         }
