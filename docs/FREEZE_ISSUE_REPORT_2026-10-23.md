@@ -6,7 +6,7 @@
 测试 APK：`app/build/outputs/apk/debug/app-debug.apk`
 Issue 004 修复代码基线：`16e00d55435c5029e07784ec5d945dfd7fb37ac5`
 最新测试 APK SHA-256：`B0AB218FF70D696E25B570F0151BEC0F58B07FE545A045EE976EBD4F1173CAE1`
-最新核心回归代码基线：`ef901e0d5878bb4b25c61ed10dd1021cf312ca97`；Debug APK SHA-256：`63F8DCB69D1028B8D7061B374162F59770B86FA2FA4BEB6FDA132D4393AA8B6C`
+最新核心回归代码基线：`67648e5b6c4c744034884e408f8835b208306b29`；Debug APK SHA-256：`63F8DCB69D1028B8D7061B374162F59770B86FA2FA4BEB6FDA132D4393AA8B6C`
 设备：Issue 004 使用隔离的 Android 15 / API 35 `emulator-5556`；原 `emulator-5554` 保持运行且未操作。无物理真机。
 此前冻结工作记录了时间轴验收；本次数据库迁移验收只增加核心回归测试和文档，没有修改 UI、业务数据或 `design/`。
 
@@ -37,6 +37,7 @@ Issue 004 修复代码基线：`16e00d55435c5029e07784ec5d945dfd7fb37ac5`
 | FQ-21 | 原生备份引用、水位、墓碑、草稿/提交历史与凭据边界（REC-P0-094/095/096/098/099/100/101/109） | **PASS（核心 JVM）；整体冻结 HOLD** | 定向 7/7，覆盖未知格式/版本、两类悬空引用、`nextOrder`、墓碑和历史往返、API 密钥及调度句柄排除。测试提交 `5df9e00b04ad50dc5c4e12154cf117cc4a159a23`；全量 372 项 PASS / lint 0 errors、55 warnings；无模拟器/真机测试。独立报告 `docs/issues/PC-ISSUE-006-backup-roundtrip-contract.md` |
 | FQ-22 | 备份预检后出现新写入时事务内复查（REC-P0-103） | **PASS（核心 JVM）；整体冻结 HOLD** | 第二 SQLite store 在预检完成后写入草稿；事务内复查拒绝恢复并保留后来写入的数据。测试提交 `2171c3f96fb69a1e6d14e1fb170d4c53a9439184`；全量 373 项 PASS / lint 0 errors、55 warnings；没有设备测试。独立报告 `docs/issues/PC-ISSUE-007-post-preflight-concurrent-restore.md` |
 | FQ-23 | 数据库迁移失败回滚与同库重试（REC-P0-083/085–088） | **PASS（核心 JVM）；整体冻结 HOLD** | SQLite trigger 在首条重复草稿归并及审计已成功后，于第二条更新处注入失败；整体回滚后 schema 仍为 v3 且三条 PENDING 草稿完整，移除 trigger 后同库升级成功；只增加测试。测试提交 `ef901e0d5878bb4b25c61ed10dd1021cf312ca97`；定向 4/4、全量 374/374，Lint 0 errors / 55 warnings；无设备验收。独立报告 `docs/issues/PC-ISSUE-008-database-migration-atomicity.md` |
+| FQ-24 | 重复实例原始键、例外隔离与日期边界（REC-P0-060/061/062/063/066/067/068/070/071） | **PASS（核心 JVM）；整体冻结 HOLD** | 7 个纯时间模型测试验证包含式日期边界、有限窗口、跨日期移动仍保留原始 slotKey、跳过单实例、移动后自然槽位保留、例外按 eventSeq 隔离。测试提交 `67648e5b6c4c744034884e408f8835b208306b29`；定向 7/7、完整 Gradle 375/375，Lint 0 errors / 55 warnings；无设备验收。DST gap/fold 规格仍未签核。独立报告 `docs/issues/PC-ISSUE-009-recurrence-instance-identity.md` |
 
 注意：`FQ-01` 的 325 为单元测试用例数，`FQ-03` 的 37 为工具测试用例数，`FQ-16` 的 11 是业务检查组。它们**不能**直接映射为冻结清单中的 209 个独立项目。
 
@@ -99,6 +100,10 @@ Issue 004 修复代码基线：`16e00d55435c5029e07784ec5d945dfd7fb37ac5`
 - 既有 v1/v2 升级测试覆盖成功迁移，但没有注入 v4 中途失败；新测试确认 trigger 精确触发后，迁移 DDL、`user_version` 和旧草稿均按事务回滚。移除故障后，同一数据库成功升级。没有生产代码或 UI 变更。
 - `REC-P0-083/085/086/087/088` 单独签核；合成历史 schema fixture 不代表用户数据库样本。故障注入在第一条重复草稿已经更新并写入审计后，于第二条更新处失败，事务回滚恢复三条 PENDING 草稿。定向 4/4、完整 Gradle 374/374，Lint 0 errors / 55 warnings，无设备验收。细节与哈希见 `docs/issues/PC-ISSUE-008-database-migration-atomicity.md`。
 
+### PC-ISSUE-009 · P0 / 重复实例身份与例外隔离核心模型 PASS；整体冻结 HOLD
+- `REC-P0-060/061/062/063/066/067/068/070/071` 单独签核；增加了跨两条 eventSeq 的例外隔离回归，并让长距离移动断言同时验证自然槽位与原始移动槽位都只出现一次。没有生产逻辑或 UI 变更。
+- 定向 7/7、完整 Gradle 375/375，Lint 0 errors / 55 warnings；仅 JVM/Java 时间 fixture，无设备验收。DST gap/fold 的产品政策仍保持 SPEC UNRESOLVED。详细证据见 `docs/issues/PC-ISSUE-009-recurrence-instance-identity.md`。
+
 ### PC-OBS-005 · NEEDS REPRO · 部分提交操作即时反馈可能存在时序竞争
 - 旧 Round 1/2 观察：某些 Publish 之后立刻采样 UI 未见结果，稍后实际提交成功。
 - 当前证据不足以证明业务写入失败；按确定性等待稳定后复现再立缺陷。
@@ -115,8 +120,8 @@ Issue 004 修复代码基线：`16e00d55435c5029e07784ec5d945dfd7fb37ac5`
 - 当前跟踪的仓库文件中只有对“209 项”的描述，**没有找到 209 个完整编号用例及 PASS/FAIL/证据 ID 一一映射**。
 - 因此 **209 项未逐案签核**；既不能说全部未实际测试，也不能根据 325+37 单元测试声称全部通过。
 - 本轮只读审计仍未找到原始逐案清单；已建立 208 条 RECONSTRUCTED 候选项及 1 条未定义历史槽位，见 `docs/CORE_FREEZE_ACCEPTANCE_LEDGER.csv`。候选按风险给出 P0=126/P1=82 建议分配，但 0 个原始 ID 有映射，优先级仍待审核。
-- 候选逐案状态：P0 PASS 25 / BLOCKED 1 / NOT TESTED 96 / SPEC UNRESOLVED 4；P1 PASS 19 / BLOCKED 8 / NOT TESTED 54 / SPEC UNRESOLVED 1；历史未分类槽位 SPEC UNRESOLVED 1。共 44 PASS、150 NOT TESTED；19 条备份/墓碑/迁移候选有独立定点证据。详细证据、source audit、验证边界与下一步见独立报告 `docs/issues/PC-QA-GATE-001-209-case-ledger.md`。
-- 最新完整 Gradle 工作树结果 374 项通过，含受保护未跟踪测试 1 项；备份、墓碑、并发恢复及迁移原子性定点回归均保留独立日志。候选结果没有映射到缺失的原始 209 个 ID。
+- 候选逐案状态：P0 PASS 34 / BLOCKED 1 / NOT TESTED 87 / SPEC UNRESOLVED 4；P1 PASS 19 / BLOCKED 8 / NOT TESTED 54 / SPEC UNRESOLVED 1；历史未分类槽位 SPEC UNRESOLVED 1。共 53 PASS、141 NOT TESTED；28 条备份/墓碑/迁移/重复实例候选有独立定点证据。详细证据、source audit、验证边界与下一步见独立报告 `docs/issues/PC-QA-GATE-001-209-case-ledger.md`。
+- 最新完整 Gradle 工作树结果 375 项通过，含受保护未跟踪测试 1 项；备份、墓碑、并发恢复、迁移原子性及重复实例定点回归均保留独立日志。候选结果没有映射到缺失的原始 209 个 ID。
 - 解除：执行未测候选项、处理可解阻塞并审核拟定优先级；不可声称与缺失原始表完成历史逐项签核。
 
 ### PC-QA-GATE-002 · P0 / BLOCKED · OEM 真机、其他 Android API 等级与系统权限组合

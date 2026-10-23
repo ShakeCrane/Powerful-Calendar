@@ -27,14 +27,14 @@ Audit evidence: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-sour
 
 `docs/CORE_FREEZE_ACCEPTANCE_LEDGER.csv` contains 208 reconstructed rows and one unresolved historical slot. Proposed priority allocation is P0=126 and P1=82, grouped by risk/source area; this preserves the known aggregate for review but does not establish which historical case each row represents. All reconstructed rows are explicitly `UNMAPPED`.
 
-Structural validation: 209 unique IDs; all reconstructed rows contain source, environment, action, expected and actual fields; PASS/BLOCKED rows include evidence references. Latest validation JSON: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-008.json` (ledger SHA-256 `BE5DA4AB9C5DEBEE39AEBDD55BBFC75CC8F6CC78504552AB36EC8E8CFA433A98`). Structural validation does not test the app or prove the historical mapping.
+Structural validation: 209 unique IDs; all reconstructed rows contain source, environment, action, expected and actual fields; PASS/BLOCKED rows include evidence references. Latest validation JSON: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-009.json` (ledger SHA-256 `37C26957DF9F6D79A2BE11DC64F51BE8A5D85207AF74B27C893F572DEC1FCE58`). Structural validation does not test the app or prove the historical mapping.
 
 | Candidate bucket | PASS | FAIL | BLOCKED | NOT TESTED | SPEC UNRESOLVED |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| P0 (proposed) | 25 | 0 | 1 | 96 | 4 |
+| P0 (proposed) | 34 | 0 | 1 | 87 | 4 |
 | P1 (proposed) | 19 | 0 | 8 | 54 | 1 |
 | Historical unclassified slot | 0 | 0 | 0 | 0 | 1 |
-| **Total candidate rows** | **44** | **0** | **9** | **150** | **6** |
+| **Total candidate rows** | **53** | **0** | **9** | **141** | **6** |
 
 ### Case-specific backup verification (2026-10-23)
 
@@ -48,7 +48,7 @@ Three reconstructed P0 backup-contract rows were individually exercised in JVM S
 
 Command: `.\gradlew.bat :app:testDebugUnitTest --tests "dev.powerfulcalendar.core.BackupEnvelopeTest.exportProducesEnvelopeV1WithMatchingCanonicalHash" --tests "dev.powerfulcalendar.core.BackupEnvelopeTest.aLowSequenceWatermarkIsRejected" --tests "dev.powerfulcalendar.core.BackupEnvelopeTest.flatV1BackupIsExplicitlyRejectedAndEnvelopeCannotBeDowngradedToLegacy" --offline --rerun-tasks --console=plain`. Result: **3 passed, 0 failed/errors/skipped**. Log: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-backup-casebatch-20261023/targeted-tests.log` (SHA-256 `F14D6EB7B5D96678EF84B4B6177B69446C27DF46AC5820712C5E424921D4CAD9`). The exact method results are also present in Gradle's `TEST-dev.powerfulcalendar.core.BackupEnvelopeTest.xml`. This targeted run does not replace or inflate the separate full working-tree run.
 
-The full working-tree run recorded with the initial backup batch included one test from protected, untracked `DraftDeckFeedbackTest.kt` (365 tracked tests plus 1 untracked). The later PC-ISSUE-006 run recorded 372 tests (371 tracked plus 1 protected untracked); the 373-test run current at the time of PC-ISSUE-007 is recorded below; the latest 374-test run is recorded under PC-ISSUE-008. Neither grouped result nor the targeted case batches establishes historical case-ID mapping.
+The full working-tree run recorded with the initial backup batch included one test from protected, untracked `DraftDeckFeedbackTest.kt` (365 tracked tests plus 1 untracked). The later PC-ISSUE-006 run recorded 372 tests (371 tracked plus 1 protected untracked); the 373-test run current at the time of PC-ISSUE-007 is recorded below; the 374-test run current at the time of PC-ISSUE-008 is recorded below; the latest 375-test run is recorded under PC-ISSUE-009. Neither grouped result nor the targeted case batches establishes historical case-ID mapping.
 
 ### Case-specific retired-event restoration (2026-10-23)
 
@@ -102,6 +102,24 @@ Targeted command result: **1 passed / 0 failed/errors/skipped**. Log `.local/and
 
 Targeted schema suite: **4/4 PASS**, log `.local/android-test/reports/freeze-20261023/pc-issue-008-migration-targeted-partial-write-20261023.log` (SHA-256 `BDF989FBB7D5F170E5C949684B85E76C8670F89119324D8783FB935B3711E7A0`); full regression: **374/374 PASS**, 0 lint errors / 55 warnings. Exact logs and hashes are in `docs/issues/PC-ISSUE-008-database-migration-atomicity.md`.
 
+## Case-specific recurrence identity and exception scope (2026-10-23)
+
+`REC-P0-060/061/062/063/066/067/068/070/071` are individually signed against JVM tests on code commit `67648e5b6c4c744034884e408f8835b208306b29`; Debug APK SHA-256 `63F8DCB69D1028B8D7061B374162F59770B86FA2FA4BEB6FDA132D4393AA8B6C`. No Android device was used, and the tests do not set a DST gap/fold policy.
+
+| Candidate row | Test | Result |
+| --- | --- | --- |
+| `REC-P0-060` | `PowerCalMemoContractTest.recurrenceEffectiveDatesDoNotShiftCycleAnchor` | PASS: an inclusive active end date does not rephase the cycle. |
+| `REC-P0-061` | `PowerCalMemoContractTest.recurrenceEffectiveDatesDoNotShiftCycleAnchor` | PASS: active start date is inclusive; original anchor remains. |
+| `REC-P0-062` | `PowerCalMemoContractTest.recurrenceEffectiveDatesDoNotShiftCycleAnchor` | PASS: active end date is inclusive and bounds projection. |
+| `REC-P0-063` | `TemporalProtocolTest.anOldRecurringSeriesStillMaterialisesInACurrentWindow` | PASS: only instances inside the requested finite window are materialized. |
+| `REC-P0-066` | `TemporalProtocolTest.movedOccurrenceKeepsItsOriginalKey` | PASS: moved time does not replace the original slot key. |
+| `REC-P0-067` | `OccurrenceWindowTest.anInstanceMovedFromTwoMonthsAgoIsFoundInTodaysWindow`; `OccurrenceWindowTest.movingAnInstanceAcrossTheSpringForwardGapKeepsTheEffectiveInstant` | PASS: moving across dates preserves original key; the DST test checks effective instant without defining a policy. |
+| `REC-P0-068` | `TemporalProtocolTest.skippedOccurrenceDoesNotShiftTheRestOfTheSeries` | PASS: skip affects one slot and later slots retain their original dates. |
+| `REC-P0-070` | `OccurrenceWindowTest.anInstanceMovedFromTwoMonthsAgoIsFoundInTodaysWindow` | PASS: moved and natural occurrence each appear once under distinct keys. |
+| `REC-P0-071` | `PowerCalMemoContractTest.occurrenceExceptionsAreScopedToTheirOwnSeries` | PASS: an exception on one event sequence does not skip the same slot in another series. |
+
+Targeted result: **7/7 PASS**, log `.local/android-test/reports/freeze-20261023/pc-issue-009-recurrence-targeted-20261023.log` (SHA-256 `44B4AF96CDD9013F2274BC2F921C4634845FF6F55990AE659C83C85BEB87F2A4`); full regression: **375/375 PASS**, lint 0 errors / 55 warnings. See `docs/issues/PC-ISSUE-009-recurrence-instance-identity.md` for the three JUnit XML hashes and full run hash.
+
 ## Historical sign-off accounting
 
 | Bucket from historical aggregate | Total | Matched to original ID | Result |
@@ -110,11 +128,11 @@ Targeted schema suite: **4/4 PASS**, log `.local/android-test/reports/freeze-202
 | P1 | 82 | 0 | Unassessed by original ID |
 | Priority unresolved | 1 | 0 | Remains unclassified and unassessed |
 
-The latest full working-tree Gradle run reports 374 tests PASS, 0 failures/errors/skips across 54 JUnit suites, successful skin-boundary verification and Debug assembly, and lint 0 errors / 55 warnings. It includes one test from protected, untracked `app/src/test/java/dev/powerfulcalendar/ui/v2/DraftDeckFeedbackTest.kt` (373 tracked tests + 1 untracked); the file was not modified or staged. Log: `.local/android-test/reports/freeze-20261023/pc-issue-008-migration-full-gradle-final-v2-20261023.log` (SHA-256 `34E173117BE41997BEA9BB564C5B103B24B3B957B9CFC182F8E128DC35DF2744`). This is neither a clean committed-tree 374-test count nor a 374-to-209 mapping.
+The latest full working-tree Gradle run reports 375 tests PASS, 0 failures/errors/skips across 54 JUnit suites, successful skin-boundary verification and Debug assembly, and lint 0 errors / 55 warnings. It includes one test from protected, untracked `app/src/test/java/dev/powerfulcalendar/ui/v2/DraftDeckFeedbackTest.kt` (374 tracked tests + 1 untracked); the file was not modified or staged. Log: `.local/android-test/reports/freeze-20261023/pc-issue-009-recurrence-full-gradle-20261023.log` (SHA-256 `0818734F22900F3742E6D4E852F3AD7E1FF442998F154199EA0B4FD8492B90EF`). This is neither a clean committed-tree 375-test count nor a 375-to-209 mapping.
 
 ## Required next work
 
-1. Run the 150 `NOT TESTED` rows under the environment each row requires and update only with case-specific evidence.
+1. Run the 141 `NOT TESTED` rows under the environment each row requires and update only with case-specific evidence.
 2. Resolve the one blocked P0, eight blocked P1, and five reconstructed spec-unresolved rows where feasible; retain external/physical/device dependencies as HOLD. The separate historical unclassified slot remains unresolved pending its source.
 3. Review the source-based proposed priority allocation. New IDs must never masquerade as historical IDs.
 4. Keep the one historical unclassified item visibly unresolved until its source or an explicit review decision is available.
@@ -122,4 +140,4 @@ The latest full working-tree Gradle run reports 374 tests PASS, 0 failures/error
 
 ## Scope and outcome
 
-Core code and tests now have evidence for 19 reconstructed rows across backup, tombstone, and migration batches; 150 remain NOT TESTED, proposed priorities still need review, and historical mapping is still absent. PC-QA-GATE-001 remains **PARTIAL / HOLD**, and overall core verdict remains **HOLD**.
+Core code and tests now have evidence for 28 reconstructed rows across backup, tombstone, migration, and recurrence batches; 141 remain NOT TESTED, proposed priorities still need review, and historical mapping is still absent. PC-QA-GATE-001 remains **PARTIAL / HOLD**, and overall core verdict remains **HOLD**.
