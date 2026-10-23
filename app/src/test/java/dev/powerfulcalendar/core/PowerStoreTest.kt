@@ -629,6 +629,43 @@ class PowerStoreTest {
     }
 
     @Test
+    fun wholeSnapshotReplacementPersistsAcrossRestartWithoutFieldMerge() {
+        val originalCard = store.newDraft(
+            activityForm("Original").copy(location = "Old room", notes = "Old notes")
+        )
+        assertTrue(commit(originalCard) is PowerStore.CommitOutcome.Committed)
+        val original = requireNotNull(store.get(originalCard.eventSeq))
+        val proposalForm = DraftForm.from(original).copy(
+            title = "Replacement",
+            location = "",
+            notes = "",
+            enabled = false
+        )
+        val replacement = store.newDraft(
+            proposalForm,
+            original.eventSeq,
+            DraftOperation.REPLACE
+        )
+
+        val database = store.databaseName
+        store.close()
+        store = PowerStore(context, database)
+
+        val committed = store.commit(replacement.draftId)
+        assertTrue(committed is PowerStore.CommitOutcome.Committed)
+        val result = requireNotNull(store.get(original.eventSeq))
+        assertEquals(original.eventSeq, result.eventSeq)
+        assertEquals(original.createdAtMillis, result.createdAtMillis)
+        assertEquals(2L, result.revision)
+        assertEquals("Replacement", result.title)
+        assertEquals("", result.location)
+        assertEquals("", result.notes)
+        assertFalse(result.enabled)
+        assertEquals(original.startMillis, result.startMillis)
+        assertEquals(original.endMillis, result.endMillis)
+    }
+
+    @Test
     fun stagedMutationAdvancesFormalRevisionOnlyWhenCommittedAcrossRestart() {
         val original = store.newDraft(activityForm("revision one"))
         assertEquals(1L, (commit(original) as PowerStore.CommitOutcome.Committed).revision)
