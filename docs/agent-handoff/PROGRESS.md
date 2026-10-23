@@ -1,4 +1,11 @@
 # Core freeze progress
+## PC-ISSUE-119 — AI incomplete-field core recovery sign-off (REC-P1-051 narrowed PASS)
+
+- Missing Activity times remain blank; invalid submit creates no formal event/history, INVALID draft survives SQLite reopen, and repair returns it to PENDING for one commit. An undecidable missing kind requests clarification without allocating a proposal, draft, or event identity. Provider/API 35/device paths remain outside this sign-off.
+- Targeted parser/PowerStore regressions passed 4/4. Full Debug boundary/test/APK/lint passed 460/460 across 57 suites, zero failures/errors/skips; lint 0 errors / 58 warnings.
+- Independent report: docs/issues/PC-ISSUE-119-ai-incomplete-proposal-core-signoff.md.
+- Freeze remains HOLD: 148 PASS / 0 FAIL / 9 BLOCKED / 45 NOT TESTED / 7 SPEC UNRESOLVED; P0 119/0/1/1/5; P1 29/0/8/44/1. Structural-only validation .local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-119.json, SHA-256 9D9C9ADF65C655E8C985772B3B0144FDB8CACF3D27A311E002E974A524F15512; ledger SHA-256 70204387131BD14FD70A96F43298598B6D365E68BB754DDDFFF3726CAD90E200.
+
 ## PC-ISSUE-118 — mixed CREATE/REPLACE core draft isolation sign-off (REC-P1-049 narrowed PASS)
 
 - One local structured response yields independent CREATE and REPLACE operations; `AiDraftService` creates two pending drafts, leaves the formal CREATE absent, and does not mutate the REPLACE target. Provider/API 35, presentation, approval, and reopen persistence are outside this sign-off.
