@@ -725,6 +725,36 @@ class PowerStoreTest {
     }
 
     @Test
+    fun changingDraftEventDateDoesNotReorderQueueAfterRestart() {
+        val oldest = store.newDraft(activityForm("oldest queue item", 60), actor = "user")
+        val newer = store.newDraft(activityForm("newer queue item", 120), actor = "user")
+        assertTrue(oldest.queueOrder < newer.queueOrder)
+        assertTrue(oldest.form.startText < newer.form.startText)
+
+        val movedStart = System.currentTimeMillis() + 180 * 60_000L
+        val movedStartText = DraftForm.formatInstant(movedStart, zone)
+        val movedEndText = DraftForm.formatInstant(movedStart + 3_600_000L, zone)
+        assertTrue(store.stageDraft(
+            oldest.draftId,
+            oldest.form.copy(startText = movedStartText, endText = movedEndText),
+            oldest.draftVersion
+        ) is PowerStore.StageResult.Saved)
+
+        val changed = store.draft(oldest.draftId)!!
+        assertTrue(changed.form.startText > newer.form.startText)
+        assertEquals(listOf(oldest.draftId, newer.draftId), store.pendingDrafts().map { it.draftId })
+
+        val database = store.databaseName
+        store.close()
+        store = PowerStore(context, database)
+
+        val reopened = store.pendingDrafts()
+        assertEquals(listOf(oldest.draftId, newer.draftId), reopened.map { it.draftId })
+        assertEquals(listOf(oldest.queueOrder, newer.queueOrder), reopened.map { it.queueOrder })
+        assertEquals(movedStartText, reopened.first().form.startText)
+    }
+
+    @Test
     fun aiProposalAppendsAtQueueTailAndRefreshPreservesCurrentFocus() =
         kotlinx.coroutines.runBlocking {
             val first = store.newDraft(activityForm("first"), actor = "user")
