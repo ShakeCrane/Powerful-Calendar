@@ -7,6 +7,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import android.os.SystemClock
+import android.util.Log
+import dev.powerfulcalendar.BuildConfig
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.SocketTimeoutException
@@ -62,8 +65,14 @@ class AiClient(
             AiConversationWindow.select(history).forEach { msg ->
                 messages.put(JSONObject().put("role", msg.role).put("content", msg.content))
             }
-            val parsed = AiChatActionParser.parse(complete(messages, maxTokens = 540))
-            AiChatReply(reply = parsed.text, proposalSource = parsed.proposalSource)
+            val parsed = AiChatActionParser.parse(
+                complete(messages, maxTokens = 540, diagnosticStage = "chat"))
+            if (BuildConfig.DEBUG) Log.i("PowerCalAiPerf",
+                "chatResult proposalIntent=" + (parsed.proposalSource != null) +
+                    " visibleChars=" + parsed.text.length)
+            AiChatReply(reply = parsed.text,
+                proposalSource = AiChatActionParser.authoritativeCurrentUserSource(
+                    parsed, history.last().content))
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
@@ -98,7 +107,8 @@ class AiClient(
                 extractedText.take(24_000) + "\n==== 文件内容结束 ====\n" +
                 "请整理并解释，如果存在不明确的开始/结束日期、学期周数或提醒时刻就先追问。"
             messages.put(JSONObject().put("role", "user").put("content", evidencePrompt))
-            val parsed = AiChatActionParser.parse(complete(messages, maxTokens = 540))
+            val parsed = AiChatActionParser.parse(
+                complete(messages, maxTokens = 540, diagnosticStage = "file-analysis"))
             AiChatReply(reply = parsed.text, proposalSource = parsed.proposalSource)
         } catch (error: CancellationException) {
             throw error
@@ -134,7 +144,8 @@ class AiClient(
                     .put(JSONObject().put("type", "image_url")
                         .put("image_url", JSONObject().put("url", dataUri)))
                 messages.put(JSONObject().put("role", "user").put("content", content))
-                val parsed = AiChatActionParser.parse(complete(messages, maxTokens = 900))
+                val parsed = AiChatActionParser.parse(
+                    complete(messages, maxTokens = 900, diagnosticStage = "image-analysis"))
                 AiChatReply(reply = parsed.text, proposalSource = parsed.proposalSource)
             } catch (error: CancellationException) {
                 throw error
@@ -160,7 +171,12 @@ class AiClient(
                     .put(JSONObject().put("role", "system").put("content", DRAFT_SYSTEM_PROMPT))
                     .put(JSONObject().put("role", "user").put(
                         "content", buildUserPrompt(userText, context)))
-                AiResponseParser.parse(complete(messages), context, zone)
+                val raw = complete(messages, diagnosticStage = "structured-proposal")
+                val result = AiResponseParser.parse(raw, context, zone)
+                if (BuildConfig.DEBUG) Log.i("PowerCalAiPerf",
+                    "structuredResult proposals=" + result.proposals.size +
+                        " warnings=" + result.warnings.size)
+                result
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -198,7 +214,8 @@ class AiClient(
             val messages = JSONArray()
                 .put(JSONObject().put("role", "system").put("content", BATCH_SELECT_PROMPT))
                 .put(JSONObject().put("role", "user").put("content", prompt))
-            AiBatchSelectionParser.parse(complete(messages), eligible)
+            AiBatchSelectionParser.parse(
+                complete(messages, diagnosticStage = "batch-selection"), eligible)
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
@@ -207,7 +224,8 @@ class AiClient(
     }
 
     private fun complete(messages: JSONArray, maxTokens: Int = 1800,
-                         allowRetry: Boolean = true): String {
+                         allowRetry: Boolean = true,
+                         diagnosticStage: String = "other"): String {
         val endpoint = AiSettings.normalizeEndpoint(settings.endpoint)
         val url = URL(endpoint)
         require(url.protocol == "https" ||
@@ -215,6 +233,9 @@ class AiClient(
             "远端 AI 必须使用 HTTPS"
         }
         val connection = url.openConnection() as HttpURLConnection
+        val started = SystemClock.elapsedRealtime()
+        val outputBudget = AiCompletionPolicy.outputBudget(settings.model, maxTokens)
+        var responseStatus = 0
         try {
             connection.requestMethod = "POST"
             connection.connectTimeout = 20_000
@@ -228,7 +249,7 @@ class AiClient(
             val body = JSONObject()
                 .put("model", settings.model)
                 .put("temperature", 0.15)
-                .put("max_tokens", maxTokens)
+                .put("max_tokens", outputBudget)
                 .put("stream", false)
                 .put("messages", messages)
                 .toString()
@@ -236,6 +257,7 @@ class AiClient(
                 output.write(body.toByteArray(Charsets.UTF_8))
             }
             val code = connection.responseCode
+            responseStatus = code
             // Never show provider error bodies. They may echo the prompt or an API key.
             if (code !in 200..299) throw IOException("HTTP $code；请检查端点、模型与凭据")
             val text = connection.inputStream.bufferedReader(Charsets.UTF_8).use { reader ->
@@ -264,15 +286,29 @@ class AiClient(
                 else -> ""
             }
             if (content.isBlank() || content == "null") {
-                // Retry at most once with a larger output budget. Some reasoning endpoints
-                // exhaust small token budgets before emitting visible content.
-                if (allowRetry) return complete(messages,
-                    (maxTokens * 2).coerceAtMost(4096), allowRetry = false)
-                throw IOException("模型未返回可展示内容（" +
-                    choice.optString("finish_reason", "unknown").take(35) + "）")
+                // A free reasoning endpoint may burn the entire small output budget
+                // without producing visible content. Start with a large enough budget;
+                // never blindly repeat the same free request after an empty HTTP 200.
+                val finishReason = choice.optString("finish_reason", "unknown").take(35)
+                if (BuildConfig.DEBUG) Log.i("PowerCalAiPerf",
+                    "emptyCompletion stage=" + diagnosticStage + " finish=" + finishReason)
+                if (AiCompletionPolicy.shouldRetryEmpty(
+                        settings.model, finishReason, outputBudget, allowRetry)) {
+                    return complete(messages, (outputBudget * 2).coerceAtMost(4096),
+                        allowRetry = false, diagnosticStage = diagnosticStage)
+                }
+                throw IOException("模型未生成可见回复（" + finishReason +
+                    "）；未修改日历。请重试或在设置中切换可用模型")
             }
             return content
         } finally {
+            if (BuildConfig.DEBUG) {
+                // Timing only. Never log URL, prompts, response body, headers or credentials.
+                Log.i("PowerCalAiPerf",
+                    "completion stage=" + diagnosticStage +
+                        " elapsedMs=" + (SystemClock.elapsedRealtime() - started) +
+                        " http=" + responseStatus + " outputBudget=" + outputBudget)
+            }
             connection.disconnect()
         }
     }

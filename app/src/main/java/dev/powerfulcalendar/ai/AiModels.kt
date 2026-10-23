@@ -114,6 +114,9 @@ object AiResponseParser {
         }
         val array = root.optJSONArray("events") ?: root.optJSONArray("items")
             ?: return AiInterpretation(warnings = listOf("AI 回复缺少 events 数组"), rawReply = raw)
+        if (array.length() == 0) {
+            warnings.add("模型未返回可操作的日程项；请明确要创建的标题、日期和时间")
+        }
         val knownBySeq = known.associateBy { it.eventSeq }
         val proposals = mutableListOf<AiProposal>()
         if (array.length() > 100) warnings.add("模型一次返回超过 100 项，后续条目未处理")
@@ -309,6 +312,9 @@ object AiResponseParser {
                     blocked = blocked
                 )
             )
+        }
+        if (proposals.isEmpty() && warnings.isEmpty()) {
+            warnings.add("模型回复中没有可用的日程项；请核对类型、标题和日期时间后重试")
         }
         return AiInterpretation(proposals, warnings, raw)
     }

@@ -521,7 +521,8 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                         val result = AiClient(settings, zone).interpret(source, share)
                         if (result.proposals.isNotEmpty()) proposalReview = result
                         else appendChat("assistant", "无法生成结构化提案：" +
-                            result.warnings.firstOrNull().orEmpty())
+                            (result.warnings.firstOrNull()?.takeIf { it.isNotBlank() }
+                                ?: "模型回复未形成可审查提案，请补充或核对日程信息后重试。"))
                     }
                 } else {
                     reload()

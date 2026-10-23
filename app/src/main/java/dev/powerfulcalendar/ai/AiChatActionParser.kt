@@ -13,6 +13,17 @@ object AiChatActionParser {
     const val OPEN = "[[POWERCAL_DRAFT]]"
     const val CLOSE = "[[/POWERCAL_DRAFT]]"
 
+    /**
+     * A model's marker is only a boolean affordance. Never hand its generated
+     * "source" field to the write-capable draft Skill: it can be an example,
+     * hallucinated text, or instructions copied from the system prompt.
+     */
+    fun authoritativeCurrentUserSource(
+        parsed: ChatPresentation, currentUserText: String
+    ): String? = if (parsed.proposalSource != null) {
+        currentUserText.trim().takeIf { it.isNotBlank() && it.length <= 6000 }
+    } else null
+
     fun parse(raw: String): ChatPresentation {
         val begin = raw.lastIndexOf(OPEN)
         val end = raw.lastIndexOf(CLOSE)
