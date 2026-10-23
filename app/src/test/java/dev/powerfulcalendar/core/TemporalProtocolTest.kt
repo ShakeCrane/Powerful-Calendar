@@ -474,6 +474,27 @@ class TemporalProtocolTest {
     }
 
     @Test
+    fun alarmBuildStoresOnlyItsStartPoint() {
+        val form = DraftForm(
+            kind = TemporalKind.ALARM,
+            title = "单点闹钟",
+            startText = "2026-10-20 07:30",
+            endText = "2026-10-20 08:00",
+            zoneId = shanghai.id
+        )
+
+        val result = form.build(seq = 12, revision = 3)
+        assertTrue(result is FormBuild.Ready)
+        val alarm = (result as FormBuild.Ready).record
+
+        assertEquals(TemporalKind.ALARM, alarm.kind)
+        assertEquals(millis("2026-10-20 07:30"), alarm.startMillis)
+        assertNull(alarm.endMillis)
+        assertEquals(alarm.startMillis, alarm.spanEndMillis())
+        assertNull(alarm.validate())
+    }
+
+    @Test
     fun buildKeepsProvenanceAndRejectsIncompleteSnapshots() {
         val form = DraftForm(
             TemporalKind.ALARM, "起床", startText = "2026-10-20 07:30",
