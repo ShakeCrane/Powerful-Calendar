@@ -174,6 +174,37 @@ class PowerStoreTest {
         assertEquals(3, store.history(card.eventSeq).size)
     }
 
+    @Test
+    fun spanningMemoHasOneCompletionInstanceAndKeepsItAcrossRestart() {
+        val card = store.newDraft(DraftForm(
+            kind = TemporalKind.MEMO,
+            title = "跨日期待办",
+            startText = "2026-10-21",
+            endText = "2026-10-23",
+            zoneId = zone.id
+        ))
+        assertTrue(commit(card) is PowerStore.CommitOutcome.Committed)
+        val memo = store.get(card.eventSeq)!!
+
+        assertEquals("2026-10-21", memo.memoStartDate)
+        assertEquals("2026-10-23", memo.memoEndDate)
+        assertTrue(memo.trackingEnabled)
+        assertTrue(memo.completedKeys.isEmpty())
+        assertFalse(store.setCompleted(card.eventSeq, "2026-10-22", true, memo.revision))
+        assertEquals(memo.revision, store.get(card.eventSeq)!!.revision)
+        assertTrue(store.setCompleted(card.eventSeq, "single", true, memo.revision))
+
+        val database = store.databaseName
+        store.close()
+        store = PowerStore(context, database)
+        val reopened = store.get(card.eventSeq)!!
+
+        assertEquals("2026-10-21", reopened.memoStartDate)
+        assertEquals("2026-10-23", reopened.memoEndDate)
+        assertEquals(setOf("single"), reopened.completedKeys)
+        assertEquals(memo.revision + 1, reopened.revision)
+    }
+
     // ---------------------------------------------------------------- permanent identity
 
     @Test
