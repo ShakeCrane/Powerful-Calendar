@@ -507,6 +507,41 @@ class PowerStoreTest {
     }
 
     @Test
+    fun multipleCommitsKeepOneCurrentFormalSnapshotAcrossRestart() {
+        val created = store.newDraft(activityForm("revision one"))
+        assertTrue(commit(created) is PowerStore.CommitOutcome.Committed)
+        val seq = created.eventSeq
+
+        val second = store.newDraft(
+            DraftForm.from(store.get(seq)!!).copy(title = "revision two"),
+            seq,
+            DraftOperation.REPLACE
+        )
+        assertTrue(commit(second) is PowerStore.CommitOutcome.Committed)
+        val third = store.newDraft(
+            DraftForm.from(store.get(seq)!!).copy(title = "revision three"),
+            seq,
+            DraftOperation.REPLACE
+        )
+        assertTrue(commit(third) is PowerStore.CommitOutcome.Committed)
+
+        val currentBeforeRestart = store.all().filter { it.eventSeq == seq }
+        assertEquals(1, currentBeforeRestart.size)
+        assertEquals("revision three", currentBeforeRestart.single().title)
+        assertEquals(3L, currentBeforeRestart.single().revision)
+
+        val database = store.databaseName
+        store.close()
+        store = PowerStore(context, database)
+
+        val currentAfterRestart = store.all().filter { it.eventSeq == seq }
+        assertEquals(1, currentAfterRestart.size)
+        assertEquals("revision three", currentAfterRestart.single().title)
+        assertEquals(3L, currentAfterRestart.single().revision)
+        assertEquals(3, store.history(seq).size)
+    }
+
+    @Test
     fun staleCardCannotSilentlyOverwriteAndRequiresExplicitApproval() {
         val card = store.newDraft(activityForm("Base").copy(trackingEnabled = true))
         commit(card)
