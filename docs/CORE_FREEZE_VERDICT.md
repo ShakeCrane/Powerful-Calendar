@@ -22,14 +22,14 @@ The historical aggregate is 209 items: 126 P0, 82 P1, and one item whose priorit
 
 Audit evidence: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-source-audit.json` (SHA-256 `600A1D825E9349BCD183053CB2DB59F62A02A50BB862B554238D020FDDFC4E98`). Detailed issue: [`PC-QA-GATE-001`](issues/PC-QA-GATE-001-209-case-ledger.md).
 
-The **RECONSTRUCTED** candidate ledger contains 208 specification-derived rows plus one unresolved historical slot. Candidate priorities follow risk categories and match the aggregate counts, but are proposals for review; every reconstructed row remains `UNMAPPED` to historical IDs. Sixty-six backup, retirement, migration, recurrence, reminder, temporal model, draft, and core data-semantics rows now have individually mapped targeted test evidence. Structural validation confirms 209 unique rows and the 126/82/1 partition; it does not test product behavior or prove historical equivalence. Latest validation: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-045.json`, SHA-256 `7B2EAA14CDD64A11D68F2211E62DC83C492C68B075C07C44BDEB7277F71BA33F`; ledger SHA-256 `1F2EF8E2283ABD4F5031ABFFE4952F0BB6E047CA35B69CCCCDB68A0DA2579BCE`.
+The **RECONSTRUCTED** candidate ledger contains 208 specification-derived rows plus one unresolved historical slot. Candidate priorities follow risk categories and match the aggregate counts, but are proposals for review; every reconstructed row remains `UNMAPPED` to historical IDs. Sixty-seven backup, retirement, migration, recurrence, reminder, temporal model, draft, and core data-semantics rows now have individually mapped targeted test evidence. Structural validation confirms 209 unique rows and the 126/82/1 partition; it does not test product behavior or prove historical equivalence. Latest validation: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-046.json`, SHA-256 `3A4260D0DF362383130530DD2739F6C7EEC9B0985B301C7ACCAD5EDF75AAF457`; ledger SHA-256 `9F7126D7DC903FDF8B2492EFEF57BEC05D419CB46699AE102934962661C0C073`.
 
 | Candidate bucket | PASS | FAIL | BLOCKED | NOT TESTED | SPEC UNRESOLVED |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| P0 (proposed) | 72 | 0 | 1 | 49 | 4 |
+| P0 (proposed) | 73 | 0 | 1 | 48 | 4 |
 | P1 (proposed) | 19 | 0 | 8 | 54 | 1 |
 | Historical unclassified slot | 0 | 0 | 0 | 0 | 1 |
-| **Total candidate rows** | **91** | **0** | **9** | **103** | **6** |
+| **Total candidate rows** | **92** | **0** | **9** | **102** | **6** |
 
 ## Current grouped verification
 
@@ -39,7 +39,7 @@ The **RECONSTRUCTED** candidate ledger contains 208 specification-derived rows p
 
 ## Open acceptance gates
 
-- `PC-QA-GATE-001`: execute the 103 `NOT TESTED` candidate rows where feasible, resolve the 9 blocked and 5 reconstructed spec-unresolved rows where conditions allow, review proposed priorities, and keep the separate historical unclassified slot unresolved pending its source. The reconstructed 209-row candidate ledger is not the original checklist and signs off 0 original IDs.
+- `PC-QA-GATE-001`: execute the 102 `NOT TESTED` candidate rows where feasible, resolve the 9 blocked and 5 reconstructed spec-unresolved rows where conditions allow, review proposed priorities, and keep the separate historical unclassified slot unresolved pending its source. The reconstructed 209-row candidate ledger is not the original checklist and signs off 0 original IDs.
 - `PC-QA-GATE-002`: physical-device/OEM and additional Android API coverage is unavailable in this run.
 - `PC-QA-GATE-003` / `PC-ISSUE-002`: the free-model structured stage returned HTTP 429; an authorized end-to-end proposal/approval/recovery path is not yet evidenced.
 - `PC-ISSUE-001`: DST-bearing Android SAF export and independent parsing pass; external calendar import and physical-device acceptance remain open.
@@ -85,6 +85,7 @@ The **RECONSTRUCTED** candidate ledger contains 208 specification-derived rows p
 - `PC-ISSUE-043`: `REC-P0-050` passes the PowerStore stale-approval gate: default commit returns Conflict and preserves the newer snapshot across reopen; only explicit `approveStale=true` commits the full replacement. See `docs/issues/PC-ISSUE-043-explicit-stale-reapproval.md`.
 - `PC-ISSUE-044`: `REC-P0-051` passes the PowerStore whole-snapshot contract across SQLite reopen, including clearing old optional fields without merging and preserving event identity metadata. See `docs/issues/PC-ISSUE-044-whole-snapshot-replacement.md`.
 - `PC-ISSUE-045`: `REC-P0-052` is supported by the focused stale-reapproval regression: the default stale commit preserves the newer full snapshot, and only explicit approval replaces it. The evidence is shared with `PC-ISSUE-043` and does not add another test. See `docs/issues/PC-ISSUE-045-no-silent-stale-field-merge.md`.
+- `PC-ISSUE-046`: `REC-P0-053` passes a current-baseline PowerStore/AI batch regression: a late stale AI proposal is kept as conflict and cannot overwrite the human completion update, including across SQLite reopen. See `docs/issues/PC-ISSUE-046-late-ai-response.md`.
 - `PC-ISSUE-020`: stabilized the `REC-P0-012` test fixture after a full regression exposed concurrent SQLite polling. The delivery handler now has deterministic synchronous test coverage; Android `onReceive`/`goAsync` framework lifecycle and actual AlarmManager delivery remain untested. See `docs/issues/PC-ISSUE-020-reminder-receiver-test-race.md`.
 - `PC-ISSUE-GREEDY-LABEL-FOLDING`: implementation and API 35 visual regression pass; physical-device/OEM and TalkBack review remain open.
 - Stable release signing material remains user-owned and is not present in the repository; no stable Release install/upgrade claim is made.

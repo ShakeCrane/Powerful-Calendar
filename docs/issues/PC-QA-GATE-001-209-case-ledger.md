@@ -27,14 +27,14 @@ Audit evidence: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-sour
 
 `docs/CORE_FREEZE_ACCEPTANCE_LEDGER.csv` contains 208 reconstructed rows and one unresolved historical slot. Proposed priority allocation is P0=126 and P1=82, grouped by risk/source area; this preserves the known aggregate for review but does not establish which historical case each row represents. All reconstructed rows are explicitly `UNMAPPED`.
 
-Structural validation: 209 unique IDs; all reconstructed rows contain source, environment, action, expected and actual fields; PASS/BLOCKED rows include evidence references. Latest validation JSON: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-045.json`, SHA-256 `7B2EAA14CDD64A11D68F2211E62DC83C492C68B075C07C44BDEB7277F71BA33F`; ledger SHA-256 `1F2EF8E2283ABD4F5031ABFFE4952F0BB6E047CA35B69CCCCDB68A0DA2579BCE`. Structural validation does not test the app or prove the historical mapping.
+Structural validation: 209 unique IDs; all reconstructed rows contain source, environment, action, expected and actual fields; PASS/BLOCKED rows include evidence references. Latest validation JSON: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-046.json`, SHA-256 `3A4260D0DF362383130530DD2739F6C7EEC9B0985B301C7ACCAD5EDF75AAF457`; ledger SHA-256 `9F7126D7DC903FDF8B2492EFEF57BEC05D419CB46699AE102934962661C0C073`. Structural validation does not test the app or prove the historical mapping.
 
 | Candidate bucket | PASS | FAIL | BLOCKED | NOT TESTED | SPEC UNRESOLVED |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| P0 (proposed) | 72 | 0 | 1 | 49 | 4 |
+| P0 (proposed) | 73 | 0 | 1 | 48 | 4 |
 | P1 (proposed) | 19 | 0 | 8 | 54 | 1 |
 | Historical unclassified slot | 0 | 0 | 0 | 0 | 1 |
-| **Total candidate rows** | **91** | **0** | **9** | **103** | **6** |
+| **Total candidate rows** | **92** | **0** | **9** | **102** | **6** |
 
 ### Case-specific backup verification (2026-10-23)
 
@@ -441,6 +441,10 @@ Targeted pre-commit and post-commit runs each passed 1/1; full Gradle passed 407
 
 `REC-P0-052` maps to the same `PowerStoreTest.staleDraftRequiresExplicitReapprovalAfterRestart` assertions documented for `REC-P0-050`. A default stale commit after SQLite reopen conflicts and preserves the newer title/completion key; the completion key changes only when the complete old proposal is explicitly approved. The focused test passed targeted pre/post runs 1/1 each and is included in the latest 407/407 full Gradle run. This is a separate candidate sign-off, not an additional test. See `docs/issues/PC-ISSUE-045-no-silent-stale-field-merge.md`.
 
+### Case-specific late AI response protection verification (2026-10-23)
+
+`REC-P0-053` maps to `PowerStoreTest.aiConflictDraftRemainsAvailableForHumanResolutionAcrossRestart`: after a human completion update makes the AI proposal stale, the authorized AI batch publishes zero, retains a conflict draft, preserves the formal title/completion state, and releases its lock. The candidate was rechecked on the current baseline with a targeted **1/1 PASS** run and is included in the latest 407/407 full Gradle run. See `docs/issues/PC-ISSUE-046-late-ai-response.md`.
+
 ## Historical sign-off accounting
 
 | Bucket from historical aggregate | Total | Matched to original ID | Result |
@@ -461,4 +465,4 @@ The latest full working-tree Gradle run reports 407 tests PASS, 0 failures/error
 
 ## Scope and outcome
 
-Core code and tests now have evidence for 66 reconstructed rows across backup, tombstone, migration, recurrence, reminder, temporal model, draft, and core data-semantics contracts; 103 remain NOT TESTED, proposed priorities still need review, and historical mapping is still absent. PC-QA-GATE-001 remains **PARTIAL / HOLD**, and overall core verdict remains **HOLD**.
+Core code and tests now have evidence for 67 reconstructed rows across backup, tombstone, migration, recurrence, reminder, temporal model, draft, and core data-semantics contracts; 102 remain NOT TESTED, proposed priorities still need review, and historical mapping is still absent. PC-QA-GATE-001 remains **PARTIAL / HOLD**, and overall core verdict remains **HOLD**.
