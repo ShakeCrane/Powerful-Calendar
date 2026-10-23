@@ -656,6 +656,40 @@ class PowerStoreTest {
     }
 
     @Test
+    fun incompleteActivityCommitStaysUnpublishedAndCanBeRepairedAfterRestart() {
+        val incompleteForm = DraftForm(
+            kind = TemporalKind.ACTIVITY,
+            title = "会议",
+            startText = "2026-10-20 09:00",
+            zoneId = zone.id
+        )
+        val card = store.newDraft(incompleteForm)
+
+        assertTrue(commit(card) is PowerStore.CommitOutcome.Invalid)
+        assertNull(store.get(card.eventSeq))
+        val invalid = store.pendingDrafts().single()
+        assertEquals(DraftStatus.INVALID, invalid.status)
+        assertEquals(incompleteForm, invalid.form)
+
+        val database = store.databaseName
+        store.close()
+        store = PowerStore(context, database)
+        val recovered = store.pendingDrafts().single()
+        assertEquals(card.draftId, recovered.draftId)
+        assertEquals(DraftStatus.INVALID, recovered.status)
+        assertNull(store.get(card.eventSeq))
+
+        val repairedForm = incompleteForm.copy(endText = "2026-10-20 10:00")
+        val staged = store.stageDraft(recovered.draftId, repairedForm, recovered.draftVersion)
+        assertTrue(staged is PowerStore.StageResult.Saved)
+        val repaired = store.draft(recovered.draftId)!!
+        assertEquals(DraftStatus.PENDING, repaired.status)
+        assertTrue(commit(repaired) is PowerStore.CommitOutcome.Committed)
+        assertEquals(TemporalKind.ACTIVITY, store.get(card.eventSeq)!!.kind)
+        assertTrue(store.pendingDrafts().isEmpty())
+    }
+
+    @Test
     fun statsAreDerivedFromDurableRecords() {
         val since = System.currentTimeMillis() - 1_000
         val published = store.newDraft(activityForm("已发布"))
