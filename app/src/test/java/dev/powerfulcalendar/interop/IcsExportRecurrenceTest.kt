@@ -31,6 +31,9 @@ class IcsExportRecurrenceTest {
         val text = IcsCodec.exportActivities(listOf(
             activity(Recurrence(freq = RecurrenceFreq.DAILY, interval = 2))
         ))
+        assertTrue(text.contains("BEGIN:VTIMEZONE\r\nTZID:Asia/Shanghai\r\n"))
+        assertTrue(text.indexOf("BEGIN:VTIMEZONE") < text.indexOf("BEGIN:VEVENT"))
+        assertTrue(text.contains("TZOFFSETFROM:+0800\r\nTZOFFSETTO:+0800"))
         assertTrue(text.contains("RRULE:FREQ=DAILY;INTERVAL=2\r\n"))
         assertTrue(text.contains("DTSTART;TZID=Asia/Shanghai:20261026T140000"))
         val parsed = IcsCodec.parse(text)
@@ -72,6 +75,11 @@ class IcsExportRecurrenceTest {
         val text = IcsCodec.exportActivities(listOf(
             activity(Recurrence(freq = RecurrenceFreq.DAILY), ny.id, at)
         ))
+        assertTrue(text.contains("TZID:America/New_York\r\n"))
+        assertTrue(text.contains("RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=2SU"))
+        assertTrue(text.contains("RRULE:FREQ=YEARLY;BYMONTH=11;BYDAY=1SU"))
+        assertTrue(text.contains("TZOFFSETFROM:-0500\r\nTZOFFSETTO:-0400"))
+        assertTrue(text.contains("TZOFFSETFROM:-0400\r\nTZOFFSETTO:-0500"))
         assertTrue(text.contains("DTSTART;TZID=America/New_York:20261026T140000"))
         val parsed = IcsCodec.parse(text)
         assertTrue(parsed.warnings.toString(), parsed.warnings.isEmpty())

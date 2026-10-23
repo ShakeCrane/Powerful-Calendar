@@ -10,6 +10,7 @@ import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
 import java.time.*
 import java.time.format.DateTimeFormatter
+import java.time.zone.ZoneOffsetTransitionRule
 import java.util.UUID
 
 /** Exactly ONE draft for the whole recurring series, no matter how many slots it generates. */
@@ -326,6 +327,14 @@ object IcsCodec {
         originals: Map<Long, TemporalRecord> = emptyMap()
     ): String = buildString {
         append("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Powerful Calendar//Android//ZH\r\n")
+        val recurring = events.mapNotNull { event ->
+            originals[event.id]?.takeIf { it.recurrence.isRepeating }
+        }
+        recurring.groupBy { it.zoneId }.toSortedMap().forEach { (zoneId, records) ->
+            val zone = ZoneId.of(zoneId)
+            val firstStart = records.minOf { requireNotNull(it.startMillis) }
+            append(exportTimezone(zone, firstStart))
+        }
         for (e in events) {
             val record = originals[e.id]
             val rule = record?.recurrence?.takeIf { it.isRepeating }
@@ -366,8 +375,9 @@ object IcsCodec {
             if (rule != null) {
                 val start = Instant.ofEpochMilli(e.startMillis).atZone(zone)
                 val end = Instant.ofEpochMilli(e.endMillis).atZone(zone)
-                append("DTSTART;TZID=" + zone!!.id + ":" + start.format(localFormat) + "\r\n")
-                append("DTEND;TZID=" + zone.id + ":" + end.format(localFormat) + "\r\n")
+                val tzid = tzidParameter(zone!!.id)
+                append("DTSTART;TZID=" + tzid + ":" + start.format(localFormat) + "\r\n")
+                append("DTEND;TZID=" + tzid + ":" + end.format(localFormat) + "\r\n")
                 val freq = when (rule.freq) {
                     RecurrenceFreq.DAILY -> "DAILY"
                     RecurrenceFreq.WEEKLY -> "WEEKLY"
@@ -388,7 +398,7 @@ object IcsCodec {
                     val exdates = rule.exceptions.sorted().joinToString(",") {
                         LocalDateTime.parse(it).format(localFormat)
                     }
-                    append("EXDATE;TZID=" + zone.id + ":" + exdates + "\r\n")
+                    append("EXDATE;TZID=" + tzid + ":" + exdates + "\r\n")
                 }
             } else if (e.allDay) {
                 val zone = ZoneId.systemDefault()
@@ -413,4 +423,126 @@ object IcsCodec {
         }
         append("END:VCALENDAR\r\n")
     }
+
+    /** A referenced TZID must have a matching VTIMEZONE, including future DST transitions. */
+    private fun exportTimezone(zone: ZoneId, firstEventMillis: Long): String {
+        val rules = zone.rules
+        val eventYear = Instant.ofEpochMilli(firstEventMillis).atZone(zone).year
+        require(eventYear in 2..9999) { "ICS 时区定义暂不支持该年份" }
+        val baselineLocal = LocalDate.of(eventYear - 1, 12, 31).atStartOfDay()
+        val baselineInstant = baselineLocal.atZone(zone).toInstant()
+        val baselineOffset = rules.getOffset(baselineInstant)
+        val baselineType = if (rules.isDaylightSavings(baselineInstant)) "DAYLIGHT" else "STANDARD"
+
+        return buildString {
+            append("BEGIN:VTIMEZONE\r\nTZID:").append(zone.id).append("\r\n")
+            appendTimezoneObservance(baselineType, baselineLocal, baselineOffset, baselineOffset)
+
+            rules.transitions.asSequence()
+                .filter { it.instant.isAfter(baselineInstant) }
+                .forEach { transition ->
+                    val type = if (rules.isDaylightSavings(transition.instant)) "DAYLIGHT" else "STANDARD"
+                    appendTimezoneObservance(
+                        type, transition.dateTimeBefore, transition.offsetBefore, transition.offsetAfter
+                    )
+                }
+
+            if (rules.transitionRules.isNotEmpty()) {
+                val lastHistoricYear = rules.transitions.lastOrNull()?.dateTimeBefore?.year ?: eventYear - 1
+                val firstRuleYear = maxOf(eventYear, lastHistoricYear + 1)
+                require(firstRuleYear <= 9999) { "ICS 时区规则超出支持年份" }
+                rules.transitionRules.forEach { rule ->
+                    appendTimezoneRule(zone, rules, rule, firstRuleYear)
+                }
+            }
+            append("END:VTIMEZONE\r\n")
+        }
+    }
+
+    private fun StringBuilder.appendTimezoneObservance(
+        type: String,
+        startsAt: LocalDateTime,
+        offsetBefore: ZoneOffset,
+        offsetAfter: ZoneOffset,
+        rrule: String? = null
+    ) {
+        append("BEGIN:").append(type).append("\r\n")
+        append("DTSTART:").append(startsAt.format(localFormat)).append("\r\n")
+        append("TZOFFSETFROM:").append(formatOffset(offsetBefore)).append("\r\n")
+        append("TZOFFSETTO:").append(formatOffset(offsetAfter)).append("\r\n")
+        if (rrule != null) append("RRULE:").append(rrule).append("\r\n")
+        append("END:").append(type).append("\r\n")
+    }
+
+    private fun StringBuilder.appendTimezoneRule(
+        zone: ZoneId,
+        rules: java.time.zone.ZoneRules,
+        rule: ZoneOffsetTransitionRule,
+        firstYear: Int
+    ) {
+        val samples = (2000..2399).map(rule::createTransition)
+        val first = rule.createTransition(firstYear)
+        val localTime = first.dateTimeBefore.toLocalTime()
+        val month = rule.month.value
+        require(samples.all {
+            it.dateTimeBefore.monthValue == month && it.dateTimeBefore.toLocalTime() == localTime &&
+                (rule.dayOfWeek == null || it.dateTimeBefore.dayOfWeek == rule.dayOfWeek)
+        }) { "ICS 时区含无法无损表示的转换规则：${zone.id}" }
+
+        val dateRule = when (val weekday = rule.dayOfWeek) {
+            null -> {
+                val indicator = rule.dayOfMonthIndicator
+                require(samples.all { transition ->
+                    val date = transition.dateTimeBefore.toLocalDate()
+                    date.dayOfMonth == if (indicator > 0) indicator else date.lengthOfMonth() + indicator + 1
+                }) { "ICS 时区含无法无损表示的转换日期：${zone.id}" }
+                "BYMONTHDAY=$indicator"
+            }
+            else -> {
+                val ordinalDays = samples.map { transition ->
+                    val date = transition.dateTimeBefore.toLocalDate()
+                    if (date.plusWeeks(1).monthValue != date.monthValue) -1
+                    else (date.dayOfMonth - 1) / 7 + 1
+                }.distinct()
+                val weekdayText = weekday.name.take(2)
+                if (ordinalDays.size == 1) {
+                    "BYDAY=${ordinalDays.single()}$weekdayText"
+                } else {
+                    val possibleDays = samples.map { it.dateTimeBefore.dayOfMonth }.distinct().sorted()
+                    require(samples.all { transition ->
+                        val date = transition.dateTimeBefore.toLocalDate()
+                        val candidates = possibleDays.filter { day ->
+                            day <= date.lengthOfMonth() && LocalDate.of(date.year, month, day).dayOfWeek == weekday
+                        }
+                        candidates.size == 1 && candidates.single() == date.dayOfMonth
+                    }) { "ICS 时区含无法无损表示的转换日期：${zone.id}" }
+                    "BYMONTHDAY=${possibleDays.joinToString(",")};BYDAY=$weekdayText"
+                }
+            }
+        }
+        val transition = rule.createTransition(firstYear)
+        val type = if (rules.isDaylightSavings(transition.instant)) "DAYLIGHT" else "STANDARD"
+        appendTimezoneObservance(
+            type,
+            transition.dateTimeBefore,
+            rule.offsetBefore,
+            rule.offsetAfter,
+            "FREQ=YEARLY;BYMONTH=$month;$dateRule"
+        )
+    }
+
+    private fun formatOffset(offset: ZoneOffset): String {
+        val total = offset.totalSeconds
+        val sign = if (total < 0) '-' else '+'
+        val absolute = kotlin.math.abs(total)
+        val hours = absolute / 3600
+        val minutes = absolute % 3600 / 60
+        val seconds = absolute % 60
+        fun two(value: Int) = value.toString().padStart(2, '0')
+        return if (seconds == 0) "$sign${two(hours)}${two(minutes)}"
+        else "$sign${two(hours)}${two(minutes)}${two(seconds)}"
+    }
+
+    private fun tzidParameter(zoneId: String): String =
+        if (zoneId.any { it in ":;,\" " }) "\"${zoneId.replace("\"", "\\\"")}\"" else zoneId
 }
