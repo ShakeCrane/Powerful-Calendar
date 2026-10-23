@@ -4,9 +4,9 @@
 目标：闭环测试、最小修复、逐项回归与签核，**满足证据标准才宣布核心基线 GO**；否则给出准确 HOLD 及阻塞。本文不是验收完成证明。
 
 ## 1. 当前真实现场与不得丢失的工作
-- main / origin/main：92f083b；Issue 001（ICS）e8c9a5a、Issue 003（备份）92f083b 已提交并推送。
-- Issue 002 AI 进行中：三个已修改文件 AiClient.kt / AiChatActionParser.kt / AiModels.kt；三个未跟踪新文件 AiCompletionPolicy.kt / AiCompletionPolicyTest.kt / AiCalendarHintSafetyTest.kt。接手时先审查全部 diff，**不 reset/clean/checkout 覆盖现有修改**。
-- 未跟踪 design/ 是设计资产，不清理、不盲提交、不覆盖。
+- 当前执行更新（覆盖下方历史快照中的旧状态）：`main` 与 `origin/main` 已同步至 `6ea2c359b3050d5c4b79c23c42b4982ac2457b9e`。Issue 002 的 AI 代码/测试已由 `bb04bfae30dc30877d41807a71236778b16617cc` 提交并推送；本轮未发现未提交 AI 文件。Issue 002 仍 PARTIAL / BLOCKED：最新免费模型两阶段复测在聊天阶段 HTTP 200 后，于结构化阶段收到 HTTP 429；证据见独立 Issue 报告与 `.local/android-test/reports/freeze-20261023/issue002-ai-retest-20261023.json`。随后读取到 `enabled=false` 的设置快照，时间晚于请求，不能据此推断请求启动时的状态；没有改设置。
+- 未跟踪 `design/`、`app/src/test/java/dev/powerfulcalendar/ui/v2/DraftDeckFeedbackTest.kt`、`docs/issues/PC-OBS-005-commit-feedback.md` 属于受保护的其他资产/工作，未修改、未暂存、未提交。
+- Issue 001（ICS）与 Issue 003（备份）的历史修复基线仍以其独立报告和提交记录为准；当前设备补验尚未签核。
 - .local/android-test 是仓库内测试资产及模拟器工具位置；保留既有截图、日志、失败样本、只读数据库快照、AVD。
 - 原测试环境：Android 15 API 35，PowerCal_API35，emulator-5554；原生测试场景与模拟器数据可能包含历史资料，不得随意清库。破坏性恢复用独立可丢弃实例。
 - CommandCode 地址：https://api.commandcode.ai/provider/v1；模拟器已有密钥（仅检查存在，不读/输出明文）；原模型 stealth/glyph-cluster:free。
@@ -22,8 +22,8 @@
 - [ ] 按核心冻结合同重建/找到每项定义，注明原文来源、优先级、前置条件、测试环境、自动化脚本、预期/实际、状态、证据、Git SHA、回归日期。缺少来源的新增项标为 RECONSTRUCTED / 待审核。
 - [ ] 建立当前 PASS / FAIL / BLOCKED / NOT TESTED / PREVIOUS PASS 区分、原始结果索引与统一缺陷登记。
 
-### P0-B PC-ISSUE-002 AI 超时与结构化提案失败（当前 WIP）
-- [ ] 审查现有未提交 AI diff 与两个新增测试文件；先保持现场和最近真实行为。
+### P0-B PC-ISSUE-002 AI 超时与结构化提案失败（当前 OPEN / PARTIAL / BLOCKED）
+- [x] 已审查并接续原 AI 改动；代码、策略与安全测试已提交。当前没有未提交 AI diff，不得从旧快照误判为仍有 WIP。
 - [ ] 复现两阶段调用：此前 free 模型首次 HTTP 200 空内容，盲重试后 45 秒等待超时，总约 62 秒；调整预算后的对照中两个 HTTP 200 分别约 14.8/5.7 秒，但没有成功生成审查卡。
 - [ ] 核验 AiCompletionPolicy：免费模型第一次较充足输出预算、不对空内容盲目重复计费调用；出错显示真实分类，仍无未经授权写入。
 - [ ] 核验 AI 标记只作为“有提案意图”提示；Skill 实际读取**本轮原始用户输入**，不得采信 AI 编造的 source、历史聊天、文件提示注入、系统示例文本。
@@ -31,7 +31,7 @@
 - [ ] 文件/OCR/ICS 输入以不可信内容处理；模型不拥有直接发布/删除权。
 - [ ] 用时间戳/HTTP 状态/结果类型诊断，**不记录密钥、headers、提示正文、私人日历数据**。
 - [ ] 免费模型优先。付费只能 deepseek/deepseek-v4.1-flash，有限单次必要对照；禁止其它付费模型、无限循环或自动增加成本。
-- [ ] 端到端真正通过再 commit + docs/issues/PC-ISSUE-002-*.md；否则 BLOCKED/FAIL 写清成因，不造 PASS。
+- [ ] 端到端真正通过再关闭 Issue；最新免费调用结构化阶段 HTTP 429，需在服务可用时继续受控复测。报告中保留 PARTIAL / BLOCKED，不造 PASS。
 
 ### P0-C 已修 Issue 的实际 UI 与互操作补验
 - [ ] PC-ISSUE-001：在隔离设备/数据库中由 Android SAF 导出真实 ICS，检查 DAILY/WEEKLY/MONTHLY、INTERVAL/COUNT/UNTIL、BYDAY/EXDATE/TZID/DST、导入往返是否保留重复语义；复杂 override/active range 应明确 fail closed，不得静默导出单次事件。外部客户端不支持时如实记录。
