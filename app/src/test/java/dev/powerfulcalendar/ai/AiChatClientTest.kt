@@ -1,5 +1,9 @@
 package dev.powerfulcalendar.ai
 
+import android.content.Context
+import androidx.test.core.app.ApplicationProvider
+import dev.powerfulcalendar.core.DraftForm
+import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
 import kotlinx.coroutines.runBlocking
@@ -11,13 +15,143 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.net.InetAddress
 import java.net.ServerSocket
+import java.time.ZoneId
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
+import java.util.UUID
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class AiChatClientTest {
+
+    @Test fun sharedAiContextProjectsOneFormalSnapshotWithoutWritingStore() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val store = PowerStore(context, "test-ai-projection-${UUID.randomUUID()}.db")
+        val zone = ZoneId.of("Asia/Shanghai")
+        try {
+            val start = System.currentTimeMillis() + 4 * 60 * 60_000L
+            val draft = store.newDraft(
+                DraftForm(
+                    kind = TemporalKind.ACTIVITY,
+                    title = "唯一正式上下文事件",
+                    startText = DraftForm.formatInstant(start, zone),
+                    endText = DraftForm.formatInstant(start + 45 * 60_000L, zone),
+                    notes = "本地备注不构成第二事件",
+                    location = "仅本地地点",
+                    zoneId = zone.id
+                )
+            )
+            assertTrue(store.commit(draft.draftId) is PowerStore.CommitOutcome.Committed)
+            val seq = draft.eventSeq
+            val beforeRows = store.all()
+            val beforeHistory = store.history(seq)
+            val beforeIntent = store.intentFor(seq)
+            val beforeIdentityCount = store.identityCount()
+            val beforeSequence = store.nextSequencePreview()
+
+            val seen = AtomicReference<String>()
+            val serverError = AtomicReference<Throwable?>()
+            val served = CountDownLatch(1)
+            ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { server ->
+                server.soTimeout = 10_000
+                Thread {
+                    try {
+                        server.accept().use { socket ->
+                            socket.soTimeout = 10_000
+                            val input = socket.getInputStream().buffered()
+                            fun readHeaderLine(): String {
+                                val line = java.io.ByteArrayOutputStream()
+                                while (true) {
+                                    val byte = input.read()
+                                    require(byte >= 0) { "Unexpected end of HTTP headers" }
+                                    if (byte == 10) break
+                                    if (byte != 13) line.write(byte)
+                                    require(line.size() <= 8192) { "Oversized HTTP header" }
+                                }
+                                return line.toString(Charsets.US_ASCII.name())
+                            }
+                            assertTrue(readHeaderLine().startsWith("POST /v1/chat/completions HTTP/1.1"))
+                            var contentLength = -1
+                            while (true) {
+                                val header = readHeaderLine()
+                                if (header.isEmpty()) break
+                                if (header.startsWith("Content-Length:", ignoreCase = true)) {
+                                    contentLength = header.substringAfter(':').trim().toInt()
+                                }
+                            }
+                            require(contentLength in 1..100_000)
+                            val bytes = ByteArray(contentLength)
+                            var offset = 0
+                            while (offset < bytes.size) {
+                                val count = input.read(bytes, offset, bytes.size - offset)
+                                require(count > 0) { "Unexpected end of request body" }
+                                offset += count
+                            }
+                            seen.set(String(bytes, Charsets.UTF_8))
+                            val response = """{"choices":[{"message":{"role":"assistant","content":"{\"events\":[]}"}}]}"""
+                                .toByteArray(Charsets.UTF_8)
+                            val headers = ("HTTP/1.1 200 OK\r\n" +
+                                "Content-Type: application/json; charset=utf-8\r\n" +
+                                "Content-Length: ${response.size}\r\nConnection: close\r\n\r\n")
+                                .toByteArray(Charsets.US_ASCII)
+                            socket.getOutputStream().apply {
+                                write(headers)
+                                write(response)
+                                flush()
+                            }
+                        }
+                    } catch (error: Throwable) {
+                        serverError.set(error)
+                    } finally {
+                        served.countDown()
+                    }
+                }.apply { isDaemon = true; start() }
+
+                val result = runBlocking {
+                    AiClient(
+                        AiSettings(
+                            endpoint = "http://127.0.0.1:${server.localPort}/v1",
+                            model = "local-stub",
+                            enabled = true,
+                            apiKey = "local-test-key",
+                            shareContext = true
+                        ),
+                        zone
+                    ).interpret("只读理解现有事件", beforeRows)
+                }
+
+                assertTrue("Server did not finish", served.await(10, TimeUnit.SECONDS))
+                assertNull("Server error: ${serverError.get()}", serverError.get())
+                assertTrue(result.proposals.isEmpty())
+
+                val request = JSONObject(seen.get())
+                val messages = request.getJSONArray("messages")
+                val userContent = messages.getJSONObject(messages.length() - 1).getString("content")
+                val sectionStart = userContent.indexOf("[", userContent.indexOf("已有的经允许共享的事件"))
+                val sectionEnd = userContent.indexOf("\n\n用户输入：", sectionStart)
+                assertTrue(userContent, sectionStart >= 0 && sectionEnd > sectionStart)
+                val projected = org.json.JSONArray(userContent.substring(sectionStart, sectionEnd).trim())
+                assertEquals(1, projected.length())
+                val projectedEvent = projected.getJSONObject(0)
+                assertEquals(seq, projectedEvent.getLong("eventSeq"))
+                assertEquals(1L, projectedEvent.getLong("revision"))
+                assertEquals(TemporalKind.ACTIVITY.name, projectedEvent.getString("kind"))
+                assertEquals("唯一正式上下文事件", projectedEvent.getString("title"))
+
+                assertEquals(beforeRows, store.all())
+                assertEquals(beforeHistory, store.history(seq))
+                assertEquals(beforeIntent, store.intentFor(seq))
+                assertEquals(beforeIdentityCount, store.identityCount())
+                assertEquals(beforeSequence, store.nextSequencePreview())
+                assertTrue(store.pendingDrafts().isEmpty())
+            }
+        } finally {
+            val database = store.databaseName
+            store.close()
+            context.deleteDatabase(database)
+        }
+    }
 
     @Test fun conversationUsesPlainTextAndDoesNotSupplyCalendarDataOrTools() {
         val seen = AtomicReference<String>()
