@@ -700,6 +700,39 @@ class PowerStoreTest {
     }
 
     @Test
+    fun activityCommitPreservesItsStartAndEndIntervalAcrossRestart() {
+        val startMillis = (System.currentTimeMillis() / 60_000L) * 60_000L + 3_600_000L
+        val endMillis = startMillis + 90 * 60_000L
+        val card = store.newDraft(DraftForm(
+            kind = TemporalKind.ACTIVITY,
+            title = "区间活动",
+            startText = DraftForm.formatInstant(startMillis, zone),
+            endText = DraftForm.formatInstant(endMillis, zone),
+            zoneId = zone.id
+        ))
+
+        assertTrue(commit(card) is PowerStore.CommitOutcome.Committed)
+        val activity = store.get(card.eventSeq)!!
+        assertEquals(TemporalKind.ACTIVITY, activity.kind)
+        assertEquals(startMillis, activity.startMillis)
+        assertEquals(endMillis, activity.endMillis)
+        assertEquals(endMillis, activity.spanEndMillis())
+        assertNull(activity.deadlineDate)
+        assertNull(activity.deadlineMillis)
+
+        val database = store.databaseName
+        store.close()
+        store = PowerStore(context, database)
+        val reopened = store.get(card.eventSeq)!!
+        assertEquals(TemporalKind.ACTIVITY, reopened.kind)
+        assertEquals(startMillis, reopened.startMillis)
+        assertEquals(endMillis, reopened.endMillis)
+        assertEquals(endMillis, reopened.spanEndMillis())
+        assertNull(reopened.deadlineDate)
+        assertNull(reopened.deadlineMillis)
+    }
+
+    @Test
     fun oneDateMemoRemainsOneLocalDateAcrossRestart() {
         val date = "2026-10-24"
         val card = store.newDraft(DraftForm(
