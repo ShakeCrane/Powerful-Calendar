@@ -362,6 +362,34 @@ class PowerStoreTest {
     }
 
     @Test
+    fun independentCreateDraftsKeepUniqueDraftIdsAcrossRestart() {
+        val first = store.newDraft(activityForm("第一项提案"))
+        val second = store.newDraft(activityForm("第二项提案"))
+
+        assertTrue(first.draftId != second.draftId)
+        assertTrue(first.eventSeq != second.eventSeq)
+        assertEquals(first.eventSeq, store.draft(first.draftId)!!.eventSeq)
+        assertEquals(second.eventSeq, store.draft(second.draftId)!!.eventSeq)
+        assertEquals(setOf(first.draftId, second.draftId),
+            store.pendingDrafts().map { it.draftId }.toSet())
+
+        val database = store.databaseName
+        store.close()
+        store = PowerStore(context, database)
+
+        val reopenedFirst = store.draft(first.draftId)!!
+        val reopenedSecond = store.draft(second.draftId)!!
+        assertEquals(first.draftId, reopenedFirst.draftId)
+        assertEquals(second.draftId, reopenedSecond.draftId)
+        assertEquals(first.eventSeq, reopenedFirst.eventSeq)
+        assertEquals(second.eventSeq, reopenedSecond.eventSeq)
+        assertTrue(reopenedFirst.draftId != reopenedSecond.draftId)
+        assertTrue(reopenedFirst.eventSeq != reopenedSecond.eventSeq)
+        assertEquals(setOf(first.draftId, second.draftId),
+            store.pendingDrafts().map { it.draftId }.toSet())
+    }
+
+    @Test
     fun oneEventReusesOneActionableCardAndItsQueueSlot() {
         val base = store.newDraft(activityForm())
         val committed = commit(base) as PowerStore.CommitOutcome.Committed
