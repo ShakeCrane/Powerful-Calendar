@@ -175,6 +175,42 @@ class PowerStoreTest {
     }
 
     @Test
+    fun undatedMemoKeepsDateAndTimeFieldsAbsentAcrossRestart() {
+        val card = store.newDraft(DraftForm(
+            kind = TemporalKind.MEMO, title = "未排期备忘", zoneId = zone.id
+        ))
+        assertTrue(commit(card) is PowerStore.CommitOutcome.Committed)
+
+        val memo = store.get(card.eventSeq)!!
+        assertEquals(TemporalKind.MEMO, memo.kind)
+        assertNull(memo.memoStartDate)
+        assertNull(memo.memoEndDate)
+        assertNull(memo.startMillis)
+        assertNull(memo.endMillis)
+        assertNull(memo.deadlineDate)
+        assertNull(memo.deadlineMillis)
+        assertNull(memo.anchorMillis())
+        assertNull(memo.spanEndMillis())
+        assertEquals("无日期 · 待办", TemporalText.summarize(memo))
+
+        val database = store.databaseName
+        store.close()
+        store = PowerStore(context, database)
+
+        val reopened = store.get(card.eventSeq)!!
+        assertEquals(TemporalKind.MEMO, reopened.kind)
+        assertNull(reopened.memoStartDate)
+        assertNull(reopened.memoEndDate)
+        assertNull(reopened.startMillis)
+        assertNull(reopened.endMillis)
+        assertNull(reopened.deadlineDate)
+        assertNull(reopened.deadlineMillis)
+        assertNull(reopened.anchorMillis())
+        assertNull(reopened.spanEndMillis())
+        assertEquals("无日期 · 待办", TemporalText.summarize(reopened))
+    }
+
+    @Test
     fun spanningMemoHasOneCompletionInstanceAndKeepsItAcrossRestart() {
         val card = store.newDraft(DraftForm(
             kind = TemporalKind.MEMO,
