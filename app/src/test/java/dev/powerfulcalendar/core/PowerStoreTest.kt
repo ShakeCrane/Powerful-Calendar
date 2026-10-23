@@ -703,6 +703,28 @@ class PowerStoreTest {
     }
 
     @Test
+    fun openingDeckAfterStoreReopenFocusesOldestQueueOrder() = kotlinx.coroutines.runBlocking {
+        val oldest = store.newDraft(activityForm("oldest"), actor = "user")
+        val newer = store.newDraft(activityForm("newer"), actor = "user")
+        assertTrue(oldest.queueOrder < newer.queueOrder)
+
+        val database = store.databaseName
+        store.close()
+        store = PowerStore(context, database)
+
+        val controller = DeckController(
+            StoreDeckPersistence(store),
+            { 1_000L },
+            kotlinx.coroutines.Dispatchers.Unconfined
+        )
+        controller.open()
+
+        assertEquals(listOf(oldest.draftId, newer.draftId), controller.state.cards.map { it.draftId })
+        assertEquals(oldest.draftId, controller.state.currentId)
+        assertEquals(oldest.queueOrder, controller.state.current!!.queueOrder)
+    }
+
+    @Test
     fun aiProposalAppendsAtQueueTailAndRefreshPreservesCurrentFocus() =
         kotlinx.coroutines.runBlocking {
             val first = store.newDraft(activityForm("first"), actor = "user")
