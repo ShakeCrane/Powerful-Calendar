@@ -4,7 +4,7 @@ Date: 2026-10-23
 
 Verdict: **HOLD**
 
-Code/test baseline for the latest candidate sign-offs: `3f9426606dfa26b40f63ca11aceecc1c1e93bd34`
+Code/test baseline for the latest candidate sign-offs: `8270a8a47d55ad3e91cbdadd4b2caf1d7daefb20`
 
 APK used by the latest targeted tests: `app/build/outputs/apk/debug/app-debug.apk`, SHA-256 `EA0DE99328BF66FEA302AF5A55C82B3BD7EF3F7276922979AABBF7ABEC581A53`
 
@@ -22,24 +22,24 @@ The historical aggregate is 209 items: 126 P0, 82 P1, and one item whose priorit
 
 Audit evidence: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-source-audit.json` (SHA-256 `600A1D825E9349BCD183053CB2DB59F62A02A50BB862B554238D020FDDFC4E98`). Detailed issue: [`PC-QA-GATE-001`](issues/PC-QA-GATE-001-209-case-ledger.md).
 
-The **RECONSTRUCTED** candidate ledger contains 208 specification-derived rows plus one unresolved historical slot. Candidate priorities follow risk categories and match the aggregate counts, but are proposals for review; every reconstructed row remains `UNMAPPED` to historical IDs. Forty-eight backup, retirement, migration, recurrence, reminder, temporal model, draft, and core data-semantics rows now have individually mapped targeted test evidence. Structural validation confirms 209 unique rows and the 126/82/1 partition; it does not test product behavior or prove historical equivalence. Latest validation: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-028.json`, SHA-256 `1421ED2DF17153F6FC50A7F02D4474C5310B27AE9092385A74C46E847D771B99`; ledger SHA-256 `27CBF4CAC77A0EDA1C8ED26C183040D06FB1A1418FC10E0BA7DD3BFD6C23265C`.
+The **RECONSTRUCTED** candidate ledger contains 208 specification-derived rows plus one unresolved historical slot. Candidate priorities follow risk categories and match the aggregate counts, but are proposals for review; every reconstructed row remains `UNMAPPED` to historical IDs. Fifty backup, retirement, migration, recurrence, reminder, temporal model, draft, and core data-semantics rows now have individually mapped targeted test evidence. Structural validation confirms 209 unique rows and the 126/82/1 partition; it does not test product behavior or prove historical equivalence. Latest validation: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-029.json`, SHA-256 `318ADA3BAB95430120553ACB6A14988E6A879E042297A88809DB7736CC61E5AD`; ledger SHA-256 `1E481D51E0089F26ECDCA6263ACB6C583C7411BB8465FC04420629614E22F528`.
 
 | Candidate bucket | PASS | FAIL | BLOCKED | NOT TESTED | SPEC UNRESOLVED |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| P0 (proposed) | 54 | 0 | 1 | 67 | 4 |
+| P0 (proposed) | 56 | 0 | 1 | 65 | 4 |
 | P1 (proposed) | 19 | 0 | 8 | 54 | 1 |
 | Historical unclassified slot | 0 | 0 | 0 | 0 | 1 |
-| **Total candidate rows** | **73** | **0** | **9** | **121** | **6** |
+| **Total candidate rows** | **75** | **0** | **9** | **119** | **6** |
 
 ## Current grouped verification
 
-- Latest full working-tree Gradle command: `:app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --offline --rerun-tasks --console=plain` — **BUILD SUCCESSFUL**, 391 tests, 0 failures/errors/skips across 55 JUnit suites; lint 0 errors and 55 warnings. This includes protected, untracked `DraftDeckFeedbackTest.kt` (390 tracked + 1 protected untracked); that file was not modified or staged. The tested code/test changes are committed as `3f9426606dfa26b40f63ca11aceecc1c1e93bd34`.
-- Log: `.local/android-test/reports/freeze-20261023/pc-issue-028-undated-memo-full-gradle-20261023.log`, SHA-256 `754C84377941BA778AD5AF2728C0E4C7CCD10B4275586409744803EB1A22DD45`.
+- Latest full working-tree Gradle command: `:app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --offline --rerun-tasks --console=plain` — **BUILD SUCCESSFUL**, 392 tests, 0 failures/errors/skips across 55 JUnit suites; lint 0 errors and 55 warnings. This includes protected, untracked `DraftDeckFeedbackTest.kt` (391 tracked + 1 protected untracked); that file was not modified or staged. The tested code/test changes are committed as `8270a8a47d55ad3e91cbdadd4b2caf1d7daefb20`.
+- Log: `.local/android-test/reports/freeze-20261023/pc-issue-029-retired-identity-full-gradle-20261023.log`, SHA-256 `2FB780ECF6F7F4D2D81D9004FAE8437856514D1BCA31F7447948BADC3EB60A52`.
 - These results are software/group-level evidence. They do not sign off the absent 209 case IDs.
 
 ## Open acceptance gates
 
-- `PC-QA-GATE-001`: execute the 121 `NOT TESTED` candidate rows where feasible, resolve the 9 blocked and 5 reconstructed spec-unresolved rows where conditions allow, review proposed priorities, and keep the separate historical unclassified slot unresolved pending its source. The reconstructed 209-row candidate ledger is not the original checklist and signs off 0 original IDs.
+- `PC-QA-GATE-001`: execute the 119 `NOT TESTED` candidate rows where feasible, resolve the 9 blocked and 5 reconstructed spec-unresolved rows where conditions allow, review proposed priorities, and keep the separate historical unclassified slot unresolved pending its source. The reconstructed 209-row candidate ledger is not the original checklist and signs off 0 original IDs.
 - `PC-QA-GATE-002`: physical-device/OEM and additional Android API coverage is unavailable in this run.
 - `PC-QA-GATE-003` / `PC-ISSUE-002`: the free-model structured stage returned HTTP 429; an authorized end-to-end proposal/approval/recovery path is not yet evidenced.
 - `PC-ISSUE-001`: DST-bearing Android SAF export and independent parsing pass; external calendar import and physical-device acceptance remain open.
@@ -68,6 +68,7 @@ The **RECONSTRUCTED** candidate ledger contains 208 specification-derived rows p
 - `PC-ISSUE-026`: `REC-P0-016` passes a PowerStore/Robolectric persistence test: source metadata scopes import deduplication but distinct source/external-ID pairs retain distinct internal event identities across database reopen. See `docs/issues/PC-ISSUE-026-import-source-metadata-identity.md`.
 - `PC-ISSUE-027`: `REC-P0-028` passes a PowerStore/Robolectric regression: a rejected structured import leaves `eventSeq` allocation unchanged; repair and retry with the same source/external ID imports as sequence 1 and persists across database reopen. Test only; no production or UI change. See `docs/issues/PC-ISSUE-027-rejected-import-does-not-consume-sequence.md`.
 - `PC-ISSUE-028`: `REC-P0-006` passes pure-model and PowerStore/Robolectric persistence checks: an undated Memo keeps date, instant, deadline, anchor, and span-end values null before and after SQLite reopen. Test only; no production or UI change. See `docs/issues/PC-ISSUE-028-undated-memo-no-synthetic-time.md`.
+- `PC-ISSUE-029`: `REC-P0-029/030` pass a PowerStore/Robolectric regression: event deletion persists a tombstone and retires its sequence across SQLite reopen; a later event receives the next sequence. Test only; no production or UI change. See `docs/issues/PC-ISSUE-029-retired-identity-not-reused-after-restart.md`.
 - `PC-ISSUE-020`: stabilized the `REC-P0-012` test fixture after a full regression exposed concurrent SQLite polling. The delivery handler now has deterministic synchronous test coverage; Android `onReceive`/`goAsync` framework lifecycle and actual AlarmManager delivery remain untested. See `docs/issues/PC-ISSUE-020-reminder-receiver-test-race.md`.
 - `PC-ISSUE-GREEDY-LABEL-FOLDING`: implementation and API 35 visual regression pass; physical-device/OEM and TalkBack review remain open.
 - Stable release signing material remains user-owned and is not present in the repository; no stable Release install/upgrade claim is made.

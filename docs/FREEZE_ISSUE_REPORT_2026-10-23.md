@@ -6,7 +6,7 @@
 测试 APK：`app/build/outputs/apk/debug/app-debug.apk`
 Issue 004 修复代码基线：`16e00d55435c5029e07784ec5d945dfd7fb37ac5`
 最新测试 APK SHA-256：`EA0DE99328BF66FEA302AF5A55C82B3BD7EF3F7276922979AABBF7ABEC581A53`
-最新核心回归代码/测试基线：`3f9426606dfa26b40f63ca11aceecc1c1e93bd34`；Debug APK SHA-256：`EA0DE99328BF66FEA302AF5A55C82B3BD7EF3F7276922979AABBF7ABEC581A53`
+最新核心回归代码/测试基线：`8270a8a47d55ad3e91cbdadd4b2caf1d7daefb20`；Debug APK SHA-256：`EA0DE99328BF66FEA302AF5A55C82B3BD7EF3F7276922979AABBF7ABEC581A53`
 设备：Issue 004 使用隔离的 Android 15 / API 35 `emulator-5556`；原 `emulator-5554` 保持运行且未操作。无物理真机。
 此前冻结工作记录了时间轴验收；本轮继续核心数据语义验收，只增加核心回归测试和文档，没有修改 UI、业务数据或 `design/`。按用户最新确认，变浅的横向边缘可接受，本轮不开展 UI 工作。
 
@@ -120,8 +120,8 @@ Issue 004 修复代码基线：`16e00d55435c5029e07784ec5d945dfd7fb37ac5`
 - 当前跟踪的仓库文件中只有对“209 项”的描述，**没有找到 209 个完整编号用例及 PASS/FAIL/证据 ID 一一映射**。
 - 因此 **209 项未逐案签核**；既不能说全部未实际测试，也不能根据 325+37 单元测试声称全部通过。
 - 本轮只读审计仍未找到原始逐案清单；已建立 208 条 RECONSTRUCTED 候选项及 1 条未定义历史槽位，见 `docs/CORE_FREEZE_ACCEPTANCE_LEDGER.csv`。候选按风险给出 P0=126/P1=82 建议分配，但 0 个原始 ID 有映射，优先级仍待审核。
-- 当前候选逐案状态：P0 PASS 54 / BLOCKED 1 / NOT TESTED 67 / SPEC UNRESOLVED 4；P1 PASS 19 / BLOCKED 8 / NOT TESTED 54 / SPEC UNRESOLVED 1；历史未分类槽位 SPEC UNRESOLVED 1。共 73 PASS、121 NOT TESTED；48 条重建候选有独立定点证据。最新结构验证 JSON `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-028.json`，JSON SHA-256 `1421ED2DF17153F6FC50A7F02D4474C5310B27AE9092385A74C46E847D771B99`，CSV SHA-256 `27CBF4CAC77A0EDA1C8ED26C183040D06FB1A1418FC10E0BA7DD3BFD6C23265C`。详细证据、source audit、验证边界与下一步见独立报告 `docs/issues/PC-QA-GATE-001-209-case-ledger.md`。
-- 最新完整 Gradle 工作树结果 391/391 通过（390 个已跟踪测试 + 1 个受保护未跟踪测试）；Lint 0 errors / 55 warnings。日志 `.local/android-test/reports/freeze-20261023/pc-issue-028-undated-memo-full-gradle-20261023.log`，SHA-256 `754C84377941BA778AD5AF2728C0E4C7CCD10B4275586409744803EB1A22DD45`。结果没有映射到缺失的原始 209 个 ID。
+- 当前候选逐案状态：P0 PASS 56 / BLOCKED 1 / NOT TESTED 65 / SPEC UNRESOLVED 4；P1 PASS 19 / BLOCKED 8 / NOT TESTED 54 / SPEC UNRESOLVED 1；历史未分类槽位 SPEC UNRESOLVED 1。共 75 PASS、119 NOT TESTED；50 条重建候选有独立定点证据。最新结构验证 JSON `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-029.json`，JSON SHA-256 `318ADA3BAB95430120553ACB6A14988E6A879E042297A88809DB7736CC61E5AD`，CSV SHA-256 `1E481D51E0089F26ECDCA6263ACB6C583C7411BB8465FC04420629614E22F528`。详细证据、source audit、验证边界与下一步见独立报告 `docs/issues/PC-QA-GATE-001-209-case-ledger.md`。
+- 最新完整 Gradle 工作树结果 392/392 通过（391 个已跟踪测试 + 1 个受保护未跟踪测试）；Lint 0 errors / 55 warnings。日志 `.local/android-test/reports/freeze-20261023/pc-issue-029-retired-identity-full-gradle-20261023.log`，SHA-256 `2FB780ECF6F7F4D2D81D9004FAE8437856514D1BCA31F7447948BADC3EB60A52`。结果没有映射到缺失的原始 209 个 ID。
 - `PC-ISSUE-019` 的 `REC-P0-004` 日期型 Deadline 候选、`PC-ISSUE-020` 提醒测试夹具稳定化、`PC-ISSUE-021` 的 `REC-P0-005` 不完整 Activity 草稿恢复分别保留独立报告和边界，不替代设备及历史 ID 验收。
 - `PC-ISSUE-022` 的 `REC-P0-007` 一日 Memo 本地日期语义通过 PowerStore/Robolectric 跨 SQLite 重启回归；独立报告 `docs/issues/PC-ISSUE-022-one-date-memo-local-date.md` 记录精确断言与边界。
 - `PC-ISSUE-023` 的 `REC-P0-008` 日期范围 Memo 两端本地日期及时间字段隔离通过 PowerStore/Robolectric 跨 SQLite 重启回归；独立报告 `docs/issues/PC-ISSUE-023-date-span-memo-boundaries.md` 记录精确断言与边界。
@@ -130,6 +130,7 @@ Issue 004 修复代码基线：`16e00d55435c5029e07784ec5d945dfd7fb37ac5`
 - `PC-ISSUE-026` 的 `REC-P0-016` 导入来源元数据与事件身份分离通过 PowerStore/Robolectric 跨 SQLite 重启回归；独立报告 `docs/issues/PC-ISSUE-026-import-source-metadata-identity.md` 记录精确断言与边界。
 - `PC-ISSUE-027` 的 `REC-P0-028` 拒绝结构化导入不消耗 eventSeq，通过同一 source/externalId 修复重试及 SQLite 重开回归；仅新增测试，无生产/UI 修改。定向 1/1、完整 Gradle 390/390 PASS，Lint 0 errors/55 warnings。独立报告 `docs/issues/PC-ISSUE-027-rejected-import-does-not-consume-sequence.md`。
 - `PC-ISSUE-028` 的 `REC-P0-006` 无日期 Memo 持久化语义通过 pure-model 与 PowerStore/Robolectric SQLite 重开回归，所有日期、时间与锚点字段均为空；仅新增测试，无生产/UI 修改。提交后定向 2/2、完整 Gradle 391/391 PASS，Lint 0 errors/55 warnings。独立报告 `docs/issues/PC-ISSUE-028-undated-memo-no-synthetic-time.md`。
+- `PC-ISSUE-029` 的 `REC-P0-029/030` 删除 tombstone 与 eventSeq 退休、不复用语义通过 PowerStore/Robolectric SQLite 重开回归；仅新增测试，无生产/UI 修改。提交后定向 2/2、完整 Gradle 392/392 PASS，Lint 0 errors/55 warnings。独立报告 `docs/issues/PC-ISSUE-029-retired-identity-not-reused-after-restart.md`。
 - 解除：执行未测候选项、处理可解阻塞并审核拟定优先级；不可声称与缺失原始表完成历史逐项签核。
 
 ### PC-QA-GATE-002 · P0 / BLOCKED · OEM 真机、其他 Android API 等级与系统权限组合
