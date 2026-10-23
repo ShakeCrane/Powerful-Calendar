@@ -687,6 +687,49 @@ class PowerStoreTest {
     }
 
     @Test
+    fun rejectedStructuredImportDoesNotConsumeSequenceBeforeValidRetry() {
+        val batch = store.beginMigration("calendar-import")
+        val startMillis = (System.currentTimeMillis() / 60_000L) * 60_000L + 3_600_000L
+        val incomplete = TemporalRecord(
+            eventSeq = 0L,
+            revision = 0L,
+            kind = TemporalKind.ACTIVITY,
+            title = "待补结束时刻",
+            startMillis = startMillis
+        )
+
+        val rejected = store.importStructured(
+            incomplete, "activity-1", batch, source = "calendar-a", alarmNeedsHandoff = false
+        )
+        assertTrue(rejected is PowerStore.ImportOutcome.Rejected)
+        assertEquals(0L, store.identityCount())
+        assertEquals(1L, store.nextSequencePreview())
+        assertNull(store.get(1L))
+
+        val valid = incomplete.copy(endMillis = startMillis + 45 * 60_000L)
+        val retried = store.importStructured(
+            valid, "activity-1", batch, source = "calendar-a", alarmNeedsHandoff = false
+        )
+        assertTrue(retried is PowerStore.ImportOutcome.Imported)
+        val eventSeq = (retried as PowerStore.ImportOutcome.Imported).eventSeq
+        assertEquals(1L, eventSeq)
+        assertEquals(1L, store.identityCount())
+        assertEquals(2L, store.nextSequencePreview())
+        assertEquals(1, store.history(eventSeq).size)
+
+        val database = store.databaseName
+        store.close()
+        store = PowerStore(context, database)
+        val reopened = store.get(eventSeq)!!
+        assertEquals(TemporalKind.ACTIVITY, reopened.kind)
+        assertEquals(startMillis, reopened.startMillis)
+        assertEquals(valid.endMillis, reopened.endMillis)
+        assertEquals(1L, store.identityCount())
+        assertEquals(2L, store.nextSequencePreview())
+        assertEquals(1, store.history(eventSeq).size)
+    }
+
+    @Test
     fun schedulingIntentFollowsTheCommittedRevision() {
         val card = store.newDraft(alarmForm(minutesAhead = 90))
         commit(card)
