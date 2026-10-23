@@ -252,6 +252,41 @@ class PowerStoreTest {
     }
 
     @Test
+    fun unboundedRecurringMemoStoresOneSeriesAndProjectsOnlyTheRequestedWindow() {
+        val card = store.newDraft(DraftForm(
+            kind = TemporalKind.MEMO,
+            title = "每日待办",
+            startText = "2024-01-01",
+            zoneId = zone.id,
+            recurrence = Recurrence(freq = RecurrenceFreq.DAILY)
+        ))
+        assertTrue(commit(card) is PowerStore.CommitOutcome.Committed)
+        val memo = store.get(card.eventSeq)!!
+        val from = LocalDate.parse("2026-10-20").atStartOfDay(zone).toInstant().toEpochMilli()
+        val until = LocalDate.parse("2026-10-23").atStartOfDay(zone).toInstant().toEpochMilli()
+
+        assertEquals(TemporalKind.MEMO, memo.kind)
+        assertNull(memo.endMillis)
+        assertNull(memo.memoEndDate)
+        assertEquals(RecurrenceFreq.DAILY, memo.recurrence.freq)
+        assertEquals(1L, store.identityCount())
+        assertEquals(1, store.all().size)
+        assertEquals(listOf("2026-10-20T00:00", "2026-10-21T00:00", "2026-10-22T00:00"),
+            RecurrenceEngine.occurrences(memo, from, until, limit = 10).map { it.key })
+        assertEquals("projection must not create event rows", 1L, store.identityCount())
+        assertEquals(2L, store.nextSequencePreview())
+
+        val database = store.databaseName
+        store.close()
+        store = PowerStore(context, database)
+        val reopened = store.get(card.eventSeq)!!
+        assertEquals(1L, store.identityCount())
+        assertEquals(1, store.all().size)
+        assertEquals(RecurrenceFreq.DAILY, reopened.recurrence.freq)
+        assertEquals(2L, store.nextSequencePreview())
+    }
+
+    @Test
     fun changingReminderPreservesOptionalCompletionTracking() {
         listOf(false, true).forEachIndexed { index, trackingEnabled ->
             val card = store.newDraft(activityForm("提醒设置 $index").copy(
