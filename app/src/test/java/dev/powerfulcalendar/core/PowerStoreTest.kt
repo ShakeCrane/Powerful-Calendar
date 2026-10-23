@@ -1891,6 +1891,49 @@ class PowerStoreTest {
         assertTrue(late is PowerStore.CommitOutcome.NotAuthorized)
     }
 
+    @Test
+    fun cancelledAiBatchRunnerReleasesLockAndFencesRemainingScopeAcrossRestart() =
+        kotlinx.coroutines.runBlocking {
+            val first = store.newDraft(activityForm("已完成项"))
+            val second = store.newDraft(activityForm("取消后保留项"))
+            val session = store.beginAiBatch(
+                linkedMapOf(
+                    first.draftId to first.draftVersion,
+                    second.draftId to second.draftVersion
+                ),
+                setOf(DraftOperation.CREATE)
+            )
+
+            val cancellation = runCatching {
+                dev.powerfulcalendar.ai.AiBatchRunner(store).run(
+                    session,
+                    dev.powerfulcalendar.ai.AiBatchRunner.Mode.PUBLISH
+                ) { done, _ ->
+                    if (done == 1) throw kotlinx.coroutines.CancellationException("test cancellation")
+                }
+            }.exceptionOrNull()
+
+            assertTrue(cancellation is kotlinx.coroutines.CancellationException)
+            assertFalse(store.isLocked())
+            assertEquals(PowerStore.AiState.CANCELLED, store.currentAiSession()!!.state)
+            assertEquals(1, store.all().size)
+            assertEquals(1, store.pendingDrafts().size)
+
+            val database = store.databaseName
+            store.close()
+            store = PowerStore(context, database)
+
+            assertFalse(store.isLocked())
+            assertEquals(PowerStore.AiState.CANCELLED, store.currentAiSession()!!.state)
+            val remaining = store.pendingDrafts().single()
+            assertEquals(second.draftId, remaining.draftId)
+            assertTrue(
+                store.commit(remaining.draftId, actor = "ai", aiSession = session)
+                    is PowerStore.CommitOutcome.NotAuthorized
+            )
+            assertNull(store.get(remaining.eventSeq))
+        }
+
     // ---------------------------------------------------------------- imports
 
     @Test
