@@ -27,14 +27,14 @@ Audit evidence: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-sour
 
 `docs/CORE_FREEZE_ACCEPTANCE_LEDGER.csv` contains 208 reconstructed rows and one unresolved historical slot. Proposed priority allocation is P0=126 and P1=82, grouped by risk/source area; this preserves the known aggregate for review but does not establish which historical case each row represents. All reconstructed rows are explicitly `UNMAPPED`.
 
-Structural validation: 209 unique IDs; all reconstructed rows contain source, environment, action, expected and actual fields; PASS/BLOCKED rows include evidence references. The current structural-only validation is `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-050.json` (SHA-256 `990AFBE9036276ADFA60F183FF8928D410CB7A5BF12B1D5D3E5C39F906C110A8`); ledger SHA-256 `082A55CE541EDF3CE39D3B35AF312689179AF89046310BD8FECE565194665396`. It confirms 95/0/9/98/7 status counts and `REC-P0-069` PASS. Structural validation does not test the app or prove the historical mapping; `product_behavior_tested` is false.
+Structural validation: 209 unique IDs; all reconstructed rows contain source, environment, action, expected and actual fields; PASS/BLOCKED rows include evidence references. The current structural-only validation is `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-051.json` (SHA-256 `F6EE4280BF6D2D9FF7901E58615227841B509DAFCB5790B6C2C12E58A3004D6D`); ledger SHA-256 `A2841A6FF90DCA39AF8F43390E4E1E0F4B72CB14AD4B5BC80ECAC181E28E251F`. It confirms 97/0/9/96/7 status counts, `REC-P0-025/027` PASS, and `REC-P0-026` NOT TESTED. Structural validation does not test the app or prove the historical mapping; `product_behavior_tested` is false.
 
 | Candidate bucket | PASS | FAIL | BLOCKED | NOT TESTED | SPEC UNRESOLVED |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| P0 (proposed) | 76 | 0 | 1 | 44 | 5 |
+| P0 (proposed) | 78 | 0 | 1 | 42 | 5 |
 | P1 (proposed) | 19 | 0 | 8 | 54 | 1 |
 | Historical unclassified slot | 0 | 0 | 0 | 0 | 1 |
-| **Total candidate rows** | **95** | **0** | **9** | **98** | **7** |
+| **Total candidate rows** | **97** | **0** | **9** | **96** | **7** |
 
 ### Case-specific backup verification (2026-10-23)
 
@@ -451,6 +451,12 @@ Targeted pre-commit and post-commit runs each passed 1/1; full Gradle passed 407
 
 Targeted post-fix regression passed **1/1** (log SHA-256 `AA47B7E69FFD12D50B2EA20E01414CFBD8F0C9BB7C66AB44884B583FDEF3D269`; JUnit SHA-256 `1CBCF7EE4E9A176AB377E7BCC5B97063D2A2103266C370AE7D0077D7F632BF2C`). Full Gradle passed **408/408** tests across 55 suites; lint reported 0 errors / 55 warnings. Full log SHA-256 `D74F6F0C70E4E9C7A1CC7FD3AEE8453CF5E79883601CDE342BFF6E94A57354BD`; full `ReminderCompletionIsolationTest` XML SHA-256 `55D5FE8AF988FCF3497DAD78B774A659472AA18DC97B577A2EF033D924588EB5`; Debug APK SHA-256 `460DE2CEE71D00996AFED280AC751B16337CDC129D2273A4A8E61C09C986A13C`. Source/test commit: `f45710a6759fc5532f3982721345c06a912afa3e`. Android AlarmManager delivery and physical-device notification behavior remain untested.
 
+### Case-specific first-draft sequence allocation verification (2026-10-23)
+
+`REC-P0-025` and `REC-P0-027` map to `PowerStoreTest.firstDraftAllocatesASequenceEvenIfItIsDiscarded`. The existing Robolectric API 34 test asserts that the first draft receives `eventSeq=1` at creation; after it is discarded, the next draft receives `eventSeq=2`, `nextSequencePreview()` is 3, and `identityCount()` is 2. `REC-P0-026` remains NOT TESTED because no failed allocation transaction is injected. The candidates remain `UNMAPPED` to the original checklist. See `docs/issues/PC-ISSUE-051-first-draft-sequence-allocation.md`.
+
+The focused test passed **1/1** (log SHA-256 `528E452DCDCB9904D6D11ABE77BAAFE1FF009E57558255934CF616ADC57BB850`; JUnit XML SHA-256 `541ABB1523C836DCC290C3EA8A876E8DCEAA8BAB8BFCF3A32D37A30296634255`). The exact method is also present in the latest 408/408 full Gradle run's 60-test `PowerStoreTest` XML, SHA-256 `2EE44003E98165F0ADBAC654EB90DE040CBCFB1EA1C7E92AA08581EEA39A2F1A`. No source/test modification was required.
+
 ## Historical sign-off accounting
 
 | Bucket from historical aggregate | Total | Matched to original ID | Result |
@@ -463,7 +469,7 @@ The latest full working-tree Gradle run reports 408 tests PASS, 0 failures/error
 
 ## Required next work
 
-1. Run the 98 `NOT TESTED` rows under the environment each row requires and update only with case-specific evidence.
+1. Run the 96 `NOT TESTED` rows under the environment each row requires and update only with case-specific evidence.
 2. Resolve the one blocked P0, eight blocked P1, and six reconstructed spec-unresolved rows where feasible; retain external/physical/device dependencies as HOLD. The separate historical unclassified slot remains unresolved pending its source.
 3. Review the source-based proposed priority allocation. New IDs must never masquerade as historical IDs.
 4. Keep the one historical unclassified item visibly unresolved until its source or an explicit review decision is available.
@@ -471,4 +477,4 @@ The latest full working-tree Gradle run reports 408 tests PASS, 0 failures/error
 
 ## Scope and outcome
 
-Core code and tests have evidence for 70 reconstructed rows across backup, tombstone, migration, recurrence, reminder, temporal model, draft, and core data-semantics contracts; 98 remain NOT TESTED, six reconstructed candidates remain SPEC UNRESOLVED, proposed priorities still need review, and historical mapping is still absent. `REC-P0-054` is unresolved because the product baseline and SQLite v4 specify conflicting same-event draft cardinality. `REC-P0-058` passes the current-baseline semantic no-op Save test; `REC-P0-059` passes the current-baseline recurrence start-bound/anchor projection test; `REC-P0-069` passes the delayed snooze receiver regression with real Android delivery still untested. PC-QA-GATE-001 remains **PARTIAL / HOLD**, and overall core verdict remains **HOLD**.
+Core code and tests have evidence for 72 reconstructed rows across backup, tombstone, migration, recurrence, reminder, temporal model, draft, and core data-semantics contracts; 96 remain NOT TESTED, six reconstructed candidates remain SPEC UNRESOLVED, proposed priorities still need review, and historical mapping is still absent. `REC-P0-054` is unresolved because the product baseline and SQLite v4 specify conflicting same-event draft cardinality. `REC-P0-058` passes the current-baseline semantic no-op Save test; `REC-P0-059` passes the current-baseline recurrence start-bound/anchor projection test; `REC-P0-069` passes the delayed snooze receiver regression with real Android delivery still untested; `REC-P0-025/027` pass the first-draft identity allocation regression while failed allocation rollback (`REC-P0-026`) remains NOT TESTED. PC-QA-GATE-001 remains **PARTIAL / HOLD**, and overall core verdict remains **HOLD**.
