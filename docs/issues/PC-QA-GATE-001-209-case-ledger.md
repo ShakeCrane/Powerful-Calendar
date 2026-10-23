@@ -27,14 +27,14 @@ Audit evidence: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-sour
 
 `docs/CORE_FREEZE_ACCEPTANCE_LEDGER.csv` contains 208 reconstructed rows and one unresolved historical slot. Proposed priority allocation is P0=126 and P1=82, grouped by risk/source area; this preserves the known aggregate for review but does not establish which historical case each row represents. All reconstructed rows are explicitly `UNMAPPED`.
 
-Structural validation: 209 unique IDs; all reconstructed rows contain source, environment, action, expected and actual fields; PASS/BLOCKED rows include evidence references. Latest validation JSON: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-016.json` (ledger SHA-256 `D9B57C7C2575C6A0C96E735057EDD7EED5AF7AA5F28FBC07107BF033FE3B5852`). Structural validation does not test the app or prove the historical mapping.
+Structural validation: 209 unique IDs; all reconstructed rows contain source, environment, action, expected and actual fields; PASS/BLOCKED rows include evidence references. Latest validation JSON: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-017.json` (ledger SHA-256 `F60E0F065620CACA09D396E284AA41B124E6D47EDF10F20BEF2F2564B5BD3F3A`). Structural validation does not test the app or prove the historical mapping.
 
 | Candidate bucket | PASS | FAIL | BLOCKED | NOT TESTED | SPEC UNRESOLVED |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| P0 (proposed) | 43 | 0 | 1 | 78 | 4 |
+| P0 (proposed) | 44 | 0 | 1 | 77 | 4 |
 | P1 (proposed) | 19 | 0 | 8 | 54 | 1 |
 | Historical unclassified slot | 0 | 0 | 0 | 0 | 1 |
-| **Total candidate rows** | **62** | **0** | **9** | **132** | **6** |
+| **Total candidate rows** | **63** | **0** | **9** | **131** | **6** |
 
 ### Case-specific backup verification (2026-10-23)
 
@@ -192,6 +192,16 @@ Post-commit targeted result: **2/2 PASS**, log `.local/android-test/reports/free
 
 Post-commit targeted result: **35/35 PASS**, log `.local/android-test/reports/freeze-20261023/pc-issue-016-alarm-point-targeted-final-20261023.log` (SHA-256 `7A562FD523F64B1E68F4081124567CFD83566D460F7E158A923C663CC0998ADA`); JUnit XML SHA-256 `F16B3B3C65CF844F638DBED22A2E166EC565DF184306215ED8C831D507489740`. Full regression: **383/383 PASS**, 55 suites, lint 0 errors / 55 warnings; full log SHA-256 `BF1E98E0B93766EA3C6949A7FD6C9294D29E3ECF418F199464D1C308E7109091`. The full run included the same test source later committed as `48c4bf5`; 382 tracked tests plus one protected untracked test. See `docs/issues/PC-ISSUE-016-alarm-point-semantics.md`.
 
+## Case-specific Activity Trigger identity (2026-10-23)
+
+`REC-P0-015` is individually signed on code/test commit `9ed3b2c5cdaef406f79f528e590bccd675e062af`; Debug APK SHA-256 is `63F8DCB69D1028B8D7061B374162F59770B86FA2FA4BEB6FDA132D4393AA8B6C`. The test uses isolated SQLite under Robolectric API 34; no UI or device was used.
+
+| Candidate row | Test | Result |
+| --- | --- | --- |
+| `REC-P0-015` | `ReminderPersistenceTest.activityCanChooseExactAlarmOrMessageIndependentlyOfKind` | PASS: the exact trigger retains the Activity `eventSeq`, the event remains `ACTIVITY`, and no second event identity is created. |
+
+Post-commit targeted result: **2/2 PASS**, log `.local/android-test/reports/freeze-20261023/pc-issue-017-trigger-kind-targeted-final-20261023.log` (SHA-256 `6F9B2230A8106E07E9953FB5C9A2267D87CDB94A6FA17904C79E97DEB8B7930B`); JUnit XML SHA-256 `3373800E3B61639B83B537EE132BC68A6C5DF66511D204E5C2D546B0167A0DBB`. Full regression: **383/383 PASS**, 55 suites, lint 0 errors / 55 warnings; full log SHA-256 `56837893A25A52E940516836DBEAD2FC3E96FAFDA4217DA624C74E32E6A5518E`. The full run used the test source later committed as `9ed3b2c`. See `docs/issues/PC-ISSUE-017-trigger-event-kind-separation.md`.
+
 ## Historical sign-off accounting
 
 | Bucket from historical aggregate | Total | Matched to original ID | Result |
@@ -200,11 +210,11 @@ Post-commit targeted result: **35/35 PASS**, log `.local/android-test/reports/fr
 | P1 | 82 | 0 | Unassessed by original ID |
 | Priority unresolved | 1 | 0 | Remains unclassified and unassessed |
 
-The latest full working-tree Gradle run reports 383 tests PASS, 0 failures/errors/skips across 55 JUnit suites, successful skin-boundary verification and Debug assembly, and lint 0 errors / 55 warnings. It includes one test from protected, untracked `app/src/test/java/dev/powerfulcalendar/ui/v2/DraftDeckFeedbackTest.kt` (382 tracked tests + 1 untracked); the file was not modified or staged. The added test source is committed as `48c4bf5e63f6cfdbe471a7c84720cf754965d975`. Log: `.local/android-test/reports/freeze-20261023/pc-issue-016-alarm-point-full-gradle-20261023.log` (SHA-256 `BF1E98E0B93766EA3C6949A7FD6C9294D29E3ECF418F199464D1C308E7109091`). This is not a 383-to-209 mapping.
+The latest full working-tree Gradle run reports 383 tests PASS, 0 failures/errors/skips across 55 JUnit suites, successful skin-boundary verification and Debug assembly, and lint 0 errors / 55 warnings. It includes one test from protected, untracked `app/src/test/java/dev/powerfulcalendar/ui/v2/DraftDeckFeedbackTest.kt` (382 tracked tests + 1 untracked); the file was not modified or staged. The test assertions are committed as `9ed3b2c5cdaef406f79f528e590bccd675e062af`. Log: `.local/android-test/reports/freeze-20261023/pc-issue-017-trigger-kind-full-gradle-20261023.log` (SHA-256 `56837893A25A52E940516836DBEAD2FC3E96FAFDA4217DA624C74E32E6A5518E`). This is not a 383-to-209 mapping.
 
 ## Required next work
 
-1. Run the 132 `NOT TESTED` rows under the environment each row requires and update only with case-specific evidence.
+1. Run the 131 `NOT TESTED` rows under the environment each row requires and update only with case-specific evidence.
 2. Resolve the one blocked P0, eight blocked P1, and five reconstructed spec-unresolved rows where feasible; retain external/physical/device dependencies as HOLD. The separate historical unclassified slot remains unresolved pending its source.
 3. Review the source-based proposed priority allocation. New IDs must never masquerade as historical IDs.
 4. Keep the one historical unclassified item visibly unresolved until its source or an explicit review decision is available.
@@ -212,4 +222,4 @@ The latest full working-tree Gradle run reports 383 tests PASS, 0 failures/error
 
 ## Scope and outcome
 
-Core code and tests now have evidence for 37 reconstructed rows across backup, tombstone, migration, recurrence, reminder, and Alarm model contracts; 132 remain NOT TESTED, proposed priorities still need review, and historical mapping is still absent. PC-QA-GATE-001 remains **PARTIAL / HOLD**, and overall core verdict remains **HOLD**.
+Core code and tests now have evidence for 38 reconstructed rows across backup, tombstone, migration, recurrence, reminder, and Alarm model contracts; 131 remain NOT TESTED, proposed priorities still need review, and historical mapping is still absent. PC-QA-GATE-001 remains **PARTIAL / HOLD**, and overall core verdict remains **HOLD**.
