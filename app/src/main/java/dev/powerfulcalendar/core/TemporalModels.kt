@@ -250,14 +250,20 @@ object RecurrenceEngine {
 
     fun keyFor(local: LocalDateTime): String = local.format(KEY_FORMAT)
 
+    private fun projectionZone(record: TemporalRecord, localZone: ZoneId): ZoneId =
+        if (record.kind == TemporalKind.ALARM && record.recurrence.freq == RecurrenceFreq.DAILY) {
+            localZone
+        } else {
+            record.zone
+        }
+
     /**
      * Materializes the instances whose **effective** time intersects `[fromMillis, toMillis)`.
      *
      * Slots are computed by index in **wall-clock** time using the record's own zone, so a daily
-     * 07:30 alarm stays 07:30 locally across DST instead of drifting one hour. A DST gap resolves
-     * forward (02:30 becomes 03:30) and a fold resolves to the earlier offset; both are documented
-     * policy rather than accidental behaviour. `count` counts generated slots, including skipped
-     * exceptions, which is why a skipped instance never shifts the rest of the series.
+     * 07:30 occurrence stays 07:30 there across DST. A DST gap resolves forward (02:30 becomes
+     * 03:30) and a fold resolves to the earlier offset. `count` counts generated slots, including
+     * skipped exceptions, which is why a skipped instance never shifts the rest of the series.
      *
      * Effective time is what matters for a window query:
      *  - an override may move an instance from months outside the window *into* it, and such an
@@ -282,7 +288,7 @@ object RecurrenceEngine {
         val rule = record.recurrence
 
         if (!rule.isRepeating) {
-            val key = keyFor(Instant.ofEpochMilli(anchor).atZone(zone).toLocalDateTime())
+            val key = keyFor(Instant.ofEpochMilli(anchor).atZone(record.zone).toLocalDateTime())
             if (key in rule.exceptions) return emptyList()
             val moved = rule.overrides[key]
             val start = moved?.startMillis ?: anchor
@@ -316,7 +322,7 @@ object RecurrenceEngine {
 
         // (B) Natural slots near the window. The scan starts one activity length early so an
         // activity that began before the window but still overlaps it is included.
-        val firstLocal = Instant.ofEpochMilli(anchor).atZone(zone).toLocalDateTime()
+        val firstLocal = Instant.ofEpochMilli(anchor).atZone(record.zone).toLocalDateTime()
         val countLimit = rule.count ?: Int.MAX_VALUE
         val scanFrom = fromMillis - duration - 1
         var index = startIndexNear(firstLocal, rule, scanFrom, zone, countLimit)
@@ -372,7 +378,7 @@ object RecurrenceEngine {
             if (occurrence.startMillis >= fromMillis) inside.add(occurrence) else carryIn.add(occurrence)
         }
 
-        val firstLocal = Instant.ofEpochMilli(anchor).atZone(zone).toLocalDateTime()
+        val firstLocal = Instant.ofEpochMilli(anchor).atZone(record.zone).toLocalDateTime()
         val countLimit = rule.count ?: Int.MAX_VALUE
         var index = startIndexNear(firstLocal, rule, fromMillis, zone, countLimit)
         var emitted = 0
@@ -529,8 +535,12 @@ object RecurrenceEngine {
         return index.toInt()
     }
 
-    /** Materializes exactly one original slot, independent of any result window or list limit. */
-    fun occurrenceForKey(record: TemporalRecord, key: String): Occurrence? {
+    /** Materializes one original slot; a daily Alarm's effective instant follows [localZone]. */
+    fun occurrenceForKey(
+        record: TemporalRecord,
+        key: String,
+        localZone: ZoneId = ZoneId.systemDefault()
+    ): Occurrence? {
         val anchor = record.anchorMillis() ?: return null
         val rule = record.recurrence
         if (key in rule.exceptions) return null
@@ -551,7 +561,7 @@ object RecurrenceEngine {
         if (moved != null) return overrideOccurrence(record, key, moved, duration)
         val firstLocal = Instant.ofEpochMilli(anchor).atZone(record.zone).toLocalDateTime()
         val slotLocal = runCatching { slotAt(firstLocal, rule, index) }.getOrNull() ?: return null
-        val start = slotMillis(slotLocal, record.zone) ?: return null
+        val start = slotMillis(slotLocal, projectionZone(record, localZone)) ?: return null
         val end = if (record.kind == TemporalKind.ACTIVITY) start + duration else null
         return Occurrence(key, start, end)
     }
@@ -657,12 +667,19 @@ object RecurrenceEngine {
     /**
      * Next occurrence start at or after [afterMillis], or null when the series ended.
      *
+     * A daily ALARM uses [localZone] for its effective wall-clock instant while its key remains
+     * anchored to the record's original zone.
+     *
      * An override can move an instance into the future from arbitrarily far back, so the answer is
      * the earliest of (a) every valid override whose effective start is at/after the instant and
      * (b) the first valid natural slot at/after it. The recurrence interval itself may exceed a
      * fixed lookahead window.
      */
-    fun nextOccurrence(record: TemporalRecord, afterMillis: Long): Occurrence? {
+    fun nextOccurrence(
+        record: TemporalRecord,
+        afterMillis: Long,
+        localZone: ZoneId = ZoneId.systemDefault()
+    ): Occurrence? {
         val anchor = record.anchorMillis() ?: return null
         val rule = record.recurrence
         val duration = ((record.spanEndMillis() ?: anchor) - anchor).coerceAtLeast(0L)
@@ -680,6 +697,8 @@ object RecurrenceEngine {
                 Occurrence(key, start, end)
             }
         }
+
+        val zone = projectionZone(record, localZone)
 
         var best: Occurrence? = null
         rule.overrides.forEach { (key, moved) ->
@@ -700,13 +719,13 @@ object RecurrenceEngine {
         val firstLocal = Instant.ofEpochMilli(anchor).atZone(record.zone).toLocalDateTime()
         val countLimit = rule.count ?: Int.MAX_VALUE
         val rangeStart = rule.activeFromDate?.let {
-            LocalDate.parse(it).atStartOfDay(record.zone).toInstant().toEpochMilli()
+            LocalDate.parse(it).atStartOfDay(zone).toInstant().toEpochMilli()
         } ?: afterMillis
-        var index = startIndexNear(firstLocal, rule, maxOf(afterMillis, rangeStart), record.zone, countLimit)
+        var index = startIndexNear(firstLocal, rule, maxOf(afterMillis, rangeStart), zone, countLimit)
         while (index < countLimit) {
             val slotLocal = runCatching { slotAt(firstLocal, rule, index) }.getOrNull() ?: break
             index++
-            val slotStart = slotMillis(slotLocal, record.zone) ?: break
+            val slotStart = slotMillis(slotLocal, zone) ?: break
             if (rule.untilMillis != null && slotStart > rule.untilMillis) break
             if (slotStart < afterMillis) continue
             val slotKey = keyFor(slotLocal)

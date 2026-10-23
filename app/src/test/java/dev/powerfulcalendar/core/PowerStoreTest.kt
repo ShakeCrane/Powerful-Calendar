@@ -18,6 +18,7 @@ import dev.powerfulcalendar.interop.IcsCodec
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import java.util.TimeZone
 import java.util.UUID
 
 /**
@@ -1672,6 +1673,49 @@ class PowerStoreTest {
             val name = restored.databaseName
             restored.close()
             context.deleteDatabase(name)
+        }
+    }
+
+    @Test
+    fun timezoneChangeRebuildsDailyAlarmIntentInCurrentLocalZone() {
+        val previousDefault = TimeZone.getDefault()
+        val newYork = ZoneId.of("America/New_York")
+        val tokyo = ZoneId.of("Asia/Tokyo")
+        try {
+            TimeZone.setDefault(TimeZone.getTimeZone(newYork))
+            val anchorDate = LocalDate.now(newYork).minusDays(3)
+            val card = store.newDraft(
+                DraftForm(
+                    kind = TemporalKind.ALARM,
+                    title = "每日闹钟",
+                    startText = DraftForm.formatInstant(
+                        anchorDate.atTime(7, 30).atZone(newYork).toInstant().toEpochMilli(),
+                        newYork
+                    ),
+                    reminderMinutes = 0,
+                    reminderMethod = ReminderMethod.ALARM,
+                    zoneId = newYork.id,
+                    recurrence = Recurrence(freq = RecurrenceFreq.DAILY)
+                )
+            )
+            assertTrue(commit(card) is PowerStore.CommitOutcome.Committed)
+            val originalIntent = store.intentFor(card.eventSeq)!!
+            val revision = store.get(card.eventSeq)!!.revision
+
+            TimeZone.setDefault(TimeZone.getTimeZone(tokyo))
+            val now = LocalDate.now(tokyo).plusDays(1).atStartOfDay(tokyo).toInstant().toEpochMilli()
+            val record = store.get(card.eventSeq)!!
+            val expected = RecurrenceEngine.nextOccurrence(record, now, tokyo)!!
+            assertEquals(1, store.rebuildLocalDailyAlarmSchedules(tokyo, now))
+
+            val refreshed = store.intentFor(card.eventSeq)!!
+            assertEquals(expected.key, refreshed.occurrenceKey)
+            assertEquals(expected.startMillis, refreshed.instantMillis)
+            assertTrue(originalIntent.instantMillis != refreshed.instantMillis)
+            assertEquals(revision, store.get(card.eventSeq)!!.revision)
+            assertEquals(1, store.all().size)
+        } finally {
+            TimeZone.setDefault(previousDefault)
         }
     }
 

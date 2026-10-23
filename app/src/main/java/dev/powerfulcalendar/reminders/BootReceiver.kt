@@ -29,6 +29,7 @@ class BootReceiver : BroadcastReceiver() {
                 try {
                     // Remaining PendingIntents for events that no longer exist are cancelled by
                     // reconcile; any obsolete broadcast that still arrives is rejected on arrival.
+                    store.rebuildLocalDailyAlarmSchedules()
                     ReminderScheduler.reconcile(context, store)
                 } finally {
                     store.close()

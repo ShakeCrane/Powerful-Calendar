@@ -13,6 +13,7 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.ZoneId
+import java.util.TimeZone
 
 class TemporalProtocolTest {
 
@@ -393,6 +394,35 @@ class TemporalProtocolTest {
         occurrences.forEach { occurrence ->
             val local = Instant.ofEpochMilli(occurrence.startMillis).atZone(newYork).toLocalTime()
             assertEquals(LocalTime.of(7, 30), local)
+        }
+    }
+
+    @Test
+    fun dailyAlarmFollowsCurrentLocalZoneWhileKeepingItsOriginalSlotKey() {
+        val previousDefault = TimeZone.getDefault()
+        val tokyo = ZoneId.of("Asia/Tokyo")
+        try {
+            TimeZone.setDefault(TimeZone.getTimeZone(tokyo))
+            val record = TemporalRecord(
+                eventSeq = 1, revision = 1, kind = TemporalKind.ALARM, title = "起床",
+                startMillis = LocalDateTime.of(2026, 10, 20, 7, 30)
+                    .atZone(newYork).toInstant().toEpochMilli(),
+                zoneId = newYork.id,
+                recurrence = Recurrence(freq = RecurrenceFreq.DAILY)
+            )
+            val from = LocalDate.of(2026, 10, 21).atStartOfDay(tokyo).toInstant().toEpochMilli()
+            val to = LocalDate.of(2026, 10, 22).atStartOfDay(tokyo).toInstant().toEpochMilli()
+
+            val next = RecurrenceEngine.nextOccurrence(record, from)
+            assertEquals("2026-10-21T07:30", next?.key)
+            assertEquals(
+                LocalTime.of(7, 30),
+                Instant.ofEpochMilli(next!!.startMillis).atZone(tokyo).toLocalTime()
+            )
+            val byOriginalKey = RecurrenceEngine.occurrenceForKey(record, next.key)
+            assertEquals(next.startMillis, byOriginalKey?.startMillis)
+        } finally {
+            TimeZone.setDefault(previousDefault)
         }
     }
 

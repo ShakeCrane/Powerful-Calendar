@@ -1373,6 +1373,27 @@ class PowerStore(
             buildList { while (cursor.moveToNext()) add(decodeRecord(cursor.getString(0))) }
         }
 
+    /** Rebuild only floating daily Alarm intents after a system-zone change or recovery event. */
+    @Synchronized
+    fun rebuildLocalDailyAlarmSchedules(
+        localZone: ZoneId = ZoneId.systemDefault(),
+        nowMillis: Long = System.currentTimeMillis()
+    ): Int = tx { db ->
+        val alarms = db.rawQuery(
+            "SELECT payload FROM objects WHERE retired=0 AND kind='ALARM' ORDER BY event_seq",
+            null
+        ).use { cursor ->
+            buildList {
+                while (cursor.moveToNext()) {
+                    val record = decodeRecord(cursor.getString(0))
+                    if (record.recurrence.freq == RecurrenceFreq.DAILY) add(record)
+                }
+            }
+        }
+        alarms.forEach { writeDesiredIntent(db, it, nowMillis, localZone) }
+        alarms.size
+    }
+
     @Synchronized
     fun activeBetween(fromMillis: Long, toMillis: Long): List<TemporalRecord> =
         readableDatabase.rawQuery(
@@ -1746,13 +1767,18 @@ class PowerStore(
      * Durable desired schedule for the next occurrence. Android side effects are reconciled
      * later; this row is what makes "saved" vs "scheduled" vs "blocked" honest.
      */
-    private fun writeDesiredIntent(db: SQLiteDatabase, record: TemporalRecord?, now: Long) {
+    private fun writeDesiredIntent(
+        db: SQLiteDatabase,
+        record: TemporalRecord?,
+        now: Long,
+        localZone: ZoneId = ZoneId.systemDefault()
+    ) {
         if (record == null) return
         cancelIntents(db, record.eventSeq, now)
         if (!record.enabled) return
         // The user chose date-only deadline 00:00 notifications. Date precision is preserved:
         // midnight is a reminder POLICY, never an invented event deadline time.
-        val occurrence = RecurrenceEngine.nextOccurrence(record, now) ?: return
+        val occurrence = RecurrenceEngine.nextOccurrence(record, now, localZone) ?: return
         val triggerInstant = ReminderPolicy.instant(record, occurrence.startMillis) ?: return
         val requirement = if (record.reminderMethod == ReminderMethod.ALARM) {
             TriggerRequirement.EXACT
