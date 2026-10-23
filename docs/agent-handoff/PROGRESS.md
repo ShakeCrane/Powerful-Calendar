@@ -1,4 +1,11 @@
 # Core freeze progress
+## PC-ISSUE-099 — structured proposal HTTP 429 stage diagnostics
+
+- Reproduced that a local HTTP 429 returned a generic “AI request failed” warning without naming the structured-proposal stage. Updated `AiClient.interpret` to preserve the stage in the warning. The focused test also verifies no proposal/raw reply is returned and neither the provider error body nor API key is exposed.
+- Pre-fix targeted reproduction failed 1/1 on the missing stage label. Post-fix Robolectric API 34 passed 1/1. Full Gradle passed 452/452 across 57 suites, zero failures/errors/skips; lint 0 errors / 58 warnings. Used a local HTTP stub only; no external provider or UI change.
+- Core fix/test commit `55f3c1212eafaf306ad70e89b308fa1c3b3612c5` is pushed. Independent report: `docs/issues/PC-ISSUE-099-structured-proposal-http-429-stage.md`. The API 35 success-card path is untested; `REC-P1-062` remains NOT TESTED.
+- Freeze remains HOLD: 135 PASS / 0 FAIL / 9 BLOCKED / 58 NOT TESTED / 7 SPEC UNRESOLVED; P0 111/0/1/9/5; P1 24/0/8/49/1. Structural-only artifact `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-099.json`, SHA-256 `D073E87A42F7970F8094DB7E1B2E8CF3DFF03A6B4DA9487A76076F3C0CD03D20`; ledger SHA-256 `386E2BD443FC58F9BE1D3F392CF8B3E7C5020EAB17439FE7DBCE038F26CED2B5`.
+
 ## PC-ISSUE-098 — repeated approval core idempotency checkpoint (candidate remains NOT TESTED)
 
 - The existing `PowerStoreTest.repeatedCommitReturnsTheOriginalOutcome` was run directly: a second ordinary commit of the same draft returns `duplicate=true`, the same revision/commitId, and leaves one history record. No code defect was found and no source/test file changed.
