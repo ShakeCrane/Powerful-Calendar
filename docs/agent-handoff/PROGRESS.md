@@ -1,11 +1,17 @@
 # Core freeze progress
+## PC-ISSUE-090 — ICS TZID and VTIMEZONE serialization
+
+- Mapped existing `IcsExportRecurrenceTest` fixed-offset and DST round-trip assertions to `REC-P1-078`. Focused Robolectric API 34 run passed 6/6; full Gradle at the same code/test baseline passed 444/444 across 56 suites, with zero failures/errors/skips and lint 0 errors / 58 warnings.
+- Focused log SHA-256 `67CB928029CBB1759776544081D710802D7A47E24E60F15733D6C7DE3B569676`; JUnit XML SHA-256 `B48271D52E3B178E494F252BFAE05A6796A333FA7D1F327DBF8522F089D9C2A6`. Independent report: `docs/issues/PC-ISSUE-090-ics-timezone-definition.md`. No source changes. `REC-P1-078` is PASS for codec output; third-party consumer behavior remains outside scope.
+- Latest freeze remains HOLD: 130 PASS / 0 FAIL / 9 BLOCKED / 63 NOT TESTED / 7 SPEC UNRESOLVED; 112 reconstructed candidates have independent evidence. Historical 209 IDs remain unmapped.
+- Next: continue with a core-only candidate; do not start UI work.
 ## PC-ISSUE-089 — ICS read projection preserves one formal event source
 
 - Added and pushed `PowerStoreTest.icsActivityProjectionDoesNotCreateSecondFormalEventAcrossRestart`. A committed SQLite Activity projects through ICS as one matching event without warnings; formal rows, history, reminder intent, identity count and sequence preview remain unchanged before and after SQLite reopen. Test-only change; no production or UI changes.
 - Focused Robolectric API 34 regression passed 1/1 (log SHA-256 `394711335A4B9DE80FEE60B81FF224C85645883FBA16403AC25A496A683550AA`; XML SHA-256 `F6CC86C486E178FF119E8AB730626FDD0C7F940B557A7480DEBE850D68D051F1`). Full Gradle passed 444/444 across 56 suites, zero failures/errors/skips; lint 0 errors / 58 warnings. Log SHA-256 `EE9DA7BC1A810D3C706DAA44F7CBE0D3EED6C5557572F5690F50C45621BFE44D`.
 - Test commit `13e720bce54d0b31a179e68e9fa1a86eec518c61` is pushed. Independent report: `docs/issues/PC-ISSUE-089-ics-read-projection-does-not-mutate-store.md`. `REC-P0-082` remains NOT TESTED: UI/AI projection and Android SAF/device paths are not covered.
 - Evidence handling note: the prior structural-only Issue 088 JSON was reserialized from its captured content after a filename collision; its new SHA-256 is `4D8A8F14B8D50995CC9F66D990AF1ABF47C76ECBB887187381E6D00C09230A70`. Issue 088 test logs and JUnit evidence were untouched. Issue 089 validation is stored at its own filename.
-- Latest freeze remains HOLD: 129 PASS / 0 FAIL / 9 BLOCKED / 64 NOT TESTED / 7 SPEC UNRESOLVED; 111 reconstructed candidates now have independent targeted evidence. Historical 209 IDs remain unmapped. User scope remains core-only; no UI work. Protected untracked files remain unchanged and unstaged.
+- Latest freeze remains HOLD: 130 PASS / 0 FAIL / 9 BLOCKED / 63 NOT TESTED / 7 SPEC UNRESOLVED; 112 reconstructed candidates now have independent targeted evidence. Historical 209 IDs remain unmapped. User scope remains core-only; no UI work. Protected untracked files remain unchanged and unstaged.
 - Next: continue with the next feasible non-UI core acceptance item.
 
 Updated: 2026-10-24
