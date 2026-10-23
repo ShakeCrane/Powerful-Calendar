@@ -1,4 +1,11 @@
 # Core freeze progress
+## PC-ISSUE-102 — completion tracking toggle keeps reminder scheduling (candidate remains NOT TESTED)
+
+- Added a Robolectric API 34 `ReminderValidationTest` that schedules an Activity reminder, disables completion tracking, then verifies the new revision returns to PENDING and reconciles to SCHEDULED with one Alarm; the updated revision validates and the old revision is rejected.
+- Targeted test passed 1/1. Full Gradle passed 454/454 across 57 suites, zero failures/errors/skips; lint 0 errors / 58 warnings. This is scheduler-adapter evidence only; real Android alarm/notification delivery remains untested. No UI or production code changed.
+- Test commit `200d5ae4783bfe2d2b0d95acd0ce0f572a5d2ebe` is pushed. Independent report: `docs/issues/PC-ISSUE-102-tracking-toggle-keeps-reminder-scheduled.md`. `REC-P0-017` remains NOT TESTED.
+- Freeze remains HOLD: 135 PASS / 0 FAIL / 9 BLOCKED / 58 NOT TESTED / 7 SPEC UNRESOLVED; P0 111/0/1/9/5; P1 24/0/8/49/1. Structural-only validation `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-102.json`, SHA-256 `FB29AA81FCFCA98BED762116A0F6E6AFCEBC7439642421B6BBEA73FBB7DC9085`; ledger SHA-256 `671FDBD1B5371FC6B961A867713CBE0B222A03E943820294A2B3D4A6F6FDAA7E`.
+
 ## PC-ISSUE-101 — AI missing-time proposal core checkpoint (candidate remains NOT TESTED)
 
 - Added `PowerStoreTest.parsedAiActivityWithMissingTimeRemainsRepairableDraftAcrossRestart`. The parser keeps empty ACTIVITY times blank; the proposal stays a draft, a formal commit is rejected, and the INVALID draft/form survive SQLite reopen. Filling both times restores PENDING and allows one valid commit.
