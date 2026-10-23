@@ -27,14 +27,14 @@ Audit evidence: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-sour
 
 `docs/CORE_FREEZE_ACCEPTANCE_LEDGER.csv` contains 208 reconstructed rows and one unresolved historical slot. Proposed priority allocation is P0=126 and P1=82, grouped by risk/source area; this preserves the known aggregate for review but does not establish which historical case each row represents. All reconstructed rows are explicitly `UNMAPPED`.
 
-Structural validation: 209 unique IDs; all reconstructed rows contain source, environment, action, expected and actual fields; PASS/BLOCKED rows include evidence references. The latest structural-only validation is `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-056.json` (SHA-256 `A83278D62871564CD5CD6431965E0E6EA7CC0687348062ABA5C93677CA786A4D`); ledger SHA-256 `A20D6F4718540835DE9BEF7D47E6E850A9A97B6793E27E4E91D000BA6E386DAA`. It confirms 104/0/9/89/7 status counts and `REC-P0-018` PASS. Structural validation does not test the app or prove the historical mapping; `product_behavior_tested` is false.
+Structural validation: 209 unique IDs; all reconstructed rows contain source, environment, action, expected and actual fields; PASS/BLOCKED rows include evidence references. The latest structural-only validation is `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-057.json` (SHA-256 `79161A5A18411CE0100D59F7936F6B2A11C3DD93AEA71C53046AC992C2E16B79`); ledger SHA-256 `888A7CC0E8C8CB6B40A1FB67B1D0553E16ACC92B1692B50982BA9CCFE1C3D946`. It confirms 105/0/9/88/7 status counts and `REC-P0-019` PASS. Structural validation does not test the app or prove the historical mapping; `product_behavior_tested` is false.
 
 | Candidate bucket | PASS | FAIL | BLOCKED | NOT TESTED | SPEC UNRESOLVED |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| P0 (proposed) | 85 | 0 | 1 | 35 | 5 |
+| P0 (proposed) | 86 | 0 | 1 | 34 | 5 |
 | P1 (proposed) | 19 | 0 | 8 | 54 | 1 |
 | Historical unclassified slot | 0 | 0 | 0 | 0 | 1 |
-| **Total candidate rows** | **104** | **0** | **9** | **89** | **7** |
+| **Total candidate rows** | **105** | **0** | **9** | **88** | **7** |
 
 ### Case-specific backup verification (2026-10-23)
 
@@ -487,6 +487,12 @@ The focused regression passed **1/1** (log SHA-256 `0204D79B2E0FA988A6C2BD97E810
 
 The focused regression passed **1/1** (log SHA-256 `CCE3127D5D083C4B3BA564D24BFF4E9E42A34EA85C7EBCDA33A7FC5539F6160F`; JUnit XML SHA-256 `BA4E34678FC7B0E4B63F03A6567BC9AD994EB1ED785F79FE63C43E582BF9E1F5`). Full Gradle passed **410/410** tests across 55 suites, lint 0 errors / 55 warnings; it includes one protected untracked test (409 tracked + 1 protected). Full log SHA-256 `92E006A3038FDD32D22A806CC2D990CE6255875450256D3DAB51A23B8EE66191`; 62-test `PowerStoreTest` XML SHA-256 `A0214D48AA90000EF2BA455836350FFCF952E00D110ECF0E9A45DAD19CC8E1FF`; APK SHA-256 `80521C6A833B189FF96EF11D6543B4E6877DFE8A89D64BB1269C5220E8CD3D92`. Test-only commit `92dd9016d7907b1e57cd4a27920332fa72e572fc` is pushed. Structural-only validation JSON SHA-256 `A83278D62871564CD5CD6431965E0E6EA7CC0687348062ABA5C93677CA786A4D`; updated ledger CSV SHA-256 `A20D6F4718540835DE9BEF7D47E6E850A9A97B6793E27E4E91D000BA6E386DAA`.
 
+### Case-specific reminder firing/event lifecycle separation verification (2026-10-23)
+
+`REC-P0-019` maps to `ReminderCompletionIsolationTest.firedAlarmRecordsExecutionWithoutCompletingTrackedEvent`. A synthetic `ACTION_FIRE` handled by `ReminderReceiver` records execution as `FIRED` and removes the one-shot schedule intent; the formal event remains present with the original revision and empty `completedKeys`. This verifies receiver/SQLite state separation only; Android AlarmManager delivery and audible ringing are not exercised. The reconstructed candidate remains `UNMAPPED` to the original checklist. See `docs/issues/PC-ISSUE-057-ringing-state-does-not-complete-event.md`.
+
+The focused regression passed **1/1** (log SHA-256 `70E056E358A19C4A0553BE8C5A8F9EB1931FC579D893AE37D4D68AC2F9F1575D`; JUnit XML SHA-256 `48B0A577EDF868BE040C3B132B9AAE2AFBA679DEA61DE0B4293A1932C690B429`). Full Gradle passed **410/410** tests across 55 suites, lint 0 errors / 55 warnings on unchanged code/test baseline `92dd9016d7907b1e57cd4a27920332fa72e572fc`; full log SHA-256 `92E006A3038FDD32D22A806CC2D990CE6255875450256D3DAB51A23B8EE66191`. Debug APK SHA-256 `80521C6A833B189FF96EF11D6543B4E6877DFE8A89D64BB1269C5220E8CD3D92`. Structural-only validation JSON SHA-256 `79161A5A18411CE0100D59F7936F6B2A11C3DD93AEA71C53046AC992C2E16B79`; updated ledger CSV SHA-256 `888A7CC0E8C8CB6B40A1FB67B1D0553E16ACC92B1692B50982BA9CCFE1C3D946`.
+
 ## Historical sign-off accounting
 
 | Bucket from historical aggregate | Total | Matched to original ID | Result |
@@ -499,7 +505,7 @@ The latest full working-tree Gradle run reports 410 tests PASS, 0 failures/error
 
 ## Required next work
 
-1. Run the 89 `NOT TESTED` rows under the environment each row requires and update only with case-specific evidence.
+1. Run the 88 `NOT TESTED` rows under the environment each row requires and update only with case-specific evidence.
 2. Resolve the one blocked P0, eight blocked P1, and six reconstructed spec-unresolved rows where feasible; retain external/physical/device dependencies as HOLD. The separate historical unclassified slot remains unresolved pending its source.
 3. Review the source-based proposed priority allocation. New IDs must never masquerade as historical IDs.
 4. Keep the one historical unclassified item visibly unresolved until its source or an explicit review decision is available.
@@ -507,4 +513,4 @@ The latest full working-tree Gradle run reports 410 tests PASS, 0 failures/error
 
 ## Scope and outcome
 
-Core code and tests have evidence for 79 reconstructed rows across backup, tombstone, migration, recurrence, reminder, temporal model, draft, and core data-semantics contracts; 89 remain NOT TESTED, six reconstructed candidates remain SPEC UNRESOLVED, proposed priorities still need review, and historical mapping is still absent. `REC-P0-054` is unresolved because the product baseline and SQLite v4 specify conflicting same-event draft cardinality. `REC-P0-058` passes the current-baseline semantic no-op Save test; `REC-P0-059` passes the current-baseline recurrence start-bound/anchor projection test; `REC-P0-069` passes the delayed snooze receiver regression with real Android delivery still untested; `REC-P0-025/027` pass the first-draft identity allocation regression; `REC-P0-026` passes the injected first-draft insert failure regression; `REC-P0-089/090` pass the unknown backup field and unsupported format/schema rejection tests; `REC-P0-021/022` pass pure-model conversion field-preservation regressions; `REC-P0-081` passes the PowerStore/SQLite current-snapshot persistence regression; `REC-P0-018` passes the PowerStore blocked-schedule state isolation regression, with OS permission handling untested. PC-QA-GATE-001 remains **PARTIAL / HOLD**, and overall core verdict remains **HOLD**.
+Core code and tests have evidence for 80 reconstructed rows across backup, tombstone, migration, recurrence, reminder, temporal model, draft, and core data-semantics contracts; 88 remain NOT TESTED, six reconstructed candidates remain SPEC UNRESOLVED, proposed priorities still need review, and historical mapping is still absent. `REC-P0-054` is unresolved because the product baseline and SQLite v4 specify conflicting same-event draft cardinality. `REC-P0-058` passes the current-baseline semantic no-op Save test; `REC-P0-059` passes the current-baseline recurrence start-bound/anchor projection test; `REC-P0-069` passes the delayed snooze receiver regression with real Android delivery still untested; `REC-P0-025/027` pass the first-draft identity allocation regression; `REC-P0-026` passes the injected first-draft insert failure regression; `REC-P0-089/090` pass the unknown backup field and unsupported format/schema rejection tests; `REC-P0-021/022` pass pure-model conversion field-preservation regressions; `REC-P0-081` passes the PowerStore/SQLite current-snapshot persistence regression; `REC-P0-018` passes the PowerStore blocked-schedule state isolation regression, with OS permission handling untested; `REC-P0-019` passes receiver/SQLite firing-state separation, with actual Android delivery untested. PC-QA-GATE-001 remains **PARTIAL / HOLD**, and overall core verdict remains **HOLD**.
