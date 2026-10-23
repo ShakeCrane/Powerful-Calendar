@@ -33,7 +33,7 @@ class ReminderReceiver : BroadcastReceiver() {
         if (eventSeq <= 0L) return
         val revision = intent.getLongExtra(AlarmContract.EXTRA_REVISION, -1L)
         val occurrenceKey = intent.getStringExtra(AlarmContract.EXTRA_OCCURRENCE_KEY) ?: return
-        val triggerId = intent.getStringExtra(AlarmContract.EXTRA_TRIGGER_ID) ?: "primary"
+        val triggerId = intent.getStringExtra(AlarmContract.EXTRA_TRIGGER_ID).orEmpty()
         val requestedInstant = intent.getLongExtra(AlarmContract.EXTRA_INSTANT, 0L)
         val isSnoozeRequest = intent.action == AlarmContract.ACTION_SNOOZE
         // ACTION_SNOOZE is the notification button; ACTION_FIRE + EXTRA_SNOOZE is its delayed alarm.
@@ -44,7 +44,8 @@ class ReminderReceiver : BroadcastReceiver() {
         try {
             if (isSnoozeRequest) {
                 when (val validation = ReminderScheduler.validate(
-                    store, eventSeq, revision, occurrenceKey, requestedInstant, snooze = true
+                    store, eventSeq, revision, occurrenceKey, requestedInstant,
+                    snooze = true, triggerId = triggerId
                 )) {
                     is ReminderScheduler.Validation.Rejected ->
                         store.recordExecution(
@@ -72,7 +73,8 @@ class ReminderReceiver : BroadcastReceiver() {
             }
 
             when (val validation = ReminderScheduler.validate(
-                store, eventSeq, revision, occurrenceKey, requestedInstant, snooze = isScheduledSnooze
+                store, eventSeq, revision, occurrenceKey, requestedInstant,
+                snooze = isScheduledSnooze, triggerId = triggerId
             )) {
                 is ReminderScheduler.Validation.Rejected -> {
                     store.recordExecution(

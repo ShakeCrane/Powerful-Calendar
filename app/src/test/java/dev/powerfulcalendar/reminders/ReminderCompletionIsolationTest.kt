@@ -35,6 +35,71 @@ class ReminderCompletionIsolationTest {
     private val zone = ZoneId.of("Asia/Shanghai")
 
     @Test
+    fun fireWithDifferentTriggerIdentityIsRejectedBeforeNotification() {
+        val fixture = newFixture()
+        val store = fixture.store
+        try {
+            val seq = createTrackedAlarm(store)
+            val before = store.get(seq)!!
+            val scheduled = store.intentFor(seq)!!
+            val staleTrigger = Intent(fixture.context, ReminderReceiver::class.java).apply {
+                action = AlarmContract.ACTION_FIRE
+                putExtra(AlarmContract.EXTRA_EVENT_SEQ, seq)
+                putExtra(AlarmContract.EXTRA_REVISION, scheduled.revision)
+                putExtra(AlarmContract.EXTRA_OCCURRENCE_KEY, scheduled.occurrenceKey)
+                putExtra(AlarmContract.EXTRA_TRIGGER_ID, "retired-trigger")
+                putExtra(AlarmContract.EXTRA_INSTANT, scheduled.instantMillis)
+            }
+
+            ReminderReceiver().handle(fixture.context, staleTrigger)
+
+            assertEquals("IGNORED_STALE", store.lastExecution(seq))
+            assertTrue(
+                fixture.context.getSystemService(NotificationManager::class.java)!!
+                    .activeNotifications.none {
+                        it.id == NotificationHelper.notificationId(seq)
+                    }
+            )
+            assertEquals(before.revision, store.get(seq)!!.revision)
+            assertEquals(before.title, store.get(seq)!!.title)
+        } finally {
+            closeFixture(fixture)
+        }
+    }
+
+    @Test
+    fun fireWithoutTriggerIdentityIsRejectedBeforeNotification() {
+        val fixture = newFixture()
+        val store = fixture.store
+        try {
+            val seq = createTrackedAlarm(store)
+            val before = store.get(seq)!!
+            val scheduled = store.intentFor(seq)!!
+            val missingTrigger = Intent(fixture.context, ReminderReceiver::class.java).apply {
+                action = AlarmContract.ACTION_FIRE
+                putExtra(AlarmContract.EXTRA_EVENT_SEQ, seq)
+                putExtra(AlarmContract.EXTRA_REVISION, scheduled.revision)
+                putExtra(AlarmContract.EXTRA_OCCURRENCE_KEY, scheduled.occurrenceKey)
+                putExtra(AlarmContract.EXTRA_INSTANT, scheduled.instantMillis)
+            }
+
+            ReminderReceiver().handle(fixture.context, missingTrigger)
+
+            assertEquals("IGNORED_STALE", store.lastExecution(seq))
+            assertTrue(
+                fixture.context.getSystemService(NotificationManager::class.java)!!
+                    .activeNotifications.none {
+                        it.id == NotificationHelper.notificationId(seq)
+                    }
+            )
+            assertEquals(before.revision, store.get(seq)!!.revision)
+            assertEquals(before.title, store.get(seq)!!.title)
+        } finally {
+            closeFixture(fixture)
+        }
+    }
+
+    @Test
     fun firedAlarmRecordsExecutionWithoutCompletingTrackedEvent() {
         val fixture = newFixture()
         val store = fixture.store

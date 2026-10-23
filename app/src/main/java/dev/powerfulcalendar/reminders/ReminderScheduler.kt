@@ -13,6 +13,7 @@ import android.os.Build
 import android.provider.Settings
 import android.util.Log
 import dev.powerfulcalendar.core.PowerStore
+import dev.powerfulcalendar.core.ReminderPolicy
 import dev.powerfulcalendar.core.RecurrenceEngine
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
@@ -199,13 +200,17 @@ object ReminderScheduler {
         expectedRevision: Long,
         occurrenceKey: String,
         requestedInstant: Long,
-        snooze: Boolean
+        snooze: Boolean,
+        triggerId: String = ReminderPolicy.PRIMARY_TRIGGER_ID
     ): ReminderScheduler.Validation {
         val record = store.get(eventSeq)
             ?: return Validation.Rejected("事件不存在或已删除")
         if (!record.enabled) return Validation.Rejected("事件已停用")
         if (record.revision != expectedRevision) {
             return Validation.Rejected("版本已更新至 v${record.revision}")
+        }
+        if (triggerId != ReminderPolicy.PRIMARY_TRIGGER_ID) {
+            return Validation.Rejected("提醒触发器已失效")
         }
         if (record.reminderMinutes < 0) {
             return Validation.Rejected("该事件不再需要提醒")

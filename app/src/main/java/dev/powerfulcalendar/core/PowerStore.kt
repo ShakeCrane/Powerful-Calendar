@@ -1787,7 +1787,7 @@ class PowerStore(
         }
         db.insertWithOnConflict("schedule_intents", null, ContentValues().apply {
             put("event_seq", record.eventSeq)
-            put("trigger_id", "primary")
+            put("trigger_id", ReminderPolicy.PRIMARY_TRIGGER_ID)
             put("revision", record.revision)
             put("occurrence_key", occurrence.key)
             put("instant_ms", triggerInstant)
@@ -1852,7 +1852,7 @@ class PowerStore(
     }
 
     @Synchronized
-    fun intentFor(eventSeq: Long, triggerId: String = "primary"): ScheduleIntent? =
+    fun intentFor(eventSeq: Long, triggerId: String = ReminderPolicy.PRIMARY_TRIGGER_ID): ScheduleIntent? =
         readableDatabase.rawQuery(
             """SELECT event_seq,trigger_id,revision,occurrence_key,instant_ms,requirement,desired_state,android_hint
                FROM schedule_intents WHERE event_seq=? AND trigger_id=?""",

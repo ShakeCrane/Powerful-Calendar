@@ -14,6 +14,8 @@ enum class ReminderMethod { MESSAGE, ALARM }
 enum class ReminderTiming { OFFSET, DAY_START }
 
 object ReminderPolicy {
+    const val PRIMARY_TRIGGER_ID = "primary"
+
     fun instant(record: TemporalRecord, occurrenceStart: Long): Long? {
         if (!record.enabled) return null
         if (record.reminderMinutes < 0) return null
