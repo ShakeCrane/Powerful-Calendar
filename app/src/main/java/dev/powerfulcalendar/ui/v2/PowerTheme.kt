@@ -228,12 +228,10 @@ object GlassShapes {
 /** A very soft vertical wash so the glass has something to sit on without hiding the ruler. */
 @Composable
 fun axisBackground(): Brush {
-    val palette = LocalAxisPalette.current
     val scheme = MaterialTheme.colorScheme
     return Brush.verticalGradient(
         0f to scheme.background,
         0.42f to scheme.surfaceContainerLow,
-        0.5f to palette.gridLine.copy(alpha = 0.05f),
         0.58f to scheme.surfaceContainerLow,
         1f to scheme.background
     )

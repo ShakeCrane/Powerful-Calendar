@@ -17,6 +17,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.PathEffect
@@ -39,11 +40,55 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlin.math.abs
+import kotlin.math.ceil
 import kotlin.math.exp
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 private val CLOCK_FORMAT = DateTimeFormatter.ofPattern("HH:mm")
+
+internal fun Modifier.timeAxisResetSemantics(onReset: () -> Unit): Modifier = semantics {
+    contentDescription = "双击当前时间刻度尺返回24小时视图"
+    onClick(label = "复位为24小时视图") {
+        onReset()
+        true
+    }
+}
+
+internal fun findUnblockedLabelTopLeft(
+    preferred: Offset,
+    labelSize: Size,
+    canvasSize: Size,
+    obstacles: List<Rect>,
+    stepPx: Float,
+    gapPx: Float
+): Offset {
+    fun fits(point: Offset): Boolean {
+        if (point.x < 0f || point.y < 0f ||
+            point.x + labelSize.width > canvasSize.width ||
+            point.y + labelSize.height > canvasSize.height
+        ) return false
+        return obstacles.none { obstacle ->
+            point.x < obstacle.right + gapPx && point.x + labelSize.width > obstacle.left - gapPx &&
+                point.y < obstacle.bottom + gapPx && point.y + labelSize.height > obstacle.top - gapPx
+        }
+    }
+
+    if (fits(preferred) || stepPx <= 0f) return preferred
+    val directions = listOf(
+        Offset(1f, 0f), Offset(-1f, 0f), Offset(0f, -1f), Offset(0f, 1f),
+        Offset(1f, -1f), Offset(1f, 1f), Offset(-1f, -1f), Offset(-1f, 1f)
+    )
+    val maxSteps = ceil(maxOf(canvasSize.width, canvasSize.height) / stepPx).toInt()
+    for (step in 1..maxSteps) {
+        val distance = step * stepPx
+        for (direction in directions) {
+            val candidate = preferred + direction * distance
+            if (fits(candidate)) return candidate
+        }
+    }
+    return preferred
+}
 private val DAY_FORMAT = DateTimeFormatter.ofPattern("M月d日 EEE", java.util.Locale.SIMPLIFIED_CHINESE)
 private val HEADER_DAY_FORMAT = DateTimeFormatter.ofPattern("yyyy年M月d日 EEE", java.util.Locale.SIMPLIFIED_CHINESE)
 
@@ -185,6 +230,7 @@ fun TimelineScreen(
             val density = LocalDensity.current
             val height = with(density) { maxHeight.toPx() }.coerceAtLeast(1f)
             val viewportWidth = maxWidth
+            val viewportHeight = maxHeight
             val width = with(density) { viewportWidth.toPx() }
             val heightNow by rememberUpdatedState(height)
             val unlocked by rememberUpdatedState(!aiLocked)
@@ -197,6 +243,7 @@ fun TimelineScreen(
                 TimelineLayout.layout(projected)
             }
             val textMeasurer = rememberTextMeasurer()
+            val nowBadgeObstacles = mutableListOf<Rect>()
             var dragKey by remember { mutableStateOf<String?>(null) }
             var dragTarget by remember { mutableStateOf<Long?>(null) }
             var dragTravel by remember { mutableFloatStateOf(0f) }
@@ -286,6 +333,17 @@ fun TimelineScreen(
                     val topPx = if (item.record.kind == TemporalKind.DEADLINE) {
                         y - with(density) { pointHeight.toPx() }
                     } else if (item.record.kind == TemporalKind.ALARM) y else activitySpan!!.topPx
+                    val cardLeftPx = with(density) { (wingX + x).toPx() } - horizontalState.value
+                    val cardWidthPx = with(density) { laneWidth.toPx() }
+                    val cardHeightPx = with(density) {
+                        if (point) pointHeight.toPx() else cardHeight.toPx()
+                    }
+                    nowBadgeObstacles += Rect(
+                        left = cardLeftPx,
+                        top = topPx,
+                        right = cardLeftPx + cardWidthPx,
+                        bottom = topPx + cardHeightPx
+                    )
                     key(key) {
                         Surface(
                             onClick = { if (dragKey == null) open(item.record) },
@@ -360,6 +418,15 @@ fun TimelineScreen(
                                         (18 * TimelineCoordinate.spanMillis(camera.hours) / height).toLong()
                             }
                             if (!collides && titleTop >= 0f) {
+                                val titleLeftPx = with(density) { (wingX + x + 3.dp).toPx() } - horizontalState.value
+                                val titleWidthPx = with(density) { (laneWidth - 6.dp).coerceAtLeast(8.dp).toPx() }
+                                val titleHeightPx = with(density) { 18.dp.toPx() }
+                                nowBadgeObstacles += Rect(
+                                    left = titleLeftPx,
+                                    top = titleTop,
+                                    right = titleLeftPx + titleWidthPx,
+                                    bottom = titleTop + titleHeightPx
+                                )
                                 Text(item.record.title,
                                     modifier = Modifier.offset(x + 3.dp, with(density) { titleTop.toDp() })
                                         .width((laneWidth - 6.dp).coerceAtLeast(8.dp)),
@@ -374,21 +441,26 @@ fun TimelineScreen(
                         }
                     }
                 }
-                TimelineCanvas(camera.anchorMillis, camera.hours, height, width, nowMillis, zone, nowOnly = true)
+                TimelineCanvas(camera.anchorMillis, camera.hours, height, width, nowMillis, zone,
+                    nowOnly = true, eventObstacles = nowBadgeObstacles)
                 // Double-tap the *current-time ruler*, not anywhere on an event.
+                val resetCameraToDay = {
+                    inertia?.cancel()
+                    cameraChange(latestCamera.copy(hours = 24.0))
+                }
                 Box(Modifier.align(Alignment.Center).width(25.dp).fillMaxHeight()
                     .pointerInput(Unit) {
                         detectTapGestures(onDoubleTap = {
-                            changeCamera(latestCamera.copy(hours = 24.0))
+                            resetCameraToDay()
                         })
-                    }.semantics { contentDescription = "双击当前时间刻度尺返回24小时视图" })
+                    }.timeAxisResetSemantics { resetCameraToDay() })
                 dragTarget?.let { target ->
                     val y = TimelineCoordinate.yOf(target, camera.anchorMillis, height, camera.hours)
                     Surface(Modifier.align(Alignment.TopCenter).offset(y = with(density) { y.toDp() }), shape = GlassShapes.chip, color = MaterialTheme.colorScheme.primaryContainer) {
                         Text("${Instant.ofEpochMilli(target).atZone(zone).format(CLOCK_FORMAT)} · 松开后确认草稿", Modifier.padding(10.dp), style = MaterialTheme.typography.labelMedium)
                     }
                 }
-                if (records.isEmpty()) Text(
+                if (records.isEmpty() && viewportHeight >= 480.dp && density.fontScale <= 1.3f) Text(
                     "还没有事件 · 点击右上角 + 开始",
                     modifier = Modifier.align(Alignment.TopCenter).padding(top = 24.dp),
                     style = MaterialTheme.typography.bodySmall,
@@ -543,7 +615,8 @@ private fun TimelineCanvas(
     widthPx: Float,
     nowMillis: Long,
     zone: ZoneId,
-    nowOnly: Boolean = false
+    nowOnly: Boolean = false,
+    eventObstacles: List<Rect> = emptyList()
 ) {
     val palette = LocalAxisPalette.current
     val scheme = MaterialTheme.colorScheme
@@ -612,6 +685,7 @@ private fun TimelineCanvas(
         val remainder = (tickLocal.hour * 60L + tickLocal.minute) % tickMinutes
         tickLocal = tickLocal.minusMinutes(remainder.toLong())
         var ticks = 0
+        var lastTickLabelBottom = Float.NEGATIVE_INFINITY
         while (ticks < 400) {
             val tickMillis = tickLocal.toInstant().toEpochMilli()
             if (tickMillis > to) break
@@ -632,10 +706,18 @@ private fun TimelineCanvas(
                 val ambiguous = zone.rules.getValidOffsets(tickLocal.toLocalDateTime()).size > 1
                 val tickLabel = tickLocal.format(CLOCK_FORMAT) + if (ambiguous) "\n${tickLocal.offset}" else ""
                 val measured = measurer.measure(tickLabel, tickStyle)
-                if (y > measured.size.height / 2 && y < size.height - measured.size.height / 2) drawText(
-                    measured,
-                    topLeft = Offset(centerX - measured.size.width / 2f, y - measured.size.height / 2f)
-                )
+                val labelTop = y - measured.size.height / 2f
+                val labelBottom = y + measured.size.height / 2f
+                if (y > measured.size.height / 2 &&
+                    y < size.height - measured.size.height / 2 &&
+                    labelTop >= lastTickLabelBottom + 4.dp.toPx()
+                ) {
+                    drawText(
+                        measured,
+                        topLeft = Offset(centerX - measured.size.width / 2f, labelTop)
+                    )
+                    lastTickLabelBottom = labelBottom
+                }
             }
             tickLocal = tickLocal.plusMinutes(tickMinutes)
             ticks++
@@ -669,15 +751,59 @@ private fun TimelineCanvas(
                 text,
                 TextStyle(color = palette.nowLine, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
             )
+            val badgeSize = Size(measured.size.width + 18f, measured.size.height + 8f)
+            val tickObstacles = mutableListOf<Rect>()
+            var obstacleTick = Instant.ofEpochMilli(from.toLong()).atZone(zone)
+                .withSecond(0).withNano(0)
+            val obstacleRemainder =
+                (obstacleTick.hour * 60L + obstacleTick.minute) % tickMinutes
+            obstacleTick = obstacleTick.minusMinutes(obstacleRemainder.toLong())
+            var obstacleTicks = 0
+            var lastObstacleLabelBottom = Float.NEGATIVE_INFINITY
+            while (obstacleTicks < 400) {
+                val tickMillis = obstacleTick.toInstant().toEpochMilli()
+                if (tickMillis > to) break
+                val y = TimelineCoordinate.yOf(tickMillis, anchor, heightPx, hours)
+                if (y > -20f && y < size.height + 20f) {
+                    val ambiguous = zone.rules.getValidOffsets(obstacleTick.toLocalDateTime()).size > 1
+                    val tickLabel = obstacleTick.format(CLOCK_FORMAT) +
+                        if (ambiguous) "\n${obstacleTick.offset}" else ""
+                    val tickMeasured = measurer.measure(tickLabel, tickStyle)
+                    val labelTop = y - tickMeasured.size.height / 2f
+                    val labelBottom = y + tickMeasured.size.height / 2f
+                    if (y > tickMeasured.size.height / 2f &&
+                        y < size.height - tickMeasured.size.height / 2f &&
+                        labelTop >= lastObstacleLabelBottom + 4.dp.toPx()
+                    ) {
+                        tickObstacles += Rect(
+                            left = centerX - tickMeasured.size.width / 2f,
+                            top = labelTop,
+                            right = centerX + tickMeasured.size.width / 2f,
+                            bottom = labelBottom
+                        )
+                        lastObstacleLabelBottom = labelBottom
+                    }
+                }
+                obstacleTick = obstacleTick.plusMinutes(tickMinutes)
+                obstacleTicks++
+            }
+            val badgeTopLeft = findUnblockedLabelTopLeft(
+                preferred = Offset(centerX - badgeSize.width / 2f, nowY - badgeSize.height / 2f),
+                labelSize = badgeSize,
+                canvasSize = size,
+                obstacles = tickObstacles + eventObstacles,
+                stepPx = 4.dp.toPx(),
+                gapPx = 2.dp.toPx()
+            )
             drawRoundRect(
                 color = scheme.surface.copy(alpha = 0.94f),
-                topLeft = Offset(centerX - measured.size.width / 2f - 9f, nowY - measured.size.height / 2f - 4f),
-                size = Size(measured.size.width + 18f, measured.size.height + 8f),
+                topLeft = badgeTopLeft,
+                size = badgeSize,
                 cornerRadius = CornerRadius(10f, 10f)
             )
             drawText(
                 measured,
-                topLeft = Offset(centerX - measured.size.width / 2f, nowY - measured.size.height / 2f)
+                topLeft = badgeTopLeft + Offset(9f, 4f)
             )
         }
     }
