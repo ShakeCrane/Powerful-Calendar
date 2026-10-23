@@ -1,4 +1,12 @@
 # Core freeze progress
+## PC-ISSUE-093 — BootReceiver asynchronous schedule reconciliation
+
+- Added `BootReceiverRecoveryTest.bootBroadcastReconcilesDesiredAlarmAndFinishesAsyncPendingResult`. Robolectric API 34 dispatches `ACTION_BOOT_COMPLETED` through `goAsync()`, changes the durable Alarm intent from PENDING to SCHEDULED, registers one ShadowAlarmManager task, completes `PendingResult`, and retains the result after SQLite reopen.
+- Focused regression passed 1/1 (log SHA-256 `CEBEC27C47343C23D1998248D6C7FC99176310CFE41BDACECD9BA7AA58EC439F`; JUnit XML SHA-256 `C6B73D20FB7495F9E0C3AE24DF5E3F8A41918C93C0D62B2B427D8B2366FD621B`). Full Gradle passed 447/447 across 57 suites, zero failures/errors/skips; lint 0 errors / 58 warnings. Full log SHA-256 `AF800BA5E17A2822EC9A79CCB9309A980DE4A199769A54F7225560BFE19FF707`.
+- Test commit `86e9d97106592edc41d988db317d47687be89976` is pushed. Independent report: `docs/issues/PC-ISSUE-093-boot-receiver-async-reconciliation.md`. `REC-P0-111` passes for the Robolectric receiver path; actual system boot broadcast and physical/OEM delivery remain untested. Test-harness failures from the first two attempts are documented with hashes.
+- Latest freeze remains HOLD: 133 PASS / 0 FAIL / 9 BLOCKED / 60 NOT TESTED / 7 SPEC UNRESOLVED; P0 111/0/1/9/5; P1 22/0/8/51/1; 115 reconstructed candidates have independent evidence. Original 209 case IDs remain unmapped. Scope remains core-only; pale horizontal edge accepted. Protected untracked files remain unchanged and unstaged.
+- Next: continue with a feasible non-UI core acceptance item.
+
 ## PC-ISSUE-092 — AI batch user cancellation and partial result
 
 - Added and pushed `PowerStoreTest.theAiRunnerStopsAfterUserCancelAndPersistsPartialOutcomeAcrossRestart`. The runner receives a cancellation request after the first item, does not publish the second item, returns `published=1 / kept=0 / cancelled=true`, releases the lock and persists the report across SQLite reopen; stale session writes remain denied.

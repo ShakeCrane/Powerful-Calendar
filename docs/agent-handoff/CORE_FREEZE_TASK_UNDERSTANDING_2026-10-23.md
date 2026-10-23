@@ -4,6 +4,9 @@
 目标：闭环测试、最小修复、逐项回归与签核，**满足证据标准才宣布核心基线 GO**；否则给出准确 HOLD 及阻塞。本文不是验收完成证明。
 
 ## 0. 最新执行续接（2026-10-24）
+- 已提交并推送 `PC-ISSUE-093` 开机 receiver 异步恢复回归：`86e9d97106592edc41d988db317d47687be89976`。Robolectric API 34 派发 `ACTION_BOOT_COMPLETED`，`BootReceiver.goAsync()` 将持久化 Alarm 从 PENDING 重建为 SCHEDULED，注册一个 ShadowAlarmManager task 并完成 PendingResult；SQLite 重开后状态保留。定向 1/1；完整 Gradle 447/447、57 suites，0 failures/errors/skips；Lint 0 errors/58 warnings。独立报告：`docs/issues/PC-ISSUE-093-boot-receiver-async-reconciliation.md`。真实系统开机广播与物理/OEM 未测；前两次测试夹具失败日志已保留并归因于 harness setup。
+- 最新冻结候选统计：133 PASS / 0 FAIL / 9 BLOCKED / 60 NOT TESTED / 7 SPEC UNRESOLVED；P0 111/0/1/9/5，P1 22/0/8/51/1；115 条重建候选有独立证据。结构校验 artifact：`.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-093.json`，SHA-256 `4DE9C39E9EB0F5A5104D5A0352597BB89BF8AD1CF2609F5320D76916E9AB6902`；CSV SHA-256 `00AB7B0FCCBC4CEADA4DBF8185DF106DA3EB3DAC5336B13E85EF8ACF52FFF95D`。校验仅结构性，冻结仍 HOLD，历史 209 项无映射。
+- 用户范围：只推进核心验收，不做 UI；变浅横向边缘已接受。受保护的未跟踪资产和观察报告保持未修改、未暂存。
 - 已提交并推送 `PC-ISSUE-092` AI 批次主动取消部分结果回归：`d79b0f6d11870c5a18c6b7401ebe18e72fe95c05`。首项完成后请求取消，runner 不再提交第二项，返回 `published=1/kept=0/cancelled=true`；报告和锁状态跨 SQLite 重开保持，旧 session 写入被拒绝。定向 1/1，完整 Gradle 446/446、56 suites，0 failures/errors/skips；Lint 0 errors/58 warnings。独立报告：`docs/issues/PC-ISSUE-092-ai-batch-user-cancel-partial-result.md`。
 - 冻结候选统计：132 PASS / 0 FAIL / 9 BLOCKED / 61 NOT TESTED / 7 SPEC UNRESOLVED；P0 110/0/1/10/5，P1 22/0/8/51/1；114 条重建候选有独立证据。结构校验 artifact：`.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-092.json`，SHA-256 `81F74E7BB9ED811BB323848ABD7450117B55C991CDDC7D31A576CD5F035CDAD8`；CSV SHA-256 `0A51B781AA9B4FB53C3F6A4772189898006BDEF401E3ABC297D0C937E8BAAB8F`。校验仅结构性，冻结仍 HOLD，历史 209 项无映射。
 - 用户范围保持：不做 UI；变浅的横向边缘接受。当前只推进核心状态与恢复验收。受保护文件保持未修改、未暂存。
