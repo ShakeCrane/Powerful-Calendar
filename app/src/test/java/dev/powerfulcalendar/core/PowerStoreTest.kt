@@ -2123,6 +2123,59 @@ class PowerStoreTest {
     }
 
     @Test
+    fun completingDateOnlyDeadlinePreservesDatePrecisionAcrossRestart() {
+        val card = store.newDraft(
+            DraftForm(
+                kind = TemporalKind.DEADLINE,
+                title = "提交材料",
+                endText = "2026-10-24",
+                trackingEnabled = true,
+                reminderMinutes = -1
+            )
+        )
+        assertTrue(commit(card) is PowerStore.CommitOutcome.Committed)
+
+        val before = requireNotNull(store.get(card.eventSeq))
+        assertEquals(TemporalKind.DEADLINE, before.kind)
+        assertEquals("2026-10-24", before.deadlineDate)
+        assertNull(before.deadlineMillis)
+        assertNull(before.startMillis)
+        assertNull(before.endMillis)
+        assertEquals(TimePrecision.DATE, before.precision)
+
+        assertTrue(store.setCompleted(
+            card.eventSeq,
+            occurrenceKey = "single",
+            completed = true,
+            expectedRevision = before.revision
+        ))
+
+        val completed = requireNotNull(store.get(card.eventSeq))
+        assertEquals(before.revision + 1, completed.revision)
+        assertEquals(setOf("single"), completed.completedKeys)
+        assertEquals("2026-10-24", completed.deadlineDate)
+        assertNull(completed.deadlineMillis)
+        assertNull(completed.startMillis)
+        assertNull(completed.endMillis)
+        assertEquals(TimePrecision.DATE, completed.precision)
+        assertEquals(2, store.history(card.eventSeq).size)
+
+        val database = store.databaseName
+        store.close()
+        store = PowerStore(context, database)
+        val reopened = requireNotNull(store.get(card.eventSeq))
+        assertEquals(completed, reopened)
+        assertEquals(setOf("single"), reopened.completedKeys)
+        assertEquals(TimePrecision.DATE, reopened.precision)
+        assertNull(reopened.deadlineMillis)
+        assertNull(reopened.startMillis)
+        assertNull(reopened.endMillis)
+        assertEquals(1L, store.identityCount())
+        assertEquals(2L, store.nextSequencePreview())
+        assertEquals(2, store.history(card.eventSeq).size)
+    }
+
+    @Test
     fun incompleteActivityCommitStaysUnpublishedAndCanBeRepairedAfterRestart() {
         val incompleteForm = DraftForm(
             kind = TemporalKind.ACTIVITY,
