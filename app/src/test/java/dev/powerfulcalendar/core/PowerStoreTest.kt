@@ -754,6 +754,41 @@ class PowerStoreTest {
     }
 
     @Test
+    fun staleDraftRequiresExplicitReapprovalAfterRestart() {
+        val card = store.newDraft(activityForm("Base").copy(trackingEnabled = true))
+        assertTrue(commit(card) is PowerStore.CommitOutcome.Committed)
+        val eventSeq = card.eventSeq
+        val base = requireNotNull(store.get(eventSeq))
+        val stale = store.newDraft(
+            DraftForm.from(base).copy(title = "Reapproved replacement"),
+            eventSeq,
+            DraftOperation.REPLACE
+        )
+        assertTrue(store.setCompleted(eventSeq, "single", true,
+            expectedRevision = base.revision))
+
+        val database = store.databaseName
+        store.close()
+        store = PowerStore(context, database)
+
+        assertTrue(store.commit(stale.draftId) is PowerStore.CommitOutcome.Conflict)
+        val beforeApproval = requireNotNull(store.get(eventSeq))
+        assertEquals("Base", beforeApproval.title)
+        assertEquals(2L, beforeApproval.revision)
+        assertTrue(beforeApproval.completedKeys.contains("single"))
+        assertEquals(DraftStatus.CONFLICT, store.draft(stale.draftId)!!.status)
+
+        val approved = store.commit(stale.draftId, approveStale = true, actor = "human-review")
+        assertTrue(approved is PowerStore.CommitOutcome.Committed)
+        val afterApproval = requireNotNull(store.get(eventSeq))
+        assertEquals("Reapproved replacement", afterApproval.title)
+        assertEquals(3L, afterApproval.revision)
+        assertFalse(afterApproval.completedKeys.contains("single"))
+        assertEquals(DraftStatus.COMMITTED, store.draft(stale.draftId)!!.status)
+        assertTrue(store.pendingDraftsFor(eventSeq).isEmpty())
+    }
+
+    @Test
     fun repeatedCommitReturnsTheOriginalOutcome() {
         val card = store.newDraft(activityForm())
         val first = commit(card) as PowerStore.CommitOutcome.Committed
