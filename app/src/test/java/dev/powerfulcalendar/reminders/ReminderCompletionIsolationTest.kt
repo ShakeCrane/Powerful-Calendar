@@ -16,6 +16,7 @@ import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.Recurrence
 import dev.powerfulcalendar.core.RecurrenceEngine
 import dev.powerfulcalendar.core.RecurrenceFreq
+import dev.powerfulcalendar.core.ReminderPolicy
 import dev.powerfulcalendar.core.TemporalKind
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -177,6 +178,80 @@ class ReminderCompletionIsolationTest {
     }
 
     @Test
+    fun lateFireWithinGraceFires() {
+        val fixture = newFixture()
+        val store = fixture.store
+        try {
+            val minuteNow = Math.floorDiv(System.currentTimeMillis(), 60_000L) * 60_000L
+            val seq = createTrackedAlarm(
+                store,
+                minuteNow - AlarmContract.GRACE_MILLIS + 60_000L
+            )
+            val record = store.get(seq)!!
+            val startMillis = record.startMillis!!
+            val scheduledInstant = ReminderPolicy.instant(record, startMillis)!!
+            val occurrenceKey = RecurrenceEngine.keyFor(
+                Instant.ofEpochMilli(startMillis).atZone(zone).toLocalDateTime()
+            )
+            val fire = Intent(fixture.context, ReminderReceiver::class.java).apply {
+                action = AlarmContract.ACTION_FIRE
+                putExtra(AlarmContract.EXTRA_EVENT_SEQ, seq)
+                putExtra(AlarmContract.EXTRA_REVISION, record.revision)
+                putExtra(AlarmContract.EXTRA_OCCURRENCE_KEY, occurrenceKey)
+                putExtra(AlarmContract.EXTRA_TRIGGER_ID, ReminderPolicy.PRIMARY_TRIGGER_ID)
+                putExtra(AlarmContract.EXTRA_INSTANT, scheduledInstant)
+            }
+
+            ReminderReceiver().handle(fixture.context, fire)
+
+            assertEquals("FIRED", store.lastExecution(seq))
+            assertTrue(
+                fixture.context.getSystemService(NotificationManager::class.java)!!
+                    .activeNotifications.any { it.id == NotificationHelper.notificationId(seq) }
+            )
+        } finally {
+            closeFixture(fixture)
+        }
+    }
+
+    @Test
+    fun lateFireIsMissedNoNotification() {
+        val fixture = newFixture()
+        val store = fixture.store
+        try {
+            val minuteNow = Math.floorDiv(System.currentTimeMillis(), 60_000L) * 60_000L
+            val seq = createTrackedAlarm(
+                store,
+                minuteNow - AlarmContract.GRACE_MILLIS - 60_000L
+            )
+            val record = store.get(seq)!!
+            val startMillis = record.startMillis!!
+            val scheduledInstant = ReminderPolicy.instant(record, startMillis)!!
+            val occurrenceKey = RecurrenceEngine.keyFor(
+                Instant.ofEpochMilli(startMillis).atZone(zone).toLocalDateTime()
+            )
+            val fire = Intent(fixture.context, ReminderReceiver::class.java).apply {
+                action = AlarmContract.ACTION_FIRE
+                putExtra(AlarmContract.EXTRA_EVENT_SEQ, seq)
+                putExtra(AlarmContract.EXTRA_REVISION, record.revision)
+                putExtra(AlarmContract.EXTRA_OCCURRENCE_KEY, occurrenceKey)
+                putExtra(AlarmContract.EXTRA_TRIGGER_ID, ReminderPolicy.PRIMARY_TRIGGER_ID)
+                putExtra(AlarmContract.EXTRA_INSTANT, scheduledInstant)
+            }
+
+            ReminderReceiver().handle(fixture.context, fire)
+
+            assertEquals("MISSED", store.lastExecution(seq))
+            assertTrue(
+                fixture.context.getSystemService(NotificationManager::class.java)!!
+                    .activeNotifications.none { it.id == NotificationHelper.notificationId(seq) }
+            )
+        } finally {
+            closeFixture(fixture)
+        }
+    }
+
+    @Test
     fun snoozedRecurringOccurrenceFiresWithoutChangingItsSeries() {
         val fixture = newFixture()
         val store = fixture.store
@@ -275,8 +350,10 @@ class ReminderCompletionIsolationTest {
         }
     }
 
-    private fun createTrackedAlarm(store: PowerStore): Long {
-        val start = System.currentTimeMillis() + 60 * 60_000L
+    private fun createTrackedAlarm(
+        store: PowerStore,
+        start: Long = System.currentTimeMillis() + 60 * 60_000L
+    ): Long {
         val card = store.newDraft(
             DraftForm(
                 kind = TemporalKind.ALARM,

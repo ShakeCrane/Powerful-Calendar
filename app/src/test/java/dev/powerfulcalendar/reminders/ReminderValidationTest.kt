@@ -6,7 +6,9 @@ import androidx.test.core.app.ApplicationProvider
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.PowerStore
+import dev.powerfulcalendar.core.RecurrenceEngine
 import dev.powerfulcalendar.core.ReminderMethod
+import dev.powerfulcalendar.core.ReminderPolicy
 import dev.powerfulcalendar.core.TemporalKind
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -19,6 +21,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowAlarmManager
+import java.time.Instant
 import java.time.ZoneId
 import java.util.UUID
 
@@ -175,6 +178,37 @@ class ReminderValidationTest {
 
         assertEquals(PowerStore.DesiredSchedule.SCHEDULED, store.intentFor(seq)!!.desired)
         assertEquals(1, shadowAlarmManager.scheduledAlarms.size)
+    }
+
+    @Test
+    fun overduePendingIntentOutsideCurrentGraceWindowIsMissedWithoutRearming() {
+        val alarmManager = context.getSystemService(AlarmManager::class.java)!!
+        val shadowAlarmManager = Shadows.shadowOf(alarmManager)
+        val seq = createAlarm(-11)
+        val record = store.get(seq)!!
+        val startMillis = record.startMillis!!
+        val occurrenceKey = RecurrenceEngine.keyFor(
+            Instant.ofEpochMilli(startMillis).atZone(record.zone).toLocalDateTime()
+        )
+        val triggerInstant = ReminderPolicy.instant(record, startMillis)!!
+        store.writableDatabase.execSQL(
+            """INSERT INTO schedule_intents(
+                event_seq,trigger_id,revision,occurrence_key,instant_ms,requirement,
+                desired_state,android_hint,updated_ms
+            ) VALUES(?,?,?,?,?,?,?,?,?)""",
+            arrayOf<Any?>(
+                seq, ReminderPolicy.PRIMARY_TRIGGER_ID, record.revision, occurrenceKey,
+                triggerInstant, PowerStore.TriggerRequirement.INEXACT.name,
+                PowerStore.DesiredSchedule.PENDING.name, null, System.currentTimeMillis()
+            )
+        )
+        assertEquals(PowerStore.DesiredSchedule.PENDING, store.intentFor(seq)!!.desired)
+
+        ReminderScheduler.reconcile(context, store)
+
+        assertEquals("MISSED", store.lastExecution(seq))
+        assertTrue(store.intentFor(seq) == null)
+        assertTrue(shadowAlarmManager.scheduledAlarms.isEmpty())
     }
 
     @Test
