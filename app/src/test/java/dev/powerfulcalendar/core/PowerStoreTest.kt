@@ -735,6 +735,38 @@ class PowerStoreTest {
     }
 
     @Test
+    fun explicitCommitIdRetryAfterRestartDoesNotRepeatSideEffects() {
+        val card = store.newDraft(alarmForm("idempotent retry"))
+        val idempotencyKey = "freeze-commit-id-retry"
+        val first = store.commit(card.draftId, idempotencyKey = idempotencyKey)
+            as PowerStore.CommitOutcome.Committed
+        assertFalse(first.duplicate)
+        assertEquals(idempotencyKey, first.commitId)
+
+        val historyBeforeRestart = store.history(card.eventSeq)
+        val intentsBeforeRestart = store.dueIntents()
+        assertEquals(1, historyBeforeRestart.size)
+        assertEquals(1, store.stats(sinceMillis = 0, actor = "user").published)
+        assertEquals(1, intentsBeforeRestart.size)
+        assertEquals(0, store.pendingCount())
+
+        val database = store.databaseName
+        store.close()
+        store = PowerStore(context, database)
+
+        val retry = store.commit(card.draftId, idempotencyKey = idempotencyKey)
+            as PowerStore.CommitOutcome.Committed
+        assertTrue(retry.duplicate)
+        assertEquals(first.eventSeq, retry.eventSeq)
+        assertEquals(first.revision, retry.revision)
+        assertEquals(first.commitId, retry.commitId)
+        assertEquals(historyBeforeRestart, store.history(card.eventSeq))
+        assertEquals(intentsBeforeRestart, store.dueIntents())
+        assertEquals(1, store.stats(sinceMillis = 0, actor = "user").published)
+        assertEquals(0, store.pendingCount())
+    }
+
+    @Test
     fun separateCommitOperationsReceiveUniqueCommitIdsAcrossRestart() {
         val initial = store.newDraft(activityForm("initial"))
         val first = commit(initial) as PowerStore.CommitOutcome.Committed
