@@ -6,6 +6,7 @@
 测试 APK：`app/build/outputs/apk/debug/app-debug.apk`
 Issue 004 修复代码基线：`16e00d55435c5029e07784ec5d945dfd7fb37ac5`
 最新测试 APK SHA-256：`B0AB218FF70D696E25B570F0151BEC0F58B07FE545A045EE976EBD4F1173CAE1`
+最新核心回归代码基线：`40e5dd35bd238da476f67507994b6c100b646b89`；Debug APK SHA-256：`9677B9816B9028EF5C25EC84025ABA56DDB92BEB5CF36B2197AC5615315BB0AE`
 设备：Issue 004 使用隔离的 Android 15 / API 35 `emulator-5556`；原 `emulator-5554` 保持运行且未操作。无物理真机。
 本轮改动时间轴 UI 与回归测试；未清除模拟器/业务数据，未修改或删除 `design/`。
 
@@ -32,6 +33,7 @@ Issue 004 修复代码基线：`16e00d55435c5029e07784ec5d945dfd7fb37ac5`
 | FQ-17 | 标题实际矩形贪心折叠、事件几何/点击/语义保持 | **PASS（API 35 隔离模拟器）** | 8 个策略单测、5 个 Compose 测试；A/B/C/D 碰撞轨迹、修复前后截图及坐标见 [`PC-ISSUE-GREEDY-LABEL-FOLDING`](issues/PC-ISSUE-GREEDY-LABEL-FOLDING.md)；真机/TalkBack 仍未验证 |
 | FQ-18 | 移除时间轴背景淡横带、固定竖屏及系统旋转请求回归 | **PASS（API 35 隔离模拟器）** | 画布背景取样 24 点 RGB 完全一致；90°旋转请求下应用仍为 1080×2400/ROTATION_0；54 套件 364 项完整回归通过。证据见 `docs/issues/PC-ISSUE-004-timeline-layout.md` 的补正记录 |
 | FQ-19 | Envelope 哈希、水位拒绝与格式降级防护（REC-P0-091/097/106） | **PASS（定点 JVM 回归 3/3）** | `BackupEnvelopeTest` 三个精确方法通过；代码基线 `574092de1046763c4aad40d7db4a2dd9123848fa`，APK SHA-256 `53C200F398D13D636125572DBD0C4876FEA1A18585323C935F9C13F8E061E103`；日志 SHA-256 `F14D6EB7B5D96678EF84B4B6177B69446C27DF46AC5820712C5E424921D4CAD9`，详见 `docs/issues/PC-QA-GATE-001-209-case-ledger.md` |
+| FQ-20 | 删除后显式恢复墓碑、保留同一 `eventSeq`（REC-P0-055/056） | **PASS（核心 JVM）；产品验收 PARTIAL / HOLD** | SQLite 与 DeckController 定点测试 2/2；恢复确认前保留墓碑，拒绝非 user actor，确认后 revision +1、序号水位不变并重建提醒。提交 `40e5dd35bd238da476f67507994b6c100b646b89`；全量 366 项 PASS / lint 0 errors、55 warnings；API 35 设备未测，当前无 UI 动作调用 `beginRestore`。独立报告 `docs/issues/PC-ISSUE-005-retired-event-restoration.md` |
 
 注意：`FQ-01` 的 325 为单元测试用例数，`FQ-03` 的 37 为工具测试用例数，`FQ-16` 的 11 是业务检查组。它们**不能**直接映射为冻结清单中的 209 个独立项目。
 
@@ -77,6 +79,11 @@ Issue 004 修复代码基线：`16e00d55435c5029e07784ec5d945dfd7fb37ac5`
 - **自动化**：52 套件、362 项全量 JVM 测试通过；Skin boundary、Debug APK、Lint 通过。实现提交 `0099a8a201dbc605ba74e1999110eec7517ec6f6`。
 - **剩余范围**：真机/OEM 与 TalkBack 交互未验；本项作为代码及 API 35 子项单独 PASS，核心冻结仍 HOLD。独立报告：[`docs/issues/PC-ISSUE-GREEDY-LABEL-FOLDING.md`](issues/PC-ISSUE-GREEDY-LABEL-FOLDING.md)。
 
+### PC-ISSUE-005 · P0 / 核心路径 PASS；产品验收 PARTIAL / HOLD · 墓碑恢复缺少可达的核心入口
+- `PowerStore.proposeRestoreDraft` 现在可为墓碑建立同一 `eventSeq` 的待确认提案，`DeckController.beginRestore` 打开该提案；显式确认才恢复，非 user actor 不可复活事件。
+- 定点 SQLite / Draft Deck 控制器测试 2/2 PASS；全量 Gradle 366 项 PASS、Lint 0 errors / 55 warnings。证据与哈希见 [`PC-ISSUE-005`](issues/PC-ISSUE-005-retired-event-restoration.md)。
+- 由于本轮不改 UI，应用中尚无动作调用 `beginRestore`；API 35 设备验收也未做。本项核心模型验证通过，但产品入口与设备验收保留 HOLD。
+
 ### PC-OBS-005 · NEEDS REPRO · 部分提交操作即时反馈可能存在时序竞争
 - 旧 Round 1/2 观察：某些 Publish 之后立刻采样 UI 未见结果，稍后实际提交成功。
 - 当前证据不足以证明业务写入失败；按确定性等待稳定后复现再立缺陷。
@@ -93,8 +100,8 @@ Issue 004 修复代码基线：`16e00d55435c5029e07784ec5d945dfd7fb37ac5`
 - 当前跟踪的仓库文件中只有对“209 项”的描述，**没有找到 209 个完整编号用例及 PASS/FAIL/证据 ID 一一映射**。
 - 因此 **209 项未逐案签核**；既不能说全部未实际测试，也不能根据 325+37 单元测试声称全部通过。
 - 本轮只读审计仍未找到原始逐案清单；已建立 208 条 RECONSTRUCTED 候选项及 1 条未定义历史槽位，见 `docs/CORE_FREEZE_ACCEPTANCE_LEDGER.csv`。候选按风险给出 P0=126/P1=82 建议分配，但 0 个原始 ID 有映射，优先级仍待审核。
-- 候选逐案状态：P0 PASS 9 / BLOCKED 1 / NOT TESTED 112 / SPEC UNRESOLVED 4；P1 PASS 19 / BLOCKED 8 / NOT TESTED 54 / SPEC UNRESOLVED 1；历史未分类槽位 SPEC UNRESOLVED 1。三条新增 PASS 对应独立、定点备份测试；详细证据、source audit、验证边界与下一步见独立报告 `docs/issues/PC-QA-GATE-001-209-case-ledger.md`。
-- 最近完整 Gradle 工作树结果含受保护未跟踪测试 1 项；另有三项定点回归通过。二者都没有映射到缺失的原始 209 个 ID。
+- 候选逐案状态：P0 PASS 11 / BLOCKED 1 / NOT TESTED 110 / SPEC UNRESOLVED 4；P1 PASS 19 / BLOCKED 8 / NOT TESTED 54 / SPEC UNRESOLVED 1；历史未分类槽位 SPEC UNRESOLVED 1。五条新增 PASS 对应独立、定点备份与墓碑恢复测试；详细证据、source audit、验证边界与下一步见独立报告 `docs/issues/PC-QA-GATE-001-209-case-ledger.md`。
+- 最新完整 Gradle 工作树结果 366 项通过，含受保护未跟踪测试 1 项；五项定点候选回归有独立日志。二者都没有映射到缺失的原始 209 个 ID。
 - 解除：执行未测候选项、处理可解阻塞并审核拟定优先级；不可声称与缺失原始表完成历史逐项签核。
 
 ### PC-QA-GATE-002 · P0 / BLOCKED · OEM 真机、其他 Android API 等级与系统权限组合

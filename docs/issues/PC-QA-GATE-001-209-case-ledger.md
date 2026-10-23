@@ -27,14 +27,14 @@ Audit evidence: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-sour
 
 `docs/CORE_FREEZE_ACCEPTANCE_LEDGER.csv` contains 208 reconstructed rows and one unresolved historical slot. Proposed priority allocation is P0=126 and P1=82, grouped by risk/source area; this preserves the known aggregate for review but does not establish which historical case each row represents. All reconstructed rows are explicitly `UNMAPPED`.
 
-Structural validation: 209 unique IDs; all reconstructed rows contain source, environment, action, expected and actual fields; PASS/BLOCKED rows include evidence references. After the case-specific update below, validation JSON is `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-backup-cases.json` (ledger SHA-256 `0BEF6E07378C6500D61808FA9501F9C05B5300A90D4D90D374B1D364906AB9B5`). Structural validation does not test the app or prove the historical mapping.
+Structural validation: 209 unique IDs; all reconstructed rows contain source, environment, action, expected and actual fields; PASS/BLOCKED rows include evidence references. Latest validation JSON: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-restore-cases.json` (ledger SHA-256 `798A00A49FC87CFE42650DCD8C7F581CBBF9123C8354CF50A0D9956C72F81142`). Structural validation does not test the app or prove the historical mapping.
 
 | Candidate bucket | PASS | FAIL | BLOCKED | NOT TESTED | SPEC UNRESOLVED |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| P0 (proposed) | 9 | 0 | 1 | 112 | 4 |
+| P0 (proposed) | 11 | 0 | 1 | 110 | 4 |
 | P1 (proposed) | 19 | 0 | 8 | 54 | 1 |
 | Historical unclassified slot | 0 | 0 | 0 | 0 | 1 |
-| **Total candidate rows** | **28** | **0** | **9** | **166** | **6** |
+| **Total candidate rows** | **30** | **0** | **9** | **164** | **6** |
 
 ### Case-specific backup verification (2026-10-23)
 
@@ -48,7 +48,18 @@ Three reconstructed P0 backup-contract rows were individually exercised in JVM S
 
 Command: `.\gradlew.bat :app:testDebugUnitTest --tests "dev.powerfulcalendar.core.BackupEnvelopeTest.exportProducesEnvelopeV1WithMatchingCanonicalHash" --tests "dev.powerfulcalendar.core.BackupEnvelopeTest.aLowSequenceWatermarkIsRejected" --tests "dev.powerfulcalendar.core.BackupEnvelopeTest.flatV1BackupIsExplicitlyRejectedAndEnvelopeCannotBeDowngradedToLegacy" --offline --rerun-tasks --console=plain`. Result: **3 passed, 0 failed/errors/skipped**. Log: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-backup-casebatch-20261023/targeted-tests.log` (SHA-256 `F14D6EB7B5D96678EF84B4B6177B69446C27DF46AC5820712C5E424921D4CAD9`). The exact method results are also present in Gradle's `TEST-dev.powerfulcalendar.core.BackupEnvelopeTest.xml`. This targeted run does not replace or inflate the separate full working-tree run.
 
-The latest full working-tree Gradle run includes one test from protected, untracked `DraftDeckFeedbackTest.kt` (363 tracked tests plus 1 untracked), so it is not a clean committed-tree test count. Neither that grouped result nor these three targeted rows establishes historical case-ID mapping.
+The latest full working-tree Gradle run includes one test from protected, untracked `DraftDeckFeedbackTest.kt` (365 tracked tests plus 1 untracked), so it is not a clean committed-tree test count. Neither that grouped result nor the targeted case batches establishes historical case-ID mapping.
+
+### Case-specific retired-event restoration (2026-10-23)
+
+`REC-P0-055` and `REC-P0-056` were exercised on code commit `40e5dd35bd238da476f67507994b6c100b646b89`, Debug APK SHA-256 `9677B9816B9028EF5C25EC84025ABA56DDB92BEB5CF36B2197AC5615315BB0AE`, using JVM SQLite fixtures under Robolectric SDK 34 and the pure Kotlin Draft Deck controller.
+
+| Candidate row | Test | Result |
+| --- | --- | --- |
+| `REC-P0-055` — explicit approval before restoring a tombstone | `PowerStoreTest.explicitRestoreProposalKeepsTombstoneUntilHumanConfirmationAndReusesIdentity`; `DeckControllerTest.explicitRestoreEntryOpensProposalAndRequiresSeparateConfirmation` | PASS: proposal leaves tombstone retired, commit asks for restore, and the controller requires a separate confirmation; non-user restore actor is rejected. |
+| `REC-P0-056` — restore the same event identity | `PowerStoreTest.explicitRestoreProposalKeepsTombstoneUntilHumanConfirmationAndReusesIdentity` | PASS: user confirmation reactivates the same `eventSeq` at revision +1; sequence watermark is unchanged and desired reminder is rebuilt. |
+
+Targeted log: `.local/android-test/reports/freeze-20261023/pc-issue-005-restore-core-targeted-final-20261023.log` (SHA-256 `A60E93DB1727BE512F2C31A11EF3FBA7A50CAE661F1369A179017F9E871FBFBC`), **2 passed / 0 failed/errors/skipped**. Full Gradle regression: 366 passed / 0 failed/errors/skipped, lint 0 errors / 55 warnings; log `.local/android-test/reports/freeze-20261023/pc-issue-005-restore-full-gradle-final-20261023.log` (SHA-256 `0F0271F238F4D6ACA62B0916A132854305740ECABB7CD7CCC12108A2C58B91F3`). No Android device was used and no UI entry point invokes `beginRestore`; see `docs/issues/PC-ISSUE-005-retired-event-restoration.md` for the product-path HOLD.
 
 ## Historical sign-off accounting
 
@@ -58,11 +69,11 @@ The latest full working-tree Gradle run includes one test from protected, untrac
 | P1 | 82 | 0 | Unassessed by original ID |
 | Priority unresolved | 1 | 0 | Remains unclassified and unassessed |
 
-The latest full working-tree Gradle run reports 364 tests PASS, 0 failures/errors/skips, successful skin-boundary verification and Debug assembly, and lint 0 errors / 55 warnings. It includes one test from protected, untracked `app/src/test/java/dev/powerfulcalendar/ui/v2/DraftDeckFeedbackTest.kt` (363 tracked tests + 1 untracked); the file was not modified or staged. Log: `.local/android-test/reports/freeze-20261023/issue001-dst-full-gradle-20261023.log` (SHA-256 `02A3FB2D275B2BD225BE102960DAD1D7B02AD2829028C10E312FBD8DC0F74DA5`). This is neither a clean committed-tree 364-test count nor a 364-to-209 mapping.
+The latest full working-tree Gradle run reports 366 tests PASS, 0 failures/errors/skips, successful skin-boundary verification and Debug assembly, and lint 0 errors / 55 warnings. It includes one test from protected, untracked `app/src/test/java/dev/powerfulcalendar/ui/v2/DraftDeckFeedbackTest.kt` (365 tracked tests + 1 untracked); the file was not modified or staged. Log: `.local/android-test/reports/freeze-20261023/pc-issue-005-restore-full-gradle-final-20261023.log` (SHA-256 `0F0271F238F4D6ACA62B0916A132854305740ECABB7CD7CCC12108A2C58B91F3`). This is neither a clean committed-tree 366-test count nor a 366-to-209 mapping.
 
 ## Required next work
 
-1. Run the 166 `NOT TESTED` rows under the environment each row requires and update only with case-specific evidence.
+1. Run the 164 `NOT TESTED` rows under the environment each row requires and update only with case-specific evidence.
 2. Resolve the one blocked P0, eight blocked P1, and five reconstructed spec-unresolved rows where feasible; retain external/physical/device dependencies as HOLD. The separate historical unclassified slot remains unresolved pending its source.
 3. Review the source-based proposed priority allocation. New IDs must never masquerade as historical IDs.
 4. Keep the one historical unclassified item visibly unresolved until its source or an explicit review decision is available.
@@ -70,4 +81,4 @@ The latest full working-tree Gradle run reports 364 tests PASS, 0 failures/error
 
 ## Scope and outcome
 
-No application code or business data was changed for this audit or targeted case batch. Three reconstructed candidate rows now have case-specific PASS evidence; 166 remain NOT TESTED, proposed priorities still need review, and historical mapping is still absent. PC-QA-GATE-001 remains **PARTIAL / HOLD**, and overall core verdict remains **HOLD**.
+Core code and tests now have evidence for five additional reconstructed rows across the backup and tombstone batches; 164 remain NOT TESTED, proposed priorities still need review, and historical mapping is still absent. PC-QA-GATE-001 remains **PARTIAL / HOLD**, and overall core verdict remains **HOLD**.
