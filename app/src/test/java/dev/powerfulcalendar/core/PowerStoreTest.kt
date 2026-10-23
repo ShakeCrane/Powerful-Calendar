@@ -256,6 +256,70 @@ class PowerStoreTest {
     }
 
     @Test
+    fun wholeRecurringSeriesEditKeepsIdentityAndAnchorAcrossRestart() {
+        val shanghai = ZoneId.of("Asia/Shanghai")
+        val firstLocal = LocalDateTime.of(2026, 10, 20, 7, 30)
+        val firstMillis = firstLocal.atZone(shanghai).toInstant().toEpochMilli()
+        val card = store.newDraft(DraftForm(
+            kind = TemporalKind.ALARM,
+            title = "整组编辑前",
+            startText = DraftForm.formatInstant(firstMillis, shanghai),
+            reminderMinutes = -1,
+            zoneId = shanghai.id,
+            recurrence = Recurrence(freq = RecurrenceFreq.DAILY, count = 5)
+        ))
+        assertTrue(commit(card) is PowerStore.CommitOutcome.Committed)
+
+        val before = requireNotNull(store.get(card.eventSeq))
+        val from = LocalDateTime.of(2026, 10, 20, 0, 0)
+            .atZone(shanghai).toInstant().toEpochMilli()
+        val until = LocalDateTime.of(2026, 10, 26, 0, 0)
+            .atZone(shanghai).toInstant().toEpochMilli()
+        val editedRule = before.recurrence.copy(
+            count = 4,
+            exceptions = setOf("2026-10-21T07:30")
+        )
+
+        val session = EditSession.open(store, before)
+        try {
+            session.edit(session.form.copy(
+                title = "整组编辑后",
+                recurrence = editedRule
+            ))
+            val result = session.save()
+            assertTrue(result is PowerStore.DirectEditOutcome.Saved && result.changed)
+        } finally {
+            session.close()
+        }
+
+        val after = requireNotNull(store.get(before.eventSeq))
+        val expectedKeys = listOf(
+            "2026-10-20T07:30",
+            "2026-10-22T07:30",
+            "2026-10-23T07:30"
+        )
+        assertEquals(before.eventSeq, after.eventSeq)
+        assertEquals(before.revision + 1, after.revision)
+        assertEquals(before.startMillis, after.startMillis)
+        assertEquals("整组编辑后", after.title)
+        assertEquals(editedRule, after.recurrence)
+        assertEquals(expectedKeys, RecurrenceEngine.occurrences(after, from, until).map { it.key })
+        assertEquals(1L, store.identityCount())
+        assertEquals(2L, store.nextSequencePreview())
+        assertEquals(2, store.history(before.eventSeq).size)
+
+        val database = store.databaseName
+        store.close()
+        store = PowerStore(context, database)
+        val reopened = requireNotNull(store.get(before.eventSeq))
+        assertEquals(after, reopened)
+        assertEquals(expectedKeys, RecurrenceEngine.occurrences(reopened, from, until).map { it.key })
+        assertEquals(1L, store.identityCount())
+        assertEquals(2L, store.nextSequencePreview())
+        assertEquals(2, store.history(before.eventSeq).size)
+    }
+
+    @Test
     fun thisAndFutureRecurringEditSplitsIdentityAndMigratesOnlyCompatibleFutureState() {
         val shanghai = ZoneId.of("Asia/Shanghai")
         val firstMillis = LocalDateTime.of(2026, 10, 20, 7, 30)
