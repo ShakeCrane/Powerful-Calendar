@@ -82,6 +82,30 @@ class TemporalProtocolTest {
         assertEquals("截止事件需要日期或时刻", record.validate())
     }
 
+    @Test
+    fun instantDeadlineBuildStoresOnlyItsDeadlinePoint() {
+        val form = DraftForm(
+            kind = TemporalKind.DEADLINE,
+            title = "提交截止",
+            startText = "2026-10-24 09:00",
+            endText = "2026-10-24 18:00",
+            zoneId = shanghai.id
+        )
+
+        val result = form.build(seq = 14, revision = 2)
+        assertTrue(result is FormBuild.Ready)
+        val deadline = (result as FormBuild.Ready).record
+        val expectedInstant = millis("2026-10-24 18:00")
+
+        assertEquals(TemporalKind.DEADLINE, deadline.kind)
+        assertNull(deadline.startMillis)
+        assertNull(deadline.endMillis)
+        assertEquals(expectedInstant, deadline.deadlineMillis)
+        assertEquals(expectedInstant, deadline.anchorMillis())
+        assertEquals(expectedInstant, deadline.spanEndMillis())
+        assertNull(deadline.validate())
+    }
+
     // ---------------------------------------------------------------- type conversion
 
     @Test
