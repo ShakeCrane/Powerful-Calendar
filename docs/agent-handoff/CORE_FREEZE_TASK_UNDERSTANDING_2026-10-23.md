@@ -1,0 +1,87 @@
+# PowerCal 核心基线冻结：任务理解清单
+版本：2026-10-23 交接快照；执行前必须按本地仓库重新核对。
+根目录：E:\Project\Powerful-Calendar
+目标：闭环测试、最小修复、逐项回归与签核，**满足证据标准才宣布核心基线 GO**；否则给出准确 HOLD 及阻塞。本文不是验收完成证明。
+
+## 1. 当前真实现场与不得丢失的工作
+- main / origin/main：92f083b；Issue 001（ICS）e8c9a5a、Issue 003（备份）92f083b 已提交并推送。
+- Issue 002 AI 进行中：三个已修改文件 AiClient.kt / AiChatActionParser.kt / AiModels.kt；三个未跟踪新文件 AiCompletionPolicy.kt / AiCompletionPolicyTest.kt / AiCalendarHintSafetyTest.kt。接手时先审查全部 diff，**不 reset/clean/checkout 覆盖现有修改**。
+- 未跟踪 design/ 是设计资产，不清理、不盲提交、不覆盖。
+- .local/android-test 是仓库内测试资产及模拟器工具位置；保留既有截图、日志、失败样本、只读数据库快照、AVD。
+- 原测试环境：Android 15 API 35，PowerCal_API35，emulator-5554；原生测试场景与模拟器数据可能包含历史资料，不得随意清库。破坏性恢复用独立可丢弃实例。
+- CommandCode 地址：https://api.commandcode.ai/provider/v1；模拟器已有密钥（仅检查存在，不读/输出明文）；原模型 stealth/glyph-cluster:free。
+- 历史阶段中 JVM 343/343（含 Issue 002 新增 7 项）、Skin Studio 37/37、Debug 构建、Lint 通过；**再次检查当前基线**，不可直接转化为 209 项验收通过。
+- 总设计：核心产品合同 docs/CORE_CONTRACT_FREEZE_2026-10-21.md；当前冻结风险 docs/FREEZE_ISSUE_REPORT_2026-10-23.md；模拟器回归 docs/ANDROID_EMULATOR_*QA_2026-10-23.md；Issue 独立报告 docs/issues/。
+
+## 2. 从高到低的待办清单
+
+### P0-A 接管与可追溯验收表
+- [ ] 只读审计 Git 工作树/未提交改动/源代码与文档/运行测试进程/模拟器与现有数据库状态/API 配置状态。
+- [ ] 记录基线 SHA、Debug APK SHA256、Android 版本与 serial、测试时区、测试脚本/证据路径。
+- [ ] 核查“209 项核心验收”的真正原始清单：历史仅见 P0=126、P1=82、未分类=1 的统计；目前未找到完整 209 项带 ID/证据对应表。**不得补造历史签核或把 343 JVM 单测当 209 项**。
+- [ ] 按核心冻结合同重建/找到每项定义，注明原文来源、优先级、前置条件、测试环境、自动化脚本、预期/实际、状态、证据、Git SHA、回归日期。缺少来源的新增项标为 RECONSTRUCTED / 待审核。
+- [ ] 建立当前 PASS / FAIL / BLOCKED / NOT TESTED / PREVIOUS PASS 区分、原始结果索引与统一缺陷登记。
+
+### P0-B PC-ISSUE-002 AI 超时与结构化提案失败（当前 WIP）
+- [ ] 审查现有未提交 AI diff 与两个新增测试文件；先保持现场和最近真实行为。
+- [ ] 复现两阶段调用：此前 free 模型首次 HTTP 200 空内容，盲重试后 45 秒等待超时，总约 62 秒；调整预算后的对照中两个 HTTP 200 分别约 14.8/5.7 秒，但没有成功生成审查卡。
+- [ ] 核验 AiCompletionPolicy：免费模型第一次较充足输出预算、不对空内容盲目重复计费调用；出错显示真实分类，仍无未经授权写入。
+- [ ] 核验 AI 标记只作为“有提案意图”提示；Skill 实际读取**本轮原始用户输入**，不得采信 AI 编造的 source、历史聊天、文件提示注入、系统示例文本。
+- [ ] 真实 Android UI 完成：自然语言 → 模型 → 意图提示 → 结构化提案 → 可审查卡 → 同意/拒绝/写草稿/发布 → 数据库与 UI → 重启后的持久化；加入重复点击幂等、冲突、批量授权、错误撤销。
+- [ ] 文件/OCR/ICS 输入以不可信内容处理；模型不拥有直接发布/删除权。
+- [ ] 用时间戳/HTTP 状态/结果类型诊断，**不记录密钥、headers、提示正文、私人日历数据**。
+- [ ] 免费模型优先。付费只能 deepseek/deepseek-v4.1-flash，有限单次必要对照；禁止其它付费模型、无限循环或自动增加成本。
+- [ ] 端到端真正通过再 commit + docs/issues/PC-ISSUE-002-*.md；否则 BLOCKED/FAIL 写清成因，不造 PASS。
+
+### P0-C 已修 Issue 的实际 UI 与互操作补验
+- [ ] PC-ISSUE-001：在隔离设备/数据库中由 Android SAF 导出真实 ICS，检查 DAILY/WEEKLY/MONTHLY、INTERVAL/COUNT/UNTIL、BYDAY/EXDATE/TZID/DST、导入往返是否保留重复语义；复杂 override/active range 应明确 fail closed，不得静默导出单次事件。外部客户端不支持时如实记录。
+- [ ] PC-ISSUE-003：SAF 非空数据库恢复应**拒绝且说明原因**；检查 JSON 错误、SHA256 篡改、权限问题、旧格式明确授权、合法空库恢复、回读校验、原数据/提醒状态不改变或按合同重建。禁止对现存 emulator-5554 清库。
+- [ ] 两项以代码修复已完成但设备验收仍未签核；对照独立 issue 文档，发现残留缺陷就继续修复、回归、更新报告。
+
+### P1-D PC-ISSUE-004 横屏/小屏/时间轴
+- [ ] 横屏、小屏、字体与显示缩放、输入法、TalkBack 触摸命中/遮挡/标签重叠真实复现，再做最小布局调整。
+- [ ] **不准误删中央竖直时间轴**、时间数字/短刻度、蓝色水平当前时间线、双击当前时间刻度尺重置 24 小时。需要删除的是额外**横向灰色装饰条**；不要误删午夜分隔线。
+- [ ] 保留无限重叠事件独立框及左右水平滚动，不恢复三栏上限/×N 聚合；仅保留纵向缩放，不能恢复双指水平缩放。
+
+### P2-E 待验证 Issue 与技术债
+- [ ] PC-OBS-005：追查“发布后 UI 立即看不到”的刷新时序，拿事务写入与界面渲染证据，复现才修。无证据标 NOT REPRODUCED。
+- [ ] PC-TECH-006：Lint 旧快照 56 Warning/0 Error；重新检查、按实际安全/兼容影响排序修复，不为零警告而大改代码。
+- [ ] 过程监控：冷启动/崩溃/内存压力、12 次进程重启、AI 会话与草稿恢复、系统重启的可靠性。
+
+### P0-F 四类对象与核心业务全面回归
+- [ ] Alarm：时间点、提醒方法、重复、启用与完成分离。
+- [ ] Activity：起止、跨日、重叠水平排布、修改删除、重复。
+- [ ] Deadline：仅日期或精确时间不被擅补为 23:59、完成与通知语义。
+- [ ] Memo：备忘与待办、日期/无日期、完成撤销、剩余数量红点。
+- [ ] Draft 与 AI：必填阻断、提案卡、批量处理、授权/拒绝、草稿状态机、幂等、防越权/冲突、异常恢复；聊天记录持久化与可清除。
+- [ ] 时间轴/日历/设置/各页面交互、顶部顺序“今日→memo→待办→新建”、双击刻度尺回 24h。
+- [ ] Schema 迁移、ICS、原生备份、异常回滚、导入去重、时区/DST、每周/月重复/单次例外与移动。
+- [ ] 提醒：AlarmManager 注册仅为前置；取证实际触发 FIRED、通知实际送达与操作、权限拒绝/允许、Doze、后台、重启、时区切换、厂商系统限制。
+- [ ] Android API 和 OEM 真机、不同显示/字体/无障碍；设备不可得则标 DEVICE BLOCKED，不把模拟器 PASS 当真机 PASS。
+
+## 3. 推荐自动化/证据格式
+- Gradle：.\gradlew.bat :app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --offline --console=plain
+- 彻底重跑：.\gradlew.bat :app:testDebugUnitTest --offline --rerun-tasks --console=plain
+- Python：python -m unittest discover -s tools/skin-studio/tests -v
+- Android ADB：.\.local\android-test\sdk\platform-tools\adb.exe -s emulator-5554 ...
+- 日志与脚本放 .local/android-test/reports/<batch>/，Git 中的每个 Issue 单独写 docs/issues/PC-ISSUE-xxx-*.md。
+- 单项必需字段：ID / 需求来源 / 优先级 / 前置状态 / 步骤 / 预期 / 实际 / 环境 / PASS|FAIL|BLOCKED|NOT TESTED|PREVIOUS PASS / 证据 / Git SHA / APK SHA256 / Issue / 复测时间。
+- 每解决一个 Issue **立即输出一份用户能看到的报告**并写入仓库：根因、最小变更、验证、受影响模块、残留问题、提交/推送结果。不用等待用户每步批准再继续，遇不可逆操作或重大决策才停。
+
+## 4. 核心冻结 GO / HOLD 判定
+GO 必须同时满足：① 209 项可追溯并完成相应审核，P0=126/P1=82/其余 1 项定级；② 所有 P0/P1 对应真实环境的必需测试 PASS（包括真机/不同 API 若合同要求）；③ 严重 Issue 全部修复且有修复后回归证据；④ 完整 JVM/静态/Lint/构建/设备测试、备份、权限、提醒、AI 安全闭环；⑤ 唯一 Git 基线、APK SHA256、证据索引、未决风险完整；⑥ 未引入数据损毁、密钥泄露和未授权动作。
+不满足任一条件：**HOLD**，列阻塞与必要的人类输入。可另外声明“模拟器子集通过”，但不能偷换为核心正式 GO。
+
+## 5. 非本轮范围与安全禁令
+- 独立的 **36 项 .pcskin 完全分离/原生 UI cutover** 应在核心冻结后开始；当前仅保证 skin boundary/安全回退不回归。
+- 不清除用户数据或模拟器既有测试资产，不覆盖 design/、Issue002 WIP；不 git reset --hard / git clean / force push / 改写历史。
+- 不把 API 密钥、私人备份、请求体、完整聊天、私人日志提交 Git；只检查密钥是否存在，不读明文；任何对照都最小成本。
+- 不无凭据/无设备宣称功能通过；不为了凑冻结结果删除受保护功能、跳过测试、修改既定规格。
+- 工程原则：先调查/证据/根因，再最小修改、单测/设备复验、提交；长期可靠性、重启后恢复、幂等、服务生命周期简单，优先于一次勉强跑通。
+
+## 6. 最终交付
+1. 209 项签核台账与证据索引；
+2. 各 Issue 的逐项结案报告及原子提交；
+3. 全量测试的日志/截图/录像/数据库验证材料；
+4. docs/CORE_FREEZE_VERDICT.md（GO/HOLD、完成数量、阻塞风险、基线 SHA 与 APK SHA256）；
+5. 真正达成 GO 才执行核心版本冻结；之后另起 36 项 skin cutover 验收。
