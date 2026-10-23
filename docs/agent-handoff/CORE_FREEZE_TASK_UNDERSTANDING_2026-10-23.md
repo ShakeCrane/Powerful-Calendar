@@ -4,6 +4,9 @@
 目标：闭环测试、最小修复、逐项回归与签核，**满足证据标准才宣布核心基线 GO**；否则给出准确 HOLD 及阻塞。本文不是验收完成证明。
 
 ## 0. 最新执行续接（2026-10-24）
+- 已提交并推送 `PC-ISSUE-094` 提醒恢复广播矩阵：`3983bf7dcc1ba5b5b1ec9e84d621fe4aad77d99c`。除 boot 外，对应用升级、时区/时钟、精确闹钟权限变化及内部重协调五种 action 逐条清除模拟 AlarmManager 注册并合成派发；每条都完成 `goAsync()`/`PendingResult`，从持久 SCHEDULED 意图重建唯一任务。定向 2/2；完整 Gradle 448/448、57 suites，0 failures/errors/skips；Lint 0 errors/58 warnings。独立报告：`docs/issues/PC-ISSUE-094-reminder-recovery-broadcast-matrix.md`。合成 receiver 路径有证据，实体设备/Android 系统广播未测，当前环境没有 adb，故 `REC-P0-117` 继续 NOT TESTED。
+- 冻结候选统计不变：133 PASS / 0 FAIL / 9 BLOCKED / 60 NOT TESTED / 7 SPEC UNRESOLVED；P0 111/0/1/9/5，P1 22/0/8/51/1；115 条重建候选有独立证据。结构校验 artifact：`.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-094.json`，SHA-256 `AFA2731A99C7EAC549F245746646FCD834AB8E70EC6D29033F7599146859DC7B`；CSV SHA-256 `A69F4C5E9DFDFFC8A951FA6494D7AFED7B4A8D1A20A4B0BF8750970F530218A8`。校验仅结构性，整体冻结仍 HOLD，历史 209 项无映射。
+- 当前只推进核心验收，浅灰横向边缘接受；受保护的未跟踪文件与资产保持未修改、未暂存。
 - 已提交并推送 `PC-ISSUE-093` 开机 receiver 异步恢复回归：`86e9d97106592edc41d988db317d47687be89976`。Robolectric API 34 派发 `ACTION_BOOT_COMPLETED`，`BootReceiver.goAsync()` 将持久化 Alarm 从 PENDING 重建为 SCHEDULED，注册一个 ShadowAlarmManager task 并完成 PendingResult；SQLite 重开后状态保留。定向 1/1；完整 Gradle 447/447、57 suites，0 failures/errors/skips；Lint 0 errors/58 warnings。独立报告：`docs/issues/PC-ISSUE-093-boot-receiver-async-reconciliation.md`。真实系统开机广播与物理/OEM 未测；前两次测试夹具失败日志已保留并归因于 harness setup。
 - 最新冻结候选统计：133 PASS / 0 FAIL / 9 BLOCKED / 60 NOT TESTED / 7 SPEC UNRESOLVED；P0 111/0/1/9/5，P1 22/0/8/51/1；115 条重建候选有独立证据。结构校验 artifact：`.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-093.json`，SHA-256 `4DE9C39E9EB0F5A5104D5A0352597BB89BF8AD1CF2609F5320D76916E9AB6902`；CSV SHA-256 `00AB7B0FCCBC4CEADA4DBF8185DF106DA3EB3DAC5336B13E85EF8ACF52FFF95D`。校验仅结构性，冻结仍 HOLD，历史 209 项无映射。
 - 用户范围：只推进核心验收，不做 UI；变浅横向边缘已接受。受保护的未跟踪资产和观察报告保持未修改、未暂存。

@@ -1,4 +1,12 @@
 # Core freeze progress
+## PC-ISSUE-094 — Reminder recovery broadcast matrix
+
+- Added `BootReceiverRecoveryTest.recoveryBroadcastsReconcileDesiredAlarmAndFinishAsyncWork`. Five synthetic non-boot actions (app replaced, timezone changed, clock changed, exact-alarm permission changed, internal reconcile) each clear the simulated AlarmManager registration, dispatch the receiver, await `goAsync()` completion, and verify one registration is rebuilt from the durable `SCHEDULED` intent. The boot action remains covered by PC-ISSUE-093.
+- Focused `BootReceiverRecoveryTest` passed 2/2 (log SHA-256 `15C9FC8800907C64CFEBEA601F91C2CAF56570B09920F6F9FFDC14238CB81803`; JUnit XML SHA-256 `A7BBB9E5A22B8BFEB6A21F851E19EDFF279F3CFF3FE0E649560912E2FE91E349`). Full Gradle passed 448/448 across 57 suites, zero failures/errors/skips; lint 0 errors / 58 warnings. Full log SHA-256 `3BF5BF314F9F4320B07788CB0629653AA90199A83F1429A392F2A622DE5D4116`.
+- Test commit `3983bf7dcc1ba5b5b1ec9e84d621fe4aad77d99c` is pushed. Independent report: `docs/issues/PC-ISSUE-094-reminder-recovery-broadcast-matrix.md`. `REC-P0-117` remains NOT TESTED because dispatch was synthetic and this environment has no `adb`; actual Android system delivery and physical/OEM recovery are unverified.
+- Freeze remains HOLD: 133 PASS / 0 FAIL / 9 BLOCKED / 60 NOT TESTED / 7 SPEC UNRESOLVED; P0 111/0/1/9/5; P1 22/0/8/51/1. Original 209 case IDs remain unmapped. This loop is limited to core acceptance.
+- Next: continue with a feasible core acceptance item while preserving the actual-device recovery gap.
+
 ## PC-ISSUE-093 — BootReceiver asynchronous schedule reconciliation
 
 - Added `BootReceiverRecoveryTest.bootBroadcastReconcilesDesiredAlarmAndFinishesAsyncPendingResult`. Robolectric API 34 dispatches `ACTION_BOOT_COMPLETED` through `goAsync()`, changes the durable Alarm intent from PENDING to SCHEDULED, registers one ShadowAlarmManager task, completes `PendingResult`, and retains the result after SQLite reopen.
