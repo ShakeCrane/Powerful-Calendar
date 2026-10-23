@@ -10,6 +10,7 @@ import dev.powerfulcalendar.core.ReminderMethod
 import dev.powerfulcalendar.core.TemporalKind
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -174,6 +175,66 @@ class ReminderValidationTest {
 
         assertEquals(PowerStore.DesiredSchedule.SCHEDULED, store.intentFor(seq)!!.desired)
         assertEquals(1, shadowAlarmManager.scheduledAlarms.size)
+    }
+
+    @Test
+    fun changingCompletionTrackingReconcilesTheReminderAtTheNewRevision() {
+        val alarmManager = context.getSystemService(AlarmManager::class.java)!!
+        val shadowAlarmManager = Shadows.shadowOf(alarmManager)
+        ShadowAlarmManager.setCanScheduleExactAlarms(true)
+
+        val start = System.currentTimeMillis() + 3 * 60 * 60_000L
+        val initial = store.newDraft(
+            DraftForm(
+                kind = TemporalKind.ACTIVITY,
+                title = "跟踪切换后仍提醒",
+                startText = DraftForm.formatInstant(start, zone),
+                endText = DraftForm.formatInstant(start + 30 * 60_000L, zone),
+                reminderMinutes = 15,
+                reminderMethod = ReminderMethod.MESSAGE,
+                trackingEnabled = true,
+                zoneId = zone.id
+            )
+        )
+        assertTrue(store.commit(initial.draftId) is PowerStore.CommitOutcome.Committed)
+        val originalIntent = store.intentFor(initial.eventSeq)!!
+
+        ReminderScheduler.reconcile(context, store)
+
+        assertEquals(PowerStore.DesiredSchedule.SCHEDULED,
+            store.intentFor(initial.eventSeq)!!.desired)
+        assertEquals(1, shadowAlarmManager.scheduledAlarms.size)
+
+        val original = store.get(initial.eventSeq)!!
+        val trackingEdit = store.newDraft(
+            DraftForm.from(original).copy(trackingEnabled = false),
+            original.eventSeq,
+            DraftOperation.REPLACE
+        )
+        assertTrue(store.commit(trackingEdit.draftId) is PowerStore.CommitOutcome.Committed)
+        val updated = store.get(initial.eventSeq)!!
+        val updatedIntent = store.intentFor(initial.eventSeq)!!
+        assertFalse(updated.trackingEnabled)
+        assertTrue(updated.enabled)
+        assertEquals(original.reminderMinutes, updated.reminderMinutes)
+        assertEquals(originalIntent.occurrenceKey, updatedIntent.occurrenceKey)
+        assertEquals(originalIntent.instantMillis, updatedIntent.instantMillis)
+        assertEquals(updated.revision, updatedIntent.revision)
+        assertEquals(PowerStore.DesiredSchedule.PENDING, updatedIntent.desired)
+
+        ReminderScheduler.reconcile(context, store)
+
+        assertEquals(PowerStore.DesiredSchedule.SCHEDULED,
+            store.intentFor(initial.eventSeq)!!.desired)
+        assertEquals(1, shadowAlarmManager.scheduledAlarms.size)
+        assertTrue(ReminderScheduler.validate(
+            store, initial.eventSeq, updated.revision, updatedIntent.occurrenceKey,
+            updatedIntent.instantMillis, snooze = false
+        ) is ReminderScheduler.Validation.Valid)
+        assertTrue(ReminderScheduler.validate(
+            store, initial.eventSeq, originalIntent.revision, originalIntent.occurrenceKey,
+            originalIntent.instantMillis, snooze = false
+        ) is ReminderScheduler.Validation.Rejected)
     }
 
     @Test
