@@ -1,4 +1,12 @@
 # Core freeze progress
+## PC-ISSUE-105 — reminder grace-window and missed recovery core regression (REC-P0-118 remains SPEC UNRESOLVED)
+
+- Added three Robolectric API 34 core tests: receiver delivery inside the current grace constant posts `FIRED`; a late receiver records `MISSED` without notification; reconciliation records an overdue durable `PENDING` intent as `MISSED` without re-arming it. Test-only; no production or UI change.
+- Focused two-suite run passed 24/24. Standard offline Debug boundary/test/APK/lint command passed 459/459 across 57 suites, zero failures/errors/skips; lint 0 errors / 58 warnings. APK SHA-256 `138EC1363E4D74E6153CFFA61CEE4C0DF4D51416B3BD64C954FE642ED0FD4096`.
+- Test commit `2d89ffba5317eb9b0164682702868e5cf75c8fe4` is pushed. Independent report: `docs/issues/PC-ISSUE-105-missed-alarm-grace-window.md`. The current code constant is 10 minutes; the product-approved duration remains unspecified, so REC-P0-118 stays SPEC UNRESOLVED.
+- Full log `.local/android-test/reports/freeze-20261024/pc-issue-105-verified-gradle.log`, SHA-256 `2289F28174AF65C694D74D3048788FB6A0190830782AC21AB97336B0FF6DD755`. `:app:check` separately stops at the existing Release keystore gate; see the report.
+- Freeze remains HOLD: 135 PASS / 0 FAIL / 9 BLOCKED / 58 NOT TESTED / 7 SPEC UNRESOLVED; P0 111/0/1/9/5; P1 24/0/8/49/1. Structural-only validation `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-105.json`, SHA-256 `9FB1049D3D268E0F08127E78D62D224261AA65547400B436AFF3706D9A4B3DC7`; ledger SHA-256 `93F9CE96FAC8E55041DE5E715BAC6CB09004DAABE834707FA1B45695BC9D045F`.
+
 ## PC-ISSUE-104 — AI shared-context read-only projection (candidate remains NOT TESTED)
 
 - Added a local HTTP stub regression that passes one SQLite formal event snapshot to `AiClient`. The request contains exactly one event with its real identity/revision; the response creates no proposal, and rows, history, reminder intent, identity count, and sequence preview remain unchanged.

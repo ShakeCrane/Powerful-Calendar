@@ -766,3 +766,9 @@ This tests the core runner and SQLite failure boundary only. No model provider/n
 The post-commit focused Robolectric API 34 run passed **1/1** (log SHA-256 `2BB2140C3364F1AA753A5224A1748E1E08CE4D19EFF6614E0A9F395379425647`; JUnit XML SHA-256 `19673B14DB766CF4107620BFE441E1C95D79D62B00AE1A3A0AC2705F7E1B3278`). Full Gradle passed **450/450** across 57 suites, zero failures/errors/skips; log SHA-256 `43A8E132DECBCD3057072447A5F3EE646B2B8FF5F3ED67DBAD5719CE7A6D894E`; full `PowerStoreTest` XML SHA-256 `984329BE08AC7EE7A3BEC95B780ADD5BD0BECBF8DDCC506F7B146D60AF5B46FE`; lint 0 errors / 58 warnings; APK SHA-256 `D941A9BF701896C7D9E232540856D5854EA9EC8CFD6AEB2AB0AA9CDD8DE72ABB`. See `docs/issues/PC-ISSUE-096-ai-proposal-rejection-does-not-mutate-event.md`.
 
 This signs the core batch/store contract only. No model/network, UI, actual Android system behavior, or physical device was tested; the reconstructed candidate remains UNMAPPED to the historical acceptance list.
+
+### Case-specific missed-reminder grace and recovery regression (2026-10-24)
+
+`REC-P0-118` now has Robolectric API 34 execution evidence for both receiver delivery and durable-intent recovery. Delivery inside the current implementation's 10-minute constant records `FIRED` and posts; delivery outside it records `MISSED` without posting. Reconciliation of a durable overdue `PENDING` intent records `MISSED` and does not re-arm it in `ShadowAlarmManager`. The focused two-suite run passed 24/24; the complete Debug boundary/test/APK/lint run passed 459/459 across 57 suites, zero failures/errors/skips, with lint 0 errors / 58 warnings. See `docs/issues/PC-ISSUE-105-missed-alarm-grace-window.md` for hashes and exact commands.
+
+The product baseline still does not approve the precise grace duration. Therefore the row records these current-implementation observations but remains **SPEC UNRESOLVED**; no historical case mapping or real Android/OEM delivery is claimed.
