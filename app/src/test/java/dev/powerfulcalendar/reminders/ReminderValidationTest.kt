@@ -148,6 +148,35 @@ class ReminderValidationTest {
     }
 
     @Test
+    fun pendingExactIntentIsSubmittedAndMarkedScheduledIdempotently() {
+        val alarmManager = context.getSystemService(AlarmManager::class.java)!!
+        val shadowAlarmManager = Shadows.shadowOf(alarmManager)
+        ShadowAlarmManager.setCanScheduleExactAlarms(true)
+
+        val seq = createAlarm(60)
+        val record = store.get(seq)!!
+        val exactReminder = store.newDraft(
+            DraftForm.from(record).copy(reminderMethod = ReminderMethod.ALARM),
+            seq,
+            DraftOperation.REPLACE
+        )
+        assertTrue(store.commit(exactReminder.draftId) is PowerStore.CommitOutcome.Committed)
+        val requested = store.intentFor(seq)!!
+        assertEquals(PowerStore.TriggerRequirement.EXACT, requested.requirement)
+        assertEquals(PowerStore.DesiredSchedule.PENDING, requested.desired)
+
+        ReminderScheduler.reconcile(context, store)
+
+        assertEquals(PowerStore.DesiredSchedule.SCHEDULED, store.intentFor(seq)!!.desired)
+        assertEquals(1, shadowAlarmManager.scheduledAlarms.size)
+
+        ReminderScheduler.reconcile(context, store)
+
+        assertEquals(PowerStore.DesiredSchedule.SCHEDULED, store.intentFor(seq)!!.desired)
+        assertEquals(1, shadowAlarmManager.scheduledAlarms.size)
+    }
+
+    @Test
     fun aWrongOccurrenceKeyIsRejected() {
         val seq = createAlarm(60)
         val intent = store.intentFor(seq)!!
