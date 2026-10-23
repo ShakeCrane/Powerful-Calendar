@@ -1553,6 +1553,47 @@ class PowerStoreTest {
     }
 
     @Test
+    fun aiConflictDraftRemainsAvailableForHumanResolutionAcrossRestart() =
+        kotlinx.coroutines.runBlocking {
+            val base = store.newDraft(activityForm("Base").copy(trackingEnabled = true))
+            assertTrue(commit(base) is PowerStore.CommitOutcome.Committed)
+            val seq = base.eventSeq
+            val current = requireNotNull(store.get(seq))
+            val proposal = DraftForm.from(current).copy(title = "AI proposal")
+            val stale = store.newDraft(proposal, seq, DraftOperation.REPLACE)
+            assertTrue(store.setCompleted(seq, "single", true,
+                expectedRevision = current.revision))
+
+            val session = store.beginAiBatch(
+                mapOf(stale.draftId to stale.draftVersion),
+                DraftOperation.entries.toSet()
+            )
+            val report = dev.powerfulcalendar.ai.AiBatchRunner(store)
+                .run(session, dev.powerfulcalendar.ai.AiBatchRunner.Mode.PUBLISH)
+            assertEquals(0, report.published)
+            assertEquals(1, report.kept)
+            assertFalse(store.isLocked())
+            assertEquals(DraftStatus.CONFLICT, store.draft(stale.draftId)!!.status)
+            val queueOrder = store.draft(stale.draftId)!!.queueOrder
+
+            val database = store.databaseName
+            store.close()
+            store = PowerStore(context, database)
+
+            val retained = store.draftsByStatus(DraftStatus.CONFLICT).single()
+            assertEquals(stale.draftId, retained.draftId)
+            assertEquals(seq, retained.eventSeq)
+            assertEquals(queueOrder, retained.queueOrder)
+            assertEquals(DraftOperation.REPLACE, retained.operation)
+            assertEquals(current.revision, retained.baseRevision)
+            assertEquals(proposal, retained.form)
+            assertTrue(store.pendingDrafts().any { it.draftId == stale.draftId })
+            assertEquals("Base", store.get(seq)!!.title)
+            assertTrue(store.get(seq)!!.completedKeys.contains("single"))
+            assertFalse(store.isLocked())
+        }
+
+    @Test
     fun identityHighWaterSurvivesBackup() {
         repeat(3) { store.newDraft(alarmForm("E$it")) }
         val snapshot = store.exportBackup()
