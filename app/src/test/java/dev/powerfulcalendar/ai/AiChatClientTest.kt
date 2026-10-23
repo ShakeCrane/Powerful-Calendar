@@ -15,9 +15,11 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.net.InetAddress
 import java.net.ServerSocket
+import java.net.SocketTimeoutException
 import java.time.ZoneId
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import java.util.UUID
 
@@ -423,6 +425,97 @@ class AiChatClientTest {
             assertFalse(userContent.contains("PRIVATE_CONTEXT_SENTINEL_070"))
             assertFalse(userContent.contains("PRIVATE_NOTES_SENTINEL_070"))
             assertFalse(userContent.contains("PRIVATE_LOCATION_SENTINEL_070"))
+        }
+    }
+
+    @Test fun emptyHttp200InFreeStructuredProposalFailsOnceWithoutPublishing() {
+        val requests = AtomicInteger()
+        val seenBudget = AtomicInteger()
+        val serverError = AtomicReference<Throwable?>()
+        val served = CountDownLatch(1)
+        ServerSocket(0, 2, InetAddress.getByName("127.0.0.1")).use { server ->
+            server.soTimeout = 750
+            Thread {
+                try {
+                    while (requests.get() < 2) {
+                        val socket = try {
+                            server.accept()
+                        } catch (_: SocketTimeoutException) {
+                            break
+                        }
+                        socket.use {
+                            it.soTimeout = 5_000
+                            val input = it.getInputStream().buffered()
+                            fun readHeaderLine(): String {
+                                val line = java.io.ByteArrayOutputStream()
+                                while (true) {
+                                    val byte = input.read()
+                                    require(byte >= 0) { "Unexpected end of HTTP headers" }
+                                    if (byte == 10) break
+                                    if (byte != 13) line.write(byte)
+                                    require(line.size() <= 8192) { "Oversized HTTP header" }
+                                }
+                                return line.toString(Charsets.US_ASCII.name())
+                            }
+                            assertTrue(readHeaderLine().startsWith("POST /v1/chat/completions HTTP/1.1"))
+                            var contentLength = -1
+                            while (true) {
+                                val header = readHeaderLine()
+                                if (header.isEmpty()) break
+                                if (header.startsWith("Content-Length:", ignoreCase = true)) {
+                                    contentLength = header.substringAfter(':').trim().toInt()
+                                }
+                            }
+                            require(contentLength in 1..100_000)
+                            val body = ByteArray(contentLength)
+                            var offset = 0
+                            while (offset < body.size) {
+                                val count = input.read(body, offset, body.size - offset)
+                                require(count > 0) { "Unexpected end of request body" }
+                                offset += count
+                            }
+                            seenBudget.set(JSONObject(String(body, Charsets.UTF_8))
+                                .getInt("max_tokens"))
+                            requests.incrementAndGet()
+                            val response = """{"choices":[{"message":{"role":"assistant","content":""},"finish_reason":"stop"}]}"""
+                                .toByteArray(Charsets.UTF_8)
+                            val headers = ("HTTP/1.1 200 OK\r\n" +
+                                "Content-Type: application/json; charset=utf-8\r\n" +
+                                "Content-Length: ${response.size}\r\nConnection: close\r\n\r\n")
+                                .toByteArray(Charsets.US_ASCII)
+                            it.getOutputStream().apply {
+                                write(headers)
+                                write(response)
+                                flush()
+                            }
+                        }
+                    }
+                } catch (error: Throwable) {
+                    serverError.set(error)
+                } finally {
+                    served.countDown()
+                }
+            }.apply { isDaemon = true; start() }
+
+            val result = runBlocking {
+                AiClient(AiSettings(
+                    endpoint = "http://127.0.0.1:${server.localPort}/v1",
+                    model = "local-stub:free",
+                    enabled = true,
+                    apiKey = "LOCAL_TEST_KEY"
+                ), ZoneId.of("Asia/Shanghai")).interpret("创建一项活动", emptyList())
+            }
+
+            assertTrue("Server did not finish", served.await(3, TimeUnit.SECONDS))
+            assertNull("Server error: ${serverError.get()}", serverError.get())
+            assertEquals("Free-model output budget must be raised on the first call", 2048,
+                seenBudget.get())
+            assertEquals("An empty HTTP 200 must not trigger a duplicate request", 1,
+                requests.get())
+            assertTrue(result.proposals.isEmpty())
+            assertTrue(result.rawReply.isEmpty())
+            assertTrue(result.warnings.single().contains("未生成可见回复（stop）"))
+            assertTrue(result.warnings.single().contains("结构化提案阶段失败"))
         }
     }
 
