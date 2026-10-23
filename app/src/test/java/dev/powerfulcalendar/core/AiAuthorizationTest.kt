@@ -6,6 +6,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -150,6 +151,38 @@ class AiAuthorizationTest {
         val rejected = runCatching { store.newDraft(activityForm("范围外")) }
         assertTrue(rejected.isFailure)
         assertEquals(1, session.scope.size)
+    }
+
+    @Test
+    fun completedBatchApprovalCannotBeReplayed() {
+        val card = store.newDraft(activityForm("需要一次性授权"))
+        val reviewed = reviewedVersions(card)
+        val firstApproval = store.beginAiBatch(reviewed, setOf(DraftOperation.CREATE))
+
+        assertTrue(store.finishAiBatch(firstApproval.sessionId))
+        assertFalse(store.finishAiBatch(firstApproval.sessionId))
+        val replayAfterFinish = store.commit(
+            card.draftId, actor = "ai", aiSession = firstApproval
+        )
+        assertTrue(replayAfterFinish is PowerStore.CommitOutcome.NotAuthorized)
+        assertNull(store.get(card.eventSeq))
+        assertEquals(DraftStatus.PENDING, store.draft(card.draftId)!!.status)
+
+        val secondApproval = store.beginAiBatch(reviewed, setOf(DraftOperation.CREATE))
+        assertTrue(secondApproval.sessionId != firstApproval.sessionId)
+        assertTrue(secondApproval.lockEpoch > firstApproval.lockEpoch)
+        val staleEpochReplay = store.commit(
+            card.draftId, actor = "ai", aiSession = firstApproval
+        )
+        assertTrue(staleEpochReplay is PowerStore.CommitOutcome.NotAuthorized)
+        assertNull(store.get(card.eventSeq))
+
+        val approvedCommit = store.commit(
+            card.draftId, actor = "ai", aiSession = secondApproval
+        )
+        assertTrue(approvedCommit is PowerStore.CommitOutcome.Committed)
+        assertEquals("需要一次性授权", store.get(card.eventSeq)!!.title)
+        assertTrue(store.finishAiBatch(secondApproval.sessionId))
     }
 
     @Test
