@@ -1,4 +1,11 @@
 # Core freeze progress
+## PC-ISSUE-104 — AI shared-context read-only projection (candidate remains NOT TESTED)
+
+- Added a local HTTP stub regression that passes one SQLite formal event snapshot to `AiClient`. The request contains exactly one event with its real identity/revision; the response creates no proposal, and rows, history, reminder intent, identity count, and sequence preview remain unchanged.
+- Targeted Robolectric API 34 passed 1/1. Full Gradle passed 456/456 across 57 suites, zero failures/errors/skips; lint 0 errors / 58 warnings. No external provider or UI was used.
+- Test commit `e2f413a74a7a504f3ca493adc5ee3ad69e497f25` is pushed. Independent report: `docs/issues/PC-ISSUE-104-ai-context-is-read-only-projection.md`. Paired with Issue 089 ICS evidence; `REC-P0-082` remains NOT TESTED for the broader scope.
+- Freeze remains HOLD: 135 PASS / 0 FAIL / 9 BLOCKED / 58 NOT TESTED / 7 SPEC UNRESOLVED; P0 111/0/1/9/5; P1 24/0/8/49/1. Structural-only validation `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-104.json`, SHA-256 `7D8CB24D683736DA27397053013F14AE29702918992A00956CD968BF3A07FD79`; ledger SHA-256 `440DCE8934F4782FC54A292DA10B1C0E88C4C051F069F7A88EAAA0D772278353`.
+
 ## PC-ISSUE-103 — AI missing-kind clarification (candidate remains NOT TESTED)
 
 - Reproduced that an untyped ambiguous AI item was dropped with only an “ignored” warning. The core parser now asks which of the four event kinds the user means, while creating no proposal/draft or event identity until clarified.
