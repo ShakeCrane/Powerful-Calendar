@@ -1280,6 +1280,39 @@ class PowerStoreTest {
     }
 
     @Test
+    fun parsedAiCreateProposalPersistsAsAnUnpublishedDraftAcrossRestart() {
+        val raw = """
+            {"events":[{"operation":"CREATE","kind":"ACTIVITY","title":"AI 待审草稿",
+              "start":"2026-10-28 09:00","end":"2026-10-28 10:00"}]}
+        """.trimIndent()
+        val interpretation = AiResponseParser.parse(raw, emptyList(), zone)
+        assertTrue(interpretation.warnings.toString(), interpretation.warnings.isEmpty())
+
+        val created = AiDraftService(store).createDrafts(interpretation)
+        assertTrue(created.warnings.toString(), created.warnings.isEmpty())
+        val draft = requireNotNull(store.draft(created.draftIds.single()))
+        assertEquals(DraftOperation.CREATE, draft.operation)
+        assertEquals(DraftStatus.PENDING, draft.status)
+        assertEquals("AI 待审草稿", draft.form.title)
+        assertNull(store.get(draft.eventSeq))
+        assertTrue(store.history(draft.eventSeq).isEmpty())
+
+        val database = store.databaseName
+        store.close()
+        store = PowerStore(context, database)
+
+        val restored = requireNotNull(store.draft(draft.draftId))
+        assertEquals(draft.eventSeq, restored.eventSeq)
+        assertEquals(draft.draftVersion, restored.draftVersion)
+        assertEquals(draft.operation, restored.operation)
+        assertEquals(draft.form, restored.form)
+        assertEquals(DraftStatus.PENDING, restored.status)
+        assertEquals(listOf(draft.draftId), store.pendingDrafts().map { it.draftId })
+        assertNull(store.get(draft.eventSeq))
+        assertTrue(store.history(draft.eventSeq).isEmpty())
+    }
+
+    @Test
     fun nextDraftQueueOrderAdvancesPastCommittedAndDiscardedDraftsAfterRestart() {
         val committed = store.newDraft(activityForm("committed"))
         assertTrue(committed.queueOrder > 0)
