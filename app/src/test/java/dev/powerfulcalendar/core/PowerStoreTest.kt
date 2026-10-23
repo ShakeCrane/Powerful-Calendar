@@ -1313,6 +1313,62 @@ class PowerStoreTest {
     }
 
     @Test
+    fun parsedAiActivityWithMissingTimeRemainsRepairableDraftAcrossRestart() {
+        val raw = """
+            {"events":[{"operation":"CREATE","kind":"ACTIVITY","title":"待补时间的会议",
+              "start":"","end":""}]}
+        """.trimIndent()
+        val interpretation = AiResponseParser.parse(raw, emptyList(), zone)
+        val proposal = interpretation.proposals.single()
+        assertEquals("", proposal.form.startText)
+        assertEquals("", proposal.form.endText)
+        assertTrue(interpretation.warnings.any { it.contains("还缺") })
+
+        val created = AiDraftService(store).createDrafts(interpretation)
+        val draft = requireNotNull(store.draft(created.draftIds.single()))
+        assertEquals(DraftStatus.PENDING, draft.status)
+        assertNull(store.get(draft.eventSeq))
+        assertTrue(store.history(draft.eventSeq).isEmpty())
+
+        assertTrue(commit(draft) is PowerStore.CommitOutcome.Invalid)
+        val invalid = requireNotNull(store.draft(draft.draftId))
+        assertEquals(DraftStatus.INVALID, invalid.status)
+        assertEquals("", invalid.form.startText)
+        assertEquals("", invalid.form.endText)
+        assertNull(store.get(draft.eventSeq))
+        assertTrue(store.history(draft.eventSeq).isEmpty())
+
+        val database = store.databaseName
+        store.close()
+        store = PowerStore(context, database)
+
+        val restored = requireNotNull(store.draft(draft.draftId))
+        assertEquals(DraftStatus.INVALID, restored.status)
+        assertEquals(draft.eventSeq, restored.eventSeq)
+        assertEquals("", restored.form.startText)
+        assertEquals("", restored.form.endText)
+        assertNull(store.get(draft.eventSeq))
+        assertTrue(store.history(draft.eventSeq).isEmpty())
+
+        val repairedForm = restored.form.copy(
+            startText = "2026-10-28 09:00",
+            endText = "2026-10-28 10:00"
+        )
+        assertTrue(store.stageDraft(restored.draftId, repairedForm, restored.draftVersion)
+            is PowerStore.StageResult.Saved)
+        val repaired = requireNotNull(store.draft(restored.draftId))
+        assertEquals(DraftStatus.PENDING, repaired.status)
+        assertTrue(commit(repaired) is PowerStore.CommitOutcome.Committed)
+        val formal = requireNotNull(store.get(draft.eventSeq))
+        assertEquals("待补时间的会议", formal.title)
+        assertEquals(LocalDateTime.of(2026, 10, 28, 9, 0).atZone(zone).toInstant().toEpochMilli(),
+            formal.startMillis)
+        assertEquals(LocalDateTime.of(2026, 10, 28, 10, 0).atZone(zone).toInstant().toEpochMilli(),
+            formal.endMillis)
+        assertEquals(1, store.history(draft.eventSeq).size)
+    }
+
+    @Test
     fun nextDraftQueueOrderAdvancesPastCommittedAndDiscardedDraftsAfterRestart() {
         val committed = store.newDraft(activityForm("committed"))
         assertTrue(committed.queueOrder > 0)
