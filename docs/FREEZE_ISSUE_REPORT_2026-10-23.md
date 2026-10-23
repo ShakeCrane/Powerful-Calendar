@@ -36,13 +36,14 @@ Issue 004 修复代码基线：`16e00d55435c5029e07784ec5d945dfd7fb37ac5`
 
 ## 2. 可复现的产品 Issue
 
-### PC-ISSUE-001 · P1 / CONFIRMED · ICS 导出丢失重复规则
+### PC-ISSUE-001 · P1 / 已修复；互操作验收 PARTIAL / HOLD · ICS 导出丢失重复规则
 - **复现**：导出存在每天重复的 Activity `PC_EMU_REPEAT_06`。
 - **实际**：导出的 `PowerfulCalendar-activities.ics` 中有 VEVENT，但没有 `RRULE`；无限重复系列变为孤立单次事件。
 - **预期**：导出保留受支持的重复语义；若格式不支持，明示不可逆语义损失并阻止误认为无损备份。
 - **证据**：`docs/ANDROID_EMULATOR_REGRESSION_QA_2026-10-23.md`（R2-ISSUE-01）；`.local/android-test/reports/regression-20261023/PowerfulCalendar-activities.ics`。
 - **可能位置**：`PowerCalApp.kt::exportIcs` 与 `interop/IcsCodec.kt::export`。
-- **退出条件**：重复 Activity 的 ICS 导出/独立导入回环与异常输入回归通过。**核心冻结阻塞**。
+- **修复记录**：`IcsCodec` 已保留支持范围内的重复规则并输出对应 VTIMEZONE，代码与单测已在提交 `50a83a0e4787503d2bf2c225d4d1091659c8d21f` 完成；本次在隔离 API 35 模拟器通过 DST 系列真实 SAF 导出和独立解析。证据、哈希及当前回归状态见 `docs/issues/PC-ISSUE-001-ICS-recurrence.md`。
+- **剩余阻塞**：尚无可用的外部日历导入器及实体 Android 设备；需验证跨客户端重复/时区语义。**核心冻结仍 HOLD**。
 
 ### PC-ISSUE-002 · P1 / RUNTIME INCIDENT · 复杂日程请求触发免费模型超时
 - **复现**：在已通过短消息连通性验证的 `stealth/glyph-cluster:free` 上，发送创建未来 Activity 的仅提案请求。
@@ -114,7 +115,7 @@ Issue 004 修复代码基线：`16e00d55435c5029e07784ec5d945dfd7fb37ac5`
 
 ## 4. 推荐处理顺序与冻结裁决
 
-1. **先修复 PC-ISSUE-001**（重复 ICS 导出损失）并增加往返验收；同时完成 PC-ISSUE-003 的可读错误说明。
+1. PC-ISSUE-001 的导出修复、DST SAF 与独立解析已通过；继续补齐外部日历导入和实体设备验收。同时完成 PC-ISSUE-003 的可读错误说明。
 2. 排查 PC-ISSUE-002：记录按模型区分的真实调用耗时，优先免费模型；任何付费仅限已授权的 `deepseek/deepseek-v4.1-flash`。
 3. 以已存证据重建 209 项用例矩阵，不把分组测试/单测混算为人工签核；按测试条件集中执行仍未覆盖的 Android UI 组合。
 4. 补齐真实通知在权限、后台/Doze/时区/重启下的送达证据，并在真机或多 API 环境完成门槛测试。

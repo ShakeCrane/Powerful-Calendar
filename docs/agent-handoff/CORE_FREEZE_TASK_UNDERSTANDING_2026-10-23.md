@@ -4,9 +4,10 @@
 目标：闭环测试、最小修复、逐项回归与签核，**满足证据标准才宣布核心基线 GO**；否则给出准确 HOLD 及阻塞。本文不是验收完成证明。
 
 ## 1. 当前真实现场与不得丢失的工作
-- 当前执行更新（覆盖下方历史快照中的旧状态）：`main` 与 `origin/main` 已同步至 `6ea2c359b3050d5c4b79c23c42b4982ac2457b9e`。Issue 002 的 AI 代码/测试已由 `bb04bfae30dc30877d41807a71236778b16617cc` 提交并推送；本轮未发现未提交 AI 文件。Issue 002 仍 PARTIAL / BLOCKED：最新免费模型两阶段复测在聊天阶段 HTTP 200 后，于结构化阶段收到 HTTP 429；证据见独立 Issue 报告与 `.local/android-test/reports/freeze-20261023/issue002-ai-retest-20261023.json`。随后读取到 `enabled=false` 的设置快照，时间晚于请求，不能据此推断请求启动时的状态；没有改设置。
+- 当前执行更新（覆盖下方历史快照中的旧状态）：本次变更前 `main` 与 `origin/main` 同步于 `5d38f749b0cfd020c655f557c51568119b521b28`。Issue 002 的 AI 代码/测试已由 `bb04bfae30dc30877d41807a71236778b16617cc` 提交并推送；本轮未发现未提交 AI 文件。Issue 002 仍 PARTIAL / BLOCKED：最新免费模型两阶段复测在聊天阶段 HTTP 200 后，于结构化阶段收到 HTTP 429；证据见独立 Issue 报告与 `.local/android-test/reports/freeze-20261023/issue002-ai-retest-20261023.json`。随后读取到 `enabled=false` 的设置快照，时间晚于请求，不能据此推断请求启动时的状态；没有改设置。
 - 未跟踪 `design/`、`app/src/test/java/dev/powerfulcalendar/ui/v2/DraftDeckFeedbackTest.kt`、`docs/issues/PC-OBS-005-commit-feedback.md` 属于受保护的其他资产/工作，未修改、未暂存、未提交。
-- Issue 001（ICS）与 Issue 003（备份）的历史修复基线仍以其独立报告和提交记录为准；当前设备补验尚未签核。
+- Issue 001（ICS）：代码修复已提交；本轮在隔离 `emulator-5556` 通过纽约 DST 周重复系列的 Android SAF 导出、`icalendar 7.3.0` 独立解析与本地时间跨回拨展开核对。完整 Gradle 回归 364 项通过。设备已恢复 GMT/自动时区，数据库中的两条合成验收事件仍保留。因缺外部日历导入器与实体设备，Issue 仍 PARTIAL / HOLD；证据见 `docs/issues/PC-ISSUE-001-ICS-recurrence.md`、`issue001-saf-dst-emulator5556.ics`、`issue001-dst-independent-parse-emulator5556.json` 和 `issue001-emulator5556-postcheck.json`（均位于 `.local/android-test/reports/freeze-20261023/`）。
+- Issue 003（备份）的历史修复基线仍以其独立报告和提交记录为准；当前设备补验尚未签核。
 - .local/android-test 是仓库内测试资产及模拟器工具位置；保留既有截图、日志、失败样本、只读数据库快照、AVD。
 - 原测试环境：Android 15 API 35，PowerCal_API35，emulator-5554；原生测试场景与模拟器数据可能包含历史资料，不得随意清库。破坏性恢复用独立可丢弃实例。
 - CommandCode 地址：https://api.commandcode.ai/provider/v1；模拟器已有密钥（仅检查存在，不读/输出明文）；原模型 stealth/glyph-cluster:free。
@@ -34,9 +35,9 @@
 - [ ] 端到端真正通过再关闭 Issue；最新免费调用结构化阶段 HTTP 429，需在服务可用时继续受控复测。报告中保留 PARTIAL / BLOCKED，不造 PASS。
 
 ### P0-C 已修 Issue 的实际 UI 与互操作补验
-- [ ] PC-ISSUE-001：在隔离设备/数据库中由 Android SAF 导出真实 ICS，检查 DAILY/WEEKLY/MONTHLY、INTERVAL/COUNT/UNTIL、BYDAY/EXDATE/TZID/DST、导入往返是否保留重复语义；复杂 override/active range 应明确 fail closed，不得静默导出单次事件。外部客户端不支持时如实记录。
+- [ ] PC-ISSUE-001：代码单测、此前固定时区 SAF 样本、本轮纽约 DST 周系列的真实 SAF 导出、独立解析和序列化回环已有证据；单测覆盖 DAILY/WEEKLY/MONTHLY、INTERVAL/COUNT/UNTIL、BYDAY/EXDATE 与 fail-closed。仍需兼容外部日历导入往返及实体设备验收；复杂 override/active range 不得静默导出单次事件。详细结果见独立 Issue 报告。
 - [ ] PC-ISSUE-003：SAF 非空数据库恢复应**拒绝且说明原因**；检查 JSON 错误、SHA256 篡改、权限问题、旧格式明确授权、合法空库恢复、回读校验、原数据/提醒状态不改变或按合同重建。禁止对现存 emulator-5554 清库。
-- [ ] 两项以代码修复已完成但设备验收仍未签核；对照独立 issue 文档，发现残留缺陷就继续修复、回归、更新报告。
+- [ ] Issue 001 的代码与当前可用模拟器验收已有证据，外部导入/真机仍待签核；Issue 003 的设备验收也未签核。对照独立 issue 文档，发现残留缺陷就继续修复、回归、更新报告。
 
 ### P1-D PC-ISSUE-004 横屏/小屏/时间轴
 - [x] 默认 Activity 固定竖屏且不基于传感器旋转。
