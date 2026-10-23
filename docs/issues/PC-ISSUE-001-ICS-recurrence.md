@@ -1,27 +1,30 @@
 # PC-ISSUE-001 — ICS recurrence export repair
 
 Date: 2026-10-23 | Severity: P1
-Status: **FIXED IN CODE + UNIT VERIFIED**; independent calendar-client compatibility remains unverified.
+Status: **PARTIAL / HOLD** — code repair, real Android SAF export, independent parser, and semantic serialize/parse round-trip pass. Import into a separate calendar client, DST-bearing SAF fixture, and physical-device acceptance remain unverified.
 
 ## Root cause
 
-Activity export projected `TemporalRecord` to legacy `CalendarEvent` and silently lost `recurrence`. `IcsCodec.export()` therefore wrote one VEVENT without RRULE, flattening daily series to a single instance.
+The original Activity export projected `TemporalRecord` to legacy `CalendarEvent` and silently lost `recurrence`, producing a single VEVENT with no RRULE. Follow-up RFC review found that the repaired recurring export emitted `TZID` values without corresponding `VTIMEZONE` definitions, leaving external clients without the rules needed to interpret local recurring times and DST.
 
 ## Repair
 
-- New `IcsCodec.exportActivities(records)` preserves the authoritative recurring Activity model, including RRULE frequency/interval/count/until, weekly BYDAY, EXDATE, and timezone-aware local start/end.
-- The SAF path now validates/serializes **before** opening the output stream, catches unsupported cases, and reports clear errors.
-- Unsupported effective ranges, moved/overridden occurrences, unrepresentable monthly dates, and contradictory rules fail closed instead of silently losing events.
-- Only Activity export is claimed. Native Envelope remains required to retain alarms, deadlines, memos, progress, and full PowerCal metadata.
+- `IcsCodec.exportActivities(records)` preserves the Activity recurrence model: frequency, interval, COUNT or UTC UNTIL, weekly BYDAY, EXDATE, and timezone-aware local start/end.
+- Recurring TZID values now have matching VTIMEZONE components. Fixed offsets get an initial offset definition; historic transitions and representable annual DST rules are emitted. A 400-year Gregorian-cycle check rejects transition rules that cannot be represented without changing their dates or times.
+- The SAF path validates and serializes before opening the output stream. Unsupported effective ranges, moved/overridden instances, invalid monthly dates, and unsupported timezone rules fail closed.
+- ICS carries Activity data only. Native Envelope remains necessary for alarms, deadlines, memos, progress, and full PowerCal metadata.
+- RFC basis: [RFC 5545 §3.2.19](https://www.rfc-editor.org/rfc/rfc5545.html#section-3.2.19) and [§3.6.5](https://www.rfc-editor.org/rfc/rfc5545.html#section-3.6.5) require a VTIMEZONE definition for each referenced TZID.
 
 ## Evidence
 
-Prior sample `.local/android-test/reports/regression-20261023/PowerfulCalendar-activities.ics`: two VEVENTs, zero RRULEs although a daily series was present.
+- Code and regression tests were committed and pushed as `50a83a0e4787503d2bf2c225d4d1091659c8d21f` (`fix(ics): 为重复事件导出时区定义`).
+- `IcsExportRecurrenceTest`: **6/6 PASS**, including DAILY interval, WEEKLY COUNT/BYDAY/EXDATE, UTC UNTIL, DST-zone local anchor, and fail-closed cases.
+- Full Gradle verification: `:app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --offline --rerun-tasks --console=plain` — **BUILD SUCCESSFUL**, 345 tests, 0 failures/errors/skips; lint 0 errors / 56 warnings. Log: `.local/android-test/reports/freeze-20261023/issue001-vtimezone-full-final.log` (SHA-256 `E5F5001B73851E752FB46C33C7B197495027F0E6DD951CB2D84D23561611C6F5`).
+- APK `905 / 0.9.5-rc.1`, SHA-256 `A2CED9A71952716D2DA7870D7963F5085167EE586497DD6E2959CE671B8DA0D4`, installed on Android 15 / API 35 emulator with `adb install -r`. The database remained intact: 8 active objects, including 5 Activities.
+- Real SAF wrote a new, uniquely named Downloads file; existing ICS files were not overwritten. Export message confirmed Activity ICS success. Evidence: `.local/android-test/reports/freeze-20261023/issue001-saf-export-vtimezone.ics`, 1,228 bytes, SHA-256 `63EBE8EA8A1342C38B60242910D621B9DBAB9A0520E86DDDB8DAA84F658CF528`.
+- Independent `icalendar 7.3.0` parse found 5 VEVENTs, 3 recurring series (DAILY/WEEKLY/MONTHLY), one VTIMEZONE for the referenced TZID, timezone-aware DTSTART/DTEND, unique UIDs, and zero parser warnings. Serialize → parse preserved all event start/TZID/RRULE/EXDATE semantics. Summary: `.local/android-test/reports/freeze-20261023/issue001-independent-parse.json` (SHA-256 `8F9F57A3A028F05527E914A5EB481E737FCB2711DFBEF2AEDF45C02F488B2BEC`).
+- The existing emulator fixture uses fixed `GMT` and has no COUNT, UNTIL, BYDAY, EXDATE, or DST-bearing series. Those recurrence features have unit coverage, but are **not** claimed as real-SAF device evidence.
 
-New `IcsExportRecurrenceTest`: **6/6 PASS** (daily interval, weekly count/BYDAY/EXDATE, UTC UNTIL, DST-zone start, unsupported overrides/active range, invalid monthly dates/kinds).
-Full Gradle `:app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:lintDebug`: BUILD SUCCESSFUL.
-Logs: `.local/android-test/reports/freeze-20261023/issue001-targeted.log` and `issue001-full.log`.
+## Remaining acceptance gap
 
-## Scope limit
-
-The new APK still needs Android SAF real-file export and independent external calendar import acceptance. Those are NOT VERIFIED; do not call 209-case release gate passed.
+The emulator has Google Calendar installed, but Android reported no activity for `ACTION_VIEW` with MIME type `text/calendar`; there was no separate calendar importer available to complete a real client import. No physical Android device was available in this run. Therefore PC-ISSUE-001 remains **PARTIAL / HOLD**, and the 209-case release gate is not signed off. Next acceptance needs an isolated DST-bearing series exported through SAF, import into a compatible external calendar with recurrence/timezone semantics checked, and physical-device coverage when hardware is available.
