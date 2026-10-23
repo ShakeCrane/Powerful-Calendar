@@ -1,4 +1,11 @@
 # Core freeze progress
+## PC-ISSUE-118 — mixed CREATE/REPLACE core draft isolation sign-off (REC-P1-049 narrowed PASS)
+
+- One local structured response yields independent CREATE and REPLACE operations; `AiDraftService` creates two pending drafts, leaves the formal CREATE absent, and does not mutate the REPLACE target. Provider/API 35, presentation, approval, and reopen persistence are outside this sign-off.
+- Targeted Robolectric API 34 regressions passed 2/2. Full Debug boundary/test/APK/lint passed 460/460 across 57 suites, zero failures/errors/skips; lint 0 errors / 58 warnings.
+- Independent report: docs/issues/PC-ISSUE-118-mixed-proposals-core-signoff.md.
+- Freeze remains HOLD: 147 PASS / 0 FAIL / 9 BLOCKED / 46 NOT TESTED / 7 SPEC UNRESOLVED; P0 119/0/1/1/5; P1 28/0/8/45/1. Structural-only validation .local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-118.json, SHA-256 F2490DF21C9C00691FC71B760F729CF18D830BEFA2A161F4F3865FF2176D985C; ledger SHA-256 540B486F5493752F09B10DA863026ECB098E3134BDB25B4E186F4B09AA83A840.
+
 ## PC-ISSUE-117 — AI HTTP 429 client core contract sign-off (REC-P1-062 narrowed PASS)
 
 - The local loopback HTTP 429 stub yields a structured-proposal-stage/status warning, no proposal/raw reply, and no provider error body or API key disclosure. No external provider was called; API 35/provider and presentation paths remain outside this sign-off.
@@ -120,11 +127,11 @@
 - Test commit `814f3f2c6cb2a3d451495ae8492c8629d0aa7476` is pushed. Independent report: `docs/issues/PC-ISSUE-101-ai-incomplete-proposal-missing-time.md`. `REC-P1-051` remains NOT TESTED.
 - Freeze remains HOLD: 135 PASS / 0 FAIL / 9 BLOCKED / 58 NOT TESTED / 7 SPEC UNRESOLVED; P0 111/0/1/9/5; P1 24/0/8/49/1. Structural-only validation `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-101.json`, SHA-256 `7ECF656AF47EC32029B1B525ABE4636F06190BE762BE3119163422426FC1A6F4`; ledger SHA-256 `FB88F6EC57099AD2169DEF1828116634A22C2095A945E711E3013D546F00F519`.
 
-## PC-ISSUE-100 — mixed AI CREATE/REPLACE core checkpoint (candidate remains NOT TESTED)
+## PC-ISSUE-100 — mixed AI CREATE/REPLACE core checkpoint (narrowed core candidate later PASS)
 
 - Existing parser and PowerStore regressions were run directly. One structured response stays as separate CREATE and REPLACE proposals; two PENDING drafts are created, the REPLACE keeps the target eventSeq, and neither formal event is published or mutated.
 - Targeted Robolectric API 34 passed 2/2 across two suites. The same code baseline's full Gradle run passed 452/452 across 57 suites, zero failures/errors/skips; lint 0 errors / 58 warnings. No provider call or UI change.
-- Independent checkpoint report: `docs/issues/PC-ISSUE-100-mixed-ai-create-replace-core-checkpoint.md`. API 35/free-provider request and proposal-card presentation remain untested, so `REC-P1-049` stays NOT TESTED.
+- Independent checkpoint report: `docs/issues/PC-ISSUE-100-mixed-ai-create-replace-core-checkpoint.md`. PC-ISSUE-118 later signs the narrowed core parser/draft-isolation criterion PASS; API 35/provider, presentation, approval and reopen persistence remain untested.
 - Freeze remains HOLD: 135 PASS / 0 FAIL / 9 BLOCKED / 58 NOT TESTED / 7 SPEC UNRESOLVED; P0 111/0/1/9/5; P1 24/0/8/49/1. Structural-only validation `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-100.json`, SHA-256 `CC8184361CCE7C1C4921D3FEFCD5579E0D6939B8CF591820D468F72ABBB1026A`; ledger SHA-256 `040CD2EEFAF281FA018ED465194C8D6ADCAC93CCAAE40B333CAD7BD23D18E5BC`.
 
 ## PC-ISSUE-099 — structured proposal HTTP 429 stage diagnostics
