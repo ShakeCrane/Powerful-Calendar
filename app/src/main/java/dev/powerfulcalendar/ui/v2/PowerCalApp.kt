@@ -896,7 +896,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                         legacyRestoreText = text
                         message = "该备份是早期 flat v2 格式，缺少 SHA-256；需要你确认来源可信后才能恢复"
                     }
-                    else -> message = "恢复失败：" + error.readable()
+                    else -> message = "恢复失败：" + RestoreFailureExplanation.explain(error)
                 }
             }
         }
@@ -2006,7 +2006,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                                 problems.joinToString("", "；", "") { it } +
                                 "；建议立即导出新的 Envelope 备份"
                         }.onFailure { error ->
-                            message = "恢复失败：" + error.readable()
+                            message = "恢复失败：" + RestoreFailureExplanation.explain(error)
                         }
                     }
                 }) { Text("仍要恢复") }

@@ -33,6 +33,11 @@ class PowerStore(
 ) : SQLiteOpenHelper(context.applicationContext, databaseName, null, VERSION) {
     private val appContext = context.applicationContext
 
+    /** Stable typed preflight/transaction failure. Callers must not infer this from locale text. */
+    class NonEmptyRestoreTargetException : IllegalArgumentException(
+        "目标数据库不是空库；为避免覆盖已有数据，恢复已被拒绝"
+    )
+
     /**
      * Distinguishes this process from an earlier one, so a restart can prove a batch is orphaned.
      * It must be process-wide: a receiver or boot handler opening its own [PowerStore] must not
@@ -2090,17 +2095,13 @@ class PowerStore(
     @Synchronized
     fun restoreBackup(input: JSONObject, allowLegacyV2: Boolean = false): RestoreReport {
         // Cheap rejection first: never parse/verify a large envelope against a live user database.
-        require(!hasAnyUserData(readableDatabase)) {
-            "目标数据库不是空库（可能已有事件、草稿、导入或迁移记录）；为避免覆盖，请先导出并清空应用数据后再恢复"
-        }
+        if (hasAnyUserData(readableDatabase)) throw NonEmptyRestoreTargetException()
         val verified = BackupEnvelope.verify(input, VERSION, allowLegacyV2)
         val payload = verified.payload
         validateBackupPayload(payload)
         return tx { db ->
             // Re-check inside the transaction: another connection may have written since preflight.
-            require(!hasAnyUserData(db)) {
-                "目标数据库不是空库（可能已有事件、草稿、导入或迁移记录）；为避免覆盖，请先导出并清空应用数据后再恢复"
-            }
+            if (hasAnyUserData(db)) throw NonEmptyRestoreTargetException()
             val identities = payload.getJSONArray("identities")
             for (index in 0 until identities.length()) {
                 val item = identities.getJSONObject(index)

@@ -378,7 +378,8 @@ class BackupEnvelopeTest {
         val envelope = source.exportBackup()
         usingStore { target ->
             target.newDraft(DraftForm.fresh(TemporalKind.ACTIVITY, LocalDate.now(), zone))
-            assertTrue(runCatching { target.restoreBackup(envelope) }.isFailure)
+            val restoreFailure = runCatching { target.restoreBackup(envelope) }.exceptionOrNull()
+            assertTrue(restoreFailure is PowerStore.NonEmptyRestoreTargetException)
             assertEquals(1L, target.identityCount())
         }
     }
