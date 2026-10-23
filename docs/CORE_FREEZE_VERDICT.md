@@ -4,7 +4,7 @@ Date: 2026-10-23
 
 Verdict: **HOLD**
 
-Code/test baseline for the latest candidate sign-offs: `574a2688bd9a651267e70071e705c733b16c99ae`
+Code/test baseline for the latest candidate sign-offs: `d74d55a3bb05893606f7da223beaa0b5f7a5819d`
 
 APK used by the latest targeted tests: `app/build/outputs/apk/debug/app-debug.apk`, SHA-256 `63F8DCB69D1028B8D7061B374162F59770B86FA2FA4BEB6FDA132D4393AA8B6C`
 
@@ -22,24 +22,24 @@ The historical aggregate is 209 items: 126 P0, 82 P1, and one item whose priorit
 
 Audit evidence: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-source-audit.json` (SHA-256 `600A1D825E9349BCD183053CB2DB59F62A02A50BB862B554238D020FDDFC4E98`). Detailed issue: [`PC-QA-GATE-001`](issues/PC-QA-GATE-001-209-case-ledger.md).
 
-The **RECONSTRUCTED** candidate ledger contains 208 specification-derived rows plus one unresolved historical slot. Candidate priorities follow risk categories and match the aggregate counts, but are proposals for review; every reconstructed row remains `UNMAPPED` to historical IDs. Thirty-four backup, retirement, migration, and core data-contract rows now have individually mapped targeted test evidence. Structural validation confirms 209 unique rows and the 126/82/1 partition; it does not test product behavior or prove historical equivalence. Latest validation: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-014.json`.
+The **RECONSTRUCTED** candidate ledger contains 208 specification-derived rows plus one unresolved historical slot. Candidate priorities follow risk categories and match the aggregate counts, but are proposals for review; every reconstructed row remains `UNMAPPED` to historical IDs. Thirty-six backup, retirement, migration, recurrence, and core data-contract rows now have individually mapped targeted test evidence. Structural validation confirms 209 unique rows and the 126/82/1 partition; it does not test product behavior or prove historical equivalence. Latest validation: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-015.json`.
 
 | Candidate bucket | PASS | FAIL | BLOCKED | NOT TESTED | SPEC UNRESOLVED |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| P0 (proposed) | 40 | 0 | 1 | 81 | 4 |
+| P0 (proposed) | 42 | 0 | 1 | 79 | 4 |
 | P1 (proposed) | 19 | 0 | 8 | 54 | 1 |
 | Historical unclassified slot | 0 | 0 | 0 | 0 | 1 |
-| **Total candidate rows** | **59** | **0** | **9** | **135** | **6** |
+| **Total candidate rows** | **61** | **0** | **9** | **133** | **6** |
 
 ## Current grouped verification
 
-- Latest full working-tree Gradle command: `:app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --offline --rerun-tasks --console=plain` — **BUILD SUCCESSFUL**, 380 tests, 0 failures/errors/skips across 54 JUnit suites; lint 0 errors and 55 warnings. One test came from protected, untracked `DraftDeckFeedbackTest.kt`, so this is 379 tracked tests plus 1 untracked test, not a clean committed-tree count.
-- Log: `.local/android-test/reports/freeze-20261023/pc-issue-014-tracking-enabled-full-gradle-20261023.log`, SHA-256 `6456100DA5A05D86B1077A834326D665FF982F0CF14EE355A1E9A6BD41C31B15`.
+- Latest full working-tree Gradle command: `:app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --offline --rerun-tasks --console=plain` — **BUILD SUCCESSFUL**, 382 tests, 0 failures/errors/skips across 55 JUnit suites; lint 0 errors and 55 warnings. One test came from protected, untracked `DraftDeckFeedbackTest.kt` (381 tracked + 1 protected untracked). The run used the same test source later committed as `d74d55a3bb05893606f7da223beaa0b5f7a5819d`.
+- Log: `.local/android-test/reports/freeze-20261023/pc-issue-015-reminder-completion-full-gradle-20261023.log`, SHA-256 `6719782E203DFCC6E477BFF6E5F56DFD717BEA8568514C0FB4FC14A925675CE7`.
 - These results are software/group-level evidence. They do not sign off the absent 209 case IDs.
 
 ## Open acceptance gates
 
-- `PC-QA-GATE-001`: execute the 141 `NOT TESTED` candidate rows where feasible, resolve the 9 blocked and 5 reconstructed spec-unresolved rows where conditions allow, review proposed priorities, and keep the separate historical unclassified slot unresolved pending its source. The reconstructed 209-row candidate ledger is not the original checklist and signs off 0 original IDs.
+- `PC-QA-GATE-001`: execute the 133 `NOT TESTED` candidate rows where feasible, resolve the 9 blocked and 5 reconstructed spec-unresolved rows where conditions allow, review proposed priorities, and keep the separate historical unclassified slot unresolved pending its source. The reconstructed 209-row candidate ledger is not the original checklist and signs off 0 original IDs.
 - `PC-QA-GATE-002`: physical-device/OEM and additional Android API coverage is unavailable in this run.
 - `PC-QA-GATE-003` / `PC-ISSUE-002`: the free-model structured stage returned HTTP 429; an authorized end-to-end proposal/approval/recovery path is not yet evidenced.
 - `PC-ISSUE-001`: DST-bearing Android SAF export and independent parsing pass; external calendar import and physical-device acceptance remain open.
@@ -55,6 +55,7 @@ The **RECONSTRUCTED** candidate ledger contains 208 specification-derived rows p
 - `PC-ISSUE-012`: `REC-P0-010` passes a v1 SQLite migration regression: a legacy Activity without a tracking field remains untracked and cannot gain a completion key. No production or UI code changed. See `docs/issues/PC-ISSUE-012-legacy-untracked-record-contract.md`.
 - `PC-ISSUE-013`: `REC-P0-011` passes SQLite regressions for changing reminder offsets on tracked and untracked Activity snapshots without changing completion tracking. No production or UI code changed; device notification delivery remains a separate gate. See `docs/issues/PC-ISSUE-013-reminder-tracking-separation.md`.
 - `PC-ISSUE-014`: `REC-P0-014` passes SQLite regressions for changing completion tracking without changing enabled state or reminder settings. No production or UI code changed. See `docs/issues/PC-ISSUE-014-tracking-enabled-separation.md`.
+- `PC-ISSUE-015`: `REC-P0-012/013` pass isolated Robolectric regressions for alarm receiver execution and notification cancellation leaving completion unchanged. Actual Android AlarmManager delivery and real notification-shade dismissal remain untested; see `docs/issues/PC-ISSUE-015-reminder-completion-isolation.md`.
 - `PC-ISSUE-GREEDY-LABEL-FOLDING`: implementation and API 35 visual regression pass; physical-device/OEM and TalkBack review remain open.
 - Stable release signing material remains user-owned and is not present in the repository; no stable Release install/upgrade claim is made.
 
