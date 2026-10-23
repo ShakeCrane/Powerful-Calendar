@@ -520,6 +520,27 @@ class PowerStoreTest {
         assertEquals(2, reopened.map { it.queueOrder }.toSet().size)
     }
 
+    @Test
+    fun nextDraftQueueOrderAdvancesPastCommittedAndDiscardedDraftsAfterRestart() {
+        val committed = store.newDraft(activityForm("committed"))
+        assertTrue(committed.queueOrder > 0)
+        assertTrue(commit(committed) is PowerStore.CommitOutcome.Committed)
+
+        val discarded = store.newDraft(activityForm("discarded"))
+        assertTrue(discarded.queueOrder > committed.queueOrder)
+        assertTrue(store.discard(discarded.draftId))
+
+        val database = store.databaseName
+        store.close()
+        store = PowerStore(context, database)
+        assertEquals(DraftStatus.DISCARDED, store.draft(discarded.draftId)!!.status)
+
+        val next = store.newDraft(activityForm("next"))
+        assertTrue(next.queueOrder > discarded.queueOrder)
+        assertTrue(next.queueOrder > committed.queueOrder)
+        assertEquals(listOf(next.draftId), store.pendingDrafts().map { it.draftId })
+    }
+
     // ---------------------------------------------------------------- whole-snapshot commits
 
     @Test
