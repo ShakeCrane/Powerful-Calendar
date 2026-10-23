@@ -1,4 +1,11 @@
 # Core freeze progress
+## PC-ISSUE-109 — date-only Deadline core sign-off (REC-P0-023 PASS)
+
+- Narrowed the reconstructed expected result from rendered START-END presentation to the core DATE-data invariant because the row declares no UI/device environment. Completion preserves `deadlineDate` and DATE precision; `deadlineMillis/startMillis/endMillis` remain null, including after SQLite reopen. Rendering is not claimed.
+- Targeted Robolectric regression passed 1/1. Full offline Debug boundary/test/APK/lint run passed 460/460 across 57 suites, zero failures/errors/skips; lint 0 errors / 58 warnings. No app or test source changed.
+- Independent report: `docs/issues/PC-ISSUE-109-date-deadline-core-signoff.md`. `REC-P0-023` is PASS for the narrowed reconstructed core candidate; the missing historical mapping remains unresolved.
+- Freeze remains HOLD: 138 PASS / 0 FAIL / 9 BLOCKED / 55 NOT TESTED / 7 SPEC UNRESOLVED; P0 114/0/1/6/5; P1 24/0/8/49/1. Structural-only validation `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-109.json`, SHA-256 `C5BE9C34C74C38278E8BA64DD4041C67408F4C714F16B23AEA3EEA93917CD49B`; ledger SHA-256 `E6E28BDC1391820B55B9EC963AD9CF9083D7A966DB3D28F014A3D5DAC7AF2FEA`.
+
 ## PC-ISSUE-108 — whole-series core persistence sign-off (REC-P0-080 PASS)
 
 - Narrowed the reconstructed action from “Select whole series” to “Edit whole recurring rule through EditSession” because the declared Robolectric API 34/SQLite environment excludes a scope-selection interface. The existing test updates the stored recurrence on the same event identity, preserves the original anchor, verifies the projected occurrence keys and rechecks record/history/identity after reopen.
