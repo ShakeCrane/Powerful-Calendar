@@ -1,4 +1,11 @@
 # Core freeze progress
+## PC-ISSUE-111 — this-and-future recurrence core sign-off (REC-P0-079 PASS)
+
+- Revalidated the four direct PowerStore transaction cases: split and migrate compatible future state, injected insert rollback, first generated slot identity retention, and first non-skipped slot/remaining-count handling.
+- Targeted regression passed 4/4. Full offline Debug boundary/test/APK/lint run passed 460/460 across 57 suites, zero failures/errors/skips; lint 0 errors / 58 warnings. No app or test source changed.
+- Independent report: `docs/issues/PC-ISSUE-111-this-and-future-core-signoff.md`. `REC-P0-079` is PASS for the core transaction criterion; scope selection and device behavior remain outside the result.
+- Freeze remains HOLD: 140 PASS / 0 FAIL / 9 BLOCKED / 53 NOT TESTED / 7 SPEC UNRESOLVED; P0 116/0/1/4/5; P1 24/0/8/49/1. Structural-only validation `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-111.json`, SHA-256 `E7C3F871A1DD2743FC045B8251D116AAE0EF0AD47626CF24ED69B889A371B3AC`; ledger SHA-256 `8F75A6EB9BA2046EF604B0B9558BECF34ECFBF8AA9AD6EC995A8FFAA6A107E2A`.
+
 ## PC-ISSUE-110 — reminder recovery receiver core sign-off (REC-P0-117 PASS)
 
 - Revalidated six synthetic API 34 recovery branches: boot, package replacement, timezone/time change, exact-alarm permission change, and explicit reconciliation. Receiver async completion, one rebuilt AlarmManager registration, durable SCHEDULED state after SQLite reopen, and lock release passed.
