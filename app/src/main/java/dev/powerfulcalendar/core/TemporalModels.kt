@@ -566,6 +566,33 @@ object RecurrenceEngine {
         return Occurrence(key, start, end)
     }
 
+    /** Generated zero-based slot index for a stable original occurrence key. */
+    fun slotIndexForKey(record: TemporalRecord, key: String): Int? =
+        seriesSlotIndex(record, key)
+
+    /** Whether any non-excepted occurrence before [key] remains inside the active date range. */
+    fun hasEarlierActiveOccurrence(record: TemporalRecord, key: String): Boolean {
+        val selectedIndex = seriesSlotIndex(record, key) ?: return false
+        if (selectedIndex == 0) return false
+        val firstLocal = record.anchorMillis()?.let {
+            Instant.ofEpochMilli(it).atZone(record.zone).toLocalDateTime()
+        } ?: return false
+        val rule = record.recurrence
+        var index = selectedIndex - 1
+        while (index >= 0) {
+            val candidate = runCatching { slotAt(firstLocal, rule, index) }.getOrNull() ?: return false
+            val candidateKey = keyFor(candidate)
+            if (rule.activeFromDate != null && candidateKey.substringBefore('T') < rule.activeFromDate) {
+                break
+            }
+            if (activeOnOriginalKey(rule, candidateKey) && candidateKey !in rule.exceptions) {
+                return true
+            }
+            index--
+        }
+        return false
+    }
+
     /** Largest index whose slot is at or before [fromMillis], found by binary search. */
     private fun startIndexNear(
         firstLocal: LocalDateTime,

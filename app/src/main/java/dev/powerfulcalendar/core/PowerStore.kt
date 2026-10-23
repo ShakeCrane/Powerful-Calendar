@@ -7,6 +7,7 @@ import android.database.sqlite.SQLiteOpenHelper
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.util.UUID
 
@@ -683,6 +684,18 @@ class PowerStore(
         data object Locked : DirectEditOutcome
     }
 
+    sealed interface RecurrenceSplitOutcome {
+        data class Applied(
+            val oldEventSeq: Long,
+            val oldRevision: Long,
+            val newEventSeq: Long,
+            val newRevision: Long
+        ) : RecurrenceSplitOutcome
+        data class Conflict(val current: TemporalRecord?) : RecurrenceSplitOutcome
+        data class Invalid(val reason: String) : RecurrenceSplitOutcome
+        data object Locked : RecurrenceSplitOutcome
+    }
+
     enum class AiState { REQUESTED, RUNNING, CANCEL_REQUESTED, COMPLETED, CANCELLED, FAILED, INTERRUPTED }
 
     data class AiSession(
@@ -1225,6 +1238,212 @@ class PowerStore(
             arrayOf(now, eventSeq)
         )
         DirectEditOutcome.Saved(eventSeq, if (changed) candidate.revision else current.revision, changed)
+    }
+
+    /**
+     * Applies a repeated-event edit from one original slot forward. The old series is truncated
+     * before that slot and the edited future becomes a new independent event identity, all in one
+     * SQLite transaction. Only future occurrence state that is still a generated slot in the new
+     * rule is carried across; no cross-event inheritance link is stored.
+     * If the selected slot is the first active occurrence, the edit is equivalent to a whole-series
+     * edit and keeps the existing identity because there is no earlier active segment to split off.
+     *
+     * [form] must describe the new series with its anchor at the selected occurrence's edited
+     * start. When its count is unchanged from the old rule, the new series receives only the old
+     * rule's remaining count from the selected slot onward.
+     */
+    @Synchronized
+    fun saveThisAndFutureRecurringEdit(
+        eventSeq: Long,
+        expectedRevision: Long,
+        selectedOccurrenceKey: String,
+        form: DraftForm,
+        editorToken: String
+    ): RecurrenceSplitOutcome = tx { db ->
+        if (isLocked(db) || !ownsHumanEditor(db, editorToken)) {
+            return@tx RecurrenceSplitOutcome.Locked
+        }
+        val current = readObject(db, eventSeq)
+            ?: return@tx RecurrenceSplitOutcome.Conflict(null)
+        if (current.revision != expectedRevision) {
+            return@tx RecurrenceSplitOutcome.Conflict(current)
+        }
+        if (!current.recurrence.isRepeating) {
+            return@tx RecurrenceSplitOutcome.Invalid("只有重复事件可以按此实例拆分后续序列")
+        }
+        val selectedIndex = RecurrenceEngine.slotIndexForKey(current, selectedOccurrenceKey)
+            ?: return@tx RecurrenceSplitOutcome.Invalid("所选实例不是该重复规则生成的原始槽位")
+        if (!RecurrenceEngine.activeOnOriginalKey(current.recurrence, selectedOccurrenceKey) ||
+            RecurrenceEngine.occurrenceForKey(current, selectedOccurrenceKey) == null
+        ) {
+            return@tx RecurrenceSplitOutcome.Invalid("所选实例已跳过或不在重复日期范围内")
+        }
+        val selectedDate = runCatching {
+            LocalDate.parse(selectedOccurrenceKey.substringBefore('T'))
+        }.getOrNull() ?: return@tx RecurrenceSplitOutcome.Invalid("所选实例键格式无效")
+        if (!RecurrenceEngine.hasEarlierActiveOccurrence(current, selectedOccurrenceKey)) {
+            return@tx saveWholeRecurringSeriesInTransaction(db, current, form, System.currentTimeMillis())
+        }
+        val cutoffDate = selectedDate.minusDays(1)
+        val existingUntil = current.recurrence.activeUntilDate?.let {
+            runCatching { LocalDate.parse(it) }.getOrNull()
+        }
+        val oldUntil = minOf(cutoffDate, existingUntil ?: cutoffDate)
+        val now = System.currentTimeMillis()
+        val oldRule = current.recurrence.copy(
+            count = selectedIndex,
+            activeUntilDate = oldUntil.toString(),
+            exceptions = current.recurrence.exceptions.filterTo(mutableSetOf()) {
+                it < selectedOccurrenceKey
+            },
+            overrides = current.recurrence.overrides.filterKeys { it < selectedOccurrenceKey }
+        )
+        val oldRecord = current.copy(
+            revision = current.revision + 1,
+            recurrence = oldRule,
+            completedKeys = current.completedKeys.filterTo(mutableSetOf()) {
+                it < selectedOccurrenceKey
+            },
+            updatedAtMillis = now
+        )
+        oldRecord.validate()?.let {
+            return@tx RecurrenceSplitOutcome.Invalid("原系列截断后无效：$it")
+        }
+
+        val newEventSeq = metaLong(db, "next_seq")
+        val built = when (val result = form.build(newEventSeq, 1L, now)) {
+            is FormBuild.Incomplete -> return@tx RecurrenceSplitOutcome.Invalid(result.message)
+            is FormBuild.Invalid -> return@tx RecurrenceSplitOutcome.Invalid(result.reason)
+            is FormBuild.Ready -> result.record
+        }
+        if (!built.recurrence.isRepeating) {
+            return@tx RecurrenceSplitOutcome.Invalid("此实例及后续必须保留为重复序列")
+        }
+        val newCount = if (current.recurrence.count != null &&
+            form.recurrence.count == current.recurrence.count
+        ) {
+            current.recurrence.count - selectedIndex
+        } else {
+            built.recurrence.count
+        }
+        if (newCount != null && newCount < 1) {
+            return@tx RecurrenceSplitOutcome.Invalid("新序列必须至少包含所选实例")
+        }
+        val baseRule = built.recurrence.copy(
+            count = newCount,
+            exceptions = emptySet(),
+            overrides = emptyMap()
+        )
+        val baseRecord = built.copy(recurrence = baseRule, completedKeys = emptySet())
+        val newAnchor = baseRecord.anchorMillis()
+            ?: return@tx RecurrenceSplitOutcome.Invalid("新序列缺少开始锚点")
+        val newAnchorKey = RecurrenceEngine.keyFor(
+            Instant.ofEpochMilli(newAnchor).atZone(baseRecord.zone).toLocalDateTime()
+        )
+        if (!RecurrenceEngine.activeOnOriginalKey(baseRule, newAnchorKey) ||
+            RecurrenceEngine.slotIndexForKey(baseRecord, newAnchorKey) == null
+        ) {
+            return@tx RecurrenceSplitOutcome.Invalid("新规则未包含所选实例对应的新系列锚点")
+        }
+
+        fun compatibleFutureKey(key: String): Boolean =
+            key >= selectedOccurrenceKey &&
+                RecurrenceEngine.activeOnOriginalKey(baseRule, key) &&
+                RecurrenceEngine.slotIndexForKey(baseRecord, key) != null
+
+        val migratedExceptions = (current.recurrence.exceptions + form.recurrence.exceptions)
+            .filterTo(mutableSetOf(), ::compatibleFutureKey)
+        val migratedOverrides = (current.recurrence.overrides + form.recurrence.overrides)
+            .filterKeys(::compatibleFutureKey)
+        val migratedCompleted = (current.completedKeys + form.completedKeys)
+            .filterTo(mutableSetOf(), ::compatibleFutureKey)
+        val newRecord = baseRecord.copy(
+            recurrence = baseRule.copy(
+                exceptions = migratedExceptions,
+                overrides = migratedOverrides
+            ),
+            completedKeys = migratedCompleted
+        )
+        newRecord.validate()?.let {
+            return@tx RecurrenceSplitOutcome.Invalid("新系列无效：$it")
+        }
+
+        check(allocateIdentity(db, newRecord.source) == newEventSeq) {
+            "新序列身份分配与事务高水位不一致"
+        }
+        upsertObject(db, oldRecord)
+        upsertObject(db, newRecord)
+        db.insertOrThrow("commits", null, ContentValues().apply {
+            put("commit_id", UUID.randomUUID().toString())
+            putNull("draft_id")
+            put("event_seq", eventSeq)
+            put("previous_revision", current.revision)
+            put("new_revision", oldRecord.revision)
+            put("actor", "user")
+            put("operation", DraftOperation.REPLACE.name)
+            put("created_ms", now)
+        })
+        db.insertOrThrow("commits", null, ContentValues().apply {
+            put("commit_id", UUID.randomUUID().toString())
+            putNull("draft_id")
+            put("event_seq", newEventSeq)
+            putNull("previous_revision")
+            put("new_revision", newRecord.revision)
+            put("actor", "user")
+            put("operation", DraftOperation.CREATE.name)
+            put("created_ms", now)
+        })
+        db.execSQL(
+            "UPDATE drafts SET status='DISCARDED',updated_ms=? WHERE event_seq=? AND status IN ('PENDING','CONFLICT','INVALID')",
+            arrayOf(now, eventSeq)
+        )
+        writeDesiredIntent(db, oldRecord, now)
+        writeDesiredIntent(db, newRecord, now)
+        RecurrenceSplitOutcome.Applied(eventSeq, oldRecord.revision, newEventSeq, newRecord.revision)
+    }
+
+    private fun saveWholeRecurringSeriesInTransaction(
+        db: SQLiteDatabase,
+        current: TemporalRecord,
+        form: DraftForm,
+        now: Long
+    ): RecurrenceSplitOutcome {
+        val candidate = when (val built = form.build(current.eventSeq, current.revision + 1, now)) {
+            is FormBuild.Incomplete -> return RecurrenceSplitOutcome.Invalid(built.message)
+            is FormBuild.Invalid -> return RecurrenceSplitOutcome.Invalid(built.reason)
+            is FormBuild.Ready -> built.record.copy(
+                createdAtMillis = current.createdAtMillis,
+                updatedAtMillis = now
+            )
+        }
+        if (!candidate.recurrence.isRepeating) {
+            return RecurrenceSplitOutcome.Invalid("此实例及后续必须保留为重复序列")
+        }
+        val changed = !sameFormalContent(current, candidate)
+        if (changed) {
+            upsertObject(db, candidate)
+            db.insertOrThrow("commits", null, ContentValues().apply {
+                put("commit_id", UUID.randomUUID().toString())
+                putNull("draft_id")
+                put("event_seq", current.eventSeq)
+                put("previous_revision", current.revision)
+                put("new_revision", candidate.revision)
+                put("actor", "user")
+                put("operation", DraftOperation.REPLACE.name)
+                put("created_ms", now)
+            })
+            writeDesiredIntent(db, candidate, now)
+        }
+        db.execSQL(
+            "UPDATE drafts SET status='DISCARDED',updated_ms=? WHERE event_seq=? AND status IN ('PENDING','CONFLICT','INVALID')",
+            arrayOf(now, current.eventSeq)
+        )
+        return RecurrenceSplitOutcome.Applied(
+            current.eventSeq,
+            if (changed) candidate.revision else current.revision,
+            current.eventSeq,
+            if (changed) candidate.revision else current.revision
+        )
     }
 
     /** Direct, confirmed formal delete with tombstone, schedule cancellation and draft cleanup. */

@@ -256,6 +256,240 @@ class PowerStoreTest {
     }
 
     @Test
+    fun thisAndFutureRecurringEditSplitsIdentityAndMigratesOnlyCompatibleFutureState() {
+        val shanghai = ZoneId.of("Asia/Shanghai")
+        val firstMillis = LocalDateTime.of(2026, 10, 20, 7, 30)
+            .atZone(shanghai).toInstant().toEpochMilli()
+        val selectedKey = "2026-10-22T07:30"
+        val overriddenKey = "2026-10-23T07:30"
+        val skippedKey = "2026-10-24T07:30"
+        val priorCompletedKey = "2026-10-20T07:30"
+        val futureCompletedKey = selectedKey
+        val movedStart = LocalDateTime.of(2026, 10, 23, 10, 0)
+            .atZone(shanghai).toInstant().toEpochMilli()
+        val recurrence = Recurrence(
+            freq = RecurrenceFreq.DAILY,
+            count = 5,
+            exceptions = setOf(skippedKey),
+            overrides = mapOf(overriddenKey to OccurrenceOverride(movedStart, null))
+        )
+        val form = DraftForm(
+            kind = TemporalKind.ALARM,
+            title = "原始系列",
+            startText = DraftForm.formatInstant(firstMillis, shanghai),
+            reminderMinutes = -1,
+            zoneId = shanghai.id,
+            recurrence = recurrence,
+            trackingEnabled = true,
+            completedKeys = setOf(priorCompletedKey, futureCompletedKey)
+        )
+        val card = store.newDraft(form)
+        assertTrue(commit(card) is PowerStore.CommitOutcome.Committed)
+        val before = requireNotNull(store.get(card.eventSeq))
+        val from = LocalDateTime.of(2026, 10, 20, 0, 0)
+            .atZone(shanghai).toInstant().toEpochMilli()
+        val until = LocalDateTime.of(2026, 10, 26, 0, 0)
+            .atZone(shanghai).toInstant().toEpochMilli()
+
+        val lease = store.beginHumanEdit(before.eventSeq)
+        val outcome = try {
+            val selectedMillis = LocalDateTime.of(2026, 10, 22, 7, 30)
+                .atZone(shanghai).toInstant().toEpochMilli()
+            store.saveThisAndFutureRecurringEdit(
+                eventSeq = before.eventSeq,
+                expectedRevision = before.revision,
+                selectedOccurrenceKey = selectedKey,
+                form = DraftForm.from(before).copy(
+                    title = "从所选实例开始",
+                    startText = DraftForm.formatInstant(selectedMillis, shanghai)
+                ),
+                editorToken = lease.token
+            )
+        } finally {
+            store.endHumanEdit(lease.token)
+        }
+
+        assertTrue("future-scope edit should split atomically", outcome is PowerStore.RecurrenceSplitOutcome.Applied)
+        outcome as PowerStore.RecurrenceSplitOutcome.Applied
+        assertEquals(before.eventSeq, outcome.oldEventSeq)
+        assertEquals(before.revision + 1, outcome.oldRevision)
+        assertEquals(2L, outcome.newEventSeq)
+        assertEquals(1L, outcome.newRevision)
+
+        val oldSeries = requireNotNull(store.get(outcome.oldEventSeq))
+        assertEquals(before.startMillis, oldSeries.startMillis)
+        assertEquals(2, oldSeries.recurrence.count)
+        assertEquals("2026-10-21", oldSeries.recurrence.activeUntilDate)
+        assertEquals(emptySet<String>(), oldSeries.recurrence.exceptions)
+        assertTrue(oldSeries.recurrence.overrides.isEmpty())
+        assertEquals(setOf(priorCompletedKey), oldSeries.completedKeys)
+        assertEquals(
+            listOf("2026-10-20T07:30", "2026-10-21T07:30"),
+            RecurrenceEngine.occurrences(oldSeries, from, until).map { it.key }
+        )
+
+        val newSeries = requireNotNull(store.get(outcome.newEventSeq))
+        assertEquals("从所选实例开始", newSeries.title)
+        assertEquals(1L, newSeries.revision)
+        assertEquals(3, newSeries.recurrence.count)
+        assertEquals(selectedKey, RecurrenceEngine.keyFor(
+            LocalDateTime.ofInstant(Instant.ofEpochMilli(newSeries.startMillis!!), shanghai)
+        ))
+        assertEquals(setOf(skippedKey), newSeries.recurrence.exceptions)
+        assertEquals(mapOf(overriddenKey to OccurrenceOverride(movedStart, null)), newSeries.recurrence.overrides)
+        assertEquals(setOf(futureCompletedKey), newSeries.completedKeys)
+        val newOccurrences = RecurrenceEngine.occurrences(newSeries, from, until)
+        assertEquals(listOf(selectedKey, overriddenKey), newOccurrences.map { it.key })
+        assertEquals(movedStart, newOccurrences.single { it.key == overriddenKey }.startMillis)
+        assertEquals(2L, store.identityCount())
+        assertEquals(3L, store.nextSequencePreview())
+        assertEquals(2, store.history(outcome.oldEventSeq).size)
+        assertEquals(1, store.history(outcome.newEventSeq).size)
+
+        val database = store.databaseName
+        store.close()
+        store = PowerStore(context, database)
+        assertEquals(oldSeries, store.get(outcome.oldEventSeq))
+        assertEquals(newSeries, store.get(outcome.newEventSeq))
+        assertEquals(listOf("2026-10-20T07:30", "2026-10-21T07:30"),
+            RecurrenceEngine.occurrences(store.get(outcome.oldEventSeq)!!, from, until).map { it.key })
+        assertEquals(listOf(selectedKey, overriddenKey),
+            RecurrenceEngine.occurrences(store.get(outcome.newEventSeq)!!, from, until).map { it.key })
+    }
+
+    @Test
+    fun thisAndFutureRecurringEditRollsBackBothSeriesWhenNewIdentityInsertFails() {
+        val shanghai = ZoneId.of("Asia/Shanghai")
+        val firstMillis = LocalDateTime.of(2026, 10, 20, 7, 30)
+            .atZone(shanghai).toInstant().toEpochMilli()
+        val card = store.newDraft(DraftForm(
+            kind = TemporalKind.ALARM,
+            title = "原始系列",
+            startText = DraftForm.formatInstant(firstMillis, shanghai),
+            reminderMinutes = -1,
+            zoneId = shanghai.id,
+            recurrence = Recurrence(freq = RecurrenceFreq.DAILY, count = 5)
+        ))
+        assertTrue(commit(card) is PowerStore.CommitOutcome.Committed)
+        val before = requireNotNull(store.get(card.eventSeq))
+        val selectedKey = "2026-10-22T07:30"
+        val selectedMillis = LocalDateTime.of(2026, 10, 22, 7, 30)
+            .atZone(shanghai).toInstant().toEpochMilli()
+        val lease = store.beginHumanEdit(before.eventSeq)
+        try {
+            store.writableDatabase.execSQL(
+                "CREATE TRIGGER fail_future_series_insert BEFORE INSERT ON objects " +
+                    "WHEN NEW.event_seq=2 BEGIN SELECT RAISE(ABORT, 'injected split failure'); END"
+            )
+            val attempt = runCatching {
+                store.saveThisAndFutureRecurringEdit(
+                    eventSeq = before.eventSeq,
+                    expectedRevision = before.revision,
+                    selectedOccurrenceKey = selectedKey,
+                    form = DraftForm.from(before).copy(
+                        title = "不应落盘",
+                        startText = DraftForm.formatInstant(selectedMillis, shanghai)
+                    ),
+                    editorToken = lease.token
+                )
+            }
+            assertTrue("injected new-object failure should escape the transaction", attempt.isFailure)
+            store.writableDatabase.execSQL("DROP TRIGGER fail_future_series_insert")
+        } finally {
+            store.endHumanEdit(lease.token)
+        }
+
+        assertEquals(before, store.get(before.eventSeq))
+        assertNull(store.get(2L))
+        assertEquals(1L, store.identityCount())
+        assertEquals(2L, store.nextSequencePreview())
+        assertEquals(1, store.history(before.eventSeq).size)
+    }
+
+    @Test
+    fun thisAndFutureEditOnFirstActiveSlotKeepsOneSeriesIdentity() {
+        val shanghai = ZoneId.of("Asia/Shanghai")
+        val firstMillis = LocalDateTime.of(2026, 10, 20, 7, 30)
+            .atZone(shanghai).toInstant().toEpochMilli()
+        val card = store.newDraft(DraftForm(
+            kind = TemporalKind.ALARM,
+            title = "首项前无旧序列",
+            startText = DraftForm.formatInstant(firstMillis, shanghai),
+            reminderMinutes = -1,
+            zoneId = shanghai.id,
+            recurrence = Recurrence(freq = RecurrenceFreq.DAILY, count = 3)
+        ))
+        assertTrue(commit(card) is PowerStore.CommitOutcome.Committed)
+        val before = requireNotNull(store.get(card.eventSeq))
+        val lease = store.beginHumanEdit(before.eventSeq)
+        val outcome = try {
+            store.saveThisAndFutureRecurringEdit(
+                eventSeq = before.eventSeq,
+                expectedRevision = before.revision,
+                selectedOccurrenceKey = "2026-10-20T07:30",
+                form = DraftForm.from(before).copy(title = "首项起应用新规则"),
+                editorToken = lease.token
+            )
+        } finally {
+            store.endHumanEdit(lease.token)
+        }
+
+        assertEquals(
+            PowerStore.RecurrenceSplitOutcome.Applied(before.eventSeq, 2L, before.eventSeq, 2L),
+            outcome
+        )
+        assertEquals("首项起应用新规则", store.get(before.eventSeq)!!.title)
+        assertEquals(1, store.all().size)
+        assertEquals(1L, store.identityCount())
+        assertEquals(2L, store.nextSequencePreview())
+        assertEquals(2, store.history(before.eventSeq).size)
+    }
+
+    @Test
+    fun thisAndFutureEditOnFirstNonSkippedSlotKeepsOneSeriesIdentity() {
+        val shanghai = ZoneId.of("Asia/Shanghai")
+        val firstMillis = LocalDateTime.of(2026, 10, 20, 7, 30)
+            .atZone(shanghai).toInstant().toEpochMilli()
+        val card = store.newDraft(DraftForm(
+            kind = TemporalKind.ALARM,
+            title = "前两项已跳过",
+            startText = DraftForm.formatInstant(firstMillis, shanghai),
+            reminderMinutes = -1,
+            zoneId = shanghai.id,
+            recurrence = Recurrence(
+                freq = RecurrenceFreq.DAILY,
+                count = 3,
+                exceptions = setOf("2026-10-20T07:30", "2026-10-21T07:30")
+            )
+        ))
+        assertTrue(commit(card) is PowerStore.CommitOutcome.Committed)
+        val before = requireNotNull(store.get(card.eventSeq))
+        val lease = store.beginHumanEdit(before.eventSeq)
+        val outcome = try {
+            store.saveThisAndFutureRecurringEdit(
+                eventSeq = before.eventSeq,
+                expectedRevision = before.revision,
+                selectedOccurrenceKey = "2026-10-22T07:30",
+                form = DraftForm.from(before).copy(title = "首个有效实例起应用新规则"),
+                editorToken = lease.token
+            )
+        } finally {
+            store.endHumanEdit(lease.token)
+        }
+
+        assertEquals(
+            PowerStore.RecurrenceSplitOutcome.Applied(before.eventSeq, 2L, before.eventSeq, 2L),
+            outcome
+        )
+        assertEquals("首个有效实例起应用新规则", store.get(before.eventSeq)!!.title)
+        assertEquals(3, store.get(before.eventSeq)!!.recurrence.count)
+        assertEquals(1, store.all().size)
+        assertEquals(1L, store.identityCount())
+        assertEquals(2L, store.nextSequencePreview())
+        assertEquals(2, store.history(before.eventSeq).size)
+    }
+
+    @Test
     fun humanLeaseNeverLeaksAcrossCallersOrProcessesAndOnlyForeignStaleLeaseRecovers() {
         val database = "lease-" + UUID.randomUUID() + ".db"
         val owner = PowerStore(context, database, "process-owner")
