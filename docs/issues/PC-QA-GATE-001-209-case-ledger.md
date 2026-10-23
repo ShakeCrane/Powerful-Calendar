@@ -27,14 +27,14 @@ Audit evidence: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-sour
 
 `docs/CORE_FREEZE_ACCEPTANCE_LEDGER.csv` contains 208 reconstructed rows and one unresolved historical slot. Proposed priority allocation is P0=126 and P1=82, grouped by risk/source area; this preserves the known aggregate for review but does not establish which historical case each row represents. All reconstructed rows are explicitly `UNMAPPED`.
 
-Structural validation: 209 unique IDs; all reconstructed rows contain source, environment, action, expected and actual fields; PASS/BLOCKED rows include evidence references. Latest validation JSON: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-007.json` (ledger SHA-256 `DD2B026096778438E18234CFA9D291AC77122903925FEA95E10ECBBF61C154E0`). Structural validation does not test the app or prove the historical mapping.
+Structural validation: 209 unique IDs; all reconstructed rows contain source, environment, action, expected and actual fields; PASS/BLOCKED rows include evidence references. Latest validation JSON: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-008.json` (ledger SHA-256 `BE5DA4AB9C5DEBEE39AEBDD55BBFC75CC8F6CC78504552AB36EC8E8CFA433A98`). Structural validation does not test the app or prove the historical mapping.
 
 | Candidate bucket | PASS | FAIL | BLOCKED | NOT TESTED | SPEC UNRESOLVED |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| P0 (proposed) | 20 | 0 | 1 | 101 | 4 |
+| P0 (proposed) | 25 | 0 | 1 | 96 | 4 |
 | P1 (proposed) | 19 | 0 | 8 | 54 | 1 |
 | Historical unclassified slot | 0 | 0 | 0 | 0 | 1 |
-| **Total candidate rows** | **39** | **0** | **9** | **155** | **6** |
+| **Total candidate rows** | **44** | **0** | **9** | **150** | **6** |
 
 ### Case-specific backup verification (2026-10-23)
 
@@ -48,7 +48,7 @@ Three reconstructed P0 backup-contract rows were individually exercised in JVM S
 
 Command: `.\gradlew.bat :app:testDebugUnitTest --tests "dev.powerfulcalendar.core.BackupEnvelopeTest.exportProducesEnvelopeV1WithMatchingCanonicalHash" --tests "dev.powerfulcalendar.core.BackupEnvelopeTest.aLowSequenceWatermarkIsRejected" --tests "dev.powerfulcalendar.core.BackupEnvelopeTest.flatV1BackupIsExplicitlyRejectedAndEnvelopeCannotBeDowngradedToLegacy" --offline --rerun-tasks --console=plain`. Result: **3 passed, 0 failed/errors/skipped**. Log: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-backup-casebatch-20261023/targeted-tests.log` (SHA-256 `F14D6EB7B5D96678EF84B4B6177B69446C27DF46AC5820712C5E424921D4CAD9`). The exact method results are also present in Gradle's `TEST-dev.powerfulcalendar.core.BackupEnvelopeTest.xml`. This targeted run does not replace or inflate the separate full working-tree run.
 
-The full working-tree run recorded with the initial backup batch included one test from protected, untracked `DraftDeckFeedbackTest.kt` (365 tracked tests plus 1 untracked). The later PC-ISSUE-006 run recorded 372 tests (371 tracked plus 1 protected untracked); the current 373-test run is recorded below under PC-ISSUE-007. Neither grouped result nor the targeted case batches establishes historical case-ID mapping.
+The full working-tree run recorded with the initial backup batch included one test from protected, untracked `DraftDeckFeedbackTest.kt` (365 tracked tests plus 1 untracked). The later PC-ISSUE-006 run recorded 372 tests (371 tracked plus 1 protected untracked); the 373-test run current at the time of PC-ISSUE-007 is recorded below; the latest 374-test run is recorded under PC-ISSUE-008. Neither grouped result nor the targeted case batches establishes historical case-ID mapping.
 
 ### Case-specific retired-event restoration (2026-10-23)
 
@@ -88,6 +88,20 @@ Targeted command result: **7 passed / 0 failed/errors/skipped**. Log: `.local/an
 
 Targeted command result: **1 passed / 0 failed/errors/skipped**. Log `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-concurrent-restore-targeted-final-20261023.log` (SHA-256 `1B1880767397A7F2B2C86A633BCBDD9B3D8E369EB1594C3802FE47FDABC886DE`). Several earlier true-lock interleavings failed inside Robolectric SQLite before the app guard could run; those are listed in `docs/issues/PC-ISSUE-007-post-preflight-concurrent-restore.md` and the local exploratory manifest. One intermediate log was overwritten when its path was reused by the final run; the missing artifact is disclosed and excluded from sign-off. Full regression: **373 passed / 0 failed/errors/skipped**, lint 0 errors / 55 warnings; log `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-concurrent-restore-full-gradle-final-20261023.log` (SHA-256 `7A4CE9C9BA3D88854799F9D820E7D1B0DD36EFAF7F0154550F41724832F8075F`). One protected untracked test was included (372 tracked + 1 protected untracked). See independent report `docs/issues/PC-ISSUE-007-post-preflight-concurrent-restore.md`.
 
+## Case-specific database migration atomicity (2026-10-23)
+
+`REC-P0-083/085/086/087/088` are individually signed against exact tests on code commit `ef901e0d5878bb4b25c61ed10dd1021cf312ca97`; Debug APK SHA-256 `63F8DCB69D1028B8D7061B374162F59770B86FA2FA4BEB6FDA132D4393AA8B6C`. The v3 fixture injects failure on the second duplicate-draft update, after the first update and audit insert have run; rollback restores all three PENDING rows and the original schema, then retry upgrades the same database successfully. The v1/v2 fixtures are synthetic on-disk schemas based on historical DDL, not actual user databases.
+
+| Candidate row | Test | Result |
+| --- | --- | --- |
+| `REC-P0-083` — version axes | `VersionContractTest.schemaBackupAndPackageVersionsAreSeparateAxes` | PASS: package, schema and backup versions remain independently defined. |
+| `REC-P0-085` — ordered migrations | `PowerStoreSchemaUpgradeTest.upgradingRealV1DataInPlacePreservesRowsAndAddsOnlyTheReviewedTable`; `PowerStoreSchemaUpgradeTest.upgradingRealV2AddsLineageInPlaceWithoutTouchingBusinessRows`; `PowerStoreSchemaUpgradeTest.retryingAHalfAppliedLineageMigrationSucceedsWithoutTouchingRows` | PASS: supported upgrade steps reach current schema and preserve legacy rows. |
+| `REC-P0-086` — migration transaction | `PowerStoreSchemaUpgradeTest.failedV4MigrationRollsBackAndCanRetryWithoutLosingLegacyRows` | PASS: after one duplicate update/audit succeeds, the injected second update fails; rollback retains v3 and restores all three pending rows. |
+| `REC-P0-087` — failure recovery | `PowerStoreSchemaUpgradeTest.failedV4MigrationRollsBackAndCanRetryWithoutLosingLegacyRows` | PASS: exception identifies the injected trigger; removing it allows an in-place retry to schema v4. |
+| `REC-P0-088` — legacy schema preservation | `PowerStoreSchemaUpgradeTest.upgradingRealV1DataInPlacePreservesRowsAndAddsOnlyTheReviewedTable`; `PowerStoreSchemaUpgradeTest.upgradingRealV2AddsLineageInPlaceWithoutTouchingBusinessRows` | PASS on synthetic historical-schema fixtures; no real user database was opened. |
+
+Targeted schema suite: **4/4 PASS**, log `.local/android-test/reports/freeze-20261023/pc-issue-008-migration-targeted-partial-write-20261023.log` (SHA-256 `BDF989FBB7D5F170E5C949684B85E76C8670F89119324D8783FB935B3711E7A0`); full regression: **374/374 PASS**, 0 lint errors / 55 warnings. Exact logs and hashes are in `docs/issues/PC-ISSUE-008-database-migration-atomicity.md`.
+
 ## Historical sign-off accounting
 
 | Bucket from historical aggregate | Total | Matched to original ID | Result |
@@ -96,11 +110,11 @@ Targeted command result: **1 passed / 0 failed/errors/skipped**. Log `.local/and
 | P1 | 82 | 0 | Unassessed by original ID |
 | Priority unresolved | 1 | 0 | Remains unclassified and unassessed |
 
-The latest full working-tree Gradle run reports 373 tests PASS, 0 failures/errors/skips, successful skin-boundary verification and Debug assembly, and lint 0 errors / 55 warnings. It includes one test from protected, untracked `app/src/test/java/dev/powerfulcalendar/ui/v2/DraftDeckFeedbackTest.kt` (372 tracked tests + 1 untracked); the file was not modified or staged. Log: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-concurrent-restore-full-gradle-final-20261023.log` (SHA-256 `7A4CE9C9BA3D88854799F9D820E7D1B0DD36EFAF7F0154550F41724832F8075F`). This is neither a clean committed-tree 373-test count nor a 373-to-209 mapping.
+The latest full working-tree Gradle run reports 374 tests PASS, 0 failures/errors/skips across 54 JUnit suites, successful skin-boundary verification and Debug assembly, and lint 0 errors / 55 warnings. It includes one test from protected, untracked `app/src/test/java/dev/powerfulcalendar/ui/v2/DraftDeckFeedbackTest.kt` (373 tracked tests + 1 untracked); the file was not modified or staged. Log: `.local/android-test/reports/freeze-20261023/pc-issue-008-migration-full-gradle-final-v2-20261023.log` (SHA-256 `34E173117BE41997BEA9BB564C5B103B24B3B957B9CFC182F8E128DC35DF2744`). This is neither a clean committed-tree 374-test count nor a 374-to-209 mapping.
 
 ## Required next work
 
-1. Run the 155 `NOT TESTED` rows under the environment each row requires and update only with case-specific evidence.
+1. Run the 150 `NOT TESTED` rows under the environment each row requires and update only with case-specific evidence.
 2. Resolve the one blocked P0, eight blocked P1, and five reconstructed spec-unresolved rows where feasible; retain external/physical/device dependencies as HOLD. The separate historical unclassified slot remains unresolved pending its source.
 3. Review the source-based proposed priority allocation. New IDs must never masquerade as historical IDs.
 4. Keep the one historical unclassified item visibly unresolved until its source or an explicit review decision is available.
@@ -108,4 +122,4 @@ The latest full working-tree Gradle run reports 373 tests PASS, 0 failures/error
 
 ## Scope and outcome
 
-Core code and tests now have evidence for 14 reconstructed rows across the backup and tombstone batches; 155 remain NOT TESTED, proposed priorities still need review, and historical mapping is still absent. PC-QA-GATE-001 remains **PARTIAL / HOLD**, and overall core verdict remains **HOLD**.
+Core code and tests now have evidence for 19 reconstructed rows across backup, tombstone, and migration batches; 150 remain NOT TESTED, proposed priorities still need review, and historical mapping is still absent. PC-QA-GATE-001 remains **PARTIAL / HOLD**, and overall core verdict remains **HOLD**.
