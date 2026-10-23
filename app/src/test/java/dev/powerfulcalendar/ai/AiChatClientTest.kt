@@ -292,6 +292,83 @@ class AiChatClientTest {
         }
     }
 
+    @Test fun structuredProposalHttp429NamesFailedStageAndProducesNoProposal() {
+        val serverError = AtomicReference<Throwable?>()
+        val served = CountDownLatch(1)
+        ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { server ->
+            server.soTimeout = 10_000
+            Thread {
+                try {
+                    server.accept().use { socket ->
+                        socket.soTimeout = 10_000
+                        val input = socket.getInputStream().buffered()
+                        fun readHeaderLine(): String {
+                            val line = java.io.ByteArrayOutputStream()
+                            while (true) {
+                                val byte = input.read()
+                                require(byte >= 0) { "Unexpected end of HTTP headers" }
+                                if (byte == 10) break
+                                if (byte != 13) line.write(byte)
+                                require(line.size() <= 8192) { "Oversized HTTP header" }
+                            }
+                            return line.toString(Charsets.US_ASCII.name())
+                        }
+                        assertTrue(readHeaderLine().startsWith("POST /v1/chat/completions HTTP/1.1"))
+                        var contentLength = -1
+                        while (true) {
+                            val header = readHeaderLine()
+                            if (header.isEmpty()) break
+                            if (header.startsWith("Content-Length:", ignoreCase = true)) {
+                                contentLength = header.substringAfter(':').trim().toInt()
+                            }
+                        }
+                        require(contentLength in 1..100_000)
+                        var remaining = contentLength
+                        while (remaining > 0) {
+                            val count = input.read(ByteArray(minOf(remaining, 8192)))
+                            require(count > 0) { "Unexpected end of request body" }
+                            remaining -= count
+                        }
+                        val response = """{"error":{"message":"provider-body-secret"}}"""
+                            .toByteArray(Charsets.UTF_8)
+                        val headers = ("HTTP/1.1 429 Too Many Requests\r\n" +
+                            "Content-Type: application/json; charset=utf-8\r\n" +
+                            "Content-Length: ${response.size}\r\nConnection: close\r\n\r\n")
+                            .toByteArray(Charsets.US_ASCII)
+                        socket.getOutputStream().apply {
+                            write(headers)
+                            write(response)
+                            flush()
+                        }
+                    }
+                } catch (error: Throwable) {
+                    serverError.set(error)
+                } finally {
+                    served.countDown()
+                }
+            }.apply { isDaemon = true; start() }
+
+            val settings = AiSettings(
+                endpoint = "http://127.0.0.1:${server.localPort}/v1",
+                model = "stub",
+                enabled = true,
+                apiKey = "LOCAL_SECRET_SENTINEL"
+            )
+            val result = runBlocking {
+                AiClient(settings).interpret("明天创建一项活动", emptyList())
+            }
+            assertTrue("Server did not finish", served.await(10, TimeUnit.SECONDS))
+            assertNull("Server error: ${serverError.get()}", serverError.get())
+            assertTrue(result.proposals.isEmpty())
+            assertTrue(result.rawReply.isEmpty())
+            val warning = result.warnings.single()
+            assertTrue(result.warnings.toString(), warning.contains("429"))
+            assertFalse(warning.contains("provider-body-secret"))
+            assertFalse(warning.contains("LOCAL_SECRET_SENTINEL"))
+            assertTrue(result.warnings.toString(), warning.contains("结构化提案"))
+        }
+    }
+
     @Test fun unconfiguredProviderCannotModifyAnything() {
         val reply = runBlocking {
             AiClient(AiSettings.EMPTY).chat(listOf(AiChatMessage("user", "明天提醒我")))

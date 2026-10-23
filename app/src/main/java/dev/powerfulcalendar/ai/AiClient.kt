@@ -181,7 +181,7 @@ class AiClient(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                AiInterpretation(warnings = listOf("AI 请求失败：" + safeError(error)))
+                AiInterpretation(warnings = listOf("结构化提案阶段失败：" + safeError(error)))
             }
         }
 
