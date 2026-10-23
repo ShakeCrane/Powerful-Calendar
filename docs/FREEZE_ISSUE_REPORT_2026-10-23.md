@@ -5,10 +5,10 @@
 主代码基线：`abde8e2900b507cf1a50730b22de8ec55e4bac38`（背景灰带补正与固定竖屏）
 测试 APK：`app/build/outputs/apk/debug/app-debug.apk`
 Issue 004 修复代码基线：`16e00d55435c5029e07784ec5d945dfd7fb37ac5`
-最新测试 APK SHA-256：`EA0DE99328BF66FEA302AF5A55C82B3BD7EF3F7276922979AABBF7ABEC581A53`
-最新核心回归代码/测试基线：`9cfd0ee4ff71c13103dcbb7feab9d8bc6b11e6a3`；Debug APK SHA-256：`EA0DE99328BF66FEA302AF5A55C82B3BD7EF3F7276922979AABBF7ABEC581A53`
+最新测试 APK SHA-256：`460DE2CEE71D00996AFED280AC751B16337CDC129D2273A4A8E61C09C986A13C`
+最新核心回归代码/测试基线：`f45710a6759fc5532f3982721345c06a912afa3e`；Debug APK SHA-256：`460DE2CEE71D00996AFED280AC751B16337CDC129D2273A4A8E61C09C986A13C`
 设备：Issue 004 使用隔离的 Android 15 / API 35 `emulator-5556`；原 `emulator-5554` 保持运行且未操作。无物理真机。
-此前冻结工作记录了时间轴验收；本轮继续核心数据语义验收，只增加核心回归测试和文档，没有修改 UI、业务数据或 `design/`。按用户最新确认，变浅的横向边缘可接受，本轮不开展 UI 工作。
+此前冻结工作记录了时间轴验收；本轮继续核心数据语义与提醒验收，修复重复事件延迟 snooze 广播处理并增加核心回归及文档，没有修改 UI、业务数据或 `design/`。按用户最新确认，变浅的横向边缘可接受，本轮不开展 UI 工作。
 
 ## 1. 本轮实际测试及结论
 
@@ -38,6 +38,7 @@ Issue 004 修复代码基线：`16e00d55435c5029e07784ec5d945dfd7fb37ac5`
 | FQ-22 | 备份预检后出现新写入时事务内复查（REC-P0-103） | **PASS（核心 JVM）；整体冻结 HOLD** | 第二 SQLite store 在预检完成后写入草稿；事务内复查拒绝恢复并保留后来写入的数据。测试提交 `2171c3f96fb69a1e6d14e1fb170d4c53a9439184`；全量 373 项 PASS / lint 0 errors、55 warnings；没有设备测试。独立报告 `docs/issues/PC-ISSUE-007-post-preflight-concurrent-restore.md` |
 | FQ-23 | 数据库迁移失败回滚与同库重试（REC-P0-083/085–088） | **PASS（核心 JVM）；整体冻结 HOLD** | SQLite trigger 在首条重复草稿归并及审计已成功后，于第二条更新处注入失败；整体回滚后 schema 仍为 v3 且三条 PENDING 草稿完整，移除 trigger 后同库升级成功；只增加测试。测试提交 `ef901e0d5878bb4b25c61ed10dd1021cf312ca97`；定向 4/4、全量 374/374，Lint 0 errors / 55 warnings；无设备验收。独立报告 `docs/issues/PC-ISSUE-008-database-migration-atomicity.md` |
 | FQ-24 | 重复实例原始键、例外隔离与日期边界（REC-P0-060/061/062/063/066/067/068/070/071） | **PASS（核心 JVM）；整体冻结 HOLD** | 7 个纯时间模型测试验证包含式日期边界、有限窗口、跨日期移动仍保留原始 slotKey、跳过单实例、移动后自然槽位保留、例外按 eventSeq 隔离。测试提交 `67648e5b6c4c744034884e408f8835b208306b29`；定向 7/7、完整 Gradle 375/375，Lint 0 errors / 55 warnings；无设备验收。DST gap/fold 规格仍未签核。独立报告 `docs/issues/PC-ISSUE-009-recurrence-instance-identity.md` |
+| FQ-25 | 重复事件单次稍后提醒投递（REC-P0-069） | **PASS（Robolectric 接收器回归）；真实设备投递未验** | 修复前回归复现 `expected FIRED, got IGNORED_STALE`；修复后定向 1/1、完整 Gradle 408/408（55 suites）通过，Lint 0 errors / 55 warnings。验证 snooze 不改重复规则、revision、完成键或投影序列。代码/测试提交 `f45710a6759fc5532f3982721345c06a912afa3e`；Android AlarmManager、通知权限/Doze/OEM 和实体设备仍未验。独立报告 `docs/issues/PC-ISSUE-050-snooze-recurring-occurrence.md` |
 
 注意：`FQ-01` 的 325 为单元测试用例数，`FQ-03` 的 37 为工具测试用例数，`FQ-16` 的 11 是业务检查组。它们**不能**直接映射为冻结清单中的 209 个独立项目。
 
@@ -120,8 +121,8 @@ Issue 004 修复代码基线：`16e00d55435c5029e07784ec5d945dfd7fb37ac5`
 - 当前跟踪的仓库文件中只有对“209 项”的描述，**没有找到 209 个完整编号用例及 PASS/FAIL/证据 ID 一一映射**。
 - 因此 **209 项未逐案签核**；既不能说全部未实际测试，也不能根据 325+37 单元测试声称全部通过。
 - 本轮只读审计仍未找到原始逐案清单；已建立 208 条 RECONSTRUCTED 候选项及 1 条未定义历史槽位，见 `docs/CORE_FREEZE_ACCEPTANCE_LEDGER.csv`。候选按风险给出 P0=126/P1=82 建议分配，但 0 个原始 ID 有映射，优先级仍待审核。
-- 当前候选逐案状态：P0 PASS 75 / BLOCKED 1 / NOT TESTED 45 / SPEC UNRESOLVED 5；P1 PASS 19 / BLOCKED 8 / NOT TESTED 54 / SPEC UNRESOLVED 1；历史未分类槽位 SPEC UNRESOLVED 1。共 94 PASS、99 NOT TESTED、7 SPEC UNRESOLVED；69 条重建候选有独立定点行为证据。`REC-P0-054` 因产品基线允许多张同事件人工/AI 草稿卡、而 SQLite v4 限制每事件仅一张可操作草稿而标记规格未决，详见 `docs/issues/PC-ISSUE-047-human-ai-draft-cardinality-spec-conflict.md`。`REC-P0-058` 的 semantic no-op Save 和 `REC-P0-059` 的 recurrence start-bound/anchor projection 均由当前基线定点回归签 PASS，分别见 `docs/issues/PC-ISSUE-048-semantic-no-op-save.md`、`docs/issues/PC-ISSUE-049-recurrence-start-bound-preserves-anchor.md`。结构验证 artifact 更新到 `pc-qa-gate-001-ledger-validation-after-pc-issue-049.json`；哈希见独立报告。
-- 最新完整 Gradle 工作树结果 407/407 通过（406 个已跟踪测试 + 1 个受保护未跟踪测试）；Lint 0 errors / 55 warnings。日志 `.local/android-test/reports/freeze-20261023/pc-issue-044-whole-snapshot-replacement-full-gradle-20261023.log`，SHA-256 `236ABC1658703D51D816D1D56E24ECB2A037F10E9DEEB87D0A65C79AA3CE0663`。结果没有映射到缺失的原始 209 个 ID。
+- 当前候选逐案状态：P0 PASS 76 / BLOCKED 1 / NOT TESTED 44 / SPEC UNRESOLVED 5；P1 PASS 19 / BLOCKED 8 / NOT TESTED 54 / SPEC UNRESOLVED 1；历史未分类槽位 SPEC UNRESOLVED 1。共 95 PASS、98 NOT TESTED、7 SPEC UNRESOLVED；70 条重建候选有独立定点行为证据。`REC-P0-054` 因产品基线允许多张同事件人工/AI 草稿卡、而 SQLite v4 限制每事件仅一张可操作草稿而标记规格未决，详见 `docs/issues/PC-ISSUE-047-human-ai-draft-cardinality-spec-conflict.md`。`REC-P0-058` 的 semantic no-op Save、`REC-P0-059` 的 recurrence start-bound/anchor projection、`REC-P0-069` 的重复事件延迟 snooze 接收器回归均由当前基线签 PASS，分别见对应 Issue 048/049/050 报告。结构验证 artifact 更新到 `pc-qa-gate-001-ledger-validation-after-pc-issue-050.json`；SHA-256 `990AFBE9036276ADFA60F183FF8928D410CB7A5BF12B1D5D3E5C39F906C110A8`，CSV SHA-256 `082A55CE541EDF3CE39D3B35AF312689179AF89046310BD8FECE565194665396`；该验证仅检查结构与计数，不测试产品行为。
+- 最新完整 Gradle 工作树结果 408/408 通过（407 个已跟踪测试 + 1 个受保护未跟踪测试）；Lint 0 errors / 55 warnings。日志 `.local/android-test/reports/freeze-20261023/pc-issue-050-snooze-recurring-full-gradle-20261023.log`，SHA-256 `D74F6F0C70E4E9C7A1CC7FD3AEE8453CF5E79883601CDE342BFF6E94A57354BD`；APK SHA-256 `460DE2CEE71D00996AFED280AC751B16337CDC129D2273A4A8E61C09C986A13C`。结果没有映射到缺失的原始 209 个 ID。
 - `PC-ISSUE-019` 的 `REC-P0-004` 日期型 Deadline 候选、`PC-ISSUE-020` 提醒测试夹具稳定化、`PC-ISSUE-021` 的 `REC-P0-005` 不完整 Activity 草稿恢复分别保留独立报告和边界，不替代设备及历史 ID 验收。
 - `PC-ISSUE-022` 的 `REC-P0-007` 一日 Memo 本地日期语义通过 PowerStore/Robolectric 跨 SQLite 重启回归；独立报告 `docs/issues/PC-ISSUE-022-one-date-memo-local-date.md` 记录精确断言与边界。
 - `PC-ISSUE-023` 的 `REC-P0-008` 日期范围 Memo 两端本地日期及时间字段隔离通过 PowerStore/Robolectric 跨 SQLite 重启回归；独立报告 `docs/issues/PC-ISSUE-023-date-span-memo-boundaries.md` 记录精确断言与边界。

@@ -27,14 +27,14 @@ Audit evidence: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-sour
 
 `docs/CORE_FREEZE_ACCEPTANCE_LEDGER.csv` contains 208 reconstructed rows and one unresolved historical slot. Proposed priority allocation is P0=126 and P1=82, grouped by risk/source area; this preserves the known aggregate for review but does not establish which historical case each row represents. All reconstructed rows are explicitly `UNMAPPED`.
 
-Structural validation: 209 unique IDs; all reconstructed rows contain source, environment, action, expected and actual fields; PASS/BLOCKED rows include evidence references. The current structural-only validation is `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-049.json`; hashes are recorded in `PC-ISSUE-049-recurrence-start-bound-preserves-anchor.md`. Structural validation does not test the app or prove the historical mapping.
+Structural validation: 209 unique IDs; all reconstructed rows contain source, environment, action, expected and actual fields; PASS/BLOCKED rows include evidence references. The current structural-only validation is `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-050.json` (SHA-256 `990AFBE9036276ADFA60F183FF8928D410CB7A5BF12B1D5D3E5C39F906C110A8`); ledger SHA-256 `082A55CE541EDF3CE39D3B35AF312689179AF89046310BD8FECE565194665396`. It confirms 95/0/9/98/7 status counts and `REC-P0-069` PASS. Structural validation does not test the app or prove the historical mapping; `product_behavior_tested` is false.
 
 | Candidate bucket | PASS | FAIL | BLOCKED | NOT TESTED | SPEC UNRESOLVED |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| P0 (proposed) | 75 | 0 | 1 | 45 | 5 |
+| P0 (proposed) | 76 | 0 | 1 | 44 | 5 |
 | P1 (proposed) | 19 | 0 | 8 | 54 | 1 |
 | Historical unclassified slot | 0 | 0 | 0 | 0 | 1 |
-| **Total candidate rows** | **94** | **0** | **9** | **99** | **7** |
+| **Total candidate rows** | **95** | **0** | **9** | **98** | **7** |
 
 ### Case-specific backup verification (2026-10-23)
 
@@ -443,7 +443,13 @@ Targeted pre-commit and post-commit runs each passed 1/1; full Gradle passed 407
 
 ### Case-specific late AI response protection verification (2026-10-23)
 
-`REC-P0-053` maps to `PowerStoreTest.aiConflictDraftRemainsAvailableForHumanResolutionAcrossRestart`: after a human completion update makes the AI proposal stale, the authorized AI batch publishes zero, retains a conflict draft, preserves the formal title/completion state, and releases its lock. The candidate was rechecked on the current baseline with a targeted **1/1 PASS** run and is included in the latest 407/407 full Gradle run. See `docs/issues/PC-ISSUE-046-late-ai-response.md`.
+`REC-P0-053` maps to `PowerStoreTest.aiConflictDraftRemainsAvailableForHumanResolutionAcrossRestart`: after a human completion update makes the AI proposal stale, the authorized AI batch publishes zero, retains a conflict draft, preserves the formal title/completion state, and releases its lock. The candidate was rechecked on the current baseline with a targeted **1/1 PASS** run and is included in the latest 408/408 full Gradle run. See `docs/issues/PC-ISSUE-046-late-ai-response.md`.
+
+### Case-specific delayed snooze delivery verification (2026-10-23)
+
+`REC-P0-069` maps to `ReminderCompletionIsolationTest.snoozedRecurringOccurrenceFiresWithoutChangingItsSeries`. The test sends the delayed `ACTION_FIRE` intent with `EXTRA_SNOOZE=true` for one daily recurring occurrence. Before the fix it failed with `expected FIRED, got IGNORED_STALE`; after the fix it records `FIRED`, marks the notification snoozed, and leaves recurrence, formal revision, completion keys, and projected series unchanged. The candidate remains `UNMAPPED` to the original checklist. See `docs/issues/PC-ISSUE-050-snooze-recurring-occurrence.md`.
+
+Targeted post-fix regression passed **1/1** (log SHA-256 `AA47B7E69FFD12D50B2EA20E01414CFBD8F0C9BB7C66AB44884B583FDEF3D269`; JUnit SHA-256 `1CBCF7EE4E9A176AB377E7BCC5B97063D2A2103266C370AE7D0077D7F632BF2C`). Full Gradle passed **408/408** tests across 55 suites; lint reported 0 errors / 55 warnings. Full log SHA-256 `D74F6F0C70E4E9C7A1CC7FD3AEE8453CF5E79883601CDE342BFF6E94A57354BD`; full `ReminderCompletionIsolationTest` XML SHA-256 `55D5FE8AF988FCF3497DAD78B774A659472AA18DC97B577A2EF033D924588EB5`; Debug APK SHA-256 `460DE2CEE71D00996AFED280AC751B16337CDC129D2273A4A8E61C09C986A13C`. Source/test commit: `f45710a6759fc5532f3982721345c06a912afa3e`. Android AlarmManager delivery and physical-device notification behavior remain untested.
 
 ## Historical sign-off accounting
 
@@ -453,11 +459,11 @@ Targeted pre-commit and post-commit runs each passed 1/1; full Gradle passed 407
 | P1 | 82 | 0 | Unassessed by original ID |
 | Priority unresolved | 1 | 0 | Remains unclassified and unassessed |
 
-The latest full working-tree Gradle run reports 407 tests PASS, 0 failures/errors/skips across 55 JUnit suites, successful skin-boundary verification and Debug assembly, and lint 0 errors / 55 warnings. It includes one test from protected, untracked `app/src/test/java/dev/powerfulcalendar/ui/v2/DraftDeckFeedbackTest.kt` (406 tracked tests + 1 untracked); the file was not modified or staged. The tested code/test changes are committed as `05aef89a181426f2a3533ffb87be9c884223bf8d`. Log: `.local/android-test/reports/freeze-20261023/pc-issue-044-whole-snapshot-replacement-full-gradle-20261023.log` (SHA-256 `236ABC1658703D51D816D1D56E24ECB2A037F10E9DEEB87D0A65C79AA3CE0663`). This is not a 407-to-209 mapping.
+The latest full working-tree Gradle run reports 408 tests PASS, 0 failures/errors/skips across 55 JUnit suites, successful skin-boundary verification and Debug assembly, and lint 0 errors / 55 warnings. It includes one test from protected, untracked `app/src/test/java/dev/powerfulcalendar/ui/v2/DraftDeckFeedbackTest.kt` (407 tracked tests + 1 untracked); the file was not modified or staged. The tested code/test changes are committed as `f45710a6759fc5532f3982721345c06a912afa3e`. Log: `.local/android-test/reports/freeze-20261023/pc-issue-050-snooze-recurring-full-gradle-20261023.log` (SHA-256 `D74F6F0C70E4E9C7A1CC7FD3AEE8453CF5E79883601CDE342BFF6E94A57354BD`). This is not a 408-to-209 mapping.
 
 ## Required next work
 
-1. Run the 99 `NOT TESTED` rows under the environment each row requires and update only with case-specific evidence.
+1. Run the 98 `NOT TESTED` rows under the environment each row requires and update only with case-specific evidence.
 2. Resolve the one blocked P0, eight blocked P1, and six reconstructed spec-unresolved rows where feasible; retain external/physical/device dependencies as HOLD. The separate historical unclassified slot remains unresolved pending its source.
 3. Review the source-based proposed priority allocation. New IDs must never masquerade as historical IDs.
 4. Keep the one historical unclassified item visibly unresolved until its source or an explicit review decision is available.
@@ -465,4 +471,4 @@ The latest full working-tree Gradle run reports 407 tests PASS, 0 failures/error
 
 ## Scope and outcome
 
-Core code and tests have evidence for 69 reconstructed rows across backup, tombstone, migration, recurrence, reminder, temporal model, draft, and core data-semantics contracts; 99 remain NOT TESTED, six reconstructed candidates remain SPEC UNRESOLVED, proposed priorities still need review, and historical mapping is still absent. `REC-P0-054` is unresolved because the product baseline and SQLite v4 specify conflicting same-event draft cardinality. `REC-P0-058` passes the current-baseline semantic no-op Save test; `REC-P0-059` passes the current-baseline recurrence start-bound/anchor projection test. PC-QA-GATE-001 remains **PARTIAL / HOLD**, and overall core verdict remains **HOLD**.
+Core code and tests have evidence for 70 reconstructed rows across backup, tombstone, migration, recurrence, reminder, temporal model, draft, and core data-semantics contracts; 98 remain NOT TESTED, six reconstructed candidates remain SPEC UNRESOLVED, proposed priorities still need review, and historical mapping is still absent. `REC-P0-054` is unresolved because the product baseline and SQLite v4 specify conflicting same-event draft cardinality. `REC-P0-058` passes the current-baseline semantic no-op Save test; `REC-P0-059` passes the current-baseline recurrence start-bound/anchor projection test; `REC-P0-069` passes the delayed snooze receiver regression with real Android delivery still untested. PC-QA-GATE-001 remains **PARTIAL / HOLD**, and overall core verdict remains **HOLD**.
