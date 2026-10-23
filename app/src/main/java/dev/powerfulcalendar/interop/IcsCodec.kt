@@ -7,6 +7,7 @@ import dev.powerfulcalendar.core.Recurrence
 import dev.powerfulcalendar.core.RecurrenceFreq
 import dev.powerfulcalendar.core.RecurrenceEngine
 import dev.powerfulcalendar.core.TemporalKind
+import dev.powerfulcalendar.core.TemporalRecord
 import java.time.*
 import java.time.format.DateTimeFormatter
 import java.util.UUID
@@ -297,13 +298,99 @@ object IcsCodec {
         .replace("\\", "\\\\").replace("\n", "\\n")
         .replace(",", "\\,").replace(";", "\\;")
 
-    fun export(events: List<CalendarEvent>): String = buildString {
+    /**
+     * Export activity series without flattening recurring records into a single instance.
+     * Refuse any recurrence features not representable by the supported ICS subset.
+     * Native Envelope backup remains the full-fidelity archive for PowerCal state.
+     */
+    fun exportActivities(records: List<TemporalRecord>): String {
+        require(records.all { it.kind == TemporalKind.ACTIVITY }) {
+            "ICS 活动导出仅接受 Activity"
+        }
+        val events = records.map { record ->
+            CalendarEvent(
+                id = record.eventSeq, title = record.title,
+                startMillis = requireNotNull(record.startMillis),
+                endMillis = requireNotNull(record.endMillis),
+                notes = record.notes, location = record.location,
+                reminderMinutes = record.reminderMinutes,
+                source = "powercal",
+                externalId = "powercal-" + record.eventSeq + "@local"
+            )
+        }
+        return export(events, records.associateBy { it.eventSeq })
+    }
+
+    fun export(
+        events: List<CalendarEvent>,
+        originals: Map<Long, TemporalRecord> = emptyMap()
+    ): String = buildString {
         append("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Powerful Calendar//Android//ZH\r\n")
         for (e in events) {
+            val record = originals[e.id]
+            val rule = record?.recurrence?.takeIf { it.isRepeating }
+            val zone = if (rule != null) ZoneId.of(record.zoneId) else null
+            if (rule != null) {
+                require(rule.activeFromDate == null && rule.activeUntilDate == null) {
+                    "ICS 导出不支持重复系列的局部生效范围，请使用完整备份"
+                }
+                require(rule.overrides.isEmpty()) {
+                    "ICS 导出不支持移动/覆盖的单次实例，请使用完整备份"
+                }
+                require(rule.count == null || rule.untilMillis == null) {
+                    "重复系列 COUNT 和 UNTIL 不可同时存在"
+                }
+                require(rule.interval in 1..1000 && (rule.count == null || rule.count > 0))
+                require(rule.freq != RecurrenceFreq.MONTHLY ||
+                    Instant.ofEpochMilli(e.startMillis).atZone(zone).dayOfMonth <= 28) {
+                    "每月 29–31 日的重复系列暂不可安全导出"
+                }
+                require(rule.freq == RecurrenceFreq.WEEKLY || rule.byDay.isEmpty()) {
+                    "仅每周重复支持 BYDAY"
+                }
+                val first = Instant.ofEpochMilli(e.startMillis).atZone(zone).toLocalDateTime()
+                require(rule.byDay.isEmpty() || first.dayOfWeek in rule.byDay) {
+                    "首次发生日不在 BYDAY 中"
+                }
+                require(rule.exceptions.size <= 512)
+                rule.exceptions.forEach { key ->
+                    val local = LocalDateTime.parse(key)
+                    require(local.hour == first.hour && local.minute == first.minute) {
+                        "EXDATE 与重复系列原始时刻不一致"
+                    }
+                }
+            }
             append("BEGIN:VEVENT\r\n")
             append("UID:" + (e.externalId ?: ("powerful-" + e.id + "@local")) + "\r\n")
             append("DTSTAMP:" + utcFormat.format(Instant.now()) + "\r\n")
-            if (e.allDay) {
+            if (rule != null) {
+                val start = Instant.ofEpochMilli(e.startMillis).atZone(zone)
+                val end = Instant.ofEpochMilli(e.endMillis).atZone(zone)
+                append("DTSTART;TZID=" + zone!!.id + ":" + start.format(localFormat) + "\r\n")
+                append("DTEND;TZID=" + zone.id + ":" + end.format(localFormat) + "\r\n")
+                val freq = when (rule.freq) {
+                    RecurrenceFreq.DAILY -> "DAILY"
+                    RecurrenceFreq.WEEKLY -> "WEEKLY"
+                    RecurrenceFreq.MONTHLY -> "MONTHLY"
+                    RecurrenceFreq.NONE -> error("不是重复系列")
+                }
+                val rrule = StringBuilder("FREQ=" + freq + ";INTERVAL=" + rule.interval)
+                rule.count?.let { rrule.append(";COUNT=").append(it) }
+                rule.untilMillis?.let {
+                    rrule.append(";UNTIL=").append(utcFormat.format(Instant.ofEpochMilli(it)))
+                }
+                if (rule.byDay.isNotEmpty()) {
+                    val days = rule.byDay.sortedBy { it.value }.joinToString(",") { it.name.take(2) }
+                    rrule.append(";BYDAY=").append(days)
+                }
+                append("RRULE:" + rrule + "\r\n")
+                if (rule.exceptions.isNotEmpty()) {
+                    val exdates = rule.exceptions.sorted().joinToString(",") {
+                        LocalDateTime.parse(it).format(localFormat)
+                    }
+                    append("EXDATE;TZID=" + zone.id + ":" + exdates + "\r\n")
+                }
+            } else if (e.allDay) {
                 val zone = ZoneId.systemDefault()
                 val start = Instant.ofEpochMilli(e.startMillis).atZone(zone).toLocalDate()
                 val end = Instant.ofEpochMilli(e.endMillis - 1).atZone(zone).toLocalDate().plusDays(1)

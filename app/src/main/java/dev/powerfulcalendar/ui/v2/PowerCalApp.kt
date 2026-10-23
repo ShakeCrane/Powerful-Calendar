@@ -838,33 +838,20 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
         ActivityResultContracts.CreateDocument("text/calendar")
     ) { uri ->
         if (uri != null) scope.launch {
-            val body = withContext(Dispatchers.IO) {
-                IcsCodec.export(
-                    records.mapNotNull { record ->
-                        if (record.kind != TemporalKind.ACTIVITY) return@mapNotNull null
-                        CalendarEvent(
-                            id = record.eventSeq,
-                            title = record.title,
-                            startMillis = record.startMillis ?: return@mapNotNull null,
-                            endMillis = record.endMillis ?: return@mapNotNull null,
-                            notes = record.notes,
-                            location = record.location,
-                            reminderMinutes = record.reminderMinutes,
-                            source = "powercal",
-                            externalId = "powercal-" + record.eventSeq + "@local"
-                        )
-                    }
-                )
-            }
             runCatching {
                 withContext(Dispatchers.IO) {
+                    val body = IcsCodec.exportActivities(
+                        records.filter { it.kind == TemporalKind.ACTIVITY }
+                    )
                     appContext.contentResolver.openOutputStream(uri)?.writer(Charsets.UTF_8)?.use {
                         it.write(body)
                     } ?: error("无法写入所选文件")
                 }
             }.onSuccess {
-                message = "已导出活动类事件（闹钟与截止不进入 ICS，因为该格式会丢失它们的语义）"
-            }.onFailure { message = "导出失败：" + it.message }
+                message = "已导出 Activity ICS；请使用原生备份保留闹钟、截止、备忘与完成状态"
+            }.onFailure { error ->
+                message = "ICS 导出受阻：" + (error.message ?: error.javaClass.simpleName)
+            }
         }
     }
     val createBackup = rememberLauncherForActivityResult(
