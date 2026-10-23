@@ -490,6 +490,41 @@ class PowerStoreTest {
     }
 
     @Test
+    fun deletedIdentityRemainsRetiredAndIsNotReusedAfterRestart() {
+        val original = store.newDraft(activityForm("跨重启删除"))
+        assertTrue(commit(original) is PowerStore.CommitOutcome.Committed)
+        val retiredSeq = original.eventSeq
+        val delete = store.newDraft(
+            DraftForm.from(store.get(retiredSeq)!!), retiredSeq, DraftOperation.DELETE
+        )
+        assertTrue(commit(delete) is PowerStore.CommitOutcome.Committed)
+
+        assertNull(store.get(retiredSeq))
+        assertEquals(retiredSeq, store.getIncludingRetired(retiredSeq)!!.eventSeq)
+        assertTrue(store.isRetired(retiredSeq))
+        assertEquals(1L, store.identityCount())
+        assertEquals(retiredSeq + 1, store.nextSequencePreview())
+
+        val database = store.databaseName
+        store.close()
+        store = PowerStore(context, database)
+
+        assertNull(store.get(retiredSeq))
+        assertEquals(retiredSeq, store.getIncludingRetired(retiredSeq)!!.eventSeq)
+        assertTrue(store.isRetired(retiredSeq))
+        assertEquals(1L, store.identityCount())
+        assertEquals(retiredSeq + 1, store.nextSequencePreview())
+
+        val next = store.newDraft(activityForm("删除后的新事件"))
+        assertEquals(retiredSeq + 1, next.eventSeq)
+        assertNotNull(store.getIncludingRetired(retiredSeq))
+        assertTrue(store.isRetired(retiredSeq))
+        assertNull(store.get(retiredSeq))
+        assertEquals(2L, store.identityCount())
+        assertEquals(retiredSeq + 2, store.nextSequencePreview())
+    }
+
+    @Test
     fun explicitRestoreProposalKeepsTombstoneUntilHumanConfirmationAndReusesIdentity() {
         val original = store.newDraft(alarmForm("恢复后仍是同一闹钟"))
         assertTrue(commit(original) is PowerStore.CommitOutcome.Committed)
