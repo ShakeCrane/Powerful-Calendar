@@ -439,6 +439,38 @@ class PowerStoreTest {
     }
 
     @Test
+    fun repeatedSameEventProposalReusesOneActionableDraftAcrossRestart() {
+        val base = store.newDraft(activityForm("formal"))
+        assertTrue(commit(base) is PowerStore.CommitOutcome.Committed)
+        val seq = base.eventSeq
+        val form = DraftForm.from(store.get(seq)!!)
+
+        val first = store.newDraft(form.copy(title = "first"), seq, DraftOperation.REPLACE)
+        val latest = store.newDraft(form.copy(title = "latest"), seq, DraftOperation.REPLACE)
+        assertEquals(first.draftId, latest.draftId)
+        assertEquals(first.queueOrder, latest.queueOrder)
+        assertEquals(first.draftVersion + 1, latest.draftVersion)
+        assertEquals(1, store.pendingDraftsFor(seq).size)
+
+        val database = store.databaseName
+        store.close()
+        store = PowerStore(context, database)
+
+        val reopened = store.pendingDraftsFor(seq).single()
+        assertEquals(latest.draftId, reopened.draftId)
+        assertEquals(latest.queueOrder, reopened.queueOrder)
+        assertEquals(latest.draftVersion, reopened.draftVersion)
+        assertEquals("latest", reopened.form.title)
+        assertEquals(1, store.pendingDraftsFor(seq).count { it.isActionable })
+
+        assertTrue(store.discard(reopened.draftId))
+        val replacement = store.newDraft(form.copy(title = "replacement"), seq, DraftOperation.REPLACE)
+        assertTrue(replacement.draftId != reopened.draftId)
+        assertEquals(1, store.pendingDraftsFor(seq).size)
+        assertFalse("Undo cannot produce two actionable drafts", store.undoDiscard(reopened.draftId))
+    }
+
+    @Test
     fun queueOrderIsIndependentOfEventNumber() {
         val a = store.newDraft(activityForm("A"))
         commit(a)
