@@ -6,7 +6,7 @@
 测试 APK：`app/build/outputs/apk/debug/app-debug.apk`
 Issue 004 修复代码基线：`16e00d55435c5029e07784ec5d945dfd7fb37ac5`
 最新测试 APK SHA-256：`59FB0B18B5EDC6F02370D1ABE309F2376842F33B32BFEA7C371E1F0DF4290439`
-最新核心回归代码/测试基线：`d4e989cb9233d9be11ad3380234e3374613c1226`；Debug APK SHA-256：`59FB0B18B5EDC6F02370D1ABE309F2376842F33B32BFEA7C371E1F0DF4290439`
+最新核心回归代码/测试基线：`2ff7bb50eb1c35e978317c6428b04e6363398d27`；Debug APK SHA-256：`59FB0B18B5EDC6F02370D1ABE309F2376842F33B32BFEA7C371E1F0DF4290439`
 设备：Issue 004 使用隔离的 Android 15 / API 35 `emulator-5556`；原 `emulator-5554` 保持运行且未操作。无物理真机。
 此前冻结工作记录了时间轴验收；本轮继续核心数据语义与提醒验收，修复重复事件延迟 snooze 广播处理并增加核心回归及文档，没有修改 UI、业务数据或 `design/`。按用户最新确认，变浅的横向边缘可接受，本轮不开展 UI 工作。
 
@@ -69,6 +69,7 @@ Issue 004 修复代码基线：`16e00d55435c5029e07784ec5d945dfd7fb37ac5`
 | FQ-53 | 精确闹钟权限不可用时不近似降级（REC-P0-114） | **PASS（Robolectric API 34 / scheduler + isolated SQLite）** | 显式 `ReminderMethod.ALARM` 生成 EXACT 意图；ShadowAlarmManager 拒绝精确调度后，reconcile 持久化 BLOCKED 与权限提示，且没有任何调度任务。定向 1/1；完整 Gradle 430/430、56 suites，0 failures/errors/skips；Lint 0 errors / 58 warnings。API 35 权限变化、真机与 OEM 调度未测。测试提交 `c2310688f92ef432721a93652753dc13fca9012d`；独立报告 `docs/issues/PC-ISSUE-078-exact-alarm-no-approximate-fallback.md` |
 | FQ-54 | 撤销精确闹钟权限后重协调为 BLOCKED（REC-P0-113） | **PASS（Robolectric API 34 / scheduler + isolated SQLite）** | EXACT 意图先被标记 SCHEDULED 并提交给 ShadowAlarmManager；撤销能力后再次 reconcile，持久状态转 BLOCKED 且保存精确权限提示。定向 1/1；完整 Gradle 431/431、56 suites，0 failures/errors/skips；Lint 0 errors / 58 warnings。真实系统权限广播、OS 取消行为、API 35、真机/OEM 未测。测试提交 `a45188fd107b05cec1467851acf647422c8230f6`；独立报告 `docs/issues/PC-ISSUE-079-exact-alarm-permission-revoked.md` |
 | FQ-55 | 待调度精确闹钟提交及重复重协调（REC-P0-111） | **PARTIAL；REC-P0-111 仍 NOT TESTED** | Robolectric API 34 直接调用 `ReminderScheduler.reconcile()` 后，PENDING→SCHEDULED 且只提交一个任务；第二次调用保持幂等。该用例 1/1；完整 Gradle 432/432、56 suites，0 failures/errors/skips；Lint 0 errors / 58 warnings。`BootReceiver.goAsync()` Android 广播路径未被可靠验证，不将候选行签为 PASS。测试提交 `d4e989cb9233d9be11ad3380234e3374613c1226`；独立报告 `docs/issues/PC-ISSUE-080-pending-intent-reconciliation.md` |
+| FQ-56 | 数据库重开后 Draft Deck 仍先打开最早 queueOrder（REC-P0-037） | **PASS（Robolectric API 34 / PowerStore + DeckController core）** | 两张草稿持久化并重开同一 SQLite 后，DeckController 卡片顺序仍为 queueOrder ASC，currentId 聚焦最早草稿。定向 1/1；完整 Gradle 433/433、56 suites，0 failures/errors/skips；Lint 0 errors / 58 warnings。Compose 展示和 API 35 设备重启未测。测试提交 `2ff7bb50eb1c35e978317c6428b04e6363398d27`；独立报告 `docs/issues/PC-ISSUE-081-oldest-draft-first.md` |
 
 
 注意：`FQ-01` 的 325 为单元测试用例数，`FQ-03` 的 37 为工具测试用例数，`FQ-16` 的 11 是业务检查组。它们**不能**直接映射为冻结清单中的 209 个独立项目。
@@ -139,6 +140,10 @@ Issue 004 修复代码基线：`16e00d55435c5029e07784ec5d945dfd7fb37ac5`
 ### PC-ISSUE-080 · P0 / 调度器内层 PASS；异步 Android 入口 NOT TESTED
 - `ReminderValidationTest.pendingExactIntentIsSubmittedAndMarkedScheduledIdempotently` 验证 PENDING→SCHEDULED、Android AlarmManager 适配器提交一次、第二轮重协调仍只有一个任务。
 - Robolectric API 34 定向 1/1；完整 Gradle 432/432、Lint 0 errors / 58 warnings。`BootReceiver.goAsync()` 入口未能由当前 Robolectric 测试可靠驱动，故 `REC-P0-111` 保持 NOT TESTED。详细证据与失败尝试记录见 `docs/issues/PC-ISSUE-080-pending-intent-reconciliation.md` 和 `.local/android-test/reports/freeze-20261024/pc-issue-080-async-receiver-test-triage.md`。
+
+### PC-ISSUE-081 · P0 / CORE CONTROLLER PASS · 草稿队列按持久顺序打开
+- `REC-P0-037` 由 `PowerStoreTest.openingDeckAfterStoreReopenFocusesOldestQueueOrder` 签核：重开 SQLite 后 controller 卡片按 `queueOrder` 升序，焦点落在最早草稿。
+- 定向 1/1；完整 Gradle 433/433、Lint 0 errors / 58 warnings。此签核仅覆盖 PowerStore/DeckController 核心层；API 35 展示层未测。详见 `docs/issues/PC-ISSUE-081-oldest-draft-first.md`。
 
 ### PC-OBS-005 · NEEDS REPRO · 部分提交操作即时反馈可能存在时序竞争
 - 旧 Round 1/2 观察：某些 Publish 之后立刻采样 UI 未见结果，稍后实际提交成功。
