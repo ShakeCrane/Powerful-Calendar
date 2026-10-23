@@ -22,15 +22,23 @@ The historical aggregate is 209 items: 126 P0, 82 P1, and one item whose priorit
 
 Audit evidence: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-source-audit.json` (SHA-256 `600A1D825E9349BCD183053CB2DB59F62A02A50BB862B554238D020FDDFC4E98`). Detailed issue: [`PC-QA-GATE-001`](issues/PC-QA-GATE-001-209-case-ledger.md).
 
+An initial **RECONSTRUCTED** candidate ledger now contains 208 specification-derived rows plus one unresolved historical slot. Candidate priorities follow risk categories and match the aggregate counts, but are proposals for review; every reconstructed row remains `UNMAPPED` to historical IDs. See [`CORE_FREEZE_ACCEPTANCE_LEDGER.csv`](CORE_FREEZE_ACCEPTANCE_LEDGER.csv). Structural validation confirms 209 unique rows and the 126/82/1 partition; it does not test product behavior or prove historical equivalence.
+
+| Candidate bucket | PASS | FAIL | BLOCKED | NOT TESTED | SPEC UNRESOLVED |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| P0 (proposed) | 6 | 0 | 1 | 115 | 4 |
+| P1 (proposed) | 19 | 0 | 8 | 54 | 1 |
+| Historical unclassified slot | 0 | 0 | 0 | 0 | 1 |
+
 ## Current grouped verification
 
-- Full Gradle command: `:app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --offline --rerun-tasks --console=plain` — **BUILD SUCCESSFUL**, 364 tests, 0 failures/errors/skips; lint 0 errors and 55 warnings.
+- Full working-tree Gradle command: `:app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --offline --rerun-tasks --console=plain` — **BUILD SUCCESSFUL**, 364 tests, 0 failures/errors/skips; lint 0 errors and 55 warnings. One test came from the protected untracked `DraftDeckFeedbackTest.kt`, so the run is 363 tracked tests plus 1 untracked test, not a clean committed-tree count.
 - Log: `.local/android-test/reports/freeze-20261023/issue001-dst-full-gradle-20261023.log`, SHA-256 `02A3FB2D275B2BD225BE102960DAD1D7B02AD2829028C10E312FBD8DC0F74DA5`.
 - These results are software/group-level evidence. They do not sign off the absent 209 case IDs.
 
 ## Open acceptance gates
 
-- `PC-QA-GATE-001`: reconstruct a case-by-case ledger from the approved contracts and current evidence. Prefix reconstructed IDs, preserve source locators, mark proposed priority assignments for review, and keep the historical unclassified item unresolved until its source is known.
+- `PC-QA-GATE-001`: execute the 169 `NOT TESTED` candidate rows where feasible, resolve the 14 blocked/spec-unresolved rows where conditions allow, and review proposed priorities. The initial 209-row candidate ledger is not the original checklist and signs off 0 original IDs.
 - `PC-QA-GATE-002`: physical-device/OEM and additional Android API coverage is unavailable in this run.
 - `PC-QA-GATE-003` / `PC-ISSUE-002`: the free-model structured stage returned HTTP 429; an authorized end-to-end proposal/approval/recovery path is not yet evidenced.
 - `PC-ISSUE-001`: DST-bearing Android SAF export and independent parsing pass; external calendar import and physical-device acceptance remain open.

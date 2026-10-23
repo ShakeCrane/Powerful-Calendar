@@ -4,11 +4,11 @@
 目标：闭环测试、最小修复、逐项回归与签核，**满足证据标准才宣布核心基线 GO**；否则给出准确 HOLD 及阻塞。本文不是验收完成证明。
 
 ## 1. 当前真实现场与不得丢失的工作
-- 当前执行更新（覆盖下方历史快照中的旧状态）：本次变更前 `main` 与 `origin/main` 同步于 `b4ccaaf4770e4b6eaf39cd3288a9a6b83771e489`。Issue 001 DST SAF 和 Issue 003 恢复 UI 的当前完整回归已记录；相关独立文档提交分别为 `abd7eaf`、`b4ccaaf`。Issue 002 的 AI 代码/测试已由 `bb04bfae30dc30877d41807a71236778b16617cc` 提交并推送；本轮未发现未提交 AI 文件。Issue 002 仍 PARTIAL / BLOCKED：最新免费模型两阶段复测在聊天阶段 HTTP 200 后，于结构化阶段收到 HTTP 429；证据见独立 Issue 报告与 `.local/android-test/reports/freeze-20261023/issue002-ai-retest-20261023.json`。随后读取到 `enabled=false` 的设置快照，时间晚于请求，不能据此推断请求启动时的状态；没有改设置。
+- 当前执行更新（覆盖下方历史快照中的旧状态）：最近已推送基线为 `a8cc99f793cc05237b2bb69192654e4c405464b6`（本轮文档和候选台账待原子提交）。Issue 001 DST SAF 和 Issue 003 恢复 UI 的当前完整回归已记录；相关独立文档提交分别为 `abd7eaf`、`b4ccaaf`。Issue 002 的 AI 代码/测试已由 `bb04bfae30dc30877d41807a71236778b16617cc` 提交并推送；本轮未发现未提交 AI 文件。Issue 002 仍 PARTIAL / BLOCKED：最新免费模型两阶段复测在聊天阶段 HTTP 200 后，于结构化阶段收到 HTTP 429；证据见独立 Issue 报告与 `.local/android-test/reports/freeze-20261023/issue002-ai-retest-20261023.json`。随后读取到 `enabled=false` 的设置快照，时间晚于请求，不能据此推断请求启动时的状态；没有改设置。
 - 未跟踪 `design/`、`app/src/test/java/dev/powerfulcalendar/ui/v2/DraftDeckFeedbackTest.kt`、`docs/issues/PC-OBS-005-commit-feedback.md` 属于受保护的其他资产/工作，未修改、未暂存、未提交。
-- Issue 001（ICS）：代码修复已提交；本轮在隔离 `emulator-5556` 通过纽约 DST 周重复系列的 Android SAF 导出、`icalendar 7.3.0` 独立解析与本地时间跨回拨展开核对。完整 Gradle 回归 364 项通过。设备已恢复 GMT/自动时区，数据库中的两条合成验收事件仍保留。因缺外部日历导入器与实体设备，Issue 仍 PARTIAL / HOLD；证据见 `docs/issues/PC-ISSUE-001-ICS-recurrence.md`、`issue001-saf-dst-emulator5556.ics`、`issue001-dst-independent-parse-emulator5556.json` 和 `issue001-emulator5556-postcheck.json`（均位于 `.local/android-test/reports/freeze-20261023/`）。
-- Issue 003（备份）：类型化非空库拒绝与可操作错误说明已提交；API 35 的 SAF 空库恢复、篡改/无效输入拒绝、非空目标拒绝与数据指纹证据均已记录。最新完整 Gradle 回归 364 项通过；OS 实际撤销 SAF 权限和实体设备验收仍缺证，因此保持 PARTIAL / HOLD。详见 `docs/issues/PC-ISSUE-003-restore-feedback.md`。
-- PC-QA-GATE-001：历史只确认总数 209、P0 126、P1 82、未分类 1；只读检查未找到原始逐案 ID。文档规格、协议样例和 11 组设备路径计数相互重叠，不能拼成历史 209。审计证据 SHA `600A1D825E9349BCD183053CB2DB59F62A02A50BB862B554238D020FDDFC4E98`；需继续建立明确标记为 RECONSTRUCTED 的候选台账，不得把 364 单测直接映射为 209 项。
+- Issue 001（ICS）：代码修复已提交；本轮在隔离 `emulator-5556` 通过纽约 DST 周重复系列的 Android SAF 导出、`icalendar 7.3.0` 独立解析与本地时间跨回拨展开核对。完整工作树 Gradle 回归报告 364 项通过，其中 1 项来自受保护未跟踪测试（363 tracked + 1 untracked）；不能将其描述成已提交树的 364 项。设备已恢复 GMT/自动时区，数据库中的两条合成验收事件仍保留。因缺外部日历导入器与实体设备，Issue 仍 PARTIAL / HOLD；证据见 `docs/issues/PC-ISSUE-001-ICS-recurrence.md`、`issue001-saf-dst-emulator5556.ics`、`issue001-dst-independent-parse-emulator5556.json` 和 `issue001-emulator5556-postcheck.json`（均位于 `.local/android-test/reports/freeze-20261023/`）。
+- Issue 003（备份）：类型化非空库拒绝与可操作错误说明已提交；API 35 的 SAF 空库恢复、篡改/无效输入拒绝、非空目标拒绝与数据指纹证据均已记录。最新完整工作树 Gradle 回归报告 364 项通过，其中包含上述 1 项受保护未跟踪测试；不能将其描述成已提交树的 364 项。OS 实际撤销 SAF 权限和实体设备验收仍缺证，因此保持 PARTIAL / HOLD。详见 `docs/issues/PC-ISSUE-003-restore-feedback.md`。
+- PC-QA-GATE-001：历史只确认总数 209、P0 126、P1 82、未分类 1；只读检查未找到原始逐案 ID。已建立 208 条 RECONSTRUCTED 候选行和 1 条未解决历史槽位；候选 P0/P1 分配仍待审核，0 个原始 ID 有映射。候选状态、审计和结构验证见 `docs/CORE_FREEZE_ACCEPTANCE_LEDGER.csv` 与 `docs/issues/PC-QA-GATE-001-209-case-ledger.md`。364 项工作树回归含 1 项受保护未跟踪测试；不能直接映射为 209 项。
 - .local/android-test 是仓库内测试资产及模拟器工具位置；保留既有截图、日志、失败样本、只读数据库快照、AVD。
 - 原测试环境：Android 15 API 35，PowerCal_API35，emulator-5554；原生测试场景与模拟器数据可能包含历史资料，不得随意清库。破坏性恢复用独立可丢弃实例。
 - CommandCode 地址：https://api.commandcode.ai/provider/v1；模拟器已有密钥（仅检查存在，不读/输出明文）；原模型 stealth/glyph-cluster:free。
@@ -21,8 +21,8 @@
 - [ ] 只读审计 Git 工作树/未提交改动/源代码与文档/运行测试进程/模拟器与现有数据库状态/API 配置状态。
 - [ ] 记录基线 SHA、Debug APK SHA256、Android 版本与 serial、测试时区、测试脚本/证据路径。
 - [x] P0-A 原始清单只读审计完成：在当前文件/可达 Git 历史中未找到 209 个原始 case ID；审计哈希及来源盘点见 `docs/issues/PC-QA-GATE-001-209-case-ledger.md`。
-- [ ] 从冻结规格和现有证据重建逐案台账并标记 RECONSTRUCTED；不能把 364 JVM 单测当 209 项，也不能臆造历史签核。原始 1 项未分类需保留待审。
-- [ ] 按核心冻结合同重建/找到每项定义，注明原文来源、优先级、前置条件、测试环境、自动化脚本、预期/实际、状态、证据、Git SHA、回归日期。缺少来源的新增项标为 RECONSTRUCTED / 待审核。
+- [x] 建立 208 条明确标记 RECONSTRUCTED/UNMAPPED 的候选行和 1 条未解决历史槽位；不得将 364 JVM 测试当 209 项，也不得臆造历史签核。
+- [ ] 执行候选行、审核建议优先级、追索历史 209 项原表；每次更新均注明规格来源、前置条件、环境、步骤、预期/实际、状态、证据、Git/APK 基线与复测日期。
 - [ ] 建立当前 PASS / FAIL / BLOCKED / NOT TESTED / PREVIOUS PASS 区分、原始结果索引与统一缺陷登记。
 
 ### P0-B PC-ISSUE-002 AI 超时与结构化提案失败（当前 OPEN / PARTIAL / BLOCKED）
@@ -44,6 +44,7 @@
 ### P1-D PC-ISSUE-004 横屏/小屏/时间轴
 - [x] 默认 Activity 固定竖屏且不基于传感器旋转。
 - [x] API 35 隔离设备在关闭自动旋转并请求 ROTATION_90 时，应用仍保持 ROTATION_0 与 1080×2400；原旋转设置已恢复。未主动使用陀螺仪/方向传感器。
+- [x] 产品方向策略：始终使用竖屏；系统旋转请求或传感器方向变化不触发应用横屏。横屏仅作为平台/窗口管理器强制覆盖时的兼容性场景进行验证。
 - [x] 移除时间轴背景的纵向色带来源；24 个画布像素样本一致。蓝色 NOW 线与午夜虚线保留；独立报告记录前次修复为何不彻底。
 - [x] 横向布局兼容截图已在 API 35 隔离设备采集；常规产品仍固定竖屏。若未来平台/窗口管理器无视方向锁，仍需在该类真实覆盖环境检查布局。
 - [ ] 横屏、小屏、字体与显示缩放、输入法、TalkBack 触摸命中/遮挡/标签重叠真实复现，再做最小布局调整。
