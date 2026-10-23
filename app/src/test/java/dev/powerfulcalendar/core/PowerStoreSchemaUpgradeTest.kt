@@ -200,8 +200,14 @@ class PowerStoreSchemaUpgradeTest {
                    FROM drafts WHERE draft_id=19"""
             )
             fixture.execSQL(
+                """INSERT INTO drafts(draft_id,event_seq,queue_order,base_rev,op,payload,status,
+                   draft_version,created_ms,updated_ms)
+                   SELECT 21,event_seq,4,base_rev,op,payload,'PENDING',6,created_ms,updated_ms+2
+                   FROM drafts WHERE draft_id=19"""
+            )
+            fixture.execSQL(
                 """CREATE TRIGGER fail_v4_draft_update BEFORE UPDATE OF status ON drafts
-                   WHEN NEW.status='DISCARDED'
+                   WHEN NEW.status='DISCARDED' AND OLD.draft_id=19
                    BEGIN SELECT RAISE(ABORT,'injected v4 migration failure'); END"""
             )
         } finally {
@@ -231,7 +237,7 @@ class PowerStoreSchemaUpgradeTest {
                 "SELECT COUNT(*) FROM drafts WHERE status='PENDING' AND event_seq=41", null
             ).use {
                 assertTrue(it.moveToFirst())
-                assertEquals("both legacy drafts must survive the failed migration", 2, it.getInt(0))
+                assertEquals("all three legacy drafts must survive the failed migration", 3, it.getInt(0))
             }
             afterFailure.execSQL("DROP TRIGGER fail_v4_draft_update")
         } finally {
@@ -250,7 +256,7 @@ class PowerStoreSchemaUpgradeTest {
                 null
             ).use {
                 assertTrue(it.moveToFirst())
-                assertEquals("retry must record exactly the duplicate it retired", 1, it.getInt(0))
+                assertEquals("retry must record both duplicates after the failed partial attempt", 2, it.getInt(0))
             }
         } finally {
             val name = retry.databaseName
