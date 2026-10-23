@@ -22,14 +22,14 @@ The historical aggregate is 209 items: 126 P0, 82 P1, and one item whose priorit
 
 Audit evidence: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-source-audit.json` (SHA-256 `600A1D825E9349BCD183053CB2DB59F62A02A50BB862B554238D020FDDFC4E98`). Detailed issue: [`PC-QA-GATE-001`](issues/PC-QA-GATE-001-209-case-ledger.md).
 
-The **RECONSTRUCTED** candidate ledger contains 208 specification-derived rows plus one unresolved historical slot. Candidate priorities follow risk categories and match the aggregate counts, but are proposals for review; every reconstructed row remains `UNMAPPED` to historical IDs. Sixty-seven backup, retirement, migration, recurrence, reminder, temporal model, draft, and core data-semantics rows now have individually mapped targeted test evidence. Structural validation confirms 209 unique rows and the 126/82/1 partition; it does not test product behavior or prove historical equivalence. Latest validation: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-046.json`, SHA-256 `3A4260D0DF362383130530DD2739F6C7EEC9B0985B301C7ACCAD5EDF75AAF457`; ledger SHA-256 `9F7126D7DC903FDF8B2492EFEF57BEC05D419CB46699AE102934962661C0C073`.
+The **RECONSTRUCTED** candidate ledger contains 208 specification-derived rows plus one unresolved historical slot. Candidate priorities follow risk categories and match the aggregate counts, but are proposals for review; every reconstructed row remains `UNMAPPED` to historical IDs. Sixty-seven backup, retirement, migration, recurrence, reminder, temporal model, draft, and core data-semantics rows now have individually mapped targeted test evidence. Structural validation confirms 209 unique rows and the 126/82/1 partition; it does not test product behavior or prove historical equivalence. `REC-P0-054` is now SPEC UNRESOLVED because the product baseline allows multiple same-event human/AI cards while SQLite v4 allows only one actionable draft. Latest validation: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-047.json`; ledger and validation hashes are recorded in `docs/issues/PC-ISSUE-047-human-ai-draft-cardinality-spec-conflict.md` after generation.
 
 | Candidate bucket | PASS | FAIL | BLOCKED | NOT TESTED | SPEC UNRESOLVED |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| P0 (proposed) | 73 | 0 | 1 | 48 | 4 |
+| P0 (proposed) | 73 | 0 | 1 | 47 | 5 |
 | P1 (proposed) | 19 | 0 | 8 | 54 | 1 |
 | Historical unclassified slot | 0 | 0 | 0 | 0 | 1 |
-| **Total candidate rows** | **92** | **0** | **9** | **102** | **6** |
+| **Total candidate rows** | **92** | **0** | **9** | **101** | **7** |
 
 ## Current grouped verification
 
@@ -39,7 +39,8 @@ The **RECONSTRUCTED** candidate ledger contains 208 specification-derived rows p
 
 ## Open acceptance gates
 
-- `PC-QA-GATE-001`: execute the 102 `NOT TESTED` candidate rows where feasible, resolve the 9 blocked and 5 reconstructed spec-unresolved rows where conditions allow, review proposed priorities, and keep the separate historical unclassified slot unresolved pending its source. The reconstructed 209-row candidate ledger is not the original checklist and signs off 0 original IDs.
+- `PC-QA-GATE-001`: execute the 101 `NOT TESTED` candidate rows where feasible, resolve the 9 blocked and 6 reconstructed spec-unresolved rows where conditions allow, review proposed priorities, and keep the separate historical unclassified slot unresolved pending its source. The reconstructed 209-row candidate ledger is not the original checklist and signs off 0 original IDs.
+- `PC-ISSUE-047` / `REC-P0-054`: obtain an authoritative decision reconciling same-event human/AI draft coexistence in the product baseline with SQLite v4's one-actionable-draft limit. No product behavior is signed by the spec audit.
 - `PC-QA-GATE-002`: physical-device/OEM and additional Android API coverage is unavailable in this run.
 - `PC-QA-GATE-003` / `PC-ISSUE-002`: the free-model structured stage returned HTTP 429; an authorized end-to-end proposal/approval/recovery path is not yet evidenced.
 - `PC-ISSUE-001`: DST-bearing Android SAF export and independent parsing pass; external calendar import and physical-device acceptance remain open.
