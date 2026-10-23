@@ -4,7 +4,7 @@ Date: 2026-10-23
 
 Verdict: **HOLD**
 
-Code/test baseline for the latest candidate sign-offs: `96d692782bf8f68187edb53379a7a2cd065672bb`
+Code/test baseline for the latest candidate sign-offs: `eea569cf50466ca0de6ab9ccd7e6ac9983149172`
 
 APK used by the latest targeted tests: `app/build/outputs/apk/debug/app-debug.apk`, SHA-256 `63F8DCB69D1028B8D7061B374162F59770B86FA2FA4BEB6FDA132D4393AA8B6C`
 
@@ -22,19 +22,19 @@ The historical aggregate is 209 items: 126 P0, 82 P1, and one item whose priorit
 
 Audit evidence: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-source-audit.json` (SHA-256 `600A1D825E9349BCD183053CB2DB59F62A02A50BB862B554238D020FDDFC4E98`). Detailed issue: [`PC-QA-GATE-001`](issues/PC-QA-GATE-001-209-case-ledger.md).
 
-The **RECONSTRUCTED** candidate ledger contains 208 specification-derived rows plus one unresolved historical slot. Candidate priorities follow risk categories and match the aggregate counts, but are proposals for review; every reconstructed row remains `UNMAPPED` to historical IDs. Thirty-two backup, retirement, migration, and core data-contract rows now have individually mapped targeted test evidence. Structural validation confirms 209 unique rows and the 126/82/1 partition; it does not test product behavior or prove historical equivalence. Latest validation: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-012.json`.
+The **RECONSTRUCTED** candidate ledger contains 208 specification-derived rows plus one unresolved historical slot. Candidate priorities follow risk categories and match the aggregate counts, but are proposals for review; every reconstructed row remains `UNMAPPED` to historical IDs. Thirty-three backup, retirement, migration, and core data-contract rows now have individually mapped targeted test evidence. Structural validation confirms 209 unique rows and the 126/82/1 partition; it does not test product behavior or prove historical equivalence. Latest validation: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-013.json`.
 
 | Candidate bucket | PASS | FAIL | BLOCKED | NOT TESTED | SPEC UNRESOLVED |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| P0 (proposed) | 38 | 0 | 1 | 83 | 4 |
+| P0 (proposed) | 39 | 0 | 1 | 82 | 4 |
 | P1 (proposed) | 19 | 0 | 8 | 54 | 1 |
 | Historical unclassified slot | 0 | 0 | 0 | 0 | 1 |
-| **Total candidate rows** | **57** | **0** | **9** | **137** | **6** |
+| **Total candidate rows** | **58** | **0** | **9** | **136** | **6** |
 
 ## Current grouped verification
 
-- Latest full working-tree Gradle command: `:app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --offline --rerun-tasks --console=plain` — **BUILD SUCCESSFUL**, 378 tests, 0 failures/errors/skips across 54 JUnit suites; lint 0 errors and 55 warnings. One test came from protected, untracked `DraftDeckFeedbackTest.kt`, so this is 377 tracked tests plus 1 untracked test, not a clean committed-tree count.
-- Log: `.local/android-test/reports/freeze-20261023/pc-issue-012-legacy-untracked-full-gradle-20261023.log`, SHA-256 `3CF7B670871B3B3AB6744BC9027313A779F78E6B1792EAD8FC5CFCCEAE6EAA7B`.
+- Latest full working-tree Gradle command: `:app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --offline --rerun-tasks --console=plain` — **BUILD SUCCESSFUL**, 379 tests, 0 failures/errors/skips across 54 JUnit suites; lint 0 errors and 55 warnings. One test came from protected, untracked `DraftDeckFeedbackTest.kt`, so this is 378 tracked tests plus 1 untracked test, not a clean committed-tree count.
+- Log: `.local/android-test/reports/freeze-20261023/pc-issue-013-reminder-tracking-full-gradle-20261023.log`, SHA-256 `923C16CE33833C278D5D7D4E72960FD1301CEDA2602BE04A00D49FCE8F30CF44`.
 - These results are software/group-level evidence. They do not sign off the absent 209 case IDs.
 
 ## Open acceptance gates
@@ -53,6 +53,7 @@ The **RECONSTRUCTED** candidate ledger contains 208 specification-derived rows p
 - `PC-ISSUE-010`: `REC-P0-072/073` pass JVM regressions for cross-midnight start-date membership and the preserved 105-minute activity duration; production code and UI were unchanged. The todo-list projection cases `REC-P0-064/065` remain NOT TESTED and were not inferred from recurrence-window tests. See `docs/issues/PC-ISSUE-010-cross-midnight-recurrence-boundary.md`.
 - `PC-ISSUE-011`: `REC-P0-009` passes an isolated SQLite/Robolectric test proving date-span Memo completion uses one `single` key and persists across reopen. No production or UI code changed; the page-level todo query remains outside the test. See `docs/issues/PC-ISSUE-011-spanning-memo-completion.md`.
 - `PC-ISSUE-012`: `REC-P0-010` passes a v1 SQLite migration regression: a legacy Activity without a tracking field remains untracked and cannot gain a completion key. No production or UI code changed. See `docs/issues/PC-ISSUE-012-legacy-untracked-record-contract.md`.
+- `PC-ISSUE-013`: `REC-P0-011` passes SQLite regressions for changing reminder offsets on tracked and untracked Activity snapshots without changing completion tracking. No production or UI code changed; device notification delivery remains a separate gate. See `docs/issues/PC-ISSUE-013-reminder-tracking-separation.md`.
 - `PC-ISSUE-GREEDY-LABEL-FOLDING`: implementation and API 35 visual regression pass; physical-device/OEM and TalkBack review remain open.
 - Stable release signing material remains user-owned and is not present in the repository; no stable Release install/upgrade claim is made.
 
