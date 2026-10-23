@@ -2,10 +2,10 @@
 日期：2026-10-23（北京时间）
 判定：**FREEZE HOLD / 不可正式冻结**
 仓库：`E:\Project\Powerful-Calendar`
-主代码基线：`96c84df`（本报告提交之前）
+主代码基线：`0099a8a201dbc605ba74e1999110eec7517ec6f6`（标题贪心折叠实现）
 测试 APK：`app/build/outputs/apk/debug/app-debug.apk`
 Issue 004 修复代码基线：`16e00d55435c5029e07784ec5d945dfd7fb37ac5`
-最新测试 APK SHA-256：`178AACEB9D505A7C3BCD5680A3E8F98A5D7C7251A9D44EEB1FB66202D600E522`
+最新测试 APK SHA-256：`95AACDBD6D2121768062A8397D97A6FC37AA5FA4E3E4AAC0E296AE7B1704171E`
 设备：Issue 004 使用隔离的 Android 15 / API 35 `emulator-5556`；原 `emulator-5554` 保持运行且未操作。无物理真机。
 本轮改动时间轴 UI 与回归测试；未清除模拟器/业务数据，未修改或删除 `design/`。
 
@@ -29,6 +29,7 @@ Issue 004 修复代码基线：`16e00d55435c5029e07784ec5d945dfd7fb37ac5`
 | FQ-14 | 720×1600/320dpi 小屏、横屏与显示设置恢复 | **PARTIAL PASS** | `display-compat.json`、`small-phone.png`、`landscape.png`；进程存活且 UI 节点可见；横屏拥挤，未完成完整触控/无障碍验收 |
 | FQ-15 | 连续 12 次强制停止/启动 | **PASS 12/12** | `restart-12x.json`；Key/模型配置在重启后仍存在 |
 | FQ-16 | 旧版 Round 1/Round 2 数据操作 | **REUSED EVIDENCE** | 之前 11 组：Alarm/Activity/Deadline/Memo、草稿、撤销、删除、重复、Envelope 备份与恢复；不冒称本轮逐项重做 |
+| FQ-17 | 标题实际矩形贪心折叠、事件几何/点击/语义保持 | **PASS（API 35 隔离模拟器）** | 8 个策略单测、5 个 Compose 测试；A/B/C/D 碰撞轨迹、修复前后截图及坐标见 [`PC-ISSUE-GREEDY-LABEL-FOLDING`](issues/PC-ISSUE-GREEDY-LABEL-FOLDING.md)；真机/TalkBack 仍未验证 |
 
 注意：`FQ-01` 的 325 为单元测试用例数，`FQ-03` 的 37 为工具测试用例数，`FQ-16` 的 11 是业务检查组。它们**不能**直接映射为冻结清单中的 209 个独立项目。
 
@@ -63,6 +64,13 @@ Issue 004 修复代码基线：`16e00d55435c5029e07784ec5d945dfd7fb37ac5`
 - **模拟器证据**：348/348 JVM 测试通过；`verifySkinSourceBoundary`、Debug APK、Lint 通过（0 errors/56 warnings）。最新横屏图 `.local/android-test/reports/freeze-20261023/issue004-accessibility-device-regression/landscape-fixed.png` SHA-256 `8644124407D99343364C8D80A18840F594F5B5222820178C576F6D32A802A7F3`；UI 树中尺的 `clickable=true`。独立报告：[`docs/issues/PC-ISSUE-004-timeline-layout.md`](issues/PC-ISSUE-004-timeline-layout.md)。
 - **剩余 HOLD**：TalkBack 服务虽绑定，但系统通知权限提示遮挡应用树；未授予权限，实际 TalkBack 双击仍未验证。物理真机触摸、IME 遮挡和长时稳定性未验；字体 2x 工具栏换行待真机复核。
 - **结论**：代码修复及 API 35 模拟器视觉回归 PASS；Issue 不视为完全关闭，核心冻结继续 HOLD。
+
+### PC-ISSUE-GREEDY-LABEL-FOLDING · P1 / API 35 PASS · 标题间视觉冲突
+- **复现/根因**：旧逻辑以事件 anchor/end/side/lane 与固定阈值近似判断，未使用实际排版后的标题矩形；隐藏项也没有明确的 lead 语义。
+- **修复**：先实测、裁切标题矩形，再按屏幕 Y 和稳定 ID 排序；每个区域只与当前可见 lead 比较。隐藏标题不改变 lead；标题层保留事件框点击和完整标题无障碍语义。
+- **设备证据**：A/B/C/D 的实际标题矩形和碰撞轨迹见独立报告。A 显示、B 隐藏、C 不与 A 冲突而显示并接任 lead、D 与 C 冲突而隐藏；四个事件框的前后边界不变。未出现 `×N`。
+- **自动化**：52 套件、362 项全量 JVM 测试通过；Skin boundary、Debug APK、Lint 通过。实现提交 `0099a8a201dbc605ba74e1999110eec7517ec6f6`。
+- **剩余范围**：真机/OEM 与 TalkBack 交互未验；本项作为代码及 API 35 子项单独 PASS，核心冻结仍 HOLD。独立报告：[`docs/issues/PC-ISSUE-GREEDY-LABEL-FOLDING.md`](issues/PC-ISSUE-GREEDY-LABEL-FOLDING.md)。
 
 ### PC-OBS-005 · NEEDS REPRO · 部分提交操作即时反馈可能存在时序竞争
 - 旧 Round 1/2 观察：某些 Publish 之后立刻采样 UI 未见结果，稍后实际提交成功。
