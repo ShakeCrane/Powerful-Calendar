@@ -27,14 +27,14 @@ Audit evidence: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-sour
 
 `docs/CORE_FREEZE_ACCEPTANCE_LEDGER.csv` contains 208 reconstructed rows and one unresolved historical slot. Proposed priority allocation is P0=126 and P1=82, grouped by risk/source area; this preserves the known aggregate for review but does not establish which historical case each row represents. All reconstructed rows are explicitly `UNMAPPED`.
 
-Structural validation: 209 unique IDs; all reconstructed rows contain source, environment, action, expected and actual fields; PASS/BLOCKED rows include evidence references. The current structural-only validation is `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-051.json` (SHA-256 `F6EE4280BF6D2D9FF7901E58615227841B509DAFCB5790B6C2C12E58A3004D6D`); ledger SHA-256 `A2841A6FF90DCA39AF8F43390E4E1E0F4B72CB14AD4B5BC80ECAC181E28E251F`. It confirms 97/0/9/96/7 status counts, `REC-P0-025/027` PASS, and `REC-P0-026` NOT TESTED. Structural validation does not test the app or prove the historical mapping; `product_behavior_tested` is false.
+Structural validation: 209 unique IDs; all reconstructed rows contain source, environment, action, expected and actual fields; PASS/BLOCKED rows include evidence references. The current structural-only validation is `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-052.json` (SHA-256 `C3DE85012BF0F935CFE419DDB745D891D76B33ED4B8ED4C4C50A5AE9F04EDF15`); ledger SHA-256 `E5C5FBD748B1A4AFD2ACB0802E438780B32DAB1AD17712A25716D0CEAB0AB3AF`. It confirms 98/0/9/95/7 status counts and `REC-P0-026` PASS. Structural validation does not test the app or prove the historical mapping; `product_behavior_tested` is false.
 
 | Candidate bucket | PASS | FAIL | BLOCKED | NOT TESTED | SPEC UNRESOLVED |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| P0 (proposed) | 78 | 0 | 1 | 42 | 5 |
+| P0 (proposed) | 79 | 0 | 1 | 41 | 5 |
 | P1 (proposed) | 19 | 0 | 8 | 54 | 1 |
 | Historical unclassified slot | 0 | 0 | 0 | 0 | 1 |
-| **Total candidate rows** | **97** | **0** | **9** | **96** | **7** |
+| **Total candidate rows** | **98** | **0** | **9** | **95** | **7** |
 
 ### Case-specific backup verification (2026-10-23)
 
@@ -453,9 +453,15 @@ Targeted post-fix regression passed **1/1** (log SHA-256 `AA47B7E69FFD12D50B2EA2
 
 ### Case-specific first-draft sequence allocation verification (2026-10-23)
 
-`REC-P0-025` and `REC-P0-027` map to `PowerStoreTest.firstDraftAllocatesASequenceEvenIfItIsDiscarded`. The existing Robolectric API 34 test asserts that the first draft receives `eventSeq=1` at creation; after it is discarded, the next draft receives `eventSeq=2`, `nextSequencePreview()` is 3, and `identityCount()` is 2. `REC-P0-026` remains NOT TESTED because no failed allocation transaction is injected. The candidates remain `UNMAPPED` to the original checklist. See `docs/issues/PC-ISSUE-051-first-draft-sequence-allocation.md`.
+`REC-P0-025` and `REC-P0-027` map to `PowerStoreTest.firstDraftAllocatesASequenceEvenIfItIsDiscarded`. The existing Robolectric API 34 test asserts that the first draft receives `eventSeq=1` at creation; after it is discarded, the next draft receives `eventSeq=2`, `nextSequencePreview()` is 3, and `identityCount()` is 2. At the time of Issue 051, `REC-P0-026` remained NOT TESTED because no failed allocation transaction had been injected; Issue 052 subsequently adds that coverage. The candidates remain `UNMAPPED` to the original checklist. See `docs/issues/PC-ISSUE-051-first-draft-sequence-allocation.md`.
 
-The focused test passed **1/1** (log SHA-256 `528E452DCDCB9904D6D11ABE77BAAFE1FF009E57558255934CF616ADC57BB850`; JUnit XML SHA-256 `541ABB1523C836DCC290C3EA8A876E8DCEAA8BAB8BFCF3A32D37A30296634255`). The exact method is also present in the latest 408/408 full Gradle run's 60-test `PowerStoreTest` XML, SHA-256 `2EE44003E98165F0ADBAC654EB90DE040CBCFB1EA1C7E92AA08581EEA39A2F1A`. No source/test modification was required.
+The focused test passed **1/1** (log SHA-256 `528E452DCDCB9904D6D11ABE77BAAFE1FF009E57558255934CF616ADC57BB850`; JUnit XML SHA-256 `541ABB1523C836DCC290C3EA8A876E8DCEAA8BAB8BFCF3A32D37A30296634255`). It is also present in the current 409/409 full Gradle run's 61-test `PowerStoreTest` XML, SHA-256 `1B4C2D53312F5D81119384965BF64410D32401256EFFDC6BBDDFE5992C62A0EE`. No additional source/test modification was required for this earlier sign-off.
+
+### Case-specific failed first-draft allocation verification (2026-10-23)
+
+`REC-P0-026` maps to `PowerStoreTest.failedFirstDraftInsertRetiresItsAllocatedSequence`. A SQLite trigger aborts the draft insert after identity reservation. Before the fix, the transaction rolled back the identity row (`expected identityCount=1, actual=0`). After the fix, the failed draft leaves no pending card, preserves sequence 1 as retired, and advances `nextSequencePreview()` to 2; after dropping the trigger, the retry receives sequence 2 and activates it. The candidate remains `UNMAPPED` to the original checklist. See `docs/issues/PC-ISSUE-052-failed-first-draft-sequence-retired.md`.
+
+The focused post-fix pair (`failedFirstDraftInsertRetiresItsAllocatedSequence` and `firstDraftAllocatesASequenceEvenIfItIsDiscarded`) passed **2/2** (log SHA-256 `D5DCCE52E1E0B6FA32314F2EAF1FFBFC65F834F76860F27EB05A79C299E6C860`; JUnit XML SHA-256 `B830C9D40B60F30F24EC9C6F009F97B4ED5551279D58E1D776FDB587692838DA`). Full Gradle passed **409/409** tests across 55 suites; lint reported 0 errors / 55 warnings. Full log SHA-256 `EACE03207765FED33CD83882FAD41F9CC477BB48BD26EA5CF14D1B6FD1A07FEE`; `PowerStoreTest` XML SHA-256 `1B4C2D53312F5D81119384965BF64410D32401256EFFDC6BBDDFE5992C62A0EE`; Debug APK SHA-256 `80521C6A833B189FF96EF11D6543B4E6877DFE8A89D64BB1269C5220E8CD3D92`. Source/test commit: `c2f2ad5efb5b84b887fb38b4ee03916c0c23906e`. All 55 JUnit XML files and the full Gradle summary are preserved under `.local/android-test/reports/freeze-20261023/pc-issue-052-*`.
 
 ## Historical sign-off accounting
 
@@ -465,11 +471,11 @@ The focused test passed **1/1** (log SHA-256 `528E452DCDCB9904D6D11ABE77BAAFE1FF
 | P1 | 82 | 0 | Unassessed by original ID |
 | Priority unresolved | 1 | 0 | Remains unclassified and unassessed |
 
-The latest full working-tree Gradle run reports 408 tests PASS, 0 failures/errors/skips across 55 JUnit suites, successful skin-boundary verification and Debug assembly, and lint 0 errors / 55 warnings. It includes one test from protected, untracked `app/src/test/java/dev/powerfulcalendar/ui/v2/DraftDeckFeedbackTest.kt` (407 tracked tests + 1 untracked); the file was not modified or staged. The tested code/test changes are committed as `f45710a6759fc5532f3982721345c06a912afa3e`. Log: `.local/android-test/reports/freeze-20261023/pc-issue-050-snooze-recurring-full-gradle-20261023.log` (SHA-256 `D74F6F0C70E4E9C7A1CC7FD3AEE8453CF5E79883601CDE342BFF6E94A57354BD`). This is not a 408-to-209 mapping.
+The latest full working-tree Gradle run reports 409 tests PASS, 0 failures/errors/skips across 55 JUnit suites, successful skin-boundary verification and Debug assembly, and lint 0 errors / 55 warnings. It includes one test from protected, untracked `app/src/test/java/dev/powerfulcalendar/ui/v2/DraftDeckFeedbackTest.kt` (408 tracked tests + 1 untracked); the file was not modified or staged. The tested code/test changes are committed as `c2f2ad5efb5b84b887fb38b4ee03916c0c23906e`. Log: `.local/android-test/reports/freeze-20261023/pc-issue-052-full-gradle-20261023.log` (SHA-256 `EACE03207765FED33CD83882FAD41F9CC477BB48BD26EA5CF14D1B6FD1A07FEE`). This is not a 409-to-209 mapping.
 
 ## Required next work
 
-1. Run the 96 `NOT TESTED` rows under the environment each row requires and update only with case-specific evidence.
+1. Run the 95 `NOT TESTED` rows under the environment each row requires and update only with case-specific evidence.
 2. Resolve the one blocked P0, eight blocked P1, and six reconstructed spec-unresolved rows where feasible; retain external/physical/device dependencies as HOLD. The separate historical unclassified slot remains unresolved pending its source.
 3. Review the source-based proposed priority allocation. New IDs must never masquerade as historical IDs.
 4. Keep the one historical unclassified item visibly unresolved until its source or an explicit review decision is available.
@@ -477,4 +483,4 @@ The latest full working-tree Gradle run reports 408 tests PASS, 0 failures/error
 
 ## Scope and outcome
 
-Core code and tests have evidence for 72 reconstructed rows across backup, tombstone, migration, recurrence, reminder, temporal model, draft, and core data-semantics contracts; 96 remain NOT TESTED, six reconstructed candidates remain SPEC UNRESOLVED, proposed priorities still need review, and historical mapping is still absent. `REC-P0-054` is unresolved because the product baseline and SQLite v4 specify conflicting same-event draft cardinality. `REC-P0-058` passes the current-baseline semantic no-op Save test; `REC-P0-059` passes the current-baseline recurrence start-bound/anchor projection test; `REC-P0-069` passes the delayed snooze receiver regression with real Android delivery still untested; `REC-P0-025/027` pass the first-draft identity allocation regression while failed allocation rollback (`REC-P0-026`) remains NOT TESTED. PC-QA-GATE-001 remains **PARTIAL / HOLD**, and overall core verdict remains **HOLD**.
+Core code and tests have evidence for 73 reconstructed rows across backup, tombstone, migration, recurrence, reminder, temporal model, draft, and core data-semantics contracts; 95 remain NOT TESTED, six reconstructed candidates remain SPEC UNRESOLVED, proposed priorities still need review, and historical mapping is still absent. `REC-P0-054` is unresolved because the product baseline and SQLite v4 specify conflicting same-event draft cardinality. `REC-P0-058` passes the current-baseline semantic no-op Save test; `REC-P0-059` passes the current-baseline recurrence start-bound/anchor projection test; `REC-P0-069` passes the delayed snooze receiver regression with real Android delivery still untested; `REC-P0-025/027` pass the first-draft identity allocation regression; `REC-P0-026` passes the injected first-draft insert failure regression. PC-QA-GATE-001 remains **PARTIAL / HOLD**, and overall core verdict remains **HOLD**.
