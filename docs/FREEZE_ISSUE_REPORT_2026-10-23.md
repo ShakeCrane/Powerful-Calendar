@@ -4,9 +4,10 @@
 仓库：`E:\Project\Powerful-Calendar`
 主代码基线：`96c84df`（本报告提交之前）
 测试 APK：`app/build/outputs/apk/debug/app-debug.apk`
-APK SHA-256：`51225370BDA55EA9E7DF3E78856FBA39DFCD0D4129653D03AFCB5B6CE8862554`
-设备：仅仓库内 `PowerCal_API35` / Android 15 API 35 / `emulator-5554`。
-此轮未连接或重置真机，未清除现有模拟器数据，未修改正式业务代码，未删除 `design/`。
+Issue 004 修复代码基线：`16e00d55435c5029e07784ec5d945dfd7fb37ac5`
+最新测试 APK SHA-256：`178AACEB9D505A7C3BCD5680A3E8F98A5D7C7251A9D44EEB1FB66202D600E522`
+设备：Issue 004 使用隔离的 Android 15 / API 35 `emulator-5556`；原 `emulator-5554` 保持运行且未操作。无物理真机。
+本轮改动时间轴 UI 与回归测试；未清除模拟器/业务数据，未修改或删除 `design/`。
 
 ## 1. 本轮实际测试及结论
 
@@ -56,12 +57,12 @@ APK SHA-256：`51225370BDA55EA9E7DF3E78856FBA39DFCD0D4129653D03AFCB5B6CE8862554`
 - **证据**：`docs/ANDROID_EMULATOR_REGRESSION_QA_2026-10-23.md`（R2-ISSUE-02）。
 - **退出条件**：保持拒绝语义不变，确认 UI 提示有可操作原因与自动测试。
 
-### PC-ISSUE-004 · P2 / VISUAL REVIEW · 横屏时间刻度与事件标签拥挤
-- **复现**：模拟器横屏 2400×1080，显示 24 小时全屏时间轴。
-- **实际**：应用正常运行，但部分时刻数字与事件标题距离过密，现时刻标签与相邻刻度线叠加。
-- **证据**：`landscape.png`；小屏对照 `small-phone.png`。
-- **状态**：视觉可读性观察，尚未证明触摸命中/无障碍错误；不要无证据认定为 P0。
-- **退出条件**：横屏具体排版/裁切策略审核，包含不同字体缩放的截图与真实可点击验证。
+### PC-ISSUE-004 · P2 / PARTIAL / HOLD · 横屏时间轴灰线与标签拥挤
+- **复现**：横屏 2400×1080 时间轴中，渐变中心出现额外灰带；现时刻徽标可能压住刻度文字/事件卡。
+- **根因与修复**：`axisBackground()` 中间的 `gridLine` 渐变停靠点产生灰带；现时刻徽标原来没有避让逻辑。已移除灰色停靠点、增加徽标避让/密集标签处理，并给中央尺补无障碍点击动作。
+- **模拟器证据**：348/348 JVM 测试通过；`verifySkinSourceBoundary`、Debug APK、Lint 通过（0 errors/56 warnings）。最新横屏图 `.local/android-test/reports/freeze-20261023/issue004-accessibility-device-regression/landscape-fixed.png` SHA-256 `8644124407D99343364C8D80A18840F594F5B5222820178C576F6D32A802A7F3`；UI 树中尺的 `clickable=true`。独立报告：[`docs/issues/PC-ISSUE-004-timeline-layout.md`](issues/PC-ISSUE-004-timeline-layout.md)。
+- **剩余 HOLD**：TalkBack 服务虽绑定，但系统通知权限提示遮挡应用树；未授予权限，实际 TalkBack 双击仍未验证。物理真机触摸、IME 遮挡和长时稳定性未验；字体 2x 工具栏换行待真机复核。
+- **结论**：代码修复及 API 35 模拟器视觉回归 PASS；Issue 不视为完全关闭，核心冻结继续 HOLD。
 
 ### PC-OBS-005 · NEEDS REPRO · 部分提交操作即时反馈可能存在时序竞争
 - 旧 Round 1/2 观察：某些 Publish 之后立刻采样 UI 未见结果，稍后实际提交成功。
