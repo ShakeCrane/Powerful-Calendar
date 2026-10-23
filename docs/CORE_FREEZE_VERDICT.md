@@ -4,7 +4,7 @@ Date: 2026-10-23
 
 Verdict: **HOLD**
 
-Code/test baseline for the latest candidate sign-offs: `67648e5b6c4c744034884e408f8835b208306b29`
+Code/test baseline for the latest candidate sign-offs: `ee9913b953a1165b923cb1f2238755580baeaeb3`
 
 APK used by the latest targeted tests: `app/build/outputs/apk/debug/app-debug.apk`, SHA-256 `63F8DCB69D1028B8D7061B374162F59770B86FA2FA4BEB6FDA132D4393AA8B6C`
 
@@ -22,19 +22,19 @@ The historical aggregate is 209 items: 126 P0, 82 P1, and one item whose priorit
 
 Audit evidence: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-source-audit.json` (SHA-256 `600A1D825E9349BCD183053CB2DB59F62A02A50BB862B554238D020FDDFC4E98`). Detailed issue: [`PC-QA-GATE-001`](issues/PC-QA-GATE-001-209-case-ledger.md).
 
-The **RECONSTRUCTED** candidate ledger contains 208 specification-derived rows plus one unresolved historical slot. Candidate priorities follow risk categories and match the aggregate counts, but are proposals for review; every reconstructed row remains `UNMAPPED` to historical IDs. Twenty-eight backup, retirement, migration, and recurrence rows now have individually mapped targeted test evidence. Structural validation confirms 209 unique rows and the 126/82/1 partition; it does not test product behavior or prove historical equivalence. Latest validation: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-009.json`.
+The **RECONSTRUCTED** candidate ledger contains 208 specification-derived rows plus one unresolved historical slot. Candidate priorities follow risk categories and match the aggregate counts, but are proposals for review; every reconstructed row remains `UNMAPPED` to historical IDs. Thirty backup, retirement, migration, and recurrence rows now have individually mapped targeted test evidence. Structural validation confirms 209 unique rows and the 126/82/1 partition; it does not test product behavior or prove historical equivalence. Latest validation: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-010.json`.
 
 | Candidate bucket | PASS | FAIL | BLOCKED | NOT TESTED | SPEC UNRESOLVED |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| P0 (proposed) | 34 | 0 | 1 | 87 | 4 |
+| P0 (proposed) | 36 | 0 | 1 | 85 | 4 |
 | P1 (proposed) | 19 | 0 | 8 | 54 | 1 |
 | Historical unclassified slot | 0 | 0 | 0 | 0 | 1 |
-| **Total candidate rows** | **53** | **0** | **9** | **141** | **6** |
+| **Total candidate rows** | **55** | **0** | **9** | **139** | **6** |
 
 ## Current grouped verification
 
-- Latest full working-tree Gradle command: `:app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --offline --rerun-tasks --console=plain` — **BUILD SUCCESSFUL**, 375 tests, 0 failures/errors/skips across 54 JUnit suites; lint 0 errors and 55 warnings. One test came from protected, untracked `DraftDeckFeedbackTest.kt`, so this is 374 tracked tests plus 1 untracked test, not a clean committed-tree count.
-- Log: `.local/android-test/reports/freeze-20261023/pc-issue-009-recurrence-full-gradle-20261023.log`, SHA-256 `0818734F22900F3742E6D4E852F3AD7E1FF442998F154199EA0B4FD8492B90EF`.
+- Latest full working-tree Gradle command: `:app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --offline --rerun-tasks --console=plain` — **BUILD SUCCESSFUL**, 377 tests, 0 failures/errors/skips across 54 JUnit suites; lint 0 errors and 55 warnings. One test came from protected, untracked `DraftDeckFeedbackTest.kt`, so this is 376 tracked tests plus 1 untracked test, not a clean committed-tree count.
+- Log: `.local/android-test/reports/freeze-20261023/pc-issue-010-cross-midnight-full-gradle-20261023.log`, SHA-256 `C155D9A2E05E2C68416AA4E0C32C8F500F20970688A5C8A8699ECAD02FD903A3`.
 - These results are software/group-level evidence. They do not sign off the absent 209 case IDs.
 
 ## Open acceptance gates
@@ -50,6 +50,7 @@ The **RECONSTRUCTED** candidate ledger contains 208 specification-derived rows p
 - `PC-ISSUE-007`: `REC-P0-103` now has a deterministic two-store boundary regression for the transaction-local non-empty check; real device/OS concurrency and historical mapping remain open.
 - `PC-ISSUE-008`: five schema-version and migration candidates have JVM SQLite evidence, including injected v4 failure rollback and same-database retry. No production or UI code changed; physical-device and historical mapping remain open. See `docs/issues/PC-ISSUE-008-database-migration-atomicity.md`.
 - `PC-ISSUE-009`: nine recurrence candidates have JVM evidence for inclusive bounds, bounded projection, immutable moved-slot keys, skip behavior, single-instance override, and per-series exception scope. Production code and UI were unchanged; device acceptance and original-case mapping remain open. See `docs/issues/PC-ISSUE-009-recurrence-instance-identity.md`.
+- `PC-ISSUE-010`: `REC-P0-072/073` pass JVM regressions for cross-midnight start-date membership and the preserved 105-minute activity duration; production code and UI were unchanged. The todo-list projection cases `REC-P0-064/065` remain NOT TESTED and were not inferred from recurrence-window tests. See `docs/issues/PC-ISSUE-010-cross-midnight-recurrence-boundary.md`.
 - `PC-ISSUE-GREEDY-LABEL-FOLDING`: implementation and API 35 visual regression pass; physical-device/OEM and TalkBack review remain open.
 - Stable release signing material remains user-owned and is not present in the repository; no stable Release install/upgrade claim is made.
 

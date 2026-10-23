@@ -27,14 +27,14 @@ Audit evidence: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-sour
 
 `docs/CORE_FREEZE_ACCEPTANCE_LEDGER.csv` contains 208 reconstructed rows and one unresolved historical slot. Proposed priority allocation is P0=126 and P1=82, grouped by risk/source area; this preserves the known aggregate for review but does not establish which historical case each row represents. All reconstructed rows are explicitly `UNMAPPED`.
 
-Structural validation: 209 unique IDs; all reconstructed rows contain source, environment, action, expected and actual fields; PASS/BLOCKED rows include evidence references. Latest validation JSON: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-009.json` (ledger SHA-256 `37C26957DF9F6D79A2BE11DC64F51BE8A5D85207AF74B27C893F572DEC1FCE58`). Structural validation does not test the app or prove the historical mapping.
+Structural validation: 209 unique IDs; all reconstructed rows contain source, environment, action, expected and actual fields; PASS/BLOCKED rows include evidence references. Latest validation JSON: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-010.json` (ledger SHA-256 `E5136BA2C2D6A2BDC7F44B30DEA6C18FFF81CA9FFB3D63692C3BB57778218D3C`). Structural validation does not test the app or prove the historical mapping.
 
 | Candidate bucket | PASS | FAIL | BLOCKED | NOT TESTED | SPEC UNRESOLVED |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| P0 (proposed) | 34 | 0 | 1 | 87 | 4 |
+| P0 (proposed) | 36 | 0 | 1 | 85 | 4 |
 | P1 (proposed) | 19 | 0 | 8 | 54 | 1 |
 | Historical unclassified slot | 0 | 0 | 0 | 0 | 1 |
-| **Total candidate rows** | **53** | **0** | **9** | **141** | **6** |
+| **Total candidate rows** | **55** | **0** | **9** | **139** | **6** |
 
 ### Case-specific backup verification (2026-10-23)
 
@@ -120,6 +120,17 @@ Targeted schema suite: **4/4 PASS**, log `.local/android-test/reports/freeze-202
 
 Targeted result: **7/7 PASS**, log `.local/android-test/reports/freeze-20261023/pc-issue-009-recurrence-targeted-20261023.log` (SHA-256 `44B4AF96CDD9013F2274BC2F921C4634845FF6F55990AE659C83C85BEB87F2A4`); full regression: **375/375 PASS**, lint 0 errors / 55 warnings. See `docs/issues/PC-ISSUE-009-recurrence-instance-identity.md` for the three JUnit XML hashes and full run hash.
 
+## Case-specific cross-midnight recurrence (2026-10-23)
+
+`REC-P0-072/073` are individually signed on code commit `ee9913b953a1165b923cb1f2238755580baeaeb3`; Debug APK SHA-256 remains `63F8DCB69D1028B8D7061B374162F59770B86FA2FA4BEB6FDA132D4393AA8B6C`. These are JVM temporal-model checks; no device was used.
+
+| Candidate row | Test | Result |
+| --- | --- | --- |
+| `REC-P0-072` | `OccurrenceWindowTest.crossMidnightActivityRecurrenceBoundsUseTheOriginalStartDate` | PASS: on Oct 21, an Oct 20 23:30 carry-in remains eligible through the inclusive Oct 20 active end; an Oct 21 start is excluded. An Oct 21 active start excludes the previous day's carry-in. |
+| `REC-P0-073` | `OccurrenceWindowTest.crossMidnightActivityRecurrencePreservesItsTrueDuration` | PASS: 23:30–01:15 repeated Activity instances preserve their 105-minute duration and next-day end instant. |
+
+Targeted class run: **19/19 PASS**, log `.local/android-test/reports/freeze-20261023/pc-issue-010-cross-midnight-targeted-final-20261023.log` (SHA-256 `8CF359ED5B02675EF95C78DC74B5A7A12A453F7BB676F4E7BC60AAAF362972E2`); JUnit XML SHA-256 `C416553CA179F84969ABCE3361071197489C7C12F9F69605E710ABFECCACC778`. Full run: **377/377 PASS**, lint 0 errors / 55 warnings. See `docs/issues/PC-ISSUE-010-cross-midnight-recurrence-boundary.md` for complete commands, evidence paths, and limitations.
+
 ## Historical sign-off accounting
 
 | Bucket from historical aggregate | Total | Matched to original ID | Result |
@@ -128,11 +139,11 @@ Targeted result: **7/7 PASS**, log `.local/android-test/reports/freeze-20261023/
 | P1 | 82 | 0 | Unassessed by original ID |
 | Priority unresolved | 1 | 0 | Remains unclassified and unassessed |
 
-The latest full working-tree Gradle run reports 375 tests PASS, 0 failures/errors/skips across 54 JUnit suites, successful skin-boundary verification and Debug assembly, and lint 0 errors / 55 warnings. It includes one test from protected, untracked `app/src/test/java/dev/powerfulcalendar/ui/v2/DraftDeckFeedbackTest.kt` (374 tracked tests + 1 untracked); the file was not modified or staged. Log: `.local/android-test/reports/freeze-20261023/pc-issue-009-recurrence-full-gradle-20261023.log` (SHA-256 `0818734F22900F3742E6D4E852F3AD7E1FF442998F154199EA0B4FD8492B90EF`). This is neither a clean committed-tree 375-test count nor a 375-to-209 mapping.
+The latest full working-tree Gradle run reports 377 tests PASS, 0 failures/errors/skips across 54 JUnit suites, successful skin-boundary verification and Debug assembly, and lint 0 errors / 55 warnings. It includes one test from protected, untracked `app/src/test/java/dev/powerfulcalendar/ui/v2/DraftDeckFeedbackTest.kt` (376 tracked tests + 1 untracked); the file was not modified or staged. Log: `.local/android-test/reports/freeze-20261023/pc-issue-010-cross-midnight-full-gradle-20261023.log` (SHA-256 `C155D9A2E05E2C68416AA4E0C32C8F500F20970688A5C8A8699ECAD02FD903A3`). This is neither a clean committed-tree 377-test count nor a 377-to-209 mapping.
 
 ## Required next work
 
-1. Run the 141 `NOT TESTED` rows under the environment each row requires and update only with case-specific evidence.
+1. Run the 139 `NOT TESTED` rows under the environment each row requires and update only with case-specific evidence.
 2. Resolve the one blocked P0, eight blocked P1, and five reconstructed spec-unresolved rows where feasible; retain external/physical/device dependencies as HOLD. The separate historical unclassified slot remains unresolved pending its source.
 3. Review the source-based proposed priority allocation. New IDs must never masquerade as historical IDs.
 4. Keep the one historical unclassified item visibly unresolved until its source or an explicit review decision is available.
