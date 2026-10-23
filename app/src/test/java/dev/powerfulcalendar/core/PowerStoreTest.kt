@@ -287,6 +287,39 @@ class PowerStoreTest {
     }
 
     @Test
+    fun unboundedRecurringMemoKeepsPastIncompleteOccurrenceAcrossRestart() {
+        val card = store.newDraft(DraftForm(
+            kind = TemporalKind.MEMO,
+            title = "未完成的旧待办",
+            startText = "2024-01-01",
+            zoneId = zone.id,
+            recurrence = Recurrence(freq = RecurrenceFreq.DAILY)
+        ))
+        assertTrue(commit(card) is PowerStore.CommitOutcome.Committed)
+        val pastDate = LocalDate.parse("2025-03-14")
+        val from = pastDate.atStartOfDay(zone).toInstant().toEpochMilli()
+        val until = pastDate.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
+        val pastKey = "2025-03-14T00:00"
+        val beforeRestart = store.get(card.eventSeq)!!
+
+        assertTrue(beforeRestart.completedKeys.isEmpty())
+        assertEquals(listOf(pastKey), RecurrenceEngine.occurrences(
+            beforeRestart, from, until, limit = 10
+        ).map { it.key })
+        assertEquals(1L, store.identityCount())
+
+        val database = store.databaseName
+        store.close()
+        store = PowerStore(context, database)
+        val reopened = store.get(card.eventSeq)!!
+        assertTrue(reopened.completedKeys.isEmpty())
+        assertEquals(listOf(pastKey), RecurrenceEngine.occurrences(
+            reopened, from, until, limit = 10
+        ).map { it.key })
+        assertEquals(1, store.all().size)
+    }
+
+    @Test
     fun changingReminderPreservesOptionalCompletionTracking() {
         listOf(false, true).forEachIndexed { index, trackingEnabled ->
             val card = store.newDraft(activityForm("提醒设置 $index").copy(
