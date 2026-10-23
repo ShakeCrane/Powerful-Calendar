@@ -1282,7 +1282,14 @@ class PowerStore(
             LocalDate.parse(selectedOccurrenceKey.substringBefore('T'))
         }.getOrNull() ?: return@tx RecurrenceSplitOutcome.Invalid("所选实例键格式无效")
         if (!RecurrenceEngine.hasEarlierActiveOccurrence(current, selectedOccurrenceKey)) {
-            return@tx saveWholeRecurringSeriesInTransaction(db, current, form, System.currentTimeMillis())
+            return@tx saveWholeRecurringSeriesInTransaction(
+                db,
+                current,
+                form,
+                System.currentTimeMillis(),
+                selectedIndex,
+                selectedOccurrenceKey
+            )
         }
         val cutoffDate = selectedDate.minusDays(1)
         val existingUntil = current.recurrence.activeUntilDate?.let {
@@ -1406,9 +1413,11 @@ class PowerStore(
         db: SQLiteDatabase,
         current: TemporalRecord,
         form: DraftForm,
-        now: Long
+        now: Long,
+        selectedIndex: Int,
+        selectedOccurrenceKey: String
     ): RecurrenceSplitOutcome {
-        val candidate = when (val built = form.build(current.eventSeq, current.revision + 1, now)) {
+        val builtRecord = when (val built = form.build(current.eventSeq, current.revision + 1, now)) {
             is FormBuild.Incomplete -> return RecurrenceSplitOutcome.Invalid(built.message)
             is FormBuild.Invalid -> return RecurrenceSplitOutcome.Invalid(built.reason)
             is FormBuild.Ready -> built.record.copy(
@@ -1416,9 +1425,56 @@ class PowerStore(
                 updatedAtMillis = now
             )
         }
-        if (!candidate.recurrence.isRepeating) {
+        if (!builtRecord.recurrence.isRepeating) {
             return RecurrenceSplitOutcome.Invalid("此实例及后续必须保留为重复序列")
         }
+
+        val remainingCount = if (current.recurrence.count != null &&
+            form.recurrence.count == current.recurrence.count
+        ) {
+            current.recurrence.count - selectedIndex
+        } else {
+            builtRecord.recurrence.count
+        }
+        if (remainingCount != null && remainingCount < 1) {
+            return RecurrenceSplitOutcome.Invalid("新序列必须至少包含所选实例")
+        }
+        val baseRule = builtRecord.recurrence.copy(
+            count = remainingCount,
+            exceptions = emptySet(),
+            overrides = emptyMap()
+        )
+        val baseRecord = builtRecord.copy(recurrence = baseRule, completedKeys = emptySet())
+        val newAnchor = baseRecord.anchorMillis()
+            ?: return RecurrenceSplitOutcome.Invalid("新序列缺少开始锚点")
+        val newAnchorKey = RecurrenceEngine.keyFor(
+            Instant.ofEpochMilli(newAnchor).atZone(baseRecord.zone).toLocalDateTime()
+        )
+        if (!RecurrenceEngine.activeOnOriginalKey(baseRule, newAnchorKey) ||
+            RecurrenceEngine.slotIndexForKey(baseRecord, newAnchorKey) == null
+        ) {
+            return RecurrenceSplitOutcome.Invalid("新规则未包含所选实例对应的新系列锚点")
+        }
+
+        fun compatibleFutureKey(key: String): Boolean =
+            key >= selectedOccurrenceKey &&
+                RecurrenceEngine.activeOnOriginalKey(baseRule, key) &&
+                RecurrenceEngine.slotIndexForKey(baseRecord, key) != null
+
+        val candidate = baseRecord.copy(
+            recurrence = baseRule.copy(
+                exceptions = (current.recurrence.exceptions + form.recurrence.exceptions)
+                    .filterTo(mutableSetOf(), ::compatibleFutureKey),
+                overrides = (current.recurrence.overrides + form.recurrence.overrides)
+                    .filterKeys(::compatibleFutureKey)
+            ),
+            completedKeys = (current.completedKeys + form.completedKeys)
+                .filterTo(mutableSetOf(), ::compatibleFutureKey)
+        )
+        candidate.validate()?.let {
+            return RecurrenceSplitOutcome.Invalid("新系列无效：$it")
+        }
+
         val changed = !sameFormalContent(current, candidate)
         if (changed) {
             upsertObject(db, candidate)

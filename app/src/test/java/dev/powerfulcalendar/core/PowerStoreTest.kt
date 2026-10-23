@@ -464,13 +464,18 @@ class PowerStoreTest {
         ))
         assertTrue(commit(card) is PowerStore.CommitOutcome.Committed)
         val before = requireNotNull(store.get(card.eventSeq))
+        val selectedMillis = LocalDateTime.of(2026, 10, 22, 7, 30)
+            .atZone(shanghai).toInstant().toEpochMilli()
         val lease = store.beginHumanEdit(before.eventSeq)
         val outcome = try {
             store.saveThisAndFutureRecurringEdit(
                 eventSeq = before.eventSeq,
                 expectedRevision = before.revision,
                 selectedOccurrenceKey = "2026-10-22T07:30",
-                form = DraftForm.from(before).copy(title = "首个有效实例起应用新规则"),
+                form = DraftForm.from(before).copy(
+                    title = "首个有效实例起应用新规则",
+                    startText = DraftForm.formatInstant(selectedMillis, shanghai)
+                ),
                 editorToken = lease.token
             )
         } finally {
@@ -482,7 +487,16 @@ class PowerStoreTest {
             outcome
         )
         assertEquals("首个有效实例起应用新规则", store.get(before.eventSeq)!!.title)
-        assertEquals(3, store.get(before.eventSeq)!!.recurrence.count)
+        assertEquals(1, store.get(before.eventSeq)!!.recurrence.count)
+        assertTrue(store.get(before.eventSeq)!!.recurrence.exceptions.isEmpty())
+        assertEquals(
+            listOf("2026-10-22T07:30"),
+            RecurrenceEngine.occurrences(
+                store.get(before.eventSeq)!!,
+                selectedMillis - 1,
+                selectedMillis + 3 * 24 * 60 * 60 * 1000L
+            ).map { it.key }
+        )
         assertEquals(1, store.all().size)
         assertEquals(1L, store.identityCount())
         assertEquals(2L, store.nextSequencePreview())
