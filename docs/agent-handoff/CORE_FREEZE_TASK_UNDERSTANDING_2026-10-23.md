@@ -8,7 +8,12 @@
 - 严格遵循最新用户范围：不开展 UI 工作；时间标记淡化横边接受，蓝色标记覆盖中轴符合设计。Issue 002 仍按现有记录 PARTIAL/BLOCKED，不为绕过免费模型限流重复请求或调用未授权付费模型。
 - `design/`、`DraftDeckFeedbackTest.kt` 与 `PC-OBS-005` 未跟踪文件仍受保护、未修改/未提交；主分支已与 `origin/main` 同步。
 - 已提交并推送 `PC-ISSUE-086` 核心整组规则编辑持久化回归：`49f334e8cea1005de59ef9b98a16e32f544b937e`。`EditSession` 保存后，同一 eventSeq 与原 startMillis、实例投影及 SQLite 重开记录一致；显式整组范围选择、API 35、真机/OEM 未测，因此 `REC-P0-080` 仍为 NOT TESTED。独立报告：`docs/issues/PC-ISSUE-086-whole-series-core-edit.md`。
-- 最新完整 Gradle（含 `verifySkinSourceBoundary`）为 441/441、56 suites、0 failures/errors/skips，Lint 0 errors/58 warnings；Debug APK SHA-256 `86D48004E3CE00E94A459A4CCAA929A9B55F8816DDBE7E10D6E9937D0C11ED94`。候选统计仍为 129 PASS / 0 FAIL / 9 BLOCKED / 64 NOT TESTED / 7 SPEC UNRESOLVED；108 条重建候选有独立行为证据。冻结继续 HOLD，原始 209 case ID 仍无映射。结构校验 artifact：`.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-086.json`，仅结构验证。
+- 严格遵循最新用户范围：不开展 UI 工作；时间标记淡化横边接受，蓝色标记覆盖中轴符合设计。Issue 002 仍按现有记录 PARTIAL/BLOCKED，不为绕过免费模型限流重复请求或调用未授权付费模型。
+- `design/`、`DraftDeckFeedbackTest.kt` 与 `PC-OBS-005` 未跟踪文件仍受保护、未修改/未提交；主分支已与 `origin/main` 同步。
+- 已提交并推送 `PC-ISSUE-087` 核心状态隔离回归：`5b610b7bc48951e1205cf18cc72fe83782d93fac`。完成跟踪 true↔false 修改后，事件启用状态与提醒配置不变；相同 PENDING 提醒意图（occurrence、触发时刻、requirement）跨 SQLite 重开保持。原候选“Pause object”不在合同/核心实现中，已收窄为 Invariant 2 的可追溯状态独立性；系统调度/设备送达未测，`REC-P0-017` 仍为 NOT TESTED。独立报告：`docs/issues/PC-ISSUE-087-tracking-and-reminder-state-independence.md`。
+- 最新完整 Gradle（含 `verifySkinSourceBoundary`）为 442/442、56 suites、0 failures/errors/skips，Lint 0 errors/58 warnings；Debug APK SHA-256 `86D48004E3CE00E94A459A4CCAA929A9B55F8816DDBE7E10D6E9937D0C11ED94`。候选统计仍为 129 PASS / 0 FAIL / 9 BLOCKED / 64 NOT TESTED / 7 SPEC UNRESOLVED；109 条重建候选有独立行为证据。冻结继续 HOLD，原始 209 case ID 仍无映射。结构校验 artifact：`.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-087.json`，仅结构验证。
+- 严格遵循最新用户范围：不开展 UI 工作；时间标记淡化横边接受，蓝色标记覆盖中轴符合设计。Issue 002 仍按现有记录 PARTIAL/BLOCKED，不为绕过免费模型限流重复请求或调用未授权付费模型。
+- `design/`、`DraftDeckFeedbackTest.kt` 与 `PC-OBS-005` 未跟踪文件仍受保护、未修改/未提交；主分支已与 `origin/main` 同步。
 - 严格遵循最新用户范围：不开展 UI 工作；时间标记淡化横边接受，蓝色标记覆盖中轴符合设计。Issue 002 仍按现有记录 PARTIAL/BLOCKED，不为绕过免费模型限流重复请求或调用未授权付费模型。
 - `design/`、`DraftDeckFeedbackTest.kt` 与 `PC-OBS-005` 未跟踪文件仍受保护、未修改/未提交；主分支已与 `origin/main` 同步。
 - 严格遵循最新用户范围：不开展 UI 工作；时间标记淡化横边接受，蓝色标记覆盖中轴符合设计。Issue 002 仍按现有记录 PARTIAL/BLOCKED，不为绕过免费模型限流重复请求或调用未授权付费模型。
