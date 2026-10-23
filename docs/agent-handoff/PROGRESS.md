@@ -1,4 +1,11 @@
 # Core freeze progress
+## PC-ISSUE-113 — AI/ICS core read-only projection sign-off (REC-P0-082 PASS)
+
+- Scoped to the core SQLite-to-ICS and AI request-snapshot projections; reading does not create a second event source or mutate formal rows, history, reminder intent, identity count, or sequence preview. The local AI stub receives one formal event and produces no proposal or draft.
+- Targeted Robolectric API 34 regression passed 2/2 (ICS 1/1; AI snapshot 1/1). Full Debug boundary/test/APK/lint run passed 460/460 across 57 suites, zero failures/errors/skips; lint 0 errors / 58 warnings.
+- Independent report: docs/issues/PC-ISSUE-113-read-only-core-projections-signoff.md. Android platform, SAF, external calendar, and device behavior are not signed by this result.
+- Freeze remains HOLD: 142 PASS / 0 FAIL / 9 BLOCKED / 51 NOT TESTED / 7 SPEC UNRESOLVED; P0 118/0/1/2/5; P1 24/0/8/49/1. Structural-only validation .local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-113.json, SHA-256 46B6F9A7ECDDE04D3FC04A998E734DBBEB54D347A7131FB40BEB3F1D7102162C; CSV SHA-256 55FB44E600F987C4B5B445382089E539949AEA23E5048804B56D16B674DDA73C.
+
 ## PC-ISSUE-112 — API 35 exact-alarm denial core sign-off (REC-P0-112 PASS)
 
 - Revalidated the API 35 Robolectric scheduler/store denial branch: the EXACT reminder persists as BLOCKED with the exact-alarm permission hint, and ShadowAlarmManager receives no registration.
@@ -61,7 +68,7 @@
 
 - Added a local HTTP stub regression that passes one SQLite formal event snapshot to `AiClient`. The request contains exactly one event with its real identity/revision; the response creates no proposal, and rows, history, reminder intent, identity count, and sequence preview remain unchanged.
 - Targeted Robolectric API 34 passed 1/1. Full Gradle passed 456/456 across 57 suites, zero failures/errors/skips; lint 0 errors / 58 warnings. No external provider or UI was used.
-- Test commit `e2f413a74a7a504f3ca493adc5ee3ad69e497f25` is pushed. Independent report: `docs/issues/PC-ISSUE-104-ai-context-is-read-only-projection.md`. Paired with Issue 089 ICS evidence; `REC-P0-082` remains NOT TESTED for the broader scope.
+- Test commit `e2f413a74a7a504f3ca493adc5ee3ad69e497f25` is pushed. Independent report: `docs/issues/PC-ISSUE-104-ai-context-is-read-only-projection.md`. Paired with Issue 089 ICS evidence, this checkpoint left `REC-P0-082` NOT TESTED for the broader scope; PC-ISSUE-113 later signs the narrowed AI/ICS core criterion PASS.
 - Freeze remains HOLD: 135 PASS / 0 FAIL / 9 BLOCKED / 58 NOT TESTED / 7 SPEC UNRESOLVED; P0 111/0/1/9/5; P1 24/0/8/49/1. Structural-only validation `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-104.json`, SHA-256 `7D8CB24D683736DA27397053013F14AE29702918992A00956CD968BF3A07FD79`; ledger SHA-256 `440DCE8934F4782FC54A292DA10B1C0E88C4C051F069F7A88EAAA0D772278353`.
 
 ## PC-ISSUE-103 — AI missing-kind clarification (candidate remains NOT TESTED)
@@ -171,7 +178,7 @@
 
 - Added and pushed `PowerStoreTest.icsActivityProjectionDoesNotCreateSecondFormalEventAcrossRestart`. A committed SQLite Activity projects through ICS as one matching event without warnings; formal rows, history, reminder intent, identity count and sequence preview remain unchanged before and after SQLite reopen. Test-only change; no production or UI changes.
 - Focused Robolectric API 34 regression passed 1/1 (log SHA-256 `394711335A4B9DE80FEE60B81FF224C85645883FBA16403AC25A496A683550AA`; XML SHA-256 `F6CC86C486E178FF119E8AB730626FDD0C7F940B557A7480DEBE850D68D051F1`). Full Gradle passed 444/444 across 56 suites, zero failures/errors/skips; lint 0 errors / 58 warnings. Log SHA-256 `EE9DA7BC1A810D3C706DAA44F7CBE0D3EED6C5557572F5690F50C45621BFE44D`.
-- Test commit `13e720bce54d0b31a179e68e9fa1a86eec518c61` is pushed. Independent report: `docs/issues/PC-ISSUE-089-ics-read-projection-does-not-mutate-store.md`. `REC-P0-082` remains NOT TESTED: UI/AI projection and Android SAF/device paths are not covered.
+- Test commit `13e720bce54d0b31a179e68e9fa1a86eec518c61` is pushed. Independent report: `docs/issues/PC-ISSUE-089-ics-read-projection-does-not-mutate-store.md`. At the Issue 089 checkpoint, the combined AI and platform projection scope remained incomplete; PC-ISSUE-113 later signs the narrowed AI/ICS core criterion PASS.
 - Evidence handling note: the prior structural-only Issue 088 JSON was reserialized from its captured content after a filename collision; its new SHA-256 is `4D8A8F14B8D50995CC9F66D990AF1ABF47C76ECBB887187381E6D00C09230A70`. Issue 088 test logs and JUnit evidence were untouched. Issue 089 validation is stored at its own filename.
 - Latest freeze remains HOLD: 130 PASS / 0 FAIL / 9 BLOCKED / 63 NOT TESTED / 7 SPEC UNRESOLVED; 112 reconstructed candidates now have independent targeted evidence. Historical 209 IDs remain unmapped. User scope remains core-only; no UI work. Protected untracked files remain unchanged and unstaged.
 - Next: continue with the next feasible non-UI core acceptance item.
