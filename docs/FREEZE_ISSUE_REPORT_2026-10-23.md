@@ -6,7 +6,7 @@
 测试 APK：`app/build/outputs/apk/debug/app-debug.apk`
 Issue 004 修复代码基线：`16e00d55435c5029e07784ec5d945dfd7fb37ac5`
 最新测试 APK SHA-256：`59FB0B18B5EDC6F02370D1ABE309F2376842F33B32BFEA7C371E1F0DF4290439`
-最新核心回归代码/测试基线：`2ff7bb50eb1c35e978317c6428b04e6363398d27`；Debug APK SHA-256：`59FB0B18B5EDC6F02370D1ABE309F2376842F33B32BFEA7C371E1F0DF4290439`
+最新核心回归代码/测试基线：`141750b42472ddcfe365242f7702ff4f3a717080`；Debug APK SHA-256：`59FB0B18B5EDC6F02370D1ABE309F2376842F33B32BFEA7C371E1F0DF4290439`
 设备：Issue 004 使用隔离的 Android 15 / API 35 `emulator-5556`；原 `emulator-5554` 保持运行且未操作。无物理真机。
 此前冻结工作记录了时间轴验收；本轮继续核心数据语义与提醒验收，修复重复事件延迟 snooze 广播处理并增加核心回归及文档，没有修改 UI、业务数据或 `design/`。按用户最新确认，变浅的横向边缘可接受，本轮不开展 UI 工作。
 
@@ -70,6 +70,7 @@ Issue 004 修复代码基线：`16e00d55435c5029e07784ec5d945dfd7fb37ac5`
 | FQ-54 | 撤销精确闹钟权限后重协调为 BLOCKED（REC-P0-113） | **PASS（Robolectric API 34 / scheduler + isolated SQLite）** | EXACT 意图先被标记 SCHEDULED 并提交给 ShadowAlarmManager；撤销能力后再次 reconcile，持久状态转 BLOCKED 且保存精确权限提示。定向 1/1；完整 Gradle 431/431、56 suites，0 failures/errors/skips；Lint 0 errors / 58 warnings。真实系统权限广播、OS 取消行为、API 35、真机/OEM 未测。测试提交 `a45188fd107b05cec1467851acf647422c8230f6`；独立报告 `docs/issues/PC-ISSUE-079-exact-alarm-permission-revoked.md` |
 | FQ-55 | 待调度精确闹钟提交及重复重协调（REC-P0-111） | **PARTIAL；REC-P0-111 仍 NOT TESTED** | Robolectric API 34 直接调用 `ReminderScheduler.reconcile()` 后，PENDING→SCHEDULED 且只提交一个任务；第二次调用保持幂等。该用例 1/1；完整 Gradle 432/432、56 suites，0 failures/errors/skips；Lint 0 errors / 58 warnings。`BootReceiver.goAsync()` Android 广播路径未被可靠验证，不将候选行签为 PASS。测试提交 `d4e989cb9233d9be11ad3380234e3374613c1226`；独立报告 `docs/issues/PC-ISSUE-080-pending-intent-reconciliation.md` |
 | FQ-56 | 数据库重开后 Draft Deck 仍先打开最早 queueOrder（REC-P0-037） | **PASS（Robolectric API 34 / PowerStore + DeckController core）** | 两张草稿持久化并重开同一 SQLite 后，DeckController 卡片顺序仍为 queueOrder ASC，currentId 聚焦最早草稿。定向 1/1；完整 Gradle 433/433、56 suites，0 failures/errors/skips；Lint 0 errors / 58 warnings。Compose 展示和 API 35 设备重启未测。测试提交 `2ff7bb50eb1c35e978317c6428b04e6363398d27`；独立报告 `docs/issues/PC-ISSUE-081-oldest-draft-first.md` |
+| FQ-57 | 修改事件日期不改变草稿队列顺序（REC-P0-041） | **PASS（Robolectric API 34 / PowerStore + SQLite）** | 将队首草稿的事件时间改到后一张之后，暂存并重开 SQLite；事件时间更新，草稿 ID 与 queueOrder 次序保持。定向 1/1；完整 Gradle 434/434、56 suites，0 failures/errors/skips；APK 构建成功；Lint 0 errors / 58 warnings。测试提交 `141750b42472ddcfe365242f7702ff4f3a717080`；独立报告 `docs/issues/PC-ISSUE-082-edit-date-keeps-queue-order.md` |
 
 
 注意：`FQ-01` 的 325 为单元测试用例数，`FQ-03` 的 37 为工具测试用例数，`FQ-16` 的 11 是业务检查组。它们**不能**直接映射为冻结清单中的 209 个独立项目。
@@ -145,6 +146,10 @@ Issue 004 修复代码基线：`16e00d55435c5029e07784ec5d945dfd7fb37ac5`
 - `REC-P0-037` 由 `PowerStoreTest.openingDeckAfterStoreReopenFocusesOldestQueueOrder` 签核：重开 SQLite 后 controller 卡片按 `queueOrder` 升序，焦点落在最早草稿。
 - 定向 1/1；完整 Gradle 433/433、Lint 0 errors / 58 warnings。此签核仅覆盖 PowerStore/DeckController 核心层；API 35 展示层未测。详见 `docs/issues/PC-ISSUE-081-oldest-draft-first.md`。
 
+### PC-ISSUE-082 · P0 / CORE QUEUE SEMANTICS PASS · 改事件日期不改变队列顺序
+- `REC-P0-041` 由 `PowerStoreTest.changingDraftEventDateDoesNotReorderQueueAfterRestart` 签核：改变队首草稿的事件时间使其晚于后一草稿，暂存并重开 SQLite 后，事件时间已更新而 draft ID / queueOrder 次序保持。
+- 定向 1/1；完整 Gradle 434/434、Lint 0 errors / 58 warnings。该证据覆盖 PowerStore/SQLite 核心队列语义。详见 `docs/issues/PC-ISSUE-082-edit-date-keeps-queue-order.md`。
+
 ### PC-OBS-005 · NEEDS REPRO · 部分提交操作即时反馈可能存在时序竞争
 - 旧 Round 1/2 观察：某些 Publish 之后立刻采样 UI 未见结果，稍后实际提交成功。
 - 当前证据不足以证明业务写入失败；按确定性等待稳定后复现再立缺陷。
@@ -161,8 +166,8 @@ Issue 004 修复代码基线：`16e00d55435c5029e07784ec5d945dfd7fb37ac5`
 - 当前跟踪的仓库文件中只有对“209 项”的描述，**没有找到 209 个完整编号用例及 PASS/FAIL/证据 ID 一一映射**。
 - 因此 **209 项未逐案签核**；既不能说全部未实际测试，也不能根据 325+37 单元测试声称全部通过。
 - 本轮只读审计仍未找到原始逐案清单；已建立 208 条 RECONSTRUCTED 候选项及 1 条未定义历史槽位，见 `docs/CORE_FREEZE_ACCEPTANCE_LEDGER.csv`。候选按风险给出 P0=126/P1=82 建议分配，但 0 个原始 ID 有映射，优先级仍待审核。
-- 当前候选逐案状态：P0 PASS 108 / BLOCKED 1 / NOT TESTED 12 / SPEC UNRESOLVED 5；P1 PASS 19 / BLOCKED 8 / NOT TESTED 54 / SPEC UNRESOLVED 1；历史未分类槽位 SPEC UNRESOLVED 1。共 127 PASS、66 NOT TESTED、7 SPEC UNRESOLVED；103 条重建候选有独立定点行为证据。`REC-P0-054` 因产品基线与 SQLite v4 的同事件草稿数量规格冲突保持未决，见 `docs/issues/PC-ISSUE-047-human-ai-draft-cardinality-spec-conflict.md`。`REC-P0-058`、`059`、`069`、`025/027`、`026`、`089/090`、`021/022`、`081`、`018`、`019`、`057`、`110`、`108`、`084`、`064`、`065`、`066`、`067`、`076`、`077`、`123`、`115`、`119`、`120`、`121`、`122`、`116`、`114`、`113`、`124`、`125` 和 `126` 均有独立 Issue 报告记录对应核心回归证据。结构验证 artifact 为 `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-079.json`，SHA-256 `798F96407A63155E0AD4AC470DEDCB1DC08A5DE94AA7376014828F63A39391E6`；CSV SHA-256 `5D86770C2E3F072FD1BE1C30D8F178190A1C30B009E5F2E967D79F3DF61E8736`。验证只检查结构与计数，不测试产品行为。
-- 最新完整 Gradle 工作树结果 426/426 通过（425 个已跟踪测试 + 1 个受保护未跟踪测试）；Lint 0 errors / 58 warnings。日志 `.local/android-test/reports/freeze-20261024/pc-issue-075-full-gradle-20261024.log`，SHA-256 `7C86322AC0231F9DDE9721CA5CBD07F3584D8AA4927775F599A0E8723FC3805F`；APK SHA-256 `59FB0B18B5EDC6F02370D1ABE309F2376842F33B32BFEA7C371E1F0DF4290439`。测试源提交 `25f69e1dc6ffa94078e7797e7034f881150be1c3` 已推送。结果没有映射到缺失的原始 209 个 ID。
+- 当前候选逐案状态：P0 PASS 110 / FAIL 0 / BLOCKED 1 / NOT TESTED 10 / SPEC UNRESOLVED 5；P1 PASS 19 / FAIL 0 / BLOCKED 8 / NOT TESTED 54 / SPEC UNRESOLVED 1；历史未分类槽位 SPEC UNRESOLVED 1。共 129 PASS、0 FAIL、9 BLOCKED、64 NOT TESTED、7 SPEC UNRESOLVED；105 条重建候选有独立定点行为证据。`REC-P0-054` 因产品基线与 SQLite v4 的同事件草稿数量规格冲突保持未决，见 `docs/issues/PC-ISSUE-047-human-ai-draft-cardinality-spec-conflict.md`。`REC-P0-058`、`059`、`069`、`025/027`、`026`、`089/090`、`021/022`、`081`、`018`、`019`、`057`、`110`、`108`、`084`、`064`、`065`、`066`、`067`、`076`、`077`、`123`、`115`、`119`、`120`、`121`、`122`、`116`、`114`、`113`、`124`、`125`、`126`、`037` 和 `041` 均有独立 Issue 报告记录对应核心回归证据。结构验证 artifact 为 `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-082.json`，SHA-256 `B2E1C203B87445323BCC886CCB819E97BC45862C092485234DD0090D494CC205`；CSV SHA-256 `3D0D9E502FFA54CBC7BE52FD2BD55BC266989A611369FCFF0E507D034F21711F`。验证只检查结构与计数，不测试产品行为。
+- 最新完整 Gradle 工作树结果 434/434 通过（433 个已跟踪测试 + 1 个受保护未跟踪测试），56 suites、0 failures/errors/skips；Lint 0 errors / 58 warnings。日志 `.local/android-test/reports/freeze-20261024/pc-issue-082-full-gradle-20261024.log`，SHA-256 `1426EAAF0BBA6A4EABE55ADCA5FE543C8B23C10C00686B58361F12E89ECF90AA`；APK SHA-256 `59FB0B18B5EDC6F02370D1ABE309F2376842F33B32BFEA7C371E1F0DF4290439`。测试提交 `141750b42472ddcfe365242f7702ff4f3a717080` 已推送。
 - `PC-ISSUE-019` 的 `REC-P0-004` 日期型 Deadline 候选、`PC-ISSUE-020` 提醒测试夹具稳定化、`PC-ISSUE-021` 的 `REC-P0-005` 不完整 Activity 草稿恢复分别保留独立报告和边界，不替代设备及历史 ID 验收。
 - `PC-ISSUE-022` 的 `REC-P0-007` 一日 Memo 本地日期语义通过 PowerStore/Robolectric 跨 SQLite 重启回归；独立报告 `docs/issues/PC-ISSUE-022-one-date-memo-local-date.md` 记录精确断言与边界。
 - `PC-ISSUE-023` 的 `REC-P0-008` 日期范围 Memo 两端本地日期及时间字段隔离通过 PowerStore/Robolectric 跨 SQLite 重启回归；独立报告 `docs/issues/PC-ISSUE-023-date-span-memo-boundaries.md` 记录精确断言与边界。
