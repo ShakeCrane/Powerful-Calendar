@@ -27,14 +27,14 @@ Audit evidence: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-sour
 
 `docs/CORE_FREEZE_ACCEPTANCE_LEDGER.csv` contains 208 reconstructed rows and one unresolved historical slot. Proposed priority allocation is P0=126 and P1=82, grouped by risk/source area; this preserves the known aggregate for review but does not establish which historical case each row represents. All reconstructed rows are explicitly `UNMAPPED`.
 
-Structural validation: 209 unique IDs; all reconstructed rows contain source, environment, action, expected and actual fields; PASS/BLOCKED rows include evidence references. Latest validation JSON: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-034.json`, SHA-256 `42E830802A5811093CB6F478463C6FC8C63849CFCB01DCA497826A6856DD6AA0`; ledger SHA-256 `D4D29507F3D528C62A00F2DF3FE034C32062C82215580B4311781DD0A49328D2`. Structural validation does not test the app or prove the historical mapping.
+Structural validation: 209 unique IDs; all reconstructed rows contain source, environment, action, expected and actual fields; PASS/BLOCKED rows include evidence references. Latest validation JSON: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-035.json`, SHA-256 `41258CF994F31ACC8428A495C4A64F84CC1380D827DF4195217ED86C2A79B039`; ledger SHA-256 `CA5CEF342DB393D57384802A0E8C412AACDD1EB0548AD6753C1477F1352609D7`. Structural validation does not test the app or prove the historical mapping.
 
 | Candidate bucket | PASS | FAIL | BLOCKED | NOT TESTED | SPEC UNRESOLVED |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| P0 (proposed) | 61 | 0 | 1 | 60 | 4 |
+| P0 (proposed) | 62 | 0 | 1 | 59 | 4 |
 | P1 (proposed) | 19 | 0 | 8 | 54 | 1 |
 | Historical unclassified slot | 0 | 0 | 0 | 0 | 1 |
-| **Total candidate rows** | **80** | **0** | **9** | **114** | **6** |
+| **Total candidate rows** | **81** | **0** | **9** | **113** | **6** |
 
 ### Case-specific backup verification (2026-10-23)
 
@@ -373,6 +373,16 @@ Pre-commit targeted result: **2/2 PASS**, with existing whole-snapshot commit co
 
 Pre-commit targeted result: **2/2 PASS**, including existing queue/event independence coverage; log `.local/android-test/reports/freeze-20261023/pc-issue-034-independent-queue-order-targeted-precommit-20261023.log` (SHA-256 `2010C351D82318FC0E3D1154BE91AD64FECD4CC8B1025117870DC8C5D2D2A673`); JUnit XML SHA-256 `95474E3662FA7550A833049B9998F62565266D61CF242CF13EB7C6CB49388AFA`. Post-commit targeted result: **2/2 PASS**, log `.local/android-test/reports/freeze-20261023/pc-issue-034-independent-queue-order-targeted-postcommit-20261023.log` (SHA-256 `DF28959E2EF61401DEC8B987114261D23711F088394B186CFAA64BA84F3C406A`); JUnit XML SHA-256 `D237A71F8EB75BC26101D5C07D33A7ED4CB7E29FEB742426CB2CEAE64350CD79`. Full Gradle regression: **397/397 PASS**, 55 suites, lint 0 errors / 55 warnings; full log SHA-256 `4FFF6FDA19716F8F9CD2576C20D068190CA6D2D65356961AEAAD2C63AF0DB665`. The full `PowerStoreTest` XML contains 50 passing tests and SHA-256 `C9FCA167A5600024DF55C819C01E6F1563B604C8CD4C9E0DE4AD08D6C4278CDE`. See `docs/issues/PC-ISSUE-034-independent-queue-order.md` for details and limits.
 
+## Monotonic queue-order high-water mark across restart (2026-10-23)
+
+`REC-P0-036` is individually signed on code/test commit `1a74b8b336d0351e1ceeed0b1742943c1bc6f697`; Debug APK SHA-256 `EA0DE99328BF66FEA302AF5A55C82B3BD7EF3F7276922979AABBF7ABEC581A53`. This isolated PowerStore/Robolectric regression allocates positions to committed and discarded drafts, reopens SQLite, and verifies the next allocation exceeds both; no UI or device was used.
+
+| Candidate row | Test | Result |
+| --- | --- | --- |
+| `REC-P0-036` | `PowerStoreTest.nextDraftQueueOrderAdvancesPastCommittedAndDiscardedDraftsAfterRestart` | PASS: committed and discarded queue positions remain retired; after reopen, the next draft receives a greater `queueOrder`. |
+
+Pre-commit targeted result: **2/2 PASS**, with existing queue/event independence coverage; log `.local/android-test/reports/freeze-20261023/pc-issue-035-monotonic-queue-watermark-targeted-precommit-20261023.log` (SHA-256 `2B2F1657DB15F9874550E3FCA0B879FDFED1B29E4CD9F65A68E708751A79B23F`); JUnit XML SHA-256 `203CD45301DB58DA708501A582A2E936F84A64D1D0753A6406E1060508FF3784`. Post-commit targeted result: **2/2 PASS**, log `.local/android-test/reports/freeze-20261023/pc-issue-035-monotonic-queue-watermark-targeted-postcommit-20261023.log` (SHA-256 `DF28959E2EF61401DEC8B987114261D23711F088394B186CFAA64BA84F3C406A`); JUnit XML SHA-256 `2B1B1FA9741A9A16C6F7CEFC1CF1636C280BF9FE01FAF4980A198FEA35F9AA5E`. Full Gradle regression: **398/398 PASS**, 55 suites, lint 0 errors / 55 warnings; full log SHA-256 `CF006C08916F2BFA332F40E00D52D1B6A2742C2DAD3B872AEE2A4E7BBBBCF3B6`. The full `PowerStoreTest` XML contains 51 passing tests and SHA-256 `F691A0E980CDA4C129D6A4C80020E1FA757B11E4ABA71A5545509F703EC3DAD6`. See `docs/issues/PC-ISSUE-035-monotonic-queue-watermark.md` for details and limits.
+
 ## Historical sign-off accounting
 
 | Bucket from historical aggregate | Total | Matched to original ID | Result |
@@ -381,11 +391,11 @@ Pre-commit targeted result: **2/2 PASS**, including existing queue/event indepen
 | P1 | 82 | 0 | Unassessed by original ID |
 | Priority unresolved | 1 | 0 | Remains unclassified and unassessed |
 
-The latest full working-tree Gradle run reports 397 tests PASS, 0 failures/errors/skips across 55 JUnit suites, successful skin-boundary verification and Debug assembly, and lint 0 errors / 55 warnings. It includes one test from protected, untracked `app/src/test/java/dev/powerfulcalendar/ui/v2/DraftDeckFeedbackTest.kt` (396 tracked tests + 1 untracked); the file was not modified or staged. The tested code/test changes are committed as `500889acc6a5968f984caa7e8b063b9823255983`. Log: `.local/android-test/reports/freeze-20261023/pc-issue-034-independent-queue-order-full-gradle-20261023.log` (SHA-256 `4FFF6FDA19716F8F9CD2576C20D068190CA6D2D65356961AEAAD2C63AF0DB665`). This is not a 397-to-209 mapping.
+The latest full working-tree Gradle run reports 398 tests PASS, 0 failures/errors/skips across 55 JUnit suites, successful skin-boundary verification and Debug assembly, and lint 0 errors / 55 warnings. It includes one test from protected, untracked `app/src/test/java/dev/powerfulcalendar/ui/v2/DraftDeckFeedbackTest.kt` (397 tracked tests + 1 untracked); the file was not modified or staged. The tested code/test changes are committed as `1a74b8b336d0351e1ceeed0b1742943c1bc6f697`. Log: `.local/android-test/reports/freeze-20261023/pc-issue-035-monotonic-queue-watermark-full-gradle-20261023.log` (SHA-256 `CF006C08916F2BFA332F40E00D52D1B6A2742C2DAD3B872AEE2A4E7BBBBCF3B6`). This is not a 398-to-209 mapping.
 
 ## Required next work
 
-1. Run the 114 `NOT TESTED` rows under the environment each row requires and update only with case-specific evidence.
+1. Run the 113 `NOT TESTED` rows under the environment each row requires and update only with case-specific evidence.
 2. Resolve the one blocked P0, eight blocked P1, and five reconstructed spec-unresolved rows where feasible; retain external/physical/device dependencies as HOLD. The separate historical unclassified slot remains unresolved pending its source.
 3. Review the source-based proposed priority allocation. New IDs must never masquerade as historical IDs.
 4. Keep the one historical unclassified item visibly unresolved until its source or an explicit review decision is available.
@@ -393,4 +403,4 @@ The latest full working-tree Gradle run reports 397 tests PASS, 0 failures/error
 
 ## Scope and outcome
 
-Core code and tests now have evidence for 55 reconstructed rows across backup, tombstone, migration, recurrence, reminder, temporal model, draft, and core data-semantics contracts; 114 remain NOT TESTED, proposed priorities still need review, and historical mapping is still absent. PC-QA-GATE-001 remains **PARTIAL / HOLD**, and overall core verdict remains **HOLD**.
+Core code and tests now have evidence for 56 reconstructed rows across backup, tombstone, migration, recurrence, reminder, temporal model, draft, and core data-semantics contracts; 113 remain NOT TESTED, proposed priorities still need review, and historical mapping is still absent. PC-QA-GATE-001 remains **PARTIAL / HOLD**, and overall core verdict remains **HOLD**.
