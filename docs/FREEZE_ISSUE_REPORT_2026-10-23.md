@@ -6,7 +6,7 @@
 测试 APK：`app/build/outputs/apk/debug/app-debug.apk`
 Issue 004 修复代码基线：`16e00d55435c5029e07784ec5d945dfd7fb37ac5`
 最新测试 APK SHA-256：`EA0DE99328BF66FEA302AF5A55C82B3BD7EF3F7276922979AABBF7ABEC581A53`
-最新核心回归代码/测试基线：`1317340c8b503e44374378d00365e4d1326a3457`；Debug APK SHA-256：`EA0DE99328BF66FEA302AF5A55C82B3BD7EF3F7276922979AABBF7ABEC581A53`
+最新核心回归代码/测试基线：`da1fdaa4e2a2d102cf440411b6c8dada5dafb3da`；Debug APK SHA-256：`EA0DE99328BF66FEA302AF5A55C82B3BD7EF3F7276922979AABBF7ABEC581A53`
 设备：Issue 004 使用隔离的 Android 15 / API 35 `emulator-5556`；原 `emulator-5554` 保持运行且未操作。无物理真机。
 此前冻结工作记录了时间轴验收；本轮继续核心数据语义验收，只增加核心回归测试和文档，没有修改 UI、业务数据或 `design/`。按用户最新确认，变浅的横向边缘可接受，本轮不开展 UI 工作。
 
@@ -120,13 +120,14 @@ Issue 004 修复代码基线：`16e00d55435c5029e07784ec5d945dfd7fb37ac5`
 - 当前跟踪的仓库文件中只有对“209 项”的描述，**没有找到 209 个完整编号用例及 PASS/FAIL/证据 ID 一一映射**。
 - 因此 **209 项未逐案签核**；既不能说全部未实际测试，也不能根据 325+37 单元测试声称全部通过。
 - 本轮只读审计仍未找到原始逐案清单；已建立 208 条 RECONSTRUCTED 候选项及 1 条未定义历史槽位，见 `docs/CORE_FREEZE_ACCEPTANCE_LEDGER.csv`。候选按风险给出 P0=126/P1=82 建议分配，但 0 个原始 ID 有映射，优先级仍待审核。
-- 当前候选逐案状态：P0 PASS 51 / BLOCKED 1 / NOT TESTED 70 / SPEC UNRESOLVED 4；P1 PASS 19 / BLOCKED 8 / NOT TESTED 54 / SPEC UNRESOLVED 1；历史未分类槽位 SPEC UNRESOLVED 1。共 70 PASS、124 NOT TESTED；45 条重建候选有独立定点证据。最新结构验证 JSON `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-025.json`，CSV SHA-256 `35DF66D44D751D4F259DF2C3A9C433D30A13E8691B768DE435A87FC19F807EEC`。详细证据、source audit、验证边界与下一步见独立报告 `docs/issues/PC-QA-GATE-001-209-case-ledger.md`。
-- 最新完整 Gradle 工作树结果 388/388 通过，含受保护未跟踪测试 1 项；Lint 0 errors / 55 warnings。日志 `.local/android-test/reports/freeze-20261023/pc-issue-025-kind-conversion-full-gradle-20261023.log`，SHA-256 `DAEDC1207E6F7660AA482FFD2FC4F40DEF3A72DBD7820A02F6E29ACDE02FE6B7`。结果没有映射到缺失的原始 209 个 ID。
+- 当前候选逐案状态：P0 PASS 52 / BLOCKED 1 / NOT TESTED 69 / SPEC UNRESOLVED 4；P1 PASS 19 / BLOCKED 8 / NOT TESTED 54 / SPEC UNRESOLVED 1；历史未分类槽位 SPEC UNRESOLVED 1。共 71 PASS、123 NOT TESTED；46 条重建候选有独立定点证据。最新结构验证 JSON `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-026.json`，CSV SHA-256 `E087AF117905450FFF387150BBCD7801401B97E2FF08BE2BE4B951DD01D2C70D`。详细证据、source audit、验证边界与下一步见独立报告 `docs/issues/PC-QA-GATE-001-209-case-ledger.md`。
+- 最新完整 Gradle 工作树结果 389/389 通过，含受保护未跟踪测试 1 项；Lint 0 errors / 55 warnings。日志 `.local/android-test/reports/freeze-20261023/pc-issue-026-import-source-identity-full-gradle-20261023.log`，SHA-256 `43A92556140A6DE74419A8C04DD91ECEDCE1DF534B6BD0DD79C83E31FB9AFE1E`。结果没有映射到缺失的原始 209 个 ID。
 - `PC-ISSUE-019` 的 `REC-P0-004` 日期型 Deadline 候选、`PC-ISSUE-020` 提醒测试夹具稳定化、`PC-ISSUE-021` 的 `REC-P0-005` 不完整 Activity 草稿恢复分别保留独立报告和边界，不替代设备及历史 ID 验收。
 - `PC-ISSUE-022` 的 `REC-P0-007` 一日 Memo 本地日期语义通过 PowerStore/Robolectric 跨 SQLite 重启回归；独立报告 `docs/issues/PC-ISSUE-022-one-date-memo-local-date.md` 记录精确断言与边界。
 - `PC-ISSUE-023` 的 `REC-P0-008` 日期范围 Memo 两端本地日期及时间字段隔离通过 PowerStore/Robolectric 跨 SQLite 重启回归；独立报告 `docs/issues/PC-ISSUE-023-date-span-memo-boundaries.md` 记录精确断言与边界。
 - `PC-ISSUE-024` 的 `REC-P0-002` Activity 起止区间通过 PowerStore/Robolectric 跨 SQLite 重启回归；独立报告 `docs/issues/PC-ISSUE-024-activity-interval-persistence.md` 记录精确断言与边界。
 - `PC-ISSUE-025` 的 `REC-P0-020` 类型转换保留事件身份通过 PowerStore/Robolectric 跨 SQLite 重启回归；独立报告 `docs/issues/PC-ISSUE-025-kind-conversion-keeps-event-identity.md` 记录精确断言与边界。
+- `PC-ISSUE-026` 的 `REC-P0-016` 导入来源元数据与事件身份分离通过 PowerStore/Robolectric 跨 SQLite 重启回归；独立报告 `docs/issues/PC-ISSUE-026-import-source-metadata-identity.md` 记录精确断言与边界。
 - 解除：执行未测候选项、处理可解阻塞并审核拟定优先级；不可声称与缺失原始表完成历史逐项签核。
 
 ### PC-QA-GATE-002 · P0 / BLOCKED · OEM 真机、其他 Android API 等级与系统权限组合
