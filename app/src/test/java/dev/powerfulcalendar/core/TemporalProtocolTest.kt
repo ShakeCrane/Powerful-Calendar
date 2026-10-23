@@ -427,6 +427,49 @@ class TemporalProtocolTest {
     }
 
     @Test
+    fun timezoneBoundActivityKeepsItsDeclaredZoneAcrossDeviceZoneChangeAndDst() {
+        val previousDefault = TimeZone.getDefault()
+        val tokyo = ZoneId.of("Asia/Tokyo")
+        try {
+            TimeZone.setDefault(TimeZone.getTimeZone(tokyo))
+            val firstLocal = LocalDateTime.of(2026, 3, 7, 9, 0)
+            val start = firstLocal.atZone(newYork).toInstant().toEpochMilli()
+            val duration = 90 * 60_000L
+            val record = TemporalRecord(
+                eventSeq = 77,
+                revision = 1,
+                kind = TemporalKind.ACTIVITY,
+                title = "纽约会议",
+                startMillis = start,
+                endMillis = start + duration,
+                zoneId = newYork.id,
+                recurrence = Recurrence(freq = RecurrenceFreq.DAILY)
+            )
+            val from = LocalDate.of(2026, 3, 7).atStartOfDay(newYork).toInstant().toEpochMilli()
+            val to = LocalDate.of(2026, 3, 10).atStartOfDay(newYork).toInstant().toEpochMilli()
+
+            val occurrences = RecurrenceEngine.occurrences(record, from, to)
+            assertEquals(
+                listOf("2026-03-07T09:00", "2026-03-08T09:00", "2026-03-09T09:00"),
+                occurrences.map { it.key }
+            )
+            assertTrue(occurrences.all {
+                Instant.ofEpochMilli(it.startMillis).atZone(newYork).toLocalTime() == LocalTime.of(9, 0) &&
+                    it.endMillis == it.startMillis + duration
+            })
+            assertEquals(23 * 60 * 60_000L, occurrences[1].startMillis - occurrences[0].startMillis)
+
+            val next = RecurrenceEngine.nextOccurrence(record, start + 1, localZone = tokyo)
+            assertEquals("2026-03-08T09:00", next?.key)
+            assertEquals(occurrences[1].startMillis, next?.startMillis)
+            val byKey = RecurrenceEngine.occurrenceForKey(record, "2026-03-08T09:00", localZone = tokyo)
+            assertEquals(occurrences[1], byKey)
+        } finally {
+            TimeZone.setDefault(previousDefault)
+        }
+    }
+
+    @Test
     fun monthlyRecurrenceDoesNotDriftAfterAShortMonth() {
         val first = LocalDateTime.of(2026, 1, 31, 9, 0)
         val rule = Recurrence(freq = RecurrenceFreq.MONTHLY)
