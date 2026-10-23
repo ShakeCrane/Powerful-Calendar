@@ -212,6 +212,10 @@ class PowerStoreSchemaUpgradeTest {
         try {
             val failure = runCatching { failedOpen.readableDatabase }.exceptionOrNull()
             assertNotNull("the injected failure must interrupt the migration", failure)
+            assertTrue(
+                "the trigger must be the migration failure source",
+                failure.toString().contains("injected v4 migration failure")
+            )
         } finally {
             failedOpen.close()
         }
