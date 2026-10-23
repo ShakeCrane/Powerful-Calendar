@@ -565,6 +565,47 @@ class PowerStoreTest {
             reopened.map { it.form.title })
     }
 
+    @Test
+    fun updatingOlderDraftTimestampDoesNotChangeQueueOrderAcrossRestart() {
+        fun waitPast(timestamp: Long) {
+            val deadlineNanos = System.nanoTime() + 2_000_000_000L
+            while (System.currentTimeMillis() <= timestamp && System.nanoTime() < deadlineNanos) {
+                Thread.sleep(1)
+            }
+            assertTrue("system clock did not advance past $timestamp",
+                System.currentTimeMillis() > timestamp)
+        }
+
+        val older = store.newDraft(activityForm("older queue item"))
+        waitPast(older.updatedAtMillis)
+        val newer = store.newDraft(activityForm("newer queue item"))
+        assertTrue(newer.updatedAtMillis > older.updatedAtMillis)
+
+        waitPast(newer.updatedAtMillis)
+        assertTrue(store.stageDraft(
+            older.draftId,
+            older.form.copy(title = "edited older queue item"),
+            older.draftVersion
+        ) is PowerStore.StageResult.Saved)
+        val updatedOlder = requireNotNull(store.draft(older.draftId))
+
+        assertTrue(updatedOlder.updatedAtMillis > newer.updatedAtMillis)
+        assertEquals(older.queueOrder, updatedOlder.queueOrder)
+        assertEquals(listOf(older.draftId, newer.draftId),
+            store.pendingDrafts().map { it.draftId })
+
+        val database = store.databaseName
+        store.close()
+        store = PowerStore(context, database)
+
+        val reopened = store.pendingDrafts()
+        assertEquals(listOf(older.draftId, newer.draftId), reopened.map { it.draftId })
+        assertEquals(listOf(older.queueOrder, newer.queueOrder), reopened.map { it.queueOrder })
+        assertEquals(listOf(updatedOlder.updatedAtMillis, newer.updatedAtMillis),
+            reopened.map { it.updatedAtMillis })
+        assertTrue(reopened.first().updatedAtMillis > reopened.last().updatedAtMillis)
+    }
+
     // ---------------------------------------------------------------- whole-snapshot commits
 
     @Test
