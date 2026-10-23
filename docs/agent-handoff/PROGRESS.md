@@ -1,4 +1,12 @@
 # Core freeze progress
+## PC-ISSUE-092 — AI batch user cancellation and partial result
+
+- Added and pushed `PowerStoreTest.theAiRunnerStopsAfterUserCancelAndPersistsPartialOutcomeAcrossRestart`. The runner receives a cancellation request after the first item, does not publish the second item, returns `published=1 / kept=0 / cancelled=true`, releases the lock and persists the report across SQLite reopen; stale session writes remain denied.
+- Focused Robolectric API 34 regression passed 1/1 (log SHA-256 `FE85E768847D06B41AEC5128FD8CC85C528C997DD1127439EAA282FF05B0163D`; JUnit XML SHA-256 `F776710373A58963149903B83ED69D2667D4D27AB40F6DCFDBA924636013F638`). Full Gradle passed 446/446 across 56 suites, zero failures/errors/skips; lint 0 errors / 58 warnings. Full log SHA-256 `4A8039764F0D6B25A47B8E0B4C9FC31445E15A64382FAA3EFD6363A61C10933A`.
+- Test commit `d79b0f6d11870c5a18c6b7401ebe18e72fe95c05` is pushed. Independent report: `docs/issues/PC-ISSUE-092-ai-batch-user-cancel-partial-result.md`. `REC-P1-060` is PASS for the core runner cancellation and partial-report persistence path; the model service is not called.
+- Latest freeze remains HOLD: 132 PASS / 0 FAIL / 9 BLOCKED / 61 NOT TESTED / 7 SPEC UNRESOLVED; 114 reconstructed candidates have independent evidence. The original 209 case IDs remain unmapped. Scope remains core-only; pale horizontal edge accepted. Protected untracked files remain unchanged and unstaged.
+- Next: continue with a feasible non-UI core acceptance item.
+
 ## PC-ISSUE-091 — AI batch cancellation cleanup and stale-epoch fencing
 
 - Added and pushed `PowerStoreTest.cancelledAiBatchRunnerReleasesLockAndFencesRemainingScopeAcrossRestart`. Cancellation after the first completed item preserves that formal event and the unfinished draft, releases the batch lock, persists `CANCELLED`, and rejects the stale `AiSession` after reopening SQLite. Existing orphan recovery separately simulates a previous owner token and rejects its late write.

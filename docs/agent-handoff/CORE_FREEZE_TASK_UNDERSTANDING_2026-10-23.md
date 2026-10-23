@@ -4,6 +4,9 @@
 目标：闭环测试、最小修复、逐项回归与签核，**满足证据标准才宣布核心基线 GO**；否则给出准确 HOLD 及阻塞。本文不是验收完成证明。
 
 ## 0. 最新执行续接（2026-10-24）
+- 已提交并推送 `PC-ISSUE-092` AI 批次主动取消部分结果回归：`d79b0f6d11870c5a18c6b7401ebe18e72fe95c05`。首项完成后请求取消，runner 不再提交第二项，返回 `published=1/kept=0/cancelled=true`；报告和锁状态跨 SQLite 重开保持，旧 session 写入被拒绝。定向 1/1，完整 Gradle 446/446、56 suites，0 failures/errors/skips；Lint 0 errors/58 warnings。独立报告：`docs/issues/PC-ISSUE-092-ai-batch-user-cancel-partial-result.md`。
+- 冻结候选统计：132 PASS / 0 FAIL / 9 BLOCKED / 61 NOT TESTED / 7 SPEC UNRESOLVED；P0 110/0/1/10/5，P1 22/0/8/51/1；114 条重建候选有独立证据。结构校验 artifact：`.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-092.json`，SHA-256 `81F74E7BB9ED811BB323848ABD7450117B55C991CDDC7D31A576CD5F035CDAD8`；CSV SHA-256 `0A51B781AA9B4FB53C3F6A4772189898006BDEF401E3ABC297D0C937E8BAAB8F`。校验仅结构性，冻结仍 HOLD，历史 209 项无映射。
+- 用户范围保持：不做 UI；变浅的横向边缘接受。当前只推进核心状态与恢复验收。受保护文件保持未修改、未暂存。
 - 已提交并推送 `PC-ISSUE-091` 核心批次取消/恢复回归：`65fb3ca8bda51cf7c6bd91794789e2b152e9603a`。runner 在首项完成后收到取消时释放锁、将批次持久化为 `CANCELLED`、保留未完成草稿；SQLite 重开后拒绝旧 session 写入。既有孤儿恢复用例覆盖旧 owner token 的 stale epoch 拒写。定向 1/1，完整 Gradle 445/445、56 suites，0 failures/errors/skips；Lint 0 errors/58 warnings。独立报告：`docs/issues/PC-ISSUE-091-ai-batch-cancellation-recovery.md`。在线 provider timeout 与 OS 级强杀未测。
 - 冻结候选统计：131 PASS / 0 FAIL / 9 BLOCKED / 62 NOT TESTED / 7 SPEC UNRESOLVED；P0 110/0/1/10/5，P1 21/0/8/52/1；113 条重建候选有独立证据。结构校验 artifact：`.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-091.json`，SHA-256 `58BDF051DFBA71E5F6ADC6F8E2BA8E9F63794F0F3FF92F580B010F720C49A5E4`；CSV SHA-256 `8DF10B48392E282895057DECFF0F51D97D2AE5B214936ADBFE26024A0C77818B`。校验仅结构性，冻结仍 HOLD，历史 209 项无映射。
 - 用户最新范围：不做 UI；变浅的横向边缘接受。当前只推进核心状态与恢复验收。设计资产、受保护的未跟踪测试与观察报告保持未改动、未暂存。
