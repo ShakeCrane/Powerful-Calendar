@@ -95,28 +95,35 @@ class AiBatchRunner(private val store: PowerStore) {
                     break
                 }
                 store.heartbeat(current.sessionId)
-                when (mode) {
-                    Mode.PUBLISH -> when (val outcome = store.commit(
-                        draftId,
-                        approveStale = false,
-                        actor = "ai",
-                        aiSession = current
-                    )) {
-                        is PowerStore.CommitOutcome.Committed -> published++
-                        is PowerStore.CommitOutcome.Conflict,
-                        is PowerStore.CommitOutcome.NeedsRestore,
-                        PowerStore.CommitOutcome.NotAuthorized -> kept++
-                        is PowerStore.CommitOutcome.Invalid -> {
-                            kept++
-                            failures.add("#$draftId：${outcome.reason}")
+                try {
+                    when (mode) {
+                        Mode.PUBLISH -> when (val outcome = store.commit(
+                            draftId,
+                            approveStale = false,
+                            actor = "ai",
+                            aiSession = current
+                        )) {
+                            is PowerStore.CommitOutcome.Committed -> published++
+                            is PowerStore.CommitOutcome.Conflict,
+                            is PowerStore.CommitOutcome.NeedsRestore,
+                            PowerStore.CommitOutcome.NotAuthorized -> kept++
+                            is PowerStore.CommitOutcome.Invalid -> {
+                                kept++
+                                failures.add("#$draftId：${outcome.reason}")
+                            }
+                            PowerStore.CommitOutcome.Locked -> {
+                                cancelled = true
+                            }
                         }
-                        PowerStore.CommitOutcome.Locked -> {
-                            cancelled = true
+                        Mode.DISCARD -> {
+                            if (store.discard(draftId, current)) discarded++ else kept++
                         }
                     }
-                    Mode.DISCARD -> {
-                        if (store.discard(draftId, current)) discarded++ else kept++
-                    }
+                } catch (cancelledByCaller: kotlinx.coroutines.CancellationException) {
+                    throw cancelledByCaller
+                } catch (error: Exception) {
+                    kept++
+                    failures.add("#$draftId：${error.message ?: error.javaClass.simpleName}")
                 }
                 done++
                 onProgress(done, scope.size)
@@ -145,10 +152,10 @@ class AiBatchRunner(private val store: PowerStore) {
                 withContext(kotlinx.coroutines.NonCancellable) {
                     store.finishAiBatch(
                         session.sessionId,
-                        if (finalReport.cancelled || finalReport.failures.isNotEmpty()) {
-                            PowerStore.AiState.CANCELLED
-                        } else {
-                            PowerStore.AiState.COMPLETED
+                        when {
+                            finalReport.cancelled -> PowerStore.AiState.CANCELLED
+                            finalReport.failures.isNotEmpty() -> PowerStore.AiState.FAILED
+                            else -> PowerStore.AiState.COMPLETED
                         },
                         finalReport.toJson()
                     )

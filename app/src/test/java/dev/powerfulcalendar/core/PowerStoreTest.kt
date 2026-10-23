@@ -2615,6 +2615,82 @@ class PowerStoreTest {
     }
 
     @Test
+    fun theAiRunnerContinuesIndependentItemsAfterOneCommitFailureAndPersistsPartialReport() =
+        kotlinx.coroutines.runBlocking {
+            val first = store.newDraft(alarmForm("独立项 A", minutesAhead = 200))
+            val failed = store.newDraft(alarmForm("独立项 B 失败", minutesAhead = 260))
+            val last = store.newDraft(alarmForm("独立项 C", minutesAhead = 320))
+            val trigger = "fail_one_ai_batch_schedule"
+            store.writableDatabase.execSQL(
+                """CREATE TRIGGER $trigger
+                   BEFORE INSERT ON schedule_intents
+                   WHEN NEW.event_seq=${failed.eventSeq}
+                   BEGIN SELECT RAISE(ABORT,'injected independent batch item failure'); END"""
+            )
+            try {
+                val session = store.beginAiBatch(
+                    linkedMapOf(
+                        first.draftId to first.draftVersion,
+                        failed.draftId to failed.draftVersion,
+                        last.draftId to last.draftVersion
+                    ),
+                    setOf(DraftOperation.CREATE)
+                )
+
+                val report = dev.powerfulcalendar.ai.AiBatchRunner(store)
+                    .run(session, dev.powerfulcalendar.ai.AiBatchRunner.Mode.PUBLISH)
+
+                assertEquals(2, report.published)
+                assertEquals(1, report.kept)
+                assertFalse(report.cancelled)
+                assertEquals(1, report.failures.size)
+                assertTrue(report.failures.single().contains("injected independent batch item failure"))
+                assertNotNull(store.get(first.eventSeq))
+                assertNull(store.get(failed.eventSeq))
+                assertNotNull(store.get(last.eventSeq))
+                assertNull(store.intentFor(failed.eventSeq))
+                assertEquals(listOf(failed.draftId), store.pendingDrafts().map { it.draftId })
+                assertEquals(PowerStore.AiState.FAILED, store.currentAiSession()!!.state)
+                assertFalse(store.isLocked())
+
+                val database = store.databaseName
+                store.close()
+                store = PowerStore(context, database)
+
+                val persistedSession = requireNotNull(store.currentAiSession())
+                assertEquals(PowerStore.AiState.FAILED, persistedSession.state)
+                val persistedReport = JSONObject(requireNotNull(persistedSession.report))
+                assertEquals(2, persistedReport.getInt("published"))
+                assertEquals(1, persistedReport.getInt("kept"))
+                assertFalse(persistedReport.getBoolean("cancelled"))
+                assertTrue(persistedReport.getString("failures").contains("injected independent batch item failure"))
+                assertEquals(setOf(first.eventSeq, last.eventSeq), store.all().map { it.eventSeq }.toSet())
+                assertEquals(listOf(failed.draftId), store.pendingDrafts().map { it.draftId })
+                assertFalse(store.isLocked())
+                assertTrue(
+                    store.commit(failed.draftId, actor = "ai", aiSession = session)
+                        is PowerStore.CommitOutcome.NotAuthorized
+                )
+
+                store.writableDatabase.execSQL("DROP TRIGGER $trigger")
+                val retry = store.beginAiBatch(
+                    mapOf(failed.draftId to store.draft(failed.draftId)!!.draftVersion),
+                    setOf(DraftOperation.CREATE)
+                )
+                val retryReport = dev.powerfulcalendar.ai.AiBatchRunner(store)
+                    .run(retry, dev.powerfulcalendar.ai.AiBatchRunner.Mode.PUBLISH)
+                assertEquals(1, retryReport.published)
+                assertEquals(0, retryReport.kept)
+                assertTrue(retryReport.failures.isEmpty())
+                assertEquals(PowerStore.AiState.COMPLETED, store.currentAiSession()!!.state)
+                assertTrue(store.pendingDrafts().isEmpty())
+                assertFalse(store.isLocked())
+            } finally {
+                runCatching { store.writableDatabase.execSQL("DROP TRIGGER IF EXISTS $trigger") }
+            }
+        }
+
+    @Test
     fun theAiRunnerStopsAfterUserCancelAndPersistsPartialOutcomeAcrossRestart() =
         kotlinx.coroutines.runBlocking {
             val first = store.newDraft(activityForm("取消前已提交"))
