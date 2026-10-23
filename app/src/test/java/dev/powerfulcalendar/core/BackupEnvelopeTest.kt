@@ -2,6 +2,7 @@ package dev.powerfulcalendar.core
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import dev.powerfulcalendar.BuildConfig
 import dev.powerfulcalendar.ai.AiSettings
 import dev.powerfulcalendar.ai.AiSettingsStore
 import org.json.JSONArray
@@ -179,6 +180,26 @@ class BackupEnvelopeTest {
             assertEquals(0, migration.first)
             assertEquals(listOf("warn"), migration.third)
             assertEquals(expectedLineage, target.exportBackup().getString("storeLineageId"))
+        } finally {
+            closeStore(target)
+        }
+    }
+
+    @Test
+    fun backupFromNewerAppVersionRestoresWhenDatabaseSchemaIsSupported() {
+        val (activitySeq, alarmSeq, _) = seed()
+        val newerAppVersionCode = BuildConfig.VERSION_CODE.toLong() + 50_000L
+        val envelope = source.exportBackup().put("appVersionCode", newerAppVersionCode)
+
+        val verified = BackupEnvelope.verify(envelope, PowerStore.VERSION)
+        assertTrue(newerAppVersionCode > BuildConfig.VERSION_CODE)
+        assertEquals(newerAppVersionCode, verified.appVersionCode)
+        assertEquals(PowerStore.VERSION, verified.databaseSchemaVersion)
+
+        val target = restoreIntoFresh(envelope)
+        try {
+            assertEquals("已提交活动", target.get(activitySeq)!!.title)
+            assertNotNull("supported-schema alarm should rebuild a desired schedule", target.intentFor(alarmSeq))
         } finally {
             closeStore(target)
         }
