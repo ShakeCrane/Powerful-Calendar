@@ -1,4 +1,11 @@
 # Core freeze progress
+## PC-ISSUE-098 — repeated approval core idempotency checkpoint (candidate remains NOT TESTED)
+
+- The existing `PowerStoreTest.repeatedCommitReturnsTheOriginalOutcome` was run directly: a second ordinary commit of the same draft returns `duplicate=true`, the same revision/commitId, and leaves one history record. No code defect was found and no source/test file changed.
+- Targeted Robolectric API 34 passed 1/1. The current code baseline's full Gradle run passed 451/451 across 57 suites, zero failures/errors/skips; lint 0 errors / 58 warnings. API 35 approval action and device behavior remain untested; no UI was changed.
+- Independent checkpoint report: `docs/issues/PC-ISSUE-098-ai-approval-idempotency-core-checkpoint.md`. `REC-P1-057` remains NOT TESTED.
+- Freeze remains HOLD: 135 PASS / 0 FAIL / 9 BLOCKED / 58 NOT TESTED / 7 SPEC UNRESOLVED; P0 111/0/1/9/5; P1 24/0/8/49/1. Structural-only artifact: `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-098.json`, SHA-256 `FD48462009013801EACEF7CE707CD0D5E4D05D908F2028813BB583211AC7733E`; ledger SHA-256 `09D00A90C6CF4F49E47B5AADA8C213E12F1ABCAA877A9F7547F730183C06A8E2`.
+
 ## PC-ISSUE-097 — AI draft persistence core checkpoint (candidate remains NOT TESTED)
 
 - Added `PowerStoreTest.parsedAiCreateProposalPersistsAsAnUnpublishedDraftAcrossRestart`: a locally parsed CREATE proposal becomes a PENDING draft, creates no formal event/history, and keeps its identity, form, version, status, and queue entry after SQLite reopen. No production defect was found; this is partial core evidence only.
