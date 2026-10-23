@@ -1,4 +1,11 @@
 # Core freeze progress
+## PC-ISSUE-108 — whole-series core persistence sign-off (REC-P0-080 PASS)
+
+- Narrowed the reconstructed action from “Select whole series” to “Edit whole recurring rule through EditSession” because the declared Robolectric API 34/SQLite environment excludes a scope-selection interface. The existing test updates the stored recurrence on the same event identity, preserves the original anchor, verifies the projected occurrence keys and rechecks record/history/identity after reopen.
+- Targeted regression passed 1/1. Full offline Debug boundary/test/APK/lint run passed 460/460 across 57 suites, zero failures/errors/skips; lint 0 errors / 58 warnings. No app or test source changed.
+- Independent report: `docs/issues/PC-ISSUE-108-whole-series-core-signoff.md`. `REC-P0-080` is PASS for its declared core persistence scope; UI scope-selection behavior is not asserted.
+- Freeze remains HOLD: 137 PASS / 0 FAIL / 9 BLOCKED / 56 NOT TESTED / 7 SPEC UNRESOLVED; P0 113/0/1/7/5; P1 24/0/8/49/1. Structural-only validation `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-108.json`, SHA-256 `7554EB9924140E345AE9A3292C46CF1B64DA00374396CD48CAEA1D4B87984AB1`; ledger SHA-256 `798E12FD3FF6174450BBCF593B48D2084981098F857127A842D85E55C492E251`.
+
 ## PC-ISSUE-107 — completion-tracking reminder core sign-off (REC-P0-017 PASS)
 
 - Re-read the candidate’s declared environment and expected result: Robolectric API 34, isolated PowerStore SQLite, pending reminder intent and same-database reopen; UI, Android system scheduling and device are explicitly outside this reconstructed row. Revalidated the existing two core regressions: both tracking directions preserve enabled/reminder state and durable intent across SQLite reopen; API 34 reconcile schedules the updated revision once and rejects the old revision.
