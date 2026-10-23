@@ -541,6 +541,30 @@ class PowerStoreTest {
         assertEquals(listOf(next.draftId), store.pendingDrafts().map { it.draftId })
     }
 
+    @Test
+    fun humanProposalAppendsAfterExistingQueueAcrossRestart() {
+        val first = store.newDraft(activityForm("first"), actor = "user")
+        val second = store.newDraft(activityForm("second"), actor = "user")
+        val humanProposal = store.newDraft(activityForm("human proposal"), actor = "user")
+
+        assertTrue(second.queueOrder > first.queueOrder)
+        assertTrue(humanProposal.queueOrder > second.queueOrder)
+        assertEquals(listOf(first.draftId, second.draftId, humanProposal.draftId),
+            store.pendingDrafts().map { it.draftId })
+
+        val database = store.databaseName
+        store.close()
+        store = PowerStore(context, database)
+
+        val reopened = store.pendingDrafts()
+        assertEquals(listOf(first.draftId, second.draftId, humanProposal.draftId),
+            reopened.map { it.draftId })
+        assertEquals(listOf(first.queueOrder, second.queueOrder, humanProposal.queueOrder),
+            reopened.map { it.queueOrder })
+        assertEquals(listOf("first", "second", "human proposal"),
+            reopened.map { it.form.title })
+    }
+
     // ---------------------------------------------------------------- whole-snapshot commits
 
     @Test
