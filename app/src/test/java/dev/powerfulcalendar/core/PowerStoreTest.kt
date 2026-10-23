@@ -180,6 +180,82 @@ class PowerStoreTest {
     }
 
     @Test
+    fun editingOneRecurringOccurrencePersistsOverrideWithoutChangingOtherSlotsAcrossRestart() {
+        val shanghai = ZoneId.of("Asia/Shanghai")
+        val firstLocal = LocalDateTime.of(2026, 10, 20, 7, 30)
+        val firstMillis = firstLocal.atZone(shanghai).toInstant().toEpochMilli()
+        val recurrence = Recurrence(freq = RecurrenceFreq.DAILY, interval = 1, count = 5)
+        val card = store.newDraft(DraftForm(
+            kind = TemporalKind.ALARM,
+            title = "单次改期持久化",
+            startText = DraftForm.formatInstant(firstMillis, shanghai),
+            reminderMinutes = -1,
+            zoneId = shanghai.id,
+            recurrence = recurrence
+        ))
+        assertTrue(commit(card) is PowerStore.CommitOutcome.Committed)
+
+        val before = requireNotNull(store.get(card.eventSeq))
+        val from = LocalDateTime.of(2026, 10, 20, 0, 0)
+            .atZone(shanghai).toInstant().toEpochMilli()
+        val until = LocalDateTime.of(2026, 10, 26, 0, 0)
+            .atZone(shanghai).toInstant().toEpochMilli()
+        val original = RecurrenceEngine.occurrences(before, from, until)
+        val originalKeys = original.map { it.key }
+        val selectedKey = RecurrenceEngine.keyFor(LocalDateTime.of(2026, 10, 21, 7, 30))
+        val movedStart = LocalDateTime.of(2026, 10, 21, 9, 15)
+            .atZone(shanghai).toInstant().toEpochMilli()
+        assertEquals((20..24).map { "2026-10-%02dT07:30".format(it) }, originalKeys)
+
+        val session = EditSession.open(store, before)
+        try {
+            session.edit(session.form.copy(
+                recurrence = session.form.recurrence.copy(
+                    overrides = mapOf(selectedKey to OccurrenceOverride(movedStart, null))
+                )
+            ))
+            val saved = session.save()
+            assertTrue(
+                "single-instance override must be committed",
+                saved is PowerStore.DirectEditOutcome.Saved && saved.changed
+            )
+        } finally {
+            session.close()
+        }
+
+        val after = requireNotNull(store.get(card.eventSeq))
+        assertEquals(before.eventSeq, after.eventSeq)
+        assertEquals(before.revision + 1, after.revision)
+        assertEquals(before.startMillis, after.startMillis)
+        assertEquals(
+            before.recurrence.copy(overrides = mapOf(
+                selectedKey to OccurrenceOverride(movedStart, null)
+            )),
+            after.recurrence
+        )
+        val projected = RecurrenceEngine.occurrences(after, from, until)
+        assertEquals(originalKeys, projected.map { it.key })
+        assertEquals(movedStart, projected.single { it.key == selectedKey }.startMillis)
+        original.filterNot { it.key == selectedKey }.forEach { unchanged ->
+            assertEquals(
+                "non-selected slot ${unchanged.key} must retain its time",
+                unchanged.startMillis,
+                projected.single { it.key == unchanged.key }.startMillis
+            )
+        }
+
+        val database = store.databaseName
+        store.close()
+        store = PowerStore(context, database)
+        val reopened = requireNotNull(store.get(card.eventSeq))
+        assertEquals(after, reopened)
+        val reopenedProjection = RecurrenceEngine.occurrences(reopened, from, until)
+        assertEquals(projected, reopenedProjection)
+        assertEquals(1L, store.identityCount())
+        assertEquals(2, store.history(card.eventSeq).size)
+    }
+
+    @Test
     fun humanLeaseNeverLeaksAcrossCallersOrProcessesAndOnlyForeignStaleLeaseRecovers() {
         val database = "lease-" + UUID.randomUUID() + ".db"
         val owner = PowerStore(context, database, "process-owner")
