@@ -205,6 +205,29 @@ class PowerStoreTest {
         assertEquals(memo.revision + 1, reopened.revision)
     }
 
+    @Test
+    fun changingReminderPreservesOptionalCompletionTracking() {
+        listOf(false, true).forEachIndexed { index, trackingEnabled ->
+            val card = store.newDraft(activityForm("提醒设置 $index").copy(
+                trackingEnabled = trackingEnabled
+            ))
+            assertTrue(commit(card) is PowerStore.CommitOutcome.Committed)
+            val current = store.get(card.eventSeq)!!
+            val reminderMinutes = 10 + index
+            val edit = store.newDraft(
+                DraftForm.from(current).copy(reminderMinutes = reminderMinutes),
+                current.eventSeq,
+                DraftOperation.REPLACE
+            )
+
+            assertTrue(commit(edit) is PowerStore.CommitOutcome.Committed)
+            val updated = store.get(card.eventSeq)!!
+            assertEquals(trackingEnabled, updated.trackingEnabled)
+            assertEquals(reminderMinutes, updated.reminderMinutes)
+            assertTrue(updated.completedKeys.isEmpty())
+        }
+    }
+
     // ---------------------------------------------------------------- permanent identity
 
     @Test
