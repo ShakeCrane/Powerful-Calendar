@@ -54,9 +54,13 @@ class ReminderPersistenceTest {
                 reminderMinutes = 30))
         val result = store.commit(card.draftId, actor = "test")
         assertTrue(result is PowerStore.CommitOutcome.Committed)
-        assertEquals(PowerStore.TriggerRequirement.EXACT, store.intentFor(card.eventSeq)?.requirement)
+        val intent = store.intentFor(card.eventSeq)!!
+        assertEquals(PowerStore.TriggerRequirement.EXACT, intent.requirement)
+        assertEquals(card.eventSeq, intent.eventSeq)
         val record = store.get(card.eventSeq)!!
+        assertEquals(TemporalKind.ACTIVITY, record.kind)
         assertEquals(ReminderMethod.ALARM, record.reminderMethod)
         assertEquals(30, record.reminderMinutes)
+        assertEquals(listOf(card.eventSeq), store.all().map { it.eventSeq })
     }
 }
