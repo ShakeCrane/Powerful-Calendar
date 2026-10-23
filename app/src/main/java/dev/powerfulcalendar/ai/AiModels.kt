@@ -167,7 +167,9 @@ object AiResponseParser {
                     else -> null
                 }
             if (kind == null) {
-                warnings.add("第 ${index + 1} 项类型未知且没有可参照的事件，已忽略")
+                warnings.add(
+                    "第 ${index + 1} 项类型未知且没有可参照的事件，未生成草稿；请说明它属于闹钟、活动、截止还是备忘"
+                )
                 continue
             }
             val existing = target?.let(DraftForm::from)

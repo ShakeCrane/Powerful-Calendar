@@ -1313,6 +1313,25 @@ class PowerStoreTest {
     }
 
     @Test
+    fun aiProposalWithoutDecidableKindRequestsClarificationWithoutReservingData() {
+        val raw = """
+            {"events":[{"operation":"CREATE","title":"待分类事项","notes":""}]}
+        """.trimIndent()
+        val interpretation = AiResponseParser.parse(raw, emptyList(), zone)
+
+        assertTrue(interpretation.proposals.isEmpty())
+        assertTrue(interpretation.warnings.any { it.contains("请说明它属于") })
+
+        val created = AiDraftService(store).createDrafts(interpretation)
+
+        assertTrue(created.draftIds.isEmpty())
+        assertTrue(created.warnings.any { it.contains("请说明它属于") })
+        assertTrue(store.all().isEmpty())
+        assertTrue(store.pendingDrafts().isEmpty())
+        assertEquals(0L, store.identityCount())
+    }
+
+    @Test
     fun parsedAiActivityWithMissingTimeRemainsRepairableDraftAcrossRestart() {
         val raw = """
             {"events":[{"operation":"CREATE","kind":"ACTIVITY","title":"待补时间的会议",
