@@ -1,9 +1,12 @@
 package dev.powerfulcalendar.reminders
 
+import android.app.AlarmManager
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import dev.powerfulcalendar.core.DraftForm
+import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.PowerStore
+import dev.powerfulcalendar.core.ReminderMethod
 import dev.powerfulcalendar.core.TemporalKind
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -12,7 +15,9 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowAlarmManager
 import java.time.ZoneId
 import java.util.UUID
 
@@ -36,6 +41,7 @@ class ReminderValidationTest {
 
     @After
     fun tearDown() {
+        ShadowAlarmManager.setCanScheduleExactAlarms(true)
         val name = store.databaseName
         store.close()
         context.deleteDatabase(name)
@@ -87,6 +93,31 @@ class ReminderValidationTest {
         )
         assertTrue(stale is ReminderScheduler.Validation.Rejected)
         assertTrue((stale as ReminderScheduler.Validation.Rejected).reason.contains("版本"))
+    }
+
+    @Test
+    fun exactAlarmPermissionDeniedBlocksWithoutApproximateFallback() {
+        val alarmManager = context.getSystemService(AlarmManager::class.java)!!
+        val shadowAlarmManager = Shadows.shadowOf(alarmManager)
+        ShadowAlarmManager.setCanScheduleExactAlarms(false)
+
+        val seq = createAlarm(60)
+        val record = store.get(seq)!!
+        val exactReminder = store.newDraft(
+            DraftForm.from(record).copy(reminderMethod = ReminderMethod.ALARM),
+            seq,
+            DraftOperation.REPLACE
+        )
+        assertTrue(store.commit(exactReminder.draftId) is PowerStore.CommitOutcome.Committed)
+        val requested = store.intentFor(seq)!!
+        assertEquals(PowerStore.TriggerRequirement.EXACT, requested.requirement)
+
+        ReminderScheduler.reconcile(context, store)
+
+        val blocked = store.intentFor(seq)!!
+        assertEquals(PowerStore.DesiredSchedule.BLOCKED, blocked.desired)
+        assertTrue(blocked.androidHint.orEmpty().contains("精确闹钟权限"))
+        assertTrue(shadowAlarmManager.scheduledAlarms.isEmpty())
     }
 
     @Test
