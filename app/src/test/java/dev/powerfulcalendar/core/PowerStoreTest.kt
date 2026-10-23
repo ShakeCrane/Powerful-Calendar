@@ -186,8 +186,13 @@ class PowerStoreTest {
         assertTrue(commit(card) is PowerStore.CommitOutcome.Committed)
         val memo = store.get(card.eventSeq)!!
 
+        assertEquals(TemporalKind.MEMO, memo.kind)
         assertEquals("2026-10-21", memo.memoStartDate)
         assertEquals("2026-10-23", memo.memoEndDate)
+        assertNull(memo.startMillis)
+        assertNull(memo.endMillis)
+        assertNull(memo.deadlineDate)
+        assertNull(memo.deadlineMillis)
         assertTrue(memo.trackingEnabled)
         assertTrue(memo.completedKeys.isEmpty())
         assertFalse(store.setCompleted(card.eventSeq, "2026-10-22", true, memo.revision))
@@ -199,8 +204,13 @@ class PowerStoreTest {
         store = PowerStore(context, database)
         val reopened = store.get(card.eventSeq)!!
 
+        assertEquals(TemporalKind.MEMO, reopened.kind)
         assertEquals("2026-10-21", reopened.memoStartDate)
         assertEquals("2026-10-23", reopened.memoEndDate)
+        assertNull(reopened.startMillis)
+        assertNull(reopened.endMillis)
+        assertNull(reopened.deadlineDate)
+        assertNull(reopened.deadlineMillis)
         assertEquals(setOf("single"), reopened.completedKeys)
         assertEquals(memo.revision + 1, reopened.revision)
     }
