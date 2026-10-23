@@ -14,6 +14,7 @@ object AlarmContract {
     const val EXTRA_OCCURRENCE_KEY = "occurrence_key"
     const val EXTRA_TRIGGER_ID = "trigger_id"
     const val EXTRA_INSTANT = "trigger_instant"
+    /** True only on the delayed ACTION_FIRE broadcast created after a snooze button press. */
     const val EXTRA_SNOOZE = "is_snooze"
 
     const val CHANNEL_ALARMS = "powercal-alarms"

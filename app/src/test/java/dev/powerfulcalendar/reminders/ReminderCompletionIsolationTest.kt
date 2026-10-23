@@ -12,6 +12,9 @@ import android.database.sqlite.SQLiteDatabase
 import androidx.test.core.app.ApplicationProvider
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.PowerStore
+import dev.powerfulcalendar.core.Recurrence
+import dev.powerfulcalendar.core.RecurrenceEngine
+import dev.powerfulcalendar.core.RecurrenceFreq
 import dev.powerfulcalendar.core.TemporalKind
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -22,6 +25,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows
 import org.robolectric.annotation.Config
 import java.io.File
+import java.time.Instant
 import java.time.ZoneId
 import java.util.UUID
 
@@ -54,6 +58,73 @@ class ReminderCompletionIsolationTest {
             assertTrue(record.completedKeys.isEmpty())
             assertTrue(store.get(seq)!!.completedKeys.isEmpty())
             assertEquals(record.revision, store.get(seq)!!.revision)
+        } finally {
+            closeFixture(fixture)
+        }
+    }
+
+    @Test
+    fun snoozedRecurringOccurrenceFiresWithoutChangingItsSeries() {
+        val fixture = newFixture()
+        val store = fixture.store
+        try {
+            val start = (System.currentTimeMillis() / 60_000L) * 60_000L - 60_000L
+            val card = store.newDraft(
+                DraftForm(
+                    kind = TemporalKind.ALARM,
+                    title = "重复提醒稍后响",
+                    startText = DraftForm.formatInstant(start, zone),
+                    reminderMinutes = 0,
+                    trackingEnabled = true,
+                    zoneId = zone.id,
+                    recurrence = Recurrence(freq = RecurrenceFreq.DAILY)
+                )
+            )
+            assertTrue(store.commit(card.draftId, actor = "test") is PowerStore.CommitOutcome.Committed)
+            val before = store.get(card.eventSeq)!!
+            val occurrenceKey = RecurrenceEngine.keyFor(
+                Instant.ofEpochMilli(start).atZone(zone).toLocalDateTime()
+            )
+            val windowStart = start - 60_000L
+            val windowEnd = start + 3 * 24 * 60 * 60_000L
+            val seriesBefore = RecurrenceEngine.occurrences(before, windowStart, windowEnd, limit = 10)
+            assertTrue(seriesBefore.any { it.key == occurrenceKey })
+
+            val snoozeAction = Intent(fixture.context, ReminderReceiver::class.java).apply {
+                action = AlarmContract.ACTION_SNOOZE
+                putExtra(AlarmContract.EXTRA_EVENT_SEQ, card.eventSeq)
+                putExtra(AlarmContract.EXTRA_REVISION, before.revision)
+                putExtra(AlarmContract.EXTRA_OCCURRENCE_KEY, occurrenceKey)
+                putExtra(AlarmContract.EXTRA_TRIGGER_ID, "primary")
+                putExtra(AlarmContract.EXTRA_INSTANT, System.currentTimeMillis())
+            }
+            ReminderReceiver().handle(fixture.context, snoozeAction)
+
+            // ReminderScheduler.scheduleSnooze emits FIRE + EXTRA_SNOOZE=true for the delayed alarm.
+            val delayedSnooze = Intent(fixture.context, ReminderReceiver::class.java).apply {
+                action = AlarmContract.ACTION_FIRE
+                putExtra(AlarmContract.EXTRA_EVENT_SEQ, card.eventSeq)
+                putExtra(AlarmContract.EXTRA_REVISION, before.revision)
+                putExtra(AlarmContract.EXTRA_OCCURRENCE_KEY, occurrenceKey)
+                putExtra(AlarmContract.EXTRA_TRIGGER_ID, "primary")
+                putExtra(AlarmContract.EXTRA_INSTANT, System.currentTimeMillis() - 1_000L)
+                putExtra(AlarmContract.EXTRA_SNOOZE, true)
+            }
+            ReminderReceiver().handle(fixture.context, delayedSnooze)
+
+            val after = store.get(card.eventSeq)!!
+            assertEquals(before.revision, after.revision)
+            assertEquals(before.recurrence, after.recurrence)
+            assertEquals(before.completedKeys, after.completedKeys)
+            assertEquals(
+                seriesBefore,
+                RecurrenceEngine.occurrences(after, windowStart, windowEnd, limit = 10)
+            )
+            assertEquals("FIRED", store.lastExecution(card.eventSeq))
+            val posted = fixture.context.getSystemService(NotificationManager::class.java)!!
+                .activeNotifications.single { it.id == NotificationHelper.notificationId(card.eventSeq) }
+                .notification
+            assertTrue(posted.extras.getCharSequence(Notification.EXTRA_TEXT).toString().contains("稍后提醒"))
         } finally {
             closeFixture(fixture)
         }
