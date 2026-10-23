@@ -834,6 +834,60 @@ class PowerStoreTest {
         }
     }
 
+    @Test
+    fun changingCompletionTrackingPreservesReminderIntentAcrossRestart() {
+        val expectedRecords = listOf(false, true).mapIndexed { index, trackingEnabled ->
+            val card = store.newDraft(activityForm("跟踪与提醒独立 $index", 90).copy(
+                reminderMinutes = 15,
+                trackingEnabled = trackingEnabled
+            ))
+            assertTrue(commit(card) is PowerStore.CommitOutcome.Committed)
+            val before = requireNotNull(store.get(card.eventSeq))
+            val beforeIntent = requireNotNull(store.intentFor(card.eventSeq))
+            assertEquals(PowerStore.DesiredSchedule.PENDING, beforeIntent.desired)
+
+            val edit = store.newDraft(
+                DraftForm.from(before).copy(trackingEnabled = !trackingEnabled),
+                before.eventSeq,
+                DraftOperation.REPLACE
+            )
+            assertTrue(commit(edit) is PowerStore.CommitOutcome.Committed)
+
+            val after = requireNotNull(store.get(card.eventSeq))
+            val afterIntent = requireNotNull(store.intentFor(card.eventSeq))
+            assertEquals(before.enabled, after.enabled)
+            assertEquals(before.reminderMinutes, after.reminderMinutes)
+            assertEquals(before.reminderMethod, after.reminderMethod)
+            assertEquals(before.reminderTiming, after.reminderTiming)
+            assertEquals(!trackingEnabled, after.trackingEnabled)
+            assertTrue(after.completedKeys.isEmpty())
+            assertEquals(
+                beforeIntent.copy(revision = after.revision),
+                afterIntent
+            )
+            assertEquals(2, store.history(card.eventSeq).size)
+            after
+        }
+
+        val database = store.databaseName
+        store.close()
+        store = PowerStore(context, database)
+        expectedRecords.forEach { expected ->
+            assertEquals(expected, store.get(expected.eventSeq))
+            assertEquals(
+                expected.revision,
+                requireNotNull(store.intentFor(expected.eventSeq)).revision
+            )
+            assertEquals(
+                PowerStore.DesiredSchedule.PENDING,
+                store.intentFor(expected.eventSeq)!!.desired
+            )
+            assertEquals(2, store.history(expected.eventSeq).size)
+        }
+        assertEquals(2L, store.identityCount())
+        assertEquals(3L, store.nextSequencePreview())
+    }
+
     // ---------------------------------------------------------------- permanent identity
 
     @Test
