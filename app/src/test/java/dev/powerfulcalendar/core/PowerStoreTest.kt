@@ -629,6 +629,47 @@ class PowerStoreTest {
     }
 
     @Test
+    fun stagedMutationAdvancesFormalRevisionOnlyWhenCommittedAcrossRestart() {
+        val original = store.newDraft(activityForm("revision one"))
+        assertEquals(1L, (commit(original) as PowerStore.CommitOutcome.Committed).revision)
+        val eventSeq = original.eventSeq
+        val formal = requireNotNull(store.get(eventSeq))
+
+        val proposal = store.newDraft(
+            DraftForm.from(formal).copy(title = "proposal before staging"),
+            eventSeq,
+            DraftOperation.REPLACE
+        )
+        assertEquals(1L, store.get(eventSeq)!!.revision)
+        assertEquals("revision one", store.get(eventSeq)!!.title)
+
+        assertTrue(store.stageDraft(
+            proposal.draftId,
+            proposal.form.copy(title = "staged proposal"),
+            proposal.draftVersion
+        ) is PowerStore.StageResult.Saved)
+        assertEquals(1L, store.get(eventSeq)!!.revision)
+        assertEquals("revision one", store.get(eventSeq)!!.title)
+
+        val database = store.databaseName
+        store.close()
+        store = PowerStore(context, database)
+
+        val formalAfterRestart = requireNotNull(store.get(eventSeq))
+        val stagedAfterRestart = requireNotNull(store.draft(proposal.draftId))
+        assertEquals(1L, formalAfterRestart.revision)
+        assertEquals("revision one", formalAfterRestart.title)
+        assertEquals(1L, stagedAfterRestart.baseRevision)
+        assertEquals("staged proposal", stagedAfterRestart.form.title)
+
+        val committed = store.commit(stagedAfterRestart.draftId)
+            as PowerStore.CommitOutcome.Committed
+        assertEquals(2L, committed.revision)
+        assertEquals(2L, store.get(eventSeq)!!.revision)
+        assertEquals("staged proposal", store.get(eventSeq)!!.title)
+    }
+
+    @Test
     fun multipleCommitsKeepOneCurrentFormalSnapshotAcrossRestart() {
         val created = store.newDraft(activityForm("revision one"))
         assertTrue(commit(created) is PowerStore.CommitOutcome.Committed)
