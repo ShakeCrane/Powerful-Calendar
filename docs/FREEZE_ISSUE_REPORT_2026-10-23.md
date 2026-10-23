@@ -6,7 +6,7 @@
 测试 APK：`app/build/outputs/apk/debug/app-debug.apk`
 Issue 004 修复代码基线：`16e00d55435c5029e07784ec5d945dfd7fb37ac5`
 最新测试 APK SHA-256：`B0AB218FF70D696E25B570F0151BEC0F58B07FE545A045EE976EBD4F1173CAE1`
-最新核心回归代码基线：`5df9e00b04ad50dc5c4e12154cf117cc4a159a23`；Debug APK SHA-256：`9677B9816B9028EF5C25EC84025ABA56DDB92BEB5CF36B2197AC5615315BB0AE`
+最新核心回归代码基线：`2171c3f96fb69a1e6d14e1fb170d4c53a9439184`；Debug APK SHA-256：`63F8DCB69D1028B8D7061B374162F59770B86FA2FA4BEB6FDA132D4393AA8B6C`
 设备：Issue 004 使用隔离的 Android 15 / API 35 `emulator-5556`；原 `emulator-5554` 保持运行且未操作。无物理真机。
 本轮改动时间轴 UI 与回归测试；未清除模拟器/业务数据，未修改或删除 `design/`。
 
@@ -35,6 +35,7 @@ Issue 004 修复代码基线：`16e00d55435c5029e07784ec5d945dfd7fb37ac5`
 | FQ-19 | Envelope 哈希、水位拒绝与格式降级防护（REC-P0-091/097/106） | **PASS（定点 JVM 回归 3/3）** | `BackupEnvelopeTest` 三个精确方法通过；代码基线 `574092de1046763c4aad40d7db4a2dd9123848fa`，APK SHA-256 `53C200F398D13D636125572DBD0C4876FEA1A18585323C935F9C13F8E061E103`；日志 SHA-256 `F14D6EB7B5D96678EF84B4B6177B69446C27DF46AC5820712C5E424921D4CAD9`，详见 `docs/issues/PC-QA-GATE-001-209-case-ledger.md` |
 | FQ-20 | 删除后显式恢复墓碑、保留同一 `eventSeq`（REC-P0-055/056） | **PASS（核心 JVM）；产品验收 PARTIAL / HOLD** | SQLite 与 DeckController 定点测试 2/2；恢复确认前保留墓碑，拒绝非 user actor，确认后 revision +1、序号水位不变并重建提醒。提交 `40e5dd35bd238da476f67507994b6c100b646b89`；全量 366 项 PASS / lint 0 errors、55 warnings；API 35 设备未测，当前无 UI 动作调用 `beginRestore`。独立报告 `docs/issues/PC-ISSUE-005-retired-event-restoration.md` |
 | FQ-21 | 原生备份引用、水位、墓碑、草稿/提交历史与凭据边界（REC-P0-094/095/096/098/099/100/101/109） | **PASS（核心 JVM）；整体冻结 HOLD** | 定向 7/7，覆盖未知格式/版本、两类悬空引用、`nextOrder`、墓碑和历史往返、API 密钥及调度句柄排除。测试提交 `5df9e00b04ad50dc5c4e12154cf117cc4a159a23`；全量 372 项 PASS / lint 0 errors、55 warnings；无模拟器/真机测试。独立报告 `docs/issues/PC-ISSUE-006-backup-roundtrip-contract.md` |
+| FQ-22 | 备份预检后出现新写入时事务内复查（REC-P0-103） | **PASS（核心 JVM）；整体冻结 HOLD** | 第二 SQLite store 在预检完成后写入草稿；事务内复查拒绝恢复并保留后来写入的数据。测试提交 `2171c3f96fb69a1e6d14e1fb170d4c53a9439184`；全量 373 项 PASS / lint 0 errors、55 warnings；没有设备测试。独立报告 `docs/issues/PC-ISSUE-007-post-preflight-concurrent-restore.md` |
 
 注意：`FQ-01` 的 325 为单元测试用例数，`FQ-03` 的 37 为工具测试用例数，`FQ-16` 的 11 是业务检查组。它们**不能**直接映射为冻结清单中的 209 个独立项目。
 
@@ -89,6 +90,10 @@ Issue 004 修复代码基线：`16e00d55435c5029e07784ec5d945dfd7fb37ac5`
 - 新增并逐项签核 8 个重建候选项：未知格式/版本、双向悬空引用、`nextOrder` 下界、墓碑保留、草稿身份/顺序、提交修订历史、API 凭据及调度句柄排除。没有发现需要修改生产逻辑的缺陷。
 - 定向 7/7，完整 Gradle 372/372，Lint 0 errors / 55 warnings；均为 JVM/SQLite 与构建验证，无 Android 设备验收。证据见 `docs/issues/PC-ISSUE-006-backup-roundtrip-contract.md`。
 
+### PC-ISSUE-007 · P0 / 预检后并发写入保护 PASS；整体冻结 HOLD
+- 定向测试在预检与 payload 校验完成后，经第二 SQLite store 写入新草稿；后续恢复事务通过已有非空复查拒绝导入，原身份、草稿和 allocator 保留。只增加 `internal` 确定性测试入口，公开恢复行为不变。
+- 定向 1/1、完整 Gradle 373/373，Lint 0 errors / 55 warnings；不含 Android 设备验收。Robolectric 真锁交错尝试遇到 SQLite busy/线程归属问题，未计入 PASS；一份中间日志被后续最终日志覆盖，缺口已在独立报告中披露。详见 `docs/issues/PC-ISSUE-007-post-preflight-concurrent-restore.md`。
+
 ### PC-OBS-005 · NEEDS REPRO · 部分提交操作即时反馈可能存在时序竞争
 - 旧 Round 1/2 观察：某些 Publish 之后立刻采样 UI 未见结果，稍后实际提交成功。
 - 当前证据不足以证明业务写入失败；按确定性等待稳定后复现再立缺陷。
@@ -105,8 +110,8 @@ Issue 004 修复代码基线：`16e00d55435c5029e07784ec5d945dfd7fb37ac5`
 - 当前跟踪的仓库文件中只有对“209 项”的描述，**没有找到 209 个完整编号用例及 PASS/FAIL/证据 ID 一一映射**。
 - 因此 **209 项未逐案签核**；既不能说全部未实际测试，也不能根据 325+37 单元测试声称全部通过。
 - 本轮只读审计仍未找到原始逐案清单；已建立 208 条 RECONSTRUCTED 候选项及 1 条未定义历史槽位，见 `docs/CORE_FREEZE_ACCEPTANCE_LEDGER.csv`。候选按风险给出 P0=126/P1=82 建议分配，但 0 个原始 ID 有映射，优先级仍待审核。
-- 候选逐案状态：P0 PASS 19 / BLOCKED 1 / NOT TESTED 102 / SPEC UNRESOLVED 4；P1 PASS 19 / BLOCKED 8 / NOT TESTED 54 / SPEC UNRESOLVED 1；历史未分类槽位 SPEC UNRESOLVED 1。共 38 PASS、156 NOT TESTED；13 条备份/墓碑候选有独立定点证据。详细证据、source audit、验证边界与下一步见独立报告 `docs/issues/PC-QA-GATE-001-209-case-ledger.md`。
-- 最新完整 Gradle 工作树结果 372 项通过，含受保护未跟踪测试 1 项；三批备份/墓碑定点回归均保留独立日志。候选结果没有映射到缺失的原始 209 个 ID。
+- 候选逐案状态：P0 PASS 20 / BLOCKED 1 / NOT TESTED 101 / SPEC UNRESOLVED 4；P1 PASS 19 / BLOCKED 8 / NOT TESTED 54 / SPEC UNRESOLVED 1；历史未分类槽位 SPEC UNRESOLVED 1。共 39 PASS、155 NOT TESTED；14 条备份/墓碑候选有独立定点证据。详细证据、source audit、验证边界与下一步见独立报告 `docs/issues/PC-QA-GATE-001-209-case-ledger.md`。
+- 最新完整 Gradle 工作树结果 373 项通过，含受保护未跟踪测试 1 项；四批备份/墓碑定点回归均保留独立日志。候选结果没有映射到缺失的原始 209 个 ID。
 - 解除：执行未测候选项、处理可解阻塞并审核拟定优先级；不可声称与缺失原始表完成历史逐项签核。
 
 ### PC-QA-GATE-002 · P0 / BLOCKED · OEM 真机、其他 Android API 等级与系统权限组合
