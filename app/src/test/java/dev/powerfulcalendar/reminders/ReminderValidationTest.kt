@@ -125,6 +125,31 @@ class ReminderValidationTest {
     }
 
     @Test
+    @Config(sdk = [35])
+    fun api35ExactAlarmDenialIsDurablyBlockedWithoutScheduling() {
+        val alarmManager = context.getSystemService(AlarmManager::class.java)!!
+        val shadowAlarmManager = Shadows.shadowOf(alarmManager)
+        ShadowAlarmManager.setCanScheduleExactAlarms(false)
+
+        val seq = createAlarm(60)
+        val record = store.get(seq)!!
+        val exactReminder = store.newDraft(
+            DraftForm.from(record).copy(reminderMethod = ReminderMethod.ALARM),
+            seq,
+            DraftOperation.REPLACE
+        )
+        assertTrue(store.commit(exactReminder.draftId) is PowerStore.CommitOutcome.Committed)
+        assertEquals(PowerStore.TriggerRequirement.EXACT, store.intentFor(seq)!!.requirement)
+
+        ReminderScheduler.reconcile(context, store)
+
+        val blocked = store.intentFor(seq)!!
+        assertEquals(PowerStore.DesiredSchedule.BLOCKED, blocked.desired)
+        assertTrue(blocked.androidHint.orEmpty().contains("精确闹钟权限"))
+        assertTrue(shadowAlarmManager.scheduledAlarms.isEmpty())
+    }
+
+    @Test
     fun revokingExactAlarmPermissionBlocksScheduledIntentOnNextReconcile() {
         val alarmManager = context.getSystemService(AlarmManager::class.java)!!
         val shadowAlarmManager = Shadows.shadowOf(alarmManager)
