@@ -1,4 +1,11 @@
 # Core freeze progress
+## PC-ISSUE-101 — AI missing-time proposal core checkpoint (candidate remains NOT TESTED)
+
+- Added `PowerStoreTest.parsedAiActivityWithMissingTimeRemainsRepairableDraftAcrossRestart`. The parser keeps empty ACTIVITY times blank; the proposal stays a draft, a formal commit is rejected, and the INVALID draft/form survive SQLite reopen. Filling both times restores PENDING and allows one valid commit.
+- Targeted Robolectric API 34 passed 2/2. Full Gradle passed 453/453 across 57 suites, zero failures/errors/skips; lint 0 errors / 58 warnings. Missing-type and API 35/card paths were not tested; no UI or production code changed.
+- Test commit `814f3f2c6cb2a3d451495ae8492c8629d0aa7476` is pushed. Independent report: `docs/issues/PC-ISSUE-101-ai-incomplete-proposal-missing-time.md`. `REC-P1-051` remains NOT TESTED.
+- Freeze remains HOLD: 135 PASS / 0 FAIL / 9 BLOCKED / 58 NOT TESTED / 7 SPEC UNRESOLVED; P0 111/0/1/9/5; P1 24/0/8/49/1. Structural-only validation `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-101.json`, SHA-256 `7ECF656AF47EC32029B1B525ABE4636F06190BE762BE3119163422426FC1A6F4`; ledger SHA-256 `FB88F6EC57099AD2169DEF1828116634A22C2095A945E711E3013D546F00F519`.
+
 ## PC-ISSUE-100 — mixed AI CREATE/REPLACE core checkpoint (candidate remains NOT TESTED)
 
 - Existing parser and PowerStore regressions were run directly. One structured response stays as separate CREATE and REPLACE proposals; two PENDING drafts are created, the REPLACE keeps the target eventSeq, and neither formal event is published or mutated.
