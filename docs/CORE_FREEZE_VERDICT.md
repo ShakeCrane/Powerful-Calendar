@@ -39,7 +39,7 @@ The **RECONSTRUCTED** candidate ledger contains 208 specification-derived rows p
 
 ## Open acceptance gates
 
-- `PC-QA-GATE-001`: execute the 66 `NOT TESTED` candidate rows where feasible, resolve the 9 blocked and 6 reconstructed spec-unresolved rows where conditions allow, review proposed priorities, and keep the separate historical unclassified slot unresolved pending its source. The reconstructed 209-row candidate ledger is not the original checklist and signs off 0 original IDs.
+- `PC-QA-GATE-001`: execute the 64 `NOT TESTED` candidate rows where feasible, resolve the 9 blocked and 6 reconstructed spec-unresolved rows where conditions allow, review proposed priorities, and keep the separate historical unclassified slot unresolved pending its source. The reconstructed 209-row candidate ledger is not the original checklist and signs off 0 original IDs.
 - `PC-ISSUE-047` / `REC-P0-054`: obtain an authoritative decision reconciling same-event human/AI draft coexistence in the product baseline with SQLite v4's one-actionable-draft limit. No product behavior is signed by the spec audit.
 - `PC-ISSUE-048` / `REC-P0-058`: PowerStore's unchanged formal Save returns `Saved(changed=false)` without advancing revision; storage-only regression passed, with no UI or device claim.
 - `PC-ISSUE-049` / `REC-P0-059`: recurrence projection honors an inclusive `activeFromDate` after the original cycle anchor without rephasing; time-model regression passed, with no editor/SQLite or device claim.
