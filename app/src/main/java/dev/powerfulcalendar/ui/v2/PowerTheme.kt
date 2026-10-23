@@ -23,6 +23,7 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -225,16 +226,11 @@ object GlassShapes {
     val bar = RoundedCornerShape(20.dp)
 }
 
-/** A very soft vertical wash so the glass has something to sit on without hiding the ruler. */
+/** A uniform timeline backdrop; decorative vertical washes can read as false horizontal rules. */
 @Composable
 fun axisBackground(): Brush {
     val scheme = MaterialTheme.colorScheme
-    return Brush.verticalGradient(
-        0f to scheme.background,
-        0.42f to scheme.surfaceContainerLow,
-        0.58f to scheme.surfaceContainerLow,
-        1f to scheme.background
-    )
+    return SolidColor(scheme.background)
 }
 
 object PowerMotion {
