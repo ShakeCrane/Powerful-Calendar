@@ -4,10 +4,10 @@
 目标：闭环测试、最小修复、逐项回归与签核，**满足证据标准才宣布核心基线 GO**；否则给出准确 HOLD 及阻塞。本文不是验收完成证明。
 
 ## 1. 当前真实现场与不得丢失的工作
-- 当前执行更新（覆盖下方历史快照中的旧状态）：本次变更前 `main` 与 `origin/main` 同步于 `5d38f749b0cfd020c655f557c51568119b521b28`。Issue 002 的 AI 代码/测试已由 `bb04bfae30dc30877d41807a71236778b16617cc` 提交并推送；本轮未发现未提交 AI 文件。Issue 002 仍 PARTIAL / BLOCKED：最新免费模型两阶段复测在聊天阶段 HTTP 200 后，于结构化阶段收到 HTTP 429；证据见独立 Issue 报告与 `.local/android-test/reports/freeze-20261023/issue002-ai-retest-20261023.json`。随后读取到 `enabled=false` 的设置快照，时间晚于请求，不能据此推断请求启动时的状态；没有改设置。
+- 当前执行更新（覆盖下方历史快照中的旧状态）：本次变更前 `main` 与 `origin/main` 同步于 `abd7eaf5dcebe744310a10e878ba59f9d22e6b6c`。Issue 001 的 DST SAF 证据和当前回归已由该提交的前序独立文档提交 `abd7eaf` 记录。Issue 002 的 AI 代码/测试已由 `bb04bfae30dc30877d41807a71236778b16617cc` 提交并推送；本轮未发现未提交 AI 文件。Issue 002 仍 PARTIAL / BLOCKED：最新免费模型两阶段复测在聊天阶段 HTTP 200 后，于结构化阶段收到 HTTP 429；证据见独立 Issue 报告与 `.local/android-test/reports/freeze-20261023/issue002-ai-retest-20261023.json`。随后读取到 `enabled=false` 的设置快照，时间晚于请求，不能据此推断请求启动时的状态；没有改设置。
 - 未跟踪 `design/`、`app/src/test/java/dev/powerfulcalendar/ui/v2/DraftDeckFeedbackTest.kt`、`docs/issues/PC-OBS-005-commit-feedback.md` 属于受保护的其他资产/工作，未修改、未暂存、未提交。
 - Issue 001（ICS）：代码修复已提交；本轮在隔离 `emulator-5556` 通过纽约 DST 周重复系列的 Android SAF 导出、`icalendar 7.3.0` 独立解析与本地时间跨回拨展开核对。完整 Gradle 回归 364 项通过。设备已恢复 GMT/自动时区，数据库中的两条合成验收事件仍保留。因缺外部日历导入器与实体设备，Issue 仍 PARTIAL / HOLD；证据见 `docs/issues/PC-ISSUE-001-ICS-recurrence.md`、`issue001-saf-dst-emulator5556.ics`、`issue001-dst-independent-parse-emulator5556.json` 和 `issue001-emulator5556-postcheck.json`（均位于 `.local/android-test/reports/freeze-20261023/`）。
-- Issue 003（备份）的历史修复基线仍以其独立报告和提交记录为准；当前设备补验尚未签核。
+- Issue 003（备份）：类型化非空库拒绝与可操作错误说明已提交；API 35 的 SAF 空库恢复、篡改/无效输入拒绝、非空目标拒绝与数据指纹证据均已记录。最新完整 Gradle 回归 364 项通过；OS 实际撤销 SAF 权限和实体设备验收仍缺证，因此保持 PARTIAL / HOLD。详见 `docs/issues/PC-ISSUE-003-restore-feedback.md`。
 - .local/android-test 是仓库内测试资产及模拟器工具位置；保留既有截图、日志、失败样本、只读数据库快照、AVD。
 - 原测试环境：Android 15 API 35，PowerCal_API35，emulator-5554；原生测试场景与模拟器数据可能包含历史资料，不得随意清库。破坏性恢复用独立可丢弃实例。
 - CommandCode 地址：https://api.commandcode.ai/provider/v1；模拟器已有密钥（仅检查存在，不读/输出明文）；原模型 stealth/glyph-cluster:free。
