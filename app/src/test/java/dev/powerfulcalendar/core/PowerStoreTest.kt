@@ -391,6 +391,39 @@ class PowerStoreTest {
     }
 
     @Test
+    fun failedFirstDraftInsertRetiresItsAllocatedSequence() {
+        store.writableDatabase.execSQL(
+            """CREATE TRIGGER fail_first_draft_insert BEFORE INSERT ON drafts
+               BEGIN SELECT RAISE(ABORT,'injected first draft failure'); END"""
+        )
+
+        val failure = runCatching { store.newDraft(alarmForm("失败后不复用")) }.exceptionOrNull()
+        assertNotNull("the injected trigger must abort the first draft insert", failure)
+        assertTrue(failure.toString(), failure.toString().contains("injected first draft failure"))
+        assertEquals(0, store.pendingCount())
+        assertEquals(1L, store.identityCount())
+        store.readableDatabase.rawQuery(
+            "SELECT retired_ms FROM identities WHERE event_seq=1",
+            null
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertFalse(cursor.isNull(0))
+        }
+        assertEquals(2L, store.nextSequencePreview())
+
+        store.writableDatabase.execSQL("DROP TRIGGER fail_first_draft_insert")
+        val retry = store.newDraft(alarmForm("第二次尝试"))
+        assertEquals(2L, retry.eventSeq)
+        store.readableDatabase.rawQuery(
+            "SELECT retired_ms FROM identities WHERE event_seq=?",
+            arrayOf(retry.eventSeq.toString())
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertTrue(cursor.isNull(0))
+        }
+    }
+
+    @Test
     fun independentCreateDraftsKeepUniqueDraftIdsAcrossRestart() {
         val first = store.newDraft(activityForm("第一项提案"))
         val second = store.newDraft(activityForm("第二项提案"))

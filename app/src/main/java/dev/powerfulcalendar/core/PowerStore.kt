@@ -728,35 +728,55 @@ class PowerStore(
         eventSeq: Long? = null,
         operation: DraftOperation = DraftOperation.CREATE,
         actor: String = "user"
-    ): DraftCard = tx { db ->
-        // Cards are produced *before* an authorized batch, never during it. A batch scope is
-        // frozen at authorization time and must not silently grow with newly arriving cards.
-        check(!isLocked(db)) { "待处理卡组正由 AI 独占，批量结束后再添加草稿" }
-        check(actor != "ai" || !hasHumanEditor(db)) {
-            "A human editor is active; AI calendar mutation was rejected"
-        }
-        val seq: Long
-        val base: Long?
+    ): DraftCard {
         if (eventSeq == null) {
-            require(operation == DraftOperation.CREATE) { "只有新建操作可以分配新序号" }
-            seq = allocateIdentity(db, form.source)
-            base = null
-        } else {
-            require(operation != DraftOperation.CREATE) { "已有事件不能用新建操作创建第二张卡" }
-            val existing = readObject(db, eventSeq)
-            requireNotNull(existing) { "事件不存在或已删除，需先显式恢复" }
-            seq = eventSeq
-            base = existing.revision
+            val seq = tx { db ->
+                checkDraftWriteAllowed(db, actor)
+                require(operation == DraftOperation.CREATE) { "只有新建操作可以分配新序号" }
+                val allocated = allocateIdentity(db, form.source)
+                // Commit the identity separately so a later draft-write failure cannot reuse it.
+                // Keep the reservation retired until the corresponding draft commits.
+                val retired = db.update(
+                    "identities",
+                    ContentValues().apply { put("retired_ms", System.currentTimeMillis()) },
+                    "event_seq=?",
+                    arrayOf(allocated.toString())
+                )
+                check(retired == 1) { "新分配的事件序号无法暂存" }
+                allocated
+            }
+            return tx { db ->
+                checkDraftWriteAllowed(db, actor)
+                val draft = insertDraft(
+                    db, form, seq, baseRevision = null, operation = operation
+                )
+                val activated = db.update(
+                    "identities",
+                    ContentValues().apply { putNull("retired_ms") },
+                    "event_seq=? AND retired_ms IS NOT NULL",
+                    arrayOf(seq.toString())
+                )
+                check(activated == 1) { "新建草稿的事件序号无法激活" }
+                draft
+            }
         }
-        if (eventSeq != null) {
+
+        val targetSeq = requireNotNull(eventSeq)
+        return tx { db ->
+            checkDraftWriteAllowed(db, actor)
+            require(operation != DraftOperation.CREATE) { "已有事件不能用新建操作创建第二张卡" }
+            val existing = readObject(db, targetSeq)
+            requireNotNull(existing) { "事件不存在或已删除，需先显式恢复" }
+            val base = existing.revision
+
             val existingId = db.rawQuery(
                 """SELECT draft_id FROM drafts
                    WHERE event_seq=? AND status IN ('PENDING','CONFLICT','INVALID') LIMIT 1""",
-                arrayOf(seq.toString())
+                arrayOf(targetSeq.toString())
             ).use { if (it.moveToFirst()) it.getLong(0) else null }
             if (existingId != null) {
-                val existing = requireNotNull(readDraft(db, existingId))
-                if (existing.form != form || existing.operation != operation) {
+                val active = requireNotNull(readDraft(db, existingId))
+                if (active.form != form || active.operation != operation) {
                     // Preserve base_rev for stale protection, preserve queue slot and ID.
                     db.execSQL("""UPDATE drafts
                         SET payload=?, op=?, draft_version=draft_version+1,
@@ -766,13 +786,34 @@ class PowerStore(
                 }
                 return@tx requireNotNull(readDraft(db, existingId))
             }
+            insertDraft(
+                db, form, targetSeq, baseRevision = base, operation = operation
+            )
         }
+    }
+
+    private fun checkDraftWriteAllowed(db: SQLiteDatabase, actor: String) {
+        // Cards are produced *before* an authorized batch, never during it. A batch scope is
+        // frozen at authorization time and must not silently grow with newly arriving cards.
+        check(!isLocked(db)) { "待处理卡组正由 AI 独占，批量结束后再添加草稿" }
+        check(actor != "ai" || !hasHumanEditor(db)) {
+            "A human editor is active; AI calendar mutation was rejected"
+        }
+    }
+
+    private fun insertDraft(
+        db: SQLiteDatabase,
+        form: DraftForm,
+        eventSeq: Long,
+        baseRevision: Long?,
+        operation: DraftOperation
+    ): DraftCard {
         val order = bump(db, "next_order")
         val now = System.currentTimeMillis()
         val values = ContentValues().apply {
-            put("event_seq", seq)
+            put("event_seq", eventSeq)
             put("queue_order", order)
-            if (base == null) putNull("base_rev") else put("base_rev", base)
+            if (baseRevision == null) putNull("base_rev") else put("base_rev", baseRevision)
             put("op", operation.name)
             put("payload", encodeForm(form))
             put("status", DraftStatus.PENDING.name)
@@ -781,7 +822,7 @@ class PowerStore(
             put("updated_ms", now)
         }
         val id = db.insertOrThrow("drafts", null, values)
-        requireNotNull(readDraft(db, id)) { "草稿写入失败" }
+        return requireNotNull(readDraft(db, id)) { "草稿写入失败" }
     }
 
     /** Creates a fresh draft for an existing event, inheriting its current snapshot. */
