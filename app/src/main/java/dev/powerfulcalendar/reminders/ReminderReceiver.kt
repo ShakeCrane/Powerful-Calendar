@@ -27,7 +27,8 @@ class ReminderReceiver : BroadcastReceiver() {
         }.start()
     }
 
-    private fun handle(context: Context, intent: Intent) {
+    /** Runs the delivery contract separately from Android's asynchronous broadcast wrapper. */
+    internal fun handle(context: Context, intent: Intent) {
         val eventSeq = intent.getLongExtra(AlarmContract.EXTRA_EVENT_SEQ, -1L)
         if (eventSeq <= 0L) return
         val revision = intent.getLongExtra(AlarmContract.EXTRA_REVISION, -1L)

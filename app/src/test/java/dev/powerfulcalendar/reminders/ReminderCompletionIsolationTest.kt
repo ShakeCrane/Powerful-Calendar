@@ -47,12 +47,10 @@ class ReminderCompletionIsolationTest {
                 putExtra(AlarmContract.EXTRA_INSTANT, scheduled.instantMillis)
             }
 
-            ReminderReceiver().onReceive(fixture.context, fire)
-            await(timeoutMillis = 3_000) {
-                store.lastExecution(seq) == "FIRED" && store.intentFor(seq) == null
-            }
+            ReminderReceiver().handle(fixture.context, fire)
 
             assertEquals("FIRED", store.lastExecution(seq))
+            assertNull(store.intentFor(seq))
             assertTrue(record.completedKeys.isEmpty())
             assertTrue(store.get(seq)!!.completedKeys.isEmpty())
             assertEquals(record.revision, store.get(seq)!!.revision)
@@ -121,15 +119,6 @@ class ReminderCompletionIsolationTest {
     private fun closeFixture(fixture: Fixture) {
         fixture.store.close()
         fixture.context.deleteDatabase(PowerStore.DATABASE_NAME)
-    }
-
-    private fun await(timeoutMillis: Long, condition: () -> Boolean) {
-        val deadline = System.nanoTime() + timeoutMillis * 1_000_000L
-        while (System.nanoTime() < deadline) {
-            if (condition()) return
-            Thread.sleep(10L)
-        }
-        assertTrue("timed out waiting for reminder receiver", condition())
     }
 
     private data class Fixture(val context: Context, val store: PowerStore)
