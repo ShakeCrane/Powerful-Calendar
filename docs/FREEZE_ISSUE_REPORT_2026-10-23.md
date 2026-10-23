@@ -120,8 +120,8 @@ Issue 004 修复代码基线：`16e00d55435c5029e07784ec5d945dfd7fb37ac5`
 - 当前跟踪的仓库文件中只有对“209 项”的描述，**没有找到 209 个完整编号用例及 PASS/FAIL/证据 ID 一一映射**。
 - 因此 **209 项未逐案签核**；既不能说全部未实际测试，也不能根据 325+37 单元测试声称全部通过。
 - 本轮只读审计仍未找到原始逐案清单；已建立 208 条 RECONSTRUCTED 候选项及 1 条未定义历史槽位，见 `docs/CORE_FREEZE_ACCEPTANCE_LEDGER.csv`。候选按风险给出 P0=126/P1=82 建议分配，但 0 个原始 ID 有映射，优先级仍待审核。
-- 当前候选逐案状态：P0 PASS 60 / BLOCKED 1 / NOT TESTED 61 / SPEC UNRESOLVED 4；P1 PASS 19 / BLOCKED 8 / NOT TESTED 54 / SPEC UNRESOLVED 1；历史未分类槽位 SPEC UNRESOLVED 1。共 79 PASS、115 NOT TESTED；54 条重建候选有独立定点证据。最新结构验证 JSON `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-033.json`，JSON SHA-256 `7196F96BDACF9774507EC0827B2928D58FC69B322BA7D515CBE47AA09B23C76D`，CSV SHA-256 `D67CD686E2600D004622844C845B4567A4D773662B3A953B8B892C898D8C495F`。详细证据、source audit、验证边界与下一步见独立报告 `docs/issues/PC-QA-GATE-001-209-case-ledger.md`。
-- 最新完整 Gradle 工作树结果 396/396 通过（395 个已跟踪测试 + 1 个受保护未跟踪测试）；Lint 0 errors / 55 warnings。日志 `.local/android-test/reports/freeze-20261023/pc-issue-033-formal-snapshot-full-gradle-20261023.log`，SHA-256 `C309FEF4E25520E13AB07864D1ACFA32EEFCD647D7AC62081633C89FB779ADF4`。结果没有映射到缺失的原始 209 个 ID。
+- 当前候选逐案状态：P0 PASS 61 / BLOCKED 1 / NOT TESTED 60 / SPEC UNRESOLVED 4；P1 PASS 19 / BLOCKED 8 / NOT TESTED 54 / SPEC UNRESOLVED 1；历史未分类槽位 SPEC UNRESOLVED 1。共 80 PASS、114 NOT TESTED；55 条重建候选有独立定点证据。最新结构验证 JSON `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-034.json`，JSON SHA-256 `42E830802A5811093CB6F478463C6FC8C63849CFCB01DCA497826A6856DD6AA0`，CSV SHA-256 `D4D29507F3D528C62A00F2DF3FE034C32062C82215580B4311781DD0A49328D2`。详细证据、source audit、验证边界与下一步见独立报告 `docs/issues/PC-QA-GATE-001-209-case-ledger.md`。
+- 最新完整 Gradle 工作树结果 397/397 通过（396 个已跟踪测试 + 1 个受保护未跟踪测试）；Lint 0 errors / 55 warnings。日志 `.local/android-test/reports/freeze-20261023/pc-issue-034-independent-queue-order-full-gradle-20261023.log`，SHA-256 `4FFF6FDA19716F8F9CD2576C20D068190CA6D2D65356961AEAAD2C63AF0DB665`。结果没有映射到缺失的原始 209 个 ID。
 - `PC-ISSUE-019` 的 `REC-P0-004` 日期型 Deadline 候选、`PC-ISSUE-020` 提醒测试夹具稳定化、`PC-ISSUE-021` 的 `REC-P0-005` 不完整 Activity 草稿恢复分别保留独立报告和边界，不替代设备及历史 ID 验收。
 - `PC-ISSUE-022` 的 `REC-P0-007` 一日 Memo 本地日期语义通过 PowerStore/Robolectric 跨 SQLite 重启回归；独立报告 `docs/issues/PC-ISSUE-022-one-date-memo-local-date.md` 记录精确断言与边界。
 - `PC-ISSUE-023` 的 `REC-P0-008` 日期范围 Memo 两端本地日期及时间字段隔离通过 PowerStore/Robolectric 跨 SQLite 重启回归；独立报告 `docs/issues/PC-ISSUE-023-date-span-memo-boundaries.md` 记录精确断言与边界。
@@ -135,6 +135,7 @@ Issue 004 修复代码基线：`16e00d55435c5029e07784ec5d945dfd7fb37ac5`
 - `PC-ISSUE-031` 的 `REC-P0-032` 暂存草稿编辑后保留原 draftId 和目标 eventSeq、内容与版本更新并跨 SQLite 重开回归通过；仅新增测试，无生产/UI 修改。提交后定向 2/2、完整 Gradle 394/394 PASS，Lint 0 errors/55 warnings。独立报告 `docs/issues/PC-ISSUE-031-staged-draft-keeps-event-identity.md`。
 - `PC-ISSUE-032` 的 `REC-P0-033` 按 V4 修正为“同一事件至多一个可操作草稿”，连续提案复用 draftId 与 queueOrder，且 SQLite 重开后约束保持；仅新增测试，无生产/UI 修改。提交后定向 2/2、完整 Gradle 395/395 PASS，Lint 0 errors/55 warnings。独立报告 `docs/issues/PC-ISSUE-032-one-actionable-draft-per-event.md`。
 - `PC-ISSUE-033` 的 `REC-P0-034` 多次 whole-snapshot 提交后正式记录查询仅有一条最新快照，SQLite 重开后仍然如此，历史记录单独保留；仅新增测试，无生产/UI 修改。提交后定向 2/2、完整 Gradle 396/396 PASS，Lint 0 errors/55 warnings。独立报告 `docs/issues/PC-ISSUE-033-single-current-formal-snapshot.md`。
+- `PC-ISSUE-034` 的 `REC-P0-035` 队列序号与 eventSeq 顺序反转时仍唯一，数据库重开后位置和事件映射保持；仅新增测试，无生产/UI 修改。提交后定向 2/2、完整 Gradle 397/397 PASS，Lint 0 errors/55 warnings。独立报告 `docs/issues/PC-ISSUE-034-independent-queue-order.md`。
 - 解除：执行未测候选项、处理可解阻塞并审核拟定优先级；不可声称与缺失原始表完成历史逐项签核。
 
 ### PC-QA-GATE-002 · P0 / BLOCKED · OEM 真机、其他 Android API 等级与系统权限组合
