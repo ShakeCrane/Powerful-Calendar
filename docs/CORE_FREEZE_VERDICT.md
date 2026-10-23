@@ -4,7 +4,7 @@ Date: 2026-10-23
 
 Verdict: **HOLD**
 
-Code/test baseline for the latest candidate sign-offs: `1a74b8b336d0351e1ceeed0b1742943c1bc6f697`
+Code/test baseline for the latest candidate sign-offs: `f930b8714c9b94c62d8a4d294940b36a5322ea35`
 
 APK used by the latest targeted tests: `app/build/outputs/apk/debug/app-debug.apk`, SHA-256 `EA0DE99328BF66FEA302AF5A55C82B3BD7EF3F7276922979AABBF7ABEC581A53`
 
@@ -22,24 +22,24 @@ The historical aggregate is 209 items: 126 P0, 82 P1, and one item whose priorit
 
 Audit evidence: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-source-audit.json` (SHA-256 `600A1D825E9349BCD183053CB2DB59F62A02A50BB862B554238D020FDDFC4E98`). Detailed issue: [`PC-QA-GATE-001`](issues/PC-QA-GATE-001-209-case-ledger.md).
 
-The **RECONSTRUCTED** candidate ledger contains 208 specification-derived rows plus one unresolved historical slot. Candidate priorities follow risk categories and match the aggregate counts, but are proposals for review; every reconstructed row remains `UNMAPPED` to historical IDs. Fifty-six backup, retirement, migration, recurrence, reminder, temporal model, draft, and core data-semantics rows now have individually mapped targeted test evidence. Structural validation confirms 209 unique rows and the 126/82/1 partition; it does not test product behavior or prove historical equivalence. Latest validation: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-035.json`, SHA-256 `41258CF994F31ACC8428A495C4A64F84CC1380D827DF4195217ED86C2A79B039`; ledger SHA-256 `CA5CEF342DB393D57384802A0E8C412AACDD1EB0548AD6753C1477F1352609D7`.
+The **RECONSTRUCTED** candidate ledger contains 208 specification-derived rows plus one unresolved historical slot. Candidate priorities follow risk categories and match the aggregate counts, but are proposals for review; every reconstructed row remains `UNMAPPED` to historical IDs. Fifty-seven backup, retirement, migration, recurrence, reminder, temporal model, draft, and core data-semantics rows now have individually mapped targeted test evidence. Structural validation confirms 209 unique rows and the 126/82/1 partition; it does not test product behavior or prove historical equivalence. Latest validation: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-036.json`, SHA-256 `1C1FA7EF6FD9C8BBE2E71B1F7E37FCDD0EF975EF3E3B11F01F5F962D137E7439`; ledger SHA-256 `83EF41EAC83DEFBE93496B2F5CC9096A3E6B0AC6C7191046314B74F0DA35C8C0`.
 
 | Candidate bucket | PASS | FAIL | BLOCKED | NOT TESTED | SPEC UNRESOLVED |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| P0 (proposed) | 62 | 0 | 1 | 59 | 4 |
+| P0 (proposed) | 63 | 0 | 1 | 58 | 4 |
 | P1 (proposed) | 19 | 0 | 8 | 54 | 1 |
 | Historical unclassified slot | 0 | 0 | 0 | 0 | 1 |
-| **Total candidate rows** | **81** | **0** | **9** | **113** | **6** |
+| **Total candidate rows** | **82** | **0** | **9** | **112** | **6** |
 
 ## Current grouped verification
 
-- Latest full working-tree Gradle command: `:app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --offline --rerun-tasks --console=plain` — **BUILD SUCCESSFUL**, 398 tests, 0 failures/errors/skips across 55 JUnit suites; lint 0 errors and 55 warnings. This includes protected, untracked `DraftDeckFeedbackTest.kt` (397 tracked + 1 protected untracked); that file was not modified or staged. The tested code/test changes are committed as `1a74b8b336d0351e1ceeed0b1742943c1bc6f697`.
-- Log: `.local/android-test/reports/freeze-20261023/pc-issue-035-monotonic-queue-watermark-full-gradle-20261023.log`, SHA-256 `CF006C08916F2BFA332F40E00D52D1B6A2742C2DAD3B872AEE2A4E7BBBBCF3B6`.
+- Latest full working-tree Gradle command: `:app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --offline --rerun-tasks --console=plain` — **BUILD SUCCESSFUL**, 399 tests, 0 failures/errors/skips across 55 JUnit suites; lint 0 errors and 55 warnings. This includes protected, untracked `DraftDeckFeedbackTest.kt` (398 tracked + 1 protected untracked); that file was not modified or staged. The tested code/test changes are committed as `f930b8714c9b94c62d8a4d294940b36a5322ea35`.
+- Log: `.local/android-test/reports/freeze-20261023/pc-issue-036-human-proposal-appends-queue-full-gradle-20261023.log`, SHA-256 `B7CBB97050DEC49C3AE880A5C9C080B7CF47676A108D343211A243634FEAECD9`.
 - These results are software/group-level evidence. They do not sign off the absent 209 case IDs.
 
 ## Open acceptance gates
 
-- `PC-QA-GATE-001`: execute the 113 `NOT TESTED` candidate rows where feasible, resolve the 9 blocked and 5 reconstructed spec-unresolved rows where conditions allow, review proposed priorities, and keep the separate historical unclassified slot unresolved pending its source. The reconstructed 209-row candidate ledger is not the original checklist and signs off 0 original IDs.
+- `PC-QA-GATE-001`: execute the 112 `NOT TESTED` candidate rows where feasible, resolve the 9 blocked and 5 reconstructed spec-unresolved rows where conditions allow, review proposed priorities, and keep the separate historical unclassified slot unresolved pending its source. The reconstructed 209-row candidate ledger is not the original checklist and signs off 0 original IDs.
 - `PC-QA-GATE-002`: physical-device/OEM and additional Android API coverage is unavailable in this run.
 - `PC-QA-GATE-003` / `PC-ISSUE-002`: the free-model structured stage returned HTTP 429; an authorized end-to-end proposal/approval/recovery path is not yet evidenced.
 - `PC-ISSUE-001`: DST-bearing Android SAF export and independent parsing pass; external calendar import and physical-device acceptance remain open.
@@ -75,6 +75,7 @@ The **RECONSTRUCTED** candidate ledger contains 208 specification-derived rows p
 - `PC-ISSUE-033`: `REC-P0-034` passes a PowerStore/Robolectric regression: multiple commits leave exactly one latest formal snapshot per event across SQLite reopen while commit history remains available. Test only; no production or UI change. See `docs/issues/PC-ISSUE-033-single-current-formal-snapshot.md`.
 - `PC-ISSUE-034`: `REC-P0-035` passes a PowerStore/Robolectric regression: distinct `queueOrder` values remain independent of `eventSeq` and persist with their mappings and order across SQLite reopen. Test only; no production or UI change. See `docs/issues/PC-ISSUE-034-independent-queue-order.md`.
 - `PC-ISSUE-035`: `REC-P0-036` passes a PowerStore/Robolectric regression: after committed and discarded draft positions, the next `queueOrder` advances beyond the prior high-water mark across SQLite reopen. Test only; no production or UI change. See `docs/issues/PC-ISSUE-035-monotonic-queue-watermark.md`.
+- `PC-ISSUE-036`: `REC-P0-038` passes a PowerStore/Robolectric regression: a human proposal appends after existing drafts, and IDs/order/titles persist across SQLite reopen. Test only; no production or UI change. See `docs/issues/PC-ISSUE-036-human-proposal-appends-queue.md`.
 - `PC-ISSUE-020`: stabilized the `REC-P0-012` test fixture after a full regression exposed concurrent SQLite polling. The delivery handler now has deterministic synchronous test coverage; Android `onReceive`/`goAsync` framework lifecycle and actual AlarmManager delivery remain untested. See `docs/issues/PC-ISSUE-020-reminder-receiver-test-race.md`.
 - `PC-ISSUE-GREEDY-LABEL-FOLDING`: implementation and API 35 visual regression pass; physical-device/OEM and TalkBack review remain open.
 - Stable release signing material remains user-owned and is not present in the repository; no stable Release install/upgrade claim is made.
