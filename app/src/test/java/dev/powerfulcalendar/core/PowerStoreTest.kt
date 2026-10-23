@@ -228,6 +228,29 @@ class PowerStoreTest {
         }
     }
 
+    @Test
+    fun changingCompletionTrackingPreservesEventEnabledState() {
+        listOf(true to false, false to true).forEachIndexed { index, (enabled, trackingEnabled) ->
+            val card = store.newDraft(activityForm("启用状态 $index").copy(
+                enabled = enabled,
+                trackingEnabled = trackingEnabled
+            ))
+            assertTrue(commit(card) is PowerStore.CommitOutcome.Committed)
+            val current = store.get(card.eventSeq)!!
+            val edit = store.newDraft(
+                DraftForm.from(current).copy(trackingEnabled = !trackingEnabled),
+                current.eventSeq,
+                DraftOperation.REPLACE
+            )
+
+            assertTrue(commit(edit) is PowerStore.CommitOutcome.Committed)
+            val updated = store.get(card.eventSeq)!!
+            assertEquals(enabled, updated.enabled)
+            assertEquals(!trackingEnabled, updated.trackingEnabled)
+            assertEquals(current.reminderMinutes, updated.reminderMinutes)
+        }
+    }
+
     // ---------------------------------------------------------------- permanent identity
 
     @Test
