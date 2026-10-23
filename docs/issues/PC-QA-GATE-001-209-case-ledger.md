@@ -27,14 +27,14 @@ Audit evidence: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-sour
 
 `docs/CORE_FREEZE_ACCEPTANCE_LEDGER.csv` contains 208 reconstructed rows and one unresolved historical slot. Proposed priority allocation is P0=126 and P1=82, grouped by risk/source area; this preserves the known aggregate for review but does not establish which historical case each row represents. All reconstructed rows are explicitly `UNMAPPED`.
 
-Structural validation: 209 unique IDs; all reconstructed rows contain source, environment, action, expected and actual fields; PASS/BLOCKED rows include evidence references. Latest validation JSON: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-036.json`, SHA-256 `1C1FA7EF6FD9C8BBE2E71B1F7E37FCDD0EF975EF3E3B11F01F5F962D137E7439`; ledger SHA-256 `83EF41EAC83DEFBE93496B2F5CC9096A3E6B0AC6C7191046314B74F0DA35C8C0`. Structural validation does not test the app or prove the historical mapping.
+Structural validation: 209 unique IDs; all reconstructed rows contain source, environment, action, expected and actual fields; PASS/BLOCKED rows include evidence references. Latest validation JSON: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-037.json`, SHA-256 `D49E404E2108E5A083F7F8D1D9768CB7246F3DD95011B73A8A925EDE01473F09`; ledger SHA-256 `7A863CB189C0C685CABE37422FBC63758FC6DE54DE7F8125FB030AEFA8D29211`. Structural validation does not test the app or prove the historical mapping.
 
 | Candidate bucket | PASS | FAIL | BLOCKED | NOT TESTED | SPEC UNRESOLVED |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| P0 (proposed) | 63 | 0 | 1 | 58 | 4 |
+| P0 (proposed) | 64 | 0 | 1 | 57 | 4 |
 | P1 (proposed) | 19 | 0 | 8 | 54 | 1 |
 | Historical unclassified slot | 0 | 0 | 0 | 0 | 1 |
-| **Total candidate rows** | **82** | **0** | **9** | **112** | **6** |
+| **Total candidate rows** | **83** | **0** | **9** | **111** | **6** |
 
 ### Case-specific backup verification (2026-10-23)
 
@@ -388,6 +388,12 @@ Pre-commit targeted result: **2/2 PASS**, with existing queue/event independence
 `REC-P0-038` was exercised in Robolectric API 34 using an isolated PowerStore SQLite database. Test commit `f930b8714c9b94c62d8a4d294940b36a5322ea35` added `PowerStoreTest.humanProposalAppendsAfterExistingQueueAcrossRestart`: two prior user drafts are followed by a human proposal with a strictly later `queueOrder`; queue order, IDs, and titles persist after closing and reopening the database. The candidate remains `UNMAPPED` to the missing historical checklist. This evidence covers core storage only, not editor UI or device behavior. See `docs/issues/PC-ISSUE-036-human-proposal-appends-queue.md`.
 
 Targeted pre-commit and post-commit runs each passed 2/2; full Gradle passed 399/399 tests across 55 suites, with lint 0 errors / 55 warnings. Full log SHA-256 `B7CBB97050DEC49C3AE880A5C9C080B7CF47676A108D343211A243634FEAECD9`; full `PowerStoreTest` XML SHA-256 `6D6E249FF2C27651FA8EC53316B257E61EBE972C35A30C01A8384889212978ED`; APK SHA-256 `EA0DE99328BF66FEA302AF5A55C82B3BD7EF3F7276922979AABBF7ABEC581A53`. Structural-only validation JSON SHA-256 `1C1FA7EF6FD9C8BBE2E71B1F7E37FCDD0EF975EF3E3B11F01F5F962D137E7439`; updated CSV SHA-256 `83EF41EAC83DEFBE93496B2F5CC9096A3E6B0AC6C7191046314B74F0DA35C8C0`.
+
+### Case-specific timestamp versus queue-order verification (2026-10-23)
+
+`REC-P0-042` was exercised in Robolectric API 34 using an isolated PowerStore SQLite database. Test commit `0b19f017cae097232398166fb736b0b5cf0fe5a7` added `PowerStoreTest.updatingOlderDraftTimestampDoesNotChangeQueueOrderAcrossRestart`: editing the first of two queued drafts gives it a later `updatedAtMillis` than the second, while `pendingDrafts()` still returns the first draft first. The queue order and both timestamps persist after SQLite reopen. The candidate remains `UNMAPPED` to the missing historical checklist. This evidence covers core storage only, not UI or device behavior. See `docs/issues/PC-ISSUE-037-timestamp-does-not-reorder-queue.md`.
+
+Targeted pre-commit and post-commit runs each passed 2/2; full Gradle passed 400/400 tests across 55 suites, with lint 0 errors / 55 warnings. Full log SHA-256 `7FA263167BB49A5740AF1ABE46634C9E0EF4DC4AF8E6431B3A6AC9397BB931E8`; full `PowerStoreTest` XML SHA-256 `872BE34030F89B7A5471EF19081D946E883A21CF6CBA25AC89509A2B3ACFB613`; APK SHA-256 `EA0DE99328BF66FEA302AF5A55C82B3BD7EF3F7276922979AABBF7ABEC581A53`. Structural-only validation JSON SHA-256 `D49E404E2108E5A083F7F8D1D9768CB7246F3DD95011B73A8A925EDE01473F09`; updated CSV SHA-256 `7A863CB189C0C685CABE37422FBC63758FC6DE54DE7F8125FB030AEFA8D29211`.
 
 ## Historical sign-off accounting
 
