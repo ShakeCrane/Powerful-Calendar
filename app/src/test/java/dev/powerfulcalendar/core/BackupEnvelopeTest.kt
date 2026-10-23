@@ -561,4 +561,33 @@ class BackupEnvelopeTest {
             assertEquals(1L, target.identityCount())
         }
     }
+
+    @Test
+    fun restoreRechecksAfterWriteBetweenPreflightAndTransaction() {
+        val target = newStore()
+        target.identityCount()
+        val writer = PowerStore(context, target.databaseName)
+        try {
+            writer.identityCount()
+            seed()
+            var concurrentDraft: DraftCard? = null
+            val outcome = runCatching {
+                target.restoreBackupWithPreflightHookForTest(source.exportBackup()) {
+                    concurrentDraft = writer.newDraft(
+                        DraftForm.fresh(TemporalKind.ACTIVITY, LocalDate.now(), zone)
+                    )
+                }
+            }
+
+            assertTrue(concurrentDraft != null)
+            assertTrue(outcome.exceptionOrNull() is PowerStore.NonEmptyRestoreTargetException)
+            assertEquals(1L, target.identityCount())
+            assertEquals(2L, target.nextSequencePreview())
+            assertEquals(concurrentDraft!!.draftId, target.pendingDrafts().single().draftId)
+            assertTrue(target.exportBackup().getJSONObject("payload").getJSONArray("sourceLinks").length() == 0)
+        } finally {
+            closeStore(writer)
+            closeStore(target)
+        }
+    }
 }

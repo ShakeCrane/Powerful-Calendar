@@ -2137,12 +2137,27 @@ class PowerStore(
      * restore rolls back to the empty store. AI authority and Android handles are never restored.
      */
     @Synchronized
-    fun restoreBackup(input: JSONObject, allowLegacyV2: Boolean = false): RestoreReport {
+    fun restoreBackup(input: JSONObject, allowLegacyV2: Boolean = false): RestoreReport =
+        restoreBackupInternal(input, allowLegacyV2, afterPreflight = null)
+
+    /** Deterministic race seam for the unit test of the transactional non-empty guard. */
+    @Synchronized
+    internal fun restoreBackupWithPreflightHookForTest(
+        input: JSONObject,
+        afterPreflight: () -> Unit
+    ): RestoreReport = restoreBackupInternal(input, allowLegacyV2 = false, afterPreflight)
+
+    private fun restoreBackupInternal(
+        input: JSONObject,
+        allowLegacyV2: Boolean,
+        afterPreflight: (() -> Unit)?
+    ): RestoreReport {
         // Cheap rejection first: never parse/verify a large envelope against a live user database.
         if (hasAnyUserData(readableDatabase)) throw NonEmptyRestoreTargetException()
         val verified = BackupEnvelope.verify(input, VERSION, allowLegacyV2)
         val payload = verified.payload
         validateBackupPayload(payload)
+        afterPreflight?.invoke()
         return tx { db ->
             // Re-check inside the transaction: another connection may have written since preflight.
             if (hasAnyUserData(db)) throw NonEmptyRestoreTargetException()
