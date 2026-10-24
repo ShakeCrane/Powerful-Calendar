@@ -1,5 +1,12 @@
 # Core freeze progress
 
+## PC-ISSUE-164 — 过期替换差异数据完整性（REC-P0-049，核心数据窄化 PASS）
+
+- 修复前回归预期 14 个变化字段，实际差异模型只返回 8 个；缺失重复规则、来源/时区、完成槽位、提醒方式/时机。纯核心修复同时覆盖 Activity→Deadline 时被遗漏的旧开始/结束。
+- 定向 TemporalProtocolTest.staleReplacementDiffIncludesEveryChangedSnapshotField 1/1 PASS；验证完整快照字段、重复例外/覆盖和完成槽位的排序确定性、跨类型时间字段移除。完整 Gradle 496/496 JVM、67 suites、0 failures/errors/skips；88 tasks，源码边界及 Debug/AndroidTest 组装通过，Lint 0 errors/58 warnings。
+- 代码/测试提交 f959bccb36b5a66d8cf2667fb0d213071f833d4d 已推送；独立报告 docs/issues/PC-ISSUE-164-stale-replacement-diff-core.md。
+- REC-P0-049 仅核心差异数据签核 PASS；移动端可读性原型审查仍未决，台账状态保留 SPEC UNRESOLVED。未改 UI。结构校验 r32 保持 198 PASS / 0 FAIL / 8 BLOCKED / 2 NOT TESTED / 2 SPEC UNRESOLVED / 1 RETIRED；artifact SHA-256 73D21A6A05410CAFF04453BE65C37CEFDB794F8505675EF89088BD1980E1500B，ledger SHA-256 B7BC6D62808818B05D1E8A99BDBAE6FD8A2BB74C4FE698F871013AE49F529EA5。结构校验不代表产品行为，核心冻结仍 HOLD。
+
 ## PC-ISSUE-002 桌面 DeepSeek 凭据探测（2026-10-24）
 
 - API 35 emulator-5554 上使用一次合成结构化提案请求；AiClient 仅有一条 structured-proposal 遥测，HTTP 401 / 701 ms / budget 1800。测试 1 run / 1 failure，失败于预期无 warning 的断言；没有提案，没有重试，没有设置、数据库或正式日历写入。凭据未通过本次认证；不重试或切换服务。

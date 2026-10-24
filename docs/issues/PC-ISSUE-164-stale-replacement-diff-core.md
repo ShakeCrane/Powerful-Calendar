@@ -29,3 +29,9 @@ No UI, database schema, or business data was changed.
 ## Scope and remaining gate
 
 This verifies the core diff data only. The readability of the full diff on a mobile screen still needs the prototype review recorded in `REC-P0-049`; it remains **SPEC UNRESOLVED**. This work does not sign off stale approval presentation or any Android-device behavior. `PC-ISSUE-164` closes the discovered core-data omission, while the overall freeze remains **HOLD**.
+
+## Commit and current matrix state
+
+Code/test commit f959bccb36b5a66d8cf2667fb0d213071f833d4d (fix(core): 补全过期替换的快照差异) is pushed to origin/main. The core diff-data defect is fixed; REC-P0-049 remains SPEC UNRESOLVED for the explicitly excluded mobile presentation review.
+
+Structural-only ledger r32: 211 rows, 210 active (P0/P1/P2 144/65/1), 198 PASS / 0 FAIL / 8 BLOCKED / 2 NOT TESTED / 2 SPEC UNRESOLVED / 1 RETIRED; historical IDs mapped=0 and product_behavior_tested=false. Artifact .local/android-test/reports/freeze-20261024/pc-qa-gate-001-risk-matrix-validated-20261024-r32-pc-issue-164.json SHA-256 73D21A6A05410CAFF04453BE65C37CEFDB794F8505675EF89088BD1980E1500B; ledger SHA-256 B7BC6D62808818B05D1E8A99BDBAE6FD8A2BB74C4FE698F871013AE49F529EA5. Structural validation only; it does not sign off mobile presentation or product behavior.

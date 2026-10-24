@@ -4,6 +4,12 @@ Date: 2026-10-24
 
 Verdict: **HOLD**
 
+## Latest follow-up: PC-ISSUE-164 — stale replacement diff data
+
+The pre-fix regression reproduced a core omission: the full-replacement diff expected 14 changed fields but returned only 8. DraftDiff now includes all changed temporal fields across kind conversions, recurrence details, completion keys, reminder method/timing, source, and zone; recurrence collections are deterministic. The focused JVM regression passes 1/1. No UI was changed. REC-P0-049 is signed only for core diff data; mobile readability remains SPEC UNRESOLVED, so the verdict stays HOLD. See docs/issues/PC-ISSUE-164-stale-replacement-diff-core.md.
+
+Code/test commit f959bccb36b5a66d8cf2667fb0d213071f833d4d is pushed. Full offline Gradle passed 496/496 JVM tests across 67 suites, zero failures/errors/skips; all 88 tasks executed, source-boundary verification and Debug/AndroidTest APK assembly passed, lint 0 errors / 58 warnings. Full log SHA-256 C2077EB6869C400A221707087621685AD1FAC4CE2B31AC03739E4466B83504CE. Debug APK SHA-256 290F13ADC31CAF38A17A1506E9C1AF57C19B2743BBC2F36CCB261918CBAC85C1.
+
 ## Latest follow-up: PC-ISSUE-002 — desktop DeepSeek credential probe
 
 A single synthetic structured-proposal request from API 35 emulator-5554 received HTTP 401 after 701 ms. The opt-in instrumentation run had one test and one failure because no proposal was returned; no retry, settings change, SQLite write, or formal calendar write occurred. The temporary app-private credential file and emulator staging file were verified absent after the run. This credential result does not satisfy the free-provider acceptance row: REC-P1-047 remains BLOCKED, PC-ISSUE-002 remains PARTIAL / BLOCKED, and the freeze remains HOLD. The physical-device checks remain user-owned. See docs/issues/PC-ISSUE-002-ai-timeout-proposal.md.
