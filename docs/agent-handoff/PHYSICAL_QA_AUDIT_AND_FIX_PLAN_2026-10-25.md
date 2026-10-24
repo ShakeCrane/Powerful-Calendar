@@ -1,6 +1,6 @@
 # PowerCal 真机首轮缺陷审计与修复计划（2026-10-25）
 
-状态：Phase 1 与 Phase 2（P08）已完成各自自动化及 API 35 AVD 子项；Phase 3–6 尚未完成；正式冻结 HOLD。
+状态：Phase 1、Phase 2（P08）及 Phase 3 D01b 已完成各自自动化和可用的 API 35 AVD 子项；Phase 4–6 尚未完成；实体设备仍由用户验收；正式冻结 HOLD。
 审计基线：Git 40e78bf（来源为当前仓库只读检查），对照用户实机反馈和 docs/CORE_CONTRACT_FREEZE_2026-10-21.md 的已修订合同。
 范围：问题归因、复现方案、实现次序和验收门槛。任何源码猜测均需补足目标设备证据。
 
@@ -38,8 +38,8 @@ DirectEventEditorDialog/EditSession 对整条正式记录编辑而不是单次�
 PowerCalApp.kt 原生 onToday 使用 TimelineCoordinate.todayCamera(nowMillis, hours)：锚点指向当前精确时刻，保留缩放时长。Web action today 却使用 initialCamera(now, zone)：锚点指向今日中午、重设 24h。
 现有“当前时间刻度尺双击→24h”是另一个动作；用户报告“点击今日反而回到当前”，与原生实现一致，但不一定符合期待。不能在未厘清“回今日 vs 回当前刻度 vs 24h 视野”定义前简单改代码；先复现两个 UI 分支并对齐产品语义。
 
-### B5 · D01b 草稿发布按钮被 IME 挤到视野底部（P1，代码可疑、须复现）
-DraftDeck.kt 对话框外层既有 imePadding，短视野 short=true；DeckCardBody 内长表单可滚动、发布按钮在卡内底部。真实手机报告按钮移位，说明“AI 聊天 IME 测试通过”不代表发布编辑器 IME 通过。需检查实际按钮可视/可点击区域、焦点滚动、底部系统手势栏，以及可能重复 Insets 消费。先设备截图或布局 bounds 取证，再局部修约束、键盘弹出时布局与焦点滚动；切勿用全局 hack 修掉其他页面。
+### B5 · D01b 草稿发布按钮被 IME 挤到视野底部（P1，API 35 AVD 已复现并修复）
+根因是 `DeckCardBody` 只在视口低于 320dp 时滚动整张卡片；键盘缩短了对话框，但视口仍高于该阈值，因此长表单独自滚动、底部发布/丢弃操作被裁出视野。API 35 `emulator-5556` 的 1080×1600 IME 场景复现按钮 bounds 为 `Rect(0,0,0,0)`；1080×2400 标准视野没有复现。修复后，IME 可见时整卡滚动，内层表单不再创建竞争滚动容器；无 IME 的既有 320dp 小视野阈值保持不变。标准及短视野发布/丢弃各 2/2 PASS，D01a AI 聊天 IME 回归 1/1 PASS。完整证据见 `docs/issues/PC-ISSUE-PHASE3-D01B-IME-PUBLISH.md`。制造商输入法、导航栏与实体设备仍待用户确认，不作真机 PASS 声明。
 
 ### B6 · D05 杀后台后无法提醒（P1 条件性 FAIL，归因未定）
 Manifest 有 RECEIVE_BOOT_COMPLETED / exact alarm / notification 权限；ReminderScheduler 采用 AlarmManager.setExactAndAllowWhileIdle；BootReceiver 可在重启/时区/时间更改后恢复。
@@ -86,6 +86,7 @@ Phase 2 — P08 单次/此后重复事件修改：
 Phase 3 — D01b 键盘发布按钮：
 1. 复现键盘弹起、长字段滚动、软键盘占满半屏、系统导航栏；采集按钮 bounds 与 IME 区域，不遮挡/不误触。
 2. 只改变草稿表单布局/Insets 消费，发布与丢弃始终可见可点或可自然滚动到；AI 聊天 D01a 回归无退化。
+3. 完成记录：API 35 `emulator-5556` 标准 1080×2400 和短 1080×1600 两种视口下，发布/丢弃均 2/2 PASS；短视野按钮滚动后 y=644–770，IME 顶边 y=791；标准视野按钮 y=1433–1559，IME 顶边 y=1580。D01a 回归 1/1 PASS；完整 Gradle 522/522 JVM tests、70 suites、0 failures/errors/skips、88 tasks，lint 0 errors / 56 warnings。源代码与测试提交 `ab7b71a7670a5853ff6ad715eb45e59819375cc7`；报告 `docs/issues/PC-ISSUE-PHASE3-D01B-IME-PUBLISH.md`。实体设备未测试。
 
 Phase 4 — D05 提醒“杀后台”分类：
 1. 区分 Home 退后台、最近任务划掉、系统“强行停止”、省电管控、系统重启。

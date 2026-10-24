@@ -4,6 +4,8 @@ Date: 2026-10-25
 Priority: P1
 Status: Fixed and verified on API 35 AVD; physical-device confirmation remains with the user.
 
+Implementation and regression tests were committed and pushed in `ab7b71a7670a5853ff6ad715eb45e59819375cc7` (`fix(草稿): 修复输入法遮挡发布与丢弃操作`).
+
 ## Root cause
 
 `DraftDeck` already shortened its dialog when the software keyboard appeared, but `DeckCardBody` only made the whole card scrollable when its measured height was below 320dp. With the keyboard visible, the viewport was taller than that threshold. The long form fields had their own scroll container while the publish/discard row remained at the bottom of the card and outside the visible viewport.

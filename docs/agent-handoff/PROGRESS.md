@@ -1,5 +1,14 @@
 # Core freeze progress
 
+## PC-ISSUE-PHASE3-D01B — Draft Deck 输入法下的发布/丢弃操作
+
+- 根因：键盘缩短对话框后视口仍大于 320dp；旧逻辑只在低于该阈值时滚动整张卡片，导致长表单内层滚动、卡片底部操作被裁出视野。现在 IME 可见即滚动整卡，且内层表单禁用竞争滚动；无 IME 的原 320dp 小屏规则不变。
+- API 35 `emulator-5556` 标准 1080×2400 视口发布/丢弃 2/2 PASS；短 1080×1600 视口发布/丢弃 2/2 PASS。短视野操作 bounds：publish `Rect(553,644,980,770)`、discard `Rect(100,644,527,770)`，IME 顶边 y=791；标准视野操作底边 y=1559，IME 顶边 y=1580。D01a AI 聊天 IME 回归 1/1 PASS；既有 compact-screen Compose 回归 1/1 PASS。
+- 完整离线 Gradle：522/522 JVM tests、70 suites、0 failures/errors/skips、88/88 tasks；source boundary、Debug/AndroidTest APK、lint 均通过，lint 0 errors / 56 warnings。日志 SHA-256 `B0B265DD93B7722E9DA39D6048F7B7975B3BB3828632C973C001C5357281A5FF`；短视野 AVD `DA465482FDD07DBBF1DC74DAE8A4E28E45915DD65894C35565DBF363E01C4577`；标准视野 AVD `19A546E617259FDB91F0C0A030C161EFEF10E703FA53437D03506D20BFE9EB5D`；D01a 回归 `4E745962F30A515F545FD2D5936FE7278F4C5DD396163ECDA8B78A4DC8E2501E`；几何轨迹 `A126603BC7795E29FE1B65F8A1E03A516786C4C7FEAC508A64986D956A000657`。
+- 源码、Instrumentation 回归与独立报告提交 `ab7b71a7670a5853ff6ad715eb45e59819375cc7`，已推送 `origin/main`。报告：`docs/issues/PC-ISSUE-PHASE3-D01B-IME-PUBLISH.md`。原 AVD app/test APK 按哈希恢复，显示尺寸/密度复原，既有 DB 文件清单未变；随机测试库已清理。实体设备未测，仍由用户验收。
+- 台账新增 `REC-P1-085`（RECONSTRUCTED，范围限 API 35 AVD）。结构校验：213 行 / 212 活动重建项；200 PASS / 0 FAIL / 8 BLOCKED / 2 NOT TESTED / 2 SPEC UNRESOLVED / 1 RETIRED；P0/P1/P2=145/66/1，历史 ID 映射 0。ledger SHA-256 `A37773DDEACD4E299CFF930413C2DF364EA93966FB436D38B10173B51778144F`；artifact SHA-256 `14705CDA82B553DF8FAE5B2A1FA0291E675C9FE3F71523925C9E1D2C977810CE`；结构校验的 `product_behavior_tested=false` 仅指校验器不执行产品行为。
+- 下一项：Phase 4 D05，分类验证提醒在退后台、划除最近任务、强行停止、省电管控和系统重启下的行为；真机/OEM 条件由用户测试，不从 AVD 推断。
+
 ## PC-ISSUE-PHASE2 — 重复事件编辑范围与 occurrence key 路由
 
 - 根因：timeline/month/Memo 投影的 original occurrence key 未进入正式事件编辑会话；编辑器没有显式 single / this-and-future / whole-series scope。接通 `DisplayOccurrence → EditSession` 路由与三种范围；scope/key 随正式编辑 checkpoint 恢复，禁止通用 draft publish/AI batch 把范围表单当作普通候选。
@@ -8,7 +17,7 @@
 - 最终完整 Gradle：522/522 JVM tests、70 suites、0 failures/errors/skips，88/88 tasks；source boundary、Debug 和 AndroidTest APK、lint 通过；lint 0 errors / 56 warnings。完整日志 SHA-256 `42C63E29348DD23EAAFDC44EE0C2DD578D0F5F57DA091C6B80C8056444A01858`；Debug APK `90BB816EC85AFD46C195C48697F1234D98D2C4571FB5209F0F1FD87B088DBDE8`；AndroidTest APK `5692FBC5C964C63CAF61EEED71F4BA51390282C3125729F1F24210944CBAA3F3`。
 - 核心实现提交 `9036a2a8db2e1a669f64cc6174acdc569c4c08b3`。独立报告 `docs/issues/PC-ISSUE-PHASE2-RECURRENCE-SCOPE-EDITOR.md`。`REC-P0-127` 新增为 RECONSTRUCTED 并签核本环境的自动化/API35 范围；REC-P0-078/079/080 原有窄化核心条目范围不变。实体设备留给用户；timeline 到编辑器在 Robolectric 覆盖，AVD 用例未启动主界面，整体冻结仍 HOLD。
 - 台账结构校验：212 行 / 211 活动重建项；199 PASS / 0 FAIL / 8 BLOCKED / 2 NOT TESTED / 2 SPEC UNRESOLVED / 1 RETIRED；P0/P1/P2=145/65/1，历史 ID 映射 0。台账 SHA-256 `FFBD395A80D864BB8ED9578A561B6188DD3ED35B88048E0EC31F2AC7951909A1`；artifact SHA-256 `09879FB7A8671E7C5DE02C69BEBF30A8B10751EE27EB576B91C3239FC1DAFC0F`；仅结构验证，`product_behavior_tested=false`。
-- 当前下一项：Phase 3 D01b 键盘发布按钮，按计划需先隔离 AVD/确认布局测试不会接触用户数据库；实体设备依然由用户执行。
+- Phase 3 D01b 已在 API 35 AVD 完成并独立签核，见本节与 `REC-P1-085`；当前继续 Phase 4 D05。
 
 ## PC-ISSUE-PHASE1 — 编辑器生命周期与默认时间统一
 
