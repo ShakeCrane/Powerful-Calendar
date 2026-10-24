@@ -1,5 +1,12 @@
 # Core freeze progress
 
+## PC-ISSUE-171 — ReminderReceiver onReceive/goAsync 生命周期（REC-P0-012 子项 PASS）
+
+- Robolectric API 34 通过真实 `ShadowBroadcastReceiver.onReceive` 派发给生产 `ReminderReceiver`，注入 `PendingResult` 并确认进入 `goAsync()`；等待 Future 完成后，隔离 SQLite 中 `FIRED` 已记录、提醒 intent 已消费、completion keys 仍为空、revision 不变。仅测试 JVM sandbox；生产 manifest 解析和实体 OS 派发未覆盖。PC-ISSUE-170 另有 API 35 AVD AlarmManager 投递证据。
+- 定向测试及 JUnit XML 均 1/1 PASS；日志 SHA-256 `910116087C1346F09CA42385BE3BB8C2AD8FCF52C83081F07A35A1EC1B2BAA1D`，XML SHA-256 `FB2392D980D0C9FEF72E247CE4203DC9A49A19B5B73C46C57127641DBE42E46B`。完整 Gradle 497/497 JVM、67 suites、0 failures/errors/skips；88/88 tasks 执行，lint 0 errors / 58 warnings；完整日志 SHA-256 `8911CC859F7418CE501C66F2D1B4665735F00175AB5E10EB055E1879F668F404`。
+- 测试提交 `3bcb6ef86b313ca33d7df77155c04dc70f8b3318` 已推送。独立报告 `docs/issues/PC-ISSUE-171-reminder-onreceive-async-lifecycle.md`。REC-P0-012 保持 PASS；manifest resolution、真实系统投递到 manifest receiver、实体/OEM 与长时稳定性仍未签核。
+- 台账 r40：211 行 / 210 活动重建项；198 PASS / 0 FAIL / 8 BLOCKED / 2 NOT TESTED / 2 SPEC UNRESOLVED / 1 RETIRED；P0/P1/P2=144/65/1，历史 ID 映射 0。artifact SHA-256 `C4C13745AEE22C9D209C1E6B6FCCD14E6847B4C503A4C886097A59210F5AC736`，ledger SHA-256 `E426C141D8C3DEDD15AD0EE2170518B32B369E6B0570A62096AB6635488D535A`；`product_behavior_tested=false` 仅表示结构校验器不执行产品行为测试。整体继续 HOLD。
+
 ## PC-ISSUE-170 — API 35 Android AlarmManager 投递探测（REC-P0-012 子项 PASS）
 
 - 在 `emulator-5556` API 35 用真实 `AlarmManager.setAndAllowWhileIdle` 安排带随机 action 的广播 PendingIntent；OS 将其投递到产品进程中的非导出动态测试接收器，接收器调用生产 `ReminderReceiver.handle()`，使用产品 cache 中随机隔离的 SQLite。AndroidJUnitRunner 1/1 PASS：`FIRED`、通知已发布、`completedKeys` 仍为空。此证据不覆盖生产 manifest `ReminderReceiver.onReceive/goAsync` 包装层、实体/OEM、Doze 专项或长时稳定性。

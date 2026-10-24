@@ -4,6 +4,14 @@ Date: 2026-10-24
 
 Verdict: **HOLD**
 
+## Latest follow-up: PC-ISSUE-171 — ReminderReceiver asynchronous lifecycle
+
+Robolectric API 34 dispatched `ACTION_FIRE` through the production `ReminderReceiver.onReceive()` with a `PendingResult`. The test confirmed `goAsync()` and awaited its completion; the isolated store recorded `FIRED`, consumed the reminder intent, kept completion keys empty, and preserved revision. Focused test passed 1/1. This does not cover production manifest resolution or a real Android broadcast to that manifest component; PC-ISSUE-170 separately covers API 35 AlarmManager delivery to the product process and handler. Physical/OEM and long-duration behavior remain open. See `docs/issues/PC-ISSUE-171-reminder-onreceive-async-lifecycle.md`.
+
+Test-only commit `3bcb6ef86b313ca33d7df77155c04dc70f8b3318` is pushed. Full forced-offline Gradle passed 497/497 JVM tests across 67 suites, zero failures/errors/skips; all 88 tasks executed, lint 0 errors / 58 warnings. Full log SHA-256 `8911CC859F7418CE501C66F2D1B4665735F00175AB5E10EB055E1879F668F404`. Focused log SHA-256 `910116087C1346F09CA42385BE3BB8C2AD8FCF52C83081F07A35A1EC1B2BAA1D`; JUnit XML SHA-256 `FB2392D980D0C9FEF72E247CE4203DC9A49A19B5B73C46C57127641DBE42E46B`.
+
+Structural-only ledger r40: 211 rows / 210 active reconstructed, 198 PASS / 0 FAIL / 8 BLOCKED / 2 NOT TESTED / 2 SPEC UNRESOLVED / 1 RETIRED; historical IDs mapped=0 and `product_behavior_tested=false`. Artifact SHA-256 `C4C13745AEE22C9D209C1E6B6FCCD14E6847B4C503A4C886097A59210F5AC736`; ledger SHA-256 `E426C141D8C3DEDD15AD0EE2170518B32B369E6B0570A62096AB6635488D535A`. Structural validation is not product evidence; the physical/OEM gate remains open and verdict stays HOLD.
+
 ## Latest follow-up: PC-ISSUE-170 — API 35 Android AlarmManager delivery
 
 On API 35 `emulator-5556`, a real AlarmManager `setAndAllowWhileIdle` PendingIntent reached a non-exported dynamic probe receiver registered in the product process. The receiver called production `ReminderReceiver.handle()` against a uniquely isolated cache database; the execution result was `FIRED`, a notification was active, and `completedKeys` stayed empty. AndroidJUnitRunner passed 1/1. This does not invoke the production manifest receiver's `onReceive/goAsync` wrapper and does not establish physical/OEM, doze-specific, notification-shade, or long-duration behavior. Temporary permission, notification, alarm, and cache state were cleaned or restored. See `docs/issues/PC-ISSUE-170-android-alarmmanager-delivery.md`.
