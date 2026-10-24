@@ -1,5 +1,12 @@
 # Core freeze progress
 
+## PC-ISSUE-151 强制横屏标题折叠与子像素事件点击（REC-P1-084 窄化 PASS）
+
+- 修复真实一分钟高度取整为 0px 时整个事件 Surface 同时失去点击区域的问题：透明交互面至少 1dp；内层绘制几何仍严格按真实时长，不扩高事件。新增 Robolectric Compose 与 API 35 Android instrumentation 回归。
+- AVD 800×360dp 实测 1/1 PASS：A/C 标题可见、B/D 隐藏；A/B/C/D 事件节点均保留完整标题语义和点击动作；隐藏标题 B 仍可点开。标题矩形 A `[1116,496,1315,559]`、C `[1116,581,1315,644]`；真实几何 0px、点击面 3px。中央刻度与蓝色当前时间线保留。截图 SHA-256 `A9210C324AA2F94384B8F222DCC6383359F1A65E6CAAC966A2B32F8B6A038FEC`，矩形轨迹 SHA-256 `7EFED8B796E4D9EB7A5F45B91EE14F3987DAD0249EC7C88F1CD24CBB7D4922AF`。
+- 完整离线 Gradle 490/490 JVM、65 suites、0 failures/errors/skips；源码边界、Debug/AndroidTest APK、Lint 全通过，0 lint errors / 58 warnings。单测总数含 489 个受版本控制测试与一个既存受保护未跟踪 `DraftDeckFeedbackTest.kt`。完整日志 SHA-256 `ECD191B36F27485A8437CB867EA019D2A5C5B84FB593E81E3F2B5784431DC1D8`。
+- 代码/测试提交 `671f7c700404e18eea0c5658c300ca04ca01a49c` 已推送。独立报告 `docs/issues/PC-ISSUE-151-forced-landscape-title-folding.md`；台账 r17 为 185 PASS / 0 FAIL / 8 BLOCKED / 11 NOT TESTED / 6 SPEC UNRESOLVED，P0/P1/P2 144/65/1，结构 artifact SHA-256 `C5A1730FB87861436F95ED3DED3886C804798650EAC6F1F19D71DB75CB37CF9E`，ledger SHA-256 `EEFA0692584EE11202EC53B8C5F682B5FC3BF755EBCAD1A1159ED246AA31E98B`。实体设备/OEM 未测；整体保持 HOLD。
+
 ## PC-ISSUE-150 AI 结构化提案阶段读超时回归（本地客户端边界 PASS）
 
 - `AiClient` 连接/读取超时支持正值校验的参数注入，线上默认仍为 20s / 45s。loopback 服务在结构化请求后停住，150ms read timeout 定向测试 1/1 PASS：请求仅一次、阶段级超时错误、无 proposal/raw reply、无测试凭据泄露。独立报告：`docs/issues/PC-ISSUE-150-ai-proposal-read-timeout.md`。

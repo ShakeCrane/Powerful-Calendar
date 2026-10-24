@@ -1,5 +1,13 @@
 # PowerCal 核心基线冻结：任务理解清单
 
+## 最新执行记录：PC-ISSUE-151（2026-10-24）
+
+- 横屏兼容补测发现一分钟 Activity 在 API 35 / 800×360dp 真实几何为 0px 时，整个 Surface 也变成 0px，无法点选。修复把透明交互面下限设为 1dp，将事件填充/边框/色条/时间标签留在严格等于 `cardHeight` 的内层视觉框；时间几何不扩张。
+- 新增 Robolectric API 35 Compose 与 AndroidJUnitRunner 回归。API 35 AVD 单机测试 1/1 PASS：A/C lead 可见、B/D 隐藏，隐藏 B 点选仍能打开；四事件语义/点击动作存在。标题实际屏幕矩形 A `[1116,496,1315,559]`、C `[1116,581,1315,644]`；真实事件几何 0px、命中面 3px。虚拟横屏截图 SHA-256 `A9210C324AA2F94384B8F222DCC6383359F1A65E6CAAC966A2B32F8B6A038FEC`。
+- 完整离线 Gradle 回归：490/490 JVM、65 suites、0 failures/errors/skips；源码边界、Debug/AndroidTest APK 组装通过；Lint 0 errors / 58 warnings。490 项含 489 个跟踪测试与一个受保护未跟踪 `DraftDeckFeedbackTest.kt`。完整日志 SHA-256 `ECD191B36F27485A8437CB867EA019D2A5C5B84FB593E81E3F2B5784431DC1D8`；Debug APK SHA-256 `EE7E4850A147AC3B3F21326DCB209B0967F14DE6990D56EE05A2976FEB252BCD`。
+- `REC-P1-084` 单独签核强制横屏范围，不延伸为竖屏锁定或实体设备结果。代码/测试提交 `671f7c700404e18eea0c5658c300ca04ca01a49c` 已推送；独立报告 `docs/issues/PC-ISSUE-151-forced-landscape-title-folding.md`。
+- 台账结构校验 r17：210 active，185 PASS / 0 FAIL / 8 BLOCKED / 11 NOT TESTED / 6 SPEC UNRESOLVED；P0/P1/P2 = 144/65/1。artifact SHA-256 `C5A1730FB87861436F95ED3DED3886C804798650EAC6F1F19D71DB75CB37CF9E`；ledger SHA-256 `EEFA0692584EE11202EC53B8C5F682B5FC3BF755EBCAD1A1159ED246AA31E98B`。结构报告不测试产品行为，整体仍 HOLD。
+
 ## 最新执行记录：PC-ISSUE-150（2026-10-24）
 
 - 已为 AI 结构化提案阶段补充可注入且正值校验的连接/读取超时设置；运行默认保持 20s / 45s。loopback stalled-response 回归以 150ms read timeout 验证仅一次请求、阶段错误、无提案/raw reply 及无凭据哨兵泄露，定向 1/1 PASS。
@@ -12,9 +20,9 @@
 
 - 用户已明确：原始 209 项清单当前无法提供，不再暂停或反复询问；209 只是历史规划数量，不得为凑数编造项目，也不得因历史 ID 无法恢复而永久阻塞开发。
 - 以 `CORE_CONTRACT_FREEZE_2026-10-21.md`、现有验收文档、测试代码、历史 Issue 和实际产品行为重建当前核心验收矩阵。每项都必须有来源、测试方法、实际结果与证据；历史映射缺失标 `RECONSTRUCTED` / `UNMAPPED`，不得伪称原始项。优先级按风险决定，不沿用 126/82 比例。
-- 当前矩阵：209 条活动重建候选（数量偶然形成，不是目标），P0 144 / P1 64 / P2 1；184 PASS、0 FAIL、8 BLOCKED、11 NOT TESTED、6 SPEC UNRESOLVED；另有一条退役记录。结构报告只证明台账完整，不证明产品行为。
+- 当前矩阵：210 条活动重建候选（数量偶然形成，不是目标），P0 144 / P1 65 / P2 1；185 PASS、0 FAIL、8 BLOCKED、11 NOT TESTED、6 SPEC UNRESOLVED；另有一条退役记录。结构报告只证明台账完整，不证明产品行为。
 - 原始表不可核对是应披露的文档溯源缺口，不是正式冻结的独立门槛。正式 GO 以重建后逐项通过的核心合同验收及所需环境为准；任何 P0/P1 的 BLOCKED、NOT TESTED 或 SPEC UNRESOLVED 均不得宣称通过。
-- `REC-P1-013` 淡灰横向边缘按用户确认标为 `RETIRED / OUT_OF_SCOPE`，旧证据保留；时间轴标题贪心折叠仍是独立 P1 必验项 `REC-P1-021`–`030`。当前时间线可以覆盖中轴。应用保持竖屏，不主动感应陀螺仪；系统强制横屏仅作为兼容场景。真机测试由用户负责，本 Goal Mode 只运行虚拟设备可执行的项目。
+- `REC-P1-013` 淡灰横向边缘按用户确认标为 `RETIRED / OUT_OF_SCOPE`，旧证据保留；时间轴标题贪心折叠仍是独立 P1 必验项 `REC-P1-021`–`030`，强制横屏窄化签核另记 `REC-P1-084`。当前时间线可以覆盖中轴。应用保持竖屏，不主动感应陀螺仪；系统强制横屏仅作为兼容场景。真机测试由用户负责，本 Goal Mode 只运行虚拟设备可执行的项目。
 - PC-ISSUE-135 的草稿重启恢复记为 `REC-P2-001`；PC-ISSUE-136 的本地 AI 聊天历史进程/系统重启恢复记为 `REC-P1-083`；PC-ISSUE-137 将 `REC-P1-050`窄化签核为歧义 AI REPLACE 核心保护通过；PC-ISSUE-138 将 `REC-P1-034/035/036`窄化签核为 Todo 核心投影通过；PC-ISSUE-139 将 `REC-P1-037`窄化签核为重开数据库后的 oldest-first 队列控制器状态通过；PC-ISSUE-140 将 `REC-P1-004`窄化签核为跨午夜核心坐标连续通过，不代表实际滚动；PC-ISSUE-141 将 `REC-P1-006/007`窄化签核为缩放边界及焦点锚点核心模型通过，不代表手势/控件行为；PC-ISSUE-142 将 `REC-P1-001`窄化签核为 initialCamera 的当天正午/24 小时模型结果，不代表首屏呈现或恢复行为；PC-ISSUE-143 修复 `REC-P1-002` Today 错用 initialCamera 导致跳回正午的问题，并保持当前缩放；PC-ISSUE-144 将 `REC-P1-008/009`窄化签核为时间轴 DST gap/fold 刻度文案生成通过，不代表新 AVD/真机可视呈现或重复事件 DST 政策；PC-ISSUE-145 将 `REC-P1-018/019/020` 窄化签核为 Robolectric Compose 中左右翼独立滚动及左翼初始近中轴泳道通过；PC-ISSUE-146 将 `REC-P1-052/053` 窄化签核为提案审核动作与批次授权范围的 Compose 行为通过。各自边界见独立 Issue 报告，未签核部分不作延伸推断。
 - 结构校验器为 `tools/validate_core_freeze_acceptance_ledger.py`；它不设固定行数或历史优先级数量。当前冻结保持 **HOLD**，直到剩余验证及外部/设备门槛有证据闭环。以下更早的执行快照与待办记录保留为历史，不覆盖本政策。
 ## 最新执行补记（PC-ISSUE-149，2026-10-24）

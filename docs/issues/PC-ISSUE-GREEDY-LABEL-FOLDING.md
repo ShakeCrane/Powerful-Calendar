@@ -89,3 +89,9 @@
 代码与测试提交 `2fe0c6643547dc0c195feeb602bb47460398c782`（`fix(时间轴): 修复长标题单行省略`）已推送。两个现存 AVD 当时均在线，隔离 SDK 没有注册 AVD；本次未触碰它们或其数据，也没有新拍长标题 AVD 截图。上述 REC-P1-028 只对 Robolectric API 35 范围签核；设备视觉表现、TalkBack 和 OEM 行为仍由后续设备验收覆盖。
 
 冻结台账更新为 154 PASS / 0 FAIL / 9 BLOCKED / 39 NOT TESTED / 7 SPEC UNRESOLVED；结构校验 artifact 为 `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-title-measurement.json`。整体冻结仍 **HOLD**。
+
+## PC-ISSUE-151 补充：强制横屏与子像素事件命中（2026-10-24）
+
+强制 800×360dp 横屏尺寸下补充 Android API 35 AVD instrumentation 与 Robolectric Compose 回归。标题 A/C 可见、B/D 隐藏；A 的矩形为 `[1116,496,1315,559]`，C 为 `[1116,581,1315,644]`，均来自真实 Compose 屏幕测量。四个一分钟 Activity 的真实视觉框仍为 0px；独立 1dp 交互面在该 AVD 上为 3px，隐藏标题 B 仍可点击并打开完整事件。
+
+本次新增 `REC-P1-084` 作为独立的强制横屏兼容签核；它不取代 `REC-P1-021`–`030` 的标题折叠验收，也不代表实体设备/OEM 或竖屏锁定复验。截图和回归范围见 `docs/issues/PC-ISSUE-151-forced-landscape-title-folding.md`。代码/测试提交 `671f7c700404e18eea0c5658c300ca04ca01a49c` 已推送。整体核心冻结仍 HOLD。
