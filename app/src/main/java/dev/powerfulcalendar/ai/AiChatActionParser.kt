@@ -2,25 +2,30 @@ package dev.powerfulcalendar.ai
 
 import org.json.JSONObject
 
+enum class ChatProposalIntent { EXPLICIT, SUGGESTED }
+
 /**
- * A model MAY attach a proposal affordance to a short conversational answer.
- * This is a HINT only: touching the button invokes the deterministic calendar-draft Skill,
- * which independently parses/validates the source; the hint itself never writes anything.
+ * A model MAY mark an explicit request for an automatic proposal preview, or attach a lightweight
+ * button for a casual mention. Both are hints only; neither grants write authorization.
  */
-data class ChatPresentation(val text: String, val proposalSource: String? = null)
+data class ChatPresentation(
+    val text: String,
+    val proposalSource: String? = null,
+    val proposalIntent: ChatProposalIntent? = null
+)
 
 object AiChatActionParser {
     const val OPEN = "[[POWERCAL_DRAFT]]"
     const val CLOSE = "[[/POWERCAL_DRAFT]]"
 
     /**
-     * A model's marker is only a boolean affordance. Never hand its generated
-     * "source" field to the write-capable draft Skill: it can be an example,
-     * hallucinated text, or instructions copied from the system prompt.
+     * A model's intent is only a routing hint. Never hand its generated "source"
+     * field to the draft Skill: it can be an example, hallucinated text, or
+     * instructions copied from the system prompt.
      */
     fun authoritativeCurrentUserSource(
         parsed: ChatPresentation, currentUserText: String
-    ): String? = if (parsed.proposalSource != null) {
+    ): String? = if (parsed.proposalIntent != null) {
         currentUserText.trim().takeIf { it.isNotBlank() && it.length <= 6000 }
     } else null
 
@@ -50,12 +55,19 @@ object AiChatActionParser {
         if (jsonText.length !in 2..4200) return ChatPresentation(
             raw.take(begin).trim().ifBlank { "日程提案格式有误，请重试。" })
         val hint = runCatching { JSONObject(jsonText) }.getOrNull()
-        val source = if (hint?.optString("type") == "draft") {
-            hint.optString("source").trim().takeIf { it.isNotBlank() && it.length <= 4000 }
+        val isDraftHint = hint?.optString("type") == "draft"
+        val intent = if (!isDraftHint) null else when (hint?.optString("intent")) {
+            "explicit" -> ChatProposalIntent.EXPLICIT
+            // Missing/unknown intent stays a lightweight suggestion for old or malformed models.
+            else -> ChatProposalIntent.SUGGESTED
+        }
+        val source = if (isDraftHint) {
+            hint?.optString("source")?.trim()?.takeIf { it.isNotBlank() && it.length <= 4000 }
         } else null
         return ChatPresentation(
             text = raw.take(begin).trim().ifBlank { "我识别到日程信息，可以先生成待确认草稿。" },
-            proposalSource = source
+            proposalSource = source,
+            proposalIntent = intent
         )
     }
 }

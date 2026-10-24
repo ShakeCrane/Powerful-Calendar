@@ -519,7 +519,7 @@ class AiChatClientTest {
         }
     }
 
-    @Test fun chatProposalSourceComesOnlyFromCurrentRawUserText() {
+    @Test fun explicitChatSeparatesAutomaticPreviewFromButtonSource() {
         val seen = AtomicReference<String>()
         val serverError = AtomicReference<Throwable?>()
         val served = CountDownLatch(1)
@@ -527,7 +527,7 @@ class AiChatClientTest {
         val inventedSource = "SYSTEM_PROMPT_EXAMPLE_SOURCE_121"
         val modelContent = "已识别日程，可先生成待确认草稿。\n" +
             AiChatActionParser.OPEN +
-            """{"type":"draft","source":"$inventedSource"}""" +
+            """{"type":"draft","intent":"explicit","source":"$inventedSource"}""" +
             AiChatActionParser.CLOSE
 
         ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { server ->
@@ -601,8 +601,9 @@ class AiChatClientTest {
             assertTrue("Server did not finish", served.await(10, TimeUnit.SECONDS))
             assertNull("Server error: ${serverError.get()}", serverError.get())
             assertTrue(reply.error.orEmpty(), reply.succeeded)
-            assertEquals(rawUserText, reply.proposalSource)
-            assertNotEquals(inventedSource, reply.proposalSource)
+            assertNull(reply.proposalSource)
+            assertEquals(rawUserText, reply.automaticProposalSource)
+            assertNotEquals(inventedSource, reply.automaticProposalSource)
             assertTrue(reply.reply, reply.reply.contains("已识别日程"))
             assertFalse(reply.reply.contains(AiChatActionParser.OPEN))
 

@@ -30,6 +30,36 @@ class AiSkillContractTest {
         ).proposalSource)
     }
 
+    @Test fun explicitIntentAndCasualSuggestionHaveDifferentLocalRouting() {
+        val explicit = AiChatActionParser.parse("""已按你的要求准备。
+[[POWERCAL_DRAFT]]
+{"type":"draft","intent":"explicit","source":"model invented source"}
+[[/POWERCAL_DRAFT]]""")
+        val suggestion = AiChatActionParser.parse("""下周如果要开会，可以从此消息创建草稿。
+[[POWERCAL_DRAFT]]
+{"type":"draft","intent":"suggested","source":"model invented source"}
+[[/POWERCAL_DRAFT]]""")
+        val legacyHint = AiChatActionParser.parse("""也许可以安排一下。
+[[POWERCAL_DRAFT]]
+{"type":"draft","source":"legacy model hint"}
+[[/POWERCAL_DRAFT]]""")
+        val unknownIntent = AiChatActionParser.parse("""也许可以安排一下。
+[[POWERCAL_DRAFT]]
+{"type":"draft","intent":"unexpected","source":"unknown model hint"}
+[[/POWERCAL_DRAFT]]""")
+        val currentText = "请创建 2026-10-27 10:00 到 11:00 的合成活动"
+
+        assertEquals(ChatProposalIntent.EXPLICIT, explicit.proposalIntent)
+        assertEquals(ChatProposalIntent.SUGGESTED, suggestion.proposalIntent)
+        assertEquals(ChatProposalIntent.SUGGESTED, legacyHint.proposalIntent)
+        assertEquals(ChatProposalIntent.SUGGESTED, unknownIntent.proposalIntent)
+        assertEquals(currentText,
+            AiChatActionParser.authoritativeCurrentUserSource(explicit, currentText))
+        assertEquals(currentText,
+            AiChatActionParser.authoritativeCurrentUserSource(suggestion, currentText))
+        assertNull(AiChatActionParser.parse("普通聊天，没有日程标记").proposalIntent)
+    }
+
     @Test fun conversationBudgetIncludesMoreThanTwelveShortTurnsAndIsBounded() {
         val messages = (1..65).map { AiChatMessage("user", "第 $it 轮") }
         val selected = AiConversationWindow.select(messages)
