@@ -4,6 +4,14 @@ Date: 2026-10-24
 
 Verdict: **HOLD**
 
+## Latest follow-up: PC-ISSUE-157
+
+PC-ISSUE-157 signs the API 35 native draft-card gesture subcases for `REC-P1-041/042`: replacing a title and swiping horizontally inside its field retained the same card and text; a vertical swipe in the expanded form scrolled its content while retaining the draft identity. Both synthetic-fixture AndroidJUnitRunner cases passed. Production behavior was unchanged; the test used its own uniquely named temporary PowerStore database, not the app's default database.
+
+Test-only commit `d495732054188ef3999a611c443c5e4f371aedcd` is pushed. Full offline Gradle passed 491/491 JVM tests across 66 suites, zero failures/errors/skips; source boundary, Debug/AndroidTest APK assembly passed; lint 0 errors / 58 warnings. Full Gradle log SHA-256 `46BF96596290D2131786519DA397CB34A6A74D1366887202A1397AECF9C404ED`. See [PC-ISSUE-157](issues/PC-ISSUE-157-draft-card-touch-priority.md) for exact interaction and rectangle traces.
+
+Structural-only ledger r23 records 210 active reconstructed rows (P0/P1/P2 144/65/1), with 190 PASS / 0 FAIL / 8 BLOCKED / 6 NOT TESTED / 6 SPEC UNRESOLVED; historical IDs mapped=0 and `product_behavior_tested=false`. Artifact SHA-256 `972D3F75365E4A7FD67BCC8DE17C9FA72212B259F80E260F9068AAAFB9B74F2E`; ledger SHA-256 `076EB56B2398A166C969815595DE6F37FE441874E59ED2A7FCD903C74AAB0437`. The verdict remains **HOLD**.
+
 ## Latest follow-up: PC-ISSUE-156
 
 PC-ISSUE-156 signs the API 35 native chat-list behavior for `REC-P1-071/072`: a new response remains visible when the conversation was bottom-anchored; when the user scrolled to the oldest history entry, a new response did not move the list to the bottom. Both synthetic-message AndroidJUnitRunner cases passed. Full MainActivity, persisted history, AI response and physical-device paths are not claimed.
