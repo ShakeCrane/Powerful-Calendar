@@ -4,6 +4,14 @@ Date: 2026-10-24
 
 Verdict: **HOLD**
 
+## Latest follow-up: PC-ISSUE-155
+
+PC-ISSUE-155 adds an API 35 Android instrumentation subcase for `REC-P1-070`. With the real system IME visible, the conversation viewport shrank from 1858px to 1101px; the synthetic message remained visible and the enabled send control stayed 21px above the IME. The test composes production `SkinAppShell` and `NativeAiChatScreen` in an isolated `ComponentActivity` without opening PowerStore or calling AI. The complete row remains **BLOCKED** pending full `MainActivity` integration and user-owned physical-device/OEM IME verification.
+
+Test-only commit `caa01096a20bddc2b02116a7c7d5931d329c4097` is pushed. Targeted instrumentation passed 1/1. Full offline Gradle passed 491/491 JVM tests across 66 suites, zero failures/errors/skips; source boundary, Debug/AndroidTest APK assembly passed; lint 0 errors / 58 warnings. Full Gradle log SHA-256 `0282E3AAF54F20D153A152691DCEAE614D398E7CD32A5D60BDC0725E028E1542`. See [PC-ISSUE-155](issues/PC-ISSUE-155-ai-ime-avoidance.md) for measured rectangles and test limits.
+
+Structural-only ledger r21 records 210 active reconstructed rows (P0/P1/P2 144/65/1), with 186 PASS / 0 FAIL / 8 BLOCKED / 10 NOT TESTED / 6 SPEC UNRESOLVED; historical IDs mapped=0 and `product_behavior_tested=false`. Artifact SHA-256 `C6123739CEC74A1A14A92D5A01DF0AD728B4B5B2183BE1FE2B10F6E9A50940DD`; ledger SHA-256 `D383603B1AAAD4DB152BEDBF1932531DF63DB4BD5CA6A372B87238407FDDA62D`. The verdict remains **HOLD**.
+
 ## Latest follow-up: PC-ISSUE-154
 
 PC-ISSUE-154 adds a Robolectric API 35 Compose subcase for `REC-P1-069`: at 2× `LocalDensity.fontScale` in a 360×800dp logical viewport, six timeline toolbar/zoom controls remained clickable and inside the viewport; the New menu's Activity action also fired. This did not change Android's system `font_scale`, launch the full app, or exercise an AVD/physical device, so the complete row remains **BLOCKED**.
