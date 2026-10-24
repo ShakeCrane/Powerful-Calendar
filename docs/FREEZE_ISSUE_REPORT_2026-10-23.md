@@ -228,9 +228,9 @@ Issue 004 修复代码基线：`16e00d55435c5029e07784ec5d945dfd7fb37ac5`
 ### PC-QA-GATE-001 · P1 / PARTIAL / HOLD · 核心合同风险验收矩阵（2026-10-24 当前签核）
 
 - 原始 209 项表无法提供；按用户明确指示，不再为其暂停或反复追索。以 `CORE_CONTRACT_FREEZE_2026-10-21.md`、已有验收文档、测试、历史 Issue 和实际产品行为重建当前矩阵。所有重建项均标 `RECONSTRUCTED` / `UNMAPPED`；不强凑数量、不伪称历史映射，优先级由当前风险决定。
-- 当前活动候选 209 项（该数量为移除伪历史占位、退役已接受淡灰边缘项并新增 PC-ISSUE-135/136 后的偶然结果，不是目标），P0=144、P1=64、P2=1；状态 165 PASS / 0 FAIL / 8 BLOCKED / 30 NOT TESTED / 6 SPEC UNRESOLVED，另有 1 条 `RETIRED / OUT_OF_SCOPE`。
+- 当前活动候选 209 项（该数量为移除伪历史占位、退役已接受淡灰边缘项并新增 PC-ISSUE-135/136/137 后的偶然结果，不是目标），P0=144、P1=64、P2=1；状态 166 PASS / 0 FAIL / 8 BLOCKED / 29 NOT TESTED / 6 SPEC UNRESOLVED，另有 1 条 `RETIRED / OUT_OF_SCOPE`。
 - `REC-P1-013` 淡灰横向边缘已由用户确认接受，留存旧证据但不再作为 GO 条件。贪心标题折叠仍按独立 P1 `REC-P1-021`–`030` 签核；蓝色当前时间线覆盖中轴符合用户确认的设计。
-- 原始 209 项 ID 映射属于文档溯源缺口，需如实披露，但不阻塞开发或取代核心合同冻结标准。结构校验产物 `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-risk-matrix-validated-20261024-r1.json` SHA-256 `A4F30B1E85577AF717CBFE2B7D03B92A36AEF7E4C5D1C7C60EF1F45ABC11E9EB`；仅检查结构，`product_behavior_tested=false`。正式冻结继续 **HOLD**，直到测试与外部/设备门槛闭环。
+- 原始 209 项 ID 映射属于文档溯源缺口，需如实披露，但不阻塞开发或取代核心合同冻结标准。结构校验产物 `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-risk-matrix-validated-20261024-r2.json` SHA-256 `67810F2478C183B4AB516D8410BD5B3F1041798C2C2BA27226E93F9C224F7998`，台账 SHA-256 `6A8CB5D54835EAC195C74E7902E658AB8D0863443E7D9347EB149E9C6D265EDE`；仅检查结构，`product_behavior_tested=false`。PC-ISSUE-137 将 `REC-P1-050`（当前风险 P0）窄化签核为本地核心 PASS：无 `eventSeq` 的歧义 REPLACE 请求澄清且不写入，定向 1/1、完整 Gradle 469/469；实时模型、聊天界面和设备行为仍未测。正式冻结继续 **HOLD**，直到测试与外部/设备门槛闭环。
 
 ### PC-QA-GATE-001 · 历史快照（此前按原始 209 项映射追踪；已被上方当前政策取代）
 - 历史规划明确 209 核心验收项（P0 126，P1 82，另 1 项优先级待核）。

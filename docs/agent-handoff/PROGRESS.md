@@ -1,4 +1,10 @@
 # Core freeze progress
+## PC-ISSUE-137 — ambiguous AI REPLACE target core sign-off (REC-P1-050, current risk P0)
+
+- Existing targeted `PowerStoreTest.ambiguousAiReplaceTargetRequestsClarificationWithoutWritingAcrossRestart` passed 1/1 on the `cc22d49` source/test baseline. With two same-title formal records and no `eventSeq`, the proposal requests clarification; `AiDraftService` writes no draft, and records/history/queue/identity count/sequence preview remain unchanged across SQLite reopen. No provider, UI, or device was used.
+- Full offline `verifySkinSourceBoundary`, JVM tests, Debug/AndroidTest APK assembly and lint passed: 469/469 tests across 58 suites, zero failures/errors/skips; lint 0 errors / 58 warnings. Full log SHA-256 `C2C97732B82813EE678F04F9ACC8CE8C249D797DF808E4D88AC0FB8190C70153`.
+- Independent report: `docs/issues/PC-ISSUE-137-ai-ambiguous-replace-target-core-signoff.md`. Focused log/XML hashes and APK hashes are recorded there. Live model/chat UI/API 35/physical-device behavior remains outside the sign-off; overall freeze remains HOLD.
+
 ## PC-ISSUE-136 — AI chat history process/system restart persistence (REC-P1-083 RECONSTRUCTED)
 
 - Core contract invariant 10 requires local chat-history persistence across restart. Added an Android instrumentation regression for the actual `AiChatHistoryStore`, with two synthetic messages. Cycle 0 refused to overwrite pre-existing history; every run reloaded and compared the same messages.
@@ -10,9 +16,9 @@
 ## PC-QA-GATE-001 — current risk-based reconstructed matrix (2026-10-24)
 
 - The user confirmed the original 209-row source is unavailable and explicitly directed the work to continue without further requests for it. The matrix is reconstructed from the core contract, acceptance documents, tests, Issues, and observed behavior; historical IDs remain unmapped and the old 126/82 partition is not a target or GO gate.
-- Current ledger: 209 active reconstructed rows (the count is incidental), P0 144 / P1 64 / P2 1; 165 PASS / 0 FAIL / 8 BLOCKED / 30 NOT TESTED / 6 SPEC UNRESOLVED, plus one retained retired record. All 30 untested rows now have explicit NOT TESTED actual/evidence text and remain open.
+- Current ledger: 209 active reconstructed rows (the count is incidental), P0 144 / P1 64 / P2 1; 166 PASS / 0 FAIL / 8 BLOCKED / 29 NOT TESTED / 6 SPEC UNRESOLVED, plus one retained retired record. All 29 untested rows now have explicit NOT TESTED actual/evidence text and remain open.
 - Risk review moved `REC-P0-037/040` to P1; moved `REC-P1-014`–`016`, `034`–`036`, `044/045`, `049`–`051`, and `054`–`062` to P0. Stable ID prefixes remain trace keys; `candidate_priority` is authoritative. `REC-P1-013` is RETIRED because the owner accepted the pale-gray horizontal edge. Greedy title folding remains a separate P1 sign-off (`REC-P1-021`–`030`).
-- `REC-P2-001` and `REC-P1-083` add PC-ISSUE-135 draft recovery and PC-ISSUE-136 chat-history recovery. The fabricated historical placeholder was removed. Structural validator: `tools/validate_core_freeze_acceptance_ledger.py`; artifact `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-risk-matrix-validated-20261024-r1.json`, SHA-256 `A4F30B1E85577AF717CBFE2B7D03B92A36AEF7E4C5D1C7C60EF1F45ABC11E9EB`; ledger SHA-256 `EBF341AF8D8C64F992C99FC42155C140B4207FD2E6DBBAB6659BD8B0CC1486CF`. Structural-only (`product_behavior_tested=false`).
+- `REC-P2-001`, `REC-P1-083`, and `REC-P1-050` record PC-ISSUE-135 draft recovery, PC-ISSUE-136 chat-history recovery, and PC-ISSUE-137 ambiguous-target protection. The fabricated historical placeholder was removed. Structural validator: `tools/validate_core_freeze_acceptance_ledger.py`; artifact `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-risk-matrix-validated-20261024-r2.json`, SHA-256 `67810F2478C183B4AB516D8410BD5B3F1041798C2C2BA27226E93F9C224F7998`; ledger SHA-256 `6A8CB5D54835EAC195C74E7902E658AB8D0863443E7D9347EB149E9C6D265EDE`. Structural-only (`product_behavior_tested=false`).
 - Overall result remains HOLD for open P0/P1 tests, blockers/specifications, and user-owned physical-device/OEM/TalkBack checks. The missing original list is a disclosed provenance gap, not a reason to stop the reconstructed workflow.
 
 ## PC-ISSUE-135 — Android process restart draft persistence (REC-P2-001 RECONSTRUCTED)

@@ -12,10 +12,10 @@ The current ledger has 209 active `RECONSTRUCTED` acceptance rows and one retain
 
 | Current risk bucket | PASS | FAIL | BLOCKED | NOT TESTED | SPEC UNRESOLVED |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| P0 | 135 | 0 | 0 | 4 | 5 |
+| P0 | 136 | 0 | 0 | 3 | 5 |
 | P1 | 29 | 0 | 8 | 26 | 1 |
 | P2 | 1 | 0 | 0 | 0 | 0 |
-| **Active reconstructed total** | **165** | **0** | **8** | **30** | **6** |
+| **Active reconstructed total** | **166** | **0** | **8** | **29** | **6** |
 
 One retired record (`REC-P1-013`) is excluded from those active-row totals and from GO criteria.
 
@@ -23,11 +23,11 @@ Risk review changed `REC-P0-037` and `REC-P0-040` to P1 because Draft Deck navig
 
 `REC-P1-013` is retained as `RETIRED / OUT_OF_SCOPE`: the owner accepted the pale-gray horizontal edge/stripe. Its former visual result and evidence remain in the row for audit, but it is not a current pass condition or GO gate. The separate user-requested greedy-title-folding acceptance remains P1 and independently signed in `REC-P1-021`–`030`; it tests title-rectangle collisions while preserving event geometry. The blue now-line may overlap the central axis by owner confirmation.
 
-Two additional reconstructed recovery cases have targeted evidence: `REC-P2-001` signs PC-ISSUE-135 for a synthetic pending draft across process restarts and an AVD reboot; `REC-P1-083` signs PC-ISSUE-136 for synthetic chat history across process restarts and an AVD reboot. Their reports state the exact tested boundary. Neither claims physical-device/OEM, low-memory, or normal UI lifecycle behavior.
+Three additional reconstructed recovery/AI-safety cases now have targeted evidence: `REC-P2-001` signs PC-ISSUE-135 for a synthetic pending draft across process restarts and an AVD reboot; `REC-P1-083` signs PC-ISSUE-136 for synthetic chat history across process restarts and an AVD reboot; and `REC-P1-050` (current priority P0) signs PC-ISSUE-137 for blocking an ambiguous AI REPLACE without mutating formal events or identity state. Their reports state the exact tested boundaries. None claims physical-device/OEM, low-memory, live-model, or normal UI lifecycle behavior.
 
-The 30 `NOT TESTED` rows remain open. Each row now says `NOT TESTED` in `actual` and explicitly records that no targeted run log exists in `evidence`, with this issue as the gap register. No grouped Gradle count is attributed to those behaviors. Current IDs are in the structural report. The six unresolved specification rows are `REC-P0-049`, `REC-P0-054`, `REC-P0-074`, `REC-P0-075`, `REC-P0-118`, and `REC-P1-068`; the eight blocked rows include the free-provider path and external/device conditions. They are not PASS.
+The 29 `NOT TESTED` rows remain open. Each row says `NOT TESTED` in `actual` and explicitly records that no targeted run log exists in `evidence`, with this issue as the gap register. No grouped Gradle count is attributed to those behaviors. Current IDs are in the structural report. The six unresolved specification rows are `REC-P0-049`, `REC-P0-054`, `REC-P0-074`, `REC-P0-075`, `REC-P0-118`, and `REC-P1-068`; the eight blocked rows include the free-provider path and external/device conditions. They are not PASS.
 
-Structural-only validation uses `tools/validate_core_freeze_acceptance_ledger.py`. Its artifact records the ledger hash, dynamic status/priority totals, every open row, zero historical mappings, and `product_behavior_tested=false`; it contains no fixed row-count or 126/82 assertion. Structural validation cannot sign product behavior. The original 209-item provenance gap is disclosed, but it no longer blocks execution or replaces the core-contract GO criteria. Overall status remains **HOLD** until active P0/P1 evidence and mandatory external/device gates are resolved.
+Structural-only validation uses `tools/validate_core_freeze_acceptance_ledger.py`. Latest artifact `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-risk-matrix-validated-20261024-r2.json`, SHA-256 `67810F2478C183B4AB516D8410BD5B3F1041798C2C2BA27226E93F9C224F7998`; ledger SHA-256 `6A8CB5D54835EAC195C74E7902E658AB8D0863443E7D9347EB149E9C6D265EDE`. It records dynamic status/priority totals, every open row, zero historical mappings, and `product_behavior_tested=false`; it contains no fixed row-count or 126/82 assertion. Structural validation cannot sign product behavior. The original 209-item provenance gap is disclosed, but it no longer blocks execution or replaces the core-contract GO criteria. Overall status remains **HOLD** until active P0/P1 evidence and mandatory external/device gates are resolved.
 
 ## Finding
 
