@@ -3,6 +3,8 @@ package dev.powerfulcalendar.ui.v2
 import dev.powerfulcalendar.core.*
 import java.time.Instant
 import java.time.LocalDate
+import java.time.format.TextStyle
+import java.util.Locale
 import kotlin.math.abs
 
 /** Read-only occurrence projection. Keep the formal owner separate from its displayed slot. */
@@ -102,14 +104,33 @@ internal fun snapshotRows(current: TemporalRecord?, proposed: DraftForm): List<S
         "地点" to (form?.location ?: ""),
         "备注" to (form?.notes ?: ""),
         "提醒" to DraftDiff.reminderLabel(form?.reminderMinutes),
+        "提醒方式" to (form?.reminderMethod?.let { method -> when (method) {
+            ReminderMethod.MESSAGE -> "通知"
+            ReminderMethod.ALARM -> "闹钟"
+        } } ?: ""),
+        "提醒时机" to (form?.reminderTiming?.let { timing -> when (timing) {
+            ReminderTiming.OFFSET -> "按提前量"
+            ReminderTiming.DAY_START -> "当天开始"
+        } } ?: ""),
         "启用" to (form?.let { if (it.enabled) "是" else "否" } ?: ""),
+        "完成跟踪" to (form?.let { if (it.trackingEnabled) "启用" else "关闭" } ?: ""),
+        "已完成实例槽位" to (form?.completedKeys?.takeIf { it.isNotEmpty() }
+            ?.sorted()?.joinToString("\n") ?: "无"),
         "时区" to (form?.zoneId ?: ""),
         "来源" to (form?.source ?: ""),
-        "重复频率" to (form?.recurrence?.freq?.name ?: ""),
+        "重复频率" to (form?.recurrence?.freq?.let { frequency -> when (frequency) {
+            RecurrenceFreq.NONE -> "不重复"
+            RecurrenceFreq.DAILY -> "每天"
+            RecurrenceFreq.WEEKLY -> "每周"
+            RecurrenceFreq.MONTHLY -> "每月"
+        } } ?: ""),
         "重复间隔" to (form?.recurrence?.interval?.toString() ?: ""),
         "重复次数上限" to (form?.recurrence?.count?.toString() ?: "无"),
         "重复截至" to (form?.recurrence?.untilMillis?.let { DraftForm.formatInstant(it, form.zone) } ?: "无"),
-        "重复星期" to (form?.recurrence?.byDay?.sortedBy { it.value }?.joinToString { it.name } ?: ""),
+        "重复生效开始日期" to (form?.recurrence?.activeFromDate ?: "无"),
+        "重复生效结束日期" to (form?.recurrence?.activeUntilDate ?: "无"),
+        "重复星期" to (form?.recurrence?.byDay?.sortedBy { it.value }
+            ?.joinToString { it.getDisplayName(TextStyle.SHORT, Locale.CHINA) } ?: ""),
         "跳过的原始实例" to (form?.recurrence?.exceptions?.sorted()?.joinToString("\n") ?: ""),
         "实例覆盖" to (form?.recurrence?.overrides?.toSortedMap()?.entries?.joinToString("\n") { (key, value) ->
             "$key → ${DraftForm.formatInstant(value.startMillis, form.zone)} / ${DraftForm.formatInstant(value.endMillis, form.zone)} · ${value.title.orEmpty()}"

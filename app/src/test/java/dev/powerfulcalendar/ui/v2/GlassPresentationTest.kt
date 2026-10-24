@@ -118,17 +118,52 @@ class GlassPresentationTest {
 
     @Test fun fullSnapshotIncludesAllRecurrenceConstraintsAndRemovedTimeFields() {
         val before = event(1).copy(recurrence = Recurrence(RecurrenceFreq.WEEKLY, interval = 2, count = 30,
-            untilMillis = instant("2027-01-01T09:00"), byDay = setOf(DayOfWeek.TUESDAY),
+            untilMillis = instant("2027-01-01T09:00"), activeFromDate = "2026-10-20",
+            activeUntilDate = "2026-12-31", byDay = setOf(DayOfWeek.TUESDAY),
             exceptions = setOf("2026-10-27T09:00"), overrides = mapOf("2026-11-03T09:00" to OccurrenceOverride(instant("2026-11-03T11:00"), null, "新标题"))))
         val proposed = TemporalConversion.convert(DraftForm.from(before), TemporalKind.DEADLINE).form.copy(recurrence = Recurrence.NONE, zoneId = "UTC")
         val rows = snapshotRows(before, proposed)
-        for (label in listOf("类型", "开始", "时区", "重复频率", "重复间隔", "重复次数上限", "重复截至", "重复星期", "跳过的原始实例", "实例覆盖")) {
+        for (label in listOf("类型", "开始", "时区", "重复频率", "重复间隔", "重复次数上限", "重复截至", "重复生效开始日期", "重复生效结束日期", "重复星期", "跳过的原始实例", "实例覆盖")) {
             assertTrue("Missing or unchanged: $label", rows.single { it.label == label }.changed)
         }
         assertTrue(rows.single { it.label == "实例覆盖" }.before.contains("新标题"))
-        assertEquals(19, rows.size)
+        assertEquals(25, rows.size)
         assertTrue(rows.any { it.label == "编辑范围" })
         assertTrue(rows.any { it.label == "目标原始实例" })
+    }
+
+    @Test fun snapshotRowsExposeReminderModesTrackingAndCompletedOccurrenceSlots() {
+        val record = event(1).copy(
+            reminderMethod = ReminderMethod.MESSAGE,
+            reminderTiming = ReminderTiming.OFFSET,
+            trackingEnabled = false,
+            completedKeys = emptySet()
+        )
+        val proposed = DraftForm.from(record).copy(
+            reminderMethod = ReminderMethod.ALARM,
+            reminderTiming = ReminderTiming.DAY_START,
+            trackingEnabled = true,
+            completedKeys = setOf("2026-10-20T09:00", "2026-10-27T09:00"),
+            recurrence = Recurrence(
+                freq = RecurrenceFreq.WEEKLY,
+                activeFromDate = "2026-10-20",
+                activeUntilDate = "2026-12-31"
+            )
+        )
+
+        val rows = snapshotRows(record, proposed)
+        assertEquals(25, rows.size)
+        assertEquals("通知", rows.single { it.label == "提醒方式" }.before)
+        assertEquals("闹钟", rows.single { it.label == "提醒方式" }.after)
+        assertEquals("按提前量", rows.single { it.label == "提醒时机" }.before)
+        assertEquals("当天开始", rows.single { it.label == "提醒时机" }.after)
+        assertEquals("关闭", rows.single { it.label == "完成跟踪" }.before)
+        assertEquals("启用", rows.single { it.label == "完成跟踪" }.after)
+        assertEquals("无", rows.single { it.label == "已完成实例槽位" }.before)
+        assertEquals("2026-10-20T09:00\n2026-10-27T09:00", rows.single { it.label == "已完成实例槽位" }.after)
+        assertEquals("2026-10-20", rows.single { it.label == "重复生效开始日期" }.after)
+        assertEquals("2026-12-31", rows.single { it.label == "重复生效结束日期" }.after)
+        assertEquals("每周", rows.single { it.label == "重复频率" }.after)
     }
 
     @Test fun unchangedFieldsAndLongNotesRemainAvailableInConflictReview() {
