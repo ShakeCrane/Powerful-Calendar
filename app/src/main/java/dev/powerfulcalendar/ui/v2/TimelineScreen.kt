@@ -368,23 +368,11 @@ fun TimelineScreen(
                         val availablePx = laneWidthPx - startPaddingPx - endPaddingPx
                         val measuredTitle = run {
                             if (availablePx <= 0 || startPaddingPx >= laneWidthPx) return@run null
-                            val fontMaxPx = textMeasurer.measure("汉".repeat(10), style = baseStyle)
-                                .size.width.toFloat()
-                            val naturalWidth = textMeasurer.measure(item.record.title, style = baseStyle)
-                                .size.width.coerceAtLeast(1).toFloat()
-                            val titleLimit = minOf(availablePx.toFloat(), fontMaxPx)
-                            val fontSp = (13f * minOf(1f, titleLimit / naturalWidth))
-                                .coerceAtLeast(10f).sp
-                            val textLayout = textMeasurer.measure(
-                                text = item.record.title,
-                                style = baseStyle.copy(fontSize = fontSp),
-                                overflow = TextOverflow.Ellipsis,
-                                softWrap = false,
-                                maxLines = 1,
-                                constraints = Constraints(maxWidth = availablePx)
-                            )
-                            val drawWidthPx = minOf(textLayout.size.width, availablePx)
-                            if (drawWidthPx <= 0 || textLayout.size.height <= 0) return@run null
+                            val measuredText = measureTimelineTitleText(
+                                textMeasurer, item.record.title, baseStyle, availablePx
+                            ) ?: return@run null
+                            val textLayout = measuredText.layout
+                            val drawWidthPx = measuredText.drawWidthPx
                             val insetPx = with(density) { 2.dp.toPx() }
                             val titleTopPx = when {
                                 outside -> y - textLayout.size.height - insetPx

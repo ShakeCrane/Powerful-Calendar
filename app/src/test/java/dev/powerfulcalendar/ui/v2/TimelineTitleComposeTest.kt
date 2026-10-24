@@ -16,6 +16,11 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.unit.sp
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], qualifiers = "w360dp-h800dp-xhdpi")
@@ -37,6 +42,81 @@ class TimelineTitleComposeTest {
             .atZone(zone).plusMinutes(1).toInstant().toEpochMilli(),
         zoneId = zone.id
     )
+
+    @Test
+    fun longTitleMeasurementKeepsTenSpFloorAndEllipsizesOnOneLine() {
+        val title = "标题".repeat(100)
+        val availableWidthPx = 180
+        var measurement: TimelineTitleTextMeasurement? = null
+
+        ui.setContent {
+            val textMeasurer = rememberTextMeasurer()
+            val measured = measureTimelineTitleText(
+                textMeasurer = textMeasurer,
+                text = title,
+                baseStyle = TextStyle(fontSize = 13.sp),
+                availableWidthPx = availableWidthPx
+            )
+            SideEffect { measurement = measured }
+        }
+        ui.waitForIdle()
+
+        ui.runOnIdle {
+            val measured = requireNotNull(measurement)
+            assertEquals(10f, measured.fontSizeSp, 0f)
+            assertEquals(1, measured.layout.lineCount)
+            assertTrue(measured.displayText.length < title.length)
+            assertTrue(measured.displayText.endsWith("…"))
+            assertEquals(measured.displayText, measured.layout.layoutInput.text.text)
+            assertTrue(measured.layout.size.width <= availableWidthPx)
+            assertTrue(measured.drawWidthPx <= availableWidthPx)
+        }
+    }
+
+    @Test
+    fun changingToLongTitleDoesNotChangeEventFrameBounds() {
+        val original = event(105, "09:00", "Short")
+        val longTitle = "VeryLongTitle".repeat(100)
+        val records = mutableStateOf(listOf(original))
+        ui.setContent {
+            PowerCalTheme {
+                TimelineScreen(
+                    records = records.value,
+                    camera = TimelineCoordinate.Camera(noon, 24.0),
+                    nowMillis = noon,
+                    zone = zone,
+                    pendingCount = 0,
+                    aiLocked = false,
+                    onCameraChange = {},
+                    onOpenEvent = {},
+                    onMoveEvent = { _, _ -> },
+                    onCreate = { _, _ -> },
+                    onToday = {},
+                    onOpenDeck = {},
+                    onOpenTools = {}
+                )
+            }
+        }
+
+        val frame = ui.onNodeWithTag(eventTag(original))
+        frame.assertExists()
+        val initialBounds = frame.fetchSemanticsNode().boundsInRoot
+
+        ui.runOnIdle {
+            records.value = listOf(original.copy(title = longTitle))
+        }
+        ui.waitForIdle()
+
+        val updatedFrame = ui.onNodeWithTag(eventTag(original))
+        updatedFrame.assertExists()
+        assertEquals(initialBounds, updatedFrame.fetchSemanticsNode().boundsInRoot)
+        assertTrue(
+            updatedFrame.fetchSemanticsNode().config[SemanticsProperties.ContentDescription]
+                .any { longTitle in it }
+        )
+        val visibleTitle = ui.onNodeWithTag(titleTag(original)).fetchSemanticsNode()
+        assertTrue(visibleTitle.boundsInRoot.width < initialBounds.width)
+    }
 
     private fun conflictRun() = listOf(
         event(101, "09:00", "Greedy_A_title"),
