@@ -297,14 +297,10 @@ fun TimelineScreen(
                         val sideWidth = if (side == AxisSide.LEFT) leftSide else rightSide
                         val lanes = (layout.items.filter { it.side == side }
                             .maxOfOrNull { it.lane + 1 } ?: 1)
-                        // Left alarms are fixed. Compress only the left lanes to keep every
-                        // alarm within its half; the right event wing alone may scroll sideways.
-                        val spacing = if (side == AxisSide.LEFT)
-                            minOf(4.dp, sideWidth / (lanes * 2)) else 4.dp
-                        val laneWidth = if (side == AxisSide.LEFT)
-                            minOf(84.dp, ((sideWidth - spacing * (lanes - 1)) / lanes)
-                                .coerceAtLeast(1.dp))
-                            else minOf(84.dp, sideWidth)
+                        // Each wing keeps stable lane widths and scrolls independently. The
+                        // left wing starts at its center-proximal lanes (the content's right edge).
+                        val spacing = 4.dp
+                        val laneWidth = minOf(84.dp, sideWidth)
                         val contentWidth = maxOf(sideWidth, (laneWidth + spacing) * lanes - spacing)
                         val wingX = if (side == AxisSide.LEFT)
                             viewportWidth / 2 - gutter - sideWidth
@@ -315,7 +311,7 @@ fun TimelineScreen(
                         Box(
                             Modifier.offset(x = wingX).width(sideWidth).fillMaxHeight()
                                 .clipToBounds()
-                                .horizontalScroll(horizontalState, enabled = side == AxisSide.RIGHT)
+                                .horizontalScroll(horizontalState)
                                 .testTag(if (side == AxisSide.LEFT)
                                     "timeline-left-lanes" else "timeline-right-lanes")
                         ) {
