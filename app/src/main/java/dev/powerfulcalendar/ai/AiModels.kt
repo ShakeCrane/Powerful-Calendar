@@ -139,7 +139,11 @@ object AiResponseParser {
             if (op != DraftOperation.CREATE) {
                 target = eventSeq?.let { knownBySeq[it] }
                 if (target == null) {
-                    blocked = "第 ${index + 1} 项引用的 #$eventSeq 不在本次上下文里，未生成草稿"
+                    blocked = if (eventSeq == null) {
+                        "第 ${index + 1} 项未能唯一确定目标事件，请明确要修改哪一项；未生成草稿"
+                    } else {
+                        "第 ${index + 1} 项引用的 #$eventSeq 不在本次上下文里，未生成草稿"
+                    }
                     warnings.add(blocked)
                 }
             }

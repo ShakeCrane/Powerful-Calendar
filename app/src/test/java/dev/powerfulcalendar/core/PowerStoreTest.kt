@@ -1332,6 +1332,61 @@ class PowerStoreTest {
     }
 
     @Test
+    fun ambiguousAiReplaceTargetRequestsClarificationWithoutWritingAcrossRestart() {
+        val duplicateTarget = DraftForm(
+            kind = TemporalKind.ACTIVITY,
+            title = "同名会议",
+            startText = "2026-11-02 14:00",
+            endText = "2026-11-02 15:00",
+            zoneId = zone.id
+        )
+        val first = store.newDraft(duplicateTarget)
+        val second = store.newDraft(duplicateTarget)
+        assertTrue(commit(first) is PowerStore.CommitOutcome.Committed)
+        assertTrue(commit(second) is PowerStore.CommitOutcome.Committed)
+        val known = listOfNotNull(store.get(first.eventSeq), store.get(second.eventSeq))
+        val beforeEvents = store.all()
+        val beforeHistory = known.associate { it.eventSeq to store.history(it.eventSeq) }
+        val beforeIdentityCount = store.identityCount()
+        val beforeNextSequence = store.nextSequencePreview()
+
+        val interpretation = AiResponseParser.parse(
+            """
+                {"events":[{"operation":"REPLACE","kind":"ACTIVITY",
+                  "title":"同名会议改期","start":"2026-11-02 16:00",
+                  "end":"2026-11-02 17:00"}]}
+            """.trimIndent(),
+            known,
+            zone
+        )
+
+        val proposal = interpretation.proposals.single()
+        assertEquals(DraftOperation.REPLACE, proposal.operation)
+        assertNull(proposal.eventSeq)
+        assertNotNull(proposal.blocked)
+        assertTrue(interpretation.warnings.any { it.contains("请明确要修改哪一项") })
+
+        val result = AiDraftService(store).createDrafts(interpretation)
+        assertTrue(result.draftIds.isEmpty())
+        assertTrue(result.warnings.any { it.contains("请明确要修改哪一项") })
+        assertEquals(beforeEvents, store.all())
+        assertEquals(beforeHistory, known.associate { it.eventSeq to store.history(it.eventSeq) })
+        assertTrue(store.pendingDrafts().isEmpty())
+        assertEquals(beforeIdentityCount, store.identityCount())
+        assertEquals(beforeNextSequence, store.nextSequencePreview())
+
+        val database = store.databaseName
+        store.close()
+        store = PowerStore(context, database)
+
+        assertEquals(beforeEvents, store.all())
+        assertEquals(beforeHistory, known.associate { it.eventSeq to store.history(it.eventSeq) })
+        assertTrue(store.pendingDrafts().isEmpty())
+        assertEquals(beforeIdentityCount, store.identityCount())
+        assertEquals(beforeNextSequence, store.nextSequencePreview())
+    }
+
+    @Test
     fun parsedAiActivityWithMissingTimeRemainsRepairableDraftAcrossRestart() {
         val raw = """
             {"events":[{"operation":"CREATE","kind":"ACTIVITY","title":"待补时间的会议",
