@@ -75,3 +75,21 @@ AVD 原有 app 与 test APK 在测试前备份，测试后重新安装并以 SHA
 API 35 `emulator-5556` AndroidJUnitRunner 对原生 Compose 编辑器 **2/2 PASS**：四类事件打开/退出保持持久化计数不变；修改标题后退出恰好暂存一张草稿。只使用随机隔离 SQLite。设备原 app/test APK SHA-256 分别为 `290F13ADC31CAF38A17A1506E9C1AF57C19B2743BBC2F36CCB261918CBAC85C1` / `4D04D8DF1CA9D91516146BD62E4F6E630E7CF946A1ABF1217F66C8E035965E8C`，测试后恢复值与原值一致。数据库文件名清单前后均为 2 项，SHA-256 同为 `1339CD66F7353794C16E08D6BCC0E55E958C1FFD36D740CD19CC934792B113EA`。5554 前台处于 Google 日历首次启动页，本次未触碰。Instrumentation 日志 SHA-256：`307AA45604D9CE6624A3047C70670AADCBFD7D52C0DA79DE6C5EA8A8C7CCE588`。
 
 本次复核日志与完整 JUnit XML 保存在 `.local/android-test/reports/freeze-20261025/pc-phase1-review-20261025/`。AVD 子项不覆盖 Activity 重建/进程强制终止或实体/OEM 行为；存储检查点与 SQLite reopen 由现有 Robolectric 测试覆盖，实体设备仍由用户执行。DST 秋季回拨的单次墙上时间表达限制仍未签核，核心冻结继续 HOLD。
+
+## 当前基线复核（2026-10-25，HEAD `5e2b25ac5760957089254c13cd6dbbdb080b6269`）
+
+本次只读审计后未发现 Phase 1 产品代码回归，因此没有重复修改已提交的实现。时间轴、月份、Memo、PowerCal Web action 和 WebSkin bridge 的普通新建仍进入 `NewEventEditSession`；代码中其余 `newDraft` 调用是有真实 Diff 的 checkpoint、显式文本/ICS 导入、AI 提案及事件移动候选。`DraftForm.fresh` 的 09:00 兼容工厂在应用新建入口没有调用点；正式新建通过单次捕获的 `EditorDefaultsSnapshot` 计算时间与日期选择器 seed。
+
+当前工作区定向回归：31/31 PASS、6 个测试类、0 failures/errors/skips。完整离线门禁命令沿用上文，522/522 JVM tests、70 suites、0 failures/errors/skips、88/88 tasks；source boundary、Debug / AndroidTest APK、lint 均通过，lint 0 errors / 56 warnings。此次完整构建包含工作区既有的 D05 AndroidTest-only 探针改动；这些文件未纳入 Phase 1 文档提交。
+
+API 35 `emulator-5556` 对 `NewEventEditorLifecycleInstrumentedTest` **2/2 PASS**：四类会话在 Compose 编辑器打开后按 × 退出，草稿、正式事件、identity、`next_seq`、`next_order` 与 commit 均保持零增量；真实修改 Memo 标题后退出只生成一张草稿。测试数据库使用随机隔离文件并由用例清理。测试前后数据库文件名清单相同；测试前备份的 app/test APK 在结束后重新安装，测试后 SHA-256 与备份一致。未清数据、卸载应用或触碰 `emulator-5554`。
+
+当前复核证据位于 `.local/android-test/reports/freeze-20261025/pc-phase1-current-5e2b25a/`：
+
+- 定向 Gradle 日志 SHA-256：`91C004887150454A89EF82D45E728EF76B189A5332708DD4315E80321D788803`；定向 JUnit XML 在 `focused-junit/`。
+- 完整 Gradle 日志 SHA-256：`C37EFB1B531EF22AD10648D689205888808B069122C5882A8CF2EEB56CEAB4BF`；522 项 JUnit XML 在 `full-junit/`。
+- AVD Instrumentation 日志 SHA-256：`A31D254958F69C6B206A6787341280C5DB3E902E99829EB79FD2CC144E3D4548`。
+- Debug APK SHA-256：`1601F2DB169A8C889791EBFE4149F4383E71980474452C8CFE22BA9A7C92A9EC`；AndroidTest APK：`9FAA01339612CA2DF1871CD047512C282F19339C1E5A7766E4E512E80B0FDFFD`；lint XML：`BC35B853A90869F00471C96B11B6CDFA2B457DFC03C5D654B74CAB3ED83DF7DF`。
+- `emulator-5556` 测试前后 app APK SHA-256 均为 `290F13ADC31CAF38A17A1506E9C1AF57C19B2743BBC2F36CCB261918CBAC85C1`；test APK 均为 `4D04D8DF1CA9D91516146BD62E4F6E630E7CF946A1ABF1217F66C8E035965E8C`。
+
+Phase 1 的自动化与 API 35 Compose 范围维持 PASS，实体设备和秋季 DST fold 的分钟文本歧义仍未签核；整体核心冻结保持 HOLD。本次为基线复核和报告补录，没有重新打开已关闭的 Phase 2/3，也没有启动其他阶段。
