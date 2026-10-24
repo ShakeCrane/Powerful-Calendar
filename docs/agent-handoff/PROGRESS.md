@@ -1,4 +1,10 @@
 # Core freeze progress
+## PC-ISSUE-124 — core timeline lane allocation (REC-P1-016/017)
+
+- `TemporalProtocolTest` passed 38/38; five existing pure-model cases directly cover deterministic stable ordering, input-order independence, independent lanes and lane reuse. No app/test source, UI, emulator or physical device was changed or tested.
+- Report: `docs/issues/PC-ISSUE-124-timeline-lane-core-signoff.md`. Targeted log SHA-256 `88772FC37E170E12B4D118852B4BFEB7251B18606A4AA716771914B79EC71321`; XML SHA-256 `F51185351FE75B645F0DB01F7D5B41FBB6CBB2CB33D9BE5BD000FE650B838E34`.
+- REC-P1-016/017 are PASS for the narrowed core model only. Ledger totals: 156 PASS / 0 FAIL / 9 BLOCKED / 37 NOT TESTED / 7 SPEC UNRESOLVED. Structural-only artifact `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-124.json`: SHA-256 `B37DF31495E1AC7DF2F06AC93AD1246EC9E252CF1A2B947892B7CA2B112AC1C8`; ledger SHA-256 `C659DC487695E0C117A7205092EB1C30C5B08CED4ED1A62C7EB6A24AADBD2406`. Overall freeze remains HOLD; physical-device testing is user-owned.
+
 ## PC-ISSUE-GREEDY-LABEL-FOLDING — REC-P1-028 long-title measurement sign-off
 
 - Fixed long-title truncation by measuring a grapheme-boundary prefix plus an explicit ellipsis at the existing 10sp floor. Full event bounds and accessibility title remain unchanged.
