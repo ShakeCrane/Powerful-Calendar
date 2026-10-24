@@ -1,5 +1,11 @@
 # Core freeze progress
 
+## PC-ISSUE-160 编辑草稿时切换深浅主题（REC-P1-073，窄化 PASS）
+
+- 新增隔离 Android instrumentation：真实 `NativeDraftDeckDialog` 中把标题改为 `THEME_SWITCH_DIRTY_TITLE` 并聚焦输入框，再通过 `PowerCalTheme` 浅→深切换。API 35 `emulator-5556` 定向 1/1 PASS：Material background 从 `Color(0.9529412, 0.9607843, 0.98039216)` 变为 `Color(0.039215688, 0.050980393, 0.07450981)`，draftId、编辑内容和焦点保持。用随机临时数据库，未改生产代码、系统夜间模式或默认业务数据。
+- 完整离线 Gradle 491/491 JVM、66 suites、0 failures/errors/skips；源码边界、Debug/AndroidTest APK 组装通过；Lint 0 errors/58 warnings。全量日志 SHA-256 `572B1C1FBC70AD7F1519A8408D764500949B344BBA8A3CD550820F1069208BCA`；定向日志 SHA-256 `B463A726A57DEA43369BA360C468EB2C73DF912AF73FA921074664E16DF48EF7`；状态轨迹 SHA-256 `59E5BC08D97E2B5E3A51C18E5B125823D77B0D328F0EDEFD2056AEE2B7E96328`。测试提交 `2a0ed99dacdf14f7c5558b390a9400502560ace5` 已推送。
+- `REC-P1-073` 的签核仅限显式 `PowerCalTheme` 参数转换；系统 `uiMode` 变化和完整 MainActivity 配置分发未测。r26：210 active，194 PASS / 0 FAIL / 8 BLOCKED / 2 NOT TESTED / 6 SPEC UNRESOLVED；历史映射 0，`product_behavior_tested=false`。artifact SHA-256 `5165AF1041F728B98B55DEE4A8A674CBC5FB7B4FEE235CFAD15914147B6238C3`；台账 SHA-256 `1851D775B93E5EC1ADEA5A12C4EF3E837511F2CA6E51E86DB55E801FCE5FED92`。整体仍 HOLD。独立报告：`docs/issues/PC-ISSUE-160-draft-theme-switch.md`。
+
 ## PC-ISSUE-159 时间轴顶栏顺序与剩余数徽标（REC-P1-032/033，窄化 PASS）
 
 - 新增 AndroidJUnitRunner 测试，直接组合生产 `TimelineScreen`：Today、Memo、Todo、New 的实测横向中心为 658/774/890/1006px，四个回调及 New→Activity 菜单动作均通过；合成 Memo=12、Todo=7 的可见徽标文字和无障碍描述通过。API 35 `emulator-5556` 原生竖屏 1080×2400、420dpi，定向测试 2/2 PASS。未改生产代码或访问业务数据库。

@@ -4,6 +4,14 @@ Date: 2026-10-24
 
 Verdict: **HOLD**
 
+## Latest follow-up: PC-ISSUE-160
+
+PC-ISSUE-160 signs `REC-P1-073` narrowly for a same-composition light-to-dark `PowerCalTheme` transition during native draft editing on API 35. The background palette changed, while the same draft ID, edited title, and focused input remained. The isolated AndroidJUnitRunner test passed 1/1 with a temporary database; system `uiMode` and full `MainActivity` configuration dispatch were not changed or claimed. See [PC-ISSUE-160](issues/PC-ISSUE-160-draft-theme-switch.md).
+
+Test-only commit `2a0ed99dacdf14f7c5558b390a9400502560ace5` is pushed. Full offline Gradle passed 491/491 JVM tests across 66 suites, zero failures/errors/skips; source boundary, Debug/AndroidTest APK assembly passed; lint 0 errors / 58 warnings. Full log SHA-256 `572B1C1FBC70AD7F1519A8408D764500949B344BBA8A3CD550820F1069208BCA`; focused API 35 run SHA-256 `B463A726A57DEA43369BA360C468EB2C73DF912AF73FA921074664E16DF48EF7`.
+
+Structural-only ledger r26 records 210 active reconstructed rows (P0/P1/P2 144/65/1), with 194 PASS / 0 FAIL / 8 BLOCKED / 2 NOT TESTED / 6 SPEC UNRESOLVED; historical IDs mapped=0 and `product_behavior_tested=false`. Artifact SHA-256 `5165AF1041F728B98B55DEE4A8A674CBC5FB7B4FEE235CFAD15914147B6238C3`; ledger SHA-256 `1851D775B93E5EC1ADEA5A12C4EF3E837511F2CA6E51E86DB55E801FCE5FED92`. Overall verdict remains **HOLD**.
+
 ## Latest follow-up: PC-ISSUE-159
 
 PC-ISSUE-159 signs `REC-P1-032/033` narrowly on API 35 `emulator-5556`: top action centers measured 658/774/890/1006 px in Today → Memo → Todo → New order, each callback fired, and synthetic Memo/Todo remaining badges displayed 12/7. AndroidJUnitRunner passed 2/2. This test composes production `TimelineScreen` with synthetic counts; it does not claim MainActivity, persisted data, or physical-device coverage. See [PC-ISSUE-159](issues/PC-ISSUE-159-timeline-toolbar-order-badges.md).
