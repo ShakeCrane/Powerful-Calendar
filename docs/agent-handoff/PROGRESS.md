@@ -3,6 +3,7 @@
 
 - API 35 emulator-5554 has no `dev.powerfulcalendar` package. Emulator-5556 has the package, but its shared-preference filename listing contains only `powercal-onboarding.xml` and `powercal-ui.xml`; `powercal-ai.xml` is absent. No preference values or credentials were read, the app was not launched, settings were not changed, and no provider request was sent. Evidence JSON SHA-256 824CF934453870ECA21A97D0BB3825801F70FA6918DDBD7D0FEE10F88F6CA797.
 - This confirms the live retest is blocked by unavailable app configuration; it does not test product behavior. REC-P1-047 remains BLOCKED and PC-ISSUE-002 remains PARTIAL / HOLD. Structural validation of the updated ledger passed: artifact SHA-256 BD2D976A66A48EF71C543DE0906D2257BCB4F066147BAD7BF61B07D7E18E3D7C; ledger SHA-256 D500FE6D936C71C9514D2FA30645438DC74F3318A6B89BBE373B62ABCE093921; counts remain 164/0/8/30/7.
+- Current-code local failure-path rerun passed 7/7: synthetic structured HTTP 429, free-model empty HTTP 200, and five completion-policy cases. No provider request was made; this does not replace REC-P1-047's blocked live free-provider requirement. Log SHA-256 84AEB6F1B874575ABB0979349EA9A459285D5A6B0F34ABC00A0ADCBB7A3A7759; test XML SHA-256 5422891B1A6C8451FED0314B39B4A26F4AECBB6A92C3ABBB817620E1F7DAE92A and 2165CDF68DA513B11BD0E66EA882AFBD7E51B33191B7410797AFCABCA124E5DE.
 
 ## PC-ISSUE-001 — external ICS handler availability
 

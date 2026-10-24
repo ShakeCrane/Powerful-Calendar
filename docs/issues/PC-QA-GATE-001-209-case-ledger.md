@@ -949,3 +949,9 @@ The corrected structural-only ledger artifact is `.local/android-test/reports/fr
 Read-only API 35 checks found no PowerCal package on emulator-5554; emulator-5556 has PowerCal installed but no `powercal-ai.xml` among the listed shared-preference files. No settings values or credentials were read, no app was launched, settings were not changed, and no provider call was sent. Evidence JSON SHA-256 `824CF934453870ECA21A97D0BB3825801F70FA6918DDBD7D0FEE10F88F6CA797`. `REC-P1-047` remains BLOCKED; this environment check is not product behavior evidence.
 
 Corrected structural-only validation after this row update: `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-002-config-check-validated.json`, SHA-256 `BD2D976A66A48EF71C543DE0906D2257BCB4F066147BAD7BF61B07D7E18E3D7C`; ledger SHA-256 `D500FE6D936C71C9514D2FA30645438DC74F3318A6B89BBE373B62ABCE093921`. It confirms 209 unique rows and unchanged counts of 164 PASS / 0 FAIL / 8 BLOCKED / 30 NOT TESTED / 7 SPEC UNRESOLVED; `product_behavior_tested=false`.
+
+### PC-ISSUE-002 — local provider-failure guard rerun (2026-10-24)
+
+On the current code baseline, targeted local-loopback tests for structured HTTP 429 and free-model empty HTTP 200 plus all five `AiCompletionPolicyTest` cases passed 7/7 with zero failures/errors/skips. They cover stage-specific failure, no proposal/raw reply, synthetic body/credential non-disclosure, one-shot empty-response handling, free-model output budget and paid-model retry restrictions. No external provider, emulator, UI, or business data was involved. This is local client behavior evidence only; REC-P1-047 remains BLOCKED.
+
+Log SHA-256 `84AEB6F1B874575ABB0979349EA9A459285D5A6B0F34ABC00A0ADCBB7A3A7759`; `AiChatClientTest` XML SHA-256 `5422891B1A6C8451FED0314B39B4A26F4AECBB6A92C3ABBB817620E1F7DAE92A`; `AiCompletionPolicyTest` XML SHA-256 `2165CDF68DA513B11BD0E66EA882AFBD7E51B33191B7410797AFCABCA124E5DE`.
