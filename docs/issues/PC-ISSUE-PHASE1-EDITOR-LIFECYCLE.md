@@ -118,3 +118,15 @@ API 35 Instrumentation 中 `NewEventEditorLifecycleInstrumentedTest` 在两台�
 - 本轮日志及构建产物位于 `.local/android-test/reports/freeze-20261025/phase1-review-d600aaf/`；本地定向 JUnit 汇总为 EditorDefaults 6、NewEventEditSession 6、DirectEventEditorCompose 6、LifecycleCheckpointGate 1、NewEventEditorCompose 2、WebSkinEditBridge 10。
 
 本次复验没有 Phase 1 产品源码变更。普通新建编辑会话、统一默认值和幂等保存路径在当前提交基线继续通过 JVM 自动化与构建；AVD 原数据库恢复/所有者处置仍未闭环，因此保留该数据保全风险和此前记录的 HOLD，不将本轮结果扩大解释为实体设备或 AVD 新 PASS。
+
+## HEAD `694ba1b` 当前基线复验（2026-10-25）
+
+只读复核确认普通新建入口继续使用内存 `NewEventEditSession`。`HEAD 694ba1b48c8df502b4a911367217ee2dac2538d1` 相对已验证的 `d600aaf` 只有本报告与进度文档变化，`app/` 源码逐文件一致。本轮在干净 detached worktree 执行，主工作区未提交的 E01 修改及受保护资产没有进入构建或暂存。
+
+Phase 1 定向命令在本轮 **BUILD SUCCESSFUL**；完整回归 JUnit XML 中对应六个测试类为 **31/31 PASS、0 failures/errors/skips**。完整离线门禁 `:app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug --offline --rerun-tasks --no-daemon --console=plain` 为 **521/521 JVM tests、69 suites、0 failures/errors/skips、88/88 tasks**。Debug 与 AndroidTest APK 均构建成功；lint **0 errors / 53 warnings**。
+
+- 证据目录：`.local/android-test/reports/freeze-20261025/phase1-final-head-694ba1b/`；包含两份 Gradle 日志、69 份完整 JUnit XML、两个 APK 及 lint XML。
+- 定向 Gradle 日志 SHA-256：`79C16272FE4FB10C91BAB6D3B8D9CAD9A1973386A54B411C69A78746F8EE7ED7`；完整门禁日志：`F878B52FAFE50DE40953495E05A04E23EE88FFA7A0E94E0EFC2177CD5174CB06`。
+- Debug APK SHA-256：`1601F2DB169A8C889791EBFE4149F4383E71980474452C8CFE22BA9A7C92A9EC`；AndroidTest APK：`9FAA01339612CA2DF1871CD047512C282F19339C1E5A7766E4E512E80B0FDFFD`；lint XML：`B213956F57C63A719B6A56F2AC1F25BB2E5484C5806845FE68BD6F4748DC055A`。
+
+本轮没有运行 connected/device task。两台既有 AVD 的私有数据库恢复/处置仍未闭环，因此没有启动它们；更早的 API 35 Compose 2/2 结果仍为历史证据，不计作本轮复测。实体设备仍由用户执行。Phase 1 源码与 JVM/构建验收为 PASS，AVD 新复测为 BLOCKED，核心冻结维持 HOLD；秋季 DST fold 分钟文本无法区分两个同名墙上时间的限制仍未签核。
