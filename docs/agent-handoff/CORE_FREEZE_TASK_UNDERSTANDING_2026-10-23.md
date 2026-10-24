@@ -1,5 +1,11 @@
 # PowerCal 核心基线冻结：任务理解清单
 
+## 最新执行记录：PC-ISSUE-154（2026-10-24）
+
+- 为 `REC-P1-069` 新增 Robolectric API 35 Compose 2× 字体缩放子项：360×800dp 下“今日、Memo、待处理、新建、缩小/放大”6 个操作均在视口内并可点，新建菜单中的“活动”回调成功；定向 1/1 PASS。未修改生产 UI、Android 系统字体设置或业务数据，现有两个 AVD 均未触碰。
+- 测试提交 `b8211496d244f9261b127ef91bdc50779de4591a` 已推送；完整离线 Gradle 491/491、66 suites、0 failures/errors/skips，source boundary、Debug/AndroidTest APK 和 Lint 通过（0 errors/58 warnings）。完整日志 SHA-256 `DA5E539CFEC2550D79A15E66ABF193A8B692F578EA908A7021385C0E14FE4A0B`。
+- `REC-P1-069` 仍 BLOCKED：Robolectric 显式 `LocalDensity.fontScale=2` 不等于 Android 系统设置、完整 MainActivity/AVD 或真机/OEM 结果。台账 r20 为 186 PASS / 0 FAIL / 8 BLOCKED / 10 NOT TESTED / 6 SPEC UNRESOLVED，P0/P1/P2=144/65/1。artifact SHA-256 `FB1637E0BE5CBB31495C9FEC1BEA87810715D283F1E29601DC8662F9C5235F79`；CSV SHA-256 `2A38DFBCF5EF50F2CC46993F4B002F13A6140748C5BB0B22622448933C666792`。结构报告不测试产品行为，冻结仍 HOLD。独立报告：`docs/issues/PC-ISSUE-154-font-scale-2x-controls.md`。
+
 ## 最新执行记录：PC-ISSUE-153（2026-10-24）
 
 - API 35 `emulator-5556` 原生竖屏 / 1080×2400（未覆盖分辨率或方向）下通过真实页面路由验证 `REC-P1-003`：相机从 anchor `1792843200000` / 24 小时缩放，经控件和竖向平移变为 anchor `1792965924653` / 16 小时；打开 Memo 再返回后锚点与缩放均逐值相等。定向 1/1 PASS。

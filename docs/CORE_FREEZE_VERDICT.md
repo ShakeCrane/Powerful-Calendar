@@ -4,6 +4,14 @@ Date: 2026-10-24
 
 Verdict: **HOLD**
 
+## Latest follow-up: PC-ISSUE-154
+
+PC-ISSUE-154 adds a Robolectric API 35 Compose subcase for `REC-P1-069`: at 2× `LocalDensity.fontScale` in a 360×800dp logical viewport, six timeline toolbar/zoom controls remained clickable and inside the viewport; the New menu's Activity action also fired. This did not change Android's system `font_scale`, launch the full app, or exercise an AVD/physical device, so the complete row remains **BLOCKED**.
+
+Test-only commit `b8211496d244f9261b127ef91bdc50779de4591a` is pushed. Full offline Gradle passed 491/491 JVM tests across 66 suites, zero failures/errors/skips; source boundary, Debug/AndroidTest APK assembly passed; lint 0 errors / 58 warnings. The count includes 490 tracked tests and one test from the protected pre-existing `DraftDeckFeedbackTest.kt`. Full Gradle log SHA-256 `DA5E539CFEC2550D79A15E66ABF193A8B692F578EA908A7021385C0E14FE4A0B`.
+
+Structural-only ledger r20 records 210 active reconstructed rows (P0/P1/P2 144/65/1), 186 PASS / 0 FAIL / 8 BLOCKED / 10 NOT TESTED / 6 SPEC UNRESOLVED; historical IDs mapped=0 and `product_behavior_tested=false`. Artifact SHA-256 `FB1637E0BE5CBB31495C9FEC1BEA87810715D283F1E29601DC8662F9C5235F79`; ledger SHA-256 `2A38DFBCF5EF50F2CC46993F4B002F13A6140748C5BB0B22622448933C666792`. Verdict remains **HOLD**.
+
 ## Latest follow-up: PC-ISSUE-153
 
 PC-ISSUE-153 signs `REC-P1-003` narrowly for the native Timeline → Memo → Timeline route on API 35 `emulator-5556` at 1080×2400. The test changed the camera from anchor `1792843200000` / 24h to `1792965924653` / 16h, opened Memo, and returned with the exact same anchor and 16h zoom. AndroidJUnitRunner passed 1/1. Activity/process recreation, other routes, and physical-device behavior are not claimed.

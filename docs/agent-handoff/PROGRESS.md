@@ -1,5 +1,11 @@
 # Core freeze progress
 
+## PC-ISSUE-154 2× 字体缩放下时间轴控件可达性（REC-P1-069 子项 PASS；完整项 BLOCKED）
+
+- 新增 Robolectric API 35 Compose 子项，显式设 `LocalDensity.fontScale=2.0`、360×800dp 视口；今日、Memo、待处理、新建、缩小/放大共 6 个控件边界均在屏内并可操作，新建菜单“活动”回调成功。定向测试 1/1 PASS；未修改生产代码或 AVD/系统设置。
+- 首次测试夹具编译失败（Compose 测试扩展导入/组合读取位置错误），修复后定向通过。失败日志 SHA-256 `E6532B89A3EB3BE44274E64018475BA0108DA5C3017DE42A33370E9B23503010`；通过定向日志 SHA-256 `C9C8F27A225EEAD72DEE07A0C2AC35A363F2B1428B38810B889464AE7FFC0B2C`；JUnit XML SHA-256 `79D3861D09DF5D986817D9BA2CE0143BAD5F048B0CF9F79AFB4FC94982BE4D73`。
+- 完整 Gradle 491/491 JVM、66 suites、0 failures/errors/skips，source boundary、Debug/AndroidTest APK 组装通过，Lint 0 errors/58 warnings；日志 SHA-256 `DA5E539CFEC2550D79A15E66ABF193A8B692F578EA908A7021385C0E14FE4A0B`。测试提交 `b8211496d244f9261b127ef91bdc50779de4591a` 已推送。真实系统 font_scale、PowerCalApp/MainActivity、AVD 和实体设备未测，`REC-P1-069` 保持 BLOCKED。r20: 186 PASS / 0 FAIL / 8 BLOCKED / 10 NOT TESTED / 6 SPEC UNRESOLVED；artifact SHA-256 `FB1637E0BE5CBB31495C9FEC1BEA87810715D283F1E29601DC8662F9C5235F79`；ledger SHA-256 `2A38DFBCF5EF50F2CC46993F4B002F13A6140748C5BB0B22622448933C666792`。整体 HOLD。报告：`docs/issues/PC-ISSUE-154-font-scale-2x-controls.md`。
+
 ## PC-ISSUE-153 返回时间轴保留视口与缩放（REC-P1-003 窄化 PASS）
 
 - 新增真实 `PowerCalApp` Compose API 35 instrumentation：初始相机为 anchor `1792843200000` / 24h；用缩放控件和竖向手势改为 anchor `1792965924653` / 16h；打开 Memo 并返回后两个值精确不变，定向测试 1/1 PASS。状态只读自 timeline 投影，业务数据与正式数据库未访问。

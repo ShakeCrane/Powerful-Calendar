@@ -4,6 +4,8 @@ Date: 2026-10-24 | Severity: P1
 
 Status: **PARTIAL / HOLD — risk-based reconstructed matrix is active; open test, specification, provider, and device gates remain.**
 
+PC-ISSUE-154 adds a Robolectric API 35 Compose subcase for `REC-P1-069`: at explicit `LocalDensity.fontScale=2.0` and 360×800dp, six timeline controls stayed inside the viewport and their actions worked, including the Activity item in the New menu. This is not Android's system font setting, a full-app/AVD run, or physical-device evidence; `REC-P1-069` remains **BLOCKED**. Evidence: `docs/issues/PC-ISSUE-154-font-scale-2x-controls.md`.
+
 PC-ISSUE-153 signs `REC-P1-003` narrowly for the API 35 native Timeline → Memo → Timeline route. After changing the camera from anchor `1792843200000` / 24h to `1792965924653` / 16h, opening Memo and returning preserved the exact anchor and zoom; AndroidJUnitRunner passed 1/1. Other routes, Activity/process recreation, and physical-device behavior are not inferred. Evidence: `docs/issues/PC-ISSUE-153-timeline-return-preserves-viewport.md`.
 
 PC-ISSUE-152 records the API 35 AVD subcase for `REC-P1-067` at 320×640dp. Automated taps at the title center and event-hit center both opened the same complete event; accessibility semantics retained the full title. Measured title bounds were `[486,977,676,1040]`; the true one-minute event geometry was 1px and its click semantics bounds were 3px. The focused test passed 1/1. `REC-P1-067` remains **BLOCKED** because this automated AVD result does not verify human finger comfort, physical-device/OEM behavior, TalkBack, or final detail-screen rendering. Evidence: `docs/issues/PC-ISSUE-152-small-screen-event-hit-target.md`.
@@ -30,6 +32,8 @@ PC-ISSUE-147 adds a local routing regression for REC-P1-048 but does not sign th
 At the PC-ISSUE-152 checkpoint, structural-only validation r18 recorded 185 PASS / 0 FAIL / 8 BLOCKED / 11 NOT TESTED / 6 SPEC UNRESOLVED; artifact SHA-256 `13A7EEED004852E594EB228F00C2745EF4B87A7A9DFAA41BC1705885B7F096B7`; ledger SHA-256 `B3E46A12B1AB01F33659B0AF0160539840FD6160253D673F3E046CE0770C1832`; `product_behavior_tested=false`.
 
 Latest structural-only validation r19 after PC-ISSUE-153: `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-risk-matrix-validated-20261024-r19-pc-issue-153-metadata-corrected.json`, artifact SHA-256 `DF3E3697C15CA7EBB66DE4B1E7821A09114AFA8039DE34227230DEA90170D9BD`; ledger SHA-256 `AA80C181A42C015CFAD01B02E05C468F7A303CB73101D9D957DF12FA97677BD8`; `product_behavior_tested=false`. Counts are 186 PASS / 0 FAIL / 8 BLOCKED / 10 NOT TESTED / 6 SPEC UNRESOLVED. `REC-P1-003` is PASS only for its explicitly tested native Memo round-trip route. The first r19 artifact is retained; this rerun corrects the environment description to match the recorded native portrait test at 1080×2400 with no display override.
+
+Latest structural-only validation r20 after PC-ISSUE-154: `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-risk-matrix-validated-20261024-r20-pc-issue-154-font-scale.json`, artifact SHA-256 `FB1637E0BE5CBB31495C9FEC1BEA87810715D283F1E29601DC8662F9C5235F79`; ledger SHA-256 `2A38DFBCF5EF50F2CC46993F4B002F13A6140748C5BB0B22622448933C666792`; `product_behavior_tested=false`. Counts remain 186 PASS / 0 FAIL / 8 BLOCKED / 10 NOT TESTED / 6 SPEC UNRESOLVED. `REC-P1-069` records the Robolectric subcase while remaining BLOCKED for Android system, AVD, and physical-device coverage.
 
 One retired record (`REC-P1-013`) is excluded from those active-row totals and from GO criteria.
 
