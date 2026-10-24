@@ -1,5 +1,12 @@
 # Core freeze progress
 
+## PC-ISSUE-165 — 日期级 Deadline 无障碍语义（REC-P1-068 窄化模拟器子项 PASS）
+
+- 新增 production `TimelineScreen` API 35 Android instrumentation：在 4h/24h/48h zoom 下，日期条语义均含完整标题和 `2026-10-24 · 截止，无具体时刻`，不含虚构时分；点击后原样打开 eventSeq/title/date，`deadlineMillis=null`。三档缩放节点矩形均为 `Rect(42,268,657,405)`。无生产 UI 代码修改。
+- `emulator-5556` 定向 AndroidJUnitRunner 1/1 PASS。完整强制离线 Gradle：496/496 JVM tests、67 suites、0 failures/errors/skips；88 tasks executed，source boundary、Debug/AndroidTest APK 和 lint 均通过。Skin-studio Python 37/37 PASS。
+- 测试提交 `2844236dd00f4b87db50bffcc031cf4e7b74911e` 已推送。独立报告 `docs/issues/PC-ISSUE-165-date-only-deadline-accessibility.md`。定向日志 SHA-256 `12A2285C6F2F18DEFD6A26F7AA679565CF867178498FC7CDCD339E4DC37E02D`；语义矩形日志 SHA-256 `B4CDBC723D1FDCB1F31DD807C2FD86C47FE544D67D375C9E17BE5390F5FB10D8`；完整 Gradle 日志 SHA-256 `9827E96E155A152B6BA6FD4947F6BBC54749A700E6FD0FCD7E9BE0278C97DFED`；Debug/AndroidTest APK SHA-256 `290F13ADC31CAF38A17A1506E9C1AF57C19B2743BBC2F36CCB261918CBAC85C1` / `13CF8D486194FB778D0FFC68804966BD545A47F52F2E872425FDF9DEA987F12E`。
+- `REC-P1-068` 整体仍 SPEC UNRESOLVED：准确 day-band 锚点仍未定，未验证 TalkBack 实际播报、OEM 服务或实体设备。结构台账 r34 保持 198 PASS / 0 FAIL / 8 BLOCKED / 2 NOT TESTED / 2 SPEC UNRESOLVED / 1 RETIRED；artifact SHA-256 `1D91A98FFD4B8E99C31DAADF13538DC60624CCC45F17CFC276412B47EA5B29C1`，ledger SHA-256 `D3CBB371BC0546CB757A93BAB2B02E29A4E181A22ED02CB4A7AA19C5B96BD2A6`；`product_behavior_tested=false`（结构验证标志）。整体冻结仍 HOLD。
+
 ## PC-ISSUE-001 外部 ICS 客户端环境复查（REC-P1-081 仍 BLOCKED）
 
 - `emulator-5556` 的 ACTION_VIEW/text/calendar 当前解析到 Google Calendar `ICalLauncher`，与早先“无处理器”记录相比环境已变化；但两次打开合成 DST ICS 均停在 Google Calendar 首次启动页，没有进入导入预览。Provider 测试前无日历记录，测试后事件数仍为 0；没有确认导入或写入，也未查看账户。

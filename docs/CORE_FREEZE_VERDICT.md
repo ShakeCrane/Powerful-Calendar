@@ -4,6 +4,14 @@ Date: 2026-10-24
 
 Verdict: **HOLD**
 
+## Latest follow-up: PC-ISSUE-165 — date-only Deadline accessibility subcase
+
+On API 35 `emulator-5556`, the production date-band semantics tree announced the complete title and `2026-10-24 · 截止，无具体时刻` at 4h, 24h, and 48h timeline zoom; it contained no invented clock time. The clickable semantic node stayed at `Rect(42,268,657,405)`, and tapping returned the unchanged DATE Deadline with `deadlineMillis=null`. The focused AndroidJUnitRunner passed 1/1. No production/UI code changed. `REC-P1-068` remains SPEC UNRESOLVED because exact day-band placement and actual TalkBack/OEM/physical-device behavior are not signed off. See `docs/issues/PC-ISSUE-165-date-only-deadline-accessibility.md`.
+
+Test commit `2844236dd00f4b87db50bffcc031cf4e7b74911e` is pushed. Full forced-offline Gradle passed 496/496 JVM tests across 67 suites, zero failures/errors/skips; all 88 tasks executed, source-boundary verification and Debug/AndroidTest APK assembly passed, and lint passed. Full log SHA-256 `9827E96E155A152B6BA6FD4947F6BBC54749A700E6FD0FCD7E9BE0278C97DFED`. API 35 focused log SHA-256 `12A2285C6F2F18DEFD6A26F7AA679565CF867178498FC7CDCD339E4DC37E02D`; semantics log SHA-256 `B4CDBC723D1FDCB1F31DD807C2FD86C47FE544D67D375C9E17BE5390F5FB10D8`. Debug APK SHA-256 `290F13ADC31CAF38A17A1506E9C1AF57C19B2743BBC2F36CCB261918CBAC85C1`; AndroidTest APK SHA-256 `13CF8D486194FB778D0FFC68804966BD545A47F52F2E872425FDF9DEA987F12E`.
+
+Structural-only ledger r34: 211 rows / 210 active reconstructed, 198 PASS / 0 FAIL / 8 BLOCKED / 2 NOT TESTED / 2 SPEC UNRESOLVED / 1 RETIRED; historical IDs mapped=0 and `product_behavior_tested=false`. Artifact SHA-256 `1D91A98FFD4B8E99C31DAADF13538DC60624CCC45F17CFC276412B47EA5B29C1`; ledger SHA-256 `D3CBB371BC0546CB757A93BAB2B02E29A4E181A22ED02CB4A7AA19C5B96BD2A6`. The subcase evidence does not clear the remaining SPEC UNRESOLVED row or change the overall HOLD.
+
 ## Latest environment follow-up: PC-ISSUE-001 external ICS client
 
 On API 35 `emulator-5556`, `ACTION_VIEW` / `text/calendar` now resolves to Google Calendar `ICalLauncher`, but two handoffs of the synthetic DST series stopped at the app's first-run screen. No ICS import preview, calendar write, or re-export occurred; the Calendar Provider remained empty. Google's import instructions describe the ICS workflow on a computer. `REC-P1-081` remains BLOCKED and PC-ISSUE-001 remains PARTIAL / HOLD. Evidence summary SHA-256 `8DFC47D762396B4CE0622E70E43E5B48155FC48E18958EC4DDC110878B595983`; screenshot SHA-256 `6A83B31FD26EEFDFE46A722737F32D98ECFD951E533A180088B6D31C40413D7D`. See `docs/issues/PC-ISSUE-001-ICS-recurrence.md`.
