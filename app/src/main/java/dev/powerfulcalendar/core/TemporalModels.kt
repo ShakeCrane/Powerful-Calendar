@@ -228,6 +228,13 @@ data class Recurrence(
     }
 }
 
+/** Explicit scope chosen when a user edits one projected occurrence of a repeating event. */
+enum class RecurrenceEditScope {
+    SINGLE_OCCURRENCE,
+    THIS_AND_FUTURE,
+    WHOLE_SERIES
+}
+
 data class OccurrenceOverride(val startMillis: Long, val endMillis: Long?, val title: String? = null)
 
 /** One materialized instance of an event. Identity = eventSeq + original slot key. */
@@ -842,7 +849,11 @@ data class DraftForm(
     val zoneId: String = ZoneId.systemDefault().id,
     val recurrence: Recurrence = Recurrence.NONE,
     val trackingEnabled: Boolean = kind == TemporalKind.MEMO,
-    val completedKeys: Set<String> = emptySet()
+    val completedKeys: Set<String> = emptySet(),
+    /** Recovery metadata for a human recurrence edit; ignored by [build]. */
+    val recurrenceEditScope: RecurrenceEditScope? = null,
+    /** Immutable original slot key selected in the occurrence projection. */
+    val editOccurrenceKey: String? = null
 ) {
     val zone: ZoneId get() = runCatching { ZoneId.of(zoneId) }.getOrDefault(ZoneId.systemDefault())
 

@@ -6,7 +6,12 @@ import java.time.LocalDate
 import kotlin.math.abs
 
 /** Read-only occurrence projection. Keep the formal owner separate from its displayed slot. */
-internal data class DisplayOccurrence(val owner: TemporalRecord, val record: TemporalRecord, val key: String)
+internal data class DisplayOccurrence(
+    val owner: TemporalRecord,
+    val record: TemporalRecord,
+    val key: String,
+    val occurrenceKey: String
+)
 
 private fun occurrenceDisplayRecord(owner: TemporalRecord, slot: Occurrence): TemporalRecord {
     val projected = when (owner.kind) {
@@ -30,7 +35,8 @@ internal fun singleDisplayOccurrence(owner: TemporalRecord): DisplayOccurrence? 
     return DisplayOccurrence(
         owner,
         occurrenceDisplayRecord(owner, slot),
-        "${owner.eventSeq}:${slot.key}"
+        "${owner.eventSeq}:${slot.key}",
+        slot.key
     )
 }
 
@@ -77,7 +83,7 @@ internal fun displayOccurrences(
             owner, queryFrom, to, limit = 2048, prioritizeWindowStarts = true
         ).map { slot ->
             val display = occurrenceDisplayRecord(owner, slot)
-            DisplayOccurrence(owner, display, "${owner.eventSeq}:${slot.key}")
+            DisplayOccurrence(owner, display, "${owner.eventSeq}:${slot.key}", slot.key)
         }
     }
 }
@@ -107,7 +113,13 @@ internal fun snapshotRows(current: TemporalRecord?, proposed: DraftForm): List<S
         "跳过的原始实例" to (form?.recurrence?.exceptions?.sorted()?.joinToString("\n") ?: ""),
         "实例覆盖" to (form?.recurrence?.overrides?.toSortedMap()?.entries?.joinToString("\n") { (key, value) ->
             "$key → ${DraftForm.formatInstant(value.startMillis, form.zone)} / ${DraftForm.formatInstant(value.endMillis, form.zone)} · ${value.title.orEmpty()}"
-        } ?: "")
+        } ?: ""),
+        "编辑范围" to (form?.recurrenceEditScope?.let { scope -> when (scope) {
+            RecurrenceEditScope.SINGLE_OCCURRENCE -> "仅本次"
+            RecurrenceEditScope.THIS_AND_FUTURE -> "本次及以后"
+            RecurrenceEditScope.WHOLE_SERIES -> "整个系列"
+        } } ?: ""),
+        "目标原始实例" to (form?.editOccurrenceKey ?: "")
     )
     return fields(current?.let(DraftForm::from)).zip(fields(proposed)).map { (a, b) ->
         SnapshotRow(a.first, a.second.ifBlank { "（空）" }, b.second.ifBlank { "（空）" })

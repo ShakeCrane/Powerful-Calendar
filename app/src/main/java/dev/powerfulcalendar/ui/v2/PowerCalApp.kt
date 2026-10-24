@@ -100,6 +100,7 @@ import dev.powerfulcalendar.core.LegacyBackupConsentRequired
 import dev.powerfulcalendar.core.NewEventEditSession
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.RecurrenceEngine
+import dev.powerfulcalendar.core.RecurrenceEditScope
 import dev.powerfulcalendar.core.StoreDeckPersistence
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
@@ -227,6 +228,8 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
     var editForm by remember { mutableStateOf<DraftForm?>(null) }
     var editBaseline by remember { mutableStateOf<DraftForm?>(null) }
     var editError by remember { mutableStateOf<String?>(null) }
+    var editBusy by remember { mutableStateOf(false) }
+    var editUiRevision by remember { mutableIntStateOf(0) }
     var newEventSession by remember { mutableStateOf<NewEventEditSession?>(null) }
     var newEventForm by remember { mutableStateOf<DraftForm?>(null) }
     var newEventError by remember { mutableStateOf<String?>(null) }
@@ -288,13 +291,17 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
         }
     }
 
-    suspend fun openFormalEditor(record: TemporalRecord) {
-        val opened = runCatching { withContext(Dispatchers.IO) { EditSession.open(store, record) } }
+    suspend fun openFormalEditor(record: TemporalRecord, occurrenceKey: String? = null) {
+        val opened = runCatching {
+            withContext(Dispatchers.IO) { EditSession.open(store, record, occurrenceKey) }
+        }
         opened.onSuccess {
             editSession = it
             editForm = it.form
             editBaseline = it.baselineForm
             editError = it.lastError
+            editBusy = false
+            editUiRevision = 0
         }.onFailure {
             message = it.message ?: "Unable to open editor"
         }
@@ -1366,16 +1373,20 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                         reload()
                     }
                 },
-                onOpen = { record ->
-                    if (aiLocked) monthInspection = record else scope.launch { openFormalEditor(record) }
+                onOpen = { record, occurrenceKey ->
+                    if (aiLocked) monthInspection = record else scope.launch {
+                        openFormalEditor(record, occurrenceKey)
+                    }
                 }
             )
         } else if (presentedPage == Page.MONTH.name) {
             MonthScreen(records, Instant.ofEpochMilli(anchorMillis).atZone(zone).toLocalDate(), zone, aiLocked,
                 onBack = { page = Page.TIMELINE.name },
                 onDate = { date -> anchorMillis = date.atTime(12, 0).atZone(zone).toInstant().toEpochMilli(); page = Page.TIMELINE.name },
-                onOpen = { record ->
-                    if (aiLocked) monthInspection = record else scope.launch { openFormalEditor(record) }
+                onOpen = { record, occurrenceKey ->
+                    if (aiLocked) monthInspection = record else scope.launch {
+                        openFormalEditor(record, occurrenceKey)
+                    }
                 },
                 onCreate = { date ->
                     openNewEvent(TemporalKind.ACTIVITY, EditorSelection.OnDate(date))
@@ -1400,7 +1411,14 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                     preferences.edit().putBoolean("titlesOutside", outside).apply()
                 },
                 onOpenEvent = { record ->
-                    if (aiLocked) monthInspection = record else scope.launch { openFormalEditor(record) }
+                    if (aiLocked) monthInspection = record else scope.launch {
+                        openFormalEditor(record)
+                    }
+                },
+                onOpenOccurrence = { record, occurrenceKey ->
+                    if (aiLocked) monthInspection = record else scope.launch {
+                        openFormalEditor(record, occurrenceKey)
+                    }
                 },
                 onMoveEvent = { record, target ->
                     if (record.recurrence.isRepeating) {
@@ -1693,10 +1711,13 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
 
     editSession?.let { session ->
         fun exitWithCheckpoint() {
+            if (editBusy) return
+            editBusy = true
             scope.launch {
                 val checkpoint = withContext(Dispatchers.IO) { session.checkpoint() }
                 if (session.lastError != null) {
                     message = "Checkpoint failed; edits remain in memory: " + session.lastError
+                    editBusy = false
                 } else {
                     withContext(Dispatchers.IO) { session.close() }
                     editSession = null
@@ -1713,30 +1734,70 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
             session = session,
             form = visibleForm,
             error = editError,
-            hasChanges = visibleForm != (editBaseline ?: session.baselineForm),
+            hasChanges = session.meaningfulDiff,
+            busy = editBusy,
+            editorRevision = editUiRevision,
             onChange = { next ->
                 editForm = next
                 editError = null
                 session.edit(next)
             },
+            onScopeChange = { selectedScope ->
+                runCatching { session.selectRecurrenceScope(selectedScope) }
+                    .onSuccess {
+                        editForm = session.form
+                        editError = null
+                    }
+                    .onFailure { editError = it.message ?: "无法切换重复编辑范围" }
+            },
             onSave = {
-                scope.launch {
-                    when (val outcome = withContext(Dispatchers.IO) { session.save() }) {
-                        is PowerStore.DirectEditOutcome.Saved -> {
-                            editForm = session.form
-                            editBaseline = session.baselineForm
-                            editError = null
-                            reload(); reconcile()
-                            message = if (outcome.changed) "Event saved" else "No changes; pending draft cleared"
-                        }
-                        is PowerStore.DirectEditOutcome.Conflict -> {
-                            editError = session.lastError; message = "Event changed; reopen to review"
-                        }
-                        is PowerStore.DirectEditOutcome.Invalid -> {
-                            editError = session.lastError; message = outcome.reason
-                        }
-                        PowerStore.DirectEditOutcome.Locked -> {
-                            editError = session.lastError; message = "Editor is locked"
+                if (!editBusy) {
+                    editBusy = true
+                    scope.launch {
+                        try {
+                            if (session.recurrenceScope == RecurrenceEditScope.THIS_AND_FUTURE) {
+                                if (!session.meaningfulDiff) {
+                                    editError = "内容没有有效修改，未拆分重复序列。"
+                                } else when (val outcome = withContext(Dispatchers.IO) {
+                                    session.saveThisAndFuture()
+                                }) {
+                                    is PowerStore.RecurrenceSplitOutcome.Applied -> {
+                                        withContext(Dispatchers.IO) { session.close() }
+                                        editSession = null; editForm = null; editBaseline = null
+                                        editError = null
+                                        reload(); reconcile()
+                                        message = "本次及以后已拆分保存为新的重复序列"
+                                    }
+                                    is PowerStore.RecurrenceSplitOutcome.Conflict -> {
+                                        editError = session.lastError
+                                        message = "重复事件已变化，请重新打开确认"
+                                    }
+                                    is PowerStore.RecurrenceSplitOutcome.Invalid ->
+                                        editError = outcome.reason
+                                    PowerStore.RecurrenceSplitOutcome.Locked ->
+                                        editError = "编辑器当前不可写"
+                                }
+                            } else when (val outcome = withContext(Dispatchers.IO) { session.save() }) {
+                                is PowerStore.DirectEditOutcome.Saved -> {
+                                    editForm = session.form
+                                    editBaseline = session.baselineForm
+                                    editUiRevision++
+                                    editError = null
+                                    reload(); reconcile()
+                                    message = if (outcome.changed) "Event saved" else "No changes; pending draft cleared"
+                                }
+                                is PowerStore.DirectEditOutcome.Conflict -> {
+                                    editError = session.lastError; message = "Event changed; reopen to review"
+                                }
+                                is PowerStore.DirectEditOutcome.Invalid -> {
+                                    editError = session.lastError; message = outcome.reason
+                                }
+                                PowerStore.DirectEditOutcome.Locked -> {
+                                    editError = session.lastError; message = "Editor is locked"
+                                }
+                            }
+                        } finally {
+                            editBusy = false
                         }
                     }
                 }
@@ -1749,7 +1810,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                 editError = null
             },
             onDelete = {
-                scope.launch {
+                if (!editBusy) scope.launch {
                     when (withContext(Dispatchers.IO) { session.delete() }) {
                         is PowerStore.DirectEditOutcome.Saved -> {
                             withContext(Dispatchers.IO) { session.close() }

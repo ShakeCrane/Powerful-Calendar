@@ -114,7 +114,8 @@ fun TimelineScreen(
     onOpenTools: () -> Unit, onOpenMonth: () -> Unit = {},
     onOpenMemo: () -> Unit = {}, memoCount: Int = 0,
     titlesOutside: Boolean = false, onTitlesOutsideChange: (Boolean) -> Unit = {},
-    modifier: Modifier = Modifier, blockedReminders: Int = 0
+    modifier: Modifier = Modifier, blockedReminders: Int = 0,
+    onOpenOccurrence: (TemporalRecord, String?) -> Unit = { record, _ -> onOpenEvent(record) }
 ) {
     val scope = rememberCoroutineScope()
     val effects = LocalGlassEffects.current
@@ -137,10 +138,16 @@ fun TimelineScreen(
             projection.forEach { put(it.record, it.key) }
         }
     }
+    val occurrenceKeys = remember(projection) {
+        java.util.IdentityHashMap<TemporalRecord, String>().apply {
+            projection.forEach { put(it.record, it.occurrenceKey) }
+        }
+    }
     fun open(record: TemporalRecord) {
         inertia?.cancel()
         val owner = owners[record.eventSeq] ?: record
-        if (aiLocked) inspected = record else onOpenEvent(owner)
+        val occurrenceKey = occurrenceKeys[record]?.takeIf { owner.recurrence.isRepeating }
+        if (aiLocked) inspected = record else onOpenOccurrence(owner, occurrenceKey)
     }
     fun changeCamera(updated: TimelineCoordinate.Camera) { inertia?.cancel(); onCameraChange(updated) }
 

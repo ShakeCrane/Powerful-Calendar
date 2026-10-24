@@ -408,6 +408,8 @@ class PowerStore(
         put("recurrence", encodeRecurrence(form.recurrence))
         put("tracking", form.trackingEnabled)
         put("completedKeys", JSONArray(form.completedKeys.sorted()))
+        form.recurrenceEditScope?.let { put("recurrenceEditScope", it.name) }
+        form.editOccurrenceKey?.let { put("editOccurrenceKey", it) }
     }.toString()
 
     private fun decodeForm(raw: String): DraftForm {
@@ -432,7 +434,11 @@ class PowerStore(
             trackingEnabled = json.optBoolean("tracking", json.optString("kind") == "MEMO"),
             completedKeys = json.optJSONArray("completedKeys")?.let { a ->
                 (0 until a.length()).map { a.getString(it) }.toSet()
-            } ?: emptySet()
+            } ?: emptySet(),
+            recurrenceEditScope = runCatching {
+                RecurrenceEditScope.valueOf(json.optString("recurrenceEditScope"))
+            }.getOrNull(),
+            editOccurrenceKey = json.optString("editOccurrenceKey").takeIf(String::isNotBlank)
         )
     }
 
@@ -742,6 +748,9 @@ class PowerStore(
         operation: DraftOperation = DraftOperation.CREATE,
         actor: String = "user"
     ): DraftCard {
+        require(form.recurrenceEditScope == null && form.editOccurrenceKey == null) {
+            "重复范围编辑只能通过正式事件检查点保存，不能分配新草稿身份"
+        }
         if (eventSeq == null) {
             val seq = tx { db ->
                 checkDraftWriteAllowed(db, actor)
@@ -835,6 +844,9 @@ class PowerStore(
                     cursor.getLong(0), cursor.getLong(1), cursor.getString(2), duplicate = true
                 )
             }
+        }
+        if (form.recurrenceEditScope != null || form.editOccurrenceKey != null) {
+            return@tx CommitOutcome.Invalid("重复范围修改不能作为新建事件直接发布")
         }
         if (isLocked(db)) return@tx CommitOutcome.Locked
 
@@ -1102,6 +1114,9 @@ class PowerStore(
 
         val draft = readDraft(db, draftId) ?: return@tx CommitOutcome.Invalid("草稿不存在")
         if (!draft.isActionable) return@tx CommitOutcome.Invalid("草稿已经处理")
+        if (draft.form.recurrenceEditScope != null || draft.form.editOccurrenceKey != null) {
+            return@tx CommitOutcome.Invalid("请从原重复事件继续编辑此范围草稿，不能将其作为普通草稿发布")
+        }
 
         val current = readObject(db, draft.eventSeq)
         val retired = isRetired(db, draft.eventSeq)
@@ -1204,6 +1219,9 @@ class PowerStore(
         if (actor != "user") return@tx CommitOutcome.NotAuthorized
         val card = readDraft(db, draftId) ?: return@tx CommitOutcome.Invalid("草稿不存在")
         if (!card.isActionable) return@tx CommitOutcome.Invalid("草稿已经处理")
+        if (card.form.recurrenceEditScope != null || card.form.editOccurrenceKey != null) {
+            return@tx CommitOutcome.Invalid("重复范围草稿不能用于普通恢复；请从原事件继续编辑")
+        }
         if (card.operation != DraftOperation.REPLACE && card.operation != DraftOperation.CONVERT) {
             return@tx CommitOutcome.Invalid("恢复必须由修改或类型转换草稿发起")
         }
@@ -1260,6 +1278,9 @@ class PowerStore(
         editorToken: String
     ): DirectEditOutcome = tx { db ->
         if (isLocked(db) || !ownsHumanEditor(db, editorToken)) return@tx DirectEditOutcome.Locked
+        if (form.recurrenceEditScope != null || form.editOccurrenceKey != null) {
+            return@tx DirectEditOutcome.Invalid("正式事件保存必须先将重复范围应用到实例或序列")
+        }
         val current = readObject(db, eventSeq) ?: return@tx DirectEditOutcome.Conflict(null)
         if (current.revision != expectedRevision) return@tx DirectEditOutcome.Conflict(current)
         val now = System.currentTimeMillis()
@@ -1316,6 +1337,9 @@ class PowerStore(
     ): RecurrenceSplitOutcome = tx { db ->
         if (isLocked(db) || !ownsHumanEditor(db, editorToken)) {
             return@tx RecurrenceSplitOutcome.Locked
+        }
+        if (form.recurrenceEditScope != null || form.editOccurrenceKey != null) {
+            return@tx RecurrenceSplitOutcome.Invalid("保存拆分前必须移除编辑器的临时范围元数据")
         }
         val current = readObject(db, eventSeq)
             ?: return@tx RecurrenceSplitOutcome.Conflict(null)
@@ -1414,8 +1438,10 @@ class PowerStore(
 
         val migratedExceptions = (current.recurrence.exceptions + form.recurrence.exceptions)
             .filterTo(mutableSetOf(), ::compatibleFutureKey)
+        // The selected occurrence's effective values are now the new series base. Keeping its
+        // old override would shadow an edited base title (and can retain stale per-slot timing).
         val migratedOverrides = (current.recurrence.overrides + form.recurrence.overrides)
-            .filterKeys(::compatibleFutureKey)
+            .filterKeys { it != selectedOccurrenceKey && compatibleFutureKey(it) }
         val migratedCompleted = (current.completedKeys + form.completedKeys)
             .filterTo(mutableSetOf(), ::compatibleFutureKey)
         val newRecord = baseRecord.copy(
@@ -1855,6 +1881,9 @@ class PowerStore(
             }
             require(card.operation in allowedOperations) {
                 "草稿 #$draftId 的 ${card.operation.label} 操作未获得授权"
+            }
+            require(card.form.recurrenceEditScope == null && card.form.editOccurrenceKey == null) {
+                "重复范围编辑必须从原事件继续，不能交给普通 AI 草稿批次提交"
             }
             require(card.draftVersion == reviewedVersion) {
                 "草稿 #$draftId 在审阅后被修改（当前 v${card.draftVersion}，审阅 v$reviewedVersion），请重新审阅后再授权"

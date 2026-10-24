@@ -5,6 +5,8 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.TimelineCoordinate
+import dev.powerfulcalendar.core.Recurrence
+import dev.powerfulcalendar.core.RecurrenceFreq
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -180,6 +182,59 @@ class TimelineTitleComposeTest {
         }
         ui.onNodeWithTag(eventTag(events[1])).performClick()
         ui.runOnIdle { assertEquals("Greedy_B_title", opened?.title) }
+    }
+
+    @Test
+    fun openingProjectedRecurringSlotPassesOwnerAndOriginalOccurrenceKey() {
+        val owner = TemporalRecord(
+            eventSeq = 502,
+            revision = 3,
+            kind = TemporalKind.ACTIVITY,
+            title = "每日活动",
+            startMillis = LocalDate.of(2026, 10, 20).atTime(7, 30)
+                .atZone(zone).toInstant().toEpochMilli(),
+            endMillis = LocalDate.of(2026, 10, 20).atTime(8, 30)
+                .atZone(zone).toInstant().toEpochMilli(),
+            zoneId = zone.id,
+            recurrence = Recurrence(freq = RecurrenceFreq.DAILY, count = 3)
+        )
+        val selectedKey = "2026-10-21T07:30"
+        val selectedDisplay = owner.copy(
+            startMillis = LocalDate.of(2026, 10, 21).atTime(7, 30)
+                .atZone(zone).toInstant().toEpochMilli(),
+            endMillis = LocalDate.of(2026, 10, 21).atTime(8, 30)
+                .atZone(zone).toInstant().toEpochMilli()
+        )
+        val selectedNoon = LocalDate.of(2026, 10, 21).atTime(12, 0)
+            .atZone(zone).toInstant().toEpochMilli()
+        var openedOwner: TemporalRecord? = null
+        var openedKey: String? = null
+        ui.setContent {
+            PowerCalTheme {
+                TimelineScreen(
+                    records = listOf(owner),
+                    camera = TimelineCoordinate.Camera(selectedNoon, 24.0),
+                    nowMillis = noon,
+                    zone = zone,
+                    pendingCount = 0,
+                    aiLocked = false,
+                    onCameraChange = {},
+                    onOpenEvent = {},
+                    onOpenOccurrence = { record, key -> openedOwner = record; openedKey = key },
+                    onMoveEvent = { _, _ -> },
+                    onCreate = { _, _ -> },
+                    onToday = {},
+                    onOpenDeck = {},
+                    onOpenTools = {}
+                )
+            }
+        }
+        val selectedHit = eventTag(selectedDisplay)
+        ui.onNodeWithTag(selectedHit).assertExists().performClick()
+        ui.runOnIdle {
+            assertEquals(owner, openedOwner)
+            assertEquals(selectedKey, openedKey)
+        }
     }
 
     @Test

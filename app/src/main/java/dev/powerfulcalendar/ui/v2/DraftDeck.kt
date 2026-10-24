@@ -686,6 +686,7 @@ internal fun UnifiedEventFormFields(
     card: DraftCard? = null,
     instanceKey: Any? = card?.draftId,
     pickerNowMillis: Long? = null,
+    occurrenceOnlyScope: Boolean = false,
     onFormChange: (DraftForm) -> Unit
 ) {
     val context = LocalContext.current
@@ -845,7 +846,7 @@ internal fun UnifiedEventFormFields(
                 }
             }
 
-            if (expanded) {
+            if (expanded && !occurrenceOnlyScope) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
                         value = form.location,
@@ -863,7 +864,7 @@ internal fun UnifiedEventFormFields(
                         readOnly = aiLocked,
                         label = { Text("备注") }
                     )
-                    run {
+                    if (!occurrenceOnlyScope) run {
                         Text("提醒方式与时间（与事件类型分别设置）", style = MaterialTheme.typography.labelLarge)
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             dev.powerfulcalendar.core.ReminderMethod.entries.forEach { mode ->
@@ -936,7 +937,7 @@ internal fun UnifiedEventFormFields(
                             }
                         }
                     }
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (!occurrenceOnlyScope) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("加入待办（完成跟踪）", style = MaterialTheme.typography.labelLarge)
                         Switch(checked = form.trackingEnabled || form.kind == TemporalKind.MEMO,
                             onCheckedChange = { onFormChange(form.copy(trackingEnabled = it)) },
@@ -946,8 +947,8 @@ internal fun UnifiedEventFormFields(
                         Text("无日期备忘不设置基于时刻的提醒或重复周期。",
                             style = MaterialTheme.typography.labelSmall)
                     }
-                    Text("重复", style = MaterialTheme.typography.labelLarge)
-                    if (form.recurrence.isRepeating) {
+                    if (!occurrenceOnlyScope) Text("重复", style = MaterialTheme.typography.labelLarge)
+                    if (!occurrenceOnlyScope && form.recurrence.isRepeating) {
                         OutlinedTextField(
                             value = form.recurrence.activeFromDate.orEmpty(),
                             onValueChange = { onFormChange(form.copy(recurrence =
@@ -963,7 +964,7 @@ internal fun UnifiedEventFormFields(
                             singleLine = true, readOnly = aiLocked,
                             modifier = Modifier.fillMaxWidth().deckInput())
                     }
-                    Row(
+                    if (!occurrenceOnlyScope) Row(
                         Modifier.horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
@@ -995,7 +996,7 @@ internal fun UnifiedEventFormFields(
                             )
                         }
                     }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (!occurrenceOnlyScope) Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text("启用", style = MaterialTheme.typography.labelLarge)
                             Text(
@@ -1153,7 +1154,13 @@ private fun DeckCardBody(
             conversionNote?.let {
                 Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
             }
-            if (form.recurrence.isRepeating) Text("当前编辑整条重复规则；本次 / 此后范围编辑尚未支持。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.tertiary)
+            if (form.recurrenceEditScope != null || form.editOccurrenceKey != null) {
+                Text("这是带重复范围的恢复草稿。请从原事件继续编辑并保存，不能从草稿卡组按整组替换发布。",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.tertiary)
+            } else if (form.recurrence.isRepeating) {
+                Text("重复事件可在原事件编辑器中选择仅本次、本次及以后或整个系列。",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.tertiary)
+            }
             if (form.kind == TemporalKind.ACTIVITY && missing.isEmpty() && !publishable) Text("结束时刻需要晚于开始时刻", color = MaterialTheme.colorScheme.error)
             if (missing.isNotEmpty() && card.operation != DraftOperation.DELETE) {
                 Text(
@@ -1185,9 +1192,12 @@ private fun DeckCardBody(
                 Text(if (card.operation == DraftOperation.DELETE) "不删除" else "丢弃")
             }
             Button(onClick = { if (card.operation == DraftOperation.DELETE) showDeleteConfirm = true else onCommit() },
-                enabled = !aiLocked && (publishable || (transientNewEvent && dirty) || card.operation == DraftOperation.DELETE), modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
+                enabled = !aiLocked && form.recurrenceEditScope == null && form.editOccurrenceKey == null &&
+                    (publishable || (transientNewEvent && dirty) || card.operation == DraftOperation.DELETE),
+                modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
                 Icon(Icons.Default.Check, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp))
                 Text(when {
+                    form.recurrenceEditScope != null || form.editOccurrenceKey != null -> "返回事件继续"
                     card.operation == DraftOperation.DELETE -> "确认删除"
                     transientNewEvent && !publishable -> "保存草稿"
                     else -> "发布"

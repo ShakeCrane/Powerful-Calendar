@@ -104,7 +104,7 @@ private class StudioExampleTimeline : CompiledTimelineSkin {
                 LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(context.records.sortedBy { it.anchorMillis(context.zone) ?: Long.MAX_VALUE },
                         key = { it.eventSeq }) { record ->
-                        Surface(onClick = { context.onOpenEvent(record) },
+                        Surface(onClick = { context.onOpenEvent(record, null) },
                             shape = RoundedCornerShape(18.dp),
                             color = MaterialTheme.colorScheme.surfaceContainerLow) {
                             Column(Modifier.fillMaxWidth().padding(12.dp)) {
@@ -149,7 +149,11 @@ private class StudioExampleMemo : MemoVisualRenderer {
                             verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(checked = entry.completed, enabled = !context.busy,
                                 onCheckedChange = { if (it != entry.completed) context.onToggle(entry) })
-                            Column(Modifier.weight(1f).clickable { context.onOpen(entry.owner) }) {
+                            Column(Modifier.weight(1f).clickable {
+                                context.onOpen(entry.owner, entry.occurrenceKey.takeIf {
+                                    entry.owner.recurrence.isRepeating
+                                })
+                            }) {
                                 Text(entry.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                 Text(entry.owner.displaySeq(), style = MaterialTheme.typography.labelSmall)
                             }

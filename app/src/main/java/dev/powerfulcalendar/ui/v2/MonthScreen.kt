@@ -30,7 +30,8 @@ import java.time.format.DateTimeFormatter
 @Composable
 internal fun NativeMonthScreen(
     records: List<TemporalRecord>, initialDate: LocalDate, zone: ZoneId, aiLocked: Boolean,
-    onBack: () -> Unit, onDate: (LocalDate) -> Unit, onOpen: (TemporalRecord) -> Unit,
+    onBack: () -> Unit, onDate: (LocalDate) -> Unit,
+    onOpen: (TemporalRecord, String?) -> Unit,
     onCreate: (LocalDate) -> Unit
 ) {
     var selectedText by rememberSaveable { mutableStateOf(initialDate.toString()) }
@@ -149,7 +150,9 @@ internal fun NativeMonthScreen(
         val selectedEntries = daily[selected].orEmpty()
         if (selectedEntries.isEmpty()) item { Text("这一天还很从容。", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(vertical = 16.dp)) }
         items(selectedEntries, key = { it.key }) { entry ->
-            Surface(onClick = { onOpen(entry.owner) }, shape = skinBarShape(), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+            Surface(onClick = {
+                onOpen(entry.owner, entry.occurrenceKey.takeIf { entry.owner.recurrence.isRepeating })
+            }, shape = skinBarShape(), color = MaterialTheme.colorScheme.surfaceContainerLow) {
                 Column(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(16.dp)) {
                     Text("${entry.record.kind.label} · ${entry.record.title}", style = MaterialTheme.typography.titleMedium, color = kindColor(entry.record.kind))
                     Text(TemporalText.summarize(entry.record), style = MaterialTheme.typography.bodyMedium)

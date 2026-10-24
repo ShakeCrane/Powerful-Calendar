@@ -64,7 +64,7 @@ internal fun NativeMemoCenterScreen(
     onBack: () -> Unit,
     onCreateMemo: () -> Unit,
     onToggle: (TodoEntry) -> Unit,
-    onOpen: (TemporalRecord) -> Unit
+    onOpen: (TemporalRecord, String?) -> Unit
 ) {
     var showCompleted by remember { mutableStateOf(false) }
     val visible = items.filter { it.completed == showCompleted }
@@ -100,7 +100,11 @@ internal fun NativeMemoCenterScreen(
                 verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(visible, key = { it.id }) { entry ->
                     Surface(
-                        onClick = { onOpen(entry.owner) },
+                        onClick = {
+                            onOpen(entry.owner, entry.occurrenceKey.takeIf {
+                                entry.owner.recurrence.isRepeating
+                            })
+                        },
                         shape = MaterialTheme.shapes.medium,
                         color = MaterialTheme.colorScheme.surfaceContainerLow
                     ) {

@@ -36,7 +36,7 @@ data class TimelineSkinContext(
     val blockedReminders: Int,
     val modifier: Modifier,
     val onCameraChange: (TimelineCoordinate.Camera) -> Unit,
-    val onOpenEvent: (TemporalRecord) -> Unit,
+    val onOpenEvent: (TemporalRecord, String?) -> Unit,
     val onMoveEvent: (TemporalRecord, Long) -> Unit,
     val onCreate: (TemporalKind, Long) -> Unit,
     val onToday: () -> Unit,
@@ -59,7 +59,8 @@ data class TimelineSkinContext(
         pendingCount = pendingCount,
         aiLocked = aiLocked,
         onCameraChange = onCameraChange,
-        onOpenEvent = onOpenEvent,
+        onOpenEvent = { record -> onOpenEvent(record, null) },
+        onOpenOccurrence = onOpenEvent,
         onMoveEvent = onMoveEvent,
         onCreate = onCreate,
         onToday = onToday,
@@ -128,11 +129,13 @@ fun SkinnableTimelineScreen(
     titlesOutside: Boolean = false,
     onTitlesOutsideChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
-    blockedReminders: Int = 0
+    blockedReminders: Int = 0,
+    onOpenOccurrence: (TemporalRecord, String?) -> Unit = { record, _ -> onOpenEvent(record) }
 ) {
     val context = TimelineSkinContext(
         records, camera, nowMillis, zone, pendingCount, aiLocked, memoCount,
-        titlesOutside, blockedReminders, modifier, onCameraChange, onOpenEvent,
+        titlesOutside, blockedReminders, modifier, onCameraChange,
+        { record, key -> onOpenOccurrence(record, key) },
         onMoveEvent, onCreate, onToday, onOpenDeck, onOpenTools, onOpenMonth,
         onOpenMemo, onTitlesOutsideChange
     )
@@ -178,7 +181,7 @@ private fun SkinStudioNativePreview(dark: Boolean) {
             pendingCount = 2,
             aiLocked = false,
             onCameraChange = {},
-            onOpenEvent = {},
+        onOpenEvent = {},
             onMoveEvent = { _, _ -> },
             onCreate = { _, _ -> },
             onToday = {},

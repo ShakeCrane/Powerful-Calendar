@@ -84,7 +84,7 @@ internal class MonthVisualContext internal constructor(
     val aiLocked: Boolean,
     val onBack: () -> Unit,
     val onDate: (LocalDate) -> Unit,
-    val onOpen: (TemporalRecord) -> Unit,
+    val onOpen: (TemporalRecord, String?) -> Unit,
     val onCreate: (LocalDate) -> Unit
 ) {
     @Composable fun Native() {
@@ -95,7 +95,8 @@ internal class MonthVisualContext internal constructor(
 @Composable
 internal fun MonthScreen(
     records: List<TemporalRecord>, initialDate: LocalDate, zone: ZoneId, aiLocked: Boolean,
-    onBack: () -> Unit, onDate: (LocalDate) -> Unit, onOpen: (TemporalRecord) -> Unit,
+    onBack: () -> Unit, onDate: (LocalDate) -> Unit,
+    onOpen: (TemporalRecord, String?) -> Unit,
     onCreate: (LocalDate) -> Unit
 ) {
     val context = MonthVisualContext(records, initialDate, zone, aiLocked, onBack, onDate, onOpen, onCreate)
@@ -111,7 +112,7 @@ internal class MemoVisualContext internal constructor(
     val onBack: () -> Unit,
     val onCreateMemo: () -> Unit,
     val onToggle: (TodoEntry) -> Unit,
-    val onOpen: (TemporalRecord) -> Unit
+    val onOpen: (TemporalRecord, String?) -> Unit
 ) {
     @Composable fun Native() {
         NativeMemoCenterScreen(items, zone, busy, onBack, onCreateMemo, onToggle, onOpen)
@@ -122,7 +123,7 @@ internal class MemoVisualContext internal constructor(
 internal fun MemoCenterScreen(
     items: List<TodoEntry>, zone: ZoneId, busy: Boolean,
     onBack: () -> Unit, onCreateMemo: () -> Unit,
-    onToggle: (TodoEntry) -> Unit, onOpen: (TemporalRecord) -> Unit
+    onToggle: (TodoEntry) -> Unit, onOpen: (TemporalRecord, String?) -> Unit
 ) {
     val context = MemoVisualContext(items, zone, busy, onBack, onCreateMemo, onToggle, onOpen)
     val renderer = PresentationSkinRegistry.memo

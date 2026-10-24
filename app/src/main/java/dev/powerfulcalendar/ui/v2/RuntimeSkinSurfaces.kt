@@ -37,7 +37,9 @@ internal object RuntimeSkinSurfaces {
             values = mapOf("pending" to context.pendingCount.toString(),
                 "memo" to context.memoCount.toString()),
             widget = { kind ->
-                if (kind == "events") EventRows(context.records, context.zone, context.onOpenEvent)
+                if (kind == "events") EventRows(context.records, context.zone) { record ->
+                    context.onOpenEvent(record, null)
+                }
             }
         ), context.modifier.fillMaxSize())
     }
@@ -49,7 +51,9 @@ internal object RuntimeSkinSurfaces {
                 "new" to { context.onCreate(context.initialDate) }),
             values = mapOf("date" to context.initialDate.toString()),
             widget = { kind ->
-                if (kind == "events") EventRows(context.records, context.zone, context.onOpen)
+                if (kind == "events") EventRows(context.records, context.zone) { record ->
+                    context.onOpen(record, null)
+                }
             }
         ), Modifier.fillMaxSize())
     }
@@ -78,7 +82,11 @@ internal object RuntimeSkinSurfaces {
                                         enabled = !context.busy
                                     )
                                     Text(entry.title, Modifier.weight(1f)
-                                        .clickable { context.onOpen(entry.owner) },
+                                        .clickable {
+                                            context.onOpen(entry.owner, entry.occurrenceKey.takeIf {
+                                                entry.owner.recurrence.isRepeating
+                                            })
+                                        },
                                         maxLines = 2, overflow = TextOverflow.Ellipsis)
                                 }
                             }

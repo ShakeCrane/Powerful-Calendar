@@ -126,7 +126,9 @@ class GlassPresentationTest {
             assertTrue("Missing or unchanged: $label", rows.single { it.label == label }.changed)
         }
         assertTrue(rows.single { it.label == "实例覆盖" }.before.contains("新标题"))
-        assertEquals(17, rows.size)
+        assertEquals(19, rows.size)
+        assertTrue(rows.any { it.label == "编辑范围" })
+        assertTrue(rows.any { it.label == "目标原始实例" })
     }
 
     @Test fun unchangedFieldsAndLongNotesRemainAvailableInConflictReview() {

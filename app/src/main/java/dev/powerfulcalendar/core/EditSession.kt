@@ -13,16 +13,23 @@ class EditSession private constructor(
     val eventSeq: Long,
     private var expectedRevision: Long,
     private val lease: PowerStore.HumanEditLease,
+    private var formalRecord: TemporalRecord,
     private var baseline: DraftForm,
-    initial: DraftForm
+    private var scopeBaseline: DraftForm,
+    initial: DraftForm,
+    val selectedOccurrenceKey: String?
 ) : AutoCloseable {
     var form: DraftForm = initial
         private set
     var lastError: String? = null
         private set
 
-    val meaningfulDiff: Boolean get() = form != baseline
+    val meaningfulDiff: Boolean
+        get() = form.hasMeaningfulDiffFrom(scopeBaseline)
     val baselineForm: DraftForm get() = baseline
+    val recurrenceScope: RecurrenceEditScope? get() = form.recurrenceEditScope
+    val requiresRecurrenceScope: Boolean get() = formalRecord.recurrence.isRepeating
+    val canEditSelectedOccurrence: Boolean get() = selectedOccurrenceKey != null
 
     fun edit(next: DraftForm) {
         form = next
@@ -31,7 +38,32 @@ class EditSession private constructor(
     }
 
     fun discardEditingChanges() {
-        form = baseline
+        form = scopeBaseline.withoutEditTarget().copy(
+            recurrenceEditScope = recurrenceScope,
+            editOccurrenceKey = if (recurrenceScope == RecurrenceEditScope.WHOLE_SERIES) null
+                else selectedOccurrenceKey
+        )
+        lastError = null
+    }
+
+    /** The scope is chosen before fields are exposed; changing it never implies a default save. */
+    fun selectRecurrenceScope(scope: RecurrenceEditScope) {
+        check(requiresRecurrenceScope) { "This event does not repeat" }
+        check(!meaningfulDiff) { "先放弃当前字段修改，再切换重复编辑范围" }
+        if (scope != RecurrenceEditScope.WHOLE_SERIES) {
+            check(selectedOccurrenceKey != null) { "打开此重复实例后才能选择单次或后续范围" }
+        }
+        val seed = if (scope == RecurrenceEditScope.WHOLE_SERIES) {
+            baseline
+        } else {
+            occurrenceForm(formalRecord, requireNotNull(selectedOccurrenceKey))
+        }
+        scopeBaseline = seed.withoutEditTarget()
+        form = seed.withoutEditTarget().copy(
+            recurrenceEditScope = scope,
+            editOccurrenceKey = if (scope == RecurrenceEditScope.WHOLE_SERIES) null
+                else selectedOccurrenceKey
+        )
         lastError = null
     }
 
@@ -39,8 +71,14 @@ class EditSession private constructor(
 
     /** One durable checkpoint for an explicit exit/switch/ON_STOP boundary. */
     fun checkpoint(): DraftCard? = try {
+        if (requiresRecurrenceScope && recurrenceScope == null && meaningfulDiff) {
+            error("请先选择重复事件的编辑范围")
+        }
+        // A scope choice alone is not a durable edit. Passing the formal baseline here also lets
+        // the store clear a previous checkpoint when the user reverted all business fields.
+        val checkpointForm = if (meaningfulDiff) form else baseline
         store.checkpointFormalEdit(
-            eventSeq, expectedRevision, baseline, form, lease.token
+            eventSeq, expectedRevision, baseline, checkpointForm, lease.token
         )
     } catch (error: Exception) {
         lastError = error.message ?: error.javaClass.simpleName
@@ -49,11 +87,34 @@ class EditSession private constructor(
 
     /** Save remains on this session/card. A no-op save clears an old checkpoint without revision. */
     fun save(): PowerStore.DirectEditOutcome {
-        val outcome = store.saveFormalEdit(eventSeq, expectedRevision, form, lease.token)
+        if (requiresRecurrenceScope && recurrenceScope == null) {
+            return invalid("请先选择重复事件的编辑范围")
+        }
+        if (recurrenceScope == RecurrenceEditScope.THIS_AND_FUTURE) {
+            return invalid("此范围请使用重复序列拆分保存")
+        }
+        val candidate = if (recurrenceScope == RecurrenceEditScope.SINGLE_OCCURRENCE) {
+            singleOccurrenceCandidate() ?: return PowerStore.DirectEditOutcome.Invalid(
+                lastError ?: "单次实例修改无效"
+            )
+        } else {
+            form.withoutEditTarget()
+        }
+        val outcome = store.saveFormalEdit(eventSeq, expectedRevision, candidate, lease.token)
         when (outcome) {
             is PowerStore.DirectEditOutcome.Saved -> {
                 expectedRevision = outcome.revision
-                baseline = form
+                formalRecord = store.get(eventSeq) ?: formalRecord
+                baseline = DraftForm.from(formalRecord)
+                val scope = recurrenceScope
+                scopeBaseline = if (scope == RecurrenceEditScope.SINGLE_OCCURRENCE) {
+                    occurrenceForm(formalRecord, requireNotNull(selectedOccurrenceKey))
+                } else baseline
+                form = scopeBaseline.withoutEditTarget().copy(
+                    recurrenceEditScope = scope,
+                    editOccurrenceKey = if (scope == RecurrenceEditScope.WHOLE_SERIES) null
+                        else selectedOccurrenceKey
+                )
                 lastError = null
             }
             is PowerStore.DirectEditOutcome.Invalid -> lastError = outcome.reason
@@ -61,6 +122,79 @@ class EditSession private constructor(
             PowerStore.DirectEditOutcome.Locked -> lastError = "Editor is no longer writable"
         }
         return outcome
+    }
+
+    /** Apply an explicitly selected this-and-future edit through the store's atomic split. */
+    fun saveThisAndFuture(): PowerStore.RecurrenceSplitOutcome {
+        if (recurrenceScope != RecurrenceEditScope.THIS_AND_FUTURE) {
+            return PowerStore.RecurrenceSplitOutcome.Invalid("请先选择“本次及以后”范围")
+        }
+        if (!meaningfulDiff) {
+            return PowerStore.RecurrenceSplitOutcome.Invalid("内容没有有效修改，未拆分重复序列")
+        }
+        val key = selectedOccurrenceKey
+            ?: return PowerStore.RecurrenceSplitOutcome.Invalid("缺少所选实例的原始时间槽键")
+        val outcome = store.saveThisAndFutureRecurringEdit(
+            eventSeq, expectedRevision, key, form.withoutEditTarget(), lease.token
+        )
+        lastError = when (outcome) {
+            is PowerStore.RecurrenceSplitOutcome.Applied -> null
+            is PowerStore.RecurrenceSplitOutcome.Conflict -> "重复事件已被其他操作更新，请重新打开后确认"
+            is PowerStore.RecurrenceSplitOutcome.Invalid -> outcome.reason
+            PowerStore.RecurrenceSplitOutcome.Locked -> "编辑器当前不可写"
+        }
+        return outcome
+    }
+
+    private fun singleOccurrenceCandidate(): DraftForm? {
+        val key = selectedOccurrenceKey ?: return failCandidate("缺少所选实例的原始时间槽键")
+        val current = form.withoutEditTarget()
+        val scopedBase = scopeBaseline.withoutEditTarget()
+        val unsupportedChanges = current.copy(
+            title = scopedBase.title,
+            startText = scopedBase.startText,
+            endText = scopedBase.endText
+        )
+        if (unsupportedChanges.hasMeaningfulDiffFrom(scopedBase)) {
+            return failCandidate("仅本次目前支持修改标题和时间；地点、备注、提醒及重复规则需选择整组或本次及以后")
+        }
+        val edited = when (val built = current.build(eventSeq, expectedRevision + 1L)) {
+            is FormBuild.Incomplete -> return failCandidate(built.message)
+            is FormBuild.Invalid -> return failCandidate(built.reason)
+            is FormBuild.Ready -> built.record
+        }
+        val start = edited.anchorMillis()
+            ?: return failCandidate("单次实例缺少有效日期或开始时刻")
+        val end = if (edited.kind == TemporalKind.ACTIVITY) edited.endMillis else null
+        val titleOverride = edited.title.takeIf { it != formalRecord.title }
+        val naturalRecord = formalRecord.copy(
+            recurrence = formalRecord.recurrence.copy(
+                overrides = formalRecord.recurrence.overrides - key
+            )
+        )
+        val natural = RecurrenceEngine.occurrenceForKey(naturalRecord, key)
+            ?: return failCandidate("所选实例已跳过或不属于当前重复规则")
+        val overrides = formalRecord.recurrence.overrides.toMutableMap()
+        if (start == natural.startMillis && end == natural.endMillis && titleOverride == null) {
+            overrides.remove(key)
+        } else {
+            overrides[key] = OccurrenceOverride(start, end, titleOverride)
+        }
+        return baseline.copy(
+            recurrence = formalRecord.recurrence.copy(overrides = overrides),
+            recurrenceEditScope = null,
+            editOccurrenceKey = null
+        )
+    }
+
+    private fun failCandidate(message: String): DraftForm? {
+        lastError = message
+        return null
+    }
+
+    private fun invalid(message: String): PowerStore.DirectEditOutcome.Invalid {
+        lastError = message
+        return PowerStore.DirectEditOutcome.Invalid(message)
     }
 
     fun delete(): PowerStore.DirectEditOutcome =
@@ -73,13 +207,78 @@ class EditSession private constructor(
     }
 
     companion object {
-        fun open(store: PowerStore, record: TemporalRecord): EditSession {
+        private fun DraftForm.withoutEditTarget(): DraftForm = copy(
+            recurrenceEditScope = null,
+            editOccurrenceKey = null
+        )
+
+        private fun occurrenceForm(record: TemporalRecord, key: String): DraftForm {
+            val slot = requireNotNull(RecurrenceEngine.occurrenceForKey(record, key)) {
+                "所选实例已跳过或不属于当前重复规则"
+            }
+            val overrideTitle = record.recurrence.overrides[key]?.title
+            val base = DraftForm.from(record).copy(title = overrideTitle ?: record.title)
+            return when (record.kind) {
+                TemporalKind.ALARM -> base.copy(
+                    startText = DraftForm.formatInstant(slot.startMillis, record.zone)
+                )
+                TemporalKind.ACTIVITY -> base.copy(
+                    startText = DraftForm.formatInstant(slot.startMillis, record.zone),
+                    endText = DraftForm.formatInstant(slot.endMillis, record.zone)
+                )
+                TemporalKind.DEADLINE -> base.copy(
+                    endText = if (record.isDateOnlyDeadline()) {
+                        java.time.Instant.ofEpochMilli(slot.startMillis).atZone(record.zone)
+                            .toLocalDate().toString()
+                    } else DraftForm.formatInstant(slot.startMillis, record.zone)
+                )
+                TemporalKind.MEMO -> base.copy(
+                    startText = java.time.Instant.ofEpochMilli(slot.startMillis).atZone(record.zone)
+                        .toLocalDate().toString()
+                )
+            }
+        }
+
+        fun open(
+            store: PowerStore,
+            record: TemporalRecord,
+            selectedOccurrenceKey: String? = null
+        ): EditSession {
             val lease = store.beginHumanEdit(record.eventSeq)
             val formal = DraftForm.from(record)
-            // An existing checkpoint resumes automatically, but the formal snapshot remains the
-            // semantic baseline for undo/no-change detection and optimistic revision checks.
-            val resumed = store.pendingDraftsFor(record.eventSeq).firstOrNull()?.form ?: formal
-            return EditSession(store, record.eventSeq, record.revision, lease, formal, resumed)
+            try {
+                // An existing checkpoint resumes automatically, while the formal snapshot remains
+                // the optimistic baseline. Scope/key metadata is part of the durable draft payload.
+                val pending = store.pendingDraftsFor(record.eventSeq).firstOrNull()
+                val stored = pending?.form
+                val storedScope = stored?.recurrenceEditScope
+                val targetKey = stored?.editOccurrenceKey ?: selectedOccurrenceKey
+                val scope = storedScope ?: if (pending != null && record.recurrence.isRepeating) {
+                    // Older checkpoints were whole-series edits; preserve that established meaning.
+                    RecurrenceEditScope.WHOLE_SERIES
+                } else null
+                val seed = if (scope == RecurrenceEditScope.SINGLE_OCCURRENCE ||
+                    scope == RecurrenceEditScope.THIS_AND_FUTURE
+                ) {
+                    requireNotNull(targetKey) { "重复范围草稿缺少原始实例键" }
+                    occurrenceForm(record, targetKey)
+                } else formal
+                val resumed = (stored ?: seed).copy(
+                    recurrenceEditScope = scope,
+                    editOccurrenceKey = if (scope == RecurrenceEditScope.WHOLE_SERIES) null
+                        else targetKey
+                )
+                val initialScopeBaseline = if (scope == RecurrenceEditScope.SINGLE_OCCURRENCE ||
+                    scope == RecurrenceEditScope.THIS_AND_FUTURE
+                ) seed else formal
+                return EditSession(
+                    store, record.eventSeq, record.revision, lease, record, formal,
+                    initialScopeBaseline, resumed, targetKey
+                )
+            } catch (error: Exception) {
+                store.endHumanEdit(lease.token)
+                throw error
+            }
         }
     }
 }

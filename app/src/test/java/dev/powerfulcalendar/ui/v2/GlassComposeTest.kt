@@ -150,7 +150,7 @@ class GlassComposeTest {
         ui.setContent { PowerCalTheme {
             CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(1f, 2f)) {
                 Box(Modifier.requiredSize(640.dp, 360.dp)) {
-                    MonthScreen(emptyList(), LocalDate.of(2026, 10, 20), zone, false, {}, {}, {}, {})
+                    MonthScreen(emptyList(), LocalDate.of(2026, 10, 20), zone, false, {}, {}, { _, _ -> }, {})
                 }
             }
         } }
@@ -289,7 +289,7 @@ class GlassComposeTest {
     }
 
     @Test fun monthGridHasSevenDistinctColumnsWithFullDateTouchTargets() {
-        ui.setContent { PowerCalTheme { MonthScreen(emptyList(), LocalDate.of(2026, 10, 20), zone, false, {}, {}, {}, {}) } }
+        ui.setContent { PowerCalTheme { MonthScreen(emptyList(), LocalDate.of(2026, 10, 20), zone, false, {}, {}, { _, _ -> }, {}) } }
         val weekdays = listOf("一", "二", "三", "四", "五", "六", "日").map { ui.onNodeWithText(it).fetchSemanticsNode().boundsInRoot }
         assertEquals(7, weekdays.map { it.left }.distinct().size)
         val date = ui.onNode(hasContentDescription("2026-10-20，0 项", substring = true)).fetchSemanticsNode().boundsInRoot

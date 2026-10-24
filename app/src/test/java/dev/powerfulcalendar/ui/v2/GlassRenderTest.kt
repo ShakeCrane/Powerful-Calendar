@@ -97,7 +97,7 @@ class GlassRenderTest {
         val zone = ZoneId.of("Asia/Shanghai")
         val record = TemporalRecord(44, 1, TemporalKind.DEADLINE, "交付设计方案", deadlineDate = "2026-10-20", zoneId = zone.id)
         ui.setContent { PowerCalTheme(effects = GlassEffects(reduceMotion = true)) {
-            Surface(Modifier.fillMaxSize()) { MonthScreen(listOf(record), LocalDate.of(2026, 10, 20), zone, false, {}, {}, {}, {}) }
+            Surface(Modifier.fillMaxSize()) { MonthScreen(listOf(record), LocalDate.of(2026, 10, 20), zone, false, {}, {}, { _, _ -> }, {}) }
         } }
         capture("month-light.png")
     }
