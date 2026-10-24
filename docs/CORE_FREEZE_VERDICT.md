@@ -4,7 +4,7 @@ Date: 2026-10-24
 
 Verdict: **HOLD**
 
-Code/test checkout for the latest full regression: `b51b0e830c9ff968b994cda564dcdd481986d46e`
+Code/test checkout for the latest full regression: `6345dbba2216b625bf95eaad7651d3b6cfc89275`
 
 APK used by the latest full regression: `app/build/outputs/apk/debug/app-debug.apk`, SHA-256 `138EC1363E4D74E6153CFFA61CEE4C0DF4D51416B3BD64C954FE642ED0FD4096`
 
@@ -33,12 +33,14 @@ The **RECONSTRUCTED** candidate ledger contains 208 specification-derived rows p
 
 ## Current grouped verification
 
-- Latest full Debug verification: `:app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --offline --rerun-tasks --console=plain` — **BUILD SUCCESSFUL**, 461 tests, 0 failures/errors/skips across 57 JUnit suites; lint 0 errors and 58 warnings. The Issue 120 full run used checkout `b51b0e830c9ff968b994cda564dcdd481986d46e`.
-- Log: `.local/android-test/reports/freeze-20261024/pc-issue-120-full-gradle.log`, SHA-256 `0FCD052D2ABA1510946FD5CAFDDFE9C85CA5A784FD50EBD7E63E5E272E2D9C42`.
+- Latest full Debug verification: `:app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --offline --rerun-tasks --console=plain` — **BUILD SUCCESSFUL**, 462 tests, 0 failures/errors/skips across 57 JUnit suites; lint 0 errors and 58 warnings. The Issue 121 full run used checkout `6345dbba2216b625bf95eaad7651d3b6cfc89275`.
+- Log: `.local/android-test/reports/freeze-20261024/pc-issue-121-full-gradle.log`, SHA-256 `7E8055E6547769BC8158D35E06268BD77B4A87B16929EEE26CE297CCA754C97B`.
 - Full `BootReceiverRecoveryTest` XML: `.local/android-test/reports/freeze-20261024/pc-issue-110-full-junit/TEST-dev.powerfulcalendar.reminders.BootReceiverRecoveryTest.xml`, SHA-256 `C935E22DDE3E54E68B21C63C572EACC394F5D25B9A6FFEB55DF48987129218E8`.
 - Targeted PowerStoreTest regression: 4/4 PASS; log SHA-256 `77AB328142E24F2EA8129557FA6329DF41D078A1DB272883A302F91F1559C162`; JUnit XML SHA-256 `EDE4EE7FB1756E4C3776FDCBAF8435B17A130205359714BB920E6E0B43AA7898`.
 - Targeted API 35 ReminderValidationTest: 1/1 PASS; log SHA-256 `D3DD61B4B2606E812775EDE4081C2E755383F1E58FF415D91BA6782C06694504`; JUnit XML SHA-256 `B5817AD4376AD7E14A9FC8507C8C49C93A361E38A430218690F85A61410C85D6`.
 - Full `ReminderValidationTest` XML: `.local/android-test/reports/freeze-20261024/pc-issue-112-full-junit/TEST-dev.powerfulcalendar.reminders.ReminderValidationTest.xml`, SHA-256 `8D7C88A0ABB231D602AE94909EABB4E231D20B298499F026490E00C2C467F43A`; lint XML SHA-256 `E95DE7C795C7A50415CF5BF197DCD2A2FB73D55618CE34068C239E8648FC09DF`.
+- Targeted Issue 121 local AI source-isolation regression: **1/1 PASS**; log SHA-256 `0738A573169B323DA8D52106F8A9C2C92067F14427429B5A582477E386E09040`; JUnit XML SHA-256 `D8EFEAB421CA2781107A514EB2EDF84111C6B942FDC303E5C84AF3BA003F7F2A`.
+- Full `AiChatClientTest` XML after Issue 121: `.local/android-test/reports/freeze-20261024/pc-issue-121-full-junit/TEST-dev.powerfulcalendar.ai.AiChatClientTest.xml`, SHA-256 `590B941AB196B716DC396929B8A0B28656967B879A6D934F75FC75C112CB0703`.
 - Targeted Issue 120 local HTTP 200 empty structured-response regression: **1/1 PASS**; log SHA-256 `2E34ED41ACD5CF60221BA5DB6CE9F3BD89CB0E67A90BC37787AFA88EE404668A`; JUnit XML SHA-256 `F490D6CABB2E1FEC3919A68D9625508164E72EE45130C3327819C9E4178DF305`.
 - Full `AiChatClientTest` XML after Issue 120: `.local/android-test/reports/freeze-20261024/pc-issue-120-full-junit/TEST-dev.powerfulcalendar.ai.AiChatClientTest.xml`, SHA-256 `FB212AEDF64E19724AC53396EEC96EB492102FE045FF0EC5742F601822738BB2`.
 - Targeted Issue 119 parser/PowerStore regressions: **4/4 PASS**; log SHA-256 `CBD542CB5B29ECE3C57F5F5820F69653A1CFC7C2357AA2645CED18207BF2A27C`; parser XML SHA-256 `843F7C30E8437A7740E28D54ECC934A5220638121B3FA549904186924DFE36B2`; PowerStore XML SHA-256 `5F0C74D3941FBFDF326D17C51793439F2D273187EACD695E96D0CBF65641DDC1`.
@@ -67,7 +69,7 @@ The **RECONSTRUCTED** candidate ledger contains 208 specification-derived rows p
 - PC-ISSUE-115 / REC-P1-056: PASS for the narrowed parser-to-PENDING-draft persistence criterion; no formal event/history is created, and draft state survives SQLite reopen. API 35/provider selection is not claimed. See docs/issues/PC-ISSUE-115-ai-draft-core-persistence-signoff.md.
 - PC-ISSUE-116 / REC-P1-057: PASS for repeated ordinary PowerStore.commit returning the original revision/commitId without a second history row. API 35/provider approval-entry behavior is not claimed. See docs/issues/PC-ISSUE-116-repeat-commit-core-idempotency-signoff.md.
 - PC-ISSUE-117 / REC-P1-062: PASS for the narrowed local HTTP 429 AI-client contract: stage/status warning, no proposal/raw reply, and provider-body/API-key redaction. API 35/provider and presentation paths are not claimed. See docs/issues/PC-ISSUE-117-ai-http429-core-signoff.md.
-- PC-ISSUE-120 adds a local HTTP 200 empty-response integration guard to PC-ISSUE-002: exactly one request, first budget 2048, structured-stage warning, no proposal/raw reply. This is local transport evidence only; the free-provider 429/503 and proposal end-to-end gap keep PC-ISSUE-002 PARTIAL/BLOCKED. See docs/issues/PC-ISSUE-120-ai-empty-http200-core-recovery.md.
+- PC-ISSUE-120 adds a local HTTP 200 empty-response integration guard to PC-ISSUE-002: exactly one request, first budget 2048, structured-stage warning, no proposal/raw reply. This is local transport evidence only; the free-provider 429/503 and proposal gap keep PC-ISSUE-002 PARTIAL/BLOCKED. PC-ISSUE-121 separately verifies that model-authored source text is discarded in favor of the current raw user input; it does not prove live-model compliance. See docs/issues/PC-ISSUE-120-ai-empty-http200-core-recovery.md and docs/issues/PC-ISSUE-121-ai-current-input-source-isolation.md.
 - PC-ISSUE-119 / REC-P1-051: PASS for the narrowed missing-field core recovery contract: missing Activity times remain blank and repairable across SQLite reopen, and an undecidable kind requests clarification without allocating proposal/draft/event identity. Provider/API 35/device paths are not claimed. See docs/issues/PC-ISSUE-119-ai-incomplete-proposal-core-signoff.md.
 - PC-ISSUE-118 / REC-P1-049: PASS for local mixed CREATE/REPLACE parsing and isolated pending drafts; the formal CREATE remains absent and the REPLACE target is unchanged. Provider/API 35, presentation, approval and reopen persistence are not claimed. See docs/issues/PC-ISSUE-118-mixed-proposals-core-signoff.md.
 - `PC-ISSUE-111` / `REC-P0-079`: PASS for the direct PowerStore future-rule transaction: atomic sequence split, compatible state migration, injected-failure rollback, first-active identity retention and remaining count. Selection flow/device behavior remain untested. See `docs/issues/PC-ISSUE-111-this-and-future-core-signoff.md`.

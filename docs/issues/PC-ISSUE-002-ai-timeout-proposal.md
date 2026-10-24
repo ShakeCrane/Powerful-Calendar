@@ -70,3 +70,9 @@
 PC-ISSUE-120 为原有“免费模型空 HTTP 200 不盲目重试”修复增加了完整客户端 loopback 回归。定向 `AiChatClientTest.emptyHttp200InFreeStructuredProposalFailsOnceWithoutPublishing` 1/1 PASS：首轮预算 2048、结构化阶段 `finish_reason=stop` 且内容为空时只发送一次请求，返回明确 warning，不产生 proposal/rawReply。定向日志 SHA-256 `2E34ED41ACD5CF60221BA5DB6CE9F3BD89CB0E67A90BC37787AFA88EE404668A`；JUnit XML SHA-256 `F490D6CABB2E1FEC3919A68D9625508164E72EE45130C3327819C9E4178DF305`。完整回归 461/461 across 57 suites，0 failures/errors/skips，Lint 0 errors/58 warnings；完整日志 SHA-256 `0FCD052D2ABA1510946FD5CAFDDFE9C85CA5A784FD50EBD7E63E5E272E2D9C42`。
 
 该补充只证明本机客户端空回复分支，没有触发真实 provider 请求。免费模型之前的 HTTP 429/503 与自然语言到可审查提案的服务端端到端链路仍未通过，Issue 继续 **PARTIAL / BLOCKED**。独立报告：`docs/issues/PC-ISSUE-120-ai-empty-http200-core-recovery.md`。
+
+## 提案来源客户端隔离补充（2026-10-24）
+
+PC-ISSUE-121 为“模型标记只表达意图，提案来源必须取本轮原始用户文本”增加 `AiClient.chat` 本机 HTTP 往返回归。模拟模型返回带伪造系统示例 `source` 的标记；客户端隐藏标记并只返回当前用户原文作为 `proposalSource`。定向 **1/1 PASS**，日志 SHA-256 `0738A573169B323DA8D52106F8A9C2C92067F14427429B5A582477E386E09040`，JUnit XML SHA-256 `D8EFEAB421CA2781107A514EB2EDF84111C6B942FDC303E5C84AF3BA003F7F2A`。完整 Gradle **462/462 across 57 suites**，0 failures/errors/skips，Lint 0 errors/58 warnings；完整日志 SHA-256 `7E8055E6547769BC8158D35E06268BD77B4A87B16929EEE26CE297CCA754C97B`。
+
+这是本地模拟的客户端边界证据，不证明真实模型服从约束；未请求 provider。此前的 429/503 仍阻止真实模型提案流程，PC-ISSUE-002 继续 **PARTIAL / BLOCKED**。独立报告：`docs/issues/PC-ISSUE-121-ai-current-input-source-isolation.md`。

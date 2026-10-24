@@ -1,4 +1,11 @@
 # Core freeze progress
+## PC-ISSUE-121 — AI current-input source isolation guard (PC-ISSUE-002 remains PARTIAL/BLOCKED)
+
+- Added a local `AiClient.chat` loopback regression: when the model response includes a fabricated `source`, the client hides the internal marker and exposes only the current raw user text as `proposalSource`. No production changes or real provider call.
+- Focused test passed 1/1. Full Debug boundary/test/APK/lint passed 462/462 across 57 suites, zero failures/errors/skips; lint 0 errors / 58 warnings.
+- Independent report: docs/issues/PC-ISSUE-121-ai-current-input-source-isolation.md. Test commit `6345dbba2216b625bf95eaad7651d3b6cfc89275` is pushed.
+- Local evidence does not prove live-model compliance. PC-ISSUE-002 remains PARTIAL/BLOCKED on prior free-provider HTTP 429/503; core freeze remains HOLD at 148 PASS / 0 FAIL / 9 BLOCKED / 45 NOT TESTED / 7 SPEC UNRESOLVED.
+
 ## PC-ISSUE-120 — free-model empty HTTP 200 core recovery guard (PC-ISSUE-002 remains PARTIAL/BLOCKED)
 
 - Added a local loopback integration regression for the existing no-blind-retry policy: first-call budget is 2048; an empty HTTP 200 with `finish_reason=stop` produces a structured-stage warning, no proposal/raw reply, and exactly one request. No production code or external provider call.
