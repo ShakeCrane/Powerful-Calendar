@@ -1,4 +1,11 @@
 # Core freeze progress
+## PC-ISSUE-148 — 草稿搜索不重排待处理队列（REC-P0-040，窄化 PASS）
+
+- 把 `DraftDeck` 内联筛选提取为纯 `DraftQueueSearch.filter`，不改变搜索显示或布局。新增两项测试锁定标题/序号匹配及 `queueOrder` 保序；同时重跑 3 个既有 SQLite 队列重开/排序测试。
+- 定向 5/5 PASS；完整离线 Gradle 源边界、485/485 JVM（63 suites）、Debug/AndroidTest APK 组装与 lint 全部通过，0 failures/errors/skips，lint 0 errors/58 warnings。定向日志 SHA-256 `7CF13719EE900F581521D50756018CE3B744BC2D6072229725F77C191FCE5D8E`；全量日志 SHA-256 `4B83C3FF408732478CEF2244DEBE7B995676C3DB4CF7752BB12FFCBA9AD164FB`；Debug APK SHA-256 `5F82337249AEB8355F766A3CC00F93142C93AF7FD01EC84F0A7206FC22A17B31`。
+- 代码/测试提交 `3a0fb7f01bccbf33c19c747226ef65316a5d1f70` 已推送。独立报告：`docs/issues/PC-ISSUE-148-draft-queue-search-order-stability.md`。未运行 AVD/实体设备；仅签核心过滤保序，搜索界面交互及正式事件结果未签。
+- 最新台账结构统计：183 PASS / 0 FAIL / 8 BLOCKED / 12 NOT TESTED / 6 SPEC UNRESOLVED；P0 144 / P1 64 / P2 1。结构报告 SHA-256 `F0FDC211A16A4FD7072FB650ADB8FCC2B392ABC20E9E9E71A219ADA07C7D83E6`，ledger SHA-256 `BCAA0F71C6941F4FB3F45BEB2AF954041C1F15F70C4F95A7D295EAB14FA4211D`；整体 HOLD。
+
 ## PC-ISSUE-147 — 明确日程意图与随口建议分流（REC-P1-048 仍待端到端验收）
 
 - 根因：普通聊天只要含 draft marker 就自动调用结构化提案解析，模型对随口提及给出的轻量建议也会弹出自动提案预览。现在只有 `intent=explicit` 使用当前用户原文进入自动预览；`suggested` 只保留消息按钮；缺失/未知值安全回退为建议。模型生成的 source 不作为提案输入，任何标记都不授权写入。

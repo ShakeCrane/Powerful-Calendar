@@ -13,11 +13,11 @@ The current ledger has 209 active `RECONSTRUCTED` acceptance rows and one retain
 | Current risk bucket | PASS | FAIL | BLOCKED | NOT TESTED | SPEC UNRESOLVED |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | P0 | 139 | 0 | 0 | 0 | 5 |
-| P1 | 42 | 0 | 8 | 13 | 1 |
+| P1 | 43 | 0 | 8 | 12 | 1 |
 | P2 | 1 | 0 | 0 | 0 | 0 |
-| **Active reconstructed total** | **182** | **0** | **8** | **13** | **6** |
+| **Active reconstructed total** | **183** | **0** | **8** | **12** | **6** |
 
-PC-ISSUE-147 adds a local routing regression for `REC-P1-048` but does **not** sign the acceptance row: the live free-provider classification and rendered API 35 chat affordance were not run. The row stays `NOT TESTED`, so all status totals above are unchanged. Structural-only validation r13: `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-risk-matrix-validated-20261024-r13-pc-issue-147.json`, SHA-256 `779E4BE494907AC4C0D455025C5E8770B8083DFA92FFA24F63310BC17469957C`; ledger SHA-256 `2971AD843BF80038B01F0C0FB17F8A58BF9EE47DE26E43ED90D26C871CAA2583`; `product_behavior_tested=false`.
+PC-ISSUE-147 adds a local routing regression for `REC-P1-048` but does **not** sign the acceptance row: the live free-provider classification and rendered API 35 chat affordance were not run. It remained `NOT TESTED` after that issue. PC-ISSUE-148 signs `REC-P0-040` narrowly for the pure draft-query filter preserving input order/`queueOrder`; Compose interaction and formal-event search remain outside this PASS. Current structural-only validation r14: `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-risk-matrix-validated-20261024-r14-pc-issue-148.json`, SHA-256 `F0FDC211A16A4FD7072FB650ADB8FCC2B392ABC20E9E9E71A219ADA07C7D83E6`; ledger SHA-256 `BCAA0F71C6941F4FB3F45BEB2AF954041C1F15F70C4F95A7D295EAB14FA4211D`; `product_behavior_tested=false`.
 
 One retired record (`REC-P1-013`) is excluded from those active-row totals and from GO criteria.
 

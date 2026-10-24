@@ -309,4 +309,12 @@ Issue 004 修复代码基线：`16e00d55435c5029e07784ec5d945dfd7fb37ac5`
 
 代码/测试提交 `8e642ad0d8e1ba5786f2e2ee0bdbb16851a5b9b2` 已推送。定向日志 SHA-256 `87B8BFEE7D29155A458C6506DEE81DF578BB64E3BFDD1F56934BB43A14C8E01F`；完整日志 SHA-256 `47848074DB10EC273E31AAACCA2F1578DC454549862070593CEA6A2EBF47C9FF`；Debug APK SHA-256 `751E4DA86160A2032E9D74052AB3651E8B76FF83649FF71906404C86A93CA068`。独立报告：`docs/issues/PC-ISSUE-147-ai-explicit-vs-suggested-chat-routing.md`。
 
-没有调用 provider、运行独立 Android 虚拟设备或实体设备。真实模型分类和 Compose 按钮行为未覆盖；`REC-P1-048` 保持 NOT TESTED，`REC-P1-047` 保持 BLOCKED，PC-ISSUE-002 与整体冻结仍 **HOLD**。重建矩阵统计不变：182 PASS / 0 FAIL / 8 BLOCKED / 13 NOT TESTED / 6 SPEC UNRESOLVED；结构校验 `product_behavior_tested=false`。
+没有调用 provider、运行独立 Android 虚拟设备或实体设备。真实模型分类和 Compose 按钮行为未覆盖；`REC-P1-048` 保持 NOT TESTED，`REC-P1-047` 保持 BLOCKED，PC-ISSUE-002 与整体冻结仍 **HOLD**。PC-ISSUE-147 执行后的重建矩阵为 182 PASS / 0 FAIL / 8 BLOCKED / 13 NOT TESTED / 6 SPEC UNRESOLVED；结构校验 `product_behavior_tested=false`。
+
+## PC-ISSUE-148 — 草稿搜索保持待处理队列顺序（2026-10-24）
+
+`REC-P0-040` 窄化签核 **PASS**：纯 `DraftQueueSearch.filter` 对标题与事件序号执行筛选并保留输入顺序及 `queueOrder`；不宣称 Compose 搜索交互或正式事件搜索行为通过。新增纯测试 2/2，既有 SQLite 队列顺序/重开测试 3/3；完整离线 Gradle **485/485、63 suites**，0 failures/errors/skips，lint 0 errors/58 warnings。
+
+代码/测试提交 `3a0fb7f01bccbf33c19c747226ef65316a5d1f70` 已推送。定向日志 SHA-256 `7CF13719EE900F581521D50756018CE3B744BC2D6072229725F77C191FCE5D8E`；完整日志 SHA-256 `4B83C3FF408732478CEF2244DEBE7B995676C3DB4CF7752BB12FFCBA9AD164FB`；Debug APK SHA-256 `5F82337249AEB8355F766A3CC00F93142C93AF7FD01EC84F0A7206FC22A17B31`。独立报告：`docs/issues/PC-ISSUE-148-draft-queue-search-order-stability.md`。
+
+最新矩阵统计为 183 PASS / 0 FAIL / 8 BLOCKED / 12 NOT TESTED / 6 SPEC UNRESOLVED；P0 144 / P1 64 / P2 1。原始 209 ID 仍未映射；Android 设备/provider/spec gates 未闭环，整体仍 **HOLD**。
