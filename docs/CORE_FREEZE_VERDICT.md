@@ -4,6 +4,14 @@ Date: 2026-10-24
 
 Verdict: **HOLD**
 
+## Latest follow-up: PC-ISSUE-169 — system font scale 2× on API 35 AVD
+
+The actual API 35 system `font_scale` was set to 2.0 for the isolated production `TimelineScreen` test. `Resources.configuration.fontScale` and Compose `LocalDensity.fontScale` both reported 2.0; Today, Memo, pending deck, New, and zoom controls stayed clickable and inside the 1080×2400 px viewport, and all actions succeeded. AndroidJUnitRunner passed 1/1. The original setting `1.0` was restored and verified. `REC-P1-069` remains BLOCKED because this test does not cover `MainActivity`, physical devices, or OEM behavior. See `docs/issues/PC-ISSUE-169-system-font-scale-avd.md`.
+
+Test-only commit `97bfead75f0c8b2d2c3de21be8d05495b751c7cc` is pushed. Full forced-offline Gradle passed 496/496 JVM tests across 67 suites, zero failures/errors/skips; all 88 tasks executed, including source-boundary verification, APK assembly, and lint (0 errors / 58 warnings). Full log SHA-256 `CD68BC0C2AD4ED2D882AE0E31051C9CFF75C604E0477972DD2AC935904FD7EEF`. Final focused API 35 log SHA-256 `70CD58CA2FADA2476D34ABD8D7C7272783F5CE17BD97F249C7FE202EA5D88169`; geometry/state trace SHA-256 `87483817A4AFDF40BE0973C8F0DA8278A3E25512B09E6E8D27E1EE9654126947`.
+
+Structural-only ledger r38: 211 rows / 210 active reconstructed, 198 PASS / 0 FAIL / 8 BLOCKED / 2 NOT TESTED / 2 SPEC UNRESOLVED / 1 RETIRED; historical IDs mapped=0 and `product_behavior_tested=false`. Artifact SHA-256 `4B3A90A6F20F85A111568D4E19139D06074B1402C65D957102B41E6238D3BF16`; ledger SHA-256 `0EFEB757A68C14D614B111F53E8C59E6E2174F22E7269BC57B0C6FF627156E16`. The physical/OEM gate remains open; verdict stays HOLD.
+
 ## Latest follow-up: PC-ISSUE-168 — system reduced motion on API 35 AVD
 
 With the actual emulator `Settings.Global.ANIMATOR_DURATION_SCALE` set to 0, production `rememberSystemGlassEffects()` observed `reduceMotion=true` and disabled blur; the `glassMotion()` probe reached its target after the Compose test-clock step. AndroidJUnitRunner passed 1/1 on API 35 `emulator-5556`. The key was absent beforehand and was deleted in `finally`; it was confirmed absent afterward. No production code or user data changed. `REC-P1-075` remains BLOCKED for physical/OEM-device confirmation. See `docs/issues/PC-ISSUE-168-reduced-motion-avd.md`.

@@ -1,5 +1,12 @@
 # Core freeze progress
 
+## PC-ISSUE-169 — 系统字体 2× API 35 AVD 子项（REC-P1-069 仍 BLOCKED）
+
+- 新增 AndroidJUnitRunner 回归，在 `emulator-5556` API 35 实际将 `Settings.System.FONT_SCALE` 从 `1.0` 临时设为 `2.0`。生产 `TimelineScreen` 的 `Resources.configuration.fontScale` 与 `LocalDensity.fontScale` 均为 2.0；Today、Memo、待处理、新建、缩放控件都可点击且完整位于 1080×2400 px 视口内，新建菜单的 Activity 选项也成功。测试后原值 `1.0` 已恢复并复核。未改生产代码或业务数据。
+- 定向 AndroidJUnitRunner 1/1 PASS。最终坐标轨迹包含全部六个操作控件的语义边界；详见 `docs/issues/PC-ISSUE-169-system-font-scale-avd.md`。定向日志 SHA-256 `70CD58CA2FADA2476D34ABD8D7C7272783F5CE17BD97F249C7FE202EA5D88169`；几何/状态 SHA-256 `87483817A4AFDF40BE0973C8F0DA8278A3E25512B09E6E8D27E1EE9654126947`。
+- 全量强制离线 Gradle 496/496 JVM、67 suites、0 failures/errors/skips；88 tasks 全部执行，源码边界、Debug/AndroidTest APK 与 lint 通过（0 errors / 58 warnings）。完整日志 SHA-256 `CD68BC0C2AD4ED2D882AE0E31051C9CFF75C604E0477972DD2AC935904FD7EEF`。测试提交 `97bfead75f0c8b2d2c3de21be8d05495b751c7cc` 已推送。
+- 台账 r38：211 行 / 210 活动重建项，198 PASS / 0 FAIL / 8 BLOCKED / 2 NOT TESTED / 2 SPEC UNRESOLVED / 1 RETIRED；历史 ID 映射 0。artifact SHA-256 `4B3A90A6F20F85A111568D4E19139D06074B1402C65D957102B41E6238D3BF16`，ledger SHA-256 `0EFEB757A68C14D614B111F53E8C59E6E2174F22E7269BC57B0C6FF627156E16`，结构校验标志 `product_behavior_tested=false`。实体/OEM 与 MainActivity 验收未完成，REC-P1-069 保持 BLOCKED，整体冻结 HOLD。
+
 ## PC-ISSUE-168 — 系统减少动态效果 AVD 验证（REC-P1-075 子项 PASS，整项 BLOCKED）
 
 - 新增 AndroidJUnitRunner 测试验证 `emulator-5556` API 35 的实际 `Settings.Global.ANIMATOR_DURATION_SCALE=0`：`rememberSystemGlassEffects` 报告 `reduceMotion=true`、`blur=false`；`glassMotion()` 探针推进 Compose 测试帧后到达目标 1.0。最终定向 1/1 PASS。AVD 原设置未显式设置（`null`），临时置 0 后在 `finally` 中删除，之后读回 `null`；无生产代码或业务数据修改。
