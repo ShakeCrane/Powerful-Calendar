@@ -32,9 +32,9 @@ Structural validation: 209 unique IDs; all reconstructed rows contain source, en
 | Candidate bucket | PASS | FAIL | BLOCKED | NOT TESTED | SPEC UNRESOLVED |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | P0 (proposed) | 119 | 0 | 1 | 1 | 5 |
-| P1 (proposed) | 30 | 0 | 8 | 43 | 1 |
+| P1 (proposed) | 34 | 0 | 8 | 39 | 1 |
 | Historical unclassified slot | 0 | 0 | 0 | 0 | 1 |
-| **Total candidate rows** | **149** | **0** | **9** | **44** | **7** |
+| **Total candidate rows** | **153** | **0** | **9** | **40** | **7** |
 
 ### Case-specific backup verification (2026-10-23)
 
@@ -862,4 +862,12 @@ The Gradle :app:verifySkinSourceBoundary task passed on Windows with --offline -
 
 Targeted log SHA-256: 46E783468CE42C86D6E71A9290E1FF2311F369AD987F56377B71F6172160085D. Existing full Debug regression: 462/462 across 57 suites, zero failures/errors/skips, lint 0 errors / 58 warnings; log SHA-256 8C82E247D1FA802B4A876C68D0727A0C3E46BFEB8E6343092A1D1F29E3F10A2D. Structural-only validation artifact SHA-256 53E2A73D4069970CB84371933DEE24568BFA7CAA65B2B9395B41061F2A904638; validated ledger SHA-256 2BBFFF2790D683A75779482B3C0B10D290FC7628D89414FE4BF947D6885D767F.
 
-REC-P1-082 is PASS for this narrowed static check. Current reconstructed counts: 149 PASS / 0 FAIL / 9 BLOCKED / 44 NOT TESTED / 7 SPEC UNRESOLVED. Historical IDs remain unmapped and the overall freeze remains HOLD. See docs/issues/PC-ISSUE-123-skin-source-boundary-signoff.md.
+REC-P1-082 is PASS for this narrowed static check. At the PC-ISSUE-123 checkpoint, reconstructed counts were 149 PASS / 0 FAIL / 9 BLOCKED / 44 NOT TESTED / 7 SPEC UNRESOLVED. Historical IDs remain unmapped and the overall freeze remains HOLD. See docs/issues/PC-ISSUE-123-skin-source-boundary-signoff.md.
+
+### PC-ISSUE-GREEDY-LABEL-FOLDING — narrowed candidate sign-offs (2026-10-24)
+
+The existing API 35 AVD visual evidence and current Robolectric API 35 Compose regressions support PASS for REC-P1-029, REC-P1-030, REC-P1-065 and REC-P1-066. The independently recorded A/B/C/D title rectangles and unchanged event-frame bounds remain in docs/issues/PC-ISSUE-GREEDY-LABEL-FOLDING.md.
+
+Current title tests: 8/8 greedy-strategy tests and 6/6 Compose tests. The added visible-title tap test opens the underlying event with its full title; the long-press drag test reaches the move callback. Full Debug regression: 463/463 across 57 suites, zero failures/errors/skips, lint 0 errors / 58 warnings. The run includes one protected untracked test file, which was not staged. Full log SHA-256 045E99BC413F7BCB55EF39C62039816110E913ECEE68F7EB3E7F538A26760A87; TimelineTitleComposeTest XML SHA-256 44CD834F3F39151FF495C124441D90AE7178F923E50644D8B9B3FBC7585E7D42; greedy strategy XML SHA-256 C302BB9167568D783A610DA54726EA4B98969DB4528CE7C18312D745C7162D03.
+
+Latest structural-only validation artifact SHA-256 8F3DB9B9CB7FC96BCD6EE2FCF9C3164EBE1125C609E89B208FD5B1BA6D049CC6; ledger SHA-256 3973C211AF33260279325D002637F80D7F879E88717C183C7D41B3191523B1AE. Counts: 153 PASS / 0 FAIL / 9 BLOCKED / 40 NOT TESTED / 7 SPEC UNRESOLVED. REC-P1-028 remains NOT TESTED because no dedicated font-floor/truncation assertion was added. Physical TalkBack/OEM/device review remains with the user; the 209 historical cases remain unmapped and the overall freeze remains HOLD.

@@ -4,6 +4,7 @@
 目标：闭环测试、最小修复、逐项回归与签核，**满足证据标准才宣布核心基线 GO**；否则给出准确 HOLD 及阻塞。本文不是验收完成证明。
 
 ## 0. 最新执行续接（2026-10-24）
+- PC-ISSUE-GREEDY-LABEL-FOLDING 追加一项可见标题 Canvas 点击穿透回归，测试提交 56aadbe50fea59a92c2568896b2c3f1dd04e3556 已推送。标题 Compose 6/6、策略 8/8；完整 Debug 回归 463/463、57 suites，0 failures/errors/skips，Lint 0 errors/58 warnings。全量含一个受保护未跟踪测试文件，未暂存。依据现有 API35 AVD 截图/矩形轨迹和当前 Compose 回归，将 REC-P1-029/030/065/066 收窄签 PASS；REC-P1-028 字体下限/截断仍未签。最新总数 153 PASS / 0 FAIL / 9 BLOCKED / 40 NOT TESTED / 7 SPEC UNRESOLVED，仍 HOLD。独立报告已更新到 docs/issues/PC-ISSUE-GREEDY-LABEL-FOLDING.md。
 - PC-ISSUE-123 为 REC-P1-082 补上独立静态边界签核：verifySkinSourceBoundary 在 5 个编译皮肤 Kotlin 源文件上通过，没有发现配置的受保护 API 引用；仅签核源码模式边界，不宣称 Kotlin 沙箱或运行时全面安全。来源和环境已纠正。目标任务日志 SHA-256 46E783468CE42C86D6E71A9290E1FF2311F369AD987F56377B71F6172160085D；结构 artifact pc-qa-gate-001-ledger-validation-after-pc-issue-123.json SHA-256 53E2A73D4069970CB84371933DEE24568BFA7CAA65B2B9395B41061F2A904638；台账 SHA-256 2BBFFF2790D683A75779482B3C0B10D290FC7628D89414FE4BF947D6885D767F。统计更新为 149 PASS / 0 FAIL / 9 BLOCKED / 44 NOT TESTED / 7 SPEC UNRESOLVED；整体仍 HOLD。
 - PC-ISSUE-122 在 API 35 emulator-5554 对授权的 DeepSeek V4.1 Flash 做一次合成结构化提案请求：HTTP 200、3.53 秒、1 条有效 ACTIVITY、0 warnings、未重试。空上下文，未走 UI 或日历写入；设备持久模型设置未改。独立报告 docs/issues/PC-ISSUE-122-deepseek-v41-flash-emulator-probe.md。父 Issue 002 仍 PARTIAL/BLOCKED；实体设备测试由用户负责。
 - REC-P0-040 队列搜索仍 NOT TESTED：实现位于 DraftDeck Compose；依据用户此前“不处理 UI”的范围，不以核心队列顺序测试冒充搜索验收。其余未通过 P0 项为规格未决或 OS SAF 权限撤销阻塞，见最新台账和 verdict。
@@ -196,7 +197,7 @@
 ### P1-E PC-ISSUE-GREEDY-LABEL-FOLDING 标题视觉冲突（独立时间轴验收项）
 - [x] 折叠对象是实际渲染的单行标题矩形；事件框、数量、时间几何和泳道分配不随标题显隐改变。短框标题锚定真实开始位置；框内/框外模式使用相同的碰撞策略。
 - [x] 标题候选按屏幕 Y 与稳定事件 ID 排序；每个可视区域只同当前可见 lead 比较，隐藏候选不更新 lead；边缘相切视为不冲突。
-- [x] API 35 隔离模拟器前后截图、实测标题矩形与 A/B/C/D 碰撞轨迹已记录于 `docs/issues/PC-ISSUE-GREEDY-LABEL-FOLDING.md`；8 个纯策略单测、5 个 Compose 测试及 Gradle 全量回归通过。
+- [x] API 35 隔离模拟器前后截图、实测标题矩形与 A/B/C/D 碰撞轨迹已记录于 `docs/issues/PC-ISSUE-GREEDY-LABEL-FOLDING.md`；8 个纯策略单测、6 个 Compose 测试及 Gradle 全量回归通过。
 - [ ] 真机/OEM 与 TalkBack 手工检查仍属设备级冻结门槛；本项代码与 API 35 回归单独签核 PASS，不据此宣告核心冻结 GO。
 
 ### P2-E 待验证 Issue 与技术债
