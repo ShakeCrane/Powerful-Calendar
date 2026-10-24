@@ -182,3 +182,14 @@ Phase 1 产品修复仍由 `b46b3dd7592bb1c7de021d543630f84937a0eaef` 提供；�
 - 矩阵结构复核仍为 218 rows / 217 active reconstructed；203 PASS / 0 FAIL / 10 BLOCKED / 2 NOT TESTED / 2 SPEC UNRESOLVED / 1 RETIRED；历史 ID 映射 0。`REC-P1-087` 现引用本次 API 35 AVD 证据。Ledger SHA-256 `4381A8E51CE74E184C2AC5D0C99EEFCCC629548258EFB4F44F86A2E9C3B5CC03`；validator JSON SHA-256 `D3D3E2DE077E2B2209F0863D965038C59A17319D093BB6B5731588B9ABF2DC94`。结构校验不替代行为测试。
 
 本次虚拟机证据不代表实体/OEM 验收；实体设备由用户执行。Phase 1 生命周期及默认时间自动化和 API 35 Compose 范围 PASS；秋季 DST fold 墙上分钟文本无法区分两个同名时间的精度风险仍未签核。整体核心冻结继续 HOLD。
+
+## 当前主线复验（2026-10-25，HEAD `68cad08`）
+
+本次复验没有改动产品源码。Phase 1 对应的生产文件在 API 35 基线 `2692ca2` 与当前 HEAD 间无差异；当前产品代码提交为 `9f9e82ae583a5d582e5b8b4307db98ec5606f149`，HEAD 的后续差异仅为文档。当前工作区受保护的未跟踪测试、`design/` 与观察 Issue 均未暂存或修改。
+
+- 当前 HEAD 定向命令沿用本报告定向命令，结果 **32/32 PASS、6 suites、0 failures/errors/skips**。日志 SHA-256：`838F4DB4402A271FC06C7C752AF06D63FCC7C2199CC248D0E414E0CBB01E79B1`，位于 `.local/android-test/reports/freeze-20261025/phase1-current-main-68cad08/phase1-focused-current-head.log`。
+- 当前产品代码快照的完整离线 Gradle 门禁由同一代码提交上的 PC-ISSUE-164 最终门禁执行：**541/541 JVM tests、74 suites、0 failures/errors/skips、88/88 tasks**；source boundary、Debug/AndroidTest APK 和 lint 均通过，lint 0 errors / 56 warnings。日志 SHA-256：`3BCA1C55B5350479176B05FDF84D771352AEE4CD396322CF4D08ECD5141ED95E`。该门禁后至当前 HEAD 没有 `app/` 路径差异。Debug / AndroidTest APK SHA-256：`517DFFFCCFECA6E4B6CBF5961B3CAAA8F2802B3B3B1DD107457180C268F61614` / `2EF06F141A6AEEA12F6272D9C8861D7D6EEC33A316D0F4734A221C90BF7BE0B2`。
+- 在 API 35 隔离 AVD `emulator-5560` 上以显式设备序列直接运行 `NewEventEditorLifecycleInstrumentedTest`，**2/2 PASS**。测试前后应用私有数据库文件名及 SHA-256 完全相同：`powercal-v2.db`=`edc44d74ded0fd54a094a2db00b52b30623d2ac1e30af65991e06cdbc206bb4a`，空 journal=`e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`；无 `pc-phase1-*` 测试库残留。安装 APK 与当前本机构建逐字节一致。Instrumentation 日志 SHA-256：`FF5AAD38B385BAE0EAEC59B2013C8002F709C472148B1E0FFD9DCF08EE037BD9`；数据库前后快照文件均为 SHA-256 `43BCD1BBADE1697912CD541AC5231DBA2167C6F46617D6E4D4A20E77EB8EFD43`。
+- 验收台账结构校验通过：218 rows / 217 active reconstructed；204 PASS、0 FAIL、10 BLOCKED、2 NOT TESTED、1 SPEC UNRESOLVED、1 RETIRED；历史 ID 映射 0，结构校验明确 `product_behavior_tested=false`。当前台账 SHA-256 `91C721FBA0D1C2295535A200E30937744A67C3F8BBF04F34E32E47F078AAC2E0`；验证器自身单元测试 2/2 PASS。日志分别为 `.local/android-test/reports/freeze-20261025/phase1-current-main-68cad08/ledger-structural-validation.log`（SHA-256 `FD59C3909B236ECF5516B35FC1E0B4B842739B09949C73CE4B105BE233649C47`）及 `ledger-validator-unit-tests.log`（SHA-256 `F761C217955B2DCCBB9E9921C5E179AF3286F01E8F07797CCA85F7D3EA11CBFF`）。
+
+本次仍未测试实体设备/OEM 行为；单次事件 fall DST fold 的同名墙上分钟精度限制仍未签核。Phase 1 可关闭并交接；Phase 2、3 已有独立交付，本次不重开。其他冻结项继续按当前矩阵推进，核心总判定仍为 HOLD。
