@@ -4,7 +4,7 @@ Date: 2026-10-24
 
 Verdict: **HOLD**
 
-Code/test checkout for the latest candidate sign-off: `cc23328ef8d7528846ab40f560647cfc003cddc1`
+Code/test checkout for the latest full regression: `b51b0e830c9ff968b994cda564dcdd481986d46e`
 
 APK used by the latest full regression: `app/build/outputs/apk/debug/app-debug.apk`, SHA-256 `138EC1363E4D74E6153CFFA61CEE4C0DF4D51416B3BD64C954FE642ED0FD4096`
 
@@ -33,12 +33,14 @@ The **RECONSTRUCTED** candidate ledger contains 208 specification-derived rows p
 
 ## Current grouped verification
 
-- Latest full Debug verification: `:app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --offline --rerun-tasks --console=plain` — **BUILD SUCCESSFUL**, 460 tests, 0 failures/errors/skips across 57 JUnit suites; lint 0 errors and 58 warnings. The Issue 119 full run used checkout `cc23328ef8d7528846ab40f560647cfc003cddc1`.
-- Log: `.local/android-test/reports/freeze-20261024/pc-issue-119-full-gradle.log`, SHA-256 `8678BE5056C47C28E251DB755D0B2A2F58990377DC1591F9B8DA18660EBE7985`.
+- Latest full Debug verification: `:app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --offline --rerun-tasks --console=plain` — **BUILD SUCCESSFUL**, 461 tests, 0 failures/errors/skips across 57 JUnit suites; lint 0 errors and 58 warnings. The Issue 120 full run used checkout `b51b0e830c9ff968b994cda564dcdd481986d46e`.
+- Log: `.local/android-test/reports/freeze-20261024/pc-issue-120-full-gradle.log`, SHA-256 `0FCD052D2ABA1510946FD5CAFDDFE9C85CA5A784FD50EBD7E63E5E272E2D9C42`.
 - Full `BootReceiverRecoveryTest` XML: `.local/android-test/reports/freeze-20261024/pc-issue-110-full-junit/TEST-dev.powerfulcalendar.reminders.BootReceiverRecoveryTest.xml`, SHA-256 `C935E22DDE3E54E68B21C63C572EACC394F5D25B9A6FFEB55DF48987129218E8`.
 - Targeted PowerStoreTest regression: 4/4 PASS; log SHA-256 `77AB328142E24F2EA8129557FA6329DF41D078A1DB272883A302F91F1559C162`; JUnit XML SHA-256 `EDE4EE7FB1756E4C3776FDCBAF8435B17A130205359714BB920E6E0B43AA7898`.
 - Targeted API 35 ReminderValidationTest: 1/1 PASS; log SHA-256 `D3DD61B4B2606E812775EDE4081C2E755383F1E58FF415D91BA6782C06694504`; JUnit XML SHA-256 `B5817AD4376AD7E14A9FC8507C8C49C93A361E38A430218690F85A61410C85D6`.
 - Full `ReminderValidationTest` XML: `.local/android-test/reports/freeze-20261024/pc-issue-112-full-junit/TEST-dev.powerfulcalendar.reminders.ReminderValidationTest.xml`, SHA-256 `8D7C88A0ABB231D602AE94909EABB4E231D20B298499F026490E00C2C467F43A`; lint XML SHA-256 `E95DE7C795C7A50415CF5BF197DCD2A2FB73D55618CE34068C239E8648FC09DF`.
+- Targeted Issue 120 local HTTP 200 empty structured-response regression: **1/1 PASS**; log SHA-256 `2E34ED41ACD5CF60221BA5DB6CE9F3BD89CB0E67A90BC37787AFA88EE404668A`; JUnit XML SHA-256 `F490D6CABB2E1FEC3919A68D9625508164E72EE45130C3327819C9E4178DF305`.
+- Full `AiChatClientTest` XML after Issue 120: `.local/android-test/reports/freeze-20261024/pc-issue-120-full-junit/TEST-dev.powerfulcalendar.ai.AiChatClientTest.xml`, SHA-256 `FB212AEDF64E19724AC53396EEC96EB492102FE045FF0EC5742F601822738BB2`.
 - Targeted Issue 119 parser/PowerStore regressions: **4/4 PASS**; log SHA-256 `CBD542CB5B29ECE3C57F5F5820F69653A1CFC7C2357AA2645CED18207BF2A27C`; parser XML SHA-256 `843F7C30E8437A7740E28D54ECC934A5220638121B3FA549904186924DFE36B2`; PowerStore XML SHA-256 `5F0C74D3941FBFDF326D17C51793439F2D273187EACD695E96D0CBF65641DDC1`.
 - Issue 119 full parser XML SHA-256 `D047753A1894A881ED5909DAF7108E8BFB8BB221A6E71EB18932F7F87D9DAB80`; full PowerStore XML SHA-256 `E8824616622B34D1DE4C425E05E326857947488168BC1275AD5F115018F7E0FE`.
 - Targeted Issue 118 parser/PowerStore regressions: **2/2 PASS**; parser XML SHA-256 89C964BBD0CB5DBE7E71529242ED905AD52B94383455656F09B63848427209B8; PowerStore XML SHA-256 FDEC66FF44D72A1B85955DB83D696AEB9F441CC014DD94EC4B4D5BF98A7377BD.
@@ -65,6 +67,7 @@ The **RECONSTRUCTED** candidate ledger contains 208 specification-derived rows p
 - PC-ISSUE-115 / REC-P1-056: PASS for the narrowed parser-to-PENDING-draft persistence criterion; no formal event/history is created, and draft state survives SQLite reopen. API 35/provider selection is not claimed. See docs/issues/PC-ISSUE-115-ai-draft-core-persistence-signoff.md.
 - PC-ISSUE-116 / REC-P1-057: PASS for repeated ordinary PowerStore.commit returning the original revision/commitId without a second history row. API 35/provider approval-entry behavior is not claimed. See docs/issues/PC-ISSUE-116-repeat-commit-core-idempotency-signoff.md.
 - PC-ISSUE-117 / REC-P1-062: PASS for the narrowed local HTTP 429 AI-client contract: stage/status warning, no proposal/raw reply, and provider-body/API-key redaction. API 35/provider and presentation paths are not claimed. See docs/issues/PC-ISSUE-117-ai-http429-core-signoff.md.
+- PC-ISSUE-120 adds a local HTTP 200 empty-response integration guard to PC-ISSUE-002: exactly one request, first budget 2048, structured-stage warning, no proposal/raw reply. This is local transport evidence only; the free-provider 429/503 and proposal end-to-end gap keep PC-ISSUE-002 PARTIAL/BLOCKED. See docs/issues/PC-ISSUE-120-ai-empty-http200-core-recovery.md.
 - PC-ISSUE-119 / REC-P1-051: PASS for the narrowed missing-field core recovery contract: missing Activity times remain blank and repairable across SQLite reopen, and an undecidable kind requests clarification without allocating proposal/draft/event identity. Provider/API 35/device paths are not claimed. See docs/issues/PC-ISSUE-119-ai-incomplete-proposal-core-signoff.md.
 - PC-ISSUE-118 / REC-P1-049: PASS for local mixed CREATE/REPLACE parsing and isolated pending drafts; the formal CREATE remains absent and the REPLACE target is unchanged. Provider/API 35, presentation, approval and reopen persistence are not claimed. See docs/issues/PC-ISSUE-118-mixed-proposals-core-signoff.md.
 - `PC-ISSUE-111` / `REC-P0-079`: PASS for the direct PowerStore future-rule transaction: atomic sequence split, compatible state migration, injected-failure rollback, first-active identity retention and remaining count. Selection flow/device behavior remain untested. See `docs/issues/PC-ISSUE-111-this-and-future-core-signoff.md`.
@@ -120,7 +123,7 @@ The **RECONSTRUCTED** candidate ledger contains 208 specification-derived rows p
 - `PC-ISSUE-078` / `REC-P0-114`: an explicitly exact reminder with exact-alarm permission denied becomes durably `BLOCKED`; the scheduler does not add an approximate AlarmManager task. Focused 1/1; full Gradle 430/430, 56 suites, lint 0 errors / 58 warnings. Android API 35 permission behavior, actual AlarmManager delivery, and physical/OEM behavior remain untested. See `docs/issues/PC-ISSUE-078-exact-alarm-no-approximate-fallback.md`.
 - `PC-ISSUE-079` / `REC-P0-113`: a previously scheduled EXACT intent is rechecked after exact-alarm permission revocation; the next reconcile persists `BLOCKED` with a permission hint. Focused 1/1; full Gradle 431/431, 56 suites, lint 0 errors / 58 warnings. Android permission-state broadcasts, OS alarm cancellation, API 35, and physical/OEM delivery remain untested. See `docs/issues/PC-ISSUE-079-exact-alarm-permission-revoked.md`.
 - `PC-QA-GATE-002`: physical-device/OEM and additional Android API coverage is unavailable in this run.
-- `PC-QA-GATE-003` / `PC-ISSUE-002`: the free-model structured stage returned HTTP 429; an authorized end-to-end proposal/approval/recovery path is not yet evidenced.
+- `PC-QA-GATE-003` / `PC-ISSUE-002`: the free-model structured stage returned HTTP 429/503; PC-ISSUE-120 verifies the local empty-HTTP-200 guard, but an authorized real-provider proposal/approval/recovery path is still not evidenced.
 - `PC-ISSUE-001`: DST-bearing Android SAF export and independent parsing pass; external calendar import and physical-device acceptance remain open.
 - `PC-ISSUE-003`: restore feedback and data-preservation emulator checks pass; actual OS-level SAF permission revocation and physical-device acceptance remain open.
 - `PC-ISSUE-004`: portrait-lock and the prior background-band change have API 35 evidence. Per the user's latest direction, faint horizontal edges are accepted and no further UI work is in scope for this loop; physical-device, TalkBack, forced-window/OEM, IME, and long-duration coverage remain separate open gates.

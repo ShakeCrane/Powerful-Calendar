@@ -1,4 +1,11 @@
 # Core freeze progress
+## PC-ISSUE-120 — free-model empty HTTP 200 core recovery guard (PC-ISSUE-002 remains PARTIAL/BLOCKED)
+
+- Added a local loopback integration regression for the existing no-blind-retry policy: first-call budget is 2048; an empty HTTP 200 with `finish_reason=stop` produces a structured-stage warning, no proposal/raw reply, and exactly one request. No production code or external provider call.
+- Focused test passed 1/1. Full Debug boundary/test/APK/lint passed 461/461 across 57 suites, zero failures/errors/skips; lint 0 errors / 58 warnings.
+- Independent report: docs/issues/PC-ISSUE-120-ai-empty-http200-core-recovery.md. Test commit `b51b0e830c9ff968b994cda564dcdd481986d46e` is pushed.
+- PC-ISSUE-002 stays PARTIAL/BLOCKED because the provider proposal stage previously returned HTTP 429/503; no retry around rate limits or paid provider request. Per latest user scope, no UI work is in this continuation. Core freeze remains HOLD at 148 PASS / 0 FAIL / 9 BLOCKED / 45 NOT TESTED / 7 SPEC UNRESOLVED.
+
 ## PC-ISSUE-119 — AI incomplete-field core recovery sign-off (REC-P1-051 narrowed PASS)
 
 - Missing Activity times remain blank; invalid submit creates no formal event/history, INVALID draft survives SQLite reopen, and repair returns it to PENDING for one commit. An undecidable missing kind requests clarification without allocating a proposal, draft, or event identity. Provider/API 35/device paths remain outside this sign-off.

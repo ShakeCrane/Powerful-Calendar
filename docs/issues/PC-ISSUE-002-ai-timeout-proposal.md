@@ -64,3 +64,9 @@
 ## Git 与下一项
 
 代码与测试提交：`bb04bfae30dc30877d41807a71236778b16617cc`（`fix(ai): 收紧AI提案请求与失败处理边界`），已普通推送至 `origin/main`。本报告曾单独提交并推送，以明确引用该代码基线；本轮新增的复测结果仍属 Issue 002 的补充记录，未关闭问题。历史报告提交时仅遗留未跟踪 `design/`；当前另有 `DraftDeckFeedbackTest.kt` 与 `PC-OBS-005-commit-feedback.md` 等其他任务资产，均未修改或提交。下一优先项：复验已修复的 **PC-ISSUE-001** Android SAF ICS 实际导出与重复规则回环；不清除 `emulator-5554` 既有数据，使用隔离实例执行破坏性场景。
+
+## 本地 HTTP 200 空回复回归补充（2026-10-24）
+
+PC-ISSUE-120 为原有“免费模型空 HTTP 200 不盲目重试”修复增加了完整客户端 loopback 回归。定向 `AiChatClientTest.emptyHttp200InFreeStructuredProposalFailsOnceWithoutPublishing` 1/1 PASS：首轮预算 2048、结构化阶段 `finish_reason=stop` 且内容为空时只发送一次请求，返回明确 warning，不产生 proposal/rawReply。定向日志 SHA-256 `2E34ED41ACD5CF60221BA5DB6CE9F3BD89CB0E67A90BC37787AFA88EE404668A`；JUnit XML SHA-256 `F490D6CABB2E1FEC3919A68D9625508164E72EE45130C3327819C9E4178DF305`。完整回归 461/461 across 57 suites，0 failures/errors/skips，Lint 0 errors/58 warnings；完整日志 SHA-256 `0FCD052D2ABA1510946FD5CAFDDFE9C85CA5A784FD50EBD7E63E5E272E2D9C42`。
+
+该补充只证明本机客户端空回复分支，没有触发真实 provider 请求。免费模型之前的 HTTP 429/503 与自然语言到可审查提案的服务端端到端链路仍未通过，Issue 继续 **PARTIAL / BLOCKED**。独立报告：`docs/issues/PC-ISSUE-120-ai-empty-http200-core-recovery.md`。
