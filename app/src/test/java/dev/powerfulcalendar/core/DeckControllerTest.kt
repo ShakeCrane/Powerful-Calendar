@@ -247,6 +247,25 @@ class DeckControllerTest {
     }
 
     @Test
+    fun completionReportsPublishedAndDiscardedCountsForTheSession() = runBlocking {
+        val fake = Fake()
+        fake.add("提交这张")
+        fake.add("丢弃最后一张")
+        val controller = controller(fake)
+        controller.open()
+
+        assertTrue(controller.commit())
+        tick()
+        assertTrue(controller.discard())
+
+        val completion = controller.state.completion
+        assertNotNull(completion)
+        assertEquals(1, completion!!.published)
+        assertEquals(1, completion.discarded)
+        assertTrue(controller.state.cards.isEmpty())
+    }
+
+    @Test
     fun completionIsSuppressedWhileAnAiBatchIsLocked() = runBlocking {
         val fake = Fake()
         fake.add("唯一一张")
