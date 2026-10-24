@@ -4,12 +4,17 @@
 
 - 用户已明确：原始 209 项清单当前无法提供，不再暂停或反复询问；209 只是历史规划数量，不得为凑数编造项目，也不得因历史 ID 无法恢复而永久阻塞开发。
 - 以 `CORE_CONTRACT_FREEZE_2026-10-21.md`、现有验收文档、测试代码、历史 Issue 和实际产品行为重建当前核心验收矩阵。每项都必须有来源、测试方法、实际结果与证据；历史映射缺失标 `RECONSTRUCTED` / `UNMAPPED`，不得伪称原始项。优先级按风险决定，不沿用 126/82 比例。
-- 当前矩阵：209 条活动重建候选（数量偶然形成，不是目标），P0 144 / P1 64 / P2 1；183 PASS、0 FAIL、8 BLOCKED、12 NOT TESTED、6 SPEC UNRESOLVED；另有一条退役记录。结构报告只证明台账完整，不证明产品行为。
+- 当前矩阵：209 条活动重建候选（数量偶然形成，不是目标），P0 144 / P1 64 / P2 1；184 PASS、0 FAIL、8 BLOCKED、11 NOT TESTED、6 SPEC UNRESOLVED；另有一条退役记录。结构报告只证明台账完整，不证明产品行为。
 - 原始表不可核对是应披露的文档溯源缺口，不是正式冻结的独立门槛。正式 GO 以重建后逐项通过的核心合同验收及所需环境为准；任何 P0/P1 的 BLOCKED、NOT TESTED 或 SPEC UNRESOLVED 均不得宣称通过。
 - `REC-P1-013` 淡灰横向边缘按用户确认标为 `RETIRED / OUT_OF_SCOPE`，旧证据保留；时间轴标题贪心折叠仍是独立 P1 必验项 `REC-P1-021`–`030`。当前时间线可以覆盖中轴。应用保持竖屏，不主动感应陀螺仪；系统强制横屏仅作为兼容场景。真机测试由用户负责，本 Goal Mode 只运行虚拟设备可执行的项目。
 - PC-ISSUE-135 的草稿重启恢复记为 `REC-P2-001`；PC-ISSUE-136 的本地 AI 聊天历史进程/系统重启恢复记为 `REC-P1-083`；PC-ISSUE-137 将 `REC-P1-050`窄化签核为歧义 AI REPLACE 核心保护通过；PC-ISSUE-138 将 `REC-P1-034/035/036`窄化签核为 Todo 核心投影通过；PC-ISSUE-139 将 `REC-P1-037`窄化签核为重开数据库后的 oldest-first 队列控制器状态通过；PC-ISSUE-140 将 `REC-P1-004`窄化签核为跨午夜核心坐标连续通过，不代表实际滚动；PC-ISSUE-141 将 `REC-P1-006/007`窄化签核为缩放边界及焦点锚点核心模型通过，不代表手势/控件行为；PC-ISSUE-142 将 `REC-P1-001`窄化签核为 initialCamera 的当天正午/24 小时模型结果，不代表首屏呈现或恢复行为；PC-ISSUE-143 修复 `REC-P1-002` Today 错用 initialCamera 导致跳回正午的问题，并保持当前缩放；PC-ISSUE-144 将 `REC-P1-008/009`窄化签核为时间轴 DST gap/fold 刻度文案生成通过，不代表新 AVD/真机可视呈现或重复事件 DST 政策；PC-ISSUE-145 将 `REC-P1-018/019/020` 窄化签核为 Robolectric Compose 中左右翼独立滚动及左翼初始近中轴泳道通过；PC-ISSUE-146 将 `REC-P1-052/053` 窄化签核为提案审核动作与批次授权范围的 Compose 行为通过。各自边界见独立 Issue 报告，未签核部分不作延伸推断。
 - 结构校验器为 `tools/validate_core_freeze_acceptance_ledger.py`；它不设固定行数或历史优先级数量。当前冻结保持 **HOLD**，直到剩余验证及外部/设备门槛有证据闭环。以下更早的执行快照与待办记录保留为历史，不覆盖本政策。
-## 最新执行补记（PC-ISSUE-148，2026-10-24）
+## 最新执行补记（PC-ISSUE-149，2026-10-24）
+
+- PC-ISSUE-149 将 `REC-P1-039` 窄化签核为正式事件匹配及所选记录的 REPLACE 草稿持久化/队列尾部追加核心路径；Compose 搜索结果点击未签。代码/测试提交 `0db7b534c7683059fea1f7f38c587e6d30179a73` 已推送；完整离线 Gradle 488/488、64 suites，0 failures/errors/skips，lint 0 errors/58 warnings。
+- 最新台账结构报告 r15 SHA-256 `45494C0672830234BB1A38739FFBB6406CBABA8465E5B5DE49941E458AA5EECF`，ledger SHA-256 `AD117D484ACE7AFBA1565397C1D01F73D3798F49A1DB0868CBF96CD0D9C82319`；184 PASS、0 FAIL、8 BLOCKED、11 NOT TESTED、6 SPEC UNRESOLVED，整体仍 HOLD。独立报告：`docs/issues/PC-ISSUE-149-formal-event-search-update-draft.md`。
+
+### PC-ISSUE-148 执行补记（2026-10-24）
 
 - PC-ISSUE-148 将 `REC-P0-040` 窄化签核为纯草稿过滤不改变输入顺序/`queueOrder`；不包含 Compose 搜索交互或正式事件结果。代码/测试提交 `3a0fb7f01bccbf33c19c747226ef65316a5d1f70` 已推送，完整离线 Gradle 485/485、63 suites，0 failures/errors/skips，lint 0 errors/58 warnings。
 - 最新台账结构报告 r14 SHA-256 `F0FDC211A16A4FD7072FB650ADB8FCC2B392ABC20E9E9E71A219ADA07C7D83E6`，ledger SHA-256 `BCAA0F71C6941F4FB3F45BEB2AF954041C1F15F70C4F95A7D295EAB14FA4211D`；183 PASS、0 FAIL、8 BLOCKED、12 NOT TESTED、6 SPEC UNRESOLVED，整体仍 HOLD。独立报告：`docs/issues/PC-ISSUE-148-draft-queue-search-order-stability.md`。

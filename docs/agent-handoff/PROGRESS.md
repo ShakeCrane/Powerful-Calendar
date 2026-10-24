@@ -1,4 +1,11 @@
 # Core freeze progress
+## PC-ISSUE-149 — 正式事件搜索生成匹配 Update 草稿（REC-P1-039，窄化 PASS）
+
+- 提取纯 `FormalEventSearch.filter`，保持原有标题/序号匹配、顺序及最多 8 项限制。SQLite 回归验证选中搜索命中的正式记录后生成 REPLACE/PENDING 草稿，保留完整当前快照与 baseRevision、追加到现有队列尾，并在重开后保持。
+- 定向 5/5 PASS；完整离线 Gradle 源边界、488/488 JVM（64 suites）、Debug/AndroidTest APK 组装及 lint 全部通过，0 failures/errors/skips，lint 0 errors/58 warnings。修正后定向日志 SHA-256 `C6AFA52BB816008BDD3A0DBF7AEDC7B2705A4D0EC33494A2B401FFD6B570FE7B`；首轮夹具断言失败日志 SHA-256 `D3391DCEC771A7645103CEED6AE039107CEFD2ADBF18434AD5FD991475980D68`；全量日志 SHA-256 `7E130576D974E04BC04729F870B254C044E2E46900E6E81E33561FE91D7D76F9`；Debug APK SHA-256 `6D8C68816D0085949D54A893D50022ACA040B8CBF54087FB957863BCF90AA71B`。
+- 代码/测试提交 `0db7b534c7683059fea1f7f38c587e6d30179a73` 已推送。独立报告：`docs/issues/PC-ISSUE-149-formal-event-search-update-draft.md`。未运行 AVD/实体设备；Compose 结果点击未签。
+- 最新台账结构统计：184 PASS / 0 FAIL / 8 BLOCKED / 11 NOT TESTED / 6 SPEC UNRESOLVED；结构报告 SHA-256 `45494C0672830234BB1A38739FFBB6406CBABA8465E5B5DE49941E458AA5EECF`，ledger SHA-256 `AD117D484ACE7AFBA1565397C1D01F73D3798F49A1DB0868CBF96CD0D9C82319`；整体 HOLD。
+
 ## PC-ISSUE-148 — 草稿搜索不重排待处理队列（REC-P0-040，窄化 PASS）
 
 - 把 `DraftDeck` 内联筛选提取为纯 `DraftQueueSearch.filter`，不改变搜索显示或布局。新增两项测试锁定标题/序号匹配及 `queueOrder` 保序；同时重跑 3 个既有 SQLite 队列重开/排序测试。
