@@ -96,3 +96,14 @@ event time geometry remain part of the contract.
   treated as a missing-axis defect. Keep the actual time geometry and ruler
   behavior intact.
 - Do not reopen unrelated UI changes to address either accepted visual.
+
+## Owner amendment — recurring DST gap/fold resolution (2026-10-24)
+
+This amendment defines the resolution for generated recurrence instances only:
+
+- If a recurrence's local wall-clock slot does not exist during a spring DST gap, skip that
+  instance and still consume its generated slot index/count. Later instances keep their original
+  local dates and do not shift.
+- If a recurrence's local wall-clock slot occurs twice during a fall DST fold, use the first
+  instant, corresponding to the earlier offset.
+- This does not define how an individually entered one-off local timestamp is parsed.

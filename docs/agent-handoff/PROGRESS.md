@@ -1,5 +1,12 @@
 # Core freeze progress
 
+## PC-ISSUE-163 重复事件 DST gap/fold 解析（REC-P0-074/075，窄化 PASS）
+
+- 用户确认：春季不存在的本地重复槽位跳过当天但仍消耗 count/index；秋季回拨的重复本地时刻使用第一次（较早 offset）。生产逻辑原先依赖 `LocalDateTime.atZone()`，把纽约 2026-03-08 02:30 错误顺延成可触发实例；现在把扫描边界和真实 occurrence instant 分开，gap 不产生活动/提醒实例且不推动后续日期，fold 显式取 `ZoneRules` 的首个 offset。
+- 新增两个 `TemporalProtocolTest`：验证 gap 在普通/优先窗口投影、`occurrenceForKey`、`nextOccurrence` 中都跳过且仍消耗序号；覆盖 Alarm 与 30 分钟 Activity。fold 断言列表/按 key/next 均为 2026-11-01T01:30 `-04:00`。修复前重现 gap 多出 `2026-03-08T02:30`，fold 子项通过；修复后定向 2/2 PASS。
+- 完整离线 Gradle 494/494 JVM、66 suites、0 failures/errors/skips；源码边界、Debug/AndroidTest APK 组装通过；Lint 0 errors/58 warnings。修复前行为失败日志 SHA-256 `B8B7230C3C3271EB784318D9A19D7D8EF72AFC2BEA43587160E1BDC0DFB9A57A`；修复后定向日志 SHA-256 `0C3E4DC55BB66D2FEAFECA1FA8F451A319702284BEBBF981735DCC32ECAE1EAF`；全量日志 SHA-256 `E3BFDDF0B3F8349A671EEC5B7784A16063F2C6A2D8CFCDBE4B78914535C7B2E4`。提交 `315492434e4ec57d308d3ca2b65b8488239a3aaa` 已推送。
+- 合同已同步至 `PRODUCT_BASELINE_G1-G11.md` 与 `CORE_CONTRACT_FREEZE_2026-10-21.md`。独立报告：`docs/issues/PC-ISSUE-163-recurring-dst-gap-fold-resolution.md`。台账 r28：197 PASS / 0 FAIL / 8 BLOCKED / 2 NOT TESTED / 3 SPEC UNRESOLVED；P0/P1/P2=144/65/1；artifact SHA-256 `8F0964729F1814E6DA1BE4C5E13B81233EC59DF669C19BE403F10615158D083F`，ledger SHA-256 `B2A791BB207C74F9273E76D891023BC55E78638AF3FA67C1857542BFFC1AE630`。未签 Android scheduler/UI/设备；整体仍 HOLD。
+
 ## PC-ISSUE-047 同一事件人类/AI 草稿最后保存覆盖（REC-P0-054，窄化 PASS）
 
 - 用户明确选择同一事件只保留一张可操作草稿，后保存的提案覆盖现有草稿，不新增第二张；已将该决定同步到 `PRODUCT_BASELINE_G1-G11.md` 和 `CORE_EDITING_V4.md`。正式事件仍须单独确认/提交；人类编辑租约期间 AI 写入仍被拒绝。

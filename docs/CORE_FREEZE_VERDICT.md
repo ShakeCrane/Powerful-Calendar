@@ -4,6 +4,14 @@ Date: 2026-10-24
 
 Verdict: **HOLD**
 
+## Latest follow-up: PC-ISSUE-163 — recurring DST gap/fold resolution
+
+The owner selected skip-and-consume for a recurrence slot in the spring DST gap and the first instant/earlier offset for a fall fold. The pre-fix test reproduced an extra nonexistent 2026-03-08 02:30 instance; after the fix, the gap is absent, the series count stays anchored to original slots, and fold lookup/next-occurrence agree on `-04:00`. `REC-P0-074/075` pass narrowly for the JVM recurrence engine. No scheduler delivery, UI, emulator, or physical-device behavior is claimed. See [PC-ISSUE-163](issues/PC-ISSUE-163-recurring-dst-gap-fold-resolution.md).
+
+Code/test commit `315492434e4ec57d308d3ca2b65b8488239a3aaa` is pushed. Full offline Gradle passed 494/494 JVM tests across 66 suites, zero failures/errors/skips; source-boundary verification and Debug/AndroidTest APK assembly passed; lint 0 errors / 58 warnings. Full log SHA-256 `E3BFDDF0B3F8349A671EEC5B7784A16063F2C6A2D8CFCDBE4B78914535C7B2E4`; Debug APK SHA-256 `71FC411D703513E84CFEB889341AC9C0CBF18A12A1DA7B6BA85F0CFCE57D366D`.
+
+Structural-only ledger r28 records 210 active reconstructed rows (P0/P1/P2 144/65/1), with 197 PASS / 0 FAIL / 8 BLOCKED / 2 NOT TESTED / 3 SPEC UNRESOLVED; historical IDs mapped=0 and `product_behavior_tested=false`. Artifact SHA-256 `8F0964729F1814E6DA1BE4C5E13B81233EC59DF669C19BE403F10615158D083F`; ledger SHA-256 `B2A791BB207C74F9273E76D891023BC55E78638AF3FA67C1857542BFFC1AE630`. Overall verdict remains **HOLD**.
+
 ## Latest follow-up: PC-ISSUE-047 — same-event draft overwrite
 
 The owner resolved the human/AI draft-cardinality conflict: at most one actionable draft exists for an event; each later successfully persisted proposal overwrites that draft in place, preserving its ID and queue slot. `PowerStoreTest.humanAndAiProposalsForSameEventOverwriteInLastSaveOrderAcrossRestart` passed; human → AI → human saves retained one draft, the final contents survived SQLite reopen, and the formal event stayed unchanged. This is a narrow storage test, without UI, live provider, or device coverage. See [PC-ISSUE-047](issues/PC-ISSUE-047-human-ai-draft-cardinality-spec-conflict.md).
@@ -415,7 +423,7 @@ The isolated core suite passed 27/27: all 24 `BackupEnvelopeTest` cases plus thr
 
 ## DST policy specification audit (2026-10-24)
 
-`PRODUCT_BASELINE_G1-G11.md` §9 explicitly lists DST policy details as unresolved. The code comment describing gap-forward and earlier-offset fold behavior documents current implementation, not product approval. Current-code `OccurrenceWindowTest` passed 19/19 and `TemporalProtocolTest` 38/38; these cover spring-gap resolution and wall-clock recurrence across DST, but source/test review found no fold-specific regression. Log SHA-256 `6DD225D91BA3C9D9333E9FE7B55137B9679CE90E74FF361B3140811B955193F3`; XML SHA-256 `F913E61734A977C392D5F160F79B6D5BE85B25381A34D67DBE492A3DC1266118` / `815BED4DFC2EB57505FE9FEA5405533876C34105033B0A3DCCA186C843F23F24`. REC-P0-074/075 remain SPEC UNRESOLVED pending owner decision; no DST policy was inferred from implementation behavior.
+At that audit snapshot, `PRODUCT_BASELINE_G1-G11.md` §9 had no approved DST policy; prior tests lacked a fold-specific regression, so REC-P0-074/075 stayed SPEC UNRESOLVED. Later on 2026-10-24, the owner selected skip-and-consume for a gap slot and the first/earlier offset for a fold. PC-ISSUE-163 adds the regression, resolves those two rows narrowly, and supersedes this historical status note. The original audit logs remain unchanged: `6DD225D91BA3C9D9333E9FE7B55137B9679CE90E74FF361B3140811B955193F3`; XML `F913E61734A977C392D5F160F79B6D5BE85B25381A34D67DBE492A3DC1266118` / `815BED4DFC2EB57505FE9FEA5405533876C34105033B0A3DCCA186C843F23F24`.
 
 ## PC-TECH-006 lint warning classification (2026-10-24)
 

@@ -48,7 +48,11 @@ The three kinds can convert into one another while keeping eventSeq; preserve ex
 
 Event *kind* is not the same as Trigger: an Activity can have attached reminders or linked AlarmEvent. A left-side projection of an attached alarm-capable Trigger is not a second event identity.
 
-TimeSpec preserves wall-clock versus fixed-instant meaning, precision, timezone policy and recurrence. Local daily alarm follows local wall time by default; timezone-bound activities preserve their intended zone. Handle DST gaps and folds deterministically, with explicit policy. A recurring series has a rule + stable occurrence keys based on original slots + per-occurrence overrides; do not expand future instances as primary truth. Editing a repeated occurrence defaults to THIS INSTANCE, with options for this-and-future or whole series.
+TimeSpec preserves wall-clock versus fixed-instant meaning, precision, timezone policy and recurrence. Local daily alarm follows local wall time by default; timezone-bound activities preserve their intended zone. For recurrence, skip a slot whose local time falls in a DST gap while consuming its generated count/index; for a DST fold, select the first instant using the earlier offset. A recurring series has a rule + stable occurrence keys based on original slots + per-occurrence overrides; do not expand future instances as primary truth. Editing a repeated occurrence defaults to THIS INSTANCE, with options for this-and-future or whole series.
+
+### Owner clarification — recurring DST gap/fold (2026-10-24)
+
+This policy applies to generated recurrence instances. A nonexistent local-time slot during the spring transition is skipped and still consumes its generated index/count; it does not shift later slots. A repeated local time during the fall transition selects its first instant (earlier offset). This does not change parsing of a separately entered one-off local timestamp.
 
 Source identity, migration information, exact-alarm eligibility, delivery mode, completion state, object status, schedule status and ringing status are separate capabilities, not inferred solely from null time boundaries.
 
@@ -127,7 +131,7 @@ Later explicit custom decisions supersede older questionnaire choices; don't res
 - Exact visual location of the 待处理 launcher in the time-axis navigation; search UX details.
 - Date-only Deadline positioning within a day band and accessibility on zoomed timeline.
 - How to handle type conversions involving ambiguous/missing time anchors and default ringtone/notification settings.
-- Exact duration/grace limit for late alarms; simultaneous alarms; DST policy details.
+- Exact duration/grace limit for late alarms; simultaneous alarms.
 - Whether human direct edits can be initiated at all during AI batch for **unaffected** formal events (deck remains locked; affected events explicitly blocked).
 - Boundaries of a batch when new AI-produced cards appear during the operation; cancellation UX and progress layout.
 - Full-object replacement conflict review can show a readable full diff without overwhelming mobile display; requires prototype.
