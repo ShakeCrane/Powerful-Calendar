@@ -94,6 +94,7 @@ import dev.powerfulcalendar.core.DeckController
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.EditSession
+import dev.powerfulcalendar.core.FormalEventSearch
 import dev.powerfulcalendar.core.LegacyBackupConsentRequired
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.RecurrenceEngine
@@ -1525,11 +1526,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                 }
             },
             formalSearch = { query ->
-                if (query.isBlank()) emptyList() else records.filter {
-                    it.title.contains(query, ignoreCase = true) ||
-                        it.eventSeq.toString().contains(query) ||
-                        TemporalRecord.formatSeq(it.eventSeq).contains(query)
-                }.take(8)
+                FormalEventSearch.filter(records, query)
             },
             initialEditorOpen = deckInitialId != null
         )

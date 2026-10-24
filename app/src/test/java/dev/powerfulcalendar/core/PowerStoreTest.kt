@@ -1109,6 +1109,39 @@ class PowerStoreTest {
     }
 
     @Test
+    fun formalEventSearchCanOfferAnUpdateDraftAtQueueTailAcrossRestart() {
+        val formalDraft = store.newDraft(activityForm("正式目标"))
+        assertTrue(commit(formalDraft) is PowerStore.CommitOutcome.Committed)
+        val formalRecord = requireNotNull(store.get(formalDraft.eventSeq))
+        val olderPending = store.newDraft(activityForm("较早待办"))
+        val newerPending = store.newDraft(activityForm("较新待办"))
+        val beforeQueue = store.pendingDrafts()
+
+        val hit = FormalEventSearch.filter(store.all(), "正式目标").single()
+        assertEquals(formalRecord.eventSeq, hit.eventSeq)
+        val update = store.proposeReplace(hit.eventSeq)
+
+        assertEquals(DraftOperation.REPLACE, update.operation)
+        assertEquals(formalRecord.eventSeq, update.eventSeq)
+        assertEquals(formalRecord.revision, update.baseRevision)
+        assertEquals(DraftForm.from(formalRecord), update.form)
+        assertTrue(update.queueOrder > newerPending.queueOrder)
+        assertEquals(listOf(olderPending.draftId, newerPending.draftId, update.draftId),
+            store.pendingDrafts().map { it.draftId })
+
+        val database = store.databaseName
+        store.close()
+        store = PowerStore(context, database)
+        val reopened = store.pendingDrafts()
+        assertEquals(listOf(olderPending.draftId, newerPending.draftId, update.draftId),
+            reopened.map { it.draftId })
+        assertEquals(listOf(olderPending.queueOrder, newerPending.queueOrder, update.queueOrder),
+            reopened.map { it.queueOrder })
+        assertEquals(formalRecord.eventSeq, store.draft(update.draftId)?.eventSeq)
+        assertEquals(DraftOperation.REPLACE, store.draft(update.draftId)?.operation)
+    }
+
+    @Test
     fun independentQueueOrdersPersistAcrossRestartAndDoNotFollowEventNumbers() {
         val eventA = store.newDraft(activityForm("A"))
         assertTrue(commit(eventA) is PowerStore.CommitOutcome.Committed)
