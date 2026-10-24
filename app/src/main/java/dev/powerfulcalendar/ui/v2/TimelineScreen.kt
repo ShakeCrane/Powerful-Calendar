@@ -690,6 +690,9 @@ private fun TimelineCanvas(
         hours <= 26 -> 120L
         else -> 240L
     }
+    val tickLabels = remember(from, to, tickMinutes, zone) {
+        timelineTickLabels(from.toLong(), to.toLong(), tickMinutes, zone)
+    }
 
     Canvas(Modifier.fillMaxSize()) {
         if (!nowOnly) {
@@ -733,16 +736,9 @@ private fun TimelineCanvas(
         }
 
         // Hour ticks computed in wall-clock minutes so labels match the ruler through DST.
-        var tickLocal = Instant.ofEpochMilli(from.toLong()).atZone(zone)
-        tickLocal = tickLocal.withSecond(0).withNano(0)
-        val remainder = (tickLocal.hour * 60L + tickLocal.minute) % tickMinutes
-        tickLocal = tickLocal.minusMinutes(remainder.toLong())
-        var ticks = 0
         var lastTickLabelBottom = Float.NEGATIVE_INFINITY
-        while (ticks < 400) {
-            val tickMillis = tickLocal.toInstant().toEpochMilli()
-            if (tickMillis > to) break
-            val y = TimelineCoordinate.yOf(tickMillis, anchor, heightPx, hours)
+        tickLabels.forEach { tick ->
+            val y = TimelineCoordinate.yOf(tick.instantMillis, anchor, heightPx, hours)
             if (y > -20f && y < size.height + 20f) {
                 drawLine(
                     color = palette.gridLine,
@@ -756,9 +752,7 @@ private fun TimelineCanvas(
                     end = Offset(centerX + 8f, y),
                     strokeWidth = 1.dp.toPx()
                 )
-                val ambiguous = zone.rules.getValidOffsets(tickLocal.toLocalDateTime()).size > 1
-                val tickLabel = tickLocal.format(CLOCK_FORMAT) + if (ambiguous) "\n${tickLocal.offset}" else ""
-                val measured = measurer.measure(tickLabel, tickStyle)
+                val measured = measurer.measure(tick.text, tickStyle)
                 val labelTop = y - measured.size.height / 2f
                 val labelBottom = y + measured.size.height / 2f
                 if (y > measured.size.height / 2 &&
@@ -772,8 +766,6 @@ private fun TimelineCanvas(
                     lastTickLabelBottom = labelBottom
                 }
             }
-            tickLocal = tickLocal.plusMinutes(tickMinutes)
-            ticks++
         }
 
         }
@@ -806,22 +798,11 @@ private fun TimelineCanvas(
             )
             val badgeSize = Size(measured.size.width + 18f, measured.size.height + 8f)
             val tickObstacles = mutableListOf<Rect>()
-            var obstacleTick = Instant.ofEpochMilli(from.toLong()).atZone(zone)
-                .withSecond(0).withNano(0)
-            val obstacleRemainder =
-                (obstacleTick.hour * 60L + obstacleTick.minute) % tickMinutes
-            obstacleTick = obstacleTick.minusMinutes(obstacleRemainder.toLong())
-            var obstacleTicks = 0
             var lastObstacleLabelBottom = Float.NEGATIVE_INFINITY
-            while (obstacleTicks < 400) {
-                val tickMillis = obstacleTick.toInstant().toEpochMilli()
-                if (tickMillis > to) break
-                val y = TimelineCoordinate.yOf(tickMillis, anchor, heightPx, hours)
+            tickLabels.forEach { tick ->
+                val y = TimelineCoordinate.yOf(tick.instantMillis, anchor, heightPx, hours)
                 if (y > -20f && y < size.height + 20f) {
-                    val ambiguous = zone.rules.getValidOffsets(obstacleTick.toLocalDateTime()).size > 1
-                    val tickLabel = obstacleTick.format(CLOCK_FORMAT) +
-                        if (ambiguous) "\n${obstacleTick.offset}" else ""
-                    val tickMeasured = measurer.measure(tickLabel, tickStyle)
+                    val tickMeasured = measurer.measure(tick.text, tickStyle)
                     val labelTop = y - tickMeasured.size.height / 2f
                     val labelBottom = y + tickMeasured.size.height / 2f
                     if (y > tickMeasured.size.height / 2f &&
@@ -837,8 +818,6 @@ private fun TimelineCanvas(
                         lastObstacleLabelBottom = labelBottom
                     }
                 }
-                obstacleTick = obstacleTick.plusMinutes(tickMinutes)
-                obstacleTicks++
             }
             val badgeTopLeft = findUnblockedLabelTopLeft(
                 preferred = Offset(centerX - badgeSize.width / 2f, nowY - badgeSize.height / 2f),
