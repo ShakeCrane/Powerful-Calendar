@@ -32,9 +32,9 @@ Structural validation: 209 unique IDs; all reconstructed rows contain source, en
 | Candidate bucket | PASS | FAIL | BLOCKED | NOT TESTED | SPEC UNRESOLVED |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | P0 (proposed) | 119 | 0 | 1 | 1 | 5 |
-| P1 (proposed) | 41 | 0 | 8 | 32 | 1 |
+| P1 (proposed) | 42 | 0 | 8 | 31 | 1 |
 | Historical unclassified slot | 0 | 0 | 0 | 0 | 1 |
-| **Total candidate rows** | **160** | **0** | **9** | **33** | **7** |
+| **Total candidate rows** | **161** | **0** | **9** | **32** | **7** |
 
 ### Case-specific backup verification (2026-10-23)
 
@@ -903,3 +903,11 @@ The new assertions extend `DeckControllerConcurrencyTest.storageFailureKeepsAcce
 Focused retry regression: **1/1 PASS**, log SHA-256 `A6DF8B1298DF20686233F1FFA0F4DF397F3B1FF351D2B596C4816AC5F9B46A7C`. Full Debug boundary/test/APK/lint: **466/466** across 57 suites, zero failures/errors/skips, lint 0 errors / 58 warnings. Full log SHA-256 `5048666A731DA92219D3B977A74DD4E68DED9F6DAF87DC7678D0993CC64F6700`; `DeckControllerConcurrencyTest` XML SHA-256 `BBF0C6436C81992CDE0FBB3B52D2FF97B4C94D97FC0E996DCA3EC22C2EB0ACE8`; lint XML SHA-256 `E95DE7C795C7A50415CF5BF197DCD2A2FB73D55618CE34068C239E8648FC09DF`; APK SHA-256 `E2EE9DF7C315E2BCD237457CEFC69B3ACF4D830F7D191447DDE724FD0E892A60`. Test commit `41c7f849438128960b6f453c44563141feb0d1e5` is pushed. Independent report: `docs/issues/PC-ISSUE-127-deck-controller-retryable-save.md`.
 
 REC-P1-044/045 pass for the narrowed controller scope. Reconstructed totals: **160 PASS / 0 FAIL / 9 BLOCKED / 33 NOT TESTED / 7 SPEC UNRESOLVED**; P0 119/0/1/1/5, P1 41/0/8/32/1. Structural-only artifact `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-127.json`, SHA-256 `77CEBCB85D696C3A5121B78EE1AED29F611AA6DFBB86B7FD8642109B0FF6E5E6`; ledger SHA-256 `38E9BEE15710B9F59029E6C992B52BE1D48721A7320754994A044F08E16157C`. It verifies ledger structure and counts only. Historical mapping and overall freeze remain HOLD.
+
+### PC-ISSUE-128 — REC-P1-046 DeckController completion counts (2026-10-24)
+
+The new regression publishes one of two cards, waits through the controller's one-second terminal-action guard, discards the final card, then verifies the empty-queue completion state reports `published=1` and `discarded=1`. The first focused run failed because the test clock did not advance between terminal actions; adding the existing `tick()` helper corrected the fixture. No production source changed. This signs only the controller's published/discarded completion counts with fake persistence; SQLite-backed statistics and timeline-camera restoration remain outside the claim.
+
+Initial focused attempt log SHA-256 `76F434F80549AFBCFBDC3AFBB9F497B75C056497B879E9A7032A3708C6C7B3B9` (1 test failure at the expected second action). Corrected focused run: **1/1 PASS**, log SHA-256 `4B7209A14E46C328736FA66F11D487D0E1BAAA0A0389C14A02D01FDE457E08D1`. Full Debug boundary/test/APK/lint passed **467/467** across 57 suites, zero failures/errors/skips, lint 0 errors / 58 warnings. Full log SHA-256 `2DD2527881F19E93110ACD7079F090C68CC861F5F8DE108C510A9FBCA0E3D8D6`; `DeckControllerTest` XML SHA-256 `277408CF246C43DD079ADA38CA6B32834BC71D344E09EB8D2BEA05E9D2CADC09`; lint XML SHA-256 `E95DE7C795C7A50415CF5BF197DCD2A2FB73D55618CE34068C239E8648FC09DF`; APK SHA-256 `E2EE9DF7C315E2BCD237457CEFC69B3ACF4D830F7D191447DDE724FD0E892A60`. Test commit `5c741192727721cc26831a01fb9b9c9cd9b2b408` is pushed. Independent report: `docs/issues/PC-ISSUE-128-deck-completion-counts.md`.
+
+REC-P1-046 passes only for narrowed controller counts. Reconstructed totals: **161 PASS / 0 FAIL / 9 BLOCKED / 32 NOT TESTED / 7 SPEC UNRESOLVED**; P0 119/0/1/1/5, P1 42/0/8/31/1. Structural-only artifact `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-128.json`, SHA-256 `C04462462D939BA4BFB4765FB6960E1219741F0C46A280836E567D1E460B0A44`; ledger SHA-256 `015CE8D4281738348B6BAFE9780D1912F0EF172998695228ADB0BF4929BDA878`. It validates structure and counts only. Historical mapping and overall freeze remain HOLD.

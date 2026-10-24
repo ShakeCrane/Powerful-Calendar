@@ -1,4 +1,10 @@
 # Core freeze progress
+## PC-ISSUE-128 — DeckController completion counts (REC-P1-046 narrowed PASS)
+
+- Added a core-only regression that publishes one card and discards the final card, then checks completion reports published=1 and discarded=1. The initial attempt hit the existing one-second terminal-action guard because the fake clock did not advance; adding `tick()` fixed the test setup. No production/UI changes; timeline-camera restoration and SQLite-backed stats remain outside scope.
+- Corrected focused regression passed 1/1; full Debug boundary/test/APK/lint passed 467/467 across 57 suites, zero failures/errors/skips; lint 0 errors / 58 warnings. Test commit `5c741192727721cc26831a01fb9b9c9cd9b2b408` is pushed.
+- Report: `docs/issues/PC-ISSUE-128-deck-completion-counts.md`. Ledger: 161 PASS / 0 FAIL / 9 BLOCKED / 32 NOT TESTED / 7 SPEC UNRESOLVED; P0 119/0/1/1/5, P1 42/0/8/31/1. Structural-only artifact `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-128.json`, SHA-256 `C04462462D939BA4BFB4765FB6960E1219741F0C46A280836E567D1E460B0A44`; ledger SHA-256 `015CE8D4281738348B6BAFE9780D1912F0EF172998695228ADB0BF4929BDA878`. Overall freeze remains HOLD.
+
 ## PC-ISSUE-127 — DeckController retryable save and card switching (REC-P1-044/045 narrowed PASS)
 
 - Extended the existing storage-failure regression to recover the fake store and retry the same accepted input; verified it is staged and dirty/error/busy clear. Existing controller tests verify latest-text stage before card navigation and refusal to switch after stage failure. No production code changed; claims are limited to JVM controller behavior with fake persistence, excluding UI, SQLite durability, exit/lifecycle and devices.
