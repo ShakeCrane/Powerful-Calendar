@@ -204,3 +204,22 @@ Phase 1 产品修复仍由 `b46b3dd7592bb1c7de021d543630f84937a0eaef` 提供；�
 - 本轮未连接设备。已归档的 API 35 `emulator-5560` Compose 2/2 结果可对应本轮相同 SHA-256 的 app/test APK，但仍作为既有证据而非本轮新跑结果；实体设备由用户验证。
 
 Phase 1 主路径及当前源码自动化/构建验收 PASS。单次本地时间在秋季 DST fold 的第二次同名分钟无法由现有 `yyyy-MM-dd HH:mm` 字段表达精确 offset；产品合同明确未定义 one-off fold 规则，需保留为 SPEC UNRESOLVED，不能以重复事件的“第一次”规则自行外推。整体核心冻结继续 HOLD。
+
+## 当前用户请求复验（2026-10-25，HEAD `3c8b16d`）
+
+本轮重新审计分支、HEAD、工作区和 Phase 1 调用链。`main` 与 `origin/main` 同步；跟踪源码无差异。普通新建入口仍只构造内存 `NewEventEditSession`；保存字段归一化 Diff、×/lifecycle checkpoint、正式发布幂等与 AI/ICS 显式候选边界均与原报告实现一致。Phase 1 生产修改仍在已推送提交 `b46b3dd7592bb1c7de021d543630f84937a0eaef`；本轮没有新的生产源码修改。
+
+- 定向命令沿用本报告六 suite 命令，**32/32 PASS、6 suites、0 failures/errors/skips**。日志 SHA-256 `086E31B6BB0523DC4A5FDA6D627178A8F8687788058C1DE0095337D90A9DF025`；focused JUnit XML 位于 `.local/android-test/reports/freeze-20261025/phase1-user-request/focused-junit/`。
+- 当前工作树完整 JVM 回归与本请求范围的构建门禁：
+
+  ```powershell
+  .\gradlew.bat :app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --offline --rerun-tasks --console=plain
+  ```
+
+  结果 **541/541 JVM、74 suites、0 failures/errors/skips、59/59 本次命令涉及任务**；lint **0 errors / 56 warnings**。541 项包含受保护的未跟踪 `DraftDeckFeedbackTest.kt`，没有暂存。完整日志 SHA-256 `47B76C79FE412556C10FC93CF326E09865664A62E2FA9D52C91F9E45B6977104`；完整 JUnit XML、lint XML、日志副本和 Debug APK 副本位于 `.local/android-test/reports/freeze-20261025/phase1-user-request/`。Debug APK SHA-256 `517DFFFCCFECA6E4B6CBF5961B3CAAA8F2802B3B3B1DD107457180C268F61614`，lint XML SHA-256 `6254B2A5C445027068221A411E65E5798A8F8457FAD9716266253B2BFB52E4D4`。
+- 同一 HEAD 先前在干净隔离 worktree 执行的完整门禁（包含 `assembleDebugAndroidTest`）为 **540/540 JVM、73 suites、88/88 tasks 全通过**，AndroidTest APK SHA-256 `2EF06F141A6AEEA12F6272D9C8861D7D6EEC33A316D0F4734A221C90BF7BE0B2`，见前节证据。本轮主工作树未重复该子任务，因为受保护的未跟踪 `D05ProductionReminderLifecycleInstrumentedTest.kt` 在 `assertFalse` 处存在已记录编译错误；哈希 `4FA8637731FEE4F109E2E017D2D164635876BC0551B6C8FC74F99B8F7461050D` 未变，文件未修改/暂存。
+- 当前 `adb devices` 显示 `emulator-5554 / 5556 / 5560 / 5562` 全部已连接，本轮没有操作设备。先前 `emulator-5560` 的 Phase 1 Compose AndroidJUnitRunner **2/2 PREVIOUS PASS**；当时验证的生产 Debug APK hash 与当前构建相同，且从设备证据基线 `68cad08` 到当前 HEAD 无 tracked `app/` 路径差异，故只引用为历史结果。实体设备/OEM 仍由用户验收。
+
+### 当前未签核项
+
+合同的 2026-10-24 DST 修订只规定重复事件回拨时用第一次 offset，并明确一次性本地时间解析尚未定义。若捕获时刻是 fall fold 的第二个 01:30，现有 `yyyy-MM-dd HH:mm` 格式无法携带 offset；再解析时 `LocalDateTime.atZone` 选择第一次，可能把以“当前时间”为默认的 ALARM/ACTIVITY 映射到早一小时。不能把重复事件规则未经确认地扩展到一次性事件。该边界已请求用户裁决；裁决后需补固定 Clock 回归并评估最小兼容实现。在此之前，Phase 1 代码与自动化主路径 PASS，但严格完成签核 **HOLD**；核心总体验收仍为 **HOLD**。

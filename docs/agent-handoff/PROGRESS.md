@@ -1,5 +1,14 @@
 # Core freeze progress
 
+## PC-ISSUE-PHASE1 — 当前用户请求复验（2026-10-25，HEAD `3c8b16d`）
+
+- 读取并遵循根目录 `AGENTS.md`。现场为 `main` / `origin/main` 同步；跟踪源码无未提交修改。普通新建入口继续共用内存 `NewEventEditSession`；生产实现仍由已推送 `b46b3dd7592bb1c7de021d543630f84937a0eaef` 提供，本轮未改产品源码。
+- 当前工作树 Phase 1 定向回归 **32/32 PASS、6 suites、0 failures/errors/skips**。日志 SHA-256 `086E31B6BB0523DC4A5FDA6D627178A8F8687788058C1DE0095337D90A9DF025`；JUnit XML 位于 `.local/android-test/reports/freeze-20261025/phase1-user-request/focused-junit/`。
+- 当前工作树全量 JVM 回归、source-boundary、Debug build 与 lint 均通过：**541/541 tests、74 suites、0 failures/errors/skips；59/59 本次请求范围内 Gradle tasks；lint 0 errors / 56 warnings**。该运行包含受保护的未跟踪 `DraftDeckFeedbackTest.kt`，但未暂存。日志 SHA-256 `47B76C79FE412556C10FC93CF326E09865664A62E2FA9D52C91F9E45B6977104`；JUnit XML、lint XML 和 Debug APK 副本在 `.local/android-test/reports/freeze-20261025/phase1-user-request/`。Debug APK SHA-256 `517DFFFCCFECA6E4B6CBF5961B3CAAA8F2802B3B3B1DD107457180C268F61614`。
+- 同一 HEAD 的先前干净隔离 worktree 全完整门禁（含 AndroidTest APK 构建）为 **540/540 JVM、73 suites、88/88 tasks，全部通过**，AndroidTest APK SHA-256 `2EF06F141A6AEEA12F6272D9C8861D7D6EEC33A316D0F4734A221C90BF7BE0B2`；证据见本 Issue 报告上一节。当前主工作树不重复编译 AndroidTest：其中受保护的未跟踪 D05 测试有独立编译错误，哈希仍为 `4FA8637731FEE4F109E2E017D2D164635876BC0551B6C8FC74F99B8F7461050D`，保持未修改、未暂存。
+- 本轮只读 `adb devices` 发现 `5554 / 5556 / 5560 / 5562` 均已连接，未触碰任何设备。API 35 `emulator-5560` 既有 Phase 1 Compose **2/2 PREVIOUS PASS**；已知的生产 Debug APK hash 与当前构建相同，且 tracked `app/` 路径从该证据基线 `68cad08` 起无变化。因此仅引用历史证据，不冒称本轮设备复测。实体设备仍由用户测试。
+- 核心合同修订明确 DST “第一次 offset”只适用于重复事件，并注明一次性本地时间解析规则未定义。固定 Clock 落在秋季回拨第二个 01:30 时，现有无 offset 的 `yyyy-MM-dd HH:mm` 会在解析时回到第一次 01:30，不能保证与捕获 instant 相同。该点已向用户请求产品裁决；在裁决和所需回归完成前，Phase 1 的无副作用/保存主路径验证 PASS，但完整时间语义签核 **HOLD**，总体验收继续 **HOLD**。
+
 ## PC-ISSUE-PHASE1 — HEAD `72372ad` 当前请求复验（2026-10-25）
 
 - 复核普通新建入口均使用内存 `NewEventEditSession`；实现代码仍来自已推送 `b46b3dd7592bb1c7de021d543630f84937a0eaef`，当前 HEAD 无 Phase 1 源码差异。
