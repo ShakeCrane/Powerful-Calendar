@@ -4,6 +4,14 @@ Date: 2026-10-24
 
 Verdict: **HOLD**
 
+## Latest follow-up: PC-ISSUE-002 — desktop DeepSeek credential probe
+
+A single synthetic structured-proposal request from API 35 emulator-5554 received HTTP 401 after 701 ms. The opt-in instrumentation run had one test and one failure because no proposal was returned; no retry, settings change, SQLite write, or formal calendar write occurred. The temporary app-private credential file and emulator staging file were verified absent after the run. This credential result does not satisfy the free-provider acceptance row: REC-P1-047 remains BLOCKED, PC-ISSUE-002 remains PARTIAL / BLOCKED, and the freeze remains HOLD. The physical-device checks remain user-owned. See docs/issues/PC-ISSUE-002-ai-timeout-proposal.md.
+
+The forced offline Gradle rerun passed 495/495 JVM tests across 67 suites, zero failures/errors/skips; all 88 tasks executed, source-boundary verification and Debug/AndroidTest APK assembly passed, lint 0 errors / 58 warnings. Full log SHA-256 1459C4BD3731C8DA95B1DA49E50704BCDBF7BD9A6F4EB0A0CC14115E109882EF. Debug APK SHA-256 7A5476F972473030B7DF2AE0E2CA6F305A71BD2A6092CFDA02F9B3378F40A03B; AndroidTest APK SHA-256 79C9A6D83010087116B50D79012732BA9A6329D7D9B394661AD1C351D38D2F75.
+
+Structural-only ledger validation r31 confirms 211 rows, 210 active (P0/P1/P2 144/65/1), 198 PASS / 0 FAIL / 8 BLOCKED / 2 NOT TESTED / 2 SPEC UNRESOLVED / 1 RETIRED; historical IDs mapped=0 and product_behavior_tested=false. Artifact .local/android-test/reports/freeze-20261024/pc-qa-gate-001-risk-matrix-validated-20261024-r31-pc-issue-002-deepseek-auth.json SHA-256 8E1BD5EE6FED75555FFA5572791AF320D5ADA997A63B42492CD0F08EA0FB92E2; ledger SHA-256 CCB65B297FDA080A13A2369B1A5C1C6AF9C7676FBEFB55685A935F44693754EE. This validates matrix structure only, not product behavior.
+
 ## Latest follow-up: PC-ISSUE-105 — inclusive 10-minute late-alarm grace
 
 The owner confirmed that a late alarm may ring through exactly 10 minutes; after that it is recorded `MISSED` without a catch-up ring. The receiver and boot/reconciliation scheduler share one strict-boundary predicate. JVM boundary coverage and API 34 Robolectric receiver/recovery coverage pass. An API 35 AVD test also directly invoked receiver handling: a 9-minute late reminder became `FIRED` with an active notification, while an 11-minute late reminder became `MISSED` with no notification. This test bypasses OS `AlarmManager` delivery. `REC-P0-118` is **PASS narrowly** for these code paths. Simultaneous-alarm behavior, Android OS scheduled delivery, reboot delivery, and physical/OEM behavior remain outside this sign-off. See [PC-ISSUE-105](issues/PC-ISSUE-105-missed-alarm-grace-window.md).

@@ -1,5 +1,14 @@
 # Core freeze progress
 
+## PC-ISSUE-002 桌面 DeepSeek 凭据探测（2026-10-24）
+
+- API 35 emulator-5554 上使用一次合成结构化提案请求；AiClient 仅有一条 structured-proposal 遥测，HTTP 401 / 701 ms / budget 1800。测试 1 run / 1 failure，失败于预期无 warning 的断言；没有提案，没有重试，没有设置、数据库或正式日历写入。凭据未通过本次认证；不重试或切换服务。
+- 临时密钥通过应用私有目录读取，运行后应用私有文件及 staging 文件均已验证删除。首次复制因 filesDir 尚未建立而中止，未启动测试、未发请求；过程记录于 .local/android-test/reports/freeze-20261024/pc-issue-002-transfer-attempt.md。
+- 强制离线完整 Gradle 495/495 JVM、67 suites、0 failures/errors/skips；88 tasks，source boundary 与 Debug/AndroidTest 组装通过，Lint 0 errors/58 warnings。完整日志 SHA-256 1459C4BD3731C8DA95B1DA49E50704BCDBF7BD9A6F4EB0A0CC14115E109882EF。runner SHA-256 515BF7F4DDDFD0BDBB992EEAA5785D5952FB338912F1BDF15BE547C145594261；脱敏 HTTP 401 诊断 SHA-256 A36B9835C3E466D482102E11DBD96FD267CAB8C110547511BED594B681264BC7。
+- REC-P1-047 仍 BLOCKED：桌面凭据请求不是免费 provider 验收，既有免费结构化 429/503 未闭环。PC-ISSUE-002 保持 PARTIAL/BLOCKED，核心冻结保持 HOLD。完整证据见 docs/issues/PC-ISSUE-002-ai-timeout-proposal.md。
+Structural-only ledger validation r31 confirms 211 rows, 210 active (P0/P1/P2 144/65/1), 198 PASS / 0 FAIL / 8 BLOCKED / 2 NOT TESTED / 2 SPEC UNRESOLVED / 1 RETIRED; historical IDs mapped=0 and product_behavior_tested=false. Artifact .local/android-test/reports/freeze-20261024/pc-qa-gate-001-risk-matrix-validated-20261024-r31-pc-issue-002-deepseek-auth.json SHA-256 8E1BD5EE6FED75555FFA5572791AF320D5ADA997A63B42492CD0F08EA0FB92E2; ledger SHA-256 CCB65B297FDA080A13A2369B1A5C1C6AF9C7676FBEFB55685A935F44693754EE. This validates matrix structure only, not product behavior.
+
+
 ## PC-ISSUE-105 提醒宽限期规格签核（REC-P0-118，窄化 PASS）
 
 - 用户确认迟到提醒宽限期为 **10 分钟，含恰好 10 分钟边界**；超过边界记录 `MISSED` 且不补响。合同和产品基线已同步；“同时响铃”仍是独立未决规格。接收器与恢复调度器共用 `AlarmContract.isOutsideGraceWindow`。

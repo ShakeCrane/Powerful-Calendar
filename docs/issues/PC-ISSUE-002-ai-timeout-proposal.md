@@ -164,3 +164,17 @@ AiClient 的连接/读取超时现可由正值参数注入，运行默认仍为 
 
 
 台账更新后的结构校验 r16：184 PASS / 0 FAIL / 8 BLOCKED / 11 NOT TESTED / 6 SPEC UNRESOLVED；REC-P1-047 仍 BLOCKED。artifact SHA-256 5F4D3C33AEC94EA4A950BE4BA6A1104485556EF6BA7A23B25A9C1A8477F49F71；ledger SHA-256 93461981B84F2372C85DD61A3924B0BD39F30A5B2B4D89B2C95C4B2DEC9AD066。结构校验不代表产品行为验收。
+
+## 桌面 DeepSeek V4.1 Flash 凭据探测（2026-10-24）
+
+用户提供的桌面临时凭据通过 API 35 的 emulator-5554 进行一次合成结构化提案请求。测试使用 deepseek-flash，关闭上下文分享，空日历上下文；不保存 AI 设置，不访问 SQLite，不创建正式事件。设备先前未安装 PowerCal；本轮只在 5554 安装 Debug 与 AndroidTest APK，未触碰 5556。
+
+实测仅观察到一条 structured-proposal 请求：HTTP 401，耗时 701 ms，输出预算 1800。仪器测试 1 次、失败 1 次，失败断言为“Expected one proposal without parser warnings”；没有得到提案。401 表明这份凭据在本次官方 API 请求中未通过认证；没有更换密钥、模型或端点，也没有重试。该结果不替代免费模型验收，也不改变 REC-P1-047 的 BLOCKED 状态。
+
+- 脱敏 runner 摘要 .local/android-test/reports/freeze-20261024/pc-issue-002-deepseek-live-runner.log，SHA-256 515BF7F4DDDFD0BDBB992EEAA5785D5952FB338912F1BDF15BE547C145594261；单次请求诊断 .local/android-test/reports/freeze-20261024/pc-issue-002-deepseek-live-diagnostics.log，SHA-256 A36B9835C3E466D482102E11DBD96FD267CAB8C110547511BED594B681264BC7。两份日志均不含凭据、请求正文或响应正文。
+- 全量强制离线 Gradle 回归通过：495/495 JVM tests、67 suites、0 failures/errors/skips；88 tasks executed，source boundary、Debug/AndroidTest APK 组装通过，Lint 0 errors/58 warnings。日志 SHA-256 1459C4BD3731C8DA95B1DA49E50704BCDBF7BD9A6F4EB0A0CC14115E109882EF；Debug APK SHA-256 7A5476F972473030B7DF2AE0E2CA6F305A71BD2A6092CFDA02F9B3378F40A03B；AndroidTest APK SHA-256 79C9A6D83010087116B50D79012732BA9A6329D7D9B394661AD1C351D38D2F75；Lint XML SHA-256 44D47F58BAA079ADCD898DD75FD052E2E4069E1322BE0F69299819BC9A97694F。
+- 测试过程中的首次私有目录复制因新安装应用的 filesDir 尚不存在而中止；当时未启动仪器或发出请求。随后创建应用标准私有目录并完成一次请求。临时 staging 文件与应用私有凭据文件均已验证删除。首次准备尝试记录在 .local/android-test/reports/freeze-20261024/pc-issue-002-transfer-attempt.md。
+
+Issue 002 仍 PARTIAL / BLOCKED：免费 provider 的结构化阶段此前返回 HTTP 429/503，当前免费路径仍缺少真实可审查提案与后续闭环；本次 401 也未解决凭据认证。完整冻结继续 HOLD。实体设备测试由用户执行。
+
+Structural-only ledger validation r31 confirms 211 rows, 210 active (P0/P1/P2 144/65/1), 198 PASS / 0 FAIL / 8 BLOCKED / 2 NOT TESTED / 2 SPEC UNRESOLVED / 1 RETIRED; historical IDs mapped=0 and product_behavior_tested=false. Artifact .local/android-test/reports/freeze-20261024/pc-qa-gate-001-risk-matrix-validated-20261024-r31-pc-issue-002-deepseek-auth.json SHA-256 8E1BD5EE6FED75555FFA5572791AF320D5ADA997A63B42492CD0F08EA0FB92E2; ledger SHA-256 CCB65B297FDA080A13A2369B1A5C1C6AF9C7676FBEFB55685A935F44693754EE. This validates matrix structure only, not product behavior.
