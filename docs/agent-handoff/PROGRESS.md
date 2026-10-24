@@ -1,5 +1,12 @@
 # Core freeze progress
 
+## PC-ISSUE-153 返回时间轴保留视口与缩放（REC-P1-003 窄化 PASS）
+
+- 新增真实 `PowerCalApp` Compose API 35 instrumentation：初始相机为 anchor `1792843200000` / 24h；用缩放控件和竖向手势改为 anchor `1792965924653` / 16h；打开 Memo 并返回后两个值精确不变，定向测试 1/1 PASS。状态只读自 timeline 投影，业务数据与正式数据库未访问。
+- 测试使用随机数据库、偏好名称空间和缓存目录，执行后删除。AVD 保持 1080×2400 并恢复 Launcher 焦点。最终日志 SHA-256 `D26BCBF3177F8765A455D4243E1AFC208F53BF7973AAF0D8166B71462AA53D7B`；相机轨迹 SHA-256 `680731D0EE21F9CE78193B4DDCADD755F7F5A919291C791A2F956FC85C3346FF`。
+- 完整离线 Gradle 490/490 JVM、65 suites、0 failures/errors/skips；source boundary、Debug/AndroidTest APK 组装通过；Lint 0 errors / 58 warnings。完整日志 SHA-256 `30E211EB07F1EFAF18BC5735B76B7FF46663A904AB09FA26C2EC08A8B03F7257`。测试提交 `b3086bffffd97a412ecd0abefe0be419be1cc88f` 已推送。
+- 记录了三次早期 instrumentation 测试夹具失败及原因，最终隔离存储回归通过。`REC-P1-003` 只签核 Timeline→Memo→Timeline 路径，不推断其他页面/进程重建。台账 r19（环境字段修订后重跑）：186 PASS / 0 FAIL / 8 BLOCKED / 10 NOT TESTED / 6 SPEC UNRESOLVED；P0/P1/P2=144/65/1。artifact SHA-256 `DF3E3697C15CA7EBB66DE4B1E7821A09114AFA8039DE34227230DEA90170D9BD`，ledger SHA-256 `AA80C181A42C015CFAD01B02E05C468F7A303CB73101D9D957DF12FA97677BD8`。整体 HOLD。独立报告：`docs/issues/PC-ISSUE-153-timeline-return-preserves-viewport.md`。
+
 ## PC-ISSUE-152 小屏事件点击命中与标题触控回归（REC-P1-067 AVD 子集 PASS；完整项 BLOCKED）
 
 - 新增 API 35 Android instrumentation：320×640dp 竖屏视口内，标题中心和事件语义命中区中心两处自动化点击都把同一事件交给打开回调；完整标题在 Accessibility 语义中保留。真实一分钟事件几何 1px，独立点击面 3px，标题矩形 `[486,977,676,1040]`。这是测试结果，没有生产代码变更。

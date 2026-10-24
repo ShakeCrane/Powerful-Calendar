@@ -1,5 +1,13 @@
 # PowerCal 核心基线冻结：任务理解清单
 
+## 最新执行记录：PC-ISSUE-153（2026-10-24）
+
+- API 35 `emulator-5556` 原生竖屏 / 1080×2400（未覆盖分辨率或方向）下通过真实页面路由验证 `REC-P1-003`：相机从 anchor `1792843200000` / 24 小时缩放，经控件和竖向平移变为 anchor `1792965924653` / 16 小时；打开 Memo 再返回后锚点与缩放均逐值相等。定向 1/1 PASS。
+- 仪器测试使用随机隔离数据库、偏好名称空间和缓存目录，不访问现有业务日历数据；结束后路径清理，AVD 回到 Launcher、分辨率未变。相机轨迹 SHA-256 `680731D0EE21F9CE78193B4DDCADD755F7F5A919291C791A2F956FC85C3346FF`。
+- 完整离线 Gradle 490/490 JVM、65 suites、0 failures/errors/skips；源码边界、Debug/AndroidTest APK、Lint 均通过，0 lint errors / 58 warnings。完整日志 SHA-256 `30E211EB07F1EFAF18BC5735B76B7FF46663A904AB09FA26C2EC08A8B03F7257`。测试提交 `b3086bffffd97a412ecd0abefe0be419be1cc88f` 已推送，独立报告 `docs/issues/PC-ISSUE-153-timeline-return-preserves-viewport.md`。
+- 早期三次 AVD instrumentation 启动失败均由隔离测试 Context/目录缺陷导致，均有单独日志哈希并在报告列明；最终存储夹具修正后通过。签核范围只覆盖 Timeline→Memo→Timeline。
+- 台账结构校验 r19（环境字段修订后重跑）：210 active，186 PASS / 0 FAIL / 8 BLOCKED / 10 NOT TESTED / 6 SPEC UNRESOLVED；P0/P1/P2 = 144/65/1。artifact SHA-256 `DF3E3697C15CA7EBB66DE4B1E7821A09114AFA8039DE34227230DEA90170D9BD`；ledger SHA-256 `AA80C181A42C015CFAD01B02E05C468F7A303CB73101D9D957DF12FA97677BD8`。历史 ID 映射为 0，结构报告不测试产品行为，整体仍 HOLD。
+
 ## 最新执行记录：PC-ISSUE-152（2026-10-24）
 
 - API 35 `emulator-5556`，420dpi，使用 840×1680px 临时视口（320×640dp）验证一分钟 Activity。可见标题中心与事件点击语义节点中心的 Android 自动化触摸都把含完整标题的同一事件交给 `onOpenEvent`；Accessibility `ContentDescription` 保留完整标题。
@@ -28,7 +36,7 @@
 
 - 用户已明确：原始 209 项清单当前无法提供，不再暂停或反复询问；209 只是历史规划数量，不得为凑数编造项目，也不得因历史 ID 无法恢复而永久阻塞开发。
 - 以 `CORE_CONTRACT_FREEZE_2026-10-21.md`、现有验收文档、测试代码、历史 Issue 和实际产品行为重建当前核心验收矩阵。每项都必须有来源、测试方法、实际结果与证据；历史映射缺失标 `RECONSTRUCTED` / `UNMAPPED`，不得伪称原始项。优先级按风险决定，不沿用 126/82 比例。
-- 当前矩阵：210 条活动重建候选（数量偶然形成，不是目标），P0 144 / P1 65 / P2 1；185 PASS、0 FAIL、8 BLOCKED、11 NOT TESTED、6 SPEC UNRESOLVED；另有一条退役记录。结构报告只证明台账完整，不证明产品行为。
+- 当前矩阵：210 条活动重建候选（数量偶然形成，不是目标），P0 144 / P1 65 / P2 1；186 PASS、0 FAIL、8 BLOCKED、10 NOT TESTED、6 SPEC UNRESOLVED；另有一条退役记录。结构报告只证明台账完整，不证明产品行为。
 - 原始表不可核对是应披露的文档溯源缺口，不是正式冻结的独立门槛。正式 GO 以重建后逐项通过的核心合同验收及所需环境为准；任何 P0/P1 的 BLOCKED、NOT TESTED 或 SPEC UNRESOLVED 均不得宣称通过。
 - `REC-P1-013` 淡灰横向边缘按用户确认标为 `RETIRED / OUT_OF_SCOPE`，旧证据保留；时间轴标题贪心折叠仍是独立 P1 必验项 `REC-P1-021`–`030`，强制横屏窄化签核另记 `REC-P1-084`。当前时间线可以覆盖中轴。应用保持竖屏，不主动感应陀螺仪；系统强制横屏仅作为兼容场景。真机测试由用户负责，本 Goal Mode 只运行虚拟设备可执行的项目。
 - PC-ISSUE-135 的草稿重启恢复记为 `REC-P2-001`；PC-ISSUE-136 的本地 AI 聊天历史进程/系统重启恢复记为 `REC-P1-083`；PC-ISSUE-137 将 `REC-P1-050`窄化签核为歧义 AI REPLACE 核心保护通过；PC-ISSUE-138 将 `REC-P1-034/035/036`窄化签核为 Todo 核心投影通过；PC-ISSUE-139 将 `REC-P1-037`窄化签核为重开数据库后的 oldest-first 队列控制器状态通过；PC-ISSUE-140 将 `REC-P1-004`窄化签核为跨午夜核心坐标连续通过，不代表实际滚动；PC-ISSUE-141 将 `REC-P1-006/007`窄化签核为缩放边界及焦点锚点核心模型通过，不代表手势/控件行为；PC-ISSUE-142 将 `REC-P1-001`窄化签核为 initialCamera 的当天正午/24 小时模型结果，不代表首屏呈现或恢复行为；PC-ISSUE-143 修复 `REC-P1-002` Today 错用 initialCamera 导致跳回正午的问题，并保持当前缩放；PC-ISSUE-144 将 `REC-P1-008/009`窄化签核为时间轴 DST gap/fold 刻度文案生成通过，不代表新 AVD/真机可视呈现或重复事件 DST 政策；PC-ISSUE-145 将 `REC-P1-018/019/020` 窄化签核为 Robolectric Compose 中左右翼独立滚动及左翼初始近中轴泳道通过；PC-ISSUE-146 将 `REC-P1-052/053` 窄化签核为提案审核动作与批次授权范围的 Compose 行为通过。各自边界见独立 Issue 报告，未签核部分不作延伸推断。

@@ -4,6 +4,14 @@ Date: 2026-10-24
 
 Verdict: **HOLD**
 
+## Latest follow-up: PC-ISSUE-153
+
+PC-ISSUE-153 signs `REC-P1-003` narrowly for the native Timeline → Memo → Timeline route on API 35 `emulator-5556` at 1080×2400. The test changed the camera from anchor `1792843200000` / 24h to `1792965924653` / 16h, opened Memo, and returned with the exact same anchor and 16h zoom. AndroidJUnitRunner passed 1/1. Activity/process recreation, other routes, and physical-device behavior are not claimed.
+
+Test-only commit `b3086bffffd97a412ecd0abefe0be419be1cc88f` is pushed. Complete offline Gradle passed 490/490 JVM tests across 65 suites, zero failures/errors/skips; source boundary, Debug/AndroidTest APK assembly passed; lint 0 errors / 58 warnings. The count includes 489 tracked tests and one test from the protected pre-existing untracked `DraftDeckFeedbackTest.kt`. Final AVD log SHA-256 `D26BCBF3177F8765A455D4243E1AFC208F53BF7973AAF0D8166B71462AA53D7B`; full Gradle log SHA-256 `30E211EB07F1EFAF18BC5735B76B7FF46663A904AB09FA26C2EC08A8B03F7257`.
+
+Structural-only ledger r19, rerun after correcting the environment description to native portrait 1080×2400 with no display override, records 210 active reconstructed rows (P0/P1/P2 144/65/1), with 186 PASS / 0 FAIL / 8 BLOCKED / 10 NOT TESTED / 6 SPEC UNRESOLVED; historical IDs mapped=0 and `product_behavior_tested=false`. Artifact SHA-256 `DF3E3697C15CA7EBB66DE4B1E7821A09114AFA8039DE34227230DEA90170D9BD`; ledger SHA-256 `AA80C181A42C015CFAD01B02E05C468F7A303CB73101D9D957DF12FA97677BD8`. Overall verdict remains **HOLD**.
+
 ## Latest follow-up: PC-ISSUE-152
 
 PC-ISSUE-152 adds API 35 AVD automation for reconstructed `REC-P1-067` at 320×640dp. At the 420dpi viewport, the one-minute event visual geometry measured 1px high, its semantics hit bounds 3px, and the rendered title rectangle `[486,977,676,1040]`. Taps at both title center and event-node center delivered the complete event to the open callback; accessibility semantics retained the full title. The focused AndroidJUnitRunner passed 1/1. This verifies the automated Compose path only; physical finger comfort, TalkBack, OEM behavior, and final detail-screen rendering remain untested, so `REC-P1-067` stays BLOCKED.
