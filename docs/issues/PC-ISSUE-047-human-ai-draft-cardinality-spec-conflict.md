@@ -1,38 +1,38 @@
-# PC-ISSUE-047 — Human/AI draft cardinality specification conflict
+# PC-ISSUE-047 — Human/AI same-event draft cardinality
 
-Date: 2026-10-23
+Date: 2026-10-24
 
 Severity: P0 candidate invariant
 
-Status: **SPEC UNRESOLVED / OVERALL FREEZE HOLD**
+Status: **RESOLVED / PASS (narrow PowerStore persistence contract)**
 
-## Question and finding
+## Owner decision
 
-`REC-P0-054` asks whether human and AI proposal cards targeting the same event remain independent. The checked-in product and storage contracts prescribe incompatible behavior:
+The owner clarified that a same-event human draft and AI proposal do not become separate actionable cards. Keep at most one actionable draft for an existing event. Each later successfully persisted proposal overwrites that draft in place, preserving `draftId` and `queueOrder`; the last saved proposal supplies the current draft contents. The formal event remains unchanged until a separate explicit confirmation and commit. The existing writer gate continues to reject AI writes while a human editor lease is active.
 
-- `docs/PRODUCT_BASELINE_G1-G11.md` says an event may have any number of draft cards carrying the same `eventSeq` (lines 22–24), and that human and AI proposals can coexist as distinct drafts (line 27). Its header identifies it as confirmed product decisions and says it defines intended behavior.
-- `docs/CORE_EDITING_V4.md` says each `event_seq` has at most one actionable draft and that a partial unique index enforces this (lines 3–4). Git history dates this contract to `f0d88f9` on 2026-10-22.
-- `PowerStore` and the regression documented by `PC-ISSUE-032` follow the single-actionable-draft rule by reusing the same draft ID and queue slot for successive proposals.
+This decision supersedes the earlier G9-06 wording in `PRODUCT_BASELINE_G1-G11.md` that allowed multiple same-event cards and resolves the conflict with `CORE_EDITING_V4.md`.
 
-The repository does not record an explicit product decision superseding the same-event coexistence requirement. A later implementation/storage contract and a passing implementation regression establish current behavior, but do not by themselves resolve which product behavior is approved. “Independent” also needs to be reconciled with the V4 single actionable slot before a truthful PASS/FAIL can be assigned.
+## Change and evidence
 
-## Change
+Added `PowerStoreTest.humanAndAiProposalsForSameEventOverwriteInLastSaveOrderAcrossRestart`. In an isolated Robolectric SQLite store it saves human → AI → human proposals for one committed event, then verifies:
 
-No product or test source changed. `REC-P0-054` is now **SPEC UNRESOLVED**, with this report linked in the candidate ledger. The evidence records the conflicting source text and current implementation direction; it does not claim a newly executed product behavior test or choose one contract on the user's behalf.
+- All three saves keep the same `draftId` and `queueOrder` while incrementing `draftVersion` for changed content.
+- Exactly one actionable draft remains, containing the final human save.
+- The committed formal event remains unchanged.
+- Reopening SQLite preserves the draft identity, order, version and final content.
 
-## Verification evidence and limits
+The production storage behavior already matched this rule; no production code changed. This test exercises the PowerStore actor boundary without a live editor lease. It does not claim Compose editor, full AI workflow, live provider, Android device or physical-device behavior.
 
-- Read-only source review: `docs/PRODUCT_BASELINE_G1-G11.md`, `docs/CORE_EDITING_V4.md`, `docs/CORE_CONTRACT_FREEZE_2026-10-21.md`, and the `PC-ISSUE-032` report.
-- Existing implementation regression: `PowerStoreTest.repeatedSameEventProposalReusesOneActionableDraftAcrossRestart`, as reported in `docs/issues/PC-ISSUE-032-one-actionable-draft-per-event.md`. This demonstrates the current V4 storage behavior; it does not resolve product-spec precedence and is not new evidence for coexistence.
-- No UI, emulator, physical-device, or new product-behavior test was run for this specification audit.
-- Structural-only ledger validation: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-ledger-validation-after-pc-issue-047.json`, SHA-256 `B3CC485ABB73FFE06963282BEF90C728A9695AFD7A34EA32E1906E8FE3AB9703`; ledger SHA-256 `1F513978790FA3AEDCB8E195ABFEC9A5BD7755F42839A14F4A39FA674CF970C4`. It confirms 209 unique rows, the 126/82/1 priority partition, and 92/0/9/101/7 status counts. It checks structure and accounting only; `product_behavior_tested` is false.
+## Verification
 
-The candidate remains `UNMAPPED` to the unavailable original 209-case checklist. Overall verdict remains **HOLD**.
+- Focused Gradle method run completed successfully. Log: `.local/android-test/reports/freeze-20261024/pc-issue-162-same-event-last-save-focused-20261024.log`, SHA-256 `46E826C46EA6EC4601B33C89A77461984667B55AFCF67A3DADFE0358EB3D3246`.
+- The full `PowerStoreTest` XML contains the new testcase and reports 90/90 pass, 0 failures/errors/skips. XML SHA-256 `78ED5765B288C7A9E22571125B19F4443C118C29D4E7D8016562A4D68279F681`.
+- Full offline Gradle passed 492/492 JVM tests across 66 suites, 0 failures/errors/skips; source-boundary verification and Debug/AndroidTest APK assembly passed; lint reported 0 errors and 58 warnings. Full log SHA-256 `79A07BC8CC8079BBC10ACC08E2AD9F04F3DB7FD9704FB9E4387CB1A1C30C047A`.
+- Debug APK SHA-256 `EE7E4850A147AC3B3F21326DCB209B0967F14DE6990D56EE05A2976FEB252BCD`; AndroidTest APK SHA-256 `72EC1D24090FAF68E2AD2D11A1C8931A80726C4C7B08E3C7786D382D0EE1E823`.
+- Test commit `f1fe242fab94b3b27e0dfd03931381f708312318` (`test(core-freeze): 验证同事件提案最后保存覆盖`) is pushed.
 
-## Git
+## Acceptance result
 
-This report and synchronized freeze documentation are delivered in a separate documentation-only conventional commit. No application code, test source, business data, UI, design asset, or protected untracked file is changed.
+`REC-P0-054` is PASS for the approved single-actionable-draft/last-save-overwrite persistence rule. The original 209-case checklist remains unavailable, so this reconstructed row remains `UNMAPPED`. Structural ledger validation checks accounting only and does not establish product behavior. The overall core freeze remains **HOLD**.
 
-## Remaining decision
-
-The product specification must identify whether same-event human and AI cards may coexist as independently actionable drafts, and whether that requirement supersedes the SQLite v4 single-actionable-draft rule. Until the repository contains an authoritative resolution, `REC-P0-054` stays SPEC UNRESOLVED.
+Structural-only validation r27 records 210 active reconstructed rows (P0/P1/P2 144/65/1): 195 PASS, 0 FAIL, 8 BLOCKED, 2 NOT TESTED and 5 SPEC UNRESOLVED. Historical IDs mapped=0 and `product_behavior_tested=false`. Artifact `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-risk-matrix-validated-20261024-r27-pc-issue-047.json` SHA-256 `DD35CF840505A206C3D749254565D4D59A2E4B2968BC4B8AE743905DE3A617B9`; ledger SHA-256 `E6B8A6B8CAB574B0147B80B7537C189851A5D9FE058AF55B5B26C778891F5A4F`. These are structural counts, not product test results; the overall freeze remains **HOLD**.

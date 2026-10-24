@@ -1,7 +1,11 @@
 # PowerCal editing/storage contract — SQLite v4
 
 - Each `event_seq` has one current formal object and at most one actionable draft (`PENDING`,
-  `CONFLICT`, or `INVALID`). A partial unique index enforces this invariant.
+  `CONFLICT`, or `INVALID`). A partial unique index enforces this invariant. Per owner clarification
+  on 2026-10-24, saving a later human or AI proposal for the same event overwrites the existing
+  actionable row in place: preserve `draft_id` and `queue_order`, increment `draft_version` only
+  when content/operation changes, and let the last successfully persisted save win. This changes
+  only the draft; the formal object still requires explicit confirmation and commit.
 - Upgrade/legacy-backup normalization deterministically retains the greatest tuple
   `(updated_ms, draft_version, queue_order, draft_id)`. Other rows remain byte-for-byte payload
   history with their identity/order/version/timestamps and become `DISCARDED`; their prior status

@@ -1,5 +1,12 @@
 # Core freeze progress
 
+## PC-ISSUE-047 同一事件人类/AI 草稿最后保存覆盖（REC-P0-054，窄化 PASS）
+
+- 用户明确选择同一事件只保留一张可操作草稿，后保存的提案覆盖现有草稿，不新增第二张；已将该决定同步到 `PRODUCT_BASELINE_G1-G11.md` 和 `CORE_EDITING_V4.md`。正式事件仍须单独确认/提交；人类编辑租约期间 AI 写入仍被拒绝。
+- 新增 `PowerStoreTest.humanAndAiProposalsForSameEventOverwriteInLastSaveOrderAcrossRestart`：人类→AI→人类连续保存复用同一 draftId/queueOrder，内容变化时 draftVersion 递增，只留一张可操作草稿；正式记录未变化；SQLite 重开后最终内容与身份不变。定向成功；完整离线 Gradle 492/492 JVM、66 suites、0 failures/errors/skips，源码边界与 Debug/AndroidTest APK 组装通过，Lint 0 errors/58 warnings。
+- 定向日志 SHA-256 `46E826C46EA6EC4601B33C89A77461984667B55AFCF67A3DADFE0358EB3D3246`；PowerStoreTest XML SHA-256 `78ED5765B288C7A9E22571125B19F4443C118C29D4E7D8016562A4D68279F681`；完整 Gradle 日志 SHA-256 `79A07BC8CC8079BBC10ACC08E2AD9F04F3DB7FD9704FB9E4387CB1A1C30C047A`。测试提交 `f1fe242fab94b3b27e0dfd03931381f708312318` 已推送。没有生产代码、UI、provider 或设备行为签核。
+- 独立结案报告：`docs/issues/PC-ISSUE-047-human-ai-draft-cardinality-spec-conflict.md`。台账 r27：195 PASS / 0 FAIL / 8 BLOCKED / 2 NOT TESTED / 5 SPEC UNRESOLVED，P0/P1/P2=144/65/1；artifact SHA-256 `DD35CF840505A206C3D749254565D4D59A2E4B2968BC4B8AE743905DE3A617B9`，ledger SHA-256 `E6B8A6B8CAB574B0147B80B7537C189851A5D9FE058AF55B5B26C778891F5A4F`。`product_behavior_tested=false`，整体仍 HOLD。
+
 ## PC-ISSUE-160 编辑草稿时切换深浅主题（REC-P1-073，窄化 PASS）
 
 - 新增隔离 Android instrumentation：真实 `NativeDraftDeckDialog` 中把标题改为 `THEME_SWITCH_DIRTY_TITLE` 并聚焦输入框，再通过 `PowerCalTheme` 浅→深切换。API 35 `emulator-5556` 定向 1/1 PASS：Material background 从 `Color(0.9529412, 0.9607843, 0.98039216)` 变为 `Color(0.039215688, 0.050980393, 0.07450981)`，draftId、编辑内容和焦点保持。用随机临时数据库，未改生产代码、系统夜间模式或默认业务数据。

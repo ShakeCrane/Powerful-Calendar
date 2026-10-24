@@ -4,6 +4,14 @@ Date: 2026-10-24
 
 Verdict: **HOLD**
 
+## Latest follow-up: PC-ISSUE-047 — same-event draft overwrite
+
+The owner resolved the human/AI draft-cardinality conflict: at most one actionable draft exists for an event; each later successfully persisted proposal overwrites that draft in place, preserving its ID and queue slot. `PowerStoreTest.humanAndAiProposalsForSameEventOverwriteInLastSaveOrderAcrossRestart` passed; human → AI → human saves retained one draft, the final contents survived SQLite reopen, and the formal event stayed unchanged. This is a narrow storage test, without UI, live provider, or device coverage. See [PC-ISSUE-047](issues/PC-ISSUE-047-human-ai-draft-cardinality-spec-conflict.md).
+
+Test-only commit `f1fe242fab94b3b27e0dfd03931381f708312318` is pushed. Full offline Gradle passed 492/492 JVM tests across 66 suites, zero failures/errors/skips; source boundary, Debug/AndroidTest APK assembly passed; lint 0 errors / 58 warnings. Full log SHA-256 `79A07BC8CC8079BBC10ACC08E2AD9F04F3DB7FD9704FB9E4387CB1A1C30C047A`; Debug APK SHA-256 `EE7E4850A147AC3B3F21326DCB209B0967F14DE6990D56EE05A2976FEB252BCD`.
+
+Structural-only ledger r27 records 210 active reconstructed rows (P0/P1/P2 144/65/1), with 195 PASS / 0 FAIL / 8 BLOCKED / 2 NOT TESTED / 5 SPEC UNRESOLVED; historical IDs mapped=0 and `product_behavior_tested=false`. Artifact SHA-256 `DD35CF840505A206C3D749254565D4D59A2E4B2968BC4B8AE743905DE3A617B9`; ledger SHA-256 `E6B8A6B8CAB574B0147B80B7537C189851A5D9FE058AF55B5B26C778891F5A4F`. Overall verdict remains **HOLD**.
+
 ## Latest follow-up: PC-ISSUE-160
 
 PC-ISSUE-160 signs `REC-P1-073` narrowly for a same-composition light-to-dark `PowerCalTheme` transition during native draft editing on API 35. The background palette changed, while the same draft ID, edited title, and focused input remained. The isolated AndroidJUnitRunner test passed 1/1 with a temporary database; system `uiMode` and full `MainActivity` configuration dispatch were not changed or claimed. See [PC-ISSUE-160](issues/PC-ISSUE-160-draft-theme-switch.md).
