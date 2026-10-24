@@ -1,4 +1,10 @@
 # Core freeze progress
+## PC-ISSUE-126 — AI commit authorization gate (REC-P1-054 narrowed PASS)
+
+- Reproduced that `PowerStore.commit(actor="ai")` without an `AiSession` could proceed to formal commit. The core store now denies AI actors without a scoped session. The regression confirms no object/history/intent write and a pending draft; existing valid-session and replay tests remain green.
+- Pre-fix targeted failure; post-fix targeted 1/1 PASS; full Debug boundary/test/APK/lint passed 466/466 across 57 suites, zero failures/errors/skips, lint 0 errors / 58 warnings. Code/test commit `fc0e69ac90d25878c660d046a98818629d6c1d39` is pushed.
+- Report: `docs/issues/PC-ISSUE-126-ai-commit-requires-authorization.md`. This signs only the PowerStore gate; user-confirmation UI and live AI remain untested. Ledger: 158 PASS / 0 FAIL / 9 BLOCKED / 35 NOT TESTED / 7 SPEC UNRESOLVED. Structural-only artifact `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-126.json`: SHA-256 `3DC7D2B92820502212C3BF4CCEAECFF56D67BC01EF16FAE1773F0668AB51A75B`; ledger SHA-256 `A11035534F763B61330940D8970B45AABA0D2CAA3AAD1F56804C109FB6006338`. Overall freeze remains HOLD.
+
 ## PC-ISSUE-125 — AI proposal dependent-write rollback (REC-P1-059 narrowed PASS)
 
 - Added assertions that an injected schedule-intent write failure leaves no formal event, commit history, or desired intent and preserves the pending draft after SQLite reopen. Other independent batch items still commit; a new authorization retries the failed item. No production source changed.
