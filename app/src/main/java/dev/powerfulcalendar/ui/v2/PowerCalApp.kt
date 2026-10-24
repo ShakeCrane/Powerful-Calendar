@@ -1889,34 +1889,19 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
             confirmButton = { TextButton(onClick = { monthInspection = null }) { Text("关闭") } })
     }
     confirmBatch?.let { review ->
-        val mode = review.mode
-        val label = if (mode == AiBatchRunner.Mode.PUBLISH) "发布" else "丢弃"
-        SkinAlertDialog(
-            onDismissRequest = { confirmBatch = null }, title = { Text("一次性授权 AI $label") },
-            text = {
-                Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("范围固定为下列 ${review.cards.size} 张草稿。卡组在处理期间只读，时间轴可以查看。你可随时停止，已完成结果会保留。")
-                    Text(if (mode == AiBatchRunner.Mode.DISCARD) "丢弃只是不执行这些提案，不会删除正式事件。" else "发布会执行每张提案的完整操作；冲突会保留给你确认。", style = MaterialTheme.typography.bodyMedium)
-                    review.cards.groupingBy { it.operation }.eachCount().forEach { (operation, count) ->
-                        Text("${operation.label}提案 · $count 张", style = MaterialTheme.typography.labelLarge)
-                    }
-                    if (mode == AiBatchRunner.Mode.PUBLISH && review.cards.any { it.operation == DraftOperation.DELETE }) {
-                        Text("包含正式删除操作：事件序号会退役，当前没有发布撤销功能。", color = MaterialTheme.colorScheme.error)
-                    }
-                    HorizontalDivider()
-                    review.cards.forEachIndexed { index, card ->
-                        Text("${index + 1}. ${TemporalRecord.formatSeq(card.eventSeq)} · ${card.operation.label} · ${card.form.title.ifBlank { "未命名" }}", style = MaterialTheme.typography.bodyMedium)
-                    }
-                }
-            },
-            confirmButton = { TextButton(enabled = review.cards.isNotEmpty() && !aiLocked, onClick = {
+        AiBatchAuthorizationReview(
+            mode = review.mode,
+            cards = review.cards,
+            busy = aiLocked,
+            onDismiss = { confirmBatch = null },
+            onAuthorize = { reviewedCards ->
                 confirmBatch = null
                 PowerCalStores.appScope.launch {
                     // Authorize the exact reviewed snapshots in ONE transaction: the domain layer
                     // re-checks every draftVersion, so a change after this dialog cannot slip in.
-                    val reviewed = review.cards.associate { it.draftId to it.draftVersion }
+                    val reviewed = reviewedCards.associate { it.draftId to it.draftVersion }
                     val session = runCatching {
-                        store.beginAiBatch(reviewed, review.cards.map { it.operation }.toSet())
+                        store.beginAiBatch(reviewed, reviewedCards.map { it.operation }.toSet())
                     }.getOrElse {
                         withContext(Dispatchers.Main) {
                             reload()
@@ -1925,7 +1910,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                         return@launch
                     }
                     withContext(Dispatchers.Main) { reload() }
-                    val report = AiBatchRunner(store).run(session, mode)
+                    val report = AiBatchRunner(store).run(session, review.mode)
                     controller.refresh()
                     withContext(Dispatchers.Main) {
                         reload()
@@ -1935,8 +1920,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                     ReminderScheduler.reconcile(appContext, store)
                     withContext(Dispatchers.Main) { reload() }
                 }
-            }) { Text("授权并$label ${review.cards.size} 张") } },
-            dismissButton = { TextButton(onClick = { confirmBatch = null }) { Text("取消") } }
+            }
         )
     }
 
