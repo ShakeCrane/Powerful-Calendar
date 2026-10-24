@@ -5,11 +5,13 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.Color
 import androidx.test.core.app.ApplicationProvider
 import dev.powerfulcalendar.core.*
 import org.junit.*
@@ -236,6 +238,56 @@ class GlassComposeTest {
         } }
         ui.runOnIdle { println("Light glass text contrast: $ratios"); assertTrue("Light: $ratios", ratios.all { it >= 4.5f }); dark.value = true }
         ui.runOnIdle { println("Dark glass text contrast: $ratios"); assertTrue("Dark: $ratios", ratios.all { it >= 4.5f }) }
+    }
+
+    @Test fun disabledGlassKeepsOpaqueNativeSurfaceReadableInLightAndDarkThemes() {
+        val dark = mutableStateOf(false)
+        data class FallbackColors(
+            val blur: Boolean,
+            val surface: Color,
+            val onSurface: Color,
+            val fill: Color,
+            val highlight: Color
+        )
+        var observed: FallbackColors? = null
+
+        ui.setContent {
+            PowerCalTheme(darkTheme = dark.value, effects = GlassEffects(blur = false)) {
+                val scheme = MaterialTheme.colorScheme
+                val palette = LocalAxisPalette.current
+                observed = FallbackColors(
+                    blur = LocalGlassEffects.current.blur,
+                    surface = scheme.surface,
+                    onSurface = scheme.onSurface,
+                    fill = palette.glassFill,
+                    highlight = palette.glassHighlight
+                )
+                GlassPanel(Modifier.testTag("native-glass-fallback")) {
+                    androidx.compose.material3.Text("可读的原生表面")
+                }
+            }
+        }
+
+        fun assertReadableFallback() {
+            val actual = requireNotNull(observed)
+            assertFalse(actual.blur)
+            assertEquals(actual.surface, actual.fill)
+            assertEquals(Color.Transparent, actual.highlight)
+            val foreground = actual.onSurface.luminance()
+            val background = actual.surface.luminance()
+            val contrast = (maxOf(foreground, background) + 0.05f) /
+                (minOf(foreground, background) + 0.05f)
+            assertTrue("native fallback contrast=$contrast", contrast >= 4.5f)
+            ui.onNodeWithText("可读的原生表面").assertIsDisplayed()
+            ui.onNodeWithTag("native-glass-fallback").assertIsDisplayed()
+        }
+
+        ui.runOnIdle {
+            assertReadableFallback()
+            dark.value = true
+        }
+        ui.waitForIdle()
+        ui.runOnIdle { assertReadableFallback() }
     }
 
     @Test fun reducedMotionSettingIsObservedWithoutRecreatingTheHost() {

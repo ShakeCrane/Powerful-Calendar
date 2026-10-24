@@ -4,6 +4,12 @@ Date: 2026-10-25
 
 Verdict: **HOLD**
 
+## Latest follow-up: PC-ISSUE-173 — glass-disabled renderer fallback (narrow PASS)
+
+`REC-P1-074` now passes for the explicit production theme branch when `GlassEffects.blur=false`: Robolectric API 35 Compose verifies both themes use the opaque Material surface, remove the glass highlight, retain displayed fallback content, and keep `onSurface` contrast at or above 4.5:1. `GlassComposeTest` passed 17/17. The current main worktree gate passed 543/543 JVM tests / 75 suites / 59 tasks and lint 0 errors / 56 warnings. A clean detached worktree containing the exact test source passed the complete 88-task gate: 542/542 JVM / 74 suites, Debug and AndroidTest APK assembly, lint 0 errors / 53 warnings. Debug / AndroidTest APK SHA-256: `517DFFFCCFECA6E4B6CBF5961B3CAAA8F2802B3B3B1DD107457180C268F61614` / `2EF06F141A6AEEA12F6272D9C8861D7D6EEC33A316D0F4734A221C90BF7BE0B2`.
+
+This is a narrow renderer result. Low-RAM system detection and actual emulator/physical/OEM rendering were not tested; no active AVD was touched. Structural ledger validation reports 218 rows / 217 active reconstructed: 205 PASS / 0 FAIL / 10 BLOCKED / 1 NOT TESTED / 1 SPEC UNRESOLVED / 1 RETIRED; P0/P1/P2 = 145/71/1; historical IDs mapped = 0. Ledger SHA-256 `50F1485604B0CD46F2046A984FCC6EF68F4FAAED8136FA76BACB469F890A093B`; validator artifact SHA-256 `581B7C51C19119FC6C04DE59EF391110E545E18BA7B946B0D523FAFF436DC71A`. Other open provider, specification, reminder, accessibility and physical-device gates keep the overall verdict **HOLD**. Details: `docs/issues/PC-ISSUE-173-glass-fallback-readability.md`.
+
 ## Latest follow-up: PC-ISSUE-166 — PowerCalApp controller integration (partial evidence)
 
 A new Robolectric API 35 Compose integration test drives the real `PowerCalApp` / `NativeAiChatScreen` through a loopback-only OpenAI-compatible stub. For a supplied SUGGESTED classification it renders the optional action, sends no structured `interpret` request, and leaves draft, formal-event, identity, sequence, queue-order, and commit counts unchanged. The test passed 1/1; related AI chat regressions passed 16/16. A clean detached-worktree full gate passed 541/541 JVM tests across 74 suites, 88/88 tasks, including Debug/AndroidTest APK assembly; lint had 0 errors / 53 warnings. Debug / AndroidTest APK SHA-256: `517DFFFCCFECA6E4B6CBF5961B3CAAA8F2802B3B3B1DD107457180C268F61614` / `2EF06F141A6AEEA12F6272D9C8861D7D6EEC33A316D0F4734A221C90BF7BE0B2`.

@@ -4,6 +4,10 @@ Date: 2026-10-24 | Severity: P1
 
 Status: **PARTIAL / HOLD — risk-based reconstructed matrix is active; open test, specification, provider, and device gates remain.**
 
+## Dated evidence update — 2026-10-25
+
+`REC-P1-074` is no longer wholly untested: PC-ISSUE-173 verifies the production renderer's explicit `blur=false` native fallback in Robolectric API 35 Compose for both themes, including opaque surface and >=4.5:1 text contrast. The ledger signs only this narrowed behavior; Android low-RAM detection and real emulator/physical/OEM rendering remain outside the result. Current status counts and evidence are in `docs/CORE_FREEZE_ACCEPTANCE_LEDGER.csv` and `docs/CORE_FREEZE_VERDICT.md`. Older “13 remaining NOT TESTED” statements below describe the earlier 2026-10-24 snapshot.
+
 PC-ISSUE-154 adds a Robolectric API 35 Compose subcase for `REC-P1-069`: at explicit `LocalDensity.fontScale=2.0` and 360×800dp, six timeline controls stayed inside the viewport and their actions worked, including the Activity item in the New menu. This is not Android's system font setting, a full-app/AVD run, or physical-device evidence; `REC-P1-069` remains **BLOCKED**. Evidence: `docs/issues/PC-ISSUE-154-font-scale-2x-controls.md`.
 
 PC-ISSUE-153 signs `REC-P1-003` narrowly for the API 35 native Timeline → Memo → Timeline route. After changing the camera from anchor `1792843200000` / 24h to `1792965924653` / 16h, opening Memo and returning preserved the exact anchor and zoom; AndroidJUnitRunner passed 1/1. Other routes, Activity/process recreation, and physical-device behavior are not inferred. Evidence: `docs/issues/PC-ISSUE-153-timeline-return-preserves-viewport.md`.
