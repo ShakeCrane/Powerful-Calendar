@@ -32,3 +32,13 @@ The original Activity export projected `TemporalRecord` to legacy `CalendarEvent
 ## Remaining acceptance gap
 
 The emulator has Google Calendar installed, but Android reported no activity for `ACTION_VIEW` with MIME type `text/calendar`; there was no separate calendar importer available to complete a real client import. No physical Android device was available in this run. Therefore PC-ISSUE-001 remains **PARTIAL / HOLD**, and the 209-case release gate is not signed off. Next acceptance needs import into a compatible external calendar with recurrence/timezone semantics checked, plus physical-device coverage when hardware is available.
+
+### External calendar handler availability recheck (2026-10-24)
+
+A read-only Android package-resolver query for `ACTION_VIEW` with MIME type `text/calendar` returned **No activities found** on both API 35 emulators `emulator-5554` and `emulator-5556`. This check did not launch an Activity, install an importer, or read/write app data. Evidence: `.local/android-test/reports/freeze-20261024/pc-issue-001-calendar-handler-check.json`, SHA-256 `AC76851C91A02993DF200805345D78FB698396FE4D90A2D8B0BD4B37BEFA4933`.
+
+The environment check confirms that an external import/re-export cannot be performed with the currently available emulator packages. It does not validate ICS consumer behavior; `REC-P1-081` remains **BLOCKED**, and PC-ISSUE-001 remains **PARTIAL / HOLD** pending a compatible external calendar and the user-owned physical-device checks.
+
+Structural ledger validation after this environment evidence: `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-001-handler-check-validated.json`, SHA-256 `AFC1222BB7D94941E00E9676501618E7473B95642832384AF657A9F2977A0A21`; ledger SHA-256 `15605E858B6F6FE9519270ADB2442E78664D8D6552E5F3FF2EB1FE5B2AFFA552`. It confirms 209 unique rows and unchanged counts: 164 PASS / 0 FAIL / 8 BLOCKED / 30 NOT TESTED / 7 SPEC UNRESOLVED. `product_behavior_tested=false`.
+
+An initial auxiliary validator artifact `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-001-handler-check.json` (SHA-256 `2BB59CEB9ADA53B8B555059E10788EA80AC9EA9A6711D931313731565445701E`) is preserved with `validation=FAIL`: that attempt incorrectly required evidence in every NOT TESTED row. The corrected validator applies the existing policy—required structural identifiers and evidence for PASS/BLOCKED—and passed. The ledger itself was not edited between attempts.

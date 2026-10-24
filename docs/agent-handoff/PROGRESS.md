@@ -1,4 +1,9 @@
 # Core freeze progress
+## PC-ISSUE-001 — external ICS handler availability
+
+- Read-only `ACTION_VIEW`/`text/calendar` package queries on API 35 emulators 5554 and 5556 both returned `No activities found`. No Activity was launched, no app was installed, and no application data was touched. Evidence JSON SHA-256 AC76851C91A02993DF200805345D78FB698396FE4D90A2D8B0BD4B37BEFA4933. Structural validation passed with 209 unique rows and unchanged counts; corrected artifact SHA-256 AFC1222BB7D94941E00E9676501618E7473B95642832384AF657A9F2977A0A21, ledger SHA-256 15605E858B6F6FE9519270ADB2442E78664D8D6552E5F3FF2EB1FE5B2AFFA552.
+- This confirms an environment block only; no external ICS import/re-export behavior was tested. `REC-P1-081` and PC-ISSUE-001 remain BLOCKED / PARTIAL; physical-device tests remain the user's scope.
+
 ## PC-ISSUE-002 — bounded free-provider retry readiness
 
 - Hardened the Android API 35 live probe so no paid/free provider is contacted unless the explicit instrumentation argument `powercalLiveProbe=deepseek|free` is supplied. The two accepted model IDs are fixed in test code; model override remains in memory, and the flow uses synthetic input plus a unique temporary database.
