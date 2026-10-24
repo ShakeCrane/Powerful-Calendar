@@ -261,6 +261,10 @@ Read-only `ACTION_VIEW` / `text/calendar` resolver queries found no matching act
 
 Read-only API 35 checks found no PowerCal package on emulator-5554. Emulator-5556 has the package, but its shared-preference filename listing does not contain `powercal-ai.xml`. No preference values or credentials were read; no app was launched, no settings were changed, and no model request was sent. Evidence `.local/android-test/reports/freeze-20261024/pc-issue-002-config-availability-check.json`, SHA-256 `824CF934453870ECA21A97D0BB3825801F70FA6918DDBD7D0FEE10F88F6CA797`. This is an environment check only; REC-P1-047 remains BLOCKED and PC-ISSUE-002 remains PARTIAL / HOLD.
 
+## PC-ISSUE-003 current-code backup/restore core rerun (2026-10-24)
+
+The isolated core suite passed 27/27: all 24 `BackupEnvelopeTest` cases plus three `PowerStoreTest` backup/recovery cases. No UI or online emulator app was used. Log SHA-256 `C6AFA52BB816008BDD3A0DBF7AEDC7B2705A4D0EC33494A2B401FFD6B570FE7B`; XML SHA-256 `9A97B489626CDA0AE616F666C4B256A3DBB50B0B5847322F8C0DAADA3374992D` / `EB3B885E3A977385C93EC8D054B7D3407E662BABE1D13FA8EF0A977D6C7A8EB3`. This confirms core restore invariants only; real picker/provider lifecycle and physical-device checks remain open. PC-ISSUE-003 remains PARTIAL / HOLD.
+
 ## PC-TECH-006 lint warning classification (2026-10-24)
 
 The latest lint XML contains 58 warnings and zero errors: platform/target 4, dependency update suggestions 6, Compose conventions 14, KTX suggestions 19, launcher/resources 13, and redundant SDK checks 2. No source, UI, dependency, manifest, or asset changes were made. The `targetSdk=35` and portrait-lock warnings flag an Android 16 compatibility risk; that platform behavior is not verified here and remains open. See `docs/issues/PC-TECH-006-lint-warning-risk-classification.md`; this classification does not change the HOLD verdict.

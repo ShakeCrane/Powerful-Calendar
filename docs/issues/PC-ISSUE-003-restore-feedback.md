@@ -31,3 +31,13 @@ Nonempty-backup restore refusal depended on parsing/localizing generic `IllegalA
 
 ## Limits
 The historical UI pass did not include an OS-enforced permission revocation. PC-ISSUE-132 now verifies that narrow boundary with a synthetic provider on an Android 15/API 35 emulator; it does not exercise DocumentsUI or a real document provider's lifecycle. No physical Android device was attached (`adb devices -l` listed emulators only). Data-bearing restore, schedule rebuild, and mid-transaction rollback are covered by JVM tests, while the real SAF successful restore used an empty Envelope. The existing `emulator-5554` was never cleared or restored over. Keep PC-ISSUE-003 **PARTIAL / HOLD** until real picker/provider lifecycle and physical-device acceptance are covered.
+
+## Current-code core restore regression rerun (2026-10-24)
+
+The backup/restore core suite was rerun on the current code baseline without opening UI or touching either online emulator: all 24 `BackupEnvelopeTest` cases and three selected `PowerStoreTest` backup/recovery cases passed (**27/27**, zero failures/errors/skips). Coverage includes payload tamper rejection before writes, restore refusal for nonempty targets, transaction rollback, native backup identity/order, desired-schedule rebuild, and identity high-water persistence.
+
+Command: `.\gradlew.bat :app:testDebugUnitTest --tests dev.powerfulcalendar.core.BackupEnvelopeTest --tests 'dev.powerfulcalendar.core.PowerStoreTest.nativeBackupRestoresIdentityOrderAndNeverAnAiLock' --tests 'dev.powerfulcalendar.core.PowerStoreTest.aRestoredBackupRebuildsItsDesiredSchedule' --tests 'dev.powerfulcalendar.core.PowerStoreTest.identityHighWaterSurvivesBackup' --offline --rerun-tasks --console=plain`.
+
+Log SHA-256: `C6AFA52BB816008BDD3A0DBF7AEDC7B2705A4D0EC33494A2B401FFD6B570FE7B`. `BackupEnvelopeTest` XML SHA-256 `9A97B489626CDA0AE616F666C4B256A3DBB50B0B5847322F8C0DAADA3374992D`; selected `PowerStoreTest` XML SHA-256 `EB3B885E3A977385C93EC8D054B7D3407E662BABE1D13FA8EF0A977D6C7A8EB3`.
+
+This rerun confirms core behavior only. It does not close the real DocumentsUI/provider lifecycle or physical-device gaps; PC-ISSUE-003 remains **PARTIAL / HOLD**.

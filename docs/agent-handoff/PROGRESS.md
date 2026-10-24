@@ -5,6 +5,11 @@
 - This confirms the live retest is blocked by unavailable app configuration; it does not test product behavior. REC-P1-047 remains BLOCKED and PC-ISSUE-002 remains PARTIAL / HOLD. Structural validation of the updated ledger passed: artifact SHA-256 BD2D976A66A48EF71C543DE0906D2257BCB4F066147BAD7BF61B07D7E18E3D7C; ledger SHA-256 D500FE6D936C71C9514D2FA30645438DC74F3318A6B89BBE373B62ABCE093921; counts remain 164/0/8/30/7.
 - Current-code local failure-path rerun passed 7/7: synthetic structured HTTP 429, free-model empty HTTP 200, and five completion-policy cases. No provider request was made; this does not replace REC-P1-047's blocked live free-provider requirement. Log SHA-256 84AEB6F1B874575ABB0979349EA9A459285D5A6B0F34ABC00A0ADCBB7A3A7759; test XML SHA-256 5422891B1A6C8451FED0314B39B4A26F4AECBB6A92C3ABBB817620E1F7DAE92A and 2165CDF68DA513B11BD0E66EA882AFBD7E51B33191B7410797AFCABCA124E5DE.
 
+## PC-ISSUE-003 — current-code backup/restore core rerun
+
+- `BackupEnvelopeTest` 24/24 plus three focused `PowerStoreTest` restore/schedule/high-water cases passed 27/27, zero failures/errors/skips. This is isolated JVM/Robolectric SQLite coverage; no UI, emulator app, or real business database was touched.
+- Log SHA-256 C6AFA52BB816008BDD3A0DBF7AEDC7B2705A4D0EC33494A2B401FFD6B570FE7B; XML SHA-256 9A97B489626CDA0AE616F666C4B256A3DBB50B0B5847322F8C0DAADA3374992D and EB3B885E3A977385C93EC8D054B7D3407E662BABE1D13FA8EF0A977D6C7A8EB3. Real DocumentsUI/provider lifecycle and physical-device coverage remain open; PC-ISSUE-003 stays PARTIAL / HOLD.
+
 ## PC-ISSUE-001 — external ICS handler availability
 
 - Read-only `ACTION_VIEW`/`text/calendar` package queries on API 35 emulators 5554 and 5556 both returned `No activities found`. No Activity was launched, no app was installed, and no application data was touched. Evidence JSON SHA-256 AC76851C91A02993DF200805345D78FB698396FE4D90A2D8B0BD4B37BEFA4933. Structural validation passed with 209 unique rows and unchanged counts; corrected artifact SHA-256 AFC1222BB7D94941E00E9676501618E7473B95642832384AF657A9F2977A0A21, ledger SHA-256 15605E858B6F6FE9519270ADB2442E78664D8D6552E5F3FF2EB1FE5B2AFFA552.

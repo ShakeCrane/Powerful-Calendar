@@ -955,3 +955,9 @@ Corrected structural-only validation after this row update: `.local/android-test
 On the current code baseline, targeted local-loopback tests for structured HTTP 429 and free-model empty HTTP 200 plus all five `AiCompletionPolicyTest` cases passed 7/7 with zero failures/errors/skips. They cover stage-specific failure, no proposal/raw reply, synthetic body/credential non-disclosure, one-shot empty-response handling, free-model output budget and paid-model retry restrictions. No external provider, emulator, UI, or business data was involved. This is local client behavior evidence only; REC-P1-047 remains BLOCKED.
 
 Log SHA-256 `84AEB6F1B874575ABB0979349EA9A459285D5A6B0F34ABC00A0ADCBB7A3A7759`; `AiChatClientTest` XML SHA-256 `5422891B1A6C8451FED0314B39B4A26F4AECBB6A92C3ABBB817620E1F7DAE92A`; `AiCompletionPolicyTest` XML SHA-256 `2165CDF68DA513B11BD0E66EA882AFBD7E51B33191B7410797AFCABCA124E5DE`.
+
+### PC-ISSUE-003 — backup/restore core rerun (2026-10-24)
+
+On the current code baseline, all 24 `BackupEnvelopeTest` cases and three selected `PowerStoreTest` backup/recovery cases passed 27/27, zero failures/errors/skips. This is isolated JVM/Robolectric SQLite evidence; it does not cover the OS picker, real document provider, or physical devices. PC-ISSUE-003 remains PARTIAL / HOLD.
+
+Log SHA-256 `C6AFA52BB816008BDD3A0DBF7AEDC7B2705A4D0EC33494A2B401FFD6B570FE7B`; JUnit XML SHA-256 `9A97B489626CDA0AE616F666C4B256A3DBB50B0B5847322F8C0DAADA3374992D` / `EB3B885E3A977385C93EC8D054B7D3407E662BABE1D13FA8EF0A977D6C7A8EB3`.
