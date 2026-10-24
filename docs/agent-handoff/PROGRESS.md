@@ -1,5 +1,12 @@
 # Core freeze progress
 
+## PC-ISSUE-152 小屏事件点击命中与标题触控回归（REC-P1-067 AVD 子集 PASS；完整项 BLOCKED）
+
+- 新增 API 35 Android instrumentation：320×640dp 竖屏视口内，标题中心和事件语义命中区中心两处自动化点击都把同一事件交给打开回调；完整标题在 Accessibility 语义中保留。真实一分钟事件几何 1px，独立点击面 3px，标题矩形 `[486,977,676,1040]`。这是测试结果，没有生产代码变更。
+- 定向 AVD 测试 1/1 PASS。设备原始 1080×2400px 分辨率已恢复，焦点回到 Launcher。截图 SHA-256 `A9D24E703A29FF295F825ECB1FDAD5250D08841A50C4CC293CF21D47A245C480`；矩形/设备记录 SHA-256 `62A70B9A311FF7CA58791F202669252148C4D13822C69525ED1DFBB041B49E2B`；定向日志 SHA-256 `130AB0E1A495C5AF2EB15052134CCCBFD0B60C086AEE275F062AE261B8E8E1F2`。
+- 完整离线 Gradle 490/490 JVM、65 suites、0 failures/errors/skips；source boundary、Debug/AndroidTest APK 组装通过；Lint 0 errors / 58 warnings。完整日志 SHA-256 `3D02559A095242A68532ED852DF3E7B5ECC5BAC36F70BEC1F1610474B5EC2057`。代码/测试提交 `6cd002f6fdbd275036d2ddb1e8ea2b54543cee2c` 已推送。
+- `REC-P1-067` 仍 BLOCKED：自动化结果不代表真实手指触控舒适度、实体设备/OEM 或 TalkBack，用户负责实体设备测试。r18 仍为 185 PASS / 0 FAIL / 8 BLOCKED / 11 NOT TESTED / 6 SPEC UNRESOLVED，P0/P1/P2=144/65/1；artifact SHA-256 `13A7EEED004852E594EB228F00C2745EF4B87A7A9DFAA41BC1705885B7F096B7`，ledger SHA-256 `B3E46A12B1AB01F33659B0AF0160539840FD6160253D673F3E046CE0770C1832`。整体保持 HOLD。独立报告：`docs/issues/PC-ISSUE-152-small-screen-event-hit-target.md`。
+
 ## PC-ISSUE-151 强制横屏标题折叠与子像素事件点击（REC-P1-084 窄化 PASS）
 
 - 修复真实一分钟高度取整为 0px 时整个事件 Surface 同时失去点击区域的问题：透明交互面至少 1dp；内层绘制几何仍严格按真实时长，不扩高事件。新增 Robolectric Compose 与 API 35 Android instrumentation 回归。

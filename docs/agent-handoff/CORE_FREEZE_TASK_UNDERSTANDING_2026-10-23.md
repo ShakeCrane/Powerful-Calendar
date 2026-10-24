@@ -1,5 +1,13 @@
 # PowerCal 核心基线冻结：任务理解清单
 
+## 最新执行记录：PC-ISSUE-152（2026-10-24）
+
+- API 35 `emulator-5556`，420dpi，使用 840×1680px 临时视口（320×640dp）验证一分钟 Activity。可见标题中心与事件点击语义节点中心的 Android 自动化触摸都把含完整标题的同一事件交给 `onOpenEvent`；Accessibility `ContentDescription` 保留完整标题。
+- 屏幕实测矩形：事件点击语义面 `[473,973,694,976]`（3px 高），真实事件视觉几何 `[473,973,694,974]`（1px 高），标题 `[486,977,676,1040]`。定向 1/1 PASS；截图 SHA-256 `A9D24E703A29FF295F825ECB1FDAD5250D08841A50C4CC293CF21D47A245C480`，几何/恢复记录 SHA-256 `62A70B9A311FF7CA58791F202669252148C4D13822C69525ED1DFBB041B49E2B`。
+- 没有发现需修复的生产代码问题；新增的只是 instrumentation 测试。自动化触摸不等于手指舒适度或真实设备确认，也未验证 TalkBack、OEM 和详情界面最终呈现。因此 `REC-P1-067` 保持 BLOCKED，实体设备由用户测试。
+- 完整离线 Gradle 490/490 JVM、65 suites、0 failures/errors/skips；源码边界、Debug/AndroidTest APK、Lint 均通过，0 lint errors / 58 warnings。完整日志 SHA-256 `3D02559A095242A68532ED852DF3E7B5ECC5BAC36F70BEC1F1610474B5EC2057`；测试提交 `6cd002f6fdbd275036d2ddb1e8ea2b54543cee2c` 已推送；独立报告 `docs/issues/PC-ISSUE-152-small-screen-event-hit-target.md`。
+- 台账结构校验 r18：210 active，185 PASS / 0 FAIL / 8 BLOCKED / 11 NOT TESTED / 6 SPEC UNRESOLVED；P0/P1/P2 = 144/65/1。artifact SHA-256 `13A7EEED004852E594EB228F00C2745EF4B87A7A9DFAA41BC1705885B7F096B7`；ledger SHA-256 `B3E46A12B1AB01F33659B0AF0160539840FD6160253D673F3E046CE0770C1832`。历史 ID 映射为 0，结构报告不测试产品行为，整体仍 HOLD。
+
 ## 最新执行记录：PC-ISSUE-151（2026-10-24）
 
 - 横屏兼容补测发现一分钟 Activity 在 API 35 / 800×360dp 真实几何为 0px 时，整个 Surface 也变成 0px，无法点选。修复把透明交互面下限设为 1dp，将事件填充/边框/色条/时间标签留在严格等于 `cardHeight` 的内层视觉框；时间几何不扩张。

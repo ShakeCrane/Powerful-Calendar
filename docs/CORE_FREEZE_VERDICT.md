@@ -4,6 +4,14 @@ Date: 2026-10-24
 
 Verdict: **HOLD**
 
+## Latest follow-up: PC-ISSUE-152
+
+PC-ISSUE-152 adds API 35 AVD automation for reconstructed `REC-P1-067` at 320×640dp. At the 420dpi viewport, the one-minute event visual geometry measured 1px high, its semantics hit bounds 3px, and the rendered title rectangle `[486,977,676,1040]`. Taps at both title center and event-node center delivered the complete event to the open callback; accessibility semantics retained the full title. The focused AndroidJUnitRunner passed 1/1. This verifies the automated Compose path only; physical finger comfort, TalkBack, OEM behavior, and final detail-screen rendering remain untested, so `REC-P1-067` stays BLOCKED.
+
+No production code changed. Test-only commit `6cd002f6fdbd275036d2ddb1e8ea2b54543cee2c` is pushed. Full offline Gradle passed 490/490 JVM tests across 65 suites, zero failures/errors/skips; source boundary, Debug and AndroidTest APK assembly passed; lint reported 0 errors / 58 warnings. The count includes 489 tracked tests and one test from the protected pre-existing untracked `DraftDeckFeedbackTest.kt`. Screenshot SHA-256 `A9D24E703A29FF295F825ECB1FDAD5250D08841A50C4CC293CF21D47A245C480`; geometry record SHA-256 `62A70B9A311FF7CA58791F202669252148C4D13822C69525ED1DFBB041B49E2B`; full Gradle log SHA-256 `3D02559A095242A68532ED852DF3E7B5ECC5BAC36F70BEC1F1610474B5EC2057`.
+
+Structural-only ledger r18 remains 210 active reconstructed rows (P0/P1/P2 144/65/1), with 185 PASS / 0 FAIL / 8 BLOCKED / 11 NOT TESTED / 6 SPEC UNRESOLVED; historical IDs mapped=0 and `product_behavior_tested=false`. Artifact SHA-256 `13A7EEED004852E594EB228F00C2745EF4B87A7A9DFAA41BC1705885B7F096B7`; ledger SHA-256 `B3E46A12B1AB01F33659B0AF0160539840FD6160253D673F3E046CE0770C1832`. Overall verdict remains **HOLD**.
+
 ## Latest follow-up: PC-ISSUE-151
 
 PC-ISSUE-151 adds forced-landscape API 35 AVD instrumentation and Robolectric coverage for greedy title folding and sub-pixel event hit targets. A/C remain visible leads, B/D hide, the hidden B remains clickable, and one-minute visual event geometry remains 0px while its independent hit surface measures 3px. The AVD screenshot and measured title rectangles are recorded in `docs/issues/PC-ISSUE-151-forced-landscape-title-folding.md`. Full offline Gradle passed 490/490 JVM tests across 65 suites, 0 failures/errors/skips, and lint 0 errors / 58 warnings; one test is from the protected untracked `DraftDeckFeedbackTest.kt`. The targeted API 35 instrumentation passed 1/1. Physical-device/OEM behavior remains unverified.
