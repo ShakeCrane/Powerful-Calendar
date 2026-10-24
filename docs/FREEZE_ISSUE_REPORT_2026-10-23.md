@@ -228,9 +228,9 @@ Issue 004 修复代码基线：`16e00d55435c5029e07784ec5d945dfd7fb37ac5`
 ### PC-QA-GATE-001 · P1 / PARTIAL / HOLD · 核心合同风险验收矩阵（2026-10-24 当前签核）
 
 - 原始 209 项表无法提供；按用户明确指示，不再为其暂停或反复追索。以 `CORE_CONTRACT_FREEZE_2026-10-21.md`、已有验收文档、测试、历史 Issue 和实际产品行为重建当前矩阵。所有重建项均标 `RECONSTRUCTED` / `UNMAPPED`；不强凑数量、不伪称历史映射，优先级由当前风险决定。
-- 当前活动候选 209 项（该数量为移除伪历史占位、退役已接受淡灰边缘项并新增 PC-ISSUE-135/136/137/138/139 后的偶然结果，不是目标），P0=144、P1=64、P2=1；状态 170 PASS / 0 FAIL / 8 BLOCKED / 25 NOT TESTED / 6 SPEC UNRESOLVED，另有 1 条 `RETIRED / OUT_OF_SCOPE`。
+- 当前活动候选 209 项（该数量为移除伪历史占位、退役已接受淡灰边缘项并新增 PC-ISSUE-135/136/137/138/139/140 后的偶然结果，不是目标），P0=144、P1=64、P2=1；状态 171 PASS / 0 FAIL / 8 BLOCKED / 24 NOT TESTED / 6 SPEC UNRESOLVED，另有 1 条 `RETIRED / OUT_OF_SCOPE`。
 - `REC-P1-013` 淡灰横向边缘已由用户确认接受，留存旧证据但不再作为 GO 条件。贪心标题折叠仍按独立 P1 `REC-P1-021`–`030` 签核；蓝色当前时间线覆盖中轴符合用户确认的设计。
-- 原始 209 项 ID 映射属于文档溯源缺口，需如实披露，但不阻塞开发或取代核心合同冻结标准。结构校验产物 `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-risk-matrix-validated-20261024-r4.json` SHA-256 `141863E5105120B182AAA9957FC07DE0CFCD59E8C41ACD385E3239A05145943A`，台账 SHA-256 `330001DC1888CF0B62861A91C16A068825163A9492AB8ACB71FCBF11B99348D4`；仅检查结构，`product_behavior_tested=false`。PC-ISSUE-138 将 `REC-P1-034/035/036`（当前风险 P0）窄化签核为核心待办投影 PASS；PC-ISSUE-139 将 `REC-P1-037` 窄化签核为重开后 oldest-first 控制器状态 PASS，定向 1/1、完整 Gradle 471/471。该签核不覆盖 Draft Deck 呈现、搜索过滤或设备行为。PC-ISSUE-137 的歧义 AI 目标核心边界亦已窄化签核；各自细节见独立报告。正式冻结继续 **HOLD**，直到测试与外部/设备门槛闭环。
+- 原始 209 项 ID 映射属于文档溯源缺口，需如实披露，但不阻塞开发或取代核心合同冻结标准。结构校验产物 `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-risk-matrix-validated-20261024-r5.json` SHA-256 `AC868E7EC13DEA880704B14AC4C6AE91BE5BE1FA4DDA62DC7F432784136451F8`，台账 SHA-256 `7CA99D6D35FA8C5D18927DEF64D9014E81435998F9EEC9C5BD5CBC5DDDAFA9FD`；仅检查结构，`product_behavior_tested=false`。PC-ISSUE-140 将 `REC-P1-004` 窄化签核为跨午夜纯坐标几何连续 PASS，定向 1/1、完整 Gradle 472/472；实际滚动及日期/DST 标签未测。PC-ISSUE-138/139 的核心边界均见独立报告。正式冻结继续 **HOLD**，直到测试与外部/设备门槛闭环。
 
 ### PC-QA-GATE-001 · 历史快照（此前按原始 209 项映射追踪；已被上方当前政策取代）
 - 历史规划明确 209 核心验收项（P0 126，P1 82，另 1 项优先级待核）。
