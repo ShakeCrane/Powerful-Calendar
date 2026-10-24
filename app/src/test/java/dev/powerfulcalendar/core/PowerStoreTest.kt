@@ -1095,6 +1095,45 @@ class PowerStoreTest {
     }
 
     @Test
+    fun humanAndAiProposalsForSameEventOverwriteInLastSaveOrderAcrossRestart() {
+        val formal = store.newDraft(activityForm("formal"))
+        assertTrue(commit(formal) is PowerStore.CommitOutcome.Committed)
+        val seq = formal.eventSeq
+        val form = DraftForm.from(store.get(seq)!!)
+
+        val human = store.newDraft(
+            form.copy(title = "human first"), seq, DraftOperation.REPLACE, actor = "user"
+        )
+        val ai = store.newDraft(
+            form.copy(title = "AI second"), seq, DraftOperation.REPLACE, actor = "ai"
+        )
+        val humanLast = store.newDraft(
+            form.copy(title = "human last"), seq, DraftOperation.REPLACE, actor = "user"
+        )
+
+        assertEquals(human.draftId, ai.draftId)
+        assertEquals(human.draftId, humanLast.draftId)
+        assertEquals(human.queueOrder, ai.queueOrder)
+        assertEquals(human.queueOrder, humanLast.queueOrder)
+        assertEquals(human.draftVersion + 1, ai.draftVersion)
+        assertEquals(ai.draftVersion + 1, humanLast.draftVersion)
+        assertEquals(1, store.pendingDraftsFor(seq).count { it.isActionable })
+        assertEquals("human last", store.draft(human.draftId)!!.form.title)
+        assertEquals("formal", store.get(seq)!!.title)
+
+        val database = store.databaseName
+        store.close()
+        store = PowerStore(context, database)
+
+        val reopened = store.pendingDraftsFor(seq).single { it.isActionable }
+        assertEquals(human.draftId, reopened.draftId)
+        assertEquals(human.queueOrder, reopened.queueOrder)
+        assertEquals(humanLast.draftVersion, reopened.draftVersion)
+        assertEquals("human last", reopened.form.title)
+        assertEquals("formal", store.get(seq)!!.title)
+    }
+
+    @Test
     fun queueOrderIsIndependentOfEventNumber() {
         val a = store.newDraft(activityForm("A"))
         commit(a)
