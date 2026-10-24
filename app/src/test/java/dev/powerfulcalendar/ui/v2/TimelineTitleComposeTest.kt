@@ -242,6 +242,47 @@ class TimelineTitleComposeTest {
     }
 
     @Test
+    fun tapOnVisibleTitleCanvasOpensItsUnderlyingEvent() {
+        val record = TemporalRecord(
+            eventSeq = 300,
+            revision = 1,
+            kind = TemporalKind.ACTIVITY,
+            title = "Tap_under_visible_title",
+            startMillis = LocalDate.of(2026, 10, 20).atTime(9, 0).atZone(zone)
+                .toInstant().toEpochMilli(),
+            endMillis = LocalDate.of(2026, 10, 20).atTime(10, 0).atZone(zone)
+                .toInstant().toEpochMilli(),
+            zoneId = zone.id
+        )
+        var opened: TemporalRecord? = null
+        ui.setContent {
+            PowerCalTheme {
+                TimelineScreen(
+                    records = listOf(record),
+                    camera = TimelineCoordinate.Camera(noon, 24.0),
+                    nowMillis = noon,
+                    zone = zone,
+                    pendingCount = 0,
+                    aiLocked = false,
+                    onCameraChange = {},
+                    onOpenEvent = { opened = it },
+                    onMoveEvent = { _, _ -> },
+                    onCreate = { _, _ -> },
+                    onToday = {},
+                    onOpenDeck = {},
+                    onOpenTools = {}
+                )
+            }
+        }
+
+        val visibleTitle = ui.onNodeWithTag(titleTag(record))
+        visibleTitle.assertExists()
+        visibleTitle.performTouchInput { click(center) }
+        ui.waitForIdle()
+        ui.runOnIdle { assertEquals(record.title, opened?.title) }
+    }
+
+    @Test
     fun titleCanvasDoesNotInterceptLongPressDragOnItsEvent() {
         val record = TemporalRecord(
             eventSeq = 301,
