@@ -1,5 +1,13 @@
 # Core freeze progress
 
+## PC-ISSUE-105 提醒宽限期规格签核（REC-P0-118，窄化 PASS）
+
+- 用户确认迟到提醒宽限期为 **10 分钟，含恰好 10 分钟边界**；超过边界记录 `MISSED` 且不补响。合同和产品基线已同步；“同时响铃”仍是独立未决规格。接收器与恢复调度器共用 `AlarmContract.isOutsideGraceWindow`。
+- JVM 边界测试 1/1、API 34 Robolectric 接收器 8/8、恢复调度 17/17；定向共 26/26 PASS。API 35 `emulator-5554` AndroidJUnitRunner 1/1 PASS：直接调用接收器时 9 分钟迟到为 `FIRED` 且有通知，11 分钟为 `MISSED` 且无通知。它没有验证 OS AlarmManager 投递或重启恢复。
+- 全量强制离线 Gradle 重跑：495/495 JVM tests、67 suites、0 failures/errors/skips；88 tasks executed；skin boundary、Debug/AndroidTest APK 组装通过；Lint 0 errors/58 warnings。完整日志 SHA-256 `73549B5364373678E78E6BCCFBCFCDB01CE24A8CFAE5CC341F751D98B62AAB33`；API 35 AVD 定向日志 SHA-256 `433EFEF15C892216E0E3E0906A6F00BCEE4899D8D1135B9C93F1849D00806147`；AVD XML `1985D24BD40866BC37218EC0C50B1E51F8929BA8B3F86281AE340AC2FA8133C1`；设备 logcat `ED77BB8BF935BF3EF2928369A1EB8E4304BA3AC794F7E9988C0014E78AF49F1E`。
+- Debug/AndroidTest APK SHA-256 分别为 `7A5476F972473030B7DF2AE0E2CA6F305A71BD2A6092CFDA02F9B3378F40A03B` / `28994F452DCA89D42E1AC3C07EAB3DBF005C73CA8283871D0AEE2C74F84CDD21`。生产修复 `b381846a73b1b25656b784989a2521c3917d0dad` 与 AVD 测试 `02f64925433b4ccb8a46a22a5c784c381e1f37b7` 均已推送。早期失败尝试如实记录于 `.local/android-test/reports/freeze-20261024/pc-issue-105-exploratory-attempts.md`，SHA-256 `8B1459F6C7553357D979F5B62B8C9E32983398D33E4A937B1BD79E6C4655240A`。
+- 结构台账 r30：211 rows、210 active；198 PASS / 0 FAIL / 8 BLOCKED / 2 NOT TESTED / 2 SPEC UNRESOLVED / 1 RETIRED；P0/P1/P2=144/65/1，历史映射 0，`product_behavior_tested=false`。artifact `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-risk-matrix-validated-20261024-r30-pc-issue-105.json` SHA-256 `E330D6B59F6C9E2D31369F564A141030628E4300078892EDE25C0143D2D637E9`；ledger SHA-256 `420927B4B3D86D662D867799D2CCDB6BA1977C206BC05F4BAB65F8EFE52B2D8E`。OS 闹钟实际投递、并发响铃规格和用户负责的实体/OEM 设备仍未签核，整体 HOLD。独立报告：`docs/issues/PC-ISSUE-105-missed-alarm-grace-window.md`。
+
 ## PC-ISSUE-163 重复事件 DST gap/fold 解析（REC-P0-074/075，窄化 PASS）
 
 - 用户确认：春季不存在的本地重复槽位跳过当天但仍消耗 count/index；秋季回拨的重复本地时刻使用第一次（较早 offset）。生产逻辑原先依赖 `LocalDateTime.atZone()`，把纽约 2026-03-08 02:30 错误顺延成可触发实例；现在把扫描边界和真实 occurrence instant 分开，gap 不产生活动/提醒实例且不推动后续日期，fold 显式取 `ZoneRules` 的首个 offset。
@@ -384,13 +392,13 @@
 - Full log `.local/android-test/reports/freeze-20261024/pc-issue-106-verified-gradle.log`, SHA-256 `B14E35666D4C5B2159CCAFEFE12C6244C803B864E23172A266DC736A02BBD15B`. Structural-only ledger validation `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-106.json`, SHA-256 `BA926DB3211EF7D46F5700D4228A9577B58C4A2A8C79BC848D434495D9F72965`; ledger SHA-256 `C7912597DC9DECBBB21D5A4FB50CB8EF5665E6FA91F7A05BBBC8240AE03B2C59`.
 - Freeze remains HOLD: 135 PASS / 0 FAIL / 9 BLOCKED / 58 NOT TESTED / 7 SPEC UNRESOLVED; P0 111/0/1/9/5; P1 24/0/8/49/1.
 
-## PC-ISSUE-105 — reminder grace-window and missed recovery core regression (REC-P0-118 remains SPEC UNRESOLVED)
+## PC-ISSUE-105 historical checkpoint — reminder grace-window branch tests (superseded by the owner sign-off above)
 
-- Added three Robolectric API 34 core tests: receiver delivery inside the current grace constant posts `FIRED`; a late receiver records `MISSED` without notification; reconciliation records an overdue durable `PENDING` intent as `MISSED` without re-arming it. Test-only; no production or UI change.
+- At this checkpoint, three Robolectric API 34 core tests covered receiver delivery inside the then-current grace constant, a late receiver, and overdue-intent reconciliation. Product duration was not yet owner-approved, so the row remained SPEC UNRESOLVED at that time.
 - Focused two-suite run passed 24/24. Standard offline Debug boundary/test/APK/lint command passed 459/459 across 57 suites, zero failures/errors/skips; lint 0 errors / 58 warnings. APK SHA-256 `138EC1363E4D74E6153CFFA61CEE4C0DF4D51416B3BD64C954FE642ED0FD4096`.
-- Test commit `2d89ffba5317eb9b0164682702868e5cf75c8fe4` is pushed. Independent report: `docs/issues/PC-ISSUE-105-missed-alarm-grace-window.md`. The current code constant is 10 minutes; the product-approved duration remains unspecified, so REC-P0-118 stays SPEC UNRESOLVED.
+- Historical test commit `2d89ffba5317eb9b0164682702868e5cf75c8fe4` is pushed. Current resolution and final status are recorded in the latest PC-ISSUE-105 entry at the top of this file and the independent Issue report.
 - Full log `.local/android-test/reports/freeze-20261024/pc-issue-105-verified-gradle.log`, SHA-256 `2289F28174AF65C694D74D3048788FB6A0190830782AC21AB97336B0FF6DD755`. `:app:check` separately stops at the existing Release keystore gate; see the report.
-- Freeze remains HOLD: 135 PASS / 0 FAIL / 9 BLOCKED / 58 NOT TESTED / 7 SPEC UNRESOLVED; P0 111/0/1/9/5; P1 24/0/8/49/1. Structural-only validation `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-105.json`, SHA-256 `9FB1049D3D268E0F08127E78D62D224261AA65547400B436AFF3706D9A4B3DC7`; ledger SHA-256 `93F9CE96FAC8E55041DE5E715BAC6CB09004DAABE834707FA1B45695BC9D045F`.
+- Historical checkpoint freeze counts were 135 PASS / 0 FAIL / 9 BLOCKED / 58 NOT TESTED / 7 SPEC UNRESOLVED; they were superseded by r29 in the latest entry above. The checkpoint's structural artifact and hashes remain in its previously committed report version.
 
 ## PC-ISSUE-104 — AI shared-context read-only projection (candidate remains NOT TESTED)
 

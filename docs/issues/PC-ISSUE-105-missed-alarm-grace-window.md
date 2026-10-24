@@ -1,33 +1,50 @@
 # PC-ISSUE-105 — 提醒宽限期与错过恢复分支
 
-日期：2026-10-24
+最后更新：2026-10-24
 
-候选：`REC-P0-118`（重建 P0；历史映射仍为 `UNMAPPED`）
+验收项：`REC-P0-118`（重建 P0；历史映射仍为 `UNMAPPED`）
 
-状态：**当前实现分支回归通过；宽限时长规格仍未签核；整体冻结 HOLD**
+状态：**PASS（窄化到 JVM/Robolectric 与 API 35 AVD 的接收器分支）；核心冻结仍 HOLD**
 
-## 检查范围与结果
+## 已签核规格
 
-本 Issue 补齐提醒接收器和恢复调度器的核心回归，不涉及 UI。新增测试覆盖：
+用户确认迟到提醒宽限期为 **10 分钟，含恰好 10 分钟的边界**。在此范围内允许触发；超过 10 分钟时记录 `MISSED`，不补响。该决策已同步到 `docs/CORE_CONTRACT_FREEZE_2026-10-21.md` 和 `docs/PRODUCT_BASELINE_G1-G11.md`。
 
-- 当前 `AlarmContract.GRACE_MILLIS` 的宽限期内收到 `ACTION_FIRE`：执行记录为 `FIRED`，通知出现。
-- 超出当前宽限期收到 `ACTION_FIRE`：执行记录为 `MISSED`，不出现通知。
-- 模拟进程停机期间遗留的过期 `PENDING` 调度意图：`ReminderScheduler.reconcile` 记录 `MISSED`、清除意图且不向 `ShadowAlarmManager` 补排闹钟。
+本签核只解决迟到宽限期；同时到达的多个提醒如何发声仍是独立未决规格。API 35 AVD 用 Android 的真实数据库、通知管理器执行接收器处理，但测试直接调用 `ReminderReceiver.handle`，没有验证 Android `AlarmManager` 的实际定时投递、重启恢复、OEM 或实体设备行为。实体设备测试由用户执行，未在本 Issue 中声称通过。
 
-测试使用当前实现常量 10 分钟，并在边界两侧留出一分钟余量，避免依赖毫秒级执行时序。没有修改生产代码、业务数据、设计资产或 UI。
+## 根因与修复
 
-这些测试确认了当前实现的两个错过处理入口；产品规格仍未正式确定“短宽限期”的准确时长。因此 `REC-P0-118` 继续保持 **SPEC UNRESOLVED**，本 Issue 不将现有 10 分钟常量视为产品签核，也不增加候选 PASS 数。
+原接收器按 `lateBy > GRACE_MILLIS` 判断，恢复调度器按 `instantMillis < now - GRACE_MILLIS` 判断。两种表达在正常时间值下等价，但没有共享的边界实现或恰好等于 10 分钟的确定性测试，规格也尚未得到用户签核。
 
-## 测试证据
+将严格超时判断收敛为 `AlarmContract.isOutsideGraceWindow(triggerAtMillis, nowMillis)`，由提醒接收器和 `ReminderScheduler` 共用。只有触发时刻严格早于 `now - 10 分钟` 才算超窗；相等时仍在宽限期内。生产行为的设计值未改变，只消除了两入口今后漂移的空间。
 
-- 定向 Robolectric API 34：两个相关测试类 **24/24 PASS**，0 failures/errors/skips。命令：`:app:testDebugUnitTest --tests dev.powerfulcalendar.reminders.ReminderCompletionIsolationTest --tests dev.powerfulcalendar.reminders.ReminderValidationTest`。日志 SHA-256 `9C13AE8186A1595752127D7E52EC7FFBE6C08B9373AAE29105F19B0E6A48782D`；`ReminderCompletionIsolationTest` XML SHA-256 `CB4650937CC2FC8129C9A1596B8418F5856FDD882E332E5A53CCA0A067BC33B2`；`ReminderValidationTest` XML SHA-256 `C76DED10FA3CD0D0B41663947196F53B15A08E43C8C0C62BEA15CB07139F7B5C`。
-- 完整 Debug 回归：`:app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --offline --rerun-tasks --console=plain`，**BUILD SUCCESSFUL**；459/459 tests，57 suites，0 failures/errors/skips；Lint 0 errors / 58 warnings。完整日志 SHA-256 `2289F28174AF65C694D74D3048788FB6A0190830782AC21AB97336B0FF6DD755`。全量 `ReminderCompletionIsolationTest` XML SHA-256 `9B21A1B4BC8FB618EF92CC6E3A2C89CAC5DE5101164375F9D917177E9956A93E`；全量 `ReminderValidationTest` XML SHA-256 `2C60F373BBFFBF14175654C70E99F6A52F813497D642AE3DB623B06B42C41B5D`；Lint XML SHA-256 `E95DE7C795C7A50415CF5BF197DCD2A2FB73D55618CE34068C239E8648FC09DF`；Debug APK SHA-256 `138EC1363E4D74E6153CFFA61CEE4C0DF4D51416B3BD64C954FE642ED0FD4096`。
-- 完整 JUnit XML 保存在 `.local/android-test/reports/freeze-20261024/pc-issue-105-full-junit/`；定向日志和 XML 保存在同目录下的 `pc-issue-105-targeted*` 文件。
-- 另外执行 `:app:check` 时，测试任务已通过，但总任务在 `verifyReleaseSigning` 阶段因缺少用户离线保管的 Release keystore 而失败。门槛日志 `.local/android-test/reports/freeze-20261024/pc-issue-105-full-gradle.log` SHA-256 `0035DE4D051BEC54154639A1894985E181AE8D7D27FEBB26E124803F9B4F6289`；这不是 Debug 测试或 lint 失败，也没有生成或读取签名密钥。
+## 测试结果
 
-## 台账与 Git
+- 新增纯 JVM 边界回归：恰好 10 分钟返回“未超窗”；提前 1ms 返回“超窗”；晚 1ms 返回“未超窗”。`AlarmContractGraceWindowTest` 1/1 PASS。
+- API 34 Robolectric 接收器：宽限期内 ACTION_FIRE 记录 `FIRED` 并发布提醒；超过当前窗口的 ACTION_FIRE 记录 `MISSED` 且无提醒。`ReminderCompletionIsolationTest` 全量 8/8 PASS。
+- API 34 Robolectric 恢复调度：过期持久化 `PENDING` 意图记录 `MISSED`、清除意图且不重新注册 AlarmManager 闹钟。`ReminderValidationTest` 全量 17/17 PASS。
+- API 35 AndroidJUnitRunner：在 `emulator-5554`（`PowerCal_API35(AVD) - 15`）运行 1/1 PASS。9 分钟迟到的接收器处理记为 `FIRED`，Android 通知管理器中存在提醒；11 分钟迟到记为 `MISSED`，没有提醒。每次用随机隔离数据库；通知权限由宿主在测试前授予。该测试不调用 OS 闹钟投递。
+- 定向命令 `:app:testDebugUnitTest --tests dev.powerfulcalendar.reminders.AlarmContractGraceWindowTest --tests dev.powerfulcalendar.reminders.ReminderCompletionIsolationTest --tests dev.powerfulcalendar.reminders.ReminderValidationTest --offline --rerun-tasks --console=plain`：**26/26 PASS**，0 failures/errors/skips。日志 SHA-256 `7A9FAFEFC95353CAF31D09639A2085C28A5D730CD200003B87FC77DBE6F6A890`。
+- 完整强制重跑 `:app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug --offline --rerun-tasks --console=plain`：**495/495 JVM tests、67 suites、0 failures/errors/skips**；88 个 Gradle tasks 均执行，source boundary、Debug APK 与 AndroidTest APK 组装通过；lint **0 errors / 58 warnings**。495 项计数包含仓库内预先存在且未修改的 `DraftDeckFeedbackTest.kt` 1 项。
 
-- `REC-P0-118` 已记录当前实现的测试证据，状态仍为 **SPEC UNRESOLVED**。
-- 结构校验 artifact：`.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-105.json`，SHA-256 `9FB1049D3D268E0F08127E78D62D224261AA65547400B436AFF3706D9A4B3DC7`；台账 SHA-256 `93F9CE96FAC8E55041DE5E715BAC6CB09004DAABE834707FA1B45695BC9D045F`。校验只确认 209 行、唯一 ID 与 126/82/1 优先级分区；`product_behavior_tested=false`。
-- 测试提交：`2d89ffba5317eb9b0164682702868e5cf75c8fe4`（`test(冻结): 覆盖提醒宽限期错过与恢复`），已推送。只包含提醒测试代码。
-- 当前冻结统计不变：135 PASS / 0 FAIL / 9 BLOCKED / 58 NOT TESTED / 7 SPEC UNRESOLVED。真实 Android 系统投递、API 35 与物理/OEM 行为不在本次 Robolectric 证据内；整体冻结继续 **HOLD**。
+## 可追溯证据
+
+- 定向 AVD 命令日志 `.local/android-test/reports/freeze-20261024/pc-issue-105-api35-avd-5554-attempt5.log` SHA-256 `433EFEF15C892216E0E3E0906A6F00BCEE4899D8D1135B9C93F1849D00806147`；JUnit XML `app/build/outputs/androidTest-results/connected/debug/TEST-PowerCal_API35(AVD) - 15-_app-.xml` SHA-256 `1985D24BD40866BC37218EC0C50B1E51F8929BA8B3F86281AE340AC2FA8133C1`；设备 logcat SHA-256 `ED77BB8BF935BF3EF2928369A1EB8E4304BA3AC794F7E9988C0014E78AF49F1E`。logcat 明确记录 API 35、9 分钟 `FIRED`/有通知、11 分钟 `MISSED`/无通知。
+- 完整 Gradle 日志 `.local/android-test/reports/freeze-20261024/pc-issue-105-full-gradle-rerun.log`：SHA-256 `73549B5364373678E78E6BCCFBCFCDB01CE24A8CFAE5CC341F751D98B62AAB33`。
+- 全量 JUnit XML：`AlarmContractGraceWindowTest` SHA-256 `7635A1B201A21FD21CC9AE0494B543986F11C3BD04B5CEB01869A8CF33D387A1`；`ReminderCompletionIsolationTest` `D4840CBC02681D2E6836D7C6337C5DCCED216C38F2733EF3F2509A0F5E99B23C`；`ReminderValidationTest` `6FC4A842086CFF299E344807B44C8306CDA5BF3BE42092FBE2A3042A22FA831D`。
+- Lint XML SHA-256 `44D47F58BAA079ADCD898DD75FD052E2E4069E1322BE0F69299819BC9A97694F`；lint 文本报告为 0 errors / 58 warnings。
+- Debug APK `app/build/outputs/apk/debug/app-debug.apk` SHA-256 `7A5476F972473030B7DF2AE0E2CA6F305A71BD2A6092CFDA02F9B3378F40A03B`；AndroidTest APK `app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk` SHA-256 `28994F452DCA89D42E1AC3C07EAB3DBF005C73CA8283871D0AEE2C74F84CDD21`。
+- 非最终的 Robolectric 和 API 35 AVD 尝试、命令日志哈希及可确认的夹具原因均记录于 `.local/android-test/reports/freeze-20261024/pc-issue-105-exploratory-attempts.md`，SHA-256 `8B1459F6C7553357D979F5B62B8C9E32983398D33E4A937B1BD79E6C4655240A`。AVD 早期尝试的 instrumentation 进程崩溃没有可用 JUnit 堆栈；另两次把两条 overdue 意图同时放入夹具，使接收器的正常全局 reconcile 与显式投递顺序冲突。最终改为宿主授权通知权限、逐条创建并投递，测试通过。所有失败尝试均保留且未计为 PASS。
+
+### 证据保管说明
+
+本次首次定向运行时复用了旧报告引用的 `.local/android-test/reports/freeze-20261024/pc-issue-105-full-gradle.log` 文件名，覆盖了先前 `:app:check` 探索运行的本地日志。旧报告记录其 SHA-256 为 `0035DE4D051BEC54154639A1894985E181AE8D7D27FEBB26E124803F9B4F6289`，并说明失败位于 `verifyReleaseSigning`（用户离线 Release keystore 不存在），不是 Debug 测试或 lint 失败。该忽略目录原始日志字节目前无法恢复；旧结果和哈希仍保留在之前已提交的报告版本中，本次最终全量日志已记录新哈希。后续证据运行需使用唯一文件名，避免覆盖历史日志。
+
+此前的 2026-10-24 历史检查点曾覆盖 459/459 测试，但当时产品宽限时长尚未签核，故 `REC-P0-118` 保持 `SPEC UNRESOLVED`。该检查点及旧测试提交 `2d89ffba5317eb9b0164682702868e5cf75c8fe4` 仅作历史记录，现由本次 owner 决策与回归结果取代。历史报告中记录的旧全量日志 SHA-256 `2289F28174AF65C694D74D3048788FB6A0190830782AC21AB97336B0FF6DD755`、旧 Debug APK SHA-256 `138EC1363E4D74E6153CFFA61CEE4C0DF4D51416B3BD64C954FE642ED0FD4096` 保留用于溯源，不作为当前 HEAD 的证据。
+
+## 台账、提交与冻结状态
+
+- `REC-P0-118` 已从 `SPEC UNRESOLVED` 更新为 **PASS**，范围限于已列出的 JVM、Robolectric 与 API 35 AVD 直接接收器分支。
+- 生产修复提交 `b381846a73b1b25656b784989a2521c3917d0dad` 和 API 35 回归提交 `02f64925433b4ccb8a46a22a5c784c381e1f37b7` 已推送。
+- 结构校验 r30：211 rows，210 active reconstructed；198 PASS / 0 FAIL / 8 BLOCKED / 2 NOT TESTED / 2 SPEC UNRESOLVED / 1 RETIRED；P0/P1/P2=144/65/1，历史映射 0，`product_behavior_tested=false`。artifact `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-risk-matrix-validated-20261024-r30-pc-issue-105.json` SHA-256 `E330D6B59F6C9E2D31369F564A141030628E4300078892EDE25C0143D2D637E9`；ledger SHA-256 `420927B4B3D86D662D867799D2CCDB6BA1977C206BC05F4BAB65F8EFE52B2D8E`。校验只检查结构与计数；本 Issue 仅签核 `REC-P0-118` 的已列接收器分支，整体核心冻结仍 HOLD。
+- 核心冻结仍 **HOLD**：尚有其他未关闭验收项；Android OS 闹钟实际投递、重启后的系统恢复以及用户负责的实体/OEM 设备行为未由本 Issue 证明。

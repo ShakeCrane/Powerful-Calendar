@@ -106,7 +106,7 @@ Import adapters support manual/restartable migration from Android Calendar and I
 
 Every formal commit atomically persists event revision, commit record and durable desired scheduling state; actual Android scheduling is reconciled asynchronously. A stale Scheduled PendingIntent carries revision/occurrence/trigger identity and is checked on firing so that old 07:30 cannot ring after a valid 08:00 update. Exact alarm permission missing/revoked must produce BLOCKED and visible guidance, not silent approximate substitution for required audible alarms.
 
-On boot/update/timezone/permission changes, recover desired schedules; a missed alarm may ring only inside a separately defined short grace window, otherwise log MISSED. Snooze/skip change occurrence execution, not recurrence series.
+On boot/update/timezone/permission changes, recover desired schedules; a late alarm may still ring through the owner-approved inclusive 10-minute grace window, while anything later is recorded MISSED without a catch-up ring. Snooze/skip change occurrence execution, not recurrence series.
 
 Native complete backup includes eventSeq allocation/high-water mark and retired identities, committed records, event and trigger state, recurrence exceptions, draft cards/order, migration provenance and relevant AI task recovery metadata. Do NOT back up live Android PendingIntents as reusable executable state or include raw API secrets. Standard ICS/etc. export remains intentionally lossy.
 
@@ -131,7 +131,7 @@ Later explicit custom decisions supersede older questionnaire choices; don't res
 - Exact visual location of the 待处理 launcher in the time-axis navigation; search UX details.
 - Date-only Deadline positioning within a day band and accessibility on zoomed timeline.
 - How to handle type conversions involving ambiguous/missing time anchors and default ringtone/notification settings.
-- Exact duration/grace limit for late alarms; simultaneous alarms.
+- Simultaneous alarms.
 - Whether human direct edits can be initiated at all during AI batch for **unaffected** formal events (deck remains locked; affected events explicitly blocked).
 - Boundaries of a batch when new AI-produced cards appear during the operation; cancellation UX and progress layout.
 - Full-object replacement conflict review can show a readable full diff without overwhelming mobile display; requires prototype.

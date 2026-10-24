@@ -107,3 +107,9 @@ This amendment defines the resolution for generated recurrence instances only:
 - If a recurrence's local wall-clock slot occurs twice during a fall DST fold, use the first
   instant, corresponding to the earlier offset.
 - This does not define how an individually entered one-off local timestamp is parsed.
+
+## Owner amendment — missed-alarm grace period (2026-10-24)
+
+- A late alarm may fire through an inclusive 10-minute grace period measured from its requested trigger instant.
+- Once more than 10 minutes late, record `MISSED` and do not ring as a catch-up reminder.
+- This amendment resolves only the late-alarm grace duration and boundary. Simultaneous-alarm behavior remains unresolved.
