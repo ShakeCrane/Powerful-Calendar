@@ -1,4 +1,10 @@
 # Core freeze progress
+## PC-ISSUE-125 — AI proposal dependent-write rollback (REC-P1-059 narrowed PASS)
+
+- Added assertions that an injected schedule-intent write failure leaves no formal event, commit history, or desired intent and preserves the pending draft after SQLite reopen. Other independent batch items still commit; a new authorization retries the failed item. No production source changed.
+- Targeted Robolectric API 34 test passed 1/1; full Debug boundary/test/APK/lint passed 465/465 across 57 suites, zero failures/errors/skips, lint 0 errors / 58 warnings. Test commit `237486011a64a4598b3dd7a3183ee2c09314f034` is pushed.
+- Report: `docs/issues/PC-ISSUE-125-ai-dependent-write-rollback.md`. This signs only one proposal's dependent SQLite writes; no cross-proposal dependency group, AI network or UI claim. Ledger totals: 157 PASS / 0 FAIL / 9 BLOCKED / 36 NOT TESTED / 7 SPEC UNRESOLVED. Structural-only artifact `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-125.json`: SHA-256 `49EB75C9641F72F273EA5C4532EE95B9B30E8EC67D69D273315FF33EFB59AEA0`; ledger SHA-256 `DB65C04E298584BB31EEB1B29DC0985CF2069A9FB27CC63382FDA3EB7DFA1452`. Overall freeze remains HOLD.
+
 ## PC-ISSUE-124 — core timeline lane allocation (REC-P1-016/017)
 
 - `TemporalProtocolTest` passed 38/38; five existing pure-model cases directly cover deterministic stable ordering, input-order independence, independent lanes and lane reuse. No app/test source, UI, emulator or physical device was changed or tested.
