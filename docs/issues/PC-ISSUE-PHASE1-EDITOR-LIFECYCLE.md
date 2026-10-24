@@ -205,6 +205,16 @@ Phase 1 产品修复仍由 `b46b3dd7592bb1c7de021d543630f84937a0eaef` 提供；�
 
 Phase 1 主路径及当前源码自动化/构建验收 PASS。单次本地时间在秋季 DST fold 的第二次同名分钟无法由现有 `yyyy-MM-dd HH:mm` 字段表达精确 offset；产品合同明确未定义 one-off fold 规则，需保留为 SPEC UNRESOLVED，不能以重复事件的“第一次”规则自行外推。整体核心冻结继续 HOLD。
 
+## 当前主线定向复验（2026-10-25，HEAD `d943ddc`）
+
+本轮按当前 Phase 1 请求重跑六个定向 suite；生产源码仍无修改，普通新建生命周期与默认值实现继续由已推送提交 `b46b3dd7592bb1c7de021d543630f84937a0eaef` 提供。结果 **32/32 PASS，6 suites，0 failures/errors/skips**。
+
+- Gradle 日志：`.local/android-test/reports/freeze-20261025/phase1-current-d943ddc-focused.log`，SHA-256 `C8C9A0513F0FE782CDB721777D06F83F6735EF904966C951F39D411F1EACEB8A`。
+- JUnit XML SHA-256：`EditorDefaultsTest` `D2F76373DAAD1CD8C498E517875C6CA9CF7DE68EBDDE43CDCA79FADC3AFF77B9`；`NewEventEditSessionTest` `82D9A97CC03D836504022C9542BC5D8E71CC8C6BB9378E992B44A5B84A2C94B6`；`DirectEventEditorComposeTest` `7C55D2EED5EF79BD3CE308677CDDF22F7843488E3EBADA03954CC7BCAD229409`；`LifecycleCheckpointGateTest` `ABF0F1E972D7707CE32AAFE581AA354979888519FAB50C8F7FFD6A25F29DA737`；`NewEventEditorComposeTest` `BAC12B71F38CFECF085C04663DED79B3DD54955BA56E99D2F6EC75A43DEE39E6`；`WebSkinEditBridgeTest` `E7364A8DBAFEA308DA72453BC20C822EBF1B91EE36CC21EE3F0375A5C4C0D89A`。
+- `d943ddc` 相对下一节 `3c8b16d` 仅增加文档提交，tracked app 源码相同；该源码基线的干净 worktree 完整门禁为 **540/540 JVM、73 suites、88/88 tasks**，source boundary、Debug/AndroidTest APK 与 lint 通过，APK SHA-256 为 `517DFFFCCFECA6E4B6CBF5961B3CAAA8F2802B3B3B1DD107457180C268F61614` / `2EF06F141A6AEEA12F6272D9C8861D7D6EEC33A316D0F4734A221C90BF7BE0B2`。本次定向复验不运行设备任务；已有 API 35 Compose 2/2 仍标作 PREVIOUS PASS，实体设备仍由用户测试。
+
+本次不改生产或测试源码。单次事件 fall fold 的 offset 语义仍未定义，故本次 PASS 仅覆盖已定义且经回归的 Phase 1 行为；该语义边界继续保持 **SPEC UNRESOLVED / HOLD**，不据此签署完整 Phase 1 时间语义。
+
 ## 当前用户请求复验（2026-10-25，HEAD `3c8b16d`）
 
 本轮重新审计分支、HEAD、工作区和 Phase 1 调用链。`main` 与 `origin/main` 同步；跟踪源码无差异。普通新建入口仍只构造内存 `NewEventEditSession`；保存字段归一化 Diff、×/lifecycle checkpoint、正式发布幂等与 AI/ICS 显式候选边界均与原报告实现一致。Phase 1 生产修改仍在已推送提交 `b46b3dd7592bb1c7de021d543630f84937a0eaef`；本轮没有新的生产源码修改。

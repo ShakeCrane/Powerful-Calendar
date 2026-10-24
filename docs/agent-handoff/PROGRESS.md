@@ -1,5 +1,11 @@
 # Core freeze progress
 
+## PC-ISSUE-PHASE1 — 当前主线定向复验（2026-10-25，HEAD `d943ddc`）
+
+- 当前主线重跑六个定向 suite：**32/32 PASS、0 failures/errors/skips**。Gradle 日志 SHA-256 `C8C9A0513F0FE782CDB721777D06F83F6735EF904966C951F39D411F1EACEB8A`；六份 JUnit XML 与 SHA-256 已记入 `docs/issues/PC-ISSUE-PHASE1-EDITOR-LIFECYCLE.md`。
+- 没有 Phase 1 生产/测试源码变化；实现仍来自已推送 `b46b3dd7592bb1c7de021d543630f84937a0eaef`。本次 HEAD 相对 `3c8b16d` 仅有文档变化；同一 tracked app 源码在干净 worktree 的完整门禁为 540/540 JVM、73 suites、88/88 tasks，包含 AndroidTest APK 和 lint。此次只重跑 Phase 1 定向测试，没有触碰 AVD/实体设备。
+- 秋季 DST fold 第二个同名时间的一次性输入语义仍未定义；不把重复事件的 first-offset 规则外推。已定义主路径 PASS，此边界保持 SPEC UNRESOLVED，因此严格签核及核心冻结继续 HOLD。
+
 ## PC-ISSUE-PHASE1 — 当前用户请求复验（2026-10-25，HEAD `3c8b16d`）
 
 - 读取并遵循根目录 `AGENTS.md`。现场为 `main` / `origin/main` 同步；跟踪源码无未提交修改。普通新建入口继续共用内存 `NewEventEditSession`；生产实现仍由已推送 `b46b3dd7592bb1c7de021d543630f84937a0eaef` 提供，本轮未改产品源码。
