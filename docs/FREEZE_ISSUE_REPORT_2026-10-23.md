@@ -228,9 +228,9 @@ Issue 004 修复代码基线：`16e00d55435c5029e07784ec5d945dfd7fb37ac5`
 ### PC-QA-GATE-001 · P1 / PARTIAL / HOLD · 核心合同风险验收矩阵（2026-10-24 当前签核）
 
 - 原始 209 项表无法提供；按用户明确指示，不再为其暂停或反复追索。以 `CORE_CONTRACT_FREEZE_2026-10-21.md`、已有验收文档、测试、历史 Issue 和实际产品行为重建当前矩阵。所有重建项均标 `RECONSTRUCTED` / `UNMAPPED`；不强凑数量、不伪称历史映射，优先级由当前风险决定。
-- 当前活动候选 209 项（该数量为移除伪历史占位、退役已接受淡灰边缘项并新增 PC-ISSUE-135/136/137/138/139/140/141/142/143/144 后的偶然结果，不是目标），P0=144、P1=64、P2=1；状态 177 PASS / 0 FAIL / 8 BLOCKED / 18 NOT TESTED / 6 SPEC UNRESOLVED，另有 1 条 `RETIRED / OUT_OF_SCOPE`。
+- 当前活动候选 209 项（该数量为移除伪历史占位、退役已接受淡灰边缘项并新增 PC-ISSUE-135/136/137/138/139/140/141/142/143/144/145 后的偶然结果，不是目标），P0=144、P1=64、P2=1；状态 180 PASS / 0 FAIL / 8 BLOCKED / 15 NOT TESTED / 6 SPEC UNRESOLVED，另有 1 条 `RETIRED / OUT_OF_SCOPE`。
 - `REC-P1-013` 淡灰横向边缘已由用户确认接受，留存旧证据但不再作为 GO 条件。贪心标题折叠仍按独立 P1 `REC-P1-021`–`030` 签核；蓝色当前时间线覆盖中轴符合用户确认的设计。
-- 原始 209 项 ID 映射属于文档溯源缺口，需如实披露，但不阻塞开发或取代核心合同冻结标准。结构校验产物 `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-risk-matrix-validated-20261024-r10.json` SHA-256 `5E4F6FCDE4D4B90F2F27B2EE637D61267A25EDF9FDD0A4939B456FD276E96D02`，台账 SHA-256 `354ABEEB314E5EAD9C4B14D4D5900A9C5F8A13C5AA3EDD109F4020C2BDF16048`；仅检查结构，`product_behavior_tested=false`。PC-ISSUE-144 将 `REC-P1-008/009` 窄化签核为时间轴 DST gap/fold 刻度文案生成通过，定向 2/2、完整 Gradle 477/477；没有新 AVD 截图，重复事件 DST 政策仍未决。PC-ISSUE-143 Today 结果及 PC-ISSUE-140/141/142 的签核边界见独立报告。正式冻结继续 **HOLD**，直到测试与外部/设备门槛闭环。
+- 原始 209 项 ID 映射属于文档溯源缺口，需如实披露，但不阻塞开发或取代核心合同冻结标准。结构校验产物 `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-risk-matrix-validated-20261024-r11.json` SHA-256 `E80984EBA7E238C513F60256C17485E59FAA0A79BC00314508302DDBA2F1A1AB`，台账 SHA-256 `C6AD81BB1CD3EC9954B4EA156F5DD1F902E797390B7535B7E8F8DB6A6B26B994`；仅检查结构，`product_behavior_tested=false`。PC-ISSUE-145 将 `REC-P1-018/019/020` 窄化签核为左右翼独立滚动、固定视口边界及左翼初始近中轴泳道，Robolectric Compose 定向 1/1、完整 Gradle 478/478；没有新 AVD 截图。PC-ISSUE-144 DST 刻度与 PC-ISSUE-143 Today 的签核边界见独立报告。正式冻结继续 **HOLD**，直到测试与外部/设备门槛闭环。
 
 ### PC-QA-GATE-001 · 历史快照（此前按原始 209 项映射追踪；已被上方当前政策取代）
 - 历史规划明确 209 核心验收项（P0 126，P1 82，另 1 项优先级待核）。
