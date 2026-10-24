@@ -1,5 +1,15 @@
 # Core freeze progress
 
+## PC-ISSUE-PHASE2 — 重复事件编辑范围与 occurrence key 路由
+
+- 根因：timeline/month/Memo 投影的 original occurrence key 未进入正式事件编辑会话；编辑器没有显式 single / this-and-future / whole-series scope。接通 `DisplayOccurrence → EditSession` 路由与三种范围；scope/key 随正式编辑 checkpoint 恢复，禁止通用 draft publish/AI batch 把范围表单当作普通候选。
+- 修复边界：单次仅能改标题/时间并写指定 occurrence override；后续范围走原子拆分；整组沿用 revision 栅栏。选中实例已有标题 override 时，新系列以实例有效值为锚点并丢弃该选中槽位旧 override，避免旧值遮盖新系列字段。保存成功时提升 Compose editor revision，刷新可见基线与按钮状态。
+- Robolectric 关键测试 9/9 PASS（日志 SHA-256 `4A63F4950C317DD71C245CCAA6AD79AA61BD29381B0AABBD7F3220D00714C82D`）；附加边界组 5/5 PASS（`060017A30AB39B5A9A464EF066EB3E319DE62777F963711D67D441D19F911351`）。API 35 `emulator-5554` 实际 Compose scope/save 回归 1/1 PASS（日志 SHA-256 `AFE9E30CE432EED75BA4F70CA23CA8D42254289C292B36E6AAFB3A071BF84AFF`）。随机 SQLite DB 已删除；app/test APK 均恢复运行前 SHA-256，DB 文件名清单摘要前后同为 `1339CD66F7353794C16E08D6BCC0E55E958C1FFD36D740CD19CC934792B113EA`。
+- 最终完整 Gradle：522/522 JVM tests、70 suites、0 failures/errors/skips，88/88 tasks；source boundary、Debug 和 AndroidTest APK、lint 通过；lint 0 errors / 56 warnings。完整日志 SHA-256 `42C63E29348DD23EAAFDC44EE0C2DD578D0F5F57DA091C6B80C8056444A01858`；Debug APK `90BB816EC85AFD46C195C48697F1234D98D2C4571FB5209F0F1FD87B088DBDE8`；AndroidTest APK `5692FBC5C964C63CAF61EEED71F4BA51390282C3125729F1F24210944CBAA3F3`。
+- 核心实现提交 `9036a2a8db2e1a669f64cc6174acdc569c4c08b3`。独立报告 `docs/issues/PC-ISSUE-PHASE2-RECURRENCE-SCOPE-EDITOR.md`。`REC-P0-127` 新增为 RECONSTRUCTED 并签核本环境的自动化/API35 范围；REC-P0-078/079/080 原有窄化核心条目范围不变。实体设备留给用户；timeline 到编辑器在 Robolectric 覆盖，AVD 用例未启动主界面，整体冻结仍 HOLD。
+- 台账结构校验：212 行 / 211 活动重建项；199 PASS / 0 FAIL / 8 BLOCKED / 2 NOT TESTED / 2 SPEC UNRESOLVED / 1 RETIRED；P0/P1/P2=145/65/1，历史 ID 映射 0。台账 SHA-256 `FFBD395A80D864BB8ED9578A561B6188DD3ED35B88048E0EC31F2AC7951909A1`；artifact SHA-256 `09879FB7A8671E7C5DE02C69BEBF30A8B10751EE27EB576B91C3239FC1DAFC0F`；仅结构验证，`product_behavior_tested=false`。
+- 当前下一项：Phase 3 D01b 键盘发布按钮，按计划需先隔离 AVD/确认布局测试不会接触用户数据库；实体设备依然由用户执行。
+
 ## PC-ISSUE-PHASE1 — 编辑器生命周期与默认时间统一
 
 - 根因：普通时间轴、月份、Memo、PowerCal Web action 与 WebSkin bridge 的新建流程在打开编辑器前直接 `newDraft`，立即分配草稿/事件身份与队列序号；各入口默认时间规则不一致。现改用内存 `NewEventEditSession`、按业务语义 Diff、幂等 checkpoint/close/save，并由 `EditorDefaults(Clock, ZoneId)` 统一四类默认值。完整修复范围与根因映射见 `docs/issues/PC-ISSUE-PHASE1-EDITOR-LIFECYCLE.md`。

@@ -1,6 +1,6 @@
 # PowerCal 真机首轮缺陷审计与修复计划（2026-10-25）
 
-状态：AUDIT / PLAN ONLY；未执行生产代码修改；正式冻结 HOLD。
+状态：Phase 1 与 Phase 2（P08）已完成各自自动化及 API 35 AVD 子项；Phase 3–6 尚未完成；正式冻结 HOLD。
 审计基线：Git 40e78bf（来源为当前仓库只读检查），对照用户实机反馈和 docs/CORE_CONTRACT_FREEZE_2026-10-21.md 的已修订合同。
 范围：问题归因、复现方案、实现次序和验收门槛。任何源码猜测均需补足目标设备证据。
 
@@ -99,7 +99,7 @@ Phase 6 — 延期真机项 D03/D04/D06/D07/E03：标记 NOT TESTED 或明确 ow
 
 每修完一个明确缺陷：修复前可复现 FAIL → 最小补丁 → 针对测试 PASS → 全量单测和设备 UI 验证 → 单独 docs/issues 报告 → 原子 Git commit/push。
 当前不推进原生 UI 删除/皮肤 cutover，不修改用户数据，不把 Android 系统 force-stop 限制当成无条件可修 Bug。
-已发现源码根因 B1/B2/B3；B4 是行为定义冲突；B5/B6 需要真实设备复现与诊断。
+B1/B2/B3 已分别有独立交付记录；B4 是待澄清的行为定义冲突；B5/B6 仍需相应设备条件下复现与诊断。
 
 ## Phase 1 交付记录（2026-10-25）
 
@@ -110,3 +110,15 @@ PC-ISSUE-PHASE1 的编辑器生命周期与统一默认时间修复已完成。�
 AVD 测试只在 `emulator-5554` 的随机隔离 SQLite 文件执行；运行前后原 app/test APK SHA-256 相同，未清理用户数据；`emulator-5556` 未触碰。实体设备由用户测试，本轮未声称通过。DST 秋季回拨的重复墙上时间不能由现有本地分钟文本区分，保留为未签核风险。Phase 1 自动化及 API 35 AVD 子项 PASS；Phase 2 可开工，核心冻结仍 HOLD。实现提交与推送 SHA 将补录在交付进度条目。
 
 独立结案报告：`docs/issues/PC-ISSUE-PHASE1-EDITOR-LIFECYCLE.md`。实现提交：`b46b3dd7592bb1c7de021d543630f84937a0eaef`。
+
+## Phase 2 交付记录（2026-10-25）
+
+PC-ISSUE-PHASE2 已接通重复 occurrence 的编辑器范围选择。时间轴、月份与 Memo/Todo occurrence 路径保留并传递 original occurrence key；重复事件需显式选择“仅本次 / 本次及以后 / 整个系列”。仅本次写指定槽位 override；本次及以后调用既有原子拆分；整组保存保持正式事件身份与 revision 栅栏。checkpoint 保存 scope/key 并可从原事件恢复，泛化草稿提交/AI batch 不接受范围编辑元数据。另修复选中槽位的旧标题 override 覆盖新系列标题，以及保存成功后的 Compose 基线未刷新的问题。
+
+验证：Robolectric Compose 覆盖 Timeline/Month/Memo occurrence key 路由、明确 scope 和单次编辑；API 35 `emulator-5554` AndroidJUnitRunner 对隔离数据库中的“本次及以后”保存 **1/1 PASS**。全量门禁 `:app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug --offline --rerun-tasks --console=plain` 为 **522/522 JVM tests、70 suites、0 failures/errors/skips、88/88 tasks**；lint 0 errors / 56 warnings。完整日志 SHA-256 `42C63E29348DD23EAAFDC44EE0C2DD578D0F5F57DA091C6B80C8056444A01858`；Debug APK SHA-256 `90BB816EC85AFD46C195C48697F1234D98D2C4571FB5209F0F1FD87B088DBDE8`。AVD 运行前后 app/test APK 均逐字节恢复，隔离 DB 文件名清单一致；未触碰 5556。详细证据见 `docs/issues/PC-ISSUE-PHASE2-RECURRENCE-SCOPE-EDITOR.md` 与 `.local/android-test/reports/freeze-20261025/pc-issue-phase2-recurring-scope/`。
+
+`REC-P0-127` 是本次新增的 RECONSTRUCTED scope-editor 验收项；原始 209 项仍无历史 ID 映射。实体设备由用户测试。P08 自动化及 API 35 AVD 子项 PASS；Phase 3–6 与其他冻结缺口仍在，整体核心冻结 HOLD。
+
+台账结构校验：212 行 / 211 活动重建项，199 PASS / 0 FAIL / 8 BLOCKED / 2 NOT TESTED / 2 SPEC UNRESOLVED / 1 RETIRED；P0/P1/P2=145/65/1。台账 SHA-256 `FFBD395A80D864BB8ED9578A561B6188DD3ED35B88048E0EC31F2AC7951909A1`；结构报告 SHA-256 `09879FB7A8671E7C5DE02C69BEBF30A8B10751EE27EB576B91C3239FC1DAFC0F`。校验仅检查台账结构与状态约束（`product_behavior_tested=false`），不替代行为测试。
+
+独立结案报告：`docs/issues/PC-ISSUE-PHASE2-RECURRENCE-SCOPE-EDITOR.md`。实现提交：`9036a2a8db2e1a669f64cc6174acdc569c4c08b3`。
