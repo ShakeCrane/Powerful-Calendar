@@ -216,6 +216,10 @@ class DeckControllerTest {
         assertEquals(3L, controller.state.currentId)
         assertTrue(controller.move(-1))
         assertEquals(2L, controller.state.currentId)
+        assertTrue(controller.move(-1))
+        assertEquals(1L, controller.state.currentId)
+        assertTrue(controller.move(-1))
+        assertEquals(1L, controller.state.currentId)
     }
 
     @Test
