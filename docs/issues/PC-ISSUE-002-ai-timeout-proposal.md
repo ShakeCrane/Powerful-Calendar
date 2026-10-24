@@ -118,3 +118,11 @@ Latest structural-only validation after PC-ISSUE-134: artifact .local/android-te
 本次未发出免费模型请求：API 35 `emulator-5554` 上 `pm path dev.powerfulcalendar` 无结果，`run-as dev.powerfulcalendar` 返回 `unknown package`。因此无法复用此前模拟器私有 AI 配置；没有重装应用、读取/恢复密钥或触碰日历数据。上次可用证据仍是 chat HTTP 200、structured HTTP 429，且无 reviewable pending proposal；REC-P1-047 继续 BLOCKED，Issue 002 继续 PARTIAL / BLOCKED。
 
 门控改动后的完整离线 Gradle 回归：**BUILD SUCCESSFUL**，469/469 JVM 测试、58 suites、0 failures/errors/skips；源码边界、Debug/AndroidTest APK 组装通过；Lint 0 errors / 58 warnings。日志 `.local/android-test/reports/freeze-20261024/pc-issue-002-live-probe-opt-in-full-gradle.log` SHA-256 `3AFAEC67B24C92E808B0767939F35AC86BA427E8D3D742D10095C5CC7AE7805E`；AndroidTest APK SHA-256 `EF502CA60DE10D95A2076DD416ABA9318D6343EF8415D17B6F0C2D85E7533958`。本次只编译 AndroidTest，没有执行 instrumentation 或外部模型调用。核心冻结继续 HOLD。
+
+### Read-only AVD configuration availability recheck (2026-10-24)
+
+Read-only checks found that API 35 `emulator-5554` still has no `dev.powerfulcalendar` package. `emulator-5556` has the package, but its shared-preference filename listing contained only `powercal-onboarding.xml` and `powercal-ui.xml`; `powercal-ai.xml` was absent. No preference values or credential contents were read, the app was not launched, settings were not changed, and no provider request was sent. Evidence: `.local/android-test/reports/freeze-20261024/pc-issue-002-config-availability-check.json`, SHA-256 `824CF934453870ECA21A97D0BB3825801F70FA6918DDBD7D0FEE10F88F6CA797`.
+
+This is an environment/configuration check only, not product behavior evidence. The previous free-model result remains chat HTTP 200 followed by structured HTTP 429; REC-P1-047 remains BLOCKED and PC-ISSUE-002 remains PARTIAL / HOLD until a configured emulator is available for a bounded retest.
+
+After recording this evidence in the reconstructed acceptance ledger, corrected structural validation passed for 209 unique rows and unchanged counts (164 PASS / 0 FAIL / 8 BLOCKED / 30 NOT TESTED / 7 SPEC UNRESOLVED). Artifact `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-002-config-check-validated.json`, SHA-256 `BD2D976A66A48EF71C543DE0906D2257BCB4F066147BAD7BF61B07D7E18E3D7C`; ledger SHA-256 `D500FE6D936C71C9514D2FA30645438DC74F3318A6B89BBE373B62ABCE093921`. Structural validation does not test product behavior.
