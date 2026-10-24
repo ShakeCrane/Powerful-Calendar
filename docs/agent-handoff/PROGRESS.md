@@ -1,4 +1,9 @@
 # Core freeze progress
+## PC-TECH-006 — lint risk classification
+
+- Classified the latest lint XML: 58 warnings / 0 errors across platform/target (4), dependency suggestions (6), Compose conventions (14), KTX suggestions (19), launcher/resources (13), and redundant SDK conditions (2). No code, UI, dependencies, manifest, or design assets changed; this does not claim a security scan.
+- The `targetSdk=35` warning and portrait-lock warnings identify an Android 16 compatibility risk: fixed orientation may be ignored in some device configurations. API 36 orientation behavior is unverified and remains open; no UI work was performed. Report: docs/issues/PC-TECH-006-lint-warning-risk-classification.md. Evidence is the PC-ISSUE-134 full Gradle log and lint XML; overall freeze remains HOLD.
+
 ## PC-ISSUE-134 — authorized DeepSeek live chat-to-pending-draft flow
 
 - On API 35 emulator-5554, one authorized DeepSeek V4.1 Flash chat and one structured-proposal request returned HTTP 200/200. A synthetic ACTIVITY became a PENDING draft in a unique temporary SQLite database and retained identity/order/status across close/reopen; no formal write occurred. Calendar context was disabled, model override was in memory, and credentials were not logged. No UI or physical device was used.

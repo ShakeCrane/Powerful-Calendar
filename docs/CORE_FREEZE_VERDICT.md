@@ -253,6 +253,10 @@ The focused regression passed 1/1. Full Debug boundary/test/APK/lint passed 467/
 
 Structural-only artifact `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-134.json`, SHA-256 `FB25654B9A34DFD676713F580D1C955B24E6BCDBBE504ECE8D16150A8582465A`; ledger SHA-256 `CD6275A893058EB678FBD9B3BEA04EAEAB6BFEEE26BFEFDC18366074852C8E58`. It checks structure and counts only. Current totals: 164 PASS / 0 FAIL / 8 BLOCKED / 30 NOT TESTED / 7 SPEC UNRESOLVED; P0 120/0/0/1/5, P1 44/0/8/29/1. REC-P0-107 is narrowly signed for the synthetic API 35 URI-grant revocation boundary; REC-P1-047 remains BLOCKED for the free-provider requirement. Historical mapping and overall freeze remain HOLD.
 
+## PC-TECH-006 lint warning classification (2026-10-24)
+
+The latest lint XML contains 58 warnings and zero errors: platform/target 4, dependency update suggestions 6, Compose conventions 14, KTX suggestions 19, launcher/resources 13, and redundant SDK checks 2. No source, UI, dependency, manifest, or asset changes were made. The `targetSdk=35` and portrait-lock warnings flag an Android 16 compatibility risk; that platform behavior is not verified here and remains open. See `docs/issues/PC-TECH-006-lint-warning-risk-classification.md`; this classification does not change the HOLD verdict.
+
 ## Decision
 
 **HOLD. Do not declare the core baseline frozen.** The current build and targeted JVM evidence are useful, but the 209 cases lack historical row-level traceability and multiple required platform and end-to-end acceptance gates remain open. Continue with a clearly labeled reconstructed ledger and independent tests. Update this verdict only when evidence changes; never infer GO from a successful build or test count.
