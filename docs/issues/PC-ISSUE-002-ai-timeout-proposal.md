@@ -144,3 +144,7 @@ PC-ISSUE-137 在代码/测试基线 `cc22d49cf79d5638c3a184f88e77ca29cf4fe91a` �
 - 完整 Gradle 日志 SHA-256 `C2C97732B82813EE678F04F9ACC8CE8C249D797DF808E4D88AC0FB8190C70153`。
 
 Issue 002 本身仍为 **PARTIAL / BLOCKED**：免费服务之前的结构化阶段 HTTP 429/503 仍未闭环；API 35 `emulator-5556` 当前缺少 `powercal-ai.xml`，未读取配置值或凭据，也未重发免费请求。PC-ISSUE-134 已单独证明授权 DeepSeek V4.1 Flash 的两阶段临时草稿路径，但不替代免费 provider 验收。实体设备测试由用户执行。
+
+### PC-ISSUE-146 本地提案与批次审核回归（2026-10-24）
+
+`REC-P1-052/053` 已由独立报告 `docs/issues/PC-ISSUE-146-ai-review-and-batch-authorization-compose-regression.md` 窄化签核为 PASS：四种提案动作及精确可处理范围、批次总数/操作数/逐项范围、固定 draftId/version 审核快照、取消及忙碌状态不授权。Robolectric API 35 Compose 定向 4/4；完整 Gradle 482/482（62 suites），lint 0 errors / 58 warnings。未请求 provider、未执行数据库写入，也未运行独立 AVD 或实体设备。此结果不改变 `REC-P1-047` 免费模型阻塞；PC-ISSUE-002 继续 **PARTIAL / BLOCKED**。

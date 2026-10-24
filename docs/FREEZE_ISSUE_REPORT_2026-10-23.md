@@ -228,9 +228,9 @@ Issue 004 修复代码基线：`16e00d55435c5029e07784ec5d945dfd7fb37ac5`
 ### PC-QA-GATE-001 · P1 / PARTIAL / HOLD · 核心合同风险验收矩阵（2026-10-24 当前签核）
 
 - 原始 209 项表无法提供；按用户明确指示，不再为其暂停或反复追索。以 `CORE_CONTRACT_FREEZE_2026-10-21.md`、已有验收文档、测试、历史 Issue 和实际产品行为重建当前矩阵。所有重建项均标 `RECONSTRUCTED` / `UNMAPPED`；不强凑数量、不伪称历史映射，优先级由当前风险决定。
-- 当前活动候选 209 项（该数量为移除伪历史占位、退役已接受淡灰边缘项并新增 PC-ISSUE-135/136/137/138/139/140/141/142/143/144/145 后的偶然结果，不是目标），P0=144、P1=64、P2=1；状态 180 PASS / 0 FAIL / 8 BLOCKED / 15 NOT TESTED / 6 SPEC UNRESOLVED，另有 1 条 `RETIRED / OUT_OF_SCOPE`。
+- 当前活动候选 209 项（该数量为移除伪历史占位、退役已接受淡灰边缘项并新增 PC-ISSUE-135/136/137/138/139/140/141/142/143/144/145/146 后的偶然结果，不是目标），P0=144、P1=64、P2=1；状态 182 PASS / 0 FAIL / 8 BLOCKED / 13 NOT TESTED / 6 SPEC UNRESOLVED，另有 1 条 `RETIRED / OUT_OF_SCOPE`。
 - `REC-P1-013` 淡灰横向边缘已由用户确认接受，留存旧证据但不再作为 GO 条件。贪心标题折叠仍按独立 P1 `REC-P1-021`–`030` 签核；蓝色当前时间线覆盖中轴符合用户确认的设计。
-- 原始 209 项 ID 映射属于文档溯源缺口，需如实披露，但不阻塞开发或取代核心合同冻结标准。结构校验产物 `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-risk-matrix-validated-20261024-r11.json` SHA-256 `E80984EBA7E238C513F60256C17485E59FAA0A79BC00314508302DDBA2F1A1AB`，台账 SHA-256 `C6AD81BB1CD3EC9954B4EA156F5DD1F902E797390B7535B7E8F8DB6A6B26B994`；仅检查结构，`product_behavior_tested=false`。PC-ISSUE-145 将 `REC-P1-018/019/020` 窄化签核为左右翼独立滚动、固定视口边界及左翼初始近中轴泳道，Robolectric Compose 定向 1/1、完整 Gradle 478/478；没有新 AVD 截图。PC-ISSUE-144 DST 刻度与 PC-ISSUE-143 Today 的签核边界见独立报告。正式冻结继续 **HOLD**，直到测试与外部/设备门槛闭环。
+- 原始 209 项 ID 映射属于文档溯源缺口，需如实披露，但不阻塞开发或取代核心合同冻结标准。结构校验产物 `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-risk-matrix-validated-20261024-r12-pc-issue-146.json` SHA-256 `FAA809C1589F8C49F5104BD2A1F30ACEEDD8BE4A6944F8BAA615783A44D6277F`，台账 SHA-256 `224B1F1DD2D7F85ACA8E0395AA3C19EE87967CFD583C03E58589835F7BB1481E`；仅检查结构，`product_behavior_tested=false`。PC-ISSUE-146 将 `REC-P1-052/053` 窄化签核为提案操作选择及批次授权清单/快照的 Compose 行为，定向 4/4、完整 Gradle 482/482；未运行独立 AVD 或实体设备。PC-ISSUE-145 的左右翼独立滚动、PC-ISSUE-144 的 DST 刻度与 PC-ISSUE-143 的 Today 修复见各自独立报告。正式冻结继续 **HOLD**，直到测试与外部/设备门槛闭环。
 
 ### PC-QA-GATE-001 · 历史快照（此前按原始 209 项映射追踪；已被上方当前政策取代）
 - 历史规划明确 209 核心验收项（P0 126，P1 82，另 1 项优先级待核）。
