@@ -1,5 +1,11 @@
 # Core freeze progress
 
+## PC-ISSUE-001 外部 ICS 客户端环境复查（REC-P1-081 仍 BLOCKED）
+
+- `emulator-5556` 的 ACTION_VIEW/text/calendar 当前解析到 Google Calendar `ICalLauncher`，与早先“无处理器”记录相比环境已变化；但两次打开合成 DST ICS 均停在 Google Calendar 首次启动页，没有进入导入预览。Provider 测试前无日历记录，测试后事件数仍为 0；没有确认导入或写入，也未查看账户。
+- 证据 `.local/android-test/reports/freeze-20261024/pc-issue-001-external-import-probe/summary.json` SHA-256 `8DFC47D762396B4CE0622E70E43E5B48155FC48E18958EC4DDC110878B595983`；截图 SHA-256 `6A83B31FD26EEFDFE46A722737F32D98ECFD951E533A180088B6D31C40413D7D`。Google 文档将 ICS 导入流程列为电脑端流程。没有完成外部导入/重新导出，故 `REC-P1-081` 继续 BLOCKED，PC-ISSUE-001 与整体冻结仍 HOLD。详见 `docs/issues/PC-ISSUE-001-ICS-recurrence.md`。
+- 台账结构校验 r33：211 行 / 210 活动重建项，198 PASS / 0 FAIL / 8 BLOCKED / 2 NOT TESTED / 2 SPEC UNRESOLVED / 1 RETIRED；历史映射 0，`product_behavior_tested=false`。artifact SHA-256 `45FE15C95BA8790282CFFA7DB1003DF45188D7D08497D46512CFB6D496A1B906`；ledger SHA-256 `F860D8FD6755FDC16A9036F170E0751B828185905F5A2E6B85610E7E19AC96BC`。
+
 ## PC-ISSUE-164 — 过期替换差异数据完整性（REC-P0-049，核心数据窄化 PASS）
 
 - 修复前回归预期 14 个变化字段，实际差异模型只返回 8 个；缺失重复规则、来源/时区、完成槽位、提醒方式/时机。纯核心修复同时覆盖 Activity→Deadline 时被遗漏的旧开始/结束。

@@ -4,6 +4,12 @@ Date: 2026-10-24
 
 Verdict: **HOLD**
 
+## Latest environment follow-up: PC-ISSUE-001 external ICS client
+
+On API 35 `emulator-5556`, `ACTION_VIEW` / `text/calendar` now resolves to Google Calendar `ICalLauncher`, but two handoffs of the synthetic DST series stopped at the app's first-run screen. No ICS import preview, calendar write, or re-export occurred; the Calendar Provider remained empty. Google's import instructions describe the ICS workflow on a computer. `REC-P1-081` remains BLOCKED and PC-ISSUE-001 remains PARTIAL / HOLD. Evidence summary SHA-256 `8DFC47D762396B4CE0622E70E43E5B48155FC48E18958EC4DDC110878B595983`; screenshot SHA-256 `6A83B31FD26EEFDFE46A722737F32D98ECFD951E533A180088B6D31C40413D7D`. See `docs/issues/PC-ISSUE-001-ICS-recurrence.md`.
+
+The current structural-only ledger check is r33: 211 rows / 210 active reconstructed candidates, with 198 PASS / 0 FAIL / 8 BLOCKED / 2 NOT TESTED / 2 SPEC UNRESOLVED / 1 RETIRED; historical IDs mapped=0 and `product_behavior_tested=false`. Artifact SHA-256 `45FE15C95BA8790282CFFA7DB1003DF45188D7D08497D46512CFB6D496A1B906`; ledger SHA-256 `F860D8FD6755FDC16A9036F170E0751B828185905F5A2E6B85610E7E19AC96BC`. Structural validation is not product-behavior verification; the verdict remains HOLD.
+
 ## Latest follow-up: PC-ISSUE-164 — stale replacement diff data
 
 The pre-fix regression reproduced a core omission: the full-replacement diff expected 14 changed fields but returned only 8. DraftDiff now includes all changed temporal fields across kind conversions, recurrence details, completion keys, reminder method/timing, source, and zone; recurrence collections are deterministic. The focused JVM regression passes 1/1. No UI was changed. REC-P0-049 is signed only for core diff data; mobile readability remains SPEC UNRESOLVED, so the verdict stays HOLD. See docs/issues/PC-ISSUE-164-stale-replacement-diff-core.md.
