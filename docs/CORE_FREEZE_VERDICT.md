@@ -4,6 +4,14 @@ Date: 2026-10-24
 
 Verdict: **HOLD**
 
+## Latest follow-up: PC-ISSUE-156
+
+PC-ISSUE-156 signs the API 35 native chat-list behavior for `REC-P1-071/072`: a new response remains visible when the conversation was bottom-anchored; when the user scrolled to the oldest history entry, a new response did not move the list to the bottom. Both synthetic-message AndroidJUnitRunner cases passed. Full MainActivity, persisted history, AI response and physical-device paths are not claimed.
+
+Test-only commit `642b746b2ec60b2cff65458c27c445b0d901d8e3` is pushed. Full offline Gradle passed 491/491 JVM tests across 66 suites, zero failures/errors/skips; source boundary, Debug/AndroidTest APK assembly passed; lint 0 errors / 58 warnings. Full Gradle log SHA-256 `FCF1303CADDDE1242BFA844949C7FBE18BD2B3CD474E5FB9EB267ED7841858D2`. See [PC-ISSUE-156](issues/PC-ISSUE-156-chat-conversation-anchoring.md) for measured bounds and test scope.
+
+Structural-only ledger r22 records 210 active reconstructed rows (P0/P1/P2 144/65/1), with 188 PASS / 0 FAIL / 8 BLOCKED / 8 NOT TESTED / 6 SPEC UNRESOLVED; historical IDs mapped=0 and `product_behavior_tested=false`. Artifact SHA-256 `3CBB20CE34883E1F1DE834A40692608B2AC6912F8E3B6922EE114984CFD265C0`; ledger SHA-256 `DD90187282077CB434A73D70492DF87E948CEF888B5553FAE49BEE2B5EAB5BE5`. The verdict remains **HOLD**.
+
 ## Latest follow-up: PC-ISSUE-155
 
 PC-ISSUE-155 adds an API 35 Android instrumentation subcase for `REC-P1-070`. With the real system IME visible, the conversation viewport shrank from 1858px to 1101px; the synthetic message remained visible and the enabled send control stayed 21px above the IME. The test composes production `SkinAppShell` and `NativeAiChatScreen` in an isolated `ComponentActivity` without opening PowerStore or calling AI. The complete row remains **BLOCKED** pending full `MainActivity` integration and user-owned physical-device/OEM IME verification.
