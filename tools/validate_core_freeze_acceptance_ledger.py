@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import collections
 import csv
+from datetime import date
 import hashlib
 import json
 from pathlib import Path
@@ -49,6 +50,20 @@ def require(condition: bool, message: str) -> None:
         raise ValueError(message)
 
 
+def has_risk_review_basis(value: str) -> bool:
+    prefix, separator, _ = value.partition(":")
+    marker = "Risk review "
+    if not separator or not prefix.startswith(marker):
+        return False
+    try:
+        review_date = prefix[len(marker):]
+        if date.fromisoformat(review_date).isoformat() != review_date:
+            return False
+    except ValueError:
+        return False
+    return True
+
+
 def read_ledger(path: Path) -> tuple[list[dict[str, str]], str]:
     raw = path.read_bytes()
     with path.open("r", encoding="utf-8-sig", newline="") as handle:
@@ -80,7 +95,7 @@ def validate(rows: list[dict[str, str]]) -> dict[str, object]:
 
         if kind == "RECONSTRUCTED":
             require(priority in {"P0", "P1", "P2"}, f"{case_id}: active reconstructed row has non-risk priority")
-            require("Risk review 2026-10-24:" in row["priority_basis"], f"{case_id}: missing current risk rationale")
+            require(has_risk_review_basis(row["priority_basis"]), f"{case_id}: missing dated risk rationale")
         else:
             require(priority == "OUT_OF_SCOPE", f"{case_id}: retired row must be OUT_OF_SCOPE")
             require(status == "RETIRED", f"{case_id}: retired row must have RETIRED status")
