@@ -1,5 +1,13 @@
 # Core freeze progress
 
+## PC-ISSUE-164 — stale replacement diff and mobile review (2026-10-25)
+
+- Core `DraftDiff` data fix remains in `f959bcc`; API/Compose review exposed that `snapshotRows` still omitted reminder method/timing, completion tracking/slots, and recurrence active-date bounds. Added those fields and Chinese reminder/frequency/weekday labels; the conflict dialog now exposes 25 complete rows.
+- Final API 35 `emulator-5560` AndroidJUnitRunner **1/1 PASS**: each of the 25 labels and before/after values scrolled into view; formal record remained unchanged before explicit confirmation and advanced exactly one revision after tapping “确认整份覆盖”. The test used a randomized isolated database and removed it in `finally`. Top/bottom screenshots are stored under `.local/android-test/reports/freeze-20261025/pc-issue-164-mobile-review/`.
+- Full forced-offline Gradle **541/541 JVM tests, 74 suites, 0 failures/errors/skips, 88/88 tasks**, lint 0 errors / 56 warnings. Log SHA-256 `3BCA1C55B5350479176B05FDF84D771352AEE4CD396322CF4D08ECD5141ED95E`. Final API 35 log SHA-256 `3AB94505AB84610B68A5148971C685063F5DC68371055DAB08497AAC29EDBB8E`. Debug/AndroidTest APK SHA-256 `517DFFFCCFECA6E4B6CBF5961B3CAAA8F2802B3B3B1DD107457180C268F61614` / `2EF06F141A6AEEA12F6272D9C8861D7D6EEC33A316D0F4734A221C90BF7BE0B2`; installed APK bytes were pulled from the emulator and matched.
+- Code/test commit `9f9e82ae583a5d582e5b8b4307db98ec5606f149` is pushed. Independent report: `docs/issues/PC-ISSUE-164-stale-replacement-diff-core.md`. `REC-P0-049` is now PASS. Structural ledger validation: 218 rows / 217 active reconstructed; 204 PASS / 0 FAIL / 10 BLOCKED / 2 NOT TESTED / 1 SPEC UNRESOLVED / 1 RETIRED; P0/P1/P2 = 145/71/1; historical IDs mapped = 0. Ledger SHA-256 `19002F65EA072B2B6FD266F61DF895DF9F0DDF316D0F0E6F38272EB3D94426FB`; validator JSON SHA-256 `B5C65D501F31958D0FA557994CF007AB6A56DD64EDBF696AF58B24011B51BA52`. Structural validation does not substitute for the device test.
+- Physical/OEM review remains user-owned and other freeze blockers remain open; the overall verdict stays **HOLD**.
+
 ## PC-ISSUE-PHASE1 — 当前集成版本 API 35 AVD 复验（2026-10-25）
 
 - 在新建隔离 `emulator-5560` API 35 上运行 `NewEventEditorLifecycleInstrumentedTest`，2/2 PASS：四类编辑器打开/× 退出无草稿、事件、身份、序号、队列或 commit 增量；修改 Memo 标题后退出恰好一张可恢复草稿。测试使用随机测试库，测试代码 `finally` 清理；测试后未发现 `pc-phase1-*` 隔离库残留。此前 5554/5556 未触碰。

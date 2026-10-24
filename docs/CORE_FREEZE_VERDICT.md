@@ -4,6 +4,12 @@ Date: 2026-10-25
 
 Verdict: **HOLD**
 
+## Latest follow-up: PC-ISSUE-164 — stale replacement mobile review PASS (2026-10-25)
+
+`REC-P0-049` now passes: the stale replacement dialog renders a complete 25-row before/after snapshot, including reminder modes, completion tracking and slots, and recurrence active-date limits. Final API 35 `emulator-5560` Compose instrumentation passed 1/1 after scrolling every row/value into view; no formal data changed before explicit confirmation, and one revision was created after confirmation. Full forced offline Gradle passed 541/541 JVM tests across 74 suites, 0 failures/errors/skips, all 88 tasks; lint reported 0 errors / 56 warnings. The final Debug and AndroidTest APKs were pulled from the emulator and matched the built APK hashes. Details, screenshots, and logs: `docs/issues/PC-ISSUE-164-stale-replacement-diff-core.md` and `.local/android-test/reports/freeze-20261025/pc-issue-164-mobile-review/`.
+
+Code/test commit `9f9e82ae583a5d582e5b8b4307db98ec5606f149` is pushed. Structural ledger validation: 218 rows (217 active reconstructed, 1 retired), 204 PASS / 0 FAIL / 10 BLOCKED / 2 NOT TESTED / 1 SPEC UNRESOLVED / 1 RETIRED; P0/P1/P2 = 145/71/1; historical IDs mapped = 0. Ledger SHA-256 `19002F65EA072B2B6FD266F61DF895DF9F0DDF316D0F0E6F38272EB3D94426FB`; validator artifact SHA-256 `B5C65D501F31958D0FA557994CF007AB6A56DD64EDBF696AF58B24011B51BA52`. The remaining unresolved P1, external provider, reminder, accessibility and physical/OEM gates keep the overall verdict **HOLD**.
+
 ## Latest follow-up: PC-ISSUE-PHASE1 — API 35 isolated AVD verification (2026-10-25)
 
 On newly created API 35 `emulator-5560`, the existing Phase 1 Compose instrumentation passed **2/2** using the current app/test APK bytes: all four new-event kinds opened and closed without any durable row/identity/sequence/order/commit growth; a real Memo title edit staged exactly one pending draft. Test used a randomized test-only SQLite database and removed it in `finally`; no `pc-phase1-*` database remained. Existing 5554/5556 were not touched. The app/test APK hashes matched local build outputs (`30C3AA...F5964` / `F55837...0E5CC`); device log SHA-256 `B288A0BF52E989362CF8F4E7008C3880734BFD54DE7A696050A17994A5F3BD0F`.
