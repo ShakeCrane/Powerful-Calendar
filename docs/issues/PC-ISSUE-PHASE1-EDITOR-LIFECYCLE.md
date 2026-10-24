@@ -93,3 +93,15 @@ API 35 `emulator-5556` 对 `NewEventEditorLifecycleInstrumentedTest` **2/2 PASS*
 - `emulator-5556` 测试前后 app APK SHA-256 均为 `290F13ADC31CAF38A17A1506E9C1AF57C19B2743BBC2F36CCB261918CBAC85C1`；test APK 均为 `4D04D8DF1CA9D91516146BD62E4F6E630E7CF946A1ABF1217F66C8E035965E8C`。
 
 Phase 1 的自动化与 API 35 Compose 范围维持 PASS，实体设备和秋季 DST fold 的分钟文本歧义仍未签核；整体核心冻结保持 HOLD。本次为基线复核和报告补录，没有重新打开已关闭的 Phase 2/3，也没有启动其他阶段。
+
+## HEAD `6ddf9b98` 再验证与 AVD 数据恢复缺口（2026-10-25）
+
+本次从隔离 worktree `HEAD 6ddf9b98a4520f804b0b1e3a5e9d0ca973595f14` 复核，未改产品源码，也未触碰主工作树中其他 Agent 的 AI 修改。定向测试 **31/31 PASS、6 suites**，日志 SHA-256 `88F8FFD48A62A91ADDF6947107CF15DF9842439DE4B60CE0E0EDECDF05B51059`；对应 6 份 JUnit XML 保存在 `focused-junit/`。完整离线门禁 `:app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug --offline --rerun-tasks --console=plain` 为 **521/521 JVM tests、69 suites、0 failures/errors/skips、88/88 tasks**；lint **0 errors / 53 warnings**。Debug APK SHA-256 `1601F2DB169A8C889791EBFE4149F4383E71980474452C8CFE22BA9A7C92A9EC`，AndroidTest APK SHA-256 `9FAA01339612CA2DF1871CD047512C282F19339C1E5A7766E4E512E80B0FDFFD`。
+
+API 35 Instrumentation 中 `NewEventEditorLifecycleInstrumentedTest` 在两台在线 AVD 各 **2/2 PASS**。但 `:app:connectedDebugAndroidTest` 没有遵守传入的单设备筛选参数，自动同时运行 `emulator-5554` 和 `emulator-5556`。任务结束后 package manager 已找不到两台设备上的 `dev.powerfulcalendar` / `.test` 包；将事前备份 APK 重新安装后，应用私有 `databases/` 目录均不存在。结果是两台 AVD 原有的 `powercal-v2.db`（各 139264 bytes）不再可用。本次没有发出 wipe 或 `pm clear` 命令，但不能声称 AVD 数据已保留，也无法从当前安装恢复原数据库。
+
+`emulator-5556` 测试前 app/test APK 已备份并逐字节恢复，哈希为 `290F13ADC31CAF38A17A1506E9C1AF57C19B2743BBC2F36CCB261918CBAC85C1` / `4D04D8DF1CA9D91516146BD62E4F6E630E7CF946A1ABF1217F66C8E035965E8C`。`emulator-5554` 未在测试前捕获 APK；测试后仅安装了同一组已记录的 0.9.5-rc.1 基线字节，因此不能证明其 APK 与测试前完全一致。两台设备均未在重装后启动 PowerCal。
+
+只读检查找到 `emulator-5554` 的外部 `powercal-backup.json`，文件时间为 2026-10-22 23:54 UTC，SHA-256 `FFCC82BE48A16C0F0EA8342E065FA14B6682FDAECCFC34D6C3C92E62D1CE1CB9`；它与已有主机副本相同，但早于原 AVD 数据库文件时间。另一只读 DB 副本来自 2026-10-23，大小 147456 bytes，也早于原数据库且大小不一致。未将这些旧候选覆盖到 AVD。候选副本、安装包快照、数据库文件名/大小记录、Gradle 日志及测试结果 XML 保存在 `.local/android-test/reports/freeze-20261025/pc-phase1-verification-head-6ddf9b9/`。
+
+因此，**Phase 1 源码行为与自动化验收仍为 PASS，但本轮 AVD 数据保全未闭环，交付状态暂留 HOLD**。实体设备未触碰。需要取得与 2026-10-24 原数据库对应的可验证备份，或由所有者决定是否接受 AVD 以空数据重建；在此之前不启动这两台 AVD 上的 PowerCal，也不使用旧备份自动恢复。Instrumentation 2 个测试在每台 AVD 都通过，JUnit XML 位于 `avd/instrumented-xml/`；Instrumentation 日志 SHA-256 `5023C6C11D4B42782287020C68FEA5CCE1D6005A8D27EFF6C9132643CC4A2F34`；完整 Gradle 日志 SHA-256 `49B83BB32FEB4B428705C54355BD5339B44C33DE4DB13462B785D77797E79411`。
