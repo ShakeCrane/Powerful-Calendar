@@ -47,3 +47,10 @@ Android 15 会在应用进入 stopped state（例如用户强行停止）时取�
 ## 剩余门槛
 
 D05 仍未完成：本轮没有用 PowerCal 的真实 5 分钟未来提醒跨场景验证生产调度、权限、通知渠道、`FIRED/MISSED` 和 `BootReceiver` 实际 OS 分发；也没有 API 35 系统重启或 OEM 省电设备测试。现有 AVD 探针只证明标准 Android 的状态差异，不能覆盖用户报告的 PowerCal 现象。因此 D05 保持 **BLOCKED / PARTIAL**，没有生产代码修复，也不宣称本 Issue 的产品行为 PASS。整体核心冻结保持 **HOLD**。
+
+## 冻结台账与可追溯性
+
+- 台账增加 `REC-P1-086`，类型为 `RECONSTRUCTED`，状态 `BLOCKED`；它只记录隔离测试包的 AVD 生命周期分类，明确不把结果归因到 PowerCal。
+- 结构校验报告：214 行（213 活动重建项、1 退休项），200 PASS / 0 FAIL / 9 BLOCKED / 2 NOT TESTED / 2 SPEC UNRESOLVED / 1 RETIRED；P0/P1/P2 为 145/67/1。历史 209 项仍未映射，`product_behavior_tested=false`。台账 SHA-256：`B010A4585FF55CA94C76CA9FF6791997F24B3BF16B7F07D70495CC4DDCC53892`；报告 JSON SHA-256：`E5153E2CEC176CD4ED32B516556447158313A07D5A6FCDD08AE286A16CBA4B15`。
+- 结构校验器原先把风险依据日期固定为 2026-10-24，拒绝本次合法的 2026-10-25 新行。已将校验改为严格解析 ISO 日期，并增加 2 个 unittest；`python -m unittest tools.tests.test_validate_core_freeze_acceptance_ledger -v` 为 2/2 PASS，日志 SHA-256：`F761C217955B2DCCBB9E9921C5E179AF3286F01E8F07797CCA85F7D3EA11CBFF`。修复提交 `b4335b85763e450605e46d150672fa8d45f5093a`；D05 探针与初始报告提交 `de8a6723b02ea93fc77d826a3500803481c62639`。本节台账与进度补录随后单独提交。
+- 完整 Gradle 日志 SHA-256：`04BEF079D03C91266A25D1CE74CD217BB473114B8C25B98794E01E80C8BA0D7D`；该构建包含 AndroidTest 探针，不代表生产提醒路径已经端到端通过。

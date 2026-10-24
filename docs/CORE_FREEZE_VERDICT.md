@@ -1,8 +1,14 @@
 # PowerCal Core Freeze Verdict
 
-Date: 2026-10-24
+Date: 2026-10-25
 
 Verdict: **HOLD**
+
+## Latest follow-up: PC-ISSUE-PHASE4-D05 — Android 15 AVD lifecycle classification
+
+An isolated API 35 test package received its synthetic alarm after Home, Recents removal, and process absence. Force-stopping that test package canceled its PendingIntent; no marker arrived during the 120-second observation or after relaunch until the probe manually re-armed it. This test did not invoke PowerCal's scheduler, production receiver, notification path, or persistent reminder records, so it establishes Android lifecycle classification only. Actual PowerCal reminder delivery/recovery, Android reboot, OEM power restrictions, and physical-device behavior remain untested; D05 and `REC-P1-086` stay BLOCKED / PARTIAL.
+
+The full Gradle run passed 522/522 JVM tests across 70 suites, with zero failures/errors/skips; 88 tasks completed and lint reported 0 errors / 56 warnings. Its AndroidTest additions are synthetic probes, not production reminder acceptance. The structural ledger reports 214 rows (213 active reconstructed, 1 retired): 200 PASS / 0 FAIL / 9 BLOCKED / 2 NOT TESTED / 2 SPEC UNRESOLVED / 1 RETIRED; priorities P0/P1/P2 = 145/67/1. Historical IDs mapped = 0, `product_behavior_tested=false`. Ledger SHA-256 `B010A4585FF55CA94C76CA9FF6791997F24B3BF16B7F07D70495CC4DDCC53892`; validator artifact SHA-256 `E5153E2CEC176CD4ED32B516556447158313A07D5A6FCDD08AE286A16CBA4B15`. The report and test evidence are in `docs/issues/PC-ISSUE-PHASE4-D05-AVD-LIFECYCLE.md`; commits: `de8a6723b02ea93fc77d826a3500803481c62639` (probe/report), `b4335b85763e450605e46d150672fa8d45f5093a` (date-aware ledger validator). Overall freeze remains HOLD.
 
 ## Latest follow-up: PC-ISSUE-001 — external ICS import retry
 

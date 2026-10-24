@@ -1,6 +1,6 @@
 # PowerCal 真机首轮缺陷审计与修复计划（2026-10-25）
 
-状态：Phase 1、Phase 2（P08）及 Phase 3 D01b 已完成各自自动化和可用的 API 35 AVD 子项；Phase 4–6 尚未完成；实体设备仍由用户验收；正式冻结 HOLD。
+状态：Phase 1、Phase 2（P08）及 Phase 3 D01b 已完成各自自动化和可用的 API 35 AVD 子项；Phase 4 D05 仅完成隔离合成包的平台行为分类，PowerCal 生产路径仍 BLOCKED；Phase 5–6 尚未完成；实体设备仍由用户验收；正式冻结 HOLD。
 审计基线：Git 40e78bf（来源为当前仓库只读检查），对照用户实机反馈和 docs/CORE_CONTRACT_FREEZE_2026-10-21.md 的已修订合同。
 范围：问题归因、复现方案、实现次序和验收门槛。任何源码猜测均需补足目标设备证据。
 
@@ -43,7 +43,7 @@ PowerCalApp.kt 原生 onToday 使用 TimelineCoordinate.todayCamera(nowMillis, h
 
 ### B6 · D05 杀后台后无法提醒（P1 条件性 FAIL，归因未定）
 Manifest 有 RECEIVE_BOOT_COMPLETED / exact alarm / notification 权限；ReminderScheduler 采用 AlarmManager.setExactAndAllowWhileIdle；BootReceiver 可在重启/时区/时间更改后恢复。
-但是“从最近任务划掉”“设置里强行停止”“厂商一键清理/省电限制”“用户关闭后台权限”是不同系统状态。Android 强行停止通常取消已排定闹钟并阻止后台组件重启，不能保证应用跨 force-stop 自我唤醒。须先确定操作方式与手机系统，记录下次触发是否仍被系统允许。不要以无效常驻服务/反复唤醒对抗系统。
+API 35 `emulator-5556` 上的隔离合成探针已分类：Home、Recents 滑除和进程不存在时均收到测试包 marker；只 force-stop 隔离包后，其 PendingIntent 被取消，120 秒内及重新启动后均无 marker，手动重新排程后才收到。此探针未使用 PowerCal Scheduler、精确闹钟、生产 Receiver、数据库或通知，因此不能确认也不能排除 PowerCal 缺陷。Android 15 stopped-state 与重启会清理 alarm 的平台语义已由官方文档核对。PowerCal 实际 5 分钟提醒、BootReceiver 的真实系统派发、系统重启及 OEM 省电行为仍未测试；实体设备由用户验收。详见 `docs/issues/PC-ISSUE-PHASE4-D05-AVD-LIFECYCLE.md`，REC-P1-086 保持 BLOCKED。
 
 ### B7 · E01 多轮 AI 提案失败（P1，独立记录）
 参见 docs/issues/PC-ISSUE-172-ai-multiturn-intent-handoff.md：chat 看多轮，自动结构化 interpret 却收到最后一轮 user 原文（可能只有“确认”）。需要有版本、引用原用户消息的待处理日程意图，不直接相信模型编造 source。正常聊天 E02 已通过，不要破坏显式审批边界。

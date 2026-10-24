@@ -1,5 +1,13 @@
 # Core freeze progress
 
+## PC-ISSUE-PHASE4-D05 — Android 15 AVD 生命周期分类（BLOCKED / PARTIAL）
+
+- API 35 `emulator-5556` 隔离包探针观察到 Home、Recents 滑除及进程不存在时 marker 正常投递；force-stop 仅取消测试包 PendingIntent，重启该包后旧 alarm 未恢复，手动重新排程后投递成功。探针没有使用 PowerCal 生产提醒链路，不能据此判生产 PASS/FAIL。
+- PowerCal 实际提醒、生产 BootReceiver 系统派发、系统重启及 OEM 省电策略仍未测试；实体设备由用户完成。Issue 报告：`docs/issues/PC-ISSUE-PHASE4-D05-AVD-LIFECYCLE.md`。探针源/manifest/报告提交 `de8a6723b02ea93fc77d826a3500803481c62639`。
+- 台账新增 `REC-P1-086`，保持 BLOCKED。最新结构校验为 214 行 / 213 活动重建项，200 PASS / 0 FAIL / 9 BLOCKED / 2 NOT TESTED / 2 SPEC UNRESOLVED / 1 RETIRED；P0/P1/P2=145/67/1，历史 ID 映射 0，`product_behavior_tested=false`。ledger SHA-256 `B010A4585FF55CA94C76CA9FF6791997F24B3BF16B7F07D70495CC4DDCC53892`；validator JSON SHA-256 `E5153E2CEC176CD4ED32B516556447158313A07D5A6FCDD08AE286A16CBA4B15`。
+- 校验器之前硬编码 2026-10-24，阻止新增当前日期风险条目；现在按合法 ISO 日期校验并新增边界测试。2/2 unittest PASS；修复提交 `b4335b85763e450605e46d150672fa8d45f5093a`。
+- D05 完整 Gradle 522/522 JVM tests、70 suites、0 failures/errors/skips、88 tasks；lint 0 errors / 56 warnings。该次构建包含合成 AndroidTest 探针，不覆盖生产提醒行为。整体冻结仍 HOLD；继续下一项可自主验证的冻结工作。
+
 ## PC-ISSUE-PHASE3-D01B — Draft Deck 输入法下的发布/丢弃操作
 
 - 根因：键盘缩短对话框后视口仍大于 320dp；旧逻辑只在低于该阈值时滚动整张卡片，导致长表单内层滚动、卡片底部操作被裁出视野。现在 IME 可见即滚动整卡，且内层表单禁用竞争滚动；无 IME 的原 320dp 小屏规则不变。
