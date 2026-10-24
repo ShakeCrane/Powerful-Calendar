@@ -16,6 +16,7 @@
 - API 35 `emulator-5554` 实际 Compose 测试 2/2 PASS：四类事件打开并按 × 退出无持久化副作用；真实修改 Memo 标题后按 × 恰好一张草稿。使用随机隔离 SQLite 并核对清理；原 app/test APK 在 AVD 测试后按 SHA-256 恢复一致。`emulator-5556` 未触碰；实体设备留给用户测试。
 - 定向测试 28/28 PASS（6 suites）；完整离线 Gradle 514/514 JVM tests、70 suites、0 failures/errors/skips，88/88 tasks，source boundary、Debug/AndroidTest APK、lint 均通过；lint 0 errors / 56 warnings。最终日志 SHA-256 `E2476CF1BCF9A9D2A99FC3641B05ADDF58899A08ADD791C30979586CE0F7CDA8`；定向日志 `D01A3DA9F7CFAAB8E27FA8A8172859946567BAC60CAB4B2DA292CF60F08EF4E6`；AVD Instrumentation 日志 `E63216AB319C4A8FB5715892874670FE11E8CE1B7055026239707F9AB117AF50`；Debug APK `3A066D385FF3A327DC756B86C410FBA4EF31E8C9DF4C9B0C91DEF6734453C359`。证据位于 `.local/android-test/reports/freeze-20261025/pc-phase-1-editor-lifecycle/`。
 - DST 秋季回拨的同名墙上时间不能由现有分钟文本区分，保留为未签核风险；本轮不扩大时间持久化格式。Phase 1 自动化/AVD 范围 PASS，Phase 2 可开工；整体核心冻结仍 HOLD。实现提交 `b46b3dd7592bb1c7de021d543630f84937a0eaef`（本条提交补录）。
+- 2026-10-25 当前基线复核：HEAD `1d8d437117344da36d13674fd3bf00607c27a76c` 上定向 **31/31**、完整 Gradle **522/522 / 70 suites / 0 failures/errors/skips / 88 tasks**、API 35 `emulator-5556` Compose **2/2** 均 PASS；lint 0 errors / 56 warnings。原 APK 已哈希复核恢复，隔离 DB 文件名清单前后相同。复核日志、APK/测试证据与残余风险见 `docs/issues/PC-ISSUE-PHASE1-EDITOR-LIFECYCLE.md` 的“当前基线复核”节；仅更新了证据，无 Phase 1 产品源码变更。实体设备与 DST fold 风险不变，整体核心冻结 HOLD。
 
 ## PC-ISSUE-001 — Google Calendar ICS 导入阻塞复核（REC-P1-081 仍 BLOCKED）
 

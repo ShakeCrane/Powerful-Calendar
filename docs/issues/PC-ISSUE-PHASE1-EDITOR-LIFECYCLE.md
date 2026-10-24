@@ -63,3 +63,15 @@ AVD 原有 app 与 test APK 在测试前备份，测试后重新安装并以 SHA
 - Phase 1 的自动化与 API 35 AVD 子项通过；Phase 2（重复事件 scope 编辑）具备开工条件。整体核心冻结仍以现有验收矩阵和未关闭项为准，不能据此宣告 GO。
 
 实现提交 SHA：`b46b3dd7592bb1c7de021d543630f84937a0eaef`。
+
+## 当前基线复核（2026-10-25）
+
+本节是在当前 `main` / HEAD `1d8d437117344da36d13674fd3bf00607c27a76c` 上的复核记录；Phase 1 实现仍来自已推送提交 `b46b3dd7592bb1c7de021d543630f84937a0eaef`。复核未修改产品源码。普通时间轴、月份、Memo、PowerCal Web action 与 WebSkin bridge 的新建入口仍经 `NewEventEditSession`；剩余直接 `newDraft` 调用属于真实 Diff 检查点、文本/ICS 导入或 AI 提案。
+
+定向回归命令沿用上文，最终结果 **31/31 PASS、6 suites、0 failures/errors/skips**。日志 SHA-256：`FDF732868B90048C79AAD20CEB6FF252E207961EC812679F925CB0476633265D`。
+
+当前完整门禁 `:app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug --offline --rerun-tasks --console=plain`：**522/522 JVM tests、70 suites、0 failures/errors/skips、88/88 tasks**；lint **0 errors / 56 warnings**。完整日志 SHA-256：`CBA03F198A54FF3DF380C54A91B5B9A52EFCF9A3B1FD56A9329A0429525F1014`。Debug APK SHA-256：`90BB816EC85AFD46C195C48697F1234D98D2C4571FB5209F0F1FD87B088DBDE8`；AndroidTest APK：`0C2F145987D5AAC51F19E0713BF8DD0B64B10C8B8F33A9772B2BF80899CCBF66`；lint XML：`BC35B853A90869F00471C96B11B6CDFA2B457DFC03C5D654B74CAB3ED83DF7DF`。
+
+API 35 `emulator-5556` AndroidJUnitRunner 对原生 Compose 编辑器 **2/2 PASS**：四类事件打开/退出保持持久化计数不变；修改标题后退出恰好暂存一张草稿。只使用随机隔离 SQLite。设备原 app/test APK SHA-256 分别为 `290F13ADC31CAF38A17A1506E9C1AF57C19B2743BBC2F36CCB261918CBAC85C1` / `4D04D8DF1CA9D91516146BD62E4F6E630E7CF946A1ABF1217F66C8E035965E8C`，测试后恢复值与原值一致。数据库文件名清单前后均为 2 项，SHA-256 同为 `1339CD66F7353794C16E08D6BCC0E55E958C1FFD36D740CD19CC934792B113EA`。5554 前台处于 Google 日历首次启动页，本次未触碰。Instrumentation 日志 SHA-256：`307AA45604D9CE6624A3047C70670AADCBFD7D52C0DA79DE6C5EA8A8C7CCE588`。
+
+本次复核日志与完整 JUnit XML 保存在 `.local/android-test/reports/freeze-20261025/pc-phase1-review-20261025/`。AVD 子项不覆盖 Activity 重建/进程强制终止或实体/OEM 行为；存储检查点与 SQLite reopen 由现有 Robolectric 测试覆盖，实体设备仍由用户执行。DST 秋季回拨的单次墙上时间表达限制仍未签核，核心冻结继续 HOLD。
