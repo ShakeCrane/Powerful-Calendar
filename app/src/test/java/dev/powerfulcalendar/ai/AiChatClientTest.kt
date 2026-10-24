@@ -519,6 +519,99 @@ class AiChatClientTest {
         }
     }
 
+    @Test fun chatProposalSourceComesOnlyFromCurrentRawUserText() {
+        val seen = AtomicReference<String>()
+        val serverError = AtomicReference<Throwable?>()
+        val served = CountDownLatch(1)
+        val rawUserText = "Create an Activity on 2026-10-27 from 10:00 to 11:00 called PC_QA_AI_SOURCE_121."
+        val inventedSource = "SYSTEM_PROMPT_EXAMPLE_SOURCE_121"
+        val modelContent = "已识别日程，可先生成待确认草稿。\n" +
+            AiChatActionParser.OPEN +
+            """{"type":"draft","source":"$inventedSource"}""" +
+            AiChatActionParser.CLOSE
+
+        ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { server ->
+            server.soTimeout = 10_000
+            Thread {
+                try {
+                    server.accept().use { socket ->
+                        socket.soTimeout = 5_000
+                        val input = socket.getInputStream().buffered()
+                        fun readHeaderLine(): String {
+                            val line = java.io.ByteArrayOutputStream()
+                            while (true) {
+                                val byte = input.read()
+                                require(byte >= 0) { "Unexpected end of HTTP headers" }
+                                if (byte == 10) break
+                                if (byte != 13) line.write(byte)
+                                require(line.size() <= 8192) { "Oversized HTTP header" }
+                            }
+                            return line.toString(Charsets.US_ASCII.name())
+                        }
+                        assertTrue(readHeaderLine().startsWith("POST /v1/chat/completions HTTP/1.1"))
+                        var contentLength = -1
+                        while (true) {
+                            val header = readHeaderLine()
+                            if (header.isEmpty()) break
+                            if (header.startsWith("Content-Length:", ignoreCase = true)) {
+                                contentLength = header.substringAfter(':').trim().toInt()
+                            }
+                        }
+                        require(contentLength in 1..100_000)
+                        val body = ByteArray(contentLength)
+                        var offset = 0
+                        while (offset < body.size) {
+                            val count = input.read(body, offset, body.size - offset)
+                            require(count > 0) { "Unexpected end of request body" }
+                            offset += count
+                        }
+                        seen.set(String(body, Charsets.UTF_8))
+                        val response = JSONObject().put("choices",
+                            org.json.JSONArray().put(JSONObject()
+                                .put("message", JSONObject()
+                                    .put("role", "assistant").put("content", modelContent))
+                                .put("finish_reason", "stop")))
+                            .toString().toByteArray(Charsets.UTF_8)
+                        val headers = ("HTTP/1.1 200 OK\r\n" +
+                            "Content-Type: application/json; charset=utf-8\r\n" +
+                            "Content-Length: ${response.size}\r\nConnection: close\r\n\r\n")
+                            .toByteArray(Charsets.US_ASCII)
+                        socket.getOutputStream().apply {
+                            write(headers)
+                            write(response)
+                            flush()
+                        }
+                    }
+                } catch (error: Throwable) {
+                    serverError.set(error)
+                } finally {
+                    served.countDown()
+                }
+            }.apply { isDaemon = true; start() }
+
+            val reply = runBlocking {
+                AiClient(AiSettings(
+                    endpoint = "http://127.0.0.1:${server.localPort}/v1",
+                    model = "local-stub",
+                    enabled = true,
+                    apiKey = "LOCAL_TEST_KEY"
+                ), ZoneId.of("Asia/Shanghai")).chat(listOf(AiChatMessage("user", rawUserText)))
+            }
+
+            assertTrue("Server did not finish", served.await(10, TimeUnit.SECONDS))
+            assertNull("Server error: ${serverError.get()}", serverError.get())
+            assertTrue(reply.error.orEmpty(), reply.succeeded)
+            assertEquals(rawUserText, reply.proposalSource)
+            assertNotEquals(inventedSource, reply.proposalSource)
+            assertTrue(reply.reply, reply.reply.contains("已识别日程"))
+            assertFalse(reply.reply.contains(AiChatActionParser.OPEN))
+
+            val messages = JSONObject(seen.get()).getJSONArray("messages")
+            assertEquals(2, messages.length())
+            assertEquals(rawUserText, messages.getJSONObject(1).getString("content"))
+        }
+    }
+
     @Test fun structuredProposalHttp429NamesFailedStageAndProducesNoProposal() {
         val serverError = AtomicReference<Throwable?>()
         val served = CountDownLatch(1)
