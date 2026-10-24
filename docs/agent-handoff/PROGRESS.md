@@ -1,5 +1,12 @@
 # Core freeze progress
 
+## PC-ISSUE-166 — 随口日程建议按钮的 API 35 子项（REC-P1-048 仍 NOT TESTED）
+
+- 新增生产 `NativeAiChatScreen` 仪器回归：合成 assistant suggestion 消息展示可选“从此消息创建事件草稿”按钮；初次渲染不调用提案回调、不出现自动审核面板；仅点按后回调收到原始用户消息。API 35 `emulator-5556` AndroidJUnitRunner 1/1 PASS。无 provider 请求、无数据库/业务记录访问、无生产代码改动。
+- PC-ISSUE-147 的本地 parser/client 路由测试已覆盖显式/随口分流与本地 stub（13/13），本次补足可选按钮渲染/点击子项。完整强制离线 Gradle 496/496 JVM、67 suites、0 failures/errors/skips；88 tasks executed，源码边界、Debug/AndroidTest APK 和 lint 通过。
+- 测试提交 `d081a7ebb16dd7889c7386770c3bb1e63571bfbb` 已推送。独立报告 `docs/issues/PC-ISSUE-166-casual-chat-suggestion-button.md`。定向 AVD 日志 SHA-256 `34CF02E1CDE5316E48352217666080A7E57A4FAB28EE77EABEDF26607AE532AD`；全量 Gradle 日志 SHA-256 `6CB27E33765748096F388520C9AECAF65DDEAC03179B897C19D8B82F4D640835`；Debug/AndroidTest APK SHA-256 `290F13ADC31CAF38A17A1506E9C1AF57C19B2743BBC2F36CCB261918CBAC85C1` / `9C8C887B1AC86236415889A1A665E25497D3E121C318C2BAD5A3474E9A64EE4B`。
+- 免费 provider 的真实自然语言分类及 `PowerCalApp.submitAiChatInput` 控制器集成未测试；故 `REC-P1-048` 继续 NOT TESTED，REC-P1-047 / PC-ISSUE-002 继续 BLOCKED。结构台账 r35：198 PASS / 0 FAIL / 8 BLOCKED / 2 NOT TESTED / 2 SPEC UNRESOLVED / 1 RETIRED；artifact SHA-256 `737FBDCE9BD75E2ABE362BD8C8AD6C47A4BF7B6FD46FC5D26C0E3B137254F013`，ledger SHA-256 `9073E925A8DD2ECEDD486F429740EE143CB65726777EA1657595074BD68D840E`，`product_behavior_tested=false`（结构校验标志）。整体仍 HOLD。
+
 ## PC-ISSUE-165 — 日期级 Deadline 无障碍语义（REC-P1-068 窄化模拟器子项 PASS）
 
 - 新增 production `TimelineScreen` API 35 Android instrumentation：在 4h/24h/48h zoom 下，日期条语义均含完整标题和 `2026-10-24 · 截止，无具体时刻`，不含虚构时分；点击后原样打开 eventSeq/title/date，`deadlineMillis=null`。三档缩放节点矩形均为 `Rect(42,268,657,405)`。无生产 UI 代码修改。

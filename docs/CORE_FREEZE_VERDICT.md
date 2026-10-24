@@ -4,6 +4,14 @@ Date: 2026-10-24
 
 Verdict: **HOLD**
 
+## Latest follow-up: PC-ISSUE-166 — casual schedule suggestion action
+
+On API 35 `emulator-5556`, the production chat screen displayed the optional “从此消息创建事件草稿” button for a synthetic casual-suggestion message. Rendering did not invoke proposal handling or show an automatic review; tapping the button passed the original user text to the callback. AndroidJUnitRunner passed 1/1. No provider or database was used, and no production code changed. This supplements PC-ISSUE-147's local parser/client tests but does not verify live free-model classification or the `PowerCalApp.submitAiChatInput` controller. `REC-P1-048` remains NOT TESTED; REC-P1-047 and PC-ISSUE-002 remain BLOCKED/PARTIAL. See `docs/issues/PC-ISSUE-166-casual-chat-suggestion-button.md`.
+
+Test-only commit `d081a7ebb16dd7889c7386770c3bb1e63571bfbb` is pushed. Full forced-offline Gradle passed 496/496 JVM tests across 67 suites, zero failures/errors/skips; all 88 tasks executed, source-boundary verification and Debug/AndroidTest APK assembly passed, and lint passed. Full log SHA-256 `6CB27E33765748096F388520C9AECAF65DDEAC03179B897C19D8B82F4D640835`. Focused API 35 log SHA-256 `34CF02E1CDE5316E48352217666080A7E57A4FAB28EE77EABEDF26607AE532AD`. Debug APK SHA-256 `290F13ADC31CAF38A17A1506E9C1AF57C19B2743BBC2F36CCB261918CBAC85C1`; AndroidTest APK SHA-256 `9C8C887B1AC86236415889A1A665E25497D3E121C318C2BAD5A3474E9A64EE4B`.
+
+Structural-only ledger r35: 211 rows / 210 active reconstructed, 198 PASS / 0 FAIL / 8 BLOCKED / 2 NOT TESTED / 2 SPEC UNRESOLVED / 1 RETIRED; historical IDs mapped=0 and `product_behavior_tested=false`. Artifact SHA-256 `737FBDCE9BD75E2ABE362BD8C8AD6C47A4BF7B6FD46FC5D26C0E3B137254F013`; ledger SHA-256 `9073E925A8DD2ECEDD486F429740EE143CB65726777EA1657595074BD68D840E`. This subcase does not satisfy the live-provider criterion. Freeze remains HOLD.
+
 ## Latest follow-up: PC-ISSUE-165 — date-only Deadline accessibility subcase
 
 On API 35 `emulator-5556`, the production date-band semantics tree announced the complete title and `2026-10-24 · 截止，无具体时刻` at 4h, 24h, and 48h timeline zoom; it contained no invented clock time. The clickable semantic node stayed at `Rect(42,268,657,405)`, and tapping returned the unchanged DATE Deadline with `deadlineMillis=null`. The focused AndroidJUnitRunner passed 1/1. No production/UI code changed. `REC-P1-068` remains SPEC UNRESOLVED because exact day-band placement and actual TalkBack/OEM/physical-device behavior are not signed off. See `docs/issues/PC-ISSUE-165-date-only-deadline-accessibility.md`.
