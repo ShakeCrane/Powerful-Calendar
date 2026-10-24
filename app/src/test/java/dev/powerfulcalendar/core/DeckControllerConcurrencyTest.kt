@@ -210,6 +210,14 @@ class DeckControllerConcurrencyTest {
         assertTrue(controller.state.dirty)
         assertTrue(controller.state.error!!.contains("disk unavailable"))
         assertFalse(controller.state.busy)
+
+        fake.stageFailure = null
+        assertTrue(controller.flush())
+
+        assertEquals("仍保留的输入", fake.cards[1L]!!.form.title)
+        assertFalse(controller.state.dirty)
+        assertEquals(null, controller.state.error)
+        assertFalse(controller.state.busy)
     }
 
     @Test
