@@ -170,3 +170,15 @@ Phase 1 定向命令在本轮 **BUILD SUCCESSFUL**；完整回归 JUnit XML 中�
 - Debug / AndroidTest APK SHA-256：`3A50D74F565A496CE8441ADC51643CB58A00949D001E789883F7C72E52FB22FE` / `EB4AC17BF9B8ED3F62DBDAA6F722791FB33D137011DC8ECB5C426FF75AD6DBF3`；lint XML SHA-256 `6254B2A5C445027068221A411E65E5798A8F8457FAD9716266253B2BFB52E4D4`。日志及结构化 manifest 位于 `.local/android-test/reports/freeze-20261025/phase1-current-e01/`。
 - 本次未运行 connected/AVD 测试：既有 AVD 私有数据库恢复问题仍未闭环；实体设备由用户测试。更早的 API 35 Compose 结果继续作为历史证据，不计作本次复测。Phase 1 当前源码集成回归 PASS，AVD 新复测仍 BLOCKED，实体设备 NOT TESTED；秋季 DST fold 精度限制未解决，核心冻结保持 HOLD。
 - Phase 1 已具备关闭并交接条件；Phase 2、Phase 3 已有各自独立交付记录。后续可以继续独立的开放冻结项（包括 E01），但这份集成回归不签核那些项目，也不改变总体验收 HOLD。
+
+## 当前集成版本 Android 15 AVD 复验（2026-10-25，代码提交 `2692ca2`）
+
+Phase 1 产品修复仍由 `b46b3dd7592bb1c7de021d543630f84937a0eaef` 提供；本次未改 Phase 1 产品源码。为避免使用私有数据库缺失状态未厘清的旧 AVD，在新建隔离 API 35 `emulator-5560` 上直接运行现有 `NewEventEditorLifecycleInstrumentedTest`，只用测试包随机命名 SQLite 文件并由 `finally` 清理。安装在该 AVD 的 app/test APK 与本机最终构建逐字节一致：SHA-256 分别为 `30C3AAED678F3569AB2ECB350A5298236EE37BA6DE27C169714D63222D9F5964` / `F55837EA885CE7B72FEE3D67AC011A6EAD1237F3A8DEAEFB9806550FD550E5CC`。
+
+- `openingAndClosingAllKindsInComposeDoesNotAllocatePersistentRowsOrSequences`：四类事件分别打开并按 × 关闭，草稿、待处理、正式事件、identity、next sequence、next queue order 与 commit 均无增量。
+- `changingTitleThenClosingInComposeStagesExactlyOneDraft`：真实修改 Memo 标题后退出，恰好一张待处理草稿，无正式事件或 commit。
+- API 35 AndroidJUnitRunner **2/2 PASS**；日志 SHA-256 `B288A0BF52E989362CF8F4E7008C3880734BFD54DE7A696050A17994A5F3BD0F`，`.local/android-test/reports/freeze-20261025/pc-issue-172-current-review/phase1-current-2692-5560.log`。测试后测试包的 `pc-phase1-*` 隔离数据库文件检查无残留；5554/5556 未启动或触碰。
+- 同一集成源码快照的完整离线 Gradle 门禁 **540/540 JVM、74 suites、0 failures/errors/skips、88/88 tasks**；Phase 1 六个相关 suite 为 **32/32 PASS**；lint 0 errors / 56 warnings。最终日志 SHA-256 `CBE1B167E33551AB2455CE07E3A9D68D42A2A7E09AAB169182442EFF3E35F60D`；Debug / AndroidTest APK 与 lint hash 见 PC-ISSUE-172 的 verification manifest。
+- 矩阵结构复核仍为 218 rows / 217 active reconstructed；203 PASS / 0 FAIL / 10 BLOCKED / 2 NOT TESTED / 2 SPEC UNRESOLVED / 1 RETIRED；历史 ID 映射 0。`REC-P1-087` 现引用本次 API 35 AVD 证据。Ledger SHA-256 `4381A8E51CE74E184C2AC5D0C99EEFCCC629548258EFB4F44F86A2E9C3B5CC03`；validator JSON SHA-256 `D3D3E2DE077E2B2209F0863D965038C59A17319D093BB6B5731588B9ABF2DC94`。结构校验不替代行为测试。
+
+本次虚拟机证据不代表实体/OEM 验收；实体设备由用户执行。Phase 1 生命周期及默认时间自动化和 API 35 Compose 范围 PASS；秋季 DST fold 墙上分钟文本无法区分两个同名时间的精度风险仍未签核。整体核心冻结继续 HOLD。

@@ -4,13 +4,19 @@ Date: 2026-10-25
 
 Verdict: **HOLD**
 
+## Latest follow-up: PC-ISSUE-PHASE1 — API 35 isolated AVD verification (2026-10-25)
+
+On newly created API 35 `emulator-5560`, the existing Phase 1 Compose instrumentation passed **2/2** using the current app/test APK bytes: all four new-event kinds opened and closed without any durable row/identity/sequence/order/commit growth; a real Memo title edit staged exactly one pending draft. Test used a randomized test-only SQLite database and removed it in `finally`; no `pc-phase1-*` database remained. Existing 5554/5556 were not touched. The app/test APK hashes matched local build outputs (`30C3AA...F5964` / `F55837...0E5CC`); device log SHA-256 `B288A0BF52E989362CF8F4E7008C3880734BFD54DE7A696050A17994A5F3BD0F`.
+
+The current integrated offline Gradle gate passed 540/540 JVM tests across 74 suites, 0 failures/errors/skips, 88/88 tasks; the six Phase 1 suites account for 32/32 PASS; lint 0 errors / 56 warnings. Full log SHA-256 `CBE1B167E33551AB2455CE07E3A9D68D42A2A7E09AAB169182442EFF3E35F60D`. Phase 1 implementation remains the separately pushed `b46b3dd7592bb1c7de021d543630f84937a0eaef`. Physical/OEM behavior is for the user; fall DST fold minute-text ambiguity remains unsigned. Phase 1 automation and isolated API 35 editor behavior PASS; overall freeze remains HOLD.
+
 ## Latest follow-up: PC-ISSUE-172 — deterministic AI task handoff (2026-10-25)
 
 The multi-turn task handoff now retains timestamped user evidence and the original zone/anchor, treats assistant suggestions as untrusted, preserves same-title candidates, and separates review, draft staging, and explicit publish. An isolated pre-fix regression reproduced a bare-negative confirmation bug; the repaired focused tests pass. Full forced-offline Gradle passed 540/540 JVM tests across 74 suites, 0 failures/errors/skips and 88/88 tasks; lint 0 errors / 56 warnings. On a newly created API 35 QA AVD (`emulator-5560`), the actual `PowerCalApp` Compose flow with a local fake HTTP server showed five independent same-title candidates, zero writes before review, and exactly five pending drafts after explicit selection, with zero formal events/commits. Instrumentation passed 1/1. The screenshot and log are recorded in the independent issue report and local verification manifest.
 
 This is deterministic client/UI evidence, not a live-model result. No provider endpoint or credential was available in the checked Desktop names/environment, so the live free/authorized DeepSeek provider path remains BLOCKED and `REC-P1-090` is not PASS. `REC-P1-089` records only the bounded deterministic path as PASS; both reconstructed rows retain no historical ID mapping. Existing emulator 5554 data was not used and its database hash was unchanged. Physical-device behavior remains for the user. Overall verdict remains HOLD.
 
-The structural ledger now has 218 rows (217 active reconstructed, 1 retired): 203 PASS / 0 FAIL / 10 BLOCKED / 2 NOT TESTED / 2 SPEC UNRESOLVED / 1 RETIRED; priorities P0/P1/P2 = 145/71/1. Historical IDs mapped = 0. Ledger SHA-256 `2ECCD078AF5B30ABE17A2962604568214A21C5F41CEF11DAE336FE07A2DC63E9`; validator JSON SHA-256 `17140DAC63B07898CA54DAE4BD4CA4A6DC4496F8C41607813B82751043912198`. Structural validation is not product behavior testing.
+The structural ledger now has 218 rows (217 active reconstructed, 1 retired): 203 PASS / 0 FAIL / 10 BLOCKED / 2 NOT TESTED / 2 SPEC UNRESOLVED / 1 RETIRED; priorities P0/P1/P2 = 145/71/1. Historical IDs mapped = 0. Ledger SHA-256 `4381A8E51CE74E184C2AC5D0C99EEFCCC629548258EFB4F44F86A2E9C3B5CC03`; validator JSON SHA-256 `D3D3E2DE077E2B2209F0863D965038C59A17319D093BB6B5731588B9ABF2DC94`. Structural validation is not product behavior testing.
 
 ## Latest follow-up: PC-ISSUE-PHASE1 — editor lifecycle and default-time revalidation
 

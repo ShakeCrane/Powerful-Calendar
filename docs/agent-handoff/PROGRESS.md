@@ -1,5 +1,13 @@
 # Core freeze progress
 
+## PC-ISSUE-PHASE1 — 当前集成版本 API 35 AVD 复验（2026-10-25）
+
+- 在新建隔离 `emulator-5560` API 35 上运行 `NewEventEditorLifecycleInstrumentedTest`，2/2 PASS：四类编辑器打开/× 退出无草稿、事件、身份、序号、队列或 commit 增量；修改 Memo 标题后退出恰好一张可恢复草稿。测试使用随机测试库，测试代码 `finally` 清理；测试后未发现 `pc-phase1-*` 隔离库残留。此前 5554/5556 未触碰。
+- AVD 安装的 app/test APK hash 与当前构建逐字节一致：`30C3AAED678F3569AB2ECB350A5298236EE37BA6DE27C169714D63222D9F5964` / `F55837EA885CE7B72FEE3D67AC011A6EAD1237F3A8DEAEFB9806550FD550E5CC`。设备日志 SHA-256 `B288A0BF52E989362CF8F4E7008C3880734BFD54DE7A696050A17994A5F3BD0F`。
+- 当前完整 Gradle 集成门禁 540/540 JVM、74 suites、0 failures/errors/skips、88/88 tasks；Phase 1 六个 suite 32/32 PASS，lint 0 errors / 56 warnings。完整日志 SHA-256 `CBE1B167E33551AB2455CE07E3A9D68D42A2A7E09AAB169182442EFF3E35F60D`。产品实现仍为 `b46b3dd7592bb1c7de021d543630f84937a0eaef`；详情及证据目录见独立 Phase1 Issue 报告。
+- `REC-P1-087` 已记录本次 AVD 子项；当前 ledger 为 218 rows / 217 active reconstructed，203 PASS / 0 FAIL / 10 BLOCKED / 2 NOT TESTED / 2 SPEC UNRESOLVED / 1 RETIRED，历史 ID 映射 0。Ledger SHA-256 `4381A8E51CE74E184C2AC5D0C99EEFCCC629548258EFB4F44F86A2E9C3B5CC03`；validator JSON SHA-256 `D3D3E2DE077E2B2209F0863D965038C59A17319D093BB6B5731588B9ABF2DC94`；这是结构校验而非产品行为测试。
+- 实体/OEM 与秋季 DST fold 精度风险仍未签核，整体 HOLD。
+
 ## PC-ISSUE-172 — 多轮任务交接与显式审查（确定性路径 PASS；Provider BLOCKED）
 
 - 修复跨轮信息丢失：结构化生成接收带原始时刻/时区和稳定证据 ID 的任务快照，assistant 内容仅为不可信建议；同名候选保留独立身份，审查选择、草稿写入与正式发布分离，并以事务收据防止重放重复写入。
@@ -7,7 +15,7 @@
 - 完整离线 Gradle **540/540 JVM、74 suites、0 failures/errors/skips、88/88 tasks**；lint 0 errors / 56 warnings。真实 PowerCalApp Compose + loopback fake HTTP 在新建 API 35 `emulator-5560` AndroidJUnitRunner **1/1 PASS**：审查前零写入；屏幕五个同名候选；明确写草稿后恰五个唯一草稿，正式事件/提交仍为零。截图、日志和 APK hash 见 `docs/issues/PC-ISSUE-172-ai-multiturn-intent-handoff.md` 与本地 verification manifest。
 - 不可提供的 Provider endpoint/credential 使真实免费/DeepSeek API 场景保持 BLOCKED；未读取任何密钥或请求 Provider。实体设备由用户执行。新 AVD 未使用既有含数据的 AVD；5554 数据库前后 hash 不变。整体冻结 HOLD。
 - `REC-P1-089`（本地确定性任务交接）PASS；`REC-P1-090`（真实 Provider 路径）BLOCKED。历史 ID 未恢复，二者均为 RECONSTRUCTED。独立 Issue 报告：`docs/issues/PC-ISSUE-172-ai-multiturn-intent-handoff.md`。
-- 新矩阵结构校验：218 rows / 217 active reconstructed；203 PASS / 0 FAIL / 10 BLOCKED / 2 NOT TESTED / 2 SPEC UNRESOLVED / 1 RETIRED；P0/P1/P2=145/71/1；历史 ID 映射 0。Ledger SHA-256 `2ECCD078AF5B30ABE17A2962604568214A21C5F41CEF11DAE336FE07A2DC63E9`；validator JSON SHA-256 `17140DAC63B07898CA54DAE4BD4CA4A6DC4496F8C41607813B82751043912198`。结构校验不替代行为测试。
+- 新矩阵结构校验：218 rows / 217 active reconstructed；203 PASS / 0 FAIL / 10 BLOCKED / 2 NOT TESTED / 2 SPEC UNRESOLVED / 1 RETIRED；P0/P1/P2=145/71/1；历史 ID 映射 0。Ledger SHA-256 `4381A8E51CE74E184C2AC5D0C99EEFCCC629548258EFB4F44F86A2E9C3B5CC03`；validator JSON SHA-256 `D3D3E2DE077E2B2209F0863D965038C59A17319D093BB6B5731588B9ABF2DC94`。结构校验不替代行为测试。
 
 ## PC-ISSUE-PHASE1 — E01 工作树叠加回归（2026-10-25）
 
