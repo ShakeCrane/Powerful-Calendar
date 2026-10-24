@@ -1160,33 +1160,105 @@ object DraftDiff {
         }
         add("类型", current?.kind?.label, form.kind.label)
         add("标题", current?.title, after?.title ?: form.title)
-        val zone = form.zone
-        when (form.kind) {
-            TemporalKind.ALARM -> add("开始", current?.startMillis?.let { DraftForm.formatInstant(it, zone) },
-                form.startText)
-            TemporalKind.ACTIVITY -> {
-                add("开始", current?.startMillis?.let { DraftForm.formatInstant(it, zone) }, form.startText)
-                add("结束", current?.endMillis?.let { DraftForm.formatInstant(it, zone) }, form.endText)
-            }
-            TemporalKind.MEMO -> {
-                add("开始日期", current?.memoStartDate, form.startText)
-                add("结束日期", current?.memoEndDate, form.endText)
-            }
-            TemporalKind.DEADLINE -> add(
-                "截止",
-                current?.deadlineDate ?: current?.deadlineMillis?.let { DraftForm.formatInstant(it, zone) },
-                form.endText
-            )
+        val beforeTimes = current?.let(::temporalFields).orEmpty()
+        val afterTimes = after?.let(::temporalFields) ?: temporalFields(form)
+        listOf("开始", "结束", "截止", "开始日期", "结束日期").forEach { label ->
+            add(label, beforeTimes[label], afterTimes[label])
         }
         add("完成跟踪", current?.trackingEnabled?.toString(), form.trackingEnabled.toString())
         add("地点", current?.location, form.location)
         add("备注", current?.notes, form.notes)
         add("提醒", reminderLabel(current?.reminderMinutes), reminderLabel(form.reminderMinutes))
+        add("提醒方式", current?.reminderMethod?.name, after?.reminderMethod?.name ?: form.reminderMethod.name)
+        add("提醒时机", current?.reminderTiming?.name, after?.reminderTiming?.name ?: form.reminderTiming.name)
         add("启用", if (current?.enabled == false) "否" else if (current == null) null else "是",
             if (form.enabled) "是" else "否")
+        add("来源", current?.source, after?.source ?: form.source.ifBlank { "local" })
+        add("时区", current?.zoneId, after?.zoneId ?: form.zone.id)
+        add(
+            "重复规则",
+            current?.recurrence?.let(::recurrenceSummary),
+            after?.recurrence?.let(::recurrenceSummary) ?: recurrenceSummary(form.recurrence)
+        )
+        add(
+            "完成槽位",
+            current?.completedKeys?.let(::completedKeysSummary),
+            after?.completedKeys?.let(::completedKeysSummary) ?: completedKeysSummary(form.completedKeys)
+        )
         if (changes.isEmpty()) changes.add(FieldChange("内容", "与当前正式对象一致", "没有可显示的差异"))
         return changes
     }
+
+    private fun temporalFields(record: TemporalRecord): Map<String, String?> = when (record.kind) {
+        TemporalKind.ALARM -> mapOf(
+            "开始" to record.startMillis?.let { DraftForm.formatInstant(it, record.zone) }
+        )
+        TemporalKind.ACTIVITY -> mapOf(
+            "开始" to record.startMillis?.let { DraftForm.formatInstant(it, record.zone) },
+            "结束" to record.endMillis?.let { DraftForm.formatInstant(it, record.zone) }
+        )
+        TemporalKind.DEADLINE -> mapOf(
+            "截止" to (record.deadlineDate?.let { "日期 $it" }
+                ?: record.deadlineMillis?.let { "时刻 ${DraftForm.formatInstant(it, record.zone)}" })
+        )
+        TemporalKind.MEMO -> mapOf(
+            "开始日期" to record.memoStartDate,
+            "结束日期" to record.memoEndDate
+        )
+    }
+
+    private fun temporalFields(form: DraftForm): Map<String, String?> = when (form.kind) {
+        TemporalKind.ALARM -> mapOf("开始" to form.startText.trim().ifEmpty { null })
+        TemporalKind.ACTIVITY -> mapOf(
+            "开始" to form.startText.trim().ifEmpty { null },
+            "结束" to form.endText.trim().ifEmpty { null }
+        )
+        TemporalKind.DEADLINE -> mapOf(
+            "截止" to when (val deadline = form.parseDeadline()) {
+                is DeadlineValue.Date -> "日期 ${deadline.date}"
+                is DeadlineValue.Instant -> "时刻 ${DraftForm.formatInstant(deadline.millis, form.zone)}"
+                null -> form.endText.trim().ifEmpty { null }
+            }
+        )
+        TemporalKind.MEMO -> mapOf(
+            "开始日期" to form.startText.trim().ifEmpty { null },
+            "结束日期" to form.endText.trim().ifEmpty { null }
+        )
+    }
+
+    private fun recurrenceSummary(rule: Recurrence): String {
+        val days = rule.byDay.sortedBy { it.value }.joinToString(",") { it.name }.ifEmpty { "none" }
+        val exceptions = rule.exceptions.sorted().joinToString(",", "[", "]", transform = ::escapeDiffValue)
+        val overrides = rule.overrides.toSortedMap().entries.joinToString(";", "[", "]") { (key, value) ->
+            val start = Instant.ofEpochMilli(value.startMillis)
+            val end = value.endMillis?.let { Instant.ofEpochMilli(it).toString() } ?: "none"
+            val title = value.title?.let(::escapeDiffValue) ?: "none"
+            "${escapeDiffValue(key)}=>$start/$end/$title"
+        }
+        return listOf(
+            "freq=${rule.freq.name}",
+            "interval=${rule.interval}",
+            "count=${rule.count ?: "unbounded"}",
+            "until=${rule.untilMillis?.let { Instant.ofEpochMilli(it).toString() } ?: "none"}",
+            "activeFromDate=${rule.activeFromDate ?: "none"}",
+            "activeUntilDate=${rule.activeUntilDate ?: "none"}",
+            "byDay=$days",
+            "exceptions=$exceptions",
+            "overrides=$overrides"
+        ).joinToString("; ")
+    }
+
+    private fun completedKeysSummary(keys: Set<String>): String =
+        keys.sorted().joinToString(",", "[", "]", transform = ::escapeDiffValue)
+
+    private fun escapeDiffValue(value: String): String = value
+        .replace("\\", "\\\\")
+        .replace(",", "\\,")
+        .replace(";", "\\;")
+        .replace("[", "\\[")
+        .replace("]", "\\]")
+        .replace("=", "\\=")
+        .replace(">", "\\>")
 
     fun reminderLabel(minutes: Int?): String = when {
         minutes == null -> "（空）"

@@ -741,6 +741,138 @@ class TemporalProtocolTest {
     }
 
     @Test
+    fun staleReplacementDiffIncludesEveryChangedSnapshotField() {
+        val oldKey = "2026-10-21T09:00"
+        val oldOverride = OccurrenceOverride(
+            startMillis = millis("2026-10-21 11:00"),
+            endMillis = millis("2026-10-21 12:00"),
+            title = "旧覆盖标题"
+        )
+        val current = activity(
+            start = "2026-10-20 09:00",
+            end = "2026-10-20 10:00"
+        ).copy(
+            notes = "旧备注",
+            location = "旧地点",
+            reminderMinutes = 15,
+            reminderMethod = ReminderMethod.MESSAGE,
+            reminderTiming = ReminderTiming.OFFSET,
+            enabled = true,
+            source = "ics",
+            zoneId = shanghai.id,
+            recurrence = Recurrence(
+                freq = RecurrenceFreq.DAILY,
+                count = 4,
+                exceptions = setOf("2026-10-22T09:00"),
+                overrides = mapOf(oldKey to oldOverride)
+            ),
+            trackingEnabled = true,
+            completedKeys = setOf(oldKey)
+        )
+        val proposedRecurrence = Recurrence(
+            freq = RecurrenceFreq.WEEKLY,
+            interval = 2,
+            count = 8,
+            untilMillis = millis("2026-12-31 09:00", newYork),
+            activeFromDate = "2026-10-23",
+            activeUntilDate = "2026-12-31",
+            byDay = linkedSetOf(DayOfWeek.FRIDAY, DayOfWeek.MONDAY),
+            exceptions = linkedSetOf("2026-11-06T09:00", "2026-10-30T09:00"),
+            overrides = linkedMapOf(
+                "2026-11-13T09:00" to OccurrenceOverride(
+                    startMillis = millis("2026-11-13 11:00", newYork),
+                    endMillis = millis("2026-11-13 12:00", newYork),
+                    title = "新覆盖标题"
+                ),
+                "2026-10-30T09:00" to OccurrenceOverride(
+                    startMillis = millis("2026-10-30 11:00", newYork),
+                    endMillis = millis("2026-10-30 12:00", newYork),
+                    title = "较早覆盖标题"
+                )
+            )
+        )
+        val form = DraftForm.from(current).copy(
+            title = "新标题",
+            startText = "2026-10-22 10:00",
+            endText = "2026-10-22 11:00",
+            notes = "新备注",
+            location = "新地点",
+            reminderMinutes = 0,
+            reminderMethod = ReminderMethod.ALARM,
+            reminderTiming = ReminderTiming.DAY_START,
+            enabled = false,
+            source = "ai",
+            zoneId = newYork.id,
+            recurrence = proposedRecurrence,
+            trackingEnabled = false,
+            completedKeys = emptySet()
+        )
+
+        val changes = DraftDiff.between(current, form, current.eventSeq).associateBy { it.label }
+
+        assertEquals(
+            setOf(
+                "标题", "开始", "结束", "完成跟踪", "地点", "备注", "提醒", "启用",
+                "重复规则", "完成槽位", "提醒方式", "提醒时机", "来源", "时区"
+            ),
+            changes.keys
+        )
+        assertEquals("ics", changes.getValue("来源").before)
+        assertEquals("ai", changes.getValue("来源").after)
+        assertEquals(shanghai.id, changes.getValue("时区").before)
+        assertEquals(newYork.id, changes.getValue("时区").after)
+        assertTrue(changes.getValue("完成槽位").before.contains(oldKey))
+        assertEquals("[]", changes.getValue("完成槽位").after)
+        val recurrenceDiff = changes.getValue("重复规则").after
+        assertTrue(recurrenceDiff.contains("freq=WEEKLY"))
+        assertTrue(recurrenceDiff.contains("activeFromDate=2026-10-23"))
+        assertTrue(recurrenceDiff.contains("byDay=MONDAY,FRIDAY"))
+        assertTrue(recurrenceDiff.contains("exceptions=[2026-10-30T09:00,2026-11-06T09:00]"))
+        assertTrue(recurrenceDiff.contains("较早覆盖标题"))
+        assertTrue(recurrenceDiff.contains("新覆盖标题"))
+        assertEquals("MESSAGE", changes.getValue("提醒方式").before)
+        assertEquals("ALARM", changes.getValue("提醒方式").after)
+        assertEquals("OFFSET", changes.getValue("提醒时机").before)
+        assertEquals("DAY_START", changes.getValue("提醒时机").after)
+
+        val reorderedRecurrence = proposedRecurrence.copy(
+            byDay = linkedSetOf(DayOfWeek.MONDAY, DayOfWeek.FRIDAY),
+            exceptions = linkedSetOf("2026-10-30T09:00", "2026-11-06T09:00"),
+            overrides = linkedMapOf(
+                "2026-11-13T09:00" to OccurrenceOverride(
+                    startMillis = millis("2026-11-13 11:00", newYork),
+                    endMillis = millis("2026-11-13 12:00", newYork),
+                    title = "新覆盖标题"
+                ),
+                "2026-10-30T09:00" to OccurrenceOverride(
+                    startMillis = millis("2026-10-30 11:00", newYork),
+                    endMillis = millis("2026-10-30 12:00", newYork),
+                    title = "较早覆盖标题"
+                )
+            )
+        )
+        assertEquals(
+            recurrenceDiff,
+            DraftDiff.between(current, form.copy(recurrence = reorderedRecurrence), current.eventSeq)
+                .single { it.label == "重复规则" }.after
+        )
+
+        val deadlineForm = DraftForm.from(current).copy(
+            kind = TemporalKind.DEADLINE,
+            startText = "",
+            endText = "2026-10-24",
+            recurrence = Recurrence.NONE
+        )
+        val conversion = DraftDiff.between(current, deadlineForm, current.eventSeq).associateBy { it.label }
+        assertEquals("2026-10-20 09:00", conversion.getValue("开始").before)
+        assertEquals("（空）", conversion.getValue("开始").after)
+        assertEquals("2026-10-20 10:00", conversion.getValue("结束").before)
+        assertEquals("（空）", conversion.getValue("结束").after)
+        assertEquals("（空）", conversion.getValue("截止").before)
+        assertEquals("日期 2026-10-24", conversion.getValue("截止").after)
+    }
+
+    @Test
     fun sequenceFormattingIsZeroPaddedAndDistinct() {
         assertEquals("#0042", TemporalRecord.formatSeq(42))
         assertEquals("#12345", TemporalRecord.formatSeq(12345))
