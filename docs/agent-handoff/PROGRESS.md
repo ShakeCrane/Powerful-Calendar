@@ -1,4 +1,11 @@
 # Core freeze progress
+## PC-ISSUE-135 — Android process restart draft persistence (REC-P2-001 RECONSTRUCTED)
+
+- Added an Android instrumentation regression using a unique synthetic SQLite database. On a fresh API 35 AVD, 13 runner invocations across 13 distinct process IDs passed, with 12 host force-stops. One AI-origin PENDING draft retained its ID, event sequence and queue order; formal events, commit history and reminder intent remained absent. Only the generated synthetic database was removed after the final successful assertion.
+- Full offline Gradle boundary/test/Debug APK/AndroidTest APK/lint run passed: 469/469 JVM tests, 58 suites, 0 failures/errors/skips; lint 0 errors / 58 warnings. Debug APK SHA-256 `35EB92E478AD2DEBBD53D03682844D5B1F56E24438469B4A38E89D247B7E40F4`; AndroidTest APK SHA-256 `70933105F35F5486F316148DFDA1C86A6FA7AE93CFC5DFFE78BEF5EFF9BCC92D`.
+- Independent report: `docs/issues/PC-ISSUE-135-android-process-restart-draft-recovery.md`. Run log SHA-256 `67507A6BB830D72B4A4930A8B4A9F5F4F5C77138D39BEC3E36CEF11B85F3C6DE`; summary JSON SHA-256 `2C7771DA82228515788C8ED28EE513FA49E7503A8559A422DC05B6F58C5D839D`; metadata-only DB inventory SHA-256 `4BFBBC3B9CE6F6FF5E8A4F5231A75FB59F8E179ED6BA4B473CC1912C604CFE0A`. A prior exploratory attempt on an already-running emulator was excluded; its default-named database was not read or removed, and the emulator was not reused.
+- Scope excludes live chat transcript, Activity/UI restoration, system reboot, crash/low-memory and physical/OEM lifecycle behavior. The overall freeze remains HOLD. The acceptance CSV's risk-based P0/P1 reclassification is pending per the user's direction; historical 209 IDs and the old 126/82 split are not treated as a gate.
+
 ## PC-ISSUE-002 — read-only AVD configuration recheck
 
 - API 35 emulator-5554 has no `dev.powerfulcalendar` package. Emulator-5556 has the package, but its shared-preference filename listing contains only `powercal-onboarding.xml` and `powercal-ui.xml`; `powercal-ai.xml` is absent. No preference values or credentials were read, the app was not launched, settings were not changed, and no provider request was sent. Evidence JSON SHA-256 824CF934453870ECA21A97D0BB3825801F70FA6918DDBD7D0FEE10F88F6CA797.
