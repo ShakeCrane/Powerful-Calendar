@@ -1022,8 +1022,11 @@ class PowerStore(
         if (aiSession != null) {
             val authorization = authorize(db, aiSession, draftId)
             if (authorization != null) return@tx authorization
-        } else if (isLocked(db)) {
-            return@tx CommitOutcome.Locked
+        } else {
+            // The audit actor string is not a capability. AI publication must carry the exact
+            // live, one-use session created after the reviewed snapshot was explicitly approved.
+            if (actor == "ai") return@tx CommitOutcome.NotAuthorized
+            if (isLocked(db)) return@tx CommitOutcome.Locked
         }
 
         // Idempotency: a card has at most one commit record; repeating the click returns it.

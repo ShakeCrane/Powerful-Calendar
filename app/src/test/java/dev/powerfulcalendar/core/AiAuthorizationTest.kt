@@ -154,6 +154,20 @@ class AiAuthorizationTest {
     }
 
     @Test
+    fun aiActorCannotCommitWithoutScopedOneUseAuthorization() {
+        val card = store.newDraft(activityForm("需要授权的 AI 提案"))
+
+        val outcome = store.commit(card.draftId, actor = "ai")
+
+        assertTrue(outcome is PowerStore.CommitOutcome.NotAuthorized)
+        assertNull(store.get(card.eventSeq))
+        assertNull(store.intentFor(card.eventSeq))
+        assertTrue(store.history(card.eventSeq).isEmpty())
+        assertEquals(DraftStatus.PENDING, store.draft(card.draftId)!!.status)
+        assertFalse(store.isLocked())
+    }
+
+    @Test
     fun completedBatchApprovalCannotBeReplayed() {
         val card = store.newDraft(activityForm("需要一次性授权"))
         val reviewed = reviewedVersions(card)
