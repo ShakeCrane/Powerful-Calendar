@@ -1,4 +1,12 @@
 # Core freeze progress
+## PC-ISSUE-136 — AI chat history process/system restart persistence (REC-P1-083 RECONSTRUCTED)
+
+- Core contract invariant 10 requires local chat-history persistence across restart. Added an Android instrumentation regression for the actual `AiChatHistoryStore`, with two synthetic messages. Cycle 0 refused to overwrite pre-existing history; every run reloaded and compared the same messages.
+- On isolated API 35 AVD `emulator-5558`, 13 invocations passed across 13 process PIDs, including one Android VM reboot (boot count 3→4) and 11 host force-stop rounds. The test removed only its synthetic history file after the final successful assertion and then verified the file was absent. No provider, credentials, UI, or physical device was involved.
+- Full offline Gradle source-boundary/JVM/Debug APK/AndroidTest APK/lint run passed: 469/469 JVM tests across 58 suites, 0 failures/errors/skips; lint 0 errors/58 warnings. Debug APK SHA-256 `35EB92E478AD2DEBBD53D03682844D5B1F56E24438469B4A38E89D247B7E40F4`; AndroidTest APK SHA-256 `D168506174F68648C08CF2AFCA62326BC1C56DE424F9E08D61E65CFBB694515A`.
+- Independent report: `docs/issues/PC-ISSUE-136-chat-history-restart-persistence.md`. Corrected continuation log SHA-256 `EA9A2F55CA6ABA4E4391AECEC1703F49EDBEC603A005B1103AB914E7A7E5C0C5`; combined summary SHA-256 `BF218E95037B8159C5E867429EE1F973CEF43A15B0E9A03B26B2F2063DA52F7B`; full Gradle log SHA-256 `52148CECAC914B46117498F4D7236D312D3254635FB404527B1FF777AAC59C59`. Two host-runner errors are disclosed in the report and excluded from the 13 passing instrumentation invocations; no app assertion failed.
+- Scope is limited to the local store across process and VM restarts. UI/clear-control behavior, low-memory recovery, real-device/OEM behavior, and the full live chat path remain outside this sign-off. Overall freeze remains HOLD.
+
 ## PC-ISSUE-135 — Android process restart draft persistence (REC-P2-001 RECONSTRUCTED)
 
 - Added an Android instrumentation regression using a unique synthetic SQLite database. On a fresh API 35 AVD, 13 runner invocations across 13 distinct process IDs passed, with 12 host force-stops. One AI-origin PENDING draft retained its ID, event sequence and queue order; formal events, commit history and reminder intent remained absent. Only the generated synthetic database was removed after the final successful assertion.
