@@ -2799,6 +2799,7 @@ class PowerStoreTest {
                 assertNull(store.get(failed.eventSeq))
                 assertNotNull(store.get(last.eventSeq))
                 assertNull(store.intentFor(failed.eventSeq))
+                assertTrue(store.history(failed.eventSeq).isEmpty())
                 assertEquals(listOf(failed.draftId), store.pendingDrafts().map { it.draftId })
                 assertEquals(PowerStore.AiState.FAILED, store.currentAiSession()!!.state)
                 assertFalse(store.isLocked())
@@ -2815,6 +2816,9 @@ class PowerStoreTest {
                 assertFalse(persistedReport.getBoolean("cancelled"))
                 assertTrue(persistedReport.getString("failures").contains("injected independent batch item failure"))
                 assertEquals(setOf(first.eventSeq, last.eventSeq), store.all().map { it.eventSeq }.toSet())
+                assertNull(store.get(failed.eventSeq))
+                assertNull(store.intentFor(failed.eventSeq))
+                assertTrue(store.history(failed.eventSeq).isEmpty())
                 assertEquals(listOf(failed.draftId), store.pendingDrafts().map { it.draftId })
                 assertFalse(store.isLocked())
                 assertTrue(
