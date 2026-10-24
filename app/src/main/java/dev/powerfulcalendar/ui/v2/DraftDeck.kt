@@ -117,6 +117,7 @@ import dev.powerfulcalendar.core.DeckController
 import dev.powerfulcalendar.core.DraftCard
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.DraftOperation
+import dev.powerfulcalendar.core.DraftQueueSearch
 import dev.powerfulcalendar.core.DraftStatus
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.Recurrence
@@ -402,11 +403,7 @@ private fun DeckSearch(
         keyboardActions = KeyboardActions(onSearch = { focused = false })
     )
     if (query.isNotBlank()) {
-        val draftHits = drafts.filter {
-            it.form.title.contains(query, ignoreCase = true) ||
-                it.eventSeq.toString().contains(query) ||
-                TemporalRecord.formatSeq(it.eventSeq).contains(query)
-        }
+        val draftHits = DraftQueueSearch.filter(drafts, query)
         Surface(
             modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
             shape = GlassShapes.chip,
