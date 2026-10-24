@@ -4,13 +4,13 @@ Date: 2026-10-24
 
 Verdict: **HOLD**
 
-Code/test checkout for the latest full regression: `b4f5179efa689015bb5ec73a2987a5e76f2c6b82`
+Code/test checkout for the latest full regression: `477ddf44f1199e3316c5981e0a640c41efcdd416`
 
 APK used by the latest full regression: `app/build/outputs/apk/debug/app-debug.apk`, SHA-256 `35EB92E478AD2DEBBD53D03682844D5B1F56E24438469B4A38E89D247B7E40F4`
-Latest full regression: 469/469 JVM tests across 58 suites, zero failures/errors/skips; source boundary, Debug APK and Android test APK assembly passed; includes one protected untracked test file; lint 0 errors / 58 warnings. Log SHA-256 `862CCBC38283B8D8D8776FDB98EC246ED1F2C1E11A5337C580D0A1D5F9364F62`.
+Latest full regression: 469/469 JVM tests across 58 suites, zero failures/errors/skips; source boundary, Debug APK and Android test APK assembly passed; includes one protected untracked test file; lint 0 errors / 58 warnings. Log SHA-256 `935FC910ACB6663693564E5B5D323A018FC49A41B800BB4EA6DDA9C025CE726B`.
 
-Latest scoped follow-up: PC-ISSUE-133 links chat marker handling, authoritative current-user source selection, structured proposal parsing, and SQLite PENDING-draft persistence/reopen using a local loopback stub. This signs only the deterministic local client-to-store pipeline. REC-P1-047 remains BLOCKED because the actual free provider returned HTTP 429 at the structured stage; live-model behavior and card presentation remain unverified. PC-ISSUE-002 remains PARTIAL / BLOCKED.
-Structural-only validation artifact `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-133.json`, SHA-256 `CA6AD79C2254613BE21C06FCD23A6B49756227190F32CA0C672A7CF507D3002C`; ledger SHA-256 `F2B851D069C7322AAFA636E7406C3B3FA9A9C94B608BD1E3DD999F6CD3966820`. It confirms 209 unique rows and the 126/82/1 priority partition only (product_behavior_tested=false). Totals remain 164 PASS / 0 FAIL / 8 BLOCKED / 30 NOT TESTED / 7 SPEC UNRESOLVED; P0 120/0/0/1/5, P1 44/0/8/29/1.
+Latest scoped follow-up: PC-ISSUE-134 used the authorized DeepSeek V4.1 Flash on API 35 emulator to verify one chat request, one structured request, and a durable PENDING SQLite draft across reopen, without publishing. Both stages returned HTTP 200. This signs only the live model-to-local-draft path. REC-P1-047 remains BLOCKED because its free-provider structured stage returned HTTP 429; PC-ISSUE-002 remains PARTIAL / BLOCKED.
+Structural-only validation artifact `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-134.json`, SHA-256 `FB25654B9A34DFD676713F580D1C955B24E6BCDBBE504ECE8D16150A8582465A`; ledger SHA-256 `CD6275A893058EB678FBD9B3BEA04EAEAB6BFEEE26BFEFDC18366074852C8E58`. It confirms 209 unique rows and the 126/82/1 priority partition only (`product_behavior_tested=false`). Totals remain 164 PASS / 0 FAIL / 8 BLOCKED / 30 NOT TESTED / 7 SPEC UNRESOLVED; P0 120/0/0/1/5, P1 44/0/8/29/1.
 
 
 
@@ -251,7 +251,7 @@ PC-ISSUE-130 signs REC-P1-043 narrowly for the core controller reflecting the la
 
 The focused regression passed 1/1. Full Debug boundary/test/APK/lint passed 467/467 across 57 suites, zero failures/errors/skips, lint 0 errors / 58 warnings. Test commit `d838c9b6d6d7ecb8e2f6199a429d07eca0a86e12` is pushed. Full log SHA-256 `F8DB2BA9E0ADE7AC75BE3045D61242CF5E575FEC98719F3809726D2239E649F9`; APK SHA-256 `E2EE9DF7C315E2BCD237457CEFC69B3ACF4D830F7D191447DDE724FD0E892A60`. Independent report: `docs/issues/PC-ISSUE-130-deck-controller-live-edit-state.md`.
 
-Structural-only artifact `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-133.json`, SHA-256 `CA6AD79C2254613BE21C06FCD23A6B49756227190F32CA0C672A7CF507D3002C`; ledger SHA-256 `F2B851D069C7322AAFA636E7406C3B3FA9A9C94B608BD1E3DD999F6CD3966820`. It checks structure and counts only. Current totals: 164 PASS / 0 FAIL / 8 BLOCKED / 30 NOT TESTED / 7 SPEC UNRESOLVED; P0 120/0/0/1/5, P1 44/0/8/29/1. REC-P0-107 is narrowly signed for the synthetic API 35 URI-grant revocation boundary; REC-P1-047 remains BLOCKED for live free-provider output. Historical mapping and overall freeze remain HOLD.
+Structural-only artifact `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-134.json`, SHA-256 `FB25654B9A34DFD676713F580D1C955B24E6BCDBBE504ECE8D16150A8582465A`; ledger SHA-256 `CD6275A893058EB678FBD9B3BEA04EAEAB6BFEEE26BFEFDC18366074852C8E58`. It checks structure and counts only. Current totals: 164 PASS / 0 FAIL / 8 BLOCKED / 30 NOT TESTED / 7 SPEC UNRESOLVED; P0 120/0/0/1/5, P1 44/0/8/29/1. REC-P0-107 is narrowly signed for the synthetic API 35 URI-grant revocation boundary; REC-P1-047 remains BLOCKED for the free-provider requirement. Historical mapping and overall freeze remain HOLD.
 
 ## Decision
 

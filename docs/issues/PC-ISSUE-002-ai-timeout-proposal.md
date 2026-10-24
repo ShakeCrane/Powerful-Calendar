@@ -99,4 +99,14 @@ PC-ISSUE-122 使用模拟器现有的 HTTPS 配置与密钥，在内存中将模
 
 此回归只签本地 client-to-SQLite 管线，不证明 live model 输出 marker、真实免费 provider 可用或聊天卡片呈现。`REC-P1-047` 继续 BLOCKED：免费服务此前聊天 HTTP 200 后结构化阶段 HTTP 429，仍没有真实可审查卡片；PC-ISSUE-002 继续 **PARTIAL / BLOCKED**，核心冻结保持 **HOLD**。本次没有调用 DeepSeek。
 
-Latest structural-only validation after PC-ISSUE-133: artifact .local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-133.json SHA-256 CA6AD79C2254613BE21C06FCD23A6B49756227190F32CA0C672A7CF507D3002C; ledger SHA-256 F2B851D069C7322AAFA636E7406C3B3FA9A9C94B608BD1E3DD999F6CD3966820. This validates structure/counts only and does not change the BLOCKED decision.
+Latest structural-only validation after PC-ISSUE-134: artifact .local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-134.json SHA-256 FB25654B9A34DFD676713F580D1C955B24E6BCDBBE504ECE8D16150A8582465A; ledger SHA-256 CD6275A893058EB678FBD9B3BEA04EAEAB6BFEEE26BFEFDC18366074852C8E58. This validates structure/counts only and does not change the BLOCKED decision.
+
+## 授权 DeepSeek 两阶段聊天到待审草稿回归（PC-ISSUE-134，2026-10-24）
+
+在 Android 15/API 35 的 emulator-5554 上，使用用户授权的 deepseek/deepseek-v4.1-flash 和仅含虚构活动的输入，完成真实 chat → marker/source 校验 → structured-proposal → 临时 SQLite PENDING 草稿链路。关闭 calendar context 分享；模型覆盖仅在内存；不打开界面、不访问默认日历库或执行发布。
+
+聊天阶段 HTTP 200/4.693 秒，proposalIntent=true；结构化阶段 HTTP 200/2.769 秒，1 proposal、0 warnings。客户端只把本轮原始用户文本交给结构化阶段。待审草稿在 SQLite 重开后保留同一 draftId 与 queueOrder，状态仍 PENDING；正式事件、历史和提醒意图均为空。脱敏遥测只记录两个阶段各一条请求，没有自动重试；没有输出密钥或提示/回复正文。
+
+定向 instrumentation 1/1 PASS；完整 Debug 回归 469/469 across 58 suites，0 failures/errors/skips；边界、APK/AndroidTest 组装和 lint 通过，0 errors/58 warnings。测试提交 477ddf44f1199e3316c5981e0a640c41efcdd416 已推送。独立报告 docs/issues/PC-ISSUE-134-deepseek-chat-to-draft-live-flow.md。
+
+该结果证明授权 DeepSeek 的 live two-stage 路径，但不替代免费 provider 要求：先前免费模型 chat HTTP 200 后 structured HTTP 429 的结果仍使 REC-P1-047 BLOCKED，PC-ISSUE-002 仍 PARTIAL / BLOCKED。没有实体设备测试。

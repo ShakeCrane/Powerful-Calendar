@@ -1,4 +1,10 @@
 # Core freeze progress
+## PC-ISSUE-134 — authorized DeepSeek live chat-to-pending-draft flow
+
+- On API 35 emulator-5554, one authorized DeepSeek V4.1 Flash chat and one structured-proposal request returned HTTP 200/200. A synthetic ACTIVITY became a PENDING draft in a unique temporary SQLite database and retained identity/order/status across close/reopen; no formal write occurred. Calendar context was disabled, model override was in memory, and credentials were not logged. No UI or physical device was used.
+- Instrumentation passed 1/1. Full Debug boundary/test/APK/AndroidTest APK/lint passed 469/469 across 58 suites, zero failures/errors/skips; lint 0 errors / 58 warnings. Test commit 477ddf44f1199e3316c5981e0a640c41efcdd416 is pushed. Report: docs/issues/PC-ISSUE-134-deepseek-chat-to-draft-live-flow.md.
+- This signs only the authorized DeepSeek model-to-local-draft route. REC-P1-047 remains BLOCKED because the free provider's structured stage returned HTTP 429; PC-ISSUE-002 remains PARTIAL / BLOCKED and the freeze remains HOLD. Ledger totals remain 164 PASS / 0 FAIL / 8 BLOCKED / 30 NOT TESTED / 7 SPEC UNRESOLVED. Structural-only artifact .local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-134.json SHA-256 FB25654B9A34DFD676713F580D1C955B24E6BCDBBE504ECE8D16150A8582465A; ledger SHA-256 CD6275A893058EB678FBD9B3BEA04EAEAB6BFEEE26BFEFDC18366074852C8E58.
+
 ## PC-ISSUE-133 — AI chat-to-pending-draft local pipeline
 
 - Added an API 34 Robolectric loopback regression linking chat-marker parsing, current-user source isolation, structured proposal parsing, AiDraftService persistence and SQLite reopen. A fabricated model source is discarded; the original input becomes one PENDING draft with stable identity/order; no formal event/history/schedule intent is written. No provider, UI, device or DeepSeek call.
