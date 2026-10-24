@@ -4,6 +4,14 @@ Date: 2026-10-24
 
 Verdict: **HOLD**
 
+## Latest follow-up: PC-ISSUE-158
+
+PC-ISSUE-158 signs the API 35 native pending-deck default for `REC-P1-038`: opening with a blank search field showed the oldest of two pending drafts; the formal-event search callback was not invoked and its synthetic result was absent. The test used a uniquely named temporary database. Formal search after entering a query and full MainActivity/provider behavior are not claimed.
+
+Test-only commit `c692ad20c1b02260fed5deb3484500a881405c35` is pushed. Targeted AndroidJUnitRunner passed 1/1. Full offline Gradle passed 491/491 JVM tests across 66 suites, zero failures/errors/skips; source boundary, Debug/AndroidTest APK assembly passed; lint 0 errors / 58 warnings. Full Gradle log SHA-256 `304584E4D58B2F3161B294354248D4063B415F06F70D9DA4A0ED32BFCEDB9BE3`. See [PC-ISSUE-158](issues/PC-ISSUE-158-draft-search-default.md) for scope and retained compile-failure evidence.
+
+Structural-only ledger r24 records 210 active reconstructed rows (P0/P1/P2 144/65/1), with 191 PASS / 0 FAIL / 8 BLOCKED / 5 NOT TESTED / 6 SPEC UNRESOLVED; historical IDs mapped=0 and `product_behavior_tested=false`. Artifact SHA-256 `D7886DC039A62FC07DE55648EA04C674F424C4EC7986E8C8A9B2EDA33A746438`; ledger SHA-256 `2FA424BDE4E75FDB0EE89008C72FB304AB786A5AF5194E852E42B1940EAB0EA8`. The verdict remains **HOLD**.
+
 ## Latest follow-up: PC-ISSUE-157
 
 PC-ISSUE-157 signs the API 35 native draft-card gesture subcases for `REC-P1-041/042`: replacing a title and swiping horizontally inside its field retained the same card and text; a vertical swipe in the expanded form scrolled its content while retaining the draft identity. Both synthetic-fixture AndroidJUnitRunner cases passed. Production behavior was unchanged; the test used its own uniquely named temporary PowerStore database, not the app's default database.
