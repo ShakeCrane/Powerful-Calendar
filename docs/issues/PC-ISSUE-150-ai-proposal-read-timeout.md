@@ -28,6 +28,8 @@
 
 结果 **BUILD SUCCESSFUL**：489/489 JVM 测试、64 suites、0 failures/errors/skips；源码边界、Debug APK、AndroidTest APK 组装通过；Lint 0 errors / 58 warnings。完整日志 SHA-256：`A9836C3D6FA385C4E156D1264782447E1FAE0037008E8FA3DB5AE160AAE6284C`。Debug APK SHA-256：`16B2042B81BE6ABC00EC77B47A842E2069FCEF33E0D655A6BD151C522DA4676A`；AndroidTest APK SHA-256：`315593E3B6CB6D0608C08545E15E571E7D41E199D95B69DB2B1FBF1924750544`；Lint XML SHA-256：`44D47F58BAA079ADCD898DD75FD052E2E4069E1322BE0F69299819BC9A97694F`。
 
+完整 Gradle 在当时工作区运行，489 项中包含 1 项来自预先存在、受保护的未跟踪文件 `app/src/test/java/dev/powerfulcalendar/ui/v2/DraftDeckFeedbackTest.kt`（其 JUnit XML 为 1/1 PASS）；因此该次总数是 488 项跟踪测试加这 1 项。此文件未由本 Issue 修改或暂存。
+
 ## 模拟器配置复查与范围
 
 使用仓库内 Android SDK 对 API 35 `emulator-5554`、`emulator-5556` 进行只读检查：两个设备都安装 `dev.powerfulcalendar` 0.9.5-rc.1。5554 的 shared-preferences 目录不存在；5556 仅列出 `powercal-onboarding.xml` 与 `powercal-ui.xml`，没有 `powercal-ai.xml`。没有读取任何偏好值或凭据，没有启动应用、改动设置或发出 provider 请求。证据 JSON SHA-256：`E2FBEFF529095C17472739E6A8F85006E9E2923F029856156AD30077C32C1F1A`。

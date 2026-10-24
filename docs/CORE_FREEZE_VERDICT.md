@@ -8,6 +8,8 @@ Verdict: **HOLD**
 
 PC-ISSUE-150 added deterministic local coverage for a stalled free-model structured-proposal response. The injected 150ms read timeout returns a stage-specific error after one request without proposal/raw reply or credential leakage. Targeted test 1/1 passed; the full offline Gradle run passed 489/489 JVM tests across 64 suites, with zero failures/errors/skips and lint 0 errors / 58 warnings. Code/test commit `423f29019183728ac4b8048692e26ba518cea163` is pushed. Report: `docs/issues/PC-ISSUE-150-ai-proposal-read-timeout.md`.
 
+Test-count note: 489 comprises 488 tracked tests plus one test from the pre-existing protected, untracked `DraftDeckFeedbackTest.kt`; that file was not modified or staged. Its XML confirms 1/1 PASS.
+
 The read-only API 35 recheck found the app installed on both AVDs, but no AI configuration on either. No preferences or credentials were read and no provider request was sent. This local test does not clear the prior free-provider structured HTTP 429; `REC-P1-047` and PC-ISSUE-002 remain BLOCKED, and the freeze remains HOLD. AVD evidence SHA-256 `E2FBEFF529095C17472739E6A8F85006E9E2923F029856156AD30077C32C1F1A`.
 
 Code/test checkout for the latest full regression: 423f29019183728ac4b8048692e26ba518cea163 (PC-ISSUE-150 AI structured-proposal read-timeout regression)
