@@ -4,7 +4,7 @@
 
 优先级：P1
 
-状态：**标题贪心折叠与 API 35 可视回归 PASS；4 个收窄候选单项签核；字体下限与真机/TalkBack仍未验证；核心冻结继续 HOLD**
+状态：**标题贪心折叠与 API 35 可视回归 PASS；5 个收窄候选单项签核；字号下限/单行截断经 Robolectric API 35 验证；真机/TalkBack仍未验证；核心冻结继续 HOLD**
 
 需求来源：2026-10-21 已确认的“标题贪心折叠”设计及 2026-10-23 补充任务。
 
@@ -67,6 +67,25 @@
 
 完整 Debug 回归命令与范围保持为 verifySkinSourceBoundary、全部 testDebugUnitTest、assembleDebug 和 lintDebug。结果：463/463 across 57 suites，0 failures/errors/skips，Lint 0 errors/58 warnings；日志 SHA-256 045E99BC413F7BCB55EF39C62039816110E913ECEE68F7EB3E7F538A26760A87。全量测试包括一个受保护未跟踪测试文件，该文件未加入提交。当前 Debug APK SHA-256 138EC1363E4D74E6153CFFA61CEE4C0DF4D51416B3BD64C954FE642ED0FD4096。测试变更提交：56aadbe50fea59a92c2568896b2c3f1dd04e3556。
 
-基于既有 API35 AVD 实测矩形/截图以及本次 Compose 回归，重建台账中的 REC-P1-029、REC-P1-030、REC-P1-065、REC-P1-066 按各自收窄范围签 PASS。REC-P1-028 的字体缩小下限/截断尚无专门断言，仍 NOT TESTED。真机/TalkBack/OEM 不在本次虚拟机证据内。
+基于既有 API35 AVD 实测矩形/截图以及本次 Compose 回归，重建台账中的 REC-P1-029、REC-P1-030、REC-P1-065、REC-P1-066 按各自收窄范围签 PASS。REC-P1-028 后续按 API 35 Robolectric 的字号下限、单行省略、无障碍完整标题和事件框几何断言收窄签 PASS；本次没有在在线 AVD 安装新 APK，故不把它写成 AVD 截图或设备 PASS。真机/TalkBack/OEM 仍未验证。
 
-最新结构校验后候选统计为 153 PASS / 0 FAIL / 9 BLOCKED / 40 NOT TESTED / 7 SPEC UNRESOLVED。历史 209 case 原始清单及映射仍未找到，冻结总判定保持 HOLD。
+最新结构校验后候选统计为 154 PASS / 0 FAIL / 9 BLOCKED / 39 NOT TESTED / 7 SPEC UNRESOLVED。历史 209 case 原始清单及映射仍未找到，冻结总判定保持 HOLD。
+
+## 2026-10-24 字号下限与长标题单行截断回归（REC-P1-028）
+
+**复现/根因：** Robolectric API 35 下用 200 个汉字和 180px 可用宽度测量长标题，旧路径的 `TextMeasurer` 返回一行、宽度 180px，但 `isLineEllipsized=false`、`hasVisualOverflow=false`。Canvas 随后按受限矩形裁切，因此测量结果不能证明标题实际带有省略号。
+
+**最小修复：** 将既有字号缩小公式和 10sp 下限抽到 `measureTimelineTitleText`。对最终字号下仍超宽的标题，按字符边界搜索可容纳前缀并显式添加 `…`；最终字符串以单行、无换行方式重新测量，贪心折叠使用该实际排版矩形宽度。换行符在显示文本中转为空格；事件框时间几何、完整标题和事件无障碍描述保持不变。
+
+**回归证据：** 新增 `longTitleMeasurementKeepsTenSpFloorAndEllipsizesOnOneLine` 与 `changingToLongTitleDoesNotChangeEventFrameBounds`。前者确认 10sp 下限、单行、省略字符及宽度约束；后者确认长标题不改变事件框边界、标题 Canvas 保持在事件框内，事件语义仍包含完整原始标题。标题 Compose 类 8/8、GreedyTitleFolding 策略 8/8。完整命令 `./gradlew.bat :app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --offline --rerun-tasks --console=plain` 通过：465/465、57 suites、0 failures/errors/skips，Lint 0 errors/58 warnings。
+
+| 证据 | 文件/值 | SHA-256 |
+|---|---|---|
+| 完整 Gradle 日志 | `.local/android-test/reports/freeze-20261024/pc-issue-greedy-label-folding/full-gradle-title-measurement.log` | `C6ECB4AAFBCFBDF2920015400F850FA15E47F423E643AB6A57B330E2C6EFBFB0` |
+| 标题 Compose JUnit XML（8/8） | `app/build/test-results/testDebugUnitTest/TEST-dev.powerfulcalendar.ui.v2.TimelineTitleComposeTest.xml` | `B165A23DD84256EB39976DF3D70C4E51B19D92A875A21D0A68AB6CA94A71A0B6` |
+| GreedyTitleFolding JUnit XML（8/8） | `app/build/test-results/testDebugUnitTest/TEST-dev.powerfulcalendar.ui.v2.GreedyTitleFoldingTest.xml` | `5A30A7A107B5575534C36D9DF220F1B05479C1499B2152D93F8C40DAF83416A4` |
+| Debug APK | `app/build/outputs/apk/debug/app-debug.apk` | `C5F20B47128753D1130E87D0B15885E5CDF9C6F6C755ACBCE50A6AB72BAFA05D` |
+
+代码与测试提交 `2fe0c6643547dc0c195feeb602bb47460398c782`（`fix(时间轴): 修复长标题单行省略`）已推送。两个现存 AVD 当时均在线，隔离 SDK 没有注册 AVD；本次未触碰它们或其数据，也没有新拍长标题 AVD 截图。上述 REC-P1-028 只对 Robolectric API 35 范围签核；设备视觉表现、TalkBack 和 OEM 行为仍由后续设备验收覆盖。
+
+冻结台账更新为 154 PASS / 0 FAIL / 9 BLOCKED / 39 NOT TESTED / 7 SPEC UNRESOLVED；结构校验 artifact 为 `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-title-measurement.json`。整体冻结仍 **HOLD**。

@@ -1,4 +1,10 @@
 # Core freeze progress
+## PC-ISSUE-GREEDY-LABEL-FOLDING — REC-P1-028 long-title measurement sign-off
+
+- Fixed long-title truncation by measuring a grapheme-boundary prefix plus an explicit ellipsis at the existing 10sp floor. Full event bounds and accessibility title remain unchanged.
+- Focused Compose tests passed 8/8; greedy policy tests 8/8. Full Debug boundary/test/APK/lint regression passed 465/465 across 57 suites; lint 0 errors / 58 warnings. Code/test commit `2fe0c6643547dc0c195feeb602bb47460398c782` is pushed.
+- Report: docs/issues/PC-ISSUE-GREEDY-LABEL-FOLDING.md. REC-P1-028 is signed PASS narrowly for Robolectric API 35; no AVD screenshot was captured because both existing emulators were online and no isolated AVD was registered. Core freeze remains HOLD at 154 PASS / 0 FAIL / 9 BLOCKED / 39 NOT TESTED / 7 SPEC UNRESOLVED.
+
 ## PC-ISSUE-121 — AI current-input source isolation guard (PC-ISSUE-002 remains PARTIAL/BLOCKED)
 
 - Added a local `AiClient.chat` loopback regression: when the model response includes a fabricated `source`, the client hides the internal marker and exposes only the current raw user text as `proposalSource`. No production changes or real provider call.

@@ -4,10 +4,10 @@ Date: 2026-10-24
 
 Verdict: **HOLD**
 
-Code/test checkout for the latest full regression: `56aadbe50fea59a92c2568896b2c3f1dd04e3556`
+Code/test checkout for the latest full regression: `2fe0c6643547dc0c195feeb602bb47460398c782`
 
-APK used by the latest full regression: `app/build/outputs/apk/debug/app-debug.apk`, SHA-256 `138EC1363E4D74E6153CFFA61CEE4C0DF4D51416B3BD64C954FE642ED0FD4096`
-Latest full regression: 463/463 JVM tests across 57 suites, zero failures/errors/skips; includes one protected untracked test file; lint 0 errors / 58 warnings. Log SHA-256 045E99BC413F7BCB55EF39C62039816110E913ECEE68F7EB3E7F538A26760A87.
+APK used by the latest full regression: `app/build/outputs/apk/debug/app-debug.apk`, SHA-256 `C5F20B47128753D1130E87D0B15885E5CDF9C6F6C755ACBCE50A6AB72BAFA05D`
+Latest full regression: 465/465 JVM tests across 57 suites, zero failures/errors/skips; includes one protected untracked test file; lint 0 errors / 58 warnings. Log SHA-256 C6ECB4AAFBCFBDF2920015400F850FA15E47F423E643AB6A57B330E2C6EFBFB0.
 
 
 
@@ -181,7 +181,7 @@ The **RECONSTRUCTED** candidate ledger contains 208 specification-derived rows p
 
 PC-ISSUE-122 records one authorized `deepseek/deepseek-v4.1-flash` structured-proposal request on Android 15 emulator `emulator-5554`: HTTP 200, one valid synthetic ACTIVITY proposal, zero warnings, no retry. This narrows the AI transport/parser uncertainty only. It does not verify the free provider after its prior 429/503, the chat-to-card/persistence/approval path, or physical-device behavior. The user owns physical-device testing.
 
-The reconstructed candidate totals are **153 PASS / 0 FAIL / 9 BLOCKED / 40 NOT TESTED / 7 SPEC UNRESOLVED**; all 209 reconstructed rows remain unmapped to original case IDs. PC-ISSUE-002 remains **PARTIAL / BLOCKED**, and the overall verdict remains **HOLD**.
+The reconstructed candidate totals are **154 PASS / 0 FAIL / 9 BLOCKED / 39 NOT TESTED / 7 SPEC UNRESOLVED**; all 209 reconstructed rows remain unmapped to original case IDs. PC-ISSUE-002 remains **PARTIAL / BLOCKED**, and the overall verdict remains **HOLD**.
 
 ## PC-ISSUE-123 static boundary sign-off checkpoint (2026-10-24)
 
@@ -190,11 +190,11 @@ PC-ISSUE-123 signs REC-P1-082 PASS for the static compiled-skin source boundary 
 
 ## Latest timeline candidate sign-off (2026-10-24)
 
-The API 35 AVD visual record and current Robolectric API 35 Compose suite support narrowed PASS for REC-P1-029 (short-frame title anchored at true start), REC-P1-030 (outside-title greedy policy), REC-P1-065 (visible title tap reaches the event), and REC-P1-066 (long-press drag reaches the event). PC-ISSUE-GREEDY-LABEL-FOLDING contains the independent report, A/B/C/D trace, screenshots and scope. Test-only follow-up commit: 56aadbe50fea59a92c2568896b2c3f1dd04e3556.
+The API 35 AVD visual record and current Robolectric API 35 Compose suite support narrowed PASS for REC-P1-028 (10sp floor, single-line explicit ellipsis, full accessibility title and unchanged event bounds under Robolectric), REC-P1-029 (short-frame title anchored at true start), REC-P1-030 (outside-title greedy policy), REC-P1-065 (visible title tap reaches the event), and REC-P1-066 (long-press drag reaches the event). The long-title change did not receive a new AVD screenshot: both existing emulators were online and the isolated SDK had no registered AVD, so they were left untouched. PC-ISSUE-GREEDY-LABEL-FOLDING contains the report and evidence boundaries. Code/test commit: 2fe0c6643547dc0c195feeb602bb47460398c782.
 
-The title Compose class passed 6/6; the greedy strategy class passed 8/8. Full Debug regression passed 463/463 across 57 suites, zero failures/errors/skips, lint 0 errors / 58 warnings. The full run includes one protected untracked test file; its source remains unstaged. Full log SHA-256 045E99BC413F7BCB55EF39C62039816110E913ECEE68F7EB3E7F538A26760A87; title Compose XML SHA-256 44CD834F3F39151FF495C124441D90AE7178F923E50644D8B9B3FBC7585E7D42.
+The title Compose class passed 8/8; the greedy strategy class passed 8/8. Full Debug regression passed 465/465 across 57 suites, zero failures/errors/skips, lint 0 errors / 58 warnings. The full run includes one protected untracked test file; its source remains unstaged. Full log SHA-256 C6ECB4AAFBCFBDF2920015400F850FA15E47F423E643AB6A57B330E2C6EFBFB0; title Compose XML SHA-256 B165A23DD84256EB39976DF3D70C4E51B19D92A875A21D0A68AB6CA94A71A0B6; current Debug APK SHA-256 C5F20B47128753D1130E87D0B15885E5CDF9C6F6C755ACBCE50A6AB72BAFA05D.
 
-Latest structural-only ledger validation: .local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-greedy-label-signoff.json, SHA-256 8F3DB9B9CB7FC96BCD6EE2FCF9C3164EBE1125C609E89B208FD5B1BA6D049CC6; ledger SHA-256 3973C211AF33260279325D002637F80D7F879E88717C183C7D41B3191523B1AE. Current counts are 153/0/9/40/7. REC-P1-028 remains NOT TESTED because this run did not add a direct font-floor/truncation assertion. Physical TalkBack/OEM acceptance and the original 209-case row mapping remain open.
+Latest structural-only ledger validation: .local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-title-measurement.json, SHA-256 B7C226162F7CB3D33E85449F52EE87428D99825174794D1831127CB3AECBB18E; ledger SHA-256 3CD09798014A3EED61070C59141BBE3EAB77CBBB310633899042745BCA1310BC. Current counts are 154/0/9/39/7. REC-P1-028 is PASS only for the narrowed Robolectric contract; no new AVD screenshot or physical-device claim is made. Physical TalkBack/OEM acceptance and the original 209-case row mapping remain open, so overall freeze remains HOLD.
 ## Decision
 
 **HOLD. Do not declare the core baseline frozen.** The current build and targeted JVM evidence are useful, but the 209 cases lack historical row-level traceability and multiple required platform and end-to-end acceptance gates remain open. Continue with a clearly labeled reconstructed ledger and independent tests. Update this verdict only when evidence changes; never infer GO from a successful build or test count.
