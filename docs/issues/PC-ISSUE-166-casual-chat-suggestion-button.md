@@ -50,4 +50,4 @@ Structural-only ledger validation r35 retains 211 rows / 210 active reconstructe
 
 Test-only commit `d081a7ebb16dd7889c7386770c3bb1e63571bfbb` (`test(AI聊天): 验证随口建议仅显示可选按钮`) is pushed to `origin/main`.
 
-The PowerCalApp loopback integration test, its evidence supplement, and the ledger evidence update are delivered in the follow-up commit recorded in `docs/agent-handoff/PROGRESS.md`. `REC-P1-048` stays **NOT TESTED** until a real free provider classification is observed.
+The PowerCalApp loopback integration test, its evidence supplement, and the ledger update were delivered in commit `80d672bdf58a1bc2fb488e5df59d692acfd6b6bf` (`test(AI聊天): 覆盖随口建议控制器集成`), pushed to `origin/main`. `REC-P1-048` stays **NOT TESTED** until a real free provider classification is observed.

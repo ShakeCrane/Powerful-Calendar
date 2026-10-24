@@ -11,7 +11,7 @@
 - 新增 Robolectric API 35 Compose 回归，使用 loopback stub 驱动真实 `PowerCalApp` / `NativeAiChatScreen`。测试观察到可选创建草稿按钮，未触发结构化 interpret，草稿/正式事件/身份/序号/队列/commit 计数均不变；定向 **1/1 PASS**，关联 AI 回归 **16/16 PASS**。没有访问真实 provider 或使用凭据。测试源码、日志与 JUnit 哈希见 `docs/issues/PC-ISSUE-166-casual-chat-suggestion-button.md`。
 - 干净 detached worktree 完整门禁 **541/541 JVM、74 suites、88/88 tasks**，含 Debug/AndroidTest APK 与 lint（0 errors / 53 warnings）。REC-P1-048 仅有 UI 与本地 controller 路径证据；live free-model classification 保持 **NOT TESTED**，PC-ISSUE-002 保持 PARTIAL/BLOCKED。
 - 台账结构校验：218 rows / 217 active reconstructed；204 PASS / 0 FAIL / 10 BLOCKED / 2 NOT TESTED / 1 SPEC UNRESOLVED / 1 RETIRED；P0/P1/P2=145/71/1；historical IDs mapped=0。ledger SHA-256 `CB9AF259F8149F494090CD83F78550D7144113EF048122143C94017E529BAD03`；validator artifact SHA-256 `568DF6C3FD6A6853AC78976E7C990886980A892CFC28124ABC90CE048C3B549D`；validator unit tests 2/2 PASS。结构检查不是产品行为证据。
-- 本次不触碰 AVD/实体设备；历史 API 35 screen-only 子项仍按原报告范围引用。独立报告为 `docs/issues/PC-ISSUE-166-casual-chat-suggestion-button.md`。该集成补测与台账证据更新随本次提交推送；P1-048 未关闭，总冻结 HOLD。
+- 本次不触碰 AVD/实体设备；历史 API 35 screen-only 子项仍按原报告范围引用。独立报告为 `docs/issues/PC-ISSUE-166-casual-chat-suggestion-button.md`。集成补测、Issue 报告、台账和冻结判定证据已随提交 `80d672bdf58a1bc2fb488e5df59d692acfd6b6bf` 推送；P1-048 未关闭，总冻结 HOLD。
 
 ## PC-ISSUE-PHASE1 — 当前用户请求复验（2026-10-25，HEAD `3c8b16d`）
 
