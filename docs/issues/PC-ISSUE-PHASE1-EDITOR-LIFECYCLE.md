@@ -160,3 +160,13 @@ Phase 1 定向命令在本轮 **BUILD SUCCESSFUL**；完整回归 JUnit XML 中�
 本次没有设备安装或 connected 运行。两台既有 AVD 的 PowerCal 私有数据库恢复/处置未闭环，因此本轮不启动它们；更早 API 35 Compose 2/2 结果保留为历史证据，不计为当前复测 PASS。实体设备按用户分工执行。Phase 1 自动化与构建范围 PASS；新 AVD 复测 BLOCKED；DST 秋季回拨的同名墙上时间不能由当前分钟格式区分，风险仍未签核。核心冻结仍 HOLD。
 
 验收矩阵增补两项重建验收：`REC-P1-087`（新建会话无副作用、Diff 与保存幂等）和 `REC-P1-088`（统一默认时间与精度），均为 P1 / RECONSTRUCTED / PASS，历史 ID 映射仍为 0。完整矩阵和结构验证摘要见 `docs/agent-handoff/PROGRESS.md`。
+
+## 当前工作树集成回归（2026-10-25，E01 未提交变更叠加）
+
+为确认后续 E01 工作不会回归 Phase 1，在 `main` / HEAD `8d1a204bb2905956896db092ee7a62922b28c08d`（与 `origin/main` 同步）上，使用当时已有的未提交 E01 修改重跑 Phase 1 定向测试和完整门禁。此次没有改动产品源码；E01 的 `PowerStore.kt`、`PowerCalApp.kt` 与相关未跟踪测试保持原状。测试时工作树差异指纹及被编译的 E01 未跟踪源文件 SHA-256 记录在 `.local/android-test/reports/freeze-20261025/phase1-current-e01/verification.json`。
+
+- 定向命令沿用上文，**32/32 PASS、6 suites、0 failures/errors/skips**；日志 SHA-256 `62D70DF908D9628C3814F705F8DBE12D781BFFDDC0D9E0F9138D1A7B9F243D4B`。
+- 完整门禁使用上文命令，**539/539 JVM tests、74 suites、0 failures/errors/skips、88/88 tasks**；source boundary、Debug / AndroidTest APK 和 Debug lint 均完成。lint **0 errors / 56 warnings**。完整日志 SHA-256 `28D29F652321BB4DD54018D12BA1CC349BBC363E3F32A6AFF4DA1DD4213F7EC8`。
+- Debug / AndroidTest APK SHA-256：`3A50D74F565A496CE8441ADC51643CB58A00949D001E789883F7C72E52FB22FE` / `EB4AC17BF9B8ED3F62DBDAA6F722791FB33D137011DC8ECB5C426FF75AD6DBF3`；lint XML SHA-256 `6254B2A5C445027068221A411E65E5798A8F8457FAD9716266253B2BFB52E4D4`。日志及结构化 manifest 位于 `.local/android-test/reports/freeze-20261025/phase1-current-e01/`。
+- 本次未运行 connected/AVD 测试：既有 AVD 私有数据库恢复问题仍未闭环；实体设备由用户测试。更早的 API 35 Compose 结果继续作为历史证据，不计作本次复测。Phase 1 当前源码集成回归 PASS，AVD 新复测仍 BLOCKED，实体设备 NOT TESTED；秋季 DST fold 精度限制未解决，核心冻结保持 HOLD。
+- Phase 1 已具备关闭并交接条件；Phase 2、Phase 3 已有各自独立交付记录。后续可以继续独立的开放冻结项（包括 E01），但这份集成回归不签核那些项目，也不改变总体验收 HOLD。

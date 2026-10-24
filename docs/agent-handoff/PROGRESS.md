@@ -1,5 +1,11 @@
 # Core freeze progress
 
+## PC-ISSUE-PHASE1 — E01 工作树叠加回归（2026-10-25）
+
+- 为覆盖当前集成状态，在 `main` / HEAD `8d1a204bb2905956896db092ee7a62922b28c08d`（与 `origin/main` 同步）且 E01 尚有本地未提交变更时重跑 Phase 1：定向 **32/32 PASS、6 suites**；完整离线门禁 **539/539 JVM、74 suites、0 failures/errors/skips、88/88 tasks**；lint 0 errors / 56 warnings。完整日志 SHA-256 `28D29F652321BB4DD54018D12BA1CC349BBC363E3F32A6AFF4DA1DD4213F7EC8`，定向日志 `62D70DF908D9628C3814F705F8DBE12D781BFFDDC0D9E0F9138D1A7B9F243D4B`。
+- 本次没有修改 Phase 1 产品源码；E01 的 PowerStore / PowerCalApp 变更参与编译和 JVM 回归，工作树指纹在 `.local/android-test/reports/freeze-20261025/phase1-current-e01/verification.json`。Phase 1 自动化集成回归 PASS；既有 AVD 私有数据恢复问题未解决，本次不运行 AVD，设备复测仍 BLOCKED；实体设备由用户测试，核心冻结 HOLD。
+- 独立报告：`docs/issues/PC-ISSUE-PHASE1-EDITOR-LIFECYCLE.md`。Phase 1 可关闭；Phase 2 / 3 已分别交付，继续开放冻结项不受影响。
+
 ## PC-ISSUE-PHASE1 — 当前 HEAD 复验与验收签核（2026-10-25）
 
 - 当前 `HEAD 7ceb7fa8b65aefd4174cf0420d1d166486c89484` 的生产源码与已审计的 `6ddf9b9` 树一致；Phase 1 产品修复已由 `b46b3dd7592bb1c7de021d543630f84937a0eaef` 提交。本轮只新增 Compose 重组回归测试。主工作区 E01 AI 多轮未提交修改及受保护资产未进入 Phase 1 隔离构建。
