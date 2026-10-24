@@ -1330,6 +1330,10 @@ object TimelineCoordinate {
         return Camera(noon, 24.0)
     }
 
+    /** Today recentres at the current instant without replacing the user's current zoom. */
+    fun todayCamera(nowMillis: Long, currentHours: Double): Camera =
+        Camera(nowMillis, clampHours(currentHours))
+
     fun dateBands(fromMillis: Long, toMillis: Long, zone: ZoneId): List<Pair<Long, Long>> {
         if (toMillis <= fromMillis) return emptyList()
         val startDay = Instant.ofEpochMilli(fromMillis).atZone(zone).toLocalDate()

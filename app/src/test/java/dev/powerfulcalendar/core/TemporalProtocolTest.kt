@@ -406,6 +406,15 @@ class TemporalProtocolTest {
         assertNotEquals(camera.anchorMillis, now)
     }
 
+    @Test
+    fun todayCameraJumpsToNowAndPreservesTheCurrentZoom() {
+        val now = millis("2026-10-20 15:42")
+        val camera = TimelineCoordinate.todayCamera(now, 9.0)
+
+        assertEquals(now, camera.anchorMillis)
+        assertEquals(9.0, camera.hours, 0.0)
+    }
+
     // ---------------------------------------------------------------- recurrence
 
     @Test

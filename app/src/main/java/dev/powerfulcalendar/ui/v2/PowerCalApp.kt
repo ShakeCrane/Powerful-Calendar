@@ -1443,8 +1443,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                 },
                 onToday = {
                     nowMillis = System.currentTimeMillis()
-                    // Today means the entire local day, not a zoomed view around this minute.
-                    val today = TimelineCoordinate.initialCamera(nowMillis, zone)
+                    val today = TimelineCoordinate.todayCamera(nowMillis, hours)
                     anchorMillis = today.anchorMillis
                     hours = today.hours
                 },
