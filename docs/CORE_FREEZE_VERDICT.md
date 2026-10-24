@@ -4,6 +4,14 @@ Date: 2026-10-24
 
 Verdict: **HOLD**
 
+## Latest follow-up: PC-ISSUE-167 — Android IME current-build replay
+
+The existing isolated API 35 IME test was replayed against the current build on `emulator-5556` and passed 1/1. With the real system LatinIME visible, the conversation list shrank from 1858px to 1101px, the synthetic message remained visible, and the enabled send control remained 21px above the keyboard. `REC-P1-070` remains BLOCKED because this does not verify MainActivity integration, physical devices, or OEM keyboards. See `docs/issues/PC-ISSUE-167-ime-current-build-replay.md`.
+
+Full forced-offline Gradle on the same code snapshot passed 496/496 JVM tests across 67 suites, zero failures/errors/skips; all 88 tasks executed, including source-boundary verification, Debug/AndroidTest APK assembly, and lint. Full log SHA-256 `6CB27E33765748096F388520C9AECAF65DDEAC03179B897C19D8B82F4D640835`. Focused API 35 log SHA-256 `DF6DBF8F3D96A3ECF0FE8C5F7410F9FDFE1CCD396195252222278A12C763202B`; geometry log SHA-256 `0FD953F7CC33DC62E171BFB53060FDC1B7802967BB0FE7E52AEA0CE20CFA81CC`.
+
+Structural-only ledger r36: 211 rows / 210 active reconstructed, 198 PASS / 0 FAIL / 8 BLOCKED / 2 NOT TESTED / 2 SPEC UNRESOLVED / 1 RETIRED; historical IDs mapped=0 and `product_behavior_tested=false`. Artifact SHA-256 `911254CE0245ED17A69150E7DEA4D87198BD08171994EB4E7C1B0D5B7BF46E4D`; ledger SHA-256 `48A6960B0CF4845FDF71D47CCC9FC32379AD2F8161C94F2D79C3D92375A8063E`. The emulator replay does not satisfy the physical/OEM gate; verdict remains HOLD.
+
 ## Latest follow-up: PC-ISSUE-166 — casual schedule suggestion action
 
 On API 35 `emulator-5556`, the production chat screen displayed the optional “从此消息创建事件草稿” button for a synthetic casual-suggestion message. Rendering did not invoke proposal handling or show an automatic review; tapping the button passed the original user text to the callback. AndroidJUnitRunner passed 1/1. No provider or database was used, and no production code changed. This supplements PC-ISSUE-147's local parser/client tests but does not verify live free-model classification or the `PowerCalApp.submitAiChatInput` controller. `REC-P1-048` remains NOT TESTED; REC-P1-047 and PC-ISSUE-002 remain BLOCKED/PARTIAL. See `docs/issues/PC-ISSUE-166-casual-chat-suggestion-button.md`.
