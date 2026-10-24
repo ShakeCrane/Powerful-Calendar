@@ -154,3 +154,13 @@ Issue 002 本身仍为 **PARTIAL / BLOCKED**：免费服务之前的结构化阶
 修复了任何 draft marker 都自动触发结构化预览的问题：只有 `intent=explicit` 才把当前用户原文送入自动提案预览；`intent=suggested` 只保留轻量按钮；缺失/未知 intent 回退为建议。模型生成的 source 不会作为解析输入。定向本地 parser/client/合成 SQLite 流程 13/13 PASS；完整 Gradle 483/483（62 suites），lint 0 errors / 58 warnings。代码/测试提交 `8e642ad0d8e1ba5786f2e2ee0bdbb16851a5b9b2` 已推送，报告：`docs/issues/PC-ISSUE-147-ai-explicit-vs-suggested-chat-routing.md`。
 
 本轮没有请求免费或付费模型，也没有运行独立 Android 虚拟设备或实体设备。真实 provider 对自然语言的分类与按钮呈现仍未测，`REC-P1-048` 保持 NOT TESTED；`REC-P1-047` 仍因免费 provider 路径未闭环而 BLOCKED，PC-ISSUE-002 继续 **PARTIAL / HOLD**。
+
+
+## PC-ISSUE-150：结构化提案阶段读超时回归（2026-10-24）
+
+AiClient 的连接/读取超时现可由正值参数注入，运行默认仍为 20 秒 / 45 秒。新增 loopback 测试让结构化阶段服务端接受请求后停住；150ms 读超时后只发送一次请求，返回阶段级超时错误，不产生 proposal/raw reply，也不泄露测试凭据哨兵。定向 1/1 PASS，AiChatClientTest XML 10/10；完整离线 Gradle 回归 489/489、64 suites、0 failures/errors/skips，Lint 0 errors / 58 warnings。代码/测试提交 423f29019183728ac4b8048692e26ba518cea163 已推送。独立报告：docs/issues/PC-ISSUE-150-ai-proposal-read-timeout.md。
+
+最新只读 API 35 AVD 检查发现 5554、5556 都安装应用；5554 无 shared-preferences 目录，5556 只有 onboarding/UI 文件，无 powercal-ai.xml。未读取偏好值或凭据、未启动应用/改设置、未发 provider 请求。证据 JSON SHA-256 E2FBEFF529095C17472739E6A8F85006E9E2923F029856156AD30077C32C1F1A。此前免费 provider structured HTTP 429 仍未解决；本地超时回归与配置清单不证明 live provider 行为，REC-P1-047 继续 BLOCKED，PC-ISSUE-002 继续 PARTIAL / HOLD。
+
+
+台账更新后的结构校验 r16：184 PASS / 0 FAIL / 8 BLOCKED / 11 NOT TESTED / 6 SPEC UNRESOLVED；REC-P1-047 仍 BLOCKED。artifact SHA-256 5F4D3C33AEC94EA4A950BE4BA6A1104485556EF6BA7A23B25A9C1A8477F49F71；ledger SHA-256 93461981B84F2372C85DD61A3924B0BD39F30A5B2B4D89B2C95C4B2DEC9AD066。结构校验不代表产品行为验收。

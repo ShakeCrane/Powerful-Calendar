@@ -1,5 +1,13 @@
 # PowerCal 核心基线冻结：任务理解清单
 
+## 最新执行记录：PC-ISSUE-150（2026-10-24）
+
+- 已为 AI 结构化提案阶段补充可注入且正值校验的连接/读取超时设置；运行默认保持 20s / 45s。loopback stalled-response 回归以 150ms read timeout 验证仅一次请求、阶段错误、无提案/raw reply 及无凭据哨兵泄露，定向 1/1 PASS。
+- 完整离线 Gradle：489/489 JVM、64 suites、0 failures/errors/skips；源码边界及 Debug/AndroidTest APK 组装通过；Lint 0 errors / 58 warnings。日志 SHA-256 A9836C3D6FA385C4E156D1264782447E1FAE0037008E8FA3DB5AE160AAE6284C；Debug APK SHA-256 16B2042B81BE6ABC00EC77B47A842E2069FCEF33E0D655A6BD151C522DA4676A。代码/测试提交 423f29019183728ac4b8048692e26ba518cea163 已推送；独立报告 docs/issues/PC-ISSUE-150-ai-proposal-read-timeout.md。
+- 只读 API 35 AVD 复查：5554 与 5556 均安装 0.9.5-rc.1；5554 无 shared-preferences 目录，5556 仅有 onboarding/UI 文件。没有读偏好值或凭据、启动 app、改设置或发 provider 请求。证据 JSON SHA-256 E2FBEFF529095C17472739E6A8F85006E9E2923F029856156AD30077C32C1F1A。
+- 本 Issue 只签本地 timeout 失败处理。免费 provider structured HTTP 429 与当前模拟器缺少 AI 配置仍使 REC-P1-047 BLOCKED、PC-ISSUE-002 PARTIAL / HOLD；实体设备测试由用户负责。
+- 台账结构校验 r16：184 PASS / 0 FAIL / 8 BLOCKED / 11 NOT TESTED / 6 SPEC UNRESOLVED；P0 144 / P1 64 / P2 1。artifact SHA-256 5F4D3C33AEC94EA4A950BE4BA6A1104485556EF6BA7A23B25A9C1A8477F49F71；ledger SHA-256 93461981B84F2372C85DD61A3924B0BD39F30A5B2B4D89B2C95C4B2DEC9AD066。结构校验不测试产品行为。
+
 ## 当前验收策略（2026-10-24；本节取代下方历史快照中“209 项原始映射 / P0=126、P1=82”作为 GO 前置条件）
 
 - 用户已明确：原始 209 项清单当前无法提供，不再暂停或反复询问；209 只是历史规划数量，不得为凑数编造项目，也不得因历史 ID 无法恢复而永久阻塞开发。

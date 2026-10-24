@@ -4,10 +4,16 @@ Date: 2026-10-24
 
 Verdict: **HOLD**
 
-Code/test checkout for the latest full regression: `0db7b534c7683059fea1f7f38c587e6d30179a73` (PC-ISSUE-149 formal-event search/update draft regression)
+## Latest follow-up: PC-ISSUE-150
 
-APK used by the latest full regression: `app/build/outputs/apk/debug/app-debug.apk`, SHA-256 `6D8C68816D0085949D54A893D50022ACA040B8CBF54087FB957863BCF90AA71B`
-Latest full regression: 488/488 JVM tests across 64 suites, zero failures/errors/skips; `verifySkinSourceBoundary`, Debug APK and Android test APK assembly passed; lint 0 errors / 58 warnings. Command used `--offline --rerun-tasks`. Log `.local/android-test/reports/freeze-20261024/pc-issue-149-full-gradle.log`, SHA-256 `7E130576D974E04BC04729F870B254C044E2E46900E6E81E33561FE91D7D76F9`. Debug APK SHA-256 `6D8C68816D0085949D54A893D50022ACA040B8CBF54087FB957863BCF90AA71B`; Android test APK SHA-256 `D168506174F68648C08CF2AFCA62326BC1C56DE424F9E08D61E65CFBB694515A`.
+PC-ISSUE-150 added deterministic local coverage for a stalled free-model structured-proposal response. The injected 150ms read timeout returns a stage-specific error after one request without proposal/raw reply or credential leakage. Targeted test 1/1 passed; the full offline Gradle run passed 489/489 JVM tests across 64 suites, with zero failures/errors/skips and lint 0 errors / 58 warnings. Code/test commit `423f29019183728ac4b8048692e26ba518cea163` is pushed. Report: `docs/issues/PC-ISSUE-150-ai-proposal-read-timeout.md`.
+
+The read-only API 35 recheck found the app installed on both AVDs, but no AI configuration on either. No preferences or credentials were read and no provider request was sent. This local test does not clear the prior free-provider structured HTTP 429; `REC-P1-047` and PC-ISSUE-002 remain BLOCKED, and the freeze remains HOLD. AVD evidence SHA-256 `E2FBEFF529095C17472739E6A8F85006E9E2923F029856156AD30077C32C1F1A`.
+
+Code/test checkout for the latest full regression: 423f29019183728ac4b8048692e26ba518cea163 (PC-ISSUE-150 AI structured-proposal read-timeout regression)
+
+APK used by the latest full regression: app/build/outputs/apk/debug/app-debug.apk, SHA-256 16B2042B81BE6ABC00EC77B47A842E2069FCEF33E0D655A6BD151C522DA4676A
+Latest full regression: 489/489 JVM tests across 64 suites, zero failures/errors/skips; verifySkinSourceBoundary, Debug APK and Android test APK assembly passed; lint 0 errors / 58 warnings. Command used --offline --rerun-tasks. Log .local/android-test/reports/freeze-20261024/pc-issue-150-full-gradle.log, SHA-256 A9836C3D6FA385C4E156D1264782447E1FAE0037008E8FA3DB5AE160AAE6284C. Debug APK SHA-256 16B2042B81BE6ABC00EC77B47A842E2069FCEF33E0D655A6BD151C522DA4676A; Android test APK SHA-256 315593E3B6CB6D0608C08545E15E571E7D41E199D95B69DB2B1FBF1924750544.
 
 PC-ISSUE-149 signs `REC-P1-039` narrowly for formal-event matching, creating a `REPLACE` draft from the selected record, and appending it without disturbing existing queue order; this does not sign Compose result selection.
 
@@ -16,7 +22,7 @@ PC-ISSUE-148 extracts the pure pending-draft search filter and signs `REC-P0-040
 PC-ISSUE-147 fixes local routing so explicit calendar requests can open proposal preview while casual mentions retain a button hint; missing/unknown intent defaults to the button route. Focused marker/client/pipeline checks passed 13/13. This does not verify live-provider classification or rendered API 35 chat behavior; `REC-P1-048` remains NOT TESTED and PC-ISSUE-002 remains PARTIAL / BLOCKED. No provider request or Android device session was used.
 
 Latest live AI follow-up: PC-ISSUE-134 used authorized DeepSeek V4.1 Flash on API 35 to verify chat → structured proposal → durable PENDING SQLite draft, without publishing. Both stages returned HTTP 200. Live probes are opt-in by instrumentation argument. No free-provider retest was sent: emulator-5554 has no PowerCal package, and emulator-5556 has the package but no `powercal-ai.xml` preference file. No settings values or credentials were read, and no provider request was sent. Current-code local 429/empty-200/policy regressions passed 7/7; this is client-only evidence. REC-P1-047 remains BLOCKED and PC-ISSUE-002 remains PARTIAL / BLOCKED. Config-check JSON SHA-256 `824CF934453870ECA21A97D0BB3825801F70FA6918DDBD7D0FEE10F88F6CA797`; local regression log SHA-256 `84AEB6F1B874575ABB0979349EA9A459285D5A6B0F34ABC00A0ADCBB7A3A7759`.
-Latest structural-only validation artifact `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-risk-matrix-validated-20261024-r15-pc-issue-149.json`, SHA-256 `45494C0672830234BB1A38739FFBB6406CBABA8465E5B5DE49941E458AA5EECF`; ledger SHA-256 `AD117D484ACE7AFBA1565397C1D01F73D3798F49A1DB0868CBF96CD0D9C82319`. It validates structure only, with `product_behavior_tested=false`, no historical mapping, and no fixed row-count or historical priority split. The active reconstructed matrix currently has P0 144, P1 64, P2 1; status totals are 184 PASS / 0 FAIL / 8 BLOCKED / 11 NOT TESTED / 6 SPEC UNRESOLVED, with one retired row excluded from GO.
+Latest structural-only validation artifact .local/android-test/reports/freeze-20261024/pc-qa-gate-001-risk-matrix-validated-20261024-r16-pc-issue-150.json, SHA-256 5F4D3C33AEC94EA4A950BE4BA6A1104485556EF6BA7A23B25A9C1A8477F49F71; ledger SHA-256 93461981B84F2372C85DD61A3924B0BD39F30A5B2B4D89B2C95C4B2DEC9AD066. Structure only: product_behavior_tested=false, historical IDs mapped=0, 209 active reconstructed rows and one retired row. Counts remain 184 PASS / 0 FAIL / 8 BLOCKED / 11 NOT TESTED / 6 SPEC UNRESOLVED; active priorities P0 144, P1 64, P2 1.
 
 ## PC-ISSUE-145 — independent timeline wing scrolling
 

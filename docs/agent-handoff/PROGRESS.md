@@ -1,4 +1,12 @@
 # Core freeze progress
+
+## PC-ISSUE-150 AI 结构化提案阶段读超时回归（本地客户端边界 PASS）
+
+- `AiClient` 连接/读取超时支持正值校验的参数注入，线上默认仍为 20s / 45s。loopback 服务在结构化请求后停住，150ms read timeout 定向测试 1/1 PASS：请求仅一次、阶段级超时错误、无 proposal/raw reply、无测试凭据泄露。独立报告：`docs/issues/PC-ISSUE-150-ai-proposal-read-timeout.md`。
+- 完整离线 Gradle 回归 489/489、64 suites、0 failures/errors/skips；源码边界、Debug/AndroidTest APK 组装通过，Lint 0 errors / 58 warnings。完整日志 SHA-256 `A9836C3D6FA385C4E156D1264782447E1FAE0037008E8FA3DB5AE160AAE6284C`；Debug APK SHA-256 `16B2042B81BE6ABC00EC77B47A842E2069FCEF33E0D655A6BD151C522DA4676A`。代码/测试提交 `423f29019183728ac4b8048692e26ba518cea163` 已推送。
+- 只读 API 35 检查：emulator-5554/5556 都装有应用，5554 无偏好目录，5556 无 AI 偏好文件；未读配置值/凭据、未启动应用或请求 provider。配置证据 SHA-256 `E2FBEFF529095C17472739E6A8F85006E9E2923F029856156AD30077C32C1F1A`。本地 timeout 测试不解决免费 provider structured HTTP 429；`REC-P1-047` 仍 BLOCKED、PC-ISSUE-002 与整体冻结仍 HOLD。
+- 台账结构复核 r16：184 PASS / 0 FAIL / 8 BLOCKED / 11 NOT TESTED / 6 SPEC UNRESOLVED；P0 144 / P1 64 / P2 1，product_behavior_tested=false。artifact SHA-256 5F4D3C33AEC94EA4A950BE4BA6A1104485556EF6BA7A23B25A9C1A8477F49F71；ledger SHA-256 93461981B84F2372C85DD61A3924B0BD39F30A5B2B4D89B2C95C4B2DEC9AD066。
+
 ## PC-ISSUE-149 — 正式事件搜索生成匹配 Update 草稿（REC-P1-039，窄化 PASS）
 
 - 提取纯 `FormalEventSearch.filter`，保持原有标题/序号匹配、顺序及最多 8 项限制。SQLite 回归验证选中搜索命中的正式记录后生成 REPLACE/PENDING 草稿，保留完整当前快照与 baseRevision、追加到现有队列尾，并在重开后保持。

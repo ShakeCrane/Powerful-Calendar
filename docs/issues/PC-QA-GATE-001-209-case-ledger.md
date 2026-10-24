@@ -4,6 +4,8 @@ Date: 2026-10-24 | Severity: P1
 
 Status: **PARTIAL / HOLD — risk-based reconstructed matrix is active; open test, specification, provider, and device gates remain.**
 
+PC-ISSUE-150 adds local timeout-failure evidence to `REC-P1-047` but leaves the row **BLOCKED**: a stalled loopback response returns a structured-stage timeout after exactly one request, while the real free provider previously returned HTTP 429 at that stage. Current read-only API 35 checks found no AI configuration on either installed AVD. Evidence and scope: `docs/issues/PC-ISSUE-150-ai-proposal-read-timeout.md`; AVD configuration JSON SHA-256 `E2FBEFF529095C17472739E6A8F85006E9E2923F029856156AD30077C32C1F1A`.
+
 ## Current risk-based reconstructed matrix (2026-10-24)
 
 This section supersedes the initial priority allocation and unclassified placeholder described in the historical audit below. The owner confirmed that the original 209-row source is unavailable and directed the team to continue from the core contract, acceptance documents, tests, Issues, and observed product behavior. Do not request or wait for the missing source again, do not fabricate historical IDs, and do not force the reconstructed matrix to any historical count or priority split.
@@ -17,7 +19,7 @@ The current ledger has 209 active `RECONSTRUCTED` acceptance rows and one retain
 | P2 | 1 | 0 | 0 | 0 | 0 |
 | **Active reconstructed total** | **184** | **0** | **8** | **11** | **6** |
 
-PC-ISSUE-147 adds a local routing regression for `REC-P1-048` but does **not** sign the acceptance row: the live free-provider classification and rendered API 35 chat affordance were not run. It remained `NOT TESTED` after that issue. PC-ISSUE-148 signs `REC-P0-040` narrowly for the pure draft-query filter preserving input order/`queueOrder`; Compose interaction and formal-event search were outside that PASS. PC-ISSUE-149 signs `REC-P1-039` narrowly for formal-event matching, REPLACE proposal creation from the selected snapshot, and queue-tail persistence; Compose result selection remains untested. Current structural-only validation r15: `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-risk-matrix-validated-20261024-r15-pc-issue-149.json`, SHA-256 `45494C0672830234BB1A38739FFBB6406CBABA8465E5B5DE49941E458AA5EECF`; ledger SHA-256 `AD117D484ACE7AFBA1565397C1D01F73D3798F49A1DB0868CBF96CD0D9C82319`; `product_behavior_tested=false`.
+PC-ISSUE-147 adds a local routing regression for REC-P1-048 but does not sign the live-provider classification or rendered API 35 chat affordance; REC-P1-048 remains NOT TESTED. PC-ISSUE-148 narrowly signs REC-P0-040 for the pure draft-query filter, and PC-ISSUE-149 narrowly signs REC-P1-039 for formal-event matching, selected-snapshot REPLACE proposal creation, and queue-tail persistence. PC-ISSUE-150 adds only local structured-stage timeout failure evidence; it does not unblock REC-P1-047. Latest structural-only validation r16: .local/android-test/reports/freeze-20261024/pc-qa-gate-001-risk-matrix-validated-20261024-r16-pc-issue-150.json, artifact SHA-256 5F4D3C33AEC94EA4A950BE4BA6A1104485556EF6BA7A23B25A9C1A8477F49F71; ledger SHA-256 93461981B84F2372C85DD61A3924B0BD39F30A5B2B4D89B2C95C4B2DEC9AD066; product_behavior_tested=false.
 
 One retired record (`REC-P1-013`) is excluded from those active-row totals and from GO criteria.
 
