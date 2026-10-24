@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.Application
 import android.app.Notification
 import android.app.NotificationManager
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
@@ -26,10 +27,13 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows
 import org.robolectric.annotation.Config
+import org.robolectric.util.ReflectionHelpers
 import java.io.File
 import java.time.Instant
 import java.time.ZoneId
 import java.util.UUID
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -173,6 +177,48 @@ class ReminderCompletionIsolationTest {
             assertTrue(store.get(seq)!!.completedKeys.isEmpty())
             assertEquals(record.revision, store.get(seq)!!.revision)
         } finally {
+            closeFixture(fixture)
+        }
+    }
+
+    @Test
+    fun receiverOnReceiveAsyncKeepsEventIncomplete() {
+        val fixture = newFixture()
+        val store = fixture.store
+        var eventSeq = -1L
+        try {
+            eventSeq = createTrackedAlarm(store)
+            val record = store.get(eventSeq)!!
+            val scheduled = store.intentFor(eventSeq)!!
+            val fire = Intent(fixture.context, ReminderReceiver::class.java).apply {
+                action = AlarmContract.ACTION_FIRE
+                putExtra(AlarmContract.EXTRA_EVENT_SEQ, eventSeq)
+                putExtra(AlarmContract.EXTRA_REVISION, scheduled.revision)
+                putExtra(AlarmContract.EXTRA_OCCURRENCE_KEY, scheduled.occurrenceKey)
+                putExtra(AlarmContract.EXTRA_TRIGGER_ID, scheduled.triggerId)
+                putExtra(AlarmContract.EXTRA_INSTANT, scheduled.instantMillis)
+            }
+            val receiver = ReminderReceiver()
+            val pendingResult = ReflectionHelpers.callConstructor(
+                BroadcastReceiver.PendingResult::class.java
+            )
+            ReflectionHelpers.setField(receiver, "mPendingResult", pendingResult)
+            val shadowReceiver = Shadows.shadowOf(receiver)
+
+            shadowReceiver.onReceive(fixture.context, fire, AtomicBoolean(false))
+
+            assertTrue("ReminderReceiver should call goAsync()", shadowReceiver.wentAsync())
+            Shadows.shadowOf(pendingResult).getFuture().get(10, TimeUnit.SECONDS)
+            assertEquals("FIRED", store.lastExecution(eventSeq))
+            assertNull(store.intentFor(eventSeq))
+            assertTrue(record.completedKeys.isEmpty())
+            assertTrue(store.get(eventSeq)!!.completedKeys.isEmpty())
+            assertEquals(record.revision, store.get(eventSeq)!!.revision)
+        } finally {
+            if (eventSeq > 0L) {
+                ReminderScheduler.cancel(fixture.context, eventSeq)
+                NotificationHelper.cancelReminder(fixture.context, eventSeq)
+            }
             closeFixture(fixture)
         }
     }
@@ -372,6 +418,10 @@ class ReminderCompletionIsolationTest {
         val application = ApplicationProvider.getApplicationContext<Context>()
         Shadows.shadowOf(application as Application).grantPermissions(Manifest.permission.POST_NOTIFICATIONS)
         val testDatabase = "reminder-completion-${UUID.randomUUID()}.db"
+        val databaseDirectory = requireNotNull(application.getDatabasePath(testDatabase).parentFile)
+        check(databaseDirectory.mkdirs() || databaseDirectory.isDirectory) {
+            "Could not create Robolectric database directory $databaseDirectory"
+        }
         application.deleteDatabase(testDatabase)
         val context = IsolatedDatabaseContext(application, testDatabase)
         return Fixture(context, PowerStore(context))
