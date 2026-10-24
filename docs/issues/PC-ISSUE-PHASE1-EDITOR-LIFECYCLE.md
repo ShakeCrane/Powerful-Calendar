@@ -62,4 +62,4 @@ AVD 原有 app 与 test APK 在测试前备份，测试后重新安装并以 SHA
 - 本次未开发重复事件单次/未来编辑、键盘布局、后台提醒、AI 多轮提案，也未重判这些项目。
 - Phase 1 的自动化与 API 35 AVD 子项通过；Phase 2（重复事件 scope 编辑）具备开工条件。整体核心冻结仍以现有验收矩阵和未关闭项为准，不能据此宣告 GO。
 
-实现提交 SHA：将在提交完成后补录到本报告及 `docs/agent-handoff/PROGRESS.md`。
+实现提交 SHA：`b46b3dd7592bb1c7de021d543630f84937a0eaef`。
