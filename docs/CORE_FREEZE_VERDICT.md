@@ -4,9 +4,11 @@ Date: 2026-10-24
 
 Verdict: **HOLD**
 
-Code/test checkout for the latest full regression: `6345dbba2216b625bf95eaad7651d3b6cfc89275`
+Code/test checkout for the latest full regression: `b3ac84070086f1ecd57a345458a1bb09edfeebcb`
 
 APK used by the latest full regression: `app/build/outputs/apk/debug/app-debug.apk`, SHA-256 `138EC1363E4D74E6153CFFA61CEE4C0DF4D51416B3BD64C954FE642ED0FD4096`
+
+Latest full regression: **462/462** JVM tests across 57 suites, zero failures/errors/skips; lint **0 errors / 58 warnings**. Log: `.local/android-test/reports/freeze-20261024/issue002-deepseek-final-gradle.log`, SHA-256 `8C82E247D1FA802B4A876C68D0727A0C3E46BFEB8E6343092A1D1F29E3F10A2D`.
 
 ## 209-case gate
 
@@ -173,6 +175,12 @@ The **RECONSTRUCTED** candidate ledger contains 208 specification-derived rows p
 - `PC-ISSUE-020`: stabilized the `REC-P0-012` test fixture after a full regression exposed concurrent SQLite polling. The delivery handler now has deterministic synchronous test coverage; Android `onReceive`/`goAsync` framework lifecycle and actual AlarmManager delivery remain untested. See `docs/issues/PC-ISSUE-020-reminder-receiver-test-race.md`.
 - `PC-ISSUE-GREEDY-LABEL-FOLDING`: implementation and API 35 visual regression pass; physical-device/OEM and TalkBack review remain open.
 - Stable release signing material remains user-owned and is not present in the repository; no stable Release install/upgrade claim is made.
+
+## Latest virtual AI follow-up (2026-10-24)
+
+PC-ISSUE-122 records one authorized `deepseek/deepseek-v4.1-flash` structured-proposal request on Android 15 emulator `emulator-5554`: HTTP 200, one valid synthetic ACTIVITY proposal, zero warnings, no retry. This narrows the AI transport/parser uncertainty only. It does not verify the free provider after its prior 429/503, the chat-to-card/persistence/approval path, or physical-device behavior. The user owns physical-device testing.
+
+The reconstructed candidate totals remain **148 PASS / 0 FAIL / 9 BLOCKED / 45 NOT TESTED / 7 SPEC UNRESOLVED**; all 209 reconstructed rows remain unmapped to original case IDs. PC-ISSUE-002 remains **PARTIAL / BLOCKED**, and the overall verdict remains **HOLD**.
 
 ## Decision
 

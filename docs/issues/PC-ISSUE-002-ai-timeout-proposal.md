@@ -76,3 +76,14 @@ PC-ISSUE-120 为原有“免费模型空 HTTP 200 不盲目重试”修复增加
 PC-ISSUE-121 为“模型标记只表达意图，提案来源必须取本轮原始用户文本”增加 `AiClient.chat` 本机 HTTP 往返回归。模拟模型返回带伪造系统示例 `source` 的标记；客户端隐藏标记并只返回当前用户原文作为 `proposalSource`。定向 **1/1 PASS**，日志 SHA-256 `0738A573169B323DA8D52106F8A9C2C92067F14427429B5A582477E386E09040`，JUnit XML SHA-256 `D8EFEAB421CA2781107A514EB2EDF84111C6B942FDC303E5C84AF3BA003F7F2A`。完整 Gradle **462/462 across 57 suites**，0 failures/errors/skips，Lint 0 errors/58 warnings；完整日志 SHA-256 `7E8055E6547769BC8158D35E06268BD77B4A87B16929EEE26CE297CCA754C97B`。
 
 这是本地模拟的客户端边界证据，不证明真实模型服从约束；未请求 provider。此前的 429/503 仍阻止真实模型提案流程，PC-ISSUE-002 继续 **PARTIAL / BLOCKED**。独立报告：`docs/issues/PC-ISSUE-121-ai-current-input-source-isolation.md`。
+
+## 授权 DeepSeek Flash 虚拟设备结构化提案复测（2026-10-24）
+
+PC-ISSUE-122 使用模拟器现有的 HTTPS 配置与密钥，在内存中将模型设为精确 ID `deepseek/deepseek-v4.1-flash`；没有写回设置。请求只包含虚构活动，显式关闭上下文共享并传入空日历上下文。Android 15 / API 35 `emulator-5554` 返回 HTTP 200；结构化阶段耗时 3.530 秒、输出预算 1800，得到 1 条可发布 ACTIVITY 提案、0 条警告。提案标题及开始/结束时刻均与合成输入一致。只有一条结构化请求遥测记录，未触发自动重试。
+
+- 定向 Android 仪器测试：**1/1 PASS**（总耗时 3.759 秒）；测试验证 `AiClient.interpret` 返回可发布提案，未打开界面、写数据库或执行正式事件操作。
+- 测试日志：`.local/android-test/reports/freeze-20261024/issue002-deepseek-device-test.log`，SHA-256 `44540242960C718612AB56EB01485A5551DB09B55AFDED2D9457C520DBC234D3`。脱敏阶段遥测：`issue002-deepseek-perf.log`，SHA-256 `120D20442E45369AE68055EE7C45821308C4D38A30B1E0E77C9C7FF80A1E6EBB`。日志不包含提示正文、响应正文、URL、headers 或密钥。
+- 最终完整 Gradle 回归：**462/462** across 57 suites，0 failures/errors/skips，Lint 0 errors/58 warnings；完整日志 SHA-256 `8C82E247D1FA802B4A876C68D0727A0C3E46BFEB8E6343092A1D1F29E3F10A2D`。Debug APK SHA-256 `138EC1363E4D74E6153CFFA61CEE4C0DF4D51416B3BD64C954FE642ED0FD4096`。
+- 实际模型探针运行于代码提交 `cf573990300bfd6bd3bedfbf624536afa0daf4d5`（当时 AndroidX test runner 1.5.0 / JUnit 扩展 1.1.5）；之后只升级了测试基础设施到 runner 1.7.0 / JUnit 扩展 1.3.0，并完成 AndroidTest 编译和 lint。为遵守单次付费请求边界，没有在基础设施升级后重发模型请求。最终代码/完整回归基线为 `b3ac84070086f1ecd57a345458a1bb09edfeebcb`。
+
+该结果只签核真实模型的单阶段结构化提案传输与解析子路径。免费服务此前的 429/503、用户聊天到提案卡的呈现、草稿持久化/重启、确认与撤销链以及实体设备/OEM 行为仍未闭环；本次 Issue 002 继续 **PARTIAL / BLOCKED**。实体设备测试由用户执行。独立报告：`docs/issues/PC-ISSUE-122-deepseek-v41-flash-emulator-probe.md`。
