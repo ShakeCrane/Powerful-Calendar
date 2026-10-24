@@ -89,6 +89,7 @@ import dev.powerfulcalendar.ai.AiDraftService
 import dev.powerfulcalendar.ai.AiInterpretation
 import dev.powerfulcalendar.ai.AiSettingsStore
 import dev.powerfulcalendar.core.BackupEnvelope
+import dev.powerfulcalendar.interop.SafBackupReader
 import dev.powerfulcalendar.core.DeckController
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.DraftOperation
@@ -303,9 +304,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
 
     /** Hardware-safe read: a crafted or corrupt file cannot exhaust memory before verification. */
     suspend fun readBackupText(uri: Uri): String = withContext(Dispatchers.IO) {
-        appContext.contentResolver.openInputStream(uri)?.use { input ->
-            BackupEnvelope.readUtf8Bounded(input)
-        } ?: error("无法读取备份文件")
+        SafBackupReader.readText(appContext.contentResolver, uri)
     }
 
     /**
