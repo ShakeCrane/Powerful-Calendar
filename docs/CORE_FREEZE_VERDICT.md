@@ -4,6 +4,14 @@ Date: 2026-10-24
 
 Verdict: **HOLD**
 
+## Latest follow-up: PC-ISSUE-168 — system reduced motion on API 35 AVD
+
+With the actual emulator `Settings.Global.ANIMATOR_DURATION_SCALE` set to 0, production `rememberSystemGlassEffects()` observed `reduceMotion=true` and disabled blur; the `glassMotion()` probe reached its target after the Compose test-clock step. AndroidJUnitRunner passed 1/1 on API 35 `emulator-5556`. The key was absent beforehand and was deleted in `finally`; it was confirmed absent afterward. No production code or user data changed. `REC-P1-075` remains BLOCKED for physical/OEM-device confirmation. See `docs/issues/PC-ISSUE-168-reduced-motion-avd.md`.
+
+Test-only commit `4dfaff99fb27c47f98b01125f94fe0629dd15df7` is pushed. Full forced-offline Gradle passed 496/496 JVM tests across 67 suites, zero failures/errors/skips; all 88 tasks executed, including source-boundary verification, Debug/AndroidTest APK assembly, and lint. Full log SHA-256 `E71C621C06FDBFF38B17611CC7DB26D9E836295BC1E8BD327880323DEBF03479`. Focused API 35 log SHA-256 `D4FABB8F940B07680590E38E5D84B27F37D8FF29D23F9451A1866E2F53FBD59F`; state trace SHA-256 `9B3F4D97AE2F95CAA1FA3A9DE01F861479FB1D4B5D273C48E1CC86A9E9AFE94E`.
+
+Structural-only ledger r37: 211 rows / 210 active reconstructed, 198 PASS / 0 FAIL / 8 BLOCKED / 2 NOT TESTED / 2 SPEC UNRESOLVED / 1 RETIRED; historical IDs mapped=0 and `product_behavior_tested=false`. Artifact SHA-256 `3BCC9875D23E0591AC52760E05DA71EE830DA8208E850B0DF1C4C33C681EE075`; ledger SHA-256 `F458A02ED1C04980E90A8EE6A221D6DDA5B06A7E15CBDE100707D997E4CDD1C2`. The device-level gate remains open; verdict stays HOLD.
+
 ## Latest follow-up: PC-ISSUE-167 — Android IME current-build replay
 
 The existing isolated API 35 IME test was replayed against the current build on `emulator-5556` and passed 1/1. With the real system LatinIME visible, the conversation list shrank from 1858px to 1101px, the synthetic message remained visible, and the enabled send control remained 21px above the keyboard. `REC-P1-070` remains BLOCKED because this does not verify MainActivity integration, physical devices, or OEM keyboards. See `docs/issues/PC-ISSUE-167-ime-current-build-replay.md`.

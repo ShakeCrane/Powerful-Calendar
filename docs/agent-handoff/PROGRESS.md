@@ -1,5 +1,11 @@
 # Core freeze progress
 
+## PC-ISSUE-168 — 系统减少动态效果 AVD 验证（REC-P1-075 子项 PASS，整项 BLOCKED）
+
+- 新增 AndroidJUnitRunner 测试验证 `emulator-5556` API 35 的实际 `Settings.Global.ANIMATOR_DURATION_SCALE=0`：`rememberSystemGlassEffects` 报告 `reduceMotion=true`、`blur=false`；`glassMotion()` 探针推进 Compose 测试帧后到达目标 1.0。最终定向 1/1 PASS。AVD 原设置未显式设置（`null`），临时置 0 后在 `finally` 中删除，之后读回 `null`；无生产代码或业务数据修改。
+- 完整强制离线 Gradle 496/496 JVM、67 suites、0 failures/errors/skips；88 tasks 执行，源码边界、Debug/AndroidTest APK 和 lint 均通过。定向日志 SHA-256 `D4FABB8F940B07680590E38E5D84B27F37D8FF29D23F9451A1866E2F53FBD59F`；状态轨迹 SHA-256 `9B3F4D97AE2F95CAA1FA3A9DE01F861479FB1D4B5D273C48E1CC86A9E9AFE94E`；完整 Gradle 日志 SHA-256 `E71C621C06FDBFF38B17611CC7DB26D9E836295BC1E8BD327880323DEBF03479`；Debug/AndroidTest APK SHA-256 `290F13ADC31CAF38A17A1506E9C1AF57C19B2743BBC2F36CCB261918CBAC85C1` / `2BD1C17F32722F588B1E6DE70AEAF98E174B73861C08BE93F6007AA656AEDE82`。
+- 测试提交 `4dfaff99fb27c47f98b01125f94fe0629dd15df7` 已推送。独立报告 `docs/issues/PC-ISSUE-168-reduced-motion-avd.md`。实体/OEM 行为仍由用户验收，REC-P1-075 保持 BLOCKED。台账 r37：198 PASS / 0 FAIL / 8 BLOCKED / 2 NOT TESTED / 2 SPEC UNRESOLVED / 1 RETIRED；artifact SHA-256 `3BCC9875D23E0591AC52760E05DA71EE830DA8208E850B0DF1C4C33C681EE075`，ledger SHA-256 `F458A02ED1C04980E90A8EE6A221D6DDA5B06A7E15CBDE100707D997E4CDD1C2`。整体仍 HOLD。
+
 ## PC-ISSUE-167 — 当前构建 Android IME 回放（REC-P1-070 子项 PASS，整项 BLOCKED）
 
 - 在 API 35 `emulator-5556` 当前构建重跑既有 `AiChatImeInstrumentedTest`，AndroidJUnitRunner 1/1 PASS。竖屏 1080×2400，LatinIME inset 820px、顶边 y=1580；消息区高度从 1858px 缩至 1101px，合成消息可见；编辑器在键盘上方；启用的发送按钮底部 y=1559，距 IME 21px。无生产/测试源码改动，不触碰 `PowerStore` 或 AI。
