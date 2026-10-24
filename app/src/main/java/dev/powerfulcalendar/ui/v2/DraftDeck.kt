@@ -119,6 +119,8 @@ import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.DraftQueueSearch
 import dev.powerfulcalendar.core.DraftStatus
+import dev.powerfulcalendar.core.EditorDefaults
+import dev.powerfulcalendar.core.NewEventEditSession
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.Recurrence
 import dev.powerfulcalendar.core.RecurrenceFreq
@@ -177,6 +179,7 @@ fun NativeDraftDeckDialog(
     val effects = LocalGlassEffects.current
     val density = LocalDensity.current
     val keyboard = WindowInsets.ime.getBottom(density) > 0
+    val pickerNowMillis = remember { System.currentTimeMillis() }
     val popupFocus = remember { FocusRequester() }
     var focusPlaced by remember { mutableStateOf(false) }
 
@@ -282,7 +285,8 @@ fun NativeDraftDeckDialog(
                                         }, typeMenu, { typeMenu = it },
                                         { command { controller.move(-1) } }, { command { controller.move(1) } },
                                         state.canGoPrevious, state.canGoNext,
-                                        { command(true) { controller.commit() } }, { command(true) { controller.discard() } }, { command { controller.flush() } })
+                                        { command(true) { controller.commit() } }, { command(true) { controller.discard() } }, { command { controller.flush() } },
+                                        pickerNowMillis = pickerNowMillis)
                                 }
                             }
                         }
@@ -309,6 +313,110 @@ fun NativeDraftDeckDialog(
             text = { Text(prompt.message) },
             confirmButton = { TextButton(onClick = { command(true) { controller.requestRestore() } }, enabled = !busy) { Text("恢复同一事件") } },
             dismissButton = { TextButton(onClick = { controller.dismissRestore() }) { Text("保留草稿") } })
+    }
+}
+
+/** Host-owned editor for an ordinary new event; the session is still memory-only on first open. */
+@Composable
+internal fun NewEventEditorDialog(
+    session: NewEventEditSession,
+    form: DraftForm,
+    error: String?,
+    busy: Boolean,
+    onFormChange: (DraftForm) -> Unit,
+    onSave: () -> Unit,
+    onExit: () -> Unit,
+    onDiscard: () -> Unit
+) {
+    var typeMenu by remember(session.idempotencyKey) { mutableStateOf(false) }
+    val card = session.previewCard()
+    SkinWindowDialog(
+        onDismissRequest = onExit,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            dismissOnClickOutside = false,
+            decorFitsSystemWindows = false
+        )
+    ) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Box(
+                Modifier.fillMaxSize().testTag("new-event-backdrop")
+                    .background(Color.Black.copy(alpha = 0.42f))
+                    .skinBackdrop(SkinSlot.DECK_BACKDROP)
+                    .outsideGesture(onTap = onExit, onBrowse = {})
+            )
+            BoxWithConstraints(
+                Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding()
+                    .padding(horizontal = 24.dp, vertical = 8.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                val short = maxHeight < 500.dp || WindowInsets.ime.getBottom(LocalDensity.current) > 0
+                Column(
+                    Modifier.widthIn(max = 600.dp).fillMaxWidth().fillMaxHeight(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = skinBarShape(),
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.97f)
+                    ) {
+                        Row(
+                            Modifier.padding(start = 16.dp, end = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("新建事件", style = MaterialTheme.typography.titleLarge,
+                                modifier = Modifier.semantics { heading() })
+                            Spacer(Modifier.width(8.dp))
+                            Text("只在修改后暂存", style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(Modifier.weight(1f))
+                            IconButton(
+                                onClick = onExit,
+                                enabled = !busy,
+                                modifier = Modifier.size(48.dp).testTag("new-event-close")
+                            ) { Icon(Icons.Default.Close, "保存草稿并退出") }
+                        }
+                    }
+                    Box(
+                        Modifier.fillMaxWidth().weight(1f).padding(vertical = if (short) 0.dp else 12.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        DeckCardBody(
+                            card = card,
+                            form = form,
+                            position = 0,
+                            total = 1,
+                            expanded = true,
+                            aiLocked = busy,
+                            error = error,
+                            conversionNote = null,
+                            dirty = session.meaningfulDiff,
+                            pickerNowMillis = session.defaults.nowMillis,
+                            transientNewEvent = true,
+                            alreadyPersisted = session.persistedCard != null,
+                            onExpandToggle = {},
+                            onFormChange = onFormChange,
+                            onTypeChange = { target ->
+                                if (!busy) {
+                                    val converted = TemporalConversion.convert(form, target).form
+                                    onFormChange(converted)
+                                    typeMenu = false
+                                }
+                            },
+                            typeMenuExpanded = typeMenu,
+                            onTypeMenuChange = { typeMenu = it },
+                            onPrevious = {},
+                            onNext = {},
+                            canGoPrevious = false,
+                            canGoNext = false,
+                            onCommit = onSave,
+                            onDiscard = onDiscard,
+                            onRetrySave = onSave
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -577,9 +685,15 @@ internal fun UnifiedEventFormFields(
     aiLocked: Boolean,
     card: DraftCard? = null,
     instanceKey: Any? = card?.draftId,
+    pickerNowMillis: Long? = null,
     onFormChange: (DraftForm) -> Unit
 ) {
     val context = LocalContext.current
+    val pickerDefaults = remember(instanceKey, pickerNowMillis, form.zoneId) {
+        val captured = pickerNowMillis?.let(Instant::ofEpochMilli)
+            ?: java.time.Clock.systemUTC().instant()
+        EditorDefaults.capture(java.time.Clock.fixed(captured, form.zone), form.zone)
+    }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(
                 value = form.title,
@@ -608,12 +722,14 @@ internal fun UnifiedEventFormFields(
                     zone = form.zone,
                     value = form.startText,
                     enabled = !aiLocked,
+                    fallbackMillis = pickerDefaults.pickerInstant(),
                     onChange = { onFormChange(form.copy(startText = it)) },
                     onPickDate = { base ->
                         pickDate(context, base, form.zone) { date ->
                             val time = form.parseStart()
                                 ?.let { Instant.ofEpochMilli(it).atZone(form.zone).toLocalTime() }
-                                ?: LocalTime.of(9, 0)
+                                ?: pickerDefaults.now.atZone(form.zone).toLocalTime()
+                                    .truncatedTo(java.time.temporal.ChronoUnit.MINUTES)
                             onFormChange(
                                 form.copy(
                                     startText = DraftForm.formatInstant(
@@ -628,7 +744,7 @@ internal fun UnifiedEventFormFields(
                         pickTime(context, base, form.zone) { hour, minute ->
                             val date = form.parseStart()
                                 ?.let { Instant.ofEpochMilli(it).atZone(form.zone).toLocalDate() }
-                                ?: LocalDate.now()
+                                ?: pickerDefaults.today
                             onFormChange(
                                 form.copy(
                                     startText = DraftForm.formatInstant(
@@ -649,6 +765,7 @@ internal fun UnifiedEventFormFields(
                     zone = form.zone,
                     value = form.endText,
                     enabled = !aiLocked,
+                    fallbackMillis = pickerDefaults.pickerInstant(),
                     hint = if (form.kind == TemporalKind.DEADLINE) {
                         "日期 yyyy-MM-dd 或时刻 yyyy-MM-dd HH:mm"
                     } else {
@@ -664,7 +781,11 @@ internal fun UnifiedEventFormFields(
                             } else {
                                 val time = form.parseEnd()
                                     ?.let { Instant.ofEpochMilli(it).atZone(form.zone).toLocalTime() }
-                                    ?: LocalTime.of(10, 0)
+                                    ?: form.parseStart()?.let {
+                                        Instant.ofEpochMilli(it + 3_600_000L).atZone(form.zone).toLocalTime()
+                                    }
+                                    ?: pickerDefaults.now.atZone(form.zone).toLocalTime()
+                                        .truncatedTo(java.time.temporal.ChronoUnit.MINUTES)
                                 onFormChange(
                                     form.copy(
                                         endText = DraftForm.formatInstant(
@@ -681,7 +802,11 @@ internal fun UnifiedEventFormFields(
                         pickTime(context, base, form.zone) { hour, minute ->
                             val date = form.parseEnd()
                                 ?.let { Instant.ofEpochMilli(it).atZone(form.zone).toLocalDate() }
-                                ?: LocalDate.now()
+                                ?: DraftForm.parseDateOnly(form.endText)
+                                ?: form.parseStart()?.let {
+                                    Instant.ofEpochMilli(it + 3_600_000L).atZone(form.zone).toLocalDate()
+                                }
+                                ?: pickerDefaults.today
                             onFormChange(
                                 form.copy(
                                     endText = DraftForm.formatInstant(
@@ -707,8 +832,9 @@ internal fun UnifiedEventFormFields(
                     if (DraftForm.parseDateOnly(form.endText) != null) {
                         AssistChip(
                             onClick = {
-                                val date = DraftForm.parseDateOnly(form.endText) ?: LocalDate.now(form.zone)
-                                pickTime(context, date.atStartOfDay(form.zone).toInstant().toEpochMilli(), form.zone) { hour, minute ->
+                                val date = DraftForm.parseDateOnly(form.endText) ?: pickerDefaults.today
+                                val pickerBase = form.parseEnd() ?: pickerDefaults.pickerInstant(date)
+                                pickTime(context, pickerBase, form.zone) { hour, minute ->
                                     onFormChange(form.copy(endText = DraftForm.formatInstant(date.atTime(hour, minute).atZone(form.zone).toInstant().toEpochMilli(), form.zone)))
                                 }
                             },
@@ -936,7 +1062,10 @@ private fun DeckCardBody(
     canGoNext: Boolean,
     onCommit: () -> Unit,
     onDiscard: () -> Unit,
-    onRetrySave: () -> Unit
+    onRetrySave: () -> Unit,
+    pickerNowMillis: Long,
+    transientNewEvent: Boolean = false,
+    alreadyPersisted: Boolean = false
 ) {
     val context = LocalContext.current
     val missing = form.missingFields()
@@ -952,7 +1081,7 @@ private fun DeckCardBody(
         Row(verticalAlignment = Alignment.CenterVertically) {
             FlowRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
-                TemporalRecord.formatSeq(card.eventSeq),
+                if (transientNewEvent) "新建" else TemporalRecord.formatSeq(card.eventSeq),
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.SemiBold
@@ -1009,7 +1138,7 @@ private fun DeckCardBody(
                 }
             } else {
             UnifiedEventFormFields(form = form, expanded = expanded, aiLocked = aiLocked,
-                card = card, onFormChange = onFormChange)
+                card = card, pickerNowMillis = pickerNowMillis, onFormChange = onFormChange)
             } // expanded editor
             if (!expanded && form.notes.isNotBlank()) {
                 Text(
@@ -1043,7 +1172,10 @@ private fun DeckCardBody(
         HorizontalDivider(Modifier.padding(top = 8.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onPrevious, enabled = canGoPrevious, modifier = Modifier.size(48.dp)) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, "上一张草稿") }
-            Text("${position + 1} / ${total.coerceAtLeast(1)} · " + if (dirty) "待暂存" else "已暂存",
+            val stateLabel = if (transientNewEvent) {
+                if (alreadyPersisted) "已暂存" else if (dirty) "待暂存" else "未修改"
+            } else if (dirty) "待暂存" else "已暂存"
+            Text("${position + 1} / ${total.coerceAtLeast(1)} · $stateLabel",
                 style = MaterialTheme.typography.labelMedium, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
             IconButton(onClick = onNext, enabled = canGoNext, modifier = Modifier.size(48.dp)) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, "下一张草稿") }
         }
@@ -1053,9 +1185,13 @@ private fun DeckCardBody(
                 Text(if (card.operation == DraftOperation.DELETE) "不删除" else "丢弃")
             }
             Button(onClick = { if (card.operation == DraftOperation.DELETE) showDeleteConfirm = true else onCommit() },
-                enabled = !aiLocked && (publishable || card.operation == DraftOperation.DELETE), modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
+                enabled = !aiLocked && (publishable || (transientNewEvent && dirty) || card.operation == DraftOperation.DELETE), modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
                 Icon(Icons.Default.Check, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp))
-                Text(if (card.operation == DraftOperation.DELETE) "确认删除" else "发布")
+                Text(when {
+                    card.operation == DraftOperation.DELETE -> "确认删除"
+                    transientNewEvent && !publishable -> "保存草稿"
+                    else -> "发布"
+                })
             }
         }
 
@@ -1076,7 +1212,8 @@ private fun DeckCardBody(
                     if (card.operation == DraftOperation.DELETE) {
                         "删除会将事件 #${card.eventSeq} 的序号永久退役。当前版本不支持撤销正式删除，请确认。"
                     } else {
-                        "草稿会被丢弃但可以撤销；事件 #${card.eventSeq} 的正式内容不受影响。"
+                        if (transientNewEvent) "尚未发布的编辑内容将被放弃。"
+                        else "草稿会被丢弃但可以撤销；事件 #${card.eventSeq} 的正式内容不受影响。"
                     }
                 )
             },
@@ -1096,6 +1233,7 @@ private fun TimeRow(
     label: String,
     value: String,
     enabled: Boolean,
+    fallbackMillis: Long,
     hint: String = "yyyy-MM-dd HH:mm",
     zone: ZoneId = ZoneId.systemDefault(),
     onChange: (String) -> Unit,
@@ -1116,12 +1254,12 @@ private fun TimeRow(
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text)
         )
         IconButton(
-            onClick = { onPickDate(parsed ?: System.currentTimeMillis()) },
+            onClick = { onPickDate(parsed ?: fallbackMillis) },
             enabled = enabled,
             modifier = Modifier.size(48.dp)
         ) { Icon(Icons.Default.CalendarToday, "选择 $label 日期", modifier = Modifier.size(18.dp)) }
         IconButton(
-            onClick = { onPickTime(parsed ?: System.currentTimeMillis()) },
+            onClick = { onPickTime(parsed ?: fallbackMillis) },
             enabled = enabled,
             modifier = Modifier.size(48.dp)
         ) { Icon(Icons.Default.Schedule, "选择 $label 时间", modifier = Modifier.size(18.dp)) }

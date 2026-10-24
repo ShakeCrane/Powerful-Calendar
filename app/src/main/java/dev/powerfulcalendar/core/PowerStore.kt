@@ -814,6 +814,57 @@ class PowerStore(
         }
     }
 
+    /**
+     * Explicit creation of a complete event without an intermediate pending-draft row. Identity,
+     * formal snapshot, audit commit and reminder intent share one transaction. The session key
+     * makes repeated delivery of the same Save action idempotent.
+     */
+    @Synchronized
+    fun createFormalEvent(
+        form: DraftForm,
+        idempotencyKey: String,
+        actor: String = "user"
+    ): CommitOutcome = tx { db ->
+        if (actor != "user") return@tx CommitOutcome.NotAuthorized
+        db.rawQuery(
+            "SELECT event_seq,new_revision,commit_id FROM commits WHERE commit_id=?",
+            arrayOf(idempotencyKey)
+        ).use { cursor ->
+            if (cursor.moveToFirst()) {
+                return@tx CommitOutcome.Committed(
+                    cursor.getLong(0), cursor.getLong(1), cursor.getString(2), duplicate = true
+                )
+            }
+        }
+        if (isLocked(db)) return@tx CommitOutcome.Locked
+
+        val now = System.currentTimeMillis()
+        val candidate = when (val built = form.build(1L, 1L, now)) {
+            is FormBuild.Incomplete -> return@tx CommitOutcome.Invalid(built.message)
+            is FormBuild.Invalid -> return@tx CommitOutcome.Invalid(built.reason)
+            is FormBuild.Ready -> built.record
+        }
+        val eventSeq = allocateIdentity(db, candidate.source)
+        val record = candidate.copy(
+            eventSeq = eventSeq,
+            createdAtMillis = now,
+            updatedAtMillis = now
+        )
+        upsertObject(db, record)
+        db.insertOrThrow("commits", null, ContentValues().apply {
+            put("commit_id", idempotencyKey)
+            putNull("draft_id")
+            put("event_seq", eventSeq)
+            putNull("previous_revision")
+            put("new_revision", record.revision)
+            put("actor", actor)
+            put("operation", DraftOperation.CREATE.name)
+            put("created_ms", now)
+        })
+        writeDesiredIntent(db, record, now)
+        CommitOutcome.Committed(eventSeq, record.revision, idempotencyKey)
+    }
+
     private fun insertDraft(
         db: SQLiteDatabase,
         form: DraftForm,
@@ -1720,8 +1771,24 @@ class PowerStore(
             it.moveToFirst(); it.getLong(0)
         }
 
+    /** Read-only row counts used to verify zero-write editor exits and recovery checkpoints. */
+    @Synchronized
+    internal fun draftCount(): Long =
+        readableDatabase.rawQuery("SELECT COUNT(*) FROM drafts", null).use {
+            it.moveToFirst(); it.getLong(0)
+        }
+
+    @Synchronized
+    internal fun commitCount(): Long =
+        readableDatabase.rawQuery("SELECT COUNT(*) FROM commits", null).use {
+            it.moveToFirst(); it.getLong(0)
+        }
+
     @Synchronized
     fun nextSequencePreview(): Long = metaLong(readableDatabase, "next_seq")
+
+    @Synchronized
+    internal fun nextQueueOrderPreview(): Long = metaLong(readableDatabase, "next_order")
 
     // ---------------------------------------------------------------- AI batch
 

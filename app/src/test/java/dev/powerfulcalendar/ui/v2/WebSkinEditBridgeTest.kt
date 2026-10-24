@@ -132,24 +132,33 @@ class WebSkinEditBridgeTest {
     }
 
     @Test fun deckUsesOriginalControllerForDurableStageCommitAndReplay()= runBlocking {
+        val identitiesBefore=store.identityCount()
+        val draftsBefore=store.draftCount()
         val created=service.execute(WebEditCommand.CreateDeck(request(),TemporalKind.MEMO))
         assertEquals("created",created.getString("status"))
         val id=created.getString("detail").toLong()
         val state=service.snapshot().getJSONObject("deck")
         val version=state.getLong("version")
+        assertEquals(JSONObject.NULL, state.getJSONArray("cards").getJSONObject(0).get("eventSeq"))
+        assertEquals(draftsBefore,store.draftCount())
+        assertEquals(identitiesBefore,store.identityCount())
         assertEquals("stale",service.execute(WebEditCommand.PatchDeck(
             request(),id+99,version,"title","wrong card")).getString("status"))
         assertEquals("edited",service.execute(WebEditCommand.PatchDeck(
             request(),id,version,"title","Memo from Web")).getString("status"))
-        assertTrue(store.draft(id)!!.form.title.isBlank())
+        assertEquals(draftsBefore,store.draftCount())
+        assertEquals(identitiesBefore,store.identityCount())
+        assertEquals(0,store.pendingCount())
         assertEquals("flushed",service.execute(WebEditCommand.FlushDeck(request()))
             .getString("status"))
-        assertEquals("Memo from Web",store.draft(id)!!.form.title)
+        val persisted=store.pendingDrafts().single()
+        assertEquals("Memo from Web",persisted.form.title)
         val savedVersion=service.snapshot().getJSONObject("deck").getLong("version")
         val cmd=WebEditCommand.CommitDeck(request(),id,savedVersion)
         assertEquals("committed",service.execute(cmd).getString("status"))
         assertEquals("committed",service.execute(cmd).getString("status"))
-        assertEquals("Memo from Web",store.get(store.draft(id)!!.eventSeq)!!.title)
+        assertEquals("Memo from Web",store.get(persisted.eventSeq)!!.title)
+        assertEquals(1,store.draftCount())
         assertEquals("stale",service.execute(WebEditCommand.DiscardDeck(
             request(),id,savedVersion)).getString("status"))
         assertEquals("closed",service.execute(WebEditCommand.CloseDeck(request()))
@@ -165,8 +174,9 @@ class WebSkinEditBridgeTest {
         assertTrue(service.hasLiveEditor())
         assertTrue(service.prepareSkinChange())
         assertFalse(service.hasLiveEditor())
-        assertEquals("Preserved before switch",store.draft(id)!!.form.title)
-        assertEquals("opened",service.execute(WebEditCommand.OpenDeck(request(),id))
+        val persisted=store.pendingDrafts().single()
+        assertEquals("Preserved before switch",persisted.form.title)
+        assertEquals("opened",service.execute(WebEditCommand.OpenDeck(request(),persisted.draftId))
             .getString("status"))
         assertEquals("Preserved before switch",
             service.snapshot().getJSONObject("deck").getJSONObject("form").getString("title"))
@@ -184,7 +194,74 @@ class WebSkinEditBridgeTest {
             service.snapshot().getJSONObject("deck").getJSONObject("form").getString("title"))
         assertEquals("closed",service.execute(WebEditCommand.CloseDeck(request()))
             .getString("status"))
-        assertEquals("Unflushed in-memory input",store.draft(id)!!.form.title)
+        assertEquals("Unflushed in-memory input",store.pendingDrafts().single().form.title)
+    }
+
+    @Test fun openingAndClosingFourKindsTwentyTimesDoesNotAllocateAnything()= runBlocking {
+        val identities=store.identityCount()
+        val nextSequence=store.nextSequencePreview()
+        val commits=store.commitCount()
+        val drafts=store.draftCount()
+        repeat(20) {
+            TemporalKind.entries.forEach { kind ->
+                val opened=service.execute(WebEditCommand.CreateDeck(request(),kind))
+                assertEquals("created",opened.getString("status"))
+                val id=opened.getString("detail").toLong()
+                assertTrue(id>0)
+                assertEquals(0,service.snapshot().getJSONObject("deck").getJSONObject("form")
+                    .getString("title").length)
+                assertEquals("closed",service.execute(WebEditCommand.CloseDeck(request()))
+                    .getString("status"))
+                assertEquals("closed",service.execute(WebEditCommand.CloseDeck(request()))
+                    .getString("status"))
+            }
+        }
+        assertEquals(identities,store.identityCount())
+        assertEquals(nextSequence,store.nextSequencePreview())
+        assertEquals(commits,store.commitCount())
+        assertEquals(drafts,store.draftCount())
+        assertEquals(0,store.pendingCount())
+        assertTrue(store.all().isEmpty())
+    }
+
+    @Test fun explicitWebPublishWritesFormalEventWithoutAQueuedDraft()= runBlocking {
+        val created=service.execute(WebEditCommand.CreateDeck(request(),TemporalKind.ALARM))
+        val id=created.getString("detail").toLong()
+        val version=service.snapshot().getJSONObject("deck").getLong("version")
+        assertEquals("edited",service.execute(WebEditCommand.PatchDeck(request(),id,version,
+            "title","Published directly")).getString("status"))
+        val command=WebEditCommand.CommitDeck(request(),id,version)
+        assertEquals("committed",service.execute(command).getString("status"))
+        assertEquals("committed",service.execute(command).getString("status"))
+        assertEquals(1,store.all().size)
+        assertEquals("Published directly",store.all().single().title)
+        assertEquals(0,store.draftCount())
+        assertEquals(0,store.pendingCount())
+        assertEquals(1,store.identityCount())
+        assertEquals(1,store.commitCount())
+    }
+
+    @Test fun incompleteWebPublishStagesOneRecoverableDraft()= runBlocking {
+        val created=service.execute(WebEditCommand.CreateDeck(request(),TemporalKind.MEMO))
+        val id=created.getString("detail").toLong()
+        val version=service.snapshot().getJSONObject("deck").getLong("version")
+        service.execute(WebEditCommand.PatchDeck(request(),id,version,"notes","unfinished"))
+        val result=service.execute(WebEditCommand.CommitDeck(request(),id,version))
+        assertEquals("staged",result.getString("status"))
+        assertEquals(id.toString(),result.getString("detail"))
+        assertEquals(1,store.pendingCount())
+        assertEquals(1,store.draftCount())
+        assertEquals(0,store.commitCount())
+        assertEquals("unfinished",store.pendingDrafts().single().form.notes)
+
+        assertEquals("edited",service.execute(WebEditCommand.PatchDeck(
+            request(),id,version,"title","completed later")).getString("status"))
+        assertEquals("committed",service.execute(WebEditCommand.CommitDeck(
+            request(),id,version)).getString("status"))
+        assertEquals("completed later",store.all().single().title)
+        assertEquals(0,store.pendingCount())
+        assertEquals(1,store.draftCount())
+        assertEquals(1,store.commitCount())
     }
 
     @Test fun checkpointPersistsWebChangesAcrossClose()= runBlocking {

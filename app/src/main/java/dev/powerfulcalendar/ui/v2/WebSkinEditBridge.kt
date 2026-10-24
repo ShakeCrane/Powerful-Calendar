@@ -2,6 +2,7 @@ package dev.powerfulcalendar.ui.v2
 
 import dev.powerfulcalendar.core.DeckController
 import dev.powerfulcalendar.core.EditSession
+import dev.powerfulcalendar.core.NewEventEditSession
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.TemporalKind
@@ -208,6 +209,7 @@ internal class WebSkinEditService(
     private val gate = Mutex()
     private var session: EditSession? = null
     private var sessionId: String? = null
+    private var newEventSession: NewEventEditSession? = null
     private var deckOpen = false
     // Compose-observable lifetime signal for reliable Android Back interception.
     private var hasActiveUiSession by mutableStateOf(false)
@@ -221,6 +223,25 @@ internal class WebSkinEditService(
 
     private fun editorMatches(id: String) = session != null && sessionId == id
     private fun deckState(): JSONObject {
+        newEventSession?.let { active ->
+            val preview = active.previewCard()
+            val items = org.json.JSONArray().put(JSONObject()
+                .put("draftId", preview.draftId)
+                .put("eventSeq", active.persistedCard?.eventSeq ?: JSONObject.NULL)
+                .put("draftVersion", active.version)
+                .put("title", preview.form.title.take(240))
+                .put("kind", preview.form.kind.name)
+                .put("status", preview.status.name))
+            return JSONObject().put("open", deckOpen)
+                .put("lastDiscardId", JSONObject.NULL)
+                .put("cards", items).put("truncated", false)
+                .put("currentId", active.clientDraftId)
+                .put("version", active.version).put("dirty", active.meaningfulDiff)
+                .put("busy", false).put("aiLocked", false)
+                .put("error", active.lastError)
+                .put("form", WebEditWire.form(active.form))
+                .put("hasConflict", false).put("hasRestore", false)
+        }
         val state = deck.state
         val items = org.json.JSONArray()
         state.cards.take(80).forEach { card ->
@@ -314,19 +335,26 @@ internal class WebSkinEditService(
                 is WebEditCommand.CreateDeck -> {
                     if(session!=null || externalEditorActive() || deckOpen)
                         result(cmd.requestId,"locked")
+                    else if(withContext(Dispatchers.IO) { store.isLocked() })
+                        result(cmd.requestId,"locked")
                     else {
-                        val card=withContext(Dispatchers.IO) {
-                            store.newDraft(DraftForm.fresh(cmd.kind,zone=ZoneId.systemDefault()))
-                        }
-                        deck.open(card.draftId);deckOpen=true
-                        result(cmd.requestId,"created",card.draftId.toString())
+                        val opened = NewEventEditSession.open(
+                            cmd.kind, zone = ZoneId.systemDefault()
+                        )
+                        newEventSession = opened
+                        deckOpen = true
+                        result(cmd.requestId,"created",opened.clientDraftId.toString())
                     }
                 }
                 is WebEditCommand.OpenDeck -> {
                     if(session!=null || externalEditorActive()) result(cmd.requestId,"locked")
                     else if(deckOpen) {
-                        // A repeated open must never reset in-memory dirty form data.
-                        if(cmd.draftId==null) result(cmd.requestId,"opened")
+                        val activeNew = newEventSession
+                        // Reopening a host-owned transient session must not reset its in-memory form.
+                        if(activeNew != null && (cmd.draftId == null || cmd.draftId == activeNew.clientDraftId))
+                            result(cmd.requestId,"opened")
+                        else if(activeNew != null) result(cmd.requestId,"locked")
+                        else if(cmd.draftId==null) result(cmd.requestId,"opened")
                         else if(deck.select(cmd.draftId)) result(cmd.requestId,"selected")
                         else result(cmd.requestId,"failed",deck.state.error)
                     } else {
@@ -335,51 +363,117 @@ internal class WebSkinEditService(
                     }
                 }
                 is WebEditCommand.PatchDeck -> {
-                    val state=deck.state
-                    if(!deckOpen || state.currentId!=cmd.draftId ||
-                        state.version!=cmd.draftVersion)result(cmd.requestId,"stale")
-                    else if(state.aiLocked || state.busy)result(cmd.requestId,"locked")
-                    else {
-                        val form=state.form
-                        if(form==null) result(cmd.requestId,"missing")
-                        else {deck.edit(WebEditWire.patch(form,cmd.field,cmd.value))
-                            result(cmd.requestId,"edited")}
+                    val activeNew = newEventSession
+                    if(activeNew != null) {
+                        if(!deckOpen || activeNew.clientDraftId!=cmd.draftId ||
+                            activeNew.version!=cmd.draftVersion) result(cmd.requestId,"stale")
+                        else if(withContext(Dispatchers.IO) { store.isLocked() }) result(cmd.requestId,"locked")
+                        else {
+                            activeNew.edit(WebEditWire.patch(activeNew.form,cmd.field,cmd.value))
+                            result(cmd.requestId,"edited")
+                        }
+                    } else {
+                        val state=deck.state
+                        if(!deckOpen || state.currentId!=cmd.draftId ||
+                            state.version!=cmd.draftVersion)result(cmd.requestId,"stale")
+                        else if(state.aiLocked || state.busy)result(cmd.requestId,"locked")
+                        else {
+                            val form=state.form
+                            if(form==null) result(cmd.requestId,"missing")
+                            else {deck.edit(WebEditWire.patch(form,cmd.field,cmd.value))
+                                result(cmd.requestId,"edited")}
+                        }
                     }
                 }
                 is WebEditCommand.SelectDeck -> {
+                    val activeNew = newEventSession
                     if(!deckOpen) result(cmd.requestId,"missing")
+                    else if(activeNew != null && activeNew.clientDraftId == cmd.draftId)
+                        result(cmd.requestId,"selected")
+                    else if(activeNew != null) result(cmd.requestId,"missing")
                     else if(deck.select(cmd.draftId))result(cmd.requestId,"selected")
                     else result(cmd.requestId,"failed",deck.state.error)
                 }
                 is WebEditCommand.FlushDeck -> {
+                    val activeNew = newEventSession
                     if(!deckOpen)result(cmd.requestId,"missing")
-                    else if(deck.flush())result(cmd.requestId,"flushed")
+                    else if(activeNew != null) {
+                        withContext(Dispatchers.IO) { activeNew.checkpoint(store) }
+                        result(cmd.requestId,"flushed")
+                    } else if(deck.flush())result(cmd.requestId,"flushed")
                     else result(cmd.requestId,"failed",deck.state.error)
                 }
                 is WebEditCommand.CloseDeck -> {
+                    val activeNew = newEventSession
                     if(!deckOpen)result(cmd.requestId,"closed")
-                    else if(deck.flush()) {deckOpen=false;result(cmd.requestId,"closed")}
+                    else if(activeNew != null) {
+                        val saved = withContext(Dispatchers.IO) { activeNew.close(store) }
+                        newEventSession = null
+                        deckOpen = false
+                        runCatching { deck.open(saved?.draftId) }
+                        result(cmd.requestId,"closed",saved?.draftId?.toString())
+                    } else if(deck.flush()) {deckOpen=false;result(cmd.requestId,"closed")}
                     else result(cmd.requestId,"failed",deck.state.error)
                 }
                 is WebEditCommand.CommitDeck -> {
-                    val s=deck.state
-                    if(!deckOpen || s.currentId!=cmd.draftId ||
-                        s.version!=cmd.draftVersion) result(cmd.requestId,"stale")
-                    else if(deck.commit())result(cmd.requestId,"committed")
-                    else result(cmd.requestId,
-                        if(deck.state.conflict!=null)"conflict"
-                        else if(deck.state.restore!=null)"restore_required"
-                        else "failed",deck.state.error)
+                    val activeNew = newEventSession
+                    if(activeNew != null) {
+                        if(!deckOpen || activeNew.clientDraftId!=cmd.draftId ||
+                            activeNew.version!=cmd.draftVersion) result(cmd.requestId,"stale")
+                        else when(val saved=withContext(Dispatchers.IO) { activeNew.save(store) }) {
+                            is NewEventEditSession.SaveOutcome.Staged ->
+                                result(cmd.requestId,"staged",activeNew.clientDraftId.toString())
+                            is NewEventEditSession.SaveOutcome.Failed ->
+                                result(cmd.requestId,"failed",saved.message)
+                            NewEventEditSession.SaveOutcome.NoChanges ->
+                                result(cmd.requestId,"no_changes")
+                            is NewEventEditSession.SaveOutcome.Published -> when(val outcome=saved.outcome) {
+                                is PowerStore.CommitOutcome.Committed -> {
+                                    newEventSession = null
+                                    deckOpen = false
+                                    runCatching { deck.open() }
+                                    result(cmd.requestId,"committed",outcome.eventSeq.toString())
+                                }
+                                is PowerStore.CommitOutcome.Invalid -> result(cmd.requestId,"invalid",outcome.reason)
+                                is PowerStore.CommitOutcome.Conflict -> result(cmd.requestId,"conflict")
+                                is PowerStore.CommitOutcome.NeedsRestore -> result(cmd.requestId,"restore_required")
+                                PowerStore.CommitOutcome.Locked -> result(cmd.requestId,"locked")
+                                PowerStore.CommitOutcome.NotAuthorized -> result(cmd.requestId,"locked")
+                            }
+                        }
+                    } else {
+                        val s=deck.state
+                        if(!deckOpen || s.currentId!=cmd.draftId ||
+                            s.version!=cmd.draftVersion) result(cmd.requestId,"stale")
+                        else if(deck.commit())result(cmd.requestId,"committed")
+                        else result(cmd.requestId,
+                            if(deck.state.conflict!=null)"conflict"
+                            else if(deck.state.restore!=null)"restore_required"
+                            else "failed",deck.state.error)
+                    }
                 }
                 is WebEditCommand.DiscardDeck -> {
-                    val s=deck.state
-                    if(!deckOpen || s.currentId!=cmd.draftId ||
-                        s.version!=cmd.draftVersion) result(cmd.requestId,"stale")
-                    else if(deck.discard())result(cmd.requestId,"discarded")
-                    else result(cmd.requestId,"failed",deck.state.error)
+                    val activeNew = newEventSession
+                    if(activeNew != null) {
+                        if(!deckOpen || activeNew.clientDraftId!=cmd.draftId ||
+                            activeNew.version!=cmd.draftVersion) result(cmd.requestId,"stale")
+                        else if(withContext(Dispatchers.IO) { activeNew.discard(store) }) {
+                            newEventSession = null
+                            deckOpen = false
+                            runCatching { deck.open() }
+                            result(cmd.requestId,"discarded")
+                        } else result(cmd.requestId,"failed",activeNew.lastError)
+                    } else {
+                        val s=deck.state
+                        if(!deckOpen || s.currentId!=cmd.draftId ||
+                            s.version!=cmd.draftVersion) result(cmd.requestId,"stale")
+                        else if(deck.discard())result(cmd.requestId,"discarded")
+                        else result(cmd.requestId,"failed",deck.state.error)
+                    }
                 }
                 is WebEditCommand.UndoDeck ->
                     if(!deckOpen)result(cmd.requestId,"missing")
+                    else if(newEventSession != null) result(cmd.requestId,"missing")
                     else if(deck.undoDiscard())result(cmd.requestId,"restored")
                     else result(cmd.requestId,"failed",deck.state.error)
             }
@@ -387,7 +481,7 @@ internal class WebSkinEditService(
           catch(e:java.time.DateTimeException) {result(cmd.requestId,"invalid","Invalid date")}
           catch(e:IllegalArgumentException) {result(cmd.requestId,"invalid","Invalid field value")}
           catch(e:Exception){ result(cmd.requestId,"failed","Host operation failed; retry or recover") }
-        hasActiveUiSession=session!=null || deckOpen
+        hasActiveUiSession=session!=null || newEventSession!=null || deckOpen
         latest=reply
         completed[cmd.requestId]=cmd to JSONObject(reply.toString())
         if(completed.size>64)completed.remove(completed.keys.first())
@@ -401,7 +495,11 @@ internal class WebSkinEditService(
             withContext(Dispatchers.IO){active.checkpoint()}
             if(active.lastError!=null)return@withLock false
         }
-        if(deckOpen && !deck.flush())return@withLock false
+        val newEvent = newEventSession
+        if(deckOpen && newEvent != null) {
+            runCatching { withContext(Dispatchers.IO) { newEvent.checkpoint(store) } }
+                .onFailure { return@withLock false }
+        } else if(deckOpen && !deck.flush()) return@withLock false
         true
     }
 
@@ -415,7 +513,13 @@ internal class WebSkinEditService(
             withContext(Dispatchers.IO){opened.checkpoint()}
             if(opened.lastError!=null)return@withLock false
         }
-        if(deckOpen && !deck.flush())return@withLock false
+        val newEvent = newEventSession
+        if(deckOpen && newEvent != null) {
+            runCatching { withContext(Dispatchers.IO) { newEvent.close(store) } }
+                .onFailure { return@withLock false }
+            newEventSession = null
+            runCatching { deck.open(newEvent.persistedCard?.draftId) }
+        } else if(deckOpen && !deck.flush()) return@withLock false
         if(session!=null) {
             withContext(Dispatchers.IO){session!!.close()}
             session=null;sessionId=null

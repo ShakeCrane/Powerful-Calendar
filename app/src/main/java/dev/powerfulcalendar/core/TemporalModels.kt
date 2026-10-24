@@ -1,6 +1,7 @@
 package dev.powerfulcalendar.core
 
 import java.time.DayOfWeek
+import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -845,6 +846,42 @@ data class DraftForm(
 ) {
     val zone: ZoneId get() = runCatching { ZoneId.of(zoneId) }.getOrDefault(ZoneId.systemDefault())
 
+    /**
+     * Compares the business meaning that [build] would persist. Input formatting, whitespace,
+     * unused fields for a kind, and transient UI state do not make a new-event session dirty.
+     */
+    fun hasMeaningfulDiffFrom(other: DraftForm): Boolean = meaningfulKey() != other.meaningfulKey()
+
+    private fun meaningfulKey(): List<Any?> {
+        fun instant(text: String): Any? = parseInstantIn(text, zone)?.let { listOf("instant", it) }
+            ?: text.trim().takeIf(String::isNotEmpty)?.let { listOf("invalid", it) }
+        fun date(text: String): Any? = parseDateOnly(text)?.let { listOf("date", it.toString()) }
+            ?: text.trim().takeIf(String::isNotEmpty)?.let { listOf("invalid", it) }
+        val start = when (kind) {
+            TemporalKind.ALARM, TemporalKind.ACTIVITY -> instant(startText)
+            TemporalKind.DEADLINE -> null
+            TemporalKind.MEMO -> date(startText)
+        }
+        val end = when (kind) {
+            TemporalKind.ALARM -> null
+            TemporalKind.ACTIVITY -> instant(endText)
+            TemporalKind.DEADLINE -> parseDeadline()?.let { due ->
+                when (due) {
+                    is DeadlineValue.Date -> listOf("date", due.date.toString())
+                    is DeadlineValue.Instant -> listOf("instant", due.millis)
+                }
+            } ?: endText.trim().takeIf(String::isNotEmpty)?.let { listOf("invalid", it) }
+            TemporalKind.MEMO -> date(endText)
+        }
+        return listOf(
+            kind, title.trim(), start, end, notes.trim(), location.trim(),
+            reminderMinutes, reminderMethod, reminderTiming, enabled,
+            source.ifBlank { "local" }, zone.id, recurrence,
+            if (kind == TemporalKind.MEMO) true else trackingEnabled,
+            completedKeys.toSortedSet()
+        )
+    }
+
     /** Which required field is still unusable, in the order the UI should point at them. */
     fun missingFields(): List<DraftField> {
         val missing = ArrayList<DraftField>(3)
@@ -947,6 +984,7 @@ data class DraftForm(
         private val DATE_TIME_PATTERNS = listOf(
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"),
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"),
+            DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss"),
             DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm"),
             DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm"),
             DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss")
@@ -1013,46 +1051,126 @@ data class DraftForm(
             completedKeys = record.completedKeys
         )
 
+        /** Fixed-time compatibility fixture; application entry points use NewEventEditSession. */
         fun fresh(
             kind: TemporalKind,
             day: LocalDate = LocalDate.now(),
             zone: ZoneId = ZoneId.systemDefault(),
             at: LocalTime = LocalTime.of(9, 0)
-        ): DraftForm = when (kind) {
-            TemporalKind.ALARM -> DraftForm(
-                kind, startText = formatInstant(day.atTime(at).atZone(zone).toInstant().toEpochMilli(), zone),
-                reminderMinutes = 0, zoneId = zone.id
-            )
-            TemporalKind.ACTIVITY -> DraftForm(
-                kind,
-                startText = formatInstant(day.atTime(at).atZone(zone).toInstant().toEpochMilli(), zone),
-                endText = formatInstant(
-                    day.atTime(at).plusHours(1).atZone(zone).toInstant().toEpochMilli(), zone
-                ),
-                reminderMinutes = 0, zoneId = zone.id
-            )
-            TemporalKind.DEADLINE -> DraftForm(kind, endText = day.toString(),
-                reminderMinutes = 0, reminderTiming = ReminderTiming.DAY_START, zoneId = zone.id)
-            TemporalKind.MEMO -> DraftForm(kind, trackingEnabled = true, zoneId = zone.id)
+        ): DraftForm {
+            val fixed = Clock.fixed(day.atTime(at).atZone(zone).toInstant(), zone)
+            val defaults = EditorDefaults.capture(fixed, zone)
+            val selection = if (kind == TemporalKind.MEMO) null else EditorSelection.OnDate(day)
+            val form = defaults.form(kind, selection)
+            return if (kind == TemporalKind.DEADLINE) form.copy(reminderMinutes = 0) else form
         }
 
         /** Used by the timeline when the user long-presses "+ here". */
         fun atInstant(kind: TemporalKind, millis: Long, zone: ZoneId = ZoneId.systemDefault()): DraftForm {
-            val local = Instant.ofEpochMilli(millis).atZone(zone)
-            return when (kind) {
-                TemporalKind.ALARM -> DraftForm(kind, startText = formatInstant(millis, zone), reminderMinutes = 0, zoneId = zone.id)
-                TemporalKind.ACTIVITY -> DraftForm(
-                    kind, startText = formatInstant(millis, zone),
-                    endText = formatInstant(millis + 3_600_000L, zone), reminderMinutes = 0, zoneId = zone.id
-                )
-                TemporalKind.DEADLINE -> DraftForm(
-                    kind, endText = local.toLocalDate().toString(), zoneId = zone.id
-                )
-                TemporalKind.MEMO -> DraftForm(kind, startText = local.toLocalDate().toString(),
-                    trackingEnabled = true, zoneId = zone.id)
-            }
+            val clock = Clock.fixed(Instant.ofEpochMilli(millis), zone)
+            return EditorDefaults.capture(clock, zone)
+                .form(kind, EditorSelection.AtInstant(millis))
         }
     }
+}
+
+/** Explicit context selected before a new-event editor opens. */
+sealed interface EditorSelection {
+    data class AtInstant(val millis: Long) : EditorSelection
+    data class OnDate(val date: LocalDate) : EditorSelection
+}
+
+/**
+ * One captured clock/zone pair shared by every editor entry point. Current-time defaults use
+ * ceiling-to-minute so a newly suggested ALARM does not start in the past, capped at the
+ * captured local date so rounding never silently moves it to tomorrow. Explicit timeline
+ * instants use floor-to-minute, matching the existing minute-resolution text fields.
+ */
+class EditorDefaultsSnapshot internal constructor(
+    val now: Instant,
+    val zone: ZoneId
+) {
+    val nowMillis: Long get() = now.toEpochMilli()
+    val today: LocalDate get() = now.atZone(zone).toLocalDate()
+    private val roundedNowMillis = ceilToMinuteWithinDate(now, zone)
+
+    fun form(kind: TemporalKind, selection: EditorSelection? = null): DraftForm {
+        val localNow = now.atZone(zone)
+        val selectedInstant = (selection as? EditorSelection.AtInstant)?.millis?.let(::floorToMinute)
+        val selectedDate = when (selection) {
+            is EditorSelection.AtInstant -> Instant.ofEpochMilli(selection.millis).atZone(zone).toLocalDate()
+            is EditorSelection.OnDate -> selection.date
+            null -> null
+        }
+        val date = selectedDate ?: today
+        val dateTimeDefault = selectedDate?.let {
+            it.atTime(defaultLocalTime(it, localNow.toLocalTime())).atZone(zone)
+                .toInstant().toEpochMilli()
+        } ?: roundedNowMillis
+        val point = selectedInstant ?: dateTimeDefault
+        return when (kind) {
+            TemporalKind.ALARM -> DraftForm(
+                kind, startText = DraftForm.formatInstant(point, zone),
+                reminderMinutes = 0, zoneId = zone.id
+            )
+            TemporalKind.ACTIVITY -> DraftForm(
+                kind,
+                startText = DraftForm.formatInstant(point, zone),
+                endText = DraftForm.formatInstant(point + 3_600_000L, zone),
+                reminderMinutes = 0, zoneId = zone.id
+            )
+            TemporalKind.DEADLINE -> {
+                val exact = selectedInstant
+                DraftForm(
+                    kind,
+                    endText = exact?.let { DraftForm.formatInstant(it, zone) } ?: date.toString(),
+                    reminderMinutes = if (exact == null) 0 else -1,
+                    reminderTiming = if (exact == null) ReminderTiming.DAY_START
+                        else ReminderTiming.OFFSET,
+                    zoneId = zone.id
+                )
+            }
+            TemporalKind.MEMO -> DraftForm(
+                kind,
+                // A picker seed is not a business date: an ordinary new Memo stays undated.
+                startText = selectedDate?.toString().orEmpty(),
+                trackingEnabled = true,
+                zoneId = zone.id
+            )
+        }
+    }
+
+    /** Date/time picker fallback for an existing incomplete draft in this editor instance. */
+    fun pickerInstant(date: LocalDate = today): Long {
+        val currentLocalTime = now.atZone(zone).toLocalTime()
+        return date.atTime(defaultLocalTime(date, currentLocalTime)).atZone(zone).toInstant().toEpochMilli()
+    }
+
+    private fun defaultLocalTime(date: LocalDate, currentLocalTime: LocalTime): LocalTime =
+        if (date == today) Instant.ofEpochMilli(roundedNowMillis).atZone(zone).toLocalTime()
+        else currentLocalTime.truncatedTo(ChronoUnit.MINUTES)
+
+    companion object {
+        fun capture(clock: Clock, zone: ZoneId): EditorDefaultsSnapshot =
+            EditorDefaultsSnapshot(clock.instant(), zone)
+
+        private fun ceilToMinuteWithinDate(instant: Instant, zone: ZoneId): Long {
+            val floor = instant.truncatedTo(ChronoUnit.MINUTES)
+            val rounded = if (floor == instant) floor else floor.plus(1, ChronoUnit.MINUTES)
+            val capturedDate = instant.atZone(zone).toLocalDate()
+            return (if (rounded.atZone(zone).toLocalDate() == capturedDate) rounded else floor)
+                .toEpochMilli()
+        }
+
+        private fun floorToMinute(millis: Long): Long =
+            Instant.ofEpochMilli(millis).truncatedTo(ChronoUnit.MINUTES).toEpochMilli()
+    }
+}
+
+/** Factory kept separate so every create surface captures its defaults exactly once. */
+object EditorDefaults {
+    fun capture(clock: Clock = Clock.systemUTC(), zone: ZoneId = ZoneId.systemDefault()): EditorDefaultsSnapshot =
+        EditorDefaultsSnapshot.capture(clock, zone)
 }
 
 sealed interface DeadlineValue {

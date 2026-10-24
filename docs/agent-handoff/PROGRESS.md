@@ -1,5 +1,12 @@
 # Core freeze progress
 
+## PC-ISSUE-PHASE1 — 编辑器生命周期与默认时间统一
+
+- 根因：普通时间轴、月份、Memo、PowerCal Web action 与 WebSkin bridge 的新建流程在打开编辑器前直接 `newDraft`，立即分配草稿/事件身份与队列序号；各入口默认时间规则不一致。现改用内存 `NewEventEditSession`、按业务语义 Diff、幂等 checkpoint/close/save，并由 `EditorDefaults(Clock, ZoneId)` 统一四类默认值。完整修复范围与根因映射见 `docs/issues/PC-ISSUE-PHASE1-EDITOR-LIFECYCLE.md`。
+- API 35 `emulator-5554` 实际 Compose 测试 2/2 PASS：四类事件打开并按 × 退出无持久化副作用；真实修改 Memo 标题后按 × 恰好一张草稿。使用随机隔离 SQLite 并核对清理；原 app/test APK 在 AVD 测试后按 SHA-256 恢复一致。`emulator-5556` 未触碰；实体设备留给用户测试。
+- 定向测试 28/28 PASS（6 suites）；完整离线 Gradle 514/514 JVM tests、70 suites、0 failures/errors/skips，88/88 tasks，source boundary、Debug/AndroidTest APK、lint 均通过；lint 0 errors / 56 warnings。最终日志 SHA-256 `E2476CF1BCF9A9D2A99FC3641B05ADDF58899A08ADD791C30979586CE0F7CDA8`；定向日志 `D01A3DA9F7CFAAB8E27FA8A8172859946567BAC60CAB4B2DA292CF60F08EF4E6`；AVD Instrumentation 日志 `E63216AB319C4A8FB5715892874670FE11E8CE1B7055026239707F9AB117AF50`；Debug APK `3A066D385FF3A327DC756B86C410FBA4EF31E8C9DF4C9B0C91DEF6734453C359`。证据位于 `.local/android-test/reports/freeze-20261025/pc-phase-1-editor-lifecycle/`。
+- DST 秋季回拨的同名墙上时间不能由现有分钟文本区分，保留为未签核风险；本轮不扩大时间持久化格式。Phase 1 自动化/AVD 范围 PASS，Phase 2 可开工；整体核心冻结仍 HOLD。实现提交 SHA 将在提交后补录。
+
 ## PC-ISSUE-001 — Google Calendar ICS 导入阻塞复核（REC-P1-081 仍 BLOCKED）
 
 - `emulator-5556` API 35 上重新启动现有 DST ICS fixture，Google Calendar 的两页 welcome 已通过；随后自动进入 Google Play services `PreAddAccountActivity`，停留在 `Checking info…`。按账号/登录边界立即停止并返回 launcher；未查看账号内容、未登录、未确认导入或保存，Calendar Provider 仍为 0 calendars / 0 events，PowerCal 未启动。

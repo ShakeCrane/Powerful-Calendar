@@ -94,8 +94,10 @@ import dev.powerfulcalendar.core.DeckController
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.EditSession
+import dev.powerfulcalendar.core.EditorSelection
 import dev.powerfulcalendar.core.FormalEventSearch
 import dev.powerfulcalendar.core.LegacyBackupConsentRequired
+import dev.powerfulcalendar.core.NewEventEditSession
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.RecurrenceEngine
 import dev.powerfulcalendar.core.StoreDeckPersistence
@@ -171,7 +173,8 @@ private data class AppData(
 fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
     val context = LocalContext.current
     val appContext = context.applicationContext
-    val zone = remember { ZoneId.systemDefault() }
+    // Re-read on composition so sessions opened after a timezone change capture the current zone.
+    val zone = ZoneId.systemDefault()
     val scope = rememberCoroutineScope()
     val controller = remember(store) { DeckController(StoreDeckPersistence(store)) }
     val effects = LocalGlassEffects.current
@@ -224,10 +227,14 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
     var editForm by remember { mutableStateOf<DraftForm?>(null) }
     var editBaseline by remember { mutableStateOf<DraftForm?>(null) }
     var editError by remember { mutableStateOf<String?>(null) }
+    var newEventSession by remember { mutableStateOf<NewEventEditSession?>(null) }
+    var newEventForm by remember { mutableStateOf<DraftForm?>(null) }
+    var newEventError by remember { mutableStateOf<String?>(null) }
+    var newEventBusy by remember { mutableStateOf(false) }
     // One Web editing coordinator per host; reloading or replacing a skin
     // must never create a new DeckController, editor lease or command queue.
     val nativeEditingNow = androidx.compose.runtime.rememberUpdatedState(
-        editSession != null || deckOpen)
+        editSession != null || deckOpen || newEventSession != null)
     val webEditing = remember(store, controller) {
         WebSkinEditService(store, controller) { nativeEditingNow.value }
     }
@@ -291,6 +298,15 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
         }.onFailure {
             message = it.message ?: "Unable to open editor"
         }
+    }
+
+    fun openNewEvent(kind: TemporalKind, selection: EditorSelection? = null) {
+        if (aiLocked || editSession != null || deckOpen || newEventSession != null) return
+        val opened = NewEventEditSession.open(kind, zone = zone, selection = selection)
+        newEventSession = opened
+        newEventForm = opened.form
+        newEventError = null
+        newEventBusy = false
     }
 
     suspend fun reconcile() {
@@ -361,12 +377,14 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
     val hostLifecycle = (context as? androidx.activity.ComponentActivity)?.lifecycle
     val deckVisible by rememberUpdatedState(deckOpen)
     val activeEditSession by rememberUpdatedState(editSession)
+    val activeNewEventSession by rememberUpdatedState(newEventSession)
     val checkpointGate = remember { LifecycleCheckpointGate() }
     DisposableEffect(hostLifecycle) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_START) checkpointGate.onStart()
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
                 editError = activeEditSession?.lastError
+                newEventError = activeNewEventSession?.lastError
                 scope.launch { reconcile(); reload() }
             }
             if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP &&
@@ -386,6 +404,11 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                     // Keep the lease and live memory on failure; a successful checkpoint is the
                     // one durable write for this lifecycle boundary.
                     PowerCalStores.appScope.launch { session.checkpoint() }
+                }
+                activeNewEventSession?.takeIf { checkpointGate.shouldCheckpoint(it) }?.let { session ->
+                    PowerCalStores.appScope.launch {
+                        runCatching { session.checkpoint(store) }
+                    }
                 }
             }
         }
@@ -920,7 +943,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
         WebSkinBridgeRuntime.onEdit = { command ->
             val response = webEditing.execute(command)
             val status = response.optString("status")
-            if(status in setOf("created","saved","committed","discarded","restored")) {
+            if(status in setOf("created","saved","staged","committed","discarded","restored")) {
                 // A completed host transaction must refresh the app-wide projections;
                 // an unsuccessful UI refresh must not turn success into a retryable write.
                 runCatching { reload() }
@@ -992,26 +1015,12 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                     }
                 }
                 is WebSkinAction.CreateDraft -> if (!aiLocked && editSession == null) {
-                    scope.launch {
-                        val kind = TemporalKind.valueOf(action.kind)
-                        val day = Instant.ofEpochMilli(anchorMillis).atZone(zone).toLocalDate()
-                        runCatching {
-                            withContext(Dispatchers.IO) {
-                                store.newDraft(DraftForm.fresh(kind, day, zone))
-                            }
-                        }.onSuccess { reload(); openDeckAt(it.draftId) }
-                            .onFailure { message = it.message ?: "无法新建事件" }
-                    }
+                    val kind = TemporalKind.valueOf(action.kind)
+                    val day = Instant.ofEpochMilli(anchorMillis).atZone(zone).toLocalDate()
+                    openNewEvent(kind, EditorSelection.OnDate(day))
                 }
                 WebSkinAction.CreateMemo -> if (!aiLocked && editSession == null) {
-                    scope.launch {
-                        runCatching {
-                            withContext(Dispatchers.IO) {
-                                store.newDraft(DraftForm.fresh(TemporalKind.MEMO, zone = zone))
-                            }
-                        }.onSuccess { reload(); openDeckAt(it.draftId) }
-                            .onFailure { message = it.message ?: "无法新建 Memo" }
-                    }
+                    openNewEvent(TemporalKind.MEMO)
                 }
                 is WebSkinAction.ToggleMemo -> if (!aiLocked && editSession == null) {
                     scope.launch {
@@ -1345,15 +1354,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                 items = todoEntries, zone = zone, busy = aiLocked,
                 onBack = { page = Page.TIMELINE.name },
                 onCreateMemo = {
-                    scope.launch {
-                        runCatching {
-                            withContext(Dispatchers.IO) {
-                                store.newDraft(DraftForm.fresh(TemporalKind.MEMO, zone = zone))
-                            }
-                        }.onSuccess {
-                            reload(); openDeckAt(it.draftId)
-                        }.onFailure { message = it.message ?: "无法新建 Memo" }
-                    }
+                    openNewEvent(TemporalKind.MEMO)
                 },
                 onToggle = { entry ->
                     scope.launch {
@@ -1376,10 +1377,9 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                 onOpen = { record ->
                     if (aiLocked) monthInspection = record else scope.launch { openFormalEditor(record) }
                 },
-                onCreate = { date -> scope.launch {
-                    runCatching { withContext(Dispatchers.IO) { store.newDraft(DraftForm.fresh(TemporalKind.ACTIVITY, date, zone)) } }
-                        .onSuccess { reload(); openDeckAt(it.draftId) }.onFailure { message = it.message ?: "无法创建草稿" }
-                } })
+                onCreate = { date ->
+                    openNewEvent(TemporalKind.ACTIVITY, EditorSelection.OnDate(date))
+                })
         } else {
             SkinnableTimelineScreen(
                 records = records,
@@ -1427,21 +1427,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                     }
                 },
                 onCreate = { kind, millis ->
-                    scope.launch {
-                        runCatching {
-                            withContext(Dispatchers.IO) {
-                                store.newDraft(
-                                    DraftForm.atInstant(kind, millis, zone),
-                                    actor = "user"
-                                )
-                            }
-                        }.onSuccess { card ->
-                            reload()
-                            openDeckAt(card.draftId)
-                        }.onFailure {
-                            message = it.message ?: "无法创建草稿"
-                        }
-                    }
+                    openNewEvent(kind, EditorSelection.AtInstant(millis))
                 },
                 onToday = {
                     nowMillis = System.currentTimeMillis()
@@ -1598,6 +1584,110 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                 }) { Text("确认删除") }
             },
             dismissButton = { TextButton(onClick = { skinToDelete = null }) { Text("取消") } }
+        )
+    }
+
+    newEventSession?.let { session ->
+        val visibleForm = newEventForm ?: session.form
+        NewEventEditorDialog(
+            session = session,
+            form = visibleForm,
+            error = newEventError,
+            busy = newEventBusy,
+            onFormChange = { next ->
+                if (!newEventBusy) {
+                    session.edit(next)
+                    newEventForm = next
+                    newEventError = null
+                }
+            },
+            onSave = {
+                if (!newEventBusy) {
+                    newEventBusy = true
+                    scope.launch {
+                        try {
+                            when (val result = withContext(Dispatchers.IO) { session.save(store) }) {
+                                is NewEventEditSession.SaveOutcome.Staged -> {
+                                    newEventError = null
+                                    val refreshFailed = runCatching { reload() }.isFailure
+                                    message = if (refreshFailed) {
+                                        "草稿已保存，但界面刷新失败；请重新打开待处理列表。"
+                                    } else "内容尚未完整，已保存为待处理草稿，可继续编辑。"
+                                }
+                                is NewEventEditSession.SaveOutcome.Failed ->
+                                    newEventError = result.message
+                                NewEventEditSession.SaveOutcome.NoChanges ->
+                                    newEventError = "内容没有有效修改，未创建事件或草稿。"
+                                is NewEventEditSession.SaveOutcome.Published -> when (val outcome = result.outcome) {
+                                    is PowerStore.CommitOutcome.Committed -> {
+                                        newEventSession = null
+                                        newEventForm = null
+                                        newEventError = null
+                                        message = "事件已发布"
+                                        runCatching { reload() }
+                                            .onFailure { message = "事件已发布，但界面刷新失败；请重新打开查看。" }
+                                        runCatching { reconcile() }
+                                            .onFailure { message = "事件已发布，提醒同步尚未完成。" }
+                                    }
+                                    is PowerStore.CommitOutcome.Invalid -> newEventError = outcome.reason
+                                    is PowerStore.CommitOutcome.Conflict -> newEventError = "新建事件发生冲突，请重试。"
+                                    is PowerStore.CommitOutcome.NeedsRestore -> newEventError = "新建事件需要恢复确认。"
+                                    PowerStore.CommitOutcome.Locked -> newEventError = "待处理卡组正由 AI 独占，修改仍保留在编辑器中。"
+                                    PowerStore.CommitOutcome.NotAuthorized -> newEventError = "当前编辑会话无权发布此事件。"
+                                }
+                            }
+                        } catch (error: Exception) {
+                            if (error is kotlinx.coroutines.CancellationException) throw error
+                            newEventError = error.message ?: "保存失败；编辑内容仍保留。"
+                        } finally {
+                            newEventBusy = false
+                        }
+                    }
+                }
+            },
+            onExit = {
+                if (!newEventBusy) {
+                    newEventBusy = true
+                    scope.launch {
+                        try {
+                            val card = withContext(Dispatchers.IO) { session.close(store) }
+                            newEventSession = null
+                            newEventForm = null
+                            newEventError = null
+                            if (card != null) message = "修改已保存为一张待处理草稿"
+                            runCatching { reload() }
+                                .onFailure { message = "修改已暂存，但界面刷新失败；请重新打开待处理列表。" }
+                        } catch (error: Exception) {
+                            if (error is kotlinx.coroutines.CancellationException) throw error
+                            newEventError = error.message ?: "暂存失败；编辑内容仍保留。"
+                        } finally {
+                            newEventBusy = false
+                        }
+                    }
+                }
+            },
+            onDiscard = {
+                if (!newEventBusy) {
+                    newEventBusy = true
+                    scope.launch {
+                        try {
+                            val discarded = withContext(Dispatchers.IO) { session.discard(store) }
+                            if (discarded) {
+                                newEventSession = null
+                                newEventForm = null
+                                newEventError = null
+                                runCatching { reload() }
+                                    .onFailure { message = "内容已丢弃，但界面刷新失败；请重新打开查看。" }
+                            } else newEventError = session.lastError ?: "丢弃失败，请重试。"
+                        } catch (error: Exception) {
+                            if (error is kotlinx.coroutines.CancellationException) throw error
+                            newEventError = error.message ?: "丢弃失败；编辑内容仍保留。"
+                        } finally {
+                            newEventBusy = false
+                        }
+                    }
+                }
+            }
         )
     }
 

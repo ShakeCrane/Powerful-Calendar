@@ -100,3 +100,13 @@ Phase 6 — 延期真机项 D03/D04/D06/D07/E03：标记 NOT TESTED 或明确 ow
 每修完一个明确缺陷：修复前可复现 FAIL → 最小补丁 → 针对测试 PASS → 全量单测和设备 UI 验证 → 单独 docs/issues 报告 → 原子 Git commit/push。
 当前不推进原生 UI 删除/皮肤 cutover，不修改用户数据，不把 Android 系统 force-stop 限制当成无条件可修 Bug。
 已发现源码根因 B1/B2/B3；B4 是行为定义冲突；B5/B6 需要真实设备复现与诊断。
+
+## Phase 1 交付记录（2026-10-25）
+
+PC-ISSUE-PHASE1 的编辑器生命周期与统一默认时间修复已完成。普通新建入口现统一使用内存会话；无 Diff 退出不写入草稿、正式事件、提交、身份、事件序号或队列序号；有 Diff 按 × 只暂存一张草稿；明确保存完整表单直接事务创建正式事件，不完整表单复用一张可恢复草稿。正式事件编辑的 lease、版本冲突和 checkpoint 未重写；AI、文本解析、ICS 导入及移动事件的显式持久化候选保持原样。
+
+验证证据：API 35 `emulator-5554` 实际 Compose 打开/关闭四类事件与有修改退出 2/2 PASS；完整门禁 `:app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug --offline --rerun-tasks --console=plain` 为 514/514 JVM tests、70 suites、0 failures/errors/skips、88/88 tasks，lint 0 errors / 56 warnings。完整报告、日志与 SHA-256 位于 `docs/issues/PC-ISSUE-PHASE1-EDITOR-LIFECYCLE.md` 及 `.local/android-test/reports/freeze-20261025/pc-phase-1-editor-lifecycle/`。
+
+AVD 测试只在 `emulator-5554` 的随机隔离 SQLite 文件执行；运行前后原 app/test APK SHA-256 相同，未清理用户数据；`emulator-5556` 未触碰。实体设备由用户测试，本轮未声称通过。DST 秋季回拨的重复墙上时间不能由现有本地分钟文本区分，保留为未签核风险。Phase 1 自动化及 API 35 AVD 子项 PASS；Phase 2 可开工，核心冻结仍 HOLD。实现提交与推送 SHA 将补录在交付进度条目。
+
+独立结案报告：`docs/issues/PC-ISSUE-PHASE1-EDITOR-LIFECYCLE.md`。
