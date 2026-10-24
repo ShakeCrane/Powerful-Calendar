@@ -4,6 +4,14 @@ Date: 2026-10-24
 
 Verdict: **HOLD**
 
+## Latest follow-up: PC-ISSUE-170 — API 35 Android AlarmManager delivery
+
+On API 35 `emulator-5556`, a real AlarmManager `setAndAllowWhileIdle` PendingIntent reached a non-exported dynamic probe receiver registered in the product process. The receiver called production `ReminderReceiver.handle()` against a uniquely isolated cache database; the execution result was `FIRED`, a notification was active, and `completedKeys` stayed empty. AndroidJUnitRunner passed 1/1. This does not invoke the production manifest receiver's `onReceive/goAsync` wrapper and does not establish physical/OEM, doze-specific, notification-shade, or long-duration behavior. Temporary permission, notification, alarm, and cache state were cleaned or restored. See `docs/issues/PC-ISSUE-170-android-alarmmanager-delivery.md`.
+
+Test-only commit `93c08635b6a4b1c81b7c60f3f7194e6df1178577` is pushed. Full forced-offline Gradle passed 496/496 JVM tests across 67 suites, zero failures/errors/skips; all 88 tasks executed, lint 0 errors / 58 warnings. Full log SHA-256 `1079FAEC6CE85C420268DBB7B2384CA57CD4BC346AE625D073C6912B96052B1C`. Focused API 35 log SHA-256 `5315100F6B37DD5415B0D71BB56A5D7324738C370B5396710E9BBB0AC5C85C84`; device trace/cleanup SHA-256 `3AF33A778F861F765CE0D82B5AD892A6E20251FCBCB30555ED7CF0B086C1ED61`.
+
+Structural-only ledger r39: 211 rows / 210 active reconstructed, 198 PASS / 0 FAIL / 8 BLOCKED / 2 NOT TESTED / 2 SPEC UNRESOLVED / 1 RETIRED; historical IDs mapped=0 and `product_behavior_tested=false`. Artifact SHA-256 `AF328E0699039CBAD064B0D115A9148AD57FB5C30A4F2552844D79EC8ED23022`; ledger SHA-256 `AC66D9950F8FF95129018843B1EE23297C41783BEFDFCE3430AE4D0B30CA4246`. Structural validation is not product evidence; the physical/OEM gate remains open and verdict stays HOLD.
+
 ## Latest follow-up: PC-ISSUE-169 — system font scale 2× on API 35 AVD
 
 The actual API 35 system `font_scale` was set to 2.0 for the isolated production `TimelineScreen` test. `Resources.configuration.fontScale` and Compose `LocalDensity.fontScale` both reported 2.0; Today, Memo, pending deck, New, and zoom controls stayed clickable and inside the 1080×2400 px viewport, and all actions succeeded. AndroidJUnitRunner passed 1/1. The original setting `1.0` was restored and verified. `REC-P1-069` remains BLOCKED because this test does not cover `MainActivity`, physical devices, or OEM behavior. See `docs/issues/PC-ISSUE-169-system-font-scale-avd.md`.

@@ -1,5 +1,13 @@
 # Core freeze progress
 
+## PC-ISSUE-170 — API 35 Android AlarmManager 投递探测（REC-P0-012 子项 PASS）
+
+- 在 `emulator-5556` API 35 用真实 `AlarmManager.setAndAllowWhileIdle` 安排带随机 action 的广播 PendingIntent；OS 将其投递到产品进程中的非导出动态测试接收器，接收器调用生产 `ReminderReceiver.handle()`，使用产品 cache 中随机隔离的 SQLite。AndroidJUnitRunner 1/1 PASS：`FIRED`、通知已发布、`completedKeys` 仍为空。此证据不覆盖生产 manifest `ReminderReceiver.onReceive/goAsync` 包装层、实体/OEM、Doze 专项或长时稳定性。
+- 定向运行 68.578 秒；trace：`eventSeq=968254649`，trigger `1792845060000`，接收 `1792845089335`。完成后临时 cache DB/sidecar/目录、通知和 PendingIntent 均清理；cache 为空、无对应待执行 alarm、通知权限恢复 denied、exact-alarm app-op 保持 default。未触碰日历业务数据库。
+- 全量强制离线 Gradle 496/496 JVM、67 suites、0 failures/errors/skips；88/88 tasks 执行，lint 0 errors / 58 warnings。完整日志 SHA-256 `1079FAEC6CE85C420268DBB7B2384CA57CD4BC346AE625D073C6912B96052B1C`；定向日志 `5315100F6B37DD5415B0D71BB56A5D7324738C370B5396710E9BBB0AC5C85C84`；设备 trace/清理证据 `3AF33A778F861F765CE0D82B5AD892A6E20251FCBCB30555ED7CF0B086C1ED61`。
+- 测试提交 `93c08635b6a4b1c81b7c60f3f7194e6df1178577` 已推送。独立报告 `docs/issues/PC-ISSUE-170-android-alarmmanager-delivery.md`。REC-P0-012 仍 PASS，范围限制如上；整体冻结继续 HOLD。
+- 台账 r39：211 行 / 210 活动重建项；198 PASS / 0 FAIL / 8 BLOCKED / 2 NOT TESTED / 2 SPEC UNRESOLVED / 1 RETIRED；P0/P1/P2=144/65/1，历史 ID 映射 0。artifact SHA-256 `AF328E0699039CBAD064B0D115A9148AD57FB5C30A4F2552844D79EC8ED23022`，ledger SHA-256 `AC66D9950F8FF95129018843B1EE23297C41783BEFDFCE3430AE4D0B30CA4246`；结构校验标志 `product_behavior_tested=false`，不代表此项产品行为测试结果。
+
 ## PC-ISSUE-169 — 系统字体 2× API 35 AVD 子项（REC-P1-069 仍 BLOCKED）
 
 - 新增 AndroidJUnitRunner 回归，在 `emulator-5556` API 35 实际将 `Settings.System.FONT_SCALE` 从 `1.0` 临时设为 `2.0`。生产 `TimelineScreen` 的 `Resources.configuration.fontScale` 与 `LocalDensity.fontScale` 均为 2.0；Today、Memo、待处理、新建、缩放控件都可点击且完整位于 1080×2400 px 视口内，新建菜单的 Activity 选项也成功。测试后原值 `1.0` 已恢复并复核。未改生产代码或业务数据。
