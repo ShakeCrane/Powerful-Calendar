@@ -193,3 +193,14 @@ Phase 1 产品修复仍由 `b46b3dd7592bb1c7de021d543630f84937a0eaef` 提供；�
 - 验收台账结构校验通过：218 rows / 217 active reconstructed；204 PASS、0 FAIL、10 BLOCKED、2 NOT TESTED、1 SPEC UNRESOLVED、1 RETIRED；历史 ID 映射 0，结构校验明确 `product_behavior_tested=false`。当前台账 SHA-256 `91C721FBA0D1C2295535A200E30937744A67C3F8BBF04F34E32E47F078AAC2E0`；验证器自身单元测试 2/2 PASS。日志分别为 `.local/android-test/reports/freeze-20261025/phase1-current-main-68cad08/ledger-structural-validation.log`（SHA-256 `FD59C3909B236ECF5516B35FC1E0B4B842739B09949C73CE4B105BE233649C47`）及 `ledger-validator-unit-tests.log`（SHA-256 `F761C217955B2DCCBB9E9921C5E179AF3286F01E8F07797CCA85F7D3EA11CBFF`）。
 
 本次仍未测试实体设备/OEM 行为；单次事件 fall DST fold 的同名墙上分钟精度限制仍未签核。Phase 1 可关闭并交接；Phase 2、3 已有独立交付，本次不重开。其他冻结项继续按当前矩阵推进，核心总判定仍为 HOLD。
+
+## 当前请求复验（2026-10-25，HEAD `72372ad`）
+
+只读入口审计再次确认普通新建仅打开内存 `NewEventEditSession`：时间轴、月份、Memo、PowerCal Web action 和 WebSkin bridge 共用会话。剩余 `PowerStore.newDraft` 调用属于真实 Diff checkpoint、用户明确触发的文本/ICS/AI 候选、正式事件恢复或拖动修改草稿。Phase 1 生产源码从 `68cad08` 到当前 HEAD 没有差异；实现仍由已推送提交 `b46b3dd7592bb1c7de021d543630f84937a0eaef` 提供。
+
+- 定向回归：**32/32 PASS，6 suites，0 failures/errors/skips**；包括四类事件各 20 次开关不分配持久身份、Diff 恢复基线、仅真实修改暂存一次、生命周期 checkpoint/reopen、显式完整发布幂等、不完整表单续存同一草稿、固定 Clock/ZoneId/分钟边界、Web bridge 与 Compose 重组。日志 SHA-256 `529C321268D5587D9865A0ECB7F6CF95C0D49AED9E0BA71A7A347C427AB78158`。
+- 为隔离主工作树其他 Agent 的未跟踪资产，在同一提交 `72372adbcc2fef890c85bcca8b6835560e090b9b` 的干净 detached worktree 完成完整离线门禁：**540/540 JVM tests、73 suites、0 failures/errors/skips、88/88 tasks**；source boundary、Debug 与 AndroidTest APK 构建成功；lint **0 errors / 53 warnings**。完整日志 SHA-256 `013AC0BAC61B0990507D97B46CF7005ADC7CA7E521C67690E7F4A2F6D9CAAACB`。Debug / AndroidTest APK SHA-256 `517DFFFCCFECA6E4B6CBF5961B3CAAA8F2802B3B3B1DD107457180C268F61614` / `2EF06F141A6AEEA12F6272D9C8861D7D6EEC33A316D0F4734A221C90BF7BE0B2`。
+- 主工作树同命令的完整门禁未通过：受保护的未跟踪 `D05ProductionReminderLifecycleInstrumentedTest.kt:142` 引用未导入的 `assertFalse`，阻断 `compileDebugAndroidTestKotlin`。没有修改或暂存该文件。失败日志 SHA-256 `C032A1104C865759F212EEADAE7BA14C7FB39CAE6717F1F0B21C0D8D4EEF1A78`；Phase 1 定向测试不受此编译缺陷影响。详细日志位于 `.local/android-test/reports/freeze-20261025/phase1-task-72372ad-8c41/`；完整 JUnit XML 与 APK 留在 `.local/android-test/worktrees/phase1-72372ad/`。
+- 本轮未连接设备。已归档的 API 35 `emulator-5560` Compose 2/2 结果可对应本轮相同 SHA-256 的 app/test APK，但仍作为既有证据而非本轮新跑结果；实体设备由用户验证。
+
+Phase 1 主路径及当前源码自动化/构建验收 PASS。单次本地时间在秋季 DST fold 的第二次同名分钟无法由现有 `yyyy-MM-dd HH:mm` 字段表达精确 offset；产品合同明确未定义 one-off fold 规则，需保留为 SPEC UNRESOLVED，不能以重复事件的“第一次”规则自行外推。整体核心冻结继续 HOLD。

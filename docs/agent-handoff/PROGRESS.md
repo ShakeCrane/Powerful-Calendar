@@ -1,5 +1,12 @@
 # Core freeze progress
 
+## PC-ISSUE-PHASE1 — HEAD `72372ad` 当前请求复验（2026-10-25）
+
+- 复核普通新建入口均使用内存 `NewEventEditSession`；实现代码仍来自已推送 `b46b3dd7592bb1c7de021d543630f84937a0eaef`，当前 HEAD 无 Phase 1 源码差异。
+- 定向 Phase 1 回归 **32/32 PASS / 6 suites**。同一 HEAD 的干净隔离 worktree（不包含主工作树未跟踪文件）完整离线门禁 **540/540 JVM / 73 suites / 0 failures/errors/skips / 88 tasks**，lint 0 errors / 53 warnings；Debug / AndroidTest APK SHA-256 `517DFFFCCFECA6E4B6CBF5961B3CAAA8F2802B3B3B1DD107457180C268F61614` / `2EF06F141A6AEEA12F6272D9C8861D7D6EEC33A316D0F4734A221C90BF7BE0B2`。日志、哈希及测试命令见 `docs/issues/PC-ISSUE-PHASE1-EDITOR-LIFECYCLE.md` 与 `.local/android-test/reports/freeze-20261025/phase1-task-72372ad-8c41/`。
+- 主工作区门禁受其他 Agent 未跟踪 D05 AndroidTest 的未导入 `assertFalse` 阻断；该文件未修改/暂存，受保护 untracked assets 均保留。API 35 AVD 证据已存在且 APK hash 匹配，本轮未启动设备；实体设备仍由用户执行。
+- 单次 fall DST fold 同名分钟的精确 offset 规则未定义，留为 SPEC UNRESOLVED；Phase 1 主路径测试与构建 PASS，核心冻结保持 HOLD。
+
 ## PC-ISSUE-164 — stale replacement diff and mobile review (2026-10-25)
 
 - Core `DraftDiff` data fix remains in `f959bcc`; API/Compose review exposed that `snapshotRows` still omitted reminder method/timing, completion tracking/slots, and recurrence active-date bounds. Added those fields and Chinese reminder/frequency/weekday labels; the conflict dialog now exposes 25 complete rows.
