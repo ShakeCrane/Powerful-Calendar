@@ -348,6 +348,35 @@ class TemporalProtocolTest {
     }
 
     @Test
+    fun timelineZoomClampsToTheContractBounds() {
+        assertEquals(TimelineCoordinate.MIN_HOURS, TimelineCoordinate.clampHours(-1.0), 0.0)
+        assertEquals(TimelineCoordinate.MIN_HOURS, TimelineCoordinate.clampHours(TimelineCoordinate.MIN_HOURS), 0.0)
+        assertEquals(TimelineCoordinate.MAX_HOURS, TimelineCoordinate.clampHours(TimelineCoordinate.MAX_HOURS), 0.0)
+        assertEquals(TimelineCoordinate.MAX_HOURS, TimelineCoordinate.clampHours(49.0), 0.0)
+    }
+
+    @Test
+    fun timelineZoomPreservesFocusedInstantAtBothContractBounds() {
+        val anchor = millis("2026-10-20 12:00")
+        val height = 1800f
+        val focusY = 480f
+        val oldHours = 24.0
+        val before = TimelineCoordinate.timeAt(focusY, anchor, height, oldHours)
+
+        for (requestedHours in listOf(0.0, Double.MAX_VALUE)) {
+            val newHours = TimelineCoordinate.clampHours(requestedHours)
+            val movedAnchor = TimelineCoordinate.anchorPreservingFocus(
+                anchor, oldHours, newHours, focusY, height
+            )
+            val after = TimelineCoordinate.timeAt(focusY, movedAnchor, height, newHours)
+            assertTrue(
+                "focus time changed by ${after - before} ms at $newHours hours",
+                kotlin.math.abs(after - before) <= 1L
+            )
+        }
+    }
+
+    @Test
     fun zoomAllowsQuarterHourThroughFortyEightHours() {
         assertEquals(0.5, TimelineCoordinate.clampHours(0.5), 0.0)
         assertEquals(48.0, TimelineCoordinate.clampHours(200.0), 0.0)
