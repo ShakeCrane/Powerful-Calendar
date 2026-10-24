@@ -49,8 +49,15 @@ data class AiChatReply(
 /** One provider transport, two explicit modes: free conversation and structured draft proposal. */
 class AiClient(
     private val settings: AiSettings,
-    private val zone: ZoneId = ZoneId.systemDefault()
+    private val zone: ZoneId = ZoneId.systemDefault(),
+    private val connectTimeoutMs: Int = 20_000,
+    private val readTimeoutMs: Int = 45_000
 ) {
+    init {
+        require(connectTimeoutMs > 0) { "connectTimeoutMs must be positive" }
+        require(readTimeoutMs > 0) { "readTimeoutMs must be positive" }
+    }
+
     private val stamp = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
 
     /**
@@ -250,8 +257,8 @@ class AiClient(
         var responseStatus = 0
         try {
             connection.requestMethod = "POST"
-            connection.connectTimeout = 20_000
-            connection.readTimeout = 45_000
+            connection.connectTimeout = connectTimeoutMs
+            connection.readTimeout = readTimeoutMs
             connection.doOutput = true
             connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
             connection.setRequestProperty("Accept", "application/json")

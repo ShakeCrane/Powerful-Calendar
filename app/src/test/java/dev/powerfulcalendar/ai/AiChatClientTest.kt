@@ -519,6 +519,55 @@ class AiChatClientTest {
         }
     }
 
+    @Test fun readTimeoutInFreeStructuredProposalReturnsStageErrorWithoutRetry() {
+        val requests = AtomicInteger()
+        val accepted = CountDownLatch(1)
+        val releaseServer = CountDownLatch(1)
+        val serverError = AtomicReference<Throwable?>()
+        ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { server ->
+            server.soTimeout = 3_000
+            Thread {
+                try {
+                    server.accept().use {
+                        requests.incrementAndGet()
+                        accepted.countDown()
+                        releaseServer.await(3, TimeUnit.SECONDS)
+                    }
+                } catch (error: Throwable) {
+                    serverError.set(error)
+                }
+            }.apply { isDaemon = true; start() }
+
+            val result = try {
+                runBlocking {
+                    AiClient(
+                        AiSettings(
+                            endpoint = "http://127.0.0.1:${server.localPort}/v1",
+                            model = "local-stub:free",
+                            enabled = true,
+                            apiKey = "LOCAL_TIMEOUT_TEST_KEY"
+                        ),
+                        ZoneId.of("Asia/Shanghai"),
+                        connectTimeoutMs = 1_000,
+                        readTimeoutMs = 150
+                    ).interpret("为超时回归创建合成活动", emptyList())
+                }
+            } finally {
+                releaseServer.countDown()
+            }
+
+            assertTrue("Server did not accept the single request",
+                accepted.await(3, TimeUnit.SECONDS))
+            assertNull("Server error: ${serverError.get()}", serverError.get())
+            assertEquals("Timed-out request must not retry", 1, requests.get())
+            assertTrue(result.proposals.isEmpty())
+            assertTrue(result.rawReply.isEmpty())
+            assertTrue(result.warnings.single().contains("结构化提案阶段失败"))
+            assertTrue(result.warnings.single().contains("AI 请求超时；没有修改日历"))
+            assertFalse(result.warnings.toString().contains("LOCAL_TIMEOUT_TEST_KEY"))
+        }
+    }
+
     @Test fun explicitChatSeparatesAutomaticPreviewFromButtonSource() {
         val seen = AtomicReference<String>()
         val serverError = AtomicReference<Throwable?>()
