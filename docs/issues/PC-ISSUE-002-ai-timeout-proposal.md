@@ -90,7 +90,7 @@ PC-ISSUE-122 使用模拟器现有的 HTTPS 配置与密钥，在内存中将模
 
 ## 模糊 REPLACE 目标的核心消歧保护（PC-ISSUE-131）
 
-在 API 34 Robolectric 的解析器→草稿服务→SQLite 回归中，发现没有 `eventSeq` 的 REPLACE 虽会被阻断，但原警告显示 `#null`。PC-ISSUE-131 已修成明确要求用户指出要修改哪一项，并验证零草稿、零正式写入及重启后状态不变。此证据仅覆盖本地核心保护；真实模型如何识别自然语言歧义、聊天 UI 是否显示提问仍未测。`REC-P1-050` 继续 NOT TESTED，Issue 002 仍 **PARTIAL / BLOCKED**。详见 `docs/issues/PC-ISSUE-131-ai-ambiguous-replace-target.md`。
+在 API 34 Robolectric 的解析器→草稿服务→SQLite 回归中，PC-ISSUE-131 修复了没有 `eventSeq` 的歧义 REPLACE 警告显示 `#null` 的问题。该报告当时只覆盖本地核心保护。`REC-P1-050` 后由 PC-ISSUE-137 按窄化范围独立签核为核心 PASS；真实模型如何识别自然语言歧义、聊天 UI 是否显示提问仍未测。Issue 002 仍 **PARTIAL / BLOCKED**。详见 `docs/issues/PC-ISSUE-131-ai-ambiguous-replace-target.md` 与 `docs/issues/PC-ISSUE-137-ai-ambiguous-replace-target-core-signoff.md`。
 ## 本地聊天到待审草稿闭环补充（PC-ISSUE-133，2026-10-24）
 
 新增 Robolectric API 34 loopback 回归，把聊天 marker、`AiClient` 对本轮原始用户文本的权威化、结构化提案解析、`AiDraftService` SQLite 持久化和数据库重开串在同一测试中。聊天模型的合成 marker 携带了伪造的恶意 `source`，客户端只把当前用户原文送入结构化阶段；最后生成一张稳定身份/队列顺序的 PENDING 草稿，正式事件、历史和提醒意图均为空。
@@ -134,3 +134,13 @@ On the current code baseline, local loopback regressions were rerun for the free
 Command: `.\gradlew.bat :app:testDebugUnitTest --tests 'dev.powerfulcalendar.ai.AiChatClientTest.structuredProposalHttp429NamesFailedStageAndProducesNoProposal' --tests 'dev.powerfulcalendar.ai.AiChatClientTest.emptyHttp200InFreeStructuredProposalFailsOnceWithoutPublishing' --tests dev.powerfulcalendar.ai.AiCompletionPolicyTest --offline --rerun-tasks --console=plain`.
 
 Evidence: `.local/android-test/reports/freeze-20261024/pc-issue-002-bounded-failure-regression-rerun.log`, SHA-256 `84AEB6F1B874575ABB0979349EA9A459285D5A6B0F34ABC00A0ADCBB7A3A7759`; `AiChatClientTest` XML (2/2), SHA-256 `5422891B1A6C8451FED0314B39B4A26F4AECBB6A92C3ABBB817620E1F7DAE92A`; `AiCompletionPolicyTest` XML (5/5), SHA-256 `2165CDF68DA513B11BD0E66EA882AFBD7E51B33191B7410797AFCABCA124E5DE`. These are local loopback/client-policy tests; no provider request, emulator, UI, or business-data write occurred. They do not satisfy the live free-provider proposal requirement; REC-P1-047 remains BLOCKED and PC-ISSUE-002 remains PARTIAL / HOLD.
+
+## 当前状态补记：歧义目标核心签核与免费模型阻塞（2026-10-24）
+
+PC-ISSUE-137 在代码/测试基线 `cc22d49cf79d5638c3a184f88e77ca29cf4fe91a` 上重跑现有 Robolectric API 34 定向测试。两个同名正式 Activity 下，无 `eventSeq` 的 REPLACE 保持阻断并要求用户澄清；不创建 AI 草稿，正式记录、历史、待处理队列、identity 数量及下一个序号预览在 SQLite 重开前后不变。定向 1/1 PASS；完整离线 Gradle 边界、469/469 JVM、Debug/AndroidTest APK 组装与 lint 全部通过（58 suites，0 failures/errors/skips，0 lint errors / 58 warnings）。这只签本地核心保护，不签真实模型消歧、聊天 UI、API 35 provider 或设备行为。
+
+- 独立报告：`docs/issues/PC-ISSUE-137-ai-ambiguous-replace-target-core-signoff.md`。
+- 定向日志 SHA-256 `96141B47183B3B8927B1BC6265304AE3E8280EAF1F558D7606BBC4F7982DCC85`；JUnit XML SHA-256 `434D18A4CC596EFCC9B8B84F6833192B3094DA5EA5E2C6D73C93498C5DA2A595`。
+- 完整 Gradle 日志 SHA-256 `C2C97732B82813EE678F04F9ACC8CE8C249D797DF808E4D88AC0FB8190C70153`。
+
+Issue 002 本身仍为 **PARTIAL / BLOCKED**：免费服务之前的结构化阶段 HTTP 429/503 仍未闭环；API 35 `emulator-5556` 当前缺少 `powercal-ai.xml`，未读取配置值或凭据，也未重发免费请求。PC-ISSUE-134 已单独证明授权 DeepSeek V4.1 Flash 的两阶段临时草稿路径，但不替代免费 provider 验收。实体设备测试由用户执行。
