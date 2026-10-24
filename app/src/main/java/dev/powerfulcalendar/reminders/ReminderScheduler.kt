@@ -73,7 +73,7 @@ object ReminderScheduler {
             if (owned) cancel(context, intent.eventSeq)
             return
         }
-        if (intent.instantMillis < now - AlarmContract.GRACE_MILLIS) {
+        if (AlarmContract.isOutsideGraceWindow(intent.instantMillis, now)) {
             // The window has passed while we were not running. Ringing now would be a lie.
             store.recordExecution(
                 intent.eventSeq, record.revision, intent.occurrenceKey, intent.triggerId,

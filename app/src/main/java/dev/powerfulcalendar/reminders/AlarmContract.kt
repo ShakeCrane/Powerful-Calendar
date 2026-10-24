@@ -22,7 +22,11 @@ object AlarmContract {
     const val CHANNEL_STATUS = "powercal-status"
     const val NOTIFICATION_STATUS_ID = 4100
 
-    /** A late broadcast may ring only inside this window; otherwise it is recorded as MISSED. */
+    /** A late broadcast may ring through this inclusive window; otherwise it is recorded as MISSED. */
     const val GRACE_MILLIS = 10 * 60_000L
     const val SNOOZE_MILLIS = 10 * 60_000L
+
+    /** Exact boundary is still eligible; only a trigger strictly older than the window is missed. */
+    fun isOutsideGraceWindow(triggerAtMillis: Long, nowMillis: Long): Boolean =
+        triggerAtMillis < nowMillis - GRACE_MILLIS
 }

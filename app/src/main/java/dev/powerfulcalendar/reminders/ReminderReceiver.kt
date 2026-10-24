@@ -84,9 +84,10 @@ class ReminderReceiver : BroadcastReceiver() {
                     ReminderScheduler.cancel(context, eventSeq)
                 }
                 is ReminderScheduler.Validation.Valid -> {
-                    val lateBy = System.currentTimeMillis() - requestedInstant
+                    val now = System.currentTimeMillis()
+                    val lateBy = now - requestedInstant
                     val record = validation.record
-                    if (lateBy > AlarmContract.GRACE_MILLIS) {
+                    if (AlarmContract.isOutsideGraceWindow(requestedInstant, now)) {
                         store.recordExecution(
                             eventSeq, revision, occurrenceKey, triggerId,
                             "MISSED", "迟于宽限窗口 ${lateBy / 60_000} 分钟"
