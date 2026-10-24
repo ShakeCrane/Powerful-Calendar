@@ -32,9 +32,9 @@ Structural validation: 209 unique IDs; all reconstructed rows contain source, en
 | Candidate bucket | PASS | FAIL | BLOCKED | NOT TESTED | SPEC UNRESOLVED |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | P0 (proposed) | 119 | 0 | 1 | 1 | 5 |
-| P1 (proposed) | 43 | 0 | 8 | 30 | 1 |
+| P1 (proposed) | 44 | 0 | 8 | 29 | 1 |
 | Historical unclassified slot | 0 | 0 | 0 | 0 | 1 |
-| **Total candidate rows** | **162** | **0** | **9** | **31** | **7** |
+| **Total candidate rows** | **163** | **0** | **9** | **30** | **7** |
 
 ### Case-specific backup verification (2026-10-23)
 
@@ -919,3 +919,11 @@ The existing `DeckControllerTest.insideSwipeMovesExactlyOneCardAndClampsAtTheEdg
 Focused regression: **1/1 PASS**, log SHA-256 `A6DF8B1298DF20686233F1FFA0F4DF397F3B1FF351D2B596C4816AC5F9B46A7C`. Full Debug boundary/test/APK/lint passed **467/467** across 57 suites, zero failures/errors/skips, lint 0 errors / 58 warnings. Full log SHA-256 `9238AB927FA1150497321E095BD3F07FAC7440CD4796137AC105406A3B795FA8`; `DeckControllerTest` XML SHA-256 `4D7A4E0EC2183572E046F3B36A2E86BC9CA70E1463E4E344F0F73CEA9F1BB8B0`; lint XML SHA-256 `E95DE7C795C7A50415CF5BF197DCD2A2FB73D55618CE34068C239E8648FC09DF`; APK SHA-256 `E2EE9DF7C315E2BCD237457CEFC69B3ACF4D830F7D191447DDE724FD0E892A60`. Test commit `07557fe62a7ac4506f38618028aff9439b86da95` is pushed. Independent report: `docs/issues/PC-ISSUE-129-deck-controller-move-clamping.md`.
 
 REC-P1-040 passes only for the narrowed controller movement contract. Reconstructed totals: **162 PASS / 0 FAIL / 9 BLOCKED / 31 NOT TESTED / 7 SPEC UNRESOLVED**; P0 119/0/1/1/5, P1 43/0/8/30/1. Structural-only artifact `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-129.json`, SHA-256 `46B90076E13454DF792678500CA49F1D3452DBFB77825E5C567950BD06AF17D8`; ledger SHA-256 `0230EDFF3547F140680396A60984A0A70DA819FF0C30CD1EA5646C1E6D410E6D`. It validates structure and counts only. Historical mapping and overall freeze remain HOLD.
+
+### PC-ISSUE-130 — REC-P1-043 DeckController live edit state (2026-10-24)
+
+While autosave was held inside fake persistence, the updated regression confirms `edit()` returns within the test bound, keeps the same `currentId`, immediately exposes the latest title, and leaves state dirty. After storage is released, the latest title is staged. This signs only the controller contract; text-field rendering, focus/IME, Compose wiring, SQLite durability and device behavior are not claimed. No production source changed.
+
+Focused `DeckControllerConcurrencyTest.editingNeverWaitsForBackgroundAutosaveIo`: **1/1 PASS**, log SHA-256 `A6DF8B1298DF20686233F1FFA0F4DF397F3B1FF351D2B596C4816AC5F9B46A7C`. Full Debug boundary/test/APK/lint passed **467/467** across 57 suites, zero failures/errors/skips; lint 0 errors / 58 warnings. Full log SHA-256 `F8DB2BA9E0ADE7AC75BE3045D61242CF5E575FEC98719F3809726D2239E649F9`; `DeckControllerConcurrencyTest` XML SHA-256 `6E7F00DBE0602FCE23BD0E6237C636EA42E65BF52FA5EBE03282EB97956C4391`; lint XML SHA-256 `E95DE7C795C7A50415CF5BF197DCD2A2FB73D55618CE34068C239E8648FC09DF`; APK SHA-256 `E2EE9DF7C315E2BCD237457CEFC69B3ACF4D830F7D191447DDE724FD0E892A60`. Test commit `d838c9b6d6d7ecb8e2f6199a429d07eca0a86e12` is pushed. Independent report: `docs/issues/PC-ISSUE-130-deck-controller-live-edit-state.md`.
+
+REC-P1-043 passes only for this narrowed controller scope. Reconstructed totals: **163 PASS / 0 FAIL / 9 BLOCKED / 30 NOT TESTED / 7 SPEC UNRESOLVED**; P0 119/0/1/1/5, P1 44/0/8/29/1. Structural-only artifact `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-130.json`, SHA-256 `39340110A14157DEA49F09AF6206579C953D02D4355032D042C32CAD9A160A16`; ledger SHA-256 `2A02489CD27FF377E677ABDDFFFFA93190966CC53E38D6F738226CEB554D0338`. It validates structure and counts only. Historical mapping and overall freeze remain HOLD.

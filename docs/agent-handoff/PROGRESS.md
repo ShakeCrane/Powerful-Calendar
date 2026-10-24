@@ -1,4 +1,10 @@
 # Core freeze progress
+## PC-ISSUE-130 — DeckController live edit state during autosave (REC-P1-043 narrowed PASS)
+
+- Added currentId/dirty assertions while background autosave is blocked: the newest accepted form stays visible on the same card and remains dirty until storage catches up. Existing regression checks nonblocking edit and saves the latest version after release. No production/UI changes.
+- Focused test passed 1/1. Full Debug boundary/test/APK/lint passed 467/467 across 57 suites, zero failures/errors/skips; lint 0 errors / 58 warnings. Test commit `d838c9b6d6d7ecb8e2f6199a429d07eca0a86e12` is pushed.
+- Report: `docs/issues/PC-ISSUE-130-deck-controller-live-edit-state.md`. Ledger: 163 PASS / 0 FAIL / 9 BLOCKED / 30 NOT TESTED / 7 SPEC UNRESOLVED; P0 119/0/1/1/5, P1 44/0/8/29/1. Structural-only artifact `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-130.json`, SHA-256 `39340110A14157DEA49F09AF6206579C953D02D4355032D042C32CAD9A160A16`; ledger SHA-256 `2A02489CD27FF377E677ABDDFFFFA93190966CC53E38D6F738226CEB554D0338`. Overall freeze remains HOLD.
+
 ## PC-ISSUE-129 — DeckController movement clamps (REC-P1-040 narrowed PASS)
 
 - Extended the existing core movement test to verify reverse movement reaches the first card and clamps there; the same test verifies one-card forward movement and last-card clamping. No production/UI changes; gesture recognition and Compose/device mapping remain untested.
