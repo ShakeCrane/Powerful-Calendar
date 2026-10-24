@@ -129,6 +129,8 @@ dependencies {
     testImplementation("androidx.test:core:1.6.1")
     testImplementation(bom)
     testImplementation("androidx.compose.ui:ui-test-junit4")
+    androidTestImplementation("androidx.test:runner:1.5.0")
+    androidTestImplementation("androidx.test.ext:junit:1.1.5")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
