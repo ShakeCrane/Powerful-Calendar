@@ -17,6 +17,8 @@ The current ledger has 209 active `RECONSTRUCTED` acceptance rows and one retain
 | P2 | 1 | 0 | 0 | 0 | 0 |
 | **Active reconstructed total** | **182** | **0** | **8** | **13** | **6** |
 
+PC-ISSUE-147 adds a local routing regression for `REC-P1-048` but does **not** sign the acceptance row: the live free-provider classification and rendered API 35 chat affordance were not run. The row stays `NOT TESTED`, so all status totals above are unchanged. Structural-only validation r13: `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-risk-matrix-validated-20261024-r13-pc-issue-147.json`, SHA-256 `779E4BE494907AC4C0D455025C5E8770B8083DFA92FFA24F63310BC17469957C`; ledger SHA-256 `2971AD843BF80038B01F0C0FB17F8A58BF9EE47DE26E43ED90D26C871CAA2583`; `product_behavior_tested=false`.
+
 One retired record (`REC-P1-013`) is excluded from those active-row totals and from GO criteria.
 
 Risk review changed `REC-P0-037` and `REC-P0-040` to P1 because Draft Deck navigation/search affects workflow discoverability while leaving stored drafts and authorization intact. It changed these cases to P0 because failure can affect formal event visibility/temporal placement, loss of user work, ambiguous or unauthorized formal writes, transaction atomicity, or recovery: `REC-P1-014`–`016`, `REC-P1-034`–`036`, `REC-P1-044`–`045`, `REC-P1-049`–`051`, and `REC-P1-054`–`062`. The ledger records an individual risk basis and the specific action/expected outcome for each row; no 126/82 target is used.

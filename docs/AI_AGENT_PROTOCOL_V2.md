@@ -195,9 +195,12 @@ multiple Android system side effects.
   at most ~350 for involved answers; no repetitive paraphrasing or filler.
 - Model transport: cap output tokens; current code uses a bounded recent 40-turn /
   28k-character sliding selection. Not durable long-term memory, and not infinite context.
-- The optional `chat.suggest_draft.v1` affordance is a **non-authoritative** tagged hint;
-  render one action below a recognized assistant message:
-  “从此消息创建事件草稿”. Clicking it invokes a separate parser + local validator.
+- An explicit user request to create, arrange, remind, or change a calendar item may
+  carry a non-authoritative `intent=explicit` hint and automatically open a proposal
+  preview. A casual possible-schedule mention may carry `intent=suggested` and renders
+  one action below the assistant message: “从此消息创建事件草稿”. Clicking it invokes
+  a separate parser + local validator. Missing or unknown intent is treated as suggested;
+  no hint or model-generated source text grants write authorization.
 - If a provider supports real Function Calling, negotiate exact supported tools;
   do not claim support without capability probing, semantic validation and tool receipts.
 - For large files, show a brief user-facing synopsis and one high-impact question,

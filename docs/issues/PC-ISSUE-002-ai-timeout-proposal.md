@@ -148,3 +148,9 @@ Issue 002 本身仍为 **PARTIAL / BLOCKED**：免费服务之前的结构化阶
 ### PC-ISSUE-146 本地提案与批次审核回归（2026-10-24）
 
 `REC-P1-052/053` 已由独立报告 `docs/issues/PC-ISSUE-146-ai-review-and-batch-authorization-compose-regression.md` 窄化签核为 PASS：四种提案动作及精确可处理范围、批次总数/操作数/逐项范围、固定 draftId/version 审核快照、取消及忙碌状态不授权。Robolectric API 35 Compose 定向 4/4；完整 Gradle 482/482（62 suites），lint 0 errors / 58 warnings。未请求 provider、未执行数据库写入，也未运行独立 AVD 或实体设备。此结果不改变 `REC-P1-047` 免费模型阻塞；PC-ISSUE-002 继续 **PARTIAL / BLOCKED**。
+
+### PC-ISSUE-147 本地显式/建议意图分流（2026-10-24）
+
+修复了任何 draft marker 都自动触发结构化预览的问题：只有 `intent=explicit` 才把当前用户原文送入自动提案预览；`intent=suggested` 只保留轻量按钮；缺失/未知 intent 回退为建议。模型生成的 source 不会作为解析输入。定向本地 parser/client/合成 SQLite 流程 13/13 PASS；完整 Gradle 483/483（62 suites），lint 0 errors / 58 warnings。代码/测试提交 `8e642ad0d8e1ba5786f2e2ee0bdbb16851a5b9b2` 已推送，报告：`docs/issues/PC-ISSUE-147-ai-explicit-vs-suggested-chat-routing.md`。
+
+本轮没有请求免费或付费模型，也没有运行独立 Android 虚拟设备或实体设备。真实 provider 对自然语言的分类与按钮呈现仍未测，`REC-P1-048` 保持 NOT TESTED；`REC-P1-047` 仍因免费 provider 路径未闭环而 BLOCKED，PC-ISSUE-002 继续 **PARTIAL / HOLD**。

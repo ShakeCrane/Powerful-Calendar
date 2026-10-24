@@ -1,4 +1,11 @@
 # Core freeze progress
+## PC-ISSUE-147 — 明确日程意图与随口建议分流（REC-P1-048 仍待端到端验收）
+
+- 根因：普通聊天只要含 draft marker 就自动调用结构化提案解析，模型对随口提及给出的轻量建议也会弹出自动提案预览。现在只有 `intent=explicit` 使用当前用户原文进入自动预览；`suggested` 只保留消息按钮；缺失/未知值安全回退为建议。模型生成的 source 不作为提案输入，任何标记都不授权写入。
+- 定向 parser/client/合成 SQLite 流程 13/13 PASS；完整离线 Gradle 源边界、483/483 JVM（62 suites）、Debug/AndroidTest APK 组装及 lint 通过，0 failures/errors/skips，lint 0 errors/58 warnings。定向日志 SHA-256 `87B8BFEE7D29155A458C6506DEE81DF578BB64E3BFDD1F56934BB43A14C8E01F`；全量日志 SHA-256 `47848074DB10EC273E31AAACCA2F1578DC454549862070593CEA6A2EBF47C9FF`；Debug APK SHA-256 `751E4DA86160A2032E9D74052AB3651E8B76FF83649FF71906404C86A93CA068`。
+- 代码/测试提交 `8e642ad0d8e1ba5786f2e2ee0bdbb16851a5b9b2` 已推送。独立报告：`docs/issues/PC-ISSUE-147-ai-explicit-vs-suggested-chat-routing.md`。未请求 provider，未运行独立 AVD 或实体设备；`REC-P1-048` 仍 NOT TESTED，REC-P1-047 仍 BLOCKED，Issue 002 与整体冻结均 HOLD。
+- 结构校验 artifact SHA-256 `779E4BE494907AC4C0D455025C5E8770B8083DFA92FFA24F63310BC17469957C`；ledger SHA-256 `2971AD843BF80038B01F0C0FB17F8A58BF9EE47DE26E43ED90D26C871CAA2583`；182 PASS / 0 FAIL / 8 BLOCKED / 13 NOT TESTED / 6 SPEC UNRESOLVED，`product_behavior_tested=false`。
+
 ## PC-ISSUE-146 — AI 提案动作与批次授权范围回归（REC-P1-052/053）
 
 - 根因：验收矩阵中两项审核行为虽已有实现，但审核视图嵌在 `PowerCalApp` 中，缺少逐项 Compose 回归。将批次授权预览提取为 `AiBatchAuthorizationReview`，不改变原有显示样式或写入流程；新增 API 35 Robolectric Compose 测试。

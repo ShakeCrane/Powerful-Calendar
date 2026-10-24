@@ -9,6 +9,12 @@
 - `REC-P1-013` 淡灰横向边缘按用户确认标为 `RETIRED / OUT_OF_SCOPE`，旧证据保留；时间轴标题贪心折叠仍是独立 P1 必验项 `REC-P1-021`–`030`。当前时间线可以覆盖中轴。应用保持竖屏，不主动感应陀螺仪；系统强制横屏仅作为兼容场景。真机测试由用户负责，本 Goal Mode 只运行虚拟设备可执行的项目。
 - PC-ISSUE-135 的草稿重启恢复记为 `REC-P2-001`；PC-ISSUE-136 的本地 AI 聊天历史进程/系统重启恢复记为 `REC-P1-083`；PC-ISSUE-137 将 `REC-P1-050`窄化签核为歧义 AI REPLACE 核心保护通过；PC-ISSUE-138 将 `REC-P1-034/035/036`窄化签核为 Todo 核心投影通过；PC-ISSUE-139 将 `REC-P1-037`窄化签核为重开数据库后的 oldest-first 队列控制器状态通过；PC-ISSUE-140 将 `REC-P1-004`窄化签核为跨午夜核心坐标连续通过，不代表实际滚动；PC-ISSUE-141 将 `REC-P1-006/007`窄化签核为缩放边界及焦点锚点核心模型通过，不代表手势/控件行为；PC-ISSUE-142 将 `REC-P1-001`窄化签核为 initialCamera 的当天正午/24 小时模型结果，不代表首屏呈现或恢复行为；PC-ISSUE-143 修复 `REC-P1-002` Today 错用 initialCamera 导致跳回正午的问题，并保持当前缩放；PC-ISSUE-144 将 `REC-P1-008/009`窄化签核为时间轴 DST gap/fold 刻度文案生成通过，不代表新 AVD/真机可视呈现或重复事件 DST 政策；PC-ISSUE-145 将 `REC-P1-018/019/020` 窄化签核为 Robolectric Compose 中左右翼独立滚动及左翼初始近中轴泳道通过；PC-ISSUE-146 将 `REC-P1-052/053` 窄化签核为提案审核动作与批次授权范围的 Compose 行为通过。各自边界见独立 Issue 报告，未签核部分不作延伸推断。
 - 结构校验器为 `tools/validate_core_freeze_acceptance_ledger.py`；它不设固定行数或历史优先级数量。当前冻结保持 **HOLD**，直到剩余验证及外部/设备门槛有证据闭环。以下更早的执行快照与待办记录保留为历史，不覆盖本政策。
+## 最新执行补记（PC-ISSUE-147，2026-10-24）
+
+- 代码/测试提交 `8e642ad0d8e1ba5786f2e2ee0bdbb16851a5b9b2` 已推送。普通聊天现在分开显式日程意图自动预览与随口提及按钮提示；缺失/未知 intent 按建议处理，模型生成的 source 不送入结构化提案。
+- 定向测试 13/13；完整离线 Gradle 483/483、62 suites，0 failures/errors/skips，lint 0 errors/58 warnings。`REC-P1-048` 的真实免费模型分类/聊天按钮呈现没有本轮测试，仍 NOT TESTED；Issue 002 仍 PARTIAL / BLOCKED。
+- 台账结构报告 r13 为 `779E4BE494907AC4C0D455025C5E8770B8083DFA92FFA24F63310BC17469957C`，ledger SHA-256 `2971AD843BF80038B01F0C0FB17F8A58BF9EE47DE26E43ED90D26C871CAA2583`；产品行为验证字段仍为 false，整体 HOLD。报告：`docs/issues/PC-ISSUE-147-ai-explicit-vs-suggested-chat-routing.md`。
+
 版本：2026-10-24 执行续接快照；执行前必须按本地仓库重新核对。
 根目录：E:\Project\Powerful-Calendar
 目标：闭环测试、最小修复、逐项回归与签核，**满足证据标准才宣布核心基线 GO**；否则给出准确 HOLD 及阻塞。本文不是验收完成证明。

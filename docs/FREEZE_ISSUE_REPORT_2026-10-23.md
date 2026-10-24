@@ -302,3 +302,11 @@ Issue 004 修复代码基线：`16e00d55435c5029e07784ec5d945dfd7fb37ac5`
 - 历史证据：`docs/ANDROID_EMULATOR_SMOKE_QA_2026-10-23.md` 与 `docs/ANDROID_EMULATOR_REGRESSION_QA_2026-10-23.md`。
 - AI 凭据不在本文、日志或 Git 中；只记录 `key_present=True`。测试后保持 `stealth/glyph-cluster:free`、上下文共享关闭。
 - 只读 SQLite 快照是测试数据，留在被忽略的 `.local`，不可误提交。
+
+## PC-ISSUE-147 — 明确日程请求与随口建议分流（2026-10-24）
+
+根因是任何 `type=draft` marker 都会自动进入结构化提案解析。修复后 `intent=explicit` 才按当前用户原文启动自动预览；`suggested` 只留轻量按钮；缺失/未知值回退为建议，模型生成的 `source` 不进入 parser。定向本地测试 13/13；完整离线 Gradle 483/483、62 suites，0 failures/errors/skips，lint 0 errors/58 warnings。
+
+代码/测试提交 `8e642ad0d8e1ba5786f2e2ee0bdbb16851a5b9b2` 已推送。定向日志 SHA-256 `87B8BFEE7D29155A458C6506DEE81DF578BB64E3BFDD1F56934BB43A14C8E01F`；完整日志 SHA-256 `47848074DB10EC273E31AAACCA2F1578DC454549862070593CEA6A2EBF47C9FF`；Debug APK SHA-256 `751E4DA86160A2032E9D74052AB3651E8B76FF83649FF71906404C86A93CA068`。独立报告：`docs/issues/PC-ISSUE-147-ai-explicit-vs-suggested-chat-routing.md`。
+
+没有调用 provider、运行独立 Android 虚拟设备或实体设备。真实模型分类和 Compose 按钮行为未覆盖；`REC-P1-048` 保持 NOT TESTED，`REC-P1-047` 保持 BLOCKED，PC-ISSUE-002 与整体冻结仍 **HOLD**。重建矩阵统计不变：182 PASS / 0 FAIL / 8 BLOCKED / 13 NOT TESTED / 6 SPEC UNRESOLVED；结构校验 `product_behavior_tested=false`。
