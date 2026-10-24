@@ -1,4 +1,10 @@
 # Core freeze progress
+## PC-ISSUE-139 — oldest pending queue core sign-off (REC-P1-037)
+
+- Reused the focused Robolectric API 35 test `PowerStoreTest.openingDeckAfterStoreReopenFocusesOldestQueueOrder`: two synthetic pending cards survive SQLite close/reopen in independent queue order; `DeckController.open()` returns oldest-first and selects the oldest card. This signs only controller state; no Compose UI or device interaction was tested. No source changes were made for this Issue.
+- Targeted test passed 1/1. Full offline source-boundary/JVM/Debug APK/AndroidTest APK/lint run passed 471/471 tests across 59 suites, zero failures/errors/skips; lint 0 errors/58 warnings. Full log SHA-256 `D30BCDD343E2FE62E7820A7D5A543813291CAD7F75DBECF32C196360A953D07B`.
+- Independent report: `docs/issues/PC-ISSUE-139-oldest-queue-core-signoff.md`. `REC-P1-037` is signed only for the oldest-first controller model boundary; search/filter UI remains untested. Overall freeze remains HOLD.
+
 ## PC-ISSUE-138 — unified Todo projection core sign-off (REC-P1-034/035/036, current risk P0)
 
 - Added two Robolectric API 35 regressions for TodoProjection and isolated PowerStore SQLite. They cover mixed ALARM/ACTIVITY/DEADLINE/MEMO query, completed/disabled/untracked exclusion, date-only and undated source semantics, and persisted MEMO completion removal/undo across database reopen. No Compose UI or physical device was used.
@@ -23,9 +29,9 @@
 ## PC-QA-GATE-001 — current risk-based reconstructed matrix (2026-10-24)
 
 - The user confirmed the original 209-row source is unavailable and explicitly directed the work to continue without further requests for it. The matrix is reconstructed from the core contract, acceptance documents, tests, Issues, and observed behavior; historical IDs remain unmapped and the old 126/82 partition is not a target or GO gate.
-- Current ledger: 209 active reconstructed rows (the count is incidental), P0 144 / P1 64 / P2 1; 169 PASS / 0 FAIL / 8 BLOCKED / 26 NOT TESTED / 6 SPEC UNRESOLVED, plus one retained retired record. All 26 untested rows now have explicit NOT TESTED actual/evidence text and remain open.
+- Current ledger: 209 active reconstructed rows (the count is incidental), P0 144 / P1 64 / P2 1; 170 PASS / 0 FAIL / 8 BLOCKED / 25 NOT TESTED / 6 SPEC UNRESOLVED, plus one retained retired record. All 25 untested rows have explicit NOT TESTED actual/evidence text and remain open.
 - Risk review moved `REC-P0-037/040` to P1; moved `REC-P1-014`–`016`, `034`–`036`, `044/045`, `049`–`051`, and `054`–`062` to P0. Stable ID prefixes remain trace keys; `candidate_priority` is authoritative. `REC-P1-013` is RETIRED because the owner accepted the pale-gray horizontal edge. Greedy title folding remains a separate P1 sign-off (`REC-P1-021`–`030`).
-- `REC-P2-001`, `REC-P1-083`, `REC-P1-050`, and `REC-P1-034/035/036` record PC-ISSUE-135 draft recovery, PC-ISSUE-136 chat-history recovery, PC-ISSUE-137 ambiguous-target protection, and PC-ISSUE-138 Todo projection. The fabricated historical placeholder was removed. Structural validator: `tools/validate_core_freeze_acceptance_ledger.py`; artifact `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-risk-matrix-validated-20261024-r3.json`, SHA-256 `CA8EDEFCF3EEC9166D231DEF0D25EEF7F98A4F257550B71506E5A248286F9A94`; ledger SHA-256 `173FFE369D18B6E6FD3D709FD6E8A0F7EA6B43E1B02C828F2F1B821649FB73AB`. Structural-only (`product_behavior_tested=false`).
+- `REC-P2-001`, `REC-P1-083`, `REC-P1-050`, `REC-P1-034/035/036`, and `REC-P1-037` record PC-ISSUE-135 draft recovery, PC-ISSUE-136 chat-history recovery, PC-ISSUE-137 ambiguous-target protection, PC-ISSUE-138 Todo projection, and PC-ISSUE-139 oldest-first controller state. The fabricated historical placeholder was removed. Structural validator: `tools/validate_core_freeze_acceptance_ledger.py`; artifact `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-risk-matrix-validated-20261024-r4.json`, SHA-256 `141863E5105120B182AAA9957FC07DE0CFCD59E8C41ACD385E3239A05145943A`; ledger SHA-256 `330001DC1888CF0B62861A91C16A068825163A9492AB8ACB71FCBF11B99348D4`. Structural-only (`product_behavior_tested=false`).
 - Overall result remains HOLD for open P0/P1 tests, blockers/specifications, and user-owned physical-device/OEM/TalkBack checks. The missing original list is a disclosed provenance gap, not a reason to stop the reconstructed workflow.
 
 ## PC-ISSUE-135 — Android process restart draft persistence (REC-P2-001 RECONSTRUCTED)
