@@ -1,4 +1,10 @@
 # Core freeze progress
+## PC-ISSUE-132 — SAF URI-grant revocation safe failure (REC-P0-107 narrowed PASS)
+
+- A synthetic API 35 ContentProvider granted then revoked read access. Android enforced the revocation with SecurityException; safe permission wording and unchanged event/history/pending/identity/sequence state were verified in a disposable SQLite database. The production SAF reader is now shared through **SafBackupReader**. No UI was opened; real DocumentsUI/provider lifecycle and physical/OEM behavior remain untested.
+- Emulator instrumentation passed 1/1. Full Debug boundary/test/APK/AndroidTest APK/lint passed 468/468 across 57 suites, zero failures/errors/skips; lint 0 errors / 58 warnings. Code/test commit 0d83d48f6bea18b64e8965ab62bcb39d55f164a8 is pushed.
+- Report: docs/issues/PC-ISSUE-132-saf-uri-grant-revocation.md. PC-ISSUE-003 remains PARTIAL / HOLD. Ledger: 164 PASS / 0 FAIL / 8 BLOCKED / 30 NOT TESTED / 7 SPEC UNRESOLVED; P0 120/0/0/1/5, P1 44/0/8/29/1. Structural-only artifact .local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-132.json SHA-256 7D3BDB2012A2838CE6CE85F55682B38C1E211EF0A3DD64AAD55C924614AD23E2; ledger SHA-256 FD79266CD97115B90641DA75F49147F6C706FDD4B60F852663DFCB2B3754AD74. Overall freeze remains HOLD.
+
 ## PC-ISSUE-131 — AI targetless REPLACE clarification guard (REC-P1-050 remains NOT TESTED)
 
 - Reproduced that a blocked targetless REPLACE exposed `#null` instead of asking which event to change. Updated the core parser warning while retaining the existing blocked/no-write behavior; added a Robolectric API 34 parser → AiDraftService → SQLite-reopen regression with two identical formal targets. This is core-only; no UI layout, provider, or physical-device test.

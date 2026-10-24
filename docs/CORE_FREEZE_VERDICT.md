@@ -4,13 +4,13 @@ Date: 2026-10-24
 
 Verdict: **HOLD**
 
-Code/test checkout for the latest full regression: `e8daade48e78997a94c86645730b0226dfdf1cab`
+Code/test checkout for the latest full regression: `0d83d48f6bea18b64e8965ab62bcb39d55f164a8`
 
-APK used by the latest full regression: `app/build/outputs/apk/debug/app-debug.apk`, SHA-256 `B582143592625A51A2C7225156BAA9E83E2B24B344816A0B7C3AEEBB815DCA75`
-Latest full regression: 468/468 JVM tests across 57 suites, zero failures/errors/skips; includes one protected untracked test file; lint 0 errors / 58 warnings. Log SHA-256 `27E990D39B87CE0FB073E318A6B576785840CF9AF281DB4F0D717E3F14065056`.
+APK used by the latest full regression: `app/build/outputs/apk/debug/app-debug.apk`, SHA-256 `35EB92E478AD2DEBBD53D03682844D5B1F56E24438469B4A38E89D247B7E40F4`
+Latest full regression: 468/468 JVM tests across 57 suites, zero failures/errors/skips; source boundary, Debug APK and Android test APK assembly passed; includes one protected untracked test file; lint 0 errors / 58 warnings. Log SHA-256 `80DCF4234520072A7149455B5B96545994727B85C41FCCCE2B48B3B228F4D2BE`.
 
-Latest scoped follow-up: PC-ISSUE-131 fixes the core warning for a targetless AI `REPLACE` and verifies no draft or formal write across SQLite reopen. `REC-P1-050` remains NOT TESTED because live-model and chat UI disambiguation were not exercised; candidate counts are unchanged.
-Structural-only validation artifact `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-131.json`, SHA-256 `4F97B8068029A5BBDAA5052A01A556E5FDA925290694D6EA5C24E7E3A4EB5929`; ledger SHA-256 `7C6EF6938ECAF938656A3F25B8CE30CAEEC462DC2173D2C604B53BD791FC8F72`. It confirms CSV structure and candidate counts only (`product_behavior_tested=false`).
+Latest scoped follow-up: PC-ISSUE-132 verifies Android API 35 URI read-grant revocation through a synthetic provider: Android raises SecurityException after revocation, a safe permission explanation is returned, and the seeded SQLite state remains unchanged. REC-P0-107 is PASS only for this narrowed framework boundary. The real DocumentsUI/provider lifecycle and physical/OEM behavior remain untested; PC-ISSUE-003 remains PARTIAL / HOLD.
+Structural-only validation artifact `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-132.json`, SHA-256 `7D3BDB2012A2838CE6CE85F55682B38C1E211EF0A3DD64AAD55C924614AD23E2`; ledger SHA-256 `FD79266CD97115B90641DA75F49147F6C706FDD4B60F852663DFCB2B3754AD74`. It confirms 209 unique rows and the 126/82/1 priority partition only (product_behavior_tested=false). Totals: 164 PASS / 0 FAIL / 8 BLOCKED / 30 NOT TESTED / 7 SPEC UNRESOLVED; P0 120/0/0/1/5, P1 44/0/8/29/1.
 
 
 
@@ -188,7 +188,7 @@ The **RECONSTRUCTED** candidate ledger contains 208 specification-derived rows p
 
 PC-ISSUE-122 records one authorized `deepseek/deepseek-v4.1-flash` structured-proposal request on Android 15 emulator `emulator-5554`: HTTP 200, one valid synthetic ACTIVITY proposal, zero warnings, no retry. This narrows the AI transport/parser uncertainty only. It does not verify the free provider after its prior 429/503, the chat-to-card/persistence/approval path, or physical-device behavior. The user owns physical-device testing.
 
-The reconstructed candidate totals are **163 PASS / 0 FAIL / 9 BLOCKED / 30 NOT TESTED / 7 SPEC UNRESOLVED**; all 209 reconstructed rows remain unmapped to original case IDs. PC-ISSUE-002 remains **PARTIAL / BLOCKED**, and the overall verdict remains **HOLD**.
+The reconstructed candidate totals are **164 PASS / 0 FAIL / 8 BLOCKED / 30 NOT TESTED / 7 SPEC UNRESOLVED**; all 209 reconstructed rows remain unmapped to original case IDs. PC-ISSUE-002 remains **PARTIAL / BLOCKED**, PC-ISSUE-003 remains **PARTIAL / HOLD**, and the overall verdict remains **HOLD**.
 
 ## PC-ISSUE-123 static boundary sign-off checkpoint (2026-10-24)
 
@@ -251,7 +251,7 @@ PC-ISSUE-130 signs REC-P1-043 narrowly for the core controller reflecting the la
 
 The focused regression passed 1/1. Full Debug boundary/test/APK/lint passed 467/467 across 57 suites, zero failures/errors/skips, lint 0 errors / 58 warnings. Test commit `d838c9b6d6d7ecb8e2f6199a429d07eca0a86e12` is pushed. Full log SHA-256 `F8DB2BA9E0ADE7AC75BE3045D61242CF5E575FEC98719F3809726D2239E649F9`; APK SHA-256 `E2EE9DF7C315E2BCD237457CEFC69B3ACF4D830F7D191447DDE724FD0E892A60`. Independent report: `docs/issues/PC-ISSUE-130-deck-controller-live-edit-state.md`.
 
-Structural-only artifact `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-130.json`, SHA-256 `39340110A14157DEA49F09AF6206579C953D02D4355032D042C32CAD9A160A16`; ledger SHA-256 `2A02489CD27FF377E677ABDDFFFFA93190966CC53E38D6F738226CEB554D0338`. It checks structure and counts only. Current totals: 163 PASS / 0 FAIL / 9 BLOCKED / 30 NOT TESTED / 7 SPEC UNRESOLVED; P0 119/0/1/1/5, P1 44/0/8/29/1. Historical mapping and overall freeze remain HOLD.
+Structural-only artifact `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-132.json`, SHA-256 `7D3BDB2012A2838CE6CE85F55682B38C1E211EF0A3DD64AAD55C924614AD23E2`; ledger SHA-256 `FD79266CD97115B90641DA75F49147F6C706FDD4B60F852663DFCB2B3754AD74`. It checks structure and counts only. Current totals: 164 PASS / 0 FAIL / 8 BLOCKED / 30 NOT TESTED / 7 SPEC UNRESOLVED; P0 120/0/0/1/5, P1 44/0/8/29/1. REC-P0-107 is narrowly signed for the synthetic API 35 URI-grant revocation boundary. Historical mapping and overall freeze remain HOLD.
 
 ## Decision
 
