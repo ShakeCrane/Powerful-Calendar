@@ -18,13 +18,27 @@ import java.time.ZoneId
 import java.util.UUID
 
 /**
- * One explicitly authorized live two-stage probe. It uses only a synthetic request and a private
- * temporary SQLite database; it neither opens UI nor touches the app's default calendar store.
+ * Opt-in live two-stage probes. They use fixed, synthetic prompts and private temporary SQLite
+ * databases; they neither open UI nor touch the app's default calendar store. A model is contacted
+ * only when the matching powercalLiveProbe instrumentation argument is explicitly supplied.
  */
 @RunWith(AndroidJUnit4::class)
 class DeepSeekFlashChatDraftFlowProbeTest {
     @Test
     fun authorizedFlashChatFlowsIntoPendingDraftWithoutPublishing() {
+        assumeTrue("Pass powercalLiveProbe=deepseek to opt in to the authorized paid probe",
+            InstrumentationRegistry.getArguments().getString("powercalLiveProbe") == "deepseek")
+        verifyChatToPendingDraft(FLASH_MODEL_ID, "DeepSeek两阶段草稿验证")
+    }
+
+    @Test
+    fun freeProviderChatFlowsIntoPendingDraftWithoutPublishing() {
+        assumeTrue("Pass powercalLiveProbe=free to opt in to the free-provider probe",
+            InstrumentationRegistry.getArguments().getString("powercalLiveProbe") == "free")
+        verifyChatToPendingDraft(FREE_MODEL_ID, "免费模型两阶段草稿验证")
+    }
+
+    private fun verifyChatToPendingDraft(modelId: String, title: String) {
         assumeTrue("This probe is scoped to Android API 35", Build.VERSION.SDK_INT == 35)
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val stored = AiSettingsStore.load(context)
@@ -33,38 +47,38 @@ class DeepSeekFlashChatDraftFlowProbeTest {
                 stored.endpoint.startsWith("https://"))
 
         val settings = stored.copy(
-            model = MODEL_ID,
+            model = modelId,
             enabled = true,
             shareContext = false
         )
         val zone = ZoneId.of("Asia/Shanghai")
         val rawUserText =
-            "请为合成验收创建一条活动，标题必须是“DeepSeek两阶段草稿验证”，" +
+            "请为合成验收创建一条活动，标题必须是“$title”，" +
                 "日期为2026-11-03，开始时间14:00，结束时间14:30。只生成待确认草稿，不要发布。"
-        val client = AiClient(settings, zone)
-        val chat = runBlocking {
-            client.chat(listOf(AiChatMessage("user", rawUserText)))
-        }
-
-        assertTrue(chat.error.orEmpty(), chat.succeeded)
-        assertEquals("The chat stage must hand off only this synthetic request",
-            rawUserText, chat.proposalSource)
-        assertTrue("The internal marker must not leak into the visible reply",
-            !chat.reply.contains(AiChatActionParser.OPEN))
-
-        val interpretation = runBlocking {
-            client.interpret(requireNotNull(chat.proposalSource), emptyList())
-        }
-        assertTrue(interpretation.warnings.toString(), interpretation.warnings.isEmpty())
-        assertEquals(1, interpretation.proposals.size)
-        val proposal = interpretation.proposals.single()
-        assertEquals(TemporalKind.ACTIVITY, proposal.form.kind)
-        assertEquals("DeepSeek两阶段草稿验证", proposal.form.title)
-        assertTrue(proposal.form.isPublishable())
-
-        val databaseName = "deepseek-chat-draft-${UUID.randomUUID()}.db"
+        val databaseName = "ai-chat-draft-${UUID.randomUUID()}.db"
         var store = PowerStore(context, databaseName)
         try {
+            val client = AiClient(settings, zone)
+            val chat = runBlocking {
+                client.chat(listOf(AiChatMessage("user", rawUserText)))
+            }
+
+            assertTrue("The chat stage did not succeed", chat.succeeded)
+            assertEquals("The chat stage must hand off only this synthetic request",
+                rawUserText, chat.proposalSource)
+            assertTrue("The internal marker must not leak into the visible reply",
+                !chat.reply.contains(AiChatActionParser.OPEN))
+
+            val interpretation = runBlocking {
+                client.interpret(requireNotNull(chat.proposalSource), emptyList())
+            }
+            assertTrue(interpretation.warnings.toString(), interpretation.warnings.isEmpty())
+            assertEquals(1, interpretation.proposals.size)
+            val proposal = interpretation.proposals.single()
+            assertEquals(TemporalKind.ACTIVITY, proposal.form.kind)
+            assertEquals(title, proposal.form.title)
+            assertTrue(proposal.form.isPublishable())
+
             val created = AiDraftService(store).createDrafts(interpretation)
             assertTrue(created.warnings.toString(), created.warnings.isEmpty())
             assertEquals(1, created.draftIds.size)
@@ -94,6 +108,7 @@ class DeepSeekFlashChatDraftFlowProbeTest {
     }
 
     private companion object {
-        const val MODEL_ID = "deepseek/deepseek-v4.1-flash"
+        const val FLASH_MODEL_ID = "deepseek/deepseek-v4.1-flash"
+        const val FREE_MODEL_ID = "stealth/glyph-cluster:free"
     }
 }
