@@ -4,6 +4,12 @@ Date: 2026-10-25
 
 Verdict: **HOLD**
 
+## Latest follow-up: PC-ISSUE-166 — PowerCalApp controller integration (partial evidence)
+
+A new Robolectric API 35 Compose integration test drives the real `PowerCalApp` / `NativeAiChatScreen` through a loopback-only OpenAI-compatible stub. For a supplied SUGGESTED classification it renders the optional action, sends no structured `interpret` request, and leaves draft, formal-event, identity, sequence, queue-order, and commit counts unchanged. The test passed 1/1; related AI chat regressions passed 16/16. A clean detached-worktree full gate passed 541/541 JVM tests across 74 suites, 88/88 tasks, including Debug/AndroidTest APK assembly; lint had 0 errors / 53 warnings. Debug / AndroidTest APK SHA-256: `517DFFFCCFECA6E4B6CBF5961B3CAAA8F2802B3B3B1DD107457180C268F61614` / `2EF06F141A6AEEA12F6272D9C8861D7D6EEC33A316D0F4734A221C90BF7BE0B2`.
+
+This is local-controller evidence only. No free model was called, so `REC-P1-048` remains **NOT TESTED** for live classification; PC-ISSUE-002 remains PARTIAL/BLOCKED. Structural ledger validation reports 218 rows / 217 active reconstructed: 204 PASS / 0 FAIL / 10 BLOCKED / 2 NOT TESTED / 1 SPEC UNRESOLVED / 1 RETIRED; priorities P0/P1/P2 = 145/71/1; historical IDs mapped = 0. Ledger SHA-256 `CB9AF259F8149F494090CD83F78550D7144113EF048122143C94017E529BAD03`; validator artifact SHA-256 `568DF6C3FD6A6853AC78976E7C990886980A892CFC28124ABC90CE048C3B549D`. Structural validation is not product testing. The overall verdict remains **HOLD**.
+
 ## Latest follow-up: PC-ISSUE-164 — stale replacement mobile review PASS (2026-10-25)
 
 `REC-P0-049` now passes: the stale replacement dialog renders a complete 25-row before/after snapshot, including reminder modes, completion tracking and slots, and recurrence active-date limits. Final API 35 `emulator-5560` Compose instrumentation passed 1/1 after scrolling every row/value into view; no formal data changed before explicit confirmation, and one revision was created after confirmation. Full forced offline Gradle passed 541/541 JVM tests across 74 suites, 0 failures/errors/skips, all 88 tasks; lint reported 0 errors / 56 warnings. The final Debug and AndroidTest APKs were pulled from the emulator and matched the built APK hashes. Details, screenshots, and logs: `docs/issues/PC-ISSUE-164-stale-replacement-diff-core.md` and `.local/android-test/reports/freeze-20261025/pc-issue-164-mobile-review/`.

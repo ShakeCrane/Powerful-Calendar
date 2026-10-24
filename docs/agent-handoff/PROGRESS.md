@@ -6,6 +6,13 @@
 - 没有 Phase 1 生产/测试源码变化；实现仍来自已推送 `b46b3dd7592bb1c7de021d543630f84937a0eaef`。本次 HEAD 相对 `3c8b16d` 仅有文档变化；同一 tracked app 源码在干净 worktree 的完整门禁为 540/540 JVM、73 suites、88/88 tasks，包含 AndroidTest APK 和 lint。此次只重跑 Phase 1 定向测试，没有触碰 AVD/实体设备。
 - 秋季 DST fold 第二个同名时间的一次性输入语义仍未定义；不把重复事件的 first-offset 规则外推。已定义主路径 PASS，此边界保持 SPEC UNRESOLVED，因此严格签核及核心冻结继续 HOLD。
 
+## PC-ISSUE-166 — PowerCalApp 随口建议控制器集成（2026-10-25）
+
+- 新增 Robolectric API 35 Compose 回归，使用 loopback stub 驱动真实 `PowerCalApp` / `NativeAiChatScreen`。测试观察到可选创建草稿按钮，未触发结构化 interpret，草稿/正式事件/身份/序号/队列/commit 计数均不变；定向 **1/1 PASS**，关联 AI 回归 **16/16 PASS**。没有访问真实 provider 或使用凭据。测试源码、日志与 JUnit 哈希见 `docs/issues/PC-ISSUE-166-casual-chat-suggestion-button.md`。
+- 干净 detached worktree 完整门禁 **541/541 JVM、74 suites、88/88 tasks**，含 Debug/AndroidTest APK 与 lint（0 errors / 53 warnings）。REC-P1-048 仅有 UI 与本地 controller 路径证据；live free-model classification 保持 **NOT TESTED**，PC-ISSUE-002 保持 PARTIAL/BLOCKED。
+- 台账结构校验：218 rows / 217 active reconstructed；204 PASS / 0 FAIL / 10 BLOCKED / 2 NOT TESTED / 1 SPEC UNRESOLVED / 1 RETIRED；P0/P1/P2=145/71/1；historical IDs mapped=0。ledger SHA-256 `CB9AF259F8149F494090CD83F78550D7144113EF048122143C94017E529BAD03`；validator artifact SHA-256 `568DF6C3FD6A6853AC78976E7C990886980A892CFC28124ABC90CE048C3B549D`；validator unit tests 2/2 PASS。结构检查不是产品行为证据。
+- 本次不触碰 AVD/实体设备；历史 API 35 screen-only 子项仍按原报告范围引用。独立报告为 `docs/issues/PC-ISSUE-166-casual-chat-suggestion-button.md`。该集成补测与台账证据更新随本次提交推送；P1-048 未关闭，总冻结 HOLD。
+
 ## PC-ISSUE-PHASE1 — 当前用户请求复验（2026-10-25，HEAD `3c8b16d`）
 
 - 读取并遵循根目录 `AGENTS.md`。现场为 `main` / `origin/main` 同步；跟踪源码无未提交修改。普通新建入口继续共用内存 `NewEventEditSession`；生产实现仍由已推送 `b46b3dd7592bb1c7de021d543630f84937a0eaef` 提供，本轮未改产品源码。
