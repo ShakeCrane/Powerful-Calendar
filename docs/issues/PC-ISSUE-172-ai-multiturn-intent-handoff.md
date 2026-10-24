@@ -2,7 +2,7 @@
 
 日期：2026-10-25 00:30 前后（用户提供的最后一轮真实聊天转录）
 优先级：P1 功能阻断；若发现绕过显式审批直接正式发布，升级 P0。
-状态：OPEN / 代码传播路径已核实；尚未执行修复后回归。
+状态：确定性客户端/任务快照/审查/写入链路 PASS；真实 Provider 验收 BLOCKED；核心冻结 HOLD。
 注意：这份记录只把 2026-10-25 凌晨最后一轮视为最新复现，之前几天的聊天属于历史版本迭代。
 
 ## 复现（避免纳入个人私人日程）
@@ -60,3 +60,22 @@
 ## Agent 交接
 
 优先审查 AiClient.kt、AiChatActionParser.kt、AiConversationWindow.kt、PowerCalApp.kt、AiModels.kt/AiResponseParser、AiChatHistoryStore.kt、草稿及审批/幂等层。与 PC-ISSUE-002（免费模型超时/提案未闭环）关联，但独立归因和验收。不要覆盖已有 design/、DraftDeckFeedbackTest.kt、PC-OBS-005 等工作，遵守 AGENTS.md，不操作用户真机或其数据，不超出许可调用付费 API。
+
+## 2026-10-25 修复与验证结论
+
+### 代码修复
+
+- 增加有界、可恢复的 `AiConversationTaskSnapshot`：固定原始用户请求的消息 ID、时间锚点及时区，将受信用户证据与 assistant 建议分开；多轮修订、话题切换、过期任务及不完整旧历史都有明确判定。
+- 聊天完成后结构化生成使用经过检查的完整任务快照，assistant 文本仅作为不可信建议；相同标题的候选按独立位置审查，不能因标题相同去重。时间段只作为提案，仍需用户审查后才能写入。
+- 增加任务写入收据及事务幂等保护。审查前不落草稿或正式事件；明确选择后仅写入被选候选，发布仍须单独授权。备份、恢复和数据库升级保留任务收据语义。
+- 红绿复现另发现一项相邻根因：裸词“不 / 不用 / 不用了 / 不要 / 取消 / 算了 / 停止”曾被当成肯定确认继续任务。现仅在 assistant 上一轮确实询问重复规则时，把“不用”作为局部修正；对“要现在创建吗？”后的拒绝则拒绝任务续接。隔离旧代码 worktree 中新增的回归断言按预期 FAIL，主工作树修复后 PASS。
+
+### 验证结果
+
+- **定向 JVM：PASS**。`AiConversationTaskSnapshotTest` 与 `AiChatMultiturnTaskPipelineTest` 通过；固定时间锚点、跨午夜/时区、纠正与话题切换、同名候选保留、重放幂等及拒绝回答均由确定性测试覆盖。修复前单条拒绝回答回归失败，证明它能捕获旧行为。
+- **完整 Gradle：PASS**。命令：`.\gradlew.bat :app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug --offline --rerun-tasks --no-daemon --console=plain`；540/540 JVM 测试、74 suites、0 failures/errors/skips，88/88 tasks，lint 0 errors / 56 warnings。日志 `.local/android-test/reports/freeze-20261025/pc-issue-172-current-review/e01-final-commit-gate.log`，SHA-256 `CBE1B167E33551AB2455CE07E3A9D68D42A2A7E09AAB169182442EFF3E35F60D`。
+- **API 35 新建隔离 AVD `emulator-5560`：PASS（本地替身范围）**。生产 `PowerCalApp` Compose 界面通过 loopback fake HTTP server 重放多轮输入：审查前草稿、正式事件及提交数为 0；屏幕显示 5 个互相独立的同名 `14514` Activity 候选；显式选择“写入草稿”后恰有 5 个唯一待处理草稿，正式事件和提交数仍为 0。AndroidJUnitRunner 1/1 PASS。日志 SHA-256 `90524D5DF5E300917E72A8B530BA353A8A22CF6739BDC643C512D37219A320B8`；截图 SHA-256 `4955F4C827ECBCE3C522DC36EB7B7B73705122F4702719504F9CCDA04731B2B9`，文件 `.local/android-test/reports/freeze-20261025/pc-issue-172-current-review/powercalapp-multiturn-final-review.png`。Debug APK SHA-256 `30C3AAED678F3569AB2ECB350A5298236EE37BA6DE27C169714D63222D9F5964`。
+- 模拟器为新建空白 QA AVD；未触碰已有 `emulator-5554/5556`。5554 的既有 `powercal-v2.db` 前后 SHA-256 均为 `3dc1ad88f3579b8ff0a025e100224a8e9412192033829fd1d8467e913fb945fd`。实体设备未测试，由用户执行。
+- **真实 Provider：BLOCKED**。桌面文件名及环境变量只读检查未找到可用 endpoint/credential；没有读取密钥内容，也没有发起第三方请求。免费 Provider 和已授权 DeepSeek V4.1 Flash 的真实 API/Android 路径因此未签核，不将 fake provider 结果表述为模型服务 PASS。
+
+修复树基于 `b14ec3e1d9033f900ab62c3603674f3e8b699964`；21 个源码/测试/Debug 配置文件的 SHA-256 清单及所有证据摘要记录于 `.local/android-test/reports/freeze-20261025/pc-issue-172-current-review/e01-final-verification.json`，源码与测试集合 SHA-256 为 `5BA7DA819013A562979295D86CF4E69628D55FC9FD1EF81C7326156413D944FB`。验收矩阵 `REC-P1-089` 记录确定性本地路径 PASS，`REC-P1-090` 单独保留真实 Provider BLOCKED。新增两项均为 RECONSTRUCTED，原始历史 ID 映射为 0。结构校验得到 218 rows（217 active reconstructed / 1 retired）：203 PASS / 0 FAIL / 10 BLOCKED / 2 NOT TESTED / 2 SPEC UNRESOLVED / 1 RETIRED；P0/P1/P2 = 145/71/1。Ledger SHA-256 `2ECCD078AF5B30ABE17A2962604568214A21C5F41CEF11DAE336FE07A2DC63E9`；validator JSON SHA-256 `17140DAC63B07898CA54DAE4BD4CA4A6DC4496F8C41607813B82751043912198`。该 validator 只检查矩阵结构（`product_behavior_tested=false`），产品行为证据来自上面的测试。冻结总判定继续 HOLD。

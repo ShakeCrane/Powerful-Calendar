@@ -22,7 +22,7 @@ class VersionContractTest {
 
     @Test
     fun schemaBackupAndPackageVersionsAreSeparateAxes() {
-        assertEquals(4, PowerStore.VERSION)
+        assertEquals(5, PowerStore.VERSION)
         assertEquals(1, BackupEnvelope.FORMAT_VERSION)
         assertNotEquals(BuildConfig.VERSION_CODE, PowerStore.VERSION)
         assertNotEquals(BuildConfig.VERSION_CODE, BackupEnvelope.FORMAT_VERSION)

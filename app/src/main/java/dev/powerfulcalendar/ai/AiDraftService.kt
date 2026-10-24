@@ -6,14 +6,30 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.time.Clock
 
 /** Turns a validated interpretation into real draft cards. Multiple cards may share one eventSeq. */
-class AiDraftService(private val store: PowerStore) {
+class AiDraftService(
+    private val store: PowerStore,
+    private val clock: Clock = Clock.systemUTC()
+) {
     data class Created(val draftIds: List<Long>, val warnings: List<String>)
+
+    data class ReviewedApply(
+        val handledIndices: Set<Int>,
+        val stagedCount: Int,
+        val publishedCount: Int,
+        val alreadyResolvedCount: Int,
+        val warnings: List<String>
+    )
 
     fun createDrafts(interpretation: AiInterpretation): Created {
         val ids = mutableListOf<Long>()
         val warnings = interpretation.warnings.toMutableList()
+        if (interpretation.taskSnapshot != null) {
+            warnings.add("自动任务候选必须先经审核卡明确选择；未写入草稿")
+            return Created(ids, warnings)
+        }
         interpretation.proposals.forEachIndexed { index, proposal ->
             if (proposal.blocked != null) {
                 warnings.add(proposal.blocked)
@@ -39,6 +55,109 @@ class AiDraftService(private val store: PowerStore) {
             }
         }
         return Created(ids, warnings)
+    }
+
+    /**
+     * Applies only the candidate positions explicitly selected in the review UI. Automatic task
+     * previews use durable task receipts; older/manual proposal paths retain their existing draft
+     * behavior. A retry can therefore neither allocate a second identity nor publish twice.
+     */
+    fun applyReviewedProposals(
+        interpretation: AiInterpretation,
+        selectedPositions: Set<Int>,
+        publish: Boolean
+    ): ReviewedApply {
+        val task = interpretation.taskSnapshot
+        if (task != null && !task.isValidAt(clock.millis())) {
+            return ReviewedApply(
+                handledIndices = emptySet(),
+                stagedCount = 0,
+                publishedCount = 0,
+                alreadyResolvedCount = 0,
+                warnings = listOf("待处理 AI 任务已过期，请重新说明任务后再生成候选")
+            )
+        }
+        val handled = mutableSetOf<Int>()
+        val warnings = mutableListOf<String>()
+        var staged = 0
+        var published = 0
+        var alreadyResolved = 0
+
+        selectedPositions.sorted().forEach { position ->
+            val proposal = interpretation.proposals.getOrNull(position) ?: return@forEach
+            if (proposal.blocked != null) {
+                warnings.add(proposal.blocked)
+                return@forEach
+            }
+            try {
+                if (task == null) {
+                    val target = proposal.eventSeq
+                    if (proposal.operation != DraftOperation.CREATE &&
+                        (target == null || store.get(target) == null)
+                    ) {
+                        warnings.add("第 ${position + 1} 项目标事件不存在，未生成草稿")
+                        return@forEach
+                    }
+                    val draft = if (proposal.operation == DraftOperation.CREATE) {
+                        store.newDraft(proposal.form, null, DraftOperation.CREATE, actor = "ai")
+                    } else {
+                        store.newDraft(proposal.form, proposal.eventSeq, proposal.operation, actor = "ai")
+                    }
+                    handled.add(position)
+                    if (publish) {
+                        when (val result = store.commit(draft.draftId, actor = "user")) {
+                            is PowerStore.CommitOutcome.Committed -> published++
+                            else -> {
+                                staged++
+                                warnings.add("序号 ${draft.eventSeq} 未发布；草稿仍可编辑")
+                            }
+                        }
+                    } else staged++
+                    return@forEach
+                }
+
+                when (val result = store.stageAiTaskProposal(
+                    taskId = task.taskId,
+                    taskRevision = task.revision,
+                    itemIndex = proposal.sourceIndex,
+                    form = proposal.form,
+                    operation = proposal.operation,
+                    eventSeq = proposal.eventSeq
+                )) {
+                    is PowerStore.AiTaskProposalStage.Pending -> {
+                        handled.add(position)
+                        if (publish) {
+                            when (val outcome = store.commit(
+                                result.draft.draftId,
+                                actor = "user",
+                                idempotencyKey = result.idempotencyKey
+                            )) {
+                                is PowerStore.CommitOutcome.Committed ->
+                                    if (outcome.duplicate) alreadyResolved++ else published++
+                                else -> {
+                                    staged++
+                                    warnings.add(
+                                        "序号 ${result.draft.eventSeq} 未发布；草稿仍可编辑")
+                                }
+                            }
+                        } else staged++
+                    }
+                    is PowerStore.AiTaskProposalStage.Committed -> {
+                        handled.add(position)
+                        alreadyResolved++
+                    }
+                    PowerStore.AiTaskProposalStage.Discarded -> {
+                        handled.add(position)
+                        alreadyResolved++
+                    }
+                }
+            } catch (error: Exception) {
+                if (error is kotlinx.coroutines.CancellationException) throw error
+                warnings.add("第 ${position + 1} 项未能写入：" +
+                    (error.message ?: error.javaClass.simpleName))
+            }
+        }
+        return ReviewedApply(handled, staged, published, alreadyResolved, warnings)
     }
 }
 

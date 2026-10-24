@@ -87,13 +87,17 @@ data class AiProposal(
     val form: DraftForm,
     val rationale: String = "",
     /** Non-null when the proposal cannot be turned into a card (e.g. unknown target event). */
-    val blocked: String? = null
+    val blocked: String? = null,
+    /** Stable index in the model's original response array; survives review-list filtering. */
+    val sourceIndex: Int = 0
 )
 
 data class AiInterpretation(
     val proposals: List<AiProposal> = emptyList(),
     val warnings: List<String> = emptyList(),
-    val rawReply: String = ""
+    val rawReply: String = "",
+    /** Present only for an automatic, explicitly requested multi-turn task preview. */
+    val taskSnapshot: AiConversationTaskSnapshot? = null
 ) {
     val usable: Boolean get() = proposals.isNotEmpty()
 }
@@ -315,7 +319,8 @@ object AiResponseParser {
                     eventSeq = eventSeq,
                     form = form,
                     rationale = item.optString("rationale"),
-                    blocked = blocked
+                    blocked = blocked,
+                    sourceIndex = index
                 )
             )
         }

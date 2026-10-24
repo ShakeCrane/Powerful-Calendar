@@ -651,8 +651,10 @@ class AiChatClientTest {
             assertNull("Server error: ${serverError.get()}", serverError.get())
             assertTrue(reply.error.orEmpty(), reply.succeeded)
             assertNull(reply.proposalSource)
-            assertEquals(rawUserText, reply.automaticProposalSource)
-            assertNotEquals(inventedSource, reply.automaticProposalSource)
+            assertEquals(listOf(rawUserText),
+                reply.automaticProposalTask?.userEvidence?.map { it.text })
+            assertFalse(reply.automaticProposalTask?.userEvidence.orEmpty()
+                .any { it.text.contains(inventedSource) })
             assertTrue(reply.reply, reply.reply.contains("已识别日程"))
             assertFalse(reply.reply.contains(AiChatActionParser.OPEN))
 

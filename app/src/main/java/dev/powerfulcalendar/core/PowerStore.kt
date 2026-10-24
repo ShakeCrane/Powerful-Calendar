@@ -6,6 +6,7 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import org.json.JSONArray
 import org.json.JSONObject
+import java.security.MessageDigest
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -175,6 +176,7 @@ class PowerStore(
         )
         db.execSQL("CREATE INDEX executions_event ON executions(event_seq, at_ms)")
         createReviewedAuthorizationTable(db)
+        createAiTaskReceiptTable(db)
     }
 
     /**
@@ -192,6 +194,27 @@ class PowerStore(
                  PRIMARY KEY(session_id, draft_id)
                )"""
         )
+    }
+
+    /** Durable idempotency for one reviewed AI task revision and candidate index. */
+    private fun createAiTaskReceiptTable(db: SQLiteDatabase) {
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS ai_task_receipts(
+                 task_id TEXT NOT NULL,
+                 task_revision INTEGER NOT NULL,
+                 item_index INTEGER NOT NULL,
+                 fingerprint TEXT NOT NULL,
+                 event_seq INTEGER NOT NULL,
+                 draft_id INTEGER NOT NULL UNIQUE,
+                 state TEXT NOT NULL,
+                 idempotency_key TEXT NOT NULL UNIQUE,
+                 commit_id TEXT,
+                 created_ms INTEGER NOT NULL,
+                 updated_ms INTEGER NOT NULL,
+                 PRIMARY KEY(task_id, task_revision, item_index)
+               )"""
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS ai_task_receipts_event ON ai_task_receipts(event_seq)")
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -213,6 +236,10 @@ class PowerStore(
             createUniqueActiveDraftIndex(db)
             createHumanEditorTable(db)
             version = 4
+        }
+        if (version < 5 && newVersion >= 5) {
+            createAiTaskReceiptTable(db)
+            version = 5
         }
         require(version == newVersion) {
             "PowerCal 数据库升级路径不完整 (v$oldVersion → v$newVersion)，已拒绝打开"
@@ -377,6 +404,16 @@ class PowerStore(
         )
         db.execSQL("UPDATE drafts SET status='COMMITTED', updated_ms=? WHERE draft_id=?",
             arrayOf(now, committedId))
+        db.execSQL(
+            """UPDATE ai_task_receipts SET
+                 state=CASE (SELECT status FROM drafts WHERE draft_id=ai_task_receipts.draft_id)
+                   WHEN 'COMMITTED' THEN 'COMMITTED' WHEN 'DISCARDED' THEN 'DISCARDED' ELSE state END,
+                 commit_id=CASE WHEN (SELECT status FROM drafts WHERE draft_id=ai_task_receipts.draft_id)='COMMITTED'
+                   THEN (SELECT commit_id FROM commits WHERE draft_id=ai_task_receipts.draft_id)
+                   ELSE commit_id END,
+                 updated_ms=? WHERE event_seq=? AND state='PENDING'""",
+            arrayOf(now, seq)
+        )
     }
 
     private fun hasColumn(db: SQLiteDatabase, table: String, column: String): Boolean =
@@ -683,6 +720,20 @@ class PowerStore(
         data object NotAuthorized : CommitOutcome
     }
 
+    sealed interface AiTaskProposalStage {
+        data class Pending(
+            val draft: DraftCard,
+            val idempotencyKey: String,
+            val reused: Boolean
+        ) : AiTaskProposalStage
+        data class Committed(
+            val eventSeq: Long,
+            val revision: Long,
+            val commitId: String
+        ) : AiTaskProposalStage
+        data object Discarded : AiTaskProposalStage
+    }
+
     sealed interface DirectEditOutcome {
         data class Saved(val eventSeq: Long, val revision: Long, val changed: Boolean) : DirectEditOutcome
         data class Conflict(val current: TemporalRecord?) : DirectEditOutcome
@@ -822,6 +873,153 @@ class PowerStore(
             "A human editor is active; AI calendar mutation was rejected"
         }
     }
+
+    /**
+     * Stage one candidate only after explicit review. A stable task/revision/index receipt makes
+     * retries return the same draft, and rejects a different model result under the same version.
+     * Identity allocation, draft insertion and receipt insertion are one SQLite transaction.
+     */
+    @Synchronized
+    fun stageAiTaskProposal(
+        taskId: String,
+        taskRevision: Int,
+        itemIndex: Int,
+        form: DraftForm,
+        operation: DraftOperation,
+        eventSeq: Long?
+    ): AiTaskProposalStage {
+        require(taskId.matches(Regex("[A-Za-z0-9_-]{1,100}"))) { "AI task ID 无效" }
+        require(taskRevision > 0) { "AI task revision 无效" }
+        require(itemIndex in 0..99) { "AI 提案索引超出范围" }
+        require(form.recurrenceEditScope == null && form.editOccurrenceKey == null) {
+            "重复范围提案必须经正式事件范围编辑流程保存"
+        }
+        require((operation == DraftOperation.CREATE) == (eventSeq == null)) {
+            "AI 提案操作与目标序号不一致"
+        }
+        val idempotencyKey = "ai-task-v1/$taskId/$taskRevision/$itemIndex"
+        val fingerprintInput = JSONObject()
+            .put("operation", operation.name)
+            .put("eventSeq", eventSeq ?: JSONObject.NULL)
+            .put("form", JSONObject(encodeForm(form)))
+            .toString()
+        val fingerprint = MessageDigest.getInstance("SHA-256")
+            .digest(fingerprintInput.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+
+        return tx { db ->
+            val previous = db.rawQuery(
+                """SELECT fingerprint,event_seq,draft_id,state,commit_id
+                   FROM ai_task_receipts WHERE task_id=? AND task_revision=? AND item_index=?""",
+                arrayOf(taskId, taskRevision.toString(), itemIndex.toString())
+            ).use { cursor ->
+                if (!cursor.moveToFirst()) null else AiTaskReceiptRow(
+                    fingerprint = cursor.getString(0),
+                    eventSeq = cursor.getLong(1),
+                    draftId = cursor.getLong(2),
+                    state = cursor.getString(3),
+                    commitId = if (cursor.isNull(4)) null else cursor.getString(4)
+                )
+            }
+            if (previous != null) {
+                check(previous.fingerprint == fingerprint) {
+                    "同一 AI 任务版本的候选内容已变化，原审核结果未覆盖"
+                }
+                when (previous.state) {
+                    "COMMITTED" -> {
+                        val commit = requireNotNull(previous.commitId)
+                        val revision = db.rawQuery(
+                            "SELECT new_revision FROM commits WHERE commit_id=?",
+                            arrayOf(commit)
+                        ).use { cursor ->
+                            check(cursor.moveToFirst()) { "AI 提案提交收据缺失" }
+                            cursor.getLong(0)
+                        }
+                        return@tx AiTaskProposalStage.Committed(
+                            previous.eventSeq, revision, commit)
+                    }
+                    "DISCARDED" -> return@tx AiTaskProposalStage.Discarded
+                    "PENDING" -> {
+                        val existing = requireNotNull(readDraft(db, previous.draftId)) {
+                            "AI 提案收据引用的草稿不存在"
+                        }
+                        when (existing.status) {
+                            DraftStatus.COMMITTED -> {
+                                val commit = db.rawQuery(
+                                    "SELECT commit_id,new_revision FROM commits WHERE draft_id=?",
+                                    arrayOf(existing.draftId.toString())
+                                ).use { cursor ->
+                                    check(cursor.moveToFirst()) { "AI 提案提交收据缺失" }
+                                    cursor.getString(0) to cursor.getLong(1)
+                                }
+                                db.execSQL(
+                                    "UPDATE ai_task_receipts SET state='COMMITTED',commit_id=?,updated_ms=? WHERE draft_id=?",
+                                    arrayOf(commit.first, System.currentTimeMillis(), existing.draftId)
+                                )
+                                return@tx AiTaskProposalStage.Committed(
+                                    existing.eventSeq, commit.second, commit.first)
+                            }
+                            DraftStatus.DISCARDED -> {
+                                db.execSQL(
+                                    "UPDATE ai_task_receipts SET state='DISCARDED',updated_ms=? WHERE draft_id=?",
+                                    arrayOf(System.currentTimeMillis(), existing.draftId)
+                                )
+                                return@tx AiTaskProposalStage.Discarded
+                            }
+                            else -> if (existing.isActionable) {
+                                return@tx AiTaskProposalStage.Pending(
+                                    existing, idempotencyKey, reused = true)
+                            } else return@tx AiTaskProposalStage.Discarded
+                        }
+                    }
+                    else -> error("AI 提案收据状态无效")
+                }
+            }
+
+            checkDraftWriteAllowed(db, actor = "ai")
+            val targetSeq: Long
+            val baseRevision: Long?
+            if (operation == DraftOperation.CREATE) {
+                targetSeq = allocateIdentity(db, form.source)
+                baseRevision = null
+            } else {
+                targetSeq = requireNotNull(eventSeq)
+                val current = requireNotNull(readObject(db, targetSeq)) {
+                    "AI 提案目标事件不存在或已删除"
+                }
+                val occupied = db.rawQuery(
+                    "SELECT 1 FROM drafts WHERE event_seq=? AND status IN ('PENDING','CONFLICT','INVALID') LIMIT 1",
+                    arrayOf(targetSeq.toString())
+                ).use { it.moveToFirst() }
+                check(!occupied) { "目标事件已有待处理草稿；请先处理后再审核此 AI 提案" }
+                baseRevision = current.revision
+            }
+            val draft = insertDraft(db, form, targetSeq, baseRevision, operation)
+            val now = System.currentTimeMillis()
+            db.insertOrThrow("ai_task_receipts", null, ContentValues().apply {
+                put("task_id", taskId)
+                put("task_revision", taskRevision)
+                put("item_index", itemIndex)
+                put("fingerprint", fingerprint)
+                put("event_seq", targetSeq)
+                put("draft_id", draft.draftId)
+                put("state", "PENDING")
+                put("idempotency_key", idempotencyKey)
+                putNull("commit_id")
+                put("created_ms", now)
+                put("updated_ms", now)
+            })
+            AiTaskProposalStage.Pending(draft, idempotencyKey, reused = false)
+        }
+    }
+
+    private data class AiTaskReceiptRow(
+        val fingerprint: String,
+        val eventSeq: Long,
+        val draftId: Long,
+        val state: String,
+        val commitId: String?
+    )
 
     /**
      * Explicit creation of a complete event without an intermediate pending-draft row. Identity,
@@ -973,6 +1171,7 @@ class PowerStore(
         if (isLocked(db)) {
             return@tx StageResult.Locked
         }
+        val now = System.currentTimeMillis()
         val updated = db.compileStatement(
             """UPDATE drafts SET payload=?, draft_version=draft_version+1, updated_ms=?,
                       status=CASE WHEN status='INVALID' THEN 'PENDING' ELSE status END
@@ -1040,14 +1239,19 @@ class PowerStore(
         }
         val card = readDraft(db, draftId) ?: return@tx false
         if (card.status == DraftStatus.COMMITTED) return@tx false
+        val now = System.currentTimeMillis()
         val updated = db.compileStatement(
             """UPDATE drafts SET status='DISCARDED', updated_ms=?
                WHERE draft_id=? AND status IN ('PENDING','CONFLICT','INVALID')"""
         ).apply {
-            bindLong(1, System.currentTimeMillis())
+            bindLong(1, now)
             bindLong(2, draftId)
         }.executeUpdateDelete()
         // Report the row count, not the earlier read: a concurrent discard must not look successful.
+        if (updated == 1) db.execSQL(
+            "UPDATE ai_task_receipts SET state='DISCARDED',updated_ms=? WHERE draft_id=? AND state='PENDING'",
+            arrayOf(now, draftId)
+        )
         updated == 1
     }
 
@@ -1063,12 +1267,17 @@ class PowerStore(
             arrayOf(existing.eventSeq.toString(), draftId.toString())
         ).use { it.moveToFirst() }
         if (occupied) return@tx false
+        val now = System.currentTimeMillis()
         val updated = db.compileStatement(
             "UPDATE drafts SET status='PENDING', updated_ms=? WHERE draft_id=? AND status='DISCARDED'"
         ).apply {
-            bindLong(1, System.currentTimeMillis())
+            bindLong(1, now)
             bindLong(2, draftId)
         }.executeUpdateDelete()
+        if (updated == 1) db.execSQL(
+            "UPDATE ai_task_receipts SET state='PENDING',commit_id=NULL,updated_ms=? WHERE draft_id=?",
+            arrayOf(now, draftId)
+        )
         updated == 1
     }
 
@@ -2540,12 +2749,35 @@ class PowerStore(
                     })
                 }
             })
+            put(BackupEnvelope.AI_TASK_RECEIPTS, JSONArray().apply {
+                db.rawQuery(
+                    """SELECT task_id,task_revision,item_index,fingerprint,event_seq,draft_id,state,
+                              idempotency_key,commit_id,created_ms,updated_ms
+                       FROM ai_task_receipts ORDER BY task_id,task_revision,item_index""", null
+                ).use { cursor ->
+                    while (cursor.moveToNext()) put(JSONObject().apply {
+                        put("taskId", cursor.getString(0))
+                        put("taskRevision", cursor.getInt(1))
+                        put("itemIndex", cursor.getInt(2))
+                        put("fingerprint", cursor.getString(3))
+                        put("eventSeq", cursor.getLong(4))
+                        put("draftId", cursor.getLong(5))
+                        put("state", cursor.getString(6))
+                        put("idempotencyKey", cursor.getString(7))
+                        if (cursor.isNull(8)) put("commitId", JSONObject.NULL)
+                        else put("commitId", cursor.getString(8))
+                        put("createdMs", cursor.getLong(9))
+                        put("updatedMs", cursor.getLong(10))
+                    })
+                }
+            })
             put("nextSeq", metaLong(db, "next_seq"))
             put("nextOrder", metaLong(db, "next_order"))
         }
         // The writer must never produce a file the same build would refuse to restore.
-        BackupEnvelope.TABLES.forEach { table ->
-            val rows = payload.getJSONArray(table).length()
+        (BackupEnvelope.TABLES + BackupEnvelope.OPTIONAL_TABLES).forEach { table ->
+            val array = payload.optJSONArray(table) ?: return@forEach
+            val rows = array.length()
             require(rows <= MAX_BACKUP_ROWS) {
                 "数据量超过单次备份上限 $MAX_BACKUP_ROWS（$table=$rows）；当前版本不支持自动归档，" +
                     "请先导出并清理部分历史数据，或联系维护者处理"
@@ -2597,7 +2829,7 @@ class PowerStore(
         if (hasAnyUserData(readableDatabase)) throw NonEmptyRestoreTargetException()
         val verified = BackupEnvelope.verify(input, VERSION, allowLegacyV2)
         val payload = verified.payload
-        validateBackupPayload(payload)
+        validateBackupPayload(payload, verified.databaseSchemaVersion)
         afterPreflight?.invoke()
         return tx { db ->
             // Re-check inside the transaction: another connection may have written since preflight.
@@ -2708,6 +2940,27 @@ class PowerStore(
                 })
             }
 
+            payload.optJSONArray(BackupEnvelope.AI_TASK_RECEIPTS)?.let { receipts ->
+                for (index in 0 until receipts.length()) {
+                    val item = receipts.getJSONObject(index)
+                    db.insertOrThrow("ai_task_receipts", null, ContentValues().apply {
+                        put("task_id", item.getString("taskId"))
+                        put("task_revision", item.getInt("taskRevision"))
+                        put("item_index", item.getInt("itemIndex"))
+                        put("fingerprint", item.getString("fingerprint"))
+                        put("event_seq", item.getLong("eventSeq"))
+                        put("draft_id", item.getLong("draftId"))
+                        put("state", item.getString("state"))
+                        put("idempotency_key", item.getString("idempotencyKey"))
+                        if (item.has("commitId") && !item.isNull("commitId")) {
+                            put("commit_id", item.getString("commitId"))
+                        } else putNull("commit_id")
+                        put("created_ms", item.optLong("createdMs", System.currentTimeMillis()))
+                        put("updated_ms", item.optLong("updatedMs", System.currentTimeMillis()))
+                    })
+                }
+            }
+
             val links = payload.getJSONArray("sourceLinks")
             for (index in 0 until links.length()) {
                 val item = links.getJSONObject(index)
@@ -2779,7 +3032,8 @@ class PowerStore(
     private fun hasAnyUserData(db: SQLiteDatabase): Boolean {
         val tables = listOf(
             "identities", "objects", "drafts", "commits", "source_links",
-            "migrations", "schedule_intents", "executions", "ai_sessions", "ai_session_drafts"
+            "migrations", "schedule_intents", "executions", "ai_sessions", "ai_session_drafts",
+            "ai_task_receipts"
         )
         tables.forEach { table ->
             val count = db.rawQuery("SELECT COUNT(*) FROM $table", null).use {
@@ -2795,7 +3049,7 @@ class PowerStore(
      * Pre-flight validation. It runs before the write transaction, so a corrupted or inconsistent
      * envelope is rejected without touching the destination database.
      */
-    private fun validateBackupPayload(payload: JSONObject) {
+    private fun validateBackupPayload(payload: JSONObject, backupSchemaVersion: Int) {
         require(!payload.has("ai_sessions") && !payload.has("ai_session_drafts")) {
             "备份包含不应导入的 AI 授权数据"
         }
@@ -2804,6 +3058,15 @@ class PowerStore(
             val array = payload.optJSONArray(key)
                 ?: throw IllegalArgumentException("备份缺少 $key 数组")
             require(array.length() <= MAX_BACKUP_ROWS) { "备份 $key 数量超过上限 $MAX_BACKUP_ROWS" }
+        }
+        val receiptArray = payload.optJSONArray(BackupEnvelope.AI_TASK_RECEIPTS)
+        if (backupSchemaVersion >= 5) {
+            require(receiptArray != null) { "schema v$backupSchemaVersion 备份缺少 AI 任务收据" }
+        }
+        if (receiptArray != null) {
+            require(receiptArray.length() <= MAX_BACKUP_ROWS) {
+                "备份 ${BackupEnvelope.AI_TASK_RECEIPTS} 数量超过上限 $MAX_BACKUP_ROWS"
+            }
         }
         payload.optJSONArray("executions")?.let {
             // Older v1 files may still carry this array; it is ignored on purpose, not restored.
@@ -2847,14 +3110,76 @@ class PowerStore(
 
         val commitIds = HashSet<String>()
         val commits = payload.getJSONArray("commits")
+        val commitsById = HashMap<String, JSONObject>()
         for (index in 0 until commits.length()) {
             val item = commits.getJSONObject(index)
             val commitId = item.getString("commitId")
             require(commitId.isNotBlank() && commitIds.add(commitId)) { "提交 ID 重复或为空：$commitId" }
+            commitsById[commitId] = item
             require(item.getLong("eventSeq") in seqs) { "提交 $commitId 引用了不存在的身份" }
             require(item.getLong("revision") >= 1L) { "提交 $commitId 的修订号非法" }
             if (item.has("draftId") && !item.isNull("draftId")) {
                 require(item.getLong("draftId") in draftIds) { "提交 $commitId 引用了不存在的草稿" }
+            }
+        }
+
+        if (receiptArray != null) {
+            val draftsById = (0 until drafts.length()).associate { index ->
+                val item = drafts.getJSONObject(index)
+                item.getLong("draftId") to item
+            }
+            val receiptKeys = HashSet<Triple<String, Int, Int>>()
+            val receiptDraftIds = HashSet<Long>()
+            val idempotencyKeys = HashSet<String>()
+            for (index in 0 until receiptArray.length()) {
+                val receipt = receiptArray.getJSONObject(index)
+                val taskId = receipt.getString("taskId")
+                val taskRevision = receipt.getInt("taskRevision")
+                val itemIndex = receipt.getInt("itemIndex")
+                val eventSeq = receipt.getLong("eventSeq")
+                val draftId = receipt.getLong("draftId")
+                val state = receipt.getString("state")
+                val idempotencyKey = receipt.getString("idempotencyKey")
+                val key = Triple(taskId, taskRevision, itemIndex)
+                require(taskId.matches(Regex("[A-Za-z0-9_-]{1,100}")) && taskRevision > 0 &&
+                    itemIndex in 0..99 && receiptKeys.add(key)) {
+                    "AI 任务收据标识无效或重复"
+                }
+                require(receipt.optString("fingerprint").matches(Regex("[0-9a-f]{64}"))) {
+                    "AI 任务收据 fingerprint 无效"
+                }
+                require(idempotencyKey == "ai-task-v1/$taskId/$taskRevision/$itemIndex" &&
+                    idempotencyKeys.add(idempotencyKey)) {
+                    "AI 任务收据 idempotencyKey 无效或重复"
+                }
+                require(eventSeq in seqs && receiptDraftIds.add(draftId)) {
+                    "AI 任务收据引用的身份或草稿重复/无效"
+                }
+                val draft = draftsById[draftId]
+                    ?: throw IllegalArgumentException("AI 任务收据引用的草稿不存在")
+                require(draft.getLong("eventSeq") == eventSeq) {
+                    "AI 任务收据的事件序号与草稿不匹配"
+                }
+                when (state) {
+                    "PENDING" -> require(draft.getString("status") in
+                        setOf("PENDING", "CONFLICT", "INVALID")) {
+                        "待处理 AI 任务收据引用了已结束草稿"
+                    }
+                    "DISCARDED" -> require(draft.getString("status") == "DISCARDED" &&
+                        (!receipt.has("commitId") || receipt.isNull("commitId"))) {
+                        "已拒绝 AI 任务收据状态与草稿不一致"
+                    }
+                    "COMMITTED" -> {
+                        val commitId = receipt.optString("commitId")
+                        val commit = commitsById[commitId]
+                        require(draft.getString("status") == "COMMITTED" && commit != null &&
+                            !commit.isNull("draftId") && commit.getLong("draftId") == draftId &&
+                            commit.getLong("eventSeq") == eventSeq) {
+                            "已提交 AI 任务收据缺少对应提交记录"
+                        }
+                    }
+                    else -> throw IllegalArgumentException("AI 任务收据状态无效")
+                }
             }
         }
 
@@ -2878,7 +3203,7 @@ class PowerStore(
 
     companion object {
         const val DATABASE_NAME = "powercal-v2.db"
-        const val VERSION = 4
+        const val VERSION = 5
 
         /** Defensive bound for restore input; a personal calendar stays far below this. */
         const val MAX_BACKUP_ROWS = 200_000

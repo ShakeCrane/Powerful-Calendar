@@ -150,29 +150,40 @@ class AiChatDraftPipelineTest {
                     client.chat(listOf(AiChatMessage("user", casualUserText)))
                 }
                 assertEquals(casualUserText, suggestion.proposalSource)
-                assertNull(suggestion.automaticProposalSource)
+                assertNull(suggestion.automaticProposalTask)
                 assertFalse(suggestion.proposalSource.orEmpty().contains(fabricatedModelSource))
 
                 val chat = runBlocking {
-                    client.chat(listOf(AiChatMessage("user", rawUserText)))
+                    client.chat(listOf(AiChatMessage(
+                        role = "user",
+                        content = rawUserText,
+                        createdAtMillis = java.time.LocalDateTime.of(2026, 10, 25, 0, 30)
+                            .atZone(java.time.ZoneId.of("Asia/Shanghai")).toInstant().toEpochMilli(),
+                        zoneId = "Asia/Shanghai"
+                    )))
                 }
 
                 assertTrue(chat.error.orEmpty(), chat.succeeded)
                 assertNull(chat.proposalSource)
-                assertEquals(rawUserText, chat.automaticProposalSource)
+                assertEquals(listOf(rawUserText),
+                    chat.automaticProposalTask?.userEvidence?.map { it.text })
                 assertFalse(chat.reply.contains(AiChatActionParser.OPEN))
-                assertFalse(chat.automaticProposalSource.orEmpty().contains(fabricatedModelSource))
+                assertFalse(chat.automaticProposalTask?.userEvidence.orEmpty()
+                    .any { it.text.contains(fabricatedModelSource) })
 
                 val interpretation = runBlocking {
-                    client.interpret(requireNotNull(chat.automaticProposalSource), emptyList())
+                    client.interpret(requireNotNull(chat.automaticProposalTask), emptyList())
                 }
                 assertTrue(interpretation.warnings.toString(), interpretation.warnings.isEmpty())
                 assertEquals(1, interpretation.proposals.size)
                 assertEquals(TemporalKind.ACTIVITY, interpretation.proposals.single().form.kind)
 
-                val created = AiDraftService(store).createDrafts(interpretation)
+                val created = AiDraftService(store).applyReviewedProposals(
+                    interpretation, selectedPositions = setOf(0), publish = false)
                 assertTrue(created.warnings.toString(), created.warnings.isEmpty())
-                assertEquals(1, created.draftIds.size)
+                assertEquals(setOf(0), created.handledIndices)
+                assertEquals(1, created.stagedCount)
+                assertEquals(0, created.publishedCount)
                 assertTrue(store.all().isEmpty())
                 assertTrue(store.pendingDrafts().single().let {
                     it.status == DraftStatus.PENDING &&

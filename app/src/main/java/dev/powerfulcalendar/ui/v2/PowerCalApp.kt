@@ -84,6 +84,7 @@ import dev.powerfulcalendar.ai.AiBatchRunner
 import dev.powerfulcalendar.ai.AiClient
 import dev.powerfulcalendar.ai.AiChatMessage
 import dev.powerfulcalendar.ai.AiChatHistoryStore
+import dev.powerfulcalendar.ai.ChatProposalIntent
 import dev.powerfulcalendar.ai.AiFileFallbackConsent
 import dev.powerfulcalendar.ai.AiDraftService
 import dev.powerfulcalendar.ai.AiInterpretation
@@ -501,7 +502,13 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
     }
 
     fun appendChat(role: String, text: String, proposalSource: String? = null) {
-        chatHistory = (chatHistory + AiChatMessage(role, text, proposalSource)).takeLast(200)
+        chatHistory = (chatHistory + AiChatMessage(
+            role = role,
+            content = text,
+            proposalSource = proposalSource,
+            createdAtMillis = if (role == "user") System.currentTimeMillis() else null,
+            zoneId = if (role == "user") zone.id else null
+        )).takeLast(200)
     }
 
     fun beginBatchConversation(mode: AiBatchRunner.Mode) {
@@ -533,11 +540,15 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                     // Only an explicit-intent marker starts an automatic structured preview.
                     // A casual suggestion remains a button until the user taps it; neither path
                     // writes to PowerStore without proposal review and authorization.
-                    val source = if (response.succeeded) response.automaticProposalSource else null
-                    if (!source.isNullOrBlank()) {
+                    val task = if (response.succeeded) response.automaticProposalTask else null
+                    if (response.succeeded && response.proposalIntent == ChatProposalIntent.EXPLICIT &&
+                        task == null) {
+                        appendChat("assistant", "无法安全关联到一项完整的待处理日程请求。" +
+                            "为避免把“确认”误当成事件内容，请重新说明要创建或修改的事项、日期和时间。")
+                    } else if (task != null) {
                         val settings = AiSettingsStore.load(appContext)
                         val share = if (settings.shareContext) records.take(60) else emptyList()
-                        val result = AiClient(settings, zone).interpret(source, share)
+                        val result = AiClient(settings, zone).interpret(task, share)
                         if (result.proposals.isNotEmpty()) proposalReview = result
                         else appendChat("assistant", "无法生成结构化提案：" +
                             (result.warnings.firstOrNull()?.takeIf { it.isNotBlank() }
@@ -1272,48 +1283,20 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                         aiBusy = true
                         scope.launch {
                             try {
-                                var staged = 0
-                                var published = 0
-                                val handled = mutableSetOf<Int>()
-                                val errors = mutableListOf<String>()
-                                selected.sorted().forEach { index ->
-                                    val proposal = snapshot.proposals.getOrNull(index)
-                                        ?: return@forEach
-                                    if (proposal.blocked != null) {
-                                        errors.add(proposal.blocked)
-                                        return@forEach
-                                    }
-                                    val card = runCatching {
-                                        withContext(Dispatchers.IO) {
-                                            val seq = proposal.eventSeq
-                                            if (proposal.operation == DraftOperation.CREATE) {
-                                                store.newDraft(proposal.form, actor = "ai")
-                                            } else {
-                                                require(seq != null) { "修改提案缺少目标序号" }
-                                                store.newDraft(proposal.form, seq, proposal.operation, actor = "ai")
-                                            }
-                                        }
-                                    }.onFailure {
-                                        errors.add(it.message ?: "无法写入草稿")
-                                    }.getOrNull() ?: return@forEach
-                                    staged++
-                                    handled.add(index)
-                                    if (publish) {
-                                        val result = withContext(Dispatchers.IO) {
-                                            store.commit(card.draftId, actor = "user")
-                                        }
-                                        if (result is PowerStore.CommitOutcome.Committed) published++
-                                        else errors.add("序号 " + card.eventSeq + " 未发布；草稿仍可编辑")
-                                    }
+                                val applied = withContext(Dispatchers.IO) {
+                                    AiDraftService(store).applyReviewedProposals(
+                                        snapshot, selected.toSet(), publish)
                                 }
                                 proposalReview = snapshot.copy(proposals =
-                                    snapshot.proposals.filterIndexed { i, _ -> i !in handled })
+                                    snapshot.proposals.filterIndexed { i, _ -> i !in applied.handledIndices })
                                     .takeIf { it.proposals.isNotEmpty() }
                                 reload()
-                                if (publish && published > 0) reconcile()
-                                appendChat("assistant", "结构化操作结果：写入草稿 " + staged +
-                                    "，正式发布 " + published + "。"
-                                    + errors.take(2).joinToString("；"))
+                                if (publish && applied.publishedCount > 0) reconcile()
+                                appendChat("assistant", "结构化操作结果：写入或复用待处理草稿 " +
+                                    applied.stagedCount + "，正式发布 " + applied.publishedCount +
+                                    (if (applied.alreadyResolvedCount > 0)
+                                        "，已有收据确认已处理 " + applied.alreadyResolvedCount else "") +
+                                    "。" + applied.warnings.take(2).joinToString("；"))
                             } finally {
                                 aiBusy = false
                             }

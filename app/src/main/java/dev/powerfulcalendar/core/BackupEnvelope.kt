@@ -41,6 +41,9 @@ object BackupEnvelope {
      * records what fired on the OLD device and must not read as "already scheduled" after restore.
      */
     val TABLES = listOf("identities", "objects", "drafts", "commits", "sourceLinks", "migrations")
+    /** Optional on pre-schema-v5 envelopes; required by PowerStore when schemaVersion is 5+. */
+    const val AI_TASK_RECEIPTS = "aiTaskReceipts"
+    val OPTIONAL_TABLES = listOf(AI_TASK_RECEIPTS)
 
     /**
      * Reads a backup document with a hard byte bound before the caller constructs a JSONObject.
@@ -164,10 +167,15 @@ object BackupEnvelope {
         require(first.storeLineageId == second.storeLineageId) { "回读的 lineageId 与导出时不一致" }
         require(first.databaseSchemaVersion == second.databaseSchemaVersion) { "回读的 schema 版本不一致" }
         require(first.exportedAtEpochMs == second.exportedAtEpochMs) { "回读的导出时间不一致" }
-        TABLES.forEach { table ->
-            val before = first.payload.getJSONArray(table).length()
-            val after = second.payload.getJSONArray(table).length()
-            require(before == after) { "回读的 $table 数量不一致：$before → $after" }
+        (TABLES + OPTIONAL_TABLES).forEach { table ->
+            val before = first.payload.optJSONArray(table)
+            val after = second.payload.optJSONArray(table)
+            require((before == null) == (after == null)) { "回读的 $table 是否存在不一致" }
+            if (before != null && after != null) {
+                require(canonicalJson(before) == canonicalJson(after)) {
+                    "回读的 $table 内容不一致"
+                }
+            }
         }
         require(first.payload.getLong("nextSeq") == second.payload.getLong("nextSeq")) { "回读的 nextSeq 不一致" }
         require(first.payload.getLong("nextOrder") == second.payload.getLong("nextOrder")) { "回读的 nextOrder 不一致" }

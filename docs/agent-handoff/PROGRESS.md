@@ -1,5 +1,14 @@
 # Core freeze progress
 
+## PC-ISSUE-172 — 多轮任务交接与显式审查（确定性路径 PASS；Provider BLOCKED）
+
+- 修复跨轮信息丢失：结构化生成接收带原始时刻/时区和稳定证据 ID 的任务快照，assistant 内容仅为不可信建议；同名候选保留独立身份，审查选择、草稿写入与正式发布分离，并以事务收据防止重放重复写入。
+- 红绿测试发现并修复拒绝语义缺陷：裸“不用”不能继续一个待创建任务，但在上一轮明确询问重复设置时可作为修正。旧逻辑的隔离回归 1 项 FAIL；修复后定向多轮测试 PASS。
+- 完整离线 Gradle **540/540 JVM、74 suites、0 failures/errors/skips、88/88 tasks**；lint 0 errors / 56 warnings。真实 PowerCalApp Compose + loopback fake HTTP 在新建 API 35 `emulator-5560` AndroidJUnitRunner **1/1 PASS**：审查前零写入；屏幕五个同名候选；明确写草稿后恰五个唯一草稿，正式事件/提交仍为零。截图、日志和 APK hash 见 `docs/issues/PC-ISSUE-172-ai-multiturn-intent-handoff.md` 与本地 verification manifest。
+- 不可提供的 Provider endpoint/credential 使真实免费/DeepSeek API 场景保持 BLOCKED；未读取任何密钥或请求 Provider。实体设备由用户执行。新 AVD 未使用既有含数据的 AVD；5554 数据库前后 hash 不变。整体冻结 HOLD。
+- `REC-P1-089`（本地确定性任务交接）PASS；`REC-P1-090`（真实 Provider 路径）BLOCKED。历史 ID 未恢复，二者均为 RECONSTRUCTED。独立 Issue 报告：`docs/issues/PC-ISSUE-172-ai-multiturn-intent-handoff.md`。
+- 新矩阵结构校验：218 rows / 217 active reconstructed；203 PASS / 0 FAIL / 10 BLOCKED / 2 NOT TESTED / 2 SPEC UNRESOLVED / 1 RETIRED；P0/P1/P2=145/71/1；历史 ID 映射 0。Ledger SHA-256 `2ECCD078AF5B30ABE17A2962604568214A21C5F41CEF11DAE336FE07A2DC63E9`；validator JSON SHA-256 `17140DAC63B07898CA54DAE4BD4CA4A6DC4496F8C41607813B82751043912198`。结构校验不替代行为测试。
+
 ## PC-ISSUE-PHASE1 — E01 工作树叠加回归（2026-10-25）
 
 - 为覆盖当前集成状态，在 `main` / HEAD `8d1a204bb2905956896db092ee7a62922b28c08d`（与 `origin/main` 同步）且 E01 尚有本地未提交变更时重跑 Phase 1：定向 **32/32 PASS、6 suites**；完整离线门禁 **539/539 JVM、74 suites、0 failures/errors/skips、88/88 tasks**；lint 0 errors / 56 warnings。完整日志 SHA-256 `28D29F652321BB4DD54018D12BA1CC349BBC363E3F32A6AFF4DA1DD4213F7EC8`，定向日志 `62D70DF908D9628C3814F705F8DBE12D781BFFDDC0D9E0F9138D1A7B9F243D4B`。

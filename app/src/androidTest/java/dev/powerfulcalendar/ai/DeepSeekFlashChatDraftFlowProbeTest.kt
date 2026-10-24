@@ -64,13 +64,13 @@ class DeepSeekFlashChatDraftFlowProbeTest {
             }
 
             assertTrue("The chat stage did not succeed", chat.succeeded)
-            assertEquals("The chat stage must hand off only this synthetic request",
-                rawUserText, chat.proposalSource)
+            assertEquals("Only the typed synthetic request may enter the automatic task snapshot",
+                listOf(rawUserText), chat.automaticProposalTask?.userEvidence?.map { it.text })
             assertTrue("The internal marker must not leak into the visible reply",
                 !chat.reply.contains(AiChatActionParser.OPEN))
 
             val interpretation = runBlocking {
-                client.interpret(requireNotNull(chat.proposalSource), emptyList())
+                client.interpret(requireNotNull(chat.automaticProposalTask), emptyList())
             }
             assertTrue(interpretation.warnings.toString(), interpretation.warnings.isEmpty())
             assertEquals(1, interpretation.proposals.size)
@@ -79,9 +79,12 @@ class DeepSeekFlashChatDraftFlowProbeTest {
             assertEquals(title, proposal.form.title)
             assertTrue(proposal.form.isPublishable())
 
-            val created = AiDraftService(store).createDrafts(interpretation)
+            val created = AiDraftService(store).applyReviewedProposals(
+                interpretation, selectedPositions = setOf(0), publish = false)
             assertTrue(created.warnings.toString(), created.warnings.isEmpty())
-            assertEquals(1, created.draftIds.size)
+            assertEquals(setOf(0), created.handledIndices)
+            assertEquals(1, created.stagedCount)
+            assertEquals(0, created.publishedCount)
             val draft = store.pendingDrafts().single()
             assertEquals(DraftStatus.PENDING, draft.status)
             assertEquals(DraftOperation.CREATE, draft.operation)

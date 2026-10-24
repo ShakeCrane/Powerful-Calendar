@@ -5,6 +5,7 @@ import android.util.AtomicFile
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.util.UUID
 
 /** App-private, atomic, bounded chat persistence. Never stores endpoint credentials. */
 object AiChatHistoryStore {
@@ -21,7 +22,15 @@ object AiChatHistoryStore {
             val role = item.optString("role")
             val content = item.optString("content")
             if (role != "user" && role != "assistant") return@mapNotNull null
-            AiChatMessage(role, content, item.optString("proposalSource").ifEmpty { null })
+            AiChatMessage(
+                role = role,
+                content = content,
+                proposalSource = item.optString("proposalSource").ifEmpty { null },
+                messageId = item.optString("messageId").ifBlank { UUID.randomUUID().toString() },
+                createdAtMillis = if (item.has("createdAtMillis") &&
+                    !item.isNull("createdAtMillis")) item.optLong("createdAtMillis") else null,
+                zoneId = item.optString("zoneId").ifBlank { null }
+            )
         }
     }.getOrDefault(emptyList())
 
@@ -30,7 +39,10 @@ object AiChatHistoryStore {
         val array = JSONArray()
         messages.takeLast(200).forEach { message ->
             array.put(JSONObject().put("role", message.role).put("content", message.content)
-                .put("proposalSource", message.proposalSource ?: ""))
+                .put("proposalSource", message.proposalSource ?: "")
+                .put("messageId", message.messageId)
+                .put("createdAtMillis", message.createdAtMillis ?: JSONObject.NULL)
+                .put("zoneId", message.zoneId ?: ""))
         }
         val bytes = array.toString().toByteArray(Charsets.UTF_8)
         require(bytes.size <= MAX_BYTES) { "聊天历史达到私有存储上限" }

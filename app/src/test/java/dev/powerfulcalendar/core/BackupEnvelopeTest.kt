@@ -481,7 +481,9 @@ class BackupEnvelopeTest {
             put("version", 2)
             put("exportedMs", System.currentTimeMillis())
             payload.keys().forEach { key ->
-                if (key != "nextSeq" && key != "nextOrder") put(key, payload.get(key))
+                if (key != "nextSeq" && key != "nextOrder" &&
+                    key !in BackupEnvelope.OPTIONAL_TABLES
+                ) put(key, payload.get(key))
             }
             put("nextSeq", payload.getLong("nextSeq"))
         }
@@ -582,7 +584,9 @@ class BackupEnvelopeTest {
             put("version", 2)
             put("exportedMs", System.currentTimeMillis())
             payload.keys().forEach { key ->
-                if (key != "nextSeq" && key != "nextOrder") put(key, payload.get(key))
+                if (key != "nextSeq" && key != "nextOrder" &&
+                    key !in BackupEnvelope.OPTIONAL_TABLES
+                ) put(key, payload.get(key))
             }
             put("nextSeq", payload.getLong("nextSeq"))
             put("nextOrder", 50L)
