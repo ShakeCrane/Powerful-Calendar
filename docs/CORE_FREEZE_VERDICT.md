@@ -4,12 +4,12 @@ Date: 2026-10-24
 
 Verdict: **HOLD**
 
-Code/test checkout for the latest full regression: `477ddf44f1199e3316c5981e0a640c41efcdd416`
+Code/test checkout for the latest full regression: `c33eb36a9308066983667cbf0091b8c451a27806`
 
 APK used by the latest full regression: `app/build/outputs/apk/debug/app-debug.apk`, SHA-256 `35EB92E478AD2DEBBD53D03682844D5B1F56E24438469B4A38E89D247B7E40F4`
-Latest full regression: 469/469 JVM tests across 58 suites, zero failures/errors/skips; source boundary, Debug APK and Android test APK assembly passed; includes one protected untracked test file; lint 0 errors / 58 warnings. Log SHA-256 `935FC910ACB6663693564E5B5D323A018FC49A41B800BB4EA6DDA9C025CE726B`.
+Latest full regression: 469/469 JVM tests across 58 suites, zero failures/errors/skips; source boundary, Debug APK and Android test APK assembly passed; includes one protected untracked test file; lint 0 errors / 58 warnings. Log SHA-256 `3AFAEC67B24C92E808B0767939F35AC86BA427E8D3D742D10095C5CC7AE7805E`.
 
-Latest scoped follow-up: PC-ISSUE-134 used the authorized DeepSeek V4.1 Flash on API 35 emulator to verify one chat request, one structured request, and a durable PENDING SQLite draft across reopen, without publishing. Both stages returned HTTP 200. This signs only the live model-to-local-draft path. REC-P1-047 remains BLOCKED because its free-provider structured stage returned HTTP 429; PC-ISSUE-002 remains PARTIAL / BLOCKED.
+Latest scoped follow-up: PC-ISSUE-134 used the authorized DeepSeek V4.1 Flash on API 35 emulator to verify one chat request, one structured request, and a durable PENDING SQLite draft across reopen, without publishing. Both stages returned HTTP 200. The live probes are now opt-in by instrumentation argument to avoid accidental external calls. A new free-provider attempt was not sent because emulator-5554 no longer has the PowerCal package installed; REC-P1-047 remains BLOCKED and PC-ISSUE-002 remains PARTIAL / BLOCKED.
 Structural-only validation artifact `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-134.json`, SHA-256 `FB25654B9A34DFD676713F580D1C955B24E6BCDBBE504ECE8D16150A8582465A`; ledger SHA-256 `CD6275A893058EB678FBD9B3BEA04EAEAB6BFEEE26BFEFDC18366074852C8E58`. It confirms 209 unique rows and the 126/82/1 priority partition only (`product_behavior_tested=false`). Totals remain 164 PASS / 0 FAIL / 8 BLOCKED / 30 NOT TESTED / 7 SPEC UNRESOLVED; P0 120/0/0/1/5, P1 44/0/8/29/1.
 
 

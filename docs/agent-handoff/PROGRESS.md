@@ -1,4 +1,10 @@
 # Core freeze progress
+## PC-ISSUE-002 — bounded free-provider retry readiness
+
+- Hardened the Android API 35 live probe so no paid/free provider is contacted unless the explicit instrumentation argument `powercalLiveProbe=deepseek|free` is supplied. The two accepted model IDs are fixed in test code; model override remains in memory, and the flow uses synthetic input plus a unique temporary database.
+- The emulator retest was **not sent**: `emulator-5554` currently has no `dev.powerfulcalendar` package (`run-as` reports unknown package). No app was reinstalled and no credential was read or restored. The last free-provider trace remains chat HTTP 200 followed by structured HTTP 429; Issue 002 and REC-P1-047 remain PARTIAL / BLOCKED.
+- Full offline regression passed 469/469 across 58 suites, zero failures/errors/skips; source boundary, Debug/AndroidTest APK assembly and lint passed (0 errors / 58 warnings). Log SHA-256 3AFAEC67B24C92E808B0767939F35AC86BA427E8D3D742D10095C5CC7AE7805E. Test-only commit c33eb36a9308066983667cbf0091b8c451a27806 is pushed. This did not execute Android instrumentation or make a provider request.
+
 ## PC-TECH-006 — lint risk classification
 
 - Classified the latest lint XML: 58 warnings / 0 errors across platform/target (4), dependency suggestions (6), Compose conventions (14), KTX suggestions (19), launcher/resources (13), and redundant SDK conditions (2). No code, UI, dependencies, manifest, or design assets changed; this does not claim a security scan.

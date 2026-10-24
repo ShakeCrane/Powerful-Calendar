@@ -50,3 +50,7 @@ PC-ISSUE-134 signs the authorized live DeepSeek path from chat marker through st
 Test commit 477ddf44f1199e3316c5981e0a640c41efcdd416 — test(ai): 验证DeepSeek两阶段待审草稿链路 — is pushed. The issue report and ledger/handoff updates are committed separately.
 
 Structural-only ledger validation: `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-134.json`, SHA-256 `FB25654B9A34DFD676713F580D1C955B24E6BCDBBE504ECE8D16150A8582465A`; ledger SHA-256 `CD6275A893058EB678FBD9B3BEA04EAEAB6BFEEE26BFEFDC18366074852C8E58`. It reports 209 unique rows, 164 PASS / 0 FAIL / 8 BLOCKED / 30 NOT TESTED / 7 SPEC UNRESOLVED, and `product_behavior_tested=false`; this is a structural check, not product evidence.
+
+### Follow-up probe safety
+
+After this successful run, the paid and free live instrumentation probes were made explicit opt-in via `powercalLiveProbe=deepseek|free`; without that argument, they do not load settings or make network calls. Test-only commit `c33eb36a9308066983667cbf0091b8c451a27806` is pushed. Its full offline regression compiled AndroidTest and passed 469/469 JVM tests, but did not execute instrumentation. A later free-provider retest was not sent because `emulator-5554` no longer had the app package installed. The original 1/1 DeepSeek result above remains the live-flow evidence; the free-provider acceptance remains blocked under PC-ISSUE-002.

@@ -110,3 +110,11 @@ Latest structural-only validation after PC-ISSUE-134: artifact .local/android-te
 定向 instrumentation 1/1 PASS；完整 Debug 回归 469/469 across 58 suites，0 failures/errors/skips；边界、APK/AndroidTest 组装和 lint 通过，0 errors/58 warnings。测试提交 477ddf44f1199e3316c5981e0a640c41efcdd416 已推送。独立报告 docs/issues/PC-ISSUE-134-deepseek-chat-to-draft-live-flow.md。
 
 该结果证明授权 DeepSeek 的 live two-stage 路径，但不替代免费 provider 要求：先前免费模型 chat HTTP 200 后 structured HTTP 429 的结果仍使 REC-P1-047 BLOCKED，PC-ISSUE-002 仍 PARTIAL / BLOCKED。没有实体设备测试。
+
+## 免费模型受控重测状态与实时探测门控（2026-10-24）
+
+为遵循免费模型优先，并避免完整 AndroidTest 意外触发付费网络请求，实时探测现在必须显式传入 `powercalLiveProbe=free` 或 `powercalLiveProbe=deepseek`；代码只接受固定的免费模型 `stealth/glyph-cluster:free` 和已授权的 `deepseek/deepseek-v4.1-flash`，不把模型覆盖写回设置。输入为合成活动，calendar context 关闭，结果只写入唯一临时 SQLite。门控测试代码提交 `c33eb36a9308066983667cbf0091b8c451a27806` 已推送。
+
+本次未发出免费模型请求：API 35 `emulator-5554` 上 `pm path dev.powerfulcalendar` 无结果，`run-as dev.powerfulcalendar` 返回 `unknown package`。因此无法复用此前模拟器私有 AI 配置；没有重装应用、读取/恢复密钥或触碰日历数据。上次可用证据仍是 chat HTTP 200、structured HTTP 429，且无 reviewable pending proposal；REC-P1-047 继续 BLOCKED，Issue 002 继续 PARTIAL / BLOCKED。
+
+门控改动后的完整离线 Gradle 回归：**BUILD SUCCESSFUL**，469/469 JVM 测试、58 suites、0 failures/errors/skips；源码边界、Debug/AndroidTest APK 组装通过；Lint 0 errors / 58 warnings。日志 `.local/android-test/reports/freeze-20261024/pc-issue-002-live-probe-opt-in-full-gradle.log` SHA-256 `3AFAEC67B24C92E808B0767939F35AC86BA427E8D3D742D10095C5CC7AE7805E`；AndroidTest APK SHA-256 `EF502CA60DE10D95A2076DD416ABA9318D6343EF8415D17B6F0C2D85E7533958`。本次只编译 AndroidTest，没有执行 instrumentation 或外部模型调用。核心冻结继续 HOLD。
