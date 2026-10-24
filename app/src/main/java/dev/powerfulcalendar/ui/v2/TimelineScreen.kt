@@ -339,6 +339,9 @@ fun TimelineScreen(
                         else (laneWidth + spacing) * item.lane
                     val point = item.record.kind != TemporalKind.ACTIVITY
                     val pointHeight = 56.dp
+                    // A sub-pixel Activity keeps its exact visual height below; retain a
+                    // separate 1dp interaction surface so rounding cannot erase its click target.
+                    val hitHeight = if (point) pointHeight else maxOf(cardHeight, 1.dp)
                     val topPx = if (item.record.kind == TemporalKind.DEADLINE) {
                         y - with(density) { pointHeight.toPx() }
                     } else if (item.record.kind == TemporalKind.ALARM) y else activitySpan!!.topPx
@@ -422,7 +425,7 @@ fun TimelineScreen(
                             modifier = Modifier.offset(x, with(density) { topPx.toDp() }).width(laneWidth)
                                 .testTag("timeline-event-${item.record.eventSeq}-" +
                                     key.hashCode().toUInt().toString(16))
-                                .height(if (point) pointHeight else cardHeight)
+                                .height(hitHeight)
                                 .pointerInput(key, item.record.revision, item.anchorMillis, aiLocked) {
                                     if (!unlocked) return@pointerInput
                                     detectDragGesturesAfterLongPress(
@@ -439,31 +442,44 @@ fun TimelineScreen(
                                 }
                                 .semantics { contentDescription = "${item.record.kind.label}，${item.record.title}，${TemporalText.summarize(item.record)}，${item.record.displaySeq()}" },
                             shape = RoundedCornerShape(0.dp),
-                            color = if (point) androidx.compose.ui.graphics.Color.Transparent
-                                else if (dragKey == key) MaterialTheme.colorScheme.surfaceContainerHighest
-                                else LocalAxisPalette.current.glassFill,
-                            border = if (point) null else BorderStroke(
-                                1.dp, kindColor(item.record.kind).copy(alpha = 0.36f)
-                            )
+                            color = androidx.compose.ui.graphics.Color.Transparent,
+                            border = null
                         ) {
                             if (point) {
                                 AxisPointMarker(item.record, item.anchorMillis, zone)
                             } else {
                             Box(Modifier.fillMaxSize()) {
-                                Box(Modifier.align(Alignment.CenterStart).width(2.dp).fillMaxHeight()
-                                    .background(kindColor(item.record.kind)))
-                                if (cardHeight >= 28.dp) {
-                                    Text(Instant.ofEpochMilli(item.anchorMillis).atZone(zone).format(CLOCK_FORMAT),
-                                        Modifier.align(Alignment.TopStart).padding(start = 5.dp),
-                                        fontSize = 10.sp, maxLines = 1, softWrap = false,
-                                        overflow = TextOverflow.Clip)
-                                }
-                                if (cardHeight >= 47.dp) {
-                                    Text(Instant.ofEpochMilli(item.record.endMillis ?: item.anchorMillis)
-                                            .atZone(zone).format(CLOCK_FORMAT),
-                                        Modifier.align(Alignment.BottomStart).padding(start = 5.dp),
-                                        fontSize = 10.sp, maxLines = 1, softWrap = false,
-                                        overflow = TextOverflow.Clip)
+                                Box(
+                                    Modifier.align(Alignment.TopStart)
+                                        .width(laneWidth)
+                                        .height(cardHeight)
+                                        .testTag("timeline-event-geometry-${item.record.eventSeq}-" +
+                                            key.hashCode().toUInt().toString(16))
+                                        .background(
+                                            if (dragKey == key) MaterialTheme.colorScheme.surfaceContainerHighest
+                                            else LocalAxisPalette.current.glassFill
+                                        )
+                                        .border(
+                                            1.dp,
+                                            kindColor(item.record.kind).copy(alpha = 0.36f),
+                                            RoundedCornerShape(0.dp)
+                                        )
+                                ) {
+                                    Box(Modifier.align(Alignment.CenterStart).width(2.dp).fillMaxHeight()
+                                        .background(kindColor(item.record.kind)))
+                                    if (cardHeight >= 28.dp) {
+                                        Text(Instant.ofEpochMilli(item.anchorMillis).atZone(zone).format(CLOCK_FORMAT),
+                                            Modifier.align(Alignment.TopStart).padding(start = 5.dp),
+                                            fontSize = 10.sp, maxLines = 1, softWrap = false,
+                                            overflow = TextOverflow.Clip)
+                                    }
+                                    if (cardHeight >= 47.dp) {
+                                        Text(Instant.ofEpochMilli(item.record.endMillis ?: item.anchorMillis)
+                                                .atZone(zone).format(CLOCK_FORMAT),
+                                            Modifier.align(Alignment.BottomStart).padding(start = 5.dp),
+                                            fontSize = 10.sp, maxLines = 1, softWrap = false,
+                                            overflow = TextOverflow.Clip)
+                                    }
                                 }
                             }
                             }
