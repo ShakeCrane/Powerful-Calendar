@@ -961,3 +961,9 @@ Log SHA-256 `84AEB6F1B874575ABB0979349EA9A459285D5A6B0F34ABC00A0ADCBB7A3A7759`; 
 On the current code baseline, all 24 `BackupEnvelopeTest` cases and three selected `PowerStoreTest` backup/recovery cases passed 27/27, zero failures/errors/skips. This is isolated JVM/Robolectric SQLite evidence; it does not cover the OS picker, real document provider, or physical devices. PC-ISSUE-003 remains PARTIAL / HOLD.
 
 Log SHA-256 `C6AFA52BB816008BDD3A0DBF7AEDC7B2705A4D0EC33494A2B401FFD6B570FE7B`; JUnit XML SHA-256 `9A97B489626CDA0AE616F666C4B256A3DBB50B0B5847322F8C0DAADA3374992D` / `EB3B885E3A977385C93EC8D054B7D3407E662BABE1D13FA8EF0A977D6C7A8EB3`.
+
+### DST policy audit (2026-10-24)
+
+The approved product baseline §9 still labels DST policy details unresolved. Current code comments select forward resolution for gaps and the earlier offset for folds, but that does not establish owner approval. Rerunning `OccurrenceWindowTest` and `TemporalProtocolTest` passed 57/57, zero failures/errors/skips; the present regression set covers a gap and ordinary wall-clock recurrence across DST but has no fold-specific case. This does not sign REC-P0-074/075; both remain SPEC UNRESOLVED.
+
+Log SHA-256 `6DD225D91BA3C9D9333E9FE7B55137B9679CE90E74FF361B3140811B955193F3`; JUnit XML SHA-256 `F913E61734A977C392D5F160F79B6D5BE85B25381A34D67DBE492A3DC1266118` / `815BED4DFC2EB57505FE9FEA5405533876C34105033B0A3DCCA186C843F23F24`.

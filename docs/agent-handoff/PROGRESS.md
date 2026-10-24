@@ -10,6 +10,10 @@
 - `BackupEnvelopeTest` 24/24 plus three focused `PowerStoreTest` restore/schedule/high-water cases passed 27/27, zero failures/errors/skips. This is isolated JVM/Robolectric SQLite coverage; no UI, emulator app, or real business database was touched.
 - Log SHA-256 C6AFA52BB816008BDD3A0DBF7AEDC7B2705A4D0EC33494A2B401FFD6B570FE7B; XML SHA-256 9A97B489626CDA0AE616F666C4B256A3DBB50B0B5847322F8C0DAADA3374992D and EB3B885E3A977385C93EC8D054B7D3407E662BABE1D13FA8EF0A977D6C7A8EB3. Real DocumentsUI/provider lifecycle and physical-device coverage remain open; PC-ISSUE-003 stays PARTIAL / HOLD.
 
+## DST policy spec audit
+
+- `PRODUCT_BASELINE_G1-G11.md` §9 explicitly leaves DST details unresolved. Current code documents gap-forward / earlier-offset fold handling, but that implementation comment is not product approval. `OccurrenceWindowTest` (19/19) and `TemporalProtocolTest` (38/38) reran successfully; current tests include a spring-gap case and wall-clock recurrence across DST, but no fold-specific regression was found. Targeted log SHA-256 6DD225D91BA3C9D9333E9FE7B55137B9679CE90E74FF361B3140811B955193F3; XML SHA-256 F913E61734A977C392D5F160F79B6D5BE85B25381A34D67DBE492A3DC1266118 / 815BED4DFC2EB57505FE9FEA5405533876C34105033B0A3DCCA186C843F23F24. REC-P0-074/075 remain SPEC UNRESOLVED pending owner decision.
+
 ## PC-ISSUE-001 — external ICS handler availability
 
 - Read-only `ACTION_VIEW`/`text/calendar` package queries on API 35 emulators 5554 and 5556 both returned `No activities found`. No Activity was launched, no app was installed, and no application data was touched. Evidence JSON SHA-256 AC76851C91A02993DF200805345D78FB698396FE4D90A2D8B0BD4B37BEFA4933. Structural validation passed with 209 unique rows and unchanged counts; corrected artifact SHA-256 AFC1222BB7D94941E00E9676501618E7473B95642832384AF657A9F2977A0A21, ledger SHA-256 15605E858B6F6FE9519270ADB2442E78664D8D6552E5F3FF2EB1FE5B2AFFA552.

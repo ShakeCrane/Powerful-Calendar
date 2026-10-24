@@ -265,6 +265,10 @@ Read-only API 35 checks found no PowerCal package on emulator-5554. Emulator-555
 
 The isolated core suite passed 27/27: all 24 `BackupEnvelopeTest` cases plus three `PowerStoreTest` backup/recovery cases. No UI or online emulator app was used. Log SHA-256 `C6AFA52BB816008BDD3A0DBF7AEDC7B2705A4D0EC33494A2B401FFD6B570FE7B`; XML SHA-256 `9A97B489626CDA0AE616F666C4B256A3DBB50B0B5847322F8C0DAADA3374992D` / `EB3B885E3A977385C93EC8D054B7D3407E662BABE1D13FA8EF0A977D6C7A8EB3`. This confirms core restore invariants only; real picker/provider lifecycle and physical-device checks remain open. PC-ISSUE-003 remains PARTIAL / HOLD.
 
+## DST policy specification audit (2026-10-24)
+
+`PRODUCT_BASELINE_G1-G11.md` §9 explicitly lists DST policy details as unresolved. The code comment describing gap-forward and earlier-offset fold behavior documents current implementation, not product approval. Current-code `OccurrenceWindowTest` passed 19/19 and `TemporalProtocolTest` 38/38; these cover spring-gap resolution and wall-clock recurrence across DST, but source/test review found no fold-specific regression. Log SHA-256 `6DD225D91BA3C9D9333E9FE7B55137B9679CE90E74FF361B3140811B955193F3`; XML SHA-256 `F913E61734A977C392D5F160F79B6D5BE85B25381A34D67DBE492A3DC1266118` / `815BED4DFC2EB57505FE9FEA5405533876C34105033B0A3DCCA186C843F23F24`. REC-P0-074/075 remain SPEC UNRESOLVED pending owner decision; no DST policy was inferred from implementation behavior.
+
 ## PC-TECH-006 lint warning classification (2026-10-24)
 
 The latest lint XML contains 58 warnings and zero errors: platform/target 4, dependency update suggestions 6, Compose conventions 14, KTX suggestions 19, launcher/resources 13, and redundant SDK checks 2. No source, UI, dependency, manifest, or asset changes were made. The `targetSdk=35` and portrait-lock warnings flag an Android 16 compatibility risk; that platform behavior is not verified here and remains open. See `docs/issues/PC-TECH-006-lint-warning-risk-classification.md`; this classification does not change the HOLD verdict.
