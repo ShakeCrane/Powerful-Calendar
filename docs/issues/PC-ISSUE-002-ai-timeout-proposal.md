@@ -91,3 +91,12 @@ PC-ISSUE-122 使用模拟器现有的 HTTPS 配置与密钥，在内存中将模
 ## 模糊 REPLACE 目标的核心消歧保护（PC-ISSUE-131）
 
 在 API 34 Robolectric 的解析器→草稿服务→SQLite 回归中，发现没有 `eventSeq` 的 REPLACE 虽会被阻断，但原警告显示 `#null`。PC-ISSUE-131 已修成明确要求用户指出要修改哪一项，并验证零草稿、零正式写入及重启后状态不变。此证据仅覆盖本地核心保护；真实模型如何识别自然语言歧义、聊天 UI 是否显示提问仍未测。`REC-P1-050` 继续 NOT TESTED，Issue 002 仍 **PARTIAL / BLOCKED**。详见 `docs/issues/PC-ISSUE-131-ai-ambiguous-replace-target.md`。
+## 本地聊天到待审草稿闭环补充（PC-ISSUE-133，2026-10-24）
+
+新增 Robolectric API 34 loopback 回归，把聊天 marker、`AiClient` 对本轮原始用户文本的权威化、结构化提案解析、`AiDraftService` SQLite 持久化和数据库重开串在同一测试中。聊天模型的合成 marker 携带了伪造的恶意 `source`，客户端只把当前用户原文送入结构化阶段；最后生成一张稳定身份/队列顺序的 PENDING 草稿，正式事件、历史和提醒意图均为空。
+
+定向 1/1 PASS；完整冻结回归 469/469、58 suites、0 failures/errors/skips；source boundary、Debug/APK AndroidTest 编译、Lint 均通过，Lint 0 errors/58 warnings。测试只使用本机 loopback 假服务，没有外部模型、界面或设备。定向日志 SHA-256 `1B343F9AB19B66F524C58C9ACEF1C95E761E5DEA2783A23B1A673A7CE2E5C1E6`；JUnit XML SHA-256 `78CD8691A2ABA35A8EB9CAF50A5CCE8C4FE0C046292ADE9B41DFB442DAE9CAEF`；全量日志 SHA-256 `862CCBC38283B8D8D8776FDB98EC246ED1F2C1E11A5337C580D0A1D5F9364F62`。代码/测试提交 `b4f5179efa689015bb5ec73a2987a5e76f2c6b82` 已推送。独立报告：`docs/issues/PC-ISSUE-133-ai-chat-draft-pipeline.md`。
+
+此回归只签本地 client-to-SQLite 管线，不证明 live model 输出 marker、真实免费 provider 可用或聊天卡片呈现。`REC-P1-047` 继续 BLOCKED：免费服务此前聊天 HTTP 200 后结构化阶段 HTTP 429，仍没有真实可审查卡片；PC-ISSUE-002 继续 **PARTIAL / BLOCKED**，核心冻结保持 **HOLD**。本次没有调用 DeepSeek。
+
+Latest structural-only validation after PC-ISSUE-133: artifact .local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-133.json SHA-256 CA6AD79C2254613BE21C06FCD23A6B49756227190F32CA0C672A7CF507D3002C; ledger SHA-256 F2B851D069C7322AAFA636E7406C3B3FA9A9C94B608BD1E3DD999F6CD3966820. This validates structure/counts only and does not change the BLOCKED decision.

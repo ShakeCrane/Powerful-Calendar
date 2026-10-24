@@ -1,4 +1,10 @@
 # Core freeze progress
+## PC-ISSUE-133 — AI chat-to-pending-draft local pipeline
+
+- Added an API 34 Robolectric loopback regression linking chat-marker parsing, current-user source isolation, structured proposal parsing, AiDraftService persistence and SQLite reopen. A fabricated model source is discarded; the original input becomes one PENDING draft with stable identity/order; no formal event/history/schedule intent is written. No provider, UI, device or DeepSeek call.
+- Focused test passed 1/1. Full Debug boundary/test/APK/AndroidTest APK/lint passed 469/469 across 58 suites, zero failures/errors/skips; lint 0 errors / 58 warnings. Test commit b4f5179efa689015bb5ec73a2987a5e76f2c6b82 is pushed.
+- Report: docs/issues/PC-ISSUE-133-ai-chat-draft-pipeline.md. This is local stub evidence only; REC-P1-047 remains BLOCKED on the live free-provider structured HTTP 429, so PC-ISSUE-002 and the overall freeze remain PARTIAL / HOLD. Ledger counts remain 164 PASS / 0 FAIL / 8 BLOCKED / 30 NOT TESTED / 7 SPEC UNRESOLVED. Structural-only artifact .local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-133.json SHA-256 CA6AD79C2254613BE21C06FCD23A6B49756227190F32CA0C672A7CF507D3002C; ledger SHA-256 F2B851D069C7322AAFA636E7406C3B3FA9A9C94B608BD1E3DD999F6CD3966820.
+
 ## PC-ISSUE-132 — SAF URI-grant revocation safe failure (REC-P0-107 narrowed PASS)
 
 - A synthetic API 35 ContentProvider granted then revoked read access. Android enforced the revocation with SecurityException; safe permission wording and unchanged event/history/pending/identity/sequence state were verified in a disposable SQLite database. The production SAF reader is now shared through **SafBackupReader**. No UI was opened; real DocumentsUI/provider lifecycle and physical/OEM behavior remain untested.
