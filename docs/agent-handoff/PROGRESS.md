@@ -1,5 +1,11 @@
 # Core freeze progress
 
+## PC-ISSUE-159 时间轴顶栏顺序与剩余数徽标（REC-P1-032/033，窄化 PASS）
+
+- 新增 AndroidJUnitRunner 测试，直接组合生产 `TimelineScreen`：Today、Memo、Todo、New 的实测横向中心为 658/774/890/1006px，四个回调及 New→Activity 菜单动作均通过；合成 Memo=12、Todo=7 的可见徽标文字和无障碍描述通过。API 35 `emulator-5556` 原生竖屏 1080×2400、420dpi，定向测试 2/2 PASS。未改生产代码或访问业务数据库。
+- 测试提交 `a2b701e9ca02ffd39643a7797932ca817d149d58` 已推送。完整离线 Gradle 491/491 JVM、66 suites、0 failures/errors/skips；source boundary、Debug/AndroidTest APK 组装通过；Lint 0 errors/58 warnings。完整日志 SHA-256 `F1903B255787C632AC7B30B26D6C8746F601DE301DF453266C41D91256579737`；定向日志 SHA-256 `522A2DEB85ED4C7B18EBFB805D7C4EDBFA7DD5DB56C95705036CFA3A49445CD5`；几何/回调轨迹 SHA-256 `D2A2E5617C28B36F787DBB605E9CEDA85FFFA06E7363D00779E2A966416F3C2D`。
+- 台账结构校验 r25：210 active，193 PASS / 0 FAIL / 8 BLOCKED / 3 NOT TESTED / 6 SPEC UNRESOLVED；P0/P1/P2=144/65/1，历史映射 0，`product_behavior_tested=false`。artifact SHA-256 `8A3096975A584A9A45133D6F7A0C6F40833F79BA55AD9E23889781B1A65F1FCE`；台账 SHA-256 `D3B1B72CC3DDC2B6E09C496D03AAAF12E1F021CCEBBBB16ADBB160A339392640`。实体设备、MainActivity 路由与持久化徽标数据未签核；整体仍 HOLD。独立报告：`docs/issues/PC-ISSUE-159-timeline-toolbar-order-badges.md`。
+
 ## PC-ISSUE-154 2× 字体缩放下时间轴控件可达性（REC-P1-069 子项 PASS；完整项 BLOCKED）
 
 - 新增 Robolectric API 35 Compose 子项，显式设 `LocalDensity.fontScale=2.0`、360×800dp 视口；今日、Memo、待处理、新建、缩小/放大共 6 个控件边界均在屏内并可操作，新建菜单“活动”回调成功。定向测试 1/1 PASS；未修改生产代码或 AVD/系统设置。

@@ -4,6 +4,14 @@ Date: 2026-10-24
 
 Verdict: **HOLD**
 
+## Latest follow-up: PC-ISSUE-159
+
+PC-ISSUE-159 signs `REC-P1-032/033` narrowly on API 35 `emulator-5556`: top action centers measured 658/774/890/1006 px in Today → Memo → Todo → New order, each callback fired, and synthetic Memo/Todo remaining badges displayed 12/7. AndroidJUnitRunner passed 2/2. This test composes production `TimelineScreen` with synthetic counts; it does not claim MainActivity, persisted data, or physical-device coverage. See [PC-ISSUE-159](issues/PC-ISSUE-159-timeline-toolbar-order-badges.md).
+
+Test-only commit `a2b701e9ca02ffd39643a7797932ca817d149d58` is pushed. Full offline Gradle passed 491/491 JVM tests across 66 suites, zero failures/errors/skips; source boundary, Debug/AndroidTest APK assembly passed; lint 0 errors / 58 warnings. Full Gradle log SHA-256 `F1903B255787C632AC7B30B26D6C8746F601DE301DF453266C41D91256579737`; focused post-build AVD run SHA-256 `522A2DEB85ED4C7B18EBFB805D7C4EDBFA7DD5DB56C95705036CFA3A49445CD5`.
+
+Structural-only ledger r25 records 210 active reconstructed rows (P0/P1/P2 144/65/1), with 193 PASS / 0 FAIL / 8 BLOCKED / 3 NOT TESTED / 6 SPEC UNRESOLVED; historical IDs mapped=0 and `product_behavior_tested=false`. Artifact SHA-256 `8A3096975A584A9A45133D6F7A0C6F40833F79BA55AD9E23889781B1A65F1FCE`; ledger SHA-256 `D3B1B72CC3DDC2B6E09C496D03AAAF12E1F021CCEBBBB16ADBB160A339392640`. Overall verdict remains **HOLD**.
+
 ## Latest follow-up: PC-ISSUE-158
 
 PC-ISSUE-158 signs the API 35 native pending-deck default for `REC-P1-038`: opening with a blank search field showed the oldest of two pending drafts; the formal-event search callback was not invoked and its synthetic result was absent. The test used a uniquely named temporary database. Formal search after entering a query and full MainActivity/provider behavior are not claimed.
