@@ -1,5 +1,12 @@
 # Core freeze progress
 
+## PC-ISSUE-001 — Google Calendar ICS 导入阻塞复核（REC-P1-081 仍 BLOCKED）
+
+- `emulator-5556` API 35 上重新启动现有 DST ICS fixture，Google Calendar 的两页 welcome 已通过；随后自动进入 Google Play services `PreAddAccountActivity`，停留在 `Checking info…`。按账号/登录边界立即停止并返回 launcher；未查看账号内容、未登录、未确认导入或保存，Calendar Provider 仍为 0 calendars / 0 events，PowerCal 未启动。
+- 原 fixture SHA-256 `9F9E973963C6AA3ADA592E9CA3C1661F87FE3F8A1AD33227ED7C628673353E68` 未变；本次 summary SHA-256 `23A95B2BAFF00CF2472C838091C195994BF4AAA2D606E79518BDE3AD5A8D51BE`。Google Calendar welcome 状态可能已在 5556 上前进；未清除其 app data。
+- 该 client 要求添加账号，外部 ICS 导入/再导出仍无法自主完成，REC-P1-081 / PC-ISSUE-001 保持 BLOCKED / PARTIAL，整体 HOLD。详情追加在 `docs/issues/PC-ISSUE-001-ICS-recurrence.md`。
+- 台账 r41：211 行 / 210 活动重建项；198 PASS / 0 FAIL / 8 BLOCKED / 2 NOT TESTED / 2 SPEC UNRESOLVED / 1 RETIRED；P0/P1/P2=144/65/1，历史 ID 映射 0。artifact SHA-256 `6FA734E602F2B083F646EBC81994CAFE4837C6BEE20C39148186C69CC3425F77`，ledger SHA-256 `4E070094E3A150D6C12797BB13142C8080E199A13CDC1173621F3622AD7FED5E`；这是结构校验，`product_behavior_tested=false`。
+
 ## PC-ISSUE-171 — ReminderReceiver onReceive/goAsync 生命周期（REC-P0-012 子项 PASS）
 
 - Robolectric API 34 通过真实 `ShadowBroadcastReceiver.onReceive` 派发给生产 `ReminderReceiver`，注入 `PendingResult` 并确认进入 `goAsync()`；等待 Future 完成后，隔离 SQLite 中 `FIRED` 已记录、提醒 intent 已消费、completion keys 仍为空、revision 不变。仅测试 JVM sandbox；生产 manifest 解析和实体 OS 派发未覆盖。PC-ISSUE-170 另有 API 35 AVD AlarmManager 投递证据。

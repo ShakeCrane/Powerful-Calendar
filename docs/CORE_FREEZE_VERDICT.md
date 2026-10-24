@@ -4,6 +4,12 @@ Date: 2026-10-24
 
 Verdict: **HOLD**
 
+## Latest follow-up: PC-ISSUE-001 — external ICS import retry
+
+On API 35 `emulator-5556`, the existing DST-bearing ICS fixture was handed to Google Calendar. The two welcome screens were advanced; Google Calendar then opened Google Play services `PreAddAccountActivity` and remained at `Checking info…`. The probe stopped before account details, sign-in, import preview, confirmation, or calendar writes, then returned to the launcher. Calendar Provider remained at zero calendars and zero events; the fixture was unchanged and PowerCal was not launched. The Google Calendar welcome-flow state may now be advanced on this AVD; its app data was not cleared. The account-add flow is an external blocker, so `REC-P1-081` remains BLOCKED and PC-ISSUE-001 remains PARTIAL / HOLD. Evidence summary SHA-256 `23A95B2BAFF00CF2472C838091C195994BF4AAA2D606E79518BDE3AD5A8D51BE`; details in `docs/issues/PC-ISSUE-001-ICS-recurrence.md`.
+
+Structural-only ledger r41: 211 rows / 210 active reconstructed, 198 PASS / 0 FAIL / 8 BLOCKED / 2 NOT TESTED / 2 SPEC UNRESOLVED / 1 RETIRED; historical IDs mapped=0 and `product_behavior_tested=false`. Artifact SHA-256 `6FA734E602F2B083F646EBC81994CAFE4837C6BEE20C39148186C69CC3425F77`; ledger SHA-256 `4E070094E3A150D6C12797BB13142C8080E199A13CDC1173621F3622AD7FED5E`. The structural validator does not test external calendar behavior; overall verdict remains HOLD.
+
 ## Latest follow-up: PC-ISSUE-171 — ReminderReceiver asynchronous lifecycle
 
 Robolectric API 34 dispatched `ACTION_FIRE` through the production `ReminderReceiver.onReceive()` with a `PendingResult`. The test confirmed `goAsync()` and awaited its completion; the isolated store recorded `FIRED`, consumed the reminder intent, kept completion keys empty, and preserved revision. Focused test passed 1/1. This does not cover production manifest resolution or a real Android broadcast to that manifest component; PC-ISSUE-170 separately covers API 35 AlarmManager delivery to the product process and handler. Physical/OEM and long-duration behavior remain open. See `docs/issues/PC-ISSUE-171-reminder-onreceive-async-lifecycle.md`.
