@@ -1,4 +1,10 @@
 # Core freeze progress
+## PC-ISSUE-131 — AI targetless REPLACE clarification guard (REC-P1-050 remains NOT TESTED)
+
+- Reproduced that a blocked targetless REPLACE exposed `#null` instead of asking which event to change. Updated the core parser warning while retaining the existing blocked/no-write behavior; added a Robolectric API 34 parser → AiDraftService → SQLite-reopen regression with two identical formal targets. This is core-only; no UI layout, provider, or physical-device test.
+- Pre-fix targeted test failed on the clarification text. Post-fix targeted checks passed 2/2. Full Debug boundary/test/APK/lint passed 468/468 across 57 suites, zero failures/errors/skips; lint 0 errors / 58 warnings. Code/test commit `e8daade48e78997a94c86645730b0226dfdf1cab` is pushed.
+- Report: `docs/issues/PC-ISSUE-131-ai-ambiguous-replace-target.md`. `REC-P1-050` stays NOT TESTED because live-model and chat UI disambiguation remain unverified; totals remain 163 PASS / 0 FAIL / 9 BLOCKED / 30 NOT TESTED / 7 SPEC UNRESOLVED. Structural-only artifact `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-131.json` SHA-256 `4F97B8068029A5BBDAA5052A01A556E5FDA925290694D6EA5C24E7E3A4EB5929`; ledger SHA-256 `7C6EF6938ECAF938656A3F25B8CE30CAEEC462DC2173D2C604B53BD791FC8F72`. It validates only 209 unique rows and 126/82/1 priorities; product_behavior_tested=false. Overall freeze remains HOLD.
+
 ## PC-ISSUE-130 — DeckController live edit state during autosave (REC-P1-043 narrowed PASS)
 
 - Added currentId/dirty assertions while background autosave is blocked: the newest accepted form stays visible on the same card and remains dirty until storage catches up. Existing regression checks nonblocking edit and saves the latest version after release. No production/UI changes.

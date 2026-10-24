@@ -87,3 +87,7 @@ PC-ISSUE-122 使用模拟器现有的 HTTPS 配置与密钥，在内存中将模
 - 实际模型探针运行于代码提交 `cf573990300bfd6bd3bedfbf624536afa0daf4d5`（当时 AndroidX test runner 1.5.0 / JUnit 扩展 1.1.5）；之后只升级了测试基础设施到 runner 1.7.0 / JUnit 扩展 1.3.0，并完成 AndroidTest 编译和 lint。为遵守单次付费请求边界，没有在基础设施升级后重发模型请求。最终代码/完整回归基线为 `b3ac84070086f1ecd57a345458a1bb09edfeebcb`。
 
 该结果只签核真实模型的单阶段结构化提案传输与解析子路径。免费服务此前的 429/503、用户聊天到提案卡的呈现、草稿持久化/重启、确认与撤销链以及实体设备/OEM 行为仍未闭环；本次 Issue 002 继续 **PARTIAL / BLOCKED**。实体设备测试由用户执行。独立报告：`docs/issues/PC-ISSUE-122-deepseek-v41-flash-emulator-probe.md`。
+
+## 模糊 REPLACE 目标的核心消歧保护（PC-ISSUE-131）
+
+在 API 34 Robolectric 的解析器→草稿服务→SQLite 回归中，发现没有 `eventSeq` 的 REPLACE 虽会被阻断，但原警告显示 `#null`。PC-ISSUE-131 已修成明确要求用户指出要修改哪一项，并验证零草稿、零正式写入及重启后状态不变。此证据仅覆盖本地核心保护；真实模型如何识别自然语言歧义、聊天 UI 是否显示提问仍未测。`REC-P1-050` 继续 NOT TESTED，Issue 002 仍 **PARTIAL / BLOCKED**。详见 `docs/issues/PC-ISSUE-131-ai-ambiguous-replace-target.md`。

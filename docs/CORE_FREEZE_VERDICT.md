@@ -4,10 +4,13 @@ Date: 2026-10-24
 
 Verdict: **HOLD**
 
-Code/test checkout for the latest full regression: `d838c9b6d6d7ecb8e2f6199a429d07eca0a86e12`
+Code/test checkout for the latest full regression: `e8daade48e78997a94c86645730b0226dfdf1cab`
 
-APK used by the latest full regression: `app/build/outputs/apk/debug/app-debug.apk`, SHA-256 `E2EE9DF7C315E2BCD237457CEFC69B3ACF4D830F7D191447DDE724FD0E892A60`
-Latest full regression: 467/467 JVM tests across 57 suites, zero failures/errors/skips; includes one protected untracked test file; lint 0 errors / 58 warnings. Log SHA-256 `F8DB2BA9E0ADE7AC75BE3045D61242CF5E575FEC98719F3809726D2239E649F9`.
+APK used by the latest full regression: `app/build/outputs/apk/debug/app-debug.apk`, SHA-256 `B582143592625A51A2C7225156BAA9E83E2B24B344816A0B7C3AEEBB815DCA75`
+Latest full regression: 468/468 JVM tests across 57 suites, zero failures/errors/skips; includes one protected untracked test file; lint 0 errors / 58 warnings. Log SHA-256 `27E990D39B87CE0FB073E318A6B576785840CF9AF281DB4F0D717E3F14065056`.
+
+Latest scoped follow-up: PC-ISSUE-131 fixes the core warning for a targetless AI `REPLACE` and verifies no draft or formal write across SQLite reopen. `REC-P1-050` remains NOT TESTED because live-model and chat UI disambiguation were not exercised; candidate counts are unchanged.
+Structural-only validation artifact `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-131.json`, SHA-256 `4F97B8068029A5BBDAA5052A01A556E5FDA925290694D6EA5C24E7E3A4EB5929`; ledger SHA-256 `7C6EF6938ECAF938656A3F25B8CE30CAEEC462DC2173D2C604B53BD791FC8F72`. It confirms CSV structure and candidate counts only (`product_behavior_tested=false`).
 
 
 
