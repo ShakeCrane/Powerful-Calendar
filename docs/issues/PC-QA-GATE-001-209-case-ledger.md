@@ -23,6 +23,12 @@ The source files provide useful reconstruction inputs, but they are not intercha
 
 Audit evidence: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-source-audit.json` (SHA-256 `600A1D825E9349BCD183053CB2DB59F62A02A50BB862B554238D020FDDFC4E98`). The audit was taken at Git baseline `b4ccaaf4770e4b6eaf39cd3288a9a6b83771e489`.
 
+### Public remote source cross-check (2026-10-24)
+
+To check beyond the local clone, the public GitHub repository was inspected read-only. The three listed remote branches (`main`, `integration/rc2-review-20261020`, and `feat/r1-import-ai-compat`) had recursive trees of 480, 141, and 261 entries; filename review found the current reconstructed ledger and product/skin acceptance documents, but no original 209-row case file. Repository code searches for `209 case acceptance P0 P1` and `126 P0 82 P1 checklist`, an all-state pull-request search for `209 case acceptance`, and a commit search for `209 acceptance` each returned zero results. This does not cover deleted refs, private artifacts, local copies outside the workspace, or external issue attachments, and does not establish any historical case mapping.
+
+Machine-readable search record: `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-github-source-audit-20261024.json`, SHA-256 `D937087E8C1ACD213FDF99B91F5495B24EA8F3DA2F8E43D47E408F29CE95E92E`. The original source remains unavailable in the inspected repository; the 208 reconstructed rows and one historical slot remain unmapped, so this gate stays open.
+
 ## Initial reconstructed candidate ledger
 
 `docs/CORE_FREEZE_ACCEPTANCE_LEDGER.csv` contains 208 reconstructed rows and one unresolved historical slot. Proposed priority allocation is P0=126 and P1=82, grouped by risk/source area; this preserves the known aggregate for review but does not establish which historical case each row represents. All reconstructed rows are explicitly `UNMAPPED`.
