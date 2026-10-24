@@ -312,6 +312,30 @@ class TemporalProtocolTest {
     }
 
     @Test
+    fun timelineCoordinateRemainsContinuousAcrossMidnight() {
+        val beforeMidnight = millis("2026-10-20 23:59")
+        val afterMidnight = millis("2026-10-21 00:01")
+        val height = 2400f
+        val hours = 24.0
+
+        val beforeY = TimelineCoordinate.yOf(beforeMidnight, beforeMidnight, height, hours)
+        val afterY = TimelineCoordinate.yOf(afterMidnight, beforeMidnight, height, hours)
+
+        assertTrue("time must advance downward across the date boundary", afterY > beforeY)
+        assertEquals(
+            ((afterMidnight - beforeMidnight) / TimelineCoordinate.spanMillis(hours) * height).toFloat(),
+            afterY - beforeY,
+            0.01f
+        )
+        assertEquals(
+            (afterMidnight - beforeMidnight).toDouble(),
+            (TimelineCoordinate.timeAt(afterY, beforeMidnight, height, hours) -
+                TimelineCoordinate.timeAt(beforeY, beforeMidnight, height, hours)).toDouble(),
+            2.0
+        )
+    }
+
+    @Test
     fun zoomKeepsTheInstantUnderTheFingers() {
         val anchor = millis("2026-10-20 12:00")
         val height = 1800f
