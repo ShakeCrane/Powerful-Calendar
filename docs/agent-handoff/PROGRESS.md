@@ -1,4 +1,10 @@
 # Core freeze progress
+## PC-ISSUE-129 — DeckController movement clamps (REC-P1-040 narrowed PASS)
+
+- Extended the existing core movement test to verify reverse movement reaches the first card and clamps there; the same test verifies one-card forward movement and last-card clamping. No production/UI changes; gesture recognition and Compose/device mapping remain untested.
+- Focused test passed 1/1. Full Debug boundary/test/APK/lint passed 467/467 across 57 suites, zero failures/errors/skips; lint 0 errors / 58 warnings. Test commit `07557fe62a7ac4506f38618028aff9439b86da95` is pushed.
+- Report: `docs/issues/PC-ISSUE-129-deck-controller-move-clamping.md`. Ledger: 162 PASS / 0 FAIL / 9 BLOCKED / 31 NOT TESTED / 7 SPEC UNRESOLVED; P0 119/0/1/1/5, P1 43/0/8/30/1. Structural-only artifact `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-129.json`, SHA-256 `46B90076E13454DF792678500CA49F1D3452DBFB77825E5C567950BD06AF17D8`; ledger SHA-256 `0230EDFF3547F140680396A60984A0A70DA819FF0C30CD1EA5646C1E6D410E6D`. Overall freeze remains HOLD.
+
 ## PC-ISSUE-128 — DeckController completion counts (REC-P1-046 narrowed PASS)
 
 - Added a core-only regression that publishes one card and discards the final card, then checks completion reports published=1 and discarded=1. The initial attempt hit the existing one-second terminal-action guard because the fake clock did not advance; adding `tick()` fixed the test setup. No production/UI changes; timeline-camera restoration and SQLite-backed stats remain outside scope.

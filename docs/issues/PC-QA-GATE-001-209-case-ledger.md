@@ -32,9 +32,9 @@ Structural validation: 209 unique IDs; all reconstructed rows contain source, en
 | Candidate bucket | PASS | FAIL | BLOCKED | NOT TESTED | SPEC UNRESOLVED |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | P0 (proposed) | 119 | 0 | 1 | 1 | 5 |
-| P1 (proposed) | 42 | 0 | 8 | 31 | 1 |
+| P1 (proposed) | 43 | 0 | 8 | 30 | 1 |
 | Historical unclassified slot | 0 | 0 | 0 | 0 | 1 |
-| **Total candidate rows** | **161** | **0** | **9** | **32** | **7** |
+| **Total candidate rows** | **162** | **0** | **9** | **31** | **7** |
 
 ### Case-specific backup verification (2026-10-23)
 
@@ -911,3 +911,11 @@ The new regression publishes one of two cards, waits through the controller's on
 Initial focused attempt log SHA-256 `76F434F80549AFBCFBDC3AFBB9F497B75C056497B879E9A7032A3708C6C7B3B9` (1 test failure at the expected second action). Corrected focused run: **1/1 PASS**, log SHA-256 `4B7209A14E46C328736FA66F11D487D0E1BAAA0A0389C14A02D01FDE457E08D1`. Full Debug boundary/test/APK/lint passed **467/467** across 57 suites, zero failures/errors/skips, lint 0 errors / 58 warnings. Full log SHA-256 `2DD2527881F19E93110ACD7079F090C68CC861F5F8DE108C510A9FBCA0E3D8D6`; `DeckControllerTest` XML SHA-256 `277408CF246C43DD079ADA38CA6B32834BC71D344E09EB8D2BEA05E9D2CADC09`; lint XML SHA-256 `E95DE7C795C7A50415CF5BF197DCD2A2FB73D55618CE34068C239E8648FC09DF`; APK SHA-256 `E2EE9DF7C315E2BCD237457CEFC69B3ACF4D830F7D191447DDE724FD0E892A60`. Test commit `5c741192727721cc26831a01fb9b9c9cd9b2b408` is pushed. Independent report: `docs/issues/PC-ISSUE-128-deck-completion-counts.md`.
 
 REC-P1-046 passes only for narrowed controller counts. Reconstructed totals: **161 PASS / 0 FAIL / 9 BLOCKED / 32 NOT TESTED / 7 SPEC UNRESOLVED**; P0 119/0/1/1/5, P1 42/0/8/31/1. Structural-only artifact `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-128.json`, SHA-256 `C04462462D939BA4BFB4765FB6960E1219741F0C46A280836E567D1E460B0A44`; ledger SHA-256 `015CE8D4281738348B6BAFE9780D1912F0EF172998695228ADB0BF4929BDA878`. It validates structure and counts only. Historical mapping and overall freeze remain HOLD.
+
+### PC-ISSUE-129 — REC-P1-040 DeckController movement boundaries (2026-10-24)
+
+The existing `DeckControllerTest.insideSwipeMovesExactlyOneCardAndClampsAtTheEdges` now verifies both ends: movement advances/retreats by one card and remains at the first/last card when asked to move beyond it. This calls `DeckController.move()` directly with fake persistence and signs no UI gesture recognition or mapping. No production code changed.
+
+Focused regression: **1/1 PASS**, log SHA-256 `A6DF8B1298DF20686233F1FFA0F4DF397F3B1FF351D2B596C4816AC5F9B46A7C`. Full Debug boundary/test/APK/lint passed **467/467** across 57 suites, zero failures/errors/skips, lint 0 errors / 58 warnings. Full log SHA-256 `9238AB927FA1150497321E095BD3F07FAC7440CD4796137AC105406A3B795FA8`; `DeckControllerTest` XML SHA-256 `4D7A4E0EC2183572E046F3B36A2E86BC9CA70E1463E4E344F0F73CEA9F1BB8B0`; lint XML SHA-256 `E95DE7C795C7A50415CF5BF197DCD2A2FB73D55618CE34068C239E8648FC09DF`; APK SHA-256 `E2EE9DF7C315E2BCD237457CEFC69B3ACF4D830F7D191447DDE724FD0E892A60`. Test commit `07557fe62a7ac4506f38618028aff9439b86da95` is pushed. Independent report: `docs/issues/PC-ISSUE-129-deck-controller-move-clamping.md`.
+
+REC-P1-040 passes only for the narrowed controller movement contract. Reconstructed totals: **162 PASS / 0 FAIL / 9 BLOCKED / 31 NOT TESTED / 7 SPEC UNRESOLVED**; P0 119/0/1/1/5, P1 43/0/8/30/1. Structural-only artifact `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-129.json`, SHA-256 `46B90076E13454DF792678500CA49F1D3452DBFB77825E5C567950BD06AF17D8`; ledger SHA-256 `0230EDFF3547F140680396A60984A0A70DA819FF0C30CD1EA5646C1E6D410E6D`. It validates structure and counts only. Historical mapping and overall freeze remain HOLD.
