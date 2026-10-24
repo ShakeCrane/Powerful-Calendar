@@ -1,5 +1,14 @@
 # Core freeze progress
 
+## PC-ISSUE-PHASE1 — 当前 HEAD 复验与验收签核（2026-10-25）
+
+- 当前 `HEAD 7ceb7fa8b65aefd4174cf0420d1d166486c89484` 的生产源码与已审计的 `6ddf9b9` 树一致；Phase 1 产品修复已由 `b46b3dd7592bb1c7de021d543630f84937a0eaef` 提交。本轮只新增 Compose 重组回归测试。主工作区 E01 AI 多轮未提交修改及受保护资产未进入 Phase 1 隔离构建。
+- Phase 1 定向回归 **32/32 PASS、6 suites、0 failures/errors/skips**；完整离线门禁 `:app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug --offline --rerun-tasks --no-daemon --console=plain` **522/522 JVM、69 suites、0 failures/errors/skips、88/88 tasks**；lint **0 errors / 53 warnings**。Debug / AndroidTest APK SHA-256：`1601F2DB169A8C889791EBFE4149F4383E71980474452C8CFE22BA9A7C92A9EC` / `9FAA01339612CA2DF1871CD047512C282F19339C1E5A7766E4E512E80B0FDFFD`。
+- 最终证据位于 `.local/android-test/reports/freeze-20261025/phase1-final-7ceb7fa/`：定向日志 `44DB388BEFCECE2555E8273F8F537FF31278CED3F08749FEB3D3A8365C6D41C9`；完整门禁日志 `24DF06304B35356240BCC986F53583E714800C5E467E3A944BB34213C8206663`；完整 JUnit XML 69 份、定向 XML 6 份；lint XML SHA-256 `9E719BBDAD89ED5B0D6DC54420AE52EB66DE7E1D90C7FDE113BE5D5B02324C50`。重组回归测试源 SHA-256 `5F712C595DB846014A2BD19CD1BD2DBC18F110610FF11E91F766388E0C82EE5D`；首轮语义断言失败 XML 保留在 `failed-attempt-junit/`，修正后测试通过。
+- 本轮未启动既有 AVD 或运行 connected 任务：两台 AVD 的私有数据库缺失/恢复处置仍未闭环；历史 API 35 Compose 2/2 仅作为之前的证据，不计为本轮复测。实体设备由用户测试。秋季 DST fold 的同名墙上时间精度风险仍保留；Phase 1 自动化范围 PASS、AVD 新复测 BLOCKED，整体冻结 HOLD。
+- 验收矩阵补入 `REC-P1-087`（瞬态新建会话与幂等持久化）和 `REC-P1-088`（统一默认时间与精度），均为 `RECONSTRUCTED / P1 / PASS`，未伪称恢复历史 ID。结构校验：216 rows / 215 active reconstructed；202 PASS / 0 FAIL / 9 BLOCKED / 2 NOT TESTED / 2 SPEC UNRESOLVED / 1 RETIRED；P0/P1/P2=145/69/1；历史 ID 映射 0。ledger SHA-256 `3A40691D66AF8391543FA82EBB0C2156EABAA3848F00ED51164C491C3FD0AA0A`；validator JSON SHA-256 `80F1018770C595CCAE4AC34461A66ED4A53791CA699CE49490A6832C4B2CF15F`。结构校验的 `product_behavior_tested=false` 不代表上述 Gradle 行为测试未执行。
+- 独立 Issue 报告与审计计划均补入当前复验；产品源码修复提交 `b46b3dd7592bb1c7de021d543630f84937a0eaef`，本轮另加重组回归及报告/矩阵变更，将单独提交。
+
 ## PC-ISSUE-PHASE4-D05 — Android 15 AVD 生命周期分类（BLOCKED / PARTIAL）
 
 - API 35 `emulator-5556` 隔离包探针观察到 Home、Recents 滑除及进程不存在时 marker 正常投递；force-stop 仅取消测试包 PendingIntent，重启该包后旧 alarm 未恢复，手动重新排程后投递成功。探针没有使用 PowerCal 生产提醒链路，不能据此判生产 PASS/FAIL。

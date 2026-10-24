@@ -130,3 +130,33 @@ Phase 1 定向命令在本轮 **BUILD SUCCESSFUL**；完整回归 JUnit XML 中�
 - Debug APK SHA-256：`1601F2DB169A8C889791EBFE4149F4383E71980474452C8CFE22BA9A7C92A9EC`；AndroidTest APK：`9FAA01339612CA2DF1871CD047512C282F19339C1E5A7766E4E512E80B0FDFFD`；lint XML：`B213956F57C63A719B6A56F2AC1F25BB2E5484C5806845FE68BD6F4748DC055A`。
 
 本轮没有运行 connected/device task。两台既有 AVD 的私有数据库恢复/处置仍未闭环，因此没有启动它们；更早的 API 35 Compose 2/2 结果仍为历史证据，不计作本轮复测。实体设备仍由用户执行。Phase 1 源码与 JVM/构建验收为 PASS，AVD 新复测为 BLOCKED，核心冻结维持 HOLD；秋季 DST fold 分钟文本无法区分两个同名墙上时间的限制仍未签核。
+
+## 当前任务复验（2026-10-25，HEAD `7ceb7fa`）
+
+本轮按 Phase 1 执行请求重新审计并验证。当前 HEAD `7ceb7fa8b65aefd4174cf0420d1d166486c89484` 的生产源码与此前审计的 `6ddf9b9` 完全一致；Phase 1 实现已在 `b46b3dd7592bb1c7de021d543630f84937a0eaef` 提交。本轮新增一条 Compose 回归测试，产品源码未改。主工作区现有 E01 AI 多轮未提交改动和受保护文件没有进入本次 Phase 1 worktree、暂存或提交。
+
+入口审计确认时间轴、月份、Memo、PowerCal Web action、WebSkin bridge 普通新建均使用内存 `NewEventEditSession`。剩余直接 `newDraft` 调用仅用于用户真实修改的 checkpoint、文本/ICS/AI 明确候选以及拖动修改草稿，不在打开普通编辑器时运行。定向测试覆盖四类事件各 20 次打开/关闭计数不变、业务 Diff 修改后恢复、真实 Diff 退出恰好一张草稿、重复 checkpoint/关闭、完整发布直接创建、未完整表单续存同一草稿、SQLite reopen、固定 Clock/ZoneId、跨午夜和分钟精度，以及 Compose/Web bridge 路径。新增用例修改 ACTIVITY 开始时间后强制 Compose 重组，断言 `EditableText`、meaningful Diff 和一次捕获的 Clock 均保持不变。
+
+### 本轮测试
+
+定向命令：
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest --offline --rerun-tasks --no-daemon --console=plain --tests dev.powerfulcalendar.core.EditorDefaultsTest --tests dev.powerfulcalendar.core.NewEventEditSessionTest --tests dev.powerfulcalendar.ui.v2.WebSkinEditBridgeTest --tests dev.powerfulcalendar.ui.v2.NewEventEditorComposeTest --tests dev.powerfulcalendar.ui.v2.DirectEventEditorComposeTest --tests dev.powerfulcalendar.ui.v2.LifecycleCheckpointGateTest
+```
+
+结果 **32/32 PASS、6 suites、0 failures/errors/skips**。最终定向日志 SHA-256：`44DB388BEFCECE2555E8273F8F537FF31278CED3F08749FEB3D3A8365C6D41C9`。定向 XML 保存在 `focused-junit/`。
+
+重组用例首轮因断言读取 `Text` label 而不是 `EditableText` 失败；失败现场显示真实字段值仍为 `2026-10-26 08:00`。测试改为读取 `SemanticsProperties.EditableText` 后通过，没有产品代码修复。失败 XML SHA-256 `C27075339CF6BCB7C9B3711D8B439F3BBE1772AB273EB1E70AFE36328A2215A6` 保存在 `failed-attempt-junit/`。
+
+完整命令：
+
+```powershell
+.\gradlew.bat :app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug --offline --rerun-tasks --no-daemon --console=plain
+```
+
+结果 **BUILD SUCCESSFUL；522/522 JVM tests、69 suites、0 failures/errors/skips、88/88 tasks**；source boundary、Debug / AndroidTest APK 通过；lint **0 errors / 53 warnings**。完整日志 SHA-256：`24DF06304B35356240BCC986F53583E714800C5E467E3A944BB34213C8206663`。Debug / AndroidTest APK SHA-256：`1601F2DB169A8C889791EBFE4149F4383E71980474452C8CFE22BA9A7C92A9EC` / `9FAA01339612CA2DF1871CD047512C282F19339C1E5A7766E4E512E80B0FDFFD`；lint XML SHA-256：`9E719BBDAD89ED5B0D6DC54420AE52EB66DE7E1D90C7FDE113BE5D5B02324C50`。完整 JUnit XML 69 份位于 `full-junit/`；本次全部证据在 `.local/android-test/reports/freeze-20261025/phase1-final-7ceb7fa/`。
+
+本次没有设备安装或 connected 运行。两台既有 AVD 的 PowerCal 私有数据库恢复/处置未闭环，因此本轮不启动它们；更早 API 35 Compose 2/2 结果保留为历史证据，不计为当前复测 PASS。实体设备按用户分工执行。Phase 1 自动化与构建范围 PASS；新 AVD 复测 BLOCKED；DST 秋季回拨的同名墙上时间不能由当前分钟格式区分，风险仍未签核。核心冻结仍 HOLD。
+
+验收矩阵增补两项重建验收：`REC-P1-087`（新建会话无副作用、Diff 与保存幂等）和 `REC-P1-088`（统一默认时间与精度），均为 P1 / RECONSTRUCTED / PASS，历史 ID 映射仍为 0。完整矩阵和结构验证摘要见 `docs/agent-handoff/PROGRESS.md`。

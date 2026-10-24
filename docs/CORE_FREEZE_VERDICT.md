@@ -4,6 +4,14 @@ Date: 2026-10-25
 
 Verdict: **HOLD**
 
+## Latest follow-up: PC-ISSUE-PHASE1 — editor lifecycle and default-time revalidation
+
+At detached `HEAD 7ceb7fa8b65aefd4174cf0420d1d166486c89484`, the Phase 1 production-source tree matches the previously audited `6ddf9b9` tree; the implementation is committed as `b46b3dd7592bb1c7de021d543630f84937a0eaef`. A new Compose regression forces recomposition after changing Activity start time and confirms the edited `EditableText`, dirty state, and captured Clock remain stable. The focused lifecycle/default regression passed **32/32 across 6 suites**; the full offline gate passed **522/522 JVM tests across 69 suites, 0 failures/errors/skips, 88/88 Gradle tasks**. Source boundary, Debug and AndroidTest APK builds passed; lint reported 0 errors / 53 warnings. Debug / AndroidTest APK SHA-256: `1601F2DB169A8C889791EBFE4149F4383E71980474452C8CFE22BA9A7C92A9EC` / `9FAA01339612CA2DF1871CD047512C282F19339C1E5A7766E4E512E80B0FDFFD`. Logs and JUnit XML are under `.local/android-test/reports/freeze-20261025/phase1-final-7ceb7fa/`.
+
+Two reconstructed P1 cases were added: `REC-P1-087` for transient editor lifecycle/idempotent writes and `REC-P1-088` for per-kind defaults, zone and precision. Structural ledger validation reports 216 rows (215 active reconstructed, 1 retired): 202 PASS / 0 FAIL / 9 BLOCKED / 2 NOT TESTED / 2 SPEC UNRESOLVED / 1 RETIRED; P0/P1/P2 = 145/69/1. Historical IDs mapped = 0. Ledger SHA-256 `3A40691D66AF8391543FA82EBB0C2156EABAA3848F00ED51164C491C3FD0AA0A`; this structural validator does not execute product tests.
+
+No connected/device task ran in this revalidation. Existing AVD databases remain unresolved, so the previous API 35 Compose result is historical evidence rather than a fresh PASS; the user handles physical-device tests. The fall DST fold minute-text limitation remains unsigned. Phase 1 code and current JVM/build scope PASS; AVD fresh verification BLOCKED; overall verdict remains HOLD.
+
 ## Latest follow-up: PC-ISSUE-PHASE4-D05 — Android 15 AVD lifecycle classification
 
 An isolated API 35 test package received its synthetic alarm after Home, Recents removal, and process absence. Force-stopping that test package canceled its PendingIntent; no marker arrived during the 120-second observation or after relaunch until the probe manually re-armed it. This test did not invoke PowerCal's scheduler, production receiver, notification path, or persistent reminder records, so it establishes Android lifecycle classification only. Actual PowerCal reminder delivery/recovery, Android reboot, OEM power restrictions, and physical-device behavior remain untested; D05 and `REC-P1-086` stay BLOCKED / PARTIAL.

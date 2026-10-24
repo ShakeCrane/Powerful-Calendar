@@ -123,3 +123,13 @@ PC-ISSUE-PHASE2 已接通重复 occurrence 的编辑器范围选择。时间轴�
 台账结构校验：212 行 / 211 活动重建项，199 PASS / 0 FAIL / 8 BLOCKED / 2 NOT TESTED / 2 SPEC UNRESOLVED / 1 RETIRED；P0/P1/P2=145/65/1。台账 SHA-256 `FFBD395A80D864BB8ED9578A561B6188DD3ED35B88048E0EC31F2AC7951909A1`；结构报告 SHA-256 `09879FB7A8671E7C5DE02C69BEBF30A8B10751EE27EB576B91C3239FC1DAFC0F`。校验仅检查台账结构与状态约束（`product_behavior_tested=false`），不替代行为测试。
 
 独立结案报告：`docs/issues/PC-ISSUE-PHASE2-RECURRENCE-SCOPE-EDITOR.md`。实现提交：`9036a2a8db2e1a669f64cc6174acdc569c4c08b3`。
+
+## Phase 1 当前 HEAD 复验（2026-10-25，`7ceb7fa`）
+
+按新的 Phase 1 执行请求，在 detached worktree `7ceb7fa8b65aefd4174cf0420d1d166486c89484` 验证；生产源码与此前已审计的 `6ddf9b9` 一致，本轮只增加 Compose 回归测试；原实现提交仍为 `b46b3dd7592bb1c7de021d543630f84937a0eaef`。主工作区 E01 AI 多轮改动及 `design/`、Issue、测试证据等未进入该 worktree，也未被本轮暂存或覆盖。源码审查确认普通新建入口均使用 `NewEventEditSession`；余下直接 `newDraft` 属于真实 Diff checkpoint、用户明确的文本/ICS/AI 候选或移动修改草稿。
+
+定向命令 **32/32 PASS、6 suites、0 failures/errors/skips**；完整离线门禁 `:app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug --offline --rerun-tasks --no-daemon --console=plain` **522/522 JVM、69 suites、0 failures/errors/skips、88/88 tasks**；lint **0 errors / 53 warnings**。Debug / AndroidTest APK SHA-256：`1601F2DB169A8C889791EBFE4149F4383E71980474452C8CFE22BA9A7C92A9EC` / `9FAA01339612CA2DF1871CD047512C282F19339C1E5A7766E4E512E80B0FDFFD`。日志、JUnit XML、APK 与 lint XML 位于 `.local/android-test/reports/freeze-20261025/phase1-final-7ceb7fa/`；完整门禁日志 SHA-256 `24DF06304B35356240BCC986F53583E714800C5E467E3A944BB34213C8206663`，定向日志 SHA-256 `44DB388BEFCECE2555E8273F8F537FF31278CED3F08749FEB3D3A8365C6D41C9`。新增 Compose 重组用例确认用户改过的开始时间与会话 Clock 不被重组覆盖；首次断言读取了 Compose Text label 而非 EditableText，失败 XML 已保留，修正后通过。
+
+重建矩阵新增 `REC-P1-087`（瞬态新建会话与幂等持久化）及 `REC-P1-088`（统一默认时间、ZoneId 与日期/分钟精度），两项均仅按本轮 JVM/Robolectric 行为证据签核 PASS。结构校验为 216 rows / 215 active reconstructed；202 PASS / 0 FAIL / 9 BLOCKED / 2 NOT TESTED / 2 SPEC UNRESOLVED / 1 RETIRED；P0/P1/P2=145/69/1；历史映射 0。ledger SHA-256 `3A40691D66AF8391543FA82EBB0C2156EABAA3848F00ED51164C491C3FD0AA0A`；validator JSON SHA-256 `80F1018770C595CCAE4AC34461A66ED4A53791CA699CE49490A6832C4B2CF15F`。结构校验不替代行为测试，也不恢复原始 209 ID。
+
+本轮没有启动现有 AVD/connected 任务：其 PowerCal 私有数据库的缺失与恢复处置仍未闭环，避免再次触碰已有运行环境；先前 API 35 Compose 2/2 保留为历史证据，不宣称本轮新 PASS。实体设备仍由用户执行。Phase 1 JVM/构建验收 PASS；本轮 AVD 子项 BLOCKED，秋季 DST fold 同名分钟限制未签核；整体冻结继续 HOLD。源码未改，因此仍引用已推送的 `b46b3dd` 实现提交；本轮报告和矩阵更新单独提交。

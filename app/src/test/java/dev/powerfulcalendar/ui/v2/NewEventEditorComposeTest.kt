@@ -8,13 +8,16 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.test.core.app.ApplicationProvider
 import dev.powerfulcalendar.core.NewEventEditSession
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.TemporalKind
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -96,5 +99,45 @@ class NewEventEditorComposeTest {
         assertEquals(2L, store.nextSequencePreview())
         assertEquals(0L, store.commitCount())
         assertEquals("Changed title", store.pendingDrafts().single().form.title)
+    }
+
+    @Test fun recompositionKeepsEditedTimeAndTheSessionCapturedClock() {
+        val session = NewEventEditSession.open(
+            TemporalKind.ACTIVITY,
+            Clock.fixed(Instant.parse("2026-10-25T15:07:42Z"), ZoneOffset.UTC),
+            zone
+        )
+        val form = mutableStateOf(session.form)
+        val recomposition = mutableIntStateOf(0)
+        val capturedNow = session.defaults.now
+        ui.setContent {
+            val revision = recomposition.intValue
+            PowerCalTheme {
+                androidx.compose.material3.Text("revision $revision")
+                NewEventEditorDialog(
+                    session = session,
+                    form = form.value,
+                    error = null,
+                    busy = false,
+                    onFormChange = { next -> session.edit(next); form.value = next },
+                    onSave = { session.save(store) },
+                    onExit = { session.close(store) },
+                    onDiscard = { session.discard(store) }
+                )
+            }
+        }
+
+        ui.onAllNodes(hasSetTextAction())[1].performTextReplacement("2026-10-26 08:00")
+        assertEquals("2026-10-26 08:00", session.form.startText)
+        ui.runOnIdle { recomposition.intValue++ }
+        ui.waitForIdle()
+
+        val fieldValue = ui.onAllNodes(hasSetTextAction())[1].fetchSemanticsNode()
+            .config[SemanticsProperties.EditableText].text
+        assertEquals("2026-10-26 08:00", fieldValue)
+        assertEquals("2026-10-26 08:00", session.form.startText)
+        assertEquals(capturedNow, session.defaults.now)
+        assertTrue(session.meaningfulDiff)
+        assertEquals(0L, store.draftCount())
     }
 }
