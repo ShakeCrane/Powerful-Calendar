@@ -4,6 +4,15 @@
         android:name="dev.powerfulcalendar.test.permission.READ_SYNTHETIC_BACKUP"
         android:protectionLevel="signature" />
     <application>
+        <activity
+            android:name="dev.powerfulcalendar.reminders.D05ProbeActivity"
+            android:exported="true"
+            android:label="D05 isolated alarm probe"
+            android:taskAffinity="dev.powerfulcalendar.test.d05probe"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+        <receiver
+            android:name="dev.powerfulcalendar.reminders.D05ProbeReceiver"
+            android:exported="false" />
         <provider
             android:name="dev.powerfulcalendar.interop.RevocableSafTestProvider"
             android:authorities="dev.powerfulcalendar.test.revocable-saf"
