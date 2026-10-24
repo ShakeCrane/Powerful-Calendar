@@ -105,3 +105,16 @@ API 35 Instrumentation 中 `NewEventEditorLifecycleInstrumentedTest` 在两台�
 只读检查找到 `emulator-5554` 的外部 `powercal-backup.json`，文件时间为 2026-10-22 23:54 UTC，SHA-256 `FFCC82BE48A16C0F0EA8342E065FA14B6682FDAECCFC34D6C3C92E62D1CE1CB9`；它与已有主机副本相同，但早于原 AVD 数据库文件时间。另一只读 DB 副本来自 2026-10-23，大小 147456 bytes，也早于原数据库且大小不一致。未将这些旧候选覆盖到 AVD。候选副本、安装包快照、数据库文件名/大小记录、Gradle 日志及测试结果 XML 保存在 `.local/android-test/reports/freeze-20261025/pc-phase1-verification-head-6ddf9b9/`。
 
 因此，**Phase 1 源码行为与自动化验收仍为 PASS，但本轮 AVD 数据保全未闭环，交付状态暂留 HOLD**。实体设备未触碰。需要取得与 2026-10-24 原数据库对应的可验证备份，或由所有者决定是否接受 AVD 以空数据重建；在此之前不启动这两台 AVD 上的 PowerCal，也不使用旧备份自动恢复。Instrumentation 2 个测试在每台 AVD 都通过，JUnit XML 位于 `avd/instrumented-xml/`；Instrumentation 日志 SHA-256 `5023C6C11D4B42782287020C68FEA5CCE1D6005A8D27EFF6C9132643CC4A2F34`；完整 Gradle 日志 SHA-256 `49B83BB32FEB4B428705C54355BD5339B44C33DE4DB13462B785D77797E79411`。
+
+## HEAD `d600aafd` 当前提交基线复验（2026-10-25）
+
+在独立 detached worktree `d600aafd82024dd589ca708a957b8678ca3092ac` 复验；主工作区的 E01 未提交源码、测试、`design/` 与 Issue 资产均未纳入测试或修改。定向命令沿用本报告第一节，六个 Phase 1 测试类 **31/31 PASS、0 failures/errors/skips**。完整离线门禁 `:app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug --offline --rerun-tasks --console=plain` 为 **521/521 JVM tests、69 suites、0 failures/errors/skips、88/88 tasks**；lint **0 errors / 53 warnings**。
+
+本轮未运行任何 connected/device task。此前两台 AVD 的私有数据库缺失仍未获恢复或重建处置，因此不启动它们；本轮不新增 AVD 行为证据。已有 API 35 Compose 2/2 结果仅作为前次证据，不能称为本轮复测。实体设备仍由用户验证。
+
+- 定向 Gradle 日志 SHA-256：`11559DFD1BA9939BF831EA92863A2F2236B3D05BA663B0FD05ACF0AB296AB32B`
+- 完整 Gradle 日志 SHA-256：`256063281337D411A009F19F49C2F00D87C4B48CB2899FDBF6E083EB689A361B`
+- Debug APK SHA-256：`1601F2DB169A8C889791EBFE4149F4383E71980474452C8CFE22BA9A7C92A9EC`；AndroidTest APK：`9FAA01339612CA2DF1871CD047512C282F19339C1E5A7766E4E512E80B0FDFFD`
+- 本轮日志及构建产物位于 `.local/android-test/reports/freeze-20261025/phase1-review-d600aaf/`；本地定向 JUnit 汇总为 EditorDefaults 6、NewEventEditSession 6、DirectEventEditorCompose 6、LifecycleCheckpointGate 1、NewEventEditorCompose 2、WebSkinEditBridge 10。
+
+本次复验没有 Phase 1 产品源码变更。普通新建编辑会话、统一默认值和幂等保存路径在当前提交基线继续通过 JVM 自动化与构建；AVD 原数据库恢复/所有者处置仍未闭环，因此保留该数据保全风险和此前记录的 HOLD，不将本轮结果扩大解释为实体设备或 AVD 新 PASS。
