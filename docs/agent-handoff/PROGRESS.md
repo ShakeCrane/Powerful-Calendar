@@ -1,4 +1,10 @@
 # Core freeze progress
+## PC-ISSUE-127 — DeckController retryable save and card switching (REC-P1-044/045 narrowed PASS)
+
+- Extended the existing storage-failure regression to recover the fake store and retry the same accepted input; verified it is staged and dirty/error/busy clear. Existing controller tests verify latest-text stage before card navigation and refusal to switch after stage failure. No production code changed; claims are limited to JVM controller behavior with fake persistence, excluding UI, SQLite durability, exit/lifecycle and devices.
+- Focused regression passed 1/1. Full Debug boundary/test/APK/lint passed 466/466 across 57 suites, zero failures/errors/skips; lint 0 errors / 58 warnings. Test commit `41c7f849438128960b6f453c44563141feb0d1e5` is pushed.
+- Report: `docs/issues/PC-ISSUE-127-deck-controller-retryable-save.md`. Ledger: 160 PASS / 0 FAIL / 9 BLOCKED / 33 NOT TESTED / 7 SPEC UNRESOLVED; P0 119/0/1/1/5, P1 41/0/8/32/1. Structural-only artifact `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-127.json`, SHA-256 `77CEBCB85D696C3A5121B78EE1AED29F611AA6DFBB86B7FD8642109B0FF6E5E6`; ledger SHA-256 `38E9BEE15710B9F59029E6C992B52BE1D48721A7320754994A044F08E16157C`. Overall freeze remains HOLD.
+
 ## PC-ISSUE-126 — AI commit authorization gate (REC-P1-054 narrowed PASS)
 
 - Reproduced that `PowerStore.commit(actor="ai")` without an `AiSession` could proceed to formal commit. The core store now denies AI actors without a scoped session. The regression confirms no object/history/intent write and a pending draft; existing valid-session and replay tests remain green.

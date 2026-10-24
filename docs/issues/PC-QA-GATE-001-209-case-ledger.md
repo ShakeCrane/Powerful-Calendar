@@ -32,9 +32,9 @@ Structural validation: 209 unique IDs; all reconstructed rows contain source, en
 | Candidate bucket | PASS | FAIL | BLOCKED | NOT TESTED | SPEC UNRESOLVED |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | P0 (proposed) | 119 | 0 | 1 | 1 | 5 |
-| P1 (proposed) | 34 | 0 | 8 | 39 | 1 |
+| P1 (proposed) | 41 | 0 | 8 | 32 | 1 |
 | Historical unclassified slot | 0 | 0 | 0 | 0 | 1 |
-| **Total candidate rows** | **153** | **0** | **9** | **40** | **7** |
+| **Total candidate rows** | **160** | **0** | **9** | **33** | **7** |
 
 ### Case-specific backup verification (2026-10-23)
 
@@ -895,3 +895,11 @@ The pre-fix core boundary allowed `PowerStore.commit(actor="ai")` to enter its o
 Pre-fix targeted test: **1 failure**, log SHA-256 `843260CCCF56DE7CD5F3518AD2C5CAAD6D198F58B6DD67942426E3B39F493BB2`, XML SHA-256 `9DFEEFA48D83AC44009A7873D008D1B11C32C7FB766649A91663FD7FE4CDF6A4`. Post-fix targeted test: **1/1 PASS**, log SHA-256 `9FC4340B447B048B20ACE5ADF96F0AC8B691C4B3D15C6283832EC74DB503636D`, XML SHA-256 `B8F2625BC1ED9A5E632001F39B6F5DD6EAB94F1079EE57E4161B8B38AD0D6A62`. `AiAuthorizationTest` passed 9/9. Full Debug boundary/test/APK/lint regression passed **466/466** across 57 suites, zero failures/errors/skips; lint 0 errors / 58 warnings. Full log SHA-256 `30B7A125DCE04A7711CEDB3B9F97FE7B0DB3B02307454322B80990997327C7C3`; full authorization suite XML SHA-256 `FA6ECD539A5FBAC7C17B6310F98384DDAF9CA35169237F326DC7F3DA28FD46AB`; lint XML SHA-256 `E95DE7C795C7A50415CF5BF197DCD2A2FB73D55618CE34068C239E8648FC09DF`; APK SHA-256 `E2EE9DF7C315E2BCD237457CEFC69B3ACF4D830F7D191447DDE724FD0E892A60`. Code/test commit `fc0e69ac90d25878c660d046a98818629d6c1d39` is pushed. Independent report: `docs/issues/PC-ISSUE-126-ai-commit-requires-authorization.md`.
 
 REC-P1-054 passes for the narrowed core gate. Reconstructed totals: 158 PASS / 0 FAIL / 9 BLOCKED / 35 NOT TESTED / 7 SPEC UNRESOLVED; P0 119/0/1/1/5, P1 39/0/8/34/1. Structural-only artifact `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-126.json`, SHA-256 `3DC7D2B92820502212C3BF4CCEAECFF56D67BC01EF16FAE1773F0668AB51A75B`; ledger SHA-256 `A11035534F763B61330940D8970B45AABA0D2CAA3AAD1F56804C109FB6006338`. It verifies ledger shape only. Historical mapping and overall freeze remain HOLD.
+
+### PC-ISSUE-127 — REC-P1-044/045 DeckController stage and retry (2026-10-24)
+
+The new assertions extend `DeckControllerConcurrencyTest.storageFailureKeepsAcceptedInputDirtyAndPublishesRetryState`: an injected stage failure retains the latest accepted title and dirty/retryable state; after the fake store recovers, a second `flush()` stages that same title and clears dirty/error/busy. Existing `DeckControllerTest.movingFlushesTheLatestTextFirst` verifies the latest form is staged before the card index changes; `failedSaveBlocksTheTransitionAndKeepsText` verifies a failed stage refuses navigation. These are fake-backed JVM controller contracts only. SQLite durability, exit/lifecycle, UI controls and Android device behavior are not claimed; no production source changed.
+
+Focused retry regression: **1/1 PASS**, log SHA-256 `A6DF8B1298DF20686233F1FFA0F4DF397F3B1FF351D2B596C4816AC5F9B46A7C`. Full Debug boundary/test/APK/lint: **466/466** across 57 suites, zero failures/errors/skips, lint 0 errors / 58 warnings. Full log SHA-256 `5048666A731DA92219D3B977A74DD4E68DED9F6DAF87DC7678D0993CC64F6700`; `DeckControllerConcurrencyTest` XML SHA-256 `BBF0C6436C81992CDE0FBB3B52D2FF97B4C94D97FC0E996DCA3EC22C2EB0ACE8`; lint XML SHA-256 `E95DE7C795C7A50415CF5BF197DCD2A2FB73D55618CE34068C239E8648FC09DF`; APK SHA-256 `E2EE9DF7C315E2BCD237457CEFC69B3ACF4D830F7D191447DDE724FD0E892A60`. Test commit `41c7f849438128960b6f453c44563141feb0d1e5` is pushed. Independent report: `docs/issues/PC-ISSUE-127-deck-controller-retryable-save.md`.
+
+REC-P1-044/045 pass for the narrowed controller scope. Reconstructed totals: **160 PASS / 0 FAIL / 9 BLOCKED / 33 NOT TESTED / 7 SPEC UNRESOLVED**; P0 119/0/1/1/5, P1 41/0/8/32/1. Structural-only artifact `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-ledger-validation-after-pc-issue-127.json`, SHA-256 `77CEBCB85D696C3A5121B78EE1AED29F611AA6DFBB86B7FD8642109B0FF6E5E6`; ledger SHA-256 `38E9BEE15710B9F59029E6C992B52BE1D48721A7320754994A044F08E16157C`. It verifies ledger structure and counts only. Historical mapping and overall freeze remain HOLD.
