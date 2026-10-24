@@ -1077,8 +1077,8 @@ private fun DeckCardBody(
     val entrance by animateFloatAsState(if (arrived) 1f else 0.86f, glassMotion(), label = "deckArrival")
 
     BoxWithConstraints(Modifier.fillMaxSize().graphicsLayer { alpha = entrance }) {
-    val tiny = maxHeight < 320.dp
-    Column(Modifier.fillMaxSize().then(if (tiny) Modifier.verticalScroll(rememberScrollState()) else Modifier).padding(horizontal = 14.dp, vertical = 10.dp)) {
+    val compactViewport = maxHeight < 320.dp || WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    Column(Modifier.fillMaxSize().then(if (compactViewport) Modifier.verticalScroll(rememberScrollState()) else Modifier).padding(horizontal = 14.dp, vertical = 10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             FlowRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
@@ -1125,7 +1125,7 @@ private fun DeckCardBody(
 
         Column(
             Modifier
-                .then(if (tiny) Modifier else Modifier.weight(1f).verticalScroll(rememberScrollState())),
+                .then(if (compactViewport) Modifier else Modifier.weight(1f).verticalScroll(rememberScrollState())),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             if (!expanded) {
