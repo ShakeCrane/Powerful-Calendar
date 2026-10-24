@@ -460,6 +460,75 @@ class TemporalProtocolTest {
     }
 
     @Test
+    fun dailyRecurrenceSkipsDstGapButConsumesThatSlot() {
+        val start = LocalDateTime.of(2026, 3, 7, 2, 30)
+        val record = TemporalRecord(
+            eventSeq = 1, revision = 1, kind = TemporalKind.ALARM, title = "起床",
+            startMillis = start.atZone(newYork).toInstant().toEpochMilli(),
+            zoneId = newYork.id,
+            recurrence = Recurrence(freq = RecurrenceFreq.DAILY, count = 4)
+        )
+        val from = LocalDate.of(2026, 3, 7).atStartOfDay(newYork).toInstant().toEpochMilli()
+        val to = LocalDate.of(2026, 3, 12).atStartOfDay(newYork).toInstant().toEpochMilli()
+        val gapKey = "2026-03-08T02:30"
+
+        val occurrences = RecurrenceEngine.occurrences(record, from, to)
+        val prioritizedOccurrences = RecurrenceEngine.occurrences(
+            record, from, to, prioritizeWindowStarts = true
+        )
+
+        assertEquals(
+            listOf("2026-03-07T02:30", "2026-03-09T02:30", "2026-03-10T02:30"),
+            occurrences.map { it.key }
+        )
+        assertEquals(occurrences.map { it.key }, prioritizedOccurrences.map { it.key })
+        assertEquals(1, RecurrenceEngine.slotIndexForKey(record, gapKey))
+        assertNull(RecurrenceEngine.occurrenceForKey(record, gapKey, localZone = newYork))
+        assertEquals(
+            "2026-03-09T02:30",
+            RecurrenceEngine.nextOccurrence(record, requireNotNull(record.startMillis) + 1, localZone = newYork)?.key
+        )
+
+        val activity = record.copy(
+            kind = TemporalKind.ACTIVITY,
+            endMillis = requireNotNull(record.startMillis) + 30 * 60_000L
+        )
+        val activityOccurrences = RecurrenceEngine.occurrences(
+            activity, from, to, prioritizeWindowStarts = true
+        )
+        assertEquals(occurrences.map { it.key }, activityOccurrences.map { it.key })
+        assertTrue(activityOccurrences.all { it.endMillis == it.startMillis + 30 * 60_000L })
+    }
+
+    @Test
+    fun dailyRecurrenceUsesFirstInstantDuringDstFold() {
+        val start = LocalDateTime.of(2026, 10, 31, 1, 30)
+        val record = TemporalRecord(
+            eventSeq = 1, revision = 1, kind = TemporalKind.ALARM, title = "起床",
+            startMillis = start.atZone(newYork).toInstant().toEpochMilli(),
+            zoneId = newYork.id,
+            recurrence = Recurrence(freq = RecurrenceFreq.DAILY, count = 3)
+        )
+        val from = LocalDate.of(2026, 10, 31).atStartOfDay(newYork).toInstant().toEpochMilli()
+        val to = LocalDate.of(2026, 11, 3).atStartOfDay(newYork).toInstant().toEpochMilli()
+        val foldKey = "2026-11-01T01:30"
+
+        val occurrences = RecurrenceEngine.occurrences(record, from, to)
+        val folded = occurrences.single { it.key == foldKey }
+        val expectedFirst = LocalDateTime.of(2026, 11, 1, 1, 30)
+            .atZone(newYork).withEarlierOffsetAtOverlap().toInstant().toEpochMilli()
+
+        assertEquals(listOf("2026-10-31T01:30", foldKey, "2026-11-02T01:30"), occurrences.map { it.key })
+        assertEquals(expectedFirst, folded.startMillis)
+        assertEquals(-4 * 60 * 60, Instant.ofEpochMilli(folded.startMillis).atZone(newYork).offset.totalSeconds)
+        assertEquals(folded, RecurrenceEngine.occurrenceForKey(record, foldKey, localZone = newYork))
+        assertEquals(
+            foldKey,
+            RecurrenceEngine.nextOccurrence(record, requireNotNull(record.startMillis) + 1, localZone = newYork)?.key
+        )
+    }
+
+    @Test
     fun dailyAlarmFollowsCurrentLocalZoneWhileKeepingItsOriginalSlotKey() {
         val previousDefault = TimeZone.getDefault()
         val tokyo = ZoneId.of("Asia/Tokyo")
