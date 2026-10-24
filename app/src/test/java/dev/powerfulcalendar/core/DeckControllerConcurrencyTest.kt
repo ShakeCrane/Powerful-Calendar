@@ -141,7 +141,9 @@ class DeckControllerConcurrencyTest {
         }
         val waitedMs = withTimeout(2_000) { elapsed.await() }
         assertTrue("edit() waited ${waitedMs}ms behind storage IO", waitedMs < 200)
+        assertEquals(1L, controller.state.currentId)
         assertEquals("第二版", controller.state.form!!.title)
+        assertTrue("accepted input stays dirty until its latest version is staged", controller.state.dirty)
 
         fake.releaseStage.countDown()
         flush.join()
