@@ -81,3 +81,18 @@ decorative horizontal stripe separately by visual evidence.
   Before raising target SDK to 36+, reassess Android 16 large-screen behavior:
   orientation restrictions are ignored on displays with smallest width >=600dp
   for apps targeting API 36 or higher. See the [Android 16 behavior changes](https://developer.android.com/about/versions/16/behavior-changes-16).
+
+## Owner amendment — accepted timeline edge and current-time overlap (2026-10-24)
+
+This amendment supersedes the 2026-10-23 clarification only for the two
+explicitly accepted visuals below; the continuous vertical time axis and all
+event time geometry remain part of the contract.
+
+- A faint pale-gray horizontal edge/band is accepted. Removing it is not a
+  freeze acceptance criterion; retain its prior screenshots/evidence for
+  history and retire that candidate from current GO gates.
+- The blue horizontal current-time indicator may overlap the central vertical
+  time axis at their crossing. This layering is intentional and must not be
+  treated as a missing-axis defect. Keep the actual time geometry and ruler
+  behavior intact.
+- Do not reopen unrelated UI changes to address either accepted visual.

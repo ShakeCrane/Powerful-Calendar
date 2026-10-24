@@ -1,8 +1,33 @@
 # PC-QA-GATE-001 — 209-case acceptance traceability
 
-Date: 2026-10-24 | Severity: P0
+Date: 2026-10-24 | Severity: P1
 
-Status: **PARTIAL / HOLD — source audit complete; initial reconstructed ledger exists; execution and priority review remain open.**
+Status: **PARTIAL / HOLD — risk-based reconstructed matrix is active; open test, specification, provider, and device gates remain.**
+
+## Current risk-based reconstructed matrix (2026-10-24)
+
+This section supersedes the initial priority allocation and unclassified placeholder described in the historical audit below. The owner confirmed that the original 209-row source is unavailable and directed the team to continue from the core contract, acceptance documents, tests, Issues, and observed product behavior. Do not request or wait for the missing source again, do not fabricate historical IDs, and do not force the reconstructed matrix to any historical count or priority split.
+
+The current ledger has 209 active `RECONSTRUCTED` acceptance rows and one retained `RETIRED` row. Its active count happens to equal the old aggregate after removing the fake placeholder, retiring the accepted stripe criterion, and adding two source-derived recovery rows; this is incidental and does not imply historical equivalence. All active rows remain `UNMAPPED`. The stable `REC-P0-*` / `REC-P1-*` strings are trace keys; `candidate_priority` is the current risk classification.
+
+| Current risk bucket | PASS | FAIL | BLOCKED | NOT TESTED | SPEC UNRESOLVED |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| P0 | 135 | 0 | 0 | 4 | 5 |
+| P1 | 29 | 0 | 8 | 26 | 1 |
+| P2 | 1 | 0 | 0 | 0 | 0 |
+| **Active reconstructed total** | **165** | **0** | **8** | **30** | **6** |
+
+One retired record (`REC-P1-013`) is excluded from those active-row totals and from GO criteria.
+
+Risk review changed `REC-P0-037` and `REC-P0-040` to P1 because Draft Deck navigation/search affects workflow discoverability while leaving stored drafts and authorization intact. It changed these cases to P0 because failure can affect formal event visibility/temporal placement, loss of user work, ambiguous or unauthorized formal writes, transaction atomicity, or recovery: `REC-P1-014`–`016`, `REC-P1-034`–`036`, `REC-P1-044`–`045`, `REC-P1-049`–`051`, and `REC-P1-054`–`062`. The ledger records an individual risk basis and the specific action/expected outcome for each row; no 126/82 target is used.
+
+`REC-P1-013` is retained as `RETIRED / OUT_OF_SCOPE`: the owner accepted the pale-gray horizontal edge/stripe. Its former visual result and evidence remain in the row for audit, but it is not a current pass condition or GO gate. The separate user-requested greedy-title-folding acceptance remains P1 and independently signed in `REC-P1-021`–`030`; it tests title-rectangle collisions while preserving event geometry. The blue now-line may overlap the central axis by owner confirmation.
+
+Two additional reconstructed recovery cases have targeted evidence: `REC-P2-001` signs PC-ISSUE-135 for a synthetic pending draft across process restarts and an AVD reboot; `REC-P1-083` signs PC-ISSUE-136 for synthetic chat history across process restarts and an AVD reboot. Their reports state the exact tested boundary. Neither claims physical-device/OEM, low-memory, or normal UI lifecycle behavior.
+
+The 30 `NOT TESTED` rows remain open. Each row now says `NOT TESTED` in `actual` and explicitly records that no targeted run log exists in `evidence`, with this issue as the gap register. No grouped Gradle count is attributed to those behaviors. Current IDs are in the structural report. The six unresolved specification rows are `REC-P0-049`, `REC-P0-054`, `REC-P0-074`, `REC-P0-075`, `REC-P0-118`, and `REC-P1-068`; the eight blocked rows include the free-provider path and external/device conditions. They are not PASS.
+
+Structural-only validation uses `tools/validate_core_freeze_acceptance_ledger.py`. Its artifact records the ledger hash, dynamic status/priority totals, every open row, zero historical mappings, and `product_behavior_tested=false`; it contains no fixed row-count or 126/82 assertion. Structural validation cannot sign product behavior. The original 209-item provenance gap is disclosed, but it no longer blocks execution or replaces the core-contract GO criteria. Overall status remains **HOLD** until active P0/P1 evidence and mandatory external/device gates are resolved.
 
 ## Finding
 
@@ -27,9 +52,9 @@ Audit evidence: `.local/android-test/reports/freeze-20261023/pc-qa-gate-001-sour
 
 To check beyond the local clone, the public GitHub repository was inspected read-only. The three listed remote branches (`main`, `integration/rc2-review-20261020`, and `feat/r1-import-ai-compat`) had recursive trees of 480, 141, and 261 entries; filename review found the current reconstructed ledger and product/skin acceptance documents, but no original 209-row case file. Repository code searches for `209 case acceptance P0 P1` and `126 P0 82 P1 checklist`, an all-state pull-request search for `209 case acceptance`, and a commit search for `209 acceptance` each returned zero results. This does not cover deleted refs, private artifacts, local copies outside the workspace, or external issue attachments, and does not establish any historical case mapping.
 
-Machine-readable search record: `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-github-source-audit-20261024.json`, SHA-256 `D937087E8C1ACD213FDF99B91F5495B24EA8F3DA2F8E43D47E408F29CE95E92E`. The original source remains unavailable in the inspected repository; the 208 reconstructed rows and one historical slot remain unmapped, so this gate stays open.
+Machine-readable search record: `.local/android-test/reports/freeze-20261024/pc-qa-gate-001-github-source-audit-20261024.json`, SHA-256 `D937087E8C1ACD213FDF99B91F5495B24EA8F3DA2F8E43D47E408F29CE95E92E`. The original source remains unavailable in the inspected repository; this remains a disclosed provenance limitation, not a reason to stop the owner-approved reconstructed acceptance workflow.
 
-## Initial reconstructed candidate ledger
+## Historical initial ledger checkpoint (superseded by the current matrix above)
 
 `docs/CORE_FREEZE_ACCEPTANCE_LEDGER.csv` contains 208 reconstructed rows and one unresolved historical slot. Proposed priority allocation is P0=126 and P1=82, grouped by risk/source area; this preserves the known aggregate for review but does not establish which historical case each row represents. All reconstructed rows are explicitly `UNMAPPED`.
 

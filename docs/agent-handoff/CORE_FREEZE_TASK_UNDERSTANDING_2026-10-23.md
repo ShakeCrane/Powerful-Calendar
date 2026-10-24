@@ -1,10 +1,20 @@
 # PowerCal 核心基线冻结：任务理解清单
+
+## 当前验收策略（2026-10-24；本节取代下方历史快照中“209 项原始映射 / P0=126、P1=82”作为 GO 前置条件）
+
+- 用户已明确：原始 209 项清单当前无法提供，不再暂停或反复询问；209 只是历史规划数量，不得为凑数编造项目，也不得因历史 ID 无法恢复而永久阻塞开发。
+- 以 `CORE_CONTRACT_FREEZE_2026-10-21.md`、现有验收文档、测试代码、历史 Issue 和实际产品行为重建当前核心验收矩阵。每项都必须有来源、测试方法、实际结果与证据；历史映射缺失标 `RECONSTRUCTED` / `UNMAPPED`，不得伪称原始项。优先级按风险决定，不沿用 126/82 比例。
+- 当前矩阵：209 条活动重建候选（数量偶然形成，不是目标），P0 144 / P1 64 / P2 1；165 PASS、0 FAIL、8 BLOCKED、30 NOT TESTED、6 SPEC UNRESOLVED；另有一条退役记录。结构报告只证明台账完整，不证明产品行为。
+- 原始表不可核对是应披露的文档溯源缺口，不是正式冻结的独立门槛。正式 GO 以重建后逐项通过的核心合同验收及所需环境为准；任何 P0/P1 的 BLOCKED、NOT TESTED 或 SPEC UNRESOLVED 均不得宣称通过。
+- `REC-P1-013` 淡灰横向边缘按用户确认标为 `RETIRED / OUT_OF_SCOPE`，旧证据保留；时间轴标题贪心折叠仍是独立 P1 必验项 `REC-P1-021`–`030`。当前时间线可以覆盖中轴。应用保持竖屏，不主动感应陀螺仪；系统强制横屏仅作为兼容场景。真机测试由用户负责，本 Goal Mode 只运行虚拟设备可执行的项目。
+- PC-ISSUE-135 的草稿重启恢复记为 `REC-P2-001`；PC-ISSUE-136 的本地 AI 聊天历史进程/系统重启恢复记为 `REC-P1-083`，各自边界见独立 Issue 报告。
+- 结构校验器为 `tools/validate_core_freeze_acceptance_ledger.py`；它不设固定行数或历史优先级数量。当前冻结保持 **HOLD**，直到剩余验证及外部/设备门槛有证据闭环。以下更早的执行快照与待办记录保留为历史，不覆盖本政策。
 版本：2026-10-24 执行续接快照；执行前必须按本地仓库重新核对。
 根目录：E:\Project\Powerful-Calendar
 目标：闭环测试、最小修复、逐项回归与签核，**满足证据标准才宣布核心基线 GO**；否则给出准确 HOLD 及阻塞。本文不是验收完成证明。
 
 ## 0. 最新执行续接（2026-10-24）
-- 当前 `main` 全量离线回归：基线 `35597c97e1faa27c9c80e2fbf587463edbaf70d3`，`verifySkinSourceBoundary`、`testDebugUnitTest`、Debug/AndroidTest APK 构建及 `lintDebug` 全部通过；JVM 469/469、58 suites、0 failures/errors/skips；Lint 0 errors/58 warnings。测试包含受保护的未跟踪 `DraftDeckFeedbackTest.kt`，文件未修改。日志 `.local/android-test/reports/freeze-20261024/core-freeze-full-rerun-after-user-scope.log` SHA-256 `DDB2361C5CDB6EABFA455153590D18C99F679A9B093642932AEB8D858BE0D0A6`；Debug APK SHA-256 `35EB92E478AD2DEBBD53D03682844D5B1F56E24438469B4A38E89D247B7E40F4`；AndroidTest APK SHA-256 `EF502CA60DE10D95A2076DD416ABA9318D6343EF8415D17B6F0C2D85E7533958`。这是本机 Gradle/离线构建回归，不代表当前未决 UI、真机、外部 provider 或产品规格验收已通过。
+- Latest full offline regression (2026-10-24): source/test baseline `be6660ef620bc7c1d332080a9180e586de16e134`; boundary, 469/469 JVM tests (58 suites), Debug/AndroidTest APK assembly and lint passed, 0 failures/errors/skips, 0 lint errors / 58 warnings. Full log and hashes: `docs/issues/PC-ISSUE-136-chat-history-restart-persistence.md`.
 - DST 规格审计与当前代码复测：`PRODUCT_BASELINE_G1-G11.md` §9 明确将 DST policy details 留作未决。`TemporalModels.kt` 的 gap 顺延 / fold 选较早 offset 注释只说明实现现状，不构成产品批准。当前 `OccurrenceWindowTest` 19/19、`TemporalProtocolTest` 38/38 PASS，覆盖春季 gap 和 DST 壁钟重复规则，但未发现 fold 专项回归；REC-P0-074/075 保持 SPEC UNRESOLVED。日志 `.local/android-test/reports/freeze-20261024/pc-policy-audit-20261024-dst-rerun.log` SHA-256 `6DD225D91BA3C9D9333E9FE7B55137B9679CE90E74FF361B3140811B955193F3`；JUnit XML SHA-256 `F913E61734A977C392D5F160F79B6D5BE85B25381A34D67DBE492A3DC1266118` / `815BED4DFC2EB57505FE9FEA5405533876C34105033B0A3DCCA186C843F23F24`。
 - PC-ISSUE-003 当前代码核心恢复回归：`BackupEnvelopeTest` 24 项 + 3 个 `PowerStoreTest` 备份恢复用例共 27/27 PASS，0 failures/errors/skips。覆盖篡改拒绝不落行、非空目标保护、事务回滚、草稿/身份顺序、desired schedule 重建、identity high-water。使用隔离的 JVM/Robolectric SQLite；没有 UI、在线 AVD app 或真实业务库写入。日志 `.local/android-test/reports/freeze-20261024/pc-issue-003-backup-envelope-core-rerun.log` SHA-256 `C6AFA52BB816008BDD3A0DBF7AEDC7B2705A4D0EC33494A2B401FFD6B570FE7B`；JUnit XML SHA-256 `9A97B489626CDA0AE616F666C4B256A3DBB50B0B5847322F8C0DAADA3374992D` / `EB3B885E3A977385C93EC8D054B7D3407E662BABE1D13FA8EF0A977D6C7A8EB3`。真实 DocumentsUI/provider lifecycle 与实体设备仍未验，PC-ISSUE-003 保持 PARTIAL/HOLD。
 - PC-ISSUE-002 配置可用性只读复查：API 35 emulator-5554 没有 `dev.powerfulcalendar` 包；emulator-5556 有应用包，但 `shared_prefs` 仅列出 `powercal-onboarding.xml` 与 `powercal-ui.xml`，没有 `powercal-ai.xml`。未读取偏好值或凭据、未启动应用、未修改设置、未发出模型请求。证据 `.local/android-test/reports/freeze-20261024/pc-issue-002-config-availability-check.json` SHA-256 `824CF934453870ECA21A97D0BB3825801F70FA6918DDBD7D0FEE10F88F6CA797`。结构校验 artifact SHA-256 `BD2D976A66A48EF71C543DE0906D2257BCB4F066147BAD7BF61B07D7E18E3D7C`，更新后的台账 SHA-256 `D500FE6D936C71C9514D2FA30645438DC74F3318A6B89BBE373B62ABCE093921`，计数不变。这只是环境配置检查，PC-ISSUE-002 / REC-P1-047 仍 PARTIAL / BLOCKED。
@@ -99,7 +109,7 @@
 - `design/`、`DraftDeckFeedbackTest.kt` 与 `PC-OBS-005` 未跟踪文件仍受保护、未修改/未提交；主分支已与 `origin/main` 同步。
 
 ## 1. 当前真实现场与不得丢失的工作
-- 当前执行更新（覆盖下方历史快照中的旧状态）：最新已推送代码/测试提交为 `25f69e1dc6ffa94078e7797e7034f881150be1c3`；Issue 053–055 文档签核、Issue 056 文档提交 `bd37ce3cbd7d56a6437a336df285fe59fefe3b1e`、Issue 057 文档签核提交 `017ae801a6a0e6377222b85865a6357711b1d68f` 均已推送；Issue 058–075 的测试与各自签核文档已推送。Issue 047 记录规格冲突，`REC-P0-054` 保持 SPEC UNRESOLVED；Issue 048–067 的既有 case-specific 结论保留。Issue 068 对 `REC-P0-125` 验证类型化 AI CREATE/REPLACE 只成为待处理草稿，未写正式事件且原记录未变，定向 1/1 PASS。Issue 069 对 `REC-P0-124` 验证附件恶意文本留在不可信 user-role 内容，system prompt 规定不执行且没有 tools/tool_choice；定向 1/1 PASS，真实模型遵守情况未测。Issue 070 对 `REC-P0-123` 验证 `shareContext=false` 时即使误传私人事件也不向网络 prompt 发送，原上下文只保留本地解析；定向 1/1 PASS。Issue 071 对 `REC-P0-126` 验证批次完成后授权不可重放、旧 epoch 在后续批次中拒绝且新授权可提交；定向 1/1 PASS。Issue 072 对 `REC-P0-115` 验证 unknown/missing trigger ID 不再进入提醒通知路径；定向接收器测试类 15/15 PASS。Issue 073 对 `REC-P0-119` 验证稍后提醒与延迟触发不改变 recurrence、revision、completion keys 或实例序列；定向 1/1 PASS。Issue 074 对 `REC-P0-120` 验证单次 exception 经 EditSession 保存并在 SQLite 重开后仍只跳过指定 occurrence；eventSeq、锚点及其余重复规则不变，定向 1/1 PASS。API 35 模拟器与真机未测。Issue 075 对 `REC-P0-121` 验证默认结构化导入将启用 Alarm 持久化为 disabled、无 desired schedule intent，重复导入幂等且 SQLite 重开后仍无调度；定向 1/1，API 35/OEM/实际交接未测。最新完整 Gradle 为 426/426，55 suites，Lint 0 errors/58 warnings（425 tracked + 1 受保护未跟踪测试）；候选总体 123 PASS / 0 FAIL / 9 BLOCKED / 70 NOT TESTED / 7 SPEC UNRESOLVED，98 条重建候选有独立行为证据，冻结仍 HOLD，0 个历史原始 ID 映射。Issue 056 的 Android 精确闹钟权限拒绝/恢复、Issue 057 的系统实际响铃、Issue 058 的 Android 调度送达、Issue 059 的真实 Android SAF provider、Issue 060 的 Android SAF restore、Issue 063 的 Android TIMEZONE_CHANGED/AlarmManager 实际路径均未覆盖。Issue 002 仍 PARTIAL / BLOCKED：免费模型结构化阶段最近返回 HTTP 429，现有记录要求不为绕过限流重复请求或使用付费调用。按用户最新指示，不开展 UI 工作；变浅横向边缘可接受，当前时间标记覆盖中轴按设计保留。
+- Current update (supersedes older snapshots below): latest pushed commit is `be6660ef620bc7c1d332080a9180e586de16e134`; PC-ISSUE-135 and PC-ISSUE-136 each have independent emulator-backed recovery reports. The active risk matrix is P0 144 / P1 64 / P2 1, with 165 PASS, 8 BLOCKED, 30 NOT TESTED and 6 SPEC UNRESOLVED; full details and historical-source disclosure are in `docs/issues/PC-QA-GATE-001-209-case-ledger.md`. Overall verdict remains HOLD.
 - 未跟踪 `design/`、`app/src/test/java/dev/powerfulcalendar/ui/v2/DraftDeckFeedbackTest.kt`、`docs/issues/PC-OBS-005-commit-feedback.md` 属于受保护的其他资产/工作，未修改、未暂存、未提交。
 - Issue 001（ICS）：代码修复已提交；本轮在隔离 `emulator-5556` 通过纽约 DST 周重复系列的 Android SAF 导出、`icalendar 7.3.0` 独立解析与本地时间跨回拨展开核对。完整工作树 Gradle 回归报告 364 项通过，其中 1 项来自受保护未跟踪测试（363 tracked + 1 untracked）；不能将其描述成已提交树的 364 项。设备已恢复 GMT/自动时区，数据库中的两条合成验收事件仍保留。因缺外部日历导入器与实体设备，Issue 仍 PARTIAL / HOLD；证据见 `docs/issues/PC-ISSUE-001-ICS-recurrence.md`、`issue001-saf-dst-emulator5556.ics`、`issue001-dst-independent-parse-emulator5556.json` 和 `issue001-emulator5556-postcheck.json`（均位于 `.local/android-test/reports/freeze-20261023/`）。
 - Issue 003（备份）：类型化非空库拒绝与可操作错误说明已提交；API 35 的 SAF 空库恢复、篡改/无效输入拒绝、非空目标拒绝与数据指纹证据均已记录。最新完整工作树 Gradle 回归报告 364 项通过，其中包含上述 1 项受保护未跟踪测试；不能将其描述成已提交树的 364 项。OS 实际撤销 SAF 权限和实体设备验收仍缺证，因此保持 PARTIAL / HOLD。详见 `docs/issues/PC-ISSUE-003-restore-feedback.md`。
@@ -170,15 +180,15 @@
 - Issue 072（REC-P0-115 旧提醒触发器身份校验）：发现 receiver 未校验广播 trigger ID，unknown/missing ID 曾被错误接收；现在统一校验唯一 `primary` 身份，unknown/missing 均拒绝且不展示提醒。定向两个测试类 15/15、完整 Gradle 425/425，55 suites，Lint 0 errors/55 warnings；Android OS PendingIntent 送达与真机响铃未测。代码提交 `2e74007c70fc0adccd14fdb42b6d491c58335ee6` 与独立报告 `docs/issues/PC-ISSUE-072-stale-alarm-trigger-identity.md` 已推送。
 - Issue 073（REC-P0-119 稍后提醒不改重复规则）：既有 Robolectric receiver/SQLite 回归验证 snooze 与延迟 ACTION_FIRE 保持 recurrence、revision、completion keys 和投影实例序列不变；定向 1/1，最新完整 Gradle 425/425 已含该用例。未改源码/测试；真实 Android AlarmManager 送达未测。独立报告 `docs/issues/PC-ISSUE-073-recurring-snooze-series-isolation.md` 随冻结台账文档提交。
 - Issue 074（REC-P0-120 跳过单次 occurrence 不改重复序列）：新增 PowerStore/SQLite 回归，EditSession 写入单个 exception 后 eventSeq、锚点、其余 recurrence 字段和其他 occurrence 均不变，数据库关闭重开后仍一致。定向 1/1；完整 Gradle 426/426、55 suites，Lint 0 errors/58 warnings。Robolectric API 34；API 35 模拟器和真机未测。测试提交 `531186ec99046290116b5e63c8aabd57914e8558` 已推送；独立报告 `docs/issues/PC-ISSUE-074-skip-occurrence-series-isolation.md` 与冻结台账提交 `576928cbb7df7b56736b39fd28d94f169965da8b` 已推送。
-- Issue 075（REC-P0-121 旧设备 Alarm 导入安全门）：加强 PowerStore/SQLite 回归，启用状态的 exact Alarm 按默认 handoff-required 导入后保持 disabled 且无 durable schedule intent；重复导入仍幂等，SQLite 重开后状态不变。定向 1/1；完整 Gradle 426/426、55 suites，Lint 0 errors/58 warnings。Robolectric API 34；API 35、旧 OEM 闹钟库存与真实交接未测。测试提交 `25f69e1dc6ffa94078e7797e7034f881150be1c3` 已推送；独立报告 `docs/issues/PC-ISSUE-075-imported-alarm-handoff-gate.md` 与冻结台账随本次文档提交推送。
-- PC-QA-GATE-001：历史只确认总数 209、P0 126、P1 82、未分类 1；只读检查未找到原始逐案 ID。已建立 208 条 RECONSTRUCTED 候选行和 1 条未解决历史槽位；备份、墓碑、迁移、重复、提醒、AI 与核心数据语义批次共 98 条候选有独立行为证据，状态为 PASS 123 / BLOCKED 9 / NOT TESTED 70 / SPEC UNRESOLVED 7；候选 P0/P1 分配仍待审核，0 个原始 ID 有映射。候选状态、审计和结构验证见 `docs/CORE_FREEZE_ACCEPTANCE_LEDGER.csv` 与 `docs/issues/PC-QA-GATE-001-209-case-ledger.md`。最新完整工作树回归 426 项通过（425 个已跟踪测试 + 1 个受保护未跟踪测试），代码/测试基线 `25f69e1dc6ffa94078e7797e7034f881150be1c3`；定点回归与全量回归均不能映射为缺失的 209 个历史 ID。
+- Current update (supersedes older snapshots below): latest pushed commit is `be6660ef620bc7c1d332080a9180e586de16e134`; PC-ISSUE-135 and PC-ISSUE-136 each have independent emulator-backed recovery reports. The active risk matrix is P0 144 / P1 64 / P2 1, with 165 PASS, 8 BLOCKED, 30 NOT TESTED and 6 SPEC UNRESOLVED; full details and historical-source disclosure are in `docs/issues/PC-QA-GATE-001-209-case-ledger.md`. Overall verdict remains HOLD.
+- Current update (supersedes older snapshots below): latest pushed commit is `be6660ef620bc7c1d332080a9180e586de16e134`; PC-ISSUE-135 and PC-ISSUE-136 each have independent emulator-backed recovery reports. The active risk matrix is P0 144 / P1 64 / P2 1, with 165 PASS, 8 BLOCKED, 30 NOT TESTED and 6 SPEC UNRESOLVED; full details and historical-source disclosure are in `docs/issues/PC-QA-GATE-001-209-case-ledger.md`. Overall verdict remains HOLD.
 - .local/android-test 是仓库内测试资产及模拟器工具位置；保留既有截图、日志、失败样本、只读数据库快照、AVD。
 - 原测试环境：Android 15 API 35，PowerCal_API35，emulator-5554；原生测试场景与模拟器数据可能包含历史资料，不得随意清库。破坏性恢复用独立可丢弃实例。
 - CommandCode 地址：https://api.commandcode.ai/provider/v1；模拟器已有密钥（仅检查存在，不读/输出明文）；原模型 stealth/glyph-cluster:free。
 - 历史阶段中 JVM 343/343（含 Issue 002 新增 7 项）、Skin Studio 37/37、Debug 构建、Lint 通过；**再次检查当前基线**，不可直接转化为 209 项验收通过。
 - 总设计：核心产品合同 docs/CORE_CONTRACT_FREEZE_2026-10-21.md；当前冻结风险 docs/FREEZE_ISSUE_REPORT_2026-10-23.md；模拟器回归 docs/ANDROID_EMULATOR_*QA_2026-10-23.md；Issue 独立报告 docs/issues/。
 
-## 2. 从高到低的待办清单
+## 2. 历史待办快照（如与本文开头的当前验收策略冲突，以当前策略为准）
 
 ### P0-A 接管与可追溯验收表
 - [ ] 只读审计 Git 工作树/未提交改动/源代码与文档/运行测试进程/模拟器与现有数据库状态/API 配置状态。
@@ -245,7 +255,7 @@
 - 单项必需字段：ID / 需求来源 / 优先级 / 前置状态 / 步骤 / 预期 / 实际 / 环境 / PASS|FAIL|BLOCKED|NOT TESTED|PREVIOUS PASS / 证据 / Git SHA / APK SHA256 / Issue / 复测时间。
 - 每解决一个 Issue **立即输出一份用户能看到的报告**并写入仓库：根因、最小变更、验证、受影响模块、残留问题、提交/推送结果。不用等待用户每步批准再继续，遇不可逆操作或重大决策才停。
 
-## 4. 核心冻结 GO / HOLD 判定
+## 4. 历史核心冻结 GO / HOLD 判定（原始 209 / 126 / 82 门槛已被本文开头的当前策略取代）
 GO 必须同时满足：① 209 项可追溯并完成相应审核，P0=126/P1=82/其余 1 项定级；② 所有 P0/P1 对应真实环境的必需测试 PASS（包括真机/不同 API 若合同要求）；③ 严重 Issue 全部修复且有修复后回归证据；④ 完整 JVM/静态/Lint/构建/设备测试、备份、权限、提醒、AI 安全闭环；⑤ 唯一 Git 基线、APK SHA256、证据索引、未决风险完整；⑥ 未引入数据损毁、密钥泄露和未授权动作。
 不满足任一条件：**HOLD**，列阻塞与必要的人类输入。可另外声明“模拟器子集通过”，但不能偷换为核心正式 GO。
 
