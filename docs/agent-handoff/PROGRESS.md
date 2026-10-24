@@ -4,7 +4,7 @@
 
 - 新增 Robolectric API 35 Compose 回归，显式令生产 `PowerCalTheme` 的 `blur=false`，验证浅/深主题回退到不透明 `surface`、高光清除、`onSurface` 对比度至少 4.5:1，内容可见。`GlassComposeTest` 17/17 PASS。没有产品样式或布局修改。
 - 当前主工作树门禁：543/543 JVM、75 suites、59 tasks、Debug 与 lint 通过（0 errors / 56 warnings）；为避开受保护 D05 未跟踪编译错误，在隔离 worktree 重跑完整 88 tasks，542/542 JVM、74 suites、Debug/AndroidTest APK 与 lint 全通过（0 errors / 53 warnings）。哈希、失败尝试和测试边界见独立报告 `docs/issues/PC-ISSUE-173-glass-fallback-readability.md`。
-- `REC-P1-074` 仅对 blur-disabled 主题渲染分支签核 PASS；系统 low-RAM detection 和真实设备/OEM 绘制未测。台账 218 rows / 217 active reconstructed：205 PASS / 0 FAIL / 10 BLOCKED / 1 NOT TESTED / 1 SPEC UNRESOLVED / 1 RETIRED；P0/P1/P2=145/71/1。Ledger SHA-256 `50F1485604B0CD46F2046A984FCC6EF68F4FAAED8136FA76BACB469F890A093B`；validator artifact SHA-256 `581B7C51C19119FC6C04DE59EF391110E545E18BA7B946B0D523FAFF436DC71A`；validator unit tests 2/2 PASS。Overall core freeze remains HOLD.
+- `REC-P1-074` 仅对 blur-disabled 主题渲染分支签核 PASS；系统 low-RAM detection 和真实设备/OEM 绘制未测。台账 218 rows / 217 active reconstructed：205 PASS / 0 FAIL / 10 BLOCKED / 1 NOT TESTED / 1 SPEC UNRESOLVED / 1 RETIRED；P0/P1/P2=145/71/1。Ledger SHA-256 `A743BDB7E5AB9F51A1636425CE29714AD61709515BAFF72AE9B89CB5A497C4E5`；validator artifact SHA-256 `7A3FA25C0C16CEED5F8566ED624FCC466B9E6AA7E7E6B4DE3B65C59BE29252A8`；validator unit tests 2/2 PASS。测试、报告和验收记录提交 `1d99d882e755c38eea082d97eceb275037cb2753` 已推送。Overall core freeze remains HOLD.
 
 ## PC-ISSUE-PHASE1 — 当前主线定向复验（2026-10-25，HEAD `d943ddc`）
 
