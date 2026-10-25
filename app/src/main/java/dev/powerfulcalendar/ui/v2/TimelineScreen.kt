@@ -56,7 +56,10 @@ private data class MeasuredTimelineTitle(
     val layout: TextLayoutResult,
     val drawWidthPx: Int,
     val offset: IntOffset,
-    val testTag: String
+    val testTag: String,
+    val sourceRecord: TemporalRecord,
+    val sourceKey: String,
+    val anchorMillis: Long
 )
 
 internal fun Modifier.timeAxisResetSemantics(onReset: () -> Unit): Modifier = semantics {
@@ -206,10 +209,6 @@ fun TimelineScreen(
                 Icon(Icons.Default.Add, "放大，显示更短时间")
             }
             Spacer(Modifier.weight(1f))
-            TextButton(onClick = { onTitlesOutsideChange(!titlesOutside) }) {
-                Text(if (titlesOutside) "标题：框外" else "标题：框内",
-                    style = MaterialTheme.typography.labelSmall)
-            }
             Text(if (aiLocked) "AI 处理中" else "↕ 时间", style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(end = 8.dp))
         }
@@ -359,33 +358,30 @@ fun TimelineScreen(
                     val cardHeightPx = with(density) {
                         if (point) pointHeight.toPx() else cardHeight.toPx()
                     }
-                    if (!point && activitySpan != null) {
-                        val outside = titlesOutside
-                        val titleColor = if (outside) kindColor(item.record.kind)
-                            else MaterialTheme.colorScheme.onSurface
+                    // Point and duration labels share the same outside title pipeline.
+                    if (point || activitySpan != null) {
                         val baseStyle = LocalTextStyle.current.copy(
-                            fontSize = 13.sp, color = titleColor
+                            fontSize = 13.sp, color = kindColor(item.record.kind)
                         )
                         val laneWidthPx = with(density) { laneWidth.roundToPx() }
-                        val startPadding = if (outside) 3.dp else 5.dp
-                        val endPadding = if (outside) 3.dp else 3.dp
+                        val startPadding = 3.dp
+                        val endPadding = 3.dp
                         val startPaddingPx = with(density) { startPadding.roundToPx() }
                         val endPaddingPx = with(density) { endPadding.roundToPx() }
                         val availablePx = laneWidthPx - startPaddingPx - endPaddingPx
                         val measuredTitle = run {
                             if (availablePx <= 0 || startPaddingPx >= laneWidthPx) return@run null
+                            val titleText = if (point) {
+                                Instant.ofEpochMilli(item.anchorMillis).atZone(zone)
+                                    .format(CLOCK_FORMAT) + " \u00b7 " + item.record.title
+                            } else item.record.title
                             val measuredText = measureTimelineTitleText(
-                                textMeasurer, item.record.title, baseStyle, availablePx
+                                textMeasurer, titleText, baseStyle, availablePx
                             ) ?: return@run null
                             val textLayout = measuredText.layout
                             val drawWidthPx = measuredText.drawWidthPx
                             val insetPx = with(density) { 2.dp.toPx() }
-                            val titleTopPx = when {
-                                outside -> y - textLayout.size.height - insetPx
-                                textLayout.size.height + insetPx * 2f <= cardHeightPx ->
-                                    activitySpan.topPx + (cardHeightPx - textLayout.size.height) / 2f
-                                else -> y + insetPx
-                            }
+                            val titleTopPx = topPx - textLayout.size.height - insetPx
                             val titleX = x + startPadding
                             val localLeftPx = with(density) { titleX.roundToPx() }
                             val localTopPx = with(density) { titleTopPx.toDp().roundToPx() }
@@ -415,7 +411,10 @@ fun TimelineScreen(
                                 drawWidthPx = drawWidthPx,
                                 offset = IntOffset(localLeftPx, localTopPx),
                                 testTag = "timeline-title-${item.record.eventSeq}-" +
-                                    stableId.hashCode().toUInt().toString(16)
+                                    stableId.hashCode().toUInt().toString(16),
+                                sourceRecord = item.record,
+                                sourceKey = key,
+                                anchorMillis = item.anchorMillis
                             )
                         }
                         if (measuredTitle != null) titleCandidates += measuredTitle
@@ -505,6 +504,39 @@ fun TimelineScreen(
                                 )
                                 .clipToBounds()
                                 .testTag(title.testTag)
+                                .clickable(enabled = !aiLocked) {
+                                    if (dragKey == null) open(title.sourceRecord)
+                                }
+                                .pointerInput(title.sourceKey, title.sourceRecord.revision,
+                                    title.anchorMillis, aiLocked) {
+                                    if (!unlocked) return@pointerInput
+                                    detectDragGesturesAfterLongPress(
+                                        onDragStart = {
+                                            inertia?.cancel()
+                                            dragKey = title.sourceKey
+                                            dragTarget = title.anchorMillis
+                                            dragTravel = 0f
+                                        },
+                                        onDrag = { change, amount ->
+                                            change.consume()
+                                            dragTravel += amount.y
+                                            dragTarget = TimelineCoordinate.snap(
+                                                title.anchorMillis +
+                                                    (dragTravel * TimelineCoordinate.spanMillis(latestCamera.hours) /
+                                                        heightNow).toLong(),
+                                                latestCamera.hours, zone)
+                                        },
+                                        onDragEnd = {
+                                            val target = dragTarget
+                                            dragKey = null
+                                            dragTarget = null
+                                            if (target != null && target != title.anchorMillis) {
+                                                onMoveEvent(owners[title.sourceRecord.eventSeq] ?: title.sourceRecord, target)
+                                            }
+                                        },
+                                        onDragCancel = { dragKey = null; dragTarget = null }
+                                    )
+                                }
                         ) {
                             drawText(title.layout, topLeft = Offset.Zero)
                         }
@@ -557,8 +589,7 @@ fun TimelineScreen(
 @Composable
 private fun AxisPointMarker(record: TemporalRecord, occurrenceMillis: Long, zone: ZoneId) {
     val color = kindColor(record.kind)
-    val label = Instant.ofEpochMilli(occurrenceMillis).atZone(zone).format(CLOCK_FORMAT) +
-        " · " + record.title
+    // Full title rendered by measured outside-title fold; marker remains clickable.
     Column(Modifier.fillMaxSize()) {
         if (record.kind == TemporalKind.DEADLINE) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.BottomStart) {
@@ -566,13 +597,6 @@ private fun AxisPointMarker(record: TemporalRecord, occurrenceMillis: Long, zone
                     SkinImage(SkinSlot.DEADLINE_MARKER,
                         Modifier.align(Alignment.TopEnd).size(18.dp))
                 }
-                Text(
-                    label,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = color,
-                    modifier = Modifier.padding(bottom = 5.dp),
-                    maxLines = 2, overflow = TextOverflow.Ellipsis
-                )
             }
         }
         HorizontalDivider(color = color, thickness = LocalSkinVisual.current.pointLineDp.dp)
@@ -582,13 +606,6 @@ private fun AxisPointMarker(record: TemporalRecord, occurrenceMillis: Long, zone
                 if (skinPainter(SkinSlot.ALARM_MARKER) != null) {
                     SkinImage(SkinSlot.ALARM_MARKER, Modifier.size(18.dp))
                 }
-                Text(
-                    label,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = color,
-                    modifier = Modifier.padding(top = 5.dp),
-                    maxLines = 2, overflow = TextOverflow.Ellipsis
-                )
             }
         }
     }

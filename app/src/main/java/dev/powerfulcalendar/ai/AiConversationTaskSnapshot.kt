@@ -76,7 +76,8 @@ data class AiConversationTaskSnapshot(
         fun from(
             history: List<AiChatMessage>,
             nowMillis: Long,
-            fallbackZoneId: String
+            fallbackZoneId: String,
+            allowStandaloneScheduleStart: Boolean = false
         ): AiConversationTaskSnapshot? {
             if (history.isEmpty() || history.last().role != "user") return null
             val bounded = AiConversationWindow.select(history)
@@ -84,8 +85,10 @@ data class AiConversationTaskSnapshot(
             val lastUserIndex = userIndices.lastOrNull() ?: return null
             if (lastUserIndex != bounded.lastIndex) return null
 
-            val startIndex = userIndices.lastOrNull { isExplicitTaskStart(bounded[it].content) }
-                ?: return null
+            val startIndex = userIndices.lastOrNull {
+                isExplicitTaskStart(bounded[it].content) ||
+                    (allowStandaloneScheduleStart && isStandaloneScheduleStatement(bounded[it].content))
+            } ?: return null
             val start = bounded[startIndex]
             val trailingUserIndices = userIndices.filter { it >= startIndex }
             if (trailingUserIndices.any { index ->
@@ -120,6 +123,24 @@ data class AiConversationTaskSnapshot(
                 userEvidence = evidence,
                 assistantSuggestions = suggestions
             )
+        }
+
+        private fun isStandaloneScheduleStatement(text: String): Boolean {
+            val value = text.trim()
+            if (value.isBlank() || isConfirmation(value) || isStrongCorrection(value) ||
+                isTopicChangeOrQuestion(value)) return false
+            // Used only when the conversational model explicitly classified the message as
+            // an actionable request. Its suggestion tag alone is NOT enough.
+            val hasTime = Regex(
+                "(?:[0-2]?\\d[:\\uFF1A\\u70B9\\u65F6])|" +
+                    "(?:\\u4ECA\\u5929|\\u4ECA\\u665A|\\u660E\\u5929|\\u5468[\\u4E00-\\u516D])"
+            ).containsMatchIn(value)
+            val hasSubject = Regex(
+                "\\u4F1A\\u8BAE|\\u6D3B\\u52A8|\\u8BFE|\\u590D\\u4E60|" +
+                    "\\u95F9\\u949F|\\u63D0\\u9192|\\u622A\\u6B62|\\u51FA\\u53D1|" +
+                    "\\u8003\\u8BD5|\\u805A\\u9910|\\u65E5\\u7A0B"
+            ).containsMatchIn(value)
+            return hasTime && hasSubject
         }
 
         private fun isExplicitTaskStart(text: String): Boolean {

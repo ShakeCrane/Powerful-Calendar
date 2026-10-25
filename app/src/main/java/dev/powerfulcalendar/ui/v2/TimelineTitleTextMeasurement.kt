@@ -16,7 +16,7 @@ internal data class TimelineTitleTextMeasurement(
     val displayText: String
 )
 
-/** Measures the actual one-line title, keeping the existing 10sp floor and width cap. */
+/** Measures one-line titles at the SAME design font size on both wings and all event kinds. */
 internal fun measureTimelineTitleText(
     textMeasurer: TextMeasurer,
     text: String,
@@ -25,15 +25,10 @@ internal fun measureTimelineTitleText(
 ): TimelineTitleTextMeasurement? {
     if (availableWidthPx <= 0) return null
 
-    val designWidthPx = textMeasurer.measure("汉".repeat(10), style = baseStyle)
-        .size.width.toFloat()
     val singleLineText = text.replace('\n', ' ').replace('\r', ' ')
-    val naturalWidthPx = textMeasurer.measure(singleLineText, style = baseStyle)
-        .size.width.coerceAtLeast(1).toFloat()
-    val titleLimitPx = minOf(availableWidthPx.toFloat(), designWidthPx)
-    val fontSizeSp = (baseStyle.fontSize.value * minOf(1f, titleLimitPx / naturalWidthPx))
-        .coerceAtLeast(MIN_TITLE_FONT_SP)
-    val titleStyle = baseStyle.copy(fontSize = fontSizeSp.sp)
+    // Never change the font size based on title length: both wings and every kind share it.
+    val fontSizeSp = baseStyle.fontSize.value
+    val titleStyle = baseStyle
     fun measureSingleLine(candidate: String) = textMeasurer.measure(
         text = candidate,
         style = titleStyle,
@@ -84,5 +79,4 @@ internal fun measureTimelineTitleText(
     return TimelineTitleTextMeasurement(layout, drawWidthPx, fontSizeSp, displayText)
 }
 
-private const val MIN_TITLE_FONT_SP = 10f
 private const val ELLIPSIS = "…"

@@ -75,7 +75,10 @@ class AiClient(
      * Regular LLM conversation: no calendar context, no tools, no JSON requirement, no Store reads.
      * Only the user-visible conversation is transmitted, bounded to 12 turns.
      */
-    suspend fun chat(history: List<AiChatMessage>): AiChatReply = withContext(Dispatchers.IO) {
+    suspend fun chat(
+        history: List<AiChatMessage>,
+        readOnlyCalendar: List<TemporalRecord> = emptyList()
+    ): AiChatReply = withContext(Dispatchers.IO) {
         if (!settings.configured) return@withContext AiChatReply(error = "请先在设置页配置并启用 AI。")
         if (history.isEmpty() || history.last().role != "user")
             return@withContext AiChatReply(error = "请先输入一条消息。")
@@ -84,6 +87,11 @@ class AiClient(
                 .put("content", CHAT_SYSTEM_PROMPT + "\n可信当前年月日、时间和时区：" +
                     clock.instant().atZone(zone).format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm EEEE")) +
                     " " + zone.id))
+            AiChatCalendarContext.payload(
+                readOnlyCalendar, zone, allowed = settings.shareContext
+            )?.let { payload ->
+                messages.put(JSONObject().put("role", "user").put("content", payload))
+            }
             AiConversationWindow.select(history).forEach { msg ->
                 messages.put(JSONObject().put("role", msg.role).put("content", msg.content))
             }
@@ -91,20 +99,20 @@ class AiClient(
                 complete(messages, maxTokens = 540, diagnosticStage = "chat"))
             val currentUserSource = AiChatActionParser.authoritativeCurrentUserSource(
                 parsed, history.last().content)
-            val task = if (parsed.proposalIntent == ChatProposalIntent.EXPLICIT) {
-                AiConversationTaskSnapshot.from(
-                    AiConversationWindow.select(history), clock.millis(), zone.id)
-            } else null
+            val route = AiChatIntentRouting.resolve(
+                parsed, AiConversationWindow.select(history), clock.millis(), zone.id
+            )
+            val task = route.task
             if (BuildConfig.DEBUG) Log.i("PowerCalAiPerf",
                 "chatResult proposalIntent=" + (parsed.proposalIntent?.name ?: "none") +
                     " visibleChars=" + parsed.text.length)
             AiChatReply(
                 reply = parsed.text,
                 proposalSource = currentUserSource.takeIf {
-                    parsed.proposalIntent != ChatProposalIntent.EXPLICIT
+                    route.intent != ChatProposalIntent.EXPLICIT
                 },
                 automaticProposalTask = task,
-                proposalIntent = parsed.proposalIntent
+                proposalIntent = route.intent
             )
         } catch (error: CancellationException) {
             throw error

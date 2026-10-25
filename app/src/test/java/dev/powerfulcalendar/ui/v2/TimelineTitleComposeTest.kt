@@ -46,7 +46,7 @@ class TimelineTitleComposeTest {
     )
 
     @Test
-    fun longTitleMeasurementKeepsTenSpFloorAndEllipsizesOnOneLine() {
+    fun longTitleMeasurementKeepsUniformSizeAndEllipsizesOnOneLine() {
         val title = "标题".repeat(100)
         val availableWidthPx = 180
         var measurement: TimelineTitleTextMeasurement? = null
@@ -65,7 +65,7 @@ class TimelineTitleComposeTest {
 
         ui.runOnIdle {
             val measured = requireNotNull(measurement)
-            assertEquals(10f, measured.fontSizeSp, 0f)
+            assertEquals(13f, measured.fontSizeSp, 0f)
             assertEquals(1, measured.layout.lineCount)
             assertTrue(measured.displayText.length < title.length)
             assertTrue(measured.displayText.endsWith("…"))
@@ -242,6 +242,39 @@ class TimelineTitleComposeTest {
             assertEquals(owner, openedOwner)
             assertEquals(selectedKey, openedKey)
         }
+    }
+
+    @Test
+    fun leftAlarmWingFoldsTitlesWithoutHidingEventTouchTargets() {
+        fun alarm(seq: Long, time: String) = TemporalRecord(
+            eventSeq = seq, revision = 1, kind = TemporalKind.ALARM,
+            title = "Alarm_" + seq,
+            startMillis = LocalDate.of(2026, 10, 20)
+                .atTime(java.time.LocalTime.parse(time)).atZone(zone)
+                .toInstant().toEpochMilli(),
+            zoneId = zone.id
+        )
+        val alarms = listOf(alarm(601, "09:00"), alarm(602, "09:05"),
+            alarm(603, "10:30"))
+        var opened: TemporalRecord? = null
+        ui.setContent {
+            PowerCalTheme {
+                TimelineScreen(
+                    records = alarms,
+                    camera = TimelineCoordinate.Camera(noon, 24.0),
+                    nowMillis = noon, zone = zone, pendingCount = 0, aiLocked = false,
+                    onCameraChange = {}, onOpenEvent = { opened = it },
+                    onMoveEvent = { _, _ -> }, onCreate = { _, _ -> },
+                    onToday = {}, onOpenDeck = {}, onOpenTools = {}
+                )
+            }
+        }
+        ui.onNodeWithTag(titleTag(alarms[0])).assertExists()
+        ui.onNodeWithTag(titleTag(alarms[1])).assertDoesNotExist()
+        ui.onNodeWithTag(titleTag(alarms[2])).assertExists()
+        alarms.forEach { ui.onNodeWithTag(eventTag(it)).assertExists().assertHasClickAction() }
+        ui.onNodeWithTag(eventTag(alarms[1])).performClick()
+        ui.runOnIdle { assertEquals(602L, opened?.eventSeq) }
     }
 
     @Test

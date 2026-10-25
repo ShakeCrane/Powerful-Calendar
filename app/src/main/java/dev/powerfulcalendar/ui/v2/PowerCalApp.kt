@@ -265,7 +265,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
     val preferences = remember(appContext) {
         appContext.getSharedPreferences("powercal-ui", Context.MODE_PRIVATE)
     }
-    var titlesOutside by remember { mutableStateOf(preferences.getBoolean("titlesOutside", false)) }
+    // Title placement is always outside; old user preference intentionally ignored.
 
     suspend fun reload() {
         val data = withContext(Dispatchers.IO) {
@@ -533,7 +533,12 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
         scope.launch {
             try {
                 if (mode == null) {
-                    val response = AiClient(AiSettingsStore.load(appContext), zone).chat(currentHistory)
+                    val settingsForChat = AiSettingsStore.load(appContext)
+                    val sharedForChat = if (settingsForChat.shareContext)
+                        records.take(60) else emptyList()
+                    val response = AiClient(settingsForChat, zone).chat(
+                        currentHistory, sharedForChat
+                    )
                     appendChat("assistant", if (response.succeeded) response.reply
                         else "AI 请求未完成：" + response.error.orEmpty(),
                         proposalSource = if (response.succeeded) response.proposalSource else null)
@@ -1389,11 +1394,8 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                 },
                 onOpenMemo = { page = Page.MEMO.name },
                 memoCount = todoCount,
-                titlesOutside = titlesOutside,
-                onTitlesOutsideChange = { outside ->
-                    titlesOutside = outside
-                    preferences.edit().putBoolean("titlesOutside", outside).apply()
-                },
+                titlesOutside = true,
+                onTitlesOutsideChange = {},
                 onOpenEvent = { record ->
                     if (aiLocked) monthInspection = record else scope.launch {
                         openFormalEditor(record)
