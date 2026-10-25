@@ -178,7 +178,14 @@ class TimelineTitleComposeTest {
         println("GREEDY_TITLE_VISIBLE_RECTS_TEST_PX ${visibleRects.joinToString("; ")}")
 
         events.forEach { event ->
-            ui.onNodeWithTag(eventTag(event)).assertExists().assertHasClickAction()
+            val eventNode = ui.onNodeWithTag(eventTag(event))
+            eventNode.assertExists().assertHasClickAction()
+            val contentDescriptions = eventNode.fetchSemanticsNode()
+                .config[SemanticsProperties.ContentDescription]
+            assertTrue(
+                "Event ${event.eventSeq} must retain its full title in accessibility semantics",
+                contentDescriptions.any { event.title in it }
+            )
         }
         ui.onNodeWithTag(eventTag(events[1])).performClick()
         ui.runOnIdle { assertEquals("Greedy_B_title", opened?.title) }

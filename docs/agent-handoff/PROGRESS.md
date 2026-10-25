@@ -1,5 +1,11 @@
 # Core freeze progress
 
+## PC-ISSUE-174 — 折叠标题完整无障碍语义（2026-10-25）
+
+- 扩展 `TimelineTitleComposeTest.measuredGreedyTitlesFoldButEveryEventRemainsClickableAndAccessible`，断言可见 A/C 与折叠 B/D 事件框的无障碍描述均包含完整标题；同时保留 B/D Canvas 隐藏和 B 可点击打开事件的断言。只改测试，无生产 UI/几何变化。
+- 定向 Compose/策略测试 **17/17 PASS**；完整隔离 Gradle **542/542 JVM、74 suites、88/88 tasks**，source boundary、Debug/AndroidTest APK、lint 均通过，lint 0 errors / 53 warnings。日志、XML、APK 哈希及范围边界见 `docs/issues/PC-ISSUE-174-folded-title-accessibility-semantics.md`。
+- 只签核 Compose 语义树子项。`REC-P1-063` 仍 BLOCKED，待实际 TalkBack 播报与实体设备验收；本轮未触碰在线 AVD。核心冻结保持 HOLD。
+
 ## PC-ISSUE-173 — Glass-disabled native fallback readability（2026-10-25）
 
 - 新增 Robolectric API 35 Compose 回归，显式令生产 `PowerCalTheme` 的 `blur=false`，验证浅/深主题回退到不透明 `surface`、高光清除、`onSurface` 对比度至少 4.5:1，内容可见。`GlassComposeTest` 17/17 PASS。没有产品样式或布局修改。
