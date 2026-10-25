@@ -18,6 +18,13 @@ val appVersionCode = versionProperties.getProperty("versionCode").toIntOrNull()
     ?: error("gradle/version.properties 缺少有效 versionCode")
 val appVersionName = versionProperties.getProperty("versionName")
     ?: error("gradle/version.properties 缺少 versionName")
+val d05QaApplicationIdSuffix = providers.gradleProperty("powercal.d05QaSuffix")
+    .orNull
+    ?.also { suffix ->
+        require(Regex("""^\.d05qa[a-z0-9]+$""").matches(suffix)) {
+            "powercal.d05QaSuffix must be a unique .d05qa suffix"
+        }
+    }
 require(Regex("""^\d+\.\d+\.\d+([-.].+)?$""").matches(appVersionName)) {
     "versionName 必须是 x.y.z 形式：$appVersionName"
 }
@@ -64,7 +71,7 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "dev.powerfulcalendar"
+        applicationId = "dev.powerfulcalendar${d05QaApplicationIdSuffix.orEmpty()}"
         minSdk = 26
         targetSdk = 35
         versionCode = appVersionCode

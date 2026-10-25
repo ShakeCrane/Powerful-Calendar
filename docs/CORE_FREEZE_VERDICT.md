@@ -3,6 +3,11 @@
 Date: 2026-10-25
 
 Verdict: **HOLD**
+## Latest follow-up: PC-ISSUE-PHASE4-D05 — API 35 production reminder reboot path (partial PASS)
+
+On the isolated API 35 D05 AVD, the actual production exact-alarm schedule survived host process termination; after system force-stop, reopening the app rebuilt it; after a real AVD reboot, logcat showed Android starting the package's `BootReceiver` for a broadcast, and the receiver rebuilt the schedule. The alarm then fired through the production receiver after process termination. Instrumentation passed 1/1 and asserted durable `FIRED`, the active `powercal-alarms` notification and unchanged completion state. Full offline Gradle passed 543/543 JVM tests / 74 suites / 88 tasks; lint 0 errors / 53 warnings. Evidence and hashes are in `docs/issues/PC-ISSUE-PHASE4-D05-AVD-LIFECYCLE.md`.
+
+This establishes the standard Android 15 AVD path only. Physical-device and OEM power-management behavior remain unverified and user-owned; `REC-P1-086` remains BLOCKED. The ledger row was deliberately not edited in this commit to preserve a protected concurrent worktree change, so its evidence summary is older than this follow-up. No production reminder defect was confirmed. Overall verdict remains **HOLD**.
 
 ## Latest follow-up: PC-ISSUE-PHASE1 — one-off DST fall-fold policy (2026-10-25)
 

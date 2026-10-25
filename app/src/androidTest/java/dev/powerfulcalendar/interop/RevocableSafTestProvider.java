@@ -16,7 +16,7 @@ import java.nio.charset.StandardCharsets;
 public final class RevocableSafTestProvider extends ContentProvider {
     public static final String TARGET_PACKAGE = "dev.powerfulcalendar";
     public static final Uri SYNTHETIC_URI = Uri.parse(
-            "content://dev.powerfulcalendar.test.revocable-saf/backup/probe");
+            "content://dev.powerfulcalendar.androidtest.revocable-saf/backup/probe");
     public static final String SYNTHETIC_BACKUP = "synthetic backup content";
 
     @Override
@@ -37,7 +37,7 @@ public final class RevocableSafTestProvider extends ContentProvider {
 
     @Override
     public Bundle call(String authority, String method, String targetPackage, Bundle extras) {
-        if (!TARGET_PACKAGE.equals(targetPackage)) {
+        if (!isAllowedTarget(targetPackage)) {
             throw new SecurityException("unexpected target package");
         }
         Context providerContext = getContext();
@@ -57,6 +57,12 @@ public final class RevocableSafTestProvider extends ContentProvider {
                 throw new IllegalArgumentException("unsupported test-provider call");
         }
         return Bundle.EMPTY;
+    }
+
+    private static boolean isAllowedTarget(String packageName) {
+        return TARGET_PACKAGE.equals(packageName)
+                || (packageName != null && packageName.matches(
+                        "^dev\\.powerfulcalendar\\.d05qa[a-z0-9]+$"));
     }
 
     @Override

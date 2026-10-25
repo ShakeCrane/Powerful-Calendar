@@ -1,4 +1,10 @@
 # Core freeze progress
+## PC-ISSUE-PHASE4-D05 — API 35 生产提醒进程与重启恢复（2026-10-25）
+
+- 在隔离包 `dev.powerfulcalendar.d05qa572cf10` / `emulator-5562` 完成 production exact ALARM 的进程终止、force-stop 后用户重开、真实系统重启三条 AVD 路径。普通 kill 和 force-stop/reopen 均到期投递；系统重启后 logcat 明确显示 BootReceiver 被 BOOT_COMPLETED broadcast 拉起，AlarmManager schedule 恢复，随后 kill 进程仍保留闹钟并成功投递。
+- 重启场景 instrumentation **1/1 PASS**：生产 store 为 `FIRED`、`powercal-alarms` 通知存在、没有推断完成状态。重启日志 `system-reboot-bootreceiver-logcat.txt` SHA-256 `06B06A9610A897E646157907E3AC99ED4EF4FCB11D042AB7B2237CBF4DCBE93A`；恢复/kill 记录 SHA-256 `C7EA96805FE8E42F43869C88E83B0EDBBDB95314F5C96B11309CB3D537B172A9`；delivery instrumentation SHA-256 `C4AEF64F274B9E3FF31BD5315A7A5E70CDFE35C7CA3B2B74E13444B14ADAD9CA`。force-stop/reopen delivery SHA-256 `83F4BA79D8AE8B14C81EC257463AC81E69AC06A0203C682609559811B9602E3C`。
+- 最终完整离线 Gradle 门禁 543/543 JVM、74 suites、88/88 tasks、lint 0 errors/53 warnings 全通过；日志 SHA-256 `4710FC30C4B334ABA2E6B683DA8639FFC1E89FABB037D7CF434553AC80B4E184`。QA Debug/AndroidTest APK SHA-256 `8AB86E91FA465D2A7DE1701CA025E7A2EDFE555D2D4BED47703620214E47E967` / `C5E217F8AEADB2DF42F67B05A1C166551484CFE8BAC08EBEAB22C49510111895`。原版 PowerCal 数据库前后文件名、长度及时间戳不变；只卸载 QA 包和测试包。全部命令与边界见 `docs/issues/PC-ISSUE-PHASE4-D05-AVD-LIFECYCLE.md` Follow-up。
+- 无生产提醒源码缺陷发现。实体/OEM 省电策略仍由用户验证；`REC-P1-086` 保持 BLOCKED，且台账旧摘要尚未更新（本提交为保留主工作区另一 Agent 的并发台账修改而未编辑 CSV）。核心冻结仍 HOLD。下一个可自主推进项：继续从重建矩阵挑选可在 JVM/API 35 AVD 覆盖的未签核项。
 
 ## PC-ISSUE-PHASE1 — 一次性 DST 回拨时间裁决与实现（2026-10-25）
 

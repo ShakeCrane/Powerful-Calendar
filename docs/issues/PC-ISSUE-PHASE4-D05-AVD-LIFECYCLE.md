@@ -2,7 +2,19 @@
 
 日期：2026-10-25
 
-状态：**AVD 平台行为分类完成；PowerCal 端到端与实体/OEM 验收 BLOCKED；未确认生产缺陷**
+状态：**PowerCal 生产提醒路径已在 API 35 AVD 完成端到端及重启恢复验证；实体/OEM 验收仍 BLOCKED；未发现需修改的生产代码缺陷**
+## Follow-up 2026-10-25 — API 35 生产提醒进程与系统重启恢复
+
+本次在专用 `PowerCal_D05_Production_API35_20261025` AVD（`emulator-5562`，Android 15 / API 35）验证实际生产 Scheduler、manifest Receiver、持久化执行状态和通知。为隔离既有用户数据，通过 `-Ppowercal.d05QaSuffix=.d05qa572cf10` 构建独立包 `dev.powerfulcalendar.d05qa572cf10`；仅向该包授予通知与精确闹钟权限，正式 app id、数据库和权限均未改变。
+
+- 普通进程终止：生产 ALARM exact schedule 在 `am kill` 后仍在 AlarmManager；到期后生产 `ReminderReceiver` 拉起进程并投递。验证 `lastExecution=FIRED`、`powercal-alarms` 活跃通知、`completedKeys` 为空。`arm-phase-instrumentation-final.log` SHA-256 `AB5566EB10B578EC46A9BAEC3A86635AF6CC51413CA492ED5799E8C8C1A98D6D`；`verify-delivery-instrumentation-final.log` SHA-256 `9C6777A18AE73CE43EECCCCFFB879F96B27D12FECCF039B2DCD88AAA18C52E12`。
+- 用户强停后重开：只对隔离包执行 `am force-stop`，确认 stopped 状态与 PendingIntent 清除；显式重新启动应用后，生产 reconcile 重建 schedule。再次 `am kill` 后到期投递验证通过，执行状态和通知断言同上。仪器化验证日志 SHA-256 `83F4BA79D8AE8B14C81EC257463AC81E69AC06A0203C682609559811B9602E3C`；重开恢复记录 SHA-256 `027C8FC7C421E1EBEEDDE7BA6015579113C4EABCEB77F5343AB8BA70C9AC5601`。
+- 系统重启：重启前唯一 PowerCal-owned PendingIntent 属于隔离 QA 包；原版 app/test 包无进程或闹钟，桌面在前台。真实 `adb reboot` 后，开机初期尚无 QA 闹钟，随后 logcat 记录 `dev.powerfulcalendar.d05qa572cf10/...BootReceiver` 因 broadcast 启动；BootReceiver 重建相同 exact alarm。隔离包变为 `stopped=false`，进程终止后闹钟仍在；到期后生产 receiver 投递。`system-reboot-delivery-instrumentation.log` 为 **OK (1 test)**，SHA-256 `C4AEF64F274B9E3FF31BD5315A7A5E70CDFE35C7CA3B2B74E13444B14ADAD9CA`；重启后的 BootReceiver 系统日志 `system-reboot-bootreceiver-logcat.txt` SHA-256 `06B06A9610A897E646157907E3AC99ED4EF4FCB11D042AB7B2237CBF4DCBE93A`；rearm/kill 记录 SHA-256 `C7EA96805FE8E42F43869C88E83B0EDBBDB95314F5C96B11309CB3D537B172A9`。
+- 完成后 instrumentation 测试断言数据库 `FIRED`、通知 id/`powercal-alarms` channel、没有推断完成状态，并删除本次独立 QA 数据库。随后卸载且只卸载两个 QA 包。原版 `powercal-v2.db` 仍为 159744 bytes、journal 0 bytes，修改时间保持 `2026-10-24 23:06`；前后只比较文件元数据，没有读取数据库内容。清理记录 SHA-256 `D599467C71162771AC64E864BDF69A1414AA2C33F28097C1B50C9E2AE4ACCEE8`。
+
+本次新增 AVD 测试与 build 隔离支持，不改生产提醒源码。QA APK 构建命令：`:app:assembleDebug :app:assembleDebugAndroidTest --offline --rerun-tasks --no-daemon --console=plain --project-prop powercal.d05QaSuffix=.d05qa572cf10`。完整默认 applicationId 门禁命令：`:app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug --offline --rerun-tasks --no-daemon --console=plain`。重启后验证命令：`adb -s emulator-5562 shell am instrument -w -e class dev.powerfulcalendar.reminders.D05IsolatedProductionAlarmInstrumentedTest#productionManifestReceiverFiresAndPostsAfterHostKillsAppProcess dev.powerfulcalendar.d05qa572cf10.test/androidx.test.runner.AndroidJUnitRunner`。QA Debug / AndroidTest APK SHA-256 分别为 `8AB86E91FA465D2A7DE1701CA025E7A2EDFE555D2D4BED47703620214E47E967` / `C5E217F8AEADB2DF42F67B05A1C166551484CFE8BAC08EBEAB22C49510111895`。最终默认 app id 完整离线 Gradle 门禁 **543/543 JVM、74 suites、0 failures/errors/skips、88/88 tasks**，含 source boundary、Debug/AndroidTest APK 与 lint（0 errors / 53 warnings）；日志 SHA-256 `4710FC30C4B334ABA2E6B683DA8639FFC1E89FABB037D7CF434553AC80B4E184`。
+
+两次初始 host-side preflight 过滤条件误报并安全拒绝重启，期间没有发出 reboot；收窄到 PowerCal-owned PendingIntent 行后才执行。没有触碰其他 AVD、没有 wipe/clear data，也没有运行实体设备测试。本节证据只覆盖标准 Android 15 AVD，不代表 OEM 省电策略或用户设备验收。`REC-P1-086` 继续 BLOCKED，整体冻结继续 HOLD。验收台账文件未在此变更中编辑，以保留主工作区内另一 Agent 的受保护并发修改；因此台账该行的旧证据摘要尚未反映本节新结果。
 
 ## 调查结论
 
@@ -46,7 +58,7 @@ Android 15 会在应用进入 stopped state（例如用户强行停止）时取�
 
 ## 剩余门槛
 
-D05 仍未完成：本轮没有用 PowerCal 的真实 5 分钟未来提醒跨场景验证生产调度、权限、通知渠道、`FIRED/MISSED` 和 `BootReceiver` 实际 OS 分发；也没有 API 35 系统重启或 OEM 省电设备测试。现有 AVD 探针只证明标准 Android 的状态差异，不能覆盖用户报告的 PowerCal 现象。因此 D05 保持 **BLOCKED / PARTIAL**，没有生产代码修复，也不宣称本 Issue 的产品行为 PASS。整体核心冻结保持 **HOLD**。
+API 35 AVD 上的 PowerCal 生产提醒路径现已覆盖普通进程终止、用户强停后重开、真实系统重启后的 BootReceiver 恢复及到期通知投递；这些场景未发现生产代码缺陷。D05 仍为 **BLOCKED / PARTIAL**，因为用户实体设备与 OEM 省电策略未验证，不能由 AVD 结果代签。`REC-P1-086` 台账行仍保持原状态且摘要尚未更新；整体核心冻结保持 **HOLD**。
 
 ## 冻结台账与可追溯性
 
