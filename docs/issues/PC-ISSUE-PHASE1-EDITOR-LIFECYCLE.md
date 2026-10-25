@@ -233,3 +233,14 @@ Phase 1 主路径及当前源码自动化/构建验收 PASS。单次本地时间
 ### 当前未签核项
 
 合同的 2026-10-24 DST 修订只规定重复事件回拨时用第一次 offset，并明确一次性本地时间解析尚未定义。若捕获时刻是 fall fold 的第二个 01:30，现有 `yyyy-MM-dd HH:mm` 格式无法携带 offset；再解析时 `LocalDateTime.atZone` 选择第一次，可能把以“当前时间”为默认的 ALARM/ACTIVITY 映射到早一小时。不能把重复事件规则未经确认地扩展到一次性事件。该边界已请求用户裁决；裁决后需补固定 Clock 回归并评估最小兼容实现。在此之前，Phase 1 代码与自动化主路径 PASS，但严格完成签核 **HOLD**；核心总体验收仍为 **HOLD**。
+
+## 当前请求的复验（2026-10-25，主线 HEAD `7cb847e`）
+
+只读复核后，在隔离 worktree 对当前已提交应用树执行复验。worktree 基点为 `465c9ec`；从该基点到当前 `7cb847e` 的 `app/` 差异只有 `GlassComposeTest.kt`，其 SHA-256 与主线相同（`73ECDE4D6B7BA0D64D0CE6DC6F9AC4EA25C69AF41B26729493178FA54E7EFFEA`）。因此以下完整门禁覆盖当前主线全部已跟踪应用代码；它没有纳入主工作区的未跟踪 D05 探针和 `DraftDeckFeedbackTest.kt`。
+
+- Phase 1 六个定向测试类 **32/32 PASS**，0 failures/errors/skips。日志：`.local/android-test/reports/freeze-20261025/phase1-request-7cb847e/focused-phase1.log`，SHA-256 `F6E14EA76A3A33587F96576BDFC2A328254CE9A271D599CB37BD2EB22013E4BF`。
+- 完整命令 `:app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug --offline --rerun-tasks --no-daemon --console=plain` **542/542 JVM、74 suites、0 failures/errors/skips、88/88 tasks**；source boundary、Debug / AndroidTest APK 均成功；lint **0 errors / 53 warnings**。完整日志 SHA-256 `476B42F7710FA358CF4F8B92E99864AD7B897C7FF8DFFA2F777BE774D1AD08B7`。
+- Debug APK SHA-256 `517DFFFCCFECA6E4B6CBF5961B3CAAA8F2802B3B3B1DD107457180C268F61614`；AndroidTest APK SHA-256 `2EF06F141A6AEEA12F6272D9C8861D7D6EEC33A316D0F4734A221C90BF7BE0B2`；lint XML SHA-256 `B95E8834C3E3EFA3386E0391464F11FB5953ED428EA7C87FA70CE020661628C0`。完整 JUnit XML 在 worktree 的 `app/build/test-results/testDebugUnitTest/`；Phase 1 六个类合计仍为 32 项。
+- 本轮没有运行 connected/AVD 测试：检查时四台 AVD 均已在线，且此前有私有数据恢复缺口；不打断或改写它们。先前 `emulator-5560` 的 Phase 1 Compose 2/2 继续标为 **PREVIOUS PASS**，不是本轮证据。实体设备由用户验收。
+
+普通新建会话、业务 Diff、保存/退出/checkpoint 幂等和四类默认值的自动化及构建验收维持 PASS。仍未签核的唯一 Phase 1 产品语义边界是：DST 秋季 fold 中一次性本地时间的两个同名墙上时刻如何解析。当前格式无法携带 offset；合同只为重复事件规定“第一次”，并明确没有定义一次性事件规则，因此不得外推。若要求严格签核这项时间语义，需要产品所有者先确定策略；总体验收仍保持 HOLD。
