@@ -3,6 +3,13 @@
 Date: 2026-10-25
 
 Verdict: **HOLD**
+
+## Latest follow-up: P02 Today camera decision (2026-10-25; narrow implementation PASS)
+
+The owner selected local noon and a 24-hour viewport for the Today action. Native and Web-skin routes now share `TimelineCoordinate.todayCamera(nowMillis, zone)`, which returns the same camera as initial opening. `TemporalProtocolTest` passed 44/44. Robolectric Compose drove the actual `PowerCalApp`, zoomed and panned away, then clicked the native control and dispatched the Web bridge action; both paths passed the local-noon/24-hour assertions (2/2). The isolated full offline gate passed 543/543 JVM tests / 74 suites / 88 tasks, including source-boundary verification, Debug and AndroidTest APK assembly; lint reported 0 errors / 53 warnings. Full log SHA-256 `2E58319ABC7A751232C3641C2D4ECD2663FFE3271A82CDED74609258D74A91FC`; Debug / AndroidTest APK SHA-256 `88D812BBDE862A6CA55F301EE65F45119AB1AF1F4D6443A3E1970498D98C5486` / `268EAA8C7E0B624E73A560143FB8DD8798D183875723A86971F31940B21BA459`.
+
+No API 35 AVD/physical UI interaction was run. Protected concurrent ledger row `REC-P1-002` still encodes the superseded now+preserve-zoom decision and was not edited; see `docs/issues/PC-ISSUE-P02-TODAY-CAMERA.md`. Robolectric evidence verifies the actual Compose handlers but is not a device result. Other open freeze gates keep the verdict **HOLD**.
+
 ## Latest follow-up: PC-ISSUE-PHASE4-D05 — API 35 production reminder reboot path (partial PASS)
 
 On the isolated API 35 D05 AVD, the actual production exact-alarm schedule survived host process termination; after system force-stop, reopening the app rebuilt it; after a real AVD reboot, logcat showed Android starting the package's `BootReceiver` for a broadcast, and the receiver rebuilt the schedule. The alarm then fired through the production receiver after process termination. Instrumentation passed 1/1 and asserted durable `FIRED`, the active `powercal-alarms` notification and unchanged completion state. Full offline Gradle passed 543/543 JVM tests / 74 suites / 88 tasks; lint 0 errors / 53 warnings. Evidence and hashes are in `docs/issues/PC-ISSUE-PHASE4-D05-AVD-LIFECYCLE.md`.

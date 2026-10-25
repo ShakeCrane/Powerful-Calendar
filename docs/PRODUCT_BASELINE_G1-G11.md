@@ -68,6 +68,10 @@ For overlap, earlier-starting event is nearer the center; later-starting overlap
 
 Long-press an existing event to preview moving it, use zoom-dependent time snapping. Confirm via the **same card editor** in compact-approval state or expand to full edit; no backend change before confirmation. Repeat-series move defaults to this occurrence only.
 
+## Owner amendment — Today camera returns to noon (2026-10-25)
+
+This decision supersedes §4's earlier Today=now rule. Activating Today from either the native timeline or a Web skin centers the current local date at 12:00 noon and resets the viewport to 24 hours, using the current clock and configured time zone. It matches the initial camera. The blue current-time indicator continues to show the true current instant. Double-tapping the current-time ruler remains a distinct 24-hour reset gesture.
+
 ## 5. One integrated Draft Deck / Popup / pending inbox
 
 The Popup, unscheduled inbox and event proposal review are **one integrated Draft Deck**, not three separate feature screens. UI name: **待处理**. The presence of an unsigned draft is a workflow state, **not a fourth event type**. All its cards represent real, editable protocol proposals.

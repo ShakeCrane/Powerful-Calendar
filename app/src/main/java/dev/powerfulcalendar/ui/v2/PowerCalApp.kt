@@ -986,7 +986,8 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                     "settings" -> page = Page.TOOLS.name
                     "openDeck" -> scope.launch { openDeckAt(null) }
                     "today" -> {
-                        val today = TimelineCoordinate.initialCamera(System.currentTimeMillis(), zone)
+                        nowMillis = System.currentTimeMillis()
+                        val today = TimelineCoordinate.todayCamera(nowMillis, zone)
                         anchorMillis = today.anchorMillis; hours = today.hours
                     }
                     else -> Unit
@@ -1432,7 +1433,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                 },
                 onToday = {
                     nowMillis = System.currentTimeMillis()
-                    val today = TimelineCoordinate.todayCamera(nowMillis, hours)
+                    val today = TimelineCoordinate.todayCamera(nowMillis, zone)
                     anchorMillis = today.anchorMillis
                     hours = today.hours
                 },

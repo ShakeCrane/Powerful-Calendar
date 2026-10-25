@@ -48,3 +48,7 @@
 - 其余人工签核要求沿用本交接表：`REC-P1-063/067/069/070/075/076` 需实体设备/TalkBack/OEM 证据，`REC-P1-068` 需先由产品负责人补齐日期 Deadline 的锚定与播报规范，`REC-P1-081` 需隔离日历账号完成外部 ICS 往返验证，`REC-P1-048` 需可用免费 provider 的实时分类证据。
 
 此处的完整测试结果来自各自 Issue 报告所列的隔离 worktree、APK 与日志哈希；本交接更新没有重新运行设备测试，也没有把历史结果说成本轮新测。工作区其他 Agent 的台账、测试、`design/` 和 Issue 修改仍保持未纳入本次提交。
+
+## P02 “今日”规则后续更新（2026-10-25）
+
+所有者已明确统一规则为本地今日中午、24 小时视野；native 与 Web 入口已共用相机转换，固定时钟回归及 PowerCalApp Robolectric Compose 双路径点击通过，完整离线门禁通过。没有执行 AVD/真机 UI 操作。工作区受保护的 `REC-P1-002` 台账行仍记录相反的旧规则，尚未同步；详细变更、测试范围和 SHA-256 见 `docs/issues/PC-ISSUE-P02-TODAY-CAMERA.md`。本项不得据 Robolectric 结果代签 AVD/实体设备。

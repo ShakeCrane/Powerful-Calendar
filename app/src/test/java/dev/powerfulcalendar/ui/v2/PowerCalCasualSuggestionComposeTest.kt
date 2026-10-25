@@ -11,9 +11,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.swipeUp
 import androidx.test.core.app.ApplicationProvider
 import dev.powerfulcalendar.ai.AiChatActionParser
 import dev.powerfulcalendar.ai.AiSettings
@@ -23,6 +27,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Rule
@@ -35,6 +40,8 @@ import java.io.File
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.SocketTimeoutException
+import java.time.Instant
+import java.time.ZoneId
 import java.util.UUID
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
@@ -74,6 +81,74 @@ class PowerCalCasualSuggestionComposeTest {
             "powercal-profile").forEach { storage.deleteSharedPreferences("$namespace-$it") }
         File(storage.cacheDir, namespace).deleteRecursively()
         PowerCalSkinRegistry.reset()
+    }
+
+    private data class TimelineCameraSnapshot(
+        val anchorMillis: Long,
+        val hours: Double,
+        val nowMillis: Long,
+        val zoneId: String
+    )
+
+    private fun timelineCameraSnapshot(): TimelineCameraSnapshot {
+        var snapshot: TimelineCameraSnapshot? = null
+        ui.runOnIdle {
+            val timeline = WebSkinBridgeRuntime.state().getJSONObject("timeline")
+            snapshot = TimelineCameraSnapshot(
+                anchorMillis = timeline.getLong("anchorMillis"),
+                hours = timeline.getDouble("hours"),
+                nowMillis = timeline.getLong("nowMillis"),
+                zoneId = timeline.getString("zoneId")
+            )
+        }
+        return requireNotNull(snapshot)
+    }
+
+    private fun assertLocalNoonAnd24Hours(camera: TimelineCameraSnapshot) {
+        val zone = ZoneId.of(camera.zoneId)
+        val expectedNoon = Instant.ofEpochMilli(camera.nowMillis).atZone(zone)
+            .toLocalDate().atTime(12, 0).atZone(zone).toInstant().toEpochMilli()
+        assertEquals(expectedNoon, camera.anchorMillis)
+        assertEquals(24.0, camera.hours, 0.0)
+    }
+
+    @Test
+    fun nativeAndWebTodayActionsBothReturnToLocalNoonAnd24Hours() {
+        ui.activity.setContent {
+            CompositionLocalProvider(LocalContext provides context) {
+                PowerCalTheme { PowerCalApp(store) }
+            }
+        }
+        ui.waitForIdle()
+
+        fun moveAwayFromTodayCamera() {
+            ui.onNodeWithContentDescription("缩小，显示更长时间").performClick()
+            ui.onNodeWithTag("timeline-viewport").performTouchInput { swipeUp() }
+            ui.waitForIdle()
+        }
+
+        moveAwayFromTodayCamera()
+        val beforeNative = timelineCameraSnapshot()
+        assertEquals(36.0, beforeNative.hours, 0.0)
+        assertNotEquals(
+            Instant.ofEpochMilli(beforeNative.nowMillis).atZone(ZoneId.of(beforeNative.zoneId))
+                .toLocalDate().atTime(12, 0).atZone(ZoneId.of(beforeNative.zoneId))
+                .toInstant().toEpochMilli(),
+            beforeNative.anchorMillis
+        )
+
+        ui.onNodeWithContentDescription("今日 · 复位为全天").performClick()
+        ui.waitForIdle()
+        assertLocalNoonAnd24Hours(timelineCameraSnapshot())
+
+        moveAwayFromTodayCamera()
+        val beforeWeb = timelineCameraSnapshot()
+        assertEquals(36.0, beforeWeb.hours, 0.0)
+        ui.runOnIdle {
+            WebSkinBridgeRuntime.onAction(WebSkinAction.Routed("today"))
+        }
+        ui.waitForIdle()
+        assertLocalNoonAnd24Hours(timelineCameraSnapshot())
     }
 
     @Test

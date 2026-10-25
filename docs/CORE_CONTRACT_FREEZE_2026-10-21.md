@@ -120,3 +120,10 @@ This amendment defines the resolution for generated recurrence instances only:
 - A late alarm may fire through an inclusive 10-minute grace period measured from its requested trigger instant.
 - Once more than 10 minutes late, record `MISSED` and do not ring as a catch-up reminder.
 - This amendment resolves only the late-alarm grace duration and boundary. Simultaneous-alarm behavior remains unresolved.
+
+## Owner amendment — Today camera behavior (2026-10-25)
+
+- Activating **Today** from the native timeline or any Web skin returns the camera to **12:00 noon of the current local date** and resets the viewport to **24 hours**.
+- The behavior uses the current clock and configured time zone when the action runs. It is the same camera state as initial opening; it does not preserve a prior zoom or center the exact current instant.
+- The blue current-time indicator remains at the actual current instant and may therefore appear above or below the noon-centered viewport anchor.
+- This supersedes the earlier `PRODUCT_BASELINE_G1-G11.md` Today=now behavior and the former `REC-P1-002` expected result. The double-tap current-time-ruler action remains separately specified as a 24-hour reset.

@@ -1,4 +1,10 @@
 # Core freeze progress
+## P02 — Today 相机规则裁决与统一（2026-10-25）
+
+- 用户裁决“今日中午，重置 24 小时”。原生入口此前定位当前精确时刻并保留缩放，Web 入口定位本地中午并重置 24h；`TimelineCoordinate.todayCamera(nowMillis, zone)` 现复用初始相机，两个生产入口共用此转换，并在触发时更新时钟。
+- 固定 instant / `America/Los_Angeles` 回归验证当地日期中午和 24h；`TemporalProtocolTest` **44/44 PASS**。另以 Robolectric Compose 驱动实际 `PowerCalApp`，先缩放/平移，再分别点击 native Today 与派发 Web bridge action，**2/2 PASS**。完整隔离离线门禁 **543/543 JVM、74 suites、88/88 tasks**，Android APK 组装、source boundary 通过，lint 0 errors / 53 warnings。日志及 APK 哈希见 `docs/issues/PC-ISSUE-P02-TODAY-CAMERA.md`。
+- 没有运行 API 35 AVD/真机。保护中的并发验收 CSV 仍把旧 `REC-P1-002` 规则记录为 PASS，本轮不修改；该历史行不能代表新裁决下的签核。整体冻结保持 HOLD。
+
 ## PC-ISSUE-PHASE4-D05 — API 35 生产提醒进程与重启恢复（2026-10-25）
 
 - 在隔离包 `dev.powerfulcalendar.d05qa572cf10` / `emulator-5562` 完成 production exact ALARM 的进程终止、force-stop 后用户重开、真实系统重启三条 AVD 路径。普通 kill 和 force-stop/reopen 均到期投递；系统重启后 logcat 明确显示 BootReceiver 被 BOOT_COMPLETED broadcast 拉起，AlarmManager schedule 恢复，随后 kill 进程仍保留闹钟并成功投递。

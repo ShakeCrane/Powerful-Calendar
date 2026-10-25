@@ -1,6 +1,6 @@
 # PowerCal 真机首轮缺陷审计与修复计划（2026-10-25）
 
-状态：Phase 1、Phase 2（P08）及 Phase 3 D01b 已完成各自自动化和可用的 API 35 AVD 子项；Phase 4 D05 的 PowerCal 生产路径已在 API 35 AVD 覆盖进程终止、强停后重开与系统重启恢复，实体/OEM 验收仍 BLOCKED；Phase 5–6 尚未完成；正式冻结 HOLD。
+状态：Phase 1、Phase 2（P08）及 Phase 3 D01b 已完成各自自动化和可用的 API 35 AVD 子项；Phase 4 D05 的 PowerCal 生产路径已在 API 35 AVD 覆盖进程终止、强停后重开与系统重启恢复，实体/OEM 验收仍 BLOCKED；P02 “今日”规则已按 2026-10-25 所有者裁决统一，PowerCalApp 原生/Web 两条 Compose JVM 路径和完整构建回归通过，API 35 AVD/实体设备尚未测；Phase 5–6 其他项尚未完成；正式冻结 HOLD。
 审计基线：Git 40e78bf（来源为当前仓库只读检查），对照用户实机反馈和 docs/CORE_CONTRACT_FREEZE_2026-10-21.md 的已修订合同。
 范围：问题归因、复现方案、实现次序和验收门槛。任何源码猜测均需补足目标设备证据。
 ## 状态修订（2026-10-25，后续证据优先于下方历史快照）
@@ -43,6 +43,8 @@ DirectEventEditorDialog/EditSession 对整条正式记录编辑而不是单次�
 ### B4 · P02「今日」语义实现分叉（P2 或 SPEC CHECK）
 PowerCalApp.kt 原生 onToday 使用 TimelineCoordinate.todayCamera(nowMillis, hours)：锚点指向当前精确时刻，保留缩放时长。Web action today 却使用 initialCamera(now, zone)：锚点指向今日中午、重设 24h。
 现有“当前时间刻度尺双击→24h”是另一个动作；用户报告“点击今日反而回到当前”，与原生实现一致，但不一定符合期待。不能在未厘清“回今日 vs 回当前刻度 vs 24h 视野”定义前简单改代码；先复现两个 UI 分支并对齐产品语义。
+
+**所有者裁决（2026-10-25）：** Today 统一为当前本地日期中午并重置 24h；蓝色当前时间线仍显示真实当前时刻。该裁决取代上方“仍待确认”的历史审计结论及旧 `REC-P1-002` 的 now+preserve-zoom 期望。实现/回归见 `docs/issues/PC-ISSUE-P02-TODAY-CAMERA.md`；由于 CSV 台账存在受保护的并发修改，本轮不会直接改写该文件中的历史行。
 
 ### B5 · D01b 草稿发布按钮被 IME 挤到视野底部（P1，API 35 AVD 已复现并修复）
 根因是 `DeckCardBody` 只在视口低于 320dp 时滚动整张卡片；键盘缩短了对话框，但视口仍高于该阈值，因此长表单独自滚动、底部发布/丢弃操作被裁出视野。API 35 `emulator-5556` 的 1080×1600 IME 场景复现按钮 bounds 为 `Rect(0,0,0,0)`；1080×2400 标准视野没有复现。修复后，IME 可见时整卡滚动，内层表单不再创建竞争滚动容器；无 IME 的既有 320dp 小视野阈值保持不变。标准及短视野发布/丢弃各 2/2 PASS，D01a AI 聊天 IME 回归 1/1 PASS。完整证据见 `docs/issues/PC-ISSUE-PHASE3-D01B-IME-PUBLISH.md`。制造商输入法、导航栏与实体设备仍待用户确认，不作真机 PASS 声明。
@@ -99,7 +101,7 @@ Phase 4 — D05 提醒“杀后台”分类：
 2. 同一 5 分钟未来闹钟逐组设置，核验设置权限、AlarmManager 排程、通知渠道/锁屏显示、FIRED/MISSED 日志、系统是否允许送达。
 3. 仅修真实应用管理缺陷；对 Android 厂商/Force-stop 的 OS 限制如实记为限制或需用户设置，不承诺规避系统机制。
 
-Phase 5 — E01/PC-ISSUE-172 已有独立实现/回归记录；D02 标题贪心折叠合同已明确并完成 API 35 AVD 子项（实体/TalkBack 待验）；P02“今日”规范仍需先统一产品语义再复测。各项独立签核，禁止以延长 timeout 替代多轮任务状态。
+Phase 5 — E01/PC-ISSUE-172 已有独立实现/回归记录；D02 标题贪心折叠合同已明确并完成 API 35 AVD 子项（实体/TalkBack 待验）；P02“今日”已裁决为本地中午/24h，核心转换及 PowerCalApp 原生/Web Robolectric Compose 双路径通过，完整离线门禁 PASS；API 35 AVD/实体设备未测，且 `REC-P1-002` 保护中的台账行仍为旧预期。各项独立签核，禁止以延长 timeout 替代多轮任务状态。
 Phase 6 — 延期真机项 D03/D04/D06/D07/E03：标记 NOT TESTED 或明确 owner-excluded，绝不虚标 PASS；重启持久化 D06 和 ICS E03 在正式冻结时按真实优先级复审。
 
 ## F. 验收原则与提交

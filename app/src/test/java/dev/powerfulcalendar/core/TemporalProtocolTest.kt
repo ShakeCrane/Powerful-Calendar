@@ -397,22 +397,20 @@ class TemporalProtocolTest {
     }
 
     @Test
-    fun initialCameraCentresNoonButTodayJumpsToNow() {
-        val now = millis("2026-10-20 15:42")
-        val camera = TimelineCoordinate.initialCamera(now, shanghai)
-        assertEquals(millis("2026-10-20 12:00"), camera.anchorMillis)
-        assertEquals(24.0, camera.hours, 0.0)
-        // "Today" is the caller moving the anchor to the current instant, not to noon.
-        assertNotEquals(camera.anchorMillis, now)
-    }
+    fun initialAndTodayCamerasBothCentreLocalNoonAndResetTo24Hours() {
+        val now = Instant.parse("2026-10-21T06:30:00Z").toEpochMilli()
+        val zone = ZoneId.of("America/Los_Angeles")
+        val expectedNoon = millis("2026-10-20 12:00", zone)
 
-    @Test
-    fun todayCameraJumpsToNowAndPreservesTheCurrentZoom() {
-        val now = millis("2026-10-20 15:42")
-        val camera = TimelineCoordinate.todayCamera(now, 9.0)
+        val initial = TimelineCoordinate.initialCamera(now, zone)
+        val today = TimelineCoordinate.todayCamera(now, zone)
 
-        assertEquals(now, camera.anchorMillis)
-        assertEquals(9.0, camera.hours, 0.0)
+        assertEquals(expectedNoon, initial.anchorMillis)
+        assertEquals(24.0, initial.hours, 0.0)
+        assertEquals(expectedNoon, today.anchorMillis)
+        assertEquals(24.0, today.hours, 0.0)
+        assertNotEquals(now, today.anchorMillis)
+        assertEquals(initial, today)
     }
 
     // ---------------------------------------------------------------- recurrence

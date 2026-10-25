@@ -1564,9 +1564,9 @@ object TimelineCoordinate {
         return Camera(noon, 24.0)
     }
 
-    /** Today recentres at the current instant without replacing the user's current zoom. */
-    fun todayCamera(nowMillis: Long, currentHours: Double): Camera =
-        Camera(nowMillis, clampHours(currentHours))
+    /** Today returns to the local day's noon and resets the viewport to a 24-hour view. */
+    fun todayCamera(nowMillis: Long, zone: ZoneId): Camera =
+        initialCamera(nowMillis, zone)
 
     fun dateBands(fromMillis: Long, toMillis: Long, zone: ZoneId): List<Pair<Long, Long>> {
         if (toMillis <= fromMillis) return emptyList()
