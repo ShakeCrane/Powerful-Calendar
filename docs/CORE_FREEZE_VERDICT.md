@@ -4,6 +4,12 @@ Date: 2026-10-25
 
 Verdict: **HOLD**
 
+## Latest follow-up: PC-ISSUE-PHASE1 — one-off DST fall-fold policy (2026-10-25)
+
+The owner selected the first occurrence / earlier offset for an individually entered one-off local time in a fall DST fold. `DraftForm.parseInstantIn` now states that choice explicitly. A fixed-clock regression verifies Los Angeles 2026-11-01 01:30 resolves to `2026-11-01T08:30Z` (the earlier of the two instants) across minute parsing, ALARM, ACTIVITY and exact-time DEADLINE save paths, including a Clock captured during the second occurrence. Focused `EditorDefaultsTest`: 7/7 PASS; all six Phase 1 suites: 33/33 PASS. The isolated full offline gate passed 543/543 JVM tests across 74 suites, 88/88 tasks, Debug and AndroidTest APK assembly, source-boundary verification, and lint (0 errors / 53 warnings). Full log SHA-256 `DA00445E7108CA7C22490AA8D2DB2E476B4A4BE1BE8F92BED83E7E6A9006A419`; Debug / AndroidTest APK SHA-256 `F515E4194A8E9A0D1EE08917337FCC8D79A579EFCE27400047B056711440B787` / `2EF06F141A6AEEA12F6272D9C8861D7D6EEC33A316D0F4734A221C90BF7BE0B2`.
+
+No connected/AVD or physical-device run was performed for this follow-up. One-off spring-gap input behavior was not changed or newly specified. This closes the previously unsigned fall-fold rule for Phase 1; it does not clear the wider core-freeze blockers or change the overall verdict from **HOLD**. See `docs/issues/PC-ISSUE-PHASE1-EDITOR-LIFECYCLE.md`.
+
 ## Latest follow-up: PC-ISSUE-173 — glass-disabled renderer fallback (narrow PASS)
 
 `REC-P1-074` now passes for the explicit production theme branch when `GlassEffects.blur=false`: Robolectric API 35 Compose verifies both themes use the opaque Material surface, remove the glass highlight, retain displayed fallback content, and keep `onSurface` contrast at or above 4.5:1. `GlassComposeTest` passed 17/17. The current main worktree gate passed 543/543 JVM tests / 75 suites / 59 tasks and lint 0 errors / 56 warnings. A clean detached worktree containing the exact test source passed the complete 88-task gate: 542/542 JVM / 74 suites, Debug and AndroidTest APK assembly, lint 0 errors / 53 warnings. Debug / AndroidTest APK SHA-256: `517DFFFCCFECA6E4B6CBF5961B3CAAA8F2802B3B3B1DD107457180C268F61614` / `2EF06F141A6AEEA12F6272D9C8861D7D6EEC33A316D0F4734A221C90BF7BE0B2`.

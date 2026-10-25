@@ -1,5 +1,12 @@
 # Core freeze progress
 
+## PC-ISSUE-PHASE1 — 一次性 DST 回拨时间裁决与实现（2026-10-25）
+
+- 用户明确裁决：一次性本地时间落在秋季 DST fold 重复小时，选择第一次出现（较早 offset）。据此更新核心合同；`DraftForm.parseInstantIn` 明确调用 `withEarlierOffsetAtOverlap()`，不扩展到一次性春季 gap 规则。
+- 固定 `America/Los_Angeles` Clock 回归验证 2026-11-01 01:30 的两个 instant 相差 3,600,000 ms（08:30Z / 09:30Z），单次 ALARM、ACTIVITY、精确时间 DEADLINE 的解析与保存都落在 08:30Z；即使 Clock 捕获第二个 01:30，分钟文本按所有者裁决解析为第一次。`EditorDefaultsTest` 7/7 PASS；Phase 1 六个 suite 合计 **33/33 PASS**。
+- 隔离 detached worktree 完整离线门禁 `:app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug --offline --rerun-tasks --no-daemon --console=plain`：**543/543 JVM、74 suites、0 failures/errors/skips、88/88 tasks**；Debug / AndroidTest APK 组装通过，lint **0 errors / 53 warnings**。日志 SHA-256 `DA00445E7108CA7C22490AA8D2DB2E476B4A4BE1BE8F92BED83E7E6A9006A419`；`EditorDefaultsTest` XML SHA-256 `B40ECB24B159F010F4E17A6B73331337D1B8AC867EC4D5279420E47D6131C66D`；Debug / AndroidTest APK SHA-256 `F515E4194A8E9A0D1EE08917337FCC8D79A579EFCE27400047B056711440B787` / `2EF06F141A6AEEA12F6272D9C8861D7D6EEC33A316D0F4734A221C90BF7BE0B2`。
+- 没有运行 connected/AVD 或实体设备测试；本轮不把既有设备证据算作新复测。Phase 1 产品时间规则的 DST fold 缺口现已由用户裁决并经 JVM 回归签核；一次性 spring-gap 输入规则仍未新增定义，设备/OEM 测试仍由用户执行。总冻结继续 HOLD，其他未关闭矩阵项不受本次签核影响。证据与报告见 `docs/issues/PC-ISSUE-PHASE1-EDITOR-LIFECYCLE.md` 末尾本次 follow-up。
+
 ## PC-ISSUE-174 — 折叠标题完整无障碍语义（2026-10-25）
 
 - 扩展 `TimelineTitleComposeTest.measuredGreedyTitlesFoldButEveryEventRemainsClickableAndAccessible`，断言可见 A/C 与折叠 B/D 事件框的无障碍描述均包含完整标题；同时保留 B/D Canvas 隐藏和 B 可点击打开事件的断言。只改测试，无生产 UI/几何变化。

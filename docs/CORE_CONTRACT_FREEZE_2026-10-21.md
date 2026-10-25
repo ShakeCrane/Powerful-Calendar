@@ -108,6 +108,13 @@ This amendment defines the resolution for generated recurrence instances only:
   instant, corresponding to the earlier offset.
 - This does not define how an individually entered one-off local timestamp is parsed.
 
+## Owner amendment — one-off DST fold input (2026-10-25)
+
+- If an individually entered one-off local wall-clock timestamp occurs twice during a fall DST
+  fold, resolve it to the first instant, corresponding to the earlier offset.
+- This applies to minute-text parsing used by one-off event forms. It does not change the
+  recurrence gap/fold rules above or define a new one-off spring-gap policy.
+
 ## Owner amendment — missed-alarm grace period (2026-10-24)
 
 - A late alarm may fire through an inclusive 10-minute grace period measured from its requested trigger instant.

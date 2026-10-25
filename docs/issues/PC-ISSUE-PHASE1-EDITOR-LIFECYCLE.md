@@ -2,7 +2,7 @@
 
 日期：2026-10-25
 
-状态：**Phase 1 自动化与 API 35 AVD 验收 PASS；实体设备验收由用户执行；核心冻结仍 HOLD**
+状态：**Phase 1 自动化验收 PASS；秋季 DST fold 一次性输入规则已裁决并回归；设备/OEM 验收由用户执行；核心冻结仍 HOLD**
 
 ## 根因
 
@@ -244,3 +244,24 @@ Phase 1 主路径及当前源码自动化/构建验收 PASS。单次本地时间
 - 本轮没有运行 connected/AVD 测试：检查时四台 AVD 均已在线，且此前有私有数据恢复缺口；不打断或改写它们。先前 `emulator-5560` 的 Phase 1 Compose 2/2 继续标为 **PREVIOUS PASS**，不是本轮证据。实体设备由用户验收。
 
 普通新建会话、业务 Diff、保存/退出/checkpoint 幂等和四类默认值的自动化及构建验收维持 PASS。仍未签核的唯一 Phase 1 产品语义边界是：DST 秋季 fold 中一次性本地时间的两个同名墙上时刻如何解析。当前格式无法携带 offset；合同只为重复事件规定“第一次”，并明确没有定义一次性事件规则，因此不得外推。若要求严格签核这项时间语义，需要产品所有者先确定策略；总体验收仍保持 HOLD。
+
+## Owner follow-up — one-off DST fall-fold policy resolved (2026-10-25)
+
+用户已裁决：一次性本地输入在秋季 DST fold 中出现两个同名墙上时间时，取第一次（较早 offset）。这项选择写入核心合同；分钟文本解析显式使用 `withEarlierOffsetAtOverlap()`。只影响歧义时间解析，不更改持久化精度、重复事件规则或一次性 spring-gap 策略。
+
+### Root cause and change
+
+- 根因：表单仅保存 `yyyy-MM-dd HH:mm` 本地分钟文本，无法表示 fold 的 offset。旧代码依赖 `LocalDateTime.atZone(zone)` 的隐式 overlap 默认行为；产品选择虽与该行为一致，却没有合同和回归保护。Clock 恰好捕获第二个 `01:30` 时，默认文本重新解析会按选择落到第一个 `01:30`。
+- `app/src/main/java/dev/powerfulcalendar/core/TemporalModels.kt`：明确选择 earlier offset。
+- `app/src/test/java/dev/powerfulcalendar/core/EditorDefaultsTest.kt`：固定洛杉矶时间验证 2026-11-01 01:30 的 08:30Z 与 09:30Z 两个 instant、相差一小时；验证直接解析、ALARM/ACTIVITY/精确时间 DEADLINE 构建，以及 Clock 位于第二个 01:30 时默认值的解析结果。
+- `docs/CORE_CONTRACT_FREEZE_2026-10-21.md`：追加所有者裁决，并明确不把规则外推到一次性 spring gap。
+
+### Verification evidence
+
+- 定向命令：`.\gradlew.bat :app:testDebugUnitTest --offline --rerun-tasks --console=plain --tests dev.powerfulcalendar.core.EditorDefaultsTest`；**7/7 PASS，0 failures/errors/skips**。日志 `.local/android-test/reports/freeze-20261025/pc-phase1-dst-earlier-offset/focused-editor-defaults-final.log` SHA-256 `4E35989938A8A28EE9BBF73BC774279B69F624BDEDA981874DE06E7D7401A14A`；JUnit XML SHA-256 `B40ECB24B159F010F4E17A6B73331337D1B8AC867EC4D5279420E47D6131C66D`。
+- Phase 1 六个回归 suite：**33/33 PASS**。
+- 隔离 worktree 完整命令：`.\gradlew.bat :app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug --offline --rerun-tasks --no-daemon --console=plain`；**543/543 JVM、74 suites、0 failures/errors/skips、88/88 tasks**。source boundary、Debug/AndroidTest APK 均成功；lint **0 errors / 53 warnings**。完整日志 `.local/android-test/reports/freeze-20261025/pc-phase1-dst-earlier-offset/full-offline-gate-final.log` SHA-256 `DA00445E7108CA7C22490AA8D2DB2E476B4A4BE1BE8F92BED83E7E6A9006A419`。
+- APK SHA-256：Debug `F515E4194A8E9A0D1EE08917337FCC8D79A579EFCE27400047B056711440B787`；AndroidTest `2EF06F141A6AEEA12F6272D9C8861D7D6EEC33A316D0F4734A221C90BF7BE0B2`。lint XML SHA-256 `CC7713BA993EC64F9EEB36DA244890E6D45ADE67C7B1D40614827D4062026E09`。
+- 本轮未运行 connected/AVD 或实体设备测试；四台现有 AVD 处于在线状态且有既存数据处置边界，因此没有打断或改写。实体设备由用户执行。此次结果只签核 fold 的确定性解析和上述 JVM/build 范围。
+
+本次 DST 语义补充已由固定 Clock 回归与完整自动化门禁验证。一次性 spring-gap 输入规则仍按现有行为保留，未作新裁决；设备/OEM 验收不在本轮证据内。核心总体验收保持 **HOLD**。代码、测试与合同的 SHA-256：`TemporalModels.kt` `70D974D00442E103CCD4415AAB80EAED4BEE36A4F1D5267519CAF82BC1489756`；`EditorDefaultsTest.kt` `25F9A88148D40B1B56D710EC5CB94057BFE4363122F25D12DFD44EC1A5EBBAD6`；合同 `4F33FCD2CA77164777AA1099DFFE495F9E2C0D07070E41AB72E9C275BEDA8F5B`。

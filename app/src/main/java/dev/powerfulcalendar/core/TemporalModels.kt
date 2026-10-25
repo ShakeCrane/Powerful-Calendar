@@ -1013,7 +1013,9 @@ data class DraftForm(
             for (pattern in DATE_TIME_PATTERNS) {
                 try {
                     return LocalDateTime.parse(value, pattern)
-                        .atZone(zone).toInstant().toEpochMilli()
+                        // A one-off local timestamp inside a fall overlap resolves to its first
+                        // occurrence, matching the product rule for ambiguous wall-clock input.
+                        .atZone(zone).withEarlierOffsetAtOverlap().toInstant().toEpochMilli()
                 } catch (_: DateTimeParseException) { /* try next */ }
             }
             return null

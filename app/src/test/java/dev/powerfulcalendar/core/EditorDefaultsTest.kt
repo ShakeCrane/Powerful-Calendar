@@ -102,6 +102,62 @@ class EditorDefaultsTest {
     }
 
     @Test
+    fun oneOffFallFoldTimeUsesFirstOccurrenceForDefaultsParsingAndSave() {
+        val losAngeles = ZoneId.of("America/Los_Angeles")
+        val ambiguousLocal = LocalDateTime.parse("2026-11-01T01:30")
+        val earlier = ambiguousLocal.atZone(losAngeles)
+            .withEarlierOffsetAtOverlap().toInstant().toEpochMilli()
+        val later = ambiguousLocal.atZone(losAngeles)
+            .withLaterOffsetAtOverlap().toInstant().toEpochMilli()
+        assertEquals(3_600_000L, later - earlier)
+        assertEquals(Instant.parse("2026-11-01T08:30:00Z").toEpochMilli(), earlier)
+        assertEquals(Instant.parse("2026-11-01T09:30:00Z").toEpochMilli(), later)
+
+        val text = "2026-11-01 01:30"
+        assertEquals(earlier, DraftForm.parseInstantIn(text, losAngeles))
+
+        val form = DraftForm(
+            kind = TemporalKind.ALARM,
+            title = "Fold choice",
+            startText = text,
+            zoneId = losAngeles.id
+        )
+        assertEquals(earlier, form.parseStart())
+        val built = form.build(seq = 22, revision = 1)
+        assertTrue(built is FormBuild.Ready)
+        assertEquals(earlier, (built as FormBuild.Ready).record.startMillis)
+
+        val activity = DraftForm(
+            kind = TemporalKind.ACTIVITY,
+            title = "Fold activity",
+            startText = text,
+            endText = "2026-11-01 03:00",
+            zoneId = losAngeles.id
+        ).build(seq = 23, revision = 1)
+        assertTrue(activity is FormBuild.Ready)
+        assertEquals(earlier, (activity as FormBuild.Ready).record.startMillis)
+
+        val deadline = DraftForm(
+            kind = TemporalKind.DEADLINE,
+            title = "Fold deadline",
+            endText = text,
+            zoneId = losAngeles.id
+        ).build(seq = 24, revision = 1)
+        assertTrue(deadline is FormBuild.Ready)
+        assertEquals(earlier, (deadline as FormBuild.Ready).record.deadlineMillis)
+
+        // Opening during the second 01:30 still emits the same minute-only form value;
+        // the owner's selected one-off policy resolves that value to the earlier instant.
+        val capturedSecondOccurrence = EditorDefaults.capture(
+            Clock.fixed(Instant.ofEpochMilli(later), losAngeles), losAngeles
+        )
+        assertEquals(later, capturedSecondOccurrence.nowMillis)
+        val defaultForm = capturedSecondOccurrence.form(TemporalKind.ALARM)
+        assertEquals(text, defaultForm.startText)
+        assertEquals(earlier, defaultForm.parseStart())
+    }
+
+    @Test
     fun meaningfulDiffMatchesParsedSaveSemanticsInsteadOfRawInputFormatting() {
         val baseline = DraftForm(
             kind = TemporalKind.ACTIVITY,
