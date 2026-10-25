@@ -36,6 +36,19 @@ Regression tests: AiChatIntentRoutingTest (explicit command without marker, stan
 - Result: **554/554 JVM PASS, 77 suites, 0 failures/errors/skips; Debug APK and source boundary PASS; Android lint 0 errors / 55 warnings.**
 - Debug APK on current source: SHA256 22A1A757E4209596D704DF65ED78D2A0AA854DEA951D7257E492C50BEA16A7EF.
 
-**Caveats:** No paid provider was called and no real provider request or human-device OEM test was executed. The earlier explicit AI Provider BLOCKED ledger rows remain BLOCKED. A concurrent untracked D05 AndroidTest source lacks a JUnit import, so this source checkout's AndroidTest APK must be validated from an isolated committed worktree before claiming the 88-task full gate. Do not stage or overwrite that file, the concurrently edited acceptance CSV, DraftDeckFeedbackTest.kt, design/, PC-OBS-005, or Python caches.
+**Caveats:** No paid provider was called and no real provider request or human-device OEM test was executed. The earlier explicit AI Provider BLOCKED ledger rows remain BLOCKED. A concurrent untracked D05 AndroidTest source lacks a JUnit import, so the main checkout's AndroidTest build was NOT used for signoff; instead a clean isolated Git checkout was independently verified below. Do not stage or overwrite that file, the concurrently edited acceptance CSV, DraftDeckFeedbackTest.kt, design/, PC-OBS-005, or Python caches.
+
+
+## Independent reproducibility check: committed source 4d7ec5d
+
+A clean detached checkout of exact source SHA `4d7ec5de05ec97333c90c81b135471f9f929b94f` was built with all 88 offline Gradle tasks, including `:app:assembleDebugAndroidTest`, in isolation from concurrently edited/untracked files.
+
+- **BUILD SUCCESSFUL: 88/88 tasks, 553/553 JVM tests, 76 suites; 0 failures/errors/skips.** The main checkout had 554 tests only because it included another agent's untracked `DraftDeckFeedbackTest.kt`.
+- Debug app APK SHA-256: `22A1A757E4209596D704DF65ED78D2A0AA854DEA951D7257E492C50BEA16A7EF`; byte-for-byte matches the handed-off QA APK (66,167,593 bytes).
+- AndroidTest APK SHA-256: `85F8A9E3BC4176946B63D8F66827F488B97C81E6A11CF3D42BACA69E7F0A4248`. Compilation only; no device/emulator test was run.
+- Lint: 0 errors, 52 warnings.
+- Log: `.local/android-test/reports/freeze-20261025/titles-ai-committed-isolated-full-gate.log`, SHA-256 `5BC25B6A10FBB4BB619C7798355E3FCC6A6E6C9109A2D974DB5DC09D086212D8`.
+- The 76 JUnit XML files were saved in `titles-ai-committed-junit/`, and Lint XML in `titles-ai-committed-lint.xml`, under the same reports directory.
+- This verifies reproducible build and unit-test behavior **only**. Real AI provider routing, OEM UI, physical-device accessibility and actual notification behavior remain separate, unsigned acceptance stages. CORE FREEZE = HOLD.
 
 Core freeze remains HOLD, not GO. New APK is a debug QA candidate, not a signed release.
