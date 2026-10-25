@@ -36,3 +36,15 @@
 ## 本次工作边界
 
 本次只读审计并生成这份交接文件；没有产品代码或测试代码改动，因此没有声称任何新测试通过。整体核心冻结继续 **HOLD**；待本表所需外部证据/规范裁决到位后继续逐项闭环。
+
+## 后续证据更新（2026-10-25，审计基线 `7951a9b`）
+
+本节优先于上方现场快照中的旧状态摘要。原始交接快照保留，以下仅更新证据和阻塞边界。
+
+- 台账工作区版本为受保护的并发修改，SHA-256 `A743BDB7E5AB9F51A1636425CE29714AD61709515BAFF72AE9B89CB5A497C4E5`。结构性状态仍为 12 个未签核 P1：10 BLOCKED、1 NOT TESTED、1 SPEC UNRESOLVED；历史 209 项 ID 映射缺口如实保留。此文件更新不修改或暂存台账。
+- `REC-P1-047` / `REC-P1-090`：桌面 DeepSeek V4.1 Flash 凭据已用于一次受控合成请求，HTTP 401，耗时 701 ms；未重试、未更换 endpoint/model，也未写入应用设置、数据库或正式事件。脱敏诊断 SHA-256 `A36B9835C3E466D482102E11DBD96FD267CAB8C110547511BED594B681264BC7`；详情见 `docs/issues/PC-ISSUE-002-ai-timeout-proposal.md`。该凭据不能作为当前可用 provider；免费 provider 的实时分类仍未测试，多轮 live-provider 流程仍阻塞。不得把密钥复制到聊天或报告。
+- `REC-P1-086`：此前关于“尚未使用 PowerCal 生产调度器/receiver”的描述已被后续 API 35 隔离 AVD 证据取代。生产 exact-alarm 路径覆盖普通进程终止、force-stop 后用户重开及系统重启后的 `BootReceiver` 恢复；重启场景 instrumentation 1/1 PASS，提醒实际投递且持久状态为 `FIRED`，未推断任务完成。完整离线门禁 543/543 JVM、74 suites、88/88 tasks，lint 0 errors / 53 warnings。详情见 `docs/issues/PC-ISSUE-PHASE4-D05-AVD-LIFECYCLE.md`。真实设备/OEM 省电行为仍 BLOCKED；模拟器结果不替代该签核。
+- Phase 1 编辑器生命周期与统一默认时间已完成自动化及隔离 API 35 AVD 子项。用户已裁决一次性 fall-fold 取第一次（较早 offset）；合同、`DraftForm.parseInstantIn` 和固定 Clock 回归已同步。`EditorDefaultsTest` 7/7、Phase 1 六个 suite 33/33、完整门禁 543/543 JVM 与 88/88 tasks 通过。详情见 `docs/issues/PC-ISSUE-PHASE1-EDITOR-LIFECYCLE.md`。一次性 spring-gap 输入规则仍未另行定义；Phase 1 不再因 fall-fold 语义保持 HOLD，核心冻结仍因其他项目 HOLD。
+- 其余人工签核要求沿用本交接表：`REC-P1-063/067/069/070/075/076` 需实体设备/TalkBack/OEM 证据，`REC-P1-068` 需先由产品负责人补齐日期 Deadline 的锚定与播报规范，`REC-P1-081` 需隔离日历账号完成外部 ICS 往返验证，`REC-P1-048` 需可用免费 provider 的实时分类证据。
+
+此处的完整测试结果来自各自 Issue 报告所列的隔离 worktree、APK 与日志哈希；本交接更新没有重新运行设备测试，也没有把历史结果说成本轮新测。工作区其他 Agent 的台账、测试、`design/` 和 Issue 修改仍保持未纳入本次提交。
