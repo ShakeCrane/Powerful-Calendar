@@ -6,6 +6,7 @@
 ## 状态修订（2026-10-25，后续证据优先于下方历史快照）
 
 - Phase 1 的一次性本地时间落在秋季 DST fold 时选择第一次出现（较早 offset），已获用户明确裁决；实现与固定 Clock 回归已提交 `572cf10bc29907e197cdd36e88c7776a187c6979`。见 `docs/issues/PC-ISSUE-PHASE1-EDITOR-LIFECYCLE.md` 与 `docs/CORE_FREEZE_VERDICT.md`。一次性 spring-gap 行为仍未新增规则。
+- D02 标题贪心折叠详细合同已由用户补齐；生产实现和 API 35 AVD 可视回归见 `docs/issues/PC-ISSUE-GREEDY-LABEL-FOLDING.md`。核心视觉/贪心子项有证据，实体设备与 TalkBack 语音检查仍属未完成项。
 - D05 已在隔离 applicationId 的 API 35 AVD 上使用生产 ReminderScheduler/BootReceiver/ReminderReceiver，完成普通进程终止、force-stop 后重开、真实系统重启后 BOOT_COMPLETED 恢复及到期通知的端到端观察。完整门禁 543/543 JVM、74 suites、88 tasks 通过；实体/OEM 未测试。见 `docs/issues/PC-ISSUE-PHASE4-D05-AVD-LIFECYCLE.md` Follow-up 与提交 `c02c766d881701bfb38cd86e27b90adbab7ba651`。
 - 以上结果只签核相应自动化/AVD 子项；D05 实体/OEM 验收及 Phase 5–6 仍未完成，正式冻结继续 HOLD。下文原始审计文字保留为当时基线，不覆盖本修订。
 
@@ -13,7 +14,7 @@
 
 初始 P01–P08：P01 / P03 / P04 / P05 / P06 / P07 共 6 PASS；P02 和 P08 FAIL。
 D01：AI 聊天输入正常；草稿发布按钮遇到输入法时沉底，拆为 D01a PASS + D01b FAIL。
-D02：用户称标题折叠当前正常，但“我的要求其实是”之后的完整规定尚未提供，临时 OBSERVED PASS / SPEC PENDING；不能签合同完成。
+D02：初始审计时用户只说标题折叠当前正常，完整规则尚未提供；用户随后明确了时间轴标题贪心折叠合同。实现与 API 35 AVD 可视回归已通过，字号/截断另有 Robolectric 回归；实体设备与 TalkBack 仍未签核。见 `docs/issues/PC-ISSUE-GREEDY-LABEL-FOLDING.md`。
 D03、D04、D06、D07、E03：NOT TESTED，用户对 D03/D07 低优先态度不等于 PASS；E03 延后。
 D05：后台常规运行可提醒；“杀后台”后未提醒。杀后台方式不明确，不能先认定代码错误。
 E01：FAIL（多轮任务会话能理解，但结构化提案无法闭环；详见 PC-ISSUE-172）。
@@ -98,7 +99,7 @@ Phase 4 — D05 提醒“杀后台”分类：
 2. 同一 5 分钟未来闹钟逐组设置，核验设置权限、AlarmManager 排程、通知渠道/锁屏显示、FIRED/MISSED 日志、系统是否允许送达。
 3. 仅修真实应用管理缺陷；对 Android 厂商/Force-stop 的 OS 限制如实记为限制或需用户设置，不承诺规避系统机制。
 
-Phase 5 — E01/PC-ISSUE-172 AI 多轮，P02“今日”规范统一及 D02 标题最终需求核对；各自独立复测，禁止以延长 timeout 替代多轮任务状态。
+Phase 5 — E01/PC-ISSUE-172 已有独立实现/回归记录；D02 标题贪心折叠合同已明确并完成 API 35 AVD 子项（实体/TalkBack 待验）；P02“今日”规范仍需先统一产品语义再复测。各项独立签核，禁止以延长 timeout 替代多轮任务状态。
 Phase 6 — 延期真机项 D03/D04/D06/D07/E03：标记 NOT TESTED 或明确 owner-excluded，绝不虚标 PASS；重启持久化 D06 和 ICS E03 在正式冻结时按真实优先级复审。
 
 ## F. 验收原则与提交
