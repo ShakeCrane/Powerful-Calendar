@@ -1,8 +1,13 @@
 # PowerCal 真机首轮缺陷审计与修复计划（2026-10-25）
 
-状态：Phase 1、Phase 2（P08）及 Phase 3 D01b 已完成各自自动化和可用的 API 35 AVD 子项；Phase 4 D05 仅完成隔离合成包的平台行为分类，PowerCal 生产路径仍 BLOCKED；Phase 5–6 尚未完成；实体设备仍由用户验收；正式冻结 HOLD。
+状态：Phase 1、Phase 2（P08）及 Phase 3 D01b 已完成各自自动化和可用的 API 35 AVD 子项；Phase 4 D05 的 PowerCal 生产路径已在 API 35 AVD 覆盖进程终止、强停后重开与系统重启恢复，实体/OEM 验收仍 BLOCKED；Phase 5–6 尚未完成；正式冻结 HOLD。
 审计基线：Git 40e78bf（来源为当前仓库只读检查），对照用户实机反馈和 docs/CORE_CONTRACT_FREEZE_2026-10-21.md 的已修订合同。
 范围：问题归因、复现方案、实现次序和验收门槛。任何源码猜测均需补足目标设备证据。
+## 状态修订（2026-10-25，后续证据优先于下方历史快照）
+
+- Phase 1 的一次性本地时间落在秋季 DST fold 时选择第一次出现（较早 offset），已获用户明确裁决；实现与固定 Clock 回归已提交 `572cf10bc29907e197cdd36e88c7776a187c6979`。见 `docs/issues/PC-ISSUE-PHASE1-EDITOR-LIFECYCLE.md` 与 `docs/CORE_FREEZE_VERDICT.md`。一次性 spring-gap 行为仍未新增规则。
+- D05 已在隔离 applicationId 的 API 35 AVD 上使用生产 ReminderScheduler/BootReceiver/ReminderReceiver，完成普通进程终止、force-stop 后重开、真实系统重启后 BOOT_COMPLETED 恢复及到期通知的端到端观察。完整门禁 543/543 JVM、74 suites、88 tasks 通过；实体/OEM 未测试。见 `docs/issues/PC-ISSUE-PHASE4-D05-AVD-LIFECYCLE.md` Follow-up 与提交 `c02c766d881701bfb38cd86e27b90adbab7ba651`。
+- 以上结果只签核相应自动化/AVD 子项；D05 实体/OEM 验收及 Phase 5–6 仍未完成，正式冻结继续 HOLD。下文原始审计文字保留为当时基线，不覆盖本修订。
 
 ## A. 人工验收现状：不要用自动化 PASS 覆盖真机反馈
 
@@ -110,7 +115,7 @@ PC-ISSUE-PHASE1 的编辑器生命周期与统一默认时间修复已完成。�
 
 AVD 测试只在 `emulator-5554` 的随机隔离 SQLite 文件执行；运行前后原 app/test APK SHA-256 相同，未清理用户数据；`emulator-5556` 未触碰。实体设备由用户测试，本轮未声称通过。DST 秋季回拨的重复墙上时间不能由现有本地分钟文本区分，保留为未签核风险。Phase 1 自动化及 API 35 AVD 子项 PASS；Phase 2 可开工，核心冻结仍 HOLD。实现提交与推送 SHA 将补录在交付进度条目。
 
-独立结案报告：`docs/issues/PC-ISSUE-PHASE1-EDITOR-LIFECYCLE.md`。实现提交：`b46b3dd7592bb1c7de021d543630f84937a0eaef`。
+独立结案报告：`docs/issues/PC-ISSUE-PHASE1-EDITOR-LIFECYCLE.md`。实现提交：`b46b3dd7592bb1c7de021d543630f84937a0eaef`。`Phase 1 当前 HEAD 复验`小节中的 DST fold 未签核状态随后被用户 2026-10-25 的明确裁决取代；详见本文件顶部状态修订。
 
 ## Phase 2 交付记录（2026-10-25）
 
