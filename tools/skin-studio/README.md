@@ -28,7 +28,7 @@ python tools/skin-studio/skin_studio.py serve --port 8765
 - 添加文字、图片和安全宿主按钮；修改图层位置、尺寸、不透明度及排序数值，
   拖动预览选框后实际修改包内 CSS，并将图层元数据保存进 `project.json`。
 - 上传 PNG、WebP 和字体素材并保留字节；给已有 `data-action` 按钮设置图标素材。
-- 模拟常规、空白、密集、重复和 AI 锁定场景；用真实 v1 消息结构模拟宿主的
+- 模拟常规、空白、密集、重复、AI 锁定、AI 请求失败后手动重发和提案审核场景；用真实 v1 消息结构模拟宿主的
   `state/action`，包括时间轴状态、重复实例身份及 `optionGroups`。
 - 重复事件保存预览会显示“模拟确认/模拟取消”；这只是 Studio 的 Mock，Android 实际写入必须经过 Host 的原生确认。重复范围编辑源文件为 `web/edit.js`，与导出包及 Android Clear 资产同源。
 - 通过“软件新增平行功能”场景检查通用选项列表是否自动继承新的同级选项。

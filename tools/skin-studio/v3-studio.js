@@ -619,6 +619,9 @@ function simulatedState(){
     detail:"模拟未来软件版本新增的平行选项",icon:"table",enabled:true
   });
   const start=anchor-hours*1800000;
+  const chatMessages=scenario==="ai-error"
+    ? [{role:"assistant",content:"你好！今天有什么安排？"},...mockAiErrorMessages]
+    : [{role:"assistant",content:"你好！今天有什么安排？"},...mockChat];
   return {bridgeVersion:1,page:mockPage,memoCount:2,aiLocked:scenario==="locked",
     reducedMotion:$("reduced").checked,pendingCount:3,
     editing:mockEditing,
@@ -627,7 +630,7 @@ function simulatedState(){
       {eventSeq:44,revision:1,occurrenceKey:"single",title:"提交报告",completed:false,startMillis:base+7200000}
     ],memoTruncated:false,chatBusy:false,chatAttachmentBusy:false,
     chatAttachmentAvailable:scenario!=="locked"&&!(scenario==="ai-review"&&mockAiProposals.length>0),
-    chatMessages:[{role:"assistant",content:"你好！今天有什么安排？"},...mockChat],
+    chatMessages,
     aiProposalReview:scenario==="ai-review"&&mockAiProposals.length?{
       reviewId:mockAiReviewId,
       proposals:mockAiProposals.map((proposal,index)=>({...proposal,index})),
@@ -814,8 +817,12 @@ function onSkinAction(message){
       if(!Number.isInteger(p.eventSeq)||typeof p.completed!=="boolean"||!p.occurrenceKey)return;
       if(p.eventSeq===31)mockMemoDone=!p.completed;
     }
-    if(name==="sendChat"&&typeof p.text==="string"&&p.text.length<=4000)
-      mockChat.push({role:"user",content:p.text});
+    if(name==="sendChat"&&typeof p.text==="string"&&p.text.length<=4000){
+      if($("scenario").value==="ai-error"){
+        mockAiErrorMessages.push({role:"user",content:p.text},
+          {role:"assistant",content:"Studio Mock：已收到你手动重发的消息；没有调用真实 AI 或写入日历。"});
+      }else mockChat.push({role:"user",content:p.text});
+    }
     if(name==="pickAiFile"||name==="pickAiImage"){
       if(Object.keys(p).length!==1||mockPage!=="AI"||scenario==="locked"){
         logAction("拒绝当前状态下的附件选择请求");return;
@@ -875,6 +882,10 @@ function onSkinAction(message){
   }catch(error){logAction("Bridge 消息错误："+error.message)}
 }
 let mockAnchor=null,mockPage="TIMELINE",mockMemoDone=false,mockChat=[];
+let mockAiErrorMessages=[
+  {role:"user",content:"请帮我概括明天的安排。"},
+  {role:"assistant",content:"Studio Mock：AI 请求未完成（模拟 HTTP 503）；上下文已保留，可编辑后手动重发。"}
+];
 let mockAiReviewId="41b2c6f7-6070-44b5-93ed-a922b5a447db",mockAiReviewGeneration=0;
 function rotateMockAiReviewId(){
   mockAiReviewGeneration++;
@@ -985,6 +996,10 @@ function bindUI(){
   for(const id of ["scenario","theme","reduced"])$(id).onchange=()=>{
     if(id==="theme")$("webPreview").style.colorScheme=$("theme").value;
     mockAnchor=null;
+    if(id==="scenario"&&$("scenario").value==="ai-error")mockAiErrorMessages=[
+      {role:"user",content:"请帮我概括明天的安排。"},
+      {role:"assistant",content:"Studio Mock：AI 请求未完成（模拟 HTTP 503）；上下文已保留，可编辑后手动重发。"}
+    ];
     if(id==="scenario"&&$("scenario").value==="ai-review")resetMockAiProposalReview();
     postState();
   };

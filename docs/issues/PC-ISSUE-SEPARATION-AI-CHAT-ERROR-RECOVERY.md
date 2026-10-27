@@ -27,6 +27,25 @@ The test verifies:
 
 This is a Host/Compose integration check of the closed chat action, not an Android WebView interaction test. It does not verify a dedicated retry control because Clear has none.
 
+## Skin Studio preview follow-up
+
+The Studio now includes an `AI 失败后手动重发（Mock）` scenario. It seeds a synthetic HTTP 503 assistant response while preserving the original user prompt, then verifies the existing Clear composer remains available and can explicitly send the prompt again through the v1 `sendChat` action. The Mock reply states that it did not call a real provider or write calendar data. No production Clear or Core behavior changed, and the preview does not represent Android WebView or provider evidence.
+
+The Chrome E2E covers the scenario in the actual Studio preview, alongside the existing source edit/export/import path. SEP-09 and full S3 remain open because device WebView, live provider, cancellation, process recovery and complete Native/Skin replay are not covered.
+
+### Follow-up verification evidence
+
+Validation ran in a detached worktree at `b0af01efc512a41a797cc56433ee2dd3050282c8`, with only this follow-up's Studio, test and documentation patch applied. This isolated the run from concurrent uncommitted Clear source edits in the shared worktree.
+
+- `python -m unittest discover -s tools/skin-studio/tests -v`: **50/50 PASS**. Log SHA-256: `648B8C5A620D1EEC9736ED59E6D7B3A0E3DBAFD10069E5ED712A740EAB9626EF`.
+- `node tools/skin-studio/tests/e2e_v3_source.cjs`: **PASS**. The actual Studio preview loaded the synthetic HTTP 503 conversation, retained its failed turn, accepted one explicit composer resend, and displayed the non-provider/non-writing Mock response. The same run passed editable source/project/resource round-trip, recurrence Mock, attachment Mock and AI review Mock. Log SHA-256: `B08DFDCB7290423F4A3AE0F6DB2BCD34D230EEDCCC5EF60021DC6328FBE7213D`.
+- `node --check tools/skin-studio/v3-studio.js` and `node --check tools/skin-studio/tests/e2e_v3_source.cjs`: **PASS**.
+- `python tools/skin-studio/build_default_clear.py --verify`: **PASS**, 8 files / 376,661 bytes; package SHA-256 remains `0e17aabfe216e8ecb0775dafb8ea66857e25687b09e1167b7c68e1d9ffd81623`.
+- Logs are under `.local/android-test/reports/separation-20261027/ai-chat-recovery-followup/` in the verification worktree. No Android production source changed, so this Studio-only follow-up did not rerun the Gradle gate.
+- Device status: `E:\android-sdk\platform-tools\adb.exe devices -l` could not start/connect to the ADB daemon; `E:\android-sdk\emulator\emulator.exe` is absent. Android WebView, emulator, physical-device and live-provider behavior are **NOT TESTED**.
+
+An initial Python suite run in the shared worktree failed because local loopback sockets were sandbox-blocked and concurrent Clear assets made the source differ from the packaged APK. The same complete suite passed in the detached clean-source worktree above; no shared changes were reverted or overwritten.
+
 ## Test evidence
 
 Focused command:

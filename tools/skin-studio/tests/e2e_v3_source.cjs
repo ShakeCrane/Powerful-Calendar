@@ -235,6 +235,28 @@ async function main(){
       })()`});
     if(aiAttachments.exceptionDetails)throw Error(aiAttachments.exceptionDetails.exception?.description || aiAttachments.exceptionDetails.text);
     console.log("BROWSER AI attachment Host-action Mock PASS",JSON.stringify(aiAttachments.result.value));
+    await call("Runtime.evaluate",{expression:`(()=>{const e=document.querySelector('#scenario');e.value='ai-error';e.dispatchEvent(new Event('change',{bubbles:true}))})()`,returnByValue:true});
+    const aiErrorResend=await call("Runtime.evaluate",{contextId:world.executionContextId,
+      awaitPromise:true,returnByValue:true,expression:`(async()=>{
+        const check=(v,m)=>{if(!v)throw Error(m)};
+        const wait=async(fn,m)=>{for(let i=0;i<100;i++){if(fn())return;await new Promise(r=>setTimeout(r,100))}throw Error(m)};
+        const list=document.querySelector('#chatMessages');
+        const prompt='请帮我概括明天的安排。';
+        await wait(()=>list.textContent.includes('模拟 HTTP 503')&&list.textContent.includes(prompt),
+          'AI failure recovery Mock did not load');
+        const field=document.querySelector('#chatInput');field.value=prompt;
+        field.dispatchEvent(new Event('input',{bubbles:true}));
+        check(!document.querySelector('#chatSend').disabled,'manual resend is unavailable after a provider error');
+        document.querySelector('#chatForm').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
+        await wait(()=>list.textContent.includes('已收到你手动重发的消息'),
+          'manual resend did not reach the Studio Host Mock');
+        check(field.value==='','successful send did not clear the composer');
+        check(list.textContent.split(prompt).length-1===2, 'the same prompt must appear once as the failed turn and once as the explicit resend');
+        check(list.textContent.includes('没有调用真实 AI 或写入日历'),'Mock boundary was not disclosed');
+        return {scenario:'AI HTTP 503 then explicit composer resend',providerCalled:false,calendarWrites:false};
+      })()`});
+    if(aiErrorResend.exceptionDetails)throw Error(aiErrorResend.exceptionDetails.exception?.description || aiErrorResend.exceptionDetails.text);
+    console.log("BROWSER AI error/manual resend Mock PASS",JSON.stringify(aiErrorResend.result.value));
     await call("Runtime.evaluate",{expression:`(()=>{const e=document.querySelector('#scenario');e.value='ai-review';e.dispatchEvent(new Event('change',{bubbles:true}))})()`,returnByValue:true});
     const aiCardsReady=await call("Runtime.evaluate",{contextId:world.executionContextId,
       awaitPromise:true,returnByValue:true,expression:`(async()=>{
