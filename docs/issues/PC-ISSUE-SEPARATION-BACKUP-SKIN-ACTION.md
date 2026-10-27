@@ -79,5 +79,3 @@
 ## 提交
 
 实现提交：`16cdbb4d44495b43a2aa5a3aeec23d78e2a8ebd1`（父提交 `594ef48ed662d036805ce003079519d9da712159`），已推送至 `origin/codex/separation-skin-settings`。
-
-本报告和进度记录的最终补录提交将在该文档提交完成后列出。
