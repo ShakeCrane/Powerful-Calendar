@@ -41,6 +41,29 @@ device accessibility and recovery cases are complete.
 Date: 2026-10-22. Current milestone: **protocol and host coordination,
 not complete Clear Web editor/deck UI and not factory cutover**.
 
+## 2026-10-28 addition: draft conflict and deleted-event recovery review
+
+Clear can request a Host-owned review when `deck.commit` leaves the existing
+DeckController in a version-conflict or deleted-event restore state. The closed
+schema commands are `deck.reviewConflict` and `deck.reviewRestore`; both take an
+empty payload. They only request the trusted Compose review and never carry an
+`approve` flag, confirmation token, target form or revision supplied by JavaScript.
+
+For a conflict, the Host displays the current formal version and the complete
+before/after form snapshot. Before applying the user's decision it verifies that
+the exact DeckController prompt, selected draft and approved form still match.
+The controller then rechecks the formal revision and form; a stale prompt stays
+uncommitted and must be reviewed again. For a deleted event, the Host displays
+the existing same-sequence/new-revision restore warning and calls the existing
+`DeckController.requestRestore()` only after trusted confirmation. Cancel keeps
+the draft and performs no formal write.
+
+Clear exposes request actions only while the corresponding Host state is active.
+Studio models these as explicitly non-writing Mock confirmations. The two
+commands do not expose `deck.confirmConflict` or `deck.confirmRestore`; a skin
+cannot authorize a write or resurrection with a JavaScript boolean. Evidence is
+tracked in `docs/issues/PC-ISSUE-SEPARATION-DRAFT-DECK-CONFLICT-RESTORE.md`.
+
 ## Architectural invariants
 
 - Factory Clear and imported v3 skins share the same capability-gated

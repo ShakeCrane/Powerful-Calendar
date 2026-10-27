@@ -723,6 +723,18 @@ function resolveMockApproval(approved){
   if(!mockApproval)return;
   const request=mockApproval;mockApproval=null;$("mockApproval").hidden=true;
   $("mockApprovalText").textContent="预览模拟宿主确认，不会写入真实数据。";
+  if(request.kind==="deckResolution"){
+    const deck=mockEditing.deck;
+    const conflict=request.resolution==="conflict";
+    mockEditing.deck=approved
+      ?{...deck,open:false,hasConflict:false,hasRestore:false}
+      :{...deck,hasConflict:false,hasRestore:false};
+    mockEditing.lastResult={requestId:request.requestId,
+      status:approved?(conflict?"committed":"restored"):"cancelled"};
+    logAction("仅预览：模拟宿主"+(approved?"确认":"取消")+
+      (conflict?"冲突整份覆盖":"删除事件恢复")+"；未写入真实数据");
+    postState();return;
+  }
   if(request.kind==="aiProposal"){
     if(request.reviewId!==mockAiReviewId){
       mockChat.push({role:"assistant",content:"预览 Mock：审核卡已过期，模拟 Host 拒绝了旧请求。"});
@@ -856,7 +868,11 @@ function onSkinCommand(p){
       }
       break;
     case "deck.commit":
-      if(deck.open){mockEditing.deck={open:false};result.status="committed"}
+      if(deck.open&&$("scenario").value==="deck-conflict"){
+        mockEditing.deck={...deck,hasConflict:true,hasRestore:false};result.status="conflict";
+      }else if(deck.open&&$("scenario").value==="deck-restore"){
+        mockEditing.deck={...deck,hasConflict:false,hasRestore:true};result.status="restore_required";
+      }else if(deck.open){mockEditing.deck={open:false};result.status="committed"}
       break;
     case "deck.discard":
       if(!deck.open||deck.currentId!==p.draftId||deck.version!==p.draftVersion){
@@ -902,6 +918,22 @@ function onSkinCommand(p){
             form:card.form?{...card.form}:null,baseline:card.form?{...card.form}:null,dirty:false};
           result.status="selected";
         }
+      }
+      break;
+    case "deck.reviewConflict":
+      if(!deck.open||!deck.hasConflict)result.status="missing";
+      else {
+        mockApproval={kind:"deckResolution",requestId:p.requestId,resolution:"conflict"};
+        $("mockApprovalText").textContent="预览 Mock：Android Host 将展示完整当前版本与草稿差异，并再次确认覆盖；不会写入真实数据。";
+        $("mockApproval").hidden=false;result.status="confirmation_required";
+      }
+      break;
+    case "deck.reviewRestore":
+      if(!deck.open||!deck.hasRestore)result.status="missing";
+      else {
+        mockApproval={kind:"deckResolution",requestId:p.requestId,resolution:"restore"};
+        $("mockApprovalText").textContent="预览 Mock：Android Host 将确认恢复同一事件序号与新版本；不会写入真实数据。";
+        $("mockApproval").hidden=false;result.status="confirmation_required";
       }
       break;
   }

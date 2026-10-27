@@ -440,6 +440,74 @@ async function main(){
     if(closed.exceptionDetails)throw Error(closed.exceptionDetails.exception?.description || closed.exceptionDetails.text);
     console.log("BROWSER RECURRENCE MOCK PASS",JSON.stringify(recurrence.result.value));
 
+    const runDeckResolution=async(scenario,action,expectedHostText,label)=>{
+      await call("Runtime.evaluate",{expression:`(()=>{const e=document.querySelector('#scenario');e.value='${scenario}';e.dispatchEvent(new Event('change',{bubbles:true}))})()`,returnByValue:true});
+      const requested=await call("Runtime.evaluate",{contextId:world.executionContextId,
+        awaitPromise:true,returnByValue:true,expression:`(async()=>{
+          const wait=async(fn,m)=>{for(let i=0;i<150;i++){if(fn())return;await new Promise(r=>setTimeout(r,100))}throw Error(m)};
+          document.querySelector('[data-action="createDraft"]').click();
+          await wait(()=>document.querySelector('#timelineCreateDialog[open]'),'deck resolution create chooser missing');
+          document.querySelector('[data-timeline-create-kind="MEMO"]').click();
+          await wait(()=>!document.querySelector('#skinSheet').hidden&&
+            document.querySelector('#sheetTitle').textContent==='待处理草稿','deck resolution draft editor missing');
+          document.querySelector('#sheetSave').click();
+          await wait(()=>document.querySelector('[data-do="${action}"]'),'${label} state did not expose its Host review action');
+          document.querySelector('[data-do="${action}"]').click();
+          return true;
+        })()`});
+      if(requested.exceptionDetails)throw Error(requested.exceptionDetails.exception?.description || requested.exceptionDetails.text);
+      const hostPrompt=await call("Runtime.evaluate",{awaitPromise:true,returnByValue:true,expression:`(async()=>{
+        for(let i=0;i<150;i++){
+          const prompt=document.querySelector('#mockApproval');
+          if(prompt&&!prompt.hidden){
+            const text=document.querySelector('#mockApprovalText').textContent;
+            if(!text.includes('${expectedHostText}'))throw Error('${label} did not request the expected Host review: '+text);
+            if(!text.includes('不会写入真实数据'))throw Error('Studio Host review mock boundary was not disclosed');
+            return true;
+          }
+          await new Promise(r=>setTimeout(r,100));
+        }
+        throw Error('${label} Host review did not open');
+      })()`});
+      if(hostPrompt.exceptionDetails)throw Error(hostPrompt.exceptionDetails.exception?.description || hostPrompt.exceptionDetails.text);
+      await call("Runtime.evaluate",{expression:"document.querySelector('#mockReject').click()",returnByValue:true});
+      const cancelled=await call("Runtime.evaluate",{contextId:world.executionContextId,
+        awaitPromise:true,returnByValue:true,expression:`(async()=>{
+          const wait=async(fn,m)=>{for(let i=0;i<150;i++){if(fn())return;await new Promise(r=>setTimeout(r,100))}throw Error(m)};
+          await wait(()=>document.querySelector('#sheetStatus').textContent.includes('已取消宿主操作'),
+            '${label} cancellation did not return to Clear');
+          if(document.querySelector('#skinSheet').hidden)throw Error('${label} cancel discarded the draft deck');
+          await wait(()=>document.querySelector('[data-do="${action}"]')===null,
+            '${label} cancel did not dismiss the stale prompt');
+          document.querySelector('#sheetSave').click();
+          await wait(()=>document.querySelector('[data-do="${action}"]'),'${label} retry did not restore the review action');
+          document.querySelector('[data-do="${action}"]').click();
+          return true;
+        })()`});
+      if(cancelled.exceptionDetails)throw Error(cancelled.exceptionDetails.exception?.description || cancelled.exceptionDetails.text);
+      const secondPrompt=await call("Runtime.evaluate",{awaitPromise:true,returnByValue:true,expression:`(async()=>{
+        for(let i=0;i<150;i++){if(!document.querySelector('#mockApproval').hidden)return true;await new Promise(r=>setTimeout(r,100))}
+        throw Error('${label} repeated Host review did not open');
+      })()`});
+      if(secondPrompt.exceptionDetails)throw Error(secondPrompt.exceptionDetails.exception?.description || secondPrompt.exceptionDetails.text);
+      await call("Runtime.evaluate",{expression:"document.querySelector('#mockApprove').click()",returnByValue:true});
+      const approved=await call("Runtime.evaluate",{contextId:world.executionContextId,
+        awaitPromise:true,returnByValue:true,expression:`(async()=>{
+          for(let i=0;i<150;i++){
+            if(document.querySelector('#skinSheet').hidden)return document.querySelector('#sheetStatus').textContent;
+            await new Promise(r=>setTimeout(r,100));
+          }
+          throw Error('${label} Host approval did not close the preview deck');
+        })()`});
+      if(approved.exceptionDetails)throw Error(approved.exceptionDetails.exception?.description || approved.exceptionDetails.text);
+      return {scenario,label,cancelledDraftRetained:true,hostMockOnly:true};
+    };
+    const deckConflict=await runDeckResolution('deck-conflict','reviewConflict',
+      '完整当前版本与草稿差异','版本冲突');
+    const deckRestore=await runDeckResolution('deck-restore','reviewRestore',
+      '确认恢复同一事件序号','删除事件恢复');
+    console.log('BROWSER DECK TRUSTED CONFLICT/RESTORE MOCK PASS',JSON.stringify([deckConflict,deckRestore]));
+
     const aiPage=await call("Runtime.evaluate",{contextId:world.executionContextId,
       awaitPromise:true,returnByValue:true,expression:`(async()=>{
         const check=(v,m)=>{if(!v)throw Error(m)};

@@ -63,6 +63,10 @@ internal sealed interface WebEditCommand {
     data class DiscardDeck(override val requestId: String, val draftId: Long,
         val draftVersion: Long): WebEditCommand
     data class UndoDeck(override val requestId: String): WebEditCommand
+    /** Requests a trusted Host review of the exact conflict snapshot; it does not approve it. */
+    data class ReviewDeckConflict(override val requestId: String): WebEditCommand
+    /** Requests a trusted Host confirmation for restoring a deleted formal event. */
+    data class ReviewDeckRestore(override val requestId: String): WebEditCommand
 }
 
 internal object WebEditWire {
@@ -161,6 +165,8 @@ internal object WebEditWire {
                 else WebEditCommand.DiscardDeck(id,draftId,version)
             }
             "deck.undo" -> if(exact()) WebEditCommand.UndoDeck(id) else null
+            "deck.reviewConflict" -> if(exact()) WebEditCommand.ReviewDeckConflict(id) else null
+            "deck.reviewRestore" -> if(exact()) WebEditCommand.ReviewDeckRestore(id) else null
             else -> null
         }
     }
@@ -253,6 +259,24 @@ internal data class WebFormalWriteReview(
     val deckVersion: Long? = null
 )
 
+/** A skin may ask for these reviews, but only the trusted Host can resolve them. */
+internal sealed interface WebDeckResolutionReview {
+    val token: String
+    val command: WebEditCommand
+
+    data class Conflict(
+        override val token: String,
+        override val command: WebEditCommand.ReviewDeckConflict,
+        val prompt: DeckController.ConflictPrompt
+    ) : WebDeckResolutionReview
+
+    data class Restore(
+        override val token: String,
+        override val command: WebEditCommand.ReviewDeckRestore,
+        val prompt: DeckController.RestorePrompt
+    ) : WebDeckResolutionReview
+}
+
 internal class WebSkinEditService(
     private val store: PowerStore,
     private val deck: DeckController,
@@ -265,6 +289,8 @@ internal class WebSkinEditService(
     private var newEventSession: NewEventEditSession? = null
     private var deckOpen = false
     var pendingWriteReview by mutableStateOf<WebFormalWriteReview?>(null)
+        private set
+    var pendingDeckResolutionReview by mutableStateOf<WebDeckResolutionReview?>(null)
         private set
     // Compose-observable lifetime signal for reliable Android Back interception.
     private var hasActiveUiSession by mutableStateOf(false)
@@ -296,6 +322,7 @@ internal class WebSkinEditService(
                 .put("error", active.lastError)
                 .put("form", WebEditWire.form(active.form))
                 .put("hasConflict", false).put("hasRestore", false)
+                .put("awaitingHostReview", pendingDeckResolutionReview != null)
         }
         val state = deck.state
         val items = org.json.JSONArray()
@@ -315,6 +342,7 @@ internal class WebSkinEditService(
             .put("form",state.form?.let(WebEditWire::form))
             .put("hasConflict",state.conflict!=null)
             .put("hasRestore",state.restore!=null)
+            .put("awaitingHostReview",pendingDeckResolutionReview != null)
     }
 
     /** Snapshots contain no lease token or reference to raw PowerStore objects. */
@@ -328,7 +356,8 @@ internal class WebSkinEditService(
                 .put("requiresRecurrenceScope",current?.requiresRecurrenceScope ?: false)
                 .put("canEditSelectedOccurrence",current?.canEditSelectedOccurrence ?: false)
                 .put("recurrenceScope",current?.recurrenceScope?.name ?: JSONObject.NULL)
-                .put("awaitingConfirmation",pendingWriteReview != null)
+                .put("awaitingConfirmation",pendingWriteReview != null ||
+                    pendingDeckResolutionReview != null)
                 .put("dirty",current?.meaningfulDiff ?: false)
                 .put("error",current?.lastError))
             .put("deck",deckState())
@@ -345,7 +374,7 @@ internal class WebSkinEditService(
             return@withLock if(original==cmd) JSONObject(reply.toString())
                 else result(cmd.requestId,"duplicate_request_id")
         }
-        if (pendingWriteReview != null) {
+        if (pendingWriteReview != null || pendingDeckResolutionReview != null) {
             val reply=result(cmd.requestId,"locked","请先处理宿主确认")
             completed[cmd.requestId]=cmd to JSONObject(reply.toString())
             if(completed.size>64)completed.remove(completed.keys.first())
@@ -589,6 +618,28 @@ internal class WebSkinEditService(
                     else if(newEventSession != null) result(cmd.requestId,"missing")
                     else if(deck.undoDiscard())result(cmd.requestId,"restored")
                     else result(cmd.requestId,"failed",deck.state.error)
+                is WebEditCommand.ReviewDeckConflict -> {
+                    val prompt=deck.state.conflict
+                    if(!deckOpen || newEventSession != null || prompt == null)
+                        result(cmd.requestId,"missing")
+                    else if(deck.state.busy || deck.state.aiLocked) result(cmd.requestId,"locked")
+                    else {
+                        pendingDeckResolutionReview=WebDeckResolutionReview.Conflict(
+                            UUID.randomUUID().toString(),cmd,prompt)
+                        result(cmd.requestId,"confirmation_required")
+                    }
+                }
+                is WebEditCommand.ReviewDeckRestore -> {
+                    val prompt=deck.state.restore
+                    if(!deckOpen || newEventSession != null || prompt == null)
+                        result(cmd.requestId,"missing")
+                    else if(deck.state.busy || deck.state.aiLocked) result(cmd.requestId,"locked")
+                    else {
+                        pendingDeckResolutionReview=WebDeckResolutionReview.Restore(
+                            UUID.randomUUID().toString(),cmd,prompt)
+                        result(cmd.requestId,"confirmation_required")
+                    }
+                }
             }
         } catch(e:kotlinx.coroutines.CancellationException) {throw e}
           catch(e:java.time.DateTimeException) {result(cmd.requestId,"invalid","Invalid date")}
@@ -726,6 +777,59 @@ internal class WebSkinEditService(
         return commitDeckResult(command.requestId)
     }
 
+    /** Only the Host-owned Compose review surface can resolve a skin-requested recovery action. */
+    suspend fun resolveDeckResolutionReview(token: String, approved: Boolean): JSONObject =
+        gate.withLock {
+            val review=pendingDeckResolutionReview
+                ?: return@withLock result("host-deck-review","stale")
+            if(review.token!=token) return@withLock result("host-deck-review","stale")
+            val reply = try {
+                when (review) {
+                    is WebDeckResolutionReview.Conflict -> {
+                        val state=deck.state
+                        if(state.conflict!=review.prompt ||
+                            state.currentId!=review.prompt.draftId ||
+                            state.form!=review.prompt.approvedForm) {
+                            result(review.command.requestId,"conflict",
+                                "冲突内容已变化，请重新审查完整差异")
+                        } else if(!approved) {
+                            deck.dismissConflict()
+                            result(review.command.requestId,"cancelled")
+                        } else if(deck.confirmConflictReplacement()) {
+                            result(review.command.requestId,"committed")
+                        } else result(review.command.requestId,"conflict",
+                            deck.state.error ?: "冲突内容已变化，请重新审查")
+                    }
+                    is WebDeckResolutionReview.Restore -> {
+                        val state=deck.state
+                        if(state.restore!=review.prompt ||
+                            state.currentId!=review.prompt.card.draftId ||
+                            state.form!=review.prompt.card.form || state.dirty ||
+                            state.busy || state.aiLocked) {
+                            result(review.command.requestId,"conflict",
+                                "恢复草稿已变化，请重新审查后再确认")
+                        } else if(!approved) {
+                            deck.dismissRestore()
+                            result(review.command.requestId,"cancelled")
+                        } else if(deck.requestRestore()) {
+                            result(review.command.requestId,"restored",
+                                review.prompt.eventSeq.toString())
+                        } else result(review.command.requestId,"failed",
+                            deck.state.error ?: "恢复未完成，草稿仍保留")
+                    }
+                }
+            } catch(e:kotlinx.coroutines.CancellationException) { throw e }
+              catch(e:Exception) {
+                result(review.command.requestId,"failed","Host operation failed; draft was retained")
+            }
+            pendingDeckResolutionReview=null
+            completed[review.command.requestId]=review.command to JSONObject(reply.toString())
+            if(completed.size>64)completed.remove(completed.keys.first())
+            latest=reply
+            hasActiveUiSession=session!=null || newEventSession!=null || deckOpen
+            reply
+        }
+
     /** Called only by the host-owned confirmation UI, never by a Web command. */
     suspend fun resolveFormalWriteReview(token: String, approved: Boolean): JSONObject = gate.withLock {
         val review=pendingWriteReview
@@ -834,6 +938,18 @@ internal class WebSkinEditService(
             completed[review.command.requestId]=review.command to JSONObject(cancelled.toString())
             latest=cancelled
             pendingWriteReview=null
+        }
+        pendingDeckResolutionReview?.let { review ->
+            when (review) {
+                is WebDeckResolutionReview.Conflict ->
+                    if(deck.state.conflict==review.prompt) deck.dismissConflict()
+                is WebDeckResolutionReview.Restore ->
+                    if(deck.state.restore==review.prompt) deck.dismissRestore()
+            }
+            val cancelled=result(review.command.requestId,"cancelled")
+            completed[review.command.requestId]=review.command to JSONObject(cancelled.toString())
+            latest=cancelled
+            pendingDeckResolutionReview=null
         }
         deckOpen=false
         hasActiveUiSession=false

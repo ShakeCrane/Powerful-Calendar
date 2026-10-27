@@ -1906,6 +1906,91 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
         )
     }
 
+    webEditing.pendingDeckResolutionReview?.let { review ->
+        var resolving by remember(review.token) { mutableStateOf(false) }
+        val resolveReview: (Boolean) -> Unit = { approved ->
+            if (!resolving) {
+                resolving = true
+                PowerCalStores.appScope.launch(Dispatchers.Main.immediate) {
+                    try {
+                        val reply = webEditing.resolveDeckResolutionReview(review.token, approved)
+                        when (reply.optString("status")) {
+                            "committed", "restored" -> {
+                                val refreshed = runCatching { reload() }.isSuccess
+                                val reconciled = runCatching { reconcile() }.isSuccess
+                                message = when {
+                                    !refreshed -> "宿主操作已完成，但界面同步失败；请刷新查看"
+                                    !reconciled -> "宿主操作已完成，提醒同步尚未完成"
+                                    reply.optString("status") == "restored" ->
+                                        "已恢复事件 #${reply.optString("detail")}"
+                                    review is WebDeckResolutionReview.Conflict &&
+                                        review.prompt.card.operation == DraftOperation.DELETE ->
+                                        "已确认删除当前正式版本"
+                                    else -> "已确认发布草稿"
+                                }
+                            }
+                            "cancelled" -> message = "已取消宿主操作，草稿仍保留"
+                            else -> message = reply.optString("detail")
+                                .ifBlank { "操作未完成，请重新审查；草稿仍保留" }
+                        }
+                        WebSkinBridgeRuntime.stateRevision++
+                    } finally { resolving = false }
+                }
+            }
+        }
+        when (review) {
+            is WebDeckResolutionReview.Conflict -> {
+                val prompt = review.prompt
+                SkinAlertDialog(
+                    onDismissRequest = { resolveReview(false) },
+                    title = { Text("正式内容已变化 ${TemporalRecord.formatSeq(prompt.eventSeq)}") },
+                    text = {
+                        Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(if (prompt.card.operation == DraftOperation.DELETE)
+                                "这是删除提案。确认会删除当前正式版本并退役此序号；请检查当前内容和草稿快照。"
+                            else "确认后将用本卡的完整快照替换当前正式对象。内容变化后必须重新审查。")
+                            Text("当前版本 v${prompt.currentRevision ?: 0} → 本卡完整快照")
+                            snapshotRows(prompt.current, prompt.approvedForm).forEach { row ->
+                                Text("${row.label}：${row.before} → ${row.after}" +
+                                    if (row.changed) "（将更改）" else "（保持）")
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(enabled = !resolving, onClick = { resolveReview(true) }) {
+                            Text(if (prompt.card.operation == DraftOperation.DELETE)
+                                "确认删除当前版本" else "确认整份覆盖")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(enabled = !resolving, onClick = { resolveReview(false) }) {
+                            Text("保留待处理")
+                        }
+                    }
+                )
+            }
+            is WebDeckResolutionReview.Restore -> {
+                val prompt = review.prompt
+                SkinAlertDialog(
+                    onDismissRequest = { resolveReview(false) },
+                    title = { Text("恢复 ${TemporalRecord.formatSeq(prompt.eventSeq)}？") },
+                    text = { Text(prompt.message) },
+                    confirmButton = {
+                        TextButton(enabled = !resolving, onClick = { resolveReview(true) }) {
+                            Text("恢复同一事件")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(enabled = !resolving, onClick = { resolveReview(false) }) {
+                            Text("保留草稿")
+                        }
+                    }
+                )
+            }
+        }
+    }
+
     if (deckOpen) {
         DraftDeckDialog(
             controller = controller,

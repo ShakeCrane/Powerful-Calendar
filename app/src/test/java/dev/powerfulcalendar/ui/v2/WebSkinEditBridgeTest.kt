@@ -77,6 +77,10 @@ class WebSkinEditBridgeTest {
         assertNull(WebEditWire.decode(wire("deck.flush", ""","unexpected":false""")))
         assertNull(WebEditWire.decode(wire("deck.confirmConflict")))
         assertNull(WebEditWire.decode(wire("deck.confirmRestore")))
+        assertNotNull(WebEditWire.decode(wire("deck.reviewConflict")))
+        assertNotNull(WebEditWire.decode(wire("deck.reviewRestore")))
+        assertNull(WebEditWire.decode(wire("deck.reviewConflict", ",\"approve\":true")))
+        assertNull(WebEditWire.decode(wire("deck.reviewRestore", ",\"approve\":true")))
         val deleteSession = request()
         assertNotNull(WebEditWire.decode(wire("editor.delete",
             ",\"sessionId\":\"$deleteSession\"")))
@@ -330,6 +334,111 @@ class WebSkinEditBridgeTest {
             request(),id,savedVersion)).getString("status"))
         assertEquals("closed",service.execute(WebEditCommand.CloseDeck(request()))
             .getString("status"))
+    }
+
+    @Test fun webConflictResolutionRequiresFreshHostReviewAndKeepsTheDraft() = runBlocking {
+        val zone=ZoneId.of("UTC")
+        val start=System.currentTimeMillis()+3_600_000L
+        val originalDraft=store.newDraft(DraftForm(kind=TemporalKind.ACTIVITY,
+            title="当前正式内容",startText=DraftForm.formatInstant(start,zone),
+            endText=DraftForm.formatInstant(start+3_600_000L,zone),
+            trackingEnabled=true,zoneId=zone.id))
+        assertTrue(store.commit(originalDraft.draftId) is PowerStore.CommitOutcome.Committed)
+        val original=requireNotNull(store.get(originalDraft.eventSeq))
+        val proposal=store.newDraft(DraftForm.from(original).copy(title="草稿完整快照"),
+            original.eventSeq,DraftOperation.REPLACE)
+
+        assertTrue(store.setCompleted(original.eventSeq,"single",true,original.revision))
+        val firstConcurrent=requireNotNull(store.get(original.eventSeq))
+        assertEquals("opened",service.execute(WebEditCommand.OpenDeck(
+            request(),proposal.draftId)).getString("status"))
+        var version=service.snapshot().getJSONObject("deck").getLong("version")
+        val publish=WebEditCommand.CommitDeck(request(),proposal.draftId,version)
+        assertEquals("confirmation_required",service.execute(publish).getString("status"))
+        assertEquals("conflict",service.resolveFormalWriteReview(
+            requireNotNull(service.pendingWriteReview).token,true).getString("status"))
+
+        val blocked=service.snapshot().getJSONObject("deck")
+        assertTrue(blocked.getBoolean("hasConflict"))
+        assertEquals(firstConcurrent,store.get(original.eventSeq))
+        assertEquals(DraftStatus.CONFLICT,store.draft(proposal.draftId)?.status)
+
+        val reviewCommand=requireNotNull(WebEditWire.decode(wire("deck.reviewConflict")))
+        assertEquals("confirmation_required",service.execute(reviewCommand).getString("status"))
+        val firstReview=service.pendingDeckResolutionReview as WebDeckResolutionReview.Conflict
+        assertEquals(firstConcurrent,firstReview.prompt.current)
+        assertEquals(proposal.form,firstReview.prompt.approvedForm)
+        assertEquals("locked",service.execute(WebEditCommand.PatchDeck(
+            request(),proposal.draftId,version,"title","不能绕过宿主确认")).getString("status"))
+
+        // A concurrent change after the dialog opens invalidates the exact snapshot shown.
+        assertTrue(store.setCompleted(original.eventSeq,"single",false,firstConcurrent.revision))
+        val beforeStaleApproval=store.commitCount()
+        assertEquals("conflict",service.resolveDeckResolutionReview(
+            firstReview.token,true).getString("status"))
+        assertEquals(beforeStaleApproval,store.commitCount())
+        assertTrue(service.snapshot().getJSONObject("deck").getBoolean("hasConflict"))
+
+        val freshReviewCommand=requireNotNull(WebEditWire.decode(wire("deck.reviewConflict")))
+        assertEquals("confirmation_required",service.execute(freshReviewCommand).getString("status"))
+        val freshReview=service.pendingDeckResolutionReview as WebDeckResolutionReview.Conflict
+        assertEquals(requireNotNull(store.get(original.eventSeq)).revision,
+            freshReview.prompt.currentRevision)
+        assertEquals("committed",service.resolveDeckResolutionReview(
+            freshReview.token,true).getString("status"))
+        assertEquals("草稿完整快照",store.get(original.eventSeq)?.title)
+        assertEquals(0,store.pendingCount())
+        assertEquals(1,store.commitCount()-beforeStaleApproval)
+        assertFalse(service.snapshot().getJSONObject("deck").getBoolean("hasConflict"))
+        assertEquals("committed",service.execute(freshReviewCommand).getString("status"))
+        assertEquals(1,store.commitCount()-beforeStaleApproval)
+    }
+
+    @Test fun webDeletedEventRestoreRequiresHostConfirmationAndPreservesIdentity() = runBlocking {
+        val created=store.newDraft(DraftForm(kind=TemporalKind.MEMO,title="恢复目标"))
+        assertTrue(store.commit(created.draftId) is PowerStore.CommitOutcome.Committed)
+        val original=requireNotNull(store.get(created.eventSeq))
+        val delete=store.newDraft(DraftForm.from(original),original.eventSeq,DraftOperation.DELETE)
+        assertTrue(store.commit(delete.draftId) is PowerStore.CommitOutcome.Committed)
+        assertNull(store.get(original.eventSeq))
+        val restore=store.proposeRestoreDraft(original.eventSeq)
+        val identities=store.identityCount()
+
+        assertEquals("opened",service.execute(WebEditCommand.OpenDeck(
+            request(),restore.draftId)).getString("status"))
+        var version=service.snapshot().getJSONObject("deck").getLong("version")
+        assertEquals("restore_required",service.execute(WebEditCommand.CommitDeck(
+            request(),restore.draftId,version)).getString("status"))
+        assertTrue(service.snapshot().getJSONObject("deck").getBoolean("hasRestore"))
+
+        val firstRequest=requireNotNull(WebEditWire.decode(wire("deck.reviewRestore")))
+        assertEquals("confirmation_required",service.execute(firstRequest).getString("status"))
+        val firstReview=service.pendingDeckResolutionReview as WebDeckResolutionReview.Restore
+        assertEquals(original.eventSeq,firstReview.prompt.eventSeq)
+        val commitsBeforeCancel=store.commitCount()
+        assertEquals("cancelled",service.resolveDeckResolutionReview(
+            firstReview.token,false).getString("status"))
+        assertNull(store.get(original.eventSeq))
+        assertEquals(commitsBeforeCancel,store.commitCount())
+        assertEquals(restore,store.draft(restore.draftId))
+
+        version=service.snapshot().getJSONObject("deck").getLong("version")
+        assertEquals("restore_required",service.execute(WebEditCommand.CommitDeck(
+            request(),restore.draftId,version)).getString("status"))
+        val secondRequest=requireNotNull(WebEditWire.decode(wire("deck.reviewRestore")))
+        assertEquals("confirmation_required",service.execute(secondRequest).getString("status"))
+        val secondReview=service.pendingDeckResolutionReview as WebDeckResolutionReview.Restore
+        assertEquals("restored",service.resolveDeckResolutionReview(
+            secondReview.token,true).getString("status"))
+        val recovered=requireNotNull(store.get(original.eventSeq))
+        assertEquals(original.eventSeq,recovered.eventSeq)
+        assertEquals(original.revision+2,recovered.revision)
+        assertEquals(original.title,recovered.title)
+        assertEquals(identities,store.identityCount())
+        assertEquals(commitsBeforeCancel+1,store.commitCount())
+        assertEquals(0,store.pendingCount())
+        assertEquals("restored",service.execute(secondRequest).getString("status"))
+        assertEquals(commitsBeforeCancel+1,store.commitCount())
     }
 
     @Test fun switchingSkinsDurablyFlushesCurrentDraftBeforeEndingWebSession()= runBlocking {
