@@ -2,6 +2,7 @@ package dev.powerfulcalendar.ui.v2
 
 import android.content.Context
 import android.content.ContextWrapper
+import android.content.Intent
 import android.database.DatabaseErrorHandler
 import android.database.sqlite.SQLiteDatabase
 import androidx.activity.ComponentActivity
@@ -21,6 +22,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -29,6 +31,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -55,8 +58,9 @@ class WebAiProposalReviewIntegrationTest {
 
     @Before fun setUp() {
         storage = ApplicationProvider.getApplicationContext()
-        namespace = "pc-web-ai-review-${UUID.randomUUID()}"
-        databaseName = "$namespace.db"
+        namespace = "wair-${UUID.randomUUID()}"
+        // Robolectric embeds the full method name in its Windows temp path.
+        databaseName = "a.db"
         context = IsolatedContext(ui.activity, storage, namespace)
         store = PowerStore(storage, databaseName)
         store.readableDatabase
@@ -147,6 +151,8 @@ class WebAiProposalReviewIntegrationTest {
             val review = requireNotNull(proposalState)
             val proposal = review.getJSONArray("proposals").getJSONObject(0)
             assertEquals("自动提案测试", proposal.getString("title"))
+            assertFalse("attachments must wait until the active proposal review is resolved",
+                WebSkinBridgeRuntime.state().getBoolean("chatAttachmentAvailable"))
             assertEquals(before, counts())
             assertTrue("both AI requests must finish", served.await(1, TimeUnit.SECONDS))
             serverThread.join(2_000)
@@ -183,6 +189,64 @@ class WebAiProposalReviewIntegrationTest {
             assertEquals(1L, store.commitCount())
             assertEquals(1L, store.identityCount())
         }
+    }
+
+    @Test
+    fun skinFileAttachmentOpensHostDocumentPickerWithoutWritingCalendarData() {
+        ui.activity.setContent {
+            CompositionLocalProvider(LocalContext provides context) {
+                PowerCalTheme { PowerCalApp(store) }
+            }
+        }
+        ui.waitForIdle()
+        val before = counts()
+
+        ui.runOnIdle {
+            WebSkinBridgeRuntime.onAction(WebSkinAction.Routed("ai"))
+        }
+        ui.waitForIdle()
+        assertTrue(WebSkinBridgeRuntime.state().getBoolean("chatAttachmentAvailable"))
+        ui.runOnIdle {
+            WebSkinBridgeRuntime.onAction(WebSkinAction.PickAiFile)
+        }
+        ui.waitForIdle()
+
+        val intent = shadowOf(ui.activity).nextStartedActivity
+        assertNotNull("Skin must route file access through Android's Host picker", intent)
+        assertEquals(Intent.ACTION_OPEN_DOCUMENT, intent!!.action)
+        assertEquals("*/*", intent.type)
+        assertTrue(WebSkinBridgeRuntime.state().getBoolean("chatAttachmentBusy"))
+        assertFalse(WebSkinBridgeRuntime.state().getBoolean("chatAttachmentAvailable"))
+        assertEquals("opening the picker must not persist an event or draft", before, counts())
+    }
+
+    @Test
+    fun skinImageAttachmentOpensHostImagePickerWithoutWritingCalendarData() {
+        ui.activity.setContent {
+            CompositionLocalProvider(LocalContext provides context) {
+                PowerCalTheme { PowerCalApp(store) }
+            }
+        }
+        ui.waitForIdle()
+        val before = counts()
+
+        ui.runOnIdle {
+            WebSkinBridgeRuntime.onAction(WebSkinAction.Routed("ai"))
+        }
+        ui.waitForIdle()
+        assertTrue(WebSkinBridgeRuntime.state().getBoolean("chatAttachmentAvailable"))
+        ui.runOnIdle {
+            WebSkinBridgeRuntime.onAction(WebSkinAction.PickAiImage)
+        }
+        ui.waitForIdle()
+
+        val intent = shadowOf(ui.activity).nextStartedActivity
+        assertNotNull("Skin must route image access through Android's Host picker", intent)
+        assertEquals(Intent.ACTION_GET_CONTENT, intent!!.action)
+        assertEquals("image/*", intent.type)
+        assertTrue(WebSkinBridgeRuntime.state().getBoolean("chatAttachmentBusy"))
+        assertFalse(WebSkinBridgeRuntime.state().getBoolean("chatAttachmentAvailable"))
+        assertEquals("opening the picker must not persist an event or draft", before, counts())
     }
 
     private data class Counts(

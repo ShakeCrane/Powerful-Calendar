@@ -209,6 +209,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
     var ocrReviewText by remember { mutableStateOf<String?>(null) }
     var pendingImageReview by remember { mutableStateOf<Uri?>(null) }
     var pendingFileReview by remember { mutableStateOf<Pair<Uri, AiFileEvidence>?>(null) }
+    var aiAttachmentPickerBusy by remember { mutableStateOf(false) }
     var firstCalendarImportPrompt by remember { mutableStateOf(false) }
     var aiBusy by remember { mutableStateOf(false) }
     var chatBusy by remember { mutableStateOf(false) }
@@ -958,7 +959,8 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
     val openAiDocument = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri ->
-        if (uri != null) scope.launch {
+        if (uri == null) aiAttachmentPickerBusy = false
+        else scope.launch {
             try {
                 // Every attachment entry must route a calendar file to the full local parser,
                 // before any bounded AI text extraction or network permission check.
@@ -994,6 +996,8 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
             } catch (error: Exception) {
                 message = "无法安全提取文件：" + (error.message ?: error.javaClass.simpleName) +
                     "；没有上传给 AI，也没有创建事件。"
+            } finally {
+                aiAttachmentPickerBusy = false
             }
         }
     }
@@ -1110,7 +1114,29 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
     }
     val ocrPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent()
-    ) { uri -> if (uri != null) pendingImageReview = uri }
+    ) { uri ->
+        pendingImageReview = uri
+        aiAttachmentPickerBusy = false
+    }
+
+    fun canLaunchWebAiAttachmentPicker(): Boolean =
+        page == Page.AI.name && !aiLocked && !chatBusy && !aiBusy &&
+            !aiAttachmentPickerBusy && editSession == null && !deckOpen &&
+            newEventSession == null && pendingBatchMode == null && confirmBatch == null &&
+            pendingWebAiProposalPublish == null && pendingFileReview == null &&
+            pendingImageReview == null && webAiProposalReviewSession == null
+
+    fun launchWebAiAttachmentPicker(image: Boolean) {
+        if (!canLaunchWebAiAttachmentPicker()) return
+        aiAttachmentPickerBusy = true
+        runCatching {
+            if (image) ocrPicker.launch("image/*")
+            else openAiDocument.launch(arrayOf("*/*"))
+        }.onFailure { error ->
+            aiAttachmentPickerBusy = false
+            message = "无法打开附件选择器：" + (error.message ?: error.javaClass.simpleName)
+        }
+    }
 
     val tools = page == Page.TOOLS.name
     // Tools/Settings is a protected native recovery page, never rendered by Web skins.
@@ -1222,9 +1248,13 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                     }
                 }
                 is WebSkinAction.SendChat -> if (!aiLocked && !chatBusy && !aiBusy &&
-                    editSession == null && pendingWebAiProposalPublish == null) {
+                    editSession == null && pendingWebAiProposalPublish == null &&
+                    !aiAttachmentPickerBusy && pendingFileReview == null &&
+                    pendingImageReview == null) {
                     submitAiChatInput(action.text)
                 }
+                WebSkinAction.PickAiFile -> launchWebAiAttachmentPicker(image = false)
+                WebSkinAction.PickAiImage -> launchWebAiAttachmentPicker(image = true)
                 is WebSkinAction.ResolveAiProposal -> resolveWebAiProposalAction(action)
                 is WebSkinAction.OpenEvent -> scope.launch {
                     val current = withContext(Dispatchers.IO) { store.get(action.eventSeq) }
@@ -1257,6 +1287,9 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                 ))
                 .put("memoTruncated", todoEntries.size > 250)
                 .put("chatBusy", chatBusy || aiBusy || pendingWebAiProposalPublish != null)
+                .put("chatAttachmentAvailable", canLaunchWebAiAttachmentPicker())
+                .put("chatAttachmentBusy", aiAttachmentPickerBusy ||
+                    pendingFileReview != null || pendingImageReview != null)
                 .put("chatMessages", org.json.JSONArray(
                     (if (page == Page.AI.name) chatHistory.takeLast(40) else emptyList())
                         .map { item ->

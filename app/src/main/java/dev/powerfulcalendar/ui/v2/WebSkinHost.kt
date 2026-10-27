@@ -70,6 +70,8 @@ internal sealed interface WebSkinAction {
         val occurrenceKey: String, val completed: Boolean
     ) : WebSkinAction
     data class SendChat(val text: String) : WebSkinAction
+    data object PickAiFile : WebSkinAction
+    data object PickAiImage : WebSkinAction
     data object CreateMemo : WebSkinAction
     data class CreateDraft(val kind: String) : WebSkinAction
     data class BrowseMonth(val deltaMonths: Int) : WebSkinAction
@@ -344,6 +346,8 @@ internal fun decodeBridgeAction(raw: String): WebSkinAction? {
                 WebSkinAction.SendChat(text)
             else null
         }
+        "pickAiFile" -> if (keys == setOf("name")) WebSkinAction.PickAiFile else null
+        "pickAiImage" -> if (keys == setOf("name")) WebSkinAction.PickAiImage else null
         "resolveAiProposal" -> {
             if (keys != setOf("name", "reviewId", "decision", "indices")) return null
             val reviewId = payload.opt("reviewId") as? String ?: return null

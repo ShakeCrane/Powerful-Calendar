@@ -8,6 +8,7 @@ applyTheme();
 darkMedia.addEventListener("change",applyTheme);
 let port=null, state={}, currentPage="TIMELINE", memoFilter="open",localOptions=false;
 let aiReviewSelectionId="",aiReviewSelected=new Set();
+let attachmentRequestPending=false;
 const send=(name,extra={})=>{
   if(!port)return;
   port.postMessage(JSON.stringify({version:1,type:"action",payload:{name,...extra}}));
@@ -75,6 +76,7 @@ function receive(raw){
   }
   if(parsed.type!=="state")return;
   state=parsed.payload||{};currentPage=String(state.page||"TIMELINE").toUpperCase();
+  attachmentRequestPending=Boolean(state.chatAttachmentBusy);
   $("pendingCounter").textContent=Number(state.pendingCount)||"";
   $("memoCounter").textContent=Number(state.memoCount)||"";
   $("app").classList.toggle("reduced",Boolean(state.reducedMotion));
@@ -196,6 +198,7 @@ function renderMemo(){
   $("memoLimit").hidden=!state.memoTruncated;
 }
 function renderChat(){
+  installChatAttachmentControls();
   const list=$("chatMessages");list.replaceChildren();
   const messages=state.chatMessages||[];
   if(!messages.length)list.append(node("p","quiet","从这里开始与 AI 讨论日程"));
@@ -203,8 +206,42 @@ function renderChat(){
   renderAiProposalReview(list);
   const disabled=!!(state.aiLocked||state.chatBusy);
   $("chatInput").disabled=disabled;$("chatSend").disabled=disabled;
+  const reviewPending=!!state.aiProposalReview?.proposals?.length;
+  const attachmentUnavailable=state.chatAttachmentAvailable===false;
+  for(const button of document.querySelectorAll(".chat-attachment-controls button"))
+    button.disabled=disabled||Boolean(state.chatAttachmentBusy)||attachmentRequestPending||
+      reviewPending||attachmentUnavailable;
   if(disabled)list.append(node("p","quiet","AI 正在处理，暂不可发送"));
+  else if(state.chatAttachmentBusy||attachmentRequestPending)
+    list.append(node("p","quiet","请先完成系统附件选择或确认"));
+  else if(reviewPending)
+    list.append(node("p","quiet","请先处理当前提案审核，再添加新附件"));
+  else if(attachmentUnavailable)
+    list.append(node("p","quiet","请先完成当前 AI 操作，再选择附件"));
   list.scrollTop=list.scrollHeight;
+}
+function installChatAttachmentControls(){
+  const composer=$("chatForm").querySelector(".composer");
+  if(!composer||$("chatAttachmentControls"))return;
+  const style=node("style");
+  style.textContent=`.chat-attachment-controls{display:flex;flex-direction:column;gap:4px;flex:0 0 auto;align-self:center}
+    .chat-attachment-controls button{font:inherit;font-size:11px;min-height:28px;padding:4px 8px;
+      border:1px solid var(--sep);border-radius:12px;background:var(--bg-elevated);color:var(--label)}
+    .chat-attachment-controls button:disabled{opacity:.45}`;
+  document.head.append(style);
+  const controls=node("div","chat-attachment-controls");controls.id="chatAttachmentControls";
+  for(const [name,label,accessible] of [
+    ["pickAiImage","图片","选择图片附件"],["pickAiFile","文件","选择日历或文档附件"]
+  ]){
+    const button=node("button","",label);button.type="button";
+    button.setAttribute("aria-label",accessible);
+    button.addEventListener("click",()=>{
+      if(!port||button.disabled)return;
+      attachmentRequestPending=true;renderChat();send(name);
+    });
+    controls.append(button);
+  }
+  composer.insertBefore(controls,$("chatSend"));
 }
 function installAiProposalStyles(){
   if($("aiProposalStyles"))return;

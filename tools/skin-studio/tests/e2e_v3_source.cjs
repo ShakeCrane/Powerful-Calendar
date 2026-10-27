@@ -165,6 +165,26 @@ async function main(){
         return true;
       })()`});
     if(aiPage.exceptionDetails)throw Error(aiPage.exceptionDetails.exception?.description || aiPage.exceptionDetails.text);
+    const aiAttachments=await call("Runtime.evaluate",{contextId:world.executionContextId,
+      awaitPromise:true,returnByValue:true,expression:`(async()=>{
+        const check=(v,m)=>{if(!v)throw Error(m)};
+        const wait=async(fn,m)=>{for(let i=0;i<100;i++){if(fn())return;await new Promise(r=>setTimeout(r,100))}throw Error(m)};
+        const controls=[...document.querySelectorAll('#chatAttachmentControls button')];
+        check(controls.length===2,'AI chat must expose image and file attachment actions');
+        check(controls.every(button=>!button.disabled),'attachments should be enabled without a pending review');
+        check(controls.map(b=>b.getAttribute('aria-label')).join('|')==='选择图片附件|选择日历或文档附件',
+          'attachment controls need distinct accessible labels');
+        controls[1].click();
+        await wait(()=>document.querySelector('#chatMessages').textContent.includes('未打开真实选择器，也不会读取、上传或导入文件'),
+          'file action did not use the explicit non-reading Studio Mock');
+        const afterFile=[...document.querySelectorAll('#chatAttachmentControls button')];
+        afterFile[0].click();
+        await wait(()=>document.querySelector('#chatMessages').textContent.includes('未打开真实选择器，也不会读取、上传或识别图片'),
+          'image action did not use the explicit non-reading Studio Mock');
+        return {actions:['pickAiFile','pickAiImage'],realFilesRead:false,realCalendarWrites:false};
+      })()`});
+    if(aiAttachments.exceptionDetails)throw Error(aiAttachments.exceptionDetails.exception?.description || aiAttachments.exceptionDetails.text);
+    console.log("BROWSER AI attachment Host-action Mock PASS",JSON.stringify(aiAttachments.result.value));
     await call("Runtime.evaluate",{expression:`(()=>{const e=document.querySelector('#scenario');e.value='ai-review';e.dispatchEvent(new Event('change',{bubbles:true}))})()`,returnByValue:true});
     const aiCardsReady=await call("Runtime.evaluate",{contextId:world.executionContextId,
       awaitPromise:true,returnByValue:true,expression:`(async()=>{
@@ -175,6 +195,13 @@ async function main(){
         throw Error('AI review cards missing before screenshot');
       })()`});
     if(aiCardsReady.exceptionDetails)throw Error(aiCardsReady.exceptionDetails.exception?.description || aiCardsReady.exceptionDetails.text);
+    const pendingReviewAttachments=await call("Runtime.evaluate",{contextId:world.executionContextId,
+      returnByValue:true,expression:`(()=>({disabled:[...document.querySelectorAll('#chatAttachmentControls button')]
+        .map(button=>button.disabled)}))()`});
+    if(pendingReviewAttachments.exceptionDetails)throw Error(pendingReviewAttachments.exceptionDetails.exception?.description || pendingReviewAttachments.exceptionDetails.text);
+    if(!pendingReviewAttachments.result.value.disabled.length||
+      pendingReviewAttachments.result.value.disabled.some(value=>!value))
+      throw Error("attachment buttons remained enabled while AI proposals need review");
     const aiColors=await call("Runtime.evaluate",{contextId:world.executionContextId,returnByValue:true,
       expression:`(()=>{const review=document.querySelector('.ai-proposal-review');
         const title=review?.querySelector('h2');const item=review?.querySelector('.ai-proposal-item');

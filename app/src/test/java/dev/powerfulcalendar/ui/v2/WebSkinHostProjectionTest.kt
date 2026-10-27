@@ -33,6 +33,16 @@ class WebSkinHostProjectionTest {
         records, TimelineCoordinate.Camera(noon, 24.0), noon, zone
     )
 
+    @Test fun aiAttachmentPickerActionsArePayloadFreeAndClosedSchema() {
+        fun decode(payload: String) = decodeBridgeAction(
+            """{"version":1,"type":"action","payload":$payload}""")
+
+        assertEquals(WebSkinAction.PickAiFile, decode("""{"name":"pickAiFile"}"""))
+        assertEquals(WebSkinAction.PickAiImage, decode("""{"name":"pickAiImage"}"""))
+        assertNull(decode("""{"name":"pickAiFile","uri":"content://private"}"""))
+        assertNull(decode("""{"name":"pickAiImage","mime":"image/png"}"""))
+    }
+
     @Test fun exposesTrueIntervalsOwnerRevisionAndNoPrivilegedContent() {
         val payload = project(listOf(activity(7)))
         val row = payload.getJSONArray("items").getJSONObject(0)

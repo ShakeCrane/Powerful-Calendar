@@ -508,7 +508,8 @@ function simulatedState(){
     memoEntries:[
       {eventSeq:31,revision:2,occurrenceKey:"single",title:"整理会议笔记",completed:mockMemoDone,startMillis:base},
       {eventSeq:44,revision:1,occurrenceKey:"single",title:"提交报告",completed:false,startMillis:base+7200000}
-    ],memoTruncated:false,chatBusy:false,
+    ],memoTruncated:false,chatBusy:false,chatAttachmentBusy:false,
+    chatAttachmentAvailable:scenario!=="locked"&&!(scenario==="ai-review"&&mockAiProposals.length>0),
     chatMessages:[{role:"assistant",content:"你好！今天有什么安排？"},...mockChat],
     aiProposalReview:scenario==="ai-review"&&mockAiProposals.length?{
       reviewId:mockAiReviewId,
@@ -672,7 +673,8 @@ function onSkinAction(message){
     if(envelope.type==="command"){onSkinCommand(envelope.payload);return}
     if(envelope.type!=="action")return;
     const p=envelope.payload,name=p.name;
-    if(!ACTIONS.some(([x])=>x===name)&&!["openEvent","toggleMemo","sendChat","resolveAiProposal"].includes(name)){logAction("拒绝未知动作 "+String(name));return;}
+    if(!ACTIONS.some(([x])=>x===name)&&!["openEvent","toggleMemo","sendChat","resolveAiProposal",
+      "pickAiFile","pickAiImage"].includes(name)){logAction("拒绝未知动作 "+String(name));return;}
     if(name==="panTimeline"){
       if(!Number.isInteger(p.deltaMinutes)||Math.abs(p.deltaMinutes)>2880)return;
       const state=lastState||simulatedState();
@@ -697,6 +699,17 @@ function onSkinAction(message){
     }
     if(name==="sendChat"&&typeof p.text==="string"&&p.text.length<=4000)
       mockChat.push({role:"user",content:p.text});
+    if(name==="pickAiFile"||name==="pickAiImage"){
+      if(Object.keys(p).length!==1||mockPage!=="AI"||scenario==="locked"){
+        logAction("拒绝当前状态下的附件选择请求");return;
+      }
+      const reply=name==="pickAiFile"?
+        "预览 Mock：未打开真实选择器，也不会读取、上传或导入文件。":
+        "预览 Mock：未打开真实选择器，也不会读取、上传或识别图片。";
+      mockChat.push({role:"assistant",content:reply});
+      logAction(reply);postState();
+      return;
+    }
     if(name==="resolveAiProposal"){
       const state=simulatedState(),review=state.aiProposalReview;
       const decisions=["publish","stage","reject","supplement"];
