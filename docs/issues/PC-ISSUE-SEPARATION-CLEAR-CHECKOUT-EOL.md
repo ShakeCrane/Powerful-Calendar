@@ -14,3 +14,5 @@
 - 修复后 `python tools/skin-studio/build_default_clear.py --verify` PASS；APK Clear 资产保持 372986 bytes，SHA-256 `1A5ED8F4AF23A99DFBB09582463AB007FCC3B2B5598351D76CFC508E18B51B41`。
 - `test_default_clear.py` 新增检出属性断言；完整 Studio 回归 `python -m unittest discover -s tools/skin-studio/tests -v` 为 **40/40 PASS**。该运行还包含工作树中待单独提交的 Studio 附加源码编辑测试；日志 SHA-256 `25B0EEB7E188B5540B5B4E023CBEE404C39E6A71FF3FC766557E7CDC871492A3`。
 - 本问题没有更改 Android 核心、默认皮肤内容或用户数据，也没有执行 Android 设备测试；该结果不表示完整皮肤分离已完成。
+
+修复提交 `1a7de91` 后，以 `core.autocrlf=true` 创建全新 detached worktree；该工作树 `git status` 干净，`git ls-files --eol` 显示普通源码为 LF、`clear-design.css` 为 CRLF、字体为二进制。新工作树再次运行 `--verify` PASS，资产 SHA-256 与上述相同。这是实际检出验证，不是仅检查属性文本。
