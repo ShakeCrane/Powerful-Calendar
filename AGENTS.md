@@ -143,3 +143,10 @@ second store/client/scheduler. No direct skin access to credentials/database
 or untrusted authorization. Existing Native must remain available until
 all functional parity, WebView/device tests and an independent factory-cutover
 authorization have passed. No default switch or native UI removal was approved.
+
+For current source-level evidence and unresolved work, read
+`docs/SKIN_SEPARATION_PARITY_MATRIX_2026-10-27.md` and the latest entries in
+`docs/agent-handoff/PROGRESS.md`. Studio uses `python tools/skin-studio/skin_studio.py serve`;
+run `python -m unittest discover -s tools/skin-studio/tests -v`,
+`python tools/skin-studio/build_default_clear.py --verify`, and the relevant
+browser / Android checks for each change. Mock previews are not device evidence.

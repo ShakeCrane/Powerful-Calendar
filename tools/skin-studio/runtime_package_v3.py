@@ -61,7 +61,9 @@ def validate_manifest(manifest, files, verify_hash=True):
     check(manifest.get("entrypoint") == "web/index.html" and manifest.get("project") == "project.json",
           "v3 requires local web/index.html and project.json")
     check(type(manifest.get("fullCanvas", False)) is bool, "fullCanvas must be boolean")
-    caps = manifest.get("capabilities", ["host.read", "host.action"])
+    # Android's parser treats an absent declaration as no capabilities.
+    # Importing or exporting a skin must not silently grant Host access.
+    caps = manifest.get("capabilities", [])
     check(type(caps) is list and set(caps) <= {"host.read", "host.action", "host.edit"},
           "unsupported bridge capability")
     check(set(WEB_REQUIRED) <= set(files), "v3 package is missing complete web source/project")

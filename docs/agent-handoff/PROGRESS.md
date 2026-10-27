@@ -1,4 +1,10 @@
 # Core freeze progress
+## 分离阶段 — Studio 源码与能力声明、初始功能矩阵（2026-10-27）
+
+- Studio 可编辑 Clear 的 `web/edit.js` 等附加 UTF-8 源文件；导入皮肤的 capabilities 不再被打开/预览/导出静默改写，缺失声明按 Android 默认空权限处理。旧代码红测确认源码不可访问、三组权限声明被改写及缺失声明被授予权限；新代码定向回归、真实 Chrome 预览/导出/重导入 PASS，Studio 全量 41/41 PASS。详细证据与未完成项：`docs/issues/PC-ISSUE-SEPARATION-STUDIO-SOURCE-CAPABILITIES.md`。
+- 已依据 `PowerCalApp.kt`、`WebSkinHost.kt`、`WebSkinEditBridge.kt`、Clear 和 Studio 源码建立初始 `docs/SKIN_SEPARATION_PARITY_MATRIX_2026-10-27.md`。该矩阵为持续调查起点，未把源码检查、Mock 或已有局部测试标为 Native/Skin 全功能等价；S0、S2–S8 继续开放。下一步细化 S0 并优先处理实例范围编辑、可信 AI 审核和 Studio 全项目编辑能力。
+- `1a7de91` 的独立新检出在 `core.autocrlf=true` 下通过 Clear 资产同源校验，工作树干净；细节见 `PC-ISSUE-SEPARATION-CLEAR-CHECKOUT-EOL.md`。发布 QA 和默认切换仍 HOLD。
+
 ## 分离阶段 — Clear 检出字节一致性（2026-10-27）
 
 - 在独立 `feat/skin-first-separation` 工作树发现 `core.autocrlf=true` 会改变 Clear 规范源码字节，导致 APK 同源校验失败。新增 `.gitattributes` 固定既有 LF 文件和 CRLF 的 `clear-design.css`，现有 APK 未更改。`build_default_clear.py --verify` PASS，Studio 全量 40/40 PASS；范围与证据见 `docs/issues/PC-ISSUE-SEPARATION-CLEAR-CHECKOUT-EOL.md`。核心范围已获 Owner 冻结，Release QA/cutover 继续 HOLD。

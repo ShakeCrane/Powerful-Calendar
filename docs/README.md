@@ -4,6 +4,8 @@
 Read [Core owner sign-off](CORE_FREEZE_OWNER_SIGNOFF_2026-10-27.md),
 [Separation kickoff](SEPARATION_PHASE_KICKOFF_2026-10-27.md), and
 [Current core evidence verdict](CORE_FREEZE_VERDICT.md).
+For current source-level gaps and next work, read the
+[Skin separation parity matrix](SKIN_SEPARATION_PARITY_MATRIX_2026-10-27.md).
 The v3 Skin-First cutover is not complete and native fallback stays intact.
 
 ## Runtime .pcskin v2 packages

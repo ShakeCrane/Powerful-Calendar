@@ -1,5 +1,10 @@
 # Skin-First S1/S2: host-owned editing command foundation
 
+> Historical 2026-10-22 checkpoint: the current `WebSkinEditBridge.kt` exposes additional
+> bounded reminder, tracking and recurrence fields, and Clear's `web/edit.js` now sends
+> editing commands. The narrower statements below describe that checkpoint, not current
+> implementation. See `SKIN_SEPARATION_PARITY_MATRIX_2026-10-27.md` for the current audit.
+
 Date: 2026-10-22. Current milestone: **protocol and host coordination,
 not complete Clear Web editor/deck UI and not factory cutover**.
 

@@ -37,8 +37,8 @@ function payload(){
   if(!$("fullCanvas").checked) throw Error(
     "全画布已关闭：Android 将用原生界面覆盖皮肤，无法保证预览=使用。请开启完整画布。");
   manifest.fullCanvas=true;
-  // These two capabilities are all this v3 editor's running components require.
-  manifest.capabilities=["host.read","host.action"];
+  // Preserve the imported declaration: the editor must neither grant nor revoke
+  // capabilities merely because a project was opened, previewed or exported.
   const files={};
   for(const [name,bytes] of prepareFiles()) files[name]=bytesToBase64(bytes);
   return {manifest:copy(manifest),files};
@@ -87,6 +87,24 @@ function syncSourceInputs(){
   $("htmlCode").value=getText("web/index.html");
   $("cssCode").value=getText("web/style.css");
   $("jsCode").value=getText("web/app.js");
+  renderExtraSources();
+}
+function renderExtraSources(){
+  const select=$("extraSourceFile"),previous=select.value;
+  const strict=new TextDecoder("utf-8",{fatal:true});
+  const paths=[...sourceFiles.keys()].filter(path=>{
+    if(!/\.(html|css|js|json|txt)$/i.test(path) ||
+       ["web/index.html","web/style.css","web/app.js","project.json"].includes(path))return false;
+    try{strict.decode(sourceFiles.get(path));return true}catch{return false}
+  }).sort();
+  select.replaceChildren();
+  for(const path of paths){
+    const option=document.createElement("option");option.value=path;option.textContent=path;
+    select.append(option);
+  }
+  select.value=paths.includes(previous)?previous:(paths[0]||"");
+  $("extraSourceCode").disabled=!select.value;
+  $("extraSourceCode").value=select.value?getText(select.value):"";
 }
 function switchMode(mode){
   activeMode=mode;project.mode=mode;
@@ -696,6 +714,13 @@ function bindUI(){
     ["jsCode","web/app.js"]]){
     $(id).oninput=()=>{setText(path,$(id).value);change()};
   }
+  $("extraSourceFile").onchange=()=>{
+    $("extraSourceCode").value=getText($("extraSourceFile").value);
+  };
+  $("extraSourceCode").oninput=()=>{
+    const path=$("extraSourceFile").value;
+    if(path&&sourceFiles.has(path)){setText(path,$("extraSourceCode").value);change()}
+  };
   $("applyIcon").onclick=applyButtonIcon;
   $("addMaterial").onclick=()=>{
     const id=prompt("CSS 变量名（例如 accentColor）");
