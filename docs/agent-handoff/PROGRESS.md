@@ -1,5 +1,13 @@
 # Core freeze progress
 
+## Separation — draft deck discard/undo and SQLite recovery replay (2026-10-28)
+
+- Fixed a Studio preview state-machine gap: Clear exposes discard with a one-step undo, while the old Studio Mock closed the deck and always returned missing for undo. Mock patch now checks draft version; clean flush does not invent a version increment; discard stages dirty input, retains an undo snapshot, and undo restores the selected card and its contents. Chrome regression drives the visible two-tap discard and undo controls.
+- Added a fixed-data Native/Skin DeckController vs WebSkinEditService replay with two isolated SQLite databases. It verifies flush-on-select, explicit flush, closes and reopens both DBs, rejects stale patches, compares discard/undo queue state, and compares Native publish with Skin Host-approved publish/idempotent replay. It is a database reopen test, not Android OS process-death evidence.
+- Focused replay PASS. Full offline Gradle gate: **609/609 JVM tests, 85 suites, 0 failures/errors/skips, 88/88 tasks**; source boundary, Debug/AndroidTest APK builds and lint passed (0 errors / 52 warnings). Full-log SHA-256: `529A8EA83221D83399BF23F9046548A8EA71F61F94A5C6A46250F0B13E6BA67D`. Debug / AndroidTest APK SHA-256: `869AD65D0E00C1C37CE39042E2E946115C02D498B993B7821777DF3B8839845C` / `FD52D9A141D801274FA4E58E1F7B20F113525CE3A8117A92D76DA41A88619BF9`.
+- Studio Chrome E2E and Python **51/51** pass; Clear bundle verification and JS syntax checks pass. Detailed test IDs, commands and evidence hashes: `docs/issues/PC-ISSUE-SEPARATION-DRAFT-DECK-DISCARD-UNDO.md`. Implementation commits: `ccf68c807a36e66393751c74c2b57a36fd9154ed`, `43f787bf8203b57dcd58523ca54261d3ae9cdfd1`.
+- Narrow draft deck paths pass; SEP-08 remains **NOT TESTED** as a full feature row. Android WebView/AVD and physical/OEM tests were not run. Continue with further S2/Studio gaps; no separation GO implied.
+
 ## Separation — new-event Native/Skin paired replay (2026-10-28)
 
 - Added an injectable Clock to `WebSkinEditService` and a fixed-clock Native/Skin replay for all four event kinds. The test repeats open/close 20 times per kind and compares durable counters; replays eight default/explicit-selection publishes through Native save versus Skin Host review; and compares incomplete Deadline draft staging. Only generated created/updated audit timestamps are normalized.
