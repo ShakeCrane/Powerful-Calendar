@@ -7,6 +7,15 @@
 - Detailed evidence: `docs/issues/PC-ISSUE-SEPARATION-STUDIO-DARK-MATERIAL-TOKENS.md`; browser JSON SHA-256 `F1CCC42029F1C0C6A4FD0276842FDADD364E32C01CC35D70268943856408629C`.
 - Implementation commit `c496695b0fe3db73e181e67da731969fe881cb0c`; report and progress update are being committed separately before push.
 
+## Separation — AI proposal review initial vertical slice (2026-10-27)
+
+- Clear v3 now receives a bounded Host `aiProposalReview` projection and can send closed-schema `resolveAiProposal` actions for publish, stage, reject, or supplement. Formal publication waits for a trusted Compose Host review of the full before/after snapshot; the Host rechecks target snapshots/revisions before invoking the existing `AiDraftService`. Cancellation preserves the review and writes nothing. Skin JS receives no approval token.
+- Added bounded deterministic recurrence/completion projection and Clear review cards; Studio adds an explicitly non-writing AI review Mock scenario. The canonical Clear package changed only in `web/app.js` and passes `build_default_clear.py --verify` (8 files / 376167 bytes; SHA-256 `fd061a35252f3f821d80ccc4b97f50a46123c23e4db9fc12e0f4435305f993ab`).
+- Focused `WebSkinHostProjectionTest`, `WebAiProposalReviewTest` and `WebAiProposalReviewIntegrationTest`: **16/16 PASS**. The local HTTP AI stub drove the real app pipeline; store counters remained unchanged before confirmation and after cancel, and one formal CREATE committed after retry/confirmation. This is not a live provider test.
+- Full offline gate `:app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug --offline --rerun-tasks --no-daemon --console=plain`: **582/582 JVM tests / 82 suites / 0 failures, errors or skips / 88 tasks PASS**; lint 0 errors / 52 warnings. Full log SHA-256 `F2FD85882879D9E2000A7E7C633B091E8D709E3E25BD8165A54A5F96EB206F2F`; Debug / AndroidTest APK SHA-256 `4FA51D8290473259BEED4F3E36EB9E480829EF59C878E041968C6FCA2D99CD17` / `219E9587BBC4CFDEAEBFAD9FD398E0B0DC2E2FE4D0FAA75C787CAF10DE733CC6`.
+- Skin Studio Python **42/42 PASS**. Chrome source round-trip and AI decision Mock passed. Clear bundle verify **8 files / 376167 bytes PASS**. Detailed evidence: `docs/issues/PC-ISSUE-SEPARATION-AI-PROPOSAL-REVIEW.md`.
+- No Android WebView, emulator or physical-device AI review run; no live provider call. SEP-10 and SEP-16 remain **NOT TESTED** for full parity. S3 remains open for attachments, provider failure/cancellation/retry, multi-turn/batch recovery and operation coverage. Implementation commit `4b6c75a31d040320b39728a940a254c724627fff`; documentation commit and push SHA pending.
+
 ## 分离阶段 — Bridge v1 能力声明语义与兼容审计（2026-10-27）
 
 - 根因/现状：v3 manifest 接受并保存 `host.edit`，但 Bridge v1 实际仅将 `host.read` 用于状态投影、将 `host.action` 用于所有入站动作和编辑器/草稿命令。若将未生效的 `host.edit` 静默升级为授权，会改变既有包权限语义；本轮维持运行时策略，明确记录它是兼容元数据，并从示例 manifest 删除该无效声明。
