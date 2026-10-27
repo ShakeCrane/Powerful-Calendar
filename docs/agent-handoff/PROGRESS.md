@@ -1,4 +1,12 @@
 # Core freeze progress
+## 分离阶段 — 皮肤正式写入宿主可信审查（2026-10-27）
+
+- 根因：普通 editor.save 和有效 draft-deck 正式提交在 Web command 中可直接写入；host.action 能力校验没有针对具体写入内容的人类审批。真实 WebView 还发现临时 63 位 client ID 经 JavaScript Number 往返会丢精度，导致 draft patch 指向失效 ID。
+- Host 现对普通正式编辑、临时新建发布及有效 deck 正式写入统一保留私有审查快照，Compose 批准并重核快照/版本后复用原 EditSession、NewEventEditSession、DeckController 路径；JS 无审批 token。临时 ID 限制为 JS 可精确表示范围，不产生永久身份。实现与测试提交 725e1c79c300272ec9e2f6b1cae3a38dda364733 已推送到 origin/feat/skin-first-separation。
+- 修复前红测明确要求 confirmation_required 而得到 saved，日志 SHA-256 4080BF73E16E4F57D34E09BC529495CDD1EB2EDDBDE433EA588E5AD89125A9C7。定向 **30/30 JVM PASS**；完整离线门禁 **574/574 JVM、80 suites、88/88 tasks**，0 failures/errors/skips，lint 0 errors / 52 warnings。日志 SHA-256 分别为 48305411FF49C09B1291E4AA945449F51172B20EB2EC3420E1F2CF51FB72D2B5 与 D87418E9914E471A87FE54AA811B67DBC1668C4AA91BCF8E83CFB8F9456525EC。
+- API 35 emulator-5564 实际 Compose Host + Clear WebView **2/2 PASS**：普通正式编辑、新建 ACTIVITY 发布均等待 Host 批准；重复实例选择性编辑仍通过。instrumentation 日志 SHA-256 2503C1A4E5E06BCE96D14CB296C0C74DDADC9A63363EDADA4E44B0E9C3863F8F；QA app / AndroidTest APK SHA-256 0BFA6BABF47BB64F24A2F87D7B59146D9F9DE0DAC6DD791B923EC2D7DADFF9F4 / A2B856A60D8B6AFB642F6E8EB2224F2E3BDFF6AC4F8BB38BF9264C2CE21356E0。详细独立结案报告：docs/issues/PC-ISSUE-SEPARATION-TRUSTED-FORMAL-WRITES.md。
+- SEP-16 总体 Native/Skin parity 仍标 **NOT TESTED**；本次窄范围 Host 审查证据不能替代完整 deck 操作、四种事件、异常/进程恢复、实体设备和全流程等价。实体设备由用户负责；host.edit / host.action 审计、其他皮肤能力与 Release QA/cutover 仍开放。Studio 元数据改动继续留在工作树，未纳入本次提交。
+
 ## 分离阶段 — 重复实例 Web 编辑与 Host 可信确认（2026-10-27）
 
 - Web timeline/month 投影现将稳定重复槽位键单独交给皮肤；Clear 提供三种编辑范围、单次字段限制和恢复修改控件。重复相关有效保存先进入 Host Compose 完整 before/after 审查，JS 不持有确认 token。范围、版本冲突、取消、重放、皮肤切换及 Native `EditSession` 结果有 JVM 回归。
