@@ -169,6 +169,34 @@ async function main(){
     const child=tree.frameTree.childFrames?.find(frame=>frame.frame.url.includes("/preview/"));
     if(!child)throw Error("Preview frame not found: "+JSON.stringify(tree.frameTree));
     const world=await call("Page.createIsolatedWorld",{frameId:child.frame.id,worldName:"powercal-source-qa"});
+    const settings=await call("Runtime.evaluate",{contextId:world.executionContextId,
+      awaitPromise:true,returnByValue:true,expression:`(async()=>{
+        const check=(v,m)=>{if(!v)throw Error(m)};
+        const wait=async(fn,m)=>{for(let i=0;i<100;i++){if(fn())return;await new Promise(r=>setTimeout(r,100))}throw Error(m)};
+        document.querySelector('.clear-tabbar [data-action="settings"]').click();
+        await wait(()=>!document.querySelector('#extraOptions').hidden&&
+          document.querySelector('#extraOptions h1').textContent==='设置与导入',
+          'settings tab did not open a skin-owned landing page');
+        const imports=[...document.querySelectorAll('#optionGroups [data-action="invokeOption"]')];
+        check(imports.length===2,'settings landing must retain the two bounded Host import options');
+        check(document.querySelector('#optionGroups').textContent.includes('凭据、系统权限、备份恢复和皮肤管理仍由 Android 宿主保护'),
+          'protected native boundary was not explained');
+        imports[0].click();
+        document.querySelector('#optionGroups [data-action="settings"]').click();
+        document.querySelector('.clear-tabbar [data-action="timeline"]').click();
+        await wait(()=>!document.querySelector('#timelinePage').hidden,'timeline route did not leave settings');
+        return {settingsLanding:true,hostImportOptions:imports.length,nativeToolsRequest:true,
+          browserMockWroteData:false};
+      })()`});
+    if(settings.exceptionDetails)throw Error(settings.exceptionDetails.exception?.description || settings.exceptionDetails.text);
+    const settingsLog=await call("Runtime.evaluate",{returnByValue:true,expression:`(()=>{
+      const text=document.querySelector('#bridgeLog').textContent;
+      return {importMock:text.includes('invokeOption · calendar.import.file'),
+        nativeToolsMock:text.includes('Android 宿主工具页')};})()`});
+    if(settingsLog.exceptionDetails)throw Error(settingsLog.exceptionDetails.exception?.description || settingsLog.exceptionDetails.text);
+    if(!settingsLog.result.value.importMock||!settingsLog.result.value.nativeToolsMock)
+      throw Error("Settings actions did not reach the explicit Studio Host Mock: "+JSON.stringify(settingsLog.result.value));
+    console.log("BROWSER SKIN SETTINGS MOCK PASS",JSON.stringify(settings.result.value));
     const conversion=await call("Runtime.evaluate",{contextId:world.executionContextId,awaitPromise:true,returnByValue:true,expression:`(async()=>{
       const check=(v,m)=>{if(!v)throw Error(m)};
       const wait=async(fn,m)=>{for(let i=0;i<150;i++){if(fn())return;await new Promise(r=>setTimeout(r,100))}throw Error(m)};

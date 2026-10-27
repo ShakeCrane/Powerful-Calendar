@@ -101,6 +101,29 @@ internal sealed interface WebSkinAction {
     ) : WebSkinAction
 }
 
+internal data class WebSkinNavigationState(
+    val hostPage: String,
+    val skinSettingsOpen: Boolean = false
+)
+
+/**
+ * Keep the customizable settings landing inside the skin. Sensitive tools remain an explicit
+ * Host route and are never represented by a JavaScript-owned settings form.
+ */
+internal fun reduceWebSkinNavigation(
+    current: WebSkinNavigationState,
+    actionName: String
+): WebSkinNavigationState = when (actionName) {
+    "timeline" -> WebSkinNavigationState("TIMELINE")
+    "month" -> WebSkinNavigationState("MONTH")
+    "memo" -> WebSkinNavigationState("MEMO")
+    "ai" -> WebSkinNavigationState("AI")
+    "skinSettings" -> if (current.hostPage == "TOOLS") current
+        else current.copy(skinSettingsOpen = true)
+    "settings" -> WebSkinNavigationState("TOOLS")
+    else -> current
+}
+
 internal enum class AiProposalDecision { PUBLISH, STAGE, REJECT, SUPPLEMENT }
 
 internal fun validateOpenEvent(
@@ -318,7 +341,7 @@ internal fun decodeBridgeAction(raw: String): WebSkinAction? {
     val name = payload.optString("name")
     if (name.length !in 1..40) return null
     return when (name) {
-        "timeline", "month", "memo", "ai", "settings", "openDeck", "today" ->
+        "timeline", "month", "memo", "ai", "settings", "skinSettings", "openDeck", "today" ->
             if (keys == setOf("name")) WebSkinAction.Routed(name) else null
         "invokeOption" -> {
             if (keys != setOf("name", "id")) return null

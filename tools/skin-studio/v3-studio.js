@@ -368,7 +368,7 @@ const ACTIONS=[
   ["createDraft","新建事件"],["browseMonth","浏览月份"],
   ["timeline","时间轴"],
   ["month","月历"],["memo","Memo"],["ai","AI"],
-  ["settings","原生设置"],["openDeck","草稿卡组"],
+  ["settings","宿主工具与设置"],["skinSettings","皮肤设置"],["openDeck","草稿卡组"],
   ["panTimeline","时间轴向后 30 分钟"],["jumpTimelineDay","跳到今天"],
   ["invokeOption","导入日历文件"]
 ];
@@ -863,7 +863,12 @@ function onSkinAction(message){
       mockAnchor=(mockAnchor??new Date("2026-10-22T04:00:00Z").getTime())+
         p.deltaMonths*30*86400000;
     }
-    if(["timeline","month","memo","ai"].includes(name))mockPage=name.toUpperCase();
+    if(name==="skinSettings")mockPage="SETTINGS";
+    else if(["timeline","month","memo","ai"].includes(name))mockPage=name.toUpperCase();
+    if(name==="settings"){
+      logAction("Preview Mock：请求既有 Android 宿主工具页；不会展示或操作系统权限、凭据或数据。");
+      return;
+    }
     if(name==="toggleMemo"){
       if(!Number.isInteger(p.eventSeq)||typeof p.completed!=="boolean"||!p.occurrenceKey)return;
       if(p.eventSeq===31)mockMemoDone=!p.completed;
@@ -928,7 +933,7 @@ function onSkinAction(message){
     logAction("模拟宿主收到："+name+
       (p.id?" · "+p.id:"")+
       (name==="openEvent"?" · "+p.eventSeq:""));
-    if(["today","panTimeline","jumpTimelineDay","browseMonth","timeline","month","memo","ai",
+    if(["today","panTimeline","jumpTimelineDay","browseMonth","timeline","month","memo","ai","skinSettings",
       "toggleMemo","sendChat"].includes(name))postState();
   }catch(error){logAction("Bridge 消息错误："+error.message)}
 }

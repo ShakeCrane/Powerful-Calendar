@@ -99,7 +99,13 @@ function onAction(button){
   else if(name==="panTimeline")send(name,{deltaMinutes:Number(button.dataset.deltaMinutes)});
   else if(name==="jumpTimelineDay")send(name,{date:button.dataset.date});
   else if(name==="browseMonth")send(name,{deltaMonths:Number(button.dataset.deltaMonths)});
-  else {if(["timeline","memo","month","ai"].includes(name))localOptions=false;send(name)}
+  else {
+    if(["timeline","memo","month","ai","settings","skinSettings"].includes(name))localOptions=false;
+    // Preserve the v1 `settings` action for existing skins and protected tools. Clear's
+    // tab uses a new explicit route for its customizable in-skin settings landing.
+    if(name==="settings"&&button.closest(".clear-tabbar"))send("skinSettings");
+    else send(name);
+  }
 }
 document.addEventListener("click",e=>{
   const local=e.target.closest("[data-local]");
@@ -139,22 +145,28 @@ function receive(raw){
   renderPage();
 }
 function renderPage(){
-  const page=currentPage==="TOOLS"?"TIMELINE":currentPage;
+  const skinSettings=currentPage==="SETTINGS";
+  const page=currentPage==="TOOLS"||skinSettings?"TIMELINE":currentPage;
+  const optionsVisible=localOptions||skinSettings;
   const createButton=document.querySelector('[data-action="createDraft"]');
   if(createButton){createButton.title="新建事件";createButton.setAttribute("aria-label","新建事件")}
   const pages={TIMELINE:"timelinePage",MONTH:"monthPage",MEMO:"memoPage",AI:"aiPage"};
-  for(const [key,id] of Object.entries(pages))$(id).hidden=key!==page||localOptions;
-  $("extraOptions").hidden=!localOptions;
+  for(const [key,id] of Object.entries(pages))$(id).hidden=key!==page||optionsVisible;
+  $("extraOptions").hidden=!optionsVisible;
+  $("extraOptions").querySelector("h1").textContent=skinSettings?"设置与导入":"可用选项";
+  const selectedPage=skinSettings?"SETTINGS":page;
   document.querySelectorAll(".clear-tabbar button").forEach(b=>{
-    b.classList.toggle("current",b.dataset.action?.toUpperCase()===page)
+    b.classList.toggle("current",b.dataset.action?.toUpperCase()===selectedPage)
   });
   const anchor=state.timeline?.anchorMillis||Date.now(),zone=state.timeline?.zoneId;
   $("dayTitle").textContent=dateText(anchor,zone,{month:"long",day:"numeric"});
   $("dateSubtitle").textContent=dateText(anchor,zone,{weekday:"long",year:"numeric"});
-  if(page==="TIMELINE")renderTimeline();
-  if(page==="MONTH")renderMonth();
-  if(page==="MEMO")renderMemo();
-  if(page==="AI")renderChat();
+  if(!optionsVisible){
+    if(page==="TIMELINE")renderTimeline();
+    if(page==="MONTH")renderMonth();
+    if(page==="MEMO")renderMemo();
+    if(page==="AI")renderChat();
+  }
   renderOptions();
   window.PowerCalEdit?.onState(state);
 }
@@ -424,6 +436,12 @@ function renderOptions(){
       button.disabled=item.enabled===false;
       root.append(button);
     }
+  }
+  if(currentPage==="SETTINGS"){
+    root.append(node("p","","凭据、系统权限、备份恢复和皮肤管理仍由 Android 宿主保护。"));
+    const hostTools=node("button","optionRow","打开宿主工具与设置");
+    hostTools.type="button";hostTools.dataset.action="settings";
+    root.append(hostTools);
   }
 }
 window.PowerCalSkin={receive,sendCommand:(name,requestId,extra={})=>{

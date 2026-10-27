@@ -187,6 +187,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
     var skinToActivate by remember { mutableStateOf<InstalledSkin?>(null) }
 
     var page by rememberSaveable { mutableStateOf(Page.TIMELINE.name) }
+    var skinSettingsOpen by rememberSaveable { mutableStateOf(false) }
     var records by remember { mutableStateOf<List<TemporalRecord>>(emptyList()) }
     var pendingCount by remember { mutableIntStateOf(0) }
     var aiLocked by remember { mutableStateOf(false) }
@@ -199,6 +200,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
         if (nativeRecoverySignal > 0) {
             selectedSkin = skins.currentId()
             skinToActivate = null
+            skinSettingsOpen = false
             page = Page.TOOLS.name
             message = "已通过双指交替敲击恢复原生皮肤，日历数据及已安装皮肤均保留。"
         }
@@ -1168,19 +1170,21 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
         }
         WebSkinBridgeRuntime.onAction = { action ->
             when (action) {
-                is WebSkinAction.Routed -> when (action.name) {
-                    "timeline" -> page = Page.TIMELINE.name
-                    "month" -> page = Page.MONTH.name
-                    "memo" -> page = Page.MEMO.name
-                    "ai" -> page = Page.AI.name
-                    "settings" -> page = Page.TOOLS.name
-                    "openDeck" -> scope.launch { openDeckAt(null) }
-                    "today" -> {
-                        nowMillis = System.currentTimeMillis()
-                        val today = TimelineCoordinate.todayCamera(nowMillis, zone)
-                        anchorMillis = today.anchorMillis; hours = today.hours
+                is WebSkinAction.Routed -> {
+                    val navigation = reduceWebSkinNavigation(
+                        WebSkinNavigationState(page, skinSettingsOpen), action.name
+                    )
+                    page = navigation.hostPage
+                    skinSettingsOpen = navigation.skinSettingsOpen
+                    when (action.name) {
+                        "openDeck" -> scope.launch { openDeckAt(null) }
+                        "today" -> {
+                            nowMillis = System.currentTimeMillis()
+                            val today = TimelineCoordinate.todayCamera(nowMillis, zone)
+                            anchorMillis = today.anchorMillis; hours = today.hours
+                        }
+                        else -> Unit
                     }
-                    else -> Unit
                 }
                 is WebSkinAction.InvokeOption -> when {
                     aiLocked || editSession != null -> Unit
@@ -1274,11 +1278,12 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
             }
         }
         WebSkinBridgeRuntime.state = {
-            JSONObject().put("bridgeVersion", WebSkinBridgeRuntime.VERSION).put("page", page)
+            JSONObject().put("bridgeVersion", WebSkinBridgeRuntime.VERSION)
+                .put("page", if (skinSettingsOpen) "SETTINGS" else page)
                 .put("aiLocked", aiLocked).put("pendingCount", pendingCount)
                 .put("memoCount", todoCount)
                 .put("memoEntries", org.json.JSONArray(
-                    (if (page == Page.MEMO.name) todoEntries.take(250) else emptyList())
+                    (if (page == Page.MEMO.name && !skinSettingsOpen) todoEntries.take(250) else emptyList())
                         .map { entry ->
                         JSONObject()
                             .put("eventSeq", entry.owner.eventSeq)
@@ -1295,25 +1300,25 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                 .put("chatAttachmentBusy", aiAttachmentPickerBusy ||
                     pendingFileReview != null || pendingImageReview != null)
                 .put("chatMessages", org.json.JSONArray(
-                    (if (page == Page.AI.name) chatHistory.takeLast(40) else emptyList())
+                    (if (page == Page.AI.name && !skinSettingsOpen) chatHistory.takeLast(40) else emptyList())
                         .map { item ->
                         JSONObject().put("role", item.role)
                             .put("content", item.content.take(1600))
                     }
                 ))
-                .put("aiProposalReview", if (page == Page.AI.name) {
+                .put("aiProposalReview", if (page == Page.AI.name && !skinSettingsOpen) {
                     webAiProposalReviewSession?.let(WebAiProposalProjection::project) ?: JSONObject.NULL
                 } else JSONObject.NULL)
                 .put("reducedMotion", effects.reduceMotion)
                 .put("editing", webEditing.snapshot())
                 .put("optionGroups", SemanticOptions.toJson(
                     enabled = !aiLocked && editSession == null))
-                .put("timeline", WebSkinTimelineProjection.build(
-                    records, camera, nowMillis, zone))
-                .put("month", if (page == Page.MONTH.name)
+                .put("timeline", if (skinSettingsOpen) JSONObject() else
+                    WebSkinTimelineProjection.build(records, camera, nowMillis, zone))
+                .put("month", if (page == Page.MONTH.name && !skinSettingsOpen)
                     WebSkinMonthProjection.build(records, anchorMillis, zone)
                     else JSONObject())
-                .put("events", org.json.JSONArray(records.take(300).map { record ->
+                .put("events", org.json.JSONArray((if (skinSettingsOpen) emptyList() else records.take(300)).map { record ->
                     JSONObject().put("eventSeq", record.eventSeq).put("revision", record.revision)
                         .put("kind", record.kind.name).put("title", record.title.take(300))
                         .put("anchorMillis", record.anchorMillis()).put("endMillis", record.spanEndMillis())
@@ -1338,6 +1343,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
 
     // System back on the tools page returns to the timeline instead of leaving the app.
     androidx.activity.compose.BackHandler(enabled = page != Page.TIMELINE.name && !deckOpen) {
+        skinSettingsOpen = false
         page = Page.TIMELINE.name
         scope.launch { reload() }
     }
@@ -1367,6 +1373,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                 val safe = webEditing.prepareSkinChange()
                 runCatching { skins.select("powercal-default") }
                 selectedSkin = skins.currentId()
+                skinSettingsOpen = false
                 page = Page.TOOLS.name
                 message = if(safe) "皮肤加载失败，编辑已存档并恢复安全界面。"
                     else "皮肤已失效，编辑检查点失败；已进入安全界面，切勿强制结束应用。"
@@ -1401,6 +1408,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                     skinToDelete = skinChoices.firstOrNull { it.id == id && !it.builtIn }
                 },
                 onBack = {
+                    skinSettingsOpen = false
                     page = Page.TIMELINE.name
                     scope.launch { reload() }
                 },
@@ -1540,7 +1548,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                         message = "已清理 " + count + " 个应用私有 AI 临时缓存文件；聊天和正式事件保留"
                     }
                 },
-                onSettings = { page = Page.TOOLS.name },
+                onSettings = { skinSettingsOpen = false; page = Page.TOOLS.name },
                 onOpenDeck = { scope.launch { openDeckAt(null) } },
                 onPickImage = { ocrPicker.launch("image/*") },
                 onPickFile = { openAiDocument.launch(arrayOf("*/*")) },
@@ -1645,7 +1653,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                     hours = today.hours
                 },
                 onOpenDeck = { scope.launch { openDeckAt(null) } },
-                onOpenTools = { page = Page.TOOLS.name },
+                onOpenTools = { skinSettingsOpen = false; page = Page.TOOLS.name },
                 blockedReminders = diagnostics.reminders.count { it.intent?.desired == PowerStore.DesiredSchedule.BLOCKED }
             )
         }
@@ -1660,7 +1668,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                         Page.MEMO.name -> null
                         else -> VisualTab.TIMELINE
                     },
-                    onSelect = { tab -> page = tab.name }
+                    onSelect = { tab -> skinSettingsOpen = false; page = tab.name }
                 )
             }
         }

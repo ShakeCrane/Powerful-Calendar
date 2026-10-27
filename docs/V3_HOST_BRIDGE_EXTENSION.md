@@ -52,6 +52,9 @@ envelope and known fields only:
 ```json
 {"version":1,"type":"action","payload":{"name":"pickAiImage"}}
 ```
+```json
+{"version":1,"type":"action","payload":{"name":"skinSettings"}}
+```
 
 - `panTimeline` accepts nonzero integer minutes [-2880, 2880]. It does not
   change the time span or introduce horizontal zoom.
@@ -62,6 +65,14 @@ envelope and known fields only:
   availability; an occurrence key cannot bypass those checks.
 - `invokeOption` only accepts registered host IDs. When AI/editor writes
   are locked, option rows are disabled in state and invocation is denied.
+- The existing `settings` action continues to open the protected Android
+  Host tools page for compatibility with v1 skins. The additive
+  `skinSettings` action selects the skin-owned settings landing without
+  leaving the Web skin. It receives the existing bounded `optionGroups`
+  projection; event/timeline/month/chat collection projections are empty on
+  that page. Credentials, permissions, backup/restore and skin management
+  remain in the Host tools page. Clear's AI “配置” and its settings landing's
+  “打开宿主工具与设置” continue to request the existing `settings` action.
 - Existing `editor.patch` and `deck.patch` accept the semantic field `kind`
   with exactly one of `ALARM`, `ACTIVITY`, `DEADLINE`, or `MEMO`. The Host
   applies the frozen `TemporalConversion` rules and returns the updated form;

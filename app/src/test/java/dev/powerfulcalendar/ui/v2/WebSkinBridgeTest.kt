@@ -16,6 +16,12 @@ class WebSkinBridgeTest {
     @Test fun acceptsOnlyClosedTypedActions() {
         assertEquals(WebSkinAction.Routed("today"), decodeBridgeAction(
             """{"version":1,"type":"action","payload":{"name":"today"}}"""))
+        assertEquals(WebSkinAction.Routed("settings"), decodeBridgeAction(
+            """{"version":1,"type":"action","payload":{"name":"settings"}}"""))
+        assertEquals(WebSkinAction.Routed("skinSettings"), decodeBridgeAction(
+            """{"version":1,"type":"action","payload":{"name":"skinSettings"}}"""))
+        assertNull(decodeBridgeAction(
+            """{"version":1,"type":"action","payload":{"name":"skinSettings","page":"TOOLS"}}"""))
         assertEquals(WebSkinAction.OpenEvent(42, 7), decodeBridgeAction(
             """{"version":1,"type":"action","payload":{"name":"openEvent","eventSeq":42,"expectedRevision":7}}"""))
         assertNull(decodeBridgeAction(
@@ -44,5 +50,20 @@ class WebSkinBridgeTest {
         assertNull(validateOpenEvent(action, record.copy(revision = 8), true))
         assertNull(validateOpenEvent(action, record.copy(eventSeq = 43), true))
         assertNull(validateOpenEvent(action, record, false))
+    }
+
+    @Test fun settingsStayInSkinUntilExplicitHostToolsRequest() {
+        val timeline = WebSkinNavigationState("TIMELINE")
+        val settings = reduceWebSkinNavigation(timeline, "skinSettings")
+        assertEquals(WebSkinNavigationState("TIMELINE", skinSettingsOpen = true), settings)
+        assertEquals(WebSkinNavigationState("TOOLS"),
+            reduceWebSkinNavigation(timeline, "settings"))
+
+        val nativeTools = reduceWebSkinNavigation(settings, "settings")
+        assertEquals(WebSkinNavigationState("TOOLS"), nativeTools)
+        assertEquals(nativeTools, reduceWebSkinNavigation(nativeTools, "skinSettings"))
+        assertEquals(WebSkinNavigationState("TIMELINE"),
+            reduceWebSkinNavigation(settings, "timeline"))
+        assertEquals(settings, reduceWebSkinNavigation(settings, "unknown"))
     }
 }
