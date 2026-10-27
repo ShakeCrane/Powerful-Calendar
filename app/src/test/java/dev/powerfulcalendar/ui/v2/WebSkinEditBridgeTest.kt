@@ -3,9 +3,11 @@ package dev.powerfulcalendar.ui.v2
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import dev.powerfulcalendar.core.DeckController
+import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.StoreDeckPersistence
+import dev.powerfulcalendar.core.TemporalConversion
 import dev.powerfulcalendar.core.TemporalKind
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
@@ -106,6 +108,28 @@ class WebSkinEditBridgeTest {
             ""","draftId":42,"draftVersion":1,"field":"recurrenceFreq","value":"DAILY"""")))
     }
 
+    @Test fun kindPatchUsesCoreConversionForBothEditorAndDeckCommands() {
+        val original = DraftForm(kind = TemporalKind.ALARM, title = "Alarm",
+            startText = "2026-10-22 07:30", reminderMinutes = -1,
+            source = "imported-ics", zoneId = "Asia/Shanghai")
+        TemporalKind.entries.forEach { target ->
+            assertEquals(TemporalConversion.convert(original, target).form,
+                WebEditWire.patch(original, "kind", target.name))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            WebEditWire.patch(original, "kind", "UNSUPPORTED")
+        }
+        val editorPayload = JSONObject().put("version", 1).put("type", "command")
+            .put("payload", JSONObject().put("name", "editor.patch").put("requestId", request())
+                .put("sessionId", request()).put("field", "kind").put("value", "ACTIVITY"))
+        val deckPayload = JSONObject().put("version", 1).put("type", "command")
+            .put("payload", JSONObject().put("name", "deck.patch").put("requestId", request())
+                .put("draftId", 42).put("draftVersion", 1).put("field", "kind")
+                .put("value", "DEADLINE"))
+        assertNotNull(WebEditWire.decode(editorPayload.toString()))
+        assertNotNull(WebEditWire.decode(deckPayload.toString()))
+    }
+
     @Test fun officialEditorSavesExactlyOnceAndKeepsLeasePrivate()= runBlocking {
         val card=store.newDraft(DraftForm(kind=TemporalKind.MEMO,title="original"))
         assertTrue(store.commit(card.draftId) is PowerStore.CommitOutcome.Committed)
@@ -132,6 +156,64 @@ class WebSkinEditBridgeTest {
         assertEquals("closed",service.execute(WebEditCommand.CloseEvent(request(),sid))
             .getString("status"))
         assertFalse(service.snapshot().getJSONObject("editor").getBoolean("open"))
+    }
+
+    @Test fun formalEditorKindConversionRequiresHostReviewAndKeepsIdentity() = runBlocking {
+        val card = store.newDraft(DraftForm(kind = TemporalKind.ALARM, title = "Wake up",
+            startText = "2026-10-22 07:30", reminderMinutes = -1, zoneId = "UTC"))
+        assertTrue(store.commit(card.draftId) is PowerStore.CommitOutcome.Committed)
+        val before = requireNotNull(store.get(card.eventSeq))
+        assertEquals("opened", service.execute(WebEditCommand.OpenEvent(
+            request(), card.eventSeq, before.revision)).getString("status"))
+        val sessionId = service.snapshot().getJSONObject("editor").getString("sessionId")
+
+        assertEquals("edited", service.execute(WebEditCommand.PatchEvent(
+            request(), sessionId, "kind", "DEADLINE")).getString("status"))
+        val proposed = service.snapshot().getJSONObject("editor").getJSONObject("form")
+        assertEquals("DEADLINE", proposed.getString("kind"))
+        assertEquals("", proposed.getString("startText"))
+        assertEquals("2026-10-22 07:30", proposed.getString("endText"))
+
+        val save = WebEditCommand.SaveEvent(request(), sessionId)
+        assertEquals("confirmation_required", service.execute(save).getString("status"))
+        assertEquals(DraftOperation.CONVERT, service.pendingWriteReview?.operation)
+        assertEquals(before, store.get(card.eventSeq))
+        assertEquals("saved", service.resolveFormalWriteReview(
+            requireNotNull(service.pendingWriteReview).token, true).getString("status"))
+
+        val after = requireNotNull(store.get(card.eventSeq))
+        assertEquals(before.eventSeq, after.eventSeq)
+        assertEquals(before.revision + 1, after.revision)
+        assertEquals(TemporalKind.DEADLINE, after.kind)
+        assertEquals("2026-10-22 07:30", DraftForm.formatInstant(
+            requireNotNull(after.deadlineMillis), after.zone))
+        assertEquals(2, store.commitCount())
+        assertTrue(store.pendingDraftsFor(card.eventSeq).isEmpty())
+    }
+
+    @Test fun deckKindPatchStagesConvertedFormThroughExistingController() = runBlocking {
+        val card = store.newDraft(DraftForm(kind = TemporalKind.ALARM, title = "Wake up",
+            startText = "2026-10-22 07:30", reminderMinutes = -1, zoneId = "UTC",
+            source = "human"))
+        val identities = store.identityCount()
+        assertEquals("opened", service.execute(WebEditCommand.OpenDeck(
+            request(), card.draftId)).getString("status"))
+        val version = service.snapshot().getJSONObject("deck").getLong("version")
+
+        assertEquals("edited", service.execute(WebEditCommand.PatchDeck(
+            request(), card.draftId, version, "kind", "DEADLINE")).getString("status"))
+        assertEquals("DEADLINE", service.snapshot().getJSONObject("deck")
+            .getJSONObject("form").getString("kind"))
+        assertEquals("flushed", service.execute(WebEditCommand.FlushDeck(request()))
+            .getString("status"))
+
+        val persisted = requireNotNull(store.draft(card.draftId))
+        assertEquals(card.eventSeq, persisted.eventSeq)
+        assertEquals(TemporalKind.DEADLINE, persisted.form.kind)
+        assertEquals("2026-10-22 07:30", persisted.form.endText)
+        assertEquals("human", persisted.form.source)
+        assertEquals(identities, store.identityCount())
+        assertEquals(0, store.commitCount())
     }
 
     @Test fun deckUsesOriginalControllerForDurableStageCommitAndReplay()= runBlocking {

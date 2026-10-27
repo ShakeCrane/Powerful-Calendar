@@ -90,12 +90,17 @@ and state for current authoritative values.
 ### Commands implemented at this checkpoint
 
 - `editor.open`: `eventSeq,expectedRevision`
-- `editor.patch`: `sessionId,field,value`
+- `editor.patch`: `sessionId,field,value`; writable semantic fields include
+  `kind` (`ALARM`, `ACTIVITY`, `DEADLINE`, `MEMO`) and use the frozen
+  `TemporalConversion` rules. Kind changes remain in the host-owned editor
+  until its trusted save review; `SINGLE_OCCURRENCE` continues to reject them.
 - `editor.save`: `sessionId`
 - `editor.close`: `sessionId` (checkpoint first; failure keeps lease)
 - `deck.open`: `draftId` (nullable)
 - `deck.create`: `kind` (ACTIVITY, ALARM, DEADLINE, MEMO)
-- `deck.patch`: `draftId,draftVersion,field,value`
+- `deck.patch`: `draftId,draftVersion,field,value`; `kind` uses the same
+  frozen `TemporalConversion` rules and the existing DeckController stage,
+  commit, and Host-review path.
 - `deck.select`: `draftId` (controller flushes before changing card)
 - `deck.flush`, `deck.close`
 - `deck.commit`, `deck.discard`: `draftId,draftVersion`

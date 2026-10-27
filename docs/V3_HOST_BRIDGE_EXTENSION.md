@@ -62,6 +62,13 @@ envelope and known fields only:
   availability; an occurrence key cannot bypass those checks.
 - `invokeOption` only accepts registered host IDs. When AI/editor writes
   are locked, option rows are disabled in state and invocation is denied.
+- Existing `editor.patch` and `deck.patch` accept the semantic field `kind`
+  with exactly one of `ALARM`, `ACTIVITY`, `DEADLINE`, or `MEMO`. The Host
+  applies the frozen `TemporalConversion` rules and returns the updated form;
+  an unsupported kind is `invalid`. This changes only the host-owned editing
+  session or draft form. Formal publication still requires the existing
+  trusted Host review and revalidation. A `SINGLE_OCCURRENCE` editor rejects
+  kind changes and permits only its established title/start/end fields.
 - `pickAiFile` and `pickAiImage` accept only the `name` field and only while
   the AI page is active and no conflicting review, edit or picker is pending.
   They launch the existing Android Host picker. The file path retains local

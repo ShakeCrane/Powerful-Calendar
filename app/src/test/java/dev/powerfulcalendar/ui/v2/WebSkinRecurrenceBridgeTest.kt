@@ -181,6 +181,27 @@ class WebSkinRecurrenceBridgeTest {
         assertEquals(before,store.get(seq))
     }
 
+    @Test fun singleOccurrenceCannotChangeEventKind() = runBlocking {
+        val seq = daily()
+        val before = requireNotNull(store.get(seq))
+        val key = "2026-10-21T07:30"
+        assertEquals("opened", service.execute(command("editor.open", "eventSeq" to seq,
+            "expectedRevision" to before.revision, "occurrenceKey" to key)).getString("status"))
+        val session = service.snapshot().getJSONObject("editor").getString("sessionId")
+        assertEquals("selected", service.execute(command("editor.scope", "sessionId" to session,
+            "scope" to "SINGLE_OCCURRENCE")).getString("status"))
+
+        assertEquals("invalid", service.execute(command("editor.patch", "sessionId" to session,
+            "field" to "kind", "value" to "DEADLINE")).getString("status"))
+        assertEquals("ALARM", service.snapshot().getJSONObject("editor")
+            .getJSONObject("form").getString("kind"))
+        assertEquals(before, store.get(seq))
+        assertTrue(store.pendingDraftsFor(seq).isEmpty())
+        assertEquals("closed", service.execute(command("editor.close", "sessionId" to session))
+            .getString("status"))
+        assertTrue(store.pendingDraftsFor(seq).isEmpty())
+    }
+
     @Test fun addingRecurrenceToASingleEventAlsoRequiresHostReview() = runBlocking {
         val card=store.newDraft(DraftForm(kind=TemporalKind.ALARM,title="单次",
             startText="2026-10-20 07:30",zoneId="Asia/Shanghai",reminderMinutes=-1))

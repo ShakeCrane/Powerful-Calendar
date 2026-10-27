@@ -16,6 +16,7 @@ import dev.powerfulcalendar.core.RecurrenceEditScope
 import dev.powerfulcalendar.core.RecurrenceEngine
 import dev.powerfulcalendar.core.ReminderMethod
 import dev.powerfulcalendar.core.ReminderTiming
+import dev.powerfulcalendar.core.TemporalConversion
 import java.time.LocalDate
 import java.time.ZoneId
 import org.json.JSONObject
@@ -66,7 +67,7 @@ internal object WebEditWire {
     private val request = Regex("[A-Za-z0-9_-]{8,64}")
     private val session = Regex("[a-f0-9-]{36}")
     private val occurrence = Regex("[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}")
-    private val fields = mapOf("title" to 240, "startText" to 40,
+    private val fields = mapOf("kind" to 10, "title" to 240, "startText" to 40,
         "endText" to 40, "notes" to 2000, "location" to 240,
         "reminderMinutes" to 6, "reminderMethod" to 20, "reminderTiming" to 20,
         "enabled" to 5, "trackingEnabled" to 5,
@@ -161,6 +162,11 @@ internal object WebEditWire {
 
     /** A semantic patch may change a permitted field only, never replace hidden metadata. */
     fun patch(form: DraftForm, field: String, value: String): DraftForm = when(field) {
+        "kind" -> {
+            val target = TemporalKind.entries.firstOrNull { it.name == value }
+                ?: throw IllegalArgumentException("Invalid event kind")
+            TemporalConversion.convert(form, target).form
+        }
         "title" -> form.copy(title=value)
         "startText" -> form.copy(startText=value)
         "endText" -> form.copy(endText=value)
