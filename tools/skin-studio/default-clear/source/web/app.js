@@ -153,7 +153,7 @@ function renderPage(){
   const pages={TIMELINE:"timelinePage",MONTH:"monthPage",MEMO:"memoPage",AI:"aiPage"};
   for(const [key,id] of Object.entries(pages))$(id).hidden=key!==page||optionsVisible;
   $("extraOptions").hidden=!optionsVisible;
-  $("extraOptions").querySelector("h1").textContent=skinSettings?"设置与导入":"可用选项";
+  $("extraOptions").querySelector("h1").textContent=skinSettings?"设置与数据工具":"可用选项";
   const selectedPage=skinSettings?"SETTINGS":page;
   document.querySelectorAll(".clear-tabbar button").forEach(b=>{
     b.classList.toggle("current",b.dataset.action?.toUpperCase()===selectedPage)
@@ -451,7 +451,7 @@ function renderOptions(){
     }
   }
   if(currentPage==="SETTINGS"){
-    root.append(node("p","","权限请求由 Android 宿主处理；凭据、备份恢复和皮肤管理仍由宿主保护。"));
+    root.append(node("p","","备份文件只由可信 Android 宿主读写；权限请求由宿主处理；凭据和皮肤管理仍在宿主工具页。"));
     const hostTools=node("button","optionRow","打开宿主工具与设置");
     hostTools.type="button";hostTools.dataset.action="settings";
     root.append(hostTools);

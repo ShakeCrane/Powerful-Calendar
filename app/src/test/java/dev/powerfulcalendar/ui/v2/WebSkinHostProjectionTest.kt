@@ -263,7 +263,10 @@ class WebSkinHostProjectionTest {
         assertTrue("reminders.notificationPermission" in ids)
         assertTrue("reminders.reconcile" in ids)
         assertTrue("calendar.export.ics" in ids)
+        assertTrue("data.backup.export" in ids)
+        assertTrue("data.backup.restore" in ids)
         assertFalse(SemanticOptions.supports("reminders.grantSilently"))
+        assertFalse(SemanticOptions.supports("data.backup.readRaw"))
 
         val group = SemanticOptions.groups.first { it.id == "reminders.permissions" }
         val disabled = SemanticOptions.toJson(
@@ -272,5 +275,11 @@ class WebSkinHostProjectionTest {
         ).getJSONObject(0).getJSONArray("items")
         assertFalse(disabled.getJSONObject(0).getBoolean("enabled"))
         assertTrue(disabled.getJSONObject(1).getBoolean("enabled"))
+
+        val backup = SemanticOptions.groups.first { it.id == "data.backup" }
+        val backupItems = SemanticOptions.toJson(collection = listOf(backup))
+            .getJSONObject(0).getJSONArray("items")
+        assertTrue(backupItems.getJSONObject(0).getString("detail").contains("明文 JSON"))
+        assertTrue(backupItems.getJSONObject(1).getString("detail").contains("空数据库"))
     }
 }

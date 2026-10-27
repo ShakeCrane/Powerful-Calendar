@@ -86,9 +86,14 @@ envelope and known fields only:
   `skinSettings` action selects the skin-owned settings landing without
   leaving the Web skin. It receives the existing bounded `optionGroups`
   projection; event/timeline/month/chat collection projections are empty on
-  that page. Credentials, permissions, backup/restore and skin management
-  remain in the Host tools page. Clear's AI “配置” and its settings landing's
-  “打开宿主工具与设置” continue to request the existing `settings` action.
+  that page. The bounded `data.backup.export` and `data.backup.restore` options
+  only request the existing Android Host file pickers: backup JSON and content
+  URIs are never projected to the skin. Exported backups are plaintext and
+  sensitive; restore is accepted only by the existing Core empty-database and
+  envelope validation checks, with the existing native legacy-consent dialog.
+  Credentials and skin management remain in the Host tools page. Clear's AI
+  “配置” and its settings landing's “打开宿主工具与设置” continue to request
+  the existing `settings` action.
 - Existing `editor.patch` and `deck.patch` accept the semantic field `kind`
   with exactly one of `ALARM`, `ACTIVITY`, `DEADLINE`, or `MEMO`. The Host
   applies the frozen `TemporalConversion` rules and returns the updated form;

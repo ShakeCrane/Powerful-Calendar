@@ -1198,6 +1198,10 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                     }
                     action.id == "calendar.export.ics" ->
                         exportIcs.launch("PowerfulCalendar-activities.ics")
+                    action.id == "data.backup.export" ->
+                        createBackup.launch("PowerCal-backup.json")
+                    action.id == "data.backup.restore" ->
+                        restoreBackup.launch(arrayOf("application/json", "*/*"))
                     action.id == "reminders.exactAlarmSettings" -> {
                         if (!ReminderScheduler.exactAlarmAllowed(appContext)) {
                             ReminderScheduler.openExactAlarmSettings(appContext)

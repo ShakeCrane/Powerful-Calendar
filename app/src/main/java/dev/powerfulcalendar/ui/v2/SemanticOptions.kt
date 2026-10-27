@@ -30,6 +30,10 @@ internal object SemanticOptions {
         SemanticOptionGroup("calendar.export", "导出", listOf(
             SemanticOption("calendar.export.ics", "导出 Activity ICS", "仅包含 Activity；其他类型和完成状态请用原生备份", "export")
         )),
+        SemanticOptionGroup("data.backup", "数据备份", listOf(
+            SemanticOption("data.backup.export", "导出原生数据备份", "包含日历与草稿等敏感数据的明文 JSON；请保存到安全位置", "backup"),
+            SemanticOption("data.backup.restore", "恢复原生数据备份", "只允许恢复到空数据库；已有 PowerCal 数据不会被覆盖", "restore")
+        )),
         SemanticOptionGroup("reminders.permissions", "提醒与权限", listOf(
             SemanticOption("reminders.exactAlarmSettings", "精确闹钟权限", "由 Android 系统管理精确闹钟授权", "alarm"),
             SemanticOption("reminders.notificationPermission", "通知权限", "在 Android 系统对话框或设置中管理", "notification"),

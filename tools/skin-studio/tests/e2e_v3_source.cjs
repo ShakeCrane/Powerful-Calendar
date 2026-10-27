@@ -175,24 +175,30 @@ async function main(){
         const wait=async(fn,m)=>{for(let i=0;i<100;i++){if(fn())return;await new Promise(r=>setTimeout(r,100))}throw Error(m)};
         document.querySelector('.clear-tabbar [data-action="settings"]').click();
         await wait(()=>!document.querySelector('#extraOptions').hidden&&
-          document.querySelector('#extraOptions h1').textContent==='设置与导入',
+          document.querySelector('#extraOptions h1').textContent==='设置与数据工具',
           'settings tab did not open a skin-owned landing page');
         const options=[...document.querySelectorAll('#optionGroups [data-action="invokeOption"]')];
         const imports=options.filter(button=>button.dataset.optionId.startsWith('calendar.import.'));
         const exports=options.filter(button=>button.dataset.optionId.startsWith('calendar.export.'));
+        const backups=options.filter(button=>button.dataset.optionId.startsWith('data.backup.'));
         const reminders=options.filter(button=>button.dataset.optionId.startsWith('reminders.'));
         check(imports.length===2,'settings landing must retain the two bounded Host import options');
         check(exports.length===1,'settings landing must expose the bounded Activity ICS export');
         check(exports[0].textContent.includes('仅包含 Activity；其他类型和完成状态请用原生备份'),
           'ICS export data-loss limitations must remain visible in the skin');
+        check(backups.length===2,'settings landing must expose the two bounded native backup actions');
+        check(backups[0].textContent.includes('明文 JSON'),'backup export sensitivity must be visible in the skin');
+        check(backups[1].textContent.includes('空数据库'),'backup restore empty-store limit must be visible in the skin');
         check(reminders.length===3,'settings landing must expose the three bounded reminder Host actions');
         check(document.querySelector('#optionGroups').textContent.includes('精确闹钟：未允许；通知运行时权限：未允许'),
           'settings landing must show the Host-projected reminder permission state');
-        check(document.querySelector('#optionGroups').textContent.includes('凭据、备份恢复和皮肤管理仍由宿主保护'),
-          'protected native boundary was not explained');
+        check(document.querySelector('#optionGroups').textContent.includes('备份文件只由可信 Android 宿主读写'),
+          'backup file access boundary was not explained');
         imports[0].click();
         exports[0].click();
+        backups[0].click();backups[1].click();
         return {settingsLanding:true,hostImportOptions:imports.length,hostExportOptions:exports.length,
+          hostBackupActions:backups.length,
           reminderHostActions:reminders.length,
           reminderPermissionProjection:true,browserMockWroteData:false};
       })()`});
@@ -201,7 +207,9 @@ async function main(){
       for(let i=0;i<100;i++){
         const text=document.querySelector('#bridgeLog').textContent;
         if(text.includes('invokeOption · calendar.import.file')&&
-          text.includes('未创建或写入真实文件'))return true;
+          text.includes('未创建或写入真实文件')&&
+          text.includes('data.backup.export')&&text.includes('未读取日历数据或创建文件')&&
+          text.includes('data.backup.restore')&&text.includes('未读取文件或恢复数据'))return true;
         await new Promise(r=>setTimeout(r,100));
       }
       return false;
