@@ -5,6 +5,7 @@ import android.content.ContextWrapper
 import android.content.Intent
 import android.database.DatabaseErrorHandler
 import android.database.sqlite.SQLiteDatabase
+import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
@@ -188,6 +189,152 @@ class WebAiProposalReviewIntegrationTest {
             assertEquals(0, store.pendingCount())
             assertEquals(1L, store.commitCount())
             assertEquals(1L, store.identityCount())
+        }
+    }
+
+    @Test
+    fun partialStageKeepsUnselectedProposalAndRejectsStaleReviewActions() {
+        val userText = "创建两条独立备忘：第一条和第二条。"
+        val structured = JSONObject().put("events", JSONArray()
+            .put(JSONObject()
+                .put("operation", "CREATE")
+                .put("kind", "MEMO")
+                .put("title", "第一条备忘"))
+            .put(JSONObject()
+                .put("operation", "CREATE")
+                .put("kind", "MEMO")
+                .put("title", "第二条备忘"))).toString()
+        val requests = CopyOnWriteArrayList<String>()
+        val serverFailure = AtomicReference<Throwable?>()
+        val served = CountDownLatch(2)
+        val before = counts()
+
+        ServerSocket(0, 4, InetAddress.getByName("127.0.0.1")).use { server ->
+            server.soTimeout = 15_000
+            AiSettingsStore.save(context, AiSettings(
+                endpoint = "http://127.0.0.1:${server.localPort}/v1",
+                model = "local-stub:free",
+                apiKey = "LOCAL_TEST_ONLY",
+                enabled = true,
+                shareContext = false
+            ))
+            val responses = listOf(
+                "我会先生成两项待核对提案。" +
+                    "[[POWERCAL_DRAFT]]{\"type\":\"draft\",\"intent\":\"explicit\"}[[/POWERCAL_DRAFT]]",
+                structured
+            )
+            val serverThread = Thread {
+                try {
+                    repeat(responses.size) { index ->
+                        server.accept().use { socket ->
+                            socket.soTimeout = 10_000
+                            requests += readRequest(socket)
+                            writeReply(socket, responses[index])
+                        }
+                        served.countDown()
+                    }
+                } catch (error: Throwable) {
+                    serverFailure.set(error)
+                    served.countDown()
+                }
+            }.apply { name = "pc-web-ai-partial-review-stub"; isDaemon = true; start() }
+
+            ui.activity.setContent {
+                CompositionLocalProvider(LocalContext provides context) {
+                    PowerCalTheme { PowerCalApp(store) }
+                }
+            }
+            ui.waitForIdle()
+            ui.onNodeWithText("AI 助手").performClick()
+            ui.onNodeWithText("发送消息…").performTextInput(userText)
+            ui.onNodeWithText("发送").performClick()
+
+            var initialReview: JSONObject? = null
+            ui.waitUntil(20_000) {
+                val review = WebSkinBridgeRuntime.state().optJSONObject("aiProposalReview")
+                if (review?.optJSONArray("proposals")?.length() == 2) {
+                    initialReview = review
+                    true
+                } else serverFailure.get() != null
+            }
+            assertNull("local AI stub failed: ${serverFailure.get()}", serverFailure.get())
+            val reviewBeforeStage = requireNotNull(initialReview) {
+                "AI interpretation did not produce two proposal cards"
+            }
+            assertEquals("第一条备忘", reviewBeforeStage.getJSONArray("proposals")
+                .getJSONObject(0).getString("title"))
+            assertEquals("第二条备忘", reviewBeforeStage.getJSONArray("proposals")
+                .getJSONObject(1).getString("title"))
+            assertEquals("review is read-only until an explicit decision", before, counts())
+            assertTrue("both AI requests must finish", served.await(1, TimeUnit.SECONDS))
+            serverThread.join(2_000)
+            assertNull("local AI stub failed: ${serverFailure.get()}", serverFailure.get())
+            assertEquals(2, requests.size)
+            ui.waitUntil(5_000) {
+                !WebSkinBridgeRuntime.state().optBoolean("chatBusy")
+            }
+
+            val staleReviewId = reviewBeforeStage.getString("reviewId")
+            ui.runOnIdle {
+                WebSkinBridgeRuntime.onAction(WebSkinAction.ResolveAiProposal(
+                    reviewId = staleReviewId,
+                    decision = AiProposalDecision.STAGE,
+                    indices = listOf(0)
+                ))
+            }
+            val stageCompletion = runCatching {
+                ui.waitUntil(15_000) {
+                    shadowOf(Looper.getMainLooper()).idle()
+                    !WebSkinBridgeRuntime.state().optBoolean("chatBusy")
+                }
+            }
+            assertNull("local AI stub failed: ${serverFailure.get()}", serverFailure.get())
+            val afterStageState = WebSkinBridgeRuntime.state()
+            assertTrue("partial stage did not finish; state=$afterStageState; counts=${counts()}; " +
+                "pending=${store.pendingCount()}", stageCompletion.isSuccess)
+            val reviewAfterStage = afterStageState.optJSONObject("aiProposalReview")
+                ?: error("partial stage removed every proposal: $afterStageState")
+            assertEquals("partial stage result state=$afterStageState; counts=${counts()}; " +
+                "pending=${store.pendingCount()}", 1,
+                reviewAfterStage.getJSONArray("proposals").length())
+            assertEquals("第二条备忘", reviewAfterStage.getJSONArray("proposals")
+                .getJSONObject(0).getString("title"))
+            assertFalse("handled candidates must receive a fresh review identity",
+                staleReviewId == reviewAfterStage.getString("reviewId"))
+            assertEquals(1L, store.draftCount())
+            assertEquals(0, store.all().size)
+            assertEquals(1L, store.identityCount())
+            assertEquals(0L, store.commitCount())
+
+            val afterStage = counts()
+            ui.runOnIdle {
+                WebSkinBridgeRuntime.onAction(WebSkinAction.ResolveAiProposal(
+                    reviewId = staleReviewId,
+                    decision = AiProposalDecision.REJECT,
+                    indices = listOf(1)
+                ))
+            }
+            ui.waitForIdle()
+            val afterStaleAction = WebSkinBridgeRuntime.state()
+                .getJSONObject("aiProposalReview")
+            assertEquals("a replay from the replaced review cannot consume the remaining card",
+                reviewAfterStage.getString("reviewId"), afterStaleAction.getString("reviewId"))
+            assertEquals(1, afterStaleAction.getJSONArray("proposals").length())
+            assertEquals(afterStage, counts())
+
+            ui.runOnIdle {
+                WebSkinBridgeRuntime.onAction(WebSkinAction.ResolveAiProposal(
+                    reviewId = reviewAfterStage.getString("reviewId"),
+                    decision = AiProposalDecision.REJECT,
+                    indices = listOf(0)
+                ))
+            }
+            ui.waitUntil(5_000) {
+                WebSkinBridgeRuntime.state().isNull("aiProposalReview")
+            }
+            assertEquals("rejecting the remaining candidate must not change the staged draft",
+                afterStage, counts())
+            assertEquals(1, store.pendingCount())
         }
     }
 
