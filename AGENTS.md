@@ -151,5 +151,6 @@ run `python -m unittest discover -s tools/skin-studio/tests -v`,
 `python tools/skin-studio/build_default_clear.py --verify`, and the relevant
 browser / Android checks for each change. Mock previews are not device evidence.
 For machine-operated v3 skin work, read `docs/SKIN_STUDIO_AI_AUTOMATION_V1.md` and use
-`skin_studio.py inspect-v3`, `read-v3`, and `edit-v3`; these validate and export to a
-new `.pcskin` path but do not prove visual or device parity.
+`skin_studio.py inspect-v3`, `read-v3`, `edit-v3`, `build-v3 --json`, and
+`validate --json`; build and edit create new package paths and emit machine-readable
+hash receipts. Package validation does not prove visual or device parity.

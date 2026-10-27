@@ -1,6 +1,6 @@
 # Skin Studio AI Automation Interface v1
 
-Status: **implemented for validated `.pcskin` v3 inspection and package editing**.
+Status: **implemented for validated `.pcskin` v3 inspection, editing, building and validation**.
 This interface makes source, assets, `project.json`, and package metadata callable by
 scripts and agents. It does not claim complete visual Studio editing or Native/Skin
 functional parity.
@@ -13,7 +13,8 @@ Run commands from the repository root with Python 3:
 python tools/skin-studio/skin_studio.py inspect-v3 path\to\skin.pcskin
 python tools/skin-studio/skin_studio.py read-v3 --file path\to\skin.pcskin --path web\app.js
 python tools/skin-studio/skin_studio.py edit-v3 --file path\to\skin.pcskin --operations operations.json --out path\to\skin-edited.pcskin
-python tools/skin-studio/skin_studio.py validate path\to\skin-edited.pcskin
+python tools/skin-studio/skin_studio.py build-v3 --manifest manifest.json --source-dir source --out path\to\skin-built.pcskin --json
+python tools/skin-studio/skin_studio.py validate path\to\skin-edited.pcskin --json
 ```
 
 `inspect-v3`, `read-v3`, and `edit-v3` emit one UTF-8 JSON object on stdout. Their
@@ -21,6 +22,15 @@ errors emit a JSON object on stderr and return exit code 2. A successful `edit-v
 returns package SHA-256, output path, resulting manifest, and before/after hashes for
 every changed file. The input and output package paths must differ. Output creation is
 exclusive: an existing destination is never overwritten; select a new path.
+
+`build-v3 --json` and `validate --json` emit one UTF-8 JSON receipt on stdout. Build
+receipts contain the output path, package SHA-256, byte and source-file counts, and the
+validated manifest. Validation receipts contain package SHA-256, byte count, runtime
+version, skin identity and version-specific file/scene/asset counts. Execution failures emit
+`{"schemaVersion":1,"command":"…","ok":false,"error":"…"}` on stderr and return
+exit code 2. `build-v3` validates and reimports its generated package before publishing
+it, then atomically creates a new output path; it never overwrites an existing file.
+Without `--json`, successful build/validate commands retain their human-readable output.
 
 ## Inspection and source reads
 
@@ -90,7 +100,10 @@ limits enforced by the production validator.
    source writes for HTML/CSS/JS/JSON, and Base64 for binary assets.
 4. Run `edit-v3` to a **new** output path. A stale guard or invalid final package
    returns a structured error and does not create the output.
-5. Run `validate` on the exported `.pcskin`; inspect/read it again and compare intended
+5. For source-directory projects, run `build-v3 --json` to create a validated package;
+   for edited packages, run `validate --json` on the exported `.pcskin`. Both return
+   hashes and counts; build refuses an existing output path.
+6. Inspect/read the result again and compare intended
    changes and hashes. Use the Studio browser preview and Android WebView/device
    acceptance for visual and runtime claims.
 

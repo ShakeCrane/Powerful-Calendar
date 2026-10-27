@@ -48,14 +48,16 @@ python tools/skin-studio/skin_studio.py serve --port 8765
 `edit-v3` 命令检查项目、读取任意文本/二进制资源、编辑 `project.json` 结构及
 新增/修改/移动/删除文件，再经同一生产校验器构建到新包路径。SHA 前置条件防止
 覆盖检查之后已变化的文件；能力声明变更必须显式确认。该 CLI 补足 AI 操作层，
-不代表浏览器 UI 已具备完整 IDE 编辑能力。具体 JSON 协议与边界见
+`build-v3 --json` / `validate --json` 则提供带哈希和计数的结构化回执；构建会原子
+创建新的输出路径，拒绝覆盖已存在文件。无 `--json` 时成功结果仍为人读文本。
+这不代表浏览器 UI 已具备完整 IDE 编辑能力。具体 JSON 协议与边界见
 [`docs/SKIN_STUDIO_AI_AUTOMATION_V1.md`](../../docs/SKIN_STUDIO_AI_AUTOMATION_V1.md)。
 
 ```powershell
 python tools/skin-studio/skin_studio.py inspect-v3 my-skin.pcskin
 python tools/skin-studio/skin_studio.py read-v3 --file my-skin.pcskin --path web/app.js
 python tools/skin-studio/skin_studio.py edit-v3 --file my-skin.pcskin --operations operations.json --out my-skin-edited.pcskin
-python tools/skin-studio/skin_studio.py validate my-skin-edited.pcskin
+python tools/skin-studio/skin_studio.py validate my-skin-edited.pcskin --json
 ```
 
 仅切换源码/可视化面板或编辑其他源码文件时，原始 `project.json` 保持字节不变；面板模式仅是当前 Studio 视图。确实修改材质或图层后，项目元数据按修改后的模型输出，并保留未知字段。
@@ -67,8 +69,8 @@ python tools/skin-studio/skin_studio.py validate my-skin-edited.pcskin
 ## v3 命令行与测试
 
 ```powershell
-python tools/skin-studio/skin_studio.py build-v3 --manifest tools/skin-studio/examples/v3/manifest.json --source-dir tools/skin-studio/examples/v3/source --out PowerCal-Web-v3.pcskin
-python tools/skin-studio/skin_studio.py validate PowerCal-Web-v3.pcskin
+python tools/skin-studio/skin_studio.py build-v3 --manifest tools/skin-studio/examples/v3/manifest.json --source-dir tools/skin-studio/examples/v3/source --out PowerCal-Web-v3.pcskin --json
+python tools/skin-studio/skin_studio.py validate PowerCal-Web-v3.pcskin --json
 python -m unittest discover -s tools/skin-studio/tests -v
 node --check tools/skin-studio/v3-studio.js
 .\gradlew.bat :app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --console=plain

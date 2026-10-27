@@ -215,6 +215,87 @@ class ProjectOpsV3Test(unittest.TestCase):
                 write_atomic(target, b"new")
             self.assertEqual(target.read_bytes(), b"old")
 
+    def test_v3_build_and_validate_cli_json_are_reimportable_and_non_overwriting(self):
+        with isolated_temp_dir() as temp:
+            root = Path(temp)
+            manifest_path = root / "manifest.json"
+            source_dir = root / "source"
+            source_dir.mkdir()
+            manifest_path.write_text(json.dumps(self.manifest), encoding="utf-8")
+            for name, data in self.files.items():
+                target = source_dir / Path(name)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(data)
+            output_path = root / "built.pcskin"
+
+            built = subprocess.run(
+                [sys.executable, str(STUDIO / "skin_studio.py"), "build-v3",
+                 "--manifest", str(manifest_path), "--source-dir", str(source_dir),
+                 "--out", str(output_path), "--json"],
+                text=True, encoding="utf-8", capture_output=True, check=False)
+            self.assertEqual(built.returncode, 0, built.stderr)
+            build_receipt = json.loads(built.stdout)
+            self.assertEqual(build_receipt["schemaVersion"], 1)
+            self.assertEqual(build_receipt["command"], "build-v3")
+            self.assertTrue(build_receipt["ok"])
+            self.assertEqual(build_receipt["fileCount"], len(self.files))
+            self.assertEqual(build_receipt["bytes"], output_path.stat().st_size)
+            self.assertEqual(build_receipt["packageSha256"],
+                             hashlib.sha256(output_path.read_bytes()).hexdigest())
+
+            imported_manifest, imported_files = unpack(output_path.read_bytes())
+            self.assertEqual(imported_manifest["id"], "ai-project-ops-test")
+            self.assertEqual(imported_files, self.files)
+
+            validated = subprocess.run(
+                [sys.executable, str(STUDIO / "skin_studio.py"), "validate",
+                 str(output_path), "--json"],
+                text=True, encoding="utf-8", capture_output=True, check=False)
+            self.assertEqual(validated.returncode, 0, validated.stderr)
+            validation_receipt = json.loads(validated.stdout)
+            self.assertEqual(validation_receipt["command"], "validate")
+            self.assertTrue(validation_receipt["ok"])
+            self.assertEqual(validation_receipt["runtimeVersion"], 3)
+            self.assertEqual(validation_receipt["skinId"], "ai-project-ops-test")
+            self.assertEqual(validation_receipt["fileCount"], len(self.files))
+            self.assertEqual(validation_receipt["packageSha256"],
+                             build_receipt["packageSha256"])
+
+            broken_path = root / "broken.pcskin"
+            broken_path.write_bytes(b"not a zip archive")
+            invalid = subprocess.run(
+                [sys.executable, str(STUDIO / "skin_studio.py"), "validate",
+                 str(broken_path), "--json"],
+                text=True, encoding="utf-8", capture_output=True, check=False)
+            self.assertEqual(invalid.returncode, 2)
+            invalid_receipt = json.loads(invalid.stderr)
+            self.assertEqual(invalid_receipt["command"], "validate")
+            self.assertFalse(invalid_receipt["ok"])
+
+            before = output_path.read_bytes()
+            overwrite = subprocess.run(
+                [sys.executable, str(STUDIO / "skin_studio.py"), "build-v3",
+                 "--manifest", str(manifest_path), "--source-dir", str(source_dir),
+                 "--out", str(output_path), "--json"],
+                text=True, encoding="utf-8", capture_output=True, check=False)
+            self.assertEqual(overwrite.returncode, 2)
+            error_receipt = json.loads(overwrite.stderr)
+            self.assertEqual(error_receipt["command"], "build-v3")
+            self.assertFalse(error_receipt["ok"])
+            self.assertEqual(output_path.read_bytes(), before)
+
+            human_output_path = root / "built-human.pcskin"
+            human_build = subprocess.run(
+                [sys.executable, str(STUDIO / "skin_studio.py"), "build-v3",
+                 "--manifest", str(manifest_path), "--source-dir", str(source_dir),
+                 "--out", str(human_output_path)],
+                text=True, encoding="utf-8", capture_output=True, check=False)
+            self.assertEqual(human_build.returncode, 0, human_build.stderr)
+            self.assertTrue(human_build.stdout.startswith("Built v3 "))
+            human_package = human_output_path.read_bytes()
+            self.assertEqual(unpack(human_package)[1], self.files)
+            self.assertEqual(human_package, before)
+
 
 if __name__ == "__main__":
     unittest.main()

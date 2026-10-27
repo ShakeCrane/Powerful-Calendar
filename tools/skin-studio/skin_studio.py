@@ -15,7 +15,7 @@ import re
 import struct
 import sys
 import zlib
-from zipfile import ZIP_DEFLATED, ZIP_STORED, ZipFile
+from zipfile import ZIP_DEFLATED, ZIP_STORED, BadZipFile, ZipFile
 
 HERE = Path(__file__).resolve().parent
 COLOR_KEYS = (
@@ -301,6 +301,8 @@ def main():
     serve.add_argument("--port", type=int, default=8765)
     chk = sub.add_parser("validate", help="validate an existing .pcskin")
     chk.add_argument("file", type=Path)
+    chk.add_argument("--json", action="store_true",
+                     help="emit a machine-readable validation receipt")
     build2 = sub.add_parser("build-v2", help="compile declarative runtime UI into an importable ZIP")
     build2.add_argument("--manifest", type=Path, required=True)
     build2.add_argument("--ui", type=Path, required=True)
@@ -310,6 +312,8 @@ def main():
     build3.add_argument("--manifest", type=Path, required=True)
     build3.add_argument("--source-dir", type=Path, required=True)
     build3.add_argument("--out", type=Path, required=True)
+    build3.add_argument("--json", action="store_true",
+                        help="emit a machine-readable build receipt")
     inspect3 = sub.add_parser("inspect-v3", help="inspect a v3 skin as machine-readable JSON")
     inspect3.add_argument("file", type=Path)
     read3 = sub.add_parser("read-v3", help="read one packaged source or asset as machine-readable JSON")
@@ -357,14 +361,35 @@ def main():
             if manifest.get("schemaVersion") == 3:
                 from runtime_package_v3 import unpack as unpack_v3
                 m, files = unpack_v3(payload)
-                print(f"OK: {m['id']} / {m['name']} / runtime v3 / {len(files)} source files")
+                details = {"fileCount": len(files)}
+                human_result = (f"OK: {m['id']} / {m['name']} / runtime v3 / "
+                                f"{len(files)} source files")
             elif manifest.get("schemaVersion") == 2:
                 from runtime_package import unpack as unpack_v2
                 m, ui = unpack_v2(payload)
-                print(f"OK: {m['id']} / {m['name']} / runtime v2 / {len(ui['screens'])} scenes")
+                details = {"sceneCount": len(ui["screens"])}
+                human_result = (f"OK: {m['id']} / {m['name']} / runtime v2 / "
+                                f"{len(ui['screens'])} scenes")
             else:
                 m, images = unpack(payload)
-                print(f"OK: {m['id']} / {m['name']} / v1 / {len(images)} assets")
+                details = {"assetCount": len(images)}
+                human_result = f"OK: {m['id']} / {m['name']} / v1 / {len(images)} assets"
+            if args.json:
+                _write_machine_json({
+                    "schemaVersion": 1,
+                    "command": "validate",
+                    "ok": True,
+                    "file": str(args.file.resolve()),
+                    "packageSha256": hashlib.sha256(payload).hexdigest(),
+                    "bytes": len(payload),
+                    "runtimeVersion": m["schemaVersion"],
+                    "skinId": m["id"],
+                    "skinName": m["name"],
+                    "manifest": m,
+                    **details,
+                }, sys.stdout)
+            else:
+                print(human_result)
         elif args.command == "build-v2":
             from runtime_package import build, read_assets
             manifest = json.loads(args.manifest.read_text("utf8"))
@@ -374,12 +399,26 @@ def main():
             args.out.write_bytes(result)
             print(f"Built {args.out} ({len(result)} bytes)")
         elif args.command == "build-v3":
-            from runtime_package_v3 import build
+            from runtime_package_v3 import build, unpack
+            from project_ops_v3 import write_atomic
             manifest = json.loads(args.manifest.read_text("utf8"))
             result = build(manifest, args.source_dir)
-            args.out.parent.mkdir(parents=True, exist_ok=True)
-            args.out.write_bytes(result)
-            print(f"Built v3 {args.out} ({len(result)} bytes)")
+            checked_manifest, files = unpack(result)
+            output_path = args.out.resolve()
+            write_atomic(output_path, result)
+            if args.json:
+                _write_machine_json({
+                    "schemaVersion": 1,
+                    "command": "build-v3",
+                    "ok": True,
+                    "output": str(output_path),
+                    "packageSha256": hashlib.sha256(result).hexdigest(),
+                    "bytes": len(result),
+                    "fileCount": len(files),
+                    "manifest": checked_manifest,
+                }, sys.stdout)
+            else:
+                print(f"Built v3 {output_path} ({len(result)} bytes)")
         else:
             port = getattr(args, "port", 8765)
             with ThreadingHTTPServer(("127.0.0.1", port), Handler) as server:
@@ -388,10 +427,12 @@ def main():
                     server.serve_forever()
                 except KeyboardInterrupt:
                     pass
-    except (SkinError, OSError, ValueError, UnicodeError, TypeError) as exc:
-        if args.command in ("inspect-v3", "read-v3", "edit-v3"):
-            _write_machine_json({"schemaVersion": 1, "ok": False, "error": str(exc)},
-                                sys.stderr)
+    except (SkinError, OSError, ValueError, UnicodeError, TypeError, BadZipFile,
+            KeyError, RuntimeError, EOFError, zlib.error) as exc:
+        if (args.command in ("inspect-v3", "read-v3", "edit-v3")
+                or getattr(args, "json", False)):
+            _write_machine_json({"schemaVersion": 1, "command": args.command,
+                                 "ok": False, "error": str(exc)}, sys.stderr)
             return 2
         raise
     return 0
