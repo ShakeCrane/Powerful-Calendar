@@ -1,8 +1,30 @@
 # PowerCal Core Freeze Verdict
 
-Date: 2026-10-25
+Date: 2026-10-27 (owner scope sign-off; original test history below retained)
 
-Verdict: **HOLD**
+Verdict: **CORE SCOPE FROZEN / SEPARATION ENTRY APPROVED BY OWNER**.
+Release-quality and external-acceptance verdict remains **HOLD**.
+
+## Owner decision (2026-10-27): permission to freeze CORE SCOPE and begin skin separation
+
+The owner explicitly approved freezing core development and preparing UI/skin
+separation. This changes the **engineering work-scope gate**, not the evidence
+status of any individual case. The independently reproduced implementation
+baseline is b1f7629f0c52812e1887443872f43aa6c49908c4, with 560/560 JVM tests,
+88/88 Gradle tasks and 0 lint errors. Left-wing title, AI review-card and
+Deadline reminder fixes are included. The right-wing title display has already
+been owner-accepted; no fresh OEM/provider/ICS signoff is implied.
+
+The 218-row reconstructed ledger contains open BLOCKED, NOT TESTED and SPEC
+UNRESOLVED cases; keep their original dispositions without converting to PASS.
+The owner accepted those documented evidence gaps for the **next development
+phase only**. Formal release/cutover must separately discharge or explicitly
+accept them as appropriate. Existing historical HOLD paragraphs below are
+unchanged test records, not a veto of this newer owner work-scope decision.
+
+Authoritative decision and separation gates:
+- docs/CORE_FREEZE_OWNER_SIGNOFF_2026-10-27.md
+- docs/SEPARATION_PHASE_KICKOFF_2026-10-27.md
 
 ## Latest follow-up: P02 Today camera decision (2026-10-25; narrow implementation PASS)
 

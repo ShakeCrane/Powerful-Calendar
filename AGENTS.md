@@ -122,3 +122,24 @@ to random unrelated paths.
   Otherwise stay **HOLD** and report exactly what is missing.
 - Work on the **core freeze only** until it is genuinely complete or the user changes
   scope; do not interpret this file as permission to launch unrelated feature projects.
+
+
+## 7. Owner-approved post-core separation phase (2026-10-27)
+
+The owner expressly authorized **core scope freeze** and beginning UI/skin
+separation. Read docs/CORE_FREEZE_OWNER_SIGNOFF_2026-10-27.md and
+docs/SEPARATION_PHASE_KICKOFF_2026-10-27.md before new work. The exact frozen
+app-source commit is b1f7629f0c52812e1887443872f43aa6c49908c4.
+
+The earlier HOLD/GO requirement remains a **Release QA/cutover** gate, not
+permission to veto the owner's core-work-scope signoff. Do not mark individual
+unverified acceptance rows PASS. Do not edit the concurrent CSV without its
+owner. Freeze means normal core semantics do not change during separation;
+core or security fixes still need a separate evidence/authorization process.
+
+New work belongs on a separation branch. Use the existing v3 Web Host Bridge,
+Skin Studio and canonical Clear source as the first migration target, not a
+second store/client/scheduler. No direct skin access to credentials/database
+or untrusted authorization. Existing Native must remain available until
+all functional parity, WebView/device tests and an independent factory-cutover
+authorization have passed. No default switch or native UI removal was approved.
