@@ -907,3 +907,11 @@ Updated: 2026-10-24
 - Related Host/AI JVM suites 24/24; full offline Android gate 593/593 JVM, 83 suites, 0 failures/errors/skips, 88 tasks; lint 0 errors / 52 warnings. API 35 emulator-5564 WebView 3/3 and SAF provider 1/1.
 - Skin Studio Python 42/42, Chrome source round-trip/AI Mocks, node check and Clear bundle verify passed. Evidence: `docs/issues/PC-ISSUE-SEPARATION-AI-REPLACE-DELETE.md`. `SEP-10` remains NOT TESTED; S3 remains open.
 - Test commit `93d067b2733021ff07c8139cc19f03606dbb153e` is pushed.
+
+## Separation — Clear AI decision WebView follow-up (2026-10-27)
+
+- Added the actual Clear WebView STAGE / REJECT / SUPPLEMENT instrumentation path and ran it on API 35 `emulator-5564`: **1/1 PASS**. One selected proposal staged, the independent proposal rejected, and an incomplete Activity was supplemented then rejected; no unapproved formal write occurred.
+- A separate PUBLISH rerun ended with ADB exit 255 and no JUnit result; `emulator-5564` then returned `device not found`. Its prior PUBLISH evidence remains PREVIOUS PASS. No emulator wipe/restart or other package cleanup was attempted.
+- Full offline Android gate: **593/593 JVM / 83 suites / 0 failures/errors/skips / 88 tasks**, lint 0/52. Studio Python 42/42, Chrome decision Mocks, Clear bundle verification and JS syntax check passed. Evidence: `docs/issues/PC-ISSUE-SEPARATION-AI-WEBVIEW-DECISIONS.md`.
+- Test commit `5bc70f8aee4f1d1f157fd006118b29ef80858d64` is pushed. The fresh QA applicationId used was `dev.powerfulcalendar.d05qaisolateddecisions20261027`; existing app/QA packages were not replaced or cleared.
+- SEP-10 / SEP-16 remain NOT TESTED and S3 stays open; next device step is to re-check 5564 when available, verify its isolated package state, and rerun PUBLISH before expanding to crash/restart recovery.
