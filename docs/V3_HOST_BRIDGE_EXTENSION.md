@@ -69,6 +69,10 @@ envelope and known fields only:
   session or draft form. Formal publication still requires the existing
   trusted Host review and revalidation. A `SINGLE_OCCURRENCE` editor rejects
   kind changes and permits only its established title/start/end fields.
+  Clear's formal-event and draft editors expose the four kinds through this
+  existing patch; the selector is omitted for `SINGLE_OCCURRENCE`. Studio's
+  conversion/confirmation flow is a non-writing Preview Mock, not Android
+  Host approval or WebView evidence.
 - `editor.delete` accepts exactly `sessionId` and only requests deletion from
   the active host-owned formal editor. It always returns `confirmation_required`
   before a write; the Android Host reviews the captured event/form snapshot,

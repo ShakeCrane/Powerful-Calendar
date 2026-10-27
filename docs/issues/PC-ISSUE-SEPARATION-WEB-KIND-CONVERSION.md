@@ -2,7 +2,7 @@
 
 ## 状态
 
-**PARTIAL / OPEN**。本报告覆盖 Web Host Bridge 对事件类型转换的支持，Host 侧定向实现及回归已通过并推送。Clear 皮肤编辑器仍没有类型选择器，因此 Native/Skin 功能等价未完成；SEP-05 与整体 parity 不能据此签核为 PASS。
+**PARTIAL / OPEN**。Host 的四类转换 patch 已通过回归；2026-10-28 已为 Clear 正式编辑器和草稿编辑器补上类型选择器，并同步 Studio 非写入预览。完整离线门禁、Edge Studio E2E 和 AndroidTest 编译通过，但 Android WebView/AVD 交互没有执行，Native/Skin 完整等价也未完成；SEP-05 和整体 parity 继续 `NOT TESTED`。
 
 ## 需求与复现
 
@@ -12,7 +12,7 @@ Native 正式事件编辑器允许将事件转换为 `ALARM`、`ACTIVITY`、`DEA
 
 ## 根因与修复
 
-根因是 Web 编辑协议没有把 Native 已支持的事件类型转换接入 Host 表单 patch；现有正式保存前 Host 审查和单次重复实例字段限制本身已存在，但无法收到有效类型转换后的表单。
+根因是 Web 编辑协议没有把 Native 已支持的事件类型转换接入 Host 表单 patch；现有正式保存前 Host 审查和单次重复实例字段限制本身已存在，但无法收到有效类型转换后的表单。首次 Host 修复后 Clear UI 仍未暴露选择入口；本次 follow-up 补齐该 UI。
 
 在 [WebSkinEditBridge.kt](../../app/src/main/java/dev/powerfulcalendar/ui/v2/WebSkinEditBridge.kt) 中，将 `kind` 加入受限 patch 字段，并严格解析四种 `TemporalKind` 名称。有效值统一调用 `TemporalConversion.convert(form, target).form`；未知值返回 invalid。该 patch 同时供 `editor.patch` 与 `deck.patch` 使用，不直接写数据库。
 
@@ -49,10 +49,10 @@ Native 正式事件编辑器允许将事件转换为 `ALARM`、`ACTIVITY`、`DEA
 
 ## 设备证据与残余项
 
-- Android WebView / 模拟器：本次未运行，状态 `NOT TESTED`。
-- 实体/OEM 设备：本次未运行，状态 `NOT TESTED`。
-- Clear UI：类型选择器未实现；`tools/skin-studio/default-clear/source/web/edit.js` 由并行 Agent 持有，本轮没有修改该文件，也没有把它纳入提交。需要协调其文件所有权后补上控件与端到端交互回归。
-- Native 与 Clear 的完整操作对照、键盘/窗口行为和设备 parity 未验证；SEP-05 及整体 parity 保持 `NOT TESTED`。本次 Host 桥定向测试不能替代这些验收。
+- Android WebView / AVD：类型选择器的 instrumentation 用例已经加入并编译进 AndroidTest APK，但没有安装运行。当前配置的 `E:\android-sdk\emulator\emulator.exe` 和用户 SDK 下的 emulator launcher 均不存在；`adb devices -l` 因 ADB daemon 启动失败退出 1。状态为 `BLOCKED / NOT TESTED`，不能把浏览器预览当作 Android WebView 结果。
+- 实体/OEM 设备：本轮未运行，按用户分工留给用户验证。
+- Clear 类型选择器与转换后的条件字段在 Edge 中通过 Studio Preview Mock 验证；Mock 明确不写真实日历数据，也不代表可信 Android Host 审查。
+- Native 与 Clear 的完整操作对照、其它事件类型的设备交互、键盘/窗口行为、无障碍、取消/恢复及设备 parity 尚未验证；SEP-05 和总体分离验收保持 `NOT TESTED`。
 
 ## Git 交付
 
@@ -63,4 +63,31 @@ Native 正式事件编辑器允许将事件转换为 `ALARM`、`ACTIVITY`、`DEA
 
 ## 下一步
 
-协调 `edit.js` 所有权后，为 Clear 编辑器加入四种类型的选择入口，复用 Web Host `kind` patch，并验证默认值/转换结果、单次重复限制、正式保存审查和取消路径。再执行实际 Android WebView 回归；完成前 SEP-05 与整体分离验收维持 `NOT TESTED`，不据此宣布功能 parity 或切换 GO。
+在可用的隔离 API 35 AVD 上运行本报告新增的 `WebSkinKindConversionInstrumentedTest`，确认真实 Clear WebView 的 `SINGLE_OCCURRENCE` 隐藏选择器、整系列转换 Host 审查/取消/批准及正式事件身份保留；随后补齐全四类 Native/Skin 对照。完成前 SEP-05 与整体分离验收维持 `NOT TESTED`，不据此宣布功能 parity 或切换 GO。
+
+## Clear UI follow-up — `kind` 转换入口（2026-10-28）
+
+### 实现
+
+- `tools/skin-studio/default-clear/source/web/edit.js`：正式编辑与草稿编辑都显示无障碍标签为“事件类型”的四选项控件，并通过现有 `editor.patch` / `deck.patch` 发送 `kind`。`SINGLE_OCCURRENCE` 表单隐藏该控件，继续只允许现有标题和时间字段。Host 的 kind 投影到达时，选择控件失焦后按权威表单重新渲染相关时间字段。
+- `tools/skin-studio/v3-studio.js`：预览 Mock 对四种合法 kind 执行对应的字段锚点转换，并把正式编辑保存留在显式、可取消的非写入 Mock 审查中。Mock 不实现或授予 Host 权限。
+- `tools/skin-studio/tests/e2e_v3_source.cjs`：实际 Edge Studio 页面覆盖草稿 ACTIVITY→DEADLINE、正式编辑 ACTIVITY→ALARM、`SINGLE_OCCURRENCE` 无类型控件、整系列保存进入 Mock 审查、取消后保留表单，以及重复事件后续编辑流程。
+- `WebSkinKindConversionInstrumentedTest.kt`：使用随机隔离 SQLite 和真实 PowerCal Compose + Clear WebView，断言单次范围隐藏类型控件、整系列显示四种选项、转换未审批前不改 Store、取消无写入，批准后保留 `eventSeq` 和重复规则、revision 增一且只新增一个 commit。
+- 从 canonical `default-clear/source` 重新生成并验证 APK bundle；本次只提交本任务生成的 bundle，不包含并行 worktree 中尚未提交的其它 Clear 源文件。
+
+### 回归与证据
+
+- 详细证据目录：`.local/android-test/reports/separation-web-kind-conversion-20261028/`，包含最终日志、失败尝试日志、83 个完整 JUnit XML、lint XML 和 Debug/AndroidTest APK。
+- JavaScript 语法检查：`node --check` 对 `edit.js`、`v3-studio.js` 和 `e2e_v3_source.cjs` 均通过。
+- Edge Studio E2E 命令：`$env:CHROME_PATH='C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'; node tools/skin-studio/tests/e2e_v3_source.cjs`。最终诊断运行和重复运行均通过，覆盖源码/项目/资源导入导出往返，以及上述 kind 转换和 Mock 审查。两份日志 SHA-256 均为 `EEB107ECAF1C569053CD46D7798911262D4F9851CF303EAB1EDD3E4CFB6FBE5C`。此证据使用 Mock Host，不是 Android WebView。
+- Skin Studio Python 全套：**51/51 PASS**。日志 SHA-256 `E511607A75563FDB52CDF49D2F0D8A3DB505067852BF8BB5586AB88475854DD8`。`build_default_clear.py --verify` 通过，8 files / 377,973 bytes；bundle SHA-256 `683E1CF8FEDD5F46A7099B7DBBF8A637EFD60CEAA2647EFCA25EA2C3A329EDD1`。
+- 完整离线 Gradle 命令 `:app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug --offline --rerun-tasks --no-daemon --console=plain`：**601/601 JVM tests、83 suites、0 failures/errors/skips、88/88 tasks**；source boundary、Debug / AndroidTest APK 和 lint 通过，lint **0 errors / 52 warnings**。完整日志 SHA-256 `9393A342DEC973CDFCB345B9462E2309B1671DB14C7431FE0D064A82D9EB3C27`。83 份 JUnit XML 已归档。AndroidTest Kotlin 定向编译也成功，日志 SHA-256 `C1614A151E3851BB4F52A42CC9BF8348445F9D7A839BC94305BEC4A24D72A3C8`。
+- Debug APK SHA-256 `BE9FFF581016286D36B42DF82E9277DCEE2628E2581F7550FD92C93594EA5FCC`；AndroidTest APK SHA-256 `60F08FFC420D8C67860FE9D85938C5237CF3C48CD49D5EFC260DC1187C5C9B90`。
+- 真实 AVD 未测。只读 `adb devices -l` 状态日志 SHA-256 `EE3823CBD4248DAD20FA8E16CC8CB4F1AF488E4D96FBF4C2F97D55117E5B2D82`；ADB daemon 无法启动，两个检查位置都没有 emulator launcher。实体设备没有触碰。
+- 迭代中保留了一次 Studio E2E 能力声明断言失败日志（SHA-256 `A6B3C47F6651874259F3511AF7F5325E36FF28E816F3DAABE6030D6634E74E42`）；随后增加实际值诊断，两次诊断运行均通过。另两次更早失败分别由未重建的隔离 bundle 和跨 frame 测试误查 parent DOM 引起，均已纠正测试准备/断言路径。最终结论以最后两次 E2E 通过及 51/51 Studio 全套为准，同时保留上述失败日志供追溯。
+
+### Git 与状态
+
+- 实现/测试/bundle 提交：`3c1ec3a8635fd0816647fe1de0985f7d329e0a38`，`feat(分离): 为 Clear 编辑器加入事件类型转换`，已推送至 `origin/feat/skin-first-separation`。
+- 本 follow-up 的报告和矩阵另作文档提交。共享 `docs/agent-handoff/PROGRESS.md` 及并行 Clear 源码修改仍归其他 Agent，本轮未编辑、暂存或提交。
+- 本补丁只补齐 UI 入口和 Studio 支持；Host 原转换仍由此前提交 `0f944401ca28705429383955489fd70cc83b5426` 提供。由于真实 WebView 和完整 Native/Skin 回放未执行，本 Issue 仍为 **PARTIAL / OPEN**。
