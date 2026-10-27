@@ -1,5 +1,12 @@
 # Core freeze progress
 
+## Separation — Studio AI static HTML page/component inventory (2026-10-28)
+
+- Goal C gap: v3 `inspect-v3` exposed package files and `project.json`, but no queryable HTML page/node inventory. Added read-only `analyze-v3`: validated package hash, HTML page/source hashes, title and asset references, explicit source nesting, ordered attributes, ids, parent/child IDs, bounded direct text and static control counts; capped at 20,000 nodes and reports JS/runtime DOM limits. It does not edit, normalize or execute skin code.
+- First focused test run caught leading whitespace in the first direct-text segment; normalization was fixed. Final `test_project_ops_v3.py` **10/10** and full Skin Studio Python **53/53** pass. Actual canonical Clear analysis reports 1 static HTML page / 88 nodes / 23 static interactive nodes and identifies timeline/month/Memo/AI/sheet roots. Clear bundle verify remains 8 files / 379252 bytes, SHA-256 `7B3FBB7C402E5C776894497D96BA1CEEE7189E8ACB48EEE70ECE2E9C19CCF81A`.
+- Focused/full/actual output evidence: `project-ops-focused.log` SHA-256 `F257C312EF6BF7202CD40CB091C25F6AA3C0EF489CD390094E647B2867CE52FA`; `studio-python-final.log` SHA-256 `83C1A21E0B7B54E53CF277346C43ECF4D0F9DBEE3AECBE355685724777C25C58`; `clear-analysis.json` SHA-256 `063E8F7A2DE7910D6A5A4F21ABFE6CD3997B1A26EB6A11E3F72FC00D8C680518`. Narrow CLI slice PASS; report `docs/issues/PC-ISSUE-SEPARATION-STUDIO-STATIC-INVENTORY.md`. SEP-15 remains **NOT TESTED**; full visual component editing, JS-generated runtime inventory and Android/device evidence remain open. No emulator binary was present and ADB daemon did not start.
+- Implementation commit: `9ec85b9e3f963aa86603555ab90c17ca194373c8`. Continue the AI authoring/runtime inventory gap; do not infer full Studio or separation completion from the static index.
+
 ## Separation — draft deck conflict review and deleted-event restore (2026-10-28)
 
 - Root cause: Native DeckController supported stale replacement and tombstone restoration, but the Web bridge had no trusted request path; direct skin confirmation was correctly rejected, leaving Clear without reachable recovery actions. Added request-only `deck.reviewConflict` / `deck.reviewRestore`, Host-owned Compose full-snapshot dialogs, state revalidation before writes, cancellation retention and idempotent replay handling. Clear and the non-writing Studio Mock now expose the recovery actions.
