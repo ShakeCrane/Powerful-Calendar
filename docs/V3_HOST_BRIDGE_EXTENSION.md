@@ -69,6 +69,13 @@ envelope and known fields only:
   session or draft form. Formal publication still requires the existing
   trusted Host review and revalidation. A `SINGLE_OCCURRENCE` editor rejects
   kind changes and permits only its established title/start/end fields.
+- `editor.delete` accepts exactly `sessionId` and only requests deletion from
+  the active host-owned formal editor. It always returns `confirmation_required`
+  before a write; the Android Host reviews the captured event/form snapshot,
+  rechecks the active session and formal record revision, then calls the existing
+  `EditSession.delete()`. Cancelling writes nothing. A repeated confirmed command
+  is replay-safe. Deleting a repeating formal event retires the full series and
+  its occurrences, consistent with the existing Native `deleteFormalEvent` path.
 - `pickAiFile` and `pickAiImage` accept only the `name` field and only while
   the AI page is active and no conflicting review, edit or picker is pending.
   They launch the existing Android Host picker. The file path retains local

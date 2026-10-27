@@ -47,6 +47,7 @@ internal sealed interface WebEditCommand {
     data class PatchEvent(override val requestId: String, val sessionId: String,
         val field: String, val value: String): WebEditCommand
     data class SaveEvent(override val requestId: String, val sessionId: String): WebEditCommand
+    data class DeleteEvent(override val requestId: String, val sessionId: String): WebEditCommand
     data class CloseEvent(override val requestId: String, val sessionId: String): WebEditCommand
     data class OpenDeck(override val requestId: String, val draftId: Long?): WebEditCommand
     data class CreateDeck(override val requestId: String, val kind: TemporalKind): WebEditCommand
@@ -124,6 +125,8 @@ internal object WebEditWire {
             }
             "editor.save" -> if (exact("sessionId"))
                 WebEditCommand.SaveEvent(id,sessionId()?:return null) else null
+            "editor.delete" -> if (exact("sessionId"))
+                WebEditCommand.DeleteEvent(id,sessionId()?:return null) else null
             "editor.close" -> if (exact("sessionId"))
                 WebEditCommand.CloseEvent(id,sessionId()?:return null) else null
             "deck.open" -> if(exact("draftId")) {
@@ -241,6 +244,7 @@ internal data class WebFormalWriteReview(
     val scope: RecurrenceEditScope? = null,
     val occurrenceKey: String? = null,
     val editorSession: EditSession? = null,
+    val editorFormSnapshot: DraftForm? = null,
     val newEventSession: NewEventEditSession? = null,
     val deckCard: DraftCard? = null,
     val deckForm: DraftForm? = null,
@@ -433,6 +437,27 @@ internal class WebSkinEditService(
                         is PowerStore.DirectEditOutcome.Invalid ->
                             result(cmd.requestId,"invalid",saved.reason)
                         PowerStore.DirectEditOutcome.Locked -> result(cmd.requestId,"locked")
+                    }
+                }
+                is WebEditCommand.DeleteEvent -> {
+                    if (!editorMatches(cmd.sessionId)) result(cmd.requestId, "stale")
+                    else {
+                        val active = session!!
+                        val current = withContext(Dispatchers.IO) { store.get(active.eventSeq) }
+                        if (current == null) result(cmd.requestId, "stale")
+                        else {
+                            pendingWriteReview = WebFormalWriteReview(
+                                token = UUID.randomUUID().toString(),
+                                command = cmd,
+                                operation = DraftOperation.DELETE,
+                                current = current,
+                                before = current,
+                                proposed = null,
+                                editorSession = active,
+                                editorFormSnapshot = active.form
+                            )
+                            result(cmd.requestId, "confirmation_required")
+                        }
                     }
                 }
                 is WebEditCommand.CloseEvent -> {
@@ -723,6 +748,29 @@ internal class WebSkinEditService(
                         is PowerStore.DirectEditOutcome.Conflict -> result(review.command.requestId,"conflict")
                         is PowerStore.DirectEditOutcome.Invalid -> result(review.command.requestId,"invalid",saved.reason)
                         PowerStore.DirectEditOutcome.Locked -> result(review.command.requestId,"locked")
+                    }
+                }
+                is WebEditCommand.DeleteEvent -> {
+                    val active = review.editorSession
+                    val current = review.current
+                    if (active == null || current == null || session !== active ||
+                        sessionId != review.command.sessionId ||
+                        review.operation != DraftOperation.DELETE ||
+                        active.form != review.editorFormSnapshot ||
+                        withContext(Dispatchers.IO) { store.get(current.eventSeq) } != current) {
+                        result(review.command.requestId, "conflict", "事件或审查内容已变化")
+                    } else when (val deleted = withContext(Dispatchers.IO) { active.delete() }) {
+                        is PowerStore.DirectEditOutcome.Saved -> {
+                            withContext(Dispatchers.IO) { active.close() }
+                            session = null
+                            sessionId = null
+                            result(review.command.requestId, "saved", current.eventSeq.toString())
+                        }
+                        is PowerStore.DirectEditOutcome.Conflict ->
+                            result(review.command.requestId, "conflict")
+                        is PowerStore.DirectEditOutcome.Invalid ->
+                            result(review.command.requestId, "invalid", deleted.reason)
+                        PowerStore.DirectEditOutcome.Locked -> result(review.command.requestId, "locked")
                     }
                 }
                 is WebEditCommand.CommitDeck -> resolveDeckCommit(review)

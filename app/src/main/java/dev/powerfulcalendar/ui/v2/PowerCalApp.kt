@@ -1801,8 +1801,11 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                         })
                     }
                     review.occurrenceKey?.let { Text("原始实例：$it") }
-                    Text(if (review.operation == DraftOperation.DELETE)
-                        "以下正式事件将被删除，请核对后确认。"
+                    Text(if (review.operation == DraftOperation.DELETE) {
+                        if (review.current?.recurrence?.freq?.name?.let { it != "NONE" } == true)
+                            "确认后将删除整个正式重复事件及其所有实例。请核对事件内容后确认。"
+                        else "确认后将删除该正式事件。请核对事件内容后确认。"
+                    }
                     else "请核对完整内容；只有在此宿主对话框确认后才会写入正式事件。")
                     when {
                         review.proposed != null -> snapshotRows(review.before, review.proposed)

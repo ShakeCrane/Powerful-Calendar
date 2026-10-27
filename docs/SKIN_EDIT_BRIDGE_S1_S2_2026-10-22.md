@@ -94,7 +94,9 @@ and state for current authoritative values.
   `kind` (`ALARM`, `ACTIVITY`, `DEADLINE`, `MEMO`) and use the frozen
   `TemporalConversion` rules. Kind changes remain in the host-owned editor
   until its trusted save review; `SINGLE_OCCURRENCE` continues to reject them.
-- `editor.save`: `sessionId`
+- `editor.save`: `sessionId`; `editor.delete`: `sessionId` requests a delete review
+  from the active formal editor. The Host requires its own confirmation and
+  rechecks the captured session and event version before using `EditSession.delete()`.
 - `editor.close`: `sessionId` (checkpoint first; failure keeps lease)
 - `deck.open`: `draftId` (nullable)
 - `deck.create`: `kind` (ACTIVITY, ALARM, DEADLINE, MEMO)

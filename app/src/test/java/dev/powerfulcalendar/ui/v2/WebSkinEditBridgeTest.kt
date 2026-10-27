@@ -5,6 +5,7 @@ import androidx.test.core.app.ApplicationProvider
 import dev.powerfulcalendar.core.DeckController
 import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.DraftForm
+import dev.powerfulcalendar.core.DraftStatus
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.StoreDeckPersistence
 import dev.powerfulcalendar.core.TemporalConversion
@@ -69,7 +70,11 @@ class WebSkinEditBridgeTest {
         assertNull(WebEditWire.decode(wire("deck.flush", ""","unexpected":false""")))
         assertNull(WebEditWire.decode(wire("deck.confirmConflict")))
         assertNull(WebEditWire.decode(wire("deck.confirmRestore")))
-        assertNull(WebEditWire.decode(wire("editor.delete")))
+        val deleteSession = request()
+        assertNotNull(WebEditWire.decode(wire("editor.delete",
+            ",\"sessionId\":\"$deleteSession\"")))
+        assertNull(WebEditWire.decode(wire("editor.delete",
+            ",\"sessionId\":\"$deleteSession\",\"force\":true")))
 
         assertNull(WebEditWire.decode(wire("deck.create").replace("\"command\"","\"other\"")))
         assertNull(WebEditWire.decode("x".repeat(8193)))
@@ -156,6 +161,73 @@ class WebSkinEditBridgeTest {
         assertEquals("closed",service.execute(WebEditCommand.CloseEvent(request(),sid))
             .getString("status"))
         assertFalse(service.snapshot().getJSONObject("editor").getBoolean("open"))
+    }
+
+    @Test fun formalDeleteRequiresHostReviewAndIsIdempotent() = runBlocking {
+        val card = store.newDraft(DraftForm(kind = TemporalKind.MEMO, title = "Delete me"))
+        assertTrue(store.commit(card.draftId) is PowerStore.CommitOutcome.Committed)
+        val original = requireNotNull(store.get(card.eventSeq))
+        val pending = store.newDraft(DraftForm.from(original).copy(title = "Pending edit"),
+            original.eventSeq, DraftOperation.REPLACE)
+        val commitsBeforeDelete = store.commitCount()
+        assertEquals("opened", service.execute(WebEditCommand.OpenEvent(
+            request(), original.eventSeq, original.revision)).getString("status"))
+        val sessionId = service.snapshot().getJSONObject("editor").getString("sessionId")
+        val decoded = WebEditWire.decode(wire("editor.delete",
+            ",\"sessionId\":\"$sessionId\""))
+        assertTrue(decoded is WebEditCommand.DeleteEvent)
+        val cancelCommand = decoded as WebEditCommand.DeleteEvent
+
+        assertEquals("confirmation_required", service.execute(cancelCommand).getString("status"))
+        val cancelReview = requireNotNull(service.pendingWriteReview)
+        assertEquals(DraftOperation.DELETE, cancelReview.operation)
+        assertEquals(original, cancelReview.current)
+        assertEquals(original, store.get(original.eventSeq))
+        assertEquals(pending, store.draft(pending.draftId))
+        assertEquals("cancelled", service.resolveFormalWriteReview(
+            cancelReview.token, approved = false).getString("status"))
+        assertEquals(original, store.get(original.eventSeq))
+        assertEquals(pending, store.draft(pending.draftId))
+        assertTrue(service.snapshot().getJSONObject("editor").getBoolean("open"))
+        assertEquals("cancelled", service.execute(cancelCommand).getString("status"))
+
+        val deleteCommand = WebEditCommand.DeleteEvent(request(), sessionId)
+        assertEquals("confirmation_required", service.execute(deleteCommand).getString("status"))
+        val deleteReview = requireNotNull(service.pendingWriteReview)
+        assertEquals("saved", service.resolveFormalWriteReview(
+            deleteReview.token, approved = true).getString("status"))
+        assertNull(store.get(original.eventSeq))
+        assertEquals(DraftStatus.DISCARDED, store.draft(pending.draftId)?.status)
+        assertTrue(store.pendingDraftsFor(original.eventSeq).isEmpty())
+        assertTrue(store.isRetired(original.eventSeq))
+        assertEquals(commitsBeforeDelete + 1, store.commitCount())
+        assertFalse(service.snapshot().getJSONObject("editor").getBoolean("open"))
+        assertEquals("saved", service.execute(deleteCommand).getString("status"))
+        assertNull(store.get(original.eventSeq))
+        assertEquals(commitsBeforeDelete + 1, store.commitCount())
+    }
+
+    @Test fun formalDeleteReviewRejectsChangedRevision() = runBlocking {
+        val card = store.newDraft(DraftForm(kind = TemporalKind.MEMO, title = "Concurrent edit"))
+        assertTrue(store.commit(card.draftId) is PowerStore.CommitOutcome.Committed)
+        val original = requireNotNull(store.get(card.eventSeq))
+        assertEquals("opened", service.execute(WebEditCommand.OpenEvent(
+            request(), original.eventSeq, original.revision)).getString("status"))
+        val sessionId = service.snapshot().getJSONObject("editor").getString("sessionId")
+        val command = WebEditCommand.DeleteEvent(request(), sessionId)
+
+        assertEquals("confirmation_required", service.execute(command).getString("status"))
+        val review = requireNotNull(service.pendingWriteReview)
+        assertTrue(store.setCompleted(original.eventSeq, "single", true, original.revision))
+        val result = service.resolveFormalWriteReview(review.token, approved = true)
+
+        assertEquals("conflict", result.getString("status"))
+        val latest = requireNotNull(store.get(original.eventSeq))
+        assertEquals(original.revision + 1, latest.revision)
+        assertEquals(setOf("single"), latest.completedKeys)
+        assertFalse(store.isRetired(original.eventSeq))
+        assertTrue(service.snapshot().getJSONObject("editor").getBoolean("open"))
+        assertEquals("conflict", service.execute(command).getString("status"))
     }
 
     @Test fun formalEditorKindConversionRequiresHostReviewAndKeepsIdentity() = runBlocking {
