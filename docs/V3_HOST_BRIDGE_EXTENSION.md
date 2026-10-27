@@ -143,7 +143,11 @@ The host still runs package HTML/CSS/JS entirely offline, from the exact
 PowerStore, arbitrary native function calls or file access.
 The active page channel is disposed/replaced during reload; a stale channel
 must not reach the host. State is a bounded projection, not a database view.
-All settings, risky changes, confirmations and emergency recovery stay native.
+Skins may own and freely present a settings landing page and may invoke only
+bounded Host-projected actions. Credentials, Android permissions, backup/restore,
+skin installation/management, risky changes, confirmations and emergency
+recovery remain under trusted Host control. The compatibility `settings` action
+opens the native Host tools page; `skinSettings` opens the skin-owned landing.
 Skin Studio's AI attachment preview only records a non-writing Mock request;
 it does not open a system picker or read, upload or import a file.
 
