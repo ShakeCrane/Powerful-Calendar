@@ -240,6 +240,195 @@ class PowerCalAiProposalReviewWebViewInstrumentedTest {
         }
     }
 
+    @Test
+    fun actualClearWebViewStagesRejectsAndSupplementsThroughHostWithoutUnapprovedWrites() {
+        val storage: Context = compose.activity.applicationContext
+        val namespace = "pc-ai-decisions-${UUID.randomUUID()}"
+        val context = IsolatedAppContext(compose.activity, storage, namespace)
+        val database = "decisions.db"
+        val store = PowerStore(context, database)
+        val beforeDrafts = store.draftCount()
+        val beforeIdentities = store.identityCount()
+        val beforeCommits = store.commitCount()
+        val requests = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val serverFailure = AtomicReference<Throwable?>()
+        val served = CountDownLatch(6)
+        val firstPrompt = "创建两条独立备忘：第一条和第二条。"
+        val initialProposals = JSONObject().put("events", JSONArray()
+            .put(JSONObject().put("operation", "CREATE").put("kind", "MEMO")
+                .put("title", "第一条备忘"))
+            .put(JSONObject().put("operation", "CREATE").put("kind", "MEMO")
+                .put("title", "第二条备忘"))).toString()
+        val firstSupplementPrompt = "帮我创建一个活动，2026-12-01 19:00 开始，标题是接口评审。"
+        val completedActivity = JSONObject().put("events", JSONArray().put(JSONObject()
+            .put("operation", "CREATE").put("kind", "ACTIVITY")
+            .put("title", "接口评审")
+            .put("start", "2026-12-01 19:00")
+            .put("end", "2026-12-01 20:00"))).toString()
+
+        try {
+            store.readableDatabase
+            context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                .edit().putBoolean("system-calendar-import-asked", true).commit()
+            AiChatHistoryStore.save(context, emptyList())
+
+            ServerSocket(0, 4, InetAddress.getByName("127.0.0.1")).use { server ->
+                server.soTimeout = 20_000
+                AiSettingsStore.save(context, AiSettings(
+                    endpoint = "http://127.0.0.1:${server.localPort}/v1",
+                    model = "local-stub:free",
+                    apiKey = "LOCAL_TEST_ONLY",
+                    enabled = true,
+                    shareContext = false
+                ))
+                val responses = listOf(
+                    "我会生成两项待核对提案。" +
+                        "[[POWERCAL_DRAFT]]{\"type\":\"draft\",\"intent\":\"explicit\"}[[/POWERCAL_DRAFT]]",
+                    initialProposals,
+                    "活动还缺少结束时间，请补充几点结束。",
+                    JSONObject().put("events", JSONArray()).toString(),
+                    "收到补充信息，我会重新核对候选。" +
+                        "[[POWERCAL_DRAFT]]{\"type\":\"draft\",\"intent\":\"explicit\"}[[/POWERCAL_DRAFT]]",
+                    completedActivity
+                )
+                val serverThread = Thread {
+                    try {
+                        repeat(responses.size) { index ->
+                            server.accept().use { socket ->
+                                socket.soTimeout = 15_000
+                                requests += readRequest(socket)
+                                writeReply(socket, responses[index])
+                            }
+                            served.countDown()
+                        }
+                    } catch (error: Throwable) {
+                        serverFailure.set(error)
+                        while (served.count > 0) served.countDown()
+                    }
+                }.apply { name = "pc-ai-decisions-webview-local-stub"; isDaemon = true; start() }
+
+                compose.runOnUiThread {
+                    SkinPackageManager(context).select("powercal-clear-default")
+                    compose.activity.setContent {
+                        CompositionLocalProvider(LocalContext provides context) {
+                            PowerCalTheme { PowerCalApp(store) }
+                        }
+                    }
+                }
+                var web: WebView? = null
+                compose.waitUntil(30_000) {
+                    compose.runOnUiThread {
+                        web = findWebView(compose.activity.findViewById(android.R.id.content))
+                    }
+                    web != null
+                }
+                val view = requireNotNull(web)
+                awaitJs(view, "!!document.querySelector('.clear-tabbar [data-action=ai]')")
+                awaitJs(view, "document.querySelector('#dateSubtitle')?.textContent !== '日历 · Clear'")
+                evaluate(view, "document.querySelector('.clear-tabbar [data-action=ai]').click(); true")
+                awaitJs(view, "!document.querySelector('#aiPage').hidden")
+
+                fun sendChat(text: String) {
+                    val sent = evaluate(view, "(()=>{const input=document.querySelector('#chatInput');" +
+                        "if(!input)return false;input.value=${JSONObject.quote(text)};" +
+                        "document.querySelector('#chatForm').requestSubmit();return true})()")
+                    assertEquals("true", sent)
+                }
+
+                fun clickReviewAction(label: String) {
+                    val clicked = evaluate(view, "(()=>{const button=Array.from(" +
+                        "document.querySelectorAll('.ai-proposal-actions button')).find(" +
+                        "item=>item.textContent.trim()===${JSONObject.quote(label)});" +
+                        "if(!button||button.disabled)return false;button.click();return true})()")
+                    assertEquals("button '$label' must be enabled in Clear", "true", clicked)
+                }
+
+                sendChat(firstPrompt)
+                awaitJs(view, "document.querySelectorAll('.ai-proposal-item').length===2")
+                awaitJs(view, "Array.from(document.querySelectorAll('.ai-proposal-actions button'))" +
+                    ".some(button=>button.textContent.trim()==='写入草稿'&&!button.disabled)")
+                assertNull("local AI stub failed before partial stage: ${serverFailure.get()}",
+                    serverFailure.get())
+                assertEquals("review must not write before a decision", beforeDrafts, store.draftCount())
+                assertEquals(beforeIdentities, store.identityCount())
+                assertEquals(beforeCommits, store.commitCount())
+
+                val deselected = evaluate(view, "(()=>{const items=" +
+                    "Array.from(document.querySelectorAll('.ai-proposal-item input[type=checkbox]'));" +
+                    "if(items.length!==2)return false;if(items[1].checked)items[1].click();" +
+                    "return !Array.from(document.querySelectorAll(" +
+                    "'.ai-proposal-item input[type=checkbox]'))[1].checked})()")
+                assertEquals("the second independent candidate must be deselected before staging", "true", deselected)
+                clickReviewAction("写入草稿")
+                awaitJs(view, "document.querySelectorAll('.ai-proposal-item').length===1 && " +
+                    "document.querySelector('.ai-proposal-title')?.textContent.includes('第二条备忘')")
+                assertEquals(1L, store.draftCount())
+                assertEquals(1, store.pendingCount())
+                assertEquals(0, store.all().size)
+                assertEquals(beforeIdentities + 1, store.identityCount())
+                assertEquals(beforeCommits, store.commitCount())
+
+                clickReviewAction("批量拒绝")
+                awaitJs(view, "document.querySelectorAll('.ai-proposal-item').length===0")
+                assertEquals("reject must leave the staged draft untouched", 1L, store.draftCount())
+                assertEquals(1, store.pendingCount())
+                assertEquals(0, store.all().size)
+                assertEquals(beforeIdentities + 1, store.identityCount())
+                assertEquals(beforeCommits, store.commitCount())
+
+                sendChat(firstSupplementPrompt)
+                awaitJs(view, "document.querySelectorAll('.ai-proposal-item').length===1")
+                awaitJs(view, "Array.from(document.querySelectorAll('.ai-proposal-actions button'))" +
+                    ".some(button=>button.textContent.trim()==='补充细节'&&!button.disabled)")
+                val beforeSupplement = store.draftCount()
+                clickReviewAction("补充细节")
+                awaitJs(view, "document.querySelectorAll('.ai-proposal-item').length===1 && " +
+                    "document.querySelector('#chatMessages').textContent.includes('请在下方聊天框补充')")
+                assertEquals("supplement choice is review-only", beforeSupplement, store.draftCount())
+                assertEquals(beforeIdentities + 1, store.identityCount())
+                assertEquals(beforeCommits, store.commitCount())
+
+                sendChat("请在 20:00 结束。")
+                awaitJs(view, "document.querySelectorAll('.ai-proposal-item').length===1 && " +
+                    "document.querySelector('.ai-proposal-item-body')?.textContent.includes('2026-12-01 20:00')")
+                assertTrue("all six local AI calls must finish", served.await(1, TimeUnit.SECONDS))
+                serverThread.join(2_000)
+                assertNull("local AI stub failed: ${serverFailure.get()}", serverFailure.get())
+                assertEquals(6, requests.size)
+                assertTrue("follow-up interpretation must include both user turns",
+                    requests.last().contains(firstSupplementPrompt) &&
+                        requests.last().contains("请在 20:00 结束。"))
+                assertEquals("supplemented candidate remains a proposal until an explicit decision",
+                    beforeSupplement, store.draftCount())
+                assertEquals(1, store.pendingCount())
+                assertEquals(0, store.all().size)
+                assertEquals(beforeIdentities + 1, store.identityCount())
+                assertEquals(beforeCommits, store.commitCount())
+
+                clickReviewAction("批量拒绝")
+                awaitJs(view, "document.querySelectorAll('.ai-proposal-item').length===0")
+                assertEquals("final rejection must preserve only the explicitly staged draft",
+                    1L, store.draftCount())
+                assertEquals(1, store.pendingCount())
+                assertEquals(0, store.all().size)
+                assertEquals(beforeIdentities + 1, store.identityCount())
+                assertEquals(beforeCommits, store.commitCount())
+            }
+        } finally {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            store.close()
+            context.deleteDatabase(database)
+            listOf("powercal-ai", "powercal-onboarding", "powercal-ui",
+                "powercal-skin-choice", "powercal-profile", "powercal-file-ai-consent")
+                .forEach { name -> storage.deleteSharedPreferences("$namespace-$name") }
+            File(storage.cacheDir, namespace).deleteRecursively()
+        }
+    }
+
     private fun readRequest(socket: java.net.Socket): String {
         val input = socket.getInputStream().buffered()
         fun line(): String {
