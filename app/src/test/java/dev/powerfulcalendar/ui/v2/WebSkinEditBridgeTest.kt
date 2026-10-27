@@ -6,10 +6,12 @@ import dev.powerfulcalendar.core.DeckController
 import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.DraftStatus
+import dev.powerfulcalendar.core.EditorSelection
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.StoreDeckPersistence
 import dev.powerfulcalendar.core.TemporalConversion
 import dev.powerfulcalendar.core.TemporalKind
+import dev.powerfulcalendar.core.TimelineCoordinate
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.After
@@ -19,6 +21,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import java.time.Instant
+import java.time.ZoneId
 import java.util.UUID
 
 @RunWith(RobolectricTestRunner::class)
@@ -381,6 +385,59 @@ class WebSkinEditBridgeTest {
         assertEquals(commits,store.commitCount())
         assertEquals(drafts,store.draftCount())
         assertEquals(0,store.pendingCount())
+        assertTrue(store.all().isEmpty())
+    }
+
+    @Test fun timelineCreateUsesSnappedAnchorAndConfiguredZoneForEveryKindWithoutWrites() = runBlocking {
+        val zone = ZoneId.of("America/Los_Angeles")
+        val anchor = Instant.parse("2026-10-22T16:08:00Z").toEpochMilli()
+        val camera = TimelineCoordinate.Camera(anchor, 24.0)
+        val expectedStart = TimelineCoordinate.snap(camera.anchorMillis, camera.hours, zone)
+        val selection = newEventSelectionForPage("TIMELINE", camera, zone)
+        assertEquals(EditorSelection.AtInstant(expectedStart), selection)
+        assertEquals(
+            EditorSelection.OnDate(Instant.ofEpochMilli(anchor).atZone(zone).toLocalDate()),
+            newEventSelectionForPage("MONTH", camera, zone)
+        )
+        assertNull(newEventSelectionForPage("MEMO", camera, zone))
+
+        val identities = store.identityCount()
+        val commits = store.commitCount()
+        val drafts = store.draftCount()
+        val pending = store.pendingCount()
+        for (kind in TemporalKind.entries) {
+            val opened = service.execute(
+                WebEditCommand.CreateDeck(request(), kind),
+                newEventZone = zone,
+                newEventSelection = selection
+            )
+            assertEquals("created", opened.getString("status"))
+            val form = service.snapshot().getJSONObject("deck").getJSONObject("form")
+            assertEquals(kind.name, form.getString("kind"))
+            assertEquals(zone.id, form.getString("zoneId"))
+            when (kind) {
+                TemporalKind.ALARM -> assertEquals(
+                    DraftForm.formatInstant(expectedStart, zone), form.getString("startText"))
+                TemporalKind.ACTIVITY -> {
+                    assertEquals(DraftForm.formatInstant(expectedStart, zone), form.getString("startText"))
+                    assertEquals(DraftForm.formatInstant(expectedStart + 3_600_000L, zone),
+                        form.getString("endText"))
+                }
+                TemporalKind.DEADLINE -> {
+                    assertEquals(DraftForm.formatInstant(expectedStart, zone), form.getString("endText"))
+                    assertEquals(60, form.getInt("reminderMinutes"))
+                }
+                TemporalKind.MEMO -> assertEquals(
+                    Instant.ofEpochMilli(expectedStart).atZone(zone).toLocalDate().toString(),
+                    form.getString("startText"))
+            }
+            assertEquals("closed", service.execute(WebEditCommand.CloseDeck(request()))
+                .getString("status"))
+        }
+        assertEquals(identities, store.identityCount())
+        assertEquals(commits, store.commitCount())
+        assertEquals(drafts, store.draftCount())
+        assertEquals(pending, store.pendingCount())
         assertTrue(store.all().isEmpty())
     }
 

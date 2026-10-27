@@ -1,5 +1,7 @@
 package dev.powerfulcalendar.ui.v2
 
+import dev.powerfulcalendar.core.EditorSelection
+import dev.powerfulcalendar.core.TimelineCoordinate
 import android.annotation.SuppressLint
 import android.graphics.Color
 import android.net.Uri
@@ -31,6 +33,23 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
+import java.time.Instant
+import java.time.ZoneId
+
+/** Preserves the explicit date/time context of the active native creation surface. */
+internal fun newEventSelectionForPage(
+    page: String,
+    camera: TimelineCoordinate.Camera,
+    zone: ZoneId
+): EditorSelection? = when (page) {
+    "TIMELINE" -> EditorSelection.AtInstant(
+        TimelineCoordinate.snap(camera.anchorMillis, camera.hours, zone)
+    )
+    "MONTH" -> EditorSelection.OnDate(
+        Instant.ofEpochMilli(camera.anchorMillis).atZone(zone).toLocalDate()
+    )
+    else -> null
+}
 
 /**
  * v1 enforces only host.read (state projection) and host.action (all inbound

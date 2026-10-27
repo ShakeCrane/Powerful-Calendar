@@ -365,7 +365,7 @@ async function addPackageAssets(list){
 }
 const ACTIONS=[
   ["","无动作"],["today","返回今天"],["createMemo","新建 Memo"],
-  ["createDraft","新建活动草稿"],["browseMonth","浏览月份"],
+  ["createDraft","新建事件"],["browseMonth","浏览月份"],
   ["timeline","时间轴"],
   ["month","月历"],["memo","Memo"],["ai","AI"],
   ["settings","原生设置"],["openDeck","草稿卡组"],
@@ -780,7 +780,8 @@ function onSkinCommand(p){
       result.status="selected";break;
   }
   mockEditing.lastResult=result;
-  logAction("预览编辑命令 "+p.name+" → "+result.status);
+  logAction("预览编辑命令 "+p.name+
+    (p.name==="deck.create"?" · "+p.kind:"")+" → "+result.status);
   try{previewPort?.postMessage(JSON.stringify({version:1,type:"result",payload:result}))}
   catch(e){logAction("编辑回执失败 "+e.message)}
   postState();

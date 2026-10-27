@@ -23,6 +23,10 @@ import dev.powerfulcalendar.ai.AiChatActionParser
 import dev.powerfulcalendar.ai.AiSettings
 import dev.powerfulcalendar.ai.AiSettingsStore
 import dev.powerfulcalendar.core.PowerStore
+import dev.powerfulcalendar.core.DraftForm
+import dev.powerfulcalendar.core.TemporalKind
+import dev.powerfulcalendar.core.TimelineCoordinate
+import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.After
@@ -149,6 +153,108 @@ class PowerCalCasualSuggestionComposeTest {
         }
         ui.waitForIdle()
         assertLocalNoonAnd24Hours(timelineCameraSnapshot())
+    }
+
+    @Test
+    fun timelineCreateCommandUsesCurrentCameraAndZoneForAllKindsWithoutWrites() {
+        ui.activity.setContent {
+            CompositionLocalProvider(LocalContext provides context) {
+                PowerCalTheme { PowerCalApp(store) }
+            }
+        }
+        ui.waitForIdle()
+
+        fun runWebEdit(command: WebEditCommand): JSONObject {
+            val response = AtomicReference<JSONObject?>()
+            val failure = AtomicReference<Throwable?>()
+            Thread({
+                try {
+                    response.set(runBlocking { WebSkinBridgeRuntime.onEdit(command) })
+                } catch (error: Throwable) {
+                    failure.set(error)
+                }
+            }, "powercal-web-edit-compose-test").apply {
+                isDaemon = true
+                start()
+            }
+            ui.waitUntil(10_000) { response.get() != null || failure.get() != null }
+            failure.get()?.let { throw AssertionError("Web edit command failed", it) }
+            return requireNotNull(response.get())
+        }
+
+        val before = StoreCounts.read(store)
+
+        WebSkinBridgeRuntime.onAction(WebSkinAction.PanTimeline(137))
+        ui.waitForIdle()
+        val timeline = WebSkinBridgeRuntime.state().getJSONObject("timeline")
+        val camera = TimelineCoordinate.Camera(
+            timeline.getLong("anchorMillis"), timeline.getDouble("hours")
+        )
+        val zone = ZoneId.of(timeline.getString("zoneId"))
+        val expectedStart = TimelineCoordinate.snap(camera.anchorMillis, camera.hours, zone)
+
+        for (kind in TemporalKind.entries) {
+            val opened = runWebEdit(
+                WebEditCommand.CreateDeck("timeline-create-" + kind.name, kind)
+            )
+            assertEquals("created", opened.getString("status"))
+            ui.waitForIdle()
+            val form = WebSkinBridgeRuntime.state().getJSONObject("editing")
+                .getJSONObject("deck").getJSONObject("form")
+            assertEquals(kind.name, form.getString("kind"))
+            assertEquals(zone.id, form.getString("zoneId"))
+            when (kind) {
+                TemporalKind.ALARM -> assertEquals(
+                    DraftForm.formatInstant(expectedStart, zone), form.getString("startText")
+                )
+                TemporalKind.ACTIVITY -> {
+                    assertEquals(
+                        DraftForm.formatInstant(expectedStart, zone), form.getString("startText")
+                    )
+                    assertEquals(
+                        DraftForm.formatInstant(expectedStart + 3_600_000L, zone),
+                        form.getString("endText")
+                    )
+                }
+                TemporalKind.DEADLINE -> {
+                    assertEquals(
+                        DraftForm.formatInstant(expectedStart, zone), form.getString("endText")
+                    )
+                    assertEquals(60, form.getInt("reminderMinutes"))
+                }
+                TemporalKind.MEMO -> assertEquals(
+                    Instant.ofEpochMilli(expectedStart).atZone(zone).toLocalDate().toString(),
+                    form.getString("startText")
+                )
+            }
+            val closed = runWebEdit(
+                WebEditCommand.CloseDeck("timeline-close-" + kind.name)
+            )
+            assertEquals("closed", closed.getString("status"))
+            ui.waitForIdle()
+        }
+
+        WebSkinBridgeRuntime.onAction(WebSkinAction.Routed("month"))
+        ui.waitForIdle()
+        val monthState = WebSkinBridgeRuntime.state().getJSONObject("timeline")
+        val monthZone = ZoneId.of(monthState.getString("zoneId"))
+        val selectedMonthDate = Instant.ofEpochMilli(monthState.getLong("anchorMillis"))
+            .atZone(monthZone).toLocalDate()
+        val monthCreate = runWebEdit(
+            WebEditCommand.CreateDeck("month-create-activity", TemporalKind.ACTIVITY)
+        )
+        assertEquals("created", monthCreate.getString("status"))
+        ui.waitForIdle()
+        val monthForm = WebSkinBridgeRuntime.state().getJSONObject("editing")
+            .getJSONObject("deck").getJSONObject("form")
+        assertEquals(selectedMonthDate.toString(), monthForm.getString("startText").take(10))
+        assertEquals(monthZone.id, monthForm.getString("zoneId"))
+        val monthClose = runWebEdit(
+            WebEditCommand.CloseDeck("month-close-activity")
+        )
+        assertEquals("closed", monthClose.getString("status"))
+        ui.waitForIdle()
+        assertEquals(before, StoreCounts.read(store))
     }
 
     @Test

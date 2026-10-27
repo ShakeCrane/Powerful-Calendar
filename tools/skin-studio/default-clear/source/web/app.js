@@ -9,6 +9,7 @@ darkMedia.addEventListener("change",applyTheme);
 let port=null, state={}, currentPage="TIMELINE", memoFilter="open",localOptions=false;
 let aiReviewSelectionId="",aiReviewSelected=new Set();
 let attachmentRequestPending=false;
+let timelineCreateDialog=null;
 const send=(name,extra={})=>{
   if(!port)return;
   port.postMessage(JSON.stringify({version:1,type:"action",payload:{name,...extra}}));
@@ -30,8 +31,63 @@ const proposalDateText=(ms,zone)=>{
   try{return dateText(value,zone,{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hour12:false})}
   catch{return "无效日期"}
 };
+function showTimelineCreateDialog(sourceButton){
+  if(!timelineCreateDialog){
+    const dialog=document.createElement("dialog");
+    dialog.id="timelineCreateDialog";
+    dialog.setAttribute("aria-labelledby","timelineCreateTitle");
+    dialog.setAttribute("aria-describedby","timelineCreateDescription");
+    Object.assign(dialog.style,{boxSizing:"border-box",width:"min(92vw, 25rem)",
+      maxWidth:"92vw",padding:"1.25rem",border:"1px solid rgba(127,127,127,.35)",
+      borderRadius:"1rem",background:"var(--bg-panel, #fff)",color:"var(--fg, #171717)",
+      boxShadow:"0 1rem 3rem rgba(0,0,0,.24)"});
+    const title=document.createElement("h2");
+    title.id="timelineCreateTitle";title.textContent="新建事件";
+    const description=document.createElement("p");
+    description.id="timelineCreateDescription";
+    description.textContent="选择类型。时间将按当前时间轴位置预填。";
+    const choices=document.createElement("div");
+    Object.assign(choices.style,{display:"grid",gridTemplateColumns:"1fr 1fr",gap:".65rem"});
+    for(const [kind,label] of [["ALARM","提醒"],["ACTIVITY","活动"],
+      ["DEADLINE","截止事项"],["MEMO","Memo"]]){
+      const button=document.createElement("button");
+      button.type="button";button.dataset.timelineCreateKind=kind;
+      button.textContent=label;
+      Object.assign(button.style,{minHeight:"3rem",padding:".65rem",font:"inherit",
+        border:"1px solid rgba(127,127,127,.4)",borderRadius:".7rem",
+        background:"var(--bg-control, transparent)",color:"inherit",cursor:"pointer"});
+      button.addEventListener("click",()=>{
+        dialog.close();
+        const proxy=document.createElement("button");
+        proxy.dataset.action="createDraft";proxy.dataset.kind=kind;
+        if(!window.PowerCalEdit?.routeAction(proxy,state)){
+          $("timelineCreateDescription").textContent="宿主编辑服务暂不可用，请稍后重试。";
+          dialog.showModal();
+        }
+      });
+      choices.append(button);
+    }
+    const footer=document.createElement("div");
+    Object.assign(footer.style,{display:"flex",justifyContent:"flex-end",marginTop:"1rem"});
+    const cancel=document.createElement("button");
+    cancel.type="button";cancel.textContent="取消";
+    Object.assign(cancel.style,{minHeight:"2.75rem",padding:".5rem 1rem",font:"inherit",
+      border:"0",borderRadius:".7rem",background:"transparent",color:"inherit",cursor:"pointer"});
+    cancel.addEventListener("click",()=>dialog.close());
+    footer.append(cancel);dialog.append(title,description,choices,footer);
+    dialog.addEventListener("close",()=>sourceButton?.focus());
+    dialog.addEventListener("click",event=>{if(event.target===dialog)dialog.close()});
+    document.body.append(dialog);timelineCreateDialog=dialog;
+  }
+  if(typeof timelineCreateDialog.showModal==="function")timelineCreateDialog.showModal();
+  else timelineCreateDialog.setAttribute("open","");
+  timelineCreateDialog.querySelector("[data-timeline-create-kind]")?.focus();
+}
 function onAction(button){
   const name=button.dataset.action;if(!name||button.disabled)return;
+  if(name==="createDraft"&&(currentPage==="TIMELINE"||currentPage==="TOOLS")){
+    showTimelineCreateDialog(button);return;
+  }
   if(window.PowerCalEdit?.routeAction(button,state))return;
   if(name==="openEvent")send(name,{eventSeq:Number(button.dataset.eventSeq),
     expectedRevision:Number(button.dataset.revision)});
@@ -84,6 +140,8 @@ function receive(raw){
 }
 function renderPage(){
   const page=currentPage==="TOOLS"?"TIMELINE":currentPage;
+  const createButton=document.querySelector('[data-action="createDraft"]');
+  if(createButton){createButton.title="新建事件";createButton.setAttribute("aria-label","新建事件")}
   const pages={TIMELINE:"timelinePage",MONTH:"monthPage",MEMO:"memoPage",AI:"aiPage"};
   for(const [key,id] of Object.entries(pages))$(id).hidden=key!==page||localOptions;
   $("extraOptions").hidden=!localOptions;

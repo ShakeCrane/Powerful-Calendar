@@ -34,6 +34,8 @@ const URL=process.env.STUDIO_URL||"http://127.0.0.1:8875";
     assert.ok(sides.activity,"Activity must render in right wing");
     assert.ok(["#2A62E0","#5A8DFF"].includes(normal.css),
       "Clear light/dark source palette must load into the iframe");
+    assert.equal(await frame.$eval('[data-action="createDraft"]',e=>e.getAttribute("aria-label")),
+      "新建事件");
     console.log("Initial WYSIWYG preview",normal);
 
     // The Web UI must work through the same typed command envelopes as Android,
@@ -51,9 +53,13 @@ const URL=process.env.STUDIO_URL||"http://127.0.0.1:8875";
       document.querySelector("#sheetStatus").textContent.includes("事件已保存"));
     await frame.click("#sheetClose");
     await frame.waitForFunction(()=>document.querySelector("#skinSheet").hidden);
-    await frame.click('[data-action="createDraft"][data-kind="ACTIVITY"]');
+    await frame.click('[data-action="createDraft"]');
+    await frame.waitForSelector("#timelineCreateDialog[open]");
+    await frame.click('[data-timeline-create-kind="ACTIVITY"]');
     await frame.waitForFunction(()=>!document.querySelector("#skinSheet").hidden &&
       document.querySelector("#sheetTitle").textContent==="待处理草稿");
+    await page.waitForFunction(()=>document.querySelector("#bridgeLog").textContent
+      .includes("deck.create · ACTIVITY → created"));
     await frame.$eval('#sheetFields [data-field="title"]',input=>{
       input.value="Web 草稿事务";
       input.dispatchEvent(new Event("change",{bubbles:true}));
@@ -64,6 +70,28 @@ const URL=process.env.STUDIO_URL||"http://127.0.0.1:8875";
     await frame.click("#sheetSave");
     await frame.waitForFunction(()=>document.querySelector("#skinSheet").hidden);
     console.log("Clear Web editor and deck command round-trip PASS");
+
+    for(const kind of ["ALARM","ACTIVITY","DEADLINE","MEMO"]){
+      await frame.click('[data-action="createDraft"]');
+      await frame.waitForSelector("#timelineCreateDialog[open]");
+      await frame.click('[data-timeline-create-kind="'+kind+'"]');
+      await frame.waitForFunction(()=>!document.querySelector("#skinSheet").hidden &&
+        document.querySelector("#sheetTitle").textContent==="待处理草稿");
+      await page.waitForFunction(value=>document.querySelector("#bridgeLog").textContent
+        .includes("deck.create · "+value+" → created"),{},kind);
+      const labels=await frame.$$eval("#sheetFields .sheet-row .sheet-label",
+        nodes=>nodes.map(node=>node.textContent));
+      assert.ok(labels.includes("标题"),kind+" editor should expose its title");
+      if(kind==="ALARM")assert.ok(labels.includes("开始时间")&&!labels.includes("结束时间"));
+      if(kind==="ACTIVITY")assert.ok(labels.includes("开始时间")&&labels.includes("结束时间"));
+      if(kind==="DEADLINE")assert.ok(!labels.includes("开始时间")&&
+        labels.includes("截止日期或时刻"));
+      if(kind==="MEMO")assert.ok(labels.includes("开始日期")&&labels.includes("结束日期")&&
+        !labels.includes("跟踪完成状态"));
+      await frame.click("#sheetClose");
+      await frame.waitForFunction(()=>document.querySelector("#skinSheet").hidden);
+    }
+    console.log("Timeline create chooser routes all four kinds through deck.create");
     await page.click("#editMode");
 
     await page.select("#scenario","future");

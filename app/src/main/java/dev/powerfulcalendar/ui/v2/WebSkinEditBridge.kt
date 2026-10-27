@@ -2,6 +2,7 @@ package dev.powerfulcalendar.ui.v2
 
 import dev.powerfulcalendar.core.DeckController
 import dev.powerfulcalendar.core.EditSession
+import dev.powerfulcalendar.core.EditorSelection
 import dev.powerfulcalendar.core.NewEventEditSession
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.DraftForm
@@ -332,7 +333,11 @@ internal class WebSkinEditService(
             .put("lastResult",latest)
     }
 
-    suspend fun execute(cmd: WebEditCommand): JSONObject = gate.withLock {
+    suspend fun execute(
+        cmd: WebEditCommand,
+        newEventZone: ZoneId = ZoneId.systemDefault(),
+        newEventSelection: EditorSelection? = null
+    ): JSONObject = gate.withLock {
         completed[cmd.requestId]?.let { (original, reply) ->
             // A caller cannot rebind an already seen request ID to a different write.
             return@withLock if(original==cmd) JSONObject(reply.toString())
@@ -480,7 +485,7 @@ internal class WebSkinEditService(
                         result(cmd.requestId,"locked")
                     else {
                         val opened = NewEventEditSession.open(
-                            cmd.kind, zone = ZoneId.systemDefault()
+                            cmd.kind, zone = newEventZone, selection = newEventSelection
                         )
                         newEventSession = opened
                         deckOpen = true

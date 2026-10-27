@@ -1145,9 +1145,13 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
     androidx.compose.runtime.SideEffect {
         WebSkinBridgeRuntime.owner = webBridgeOwner
         WebSkinBridgeRuntime.onEdit = { command ->
-            val response = webEditing.execute(command)
+            val selection = if (command is WebEditCommand.CreateDeck)
+                newEventSelectionForPage(page, camera, zone) else null
+            val response = webEditing.execute(
+                command, newEventZone = zone, newEventSelection = selection
+            )
             val status = response.optString("status")
-            if(status in setOf("created","saved","staged","committed","discarded","restored")) {
+            if(status in setOf("saved","staged","committed","discarded","restored")) {
                 // A completed host transaction must refresh the app-wide projections;
                 // an unsuccessful UI refresh must not turn success into a retryable write.
                 runCatching { reload() }

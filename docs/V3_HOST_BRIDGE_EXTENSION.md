@@ -96,6 +96,26 @@ envelope and known fields only:
   automatically display future sibling options without rendering the
   shared group.
 
+## Timeline new-event context
+
+The bundled Clear timeline offers all four event kinds and sends the existing
+deck.create command with only the selected kind. It does not send a time,
+zone, event identity, or persistence instruction. When the active Host page is
+the timeline, PowerCalApp captures its current camera and zone while handling
+that command, snaps the camera anchor with the same TimelineCoordinate.snap
+rule used by the native timeline menu, and supplies the resulting
+EditorSelection.AtInstant to the existing transient NewEventEditSession.
+This keeps the camera authoritative and prevents a skin from choosing an
+arbitrary timestamp through the wire protocol.
+
+The standard kind-specific precision remains owned by EditorDefaults:
+Alarm and Activity receive a minute-precision time, Activity receives its
+one-hour suggested end, date-only Deadline remains date-only unless an
+explicit timeline instant selects exact-time mode, and Memo retains its
+existing date semantics. Opening and closing without a meaningful edit still
+does not persist a draft. Month, Memo, and other non-timeline creation paths
+continue to use their existing selection/default behavior.
+
 ## Sandboxing and lifecycle
 
 The host still runs package HTML/CSS/JS entirely offline, from the exact
