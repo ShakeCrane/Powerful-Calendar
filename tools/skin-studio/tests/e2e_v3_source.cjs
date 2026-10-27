@@ -298,6 +298,23 @@ async function main(){
     const conversion=await call("Runtime.evaluate",{contextId:world.executionContextId,awaitPromise:true,returnByValue:true,expression:`(async()=>{
       const check=(v,m)=>{if(!v)throw Error(m)};
       const wait=async(fn,m)=>{for(let i=0;i<150;i++){if(fn())return;await new Promise(r=>setTimeout(r,100))}throw Error(m)};
+      const chooserKinds=[];
+      for(const kind of ['ALARM','ACTIVITY','DEADLINE','MEMO']){
+        document.querySelector('[data-action="createDraft"]').click();
+        await wait(()=>document.querySelector('#timelineCreateDialog[open]'),kind+' chooser missing');
+        const choice=document.querySelector('[data-timeline-create-kind="'+kind+'"]');
+        check(choice,'chooser omitted '+kind);
+        choice.click();
+        await wait(()=>!document.querySelector('#skinSheet').hidden&&
+          document.querySelector('#sheetTitle')?.textContent==='待处理草稿',kind+' draft editor missing');
+        check(document.querySelector('#sheetFields [data-field="kind"]')?.value===kind,
+          'Studio Mock opened the wrong kind for '+kind);
+        await wait(()=>document.querySelector('#sheetStatus')?.textContent==='7001',
+          'Studio Mock did not return deck.create receipt for '+kind);
+        document.querySelector('#sheetClose').click();
+        await wait(()=>document.querySelector('#skinSheet').hidden,kind+' transient preview draft did not close');
+        chooserKinds.push(kind);
+      }
       document.querySelector('[data-action="createDraft"]').click();
       await wait(()=>document.querySelector('#timelineCreateDialog[open]'),'create chooser missing');
       document.querySelector('[data-timeline-create-kind="ACTIVITY"]').click();
@@ -344,9 +361,12 @@ async function main(){
       document.querySelector('#sheetSave').click();
       await wait(()=>document.querySelector('#sheetStatus').textContent.includes('宿主确认'),
         'formal conversion did not request mock Host confirmation');
-      return {deckConversion:'ACTIVITY→DEADLINE',formalConversion:'ACTIVITY→ALARM',key};
+      return {chooserKinds,deckConversion:'ACTIVITY→DEADLINE',formalConversion:'ACTIVITY→ALARM',key};
     })()`});
     if(conversion.exceptionDetails)throw Error(conversion.exceptionDetails.exception?.description || conversion.exceptionDetails.text);
+    if(JSON.stringify(conversion.result.value.chooserKinds)!==JSON.stringify(['ALARM','ACTIVITY','DEADLINE','MEMO']))
+      throw Error("Studio chooser did not preview all four kinds: "+JSON.stringify(conversion.result.value));
+    console.log("BROWSER FOUR-KIND CREATE MOCK PASS",JSON.stringify(conversion.result.value.chooserKinds));
     const cancelled=await call("Runtime.evaluate",{awaitPromise:true,returnByValue:true,expression:`(async()=>{
       for(let i=0;i<150;i++){
         const approval=document.querySelector('#mockApproval');

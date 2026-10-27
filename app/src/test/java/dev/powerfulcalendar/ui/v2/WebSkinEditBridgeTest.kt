@@ -7,6 +7,7 @@ import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.DraftStatus
 import dev.powerfulcalendar.core.EditorSelection
+import dev.powerfulcalendar.core.NewEventEditSession
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.StoreDeckPersistence
 import dev.powerfulcalendar.core.TemporalConversion
@@ -21,8 +22,10 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import java.time.Clock
 import java.time.Instant
 import java.time.ZoneId
+import java.time.ZoneOffset
 import java.util.UUID
 
 @RunWith(RobolectricTestRunner::class)
@@ -386,6 +389,128 @@ class WebSkinEditBridgeTest {
         assertEquals(drafts,store.draftCount())
         assertEquals(0,store.pendingCount())
         assertTrue(store.all().isEmpty())
+    }
+
+    @Test fun nativeAndSkinNewEventReplayMatchesDefaultsAndDurableBusinessResults() = runBlocking {
+        val nativeDatabase = "native-skin-replay-${UUID.randomUUID()}.db"
+        val nativeStore = PowerStore(context, nativeDatabase)
+        val clock = Clock.fixed(Instant.parse("2026-10-28T15:07:42Z"), ZoneOffset.UTC)
+        val zone = ZoneId.of("America/Los_Angeles")
+        val replayService = WebSkinEditService(
+            store, DeckController(StoreDeckPersistence(store)), clock = clock
+        )
+
+        fun counts(target: PowerStore) = listOf(
+            target.draftCount(), target.pendingCount().toLong(), target.all().size.toLong(),
+            target.identityCount(), target.nextSequencePreview(),
+            target.nextQueueOrderPreview(), target.commitCount()
+        )
+        fun normalizedRecords(target: PowerStore) = target.all()
+            .sortedBy { it.eventSeq }
+            .map { it.copy(createdAtMillis = 0L, updatedAtMillis = 0L) }
+        fun normalizedDrafts(target: PowerStore) = target.pendingDrafts()
+            .map { it.copy(createdAtMillis = 0L, updatedAtMillis = 0L) }
+
+        try {
+            val cleanCounts = counts(nativeStore)
+            repeat(20) {
+                TemporalKind.entries.forEach { kind ->
+                    val native = NewEventEditSession.open(kind, clock, zone)
+                    val opened = replayService.execute(
+                        WebEditCommand.CreateDeck(request(), kind), newEventZone = zone
+                    )
+                    assertEquals("created", opened.getString("status"))
+                    val skinForm = replayService.snapshot().getJSONObject("deck")
+                        .getJSONObject("form")
+                    assertEquals(WebEditWire.form(native.baseline).toString(), skinForm.toString())
+
+                    assertNull(native.close(nativeStore))
+                    val draftId = opened.getString("detail").toLong()
+                    assertEquals("closed", replayService.execute(
+                        WebEditCommand.CloseDeck(request())
+                    ).getString("status"))
+                    assertEquals("closed", replayService.execute(
+                        WebEditCommand.CloseDeck(request())
+                    ).getString("status"))
+                    assertEquals(cleanCounts, counts(nativeStore))
+                    assertEquals(cleanCounts, counts(store))
+                    assertTrue(draftId > 0L)
+                }
+            }
+
+            val explicitInstant = Instant.parse("2026-10-28T17:35:27Z").toEpochMilli()
+            val explicitDate = java.time.LocalDate.of(2026, 10, 30)
+            val cases = TemporalKind.entries.flatMap { kind ->
+                listOf(kind to null, kind to when (kind) {
+                    TemporalKind.MEMO -> EditorSelection.OnDate(explicitDate)
+                    else -> EditorSelection.AtInstant(explicitInstant)
+                })
+            }
+
+            cases.forEachIndexed { index, (kind, selection) ->
+                val title = "Parity ${index + 1} ${kind.name}"
+                val native = NewEventEditSession.open(kind, clock, zone, selection)
+                val opened = replayService.execute(
+                    WebEditCommand.CreateDeck(request(), kind),
+                    newEventZone = zone,
+                    newEventSelection = selection
+                )
+                assertEquals("created", opened.getString("status"))
+                val draftId = opened.getString("detail").toLong()
+                val skinForm = replayService.snapshot().getJSONObject("deck")
+                    .getJSONObject("form")
+                assertEquals("$kind defaults", WebEditWire.form(native.baseline).toString(),
+                    skinForm.toString())
+
+                native.edit(native.form.copy(title = title))
+                assertTrue(native.save(nativeStore) is NewEventEditSession.SaveOutcome.Published)
+
+                val patch = replayService.execute(WebEditCommand.PatchDeck(
+                    request(), draftId, 0L, "title", title
+                ))
+                assertEquals("edited", patch.getString("status"))
+                val version = replayService.snapshot().getJSONObject("deck").getLong("version")
+                val pending = replayService.execute(WebEditCommand.CommitDeck(
+                    request(), draftId, version
+                ))
+                assertEquals("confirmation_required", pending.getString("status"))
+                val review = requireNotNull(replayService.pendingWriteReview)
+                assertEquals("committed", replayService.resolveFormalWriteReview(
+                    review.token, approved = true
+                ).getString("status"))
+
+                assertEquals(normalizedRecords(nativeStore), normalizedRecords(store))
+                assertEquals(counts(nativeStore), counts(store))
+                assertEquals(0L, store.draftCount())
+                assertEquals(0, store.pendingCount())
+                assertEquals(1L, store.nextQueueOrderPreview())
+            }
+
+            val incompleteNative = NewEventEditSession.open(
+                TemporalKind.DEADLINE, clock, zone
+            )
+            incompleteNative.edit(incompleteNative.form.copy(notes = "incomplete but meaningful"))
+            val nativeStaged = requireNotNull(incompleteNative.close(nativeStore))
+
+            val incompleteSkin = replayService.execute(WebEditCommand.CreateDeck(
+                request(), TemporalKind.DEADLINE
+            ), newEventZone = zone)
+            val incompleteId = incompleteSkin.getString("detail").toLong()
+            assertEquals("edited", replayService.execute(WebEditCommand.PatchDeck(
+                request(), incompleteId, 0L, "notes", "incomplete but meaningful"
+            )).getString("status"))
+            val skinClosed = replayService.execute(WebEditCommand.CloseDeck(request()))
+            assertEquals("closed", skinClosed.getString("status"))
+
+            assertEquals(nativeStaged.copy(createdAtMillis = 0L, updatedAtMillis = 0L),
+                normalizedDrafts(store).single())
+            assertEquals(normalizedRecords(nativeStore), normalizedRecords(store))
+            assertEquals(counts(nativeStore), counts(store))
+            assertEquals(1, store.pendingCount())
+        } finally {
+            nativeStore.close()
+            context.deleteDatabase(nativeDatabase)
+        }
     }
 
     @Test fun timelineCreateUsesSnappedAnchorAndConfiguredZoneForEveryKindWithoutWrites() = runBlocking {

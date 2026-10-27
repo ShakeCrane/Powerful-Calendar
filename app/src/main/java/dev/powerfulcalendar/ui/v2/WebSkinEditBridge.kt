@@ -18,6 +18,7 @@ import dev.powerfulcalendar.core.RecurrenceEngine
 import dev.powerfulcalendar.core.ReminderMethod
 import dev.powerfulcalendar.core.ReminderTiming
 import dev.powerfulcalendar.core.TemporalConversion
+import java.time.Clock
 import java.time.LocalDate
 import java.time.ZoneId
 import org.json.JSONObject
@@ -255,6 +256,7 @@ internal data class WebFormalWriteReview(
 internal class WebSkinEditService(
     private val store: PowerStore,
     private val deck: DeckController,
+    private val clock: Clock = Clock.systemUTC(),
     private val externalEditorActive: () -> Boolean = { false }
 ) {
     private val gate = Mutex()
@@ -485,7 +487,8 @@ internal class WebSkinEditService(
                         result(cmd.requestId,"locked")
                     else {
                         val opened = NewEventEditSession.open(
-                            cmd.kind, zone = newEventZone, selection = newEventSelection
+                            cmd.kind, clock = clock, zone = newEventZone,
+                            selection = newEventSelection
                         )
                         newEventSession = opened
                         deckOpen = true
