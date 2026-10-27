@@ -1,4 +1,12 @@
 # Core freeze progress
+
+## Separation — Studio dark material tokens (2026-10-27)
+
+- Root cause: Studio emitted edited base material slots into `:root`, overriding Clear's authored dark text token. `v3-studio.js` now emits `:root:not(.dark)`.
+- Headless Chrome test edits the real Clear text-color material while displaying AI proposal cards. Dark card text/background measured `rgb(243, 243, 246)` / `rgb(27, 27, 31)`, contrast **15.50:1**; switching to light applies the edited `#16171b`. Python Studio suite 42/42, source round-trip E2E and Clear bundle verification passed. Android WebView / device remains NOT TESTED.
+- Detailed evidence: `docs/issues/PC-ISSUE-SEPARATION-STUDIO-DARK-MATERIAL-TOKENS.md`; browser JSON SHA-256 `F1CCC42029F1C0C6A4FD0276842FDADD364E32C01CC35D70268943856408629C`.
+- Implementation commit `c496695b0fe3db73e181e67da731969fe881cb0c`; report and progress update are being committed separately before push.
+
 ## 分离阶段 — Bridge v1 能力声明语义与兼容审计（2026-10-27）
 
 - 根因/现状：v3 manifest 接受并保存 `host.edit`，但 Bridge v1 实际仅将 `host.read` 用于状态投影、将 `host.action` 用于所有入站动作和编辑器/草稿命令。若将未生效的 `host.edit` 静默升级为授权，会改变既有包权限语义；本轮维持运行时策略，明确记录它是兼容元数据，并从示例 manifest 删除该无效声明。
