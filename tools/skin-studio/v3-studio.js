@@ -14,7 +14,7 @@ const bytesToBase64 = bytes => {
 const base64ToBytes = text => Uint8Array.from(atob(text), c=>c.charCodeAt(0));
 const safeFilename = name => /^[A-Za-z0-9][A-Za-z0-9_.-]{0,90}$/.test(name);
 const copy = value => JSON.parse(JSON.stringify(value));
-let manifest=null, project=null, sourceFiles=new Map(), selectedLayer=null;
+let manifest=null, project=null, projectBaseline=null, sourceFiles=new Map(), selectedLayer=null;
 let activeMode="simple", editCanvas=true, previewTimer=null, previewSeq=0;
 let previewPort=null, lastState=null, lastPreviewUrl="", dirty=false;
 function say(message,isError=false){$("toast").textContent=message;$("toast").classList.toggle("error",isError)}
@@ -28,7 +28,10 @@ function parseProject(){
 }
 function prepareFiles(){
   const files=new Map(sourceFiles);
-  files.set("project.json",enc.encode(JSON.stringify(project,null,2)));
+  // Keep imported metadata byte-for-byte until a Studio operation actually
+  // changes the project model. parseProject adds an in-memory layers default.
+  if(JSON.stringify(project)!==projectBaseline)
+    files.set("project.json",enc.encode(JSON.stringify(project,null,2)));
   return files;
 }
 function payload(){
@@ -68,6 +71,7 @@ async function loadPackage(data){
     throw Error("皮肤包缺少必需 Web 源码");
   sourceFiles=files;manifest=copy(data.manifest);
   project=parseProject();
+  projectBaseline=JSON.stringify(project);
   selectedLayer=project.layers[0]?.id||null;dirty=false;
   // Fork the protected factory identity before an ordinary user exports it.
   // Its HTML/CSS/JS/assets/project remain the exact bundled source.
@@ -107,7 +111,9 @@ function renderExtraSources(){
   $("extraSourceCode").value=select.value?getText(select.value):"";
 }
 function switchMode(mode){
-  activeMode=mode;project.mode=mode;
+  // The current editor pane is UI state; switching it must not rewrite the
+  // imported project's mode or force unrelated metadata through serialization.
+  activeMode=mode;
   $("simpleMode").classList.toggle("active",mode==="simple");
   $("advancedMode").classList.toggle("active",mode==="advanced");
   $("slotSection").hidden=mode==="advanced";

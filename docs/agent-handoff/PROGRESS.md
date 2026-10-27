@@ -1,4 +1,8 @@
 # Core freeze progress
+## 分离阶段 — 项目元数据无损往返（2026-10-27）
+
+- 修复 Studio 仅切换面板或编辑脚本时重新序列化第三方 `project.json` 的问题；仅真实材质/图层修改才序列化项目，未知字段保留。旧代码红测失败，新代码定向 3/3、真实 Chrome 导出/重导入和完整 Studio 42/42 PASS。报告：`docs/issues/PC-ISSUE-SEPARATION-STUDIO-PROJECT-ROUNDTRIP.md`。未执行 Android WebView 或实体设备测试，完整项目编辑和功能等价仍未完成。
+
 ## 分离阶段 — Studio 源码与能力声明、初始功能矩阵（2026-10-27）
 
 - Studio 可编辑 Clear 的 `web/edit.js` 等附加 UTF-8 源文件；导入皮肤的 capabilities 不再被打开/预览/导出静默改写，缺失声明按 Android 默认空权限处理。旧代码红测确认源码不可访问、三组权限声明被改写及缺失声明被授予权限；新代码定向回归、真实 Chrome 预览/导出/重导入 PASS，Studio 全量 41/41 PASS。详细证据与未完成项：`docs/issues/PC-ISSUE-SEPARATION-STUDIO-SOURCE-CAPABILITIES.md`。

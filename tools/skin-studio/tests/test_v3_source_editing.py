@@ -18,6 +18,10 @@ class StudioSourceEditingTest(unittest.TestCase):
         manifest, files = unpack(ASSET.read_bytes())
         manifest["id"] = "source-edit-test"
         manifest["capabilities"] = capabilities
+        project = json.loads(files["project.json"])
+        project.pop("layers", None)
+        project["thirdPartyMetadata"] = {"keep": "原样保留"}
+        files["project.json"] = (json.dumps(project, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf8")
         files["web/binary.js"] = b"\xff\xfe\x00"
         fixture = {"manifest": manifest, "files": {
             name: base64.b64encode(data).decode("ascii") for name, data in files.items()}}
@@ -38,6 +42,8 @@ class StudioSourceEditingTest(unittest.TestCase):
         self.assertEqual(payload["manifest"]["capabilities"], ["host.read"])
         edited = {name: base64.b64decode(data) for name, data in payload["files"].items()}
         self.assertEqual(edited["web/edit.js"], files["web/edit.js"] + b"\n// studio-source-roundtrip\n")
+        self.assertEqual(edited["project.json"], files["project.json"],
+                         "editing a script must not rewrite untouched project metadata")
         for name in ("web/clear-design.css", "web/fonts/InterVariable.woff2", "web/binary.js"):
             self.assertEqual(edited[name], files[name], name)
         imported_manifest, imported = unpack(build_files(payload["manifest"], edited))
@@ -53,6 +59,17 @@ class StudioSourceEditingTest(unittest.TestCase):
                 files = {name: base64.b64decode(data) for name, data in payload["files"].items()}
                 imported, _ = unpack(build_files(payload["manifest"], files))
                 self.assertEqual(imported["capabilities"], capabilities)
+
+    def test_visual_change_updates_metadata_without_dropping_custom_fields(self):
+        _, result = self.run_studio(["host.read"])
+        payload = result["visualPayload"]
+        files = {name: base64.b64decode(data) for name, data in payload["files"].items()}
+        project = json.loads(files["project.json"])
+        self.assertEqual(project["thirdPartyMetadata"], {"keep": "原样保留"})
+        self.assertTrue(any(slot["id"] == "testAccent" for slot in project["slots"]))
+        self.assertIn(b"--testAccent", files["web/style.css"])
+        _, imported = unpack(build_files(payload["manifest"], files))
+        self.assertEqual(imported, files)
 
 
 if __name__ == "__main__":

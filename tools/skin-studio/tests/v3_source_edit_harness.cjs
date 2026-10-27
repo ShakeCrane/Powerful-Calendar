@@ -20,7 +20,8 @@ const document = {
   createElement() { return new Element(); }, activeElement: null,
 };
 const sandbox = {document, window:{addEventListener(){}}, TextEncoder, TextDecoder,
-  Uint8Array, Map, JSON, Blob, console, atob, btoa, setTimeout:()=>1, clearTimeout(){}};
+  Uint8Array, Map, JSON, Blob, console, atob, btoa, prompt:()=>"testAccent",
+  setTimeout:()=>1, clearTimeout(){}};
 vm.createContext(sandbox);
 // The final bootstrap fetch is replaced with the real package fixture below.
 const bootstrap = source.lastIndexOf("\n(async()=>{");
@@ -30,6 +31,7 @@ vm.runInContext("bindUI()", sandbox);
 sandbox.fixture = fixture;
 (async()=>{
   await vm.runInContext("loadPackage(fixture)", sandbox);
+  document.getElementById("advancedMode").onclick();
   const selector = document.getElementById("extraSourceFile");
   const choices = selector.children.map(x=>x.value);
   selector.value = "web/edit.js";
@@ -39,5 +41,7 @@ sandbox.fixture = fixture;
   editor.value = original + "\n// studio-source-roundtrip\n";
   if (editor.oninput) editor.oninput();
   const payload = vm.runInContext("payload()", sandbox);
-  process.stdout.write(JSON.stringify({choices, original, payload}));
+  document.getElementById("addMaterial").onclick();
+  const visualPayload = vm.runInContext("payload()", sandbox);
+  process.stdout.write(JSON.stringify({choices, original, payload, visualPayload}));
 })().catch(error=>{console.error(error);process.exitCode=1});

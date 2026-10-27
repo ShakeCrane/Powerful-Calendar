@@ -59,6 +59,9 @@ async function main(){
       }
       const data=await (await fetch('/api/template-v3')).json();
       data.manifest.id='restricted-source-test'; data.manifest.capabilities=['host.read'];
+      const meta=JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(data.files['project.json']),c=>c.charCodeAt(0))));
+      delete meta.layers;meta.thirdPartyMetadata={keep:'原样保留'};
+      data.files['project.json']=btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(meta)+'\\n')));
       await loadPackage(data); document.querySelector('#advancedMode').click();
       const select=document.querySelector('#extraSourceFile');
       check([...select.options].some(o=>o.value==='web/edit.js'),'edit.js missing');
@@ -69,6 +72,7 @@ async function main(){
       field.dispatchEvent(new Event('input',{bubbles:true}));
       const project=payload();
       check(JSON.stringify(project.manifest.capabilities)==='["host.read"]','capabilities changed');
+      check(project.files['project.json']===data.files['project.json'],'untouched project metadata changed');
       const post=async(url,body,type)=>{const r=await fetch(url,{method:'POST',headers:{'Content-Type':type},body});
         check(r.ok,url+' returned '+r.status);return r};
       const preview=await (await post('/api/preview-v3',JSON.stringify(project),'application/json')).json();
@@ -82,6 +86,15 @@ async function main(){
       await loadPackage(imported);document.querySelector('#advancedMode').click();
       select.value='web/edit.js';select.dispatchEvent(new Event('change'));
       check(field.value===before+'\\n// browser-source-roundtrip\\n','reimport edit missing');
+      document.querySelector('#simpleMode').click();window.prompt=()=> 'customShade';
+      document.querySelector('#addMaterial').click();
+      const visual=payload();
+      const visualMeta=JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(visual.files['project.json']),c=>c.charCodeAt(0))));
+      check(visualMeta.thirdPartyMetadata.keep==='原样保留','custom metadata lost');
+      check(visualMeta.slots.some(s=>s.id==='customShade'),'visual metadata not saved');
+      const visualZip=await (await post('/api/export-v3',JSON.stringify(visual),'application/json')).arrayBuffer();
+      const visualImported=await (await post('/api/import-v3',visualZip,'application/octet-stream')).json();
+      check(visualImported.files['project.json']===visual.files['project.json'],'visual metadata roundtrip changed');
       return {file:'web/edit.js', files:Object.keys(project.files).length, capabilities:imported.manifest.capabilities};
     })()`;
     const result=await call("Runtime.evaluate",{expression,awaitPromise:true,returnByValue:true});
