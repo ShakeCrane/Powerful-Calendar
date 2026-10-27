@@ -381,6 +381,130 @@ class WebAiAttachmentFlowIntegrationTest {
     }
 
     @Test
+    fun skinChatFailureCanBeRetriedWithSafeContext() {
+        val firstPrompt = "请帮我概括明天的安排。"
+        val retryPrompt = firstPrompt
+        val providerSecret = "PROVIDER_SECRET_ECHO_DO_NOT_PERSIST"
+        val requests = CopyOnWriteArrayList<String>()
+        val serverFailure = AtomicReference<Throwable?>()
+        val firstResponseSent = CountDownLatch(1)
+        val secondResponseSent = CountDownLatch(1)
+        val before = counts()
+
+        ServerSocket(0, 4, InetAddress.getByName("127.0.0.1")).use { server ->
+            server.soTimeout = 20_000
+            AiSettingsStore.save(context, AiSettings(
+                endpoint = "http://127.0.0.1:" + server.localPort + "/v1",
+                model = "local-stub:free",
+                apiKey = "LOCAL_TEST_ONLY",
+                enabled = true,
+                shareContext = false
+            ))
+            val serverThread = Thread {
+                try {
+                    repeat(2) { index ->
+                        server.accept().use { socket ->
+                            socket.soTimeout = 10_000
+                            requests += readRequest(socket)
+                            if (index == 0) {
+                                writeErrorReply(socket, 503,
+                                    "{\"error\":\"$providerSecret\"}")
+                                firstResponseSent.countDown()
+                            } else {
+                                writeReply(socket, "连接已恢复，我继续回答刚才的问题。")
+                                secondResponseSent.countDown()
+                            }
+                        }
+                    }
+                } catch (error: Throwable) {
+                    serverFailure.set(error)
+                    firstResponseSent.countDown()
+                    secondResponseSent.countDown()
+                }
+            }.apply { name = "pc-skin-chat-retry-stub"; isDaemon = true; start() }
+
+            ui.activity.setContent {
+                CompositionLocalProvider(
+                    LocalContext provides context,
+                    LocalActivityResultRegistryOwner provides resultRegistryOwner
+                ) {
+                    PowerCalTheme { PowerCalApp(store) }
+                }
+            }
+            ui.waitForIdle()
+            ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.Routed("ai")) }
+            ui.waitForIdle()
+            ui.runOnIdle {
+                WebSkinBridgeRuntime.onAction(WebSkinAction.SendChat(firstPrompt))
+            }
+
+            fun chatMessages() = WebSkinBridgeRuntime.state()
+                .optJSONArray("chatMessages") ?: JSONArray()
+            ui.waitUntil(15_000) {
+                !WebSkinBridgeRuntime.state().optBoolean("chatBusy") &&
+                    (0 until chatMessages().length()).any { index ->
+                        chatMessages().getJSONObject(index).optString("content")
+                            .contains("AI 请求未完成")
+                    }
+            }
+            assertTrue("the first failed request did not reach the local provider",
+                firstResponseSent.await(1, TimeUnit.SECONDS))
+            assertNull("local provider stub failed", serverFailure.get())
+            assertEquals("HTTP failure must not trigger a hidden automatic retry", 1, requests.size)
+            val failedConversation = WebSkinBridgeRuntime.state()
+            val failedMessages = failedConversation.optJSONArray("chatMessages") ?: JSONArray()
+            assertTrue((0 until failedMessages.length()).any { index ->
+                failedMessages.getJSONObject(index).optString("content")
+                    .contains("HTTP 503")
+            })
+            assertFalse("provider response body must not be shown to the user",
+                failedConversation.toString().contains(providerSecret))
+            ui.waitUntil(5_000) {
+                AiChatHistoryStore.load(context).any {
+                    it.content.contains("AI 请求未完成")
+                }
+            }
+
+            // Re-sending the same user request is an explicit retry with safe local history.
+            ui.runOnIdle {
+                WebSkinBridgeRuntime.onAction(WebSkinAction.SendChat(retryPrompt))
+            }
+            assertTrue("explicit retry did not reach the local provider",
+                secondResponseSent.await(15, TimeUnit.SECONDS))
+            assertNull("local provider stub failed during retry", serverFailure.get())
+            ui.waitUntil(15_000) {
+                !WebSkinBridgeRuntime.state().optBoolean("chatBusy") &&
+                    WebSkinBridgeRuntime.state().toString()
+                        .contains("连接已恢复，我继续回答刚才的问题。")
+            }
+            serverThread.join(2_000)
+
+            assertEquals(2, requests.size)
+            val retryMessages = JSONObject(requests[1]).getJSONArray("messages")
+            val history = (0 until retryMessages.length()).map { retryMessages.getJSONObject(it) }
+            assertTrue("retry must keep the original user turn",
+                history.any { it.optString("role") == "user" &&
+                    it.optString("content") == firstPrompt })
+            assertTrue("retry context must contain the sanitized error, not the provider body",
+                history.any { it.optString("role") == "assistant" &&
+                    it.optString("content").contains("HTTP 503") })
+            assertTrue("retry must include the new user turn",
+                history.any { it.optString("role") == "user" &&
+                    it.optString("content") == retryPrompt })
+            assertFalse("provider error body must not enter the next request",
+                requests[1].contains(providerSecret))
+            ui.waitUntil(5_000) {
+                AiChatHistoryStore.load(context).any {
+                    it.content.contains("连接已恢复，我继续回答刚才的问题。")
+                }
+            }
+            assertTrue("provider error body must not persist in chat history",
+                AiChatHistoryStore.load(context).all { !it.content.contains(providerSecret) })
+            assertEquals("failed chat and retry must not write calendar data", before, counts())
+        }
+    }
+
+    @Test
     fun chatHistoryStoreReplacesLongerSnapshotWithShorterAndEmptyHistory() {
         val emptyProbeContext = IsolatedContext(
             ui.activity, storage, "$namespace/empty-probe"
@@ -485,6 +609,16 @@ class WebAiAttachmentFlowIntegrationTest {
             "Content-Length: " + body.size + newline +
             "Connection: close" + newline + newline).toByteArray(Charsets.US_ASCII)
         socket.getOutputStream().apply { write(headers); write(body); flush() }
+    }
+
+    private fun writeErrorReply(socket: java.net.Socket, status: Int, body: String) {
+        val bytes = body.toByteArray(Charsets.UTF_8)
+        val newline = 13.toChar().toString() + 10.toChar()
+        val headers = ("HTTP/1.1 $status Service Unavailable" + newline +
+            "Content-Type: application/json; charset=utf-8" + newline +
+            "Content-Length: " + bytes.size + newline +
+            "Connection: close" + newline + newline).toByteArray(Charsets.US_ASCII)
+        socket.getOutputStream().apply { write(headers); write(bytes); flush() }
     }
 
     private class RecordingActivityResultRegistry : ActivityResultRegistry() {
