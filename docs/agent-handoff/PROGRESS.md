@@ -894,3 +894,9 @@ Updated: 2026-10-24
 - Focused Host/Bridge/proposal/task suites: 22/22 PASS. Full offline Android gate: **591/591 JVM tests, 83 suites, 0 failures/errors/skips, 88/88 tasks**; lint 0 errors / 52 warnings. Full-log SHA-256 `4954DACDF90973BD6B849777A38B60C7DEBCCEFB64674CE04EDBF5288B5DDDE6`; Debug / AndroidTest APK SHA-256 `B3115D80E25CBA24B1A6177D1EED5506DB613D467123E1BCE99268B31296780D` / `219E9587BBC4CFDEAEBFAD9FD398E0B0DC2E2FE4D0FAA75C787CAF10DE733CC6`.
 - Studio Python 42/42 PASS; Chrome source round-trip and non-writing AI decision Mocks PASS; Clear bundle verification 8 files / 376661 bytes PASS. No live provider, Android WebView, emulator or physical-device run.
 - Test commit `ba30d9a5538f47195a98f8fb05365f8cf45c70d1` is pushed. Independent report: `docs/issues/PC-ISSUE-SEPARATION-AI-MULTITURN-SUPPLEMENT.md`; SEP-10 and S3 remain NOT TESTED/in progress. Multiple operation types, dependency groups, version-conflict recovery and process-death recovery remain open.
+
+## Separation — AndroidTest provider isolation (2026-10-27)
+
+- Fixed the shared SAF test provider's global authority/permission collision by deriving both from the AndroidTest applicationId; URI generation now uses the instrumentation package context. No production code or D05 probe behavior changed.
+- API 35 `emulator-5564`: unique QA and test APKs coexist with the other Agent's test package; `SafBackupReaderPermissionTest` passed 1/1. The random test namespace left no DB/cache/preferences. Evidence: `docs/issues/PC-ISSUE-SEPARATION-TEST-PROVIDER-ISOLATION.md`; log SHA-256 `C4F6CD48EAAC398D75183C5C5BD188E1001AAE764C3A04FAA191D5482485EA61`.
+- Full offline Android gate passed 593/593 JVM / 83 suites / 0 failures/errors/skips / 88 tasks; lint 0 errors / 52 warnings. Commit `fd6a14369c149739d3ef8e31dedce10e521adb45` is pushed.
