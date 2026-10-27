@@ -442,7 +442,7 @@ function renderOptions(){
   for(const group of state.optionGroups||[]){
     root.append(node("h2","",group.label));
     for(const item of group.items||[]){
-      const button=node("button","optionRow",item.label);
+      const button=node("button","optionRow",item.detail?item.label+" · "+item.detail:item.label);
       button.dataset.action="invokeOption";button.dataset.optionId=item.id;
       button.title=item.detail||"";
       if(item.detail)button.setAttribute("aria-label",item.label+"。"+item.detail);

@@ -262,6 +262,7 @@ class WebSkinHostProjectionTest {
         assertTrue("reminders.exactAlarmSettings" in ids)
         assertTrue("reminders.notificationPermission" in ids)
         assertTrue("reminders.reconcile" in ids)
+        assertTrue("calendar.export.ics" in ids)
         assertFalse(SemanticOptions.supports("reminders.grantSilently"))
 
         val group = SemanticOptions.groups.first { it.id == "reminders.permissions" }

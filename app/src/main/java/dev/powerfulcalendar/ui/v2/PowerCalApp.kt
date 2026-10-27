@@ -1196,6 +1196,8 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                         ) scope.launch { importSystemCalendar() }
                         else calendarPermission.launch(Manifest.permission.READ_CALENDAR)
                     }
+                    action.id == "calendar.export.ics" ->
+                        exportIcs.launch("PowerfulCalendar-activities.ics")
                     action.id == "reminders.exactAlarmSettings" -> {
                         if (!ReminderScheduler.exactAlarmAllowed(appContext)) {
                             ReminderScheduler.openExactAlarmSettings(appContext)

@@ -65,7 +65,8 @@ envelope and known fields only:
   availability; an occurrence key cannot bypass those checks.
 - `invokeOption` only accepts registered host IDs. When AI/editor writes
   are locked, option rows are disabled in state and invocation is denied.
-  Registered options currently include the two bounded calendar imports and
+  Registered options currently include the two bounded calendar imports,
+  Activity-only `calendar.export.ics`, and
   `reminders.exactAlarmSettings`, `reminders.notificationPermission`, and
   `reminders.reconcile`. The latter actions only open the Android-owned
   permission flow or invoke the existing idempotent scheduler; pre-Android-13
@@ -78,6 +79,8 @@ envelope and known fields only:
   action; Host checks the live permission again before launch. On Android
   versions without a notification runtime permission, the skin can distinguish
   “not required” from an actual permission grant.
+  ICS export uses the existing Host `CreateDocument` flow and exports Activity
+  records only; the format cannot preserve other event kinds or completion state.
 - The existing `settings` action continues to open the protected Android
   Host tools page for compatibility with v1 skins. The additive
   `skinSettings` action selects the skin-owned settings landing without

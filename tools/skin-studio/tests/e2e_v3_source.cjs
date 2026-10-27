@@ -179,27 +179,35 @@ async function main(){
           'settings tab did not open a skin-owned landing page');
         const options=[...document.querySelectorAll('#optionGroups [data-action="invokeOption"]')];
         const imports=options.filter(button=>button.dataset.optionId.startsWith('calendar.import.'));
+        const exports=options.filter(button=>button.dataset.optionId.startsWith('calendar.export.'));
         const reminders=options.filter(button=>button.dataset.optionId.startsWith('reminders.'));
         check(imports.length===2,'settings landing must retain the two bounded Host import options');
+        check(exports.length===1,'settings landing must expose the bounded Activity ICS export');
+        check(exports[0].textContent.includes('仅包含 Activity；其他类型和完成状态请用原生备份'),
+          'ICS export data-loss limitations must remain visible in the skin');
         check(reminders.length===3,'settings landing must expose the three bounded reminder Host actions');
         check(document.querySelector('#optionGroups').textContent.includes('精确闹钟：未允许；通知运行时权限：未允许'),
           'settings landing must show the Host-projected reminder permission state');
         check(document.querySelector('#optionGroups').textContent.includes('凭据、备份恢复和皮肤管理仍由宿主保护'),
           'protected native boundary was not explained');
         imports[0].click();
-        return {settingsLanding:true,hostImportOptions:imports.length,reminderHostActions:reminders.length,
+        exports[0].click();
+        return {settingsLanding:true,hostImportOptions:imports.length,hostExportOptions:exports.length,
+          reminderHostActions:reminders.length,
           reminderPermissionProjection:true,browserMockWroteData:false};
       })()`});
     if(settings.exceptionDetails)throw Error(settings.exceptionDetails.exception?.description || settings.exceptionDetails.text);
     const importLog=await call("Runtime.evaluate",{awaitPromise:true,returnByValue:true,expression:`(async()=>{
       for(let i=0;i<100;i++){
-        if(document.querySelector('#bridgeLog').textContent.includes('invokeOption · calendar.import.file'))return true;
+        const text=document.querySelector('#bridgeLog').textContent;
+        if(text.includes('invokeOption · calendar.import.file')&&
+          text.includes('未创建或写入真实文件'))return true;
         await new Promise(r=>setTimeout(r,100));
       }
       return false;
     })()`});
     if(importLog.exceptionDetails)throw Error(importLog.exceptionDetails.exception?.description || importLog.exceptionDetails.text);
-    if(!importLog.result.value)throw Error('calendar import option did not reach the non-writing Host Mock');
+    if(!importLog.result.value)throw Error('calendar import/export options did not reach their non-writing Host Mocks');
     const reminderActions=await call("Runtime.evaluate",{contextId:world.executionContextId,
       awaitPromise:true,returnByValue:true,expression:`(async()=>{
         const reminders=[...document.querySelectorAll('#optionGroups [data-action="invokeOption"]')]

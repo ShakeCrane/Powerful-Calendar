@@ -619,6 +619,9 @@ function simulatedState(){
     {id:"reminders.notificationPermission",label:"通知权限",detail:"Android 系统权限 Mock",icon:"notification",enabled:scenario!=="locked"},
     {id:"reminders.reconcile",label:"重新同步提醒",detail:"非写入调度 Mock",icon:"refresh",enabled:scenario!=="locked"}
   ];
+  const exportItems=[
+    {id:"calendar.export.ics",label:"导出 Activity ICS",detail:"仅包含 Activity；其他类型和完成状态请用原生备份",icon:"export",enabled:scenario!=="locked"}
+  ];
   if(scenario==="future")items.push({
     id:"calendar.import.future",label:"新功能：导入课程表",
     detail:"模拟未来软件版本新增的平行选项",icon:"table",enabled:true
@@ -645,6 +648,7 @@ function simulatedState(){
       anchorMillis:r.startMillis,endMillis:r.endMillis})),
     optionGroups:[
       {id:"calendar.import",label:"导入",items},
+      {id:"calendar.export",label:"导出",items:exportItems},
       {id:"reminders.permissions",label:"提醒与权限",items:reminderItems}
     ],
     reminderPermissions:{exactAlarmAllowed:false,notificationsAllowed:false,
@@ -877,6 +881,10 @@ function onSkinAction(message){
     else if(["timeline","month","memo","ai"].includes(name))mockPage=name.toUpperCase();
     if(name==="settings"){
       logAction("Preview Mock：请求既有 Android 宿主工具页；不会展示或操作系统权限、凭据或数据。");
+      return;
+    }
+    if(name==="invokeOption"&&p.id==="calendar.export.ics"){
+      logAction("Preview Mock：Host 会打开 ICS 导出文件选择器；未创建或写入真实文件。");
       return;
     }
     if(name==="invokeOption"&&typeof p.id==="string"&&p.id.startsWith("reminders.")){

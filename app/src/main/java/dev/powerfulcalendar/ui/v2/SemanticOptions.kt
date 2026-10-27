@@ -27,6 +27,9 @@ internal object SemanticOptions {
             SemanticOption("calendar.import.file", "导入日历文件", "选择文件，由本地程序优先处理", "file"),
             SemanticOption("calendar.import.system", "从系统日历导入", "读取当前静态快照，不同步", "calendar")
         )),
+        SemanticOptionGroup("calendar.export", "导出", listOf(
+            SemanticOption("calendar.export.ics", "导出 Activity ICS", "仅包含 Activity；其他类型和完成状态请用原生备份", "export")
+        )),
         SemanticOptionGroup("reminders.permissions", "提醒与权限", listOf(
             SemanticOption("reminders.exactAlarmSettings", "精确闹钟权限", "由 Android 系统管理精确闹钟授权", "alarm"),
             SemanticOption("reminders.notificationPermission", "通知权限", "在 Android 系统对话框或设置中管理", "notification"),
