@@ -100,14 +100,16 @@ class WebSkinRecurrenceBridgeTest {
         val save = command("editor.save", "sessionId" to resumed)
         assertEquals("confirmation_required", service.execute(save).getString("status"))
         assertEquals(initial, store.get(seq))
-        val review = requireNotNull(service.pendingRecurrenceReview)
+        val review = requireNotNull(service.pendingWriteReview)
         assertFalse(service.snapshot().toString().contains(review.token))
-        assertEquals("2026-10-21 07:30", DraftForm.formatInstant(review.before.startMillis,
+        val before = requireNotNull(review.before)
+        val proposed = requireNotNull(review.proposed)
+        assertEquals("2026-10-21 07:30", DraftForm.formatInstant(before.startMillis,
             ZoneId.of("Asia/Shanghai")))
-        val rows=snapshotRows(review.before,review.proposed)
+        val rows=snapshotRows(before,proposed)
         assertEquals(25,rows.size)
         assertTrue(rows.any { it.label=="标题" && it.before=="每日闹钟" && it.after=="仅这一次" })
-        assertEquals("saved", service.resolveRecurrenceReview(review.token, true).getString("status"))
+        assertEquals("saved", service.resolveFormalWriteReview(review.token, true).getString("status"))
         assertEquals("saved", service.execute(save).getString("status"))
         val saved = requireNotNull(store.get(seq))
         assertEquals(initial.revision + 1, saved.revision)
@@ -135,8 +137,8 @@ class WebSkinRecurrenceBridgeTest {
         val save = command("editor.save", "sessionId" to session)
         assertEquals("confirmation_required", service.execute(save).getString("status"))
         assertEquals(1, store.all().size)
-        val review = requireNotNull(service.pendingRecurrenceReview)
-        assertEquals("saved", service.resolveRecurrenceReview(review.token, true).getString("status"))
+        val review = requireNotNull(service.pendingWriteReview)
+        assertEquals("saved", service.resolveFormalWriteReview(review.token, true).getString("status"))
         assertEquals("saved", service.execute(save).getString("status"))
         assertFalse(service.snapshot().getJSONObject("editor").getBoolean("open"))
         val records = store.all()
@@ -169,12 +171,12 @@ class WebSkinRecurrenceBridgeTest {
         assertEquals("confirmation_required", service.execute(save).getString("status"))
         assertEquals(before, store.get(seq))
         assertNull(WebEditWire.decode(wire("editor.confirm", "sessionId" to session, "approve" to true)))
-        val review=requireNotNull(service.pendingRecurrenceReview)
-        assertEquals("stale",service.resolveRecurrenceReview(id(),true).getString("status"))
+        val review=requireNotNull(service.pendingWriteReview)
+        assertEquals("stale",service.resolveFormalWriteReview(id(),true).getString("status"))
         assertEquals("locked",service.execute(command("editor.patch", "sessionId" to session,
             "field" to "title", "value" to "changed during review")).getString("status"))
         assertEquals(before,store.get(seq))
-        assertEquals("cancelled",service.resolveRecurrenceReview(review.token,false).getString("status"))
+        assertEquals("cancelled",service.resolveFormalWriteReview(review.token,false).getString("status"))
         assertEquals("cancelled",service.execute(save).getString("status"))
         assertEquals(before,store.get(seq))
     }
@@ -192,9 +194,9 @@ class WebSkinRecurrenceBridgeTest {
         assertEquals("confirmation_required",service.execute(command("editor.save",
             "sessionId" to session)).getString("status"))
         assertEquals(before,store.get(card.eventSeq))
-        val review=requireNotNull(service.pendingRecurrenceReview)
-        assertEquals(RecurrenceEditScope.WHOLE_SERIES,review.scope)
-        assertEquals("saved",service.resolveRecurrenceReview(review.token,true).getString("status"))
+        val review=requireNotNull(service.pendingWriteReview)
+        assertNull(review.scope)
+        assertEquals("saved",service.resolveFormalWriteReview(review.token,true).getString("status"))
         assertEquals(RecurrenceFreq.DAILY,requireNotNull(store.get(card.eventSeq)).recurrence.freq)
     }
 
@@ -215,8 +217,8 @@ class WebSkinRecurrenceBridgeTest {
             "field" to "title", "value" to "整组修改")).getString("status"))
         assertEquals("confirmation_required",service.execute(command("editor.save", "sessionId" to session))
             .getString("status"))
-        assertEquals("saved",service.resolveRecurrenceReview(
-            requireNotNull(service.pendingRecurrenceReview).token,true).getString("status"))
+        assertEquals("saved",service.resolveFormalWriteReview(
+            requireNotNull(service.pendingWriteReview).token,true).getString("status"))
         assertEquals("整组修改",requireNotNull(store.get(seq)).title)
     }
 
@@ -231,10 +233,10 @@ class WebSkinRecurrenceBridgeTest {
         service.execute(command("editor.patch", "sessionId" to session, "field" to "title", "value" to "保留输入"))
         val save=command("editor.save", "sessionId" to session)
         assertEquals("confirmation_required",service.execute(save).getString("status"))
-        val token=requireNotNull(service.pendingRecurrenceReview).token
+        val token=requireNotNull(service.pendingWriteReview).token
         assertTrue(service.prepareSkinChange())
-        assertNull(service.pendingRecurrenceReview)
-        assertEquals("stale",service.resolveRecurrenceReview(token,true).getString("status"))
+        assertNull(service.pendingWriteReview)
+        assertEquals("stale",service.resolveFormalWriteReview(token,true).getString("status"))
         assertEquals("cancelled",service.execute(save).getString("status"))
         assertEquals(before,store.get(seq))
         assertEquals("保留输入",store.pendingDraftsFor(seq).single().form.title)
@@ -252,10 +254,10 @@ class WebSkinRecurrenceBridgeTest {
         service.execute(command("editor.patch", "sessionId" to session, "field" to "title", "value" to "过期修改"))
         val save=command("editor.save", "sessionId" to session)
         assertEquals("confirmation_required",service.execute(save).getString("status"))
-        val token=requireNotNull(service.pendingRecurrenceReview).token
+        val token=requireNotNull(service.pendingWriteReview).token
         assertTrue(store.setCompleted(seq,key,true,before.revision))
         val changed=requireNotNull(store.get(seq))
-        assertEquals("conflict",service.resolveRecurrenceReview(token,true).getString("status"))
+        assertEquals("conflict",service.resolveFormalWriteReview(token,true).getString("status"))
         assertEquals("conflict",service.execute(save).getString("status"))
         assertEquals(changed,store.get(seq))
         assertTrue(requireNotNull(store.get(seq)).completedKeys.contains(key))
@@ -292,8 +294,8 @@ class WebSkinRecurrenceBridgeTest {
                     "field" to "title", "value" to "同一修改")).getString("status"))
                 val save=command("editor.save", "sessionId" to session)
                 assertEquals("confirmation_required", bridge.execute(save).getString("status"))
-                assertEquals("saved", bridge.resolveRecurrenceReview(
-                    requireNotNull(bridge.pendingRecurrenceReview).token, true).getString("status"))
+                assertEquals("saved", bridge.resolveFormalWriteReview(
+                    requireNotNull(bridge.pendingWriteReview).token, true).getString("status"))
                 if (scope != RecurrenceEditScope.THIS_AND_FUTURE)
                     bridge.execute(command("editor.close", "sessionId" to session))
 

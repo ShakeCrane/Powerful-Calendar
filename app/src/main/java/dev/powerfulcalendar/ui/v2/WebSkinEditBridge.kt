@@ -7,6 +7,9 @@ import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
+import dev.powerfulcalendar.core.DraftCard
+import dev.powerfulcalendar.core.DraftOperation
+import dev.powerfulcalendar.core.FormBuild
 import dev.powerfulcalendar.core.RecurrenceFreq
 import dev.powerfulcalendar.core.Recurrence
 import dev.powerfulcalendar.core.RecurrenceEditScope
@@ -222,14 +225,20 @@ internal object WebEditWire {
 }
 
 /** Never projected to JavaScript: only a trusted host dialog can resolve this snapshot. */
-internal data class WebRecurrenceReview(
+internal data class WebFormalWriteReview(
     val token: String,
-    val command: WebEditCommand.SaveEvent,
-    val current: TemporalRecord,
-    val before: TemporalRecord,
-    val proposed: DraftForm,
-    val scope: RecurrenceEditScope,
-    val occurrenceKey: String?
+    val command: WebEditCommand,
+    val operation: DraftOperation,
+    val current: TemporalRecord?,
+    val before: TemporalRecord?,
+    val proposed: DraftForm?,
+    val scope: RecurrenceEditScope? = null,
+    val occurrenceKey: String? = null,
+    val editorSession: EditSession? = null,
+    val newEventSession: NewEventEditSession? = null,
+    val deckCard: DraftCard? = null,
+    val deckForm: DraftForm? = null,
+    val deckVersion: Long? = null
 )
 
 internal class WebSkinEditService(
@@ -242,7 +251,7 @@ internal class WebSkinEditService(
     private var sessionId: String? = null
     private var newEventSession: NewEventEditSession? = null
     private var deckOpen = false
-    var pendingRecurrenceReview by mutableStateOf<WebRecurrenceReview?>(null)
+    var pendingWriteReview by mutableStateOf<WebFormalWriteReview?>(null)
         private set
     // Compose-observable lifetime signal for reliable Android Back interception.
     private var hasActiveUiSession by mutableStateOf(false)
@@ -306,7 +315,7 @@ internal class WebSkinEditService(
                 .put("requiresRecurrenceScope",current?.requiresRecurrenceScope ?: false)
                 .put("canEditSelectedOccurrence",current?.canEditSelectedOccurrence ?: false)
                 .put("recurrenceScope",current?.recurrenceScope?.name ?: JSONObject.NULL)
-                .put("awaitingConfirmation",pendingRecurrenceReview != null)
+                .put("awaitingConfirmation",pendingWriteReview != null)
                 .put("dirty",current?.meaningfulDiff ?: false)
                 .put("error",current?.lastError))
             .put("deck",deckState())
@@ -319,7 +328,7 @@ internal class WebSkinEditService(
             return@withLock if(original==cmd) JSONObject(reply.toString())
                 else result(cmd.requestId,"duplicate_request_id")
         }
-        if (pendingRecurrenceReview != null) {
+        if (pendingWriteReview != null) {
             val reply=result(cmd.requestId,"locked","请先处理宿主确认")
             completed[cmd.requestId]=cmd to JSONObject(reply.toString())
             if(completed.size>64)completed.remove(completed.keys.first())
@@ -384,22 +393,28 @@ internal class WebSkinEditService(
                     if(!editorMatches(cmd.sessionId)) result(cmd.requestId,"stale")
                     else if(session!!.requiresRecurrenceScope && session!!.recurrenceScope == null)
                         result(cmd.requestId,"invalid","请先选择重复事件的编辑范围")
-                    else if(session!!.meaningfulDiff &&
-                        (session!!.requiresRecurrenceScope || session!!.form.recurrence.isRepeating)) {
+                    else if(session!!.meaningfulDiff) {
                         val active=session!!
                         val current=withContext(Dispatchers.IO){store.get(active.eventSeq)}
-                        val scope=active.recurrenceScope ?: RecurrenceEditScope.WHOLE_SERIES
+                        val scope=active.recurrenceScope
                         val selected=active.selectedOccurrenceKey
-                        val occurrence=if(scope != RecurrenceEditScope.WHOLE_SERIES && selected != null)
+                        val occurrence=if((scope == RecurrenceEditScope.SINGLE_OCCURRENCE ||
+                                scope == RecurrenceEditScope.THIS_AND_FUTURE) && selected != null)
                             current?.let { withContext(Dispatchers.IO){RecurrenceEngine.occurrenceForKey(it,selected)} }
                         else null
                         if(current==null) result(cmd.requestId,"stale")
-                        else if(scope != RecurrenceEditScope.WHOLE_SERIES && occurrence==null)
+                        else if((scope == RecurrenceEditScope.SINGLE_OCCURRENCE ||
+                                scope == RecurrenceEditScope.THIS_AND_FUTURE) && occurrence==null)
                             result(cmd.requestId,"invalid","所选重复实例不存在")
                         else {
-                            val before=if(occurrence!=null) occurrenceDisplayRecord(current,occurrence) else current
-                            pendingRecurrenceReview=WebRecurrenceReview(UUID.randomUUID().toString(),
-                                cmd,current,before,active.form,scope,selected)
+                            val before=occurrence?.let { occurrenceDisplayRecord(current,it) } ?: current
+                            val operation=if(current.kind==active.form.kind)
+                                DraftOperation.REPLACE else DraftOperation.CONVERT
+                            pendingWriteReview=WebFormalWriteReview(
+                                token=UUID.randomUUID().toString(), command=cmd,
+                                operation=operation, current=current, before=before,
+                                proposed=active.form, scope=scope, occurrenceKey=selected,
+                                editorSession=active)
                             result(cmd.requestId,"confirmation_required")
                         }
                     }
@@ -510,43 +525,7 @@ internal class WebSkinEditService(
                     } else if(deck.flush()) {deckOpen=false;result(cmd.requestId,"closed")}
                     else result(cmd.requestId,"failed",deck.state.error)
                 }
-                is WebEditCommand.CommitDeck -> {
-                    val activeNew = newEventSession
-                    if(activeNew != null) {
-                        if(!deckOpen || activeNew.clientDraftId!=cmd.draftId ||
-                            activeNew.version!=cmd.draftVersion) result(cmd.requestId,"stale")
-                        else when(val saved=withContext(Dispatchers.IO) { activeNew.save(store) }) {
-                            is NewEventEditSession.SaveOutcome.Staged ->
-                                result(cmd.requestId,"staged",activeNew.clientDraftId.toString())
-                            is NewEventEditSession.SaveOutcome.Failed ->
-                                result(cmd.requestId,"failed",saved.message)
-                            NewEventEditSession.SaveOutcome.NoChanges ->
-                                result(cmd.requestId,"no_changes")
-                            is NewEventEditSession.SaveOutcome.Published -> when(val outcome=saved.outcome) {
-                                is PowerStore.CommitOutcome.Committed -> {
-                                    newEventSession = null
-                                    deckOpen = false
-                                    runCatching { deck.open() }
-                                    result(cmd.requestId,"committed",outcome.eventSeq.toString())
-                                }
-                                is PowerStore.CommitOutcome.Invalid -> result(cmd.requestId,"invalid",outcome.reason)
-                                is PowerStore.CommitOutcome.Conflict -> result(cmd.requestId,"conflict")
-                                is PowerStore.CommitOutcome.NeedsRestore -> result(cmd.requestId,"restore_required")
-                                PowerStore.CommitOutcome.Locked -> result(cmd.requestId,"locked")
-                                PowerStore.CommitOutcome.NotAuthorized -> result(cmd.requestId,"locked")
-                            }
-                        }
-                    } else {
-                        val s=deck.state
-                        if(!deckOpen || s.currentId!=cmd.draftId ||
-                            s.version!=cmd.draftVersion) result(cmd.requestId,"stale")
-                        else if(deck.commit())result(cmd.requestId,"committed")
-                        else result(cmd.requestId,
-                            if(deck.state.conflict!=null)"conflict"
-                            else if(deck.state.restore!=null)"restore_required"
-                            else "failed",deck.state.error)
-                    }
-                }
+                is WebEditCommand.CommitDeck -> requestCommitReview(cmd)
                 is WebEditCommand.DiscardDeck -> {
                     val activeNew = newEventSession
                     if(activeNew != null) {
@@ -583,39 +562,169 @@ internal class WebSkinEditService(
         reply
     }
 
+    private suspend fun requestCommitReview(cmd: WebEditCommand.CommitDeck): JSONObject {
+        val activeNew = newEventSession
+        if (activeNew != null) {
+            if (!deckOpen || activeNew.clientDraftId != cmd.draftId ||
+                activeNew.version != cmd.draftVersion) return result(cmd.requestId, "stale")
+            if (!activeNew.meaningfulDiff) return result(cmd.requestId, "no_changes")
+            val form = activeNew.form
+            return when (form.build(1L, 1L, activeNew.defaults.nowMillis)) {
+                is FormBuild.Ready -> {
+                    pendingWriteReview = WebFormalWriteReview(
+                        token = UUID.randomUUID().toString(), command = cmd,
+                        operation = DraftOperation.CREATE, current = null, before = null,
+                        proposed = form, newEventSession = activeNew,
+                        deckCard = activeNew.persistedCard, deckVersion = activeNew.version
+                    )
+                    result(cmd.requestId, "confirmation_required")
+                }
+                is FormBuild.Incomplete, is FormBuild.Invalid ->
+                    when (val saved = withContext(Dispatchers.IO) { activeNew.save(store) }) {
+                        is NewEventEditSession.SaveOutcome.Staged ->
+                            result(cmd.requestId, "staged", activeNew.clientDraftId.toString())
+                        is NewEventEditSession.SaveOutcome.Failed ->
+                            result(cmd.requestId, "failed", saved.message)
+                        NewEventEditSession.SaveOutcome.NoChanges -> result(cmd.requestId, "no_changes")
+                        is NewEventEditSession.SaveOutcome.Published ->
+                            result(cmd.requestId, "failed", "发布状态变化，请重新检查")
+                    }
+            }
+        }
+
+        val initial = deck.state
+        if (!deckOpen || initial.currentId != cmd.draftId || initial.version != cmd.draftVersion)
+            return result(cmd.requestId, "stale")
+        if (initial.aiLocked || initial.busy) return result(cmd.requestId, "locked")
+        if (!deck.flush()) return result(cmd.requestId, "failed", deck.state.error)
+
+        val state = deck.state
+        val card = state.current ?: return result(cmd.requestId, "missing")
+        val form = state.form ?: return result(cmd.requestId, "missing")
+        if (state.currentId != cmd.draftId || state.busy || state.aiLocked)
+            return result(cmd.requestId, "locked")
+        val current = if (card.operation.requiresExisting) {
+            withContext(Dispatchers.IO) { store.get(card.eventSeq) }
+        } else null
+        val ready = form.build(card.eventSeq.coerceAtLeast(1L), (card.baseRevision ?: 0L) + 1L)
+        val changedFormalValue = when {
+            card.operation == DraftOperation.DELETE -> true
+            ready !is FormBuild.Ready -> false
+            card.operation == DraftOperation.CREATE -> true
+            current == null -> false
+            else -> form.hasMeaningfulDiffFrom(DraftForm.from(current))
+        }
+        if (!changedFormalValue) {
+            return when {
+                card.operation.requiresExisting && current == null -> commitDeckResult(cmd.requestId)
+                ready !is FormBuild.Ready -> commitDeckResult(cmd.requestId)
+                else -> result(cmd.requestId, "no_changes")
+            }
+        }
+        if (card.operation.requiresExisting && current == null)
+            return commitDeckResult(cmd.requestId)
+
+        val persisted = withContext(Dispatchers.IO) { store.draft(card.draftId) }
+            ?: return result(cmd.requestId, "stale")
+        if (persisted.operation != card.operation || persisted.form != form ||
+            persisted.draftVersion != state.version || state.dirty)
+            return result(cmd.requestId, "conflict", "草稿在审查期间发生变化")
+        pendingWriteReview = WebFormalWriteReview(
+            token = UUID.randomUUID().toString(), command = cmd,
+            operation = card.operation, current = current, before = current,
+            proposed = if (card.operation == DraftOperation.DELETE) null else form,
+            deckCard = persisted, deckForm = form, deckVersion = state.version
+        )
+        return result(cmd.requestId, "confirmation_required")
+    }
+
+    private suspend fun commitDeckResult(requestId: String): JSONObject =
+        if (deck.commit()) result(requestId, "committed")
+        else result(requestId,
+            if (deck.state.conflict != null) "conflict"
+            else if (deck.state.restore != null) "restore_required"
+            else "failed", deck.state.error)
+
+    private suspend fun resolveDeckCommit(review: WebFormalWriteReview): JSONObject {
+        val command = review.command as? WebEditCommand.CommitDeck
+            ?: return result(review.command.requestId, "stale")
+        val transient = review.newEventSession
+        if (transient != null) {
+            if (newEventSession !== transient || !deckOpen ||
+                transient.clientDraftId != command.draftId ||
+                transient.version != review.deckVersion || transient.form != review.proposed ||
+                transient.persistedCard != review.deckCard)
+                return result(command.requestId, "conflict", "新建内容已变化，请重新审查")
+            return when (val saved = withContext(Dispatchers.IO) { transient.save(store) }) {
+                is NewEventEditSession.SaveOutcome.Published -> when (val outcome = saved.outcome) {
+                    is PowerStore.CommitOutcome.Committed -> {
+                        newEventSession = null
+                        deckOpen = false
+                        runCatching { deck.open() }
+                        result(command.requestId, "committed", outcome.eventSeq.toString())
+                    }
+                    is PowerStore.CommitOutcome.Invalid -> result(command.requestId, "invalid", outcome.reason)
+                    is PowerStore.CommitOutcome.Conflict -> result(command.requestId, "conflict")
+                    is PowerStore.CommitOutcome.NeedsRestore -> result(command.requestId, "restore_required")
+                    PowerStore.CommitOutcome.Locked, PowerStore.CommitOutcome.NotAuthorized ->
+                        result(command.requestId, "locked")
+                }
+                is NewEventEditSession.SaveOutcome.Staged -> result(command.requestId, "staged")
+                is NewEventEditSession.SaveOutcome.Failed -> result(command.requestId, "failed", saved.message)
+                NewEventEditSession.SaveOutcome.NoChanges -> result(command.requestId, "no_changes")
+            }
+        }
+
+        val card = review.deckCard ?: return result(command.requestId, "stale")
+        val state = deck.state
+        val persisted = withContext(Dispatchers.IO) { store.draft(card.draftId) }
+        if (!deckOpen || state.currentId != command.draftId || state.version != review.deckVersion ||
+            state.current?.operation != card.operation || state.form != review.deckForm || state.dirty ||
+            state.busy || state.aiLocked || persisted != card ||
+            (card.operation.requiresExisting &&
+                withContext(Dispatchers.IO) { store.get(card.eventSeq) } != review.current))
+            return result(command.requestId, "conflict", "草稿或正式事件已变化，请重新审查")
+        return commitDeckResult(command.requestId)
+    }
+
     /** Called only by the host-owned confirmation UI, never by a Web command. */
-    suspend fun resolveRecurrenceReview(token: String, approved: Boolean): JSONObject = gate.withLock {
-        val review=pendingRecurrenceReview
+    suspend fun resolveFormalWriteReview(token: String, approved: Boolean): JSONObject = gate.withLock {
+        val review=pendingWriteReview
             ?: return@withLock result("host-review","stale")
         if(review.token!=token) return@withLock result("host-review","stale")
-        val active=session
         val reply = try {
             if(!approved) result(review.command.requestId,"cancelled")
-            else if(active==null || sessionId!=review.command.sessionId ||
-                active.form!=review.proposed ||
-                (active.recurrenceScope ?: RecurrenceEditScope.WHOLE_SERIES)!=review.scope ||
-                withContext(Dispatchers.IO){store.get(review.current.eventSeq)}!=review.current)
-                result(review.command.requestId,"conflict","事件或审查内容已变化")
-            else if(review.scope==RecurrenceEditScope.THIS_AND_FUTURE) {
-                when(val split=withContext(Dispatchers.IO){active.saveThisAndFuture()}) {
-                    is PowerStore.RecurrenceSplitOutcome.Applied -> {
-                        withContext(Dispatchers.IO){active.close()}
-                        session=null;sessionId=null
-                        result(review.command.requestId,"saved",split.newEventSeq.toString())
+            else when (review.command) {
+                is WebEditCommand.SaveEvent -> {
+                    val active = review.editorSession
+                    if(active==null || session!==active || sessionId!=review.command.sessionId ||
+                        active.form!=review.proposed || active.recurrenceScope!=review.scope ||
+                        withContext(Dispatchers.IO){store.get(review.current!!.eventSeq)}!=review.current)
+                        result(review.command.requestId,"conflict","事件或审查内容已变化")
+                    else if(review.scope==RecurrenceEditScope.THIS_AND_FUTURE) {
+                        when(val split=withContext(Dispatchers.IO){active.saveThisAndFuture()}) {
+                            is PowerStore.RecurrenceSplitOutcome.Applied -> {
+                                withContext(Dispatchers.IO){active.close()}
+                                session=null;sessionId=null
+                                result(review.command.requestId,"saved",split.newEventSeq.toString())
+                            }
+                            is PowerStore.RecurrenceSplitOutcome.Conflict -> result(review.command.requestId,"conflict")
+                            is PowerStore.RecurrenceSplitOutcome.Invalid -> result(review.command.requestId,"invalid",split.reason)
+                            PowerStore.RecurrenceSplitOutcome.Locked -> result(review.command.requestId,"locked")
+                        }
+                    } else when(val saved=withContext(Dispatchers.IO){active.save()}) {
+                        is PowerStore.DirectEditOutcome.Saved -> result(review.command.requestId,"saved",saved.revision.toString())
+                        is PowerStore.DirectEditOutcome.Conflict -> result(review.command.requestId,"conflict")
+                        is PowerStore.DirectEditOutcome.Invalid -> result(review.command.requestId,"invalid",saved.reason)
+                        PowerStore.DirectEditOutcome.Locked -> result(review.command.requestId,"locked")
                     }
-                    is PowerStore.RecurrenceSplitOutcome.Conflict -> result(review.command.requestId,"conflict")
-                    is PowerStore.RecurrenceSplitOutcome.Invalid -> result(review.command.requestId,"invalid",split.reason)
-                    PowerStore.RecurrenceSplitOutcome.Locked -> result(review.command.requestId,"locked")
                 }
-            } else when(val saved=withContext(Dispatchers.IO){active.save()}) {
-                is PowerStore.DirectEditOutcome.Saved -> result(review.command.requestId,"saved",saved.revision.toString())
-                is PowerStore.DirectEditOutcome.Conflict -> result(review.command.requestId,"conflict")
-                is PowerStore.DirectEditOutcome.Invalid -> result(review.command.requestId,"invalid",saved.reason)
-                PowerStore.DirectEditOutcome.Locked -> result(review.command.requestId,"locked")
+                is WebEditCommand.CommitDeck -> resolveDeckCommit(review)
+                else -> result(review.command.requestId,"stale")
             }
         } catch(e:kotlinx.coroutines.CancellationException) { throw e }
           catch(e:Exception) { result(review.command.requestId,"failed","Host operation failed; retry or recover") }
-        pendingRecurrenceReview=null
+        pendingWriteReview=null
         completed[review.command.requestId]=review.command to JSONObject(reply.toString())
         latest=reply
         hasActiveUiSession=session!=null || newEventSession!=null || deckOpen
@@ -658,11 +767,11 @@ internal class WebSkinEditService(
             withContext(Dispatchers.IO){session!!.close()}
             session=null;sessionId=null
         }
-        pendingRecurrenceReview?.let { review ->
+        pendingWriteReview?.let { review ->
             val cancelled=result(review.command.requestId,"cancelled")
             completed[review.command.requestId]=review.command to JSONObject(cancelled.toString())
             latest=cancelled
-            pendingRecurrenceReview=null
+            pendingWriteReview=null
         }
         deckOpen=false
         hasActiveUiSession=false

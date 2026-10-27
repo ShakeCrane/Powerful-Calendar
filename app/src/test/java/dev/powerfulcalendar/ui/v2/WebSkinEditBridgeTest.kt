@@ -120,7 +120,10 @@ class WebSkinEditBridgeTest {
         assertEquals("edited",service.execute(WebEditCommand.PatchEvent(
             request(),sid,"title","Updated")).getString("status"))
         val cmd=WebEditCommand.SaveEvent(request(),sid)
-        assertEquals("saved",service.execute(cmd).getString("status"))
+        assertEquals("confirmation_required",service.execute(cmd).getString("status"))
+        assertEquals(original,store.get(card.eventSeq))
+        assertEquals("saved",service.resolveFormalWriteReview(
+            requireNotNull(service.pendingWriteReview).token,true).getString("status"))
         assertEquals("saved",service.execute(cmd).getString("status"))
         assertEquals("duplicate_request_id",service.execute(
             WebEditCommand.CloseEvent(cmd.requestId,sid)).getString("status"))
@@ -155,7 +158,10 @@ class WebSkinEditBridgeTest {
         assertEquals("Memo from Web",persisted.form.title)
         val savedVersion=service.snapshot().getJSONObject("deck").getLong("version")
         val cmd=WebEditCommand.CommitDeck(request(),id,savedVersion)
-        assertEquals("committed",service.execute(cmd).getString("status"))
+        assertEquals("confirmation_required",service.execute(cmd).getString("status"))
+        assertTrue(store.get(persisted.eventSeq)==null)
+        assertEquals("committed",service.resolveFormalWriteReview(
+            requireNotNull(service.pendingWriteReview).token,true).getString("status"))
         assertEquals("committed",service.execute(cmd).getString("status"))
         assertEquals("Memo from Web",store.get(persisted.eventSeq)!!.title)
         assertEquals(1,store.draftCount())
@@ -231,7 +237,10 @@ class WebSkinEditBridgeTest {
         assertEquals("edited",service.execute(WebEditCommand.PatchDeck(request(),id,version,
             "title","Published directly")).getString("status"))
         val command=WebEditCommand.CommitDeck(request(),id,version)
-        assertEquals("committed",service.execute(command).getString("status"))
+        assertEquals("confirmation_required",service.execute(command).getString("status"))
+        assertTrue(store.all().isEmpty())
+        assertEquals("committed",service.resolveFormalWriteReview(
+            requireNotNull(service.pendingWriteReview).token,true).getString("status"))
         assertEquals("committed",service.execute(command).getString("status"))
         assertEquals(1,store.all().size)
         assertEquals("Published directly",store.all().single().title)
@@ -254,10 +263,13 @@ class WebSkinEditBridgeTest {
         assertEquals(0,store.commitCount())
         assertEquals("unfinished",store.pendingDrafts().single().form.notes)
 
+        val currentVersion=service.snapshot().getJSONObject("deck").getLong("version")
         assertEquals("edited",service.execute(WebEditCommand.PatchDeck(
-            request(),id,version,"title","completed later")).getString("status"))
-        assertEquals("committed",service.execute(WebEditCommand.CommitDeck(
-            request(),id,version)).getString("status"))
+            request(),id,currentVersion,"title","completed later")).getString("status"))
+        val publish=WebEditCommand.CommitDeck(request(),id,currentVersion)
+        assertEquals("confirmation_required",service.execute(publish).getString("status"))
+        assertEquals("committed",service.resolveFormalWriteReview(
+            requireNotNull(service.pendingWriteReview).token,true).getString("status"))
         assertEquals("completed later",store.all().single().title)
         assertEquals(0,store.pendingCount())
         assertEquals(1,store.draftCount())

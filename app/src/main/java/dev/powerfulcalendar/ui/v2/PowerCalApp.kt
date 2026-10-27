@@ -1470,7 +1470,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
         }
     }
 
-    webEditing.pendingRecurrenceReview?.let { review ->
+    webEditing.pendingWriteReview?.let { review ->
         var resolving by remember(review.token) { mutableStateOf(false) }
         val resolveReview: (Boolean) -> Unit = { approved ->
             if (!resolving) {
@@ -1479,7 +1479,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                 // composition teardown must not cancel an in-flight transaction.
                 PowerCalStores.appScope.launch(Dispatchers.Main.immediate) {
                     try {
-                        val reply = webEditing.resolveRecurrenceReview(review.token, approved)
+                        val reply = webEditing.resolveFormalWriteReview(review.token, approved)
                         when (reply.optString("status")) {
                             "saved" -> {
                                 val refreshed = runCatching { reload() }.isSuccess
@@ -1487,7 +1487,11 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                                 message = when {
                                     !refreshed -> "修改已保存，但界面同步失败；请刷新查看"
                                     !reconciled -> "修改已保存，提醒同步尚未完成"
-                                    else -> "重复事件修改已保存"
+                                    else -> when {
+                                        review.operation == DraftOperation.DELETE -> "正式事件已删除"
+                                        review.command is WebEditCommand.CommitDeck -> "日程已正式发布"
+                                        else -> "正式事件修改已保存"
+                                    }
                                 }
                             }
                             "cancelled" -> message = "已取消保存，修改仍保留在编辑器中"
@@ -1498,27 +1502,45 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                 }
             }
         }
+        val reviewTitle = when {
+            review.operation == DraftOperation.DELETE -> "确认删除正式事件"
+            review.command is WebEditCommand.CommitDeck -> "确认发布正式事件"
+            else -> "确认保存正式事件修改"
+        }
         SkinAlertDialog(
             onDismissRequest = { resolveReview(false) },
-            title = { Text("确认重复事件修改") },
+            title = { Text(reviewTitle) },
             text = {
                 Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("事件 #${review.current.eventSeq} · 版本 ${review.current.revision}")
-                    Text("范围：" + when(review.scope) {
-                        RecurrenceEditScope.SINGLE_OCCURRENCE -> "仅本次"
-                        RecurrenceEditScope.THIS_AND_FUTURE -> "本次及以后（拆分为新系列）"
-                        RecurrenceEditScope.WHOLE_SERIES -> "整个系列"
-                    })
+                    review.current?.let {
+                        Text("事件 #${it.eventSeq} · 版本 ${it.revision}")
+                    } ?: review.deckCard?.let {
+                        Text("草稿 #${it.draftId} · ${review.operation.label}")
+                    }
+                    review.scope?.let { scope ->
+                        Text("范围：" + when(scope) {
+                            RecurrenceEditScope.SINGLE_OCCURRENCE -> "仅本次"
+                            RecurrenceEditScope.THIS_AND_FUTURE -> "本次及以后（拆分为新系列）"
+                            RecurrenceEditScope.WHOLE_SERIES -> "整个系列"
+                        })
+                    }
                     review.occurrenceKey?.let { Text("原始实例：$it") }
-                    Text("请核对当前值与修改后的完整内容。")
-                    snapshotRows(review.before, review.proposed).forEach { row ->
-                        Text("${row.label}：${row.before} → ${row.after}")
+                    Text(if (review.operation == DraftOperation.DELETE)
+                        "以下正式事件将被删除，请核对后确认。"
+                    else "请核对完整内容；只有在此宿主对话框确认后才会写入正式事件。")
+                    when {
+                        review.proposed != null -> snapshotRows(review.before, review.proposed)
+                            .forEach { row -> Text("${row.label}：${row.before} → ${row.after}") }
+                        review.before != null -> snapshotRows(review.before,
+                            DraftForm.from(review.before)).forEach { row ->
+                            Text("${row.label}：${row.before} → （删除）")
+                        }
                     }
                 }
             },
             confirmButton = { TextButton(enabled = !resolving, onClick = { resolveReview(true) }) {
-                Text("确认保存")
+                Text(if (review.operation == DraftOperation.DELETE) "确认删除" else "确认")
             } },
             dismissButton = { TextButton(enabled = !resolving, onClick = { resolveReview(false) }) {
                 Text("取消")

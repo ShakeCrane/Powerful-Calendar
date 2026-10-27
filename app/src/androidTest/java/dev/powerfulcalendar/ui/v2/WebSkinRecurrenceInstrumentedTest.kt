@@ -58,7 +58,15 @@ class WebSkinRecurrenceInstrumentedTest {
             if (evaluate(web, condition) == "true") return
             Thread.sleep(100)
         }
-        throw AssertionError("WebView condition timed out: $condition")
+        val diagnostic = runCatching {
+            evaluate(web, "JSON.stringify({subtitle:document.querySelector('#sheetSubtitle')?.textContent, " +
+                "status:document.querySelector('#sheetStatus')?.textContent, " +
+                "title:document.querySelector('#sheetFields [data-field=title]')?.value, " +
+                "cards:Array.from(document.querySelectorAll('#sheetFields .sheet-cards [data-do=select]'))" +
+                ".map(node=>node.textContent), saveDisabled:document.querySelector('#sheetSave')?.disabled, " +
+                "hidden:document.querySelector('#skinSheet')?.hidden})")
+        }.getOrDefault("unavailable")
+        throw AssertionError("WebView condition timed out: $condition; state=$diagnostic")
     }
 
     @Test fun actualWebViewEditsOnlyTheSelectedRecurrence() {
@@ -104,7 +112,7 @@ class WebSkinRecurrenceInstrumentedTest {
             awaitJs(view, "!!document.querySelector('[data-do=discardChanges]')")
             evaluate(view, "document.querySelector('#sheetSave').click(); true")
             compose.waitUntil(30_000) {
-                compose.onAllNodesWithText("确认重复事件修改").fetchSemanticsNodes().isNotEmpty()
+                compose.onAllNodesWithText("确认保存正式事件修改").fetchSemanticsNodes().isNotEmpty()
             }
             assertEquals(original, store.get(card.eventSeq))
             compose.onNodeWithText("取消").performClick()
@@ -112,10 +120,10 @@ class WebSkinRecurrenceInstrumentedTest {
             assertEquals(original, store.get(card.eventSeq))
             evaluate(view, "document.querySelector('#sheetSave').click(); true")
             compose.waitUntil(30_000) {
-                compose.onAllNodesWithText("确认重复事件修改").fetchSemanticsNodes().isNotEmpty()
+                compose.onAllNodesWithText("确认保存正式事件修改").fetchSemanticsNodes().isNotEmpty()
             }
             assertEquals(original, store.get(card.eventSeq))
-            compose.onNodeWithText("确认保存").performClick()
+            compose.onNodeWithText("确认").performClick()
             compose.waitUntil(30_000) {
                 store.get(card.eventSeq)?.recurrence?.overrides?.get(key)?.title == "仅本次 WebView"
             }
@@ -128,6 +136,94 @@ class WebSkinRecurrenceInstrumentedTest {
             // the sheet intentionally ignores another action while it is busy.
             awaitJs(view, "document.querySelector('#sheetStatus').textContent.includes('事件已保存')")
             evaluate(view, "document.querySelector('#sheetClose').click(); true")
+            awaitJs(view, "document.querySelector('#skinSheet').hidden")
+        } finally {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            store.close()
+            context.deleteDatabase(database)
+        }
+    }
+
+    @Test fun webFormalEditAndNewPublishWaitForNativeHostApproval() {
+        val context: Context = compose.activity.applicationContext
+        val database = "skin-write-${UUID.randomUUID()}.db"
+        val store = PowerStore(context, database)
+        val zone = ZoneId.systemDefault()
+        val start = LocalDate.now(zone).atTime(15, 0).atZone(zone).toInstant().toEpochMilli()
+        val card = store.newDraft(DraftForm(kind = TemporalKind.ALARM, title = "宿主审查前",
+            startText = DraftForm.formatInstant(start, zone), zoneId = zone.id,
+            reminderMinutes = -1))
+        assertTrue(store.commit(card.draftId) is PowerStore.CommitOutcome.Committed)
+        val original = requireNotNull(store.get(card.eventSeq))
+        val commitsBefore = store.commitCount()
+        val identitiesBefore = store.identityCount()
+        val draftsBefore = store.draftCount()
+        val pendingBefore = store.pendingCount()
+        context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+            .edit().putBoolean("system-calendar-import-asked", true).commit()
+
+        try {
+            compose.runOnUiThread {
+                SkinPackageManager(context).select("powercal-clear-default")
+                compose.activity.setContent { PowerCalTheme { PowerCalApp(store) } }
+            }
+            var web: WebView? = null
+            compose.waitUntil(30_000) {
+                compose.runOnUiThread {
+                    web = findWebView(compose.activity.findViewById(android.R.id.content))
+                }
+                web != null
+            }
+            val view = requireNotNull(web)
+            val event = "document.querySelector('[data-event-seq=\\\"${card.eventSeq}\\\"]')"
+            awaitJs(view, "!!$event")
+            evaluate(view, "$event.click(); true")
+            awaitJs(view, "!document.querySelector('#skinSheet').hidden")
+            evaluate(view, "(()=>{const input=document.querySelector('#sheetFields [data-field=title]'); input.value='宿主确认后的编辑'; input.dispatchEvent(new Event('change',{bubbles:true})); return true})()")
+            awaitJs(view, "!!document.querySelector('[data-do=discardChanges]')")
+            evaluate(view, "document.querySelector('#sheetSave').click(); true")
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithText("确认保存正式事件修改").fetchSemanticsNodes().isNotEmpty()
+            }
+            assertEquals(original, store.get(card.eventSeq))
+            assertEquals(commitsBefore, store.commitCount())
+            compose.onNodeWithText("确认").performClick()
+            compose.waitUntil(30_000) {
+                store.get(card.eventSeq)?.title == "宿主确认后的编辑"
+            }
+            assertEquals(original.revision + 1, store.get(card.eventSeq)!!.revision)
+            awaitJs(view, "document.querySelector('#sheetStatus').textContent.includes('事件已保存')")
+            val commitsAfterFormalEdit = store.commitCount()
+            evaluate(view, "document.querySelector('#sheetClose').click(); true")
+            awaitJs(view, "document.querySelector('#skinSheet').hidden")
+
+            evaluate(view, "document.querySelector('[data-action=createDraft]').click(); true")
+            awaitJs(view, "!document.querySelector('#skinSheet').hidden && !!document.querySelector('#sheetFields [data-field=title]')")
+            evaluate(view, "(()=>{const input=document.querySelector('#sheetFields [data-field=title]'); input.value='皮肤新建待发布'; input.dispatchEvent(new Event('change',{bubbles:true})); return true})()")
+            awaitJs(view, "document.querySelector('#sheetSubtitle').textContent.includes('尚未暂存')")
+            evaluate(view, "document.querySelector('#sheetSave').click(); true")
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithText("确认发布正式事件").fetchSemanticsNodes().isNotEmpty()
+            }
+            assertEquals(1, store.all().size)
+            assertEquals(commitsAfterFormalEdit, store.commitCount())
+            assertEquals(identitiesBefore, store.identityCount())
+            assertEquals(draftsBefore, store.draftCount())
+            assertEquals(pendingBefore, store.pendingCount())
+            compose.onNodeWithText("确认").performClick()
+            compose.waitUntil(30_000) {
+                store.all().any { it.title == "皮肤新建待发布" }
+            }
+            assertEquals(2, store.all().size)
+            assertEquals(commitsAfterFormalEdit + 1, store.commitCount())
+            assertEquals(identitiesBefore + 1, store.identityCount())
+            assertEquals(draftsBefore, store.draftCount())
+            assertEquals(pendingBefore, store.pendingCount())
+            awaitJs(view, "document.querySelector('#sheetStatus').textContent.includes('草稿已发布')")
             awaitJs(view, "document.querySelector('#skinSheet').hidden")
         } finally {
             compose.runOnUiThread {

@@ -464,7 +464,9 @@ class NewEventEditSession private constructor(
         ): NewEventEditSession {
             val defaults = EditorDefaults.capture(clock, zone)
             val initial = defaults.form(kind, selection)
-            val clientId = (UUID.randomUUID().mostSignificantBits and Long.MAX_VALUE)
+            // This session-local ID crosses the WebSkin JSON bridge as a JavaScript Number.
+            // Keep it within Number.MAX_SAFE_INTEGER so a patch round-trip cannot change it.
+            val clientId = (UUID.randomUUID().mostSignificantBits and MAX_SAFE_WEB_INTEGER)
                 .coerceAtLeast(1L)
             return NewEventEditSession(
                 idempotencyKey = UUID.randomUUID().toString(),
@@ -474,5 +476,7 @@ class NewEventEditSession private constructor(
                 initialForm = initial
             )
         }
+
+        private const val MAX_SAFE_WEB_INTEGER = 9_007_199_254_740_991L
     }
 }

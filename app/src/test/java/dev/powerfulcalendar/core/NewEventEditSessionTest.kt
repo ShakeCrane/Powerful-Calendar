@@ -59,6 +59,16 @@ class NewEventEditSessionTest {
     )
 
     @Test
+    fun webSessionDraftIdRoundTripsExactlyThroughJavaScriptNumber() {
+        val session = NewEventEditSession.open(TemporalKind.ACTIVITY, fixedClock, zone)
+        val clientDraftId = session.clientDraftId
+
+        assertTrue(clientDraftId > 0L)
+        assertTrue(clientDraftId <= 9_007_199_254_740_991L)
+        assertEquals(clientDraftId, clientDraftId.toDouble().toLong())
+    }
+
+    @Test
     fun openingAndClosingEveryKindTwentyTimesHasZeroPersistentSideEffects() {
         val before = counts()
         repeat(20) {
