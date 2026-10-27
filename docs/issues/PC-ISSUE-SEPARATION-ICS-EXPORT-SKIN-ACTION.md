@@ -70,4 +70,4 @@ JUnit XML 显示 Bridge **3/3**、Host projection **13/13**，共 **16/16 PASS**
 
 ## 提交
 
-待提交后补录实现 commit SHA。本次提交仅包含该切片的 Host action、Clear/Studio 支持、测试、包、合同矩阵和本报告；`.local` 证据及其他 Agent 的修改不入 Git。
+实现提交：`ea9e4581c1adf031e4db4109cea2278c56425ff7`（`feat(分离): 在 Clear 设置中提供 ICS 导出`）。报告随后由文档补录提交记录该 SHA；`.local` 证据及其他 Agent 的修改不入 Git。
