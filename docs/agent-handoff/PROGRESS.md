@@ -915,3 +915,10 @@ Updated: 2026-10-24
 - Full offline Android gate: **593/593 JVM / 83 suites / 0 failures/errors/skips / 88 tasks**, lint 0/52. Studio Python 42/42, Chrome decision Mocks, Clear bundle verification and JS syntax check passed. Evidence: `docs/issues/PC-ISSUE-SEPARATION-AI-WEBVIEW-DECISIONS.md`.
 - Test commit `5bc70f8aee4f1d1f157fd006118b29ef80858d64` is pushed. The fresh QA applicationId used was `dev.powerfulcalendar.d05qaisolateddecisions20261027`; existing app/QA packages were not replaced or cleared.
 - SEP-10 / SEP-16 remain NOT TESTED and S3 stays open; next device step is to re-check 5564 when available, verify its isolated package state, and rerun PUBLISH before expanding to crash/restart recovery.
+
+## Separation — Studio AI project operations CLI (2026-10-27)
+
+- Added `inspect-v3`, `read-v3`, and transactional `edit-v3` over the existing v3 validator/builder. The CLI exposes manifest/project/file hashes, text and binary reads, guarded file CRUD, project JSON Patch, explicit manifest edits, and validated export to a new path. Capability changes require an explicit flag; Host still makes the authorization decision.
+- Focused regression: **7/7 PASS**. Full Skin Studio suite: **49/49 PASS**. Clear bundle verify: **8 files / 376661 bytes PASS**, SHA-256 `0e17aabfe216e8ecb0775dafb8ea66857e25687b09e1167b7c68e1d9ffd81623`. Full/focused/verify logs and hashes are in `docs/issues/PC-ISSUE-SEPARATION-STUDIO-AI-PROJECT-OPS.md` and `.local/android-test/reports/separation-20261027/studio-ai-operations/`.
+- Implementation commit `871f54d` (`feat(studio): 提供可调用的 v3 皮肤项目编辑器`) is pushed to `origin/feat/skin-first-separation`. Independent report: `docs/issues/PC-ISSUE-SEPARATION-STUDIO-AI-PROJECT-OPS.md`.
+- This closes only the machine-callable package-editing slice. Browser visual/component editing, Android WebView/device acceptance, runtime parity, complete S5/SEP-15, and S0–S8 remain open. No Android or physical-device result is claimed.

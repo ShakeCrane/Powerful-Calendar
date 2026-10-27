@@ -29,7 +29,7 @@ PowerCal app. The original compiled-source skin remains the trusted fallback.
 | 数据稳定性与恢复 | [稳定数据契约](STABLE_DATA_CONTRACT_V1.md) | 拟冻结，勿视为已正式批准 |
 | AI Agent 与授权 | [Agent 协议 v2](AI_AGENT_PROTOCOL_V2.md) | 行为、安全和接口规范 |
 | Skills 演进 | [Skills 架构 v1](AI_SKILL_ARCHITECTURE_V1.md) | 目标设计不等于已实施 |
-| UI/皮肤扩展 | [分层契约 v3](UI_SKIN_EXTENSION_CONTRACT_V3.md) · [旧版细节 v2](UI_SKIN_EXTENSION_CONTRACT_V2.md) · [皮肤包 ABI](SKIN_PACK_V1.md) · [Skin Studio](../tools/skin-studio/README.md) | 分清编译期接口和数据皮肤包 |
+| UI/皮肤扩展 | [分层契约 v3](UI_SKIN_EXTENSION_CONTRACT_V3.md) · [旧版细节 v2](UI_SKIN_EXTENSION_CONTRACT_V2.md) · [皮肤包 ABI](SKIN_PACK_V1.md) · [Skin Studio](../tools/skin-studio/README.md) · [Studio AI 自动化接口 v1](SKIN_STUDIO_AI_AUTOMATION_V1.md) | 分清编译期接口和数据皮肤包 |
 | 版本与签名 | [版本管理](RELEASE_VERSIONING.md) | Release 密钥材料须留在仓库外 |
 
 ## 当前工作与验收入口

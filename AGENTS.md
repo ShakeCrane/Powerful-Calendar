@@ -150,3 +150,6 @@ For current source-level evidence and unresolved work, read
 run `python -m unittest discover -s tools/skin-studio/tests -v`,
 `python tools/skin-studio/build_default_clear.py --verify`, and the relevant
 browser / Android checks for each change. Mock previews are not device evidence.
+For machine-operated v3 skin work, read `docs/SKIN_STUDIO_AI_AUTOMATION_V1.md` and use
+`skin_studio.py inspect-v3`, `read-v3`, and `edit-v3`; these validate and export to a
+new `.pcskin` path but do not prove visual or device parity.
