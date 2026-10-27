@@ -68,8 +68,18 @@ internal fun AiProposalReview(
                             }
                         }
                         val chosen = selected.intersect(indexes.toSet())
+                        val publishable = chosen.isNotEmpty() && chosen.all {
+                            val proposal = entries[it]
+                            proposal.blocked == null &&
+                                (proposal.operation == DraftOperation.DELETE ||
+                                    proposal.form.isPublishable())
+                        }
+                        if (!publishable && chosen.isNotEmpty()) {
+                            Text("部分信息待补全：可先写入草稿，完善后再发布。",
+                                style = MaterialTheme.typography.labelSmall)
+                        }
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Button(onClick = { onApply(chosen, true) }, enabled = chosen.isNotEmpty() && !busy,
+                            Button(onClick = { onApply(chosen, true) }, enabled = publishable && !busy,
                                 modifier = Modifier.weight(1f)) { Text("批量同意", maxLines = 1) }
                             OutlinedButton(onClick = { onApply(chosen, false) },
                                 enabled = chosen.isNotEmpty() && !busy, modifier = Modifier.weight(1f)) {

@@ -255,7 +255,11 @@ object AiResponseParser {
                 }
             }
             val reminder = if (item.has("reminderMinutes")) item.optInt("reminderMinutes", -1)
-                else existing?.reminderMinutes ?: if (kind == TemporalKind.MEMO) -1 else 0
+                else existing?.reminderMinutes ?: when (kind) {
+                    TemporalKind.MEMO -> -1
+                    TemporalKind.DEADLINE -> if (DraftForm.parseDateOnly(endText) != null) 0 else 60
+                    else -> 0
+                }
             if (reminder !in -1..10080) {
                 blocked = "提醒提前量超出 0～10080 分钟范围"
                 warnings.add("第 ${index + 1} 项提醒提前量不合法，禁止执行")

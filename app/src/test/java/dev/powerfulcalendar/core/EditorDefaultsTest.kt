@@ -60,7 +60,7 @@ class EditorDefaultsTest {
             TemporalKind.DEADLINE, EditorSelection.AtInstant(selectedInstant)
         )
         assertEquals("2026-11-02 11:46", timelineDeadline.endText)
-        assertEquals(-1, timelineDeadline.reminderMinutes)
+        assertEquals(60, timelineDeadline.reminderMinutes)
         assertEquals(ReminderTiming.OFFSET, timelineDeadline.reminderTiming)
 
         val monthActivity = captured.form(

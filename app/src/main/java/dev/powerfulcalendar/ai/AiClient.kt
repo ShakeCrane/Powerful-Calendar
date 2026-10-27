@@ -214,7 +214,7 @@ class AiClient(
         val taskZone = runCatching { ZoneId.of(task.zoneId) }.getOrElse {
             return AiInterpretation(warnings = listOf("待处理任务时区无效；请重新说明时间"))
         }
-        return interpretWithPrompt(context, taskZone) {
+        val interpreted = interpretWithPrompt(context, taskZone) {
             buildUserPrompt(
                 userText = "",
                 context = context.takeIf { settings.shareContext }.orEmpty(),
@@ -223,6 +223,7 @@ class AiClient(
                 task = task
             )
         }.copy(taskSnapshot = task)
+        return AiPartialProposalFallback.recover(task, interpreted)
     }
 
     private suspend fun interpretWithPrompt(
@@ -489,6 +490,9 @@ class AiClient(
             用户明确要求创建、安排、提醒或修改日程时，在简短答复最后附 intent 为 explicit 的内部标记；
             用户只是随口提到一个可能的安排时，可以附 intent 为 suggested 的标记，应用只显示轻量按钮，
             不自动调用结构化提案 Skill。一般聊天不要附标记。示例：
+            已确定为显式日历操作时，即便标题、时间、地点不完整，也输出 intent=explicit。
+            信息不齐不阻止结构化提案卡片出现；仅在审核卡内标记缺失，
+            且用户未补齐必填项时不允许正式发布。不要声称已经写入或保存。
             [[POWERCAL_DRAFT]]
             {"type":"draft","intent":"explicit","source":"保持原始事件要素与用户明确确认过的上下文，不编造"}
             [[/POWERCAL_DRAFT]]
@@ -501,6 +505,13 @@ class AiClient(
         """.trimIndent()
 
         private val DRAFT_SYSTEM_PROMPT = """
+            如果用户明确要求创建事件且能识别类型，即使缺少部分标题和时间，
+            也必须输出对应 events 候选项：未知字段保持空串，
+            missing 字段列出缺失信息；不要因为不完整而返回 events:[]。
+            这些候选项只用于弹出审核卡，未获得用户明确授权禁止写入。
+            不得编造具体时分、eventSeq 或修改目标。
+            对有明确用户意图的日期型截止保留日期精度；精确到时分的截止默认
+            reminderMinutes=60、reminderTiming=OFFSET（用户显式指定时优先）。
             你是 Powerful Calendar 的结构化日程 Skill，只负责提案 JSON，不执行、更不批准事件操作。
             **必填项仅由类型决定，地点和人物永远不是发布前置条件**：
             ALARM 只要 title + start；ACTIVITY 只要 title + start + end；
@@ -541,7 +552,7 @@ class AiClient(
             {"events":[{"operation":"CREATE|REPLACE|CONVERT|DELETE","eventSeq":null,
               "kind":"ALARM|ACTIVITY|DEADLINE|MEMO","title":"","start":"","end":"",
               "deadlineDate":"","deadlineTime":"","location":"","participants":["人名"],
-              "notes":"","trackingEnabled":false,"reminderMinutes":0,"reminderMethod":"MESSAGE|ALARM",
+              "notes":"","trackingEnabled":false,"reminderMethod":"MESSAGE|ALARM",
               "reminderTiming":"OFFSET|DAY_START","enabled":true,
               "recurrence":{"freq":"NONE|DAILY|WEEKLY|MONTHLY","interval":1,
                 "byDay":["MO"],"count":null,"until":null,

@@ -270,6 +270,11 @@ class TimelineTitleComposeTest {
             }
         }
         ui.onNodeWithTag(titleTag(alarms[0])).assertExists()
+        val leftTitleTop = ui.onNodeWithTag(titleTag(alarms[0]))
+            .fetchSemanticsNode().boundsInRoot.top
+        val leftLineTop = ui.onNodeWithTag(eventTag(alarms[0]))
+            .fetchSemanticsNode().boundsInRoot.top
+        assertTrue("Alarm title must sit BELOW the original left-side line", leftTitleTop >= leftLineTop)
         ui.onNodeWithTag(titleTag(alarms[1])).assertDoesNotExist()
         ui.onNodeWithTag(titleTag(alarms[2])).assertExists()
         alarms.forEach { ui.onNodeWithTag(eventTag(it)).assertExists().assertHasClickAction() }

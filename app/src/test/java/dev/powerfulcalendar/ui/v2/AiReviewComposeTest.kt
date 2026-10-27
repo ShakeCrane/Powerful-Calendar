@@ -63,7 +63,7 @@ class AiReviewComposeTest {
         ui.onNodeWithText("2. Blocked create · 活动").assertExists()
         ui.onNodeWithText("3. Delete B · 删除 #42").assertExists()
 
-        ui.onAllNodesWithText("批量同意")[0].performClick()
+        ui.onAllNodesWithText("批量同意")[0].assertIsNotEnabled()
         ui.onAllNodesWithText("批量同意")[1].performScrollTo()
         ui.onAllNodesWithText("批量同意")[1].performClick()
         ui.onAllNodesWithText("写入草稿")[0].performScrollTo()
@@ -73,7 +73,7 @@ class AiReviewComposeTest {
         ui.onAllNodesWithText("补充细节")[0].performScrollTo()
         ui.onAllNodesWithText("补充细节")[0].performClick()
 
-        assertEquals(listOf(setOf(0) to true, setOf(2) to true, setOf(0) to false), applied)
+        assertEquals(listOf(setOf(2) to true, setOf(0) to false), applied)
         assertEquals(listOf(setOf(0)), discarded)
         assertEquals(1, supplemented)
     }

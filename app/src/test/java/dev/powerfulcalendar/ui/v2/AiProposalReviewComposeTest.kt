@@ -1,6 +1,7 @@
 package dev.powerfulcalendar.ui.v2
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -35,6 +36,32 @@ class AiProposalReviewComposeTest {
             sourceIndex = 3
         )
     ))
+
+    @Test
+    fun incompleteCandidateShowsOldBatchReviewAndDisablesDirectPublish() {
+        var action: Pair<Set<Int>, Boolean>? = null
+        val incomplete = AiInterpretation(proposals = listOf(AiProposal(
+            operation = DraftOperation.CREATE,
+            eventSeq = null,
+            form = DraftForm(kind = TemporalKind.ALARM, title = "Test pending")
+        )))
+        ui.setContent {
+            PowerCalTheme {
+                AiProposalReview(
+                    interpretation = incomplete,
+                    busy = false,
+                    onApply = { selected, publish -> action = selected to publish },
+                    onDiscard = {},
+                    onSupplement = {}
+                )
+            }
+        }
+        ui.onNodeWithText("批量同意").assertIsNotEnabled()
+        ui.onNodeWithText("写入草稿").performClick()
+        assertEquals(setOf(0) to false, action)
+        ui.onNodeWithText("批量拒绝").assertIsDisplayed()
+        ui.onNodeWithText("补充细节").assertIsDisplayed()
+    }
 
     @Test
     fun previewWaitsForExplicitPublishOrDraftChoice() {

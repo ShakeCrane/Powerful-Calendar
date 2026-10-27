@@ -89,6 +89,11 @@ class AiDraftService(
                 warnings.add(proposal.blocked)
                 return@forEach
             }
+            if (publish && proposal.operation != DraftOperation.DELETE &&
+                !proposal.form.isPublishable()) {
+                warnings.add("第 " + (position + 1) + " 项信息不完整，禁止直接发布；请先写入草稿补全")
+                return@forEach
+            }
             try {
                 if (task == null) {
                     val target = proposal.eventSeq

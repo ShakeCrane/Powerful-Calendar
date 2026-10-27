@@ -145,7 +145,13 @@ class AiChatDraftPipelineTest {
                     apiKey = "LOCAL_TEST_KEY",
                     shareContext = false
                 )
-                val client = AiClient(settings, java.time.ZoneId.of("Asia/Shanghai"))
+                val anchoredClock = java.time.Clock.fixed(
+                    java.time.LocalDateTime.of(2026, 10, 25, 0, 31)
+                        .atZone(java.time.ZoneId.of("Asia/Shanghai")).toInstant(),
+                    java.time.ZoneId.of("Asia/Shanghai")
+                )
+                val client = AiClient(settings, java.time.ZoneId.of("Asia/Shanghai"),
+                    clock = anchoredClock)
                 val suggestion = runBlocking {
                     client.chat(listOf(AiChatMessage("user", casualUserText)))
                 }
@@ -178,7 +184,7 @@ class AiChatDraftPipelineTest {
                 assertEquals(1, interpretation.proposals.size)
                 assertEquals(TemporalKind.ACTIVITY, interpretation.proposals.single().form.kind)
 
-                val created = AiDraftService(store).applyReviewedProposals(
+                val created = AiDraftService(store, clock = anchoredClock).applyReviewedProposals(
                     interpretation, selectedPositions = setOf(0), publish = false)
                 assertTrue(created.warnings.toString(), created.warnings.isEmpty())
                 assertEquals(setOf(0), created.handledIndices)

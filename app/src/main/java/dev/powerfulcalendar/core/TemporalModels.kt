@@ -1137,7 +1137,10 @@ class EditorDefaultsSnapshot internal constructor(
                 DraftForm(
                     kind,
                     endText = exact?.let { DraftForm.formatInstant(it, zone) } ?: date.toString(),
-                    reminderMinutes = if (exact == null) 0 else -1,
+                    // A timed deadline defaults to a 60-minute advance notice.
+                    // A date-only deadline has no clock minute to subtract from;
+                    // retain the documented day-start notification.
+                    reminderMinutes = if (exact == null) 0 else 60,
                     reminderTiming = if (exact == null) ReminderTiming.DAY_START
                         else ReminderTiming.OFFSET,
                     zoneId = zone.id

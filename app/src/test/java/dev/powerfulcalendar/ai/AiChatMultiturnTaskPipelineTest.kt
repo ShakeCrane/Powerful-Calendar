@@ -209,7 +209,7 @@ class AiTaskPipelineTest {
                 assertTrue("Generating a preview must not create formal events", store.all().isEmpty())
 
                 // This models the separate user choice to write the reviewed candidates as drafts.
-                val service = AiDraftService(store)
+                val service = AiDraftService(store, clock = Clock.fixed(confirmation, zone))
                 val unreviewedShortcut = service.createDrafts(interpretation)
                 assertTrue(unreviewedShortcut.draftIds.isEmpty())
                 assertTrue(unreviewedShortcut.warnings.single().contains("审核卡"))
@@ -277,14 +277,14 @@ class AiTaskPipelineTest {
                 assertEquals(draftIds, store.pendingDrafts().map { it.draftId }.toSet())
                 assertEquals(5, store.pendingDrafts().map { it.eventSeq }.toSet().size)
                 assertTrue(store.all().isEmpty())
-                val replayAfterRestart = AiDraftService(store).applyReviewedProposals(
+                val replayAfterRestart = AiDraftService(store, clock = Clock.fixed(confirmation, zone)).applyReviewedProposals(
                     interpretation, (0 until interpretation.proposals.size).toSet(), publish = false)
                 assertEquals(5, replayAfterRestart.stagedCount)
                 assertEquals(draftIds, store.pendingDrafts().map { it.draftId }.toSet())
                 assertEquals(5, store.identityCount())
 
                 // This models the separate, explicit user choice to publish all five candidates.
-                val published = AiDraftService(store).applyReviewedProposals(
+                val published = AiDraftService(store, clock = Clock.fixed(confirmation, zone)).applyReviewedProposals(
                     interpretation, (0 until interpretation.proposals.size).toSet(), publish = true)
                 assertTrue(published.warnings.toString(), published.warnings.isEmpty())
                 assertEquals(0, published.stagedCount)
@@ -298,7 +298,7 @@ class AiTaskPipelineTest {
                 store = PowerStore(context, databaseName)
                 assertEquals(5, store.all().size)
                 assertEquals(5L, store.commitCount())
-                val duplicatePublish = AiDraftService(store).applyReviewedProposals(
+                val duplicatePublish = AiDraftService(store, clock = Clock.fixed(confirmation, zone)).applyReviewedProposals(
                     interpretation, (0 until interpretation.proposals.size).toSet(), publish = true)
                 assertEquals(0, duplicatePublish.stagedCount)
                 assertEquals(0, duplicatePublish.publishedCount)

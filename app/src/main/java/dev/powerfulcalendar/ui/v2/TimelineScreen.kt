@@ -381,7 +381,16 @@ fun TimelineScreen(
                             val textLayout = measuredText.layout
                             val drawWidthPx = measuredText.drawWidthPx
                             val insetPx = with(density) { 2.dp.toPx() }
-                            val titleTopPx = topPx - textLayout.size.height - insetPx
+                            // Left ALARM markers put the line at y and its outside
+                            // label immediately BELOW that line. Using the 56dp hit-box
+                            // top for all point kinds displaced the left wing upward.
+                            // DEADLINE has its line at y and label immediately ABOVE it.
+                            // Leave the approved right ACTIVITY placement untouched.
+                            val titleTopPx = when (item.record.kind) {
+                                TemporalKind.ALARM -> y + insetPx
+                                TemporalKind.DEADLINE -> y - textLayout.size.height - insetPx
+                                else -> topPx - textLayout.size.height - insetPx
+                            }
                             val titleX = x + startPadding
                             val localLeftPx = with(density) { titleX.roundToPx() }
                             val localTopPx = with(density) { titleTopPx.toDp().roundToPx() }
