@@ -393,7 +393,8 @@ class WebSkinEditBridgeTest {
 
     @Test fun persistedDraftDeckDiscardUndoAndPublishMatchNativeAcrossReopen() = runBlocking {
         val nativeDatabase = "native-skin-deck-replay-" + UUID.randomUUID() + ".db"
-        val nativeStore = PowerStore(context, nativeDatabase)
+        val skinDatabase = store.databaseName
+        var nativeStore = PowerStore(context, nativeDatabase)
         var now = 10_000L
         fun controller(target: PowerStore) = DeckController(
             StoreDeckPersistence(target), clock = { now }
@@ -484,8 +485,13 @@ class WebSkinEditBridgeTest {
             assertEquals("closed", skinService.execute(WebEditCommand.CloseDeck(request()))
                 .getString("status"))
 
-            // New controllers and a new Host service model process recreation. Only flushed
-            // SQLite state is allowed to survive this boundary.
+            // Close and reopen both SQLite files to exercise the durable recovery boundary.
+            // This is not an Android process-death test.
+            nativeStore.close()
+            store.close()
+            nativeStore = PowerStore(context, nativeDatabase)
+            store = PowerStore(context, skinDatabase)
+            service = WebSkinEditService(store, DeckController(StoreDeckPersistence(store)))
             val nativeAfterReopen = controller(nativeStore)
             val skinAfterReopen = WebSkinEditService(store, controller(store),
                 clock = Clock.fixed(Instant.parse("2026-10-28T15:07:42Z"), ZoneOffset.UTC))
