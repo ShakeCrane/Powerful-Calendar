@@ -73,7 +73,14 @@ internal sealed interface WebSkinAction {
     data object CreateMemo : WebSkinAction
     data class CreateDraft(val kind: String) : WebSkinAction
     data class BrowseMonth(val deltaMonths: Int) : WebSkinAction
+    data class ResolveAiProposal(
+        val reviewId: String,
+        val decision: AiProposalDecision,
+        val indices: List<Int>
+    ) : WebSkinAction
 }
+
+internal enum class AiProposalDecision { PUBLISH, STAGE, REJECT, SUPPLEMENT }
 
 internal fun validateOpenEvent(
     action: WebSkinAction.OpenEvent,
@@ -336,6 +343,33 @@ internal fun decodeBridgeAction(raw: String): WebSkinAction? {
             if (text is String && text.isNotBlank() && text.length <= 4000)
                 WebSkinAction.SendChat(text)
             else null
+        }
+        "resolveAiProposal" -> {
+            if (keys != setOf("name", "reviewId", "decision", "indices")) return null
+            val reviewId = payload.opt("reviewId") as? String ?: return null
+            val canonicalId = runCatching { java.util.UUID.fromString(reviewId).toString() }
+                .getOrNull()?.takeIf { it == reviewId } ?: return null
+            val decision = when (payload.opt("decision")) {
+                "publish" -> AiProposalDecision.PUBLISH
+                "stage" -> AiProposalDecision.STAGE
+                "reject" -> AiProposalDecision.REJECT
+                "supplement" -> AiProposalDecision.SUPPLEMENT
+                else -> return null
+            }
+            val array = payload.optJSONArray("indices") ?: return null
+            if (array.length() > 100) return null
+            val indices = (0 until array.length()).map { index ->
+                when (val value = array.opt(index)) {
+                    is Int -> value
+                    is Long -> value.takeIf { it in 0L..99L }?.toInt() ?: return null
+                    else -> return null
+                }.takeIf { it in 0..99 } ?: return null
+            }
+            if (indices.distinct().size != indices.size) return null
+            if (decision == AiProposalDecision.SUPPLEMENT) {
+                if (indices.isNotEmpty()) return null
+            } else if (indices.isEmpty()) return null
+            WebSkinAction.ResolveAiProposal(canonicalId, decision, indices)
         }
         "toggleMemo" -> {
             if (keys != setOf("name", "eventSeq", "expectedRevision",

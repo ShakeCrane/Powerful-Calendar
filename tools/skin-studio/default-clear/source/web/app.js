@@ -7,6 +7,7 @@ function applyTheme(){document.documentElement.classList.toggle("dark",darkMedia
 applyTheme();
 darkMedia.addEventListener("change",applyTheme);
 let port=null, state={}, currentPage="TIMELINE", memoFilter="open",localOptions=false;
+let aiReviewSelectionId="",aiReviewSelected=new Set();
 const send=(name,extra={})=>{
   if(!port)return;
   port.postMessage(JSON.stringify({version:1,type:"action",payload:{name,...extra}}));
@@ -22,6 +23,12 @@ const dateText=(ms,zone,options)=>{
   catch{return new Date(ms).toISOString().slice(0,10)}
 };
 const relativeTime=(ms,zone)=>dateText(ms,zone,{hour:"2-digit",minute:"2-digit",hour12:false});
+const proposalDateText=(ms,zone)=>{
+  const value=Number(ms);if(!Number.isFinite(value))return "无效日期";
+  if(Number.isNaN(new Date(value).getTime()))return "无效日期";
+  try{return dateText(value,zone,{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hour12:false})}
+  catch{return "无效日期"}
+};
 function onAction(button){
   const name=button.dataset.action;if(!name||button.disabled)return;
   if(window.PowerCalEdit?.routeAction(button,state))return;
@@ -193,10 +200,124 @@ function renderChat(){
   const messages=state.chatMessages||[];
   if(!messages.length)list.append(node("p","quiet","从这里开始与 AI 讨论日程"));
   for(const item of messages)list.append(node("div","chat-bubble "+(item.role==="user"?"user":"assistant"),item.content));
+  renderAiProposalReview(list);
   const disabled=!!(state.aiLocked||state.chatBusy);
   $("chatInput").disabled=disabled;$("chatSend").disabled=disabled;
   if(disabled)list.append(node("p","quiet","AI 正在处理，暂不可发送"));
   list.scrollTop=list.scrollHeight;
+}
+function installAiProposalStyles(){
+  if($("aiProposalStyles"))return;
+  const style=node("style");style.id="aiProposalStyles";
+  style.textContent=`
+    .ai-proposal-review{display:flex;flex-direction:column;gap:12px;padding:12px;border:1px solid var(--sep);
+      border-radius:18px;background:var(--bg-grouped);color:var(--label)}
+    .ai-proposal-review h2,.ai-proposal-review h3{margin:0;font-size:15px}
+    .ai-proposal-review p{margin:3px 0;color:var(--label-2);font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere}
+    .ai-proposal-group{display:flex;flex-direction:column;gap:8px}
+    .ai-proposal-item{display:flex;gap:9px;align-items:flex-start;padding:10px;border-radius:13px;
+      background:var(--bg-elevated);border:1px solid var(--sep)}
+    .ai-proposal-item input{margin-top:3px;accent-color:var(--accent-fill)}
+    .ai-proposal-item-body{min-width:0;flex:1;overflow-wrap:anywhere}
+    .ai-proposal-title{font-weight:650}
+    .ai-proposal-actions{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+    .ai-proposal-actions button{min-height:40px;border:1px solid var(--sep);border-radius:12px;padding:7px;
+      background:var(--bg-elevated);color:var(--label);font:inherit}
+    .ai-proposal-actions button.primary{background:var(--accent-fill);color:var(--on-accent)}
+    .ai-proposal-actions button:disabled{opacity:.48}
+    .ai-proposal-blocked{color:var(--danger)!important}
+  `;
+  document.head.append(style);
+}
+function renderAiProposalReview(list){
+  const review=state.aiProposalReview;
+  if(!review||!Array.isArray(review.proposals)||review.proposals.length===0){
+    aiReviewSelectionId="";aiReviewSelected.clear();return;
+  }
+  installAiProposalStyles();
+  if(aiReviewSelectionId!==review.reviewId){
+    aiReviewSelectionId=review.reviewId;
+    aiReviewSelected=new Set(review.proposals.filter(item=>!item.blocked).map(item=>item.index));
+  }
+  const root=node("section","ai-proposal-review");root.setAttribute("role","region");
+  root.setAttribute("aria-label","AI 日程提案审核");
+  root.append(node("h2","","审核 AI 候选 · 尚未写入正式日历"));
+  const busy=!!(state.aiLocked||state.chatBusy);
+  for(const [isCreate,label] of [[true,"新增事项"],[false,"修改或删除"]]){
+    const entries=review.proposals.filter(item=>(item.operation==="CREATE")===isCreate);
+    if(!entries.length)continue;
+    const group=node("section","ai-proposal-group");group.setAttribute("role","group");
+    group.append(node("h3","",label));
+    for(const item of entries){
+      const row=node("label","ai-proposal-item");
+      const checkbox=document.createElement("input");checkbox.type="checkbox";
+      checkbox.checked=aiReviewSelected.has(item.index);checkbox.disabled=busy||!!item.blocked;
+      checkbox.setAttribute("aria-label",`选择第 ${item.index+1} 项 ${item.title||"未命名"}`);
+      checkbox.addEventListener("change",()=>{
+        if(checkbox.checked)aiReviewSelected.add(item.index);else aiReviewSelected.delete(item.index);
+        renderChat();
+      });
+      row.append(checkbox);
+      const body=node("div","ai-proposal-item-body");
+      const target=item.eventSeq==null?"新建":`#${item.eventSeq} · 版本 ${item.targetRevision??"未知"}`;
+      body.append(node("div","ai-proposal-title",`${item.index+1}. ${item.title||"未命名"} · ${item.kind} · ${item.operation} · ${target}`));
+      const recurrence=item.recurrence||{};
+      const recurrenceSummary=[recurrence.frequency||"NONE",
+        `间隔 ${recurrence.interval??1}`,
+        ...(recurrence.byDay||[]),
+        recurrence.count?`共 ${recurrence.count} 次`:"",
+        recurrence.untilMillis?`截止 ${proposalDateText(recurrence.untilMillis,item.zoneId)}`:"",
+        recurrence.activeFromDate?`生效起 ${recurrence.activeFromDate}`:"",
+        recurrence.activeUntilDate?`生效止 ${recurrence.activeUntilDate}`:""]
+        .filter(Boolean).join(" · ");
+      const details=[
+        `开始：${item.startText||"未指定"}`,`结束/截止：${item.endText||"未指定"}`,
+        `时区：${item.zoneId||"未指定"}`,`地点：${item.location||"无"}`,
+        `提醒：${item.reminderMinutes<0?"关闭":item.reminderMinutes+" 分钟"} · ${item.reminderMethod} · ${item.reminderTiming}`,
+        `重复：${recurrenceSummary}`,
+        `备注：${item.notes||"无"}`
+      ];
+      for(const text of details)body.append(node("p","",text));
+      if(item.titleTruncated||item.locationTruncated)
+        body.append(node("p","", "标题或地点较长；完整内容会在 Host 确认界面显示。"));
+      for(const exception of recurrence.exceptions||[])
+        body.append(node("p","",`跳过实例：${exception}`));
+      for(const override of recurrence.overrides||[])
+        body.append(node("p","",`实例覆盖：${override.key} · ${proposalDateText(override.startMillis,item.zoneId)} – `+
+          `${override.endMillis==null?"无结束时刻":proposalDateText(override.endMillis,item.zoneId)}${override.title?` · ${override.title}`:""}`));
+      for(const key of item.completedKeys||[])body.append(node("p","",`已完成槽位：${key}`));
+      if(item.recurrenceEditScope)body.append(node("p","",`编辑范围：${item.recurrenceEditScope}`));
+      if(item.editOccurrenceKey)body.append(node("p","",`目标实例：${item.editOccurrenceKey}`));
+      if(item.source)body.append(node("p","",`来源：${item.source}`));
+      if(item.rationale)body.append(node("p","",`AI 说明：${item.rationale}`));
+      if(item.notesTruncated||item.rationaleTruncated||item.completedKeysTruncated||
+        recurrence.exceptionsTruncated||recurrence.overridesTruncated)
+        body.append(node("p","", "部分长文本或实例列表在卡片中截断；Host 确认界面会展示完整操作快照。"));
+      if(item.operation==="DELETE")
+        body.append(node("p","ai-proposal-blocked", "正式删除不可撤销；确认时 Host 会显示当前完整事件快照。"));
+      if(item.blocked)body.append(node("p","ai-proposal-blocked",`不可操作：${item.blocked}`));
+      else if(!item.publishable)body.append(node("p","", "信息尚不完整；可以先写入草稿，补全后再发布。"));
+      row.append(body);group.append(row);
+    }
+    const selected=entries.filter(item=>aiReviewSelected.has(item.index)&&!item.blocked);
+    const indices=selected.map(item=>item.index).sort((a,b)=>a-b);
+    const actions=node("div","ai-proposal-actions");
+    const button=(text,decision,enabled,primary=false)=>{
+      const control=node("button",primary?"primary":"",text);control.type="button";
+      control.disabled=busy||!enabled;
+      control.addEventListener("click",()=>send("resolveAiProposal",{
+        reviewId:review.reviewId,decision,indices:decision==="supplement"?[]:indices
+      }));
+      actions.append(control);
+    };
+    button("批量同意", "publish", selected.length>0&&selected.every(item=>item.publishable), true);
+    button("写入草稿", "stage", selected.length>0);
+    button("批量拒绝", "reject", selected.length>0);
+    button("补充细节", "supplement", true);
+    group.append(actions);root.append(group);
+  }
+  for(const warning of (review.warnings||[]))root.append(node("p","",`提示：${warning}`));
+  list.append(root);
 }
 function renderOptions(){
   const root=$("optionGroups");root.replaceChildren();

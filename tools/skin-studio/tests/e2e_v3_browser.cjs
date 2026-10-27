@@ -157,6 +157,51 @@ const URL=process.env.STUDIO_URL||"http://127.0.0.1:8875";
     assert.ok(month.agenda>0);
     await frame.click('.clear-tabbar [data-action="ai"]');
     await frame.waitForFunction(()=>!document.querySelector("#aiPage").hidden);
+    await page.select("#scenario","ai-review");
+    frame=page.frames().find(f=>f.url().includes("/preview/"));
+    await frame.waitForFunction(()=>document.querySelectorAll(".ai-proposal-item").length===4);
+    const review=await frame.evaluate(()=>({
+      heading:document.querySelector(".ai-proposal-review h2")?.textContent,
+      items:[...document.querySelectorAll(".ai-proposal-item")].map(row=>({
+        text:row.textContent,checked:row.querySelector("input")?.checked,
+        disabled:row.querySelector("input")?.disabled
+      })),
+      actions:[...document.querySelectorAll(".ai-proposal-actions button")].map(button=>button.textContent)
+    }));
+    assert.ok(review.heading.includes("尚未写入正式日历"));
+    assert.equal(review.items.length,4);
+    assert.ok(review.items[0].checked&&!review.items[0].disabled);
+    assert.ok(review.items[1].disabled&&review.items[1].text.includes("缺少具体时刻"));
+    assert.ok(review.items[2].text.includes("调整上午课程")&&review.items[3].text.includes("删除训练提醒"));
+    assert.deepEqual(review.actions,["批量同意","写入草稿","批量拒绝","补充细节",
+      "批量同意","写入草稿","批量拒绝","补充细节"]);
+    await frame.evaluate(()=>[...document.querySelectorAll(".ai-proposal-group")][0]
+      .querySelectorAll(".ai-proposal-actions button")[3].click());
+    await frame.waitForFunction(()=>document.querySelector("#chatMessages").textContent
+      .includes("请补充需要更正的字段"));
+    await frame.evaluate(()=>[...document.querySelectorAll(".ai-proposal-group")][0]
+      .querySelectorAll(".ai-proposal-actions button")[1].click());
+    await frame.waitForFunction(()=>document.querySelectorAll(".ai-proposal-item").length===3);
+    await frame.waitForFunction(()=>document.querySelector("#chatMessages").textContent
+      .includes("候选已模拟写入草稿"));
+    await frame.evaluate(()=>[...document.querySelectorAll(".ai-proposal-group")][1]
+      .querySelectorAll(".ai-proposal-actions button")[2].click());
+    await frame.waitForFunction(()=>document.querySelectorAll(".ai-proposal-item").length===1);
+    await frame.waitForFunction(()=>document.querySelector("#chatMessages").textContent
+      .includes("候选已模拟拒绝"));
+    await page.select("#scenario","future");
+    await page.select("#scenario","ai-review");
+    await frame.waitForFunction(()=>document.querySelectorAll(".ai-proposal-item").length===4);
+    await frame.evaluate(()=>[...document.querySelectorAll(".ai-proposal-group")][0]
+      .querySelectorAll(".ai-proposal-actions button")[0].click());
+    await page.waitForFunction(()=>!document.querySelector("#mockApproval").hidden);
+    const approvalText=await page.$eval("#mockApprovalText",element=>element.textContent);
+    assert.ok(approvalText.includes("方案评审")&&approvalText.includes("这不是 Android"));
+    await page.click("#mockApprove");
+    await frame.waitForFunction(()=>document.querySelectorAll(".ai-proposal-item").length===3);
+    await frame.waitForFunction(()=>document.querySelector("#chatMessages").textContent
+      .includes("没有写入任何真实日历数据"));
+    console.log("AI proposal card / explicit mock Host review PASS",review);
     await frame.$eval("#chatInput",e=>{e.value="给我看看今日安排"});
     await frame.click("#chatSend");
     await frame.waitForFunction(()=>document.querySelector("#chatMessages").textContent.includes("给我看看今日安排"));

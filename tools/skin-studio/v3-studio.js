@@ -510,6 +510,11 @@ function simulatedState(){
       {eventSeq:44,revision:1,occurrenceKey:"single",title:"提交报告",completed:false,startMillis:base+7200000}
     ],memoTruncated:false,chatBusy:false,
     chatMessages:[{role:"assistant",content:"你好！今天有什么安排？"},...mockChat],
+    aiProposalReview:scenario==="ai-review"&&mockAiProposals.length?{
+      reviewId:mockAiReviewId,
+      proposals:mockAiProposals.map((proposal,index)=>({...proposal,index})),
+      warnings:["预览 Mock 数据；Android Host 会重新校验全部提案。"]
+    }:null,
     events:rows.map(r=>({eventSeq:r.eventSeq,revision:r.revision,title:r.title,kind:r.kind,
       anchorMillis:r.startMillis,endMillis:r.endMillis})),
     optionGroups:[{id:"calendar.import",label:"导入",items}],
@@ -542,6 +547,20 @@ let mockEditing={editor:{open:false},deck:{open:false},lastResult:null},mockAppr
 function resolveMockApproval(approved){
   if(!mockApproval)return;
   const request=mockApproval;mockApproval=null;$("mockApproval").hidden=true;
+  $("mockApprovalText").textContent="预览模拟宿主确认，不会写入真实数据。";
+  if(request.kind==="aiProposal"){
+    if(request.reviewId!==mockAiReviewId){
+      mockChat.push({role:"assistant",content:"预览 Mock：审核卡已过期，模拟 Host 拒绝了旧请求。"});
+      postState();return;
+    }
+    if(approved){
+      const selected=new Set(request.indices);
+      mockAiProposals=mockAiProposals.filter((_,index)=>!selected.has(index));
+      rotateMockAiReviewId();
+      mockChat.push({role:"assistant",content:"预览 Mock：Host 确认请求已完成；没有写入任何真实日历数据。"});
+    }else mockChat.push({role:"assistant",content:"预览 Mock：已取消 Host 确认，没有执行操作。"});
+    postState();return;
+  }
   const editor=mockEditing.editor;
   if(editor.open){
     editor.awaitingConfirmation=false;
@@ -653,7 +672,7 @@ function onSkinAction(message){
     if(envelope.type==="command"){onSkinCommand(envelope.payload);return}
     if(envelope.type!=="action")return;
     const p=envelope.payload,name=p.name;
-    if(!ACTIONS.some(([x])=>x===name)&&!["openEvent","toggleMemo","sendChat"].includes(name)){logAction("拒绝未知动作 "+String(name));return;}
+    if(!ACTIONS.some(([x])=>x===name)&&!["openEvent","toggleMemo","sendChat","resolveAiProposal"].includes(name)){logAction("拒绝未知动作 "+String(name));return;}
     if(name==="panTimeline"){
       if(!Number.isInteger(p.deltaMinutes)||Math.abs(p.deltaMinutes)>2880)return;
       const state=lastState||simulatedState();
@@ -678,6 +697,41 @@ function onSkinAction(message){
     }
     if(name==="sendChat"&&typeof p.text==="string"&&p.text.length<=4000)
       mockChat.push({role:"user",content:p.text});
+    if(name==="resolveAiProposal"){
+      const state=simulatedState(),review=state.aiProposalReview;
+      const decisions=["publish","stage","reject","supplement"];
+      if(!review||!/^([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/.test(p.reviewId||"")||
+        p.reviewId!==review.reviewId||!decisions.includes(p.decision)||!Array.isArray(p.indices)||
+        p.indices.length>100||
+        p.indices.some(i=>!Number.isInteger(i)||i<0||i>=review.proposals.length)||
+        new Set(p.indices).size!==p.indices.length||
+        (p.decision==="supplement"?p.indices.length!==0:p.indices.length===0)){
+        logAction("拒绝过期或无效 AI 审核请求");return;
+      }
+      const chosen=p.indices.map(i=>review.proposals[i]);
+      if(chosen.some(item=>item.blocked)||
+        (p.decision==="publish"&&chosen.some(item=>!item.publishable))){
+        logAction("拒绝不可发布或未补全的 AI 候选");return;
+      }
+      if(p.decision==="publish"){
+        mockApproval={kind:"aiProposal",reviewId:p.reviewId,indices:p.indices};
+        $("mockApprovalText").textContent="Mock Host 正在模拟确认："+
+          chosen.map(item=>`${item.operation} · ${item.title}`).join("；")+
+          "。这不是 Android 权限或真实数据验收。";
+        $("mockApproval").hidden=false;
+        logAction("AI 正式操作请求等待 Mock Host 确认");return;
+      }
+      if(p.decision==="stage"||p.decision==="reject"){
+        const chosen=new Set(p.indices);
+        mockAiProposals=mockAiProposals.filter((_,index)=>!chosen.has(index));
+        rotateMockAiReviewId();
+        mockChat.push({role:"assistant",content:p.decision==="stage"?
+          "预览 Mock：候选已模拟写入草稿，未写入真实数据。":"预览 Mock：候选已模拟拒绝，未写入真实数据。"});
+      }else if(p.decision==="supplement"){
+        mockChat.push({role:"assistant",content:"请补充需要更正的字段；预览不会调用真实 AI。"});
+      }else return;
+      logAction("模拟宿主收到：resolveAiProposal · "+p.decision);postState();return;
+    }
     if(name==="createDraft"&&
       !["ACTIVITY","ALARM","DEADLINE","MEMO"].includes(p.kind))return;
     if(name==="invokeOption"&&$("scenario").value==="locked"){
@@ -691,6 +745,43 @@ function onSkinAction(message){
   }catch(error){logAction("Bridge 消息错误："+error.message)}
 }
 let mockAnchor=null,mockPage="TIMELINE",mockMemoDone=false,mockChat=[];
+let mockAiReviewId="41b2c6f7-6070-44b5-93ed-a922b5a447db",mockAiReviewGeneration=0;
+function rotateMockAiReviewId(){
+  mockAiReviewGeneration++;
+  mockAiReviewId="41b2c6f7-6070-44b5-93ed-"+
+    String(mockAiReviewGeneration).padStart(12,"0").slice(-12);
+}
+const defaultMockAiProposals=()=>[
+  {operation:"CREATE",eventSeq:null,targetRevision:null,kind:"ACTIVITY",title:"方案评审",
+    startText:"2026-10-22 14:00",endText:"2026-10-22 15:00",zoneId:"Asia/Shanghai",
+    location:"会议室 A",notes:"核对预算和时间安排",reminderMinutes:15,reminderMethod:"MESSAGE",
+    reminderTiming:"OFFSET",enabled:true,trackingEnabled:false,
+    recurrence:{frequency:"NONE",interval:1,byDay:[],count:null,untilMillis:null},
+    rationale:"来自已明确的日程请求",blocked:null,publishable:true},
+  {operation:"CREATE",eventSeq:null,targetRevision:null,kind:"ALARM",title:"通话提醒",
+    startText:"",endText:"",zoneId:"Asia/Shanghai",location:"",notes:"",
+    reminderMinutes:-1,reminderMethod:"MESSAGE",reminderTiming:"OFFSET",enabled:true,
+    trackingEnabled:false,recurrence:{frequency:"NONE",interval:1,byDay:[],count:null,untilMillis:null},
+    rationale:"缺少具体时刻",blocked:"缺少具体时刻",publishable:false},
+  {operation:"REPLACE",eventSeq:4,targetRevision:2,kind:"ACTIVITY",title:"调整上午课程",
+    startText:"2026-10-22 10:30",endText:"2026-10-22 12:00",zoneId:"Asia/Shanghai",
+    location:"教学楼 2",notes:"改到新教室",reminderMinutes:10,reminderMethod:"MESSAGE",
+    reminderTiming:"OFFSET",enabled:true,trackingEnabled:false,
+    recurrence:{frequency:"WEEKLY",interval:1,byDay:["THURSDAY"],count:8,
+      untilMillis:null,activeFromDate:"2026-10-22",activeUntilDate:"2026-12-31",
+      exceptions:["2026-11-05T09:00"],overrides:[]},
+    rationale:"保留原事件身份并调整时间与地点",blocked:null,publishable:true},
+  {operation:"DELETE",eventSeq:5,targetRevision:1,kind:"ALARM",title:"删除训练提醒",
+    startText:"2026-10-22 17:00",endText:"",zoneId:"Asia/Shanghai",location:"",notes:"",
+    reminderMinutes:-1,reminderMethod:"MESSAGE",reminderTiming:"OFFSET",enabled:true,
+    trackingEnabled:false,recurrence:{frequency:"NONE",interval:1,byDay:[],count:null,
+      untilMillis:null,exceptions:[],overrides:[]},rationale:"用户明确要求删除",blocked:null,publishable:true}
+];
+let mockAiProposals=defaultMockAiProposals();
+function resetMockAiProposalReview(){
+  mockAiProposals=defaultMockAiProposals();
+  rotateMockAiReviewId();
+}
 function connectPreview(){
   if(previewPort){try{previewPort.close()}catch{}}
   const iframe=$("webPreview");
@@ -763,7 +854,9 @@ function bindUI(){
   $("skinId").onchange=change;$("skinName").onchange=change;$("fullCanvas").onchange=change;
   for(const id of ["scenario","theme","reduced"])$(id).onchange=()=>{
     if(id==="theme")$("webPreview").style.colorScheme=$("theme").value;
-    mockAnchor=null;postState();
+    mockAnchor=null;
+    if(id==="scenario"&&$("scenario").value==="ai-review")resetMockAiProposalReview();
+    postState();
   };
   $("assetFile").onchange=async e=>{await addAssets(e.target.files);e.target.value=""};
   $("addText").onclick=()=>newLayer("text");

@@ -5,6 +5,10 @@ import dev.powerfulcalendar.core.RecurrenceFreq
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.TimelineCoordinate
+import dev.powerfulcalendar.ai.AiInterpretation
+import dev.powerfulcalendar.ai.AiProposal
+import dev.powerfulcalendar.core.DraftForm
+import dev.powerfulcalendar.core.DraftOperation
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
@@ -146,6 +150,64 @@ class WebSkinHostProjectionTest {
         assertNull(decode("""{"name":"panTimeline","deltaMinutes":60,"hours":24}"""))
         assertNull(decode("""{"name":"jumpTimelineDay","date":"2026-10-32"}"""))
         assertNull(decode("""{"name":"jumpTimelineDay","date":"2500-01-01"}"""))
+    }
+
+    @Test fun aiProposalReviewProjectionKeepsTargetRevisionAndOmitsRawModelReply() {
+        val target = activity(47)
+        val interpretation = AiInterpretation(
+            proposals = listOf(
+                AiProposal(DraftOperation.REPLACE, 47, DraftForm(
+                    kind = TemporalKind.ACTIVITY,
+                    title = "更新课程",
+                    startText = "2026-10-22 10:00",
+                    endText = "2026-10-22 11:00",
+                    location = "新教室",
+                    notes = "new note",
+                    zoneId = zone.id
+                ), rationale = "明确的时间调整"),
+                AiProposal(DraftOperation.CREATE, null,
+                    DraftForm(kind = TemporalKind.ALARM, title = "Blocked"),
+                    blocked = "缺少提醒时刻")
+            ),
+            warnings = listOf("请核对时间"),
+            rawReply = "MODEL RAW SECRET"
+        )
+        val session = WebAiProposalReviewSession.create(interpretation, listOf(target))
+        val output = WebAiProposalProjection.project(session)
+        val items = output.getJSONArray("proposals")
+        val replace = items.getJSONObject(0)
+        assertEquals(session.reviewId, output.getString("reviewId"))
+        assertEquals(2L, replace.getLong("targetRevision"))
+        assertEquals("REPLACE", replace.getString("operation"))
+        assertEquals("更新课程", replace.getString("title"))
+        assertEquals("新教室", replace.getString("location"))
+        assertEquals("new note", replace.getString("notes"))
+        assertEquals("Asia/Shanghai", replace.getString("zoneId"))
+        assertTrue(items.getJSONObject(1).getString("blocked").contains("提醒时刻"))
+        assertFalse(output.toString().contains("MODEL RAW SECRET"))
+        assertEquals(listOf(0), WebAiProposalProjection.validSelection(session, listOf(0)))
+        assertNull(WebAiProposalProjection.validSelection(session, listOf(1)))
+        assertNull(WebAiProposalProjection.validSelection(session, listOf(0, 0)))
+    }
+
+    @Test fun aiProposalActionRequiresCanonicalReviewIdAndUniqueBoundedSelection() {
+        val id = "e4c9a290-dcf8-4e18-97e0-18f72e53e8dd"
+        fun decode(payload: String) = decodeBridgeAction(
+            """{"version":1,"type":"action","payload":$payload}""")
+        assertEquals(WebSkinAction.ResolveAiProposal(id, AiProposalDecision.PUBLISH, listOf(0, 2)),
+            decode("""{"name":"resolveAiProposal","reviewId":"$id","decision":"publish","indices":[0,2]}"""))
+        assertEquals(WebSkinAction.ResolveAiProposal(id, AiProposalDecision.SUPPLEMENT, emptyList()),
+            decode("""{"name":"resolveAiProposal","reviewId":"$id","decision":"supplement","indices":[]}"""))
+        assertEquals(WebSkinAction.ResolveAiProposal(id, AiProposalDecision.STAGE, listOf(1)),
+            decode("""{"name":"resolveAiProposal","reviewId":"$id","decision":"stage","indices":[1]}"""))
+        assertEquals(WebSkinAction.ResolveAiProposal(id, AiProposalDecision.REJECT, listOf(1)),
+            decode("""{"name":"resolveAiProposal","reviewId":"$id","decision":"reject","indices":[1]}"""))
+        assertNull(decode("""{"name":"resolveAiProposal","reviewId":"not-a-uuid","decision":"publish","indices":[0]}"""))
+        assertNull(decode("""{"name":"resolveAiProposal","reviewId":"$id","decision":"publish","indices":[0,0]}"""))
+        assertNull(decode("""{"name":"resolveAiProposal","reviewId":"$id","decision":"publish","indices":[-1]}"""))
+        assertNull(decode("""{"name":"resolveAiProposal","reviewId":"$id","decision":"publish","indices":[0.5]}"""))
+        assertNull(decode("""{"name":"resolveAiProposal","reviewId":"$id","decision":"supplement","indices":[0]}"""))
+        assertNull(decode("""{"name":"resolveAiProposal","reviewId":"$id","decision":"publish","indices":[0],"authorized":true}"""))
     }
 
     @Test fun monthProjectionUsesRealHostOccurrencesAndExactDateWindow() {

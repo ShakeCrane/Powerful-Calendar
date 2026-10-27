@@ -155,6 +155,102 @@ async function main(){
     })()`});
     if(closed.exceptionDetails)throw Error(closed.exceptionDetails.exception?.description || closed.exceptionDetails.text);
     console.log("BROWSER RECURRENCE MOCK PASS",JSON.stringify(recurrence.result.value));
+
+    const aiPage=await call("Runtime.evaluate",{contextId:world.executionContextId,
+      awaitPromise:true,returnByValue:true,expression:`(async()=>{
+        const check=(v,m)=>{if(!v)throw Error(m)};
+        const wait=async(fn,m)=>{for(let i=0;i<150;i++){if(fn())return;await new Promise(r=>setTimeout(r,100))}throw Error(m)};
+        document.querySelector('.clear-tabbar [data-action="ai"]').click();
+        await wait(()=>!document.querySelector('#aiPage').hidden,'AI page did not open');
+        return true;
+      })()`});
+    if(aiPage.exceptionDetails)throw Error(aiPage.exceptionDetails.exception?.description || aiPage.exceptionDetails.text);
+    await call("Runtime.evaluate",{expression:`(()=>{const e=document.querySelector('#scenario');e.value='ai-review';e.dispatchEvent(new Event('change',{bubbles:true}))})()`,returnByValue:true});
+    const aiCardsReady=await call("Runtime.evaluate",{contextId:world.executionContextId,
+      awaitPromise:true,returnByValue:true,expression:`(async()=>{
+        for(let i=0;i<150;i++){
+          if(document.querySelectorAll('.ai-proposal-item').length===4)return true;
+          await new Promise(r=>setTimeout(r,100));
+        }
+        throw Error('AI review cards missing before screenshot');
+      })()`});
+    if(aiCardsReady.exceptionDetails)throw Error(aiCardsReady.exceptionDetails.exception?.description || aiCardsReady.exceptionDetails.text);
+    const aiColors=await call("Runtime.evaluate",{contextId:world.executionContextId,returnByValue:true,
+      expression:`(()=>{const review=document.querySelector('.ai-proposal-review');
+        const title=review?.querySelector('h2');const item=review?.querySelector('.ai-proposal-item');
+        const rootStyle=getComputedStyle(document.documentElement);
+        return {theme:document.documentElement.className,labelToken:rootStyle.getPropertyValue('--label').trim(),
+          rootColor:rootStyle.color,bodyColor:getComputedStyle(document.body).color,
+          reviewColor:getComputedStyle(review).color,
+          reviewBackground:getComputedStyle(review).backgroundColor,titleColor:getComputedStyle(title).color,
+          itemColor:getComputedStyle(item).color,itemBackground:getComputedStyle(item).backgroundColor};})()`});
+    if(aiColors.exceptionDetails)throw Error(aiColors.exceptionDetails.exception?.description || aiColors.exceptionDetails.text);
+    await call("Emulation.setDeviceMetricsOverride",{width:1280,height:1000,deviceScaleFactor:1,mobile:false});
+    await call("Runtime.evaluate",{expression:
+      "(()=>{const frame=document.querySelector('#webPreview');frame.style.height='1600px';frame.scrollIntoView({block:'center'})})()"});
+    await call("Runtime.evaluate",{contextId:world.executionContextId,expression:
+      "document.querySelector('.ai-proposal-review')?.scrollIntoView({block:'start'})"});
+    const previewRect=await call("Runtime.evaluate",{expression:
+      "(()=>{const r=document.querySelector('#webPreview').getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height}})()",
+      returnByValue:true});
+    const clip=previewRect.result.value;
+    const aiScreenshot=await call("Page.captureScreenshot",{format:"png",captureBeyondViewport:true,
+      clip:{...clip,scale:1}});
+    const evidenceDir=path.join(root,".local/android-test/reports/separation-20261027/ai-proposal-review");
+    fs.mkdirSync(evidenceDir,{recursive:true});
+    fs.writeFileSync(path.join(evidenceDir,"ai-review-studio-mock.png"),Buffer.from(aiScreenshot.data,"base64"));
+    console.log("AI review computed colors",JSON.stringify(aiColors.result.value));
+    const aiReview=await call("Runtime.evaluate",{contextId:world.executionContextId,
+      awaitPromise:true,returnByValue:true,expression:`(async()=>{
+        const check=(v,m)=>{if(!v)throw Error(m)};
+        const wait=async(fn,m)=>{for(let i=0;i<150;i++){if(fn())return;await new Promise(r=>setTimeout(r,100))}throw Error(m)};
+        await wait(()=>document.querySelectorAll('.ai-proposal-item').length===4,'AI review cards missing');
+        const groups=[...document.querySelectorAll('.ai-proposal-group')];
+        check(groups.length===2,'AI proposals should be grouped by operation');
+        check([...document.querySelectorAll('.ai-proposal-actions button')].length===8,'four decisions per group required');
+        groups[0].querySelectorAll('.ai-proposal-actions button')[3].click();
+        await wait(()=>document.querySelector('#chatMessages').textContent.includes('请补充需要更正的字段'),
+          'supplement decision did not reach Mock Host');
+        document.querySelectorAll('.ai-proposal-group')[0]
+          .querySelectorAll('.ai-proposal-actions button')[1].click();
+        await wait(()=>document.querySelectorAll('.ai-proposal-item').length===3,'stage decision did not resolve one card');
+        await wait(()=>document.querySelector('#chatMessages').textContent.includes('模拟写入草稿'),
+          'stage result was not surfaced');
+        const nextGroups=[...document.querySelectorAll('.ai-proposal-group')];
+        nextGroups[1].querySelectorAll('.ai-proposal-actions button')[2].click();
+        await wait(()=>document.querySelectorAll('.ai-proposal-item').length===1,'reject decision did not resolve selected cards');
+        await wait(()=>document.querySelector('#chatMessages').textContent.includes('模拟拒绝'),
+          'reject result was not surfaced');
+        return {groups:groups.length,decisions:['supplement','stage','reject']};
+      })()`});
+    if(aiReview.exceptionDetails)throw Error(aiReview.exceptionDetails.exception?.description || aiReview.exceptionDetails.text);
+    await call("Runtime.evaluate",{expression:`(()=>{const e=document.querySelector('#scenario');e.value='future';e.dispatchEvent(new Event('change',{bubbles:true}));e.value='ai-review';e.dispatchEvent(new Event('change',{bubbles:true}))})()`,returnByValue:true});
+    const publish=await call("Runtime.evaluate",{contextId:world.executionContextId,
+      awaitPromise:true,returnByValue:true,expression:`(async()=>{
+        for(let i=0;i<150;i++){if(document.querySelectorAll('.ai-proposal-item').length===4)break;await new Promise(r=>setTimeout(r,100))}
+        const group=document.querySelectorAll('.ai-proposal-group')[0];
+        const action=group.querySelectorAll('.ai-proposal-actions button')[0];
+        if(action.disabled)throw Error('publish action unexpectedly disabled');
+        action.click();
+        return true;
+      })()`});
+    if(publish.exceptionDetails)throw Error(publish.exceptionDetails.exception?.description || publish.exceptionDetails.text);
+    const aiApproval=await call("Runtime.evaluate",{expression:`!document.querySelector('#mockApproval').hidden &&
+      document.querySelector('#mockApprovalText').textContent.includes('这不是 Android')`,returnByValue:true});
+    if(aiApproval.result.value!==true)throw Error("AI Mock Host confirmation was not explicit");
+    await call("Runtime.evaluate",{expression:"document.querySelector('#mockApprove').click()",returnByValue:true});
+    const published=await call("Runtime.evaluate",{contextId:world.executionContextId,
+      awaitPromise:true,returnByValue:true,expression:`(async()=>{
+        for(let i=0;i<150;i++){
+          if(document.querySelectorAll('.ai-proposal-item').length===3&&
+            document.querySelector('#chatMessages').textContent.includes('没有写入任何真实日历数据'))return true;
+          await new Promise(r=>setTimeout(r,100));
+        }
+        throw Error('Mock Host confirmation result did not return to Clear');
+      })()`});
+    if(published.exceptionDetails)throw Error(published.exceptionDetails.exception?.description || published.exceptionDetails.text);
+    console.log("BROWSER AI REVIEW MOCK PASS",JSON.stringify(aiReview.result.value));
+    console.log("BROWSER AI HOST CONFIRM MOCK PASS; no real calendar data was written");
     socket.close();
   }finally{
     if(browser)browser.kill();

@@ -212,7 +212,16 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
     var firstCalendarImportPrompt by remember { mutableStateOf(false) }
     var aiBusy by remember { mutableStateOf(false) }
     var chatBusy by remember { mutableStateOf(false) }
-    var proposalReview by remember { mutableStateOf<AiInterpretation?>(null) }
+    var webAiProposalReviewSession by remember { mutableStateOf<WebAiProposalReviewSession?>(null) }
+    val proposalReview = webAiProposalReviewSession?.interpretation
+    var pendingWebAiProposalPublish by remember {
+        mutableStateOf<WebAiProposalPublishReview?>(null)
+    }
+    fun replaceAiProposalReview(interpretation: AiInterpretation?, knownRecords: List<TemporalRecord> = emptyList()) {
+        webAiProposalReviewSession = interpretation?.takeIf { it.proposals.isNotEmpty() }
+            ?.let { WebAiProposalReviewSession.create(it, knownRecords) }
+        WebSkinBridgeRuntime.stateRevision++
+    }
     var chatHistory by remember { mutableStateOf(AiChatHistoryStore.load(appContext)) }
     LaunchedEffect(chatHistory) {
         withContext(Dispatchers.IO) {
@@ -554,7 +563,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                         val settings = AiSettingsStore.load(appContext)
                         val share = if (settings.shareContext) records.take(60) else emptyList()
                         val result = AiClient(settings, zone).interpret(task, share)
-                        if (result.proposals.isNotEmpty()) proposalReview = result
+                        if (result.proposals.isNotEmpty()) replaceAiProposalReview(result, share)
                         else appendChat("assistant", "无法生成结构化提案：" +
                             (result.warnings.firstOrNull()?.takeIf { it.isNotBlank() }
                                 ?: "模型回复未形成可审查提案，请补充或核对日程信息后重试。"))
@@ -640,7 +649,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                     "从以下文件提取真实日程，仅生成候选项；缺少时间不可猜测。文件：" +
                         evidence.filename + "\n" + evidence.text, emptyList())
                 if (interpretation.proposals.isNotEmpty()) {
-                    proposalReview = interpretation
+                    replaceAiProposalReview(interpretation)
                     appendChat("assistant", "已从文件识别 ${interpretation.proposals.size} 项候选日程，" +
                         "请核对后选择生成草稿；尚未正式发布。" +
                         if (evidence.truncated) " 文件内容不完整，请核对遗漏。" else "")
@@ -658,6 +667,152 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                     "；原始数据没有发布。")
             } finally {
                 chatBusy = false
+            }
+        }
+    }
+
+    fun finishWebAiProposalRequest(
+        session: WebAiProposalReviewSession,
+        handledIndices: Set<Int>
+    ) {
+        if (handledIndices.isEmpty() ||
+            webAiProposalReviewSession?.reviewId != session.reviewId) return
+        val remaining = session.interpretation.copy(proposals =
+            session.interpretation.proposals.filterIndexed { index, _ -> index !in handledIndices })
+        webAiProposalReviewSession = if (remaining.proposals.isEmpty()) null
+            else session.replace(remaining)
+    }
+
+    fun captureAiProposalTargets(
+        session: WebAiProposalReviewSession,
+        positions: List<Int>
+    ): Map<Long, TemporalRecord>? = synchronized(store) {
+        val targets = linkedMapOf<Long, TemporalRecord>()
+        for (position in positions) {
+            val proposal = session.interpretation.proposals.getOrNull(position)
+                ?: return@synchronized null
+            if (proposal.operation == dev.powerfulcalendar.core.DraftOperation.CREATE) {
+                if (proposal.eventSeq != null) return@synchronized null
+                continue
+            }
+            val seq = proposal.eventSeq ?: return@synchronized null
+            val expectedRevision = session.expectedTargetRevisions[seq]
+                ?: return@synchronized null
+            val current = store.get(seq) ?: return@synchronized null
+            if (current.revision != expectedRevision) return@synchronized null
+            targets[seq] = current
+        }
+        targets
+    }
+
+    fun resolveWebAiProposalAction(action: WebSkinAction.ResolveAiProposal) {
+        val session = webAiProposalReviewSession
+        if (page != Page.AI.name || aiLocked || chatBusy || aiBusy || editSession != null ||
+            deckOpen || newEventSession != null || pendingBatchMode != null || confirmBatch != null ||
+            pendingWebAiProposalPublish != null || pendingFileReview != null ||
+            pendingImageReview != null) return
+        if (session == null || session.reviewId != action.reviewId) {
+            appendChat("assistant", "这组 AI 提案已更新或过期，请按当前审核卡重新选择。")
+            WebSkinBridgeRuntime.stateRevision++
+            return
+        }
+        val selected = if (action.decision == AiProposalDecision.SUPPLEMENT) emptyList()
+            else WebAiProposalProjection.validSelection(session, action.indices)
+                ?: run {
+                    appendChat("assistant", "所选提案已变化或不可操作；没有执行任何写入。")
+                    WebSkinBridgeRuntime.stateRevision++
+                    return
+                }
+        when (action.decision) {
+            AiProposalDecision.SUPPLEMENT -> {
+                appendChat("assistant", "请在下方聊天框补充或更正提案内容；现有候选不会因此自动修改或发布。")
+                WebSkinBridgeRuntime.stateRevision++
+            }
+            AiProposalDecision.REJECT -> {
+                finishWebAiProposalRequest(session, selected.toSet())
+                appendChat("assistant", "已拒绝所选 ${selected.size} 项 AI 提案；没有创建草稿或修改正式事件。")
+                WebSkinBridgeRuntime.stateRevision++
+            }
+            AiProposalDecision.STAGE -> {
+                aiBusy = true
+                PowerCalStores.appScope.launch {
+                    try {
+                        val applied = withContext(Dispatchers.IO) {
+                            synchronized(store) {
+                                if (captureAiProposalTargets(session, selected) == null) null
+                                else AiDraftService(store).applyReviewedProposals(
+                                    session.interpretation, selected.toSet(), publish = false)
+                            }
+                        }
+                        withContext(Dispatchers.Main) {
+                            if (applied == null) {
+                                appendChat("assistant", "目标事件已变化或无法核对；没有写入草稿，请重新生成提案。")
+                            } else {
+                                finishWebAiProposalRequest(session, applied.handledIndices)
+                                val refreshed = runCatching { reload() }.isSuccess
+                                appendChat("assistant", "已写入 ${applied.stagedCount} 张待处理草稿；" +
+                                    (if (applied.alreadyResolvedCount > 0)
+                                        "已有收据确认处理 ${applied.alreadyResolvedCount} 项；" else "") +
+                                    applied.warnings.take(2).joinToString("；") +
+                                    (if (!refreshed) " · 草稿已写入，但界面刷新失败" else ""))
+                            }
+                        }
+                    } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                        throw cancelled
+                    } catch (error: Exception) {
+                        withContext(Dispatchers.Main) {
+                            appendChat("assistant", "写入草稿未完成：" +
+                                (error.message ?: error.javaClass.simpleName) + "；请核对后重试。")
+                        }
+                    } finally {
+                        withContext(Dispatchers.Main) {
+                            aiBusy = false
+                            WebSkinBridgeRuntime.stateRevision++
+                        }
+                    }
+                }
+            }
+            AiProposalDecision.PUBLISH -> {
+                val proposals = selected.map { session.interpretation.proposals[it] }
+                if (proposals.any { !WebAiProposalProjection.isPublishable(it) }) {
+                    appendChat("assistant", "所选项目包含未补全或不可发布的提案；请先写入草稿或补充细节。")
+                    WebSkinBridgeRuntime.stateRevision++
+                    return
+                }
+                aiBusy = true
+                PowerCalStores.appScope.launch {
+                    try {
+                        val targets = withContext(Dispatchers.IO) {
+                            captureAiProposalTargets(session, selected)
+                        }
+                        withContext(Dispatchers.Main) {
+                            if (webAiProposalReviewSession?.reviewId != session.reviewId) {
+                                appendChat("assistant", "提案在审核期间已更新；没有执行正式操作。")
+                            } else if (targets == null) {
+                                appendChat("assistant", "目标事件已变化或不可用；请重新读取后生成提案。没有执行正式操作。")
+                            } else {
+                                pendingWebAiProposalPublish = WebAiProposalPublishReview(
+                                    reviewId = session.reviewId,
+                                    interpretation = session.interpretation,
+                                    selectedPositions = selected,
+                                    targetSnapshots = targets
+                                )
+                            }
+                        }
+                    } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                        throw cancelled
+                    } catch (error: Exception) {
+                        withContext(Dispatchers.Main) {
+                            appendChat("assistant", "无法准备 Host 审核：" +
+                                (error.message ?: error.javaClass.simpleName))
+                        }
+                    } finally {
+                        withContext(Dispatchers.Main) {
+                            aiBusy = false
+                            WebSkinBridgeRuntime.stateRevision++
+                        }
+                    }
+                }
             }
         }
     }
@@ -1066,10 +1221,11 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                         reload()
                     }
                 }
-                is WebSkinAction.SendChat -> if (!aiLocked && !chatBusy &&
-                    editSession == null && proposalReview == null) {
+                is WebSkinAction.SendChat -> if (!aiLocked && !chatBusy && !aiBusy &&
+                    editSession == null && pendingWebAiProposalPublish == null) {
                     submitAiChatInput(action.text)
                 }
+                is WebSkinAction.ResolveAiProposal -> resolveWebAiProposalAction(action)
                 is WebSkinAction.OpenEvent -> scope.launch {
                     val current = withContext(Dispatchers.IO) { store.get(action.eventSeq) }
                     val validated = validateOpenEvent(action, current, !aiLocked && editSession == null)
@@ -1100,7 +1256,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                     }
                 ))
                 .put("memoTruncated", todoEntries.size > 250)
-                .put("chatBusy", chatBusy || aiBusy)
+                .put("chatBusy", chatBusy || aiBusy || pendingWebAiProposalPublish != null)
                 .put("chatMessages", org.json.JSONArray(
                     (if (page == Page.AI.name) chatHistory.takeLast(40) else emptyList())
                         .map { item ->
@@ -1108,6 +1264,9 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                             .put("content", item.content.take(1600))
                     }
                 ))
+                .put("aiProposalReview", if (page == Page.AI.name) {
+                    webAiProposalReviewSession?.let(WebAiProposalProjection::project) ?: JSONObject.NULL
+                } else JSONObject.NULL)
                 .put("reducedMotion", effects.reduceMotion)
                 .put("editing", webEditing.snapshot())
                 .put("optionGroups", SemanticOptions.toJson(
@@ -1280,12 +1439,14 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
         } else if (presentedPage == Page.AI.name) {
             AiChatScreen(
                 messages = chatHistory,
-                busy = chatBusy || aiBusy,
+                busy = chatBusy || aiBusy || pendingWebAiProposalPublish != null,
                 pendingCount = pendingCount,
                 proposalReview = proposalReview,
                 onApplyProposals = { selected, publish ->
-                    val snapshot = proposalReview
-                    if (snapshot != null && selected.isNotEmpty() && !aiBusy && !chatBusy) {
+                    val session = webAiProposalReviewSession
+                    val snapshot = session?.interpretation
+                    if (session != null && snapshot != null && selected.isNotEmpty() &&
+                        !aiBusy && !chatBusy && pendingWebAiProposalPublish == null) {
                         aiBusy = true
                         scope.launch {
                             try {
@@ -1293,9 +1454,12 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                                     AiDraftService(store).applyReviewedProposals(
                                         snapshot, selected.toSet(), publish)
                                 }
-                                proposalReview = snapshot.copy(proposals =
-                                    snapshot.proposals.filterIndexed { i, _ -> i !in applied.handledIndices })
-                                    .takeIf { it.proposals.isNotEmpty() }
+                                if (webAiProposalReviewSession?.reviewId == session.reviewId) {
+                                    val remaining = snapshot.copy(proposals = snapshot.proposals
+                                        .filterIndexed { i, _ -> i !in applied.handledIndices })
+                                    webAiProposalReviewSession = if (remaining.proposals.isEmpty()) null
+                                        else session.replace(remaining)
+                                }
                                 reload()
                                 if (publish && applied.publishedCount > 0) reconcile()
                                 appendChat("assistant", "结构化操作结果：写入或复用待处理草稿 " +
@@ -1303,6 +1467,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                                     (if (applied.alreadyResolvedCount > 0)
                                         "，已有收据确认已处理 " + applied.alreadyResolvedCount else "") +
                                     "。" + applied.warnings.take(2).joinToString("；"))
+                                WebSkinBridgeRuntime.stateRevision++
                             } finally {
                                 aiBusy = false
                             }
@@ -1310,9 +1475,12 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                     }
                 },
                 onDiscardProposals = { selected ->
-                    proposalReview = proposalReview?.let { old ->
-                        old.copy(proposals = old.proposals.filterIndexed { i, _ -> i !in selected })
-                            .takeIf { it.proposals.isNotEmpty() }
+                    webAiProposalReviewSession?.let { session ->
+                        val remaining = session.interpretation.copy(proposals =
+                            session.interpretation.proposals.filterIndexed { i, _ -> i !in selected })
+                        webAiProposalReviewSession = if (remaining.proposals.isEmpty()) null
+                            else session.replace(remaining)
+                        WebSkinBridgeRuntime.stateRevision++
                     }
                 },
                 onSupplementProposals = {
@@ -1325,7 +1493,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                 onClear = {
                     chatHistory = emptyList()
                     pendingBatchMode = null
-                    proposalReview = null
+                    webAiProposalReviewSession = null
                 },
                 onClearCache = {
                     scope.launch {
@@ -1468,6 +1636,80 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                     .padding(bottom = 92.dp)
             )
         }
+    }
+
+    pendingWebAiProposalPublish?.let { review ->
+        var resolving by remember(review.reviewId) { mutableStateOf(false) }
+        WebAiProposalPublishAuthorizationReview(
+            review = review,
+            busy = resolving,
+            onDismiss = {
+                if (!resolving) {
+                    pendingWebAiProposalPublish = null
+                    WebSkinBridgeRuntime.stateRevision++
+                }
+            },
+            onConfirm = {
+                if (!resolving && webAiProposalReviewSession?.reviewId == review.reviewId) {
+                    resolving = true
+                    aiBusy = true
+                    PowerCalStores.appScope.launch {
+                        try {
+                            val applied = withContext(Dispatchers.IO) {
+                                synchronized(store) {
+                                    val unchanged = review.targetSnapshots.all { (seq, snapshot) ->
+                                        store.get(seq) == snapshot
+                                    }
+                                    if (!unchanged) null else AiDraftService(store)
+                                        .applyReviewedProposals(
+                                            review.interpretation,
+                                            review.selectedPositions.toSet(),
+                                            publish = true
+                                        )
+                                }
+                            }
+                            withContext(Dispatchers.Main) {
+                                pendingWebAiProposalPublish = null
+                                if (applied == null) {
+                                    appendChat("assistant", "确认期间目标事件已变化；没有提交本批 AI 操作，请重新审核。")
+                                } else {
+                                    webAiProposalReviewSession?.takeIf {
+                                        it.reviewId == review.reviewId
+                                    }?.let { finishWebAiProposalRequest(it, applied.handledIndices) }
+                                    val refreshed = runCatching { reload() }.isSuccess
+                                    val reconciled = if (applied.publishedCount > 0)
+                                        runCatching { reconcile() }.isSuccess else true
+                                    appendChat("assistant", "Host 审核结果：写入草稿 " +
+                                        applied.stagedCount + "，正式发布 " + applied.publishedCount +
+                                        (if (applied.alreadyResolvedCount > 0)
+                                            "，已有收据确认处理 " + applied.alreadyResolvedCount else "") +
+                                        " 项。" + applied.warnings.take(3).joinToString("；") +
+                                        (if (!refreshed) " · 操作已完成，但界面刷新失败" else "") +
+                                        (if (!reconciled) " · 提醒调度同步失败" else ""))
+                                }
+                            }
+                        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                            throw cancelled
+                        } catch (error: Exception) {
+                            withContext(Dispatchers.Main) {
+                                pendingWebAiProposalPublish = null
+                                appendChat("assistant", "AI 正式操作没有完成：" +
+                                    (error.message ?: error.javaClass.simpleName) + "；请重新审核。")
+                            }
+                        } finally {
+                            withContext(Dispatchers.Main) {
+                                aiBusy = false
+                                WebSkinBridgeRuntime.stateRevision++
+                            }
+                        }
+                    }
+                } else if (!resolving) {
+                    pendingWebAiProposalPublish = null
+                    appendChat("assistant", "提案审核已过期；没有执行正式操作。")
+                    WebSkinBridgeRuntime.stateRevision++
+                }
+            }
+        )
     }
 
     webEditing.pendingWriteReview?.let { review ->
@@ -2047,7 +2289,9 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                                     val contextForAi = if (settings.shareContext) records.take(60)
                                         else emptyList()
                                     val result = AiClient(settings, zone).interpret(source, contextForAi)
-                                    if (result.proposals.isNotEmpty()) proposalReview = result
+                                    if (result.proposals.isNotEmpty()) {
+                                        replaceAiProposalReview(result, contextForAi)
+                                    }
                                 }
                             }
                         } catch (error: Exception) {

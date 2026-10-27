@@ -37,6 +37,7 @@
         <option value="normal">正常日历</option><option value="empty">空白日历</option>
         <option value="dense">重叠密集事件</option><option value="repeating">重复实例</option>
         <option value="locked">AI 锁定</option><option value="future">软件新增平行功能</option>
+        <option value="ai-review">AI 提案审核卡</option>
       </select></label>
       <label>主题<select id="theme"><option value="light">浅色</option><option value="dark">深色</option></select></label>
       <label class="check"><input id="reduced" type="checkbox">减少动画</label>
@@ -51,7 +52,7 @@
       <div id="dragOverlay" class="dragOverlay" aria-label="可拖拽图层"></div>
     </div></div>
     <div class="previewFooter"><div id="previewState">正在加载……</div>
-      <div id="mockApproval" hidden><span>预览模拟宿主确认，不会写入真实数据。</span>
+      <div id="mockApproval" hidden><span id="mockApprovalText">预览模拟宿主确认，不会写入真实数据。</span>
         <button id="mockApprove" type="button">模拟确认</button><button id="mockReject" type="button">模拟取消</button></div>
       <div id="bridgeLog" class="bridgeLog" aria-live="polite"></div></div>
   </section>
