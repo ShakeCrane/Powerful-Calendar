@@ -92,6 +92,7 @@ function onAction(button){
   if(name==="openEvent")send(name,{eventSeq:Number(button.dataset.eventSeq),
     expectedRevision:Number(button.dataset.revision)});
   else if(name==="createDraft")send(name,{kind:button.dataset.kind});
+  else if(name==="selectSkin"||name==="deleteSkin")send(name,{skinId:button.dataset.skinId});
   else if(name==="toggleMemo")send(name,{eventSeq:Number(button.dataset.eventSeq),
     expectedRevision:Number(button.dataset.revision),
     occurrenceKey:button.dataset.occurrenceKey,completed:button.dataset.completed==="true"});
@@ -451,8 +452,30 @@ function renderOptions(){
     }
   }
   if(currentPage==="SETTINGS"){
-    root.append(node("p","","备份文件只由可信 Android 宿主读写；权限请求由宿主处理；凭据和皮肤管理仍在宿主工具页。"));
-    const hostTools=node("button","optionRow","打开宿主工具与设置");
+    root.append(node("h2","","已安装皮肤"));
+    const skins=Array.isArray(state.installedSkins)?state.installedSkins:[];
+    if(!skins.length)root.append(node("p","","宿主当前没有可用的皮肤列表。"));
+    for(const skin of skins){
+      if(!skin||typeof skin.id!=="string"||typeof skin.name!=="string")continue;
+      const row=node("div","skinPackageRow"),description=node("span","skinPackageName",
+        skin.name+(skin.selected?" · 当前使用":""));
+      const actions=node("div","skinPackageActions");
+      const select=node("button","optionRow",skin.selected?"当前":"启用");
+      select.type="button";select.dataset.action="selectSkin";select.dataset.skinId=skin.id;
+      select.disabled=skin.selected||skin.actionsEnabled===false;
+      select.setAttribute("aria-label",skin.name+(skin.selected?"，当前使用":"，启用"));
+      actions.append(select);
+      if(!skin.builtIn){
+        const remove=node("button","optionRow","删除");
+        remove.type="button";remove.dataset.action="deleteSkin";remove.dataset.skinId=skin.id;
+        remove.disabled=skin.actionsEnabled===false;
+        remove.setAttribute("aria-label","删除皮肤："+skin.name);actions.append(remove);
+      }
+      row.append(description,actions);root.append(row);
+    }
+    root.append(node("p","","启用与删除由 Android 宿主确认；导入的皮肤须先通过宿主包校验，且不会自动启用。"));
+    root.append(node("p","","备份与皮肤包只由可信 Android 宿主读写和校验；启用或删除皮肤须经宿主确认；权限请求由宿主处理；AI 凭据仍在宿主工具页。"));
+    const hostTools=node("button","optionRow","打开宿主工具与凭据设置");
     hostTools.type="button";hostTools.dataset.action="settings";
     root.append(hostTools);
   }

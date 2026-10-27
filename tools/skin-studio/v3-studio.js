@@ -626,6 +626,10 @@ function simulatedState(){
     {id:"data.backup.export",label:"导出原生数据备份",detail:"明文 JSON；Mock 不创建文件",icon:"backup",enabled:scenario!=="locked"},
     {id:"data.backup.restore",label:"恢复原生数据备份",detail:"仅空数据库；Mock 不读取或恢复",icon:"restore",enabled:scenario!=="locked"}
   ];
+  const skinItems=[
+    {id:"skin.import",label:"导入皮肤包",detail:"由宿主校验并安装；导入后不会自动启用；Mock 不读取文件",icon:"skin",enabled:scenario!=="locked"},
+    {id:"skin.exportClear",label:"导出 Clear 候选皮肤",detail:"不更改当前皮肤；Mock 不读取素材或创建文件",icon:"export",enabled:scenario!=="locked"}
+  ];
   if(scenario==="future")items.push({
     id:"calendar.import.future",label:"新功能：导入课程表",
     detail:"模拟未来软件版本新增的平行选项",icon:"table",enabled:true
@@ -654,7 +658,13 @@ function simulatedState(){
       {id:"calendar.import",label:"导入",items},
       {id:"calendar.export",label:"导出",items:exportItems},
       {id:"data.backup",label:"数据备份",items:backupItems},
+      {id:"skin.packages",label:"皮肤管理",items:skinItems},
       {id:"reminders.permissions",label:"提醒与权限",items:reminderItems}
+    ],
+    installedSkins:[
+      {id:"powercal-default",name:"PowerCal 原生玻璃（安全回退）",builtIn:true,selected:false,actionsEnabled:scenario!=="locked"},
+      {id:"powercal-clear-default",name:"Clear · 迁移预览",builtIn:true,selected:true,actionsEnabled:scenario!=="locked"},
+      {id:"studio-demo-skin",name:"Studio 示例皮肤",builtIn:false,selected:false,actionsEnabled:scenario!=="locked"}
     ],
     reminderPermissions:{exactAlarmAllowed:false,notificationsAllowed:false,
       notificationsRuntimePermissionRequired:true},
@@ -864,7 +874,9 @@ function onSkinAction(message){
     if(envelope.type!=="action")return;
     const p=envelope.payload,name=p.name;
     if(!ACTIONS.some(([x])=>x===name)&&!["openEvent","toggleMemo","sendChat","resolveAiProposal",
-      "pickAiFile","pickAiImage"].includes(name)){logAction("拒绝未知动作 "+String(name));return;}
+      "pickAiFile","pickAiImage","selectSkin","deleteSkin"].includes(name)){
+      logAction("拒绝未知动作 "+String(name));return;
+    }
     if(name==="panTimeline"){
       if(!Number.isInteger(p.deltaMinutes)||Math.abs(p.deltaMinutes)>2880)return;
       const state=lastState||simulatedState();
@@ -898,6 +910,24 @@ function onSkinAction(message){
     }
     if(name==="invokeOption"&&p.id==="data.backup.restore"){
       logAction("Preview Mock：invokeOption · data.backup.restore；Host 会打开备份选择器并校验格式及空库条件；未读取文件或恢复数据。");
+      return;
+    }
+    if(name==="invokeOption"&&p.id==="skin.import"){
+      logAction("Preview Mock：invokeOption · skin.import；Host 会启动皮肤包选择并执行校验；未读取文件或安装皮肤。");
+      return;
+    }
+    if(name==="invokeOption"&&p.id==="skin.exportClear"){
+      logAction("Preview Mock：invokeOption · skin.exportClear；Host 会导出内置 Clear 候选包；未读取素材或创建文件。");
+      return;
+    }
+    if(name==="selectSkin"||name==="deleteSkin"){
+      if(mockPage!=="SETTINGS"||typeof p.skinId!=="string"||
+        !/^[a-z0-9][a-z0-9_-]{2,47}$/.test(p.skinId)){
+        logAction("拒绝当前设置页之外的皮肤操作或无效皮肤 ID");return;
+      }
+      logAction(name==="selectSkin"?
+        `Preview Mock：请求 Host 确认启用 ${p.skinId}；未切换皮肤。`:
+        `Preview Mock：请求 Host 确认删除 ${p.skinId}；未删除皮肤包。`);
       return;
     }
     if(name==="invokeOption"&&typeof p.id==="string"&&p.id.startsWith("reminders.")){

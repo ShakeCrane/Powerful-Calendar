@@ -34,6 +34,10 @@ internal object SemanticOptions {
             SemanticOption("data.backup.export", "导出原生数据备份", "包含日历与草稿等敏感数据的明文 JSON；请保存到安全位置", "backup"),
             SemanticOption("data.backup.restore", "恢复原生数据备份", "只允许恢复到空数据库；已有 PowerCal 数据不会被覆盖", "restore")
         )),
+        SemanticOptionGroup("skin.packages", "皮肤管理", listOf(
+            SemanticOption("skin.import", "导入皮肤包", "由 Android 宿主校验并安装；导入后不会自动启用", "skin"),
+            SemanticOption("skin.exportClear", "导出 Clear 候选皮肤", "导出应用内置的 Clear v3 包；不更改当前皮肤", "export")
+        )),
         SemanticOptionGroup("reminders.permissions", "提醒与权限", listOf(
             SemanticOption("reminders.exactAlarmSettings", "精确闹钟权限", "由 Android 系统管理精确闹钟授权", "alarm"),
             SemanticOption("reminders.notificationPermission", "通知权限", "在 Android 系统对话框或设置中管理", "notification"),
@@ -44,8 +48,9 @@ internal object SemanticOptions {
     fun supports(id: String): Boolean = id in allowed
     fun toJson(enabled: Boolean = true,
                collection: List<SemanticOptionGroup> = groups,
-               disabledIds: Set<String> = emptySet()): JSONArray = JSONArray().apply {
-        collection.forEach { group ->
+               disabledIds: Set<String> = emptySet(),
+               includeSkinPackages: Boolean = false): JSONArray = JSONArray().apply {
+        collection.filter { includeSkinPackages || it.id != "skin.packages" }.forEach { group ->
             put(JSONObject().put("id", group.id).put("label", group.label)
                 .put("items", JSONArray().apply {
                     group.items.forEach { item ->

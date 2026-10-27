@@ -52,6 +52,16 @@ class WebSkinBridgeTest {
             """{"version":1,"type":"action","payload":{"name":"invokeOption","id":"calendar.import.file","force":true}}"""))
         assertNull(decodeBridgeAction(
             """{"version":1,"type":"action","payload":{"name":"invokeOption","id":"data.backup.restore","content":"{}"}}"""))
+        assertEquals(WebSkinAction.SelectSkin("my-skin_2"), decodeBridgeAction(
+            """{"version":1,"type":"action","payload":{"name":"selectSkin","skinId":"my-skin_2"}}"""))
+        assertEquals(WebSkinAction.DeleteSkin("my-skin_2"), decodeBridgeAction(
+            """{"version":1,"type":"action","payload":{"name":"deleteSkin","skinId":"my-skin_2"}}"""))
+        assertNull(decodeBridgeAction(
+            """{"version":1,"type":"action","payload":{"name":"selectSkin","skinId":"../private"}}"""))
+        assertNull(decodeBridgeAction(
+            """{"version":1,"type":"action","payload":{"name":"deleteSkin","skinId":"powercal-default","confirm":true}}"""))
+        assertNull(decodeBridgeAction(
+            """{"version":1,"type":"action","payload":{"name":"selectSkin","skinId":42}}"""))
         assertNull(decodeBridgeAction("x".repeat(8_193)))
         assertTrue(decodeBridgeAction("") == null)
     }

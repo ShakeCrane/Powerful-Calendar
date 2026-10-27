@@ -1013,7 +1013,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                     skinChoices = skins.installed()
                     selectedSkin = skins.currentId()
                     message = "皮肤已导入，但未启用：" + result.name +
-                        "；请在设置中手动选择。"
+                        "；请在皮肤设置中选择启用。"
                 }
                 .onFailure { error ->
                     message = "皮肤导入已拒绝：" + (error.message ?: "未知错误") +
@@ -1188,6 +1188,10 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                 }
                 is WebSkinAction.InvokeOption -> when {
                     aiLocked || editSession != null -> Unit
+                    skinSettingsOpen && action.id == "skin.import" ->
+                        importSkin.launch(arrayOf("application/zip", "application/octet-stream", "*/*"))
+                    skinSettingsOpen && action.id == "skin.exportClear" ->
+                        exportOriginalSkin.launch("PowerCal-Clear-Preview.pcskin")
                     action.id == "calendar.import.file" ->
                         openAiDocument.launch(arrayOf("*/*"))
                     action.id == "calendar.import.system" -> {
@@ -1225,6 +1229,20 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                         WebSkinBridgeRuntime.stateRevision++
                     }
                     else -> Unit
+                }
+                is WebSkinAction.SelectSkin -> {
+                    if (skinSettingsOpen && !aiLocked && editSession == null &&
+                        action.skinId != selectedSkin
+                    ) {
+                        skinToActivate = skinChoices.firstOrNull { it.id == action.skinId }
+                    }
+                }
+                is WebSkinAction.DeleteSkin -> {
+                    if (skinSettingsOpen && !aiLocked && editSession == null) {
+                        skinToDelete = skinChoices.firstOrNull {
+                            it.id == action.skinId && !it.builtIn
+                        }
+                    }
                 }
                 is WebSkinAction.PanTimeline -> {
                     if (page == Page.TIMELINE.name) {
@@ -1349,7 +1367,13 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                 .put("editing", webEditing.snapshot())
                 .put("optionGroups", SemanticOptions.toJson(
                     enabled = !aiLocked && editSession == null,
-                    disabledIds = disabledOptionIds))
+                    disabledIds = disabledOptionIds,
+                    includeSkinPackages = skinSettingsOpen))
+                .put("installedSkins", if (skinSettingsOpen) {
+                    WebSkinInstalledSkinsProjection.build(
+                        skinChoices, selectedSkin, actionsEnabled = !aiLocked && editSession == null
+                    )
+                } else org.json.JSONArray())
                 .put("reminderPermissions", if (skinSettingsOpen)
                     ReminderSettingsProjection.toJson(
                         exactAlarmAllowed,

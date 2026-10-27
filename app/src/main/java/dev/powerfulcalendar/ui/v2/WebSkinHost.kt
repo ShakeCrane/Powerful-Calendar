@@ -31,6 +31,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
 import java.time.Instant
@@ -80,6 +81,8 @@ internal sealed interface WebSkinAction {
     data class Routed(val name: String) : WebSkinAction
     data class OpenEvent(val eventSeq: Long, val expectedRevision: Long) : WebSkinAction
     data class InvokeOption(val id: String) : WebSkinAction
+    data class SelectSkin(val skinId: String) : WebSkinAction
+    data class DeleteSkin(val skinId: String) : WebSkinAction
     /** Relative browsing only; cannot change the vertical time scale. */
     data class PanTimeline(val deltaMinutes: Int) : WebSkinAction
     /** Select a calendar day while preserving the existing time span. */
@@ -99,6 +102,21 @@ internal sealed interface WebSkinAction {
         val decision: AiProposalDecision,
         val indices: List<Int>
     ) : WebSkinAction
+}
+
+/** Exposes only bounded catalogue metadata, and only while the skin-owned settings page is open. */
+internal object WebSkinInstalledSkinsProjection {
+    fun build(installed: List<InstalledSkin>, selectedId: String, actionsEnabled: Boolean): JSONArray =
+        JSONArray().apply {
+            installed.take(14).forEach { skin ->
+                put(JSONObject()
+                    .put("id", skin.id.take(48))
+                    .put("name", skin.name.take(100))
+                    .put("builtIn", skin.builtIn)
+                    .put("selected", skin.id == selectedId)
+                    .put("actionsEnabled", actionsEnabled))
+            }
+        }
 }
 
 internal data class WebSkinNavigationState(
@@ -348,6 +366,12 @@ internal fun decodeBridgeAction(raw: String): WebSkinAction? {
             val id = payload.opt("id")
             if (id is String && SemanticOptions.supports(id)) WebSkinAction.InvokeOption(id)
             else null
+        }
+        "selectSkin", "deleteSkin" -> {
+            if (keys != setOf("name", "skinId")) return null
+            val id = payload.opt("skinId") as? String ?: return null
+            if (!SkinPackageManager.isValidPackageId(id)) return null
+            if (name == "selectSkin") WebSkinAction.SelectSkin(id) else WebSkinAction.DeleteSkin(id)
         }
         "panTimeline" -> {
             if (keys != setOf("name", "deltaMinutes")) return null

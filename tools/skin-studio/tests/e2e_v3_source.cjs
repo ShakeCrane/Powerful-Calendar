@@ -181,6 +181,7 @@ async function main(){
         const imports=options.filter(button=>button.dataset.optionId.startsWith('calendar.import.'));
         const exports=options.filter(button=>button.dataset.optionId.startsWith('calendar.export.'));
         const backups=options.filter(button=>button.dataset.optionId.startsWith('data.backup.'));
+        const skinOptions=options.filter(button=>button.dataset.optionId.startsWith('skin.'));
         const reminders=options.filter(button=>button.dataset.optionId.startsWith('reminders.'));
         check(imports.length===2,'settings landing must retain the two bounded Host import options');
         check(exports.length===1,'settings landing must expose the bounded Activity ICS export');
@@ -189,33 +190,85 @@ async function main(){
         check(backups.length===2,'settings landing must expose the two bounded native backup actions');
         check(backups[0].textContent.includes('明文 JSON'),'backup export sensitivity must be visible in the skin');
         check(backups[1].textContent.includes('空数据库'),'backup restore empty-store limit must be visible in the skin');
+        check(skinOptions.length===2,'settings landing must expose bounded skin import/export actions');
+        check(skinOptions[0].textContent.includes('导入后不会自动启用'),'skin import must explain it does not activate packages');
+        check(skinOptions[1].textContent.includes('不更改当前皮肤'),'Clear package export must not be described as activation');
+        const installed=document.querySelectorAll('#optionGroups [data-action="selectSkin"]');
+        const removals=document.querySelectorAll('#optionGroups [data-action="deleteSkin"]');
+        check(installed.length===3&&removals.length===1,'settings must render the Host-projected skin catalogue and only allow deleting user skins');
         check(reminders.length===3,'settings landing must expose the three bounded reminder Host actions');
         check(document.querySelector('#optionGroups').textContent.includes('精确闹钟：未允许；通知运行时权限：未允许'),
           'settings landing must show the Host-projected reminder permission state');
-        check(document.querySelector('#optionGroups').textContent.includes('备份文件只由可信 Android 宿主读写'),
-          'backup file access boundary was not explained');
+        check(document.querySelector('#optionGroups').textContent.includes('备份与皮肤包只由可信 Android 宿主读写和校验'),
+          'backup and package access boundary was not explained');
         imports[0].click();
         exports[0].click();
-        backups[0].click();backups[1].click();
         return {settingsLanding:true,hostImportOptions:imports.length,hostExportOptions:exports.length,
           hostBackupActions:backups.length,
+          hostSkinPackageOptions:skinOptions.length,installedSkinRows:installed.length,
+          userSkinDeleteRows:removals.length,
           reminderHostActions:reminders.length,
           reminderPermissionProjection:true,browserMockWroteData:false};
       })()`});
     if(settings.exceptionDetails)throw Error(settings.exceptionDetails.exception?.description || settings.exceptionDetails.text);
-    const importLog=await call("Runtime.evaluate",{awaitPromise:true,returnByValue:true,expression:`(async()=>{
+    const calendarMocks=await call("Runtime.evaluate",{awaitPromise:true,returnByValue:true,expression:`(async()=>{
       for(let i=0;i<100;i++){
         const text=document.querySelector('#bridgeLog').textContent;
-        if(text.includes('invokeOption · calendar.import.file')&&
-          text.includes('未创建或写入真实文件')&&
-          text.includes('data.backup.export')&&text.includes('未读取日历数据或创建文件')&&
+        if(text.includes('invokeOption · calendar.import.file')&&text.includes('未创建或写入真实文件'))return true;
+        await new Promise(r=>setTimeout(r,100));
+      }
+      return false;
+    })()`});
+    if(calendarMocks.exceptionDetails)throw Error(calendarMocks.exceptionDetails.exception?.description || calendarMocks.exceptionDetails.text);
+    if(!calendarMocks.result.value)throw Error('calendar picker options did not reach their non-writing Host Mocks');
+    await call("Runtime.evaluate",{contextId:world.executionContextId,returnByValue:true,expression:`(()=>{
+      const options=[...document.querySelectorAll('#optionGroups [data-action="invokeOption"]')];
+      options.filter(button=>button.dataset.optionId.startsWith('data.backup.')).forEach(button=>button.click());
+      return true;
+    })()`});
+    const backupMocks=await call("Runtime.evaluate",{awaitPromise:true,returnByValue:true,expression:`(async()=>{
+      for(let i=0;i<100;i++){
+        const text=document.querySelector('#bridgeLog').textContent;
+        if(text.includes('data.backup.export')&&text.includes('未读取日历数据或创建文件')&&
           text.includes('data.backup.restore')&&text.includes('未读取文件或恢复数据'))return true;
         await new Promise(r=>setTimeout(r,100));
       }
       return false;
     })()`});
-    if(importLog.exceptionDetails)throw Error(importLog.exceptionDetails.exception?.description || importLog.exceptionDetails.text);
-    if(!importLog.result.value)throw Error('calendar import/export options did not reach their non-writing Host Mocks');
+    if(backupMocks.exceptionDetails)throw Error(backupMocks.exceptionDetails.exception?.description || backupMocks.exceptionDetails.text);
+    if(!backupMocks.result.value)throw Error('backup actions did not reach their non-writing Host Mocks');
+    await call("Runtime.evaluate",{contextId:world.executionContextId,returnByValue:true,expression:`(()=>{
+      document.querySelectorAll('#optionGroups [data-action="invokeOption"]')
+        .forEach(button=>{if(button.dataset.optionId.startsWith('skin.'))button.click()});
+      return true;
+    })()`});
+    const skinPackageMocks=await call("Runtime.evaluate",{awaitPromise:true,returnByValue:true,expression:`(async()=>{
+      for(let i=0;i<100;i++){
+        const text=document.querySelector('#bridgeLog').textContent;
+        if(text.includes('skin.import')&&text.includes('未读取文件或安装皮肤')&&
+          text.includes('skin.exportClear')&&text.includes('未读取素材或创建文件'))return true;
+        await new Promise(r=>setTimeout(r,100));
+      }
+      return false;
+    })()`});
+    if(skinPackageMocks.exceptionDetails)throw Error(skinPackageMocks.exceptionDetails.exception?.description || skinPackageMocks.exceptionDetails.text);
+    if(!skinPackageMocks.result.value)throw Error('skin package picker actions did not reach their non-writing Host Mocks');
+    await call("Runtime.evaluate",{contextId:world.executionContextId,returnByValue:true,expression:`(()=>{
+      document.querySelector('#optionGroups [data-action="selectSkin"]').click();
+      document.querySelector('#optionGroups [data-action="deleteSkin"]').click();
+      return true;
+    })()`});
+    const skinMocks=await call("Runtime.evaluate",{awaitPromise:true,returnByValue:true,expression:`(async()=>{
+      for(let i=0;i<100;i++){
+        const text=document.querySelector('#bridgeLog').textContent;
+        if(text.includes('请求 Host 确认启用 powercal-default')&&
+          text.includes('请求 Host 确认删除 studio-demo-skin'))return {matched:true,text};
+        await new Promise(r=>setTimeout(r,100));
+      }
+      return {matched:false,text:document.querySelector('#bridgeLog')?.textContent||'<missing bridge log>'};
+    })()`});
+    if(skinMocks.exceptionDetails)throw Error(skinMocks.exceptionDetails.exception?.description || skinMocks.exceptionDetails.text);
+    if(!skinMocks.result.value.matched)throw Error('skin management Host Mocks missing: '+skinMocks.result.value.text);
     const reminderActions=await call("Runtime.evaluate",{contextId:world.executionContextId,
       awaitPromise:true,returnByValue:true,expression:`(async()=>{
         const reminders=[...document.querySelectorAll('#optionGroups [data-action="invokeOption"]')]

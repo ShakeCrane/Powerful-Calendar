@@ -99,6 +99,12 @@ button:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outl
  border:0;border-bottom:1px solid var(--sep);background:transparent}
 .optionRow{display:block;width:100%;text-align:left;background:var(--bg-elevated);
  border:0;border-bottom:1px solid var(--sep);padding:14px;color:var(--label)}
+.skinPackageRow{display:flex;align-items:center;justify-content:space-between;gap:10px;
+ padding:8px 0;border-bottom:1px solid var(--sep)}
+.skinPackageName{flex:1;min-width:0;overflow-wrap:anywhere;font-size:14px}
+.skinPackageActions{display:flex;gap:6px}
+.skinPackageActions button{width:auto;padding:9px 12px;border-radius:12px}
+.skinPackageActions button:disabled{opacity:.55}
 
 /* Keep the interactive AI composer above the floating tabbar at every viewport height. */
 #aiPage:not([hidden]){display:flex;flex-direction:column;

@@ -91,8 +91,18 @@ envelope and known fields only:
   URIs are never projected to the skin. Exported backups are plaintext and
   sensitive; restore is accepted only by the existing Core empty-database and
   envelope validation checks, with the existing native legacy-consent dialog.
-  Credentials and skin management remain in the Host tools page. Clear's AI
-  “配置” and its settings landing's “打开宿主工具与设置” continue to request
+  The `skin.import` and `skin.exportClear` options reuse the Host-owned package
+  picker and bundled-Clear exporter; install still verifies the archive and
+  never activates it automatically. On this page only, `installedSkins`
+  projects a bounded list of package ID, display name, built-in/current flags
+  and whether actions are available. It never includes package paths or source.
+  The closed-schema `selectSkin` and `deleteSkin` actions accept only `skinId`;
+  the Host resolves it against the current installed catalogue. Selection keeps
+  the existing trusted confirmation and `prepareSkinChange` checkpoint. Delete
+  is limited to non-built-in packages and keeps the existing trusted delete
+  confirmation. Studio previews all four operations as non-writing Mocks.
+  Credentials and other sensitive settings remain in the Host tools page. Clear's AI
+  “配置” and its settings landing's “打开宿主工具与凭据设置” continue to request
   the existing `settings` action.
 - Existing `editor.patch` and `deck.patch` accept the semantic field `kind`
   with exactly one of `ALARM`, `ACTIVITY`, `DEADLINE`, or `MEMO`. The Host
