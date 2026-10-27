@@ -17,6 +17,9 @@ const copy = value => JSON.parse(JSON.stringify(value));
 let manifest=null, project=null, projectBaseline=null, sourceFiles=new Map(), selectedLayer=null;
 let activeMode="simple", editCanvas=true, previewTimer=null, previewSeq=0;
 let previewPort=null, lastState=null, lastPreviewUrl="", dirty=false;
+let projectSourceError=null, projectDraftText=null;
+const REQUIRED_SOURCE_FILES=new Set(["web/index.html","web/style.css","web/app.js","project.json"]);
+const TEXT_SOURCE_EXTENSIONS=/\.(cjs|css|html?|ini|js|json|jsx|kt|less|md|mjs|properties|py|scss|sh|sql|toml|tsx?|txt|xml|ya?ml|svg)$/i;
 function say(message,isError=false){$("toast").textContent=message;$("toast").classList.toggle("error",isError)}
 function setText(name,value){sourceFiles.set(name,enc.encode(value))}
 function getText(name){return dec.decode(sourceFiles.get(name)||new Uint8Array())}
@@ -36,6 +39,7 @@ function prepareFiles(){
 }
 function payload(){
   if(!manifest) throw Error("还没有加载皮肤");
+  if(projectSourceError)throw Error("project.json 尚未修复："+projectSourceError);
   manifest.id=$("skinId").value.trim();manifest.name=$("skinName").value.trim();
   if(!$("fullCanvas").checked) throw Error(
     "全画布已关闭：Android 将用原生界面覆盖皮肤，无法保证预览=使用。请开启完整画布。");
@@ -70,6 +74,7 @@ async function loadPackage(data){
      !files.has("web/app.js")||!files.has("project.json"))
     throw Error("皮肤包缺少必需 Web 源码");
   sourceFiles=files;manifest=copy(data.manifest);
+  projectSourceError=null;projectDraftText=null;
   project=parseProject();
   projectBaseline=JSON.stringify(project);
   mockEditing={editor:{open:false},deck:{open:false},lastResult:null};
@@ -88,7 +93,11 @@ async function loadPackage(data){
     ?"已载入 APK 同源 Clear 基础皮肤。导出使用独立 ID，不覆盖受保护的出厂包。"
     :"已加载完整 v3 项目（含所有素材）。预览与导出共享同一组源文件。");
 }
-function change(){dirty=true;schedulePreview()}
+function change(){
+  dirty=true;
+  if(projectSourceError){$("previewState").textContent="project.json 有错误，修复后才能预览/导出";return}
+  schedulePreview();
+}
 function syncSourceInputs(){
   $("htmlCode").value=getText("web/index.html");
   $("cssCode").value=getText("web/style.css");
@@ -99,8 +108,8 @@ function renderExtraSources(){
   const select=$("extraSourceFile"),previous=select.value;
   const strict=new TextDecoder("utf-8",{fatal:true});
   const paths=[...sourceFiles.keys()].filter(path=>{
-    if(!/\.(html|css|js|json|txt)$/i.test(path) ||
-       ["web/index.html","web/style.css","web/app.js","project.json"].includes(path))return false;
+    if(path==="project.json")return true;
+    if(!TEXT_SOURCE_EXTENSIONS.test(path) || REQUIRED_SOURCE_FILES.has(path))return false;
     try{strict.decode(sourceFiles.get(path));return true}catch{return false}
   }).sort();
   select.replaceChildren();
@@ -110,7 +119,88 @@ function renderExtraSources(){
   }
   select.value=paths.includes(previous)?previous:(paths[0]||"");
   $("extraSourceCode").disabled=!select.value;
-  $("extraSourceCode").value=select.value?getText(select.value):"";
+  $("extraSourceCode").value=select.value==="project.json"&&projectDraftText!==null
+    ?projectDraftText:(select.value?getText(select.value):"");
+  $("removeExtraSource").disabled=!select.value||REQUIRED_SOURCE_FILES.has(select.value);
+}
+function safePackagePath(path){
+  if(typeof path!=="string"||path.length>126||path.includes("\\")||path.startsWith("/"))return false;
+  const parts=path.split("/");
+  return parts.length>=2&&["web","assets"].includes(parts[0])&&
+    parts.slice(1).every(part=>part!=="."&&part!==".."&&/^[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(part));
+}
+function updateProjectSource(text){
+  projectDraftText=text;
+  try{
+    const next=JSON.parse(text);
+    if(!next||typeof next!=="object"||Array.isArray(next)||next.projectVersion!==3||
+       !["simple","advanced"].includes(next.mode)||!Array.isArray(next.slots)||next.slots.length>128)
+      throw Error("必须是 projectVersion=3 且 slots 为数组的 JSON 对象");
+    if(next.layers!==undefined&&!Array.isArray(next.layers))throw Error("layers 必须为数组");
+    if(!Array.isArray(next.layers))next.layers=[];
+    if(next.layers.length>128)throw Error("layers 超过 128 项上限");
+    const ids=new Set();
+    for(const slot of next.slots){
+      if(!slot||typeof slot!=="object"||typeof slot.id!=="string"||
+         !/^[A-Za-z][A-Za-z0-9_.-]{0,63}$/.test(slot.id)||ids.has(slot.id)||
+         Object.keys(slot).some(key=>!["id","label","type","value","editable"].includes(key))||
+         !["color","image","font","text","number"].includes(slot.type))
+        throw Error("slots 中存在非法或重复的材质定义");
+      ids.add(slot.id);
+    }
+    const layerIds=new Set();
+    for(const layer of next.layers){
+      if(!layer||typeof layer!=="object"||Array.isArray(layer)||!safeId(layer.id)||layerIds.has(layer.id))
+        throw Error("layers 中存在非法或重复的图层 ID");
+      layerIds.add(layer.id);
+    }
+    project=next;projectBaseline=JSON.stringify(project);
+    sourceFiles.set("project.json",enc.encode(text));
+    projectSourceError=null;projectDraftText=null;
+    if(!project.layers.some(layer=>layer&&layer.id===selectedLayer))selectedLayer=project.layers[0]?.id||null;
+    renderMaterials();renderAssets();renderLayers();
+    change();say("project.json 已解析并保留未知字段；预览与导出将使用此结构。");
+  }catch(error){
+    projectSourceError=error.message;
+    dirty=true;$("previewState").textContent="project.json 无效，修复后才能预览/导出";
+    say("project.json 暂未应用："+error.message,true);
+  }
+}
+function referencedByPackage(path){
+  const candidates=[path,path.replace(/^assets\//,"../assets/"),path.replace(/^web\//,"./"),path.split("/").pop()];
+  const references=[];
+  const strict=new TextDecoder("utf-8",{fatal:true});
+  for(const [source,bytes] of sourceFiles){
+    if(source===path||!TEXT_SOURCE_EXTENSIONS.test(source))continue;
+    try{
+      const text=strict.decode(bytes);
+      if(candidates.some(candidate=>text.includes(candidate)))references.push(source);
+    }catch{}
+  }
+  return references;
+}
+function addTextSource(){
+  const path=prompt("包内相对路径（例如 web/components/event-card.js）","web/components/new-component.js");
+  if(!path)return;
+  if(!safePackagePath(path)||path==="project.json"||REQUIRED_SOURCE_FILES.has(path)){
+    say("路径无效；只能在 web/ 或 assets/ 下创建非必需文件",true);return;
+  }
+  if(!TEXT_SOURCE_EXTENSIONS.test(path)){
+    say("文本文件扩展名不受支持",true);return;
+  }
+  if(sourceFiles.has(path)){say("文件已存在："+path,true);return;}
+  sourceFiles.set(path,enc.encode(""));
+  renderExtraSources();$("extraSourceFile").value=path;$("extraSourceCode").value="";
+  $("removeExtraSource").disabled=false;change();say("已创建文本文件："+path);
+}
+function removeExtraSource(){
+  const path=$("extraSourceFile").value;
+  if(!path||REQUIRED_SOURCE_FILES.has(path)){say("入口源码和 project.json 不能删除",true);return;}
+  const references=referencedByPackage(path);
+  if(references.length){say("仍被源码引用（"+references.join("、")+"），请先修改引用",true);return;}
+  if(!confirm("删除包内文件 "+path+"？此操作只作用于当前未导出的工程。"))return;
+  sourceFiles.delete(path);renderExtraSources();renderAssets();renderLayers();change();
+  say("已删除："+path);
 }
 function switchMode(mode){
   // The current editor pane is UI state; switching it must not rewrite the
@@ -203,13 +293,29 @@ function renderAssets(){
     name.textContent=path+" · "+Math.ceil(bytes.byteLength/1024)+"KB";
     const remove=document.createElement("button");remove.textContent="删除";remove.className="danger";
     remove.onclick=()=>{
-      const used=project.layers.some(layer=>layer.asset===path);
-      if(used){say("素材被图层引用，请先移除或更换引用",true);return;}
+      const references=referencedByPackage(path);
+      if(references.length){say("素材仍被引用（"+references.join("、")+"），请先移除引用",true);return;}
+      if(!confirm("删除资源 "+path+"？此操作只作用于当前未导出的工程。"))return;
       sourceFiles.delete(path);renderAssets();renderLayers();change();
     };
     row.append(name,remove);root.append(row);
   }
   renderIconChoices();
+}
+async function validateRasterAsset(file,name,bytes){
+  if(!/\.(png|webp)$/i.test(name))return;
+  const png=name.toLowerCase().endsWith(".png");
+  const header=bytes.subarray(0,png?8:4);
+  const correct=png
+    ?header.length===8&&header.every((v,i)=>v===[137,80,78,71,13,10,26,10][i])
+    :header.length===4&&dec.decode(header)==="RIFF"&&dec.decode(bytes.subarray(8,12))==="WEBP";
+  if(!correct)throw Error("图片文件头与扩展名不符："+name);
+  const bitmap=await createImageBitmap(file).catch(()=>null);
+  if(!bitmap)throw Error("图片无法解码："+name);
+  const valid=bitmap.width>0&&bitmap.height>0&&bitmap.width<=4096&&
+    bitmap.height<=4096&&bitmap.width*bitmap.height<=8_000_000;
+  bitmap.close();
+  if(!valid)throw Error("图片尺寸超过上限："+name);
 }
 async function addAssets(list){
   try{
@@ -220,20 +326,7 @@ async function addAssets(list){
         throw Error("只允许 PNG、WebP 和字体文件："+name);
       if(file.size>3_000_000)throw Error(name+" 超过 3MB");
       const bytes=new Uint8Array(await file.arrayBuffer());
-      if(/\.(png|webp)$/i.test(name)){
-        const png=name.toLowerCase().endsWith(".png");
-        const header=bytes.subarray(0,png?8:4);
-        const correct=png
-          ?header.length===8&&header.every((v,i)=>v===[137,80,78,71,13,10,26,10][i])
-          :header.length===4&&dec.decode(header)==="RIFF"&&dec.decode(bytes.subarray(8,12))==="WEBP";
-        if(!correct)throw Error("图片文件头与扩展名不符："+name);
-        const bitmap=await createImageBitmap(file).catch(()=>null);
-        if(!bitmap)throw Error("图片无法解码："+name);
-        const valid=bitmap.width>0&&bitmap.height>0&&bitmap.width<=4096&&
-          bitmap.height<=4096&&bitmap.width*bitmap.height<=8_000_000;
-        bitmap.close();
-        if(!valid)throw Error("图片尺寸超过上限："+name);
-      }
+      await validateRasterAsset(file,name,bytes);
       let path="assets/"+name;
       let i=2;
       while(sourceFiles.has(path)){
@@ -244,6 +337,30 @@ async function addAssets(list){
     }
     renderAssets();renderLayers();change();
     say("素材已保留原始字节；预览与导出引用同一文件。");
+  }catch(error){say(error.message,true);}
+}
+async function addPackageAssets(list){
+  try{
+    const pending=[],seen=new Set();
+    for(const file of Array.from(list||[])){
+      const name=file.name;
+      if(!safeFilename(name))throw Error("资源文件名必须使用安全 ASCII 字符："+name);
+      if(file.size>3_000_000)throw Error(name+" 超过 3MB");
+      const path="assets/"+name;
+      if(seen.has(path))throw Error("选择列表中包含重复资源："+path);
+      seen.add(path);
+      if(sourceFiles.has(path)&&!confirm("替换现有资源 "+path+"？"))
+        throw Error("已取消资源替换；本批次未应用");
+      const bytes=new Uint8Array(await file.arrayBuffer());
+      await validateRasterAsset(file,name,bytes);
+      pending.push([path,bytes]);
+    }
+    if(!pending.length)return;
+    const newPaths=pending.filter(([path])=>!sourceFiles.has(path)).length;
+    if(sourceFiles.size+newPaths>96)throw Error("v3 包最多包含 96 个源文件");
+    for(const [path,bytes] of pending)sourceFiles.set(path,bytes);
+    renderAssets();renderLayers();change();
+    say("资源文件已更新；导出保留原始字节。");
   }catch(error){say(error.message,true);}
 }
 const ACTIONS=[
@@ -883,11 +1000,20 @@ function bindUI(){
     $(id).oninput=()=>{setText(path,$(id).value);change()};
   }
   $("extraSourceFile").onchange=()=>{
-    $("extraSourceCode").value=getText($("extraSourceFile").value);
+    const path=$("extraSourceFile").value;
+    $("extraSourceCode").value=path==="project.json"&&projectDraftText!==null
+      ?projectDraftText:getText(path);
+    $("removeExtraSource").disabled=!path||REQUIRED_SOURCE_FILES.has(path);
   };
   $("extraSourceCode").oninput=()=>{
     const path=$("extraSourceFile").value;
+    if(path==="project.json"){updateProjectSource($("extraSourceCode").value);return;}
     if(path&&sourceFiles.has(path)){setText(path,$("extraSourceCode").value);change()}
+  };
+  $("addTextSource").onclick=addTextSource;
+  $("removeExtraSource").onclick=removeExtraSource;
+  $("packageAssetFile").onchange=async event=>{
+    await addPackageAssets(event.target.files);event.target.value="";
   };
   $("applyIcon").onclick=applyButtonIcon;
   $("addMaterial").onclick=()=>{

@@ -35,6 +35,8 @@ label.check{display:flex;align-items:center;gap:9px;line-height:1.5}
 .materialRow>span{flex:1;font-size:12px}
 .materialRow>input[type=color]{width:44px;height:34px;padding:3px;background:white;border:1px solid #ccd6e5;border-radius:8px}
 .materialRow>input[type=text]{width:116px;min-width:0;padding:7px;border:1px solid #ccd6e5;border-radius:8px;font-size:12px}
+.sourceActions{align-items:stretch;margin:8px 0}
+.sourceActions button,.sourceActions .fileButton{font-size:11px;padding:6px 8px}
 .fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 .fields label{margin:4px 0}
 .previewPanel{display:flex;flex-direction:column;min-height:600px}

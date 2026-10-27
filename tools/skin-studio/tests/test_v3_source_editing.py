@@ -23,6 +23,8 @@ class StudioSourceEditingTest(unittest.TestCase):
         project["thirdPartyMetadata"] = {"keep": "原样保留"}
         files["project.json"] = (json.dumps(project, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf8")
         files["web/binary.js"] = b"\xff\xfe\x00"
+        files["web/agent-unused-90f4.txt"] = b"unused source"
+        files["assets/replace.bin"] = b"old resource"
         fixture = {"manifest": manifest, "files": {
             name: base64.b64encode(data).decode("ascii") for name, data in files.items()}}
         script = os.environ.get("POWERCAL_STUDIO_JS", str(STUDIO / "v3-studio.js"))
@@ -70,6 +72,38 @@ class StudioSourceEditingTest(unittest.TestCase):
         self.assertIn(b"--testAccent", files["web/style.css"])
         _, imported = unpack(build_files(payload["manifest"], files))
         self.assertEqual(imported, files)
+
+    def test_project_tree_and_arbitrary_text_binary_files_are_editable(self):
+        original, result = self.run_studio(["host.read"])
+        self.assertIn("project.json", result["choices"])
+        self.assertTrue(result["invalidProjectRejected"])
+        self.assertTrue(result["invalidProjectDraftRestored"])
+        self.assertTrue(result["rejectedTextExtension"])
+
+        project_payload = result["projectPayload"]
+        project_files = {name: base64.b64decode(value)
+                         for name, value in project_payload["files"].items()}
+        edited_project = json.loads(project_files["project.json"])
+        self.assertEqual(edited_project["agentAuthoredComponents"], [{
+            "id": "custom-panel", "type": "container", "children": [{"id": "title", "type": "text"}]
+        }])
+        self.assertEqual(edited_project["thirdPartyMetadata"], {"keep": "原样保留"})
+
+        payload = result["managedPayload"]
+        files = {name: base64.b64decode(value) for name, value in payload["files"].items()}
+        self.assertEqual(files["project.json"], project_files["project.json"])
+        self.assertEqual(files["web/components/agent-card.js"], b"export const card = 'custom';\n")
+        self.assertNotIn("web/agent-unused-90f4.txt", files)
+        self.assertEqual(files["assets/agent-new.bin"], bytes([0, 255, 65, 66]))
+        self.assertEqual(files["assets/replace.bin"], bytes([255, 0, 128]),
+                         "binary replacement must preserve the selected bytes exactly")
+        imported_manifest, imported = unpack(build_files(payload["manifest"], files))
+        self.assertEqual(imported_manifest["capabilities"], ["host.read"])
+        self.assertEqual(imported, files)
+        recovered = {name: base64.b64decode(value)
+                     for name, value in result["recoveredPayload"]["files"].items()}
+        self.assertEqual(recovered["project.json"], project_files["project.json"])
+        self.assertIn("web/agent-unused-90f4.txt", original)
 
 
 if __name__ == "__main__":

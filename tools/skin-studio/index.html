@@ -85,9 +85,13 @@
       <label>HTML<textarea id="htmlCode" spellcheck="false" rows="9"></textarea></label>
       <label>CSS<textarea id="cssCode" spellcheck="false" rows="9"></textarea></label>
       <label>JavaScript<textarea id="jsCode" spellcheck="false" rows="9"></textarea></label>
-      <label>其他 UTF-8 源文件<select id="extraSourceFile"></select></label>
+      <div class="barActions sourceActions"><button id="addTextSource">新增文本文件</button>
+        <button id="removeExtraSource" class="danger">删除当前文件</button>
+        <label class="fileButton">添加/替换任意资源<input id="packageAssetFile" type="file" multiple hidden></label>
+      </div>
+      <label>包内文本源文件与 project.json<select id="extraSourceFile"></select></label>
       <label>文件内容<textarea id="extraSourceCode" spellcheck="false" rows="12"></textarea></label>
-      <p class="muted">可编辑包内其他文本文件，例如 web/edit.js 和 web/clear-design.css；二进制文件保持原始字节。</p>
+      <p class="muted">可查看和编辑完整 project.json 结构、web/ 与 assets/ 下的文本源码；新建和删除文件会检查包路径与引用。上传任意资源可新增文件或明确替换同名文件，二进制按原始字节导出。</p>
       <p class="muted">直接修改项目源码，实时保存与预览。导出不执行额外 HTML/CSS/JS 改写。</p>
     </section>
   </aside>

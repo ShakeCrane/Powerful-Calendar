@@ -60,12 +60,15 @@ async function main(){
       }
       const data=await (await fetch('/api/template-v3')).json();
       data.manifest.id='restricted-source-test'; data.manifest.capabilities=['host.read'];
+      data.files['web/agent-unused-90f4.txt']=btoa('unused source');
+      data.files['assets/replace.bin']=btoa('old resource');
       const meta=JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(data.files['project.json']),c=>c.charCodeAt(0))));
       delete meta.layers;meta.thirdPartyMetadata={keep:'原样保留'};
       data.files['project.json']=btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(meta)+'\\n')));
       await loadPackage(data); document.querySelector('#advancedMode').click();
       const select=document.querySelector('#extraSourceFile');
       check([...select.options].some(o=>o.value==='web/edit.js'),'edit.js missing');
+      check([...select.options].some(o=>o.value==='project.json'),'project.json missing from source editor');
       select.value='web/edit.js';select.dispatchEvent(new Event('change'));
       const field=document.querySelector('#extraSourceCode'), before=field.value;
       check(before.includes('PowerCalEdit'),'edit.js contents missing');
@@ -76,17 +79,63 @@ async function main(){
       check(project.files['project.json']===data.files['project.json'],'untouched project metadata changed');
       const post=async(url,body,type)=>{const r=await fetch(url,{method:'POST',headers:{'Content-Type':type},body});
         check(r.ok,url+' returned '+r.status);return r};
-      const preview=await (await post('/api/preview-v3',JSON.stringify(project),'application/json')).json();
-      const previewText=await (await fetch(preview.url.replace('web/index.html','web/edit.js'))).text();
-      check(previewText===field.value,'preview source differs');
-      const zip=await (await post('/api/export-v3',JSON.stringify(project),'application/json')).arrayBuffer();
+      select.value='project.json';select.dispatchEvent(new Event('change'));
+      const projectField=document.querySelector('#extraSourceCode');
+      const editedMeta=JSON.parse(projectField.value);
+      editedMeta.agentAuthoredComponents=[{id:'custom-panel',type:'container',children:[{id:'heading',type:'text'}]}];
+      projectField.value=JSON.stringify(editedMeta,null,2);
+      projectField.dispatchEvent(new Event('input',{bubbles:true}));
+      const promptBefore=window.prompt,confirmBefore=window.confirm;
+      window.prompt=()=> 'web/components/agent-card.js';window.confirm=()=>true;
+      document.querySelector('#addTextSource').click();
+      check([...select.options].some(o=>o.value==='web/components/agent-card.js'),'new source path missing');
+      field.value="export const card = 'browser';\\n";
+      field.dispatchEvent(new Event('input',{bubbles:true}));
+      select.value='web/agent-unused-90f4.txt';select.dispatchEvent(new Event('change'));
+      document.querySelector('#removeExtraSource').click();
+      check(!sourceFiles.has('web/agent-unused-90f4.txt'),'unused source was not deleted');
+      const packageInput=document.querySelector('#packageAssetFile');
+      await packageInput.onchange({target:{files:[
+        new File([new Uint8Array([0,255,65,66])],'agent-new.bin'),
+        new File([new Uint8Array([255,0,128])],'replace.bin')
+      ],value:'selected'}});
+      check([...sourceFiles.get('assets/replace.bin')].join(',')==='255,0,128','binary replacement bytes changed');
+      check([...sourceFiles.get('assets/agent-new.bin')].join(',')==='0,255,65,66','new binary resource bytes changed');
+      const cssField=document.querySelector('#cssCode');
+      cssField.value+="\\n.asset-ref{background:url('../assets/replace.bin')}\\n";
+      cssField.dispatchEvent(new Event('input',{bubbles:true}));
+      const assetRow=[...document.querySelectorAll('#assetList .entry')]
+        .find(row=>row.textContent.includes('assets/replace.bin'));
+      check(assetRow,'replacement asset missing from file list');assetRow.querySelector('button').click();
+      check(sourceFiles.has('assets/replace.bin'),'referenced binary asset was deleted');
+      select.value='web/edit.js';select.dispatchEvent(new Event('change'));
+      document.querySelector('#removeExtraSource').click();
+      check(sourceFiles.has('web/edit.js'),'referenced source file was deleted');
+      window.prompt=promptBefore;window.confirm=confirmBefore;
+      const authored=payload();
+      check(JSON.stringify(authored.manifest.capabilities)==='["host.read"]','authoring changed capabilities');
+      const authoredMeta=JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(authored.files['project.json']),c=>c.charCodeAt(0))));
+      check(authoredMeta.agentAuthoredComponents[0].id==='custom-panel','project structure edit was lost');
+      check(atob(authored.files['web/components/agent-card.js']).includes('browser'),'new source file edit was lost');
+      check(Array.from(atob(authored.files['assets/agent-new.bin']),c=>c.charCodeAt(0)).join(',')==='0,255,65,66',
+        'new binary asset bytes changed');
+      check(Array.from(atob(authored.files['assets/replace.bin']),c=>c.charCodeAt(0)).join(',')==='255,0,128',
+        'replaced binary asset bytes changed');
+      check(!Object.hasOwn(authored.files,'web/agent-unused-90f4.txt'),'deleted source file returned');
+      const preview=await (await post('/api/preview-v3',JSON.stringify(authored),'application/json')).json();
+      const previewText=await (await fetch(preview.url.replace('web/index.html','web/components/agent-card.js'))).text();
+      check(previewText.includes('browser'),'preview source differs');
+      const zip=await (await post('/api/export-v3',JSON.stringify(authored),'application/json')).arrayBuffer();
       const imported=await (await post('/api/import-v3',zip,'application/octet-stream')).json();
       check(JSON.stringify(imported.manifest.capabilities)==='["host.read"]','import capabilities changed');
-      for(const [name,bytes] of Object.entries(project.files))
+      for(const [name,bytes] of Object.entries(authored.files))
         check(imported.files[name]===bytes,'round trip changed '+name);
       await loadPackage(imported);document.querySelector('#advancedMode').click();
       select.value='web/edit.js';select.dispatchEvent(new Event('change'));
       check(field.value===before+'\\n// browser-source-roundtrip\\n','reimport edit missing');
+      select.value='project.json';select.dispatchEvent(new Event('change'));
+      check(JSON.parse(projectField.value).agentAuthoredComponents[0].id==='custom-panel',
+        'reimport project structure edit missing');
       document.querySelector('#simpleMode').click();window.prompt=()=> 'customShade';
       document.querySelector('#addMaterial').click();
       const visual=payload();
@@ -96,7 +145,8 @@ async function main(){
       const visualZip=await (await post('/api/export-v3',JSON.stringify(visual),'application/json')).arrayBuffer();
       const visualImported=await (await post('/api/import-v3',visualZip,'application/octet-stream')).json();
       check(visualImported.files['project.json']===visual.files['project.json'],'visual metadata roundtrip changed');
-      return {file:'web/edit.js', files:Object.keys(project.files).length, capabilities:imported.manifest.capabilities};
+      return {file:'web/edit.js', files:Object.keys(authored.files).length, capabilities:imported.manifest.capabilities,
+        projectTree:true,newText:true,newBinary:true,replacedBinary:true,delete:true,referenceGuard:true};
     })()`;
     const result=await call("Runtime.evaluate",{expression,awaitPromise:true,returnByValue:true});
     if(result.exceptionDetails)throw Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text);
