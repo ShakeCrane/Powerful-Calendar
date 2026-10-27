@@ -1,10 +1,10 @@
 # PowerCal self-contained skin package v3
 
-> The bridge description below is a historical checkpoint. Current editing commands and
-> their source-level gaps are tracked in `SKIN_SEPARATION_PARITY_MATRIX_2026-10-27.md`.
-> An omitted `capabilities` declaration means an empty set in Android and the Studio v3
-> packager; `host.edit` is accepted but the current Host guards edit commands with
-> `host.action`, not a separate `host.edit` check. No Mock result grants authority.
+> WebMessagePort v1 capability semantics: host.read gates state projection; host.action
+> gates all inbound action and editor/deck command messages. host.edit is accepted and
+> preserved for v3 package compatibility but grants no access by itself. An absent
+> capabilities declaration means no access. A capability declaration is not trusted
+> approval for a formal write; sensitive writes still require Host-owned confirmation.
 
 Schema v3 is an importable Web presentation package. It does not load Kotlin, Dex, native code,
 remote URLs, Android files, credentials, `Context`, `PowerStore`, or arbitrary Java objects.

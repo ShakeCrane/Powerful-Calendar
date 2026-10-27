@@ -1,4 +1,12 @@
 # Core freeze progress
+## 分离阶段 — Bridge v1 能力声明语义与兼容审计（2026-10-27）
+
+- 根因/现状：v3 manifest 接受并保存 `host.edit`，但 Bridge v1 实际仅将 `host.read` 用于状态投影、将 `host.action` 用于所有入站动作和编辑器/草稿命令。若将未生效的 `host.edit` 静默升级为授权，会改变既有包权限语义；本轮维持运行时策略，明确记录它是兼容元数据，并从示例 manifest 删除该无效声明。
+- 更新 Host/包管理器注释、v3 合同、Bridge 扩展文档、Studio README 和 parity 矩阵；扩展 capability policy JVM 回归，覆盖 edit-only 与 read+edit 不得获取读/写动作权限。未增加运行时能力或改动业务数据写入路径。
+- `SkinPackageManagerTest` 定向 **9/9 PASS**。完整离线 Gradle 门禁 **574/574 JVM、80 suites、0 failures/errors/skips、88/88 tasks**；source boundary、Debug APK、AndroidTest APK、lint 均通过。完整日志 SHA-256 `9C6B4C7AF3B6026D40CD5E4513BE8E5885A6CA86598EB17B9A8C2824458BC61C`；APK SHA-256 `5387C51C17A7CB35C7448DB6F1AEE8DE8638064B9B5760229761800670A79AE8` / `219E9587BBC4CFDEAEBFAD9FD398E0B0DC2E2FE4D0FAA75C787CAF10DE733CC6`。实现提交 `394f7e13d23f98fb018428f8b44d47c6a9a0e0e7`。
+- Studio 全套 **42/42 PASS**（日志 SHA-256 `AC151E0E67DA7F5EDA7D4DB817CC977FD56C94745168B88268D3063ECE8B2EA4`）；两组定向 Python 测试各 **3/3 PASS**；Clear bundle verify 和 v3 示例打包/校验通过。详细命令、证据路径、哈希和限制见 `docs/issues/PC-ISSUE-SEPARATION-CAPABILITY-DECLARATIONS.md`。
+- 本机 ADB daemon 无法启动且未发现 emulator 可执行文件；本次 Android WebView/模拟器/实体设备均 **NOT TESTED**。SEP-13/SEP-16 与整体 Native/Skin parity 继续 **NOT TESTED**；不是设备或总体分离 GO。
+
 ## 分离阶段 — 皮肤正式写入宿主可信审查（2026-10-27）
 
 - 根因：普通 editor.save 和有效 draft-deck 正式提交在 Web command 中可直接写入；host.action 能力校验没有针对具体写入内容的人类审批。真实 WebView 还发现临时 63 位 client ID 经 JavaScript Number 往返会丢精度，导致 draft patch 指向失效 ID。

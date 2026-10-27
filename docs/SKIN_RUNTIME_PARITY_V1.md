@@ -15,7 +15,7 @@ are verified using the same `decode(bytes, loadImages=true)`, activated
 through the same `PowerCalSkinRegistry.activate(pack)` and rendered using
 the same `SkinAppShell -> WebSkinRoot -> SecureWebSkin` path. They receive
 read/action capability decisions **only** from the package's declared,
-validated capability set, not a trusted-brand or factory-skin check.
+validated capability set, not a trusted-brand or factory-skin check. In Bridge v1, host.edit is preserved legacy metadata, not a third effective permission.
 
 ## Allowed distribution-only differences
 

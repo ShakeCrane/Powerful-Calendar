@@ -1,6 +1,6 @@
 # Skin separation: source audit and parity matrix
 
-Last source audit: 2026-10-27, separation branch based on `af229d9`; core app source frozen at `b1f7629f0c52812e1887443872f43aa6c49908c4`. This is a living inventory, **not an assertion that the S0 audit or separation is complete**. `NOT TESTED` below refers to an equivalent Native-versus-Skin replay of the full row; prior narrow tests remain documented in their own reports. Physical-device acceptance remains user-owned.
+Last source audit: 2026-10-27, separation branch based on `e67a936`; core app source frozen at `b1f7629f0c52812e1887443872f43aa6c49908c4`. This is a living inventory, **not an assertion that the S0 audit or separation is complete**. `NOT TESTED` below refers to an equivalent Native-versus-Skin replay of the full row; prior narrow tests remain documented in their own reports. Physical-device acceptance remains user-owned.
 
 ## Traced boundaries
 
@@ -8,7 +8,7 @@ Last source audit: 2026-10-27, separation branch based on `af229d9`; core app so
 2. **Skin → Host → core:** Clear `web/app.js` and `web/edit.js` use the transferred WebMessagePort. `WebSkinHost.kt` checks active bundle, live port and `host.action`, then decodes `WebSkinAction` or `WebEditWire`. `PowerCalApp.kt` routes actions, re-reads versioned records and invokes existing services; `WebSkinEditService` owns transient `NewEventEditSession`, `EditSession` and the existing deck. Command replay, locks and checkpoints are host-side. The native settings/recovery route is retained.
 3. **Studio → source → runtime:** `skin_studio.py` serves the APK asset at `/api/template-v3`; `v3-studio.js` edits its `sourceFiles`; preview and export call `runtime_package_v3.build_files`, and import calls `unpack`. Android `SkinPackageManager` validates and decodes the package; `SkinAppShell → WebSkinRoot → SecureWebSkin` serves bundle resources and the same port to factory and imported v3 skins. Chrome preview uses a Mock host and is not Android WebView evidence.
 
-Source-level observation is not behavioral sign-off. In particular, `WebSkinHost.kt` presently gates both actions and edit commands using `host.action`. `host.edit` is accepted in a manifest but is not separately checked. Studio's mock does not prove capability enforcement. Any change to that policy requires a dedicated compatibility/security investigation.
+The source audit and SkinPackageManagerTest confirm the Bridge v1 policy: host.read gates state projection; host.action gates both action messages and edit commands; host.edit is accepted and preserved for v3 compatibility but grants no access by itself. Studio preserves existing declarations, while its v3 mock is not runtime capability evidence. Giving host.edit independent authority would be a permission change and requires a versioned migration.
 
 ## Initial feature inventory
 
@@ -36,7 +36,7 @@ In the table, Studio support means source availability, not proof of arbitrary v
 ## Next work and verification discipline
 
 - Complete S0 by inventorying every Native interaction and corresponding data/error path, expanding the rows rather than treating these coarse groups as full coverage. Create reusable Native/Skin replays that compare durable business outcomes, identities, scheduling intent and failure recovery.
-- Prioritize S2/S3: extend occurrence-aware editing coverage and implement safe, Host-owned AI proposal review, with corresponding editable Clear and Studio support in each milestone. Continue full SEP-16 Native/Skin parity replay and audit host.edit versus host.action capability checks. Do not infer trusted approval from a JS boolean.
+- Prioritize S2/S3: extend occurrence-aware editing coverage and implement safe, Host-owned AI proposal review, with corresponding editable Clear and Studio support in each milestone. Continue full SEP-16 Native/Skin parity replay. Do not infer trusted approval from a JS boolean.
 - Complete source/project/asset editing and machine-callable operations without silently changing imported permissions or destroying unknown code. `PC-ISSUE-SEPARATION-STUDIO-PROJECT-ROUNDTRIP` verifies unchanged `project.json` bytes and custom fields when editing a script; direct project source editing and broader metadata operations remain unimplemented.
-- Investigate `host.edit` versus `host.action`, mock capability parity, bounded timeline projection (`truncated`), and the historical bridge document's outdated field whitelist. Keep the current Host authority until compatibility and security are evidenced.
+- Keep Studio mock behavior aligned with Bridge v1 capability semantics; continue auditing bounded timeline projection (`truncated`), the historical bridge document field whitelist, and every Host dispatch path. The dedicated `host.edit` / `host.action` compatibility audit is recorded in `PC-ISSUE-SEPARATION-CAPABILITY-DECLARATIONS.md`; retain current Host authority unless a versioned permission migration is approved and tested.
 - Baseline commands: `python tools/skin-studio/build_default_clear.py --verify`; `python -m unittest discover -s tools/skin-studio/tests -v`; `node --check tools/skin-studio/v3-studio.js`; `node tools/skin-studio/tests/e2e_v3_source.cjs`; applicable Android JVM, emulator and user-owned physical checks. Source tests do not replace device tests.

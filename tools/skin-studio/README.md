@@ -24,7 +24,7 @@ python tools/skin-studio/skin_studio.py serve --port 8765
 - 简单模式修改已声明并已绑定的 CSS 材质变量；高级模式编辑完整 HTML/CSS/JS，
   两者直接修改同一份源码，不需要额外点击「应用」。
 - 高级源码区的“其他 UTF-8 源文件”可选择并修改包内其他 `.html`、`.css`、`.js`、`.json` 和 `.txt`，包括 Clear 的 `web/edit.js` 与 `web/clear-design.css`。主文件仍使用原来的三个编辑框；二进制和无法按 UTF-8 解码的文件不会在文本框中打开，未编辑字节保留。
-- 导入的 v3 `capabilities` 声明在预览和导出时原样保留，不因打开 Studio 自动增加或删除能力；缺失声明按 Android 的空能力处理。实际权限由 Android Host 按当前 Bridge 规则验证，预览中的 Mock 并不是权限验收。
+- 导入的 v3 `capabilities` 声明在预览和导出时原样保留，不因打开 Studio 自动增加或删除能力；缺失声明按 Android 的空能力处理。Bridge v1 中 host.read 控制状态投影，host.action 控制所有动作与编辑命令；host.edit 是保留兼容的无效元数据，单独声明不授予访问权。实际权限由 Android Host 验证，预览中的 Mock 并不是权限验收。
 - 添加文字、图片和安全宿主按钮；修改图层位置、尺寸、不透明度及排序数值，
   拖动预览选框后实际修改包内 CSS，并将图层元数据保存进 `project.json`。
 - 上传 PNG、WebP 和字体素材并保留字节；给已有 `data-action` 按钮设置图标素材。

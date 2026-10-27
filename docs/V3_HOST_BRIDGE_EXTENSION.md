@@ -52,7 +52,16 @@ envelope and known fields only:
   availability; an occurrence key cannot bypass those checks.
 - `invokeOption` only accepts registered host IDs. When AI/editor writes
   are locked, option rows are disabled in state and invocation is denied.
-- `host.read` / `host.action` capability declarations are enforced.
+- host.read gates state projections. host.action gates every inbound action and
+  command message, including editor/deck commands. This keeps existing
+  action-only v3 packages working.
+- host.edit remains accepted and preserved by v3 tooling for package
+  compatibility, but is inert in Bridge v1 and cannot grant access alone.
+  Skin Studio must not describe it as an effective permission. Assigning it
+  independent authority requires a versioned capability policy and migration
+  tests.
+- A capability allows a request to reach Host validation; it does not approve
+  a formal write. Sensitive writes continue through trusted Host confirmation.
   Old v3 skins with hard-coded menus continue to load. They will not
   automatically display future sibling options without rendering the
   shared group.
