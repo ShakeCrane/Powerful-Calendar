@@ -1,5 +1,13 @@
 # Core freeze progress
 
+## Separation — new-event Native/Skin paired replay (2026-10-28)
+
+- Added an injectable Clock to `WebSkinEditService` and a fixed-clock Native/Skin replay for all four event kinds. The test repeats open/close 20 times per kind and compares durable counters; replays eight default/explicit-selection publishes through Native save versus Skin Host review; and compares incomplete Deadline draft staging. Only generated created/updated audit timestamps are normalized.
+- Focused regression PASS. Full offline Gradle gate: **608/608 JVM tests, 85 suites, 0 failures/errors/skips, 88/88 tasks**; source boundary, Debug/AndroidTest APK builds, and lint passed (0 errors / 52 warnings). Captured full-log SHA-256: `79C68A8122880AA25A35E892E93848586BA66C27FB2611C29EE040846975928B`. Debug / AndroidTest APK SHA-256: `869AD65D0E00C1C37CE39042E2E946115C02D498B993B7821777DF3B8839845C` / `FD52D9A141D801274FA4E58E1F7B20F113525CE3A8117A92D76DA41A88619BF9`.
+- Studio Chrome E2E verified chooser → editor → Mock `deck.create` receipt for ALARM/ACTIVITY/DEADLINE/MEMO; Studio Python **51/51**, Clear bundle verification (8 files / 379111 bytes) and JS syntax check passed. Implementation commit: `ee18be116aeca17914a160db6fbab33ffc60f12e`. Logs and test method are recorded in `docs/issues/PC-ISSUE-SEPARATION-NEW-EVENT-PAIRED-REPLAY.md`.
+- This is narrow replay evidence only: SEP-04 remains **NOT TESTED** as a complete parity row. Android WebView/device and physical/OEM tests were not run. Continue with the next bounded parity gap; no separation GO implied.
+
+
 ## Separation — real SAF skin package import/export (2026-10-28)
 
 - Added `WebSkinManagementInstrumentedTest.skinPackageImportAndExportUseTheSystemDocumentsProvider`; on isolated API 35 AVD `emulator-5564`, the real Downloads Provider/DocumentsUI imported a generated valid custom `.pcskin`, and the real `CreateDocument` flow exported Clear. The custom skin installed without becoming active; formal events, drafts, identities and commits stayed at zero. Export SHA-256 exactly matched the canonical Clear package.
