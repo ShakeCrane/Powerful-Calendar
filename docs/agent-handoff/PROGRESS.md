@@ -936,3 +936,11 @@ Updated: 2026-10-24
 - 完整门禁日志 SHA-256 `DEC16279EBA4D728BC1F4D193A5DE6581E784F069ABDCF9494562DB152F38DE4`；Debug / AndroidTest APK SHA-256 `0E9D967CFD70285D3456150ED591B96F5E7878F1A67A8B5314C8D71954F7A14E` / `60F08FFC420D8C67860FE9D85938C5237CF3C48CD49D5EFC260DC1187C5C9B90`。详细测试日志和其他哈希见独立报告。
 - 实现提交 `16cdbb4d44495b43a2aa5a3aeec23d78e2a8ebd1` 已推送至 `origin/codex/separation-skin-settings`；Issue 报告已记录实现提交 SHA 和推送状态。
 - Android WebView/AVD、系统文件选择器、真实 DocumentsProvider、完整备份文件读写/恢复以及 Native/Skin 回放均未测试；SEP-11 仍 `NOT TESTED`，S4 未关闭。
+
+## Separation — Clear 皮肤包管理入口（2026-10-28）
+
+- Clear 皮肤设置页现在通过闭合 Host Bridge 显示有界已安装皮肤目录，并复用现有 Host picker、Clear 包导出、切换 checkpoint/确认和自定义包删除确认。皮肤包选项仅在皮肤设置页投影，普通页面不显示；Studio 四个动作是非写入 Mock。
+- 定向 Host 回归 **19/19 PASS**；独立 API 35 AVD `SkinManagementAPI35` 的实际 Clear WebView 入口/目录/启用确认/取消回归 **1/1 PASS**。首次 WebView 仪器运行在 MessagePort 就绪前超时，增加无写入桥接就绪探针后冷启动复测及最终复测通过，失败证据保留。
+- 最终完整离线门禁 **607/607 JVM tests、85 suites、0 failures/errors/skips、88/88 tasks**，source boundary、Debug 与 AndroidTest APK、lint 均通过（0 lint errors / 52 warnings）。第一次整套运行中一个未修改的 AI Compose 确认用例短暂失败，单项复跑及整套复跑通过；该时序敏感列为剩余风险。Skin Studio Python **51/51**、Edge Headless E2E、JS syntax、Clear bundle verify 均通过。
+- 独立结案报告：[PC-ISSUE-SEPARATION-SKIN-MANAGEMENT.md](../issues/PC-ISSUE-SEPARATION-SKIN-MANAGEMENT.md)。实现提交 `9bb81a0113bf6d0461a2cf305256d75fa61e8ccb` 已推送至 `origin/codex/separation-skin-settings`。完整日志、APK/测试包、Lint XML 与 Clear bundle 哈希见 Issue 报告和 `.local/android-test/reports/separation-skin-management-20261028/`。
+- 此结果只关闭皮肤管理入口这一子切片；未测真实 SAF/Provider、自定义皮肤安装/删除/导出、凭据、完整备份恢复或 Native/Skin 回放。SEP-11 仍 `NOT TESTED`，S4 与整个 S0–S8 分离计划保持进行中。
