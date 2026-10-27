@@ -685,10 +685,17 @@ function resolveMockApproval(approved){
   const editor=mockEditing.editor;
   if(editor.open){
     editor.awaitingConfirmation=false;
-    if(approved&&request.scope==="THIS_AND_FUTURE")mockEditing.editor={open:false};
+    if(request.operation==="delete"){
+      if(approved)mockEditing.editor={open:false};
+    }
+    else if(approved&&request.scope==="THIS_AND_FUTURE")mockEditing.editor={open:false};
     else if(approved){editor.dirty=false;editor.baseline={...editor.form};editor.scopeBaseline={...editor.form}}
   }
-  mockEditing.lastResult={requestId:request.requestId,status:approved?"saved":"cancelled"};
+  mockEditing.lastResult={requestId:request.requestId,
+    status:request.operation==="delete"?(approved?"deleted":"cancelled"):
+      approved?"saved":"cancelled"};
+  if(request.operation==="delete")
+    logAction("预览编辑命令 editor.delete → "+(approved?"deleted":"cancelled"));
   logAction("仅预览：模拟宿主"+(approved?"确认":"取消"));postState();
 }
 function onSkinCommand(p){
@@ -742,6 +749,16 @@ function onSkinCommand(p){
         mockApproval={requestId:p.requestId,scope:editor.recurrenceScope||"WHOLE_SERIES"};
         $("mockApproval").hidden=false;result.status="confirmation_required";
       } else result.status="saved";
+      break;
+    case "editor.delete":
+      if(!editor.open||editor.sessionId!==p.sessionId||editor.awaitingConfirmation)
+        result.status="stale";
+      else {
+        editor.awaitingConfirmation=true;
+        mockApproval={requestId:p.requestId,operation:"delete"};
+        $("mockApprovalText").textContent="预览 Mock：Host 将再次确认正式事件删除；不会写入真实数据。";
+        $("mockApproval").hidden=false;result.status="confirmation_required";
+      }
       break;
     case "editor.close":
       mockEditing.editor={open:false};result.status="closed";break;

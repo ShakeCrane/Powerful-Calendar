@@ -53,6 +53,34 @@ const URL=process.env.STUDIO_URL||"http://127.0.0.1:8875";
       document.querySelector("#sheetStatus").textContent.includes("事件已保存"));
     await frame.click("#sheetClose");
     await frame.waitForFunction(()=>document.querySelector("#skinSheet").hidden);
+    await frame.click(".tEvent.ACTIVITY");
+    await frame.waitForFunction(()=>!document.querySelector("#skinSheet").hidden &&
+      !!document.querySelector('#sheetActions [data-do="deleteEvent"]'));
+    const deleteControl=await frame.$eval('#sheetActions [data-do="deleteEvent"]',button=>({
+      text:button.textContent,aria:button.getAttribute("aria-label"),disabled:button.disabled
+    }));
+    assert.deepEqual(deleteControl,{text:"删除正式事件",aria:"删除正式事件",disabled:false});
+    await frame.click('#sheetActions [data-do="deleteEvent"]');
+    await page.waitForFunction(()=>!document.querySelector("#mockApproval").hidden &&
+      document.querySelector("#bridgeLog").textContent.includes(
+        "editor.delete → confirmation_required"));
+    assert.ok((await page.$eval("#mockApprovalText",node=>node.textContent))
+      .includes("不会写入真实数据"));
+    await page.click("#mockReject");
+    await frame.waitForFunction(()=>!document.querySelector("#skinSheet").hidden &&
+      !!document.querySelector('#sheetActions [data-do="deleteEvent"]') &&
+      !document.querySelector('#sheetActions [data-do="deleteEvent"]').disabled);
+    await page.waitForFunction(()=>document.querySelector("#bridgeLog").textContent
+      .includes("editor.delete → cancelled"));
+    await frame.click('#sheetActions [data-do="deleteEvent"]');
+    await page.waitForFunction(()=>!document.querySelector("#mockApproval").hidden &&
+      document.querySelector("#bridgeLog").textContent.includes(
+        "editor.delete → confirmation_required"));
+    await page.click("#mockApprove");
+    await frame.waitForFunction(()=>document.querySelector("#skinSheet").hidden);
+    await page.waitForFunction(()=>document.querySelector("#bridgeLog").textContent
+      .includes("editor.delete → deleted"));
+    console.log("Clear formal delete routes through cancellable non-writing Studio Host Mock");
     await frame.click('[data-action="createDraft"]');
     await frame.waitForSelector("#timelineCreateDialog[open]");
     await frame.click('[data-timeline-create-kind="ACTIVITY"]');

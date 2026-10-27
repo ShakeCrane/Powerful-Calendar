@@ -76,6 +76,11 @@ envelope and known fields only:
   `EditSession.delete()`. Cancelling writes nothing. A repeated confirmed command
   is replay-safe. Deleting a repeating formal event retires the full series and
   its occurrences, consistent with the existing Native `deleteFormalEvent` path.
+  The official Clear editor exposes this request as “删除正式事件”, or
+  “删除整个重复系列” when the current form repeats. The recurrence label and
+  adjacent warning communicate the whole-series effect; both controls route only
+  the current session ID and never write from the skin. Skin Studio's matching
+  confirmation is a non-writing preview Mock, not Android authorization.
 - `pickAiFile` and `pickAiImage` accept only the `name` field and only while
   the AI page is active and no conflicting review, edit or picker is pending.
   They launch the existing Android Host picker. The file path retains local

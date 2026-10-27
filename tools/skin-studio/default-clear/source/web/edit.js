@@ -37,13 +37,13 @@ function perform(name,args={}){
 function showReply(reply){
     const labels={saved:"事件已保存",committed:"草稿已发布",discarded:"已丢弃，可以撤销",
       discarded_changes:"已放弃本次修改",selected:"已选择",
-      confirmation_required:"请在宿主确认完整修改",cancelled:"已取消保存，修改仍保留",
+      confirmation_required:"请在宿主确认此操作",cancelled:"已取消宿主操作，内容仍保留",
       restored:"已恢复",flushed:"修改已暂存",closed:"已安全退出",
       stale:"数据已变化，请重新审查",locked:"被其他业务操作锁定",
       invalid:"输入无效，请检查完整性",conflict:"存在版本冲突，请审查差异",
       restore_required:"原事件已删除，需要受保护的恢复确认",
       unavailable:"与宿主的连接已断开",duplicate_request_id:"重复命令标识被拒绝",
-      failed:"未成功，数据已保留在宿主"};
+      deleted:"预览已模拟删除（未写入真实数据）",failed:"未成功，数据已保留在宿主"};
     status.textContent=labels[reply.status]||reply.detail||"";
 }
 function onResult(reply){
@@ -160,7 +160,15 @@ function render(){
     }
     if(editor.dirty)actions.append(button("放弃本次修改","discardChanges","sheet-secondary"));
     actions.append(button("保存检查点并退出","close","sheet-secondary"));
-    actions.append(el("p","删除事件需要独立的受保护确认流程","sheet-note"));
+    const recurring=form?.recurrenceFreq&&form.recurrenceFreq!=="NONE";
+    const deleteLabel=recurring?"删除整个重复系列":"删除正式事件";
+    const remove=button(deleteLabel,"deleteEvent","sheet-danger");
+    remove.disabled=editor.awaitingConfirmation===true||!editor.sessionId;
+    remove.setAttribute("aria-label",deleteLabel);
+    actions.append(remove);
+    actions.append(el("p",recurring?
+      "删除将移除整个重复系列及其全部实例，并须由 Android 宿主再次确认。":
+      "删除须由 Android 宿主再次确认；取消不会删除事件。","sheet-note"));
   }else{
     const nav=el("nav",null,"sheet-cards");
     for(const card of deck.cards||[]){
@@ -227,6 +235,8 @@ actions.addEventListener("click",event=>{
       void perform("editor.scope",{sessionId:editor.sessionId,scope:b.dataset.scope});break;
     case "discardChanges":if(editor.sessionId)
       void perform("editor.discardChanges",{sessionId:editor.sessionId});break;
+    case "deleteEvent":if(editor.sessionId&&!editor.awaitingConfirmation)
+      void perform("editor.delete",{sessionId:editor.sessionId});break;
     case "close":void close();break;
     case "select":if(b.dataset.draftId)
       void perform("deck.select",{draftId:Number(b.dataset.draftId)});break;
