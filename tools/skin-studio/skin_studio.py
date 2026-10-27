@@ -13,6 +13,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import re
 import struct
+import sys
 import zlib
 from zipfile import ZIP_DEFLATED, ZIP_STORED, ZipFile
 
@@ -309,50 +310,99 @@ def main():
     build3.add_argument("--manifest", type=Path, required=True)
     build3.add_argument("--source-dir", type=Path, required=True)
     build3.add_argument("--out", type=Path, required=True)
+    inspect3 = sub.add_parser("inspect-v3", help="inspect a v3 skin as machine-readable JSON")
+    inspect3.add_argument("file", type=Path)
+    read3 = sub.add_parser("read-v3", help="read one packaged source or asset as machine-readable JSON")
+    read3.add_argument("--file", type=Path, required=True)
+    read3.add_argument("--path", required=True)
+    edit3 = sub.add_parser("edit-v3", help="apply validated JSON operations to a v3 skin")
+    edit3.add_argument("--file", type=Path, required=True)
+    edit3.add_argument("--operations", type=Path, required=True)
+    edit3.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
-    if args.command == "validate":
-        payload = args.file.read_bytes()
-        # Do not decompress attacker-provided manifest without a size cap.
-        with ZipFile(io.BytesIO(payload)) as archive:
-            head = archive.getinfo("manifest.json")
-            check(head.file_size <= 80_000, "Manifest too large")
-            with archive.open(head) as source:
-                manifest = json.loads(source.read(80_001).decode("utf8"))
-        if manifest.get("schemaVersion") == 3:
-            from runtime_package_v3 import unpack as unpack_v3
-            m, files = unpack_v3(payload)
-            print(f"OK: {m['id']} / {m['name']} / runtime v3 / {len(files)} source files")
-        elif manifest.get("schemaVersion") == 2:
-            from runtime_package import unpack as unpack_v2
-            m, ui = unpack_v2(payload)
-            print(f"OK: {m['id']} / {m['name']} / runtime v2 / {len(ui['screens'])} scenes")
+    try:
+        if args.command == "inspect-v3":
+            from project_ops_v3 import inspect_package
+            _write_machine_json(inspect_package(args.file.read_bytes()), sys.stdout)
+        elif args.command == "read-v3":
+            from project_ops_v3 import read_file
+            _write_machine_json(read_file(args.file.read_bytes(), args.path), sys.stdout)
+        elif args.command == "edit-v3":
+            from project_ops_v3 import edit_package, read_operation_document, write_atomic
+            source_path, output_path = args.file.resolve(), args.out.resolve()
+            check(source_path != output_path, "input and output package paths must differ")
+            manifest, files, package, changes = edit_package(
+                source_path.read_bytes(), read_operation_document(args.operations))
+            write_atomic(output_path, package)
+            result = {
+                "schemaVersion": 1,
+                "command": "edit-v3",
+                "ok": True,
+                "output": str(output_path),
+                "packageSha256": hashlib.sha256(package).hexdigest(),
+                "bytes": len(package),
+                "fileCount": len(files),
+                "manifest": manifest,
+                "changes": changes,
+            }
+            _write_machine_json(result, sys.stdout)
+        elif args.command == "validate":
+            payload = args.file.read_bytes()
+            # Do not decompress attacker-provided manifest without a size cap.
+            with ZipFile(io.BytesIO(payload)) as archive:
+                head = archive.getinfo("manifest.json")
+                check(head.file_size <= 80_000, "Manifest too large")
+                with archive.open(head) as source:
+                    manifest = json.loads(source.read(80_001).decode("utf8"))
+            if manifest.get("schemaVersion") == 3:
+                from runtime_package_v3 import unpack as unpack_v3
+                m, files = unpack_v3(payload)
+                print(f"OK: {m['id']} / {m['name']} / runtime v3 / {len(files)} source files")
+            elif manifest.get("schemaVersion") == 2:
+                from runtime_package import unpack as unpack_v2
+                m, ui = unpack_v2(payload)
+                print(f"OK: {m['id']} / {m['name']} / runtime v2 / {len(ui['screens'])} scenes")
+            else:
+                m, images = unpack(payload)
+                print(f"OK: {m['id']} / {m['name']} / v1 / {len(images)} assets")
+        elif args.command == "build-v2":
+            from runtime_package import build, read_assets
+            manifest = json.loads(args.manifest.read_text("utf8"))
+            ui = json.loads(args.ui.read_text("utf8"))
+            result = build(manifest, ui, read_assets(manifest, args.assets_dir))
+            args.out.parent.mkdir(parents=True, exist_ok=True)
+            args.out.write_bytes(result)
+            print(f"Built {args.out} ({len(result)} bytes)")
+        elif args.command == "build-v3":
+            from runtime_package_v3 import build
+            manifest = json.loads(args.manifest.read_text("utf8"))
+            result = build(manifest, args.source_dir)
+            args.out.parent.mkdir(parents=True, exist_ok=True)
+            args.out.write_bytes(result)
+            print(f"Built v3 {args.out} ({len(result)} bytes)")
         else:
-            m, images = unpack(payload)
-            print(f"OK: {m['id']} / {m['name']} / v1 / {len(images)} assets")
-    elif args.command == "build-v2":
-        from runtime_package import build, read_assets
-        manifest = json.loads(args.manifest.read_text("utf8"))
-        ui = json.loads(args.ui.read_text("utf8"))
-        result = build(manifest, ui, read_assets(manifest, args.assets_dir))
-        args.out.parent.mkdir(parents=True, exist_ok=True)
-        args.out.write_bytes(result)
-        print(f"Built {args.out} ({len(result)} bytes)")
-    elif args.command == "build-v3":
-        from runtime_package_v3 import build
-        manifest = json.loads(args.manifest.read_text("utf8"))
-        result = build(manifest, args.source_dir)
-        args.out.parent.mkdir(parents=True, exist_ok=True)
-        args.out.write_bytes(result)
-        print(f"Built v3 {args.out} ({len(result)} bytes)")
-    else:
-        port = getattr(args, "port", 8765)
-        with ThreadingHTTPServer(("127.0.0.1", port), Handler) as server:
-            print(f"PowerCal Skin Studio http://127.0.0.1:{server.server_port}", flush=True)
-            try:
-                server.serve_forever()
-            except KeyboardInterrupt:
-                pass
+            port = getattr(args, "port", 8765)
+            with ThreadingHTTPServer(("127.0.0.1", port), Handler) as server:
+                print(f"PowerCal Skin Studio http://127.0.0.1:{server.server_port}", flush=True)
+                try:
+                    server.serve_forever()
+                except KeyboardInterrupt:
+                    pass
+    except (SkinError, OSError, ValueError, UnicodeError, TypeError) as exc:
+        if args.command in ("inspect-v3", "read-v3", "edit-v3"):
+            _write_machine_json({"schemaVersion": 1, "ok": False, "error": str(exc)},
+                                sys.stderr)
+            return 2
+        raise
+    return 0
+
+
+def _write_machine_json(value, stream):
+    # Do not depend on the Windows console code page: AI callers consume UTF-8.
+    stream.buffer.write((json.dumps(value, ensure_ascii=False, separators=(",", ":")) + "\n")
+                        .encode("utf-8"))
+    stream.flush()
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
