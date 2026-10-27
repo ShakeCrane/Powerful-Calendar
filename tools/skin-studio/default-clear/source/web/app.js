@@ -428,17 +428,30 @@ function renderAiProposalReview(list){
 }
 function renderOptions(){
   const root=$("optionGroups");root.replaceChildren();
+  if(currentPage==="SETTINGS"){
+    const permissions=state.reminderPermissions||{};
+    const exact=permissions.exactAlarmAllowed===true?"已允许":
+      permissions.exactAlarmAllowed===false?"未允许":"状态未知";
+    const notifications=permissions.notificationsRuntimePermissionRequired===false?"此 Android 版本无需运行时授权":
+      permissions.notificationsAllowed===true?"已允许":
+      permissions.notificationsAllowed===false?"未允许":"状态未知";
+    const status=node("p","",`精确闹钟：${exact}；通知运行时权限：${notifications}`);
+    status.setAttribute("role","status");status.setAttribute("aria-live","polite");
+    root.append(node("h2","","提醒状态"),status);
+  }
   for(const group of state.optionGroups||[]){
     root.append(node("h2","",group.label));
     for(const item of group.items||[]){
       const button=node("button","optionRow",item.label);
       button.dataset.action="invokeOption";button.dataset.optionId=item.id;
+      button.title=item.detail||"";
+      if(item.detail)button.setAttribute("aria-label",item.label+"。"+item.detail);
       button.disabled=item.enabled===false;
       root.append(button);
     }
   }
   if(currentPage==="SETTINGS"){
-    root.append(node("p","","凭据、系统权限、备份恢复和皮肤管理仍由 Android 宿主保护。"));
+    root.append(node("p","","权限请求由 Android 宿主处理；凭据、备份恢复和皮肤管理仍由宿主保护。"));
     const hostTools=node("button","optionRow","打开宿主工具与设置");
     hostTools.type="button";hostTools.dataset.action="settings";
     root.append(hostTools);

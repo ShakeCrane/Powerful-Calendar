@@ -405,7 +405,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
                 editError = activeEditSession?.lastError
                 newEventError = activeNewEventSession?.lastError
-                scope.launch { reconcile(); reload() }
+                scope.launch { reconcile(); reload(); WebSkinBridgeRuntime.stateRevision++ }
             }
             if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP &&
                 webEditing.hasLiveEditor()) {
@@ -1196,6 +1196,28 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                         ) scope.launch { importSystemCalendar() }
                         else calendarPermission.launch(Manifest.permission.READ_CALENDAR)
                     }
+                    action.id == "reminders.exactAlarmSettings" -> {
+                        if (!ReminderScheduler.exactAlarmAllowed(appContext)) {
+                            ReminderScheduler.openExactAlarmSettings(appContext)
+                        }
+                    }
+                    action.id == "reminders.notificationPermission" -> {
+                        if (android.os.Build.VERSION.SDK_INT >= 33) {
+                            if (!ReminderScheduler.notificationsAllowed(appContext)) {
+                                notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            }
+                        } else {
+                            context.startActivity(
+                                Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                                    .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, appContext.packageName)
+                            )
+                        }
+                    }
+                    action.id == "reminders.reconcile" -> scope.launch {
+                        reconcile()
+                        reload()
+                        WebSkinBridgeRuntime.stateRevision++
+                    }
                     else -> Unit
                 }
                 is WebSkinAction.PanTimeline -> {
@@ -1278,6 +1300,14 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
             }
         }
         WebSkinBridgeRuntime.state = {
+            val exactAlarmAllowed = ReminderScheduler.exactAlarmAllowed(appContext)
+            val notificationsAllowed = ReminderScheduler.notificationsAllowed(appContext)
+            val disabledOptionIds = buildSet {
+                if (exactAlarmAllowed) add("reminders.exactAlarmSettings")
+                if (android.os.Build.VERSION.SDK_INT >= 33 && notificationsAllowed) {
+                    add("reminders.notificationPermission")
+                }
+            }
             JSONObject().put("bridgeVersion", WebSkinBridgeRuntime.VERSION)
                 .put("page", if (skinSettingsOpen) "SETTINGS" else page)
                 .put("aiLocked", aiLocked).put("pendingCount", pendingCount)
@@ -1312,7 +1342,15 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                 .put("reducedMotion", effects.reduceMotion)
                 .put("editing", webEditing.snapshot())
                 .put("optionGroups", SemanticOptions.toJson(
-                    enabled = !aiLocked && editSession == null))
+                    enabled = !aiLocked && editSession == null,
+                    disabledIds = disabledOptionIds))
+                .put("reminderPermissions", if (skinSettingsOpen)
+                    ReminderSettingsProjection.toJson(
+                        exactAlarmAllowed,
+                        notificationsAllowed,
+                        notificationsRuntimePermissionRequired = android.os.Build.VERSION.SDK_INT >= 33
+                    )
+                    else JSONObject.NULL)
                 .put("timeline", if (skinSettingsOpen) JSONObject() else
                     WebSkinTimelineProjection.build(records, camera, nowMillis, zone))
                 .put("month", if (page == Page.MONTH.name && !skinSettingsOpen)

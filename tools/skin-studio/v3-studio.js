@@ -614,6 +614,11 @@ function simulatedState(){
     {id:"calendar.import.file",label:"导入日历文件",detail:"本地优先",icon:"file",enabled:scenario!=="locked"},
     {id:"calendar.import.system",label:"从系统日历导入",detail:"静态快照",icon:"calendar",enabled:scenario!=="locked"}
   ];
+  const reminderItems=[
+    {id:"reminders.exactAlarmSettings",label:"精确闹钟权限",detail:"Android 系统授权 Mock",icon:"alarm",enabled:scenario!=="locked"},
+    {id:"reminders.notificationPermission",label:"通知权限",detail:"Android 系统权限 Mock",icon:"notification",enabled:scenario!=="locked"},
+    {id:"reminders.reconcile",label:"重新同步提醒",detail:"非写入调度 Mock",icon:"refresh",enabled:scenario!=="locked"}
+  ];
   if(scenario==="future")items.push({
     id:"calendar.import.future",label:"新功能：导入课程表",
     detail:"模拟未来软件版本新增的平行选项",icon:"table",enabled:true
@@ -638,7 +643,12 @@ function simulatedState(){
     }:null,
     events:rows.map(r=>({eventSeq:r.eventSeq,revision:r.revision,title:r.title,kind:r.kind,
       anchorMillis:r.startMillis,endMillis:r.endMillis})),
-    optionGroups:[{id:"calendar.import",label:"导入",items}],
+    optionGroups:[
+      {id:"calendar.import",label:"导入",items},
+      {id:"reminders.permissions",label:"提醒与权限",items:reminderItems}
+    ],
+    reminderPermissions:{exactAlarmAllowed:false,notificationsAllowed:false,
+      notificationsRuntimePermissionRequired:true},
     timeline:{zoneId:"Asia/Shanghai",anchorMillis:anchor,hours,
       visibleStartMillis:start,visibleEndMillis:anchor+hours*1800000,
       nowMillis:base,itemLimit:300,truncated:false,items:rows},
@@ -867,6 +877,16 @@ function onSkinAction(message){
     else if(["timeline","month","memo","ai"].includes(name))mockPage=name.toUpperCase();
     if(name==="settings"){
       logAction("Preview Mock：请求既有 Android 宿主工具页；不会展示或操作系统权限、凭据或数据。");
+      return;
+    }
+    if(name==="invokeOption"&&typeof p.id==="string"&&p.id.startsWith("reminders.")){
+      const mock={
+        "reminders.exactAlarmSettings":"Preview Mock：Host 会请求打开精确闹钟系统授权页；未打开真实系统设置。",
+        "reminders.notificationPermission":"Preview Mock：Host 会请求 Android 通知权限；未弹真实权限对话框。",
+        "reminders.reconcile":"Preview Mock：Host 会重建提醒调度；没有调用真实调度器。"
+      }[p.id];
+      if(!mock){logAction("拒绝未知提醒 Host action");return;}
+      logAction(mock);
       return;
     }
     if(name==="toggleMemo"){

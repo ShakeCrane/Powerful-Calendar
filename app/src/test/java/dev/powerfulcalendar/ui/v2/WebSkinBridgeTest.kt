@@ -34,6 +34,12 @@ class WebSkinBridgeTest {
             """{"version":1,"type":"action","payload":{"name":"deleteEvent"}}"""))
         assertEquals(WebSkinAction.InvokeOption("calendar.import.file"), decodeBridgeAction(
             """{"version":1,"type":"action","payload":{"name":"invokeOption","id":"calendar.import.file"}}"""))
+        assertEquals(WebSkinAction.InvokeOption("reminders.exactAlarmSettings"), decodeBridgeAction(
+            """{"version":1,"type":"action","payload":{"name":"invokeOption","id":"reminders.exactAlarmSettings"}}"""))
+        assertEquals(WebSkinAction.InvokeOption("reminders.notificationPermission"), decodeBridgeAction(
+            """{"version":1,"type":"action","payload":{"name":"invokeOption","id":"reminders.notificationPermission"}}"""))
+        assertEquals(WebSkinAction.InvokeOption("reminders.reconcile"), decodeBridgeAction(
+            """{"version":1,"type":"action","payload":{"name":"invokeOption","id":"reminders.reconcile"}}"""))
         assertNull(decodeBridgeAction(
             """{"version":1,"type":"action","payload":{"name":"invokeOption","id":"untrusted.delete"}}"""))
         assertNull(decodeBridgeAction(

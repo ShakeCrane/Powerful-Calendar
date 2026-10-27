@@ -65,6 +65,19 @@ envelope and known fields only:
   availability; an occurrence key cannot bypass those checks.
 - `invokeOption` only accepts registered host IDs. When AI/editor writes
   are locked, option rows are disabled in state and invocation is denied.
+  Registered options currently include the two bounded calendar imports and
+  `reminders.exactAlarmSettings`, `reminders.notificationPermission`, and
+  `reminders.reconcile`. The latter actions only open the Android-owned
+  permission flow or invoke the existing idempotent scheduler; pre-Android-13
+  notification settings open the app's Android notification settings page, while
+  Android 13+ uses the runtime permission request. A skin cannot
+  grant a permission or select an event identity. The `reminderPermissions`
+  state contains only `exactAlarmAllowed`, `notificationsAllowed`, and
+  `notificationsRuntimePermissionRequired`, and is projected only on the
+  `SETTINGS` page. Already-granted runtime permissions disable their request
+  action; Host checks the live permission again before launch. On Android
+  versions without a notification runtime permission, the skin can distinguish
+  “not required” from an actual permission grant.
 - The existing `settings` action continues to open the protected Android
   Host tools page for compatibility with v1 skins. The additive
   `skinSettings` action selects the skin-owned settings landing without

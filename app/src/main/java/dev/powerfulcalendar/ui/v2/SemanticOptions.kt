@@ -26,21 +26,40 @@ internal object SemanticOptions {
         SemanticOptionGroup("calendar.import", "导入", listOf(
             SemanticOption("calendar.import.file", "导入日历文件", "选择文件，由本地程序优先处理", "file"),
             SemanticOption("calendar.import.system", "从系统日历导入", "读取当前静态快照，不同步", "calendar")
+        )),
+        SemanticOptionGroup("reminders.permissions", "提醒与权限", listOf(
+            SemanticOption("reminders.exactAlarmSettings", "精确闹钟权限", "由 Android 系统管理精确闹钟授权", "alarm"),
+            SemanticOption("reminders.notificationPermission", "通知权限", "在 Android 系统对话框或设置中管理", "notification"),
+            SemanticOption("reminders.reconcile", "重新同步提醒", "根据当前日历数据重建系统提醒", "refresh")
         ))
     )
     private val allowed = groups.flatMap { it.items }.map { it.id }.toSet()
     fun supports(id: String): Boolean = id in allowed
     fun toJson(enabled: Boolean = true,
-               collection: List<SemanticOptionGroup> = groups): JSONArray = JSONArray().apply {
+               collection: List<SemanticOptionGroup> = groups,
+               disabledIds: Set<String> = emptySet()): JSONArray = JSONArray().apply {
         collection.forEach { group ->
             put(JSONObject().put("id", group.id).put("label", group.label)
                 .put("items", JSONArray().apply {
                     group.items.forEach { item ->
                         put(JSONObject().put("id", item.id).put("label", item.label)
                             .put("detail", item.detail).put("icon", item.icon)
-                            .put("enabled", enabled))
+                            .put("enabled", enabled && item.id !in disabledIds))
                     }
                 }))
         }
     }
+}
+
+/** Exposes only non-identifying permission booleans to a skin settings page. */
+internal object ReminderSettingsProjection {
+    fun toJson(
+        exactAlarmAllowed: Boolean,
+        notificationsAllowed: Boolean,
+        notificationsRuntimePermissionRequired: Boolean
+    ): JSONObject =
+        JSONObject()
+            .put("exactAlarmAllowed", exactAlarmAllowed)
+            .put("notificationsAllowed", notificationsAllowed)
+            .put("notificationsRuntimePermissionRequired", notificationsRuntimePermissionRequired)
 }

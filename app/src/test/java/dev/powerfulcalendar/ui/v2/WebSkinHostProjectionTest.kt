@@ -242,4 +242,34 @@ class WebSkinHostProjectionTest {
         assertFalse(entries.getJSONObject(2).getBoolean("enabled"))
         assertFalse(SemanticOptions.supports("calendar.import.future"))
     }
+
+    @Test fun reminderPermissionProjectionContainsOnlyHostPermissionBooleans() {
+        val projection = ReminderSettingsProjection.toJson(
+            exactAlarmAllowed = false,
+            notificationsAllowed = true,
+            notificationsRuntimePermissionRequired = false
+        )
+        assertEquals(3, projection.length())
+        assertFalse(projection.getBoolean("exactAlarmAllowed"))
+        assertTrue(projection.getBoolean("notificationsAllowed"))
+        assertFalse(projection.getBoolean("notificationsRuntimePermissionRequired"))
+        assertFalse(projection.has("eventSeq"))
+        assertFalse(projection.has("apiKey"))
+    }
+
+    @Test fun reminderHostOptionsAreWhitelistedAndReflectPermissionAvailability() {
+        val ids = SemanticOptions.groups.flatMap { it.items }.map { it.id }.toSet()
+        assertTrue("reminders.exactAlarmSettings" in ids)
+        assertTrue("reminders.notificationPermission" in ids)
+        assertTrue("reminders.reconcile" in ids)
+        assertFalse(SemanticOptions.supports("reminders.grantSilently"))
+
+        val group = SemanticOptions.groups.first { it.id == "reminders.permissions" }
+        val disabled = SemanticOptions.toJson(
+            collection = listOf(group),
+            disabledIds = setOf("reminders.exactAlarmSettings")
+        ).getJSONObject(0).getJSONArray("items")
+        assertFalse(disabled.getJSONObject(0).getBoolean("enabled"))
+        assertTrue(disabled.getJSONObject(1).getBoolean("enabled"))
+    }
 }
