@@ -5,6 +5,11 @@
 - **分支：** codex/separation-skin-settings
 - **实现提交：** ccf68c807a36e66393751c74c2b57a36fd9154ed（Studio Mock 修复与配对回归）
 - **测试加固提交：** 43f787bf8203b57dcd58523ca54261d3ae9cdfd1（两边关闭并重开 SQLite 文件）
+- **报告/矩阵提交：** 220cc6b462e4bfa90b266dec005689484bfd1b67
+
+## 分支并发情况
+
+Goal 文件指定的 feat/skin-first-separation 当前由另一个工作树 .../worktrees/skin-first-separation 检出，且存在未提交的 docs/agent-handoff/PROGRESS.md 与 Clear project.json、字体许可、HTML、CSS 修改。为避免将该工作树的并发内容带入或使其基线漂移，本 Issue 提交推送到现有隔离分支 codex/separation-skin-settings；未更新 feature 分支。两者目前从 172288a 分叉，待并发工作所有者完成协调后再安全整合。
 
 ## 根因与修复
 

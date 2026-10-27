@@ -7,6 +7,7 @@
 - Focused replay PASS. Full offline Gradle gate: **609/609 JVM tests, 85 suites, 0 failures/errors/skips, 88/88 tasks**; source boundary, Debug/AndroidTest APK builds and lint passed (0 errors / 52 warnings). Full-log SHA-256: `529A8EA83221D83399BF23F9046548A8EA71F61F94A5C6A46250F0B13E6BA67D`. Debug / AndroidTest APK SHA-256: `869AD65D0E00C1C37CE39042E2E946115C02D498B993B7821777DF3B8839845C` / `FD52D9A141D801274FA4E58E1F7B20F113525CE3A8117A92D76DA41A88619BF9`.
 - Studio Chrome E2E and Python **51/51** pass; Clear bundle verification and JS syntax checks pass. Detailed test IDs, commands and evidence hashes: `docs/issues/PC-ISSUE-SEPARATION-DRAFT-DECK-DISCARD-UNDO.md`. Implementation commits: `ccf68c807a36e66393751c74c2b57a36fd9154ed`, `43f787bf8203b57dcd58523ca54261d3ae9cdfd1`.
 - Narrow draft deck paths pass; SEP-08 remains **NOT TESTED** as a full feature row. Android WebView/AVD and physical/OEM tests were not run. Continue with further S2/Studio gaps; no separation GO implied.
+- The objective feature ref feat/skin-first-separation is checked out in another worktree with uncommitted edits to PROGRESS and Clear source/assets. This slice is pushed to codex/separation-skin-settings; do not advance the feature ref until that concurrent work is coordinated.
 
 ## Separation — new-event Native/Skin paired replay (2026-10-28)
 
