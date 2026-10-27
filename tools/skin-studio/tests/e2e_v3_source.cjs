@@ -113,7 +113,8 @@ async function main(){
       check(sourceFiles.has('web/edit.js'),'referenced source file was deleted');
       window.prompt=promptBefore;window.confirm=confirmBefore;
       const authored=payload();
-      check(JSON.stringify(authored.manifest.capabilities)==='["host.read"]','authoring changed capabilities');
+      check(JSON.stringify(authored.manifest.capabilities)==='["host.read"]',
+        'authoring changed capabilities: '+JSON.stringify(authored.manifest.capabilities));
       const authoredMeta=JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(authored.files['project.json']),c=>c.charCodeAt(0))));
       check(authoredMeta.agentAuthoredComponents[0].id==='custom-panel','project structure edit was lost');
       check(atob(authored.files['web/components/agent-card.js']).includes('browser'),'new source file edit was lost');
@@ -168,9 +169,25 @@ async function main(){
     const child=tree.frameTree.childFrames?.find(frame=>frame.frame.url.includes("/preview/"));
     if(!child)throw Error("Preview frame not found: "+JSON.stringify(tree.frameTree));
     const world=await call("Page.createIsolatedWorld",{frameId:child.frame.id,worldName:"powercal-source-qa"});
-    const recurrence=await call("Runtime.evaluate",{contextId:world.executionContextId,awaitPromise:true,returnByValue:true,expression:`(async()=>{
+    const conversion=await call("Runtime.evaluate",{contextId:world.executionContextId,awaitPromise:true,returnByValue:true,expression:`(async()=>{
       const check=(v,m)=>{if(!v)throw Error(m)};
       const wait=async(fn,m)=>{for(let i=0;i<150;i++){if(fn())return;await new Promise(r=>setTimeout(r,100))}throw Error(m)};
+      document.querySelector('[data-action="createDraft"]').click();
+      await wait(()=>document.querySelector('#timelineCreateDialog[open]'),'create chooser missing');
+      document.querySelector('[data-timeline-create-kind="ACTIVITY"]').click();
+      await wait(()=>!document.querySelector('#skinSheet').hidden&&
+        document.querySelector('#sheetTitle').textContent==='待处理草稿','draft editor missing');
+      const draftKind=document.querySelector('#sheetFields [data-field="kind"]');
+      check(draftKind&&[...draftKind.options].map(option=>option.value).join(',')===
+        'ALARM,ACTIVITY,DEADLINE,MEMO','draft type selector missing choices');
+      draftKind.value='DEADLINE';draftKind.dispatchEvent(new Event('change',{bubbles:true}));
+      await wait(()=>document.querySelector('#sheetFields [data-field="kind"]')?.value==='DEADLINE'&&
+        !document.querySelector('#sheetFields [data-field="startText"]'),'draft conversion did not update fields');
+      check(document.querySelector('#sheetFields [data-field="endText"]').value==='2026-10-22 10:00',
+        'Activity-to-Deadline preview did not retain the interval end');
+      document.querySelector('#sheetClose').click();
+      await wait(()=>document.querySelector('#skinSheet').hidden,'transient preview draft did not close');
+
       await wait(()=>document.querySelector('[data-original-occurrence-key]'),'repeating event missing');
       const event=document.querySelector('[data-original-occurrence-key]');
       const key=event.dataset.originalOccurrenceKey;event.click();
@@ -179,6 +196,7 @@ async function main(){
       check(!document.querySelector('#sheetFields [data-field="title"]'),'fields visible before scope');
       document.querySelector('[data-do="scope"][data-scope="SINGLE_OCCURRENCE"]').click();
       await wait(()=>document.querySelector('[data-scope="SINGLE_OCCURRENCE"][aria-pressed="true"]'),'scope not selected');
+      check(!document.querySelector('#sheetFields [data-field="kind"]'),'single occurrence exposed type conversion');
       check(!document.querySelector('#sheetFields [data-field="notes"]'),'single scope exposed notes');
       const title=document.querySelector('#sheetFields [data-field="title"]');
       title.value='单次修改';title.dispatchEvent(new Event('change',{bubbles:true}));
@@ -186,6 +204,47 @@ async function main(){
       check(document.querySelector('[data-scope="WHOLE_SERIES"]').disabled,'dirty scope switch enabled');
       document.querySelector('[data-do="discardChanges"]').click();
       await wait(()=>!document.querySelector('[data-do="discardChanges"]'),'discard did not clear dirty state');
+      document.querySelector('[data-do="scope"][data-scope="WHOLE_SERIES"]').click();
+      await wait(()=>document.querySelector('[data-scope="WHOLE_SERIES"][aria-pressed="true"]'),
+        'whole-series scope not selected');
+      const kind=document.querySelector('#sheetFields [data-field="kind"]');
+      check(kind&&kind.value==='ACTIVITY','whole-series editor omitted type selector');
+      const startBefore=document.querySelector('#sheetFields [data-field="startText"]').value;
+      kind.value='ALARM';kind.dispatchEvent(new Event('change',{bubbles:true}));
+      await wait(()=>document.querySelector('#sheetFields [data-field="kind"]')?.value==='ALARM'&&
+        !document.querySelector('#sheetFields [data-field="endText"]'),'kind patch did not rerender authoritative form');
+      check(document.querySelector('#sheetFields [data-field="startText"]').value===startBefore,
+        'Activity-to-Alarm conversion changed the start anchor');
+      document.querySelector('#sheetSave').click();
+      await wait(()=>document.querySelector('#sheetStatus').textContent.includes('宿主确认'),
+        'formal conversion did not request mock Host confirmation');
+      return {deckConversion:'ACTIVITY→DEADLINE',formalConversion:'ACTIVITY→ALARM',key};
+    })()`});
+    if(conversion.exceptionDetails)throw Error(conversion.exceptionDetails.exception?.description || conversion.exceptionDetails.text);
+    const cancelled=await call("Runtime.evaluate",{awaitPromise:true,returnByValue:true,expression:`(async()=>{
+      for(let i=0;i<150;i++){
+        const approval=document.querySelector('#mockApproval');
+        if(approval&&!approval.hidden){
+          if(!document.querySelector('#mockApprovalText').textContent.includes('不会写入真实数据'))
+            throw Error('preview confirmation must be explicitly non-writing');
+          document.querySelector('#mockReject').click();return true;
+        }
+        await new Promise(r=>setTimeout(r,100));
+      }
+      throw Error('mock Host confirmation did not open');
+    })()`});
+    if(cancelled.exceptionDetails)throw Error(cancelled.exceptionDetails.exception?.description || cancelled.exceptionDetails.text);
+    const recurrence=await call("Runtime.evaluate",{contextId:world.executionContextId,awaitPromise:true,returnByValue:true,expression:`(async()=>{
+      const check=(v,m)=>{if(!v)throw Error(m)};
+      const wait=async(fn,m)=>{for(let i=0;i<150;i++){if(fn())return;await new Promise(r=>setTimeout(r,100))}throw Error(m)};
+      await wait(()=>document.querySelector('#sheetStatus').textContent.includes('已取消宿主操作'),
+        'mock Host cancellation did not return');
+      check(!document.querySelector('#skinSheet').hidden&&
+        document.querySelector('#sheetFields [data-field="kind"]').value==='ALARM',
+        'cancelled conversion review lost the pending form');
+      document.querySelector('[data-do="discardChanges"]').click();
+      await wait(()=>!document.querySelector('[data-do="discardChanges"]'),
+        'discard after cancelled conversion did not restore baseline');
       document.querySelector('[data-do="scope"][data-scope="THIS_AND_FUTURE"]').click();
       await wait(()=>document.querySelector('[data-scope="THIS_AND_FUTURE"][aria-pressed="true"]'),'future scope not selected');
       const future=document.querySelector('#sheetFields [data-field="title"]');
@@ -194,7 +253,8 @@ async function main(){
       document.querySelector('#sheetSave').click();
       await wait(()=>document.querySelector('#sheetStatus').textContent.includes('宿主确认'),'host review not requested');
       check(!document.querySelector('#skinSheet').hidden,'review request closed before approval');
-      return {key,scope:'single, discard, future'};
+      return {deckConversion:'ACTIVITY→DEADLINE',formalConversion:'ACTIVITY→ALARM',
+        scope:'single hides conversion; whole-series requests cancellable Mock review; future'};
     })()`});
     if(recurrence.exceptionDetails)throw Error(recurrence.exceptionDetails.exception?.description || recurrence.exceptionDetails.text);
     const approval=await call("Runtime.evaluate",{expression:"!document.querySelector('#mockApproval').hidden && (document.querySelector('#mockApprove').click(),true)",returnByValue:true});

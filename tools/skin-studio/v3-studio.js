@@ -664,6 +664,31 @@ const mockForm=kind=>({kind,title:"",startText:"2026-10-22 09:00",
   reminderMethod:"MESSAGE",reminderTiming:"OFFSET",source:"local",
   zoneId:"Asia/Shanghai",recurrenceFreq:"NONE",recurrenceInterval:1,
   recurrenceFrom:null,recurrenceUntil:null});
+const mockKinds=new Set(["ALARM","ACTIVITY","DEADLINE","MEMO"]);
+function mockPatch(form,field,value){
+  if(field!=="kind")return {...form,[field]:value};
+  if(!mockKinds.has(value))return null;
+  if(form.kind===value)return {...form};
+  const start=String(form.startText||"").trim(),end=String(form.endText||"").trim();
+  const next={...form,kind:value};
+  if(form.kind==="ALARM"&&value==="DEADLINE"){
+    next.startText="";next.endText=start;
+  }else if(form.kind==="DEADLINE"&&value==="ALARM"){
+    if(/^\d{4}-\d{2}-\d{2}$/.test(end)){next.startText="";next.endText=""}
+    else{next.startText=end;next.endText=""}
+  }else if(form.kind==="ACTIVITY"&&value==="DEADLINE"){
+    next.startText="";next.endText=end;
+  }else if(form.kind==="DEADLINE"&&value==="ACTIVITY"){
+    next.startText="";next.endText=end;
+  }else if(form.kind==="ALARM"&&value==="ACTIVITY"){
+    next.startText=start;next.endText="";
+  }else if(form.kind==="ACTIVITY"&&value==="ALARM"){
+    next.startText=start;next.endText="";
+  }
+  if(value==="DEADLINE"&&/^\d{4}-\d{2}-\d{2}$/.test(next.endText))
+    next.reminderMinutes=-1;
+  return next;
+}
 let mockEditing={editor:{open:false},deck:{open:false},lastResult:null},mockApproval=null;
 function resolveMockApproval(approved){
   if(!mockApproval)return;
@@ -737,7 +762,12 @@ function onSkinCommand(p){
         if((editor.requiresRecurrenceScope&&!editor.recurrenceScope)||
           (editor.recurrenceScope==="SINGLE_OCCURRENCE"&&
             !["title","startText","endText"].includes(p.field)))result.status="invalid";
-        else {editor.form[p.field]=p.value;editor.dirty=true;result.status="edited"}
+        else {
+          const next=mockPatch(editor.form,p.field,p.value);
+          if(!next)result.status="invalid";
+          else {editor.form=next;editor.dirty=JSON.stringify(next)!==JSON.stringify(editor.baseline);
+            result.status="edited"}
+        }
       }else result.status="stale";
       break;
     case "editor.save":
@@ -766,7 +796,7 @@ function onSkinCommand(p){
       const id=7001;
       const form=mockForm(p.kind);
       mockEditing.deck={open:true,cards:[{draftId:id,title:form.title,kind:p.kind}],
-        currentId:id,version:0,dirty:false,aiLocked:false,form};
+        currentId:id,version:0,dirty:false,aiLocked:false,form,baseline:{...form}};
       result.status="created";result.detail=String(id);break;
     }
     case "deck.open":
@@ -777,11 +807,14 @@ function onSkinCommand(p){
       result.status="opened";break;
     case "deck.patch":
       if(deck.open&&deck.currentId===p.draftId){
-        deck.form[p.field]=p.value;deck.dirty=true;
-        deck.cards[0].title=deck.form.title;result.status="edited";
+        const next=mockPatch(deck.form,p.field,p.value);
+        if(!next)result.status="invalid";
+        else {deck.form=next;deck.dirty=JSON.stringify(next)!==JSON.stringify(deck.baseline);
+          deck.cards[0].title=deck.form.title;deck.cards[0].kind=deck.form.kind;
+          result.status="edited"}
       }else result.status="stale";break;
     case "deck.flush":
-      if(deck.open){deck.version++;deck.dirty=false;result.status="flushed"}
+      if(deck.open){deck.version++;deck.dirty=false;deck.baseline={...deck.form};result.status="flushed"}
       break;
     case "deck.commit":
       if(deck.open){mockEditing.deck={open:false};result.status="committed"}

@@ -85,6 +85,8 @@ function row(form,key,label,kind="text",choices=null){
 }
 function renderForm(form,occurrenceOnly=false){
   fields.append(row(form,"title","标题"));
+  if(!occurrenceOnly)fields.append(row(form,"kind","事件类型",null,
+    [["ALARM","闹钟"],["ACTIVITY","活动"],["DEADLINE","截止"],["MEMO","备忘"]]));
   if(["ACTIVITY","ALARM","MEMO"].includes(form.kind))
     fields.append(row(form,"startText",form.kind==="MEMO"?"开始日期":"开始时间"));
   if(["ACTIVITY","DEADLINE","MEMO"].includes(form.kind))
@@ -189,7 +191,11 @@ function render(){
   }
 }
 function onState(next){
+  const previousKind=state.editing?.editor?.form?.kind||state.editing?.deck?.form?.kind;
   state=next;
+  const nextKind=next.editing?.editor?.form?.kind||next.editing?.deck?.form?.kind;
+  if(previousKind&&nextKind&&previousKind!==nextKind&&
+    document.activeElement?.dataset?.field==="kind")document.activeElement.blur();
   const reply=next.editing?.lastResult;
   if(reply?.requestId)showReply(reply);
   render();
