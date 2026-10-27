@@ -54,3 +54,30 @@ Command: `gradlew :app:verifySkinSourceBoundary :app:testDebugUnitTest :app:asse
 - This working copy includes another agent's untracked `DraftDeckFeedbackTest.kt`. A clean committed Git SHA build must be used for the final reproducible count.
 - No real paid/free provider credentials were used; loopback test is a local server.
 - User still owns left-wing and AI real-phone acceptance, right-wing already owner-accepted.
+
+## Final committed-source isolation gate: b1f7629 (verified)
+
+Detached clean checkout of `b1f7629f0c52812e1887443872f43aa6c49908c4`,
+**without** the other agent's worktree/untracked Android tests:
+
+- `BUILD SUCCESSFUL in 1m 14s`; **88/88 Gradle tasks executed**.
+- **560/560 JVM PASS, 78 JUnit suites, 0 skipped/failures/errors**.
+- `:app:assembleDebug`, `:app:assembleDebugAndroidTest`,
+  `:app:verifySkinSourceBoundary`, `:app:lintDebug` all PASS.
+- Lint **0 errors, 52 warnings**.
+- SHA256 of independent app APK: `DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76`,
+  identical to the main-tree QA APK, size **66,167,593 bytes**.
+- SHA256 of AndroidTest APK: `85F8A9E3BC4176946B63D8F66827F488B97C81E6A11CF3D42BACA69E7F0A4248`.
+- Independent gate log:
+  `.local/android-test/reports/freeze-20261027/core-b1f7629-committed-isolated-gate.log`,
+  SHA256 `21D4C9AEC19154EA92500A5BC3E041A3588BE721193C206D2475E3103F387B71`.
+- Isolated 78 JUnit XML documents:
+  `.local/android-test/reports/freeze-20261027/b1f7629-junit/`
+  and Lint XML `b1f7629-lint.xml`.
+- QA APK: `.local/android-test/artifacts/physical-qa/PowerCal-0.9.5-rc.1-b1f7629-debug-core-HOLD.apk`.
+- The difference between 561 working-tree tests and 560 isolated tests is one unrelated
+  untracked `DraftDeckFeedbackTest.kt` owned by a parallel agent.
+
+No instrumentation was run on the AVD or physical device; AndroidTest APK was **compiled only**.
+No real provider/API credentials were used. The right wing remains owner-frozen; left-wing
+phone check and online AI end-to-end provider checks remain unsigned. CORE FREEZE stays HOLD.
