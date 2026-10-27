@@ -391,6 +391,160 @@ class WebSkinEditBridgeTest {
         assertTrue(store.all().isEmpty())
     }
 
+    @Test fun persistedDraftDeckDiscardUndoAndPublishMatchNativeAcrossReopen() = runBlocking {
+        val nativeDatabase = "native-skin-deck-replay-" + UUID.randomUUID() + ".db"
+        val nativeStore = PowerStore(context, nativeDatabase)
+        var now = 10_000L
+        fun controller(target: PowerStore) = DeckController(
+            StoreDeckPersistence(target), clock = { now }
+        )
+        fun normalizedDrafts(target: PowerStore) = target.pendingDrafts()
+            .sortedBy { it.queueOrder }
+            .map { it.copy(createdAtMillis = 0L, updatedAtMillis = 0L) }
+        fun normalizedRecords(target: PowerStore) = target.all()
+            .sortedBy { it.eventSeq }
+            .map { it.copy(createdAtMillis = 0L, updatedAtMillis = 0L) }
+        fun counts(target: PowerStore) = listOf(
+            target.draftCount(), target.pendingCount().toLong(), target.all().size.toLong(),
+            target.identityCount(), target.nextSequencePreview(), target.nextQueueOrderPreview(),
+            target.commitCount()
+        )
+
+        val nativeDeck = controller(nativeStore)
+        val skinDeck = controller(store)
+        val skinService = WebSkinEditService(
+            store, skinDeck,
+            clock = Clock.fixed(Instant.parse("2026-10-28T15:07:42Z"), ZoneOffset.UTC)
+        )
+        fun assertDeckParity(activeNative: DeckController, activeSkin: WebSkinEditService) {
+            val projection = activeSkin.snapshot().getJSONObject("deck")
+            val skinCardIds = projection.getJSONArray("cards").let { cards ->
+                (0 until cards.length()).map { cards.getJSONObject(it).getLong("draftId") }
+            }
+            assertEquals(activeNative.state.cards.map { it.draftId }, skinCardIds)
+            val skinCurrentId = if (projection.isNull("currentId")) null
+                else projection.getLong("currentId")
+            assertEquals(activeNative.state.currentId, skinCurrentId)
+            assertEquals(activeNative.state.version, projection.getLong("version"))
+            assertEquals(activeNative.state.dirty, projection.getBoolean("dirty"))
+            val skinLastDiscardId = if (projection.isNull("lastDiscardId")) null
+                else projection.getLong("lastDiscardId")
+            assertEquals(activeNative.state.lastDiscardId, skinLastDiscardId)
+            if (activeNative.state.form == null) assertTrue(projection.isNull("form"))
+            else assertEquals(WebEditWire.form(activeNative.state.form!!).toString(),
+                projection.getJSONObject("form").toString())
+        }
+
+        try {
+            val firstForm = DraftForm(kind = TemporalKind.MEMO, title = "First draft")
+            val secondForm = DraftForm(kind = TemporalKind.MEMO, title = "Second draft")
+            val nativeFirst = nativeStore.newDraft(firstForm)
+            val skinFirst = store.newDraft(firstForm)
+            val nativeSecond = nativeStore.newDraft(secondForm)
+            val skinSecond = store.newDraft(secondForm)
+            assertEquals(nativeFirst.draftId, skinFirst.draftId)
+            assertEquals(nativeSecond.draftId, skinSecond.draftId)
+
+            nativeDeck.open(nativeFirst.draftId)
+            assertEquals("opened", skinService.execute(WebEditCommand.OpenDeck(
+                request(), skinFirst.draftId
+            )).getString("status"))
+            assertDeckParity(nativeDeck, skinService)
+
+            val firstEdited = firstForm.copy(title = "First latest text", notes = "flush on select")
+            nativeDeck.edit(firstEdited)
+            assertEquals("edited", skinService.execute(WebEditCommand.PatchDeck(
+                request(), skinFirst.draftId, skinDeck.state.version, "title", firstEdited.title
+            )).getString("status"))
+            assertEquals("edited", skinService.execute(WebEditCommand.PatchDeck(
+                request(), skinFirst.draftId, skinDeck.state.version, "notes", firstEdited.notes
+            )).getString("status"))
+
+            assertTrue(nativeDeck.select(nativeSecond.draftId))
+            assertEquals("selected", skinService.execute(WebEditCommand.SelectDeck(
+                request(), skinSecond.draftId
+            )).getString("status"))
+            assertDeckParity(nativeDeck, skinService)
+            assertEquals(firstEdited, nativeStore.draft(nativeFirst.draftId)!!.form)
+            assertEquals(firstEdited, store.draft(skinFirst.draftId)!!.form)
+
+            val secondEdited = secondForm.copy(title = "Second durable text", notes = "survives reopen")
+            nativeDeck.edit(secondEdited)
+            assertEquals("edited", skinService.execute(WebEditCommand.PatchDeck(
+                request(), skinSecond.draftId, skinDeck.state.version, "title", secondEdited.title
+            )).getString("status"))
+            assertEquals("edited", skinService.execute(WebEditCommand.PatchDeck(
+                request(), skinSecond.draftId, skinDeck.state.version, "notes", secondEdited.notes
+            )).getString("status"))
+            assertTrue(nativeDeck.flush())
+            assertEquals("flushed", skinService.execute(WebEditCommand.FlushDeck(request()))
+                .getString("status"))
+            assertDeckParity(nativeDeck, skinService)
+            assertEquals(normalizedDrafts(nativeStore), normalizedDrafts(store))
+            assertEquals("closed", skinService.execute(WebEditCommand.CloseDeck(request()))
+                .getString("status"))
+
+            // New controllers and a new Host service model process recreation. Only flushed
+            // SQLite state is allowed to survive this boundary.
+            val nativeAfterReopen = controller(nativeStore)
+            val skinAfterReopen = WebSkinEditService(store, controller(store),
+                clock = Clock.fixed(Instant.parse("2026-10-28T15:07:42Z"), ZoneOffset.UTC))
+            nativeAfterReopen.open(nativeSecond.draftId)
+            assertEquals("opened", skinAfterReopen.execute(WebEditCommand.OpenDeck(
+                request(), skinSecond.draftId
+            )).getString("status"))
+            assertDeckParity(nativeAfterReopen, skinAfterReopen)
+            assertEquals(secondEdited, nativeAfterReopen.state.form)
+            assertEquals(secondEdited, store.draft(skinSecond.draftId)!!.form)
+
+            val staleVersion = skinAfterReopen.snapshot().getJSONObject("deck").getLong("version") - 1L
+            assertEquals("stale", skinAfterReopen.execute(WebEditCommand.PatchDeck(
+                request(), skinSecond.draftId, staleVersion, "title", "stale overwrite"
+            )).getString("status"))
+            assertDeckParity(nativeAfterReopen, skinAfterReopen)
+
+            assertTrue(nativeAfterReopen.discard())
+            val discard = WebEditCommand.DiscardDeck(request(), skinSecond.draftId,
+                skinAfterReopen.snapshot().getJSONObject("deck").getLong("version"))
+            assertEquals("discarded", skinAfterReopen.execute(discard).getString("status"))
+            assertDeckParity(nativeAfterReopen, skinAfterReopen)
+            assertEquals(normalizedDrafts(nativeStore), normalizedDrafts(store))
+            assertEquals(nativeFirst.draftId, nativeAfterReopen.state.currentId)
+            assertEquals(nativeFirst.draftId, skinAfterReopen.snapshot().getJSONObject("deck")
+                .getLong("currentId"))
+
+            assertTrue(nativeAfterReopen.undoDiscard())
+            assertEquals("restored", skinAfterReopen.execute(WebEditCommand.UndoDeck(request()))
+                .getString("status"))
+            assertDeckParity(nativeAfterReopen, skinAfterReopen)
+            assertEquals(normalizedDrafts(nativeStore), normalizedDrafts(store))
+            assertEquals(skinSecond.draftId, skinAfterReopen.snapshot().getJSONObject("deck")
+                .getLong("currentId"))
+
+            now = 20_000L
+            assertTrue(nativeAfterReopen.commit())
+            val commit = WebEditCommand.CommitDeck(request(), skinSecond.draftId,
+                skinAfterReopen.snapshot().getJSONObject("deck").getLong("version"))
+            assertEquals("confirmation_required", skinAfterReopen.execute(commit).getString("status"))
+            val review = requireNotNull(skinAfterReopen.pendingWriteReview)
+            assertNull(store.get(skinSecond.eventSeq))
+            assertEquals("committed", skinAfterReopen.resolveFormalWriteReview(
+                review.token, approved = true
+            ).getString("status"))
+            assertEquals("committed", skinAfterReopen.execute(commit).getString("status"))
+
+            assertDeckParity(nativeAfterReopen, skinAfterReopen)
+            assertEquals(normalizedDrafts(nativeStore), normalizedDrafts(store))
+            assertEquals(normalizedRecords(nativeStore), normalizedRecords(store))
+            assertEquals(counts(nativeStore), counts(store))
+            assertEquals(secondEdited.title, nativeStore.get(nativeSecond.eventSeq)!!.title)
+            assertEquals(secondEdited.title, store.get(skinSecond.eventSeq)!!.title)
+        } finally {
+            nativeStore.close()
+            context.deleteDatabase(nativeDatabase)
+        }
+    }
+
     @Test fun nativeAndSkinNewEventReplayMatchesDefaultsAndDurableBusinessResults() = runBlocking {
         val nativeDatabase = "native-skin-replay-${UUID.randomUUID()}.db"
         val nativeStore = PowerStore(context, nativeDatabase)

@@ -824,7 +824,8 @@ function onSkinCommand(p){
     case "deck.create":{
       const id=7001;
       const form=mockForm(p.kind);
-      mockEditing.deck={open:true,cards:[{draftId:id,title:form.title,kind:p.kind}],
+      mockEditing.deck={open:true,cards:[{draftId:id,title:form.title,kind:p.kind,
+          version:0,form:{...form}}],
         currentId:id,version:0,dirty:false,aiLocked:false,form,baseline:{...form}};
       result.status="created";result.detail=String(id);break;
     }
@@ -835,28 +836,74 @@ function onSkinCommand(p){
       }
       result.status="opened";break;
     case "deck.patch":
-      if(deck.open&&deck.currentId===p.draftId){
+      if(deck.open&&deck.currentId===p.draftId&&deck.version===p.draftVersion){
         const next=mockPatch(deck.form,p.field,p.value);
         if(!next)result.status="invalid";
         else {deck.form=next;deck.dirty=JSON.stringify(next)!==JSON.stringify(deck.baseline);
-          deck.cards[0].title=deck.form.title;deck.cards[0].kind=deck.form.kind;
+          const card=deck.cards.find(item=>item.draftId===p.draftId);
+          if(card){card.title=deck.form.title;card.kind=deck.form.kind;card.form={...deck.form}}
           result.status="edited"}
       }else result.status="stale";break;
     case "deck.flush":
-      if(deck.open){deck.version++;deck.dirty=false;deck.baseline={...deck.form};result.status="flushed"}
+      if(deck.open){
+        if(deck.dirty){
+          deck.version++;
+          const card=deck.cards.find(item=>item.draftId===deck.currentId);
+          if(card){card.version=deck.version;card.form={...deck.form}}
+          deck.dirty=false;deck.baseline={...deck.form};
+        }
+        result.status="flushed";
+      }
       break;
     case "deck.commit":
       if(deck.open){mockEditing.deck={open:false};result.status="committed"}
       break;
     case "deck.discard":
-      if(deck.open){mockEditing.deck={open:false};result.status="discarded"}
+      if(!deck.open||deck.currentId!==p.draftId||deck.version!==p.draftVersion){
+        result.status=deck.open?"stale":"missing";break;
+      }
+      if(deck.dirty){
+        deck.version++;
+        const card=deck.cards.find(item=>item.draftId===deck.currentId);
+        if(card){card.version=deck.version;card.form={...deck.form}}
+        deck.dirty=false;deck.baseline={...deck.form};
+      }
+      {
+        const snapshot={...deck,cards:deck.cards.map(item=>({...item})),
+          form:deck.form?{...deck.form}:null,baseline:deck.baseline?{...deck.baseline}:null};
+        const remaining=deck.cards.filter(item=>item.draftId!==p.draftId);
+        const next=remaining[0]||null;
+        mockEditing.deck={...deck,cards:remaining,currentId:next?.draftId??null,
+          version:next?.version??0,form:next?.form?{...next.form}:null,
+          baseline:next?.form?{...next.form}:null,dirty:false,lastDiscardId:p.draftId,
+          undoSnapshot:snapshot};
+        result.status="discarded";
+      }
       break;
     case "deck.close":
       mockEditing.deck={open:false};result.status="closed";break;
     case "deck.undo":
-      result.status="missing";break;
+      if(!deck.open||deck.lastDiscardId==null||!deck.undoSnapshot)result.status="missing";
+      else {
+        mockEditing.deck={...deck.undoSnapshot,lastDiscardId:null,undoSnapshot:null,
+          cards:deck.undoSnapshot.cards.map(item=>({...item})),
+          form:deck.undoSnapshot.form?{...deck.undoSnapshot.form}:null,
+          baseline:deck.undoSnapshot.baseline?{...deck.undoSnapshot.baseline}:null};
+        result.status="restored";
+      }
+      break;
     case "deck.select":
-      result.status="selected";break;
+      if(!deck.open)result.status="missing";
+      else {
+        const card=deck.cards.find(item=>item.draftId===p.draftId);
+        if(!card)result.status="stale";
+        else {
+          mockEditing.deck={...deck,currentId:card.draftId,version:card.version||0,
+            form:card.form?{...card.form}:null,baseline:card.form?{...card.form}:null,dirty:false};
+          result.status="selected";
+        }
+      }
+      break;
   }
   mockEditing.lastResult=result;
   logAction("预览编辑命令 "+p.name+

@@ -316,6 +316,30 @@ async function main(){
         chooserKinds.push(kind);
       }
       document.querySelector('[data-action="createDraft"]').click();
+      await wait(()=>document.querySelector('#timelineCreateDialog[open]'),'undo create chooser missing');
+      document.querySelector('[data-timeline-create-kind="MEMO"]').click();
+      await wait(()=>!document.querySelector('#skinSheet').hidden&&
+        document.querySelector('#sheetTitle')?.textContent==='待处理草稿','undo draft editor missing');
+      const undoTitle=document.querySelector('#sheetFields [data-field="title"]');
+      undoTitle.value='Studio undo replay';undoTitle.dispatchEvent(new Event('change',{bubbles:true}));
+      await wait(()=>document.querySelector('#sheetSubtitle')?.textContent.includes('尚未暂存'),
+        'draft patch did not reach the Studio Mock');
+      document.querySelector('[data-do="discard"]').click();
+      await wait(()=>document.querySelector('[data-do="discard"]')?.textContent.includes('再次点击'),
+        'discard did not require the second explicit tap');
+      document.querySelector('[data-do="discard"]').click();
+      await wait(()=>document.querySelector('[data-do="undo"]'),
+        'discard did not retain the undo action in Studio preview');
+      document.querySelector('[data-do="undo"]').click();
+      await wait(()=>!document.querySelector('[data-do="undo"]'),
+        'undo did not clear the one-step undo action');
+      check(!document.querySelector('#skinSheet').hidden,
+        'undo unexpectedly closed the draft deck');
+      check(document.querySelector('#sheetFields [data-field="title"]')?.value==='Studio undo replay',
+        'undo did not restore the discarded draft contents');
+      document.querySelector('#sheetClose').click();
+      await wait(()=>document.querySelector('#skinSheet').hidden,'undo replay deck did not close');
+      document.querySelector('[data-action="createDraft"]').click();
       await wait(()=>document.querySelector('#timelineCreateDialog[open]'),'create chooser missing');
       document.querySelector('[data-timeline-create-kind="ACTIVITY"]').click();
       await wait(()=>!document.querySelector('#skinSheet').hidden&&
@@ -361,12 +385,16 @@ async function main(){
       document.querySelector('#sheetSave').click();
       await wait(()=>document.querySelector('#sheetStatus').textContent.includes('宿主确认'),
         'formal conversion did not request mock Host confirmation');
-      return {chooserKinds,deckConversion:'ACTIVITY→DEADLINE',formalConversion:'ACTIVITY→ALARM',key};
+      return {chooserKinds,deckUndo:'discard→undo restored the staged contents',
+        deckConversion:'ACTIVITY→DEADLINE',formalConversion:'ACTIVITY→ALARM',key};
     })()`});
     if(conversion.exceptionDetails)throw Error(conversion.exceptionDetails.exception?.description || conversion.exceptionDetails.text);
     if(JSON.stringify(conversion.result.value.chooserKinds)!==JSON.stringify(['ALARM','ACTIVITY','DEADLINE','MEMO']))
       throw Error("Studio chooser did not preview all four kinds: "+JSON.stringify(conversion.result.value));
     console.log("BROWSER FOUR-KIND CREATE MOCK PASS",JSON.stringify(conversion.result.value.chooserKinds));
+    if(conversion.result.value.deckUndo!=='discard→undo restored the staged contents')
+      throw Error('Studio preview did not preserve the deck discard/undo result');
+    console.log('BROWSER DECK DISCARD/UNDO MOCK PASS',conversion.result.value.deckUndo);
     const cancelled=await call("Runtime.evaluate",{awaitPromise:true,returnByValue:true,expression:`(async()=>{
       for(let i=0;i<150;i++){
         const approval=document.querySelector('#mockApproval');
