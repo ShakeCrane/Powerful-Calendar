@@ -934,4 +934,5 @@ Updated: 2026-10-24
 - 新增 `WebSkinBackupActionIntegrationTest`：在隔离 SQLite 中写入私人标题/备注，通过生产 `PowerCalApp` 和 Bridge 验证设置页投影不含事件正文，并观测实际 picker Intent 与 Store 计数不变。该测试未启动 OS Picker 或真实 DocumentsProvider。
 - 定向 JVM/Robolectric 回归 **17/17**（3 suites）；完整离线 Gradle 门禁 **605/605 JVM、84 suites、88/88 tasks，0 failures/errors/skips**，source boundary、Debug/AndroidTest APK 通过，lint 0 errors / 52 warnings。Skin Studio Python **51/51**；Edge Headless Studio E2E、JS syntax、Clear bundle verify 与 `git diff --check` 通过。证据目录 `.local/android-test/reports/separation-skin-backup-20261028/`；独立报告 `docs/issues/PC-ISSUE-SEPARATION-BACKUP-SKIN-ACTION.md`。
 - 完整门禁日志 SHA-256 `DEC16279EBA4D728BC1F4D193A5DE6581E784F069ABDCF9494562DB152F38DE4`；Debug / AndroidTest APK SHA-256 `0E9D967CFD70285D3456150ED591B96F5E7878F1A67A8B5314C8D71954F7A14E` / `60F08FFC420D8C67860FE9D85938C5237CF3C48CD49D5EFC260DC1187C5C9B90`。详细测试日志和其他哈希见独立报告。
-- Android WebView/AVD、系统文件选择器、真实 DocumentsProvider、完整备份文件读写/恢复以及 Native/Skin 回放均未测试；SEP-11 仍 `NOT TESTED`，S4 未关闭。**实现提交和推送状态待提交后补录。**
+- 实现提交 `16cdbb4d44495b43a2aa5a3aeec23d78e2a8ebd1` 已推送至 `origin/codex/separation-skin-settings`。本条目与 Issue 报告的 SHA/推送状态补录随后的文档提交。
+- Android WebView/AVD、系统文件选择器、真实 DocumentsProvider、完整备份文件读写/恢复以及 Native/Skin 回放均未测试；SEP-11 仍 `NOT TESTED`，S4 未关闭。
