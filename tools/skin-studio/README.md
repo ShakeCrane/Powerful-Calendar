@@ -44,9 +44,9 @@ python tools/skin-studio/skin_studio.py serve --port 8765
 
 当前源码界面已提供 `project.json` 原始 JSON 编辑、文本文件增删及任意资源文件新增/替换/删除；不认识的项目字段随有效 JSON 修改保留，非法 JSON 会阻止预览与导出并保留编辑草稿。删除保护按文本源码中的路径/文件名引用扫描，不能替代语义分析。完整组件树模型、页面可视化重组、所有结构属性的语义校验及完整 AI 设计工作流仍未完成，不能据此宣称完整 IDE。
 
-**AI/脚本项目操作：** v3 `.pcskin` 可通过机器可读的 `inspect-v3`、`read-v3`、
-`edit-v3` 命令检查项目、读取任意文本/二进制资源、编辑 `project.json` 结构及
-新增/修改/移动/删除文件，再经同一生产校验器构建到新包路径。SHA 前置条件防止
+**AI/脚本项目操作：** v3 `.pcskin` 可通过机器可读的 `inspect-v3`、`analyze-v3`、
+`read-v3`、`edit-v3` 命令检查项目、枚举 HTML 页面及静态节点、读取任意文本/二进制资源、
+编辑 `project.json` 结构及新增/修改/移动/删除文件，再经同一生产校验器构建到新包路径。SHA 前置条件防止
 覆盖检查之后已变化的文件；能力声明变更必须显式确认。该 CLI 补足 AI 操作层，
 `build-v3 --json` / `validate --json` 则提供带哈希和计数的结构化回执；构建会原子
 创建新的输出路径，拒绝覆盖已存在文件。无 `--json` 时成功结果仍为人读文本。
@@ -55,6 +55,7 @@ python tools/skin-studio/skin_studio.py serve --port 8765
 
 ```powershell
 python tools/skin-studio/skin_studio.py inspect-v3 my-skin.pcskin
+python tools/skin-studio/skin_studio.py analyze-v3 my-skin.pcskin
 python tools/skin-studio/skin_studio.py read-v3 --file my-skin.pcskin --path web/app.js
 python tools/skin-studio/skin_studio.py edit-v3 --file my-skin.pcskin --operations operations.json --out my-skin-edited.pcskin
 python tools/skin-studio/skin_studio.py validate my-skin-edited.pcskin --json

@@ -5,6 +5,7 @@ import base64
 import binascii
 import copy
 import hashlib
+from html.parser import HTMLParser
 import json
 import os
 from pathlib import Path
@@ -19,6 +20,11 @@ MAX_PATCH_OPERATIONS = 256
 MAX_OPERATION_DOCUMENT = 24_000_000
 SHA256 = re.compile(r"[0-9a-fA-F]{64}\Z")
 REQUIRED_FILES = frozenset(package_v3.WEB_REQUIRED)
+MAX_ANALYZED_COMPONENTS = 20_000
+VOID_HTML_TAGS = frozenset({
+    "area", "base", "br", "col", "embed", "hr", "img", "input", "link",
+    "meta", "param", "source", "track", "wbr",
+})
 TEXT_EXTENSIONS = frozenset({
     ".cjs", ".css", ".html", ".htm", ".ini", ".js", ".json", ".jsx", ".kt",
     ".less", ".md", ".mjs", ".properties", ".py", ".scss", ".sh", ".sql",
@@ -341,6 +347,170 @@ def inspect_package(source: bytes) -> dict:
         "inflatedBytes": sum(len(data) for data in files.values()),
         "files": file_index,
         "project": project,
+    }
+
+
+class _StaticHtmlInventory(HTMLParser):
+    """Build a bounded source-nesting index without rewriting HTML bytes."""
+
+    def __init__(self, path: str):
+        super().__init__(convert_charrefs=True)
+        self.path = path
+        self.nodes: list[dict] = []
+        self.stack: list[str | None] = [None]
+        self.by_id: dict[str, dict] = {}
+        self.title_parts: list[str] = []
+        self.script_sources: list[str] = []
+        self.stylesheet_sources: list[str] = []
+        self.inline_script_count = 0
+        self.warnings: list[str] = []
+        self._script_depth = 0
+        self._style_depth = 0
+
+    def parse(self, source: str) -> dict:
+        self.feed(source)
+        self.close()
+        for node_id in self.stack[1:]:
+            if node_id is not None:
+                node = self.by_id[node_id]
+                self.warnings.append(
+                    f"unclosed <{node['tag']}> beginning at line {node['line']}"
+                )
+        self.warnings.append(
+            "JavaScript is not executed; runtime-created components are absent from this inventory"
+        )
+        return {
+            "path": self.path,
+            "sourceSha256": _file_sha256(source.encode("utf-8")),
+            "title": " ".join(" ".join(self.title_parts).split())[:240],
+            "treeKind": "explicit-source-nesting",
+            "componentCount": len(self.nodes),
+            "interactiveCount": sum(1 for node in self.nodes if self._is_interactive(node)),
+            "scriptSources": self.script_sources,
+            "stylesheetSources": self.stylesheet_sources,
+            "inlineScriptCount": self.inline_script_count,
+            "duplicateIds": self._duplicate_ids(),
+            "components": self.nodes,
+            "warnings": list(dict.fromkeys(self.warnings)),
+        }
+
+    @staticmethod
+    def _is_interactive(node: dict) -> bool:
+        values = {item["name"]: item["value"] for item in node["attributes"]}
+        return (node["tag"] in {"a", "button", "input", "select", "textarea"} or
+                values.get("role") in {"button", "link", "checkbox", "radio", "tab"} or
+                "data-action" in values or "data-local" in values)
+
+    def _duplicate_ids(self) -> list[str]:
+        counts: dict[str, int] = {}
+        for node in self.nodes:
+            ident = node.get("id")
+            if ident:
+                counts[ident] = counts.get(ident, 0) + 1
+        return sorted(ident for ident, count in counts.items() if count > 1)
+
+    def _add_element(self, tag: str, attrs: list[tuple[str, str | None]], self_closing: bool) -> dict:
+        if len(self.nodes) >= MAX_ANALYZED_COMPONENTS:
+            raise skin_studio.SkinError(
+                f"HTML inventory exceeds {MAX_ANALYZED_COMPONENTS} components: {self.path}"
+            )
+        line, column = self.getpos()
+        node_id = f"{self.path}#n{len(self.nodes) + 1:05d}"
+        parent_id = self.stack[-1]
+        normalized = [{"name": name.lower(), "value": value} for name, value in attrs]
+        values = {item["name"]: item["value"] for item in normalized}
+        node = {
+            "nodeId": node_id,
+            "parentId": parent_id,
+            "tag": tag.lower(),
+            "id": values.get("id"),
+            "component": values.get("data-component"),
+            "line": line,
+            "column": column + 1,
+            "attributes": normalized,
+            "directText": "",
+        }
+        self.nodes.append(node)
+        self.by_id[node_id] = node
+        if parent_id is not None:
+            self.by_id[parent_id].setdefault("childIds", []).append(node_id)
+        if tag.lower() == "script":
+            src = values.get("src")
+            if src:
+                self.script_sources.append(src)
+            else:
+                self.inline_script_count += 1
+        if tag.lower() == "link" and "stylesheet" in (values.get("rel") or "").lower().split():
+            href = values.get("href")
+            if href:
+                self.stylesheet_sources.append(href)
+        if not self_closing and tag.lower() not in VOID_HTML_TAGS:
+            self.stack.append(node_id)
+            if tag.lower() == "script":
+                self._script_depth += 1
+            elif tag.lower() == "style":
+                self._style_depth += 1
+        return node
+
+    def handle_starttag(self, tag, attrs):
+        self._add_element(tag, attrs, self_closing=False)
+
+    def handle_startendtag(self, tag, attrs):
+        self._add_element(tag, attrs, self_closing=True)
+
+    def handle_endtag(self, tag):
+        lowered = tag.lower()
+        match = next((index for index in range(len(self.stack) - 1, 0, -1)
+                      if self.by_id[self.stack[index]]["tag"] == lowered), None)
+        if match is None:
+            self.warnings.append(f"unmatched closing tag </{lowered}> at line {self.getpos()[0]}")
+            return
+        for node_id in self.stack[match:]:
+            closing = self.by_id[node_id]["tag"]
+            if closing == "script":
+                self._script_depth = max(0, self._script_depth - 1)
+            elif closing == "style":
+                self._style_depth = max(0, self._style_depth - 1)
+        del self.stack[match:]
+
+    def handle_data(self, data):
+        if self.stack[-1] is None:
+            return
+        current = self.by_id[self.stack[-1]]
+        if current["tag"] == "title":
+            self.title_parts.append(data)
+        if self._script_depth == 0 and self._style_depth == 0 and data.strip():
+            pieces = [current["directText"], " ".join(data.split())]
+            current["directText"] = " ".join(piece for piece in pieces if piece)[:240]
+
+
+def analyze_package(source: bytes) -> dict:
+    """Return a machine-readable static source inventory for HTML pages in a v3 skin."""
+    manifest, files = package_v3.unpack(source)
+    pages = []
+    total_components = 0
+    for path, data in sorted(files.items()):
+        if not path.lower().endswith((".html", ".htm")) or not path.startswith("web/"):
+            continue
+        try:
+            html = data.decode("utf-8", errors="strict")
+        except UnicodeDecodeError as exc:
+            raise skin_studio.SkinError(f"HTML page is not UTF-8: {path}") from exc
+        page = _StaticHtmlInventory(path).parse(html)
+        total_components += page["componentCount"]
+        _fail(total_components <= MAX_ANALYZED_COMPONENTS,
+              f"HTML inventory exceeds {MAX_ANALYZED_COMPONENTS} components")
+        pages.append(page)
+    return {
+        "schemaVersion": 1,
+        "command": "analyze-v3",
+        "ok": True,
+        "skin": {"id": manifest["id"], "name": manifest["name"],
+                 "packageSha256": _file_sha256(source)},
+        "pageCount": len(pages),
+        "componentCount": total_components,
+        "analysisScope": "static HTML source; no JavaScript execution or computed browser DOM",
+        "pages": pages,
     }
 
 

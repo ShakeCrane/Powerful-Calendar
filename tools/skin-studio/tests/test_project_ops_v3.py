@@ -11,7 +11,7 @@ STUDIO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(STUDIO))
 
 from build_default_clear import ASSET
-from project_ops_v3 import edit_package, inspect_package, read_file, write_atomic
+from project_ops_v3 import analyze_package, edit_package, inspect_package, read_file, write_atomic
 from runtime_package_v3 import build_files, unpack
 from skin_studio import SkinError
 
@@ -57,6 +57,64 @@ class ProjectOpsV3Test(unittest.TestCase):
         self.assertEqual(utf8_binary_file["encoding"], "base64")
         self.assertEqual(base64.b64decode(utf8_binary_file["content"]),
                          self.files["assets/utf8-looking.bin"])
+
+    def test_analyze_indexes_static_html_pages_components_and_explicit_limits(self):
+        self.files["web/index.html"] = (
+            '<!doctype html>\n<html lang="zh-CN"><head><title>日程 &amp; Memo</title>'
+            '<link rel="stylesheet" href="style.css"></head><body>'
+            '<main id="app"><pc-card data-component="event-card" class="wide">'
+            '<button id="open" data-action="openEvent">打开</button>'
+            '<img src="assets/icon.png" alt="图标"><span>早上</span>'
+            '</pc-card><script src="app.js"></script>'
+            '<script>document.createElement("pc-runtime-card")</script>'
+            '</main></body></html>\n'
+        ).encode("utf-8")
+        self.files["web/month.html"] = (
+            '<!doctype html><html><head><title>月份</title></head><body>'
+            '<section id="month"><p id="same">列表</p><span id="same">其他</span>'
+            '</section></body></html></ghost>'
+        ).encode("utf-8")
+        source = build_files(self.manifest, self.files)
+
+        result = analyze_package(source)
+
+        self.assertEqual(result["command"], "analyze-v3")
+        self.assertEqual(result["pageCount"], 2)
+        self.assertEqual(result["analysisScope"],
+                         "static HTML source; no JavaScript execution or computed browser DOM")
+        self.assertEqual(hashlib.sha256(source).hexdigest(),
+                         result["skin"]["packageSha256"])
+        page = next(item for item in result["pages"] if item["path"] == "web/index.html")
+        self.assertEqual(page["title"], "日程 & Memo")
+        self.assertEqual(page["stylesheetSources"], ["style.css"])
+        self.assertEqual(page["scriptSources"], ["app.js"])
+        self.assertEqual(page["inlineScriptCount"], 1)
+        self.assertTrue(any("JavaScript is not executed" in warning
+                            for warning in page["warnings"]))
+        nodes = {node["id"]: node for node in page["components"] if node["id"]}
+        self.assertEqual(nodes["open"]["tag"], "button")
+        self.assertEqual(nodes["open"]["directText"], "打开")
+        self.assertIn("data-action", {item["name"] for item in nodes["open"]["attributes"]})
+        card = next(node for node in page["components"]
+                    if node["component"] == "event-card")
+        image = next(node for node in page["components"] if node["tag"] == "img")
+        span = next(node for node in page["components"] if node["tag"] == "span")
+        self.assertEqual(image["parentId"], card["nodeId"])
+        self.assertEqual(span["parentId"], card["nodeId"])
+        self.assertIn(nodes["open"]["nodeId"], card["childIds"])
+        self.assertEqual(result["componentCount"],
+                         sum(item["componentCount"] for item in result["pages"]))
+        month = next(item for item in result["pages"] if item["path"] == "web/month.html")
+        self.assertEqual(month["duplicateIds"], ["same"])
+        self.assertTrue(any("unmatched closing tag </ghost>" in warning
+                            for warning in month["warnings"]))
+        self.assertEqual(unpack(source)[1], self.files)
+
+    def test_analyze_enforces_total_component_bound(self):
+        self.files["web/index.html"] = ("<i></i>" * 20_001).encode("utf-8")
+        source = build_files(self.manifest, self.files)
+        with self.assertRaisesRegex(SkinError, "exceeds 20000 components"):
+            analyze_package(source)
 
     def test_file_crud_and_json_structure_patch_export_and_reimport(self):
         project_sha = hashlib.sha256(self.files["project.json"]).hexdigest()
@@ -165,6 +223,16 @@ class ProjectOpsV3Test(unittest.TestCase):
                 text=True, encoding="utf-8", capture_output=True, check=False)
             self.assertEqual(inspected.returncode, 0, inspected.stderr)
             self.assertEqual(json.loads(inspected.stdout)["manifest"]["id"], "ai-project-ops-test")
+            analyzed = subprocess.run(
+                [sys.executable, str(STUDIO / "skin_studio.py"), "analyze-v3", str(source_path)],
+                text=True, encoding="utf-8", capture_output=True, check=False)
+            self.assertEqual(analyzed.returncode, 0, analyzed.stderr)
+            analysis = json.loads(analyzed.stdout)
+            self.assertEqual(analysis["command"], "analyze-v3")
+            self.assertTrue(analysis["ok"])
+            self.assertEqual(analysis["pageCount"], 1)
+            self.assertTrue(any(node["id"] == "timelinePage"
+                                for node in analysis["pages"][0]["components"]))
             read = subprocess.run(
                 [sys.executable, str(STUDIO / "skin_studio.py"), "read-v3",
                  "--file", str(source_path), "--path", "web/move-me.js"],
@@ -271,6 +339,13 @@ class ProjectOpsV3Test(unittest.TestCase):
             invalid_receipt = json.loads(invalid.stderr)
             self.assertEqual(invalid_receipt["command"], "validate")
             self.assertFalse(invalid_receipt["ok"])
+            invalid_analysis = subprocess.run(
+                [sys.executable, str(STUDIO / "skin_studio.py"), "analyze-v3",
+                 str(broken_path)], text=True, encoding="utf-8", capture_output=True,
+                check=False)
+            self.assertEqual(invalid_analysis.returncode, 2)
+            self.assertEqual(json.loads(invalid_analysis.stderr)["command"], "analyze-v3")
+            self.assertFalse(json.loads(invalid_analysis.stderr)["ok"])
 
             before = output_path.read_bytes()
             overwrite = subprocess.run(
