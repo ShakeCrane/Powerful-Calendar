@@ -4,6 +4,8 @@
 
 状态：**本 Issue 实现与虚拟设备行为验证 PASS；SEP-02/SEP-04 的完整 Native/Skin 等价仍 NOT TESTED。**
 
+实现提交：`2ba08a0`（`fix(分离): 补全时间轴四类事件新建上下文`）。
+
 ## 根因
 
 Clear 顶部“＋”固定携带 data-kind=ACTIVITY，时间轴上无法像冻结版 Native 一样选择 ALARM、ACTIVITY、DEADLINE 或 MEMO。Skin 的 edit.js 将该入口送入现有 deck.create；Host 虽然用内存中的 NewEventEditSession 创建表单，但原实现只给 ZoneId.systemDefault()，没有传递时间轴当前相机的吸附时刻。Web 时间轴新建因此既缺少事件类型选择，也与 Native 的显式时间选择不一致。
