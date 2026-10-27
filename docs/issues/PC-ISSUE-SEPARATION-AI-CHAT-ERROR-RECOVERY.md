@@ -70,4 +70,4 @@ Evidence directory: `.local/android-test/reports/separation-20261027/ai-chat-rec
 
 ## Git
 
-This issue is test-only; no production app or Studio source changed. Test, narrow SEP-09 wording, and this report are committed separately from the pre-existing Clear source edits. Test commit SHA: pending the final report follow-up commit.
+This issue is test-only; no production app or Studio source changed. Test, narrow SEP-09 wording, and this report are committed separately from the pre-existing Clear source edits. Test commit: `0be7053cb59f1bb799b67d3736599dc0fd6507b3` (`test(skin): 验证 AI 失败后的手动重发安全性`).
