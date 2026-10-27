@@ -1,6 +1,6 @@
 # 皮肤重复事件编辑与宿主可信审查
 
-日期：2026-10-27。状态：**JVM、Studio、Chrome Mock 和 API 35 隔离 WebView 定向验证通过；本改动待提交；全功能等价、其他事件类型及实体设备尚未签核。**
+日期：2026-10-27。状态：**JVM、Studio、Chrome Mock 和 API 35 隔离 WebView 定向验证通过；实现已提交并推送；全功能等价、其他事件类型及实体设备尚未签核。**
 
 ## 问题与根因
 
@@ -41,7 +41,7 @@
 - 尚未完成重复实例对所有 Native/Skin 操作的双轨业务结果比较，也未覆盖独立恢复、WebView 崩溃、无障碍和所有 UI 尺寸。
 - 安全审计发现独立待办：非重复 `editor.save` 和 `deck.commit` 仍可从受 `host.action` 保护的 Web command 执行，但没有等价的可信 Host 完整内容确认。该缺口记录在 SEP-16，不能由本 Issue 关闭。
 - `host.edit` 与 `host.action` 的能力门禁语义仍需独立兼容/安全审计。Studio 不能直接编辑全部 `project.json`、任意文件和所有二进制资源。
-- 此 Issue 已具备本地验证证据，提交与推送 SHA 及后续复验将在本文件的交付记录中补录。整体功能等价和默认皮肤 cutover 仍未通过。
+- 实现、测试、Clear 资产和报告提交 `879e078a00b59c65c4b2d9624b37ec50556e0bc6`（`fix(skin): 支持重复实例编辑及宿主审查`），已推送至 `origin/feat/skin-first-separation`。推送后本地分支 HEAD 与远程跟踪 SHA 一致。后续安全审计和整体功能等价仍未完成，默认皮肤 cutover 未通过。
 
 ## 证据位置
 
