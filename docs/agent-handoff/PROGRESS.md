@@ -900,3 +900,10 @@ Updated: 2026-10-24
 - Fixed the shared SAF test provider's global authority/permission collision by deriving both from the AndroidTest applicationId; URI generation now uses the instrumentation package context. No production code or D05 probe behavior changed.
 - API 35 `emulator-5564`: unique QA and test APKs coexist with the other Agent's test package; `SafBackupReaderPermissionTest` passed 1/1. The random test namespace left no DB/cache/preferences. Evidence: `docs/issues/PC-ISSUE-SEPARATION-TEST-PROVIDER-ISOLATION.md`; log SHA-256 `C4F6CD48EAAC398D75183C5C5BD188E1001AAE764C3A04FAA191D5482485EA61`.
 - Full offline Android gate passed 593/593 JVM / 83 suites / 0 failures/errors/skips / 88 tasks; lint 0 errors / 52 warnings. Commit `fd6a14369c149739d3ef8e31dedce10e521adb45` is pushed.
+
+## Separation — AI REPLACE/DELETE Host confirmation (2026-10-27)
+
+- Added actual PowerCalApp/Bridge local-stub tests for REPLACE+DELETE and stale-target conflict recovery, plus an Android Clear WebView instrumentation test. No production business code changed.
+- Related Host/AI JVM suites 24/24; full offline Android gate 593/593 JVM, 83 suites, 0 failures/errors/skips, 88 tasks; lint 0 errors / 52 warnings. API 35 emulator-5564 WebView 3/3 and SAF provider 1/1.
+- Skin Studio Python 42/42, Chrome source round-trip/AI Mocks, node check and Clear bundle verify passed. Evidence: `docs/issues/PC-ISSUE-SEPARATION-AI-REPLACE-DELETE.md`. `SEP-10` remains NOT TESTED; S3 remains open.
+- Test commit `93d067b2733021ff07c8139cc19f03606dbb153e` is pushed.
