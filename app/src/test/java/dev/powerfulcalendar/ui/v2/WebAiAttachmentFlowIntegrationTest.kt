@@ -11,6 +11,7 @@ import android.database.MatrixCursor
 import android.database.sqlite.SQLiteDatabase
 import android.net.Uri
 import android.provider.OpenableColumns
+import android.util.AtomicFile
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.LocalActivityResultRegistryOwner
@@ -29,6 +30,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ApplicationProvider
+import dev.powerfulcalendar.ai.AiChatHistoryStore
 import dev.powerfulcalendar.ai.AiFileFallbackConsent
 import dev.powerfulcalendar.ai.AiSettings
 import dev.powerfulcalendar.ai.AiSettingsStore
@@ -45,14 +47,21 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.annotation.Implementation
+import org.robolectric.annotation.Implements
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowContentResolver
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.io.IOException
 import java.net.InetAddress
 import java.net.ServerSocket
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.time.LocalDate
 import java.time.ZoneId
 import java.util.UUID
@@ -62,7 +71,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [35])
+@Config(sdk = [35], shadows = [ShadowAtomicFileReplaceOnWindows::class])
 class WebAiAttachmentFlowIntegrationTest {
     @get:Rule val ui = createAndroidComposeRule<ComponentActivity>()
 
@@ -217,6 +226,186 @@ class WebAiAttachmentFlowIntegrationTest {
         }
     }
 
+    @Test
+    fun skinImageRequiresExplicitUploadConsentAndNeverStoresRawImageInChatHistory() {
+        val imageBytes = android.util.Base64.decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/nRsAAAAASUVORK5CYII=",
+            android.util.Base64.DEFAULT
+        )
+        val encodedImage = android.util.Base64.encodeToString(
+            imageBytes, android.util.Base64.NO_WRAP
+        )
+        val uri = Uri.parse("content://powercal-image-test-" + namespace + "/tiny.png")
+        val requests = CopyOnWriteArrayList<String>()
+        val requestReceived = CountDownLatch(1)
+        val serverFailure = AtomicReference<Throwable?>()
+        val before = counts()
+
+        ServerSocket(0, 4, InetAddress.getByName("127.0.0.1")).use { server ->
+            server.soTimeout = 15_000
+            AiSettingsStore.save(context, AiSettings(
+                endpoint = "http://127.0.0.1:" + server.localPort + "/v1",
+                model = "local-stub:free",
+                apiKey = "LOCAL_TEST_ONLY",
+                enabled = true,
+                shareContext = false
+            ))
+            val serverThread = Thread {
+                try {
+                    server.accept().use { socket ->
+                        socket.soTimeout = 10_000
+                        requests += readRequest(socket)
+                        requestReceived.countDown()
+                        writeReply(socket, "图片内容已读取，请核对日期和时间。")
+                    }
+                } catch (error: Throwable) {
+                    serverFailure.set(error)
+                    requestReceived.countDown()
+                }
+            }.apply { name = "pc-skin-image-stub"; isDaemon = true; start() }
+
+            ui.activity.setContent {
+                CompositionLocalProvider(
+                    LocalContext provides context,
+                    LocalActivityResultRegistryOwner provides resultRegistryOwner
+                ) {
+                    PowerCalTheme { PowerCalApp(store) }
+                }
+            }
+            ui.waitForIdle()
+            ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.Routed("ai")) }
+            ui.waitForIdle()
+
+            shadowOf(ui.activity.contentResolver).registerInputStreamSupplier(uri) {
+                imageBytes.inputStream()
+            }
+            ShadowContentResolver.registerProviderInternal(
+                requireNotNull(uri.authority), TestAttachmentProvider("tiny.png", "image/png")
+            )
+
+            fun chooseImageAndWaitForConsent() {
+                ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.PickAiImage) }
+                ui.waitForIdle()
+                assertEquals(Intent.ACTION_GET_CONTENT, resultRegistry.lastIntent?.action)
+                assertEquals("image/*", resultRegistry.lastIntent?.type)
+                assertTrue(WebSkinBridgeRuntime.state().getBoolean("chatAttachmentBusy"))
+                ui.runOnIdle { assertTrue(resultRegistry.dispatch(uri)) }
+                ui.waitUntil(10_000) {
+                    ui.onAllNodesWithText("图片识别方式")
+                        .fetchSemanticsNodes().isNotEmpty()
+                }
+            }
+
+            chooseImageAndWaitForConsent()
+            assertEquals("picker result alone must not write calendar data", before, counts())
+            assertFalse(
+                "the provider must receive no image before consent",
+                requestReceived.await(250, TimeUnit.MILLISECONDS)
+            )
+            assertTrue(AiChatHistoryStore.load(context).all {
+                !it.content.contains(encodedImage)
+            })
+
+            ui.onNodeWithText("取消").performClick()
+            ui.waitUntil(5_000) {
+                ui.onAllNodesWithText("图片识别方式")
+                    .fetchSemanticsNodes().isEmpty() &&
+                    WebSkinBridgeRuntime.state().optBoolean("chatAttachmentAvailable")
+            }
+            assertFalse(
+                "cancel must not upload image bytes",
+                requestReceived.await(250, TimeUnit.MILLISECONDS)
+            )
+            assertEquals("cancel must leave calendar data unchanged", before, counts())
+            assertTrue(AiChatHistoryStore.load(context).all {
+                !it.content.contains(encodedImage)
+            })
+
+            chooseImageAndWaitForConsent()
+            ui.onNodeWithText("发送原图给 AI").performClick()
+            assertTrue("explicitly authorized image request was not received",
+                requestReceived.await(20, TimeUnit.SECONDS))
+            assertNull("local image stub failed", serverFailure.get())
+            serverThread.join(2_000)
+
+            assertEquals(1, requests.size)
+            val request = JSONObject(requests.single())
+            val messages = request.getJSONArray("messages")
+            val userMessage = (0 until messages.length()).map { messages.getJSONObject(it) }
+                .last { it.getString("role") == "user" }
+            val userContent = userMessage.getJSONArray("content")
+            val imagePart = (0 until userContent.length()).map { userContent.getJSONObject(it) }
+                .first { it.optString("type") == "image_url" }
+            assertEquals("image upload must carry the selected image data URI",
+                "data:image/png;base64,$encodedImage",
+                imagePart.getJSONObject("image_url").getString("url"))
+            ui.waitUntil(10_000) {
+                !WebSkinBridgeRuntime.state().optBoolean("chatBusy")
+            }
+            val projectedMessages = WebSkinBridgeRuntime.state()
+                .optJSONArray("chatMessages") ?: JSONArray()
+            assertTrue("image consent marker missing from Host chat projection: " +
+                WebSkinBridgeRuntime.state().toString(),
+                (0 until projectedMessages.length()).any { index ->
+                    projectedMessages.getJSONObject(index).getString("content")
+                        .contains("已授权 AI 读取图片")
+                })
+            val historyFile = File(context.filesDir, "powercal-chat-history.json")
+            ui.waitUntil(5_000) {
+                AiChatHistoryStore.load(context).any {
+                    it.content.contains("已授权 AI 读取图片")
+                }
+            }
+            val history = AiChatHistoryStore.load(context)
+            assertTrue("history should retain the consent marker", history.any {
+                it.content.contains("已授权 AI 读取图片")
+            })
+            assertTrue("raw image bytes must never be persisted in chat history",
+                history.all { !it.content.contains(encodedImage) })
+            val persistedHistory = awaitFileContents(historyFile, 5_000) {
+                it.contains("已授权 AI 读取图片") && !it.contains(encodedImage)
+            }
+            assertFalse("raw image bytes must not appear in the history file",
+                persistedHistory.contains(encodedImage))
+
+            ui.onNodeWithText("待处理 0").performClick()
+            ui.onNodeWithText("清空聊天（不改变事件）").performClick()
+            ui.waitForIdle()
+            val clearedProjection = WebSkinBridgeRuntime.state()
+                .optJSONArray("chatMessages") ?: JSONArray()
+            assertEquals("clear action must update Host projection", 0, clearedProjection.length())
+            val clearedHistory = awaitFileContents(historyFile, 5_000) { it == "[]" }
+            assertEquals("clearing chat must persist the empty history", "[]", clearedHistory)
+            assertEquals("image analysis must not write calendar data", before, counts())
+        }
+    }
+
+    @Test
+    fun chatHistoryStoreReplacesLongerSnapshotWithShorterAndEmptyHistory() {
+        val emptyProbeContext = IsolatedContext(
+            ui.activity, storage, "$namespace/empty-probe"
+        )
+        val historyFile = File(emptyProbeContext.filesDir, "powercal-chat-history.json")
+        AiChatHistoryStore.save(emptyProbeContext, listOf(
+            dev.powerfulcalendar.ai.AiChatMessage(role = "user", content = "before-clear")
+        ))
+        assertTrue(historyFile.readText().contains("before-clear"))
+
+        AiChatHistoryStore.save(emptyProbeContext, listOf(
+            dev.powerfulcalendar.ai.AiChatMessage(role = "user", content = "short")
+        ))
+        val shorterSnapshot = historyFile.readText()
+        assertTrue("shorter snapshot should be written: $shorterSnapshot",
+            shorterSnapshot.contains("short"))
+        assertFalse("shorter snapshot must remove old content",
+            shorterSnapshot.contains("before-clear"))
+
+        AiChatHistoryStore.save(emptyProbeContext, emptyList())
+
+        assertEquals("empty history must replace the previous AtomicFile contents",
+            "[]", historyFile.readText())
+    }
+
     private data class Counts(
         val drafts: Long,
         val formalEvents: Int,
@@ -227,6 +416,31 @@ class WebAiAttachmentFlowIntegrationTest {
     private fun counts() = Counts(
         store.draftCount(), store.all().size, store.identityCount(), store.commitCount()
     )
+
+    private fun awaitFileContents(
+        file: File,
+        timeoutMs: Long,
+        matches: (String) -> Boolean
+    ): String {
+        val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs)
+        var lastContents: String? = null
+        var lastReadError: IOException? = null
+        while (System.nanoTime() < deadline) {
+            try {
+                lastContents = file.readText()
+                lastReadError = null
+                if (matches(lastContents)) return lastContents
+            } catch (error: IOException) {
+                lastReadError = error
+            }
+            Thread.sleep(25)
+        }
+        val failure = AssertionError(
+            "Timed out waiting for ${file.name}; last contents=$lastContents"
+        )
+        lastReadError?.let(failure::initCause)
+        throw failure
+    }
 
     private fun readRequest(socket: java.net.Socket): String {
         val input = socket.getInputStream().buffered()
@@ -296,9 +510,12 @@ class WebAiAttachmentFlowIntegrationTest {
         )
     }
 
-    private class TestAttachmentProvider(private val filename: String) : ContentProvider() {
+    private class TestAttachmentProvider(
+        private val filename: String,
+        private val mimeType: String = "text/plain"
+    ) : ContentProvider() {
         override fun onCreate(): Boolean = true
-        override fun getType(uri: Uri): String = "text/plain"
+        override fun getType(uri: Uri): String = mimeType
         override fun query(
             uri: Uri,
             projection: Array<out String>?,
@@ -362,5 +579,48 @@ class WebAiAttachmentFlowIntegrationTest {
         }
         override fun deleteDatabase(name: String): Boolean =
             backing.deleteDatabase(databaseAlias(name))
+    }
+}
+
+/**
+ * Android AtomicFile commits by renaming its `.new` file over the base file. Java's Windows
+ * File.renameTo does not replace an existing target, so Robolectric on Windows otherwise leaves
+ * old chat JSON in place. Model Android's replace semantics without changing production code.
+ */
+@Implements(AtomicFile::class)
+class ShadowAtomicFileReplaceOnWindows {
+    private lateinit var baseFile: File
+    private val newFile: File
+        get() = File(baseFile.parentFile, baseFile.name + ".new")
+
+    @Implementation
+    fun __constructor__(baseName: File) {
+        baseFile = baseName
+    }
+
+    @Implementation
+    fun startWrite(): FileOutputStream {
+        baseFile.parentFile?.mkdirs()
+        return FileOutputStream(newFile)
+    }
+
+    @Implementation
+    fun finishWrite(stream: FileOutputStream?) {
+        if (stream == null) return
+        stream.fd.sync()
+        stream.close()
+        Files.move(newFile.toPath(), baseFile.toPath(), StandardCopyOption.REPLACE_EXISTING)
+    }
+
+    @Implementation
+    fun failWrite(stream: FileOutputStream?) {
+        stream?.close()
+        newFile.delete()
+    }
+
+    @Implementation
+    fun openRead(): FileInputStream {
+        if (newFile.exists()) newFile.delete()
+        return FileInputStream(baseFile)
     }
 }
