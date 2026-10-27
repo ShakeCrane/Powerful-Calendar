@@ -1,0 +1,4 @@
+# The bundled Clear package is built from these exact bytes on every platform.
+tools/skin-studio/default-clear/source/** text=auto eol=lf
+# This existing bundled stylesheet is intentionally CRLF; keep its APK bytes stable.
+tools/skin-studio/default-clear/source/web/clear-design.css text eol=crlf

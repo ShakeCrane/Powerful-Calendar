@@ -2,6 +2,7 @@
 import base64
 import hashlib
 import json
+import subprocess
 import sys
 import threading
 import unittest
@@ -15,6 +16,19 @@ from build_default_clear import ASSET,expected_bytes
 from runtime_package_v3 import unpack
 
 class DefaultClearSingleSourceTest(unittest.TestCase):
+    def test_canonical_checkout_keeps_the_bundled_line_endings(self):
+        repo = STUDIO.parents[1]
+        files = {
+            "tools/skin-studio/default-clear/source/web/app.js": "lf",
+            "tools/skin-studio/default-clear/source/web/edit.js": "lf",
+            "tools/skin-studio/default-clear/source/web/clear-design.css": "crlf",
+        }
+        for name, eol in files.items():
+            with self.subTest(path=name):
+                output = subprocess.check_output(
+                    ["git", "check-attr", "eol", "--", name], cwd=repo, text=True)
+                self.assertTrue(output.rstrip().endswith(": eol: " + eol), output)
+
     def test_apk_asset_is_reproducible_and_is_complete_v3_skin(self):
         original=ASSET.read_bytes()
         self.assertEqual(original,expected_bytes())

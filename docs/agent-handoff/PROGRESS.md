@@ -1,4 +1,8 @@
 # Core freeze progress
+## 分离阶段 — Clear 检出字节一致性（2026-10-27）
+
+- 在独立 `feat/skin-first-separation` 工作树发现 `core.autocrlf=true` 会改变 Clear 规范源码字节，导致 APK 同源校验失败。新增 `.gitattributes` 固定既有 LF 文件和 CRLF 的 `clear-design.css`，现有 APK 未更改。`build_default_clear.py --verify` PASS，Studio 全量 40/40 PASS；范围与证据见 `docs/issues/PC-ISSUE-SEPARATION-CLEAR-CHECKOUT-EOL.md`。核心范围已获 Owner 冻结，Release QA/cutover 继续 HOLD。
+
 ## P02 — Today 相机规则裁决与统一（2026-10-25）
 
 - 用户裁决“今日中午，重置 24 小时”。原生入口此前定位当前精确时刻并保留缩放，Web 入口定位本地中午并重置 24h；`TimelineCoordinate.todayCamera(nowMillis, zone)` 现复用初始相机，两个生产入口共用此转换，并在触发时更新时钟。
