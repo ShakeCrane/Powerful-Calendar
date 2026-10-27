@@ -63,7 +63,7 @@ Native 正式事件编辑器调用 `EditSession.delete()`，最终复用 `PowerS
 - 分支：`feat/skin-first-separation`
 - 实现及合同提交：`fc5be0b0a72628efbf4aa11b66824c6fa305af25`，提交说明 `feat(分离): 增加正式事件受保护删除`，已推送至 `origin/feat/skin-first-separation`。
 - 本报告作为紧随实现提交的独立文档提交，并推送至同一分支。
-- 当前 follow-up 仍在独立 worktree `feat/skin-first-separation`，基线 HEAD `3470e0789ef95718b40bc6de5bce7b825d3181f2`；后续提交 SHA 将在验证报告和提交完成后补录。
+- 当前 follow-up 实现提交 `cb5e23d1ead0e4d7d21ae717bbf763685747f5e6`，提交说明 `feat(分离): 在 Clear 提供正式事件删除入口`，已正常推送至 `origin/feat/skin-first-separation`。完整 Gradle / Studio / CDP 证据对应该提交中所含的同一工作树快照；本地 `verification.json` 记录其执行结果和制品哈希。
 - 并行改动 `docs/agent-handoff/PROGRESS.md`、`project.json`、Inter 字体许可证、`web/index.html` 和 `web/style.css` 保持未暂存；本 follow-up 不拥有这些变更。
 
 ## 后续
