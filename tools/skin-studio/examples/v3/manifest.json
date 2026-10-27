@@ -8,8 +8,7 @@
   "fullCanvas": true,
   "capabilities": [
     "host.read",
-    "host.action",
-    "host.edit"
+    "host.action"
   ],
   "light": {},
   "dark": {},

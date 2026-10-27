@@ -32,7 +32,12 @@ import androidx.compose.ui.viewinterop.AndroidView
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
 
-/** Decisions are exclusively bundle-capability based, never tied to factory identity. */
+/**
+ * v1 enforces only host.read (state projection) and host.action (all inbound
+ * actions and editing commands). host.edit remains accepted as inert v3
+ * metadata for package round-trip compatibility; it grants no access alone.
+ * Changing this requires a versioned capability policy and compatibility tests.
+ */
 internal object WebSkinCapabilityPolicy {
     fun mayRead(bundle: WebSkinBundle): Boolean = "host.read" in bundle.capabilities
     fun mayAct(bundle: WebSkinBundle): Boolean = "host.action" in bundle.capabilities

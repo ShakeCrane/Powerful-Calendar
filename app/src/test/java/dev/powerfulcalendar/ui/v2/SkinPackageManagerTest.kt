@@ -191,12 +191,18 @@ class SkinPackageManagerTest {
         val noPermissions = WebSkinBundle("web/index.html", html, emptySet(), true)
         val readOnly = WebSkinBundle("web/index.html", html, setOf("host.read"), true)
         val actionOnly = WebSkinBundle("web/index.html", html, setOf("host.action"), true)
+        val editOnly = WebSkinBundle("web/index.html", html, setOf("host.edit"), true)
+        val readAndEdit = WebSkinBundle("web/index.html", html, setOf("host.read", "host.edit"), true)
         assertFalse(WebSkinCapabilityPolicy.mayRead(noPermissions))
         assertFalse(WebSkinCapabilityPolicy.mayAct(noPermissions))
         assertTrue(WebSkinCapabilityPolicy.mayRead(readOnly))
         assertFalse(WebSkinCapabilityPolicy.mayAct(readOnly))
         assertFalse(WebSkinCapabilityPolicy.mayRead(actionOnly))
         assertTrue(WebSkinCapabilityPolicy.mayAct(actionOnly))
+        assertFalse(WebSkinCapabilityPolicy.mayRead(editOnly))
+        assertFalse(WebSkinCapabilityPolicy.mayAct(editOnly))
+        assertTrue(WebSkinCapabilityPolicy.mayRead(readAndEdit))
+        assertFalse(WebSkinCapabilityPolicy.mayAct(readAndEdit))
     }
 
     @Test fun installChooseRestartAndDeleteDoNotModifyCalendarDatabase() {
