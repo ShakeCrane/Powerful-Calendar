@@ -1,5 +1,12 @@
 # Core freeze progress
 
+## Separation — real SAF skin package import/export (2026-10-28)
+
+- Added `WebSkinManagementInstrumentedTest.skinPackageImportAndExportUseTheSystemDocumentsProvider`; on isolated API 35 AVD `emulator-5564`, the real Downloads Provider/DocumentsUI imported a generated valid custom `.pcskin`, and the real `CreateDocument` flow exported Clear. The custom skin installed without becoming active; formal events, drafts, identities and commits stayed at zero. Export SHA-256 exactly matched the canonical Clear package.
+- Focused AndroidJUnitRunner **1/1 PASS**; log SHA-256 `2689EE0504F61513E77C1F2984430C83F64F9DB2E4FA5D96D7942245BBAF0F6B`. Full offline Gradle gate **607/607 JVM tests, 85 suites, 0 failures/errors/skips, 88/88 tasks**; source boundary and both APK builds passed; lint 0 errors / 52 warnings. Full log SHA-256 `637F23418EE079F7E85E3598A381B2C74F0B3061BB1C2E8C0F9CEFE6B40B9E7B`.
+- Independent report: `docs/issues/PC-ISSUE-SEPARATION-SAF-SKIN-IMPORT-EXPORT.md`. Narrow SAF roundtrip is PASS; SEP-11 remains NOT TESTED because credentials, permissions, deletion, backup/restore and complete Native/Skin replay remain open. No physical/OEM test was run.
+- Next: continue with another bounded parity gap; do not mark S4/SEP-11 or the separation goal complete from this test alone.
+
 ## Separation — Studio dark material tokens (2026-10-27)
 
 - Root cause: Studio emitted edited base material slots into `:root`, overriding Clear's authored dark text token. `v3-studio.js` now emits `:root:not(.dark)`.
