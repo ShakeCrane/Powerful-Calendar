@@ -73,4 +73,4 @@ JUnit XML：Bridge **3/3**，Host projection **13/13**，共 **16/16 PASS**，�
 
 ## 提交
 
-待提交后补录实现 commit SHA。提交只包含本 Issue 的生产代码、测试、Clear 包、文档和报告；不包含 `.local` 测试证据及其他 Agent 的工作。
+实现提交：`470f33f924588e9c26330cd0f2b4da96e2cba815`（`feat(分离): 让 Clear 设置页管理提醒权限入口`）。本报告随后以单独的文档补录提交记录该 SHA；提交不包含 `.local` 测试证据及其他 Agent 的工作。
