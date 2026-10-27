@@ -1,5 +1,12 @@
 # Core freeze progress
 
+## Separation — draft deck conflict review and deleted-event restore (2026-10-28)
+
+- Root cause: Native DeckController supported stale replacement and tombstone restoration, but the Web bridge had no trusted request path; direct skin confirmation was correctly rejected, leaving Clear without reachable recovery actions. Added request-only `deck.reviewConflict` / `deck.reviewRestore`, Host-owned Compose full-snapshot dialogs, state revalidation before writes, cancellation retention and idempotent replay handling. Clear and the non-writing Studio Mock now expose the recovery actions.
+- Regression: red schema reproduction before fix; `WebSkinEditBridgeTest` **20/20**, including stale Host review rejection, fresh full-snapshot replacement, cancel-without-write, same-sequence restore and replay idempotence. Full offline Gradle gate **611/611 JVM tests, 85 suites, 0 failures/errors/skips, 88/88 tasks**; source boundary and Debug/AndroidTest APK builds pass; lint **0 errors / 52 warnings**. Full log SHA-256 `9D00F0C4D875803D664CDD1F63F67D822866A9FFD98A551579D40DCB6E09466C`.
+- Studio Python **51/51**, Chrome E2E conflict/restore Host Mocks pass, JS syntax checks and Clear bundle verification pass (8 files / 379252 bytes; SHA-256 `7B3FBB7C402E5C776894497D96BA1CEEE7189E8ACB48EEE70ECE2E9C19CCF81A`). Debug / AndroidTest APK SHA-256: `AE4A6F6C36D6AF63346D1A92F0ED00D0EBDE7B838CC4BEA63033A5A224B9AF93` / `FD52D9A141D801274FA4E58E1F7B20F113525CE3A8117A92D76DA41A88619BF9`.
+- Narrow Issue PASS; details and individual log hashes: `docs/issues/PC-ISSUE-SEPARATION-DRAFT-DECK-CONFLICT-RESTORE.md`. SEP-08 remains **NOT TESTED**; no Android WebView/AVD or physical/OEM test was run. Implementation commit: `e0988ab1fab89818617fb07b549815aba54d38db`. Continue with another bounded parity gap; no overall separation GO implied.
+
 ## Separation — draft deck discard/undo and SQLite recovery replay (2026-10-28)
 
 - Fixed a Studio preview state-machine gap: Clear exposes discard with a one-step undo, while the old Studio Mock closed the deck and always returned missing for undo. Mock patch now checks draft version; clean flush does not invent a version increment; discard stages dirty input, retains an undo snapshot, and undo restores the selected card and its contents. Chrome regression drives the visible two-tap discard and undo controls.
