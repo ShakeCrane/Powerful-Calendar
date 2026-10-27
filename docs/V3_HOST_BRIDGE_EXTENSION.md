@@ -24,6 +24,10 @@ New:
   `deadlineDate`; `endMillis` is null. Times are epoch milliseconds.
 - `truncated=true` means not all visible items fit the bounded host
   projection. Do not infer that omitted occurrences are nonexistent.
+- AI state includes `chatAttachmentAvailable` and `chatAttachmentBusy` booleans.
+  Availability reflects the active AI page and Host edit/review locks; busy
+  covers the system picker or a file/image review dialog. Neither field contains
+  a URI, filename, MIME type or attachment bytes.
 - The skin may place the ruler on the far left, move event lanes to the
   right, change icons and artwork, and draw decorations entirely itself.
   This never changes formal event times or stored recurrence.
@@ -42,6 +46,12 @@ envelope and known fields only:
 ```json
 {"version":1,"type":"action","payload":{"name":"jumpTimelineDay","date":"2026-10-22"}}
 ```
+```json
+{"version":1,"type":"action","payload":{"name":"pickAiFile"}}
+```
+```json
+{"version":1,"type":"action","payload":{"name":"pickAiImage"}}
+```
 
 - `panTimeline` accepts nonzero integer minutes [-2880, 2880]. It does not
   change the time span or introduce horizontal zoom.
@@ -52,6 +62,12 @@ envelope and known fields only:
   availability; an occurrence key cannot bypass those checks.
 - `invokeOption` only accepts registered host IDs. When AI/editor writes
   are locked, option rows are disabled in state and invocation is denied.
+- `pickAiFile` and `pickAiImage` accept only the `name` field and only while
+  the AI page is active and no conflicting review, edit or picker is pending.
+  They launch the existing Android Host picker. The file path retains local
+  ICS detection/import and bounded text extraction with its existing consent
+  review; the image path retains the existing image/OCR review. URI and bytes
+  never enter a skin projection. These requests do not create drafts or events.
 - host.read gates state projections. host.action gates every inbound action and
   command message, including editor/deck commands. This keeps existing
   action-only v3 packages working.
@@ -74,6 +90,8 @@ PowerStore, arbitrary native function calls or file access.
 The active page channel is disposed/replaced during reload; a stale channel
 must not reach the host. State is a bounded projection, not a database view.
 All settings, risky changes, confirmations and emergency recovery stay native.
+Skin Studio's AI attachment preview only records a non-writing Mock request;
+it does not open a system picker or read, upload or import a file.
 
 ## QA gates
 
