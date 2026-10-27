@@ -46,6 +46,8 @@ Validation ran in a detached worktree at `b0af01efc512a41a797cc56433ee2dd3050282
 
 An initial Python suite run in the shared worktree failed because local loopback sockets were sandbox-blocked and concurrent Clear assets made the source differ from the packaged APK. The same complete suite passed in the detached clean-source worktree above; no shared changes were reverted or overwritten.
 
+Follow-up Studio scenario, E2E, parity note and report evidence were committed and pushed as `99144c9a4fe73489b427ba9808824e23e05be21e` (`feat(studio): 补充 AI 失败后手动重发预览`). The concurrent `docs/agent-handoff/PROGRESS.md` working-copy changes were left untouched and are not part of that commit.
+
 ## Test evidence
 
 Focused command:
