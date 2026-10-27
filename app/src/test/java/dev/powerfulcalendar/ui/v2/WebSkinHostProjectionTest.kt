@@ -38,6 +38,7 @@ class WebSkinHostProjectionTest {
         assertEquals(start + 3_600_000L, row.getLong("endMillis"))
         assertEquals("RIGHT", row.getString("side"))
         assertEquals("INSTANT", row.getString("precision"))
+        assertTrue(row.isNull("originalOccurrenceKey"))
         assertEquals(24.0, payload.getDouble("hours"), 0.0)
         assertEquals(zone.id, payload.getString("zoneId"))
         assertFalse(payload.toString().contains("private-note-should-not-leak"))
@@ -73,6 +74,11 @@ class WebSkinHostProjectionTest {
         assertEquals(start, occurrence.getLong("startMillis"))
         assertEquals(9L, occurrence.getLong("eventSeq"))
         assertTrue(occurrence.getString("occurrenceKey").startsWith("9:"))
+        assertEquals("2026-10-22T09:00", occurrence.getString("originalOccurrenceKey"))
+        val month = WebSkinMonthProjection.build(listOf(daily), noon, zone).getJSONArray("items")
+        val sameDay = (0 until month.length()).map { month.getJSONObject(it) }
+            .single { it.getString("date") == "2026-10-22" }
+        assertEquals("2026-10-22T09:00", sameDay.getString("originalOccurrenceKey"))
     }
 
     @Test fun boundedProjectionStatesWhenClipped() {

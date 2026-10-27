@@ -32,6 +32,8 @@ internal object WebSkinMonthProjection {
                 .put("eventSeq", item.owner.eventSeq)
                 .put("revision", item.owner.revision)
                 .put("occurrenceKey", item.key.take(120))
+                .put("originalOccurrenceKey", if (item.owner.recurrence.isRepeating)
+                    item.occurrenceKey else JSONObject.NULL)
                 .put("title", item.record.title.take(200))
                 .put("kind", item.record.kind.name)
                 .put("date", day.toString())

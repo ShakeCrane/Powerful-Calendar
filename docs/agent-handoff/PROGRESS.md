@@ -1,4 +1,11 @@
 # Core freeze progress
+## 分离阶段 — 重复实例 Web 编辑与 Host 可信确认（2026-10-27）
+
+- Web timeline/month 投影现将稳定重复槽位键单独交给皮肤；Clear 提供三种编辑范围、单次字段限制和恢复修改控件。重复相关有效保存先进入 Host Compose 完整 before/after 审查，JS 不持有确认 token。范围、版本冲突、取消、重放、皮肤切换及 Native `EditSession` 结果有 JVM 回归。
+- 当前分离工作树最终完整离线门禁 **569/569 JVM、79 suites、0 failures/errors/skips、88/88 tasks**，Lint 0 errors / 52 warnings；Studio **42/42**；Chrome 页面 Mock 回归通过；API 35 `emulator-5564` 实际 WebView/Host 单次 ALARM 场景 **1/1 PASS**。设备测试针对 QA APK `0BA65A...7FDF`，它早于最后一个 `appScope` 生命周期调整；最后源码包含于完整 Gradle 门禁，但未在模拟器重跑。
+- 独立报告：`docs/issues/PC-ISSUE-SEPARATION-RECURRING-WEB-EDITOR.md`。当前改动尚未提交；应只暂存该 Issue 的明确源码、测试、Clear 资产、文档及 Chrome 测试文件。矩阵 SEP-06 仍 NOT TESTED（完整功能等价未完成），SEP-16 记录普通 `editor.save` / `deck.commit` 可信确认审查缺口；`host.edit` 门禁也仍待审计。
+- 下一步：先完成本 Issue 的 diff/staging 复核并提交、推送；随后独立修复或裁决普通事件保存与草稿发布的 Host 可信授权缺口，再继续 Studio 完整资产/项目编辑和 AI 审核迁移。发布 QA、真机和 default-skin cutover 仍 HOLD。
+
 ## 分离阶段 — 项目元数据无损往返（2026-10-27）
 
 - 修复 Studio 仅切换面板或编辑脚本时重新序列化第三方 `project.json` 的问题；仅真实材质/图层修改才序列化项目，未知字段保留。旧代码红测失败，新代码定向 3/3、真实 Chrome 导出/重导入和完整 Studio 42/42 PASS。报告：`docs/issues/PC-ISSUE-SEPARATION-STUDIO-PROJECT-ROUNDTRIP.md`。未执行 Android WebView 或实体设备测试，完整项目编辑和功能等价仍未完成。

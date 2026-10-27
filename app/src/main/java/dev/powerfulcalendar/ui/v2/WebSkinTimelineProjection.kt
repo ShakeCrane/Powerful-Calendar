@@ -77,6 +77,8 @@ internal object WebSkinTimelineProjection {
                 .put("eventSeq", slot.owner.eventSeq)
                 .put("revision", slot.owner.revision)
                 .put("occurrenceKey", slot.key.take(120))
+                .put("originalOccurrenceKey", if (slot.owner.recurrence.isRepeating)
+                    slot.occurrenceKey else JSONObject.NULL)
                 .put("kind", record.kind.name)
                 .put("title", record.title.take(300))
                 .put("side", record.kind.side.name)

@@ -15,7 +15,7 @@ internal data class DisplayOccurrence(
     val occurrenceKey: String
 )
 
-private fun occurrenceDisplayRecord(owner: TemporalRecord, slot: Occurrence): TemporalRecord {
+internal fun occurrenceDisplayRecord(owner: TemporalRecord, slot: Occurrence): TemporalRecord {
     val projected = when (owner.kind) {
         TemporalKind.ALARM -> owner.copy(startMillis = slot.startMillis)
         TemporalKind.ACTIVITY -> owner.copy(startMillis = slot.startMillis, endMillis = slot.endMillis)

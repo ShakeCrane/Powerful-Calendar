@@ -1470,6 +1470,62 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
         }
     }
 
+    webEditing.pendingRecurrenceReview?.let { review ->
+        var resolving by remember(review.token) { mutableStateOf(false) }
+        val resolveReview: (Boolean) -> Unit = { approved ->
+            if (!resolving) {
+                resolving = true
+                // A confirmed write follows the existing Web command lifetime:
+                // composition teardown must not cancel an in-flight transaction.
+                PowerCalStores.appScope.launch(Dispatchers.Main.immediate) {
+                    try {
+                        val reply = webEditing.resolveRecurrenceReview(review.token, approved)
+                        when (reply.optString("status")) {
+                            "saved" -> {
+                                val refreshed = runCatching { reload() }.isSuccess
+                                val reconciled = runCatching { reconcile() }.isSuccess
+                                message = when {
+                                    !refreshed -> "修改已保存，但界面同步失败；请刷新查看"
+                                    !reconciled -> "修改已保存，提醒同步尚未完成"
+                                    else -> "重复事件修改已保存"
+                                }
+                            }
+                            "cancelled" -> message = "已取消保存，修改仍保留在编辑器中"
+                            else -> message = reply.optString("detail").ifBlank { "保存未完成，请重新检查" }
+                        }
+                        WebSkinBridgeRuntime.stateRevision++
+                    } finally { resolving = false }
+                }
+            }
+        }
+        SkinAlertDialog(
+            onDismissRequest = { resolveReview(false) },
+            title = { Text("确认重复事件修改") },
+            text = {
+                Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("事件 #${review.current.eventSeq} · 版本 ${review.current.revision}")
+                    Text("范围：" + when(review.scope) {
+                        RecurrenceEditScope.SINGLE_OCCURRENCE -> "仅本次"
+                        RecurrenceEditScope.THIS_AND_FUTURE -> "本次及以后（拆分为新系列）"
+                        RecurrenceEditScope.WHOLE_SERIES -> "整个系列"
+                    })
+                    review.occurrenceKey?.let { Text("原始实例：$it") }
+                    Text("请核对当前值与修改后的完整内容。")
+                    snapshotRows(review.before, review.proposed).forEach { row ->
+                        Text("${row.label}：${row.before} → ${row.after}")
+                    }
+                }
+            },
+            confirmButton = { TextButton(enabled = !resolving, onClick = { resolveReview(true) }) {
+                Text("确认保存")
+            } },
+            dismissButton = { TextButton(enabled = !resolving, onClick = { resolveReview(false) }) {
+                Text("取消")
+            } }
+        )
+    }
+
     if (deckOpen) {
         DraftDeckDialog(
             controller = controller,

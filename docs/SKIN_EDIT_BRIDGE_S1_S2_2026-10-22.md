@@ -5,6 +5,39 @@
 > editing commands. The narrower statements below describe that checkpoint, not current
 > implementation. See `SKIN_SEPARATION_PARITY_MATRIX_2026-10-27.md` for the current audit.
 
+## 2026-10-27 addition: recurring event scope and host review
+
+The v1 command envelope remains unchanged. `editor.open` accepts its legacy
+`eventSeq,expectedRevision` fields, or additionally `occurrenceKey` containing the
+original local slot (`yyyy-MM-ddTHH:mm`). The Host re-reads the record, checks its
+revision and validates that the key belongs to that repeating series. Timeline and
+month state retain their old prefixed `occurrenceKey` and add `originalOccurrenceKey`
+for a repeating instance; clients must not strip prefixes or infer an original slot
+from a moved instance's displayed time.
+
+`editor.scope` takes `sessionId,scope`, where scope is `SINGLE_OCCURRENCE`,
+`THIS_AND_FUTURE` or `WHOLE_SERIES`. A legacy open without an occurrence can choose
+only the whole series. `editor.discardChanges` takes `sessionId` and restores the
+current scope baseline. The `editing.editor` projection adds `requiresRecurrenceScope`,
+`canEditSelectedOccurrence`, `recurrenceScope` and `awaitingConfirmation`. A scope
+must be chosen before patching a repeating event; single-instance patches are limited
+to title and time. Scope cannot change while fields differ from the scope baseline.
+
+Saving changed repeat-related content returns `confirmation_required`: the Host owns
+a modal showing the original occurrence, scope and complete before/after fields.
+Only the Host's confirmation resolves its private snapshot; there is no Web confirm
+command or projected approval token. Cancel preserves input. The Host compares the
+record and form again before calling the original `EditSession` save or atomic split;
+an outdated snapshot returns conflict. The later result is published in
+`editing.lastResult`. A skin change checkpoints the draft and cancels an outstanding
+review. Repeating the same request returns its cached outcome.
+
+Clear implements these controls in `web/edit.js`; Studio exposes that source and
+provides explicitly labelled **mock** host approval buttons in its preview. Those
+buttons never authorize Android writes. This addition does not claim that unrelated
+ordinary edit/deck writes have a trusted Host confirmation or that all AI approval,
+device accessibility and recovery cases are complete.
+
 Date: 2026-10-22. Current milestone: **protocol and host coordination,
 not complete Clear Web editor/deck UI and not factory cutover**.
 

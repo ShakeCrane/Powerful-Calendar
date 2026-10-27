@@ -6,8 +6,11 @@ import dev.powerfulcalendar.core.NewEventEditSession
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.TemporalKind
+import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.RecurrenceFreq
 import dev.powerfulcalendar.core.Recurrence
+import dev.powerfulcalendar.core.RecurrenceEditScope
+import dev.powerfulcalendar.core.RecurrenceEngine
 import dev.powerfulcalendar.core.ReminderMethod
 import dev.powerfulcalendar.core.ReminderTiming
 import java.time.LocalDate
@@ -27,13 +30,16 @@ import androidx.compose.runtime.setValue
  * The bundled Clear skin and imported skins use the exact same endpoint.
  *
  * Deliberately exposes a small *patch* whitelist, never the raw DraftForm:
- * provenance, recurrence, completion keys, reminder authorization, timezone,
- * or lease tokens cannot be supplied or rewritten by an untrusted skin.
+ * provenance, completion keys, reminder authorization, timezone, or lease
+ * tokens cannot be supplied or rewritten by an untrusted skin.
  */
 internal sealed interface WebEditCommand {
     val requestId: String
     data class OpenEvent(override val requestId: String, val eventSeq: Long,
-        val revision: Long): WebEditCommand
+        val revision: Long, val occurrenceKey: String? = null): WebEditCommand
+    data class SelectScope(override val requestId: String, val sessionId: String,
+        val scope: RecurrenceEditScope): WebEditCommand
+    data class DiscardEventChanges(override val requestId: String, val sessionId: String): WebEditCommand
     data class PatchEvent(override val requestId: String, val sessionId: String,
         val field: String, val value: String): WebEditCommand
     data class SaveEvent(override val requestId: String, val sessionId: String): WebEditCommand
@@ -56,6 +62,7 @@ internal object WebEditWire {
     const val MAX_FRAME = 8192
     private val request = Regex("[A-Za-z0-9_-]{8,64}")
     private val session = Regex("[a-f0-9-]{36}")
+    private val occurrence = Regex("[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}")
     private val fields = mapOf("title" to 240, "startText" to 40,
         "endText" to 40, "notes" to 2000, "location" to 240,
         "reminderMinutes" to 6, "reminderMethod" to 20, "reminderTiming" to 20,
@@ -89,10 +96,23 @@ internal object WebEditWire {
             (payload.opt("sessionId") as? String)?.takeIf(session::matches)
         return when(name) {
             "editor.open" -> {
-                if (!exact("eventSeq","expectedRevision")) return null
+                if (!exact("eventSeq","expectedRevision") &&
+                    !exact("eventSeq","expectedRevision","occurrenceKey")) return null
+                val key = if ("occurrenceKey" in keys) {
+                    (payload.opt("occurrenceKey") as? String)?.takeIf(occurrence::matches) ?: return null
+                } else null
                 WebEditCommand.OpenEvent(id,number("eventSeq")?:return null,
-                    number("expectedRevision")?:return null)
+                    number("expectedRevision")?:return null,key)
             }
+            "editor.scope" -> {
+                if (!exact("sessionId","scope")) return null
+                val scope = (payload.opt("scope") as? String)?.let {
+                    RecurrenceEditScope.entries.firstOrNull { candidate -> candidate.name == it }
+                } ?: return null
+                WebEditCommand.SelectScope(id,sessionId()?:return null,scope)
+            }
+            "editor.discardChanges" -> if (exact("sessionId"))
+                WebEditCommand.DiscardEventChanges(id,sessionId()?:return null) else null
             "editor.patch" -> {
                 if (!exact("sessionId","field","value")) return null
                 val f=field()?:return null
@@ -201,6 +221,17 @@ internal object WebEditWire {
         .put("recurrenceUntil",form.recurrence.activeUntilDate)
 }
 
+/** Never projected to JavaScript: only a trusted host dialog can resolve this snapshot. */
+internal data class WebRecurrenceReview(
+    val token: String,
+    val command: WebEditCommand.SaveEvent,
+    val current: TemporalRecord,
+    val before: TemporalRecord,
+    val proposed: DraftForm,
+    val scope: RecurrenceEditScope,
+    val occurrenceKey: String?
+)
+
 internal class WebSkinEditService(
     private val store: PowerStore,
     private val deck: DeckController,
@@ -211,6 +242,8 @@ internal class WebSkinEditService(
     private var sessionId: String? = null
     private var newEventSession: NewEventEditSession? = null
     private var deckOpen = false
+    var pendingRecurrenceReview by mutableStateOf<WebRecurrenceReview?>(null)
+        private set
     // Compose-observable lifetime signal for reliable Android Back interception.
     private var hasActiveUiSession by mutableStateOf(false)
     // In-process replay protection; capacity bounded. One instance per host, NOT per WebView.
@@ -270,6 +303,10 @@ internal class WebSkinEditService(
                 .put("sessionId",sessionId)
                 .put("eventSeq",current?.eventSeq)
                 .put("form",current?.form?.let(WebEditWire::form))
+                .put("requiresRecurrenceScope",current?.requiresRecurrenceScope ?: false)
+                .put("canEditSelectedOccurrence",current?.canEditSelectedOccurrence ?: false)
+                .put("recurrenceScope",current?.recurrenceScope?.name ?: JSONObject.NULL)
+                .put("awaitingConfirmation",pendingRecurrenceReview != null)
                 .put("dirty",current?.meaningfulDiff ?: false)
                 .put("error",current?.lastError))
             .put("deck",deckState())
@@ -282,6 +319,13 @@ internal class WebSkinEditService(
             return@withLock if(original==cmd) JSONObject(reply.toString())
                 else result(cmd.requestId,"duplicate_request_id")
         }
+        if (pendingRecurrenceReview != null) {
+            val reply=result(cmd.requestId,"locked","请先处理宿主确认")
+            completed[cmd.requestId]=cmd to JSONObject(reply.toString())
+            if(completed.size>64)completed.remove(completed.keys.first())
+            latest=reply
+            return@withLock reply
+        }
         val reply = try {
             when(cmd) {
                 is WebEditCommand.OpenEvent -> {
@@ -291,16 +335,44 @@ internal class WebSkinEditService(
                         val record=withContext(Dispatchers.IO){ store.get(cmd.eventSeq) }
                         if(record==null || record.revision!=cmd.revision)
                             result(cmd.requestId,"stale")
+                        else if(cmd.occurrenceKey != null &&
+                            (!record.recurrence.isRepeating ||
+                                withContext(Dispatchers.IO) {
+                                    RecurrenceEngine.occurrenceForKey(record,cmd.occurrenceKey)
+                                } == null)) result(cmd.requestId,"invalid","所选重复实例不存在")
                         else {
-                            val opened=withContext(Dispatchers.IO){ EditSession.open(store,record) }
+                            val opened=withContext(Dispatchers.IO){ EditSession.open(store,record,cmd.occurrenceKey) }
                             session=opened
                             sessionId=UUID.randomUUID().toString()
                             result(cmd.requestId,"opened")
                         }
                     }
                 }
+                is WebEditCommand.SelectScope -> {
+                    val current=session
+                    if(!editorMatches(cmd.sessionId) || current==null) result(cmd.requestId,"stale")
+                    else if(!current.requiresRecurrenceScope || current.meaningfulDiff ||
+                        (cmd.scope != RecurrenceEditScope.WHOLE_SERIES && !current.canEditSelectedOccurrence))
+                        result(cmd.requestId,"invalid","请先放弃修改并选择有效的重复范围")
+                    else {
+                        withContext(Dispatchers.IO){current.selectRecurrenceScope(cmd.scope)}
+                        result(cmd.requestId,"selected")
+                    }
+                }
+                is WebEditCommand.DiscardEventChanges -> {
+                    if(!editorMatches(cmd.sessionId)) result(cmd.requestId,"stale")
+                    else {
+                        withContext(Dispatchers.IO){session!!.discardEditingChanges()}
+                        result(cmd.requestId,"discarded_changes")
+                    }
+                }
                 is WebEditCommand.PatchEvent -> {
                     if(!editorMatches(cmd.sessionId)) result(cmd.requestId,"stale")
+                    else if(session!!.requiresRecurrenceScope && session!!.recurrenceScope == null)
+                        result(cmd.requestId,"invalid","请先选择重复事件的编辑范围")
+                    else if(session!!.recurrenceScope == RecurrenceEditScope.SINGLE_OCCURRENCE &&
+                        cmd.field !in setOf("title","startText","endText"))
+                        result(cmd.requestId,"invalid","仅本次只能修改标题和时间")
                     else {
                         withContext(Dispatchers.IO) {
                             session!!.edit(WebEditWire.patch(session!!.form,cmd.field,cmd.value))
@@ -310,6 +382,29 @@ internal class WebSkinEditService(
                 }
                 is WebEditCommand.SaveEvent -> {
                     if(!editorMatches(cmd.sessionId)) result(cmd.requestId,"stale")
+                    else if(session!!.requiresRecurrenceScope && session!!.recurrenceScope == null)
+                        result(cmd.requestId,"invalid","请先选择重复事件的编辑范围")
+                    else if(session!!.meaningfulDiff &&
+                        (session!!.requiresRecurrenceScope || session!!.form.recurrence.isRepeating)) {
+                        val active=session!!
+                        val current=withContext(Dispatchers.IO){store.get(active.eventSeq)}
+                        val scope=active.recurrenceScope ?: RecurrenceEditScope.WHOLE_SERIES
+                        val selected=active.selectedOccurrenceKey
+                        val occurrence=if(scope != RecurrenceEditScope.WHOLE_SERIES && selected != null)
+                            current?.let { withContext(Dispatchers.IO){RecurrenceEngine.occurrenceForKey(it,selected)} }
+                        else null
+                        if(current==null) result(cmd.requestId,"stale")
+                        else if(scope != RecurrenceEditScope.WHOLE_SERIES && occurrence==null)
+                            result(cmd.requestId,"invalid","所选重复实例不存在")
+                        else {
+                            val before=if(occurrence!=null) occurrenceDisplayRecord(current,occurrence) else current
+                            pendingRecurrenceReview=WebRecurrenceReview(UUID.randomUUID().toString(),
+                                cmd,current,before,active.form,scope,selected)
+                            result(cmd.requestId,"confirmation_required")
+                        }
+                    }
+                    else if(session!!.recurrenceScope == RecurrenceEditScope.THIS_AND_FUTURE)
+                        result(cmd.requestId,"invalid","内容没有有效修改，未拆分重复序列")
                     else when(val saved=withContext(Dispatchers.IO){session!!.save()}) {
                         is PowerStore.DirectEditOutcome.Saved ->
                             result(cmd.requestId,"saved",saved.revision.toString())
@@ -488,6 +583,45 @@ internal class WebSkinEditService(
         reply
     }
 
+    /** Called only by the host-owned confirmation UI, never by a Web command. */
+    suspend fun resolveRecurrenceReview(token: String, approved: Boolean): JSONObject = gate.withLock {
+        val review=pendingRecurrenceReview
+            ?: return@withLock result("host-review","stale")
+        if(review.token!=token) return@withLock result("host-review","stale")
+        val active=session
+        val reply = try {
+            if(!approved) result(review.command.requestId,"cancelled")
+            else if(active==null || sessionId!=review.command.sessionId ||
+                active.form!=review.proposed ||
+                (active.recurrenceScope ?: RecurrenceEditScope.WHOLE_SERIES)!=review.scope ||
+                withContext(Dispatchers.IO){store.get(review.current.eventSeq)}!=review.current)
+                result(review.command.requestId,"conflict","事件或审查内容已变化")
+            else if(review.scope==RecurrenceEditScope.THIS_AND_FUTURE) {
+                when(val split=withContext(Dispatchers.IO){active.saveThisAndFuture()}) {
+                    is PowerStore.RecurrenceSplitOutcome.Applied -> {
+                        withContext(Dispatchers.IO){active.close()}
+                        session=null;sessionId=null
+                        result(review.command.requestId,"saved",split.newEventSeq.toString())
+                    }
+                    is PowerStore.RecurrenceSplitOutcome.Conflict -> result(review.command.requestId,"conflict")
+                    is PowerStore.RecurrenceSplitOutcome.Invalid -> result(review.command.requestId,"invalid",split.reason)
+                    PowerStore.RecurrenceSplitOutcome.Locked -> result(review.command.requestId,"locked")
+                }
+            } else when(val saved=withContext(Dispatchers.IO){active.save()}) {
+                is PowerStore.DirectEditOutcome.Saved -> result(review.command.requestId,"saved",saved.revision.toString())
+                is PowerStore.DirectEditOutcome.Conflict -> result(review.command.requestId,"conflict")
+                is PowerStore.DirectEditOutcome.Invalid -> result(review.command.requestId,"invalid",saved.reason)
+                PowerStore.DirectEditOutcome.Locked -> result(review.command.requestId,"locked")
+            }
+        } catch(e:kotlinx.coroutines.CancellationException) { throw e }
+          catch(e:Exception) { result(review.command.requestId,"failed","Host operation failed; retry or recover") }
+        pendingRecurrenceReview=null
+        completed[review.command.requestId]=review.command to JSONObject(reply.toString())
+        latest=reply
+        hasActiveUiSession=session!=null || newEventSession!=null || deckOpen
+        reply
+    }
+
     /** Host lifecycle checkpoint; never drop dirty state on a failed flush. */
     suspend fun checkpoint(): Boolean = gate.withLock {
         val active=session
@@ -523,6 +657,12 @@ internal class WebSkinEditService(
         if(session!=null) {
             withContext(Dispatchers.IO){session!!.close()}
             session=null;sessionId=null
+        }
+        pendingRecurrenceReview?.let { review ->
+            val cancelled=result(review.command.requestId,"cancelled")
+            completed[review.command.requestId]=review.command to JSONObject(cancelled.toString())
+            latest=cancelled
+            pendingRecurrenceReview=null
         }
         deckOpen=false
         hasActiveUiSession=false

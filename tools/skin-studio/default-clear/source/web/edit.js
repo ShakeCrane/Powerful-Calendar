@@ -30,7 +30,14 @@ function perform(name,args={}){
   queue=job;
   return job.then(reply=>{
     busy=false;
+    showReply(reply);
+    return reply;
+  });
+}
+function showReply(reply){
     const labels={saved:"事件已保存",committed:"草稿已发布",discarded:"已丢弃，可以撤销",
+      discarded_changes:"已放弃本次修改",selected:"已选择",
+      confirmation_required:"请在宿主确认完整修改",cancelled:"已取消保存，修改仍保留",
       restored:"已恢复",flushed:"修改已暂存",closed:"已安全退出",
       stale:"数据已变化，请重新审查",locked:"被其他业务操作锁定",
       invalid:"输入无效，请检查完整性",conflict:"存在版本冲突，请审查差异",
@@ -38,8 +45,6 @@ function perform(name,args={}){
       unavailable:"与宿主的连接已断开",duplicate_request_id:"重复命令标识被拒绝",
       failed:"未成功，数据已保留在宿主"};
     status.textContent=labels[reply.status]||reply.detail||"";
-    return reply;
-  });
 }
 function onResult(reply){
   const fn=pending.get(reply.requestId);
@@ -78,13 +83,17 @@ function row(form,key,label,kind="text",choices=null){
   control.addEventListener("change",()=>patch(key,String(control.value)));
   container.append(control);return container;
 }
-function renderForm(form){
+function renderForm(form,occurrenceOnly=false){
   fields.append(row(form,"title","标题"));
   if(["ACTIVITY","ALARM","MEMO"].includes(form.kind))
     fields.append(row(form,"startText",form.kind==="MEMO"?"开始日期":"开始时间"));
   if(["ACTIVITY","DEADLINE","MEMO"].includes(form.kind))
     fields.append(row(form,"endText",form.kind==="DEADLINE"?
       "截止日期或时刻":form.kind==="MEMO"?"结束日期":"结束时间"));
+  if(occurrenceOnly){
+    fields.append(el("p","仅本次可修改标题和时间；地点、备注、提醒与重复规则保持不变。","sheet-note"));
+    return;
+  }
   fields.append(row(form,"location","地点"));
   fields.append(row(form,"notes","备注","notes"));
   fields.append(row(form,"enabled","启用",null,[["true","开启"],["false","关闭"]]));
@@ -101,7 +110,6 @@ function renderForm(form){
     fields.append(row(form,"recurrenceInterval","重复间隔","number"));
     fields.append(row(form,"recurrenceFrom","开始生效日期 YYYY-MM-DD"));
     fields.append(row(form,"recurrenceUntil","结束生效日期 YYYY-MM-DD"));
-    fields.append(el("p","重复编辑作用于整条规则，不支持单实例修改","sheet-note"));
   }
   fields.append(el("p","来源 "+(form.source||"—")+" · 时区 "+(form.zoneId||"—"),"sheet-note"));
 }
@@ -116,7 +124,9 @@ function render(){
   if(!next){mode="";identity="";fingerprint="";visible(false);return}
   visible(true);
   const form=next==="event"?editor.form:deck.form;
-  const current=JSON.stringify(form||{});
+  const current=JSON.stringify({form,scope:editor.recurrenceScope,
+    requiresScope:editor.requiresRecurrenceScope,dirty:editor.dirty,
+    awaitingConfirmation:editor.awaitingConfirmation});
   const focused=!!document.activeElement?.closest?.("#sheetFields");
   const changed=mode!==next||identity!==id||(!focused&&fingerprint!==current);
   mode=next;identity=id;
@@ -128,9 +138,27 @@ function render(){
     "#"+(editor.eventSeq||"?")+" · "+(form?.kind||""):
     String(deck.cards?.length||0)+" 张 · "+(deck.dirty?"尚未暂存":"已暂存");
   $("sheetSave").textContent=mode==="event"?"保存":"发布";
-  $("sheetSave").disabled=!form||deck.aiLocked===true;
-  if(form)renderForm(form);
+  const requiresScope=mode==="event"&&editor.requiresRecurrenceScope===true;
+  const scope=editor.recurrenceScope||"";
+  $("sheetSave").disabled=!form||deck.aiLocked===true||editor.awaitingConfirmation===true||
+    (requiresScope&&!scope);
+  if(form&&(!requiresScope||scope))renderForm(form,scope==="SINGLE_OCCURRENCE");
+  else if(requiresScope)fields.append(el("p","请先选择编辑范围，再修改字段或保存。","sheet-note"));
   if(mode==="event"){
+    if(requiresScope){
+      const chooser=el("nav",null,"sheet-cards");chooser.setAttribute("aria-label","重复事件编辑范围");
+      for(const [value,label] of [["SINGLE_OCCURRENCE","仅本次"],
+        ["THIS_AND_FUTURE","本次及以后"],["WHOLE_SERIES","整个系列"]]){
+        const b=button(label,"scope","sheet-card");b.dataset.scope=value;
+        b.disabled=!!editor.dirty||!!editor.awaitingConfirmation||
+          (value!=="WHOLE_SERIES"&&!editor.canEditSelectedOccurrence);
+        b.setAttribute("aria-pressed",String(scope===value));
+        if(scope===value)b.classList.add("selected");
+        chooser.append(b);
+      }
+      actions.append(chooser);
+    }
+    if(editor.dirty)actions.append(button("放弃本次修改","discardChanges","sheet-secondary"));
     actions.append(button("保存检查点并退出","close","sheet-secondary"));
     actions.append(el("p","删除事件需要独立的受保护确认流程","sheet-note"));
   }else{
@@ -152,13 +180,19 @@ function render(){
       "原事件已经删除，恢复需要受保护的宿主确认","sheet-warning"));
   }
 }
-function onState(next){state=next;render()}
+function onState(next){
+  state=next;
+  const reply=next.editing?.lastResult;
+  if(reply?.requestId)showReply(reply);
+  render();
+}
 function routeAction(b,host){
   if(!host?.editing)return false;
   const name=b.dataset.action;
   if(name==="openEvent"){
-    void perform("editor.open",{eventSeq:Number(b.dataset.eventSeq),
-      expectedRevision:Number(b.dataset.revision)});return true;
+    const args={eventSeq:Number(b.dataset.eventSeq),expectedRevision:Number(b.dataset.revision)};
+    if(b.dataset.originalOccurrenceKey)args.occurrenceKey=b.dataset.originalOccurrenceKey;
+    void perform("editor.open",args);return true;
   }
   if(name==="openDeck"){void perform("deck.open",{draftId:null});return true}
   if(name==="createDraft"||name==="createMemo"){
@@ -187,7 +221,12 @@ $("sheetShade").addEventListener("click",()=>void close());
 actions.addEventListener("click",event=>{
   const b=event.target.closest("[data-do]");if(!b||busy)return;
   const deck=state.editing?.deck||{};
+  const editor=state.editing?.editor||{};
   switch(b.dataset.do){
+    case "scope":if(editor.sessionId&&b.dataset.scope)
+      void perform("editor.scope",{sessionId:editor.sessionId,scope:b.dataset.scope});break;
+    case "discardChanges":if(editor.sessionId)
+      void perform("editor.discardChanges",{sessionId:editor.sessionId});break;
     case "close":void close();break;
     case "select":if(b.dataset.draftId)
       void perform("deck.select",{draftId:Number(b.dataset.draftId)});break;

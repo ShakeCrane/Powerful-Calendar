@@ -20,7 +20,8 @@ async function main(){
     const origin=line.match(/http:\/\/127\.0\.0\.1:\d+/)?.[0];
     if(!origin)throw Error("No Studio URL: "+line);
     browser=spawn(chrome,["--headless=new","--disable-gpu","--no-sandbox",
-      "--disable-background-networking","--no-first-run","--no-default-browser-check",
+      "--disable-background-networking","--disable-site-isolation-trials",
+      "--disable-features=IsolateOrigins,site-per-process","--no-first-run","--no-default-browser-check",
       "--remote-allow-origins=*","--remote-debugging-port=0","--user-data-dir="+profile,
       "about:blank"],{stdio:"ignore"});
     const portFile=path.join(profile,"DevToolsActivePort");
@@ -100,6 +101,60 @@ async function main(){
     const result=await call("Runtime.evaluate",{expression,awaitPromise:true,returnByValue:true});
     if(result.exceptionDetails)throw Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text);
     console.log("BROWSER SOURCE ROUNDTRIP PASS",JSON.stringify(result.result.value));
+    const setup=await call("Runtime.evaluate",{awaitPromise:true,returnByValue:true,expression:`(async()=>{
+      for(let i=0;i<150;i++){
+        if(document.querySelector('#previewState').textContent.includes('连接成功'))break;
+        await new Promise(r=>setTimeout(r,100));
+      }
+      if(!document.querySelector('#previewState').textContent.includes('连接成功'))throw Error('preview not connected');
+      const scenario=document.querySelector('#scenario');scenario.value='repeating';
+      scenario.dispatchEvent(new Event('change',{bubbles:true}));
+      document.querySelector('#interactMode').click();
+      return true;
+    })()`});
+    if(setup.exceptionDetails)throw Error(setup.exceptionDetails.exception?.description || setup.exceptionDetails.text);
+    await call("Page.enable");
+    const tree=await call("Page.getFrameTree");
+    const child=tree.frameTree.childFrames?.find(frame=>frame.frame.url.includes("/preview/"));
+    if(!child)throw Error("Preview frame not found: "+JSON.stringify(tree.frameTree));
+    const world=await call("Page.createIsolatedWorld",{frameId:child.frame.id,worldName:"powercal-source-qa"});
+    const recurrence=await call("Runtime.evaluate",{contextId:world.executionContextId,awaitPromise:true,returnByValue:true,expression:`(async()=>{
+      const check=(v,m)=>{if(!v)throw Error(m)};
+      const wait=async(fn,m)=>{for(let i=0;i<150;i++){if(fn())return;await new Promise(r=>setTimeout(r,100))}throw Error(m)};
+      await wait(()=>document.querySelector('[data-original-occurrence-key]'),'repeating event missing');
+      const event=document.querySelector('[data-original-occurrence-key]');
+      const key=event.dataset.originalOccurrenceKey;event.click();
+      await wait(()=>!document.querySelector('#skinSheet').hidden,'editor not opened');
+      check(document.querySelector('#sheetSave').disabled,'save enabled before scope');
+      check(!document.querySelector('#sheetFields [data-field="title"]'),'fields visible before scope');
+      document.querySelector('[data-do="scope"][data-scope="SINGLE_OCCURRENCE"]').click();
+      await wait(()=>document.querySelector('[data-scope="SINGLE_OCCURRENCE"][aria-pressed="true"]'),'scope not selected');
+      check(!document.querySelector('#sheetFields [data-field="notes"]'),'single scope exposed notes');
+      const title=document.querySelector('#sheetFields [data-field="title"]');
+      title.value='单次修改';title.dispatchEvent(new Event('change',{bubbles:true}));
+      await wait(()=>document.querySelector('[data-do="discardChanges"]'),'dirty state missing');
+      check(document.querySelector('[data-scope="WHOLE_SERIES"]').disabled,'dirty scope switch enabled');
+      document.querySelector('[data-do="discardChanges"]').click();
+      await wait(()=>!document.querySelector('[data-do="discardChanges"]'),'discard did not clear dirty state');
+      document.querySelector('[data-do="scope"][data-scope="THIS_AND_FUTURE"]').click();
+      await wait(()=>document.querySelector('[data-scope="THIS_AND_FUTURE"][aria-pressed="true"]'),'future scope not selected');
+      const future=document.querySelector('#sheetFields [data-field="title"]');
+      future.value='后续修改';future.dispatchEvent(new Event('change',{bubbles:true}));
+      await wait(()=>document.querySelector('[data-do="discardChanges"]'),'future dirty state missing');
+      document.querySelector('#sheetSave').click();
+      await wait(()=>document.querySelector('#sheetStatus').textContent.includes('宿主确认'),'host review not requested');
+      check(!document.querySelector('#skinSheet').hidden,'review request closed before approval');
+      return {key,scope:'single, discard, future'};
+    })()`});
+    if(recurrence.exceptionDetails)throw Error(recurrence.exceptionDetails.exception?.description || recurrence.exceptionDetails.text);
+    const approval=await call("Runtime.evaluate",{expression:"!document.querySelector('#mockApproval').hidden && (document.querySelector('#mockApprove').click(),true)",returnByValue:true});
+    if(approval.result.value!==true)throw Error("Mock host confirmation missing");
+    const closed=await call("Runtime.evaluate",{contextId:world.executionContextId,awaitPromise:true,returnByValue:true,expression:`(async()=>{
+      for(let i=0;i<150;i++){if(document.querySelector('#skinSheet').hidden)return true;await new Promise(r=>setTimeout(r,100))}
+      throw Error('approved future save did not close');
+    })()`});
+    if(closed.exceptionDetails)throw Error(closed.exceptionDetails.exception?.description || closed.exceptionDetails.text);
+    console.log("BROWSER RECURRENCE MOCK PASS",JSON.stringify(recurrence.result.value));
     socket.close();
   }finally{
     if(browser)browser.kill();

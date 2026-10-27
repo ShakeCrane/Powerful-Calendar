@@ -1,0 +1,142 @@
+package dev.powerfulcalendar.ui.v2
+
+import android.content.Context
+import android.os.SystemClock
+import android.view.View
+import android.view.ViewGroup
+import android.webkit.WebView
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import dev.powerfulcalendar.core.DraftForm
+import dev.powerfulcalendar.core.PowerStore
+import dev.powerfulcalendar.core.Recurrence
+import dev.powerfulcalendar.core.RecurrenceFreq
+import dev.powerfulcalendar.core.TemporalKind
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import java.time.LocalDate
+import java.time.ZoneId
+import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
+
+@RunWith(AndroidJUnit4::class)
+class WebSkinRecurrenceInstrumentedTest {
+    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+
+    private fun findWebView(view: View): WebView? {
+        if (view is WebView) return view
+        if (view is ViewGroup) for (i in 0 until view.childCount) {
+            findWebView(view.getChildAt(i))?.let { return it }
+        }
+        return null
+    }
+
+    private fun evaluate(web: WebView, expression: String): String {
+        val value = AtomicReference<String>()
+        val done = CountDownLatch(1)
+        compose.runOnUiThread {
+            web.evaluateJavascript(expression) { reply -> value.set(reply); done.countDown() }
+        }
+        assertTrue("WebView JavaScript response timed out", done.await(10, TimeUnit.SECONDS))
+        return value.get()
+    }
+
+    private fun awaitJs(web: WebView, condition: String) {
+        val deadline = SystemClock.uptimeMillis() + 30_000
+        while (SystemClock.uptimeMillis() < deadline) {
+            if (evaluate(web, condition) == "true") return
+            Thread.sleep(100)
+        }
+        throw AssertionError("WebView condition timed out: $condition")
+    }
+
+    @Test fun actualWebViewEditsOnlyTheSelectedRecurrence() {
+        val context: Context = compose.activity.applicationContext
+        val database = "skin-rec-${UUID.randomUUID()}.db"
+        val store = PowerStore(context, database)
+        val zone = ZoneId.systemDefault()
+        val today = LocalDate.now(zone)
+        val first = today.minusDays(1).atTime(9, 0).atZone(zone).toInstant().toEpochMilli()
+        val card = store.newDraft(DraftForm(kind = TemporalKind.ALARM, title = "重复测试",
+            startText = DraftForm.formatInstant(first, zone), zoneId = zone.id,
+            reminderMinutes = -1, recurrence = Recurrence(freq = RecurrenceFreq.DAILY, count = 4)))
+        assertTrue(store.commit(card.draftId) is PowerStore.CommitOutcome.Committed)
+        val original = requireNotNull(store.get(card.eventSeq))
+        val key = today.toString() + "T09:00"
+        context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+            .edit().putBoolean("system-calendar-import-asked", true).commit()
+
+        try {
+            compose.runOnUiThread {
+                SkinPackageManager(context).select("powercal-clear-default")
+                compose.activity.setContent { PowerCalTheme { PowerCalApp(store) } }
+            }
+            var web: WebView? = null
+            compose.waitUntil(30_000) {
+                compose.runOnUiThread {
+                    web = findWebView(compose.activity.findViewById(android.R.id.content))
+                }
+                web != null
+            }
+            assertNotNull(web)
+            val view = requireNotNull(web)
+            val event = "document.querySelector('[data-original-occurrence-key=\"$key\"]')"
+            awaitJs(view, "!!$event")
+            evaluate(view, "$event.click(); true")
+            awaitJs(view, "!document.querySelector('#skinSheet').hidden")
+            assertEquals("true", evaluate(view, "document.querySelector('#sheetSave').disabled"))
+            assertEquals("true", evaluate(view, "!document.querySelector('#sheetFields [data-field=title]')"))
+            evaluate(view, "document.querySelector('[data-scope=SINGLE_OCCURRENCE]').click(); true")
+            awaitJs(view, "document.querySelector('[data-scope=SINGLE_OCCURRENCE]').getAttribute('aria-pressed')==='true'")
+            assertEquals("true", evaluate(view, "!document.querySelector('#sheetFields [data-field=notes]')"))
+            evaluate(view, "const input=document.querySelector('#sheetFields [data-field=title]'); input.value='仅本次 WebView'; input.dispatchEvent(new Event('change',{bubbles:true})); true")
+            awaitJs(view, "!!document.querySelector('[data-do=discardChanges]')")
+            evaluate(view, "document.querySelector('#sheetSave').click(); true")
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithText("确认重复事件修改").fetchSemanticsNodes().isNotEmpty()
+            }
+            assertEquals(original, store.get(card.eventSeq))
+            compose.onNodeWithText("取消").performClick()
+            awaitJs(view, "document.querySelector('#sheetStatus').textContent.includes('已取消保存')")
+            assertEquals(original, store.get(card.eventSeq))
+            evaluate(view, "document.querySelector('#sheetSave').click(); true")
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithText("确认重复事件修改").fetchSemanticsNodes().isNotEmpty()
+            }
+            assertEquals(original, store.get(card.eventSeq))
+            compose.onNodeWithText("确认保存").performClick()
+            compose.waitUntil(30_000) {
+                store.get(card.eventSeq)?.recurrence?.overrides?.get(key)?.title == "仅本次 WebView"
+            }
+            val saved = requireNotNull(store.get(card.eventSeq))
+            assertEquals(original.revision + 1, saved.revision)
+            assertEquals(original.title, saved.title)
+            assertEquals(1, saved.recurrence.overrides.size)
+            assertEquals(1, store.all().size)
+            // The SQLite write can finish before the Host publishes the result;
+            // the sheet intentionally ignores another action while it is busy.
+            awaitJs(view, "document.querySelector('#sheetStatus').textContent.includes('事件已保存')")
+            evaluate(view, "document.querySelector('#sheetClose').click(); true")
+            awaitJs(view, "document.querySelector('#skinSheet').hidden")
+        } finally {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            store.close()
+            context.deleteDatabase(database)
+        }
+    }
+}

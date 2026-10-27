@@ -72,6 +72,8 @@ async function loadPackage(data){
   sourceFiles=files;manifest=copy(data.manifest);
   project=parseProject();
   projectBaseline=JSON.stringify(project);
+  mockEditing={editor:{open:false},deck:{open:false},lastResult:null};
+  mockApproval=null;$("mockApproval").hidden=true;
   selectedLayer=project.layers[0]?.id||null;dirty=false;
   // Fork the protected factory identity before an ordinary user exports it.
   // Its HTML/CSS/JS/assets/project remain the exact bundled source.
@@ -483,8 +485,10 @@ function simulatedState(){
     startMillis:base-6000000,endMillis:base+4500000,precision:"INSTANT",deadlineDate:null
   }));
   if(scenario==="repeating")rows=[
-    {...rows[0],eventSeq:8,occurrenceKey:"8:20261022T090000",title:"重复课程 · 本次"},
+    {...rows[0],eventSeq:8,occurrenceKey:"8:20261022T090000",
+      originalOccurrenceKey:"2026-10-22T09:00",title:"重复课程 · 本次"},
     {...rows[0],eventSeq:8,occurrenceKey:"8:20261023T090000",title:"重复课程 · 明天",
+      originalOccurrenceKey:"2026-10-23T09:00",
       startMillis:rows[0].startMillis+86400000,endMillis:rows[0].endMillis+86400000}
   ];
   const items=[
@@ -532,23 +536,71 @@ const mockForm=kind=>({kind,title:"",startText:"2026-10-22 09:00",
   reminderMethod:"MESSAGE",reminderTiming:"OFFSET",source:"local",
   zoneId:"Asia/Shanghai",recurrenceFreq:"NONE",recurrenceInterval:1,
   recurrenceFrom:null,recurrenceUntil:null});
-let mockEditing={editor:{open:false},deck:{open:false},lastResult:null};
+let mockEditing={editor:{open:false},deck:{open:false},lastResult:null},mockApproval=null;
+function resolveMockApproval(approved){
+  if(!mockApproval)return;
+  const request=mockApproval;mockApproval=null;$("mockApproval").hidden=true;
+  const editor=mockEditing.editor;
+  if(editor.open){
+    editor.awaitingConfirmation=false;
+    if(approved&&request.scope==="THIS_AND_FUTURE")mockEditing.editor={open:false};
+    else if(approved){editor.dirty=false;editor.baseline={...editor.form};editor.scopeBaseline={...editor.form}}
+  }
+  mockEditing.lastResult={requestId:request.requestId,status:approved?"saved":"cancelled"};
+  logAction("仅预览：模拟宿主"+(approved?"确认":"取消"));postState();
+}
 function onSkinCommand(p){
   if(!p || !/^[A-Za-z0-9_-]{8,64}$/.test(p.requestId||""))return;
   const result={requestId:p.requestId,status:"invalid"};
   const editor=mockEditing.editor,deck=mockEditing.deck;
+  if(mockApproval){
+    result.status="locked";mockEditing.lastResult=result;
+    try{previewPort?.postMessage(JSON.stringify({version:1,type:"result",payload:result}))}catch{}
+    postState();return;
+  }
   switch(p.name){
     case "editor.open":
       mockEditing.editor={open:true,sessionId:"00000000-0000-0000-0000-000000000001",
-        eventSeq:p.eventSeq,dirty:false,form:{...mockForm("ACTIVITY"),title:"测试活动"}};
+        eventSeq:p.eventSeq,dirty:false,requiresRecurrenceScope:!!p.occurrenceKey,
+        canEditSelectedOccurrence:!!p.occurrenceKey,recurrenceScope:null,
+        occurrenceKey:p.occurrenceKey||null,form:{...mockForm("ACTIVITY"),title:"测试活动"}};
+      mockEditing.editor.baseline={...mockEditing.editor.form};
       result.status="opened";break;
+    case "editor.scope":
+      if(editor.open&&editor.sessionId===p.sessionId&&editor.requiresRecurrenceScope&&
+        !editor.dirty&&["SINGLE_OCCURRENCE","THIS_AND_FUTURE","WHOLE_SERIES"].includes(p.scope)&&
+        (p.scope==="WHOLE_SERIES"||editor.canEditSelectedOccurrence)){
+        editor.recurrenceScope=p.scope;
+        editor.form={...editor.baseline};
+        if(p.scope!=="WHOLE_SERIES"&&editor.occurrenceKey)
+          editor.form.startText=editor.occurrenceKey.replace("T"," ");
+        editor.scopeBaseline={...editor.form};result.status="selected";
+      }else result.status="invalid";
+      break;
+    case "editor.discardChanges":
+      if(editor.open&&editor.sessionId===p.sessionId){
+        editor.form={...(editor.scopeBaseline||editor.baseline)};
+        editor.dirty=false;result.status="discarded_changes";
+      }else result.status="stale";
+      break;
     case "editor.patch":
       if(editor.open&&editor.sessionId===p.sessionId){
-        editor.form[p.field]=p.value;editor.dirty=true;result.status="edited";
+        if((editor.requiresRecurrenceScope&&!editor.recurrenceScope)||
+          (editor.recurrenceScope==="SINGLE_OCCURRENCE"&&
+            !["title","startText","endText"].includes(p.field)))result.status="invalid";
+        else {editor.form[p.field]=p.value;editor.dirty=true;result.status="edited"}
       }else result.status="stale";
       break;
     case "editor.save":
-      result.status=editor.open?"saved":"stale";break;
+      if(!editor.open)result.status="stale";
+      else if((editor.requiresRecurrenceScope&&!editor.recurrenceScope)||
+        (editor.recurrenceScope==="THIS_AND_FUTURE"&&!editor.dirty))result.status="invalid";
+      else if(editor.dirty&&(editor.requiresRecurrenceScope||editor.form.recurrenceFreq!=="NONE")){
+        editor.awaitingConfirmation=true;
+        mockApproval={requestId:p.requestId,scope:editor.recurrenceScope||"WHOLE_SERIES"};
+        $("mockApproval").hidden=false;result.status="confirmation_required";
+      } else result.status="saved";
+      break;
     case "editor.close":
       mockEditing.editor={open:false};result.status="closed";break;
     case "deck.create":{
@@ -692,6 +744,8 @@ function exportProject(){
   dirty=false;say("已保存包含完整 Web 源码、图层与素材的 v3 编辑工程。");
 }
 function bindUI(){
+  $("mockApprove").onclick=()=>resolveMockApproval(true);
+  $("mockReject").onclick=()=>resolveMockApproval(false);
   $("simpleMode").onclick=()=>switchMode("simple");
   $("advancedMode").onclick=()=>switchMode("advanced");
   $("editMode").onclick=()=>{

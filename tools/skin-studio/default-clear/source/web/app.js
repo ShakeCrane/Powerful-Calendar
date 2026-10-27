@@ -118,6 +118,7 @@ function renderTimeline(){
     const card=node("button","tEvent "+kind,item.title);
     card.type="button";card.dataset.action="openEvent";
     card.dataset.eventSeq=item.eventSeq;card.dataset.revision=item.revision;
+    if(item.originalOccurrenceKey)card.dataset.originalOccurrenceKey=item.originalOccurrenceKey;
     card.style.top=start+"%";card.style.height=height+"%";
     const lane=Number(item.lane)||0;
     card.style.width=Math.min(84,Math.max(42,84-4*lane))+"%";
@@ -162,6 +163,7 @@ function renderMonth(){
     const button=node("button","agenda-event",item.title);
     button.dataset.action="openEvent";
     button.dataset.eventSeq=item.eventSeq;button.dataset.revision=item.revision;
+    if(item.originalOccurrenceKey)button.dataset.originalOccurrenceKey=item.originalOccurrenceKey;
     agenda.append(button);
   }
   if(month.truncated)agenda.append(node("p","quiet","本月事件超过投影上限，部分数据未显示"));
