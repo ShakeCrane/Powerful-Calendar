@@ -39,10 +39,14 @@ Save, delete, conflict resolution, AI authorization, credentials,
 backups, permission prompts, and confirmations remain native host surfaces.
 
 The WebView disables file/content access, DOM database/geolocation, popups, mixed content and all
-network loads. Requests and completed top-level pages are accepted only at the exact
-`https://skin.powercal.local/` origin (no alternate scheme, host, credentials, or port); CSP blocks connections,
-frames, objects and non-package scripts. A load watchdog falls back to Compose. System reduced
-motion is sent to the skin and package CSS must also honor `prefers-reduced-motion`.
+network loads. Each WebView session receives a fresh synthetic HTTPS origin under
+`<random>.skin.powercal.local`; the exact entrypoint and package resources are served only for that
+session origin. This prevents a prior package's service-worker registration from controlling a later
+skin session. WebView cookies are disabled, and the process-wide Service Worker settings deny file,
+content and network access, disable cache use, and reject Service Worker requests. These settings
+are installed before the app creates its WebView. CSP also blocks connections, frames, objects and
+non-package scripts. A load watchdog falls back to Compose. System reduced motion is sent to the
+skin and package CSS must also honor `prefers-reduced-motion`.
 
 ## Activation, example scope and native recovery
 

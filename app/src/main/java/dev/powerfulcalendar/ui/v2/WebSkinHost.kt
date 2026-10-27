@@ -176,12 +176,14 @@ internal fun WebSkinRoot(
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 private fun SecureWebSkin(bundle: WebSkinBundle, modifier: Modifier, onFailure: () -> Unit) {
-    val origin = "https://skin.powercal.local/"
+    val skinOrigin = remember(bundle) { WebSkinOrigin.newSession() }
     val context = androidx.compose.ui.platform.LocalContext.current
     val feed = remember(bundle) { WebSkinStateFeed() }
     val live = remember(bundle) { AtomicBoolean(true) }
     val session = remember(bundle) { WebSkinWebSession() }
-    val webView = remember(bundle) {
+    val webViewResult = remember(bundle) {
+        runCatching {
+        WebSkinServiceWorkerPolicy.install()
         WebView(context).apply {
             setBackgroundColor(Color.TRANSPARENT)
             settings.javaScriptEnabled = true
@@ -206,12 +208,11 @@ private fun SecureWebSkin(bundle: WebSkinBundle, modifier: Modifier, onFailure: 
                     return true
                 }
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
-                    request.url.toString() != origin + bundle.entrypoint
+                    !skinOrigin.isEntrypoint(request.url.toString(), bundle.entrypoint)
 
                 override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
                     val uri = request.url
-                    if (uri.scheme != "https" || uri.host != "skin.powercal.local" ||
-                        uri.port != -1 || uri.userInfo != null || uri.query != null) {
+                    if (!skinOrigin.acceptsResource(uri.toString())) {
                         return WebResourceResponse("text/plain", "utf-8", 403, "Blocked", emptyMap(),
                             ByteArrayInputStream(ByteArray(0)))
                     }
@@ -242,7 +243,7 @@ private fun SecureWebSkin(bundle: WebSkinBundle, modifier: Modifier, onFailure: 
                 override fun onPageFinished(view: WebView, url: String) {
                     if (!live.get()) return
                     val finished = Uri.parse(url)
-                    if (url != origin + bundle.entrypoint ||
+                    if (!skinOrigin.isEntrypoint(url, bundle.entrypoint) ||
                         finished.userInfo != null || finished.port != -1) {
                         onFailure()
                         return
@@ -292,7 +293,8 @@ private fun SecureWebSkin(bundle: WebSkinBundle, modifier: Modifier, onFailure: 
                             }
                         }
                     })
-                    view.postWebMessage(android.webkit.WebMessage("powercal-port", arrayOf(channels[1])), Uri.parse(origin))
+                    view.postWebMessage(android.webkit.WebMessage("powercal-port", arrayOf(channels[1])),
+                        Uri.parse(skinOrigin.baseUrl))
                     feed.connect { frame ->
                         runCatching { channels[0].postMessage(android.webkit.WebMessage(frame)) }
                             .onFailure { onFailure() }
@@ -301,9 +303,15 @@ private fun SecureWebSkin(bundle: WebSkinBundle, modifier: Modifier, onFailure: 
                         .onFailure { onFailure() }
                 }
             }
-            loadUrl(origin + bundle.entrypoint)
+            loadUrl(skinOrigin.entrypoint(bundle.entrypoint))
+        }
         }
     }
+    val webView = webViewResult.getOrNull()
+    LaunchedEffect(webViewResult.isFailure) {
+        if (webViewResult.isFailure) onFailure()
+    }
+    if (webView == null) return
     AndroidView({ webView }, modifier)
     LaunchedEffect(webView, feed) {
         snapshotFlow {

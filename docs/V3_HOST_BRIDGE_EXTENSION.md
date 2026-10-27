@@ -169,9 +169,13 @@ continue to use their existing selection/default behavior.
 
 ## Sandboxing and lifecycle
 
-The host still runs package HTML/CSS/JS entirely offline, from the exact
-`https://skin.powercal.local/` namespace; no remote access, credentials,
-PowerStore, arbitrary native function calls or file access.
+The host still runs package HTML/CSS/JS entirely offline. Each WebView session
+uses a fresh synthetic HTTPS origin under `<random>.skin.powercal.local`; only
+that session's entrypoint and packaged resources are accepted. Cookies are
+disabled and process-wide Service Worker settings deny file/content/network
+access and reject worker requests. This prevents persistent worker state from
+being shared between skin sessions. No remote access, credentials, PowerStore,
+arbitrary native function calls or file access is exposed.
 The active page channel is disposed/replaced during reload; a stale channel
 must not reach the host. State is a bounded projection, not a database view.
 Skins may own and freely present a settings landing page and may invoke only

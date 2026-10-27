@@ -5,6 +5,17 @@
 > editing commands. The narrower statements below describe that checkpoint, not current
 > implementation. See `SKIN_SEPARATION_PARITY_MATRIX_2026-10-27.md` for the current audit.
 
+## 2026-10-28 security amendment: session-scoped WebView origin
+
+The historical wire-format examples below use the former fixed origin. Current
+`SecureWebSkin` creates a random HTTPS origin per WebView session under
+`<random>.skin.powercal.local` and accepts only that session's packaged entrypoint
+and resources. Cookies are disabled; process-wide Service Worker settings block
+network/file/content access and reject worker requests. See
+[`SKIN_PACK_V3.md`](SKIN_PACK_V3.md) for the current runtime boundary and
+[`PC-ISSUE-SEPARATION-WEBVIEW-SESSION-ORIGIN.md`](issues/PC-ISSUE-SEPARATION-WEBVIEW-SESSION-ORIGIN.md)
+for implementation evidence and device-test limits.
+
 ## 2026-10-27 addition: recurring event scope and host review
 
 The v1 command envelope remains unchanged. `editor.open` accepts its legacy
