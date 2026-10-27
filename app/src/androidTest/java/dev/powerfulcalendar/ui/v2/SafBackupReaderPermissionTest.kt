@@ -21,7 +21,7 @@ class SafBackupReaderPermissionTest {
     fun revokedUriGrantSurfacesSafeFailureWithoutChangingStore() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val targetContext = instrumentation.targetContext
-        val uri = RevocableSafTestProvider.SYNTHETIC_URI
+        val uri = RevocableSafTestProvider.syntheticUri(instrumentation.context)
         val databaseName = "saf-revoked-" + UUID.randomUUID() + ".db"
         val store = PowerStore(targetContext, databaseName)
 

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <permission
-        android:name="dev.powerfulcalendar.androidtest.permission.READ_SYNTHETIC_BACKUP"
+        android:name="${applicationId}.androidtest.permission.READ_SYNTHETIC_BACKUP"
         android:protectionLevel="signature" />
     <application>
         <activity
@@ -15,9 +15,9 @@
             android:exported="false" />
         <provider
             android:name="dev.powerfulcalendar.interop.RevocableSafTestProvider"
-            android:authorities="dev.powerfulcalendar.androidtest.revocable-saf"
+            android:authorities="${applicationId}.androidtest.revocable-saf"
             android:exported="true"
-            android:readPermission="dev.powerfulcalendar.androidtest.permission.READ_SYNTHETIC_BACKUP"
+            android:readPermission="${applicationId}.androidtest.permission.READ_SYNTHETIC_BACKUP"
             android:grantUriPermissions="true" />
     </application>
 </manifest>

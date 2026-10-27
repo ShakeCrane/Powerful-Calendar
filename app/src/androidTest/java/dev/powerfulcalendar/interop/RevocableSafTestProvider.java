@@ -15,9 +15,12 @@ import java.nio.charset.StandardCharsets;
 /** Synthetic provider fixture used only to exercise Android's URI-grant enforcement. */
 public final class RevocableSafTestProvider extends ContentProvider {
     public static final String TARGET_PACKAGE = "dev.powerfulcalendar";
-    public static final Uri SYNTHETIC_URI = Uri.parse(
-            "content://dev.powerfulcalendar.androidtest.revocable-saf/backup/probe");
     public static final String SYNTHETIC_BACKUP = "synthetic backup content";
+
+    public static Uri syntheticUri(Context testContext) {
+        return Uri.parse("content://" + testContext.getPackageName()
+                + ".androidtest.revocable-saf/backup/probe");
+    }
 
     @Override
     public boolean onCreate() {
@@ -42,15 +45,16 @@ public final class RevocableSafTestProvider extends ContentProvider {
         }
         Context providerContext = getContext();
         if (providerContext == null) throw new IllegalStateException("provider is detached");
+        Uri syntheticUri = syntheticUri(providerContext);
         switch (method) {
             case "grantRead":
                 providerContext.grantUriPermission(
-                        targetPackage, SYNTHETIC_URI,
+                        targetPackage, syntheticUri,
                         android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION);
                 break;
             case "revokeRead":
                 providerContext.revokeUriPermission(
-                        targetPackage, SYNTHETIC_URI,
+                        targetPackage, syntheticUri,
                         android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION);
                 break;
             default:
