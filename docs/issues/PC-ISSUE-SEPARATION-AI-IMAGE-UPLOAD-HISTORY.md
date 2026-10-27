@@ -58,4 +58,4 @@ No emulator binary or Android system image is available in this SDK environment.
 
 ## Git
 
-This report is paired with the test-only change and a narrow SEP-09 evidence update. Commit and push details are recorded after verification.
+The test-only change and narrow SEP-09 evidence update were committed as `327a9aa9604d83bffa0154f795faeabb3913e22a` (`test(skin): 验证图片上传授权与聊天历史隐私`) and pushed to `origin/feat/skin-first-separation`.
