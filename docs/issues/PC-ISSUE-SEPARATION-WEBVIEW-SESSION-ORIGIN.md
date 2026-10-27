@@ -4,7 +4,7 @@
 - **日期：** 2026-10-28
 - **分支：** `codex/separation-skin-settings`
 - **修复基线：** `6a13c828453bc538e313e63ee41ff15fb5553325`
-- **实现提交：** 见本报告提交后的 Git 记录；提交完成后回填。
+- **实现提交：** `0447b5cdcb39ecf137416757d4d3c0e5f7151698`。
 
 ## 问题与影响
 
@@ -75,5 +75,5 @@ gradle :app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :
 
 ## Git 交付
 
-- 代码、测试、本报告及关联契约文档将作为本 Issue 的受控提交推送到 `origin/codex/separation-skin-settings`。
-- 提交 SHA 在提交后写回此处；未推送前不宣称远端交付完成。
+- 代码、测试及关联契约文档已由实现提交 `0447b5cdcb39ecf137416757d4d3c0e5f7151698` 提交。
+- 本报告通过后续独立文档提交补入实现 SHA。完成推送前不宣称远端交付完成。
