@@ -18,7 +18,11 @@ import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ApplicationProvider
 import dev.powerfulcalendar.ai.AiSettings
 import dev.powerfulcalendar.ai.AiSettingsStore
+import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.PowerStore
+import dev.powerfulcalendar.core.PowerStore.CommitOutcome
+import dev.powerfulcalendar.core.TemporalKind
+import dev.powerfulcalendar.core.TemporalRecord
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.After
@@ -189,6 +193,229 @@ class WebAiProposalReviewIntegrationTest {
             assertEquals(0, store.pendingCount())
             assertEquals(1L, store.commitCount())
             assertEquals(1L, store.identityCount())
+        }
+    }
+
+    @Test
+    fun replaceAndDeleteCandidatesCommitOnlyAfterTrustedHostConfirmation() {
+        val zone = ZoneId.of("Asia/Shanghai")
+        val replaceTarget = seedMemo("原会议标题", zone)
+        val deleteTarget = seedMemo("过期提醒", zone)
+        val userText = "帮我创建一个正式事项处理提案，2026-12-01：把备忘 #${replaceTarget.eventSeq} " +
+            "标题改成项目回顾，并删除备忘 #${deleteTarget.eventSeq}。"
+        val structured = JSONObject().put("events", JSONArray()
+            .put(JSONObject()
+                .put("operation", "REPLACE")
+                .put("eventSeq", replaceTarget.eventSeq)
+                .put("kind", "MEMO")
+                .put("title", "项目回顾"))
+            .put(JSONObject()
+                .put("operation", "DELETE")
+                .put("eventSeq", deleteTarget.eventSeq)
+                .put("kind", "MEMO")
+                .put("title", deleteTarget.title))).toString()
+        val requests = CopyOnWriteArrayList<String>()
+        val serverFailure = AtomicReference<Throwable?>()
+        val served = CountDownLatch(2)
+        val before = counts()
+
+        ServerSocket(0, 4, InetAddress.getByName("127.0.0.1")).use { server ->
+            server.soTimeout = 15_000
+            AiSettingsStore.save(context, AiSettings(
+                endpoint = "http://127.0.0.1:${server.localPort}/v1",
+                model = "local-stub:free",
+                apiKey = "LOCAL_TEST_ONLY",
+                enabled = true,
+                shareContext = true
+            ))
+            val responses = listOf(
+                "我会生成两项待核对操作。" +
+                    "[[POWERCAL_DRAFT]]{\"type\":\"draft\",\"intent\":\"explicit\"}[[/POWERCAL_DRAFT]]",
+                structured
+            )
+            val serverThread = Thread {
+                try {
+                    repeat(responses.size) { index ->
+                        server.accept().use { socket ->
+                            socket.soTimeout = 10_000
+                            requests += readRequest(socket)
+                            writeReply(socket, responses[index])
+                        }
+                        served.countDown()
+                    }
+                } catch (error: Throwable) {
+                    serverFailure.set(error)
+                    while (served.count > 0) served.countDown()
+                }
+            }.apply { name = "pc-web-ai-replace-delete-stub"; isDaemon = true; start() }
+
+            ui.activity.setContent {
+                CompositionLocalProvider(LocalContext provides context) {
+                    PowerCalTheme { PowerCalApp(store) }
+                }
+            }
+            ui.waitForIdle()
+            ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.Routed("ai")) }
+            ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.SendChat(userText)) }
+
+            var reviewState: JSONObject? = null
+            ui.waitUntil(20_000) {
+                val state = WebSkinBridgeRuntime.state()
+                val review = state.optJSONObject("aiProposalReview")
+                if (review?.optJSONArray("proposals")?.length() == 2 &&
+                    !state.optBoolean("chatBusy")) {
+                    reviewState = review
+                    true
+                } else serverFailure.get() != null
+            }
+            assertNull("local AI stub failed: ${serverFailure.get()}", serverFailure.get())
+            val review = requireNotNull(reviewState) { "Host did not project both operations" }
+            val proposals = review.getJSONArray("proposals")
+            assertEquals("REPLACE", proposals.getJSONObject(0).getString("operation"))
+            assertEquals("DELETE", proposals.getJSONObject(1).getString("operation"))
+            assertEquals(replaceTarget.revision, proposals.getJSONObject(0).getLong("targetRevision"))
+            assertEquals(deleteTarget.revision, proposals.getJSONObject(1).getLong("targetRevision"))
+            assertEquals("proposal review is read-only", before, counts())
+            assertTrue(served.await(1, TimeUnit.SECONDS))
+            serverThread.join(2_000)
+            assertNull("local AI stub failed: ${serverFailure.get()}", serverFailure.get())
+
+            ui.runOnIdle {
+                WebSkinBridgeRuntime.onAction(WebSkinAction.ResolveAiProposal(
+                    reviewId = review.getString("reviewId"),
+                    decision = AiProposalDecision.PUBLISH,
+                    indices = listOf(0, 1)
+                ))
+            }
+            ui.onNodeWithText("确认 AI 批量正式操作").assertExists()
+            ui.onNodeWithText("确认并提交 2 项").assertExists()
+            ui.onNodeWithText("#${replaceTarget.eventSeq} · 版本 ${replaceTarget.revision}",
+                substring = true).assertExists()
+            ui.onNodeWithText("#${deleteTarget.eventSeq} · 版本 ${deleteTarget.revision}",
+                substring = true).assertExists()
+            assertEquals("REPLACE and DELETE remain unapplied before Host confirmation", before, counts())
+
+            ui.onNodeWithText("确认并提交 2 项").performClick()
+            ui.waitUntil(15_000) {
+                store.get(replaceTarget.eventSeq)?.title == "项目回顾" &&
+                    store.get(deleteTarget.eventSeq) == null
+            }
+            assertEquals("the existing event keeps its identity while its revision advances",
+                replaceTarget.eventSeq, store.get(replaceTarget.eventSeq)?.eventSeq)
+            assertEquals(replaceTarget.revision + 1, store.get(replaceTarget.eventSeq)?.revision)
+            assertEquals(1, store.all().size)
+            assertEquals(0, store.pendingCount())
+            assertEquals(before.commits + 2, store.commitCount())
+            assertEquals(before.identities, store.identityCount())
+        }
+    }
+
+    @Test
+    fun replaceConfirmationRejectsTargetChangedAfterReviewWithoutApplyingAiWrite() {
+        val zone = ZoneId.of("Asia/Shanghai")
+        val target = seedMemo("原有标题", zone)
+        val userText = "帮我创建一个事项处理提案，2026-12-01：把备忘 #${target.eventSeq} 标题改成 AI 标题。"
+        val structured = JSONObject().put("events", JSONArray().put(JSONObject()
+            .put("operation", "REPLACE")
+            .put("eventSeq", target.eventSeq)
+            .put("kind", "MEMO")
+            .put("title", "AI 标题"))).toString()
+        val serverFailure = AtomicReference<Throwable?>()
+        val served = CountDownLatch(2)
+        val before = counts()
+
+        ServerSocket(0, 4, InetAddress.getByName("127.0.0.1")).use { server ->
+            server.soTimeout = 15_000
+            AiSettingsStore.save(context, AiSettings(
+                endpoint = "http://127.0.0.1:${server.localPort}/v1",
+                model = "local-stub:free",
+                apiKey = "LOCAL_TEST_ONLY",
+                enabled = true,
+                shareContext = true
+            ))
+            val responses = listOf(
+                "我会生成一项待核对操作。" +
+                    "[[POWERCAL_DRAFT]]{\"type\":\"draft\",\"intent\":\"explicit\"}[[/POWERCAL_DRAFT]]",
+                structured
+            )
+            val serverThread = Thread {
+                try {
+                    repeat(responses.size) { index ->
+                        server.accept().use { socket ->
+                            socket.soTimeout = 10_000
+                            readRequest(socket)
+                            writeReply(socket, responses[index])
+                        }
+                        served.countDown()
+                    }
+                } catch (error: Throwable) {
+                    serverFailure.set(error)
+                    while (served.count > 0) served.countDown()
+                }
+            }.apply { name = "pc-web-ai-stale-target-stub"; isDaemon = true; start() }
+
+            ui.activity.setContent {
+                CompositionLocalProvider(LocalContext provides context) {
+                    PowerCalTheme { PowerCalApp(store) }
+                }
+            }
+            ui.waitForIdle()
+            ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.Routed("ai")) }
+            ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.SendChat(userText)) }
+
+            var reviewState: JSONObject? = null
+            ui.waitUntil(20_000) {
+                val state = WebSkinBridgeRuntime.state()
+                val review = state.optJSONObject("aiProposalReview")
+                if (review?.optJSONArray("proposals")?.length() == 1 &&
+                    !state.optBoolean("chatBusy")) {
+                    reviewState = review
+                    true
+                } else serverFailure.get() != null
+            }
+            assertNull("local AI stub failed: ${serverFailure.get()}", serverFailure.get())
+            val review = requireNotNull(reviewState) { "Host did not project the REPLACE proposal" }
+            assertEquals("review creation does not mutate the formal event", before, counts())
+            assertTrue(served.await(1, TimeUnit.SECONDS))
+            serverThread.join(2_000)
+            assertNull("local AI stub failed: ${serverFailure.get()}", serverFailure.get())
+
+            ui.runOnIdle {
+                WebSkinBridgeRuntime.onAction(WebSkinAction.ResolveAiProposal(
+                    reviewId = review.getString("reviewId"),
+                    decision = AiProposalDecision.PUBLISH,
+                    indices = listOf(0)
+                ))
+            }
+            ui.onNodeWithText("确认 AI 批量正式操作").assertExists()
+            assertEquals("proposal remains unchanged before a concurrent edit", before, counts())
+
+            val concurrentDraft = store.newDraft(
+                DraftForm.from(target).copy(title = "并发更新"),
+                eventSeq = target.eventSeq,
+                operation = dev.powerfulcalendar.core.DraftOperation.REPLACE,
+                actor = "user"
+            )
+            val concurrentCommit = store.commit(concurrentDraft.draftId, actor = "user")
+            assertTrue(concurrentCommit is CommitOutcome.Committed)
+            val countAfterConcurrentWrite = counts()
+            assertEquals("并发修改建立了新版本", target.revision + 1,
+                store.get(target.eventSeq)?.revision)
+
+            ui.onNodeWithText("确认并提交 1 项").performClick()
+            ui.waitUntil(10_000) {
+                shadowOf(Looper.getMainLooper()).idle()
+                !WebSkinBridgeRuntime.state().optBoolean("chatBusy")
+            }
+            val afterStaleConfirm = WebSkinBridgeRuntime.state()
+            assertTrue("Host must report the stale target and reject the AI write: $afterStaleConfirm",
+                afterStaleConfirm.getJSONArray("chatMessages").toString()
+                    .contains("确认期间目标事件已变化"))
+            assertEquals("concurrent user version remains authoritative", "并发更新",
+                store.get(target.eventSeq)?.title)
+            assertEquals("Host conflict handling adds no AI write", countAfterConcurrentWrite, counts())
+            assertEquals("the stale proposal remains available for review", review.getString("reviewId"),
+                WebSkinBridgeRuntime.state().getJSONObject("aiProposalReview").getString("reviewId"))
         }
     }
 
@@ -559,6 +786,15 @@ class WebAiProposalReviewIntegrationTest {
 
     private fun counts() = Counts(store.draftCount(), store.all().size,
         store.identityCount(), store.commitCount())
+
+    private fun seedMemo(title: String, zone: ZoneId): TemporalRecord {
+        val outcome = store.createFormalEvent(
+            DraftForm(kind = TemporalKind.MEMO, title = title, zoneId = zone.id),
+            idempotencyKey = "seed-${UUID.randomUUID()}"
+        )
+        check(outcome is CommitOutcome.Committed) { "could not seed an isolated formal Memo" }
+        return requireNotNull(store.get(outcome.eventSeq))
+    }
 
     private fun readRequest(socket: java.net.Socket): String {
         val input = socket.getInputStream().buffered()
