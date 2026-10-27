@@ -183,7 +183,9 @@ function applyMaterialSource(){
       }
       return "  --"+s.id+": "+value+";";
     }).filter(Boolean).join("\n");
-  const block=markerStart+"\n:root {\n"+properties+"\n}\n"+markerEnd;
+  // Material slots describe the light/base palette. Keep Clear's authored .dark
+  // tokens authoritative so one light color edit cannot make dark text unreadable.
+  const block=markerStart+"\n:root:not(.dark) {\n"+properties+"\n}\n"+markerEnd;
   const start=original.indexOf(markerStart),end=original.indexOf(markerEnd);
   const css=start>=0&&end>start
     ?original.slice(0,start)+block+original.slice(end+markerEnd.length)
