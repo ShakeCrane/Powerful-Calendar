@@ -119,6 +119,26 @@ class WebSkinHostProjectionTest {
         assertTrue(single.isNull("originalOccurrenceKey"))
     }
 
+    @Test fun memoPagingUsesStableBoundedPrefixesAndNeverShrinksTheLimit() {
+        val pageSize = MemoProjectionPaging.PAGE_SIZE
+        assertEquals(249, MemoProjectionPaging.visibleCount(249, pageSize))
+        assertEquals(250, MemoProjectionPaging.visibleCount(250, pageSize))
+        assertEquals(250, MemoProjectionPaging.visibleCount(251, pageSize))
+        assertEquals(0, MemoProjectionPaging.visibleCount(-1, pageSize))
+        assertEquals(0, MemoProjectionPaging.visibleCount(10, -1))
+
+        assertEquals(250, MemoProjectionPaging.nextLimit(250, 249))
+        assertEquals(250, MemoProjectionPaging.nextLimit(250, 250))
+        assertEquals(251, MemoProjectionPaging.nextLimit(250, 251))
+        assertEquals(500, MemoProjectionPaging.nextLimit(250, 501))
+        assertEquals(501, MemoProjectionPaging.nextLimit(500, 501))
+        assertEquals(501, MemoProjectionPaging.nextLimit(501, 501))
+        assertEquals(Int.MAX_VALUE,
+            MemoProjectionPaging.nextLimit(Int.MAX_VALUE - 100, Int.MAX_VALUE))
+        assertEquals(Int.MAX_VALUE,
+            MemoProjectionPaging.nextLimit(Int.MAX_VALUE, Int.MAX_VALUE))
+    }
+
     @Test fun boundedProjectionStatesWhenClipped() {
         val events = (1..340).map { index ->
             activity(index.toLong(), start - 3_600_000L + index * 60_000L)

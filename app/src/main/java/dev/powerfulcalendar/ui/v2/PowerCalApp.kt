@@ -272,6 +272,9 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
         TodoProjection.entries(records, nowMillis, includeCompleted = true)
     }
     val todoCount = todoEntries.count { !it.completed }
+    var memoVisibleLimit by rememberSaveable { mutableIntStateOf(MemoProjectionPaging.PAGE_SIZE) }
+    val memoVisibleCount = MemoProjectionPaging.visibleCount(todoEntries.size, memoVisibleLimit)
+    val memoRemainingCount = (todoEntries.size - memoVisibleCount).coerceAtLeast(0)
     val preferences = remember(appContext) {
         appContext.getSharedPreferences("powercal-ui", Context.MODE_PRIVATE)
     }
@@ -1171,7 +1174,10 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                 is WebSkinAction.Routed -> when (action.name) {
                     "timeline" -> page = Page.TIMELINE.name
                     "month" -> page = Page.MONTH.name
-                    "memo" -> page = Page.MEMO.name
+                    "memo" -> {
+                        page = Page.MEMO.name
+                        scope.launch { reload() }
+                    }
                     "ai" -> page = Page.AI.name
                     "settings" -> page = Page.TOOLS.name
                     "openDeck" -> scope.launch { openDeckAt(null) }
@@ -1231,6 +1237,13 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                 WebSkinAction.CreateMemo -> if (!aiLocked && editSession == null) {
                     openNewEvent(TemporalKind.MEMO)
                 }
+                WebSkinAction.LoadMoreMemo -> if (page == Page.MEMO.name) {
+                    val next = MemoProjectionPaging.nextLimit(memoVisibleLimit, todoEntries.size)
+                    if (next != memoVisibleLimit) {
+                        memoVisibleLimit = next
+                        WebSkinBridgeRuntime.stateRevision++
+                    }
+                }
                 is WebSkinAction.ToggleMemo -> if (!aiLocked && editSession == null) {
                     scope.launch {
                         val current = withContext(Dispatchers.IO) { store.get(action.eventSeq) }
@@ -1278,9 +1291,10 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                 .put("aiLocked", aiLocked).put("pendingCount", pendingCount)
                 .put("memoCount", todoCount)
                 .put("memoEntries", WebSkinMemoProjection.build(
-                    if (page == Page.MEMO.name) todoEntries.take(250) else emptyList()
+                    if (page == Page.MEMO.name) todoEntries.take(memoVisibleCount) else emptyList()
                 ))
-                .put("memoTruncated", todoEntries.size > 250)
+                .put("memoTruncated", page == Page.MEMO.name && memoRemainingCount > 0)
+                .put("memoRemainingCount", if (page == Page.MEMO.name) memoRemainingCount else 0)
                 .put("chatBusy", chatBusy || aiBusy || pendingWebAiProposalPublish != null)
                 .put("chatAttachmentAvailable", canLaunchWebAiAttachmentPicker())
                 .put("chatAttachmentBusy", aiAttachmentPickerBusy ||

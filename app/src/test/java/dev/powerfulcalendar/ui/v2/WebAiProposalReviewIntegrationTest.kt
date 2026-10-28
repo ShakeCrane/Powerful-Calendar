@@ -44,6 +44,7 @@ import java.net.InetAddress
 import java.net.ServerSocket
 import java.time.LocalDate
 import java.time.ZoneId
+import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
@@ -67,18 +68,69 @@ class WebAiProposalReviewIntegrationTest {
         // Robolectric embeds the full method name in its Windows temp path.
         databaseName = "a.db"
         context = IsolatedContext(ui.activity, storage, namespace)
-        store = PowerStore(storage, databaseName)
+        store = PowerStore(context, databaseName)
         store.readableDatabase
         PowerCalSkinRegistry.reset()
         context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
             .edit().putBoolean("system-calendar-import-asked", true).commit()
     }
 
+    @Test
+    fun memoPagingContinuesTheSortedProjectionWithoutStoreWrites() {
+        val zone = ZoneId.of("Asia/Shanghai")
+        repeat(251) { index ->
+            seedMemo(String.format(Locale.ROOT, "Paging Memo %03d", index + 1), zone)
+        }
+        assertEquals(251, TodoProjection.entries(store.all(), System.currentTimeMillis(),
+            includeCompleted = true).size)
+        val beforePaging = counts()
+
+        ui.activity.setContent {
+            CompositionLocalProvider(LocalContext provides context) {
+                PowerCalTheme { PowerCalApp(store) }
+            }
+        }
+        ui.waitForIdle()
+        ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.Routed("timeline")) }
+        ui.waitForIdle()
+        ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.LoadMoreMemo) }
+        ui.waitForIdle()
+        ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.Routed("memo")) }
+        try {
+            ui.waitUntil(60_000) {
+                val state = WebSkinBridgeRuntime.state()
+                state.optString("page") == "MEMO" && state.optInt("memoCount") == 251 &&
+                    state.optJSONArray("memoEntries")?.length() == 250 &&
+                    state.optBoolean("memoTruncated") && state.optInt("memoRemainingCount") == 1
+            }
+        } catch (error: Throwable) {
+            throw AssertionError("Memo Host state after navigation: ${WebSkinBridgeRuntime.state()}", error)
+        }
+        val firstRows = WebSkinBridgeRuntime.state().getJSONArray("memoEntries")
+        assertEquals("Paging Memo 001", firstRows.getJSONObject(0).getString("title"))
+        assertEquals("Paging Memo 250", firstRows.getJSONObject(249).getString("title"))
+
+        ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.LoadMoreMemo) }
+        ui.waitUntil(20_000) {
+            val state = WebSkinBridgeRuntime.state()
+            state.optJSONArray("memoEntries")?.length() == 251 &&
+                !state.optBoolean("memoTruncated") && state.optInt("memoRemainingCount") == 0
+        }
+        val allRows = WebSkinBridgeRuntime.state().getJSONArray("memoEntries")
+        assertEquals("Paging Memo 251", allRows.getJSONObject(250).getString("title"))
+        assertEquals(beforePaging, counts())
+
+        ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.LoadMoreMemo) }
+        ui.waitForIdle()
+        assertEquals(251, WebSkinBridgeRuntime.state().getJSONArray("memoEntries").length())
+        assertEquals(beforePaging, counts())
+    }
+
     @After fun tearDown() {
         ui.activity.runOnUiThread { ui.activity.setContent {} }
         ui.waitForIdle()
         store.close()
-        storage.deleteDatabase(databaseName)
+        context.deleteDatabase(databaseName)
         listOf("powercal-ai", "powercal-onboarding", "powercal-ui", "powercal-skin-choice",
             "powercal-profile").forEach { storage.deleteSharedPreferences("$namespace-$it") }
         File(storage.cacheDir, namespace).deleteRecursively()

@@ -16,6 +16,10 @@ class WebSkinBridgeTest {
     @Test fun acceptsOnlyClosedTypedActions() {
         assertEquals(WebSkinAction.Routed("today"), decodeBridgeAction(
             """{"version":1,"type":"action","payload":{"name":"today"}}"""))
+        assertEquals(WebSkinAction.LoadMoreMemo, decodeBridgeAction(
+            """{"version":1,"type":"action","payload":{"name":"loadMoreMemo"}}"""))
+        assertNull(decodeBridgeAction(
+            """{"version":1,"type":"action","payload":{"name":"loadMoreMemo","count":250}}"""))
         assertEquals(WebSkinAction.OpenEvent(42, 7), decodeBridgeAction(
             """{"version":1,"type":"action","payload":{"name":"openEvent","eventSeq":42,"expectedRevision":7}}"""))
         assertNull(decodeBridgeAction(

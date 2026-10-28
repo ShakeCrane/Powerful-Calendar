@@ -4,6 +4,9 @@ const fs = require("node:fs"), path = require("node:path"), readline = require("
 const root = path.resolve(__dirname, "../../..");
 const chrome = process.env.CHROME_PATH || "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
 const reportDir = path.join(root, ".local/android-test/reports/separation-20261027/source-editor");
+const canonicalClearFiles=Object.fromEntries(["index.html","style.css","app.js","edit.js"].map(name=>[
+  "web/"+name,fs.readFileSync(path.join(root,"tools/skin-studio/default-clear/source/web",name)).toString("base64")
+]));
 const delay = ms => new Promise(resolve=>setTimeout(resolve,ms));
 async function main(){
   fs.mkdirSync(reportDir,{recursive:true});
@@ -59,6 +62,7 @@ async function main(){
         await new Promise(r=>setTimeout(r,100));
       }
       const data=await (await fetch('/api/template-v3')).json();
+      Object.assign(data.files,${JSON.stringify(canonicalClearFiles)});
       data.manifest.id='restricted-source-test'; data.manifest.capabilities=['host.read'];
       data.files['web/agent-unused-90f4.txt']=btoa('unused source');
       data.files['assets/replace.bin']=btoa('old resource');
@@ -308,6 +312,36 @@ async function main(){
       })()`});
     if(memoOpen.exceptionDetails)throw Error(memoOpen.exceptionDetails.exception?.description || memoOpen.exceptionDetails.text);
     console.log("BROWSER MEMO OPEN / COMPLETION SEPARATION PASS",JSON.stringify(memoOpen.result.value));
+
+    await call("Runtime.evaluate",{expression:
+      "(()=>{const e=document.querySelector('#scenario');e.value='memo-overflow';e.dispatchEvent(new Event('change',{bubbles:true}))})()",
+      returnByValue:true});
+    const memoOverflow=await call("Runtime.evaluate",{contextId:world.executionContextId,
+      awaitPromise:true,returnByValue:true,expression:`(async()=>{
+        const check=(v,m)=>{if(!v)throw Error(m)};
+        const wait=async(fn,m)=>{for(let i=0;i<150;i++){if(fn())return;await new Promise(r=>setTimeout(r,100))}throw Error(m)};
+        await wait(()=>document.querySelectorAll('#memoList .memo-row').length===250,
+          'overflow scenario did not expose the first 250 Memo entries');
+        const button=document.querySelector('#memoLimit');
+        check(button.tagName==='BUTTON'&&button.type==='button'&&
+          button.dataset.action==='loadMoreMemo'&&button.getAttribute('aria-controls')==='memoList',
+          'Memo continuation is not an accessible button bound to loadMoreMemo');
+        check(!button.hidden&&button.textContent.includes('还有 1 项'),
+          'continuation button did not show the host-projected remaining count');
+        button.click();
+        await wait(()=>document.querySelectorAll('#memoList .memo-row').length===251,
+          'loadMoreMemo did not expose the final Memo entry');
+        check(button.hidden,'continuation button remained visible after truncation cleared');
+        return {scenario:'memo-overflow',visibleBefore:250,remainingBefore:1,
+          action:'loadMoreMemo',visibleAfter:251,truncatedAfter:false,
+          buttonHiddenAfter:true};
+      })()`});
+    if(memoOverflow.exceptionDetails)throw Error(memoOverflow.exceptionDetails.exception?.description || memoOverflow.exceptionDetails.text);
+    const memoActionAccepted=await call("Runtime.evaluate",{expression:
+      "document.querySelector('#bridgeLog').textContent.includes('模拟宿主收到：loadMoreMemo')",
+      returnByValue:true});
+    if(memoActionAccepted.result.value!==true)throw Error("no-argument loadMoreMemo action was not accepted by the Studio Host Mock");
+    console.log("BROWSER MEMO LOAD-MORE MOCK PASS",JSON.stringify(memoOverflow.result.value));
 
     const aiPage=await call("Runtime.evaluate",{contextId:world.executionContextId,
       awaitPromise:true,returnByValue:true,expression:`(async()=>{

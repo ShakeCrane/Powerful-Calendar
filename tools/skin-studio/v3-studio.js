@@ -366,6 +366,7 @@ async function addPackageAssets(list){
 const ACTIONS=[
   ["","无动作"],["today","返回今天"],["createMemo","新建 Memo"],
   ["createDraft","新建事件"],["browseMonth","浏览月份"],
+  ["loadMoreMemo","加载更多 Memo"],
   ["timeline","时间轴"],
   ["month","月历"],["memo","Memo"],["ai","AI"],
   ["settings","原生设置"],["openDeck","草稿卡组"],
@@ -622,7 +623,10 @@ function simulatedState(){
   const chatMessages=scenario==="ai-error"
     ? [{role:"assistant",content:"你好！今天有什么安排？"},...mockAiErrorMessages]
     : [{role:"assistant",content:"你好！今天有什么安排？"},...mockChat];
-  const memoEntries=scenario==="repeating"?[
+  const allMemoEntries=scenario==="memo-overflow"?Array.from({length:251},(_,i)=>({
+    eventSeq:1000+i,revision:1,occurrenceKey:"single",
+    title:"溢出 Memo "+(i+1),completed:false,startMillis:base+i*60000
+  })):scenario==="repeating"?[
     {eventSeq:31,revision:2,occurrenceKey:"2026-10-22T00:00",
       originalOccurrenceKey:"2026-10-22T00:00",title:"重复 Memo · 今天",
       completed:mockMemoDone,startMillis:base},
@@ -635,10 +639,15 @@ function simulatedState(){
     {eventSeq:44,revision:1,occurrenceKey:"single",title:"提交报告",
       completed:false,startMillis:base+7200000}
   ];
-  return {bridgeVersion:1,page:mockPage,memoCount:2,aiLocked:scenario==="locked",
+  const memoLimit=scenario==="memo-overflow"?Math.min(allMemoEntries.length,mockMemoVisibleLimit):allMemoEntries.length;
+  const memoEntries=allMemoEntries.slice(0,memoLimit);
+  const memoTruncated=memoEntries.length<allMemoEntries.length;
+  return {bridgeVersion:1,page:mockPage,
+    memoCount:allMemoEntries.filter(item=>!item.completed).length,aiLocked:scenario==="locked",
     reducedMotion:$("reduced").checked,pendingCount:3,
     editing:mockEditing,
-    memoEntries,memoTruncated:false,chatBusy:false,chatAttachmentBusy:false,
+    memoEntries,memoTruncated,memoRemainingCount:allMemoEntries.length-memoEntries.length,
+    chatBusy:false,chatAttachmentBusy:false,
     chatAttachmentAvailable:scenario!=="locked"&&!(scenario==="ai-review"&&mockAiProposals.length>0),
     chatMessages,
     aiProposalReview:scenario==="ai-review"&&mockAiProposals.length?{
@@ -860,6 +869,13 @@ function onSkinAction(message){
     if(envelope.type==="command"){onSkinCommand(envelope.payload);return}
     if(envelope.type!=="action")return;
     const p=envelope.payload,name=p.name;
+    if(name==="loadMoreMemo"){
+      if(Object.keys(p).length!==1||$("scenario").value!=="memo-overflow"||mockPage!=="MEMO"){
+        logAction("拒绝当前状态下的 Memo 续载请求");return;
+      }
+      mockMemoVisibleLimit=Math.min(251,mockMemoVisibleLimit+250);
+      logAction("模拟宿主收到：loadMoreMemo");postState();return;
+    }
     if(!ACTIONS.some(([x])=>x===name)&&!["openEvent","toggleMemo","sendChat","resolveAiProposal",
       "pickAiFile","pickAiImage"].includes(name)){logAction("拒绝未知动作 "+String(name));return;}
     if(name==="panTimeline"){
@@ -949,6 +965,7 @@ function onSkinAction(message){
   }catch(error){logAction("Bridge 消息错误："+error.message)}
 }
 let mockAnchor=null,mockPage="TIMELINE",mockMemoDone=false,mockChat=[];
+let mockMemoVisibleLimit=250;
 let mockAiErrorMessages=[
   {role:"user",content:"请帮我概括明天的安排。"},
   {role:"assistant",content:"Studio Mock：AI 请求未完成（模拟 HTTP 503）；上下文已保留，可编辑后手动重发。"}
@@ -1063,6 +1080,7 @@ function bindUI(){
   for(const id of ["scenario","theme","reduced"])$(id).onchange=()=>{
     if(id==="theme")$("webPreview").style.colorScheme=$("theme").value;
     mockAnchor=null;
+    if(id==="scenario")mockMemoVisibleLimit=250;
     if(id==="scenario"&&$("scenario").value==="ai-error")mockAiErrorMessages=[
       {role:"user",content:"请帮我概括明天的安排。"},
       {role:"assistant",content:"Studio Mock：AI 请求未完成（模拟 HTTP 503）；上下文已保留，可编辑后手动重发。"}

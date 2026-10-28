@@ -88,6 +88,8 @@ internal sealed interface WebSkinAction {
         val eventSeq: Long, val expectedRevision: Long,
         val occurrenceKey: String, val completed: Boolean
     ) : WebSkinAction
+    /** Request the next host-bounded prefix of the current Memo projection. */
+    data object LoadMoreMemo : WebSkinAction
     data class SendChat(val text: String) : WebSkinAction
     data object PickAiFile : WebSkinAction
     data object PickAiImage : WebSkinAction
@@ -344,6 +346,7 @@ internal fun decodeBridgeAction(raw: String): WebSkinAction? {
             else null
         }
         "createMemo" -> if (keys == setOf("name")) WebSkinAction.CreateMemo else null
+        "loadMoreMemo" -> if (keys == setOf("name")) WebSkinAction.LoadMoreMemo else null
         "browseMonth" -> {
             if (keys != setOf("name", "deltaMonths")) return null
             val raw = payload.opt("deltaMonths")

@@ -52,6 +52,9 @@ envelope and known fields only:
 ```json
 {"version":1,"type":"action","payload":{"name":"pickAiImage"}}
 ```
+```json
+{"version":1,"type":"action","payload":{"name":"loadMoreMemo"}}
+```
 
 - `panTimeline` accepts nonzero integer minutes [-2880, 2880]. It does not
   change the time span or introduce horizontal zoom.
@@ -91,6 +94,18 @@ envelope and known fields only:
   ICS detection/import and bounded text extraction with its existing consent
   review; the image path retains the existing image/OCR review. URI and bytes
   never enter a skin projection. These requests do not create drafts or events.
+- Memo list state is projected from the complete, deterministically sorted
+  Native `TodoProjection` result within its existing recurrence window. On the
+  `memo` navigation action, the Host refreshes its current formal-record
+  snapshot. On the Memo page, it initially sends a prefix of at most 250 rows in
+  `memoEntries`, plus `memoTruncated` and `memoRemainingCount`. The no-argument
+  `loadMoreMemo` action requests the next Host-controlled page of up to 250
+  rows. The Host rebuilds the same sorted prefix from current records, so a
+  changed list cannot cause cursor duplicates or skipped rows. It is accepted
+  only while the Memo page is active and does not write calendar data. Outside
+  that page, `memoEntries` is empty, `memoTruncated` is false, and
+  `memoRemainingCount` is zero. `memoCount` continues to report the full
+  incomplete count in the existing projection window.
 - host.read gates state projections. host.action gates every inbound action and
   command message, including editor/deck commands. This keeps existing
   action-only v3 packages working.

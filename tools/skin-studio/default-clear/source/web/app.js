@@ -95,6 +95,7 @@ function onAction(button){
   else if(name==="toggleMemo")send(name,{eventSeq:Number(button.dataset.eventSeq),
     expectedRevision:Number(button.dataset.revision),
     occurrenceKey:button.dataset.occurrenceKey,completed:button.dataset.completed==="true"});
+  else if(name==="loadMoreMemo")send(name);
   else if(name==="invokeOption")send(name,{id:button.dataset.optionId});
   else if(name==="panTimeline")send(name,{deltaMinutes:Number(button.dataset.deltaMinutes)});
   else if(name==="jumpTimelineDay")send(name,{date:button.dataset.date});
@@ -259,6 +260,8 @@ function renderMemo(){
       title.dataset.originalOccurrenceKey=item.originalOccurrenceKey;
     row.append(button,title);list.append(row);
   }
+  const remaining=Math.max(0,Number(state.memoRemainingCount)||0);
+  $("memoLimit").textContent=`加载更多（还有 ${remaining} 项）`;
   $("memoLimit").hidden=!state.memoTruncated;
 }
 function renderChat(){

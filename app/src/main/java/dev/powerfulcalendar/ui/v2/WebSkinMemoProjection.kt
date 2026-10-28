@@ -22,3 +22,19 @@ internal object WebSkinMemoProjection {
         }
     }
 }
+
+/** Host-controlled paging over the full, already sorted TodoProjection result. */
+internal object MemoProjectionPaging {
+    const val PAGE_SIZE = 250
+
+    fun visibleCount(totalEntries: Int, visibleLimit: Int): Int =
+        totalEntries.coerceAtLeast(0).coerceAtMost(visibleLimit.coerceAtLeast(0))
+
+    /** Never decreases an expanded limit, and avoids integer overflow on repeated actions. */
+    fun nextLimit(currentLimit: Int, totalEntries: Int): Int {
+        val current = currentLimit.coerceAtLeast(0)
+        val total = totalEntries.coerceAtLeast(0)
+        if (current >= total) return current
+        return minOf(total.toLong(), current.toLong() + PAGE_SIZE).toInt()
+    }
+}
