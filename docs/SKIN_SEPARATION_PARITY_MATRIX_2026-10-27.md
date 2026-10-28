@@ -74,3 +74,8 @@ In the table, Studio support means source availability, not proof of arbitrary v
 
 - Added `test_ai_skin_workflow_v3.py`, which invokes the actual CLI against the canonical Clear source: `build-v3` → `inspect-v3` → `analyze-v3` / `read-v3` → guarded `edit-v3` → `validate` → re-inspect/read. It checks the rebuilt source package matches the bundled baseline, only the requested HTML/CSS files change, capabilities remain unchanged, and the APK asset is untouched.
 - The test and its one-command entry are documented in `SKIN_STUDIO_AI_AUTOMATION_V1.md`; full-model design quality and Android runtime behavior remain outside this CLI workflow evidence. See `PC-ISSUE-SEPARATION-AI-SKIN-WORKFLOW.md`.
+
+## SEP-15 follow-up — static Bridge v1 compatibility audit (2026-10-28)
+
+- Added `audit-bridge-v3 <skin.pcskin>` to the machine-operated v3 workflow. It compares literal `data-action` names in static packaged HTML with a registry synchronized against `WebSkinHost.decodeBridgeAction`, and reports required/missing `host.action` with package/page/node evidence. CLI failures use structured JSON on stderr and exit code 2.
+- The AI authoring regression now runs the audit on a modified package built from canonical Clear. This check does not execute scripts, validate payload fields, enumerate runtime controls, or establish Android Bridge behavior. SEP-15 and full Skin/Core/Host parity remain **NOT TESTED**; see `PC-ISSUE-SEPARATION-STUDIO-BRIDGE-AUDIT.md`.
