@@ -5,7 +5,7 @@
 - Host Settings 为每个已安装第三方皮肤增加系统 `CreateDocument` 原包导出；先完整验证受限大小、ZIP、哈希与包 ID，再写输出，逐字节保留原档，不改选择、包文件或日历存储。Studio 修正缺省 `fullCanvas` 应为 Android `false`、`project.slots` 缺省可用且未修改时保持缺省的兼容行为。
 - 验证：定向 `SkinPackageManagerTest` 13/13 与 Compose/Robolectric 实际设置页 `SkinPackageExportFlowTest` 1/1；Chrome v3 Studio 重开/编辑/导出/重导入 PASS；Skin Studio Python 59/59；规范 Clear 8 files / 378,172 bytes PASS；API 35 `emulator-5582` instrumentation 1/1；完整离线 Gradle **612/612 JVM、84 suites、0 failures/errors/skips、88/88 tasks**，source boundary / 两类 APK / lint 通过，lint 0 errors / 52 warnings。详细日志及哈希见 [独立 Issue 报告](../issues/PC-ISSUE-SEPARATION-INSTALLED-SKIN-EXPORT-REEDIT.md)。
 - 边界与异常：P07 保持 **PARTIAL / broad row NOT TESTED**，因为 Studio v1/v2 重编辑未实现；真实 DocumentsUI provider 到 Studio 的连续交接未测，实体/OEM 按用户分工未测。同 ID 再安装仍由既有逻辑拒绝。connected Gradle cleanup 后 AVD 中目标和 test package 被卸载，可能清除了 app 私有数据；测试期 DB 长度断言通过，但清理前未留 DB 清单，风险与观察详见 Issue。未重装、wipe 或继续触碰该设备。
-- 代码、测试、Studio 文档、矩阵及独立 Issue 为本切片；**实现提交待回填**。随后仅用文档提交回填实现 SHA 与推送信息。分离整体仍 IN PROGRESS，不是 S0 完成或 cutover GO。
+- 代码、测试、Studio 文档、矩阵及独立 Issue 提交 `eb5afaa`（`feat(分离): 导出已安装皮肤供 Studio 重编辑`）已推送到 `origin/codex/separation-s0-inventory`。本进度 SHA 回填后续为单独文档提交。分离整体仍 IN PROGRESS，不是 S0 完成或 cutover GO。
 
 ## Separation — Studio 预览与 Android WebView parity `S0-PKG-06`（2026-10-29，PASS：限定覆盖范围）
 

@@ -83,5 +83,5 @@ API 35 instrumentation 返回后，`connectedDebugAndroidTest` 的后续任务�
 
 ## Git 交付
 
-- 本 Issue、进度记录、矩阵和本次实现/测试将单独暂存并以中文 Conventional Commit 提交到 `codex/separation-s0-inventory`，不包含其他工作树资产。
-- 推送与提交 SHA 将在提交后补录在本节及 `docs/agent-handoff/PROGRESS.md`。
+- 实现、测试、Studio 文档、矩阵和本 Issue：`eb5afaa`（`feat(分离): 导出已安装皮肤供 Studio 重编辑`），已推送至 `origin/codex/separation-s0-inventory`。
+- 本次进度记录回填提交 SHA 的文档提交随后单独提交并推送；提交号在交付回复列明。不包含其他工作树资产，也未强推。
