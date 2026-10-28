@@ -179,13 +179,15 @@ hash come from the same `analyze-v3` / `inspect-v3` snapshot:
 The interface enables arbitrary v3 source/asset file CRUD, generic JSON tree edits, and
 guarded structural edits to explicit static HTML elements; it does not impose a formal
 page/component schema on `project.json`, nor does it inspect script-generated runtime
-DOM. The browser Studio exposes direct project JSON editing, supported UTF-8 file
-creation/deletion, and arbitrary asset add/replace/delete with text-reference guards;
-it still has no semantic visual component-tree editor. Host capabilities remain requests
-declared by the skin and never constitute user approval. Browser Mocks and successful
-package validation do not prove Android behavior, accessibility, device compatibility,
-or Core/Host/Skin parity. Full visual component editing, Host Bridge parity, default-skin
-cutover, and physical-device acceptance remain separate open work.
+DOM. The browser Studio now exposes the static HTML component tree described above, in
+addition to direct project JSON editing, supported UTF-8 file creation/deletion, and
+arbitrary asset add/replace/delete with text-reference guards. CSS layout, computed browser
+state, JavaScript-generated nodes and Bridge behavior remain source-edited rather than
+semantically modeled. Host capabilities remain requests declared by the skin and never
+constitute user approval. Browser Mocks and successful package validation do not prove
+Android behavior, device compatibility, or Core/Host/Skin parity. Full visual authoring,
+Host Bridge parity, default-skin cutover, and physical-device acceptance remain separate
+open work.
 
 ## Automated verification
 
