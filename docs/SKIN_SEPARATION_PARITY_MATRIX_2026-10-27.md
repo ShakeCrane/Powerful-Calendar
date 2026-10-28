@@ -104,3 +104,9 @@ In the table, Studio support means source availability, not proof of arbitrary v
 - The real Chrome Headless source E2E now creates a blank package with the CLI, imports it through the Studio file handler, inserts a static component, checks preview bytes, and validates export/reimport plus a second Studio load preserves the edit and empty capability list. **Desktop browser slice PASS**; final log SHA-256 `9B9171319B8049B4556B9F241A7A4D708AB6C76780CFEB1918EA774981EB9064`.
 - E2E test commit: `86e2f3f550fc6738ddd944e68a8044e475ca487a`.
 - This narrows the scaffold's `NOT TESTED` status only for browser Studio import/edit/preview/export. Android WebView/device behavior, full Studio visual/interaction authoring, and Native/Skin parity remain **NOT TESTED**; SEP-15/S5 remains open.
+
+## SEP-09 follow-up — Native/Clear/Host AI chat input length (2026-10-28)
+
+- Native accepted up to 6000 UTF-16 code units while Clear, Studio Mock, Bridge schema and Host decoder stopped at 4000. They now share the 6000-unit boundary. Host regression covers ASCII and supplementary characters at the boundary and rejects 6001; Chrome Studio Mock accepts 6000 and ignores 6001. Clear bundle verify: 8 files / 381125 bytes, SHA-256 `04c5f92d1c30d00b84e4cbd90fa572daf8103daa05ca8f5c2552c6a9d94600ac`.
+- Focused Host/schema tests **32/32 PASS**; full offline gate **621/621 JVM, 87 suites, 88/88 tasks**, 0 failures/errors/skips, lint 0 errors / 52 warnings; Studio Python **70/70**, Chrome Studio E2E and JS syntax checks pass. Evidence: `docs/issues/PC-ISSUE-SEPARATION-AI-CHAT-INPUT-LIMIT.md` and `.local/android-test/reports/separation-20261028/ai-chat-input-limit/`.
+- This signs only the per-message character-boundary slice. Android WebView/AVD, physical device, live provider and full Native/Skin chat parity remain untested; `SEP-09` remains **NOT TESTED**.

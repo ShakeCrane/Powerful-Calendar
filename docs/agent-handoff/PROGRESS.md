@@ -995,3 +995,10 @@ Updated: 2026-10-24
 - 首次 E2E 因新增场景未恢复原 Clear fixture 而在后续断言失败；恢复 fixture 后完整 E2E 通过，失败日志保留。更新 E2E 支持 `STUDIO_E2E_REPORT_DIR`，避免覆盖旧截图证据。
 - E2E 与文档提交 `86e2f3f550fc6738ddd944e68a8044e475ca487a` 已创建；最终日志 SHA-256 `9B9171319B8049B4556B9F241A7A4D708AB6C76780CFEB1918EA774981EB9064`。
 - 该回归只证明桌面 Chrome Studio 路径；Android WebView/设备与 Native/Skin 功能等价未测，SEP-15/S5 仍进行中。
+
+## Separation — Native/Clear/Host AI chat 输入边界（2026-10-28）
+
+- 根因：Native composer 上限为 6000 UTF-16 code units，Clear、Studio Mock、Bridge schema 和 Host decoder 仍为 4000。将四处统一到 6000；保留 Host 空白/闭合 payload/8192-unit frame 校验，并补 BMP、补充平面及 6001 拒绝回归。
+- 定向 Host/schema **32/32 PASS**；完整离线门禁 **621/621 JVM、87 suites、88/88 tasks、0 failures/errors/skips**，lint 0 errors / 52 warnings；Skin Studio **70/70**；Chrome E2E 的 `acceptedAtLimit=6000`、`rejectedAboveLimit=true`。Clear verify：8 files / 381125 bytes，SHA-256 `04c5f92d1c30d00b84e4cbd90fa572daf8103daa05ca8f5c2552c6a9d94600ac`。
+- 实现提交 `bb627a4e3c4cc785ced6c82efb3cc73e139ec12a` 已推送到 `origin/codex/separation-skin-settings`。独立报告 `docs/issues/PC-ISSUE-SEPARATION-AI-CHAT-INPUT-LIMIT.md`；日志/APK 哈希见 `.local/android-test/reports/separation-20261028/ai-chat-input-limit/`。
+- 本机无 emulator executable；Android WebView/AVD、真机和真实 Provider 未测。SEP-09 完整聊天功能等价与 S3 仍 NOT TESTED/进行中。
