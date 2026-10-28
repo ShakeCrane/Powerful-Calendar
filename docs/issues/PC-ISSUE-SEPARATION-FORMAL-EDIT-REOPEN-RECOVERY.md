@@ -49,4 +49,4 @@
 
 ## Git
 
-本 Issue 对应提交见交付时的 Git 记录；并发 Agent 的 `app/src/androidTest/java/dev/powerfulcalendar/ui/v2/WebSkinManagementInstrumentedTest.kt` 未修改、未暂存、未提交。
+提交：`785459b52c41dc829b8c7f101a812843b31956e5` — `test(分离): 验证 Web 正式编辑跨 SQLite 重开恢复`，已推送至 `origin/codex/separation-skin-settings`。并发 Agent 的 `app/src/androidTest/java/dev/powerfulcalendar/ui/v2/WebSkinManagementInstrumentedTest.kt` 未修改、未暂存、未提交。

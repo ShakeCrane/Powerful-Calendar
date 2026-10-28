@@ -116,6 +116,25 @@ class WebAiAttachmentFlowIntegrationTest {
     }
 
     @Test
+    fun readingAtomicFileDuringWriteDoesNotDeleteThePendingReplacement() {
+        val file = File(context.cacheDir, "atomic-${UUID.randomUUID()}.json")
+        file.parentFile?.mkdirs()
+        file.writeText("old")
+
+        val writer = AtomicFile(file)
+        val output = writer.startWrite()
+        output.write("new".toByteArray())
+
+        val read = AtomicFile(file).openRead().bufferedReader().use { it.readText() }
+        assertEquals("old", read)
+        assertTrue(File(file.parentFile, file.name + ".new").exists())
+
+        writer.finishWrite(output)
+        assertEquals("new", file.readText())
+        file.delete()
+    }
+
+    @Test
     fun skinSelectedFileCanBeRedactedBeforeAiProposalAndDoesNotWriteCalendarData() {
         val zone = ZoneId.of("Asia/Shanghai")
         val tomorrow = LocalDate.now(zone).plusDays(1).toString()
@@ -1120,7 +1139,6 @@ class ShadowAtomicFileReplaceOnWindows {
 
     @Implementation
     fun openRead(): FileInputStream {
-        if (newFile.exists()) newFile.delete()
         return FileInputStream(baseFile)
     }
 }
