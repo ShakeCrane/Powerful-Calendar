@@ -1,5 +1,12 @@
 # Core freeze progress
 
+## Separation — Studio 预览与 Android WebView parity `S0-PKG-06`（2026-10-29，BLOCKED）
+
+- 根因与修复：sandbox 字体请求以 opaque `Origin: null` 到达 token-host，CORS 未允许字体；Studio root-resource 路由、Android `Uri.path` 解码、大小写 MIME 和错误响应安全头存在差异；Studio Mock 未按 `host.read` / `host.action` 隔离。已将 Python 预览路由/字体 CORS、Android MIME/统一响应头、Studio capability gate 和对应回归一并修复。只读源码往返夹具与具备编辑权限的 Mock 预览夹具现分开。
+- Skin Studio Python **57/57 PASS**；Edge/Chrome CDP browser 与 source E2E **PASS**；Clear bundle **8 files / 378,172 bytes PASS**。完整离线 Gradle **608/608 JVM、83 suites、0 failures/errors/skips、88/88 tasks PASS**；lint **0 errors / 52 warnings**；Debug/AndroidTest APK SHA-256 `6B39CA84B4D7414A791E658F87DF99617C4937518A8EE5E62EA19A0160C6EABE` / `27C405BFB941CB0C14B8CEA7E4FD9BB6240CD75023B7FAC8AC5A3532DDB79D7B`。日志与各浏览器轨迹 hash 见 [独立 Issue 报告](../issues/PC-ISSUE-SEPARATION-PREVIEW-WEBVIEW-PARITY.md)。
+- API 35 instrumentation 已编译；运行时未测。唯一在线 `emulator-5572` 当时运行既有 PowerCal 冷启动任务（PID 7194），本轮未安装、停止或覆盖。故 `S0-PKG-06` full parity **NOT TESTED**，不签核；实体/OEM 由用户测试。
+- 实现提交 `12ae4402956336ce0e0a09b9796f3726e2e5dd23` 已推送至 `origin/codex/separation-s0-inventory`。S0 / Skin-First 继续 **IN PROGRESS**，不构成 release/cutover GO。
+
 ## Separation — Studio package 冷启动交付 `S0-PKG-05`（2026-10-29）
 
 - 新增 Studio v3 Builder 产出的 deterministic `.pcskin` fixture 与 Android instrumentation。第一次 AVD 实际运行暴露测试 URL host 拼写错误，之后还修正 marker 目录和异步 SharedPreferences 清理顺序；最终没有生产 runtime 源码变更。
