@@ -160,4 +160,7 @@ For machine-operated v3 skin work, read `docs/SKIN_STUDIO_AI_AUTOMATION_V1.md` a
 hash receipts. The Bridge v1 payload schema is
 `docs/contracts/web-skin-bridge-v1.schema.json`; preserve package and source SHA
 preconditions. Schema/decoder JVM checks remain distinct from JavaScript and Android
-WebView runtime verification. Package validation does not prove visual or device parity.
+WebView runtime verification. The browser Studio's static component tree can edit node
+attributes with guarded `component-attributes` operations; script-created runtime DOM,
+computed styles and native WebView behavior require their separate source/runtime checks.
+Package validation does not prove visual or device parity.

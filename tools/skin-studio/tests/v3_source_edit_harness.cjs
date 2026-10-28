@@ -4,7 +4,8 @@ const {TextEncoder, TextDecoder} = require("node:util");
 const source = fs.readFileSync(process.argv[2], "utf8");
 const fixture = JSON.parse(fs.readFileSync(0, "utf8"));
 class Element {
-  constructor() {
+  constructor(tagName="div") {
+    this.tagName=String(tagName).toUpperCase();this.attributes={};this.className="";
     this.value = ""; this.children = []; this.checked = false;
     this.disabled = false; this.hidden = false; this.textContent = "";
     this.classList = {toggle(){}, add(){}, remove(){}};
@@ -12,13 +13,28 @@ class Element {
   }
   append(...nodes) { this.children.push(...nodes); }
   replaceChildren(...nodes) { this.children = nodes; }
+  setAttribute(name,value) { this.attributes[name]=String(value); }
+  focus() {}
+  querySelectorAll(selector) {
+    const result=[];
+    const visit=node=>{
+      for(const child of node.children||[]){
+        if(selector==="input,button"&&["INPUT","BUTTON"].includes(child.tagName))result.push(child);
+        if(selector===".componentAttributeRow"&&child.className==="componentAttributeRow")result.push(child);
+        visit(child);
+      }
+    };
+    visit(this);return result;
+  }
   get options() { return this.children; }
   addEventListener() {}
 }
 const elements = new Map();
 const document = {
   getElementById(id) { if (!elements.has(id)) elements.set(id, new Element()); return elements.get(id); },
-  createElement() { return new Element(); }, activeElement: null,
+  createElement(tagName) { return new Element(tagName); },
+  createTextNode(text) { const node=new Element("#text");node.textContent=String(text);return node; },
+  activeElement: null,
 };
 let promptValue="testAccent";
 const sandbox = {document, window:{addEventListener(){}}, TextEncoder, TextDecoder,

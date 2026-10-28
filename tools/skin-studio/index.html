@@ -65,6 +65,15 @@
       <div class="barActions"><button id="refreshComponents" type="button">重新分析</button><span id="componentCount" class="muted" role="status"></span></div>
       <div id="componentTree" class="componentTree" role="region" aria-label="HTML 静态组件"></div>
       <p id="componentSelection" class="muted" aria-live="polite">选择一个节点进行编辑。</p>
+      <div class="componentAttributeEditor" role="group" aria-label="选中节点属性">
+        <div class="barActions"><strong>节点属性</strong><span id="componentAttributeCount" class="muted"></span></div>
+        <div id="componentAttributeRows" class="componentAttributeRows"></div>
+        <div class="componentAttributeActions">
+          <button id="addComponentAttribute" type="button">添加属性</button>
+          <button id="saveComponentAttributes" class="primary" type="button">应用属性</button>
+        </div>
+        <p id="componentAttributeStatus" class="muted" role="status">选择节点后可编辑 HTML 属性；样式和脚本仍可在源码面板修改。</p>
+      </div>
       <label>插入或替换的 HTML 片段<textarea id="componentMarkup" spellcheck="false" rows="4" placeholder="例如：&lt;section id=&quot;custom-panel&quot;&gt;内容&lt;/section&gt;"></textarea></label>
       <div class="componentActions">
         <button id="insertComponentBefore" type="button">前插</button><button id="insertComponentAfter" type="button">后插</button>

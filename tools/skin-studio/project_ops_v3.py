@@ -22,6 +22,7 @@ MAX_OPERATION_DOCUMENT = 24_000_000
 SHA256 = re.compile(r"[0-9a-fA-F]{64}\Z")
 REQUIRED_FILES = frozenset(package_v3.WEB_REQUIRED)
 MAX_ANALYZED_COMPONENTS = 20_000
+MAX_COMPONENT_ATTRIBUTES = 256
 BRIDGE_V1_ACTION_REGISTRY = Path(__file__).with_name("bridge_v1_action_registry.json")
 BRIDGE_V1_CONTRACT_SCHEMA = Path(__file__).resolve().parents[2] / (
     "docs/contracts/web-skin-bridge-v1.schema.json")
@@ -289,8 +290,105 @@ def _component_insert_offset(node: dict, position: object) -> int:
     raise skin_studio.SkinError("position must be before, after, prepend, or append")
 
 
+def _normalize_component_attribute_name(value: object) -> str:
+    _fail(type(value) is str and len(value) <= 256 and
+          re.fullmatch(r"[^\s\"'<>/=]+", value) is not None and
+          not any(ord(character) < 0x20 or ord(character) == 0x7f
+                  for character in value),
+          "attribute name must be a non-empty HTML attribute token")
+    return value.lower()
+
+
+def _apply_component_attributes(files: dict[str, bytes], operation: dict) -> dict[str, bytes]:
+    fields = {"op", "path", "expectedSha256", "targetNodeId",
+              "setAttributes", "removeAttributes"}
+    _fail(set(operation) == fields, "component-attributes has unsupported or missing fields")
+    path, source, parser = _component_page(
+        files, operation["path"], operation["expectedSha256"])
+    node = _component_node(parser, operation["targetNodeId"])
+
+    raw_set = operation["setAttributes"]
+    raw_remove = operation["removeAttributes"]
+    _fail(type(raw_set) is dict and len(raw_set) <= MAX_COMPONENT_ATTRIBUTES,
+          f"setAttributes must be an object with at most {MAX_COMPONENT_ATTRIBUTES} entries")
+    _fail(type(raw_remove) is list and len(raw_remove) <= MAX_COMPONENT_ATTRIBUTES,
+          f"removeAttributes must be an array with at most {MAX_COMPONENT_ATTRIBUTES} entries")
+
+    set_attributes: dict[str, str | None] = {}
+    for raw_name, value in raw_set.items():
+        name = _normalize_component_attribute_name(raw_name)
+        _fail(name not in set_attributes,
+              "setAttributes contains duplicate names after case normalization")
+        _fail(value is None or type(value) is str,
+              f"attribute value for {name!r} must be a string or null for a boolean attribute")
+        try:
+            value_bytes = value.encode("utf-8") if value is not None else b""
+        except UnicodeEncodeError as exc:
+            raise skin_studio.SkinError(f"attribute value for {name!r} is not valid Unicode") from exc
+        _fail(value is None or ("\x00" not in value and
+                                len(value_bytes) <= package_v3.TEXT_LIMIT),
+              f"attribute value for {name!r} is invalid or too large")
+        set_attributes[name] = value
+
+    remove_attributes: set[str] = set()
+    for raw_name in raw_remove:
+        name = _normalize_component_attribute_name(raw_name)
+        _fail(name not in remove_attributes,
+              "removeAttributes contains duplicate names after case normalization")
+        remove_attributes.add(name)
+    _fail(bool(set_attributes or remove_attributes),
+          "component-attributes must set or remove at least one attribute")
+    _fail(not (set(set_attributes) & remove_attributes),
+          "an attribute cannot be both set and removed")
+
+    current_values: dict[str, list[str | None]] = {}
+    for attribute in node["attributes"]:
+        current_values.setdefault(attribute["name"].lower(), []).append(attribute["value"])
+    set_attributes = {name: value for name, value in set_attributes.items()
+                      if current_values.get(name) != [value]}
+    remove_attributes = {name for name in remove_attributes if name in current_values}
+    if not set_attributes and not remove_attributes:
+        return files
+
+    attributes: list[dict] = []
+    applied: set[str] = set()
+    for attribute in node["attributes"]:
+        name = attribute["name"].lower()
+        if name in remove_attributes:
+            continue
+        if name in set_attributes:
+            if name not in applied:
+                attributes.append({"name": name, "value": set_attributes[name]})
+                applied.add(name)
+            continue
+        attributes.append(attribute)
+    for name, value in set_attributes.items():
+        if name not in applied:
+            attributes.append({"name": name, "value": value})
+
+    opening = source[node["_sourceStart"]:node["_sourceOpenEnd"]]
+    _fail(bool(opening) and opening.startswith("<"),
+          "selected component has no safe opening tag")
+    closing = "/>" if re.search(r"/\s*>$", opening) else ">"
+    rendered = "<" + node["tag"]
+    for attribute in attributes:
+        rendered += " " + attribute["name"]
+        value = attribute["value"]
+        if value is not None:
+            escaped = (value.replace("&", "&amp;").replace("\"", "&quot;")
+                       .replace("<", "&lt;").replace(">", "&gt;"))
+            rendered += '="' + escaped + '"'
+    rendered += closing
+    start, end = node["_sourceStart"], node["_sourceOpenEnd"]
+    result = source[:start] + rendered + source[end:]
+    files[path] = _validate_component_result(path, parser, result)
+    return files
+
+
 def _apply_component_operation(files: dict[str, bytes], operation: dict) -> dict[str, bytes]:
     op = operation.get("op")
+    if op == "component-attributes":
+        return _apply_component_attributes(files, operation)
     common = {"op", "path", "expectedSha256"}
     fields = {
         "component-insert": common | {"targetNodeId", "position", "html"},
@@ -395,7 +493,7 @@ def _apply_one(files: dict[str, bytes], operation: object) -> dict[str, bytes]:
         files[target] = files.pop(source)
         return files
 
-    if op in {"component-insert", "component-remove",
+    if op in {"component-insert", "component-remove", "component-attributes",
               "component-replace", "component-move"}:
         return _apply_component_operation(files, operation)
 

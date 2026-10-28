@@ -135,6 +135,7 @@ Supported operations:
 | `component-remove` | `path`, current HTML `expectedSha256`, and `targetNodeId`; `html`, `head`, and `body` document shells are protected. |
 | `component-replace` | `path`, current HTML `expectedSha256`, `targetNodeId`, and a balanced replacement fragment. |
 | `component-move` | `path`, current HTML `expectedSha256`, `sourceNodeId`, `targetNodeId`, and `position`; the source and destination are in the same page. Moving a node into itself or a descendant is rejected. |
+| `component-attributes` | `path`, current HTML `expectedSha256`, `targetNodeId`, `setAttributes` (attribute name → string value or `null` for a boolean attribute), and `removeAttributes`. Names are HTML case-insensitive; touched duplicate names are reduced to one value. Values are escaped and the resulting page/package is revalidated. |
 | `json-patch` | `path: "project.json"`, current file `expectedSha256`, and a JSON Patch list. Supported ops are `add`, `remove`, `replace`, `move`, `copy`, and `test`; paths use RFC 6901 JSON Pointers. |
 | `manifest-patch` | current `expectedSha256` from `inspect-v3`, and JSON Patch ops. `format`, `schemaVersion`, `entrypoint`, `project`, and `sha256` are managed and cannot be changed. Changing `capabilities` additionally requires `allowCapabilityChange: true`; the package is still subject to Android Host capability enforcement. |
 
@@ -151,9 +152,11 @@ Component operations address the explicit, balanced source tree reported by
 because `nodeId` includes the source order. The editor refuses malformed pages/fragments,
 new duplicate HTML IDs, mutations of the `html`/`head`/`body` shell, and HTML insertion
 inside raw-text elements such as `script` and `style`. Runtime-created controls remain
-editable through ordinary source `write` operations. The operations preserve all bytes
-outside the selected source range and validate/rebuild the complete v3 package before
-publishing an output file.
+editable through ordinary source `write` operations. Structural operations preserve all
+bytes outside the selected source range. An explicit attribute edit rewrites only the
+selected opening tag; an unchanged attribute operation preserves that tag byte-for-byte.
+Every successful edit validates/rebuilds the complete v3 package before publishing an
+output file.
 
 ## Browser Studio structure editor
 
@@ -166,12 +169,14 @@ hash receipts, and a fresh analysis. Stale page hashes and invalid structures re
 400 without changing the browser project's source map.
 
 In the Studio, the **HTML 结构树** panel selects a packaged HTML page and supports source
-fragment insertion before/after/inside a selected node, replacement, deletion, and moving
-the selected node relative to a target. Each accepted edit updates the same in-memory source
+fragment insertion before/after/inside a selected node, replacement, deletion, moving
+the selected node relative to a target, and editing arbitrary attributes on a selected
+static node, including string-valued and boolean attributes. Each accepted edit updates the same in-memory source
 bytes used by the source editor, live package preview, project save and `.pcskin` export.
 The tree is a static source inventory: JavaScript-generated nodes remain available through
-the advanced source editor. This structural panel does not yet provide a full CSS layout,
-computed-style, interaction-logic or accessibility editor.
+the advanced source editor. The attribute inspector edits source attributes; it does not
+provide a full CSS layout, computed-style, interaction-logic or accessibility editor.
+Those areas remain editable through the complete source editor.
 
 Clear's month page uses source-editable `selectMonth`, `selectMonthDate`, and `todayInMonth`
 Host actions for year/month navigation and local-date selection. The Studio's action catalog
@@ -197,6 +202,22 @@ hash come from the same `analyze-v3` / `inspect-v3` snapshot:
     "targetNodeId": "web/index.html#n00012",
     "position": "append",
     "html": "<section id=\"custom-panel\"><h2>自定义</h2></section>"
+  }]
+}
+```
+
+Example: update an analyzed node's attributes. Attribute names are case-insensitive;
+use `null` to write a boolean attribute and list names in `removeAttributes` to delete:
+
+```json
+{
+  "operations": [{
+    "op": "component-attributes",
+    "path": "web/index.html",
+    "expectedSha256": "<current-page-sha256>",
+    "targetNodeId": "web/index.html#n00012",
+    "setAttributes": {"class": "custom-panel", "aria-label": "自定义面板", "hidden": null},
+    "removeAttributes": ["title"]
   }]
 }
 ```

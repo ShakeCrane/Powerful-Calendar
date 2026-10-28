@@ -3,7 +3,7 @@ const {spawn} = require("node:child_process");
 const fs = require("node:fs"), path = require("node:path"), readline = require("node:readline");
 const root = path.resolve(__dirname, "../../..");
 const chrome = process.env.CHROME_PATH || "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
-const reportDir = path.join(root, ".local/android-test/reports/separation-20261028/studio-component-tree");
+const reportDir = path.join(root, ".local/android-test/reports/separation-20261028/studio-component-attributes");
 const delay = ms => new Promise(resolve=>setTimeout(resolve,ms));
 async function main(){
   fs.mkdirSync(reportDir,{recursive:true});
@@ -71,6 +71,23 @@ async function main(){
       nodeButton('app').click();markup.value='<article id="studio-component-two">two</article>';
       document.querySelector('#insertComponentAfter').click();
       await waitFor(()=>nodeButton('studio-component-two'),'second component insert was not reflected');
+      nodeButton('app').click();markup.value='<button id="studio-component-attributes">attributes</button>';
+      document.querySelector('#insertComponentAfter').click();
+      await waitFor(()=>nodeButton('studio-component-attributes'),'attribute test node was not inserted');
+      nodeButton('studio-component-attributes').click();
+      const addAttribute=(name,value,isBoolean=false)=>{
+        document.querySelector('#addComponentAttribute').click();
+        const rows=[...document.querySelectorAll('#componentAttributeRows .componentAttributeRow')];
+        const inputs=rows.at(-1).querySelectorAll('input');
+        inputs[0].value=name;inputs[1].value=value;inputs[2].checked=isBoolean;
+      };
+      addAttribute('data-studio-author','attribute & value');
+      addAttribute('aria-label','Editable node');
+      addAttribute('hidden','',true);
+      document.querySelector('#saveComponentAttributes').click();
+      await waitFor(()=>dec.decode(sourceFiles.get('web/index.html')).includes(
+        'data-studio-author="attribute &amp; value" aria-label="Editable node" hidden>'),
+        'component attribute edit did not update canonical HTML source');
       nodeButton('studio-component-one').click();
       const target=document.querySelector('#componentTarget');
       target.value=[...target.options].find(option=>option.dataset.htmlId==='studio-component-two').value;
@@ -197,8 +214,11 @@ async function main(){
       const visualZip=await (await post('/api/export-v3',JSON.stringify(visual),'application/json')).arrayBuffer();
       const visualImported=await (await post('/api/import-v3',visualZip,'application/octet-stream')).json();
       check(visualImported.files['project.json']===visual.files['project.json'],'visual metadata roundtrip changed');
+      await loadPackage(treeImported);
+      await waitFor(()=>nodeButton('studio-component-attributes'),'attribute node missing after exported package reload');
       return {file:'web/edit.js', files:Object.keys(authored.files).length, capabilities:imported.manifest.capabilities,
         componentTree:true,componentInsert:true,componentReplace:true,componentMove:true,componentRemove:true,
+        componentAttributes:true,
         componentPreviewExportRoundtrip:true,componentReloadState:true,
         projectTree:true,newText:true,newBinary:true,replacedBinary:true,delete:true,referenceGuard:true};
     })()`;
@@ -207,8 +227,26 @@ async function main(){
     console.log("BROWSER SOURCE ROUNDTRIP PASS",JSON.stringify(result.result.value));
     await call("Page.enable");
     await call("Emulation.setDeviceMetricsOverride",{width:1440,height:1280,deviceScaleFactor:1,mobile:false});
+    const attributeInspector=await call("Runtime.evaluate",{expression:`(()=>{
+      const check=(value,message)=>{if(!value)throw Error(message)};
+      const node=document.querySelector('#componentTree button[data-html-id="studio-component-attributes"]');
+      check(node,'attribute node missing after package reimport');node.click();
+      const selection=document.querySelector('#componentSelection').textContent;
+      check(selection.includes('studio-component-attributes'),'attribute node was not selected: '+selection);
+      const rows=[...document.querySelectorAll('#componentAttributeRows .componentAttributeRow')];
+      const rowFor=name=>rows.find(row=>row.querySelectorAll('input')[0].value===name)?.querySelectorAll('input');
+      check(rows.length===4,'reimported attribute rows missing: '+rows.length);
+      check(rowFor('id')?.[1].value==='studio-component-attributes','node id did not rehydrate');
+      check(rowFor('data-studio-author')?.[1].value==='attribute & value','string attribute value did not rehydrate');
+      check(rowFor('aria-label')?.[1].value==='Editable node','ARIA attribute did not rehydrate');
+      check(rowFor('hidden')?.[2].checked===true,'boolean attribute did not rehydrate');
+      return {selection,attributes:rows.map(row=>{const inputs=row.querySelectorAll('input');return {name:inputs[0].value,value:inputs[1].value,boolean:inputs[2].checked}})};
+    })()`,returnByValue:true});
+    if(attributeInspector.exceptionDetails)
+      throw Error(attributeInspector.exceptionDetails.exception?.description || attributeInspector.exceptionDetails.text);
+    console.log("BROWSER COMPONENT ATTRIBUTE RELOAD PASS",JSON.stringify(attributeInspector.result.value));
     const componentScreenshot=await call("Page.captureScreenshot",{format:"png",captureBeyondViewport:true});
-    fs.writeFileSync(path.join(reportDir,"studio-component-tree.png"),Buffer.from(componentScreenshot.data,"base64"));
+    fs.writeFileSync(path.join(reportDir,"studio-component-attributes.png"),Buffer.from(componentScreenshot.data,"base64"));
     const setup=await call("Runtime.evaluate",{awaitPromise:true,returnByValue:true,expression:`(async()=>{
       for(let i=0;i<150;i++){
         if(document.querySelector('#previewState').textContent.includes('连接成功'))break;

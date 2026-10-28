@@ -321,6 +321,88 @@ class ProjectOpsV3Test(unittest.TestCase):
                if node["id"]}
         self.assertTrue({"root", "third", "replacement"}.issubset(ids))
 
+    def test_static_component_attributes_edit_any_attribute_and_preserve_other_source(self):
+        path = "web/index.html"
+        html = (
+            "<!doctype html><html><body>\r\n"
+            '<button id=\'save\' class="old" disabled data-mode=\'compact\' data-mode="extra" '
+            'title="keep? remove" >Save</button>\r\n'
+            '<aside id="sibling" data-opaque=" untouched "></aside>'
+            "</body></html>"
+        ).encode("utf-8")
+        source = build_files(self.manifest, {**self.files, path: html})
+        original_files = unpack(source)[1]
+        _, files, edited, changes = edit_package(source, [{
+            "op": "component-attributes", "path": path,
+            "expectedSha256": hashlib.sha256(html).hexdigest(),
+            "targetNodeId": html_node_id(source, "save"),
+            "setAttributes": {
+                "class": "primary&selected",
+                "aria-label": 'Save "now" <draft>',
+                "disabled": None,
+                "data-mode": "expanded",
+            },
+            "removeAttributes": ["title"],
+        }])
+
+        page = analyze_package(edited)["pages"][0]
+        button = next(node for node in page["components"] if node.get("id") == "save")
+        sibling = next(node for node in page["components"] if node.get("id") == "sibling")
+        attributes = {item["name"]: item["value"] for item in button["attributes"]}
+        self.assertEqual(attributes["class"], "primary&selected")
+        self.assertEqual(attributes["aria-label"], 'Save "now" <draft>')
+        self.assertIsNone(attributes["disabled"])
+        self.assertEqual(attributes["data-mode"], "expanded")
+        self.assertEqual(sum(item["name"] == "data-mode" for item in button["attributes"]), 1)
+        self.assertNotIn("title", attributes)
+        self.assertEqual(sibling["attributes"], [
+            {"name": "id", "value": "sibling"},
+            {"name": "data-opaque", "value": " untouched "},
+        ])
+        self.assertIn(b"\r\n", files[path])
+        self.assertEqual(files[path].count(b"\r\n"), html.count(b"\r\n"))
+        self.assertEqual(changes[0]["op"], "component-attributes")
+        self.assertEqual(original_files[path], html)
+
+    def test_component_attribute_noop_preserves_original_opening_tag_bytes(self):
+        path = "web/index.html"
+        html = b"<!doctype html><html><body><button id='save' class = old>Save</button></body></html>"
+        source = build_files(self.manifest, {**self.files, path: html})
+        _, files, _, changes = edit_package(source, [{
+            "op": "component-attributes", "path": path,
+            "expectedSha256": hashlib.sha256(html).hexdigest(),
+            "targetNodeId": html_node_id(source, "save"),
+            "setAttributes": {"id": "save", "class": "old"},
+            "removeAttributes": ["missing"],
+        }])
+        self.assertEqual(files[path], html)
+        self.assertEqual(changes, [])
+
+    def test_component_attribute_edit_rejects_bad_fields_and_stale_source(self):
+        path = "web/index.html"
+        html = b'<!doctype html><html><body><button id="save" title="old">Save</button></body></html>'
+        source = build_files(self.manifest, {**self.files, path: html})
+        base = {
+            "op": "component-attributes", "path": path,
+            "expectedSha256": hashlib.sha256(html).hexdigest(),
+            "targetNodeId": html_node_id(source, "save"),
+            "setAttributes": {"title": "new"}, "removeAttributes": [],
+        }
+
+        with self.assertRaisesRegex(SkinError, "attribute name"):
+            edit_package(source, [{**base, "setAttributes": {"bad name": "x"}}])
+        with self.assertRaisesRegex(SkinError, "attribute name"):
+            edit_package(source, [{**base, "setAttributes": {"bad\x00name": "x"}}])
+        with self.assertRaisesRegex(SkinError, "attribute value"):
+            edit_package(source, [{**base, "setAttributes": {"title": "bad\x00value"}}])
+        with self.assertRaisesRegex(SkinError, "valid Unicode"):
+            edit_package(source, [{**base, "setAttributes": {"title": "\ud800"}}])
+        with self.assertRaisesRegex(SkinError, "both set and removed"):
+            edit_package(source, [{**base, "removeAttributes": ["TITLE"]}])
+        with self.assertRaisesRegex(SkinError, "changed since inspection"):
+            edit_package(source, [{**base, "expectedSha256": "0" * 64}])
+        self.assertEqual(unpack(source)[1][path], html)
+
     def test_component_operations_reject_stale_or_unsafe_edits_without_mutating_input(self):
         path = "web/index.html"
         html = (b'<!doctype html><html><body><main id="root"></main>'
@@ -442,6 +524,27 @@ class ProjectOpsV3Test(unittest.TestCase):
             self.assertEqual(receipt["changes"][0]["path"], path)
             self.assertIn(b'data-action="openEvent"', unpack(output_path.read_bytes())[1][path])
 
+            attribute_source = output_path.read_bytes()
+            attribute_html = unpack(attribute_source)[1][path]
+            attribute_output = root / "attributes-edited.pcskin"
+            operations_path.write_text(json.dumps({"operations": [{
+                "op": "component-attributes", "path": path,
+                "expectedSha256": hashlib.sha256(attribute_html).hexdigest(),
+                "targetNodeId": html_node_id(attribute_source, "new-action"),
+                "setAttributes": {"aria-label": "Open calendar", "disabled": None},
+                "removeAttributes": [],
+            }]}), encoding="utf-8")
+            attribute_result = subprocess.run(
+                [sys.executable, str(STUDIO / "skin_studio.py"), "edit-v3",
+                 "--file", str(output_path), "--operations", str(operations_path),
+                 "--out", str(attribute_output)],
+                text=True, encoding="utf-8", capture_output=True, check=False)
+            self.assertEqual(attribute_result.returncode, 0, attribute_result.stderr)
+            attribute_receipt = json.loads(attribute_result.stdout)
+            self.assertEqual(attribute_receipt["changes"][0]["op"], "component-attributes")
+            edited_html = unpack(attribute_output.read_bytes())[1][path]
+            self.assertIn(b'aria-label="Open calendar" disabled', edited_html)
+
             bad_output = root / "must-not-exist.pcskin"
             operations_path.write_text(json.dumps({"operations": [{
                 "op": "component-insert", "path": path,
@@ -464,11 +567,21 @@ class ProjectOpsV3Test(unittest.TestCase):
         path = "web/index.html"
         page = original_files[path]
         target_node = html_node_id(original, "app")
-        inserted = '<aside id="studio-component-roundtrip" hidden></aside>'
-        _, _, with_component, _ = edit_package(original, [{
-            "op": "component-insert", "path": path,
+        _, _, attributed, _ = edit_package(original, [{
+            "op": "component-attributes", "path": path,
             "expectedSha256": hashlib.sha256(page).hexdigest(),
-            "targetNodeId": target_node, "position": "append", "html": inserted,
+            "targetNodeId": target_node,
+            "setAttributes": {"data-studio-roundtrip": "temporary & value"},
+            "removeAttributes": [],
+        }])
+        attributed_page = unpack(attributed)[1][path]
+        self.assertIn(b'data-studio-roundtrip="temporary &amp; value"', attributed_page)
+        inserted = '<aside id="studio-component-roundtrip" hidden></aside>'
+        _, _, with_component, _ = edit_package(attributed, [{
+            "op": "component-insert", "path": path,
+            "expectedSha256": hashlib.sha256(attributed_page).hexdigest(),
+            "targetNodeId": html_node_id(attributed, "app"),
+            "position": "append", "html": inserted,
         }])
         self.assertIn(b'id="studio-component-roundtrip"',
                       unpack(with_component)[1][path])
@@ -478,6 +591,13 @@ class ProjectOpsV3Test(unittest.TestCase):
             "op": "component-remove", "path": path,
             "expectedSha256": hashlib.sha256(changed_page).hexdigest(),
             "targetNodeId": html_node_id(with_component, "studio-component-roundtrip"),
+        }])
+        restored_page = unpack(restored)[1][path]
+        _, _, restored, _ = edit_package(restored, [{
+            "op": "component-attributes", "path": path,
+            "expectedSha256": hashlib.sha256(restored_page).hexdigest(),
+            "targetNodeId": html_node_id(restored, "app"),
+            "setAttributes": {}, "removeAttributes": ["data-studio-roundtrip"],
         }])
         restored_manifest, restored_files = unpack(restored)
         self.assertEqual(restored_manifest, original_manifest)

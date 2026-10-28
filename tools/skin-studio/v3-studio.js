@@ -120,6 +120,93 @@ function componentLabel(node){
   const text=node.directText?" — "+node.directText.slice(0,64):"";
   return "<"+node.tag+identity+">"+component+text;
 }
+function updateComponentAttributeCount(){
+  const count=$("componentAttributeRows").querySelectorAll(".componentAttributeRow").length;
+  $("componentAttributeCount").textContent=count?count+" 项":"";
+}
+function addComponentAttributeRow(attribute={name:"",value:""},focusName=false){
+  const row=document.createElement("div");row.className="componentAttributeRow";
+  const name=document.createElement("input");name.type="text";name.value=attribute.name||"";
+  name.maxLength=256;name.autocomplete="off";name.spellcheck=false;
+  name.setAttribute("aria-label","HTML 属性名称");
+  const value=document.createElement("input");value.type="text";
+  value.value=attribute.value===null?"":String(attribute.value??"");
+  value.autocomplete="off";value.setAttribute("aria-label","HTML 属性值");
+  const booleanLabel=document.createElement("label");booleanLabel.className="componentAttributeBoolean";
+  const boolean=document.createElement("input");boolean.type="checkbox";
+  boolean.checked=attribute.value===null;boolean.setAttribute("aria-label","布尔属性");
+  value.disabled=boolean.checked;
+  boolean.onchange=()=>{value.disabled=boolean.checked};
+  booleanLabel.append(boolean,document.createTextNode("布尔"));
+  const remove=document.createElement("button");remove.type="button";remove.textContent="移除";
+  remove.setAttribute("aria-label","移除此属性");remove.onclick=()=>{row.remove();updateComponentAttributeCount()};
+  row.append(name,value,booleanLabel,remove);$("componentAttributeRows").append(row);
+  updateComponentAttributeCount();
+  if(focusName)name.focus();
+  return row;
+}
+function renderComponentAttributeEditor(node){
+  const rows=$("componentAttributeRows");rows.replaceChildren();
+  const enabled=Boolean(node)&&!componentAnalysisPending;
+  $("addComponentAttribute").disabled=!enabled;
+  $("saveComponentAttributes").disabled=!enabled;
+  if(node){
+    for(const attribute of node.attributes||[])addComponentAttributeRow(attribute);
+    $("componentAttributeStatus").textContent="可修改任意 HTML 属性；应用后只改写选中节点的开始标签。";
+  }else{
+    $("componentAttributeCount").textContent="";
+    $("componentAttributeStatus").textContent="选择节点后可编辑 HTML 属性；样式和脚本仍可在源码面板修改。";
+  }
+}
+function attributeGroups(attributes){
+  const result=new Map();
+  for(const attribute of attributes||[]){
+    const name=String(attribute.name).toLowerCase();
+    if(!result.has(name))result.set(name,[]);
+    result.get(name).push(attribute.value??null);
+  }
+  return result;
+}
+function sameAttributeValues(left,right){
+  return left.length===right.length&&left.every((value,index)=>Object.is(value,right[index]));
+}
+async function saveComponentAttributes(){
+  const page=currentComponentPage(),node=page?.components.find(item=>item.nodeId===selectedComponent);
+  if(!page||!node)throw Error("请先选择一个仍有效的 HTML 节点");
+  const after=new Map();
+  for(const row of $("componentAttributeRows").querySelectorAll(".componentAttributeRow")){
+    const inputs=row.querySelectorAll("input");
+    const rawName=inputs[0].value;
+    const value=inputs[2].checked?null:inputs[1].value;
+    if(!rawName&&value==="")continue;
+    if(!/^[^\s"'<>\/=]{1,256}$/u.test(rawName)||/[\u0000-\u001f\u007f]/u.test(rawName))
+      throw Error("属性名称必须是有效的 HTML 属性名");
+    const name=rawName.toLowerCase();
+    if(!after.has(name))after.set(name,[]);
+    after.get(name).push(value);
+  }
+  const before=attributeGroups(node.attributes);
+  for(const [name,values] of after){
+    if(values.length>1&&!sameAttributeValues(before.get(name)||[],values))
+      throw Error("属性名不区分大小写，不能添加重复属性："+name);
+  }
+  const names=new Set([...before.keys(),...after.keys()]);
+  const setAttributes=Object.create(null),removeAttributes=[];
+  for(const name of names){
+    const oldValues=before.get(name)||[],newValues=after.get(name)||[];
+    if(sameAttributeValues(oldValues,newValues))continue;
+    if(!newValues.length)removeAttributes.push(name);
+    else{
+      if(newValues.length!==1)throw Error("修改后每个属性名只能保留一项："+name);
+      setAttributes[name]=newValues[0];
+    }
+  }
+  if(!Object.keys(setAttributes).length&&!removeAttributes.length){
+    say("属性没有变化。");return;
+  }
+  await applyComponentOperation(selectedComponentOperation("component-attributes",{
+    setAttributes,removeAttributes}),"节点属性已更新");
+}
 function renderComponentTree(){
   const pageSelect=$("componentPage"),tree=$("componentTree"),target=$("componentTarget");
   const previousPath=pageSelect.value,previousTarget=target.value;
@@ -135,6 +222,7 @@ function renderComponentTree(){
     selectedComponent=components.find(node=>node.tag==="body")?.nodeId||components[0]?.nodeId||null;
   tree.replaceChildren();target.replaceChildren();
   if(!page){
+    renderComponentAttributeEditor(null);
     tree.innerHTML='<div class="empty">当前皮肤没有可分析的静态 HTML 页面。</div>';
     $("componentCount").textContent="0 页面";$("componentSelection").textContent="没有可选节点。";
     for(const id of ["insertComponentBefore","insertComponentAfter","insertComponentFirst",
@@ -168,6 +256,7 @@ function renderComponentTree(){
           item.setAttribute("aria-pressed",String(item.dataset.nodeId===selectedComponent)));
         const current=byId.get(selectedComponent);
         $("componentSelection").textContent="已选："+componentLabel(current)+"（第 "+current.line+" 行）";
+        renderComponentAttributeEditor(current);
         if(!byId.has(target.value))target.value=selectedComponent;
       };
       item.append(button);parentList.append(item);
@@ -182,6 +271,7 @@ function renderComponentTree(){
   const selected=byId.get(selectedComponent);
   $("componentCount").textContent=components.length+" 节点 · "+page.path;
   $("componentSelection").textContent=selected?"已选："+componentLabel(selected)+"（第 "+selected.line+" 行）":"选择一个节点进行编辑。";
+  renderComponentAttributeEditor(selected);
   const enabled=Boolean(selected);
   for(const id of ["insertComponentBefore","insertComponentAfter","insertComponentFirst",
     "insertComponentLast","replaceComponent","removeComponent","moveComponent"])
@@ -191,8 +281,10 @@ function renderComponentTree(){
 }
 function setComponentActionsDisabled(disabled){
   for(const id of ["insertComponentBefore","insertComponentAfter","insertComponentFirst",
-    "insertComponentLast","replaceComponent","removeComponent","moveComponent"])
+    "insertComponentLast","replaceComponent","removeComponent","moveComponent",
+    "addComponentAttribute","saveComponentAttributes"])
     $(id).disabled=disabled;
+  $("componentAttributeRows").querySelectorAll("input,button").forEach(item=>item.disabled=disabled);
 }
 async function refreshComponentTree(knownAnalysis=null,requestId=null){
   if(!manifest)return;
@@ -1424,6 +1516,8 @@ function bindUI(){
   $("refresh").onclick=()=>schedulePreview(0);
   $("refreshComponents").onclick=()=>refreshComponentTree();
   $("componentPage").onchange=()=>{selectedComponent=null;renderComponentTree()};
+  $("addComponentAttribute").onclick=()=>addComponentAttributeRow({},true);
+  $("saveComponentAttributes").onclick=()=>saveComponentAttributes().catch(error=>say(error.message,true));
   $("insertComponentBefore").onclick=()=>insertComponent("before").catch(error=>say(error.message,true));
   $("insertComponentAfter").onclick=()=>insertComponent("after").catch(error=>say(error.message,true));
   $("insertComponentFirst").onclick=()=>insertComponent("prepend").catch(error=>say(error.message,true));
