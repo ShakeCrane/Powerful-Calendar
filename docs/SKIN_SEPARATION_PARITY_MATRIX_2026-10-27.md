@@ -91,3 +91,10 @@ In the table, Studio support means source availability, not proof of arbitrary v
 - Added `docs/contracts/web-skin-bridge-v1.schema.json` for both the 25 `action` payloads and 18 `command` payloads. The Studio audit receipt points each static HTML binding to its action schema; the schema records exact fields, types, enumerations, bounds and examples.
 - JVM regressions feed the schema examples, missing-required-field variants and unexpected-field variants to `decodeBridgeAction` and `WebEditWire.decode`. Python checks keep the schema unions synchronized with both Kotlin decoder name sets and resolve every local `$ref`.
 - The CLI still does not execute or statically analyze arbitrary skin JavaScript. Dynamic payload correctness, Android WebView behavior and complete SEP-15 parity remain **NOT TESTED**; see `PC-ISSUE-SEPARATION-STUDIO-BRIDGE-SCHEMA.md`.
+
+## SEP-15 follow-up — blank v3 project scaffold CLI (2026-10-28)
+
+- Added `scaffold-v3` to create a deterministic, valid, editable v3 shell from scratch. The command defaults to no Host capabilities, routes through the production v3 builder/validator and refuses output overwrite. Invalid explicit capability requests fail without publishing a package.
+- Focused workflow **2/2 PASS**, complete Skin Studio suite **70/70 PASS**, and canonical Clear bundle verification **PASS**. Independent evidence: `docs/issues/PC-ISSUE-SEPARATION-STUDIO-SCAFFOLD-V3.md`.
+- Implementation commit: `a9dd0a20463a13bd8bd25b79168af6fc4cfd5883`.
+- This only closes a machine-callable blank-project creation slice. Browser Studio import/edit/export E2E for the scaffold, Android WebView/device behavior, full visual/interaction editing and Native/Skin functional parity remain **NOT TESTED**; SEP-15/S5 remains open.

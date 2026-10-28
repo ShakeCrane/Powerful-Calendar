@@ -982,3 +982,9 @@ Updated: 2026-10-24
 - 最终完整离线门禁 **607/607 JVM tests、85 suites、0 failures/errors/skips、88/88 tasks**，source boundary、Debug 与 AndroidTest APK、lint 均通过（0 lint errors / 52 warnings）。第一次整套运行中一个未修改的 AI Compose 确认用例短暂失败，单项复跑及整套复跑通过；该时序敏感列为剩余风险。Skin Studio Python **51/51**、Edge Headless E2E、JS syntax、Clear bundle verify 均通过。
 - 独立结案报告：[PC-ISSUE-SEPARATION-SKIN-MANAGEMENT.md](../issues/PC-ISSUE-SEPARATION-SKIN-MANAGEMENT.md)。实现提交 `9bb81a0113bf6d0461a2cf305256d75fa61e8ccb` 已推送至 `origin/codex/separation-skin-settings`。完整日志、APK/测试包、Lint XML 与 Clear bundle 哈希见 Issue 报告和 `.local/android-test/reports/separation-skin-management-20261028/`。
 - 此结果只关闭皮肤管理入口这一子切片；未测真实 SAF/Provider、自定义皮肤安装/删除/导出、凭据、完整备份恢复或 Native/Skin 回放。SEP-11 仍 `NOT TESTED`，S4 与整个 S0–S8 分离计划保持进行中。
+
+## Separation — v3 空白项目 scaffold CLI（2026-10-28）
+
+- 新增 `scaffold-v3`，可从零生成可编辑、确定性、默认无 Host capability 的 v3 `.pcskin`，并复用生产 builder/validator、原子拒绝覆盖及结构化 JSON 回执；非法 capability 不发布文件。
+- 定向 AI workflow **2/2 PASS**；Skin Studio 全套 **70/70 PASS**；Clear bundle verify **PASS**（8 files / 380,940 bytes；SHA-256 `9cc6bdd86a53c693b8cec6e84950ed89ec49bcde9fb78d773034e4147e45a454`）；`git diff --check` PASS。日志与 hash 见 `docs/issues/PC-ISSUE-SEPARATION-STUDIO-SCAFFOLD-V3.md` 和 `.local/android-test/reports/separation-20261028/studio-v3-scaffold-20261028-112525-637/`。
+- 实现提交 `a9dd0a20463a13bd8bd25b79168af6fc4cfd5883` 已创建；本 Issue/进度/矩阵记录独立提交。本切片未做 Browser Studio import E2E、Android WebView/设备或 Native/Skin 功能等价。SEP-15/S5 和总体分离目标保持进行中。
