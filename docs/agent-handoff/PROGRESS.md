@@ -1,5 +1,13 @@
 # Core freeze progress
 
+## Separation — failed skin-change checkpoint retry (2026-10-28)
+
+- Failure injection reproduced a formal-editor recovery dead-end: after a draft checkpoint failed once, a later successful checkpoint did not clear `EditSession.lastError`; Host `prepareSkinChange()` consequently refused to close the editor even after data was durable. Successful formal checkpoints now clear a prior error without changing business data, revision, identity or authorization semantics.
+- Added four SQLite-trigger regressions: existing draft retry; transient new-event insert failure/retry with permanently retired failed sequence per PC-ISSUE-052; formal editor recovery draft without formal publish; and pending Host write-review cancellation/replay safety on skin change.
+- Evidence: `WebSkinEditBridgeTest` **26/26 PASS**; full offline Gradle gate **633/633 JVM tests, 87 suites, 0 failures/errors/skips, 59/59 tasks**, including source-boundary verification and Debug APK; Lint 0 errors / 52 warnings. APK SHA-256 `97AD82F42FDABED1D7E8339A7F18D1665D272B786ED251806718507E00CDBF5C`. Full log, JUnit XML, lint XML and red/green test evidence are detailed in `docs/issues/PC-ISSUE-SEPARATION-SKIN-CHANGE-CHECKPOINT-RETRY.md` and `.local/android-test/reports/separation-20261028/skin-change-checkpoint-failure/`.
+- Implementation commit `b890d61ec6fdafbdd2b0b1a9486ae0a27b59b281` pushed to `origin/codex/separation-skin-settings`. SDK has no emulator binary and `adb devices -l` found no device; no device test is claimed. SEP-14 remains **NOT TESTED** overall; process death, skin/WebView crash, malicious package and complete Native/Skin replay remain open.
+- The concurrent `WebSkinManagementInstrumentedTest.kt` owned by another agent remains untouched and unstaged.
+
 ## Separation — Studio component CSS override editor (2026-10-28)
 
 - SEP-15 gap: static HTML structure and attribute editors existed, but component appearance required direct full-source CSS editing. Added a selected-node style panel plus `component-style`: SHA-guarded HTML/CSS edits create a unique node marker and managed selector, preserve authored bytes outside the generated regions, support property update/removal and restore state after import.
