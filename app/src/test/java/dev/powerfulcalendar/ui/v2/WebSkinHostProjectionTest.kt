@@ -95,6 +95,30 @@ class WebSkinHostProjectionTest {
         assertEquals("2026-10-22T09:00", sameDay.getString("originalOccurrenceKey"))
     }
 
+    @Test fun memoProjectionSeparatesToggleIdentityFromOptionalOriginalSlot() {
+        val repeatedMemo = TemporalRecord(
+            eventSeq = 41, revision = 3, kind = TemporalKind.MEMO,
+            title = "Daily memo", memoStartDate = "2026-10-20",
+            recurrence = Recurrence(freq = RecurrenceFreq.DAILY, count = 4),
+            zoneId = zone.id
+        )
+        val undatedMemo = TemporalRecord(
+            eventSeq = 42, revision = 1, kind = TemporalKind.MEMO,
+            title = "No date", zoneId = zone.id
+        )
+        val entries = TodoProjection.entries(listOf(repeatedMemo, undatedMemo), noon)
+        val rows = WebSkinMemoProjection.build(entries)
+        val selected = (0 until rows.length()).map(rows::getJSONObject)
+            .single { it.getLong("eventSeq") == repeatedMemo.eventSeq &&
+                it.getString("occurrenceKey") == "2026-10-22T00:00" }
+        assertEquals("2026-10-22T00:00", selected.getString("originalOccurrenceKey"))
+
+        val single = (0 until rows.length()).map(rows::getJSONObject)
+            .single { it.getLong("eventSeq") == undatedMemo.eventSeq }
+        assertEquals("single", single.getString("occurrenceKey"))
+        assertTrue(single.isNull("originalOccurrenceKey"))
+    }
+
     @Test fun boundedProjectionStatesWhenClipped() {
         val events = (1..340).map { index ->
             activity(index.toLong(), start - 3_600_000L + index * 60_000L)

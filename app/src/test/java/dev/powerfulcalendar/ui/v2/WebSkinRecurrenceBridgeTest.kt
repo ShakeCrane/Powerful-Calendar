@@ -58,6 +58,42 @@ class WebSkinRecurrenceBridgeTest {
         return card.eventSeq
     }
 
+    @Test fun memoOccurrenceKeyOpensTheProjectedMemoSlotWithoutWriting() = runBlocking {
+        val card = store.newDraft(DraftForm(kind = TemporalKind.MEMO, title = "每日备忘",
+            startText = "2026-10-20", zoneId = "Asia/Shanghai",
+            recurrence = Recurrence(freq = RecurrenceFreq.DAILY, count = 4)))
+        assertTrue(store.commit(card.draftId) is PowerStore.CommitOutcome.Committed)
+        val before = requireNotNull(store.get(card.eventSeq))
+        val key = "2026-10-22T00:00"
+        val identities = store.identityCount()
+        val commits = store.commitCount()
+
+        assertEquals("opened", service.execute(command("editor.open", "eventSeq" to card.eventSeq,
+            "expectedRevision" to before.revision, "occurrenceKey" to key)).getString("status"))
+        var editor = service.snapshot().getJSONObject("editor")
+        assertEquals(TemporalKind.MEMO.name, editor.getJSONObject("form").getString("kind"))
+        assertTrue(editor.getBoolean("requiresRecurrenceScope"))
+        assertTrue(editor.getBoolean("canEditSelectedOccurrence"))
+        val session = editor.getString("sessionId")
+
+        assertEquals("selected", service.execute(command("editor.scope", "sessionId" to session,
+            "scope" to "SINGLE_OCCURRENCE")).getString("status"))
+        editor = service.snapshot().getJSONObject("editor")
+        assertEquals("2026-10-22", editor.getJSONObject("form").getString("startText"))
+        assertEquals("edited", service.execute(command("editor.patch", "sessionId" to session,
+            "field" to "title", "value" to "仅这一次")).getString("status"))
+        assertEquals("closed", service.execute(command("editor.close", "sessionId" to session))
+            .getString("status"))
+
+        assertEquals(before, store.get(card.eventSeq))
+        val pending = store.pendingDraftsFor(card.eventSeq).single()
+        assertEquals(key, pending.form.editOccurrenceKey)
+        assertEquals(RecurrenceEditScope.SINGLE_OCCURRENCE, pending.form.recurrenceEditScope)
+        assertEquals("仅这一次", pending.form.title)
+        assertEquals(identities, store.identityCount())
+        assertEquals(commits, store.commitCount())
+    }
+
     @Test fun singleOccurrenceRequiresScopeAndSurvivesCheckpoint() = runBlocking {
         val seq = daily()
         val initial = requireNotNull(store.get(seq))

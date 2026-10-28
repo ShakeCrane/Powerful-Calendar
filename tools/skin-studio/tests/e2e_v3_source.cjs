@@ -266,6 +266,49 @@ async function main(){
     if(closed.exceptionDetails)throw Error(closed.exceptionDetails.exception?.description || closed.exceptionDetails.text);
     console.log("BROWSER RECURRENCE MOCK PASS",JSON.stringify(recurrence.result.value));
 
+    const memoOpen=await call("Runtime.evaluate",{contextId:world.executionContextId,
+      awaitPromise:true,returnByValue:true,expression:`(async()=>{
+        const check=(v,m)=>{if(!v)throw Error(m)};
+        const wait=async(fn,m)=>{for(let i=0;i<150;i++){if(fn())return;await new Promise(r=>setTimeout(r,100))}throw Error(m)};
+        document.querySelector('.clear-tabbar [data-action="memo"]').click();
+        await wait(()=>!document.querySelector('#memoPage').hidden,'Memo page did not open');
+        const rows=[...document.querySelectorAll('.memo-row')];
+        check(rows.length===2,'repeating Memo fixture missing');
+        let row=rows[0];
+        const open=row.querySelector('[data-action="openEvent"]');
+        const toggle=row.querySelector('[data-action="toggleMemo"]');
+        check(open&&open.tagName==='BUTTON','Memo title lacks an accessible editor button');
+        check(open.dataset.eventSeq==='31'&&open.dataset.revision==='2'&&
+          open.dataset.originalOccurrenceKey==='2026-10-22T00:00',
+          'Memo opener did not preserve the host-projected original occurrence');
+        check(toggle&&toggle!==open&&toggle.dataset.occurrenceKey==='2026-10-22T00:00',
+          'completion control was merged with the editor action');
+        open.click();
+        await wait(()=>!document.querySelector('#skinSheet').hidden&&
+          !!document.querySelector('[data-do="scope"][data-scope="SINGLE_OCCURRENCE"]'),
+          'Memo editor did not open with a selectable occurrence scope');
+        document.querySelector('[data-do="scope"][data-scope="SINGLE_OCCURRENCE"]').click();
+        await wait(()=>document.querySelector('[data-scope="SINGLE_OCCURRENCE"][aria-pressed="true"]'),
+          'Memo occurrence scope did not become active');
+        check(document.querySelector('#sheetSubtitle').textContent.includes('MEMO')&&
+          !document.querySelector('#sheetFields [data-field="kind"]'),
+          'Memo row did not open a same-kind editor with recurrence conversion disabled');
+        check(document.querySelector('#sheetFields [data-field="startText"]').value==='2026-10-22',
+          'editor did not retain the exact selected Memo date');
+        document.querySelector('#sheetClose').click();
+        await wait(()=>document.querySelector('#skinSheet').hidden,'Memo editor did not close');
+        row=document.querySelector('.memo-row');
+        row.querySelector('[data-action="toggleMemo"]').click();
+        await wait(()=>document.querySelectorAll('.memo-row').length===1,
+          'Memo completion toggle did not update its independent row');
+        check(document.querySelector('#skinSheet').hidden,
+          'completion toggle incorrectly reopened the editor');
+        return {eventSeq:31,revision:2,originalOccurrenceKey:'2026-10-22T00:00',
+          editorKind:'MEMO',selectedDate:'2026-10-22',completionRemainsSeparate:true};
+      })()`});
+    if(memoOpen.exceptionDetails)throw Error(memoOpen.exceptionDetails.exception?.description || memoOpen.exceptionDetails.text);
+    console.log("BROWSER MEMO OPEN / COMPLETION SEPARATION PASS",JSON.stringify(memoOpen.result.value));
+
     const aiPage=await call("Runtime.evaluate",{contextId:world.executionContextId,
       awaitPromise:true,returnByValue:true,expression:`(async()=>{
         const check=(v,m)=>{if(!v)throw Error(m)};

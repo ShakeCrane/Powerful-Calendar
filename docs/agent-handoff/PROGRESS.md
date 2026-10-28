@@ -1,5 +1,13 @@
 # Core freeze progress
 
+## Separation — Clear Memo 行打开正式编辑器（2026-10-29）
+
+- 根因：Clear Memo 标题原先是纯文本，不能进入既有正式编辑流程；projection 没有把重复事件原始槽位独立交给 editor.open。现新增纯 Memo projection，标题成为带无障碍名称的 openEvent 按钮，传递 eventSeq/revision/可选 original occurrence key。完成状态仍走独立 toggleMemo；Host 继续重读 revision 并解析 occurrence；不向 Skin 暴露 Host 内部 key。
+- 定向 WebSkinRecurrenceBridgeTest + WebSkinHostProjectionTest **23/23 PASS**；Skin Studio Python **51/51 PASS**；Chrome/CDP Mock 断言重复 Memo 的 eventSeq=31、revision=2、slot=2026-10-22T00:00、MEMO 编辑器和完成动作分离；Clear package **8 files / 378,086 bytes PASS**。完整 Gradle **603/603 JVM、83 suites、0 failures/errors/skips、59/59 tasks**；source boundary、Debug APK、lint 通过，lint 0 errors / 52 warnings。AndroidTest APK 仅编译通过。
+- 完整 Gradle 日志 SHA-256 B396DD2AD012B0839D7A69CEDA0C2A3E0BB2A85B9640F0FD1AC6057CAB530A87；Debug / AndroidTest APK SHA-256 BBFCEC10BD012910D9035EB624C22ECC029087E9424DCAE8CB90B75337E7C697 / 60F08FFC420D8C67860FE9D85938C5237CF3C48CD49D5EF2C60DC1187C5C9B90。详细日志哈希、定向结果及中间测试假设修正见 docs/issues/PC-ISSUE-SEPARATION-MEMO-OPEN.md。
+- ADB daemon 本机无法启动且未发现 emulator launcher；Android WebView/AVD/实体设备均 **NOT TESTED**（实体设备留给用户）。完整 Native/Skin replay 未做，S0-ME-03 和 SEP-03 parity 仍 **NOT TESTED**，S0 继续 IN PROGRESS。
+- 实现与独立报告/矩阵 follow-up 正在提交；提交 SHA 将在提交后补录。
+
 ## Separation — Studio dark material tokens (2026-10-27)
 
 - Root cause: Studio emitted edited base material slots into `:root`, overriding Clear's authored dark text token. `v3-studio.js` now emits `:root:not(.dark)`.

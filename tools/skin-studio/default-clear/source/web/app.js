@@ -250,7 +250,13 @@ function renderMemo(){
     button.dataset.revision=item.revision;button.dataset.occurrenceKey=item.occurrenceKey;
     button.dataset.completed=String(item.completed);
     button.disabled=!!state.aiLocked;
-    const title=node("span","",item.title);
+    const title=node("button","memo-title",item.title);
+    title.type="button";
+    title.setAttribute("aria-label","编辑事项："+item.title);
+    title.dataset.action="openEvent";title.dataset.eventSeq=item.eventSeq;
+    title.dataset.revision=item.revision;
+    if(typeof item.originalOccurrenceKey==="string")
+      title.dataset.originalOccurrenceKey=item.originalOccurrenceKey;
     row.append(button,title);list.append(row);
   }
   $("memoLimit").hidden=!state.memoTruncated;

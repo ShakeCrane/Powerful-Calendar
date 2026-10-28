@@ -622,13 +622,23 @@ function simulatedState(){
   const chatMessages=scenario==="ai-error"
     ? [{role:"assistant",content:"你好！今天有什么安排？"},...mockAiErrorMessages]
     : [{role:"assistant",content:"你好！今天有什么安排？"},...mockChat];
+  const memoEntries=scenario==="repeating"?[
+    {eventSeq:31,revision:2,occurrenceKey:"2026-10-22T00:00",
+      originalOccurrenceKey:"2026-10-22T00:00",title:"重复 Memo · 今天",
+      completed:mockMemoDone,startMillis:base},
+    {eventSeq:31,revision:2,occurrenceKey:"2026-10-23T00:00",
+      originalOccurrenceKey:"2026-10-23T00:00",title:"重复 Memo · 明天",
+      completed:false,startMillis:base+86400000}
+  ]:[
+    {eventSeq:31,revision:2,occurrenceKey:"single",title:"整理会议笔记",
+      completed:mockMemoDone,startMillis:base},
+    {eventSeq:44,revision:1,occurrenceKey:"single",title:"提交报告",
+      completed:false,startMillis:base+7200000}
+  ];
   return {bridgeVersion:1,page:mockPage,memoCount:2,aiLocked:scenario==="locked",
     reducedMotion:$("reduced").checked,pendingCount:3,
     editing:mockEditing,
-    memoEntries:[
-      {eventSeq:31,revision:2,occurrenceKey:"single",title:"整理会议笔记",completed:mockMemoDone,startMillis:base},
-      {eventSeq:44,revision:1,occurrenceKey:"single",title:"提交报告",completed:false,startMillis:base+7200000}
-    ],memoTruncated:false,chatBusy:false,chatAttachmentBusy:false,
+    memoEntries,memoTruncated:false,chatBusy:false,chatAttachmentBusy:false,
     chatAttachmentAvailable:scenario!=="locked"&&!(scenario==="ai-review"&&mockAiProposals.length>0),
     chatMessages,
     aiProposalReview:scenario==="ai-review"&&mockAiProposals.length?{
@@ -734,10 +744,15 @@ function onSkinCommand(p){
   }
   switch(p.name){
     case "editor.open":
+      const memoEntry=lastState?.memoEntries?.find(item=>item.eventSeq===p.eventSeq&&
+        (!p.occurrenceKey||item.originalOccurrenceKey===p.occurrenceKey));
+      const form={...mockForm(memoEntry?"MEMO":"ACTIVITY"),
+        title:memoEntry?.title||"测试活动"};
+      if(memoEntry?.originalOccurrenceKey)form.recurrenceFreq="DAILY";
       mockEditing.editor={open:true,sessionId:"00000000-0000-0000-0000-000000000001",
         eventSeq:p.eventSeq,dirty:false,requiresRecurrenceScope:!!p.occurrenceKey,
         canEditSelectedOccurrence:!!p.occurrenceKey,recurrenceScope:null,
-        occurrenceKey:p.occurrenceKey||null,form:{...mockForm("ACTIVITY"),title:"测试活动"}};
+        occurrenceKey:p.occurrenceKey||null,form};
       mockEditing.editor.baseline={...mockEditing.editor.form};
       result.status="opened";break;
     case "editor.scope":
@@ -747,7 +762,8 @@ function onSkinCommand(p){
         editor.recurrenceScope=p.scope;
         editor.form={...editor.baseline};
         if(p.scope!=="WHOLE_SERIES"&&editor.occurrenceKey)
-          editor.form.startText=editor.occurrenceKey.replace("T"," ");
+          editor.form.startText=editor.form.kind==="MEMO"
+            ? editor.occurrenceKey.slice(0,10):editor.occurrenceKey.replace("T"," ");
         editor.scopeBaseline={...editor.form};result.status="selected";
       }else result.status="invalid";
       break;

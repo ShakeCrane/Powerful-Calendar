@@ -67,3 +67,10 @@ No Android JVM task, Android WebView/emulator task, physical-device test, live A
 - S0 is **not complete**: the matrix now provides a much finer source map, but a final pass is still needed for dormant Native callbacks, rare provider/permission failures and a reusable paired replay harness for durable state, identities, reminders, AI authorization, errors and restart recovery.
 - No product code or package contract changed in this audit. The next code slice should open an independent Issue and add a regression before changing behavior. High-priority candidates are the Memo-row open action and the v3 Manifest validator compatibility discrepancy; keep the second one within the existing package contract and avoid a silent policy change.
 - Native recovery remains intact. No default skin switch, Core business-semantic change or cutover is claimed or authorized by this report.
+
+
+## Follow-up — S0-ME-03 Memo row open (2026-10-29)
+
+The Memo finding above describes the audited **2026-10-28 pre-fix source snapshot**. Clear Memo titles now emit an accessible openEvent action; the Host projection carries a separate repeating originalOccurrenceKey, while toggleMemo retains its independent completion key. The formal edit service revalidates the projected revision and stores the selected slot in its Host-owned recovery checkpoint. Narrow source, Chrome/CDP Mock, Host/Bridge JVM, package verification and full JVM/build evidence are recorded in [PC-ISSUE-SEPARATION-MEMO-OPEN](PC-ISSUE-SEPARATION-MEMO-OPEN.md).
+
+This follow-up does not rewrite the historical inventory baseline or close S0. Android WebView end-to-end and full Native/Skin replay remain **NOT TESTED**; S0-ME-03/SEP-03 parity remain **NOT TESTED**, and the remaining reconstructed inventory/failure-path work is open.

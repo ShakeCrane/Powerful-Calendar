@@ -1277,17 +1277,8 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
             JSONObject().put("bridgeVersion", WebSkinBridgeRuntime.VERSION).put("page", page)
                 .put("aiLocked", aiLocked).put("pendingCount", pendingCount)
                 .put("memoCount", todoCount)
-                .put("memoEntries", org.json.JSONArray(
-                    (if (page == Page.MEMO.name) todoEntries.take(250) else emptyList())
-                        .map { entry ->
-                        JSONObject()
-                            .put("eventSeq", entry.owner.eventSeq)
-                            .put("revision", entry.owner.revision)
-                            .put("occurrenceKey", entry.occurrenceKey)
-                            .put("title", entry.title.take(240))
-                            .put("completed", entry.completed)
-                            .put("startMillis", entry.startMillis)
-                    }
+                .put("memoEntries", WebSkinMemoProjection.build(
+                    if (page == Page.MEMO.name) todoEntries.take(250) else emptyList()
                 ))
                 .put("memoTruncated", todoEntries.size > 250)
                 .put("chatBusy", chatBusy || aiBusy || pendingWebAiProposalPublish != null)
