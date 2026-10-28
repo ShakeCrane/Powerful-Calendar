@@ -1099,3 +1099,21 @@ Updated: 2026-10-24
 - 回归先失败后通过：原实现 **18 项中 1 项失败**（期望 `SCHEDULED`，实际仍为 `BLOCKED`）；修复后 `ReminderValidationTest` **19/19 PASS**，覆盖权限恢复、恰好一个闹钟、最后一条阻塞通知清除，以及 400 条 BLOCKED 项不饿死 PENDING/SCHEDULED。
 - 完整离线门禁 **639/639 JVM tests、88 suites、88/88 tasks、0 failures/errors/skips**；source boundary、Debug/AndroidTest APK 编译通过；lint **0 errors / 52 warnings**。完整门禁日志 SHA-256 `DC6738A219118E7EB8955AAD8C79754FB11119F17BDD90C41D4F7B25BCEDF7E0`；Debug APK SHA-256 `424DB1D284345B4934752A6B6408AFF85DBF85F43F9D3233CA158CD22D7636DC`。AndroidTest APK 构建包含并发未提交的 `WebSkinManagementInstrumentedTest.kt`，未纳入本 Issue。证据目录 `.local/android-test/reports/separation-20261028/reminder-reconcile-recovery/`。
 - 独立报告：`docs/issues/PC-ISSUE-SEPARATION-REMINDER-RECONCILE-RECOVERY.md`。实现/回归提交 `1b29ec632d4312d5c7d4e3471f316833d270f391`（`fix(提醒): 恢复受阻闹钟并清理状态通知`）；报告与进度文档单独提交后推送至 `origin/codex/separation-skin-settings`。模拟器/Android WebView/实体设备与真实 AlarmManager 行为未验证；SEP-11 继续 **NOT TESTED**。
+
+## Separation — SEP-11 提醒诊断与重协调结果 Track A Host（2026-10-28）
+
+- 新增 SETTINGS-only `reminderDiagnostics` / `reminderReconcile` Host 投影与版本化 JSON Schema。诊断保留 Native 的 `enabled && reminderMinutes >= 0` 过滤，Native 列表仍最多 40 项；Skin 从全量 Host 候选计算 40 项截断。逐行仅含合成 `displayId`、标题及截断标志、kind、desiredState、allowlisted hint/execution，不输出 `eventSeq`、occurrence key、notes、location 或异常细节。
+- 既有 ReminderScheduler 添加只读计数报告；保持每 active/blocked 组 400、CANCELLED 清理 100 的处理上限，新增 401/101 哨兵检测未覆盖项并通过 `truncated` 标记。未覆盖、`pending` 或异常使 Host status 为 FAILED；缺权限导致的 `blocked` 单独计数，不视为失败。Host RUNNING 时禁用对应 option，handler 同步拒绝重复调用；检查了取消与异常终态。
+- 定向回归 **27/27 PASS**（projection/schema 4/4、实际 `PowerCalApp`/Bridge Robolectric 集成 1/1、ReminderValidation 22/22）。覆盖 Settings-only、41 项截断、disabled 过滤、隐私白名单、执行结果语义、RUNNING 防重入、blocked-success/pending-fail/exception-fail、401/101 sentinel 和 CANCELLED checked 计数。
+- 完整离线门禁 **647/647 JVM / 90 suites / 0 failures-errors-skips / 88 tasks**；source boundary、Debug/AndroidTest APK 构建通过，lint 0 errors / 52 warnings。完整日志 SHA-256 `FE0F1C4B17D61D78B5C1A3A8E3FAD38AD8957EBD9A1CC92781045E82BAFD2EDC`；Debug / AndroidTest APK SHA-256 `3BB6C68CD8374D066F2AA4DF62FF4473CAA74C66195CDC7651B28624FD553A4B` / `06F91487E2465995F89CF2C9D6A9DE53843BBD5430E191423A249BEA109BA97E`。报告初稿 `docs/issues/PC-ISSUE-SEPARATION-REMINDER-DIAGNOSTICS-TRACK-A.md`。
+- Track B `app.js` / Studio Mock 仍未消费 `truncated`，其 FAILED 零计数分支仍需要专门文案，Mock 还需补 schema 要求字段。Owner 报告 Track B Chrome E2E reminder diagnostics 已通过并覆盖截断反馈；本 Track A worktree 未复跑或修改 JS/Mock/E2E。未运行 Android WebView/AVD/实体设备测试；SEP-11 总体保持 **NOT TESTED**。
+- 当前 detached worktree `E:\Project\Powerful-Calendar\.local\android-test\worktrees\sep11-tracka-host-projection`，基线 `6af2c0a6e14ac0669c44a0abe0fb30e77e1810df`。遵照用户要求未提交、未修改主或其他 worktree。
+
+## Separation — SEP-11 提醒诊断 Track A/B 合并复核（2026-10-28）
+
+- Track A 的 Host 投影、reconcile 结果和 overflow sentinel 已合入当前 `codex/separation-skin-settings` 隔离工作树；Track B Clear/Studio 读取并展示 `reminderDiagnostics` / `reminderReconcile`，对 `truncated` 明确显示仍有候选未检查，Studio Mock 与正式 Schema 对齐。`PC-ISSUE-SEPARATION-REMINDER-DIAGNOSTICS-TRACK-A.md` 保留 Host 阶段证据；最终合并报告为 `docs/issues/PC-ISSUE-SEPARATION-REMINDER-DIAGNOSTICS.md`。
+- 合并后完整离线门禁 **647/647 JVM、90 suites、0 failures/errors/skips、88/88 tasks**；source boundary、Debug/AndroidTest APK 构建通过；lint 0 errors / 52 warnings。完整日志 SHA-256 `BB291342803CC50953ABD3888A2B6C6524BBFB07A781986E35C7AAE292133701`；Debug/AndroidTest APK SHA-256 `FF41B0AC9D9B87F4177756F2D18D281E18717811716C7CEDD97D36BB4F83A164` / `0B1954E9438ADABD3C87E7B31C0FAD008DE4052747EE7B547DFF0B90C6FD1B7F`。Junit XML、APK 与 lint XML 副本位于 `.local/android-test/reports/separation-20261028/reminder-diagnostics/`。
+- Studio Python **72/72 PASS**；Chrome Headless E2E 全流程 PASS，包含 schema 字段、隐私白名单、可访问状态区、六条提醒、截断/失败/不可用状态、固定导航遮挡下的列表滚动，以及四类新建和既有编辑 Mock。Clear package 8 files / 382786 bytes / SHA-256 `5EA7DA58DDE8722320AB6F32B16E854293260788EB930F8E0CCE1321252D8080`。E2E 截图和日志在同一 evidence 目录。
+- 当前 Phase 1 六个定向 suite 在同一应用工作树 **51/51 PASS**；Phase 1 最新复核已补入 `docs/issues/PC-ISSUE-PHASE1-EDITOR-LIFECYCLE.md`，不将提醒诊断改动误记为 Phase 1 产品变更。
+- 未运行 Android WebView/AVD/实体设备；AndroidTest APK 构建不代表设备执行。SEP-11 仍 **NOT TESTED**，凭据/完整备份恢复/权限跳转/实际 scheduler 和 Native/Skin 全功能等价有未测项。
+- 实现/测试提交 `75d8e21b003007f54ff7369cef4c50d041512bc4`（`feat(分离): 增加皮肤提醒诊断与同步状态`）。最终 Issue、Track A 补充、矩阵与 Phase 1 当前复核在随后单独的文档提交中补录 SHA 与证据。

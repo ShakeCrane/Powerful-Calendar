@@ -265,3 +265,12 @@ Phase 1 主路径及当前源码自动化/构建验收 PASS。单次本地时间
 - 本轮未运行 connected/AVD 或实体设备测试；四台现有 AVD 处于在线状态且有既存数据处置边界，因此没有打断或改写。实体设备由用户执行。此次结果只签核 fold 的确定性解析和上述 JVM/build 范围。
 
 本次 DST 语义补充已由固定 Clock 回归与完整自动化门禁验证。一次性 spring-gap 输入规则仍按现有行为保留，未作新裁决；设备/OEM 验收不在本轮证据内。核心总体验收保持 **HOLD**。代码、测试与合同的 SHA-256：`TemporalModels.kt` `70D974D00442E103CCD4415AAB80EAED4BEE36A4F1D5267519CAF82BC1489756`；`EditorDefaultsTest.kt` `25F9A88148D40B1B56D710EC5CB94057BFE4363122F25D12DFD44EC1A5EBBAD6`；合同 `4F33FCD2CA77164777AA1099DFFE495F9E2C0D07070E41AB72E9C275BEDA8F5B`。
+
+## 当前用户请求复核（2026-10-28，分离分支实现提交 `75d8e21`）
+
+本节是当前应用基线的复核补录，不表示本次提醒诊断修改属于 Phase 1。Phase 1 原始生产实现提交为 `b46b3dd7592bb1c7de021d543630f84937a0eaef`；一次性 fall-fold 规则及固定 Clock 回归提交为 `572cf10`。本次测试覆盖的应用代码随后按提交 `75d8e21b003007f54ff7369cef4c50d041512bc4` 原样提交；普通新建入口仍使用瞬态 `NewEventEditSession`，默认值仍来自统一 `EditorDefaults`，今日视角仍由 `TimelineCoordinate.todayCamera()` 返回本地正午和 24 小时窗口；`TemporalProtocolTest.initialAndTodayCamerasBothCentreLocalNoonAndResetTo24Hours` 对今日行为有固定值断言。秋季 fold earlier-offset 回归仍在 `EditorDefaultsTest`。
+
+- 当前分离工作树 Phase 1 六个定向类 **51/51 PASS**：`EditorDefaultsTest` 7、`NewEventEditSessionTest` 7、`WebSkinEditBridgeTest` 27、`NewEventEditorComposeTest` 3、`DirectEventEditorComposeTest` 6、`LifecycleCheckpointGateTest` 1。JUnit XML 与合并后完整回归一并保存于 `.local/android-test/reports/separation-20261028/reminder-diagnostics/full-junit/`，Phase 1 XML 副本在 `focused-junit/`。
+- 同一工作树完整离线门禁 **647/647 JVM tests、90 suites、0 failures/errors/skips、88/88 tasks**；包含 `:app:verifySkinSourceBoundary`、Debug 与 AndroidTest APK 构建和 lint（0 errors / 52 warnings）。完整门禁在 `75d8e21` 实现提交前执行，生产/测试源码与该提交内容一致；AndroidTest 编译另包含未提交的 `WebSkinManagementInstrumentedTest.kt`，且该文件没有纳入提交。完整总数包含提醒诊断测试，因此不是 Phase 1 专属测试数。
+- 本轮没有运行任何 connected/AVD 测试。当前环境下 `gradlew` 首次因没有 SDK 配置退出；显式设置进程级 `ANDROID_HOME=E:\android-sdk` 后完整 Gradle 门禁通过。未更改 `local.properties`、未启动 AVD。历史 API 35 Compose **2/2** 仍按其报告标记为先前证据，不冒充本轮设备复测；实体设备/OEM 由用户测试。
+- 用户已确认一次性 fall-fold 取第一次（较早 offset），已在 `CORE_CONTRACT_FREEZE_2026-10-21.md` 和 `572cf10` 中签核。该决策不扩展到 spring gap；一次性 spring-gap 语义和设备/OEM行为仍未在本轮验证。Phase 1 的当前工作树自动化范围 PASS；核心冻结仍依赖总矩阵和其他冻结项，不能据此宣告 GO。
