@@ -423,6 +423,45 @@ class WebAiAttachmentFlowIntegrationTest {
     }
 
     @Test
+    fun cancellingSkinFileAndImagePickersRestoresAvailabilityWithoutWrites() {
+        val before = counts()
+        ui.activity.setContent {
+            CompositionLocalProvider(
+                LocalContext provides context,
+                LocalActivityResultRegistryOwner provides resultRegistryOwner
+            ) {
+                PowerCalTheme { PowerCalApp(store) }
+            }
+        }
+        ui.waitForIdle()
+        ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.Routed("ai")) }
+        ui.waitForIdle()
+
+        fun cancelPicker(action: WebSkinAction, expectedIntent: String, expectedType: String) {
+            ui.runOnIdle { WebSkinBridgeRuntime.onAction(action) }
+            ui.waitForIdle()
+            assertEquals(expectedIntent, resultRegistry.lastIntent?.action)
+            assertEquals(expectedType, resultRegistry.lastIntent?.type)
+            assertTrue("picker opening should lock attachment controls",
+                WebSkinBridgeRuntime.state().optBoolean("chatAttachmentBusy"))
+            ui.runOnIdle { assertTrue(resultRegistry.cancel()) }
+            ui.waitUntil(5_000) {
+                !WebSkinBridgeRuntime.state().optBoolean("chatAttachmentBusy") &&
+                    WebSkinBridgeRuntime.state().optBoolean("chatAttachmentAvailable")
+            }
+            assertEquals("cancelling a picker must not write calendar data", before, counts())
+            assertEquals("cancelling a picker must not append chat history", 0,
+                WebSkinBridgeRuntime.state().optJSONArray("chatMessages")?.length() ?: 0)
+            assertNull(WebSkinBridgeRuntime.state().optJSONObject("aiProposalReview"))
+        }
+
+        cancelPicker(WebSkinAction.PickAiFile, Intent.ACTION_OPEN_DOCUMENT, "*/*")
+        cancelPicker(WebSkinAction.PickAiImage, Intent.ACTION_GET_CONTENT, "image/*")
+        assertTrue("image picker cancellation must not leave its consent sheet open",
+            ui.onAllNodesWithText("图片识别方式").fetchSemanticsNodes().isEmpty())
+    }
+
+    @Test
     fun skinImageRequiresExplicitUploadConsentAndNeverStoresRawImageInChatHistory() {
         val imageBytes = android.util.Base64.decode(
             "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/nRsAAAAASUVORK5CYII=",
@@ -835,9 +874,11 @@ class WebAiAttachmentFlowIntegrationTest {
             )
         }
 
-        fun dispatch(uri: Uri): Boolean = dispatchResult(
+        fun dispatch(uri: Uri?): Boolean = dispatchResult(
             requireNotNull(requestCode) { "No Host picker launch was recorded" }, uri
         )
+
+        fun cancel(): Boolean = dispatch(null)
     }
 
     private class TestAttachmentProvider(
