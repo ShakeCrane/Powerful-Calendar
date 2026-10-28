@@ -861,6 +861,7 @@ function refreshOverlay(){
 
 function simulatedState(){
   const scenario=$("scenario").value,base=new Date("2026-10-22T04:00:00Z").getTime();
+  const aiReviewScenario=scenario==="ai-review"||scenario==="ai-review-failure-retry";
   const zone="Asia/Shanghai",nowMillis=new Date("2026-10-21T16:30:00Z").getTime();
   const anchor=mockAnchor??base,hours=24;
   const selectedMonthDate=mockMonthDate??localDateInZone(anchor,zone);
@@ -924,9 +925,9 @@ function simulatedState(){
       {eventSeq:31,revision:2,occurrenceKey:"single",title:"整理会议笔记",completed:mockMemoDone,startMillis:base},
       {eventSeq:44,revision:1,occurrenceKey:"single",title:"提交报告",completed:false,startMillis:base+7200000}
     ],memoTruncated:false,chatBusy:false,chatAttachmentBusy:false,
-    chatAttachmentAvailable:scenario!=="locked"&&!(scenario==="ai-review"&&mockAiProposals.length>0),
+    chatAttachmentAvailable:scenario!=="locked"&&!(aiReviewScenario&&mockAiProposals.length>0),
     chatMessages,
-    aiProposalReview:scenario==="ai-review"&&mockAiProposals.length?{
+    aiProposalReview:aiReviewScenario&&mockAiProposals.length?{
       reviewId:mockAiReviewId,
       proposals:mockAiProposals.map((proposal,index)=>({...proposal,index})),
       warnings:["预览 Mock 数据；Android Host 会重新校验全部提案。"]
@@ -1017,6 +1018,12 @@ function resolveMockApproval(approved){
   if(request.kind==="aiProposal"){
     if(request.reviewId!==mockAiReviewId){
       mockChat.push({role:"assistant",content:"预览 Mock：审核卡已过期，模拟 Host 拒绝了旧请求。"});
+      postState();return;
+    }
+    if(approved&&mockAiPublishFailureOnce){
+      mockAiPublishFailureOnce=false;
+      mockChat.push({role:"assistant",content:"预览 Mock：模拟 Host 写入失败；提案仍保留，可重新发起审核。没有写入真实日历数据。"});
+      logAction("仅预览：模拟正式写入失败；保留审核卡供显式重试，未写入真实数据");
       postState();return;
     }
     if(approved){
@@ -1409,7 +1416,8 @@ let mockAiErrorMessages=[
   {role:"user",content:"请帮我概括明天的安排。"},
   {role:"assistant",content:"Studio Mock：AI 请求未完成（模拟 HTTP 503）；上下文已保留，可编辑后手动重发。"}
 ];
-let mockAiReviewId="41b2c6f7-6070-44b5-93ed-a922b5a447db",mockAiReviewGeneration=0;
+let mockAiReviewId="41b2c6f7-6070-44b5-93ed-a922b5a447db",mockAiReviewGeneration=0,
+  mockAiPublishFailureOnce=false;
 function rotateMockAiReviewId(){
   mockAiReviewGeneration++;
   mockAiReviewId="41b2c6f7-6070-44b5-93ed-"+
@@ -1534,7 +1542,10 @@ function bindUI(){
       {role:"user",content:"请帮我概括明天的安排。"},
       {role:"assistant",content:"Studio Mock：AI 请求未完成（模拟 HTTP 503）；上下文已保留，可编辑后手动重发。"}
     ];
-    if(id==="scenario"&&$("scenario").value==="ai-review")resetMockAiProposalReview();
+    if(id==="scenario"&&["ai-review","ai-review-failure-retry"].includes($("scenario").value)){
+      resetMockAiProposalReview();
+      mockAiPublishFailureOnce=$("scenario").value==="ai-review-failure-retry";
+    }
     postState();
   };
   $("assetFile").onchange=async e=>{await addAssets(e.target.files);e.target.value=""};

@@ -887,8 +887,51 @@ async function main(){
         throw Error('Mock Host confirmation result did not return to Clear');
       })()`});
     if(published.exceptionDetails)throw Error(published.exceptionDetails.exception?.description || published.exceptionDetails.text);
+    await call("Runtime.evaluate",{expression:`(()=>{const e=document.querySelector('#scenario');
+      e.value='ai-review-failure-retry';e.dispatchEvent(new Event('change',{bubbles:true}))})()`,returnByValue:true});
+    const failedPublishRetry=await call("Runtime.evaluate",{contextId:world.executionContextId,
+      awaitPromise:true,returnByValue:true,expression:`(async()=>{
+        const wait=async(fn,m)=>{for(let i=0;i<150;i++){if(fn())return;await new Promise(r=>setTimeout(r,100))}throw Error(m)};
+        await wait(()=>document.querySelectorAll('.ai-proposal-item').length===4,'retry scenario review cards missing');
+        document.querySelectorAll('.ai-proposal-group')[0]
+          .querySelectorAll('.ai-proposal-actions button')[0].click();
+        return true;
+      })()`});
+    if(failedPublishRetry.exceptionDetails)
+      throw Error(failedPublishRetry.exceptionDetails.exception?.description || failedPublishRetry.exceptionDetails.text);
+    const firstRetryApproval=await call("Runtime.evaluate",{expression:`!document.querySelector('#mockApproval').hidden`,returnByValue:true});
+    if(firstRetryApproval.result.value!==true)throw Error('first retry-scenario Host confirmation missing');
+    await call("Runtime.evaluate",{expression:"document.querySelector('#mockApprove').click()",returnByValue:true});
+    const failureShown=await call("Runtime.evaluate",{contextId:world.executionContextId,
+      awaitPromise:true,returnByValue:true,expression:`(async()=>{
+        const wait=async(fn,m)=>{for(let i=0;i<150;i++){if(fn())return;await new Promise(r=>setTimeout(r,100))}throw Error(m)};
+        await wait(()=>document.querySelector('#chatMessages').textContent.includes('模拟 Host 写入失败'),
+          'simulated publish failure was not shown');
+        if(document.querySelectorAll('.ai-proposal-item').length!==4)
+          throw Error('failed publish must retain every proposal');
+        document.querySelectorAll('.ai-proposal-group')[0]
+          .querySelectorAll('.ai-proposal-actions button')[0].click();
+        return true;
+      })()`});
+    if(failureShown.exceptionDetails)
+      throw Error(failureShown.exceptionDetails.exception?.description || failureShown.exceptionDetails.text);
+    const secondRetryApproval=await call("Runtime.evaluate",{expression:`!document.querySelector('#mockApproval').hidden`,returnByValue:true});
+    if(secondRetryApproval.result.value!==true)throw Error('explicit retry Host confirmation missing');
+    await call("Runtime.evaluate",{expression:"document.querySelector('#mockApprove').click()",returnByValue:true});
+    const retryResolved=await call("Runtime.evaluate",{contextId:world.executionContextId,
+      awaitPromise:true,returnByValue:true,expression:`(async()=>{
+        const wait=async(fn,m)=>{for(let i=0;i<150;i++){if(fn())return;await new Promise(r=>setTimeout(r,100))}throw Error(m)};
+        await wait(()=>document.querySelectorAll('.ai-proposal-item').length===3&&
+          document.querySelector('#chatMessages').textContent.includes('没有写入任何真实日历数据'),
+          'second Host confirmation did not resolve the Mock proposal');
+        return {firstConfirmation:'simulated failure',proposalsRetained:4,
+          secondConfirmation:'resolved',realCalendarWrites:false};
+      })()`});
+    if(retryResolved.exceptionDetails)
+      throw Error(retryResolved.exceptionDetails.exception?.description || retryResolved.exceptionDetails.text);
     console.log("BROWSER AI REVIEW MOCK PASS",JSON.stringify(aiReview.result.value));
     console.log("BROWSER AI HOST CONFIRM MOCK PASS; no real calendar data was written");
+    console.log("BROWSER AI PUBLISH FAILURE RETRY MOCK PASS",JSON.stringify(retryResolved.result.value));
     socket.close();
   }finally{
     if(browser)browser.kill();
