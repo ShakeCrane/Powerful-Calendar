@@ -1,0 +1,11 @@
+{
+  "format": "powercal-skin",
+  "schemaVersion": 3,
+  "id": "pc-delivery-fixture",
+  "name": "Android Delivery Fixture",
+  "entrypoint": "web/index.html",
+  "project": "project.json",
+  "capabilities": [],
+  "fullCanvas": true,
+  "sha256": {}
+}

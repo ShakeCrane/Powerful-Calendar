@@ -1,0 +1,9 @@
+:root {
+  --delivery-css-probe: rgb(21, 67, 123);
+}
+
+body {
+  margin: 0;
+  color: var(--delivery-css-probe);
+  background: rgb(245, 247, 250);
+}
