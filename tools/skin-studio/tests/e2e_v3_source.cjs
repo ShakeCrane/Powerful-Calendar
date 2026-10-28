@@ -7,6 +7,8 @@ const reportDir = path.join(root, ".local/android-test/reports/separation-202610
 const canonicalClearFiles=Object.fromEntries(["index.html","style.css","app.js","edit.js"].map(name=>[
   "web/"+name,fs.readFileSync(path.join(root,"tools/skin-studio/default-clear/source/web",name)).toString("base64")
 ]));
+const androidDeliveryFixture=fs.readFileSync(path.join(root,
+  "app/src/androidTest/assets/skin-delivery-fixture.pcskin")).toString("base64");
 const delay = ms => new Promise(resolve=>setTimeout(resolve,ms));
 async function main(){
   fs.mkdirSync(reportDir,{recursive:true});
@@ -57,6 +59,110 @@ async function main(){
     if(!ready)throw Error("Studio page startup timed out");
     const expression=`(async()=>{
       const check=(v,m)=>{if(!v)throw Error(m)};
+      const androidArchive=Uint8Array.from(atob("${androidDeliveryFixture}"),c=>c.charCodeAt(0));
+      const androidImport=await fetch('/api/import-v3',{method:'POST',
+        headers:{'Content-Type':'application/octet-stream'},body:androidArchive});
+      check(androidImport.ok,'Android-installed Studio fixture import failed: '+androidImport.status);
+      const installedPackage=await androidImport.json();
+      check(installedPackage.manifest.id==='pc-delivery-fixture','installed fixture identity changed');
+      const installedMetadata={...installedPackage.manifest};delete installedMetadata.sha256;
+      const installedFiles={...installedPackage.files};
+      await loadPackage(installedPackage);
+      document.querySelector('#advancedMode').click();
+      const installedEditor=document.querySelector('#jsCode');
+      const installedBefore=installedEditor.value;
+      check(installedBefore.includes('studio-js-delivery-fixture-v1'),
+        'installed fixture source contents differ');
+      installedEditor.value=installedBefore.replace('studio-js-delivery-fixture-v1',
+        'studio-js-delivery-fixture-v2');
+      installedEditor.dispatchEvent(new Event('input',{bubbles:true}));
+      const installedPayload=payload();
+      check(installedPayload.files['web/app.js']!==installedFiles['web/app.js'],
+        'installed-package source edit was not applied');
+      const installedZip=await (await fetch('/api/export-v3',{method:'POST',
+        headers:{'Content-Type':'application/json'},body:JSON.stringify(installedPayload)})).arrayBuffer();
+      const installedReimportResponse=await fetch('/api/import-v3',{method:'POST',
+        headers:{'Content-Type':'application/octet-stream'},body:installedZip});
+      check(installedReimportResponse.ok,'installed-package export reimport failed: '+
+        installedReimportResponse.status);
+      const installedReimport=await installedReimportResponse.json();
+      const reimportedMetadata={...installedReimport.manifest};delete reimportedMetadata.sha256;
+      check(JSON.stringify(reimportedMetadata)===JSON.stringify(installedMetadata),
+        'installed package metadata or capabilities changed');
+      check(installedReimport.files['web/app.js']===installedPayload.files['web/app.js'],
+        'edited installed-package source was lost on reimport');
+      for(const [name,bytes] of Object.entries(installedFiles))if(name!=='web/app.js')
+        check(installedReimport.files[name]===bytes,'unmodified installed-package file changed: '+name);
+
+      const partial=await (await fetch('/api/template-v3')).json();
+      partial.manifest.id='partial-canvas-test';partial.manifest.fullCanvas=false;
+      await loadPackage(partial);
+      check(!document.querySelector('#fullCanvas').checked,'imported partial canvas flag was changed');
+      const partialPayload=payload();
+      check(partialPayload.manifest.fullCanvas===false,'partial canvas payload was rejected or changed');
+      const partialExport=await fetch('/api/export-v3',{method:'POST',
+        headers:{'Content-Type':'application/json'},body:JSON.stringify(partialPayload)});
+      check(partialExport.ok,'partial canvas export failed: '+partialExport.status);
+      const partialZip=await partialExport.arrayBuffer();
+      const partialImport=await fetch('/api/import-v3',{method:'POST',
+        headers:{'Content-Type':'application/octet-stream'},body:partialZip});
+      check(partialImport.ok,'partial canvas reimport failed: '+partialImport.status);
+      check((await partialImport.json()).manifest.fullCanvas===false,
+        'partial canvas declaration changed during Studio export/reimport');
+
+      const implicitCanvas=await (await fetch('/api/template-v3')).json();
+      implicitCanvas.manifest.id='implicit-canvas-test';
+      delete implicitCanvas.manifest.fullCanvas;
+      const projectBytes=Uint8Array.from(atob(implicitCanvas.files['project.json']),c=>c.charCodeAt(0));
+      const implicitProject=JSON.parse(new TextDecoder().decode(projectBytes));
+      delete implicitProject.slots;
+      const rewrittenProject=new TextEncoder().encode(JSON.stringify(implicitProject)+'\\n');
+      implicitCanvas.files['project.json']=btoa(String.fromCharCode(...rewrittenProject));
+      const digest=new Uint8Array(await crypto.subtle.digest('SHA-256',rewrittenProject));
+      implicitCanvas.manifest.sha256['project.json']=[...digest].map(v=>v.toString(16).padStart(2,'0')).join('');
+      const implicitZipResponse=await fetch('/api/export-v3',{method:'POST',
+        headers:{'Content-Type':'application/json'},body:JSON.stringify(implicitCanvas)});
+      check(implicitZipResponse.ok,'Android-compatible implicit metadata fixture failed validation');
+      const implicitImportedResponse=await fetch('/api/import-v3',{method:'POST',
+        headers:{'Content-Type':'application/octet-stream'},body:await implicitZipResponse.arrayBuffer()});
+      check(implicitImportedResponse.ok,'implicit metadata fixture import failed');
+      const implicitImported=await implicitImportedResponse.json();
+      await loadPackage(implicitImported);
+      check(!document.querySelector('#fullCanvas').checked,
+        'omitted fullCanvas must resolve to Android false semantics');
+      const optionalPaths=[...document.querySelector('#extraSourceFile').options].map(option=>option.value);
+      check(optionalPaths.includes('project.json'),
+        'project.json with omitted slots should remain editable');
+      const implicitPayload=payload();
+      check(!Object.hasOwn(implicitPayload.manifest,'fullCanvas'),
+        'Studio must preserve an omitted fullCanvas field');
+      check(implicitPayload.files['project.json']===implicitImported.files['project.json'],
+        'Studio must preserve project.json bytes when slots is omitted and unchanged');
+      const projectSelector=document.querySelector('#extraSourceFile');
+      projectSelector.value='project.json';projectSelector.dispatchEvent(new Event('change'));
+      const optionalProjectEditor=document.querySelector('#extraSourceCode');
+      const optionalProject=JSON.parse(optionalProjectEditor.value);
+      optionalProject.vendorProjectField='retained-after-edit';
+      optionalProjectEditor.value=JSON.stringify(optionalProject,null,2);
+      optionalProjectEditor.dispatchEvent(new Event('input',{bubbles:true}));
+      check(projectSourceError===null,'project without slots could not be structurally edited');
+      const optionalProjectEdited=payload();
+      const optionalProjectResult=JSON.parse(atob(optionalProjectEdited.files['project.json']));
+      check(optionalProjectResult.vendorProjectField==='retained-after-edit'&&
+        !Object.hasOwn(optionalProjectResult,'slots'),
+        'edited project custom field or omitted optional slots were lost');
+      const implicitExport=await fetch('/api/export-v3',{method:'POST',
+        headers:{'Content-Type':'application/json'},body:JSON.stringify(optionalProjectEdited)});
+      check(implicitExport.ok,'implicit fullCanvas/project metadata export failed');
+      const implicitRoundtrip=await fetch('/api/import-v3',{method:'POST',
+        headers:{'Content-Type':'application/octet-stream'},body:await implicitExport.arrayBuffer()});
+      check(implicitRoundtrip.ok,'implicit fullCanvas/project metadata reimport failed');
+      const implicitResult=await implicitRoundtrip.json();
+      const reimportedProject=JSON.parse(atob(implicitResult.files['project.json']));
+      check(!Object.hasOwn(implicitResult.manifest,'fullCanvas')&&
+        reimportedProject.vendorProjectField==='retained-after-edit'&&
+        !Object.hasOwn(reimportedProject,'slots'),
+        'implicit manifest default or edited project fields changed during reimport');
       for(let i=0;i<150;i++){
         if(typeof loadPackage==='function' && document.querySelector('#skinName')?.value)break;
         await new Promise(r=>setTimeout(r,100));
@@ -150,8 +256,11 @@ async function main(){
       const visualZip=await (await post('/api/export-v3',JSON.stringify(visual),'application/json')).arrayBuffer();
       const visualImported=await (await post('/api/import-v3',visualZip,'application/octet-stream')).json();
       check(visualImported.files['project.json']===visual.files['project.json'],'visual metadata roundtrip changed');
-      return {file:'web/edit.js', files:Object.keys(authored.files).length, capabilities:imported.manifest.capabilities,
-        projectTree:true,newText:true,newBinary:true,replacedBinary:true,delete:true,referenceGuard:true};
+      return {installedPackageReopenEditExportReimport:true,installedPackageId:'pc-delivery-fixture',
+        fullCanvasFalseAndOmittedPreserved:true,optionalProjectSlotsPreserved:true,
+        file:'web/edit.js', files:Object.keys(authored.files).length,
+        capabilities:imported.manifest.capabilities,projectTree:true,newText:true,
+        newBinary:true,replacedBinary:true,delete:true,referenceGuard:true};
     })()`;
     const result=await call("Runtime.evaluate",{expression,awaitPromise:true,returnByValue:true});
     if(result.exceptionDetails)throw Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text);

@@ -112,6 +112,21 @@ limits enforced by the production validator.
    changes and hashes. Use the Studio browser preview and Android WebView/device
    acceptance for visual and runtime claims.
 
+### Re-editing an Android-installed v3 skin
+
+In Android Settings, export the installed third-party skin with the system file
+picker, then pass that `.pcskin` to `inspect-v3`, `read-v3`, and `edit-v3` above.
+The v3 editor preserves package files, opaque Manifest metadata, capability
+declarations, and optional fields it does not change; the final package is
+validated and re-imported before the output file is created.
+
+The exported package keeps its existing Manifest ID. Android intentionally
+rejects installing another package with an already installed ID. To keep both
+versions side by side, use a guarded `manifest-patch` operation to assign a new
+ID before export. The current browser editor and `*-v3` operations do not edit
+installed v1/v2 packages; their Android export paths do not imply v3 Studio
+compatibility.
+
 The interface enables arbitrary v3 source/asset file CRUD and generic JSON tree edits;
 it does not impose a formal page/component schema on `project.json`. The browser Studio
 also exposes direct project JSON editing, supported UTF-8 file creation/deletion, and

@@ -10,6 +10,7 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStream
+import java.io.OutputStream
 import java.security.MessageDigest
 import java.util.zip.ZipInputStream
 
@@ -48,6 +49,27 @@ class SkinPackageManager(private val context: Context) {
         context.contentResolver.openOutputStream(uri)?.use { destination ->
             context.assets.open(clearAssetName).use { input -> input.copyTo(destination) }
         } ?: error("无法写入目标文件")
+    }
+
+    /** Export a user-installed package's original archive through a Host-owned SAF URI. */
+    fun exportInstalled(id: String, uri: Uri) {
+        val bytes = readInstalledArchive(id, loadImages = false).bytes
+        val destination = context.contentResolver.openOutputStream(uri)
+            ?: error("无法写入目标文件")
+        writeArchive(bytes, destination)
+    }
+
+    /** Testable stream boundary shared by SAF export; the skin never receives this capability. */
+    internal fun writeInstalledPackage(id: String, destination: OutputStream) {
+        val bytes = readInstalledArchive(id, loadImages = false).bytes
+        writeArchive(bytes, destination)
+    }
+
+    private fun writeArchive(bytes: ByteArray, destination: OutputStream) {
+        destination.use {
+            it.write(bytes)
+            it.flush()
+        }
     }
 
     /** Origin is only a source/retention choice, never a privilege or runtime branch. */
@@ -135,17 +157,23 @@ class SkinPackageManager(private val context: Context) {
     }
 
     internal data class Verified(val name: String, val pack: PowerCalSkinPack)
+    private data class InstalledArchive(val bytes: ByteArray, val verified: Verified)
 
-    private fun readInstalled(id: String): Verified {
+    private fun readInstalledArchive(id: String, loadImages: Boolean): InstalledArchive {
         require(ID.matches(id) && id != original.id && id != clearCandidate.id) {
             "皮肤 ID 无效或已保留"
         }
         val file = File(folder, id + ".pcskin")
         require(file.isFile) { "未找到皮肤文件" }
-        return decode(readBounded(file.inputStream()), true).also {
+        val bytes = readBounded(file.inputStream())
+        val verified = decode(bytes, loadImages).also {
             require(it.pack.key == id) { "皮肤文件名与包内 ID 不匹配" }
         }
+        return InstalledArchive(bytes, verified)
     }
+
+    private fun readInstalled(id: String): Verified =
+        readInstalledArchive(id, loadImages = true).verified
 
     internal fun decode(bytes: ByteArray, loadImages: Boolean): Verified {
         require(bytes.size <= MAX_ARCHIVE) { "皮肤 ZIP 超过 10MB" }

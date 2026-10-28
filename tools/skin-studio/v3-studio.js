@@ -17,7 +17,7 @@ const copy = value => JSON.parse(JSON.stringify(value));
 let manifest=null, project=null, projectBaseline=null, sourceFiles=new Map(), selectedLayer=null;
 let activeMode="simple", editCanvas=true, previewTimer=null, previewSeq=0;
 let previewPort=null, lastState=null, lastPreviewUrl="", dirty=false;
-let projectSourceError=null, projectDraftText=null;
+let projectSourceError=null, projectDraftText=null, implicitFullCanvas=false, fullCanvasTouched=false;
 const REQUIRED_SOURCE_FILES=new Set(["web/index.html","web/style.css","web/app.js","project.json"]);
 const TEXT_SOURCE_EXTENSIONS=/\.(cjs|css|html?|ini|js|json|jsx|kt|less|md|mjs|properties|py|scss|sh|sql|toml|tsx?|txt|xml|ya?ml|svg)$/i;
 function say(message,isError=false){$("toast").textContent=message;$("toast").classList.toggle("error",isError)}
@@ -25,7 +25,9 @@ function setText(name,value){sourceFiles.set(name,enc.encode(value))}
 function getText(name){return dec.decode(sourceFiles.get(name)||new Uint8Array())}
 function parseProject(){
   const obj=JSON.parse(getText("project.json"));
-  if(obj.projectVersion!==3 || !Array.isArray(obj.slots)) throw Error("无效的 v3 项目元数据");
+  if(!obj||typeof obj!=="object"||Array.isArray(obj)||obj.projectVersion!==3||
+     (obj.slots!==undefined&&!Array.isArray(obj.slots))) throw Error("无效的 v3 项目元数据");
+  if(!Array.isArray(obj.slots))obj.slots=[];
   obj.layers=Array.isArray(obj.layers)?obj.layers:[];
   return obj;
 }
@@ -41,9 +43,9 @@ function payload(){
   if(!manifest) throw Error("还没有加载皮肤");
   if(projectSourceError)throw Error("project.json 尚未修复："+projectSourceError);
   manifest.id=$("skinId").value.trim();manifest.name=$("skinName").value.trim();
-  if(!$("fullCanvas").checked) throw Error(
-    "全画布已关闭：Android 将用原生界面覆盖皮肤，无法保证预览=使用。请开启完整画布。");
-  manifest.fullCanvas=true;
+  if(implicitFullCanvas&&!fullCanvasTouched&&!$("fullCanvas").checked)
+    delete manifest.fullCanvas;
+  else manifest.fullCanvas=$("fullCanvas").checked;
   // Preserve the imported declaration: the editor must neither grant nor revoke
   // capabilities merely because a project was opened, previewed or exported.
   const files={};
@@ -74,6 +76,7 @@ async function loadPackage(data){
      !files.has("web/app.js")||!files.has("project.json"))
     throw Error("皮肤包缺少必需 Web 源码");
   sourceFiles=files;manifest=copy(data.manifest);
+  implicitFullCanvas=!Object.hasOwn(manifest,"fullCanvas");fullCanvasTouched=false;
   projectSourceError=null;projectDraftText=null;
   project=parseProject();
   projectBaseline=JSON.stringify(project);
@@ -85,7 +88,7 @@ async function loadPackage(data){
   const factory = manifest.id==="powercal-clear-default";
   $("skinId").value=factory?"powercal-clear-custom":manifest.id;
   $("skinName").value=factory?"我的 PowerCal Clear":manifest.name;
-  $("fullCanvas").checked=manifest.fullCanvas!==false;
+  $("fullCanvas").checked=manifest.fullCanvas===true;
   switchMode(project.mode==="advanced"?"advanced":"simple");
   syncSourceInputs();renderMaterials();renderAssets();renderLayers();
   schedulePreview(0);
@@ -134,8 +137,11 @@ function updateProjectSource(text){
   try{
     const next=JSON.parse(text);
     if(!next||typeof next!=="object"||Array.isArray(next)||next.projectVersion!==3||
-       !["simple","advanced"].includes(next.mode)||!Array.isArray(next.slots)||next.slots.length>128)
+       !["simple","advanced"].includes(next.mode)||
+       (next.slots!==undefined&&!Array.isArray(next.slots)))
       throw Error("必须是 projectVersion=3 且 slots 为数组的 JSON 对象");
+    if(!Array.isArray(next.slots))next.slots=[];
+    if(next.slots.length>128)throw Error("slots 超过 128 项上限");
     if(next.layers!==undefined&&!Array.isArray(next.layers))throw Error("layers 必须为数组");
     if(!Array.isArray(next.layers))next.layers=[];
     if(next.layers.length>128)throw Error("layers 超过 128 项上限");
@@ -1080,7 +1086,8 @@ function bindUI(){
   };
   $("refresh").onclick=()=>schedulePreview(0);
   $("webPreview").onload=()=>connectPreview();
-  $("skinId").onchange=change;$("skinName").onchange=change;$("fullCanvas").onchange=change;
+  $("skinId").onchange=change;$("skinName").onchange=change;
+  $("fullCanvas").onchange=()=>{fullCanvasTouched=true;change()};
   for(const id of ["scenario","theme","reduced"])$(id).onchange=()=>{
     if(id==="theme")$("webPreview").style.colorScheme=$("theme").value;
     mockAnchor=null;

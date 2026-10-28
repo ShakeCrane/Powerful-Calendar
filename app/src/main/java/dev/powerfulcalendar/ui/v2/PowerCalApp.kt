@@ -185,6 +185,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
     var selectedSkin by remember { mutableStateOf(skins.currentId()) }
     var skinToDelete by remember { mutableStateOf<InstalledSkin?>(null) }
     var skinToActivate by remember { mutableStateOf<InstalledSkin?>(null) }
+    var pendingSkinExportId by rememberSaveable { mutableStateOf<String?>(null) }
 
     var page by rememberSaveable { mutableStateOf(Page.TIMELINE.name) }
     var records by remember { mutableStateOf<List<TemporalRecord>>(emptyList()) }
@@ -1031,6 +1032,21 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                 .onFailure { error -> message = "导出皮肤模板失败：" + error.message }
         }
     }
+    val exportInstalledSkin = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/zip")
+    ) { uri ->
+        val id = pendingSkinExportId
+        pendingSkinExportId = null
+        if (uri != null && id != null) scope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) { skins.exportInstalled(id, uri) }
+            }.onSuccess {
+                message = "已导出皮肤包 $id；可在 Skin Studio 导入后继续编辑"
+            }.onFailure { error ->
+                message = "导出已安装皮肤失败：" + (error.message ?: "未知错误")
+            }
+        }
+    }
 
     val exportIcs = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("text/calendar")
@@ -1402,6 +1418,11 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                     importSkin.launch(arrayOf("application/zip", "application/octet-stream", "*/*"))
                 },
                 onExportOriginalSkin = { exportOriginalSkin.launch("PowerCal-Clear-Preview.pcskin") },
+                onExportInstalledSkin = { item ->
+                    pendingSkinExportId = item.id
+                    message = "请选择保存位置以导出 ${item.name}"
+                    exportInstalledSkin.launch(item.id + ".pcskin")
+                },
                 onDeleteSkin = { id ->
                     skinToDelete = skinChoices.firstOrNull { it.id == id && !it.builtIn }
                 },
@@ -2548,6 +2569,7 @@ internal fun NativeToolsPage(
     onSelectSkin: (String) -> Unit,
     onImportSkin: () -> Unit,
     onExportOriginalSkin: () -> Unit,
+    onExportInstalledSkin: (InstalledSkin) -> Unit,
     onDeleteSkin: (String) -> Unit,
     onBack: () -> Unit,
     onOpenDeck: () -> Unit,
@@ -2603,6 +2625,12 @@ internal fun NativeToolsPage(
                     )
                     Spacer(Modifier.weight(1f))
                     if (!item.builtIn) {
+                        TextButton(
+                            onClick = { onExportInstalledSkin(item) },
+                            modifier = Modifier.semantics {
+                                contentDescription = "导出 ${item.name} 皮肤包"
+                            }
+                        ) { Text("导出") }
                         TextButton(onClick = { onDeleteSkin(item.id) }) { Text("删除") }
                     }
                 }
@@ -2611,7 +2639,8 @@ internal fun NativeToolsPage(
                 OutlinedButton(onClick = onImportSkin) { Text("导入皮肤包") }
                 TextButton(onClick = onExportOriginalSkin) { Text("导出 Clear 候选皮肤") }
             }
-            Text("导入后不会自动启用。v3 皮肤可使用受限 HTML/CSS/JavaScript；原生设置随时可用。",
+            Text("导入后不会自动启用。第三方皮肤可导出原包，在 Skin Studio 导入并继续编辑；" +
+                "v3 皮肤可使用受限 HTML/CSS/JavaScript；原生设置随时可用。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }

@@ -34,11 +34,17 @@ python tools/skin-studio/skin_studio.py serve --port 8765
 - 通过“软件新增平行功能”场景检查通用选项列表是否自动继承新的同级选项。
 - 可导入已有的自包含 v3 ZIP，保留 `web/`、`assets/` 中的额外文件；
   导出后仍是 Android 可安装的 `.pcskin`，可再次导入继续编辑。
+- Android 设置中的第三方皮肤“导出”会通过系统文件选择器保存已安装的原始
+  `.pcskin` 包；在 Studio 导入后可继续编辑和导出。导出的 Manifest ID 保持原值，
+  Android 为防止误覆盖会拒绝安装同 ID 的现存皮肤；要在同一设备保留旧版时，
+  请先在 Studio 派生新 ID。v1/v2 皮肤仍可由 Android 安装和导出，当前浏览器编辑器
+  面向 v3，尚无 v1/v2 的 Studio 再编辑流程。
 - `保存编辑工程` 输出含全部源码/图层/素材的 `.pcstudio-v3.json`。
 - v1、v2 CLI 打包与运行时仍保留，未更改 Android 皮肤 ZIP 格式。
 
-**画布限制：** Android 在 `fullCanvas=false` 时会用原生 Compose 内容覆盖 Web 层；
-为避免误导，Studio 不允许以非全画布模式输出一份声称“预览即使用”的 v3 包。
+**画布限制：** Studio 保留导入包声明的 `fullCanvas` 值，也允许编辑该值；
+Android 在 `fullCanvas=false` 时会用原生 Compose 内容覆盖 Web 层。浏览器 Studio
+预览不包含这层 Android Compose 内容，因此非全画布包的浏览器截图不能代表设备上的完整画面。
 没有暴露的业务能力（例如完整 Memo/AI 页、正式提交）不能被预览伪装为可用功能。
 宿主敏感操作、设置和紧急恢复仍是原生界面。
 

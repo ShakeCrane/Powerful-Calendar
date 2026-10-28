@@ -197,6 +197,7 @@ internal class SettingsVisualContext internal constructor(
     val onSelectSkin: (String) -> Unit,
     val onImportSkin: () -> Unit,
     val onExportOriginalSkin: () -> Unit,
+    val onExportInstalledSkin: (InstalledSkin) -> Unit,
     val onDeleteSkin: (String) -> Unit,
     val onBack: () -> Unit,
     val onOpenDeck: () -> Unit,
@@ -222,7 +223,8 @@ internal class SettingsVisualContext internal constructor(
     @Composable fun Native() {
         NativeToolsPage(
             diagnostics, records, pendingCount, aiLocked, aiSession, effects, skinChoices,
-            selectedSkin, onSelectSkin, onImportSkin, onExportOriginalSkin, onDeleteSkin,
+            selectedSkin, onSelectSkin, onImportSkin, onExportOriginalSkin,
+            onExportInstalledSkin, onDeleteSkin,
             onBack, onOpenDeck, onImportIcs, onExportIcs, onImportSystem, onMigrateLegacy,
             onPickImage, onTextDraft, onExportBackup, onRestoreBackup,
             onRequestNotificationPermission, onOpenExactAlarmSettings, onRunBatch,
@@ -244,6 +246,7 @@ internal fun ToolsPage(
     onSelectSkin: (String) -> Unit,
     onImportSkin: () -> Unit,
     onExportOriginalSkin: () -> Unit,
+    onExportInstalledSkin: (InstalledSkin) -> Unit,
     onDeleteSkin: (String) -> Unit,
     onBack: () -> Unit,
     onOpenDeck: () -> Unit,
@@ -266,7 +269,8 @@ internal fun ToolsPage(
 ) {
     val context = SettingsVisualContext(
         diagnostics, records, pendingCount, aiLocked, aiSession, effects, skinChoices,
-        selectedSkin, onSelectSkin, onImportSkin, onExportOriginalSkin, onDeleteSkin,
+        selectedSkin, onSelectSkin, onImportSkin, onExportOriginalSkin,
+        onExportInstalledSkin, onDeleteSkin,
         onBack, onOpenDeck, onImportIcs, onExportIcs, onImportSystem, onMigrateLegacy,
         onPickImage, onTextDraft, onExportBackup, onRestoreBackup,
         onRequestNotificationPermission, onOpenExactAlarmSettings, onRunBatch,

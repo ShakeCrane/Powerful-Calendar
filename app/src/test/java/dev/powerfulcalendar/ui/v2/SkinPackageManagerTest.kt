@@ -11,6 +11,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.security.MessageDigest
 import java.util.UUID
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
@@ -44,6 +45,9 @@ class SkinPackageManagerTest {
 
     private fun pack(json: JSONObject, vararg extras: Pair<String, ByteArray>): ByteArray =
         archive("manifest.json" to json.toString().toByteArray(Charsets.UTF_8), *extras)
+
+    private fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256")
+        .digest(bytes).joinToString("") { "%02x".format(it) }
 
     @Test fun minimalArchiveAcceptsThemeWithNoImages() {
         val json = manifest().put("light", JSONObject()
@@ -113,6 +117,31 @@ class SkinPackageManagerTest {
         } finally {
             manager.select("powercal-default")
         }
+    }
+
+    @Test fun v3OptionalProjectAndCanvasFieldsKeepAndroidDefaults() {
+        val original = context.assets.open("powercal-clear-default.pcskin").use { it.readBytes() }
+        val entries = linkedMapOf<String, ByteArray>()
+        ZipInputStream(original.inputStream()).use { zip ->
+            while (true) {
+                val entry = zip.nextEntry ?: break
+                entries[entry.name] = zip.readBytes()
+                zip.closeEntry()
+            }
+        }
+        val manifest = JSONObject(String(entries.getValue("manifest.json"), Charsets.UTF_8))
+            .put("id", "optional-meta-" + UUID.randomUUID().toString().take(12))
+            .put("name", "Optional Metadata Test")
+        val project = JSONObject(String(entries.getValue("project.json"), Charsets.UTF_8))
+        project.remove("slots")
+        val projectBytes = project.toString().toByteArray(Charsets.UTF_8)
+        entries["project.json"] = projectBytes
+        manifest.remove("fullCanvas")
+        manifest.getJSONObject("sha256").put("project.json", sha256(projectBytes))
+        entries["manifest.json"] = manifest.toString().toByteArray(Charsets.UTF_8)
+
+        val decoded = manager.decode(archive(*entries.map { it.key to it.value }.toTypedArray()), false)
+        assertFalse(decoded.pack.web!!.fullCanvas)
     }
 
     /**
@@ -259,6 +288,81 @@ class SkinPackageManagerTest {
         assertFalse(WebSkinCapabilityPolicy.mayAct(editOnly))
         assertTrue(WebSkinCapabilityPolicy.mayRead(readAndEdit))
         assertFalse(WebSkinCapabilityPolicy.mayAct(readAndEdit))
+    }
+
+    @Test fun installedThirdPartyV3ArchiveExportsByteForByteWithoutChangingSelectionOrCalendarData() {
+        val factoryBytes = context.assets.open("powercal-clear-default.pcskin")
+            .use { it.readBytes() }
+        val entries = linkedMapOf<String, ByteArray>()
+        ZipInputStream(factoryBytes.inputStream()).use { zip ->
+            while (true) {
+                val entry = zip.nextEntry ?: break
+                entries[entry.name] = zip.readBytes()
+                zip.closeEntry()
+            }
+        }
+        val id = "export-" + UUID.randomUUID().toString().take(20)
+        val manifest = JSONObject(String(entries.getValue("manifest.json"), Charsets.UTF_8))
+            .put("id", id).put("name", "Installed Third Party Export")
+        entries["manifest.json"] = manifest.toString().toByteArray(Charsets.UTF_8)
+        val installedBytes = archive(*entries.map { it.key to it.value }.toTypedArray())
+        val source = File.createTempFile("installed-third-party-", ".pcskin", context.cacheDir)
+        val packageFile = File(context.filesDir, "skin-packs/$id.pcskin")
+        val database = context.getDatabasePath("powercal-v2.db")
+        val databaseLengthBefore = if (database.isFile) database.length() else -1L
+        try {
+            manager.select("powercal-default")
+            source.writeBytes(installedBytes)
+            assertEquals(id, manager.install(Uri.fromFile(source)).id)
+            val storedBefore = packageFile.readBytes()
+            assertArrayEquals(installedBytes, storedBefore)
+
+            val output = ByteArrayOutputStream()
+            manager.writeInstalledPackage(id, output)
+
+            assertArrayEquals("export must preserve the complete original v3 ZIP", storedBefore,
+                output.toByteArray())
+            assertEquals("export must not activate the package", "powercal-default", manager.currentId())
+            assertEquals("export must not alter the active runtime", "powercal-default",
+                PowerCalSkinRegistry.active.key)
+            assertArrayEquals("export must not rewrite the installed source", storedBefore,
+                packageFile.readBytes())
+            assertEquals("skin export must not write calendar data", databaseLengthBefore,
+                if (database.isFile) database.length() else -1L)
+        } finally {
+            source.delete()
+            manager.select("powercal-default")
+            runCatching { manager.delete(id) }
+        }
+    }
+
+    @Test fun installedPackageExportRejectsReservedMissingAndTamperedArchives() {
+        val output = ByteArrayOutputStream()
+        assertThrows(IllegalArgumentException::class.java) {
+            manager.writeInstalledPackage("powercal-default", output)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            manager.writeInstalledPackage("missing-skin", output)
+        }
+        assertTrue("rejected exports must not write any bytes", output.size() == 0)
+
+        val id = "tamper-" + UUID.randomUUID().toString().take(20)
+        val source = File.createTempFile("installed-third-party-", ".pcskin", context.cacheDir)
+        val packageFile = File(context.filesDir, "skin-packs/$id.pcskin")
+        val json = manifest(id)
+        val archive = pack(json)
+        try {
+            source.writeBytes(archive)
+            manager.install(Uri.fromFile(source))
+            packageFile.writeBytes(byteArrayOf(0x50, 0x4b, 0x03, 0x04))
+            assertThrows(IllegalStateException::class.java) {
+                manager.writeInstalledPackage(id, output)
+            }
+            assertTrue("a tampered archive must not partially export", output.size() == 0)
+        } finally {
+            source.delete()
+            runCatching { manager.delete(id) }
+        }
     }
 
     @Test fun installChooseRestartAndDeleteDoNotModifyCalendarDatabase() {
