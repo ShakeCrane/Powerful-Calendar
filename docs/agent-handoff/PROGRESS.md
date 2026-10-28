@@ -1,5 +1,11 @@
 # Core freeze progress
 
+## Separation — corrupted selected skin startup fallback coverage (2026-10-28)
+
+- Added an isolated random-ID package test that corrupts a selected `.pcskin` before invoking the production `restoreSelection()` method. It verifies that the persisted selection and active registry return to the native skin, while the corrupt package file remains available and is excluded from the valid skin catalogue. No production code changed because the existing fallback behavior passed the new regression.
+- Focused `SkinPackageManagerTest` **10/10 PASS**. Full offline gate **635/635 JVM tests, 88 suites, 0 failures/errors/skips, 59 tasks**; source boundary, Debug APK and lint pass (0 errors / 52 warnings). Full-log SHA-256 `64E213E65D2E84769FE78E30CA4B6544B608A77FD08B916420645E7B39E59163`; JUnit XML SHA-256 `CF0FE6F7EFF220AAD6D0D957753CF0EE742DD7BC525074C9E98544E3E59A3A66`. Independent report: `docs/issues/PC-ISSUE-SEPARATION-CORRUPT-SKIN-BOOT-RECOVERY.md`; evidence under `.local/android-test/reports/separation-20261028/skin-corrupt-boot-recovery/`.
+- Robolectric called `restoreSelection()` directly; this is not an OS process restart or Android WebView/AVD/physical verification. SEP-13 remains **NOT TESTED** overall. Concurrent `WebSkinManagementInstrumentedTest.kt` remains untouched.
+
 ## Separation — native fallback for a failed skin editor checkpoint (2026-10-28)
 
 - Root cause: when a skin failed and `prepareSkinChange()` could not checkpoint, Host correctly retained the editor lease/form but still switched to native fallback without exposing the retained session. Added a read-only Host recovery projection and native dialog for formal edits, transient new events and open draft decks; users can inspect the full form and retry the existing safe checkpoint. Success stages and refreshes without formal publication; failure keeps the session and dialog active.
