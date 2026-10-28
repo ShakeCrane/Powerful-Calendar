@@ -154,3 +154,8 @@ In the table, Studio support means source availability, not proof of arbitrary v
 
 - The AI automation guide's `read-v3` example now uses the required POSIX package path `web/app.js`. A regression extracts that exact documented command and invokes the real CLI against the canonical Clear bundle; focused test **1/1 PASS**, full Skin Studio Python suite **73/73 PASS**, Clear bundle verification PASS. See `PC-ISSUE-SEPARATION-STUDIO-DOC-EXAMPLE.md`.
 - This closes one documentation example defect only. It does not establish complete Studio authoring, full Goal C automation, Android/WebView/device parity or any SEP-15 feature-row PASS. SEP-15 remains **NOT TESTED**.
+
+## SEP-15 follow-up — Bridge JavaScript static audit (2026-10-28)
+
+- `audit-bridge-v3` now adds bounded lexical indexing for bare `send()` / `perform()` Bridge calls, executable inline scripts, HTML event-handler attributes, and recognized `port.postMessage` / `PowerCalSkin.sendCommand` transport shapes. It preserves the existing receipt `scope` and adds `scriptScope`; dynamic names, template call expressions, raw transports and non-scanned sources require source review. Payload fields and runtime behavior are not validated. Issue evidence: `PC-ISSUE-SEPARATION-STUDIO-BRIDGE-SCRIPT-AUDIT.md`.
+- Canonical Clear, Python full-suite and regression results are recorded in the Issue report and `.local/android-test/reports/separation-bridge-script-audit-20261028/`. This signs only the Studio static audit slice; Android WebView/device behavior, full authoring parity and Native/Skin feature replays remain **NOT TESTED**. SEP-15/S5 remains **NOT TESTED**.

@@ -46,7 +46,7 @@ python tools/skin-studio/skin_studio.py serve --port 8765
 
 **AI/脚本项目操作：** v3 `.pcskin` 可通过机器可读的 `inspect-v3`、`analyze-v3`、
 `audit-bridge-v3`、`read-v3`、`edit-v3` 命令检查项目、枚举 HTML 页面及静态节点、
-核对静态 `data-action` 名称与 Bridge v1 注册表及 `host.action` 声明、读取任意文本/二进制资源、
+核对静态 `data-action` 与 JavaScript 中可识别的 `send()` / `perform()` 字面量名称、Bridge v1 注册表/schema 及 `host.action` 声明；动态名称和低层传输会标为复核。它读取任意文本/二进制资源、
 按节点结构编辑静态 HTML、通过 `component-style` 为选中节点增改/移除简单 CSS 覆盖，并编辑 `project.json` 结构及新增/修改/移动/删除文件，再经同一生产校验器构建到新包路径。`component-attributes` 与 `component-style` 可由 AI/CLI 以源码 SHA 前置条件修改静态节点属性/样式；复杂 CSS 仍可直接编辑完整源码。SHA 前置条件防止
 覆盖检查之后已变化的文件；能力声明变更必须显式确认。该 CLI 补足 AI 操作层，
 `build-v3 --json` / `validate --json` 则提供带哈希和计数的结构化回执；构建会原子
@@ -75,11 +75,9 @@ python tools/skin-studio/skin_studio.py edit-v3 --file my-skin.pcskin --operatio
 python tools/skin-studio/skin_studio.py validate my-skin-edited.pcskin --json
 ```
 
-`audit-bridge-v3` 只检查静态 HTML 中的 literal `data-action` 名称和所需
-`host.action` 声明；不会执行 JS，也不会校验动态生成的 Bridge payload。带有 inline
-或 linked script 的皮肤会标记 `requiresSourceReview`。统一的 action/command 字段、类型与
+`audit-bridge-v3` 除静态 HTML 绑定外，会对包内 JS 文件、可执行 inline script 和 HTML 事件处理属性作词法扫描，索引裸调用 `send("literal")` action、`perform("literal.command")` command，以及 `port.postMessage` / `PowerCalSkin.sendCommand` Bridge 传输形态。它不执行脚本；动态名称、模板插值和识别出的低层传输会要求源码复核。普通对象的 `analytics.send()` 与 `window.postMessage()` 不会按 Bridge 处理。即使名称命中，payload 字段和值仍标记为未验证。带有脚本或内联事件处理器的皮肤会标记 `requiresSourceReview`。该扫描器不是 JavaScript parser；别名、计算属性及模块间接调用需要人工检查。统一的 action/command 字段、类型与
 取值约束见 [`docs/contracts/web-skin-bridge-v1.schema.json`](../../docs/contracts/web-skin-bridge-v1.schema.json)，
-CLI 会为每个静态 action 返回 schema 引用；JVM 测试把其样例交给实际 Host decoder 验证。
+CLI 为可识别字面量返回 schema 引用；JVM 测试把 schema 样例交给实际 Host decoder 验证。
 成功 JSON 写 stdout、退出码为 0；
 审计失败写结构化 JSON 到 stderr、退出码为 2。它不替代 Android WebView 或设备验收。
 

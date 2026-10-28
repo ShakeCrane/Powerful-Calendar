@@ -130,7 +130,16 @@ class AiSkinWorkflowV3Test(unittest.TestCase):
             self.assertEqual(bridge_audit["contractSchema"]["path"],
                              "docs/contracts/web-skin-bridge-v1.schema.json")
             self.assertTrue(bridge_audit["requiresSourceReview"])
-            self.assertIn("payloads", " ".join(bridge_audit["limitations"]))
+            self.assertTrue(bridge_audit["scriptBindings"])
+            self.assertEqual(bridge_audit["unknownScriptBindings"], [])
+            self.assertTrue(any(item["api"] == "command" and
+                                item["name"] == "deck.flush"
+                                for item in bridge_audit["scriptBindings"]))
+            self.assertTrue(any(item["status"] == "REVIEW_REQUIRED_DYNAMIC_NAME"
+                                for item in bridge_audit["scriptBindings"]))
+            self.assertTrue(bridge_audit["scriptTransportCalls"])
+            self.assertIn("not validated", bridge_audit["payloadValidation"])
+            self.assertIn("payload", " ".join(bridge_audit["limitations"]))
 
             final_inspection = self.cli_json("inspect-v3", output_package)
             final_analysis = self.cli_json("analyze-v3", output_package)

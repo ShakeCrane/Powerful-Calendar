@@ -1,6 +1,6 @@
 # Skin Studio AI Automation Interface v1
 
-Status: **implemented for `.pcskin` v3 scaffolding, inspection, editing, building, validation and static Bridge v1 action auditing**.
+Status: **implemented for `.pcskin` v3 scaffolding, inspection, editing, building, validation, static Bridge v1 name auditing, and conservative JavaScript call-site indexing**.
 This interface makes source, assets, `project.json`, and package metadata callable by
 scripts and agents. It does not claim complete visual Studio editing or Native/Skin
 functional parity.
@@ -81,31 +81,42 @@ for the same page source/order; recalculate it after edits and use the source/pa
 hashes as the concurrency snapshot. Read linked scripts and styles with `read-v3` before
 editing. The command does not modify or normalize package bytes.
 
-## Static Host Bridge v1 action audit
+## Host Bridge v1 binding and script audit
 
 Run `audit-bridge-v3 <skin.pcskin>` on a built or edited package. It indexes literal
-`data-action` attributes in packaged `web/*.html` and `web/*.htm`, checks each action
-name against the closed Bridge v1 decoder registry, and checks that a package declaring
-static actions also requests `host.action`. A regression test compares the checked-in
-registry to `WebSkinHost.decodeBridgeAction`, so runtime action changes fail the Studio
-test suite until the registry is updated.
+`data-action` attributes in packaged `web/*.html` and `web/*.htm`, then performs a
+bounded lexical scan of packaged `web/*.js`, `web/*.mjs`, `web/*.cjs`, executable
+inline scripts, and HTML event-handler attributes. Bare direct `send("name", ...)` calls
+are compared with the closed action registry; bare direct
+`perform("group.command", ...)` calls are compared with the command names referenced by
+the Bridge v1 JSON Schema. The scanner also recognizes
+the `port.postMessage` and `PowerCalSkin.sendCommand` Bridge transport shapes. It checks
+whether detected Bridge calls require a declared `host.action` capability. A regression
+test compares the action registry to `WebSkinHost.decodeBridgeAction`.
 
-The UTF-8 JSON receipt includes the package hash, known bindings with page and static
-node IDs, unknown bindings, declared/required/missing capabilities, the audit scope,
-`requiresSourceReview`, the schema path/hash and a `payloadSchemaRef` for each known
-binding. Follow that reference into the protocol schema when checking how the calling
-script must construct its payload. A successful audit writes JSON to stdout and exits 0.
-Unknown actions, a missing required capability, or an input/schema error writes
-structured JSON to stderr and exits 2. The audit does not modify the package.
+The UTF-8 JSON receipt includes the package and scanned-source hashes, static HTML
+bindings, `scriptBindings` with source path/line/column, API kind, name, status and schema
+reference, `unknownScriptBindings`, `inlineEventHandlers`, raw transport call sites,
+review-required expressions and sources, declared/required/missing capabilities, and the
+contract schema path/hash.
+`KNOWN_NAME_PAYLOAD_UNVERIFIED` confirms only that a literal name exists; its JavaScript
+payload fields and values are **not validated**. Dynamic names receive
+`REVIEW_REQUIRED_DYNAMIC_NAME`; recognized low-level Bridge transports and template
+interpolations are reported for source review. Unknown literal action or command names,
+missing capabilities, or input/schema errors write structured JSON to stderr and exit 2.
+A receipt with `ok: true` can still require manual review. The audit does not modify or
+execute the package.
 
-This is a **static-name and manifest-declaration check only**. It does not execute
-JavaScript, discover runtime-created controls, validate payload fields, or prove Android
-Host behavior. Packages with linked or inline scripts set `requiresSourceReview`; inspect
-those scripts and [`V3_HOST_BRIDGE_EXTENSION.md`](V3_HOST_BRIDGE_EXTENSION.md) before
-export. The referenced schema is exercised against Host decoders with representative
-valid examples, required-field omissions and unknown-field mutations; it is not a JS
-source analyzer. A passing receipt is not full Bridge compatibility or runtime-parity
-evidence.
+This is a conservative lexical aid, not a JavaScript parser or runtime. It intentionally
+ignores member methods named `send()` / `perform()` and generic `window.postMessage()`;
+other aliases, computed calls, module indirection, obfuscation or dynamic forms may not
+be resolved. Inspect all scripts and
+[`V3_HOST_BRIDGE_EXTENSION.md`](V3_HOST_BRIDGE_EXTENSION.md) before export. It does not
+validate payload fields, enumerate runtime-created controls, or prove Android Host/WebView
+behavior. The schema is separately exercised against Host decoders with representative
+valid examples, required-field omissions and unknown-field mutations. Neither source
+scanning nor those decoder tests establish full Bridge compatibility or Native/Skin
+runtime parity.
 
 ## Inspection and source reads
 
@@ -284,8 +295,9 @@ browser editor can find and rehydrate the rule after project or `.pcskin` import
 5. For source-directory projects, run `build-v3 --json` to create a validated package;
    for edited packages, run `validate --json` on the exported `.pcskin`. Both return
    hashes and counts; build refuses an existing output path.
-6. Run `audit-bridge-v3` on the resulting package. Resolve unknown static action names
-   and missing capability declarations; inspect linked/inline scripts when requested.
+6. Run `audit-bridge-v3` on the resulting package. Resolve unknown static or literal
+   script action/command names and missing capability declarations; manually review all
+   dynamic call sites, raw transports and payloads marked unverified.
 7. Inspect/read the result again and compare intended
    changes and hashes. Use the Studio browser preview and Android WebView/device
    acceptance for visual and runtime claims.

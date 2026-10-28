@@ -4,12 +4,14 @@ from __future__ import annotations
 import base64
 import binascii
 import copy
-from collections import Counter
+from bisect import bisect_right
+from collections import Counter, deque
 import hashlib
 from html.parser import HTMLParser
 import json
 import os
 from pathlib import Path
+import posixpath
 import re
 import tempfile
 
@@ -25,9 +27,28 @@ MAX_ANALYZED_COMPONENTS = 20_000
 MAX_COMPONENT_ATTRIBUTES = 256
 MAX_COMPONENT_STYLE_PROPERTIES = 128
 MAX_COMPONENT_STYLE_VALUE_BYTES = 4_096
+MAX_BRIDGE_SCRIPT_FINDINGS = 4_096
 COMPONENT_STYLE_ATTRIBUTE = "data-pcskin-studio-style"
 COMPONENT_STYLE_TOKEN = re.compile(r"pcss-[0-9a-f]{24}\Z")
 CSS_PROPERTY = re.compile(r"(?:--[A-Za-z_][A-Za-z0-9_-]*|-?[A-Za-z][A-Za-z0-9-]*)\Z")
+BRIDGE_SCRIPT_EXTENSIONS = frozenset({".js", ".mjs", ".cjs"})
+BRIDGE_NAME = re.compile(r"[A-Za-z][A-Za-z0-9_.-]{0,63}\Z")
+JS_SCRIPT_MIME_TYPE = re.compile(
+    r"(?:text|application)/(?:x-)?(?:java|ecma)script(?:[0-9]+(?:\.[0-9]+)?)?\Z")
+JS_CONTROL_PAREN_KEYWORDS = frozenset({"catch", "for", "if", "switch", "while", "with"})
+JS_REGEX_PREFIX_KEYWORDS = frozenset({
+    "await", "case", "delete", "do", "else", "in", "instanceof", "new",
+    "of", "return", "throw", "typeof", "void", "yield",
+})
+JS_REGEX_PREFIX_PUNCTUATION = frozenset({
+    "(", "[", "{", ",", ":", ";", "=", "!", "?", "&&", "||", "??",
+    "+", "-", "*", "%", "^", "~", "<", ">", "=>", "==", "===", "!=",
+    "!==", "<=", ">=", "+=", "-=", "*=", "/=", "%=", "**", "&", "|",
+})
+JS_MULTI_OPERATORS = tuple(sorted({
+    "===", "!==", "**=", "=>", "?.", "&&", "||", "??", "==", "!=", "<=",
+    ">=", "+=", "-=", "*=", "/=", "%=", "**", "++", "--", "<<", ">>",
+}, key=len, reverse=True))
 BRIDGE_V1_ACTION_REGISTRY = Path(__file__).with_name("bridge_v1_action_registry.json")
 BRIDGE_V1_CONTRACT_SCHEMA = Path(__file__).resolve().parents[2] / (
     "docs/contracts/web-skin-bridge-v1.schema.json")
@@ -801,6 +822,9 @@ class _StaticHtmlInventory(HTMLParser):
         self.by_id: dict[str, dict] = {}
         self.title_parts: list[str] = []
         self.script_sources: list[str] = []
+        self.inline_scripts: list[dict] = []
+        self.inline_handlers: list[dict] = []
+        self._active_inline_script: dict | None = None
         self.stylesheet_sources: list[str] = []
         self.inline_script_count = 0
         self.warnings: list[str] = []
@@ -847,6 +871,29 @@ class _StaticHtmlInventory(HTMLParser):
         line, column = position
         _fail(1 <= line <= len(self._line_offsets), "HTML parser returned an invalid source line")
         return self._line_offsets[line - 1] + column
+
+    def _inline_handler_source(self, start_tag: str, start_offset: int,
+                               attribute_name: str, source: str,
+                               node_id: str) -> dict:
+        pattern = re.compile(
+            r"(?is)(?:^|\s)" + re.escape(attribute_name) +
+            r"\s*=\s*(?:\"(?P<double>[^\"]*)\"|'(?P<single>[^']*)'|(?P<unquoted>[^\s>]+))")
+        match = pattern.search(start_tag)
+        group = (next((name for name in ("double", "single", "unquoted")
+                       if match is not None and match.group(name) is not None), None))
+        value_start = (start_offset + match.start(group)
+                       if match is not None and group is not None
+                       else start_offset + len(start_tag))
+        line_index = bisect_right(self._line_offsets, value_start) - 1
+        return {
+            "path": self.path,
+            "sourceKind": "html-event-handler",
+            "source": source,
+            "lineOffset": line_index,
+            "firstLineColumnOffset": value_start - self._line_offsets[line_index],
+            "nodeId": node_id,
+            "attribute": attribute_name,
+        }
 
     @staticmethod
     def _is_interactive(node: dict) -> bool:
@@ -897,12 +944,23 @@ class _StaticHtmlInventory(HTMLParser):
         self.by_id[node_id] = node
         if parent_id is not None:
             self.by_id[parent_id].setdefault("childIds", []).append(node_id)
+        for attribute in normalized:
+            name = attribute["name"]
+            value = attribute["value"]
+            if name.startswith("on") and len(name) > 2 and type(value) is str and value.strip():
+                self.inline_handlers.append(self._inline_handler_source(
+                    start_tag, start_offset, name, value, node_id))
         if tag.lower() == "script":
-            src = values.get("src")
-            if src:
-                self.script_sources.append(src)
+            if "src" in values:
+                self.script_sources.append(values.get("src") or "")
             else:
                 self.inline_script_count += 1
+                if _is_executable_javascript_type(values.get("type")):
+                    self._active_inline_script = {
+                        "nodeId": node_id,
+                        "sourceStartOffset": start_offset + len(start_tag),
+                        "chunks": [],
+                    }
         if tag.lower() == "link" and "stylesheet" in (values.get("rel") or "").lower().split():
             href = values.get("href")
             if href:
@@ -919,7 +977,12 @@ class _StaticHtmlInventory(HTMLParser):
         self._add_element(tag, attrs, self_closing=False)
 
     def handle_startendtag(self, tag, attrs):
-        self._add_element(tag, attrs, self_closing=True)
+        if tag.lower() == "script":
+            # HTML ignores the self-closing slash on non-void script elements.
+            self._add_element(tag, attrs, self_closing=False)
+            self.set_cdata_mode(tag)
+        else:
+            self._add_element(tag, attrs, self_closing=True)
 
     def handle_endtag(self, tag):
         lowered = tag.lower()
@@ -942,6 +1005,22 @@ class _StaticHtmlInventory(HTMLParser):
             self.structural_issues.append(message)
             node["_sourceMutable"] = False
         closed_node = self.by_id[self.stack[match]]
+        if (lowered == "script" and self._active_inline_script is not None and
+                self._active_inline_script["nodeId"] == closed_node["nodeId"]):
+            active = self._active_inline_script
+            inline_source = "".join(active["chunks"])
+            if inline_source.strip():
+                source_start = active["sourceStartOffset"]
+                line_index = bisect_right(self._line_offsets, source_start) - 1
+                self.inline_scripts.append({
+                    "path": self.path,
+                    "sourceKind": "inline",
+                    "source": inline_source,
+                    "lineOffset": line_index,
+                    "firstLineColumnOffset": source_start - self._line_offsets[line_index],
+                    "scriptIndex": len(self.inline_scripts) + 1,
+                })
+            self._active_inline_script = None
         if close_end is None or close_end < closed_node["_sourceOpenEnd"]:
             message = f"closing tag </{lowered}> has no exact source range at line {self.getpos()[0]}"
             self.warnings.append(message)
@@ -962,6 +1041,9 @@ class _StaticHtmlInventory(HTMLParser):
         if self.stack[-1] is None:
             return
         current = self.by_id[self.stack[-1]]
+        if (self._active_inline_script is not None and
+                self._active_inline_script["nodeId"] == current["nodeId"]):
+            self._active_inline_script["chunks"].append(data)
         if current["tag"] == "title":
             self.title_parts.append(data)
         if self._script_depth == 0 and self._style_depth == 0 and data.strip():
@@ -999,8 +1081,351 @@ def analyze_package(source: bytes) -> dict:
     }
 
 
+def _js_identifier_start(char: str) -> bool:
+    return char in {"$", "_"} or char.isalpha()
+
+
+def _js_identifier_part(char: str) -> bool:
+    return _js_identifier_start(char) or char.isdigit()
+
+
+def _js_regex_end(source: str, start: int) -> int | None:
+    """Return the end of a regex literal, or None when the slash is not one."""
+    index = start + 1
+    escaped = False
+    in_character_class = False
+    while index < len(source) and source[index] not in "\r\n":
+        char = source[index]
+        if escaped:
+            escaped = False
+        elif char == "\\":
+            escaped = True
+        elif char == "[":
+            in_character_class = True
+        elif char == "]":
+            in_character_class = False
+        elif char == "/" and not in_character_class:
+            index += 1
+            while index < len(source) and _js_identifier_part(source[index]):
+                index += 1
+            return index
+        index += 1
+    return None
+
+
+def _is_executable_javascript_type(value: str | None) -> bool:
+    script_type = (value or "").split(";", 1)[0].strip().lower()
+    return (script_type in {"", "module"} or
+            JS_SCRIPT_MIME_TYPE.fullmatch(script_type) is not None)
+
+
+def _template_may_contain_bridge_call(value: str) -> bool:
+    search_from = 0
+    while True:
+        start = value.find("${", search_from)
+        if start < 0:
+            return False
+        backslashes = 0
+        cursor = start - 1
+        while cursor >= 0 and value[cursor] == "\\":
+            backslashes += 1
+            cursor -= 1
+        if backslashes % 2:
+            search_from = start + 2
+            continue
+
+        expression_start = start + 2
+        depth = 1
+        expression_end = len(value)
+        for kind, token, offset in _iter_js_tokens(value[expression_start:]):
+            if kind != "punctuation":
+                continue
+            if token == "{":
+                depth += 1
+            elif token == "}":
+                depth -= 1
+                if depth == 0:
+                    expression_end = expression_start + offset
+                    break
+        expression_tokens = iter(_iter_js_tokens(value[expression_start:expression_end]))
+        for kind, token, _ in expression_tokens:
+            if kind != "identifier" or token not in {
+                    "send", "perform", "sendCommand", "postMessage"}:
+                continue
+            following = next(expression_tokens, None)
+            if following is None:
+                continue
+            if following[1] == "(":
+                return True
+            if following[1] == "?.":
+                call_open = next(expression_tokens, None)
+                if call_open is not None and call_open[1] == "(":
+                    return True
+        if expression_end >= len(value):
+            return False
+        search_from = expression_end + 1
+
+
+def _iter_js_tokens(source: str):
+    """Yield a bounded-lookahead lexical view; this is not a JavaScript parser."""
+    index = 0
+    previous = None
+    control_parentheses = []
+    control_blocks = []
+    control_block_expected = False
+    regex_after_control_close = False
+    while index < len(source):
+        char = source[index]
+        if char.isspace():
+            index += 1
+            continue
+        if source.startswith("//", index):
+            newline = source.find("\n", index + 2)
+            index = len(source) if newline < 0 else newline + 1
+            continue
+        if source.startswith("/*", index):
+            end = source.find("*/", index + 2)
+            index = len(source) if end < 0 else end + 2
+            continue
+
+        start = index
+        if char in {"'", '"', "`"}:
+            quote = char
+            index += 1
+            while index < len(source):
+                if source[index] == "\\":
+                    index += 2
+                elif source[index] == quote:
+                    index += 1
+                    break
+                else:
+                    index += 1
+            kind = "template" if quote == "`" else "string"
+            value = source[start:index]
+        elif _js_identifier_start(char):
+            index += 1
+            while index < len(source) and _js_identifier_part(source[index]):
+                index += 1
+            kind, value = "identifier", source[start:index]
+        elif char == "/":
+            can_start_regex = (
+                regex_after_control_close or previous is None or
+                (previous[0] == "identifier" and
+                 previous[1] in JS_REGEX_PREFIX_KEYWORDS) or
+                (previous[0] == "punctuation" and
+                 previous[1] in JS_REGEX_PREFIX_PUNCTUATION)
+            )
+            regex_end = _js_regex_end(source, index) if can_start_regex else None
+            if regex_end is not None:
+                index = regex_end
+                kind, value = "regex", source[start:index]
+            else:
+                operator = next((item for item in JS_MULTI_OPERATORS
+                                 if source.startswith(item, index)), None)
+                value = operator or char
+                index += len(value)
+                kind = "punctuation"
+        else:
+            operator = next((item for item in JS_MULTI_OPERATORS
+                             if source.startswith(item, index)), None)
+            value = operator or char
+            index += len(value)
+            kind = "punctuation"
+
+        control_close = False
+        control_block_close = False
+        if kind == "punctuation" and value == "(":
+            control_parentheses.append(
+                previous is not None and previous[0] == "identifier" and
+                previous[1] in JS_CONTROL_PAREN_KEYWORDS)
+        elif kind == "punctuation" and value == ")" and control_parentheses:
+            control_close = control_parentheses.pop()
+        elif kind == "punctuation" and value == "{":
+            control_blocks.append(control_block_expected)
+            control_block_expected = False
+        elif kind == "punctuation" and value == "}" and control_blocks:
+            control_block_close = control_blocks.pop()
+
+        token = (kind, value, start)
+        previous = token[:2]
+        if control_close:
+            control_block_expected = True
+        elif kind == "punctuation" and value not in {"{", "}"}:
+            control_block_expected = False
+        elif kind != "punctuation":
+            control_block_expected = False
+        regex_after_control_close = control_close or control_block_close
+        yield token
+
+
+def _literal_js_bridge_name(token) -> str | None:
+    if token is None or token[0] != "string":
+        return None
+    raw = token[1]
+    if raw.startswith('"'):
+        try:
+            value = json.loads(raw)
+        except json.JSONDecodeError:
+            return None
+    elif raw.startswith("'") and len(raw) >= 2 and "\\" not in raw:
+        value = raw[1:-1]
+    else:
+        return None
+    return value if type(value) is str and BRIDGE_NAME.fullmatch(value) else None
+
+
+def _location(source: str, line_starts: list[int], offset: int,
+              line_offset: int, first_line_column_offset: int) -> tuple[int, int]:
+    line_index = bisect_right(line_starts, offset) - 1
+    local_line = line_index + 1
+    column = offset - line_starts[line_index] + 1
+    if local_line == 1:
+        column += first_line_column_offset
+    return line_offset + local_line, column
+
+
+def _scan_bridge_script(source: str, path: str, source_kind: str,
+                        action_names: set[str], command_names: set[str],
+                        max_findings: int, line_offset: int = 0,
+                        first_line_column_offset: int = 0) -> dict:
+    line_starts = [0]
+    line_starts.extend(index + 1 for index, char in enumerate(source) if char == "\n")
+    tokens = iter(_iter_js_tokens(source))
+    window = deque()
+    bindings, transports, expressions = [], [], []
+    truncated = False
+    recent_tokens = deque(maxlen=2)
+
+    def fill(count: int = 1) -> bool:
+        while len(window) < count:
+            try:
+                window.append(next(tokens))
+            except StopIteration:
+                break
+        return bool(window)
+
+    def follows_method_body(open_index: int) -> bool:
+        depth = 0
+        cursor = open_index
+        while True:
+            if cursor >= len(window) and not fill(cursor + 1):
+                return False
+            value_at_cursor = window[cursor][1]
+            if value_at_cursor == "(":
+                depth += 1
+            elif value_at_cursor == ")":
+                depth -= 1
+                if depth == 0:
+                    fill(cursor + 2)
+                    if len(window) <= cursor + 1:
+                        return False
+                    return window[cursor + 1][1] == "{"
+            cursor += 1
+
+    previous = None
+    while fill():
+        current = window[0]
+        kind, value, offset = current
+        lookahead = list(window)
+        if kind == "identifier" and value in {"postMessage", "sendCommand", "eval", "Function"}:
+            fill(3 if value in {"postMessage", "sendCommand"} else 2)
+            lookahead = list(window)
+        if kind == "template" and _template_may_contain_bridge_call(value):
+            line, column = _location(
+                source, line_starts, offset, line_offset, first_line_column_offset)
+            expressions.append({
+                "path": path, "sourceKind": source_kind, "line": line,
+                "column": column, "status": "REVIEW_REQUIRED_TEMPLATE_EXPRESSION",
+                "reason": "template interpolation may contain an unparsed Bridge call",
+            })
+        elif (kind == "identifier" and value in {"send", "perform"} and
+              previous != "function" and
+              (not recent_tokens or recent_tokens[-1][1] not in {".", "?."})):
+            fill(5)
+            lookahead = list(window)
+            open_index = 1 if len(lookahead) > 1 and lookahead[1][1] == "(" else None
+            if (open_index is None and len(lookahead) > 2 and
+                    lookahead[1][1] == "?." and lookahead[2][1] == "("):
+                open_index = 2
+            if (open_index is not None and
+                    not (open_index == 1 and follows_method_body(open_index))):
+                argument_index = open_index + 1
+                argument = (lookahead[argument_index]
+                            if argument_index < len(lookahead) else None)
+                separator = (lookahead[argument_index + 1][1]
+                             if argument_index + 1 < len(lookahead) else None)
+                name = (_literal_js_bridge_name(argument)
+                        if separator in {",", ")"} else None)
+                api = "action" if value == "send" else "command"
+                known_names = action_names if api == "action" else command_names
+                is_dynamic = name is None
+                is_known = not is_dynamic and name in known_names
+                if is_dynamic:
+                    status = "REVIEW_REQUIRED_DYNAMIC_NAME"
+                    payload_ref = None
+                    payload_validation = "NOT_POSSIBLE_STATICALLY"
+                    reason = "first argument is not a simple Bridge name literal"
+                elif is_known:
+                    status = "KNOWN_NAME_PAYLOAD_UNVERIFIED"
+                    payload_ref = f"#/$defs/{'actionPayloads' if api == 'action' else 'commandPayloads'}/{name}"
+                    payload_validation = "NOT_VALIDATED"
+                    reason = "payload fields and expressions require schema/runtime review"
+                else:
+                    status = "UNKNOWN_LITERAL_NAME"
+                    payload_ref = None
+                    payload_validation = "NOT_RUN"
+                    reason = "literal name is absent from the Bridge v1 registry/schema"
+                line, column = _location(
+                    source, line_starts, offset, line_offset, first_line_column_offset)
+                bindings.append({
+                    "path": path, "sourceKind": source_kind, "line": line,
+                    "column": column, "api": api, "call": value, "name": name,
+                    "status": status, "payloadSchemaRef": payload_ref,
+                    "payloadValidation": payload_validation, "reason": reason,
+                })
+        elif (kind == "identifier" and value in {"postMessage", "sendCommand"} and
+              len(recent_tokens) == 2 and
+              ((value == "postMessage" and
+                recent_tokens[0][1] in {"port", "bridgePort"} and
+                recent_tokens[1][1] in {".", "?."}) or
+               (value == "sendCommand" and
+                recent_tokens[0][1] in {"PowerCalSkin", "powerCalSkin"} and
+                recent_tokens[1][1] in {".", "?."})) and
+              ((len(lookahead) > 1 and lookahead[1][1] == "(") or
+               (len(lookahead) > 2 and lookahead[1][1] == "?." and
+                lookahead[2][1] == "("))):
+            line, column = _location(
+                source, line_starts, offset, line_offset, first_line_column_offset)
+            transports.append({
+                "path": path, "sourceKind": source_kind, "line": line,
+                "column": column, "call": value,
+                "status": "REVIEW_REQUIRED_RAW_TRANSPORT",
+                "reason": "low-level Bridge transport cannot be mapped safely by this lexical scan",
+            })
+        elif (kind == "identifier" and value in {"eval", "Function"} and
+              (not recent_tokens or recent_tokens[-1][1] not in {".", "?."}) and
+              len(lookahead) > 1 and lookahead[1][1] == "("):
+            line, column = _location(
+                source, line_starts, offset, line_offset, first_line_column_offset)
+            expressions.append({
+                "path": path, "sourceKind": source_kind, "line": line,
+                "column": column, "status": "REVIEW_REQUIRED_DYNAMIC_CODE",
+                "reason": "dynamic JavaScript evaluation may construct Bridge calls",
+            })
+
+        if len(bindings) + len(transports) + len(expressions) >= max_findings:
+            truncated = True
+            break
+        previous = value
+        recent_tokens.append(current)
+        window.popleft()
+
+    return {"bindings": bindings, "transports": transports,
+            "expressions": expressions, "truncated": truncated}
+
+
 def audit_bridge_package(source: bytes) -> dict:
-    """Check static HTML data-action names against the Host v1 registry."""
+    """Index static HTML and conservative JavaScript Bridge call sites."""
     manifest, files = package_v3.unpack(source)
     try:
         registry = json.loads(BRIDGE_V1_ACTION_REGISTRY.read_text(encoding="utf-8"))
@@ -1057,6 +1482,9 @@ def audit_bridge_package(source: bytes) -> dict:
     unknown_bindings = []
     inline_script_count = 0
     linked_scripts = set()
+    linked_script_refs = []
+    html_sources = []
+    inline_event_handlers = []
     total_components = 0
     for path, data in sorted(files.items()):
         if not path.startswith("web/") or not path.lower().endswith((".html", ".htm")):
@@ -1065,12 +1493,24 @@ def audit_bridge_package(source: bytes) -> dict:
             html = data.decode("utf-8", errors="strict")
         except UnicodeDecodeError as exc:
             raise skin_studio.SkinError(f"HTML page is not UTF-8: {path}") from exc
-        page = _StaticHtmlInventory(path).parse(html)
+        html_inventory = _StaticHtmlInventory(path)
+        page = html_inventory.parse(html)
         total_components += page["componentCount"]
         _fail(total_components <= MAX_ANALYZED_COMPONENTS,
               f"HTML inventory exceeds {MAX_ANALYZED_COMPONENTS} components")
         inline_script_count += page["inlineScriptCount"]
+        for handler in html_inventory.inline_handlers:
+            inline_event_handlers.append({
+                "path": path,
+                "nodeId": handler["nodeId"],
+                "attribute": handler["attribute"],
+                "line": handler["lineOffset"] + 1,
+                "sha256": _file_sha256(handler["source"].encode("utf-8")),
+            })
         linked_scripts.update(page["scriptSources"])
+        linked_script_refs.extend((path, script) for script in page["scriptSources"])
+        html_sources.append((path, html_inventory.inline_scripts,
+                             html_inventory.inline_handlers))
         for node in page["components"]:
             attribute = next((item for item in node["attributes"]
                               if item["name"] == "data-action"), None)
@@ -1083,15 +1523,167 @@ def audit_bridge_package(source: bytes) -> dict:
             if type(action) is not str or action not in known_actions:
                 unknown_bindings.append(binding)
 
-    required_capabilities = ([registry["requiredCapability"]] if bindings else [])
+    script_bindings = []
+    script_transports = []
+    review_required_expressions = []
+    review_required_sources = []
+    script_files_scanned = []
+    script_findings_truncated = False
+    source_review_required = bool(linked_scripts or inline_script_count or
+                                  inline_event_handlers)
+
+    def add_scan_result(scan: dict) -> None:
+        script_bindings.extend(scan["bindings"])
+        script_transports.extend(scan["transports"])
+        review_required_expressions.extend(scan["expressions"])
+
+    for path, data in sorted(files.items()):
+        suffix = Path(path).suffix.lower()
+        if not path.startswith("web/") or suffix not in BRIDGE_SCRIPT_EXTENSIONS:
+            continue
+        source_review_required = True
+        script_files_scanned.append({"path": path, "bytes": len(data),
+                                     "sha256": _file_sha256(data)})
+        try:
+            text = data.decode("utf-8", errors="strict")
+        except UnicodeDecodeError:
+            review_required_sources.append({
+                "path": path, "status": "REVIEW_REQUIRED_NON_UTF8_SCRIPT",
+                "reason": "JavaScript source is not UTF-8 and could not be scanned",
+            })
+            continue
+        remaining = MAX_BRIDGE_SCRIPT_FINDINGS - (
+            len(script_bindings) + len(script_transports) +
+            len(review_required_expressions))
+        if remaining <= 0:
+            script_findings_truncated = True
+            break
+        scan = _scan_bridge_script(text, path, "file", known_actions,
+                                   command_names, remaining)
+        add_scan_result(scan)
+        if scan["truncated"]:
+            script_findings_truncated = True
+            break
+
+    if not script_findings_truncated:
+        for path, inline_scripts, inline_handlers in html_sources:
+            for inline in (*inline_scripts, *inline_handlers):
+                remaining = MAX_BRIDGE_SCRIPT_FINDINGS - (
+                    len(script_bindings) + len(script_transports) +
+                    len(review_required_expressions))
+                if remaining <= 0:
+                    script_findings_truncated = True
+                    break
+                scan = _scan_bridge_script(
+                    inline["source"], path, inline["sourceKind"], known_actions,
+                    command_names, remaining, inline["lineOffset"],
+                    inline["firstLineColumnOffset"])
+                for item in scan["bindings"]:
+                    if "scriptIndex" in inline:
+                        item["scriptIndex"] = inline["scriptIndex"]
+                    else:
+                        item["nodeId"] = inline["nodeId"]
+                        item["attribute"] = inline["attribute"]
+                for item in scan["transports"]:
+                    if "scriptIndex" in inline:
+                        item["scriptIndex"] = inline["scriptIndex"]
+                    else:
+                        item["nodeId"] = inline["nodeId"]
+                        item["attribute"] = inline["attribute"]
+                for item in scan["expressions"]:
+                    if "scriptIndex" in inline:
+                        item["scriptIndex"] = inline["scriptIndex"]
+                    else:
+                        item["nodeId"] = inline["nodeId"]
+                        item["attribute"] = inline["attribute"]
+                add_scan_result(scan)
+                if scan["truncated"]:
+                    script_findings_truncated = True
+                    break
+            if script_findings_truncated:
+                break
+
+    resolved_script_sources = []
+    for html_path, script_source in sorted(set(linked_script_refs)):
+        if re.match(r"^(?:[a-z]+:)?//", script_source, re.IGNORECASE) or \
+                script_source.lower().startswith("data:"):
+            resolved_script_sources.append({
+                "path": html_path, "source": script_source,
+                "resolvedPath": None, "status": "REVIEW_REQUIRED_EXTERNAL_SCRIPT",
+            })
+            review_required_sources.append({
+                "path": html_path, "source": script_source,
+                "status": "REVIEW_REQUIRED_EXTERNAL_SCRIPT",
+                "reason": "external script source is not included in the package scan",
+            })
+            source_review_required = True
+            continue
+        resolved = posixpath.normpath(
+            posixpath.join(posixpath.dirname(html_path), script_source))
+        if resolved not in files:
+            resolved_script_sources.append({
+                "path": html_path, "source": script_source,
+                "resolvedPath": resolved, "status": "REVIEW_REQUIRED_MISSING_SCRIPT",
+            })
+            review_required_sources.append({
+                "path": html_path, "source": script_source,
+                "status": "REVIEW_REQUIRED_MISSING_SCRIPT",
+                "reason": "linked script source is not present in the package",
+            })
+            source_review_required = True
+        elif Path(resolved).suffix.lower() not in BRIDGE_SCRIPT_EXTENSIONS:
+            resolved_script_sources.append({
+                "path": html_path, "source": script_source,
+                "resolvedPath": resolved, "status": "REVIEW_REQUIRED_UNSUPPORTED_SCRIPT_TYPE",
+            })
+            review_required_sources.append({
+                "path": html_path, "source": script_source,
+                "status": "REVIEW_REQUIRED_UNSUPPORTED_SCRIPT_TYPE",
+                "reason": "linked executable source is outside the scanner's JS extensions",
+            })
+            source_review_required = True
+        else:
+            resolved_script_sources.append({
+                "path": html_path, "source": script_source,
+                "resolvedPath": resolved, "status": "SCANNED",
+            })
+
+    if script_findings_truncated:
+        review_required_expressions.append({
+            "path": None, "sourceKind": "package", "line": None, "column": None,
+            "status": "REVIEW_REQUIRED_ANALYSIS_LIMIT",
+            "reason": f"JavaScript Bridge findings exceeded {MAX_BRIDGE_SCRIPT_FINDINGS}",
+        })
+        review_required_sources.append({
+            "status": "REVIEW_REQUIRED_ANALYSIS_LIMIT",
+            "reason": "the bounded JavaScript Bridge scan stopped at its findings limit",
+        })
+
+    call_order = lambda item: (item.get("path") or "", item.get("line") or 0,
+                               item.get("column") or 0, item.get("api") or "",
+                               item.get("name") or "")
+    script_bindings.sort(key=call_order)
+    script_transports.sort(key=call_order)
+    review_required_expressions.sort(key=call_order)
+    resolved_script_sources.sort(key=lambda item: (
+        item.get("path", ""), item.get("resolvedPath") or item.get("source", "")))
+    review_required_sources.sort(key=lambda item: (
+        item.get("path", ""), item.get("source", ""), item.get("status", "")))
+    unknown_script_bindings = [item for item in script_bindings
+                               if item["status"] == "UNKNOWN_LITERAL_NAME"]
+    has_script_bridge_calls = bool(
+        script_bindings or script_transports or review_required_expressions)
+    required_capabilities = ([registry["requiredCapability"]]
+                             if bindings or has_script_bridge_calls else [])
     declared_capabilities = manifest.get("capabilities", [])
     missing_capabilities = [capability for capability in required_capabilities
                             if capability not in declared_capabilities]
-    requires_source_review = bool(linked_scripts or inline_script_count)
+    requires_source_review = source_review_required or bool(review_required_sources)
     result = {
         "schemaVersion": 1,
         "command": "audit-bridge-v3",
-        "ok": not unknown_bindings and not missing_capabilities,
+        "ok": not unknown_bindings and not unknown_script_bindings and
+              not missing_capabilities,
         "skin": {"id": manifest["id"], "name": manifest["name"],
                  "packageSha256": _file_sha256(source)},
         "registry": {"bridgeVersion": registry["bridgeVersion"],
@@ -1104,12 +1696,25 @@ def audit_bridge_package(source: bytes) -> dict:
         "missingCapabilities": missing_capabilities,
         "bindings": bindings,
         "unknownBindings": unknown_bindings,
+        "scriptFilesScanned": script_files_scanned,
+        "inlineEventHandlers": inline_event_handlers,
+        "linkedScriptSources": resolved_script_sources,
+        "scriptBindings": script_bindings,
+        "unknownScriptBindings": unknown_script_bindings,
+        "scriptTransportCalls": script_transports,
+        "reviewRequiredExpressions": review_required_expressions,
+        "reviewRequiredSources": review_required_sources,
+        "scriptFindingLimit": MAX_BRIDGE_SCRIPT_FINDINGS,
         "scope": "literal data-action attributes in static web/*.html and web/*.htm",
+        "scriptScope": "lexical direct bare send()/perform() names and recognized port.postMessage/PowerCalSkin.sendCommand calls in packaged web JavaScript, executable inline scripts, and HTML event-handler attributes",
+        "scriptCallMapping": {"send": "action", "perform": "command"},
+        "payloadValidation": "names are checked; JavaScript payload fields and values are not validated",
         "requiresSourceReview": requires_source_review,
         "limitations": [
-            "Does not execute JavaScript or enumerate controls created at runtime.",
-            "Does not validate JavaScript-generated Bridge payloads or their field schemas.",
-            "Review linked JavaScript source and V3_HOST_BRIDGE_EXTENSION.md before export."
+            "The JavaScript scan is lexical, not a parser or runtime; aliases, computed calls, imports, obfuscation and unsupported dynamic forms need source review.",
+            "A literal action/command name is checked against the v1 registry/schema, but its payload fields and values are not validated.",
+            "Raw postMessage/sendCommand transports and dynamic names are reported for manual review; scripts are never executed by this audit.",
+            "Controls created at runtime and Android WebView behavior are not verified."
         ],
     }
     return result

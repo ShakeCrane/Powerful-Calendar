@@ -147,7 +147,9 @@ class ProjectOpsV3Test(unittest.TestCase):
                          {"#/$defs/actionPayloads/month",
                           "#/$defs/actionPayloads/browseMonth"})
         self.assertEqual(audit["unknownBindings"], [])
-        self.assertIn("static web/*.html", audit["scope"])
+        self.assertEqual(audit["scope"],
+                         "literal data-action attributes in static web/*.html and web/*.htm")
+        self.assertIn("send()/perform()", audit["scriptScope"])
 
     def test_bridge_audit_rejects_unknown_actions_and_missing_capability(self):
         self.files["web/index.html"] = (

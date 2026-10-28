@@ -350,7 +350,7 @@ def main():
     analyze3 = sub.add_parser("analyze-v3", help="index static HTML pages and components in a v3 skin")
     analyze3.add_argument("file", type=Path)
     audit3 = sub.add_parser("audit-bridge-v3",
-                            help="check static HTML actions and Host v1 capability declarations")
+                            help="check static and script Bridge names plus v1 capability declarations")
     audit3.add_argument("file", type=Path)
     read3 = sub.add_parser("read-v3", help="read one packaged source or asset as machine-readable JSON")
     read3.add_argument("--file", type=Path, required=True)

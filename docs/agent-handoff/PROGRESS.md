@@ -1139,3 +1139,11 @@ Updated: 2026-10-24
 - 完整离线门禁 **650/650 JVM、90 suites、0 failures/errors/skips、88/88 tasks**；source boundary、Debug/AndroidTest APK 通过；Lint 0 errors / 52 warnings。定向日志 SHA-256 `57CFA040DBA4C3508D8C05278A0701CF6A4783BBDFDEF23D7E71E1B489F704C9`；完整日志 SHA-256 `2CEFEC7EB959706547266138737EA2388B39016D6F9C8CA0AA78EDCABBA53168`。APK、JUnit、Lint hash 及步骤见 `docs/issues/PC-ISSUE-SEPARATION-BACKUP-ROUNDTRIP.md`；证据位于 `.local/android-test/reports/separation-backup-roundtrip-20261028/`。
 - 测试提交 `b2f81a0b83379b5fd68ad79aa8098488af9b3a05` 已推送至 `origin/codex/separation-legacy-import`。Studio 未修改，既有 Studio Python/Chrome 结果作为 PREVIOUS PASS 而非本轮重测。
 - 本轮没有运行 Android WebView、AVD、真实 DocumentsUI/Provider 或实体设备测试。Robolectric URI 回调不替代系统 SAF。SEP-11 仍 **NOT TESTED**，其它设置、凭据、权限、ICS、真实文件提供器和 Native/Skin 全量回放继续开放。
+
+## SEP-15 follow-up — Bridge JavaScript 静态调用点审计（2026-10-28）
+
+- 根因：`audit-bridge-v3` 之前只检查静态 HTML `data-action`，没有扫描包内 JS 的 Bridge 调用；旧实现因此漏报所需 `host.action`，也会放过未知字面量 action/command。新增的两项基础回归在旧实现上均失败，红灯日志 SHA-256 `7786D8C75DF39CD20BEFDC2B65C188DCE3CD2AFA46A086E627E1DAE0340CFBAD`。
+- 独立审查另外发现并修正普通对象 `.send()` / `window.postMessage()` 误判、控制块后的正则字面量误扫、HTML 注释脚本假阳性、实体编码 MIME 类型漏扫、对象方法误判、自闭合 `<script/>` raw-text 处理、模板插值外文本误判及非线性回溯风险，并补扫 HTML 事件处理属性。保持原有 `scope` 字段语义与 schemaVersion 1，新增独立 `scriptScope`。
+- Bridge 扫描定向 **6/6 PASS**、项目操作 **27/27 PASS**、AI workflow **2/2 PASS**；最终完整 Skin Studio Python 套件 **79/79 PASS**，12.270s，日志 SHA-256 `A40036828CB940094F732D1A6DBFF5D7AE9B69B0FA0122742CDFC55FC47D55B7`。canonical Clear verify **PASS**（8 files / 382786 bytes，SHA-256 `5ea7da58dde8722320ab6f32b16e854293260788eb930f8e0cce1321252d8080`）；审计 18 个静态绑定、36 个 JS 调用点（22 已知 / 14 动态待复核）、0 个未知名称、3 个识别的 Bridge 传输待复核、0 个事件处理器、0 个模板调用复核，要求 `host.action`。审计 JSON SHA-256 `587A2029226A11F21475F384279B796AADDDB6E181374E65C680FF83768446C2`。完整证据见 `docs/issues/PC-ISSUE-SEPARATION-STUDIO-BRIDGE-SCRIPT-AUDIT.md`。
+- 未运行 Gradle、Android WebView、AVD 或实体设备。该 Issue 只验收 Studio CLI 静态审计能力；SEP-15/S5、Studio 完整作者能力和 Native/Skin 全量功能等价仍 **NOT TESTED**。
+- 实现、独立报告与证据文档提交：待提交后补录。
