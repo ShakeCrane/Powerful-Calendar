@@ -33,6 +33,27 @@ class WebSkinHostProjectionTest {
         records, TimelineCoordinate.Camera(noon, 24.0), noon, zone
     )
 
+    @Test fun skinResourceMimeTypesIgnoreExtensionCaseLikeStudioPreview() {
+        assertEquals("font/woff2", webSkinMimeType("web/fonts/Probe.WOFF2"))
+        assertEquals("font/woff", webSkinMimeType("web/fonts/Probe.WOFF"))
+        assertEquals("font/ttf", webSkinMimeType("assets/Probe.TTF"))
+        assertEquals("application/javascript", webSkinMimeType("web/App.JS"))
+        assertEquals("application/octet-stream", webSkinMimeType("assets/Probe.bin"))
+    }
+
+    @Test fun skinSuccessAndFailureResponsesSharePreviewSecurityHeaders() {
+        assertEquals(
+            mapOf(
+                "Content-Security-Policy" to WEB_SKIN_CSP,
+                "X-Content-Type-Options" to "nosniff",
+                "Cache-Control" to "no-store",
+                "Content-Length" to "123"
+            ),
+            webSkinResponseHeaders(123)
+        )
+        assertEquals("0", webSkinResponseHeaders(0)["Content-Length"])
+    }
+
     @Test fun aiAttachmentPickerActionsArePayloadFreeAndClosedSchema() {
         fun decode(payload: String) = decodeBridgeAction(
             """{"version":1,"type":"action","payload":$payload}""")

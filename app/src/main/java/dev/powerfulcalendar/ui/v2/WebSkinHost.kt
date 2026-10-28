@@ -35,6 +35,7 @@ import org.json.JSONObject
 import java.io.ByteArrayInputStream
 import java.time.Instant
 import java.time.ZoneId
+import java.util.Locale
 
 /** Preserves the explicit date/time context of the active native creation surface. */
 internal fun newEventSelectionForPage(
@@ -60,6 +61,34 @@ internal fun newEventSelectionForPage(
 internal object WebSkinCapabilityPolicy {
     fun mayRead(bundle: WebSkinBundle): Boolean = "host.read" in bundle.capabilities
     fun mayAct(bundle: WebSkinBundle): Boolean = "host.action" in bundle.capabilities
+}
+
+internal const val WEB_SKIN_CSP = "default-src 'self'; img-src 'self' data:; " +
+    "style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'none'; " +
+    "frame-src 'none'; form-action 'none'; object-src 'none'; base-uri 'none'"
+
+internal fun webSkinResponseHeaders(contentLength: Int): Map<String, String> = mapOf(
+    "Content-Security-Policy" to WEB_SKIN_CSP,
+    "X-Content-Type-Options" to "nosniff",
+    "Cache-Control" to "no-store",
+    "Content-Length" to contentLength.toString()
+)
+
+/** Resource MIME selection follows the v3 package path extension, case-insensitively. */
+internal fun webSkinMimeType(path: String): String = when (
+    path.substringAfterLast('.', "").lowercase(Locale.ROOT)
+) {
+    "html" -> "text/html"
+    "css" -> "text/css"
+    "js" -> "application/javascript"
+    "json" -> "application/json"
+    "png" -> "image/png"
+    "webp" -> "image/webp"
+    "svg" -> "image/svg+xml"
+    "woff2" -> "font/woff2"
+    "woff" -> "font/woff"
+    "ttf" -> "font/ttf"
+    else -> "application/octet-stream"
 }
 
 /** Versioned, deliberately tiny capability bridge. It never exposes Context or PowerStore. */
@@ -173,30 +202,18 @@ private fun SecureWebSkin(bundle: WebSkinBundle, modifier: Modifier, onFailure: 
                     val uri = request.url
                     if (uri.scheme != "https" || uri.host != "skin.powercal.local" ||
                         uri.port != -1 || uri.userInfo != null || uri.query != null) {
-                        return WebResourceResponse("text/plain", "utf-8", 403, "Blocked", emptyMap(),
+                        return WebResourceResponse("text/plain", "utf-8", 403, "Blocked",
+                            webSkinResponseHeaders(0),
                             ByteArrayInputStream(ByteArray(0)))
                     }
                     val path = uri.path.orEmpty().removePrefix("/").ifEmpty { bundle.entrypoint }
                     val data = bundle.files[path] ?: return WebResourceResponse(
-                        "text/plain", "utf-8", 404, "Missing", emptyMap(), ByteArrayInputStream(ByteArray(0)))
-                    val mime = when {
-                        path.endsWith(".html") -> "text/html"
-                        path.endsWith(".css") -> "text/css"
-                        path.endsWith(".js") -> "application/javascript"
-                        path.endsWith(".json") -> "application/json"
-                        path.endsWith(".png") -> "image/png"
-                        path.endsWith(".webp") -> "image/webp"
-                        path.endsWith(".woff2") -> "font/woff2"
-                        path.endsWith(".woff") -> "font/woff"
-                        path.endsWith(".ttf") -> "font/ttf"
-                        else -> "application/octet-stream"
-                    }
+                        "text/plain", "utf-8", 404, "Missing", webSkinResponseHeaders(0),
+                        ByteArrayInputStream(ByteArray(0)))
+                    val mime = webSkinMimeType(path)
                     return WebResourceResponse(mime, if (mime.startsWith("text") || mime.contains("json") || mime.contains("javascript")) "utf-8" else null,
                         ByteArrayInputStream(data)).apply {
-                        responseHeaders = mapOf(
-                            "Content-Security-Policy" to "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'none'; frame-src 'none'; form-action 'none'; object-src 'none'; base-uri 'none'",
-                            "X-Content-Type-Options" to "nosniff"
-                        )
+                        responseHeaders = webSkinResponseHeaders(data.size)
                     }
                 }
 

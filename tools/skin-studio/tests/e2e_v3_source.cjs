@@ -69,7 +69,7 @@ async function main(){
       const meta=JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(data.files['project.json']),c=>c.charCodeAt(0))));
       delete meta.layers;meta.thirdPartyMetadata={keep:'原样保留'};
       data.files['project.json']=btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(meta)+'\\n')));
-      await loadPackage(data); document.querySelector('#advancedMode').click();
+      await loadPackage(data);document.querySelector('#advancedMode').click();
       const select=document.querySelector('#extraSourceFile');
       check([...select.options].some(o=>o.value==='web/edit.js'),'edit.js missing');
       check([...select.options].some(o=>o.value==='project.json'),'project.json missing from source editor');
@@ -157,6 +157,13 @@ async function main(){
     if(result.exceptionDetails)throw Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text);
     console.log("BROWSER SOURCE ROUNDTRIP PASS",JSON.stringify(result.result.value));
     const setup=await call("Runtime.evaluate",{awaitPromise:true,returnByValue:true,expression:`(async()=>{
+      const previewPackage=payload();
+      if(JSON.stringify(previewPackage.manifest.capabilities)!=='["host.read"]')
+        throw Error('source roundtrip fixture unexpectedly gained write capabilities');
+      // This second fixture exercises editing in the Mock Bridge. Keep the source
+      // roundtrip fixture read-only, then grant only the capabilities this preview needs.
+      previewPackage.manifest.capabilities=['host.read','host.action','host.edit'];
+      await loadPackage(previewPackage);
       for(let i=0;i<150;i++){
         if(document.querySelector('#previewState').textContent.includes('连接成功'))break;
         await new Promise(r=>setTimeout(r,100));

@@ -668,7 +668,8 @@ function simulatedState(){
 }
 function postState(){
   if(!previewPort)return;
-  lastState=simulatedState();
+  lastState=Array.isArray(manifest?.capabilities)&&manifest.capabilities.includes("host.read")
+    ?simulatedState():{bridgeVersion:1};
   try{previewPort.postMessage(JSON.stringify({version:1,type:"state",payload:lastState}))}
   catch(error){say("预览通道断开："+error.message,true)}
 }
@@ -866,6 +867,9 @@ function onSkinAction(message){
     if(typeof message!=="string"||message.length>8192)return;
     const envelope=JSON.parse(message);
     if(envelope.version!==1||!envelope.payload)return;
+    if(!Array.isArray(manifest?.capabilities)||!manifest.capabilities.includes("host.action")){
+      logAction("拒绝 Preview Host 请求：皮肤未声明 host.action");return;
+    }
     if(envelope.type==="command"){onSkinCommand(envelope.payload);return}
     if(envelope.type!=="action")return;
     const p=envelope.payload,name=p.name;

@@ -194,15 +194,22 @@ def from_json(data):
 
 
 class Handler(BaseHTTPRequestHandler):
-    def reply(self, status, payload, mime="application/json; charset=utf-8", attachment=None, csp=None):
+    def reply(self, status, payload, mime="application/json; charset=utf-8", attachment=None,
+              csp=None, cors_origin=None):
         self.send_response(status)
         self.send_header("Content-Type", mime)
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Cache-Control", "no-store")
-        self.send_header("Content-Security-Policy", csp or
-                         "default-src 'self'; style-src 'self' 'unsafe-inline'; "
-                         "script-src 'self'; img-src 'self' data: blob:; "
-                         "connect-src 'self'; object-src 'none'; base-uri 'none'")
+        if cors_origin:
+            self.send_header("Access-Control-Allow-Origin", cors_origin)
+            self.send_header("Vary", "Origin")
+        default_csp = (
+            "default-src 'self'; style-src 'self' 'unsafe-inline'; "
+            "script-src 'self'; img-src 'self' data: blob:; "
+            f"connect-src 'self' http://*.localhost:{self.server.server_port}; "
+            f"frame-src http://*.localhost:{self.server.server_port}; "
+            "object-src 'none'; base-uri 'none'")
+        self.send_header("Content-Security-Policy", csp or default_csp)
         if attachment:
             self.send_header("Content-Disposition", 'attachment; filename="' + attachment + '"')
         self.send_header("Content-Length", str(len(payload)))
@@ -214,6 +221,49 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         route = self.path.split("?", 1)[0]
+        from studio_v3_preview import (PREVIEW_CSP, preview_token_from_host,
+                                       resolve, resolve_for_session, resolve_root_relative)
+        host_token = preview_token_from_host(
+            self.headers.get("Host", ""), self.server.server_port)
+        if host_token:
+            if "?" in self.path:
+                return self.reply(403, b"", "text/plain; charset=utf-8", csp=PREVIEW_CSP)
+            if route.startswith("/preview/"):
+                response = resolve(route) if route.startswith(f"/preview/{host_token}/") else None
+            else:
+                response = resolve_for_session(host_token, route)
+            if response is None:
+                return self.reply(404, b"", "text/plain; charset=utf-8", csp=PREVIEW_CSP)
+            mime, raw = response
+            origin = self.headers.get("Origin")
+            allowed_origins = {f"http://127.0.0.1:{self.server.server_port}",
+                               f"http://localhost:{self.server.server_port}"}
+            if origin in allowed_origins:
+                cors_origin = origin
+            elif origin == "null" and mime.startswith("font/"):
+                # The sandboxed preview has an opaque origin. Browser font fetches
+                # require CORS even though their URL is on the session's own host.
+                cors_origin = "null"
+            else:
+                cors_origin = None
+            return self.reply(200, raw, mime, csp=PREVIEW_CSP, cors_origin=cors_origin)
+
+        is_preview_path = (route.startswith("/preview/") or
+                           route.startswith("/web/") or
+                           route.startswith("/assets/") or
+                           route == "/project.json")
+        if is_preview_path:
+            if "?" in self.path:
+                return self.reply(403, b"", "text/plain; charset=utf-8", csp=PREVIEW_CSP)
+            if route.startswith("/preview/"):
+                response = resolve(route)
+            else:
+                response = resolve_root_relative(
+                    route, self.headers.get("Referer"), self.headers.get("Host", ""))
+            if response is None:
+                return self.reply(404, b"", "text/plain; charset=utf-8", csp=PREVIEW_CSP)
+            mime, raw = response
+            return self.reply(200, raw, mime, csp=PREVIEW_CSP)
         files = {"/": ("index.html", "text/html; charset=utf-8"),
                  "/v3-studio.js": ("v3-studio.js", "text/javascript; charset=utf-8"),
                  "/app.js": ("app.js", "text/javascript; charset=utf-8"),
@@ -227,16 +277,6 @@ class Handler(BaseHTTPRequestHandler):
             base, files = unpack_v3(ASSET.read_bytes())
             return self.send_json(200, {"manifest": base, "files": {
                 path: base64.b64encode(data).decode("ascii") for path, data in files.items()}})
-        if route.startswith("/preview/"):
-            from studio_v3_preview import resolve
-            response = resolve(route)
-            if response is None:
-                return self.send_json(404, {"error": "Preview expired or resource missing"})
-            mime, raw = response
-            return self.reply(200, raw, mime, csp=
-                "default-src 'self'; img-src 'self' data:; "
-                "style-src 'self' 'unsafe-inline'; script-src 'self'; "
-                "connect-src 'none'; frame-src 'none'; form-action 'none'; object-src 'none'; base-uri 'none'")
         if route not in files:
             return self.send_json(404, {"error": "Not Found"})
         filename, mime = files[route]
@@ -277,8 +317,11 @@ class Handler(BaseHTTPRequestHandler):
                 files = {path: base64.b64decode(value, validate=True)
                          for path, value in raw_files.items()}
                 if self.path == "/api/preview-v3":
-                    from studio_v3_preview import publish
-                    return self.send_json(200, {"url": publish(obj.get("manifest"), files)})
+                    from studio_v3_preview import browser_url, publish
+                    resource_path = publish(obj.get("manifest"), files)
+                    return self.send_json(200, {
+                        "url": browser_url(resource_path, self.server.server_port)
+                    })
                 compiled = build_files(obj.get("manifest"), files)
                 return self.reply(200, compiled, "application/octet-stream",
                                   "PowerCal-" + obj["manifest"]["id"] + ".pcskin")
