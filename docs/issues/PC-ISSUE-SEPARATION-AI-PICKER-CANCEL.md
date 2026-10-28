@@ -51,4 +51,4 @@ Skin Studio / Clear 文件没有变化；此前同日 **70/70 Studio Python、Ch
 - OCR 成功与失败、真实 AI Provider 和完整 Native/Skin 回放仍未验证。
 - 本回归只签核取消返回路径，SEP-09 与 S3 整体仍 **NOT TESTED / 进行中**。
 
-测试与报告提交 SHA 在提交并推送后补入本报告和进度记录。
+测试与报告提交 `e476ab0eff1acc07385f389a5e9a1399d1e8a42d`（`test(分离): 验证 AI 附件选择器取消恢复`）已推送至 `origin/codex/separation-skin-settings`。

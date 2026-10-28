@@ -1024,4 +1024,5 @@ Updated: 2026-10-24
 - 新增生产 `PowerCalApp` / Activity Result 集成回归：文件 `OpenDocument` 与图片 `GetContent` 分别收到 `null` 取消结果后均解除附件 busy、恢复 available；没有聊天/提案/Store 副作用，也没有残留图片授权确认层。仅验证 Host 取消回调，不宣称真实 DocumentsUI 通过。
 - 单项 **1/1 PASS**；附件集成类 **7/7 PASS**；完整离线门禁 **624/624 JVM、87 suites、88/88 tasks，0 failures/errors/skips**，source boundary、Debug/AndroidTest APK 编译通过，lint 0 errors / 52 warnings。详见 `docs/issues/PC-ISSUE-SEPARATION-AI-PICKER-CANCEL.md` 与 `.local/android-test/reports/separation-20261028/ai-ics-route-cb337ffd7bb94627b4309d01803bd957/`。
 - 完整门禁日志 SHA-256：`44757F36996BAD6BB97E1752E8BCC89EFB00D5245A562AD4D294A116303BC2E4`；APK 与 lint XML 哈希见 Issue 报告。AndroidTest APK 包含未提交的并发 `WebSkinManagementInstrumentedTest.kt`，未纳入本 Issue。
+- 测试/报告提交 `e476ab0eff1acc07385f389a5e9a1399d1e8a42d`（`test(分离): 验证 AI 附件选择器取消恢复`）已推送到 `origin/codex/separation-skin-settings`。
 - 系统 DocumentsUI/真实 SAF、Android WebView/AVD/真机、OCR、真实 Provider 和 Native/Skin 全量回放未测；SEP-09 / S3 仍 **NOT TESTED / 进行中**。
