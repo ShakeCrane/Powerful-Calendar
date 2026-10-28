@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import binascii
 import copy
+from collections import Counter
 import hashlib
 from html.parser import HTMLParser
 import json
@@ -25,6 +26,8 @@ VOID_HTML_TAGS = frozenset({
     "area", "base", "br", "col", "embed", "hr", "img", "input", "link",
     "meta", "param", "source", "track", "wbr",
 })
+PROTECTED_COMPONENT_TAGS = frozenset({"html", "head", "body"})
+RAW_TEXT_COMPONENT_TAGS = frozenset({"script", "style", "textarea", "title"})
 TEXT_EXTENSIONS = frozenset({
     ".cjs", ".css", ".html", ".htm", ".ini", ".js", ".json", ".jsx", ".kt",
     ".less", ".md", ".mjs", ".properties", ".py", ".scss", ".sh", ".sql",
@@ -193,6 +196,153 @@ def _apply_json_patch(document: object, operations: object) -> object:
     return result
 
 
+def _component_page(files: dict[str, bytes], path: object, expected: object):
+    path = _validate_path(path)
+    _fail(path.startswith("web/") and path.lower().endswith((".html", ".htm")),
+          "component operations require a web/ .html or .htm page")
+    data = _expect_existing(files, path, expected)
+    try:
+        source = data.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as exc:
+        raise skin_studio.SkinError("HTML page is not UTF-8: " + path) from exc
+    parser = _StaticHtmlInventory(path)
+    parser.parse(source)
+    _fail(not parser.structural_issues,
+          "component operations require well-formed explicit HTML: " +
+          "; ".join(parser.structural_issues[:4]))
+    return path, source, parser
+
+
+def _component_node(parser: _StaticHtmlInventory, node_id: object) -> dict:
+    _fail(type(node_id) is str and node_id in parser.by_id,
+          "component nodeId is missing or stale; run analyze-v3 again")
+    node = parser.by_id[node_id]
+    _fail(node["_sourceMutable"] and node["_sourceEnd"] is not None,
+          "component has no safe explicit source range")
+    return node
+
+
+def _component_fragment(value: object) -> tuple[str, _StaticHtmlInventory]:
+    _fail(type(value) is str and bool(value.strip()),
+          "component html must be a non-empty string")
+    _fail(len(value.encode("utf-8")) <= package_v3.TEXT_LIMIT,
+          "component html exceeds the package text-file limit")
+    parser = _StaticHtmlInventory("web/__component_fragment__.html")
+    parser.parse(value)
+    _fail(not parser.structural_issues,
+          "component html must be a well-formed HTML fragment")
+    _fail(bool(parser.nodes), "component html must contain at least one element")
+    _fail(not any(node["tag"] in PROTECTED_COMPONENT_TAGS for node in parser.nodes),
+          "component html cannot add document shell elements")
+    return value, parser
+
+
+def _validate_component_result(path: str, before: _StaticHtmlInventory,
+                               result: str) -> bytes:
+    parser = _StaticHtmlInventory(path)
+    parser.parse(result)
+    _fail(not parser.structural_issues,
+          "component edit would make the HTML source structurally invalid: " +
+          "; ".join(parser.structural_issues[:4]))
+    old_ids = Counter(node["id"] for node in before.nodes if node.get("id"))
+    new_ids = Counter(node["id"] for node in parser.nodes if node.get("id"))
+    duplicates = sorted(ident for ident, count in new_ids.items()
+                        if count > max(1, old_ids.get(ident, 0)))
+    _fail(not duplicates,
+          "component edit would create duplicate HTML id: " + ", ".join(duplicates[:8]))
+    encoded = result.encode("utf-8")
+    _fail(len(encoded) <= package_v3.TEXT_LIMIT,
+          "component edit exceeds the package text-file limit")
+    return encoded
+
+
+def _component_is_descendant(parser: _StaticHtmlInventory,
+                             ancestor_id: str, node_id: str) -> bool:
+    current = parser.by_id[node_id].get("parentId")
+    while current is not None:
+        if current == ancestor_id:
+            return True
+        current = parser.by_id[current].get("parentId")
+    return False
+
+
+def _component_insert_offset(node: dict, position: object) -> int:
+    if position == "before":
+        return node["_sourceStart"]
+    if position == "after":
+        return node["_sourceEnd"]
+    if position == "prepend":
+        _fail(node["tag"] not in VOID_HTML_TAGS and node["_sourceCloseStart"] is not None,
+              "prepend requires a paired container element")
+        _fail(node["tag"] not in RAW_TEXT_COMPONENT_TAGS,
+              "cannot insert an HTML component inside a raw-text element")
+        return node["_sourceOpenEnd"]
+    if position == "append":
+        _fail(node["tag"] not in VOID_HTML_TAGS and node["_sourceCloseStart"] is not None,
+              "append requires a paired container element")
+        _fail(node["tag"] not in RAW_TEXT_COMPONENT_TAGS,
+              "cannot insert an HTML component inside a raw-text element")
+        return node["_sourceCloseStart"]
+    raise skin_studio.SkinError("position must be before, after, prepend, or append")
+
+
+def _apply_component_operation(files: dict[str, bytes], operation: dict) -> dict[str, bytes]:
+    op = operation.get("op")
+    common = {"op", "path", "expectedSha256"}
+    fields = {
+        "component-insert": common | {"targetNodeId", "position", "html"},
+        "component-remove": common | {"targetNodeId"},
+        "component-replace": common | {"targetNodeId", "html"},
+        "component-move": common | {"sourceNodeId", "targetNodeId", "position"},
+    }.get(op)
+    _fail(fields is not None and set(operation) == fields,
+          str(op) + " has unsupported or missing fields")
+    path, source, parser = _component_page(
+        files, operation["path"], operation["expectedSha256"])
+
+    if op == "component-insert":
+        target = _component_node(parser, operation["targetNodeId"])
+        fragment, _ = _component_fragment(operation["html"])
+        offset = _component_insert_offset(target, operation["position"])
+        result = source[:offset] + fragment + source[offset:]
+        # Validate against the original page so existing duplicate IDs are retained,
+        # while a new duplicate introduced by this fragment is rejected.
+        files[path] = _validate_component_result(path, parser, result)
+        return files
+
+    if op in {"component-remove", "component-replace"}:
+        target = _component_node(parser, operation["targetNodeId"])
+        _fail(target["tag"] not in PROTECTED_COMPONENT_TAGS,
+              "document shell elements cannot be removed or replaced")
+        start, end = target["_sourceStart"], target["_sourceEnd"]
+        replacement = ""
+        if op == "component-replace":
+            replacement, _ = _component_fragment(operation["html"])
+        result = source[:start] + replacement + source[end:]
+        files[path] = _validate_component_result(path, parser, result)
+        return files
+
+    source_node = _component_node(parser, operation["sourceNodeId"])
+    target = _component_node(parser, operation["targetNodeId"])
+    _fail(source_node["nodeId"] != target["nodeId"],
+          "a component cannot be moved relative to itself")
+    _fail(source_node["tag"] not in PROTECTED_COMPONENT_TAGS,
+          "document shell elements cannot be moved")
+    _fail(not _component_is_descendant(parser, source_node["nodeId"], target["nodeId"]),
+          "a component cannot be moved into its own descendant")
+    start, end = source_node["_sourceStart"], source_node["_sourceEnd"]
+    offset = _component_insert_offset(target, operation["position"])
+    _fail(not start < offset < end,
+          "a component cannot be moved into its own source range")
+    fragment = source[start:end]
+    without_source = source[:start] + source[end:]
+    if start < offset:
+        offset -= end - start
+    result = without_source[:offset] + fragment + without_source[offset:]
+    files[path] = _validate_component_result(path, parser, result)
+    return files
+
+
 def _apply_one(files: dict[str, bytes], operation: object) -> dict[str, bytes]:
     _fail(type(operation) is dict, "each operation must be a JSON object")
     op = operation.get("op")
@@ -241,6 +391,10 @@ def _apply_one(files: dict[str, bytes], operation: object) -> dict[str, bytes]:
         _expect_existing(files, source, operation["expectedSha256"])
         files[target] = files.pop(source)
         return files
+
+    if op in {"component-insert", "component-remove",
+              "component-replace", "component-move"}:
+        return _apply_component_operation(files, operation)
 
     if op == "json-patch":
         _fail(set(operation) == {"op", "path", "expectedSha256", "patch"},
@@ -356,6 +510,8 @@ class _StaticHtmlInventory(HTMLParser):
     def __init__(self, path: str):
         super().__init__(convert_charrefs=True)
         self.path = path
+        self.source = ""
+        self._line_offsets: list[int] = [0]
         self.nodes: list[dict] = []
         self.stack: list[str | None] = [None]
         self.by_id: dict[str, dict] = {}
@@ -364,18 +520,23 @@ class _StaticHtmlInventory(HTMLParser):
         self.stylesheet_sources: list[str] = []
         self.inline_script_count = 0
         self.warnings: list[str] = []
+        self.structural_issues: list[str] = []
         self._script_depth = 0
         self._style_depth = 0
 
     def parse(self, source: str) -> dict:
+        self.source = source
+        self._line_offsets = [0]
+        self._line_offsets.extend(match.end() for match in re.finditer("\n", source))
         self.feed(source)
         self.close()
         for node_id in self.stack[1:]:
             if node_id is not None:
                 node = self.by_id[node_id]
-                self.warnings.append(
-                    f"unclosed <{node['tag']}> beginning at line {node['line']}"
-                )
+                message = f"unclosed <{node['tag']}> beginning at line {node['line']}"
+                self.warnings.append(message)
+                self.structural_issues.append(message)
+                node["_sourceMutable"] = False
         self.warnings.append(
             "JavaScript is not executed; runtime-created components are absent from this inventory"
         )
@@ -390,9 +551,18 @@ class _StaticHtmlInventory(HTMLParser):
             "stylesheetSources": self.stylesheet_sources,
             "inlineScriptCount": self.inline_script_count,
             "duplicateIds": self._duplicate_ids(),
-            "components": self.nodes,
+            "components": [self._public_node(node) for node in self.nodes],
             "warnings": list(dict.fromkeys(self.warnings)),
         }
+
+    @staticmethod
+    def _public_node(node: dict) -> dict:
+        return {key: value for key, value in node.items() if not key.startswith("_")}
+
+    def _source_offset(self, position: tuple[int, int]) -> int:
+        line, column = position
+        _fail(1 <= line <= len(self._line_offsets), "HTML parser returned an invalid source line")
+        return self._line_offsets[line - 1] + column
 
     @staticmethod
     def _is_interactive(node: dict) -> bool:
@@ -417,8 +587,12 @@ class _StaticHtmlInventory(HTMLParser):
         line, column = self.getpos()
         node_id = f"{self.path}#n{len(self.nodes) + 1:05d}"
         parent_id = self.stack[-1]
+        start_offset = self._source_offset((line, column))
+        start_tag = self.get_starttag_text() or ""
         normalized = [{"name": name.lower(), "value": value} for name, value in attrs]
         values = {item["name"]: item["value"] for item in normalized}
+        is_void = tag.lower() in VOID_HTML_TAGS
+        has_explicit_end = not self_closing and not is_void
         node = {
             "nodeId": node_id,
             "parentId": parent_id,
@@ -429,6 +603,11 @@ class _StaticHtmlInventory(HTMLParser):
             "column": column + 1,
             "attributes": normalized,
             "directText": "",
+            "_sourceStart": start_offset,
+            "_sourceOpenEnd": start_offset + len(start_tag),
+            "_sourceCloseStart": None,
+            "_sourceEnd": start_offset + len(start_tag) if not has_explicit_end else None,
+            "_sourceMutable": bool(start_tag),
         }
         self.nodes.append(node)
         self.by_id[node_id] = node
@@ -444,7 +623,7 @@ class _StaticHtmlInventory(HTMLParser):
             href = values.get("href")
             if href:
                 self.stylesheet_sources.append(href)
-        if not self_closing and tag.lower() not in VOID_HTML_TAGS:
+        if has_explicit_end:
             self.stack.append(node_id)
             if tag.lower() == "script":
                 self._script_depth += 1
@@ -460,11 +639,33 @@ class _StaticHtmlInventory(HTMLParser):
 
     def handle_endtag(self, tag):
         lowered = tag.lower()
+        close_start = self._source_offset(self.getpos())
+        close_match = re.match(r"</\s*" + re.escape(lowered) + r"\s*>",
+                               self.source[close_start:], re.IGNORECASE)
+        close_end = close_start + len(close_match.group(0)) if close_match else None
         match = next((index for index in range(len(self.stack) - 1, 0, -1)
                       if self.by_id[self.stack[index]]["tag"] == lowered), None)
         if match is None:
-            self.warnings.append(f"unmatched closing tag </{lowered}> at line {self.getpos()[0]}")
+            message = f"unmatched closing tag </{lowered}> at line {self.getpos()[0]}"
+            self.warnings.append(message)
+            self.structural_issues.append(message)
             return
+        for node_id in self.stack[match + 1:]:
+            node = self.by_id[node_id]
+            message = (f"<{node['tag']}> at line {node['line']} is implicitly closed by "
+                       f"</{lowered}>")
+            self.warnings.append(message)
+            self.structural_issues.append(message)
+            node["_sourceMutable"] = False
+        closed_node = self.by_id[self.stack[match]]
+        if close_end is None or close_end < closed_node["_sourceOpenEnd"]:
+            message = f"closing tag </{lowered}> has no exact source range at line {self.getpos()[0]}"
+            self.warnings.append(message)
+            self.structural_issues.append(message)
+            closed_node["_sourceMutable"] = False
+        else:
+            closed_node["_sourceCloseStart"] = close_start
+            closed_node["_sourceEnd"] = close_end
         for node_id in self.stack[match:]:
             closing = self.by_id[node_id]["tag"]
             if closing == "script":

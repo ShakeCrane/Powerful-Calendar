@@ -16,6 +16,12 @@ from runtime_package_v3 import build_files, unpack
 from skin_studio import SkinError
 
 
+def html_node_id(package, html_id):
+    page = analyze_package(package)["pages"][0]
+    return next(node["nodeId"] for node in page["components"]
+                if node["id"] == html_id)
+
+
 def isolated_temp_dir():
     evidence_root = STUDIO.parents[1] / ".local" / "android-test"
     evidence_root.mkdir(parents=True, exist_ok=True)
@@ -115,6 +121,223 @@ class ProjectOpsV3Test(unittest.TestCase):
         source = build_files(self.manifest, self.files)
         with self.assertRaisesRegex(SkinError, "exceeds 20000 components"):
             analyze_package(source)
+
+    def test_static_component_insert_replace_remove_and_move_operations(self):
+        path = "web/index.html"
+        html = (
+            "<!doctype html><html><head><title>组件</title></head><body>"
+            '<main id="root"><section id="first"><b>甲</b></section>'
+            '<section id="second"><em>乙</em></section></main></body></html>'
+        ).encode("utf-8")
+        source = build_files(self.manifest, {**self.files, path: html})
+
+        _, files, inserted, changes = edit_package(source, [{
+            "op": "component-insert", "path": path,
+            "expectedSha256": hashlib.sha256(html).hexdigest(),
+            "targetNodeId": html_node_id(source, "root"), "position": "append",
+            "html": '<article id="third"><span>新</span></article>',
+        }])
+        self.assertIn('<article id="third"><span>新</span></article>'.encode(), files[path])
+        self.assertEqual(changes[0]["op"], "component-insert")
+        ordered = [node["id"] for node in analyze_package(inserted)["pages"][0]["components"]
+                   if node["id"] in {"first", "second", "third"}]
+        self.assertEqual(ordered, ["first", "second", "third"])
+
+        html = files[path]
+        _, files, moved, _ = edit_package(inserted, [{
+            "op": "component-move", "path": path,
+            "expectedSha256": hashlib.sha256(html).hexdigest(),
+            "sourceNodeId": html_node_id(inserted, "first"),
+            "targetNodeId": html_node_id(inserted, "second"), "position": "after",
+        }])
+        ordered = [node["id"] for node in analyze_package(moved)["pages"][0]["components"]
+                   if node["id"] in {"first", "second"}]
+        self.assertEqual(ordered, ["second", "first"])
+        self.assertIn('<section id="first"><b>甲</b></section>'.encode(), files[path])
+
+        html = files[path]
+        _, files, replaced, _ = edit_package(moved, [{
+            "op": "component-replace", "path": path,
+            "expectedSha256": hashlib.sha256(html).hexdigest(),
+            "targetNodeId": html_node_id(moved, "first"),
+            "html": '<aside id="replacement">更新</aside>',
+        }])
+        self.assertNotIn(b'id="first"', files[path])
+        self.assertIn('<aside id="replacement">更新</aside>'.encode(), files[path])
+
+        html = files[path]
+        _, files, removed, _ = edit_package(replaced, [{
+            "op": "component-remove", "path": path,
+            "expectedSha256": hashlib.sha256(html).hexdigest(),
+            "targetNodeId": html_node_id(replaced, "second"),
+        }])
+        self.assertNotIn(b'id="second"', files[path])
+        ids = {node["id"] for node in analyze_package(removed)["pages"][0]["components"]
+               if node["id"]}
+        self.assertTrue({"root", "third", "replacement"}.issubset(ids))
+
+    def test_component_operations_reject_stale_or_unsafe_edits_without_mutating_input(self):
+        path = "web/index.html"
+        html = (b'<!doctype html><html><body><main id="root"></main>'
+                b'<img id="icon"><script id="script" src="app.js"></script>'
+                b'</body></html>')
+        source = build_files(self.manifest, {**self.files, path: html})
+        target = html_node_id(source, "root")
+        base = {"op": "component-insert", "path": path,
+                "expectedSha256": hashlib.sha256(html).hexdigest(),
+                "targetNodeId": target, "position": "append"}
+
+        with self.assertRaisesRegex(SkinError, "changed since inspection"):
+            edit_package(source, [{**base, "expectedSha256": "0" * 64,
+                                   "html": '<p id="new">new</p>'}])
+        with self.assertRaisesRegex(SkinError, "well-formed HTML fragment"):
+            edit_package(source, [{**base, "html": '<p id="broken">missing close'}])
+        with self.assertRaisesRegex(SkinError, "duplicate HTML id"):
+            edit_package(source, [{**base, "html": '<p id="root">duplicate</p>'}])
+
+        with self.assertRaisesRegex(SkinError, "raw-text element"):
+            edit_package(source, [{
+                **base, "targetNodeId": html_node_id(source, "script"),
+                "html": "<span>not script text</span>",
+            }])
+        with self.assertRaisesRegex(SkinError, "paired container element"):
+            edit_package(source, [{
+                **base, "targetNodeId": html_node_id(source, "icon"),
+                "html": "<span>cannot be a child</span>",
+            }])
+
+        malformed_page = (b'<!doctype html><html><body><main id="broken">'
+                          b'</body></html>')
+        malformed_source = build_files(self.manifest,
+                                       {**self.files, path: malformed_page})
+        with self.assertRaisesRegex(SkinError, "well-formed explicit HTML"):
+            edit_package(malformed_source, [{
+                "op": "component-insert", "path": path,
+                "expectedSha256": hashlib.sha256(malformed_page).hexdigest(),
+                "targetNodeId": html_node_id(malformed_source, "broken"),
+                "position": "append", "html": "<span>cannot safely edit</span>",
+            }])
+
+        _, _, package, _ = edit_package(source, [{
+            "op": "component-insert", "path": path,
+            "expectedSha256": hashlib.sha256(html).hexdigest(),
+            "targetNodeId": target, "position": "append",
+            "html": '<section id="child"></section>',
+        }])
+        current_html = unpack(package)[1][path]
+        with self.assertRaisesRegex(SkinError, "into its own descendant"):
+            edit_package(package, [{
+                "op": "component-move", "path": path,
+                "expectedSha256": hashlib.sha256(current_html).hexdigest(),
+                "sourceNodeId": html_node_id(package, "root"),
+                "targetNodeId": html_node_id(package, "child"), "position": "append",
+            }])
+        self.assertEqual(unpack(source)[1][path], html)
+
+    def test_component_positions_preserve_crlf_and_protect_document_shell(self):
+        path = "web/index.html"
+        html = ("<!doctype html>\r\n<html><body id=\"body\">\r\n"
+                '<main id="root"><img id="icon"><aside id="tail"></aside></main>\r\n'
+                "</body></html>").encode("utf-8")
+        source = build_files(self.manifest, {**self.files, path: html})
+
+        operations = [
+            ("root", "prepend", '<header id="header"></header>'),
+            ("tail", "before", '<section id="before-tail"></section>'),
+            ("icon", "after", '<span id="after-icon"></span>'),
+        ]
+        package = source
+        for target_id, position, fragment in operations:
+            current = unpack(package)[1][path]
+            _, _, package, _ = edit_package(package, [{
+                "op": "component-insert", "path": path,
+                "expectedSha256": hashlib.sha256(current).hexdigest(),
+                "targetNodeId": html_node_id(package, target_id),
+                "position": position, "html": fragment,
+            }])
+
+        updated = unpack(package)[1][path]
+        self.assertEqual(updated.count(b"\r\n"), html.count(b"\r\n"))
+        nodes = analyze_package(package)["pages"][0]["components"]
+        ordered = [node["id"] for node in nodes if node.get("id") in {
+            "header", "icon", "after-icon", "before-tail", "tail"}]
+        self.assertEqual(ordered, ["header", "icon", "after-icon", "before-tail", "tail"])
+
+        with self.assertRaisesRegex(SkinError, "document shell elements"):
+            edit_package(package, [{
+                "op": "component-remove", "path": path,
+                "expectedSha256": hashlib.sha256(updated).hexdigest(),
+                "targetNodeId": html_node_id(package, "body"),
+            }])
+
+    def test_component_operation_cli_emits_receipt_and_reimports_package(self):
+        path = "web/index.html"
+        html = b'<!doctype html><html><body><main id="root"></main></body></html>'
+        source = build_files(self.manifest, {**self.files, path: html})
+        with isolated_temp_dir() as temp:
+            root = Path(temp)
+            source_path = root / "input.pcskin"
+            operations_path = root / "operations.json"
+            output_path = root / "edited.pcskin"
+            source_path.write_bytes(source)
+            operations_path.write_text(json.dumps({"operations": [{
+                "op": "component-insert", "path": path,
+                "expectedSha256": hashlib.sha256(html).hexdigest(),
+                "targetNodeId": html_node_id(source, "root"), "position": "append",
+                "html": '<button id="new-action" data-action="openEvent">Open</button>',
+            }]}), encoding="utf-8")
+            result = subprocess.run(
+                [sys.executable, str(STUDIO / "skin_studio.py"), "edit-v3",
+                 "--file", str(source_path), "--operations", str(operations_path),
+                 "--out", str(output_path)],
+                text=True, encoding="utf-8", capture_output=True, check=False)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            receipt = json.loads(result.stdout)
+            self.assertEqual(receipt["changes"][0]["op"], "component-insert")
+            self.assertEqual(receipt["changes"][0]["path"], path)
+            self.assertIn(b'data-action="openEvent"', unpack(output_path.read_bytes())[1][path])
+
+            bad_output = root / "must-not-exist.pcskin"
+            operations_path.write_text(json.dumps({"operations": [{
+                "op": "component-insert", "path": path,
+                "expectedSha256": hashlib.sha256(html).hexdigest(),
+                "targetNodeId": html_node_id(source, "root"), "position": "append",
+                "html": '<span id="root">duplicate</span>',
+            }]}), encoding="utf-8")
+            failed = subprocess.run(
+                [sys.executable, str(STUDIO / "skin_studio.py"), "edit-v3",
+                 "--file", str(source_path), "--operations", str(operations_path),
+                 "--out", str(bad_output)],
+                text=True, encoding="utf-8", capture_output=True, check=False)
+            self.assertEqual(failed.returncode, 2)
+            self.assertFalse(bad_output.exists())
+            self.assertIn("duplicate HTML id", json.loads(failed.stderr)["error"])
+
+    def test_component_operations_roundtrip_against_real_clear_source_without_asset_write(self):
+        original = ASSET.read_bytes()
+        original_manifest, original_files = unpack(original)
+        path = "web/index.html"
+        page = original_files[path]
+        target_node = html_node_id(original, "app")
+        inserted = '<aside id="studio-component-roundtrip" hidden></aside>'
+        _, _, with_component, _ = edit_package(original, [{
+            "op": "component-insert", "path": path,
+            "expectedSha256": hashlib.sha256(page).hexdigest(),
+            "targetNodeId": target_node, "position": "append", "html": inserted,
+        }])
+        self.assertIn(b'id="studio-component-roundtrip"',
+                      unpack(with_component)[1][path])
+
+        changed_page = unpack(with_component)[1][path]
+        _, _, restored, _ = edit_package(with_component, [{
+            "op": "component-remove", "path": path,
+            "expectedSha256": hashlib.sha256(changed_page).hexdigest(),
+            "targetNodeId": html_node_id(with_component, "studio-component-roundtrip"),
+        }])
+        restored_manifest, restored_files = unpack(restored)
+        self.assertEqual(restored_manifest, original_manifest)
+        self.assertEqual(restored_files, original_files)
+        self.assertEqual(ASSET.read_bytes(), original)
 
     def test_file_crud_and_json_structure_patch_export_and_reimport(self):
         project_sha = hashlib.sha256(self.files["project.json"]).hexdigest()

@@ -99,6 +99,10 @@ Supported operations:
 | `write` | `path`, `encoding` (`utf-8` or `base64`), `content`, and exactly one guard: `expectedSha256` for replacing an existing file, or `expectedAbsent: true` for creating a new file. |
 | `delete` | `path` and the file's `expectedSha256`. Required runtime files cannot be deleted. |
 | `move` | `from`, unused `to`, and source `expectedSha256`; package references are not rewritten automatically. |
+| `component-insert` | `path`, current HTML `expectedSha256`, `targetNodeId` from `analyze-v3`, `position` (`before`, `after`, `prepend`, `append`), and a balanced HTML `html` fragment. |
+| `component-remove` | `path`, current HTML `expectedSha256`, and `targetNodeId`; `html`, `head`, and `body` document shells are protected. |
+| `component-replace` | `path`, current HTML `expectedSha256`, `targetNodeId`, and a balanced replacement fragment. |
+| `component-move` | `path`, current HTML `expectedSha256`, `sourceNodeId`, `targetNodeId`, and `position`; the source and destination are in the same page. Moving a node into itself or a descendant is rejected. |
 | `json-patch` | `path: "project.json"`, current file `expectedSha256`, and a JSON Patch list. Supported ops are `add`, `remove`, `replace`, `move`, `copy`, and `test`; paths use RFC 6901 JSON Pointers. |
 | `manifest-patch` | current `expectedSha256` from `inspect-v3`, and JSON Patch ops. `format`, `schemaVersion`, `entrypoint`, `project`, and `sha256` are managed and cannot be changed. Changing `capabilities` additionally requires `allowCapabilityChange: true`; the package is still subject to Android Host capability enforcement. |
 
@@ -109,14 +113,42 @@ rejected. Limits are 128 package operations, 256 JSON Patch operations per JSON 
 96 package source files, 600 KB per text file, 3 MB per binary file, and the v3 archive
 limits enforced by the production validator.
 
+Component operations address the explicit, balanced source tree reported by
+`analyze-v3`; they do not execute JavaScript or edit computed browser DOM. Re-run
+`analyze-v3` and use the current HTML file hash after each source-changing operation,
+because `nodeId` includes the source order. The editor refuses malformed pages/fragments,
+new duplicate HTML IDs, mutations of the `html`/`head`/`body` shell, and HTML insertion
+inside raw-text elements such as `script` and `style`. Runtime-created controls remain
+editable through ordinary source `write` operations. The operations preserve all bytes
+outside the selected source range and validate/rebuild the complete v3 package before
+publishing an output file.
+
+Example: insert a component under an analyzed container. `targetNodeId` and the page
+hash come from the same `analyze-v3` / `inspect-v3` snapshot:
+
+```json
+{
+  "operations": [{
+    "op": "component-insert",
+    "path": "web/index.html",
+    "expectedSha256": "<current-page-sha256>",
+    "targetNodeId": "web/index.html#n00012",
+    "position": "append",
+    "html": "<section id=\"custom-panel\"><h2>自定义</h2></section>"
+  }]
+}
+```
+
 ## Agent workflow
 
 1. Run `inspect-v3` and keep its `packageSha256`, file hashes, and `manifestSha256` as
    the revision snapshot; run `analyze-v3` to locate static HTML pages and controls.
 2. Run `read-v3` for each source or binary asset that needs inspection. Decode binary
    files only when needed; preserve their bytes if they are not being changed.
-3. Construct a bounded operation JSON. Use JSON Patch for `project.json` metadata,
-   source writes for HTML/CSS/JS/JSON component structure, and Base64 for binary assets.
+3. Construct a bounded operation JSON. Use component operations for precise edits to
+   analyzed static HTML nodes; use guarded source writes for JavaScript-generated DOM,
+   CSS, scripts and arbitrary source; use JSON Patch for `project.json` metadata and
+   Base64 writes for binary assets.
 4. Run `edit-v3` to a **new** output path. A stale guard or invalid final package
    returns a structured error and does not create the output.
 5. For source-directory projects, run `build-v3 --json` to create a validated package;
@@ -126,15 +158,16 @@ limits enforced by the production validator.
    changes and hashes. Use the Studio browser preview and Android WebView/device
    acceptance for visual and runtime claims.
 
-The interface enables arbitrary v3 source/asset file CRUD and generic JSON tree edits;
-it does not impose a formal page/component schema on `project.json`. The browser Studio
-also exposes direct project JSON editing, supported UTF-8 file creation/deletion, and
-arbitrary asset add/replace/delete with text-reference guards; this is not a semantic
-component-tree editor. Host capabilities remain requests declared by the skin and never
-constitute user approval. Browser Mocks and successful package validation do not prove
-Android behavior, accessibility, device compatibility, or Core/Host/Skin parity. Full
-visual component editing, Host Bridge parity, default-skin cutover, and physical-device
-acceptance remain separate open work.
+The interface enables arbitrary v3 source/asset file CRUD, generic JSON tree edits, and
+guarded structural edits to explicit static HTML elements; it does not impose a formal
+page/component schema on `project.json`, nor does it inspect script-generated runtime
+DOM. The browser Studio exposes direct project JSON editing, supported UTF-8 file
+creation/deletion, and arbitrary asset add/replace/delete with text-reference guards;
+it still has no semantic visual component-tree editor. Host capabilities remain requests
+declared by the skin and never constitute user approval. Browser Mocks and successful
+package validation do not prove Android behavior, accessibility, device compatibility,
+or Core/Host/Skin parity. Full visual component editing, Host Bridge parity, default-skin
+cutover, and physical-device acceptance remain separate open work.
 
 ## Automated verification
 
