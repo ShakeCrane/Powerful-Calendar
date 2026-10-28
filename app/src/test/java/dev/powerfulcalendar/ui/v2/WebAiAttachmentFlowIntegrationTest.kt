@@ -10,6 +10,7 @@ import android.database.Cursor
 import android.database.MatrixCursor
 import android.database.sqlite.SQLiteDatabase
 import android.net.Uri
+import android.os.Looper
 import android.provider.OpenableColumns
 import android.util.AtomicFile
 import androidx.activity.ComponentActivity
@@ -34,7 +35,10 @@ import dev.powerfulcalendar.ai.AiChatHistoryStore
 import dev.powerfulcalendar.ai.AiFileFallbackConsent
 import dev.powerfulcalendar.ai.AiSettings
 import dev.powerfulcalendar.ai.AiSettingsStore
+import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.PowerStore
+import dev.powerfulcalendar.interop.IcsImportPlanner
+import dev.powerfulcalendar.interop.ImportCheckpoint
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.After
@@ -223,6 +227,124 @@ class WebAiAttachmentFlowIntegrationTest {
                 AiFileFallbackConsent.allowed(context, AiSettingsStore.load(context)))
             assertFalse("an unresolved proposal must keep attachment controls locked",
                 WebSkinBridgeRuntime.state().getBoolean("chatAttachmentAvailable"))
+        }
+    }
+
+    @Test
+    fun skinAiFilePickerRoutesCalendarMagicToLocalImportBeforeAiFallback() {
+        val uri = Uri.parse("content://powercal-ics-test-" + namespace + "/misleading.txt")
+        val source = listOf(
+            "BEGIN:VCALENDAR",
+            "VERSION:2.0",
+            "BEGIN:VEVENT",
+            "UID:skin-ics-magic-route",
+            "DTSTAMP:20261028T000000Z",
+            "DTSTART:20300115T010000Z",
+            "DTEND:20300115T020000Z",
+            "SUMMARY:Skin routed calendar fixture",
+            "END:VEVENT",
+            "END:VCALENDAR",
+            ""
+        ).joinToString("\r\n")
+        val plan = IcsImportPlanner.prepare(source, ZoneId.systemDefault())
+        assertTrue("ICS fixture must be fully supported by the deterministic importer: " +
+            plan.problems, plan.problems.isEmpty())
+        assertEquals(1, plan.candidates.size)
+        val before = counts()
+
+        ServerSocket(0, 4, InetAddress.getByName("127.0.0.1")).use { server ->
+            server.soTimeout = 1_500
+            val settings = AiSettings(
+                endpoint = "http://127.0.0.1:${server.localPort}/v1",
+                model = "local-stub:free",
+                apiKey = "LOCAL_TEST_ONLY",
+                enabled = true,
+                shareContext = false
+            )
+            AiSettingsStore.save(context, settings)
+            AiFileFallbackConsent.grant(context, settings)
+
+            ui.activity.setContent {
+                CompositionLocalProvider(
+                    LocalContext provides context,
+                    LocalActivityResultRegistryOwner provides resultRegistryOwner
+                ) {
+                    PowerCalTheme { PowerCalApp(store) }
+                }
+            }
+            ui.waitForIdle()
+            ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.Routed("ai")) }
+            ui.waitForIdle()
+
+            ShadowContentResolver.registerProviderInternal(
+                requireNotNull(uri.authority), TestAttachmentProvider("misleading.txt")
+            )
+            shadowOf(ui.activity.contentResolver).registerInputStreamSupplier(uri) {
+                source.toByteArray(Charsets.UTF_8).inputStream()
+            }
+
+            ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.PickAiFile) }
+            ui.waitForIdle()
+            assertTrue(WebSkinBridgeRuntime.state().getBoolean("chatAttachmentBusy"))
+            assertEquals(Intent.ACTION_OPEN_DOCUMENT, resultRegistry.lastIntent?.action)
+            assertEquals("*/*", resultRegistry.lastIntent?.type)
+            ui.runOnIdle { assertTrue(resultRegistry.dispatch(uri)) }
+
+            ui.waitUntil(10_000) { store.draftCount() == before.drafts + 1 }
+            val settleDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+            while (WebSkinBridgeRuntime.state().optBoolean("chatAttachmentBusy") &&
+                System.nanoTime() < settleDeadline
+            ) {
+                shadowOf(Looper.getMainLooper()).idle()
+                ui.waitForIdle()
+                Thread.sleep(10)
+            }
+            val importSettled = !WebSkinBridgeRuntime.state()
+                .optBoolean("chatAttachmentBusy")
+            val settledState = WebSkinBridgeRuntime.state()
+            val unresolvedIcsReviewVisible = ui.onAllNodesWithText(
+                "核对文件 · ICS 未解决项目"
+            ).fetchSemanticsNodes().isNotEmpty()
+            assertTrue(
+                "ICS import must finish and release the picker lock; counts=${counts()}, " +
+                    "state=$settledState, unresolvedReview=$unresolvedIcsReviewVisible, " +
+                    "importReceipts=${ImportCheckpoint.recent(context)}",
+                importSettled
+            )
+            assertEquals(
+                "valid ICS magic must reach the local importer; Host state=" +
+                    WebSkinBridgeRuntime.state(),
+                before.drafts + 1,
+                store.draftCount()
+            )
+            val imported = store.pendingDrafts()
+            assertEquals(1, imported.size)
+            assertEquals("Skin routed calendar fixture", imported.single().form.title)
+            assertEquals(TemporalKind.ACTIVITY, imported.single().form.kind)
+            val receipt = ImportCheckpoint.recent(context)
+                .single { it.fingerprint == plan.fingerprint }
+            assertEquals(listOf(imported.single().draftId), receipt.draftIds)
+            assertEquals(0, receipt.problemCount)
+            assertEquals(
+                Counts(before.drafts + 1, before.formalEvents, before.identities + 1, before.commits),
+                counts()
+            )
+            assertTrue("successful import must show the new draft for user review",
+                ui.onAllNodesWithText("Skin routed calendar fixture")
+                    .fetchSemanticsNodes().isNotEmpty())
+            assertNull("calendar text must not become an AI proposal",
+                WebSkinBridgeRuntime.state().optJSONObject("aiProposalReview"))
+            assertFalse("the ICS should not remain in AI attachment review",
+                WebSkinBridgeRuntime.state().optBoolean("chatAttachmentBusy"))
+
+            val providerWasContacted = runCatching { server.accept().use { true } }
+                .getOrElse { error ->
+                    if (error is java.net.SocketTimeoutException) false else throw error
+                }
+            assertFalse(
+                "a calendar file must go through the local ICS importer, not the AI provider",
+                providerWasContacted
+            )
         }
     }
 
