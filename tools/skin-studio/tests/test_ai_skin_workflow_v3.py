@@ -103,6 +103,12 @@ class AiSkinWorkflowV3Test(unittest.TestCase):
             self.assertEqual(bridge_audit["requiredCapabilities"], ["host.action"])
             self.assertIn("month", {binding["action"]
                                      for binding in bridge_audit["bindings"]})
+            month_binding = next(binding for binding in bridge_audit["bindings"]
+                                 if binding["action"] == "month")
+            self.assertEqual(month_binding["payloadSchemaRef"],
+                             "#/$defs/actionPayloads/month")
+            self.assertEqual(bridge_audit["contractSchema"]["path"],
+                             "docs/contracts/web-skin-bridge-v1.schema.json")
             self.assertTrue(bridge_audit["requiresSourceReview"])
             self.assertIn("payloads", " ".join(bridge_audit["limitations"]))
 

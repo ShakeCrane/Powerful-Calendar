@@ -5,6 +5,11 @@ This interface makes source, assets, `project.json`, and package metadata callab
 scripts and agents. It does not claim complete visual Studio editing or Native/Skin
 functional parity.
 
+The machine-readable Host protocol is defined in
+[`contracts/web-skin-bridge-v1.schema.json`](contracts/web-skin-bridge-v1.schema.json).
+It describes both `action` and `command` envelopes. Host decoders remain the runtime
+authority; JVM regressions submit each schema example to the actual decoder.
+
 ## Entry point and output contract
 
 Run commands from the repository root with Python 3:
@@ -63,15 +68,20 @@ test suite until the registry is updated.
 
 The UTF-8 JSON receipt includes the package hash, known bindings with page and static
 node IDs, unknown bindings, declared/required/missing capabilities, the audit scope,
-`requiresSourceReview`, and explicit limitations. A successful audit writes JSON to
-stdout and exits 0. Unknown actions, a missing required capability, or an input/schema
-error writes structured JSON to stderr and exits 2. The audit does not modify the package.
+`requiresSourceReview`, the schema path/hash and a `payloadSchemaRef` for each known
+binding. Follow that reference into the protocol schema when checking how the calling
+script must construct its payload. A successful audit writes JSON to stdout and exits 0.
+Unknown actions, a missing required capability, or an input/schema error writes
+structured JSON to stderr and exits 2. The audit does not modify the package.
 
 This is a **static-name and manifest-declaration check only**. It does not execute
 JavaScript, discover runtime-created controls, validate payload fields, or prove Android
 Host behavior. Packages with linked or inline scripts set `requiresSourceReview`; inspect
 those scripts and [`V3_HOST_BRIDGE_EXTENSION.md`](V3_HOST_BRIDGE_EXTENSION.md) before
-export. A passing receipt is not full Bridge compatibility or runtime-parity evidence.
+export. The referenced schema is exercised against Host decoders with representative
+valid examples, required-field omissions and unknown-field mutations; it is not a JS
+source analyzer. A passing receipt is not full Bridge compatibility or runtime-parity
+evidence.
 
 ## Inspection and source reads
 

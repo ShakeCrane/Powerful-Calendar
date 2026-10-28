@@ -44,6 +44,147 @@ class WebSkinEditBridgeTest {
         val db=store.databaseName
         store.close();context.deleteDatabase(db)
     }
+
+    @Test fun documentedEditCommandPayloadExamplesMatchTheHostDecoder() {
+        val payloadSchemas = WebSkinBridgeContractFixture.load()
+            .getJSONObject("\$defs").getJSONObject("commandPayloads")
+        val names = payloadSchemas.keys()
+        var commandCount = 0
+        while (names.hasNext()) {
+            val name = names.next()
+            if ('.' !in name) continue
+            commandCount++
+            val schema = payloadSchemas.getJSONObject(name)
+            val requiredArray = schema.getJSONArray("required")
+            val required = (0 until requiredArray.length()).map { requiredArray.getString(it) }
+            val properties = schema.getJSONObject("properties")
+            val examples = schema.getJSONArray("examples")
+            for (index in 0 until examples.length()) {
+                val payload = examples.getJSONObject(index)
+                val payloadKeys = payload.keys().asSequence().toSet()
+                assertTrue("$name example has all declared required fields",
+                    required.all(payloadKeys::contains))
+                assertTrue("$name example contains only declared properties",
+                    payloadKeys.all(properties::has))
+                val wire = JSONObject().put("version", 1).put("type", "command")
+                    .put("payload", payload)
+                assertTrue("JSON Schema example for $name must reach WebEditWire",
+                    WebEditWire.decode(wire.toString()) != null)
+
+                for (field in required) {
+                    val missing = JSONObject(wire.toString())
+                    missing.getJSONObject("payload").remove(field)
+                    assertNull("$name must reject missing required field $field",
+                        WebEditWire.decode(missing.toString()))
+                }
+                val extra = JSONObject(wire.toString())
+                extra.getJSONObject("payload").put("untrustedExtra", true)
+                assertNull("$name must reject fields outside its schema",
+                    WebEditWire.decode(extra.toString()))
+            }
+        }
+        assertEquals("Every edit command definition must be exercised", 18, commandCount)
+    }
+
+    @Test fun documentedPatchFieldExamplesMatchSemanticHostValidation() {
+        val definitions = WebSkinBridgeContractFixture.load()
+            .getJSONObject("\$defs").getJSONObject("commandPayloads")
+        val patchFields = definitions.getJSONObject("patchField").getJSONArray("enum")
+        val branches = definitions.getJSONObject("patchValueLengthByField")
+            .getJSONArray("allOf")
+        val rules = mutableMapOf<String, JSONObject>()
+        for (index in 0 until branches.length()) {
+            val branch = branches.getJSONObject(index)
+            val field = branch.getJSONObject("if").getJSONObject("properties")
+                .getJSONObject("field").getString("const")
+            assertNull("Patch field must have one schema rule: $field", rules.put(field, branch))
+        }
+        assertEquals((0 until patchFields.length()).map { patchFields.getString(it) }.toSet(),
+            rules.keys)
+
+        val wireValueSchema = definitions.getJSONObject("editor.patch")
+            .getJSONObject("properties").getJSONObject("value")
+        val noNul = java.util.regex.Pattern.compile(wireValueSchema.getString("pattern"))
+        assertTrue(noNul.matcher("ordinary text").matches())
+        assertFalse(noNul.matcher("text\u0000with NUL").matches())
+
+        val original = DraftForm(kind = TemporalKind.ACTIVITY, zoneId = "UTC")
+        for ((field, branch) in rules) {
+            val valueSchema = branch.getJSONObject("then").getJSONObject("properties")
+                .getJSONObject("value")
+            val runtimeMax = valueSchema.getInt("x-runtimeMaxUtf16CodeUnits")
+            val schemaMax = valueSchema.optInt("maxLength", -1)
+            if (schemaMax >= 0) {
+                assertEquals("Schema's standard and host length bounds must agree for $field",
+                    schemaMax, runtimeMax)
+            } else {
+                val enum = valueSchema.optJSONArray("enum")
+                assertNotNull("A field without maxLength must have a bounded enum: $field", enum)
+                assertTrue("Enum values must fit the Host length bound for $field",
+                    (0 until enum!!.length()).all { enum.getString(it).length <= runtimeMax })
+            }
+            val values = valueSchema.getJSONArray("examples")
+            assertTrue("Patch field $field must have a valid example", values.length() > 0)
+            for (index in 0 until values.length()) {
+                val value = values.getString(index)
+                valueSchema.optString("pattern", "").takeIf(String::isNotEmpty)?.let {
+                    assertTrue("Schema pattern for $field accepts its example $value",
+                        java.util.regex.Pattern.compile(it).matcher(value).matches())
+                }
+                valueSchema.optJSONArray("enum")?.let { enumValues ->
+                    assertTrue("Schema enum for $field contains $value",
+                        (0 until enumValues.length()).any { enumValues.getString(it) == value })
+                }
+
+                val payload = JSONObject().put("name", "editor.patch")
+                    .put("requestId", "req_12345678")
+                    .put("sessionId", "00000000-0000-0000-0000-000000000001")
+                    .put("field", field).put("value", value)
+                val wire = JSONObject().put("version", 1).put("type", "command")
+                    .put("payload", payload)
+                assertNotNull("Documented $field patch reaches the Host decoder",
+                    WebEditWire.decode(wire.toString()))
+                assertNotNull("Documented $field value passes Host patch validation",
+                    WebEditWire.patch(original, field, value))
+            }
+        }
+
+        val reminderPattern = java.util.regex.Pattern.compile(
+            rules.getValue("reminderMinutes").getJSONObject("then")
+                .getJSONObject("properties").getJSONObject("value").getString("pattern"))
+        assertTrue(reminderPattern.matcher("10080").matches())
+        assertTrue(reminderPattern.matcher("-1").matches())
+        assertFalse(reminderPattern.matcher("10081").matches())
+        assertFalse(reminderPattern.matcher("-2").matches())
+        assertThrows(IllegalArgumentException::class.java) {
+            WebEditWire.patch(original, "reminderMinutes", "10081")
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            WebEditWire.patch(original, "reminderMinutes", "-2")
+        }
+
+        val intervalPattern = java.util.regex.Pattern.compile(
+            rules.getValue("recurrenceInterval").getJSONObject("then")
+                .getJSONObject("properties").getJSONObject("value").getString("pattern"))
+        assertTrue(intervalPattern.matcher("1").matches())
+        assertTrue(intervalPattern.matcher("365").matches())
+        assertFalse(intervalPattern.matcher("0").matches())
+        assertFalse(intervalPattern.matcher("366").matches())
+        assertThrows(IllegalArgumentException::class.java) {
+            WebEditWire.patch(original, "recurrenceInterval", "366")
+        }
+
+        val nulPayload = JSONObject().put("name", "editor.patch")
+            .put("requestId", "req_12345678")
+            .put("sessionId", "00000000-0000-0000-0000-000000000001")
+            .put("field", "title").put("value", "text\u0000with NUL")
+        assertNull(WebEditWire.decode(JSONObject().put("version", 1).put("type", "command")
+            .put("payload", nulPayload).toString()))
+        val longPayload = JSONObject(nulPayload.toString()).put("value", "x".repeat(241))
+        assertNull(WebEditWire.decode(JSONObject().put("version", 1).put("type", "command")
+            .put("payload", longPayload).toString()))
+    }
+
     private fun wire(name:String,extra:String=""):String {
         val payload=JSONObject().put("name",name).put("requestId",request())
         if(extra.isNotEmpty()) {

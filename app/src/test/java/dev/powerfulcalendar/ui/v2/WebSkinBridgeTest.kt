@@ -4,6 +4,7 @@ import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.Recurrence
 import dev.powerfulcalendar.core.RecurrenceFreq
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -15,6 +16,43 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class WebSkinBridgeTest {
+    @Test fun documentedActionPayloadExamplesMatchTheHostDecoder() {
+        val payloadSchemas = WebSkinBridgeContractFixture.load()
+            .getJSONObject("\$defs").getJSONObject("actionPayloads")
+        val names = payloadSchemas.keys()
+        while (names.hasNext()) {
+            val name = names.next()
+            val schema = payloadSchemas.getJSONObject(name)
+            val requiredArray = schema.getJSONArray("required")
+            val required = (0 until requiredArray.length()).map { requiredArray.getString(it) }
+            val properties = schema.getJSONObject("properties")
+            val examples = schema.getJSONArray("examples")
+            for (index in 0 until examples.length()) {
+                val payload = examples.getJSONObject(index)
+                val payloadKeys = payload.keys().asSequence().toSet()
+                assertTrue("$name example has all declared required fields",
+                    required.all(payloadKeys::contains))
+                assertTrue("$name example contains only declared properties",
+                    payloadKeys.all(properties::has))
+                val wire = JSONObject().put("version", 1).put("type", "action")
+                    .put("payload", payload)
+                assertTrue("JSON Schema example for $name must reach its Host action",
+                    decodeBridgeAction(wire.toString()) != null)
+
+                for (field in required) {
+                    val missing = JSONObject(wire.toString())
+                    missing.getJSONObject("payload").remove(field)
+                    assertNull("$name must reject missing required field $field",
+                        decodeBridgeAction(missing.toString()))
+                }
+                val extra = JSONObject(wire.toString())
+                extra.getJSONObject("payload").put("untrustedExtra", true)
+                assertNull("$name must reject fields outside its schema",
+                    decodeBridgeAction(extra.toString()))
+            }
+        }
+    }
+
     @Test fun acceptsOnlyClosedTypedActions() {
         assertEquals(WebSkinAction.Routed("today"), decodeBridgeAction(
             """{"version":1,"type":"action","payload":{"name":"today"}}"""))

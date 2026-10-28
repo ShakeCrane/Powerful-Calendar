@@ -65,7 +65,10 @@ python tools/skin-studio/skin_studio.py validate my-skin-edited.pcskin --json
 
 `audit-bridge-v3` 只检查静态 HTML 中的 literal `data-action` 名称和所需
 `host.action` 声明；不会执行 JS，也不会校验动态生成的 Bridge payload。带有 inline
-或 linked script 的皮肤会标记 `requiresSourceReview`。成功 JSON 写 stdout、退出码为 0；
+或 linked script 的皮肤会标记 `requiresSourceReview`。统一的 action/command 字段、类型与
+取值约束见 [`docs/contracts/web-skin-bridge-v1.schema.json`](../../docs/contracts/web-skin-bridge-v1.schema.json)，
+CLI 会为每个静态 action 返回 schema 引用；JVM 测试把其样例交给实际 Host decoder 验证。
+成功 JSON 写 stdout、退出码为 0；
 审计失败写结构化 JSON 到 stderr、退出码为 2。它不替代 Android WebView 或设备验收。
 
 仅切换源码/可视化面板或编辑其他源码文件时，原始 `project.json` 保持字节不变；面板模式仅是当前 Studio 视图。确实修改材质或图层后，项目元数据按修改后的模型输出，并保留未知字段。

@@ -16,8 +16,12 @@ decision conflict, follow the user decision and update documentation explicitly.
   README descriptions, and earlier handoff prompts where they conflict.
 - Storage, AI authorization, and skin contracts:
   `docs/STABLE_DATA_CONTRACT_V1.md`, `docs/AI_AGENT_PROTOCOL_V2.md`,
-  `docs/UI_SKIN_EXTENSION_CONTRACT_V4.md`, and relevant implemented interfaces.
-  Distinguish proposals/specification, implemented code, and **verified behavior**.
+  `docs/UI_SKIN_EXTENSION_CONTRACT_V4.md`,
+  `docs/contracts/web-skin-bridge-v1.schema.json`, and relevant implemented interfaces.
+  The Bridge schema describes closed v1 action/command payloads; Kotlin Host decoders
+  remain the runtime authority. Static audits do not validate arbitrary JavaScript or
+  prove Android WebView behavior. Distinguish proposals/specification, implemented
+  code, and **verified behavior**.
 - Current core freeze work: `docs/CORE_FREEZE_ACCEPTANCE_LEDGER.csv`,
   `docs/CORE_FREEZE_VERDICT.md`, `docs/agent-handoff/PROGRESS.md`,
   `docs/issues/` and `docs/agent-handoff/CORE_FREEZE_TASK_UNDERSTANDING_2026-10-23.md`.
@@ -153,4 +157,7 @@ browser / Android checks for each change. Mock previews are not device evidence.
 For machine-operated v3 skin work, read `docs/SKIN_STUDIO_AI_AUTOMATION_V1.md` and use
 `skin_studio.py inspect-v3`, `read-v3`, `edit-v3`, `build-v3 --json`, and
 `validate --json`; build and edit create new package paths and emit machine-readable
-hash receipts. Package validation does not prove visual or device parity.
+hash receipts. The Bridge v1 payload schema is
+`docs/contracts/web-skin-bridge-v1.schema.json`; preserve package and source SHA
+preconditions. Schema/decoder JVM checks remain distinct from JavaScript and Android
+WebView runtime verification. Package validation does not prove visual or device parity.

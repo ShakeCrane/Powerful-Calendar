@@ -141,6 +141,11 @@ class ProjectOpsV3Test(unittest.TestCase):
         self.assertEqual(audit["requiredCapabilities"], ["host.action"])
         self.assertEqual({binding["action"] for binding in audit["bindings"]},
                          {"month", "browseMonth"})
+        self.assertEqual(audit["contractSchema"]["path"],
+                         "docs/contracts/web-skin-bridge-v1.schema.json")
+        self.assertEqual({binding["payloadSchemaRef"] for binding in audit["bindings"]},
+                         {"#/$defs/actionPayloads/month",
+                          "#/$defs/actionPayloads/browseMonth"})
         self.assertEqual(audit["unknownBindings"], [])
         self.assertIn("static web/*.html", audit["scope"])
 
@@ -195,6 +200,66 @@ class ProjectOpsV3Test(unittest.TestCase):
                            for name in re.findall(r'"([A-Za-z0-9_.]+)"', row)}
 
         self.assertEqual(set(registry["actions"]), runtime_actions)
+
+    def test_bridge_v1_schema_covers_registry_examples_and_local_references(self):
+        schema_path = STUDIO.parents[1] / "docs/contracts/web-skin-bridge-v1.schema.json"
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        registry = json.loads((STUDIO / "bridge_v1_action_registry.json").read_text(
+            encoding="utf-8"))
+        definitions = schema["$defs"]
+        action_schemas = definitions["actionPayloads"]
+        command_schemas = definitions["commandPayloads"]
+
+        self.assertEqual(set(action_schemas), set(registry["actions"]))
+        action_refs = {item["$ref"].rsplit("/", 1)[-1] for item in
+                       definitions["actionMessage"]["properties"]["payload"]["oneOf"]}
+        command_names = {name for name in command_schemas if "." in name}
+        command_refs = {item["$ref"].rsplit("/", 1)[-1] for item in
+                        definitions["commandMessage"]["properties"]["payload"]["oneOf"]}
+        self.assertEqual(action_refs, set(action_schemas))
+        self.assertEqual(command_refs, command_names)
+
+        for group in (action_schemas, command_schemas):
+            for name, payload_schema in group.items():
+                for example in payload_schema.get("examples", []):
+                    keys = set(example)
+                    self.assertTrue(set(payload_schema["required"]).issubset(keys), name)
+                    self.assertTrue(keys.issubset(set(payload_schema["properties"])), name)
+                    self.assertEqual(example["name"], name, name)
+
+        def validate_refs(value):
+            if isinstance(value, dict):
+                if "$ref" in value:
+                    ref = value["$ref"]
+                    self.assertTrue(ref.startswith("#/"), ref)
+                    target = schema
+                    for token in ref[2:].split("/"):
+                        token = token.replace("~1", "/").replace("~0", "~")
+                        target = target[token]
+                    self.assertIsNotNone(target, ref)
+                for child in value.values():
+                    validate_refs(child)
+            elif isinstance(value, list):
+                for child in value:
+                    validate_refs(child)
+
+        validate_refs(schema)
+
+    def test_bridge_v1_command_schema_matches_runtime_decoder_names(self):
+        schema_path = STUDIO.parents[1] / "docs/contracts/web-skin-bridge-v1.schema.json"
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        command_schemas = schema["$defs"]["commandPayloads"]
+        schema_commands = {name for name in command_schemas if "." in name}
+        host_source = (STUDIO.parents[1] /
+                       "app/src/main/java/dev/powerfulcalendar/ui/v2/WebSkinEditBridge.kt")
+        source = host_source.read_text(encoding="utf-8")
+        decoder = source.split("return when(name) {", 1)[1].split(
+            "\n    }\n\n    /** A semantic patch", 1)[0]
+        rows = re.findall(r'^\s*((?:"[^"\n]+"\s*,?\s*)+)->', decoder, re.MULTILINE)
+        runtime_commands = {name for row in rows
+                            for name in re.findall(r'"([^"\n]+)"', row)}
+
+        self.assertEqual(schema_commands, runtime_commands)
 
     def test_analyze_enforces_total_component_bound(self):
         self.files["web/index.html"] = ("<i></i>" * 20_001).encode("utf-8")

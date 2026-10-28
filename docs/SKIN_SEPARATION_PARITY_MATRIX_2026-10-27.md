@@ -79,3 +79,9 @@ In the table, Studio support means source availability, not proof of arbitrary v
 
 - Added `audit-bridge-v3 <skin.pcskin>` to the machine-operated v3 workflow. It compares literal `data-action` names in static packaged HTML with a registry synchronized against `WebSkinHost.decodeBridgeAction`, and reports required/missing `host.action` with package/page/node evidence. CLI failures use structured JSON on stderr and exit code 2.
 - The AI authoring regression now runs the audit on a modified package built from canonical Clear. This check does not execute scripts, validate payload fields, enumerate runtime controls, or establish Android Bridge behavior. SEP-15 and full Skin/Core/Host parity remain **NOT TESTED**; see `PC-ISSUE-SEPARATION-STUDIO-BRIDGE-AUDIT.md`.
+
+## SEP-15 follow-up — machine-readable Bridge v1 payload contract (2026-10-28)
+
+- Added `docs/contracts/web-skin-bridge-v1.schema.json` for both the 25 `action` payloads and 18 `command` payloads. The Studio audit receipt points each static HTML binding to its action schema; the schema records exact fields, types, enumerations, bounds and examples.
+- JVM regressions feed the schema examples, missing-required-field variants and unexpected-field variants to `decodeBridgeAction` and `WebEditWire.decode`. Python checks keep the schema unions synchronized with both Kotlin decoder name sets and resolve every local `$ref`.
+- The CLI still does not execute or statically analyze arbitrary skin JavaScript. Dynamic payload correctness, Android WebView behavior and complete SEP-15 parity remain **NOT TESTED**; see `PC-ISSUE-SEPARATION-STUDIO-BRIDGE-SCHEMA.md`.

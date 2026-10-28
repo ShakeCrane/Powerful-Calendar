@@ -23,6 +23,8 @@ SHA256 = re.compile(r"[0-9a-fA-F]{64}\Z")
 REQUIRED_FILES = frozenset(package_v3.WEB_REQUIRED)
 MAX_ANALYZED_COMPONENTS = 20_000
 BRIDGE_V1_ACTION_REGISTRY = Path(__file__).with_name("bridge_v1_action_registry.json")
+BRIDGE_V1_CONTRACT_SCHEMA = Path(__file__).resolve().parents[2] / (
+    "docs/contracts/web-skin-bridge-v1.schema.json")
 VOID_HTML_TAGS = frozenset({
     "area", "base", "br", "col", "embed", "hr", "img", "input", "link",
     "meta", "param", "source", "track", "wbr",
@@ -732,6 +734,44 @@ def audit_bridge_package(source: bytes) -> dict:
           len(registry["actions"]) == len(set(registry["actions"])),
           "Bridge v1 action registry has an invalid schema")
     known_actions = set(registry["actions"])
+    try:
+        contract_bytes = BRIDGE_V1_CONTRACT_SCHEMA.read_bytes()
+        contract = json.loads(contract_bytes.decode("utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise skin_studio.SkinError("Bridge v1 JSON Schema is unavailable or invalid") from exc
+    contract_defs = contract.get("$defs") if type(contract) is dict else None
+    action_payloads = (contract_defs.get("actionPayloads")
+                       if type(contract_defs) is dict else None)
+    command_payloads = (contract_defs.get("commandPayloads")
+                        if type(contract_defs) is dict else None)
+    _fail(type(contract) is dict and
+          contract.get("$schema") == "https://json-schema.org/draft/2020-12/schema" and
+          type(action_payloads) is dict and type(command_payloads) is dict and
+          set(action_payloads) == known_actions and
+          registry.get("contractSchema") == "docs/contracts/web-skin-bridge-v1.schema.json",
+          "Bridge v1 JSON Schema action registry does not match the action names")
+
+    def referenced_payload_names(message_name: str, expected_prefix: str) -> set[str]:
+        message = contract_defs.get(message_name)
+        payload = message.get("properties", {}).get("payload", {}) \
+            if type(message) is dict else {}
+        branches = payload.get("oneOf") if type(payload) is dict else None
+        _fail(type(branches) is list, f"Bridge v1 JSON Schema has no {message_name} payload union")
+        refs = set()
+        for branch in branches:
+            ref = branch.get("$ref") if type(branch) is dict else None
+            prefix = f"#/$defs/{expected_prefix}/"
+            _fail(type(ref) is str and ref.startswith(prefix),
+                  f"Bridge v1 JSON Schema has an invalid {message_name} payload reference")
+            refs.add(ref[len(prefix):])
+        return refs
+
+    _fail(referenced_payload_names("actionMessage", "actionPayloads") == known_actions,
+          "Bridge v1 JSON Schema action message union is incomplete")
+    command_names = {name for name in command_payloads if "." in name}
+    _fail(referenced_payload_names("commandMessage", "commandPayloads") == command_names and
+          len(command_names) > 0,
+          "Bridge v1 JSON Schema edit-command union is incomplete")
     bindings = []
     unknown_bindings = []
     inline_script_count = 0
@@ -756,7 +796,8 @@ def audit_bridge_package(source: bytes) -> dict:
             if attribute is None:
                 continue
             action = attribute["value"]
-            binding = {"path": path, "nodeId": node["nodeId"], "action": action}
+            binding = {"path": path, "nodeId": node["nodeId"], "action": action,
+                       "payloadSchemaRef": f"#/$defs/actionPayloads/{action}"}
             bindings.append(binding)
             if type(action) is not str or action not in known_actions:
                 unknown_bindings.append(binding)
@@ -775,6 +816,8 @@ def audit_bridge_package(source: bytes) -> dict:
         "registry": {"bridgeVersion": registry["bridgeVersion"],
                      "requiredCapability": registry["requiredCapability"],
                      "actionCount": len(known_actions)},
+        "contractSchema": {"path": registry["contractSchema"],
+                           "sha256": _file_sha256(contract_bytes)},
         "declaredCapabilities": declared_capabilities,
         "requiredCapabilities": required_capabilities,
         "missingCapabilities": missing_capabilities,
