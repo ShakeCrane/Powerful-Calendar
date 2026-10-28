@@ -1,5 +1,14 @@
 # Core freeze progress
 
+## Separation — Host Compose AI publish failure/retry follow-up (2026-10-28)
+
+- The earlier Host Compose diagnostic timeout was caused by the Robolectric wait loop not advancing `Looper.getMainLooper()`. An A/B run against unchanged production `PowerCalApp.kt`, with explicit looper advancement at async checkpoints, passed; no production/Core code change was needed.
+- Added a real `PowerCalApp` Compose local-stub regression for the task-scoped failure path. Before trusted confirmation, Store counters do not change. A synthetic draft-insert failure leaves the proposal retryable and rolls back draft/event/identity/commit state (`nextSequencePreview=1`). Removing the trigger and confirming again creates exactly one formal event at sequence 1, one audit draft, one identity and one commit. The existing success test now also checks Host UI state settles.
+- Focused AI service + Host classes: **11/11 PASS** (`AiChatDraftPipelineTest` 3/3; `WebAiProposalReviewIntegrationTest` 8/8). Full offline Gradle gate: **629/629 JVM tests, 87 suites, 0 failures/errors/skips, 88/88 tasks**; source boundary and Debug/AndroidTest APK assembly pass; lint 0 errors / 52 warnings. Full log SHA-256 `217F8A37D5C89353B3D03FB49BAD8741F4BB7F60D0600A4AE78A4305DFF42215`; Debug / AndroidTest APK SHA-256 `357F2D698A78D7D9643AF5F7E1291F185445D3D9226CE5F4B5E7E80288AF8FAF` / `6B89A35252F0106B6A1B9DB45918C22303CA422391644EB0A77A329F413BAEB9`.
+- All 87 JUnit XML files, both APKs and lint XML are preserved under `.local/android-test/reports/separation-20261028/host-compose-retry-final-20261028-150137/`. AndroidTest APK assembly also compiled the concurrent uncommitted `WebSkinManagementInstrumentedTest.kt`; that file was not edited or staged here.
+- No emulator executable was present; no Android WebView, AVD, physical device or live AI provider was tested. This narrows only the local Host Compose retry slice; SEP-10 / SEP-16 remain **NOT TESTED**, S3 remains open. Independent report and updated matrix: `docs/issues/PC-ISSUE-SEPARATION-AI-PUBLISH-FAILURE-RETRY.md` and `docs/SKIN_SEPARATION_PARITY_MATRIX_2026-10-27.md`.
+- Test commit: `a4592a6bfcb3eb554077a40957d7f0d8fd434f4a` (`test(分离): 补齐 Host AI 发布失败重试回归`); the report and matrix changes are in a separate documentation commit.
+
 ## Separation — Studio AI static HTML page/component inventory (2026-10-28)
 
 - Goal C gap: v3 `inspect-v3` exposed package files and `project.json`, but no queryable HTML page/node inventory. Added read-only `analyze-v3`: validated package hash, HTML page/source hashes, title and asset references, explicit source nesting, ordered attributes, ids, parent/child IDs, bounded direct text and static control counts; capped at 20,000 nodes and reports JS/runtime DOM limits. It does not edit, normalize or execute skin code.

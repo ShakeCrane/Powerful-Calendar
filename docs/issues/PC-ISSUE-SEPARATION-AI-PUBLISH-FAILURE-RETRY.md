@@ -2,7 +2,7 @@
 
 日期：2026-10-28
 
-状态：**AI 提案草稿写入失败后的服务层重试和 Skin Studio Mock 场景 PASS；Host Compose 故障注入路径与 Android WebView/设备行为未验证。SEP-10 / S3 仍 NOT TESTED / OPEN。**
+状态：**服务层、Studio Mock 与 Host Compose（Robolectric）失败后显式重试窄场景 PASS；Android WebView/设备行为未验证。SEP-10 / SEP-16 / S3 整体仍 NOT TESTED / OPEN。**
 
 ## 范围与结果
 
@@ -44,11 +44,11 @@ Skin Studio / Clear 验证：
 
 ## 未验证和失败证据
 
-- 尝试从 `PowerCalApp` 的 Compose Host 确认 UI 注入 draft 插入失败。该尝试未在测试时限内完成；最终 Bridge 快照仍显示 `chatBusy=true`，审核卡仍在，隔离 Store 计数仍为 drafts 0 / events 0 / identities 0 / commits 0，DefaultDispatcher workers 空闲。原因尚未定位，不能据此判定 Host 界面重试 PASS，也不能归因成已证实的产品缺陷。失败/诊断日志保留在 `.local/android-test/reports/separation-20261028/ai-publish-failure-retry-3f0301d/`，其中 `diagnostic-host-retry-persisted-state.log` SHA-256 `767C41A6B520B33F2198872A1B093A6032CDEAA4F3507FA9DDC77CA9BDADFDB6`。
+- 初始 Host Compose 测试超时的诊断见下方 follow-up：失败等待循环没有推进 Robolectric 主 Looper。保留原始失败日志供追溯；该失败不是生产路径缺陷证据。
 - `adb devices -l` 提升权限只读查询返回空设备列表；本轮没有 Android WebView、模拟器或真机测试。没有调用真实 AI Provider。
 - Chrome E2E 首次误在皮肤 iframe 查询 Studio 父页面的 Host Mock 对话框，已修正测试上下文并重跑通过；失败日志保留为 `studio-chrome-e2e.log`，SHA-256 `AE1BDE012A7CC6B5AC64AD71638D73C73DAB1D53D5CC88989CC291217C349E21`。
 
-因此本 Issue 只签核服务层失败后重试和 Studio Mock 的窄范围。SEP-10、SEP-16 与 S3 继续 **NOT TESTED / OPEN**；还缺 Host Compose 故障恢复、实际 Clear WebView、真实 Provider、进程死亡恢复及 Native/Skin 全量行为回放。
+原始提交只签核服务层失败后重试和 Studio Mock；下方 follow-up 再签核 Host Compose 的本地 stub 失败重试窄场景。SEP-10、SEP-16 与 S3 继续 **NOT TESTED / OPEN**；实际 Clear WebView、真实 Provider、进程死亡恢复及 Native/Skin 全量行为回放仍未完成。
 
 ## 可复现证据位置
 
@@ -60,3 +60,34 @@ Skin Studio / Clear 验证：
 - 本报告、Parity Matrix 与进度记录已纳入后续独立文档提交并推送；该提交 SHA 在最终交付记录中列出。
 - 并发 Agent 对 `WebSkinManagementInstrumentedTest.kt` 的未提交改动未暂存、未提交。
 - 当前代码与文档均仅覆盖失败后重试这一窄切片；SEP-10 / SEP-16 的完整 parity 与 S3 不得据此签核。
+
+## Follow-up — Host Compose failed publish and explicit retry (2026-10-28)
+
+### Root cause and scope
+
+- Initial timeout was a Robolectric harness synchronization defect: the `ui.waitUntil` loops did not advance `Looper.getMainLooper()`, so an async Compose test could time out while its main-thread continuation remained queued. The diagnostic had shown an idle DefaultDispatcher and a retained review, but that alone did not prove a production hang.
+- A/B verification kept the production `PowerCalApp.kt` byte-for-byte equal to HEAD and added explicit main-looper advancement to each async wait. The same Host Compose failure/retry test then passed. No Android production or Core code was changed for this follow-up.
+- The test uses a local HTTP AI stub, the real `PowerCalApp` Compose flow, a real Host authorization dialog and an isolated SQLite database. It does not call a live provider or Android WebView.
+
+### Verified behavior
+
+- Proposal generation leaves all Store counters unchanged; no event is written before the Host confirmation.
+- A synthetic SQLite trigger rejects the first reviewed-task publish. The proposal remains available and the chat reports the write failure. The task-scoped transaction leaves drafts, formal events, pending items, identities and commits at zero; `nextSequencePreview` remains 1.
+- After removing the trigger, the user must confirm again. Retry creates exactly one formal event at sequence 1, one resolved audit draft, one identity and one commit; there are no pending drafts, the proposal review clears and `chatBusy` returns to false.
+- The existing successful Host confirmation test now also asserts that the review and busy state settle after the database commit.
+
+### Test and build evidence
+
+- Focused classes: `AiChatDraftPipelineTest` **3/3 PASS** and `WebAiProposalReviewIntegrationTest` **8/8 PASS**, zero failures/errors/skips.
+- Full gate: `:app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug --offline --rerun-tasks --no-daemon --console=plain`; **629/629 JVM tests, 87 suites, 0 failures/errors/skips, 88/88 tasks**. Debug and AndroidTest APK assembly passed; lint **0 errors / 52 warnings**.
+- Evidence directory: `.local/android-test/reports/separation-20261028/host-compose-retry-final-20261028-150137/`.
+- Full Gradle log SHA-256: `217F8A37D5C89353B3D03FB49BAD8741F4BB7F60D0600A4AE78A4305DFF42215`.
+- Full JUnit XML: `junit-full/` (87 suites). AI service XML SHA-256 `5EE7B646229F86A571630A3D67C5D65676B131D8202D4056A790F912A3AFADEC`; Host integration XML SHA-256 `4B19CFE6CFD158A024820BEE76B25F26264DF87755EC9545075A3B472ECF2407`.
+- Debug / AndroidTest APK SHA-256: `357F2D698A78D7D9643AF5F7E1291F185445D3D9226CE5F4B5E7E80288AF8FAF` / `6B89A35252F0106B6A1B9DB45918C22303CA422391644EB0A77A329F413BAEB9`; lint XML SHA-256 `1CD7790BFDF2A843A56BC734EDD45F0C83906ACDDF006DDE29D48352CCC0575D`.
+- AndroidTest APK assembly included another Agent's uncommitted `WebSkinManagementInstrumentedTest.kt` changes because Gradle compiles the current worktree. That file was not edited, staged or included in this follow-up commit.
+
+### Remaining boundary
+
+- No emulator executable was installed in the local SDK, so this follow-up did not run Android WebView instrumentation, an AVD or a physical device; no live AI provider was called. The user's physical-device testing remains separate.
+- This signs only the local-stub Host Compose retry slice. SEP-10, SEP-16 and S3 remain **NOT TESTED / OPEN** for full parity, other AI decisions, process-death recovery, WebView/device behavior and Native/Skin replay.
+- Follow-up test commit: `a4592a6bfcb3eb554077a40957d7f0d8fd434f4a` (`test(分离): 补齐 Host AI 发布失败重试回归`), containing only the two owned JVM test files; production/Core sources are unchanged.
