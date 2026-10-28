@@ -43,17 +43,19 @@ Host Bridge 不向皮肤公开内部 occurrenceKey 状态字段。正式编辑�
 | 定向 Host/Bridge JVM：WebSkinRecurrenceBridgeTest + WebSkinHostProjectionTest | **23/23 PASS**，0 failure/error。覆盖 repeating Memo 槽位、单次 key 分离、revision/编辑服务路由和恢复 checkpoint。 | gradle-focused-memo-host-final.log SHA-256 6E53E58FA3C13F44F548A5B05CF0EB85DC71D4FBC24F644DB339DC5FE6DC173D |
 | Skin Studio Python 全套：python -m unittest discover -s tools/skin-studio/tests -v | **51/51 PASS**。 | studio-unittest.log SHA-256 68DBA6884722ECE4BC4391A2F4A8BD11E8041B32ABD8552D91DECEC65BF30028 |
 | Chrome/CDP Studio/skin Mock E2E（e2e_v3_source.cjs） | **Memo 打开及完成切换分离 PASS**。浏览器结果：eventSeq=31、revision=2、originalOccurrenceKey=2026-10-22T00:00、editorKind=MEMO、selectedDate=2026-10-22、completionRemainsSeparate=true。同日志还包含源码 round-trip、recurrence、AI Mock 回归 PASS；provider 和正式日历写入均未执行。 | chrome-e2e-final2.log SHA-256 9EA4EA8C13465832E19CE843B210116E9AFA4FDAF8652E3329CDE227BA29703C |
-| Clear package 从规范源码构建及一致性验证：python tools/skin-studio/build_default_clear.py --verify | **PASS**，8 files / 378,086 bytes；package SHA-256 711e1ad695b47e5d05eea3db1761e933e444f608f9acf91619c6915423c8b45a。 | 命令输出；生成资产 app/src/main/assets/powercal-clear-default.pcskin |
+| Clear package 从规范源码构建及一致性验证：python tools/skin-studio/build_default_clear.py --verify | **PASS**，8 files / 378,086 bytes；package SHA-256 711e1ad695b47e5d05eea3db1761e933e444f608f9acf91619c6915423c8b45a。 | clear-package-verify-final.log SHA-256 6865600F770048037ECDD6880B6E12D2354C9D1B854237D5C210B06EBE0A5C61；生成资产 app/src/main/assets/powercal-clear-default.pcskin |
 | JavaScript 语法：node --check on Clear app.js、v3-studio.js、e2e_v3_source.cjs | **3/3 PASS**。 | 终端退出码 0；语法检查无独立持久日志。 |
 | 完整 Gradle：:app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --offline --rerun-tasks --no-daemon --console=plain | **BUILD SUCCESSFUL**；603/603 JVM tests、83 suites、0 failures/errors/skipped，59/59 tasks；source boundary、Debug APK、lint 通过。Lint 为 0 errors / 52 warnings。 | gradle-full-final.log SHA-256 B396DD2AD012B0839D7A69CEDA0C2A3E0BB2A85B9640F0FD1AC6057CAB530A87；Debug APK SHA-256 BBFCEC10BD012910D9035EB624C22ECC029087E9424DCAE8CB90B75337E7C697 |
-| AndroidTest APK 编译：:app:assembleDebugAndroidTest --offline --no-daemon --console=plain | **BUILD SUCCESSFUL**；只证明 instrumentation APK 编译，不代表设备执行。 | gradle-androidtest-assemble.log SHA-256 85435A546A9233D99BAD3FDAD836890698BD22B3BC322C9730C869B4333255D1；APK SHA-256 60F08FFC420D8C67860FE9D85938C5237CF3C48CD49D5EF2C60DC1187C5C9B90 |
-| Android WebView / 模拟器 / 实体设备 | **NOT TESTED**。adb devices -l 无法启动/连接 ADB daemon（could not read ok from ADB Server），并且仓库机器上未发现 emulator.exe。 | 环境阻塞记录；Chrome Mock 和 Android APK 编译不替代此项。实体设备由用户执行。 |
+| AndroidTest APK 编译：:app:assembleDebugAndroidTest --offline --no-daemon --console=plain | **BUILD SUCCESSFUL**；只证明 instrumentation APK 编译，不代表设备执行。 | gradle-androidtest-assemble.log SHA-256 85435A546A9233D99BAD3FDAD836890698BD22B3BC322C9730C869B4333255D1；APK SHA-256 60F08FFC420D8C67860FE9D85938C5237CF3C48CD49D5EFC260DC1187C5C9B90 |
+| Android WebView / 模拟器 / 实体设备 | **NOT TESTED**。adb devices -l 无法启动 ADB daemon（could not read ok from ADB Server）；E:\android-sdk\emulator\emulator.exe 不存在。 | adb-devices-final.log SHA-256 8CA75F86FF950EFB778C629F9BA89CC10441371749092D846FB3E8781D4F7300；Android APK 编译和 Chrome Mock 不替代设备测试。实体设备由用户执行。 |
 
 ## 验证中纠正的测试假设
 
 - 一版 Bridge 回归错误地要求皮肤 state snapshot 暴露内部 occurrenceKey。该状态不应越过 Host 信任边界；测试改为通过实际编辑和持久化 recovery checkpoint 核实槽位保持。最终 Bridge/Projection 定向组 23/23 PASS。
 - 一版浏览器回归试图读取 SINGLE_OCCURRENCE 下已按现有语义隐藏的类型切换字段。测试改为验证 MEMO subtitle、实例日期和类型字段隐藏，最终 Memo action 断言通过。
-- 最初受限权限的 Studio 测试尝试遇到 loopback/temp-file 权限错误，且当时 Clear 资产尚未重建；在正确本地测试权限下重建包并重跑后，完整 Python 套件 51/51 PASS。初始失败不计为产品 PASS，相关过程日志仍留存在 .local/android-test/reports/separation-memo-open/。
+- 初始 Gradle 定向命令没有 Android SDK 路径而失败；日志 gradle-focused.log SHA-256 8ED3F72EB290EB0E1258990B373C18CF6D8855F3D8A2446F0F8F39657B11D2F8。设置正确 SDK 后重跑成功。
+- 早期 Chrome E2E 有两次断言失败：chrome-e2e.log 的 TypeError 是测试在 SINGLE_OCCURRENCE 模式读取已隐藏的 kind 控件值；chrome-e2e-final.log 的同-kind 断言仍选错标题元素。测试改为检查 MEMO subtitle、kind 控件确实隐藏及实例日期，最终 chrome-e2e-final2.log 全部通过。失败日志 SHA-256 分别为 FD6C835ED57D05CA5D90EF924787CDCC7FAD94CC96F85086CF41BDE9DD847B9B 和 D6C7A5EDBEA614FB471AB5A5DAAE2BD6CC1D19FBA5164ED6D72E0990867F33DD。
+- 初始受限权限的 Studio 测试遇到 loopback/temp-file 权限错误，且当时 Clear 资产尚未重建；随后以可访问的 loopback 权限重建包并重跑，完整 Python 套件 51/51 PASS。初始失败日志没有单独保留，当前 studio-unittest.log 是最终成功结果。
 
 ## 未解决边界与阶段状态
 
@@ -62,4 +64,4 @@ Host Bridge 不向皮肤公开内部 occurrenceKey 状态字段。正式编辑�
 - S0 全面调查仍未结束：Memo 分页/250 条截断、stale revision/retry/restart 全链路、其他 Memo 操作、其他 61 个重建项、完整双轨等价回放尚未闭环。不能以本 Issue 关闭 S0 或宣布 Skin separation GO。
 - 本次没有修改 Core 业务语义、事件数据、权限或 Native fallback；没有做 factory skin cutover。
 
-后续提交由 Git 记录；此报告随修复提交。APK 与完整测试结果只作为当前源码快照证据，提交 SHA 将在提交后由进度记录及最终交付报告注明。
+代码、定向回归、独立 Issue 报告、矩阵及进度更新随实现提交 f9c45febcb50e42606c0b84ace1247405ae6f75b 入库。APK 与测试结果是该提交源码快照的证据；Android 运行时验证仍未执行。
