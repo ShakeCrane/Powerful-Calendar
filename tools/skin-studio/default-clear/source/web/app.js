@@ -9,6 +9,7 @@ darkMedia.addEventListener("change",applyTheme);
 let port=null, state={}, currentPage="TIMELINE", memoFilter="open",localOptions=false;
 let aiReviewSelectionId="",aiReviewSelected=new Set();
 let attachmentRequestPending=false;
+let renderedChatMessages=[];
 let timelineCreateDialog=null;
 let monthPickerReturn=null;
 const send=(name,extra={})=>{
@@ -350,10 +351,17 @@ function renderMemo(){
 }
 function renderChat(){
   installChatAttachmentControls();
-  const list=$("chatMessages");list.replaceChildren();
-  const messages=state.chatMessages||[];
+  const list=$("chatMessages");
+  const messages=Array.isArray(state.chatMessages)?state.chatMessages:[];
+  const previousTop=list.scrollTop;
+  const previousScrollHeight=list.scrollHeight;
+  const wasAtBottom=list.scrollHeight-list.clientHeight-previousTop<=48;
+  const messagesChanged=messages.length!==renderedChatMessages.length||messages.some((item,index)=>
+    item.role!==renderedChatMessages[index]?.role||item.content!==renderedChatMessages[index]?.content);
+  list.replaceChildren();
   if(!messages.length)list.append(node("p","quiet","从这里开始与 AI 讨论日程"));
   for(const item of messages)list.append(node("div","chat-bubble "+(item.role==="user"?"user":"assistant"),item.content));
+  renderedChatMessages=messages.map(item=>({role:item.role,content:item.content}));
   renderAiProposalReview(list);
   const disabled=!!(state.aiLocked||state.chatBusy);
   $("chatInput").disabled=disabled;$("chatSend").disabled=disabled;
@@ -369,7 +377,8 @@ function renderChat(){
     list.append(node("p","quiet","请先处理当前提案审核，再添加新附件"));
   else if(attachmentUnavailable)
     list.append(node("p","quiet","请先完成当前 AI 操作，再选择附件"));
-  list.scrollTop=list.scrollHeight;
+  if(wasAtBottom&&(messagesChanged||list.scrollHeight>previousScrollHeight))list.scrollTop=list.scrollHeight;
+  else list.scrollTop=Math.min(previousTop,Math.max(0,list.scrollHeight-list.clientHeight));
 }
 function installChatAttachmentControls(){
   const composer=$("chatForm").querySelector(".composer");

@@ -152,9 +152,14 @@ async function main(){
       check(before.includes('PowerCalEdit'),'edit.js contents missing');
       field.value=before+'\\n// browser-source-roundtrip\\n';
       field.dispatchEvent(new Event('input',{bubbles:true}));
+      const jsField=document.querySelector('#jsCode');
+      const clearSourceBefore=jsField.value,clearMarker='\\n// studio-source-roundtrip-chat-scroll\\n';
+      jsField.value=clearSourceBefore+clearMarker;
+      jsField.dispatchEvent(new Event('input',{bubbles:true}));
       const project=payload();
       check(JSON.stringify(project.manifest.capabilities)==='["host.read"]','capabilities changed');
       check(project.files['project.json']===data.files['project.json'],'untouched project metadata changed');
+      check(atob(project.files['web/app.js']).endsWith(clearMarker),'Clear runtime source edit was not retained');
       const post=async(url,body,type)=>{const r=await fetch(url,{method:'POST',headers:{'Content-Type':type},body});
         check(r.ok,url+' returned '+r.status);return r};
       select.value='project.json';select.dispatchEvent(new Event('change'));
@@ -210,6 +215,7 @@ async function main(){
       for(const [name,bytes] of Object.entries(authored.files))
         check(imported.files[name]===bytes,'round trip changed '+name);
       await loadPackage(imported);document.querySelector('#advancedMode').click();
+      check(jsField.value===clearSourceBefore+clearMarker,'Clear runtime JS edit was lost after package roundtrip');
       select.value='web/edit.js';select.dispatchEvent(new Event('change'));
       check(field.value===before+'\\n// browser-source-roundtrip\\n','reimport edit missing');
       select.value='project.json';select.dispatchEvent(new Event('change'));
@@ -262,7 +268,7 @@ async function main(){
       return {file:'web/edit.js', files:Object.keys(authored.files).length, capabilities:imported.manifest.capabilities,
         componentTree:true,componentInsert:true,componentReplace:true,componentMove:true,componentRemove:true,
         componentAttributes:true,
-        componentPreviewExportRoundtrip:true,componentReloadState:true,
+         componentPreviewExportRoundtrip:true,componentReloadState:true,runtimeSourceEditRoundtrip:true,
         blankScaffoldImport:true,blankScaffoldEdit:true,blankScaffoldPreviewExportImport:true,
         blankScaffoldReimportedIntoStudio:true,
         projectTree:true,newText:true,newBinary:true,replacedBinary:true,delete:true,referenceGuard:true};
@@ -678,6 +684,87 @@ async function main(){
     if(aiAttachments.exceptionDetails)throw Error(aiAttachments.exceptionDetails.exception?.description || aiAttachments.exceptionDetails.text);
     console.log("BROWSER AI attachment Host-action Mock PASS",JSON.stringify(aiAttachments.result.value));
     await call("Runtime.evaluate",{expression:`(()=>{const e=document.querySelector('#scenario');e.value='ai-error';e.dispatchEvent(new Event('change',{bubbles:true}))})()`,returnByValue:true});
+    const chatScrollSeed=await call("Runtime.evaluate",{returnByValue:true,expression:`(()=>{
+      mockPage='AI';
+      mockAiErrorMessages=Array.from({length:18},(_,index)=>({
+        role:index%2===0?'assistant':'user',
+        content:'历史消息 '+index+'：用于验证长列表阅读位置保持。'.repeat(3)
+      }));
+      postState();return mockAiErrorMessages.length;
+    })()`});
+    if(chatScrollSeed.exceptionDetails)throw Error(chatScrollSeed.exceptionDetails.exception?.description || chatScrollSeed.exceptionDetails.text);
+    const chatScroll=await call("Runtime.evaluate",{contextId:world.executionContextId,
+      awaitPromise:true,returnByValue:true,expression:`(async()=>{
+        const check=(v,m)=>{if(!v)throw Error(m)};
+        const wait=async(fn,m)=>{for(let i=0;i<100;i++){if(fn())return;await new Promise(r=>setTimeout(r,100))}throw Error(m)};
+        const list=document.querySelector('#chatMessages');
+        list.style.height='260px';list.style.maxHeight='260px';list.style.minHeight='0';list.style.flex='none';
+        await wait(()=>list.querySelectorAll('.chat-bubble').length===19,'long chat history did not load');
+        list.scrollTop=220;await new Promise(r=>setTimeout(r,50));
+        const before=list.scrollTop,firstVisible=[...list.querySelectorAll('.chat-bubble')]
+          .find(item=>item.getBoundingClientRect().bottom>list.getBoundingClientRect().top)?.textContent;
+        check(before>0&&before<list.scrollHeight-list.clientHeight-80,'test did not enter historical reading position');
+        return {before,firstVisible};
+      })()`});
+    if(chatScroll.exceptionDetails)throw Error(chatScroll.exceptionDetails.exception?.description || chatScroll.exceptionDetails.text);
+    const chatScrollStart=chatScroll.result.value;
+    await call("Runtime.evaluate",{returnByValue:true,expression:`(()=>{mockMemoDone=!mockMemoDone;postState();return true})()`});
+    const unrelatedUpdate=await call("Runtime.evaluate",{contextId:world.executionContextId,
+      awaitPromise:true,returnByValue:true,expression:`(async()=>{
+        await new Promise(r=>setTimeout(r,50));
+        const list=document.querySelector('#chatMessages');
+        const visible=[...list.querySelectorAll('.chat-bubble')]
+          .find(item=>item.getBoundingClientRect().bottom>list.getBoundingClientRect().top)?.textContent;
+        return {scrollTop:list.scrollTop,visible};
+      })()`});
+    if(unrelatedUpdate.exceptionDetails)throw Error(unrelatedUpdate.exceptionDetails.exception?.description || unrelatedUpdate.exceptionDetails.text);
+    if(Math.abs(unrelatedUpdate.result.value.scrollTop-chatScrollStart.before)>1||
+      unrelatedUpdate.result.value.visible!==chatScrollStart.firstVisible)
+      throw Error('reading history jumped after an unrelated host-state update: '+JSON.stringify(unrelatedUpdate.result.value));
+    const appendHistory=await call("Runtime.evaluate",{returnByValue:true,expression:`(()=>{
+      mockAiErrorMessages=[...mockAiErrorMessages,{role:'assistant',content:'追加的新回复'}];postState();return true;
+    })()`});
+    if(appendHistory.exceptionDetails)throw Error(appendHistory.exceptionDetails.exception?.description || appendHistory.exceptionDetails.text);
+    const chatScrollHistorical=await call("Runtime.evaluate",{contextId:world.executionContextId,
+      awaitPromise:true,returnByValue:true,expression:`(async()=>{
+        const wait=async(fn,m)=>{for(let i=0;i<100;i++){if(fn())return;await new Promise(r=>setTimeout(r,100))}throw Error(m)};
+        const list=document.querySelector('#chatMessages');await wait(()=>list.querySelectorAll('.chat-bubble').length===20,'new chat reply did not render');
+        const visible=[...list.querySelectorAll('.chat-bubble')]
+          .find(item=>item.getBoundingClientRect().bottom>list.getBoundingClientRect().top)?.textContent;
+        return {scrollTop:list.scrollTop,scrollHeight:list.scrollHeight,clientHeight:list.clientHeight,visible};
+      })()`});
+    if(chatScrollHistorical.exceptionDetails)throw Error(chatScrollHistorical.exceptionDetails.exception?.description || chatScrollHistorical.exceptionDetails.text);
+    const historical=chatScrollHistorical.result.value;
+    if(Math.abs(historical.scrollTop-chatScrollStart.before)>1||historical.visible!==chatScrollStart.firstVisible)
+      throw Error('reading history jumped after a new message: '+JSON.stringify({start:chatScrollStart,after:historical}));
+    const chatScrollScreenshot=await call("Page.captureScreenshot",{format:"png",captureBeyondViewport:true});
+    fs.writeFileSync(path.join(reportDir,"studio-chat-scroll-history.png"),
+      Buffer.from(chatScrollScreenshot.data,"base64"));
+    const followBottom=await call("Runtime.evaluate",{contextId:world.executionContextId,
+      awaitPromise:true,returnByValue:true,expression:`(async()=>{
+        const list=document.querySelector('#chatMessages');list.scrollTop=list.scrollHeight;
+        const before=list.scrollTop;
+        return before;
+      })()`});
+    if(followBottom.exceptionDetails)throw Error(followBottom.exceptionDetails.exception?.description || followBottom.exceptionDetails.text);
+    await call("Runtime.evaluate",{returnByValue:true,expression:`(()=>{mockAiErrorMessages=[...mockAiErrorMessages,
+      {role:'assistant',content:'底部的新回复'}];postState()})()`});
+    const bottomFollow=await call("Runtime.evaluate",{contextId:world.executionContextId,
+      awaitPromise:true,returnByValue:true,expression:`(async()=>{
+        const wait=async(fn,m)=>{for(let i=0;i<100;i++){if(fn())return;await new Promise(r=>setTimeout(r,100))}throw Error(m)};
+        const list=document.querySelector('#chatMessages');await wait(()=>list.querySelectorAll('.chat-bubble').length===21,'bottom reply did not render');
+        return {scrollTop:list.scrollTop,maximum:Math.max(0,list.scrollHeight-list.clientHeight)};
+      })()`});
+    if(bottomFollow.exceptionDetails)throw Error(bottomFollow.exceptionDetails.exception?.description || bottomFollow.exceptionDetails.text);
+    if(bottomFollow.result.value.maximum-bottomFollow.result.value.scrollTop>1)
+      throw Error('chat did not follow a new reply while already at the bottom: '+JSON.stringify(bottomFollow.result.value));
+    console.log('BROWSER CHAT SCROLL ANCHOR PASS',JSON.stringify({historical,followBottom:bottomFollow.result.value}));
+    await call("Runtime.evaluate",{returnByValue:true,expression:`(()=>{
+      mockAiErrorMessages=[
+        {role:'user',content:'请帮我概括明天的安排。'},
+        {role:'assistant',content:'Studio Mock：AI 请求未完成（模拟 HTTP 503）；上下文已保留，可编辑后手动重发。'}
+      ];postState();return true;
+    })()`});
     const aiErrorResend=await call("Runtime.evaluate",{contextId:world.executionContextId,
       awaitPromise:true,returnByValue:true,expression:`(async()=>{
         const check=(v,m)=>{if(!v)throw Error(m)};
