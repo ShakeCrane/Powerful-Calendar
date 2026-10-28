@@ -49,9 +49,10 @@ object ReminderScheduler {
     /** Idempotent: safe to call after boot, timezone change, permission change or a commit. */
     fun reconcile(context: Context, store: PowerStore) {
         val now = System.currentTimeMillis()
-        // One pass over a generous window; `markIntent` is revision-guarded so a row replaced by a
-        // concurrent commit is never mislabelled.
-        store.dueIntents(limit = 400).forEach { intent ->
+        // Revisit blocked rows as well: a permission or OS state change can make them schedulable
+        // without a new event revision. `markIntent` remains revision-guarded against concurrent
+        // commits.
+        store.reconciliationIntents(limit = 400).forEach { intent ->
             runCatching { apply(context, store, intent, now) }
                 .onFailure { Log.w(TAG, "reconcile #${intent.eventSeq} failed", it) }
         }
@@ -106,10 +107,13 @@ object ReminderScheduler {
                 manager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, intent.instantMillis, pending)
             }
             // Zero rows means the row was replaced; do not claim we scheduled the current revision.
-            store.markIntent(
+            val markedScheduled = store.markIntent(
                 intent.eventSeq, intent.triggerId, PowerStore.DesiredSchedule.SCHEDULED,
                 null, intent.revision, intent.occurrenceKey
             )
+            if (markedScheduled && store.intentsInState(PowerStore.DesiredSchedule.BLOCKED, limit = 1).isEmpty()) {
+                NotificationHelper.cancelExactAlarmBlocked(context)
+            }
         } catch (security: SecurityException) {
             val owned = store.markIntent(
                 intent.eventSeq, intent.triggerId, PowerStore.DesiredSchedule.BLOCKED,

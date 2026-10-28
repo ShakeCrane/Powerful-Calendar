@@ -2397,6 +2397,24 @@ class PowerStore(
             arrayOf(limit.toString())
         ).use { cursor -> readIntents(cursor) }
 
+    /**
+     * Intents eligible for a reconciliation pass. Each state group gets its own bounded batch so
+     * unrecoverable BLOCKED rows cannot starve PENDING or SCHEDULED intents. BLOCKED rows are
+     * included so a later permission or system-state change can recover them without an edit.
+     */
+    @Synchronized
+    fun reconciliationIntents(limit: Int = 400): List<ScheduleIntent> {
+        require(limit > 0) { "limit must be positive" }
+        fun readStates(states: String): List<ScheduleIntent> = readableDatabase.rawQuery(
+            """SELECT event_seq,trigger_id,revision,occurrence_key,instant_ms,requirement,desired_state,android_hint
+               FROM schedule_intents WHERE desired_state IN ($states)
+               ORDER BY instant_ms ASC,event_seq ASC,trigger_id ASC LIMIT ?""",
+            arrayOf(limit.toString())
+        ).use { cursor -> readIntents(cursor) }
+
+        return readStates("'PENDING','SCHEDULED'") + readStates("'BLOCKED'")
+    }
+
     @Synchronized
     fun intentsInState(state: DesiredSchedule, limit: Int = 100): List<ScheduleIntent> =
         readableDatabase.rawQuery(

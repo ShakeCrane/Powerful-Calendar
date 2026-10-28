@@ -1,6 +1,7 @@
 package dev.powerfulcalendar.reminders
 
 import android.app.AlarmManager
+import android.app.NotificationManager
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import dev.powerfulcalendar.core.DraftForm
@@ -122,6 +123,74 @@ class ReminderValidationTest {
         assertEquals(PowerStore.DesiredSchedule.BLOCKED, blocked.desired)
         assertTrue(blocked.androidHint.orEmpty().contains("精确闹钟权限"))
         assertTrue(shadowAlarmManager.scheduledAlarms.isEmpty())
+    }
+
+    @Test
+    fun blockedExactIntentIsRescheduledAfterPermissionIsGranted() {
+        val alarmManager = context.getSystemService(AlarmManager::class.java)!!
+        val shadowAlarmManager = Shadows.shadowOf(alarmManager)
+        ShadowAlarmManager.setCanScheduleExactAlarms(false)
+
+        val seq = createAlarm(60)
+        val record = store.get(seq)!!
+        val exactReminder = store.newDraft(
+            DraftForm.from(record).copy(reminderMethod = ReminderMethod.ALARM),
+            seq,
+            DraftOperation.REPLACE
+        )
+        assertTrue(store.commit(exactReminder.draftId) is PowerStore.CommitOutcome.Committed)
+
+        ReminderScheduler.reconcile(context, store)
+        assertEquals(PowerStore.DesiredSchedule.BLOCKED, store.intentFor(seq)!!.desired)
+        assertTrue(shadowAlarmManager.scheduledAlarms.isEmpty())
+        val notificationManager = context.getSystemService(NotificationManager::class.java)!!
+        assertTrue(notificationManager.activeNotifications.any {
+            it.id == AlarmContract.NOTIFICATION_STATUS_ID
+        })
+
+        ShadowAlarmManager.setCanScheduleExactAlarms(true)
+        ReminderScheduler.reconcile(context, store)
+
+        assertEquals(PowerStore.DesiredSchedule.SCHEDULED, store.intentFor(seq)!!.desired)
+        assertEquals(1, shadowAlarmManager.scheduledAlarms.size)
+        assertTrue(notificationManager.activeNotifications.none {
+            it.id == AlarmContract.NOTIFICATION_STATUS_ID
+        })
+    }
+
+    @Test
+    fun blockedIntentsDoNotStarvePendingOrScheduledReconciliationIntents() {
+        val pendingSeq = createAlarm(60)
+        val scheduledSeq = createAlarm(61)
+        val scheduled = store.intentFor(scheduledSeq)!!
+        assertTrue(store.markIntent(
+            scheduledSeq, scheduled.triggerId, PowerStore.DesiredSchedule.SCHEDULED,
+            null, scheduled.revision, scheduled.occurrenceKey
+        ))
+
+        repeat(400) { index ->
+            store.writableDatabase.execSQL(
+                """INSERT INTO schedule_intents(
+                    event_seq,trigger_id,revision,occurrence_key,instant_ms,requirement,
+                    desired_state,android_hint,updated_ms
+                ) VALUES(?,?,?,?,?,?,?,?,?)""",
+                arrayOf<Any?>(
+                    10_000L + index, "blocked-$index", 1L, "slot-$index",
+                    System.currentTimeMillis() + index, PowerStore.TriggerRequirement.EXACT.name,
+                    PowerStore.DesiredSchedule.BLOCKED.name, "权限未授予", System.currentTimeMillis()
+                )
+            )
+        }
+
+        val batch = store.reconciliationIntents(limit = 400)
+
+        assertEquals(400, batch.count { it.desired == PowerStore.DesiredSchedule.BLOCKED })
+        assertTrue(batch.any {
+            it.eventSeq == pendingSeq && it.desired == PowerStore.DesiredSchedule.PENDING
+        })
+        assertTrue(batch.any {
+            it.eventSeq == scheduledSeq && it.desired == PowerStore.DesiredSchedule.SCHEDULED
+        })
     }
 
     @Test

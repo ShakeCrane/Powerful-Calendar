@@ -107,6 +107,11 @@ object NotificationHelper {
         runCatching { manager.notify(AlarmContract.NOTIFICATION_STATUS_ID, notification) }
     }
 
+    fun cancelExactAlarmBlocked(context: Context) {
+        context.getSystemService(NotificationManager::class.java)
+            ?.cancel(AlarmContract.NOTIFICATION_STATUS_ID)
+    }
+
     fun cancelReminder(context: Context, eventSeq: Long) {
         context.getSystemService(NotificationManager::class.java)
             ?.cancel(notificationId(eventSeq))
