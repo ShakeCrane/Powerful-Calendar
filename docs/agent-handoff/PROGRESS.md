@@ -1,5 +1,12 @@
 # Core freeze progress
 
+## Separation — Studio component CSS override editor (2026-10-28)
+
+- SEP-15 gap: static HTML structure and attribute editors existed, but component appearance required direct full-source CSS editing. Added a selected-node style panel plus `component-style`: SHA-guarded HTML/CSS edits create a unique node marker and managed selector, preserve authored bytes outside the generated regions, support property update/removal and restore state after import.
+- Evidence: component project operations **26/26 PASS**; AI/CLI style workflow **2/2 PASS**; full Skin Studio Python suite **72/72 PASS**; Chrome Headless E2E verifies style edit/update/remove, rehydration, computed `rgb(255, 0, 255)` / weight 900, and preview/export/import. JS/Python syntax and Clear asset verification pass. Detailed commands and hashes: `docs/issues/PC-ISSUE-SEPARATION-STUDIO-COMPONENT-STYLES.md`; artifacts under `.local/android-test/reports/separation-20261028/studio-component-styles-final-20261028/`.
+- Implemented in `7c3dc3832be65bd58b1ec7d017e56988af61dbeb`, pushed to `origin/codex/separation-skin-settings`. SEP-15/S5 remains **NOT TESTED** overall; full visual/layout/logic authoring, JS runtime node inventory, Android WebView/AVD and physical evidence remain open. No Android or physical-device result is claimed.
+- The concurrent uncommitted `WebSkinManagementInstrumentedTest.kt` owned by another agent remains untouched and unstaged.
+
 ## Separation — Host Compose AI publish failure/retry follow-up (2026-10-28)
 
 - The earlier Host Compose diagnostic timeout was caused by the Robolectric wait loop not advancing `Looper.getMainLooper()`. An A/B run against unchanged production `PowerCalApp.kt`, with explicit looper advancement at async checkpoints, passed; no production/Core code change was needed.
