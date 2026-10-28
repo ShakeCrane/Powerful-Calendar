@@ -30,6 +30,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
 import androidx.test.core.app.ApplicationProvider
 import dev.powerfulcalendar.ai.AiChatHistoryStore
 import dev.powerfulcalendar.ai.AiFileFallbackConsent
@@ -459,6 +460,116 @@ class WebAiAttachmentFlowIntegrationTest {
         cancelPicker(WebSkinAction.PickAiImage, Intent.ACTION_GET_CONTENT, "image/*")
         assertTrue("image picker cancellation must not leave its consent sheet open",
             ui.onAllNodesWithText("图片识别方式").fetchSemanticsNodes().isEmpty())
+    }
+
+    @Test
+    fun skinLocalOcrRequiresUserChoiceAndKeepsRecognizedTextEditable() {
+        val uri = Uri.parse("content://powercal-ocr-test-" + namespace + "/note.png")
+        val recognizedText = "明天下午三点复诊"
+        val correctedText = "明天下午三点复诊（已核对）"
+        val ocr = FakeLocalImageOcr(resultText = recognizedText)
+        val before = counts()
+
+        ServerSocket(0, 4, InetAddress.getByName("127.0.0.1")).use { server ->
+            server.soTimeout = 750
+            AiSettingsStore.save(context, AiSettings(
+                endpoint = "http://127.0.0.1:${server.localPort}/v1",
+                model = "local-stub:free",
+                apiKey = "LOCAL_TEST_ONLY",
+                enabled = true,
+                shareContext = false
+            ))
+            ui.activity.setContent {
+                CompositionLocalProvider(
+                    LocalContext provides context,
+                    LocalActivityResultRegistryOwner provides resultRegistryOwner
+                ) {
+                    PowerCalTheme { PowerCalAppWithLocalImageOcr(store, ocr) }
+                }
+            }
+            ui.waitForIdle()
+            ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.Routed("ai")) }
+            ui.waitForIdle()
+
+            ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.PickAiImage) }
+            ui.waitForIdle()
+            assertEquals(Intent.ACTION_GET_CONTENT, resultRegistry.lastIntent?.action)
+            assertEquals("image/*", resultRegistry.lastIntent?.type)
+            ui.runOnIdle { assertTrue(resultRegistry.dispatch(uri)) }
+            ui.waitUntil(5_000) {
+                ui.onAllNodesWithText("图片识别方式").fetchSemanticsNodes().isNotEmpty()
+            }
+            assertEquals("selecting an image must not create calendar data", before, counts())
+            assertNull("recognition must not start before the user selects local OCR", ocr.lastUri)
+
+            ui.onNodeWithText("仅本地 OCR").performClick()
+            ui.waitUntil(5_000) {
+                ui.onAllNodesWithText("核对 OCR 识别原文")
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+            assertEquals(uri, ocr.lastUri)
+            ui.onNode(hasSetTextAction() and hasText(recognizedText)).assertExists()
+            ui.onNode(hasSetTextAction() and hasText(recognizedText))
+                .performTextReplacement(correctedText)
+            ui.onNodeWithText(correctedText).assertExists()
+            assertEquals("local recognition must not send image or OCR text automatically",
+                before, counts())
+
+            ui.onNodeWithText("取消").performClick()
+            ui.waitUntil(5_000) {
+                ui.onAllNodesWithText("核对 OCR 识别原文")
+                    .fetchSemanticsNodes().isEmpty()
+            }
+            assertEquals("cancelling OCR review must not write calendar data", before, counts())
+            assertEquals(0, WebSkinBridgeRuntime.state()
+                .optJSONArray("chatMessages")?.length() ?: 0)
+            val providerWasContacted = runCatching { server.accept().use { true } }
+                .getOrElse { error ->
+                    if (error is java.net.SocketTimeoutException) false else throw error
+                }
+            assertFalse("local OCR and review cancellation must not call the AI endpoint",
+                providerWasContacted)
+        }
+    }
+
+    @Test
+    fun skinLocalOcrSynchronousFailureShowsRecoveryNoticeWithoutCrashing() {
+        val uri = Uri.parse("content://powercal-ocr-error-" + namespace + "/broken.png")
+        val failure = IllegalStateException("synthetic recognizer initialization failure")
+        val ocr = FakeLocalImageOcr(failure = failure)
+        val before = counts()
+
+        ui.activity.setContent {
+            CompositionLocalProvider(
+                LocalContext provides context,
+                LocalActivityResultRegistryOwner provides resultRegistryOwner
+            ) {
+                PowerCalTheme { PowerCalAppWithLocalImageOcr(store, ocr) }
+            }
+        }
+        ui.waitForIdle()
+        ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.Routed("ai")) }
+        ui.waitForIdle()
+        ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.PickAiImage) }
+        ui.waitForIdle()
+        assertTrue(resultRegistry.dispatch(uri))
+        ui.waitUntil(5_000) {
+            ui.onAllNodesWithText("图片识别方式").fetchSemanticsNodes().isNotEmpty()
+        }
+
+        ui.onNodeWithText("仅本地 OCR").performClick()
+        ui.waitUntil(5_000) {
+            ui.onAllNodesWithText("OCR 失败：synthetic recognizer initialization failure")
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        assertEquals(uri, ocr.lastUri)
+        assertFalse("OCR failure must not leave the attachment lock held",
+            WebSkinBridgeRuntime.state().optBoolean("chatAttachmentBusy"))
+        assertTrue("the image picker should remain retryable after local OCR failure",
+            WebSkinBridgeRuntime.state().optBoolean("chatAttachmentAvailable"))
+        assertEquals("OCR failure must not write events, drafts or commits", before, counts())
+        assertEquals(0, WebSkinBridgeRuntime.state()
+            .optJSONArray("chatMessages")?.length() ?: 0)
     }
 
     @Test
@@ -909,6 +1020,24 @@ class WebAiAttachmentFlowIntegrationTest {
             selection: String?,
             selectionArgs: Array<out String>?
         ): Int = 0
+    }
+
+    private class FakeLocalImageOcr(
+        private val resultText: String? = null,
+        private val failure: Throwable? = null
+    ) : LocalImageOcr {
+        var lastUri: Uri? = null
+            private set
+
+        override fun recognize(
+            context: Context,
+            uri: Uri,
+            onResult: (Result<String>) -> Unit
+        ) {
+            lastUri = uri
+            failure?.let { throw it }
+            onResult(Result.success(requireNotNull(resultText)))
+        }
     }
 
     private class IsolatedContext(

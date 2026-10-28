@@ -77,9 +77,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.text.TextRecognition
-import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
 import dev.powerfulcalendar.ai.AiBatchRunner
 import dev.powerfulcalendar.ai.AiClient
 import dev.powerfulcalendar.ai.AiChatMessage
@@ -173,6 +170,20 @@ private data class AppData(
 
 @Composable
 fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
+    PowerCalAppContent(store, nativeRecoverySignal, MlKitLocalImageOcr)
+}
+
+@Composable
+internal fun PowerCalAppWithLocalImageOcr(store: PowerStore, localImageOcr: LocalImageOcr) {
+    PowerCalAppContent(store, 0, localImageOcr)
+}
+
+@Composable
+private fun PowerCalAppContent(
+    store: PowerStore,
+    nativeRecoverySignal: Int,
+    localImageOcr: LocalImageOcr
+) {
     val context = LocalContext.current
     val appContext = context.applicationContext
     // Re-read on composition so sessions opened after a timezone change capture the current zone.
@@ -1103,19 +1114,22 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
         }
     }
     fun runLocalOcr(uri: Uri) {
-        val recognizer = TextRecognition.getClient(ChineseTextRecognizerOptions.Builder().build())
-        val image = runCatching { InputImage.fromFilePath(context, uri) }.getOrNull()
-        if (image == null) {
-            message = "无法读取图片"
-            recognizer.close()
-        } else {
-            recognizer.process(image)
-                .addOnSuccessListener { result ->
-                    if (result.text.isBlank()) message = "未识别到文字，可以手动输入"
-                    else ocrReviewText = result.text
-                }
-                .addOnFailureListener { message = "OCR 失败：" + it.message }
-                .addOnCompleteListener { recognizer.close() }
+        fun reportFailure(error: Throwable) {
+            message = if (error is LocalImageReadException) "无法读取图片"
+                else "OCR 失败：" + (error.message ?: error.javaClass.simpleName)
+        }
+        try {
+            localImageOcr.recognize(context, uri) { result ->
+                result.fold(
+                    onSuccess = { text ->
+                        if (text.isBlank()) message = "未识别到文字，可以手动输入"
+                        else ocrReviewText = text
+                    },
+                    onFailure = ::reportFailure
+                )
+            }
+        } catch (error: Exception) {
+            reportFailure(error)
         }
     }
     val ocrPicker = rememberLauncherForActivityResult(
