@@ -1117,3 +1117,12 @@ Updated: 2026-10-24
 - 当前 Phase 1 六个定向 suite 在同一应用工作树 **51/51 PASS**；Phase 1 最新复核已补入 `docs/issues/PC-ISSUE-PHASE1-EDITOR-LIFECYCLE.md`，不将提醒诊断改动误记为 Phase 1 产品变更。
 - 未运行 Android WebView/AVD/实体设备；AndroidTest APK 构建不代表设备执行。SEP-11 仍 **NOT TESTED**，凭据/完整备份恢复/权限跳转/实际 scheduler 和 Native/Skin 全功能等价有未测项。
 - 实现/测试提交 `75d8e21b003007f54ff7369cef4c50d041512bc4`（`feat(分离): 增加皮肤提醒诊断与同步状态`）。最终 Issue、Track A 补充、矩阵与 Phase 1 当前复核在随后单独的文档提交中补录 SHA 与证据。
+
+## Separation — SEP-11 旧版 PowerCal 数据迁移入口（2026-10-28）
+
+- 根因：Native `NativeToolsPage` 已提供可信确认与 `LegacyImporter`，但 Skin 设置的闭合 Host options、Bridge schema 和 Studio Mock 没有迁移动作。另一个 importer 缺陷是旧库缺少 `events` 表时在 `beginMigration` 后提前返回，未调用 `finishMigration`，重试会累积 unfinished batch。
+- 增加 `data.legacy.migrate` Host option；Skin 只发语义 ID，不传库路径或记录。Host 打开原生确认后复用只读 importer，旧库文件保留。缺表分支记录警告并结束 batch。Studio Mock 声明不会读取、写入或删除真实数据；测试覆盖取消零写入、确认后实际导入、缺表连续重试都完成。
+- 定向 JVM/Robolectric **26/26 PASS**：LegacyMigration 4、Host confirmation/import integration 2、Bridge 5、Host options projection 15。首次完整回归发现一处固定列表数量断言（期望 3、实际 4）；改为按语义 ID 断言后投影 suite 和全量回归通过。
+- 完整离线门禁 **649/649 JVM、90 suites、0 failures/errors/skips、88/88 tasks**；source boundary、Debug / AndroidTest APK、Lint 通过，Lint 0 errors / 52 warnings。Studio Python **72/72**，Chrome Headless E2E 确认设置动作到达非写入 Host Mock。日志、APK 和 Lint hash 见 `docs/issues/PC-ISSUE-SEPARATION-LEGACY-MIGRATION.md` 与 `.local/android-test/reports/separation-legacy-import-20261028/`。
+- 本机 ADB server 无法启动，本 Issue 未运行 Android WebView、AVD、真机或真实 SAF/Provider；设备路径保持 NOT TESTED。完整 SEP-11 仍 **NOT TESTED**，其他设置、凭据、真实系统能力与 Native/Skin 回放缺口仍开放。
+- 实现提交 `d09a2492aff770d3776ff5a529e11253a1763815`（`fix(分离): 支持经宿主确认的旧版数据迁移`）已推送至 `origin/codex/separation-legacy-import`。独立 Issue 与矩阵/进度文档另行提交推送。
