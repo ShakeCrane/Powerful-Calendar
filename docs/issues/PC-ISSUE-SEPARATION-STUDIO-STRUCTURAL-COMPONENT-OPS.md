@@ -4,7 +4,7 @@
 - **日期：** 2026-10-28
 - **分支：** `codex/separation-skin-settings`
 - **修复基线：** `57f89d120b1346cfbf8a7314711806acf8c9f667`
-- **实现提交：** 提交后回填。
+- **实现提交：** `ce567cd497b0b157216cbf4da104d1e11fdbcfee`。
 
 ## 缺口与根因
 
@@ -85,5 +85,5 @@ node tools/skin-studio/tests/e2e_v3_source.cjs
 
 ## Git 交付
 
-- 实现及回归提交 SHA：提交后回填。
-- Issue 报告、AI 接口文档及 SEP-15 矩阵状态随独立文档提交推送。
+- 实现及回归提交：`ce567cd497b0b157216cbf4da104d1e11fdbcfee`。
+- 本报告包含在实现提交中；报告内实现 SHA 回填由后续文档提交记录。两个提交均推送后才视为交付完成。
