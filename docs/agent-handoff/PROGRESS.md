@@ -1010,3 +1010,10 @@ Updated: 2026-10-24
 - Debug / AndroidTest APK SHA-256：`0281716B2EC5E73071495E80A8B81B65BD7DC0F8ECCAA6BEDA259E8B809AEDFB` / `6B89A35252F0106B6A1B9DB45918C22303CA422391644EB0A77A329F413BAEB9`；完整门禁日志 SHA-256：`00898111B183D917ECE17D80E0A4616992D8AF62571A8F21AEABA0EE11636EC0`。AndroidTest APK 构建包含未提交的并发 `WebSkinManagementInstrumentedTest.kt` 修改，该文件未纳入本 Issue。
 - 测试/报告提交 `c38579e5c3a2e7e44a8ab9f80a657ede92287de6`（`test(分离): 覆盖 AI 附件 ICS 本地路由`）已推送到 `origin/codex/separation-skin-settings`。
 - 本机没有 emulator executable；系统 DocumentsUI/真实 Provider、Android WebView/AVD、实体设备、真实 AI Provider 和完整 Native/Skin 回放未测。SEP-09 与 S3 仍 **NOT TESTED / 进行中**。
+
+## Separation — AI 附件读取失败恢复（2026-10-28）
+
+- 补上生产 `PowerCalApp` / Bridge 文件 picker 结果在 ContentResolver 抛出 `IOException` 时的恢复集成回归。Host 显示未上传/未创建事件提示、释放 picker busy 状态并恢复可用；草稿、身份、正式事件、commit、聊天历史均不变，loopback AI sentinel 无连接。未发现生产代码缺陷，本次为测试覆盖和证据更新。
+- 定向单测 **1/1 PASS**；附件集成类 **6/6 PASS**；完整离线门禁 **623/623 JVM、87 suites、88/88 tasks，0 failures/errors/skips**，source boundary、Debug/AndroidTest APK 编译通过，lint 0 errors / 52 warnings。详见 `docs/issues/PC-ISSUE-SEPARATION-AI-FILE-READ-RECOVERY.md` 与 `.local/android-test/reports/separation-20261028/ai-ics-route-cb337ffd7bb94627b4309d01803bd957/`。
+- 完整门禁日志 SHA-256：`A507E1DA46B6A7A8BC401549A3986505D4202012DD8A32EC591597657FFC26AC`；Debug / AndroidTest APK SHA-256：`0281716B2EC5E73071495E80A8B81B65BD7DC0F8ECCAA6BEDA259E8B809AEDFB` / `6B89A35252F0106B6A1B9DB45918C22303CA422391644EB0A77A329F413BAEB9`。AndroidTest APK 同样包含未提交的并发 `WebSkinManagementInstrumentedTest.kt`，未纳入本 Issue。
+- worktree 缺 `local.properties` 的首次构建在测试前退出；确认本地 SDK 后，通过进程级 `ANDROID_HOME` / `ANDROID_SDK_ROOT` 重跑，未创建本地配置。Android WebView/AVD/真机、DocumentsUI/真实 Provider、OCR、真实 AI Provider 和 Native/Skin 全量回放未测；SEP-09 / S3 仍 **NOT TESTED / 进行中**。

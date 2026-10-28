@@ -349,6 +349,80 @@ class WebAiAttachmentFlowIntegrationTest {
     }
 
     @Test
+    fun skinAiFileReadFailureReleasesPickerWithoutUploadOrCalendarWrites() {
+        val uri = Uri.parse("content://powercal-read-error-" + namespace + "/agenda.txt")
+        val before = counts()
+        val visibleError =
+            "无法安全提取文件：synthetic provider read failure；没有上传给 AI，也没有创建事件。"
+
+        ServerSocket(0, 4, InetAddress.getByName("127.0.0.1")).use { server ->
+            server.soTimeout = 1_000
+            val settings = AiSettings(
+                endpoint = "http://127.0.0.1:${server.localPort}/v1",
+                model = "local-stub:free",
+                apiKey = "LOCAL_TEST_ONLY",
+                enabled = true,
+                shareContext = false
+            )
+            AiSettingsStore.save(context, settings)
+            AiFileFallbackConsent.grant(context, settings)
+
+            ui.activity.setContent {
+                CompositionLocalProvider(
+                    LocalContext provides context,
+                    LocalActivityResultRegistryOwner provides resultRegistryOwner
+                ) {
+                    PowerCalTheme { PowerCalApp(store) }
+                }
+            }
+            ui.waitForIdle()
+            ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.Routed("ai")) }
+            ui.waitForIdle()
+
+            ShadowContentResolver.registerProviderInternal(
+                requireNotNull(uri.authority), TestAttachmentProvider("agenda.txt")
+            )
+            shadowOf(ui.activity.contentResolver).registerInputStreamSupplier(uri) {
+                throw IOException("synthetic provider read failure")
+            }
+
+            ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.PickAiFile) }
+            ui.waitForIdle()
+            assertEquals(Intent.ACTION_OPEN_DOCUMENT, resultRegistry.lastIntent?.action)
+            assertTrue(WebSkinBridgeRuntime.state().optBoolean("chatAttachmentBusy"))
+            ui.runOnIdle { assertTrue(resultRegistry.dispatch(uri)) }
+
+            val settleDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+            while (WebSkinBridgeRuntime.state().optBoolean("chatAttachmentBusy") &&
+                System.nanoTime() < settleDeadline
+            ) {
+                shadowOf(Looper.getMainLooper()).idle()
+                ui.waitForIdle()
+                Thread.sleep(10)
+            }
+            assertFalse("failed file read must release the Host picker lock",
+                WebSkinBridgeRuntime.state().optBoolean("chatAttachmentBusy"))
+            ui.waitUntil(5_000) {
+                ui.onAllNodesWithText(visibleError).fetchSemanticsNodes().isNotEmpty()
+            }
+            assertTrue("retrying the picker should be available after the error",
+                WebSkinBridgeRuntime.state().optBoolean("chatAttachmentAvailable"))
+            assertEquals("read failure must not create drafts, identities, events or commits",
+                before, counts())
+            assertEquals(0, WebSkinBridgeRuntime.state()
+                .optJSONArray("chatMessages")?.length() ?: 0)
+            assertNull(WebSkinBridgeRuntime.state().optJSONObject("aiProposalReview"))
+
+            val providerWasContacted = runCatching { server.accept().use { true } }
+                .getOrElse { error ->
+                    if (error is java.net.SocketTimeoutException) false else throw error
+                }
+            assertFalse("unsafe/incomplete file bytes must not be uploaded to the AI endpoint",
+                providerWasContacted)
+        }
+    }
+
+    @Test
     fun skinImageRequiresExplicitUploadConsentAndNeverStoresRawImageInChatHistory() {
         val imageBytes = android.util.Base64.decode(
             "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/nRsAAAAASUVORK5CYII=",
