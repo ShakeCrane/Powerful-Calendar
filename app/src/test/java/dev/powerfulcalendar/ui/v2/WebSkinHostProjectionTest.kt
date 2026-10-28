@@ -43,6 +43,20 @@ class WebSkinHostProjectionTest {
         assertNull(decode("""{"name":"pickAiImage","mime":"image/png"}"""))
     }
 
+    @Test fun sendChatUsesTheNativeUtf16LengthBoundary() {
+        fun decodeChat(text: String) = decodeBridgeAction(
+            JSONObject().put("version", 1).put("type", "action")
+                .put("payload", JSONObject().put("name", "sendChat").put("text", text))
+                .toString()
+        )
+
+        val nativeLimitAscii = "x".repeat(6000)
+        val nativeLimitSupplementary = "\uD83D\uDE00".repeat(3000)
+        assertEquals(6000, nativeLimitSupplementary.length)
+        assertEquals(WebSkinAction.SendChat(nativeLimitAscii), decodeChat(nativeLimitAscii))
+        assertEquals(WebSkinAction.SendChat(nativeLimitSupplementary), decodeChat(nativeLimitSupplementary))
+        assertNull(decodeChat("x".repeat(6001)))
+    }
     @Test fun exposesTrueIntervalsOwnerRevisionAndNoPrivilegedContent() {
         val payload = project(listOf(activity(7)))
         val row = payload.getJSONArray("items").getJSONObject(0)
@@ -89,7 +103,8 @@ class WebSkinHostProjectionTest {
         assertEquals(9L, occurrence.getLong("eventSeq"))
         assertTrue(occurrence.getString("occurrenceKey").startsWith("9:"))
         assertEquals("2026-10-22T09:00", occurrence.getString("originalOccurrenceKey"))
-        val month = WebSkinMonthProjection.build(listOf(daily), noon, zone).getJSONArray("items")
+        val selectedDate = Instant.ofEpochMilli(noon).atZone(zone).toLocalDate()
+        val month = WebSkinMonthProjection.build(listOf(daily), selectedDate, zone).getJSONArray("items")
         val sameDay = (0 until month.length()).map { month.getJSONObject(it) }
             .single { it.getString("date") == "2026-10-22" }
         assertEquals("2026-10-22T09:00", sameDay.getString("originalOccurrenceKey"))
@@ -141,6 +156,19 @@ class WebSkinHostProjectionTest {
             decode("""{"name":"browseMonth","deltaMonths":-1}"""))
         assertNull(decode("""{"name":"browseMonth","deltaMonths":0}"""))
         assertNull(decode("""{"name":"browseMonth","deltaMonths":50}"""))
+        assertEquals(WebSkinAction.SelectMonth("2030-02"),
+            decode("""{"name":"selectMonth","yearMonth":"2030-02"}"""))
+        assertEquals(WebSkinAction.SelectMonthDate("2030-02-14"),
+            decode("""{"name":"selectMonthDate","date":"2030-02-14"}"""))
+        assertEquals(WebSkinAction.TodayInMonth,
+            decode("""{"name":"todayInMonth"}"""))
+        assertNull(decode("""{"name":"selectMonth","yearMonth":"1899-12"}"""))
+        assertNull(decode("""{"name":"selectMonth","yearMonth":"2101-01"}"""))
+        assertNull(decode("""{"name":"selectMonth","yearMonth":"2030-13"}"""))
+        assertNull(decode("""{"name":"selectMonth","yearMonth":"2030-2"}"""))
+        assertNull(decode("""{"name":"selectMonth","yearMonth":"2030-02","day":1}"""))
+        assertNull(decode("""{"name":"selectMonthDate","date":"2030-02-30"}"""))
+        assertNull(decode("""{"name":"todayInMonth","date":"2030-02-01"}"""))
         assertEquals(WebSkinAction.SendChat("你好"),
             decode("""{"name":"sendChat","text":"你好"}"""))
         assertEquals(WebSkinAction.ToggleMemo(31,2,"single",false),
@@ -221,7 +249,8 @@ class WebSkinHostProjectionTest {
     }
 
     @Test fun monthProjectionUsesRealHostOccurrencesAndExactDateWindow() {
-        val output = WebSkinMonthProjection.build(listOf(activity(71)), noon, zone)
+        val selectedDate = Instant.ofEpochMilli(noon).atZone(zone).toLocalDate()
+        val output = WebSkinMonthProjection.build(listOf(activity(71)), selectedDate, zone)
         assertEquals("2026-10", output.getString("month"))
         assertEquals("2026-09-28", output.getString("gridFrom"))
         val first = output.getJSONArray("items").getJSONObject(0)
@@ -241,5 +270,96 @@ class WebSkinHostProjectionTest {
         assertEquals("calendar.import.future", entries.getJSONObject(2).getString("id"))
         assertFalse(entries.getJSONObject(2).getBoolean("enabled"))
         assertFalse(SemanticOptions.supports("calendar.import.future"))
+    }
+
+    @Test fun reminderPermissionProjectionContainsOnlyHostPermissionBooleans() {
+        val projection = ReminderSettingsProjection.toJson(
+            exactAlarmAllowed = false,
+            notificationsAllowed = true,
+            notificationsRuntimePermissionRequired = false
+        )
+        assertEquals(3, projection.length())
+        assertFalse(projection.getBoolean("exactAlarmAllowed"))
+        assertTrue(projection.getBoolean("notificationsAllowed"))
+        assertFalse(projection.getBoolean("notificationsRuntimePermissionRequired"))
+        assertFalse(projection.has("eventSeq"))
+        assertFalse(projection.has("apiKey"))
+    }
+
+    @Test fun reminderHostOptionsAreWhitelistedAndReflectPermissionAvailability() {
+        val ids = SemanticOptions.groups.flatMap { it.items }.map { it.id }.toSet()
+        assertTrue("reminders.exactAlarmSettings" in ids)
+        assertTrue("reminders.notificationPermission" in ids)
+        assertTrue("reminders.reconcile" in ids)
+        assertTrue("calendar.export.ics" in ids)
+        assertTrue("data.backup.export" in ids)
+        assertTrue("data.backup.restore" in ids)
+        assertTrue("skin.import" in ids)
+        assertTrue("skin.exportClear" in ids)
+        assertFalse(SemanticOptions.supports("reminders.grantSilently"))
+        assertFalse(SemanticOptions.supports("data.backup.readRaw"))
+        assertFalse(SemanticOptions.supports("skin.select"))
+
+        val group = SemanticOptions.groups.first { it.id == "reminders.permissions" }
+        val disabled = SemanticOptions.toJson(
+            collection = listOf(group),
+            disabledIds = setOf("reminders.exactAlarmSettings")
+        ).getJSONObject(0).getJSONArray("items")
+        assertFalse(disabled.getJSONObject(0).getBoolean("enabled"))
+        assertTrue(disabled.getJSONObject(1).getBoolean("enabled"))
+
+        val generalOptions = SemanticOptions.toJson()
+        val generalIds = buildSet {
+            for (groupIndex in 0 until generalOptions.length()) {
+                val items = generalOptions.getJSONObject(groupIndex).getJSONArray("items")
+                for (itemIndex in 0 until items.length()) add(items.getJSONObject(itemIndex).getString("id"))
+            }
+        }
+        assertFalse("skin.import" in generalIds)
+        assertFalse("skin.exportClear" in generalIds)
+        val skinSettingsOptions = SemanticOptions.toJson(includeSkinPackages = true)
+        assertTrue(skinSettingsOptions.toString().contains("skin.import"))
+        assertTrue(skinSettingsOptions.toString().contains("skin.exportClear"))
+
+        val backup = SemanticOptions.groups.first { it.id == "data.backup" }
+        val backupItems = SemanticOptions.toJson(collection = listOf(backup))
+            .getJSONObject(0).getJSONArray("items")
+        assertTrue(backupItems.getJSONObject(0).getString("detail").contains("明文 JSON"))
+        assertTrue(backupItems.getJSONObject(1).getString("detail").contains("空数据库"))
+    }
+
+    @Test fun installedSkinProjectionContainsOnlyBoundedCatalogueMetadata() {
+        val longName = "Visible skin " + "x".repeat(160)
+        val output = WebSkinInstalledSkinsProjection.build(
+            listOf(
+                InstalledSkin("powercal-default", "PowerCal fallback", builtIn = true),
+                InstalledSkin("custom-skin", longName)
+            ),
+            selectedId = "custom-skin",
+            actionsEnabled = false
+        )
+        assertEquals(2, output.length())
+        val fallback = output.getJSONObject(0)
+        assertEquals("powercal-default", fallback.getString("id"))
+        assertTrue(fallback.getBoolean("builtIn"))
+        assertFalse(fallback.getBoolean("selected"))
+        assertFalse(fallback.getBoolean("actionsEnabled"))
+
+        val custom = output.getJSONObject(1)
+        assertEquals("custom-skin", custom.getString("id"))
+        assertEquals(100, custom.getString("name").length)
+        assertTrue(custom.getBoolean("selected"))
+        assertFalse(custom.getBoolean("builtIn"))
+        assertFalse(custom.has("path"))
+        assertFalse(custom.has("uri"))
+        assertFalse(custom.has("source"))
+        assertFalse(custom.has("manifest"))
+
+        val tooMany = WebSkinInstalledSkinsProjection.build(
+            (0..20).map { InstalledSkin("skin-$it", "Skin $it") },
+            selectedId = "skin-0",
+            actionsEnabled = true
+        )
+        assertEquals(14, tooMany.length())
     }
 }

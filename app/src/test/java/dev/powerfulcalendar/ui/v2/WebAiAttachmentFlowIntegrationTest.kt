@@ -10,6 +10,7 @@ import android.database.Cursor
 import android.database.MatrixCursor
 import android.database.sqlite.SQLiteDatabase
 import android.net.Uri
+import android.os.Looper
 import android.provider.OpenableColumns
 import android.util.AtomicFile
 import androidx.activity.ComponentActivity
@@ -29,12 +30,16 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
 import androidx.test.core.app.ApplicationProvider
 import dev.powerfulcalendar.ai.AiChatHistoryStore
 import dev.powerfulcalendar.ai.AiFileFallbackConsent
 import dev.powerfulcalendar.ai.AiSettings
 import dev.powerfulcalendar.ai.AiSettingsStore
+import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.PowerStore
+import dev.powerfulcalendar.interop.IcsImportPlanner
+import dev.powerfulcalendar.interop.ImportCheckpoint
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.After
@@ -224,6 +229,347 @@ class WebAiAttachmentFlowIntegrationTest {
             assertFalse("an unresolved proposal must keep attachment controls locked",
                 WebSkinBridgeRuntime.state().getBoolean("chatAttachmentAvailable"))
         }
+    }
+
+    @Test
+    fun skinAiFilePickerRoutesCalendarMagicToLocalImportBeforeAiFallback() {
+        val uri = Uri.parse("content://powercal-ics-test-" + namespace + "/misleading.txt")
+        val source = listOf(
+            "BEGIN:VCALENDAR",
+            "VERSION:2.0",
+            "BEGIN:VEVENT",
+            "UID:skin-ics-magic-route",
+            "DTSTAMP:20261028T000000Z",
+            "DTSTART:20300115T010000Z",
+            "DTEND:20300115T020000Z",
+            "SUMMARY:Skin routed calendar fixture",
+            "END:VEVENT",
+            "END:VCALENDAR",
+            ""
+        ).joinToString("\r\n")
+        val plan = IcsImportPlanner.prepare(source, ZoneId.systemDefault())
+        assertTrue("ICS fixture must be fully supported by the deterministic importer: " +
+            plan.problems, plan.problems.isEmpty())
+        assertEquals(1, plan.candidates.size)
+        val before = counts()
+
+        ServerSocket(0, 4, InetAddress.getByName("127.0.0.1")).use { server ->
+            server.soTimeout = 1_500
+            val settings = AiSettings(
+                endpoint = "http://127.0.0.1:${server.localPort}/v1",
+                model = "local-stub:free",
+                apiKey = "LOCAL_TEST_ONLY",
+                enabled = true,
+                shareContext = false
+            )
+            AiSettingsStore.save(context, settings)
+            AiFileFallbackConsent.grant(context, settings)
+
+            ui.activity.setContent {
+                CompositionLocalProvider(
+                    LocalContext provides context,
+                    LocalActivityResultRegistryOwner provides resultRegistryOwner
+                ) {
+                    PowerCalTheme { PowerCalApp(store) }
+                }
+            }
+            ui.waitForIdle()
+            ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.Routed("ai")) }
+            ui.waitForIdle()
+
+            ShadowContentResolver.registerProviderInternal(
+                requireNotNull(uri.authority), TestAttachmentProvider("misleading.txt")
+            )
+            shadowOf(ui.activity.contentResolver).registerInputStreamSupplier(uri) {
+                source.toByteArray(Charsets.UTF_8).inputStream()
+            }
+
+            ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.PickAiFile) }
+            ui.waitForIdle()
+            assertTrue(WebSkinBridgeRuntime.state().getBoolean("chatAttachmentBusy"))
+            assertEquals(Intent.ACTION_OPEN_DOCUMENT, resultRegistry.lastIntent?.action)
+            assertEquals("*/*", resultRegistry.lastIntent?.type)
+            ui.runOnIdle { assertTrue(resultRegistry.dispatch(uri)) }
+
+            ui.waitUntil(10_000) { store.draftCount() == before.drafts + 1 }
+            val settleDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+            while (WebSkinBridgeRuntime.state().optBoolean("chatAttachmentBusy") &&
+                System.nanoTime() < settleDeadline
+            ) {
+                shadowOf(Looper.getMainLooper()).idle()
+                ui.waitForIdle()
+                Thread.sleep(10)
+            }
+            val importSettled = !WebSkinBridgeRuntime.state()
+                .optBoolean("chatAttachmentBusy")
+            val settledState = WebSkinBridgeRuntime.state()
+            val unresolvedIcsReviewVisible = ui.onAllNodesWithText(
+                "核对文件 · ICS 未解决项目"
+            ).fetchSemanticsNodes().isNotEmpty()
+            assertTrue(
+                "ICS import must finish and release the picker lock; counts=${counts()}, " +
+                    "state=$settledState, unresolvedReview=$unresolvedIcsReviewVisible, " +
+                    "importReceipts=${ImportCheckpoint.recent(context)}",
+                importSettled
+            )
+            assertEquals(
+                "valid ICS magic must reach the local importer; Host state=" +
+                    WebSkinBridgeRuntime.state(),
+                before.drafts + 1,
+                store.draftCount()
+            )
+            val imported = store.pendingDrafts()
+            assertEquals(1, imported.size)
+            assertEquals("Skin routed calendar fixture", imported.single().form.title)
+            assertEquals(TemporalKind.ACTIVITY, imported.single().form.kind)
+            val receipt = ImportCheckpoint.recent(context)
+                .single { it.fingerprint == plan.fingerprint }
+            assertEquals(listOf(imported.single().draftId), receipt.draftIds)
+            assertEquals(0, receipt.problemCount)
+            assertEquals(
+                Counts(before.drafts + 1, before.formalEvents, before.identities + 1, before.commits),
+                counts()
+            )
+            assertTrue("successful import must show the new draft for user review",
+                ui.onAllNodesWithText("Skin routed calendar fixture")
+                    .fetchSemanticsNodes().isNotEmpty())
+            assertNull("calendar text must not become an AI proposal",
+                WebSkinBridgeRuntime.state().optJSONObject("aiProposalReview"))
+            assertFalse("the ICS should not remain in AI attachment review",
+                WebSkinBridgeRuntime.state().optBoolean("chatAttachmentBusy"))
+
+            val providerWasContacted = runCatching { server.accept().use { true } }
+                .getOrElse { error ->
+                    if (error is java.net.SocketTimeoutException) false else throw error
+                }
+            assertFalse(
+                "a calendar file must go through the local ICS importer, not the AI provider",
+                providerWasContacted
+            )
+        }
+    }
+
+    @Test
+    fun skinAiFileReadFailureReleasesPickerWithoutUploadOrCalendarWrites() {
+        val uri = Uri.parse("content://powercal-read-error-" + namespace + "/agenda.txt")
+        val before = counts()
+        val visibleError =
+            "无法安全提取文件：synthetic provider read failure；没有上传给 AI，也没有创建事件。"
+
+        ServerSocket(0, 4, InetAddress.getByName("127.0.0.1")).use { server ->
+            server.soTimeout = 1_000
+            val settings = AiSettings(
+                endpoint = "http://127.0.0.1:${server.localPort}/v1",
+                model = "local-stub:free",
+                apiKey = "LOCAL_TEST_ONLY",
+                enabled = true,
+                shareContext = false
+            )
+            AiSettingsStore.save(context, settings)
+            AiFileFallbackConsent.grant(context, settings)
+
+            ui.activity.setContent {
+                CompositionLocalProvider(
+                    LocalContext provides context,
+                    LocalActivityResultRegistryOwner provides resultRegistryOwner
+                ) {
+                    PowerCalTheme { PowerCalApp(store) }
+                }
+            }
+            ui.waitForIdle()
+            ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.Routed("ai")) }
+            ui.waitForIdle()
+
+            ShadowContentResolver.registerProviderInternal(
+                requireNotNull(uri.authority), TestAttachmentProvider("agenda.txt")
+            )
+            shadowOf(ui.activity.contentResolver).registerInputStreamSupplier(uri) {
+                throw IOException("synthetic provider read failure")
+            }
+
+            ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.PickAiFile) }
+            ui.waitForIdle()
+            assertEquals(Intent.ACTION_OPEN_DOCUMENT, resultRegistry.lastIntent?.action)
+            assertTrue(WebSkinBridgeRuntime.state().optBoolean("chatAttachmentBusy"))
+            ui.runOnIdle { assertTrue(resultRegistry.dispatch(uri)) }
+
+            val settleDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+            while (WebSkinBridgeRuntime.state().optBoolean("chatAttachmentBusy") &&
+                System.nanoTime() < settleDeadline
+            ) {
+                shadowOf(Looper.getMainLooper()).idle()
+                ui.waitForIdle()
+                Thread.sleep(10)
+            }
+            assertFalse("failed file read must release the Host picker lock",
+                WebSkinBridgeRuntime.state().optBoolean("chatAttachmentBusy"))
+            ui.waitUntil(5_000) {
+                ui.onAllNodesWithText(visibleError).fetchSemanticsNodes().isNotEmpty()
+            }
+            assertTrue("retrying the picker should be available after the error",
+                WebSkinBridgeRuntime.state().optBoolean("chatAttachmentAvailable"))
+            assertEquals("read failure must not create drafts, identities, events or commits",
+                before, counts())
+            assertEquals(0, WebSkinBridgeRuntime.state()
+                .optJSONArray("chatMessages")?.length() ?: 0)
+            assertNull(WebSkinBridgeRuntime.state().optJSONObject("aiProposalReview"))
+
+            val providerWasContacted = runCatching { server.accept().use { true } }
+                .getOrElse { error ->
+                    if (error is java.net.SocketTimeoutException) false else throw error
+                }
+            assertFalse("unsafe/incomplete file bytes must not be uploaded to the AI endpoint",
+                providerWasContacted)
+        }
+    }
+
+    @Test
+    fun cancellingSkinFileAndImagePickersRestoresAvailabilityWithoutWrites() {
+        val before = counts()
+        ui.activity.setContent {
+            CompositionLocalProvider(
+                LocalContext provides context,
+                LocalActivityResultRegistryOwner provides resultRegistryOwner
+            ) {
+                PowerCalTheme { PowerCalApp(store) }
+            }
+        }
+        ui.waitForIdle()
+        ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.Routed("ai")) }
+        ui.waitForIdle()
+
+        fun cancelPicker(action: WebSkinAction, expectedIntent: String, expectedType: String) {
+            ui.runOnIdle { WebSkinBridgeRuntime.onAction(action) }
+            ui.waitForIdle()
+            assertEquals(expectedIntent, resultRegistry.lastIntent?.action)
+            assertEquals(expectedType, resultRegistry.lastIntent?.type)
+            assertTrue("picker opening should lock attachment controls",
+                WebSkinBridgeRuntime.state().optBoolean("chatAttachmentBusy"))
+            ui.runOnIdle { assertTrue(resultRegistry.cancel()) }
+            ui.waitUntil(5_000) {
+                !WebSkinBridgeRuntime.state().optBoolean("chatAttachmentBusy") &&
+                    WebSkinBridgeRuntime.state().optBoolean("chatAttachmentAvailable")
+            }
+            assertEquals("cancelling a picker must not write calendar data", before, counts())
+            assertEquals("cancelling a picker must not append chat history", 0,
+                WebSkinBridgeRuntime.state().optJSONArray("chatMessages")?.length() ?: 0)
+            assertNull(WebSkinBridgeRuntime.state().optJSONObject("aiProposalReview"))
+        }
+
+        cancelPicker(WebSkinAction.PickAiFile, Intent.ACTION_OPEN_DOCUMENT, "*/*")
+        cancelPicker(WebSkinAction.PickAiImage, Intent.ACTION_GET_CONTENT, "image/*")
+        assertTrue("image picker cancellation must not leave its consent sheet open",
+            ui.onAllNodesWithText("图片识别方式").fetchSemanticsNodes().isEmpty())
+    }
+
+    @Test
+    fun skinLocalOcrRequiresUserChoiceAndKeepsRecognizedTextEditable() {
+        val uri = Uri.parse("content://powercal-ocr-test-" + namespace + "/note.png")
+        val recognizedText = "明天下午三点复诊"
+        val correctedText = "明天下午三点复诊（已核对）"
+        val ocr = FakeLocalImageOcr(resultText = recognizedText)
+        val before = counts()
+
+        ServerSocket(0, 4, InetAddress.getByName("127.0.0.1")).use { server ->
+            server.soTimeout = 750
+            AiSettingsStore.save(context, AiSettings(
+                endpoint = "http://127.0.0.1:${server.localPort}/v1",
+                model = "local-stub:free",
+                apiKey = "LOCAL_TEST_ONLY",
+                enabled = true,
+                shareContext = false
+            ))
+            ui.activity.setContent {
+                CompositionLocalProvider(
+                    LocalContext provides context,
+                    LocalActivityResultRegistryOwner provides resultRegistryOwner
+                ) {
+                    PowerCalTheme { PowerCalAppWithLocalImageOcr(store, ocr) }
+                }
+            }
+            ui.waitForIdle()
+            ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.Routed("ai")) }
+            ui.waitForIdle()
+
+            ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.PickAiImage) }
+            ui.waitForIdle()
+            assertEquals(Intent.ACTION_GET_CONTENT, resultRegistry.lastIntent?.action)
+            assertEquals("image/*", resultRegistry.lastIntent?.type)
+            ui.runOnIdle { assertTrue(resultRegistry.dispatch(uri)) }
+            ui.waitUntil(5_000) {
+                ui.onAllNodesWithText("图片识别方式").fetchSemanticsNodes().isNotEmpty()
+            }
+            assertEquals("selecting an image must not create calendar data", before, counts())
+            assertNull("recognition must not start before the user selects local OCR", ocr.lastUri)
+
+            ui.onNodeWithText("仅本地 OCR").performClick()
+            ui.waitUntil(5_000) {
+                ui.onAllNodesWithText("核对 OCR 识别原文")
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+            assertEquals(uri, ocr.lastUri)
+            ui.onNode(hasSetTextAction() and hasText(recognizedText)).assertExists()
+            ui.onNode(hasSetTextAction() and hasText(recognizedText))
+                .performTextReplacement(correctedText)
+            ui.onNodeWithText(correctedText).assertExists()
+            assertEquals("local recognition must not send image or OCR text automatically",
+                before, counts())
+
+            ui.onNodeWithText("取消").performClick()
+            ui.waitUntil(5_000) {
+                ui.onAllNodesWithText("核对 OCR 识别原文")
+                    .fetchSemanticsNodes().isEmpty()
+            }
+            assertEquals("cancelling OCR review must not write calendar data", before, counts())
+            assertEquals(0, WebSkinBridgeRuntime.state()
+                .optJSONArray("chatMessages")?.length() ?: 0)
+            val providerWasContacted = runCatching { server.accept().use { true } }
+                .getOrElse { error ->
+                    if (error is java.net.SocketTimeoutException) false else throw error
+                }
+            assertFalse("local OCR and review cancellation must not call the AI endpoint",
+                providerWasContacted)
+        }
+    }
+
+    @Test
+    fun skinLocalOcrSynchronousFailureShowsRecoveryNoticeWithoutCrashing() {
+        val uri = Uri.parse("content://powercal-ocr-error-" + namespace + "/broken.png")
+        val failure = IllegalStateException("synthetic recognizer initialization failure")
+        val ocr = FakeLocalImageOcr(failure = failure)
+        val before = counts()
+
+        ui.activity.setContent {
+            CompositionLocalProvider(
+                LocalContext provides context,
+                LocalActivityResultRegistryOwner provides resultRegistryOwner
+            ) {
+                PowerCalTheme { PowerCalAppWithLocalImageOcr(store, ocr) }
+            }
+        }
+        ui.waitForIdle()
+        ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.Routed("ai")) }
+        ui.waitForIdle()
+        ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.PickAiImage) }
+        ui.waitForIdle()
+        assertTrue(resultRegistry.dispatch(uri))
+        ui.waitUntil(5_000) {
+            ui.onAllNodesWithText("图片识别方式").fetchSemanticsNodes().isNotEmpty()
+        }
+
+        ui.onNodeWithText("仅本地 OCR").performClick()
+        ui.waitUntil(5_000) {
+            ui.onAllNodesWithText("OCR 失败：synthetic recognizer initialization failure")
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        assertEquals(uri, ocr.lastUri)
+        assertFalse("OCR failure must not leave the attachment lock held",
+            WebSkinBridgeRuntime.state().optBoolean("chatAttachmentBusy"))
+        assertTrue("the image picker should remain retryable after local OCR failure",
+            WebSkinBridgeRuntime.state().optBoolean("chatAttachmentAvailable"))
+        assertEquals("OCR failure must not write events, drafts or commits", before, counts())
+        assertEquals(0, WebSkinBridgeRuntime.state()
+            .optJSONArray("chatMessages")?.length() ?: 0)
     }
 
     @Test
@@ -639,9 +985,11 @@ class WebAiAttachmentFlowIntegrationTest {
             )
         }
 
-        fun dispatch(uri: Uri): Boolean = dispatchResult(
+        fun dispatch(uri: Uri?): Boolean = dispatchResult(
             requireNotNull(requestCode) { "No Host picker launch was recorded" }, uri
         )
+
+        fun cancel(): Boolean = dispatch(null)
     }
 
     private class TestAttachmentProvider(
@@ -672,6 +1020,24 @@ class WebAiAttachmentFlowIntegrationTest {
             selection: String?,
             selectionArgs: Array<out String>?
         ): Int = 0
+    }
+
+    private class FakeLocalImageOcr(
+        private val resultText: String? = null,
+        private val failure: Throwable? = null
+    ) : LocalImageOcr {
+        var lastUri: Uri? = null
+            private set
+
+        override fun recognize(
+            context: Context,
+            uri: Uri,
+            onResult: (Result<String>) -> Unit
+        ) {
+            lastUri = uri
+            failure?.let { throw it }
+            onResult(Result.success(requireNotNull(resultText)))
+        }
     }
 
     private class IsolatedContext(

@@ -19,6 +19,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.net.InetAddress
 import java.net.ServerSocket
+import java.time.ZoneId
 import java.util.UUID
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
@@ -28,6 +29,150 @@ import java.util.concurrent.atomic.AtomicReference
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class AiChatDraftPipelineTest {
+    @Test
+    fun failedReviewedPublishCanRetryWithoutReusingReservedEventIdentity() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val databaseName = "ai-publish-retry-${UUID.randomUUID()}.db"
+        val store = PowerStore(context, databaseName)
+        val zone = ZoneId.of("Asia/Shanghai")
+        val interpretation = AiResponseParser.parse(
+            JSONObject().put("events", JSONArray().put(JSONObject()
+                .put("operation", "CREATE")
+                .put("kind", "ACTIVITY")
+                .put("title", "失败后重试")
+                .put("start", "2026-12-01 14:00")
+                .put("end", "2026-12-01 15:00")
+                .put("zoneId", zone.id))).toString(),
+            known = emptyList(),
+            zone = zone
+        )
+        val trigger = "fail_ai_proposal_draft_insert"
+
+        try {
+            assertEquals(1, interpretation.proposals.size)
+            assertTrue(interpretation.proposals.single().form.isPublishable())
+            store.writableDatabase.execSQL(
+                """CREATE TRIGGER $trigger BEFORE INSERT ON drafts
+                   BEGIN SELECT RAISE(ABORT,'synthetic AI proposal draft failure'); END"""
+            )
+
+            val failed = AiDraftService(store).applyReviewedProposals(
+                interpretation, selectedPositions = setOf(0), publish = true
+            )
+
+            assertTrue("the failed item remains retryable", failed.handledIndices.isEmpty())
+            assertEquals(0, failed.publishedCount)
+            assertEquals(0, failed.stagedCount)
+            assertTrue(failed.warnings.toString(), failed.warnings.any { it.contains("未能写入") })
+            assertEquals("the allocated identity is retired permanently", 1L, store.identityCount())
+            assertEquals(2L, store.nextSequencePreview())
+            assertEquals(0L, store.draftCount())
+            assertEquals(0, store.pendingCount())
+            assertTrue(store.all().isEmpty())
+            assertEquals(0L, store.commitCount())
+
+            store.writableDatabase.execSQL("DROP TRIGGER $trigger")
+            val retry = AiDraftService(store).applyReviewedProposals(
+                interpretation, selectedPositions = setOf(0), publish = true
+            )
+
+            assertEquals(setOf(0), retry.handledIndices)
+            assertEquals(1, retry.publishedCount)
+            assertEquals(0, retry.stagedCount)
+            assertTrue(retry.warnings.toString(), retry.warnings.isEmpty())
+            assertEquals(2L, store.identityCount())
+            assertEquals(3L, store.nextSequencePreview())
+            assertEquals(1L, store.draftCount())
+            assertEquals(0, store.pendingCount())
+            assertEquals(2L, store.all().single().eventSeq)
+            assertEquals(1L, store.commitCount())
+        } finally {
+            runCatching { store.writableDatabase.execSQL("DROP TRIGGER IF EXISTS $trigger") }
+            store.close()
+            context.deleteDatabase(databaseName)
+        }
+    }
+
+    @Test
+    fun failedReviewedTaskPublishRollsBackAndCanRetryExactlyOnce() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val databaseName = "ai-task-publish-retry-${UUID.randomUUID()}.db"
+        val store = PowerStore(context, databaseName)
+        val zone = ZoneId.of("Asia/Shanghai")
+        val now = System.currentTimeMillis()
+        val taskId = UUID.randomUUID().toString()
+        val userText = "明天14:00到15:00创建一个活动，标题是任务失败后重试。"
+        val task = AiConversationTaskSnapshot(
+            taskId = taskId,
+            revision = 1,
+            anchorMillis = now,
+            zoneId = zone.id,
+            userEvidence = listOf(AiTaskEvidence(
+                messageId = taskId,
+                text = userText,
+                createdAtMillis = now,
+                zoneId = zone.id
+            )),
+            assistantSuggestions = emptyList()
+        )
+        val interpretation = AiResponseParser.parse(
+            JSONObject().put("events", JSONArray().put(JSONObject()
+                .put("operation", "CREATE")
+                .put("kind", "ACTIVITY")
+                .put("title", "任务失败后重试")
+                .put("start", "2026-12-01 14:00")
+                .put("end", "2026-12-01 15:00")
+                .put("zoneId", zone.id))).toString(),
+            known = emptyList(),
+            zone = zone
+        ).copy(taskSnapshot = task)
+        val trigger = "fail_ai_task_proposal_draft_insert"
+
+        try {
+            assertEquals(1, interpretation.proposals.size)
+            assertTrue(interpretation.proposals.single().form.isPublishable())
+            store.writableDatabase.execSQL(
+                """CREATE TRIGGER $trigger BEFORE INSERT ON drafts
+                   BEGIN SELECT RAISE(ABORT,'synthetic AI task proposal draft failure'); END"""
+            )
+
+            val failed = AiDraftService(store).applyReviewedProposals(
+                interpretation, selectedPositions = setOf(0), publish = true
+            )
+
+            assertTrue("failed transactional task item remains retryable", failed.handledIndices.isEmpty())
+            assertEquals(0, failed.publishedCount)
+            assertEquals(0, failed.stagedCount)
+            assertTrue(failed.warnings.toString(), failed.warnings.any { it.contains("未能写入") })
+            assertEquals("the failed task transaction rolls identity back", 0L, store.identityCount())
+            assertEquals(1L, store.nextSequencePreview())
+            assertEquals(0L, store.draftCount())
+            assertEquals(0, store.pendingCount())
+            assertTrue(store.all().isEmpty())
+            assertEquals(0L, store.commitCount())
+
+            store.writableDatabase.execSQL("DROP TRIGGER $trigger")
+            val retry = AiDraftService(store).applyReviewedProposals(
+                interpretation, selectedPositions = setOf(0), publish = true
+            )
+
+            assertEquals(setOf(0), retry.handledIndices)
+            assertEquals(1, retry.publishedCount)
+            assertEquals(0, retry.stagedCount)
+            assertTrue(retry.warnings.toString(), retry.warnings.isEmpty())
+            assertEquals(1L, store.identityCount())
+            assertEquals(2L, store.nextSequencePreview())
+            assertEquals(1L, store.draftCount())
+            assertEquals(0, store.pendingCount())
+            assertEquals(1L, store.all().single().eventSeq)
+            assertEquals(1L, store.commitCount())
+        } finally {
+            runCatching { store.writableDatabase.execSQL("DROP TRIGGER IF EXISTS $trigger") }
+            store.close()
+            context.deleteDatabase(databaseName)
+        }
+    }
+
     @Test
     fun explicitChatToProposalCreatesOnlyPendingDraftAcrossSqliteReopen() {
         val context = ApplicationProvider.getApplicationContext<Context>()

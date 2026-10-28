@@ -32,6 +32,17 @@ validated capability set, not a trusted-brand or factory-skin check. In Bridge v
 No WebView, database, AI, event, notification or settings operation is
 authorized on the basis of being the default Clear package.
 
+## Session isolation
+
+Every WebView session uses a fresh synthetic HTTPS origin. The host disables
+cookies and configures the process-wide Service Worker controller to deny
+network, file and content access, disable Service Worker cache use, and reject
+worker requests before creating the WebView. Factory and imported v3 packages
+use the same policy. This runtime security policy is Host-owned and is not a
+skin-editable capability. Device-specific behavior is recorded separately from
+JVM policy tests; see
+[`PC-ISSUE-SEPARATION-WEBVIEW-SESSION-ORIGIN.md`](issues/PC-ISSUE-SEPARATION-WEBVIEW-SESSION-ORIGIN.md).
+
 ## Automated proof
 
 `SkinPackageManagerTest.officialClearAndReidentifiedThirdPartyCloneHaveIdenticalRuntime`

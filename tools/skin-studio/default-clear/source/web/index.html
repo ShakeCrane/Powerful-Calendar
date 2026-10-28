@@ -12,9 +12,37 @@
 <div id="axisScroll" class="axis-scroll" role="region" aria-label="时间轴" tabindex="0">
 <div class="timeline-surface" id="timelineSurface"><div class="tl-axis" id="tlAxis"></div><div id="timelineLeft" class="timelineWing left"></div><div id="timelineRight" class="timelineWing right"></div><div id="timeLabels"></div><div id="timeNow"></div></div>
 </div><div class="timeline-buttons glass"><button data-action="panTimeline" data-delta-minutes="-180">较早</button><button data-action="panTimeline" data-delta-minutes="180">稍后</button></div></section>
-<section id="monthPage" class="page" hidden><div class="page-head"><h1>月历</h1><button data-local="options">导入选项</button><button data-action="today">今天</button></div><div class="month-bar"><button data-action="browseMonth" data-delta-months="-1" aria-label="上个月">‹</button><span id="monthTitle"></span><button data-action="browseMonth" data-delta-months="1" aria-label="下个月">›</button></div><div id="monthGrid" class="month-grid"></div><div id="monthAgenda"></div><p class="quiet">只显示宿主实际投影的日程；尚未投影到此范围的重复事项不会被推测。</p></section>
+<section id="monthPage" class="page" hidden>
+<div class="page-head"><h1>月历</h1><button data-local="options">导入选项</button><button data-action="todayInMonth">今天</button></div>
+<div class="month-bar">
+<button data-action="browseMonth" data-delta-months="-1" aria-label="上个月">‹</button>
+<div class="month-selector" aria-label="选择年月">
+<button id="monthYearButton" type="button" data-month-picker="year" aria-haspopup="dialog" aria-controls="monthPickerDialog"></button>
+<button id="monthNumberButton" type="button" data-month-picker="month" aria-haspopup="dialog" aria-controls="monthPickerDialog"></button>
+</div>
+<button data-action="browseMonth" data-delta-months="1" aria-label="下个月">›</button>
+</div>
+<p id="monthZone" class="month-zone"></p>
+<div id="monthGrid" class="month-grid"></div>
+<div id="monthAgenda"></div>
+<div class="month-actions"><button data-action="createDraft" data-kind="ACTIVITY">为这一天新建活动</button><button id="viewMonthDate" data-action="jumpTimelineDay">在时间轴查看这一天</button></div>
+<p class="quiet">只显示宿主实际投影的日程；尚未投影到此范围的重复事项不会被推测。</p>
+</section>
+<dialog id="monthPickerDialog" aria-labelledby="monthPickerTitle">
+<div class="month-picker-panel">
+<h2 id="monthPickerTitle">选择年月</h2>
+<form id="monthYearForm" class="month-year-form" hidden>
+<label for="monthYearInput">年份（1900～2100）</label>
+<input id="monthYearInput" type="number" inputmode="numeric" min="1900" max="2100" step="1" required>
+<button type="submit">跳转</button>
+</form>
+<div id="monthNumberPanel" class="month-number-grid" hidden aria-label="选择月份"></div>
+<p id="monthPickerStatus" role="status" aria-live="polite"></p>
+<button id="monthPickerCancel" type="button">取消</button>
+</div>
+</dialog>
 <section id="memoPage" class="page" hidden><div class="page-head"><h1>Memo</h1><button data-action="createMemo">＋ 新建</button></div><div class="tabs"><button data-filter="open" class="selected">未完成</button><button data-filter="done">已完成</button></div><div id="memoList" class="memo-list"></div><p id="memoLimit" class="quiet" hidden>列表已达到显示上限，更多数据仍保留在宿主。</p></section>
-<section id="aiPage" class="page" hidden><div class="page-head"><h1>AI 助手</h1><button data-action="settings">配置</button></div><div id="chatMessages" class="chat-list" aria-live="polite"></div><form id="chatForm"><label for="chatInput">向 AI 发送消息</label><div class="composer"><textarea id="chatInput" maxlength="4000" rows="2" placeholder="描述你的日程需求…"></textarea><button id="chatSend" type="submit">发送</button></div></form></section>
+<section id="aiPage" class="page" hidden><div class="page-head"><h1>AI 助手</h1><button data-action="settings">配置</button></div><div id="chatMessages" class="chat-list" aria-live="polite"></div><form id="chatForm"><label for="chatInput">向 AI 发送消息</label><div class="composer"><textarea id="chatInput" maxlength="6000" rows="2" placeholder="描述你的日程需求…"></textarea><button id="chatSend" type="submit">发送</button></div></form></section>
 <section id="extraOptions" class="page" hidden><h1>可用选项</h1><div id="optionGroups"></div></section>
 <nav class="clear-tabbar glass" aria-label="页面导航"><button data-action="timeline" class="current">时间轴</button><button data-action="month">月历</button><button data-action="memo">Memo</button><button data-action="ai">AI</button><button data-action="settings">设置</button></nav>
 <section id="skinSheet" role="dialog" aria-modal="true" aria-label="编辑" hidden>

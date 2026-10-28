@@ -193,6 +193,172 @@ class WebAiProposalReviewIntegrationTest {
             assertEquals(0, store.pendingCount())
             assertEquals(1L, store.commitCount())
             assertEquals(1L, store.identityCount())
+            shadowOf(Looper.getMainLooper()).idle()
+            ui.waitForIdle()
+            val settledWait = runCatching {
+                ui.waitUntil(15_000) {
+                    shadowOf(Looper.getMainLooper()).idle()
+                    val state = WebSkinBridgeRuntime.state()
+                    !state.optBoolean("chatBusy") && state.optJSONObject("aiProposalReview") == null
+                }
+            }.exceptionOrNull()
+            assertTrue(
+                "confirmed publish left Host UI unsettled; bridge=${WebSkinBridgeRuntime.state()} " +
+                    "store=${counts()} dialogCount=" +
+                    ui.onAllNodesWithText("确认 AI 批量正式操作").fetchSemanticsNodes().size,
+                settledWait == null
+            )
+        }
+    }
+
+    @Test
+    fun explicitHostTaskPublishFailureRetainsProposalAndRetriesExactlyOnce() {
+        val zone = ZoneId.of("Asia/Shanghai")
+        val date = LocalDate.now(zone).plusDays(1).toString()
+        val userText = "明天14:00到15:00创建一个活动，标题是失败后重试测试。"
+        val structured = JSONObject().put("events", JSONArray().put(JSONObject()
+            .put("operation", "CREATE")
+            .put("kind", "ACTIVITY")
+            .put("title", "失败后重试测试")
+            .put("start", "$date 14:00")
+            .put("end", "$date 15:00")
+            .put("zoneId", zone.id))).toString()
+        val requests = CopyOnWriteArrayList<String>()
+        val serverFailure = AtomicReference<Throwable?>()
+        val served = CountDownLatch(2)
+        val before = counts()
+        val trigger = "fail_ai_proposal_draft_insert"
+
+        ServerSocket(0, 4, InetAddress.getByName("127.0.0.1")).use { server ->
+            server.soTimeout = 15_000
+            AiSettingsStore.save(context, AiSettings(
+                endpoint = "http://127.0.0.1:${server.localPort}/v1",
+                model = "local-stub:free",
+                apiKey = "LOCAL_TEST_ONLY",
+                enabled = true,
+                shareContext = false
+            ))
+            val responses = listOf(
+                "我会先生成一项待核对提案。" +
+                    "[[POWERCAL_DRAFT]]{\"type\":\"draft\",\"intent\":\"explicit\"}[[/POWERCAL_DRAFT]]",
+                structured
+            )
+            val serverThread = Thread {
+                try {
+                    repeat(responses.size) { index ->
+                        server.accept().use { socket ->
+                            socket.soTimeout = 10_000
+                            requests += readRequest(socket)
+                            writeReply(socket, responses[index])
+                        }
+                        served.countDown()
+                    }
+                } catch (error: Throwable) {
+                    serverFailure.set(error)
+                    while (served.count > 0) served.countDown()
+                }
+            }.apply { name = "pc-web-ai-publish-retry-stub"; isDaemon = true; start() }
+
+            try {
+                ui.activity.setContent {
+                    CompositionLocalProvider(LocalContext provides context) {
+                        PowerCalTheme { PowerCalApp(store) }
+                    }
+                }
+                ui.waitForIdle()
+                ui.onNodeWithText("AI 助手").performClick()
+                ui.onNodeWithText("发送消息…").performTextInput(userText)
+                ui.onNodeWithText("发送").performClick()
+
+                var reviewState: JSONObject? = null
+                ui.waitUntil(20_000) {
+                    val review = WebSkinBridgeRuntime.state().optJSONObject("aiProposalReview")
+                    if (review?.optJSONArray("proposals")?.length() == 1) {
+                        reviewState = review
+                        true
+                    } else serverFailure.get() != null
+                }
+                assertNull("local AI stub failed: ${serverFailure.get()}", serverFailure.get())
+                val review = requireNotNull(reviewState) { "AI proposal was not projected" }
+                val reviewId = review.getString("reviewId")
+                assertEquals("失败后重试测试", review.getJSONArray("proposals")
+                    .getJSONObject(0).getString("title"))
+                assertEquals("proposal generation is read-only", before, counts())
+                assertTrue("both AI requests must finish", served.await(1, TimeUnit.SECONDS))
+                serverThread.join(2_000)
+                assertNull("local AI stub failed: ${serverFailure.get()}", serverFailure.get())
+                assertEquals(2, requests.size)
+
+                store.writableDatabase.execSQL(
+                    """CREATE TRIGGER $trigger BEFORE INSERT ON drafts
+                       BEGIN SELECT RAISE(ABORT,'synthetic AI proposal draft failure'); END"""
+                )
+                val publishAction = WebSkinAction.ResolveAiProposal(
+                    reviewId = reviewId,
+                    decision = AiProposalDecision.PUBLISH,
+                    indices = listOf(0)
+                )
+                ui.runOnIdle { WebSkinBridgeRuntime.onAction(publishAction) }
+                ui.onNodeWithText("确认 AI 批量正式操作").assertExists()
+                assertEquals("Host review must precede any write", before, counts())
+                ui.onNodeWithText("确认并提交 1 项").performClick()
+                shadowOf(Looper.getMainLooper()).idle()
+                ui.waitForIdle()
+
+                val failedPublishWait = runCatching {
+                    ui.waitUntil(15_000) {
+                        shadowOf(Looper.getMainLooper()).idle()
+                        val state = WebSkinBridgeRuntime.state()
+                        !state.optBoolean("chatBusy") && state.optJSONObject("aiProposalReview") != null
+                    }
+                }.exceptionOrNull()
+                assertTrue(
+                    "Host failure did not settle; bridge=${WebSkinBridgeRuntime.state()} " +
+                        "store=${counts()} dialogCount=" +
+                        ui.onAllNodesWithText("确认 AI 批量正式操作").fetchSemanticsNodes().size +
+                        ". Verify the Robolectric main looper is being advanced while waiting.",
+                    failedPublishWait == null
+                )
+                val afterFailure = WebSkinBridgeRuntime.state()
+                assertEquals(reviewId, afterFailure.getJSONObject("aiProposalReview")
+                    .getString("reviewId"))
+                assertEquals(1, afterFailure.getJSONObject("aiProposalReview")
+                    .getJSONArray("proposals").length())
+                assertTrue(afterFailure.getJSONArray("chatMessages").toString()
+                    .contains("未能写入"))
+                assertEquals(0L, store.draftCount())
+                assertEquals(0, store.pendingCount())
+                assertTrue(store.all().isEmpty())
+                assertEquals("task-scoped failed publish rolls back its tentative identity",
+                    0L, store.identityCount())
+                assertEquals(1L, store.nextSequencePreview())
+                assertEquals(0L, store.commitCount())
+
+                store.writableDatabase.execSQL("DROP TRIGGER $trigger")
+                ui.runOnIdle { WebSkinBridgeRuntime.onAction(publishAction) }
+                ui.onNodeWithText("确认 AI 批量正式操作").assertExists()
+                assertEquals("retry must still wait for trusted confirmation",
+                    0L, store.identityCount())
+                ui.onNodeWithText("确认并提交 1 项").performClick()
+                shadowOf(Looper.getMainLooper()).idle()
+                ui.waitForIdle()
+
+                ui.waitUntil(15_000) {
+                    shadowOf(Looper.getMainLooper()).idle()
+                    store.all().size == 1 && !WebSkinBridgeRuntime.state().optBoolean("chatBusy")
+                }
+                val committed = store.all().single()
+                assertEquals("失败后重试测试", committed.title)
+                assertEquals(1L, committed.eventSeq)
+                assertEquals(1L, store.draftCount())
+                assertEquals(0, store.pendingCount())
+                assertEquals(1L, store.identityCount())
+                assertEquals(2L, store.nextSequencePreview())
+                assertEquals(1L, store.commitCount())
+                assertNull(WebSkinBridgeRuntime.state().optJSONObject("aiProposalReview"))
+            } finally {
+                runCatching { store.writableDatabase.execSQL("DROP TRIGGER IF EXISTS $trigger") }
+            }
         }
     }
 
@@ -386,6 +552,11 @@ class WebAiProposalReviewIntegrationTest {
                     decision = AiProposalDecision.PUBLISH,
                     indices = listOf(0)
                 ))
+            }
+            ui.waitUntil(10_000) {
+                shadowOf(Looper.getMainLooper()).idle()
+                ui.onAllNodesWithText("确认 AI 批量正式操作")
+                    .fetchSemanticsNodes().isNotEmpty()
             }
             ui.onNodeWithText("确认 AI 批量正式操作").assertExists()
             assertEquals("proposal remains unchanged before a concurrent edit", before, counts())

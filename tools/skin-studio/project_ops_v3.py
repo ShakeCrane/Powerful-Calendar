@@ -4,7 +4,9 @@ from __future__ import annotations
 import base64
 import binascii
 import copy
+from collections import Counter
 import hashlib
+from html.parser import HTMLParser
 import json
 import os
 from pathlib import Path
@@ -19,6 +21,22 @@ MAX_PATCH_OPERATIONS = 256
 MAX_OPERATION_DOCUMENT = 24_000_000
 SHA256 = re.compile(r"[0-9a-fA-F]{64}\Z")
 REQUIRED_FILES = frozenset(package_v3.WEB_REQUIRED)
+MAX_ANALYZED_COMPONENTS = 20_000
+MAX_COMPONENT_ATTRIBUTES = 256
+MAX_COMPONENT_STYLE_PROPERTIES = 128
+MAX_COMPONENT_STYLE_VALUE_BYTES = 4_096
+COMPONENT_STYLE_ATTRIBUTE = "data-pcskin-studio-style"
+COMPONENT_STYLE_TOKEN = re.compile(r"pcss-[0-9a-f]{24}\Z")
+CSS_PROPERTY = re.compile(r"(?:--[A-Za-z_][A-Za-z0-9_-]*|-?[A-Za-z][A-Za-z0-9-]*)\Z")
+BRIDGE_V1_ACTION_REGISTRY = Path(__file__).with_name("bridge_v1_action_registry.json")
+BRIDGE_V1_CONTRACT_SCHEMA = Path(__file__).resolve().parents[2] / (
+    "docs/contracts/web-skin-bridge-v1.schema.json")
+VOID_HTML_TAGS = frozenset({
+    "area", "base", "br", "col", "embed", "hr", "img", "input", "link",
+    "meta", "param", "source", "track", "wbr",
+})
+PROTECTED_COMPONENT_TAGS = frozenset({"html", "head", "body"})
+RAW_TEXT_COMPONENT_TAGS = frozenset({"script", "style", "textarea", "title"})
 TEXT_EXTENSIONS = frozenset({
     ".cjs", ".css", ".html", ".htm", ".ini", ".js", ".json", ".jsx", ".kt",
     ".less", ".md", ".mjs", ".properties", ".py", ".scss", ".sh", ".sql",
@@ -187,6 +205,428 @@ def _apply_json_patch(document: object, operations: object) -> object:
     return result
 
 
+def _component_page(files: dict[str, bytes], path: object, expected: object):
+    path = _validate_path(path)
+    _fail(path.startswith("web/") and path.lower().endswith((".html", ".htm")),
+          "component operations require a web/ .html or .htm page")
+    data = _expect_existing(files, path, expected)
+    try:
+        source = data.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as exc:
+        raise skin_studio.SkinError("HTML page is not UTF-8: " + path) from exc
+    parser = _StaticHtmlInventory(path)
+    parser.parse(source)
+    _fail(not parser.structural_issues,
+          "component operations require well-formed explicit HTML: " +
+          "; ".join(parser.structural_issues[:4]))
+    return path, source, parser
+
+
+def _component_node(parser: _StaticHtmlInventory, node_id: object) -> dict:
+    _fail(type(node_id) is str and node_id in parser.by_id,
+          "component nodeId is missing or stale; run analyze-v3 again")
+    node = parser.by_id[node_id]
+    _fail(node["_sourceMutable"] and node["_sourceEnd"] is not None,
+          "component has no safe explicit source range")
+    return node
+
+
+def _component_fragment(value: object) -> tuple[str, _StaticHtmlInventory]:
+    _fail(type(value) is str and bool(value.strip()),
+          "component html must be a non-empty string")
+    _fail(len(value.encode("utf-8")) <= package_v3.TEXT_LIMIT,
+          "component html exceeds the package text-file limit")
+    parser = _StaticHtmlInventory("web/__component_fragment__.html")
+    parser.parse(value)
+    _fail(not parser.structural_issues,
+          "component html must be a well-formed HTML fragment")
+    _fail(bool(parser.nodes), "component html must contain at least one element")
+    _fail(not any(node["tag"] in PROTECTED_COMPONENT_TAGS for node in parser.nodes),
+          "component html cannot add document shell elements")
+    return value, parser
+
+
+def _validate_component_result(path: str, before: _StaticHtmlInventory,
+                               result: str) -> bytes:
+    parser = _StaticHtmlInventory(path)
+    parser.parse(result)
+    _fail(not parser.structural_issues,
+          "component edit would make the HTML source structurally invalid: " +
+          "; ".join(parser.structural_issues[:4]))
+    old_ids = Counter(node["id"] for node in before.nodes if node.get("id"))
+    new_ids = Counter(node["id"] for node in parser.nodes if node.get("id"))
+    duplicates = sorted(ident for ident, count in new_ids.items()
+                        if count > max(1, old_ids.get(ident, 0)))
+    _fail(not duplicates,
+          "component edit would create duplicate HTML id: " + ", ".join(duplicates[:8]))
+    encoded = result.encode("utf-8")
+    _fail(len(encoded) <= package_v3.TEXT_LIMIT,
+          "component edit exceeds the package text-file limit")
+    return encoded
+
+
+def _component_is_descendant(parser: _StaticHtmlInventory,
+                             ancestor_id: str, node_id: str) -> bool:
+    current = parser.by_id[node_id].get("parentId")
+    while current is not None:
+        if current == ancestor_id:
+            return True
+        current = parser.by_id[current].get("parentId")
+    return False
+
+
+def _component_insert_offset(node: dict, position: object) -> int:
+    if position == "before":
+        return node["_sourceStart"]
+    if position == "after":
+        return node["_sourceEnd"]
+    if position == "prepend":
+        _fail(node["tag"] not in VOID_HTML_TAGS and node["_sourceCloseStart"] is not None,
+              "prepend requires a paired container element")
+        _fail(node["tag"] not in RAW_TEXT_COMPONENT_TAGS,
+              "cannot insert an HTML component inside a raw-text element")
+        return node["_sourceOpenEnd"]
+    if position == "append":
+        _fail(node["tag"] not in VOID_HTML_TAGS and node["_sourceCloseStart"] is not None,
+              "append requires a paired container element")
+        _fail(node["tag"] not in RAW_TEXT_COMPONENT_TAGS,
+              "cannot insert an HTML component inside a raw-text element")
+        return node["_sourceCloseStart"]
+    raise skin_studio.SkinError("position must be before, after, prepend, or append")
+
+
+def _normalize_component_attribute_name(value: object) -> str:
+    _fail(type(value) is str and len(value) <= 256 and
+          re.fullmatch(r"[^\s\"'<>/=]+", value) is not None and
+          not any(ord(character) < 0x20 or ord(character) == 0x7f
+                  for character in value),
+          "attribute name must be a non-empty HTML attribute token")
+    return value.lower()
+
+
+def _apply_component_attributes(files: dict[str, bytes], operation: dict) -> dict[str, bytes]:
+    fields = {"op", "path", "expectedSha256", "targetNodeId",
+              "setAttributes", "removeAttributes"}
+    _fail(set(operation) == fields, "component-attributes has unsupported or missing fields")
+    path, source, parser = _component_page(
+        files, operation["path"], operation["expectedSha256"])
+    node = _component_node(parser, operation["targetNodeId"])
+
+    raw_set = operation["setAttributes"]
+    raw_remove = operation["removeAttributes"]
+    _fail(type(raw_set) is dict and len(raw_set) <= MAX_COMPONENT_ATTRIBUTES,
+          f"setAttributes must be an object with at most {MAX_COMPONENT_ATTRIBUTES} entries")
+    _fail(type(raw_remove) is list and len(raw_remove) <= MAX_COMPONENT_ATTRIBUTES,
+          f"removeAttributes must be an array with at most {MAX_COMPONENT_ATTRIBUTES} entries")
+
+    set_attributes: dict[str, str | None] = {}
+    for raw_name, value in raw_set.items():
+        name = _normalize_component_attribute_name(raw_name)
+        _fail(name not in set_attributes,
+              "setAttributes contains duplicate names after case normalization")
+        _fail(value is None or type(value) is str,
+              f"attribute value for {name!r} must be a string or null for a boolean attribute")
+        try:
+            value_bytes = value.encode("utf-8") if value is not None else b""
+        except UnicodeEncodeError as exc:
+            raise skin_studio.SkinError(f"attribute value for {name!r} is not valid Unicode") from exc
+        _fail(value is None or ("\x00" not in value and
+                                len(value_bytes) <= package_v3.TEXT_LIMIT),
+              f"attribute value for {name!r} is invalid or too large")
+        set_attributes[name] = value
+
+    remove_attributes: set[str] = set()
+    for raw_name in raw_remove:
+        name = _normalize_component_attribute_name(raw_name)
+        _fail(name not in remove_attributes,
+              "removeAttributes contains duplicate names after case normalization")
+        remove_attributes.add(name)
+    _fail(bool(set_attributes or remove_attributes),
+          "component-attributes must set or remove at least one attribute")
+    _fail(not (set(set_attributes) & remove_attributes),
+          "an attribute cannot be both set and removed")
+
+    current_values: dict[str, list[str | None]] = {}
+    for attribute in node["attributes"]:
+        current_values.setdefault(attribute["name"].lower(), []).append(attribute["value"])
+    set_attributes = {name: value for name, value in set_attributes.items()
+                      if current_values.get(name) != [value]}
+    remove_attributes = {name for name in remove_attributes if name in current_values}
+    if not set_attributes and not remove_attributes:
+        return files
+
+    attributes: list[dict] = []
+    applied: set[str] = set()
+    for attribute in node["attributes"]:
+        name = attribute["name"].lower()
+        if name in remove_attributes:
+            continue
+        if name in set_attributes:
+            if name not in applied:
+                attributes.append({"name": name, "value": set_attributes[name]})
+                applied.add(name)
+            continue
+        attributes.append(attribute)
+    for name, value in set_attributes.items():
+        if name not in applied:
+            attributes.append({"name": name, "value": value})
+
+    opening = source[node["_sourceStart"]:node["_sourceOpenEnd"]]
+    _fail(bool(opening) and opening.startswith("<"),
+          "selected component has no safe opening tag")
+    closing = "/>" if re.search(r"/\s*>$", opening) else ">"
+    rendered = "<" + node["tag"]
+    for attribute in attributes:
+        rendered += " " + attribute["name"]
+        value = attribute["value"]
+        if value is not None:
+            escaped = (value.replace("&", "&amp;").replace("\"", "&quot;")
+                       .replace("<", "&lt;").replace(">", "&gt;"))
+            rendered += '="' + escaped + '"'
+    rendered += closing
+    start, end = node["_sourceStart"], node["_sourceOpenEnd"]
+    result = source[:start] + rendered + source[end:]
+    files[path] = _validate_component_result(path, parser, result)
+    return files
+
+
+def _normalize_css_property(value: object) -> str:
+    _fail(type(value) is str and len(value) <= 256 and CSS_PROPERTY.fullmatch(value) is not None,
+          "CSS property must be a valid property name")
+    return value if value.startswith("--") else value.lower()
+
+
+def _component_style_markers(token: str) -> tuple[str, str]:
+    return (f"/* pcskin-studio-style-begin:{token} */",
+            f"/* pcskin-studio-style-end:{token} */")
+
+
+def _read_component_style_block(css: str, token: str) -> tuple[re.Match | None, dict[str, str]]:
+    begin, end = _component_style_markers(token)
+    _fail(css.count(begin) <= 1 and css.count(end) <= 1,
+          "component style markers are duplicated; edit the CSS source directly")
+    if begin not in css and end not in css:
+        return None, {}
+    _fail(css.count(begin) == 1 and css.count(end) == 1,
+          "component style block is incomplete; edit the CSS source directly")
+    pattern = re.compile(re.escape(begin) + r"(.*?)" + re.escape(end), re.DOTALL)
+    matches = list(pattern.finditer(css))
+    _fail(len(matches) == 1, "component style block is malformed; edit the CSS source directly")
+    match = matches[0]
+    rule = re.fullmatch(
+        r"\s*\[data-pcskin-studio-style=\"" + re.escape(token) +
+        r"\"\]\s*\{\s*(.*?)\s*\}\s*", match.group(1), re.DOTALL)
+    _fail(rule is not None,
+          "component style block selector is malformed; edit the CSS source directly")
+    properties: dict[str, str] = {}
+    declaration = re.compile(r"\s*((?:--[A-Za-z_][A-Za-z0-9_-]*|-?[A-Za-z][A-Za-z0-9-]*))\s*:\s*(.*?)\s*;\s*\Z")
+    for line in rule.group(1).splitlines():
+        if not line.strip():
+            continue
+        parsed = declaration.fullmatch(line)
+        _fail(parsed is not None,
+              "component style block contains unsupported syntax; edit the CSS source directly")
+        name = _normalize_css_property(parsed.group(1))
+        _fail(name not in properties, "component style block contains duplicate properties")
+        properties[name] = parsed.group(2)
+    return match, properties
+
+
+def _render_component_style_block(token: str, properties: dict[str, str]) -> str:
+    begin, end = _component_style_markers(token)
+    selector = f'[data-pcskin-studio-style="{token}"]'
+    declarations = "\n".join(f"  {name}: {value};" for name, value in sorted(properties.items()))
+    return f"{begin}\n{selector} {{\n{declarations}\n}}\n{end}"
+
+
+def _write_component_style_attribute(files: dict[str, bytes], path: str, source: str,
+                                     parser: _StaticHtmlInventory, node: dict,
+                                     token: str | None) -> None:
+    start, end = node["_sourceStart"], node["_sourceOpenEnd"]
+    opening = source[start:end]
+    _fail(bool(opening) and opening.startswith("<") and opening.endswith(">"),
+          "selected component has no safe opening tag")
+    if token is None:
+        pattern = re.compile(
+            r"\s+" + re.escape(COMPONENT_STYLE_ATTRIBUTE) + r"\s*=\s*([\"'])" +
+            re.escape(str(next(attribute["value"] for attribute in node["attributes"]
+                               if attribute["name"].lower() == COMPONENT_STYLE_ATTRIBUTE))) +
+            r"\1", re.IGNORECASE)
+        rendered, count = pattern.subn("", opening, count=1)
+        _fail(count == 1, "Studio style marker source could not be removed safely")
+    else:
+        insert_at = len(opening) - (2 if re.search(r"/\s*>$", opening) else 1)
+        rendered = opening[:insert_at] + f' {COMPONENT_STYLE_ATTRIBUTE}="{token}"' + opening[insert_at:]
+    updated = source[:start] + rendered + source[end:]
+    files[path] = _validate_component_result(path, parser, updated)
+
+
+def _apply_component_style(files: dict[str, bytes], operation: dict) -> dict[str, bytes]:
+    fields = {"op", "path", "expectedSha256", "cssPath", "expectedCssSha256",
+              "targetNodeId", "setProperties", "removeProperties"}
+    _fail(set(operation) == fields, "component-style has unsupported or missing fields")
+    html_path, html_source, parser = _component_page(
+        files, operation["path"], operation["expectedSha256"])
+    node = _component_node(parser, operation["targetNodeId"])
+    css_path = _validate_path(operation["cssPath"])
+    _fail(css_path.startswith("web/") and css_path.lower().endswith(".css"),
+          "component styles require a package CSS source under web/")
+    css_bytes = _expect_existing(files, css_path, operation["expectedCssSha256"])
+    try:
+        css = css_bytes.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise skin_studio.SkinError("component stylesheet is not valid UTF-8") from exc
+
+    raw_set = operation["setProperties"]
+    raw_remove = operation["removeProperties"]
+    _fail(type(raw_set) is dict and len(raw_set) <= MAX_COMPONENT_STYLE_PROPERTIES,
+          f"setProperties must be an object with at most {MAX_COMPONENT_STYLE_PROPERTIES} items")
+    _fail(type(raw_remove) is list and len(raw_remove) <= MAX_COMPONENT_STYLE_PROPERTIES,
+          f"removeProperties must be an array with at most {MAX_COMPONENT_STYLE_PROPERTIES} items")
+    set_properties: dict[str, str] = {}
+    for raw_name, raw_value in raw_set.items():
+        name = _normalize_css_property(raw_name)
+        _fail(name not in set_properties, "setProperties contains duplicate CSS properties")
+        _fail(type(raw_value) is str, f"CSS value for {name!r} must be a string")
+        try:
+            value_bytes = raw_value.encode("utf-8")
+        except UnicodeEncodeError as exc:
+            raise skin_studio.SkinError(f"CSS value for {name!r} is not valid Unicode") from exc
+        value = raw_value.strip()
+        _fail(bool(value) and len(value_bytes) <= MAX_COMPONENT_STYLE_VALUE_BYTES and
+              not any(character in value for character in "\x00\r\n;{}") and
+              "/*" not in value and "*/" not in value,
+              f"CSS value for {name!r} is empty, too large, or contains unsupported delimiters")
+        set_properties[name] = value
+
+    remove_properties: set[str] = set()
+    for raw_name in raw_remove:
+        name = _normalize_css_property(raw_name)
+        _fail(name not in remove_properties, "removeProperties contains duplicate CSS properties")
+        remove_properties.add(name)
+    _fail(not (set(set_properties) & remove_properties),
+          "a CSS property cannot be both set and removed")
+
+    marker_values = [attribute["value"] for attribute in node["attributes"]
+                     if attribute["name"].lower() == COMPONENT_STYLE_ATTRIBUTE]
+    _fail(len(marker_values) <= 1, "selected HTML node has duplicate Studio style markers")
+    token = marker_values[0] if marker_values else None
+    if token is not None:
+        _fail(type(token) is str and COMPONENT_STYLE_TOKEN.fullmatch(token) is not None,
+              "selected HTML node has an invalid Studio style marker; edit the HTML source directly")
+        _fail(sum(1 for candidate in parser.nodes
+                  for attribute in candidate["attributes"]
+                  if attribute["name"].lower() == COMPONENT_STYLE_ATTRIBUTE and
+                  attribute["value"] == token) == 1,
+              "Studio style marker is shared by multiple HTML nodes")
+
+    style_match, old_properties = _read_component_style_block(css, token) if token else (None, {})
+    for name in list(set_properties):
+        current = old_properties.get(name)
+        if current == set_properties[name]:
+            del set_properties[name]
+    remove_properties = {name for name in remove_properties if name in old_properties}
+    if not set_properties and not remove_properties:
+        return files
+
+    next_properties = dict(old_properties)
+    for name in remove_properties:
+        next_properties.pop(name, None)
+    next_properties.update(set_properties)
+
+    if next_properties and token is None:
+        token = "pcss-" + hashlib.sha256(
+            (html_path + "\0" + node["nodeId"] + "\0" +
+             _file_sha256(html_source.encode("utf-8"))).encode("utf-8")
+        ).hexdigest()[:24]
+        _fail(not any(attribute["name"].lower() == COMPONENT_STYLE_ATTRIBUTE and
+                      attribute["value"] == token
+                      for candidate in parser.nodes for attribute in candidate["attributes"]),
+              "generated Studio style marker collides with an existing node")
+
+    if token is not None:
+        if style_match:
+            replacement = _render_component_style_block(token, next_properties) if next_properties else ""
+            updated_css = css[:style_match.start()] + replacement + css[style_match.end():]
+        elif next_properties:
+            separator = "" if not css or css.endswith("\n") else "\n"
+            updated_css = css + separator + _render_component_style_block(token, next_properties) + "\n"
+        else:
+            updated_css = css
+        if updated_css != css:
+            encoded_css = updated_css.encode("utf-8")
+            _fail(len(encoded_css) <= package_v3.TEXT_LIMIT,
+                  "component stylesheet exceeds the package text-file limit")
+            files[css_path] = encoded_css
+
+        if next_properties and not marker_values:
+            _write_component_style_attribute(files, html_path, html_source, parser, node, token)
+        elif not next_properties and marker_values:
+            _write_component_style_attribute(files, html_path, html_source, parser, node, None)
+    return files
+
+
+def _apply_component_operation(files: dict[str, bytes], operation: dict) -> dict[str, bytes]:
+    op = operation.get("op")
+    if op == "component-style":
+        return _apply_component_style(files, operation)
+    if op == "component-attributes":
+        return _apply_component_attributes(files, operation)
+    common = {"op", "path", "expectedSha256"}
+    fields = {
+        "component-insert": common | {"targetNodeId", "position", "html"},
+        "component-remove": common | {"targetNodeId"},
+        "component-replace": common | {"targetNodeId", "html"},
+        "component-move": common | {"sourceNodeId", "targetNodeId", "position"},
+    }.get(op)
+    _fail(fields is not None and set(operation) == fields,
+          str(op) + " has unsupported or missing fields")
+    path, source, parser = _component_page(
+        files, operation["path"], operation["expectedSha256"])
+
+    if op == "component-insert":
+        target = _component_node(parser, operation["targetNodeId"])
+        fragment, _ = _component_fragment(operation["html"])
+        offset = _component_insert_offset(target, operation["position"])
+        result = source[:offset] + fragment + source[offset:]
+        # Validate against the original page so existing duplicate IDs are retained,
+        # while a new duplicate introduced by this fragment is rejected.
+        files[path] = _validate_component_result(path, parser, result)
+        return files
+
+    if op in {"component-remove", "component-replace"}:
+        target = _component_node(parser, operation["targetNodeId"])
+        _fail(target["tag"] not in PROTECTED_COMPONENT_TAGS,
+              "document shell elements cannot be removed or replaced")
+        start, end = target["_sourceStart"], target["_sourceEnd"]
+        replacement = ""
+        if op == "component-replace":
+            replacement, _ = _component_fragment(operation["html"])
+        result = source[:start] + replacement + source[end:]
+        files[path] = _validate_component_result(path, parser, result)
+        return files
+
+    source_node = _component_node(parser, operation["sourceNodeId"])
+    target = _component_node(parser, operation["targetNodeId"])
+    _fail(source_node["nodeId"] != target["nodeId"],
+          "a component cannot be moved relative to itself")
+    _fail(source_node["tag"] not in PROTECTED_COMPONENT_TAGS,
+          "document shell elements cannot be moved")
+    _fail(not _component_is_descendant(parser, source_node["nodeId"], target["nodeId"]),
+          "a component cannot be moved into its own descendant")
+    start, end = source_node["_sourceStart"], source_node["_sourceEnd"]
+    offset = _component_insert_offset(target, operation["position"])
+    _fail(not start < offset < end,
+          "a component cannot be moved into its own source range")
+    fragment = source[start:end]
+    without_source = source[:start] + source[end:]
+    if start < offset:
+        offset -= end - start
+    result = without_source[:offset] + fragment + without_source[offset:]
+    files[path] = _validate_component_result(path, parser, result)
+    return files
+
+
 def _apply_one(files: dict[str, bytes], operation: object) -> dict[str, bytes]:
     _fail(type(operation) is dict, "each operation must be a JSON object")
     op = operation.get("op")
@@ -235,6 +675,10 @@ def _apply_one(files: dict[str, bytes], operation: object) -> dict[str, bytes]:
         _expect_existing(files, source, operation["expectedSha256"])
         files[target] = files.pop(source)
         return files
+
+    if op in {"component-insert", "component-remove", "component-attributes", "component-style",
+              "component-replace", "component-move"}:
+        return _apply_component_operation(files, operation)
 
     if op == "json-patch":
         _fail(set(operation) == {"op", "path", "expectedSha256", "patch"},
@@ -342,6 +786,333 @@ def inspect_package(source: bytes) -> dict:
         "files": file_index,
         "project": project,
     }
+
+
+class _StaticHtmlInventory(HTMLParser):
+    """Build a bounded source-nesting index without rewriting HTML bytes."""
+
+    def __init__(self, path: str):
+        super().__init__(convert_charrefs=True)
+        self.path = path
+        self.source = ""
+        self._line_offsets: list[int] = [0]
+        self.nodes: list[dict] = []
+        self.stack: list[str | None] = [None]
+        self.by_id: dict[str, dict] = {}
+        self.title_parts: list[str] = []
+        self.script_sources: list[str] = []
+        self.stylesheet_sources: list[str] = []
+        self.inline_script_count = 0
+        self.warnings: list[str] = []
+        self.structural_issues: list[str] = []
+        self._script_depth = 0
+        self._style_depth = 0
+
+    def parse(self, source: str) -> dict:
+        self.source = source
+        self._line_offsets = [0]
+        self._line_offsets.extend(match.end() for match in re.finditer("\n", source))
+        self.feed(source)
+        self.close()
+        for node_id in self.stack[1:]:
+            if node_id is not None:
+                node = self.by_id[node_id]
+                message = f"unclosed <{node['tag']}> beginning at line {node['line']}"
+                self.warnings.append(message)
+                self.structural_issues.append(message)
+                node["_sourceMutable"] = False
+        self.warnings.append(
+            "JavaScript is not executed; runtime-created components are absent from this inventory"
+        )
+        return {
+            "path": self.path,
+            "sourceSha256": _file_sha256(source.encode("utf-8")),
+            "title": " ".join(" ".join(self.title_parts).split())[:240],
+            "treeKind": "explicit-source-nesting",
+            "componentCount": len(self.nodes),
+            "interactiveCount": sum(1 for node in self.nodes if self._is_interactive(node)),
+            "scriptSources": self.script_sources,
+            "stylesheetSources": self.stylesheet_sources,
+            "inlineScriptCount": self.inline_script_count,
+            "duplicateIds": self._duplicate_ids(),
+            "components": [self._public_node(node) for node in self.nodes],
+            "warnings": list(dict.fromkeys(self.warnings)),
+        }
+
+    @staticmethod
+    def _public_node(node: dict) -> dict:
+        return {key: value for key, value in node.items() if not key.startswith("_")}
+
+    def _source_offset(self, position: tuple[int, int]) -> int:
+        line, column = position
+        _fail(1 <= line <= len(self._line_offsets), "HTML parser returned an invalid source line")
+        return self._line_offsets[line - 1] + column
+
+    @staticmethod
+    def _is_interactive(node: dict) -> bool:
+        values = {item["name"]: item["value"] for item in node["attributes"]}
+        return (node["tag"] in {"a", "button", "input", "select", "textarea"} or
+                values.get("role") in {"button", "link", "checkbox", "radio", "tab"} or
+                "data-action" in values or "data-local" in values)
+
+    def _duplicate_ids(self) -> list[str]:
+        counts: dict[str, int] = {}
+        for node in self.nodes:
+            ident = node.get("id")
+            if ident:
+                counts[ident] = counts.get(ident, 0) + 1
+        return sorted(ident for ident, count in counts.items() if count > 1)
+
+    def _add_element(self, tag: str, attrs: list[tuple[str, str | None]], self_closing: bool) -> dict:
+        if len(self.nodes) >= MAX_ANALYZED_COMPONENTS:
+            raise skin_studio.SkinError(
+                f"HTML inventory exceeds {MAX_ANALYZED_COMPONENTS} components: {self.path}"
+            )
+        line, column = self.getpos()
+        node_id = f"{self.path}#n{len(self.nodes) + 1:05d}"
+        parent_id = self.stack[-1]
+        start_offset = self._source_offset((line, column))
+        start_tag = self.get_starttag_text() or ""
+        normalized = [{"name": name.lower(), "value": value} for name, value in attrs]
+        values = {item["name"]: item["value"] for item in normalized}
+        is_void = tag.lower() in VOID_HTML_TAGS
+        has_explicit_end = not self_closing and not is_void
+        node = {
+            "nodeId": node_id,
+            "parentId": parent_id,
+            "tag": tag.lower(),
+            "id": values.get("id"),
+            "component": values.get("data-component"),
+            "line": line,
+            "column": column + 1,
+            "attributes": normalized,
+            "directText": "",
+            "_sourceStart": start_offset,
+            "_sourceOpenEnd": start_offset + len(start_tag),
+            "_sourceCloseStart": None,
+            "_sourceEnd": start_offset + len(start_tag) if not has_explicit_end else None,
+            "_sourceMutable": bool(start_tag),
+        }
+        self.nodes.append(node)
+        self.by_id[node_id] = node
+        if parent_id is not None:
+            self.by_id[parent_id].setdefault("childIds", []).append(node_id)
+        if tag.lower() == "script":
+            src = values.get("src")
+            if src:
+                self.script_sources.append(src)
+            else:
+                self.inline_script_count += 1
+        if tag.lower() == "link" and "stylesheet" in (values.get("rel") or "").lower().split():
+            href = values.get("href")
+            if href:
+                self.stylesheet_sources.append(href)
+        if has_explicit_end:
+            self.stack.append(node_id)
+            if tag.lower() == "script":
+                self._script_depth += 1
+            elif tag.lower() == "style":
+                self._style_depth += 1
+        return node
+
+    def handle_starttag(self, tag, attrs):
+        self._add_element(tag, attrs, self_closing=False)
+
+    def handle_startendtag(self, tag, attrs):
+        self._add_element(tag, attrs, self_closing=True)
+
+    def handle_endtag(self, tag):
+        lowered = tag.lower()
+        close_start = self._source_offset(self.getpos())
+        close_match = re.match(r"</\s*" + re.escape(lowered) + r"\s*>",
+                               self.source[close_start:], re.IGNORECASE)
+        close_end = close_start + len(close_match.group(0)) if close_match else None
+        match = next((index for index in range(len(self.stack) - 1, 0, -1)
+                      if self.by_id[self.stack[index]]["tag"] == lowered), None)
+        if match is None:
+            message = f"unmatched closing tag </{lowered}> at line {self.getpos()[0]}"
+            self.warnings.append(message)
+            self.structural_issues.append(message)
+            return
+        for node_id in self.stack[match + 1:]:
+            node = self.by_id[node_id]
+            message = (f"<{node['tag']}> at line {node['line']} is implicitly closed by "
+                       f"</{lowered}>")
+            self.warnings.append(message)
+            self.structural_issues.append(message)
+            node["_sourceMutable"] = False
+        closed_node = self.by_id[self.stack[match]]
+        if close_end is None or close_end < closed_node["_sourceOpenEnd"]:
+            message = f"closing tag </{lowered}> has no exact source range at line {self.getpos()[0]}"
+            self.warnings.append(message)
+            self.structural_issues.append(message)
+            closed_node["_sourceMutable"] = False
+        else:
+            closed_node["_sourceCloseStart"] = close_start
+            closed_node["_sourceEnd"] = close_end
+        for node_id in self.stack[match:]:
+            closing = self.by_id[node_id]["tag"]
+            if closing == "script":
+                self._script_depth = max(0, self._script_depth - 1)
+            elif closing == "style":
+                self._style_depth = max(0, self._style_depth - 1)
+        del self.stack[match:]
+
+    def handle_data(self, data):
+        if self.stack[-1] is None:
+            return
+        current = self.by_id[self.stack[-1]]
+        if current["tag"] == "title":
+            self.title_parts.append(data)
+        if self._script_depth == 0 and self._style_depth == 0 and data.strip():
+            pieces = [current["directText"], " ".join(data.split())]
+            current["directText"] = " ".join(piece for piece in pieces if piece)[:240]
+
+
+def analyze_package(source: bytes) -> dict:
+    """Return a machine-readable static source inventory for HTML pages in a v3 skin."""
+    manifest, files = package_v3.unpack(source)
+    pages = []
+    total_components = 0
+    for path, data in sorted(files.items()):
+        if not path.lower().endswith((".html", ".htm")) or not path.startswith("web/"):
+            continue
+        try:
+            html = data.decode("utf-8", errors="strict")
+        except UnicodeDecodeError as exc:
+            raise skin_studio.SkinError(f"HTML page is not UTF-8: {path}") from exc
+        page = _StaticHtmlInventory(path).parse(html)
+        total_components += page["componentCount"]
+        _fail(total_components <= MAX_ANALYZED_COMPONENTS,
+              f"HTML inventory exceeds {MAX_ANALYZED_COMPONENTS} components")
+        pages.append(page)
+    return {
+        "schemaVersion": 1,
+        "command": "analyze-v3",
+        "ok": True,
+        "skin": {"id": manifest["id"], "name": manifest["name"],
+                 "packageSha256": _file_sha256(source)},
+        "pageCount": len(pages),
+        "componentCount": total_components,
+        "analysisScope": "static HTML source; no JavaScript execution or computed browser DOM",
+        "pages": pages,
+    }
+
+
+def audit_bridge_package(source: bytes) -> dict:
+    """Check static HTML data-action names against the Host v1 registry."""
+    manifest, files = package_v3.unpack(source)
+    try:
+        registry = json.loads(BRIDGE_V1_ACTION_REGISTRY.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise skin_studio.SkinError("Bridge v1 action registry is unavailable or invalid") from exc
+    _fail(type(registry) is dict and registry.get("schemaVersion") == 1 and
+          registry.get("bridgeVersion") == 1 and
+          type(registry.get("requiredCapability")) is str and
+          registry["requiredCapability"] == "host.action" and
+          type(registry.get("actions")) is list and
+          all(type(name) is str and name for name in registry["actions"]) and
+          len(registry["actions"]) == len(set(registry["actions"])),
+          "Bridge v1 action registry has an invalid schema")
+    known_actions = set(registry["actions"])
+    try:
+        contract_bytes = BRIDGE_V1_CONTRACT_SCHEMA.read_bytes()
+        contract = json.loads(contract_bytes.decode("utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise skin_studio.SkinError("Bridge v1 JSON Schema is unavailable or invalid") from exc
+    contract_defs = contract.get("$defs") if type(contract) is dict else None
+    action_payloads = (contract_defs.get("actionPayloads")
+                       if type(contract_defs) is dict else None)
+    command_payloads = (contract_defs.get("commandPayloads")
+                        if type(contract_defs) is dict else None)
+    _fail(type(contract) is dict and
+          contract.get("$schema") == "https://json-schema.org/draft/2020-12/schema" and
+          type(action_payloads) is dict and type(command_payloads) is dict and
+          set(action_payloads) == known_actions and
+          registry.get("contractSchema") == "docs/contracts/web-skin-bridge-v1.schema.json",
+          "Bridge v1 JSON Schema action registry does not match the action names")
+
+    def referenced_payload_names(message_name: str, expected_prefix: str) -> set[str]:
+        message = contract_defs.get(message_name)
+        payload = message.get("properties", {}).get("payload", {}) \
+            if type(message) is dict else {}
+        branches = payload.get("oneOf") if type(payload) is dict else None
+        _fail(type(branches) is list, f"Bridge v1 JSON Schema has no {message_name} payload union")
+        refs = set()
+        for branch in branches:
+            ref = branch.get("$ref") if type(branch) is dict else None
+            prefix = f"#/$defs/{expected_prefix}/"
+            _fail(type(ref) is str and ref.startswith(prefix),
+                  f"Bridge v1 JSON Schema has an invalid {message_name} payload reference")
+            refs.add(ref[len(prefix):])
+        return refs
+
+    _fail(referenced_payload_names("actionMessage", "actionPayloads") == known_actions,
+          "Bridge v1 JSON Schema action message union is incomplete")
+    command_names = {name for name in command_payloads if "." in name}
+    _fail(referenced_payload_names("commandMessage", "commandPayloads") == command_names and
+          len(command_names) > 0,
+          "Bridge v1 JSON Schema edit-command union is incomplete")
+    bindings = []
+    unknown_bindings = []
+    inline_script_count = 0
+    linked_scripts = set()
+    total_components = 0
+    for path, data in sorted(files.items()):
+        if not path.startswith("web/") or not path.lower().endswith((".html", ".htm")):
+            continue
+        try:
+            html = data.decode("utf-8", errors="strict")
+        except UnicodeDecodeError as exc:
+            raise skin_studio.SkinError(f"HTML page is not UTF-8: {path}") from exc
+        page = _StaticHtmlInventory(path).parse(html)
+        total_components += page["componentCount"]
+        _fail(total_components <= MAX_ANALYZED_COMPONENTS,
+              f"HTML inventory exceeds {MAX_ANALYZED_COMPONENTS} components")
+        inline_script_count += page["inlineScriptCount"]
+        linked_scripts.update(page["scriptSources"])
+        for node in page["components"]:
+            attribute = next((item for item in node["attributes"]
+                              if item["name"] == "data-action"), None)
+            if attribute is None:
+                continue
+            action = attribute["value"]
+            binding = {"path": path, "nodeId": node["nodeId"], "action": action,
+                       "payloadSchemaRef": f"#/$defs/actionPayloads/{action}"}
+            bindings.append(binding)
+            if type(action) is not str or action not in known_actions:
+                unknown_bindings.append(binding)
+
+    required_capabilities = ([registry["requiredCapability"]] if bindings else [])
+    declared_capabilities = manifest.get("capabilities", [])
+    missing_capabilities = [capability for capability in required_capabilities
+                            if capability not in declared_capabilities]
+    requires_source_review = bool(linked_scripts or inline_script_count)
+    result = {
+        "schemaVersion": 1,
+        "command": "audit-bridge-v3",
+        "ok": not unknown_bindings and not missing_capabilities,
+        "skin": {"id": manifest["id"], "name": manifest["name"],
+                 "packageSha256": _file_sha256(source)},
+        "registry": {"bridgeVersion": registry["bridgeVersion"],
+                     "requiredCapability": registry["requiredCapability"],
+                     "actionCount": len(known_actions)},
+        "contractSchema": {"path": registry["contractSchema"],
+                           "sha256": _file_sha256(contract_bytes)},
+        "declaredCapabilities": declared_capabilities,
+        "requiredCapabilities": required_capabilities,
+        "missingCapabilities": missing_capabilities,
+        "bindings": bindings,
+        "unknownBindings": unknown_bindings,
+        "scope": "literal data-action attributes in static web/*.html and web/*.htm",
+        "requiresSourceReview": requires_source_review,
+        "limitations": [
+            "Does not execute JavaScript or enumerate controls created at runtime.",
+            "Does not validate JavaScript-generated Bridge payloads or their field schemas.",
+            "Review linked JavaScript source and V3_HOST_BRIDGE_EXTENSION.md before export."
+        ],
+    }
+    return result
 
 
 def read_file(source: bytes, path: str) -> dict:

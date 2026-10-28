@@ -1,6 +1,7 @@
 package dev.powerfulcalendar.ui.v2
 
 import dev.powerfulcalendar.core.EditorSelection
+import dev.powerfulcalendar.core.RecurrenceEngine
 import dev.powerfulcalendar.core.TimelineCoordinate
 import android.annotation.SuppressLint
 import android.graphics.Color
@@ -31,10 +32,14 @@ import java.util.concurrent.atomic.AtomicBoolean
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
 import java.time.Instant
+import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.ZoneId
+import java.time.YearMonth
 
 /** Preserves the explicit date/time context of the active native creation surface. */
 internal fun newEventSelectionForPage(
@@ -78,8 +83,14 @@ internal object WebSkinBridgeRuntime {
 
 internal sealed interface WebSkinAction {
     data class Routed(val name: String) : WebSkinAction
-    data class OpenEvent(val eventSeq: Long, val expectedRevision: Long) : WebSkinAction
+    data class OpenEvent(
+        val eventSeq: Long,
+        val expectedRevision: Long,
+        val originalOccurrenceKey: String? = null
+    ) : WebSkinAction
     data class InvokeOption(val id: String) : WebSkinAction
+    data class SelectSkin(val skinId: String) : WebSkinAction
+    data class DeleteSkin(val skinId: String) : WebSkinAction
     /** Relative browsing only; cannot change the vertical time scale. */
     data class PanTimeline(val deltaMinutes: Int) : WebSkinAction
     /** Select a calendar day while preserving the existing time span. */
@@ -94,11 +105,52 @@ internal sealed interface WebSkinAction {
     data object CreateMemo : WebSkinAction
     data class CreateDraft(val kind: String) : WebSkinAction
     data class BrowseMonth(val deltaMonths: Int) : WebSkinAction
+    data class SelectMonth(val yearMonth: String) : WebSkinAction
+    data class SelectMonthDate(val date: String) : WebSkinAction
+    data object TodayInMonth : WebSkinAction
     data class ResolveAiProposal(
         val reviewId: String,
         val decision: AiProposalDecision,
         val indices: List<Int>
     ) : WebSkinAction
+}
+
+/** Exposes only bounded catalogue metadata, and only while the skin-owned settings page is open. */
+internal object WebSkinInstalledSkinsProjection {
+    fun build(installed: List<InstalledSkin>, selectedId: String, actionsEnabled: Boolean): JSONArray =
+        JSONArray().apply {
+            installed.take(14).forEach { skin ->
+                put(JSONObject()
+                    .put("id", skin.id.take(48))
+                    .put("name", skin.name.take(100))
+                    .put("builtIn", skin.builtIn)
+                    .put("selected", skin.id == selectedId)
+                    .put("actionsEnabled", actionsEnabled))
+            }
+        }
+}
+
+internal data class WebSkinNavigationState(
+    val hostPage: String,
+    val skinSettingsOpen: Boolean = false
+)
+
+/**
+ * Keep the customizable settings landing inside the skin. Sensitive tools remain an explicit
+ * Host route and are never represented by a JavaScript-owned settings form.
+ */
+internal fun reduceWebSkinNavigation(
+    current: WebSkinNavigationState,
+    actionName: String
+): WebSkinNavigationState = when (actionName) {
+    "timeline" -> WebSkinNavigationState("TIMELINE")
+    "month" -> WebSkinNavigationState("MONTH")
+    "memo" -> WebSkinNavigationState("MEMO")
+    "ai" -> WebSkinNavigationState("AI")
+    "skinSettings" -> if (current.hostPage == "TOOLS") current
+        else current.copy(skinSettingsOpen = true)
+    "settings" -> WebSkinNavigationState("TOOLS")
+    else -> current
 }
 
 internal enum class AiProposalDecision { PUBLISH, STAGE, REJECT, SUPPLEMENT }
@@ -108,7 +160,11 @@ internal fun validateOpenEvent(
     current: dev.powerfulcalendar.core.TemporalRecord?,
     writerAvailable: Boolean
 ): dev.powerfulcalendar.core.TemporalRecord? = current?.takeIf {
-    writerAvailable && it.eventSeq == action.eventSeq && it.revision == action.expectedRevision
+    writerAvailable && it.eventSeq == action.eventSeq && it.revision == action.expectedRevision &&
+        (action.originalOccurrenceKey == null ||
+            (it.recurrence.isRepeating && RecurrenceEngine.occurrenceForKey(
+                it, action.originalOccurrenceKey
+            ) != null))
 }
 
 @Composable
@@ -135,12 +191,14 @@ internal fun WebSkinRoot(
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 private fun SecureWebSkin(bundle: WebSkinBundle, modifier: Modifier, onFailure: () -> Unit) {
-    val origin = "https://skin.powercal.local/"
+    val skinOrigin = remember(bundle) { WebSkinOrigin.newSession() }
     val context = androidx.compose.ui.platform.LocalContext.current
     val feed = remember(bundle) { WebSkinStateFeed() }
     val live = remember(bundle) { AtomicBoolean(true) }
     val session = remember(bundle) { WebSkinWebSession() }
-    val webView = remember(bundle) {
+    val webViewResult = remember(bundle) {
+        runCatching {
+        WebSkinServiceWorkerPolicy.install()
         WebView(context).apply {
             setBackgroundColor(Color.TRANSPARENT)
             settings.javaScriptEnabled = true
@@ -165,12 +223,11 @@ private fun SecureWebSkin(bundle: WebSkinBundle, modifier: Modifier, onFailure: 
                     return true
                 }
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
-                    request.url.toString() != origin + bundle.entrypoint
+                    !skinOrigin.isEntrypoint(request.url.toString(), bundle.entrypoint)
 
                 override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
                     val uri = request.url
-                    if (uri.scheme != "https" || uri.host != "skin.powercal.local" ||
-                        uri.port != -1 || uri.userInfo != null || uri.query != null) {
+                    if (!skinOrigin.acceptsResource(uri.toString())) {
                         return WebResourceResponse("text/plain", "utf-8", 403, "Blocked", emptyMap(),
                             ByteArrayInputStream(ByteArray(0)))
                     }
@@ -201,7 +258,7 @@ private fun SecureWebSkin(bundle: WebSkinBundle, modifier: Modifier, onFailure: 
                 override fun onPageFinished(view: WebView, url: String) {
                     if (!live.get()) return
                     val finished = Uri.parse(url)
-                    if (url != origin + bundle.entrypoint ||
+                    if (!skinOrigin.isEntrypoint(url, bundle.entrypoint) ||
                         finished.userInfo != null || finished.port != -1) {
                         onFailure()
                         return
@@ -251,7 +308,8 @@ private fun SecureWebSkin(bundle: WebSkinBundle, modifier: Modifier, onFailure: 
                             }
                         }
                     })
-                    view.postWebMessage(android.webkit.WebMessage("powercal-port", arrayOf(channels[1])), Uri.parse(origin))
+                    view.postWebMessage(android.webkit.WebMessage("powercal-port", arrayOf(channels[1])),
+                        Uri.parse(skinOrigin.baseUrl))
                     feed.connect { frame ->
                         runCatching { channels[0].postMessage(android.webkit.WebMessage(frame)) }
                             .onFailure { onFailure() }
@@ -260,9 +318,15 @@ private fun SecureWebSkin(bundle: WebSkinBundle, modifier: Modifier, onFailure: 
                         .onFailure { onFailure() }
                 }
             }
-            loadUrl(origin + bundle.entrypoint)
+            loadUrl(skinOrigin.entrypoint(bundle.entrypoint))
+        }
         }
     }
+    val webView = webViewResult.getOrNull()
+    LaunchedEffect(webViewResult.isFailure) {
+        if (webViewResult.isFailure) onFailure()
+    }
+    if (webView == null) return
     AndroidView({ webView }, modifier)
     LaunchedEffect(webView, feed) {
         snapshotFlow {
@@ -318,13 +382,19 @@ internal fun decodeBridgeAction(raw: String): WebSkinAction? {
     val name = payload.optString("name")
     if (name.length !in 1..40) return null
     return when (name) {
-        "timeline", "month", "memo", "ai", "settings", "openDeck", "today" ->
+        "timeline", "month", "memo", "ai", "settings", "skinSettings", "openDeck", "today" ->
             if (keys == setOf("name")) WebSkinAction.Routed(name) else null
         "invokeOption" -> {
             if (keys != setOf("name", "id")) return null
             val id = payload.opt("id")
             if (id is String && SemanticOptions.supports(id)) WebSkinAction.InvokeOption(id)
             else null
+        }
+        "selectSkin", "deleteSkin" -> {
+            if (keys != setOf("name", "skinId")) return null
+            val id = payload.opt("skinId") as? String ?: return null
+            if (!SkinPackageManager.isValidPackageId(id)) return null
+            if (name == "selectSkin") WebSkinAction.SelectSkin(id) else WebSkinAction.DeleteSkin(id)
         }
         "panTimeline" -> {
             if (keys != setOf("name", "deltaMinutes")) return null
@@ -344,11 +414,28 @@ internal fun decodeBridgeAction(raw: String): WebSkinAction? {
             else null
         }
         "createMemo" -> if (keys == setOf("name")) WebSkinAction.CreateMemo else null
+        "todayInMonth" -> if (keys == setOf("name")) WebSkinAction.TodayInMonth else null
         "browseMonth" -> {
             if (keys != setOf("name", "deltaMonths")) return null
             val raw = payload.opt("deltaMonths")
             if (raw is Int && raw in -12..12 && raw != 0)
                 WebSkinAction.BrowseMonth(raw)
+            else null
+        }
+        "selectMonth" -> {
+            if (keys != setOf("name", "yearMonth")) return null
+            val raw = payload.opt("yearMonth") as? String ?: return null
+            val parsed = runCatching { YearMonth.parse(raw) }.getOrNull()
+            if (parsed != null && parsed.toString() == raw && parsed.year in 1900..2100)
+                WebSkinAction.SelectMonth(raw)
+            else null
+        }
+        "selectMonthDate" -> {
+            if (keys != setOf("name", "date")) return null
+            val raw = payload.opt("date") as? String ?: return null
+            val parsed = if (raw.length == 10) runCatching { LocalDate.parse(raw) }.getOrNull() else null
+            if (parsed != null && parsed.year in 1900..2100)
+                WebSkinAction.SelectMonthDate(parsed.toString())
             else null
         }
         "createDraft" -> {
@@ -361,7 +448,7 @@ internal fun decodeBridgeAction(raw: String): WebSkinAction? {
         "sendChat" -> {
             if (keys != setOf("name", "text")) return null
             val text = payload.opt("text")
-            if (text is String && text.isNotBlank() && text.length <= 4000)
+            if (text is String && text.isNotBlank() && text.length <= 6000)
                 WebSkinAction.SendChat(text)
             else null
         }
@@ -411,14 +498,21 @@ internal fun decodeBridgeAction(raw: String): WebSkinAction? {
             } else null
         }
         "openEvent" -> {
-            if (keys != setOf("name", "eventSeq", "expectedRevision")) return null
+            val baseKeys = setOf("name", "eventSeq", "expectedRevision")
+            if (keys != baseKeys && keys != baseKeys + "originalOccurrenceKey") return null
             val seq = payload.optLong("eventSeq", -1L)
             val revision = payload.optLong("expectedRevision", -1L)
             val rawSeq = payload.opt("eventSeq")
             val rawRevision = payload.opt("expectedRevision")
+            val originalOccurrenceKey = if ("originalOccurrenceKey" in keys) {
+                val raw = payload.opt("originalOccurrenceKey") as? String ?: return null
+                val parsed = runCatching { LocalDateTime.parse(raw) }.getOrNull() ?: return null
+                if (RecurrenceEngine.keyFor(parsed) != raw) return null
+                raw
+            } else null
             if (seq <= 0L || revision <= 0L || rawSeq !is Number || rawRevision !is Number ||
                 rawSeq is Float || rawSeq is Double || rawRevision is Float || rawRevision is Double) null
-            else WebSkinAction.OpenEvent(seq, revision)
+            else WebSkinAction.OpenEvent(seq, revision, originalOccurrenceKey)
         }
         else -> null
     }

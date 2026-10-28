@@ -5,15 +5,14 @@ import dev.powerfulcalendar.core.TemporalRecord
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
-import java.time.temporal.ChronoUnit
 
 /** Read-only, recurrence-aware, 42-day calendar view. No calendar writes here. */
 internal object WebSkinMonthProjection {
     const val MAX_OWNERS = 400
     const val MAX_ITEMS = 350
-    fun build(records: List<TemporalRecord>, anchorMillis: Long, zone: ZoneId): JSONObject {
-        val selected = Instant.ofEpochMilli(anchorMillis).atZone(zone).toLocalDate()
+    fun build(records: List<TemporalRecord>, selected: LocalDate, zone: ZoneId): JSONObject {
         val monthFirst = selected.withDayOfMonth(1)
         val gridFirst = monthFirst.minusDays((monthFirst.dayOfWeek.value - 1).toLong())
         val gridEnd = gridFirst.plusDays(42)

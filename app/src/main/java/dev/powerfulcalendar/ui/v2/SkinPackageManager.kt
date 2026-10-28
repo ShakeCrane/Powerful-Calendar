@@ -335,5 +335,7 @@ class SkinPackageManager(private val context: Context) {
         private val ID = Regex("[a-z0-9][a-z0-9_-]{2,47}")
         private val IMAGE = Regex("images/[a-z0-9_-]+[.](png|webp)")
         private val V3_RESOURCE = Regex("(?:web|assets)/[A-Za-z0-9][A-Za-z0-9_./-]{0,119}|project[.]json")
+
+        internal fun isValidPackageId(id: String): Boolean = ID.matches(id)
     }
 }

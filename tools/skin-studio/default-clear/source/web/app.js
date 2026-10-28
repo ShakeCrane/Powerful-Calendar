@@ -9,7 +9,9 @@ darkMedia.addEventListener("change",applyTheme);
 let port=null, state={}, currentPage="TIMELINE", memoFilter="open",localOptions=false;
 let aiReviewSelectionId="",aiReviewSelected=new Set();
 let attachmentRequestPending=false;
+let renderedChatMessages=[];
 let timelineCreateDialog=null;
+let monthPickerReturn=null;
 const send=(name,extra={})=>{
   if(!port)return;
   port.postMessage(JSON.stringify({version:1,type:"action",payload:{name,...extra}}));
@@ -19,6 +21,14 @@ const node=(tag,cls,text)=>{
   if(cls)el.className=cls;
   if(text!=null)el.textContent=String(text);
   return el;
+};
+const localDateInZone=(epochMillis,zone)=>{
+  const parts=new Intl.DateTimeFormat("en-CA",{
+    timeZone:zone,year:"numeric",month:"2-digit",day:"2-digit"
+  }).formatToParts(new Date(epochMillis));
+  const values=Object.fromEntries(parts.filter(part=>part.type!=="literal")
+    .map(part=>[part.type,part.value]));
+  return values.year+"-"+values.month+"-"+values.day;
 };
 const dateText=(ms,zone,options)=>{
   try{return new Intl.DateTimeFormat("zh-CN",{timeZone:zone||"Asia/Shanghai",...options}).format(new Date(ms))}
@@ -89,9 +99,15 @@ function onAction(button){
     showTimelineCreateDialog(button);return;
   }
   if(window.PowerCalEdit?.routeAction(button,state))return;
-  if(name==="openEvent")send(name,{eventSeq:Number(button.dataset.eventSeq),
-    expectedRevision:Number(button.dataset.revision)});
+  if(name==="openEvent"){
+    const payload={eventSeq:Number(button.dataset.eventSeq),
+      expectedRevision:Number(button.dataset.revision)};
+    if(button.dataset.originalOccurrenceKey)
+      payload.originalOccurrenceKey=button.dataset.originalOccurrenceKey;
+    send(name,payload);
+  }
   else if(name==="createDraft")send(name,{kind:button.dataset.kind});
+  else if(name==="selectSkin"||name==="deleteSkin")send(name,{skinId:button.dataset.skinId});
   else if(name==="toggleMemo")send(name,{eventSeq:Number(button.dataset.eventSeq),
     expectedRevision:Number(button.dataset.revision),
     occurrenceKey:button.dataset.occurrenceKey,completed:button.dataset.completed==="true"});
@@ -99,9 +115,20 @@ function onAction(button){
   else if(name==="panTimeline")send(name,{deltaMinutes:Number(button.dataset.deltaMinutes)});
   else if(name==="jumpTimelineDay")send(name,{date:button.dataset.date});
   else if(name==="browseMonth")send(name,{deltaMonths:Number(button.dataset.deltaMonths)});
-  else {if(["timeline","memo","month","ai"].includes(name))localOptions=false;send(name)}
+  else if(name==="selectMonth")send(name,{yearMonth:button.dataset.yearMonth});
+  else if(name==="selectMonthDate")send(name,{date:button.dataset.date});
+  else if(name==="todayInMonth")send(name);
+  else {
+    if(["timeline","memo","month","ai","settings","skinSettings"].includes(name))localOptions=false;
+    // Preserve the v1 `settings` action for existing skins and protected tools. Clear's
+    // tab uses a new explicit route for its customizable in-skin settings landing.
+    if(name==="settings"&&button.closest(".clear-tabbar"))send("skinSettings");
+    else send(name);
+  }
 }
 document.addEventListener("click",e=>{
+  const monthPicker=e.target.closest("[data-month-picker]");
+  if(monthPicker){openMonthPicker(monthPicker.dataset.monthPicker,monthPicker);return}
   const local=e.target.closest("[data-local]");
   if(local){localOptions=local.dataset.local==="options";renderPage();return}
   const toggle=e.target.closest("[data-filter]");
@@ -109,10 +136,60 @@ document.addEventListener("click",e=>{
   const button=e.target.closest("[data-action]");
   if(button)onAction(button);
 });
+function closeMonthPicker(){
+  const dialog=$("monthPickerDialog");
+  if(typeof dialog.close==="function")dialog.close();
+  else dialog.removeAttribute("open");
+}
+function sendMonthSelection(yearMonth){
+  if(!port){$("monthPickerStatus").textContent="宿主暂不可用，请稍后重试。";return}
+  send("selectMonth",{yearMonth});closeMonthPicker();
+}
+function openMonthPicker(field,source){
+  const current=String(state.month?.month||"2026-10"),parts=current.split("-");
+  const year=Number(parts[0]),month=Number(parts[1]);
+  const dialog=$("monthPickerDialog"),yearForm=$("monthYearForm"),monthGrid=$("monthNumberPanel");
+  monthPickerReturn=source;
+  $("monthPickerStatus").textContent="";
+  $("monthPickerTitle").textContent=field==="year"?"选择年份":"选择月份 · "+year+" 年";
+  yearForm.hidden=field!=="year";monthGrid.hidden=field!=="month";
+  $("monthYearInput").value=String(year);
+  if(field==="month"){
+    monthGrid.replaceChildren();
+    for(let value=1;value<=12;value++){
+      const button=node("button","",value+" 月");
+      button.type="button";button.dataset.pickerMonth=String(value);
+      button.setAttribute("aria-pressed",String(value===month));
+      monthGrid.append(button);
+    }
+  }
+  if(typeof dialog.showModal==="function")dialog.showModal();
+  else dialog.setAttribute("open","");
+  (field==="year"?$("monthYearInput"):monthGrid.querySelector("button[aria-pressed='true']"))?.focus();
+}
+$("monthPickerDialog").addEventListener("close",()=>{
+  monthPickerReturn?.focus();monthPickerReturn=null;
+});
+$("monthPickerDialog").addEventListener("click",event=>{
+  if(event.target===$("monthPickerDialog"))closeMonthPicker();
+  const button=event.target.closest("[data-picker-month]");
+  if(!button)return;
+  const year=String(state.month?.month||"2026-10").slice(0,4);
+  sendMonthSelection(year+"-"+String(Number(button.dataset.pickerMonth)).padStart(2,"0"));
+});
+$("monthPickerCancel").addEventListener("click",closeMonthPicker);
+$("monthYearForm").addEventListener("submit",event=>{
+  event.preventDefault();
+  const year=Number($("monthYearInput").value),current=String(state.month?.month||"2026-10");
+  if(!Number.isInteger(year)||year<1900||year>2100){
+    $("monthPickerStatus").textContent="年份范围为 1900～2100。";return;
+  }
+  sendMonthSelection(String(year).padStart(4,"0")+"-"+current.slice(5,7));
+});
 $("chatForm").addEventListener("submit",e=>{
   e.preventDefault();
   const field=$("chatInput"),text=field.value.trim();
-  if(!text||text.length>4000||state.aiLocked||state.chatBusy)return;
+  if(!text||text.length>6000||state.aiLocked||state.chatBusy)return;
   send("sendChat",{text});field.value="";
 });
 window.addEventListener("message",e=>{
@@ -139,22 +216,28 @@ function receive(raw){
   renderPage();
 }
 function renderPage(){
-  const page=currentPage==="TOOLS"?"TIMELINE":currentPage;
+  const skinSettings=currentPage==="SETTINGS";
+  const page=currentPage==="TOOLS"||skinSettings?"TIMELINE":currentPage;
+  const optionsVisible=localOptions||skinSettings;
   const createButton=document.querySelector('[data-action="createDraft"]');
   if(createButton){createButton.title="新建事件";createButton.setAttribute("aria-label","新建事件")}
   const pages={TIMELINE:"timelinePage",MONTH:"monthPage",MEMO:"memoPage",AI:"aiPage"};
-  for(const [key,id] of Object.entries(pages))$(id).hidden=key!==page||localOptions;
-  $("extraOptions").hidden=!localOptions;
+  for(const [key,id] of Object.entries(pages))$(id).hidden=key!==page||optionsVisible;
+  $("extraOptions").hidden=!optionsVisible;
+  $("extraOptions").querySelector("h1").textContent=skinSettings?"设置与数据工具":"可用选项";
+  const selectedPage=skinSettings?"SETTINGS":page;
   document.querySelectorAll(".clear-tabbar button").forEach(b=>{
-    b.classList.toggle("current",b.dataset.action?.toUpperCase()===page)
+    b.classList.toggle("current",b.dataset.action?.toUpperCase()===selectedPage)
   });
   const anchor=state.timeline?.anchorMillis||Date.now(),zone=state.timeline?.zoneId;
   $("dayTitle").textContent=dateText(anchor,zone,{month:"long",day:"numeric"});
   $("dateSubtitle").textContent=dateText(anchor,zone,{weekday:"long",year:"numeric"});
-  if(page==="TIMELINE")renderTimeline();
-  if(page==="MONTH")renderMonth();
-  if(page==="MEMO")renderMemo();
-  if(page==="AI")renderChat();
+  if(!optionsVisible){
+    if(page==="TIMELINE")renderTimeline();
+    if(page==="MONTH")renderMonth();
+    if(page==="MEMO")renderMemo();
+    if(page==="AI")renderChat();
+  }
   renderOptions();
   window.PowerCalEdit?.onState(state);
 }
@@ -205,7 +288,15 @@ function renderMonth(){
   const month=state.month||{},t=state.timeline||{};
   const zone=month.zoneId||t.zoneId||"Asia/Shanghai";
   const firstIso=month.gridFrom||new Date().toISOString().slice(0,10);
-  $("monthTitle").textContent=(month.month||"") + " · " + zone;
+  const yearMonth=String(month.month||""),[year,monthNumber]=yearMonth.split("-");
+  const now=Number(t.nowMillis);
+  const today=localDateInZone(Number.isFinite(now)?now:Date.now(),zone);
+  $("monthYearButton").textContent=year?year+" 年":"选择年份";
+  $("monthYearButton").setAttribute("aria-label",year?"选择年份，当前"+year+"年":"选择年份");
+  $("monthNumberButton").textContent=monthNumber?Number(monthNumber)+" 月":"选择月份";
+  $("monthNumberButton").setAttribute("aria-label",monthNumber?"选择月份，当前"+Number(monthNumber)+"月":"选择月份");
+  $("monthZone").textContent=zone;
+  $("viewMonthDate").dataset.date=month.selectedDate||"";
   const grid=$("monthGrid");grid.replaceChildren();
   const events=month.items||[];
   const counts=new Map();
@@ -214,10 +305,13 @@ function renderMonth(){
   const origin=Date.parse(firstIso+"T00:00:00Z");
   for(let i=0;i<42;i++){
     const date=new Date(origin+i*86400000),iso=date.toISOString().slice(0,10);
+    if(iso.slice(0,7)!==yearMonth){grid.append(node("span","month-empty",""));continue}
     const button=node("button","month-cell",date.getUTCDate());
-    button.dataset.action="jumpTimelineDay";button.dataset.date=iso;
+    button.type="button";button.dataset.action="selectMonthDate";button.dataset.date=iso;
+    button.setAttribute("aria-label",iso+"，"+(counts.get(iso)||0)+" 项");
+    button.setAttribute("aria-pressed",String(iso===month.selectedDate));
     if(iso===month.selectedDate)button.classList.add("selected");
-    if(iso===new Date(t.nowMillis||Date.now()).toISOString().slice(0,10))button.classList.add("today");
+    if(iso===today)button.classList.add("today");
     const count=counts.get(iso)||0;
     if(count)button.append(node("span","month-dot",count>3?"•••":"•".repeat(count)));
     grid.append(button);
@@ -257,10 +351,17 @@ function renderMemo(){
 }
 function renderChat(){
   installChatAttachmentControls();
-  const list=$("chatMessages");list.replaceChildren();
-  const messages=state.chatMessages||[];
+  const list=$("chatMessages");
+  const messages=Array.isArray(state.chatMessages)?state.chatMessages:[];
+  const previousTop=list.scrollTop;
+  const previousScrollHeight=list.scrollHeight;
+  const wasAtBottom=list.scrollHeight-list.clientHeight-previousTop<=48;
+  const messagesChanged=messages.length!==renderedChatMessages.length||messages.some((item,index)=>
+    item.role!==renderedChatMessages[index]?.role||item.content!==renderedChatMessages[index]?.content);
+  list.replaceChildren();
   if(!messages.length)list.append(node("p","quiet","从这里开始与 AI 讨论日程"));
   for(const item of messages)list.append(node("div","chat-bubble "+(item.role==="user"?"user":"assistant"),item.content));
+  renderedChatMessages=messages.map(item=>({role:item.role,content:item.content}));
   renderAiProposalReview(list);
   const disabled=!!(state.aiLocked||state.chatBusy);
   $("chatInput").disabled=disabled;$("chatSend").disabled=disabled;
@@ -276,7 +377,8 @@ function renderChat(){
     list.append(node("p","quiet","请先处理当前提案审核，再添加新附件"));
   else if(attachmentUnavailable)
     list.append(node("p","quiet","请先完成当前 AI 操作，再选择附件"));
-  list.scrollTop=list.scrollHeight;
+  if(wasAtBottom&&(messagesChanged||list.scrollHeight>previousScrollHeight))list.scrollTop=list.scrollHeight;
+  else list.scrollTop=Math.min(previousTop,Math.max(0,list.scrollHeight-list.clientHeight));
 }
 function installChatAttachmentControls(){
   const composer=$("chatForm").querySelector(".composer");
@@ -416,14 +518,55 @@ function renderAiProposalReview(list){
 }
 function renderOptions(){
   const root=$("optionGroups");root.replaceChildren();
+  if(currentPage==="SETTINGS"){
+    const permissions=state.reminderPermissions||{};
+    const exact=permissions.exactAlarmAllowed===true?"已允许":
+      permissions.exactAlarmAllowed===false?"未允许":"状态未知";
+    const notifications=permissions.notificationsRuntimePermissionRequired===false?"此 Android 版本无需运行时授权":
+      permissions.notificationsAllowed===true?"已允许":
+      permissions.notificationsAllowed===false?"未允许":"状态未知";
+    const status=node("p","",`精确闹钟：${exact}；通知运行时权限：${notifications}`);
+    status.setAttribute("role","status");status.setAttribute("aria-live","polite");
+    root.append(node("h2","","提醒状态"),status);
+  }
   for(const group of state.optionGroups||[]){
     root.append(node("h2","",group.label));
     for(const item of group.items||[]){
-      const button=node("button","optionRow",item.label);
+      const button=node("button","optionRow",item.detail?item.label+" · "+item.detail:item.label);
       button.dataset.action="invokeOption";button.dataset.optionId=item.id;
+      button.title=item.detail||"";
+      if(item.detail)button.setAttribute("aria-label",item.label+"。"+item.detail);
       button.disabled=item.enabled===false;
       root.append(button);
     }
+  }
+  if(currentPage==="SETTINGS"){
+    root.append(node("h2","","已安装皮肤"));
+    const skins=Array.isArray(state.installedSkins)?state.installedSkins:[];
+    if(!skins.length)root.append(node("p","","宿主当前没有可用的皮肤列表。"));
+    for(const skin of skins){
+      if(!skin||typeof skin.id!=="string"||typeof skin.name!=="string")continue;
+      const row=node("div","skinPackageRow"),description=node("span","skinPackageName",
+        skin.name+(skin.selected?" · 当前使用":""));
+      const actions=node("div","skinPackageActions");
+      const select=node("button","optionRow",skin.selected?"当前":"启用");
+      select.type="button";select.dataset.action="selectSkin";select.dataset.skinId=skin.id;
+      select.disabled=skin.selected||skin.actionsEnabled===false;
+      select.setAttribute("aria-label",skin.name+(skin.selected?"，当前使用":"，启用"));
+      actions.append(select);
+      if(!skin.builtIn){
+        const remove=node("button","optionRow","删除");
+        remove.type="button";remove.dataset.action="deleteSkin";remove.dataset.skinId=skin.id;
+        remove.disabled=skin.actionsEnabled===false;
+        remove.setAttribute("aria-label","删除皮肤："+skin.name);actions.append(remove);
+      }
+      row.append(description,actions);root.append(row);
+    }
+    root.append(node("p","","启用与删除由 Android 宿主确认；导入的皮肤须先通过宿主包校验，且不会自动启用。"));
+    root.append(node("p","","备份与皮肤包只由可信 Android 宿主读写和校验；启用或删除皮肤须经宿主确认；权限请求由宿主处理；AI 凭据仍在宿主工具页。"));
+    const hostTools=node("button","optionRow","打开宿主工具与凭据设置");
+    hostTools.type="button";hostTools.dataset.action="settings";
+    root.append(hostTools);
   }
 }
 window.PowerCalSkin={receive,sendCommand:(name,requestId,extra={})=>{

@@ -42,23 +42,46 @@ python tools/skin-studio/skin_studio.py serve --port 8765
 没有暴露的业务能力（例如完整 Memo/AI 页、正式提交）不能被预览伪装为可用功能。
 宿主敏感操作、设置和紧急恢复仍是原生界面。
 
-当前源码界面已提供 `project.json` 原始 JSON 编辑、文本文件增删及任意资源文件新增/替换/删除；不认识的项目字段随有效 JSON 修改保留，非法 JSON 会阻止预览与导出并保留编辑草稿。删除保护按文本源码中的路径/文件名引用扫描，不能替代语义分析。完整组件树模型、页面可视化重组、所有结构属性的语义校验及完整 AI 设计工作流仍未完成，不能据此宣称完整 IDE。
+当前源码界面已提供 `project.json` 原始 JSON 编辑、文本文件增删及任意资源文件新增/替换/删除；不认识的项目字段随有效 JSON 修改保留，非法 JSON 会阻止预览与导出并保留编辑草稿。删除保护按文本源码中的路径/文件名引用扫描，不能替代语义分析。浏览器 Studio 的「HTML 结构树」复用 `analyze-v3` 静态节点清单，可插入、替换、删除、移动闭合 HTML 节点，并通过属性检查器增删改任意静态节点属性；样式面板可为选中节点增删简单 CSS 声明。操作经本地 v3 分析/编辑 API 与最终包校验，并直接更新预览和导出共用的源文件。JS 生成的运行时节点需通过源码编辑；复杂选择器、响应式规则、计算后 DOM 和交互逻辑仍使用完整源码面板。完整页面设计和完整 AI 设计工作流仍未完成，不能据此宣称完整 IDE。
 
-**AI/脚本项目操作：** v3 `.pcskin` 可通过机器可读的 `inspect-v3`、`read-v3`、
-`edit-v3` 命令检查项目、读取任意文本/二进制资源、编辑 `project.json` 结构及
-新增/修改/移动/删除文件，再经同一生产校验器构建到新包路径。SHA 前置条件防止
+**AI/脚本项目操作：** v3 `.pcskin` 可通过机器可读的 `inspect-v3`、`analyze-v3`、
+`audit-bridge-v3`、`read-v3`、`edit-v3` 命令检查项目、枚举 HTML 页面及静态节点、
+核对静态 `data-action` 名称与 Bridge v1 注册表及 `host.action` 声明、读取任意文本/二进制资源、
+按节点结构编辑静态 HTML、通过 `component-style` 为选中节点增改/移除简单 CSS 覆盖，并编辑 `project.json` 结构及新增/修改/移动/删除文件，再经同一生产校验器构建到新包路径。`component-attributes` 与 `component-style` 可由 AI/CLI 以源码 SHA 前置条件修改静态节点属性/样式；复杂 CSS 仍可直接编辑完整源码。SHA 前置条件防止
 覆盖检查之后已变化的文件；能力声明变更必须显式确认。该 CLI 补足 AI 操作层，
 `build-v3 --json` / `validate --json` 则提供带哈希和计数的结构化回执；构建会原子
 创建新的输出路径，拒绝覆盖已存在文件。无 `--json` 时成功结果仍为人读文本。
 这不代表浏览器 UI 已具备完整 IDE 编辑能力。具体 JSON 协议与边界见
 [`docs/SKIN_STUDIO_AI_AUTOMATION_V1.md`](../../docs/SKIN_STUDIO_AI_AUTOMATION_V1.md)。
 
+`scaffold-v3` 可从空白创建最小、可导入和可继续编辑的 v3 项目：
+
+```powershell
+python tools/skin-studio/skin_studio.py scaffold-v3 --id my-skin --name "My Skin" --out my-skin.pcskin --json
+```
+
+新项目默认不声明任何 Host capability；只有调用者显式重复传入 `--capability`
+才会写入请求声明。声明本身不会授予权限，Android Host 仍按运行时合同验证。生成器会通过
+生产 v3 builder/validator 创建确定性包，并以独占原子写入拒绝覆盖已有输出。该命令提供空白
+工程起点，不代表生成了与 Native 功能等价的成品皮肤；其 `web/app.js` 已由本地页面引用，
+因此 `audit-bridge-v3` 会要求对脚本源码进行审阅。
+
 ```powershell
 python tools/skin-studio/skin_studio.py inspect-v3 my-skin.pcskin
+python tools/skin-studio/skin_studio.py analyze-v3 my-skin.pcskin
+python tools/skin-studio/skin_studio.py audit-bridge-v3 my-skin.pcskin
 python tools/skin-studio/skin_studio.py read-v3 --file my-skin.pcskin --path web/app.js
 python tools/skin-studio/skin_studio.py edit-v3 --file my-skin.pcskin --operations operations.json --out my-skin-edited.pcskin
 python tools/skin-studio/skin_studio.py validate my-skin-edited.pcskin --json
 ```
+
+`audit-bridge-v3` 只检查静态 HTML 中的 literal `data-action` 名称和所需
+`host.action` 声明；不会执行 JS，也不会校验动态生成的 Bridge payload。带有 inline
+或 linked script 的皮肤会标记 `requiresSourceReview`。统一的 action/command 字段、类型与
+取值约束见 [`docs/contracts/web-skin-bridge-v1.schema.json`](../../docs/contracts/web-skin-bridge-v1.schema.json)，
+CLI 会为每个静态 action 返回 schema 引用；JVM 测试把其样例交给实际 Host decoder 验证。
+成功 JSON 写 stdout、退出码为 0；
+审计失败写结构化 JSON 到 stderr、退出码为 2。它不替代 Android WebView 或设备验收。
 
 仅切换源码/可视化面板或编辑其他源码文件时，原始 `project.json` 保持字节不变；面板模式仅是当前 Studio 视图。确实修改材质或图层后，项目元数据按修改后的模型输出，并保留未知字段。
 
@@ -71,10 +94,17 @@ python tools/skin-studio/skin_studio.py validate my-skin-edited.pcskin --json
 ```powershell
 python tools/skin-studio/skin_studio.py build-v3 --manifest tools/skin-studio/examples/v3/manifest.json --source-dir tools/skin-studio/examples/v3/source --out PowerCal-Web-v3.pcskin --json
 python tools/skin-studio/skin_studio.py validate PowerCal-Web-v3.pcskin --json
+python -m unittest discover -s tools/skin-studio/tests -p test_ai_skin_workflow_v3.py -v
 python -m unittest discover -s tools/skin-studio/tests -v
 node --check tools/skin-studio/v3-studio.js
 .\gradlew.bat :app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --console=plain
 ```
+
+`tools/skin-studio/tests/e2e_v3_source.cjs` is a real local Chrome Headless E2E with no
+npm dependencies. It now includes `scaffold-v3` → browser Studio import → static component
+edit → preview → export/import verification. Set `STUDIO_E2E_REPORT_DIR` to a new ignored
+`.local/android-test/...` directory for each run so screenshots and logs from prior runs
+remain untouched; set `CHROME_PATH` only when Chrome is not at the script's default path.
 
 可选浏览器端到端脚本：`tools/skin-studio/tests/e2e_v3_browser.cjs`，
 需要已安装的 Puppeteer/Chromium；运行前设置 `PUPPETEER_PATH` 指向 Puppeteer

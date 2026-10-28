@@ -244,7 +244,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         if self.path not in ("/api/validate", "/api/export", "/api/import",
-                             "/api/export-v3", "/api/import-v3", "/api/preview-v3"):
+                             "/api/export-v3", "/api/import-v3", "/api/preview-v3",
+                             "/api/analyze-v3", "/api/edit-components-v3"):
             return self.send_json(404, {"error": "Not Found"})
         origin = self.headers.get("Origin")
         if origin and origin not in (f"http://127.0.0.1:{self.server.server_port}",
@@ -270,16 +271,36 @@ class Handler(BaseHTTPRequestHandler):
                     path: base64.b64encode(blob).decode("ascii") for path, blob in assets.items()}})
                 return
             obj = json.loads(data.decode("utf-8"))
-            if self.path in ("/api/export-v3", "/api/preview-v3"):
+            if self.path in ("/api/export-v3", "/api/preview-v3",
+                             "/api/analyze-v3", "/api/edit-components-v3"):
                 from runtime_package_v3 import build_files
                 raw_files = obj.get("files", {})
                 check(type(raw_files) is dict and len(raw_files) <= 96, "invalid v3 files")
                 files = {path: base64.b64decode(value, validate=True)
                          for path, value in raw_files.items()}
+                compiled = build_files(obj.get("manifest"), files)
                 if self.path == "/api/preview-v3":
                     from studio_v3_preview import publish
                     return self.send_json(200, {"url": publish(obj.get("manifest"), files)})
-                compiled = build_files(obj.get("manifest"), files)
+                if self.path == "/api/analyze-v3":
+                    from project_ops_v3 import analyze_package
+                    return self.send_json(200, analyze_package(compiled))
+                if self.path == "/api/edit-components-v3":
+                    from project_ops_v3 import analyze_package, edit_package
+                    check(set(obj) == {"manifest", "files", "operation"} and
+                          type(obj["operation"]) is dict,
+                          "component edit requires manifest, files, and one operation")
+                    final_manifest, final_files, final_package, changes = edit_package(
+                        compiled, [obj["operation"]])
+                    changed_paths = sorted({entry["path"] for entry in changes
+                                            if entry["path"] != "manifest.json"})
+                    return self.send_json(200, {
+                        "manifest": final_manifest,
+                        "changedFiles": {path: base64.b64encode(final_files[path]).decode("ascii")
+                                         for path in changed_paths if path in final_files},
+                        "changes": changes,
+                        "analysis": analyze_package(final_package),
+                    })
                 return self.reply(200, compiled, "application/octet-stream",
                                   "PowerCal-" + obj["manifest"]["id"] + ".pcskin")
             manifest, assets = from_json(obj)
@@ -314,8 +335,23 @@ def main():
     build3.add_argument("--out", type=Path, required=True)
     build3.add_argument("--json", action="store_true",
                         help="emit a machine-readable build receipt")
+    scaffold3 = sub.add_parser(
+        "scaffold-v3", help="create a minimal editable v3 skin project from scratch")
+    scaffold3.add_argument("--id", required=True, help="unique skin id")
+    scaffold3.add_argument("--name", required=True, help="display name")
+    scaffold3.add_argument("--out", type=Path, required=True,
+                           help="new .pcskin output path; existing files are never overwritten")
+    scaffold3.add_argument("--capability", action="append", default=[],
+                           help="explicitly request one Host capability (repeatable; default: none)")
+    scaffold3.add_argument("--json", action="store_true",
+                           help="emit a machine-readable scaffold receipt")
     inspect3 = sub.add_parser("inspect-v3", help="inspect a v3 skin as machine-readable JSON")
     inspect3.add_argument("file", type=Path)
+    analyze3 = sub.add_parser("analyze-v3", help="index static HTML pages and components in a v3 skin")
+    analyze3.add_argument("file", type=Path)
+    audit3 = sub.add_parser("audit-bridge-v3",
+                            help="check static HTML actions and Host v1 capability declarations")
+    audit3.add_argument("file", type=Path)
     read3 = sub.add_parser("read-v3", help="read one packaged source or asset as machine-readable JSON")
     read3.add_argument("--file", type=Path, required=True)
     read3.add_argument("--path", required=True)
@@ -328,6 +364,15 @@ def main():
         if args.command == "inspect-v3":
             from project_ops_v3 import inspect_package
             _write_machine_json(inspect_package(args.file.read_bytes()), sys.stdout)
+        elif args.command == "analyze-v3":
+            from project_ops_v3 import analyze_package
+            _write_machine_json(analyze_package(args.file.read_bytes()), sys.stdout)
+        elif args.command == "audit-bridge-v3":
+            from project_ops_v3 import audit_bridge_package
+            result = audit_bridge_package(args.file.read_bytes())
+            _write_machine_json(result, sys.stdout if result["ok"] else sys.stderr)
+            if not result["ok"]:
+                return 2
         elif args.command == "read-v3":
             from project_ops_v3 import read_file
             _write_machine_json(read_file(args.file.read_bytes(), args.path), sys.stdout)
@@ -419,6 +464,66 @@ def main():
                 }, sys.stdout)
             else:
                 print(f"Built v3 {output_path} ({len(result)} bytes)")
+        elif args.command == "scaffold-v3":
+            from runtime_package_v3 import build_files, unpack
+            from project_ops_v3 import write_atomic
+            check(len(args.capability) == len(set(args.capability)),
+                  "a Host capability may only be requested once")
+            manifest = {
+                "format": "powercal-skin",
+                "schemaVersion": 3,
+                "id": args.id,
+                "name": args.name,
+                "entrypoint": "web/index.html",
+                "project": "project.json",
+                "fullCanvas": True,
+                "capabilities": args.capability,
+                "light": {},
+                "dark": {},
+                "layout": {},
+                "imagesLight": {},
+                "imagesDark": {},
+                "sha256": {},
+            }
+            files = {
+                "project.json": json.dumps(
+                    {"projectVersion": 3, "mode": "advanced", "slots": []},
+                    ensure_ascii=False, indent=2).encode("utf-8") + b"\n",
+                "web/index.html": (
+                    "<!doctype html>\n"
+                    "<html lang=\"zh-CN\"><head><meta charset=\"utf-8\">\n"
+                    "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n"
+                    "<link rel=\"stylesheet\" href=\"style.css\"></head>\n"
+                    "<body><main id=\"app\" aria-label=\"PowerCal skin\"></main>"
+                    "<script src=\"app.js\"></script></body></html>\n"
+                ).encode("utf-8"),
+                "web/style.css": (
+                    ":root { color-scheme: light dark; }\n"
+                    "* { box-sizing: border-box; }\n"
+                    "html, body { margin: 0; min-height: 100%; }\n"
+                    "body { font: 16px/1.5 system-ui, sans-serif; }\n"
+                    "#app { min-height: 100vh; min-height: 100dvh; }\n"
+                ).encode("utf-8"),
+                "web/app.js": b'"use strict";\n',
+            }
+            result = build_files(manifest, files)
+            checked_manifest, checked_files = unpack(result)
+            output_path = args.out.resolve()
+            write_atomic(output_path, result)
+            receipt = {
+                "schemaVersion": 1,
+                "command": "scaffold-v3",
+                "ok": True,
+                "output": str(output_path),
+                "packageSha256": hashlib.sha256(result).hexdigest(),
+                "bytes": len(result),
+                "fileCount": len(checked_files),
+                "manifest": checked_manifest,
+            }
+            if args.json:
+                _write_machine_json(receipt, sys.stdout)
+            else:
+                print(f"Scaffolded v3 {output_path} ({len(result)} bytes)")
         else:
             port = getattr(args, "port", 8765)
             with ThreadingHTTPServer(("127.0.0.1", port), Handler) as server:
@@ -429,7 +534,8 @@ def main():
                     pass
     except (SkinError, OSError, ValueError, UnicodeError, TypeError, BadZipFile,
             KeyError, RuntimeError, EOFError, zlib.error) as exc:
-        if (args.command in ("inspect-v3", "read-v3", "edit-v3")
+        if (args.command in ("inspect-v3", "analyze-v3", "audit-bridge-v3",
+                             "read-v3", "edit-v3", "scaffold-v3")
                 or getattr(args, "json", False)):
             _write_machine_json({"schemaVersion": 1, "command": args.command,
                                  "ok": False, "error": str(exc)}, sys.stderr)

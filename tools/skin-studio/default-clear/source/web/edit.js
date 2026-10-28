@@ -128,7 +128,10 @@ function render(){
   const form=next==="event"?editor.form:deck.form;
   const current=JSON.stringify({form,scope:editor.recurrenceScope,
     requiresScope:editor.requiresRecurrenceScope,dirty:editor.dirty,
-    awaitingConfirmation:editor.awaitingConfirmation});
+    awaitingConfirmation:editor.awaitingConfirmation,
+    deckState:next==="deck"?{hasConflict:deck.hasConflict,hasRestore:deck.hasRestore,
+      awaitingHostReview:deck.awaitingHostReview,lastDiscardId:deck.lastDiscardId,
+      cards:(deck.cards||[]).map(card=>[card.draftId,card.title,card.status])}:null});
   const focused=!!document.activeElement?.closest?.("#sheetFields");
   const changed=mode!==next||identity!==id||(!focused&&fingerprint!==current);
   mode=next;identity=id;
@@ -186,8 +189,10 @@ function render(){
     actions.append(button("完成并退出","close","sheet-secondary"));
     if(deck.hasConflict)actions.append(el("p",
       "发现版本冲突，需由宿主核对审阅快照后确认覆盖","sheet-warning"));
+    if(deck.hasConflict)actions.append(button("由宿主审查完整差异","reviewConflict","sheet-secondary"));
     if(deck.hasRestore)actions.append(el("p",
       "原事件已经删除，恢复需要受保护的宿主确认","sheet-warning"));
+    if(deck.hasRestore)actions.append(button("请求宿主确认恢复","reviewRestore","sheet-secondary"));
   }
 }
 function onState(next){
@@ -248,6 +253,8 @@ actions.addEventListener("click",event=>{
       void perform("deck.select",{draftId:Number(b.dataset.draftId)});break;
     case "flush":void perform("deck.flush");break;
     case "undo":void perform("deck.undo");break;
+    case "reviewConflict":void perform("deck.reviewConflict");break;
+    case "reviewRestore":void perform("deck.reviewRestore");break;
     case "discard":
       if(b.dataset.confirm!=="yes"){
         b.dataset.confirm="yes";b.textContent="再次点击确认丢弃";

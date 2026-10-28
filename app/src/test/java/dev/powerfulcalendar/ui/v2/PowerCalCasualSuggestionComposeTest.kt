@@ -156,6 +156,90 @@ class PowerCalCasualSuggestionComposeTest {
     }
 
     @Test
+    fun webMonthNavigationKeepsSelectionSeparateFromTimelineAndCreatesForSelectedDate() {
+        ui.activity.setContent {
+            CompositionLocalProvider(LocalContext provides context) {
+                PowerCalTheme { PowerCalApp(store) }
+            }
+        }
+        ui.waitForIdle()
+        val countsBefore = StoreCounts.read(store)
+        val initialTimeline = WebSkinBridgeRuntime.state().getJSONObject("timeline")
+        val originalAnchor = initialTimeline.getLong("anchorMillis")
+        val zone = ZoneId.of(initialTimeline.getString("zoneId"))
+        val originalDate = Instant.ofEpochMilli(originalAnchor).atZone(zone).toLocalDate()
+
+        ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.Routed("month")) }
+        ui.waitForIdle()
+        var state = WebSkinBridgeRuntime.state()
+        assertEquals(originalAnchor, state.getJSONObject("timeline").getLong("anchorMillis"))
+        assertEquals(originalDate.toString(), state.getJSONObject("month").getString("selectedDate"))
+
+        ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.SelectMonth("2030-02")) }
+        ui.waitForIdle()
+        state = WebSkinBridgeRuntime.state()
+        assertEquals("2030-02", state.getJSONObject("month").getString("month"))
+        assertEquals("2030-02-01", state.getJSONObject("month").getString("selectedDate"))
+        assertEquals("2030-01-28", state.getJSONObject("month").getString("gridFrom"))
+        assertEquals(originalAnchor, state.getJSONObject("timeline").getLong("anchorMillis"))
+
+        ui.runOnIdle {
+            WebSkinBridgeRuntime.onAction(WebSkinAction.SelectMonthDate("2030-02-14"))
+        }
+        ui.waitForIdle()
+        assertEquals("2030-02-14", WebSkinBridgeRuntime.state()
+            .getJSONObject("month").getString("selectedDate"))
+
+        fun runWebEdit(command: WebEditCommand): JSONObject {
+            val response = AtomicReference<JSONObject?>()
+            val failure = AtomicReference<Throwable?>()
+            Thread({
+                try { response.set(runBlocking { WebSkinBridgeRuntime.onEdit(command) }) }
+                catch (error: Throwable) { failure.set(error) }
+            }, "powercal-web-month-compose-test").apply { isDaemon = true; start() }
+            ui.waitUntil(10_000) { response.get() != null || failure.get() != null }
+            failure.get()?.let { throw AssertionError("Web month edit command failed", it) }
+            return requireNotNull(response.get())
+        }
+
+        assertEquals("created", runWebEdit(
+            WebEditCommand.CreateDeck("month-selected-date-create", TemporalKind.ACTIVITY)
+        ).getString("status"))
+        ui.waitForIdle()
+        val createdForm = WebSkinBridgeRuntime.state().getJSONObject("editing")
+            .getJSONObject("deck").getJSONObject("form")
+        assertEquals("2030-02-14", createdForm.getString("startText").take(10))
+        assertEquals("closed", runWebEdit(
+            WebEditCommand.CloseDeck("month-selected-date-close")
+        ).getString("status"))
+        ui.waitForIdle()
+
+        ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.BrowseMonth(1)) }
+        ui.waitForIdle()
+        state = WebSkinBridgeRuntime.state()
+        assertEquals("2030-03", state.getJSONObject("month").getString("month"))
+        assertEquals("2030-03-01", state.getJSONObject("month").getString("selectedDate"))
+        assertEquals(originalAnchor, state.getJSONObject("timeline").getLong("anchorMillis"))
+
+        ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.TodayInMonth) }
+        ui.waitForIdle()
+        state = WebSkinBridgeRuntime.state()
+        val today = java.time.LocalDate.now(zone)
+        assertEquals(today.toString(), state.getJSONObject("month").getString("selectedDate"))
+        assertEquals(originalAnchor, state.getJSONObject("timeline").getLong("anchorMillis"))
+
+        ui.runOnIdle {
+            WebSkinBridgeRuntime.onAction(WebSkinAction.JumpTimelineDay(today.toString()))
+        }
+        ui.waitForIdle()
+        state = WebSkinBridgeRuntime.state()
+        assertEquals("TIMELINE", state.getString("page"))
+        assertEquals(today.atTime(12, 0).atZone(zone).toInstant().toEpochMilli(),
+            state.getJSONObject("timeline").getLong("anchorMillis"))
+        assertEquals(countsBefore, StoreCounts.read(store))
+    }
+
+    @Test
     fun timelineCreateCommandUsesCurrentCameraAndZoneForAllKindsWithoutWrites() {
         ui.activity.setContent {
             CompositionLocalProvider(LocalContext provides context) {

@@ -1,5 +1,81 @@
 # Core freeze progress
 
+## Separation — corrupted selected skin startup fallback coverage (2026-10-28)
+
+- Added an isolated random-ID package test that corrupts a selected `.pcskin` before invoking the production `restoreSelection()` method. It verifies that the persisted selection and active registry return to the native skin, while the corrupt package file remains available and is excluded from the valid skin catalogue. No production code changed because the existing fallback behavior passed the new regression.
+- Focused `SkinPackageManagerTest` **10/10 PASS**. Full offline gate **635/635 JVM tests, 88 suites, 0 failures/errors/skips, 59 tasks**; source boundary, Debug APK and lint pass (0 errors / 52 warnings). Full-log SHA-256 `64E213E65D2E84769FE78E30CA4B6544B608A77FD08B916420645E7B39E59163`; JUnit XML SHA-256 `CF0FE6F7EFF220AAD6D0D957753CF0EE742DD7BC525074C9E98544E3E59A3A66`. Independent report: `docs/issues/PC-ISSUE-SEPARATION-CORRUPT-SKIN-BOOT-RECOVERY.md`; evidence under `.local/android-test/reports/separation-20261028/skin-corrupt-boot-recovery/`.
+- Robolectric called `restoreSelection()` directly; this is not an OS process restart or Android WebView/AVD/physical verification. SEP-13 remains **NOT TESTED** overall. Concurrent `WebSkinManagementInstrumentedTest.kt` remains untouched.
+
+## Separation — native fallback for a failed skin editor checkpoint (2026-10-28)
+
+- Root cause: when a skin failed and `prepareSkinChange()` could not checkpoint, Host correctly retained the editor lease/form but still switched to native fallback without exposing the retained session. Added a read-only Host recovery projection and native dialog for formal edits, transient new events and open draft decks; users can inspect the full form and retry the existing safe checkpoint. Success stages and refreshes without formal publication; failure keeps the session and dialog active.
+- Added service snapshot assertions and a Compose recovery-surface test. The full run initially exposed an immediate UI assertion in the existing asynchronous AI Host confirmation test; updated it to wait for the real confirmation surface while advancing the Robolectric main Looper. The exact test passes after the wait.
+- Final full offline gate: **634/634 JVM tests, 88 suites, 0 failures/errors/skips, 59 tasks**; source boundary, Debug APK and lint pass (0 errors / 52 warnings). Final log SHA-256 `3C541168C666D50E91741D7AA97CD93EE7A2BF305354ECA7A5C4C1406AE0ACFF`; first failed full-run diagnostic log SHA-256 `CAFFDA03092BF7F48CEDE016539D730537B238A09F49077E98B852666A2A9C82`. Debug APK SHA-256 `8974331FDF045FD88C41944CCE2869D414D4FC8EAE24F69486E417F3DFF3283A`; size 66,274,089 bytes. Full Issue report and XML/log artifacts: `docs/issues/PC-ISSUE-SEPARATION-SKIN-FAILURE-EDITOR-RECOVERY.md` and `.local/android-test/reports/separation-20261028/skin-failure-fallback-recovery/`.
+- Implementation commit `d10559b65d3e197a20ea7480e579553b24788d86` pushed to `origin/codex/separation-skin-settings`. ADB daemon did not start and no emulator executable exists; no Android WebView, AVD or physical result is claimed. Process death before storage recovery, WebView/skin crashes, malformed/malicious skins and complete Native/Skin replay remain untested; SEP-14 remains **NOT TESTED**.
+- Concurrent `WebSkinManagementInstrumentedTest.kt` remains untouched and unstaged.
+
+## Separation — failed skin-change checkpoint retry (2026-10-28)
+
+- Failure injection reproduced a formal-editor recovery dead-end: after a draft checkpoint failed once, a later successful checkpoint did not clear `EditSession.lastError`; Host `prepareSkinChange()` consequently refused to close the editor even after data was durable. Successful formal checkpoints now clear a prior error without changing business data, revision, identity or authorization semantics.
+- Added four SQLite-trigger regressions: existing draft retry; transient new-event insert failure/retry with permanently retired failed sequence per PC-ISSUE-052; formal editor recovery draft without formal publish; and pending Host write-review cancellation/replay safety on skin change.
+- Evidence: `WebSkinEditBridgeTest` **26/26 PASS**; full offline Gradle gate **633/633 JVM tests, 87 suites, 0 failures/errors/skips, 59/59 tasks**, including source-boundary verification and Debug APK; Lint 0 errors / 52 warnings. APK SHA-256 `97AD82F42FDABED1D7E8339A7F18D1665D272B786ED251806718507E00CDBF5C`. Full log, JUnit XML, lint XML and red/green test evidence are detailed in `docs/issues/PC-ISSUE-SEPARATION-SKIN-CHANGE-CHECKPOINT-RETRY.md` and `.local/android-test/reports/separation-20261028/skin-change-checkpoint-failure/`.
+- Implementation commit `b890d61ec6fdafbdd2b0b1a9486ae0a27b59b281` pushed to `origin/codex/separation-skin-settings`. SDK has no emulator binary and `adb devices -l` found no device; no device test is claimed. SEP-14 remains **NOT TESTED** overall; process death, skin/WebView crash, malicious package and complete Native/Skin replay remain open.
+- The concurrent `WebSkinManagementInstrumentedTest.kt` owned by another agent remains untouched and unstaged.
+
+## Separation — Studio component CSS override editor (2026-10-28)
+
+- SEP-15 gap: static HTML structure and attribute editors existed, but component appearance required direct full-source CSS editing. Added a selected-node style panel plus `component-style`: SHA-guarded HTML/CSS edits create a unique node marker and managed selector, preserve authored bytes outside the generated regions, support property update/removal and restore state after import.
+- Evidence: component project operations **26/26 PASS**; AI/CLI style workflow **2/2 PASS**; full Skin Studio Python suite **72/72 PASS**; Chrome Headless E2E verifies style edit/update/remove, rehydration, computed `rgb(255, 0, 255)` / weight 900, and preview/export/import. JS/Python syntax and Clear asset verification pass. Detailed commands and hashes: `docs/issues/PC-ISSUE-SEPARATION-STUDIO-COMPONENT-STYLES.md`; artifacts under `.local/android-test/reports/separation-20261028/studio-component-styles-final-20261028/`.
+- Implemented in `7c3dc3832be65bd58b1ec7d017e56988af61dbeb`, pushed to `origin/codex/separation-skin-settings`. SEP-15/S5 remains **NOT TESTED** overall; full visual/layout/logic authoring, JS runtime node inventory, Android WebView/AVD and physical evidence remain open. No Android or physical-device result is claimed.
+- The concurrent uncommitted `WebSkinManagementInstrumentedTest.kt` owned by another agent remains untouched and unstaged.
+
+## Separation — Host Compose AI publish failure/retry follow-up (2026-10-28)
+
+- The earlier Host Compose diagnostic timeout was caused by the Robolectric wait loop not advancing `Looper.getMainLooper()`. An A/B run against unchanged production `PowerCalApp.kt`, with explicit looper advancement at async checkpoints, passed; no production/Core code change was needed.
+- Added a real `PowerCalApp` Compose local-stub regression for the task-scoped failure path. Before trusted confirmation, Store counters do not change. A synthetic draft-insert failure leaves the proposal retryable and rolls back draft/event/identity/commit state (`nextSequencePreview=1`). Removing the trigger and confirming again creates exactly one formal event at sequence 1, one audit draft, one identity and one commit. The existing success test now also checks Host UI state settles.
+- Focused AI service + Host classes: **11/11 PASS** (`AiChatDraftPipelineTest` 3/3; `WebAiProposalReviewIntegrationTest` 8/8). Full offline Gradle gate: **629/629 JVM tests, 87 suites, 0 failures/errors/skips, 88/88 tasks**; source boundary and Debug/AndroidTest APK assembly pass; lint 0 errors / 52 warnings. Full log SHA-256 `217F8A37D5C89353B3D03FB49BAD8741F4BB7F60D0600A4AE78A4305DFF42215`; Debug / AndroidTest APK SHA-256 `357F2D698A78D7D9643AF5F7E1291F185445D3D9226CE5F4B5E7E80288AF8FAF` / `6B89A35252F0106B6A1B9DB45918C22303CA422391644EB0A77A329F413BAEB9`.
+- All 87 JUnit XML files, both APKs and lint XML are preserved under `.local/android-test/reports/separation-20261028/host-compose-retry-final-20261028-150137/`. AndroidTest APK assembly also compiled the concurrent uncommitted `WebSkinManagementInstrumentedTest.kt`; that file was not edited or staged here.
+- No emulator executable was present; no Android WebView, AVD, physical device or live AI provider was tested. This narrows only the local Host Compose retry slice; SEP-10 / SEP-16 remain **NOT TESTED**, S3 remains open. Independent report and updated matrix: `docs/issues/PC-ISSUE-SEPARATION-AI-PUBLISH-FAILURE-RETRY.md` and `docs/SKIN_SEPARATION_PARITY_MATRIX_2026-10-27.md`.
+- Test commit: `a4592a6bfcb3eb554077a40957d7f0d8fd434f4a` (`test(分离): 补齐 Host AI 发布失败重试回归`); the report and matrix changes are in a separate documentation commit.
+
+## Separation — Studio AI static HTML page/component inventory (2026-10-28)
+
+- Goal C gap: v3 `inspect-v3` exposed package files and `project.json`, but no queryable HTML page/node inventory. Added read-only `analyze-v3`: validated package hash, HTML page/source hashes, title and asset references, explicit source nesting, ordered attributes, ids, parent/child IDs, bounded direct text and static control counts; capped at 20,000 nodes and reports JS/runtime DOM limits. It does not edit, normalize or execute skin code.
+- First focused test run caught leading whitespace in the first direct-text segment; normalization was fixed. Final `test_project_ops_v3.py` **10/10** and full Skin Studio Python **53/53** pass. Actual canonical Clear analysis reports 1 static HTML page / 88 nodes / 23 static interactive nodes and identifies timeline/month/Memo/AI/sheet roots. Clear bundle verify remains 8 files / 379252 bytes, SHA-256 `7B3FBB7C402E5C776894497D96BA1CEEE7189E8ACB48EEE70ECE2E9C19CCF81A`.
+- Focused/full/actual output evidence: `project-ops-focused.log` SHA-256 `F257C312EF6BF7202CD40CB091C25F6AA3C0EF489CD390094E647B2867CE52FA`; `studio-python-final.log` SHA-256 `83C1A21E0B7B54E53CF277346C43ECF4D0F9DBEE3AECBE355685724777C25C58`; `clear-analysis.json` SHA-256 `063E8F7A2DE7910D6A5A4F21ABFE6CD3997B1A26EB6A11E3F72FC00D8C680518`. Narrow CLI slice PASS; report `docs/issues/PC-ISSUE-SEPARATION-STUDIO-STATIC-INVENTORY.md`. SEP-15 remains **NOT TESTED**; full visual component editing, JS-generated runtime inventory and Android/device evidence remain open. No emulator binary was present and ADB daemon did not start.
+- Implementation commit: `9ec85b9e3f963aa86603555ab90c17ca194373c8`. Continue the AI authoring/runtime inventory gap; do not infer full Studio or separation completion from the static index.
+
+## Separation — draft deck conflict review and deleted-event restore (2026-10-28)
+
+- Root cause: Native DeckController supported stale replacement and tombstone restoration, but the Web bridge had no trusted request path; direct skin confirmation was correctly rejected, leaving Clear without reachable recovery actions. Added request-only `deck.reviewConflict` / `deck.reviewRestore`, Host-owned Compose full-snapshot dialogs, state revalidation before writes, cancellation retention and idempotent replay handling. Clear and the non-writing Studio Mock now expose the recovery actions.
+- Regression: red schema reproduction before fix; `WebSkinEditBridgeTest` **20/20**, including stale Host review rejection, fresh full-snapshot replacement, cancel-without-write, same-sequence restore and replay idempotence. Full offline Gradle gate **611/611 JVM tests, 85 suites, 0 failures/errors/skips, 88/88 tasks**; source boundary and Debug/AndroidTest APK builds pass; lint **0 errors / 52 warnings**. Full log SHA-256 `9D00F0C4D875803D664CDD1F63F67D822866A9FFD98A551579D40DCB6E09466C`.
+- Studio Python **51/51**, Chrome E2E conflict/restore Host Mocks pass, JS syntax checks and Clear bundle verification pass (8 files / 379252 bytes; SHA-256 `7B3FBB7C402E5C776894497D96BA1CEEE7189E8ACB48EEE70ECE2E9C19CCF81A`). Debug / AndroidTest APK SHA-256: `AE4A6F6C36D6AF63346D1A92F0ED00D0EBDE7B838CC4BEA63033A5A224B9AF93` / `FD52D9A141D801274FA4E58E1F7B20F113525CE3A8117A92D76DA41A88619BF9`.
+- Narrow Issue PASS; details and individual log hashes: `docs/issues/PC-ISSUE-SEPARATION-DRAFT-DECK-CONFLICT-RESTORE.md`. SEP-08 remains **NOT TESTED**; no Android WebView/AVD or physical/OEM test was run. Implementation commit: `e0988ab1fab89818617fb07b549815aba54d38db`. Continue with another bounded parity gap; no overall separation GO implied.
+
+## Separation — draft deck discard/undo and SQLite recovery replay (2026-10-28)
+
+- Fixed a Studio preview state-machine gap: Clear exposes discard with a one-step undo, while the old Studio Mock closed the deck and always returned missing for undo. Mock patch now checks draft version; clean flush does not invent a version increment; discard stages dirty input, retains an undo snapshot, and undo restores the selected card and its contents. Chrome regression drives the visible two-tap discard and undo controls.
+- Added a fixed-data Native/Skin DeckController vs WebSkinEditService replay with two isolated SQLite databases. It verifies flush-on-select, explicit flush, closes and reopens both DBs, rejects stale patches, compares discard/undo queue state, and compares Native publish with Skin Host-approved publish/idempotent replay. It is a database reopen test, not Android OS process-death evidence.
+- Focused replay PASS. Full offline Gradle gate: **609/609 JVM tests, 85 suites, 0 failures/errors/skips, 88/88 tasks**; source boundary, Debug/AndroidTest APK builds and lint passed (0 errors / 52 warnings). Full-log SHA-256: `529A8EA83221D83399BF23F9046548A8EA71F61F94A5C6A46250F0B13E6BA67D`. Debug / AndroidTest APK SHA-256: `869AD65D0E00C1C37CE39042E2E946115C02D498B993B7821777DF3B8839845C` / `FD52D9A141D801274FA4E58E1F7B20F113525CE3A8117A92D76DA41A88619BF9`.
+- Studio Chrome E2E and Python **51/51** pass; Clear bundle verification and JS syntax checks pass. Detailed test IDs, commands and evidence hashes: `docs/issues/PC-ISSUE-SEPARATION-DRAFT-DECK-DISCARD-UNDO.md`. Implementation commits: `ccf68c807a36e66393751c74c2b57a36fd9154ed`, `43f787bf8203b57dcd58523ca54261d3ae9cdfd1`.
+- Narrow draft deck paths pass; SEP-08 remains **NOT TESTED** as a full feature row. Android WebView/AVD and physical/OEM tests were not run. Continue with further S2/Studio gaps; no separation GO implied.
+- The objective feature ref feat/skin-first-separation is checked out in another worktree with uncommitted edits to PROGRESS and Clear source/assets. This slice is pushed to codex/separation-skin-settings; do not advance the feature ref until that concurrent work is coordinated.
+
+## Separation — new-event Native/Skin paired replay (2026-10-28)
+
+- Added an injectable Clock to `WebSkinEditService` and a fixed-clock Native/Skin replay for all four event kinds. The test repeats open/close 20 times per kind and compares durable counters; replays eight default/explicit-selection publishes through Native save versus Skin Host review; and compares incomplete Deadline draft staging. Only generated created/updated audit timestamps are normalized.
+- Focused regression PASS. Full offline Gradle gate: **608/608 JVM tests, 85 suites, 0 failures/errors/skips, 88/88 tasks**; source boundary, Debug/AndroidTest APK builds, and lint passed (0 errors / 52 warnings). Captured full-log SHA-256: `79C68A8122880AA25A35E892E93848586BA66C27FB2611C29EE040846975928B`. Debug / AndroidTest APK SHA-256: `869AD65D0E00C1C37CE39042E2E946115C02D498B993B7821777DF3B8839845C` / `FD52D9A141D801274FA4E58E1F7B20F113525CE3A8117A92D76DA41A88619BF9`.
+- Studio Chrome E2E verified chooser → editor → Mock `deck.create` receipt for ALARM/ACTIVITY/DEADLINE/MEMO; Studio Python **51/51**, Clear bundle verification (8 files / 379111 bytes) and JS syntax check passed. Implementation commit: `ee18be116aeca17914a160db6fbab33ffc60f12e`. Logs and test method are recorded in `docs/issues/PC-ISSUE-SEPARATION-NEW-EVENT-PAIRED-REPLAY.md`.
+- This is narrow replay evidence only: SEP-04 remains **NOT TESTED** as a complete parity row. Android WebView/device and physical/OEM tests were not run. Continue with the next bounded parity gap; no separation GO implied.
+
+
+## Separation — real SAF skin package import/export (2026-10-28)
+
+- Added `WebSkinManagementInstrumentedTest.skinPackageImportAndExportUseTheSystemDocumentsProvider`; on isolated API 35 AVD `emulator-5564`, the real Downloads Provider/DocumentsUI imported a generated valid custom `.pcskin`, and the real `CreateDocument` flow exported Clear. The custom skin installed without becoming active; formal events, drafts, identities and commits stayed at zero. Export SHA-256 exactly matched the canonical Clear package.
+- Focused AndroidJUnitRunner **1/1 PASS**; log SHA-256 `2689EE0504F61513E77C1F2984430C83F64F9DB2E4FA5D96D7942245BBAF0F6B`. Full offline Gradle gate **607/607 JVM tests, 85 suites, 0 failures/errors/skips, 88/88 tasks**; source boundary and both APK builds passed; lint 0 errors / 52 warnings. Full log SHA-256 `637F23418EE079F7E85E3598A381B2C74F0B3061BB1C2E8C0F9CEFE6B40B9E7B`.
+- Independent report: `docs/issues/PC-ISSUE-SEPARATION-SAF-SKIN-IMPORT-EXPORT.md`. Narrow SAF roundtrip is PASS; SEP-11 remains NOT TESTED because credentials, permissions, deletion, backup/restore and complete Native/Skin replay remain open. No physical/OEM test was run.
+- Next: continue with another bounded parity gap; do not mark S4/SEP-11 or the separation goal complete from this test alone.
+
 ## Separation — Studio dark material tokens (2026-10-27)
 
 - Root cause: Studio emitted edited base material slots into `:root`, overriding Clear's authored dark text token. `v3-studio.js` now emits `:root:not(.dark)`.
@@ -927,3 +1003,80 @@ Updated: 2026-10-24
 - Browser Studio now edits raw `project.json`, creates/deletes supported UTF-8 files under `web/` and `assets/`, and adds/replaces/deletes arbitrary assets. Invalid project JSON blocks preview/export while retaining the editor draft; valid edits preserve unknown fields. Text-reference scanning blocks observed references before deletion. Unsupported text extensions are rejected so created files remain editable.
 - Focused source editing tests 4/4 PASS; complete Skin Studio suite 50/50 PASS; real Chrome Headless source/project/resource edit-preview-export-import E2E PASS; Clear bundle verification PASS (8 files / 376661 bytes; SHA-256 `0e17aabfe216e8ecb0775dafb8ea66857e25687b09e1167b7c68e1d9ffd81623`). Logs/hashes: `docs/issues/PC-ISSUE-SEPARATION-STUDIO-BROWSER-AUTHORING.md` and `.local/android-test/reports/separation-20261027/studio-editor-authoring/`.
 - Code commit `151960f` is pushed to `origin/feat/skin-first-separation`. Independent report and Studio docs are being committed separately. SEP-15/S5 remains open: no formal component schema/tree editor, Android WebView/device parity, or complete AI authoring workflow is claimed. Next, continue closing the highest-risk Host/Studio parity gaps from the SEP matrix; preserve the native recovery UI.
+
+## Separation — Clear 设置中的原生备份入口（2026-10-28）
+
+- Clear 的皮肤设置页新增 Host 白名单动作 `data.backup.export` / `data.backup.restore`，分别复用既有 Android `CreateDocument` / `OpenDocument` 路径、`PowerStore` 备份导出、envelope 校验与空数据库恢复限制。明文敏感提示在皮肤设置和 Studio Mock 中可见；Skin 不接收备份正文或 URI，Studio 动作不读写文件。
+- 新增 `WebSkinBackupActionIntegrationTest`：在隔离 SQLite 中写入私人标题/备注，通过生产 `PowerCalApp` 和 Bridge 验证设置页投影不含事件正文，并观测实际 picker Intent 与 Store 计数不变。该测试未启动 OS Picker 或真实 DocumentsProvider。
+- 定向 JVM/Robolectric 回归 **17/17**（3 suites）；完整离线 Gradle 门禁 **605/605 JVM、84 suites、88/88 tasks，0 failures/errors/skips**，source boundary、Debug/AndroidTest APK 通过，lint 0 errors / 52 warnings。Skin Studio Python **51/51**；Edge Headless Studio E2E、JS syntax、Clear bundle verify 与 `git diff --check` 通过。证据目录 `.local/android-test/reports/separation-skin-backup-20261028/`；独立报告 `docs/issues/PC-ISSUE-SEPARATION-BACKUP-SKIN-ACTION.md`。
+- 完整门禁日志 SHA-256 `DEC16279EBA4D728BC1F4D193A5DE6581E784F069ABDCF9494562DB152F38DE4`；Debug / AndroidTest APK SHA-256 `0E9D967CFD70285D3456150ED591B96F5E7878F1A67A8B5314C8D71954F7A14E` / `60F08FFC420D8C67860FE9D85938C5237CF3C48CD49D5EFC260DC1187C5C9B90`。详细测试日志和其他哈希见独立报告。
+- 实现提交 `16cdbb4d44495b43a2aa5a3aeec23d78e2a8ebd1` 已推送至 `origin/codex/separation-skin-settings`；Issue 报告已记录实现提交 SHA 和推送状态。
+- Android WebView/AVD、系统文件选择器、真实 DocumentsProvider、完整备份文件读写/恢复以及 Native/Skin 回放均未测试；SEP-11 仍 `NOT TESTED`，S4 未关闭。
+
+## Separation — Clear 皮肤包管理入口（2026-10-28）
+
+- Clear 皮肤设置页现在通过闭合 Host Bridge 显示有界已安装皮肤目录，并复用现有 Host picker、Clear 包导出、切换 checkpoint/确认和自定义包删除确认。皮肤包选项仅在皮肤设置页投影，普通页面不显示；Studio 四个动作是非写入 Mock。
+- 定向 Host 回归 **19/19 PASS**；独立 API 35 AVD `SkinManagementAPI35` 的实际 Clear WebView 入口/目录/启用确认/取消回归 **1/1 PASS**。首次 WebView 仪器运行在 MessagePort 就绪前超时，增加无写入桥接就绪探针后冷启动复测及最终复测通过，失败证据保留。
+- 最终完整离线门禁 **607/607 JVM tests、85 suites、0 failures/errors/skips、88/88 tasks**，source boundary、Debug 与 AndroidTest APK、lint 均通过（0 lint errors / 52 warnings）。第一次整套运行中一个未修改的 AI Compose 确认用例短暂失败，单项复跑及整套复跑通过；该时序敏感列为剩余风险。Skin Studio Python **51/51**、Edge Headless E2E、JS syntax、Clear bundle verify 均通过。
+- 独立结案报告：[PC-ISSUE-SEPARATION-SKIN-MANAGEMENT.md](../issues/PC-ISSUE-SEPARATION-SKIN-MANAGEMENT.md)。实现提交 `9bb81a0113bf6d0461a2cf305256d75fa61e8ccb` 已推送至 `origin/codex/separation-skin-settings`。完整日志、APK/测试包、Lint XML 与 Clear bundle 哈希见 Issue 报告和 `.local/android-test/reports/separation-skin-management-20261028/`。
+- 此结果只关闭皮肤管理入口这一子切片；未测真实 SAF/Provider、自定义皮肤安装/删除/导出、凭据、完整备份恢复或 Native/Skin 回放。SEP-11 仍 `NOT TESTED`，S4 与整个 S0–S8 分离计划保持进行中。
+
+## Separation — v3 空白项目 scaffold CLI（2026-10-28）
+
+- 新增 `scaffold-v3`，可从零生成可编辑、确定性、默认无 Host capability 的 v3 `.pcskin`，并复用生产 builder/validator、原子拒绝覆盖及结构化 JSON 回执；非法 capability 不发布文件。
+- 定向 AI workflow **2/2 PASS**；Skin Studio 全套 **70/70 PASS**；Clear bundle verify **PASS**（8 files / 380,940 bytes；SHA-256 `9cc6bdd86a53c693b8cec6e84950ed89ec49bcde9fb78d773034e4147e45a454`）；`git diff --check` PASS。日志与 hash 见 `docs/issues/PC-ISSUE-SEPARATION-STUDIO-SCAFFOLD-V3.md` 和 `.local/android-test/reports/separation-20261028/studio-v3-scaffold-20261028-112525-637/`。
+- CLI-only 初始实现提交 `a9dd0a20463a13bd8bd25b79168af6fc4cfd5883` 已创建；浏览器往返验证见下方 follow-up。Android WebView/设备或 Native/Skin 功能等价未测。SEP-15/S5 和总体分离目标保持进行中。
+
+### Scaffold 浏览器 Studio 往返补测（2026-10-28）
+
+- 扩展 `e2e_v3_source.cjs`：Chrome Headless 通过真实 Studio import handler 加载 CLI 新建包，在结构树插入组件，校验预览原样提供 canonical HTML，导出/重导入后再载入 Studio 检查组件仍在树中，且零 capability 保持。结果 **PASS**；脚手架包 SHA-256 `4e5d60cda376b6b9295cb8aa4f4a6efbc6b881f999424310dd48e64f2de0156c`，日志和截图哈希见独立 Issue 报告与 `.local/android-test/reports/separation-20261028/studio-v3-scaffold-browser-20261028-113628-271/`。
+- 首次 E2E 因新增场景未恢复原 Clear fixture 而在后续断言失败；恢复 fixture 后完整 E2E 通过，失败日志保留。更新 E2E 支持 `STUDIO_E2E_REPORT_DIR`，避免覆盖旧截图证据。
+- E2E 与文档提交 `86e2f3f550fc6738ddd944e68a8044e475ca487a` 已创建；最终日志 SHA-256 `9B9171319B8049B4556B9F241A7A4D708AB6C76780CFEB1918EA774981EB9064`。
+- 该回归只证明桌面 Chrome Studio 路径；Android WebView/设备与 Native/Skin 功能等价未测，SEP-15/S5 仍进行中。
+
+## Separation — Native/Clear/Host AI chat 输入边界（2026-10-28）
+
+- 根因：Native composer 上限为 6000 UTF-16 code units，Clear、Studio Mock、Bridge schema 和 Host decoder 仍为 4000。将四处统一到 6000；保留 Host 空白/闭合 payload/8192-unit frame 校验，并补 BMP、补充平面及 6001 拒绝回归。
+- 定向 Host/schema **32/32 PASS**；完整离线门禁 **621/621 JVM、87 suites、88/88 tasks、0 failures/errors/skips**，lint 0 errors / 52 warnings；Skin Studio **70/70**；Chrome E2E 的 `acceptedAtLimit=6000`、`rejectedAboveLimit=true`。Clear verify：8 files / 381125 bytes，SHA-256 `04c5f92d1c30d00b84e4cbd90fa572daf8103daa05ca8f5c2552c6a9d94600ac`。
+- 实现提交 `bb627a4e3c4cc785ced6c82efb3cc73e139ec12a` 已推送到 `origin/codex/separation-skin-settings`。独立报告 `docs/issues/PC-ISSUE-SEPARATION-AI-CHAT-INPUT-LIMIT.md`；日志/APK 哈希见 `.local/android-test/reports/separation-20261028/ai-chat-input-limit/`。
+- 本机无 emulator executable；Android WebView/AVD、真机和真实 Provider 未测。SEP-09 完整聊天功能等价与 S3 仍 NOT TESTED/进行中。
+
+## Separation — Skin AI 附件 ICS 本地路由回归（2026-10-28）
+
+- 新增生产 `PowerCalApp` / Bridge 集成回归：Skin `pickAiFile` 收到 MIME/文件名误导的 `.ics` 内容后，按 `BEGIN:VCALENDAR` magic 进入本地导入；生成 1 个待审 ACTIVITY 草稿和匹配 checkpoint，不产生正式事件/commit，不调用 AI Provider，导入标题在 Compose 可见。没有发现生产代码缺陷，本次补齐此前未串联的自动化覆盖。
+- 定向附件集成类 **5/5 PASS**；完整离线 Gradle 门禁 **622/622 JVM、87 suites、88/88 tasks，0 failures/errors/skips**，source boundary、Debug/AndroidTest APK 编译通过，lint 0 errors / 52 warnings。Skin Studio Python **70/70**；Chrome Studio E2E、JS syntax、Clear bundle verify 和 `git diff --check` PASS。详见 `docs/issues/PC-ISSUE-SEPARATION-AI-ICS-FILE-ROUTING.md` 与 `.local/android-test/reports/separation-20261028/ai-ics-route-cb337ffd7bb94627b4309d01803bd957/`。
+- Debug / AndroidTest APK SHA-256：`0281716B2EC5E73071495E80A8B81B65BD7DC0F8ECCAA6BEDA259E8B809AEDFB` / `6B89A35252F0106B6A1B9DB45918C22303CA422391644EB0A77A329F413BAEB9`；完整门禁日志 SHA-256：`00898111B183D917ECE17D80E0A4616992D8AF62571A8F21AEABA0EE11636EC0`。AndroidTest APK 构建包含未提交的并发 `WebSkinManagementInstrumentedTest.kt` 修改，该文件未纳入本 Issue。
+- 测试/报告提交 `c38579e5c3a2e7e44a8ab9f80a657ede92287de6`（`test(分离): 覆盖 AI 附件 ICS 本地路由`）已推送到 `origin/codex/separation-skin-settings`。
+- 本机没有 emulator executable；系统 DocumentsUI/真实 Provider、Android WebView/AVD、实体设备、真实 AI Provider 和完整 Native/Skin 回放未测。SEP-09 与 S3 仍 **NOT TESTED / 进行中**。
+
+## Separation — AI 附件读取失败恢复（2026-10-28）
+
+- 补上生产 `PowerCalApp` / Bridge 文件 picker 结果在 ContentResolver 抛出 `IOException` 时的恢复集成回归。Host 显示未上传/未创建事件提示、释放 picker busy 状态并恢复可用；草稿、身份、正式事件、commit、聊天历史均不变，loopback AI sentinel 无连接。未发现生产代码缺陷，本次为测试覆盖和证据更新。
+- 定向单测 **1/1 PASS**；附件集成类 **6/6 PASS**；完整离线门禁 **623/623 JVM、87 suites、88/88 tasks，0 failures/errors/skips**，source boundary、Debug/AndroidTest APK 编译通过，lint 0 errors / 52 warnings。详见 `docs/issues/PC-ISSUE-SEPARATION-AI-FILE-READ-RECOVERY.md` 与 `.local/android-test/reports/separation-20261028/ai-ics-route-cb337ffd7bb94627b4309d01803bd957/`。
+- 完整门禁日志 SHA-256：`A507E1DA46B6A7A8BC401549A3986505D4202012DD8A32EC591597657FFC26AC`；Debug / AndroidTest APK SHA-256：`0281716B2EC5E73071495E80A8B81B65BD7DC0F8ECCAA6BEDA259E8B809AEDFB` / `6B89A35252F0106B6A1B9DB45918C22303CA422391644EB0A77A329F413BAEB9`。AndroidTest APK 同样包含未提交的并发 `WebSkinManagementInstrumentedTest.kt`，未纳入本 Issue。
+- 测试/报告提交 `512bfe5b4623dd638eddbd53e6d79caf5172b44e`（`test(分离): 验证 AI 附件读取失败恢复`）已推送到 `origin/codex/separation-skin-settings`。
+- worktree 缺 `local.properties` 的首次构建在测试前退出；确认本地 SDK 后，通过进程级 `ANDROID_HOME` / `ANDROID_SDK_ROOT` 重跑，未创建本地配置。Android WebView/AVD/真机、DocumentsUI/真实 Provider、OCR、真实 AI Provider 和 Native/Skin 全量回放未测；SEP-09 / S3 仍 **NOT TESTED / 进行中**。
+
+## Separation — AI 文件与图片 Picker 取消恢复（2026-10-28）
+
+- 新增生产 `PowerCalApp` / Activity Result 集成回归：文件 `OpenDocument` 与图片 `GetContent` 分别收到 `null` 取消结果后均解除附件 busy、恢复 available；没有聊天/提案/Store 副作用，也没有残留图片授权确认层。仅验证 Host 取消回调，不宣称真实 DocumentsUI 通过。
+- 单项 **1/1 PASS**；附件集成类 **7/7 PASS**；完整离线门禁 **624/624 JVM、87 suites、88/88 tasks，0 failures/errors/skips**，source boundary、Debug/AndroidTest APK 编译通过，lint 0 errors / 52 warnings。详见 `docs/issues/PC-ISSUE-SEPARATION-AI-PICKER-CANCEL.md` 与 `.local/android-test/reports/separation-20261028/ai-ics-route-cb337ffd7bb94627b4309d01803bd957/`。
+- 完整门禁日志 SHA-256：`44757F36996BAD6BB97E1752E8BCC89EFB00D5245A562AD4D294A116303BC2E4`；APK 与 lint XML 哈希见 Issue 报告。AndroidTest APK 包含未提交的并发 `WebSkinManagementInstrumentedTest.kt`，未纳入本 Issue。
+- 测试/报告提交 `e476ab0eff1acc07385f389a5e9a1399d1e8a42d`（`test(分离): 验证 AI 附件选择器取消恢复`）已推送到 `origin/codex/separation-skin-settings`。
+- 系统 DocumentsUI/真实 SAF、Android WebView/AVD/真机、OCR、真实 Provider 和 Native/Skin 全量回放未测；SEP-09 / S3 仍 **NOT TESTED / 进行中**。
+
+## Separation — 本地 OCR 核对与同步失败恢复（2026-10-28）
+
+- 生产 OCR 初始化/同步 `process()` 异常原先能从 Compose 点击回调逸出。抽出 Host-owned `LocalImageOcr`，默认仍使用 ML Kit；Host 捕获同步异常、保留图片读取错误提示并在任务完成/异常时关闭 recognizer；公开 `PowerCalApp` 入口维持原签名。Robolectric 注入 fake 覆盖用户选择本地 OCR、文本进入可编辑核对层、取消无写入，以及 recognizer 同步抛错时可见恢复提示和可重试状态。
+- 定向 OCR 用例 **2/2 PASS**；附件集成类 **9/9 PASS**；完整离线门禁 **626/626 JVM、87 suites、88/88 tasks，0 failures/errors/skips**，source boundary、Debug/AndroidTest APK 编译通过，lint 0 errors / 52 warnings。独立报告 `docs/issues/PC-ISSUE-SEPARATION-AI-LOCAL-OCR-RECOVERY.md`；本地日志在 `.local/android-test/reports/separation-20261028/ai-ics-route-cb337ffd7bb94627b4309d01803bd957/`。
+- 完整门禁日志 SHA-256：`C9230FEACB1DC20B2B1096730CDE7C5F026181E4128EEF330B3F7B7E73F9F2A6`；Debug / AndroidTest APK SHA-256：`357F2D698A78D7D9643AF5F7E1291F185445D3D9226CE5F4B5E7E80288AF8FAF` / `6B89A35252F0106B6A1B9DB45918C22303CA422391644EB0A77A329F413BAEB9`。AndroidTest APK 编译包含未提交并发 `WebSkinManagementInstrumentedTest.kt`，未纳入本 Issue。
+- 实现/测试/报告提交 `17c99adbd1c95c5e3279ce7bcb1ec3ec08db0592`（`fix(分离): 封闭本地 OCR 同步失败边界`）已推送到 `origin/codex/separation-skin-settings`。
+- 真实 ML Kit识字、模型不可用/下载失败、图像旋转/大图、系统 Picker、Android WebView/AVD/真机、真实 Provider/AI 与 Native/Skin 全量回放未测。SEP-09 / S3 仍 **NOT TESTED / 进行中**。
+
+## Separation — AI publish failure and explicit retry (2026-10-28)
+
+- Added `failedReviewedPublishCanRetryWithoutReusingReservedEventIdentity`: a synthetic SQLite trigger rejects the first reviewed AI CREATE draft insert. The service returns the proposal as unhandled/retryable; no draft, formal event, pending item or commit is written. The already allocated permanent identity is retired, and explicit retry publishes exactly once under the next identity. The service case passes **1/1**; `AiChatDraftPipelineTest` + `WebAiProposalReviewIntegrationTest` pass **9/9**.
+- Skin Studio adds a non-writing Mock for Host write failure followed by explicit retry. Browser Chrome E2E confirms the four proposal cards survive the failure, a second confirmation resolves one, and no real calendar write occurs. Studio Python **70/70**, Chrome E2E, JS syntax and Clear bundle verification pass.
+- Full offline gate: **627/627 JVM / 87 suites / 0 failures/errors/skips / 88 Gradle tasks**; source boundary, Debug APK, AndroidTest APK and lint pass (0 errors / 52 warnings). Hashes and per-test logs are in `docs/issues/PC-ISSUE-SEPARATION-AI-PUBLISH-FAILURE-RETRY.md` and `.local/android-test/reports/separation-20261028/ai-publish-failure-retry-3f0301d/`.
+- A Compose Host fault-injection diagnostic did not complete and is **NOT VERIFIED**: final Bridge state had `chatBusy=true`, proposal still present, with isolated Store counts all zero; cause unresolved. No ADB devices were connected, so Android WebView/emulator/physical-device and live provider checks were not run. Initial Chrome E2E failed because the test queried the parent Studio dialog from the skin iframe; the harness context was corrected and the rerun passed. No production Android code was changed.
+- Independent report: `docs/issues/PC-ISSUE-SEPARATION-AI-PUBLISH-FAILURE-RETRY.md`. Implementation/test commit `fe13f437694b3f3270f4ca988cf882924be5c458` is pushed to `origin/codex/separation-skin-settings`; report/matrix/progress are included in a separate documentation commit. This closes only the isolated service + Studio Mock evidence slice: `SEP-10` / `SEP-16` remain **NOT TESTED**, and S3 remains open.

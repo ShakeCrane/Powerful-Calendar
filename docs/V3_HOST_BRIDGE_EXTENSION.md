@@ -16,6 +16,9 @@ New:
 - `timeline`: `zoneId`, `anchorMillis`, `hours`,
   `visibleStartMillis`, `visibleEndMillis`, `nowMillis`,
   `itemLimit` (300), `truncated`, and `items`.
+- `month`: `zoneId`, `month` (`YYYY-MM`), `selectedDate` (ISO local date),
+  `gridFrom`, `itemLimit` (350), `truncated`, and `items`. Month selection is
+  host-owned presentation state, independent of the timeline camera.
 - Each timeline item: `eventSeq`, `revision`, `occurrenceKey`,
   `kind`, `title`, `side`, `lane`, `startMillis`,
   `endMillis`, `precision`, and `deadlineDate`.
@@ -52,16 +55,84 @@ envelope and known fields only:
 ```json
 {"version":1,"type":"action","payload":{"name":"pickAiImage"}}
 ```
+```json
+{"version":1,"type":"action","payload":{"name":"skinSettings"}}
+```
+```json
+{"version":1,"type":"action","payload":{"name":"selectMonth","yearMonth":"2030-02"}}
+```
+```json
+{"version":1,"type":"action","payload":{"name":"selectMonthDate","date":"2030-02-14"}}
+```
+```json
+{"version":1,"type":"action","payload":{"name":"todayInMonth"}}
+```
 
+- `sendChat` accepts nonblank text up to 6000 UTF-16 code units, matching the Native composer. The 8192-unit message-frame limit still applies to the complete JSON envelope.
 - `panTimeline` accepts nonzero integer minutes [-2880, 2880]. It does not
   change the time span or introduce horizontal zoom.
 - `jumpTimelineDay` accepts an ISO date from years 1900–2200 and retains
-  the existing camera span.
-- Existing navigation, the additive `memo` page action, and `openEvent(eventSeq,expectedRevision)` remain.
+  the existing camera span; from Month it is the explicit “view this date on
+  Timeline” action and switches to the Timeline page.
+- `browseMonth` accepts a nonzero integer month delta in [-12, 12].
+  `selectMonth` accepts exactly `yearMonth` in canonical `YYYY-MM` form for
+  years 1900–2100. Both operate only on the active Month page, select day 1 of
+  the target month, and do not move or resize the Timeline camera.
+- `selectMonthDate` accepts exactly an ISO `date` in years 1900–2100 and only
+  selects a date inside the active displayed month. Selection is presentation
+  state and performs no calendar write. `todayInMonth` selects the current
+  local date using the Host clock and zone, without changing the Timeline
+  camera. The general `today` action remains the separate local-noon,
+  24-hour Timeline camera reset.
+- `openEvent` accepts the existing `{eventSeq,expectedRevision}` payload and
+  an optional canonical `originalOccurrenceKey` for a projected repeating
+  slot. The Host re-reads the record/revision and verifies that the key is a
+  generated slot before opening the existing scoped editor. This selects an
+  editor target; it does not authorize a write.
+- Existing navigation and the additive `memo` page action remain.
   Formal event opens re-read the current record and check revision/writer
   availability; an occurrence key cannot bypass those checks.
 - `invokeOption` only accepts registered host IDs. When AI/editor writes
   are locked, option rows are disabled in state and invocation is denied.
+  Registered options currently include the two bounded calendar imports,
+  Activity-only `calendar.export.ics`, and
+  `reminders.exactAlarmSettings`, `reminders.notificationPermission`, and
+  `reminders.reconcile`. The latter actions only open the Android-owned
+  permission flow or invoke the existing idempotent scheduler; pre-Android-13
+  notification settings open the app's Android notification settings page, while
+  Android 13+ uses the runtime permission request. A skin cannot
+  grant a permission or select an event identity. The `reminderPermissions`
+  state contains only `exactAlarmAllowed`, `notificationsAllowed`, and
+  `notificationsRuntimePermissionRequired`, and is projected only on the
+  `SETTINGS` page. Already-granted runtime permissions disable their request
+  action; Host checks the live permission again before launch. On Android
+  versions without a notification runtime permission, the skin can distinguish
+  “not required” from an actual permission grant.
+  ICS export uses the existing Host `CreateDocument` flow and exports Activity
+  records only; the format cannot preserve other event kinds or completion state.
+- The existing `settings` action continues to open the protected Android
+  Host tools page for compatibility with v1 skins. The additive
+  `skinSettings` action selects the skin-owned settings landing without
+  leaving the Web skin. It receives the existing bounded `optionGroups`
+  projection; event/timeline/month/chat collection projections are empty on
+  that page. The bounded `data.backup.export` and `data.backup.restore` options
+  only request the existing Android Host file pickers: backup JSON and content
+  URIs are never projected to the skin. Exported backups are plaintext and
+  sensitive; restore is accepted only by the existing Core empty-database and
+  envelope validation checks, with the existing native legacy-consent dialog.
+  The `skin.import` and `skin.exportClear` options reuse the Host-owned package
+  picker and bundled-Clear exporter; install still verifies the archive and
+  never activates it automatically. On this page only, `installedSkins`
+  projects a bounded list of package ID, display name, built-in/current flags
+  and whether actions are available. It never includes package paths or source.
+  The closed-schema `selectSkin` and `deleteSkin` actions accept only `skinId`;
+  the Host resolves it against the current installed catalogue. Selection keeps
+  the existing trusted confirmation and `prepareSkinChange` checkpoint. Delete
+  is limited to non-built-in packages and keeps the existing trusted delete
+  confirmation. Studio previews all four operations as non-writing Mocks.
+  Credentials and other sensitive settings remain in the Host tools page. Clear's AI
+  “配置” and its settings landing's “打开宿主工具与凭据设置” continue to request
+  the existing `settings` action.
 - Existing `editor.patch` and `deck.patch` accept the semantic field `kind`
   with exactly one of `ALARM`, `ACTIVITY`, `DEADLINE`, or `MEMO`. The Host
   applies the frozen `TemporalConversion` rules and returns the updated form;
@@ -127,12 +198,20 @@ continue to use their existing selection/default behavior.
 
 ## Sandboxing and lifecycle
 
-The host still runs package HTML/CSS/JS entirely offline, from the exact
-`https://skin.powercal.local/` namespace; no remote access, credentials,
-PowerStore, arbitrary native function calls or file access.
+The host still runs package HTML/CSS/JS entirely offline. Each WebView session
+uses a fresh synthetic HTTPS origin under `<random>.skin.powercal.local`; only
+that session's entrypoint and packaged resources are accepted. Cookies are
+disabled and process-wide Service Worker settings deny file/content/network
+access and reject worker requests. This prevents persistent worker state from
+being shared between skin sessions. No remote access, credentials, PowerStore,
+arbitrary native function calls or file access is exposed.
 The active page channel is disposed/replaced during reload; a stale channel
 must not reach the host. State is a bounded projection, not a database view.
-All settings, risky changes, confirmations and emergency recovery stay native.
+Skins may own and freely present a settings landing page and may invoke only
+bounded Host-projected actions. Credentials, Android permissions, backup/restore,
+skin installation/management, risky changes, confirmations and emergency
+recovery remain under trusted Host control. The compatibility `settings` action
+opens the native Host tools page; `skinSettings` opens the skin-owned landing.
 Skin Studio's AI attachment preview only records a non-writing Mock request;
 it does not open a system picker or read, upload or import a file.
 

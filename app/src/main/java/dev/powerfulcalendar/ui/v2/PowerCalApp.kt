@@ -77,9 +77,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.text.TextRecognition
-import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
 import dev.powerfulcalendar.ai.AiBatchRunner
 import dev.powerfulcalendar.ai.AiClient
 import dev.powerfulcalendar.ai.AiChatMessage
@@ -173,6 +170,20 @@ private data class AppData(
 
 @Composable
 fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
+    PowerCalAppContent(store, nativeRecoverySignal, MlKitLocalImageOcr)
+}
+
+@Composable
+internal fun PowerCalAppWithLocalImageOcr(store: PowerStore, localImageOcr: LocalImageOcr) {
+    PowerCalAppContent(store, 0, localImageOcr)
+}
+
+@Composable
+private fun PowerCalAppContent(
+    store: PowerStore,
+    nativeRecoverySignal: Int,
+    localImageOcr: LocalImageOcr
+) {
     val context = LocalContext.current
     val appContext = context.applicationContext
     // Re-read on composition so sessions opened after a timezone change capture the current zone.
@@ -187,18 +198,22 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
     var skinToActivate by remember { mutableStateOf<InstalledSkin?>(null) }
 
     var page by rememberSaveable { mutableStateOf(Page.TIMELINE.name) }
+    var skinSettingsOpen by rememberSaveable { mutableStateOf(false) }
     var records by remember { mutableStateOf<List<TemporalRecord>>(emptyList()) }
     var pendingCount by remember { mutableIntStateOf(0) }
     var aiLocked by remember { mutableStateOf(false) }
     var aiSession by remember { mutableStateOf<PowerStore.AiSession?>(null) }
     var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var message by remember { mutableStateOf<String?>(null) }
+    var webFailureRecovery by remember { mutableStateOf<WebSkinEditRecoverySnapshot?>(null) }
+    var webFailureRecoveryBusy by remember { mutableStateOf(false) }
 
     // The Activity has persisted the native selection independently of the Web layer.
     LaunchedEffect(nativeRecoverySignal) {
         if (nativeRecoverySignal > 0) {
             selectedSkin = skins.currentId()
             skinToActivate = null
+            skinSettingsOpen = false
             page = Page.TOOLS.name
             message = "已通过双指交替敲击恢复原生皮肤，日历数据及已安装皮肤均保留。"
         }
@@ -266,6 +281,10 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
     val initialCamera = remember { TimelineCoordinate.initialCamera(System.currentTimeMillis(), zone) }
     var anchorMillis by rememberSaveable { mutableLongStateOf(initialCamera.anchorMillis) }
     var hours by rememberSaveable { mutableDoubleStateOf(initialCamera.hours) }
+    var webMonthSelectedDateText by rememberSaveable { mutableStateOf("") }
+    fun webMonthSelectedDate(): java.time.LocalDate = runCatching {
+        java.time.LocalDate.parse(webMonthSelectedDateText)
+    }.getOrElse { Instant.ofEpochMilli(anchorMillis).atZone(zone).toLocalDate() }
     val camera = TimelineCoordinate.Camera(anchorMillis, TimelineCoordinate.clampHours(hours))
     val todayKey = Instant.ofEpochMilli(nowMillis).atZone(zone).toLocalDate()
     val todoEntries = remember(records, todayKey) {
@@ -403,7 +422,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
                 editError = activeEditSession?.lastError
                 newEventError = activeNewEventSession?.lastError
-                scope.launch { reconcile(); reload() }
+                scope.launch { reconcile(); reload(); WebSkinBridgeRuntime.stateRevision++ }
             }
             if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP &&
                 webEditing.hasLiveEditor()) {
@@ -1011,7 +1030,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                     skinChoices = skins.installed()
                     selectedSkin = skins.currentId()
                     message = "皮肤已导入，但未启用：" + result.name +
-                        "；请在设置中手动选择。"
+                        "；请在皮肤设置中选择启用。"
                 }
                 .onFailure { error ->
                     message = "皮肤导入已拒绝：" + (error.message ?: "未知错误") +
@@ -1097,19 +1116,22 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
         }
     }
     fun runLocalOcr(uri: Uri) {
-        val recognizer = TextRecognition.getClient(ChineseTextRecognizerOptions.Builder().build())
-        val image = runCatching { InputImage.fromFilePath(context, uri) }.getOrNull()
-        if (image == null) {
-            message = "无法读取图片"
-            recognizer.close()
-        } else {
-            recognizer.process(image)
-                .addOnSuccessListener { result ->
-                    if (result.text.isBlank()) message = "未识别到文字，可以手动输入"
-                    else ocrReviewText = result.text
-                }
-                .addOnFailureListener { message = "OCR 失败：" + it.message }
-                .addOnCompleteListener { recognizer.close() }
+        fun reportFailure(error: Throwable) {
+            message = if (error is LocalImageReadException) "无法读取图片"
+                else "OCR 失败：" + (error.message ?: error.javaClass.simpleName)
+        }
+        try {
+            localImageOcr.recognize(context, uri) { result ->
+                result.fold(
+                    onSuccess = { text ->
+                        if (text.isBlank()) message = "未识别到文字，可以手动输入"
+                        else ocrReviewText = text
+                    },
+                    onFailure = ::reportFailure
+                )
+            }
+        } catch (error: Exception) {
+            reportFailure(error)
         }
     }
     val ocrPicker = rememberLauncherForActivityResult(
@@ -1145,8 +1167,10 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
     androidx.compose.runtime.SideEffect {
         WebSkinBridgeRuntime.owner = webBridgeOwner
         WebSkinBridgeRuntime.onEdit = { command ->
-            val selection = if (command is WebEditCommand.CreateDeck)
-                newEventSelectionForPage(page, camera, zone) else null
+            val selection = if (command is WebEditCommand.CreateDeck) {
+                if (page == Page.MONTH.name) EditorSelection.OnDate(webMonthSelectedDate())
+                else newEventSelectionForPage(page, camera, zone)
+            } else null
             val response = webEditing.execute(
                 command, newEventZone = zone, newEventSelection = selection
             )
@@ -1168,22 +1192,37 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
         }
         WebSkinBridgeRuntime.onAction = { action ->
             when (action) {
-                is WebSkinAction.Routed -> when (action.name) {
-                    "timeline" -> page = Page.TIMELINE.name
-                    "month" -> page = Page.MONTH.name
-                    "memo" -> page = Page.MEMO.name
-                    "ai" -> page = Page.AI.name
-                    "settings" -> page = Page.TOOLS.name
-                    "openDeck" -> scope.launch { openDeckAt(null) }
-                    "today" -> {
-                        nowMillis = System.currentTimeMillis()
-                        val today = TimelineCoordinate.todayCamera(nowMillis, zone)
-                        anchorMillis = today.anchorMillis; hours = today.hours
+                is WebSkinAction.Routed -> {
+                    val previousPage = page
+                    val navigation = reduceWebSkinNavigation(
+                        WebSkinNavigationState(page, skinSettingsOpen), action.name
+                    )
+                    page = navigation.hostPage
+                    skinSettingsOpen = navigation.skinSettingsOpen
+                    if (action.name == "month" && previousPage != Page.MONTH.name) {
+                        webMonthSelectedDateText = Instant.ofEpochMilli(anchorMillis)
+                            .atZone(zone).toLocalDate().toString()
                     }
-                    else -> Unit
+                    when (action.name) {
+                        "openDeck" -> scope.launch { openDeckAt(null) }
+                        "today" -> {
+                            nowMillis = System.currentTimeMillis()
+                            val today = TimelineCoordinate.todayCamera(nowMillis, zone)
+                            anchorMillis = today.anchorMillis; hours = today.hours
+                            if (page == Page.MONTH.name) {
+                                webMonthSelectedDateText = Instant.ofEpochMilli(nowMillis)
+                                    .atZone(zone).toLocalDate().toString()
+                            }
+                        }
+                        else -> Unit
+                    }
                 }
                 is WebSkinAction.InvokeOption -> when {
                     aiLocked || editSession != null -> Unit
+                    skinSettingsOpen && action.id == "skin.import" ->
+                        importSkin.launch(arrayOf("application/zip", "application/octet-stream", "*/*"))
+                    skinSettingsOpen && action.id == "skin.exportClear" ->
+                        exportOriginalSkin.launch("PowerCal-Clear-Preview.pcskin")
                     action.id == "calendar.import.file" ->
                         openAiDocument.launch(arrayOf("*/*"))
                     action.id == "calendar.import.system" -> {
@@ -1192,7 +1231,49 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                         ) scope.launch { importSystemCalendar() }
                         else calendarPermission.launch(Manifest.permission.READ_CALENDAR)
                     }
+                    action.id == "calendar.export.ics" ->
+                        exportIcs.launch("PowerfulCalendar-activities.ics")
+                    action.id == "data.backup.export" ->
+                        createBackup.launch("PowerCal-backup.json")
+                    action.id == "data.backup.restore" ->
+                        restoreBackup.launch(arrayOf("application/json", "*/*"))
+                    action.id == "reminders.exactAlarmSettings" -> {
+                        if (!ReminderScheduler.exactAlarmAllowed(appContext)) {
+                            ReminderScheduler.openExactAlarmSettings(appContext)
+                        }
+                    }
+                    action.id == "reminders.notificationPermission" -> {
+                        if (android.os.Build.VERSION.SDK_INT >= 33) {
+                            if (!ReminderScheduler.notificationsAllowed(appContext)) {
+                                notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            }
+                        } else {
+                            context.startActivity(
+                                Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                                    .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, appContext.packageName)
+                            )
+                        }
+                    }
+                    action.id == "reminders.reconcile" -> scope.launch {
+                        reconcile()
+                        reload()
+                        WebSkinBridgeRuntime.stateRevision++
+                    }
                     else -> Unit
+                }
+                is WebSkinAction.SelectSkin -> {
+                    if (skinSettingsOpen && !aiLocked && editSession == null &&
+                        action.skinId != selectedSkin
+                    ) {
+                        skinToActivate = skinChoices.firstOrNull { it.id == action.skinId }
+                    }
+                }
+                is WebSkinAction.DeleteSkin -> {
+                    if (skinSettingsOpen && !aiLocked && editSession == null) {
+                        skinToDelete = skinChoices.firstOrNull {
+                            it.id == action.skinId && !it.builtIn
+                        }
+                    }
                 }
                 is WebSkinAction.PanTimeline -> {
                     if (page == Page.TIMELINE.name) {
@@ -1214,18 +1295,43 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                 }
                 is WebSkinAction.BrowseMonth -> {
                     if (page == Page.MONTH.name) {
-                        val day = Instant.ofEpochMilli(anchorMillis).atZone(zone).toLocalDate()
-                        val target = runCatching { day.plusMonths(action.deltaMonths.toLong()) }
-                            .getOrNull()
-                        if (target != null && target.year in 1900..2200) {
-                            anchorMillis = target.atTime(12,0).atZone(zone)
-                                .toInstant().toEpochMilli()
+                        val target = runCatching {
+                            java.time.YearMonth.from(webMonthSelectedDate())
+                                .plusMonths(action.deltaMonths.toLong())
+                        }.getOrNull()
+                        if (target != null && target.year in 1900..2100) {
+                            webMonthSelectedDateText = target.atDay(1).toString()
                         }
+                    }
+                }
+                is WebSkinAction.SelectMonth -> {
+                    if (page == Page.MONTH.name) {
+                        val target = runCatching { java.time.YearMonth.parse(action.yearMonth) }
+                            .getOrNull()
+                        if (target != null && target.toString() == action.yearMonth &&
+                            target.year in 1900..2100
+                        ) webMonthSelectedDateText = target.atDay(1).toString()
+                    }
+                }
+                is WebSkinAction.SelectMonthDate -> {
+                    if (page == Page.MONTH.name) {
+                        val target = runCatching { java.time.LocalDate.parse(action.date) }
+                            .getOrNull()
+                        if (target != null && target.year in 1900..2100 &&
+                            java.time.YearMonth.from(target) ==
+                            java.time.YearMonth.from(webMonthSelectedDate())
+                        ) webMonthSelectedDateText = target.toString()
+                    }
+                }
+                WebSkinAction.TodayInMonth -> {
+                    if (page == Page.MONTH.name) {
+                        webMonthSelectedDateText = java.time.LocalDate.now(zone).toString()
                     }
                 }
                 is WebSkinAction.CreateDraft -> if (!aiLocked && editSession == null) {
                     val kind = TemporalKind.valueOf(action.kind)
-                    val day = Instant.ofEpochMilli(anchorMillis).atZone(zone).toLocalDate()
+                    val day = if (page == Page.MONTH.name) webMonthSelectedDate()
+                        else Instant.ofEpochMilli(anchorMillis).atZone(zone).toLocalDate()
                     openNewEvent(kind, EditorSelection.OnDate(day))
                 }
                 WebSkinAction.CreateMemo -> if (!aiLocked && editSession == null) {
@@ -1268,17 +1374,26 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                     } else if (validated == null) {
                         message = "Calendar editor is currently unavailable"
                     } else {
-                        openFormalEditor(validated)
+                        openFormalEditor(validated, action.originalOccurrenceKey)
                     }
                 }
             }
         }
         WebSkinBridgeRuntime.state = {
-            JSONObject().put("bridgeVersion", WebSkinBridgeRuntime.VERSION).put("page", page)
+            val exactAlarmAllowed = ReminderScheduler.exactAlarmAllowed(appContext)
+            val notificationsAllowed = ReminderScheduler.notificationsAllowed(appContext)
+            val disabledOptionIds = buildSet {
+                if (exactAlarmAllowed) add("reminders.exactAlarmSettings")
+                if (android.os.Build.VERSION.SDK_INT >= 33 && notificationsAllowed) {
+                    add("reminders.notificationPermission")
+                }
+            }
+            JSONObject().put("bridgeVersion", WebSkinBridgeRuntime.VERSION)
+                .put("page", if (skinSettingsOpen) "SETTINGS" else page)
                 .put("aiLocked", aiLocked).put("pendingCount", pendingCount)
                 .put("memoCount", todoCount)
                 .put("memoEntries", org.json.JSONArray(
-                    (if (page == Page.MEMO.name) todoEntries.take(250) else emptyList())
+                    (if (page == Page.MEMO.name && !skinSettingsOpen) todoEntries.take(250) else emptyList())
                         .map { entry ->
                         JSONObject()
                             .put("eventSeq", entry.owner.eventSeq)
@@ -1295,25 +1410,39 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                 .put("chatAttachmentBusy", aiAttachmentPickerBusy ||
                     pendingFileReview != null || pendingImageReview != null)
                 .put("chatMessages", org.json.JSONArray(
-                    (if (page == Page.AI.name) chatHistory.takeLast(40) else emptyList())
+                    (if (page == Page.AI.name && !skinSettingsOpen) chatHistory.takeLast(40) else emptyList())
                         .map { item ->
                         JSONObject().put("role", item.role)
                             .put("content", item.content.take(1600))
                     }
                 ))
-                .put("aiProposalReview", if (page == Page.AI.name) {
+                .put("aiProposalReview", if (page == Page.AI.name && !skinSettingsOpen) {
                     webAiProposalReviewSession?.let(WebAiProposalProjection::project) ?: JSONObject.NULL
                 } else JSONObject.NULL)
                 .put("reducedMotion", effects.reduceMotion)
                 .put("editing", webEditing.snapshot())
                 .put("optionGroups", SemanticOptions.toJson(
-                    enabled = !aiLocked && editSession == null))
-                .put("timeline", WebSkinTimelineProjection.build(
-                    records, camera, nowMillis, zone))
-                .put("month", if (page == Page.MONTH.name)
-                    WebSkinMonthProjection.build(records, anchorMillis, zone)
+                    enabled = !aiLocked && editSession == null,
+                    disabledIds = disabledOptionIds,
+                    includeSkinPackages = skinSettingsOpen))
+                .put("installedSkins", if (skinSettingsOpen) {
+                    WebSkinInstalledSkinsProjection.build(
+                        skinChoices, selectedSkin, actionsEnabled = !aiLocked && editSession == null
+                    )
+                } else org.json.JSONArray())
+                .put("reminderPermissions", if (skinSettingsOpen)
+                    ReminderSettingsProjection.toJson(
+                        exactAlarmAllowed,
+                        notificationsAllowed,
+                        notificationsRuntimePermissionRequired = android.os.Build.VERSION.SDK_INT >= 33
+                    )
+                    else JSONObject.NULL)
+                .put("timeline", if (skinSettingsOpen) JSONObject() else
+                    WebSkinTimelineProjection.build(records, camera, nowMillis, zone))
+                .put("month", if (page == Page.MONTH.name && !skinSettingsOpen)
+                    WebSkinMonthProjection.build(records, webMonthSelectedDate(), zone)
                     else JSONObject())
-                .put("events", org.json.JSONArray(records.take(300).map { record ->
+                .put("events", org.json.JSONArray((if (skinSettingsOpen) emptyList() else records.take(300)).map { record ->
                     JSONObject().put("eventSeq", record.eventSeq).put("revision", record.revision)
                         .put("kind", record.kind.name).put("title", record.title.take(300))
                         .put("anchorMillis", record.anchorMillis()).put("endMillis", record.spanEndMillis())
@@ -1338,6 +1467,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
 
     // System back on the tools page returns to the timeline instead of leaving the app.
     androidx.activity.compose.BackHandler(enabled = page != Page.TIMELINE.name && !deckOpen) {
+        skinSettingsOpen = false
         page = Page.TIMELINE.name
         scope.launch { reload() }
     }
@@ -1365,8 +1495,15 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
         onWebSkinFailure = {
             scope.launch {
                 val safe = webEditing.prepareSkinChange()
+                webFailureRecovery = if (safe) null else webEditing.recoverySnapshot()
+                    ?: WebSkinEditRecoverySnapshot(
+                        description = "Host 编辑会话",
+                        form = null,
+                        error = "安全检查点未完成；编辑服务仍保持活动状态"
+                    )
                 runCatching { skins.select("powercal-default") }
                 selectedSkin = skins.currentId()
+                skinSettingsOpen = false
                 page = Page.TOOLS.name
                 message = if(safe) "皮肤加载失败，编辑已存档并恢复安全界面。"
                     else "皮肤已失效，编辑检查点失败；已进入安全界面，切勿强制结束应用。"
@@ -1401,6 +1538,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                     skinToDelete = skinChoices.firstOrNull { it.id == id && !it.builtIn }
                 },
                 onBack = {
+                    skinSettingsOpen = false
                     page = Page.TIMELINE.name
                     scope.launch { reload() }
                 },
@@ -1540,7 +1678,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                         message = "已清理 " + count + " 个应用私有 AI 临时缓存文件；聊天和正式事件保留"
                     }
                 },
-                onSettings = { page = Page.TOOLS.name },
+                onSettings = { skinSettingsOpen = false; page = Page.TOOLS.name },
                 onOpenDeck = { scope.launch { openDeckAt(null) } },
                 onPickImage = { ocrPicker.launch("image/*") },
                 onPickFile = { openAiDocument.launch(arrayOf("*/*")) },
@@ -1645,7 +1783,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                     hours = today.hours
                 },
                 onOpenDeck = { scope.launch { openDeckAt(null) } },
-                onOpenTools = { page = Page.TOOLS.name },
+                onOpenTools = { skinSettingsOpen = false; page = Page.TOOLS.name },
                 blockedReminders = diagnostics.reminders.count { it.intent?.desired == PowerStore.DesiredSchedule.BLOCKED }
             )
         }
@@ -1660,7 +1798,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                         Page.MEMO.name -> null
                         else -> VisualTab.TIMELINE
                     },
-                    onSelect = { tab -> page = tab.name }
+                    onSelect = { tab -> skinSettingsOpen = false; page = tab.name }
                 )
             }
         }
@@ -1671,6 +1809,44 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                 Modifier.align(Alignment.BottomCenter)
                     .padding(horizontal = 16.dp)
                     .padding(bottom = 92.dp)
+            )
+        }
+    }
+
+    webFailureRecovery?.let { recovery ->
+        if (webEditing.pendingWriteReview == null &&
+            webEditing.pendingDeckResolutionReview == null
+        ) {
+            WebSkinFailureRecoveryDialog(
+                recovery = recovery,
+                busy = webFailureRecoveryBusy,
+                onRetry = {
+                    if (!webFailureRecoveryBusy) {
+                        webFailureRecoveryBusy = true
+                        scope.launch {
+                            try {
+                                if (webEditing.prepareSkinChange()) {
+                                    webFailureRecovery = null
+                                    message = if (runCatching { reload() }.isSuccess) {
+                                        "编辑已安全暂存；可在待处理中继续编辑。"
+                                    } else {
+                                        "编辑已安全暂存，但界面刷新失败；请重新打开待处理列表。"
+                                    }
+                                } else {
+                                    webFailureRecovery = webEditing.recoverySnapshot() ?: recovery
+                                    message = "检查点仍未成功；编辑内容继续保留，请修复存储问题后重试。"
+                                }
+                            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                                throw cancelled
+                            } catch (error: Exception) {
+                                webFailureRecovery = webEditing.recoverySnapshot() ?: recovery
+                                message = "暂存重试失败：${error.message ?: error.javaClass.simpleName}"
+                            } finally {
+                                webFailureRecoveryBusy = false
+                            }
+                        }
+                    }
+                }
             )
         }
     }
@@ -1828,6 +2004,91 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                 Text("取消")
             } }
         )
+    }
+
+    webEditing.pendingDeckResolutionReview?.let { review ->
+        var resolving by remember(review.token) { mutableStateOf(false) }
+        val resolveReview: (Boolean) -> Unit = { approved ->
+            if (!resolving) {
+                resolving = true
+                PowerCalStores.appScope.launch(Dispatchers.Main.immediate) {
+                    try {
+                        val reply = webEditing.resolveDeckResolutionReview(review.token, approved)
+                        when (reply.optString("status")) {
+                            "committed", "restored" -> {
+                                val refreshed = runCatching { reload() }.isSuccess
+                                val reconciled = runCatching { reconcile() }.isSuccess
+                                message = when {
+                                    !refreshed -> "宿主操作已完成，但界面同步失败；请刷新查看"
+                                    !reconciled -> "宿主操作已完成，提醒同步尚未完成"
+                                    reply.optString("status") == "restored" ->
+                                        "已恢复事件 #${reply.optString("detail")}"
+                                    review is WebDeckResolutionReview.Conflict &&
+                                        review.prompt.card.operation == DraftOperation.DELETE ->
+                                        "已确认删除当前正式版本"
+                                    else -> "已确认发布草稿"
+                                }
+                            }
+                            "cancelled" -> message = "已取消宿主操作，草稿仍保留"
+                            else -> message = reply.optString("detail")
+                                .ifBlank { "操作未完成，请重新审查；草稿仍保留" }
+                        }
+                        WebSkinBridgeRuntime.stateRevision++
+                    } finally { resolving = false }
+                }
+            }
+        }
+        when (review) {
+            is WebDeckResolutionReview.Conflict -> {
+                val prompt = review.prompt
+                SkinAlertDialog(
+                    onDismissRequest = { resolveReview(false) },
+                    title = { Text("正式内容已变化 ${TemporalRecord.formatSeq(prompt.eventSeq)}") },
+                    text = {
+                        Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(if (prompt.card.operation == DraftOperation.DELETE)
+                                "这是删除提案。确认会删除当前正式版本并退役此序号；请检查当前内容和草稿快照。"
+                            else "确认后将用本卡的完整快照替换当前正式对象。内容变化后必须重新审查。")
+                            Text("当前版本 v${prompt.currentRevision ?: 0} → 本卡完整快照")
+                            snapshotRows(prompt.current, prompt.approvedForm).forEach { row ->
+                                Text("${row.label}：${row.before} → ${row.after}" +
+                                    if (row.changed) "（将更改）" else "（保持）")
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(enabled = !resolving, onClick = { resolveReview(true) }) {
+                            Text(if (prompt.card.operation == DraftOperation.DELETE)
+                                "确认删除当前版本" else "确认整份覆盖")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(enabled = !resolving, onClick = { resolveReview(false) }) {
+                            Text("保留待处理")
+                        }
+                    }
+                )
+            }
+            is WebDeckResolutionReview.Restore -> {
+                val prompt = review.prompt
+                SkinAlertDialog(
+                    onDismissRequest = { resolveReview(false) },
+                    title = { Text("恢复 ${TemporalRecord.formatSeq(prompt.eventSeq)}？") },
+                    text = { Text(prompt.message) },
+                    confirmButton = {
+                        TextButton(enabled = !resolving, onClick = { resolveReview(true) }) {
+                            Text("恢复同一事件")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(enabled = !resolving, onClick = { resolveReview(false) }) {
+                            Text("保留草稿")
+                        }
+                    }
+                )
+            }
+        }
     }
 
     if (deckOpen) {

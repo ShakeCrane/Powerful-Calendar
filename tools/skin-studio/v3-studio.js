@@ -14,10 +14,20 @@ const bytesToBase64 = bytes => {
 const base64ToBytes = text => Uint8Array.from(atob(text), c=>c.charCodeAt(0));
 const safeFilename = name => /^[A-Za-z0-9][A-Za-z0-9_.-]{0,90}$/.test(name);
 const copy = value => JSON.parse(JSON.stringify(value));
+const localDateInZone=(instant,zone)=>{
+  const values=Object.fromEntries(new Intl.DateTimeFormat("en-CA",{
+    timeZone:zone,year:"numeric",month:"2-digit",day:"2-digit"
+  }).formatToParts(new Date(instant)).filter(part=>part.type!=="literal")
+    .map(part=>[part.type,part.value]));
+  return values.year+"-"+values.month+"-"+values.day;
+};
 let manifest=null, project=null, projectBaseline=null, sourceFiles=new Map(), selectedLayer=null;
 let activeMode="simple", editCanvas=true, previewTimer=null, previewSeq=0;
 let previewPort=null, lastState=null, lastPreviewUrl="", dirty=false;
 let projectSourceError=null, projectDraftText=null;
+let componentAnalysis=null, selectedComponent=null, componentAnalysisTimer=null;
+let componentAnalysisRequest=0, componentAnalysisPending=false;
+let componentStyleBaseline=new Map();
 const REQUIRED_SOURCE_FILES=new Set(["web/index.html","web/style.css","web/app.js","project.json"]);
 const TEXT_SOURCE_EXTENSIONS=/\.(cjs|css|html?|ini|js|json|jsx|kt|less|md|mjs|properties|py|scss|sh|sql|toml|tsx?|txt|xml|ya?ml|svg)$/i;
 function say(message,isError=false){$("toast").textContent=message;$("toast").classList.toggle("error",isError)}
@@ -75,6 +85,9 @@ async function loadPackage(data){
     throw Error("皮肤包缺少必需 Web 源码");
   sourceFiles=files;manifest=copy(data.manifest);
   projectSourceError=null;projectDraftText=null;
+  componentAnalysis=null;selectedComponent=null;
+  $("componentPage").replaceChildren();$("componentTarget").replaceChildren();
+  $("componentTree").replaceChildren();$("componentCount").textContent="正在分析…";
   project=parseProject();
   projectBaseline=JSON.stringify(project);
   mockEditing={editor:{open:false},deck:{open:false},lastResult:null};
@@ -89,6 +102,7 @@ async function loadPackage(data){
   switchMode(project.mode==="advanced"?"advanced":"simple");
   syncSourceInputs();renderMaterials();renderAssets();renderLayers();
   schedulePreview(0);
+  refreshComponentTree();
   say(factory
     ?"已载入 APK 同源 Clear 基础皮肤。导出使用独立 ID，不覆盖受保护的出厂包。"
     :"已加载完整 v3 项目（含所有素材）。预览与导出共享同一组源文件。");
@@ -97,6 +111,387 @@ function change(){
   dirty=true;
   if(projectSourceError){$("previewState").textContent="project.json 有错误，修复后才能预览/导出";return}
   schedulePreview();
+}
+function currentComponentPage(){
+  return componentAnalysis?.pages?.find(page=>page.path===$("componentPage").value)||null;
+}
+function componentLabel(node){
+  const identity=node.id?"#"+node.id:"";
+  const component=node.component?" · "+node.component:"";
+  const text=node.directText?" — "+node.directText.slice(0,64):"";
+  return "<"+node.tag+identity+">"+component+text;
+}
+function updateComponentAttributeCount(){
+  const count=$("componentAttributeRows").querySelectorAll(".componentAttributeRow").length;
+  $("componentAttributeCount").textContent=count?count+" 项":"";
+}
+function addComponentAttributeRow(attribute={name:"",value:""},focusName=false){
+  const row=document.createElement("div");row.className="componentAttributeRow";
+  const name=document.createElement("input");name.type="text";name.value=attribute.name||"";
+  name.maxLength=256;name.autocomplete="off";name.spellcheck=false;
+  name.setAttribute("aria-label","HTML 属性名称");
+  const value=document.createElement("input");value.type="text";
+  value.value=attribute.value===null?"":String(attribute.value??"");
+  value.autocomplete="off";value.setAttribute("aria-label","HTML 属性值");
+  const booleanLabel=document.createElement("label");booleanLabel.className="componentAttributeBoolean";
+  const boolean=document.createElement("input");boolean.type="checkbox";
+  boolean.checked=attribute.value===null;boolean.setAttribute("aria-label","布尔属性");
+  value.disabled=boolean.checked;
+  boolean.onchange=()=>{value.disabled=boolean.checked};
+  booleanLabel.append(boolean,document.createTextNode("布尔"));
+  const remove=document.createElement("button");remove.type="button";remove.textContent="移除";
+  remove.setAttribute("aria-label","移除此属性");remove.onclick=()=>{row.remove();updateComponentAttributeCount()};
+  row.append(name,value,booleanLabel,remove);$("componentAttributeRows").append(row);
+  updateComponentAttributeCount();
+  if(focusName)name.focus();
+  return row;
+}
+function renderComponentAttributeEditor(node){
+  const rows=$("componentAttributeRows");rows.replaceChildren();
+  const enabled=Boolean(node)&&!componentAnalysisPending;
+  $("addComponentAttribute").disabled=!enabled;
+  $("saveComponentAttributes").disabled=!enabled;
+  if(node){
+    for(const attribute of node.attributes||[])addComponentAttributeRow(attribute);
+    $("componentAttributeStatus").textContent="可修改任意 HTML 属性；应用后只改写选中节点的开始标签。";
+  }else{
+    $("componentAttributeCount").textContent="";
+    $("componentAttributeStatus").textContent="选择节点后可编辑 HTML 属性；样式和脚本仍可在源码面板修改。";
+  }
+}
+function attributeGroups(attributes){
+  const result=new Map();
+  for(const attribute of attributes||[]){
+    const name=String(attribute.name).toLowerCase();
+    if(!result.has(name))result.set(name,[]);
+    result.get(name).push(attribute.value??null);
+  }
+  return result;
+}
+function sameAttributeValues(left,right){
+  return left.length===right.length&&left.every((value,index)=>Object.is(value,right[index]));
+}
+async function saveComponentAttributes(){
+  const page=currentComponentPage(),node=page?.components.find(item=>item.nodeId===selectedComponent);
+  if(!page||!node)throw Error("请先选择一个仍有效的 HTML 节点");
+  const after=new Map();
+  for(const row of $("componentAttributeRows").querySelectorAll(".componentAttributeRow")){
+    const inputs=row.querySelectorAll("input");
+    const rawName=inputs[0].value;
+    const value=inputs[2].checked?null:inputs[1].value;
+    if(!rawName&&value==="")continue;
+    if(!/^[^\s"'<>\/=]{1,256}$/u.test(rawName)||/[\u0000-\u001f\u007f]/u.test(rawName))
+      throw Error("属性名称必须是有效的 HTML 属性名");
+    const name=rawName.toLowerCase();
+    if(!after.has(name))after.set(name,[]);
+    after.get(name).push(value);
+  }
+  const before=attributeGroups(node.attributes);
+  for(const [name,values] of after){
+    if(values.length>1&&!sameAttributeValues(before.get(name)||[],values))
+      throw Error("属性名不区分大小写，不能添加重复属性："+name);
+  }
+  const names=new Set([...before.keys(),...after.keys()]);
+  const setAttributes=Object.create(null),removeAttributes=[];
+  for(const name of names){
+    const oldValues=before.get(name)||[],newValues=after.get(name)||[];
+    if(sameAttributeValues(oldValues,newValues))continue;
+    if(!newValues.length)removeAttributes.push(name);
+    else{
+      if(newValues.length!==1)throw Error("修改后每个属性名只能保留一项："+name);
+      setAttributes[name]=newValues[0];
+    }
+  }
+  if(!Object.keys(setAttributes).length&&!removeAttributes.length){
+    say("属性没有变化。");return;
+  }
+  await applyComponentOperation(selectedComponentOperation("component-attributes",{
+    setAttributes,removeAttributes}),"节点属性已更新");
+}
+function resolveComponentStylesheets(page){
+  const base="https://skin-studio.invalid/"+page.path;
+  const paths=[];
+  for(const href of page.stylesheetSources||[]){
+    try{
+      const resolved=new URL(href,base);
+      if(resolved.origin!=="https://skin-studio.invalid")continue;
+      const path=decodeURIComponent(resolved.pathname.replace(/^\//,""));
+      if(path.startsWith("web/")&&path.toLowerCase().endsWith(".css")&&sourceFiles.has(path)&&!paths.includes(path))
+        paths.push(path);
+    }catch{}
+  }
+  return paths;
+}
+function parseComponentStyleBlock(css,token){
+  const begin=`/* pcskin-studio-style-begin:${token} */`,end=`/* pcskin-studio-style-end:${token} */`;
+  const beginCount=css.split(begin).length-1,endCount=css.split(end).length-1;
+  if(beginCount===0&&endCount===0)return {properties:new Map(),error:null};
+  if(beginCount!==1||endCount!==1)return {properties:new Map(),error:"组件样式标记重复或不完整；请在 CSS 源码中修复。"};
+  const escaped=token.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+  const block=new RegExp(`${begin.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")}([\\s\\S]*?)${end.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")}`);
+  const match=css.match(block);
+  if(!match)return {properties:new Map(),error:"组件样式块结构错误；请在 CSS 源码中修复。"};
+  const rule=new RegExp(`^\\s*\\[data-pcskin-studio-style="${escaped}"\\]\\s*\\{\\s*([\\s\\S]*?)\\s*\\}\\s*$`)
+    .exec(match[1]);
+  if(!rule)return {properties:new Map(),error:"组件样式选择器被修改；请在 CSS 源码中修复。"};
+  const properties=new Map();
+  const declaration=/^\s*((?:--[A-Za-z_][A-Za-z0-9_-]*|-?[A-Za-z][A-Za-z0-9-]*))\s*:\s*(.*?)\s*;\s*$/;
+  for(const line of rule[1].split(/\r?\n/)){
+    if(!line.trim())continue;
+    const parsed=declaration.exec(line);
+    if(!parsed)return {properties:new Map(),error:"组件样式块含有源码编辑器格式；请直接编辑 CSS 源码。"};
+    const key=parsed[1].startsWith("--")?parsed[1]:parsed[1].toLowerCase();
+    if(properties.has(key))return {properties:new Map(),error:"组件样式块含有重复属性；请直接编辑 CSS 源码。"};
+    properties.set(key,parsed[2]);
+  }
+  return {properties,error:null};
+}
+function updateComponentStyleCount(){
+  const count=$("componentStyleRows").querySelectorAll(".componentStyleRow").length;
+  $("componentStyleCount").textContent=count?count+" 项":"";
+}
+function addComponentStyleRow(property={name:"",value:""},focusName=false){
+  const row=document.createElement("div");row.className="componentStyleRow";
+  const name=document.createElement("input");name.type="text";name.value=property.name||"";
+  name.maxLength=256;name.autocomplete="off";name.spellcheck=false;
+  name.setAttribute("aria-label","CSS 属性名称");
+  const value=document.createElement("input");value.type="text";value.value=property.value||"";
+  value.maxLength=4096;value.autocomplete="off";value.spellcheck=false;
+  value.setAttribute("aria-label","CSS 属性值");
+  const remove=document.createElement("button");remove.type="button";remove.textContent="移除";
+  remove.setAttribute("aria-label","移除此样式属性");
+  remove.onclick=()=>{row.remove();updateComponentStyleCount()};
+  row.append(name,value,remove);$("componentStyleRows").append(row);
+  updateComponentStyleCount();if(focusName)name.focus();return row;
+}
+function renderComponentStyleEditor(node){
+  const pathSelect=$("componentStylePath"),rows=$("componentStyleRows");
+  const previousPath=pathSelect.value,page=currentComponentPage();
+  const paths=node&&page?resolveComponentStylesheets(page):[];
+  const marker=(node?.attributes||[]).find(attribute=>attribute.name.toLowerCase()==="data-pcskin-studio-style")?.value;
+  if(marker&&/^pcss-[0-9a-f]{24}$/.test(marker)){
+    for(const path of sourceFiles.keys()){
+      if(!path.startsWith("web/")||!path.toLowerCase().endsWith(".css")||paths.includes(path))continue;
+      if(getText(path).includes(`/* pcskin-studio-style-begin:${marker} */`))paths.push(path);
+    }
+  }
+  pathSelect.replaceChildren();
+  for(const path of paths){const option=document.createElement("option");option.value=path;option.textContent=path;pathSelect.append(option)}
+  const existing=marker&&paths.find(path=>getText(path).includes(`/* pcskin-studio-style-begin:${marker} */`));
+  if(existing)pathSelect.value=existing;
+  else if(paths.includes(previousPath))pathSelect.value=previousPath;
+  if(!pathSelect.value&&paths.length)pathSelect.value=paths[0];
+  rows.replaceChildren();componentStyleBaseline=new Map();
+  const enabled=Boolean(node)&&paths.length>0&&!componentAnalysisPending;
+  let parsed={properties:new Map(),error:null};
+  if(marker&&!/^pcss-[0-9a-f]{24}$/.test(marker))
+    parsed.error="选中节点的 Studio 样式标记格式不受支持；请直接编辑 HTML/CSS 源码。";
+  else if(enabled&&marker)
+    parsed=parseComponentStyleBlock(getText(pathSelect.value),marker);
+  if(parsed.error){$("componentStyleStatus").textContent=parsed.error}
+  else if(!node){$("componentStyleStatus").textContent="选择节点后可编辑其样式覆盖；复杂规则仍可在源码面板修改。"}
+  else if(!paths.length){$("componentStyleStatus").textContent="当前页面没有可编辑的本地 CSS 链接；先在 HTML 源码中添加样式表引用。"}
+  else $("componentStyleStatus").textContent="只管理本面板生成的节点级覆盖；其他 CSS 规则和源文件字节保持不变。";
+  componentStyleBaseline=new Map(parsed.properties);
+  for(const [name,value] of parsed.properties)addComponentStyleRow({name,value});
+  pathSelect.disabled=!enabled;
+  $("addComponentStyle").disabled=!enabled||Boolean(parsed.error);
+  $("saveComponentStyles").disabled=!enabled||Boolean(parsed.error);
+}
+async function sha256Hex(bytes){
+  const digest=await crypto.subtle.digest("SHA-256",bytes);
+  return [...new Uint8Array(digest)].map(value=>value.toString(16).padStart(2,"0")).join("");
+}
+async function saveComponentStyles(){
+  const page=currentComponentPage(),node=page?.components.find(item=>item.nodeId===selectedComponent);
+  const cssPath=$("componentStylePath").value,cssBytes=sourceFiles.get(cssPath);
+  if(!page||!node||!cssPath||!cssBytes)throw Error("请先选择带有本地 CSS 样式表的节点");
+  const after=new Map();
+  for(const row of $("componentStyleRows").querySelectorAll(".componentStyleRow")){
+    const inputs=row.querySelectorAll("input"),rawName=inputs[0].value.trim(),value=inputs[1].value.trim();
+    if(!rawName&&!value)continue;
+    if(!/^(?:--[A-Za-z_][A-Za-z0-9_-]*|-?[A-Za-z][A-Za-z0-9-]*)$/u.test(rawName))
+      throw Error("请输入有效的 CSS 属性名；复杂语法请使用源码面板。");
+    const name=rawName.startsWith("--")?rawName:rawName.toLowerCase();
+    if(after.has(name))throw Error("同一组件不能重复填写 CSS 属性："+name);
+    if(!value||/[\u0000\r\n;{}]/u.test(value)||value.includes("/*")||value.includes("*/"))
+      throw Error("CSS 值不能为空，且不能包含分号、花括号或注释边界；复杂语法请使用源码面板。");
+    after.set(name,value);
+  }
+  const setProperties=Object.create(null),removeProperties=[];
+  for(const [name,value] of after)if(componentStyleBaseline.get(name)!==value)setProperties[name]=value;
+  for(const name of componentStyleBaseline.keys())if(!after.has(name))removeProperties.push(name);
+  if(!Object.keys(setProperties).length&&!removeProperties.length){say("组件样式没有变化。");return}
+  await applyComponentOperation(selectedComponentOperation("component-style",{
+    cssPath,expectedCssSha256:await sha256Hex(cssBytes),setProperties,removeProperties
+  }),"组件样式已更新");
+}
+function renderComponentTree(){
+  const pageSelect=$("componentPage"),tree=$("componentTree"),target=$("componentTarget");
+  const previousPath=pageSelect.value,previousTarget=target.value;
+  pageSelect.replaceChildren();
+  for(const page of componentAnalysis?.pages||[]){
+    const option=document.createElement("option");option.value=page.path;
+    option.textContent=page.path;pageSelect.append(option);
+  }
+  if((componentAnalysis?.pages||[]).some(page=>page.path===previousPath))pageSelect.value=previousPath;
+  const page=currentComponentPage(),components=page?.components||[];
+  const byId=new Map(components.map(node=>[node.nodeId,node]));
+  if(!byId.has(selectedComponent))
+    selectedComponent=components.find(node=>node.tag==="body")?.nodeId||components[0]?.nodeId||null;
+  tree.replaceChildren();target.replaceChildren();
+  if(!page){
+    renderComponentAttributeEditor(null);
+    renderComponentStyleEditor(null);
+    tree.innerHTML='<div class="empty">当前皮肤没有可分析的静态 HTML 页面。</div>';
+    $("componentCount").textContent="0 页面";$("componentSelection").textContent="没有可选节点。";
+    for(const id of ["insertComponentBefore","insertComponentAfter","insertComponentFirst",
+      "insertComponentLast","replaceComponent","removeComponent","moveComponent"])
+      $(id).disabled=true;
+    pageSelect.disabled=componentAnalysisPending||!componentAnalysis?.pages?.length;
+    target.disabled=true;
+    return;
+  }
+  const targetOptionFor=node=>{
+    const option=document.createElement("option");option.value=node.nodeId;
+    option.dataset.htmlId=node.id||"";option.textContent=componentLabel(node).slice(0,100);target.append(option);
+  };
+  for(const node of components)targetOptionFor(node);
+  if(byId.has(previousTarget))target.value=previousTarget;
+  else if(byId.has(selectedComponent))target.value=selectedComponent;
+  if(components.length){
+    const list=document.createElement("ul");tree.append(list);
+    const roots=components.filter(node=>!node.parentId);
+    const tasks=roots.slice().reverse().map(node=>({node,list}));
+    while(tasks.length){
+      const task=tasks.pop(),node=task.node,parentList=task.list;
+      const item=document.createElement("li"),button=document.createElement("button");
+      button.type="button";button.dataset.nodeId=node.nodeId;
+      if(node.id)button.dataset.htmlId=node.id;
+      button.textContent=componentLabel(node);button.title=componentLabel(node);
+      button.setAttribute("aria-pressed",String(node.nodeId===selectedComponent));
+      button.onclick=()=>{
+        selectedComponent=node.nodeId;
+        tree.querySelectorAll("button[data-node-id]").forEach(item=>
+          item.setAttribute("aria-pressed",String(item.dataset.nodeId===selectedComponent)));
+        const current=byId.get(selectedComponent);
+        $("componentSelection").textContent="已选："+componentLabel(current)+"（第 "+current.line+" 行）";
+        renderComponentAttributeEditor(current);
+        renderComponentStyleEditor(current);
+        if(!byId.has(target.value))target.value=selectedComponent;
+      };
+      item.append(button);parentList.append(item);
+      const children=(node.childIds||[]).map(id=>byId.get(id)).filter(Boolean);
+      if(children.length){
+        const childList=document.createElement("ul");item.append(childList);
+        for(let index=children.length-1;index>=0;index--)
+          tasks.push({node:children[index],list:childList});
+      }
+    }
+  }else tree.innerHTML='<div class="empty">此页面没有 HTML 元素。</div>';
+  const selected=byId.get(selectedComponent);
+  $("componentCount").textContent=components.length+" 节点 · "+page.path;
+  $("componentSelection").textContent=selected?"已选："+componentLabel(selected)+"（第 "+selected.line+" 行）":"选择一个节点进行编辑。";
+  renderComponentAttributeEditor(selected);
+  renderComponentStyleEditor(selected);
+  const enabled=Boolean(selected);
+  for(const id of ["insertComponentBefore","insertComponentAfter","insertComponentFirst",
+    "insertComponentLast","replaceComponent","removeComponent","moveComponent"])
+    $(id).disabled=!enabled||componentAnalysisPending;
+  pageSelect.disabled=componentAnalysisPending||!componentAnalysis?.pages?.length;
+  target.disabled=componentAnalysisPending||!components.length;
+}
+function setComponentActionsDisabled(disabled){
+  for(const id of ["insertComponentBefore","insertComponentAfter","insertComponentFirst",
+    "insertComponentLast","replaceComponent","removeComponent","moveComponent",
+    "addComponentAttribute","saveComponentAttributes","componentStylePath",
+    "addComponentStyle","saveComponentStyles"])
+    $(id).disabled=disabled;
+  $("componentAttributeRows").querySelectorAll("input,button").forEach(item=>item.disabled=disabled);
+  $("componentStyleRows").querySelectorAll("input,button").forEach(item=>item.disabled=disabled);
+}
+async function refreshComponentTree(knownAnalysis=null,requestId=null){
+  if(!manifest)return;
+  if(requestId===null){clearTimeout(componentAnalysisTimer);componentAnalysisTimer=null}
+  const request=requestId===null?++componentAnalysisRequest:requestId;
+  if(request!==componentAnalysisRequest)return;
+  componentAnalysisPending=!knownAnalysis;
+  if(componentAnalysisPending){
+    $("componentCount").textContent="源码有变化，正在重新分析…";
+    setComponentActionsDisabled(true);
+    $("componentPage").disabled=true;$("componentTarget").disabled=true;
+  }
+  try{
+    const next=knownAnalysis||await api("/api/analyze-v3",payload());
+    if(request!==componentAnalysisRequest)return;
+    componentAnalysisPending=false;componentAnalysis=next;
+    renderComponentTree();
+  }catch(error){
+    if(request!==componentAnalysisRequest)return;
+    componentAnalysisPending=false;componentAnalysis=null;selectedComponent=null;
+    renderComponentTree();
+    $("componentCount").textContent="结构分析失败";
+    const message=document.createElement("div");message.className="empty";message.textContent=error.message;
+    $("componentTree").replaceChildren(message);
+  }
+}
+function scheduleComponentAnalysis(){
+  const request=++componentAnalysisRequest;
+  componentAnalysisPending=true;
+  $("componentCount").textContent="源码有变化，正在重新分析…";
+  setComponentActionsDisabled(true);
+  $("componentPage").disabled=true;$("componentTarget").disabled=true;
+  clearTimeout(componentAnalysisTimer);
+  componentAnalysisTimer=setTimeout(()=>refreshComponentTree(null,request),500);
+}
+async function applyComponentOperation(operation,description){
+  const body=payload();body.operation=operation;
+  const result=await api("/api/edit-components-v3",body);
+  if(!result.changes?.length){
+    await refreshComponentTree(result.analysis);
+    say("源码已处于所选结构位置，没有产生更改。");return;
+  }
+  for(const [path,encoded] of Object.entries(result.changedFiles||{})){
+    sourceFiles.set(path,base64ToBytes(encoded));
+    if(path==="web/index.html"&&document.activeElement!==$("htmlCode"))
+      $("htmlCode").value=getText(path);
+    if(path==="web/style.css"&&document.activeElement!==$("cssCode"))
+      $("cssCode").value=getText(path);
+    if(path===$("extraSourceFile").value&&document.activeElement!==$("extraSourceCode"))
+      $("extraSourceCode").value=getText(path);
+  }
+  dirty=true;selectedComponent=null;
+  await refreshComponentTree(result.analysis);
+  schedulePreview(0);
+  say(description+"；已更新唯一源码、预览和导出内容。");
+}
+function selectedComponentOperation(op,extra={}){
+  const page=currentComponentPage(),node=page?.components.find(item=>item.nodeId===selectedComponent);
+  if(!page||!node)throw Error("请先选择一个仍有效的 HTML 节点");
+  return {op,path:page.path,expectedSha256:page.sourceSha256,targetNodeId:node.nodeId,...extra};
+}
+async function insertComponent(position){
+  const html=$("componentMarkup").value;
+  if(!html.trim())throw Error("请先输入要插入的 HTML 片段");
+  await applyComponentOperation(selectedComponentOperation("component-insert",{position,html}),"HTML 节点已插入");
+}
+async function replaceComponent(){
+  const html=$("componentMarkup").value;
+  if(!html.trim())throw Error("请先输入用于替换的 HTML 片段");
+  await applyComponentOperation(selectedComponentOperation("component-replace",{html}),"HTML 节点已替换");
+}
+async function removeComponent(){
+  const operation=selectedComponentOperation("component-remove");
+  if(!confirm("删除选中的 <"+currentComponentPage().components.find(node=>node.nodeId===selectedComponent).tag+"> 节点？此修改只作用于当前工程。"))return;
+  await applyComponentOperation(operation,"HTML 节点已删除");
+}
+async function moveComponent(){
+  const page=currentComponentPage(),source=page?.components.find(node=>node.nodeId===selectedComponent);
+  const target=page?.components.find(node=>node.nodeId===$("componentTarget").value);
+  if(!page||!source||!target)throw Error("请选择有效的源节点和移动目标");
+  await applyComponentOperation({op:"component-move",path:page.path,
+    expectedSha256:page.sourceSha256,sourceNodeId:source.nodeId,targetNodeId:target.nodeId,
+    position:$("componentPosition").value},"HTML 节点已移动");
 }
 function syncSourceInputs(){
   $("htmlCode").value=getText("web/index.html");
@@ -366,9 +761,11 @@ async function addPackageAssets(list){
 const ACTIONS=[
   ["","无动作"],["today","返回今天"],["createMemo","新建 Memo"],
   ["createDraft","新建事件"],["browseMonth","浏览月份"],
+  ["selectMonth","选择指定年月"],["selectMonthDate","选择月历日期"],
+  ["todayInMonth","月历回到今天"],
   ["timeline","时间轴"],
   ["month","月历"],["memo","Memo"],["ai","AI"],
-  ["settings","原生设置"],["openDeck","草稿卡组"],
+  ["settings","宿主工具与设置"],["skinSettings","皮肤设置"],["openDeck","草稿卡组"],
   ["panTimeline","时间轴向后 30 分钟"],["jumpTimelineDay","跳到今天"],
   ["invokeOption","导入日历文件"]
 ];
@@ -424,6 +821,8 @@ function layerMarkup(layer){
     if(action==="panTimeline")props+=' data-delta-minutes="30"';
     if(action==="createDraft")props+=' data-kind="ACTIVITY"';
     if(action==="browseMonth")props+=' data-delta-months="1"';
+    if(action==="selectMonth")props+=' data-year-month="2026-11"';
+    if(action==="selectMonthDate")props+=' data-date="2026-10-22"';
     if(action==="jumpTimelineDay")props+=' data-date="2026-10-22"';
     if(action==="invokeOption")
       props+=' data-option-id="calendar.import.file"';
@@ -588,7 +987,14 @@ function refreshOverlay(){
 
 function simulatedState(){
   const scenario=$("scenario").value,base=new Date("2026-10-22T04:00:00Z").getTime();
+  const aiReviewScenario=scenario==="ai-review"||scenario==="ai-review-failure-retry";
+  const zone="Asia/Shanghai",nowMillis=new Date("2026-10-21T16:30:00Z").getTime();
   const anchor=mockAnchor??base,hours=24;
+  const selectedMonthDate=mockMonthDate??localDateInZone(anchor,zone);
+  const [monthYear,monthValue]=selectedMonthDate.slice(0,7).split("-").map(Number);
+  const monthFirst=Date.UTC(monthYear,monthValue-1,1);
+  const monthGridFrom=new Date(monthFirst-
+    ((new Date(monthFirst).getUTCDay()+6)%7)*86400000).toISOString().slice(0,10);
   let rows=[
     {eventSeq:4,revision:2,occurrenceKey:"4:single",kind:"ACTIVITY",
       title:"上午课程",side:"RIGHT",lane:0,startMillis:base-10800000,endMillis:base-5400000,precision:"INSTANT",deadlineDate:null},
@@ -614,6 +1020,22 @@ function simulatedState(){
     {id:"calendar.import.file",label:"导入日历文件",detail:"本地优先",icon:"file",enabled:scenario!=="locked"},
     {id:"calendar.import.system",label:"从系统日历导入",detail:"静态快照",icon:"calendar",enabled:scenario!=="locked"}
   ];
+  const reminderItems=[
+    {id:"reminders.exactAlarmSettings",label:"精确闹钟权限",detail:"Android 系统授权 Mock",icon:"alarm",enabled:scenario!=="locked"},
+    {id:"reminders.notificationPermission",label:"通知权限",detail:"Android 系统权限 Mock",icon:"notification",enabled:scenario!=="locked"},
+    {id:"reminders.reconcile",label:"重新同步提醒",detail:"非写入调度 Mock",icon:"refresh",enabled:scenario!=="locked"}
+  ];
+  const exportItems=[
+    {id:"calendar.export.ics",label:"导出 Activity ICS",detail:"仅包含 Activity；其他类型和完成状态请用原生备份",icon:"export",enabled:scenario!=="locked"}
+  ];
+  const backupItems=[
+    {id:"data.backup.export",label:"导出原生数据备份",detail:"明文 JSON；Mock 不创建文件",icon:"backup",enabled:scenario!=="locked"},
+    {id:"data.backup.restore",label:"恢复原生数据备份",detail:"仅空数据库；Mock 不读取或恢复",icon:"restore",enabled:scenario!=="locked"}
+  ];
+  const skinItems=[
+    {id:"skin.import",label:"导入皮肤包",detail:"由宿主校验并安装；导入后不会自动启用；Mock 不读取文件",icon:"skin",enabled:scenario!=="locked"},
+    {id:"skin.exportClear",label:"导出 Clear 候选皮肤",detail:"不更改当前皮肤；Mock 不读取素材或创建文件",icon:"export",enabled:scenario!=="locked"}
+  ];
   if(scenario==="future")items.push({
     id:"calendar.import.future",label:"新功能：导入课程表",
     detail:"模拟未来软件版本新增的平行选项",icon:"table",enabled:true
@@ -629,21 +1051,34 @@ function simulatedState(){
       {eventSeq:31,revision:2,occurrenceKey:"single",title:"整理会议笔记",completed:mockMemoDone,startMillis:base},
       {eventSeq:44,revision:1,occurrenceKey:"single",title:"提交报告",completed:false,startMillis:base+7200000}
     ],memoTruncated:false,chatBusy:false,chatAttachmentBusy:false,
-    chatAttachmentAvailable:scenario!=="locked"&&!(scenario==="ai-review"&&mockAiProposals.length>0),
+    chatAttachmentAvailable:scenario!=="locked"&&!(aiReviewScenario&&mockAiProposals.length>0),
     chatMessages,
-    aiProposalReview:scenario==="ai-review"&&mockAiProposals.length?{
+    aiProposalReview:aiReviewScenario&&mockAiProposals.length?{
       reviewId:mockAiReviewId,
       proposals:mockAiProposals.map((proposal,index)=>({...proposal,index})),
       warnings:["预览 Mock 数据；Android Host 会重新校验全部提案。"]
     }:null,
     events:rows.map(r=>({eventSeq:r.eventSeq,revision:r.revision,title:r.title,kind:r.kind,
       anchorMillis:r.startMillis,endMillis:r.endMillis})),
-    optionGroups:[{id:"calendar.import",label:"导入",items}],
-    timeline:{zoneId:"Asia/Shanghai",anchorMillis:anchor,hours,
+    optionGroups:[
+      {id:"calendar.import",label:"导入",items},
+      {id:"calendar.export",label:"导出",items:exportItems},
+      {id:"data.backup",label:"数据备份",items:backupItems},
+      {id:"skin.packages",label:"皮肤管理",items:skinItems},
+      {id:"reminders.permissions",label:"提醒与权限",items:reminderItems}
+    ],
+    installedSkins:[
+      {id:"powercal-default",name:"PowerCal 原生玻璃（安全回退）",builtIn:true,selected:false,actionsEnabled:scenario!=="locked"},
+      {id:"powercal-clear-default",name:"Clear · 迁移预览",builtIn:true,selected:true,actionsEnabled:scenario!=="locked"},
+      {id:"studio-demo-skin",name:"Studio 示例皮肤",builtIn:false,selected:false,actionsEnabled:scenario!=="locked"}
+    ],
+    reminderPermissions:{exactAlarmAllowed:false,notificationsAllowed:false,
+      notificationsRuntimePermissionRequired:true},
+    timeline:{zoneId:zone,anchorMillis:anchor,hours,
       visibleStartMillis:start,visibleEndMillis:anchor+hours*1800000,
-      nowMillis:base,itemLimit:300,truncated:false,items:rows},
-    month:{zoneId:"Asia/Shanghai",month:"2026-10",
-      selectedDate:"2026-10-22",gridFrom:"2026-09-28",
+      nowMillis,itemLimit:300,truncated:false,items:rows},
+    month:{zoneId:zone,month:selectedMonthDate.slice(0,7),
+      selectedDate:selectedMonthDate,gridFrom:monthGridFrom,
       itemLimit:350,truncated:false,
       items:rows.map(r=>({...r,date:"2026-10-22"}))}};
 }
@@ -694,9 +1129,27 @@ function resolveMockApproval(approved){
   if(!mockApproval)return;
   const request=mockApproval;mockApproval=null;$("mockApproval").hidden=true;
   $("mockApprovalText").textContent="预览模拟宿主确认，不会写入真实数据。";
+  if(request.kind==="deckResolution"){
+    const deck=mockEditing.deck;
+    const conflict=request.resolution==="conflict";
+    mockEditing.deck=approved
+      ?{...deck,open:false,hasConflict:false,hasRestore:false}
+      :{...deck,hasConflict:false,hasRestore:false};
+    mockEditing.lastResult={requestId:request.requestId,
+      status:approved?(conflict?"committed":"restored"):"cancelled"};
+    logAction("仅预览：模拟宿主"+(approved?"确认":"取消")+
+      (conflict?"冲突整份覆盖":"删除事件恢复")+"；未写入真实数据");
+    postState();return;
+  }
   if(request.kind==="aiProposal"){
     if(request.reviewId!==mockAiReviewId){
       mockChat.push({role:"assistant",content:"预览 Mock：审核卡已过期，模拟 Host 拒绝了旧请求。"});
+      postState();return;
+    }
+    if(approved&&mockAiPublishFailureOnce){
+      mockAiPublishFailureOnce=false;
+      mockChat.push({role:"assistant",content:"预览 Mock：模拟 Host 写入失败；提案仍保留，可重新发起审核。没有写入真实日历数据。"});
+      logAction("仅预览：模拟正式写入失败；保留审核卡供显式重试，未写入真实数据");
       postState();return;
     }
     if(approved){
@@ -795,7 +1248,8 @@ function onSkinCommand(p){
     case "deck.create":{
       const id=7001;
       const form=mockForm(p.kind);
-      mockEditing.deck={open:true,cards:[{draftId:id,title:form.title,kind:p.kind}],
+      mockEditing.deck={open:true,cards:[{draftId:id,title:form.title,kind:p.kind,
+          version:0,form:{...form}}],
         currentId:id,version:0,dirty:false,aiLocked:false,form,baseline:{...form}};
       result.status="created";result.detail=String(id);break;
     }
@@ -806,28 +1260,94 @@ function onSkinCommand(p){
       }
       result.status="opened";break;
     case "deck.patch":
-      if(deck.open&&deck.currentId===p.draftId){
+      if(deck.open&&deck.currentId===p.draftId&&deck.version===p.draftVersion){
         const next=mockPatch(deck.form,p.field,p.value);
         if(!next)result.status="invalid";
         else {deck.form=next;deck.dirty=JSON.stringify(next)!==JSON.stringify(deck.baseline);
-          deck.cards[0].title=deck.form.title;deck.cards[0].kind=deck.form.kind;
+          const card=deck.cards.find(item=>item.draftId===p.draftId);
+          if(card){card.title=deck.form.title;card.kind=deck.form.kind;card.form={...deck.form}}
           result.status="edited"}
       }else result.status="stale";break;
     case "deck.flush":
-      if(deck.open){deck.version++;deck.dirty=false;deck.baseline={...deck.form};result.status="flushed"}
+      if(deck.open){
+        if(deck.dirty){
+          deck.version++;
+          const card=deck.cards.find(item=>item.draftId===deck.currentId);
+          if(card){card.version=deck.version;card.form={...deck.form}}
+          deck.dirty=false;deck.baseline={...deck.form};
+        }
+        result.status="flushed";
+      }
       break;
     case "deck.commit":
-      if(deck.open){mockEditing.deck={open:false};result.status="committed"}
+      if(deck.open&&$("scenario").value==="deck-conflict"){
+        mockEditing.deck={...deck,hasConflict:true,hasRestore:false};result.status="conflict";
+      }else if(deck.open&&$("scenario").value==="deck-restore"){
+        mockEditing.deck={...deck,hasConflict:false,hasRestore:true};result.status="restore_required";
+      }else if(deck.open){mockEditing.deck={open:false};result.status="committed"}
       break;
     case "deck.discard":
-      if(deck.open){mockEditing.deck={open:false};result.status="discarded"}
+      if(!deck.open||deck.currentId!==p.draftId||deck.version!==p.draftVersion){
+        result.status=deck.open?"stale":"missing";break;
+      }
+      if(deck.dirty){
+        deck.version++;
+        const card=deck.cards.find(item=>item.draftId===deck.currentId);
+        if(card){card.version=deck.version;card.form={...deck.form}}
+        deck.dirty=false;deck.baseline={...deck.form};
+      }
+      {
+        const snapshot={...deck,cards:deck.cards.map(item=>({...item})),
+          form:deck.form?{...deck.form}:null,baseline:deck.baseline?{...deck.baseline}:null};
+        const remaining=deck.cards.filter(item=>item.draftId!==p.draftId);
+        const next=remaining[0]||null;
+        mockEditing.deck={...deck,cards:remaining,currentId:next?.draftId??null,
+          version:next?.version??0,form:next?.form?{...next.form}:null,
+          baseline:next?.form?{...next.form}:null,dirty:false,lastDiscardId:p.draftId,
+          undoSnapshot:snapshot};
+        result.status="discarded";
+      }
       break;
     case "deck.close":
       mockEditing.deck={open:false};result.status="closed";break;
     case "deck.undo":
-      result.status="missing";break;
+      if(!deck.open||deck.lastDiscardId==null||!deck.undoSnapshot)result.status="missing";
+      else {
+        mockEditing.deck={...deck.undoSnapshot,lastDiscardId:null,undoSnapshot:null,
+          cards:deck.undoSnapshot.cards.map(item=>({...item})),
+          form:deck.undoSnapshot.form?{...deck.undoSnapshot.form}:null,
+          baseline:deck.undoSnapshot.baseline?{...deck.undoSnapshot.baseline}:null};
+        result.status="restored";
+      }
+      break;
     case "deck.select":
-      result.status="selected";break;
+      if(!deck.open)result.status="missing";
+      else {
+        const card=deck.cards.find(item=>item.draftId===p.draftId);
+        if(!card)result.status="stale";
+        else {
+          mockEditing.deck={...deck,currentId:card.draftId,version:card.version||0,
+            form:card.form?{...card.form}:null,baseline:card.form?{...card.form}:null,dirty:false};
+          result.status="selected";
+        }
+      }
+      break;
+    case "deck.reviewConflict":
+      if(!deck.open||!deck.hasConflict)result.status="missing";
+      else {
+        mockApproval={kind:"deckResolution",requestId:p.requestId,resolution:"conflict"};
+        $("mockApprovalText").textContent="预览 Mock：Android Host 将展示完整当前版本与草稿差异，并再次确认覆盖；不会写入真实数据。";
+        $("mockApproval").hidden=false;result.status="confirmation_required";
+      }
+      break;
+    case "deck.reviewRestore":
+      if(!deck.open||!deck.hasRestore)result.status="missing";
+      else {
+        mockApproval={kind:"deckResolution",requestId:p.requestId,resolution:"restore"};
+        $("mockApprovalText").textContent="预览 Mock：Android Host 将确认恢复同一事件序号与新版本；不会写入真实数据。";
+        $("mockApproval").hidden=false;result.status="confirmation_required";
+      }
+      break;
   }
   mockEditing.lastResult=result;
   logAction("预览编辑命令 "+p.name+
@@ -845,7 +1365,9 @@ function onSkinAction(message){
     if(envelope.type!=="action")return;
     const p=envelope.payload,name=p.name;
     if(!ACTIONS.some(([x])=>x===name)&&!["openEvent","toggleMemo","sendChat","resolveAiProposal",
-      "pickAiFile","pickAiImage"].includes(name)){logAction("拒绝未知动作 "+String(name));return;}
+      "pickAiFile","pickAiImage","selectSkin","deleteSkin"].includes(name)){
+      logAction("拒绝未知动作 "+String(name));return;
+    }
     if(name==="panTimeline"){
       if(!Number.isInteger(p.deltaMinutes)||Math.abs(p.deltaMinutes)>2880)return;
       const state=lastState||simulatedState();
@@ -855,20 +1377,101 @@ function onSkinAction(message){
     }
     if(name==="jumpTimelineDay"&&/^\d{4}-\d{2}-\d{2}$/.test(p.date||"")){
       const date=new Date(p.date+"T04:00:00Z").getTime();
-      if(Number.isFinite(date))mockAnchor=date;
+      if(Number.isFinite(date)){mockAnchor=date;mockPage="TIMELINE";mockMonthDate=null}
     }
-    if(name==="today")mockAnchor=null;
+    if(name==="today"){
+      mockAnchor=null;
+      if(mockPage==="MONTH")mockMonthDate=localDateInZone(new Date("2026-10-21T16:30:00Z").getTime(),"Asia/Shanghai");
+    }
     if(name==="browseMonth"&&Number.isInteger(p.deltaMonths)&&
       p.deltaMonths!==0&&Math.abs(p.deltaMonths)<=12){
-      mockAnchor=(mockAnchor??new Date("2026-10-22T04:00:00Z").getTime())+
-        p.deltaMonths*30*86400000;
+      if(mockPage!=="MONTH"){logAction("拒绝月历之外的月份导航");return}
+      const current=mockMonthDate??localDateInZone(mockAnchor??new Date("2026-10-22T04:00:00Z").getTime(),"Asia/Shanghai");
+      const target=new Date(current.slice(0,7)+"-01T00:00:00Z");
+      target.setUTCMonth(target.getUTCMonth()+p.deltaMonths);
+      const year=target.getUTCFullYear();
+      if(year>=1900&&year<=2100)mockMonthDate=target.toISOString().slice(0,7)+"-01";
     }
-    if(["timeline","month","memo","ai"].includes(name))mockPage=name.toUpperCase();
+    if(name==="selectMonth"){
+      if(mockPage!=="MONTH"||!/^\d{4}-(0[1-9]|1[0-2])$/.test(p.yearMonth||"")||
+        Number(p.yearMonth.slice(0,4))<1900||Number(p.yearMonth.slice(0,4))>2100){
+        logAction("拒绝当前月历之外或格式无效的年月选择");return;
+      }
+      mockMonthDate=p.yearMonth+"-01";
+    }
+    if(name==="selectMonthDate"){
+      const parsedDate=/^\d{4}-\d{2}-\d{2}$/.test(p.date||"")
+        ?new Date(p.date+"T00:00:00Z"):null;
+      const valid=!!parsedDate&&Number.isFinite(parsedDate.getTime())&&
+        Number(p.date.slice(0,4))>=1900&&Number(p.date.slice(0,4))<=2100&&
+        parsedDate.toISOString().slice(0,10)===p.date;
+      if(mockPage!=="MONTH"||!valid||
+          p.date.slice(0,7)!==(mockMonthDate??localDateInZone(mockAnchor??new Date("2026-10-22T04:00:00Z").getTime(),"Asia/Shanghai"))
+            .slice(0,7)){
+        logAction("拒绝当前月份之外或格式无效的日期选择");return;
+      }
+      mockMonthDate=p.date;
+    }
+    if(name==="todayInMonth"){
+      if(mockPage!=="MONTH"){logAction("拒绝月历之外的今日选择");return}
+      mockMonthDate=localDateInZone(new Date("2026-10-21T16:30:00Z").getTime(),"Asia/Shanghai");
+    }
+    if(name==="skinSettings")mockPage="SETTINGS";
+    else if(["timeline","month","memo","ai"].includes(name)){
+      if(name==="month"&&mockPage!=="MONTH"){
+        mockMonthDate=localDateInZone(mockAnchor??new Date("2026-10-22T04:00:00Z").getTime(),"Asia/Shanghai");
+      }
+      mockPage=name.toUpperCase();
+    }
+    if(name==="settings"){
+      logAction("Preview Mock：请求既有 Android 宿主工具页；不会展示或操作系统权限、凭据或数据。");
+      return;
+    }
+    if(name==="invokeOption"&&p.id==="calendar.export.ics"){
+      logAction("Preview Mock：Host 会打开 ICS 导出文件选择器；未创建或写入真实文件。");
+      return;
+    }
+    if(name==="invokeOption"&&p.id==="data.backup.export"){
+      logAction("Preview Mock：invokeOption · data.backup.export；Host 会创建原生明文 JSON 备份；未读取日历数据或创建文件。");
+      return;
+    }
+    if(name==="invokeOption"&&p.id==="data.backup.restore"){
+      logAction("Preview Mock：invokeOption · data.backup.restore；Host 会打开备份选择器并校验格式及空库条件；未读取文件或恢复数据。");
+      return;
+    }
+    if(name==="invokeOption"&&p.id==="skin.import"){
+      logAction("Preview Mock：invokeOption · skin.import；Host 会启动皮肤包选择并执行校验；未读取文件或安装皮肤。");
+      return;
+    }
+    if(name==="invokeOption"&&p.id==="skin.exportClear"){
+      logAction("Preview Mock：invokeOption · skin.exportClear；Host 会导出内置 Clear 候选包；未读取素材或创建文件。");
+      return;
+    }
+    if(name==="selectSkin"||name==="deleteSkin"){
+      if(mockPage!=="SETTINGS"||typeof p.skinId!=="string"||
+        !/^[a-z0-9][a-z0-9_-]{2,47}$/.test(p.skinId)){
+        logAction("拒绝当前设置页之外的皮肤操作或无效皮肤 ID");return;
+      }
+      logAction(name==="selectSkin"?
+        `Preview Mock：请求 Host 确认启用 ${p.skinId}；未切换皮肤。`:
+        `Preview Mock：请求 Host 确认删除 ${p.skinId}；未删除皮肤包。`);
+      return;
+    }
+    if(name==="invokeOption"&&typeof p.id==="string"&&p.id.startsWith("reminders.")){
+      const mock={
+        "reminders.exactAlarmSettings":"Preview Mock：Host 会请求打开精确闹钟系统授权页；未打开真实系统设置。",
+        "reminders.notificationPermission":"Preview Mock：Host 会请求 Android 通知权限；未弹真实权限对话框。",
+        "reminders.reconcile":"Preview Mock：Host 会重建提醒调度；没有调用真实调度器。"
+      }[p.id];
+      if(!mock){logAction("拒绝未知提醒 Host action");return;}
+      logAction(mock);
+      return;
+    }
     if(name==="toggleMemo"){
       if(!Number.isInteger(p.eventSeq)||typeof p.completed!=="boolean"||!p.occurrenceKey)return;
       if(p.eventSeq===31)mockMemoDone=!p.completed;
     }
-    if(name==="sendChat"&&typeof p.text==="string"&&p.text.length<=4000){
+    if(name==="sendChat"&&typeof p.text==="string"&&p.text.length<=6000){
       if($("scenario").value==="ai-error"){
         mockAiErrorMessages.push({role:"user",content:p.text},
           {role:"assistant",content:"Studio Mock：已收到你手动重发的消息；没有调用真实 AI 或写入日历。"});
@@ -927,17 +1530,20 @@ function onSkinAction(message){
     }
     logAction("模拟宿主收到："+name+
       (p.id?" · "+p.id:"")+
-      (name==="openEvent"?" · "+p.eventSeq:""));
-    if(["today","panTimeline","jumpTimelineDay","browseMonth","timeline","month","memo","ai",
+      (name==="openEvent"?" · "+p.eventSeq+
+        (p.originalOccurrenceKey?" · 原始实例 "+p.originalOccurrenceKey:""):""));
+    if(["today","panTimeline","jumpTimelineDay","browseMonth","selectMonth","selectMonthDate",
+      "todayInMonth","timeline","month","memo","ai","skinSettings",
       "toggleMemo","sendChat"].includes(name))postState();
   }catch(error){logAction("Bridge 消息错误："+error.message)}
 }
-let mockAnchor=null,mockPage="TIMELINE",mockMemoDone=false,mockChat=[];
+let mockAnchor=null,mockMonthDate=null,mockPage="TIMELINE",mockMemoDone=false,mockChat=[];
 let mockAiErrorMessages=[
   {role:"user",content:"请帮我概括明天的安排。"},
   {role:"assistant",content:"Studio Mock：AI 请求未完成（模拟 HTTP 503）；上下文已保留，可编辑后手动重发。"}
 ];
-let mockAiReviewId="41b2c6f7-6070-44b5-93ed-a922b5a447db",mockAiReviewGeneration=0;
+let mockAiReviewId="41b2c6f7-6070-44b5-93ed-a922b5a447db",mockAiReviewGeneration=0,
+  mockAiPublishFailureOnce=false;
 function rotateMockAiReviewId(){
   mockAiReviewGeneration++;
   mockAiReviewId="41b2c6f7-6070-44b5-93ed-"+
@@ -1042,6 +1648,23 @@ function bindUI(){
     $("interactMode").classList.add("active");refreshOverlay();
   };
   $("refresh").onclick=()=>schedulePreview(0);
+  $("refreshComponents").onclick=()=>refreshComponentTree();
+  $("componentPage").onchange=()=>{selectedComponent=null;renderComponentTree()};
+  $("addComponentAttribute").onclick=()=>addComponentAttributeRow({},true);
+  $("saveComponentAttributes").onclick=()=>saveComponentAttributes().catch(error=>say(error.message,true));
+  $("componentStylePath").onchange=()=>{
+    const page=currentComponentPage(),node=page?.components.find(item=>item.nodeId===selectedComponent);
+    renderComponentStyleEditor(node);
+  };
+  $("addComponentStyle").onclick=()=>addComponentStyleRow({},true);
+  $("saveComponentStyles").onclick=()=>saveComponentStyles().catch(error=>say(error.message,true));
+  $("insertComponentBefore").onclick=()=>insertComponent("before").catch(error=>say(error.message,true));
+  $("insertComponentAfter").onclick=()=>insertComponent("after").catch(error=>say(error.message,true));
+  $("insertComponentFirst").onclick=()=>insertComponent("prepend").catch(error=>say(error.message,true));
+  $("insertComponentLast").onclick=()=>insertComponent("append").catch(error=>say(error.message,true));
+  $("replaceComponent").onclick=()=>replaceComponent().catch(error=>say(error.message,true));
+  $("removeComponent").onclick=()=>removeComponent().catch(error=>say(error.message,true));
+  $("moveComponent").onclick=()=>moveComponent().catch(error=>say(error.message,true));
   $("webPreview").onload=()=>connectPreview();
   $("skinId").onchange=change;$("skinName").onchange=change;$("fullCanvas").onchange=change;
   for(const id of ["scenario","theme","reduced"])$(id).onchange=()=>{
@@ -1051,7 +1674,10 @@ function bindUI(){
       {role:"user",content:"请帮我概括明天的安排。"},
       {role:"assistant",content:"Studio Mock：AI 请求未完成（模拟 HTTP 503）；上下文已保留，可编辑后手动重发。"}
     ];
-    if(id==="scenario"&&$("scenario").value==="ai-review")resetMockAiProposalReview();
+    if(id==="scenario"&&["ai-review","ai-review-failure-retry"].includes($("scenario").value)){
+      resetMockAiProposalReview();
+      mockAiPublishFailureOnce=$("scenario").value==="ai-review-failure-retry";
+    }
     postState();
   };
   $("assetFile").onchange=async e=>{await addAssets(e.target.files);e.target.value=""};
@@ -1063,7 +1689,8 @@ function bindUI(){
     "layerHeight","layerZ","layerOpacity","layerAction"])$(id).onchange=updateLayer;
   for(const [id,path] of [["htmlCode","web/index.html"],["cssCode","web/style.css"],
     ["jsCode","web/app.js"]]){
-    $(id).oninput=()=>{setText(path,$(id).value);change()};
+    $(id).oninput=()=>{setText(path,$(id).value);change();
+      if(/\.html?$/i.test(path)||/\.htm$/i.test(path))scheduleComponentAnalysis()};
   }
   $("extraSourceFile").onchange=()=>{
     const path=$("extraSourceFile").value;
@@ -1074,7 +1701,10 @@ function bindUI(){
   $("extraSourceCode").oninput=()=>{
     const path=$("extraSourceFile").value;
     if(path==="project.json"){updateProjectSource($("extraSourceCode").value);return;}
-    if(path&&sourceFiles.has(path)){setText(path,$("extraSourceCode").value);change()}
+    if(path&&sourceFiles.has(path)){
+      setText(path,$("extraSourceCode").value);change();
+      if(/^web\/.*\.html?$/i.test(path)||/^web\/.*\.htm$/i.test(path))scheduleComponentAnalysis();
+    }
   };
   $("addTextSource").onclick=addTextSource;
   $("removeExtraSource").onclick=removeExtraSource;

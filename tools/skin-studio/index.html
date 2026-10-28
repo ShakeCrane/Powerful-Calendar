@@ -36,8 +36,10 @@
       <label>模拟场景<select id="scenario">
         <option value="normal">正常日历</option><option value="empty">空白日历</option>
         <option value="dense">重叠密集事件</option><option value="repeating">重复实例</option>
+        <option value="deck-conflict">草稿版本冲突</option><option value="deck-restore">删除事件恢复</option>
         <option value="locked">AI 锁定</option><option value="future">软件新增平行功能</option>
         <option value="ai-review">AI 提案审核卡</option>
+        <option value="ai-review-failure-retry">AI 发布失败后显式重试（Mock）</option>
         <option value="ai-error">AI 失败后手动重发（Mock）</option>
       </select></label>
       <label>主题<select id="theme"><option value="light">浅色</option><option value="dark">深色</option></select></label>
@@ -58,6 +60,44 @@
       <div id="bridgeLog" class="bridgeLog" aria-live="polite"></div></div>
   </section>
   <aside class="panel editor">
+    <section id="structureSection"><h2>HTML 结构树</h2>
+      <p class="muted">按静态 HTML 源码浏览和重组节点。结构操作会更新预览、源码和导出使用的同一份文件；动态 JavaScript 节点请用源码编辑。</p>
+      <label>页面<select id="componentPage"></select></label>
+      <div class="barActions"><button id="refreshComponents" type="button">重新分析</button><span id="componentCount" class="muted" role="status"></span></div>
+      <div id="componentTree" class="componentTree" role="region" aria-label="HTML 静态组件"></div>
+      <p id="componentSelection" class="muted" aria-live="polite">选择一个节点进行编辑。</p>
+      <div class="componentAttributeEditor" role="group" aria-label="选中节点属性">
+        <div class="barActions"><strong>节点属性</strong><span id="componentAttributeCount" class="muted"></span></div>
+        <div id="componentAttributeRows" class="componentAttributeRows"></div>
+        <div class="componentAttributeActions">
+          <button id="addComponentAttribute" type="button">添加属性</button>
+          <button id="saveComponentAttributes" class="primary" type="button">应用属性</button>
+        </div>
+        <p id="componentAttributeStatus" class="muted" role="status">选择节点后可编辑 HTML 属性；样式和脚本仍可在源码面板修改。</p>
+      </div>
+      <div class="componentStyleEditor" role="group" aria-label="选中节点样式">
+        <div class="barActions"><strong>组件样式覆盖</strong><span id="componentStyleCount" class="muted"></span></div>
+        <label>样式表<select id="componentStylePath"></select></label>
+        <div id="componentStyleRows" class="componentStyleRows"></div>
+        <div class="componentAttributeActions">
+          <button id="addComponentStyle" type="button">添加样式属性</button>
+          <button id="saveComponentStyles" class="primary" type="button">应用样式</button>
+        </div>
+        <p id="componentStyleStatus" class="muted" role="status">为选中节点追加独立样式规则；原有 CSS 保持不变。复杂规则可在源码面板编辑。</p>
+      </div>
+      <label>插入或替换的 HTML 片段<textarea id="componentMarkup" spellcheck="false" rows="4" placeholder="例如：&lt;section id=&quot;custom-panel&quot;&gt;内容&lt;/section&gt;"></textarea></label>
+      <div class="componentActions">
+        <button id="insertComponentBefore" type="button">前插</button><button id="insertComponentAfter" type="button">后插</button>
+        <button id="insertComponentFirst" type="button">作为首子节点</button><button id="insertComponentLast" type="button">作为末子节点</button>
+        <button id="replaceComponent" type="button">替换选中节点</button><button id="removeComponent" class="danger" type="button">删除选中节点</button>
+      </div>
+      <label>移动选中节点<select id="componentTarget"></select></label>
+      <div class="fields"><label>相对位置<select id="componentPosition">
+        <option value="before">目标之前</option><option value="after">目标之后</option>
+        <option value="prepend">目标首子节点</option><option value="append">目标末子节点</option>
+      </select></label><button id="moveComponent" type="button">移动节点</button></div>
+      <p class="muted">删除和替换遵循 HTML 根节点保护；脚本生成的运行时 DOM 不会出现在静态树中。</p>
+    </section>
     <section id="layerSection"><h2>自由图层</h2>
       <div class="barActions"><button id="addText">+ 文字</button><button id="addImage">+ 图片</button><button id="addButton">+ 功能按钮</button></div>
       <div id="layerList" class="list"></div>

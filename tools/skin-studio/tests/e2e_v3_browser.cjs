@@ -205,12 +205,65 @@ const URL=process.env.STUDIO_URL||"http://127.0.0.1:8875";
     await frame.waitForFunction(()=>document.querySelectorAll(".memo-row").length===1);
     await frame.click('.clear-tabbar [data-action="month"]');
     await frame.waitForFunction(()=>!document.querySelector("#monthPage").hidden);
-    const month=await frame.evaluate(()=>({
+    const monthSummary=await frame.evaluate(()=>({
       cells:document.querySelectorAll(".month-cell").length,
       agenda:document.querySelectorAll(".agenda-event").length
     }));
-    assert.equal(month.cells,42);
-    assert.ok(month.agenda>0);
+    assert.equal(monthSummary.cells,31);
+    assert.ok(monthSummary.agenda>0);
+    const monthLocalDateState=await frame.evaluate(()=>({
+      selected:document.querySelector('#monthGrid [aria-pressed="true"]')?.dataset.date,
+      today:document.querySelector("#monthGrid .month-cell.today")?.dataset.date
+    }));
+    assert.deepEqual(monthLocalDateState,{selected:"2026-10-22",today:"2026-10-22"},
+      "Month dates must use the Host zone when UTC and local dates differ");
+    const timelineHeadingBeforeMonthPick=await frame.$eval("#dayTitle",e=>e.textContent);
+    await frame.click("#monthYearButton");
+    await frame.waitForFunction(()=>!document.querySelector("#monthYearForm").hidden);
+    await frame.$eval("#monthYearInput",e=>{e.value="2030";e.dispatchEvent(new Event("input",{bubbles:true}))});
+    await frame.click("#monthYearForm button[type=submit]");
+    await frame.waitForFunction(()=>document.querySelector("#monthYearButton").textContent==="2030 年");
+    await frame.click("#monthNumberButton");
+    await frame.waitForFunction(()=>!document.querySelector("#monthNumberPanel").hidden);
+    await frame.click('#monthNumberPanel [data-picker-month="2"]');
+    await frame.waitForFunction(()=>document.querySelector("#monthNumberButton").textContent==="2 月");
+    assert.equal(await frame.$eval("#dayTitle",e=>e.textContent),timelineHeadingBeforeMonthPick,
+      "month selection must not move the timeline camera");
+    await frame.click('#monthGrid [data-date="2030-02-14"]');
+    await frame.waitForFunction(()=>document.querySelector("#monthAgenda h2").textContent==="2030-02-14");
+    assert.equal(await frame.$eval('#monthGrid [data-date="2030-02-14"]',e=>e.getAttribute("aria-pressed")),"true");
+    assert.equal(await frame.$eval("#monthYearButton",e=>e.getAttribute("aria-label")),"选择年份，当前2030年");
+    assert.equal(await frame.$eval("#monthNumberButton",e=>e.getAttribute("aria-label")),"选择月份，当前2月");
+    await frame.click("#viewMonthDate");
+    await frame.waitForFunction(()=>!document.querySelector("#timelinePage").hidden);
+    const selectedMonthDay=await frame.$eval("#dayTitle",e=>e.textContent);
+    assert.ok(selectedMonthDay.includes("2月14日"),"selected month date must open on the timeline");
+    await frame.click('.clear-tabbar [data-action="month"]');
+    await frame.waitForFunction(()=>!document.querySelector("#monthPage").hidden&&
+      document.querySelector("#monthAgenda h2").textContent==="2030-02-14");
+    await frame.click('#monthPage [data-action="browseMonth"][data-delta-months="1"]');
+    await frame.waitForFunction(()=>document.querySelector("#monthNumberButton").textContent==="3 月");
+    await frame.click('#monthPage [data-action="todayInMonth"]');
+    await frame.waitForFunction(()=>document.querySelector("#monthYearButton").textContent==="2026 年"&&
+      document.querySelector("#monthNumberButton").textContent==="10 月"&&
+      document.querySelector("#monthAgenda h2").textContent==="2026-10-22");
+    await frame.click("#viewMonthDate");
+    await frame.waitForFunction(()=>!document.querySelector("#timelinePage").hidden);
+    const viewedDay=await frame.evaluate(()=>document.querySelector("#dayTitle").textContent);
+    assert.ok(viewedDay.includes("10月22日"),"month selection should open that date on timeline");
+    await page.select("#scenario","repeating");
+    frame=page.frames().find(f=>f.url().includes("/preview/"));
+    await frame.click('.clear-tabbar [data-action="month"]');
+    await frame.waitForFunction(()=>!document.querySelector("#monthPage").hidden);
+    const occurrenceButton='#monthAgenda .agenda-event[data-original-occurrence-key="2026-10-22T09:00"]';
+    await frame.waitForSelector(occurrenceButton);
+    await frame.click(occurrenceButton);
+    const singleOccurrenceScope='#sheetActions [data-scope="SINGLE_OCCURRENCE"]';
+    await frame.waitForSelector(singleOccurrenceScope);
+    await frame.click(singleOccurrenceScope);
+    await frame.waitForFunction(()=>document.querySelector('#sheetFields [data-field="startText"]')?.value
+      ==="2026-10-22 09:00");
+    console.log("Month occurrence editor preserves the selected recurrence slot");
     await frame.click('.clear-tabbar [data-action="ai"]');
     await frame.waitForFunction(()=>!document.querySelector("#aiPage").hidden);
     await page.select("#scenario","ai-review");

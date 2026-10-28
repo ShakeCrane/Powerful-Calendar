@@ -1,0 +1,1800 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://powercal.local/contracts/web-skin-bridge-v1.schema.json",
+  "title": "PowerCal Web Skin Host Bridge v1",
+  "description": "Closed JSON messages accepted by WebSkinHost.decodeBridgeAction and WebEditWire.decode. Host authorization and business-state checks remain authoritative.",
+  "x-runtimeFrameMaxCharacters": 8192,
+  "oneOf": [
+    {
+      "$ref": "#/$defs/actionMessage"
+    },
+    {
+      "$ref": "#/$defs/commandMessage"
+    }
+  ],
+  "$defs": {
+    "requestId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{8,64}$"
+    },
+    "sessionId": {
+      "type": "string",
+      "pattern": "^[a-f0-9-]{36}$"
+    },
+    "actionMessage": {
+      "type": "object",
+      "required": [
+        "version",
+        "type",
+        "payload"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "type": {
+          "const": "action"
+        },
+        "payload": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/actionPayloads/ai"
+            },
+            {
+              "$ref": "#/$defs/actionPayloads/browseMonth"
+            },
+            {
+              "$ref": "#/$defs/actionPayloads/createDraft"
+            },
+            {
+              "$ref": "#/$defs/actionPayloads/createMemo"
+            },
+            {
+              "$ref": "#/$defs/actionPayloads/deleteSkin"
+            },
+            {
+              "$ref": "#/$defs/actionPayloads/invokeOption"
+            },
+            {
+              "$ref": "#/$defs/actionPayloads/jumpTimelineDay"
+            },
+            {
+              "$ref": "#/$defs/actionPayloads/memo"
+            },
+            {
+              "$ref": "#/$defs/actionPayloads/month"
+            },
+            {
+              "$ref": "#/$defs/actionPayloads/openDeck"
+            },
+            {
+              "$ref": "#/$defs/actionPayloads/openEvent"
+            },
+            {
+              "$ref": "#/$defs/actionPayloads/panTimeline"
+            },
+            {
+              "$ref": "#/$defs/actionPayloads/pickAiFile"
+            },
+            {
+              "$ref": "#/$defs/actionPayloads/pickAiImage"
+            },
+            {
+              "$ref": "#/$defs/actionPayloads/resolveAiProposal"
+            },
+            {
+              "$ref": "#/$defs/actionPayloads/selectMonth"
+            },
+            {
+              "$ref": "#/$defs/actionPayloads/selectMonthDate"
+            },
+            {
+              "$ref": "#/$defs/actionPayloads/selectSkin"
+            },
+            {
+              "$ref": "#/$defs/actionPayloads/sendChat"
+            },
+            {
+              "$ref": "#/$defs/actionPayloads/settings"
+            },
+            {
+              "$ref": "#/$defs/actionPayloads/skinSettings"
+            },
+            {
+              "$ref": "#/$defs/actionPayloads/timeline"
+            },
+            {
+              "$ref": "#/$defs/actionPayloads/today"
+            },
+            {
+              "$ref": "#/$defs/actionPayloads/todayInMonth"
+            },
+            {
+              "$ref": "#/$defs/actionPayloads/toggleMemo"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "commandMessage": {
+      "type": "object",
+      "required": [
+        "version",
+        "type",
+        "payload"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "type": {
+          "const": "command"
+        },
+        "payload": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/commandPayloads/deck.close"
+            },
+            {
+              "$ref": "#/$defs/commandPayloads/deck.commit"
+            },
+            {
+              "$ref": "#/$defs/commandPayloads/deck.create"
+            },
+            {
+              "$ref": "#/$defs/commandPayloads/deck.discard"
+            },
+            {
+              "$ref": "#/$defs/commandPayloads/deck.flush"
+            },
+            {
+              "$ref": "#/$defs/commandPayloads/deck.open"
+            },
+            {
+              "$ref": "#/$defs/commandPayloads/deck.patch"
+            },
+            {
+              "$ref": "#/$defs/commandPayloads/deck.reviewConflict"
+            },
+            {
+              "$ref": "#/$defs/commandPayloads/deck.reviewRestore"
+            },
+            {
+              "$ref": "#/$defs/commandPayloads/deck.select"
+            },
+            {
+              "$ref": "#/$defs/commandPayloads/deck.undo"
+            },
+            {
+              "$ref": "#/$defs/commandPayloads/editor.close"
+            },
+            {
+              "$ref": "#/$defs/commandPayloads/editor.delete"
+            },
+            {
+              "$ref": "#/$defs/commandPayloads/editor.discardChanges"
+            },
+            {
+              "$ref": "#/$defs/commandPayloads/editor.open"
+            },
+            {
+              "$ref": "#/$defs/commandPayloads/editor.patch"
+            },
+            {
+              "$ref": "#/$defs/commandPayloads/editor.save"
+            },
+            {
+              "$ref": "#/$defs/commandPayloads/editor.scope"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "actionPayloads": {
+      "ai": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "const": "ai"
+          }
+        },
+        "additionalProperties": false,
+        "examples": [
+          {
+            "name": "ai"
+          }
+        ]
+      },
+      "browseMonth": {
+        "type": "object",
+        "required": [
+          "name",
+          "deltaMonths"
+        ],
+        "properties": {
+          "name": {
+            "const": "browseMonth"
+          },
+          "deltaMonths": {
+            "type": "integer",
+            "minimum": -12,
+            "maximum": 12,
+            "not": {
+              "const": 0
+            }
+          }
+        },
+        "additionalProperties": false,
+        "examples": [
+          {
+            "name": "browseMonth",
+            "deltaMonths": 1
+          }
+        ]
+      },
+      "createDraft": {
+        "type": "object",
+        "required": [
+          "name",
+          "kind"
+        ],
+        "properties": {
+          "name": {
+            "const": "createDraft"
+          },
+          "kind": {
+            "enum": [
+              "ALARM",
+              "ACTIVITY",
+              "DEADLINE",
+              "MEMO"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "examples": [
+          {
+            "name": "createDraft",
+            "kind": "ACTIVITY"
+          }
+        ]
+      },
+      "createMemo": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "const": "createMemo"
+          }
+        },
+        "additionalProperties": false,
+        "examples": [
+          {
+            "name": "createMemo"
+          }
+        ]
+      },
+      "deleteSkin": {
+        "type": "object",
+        "required": [
+          "name",
+          "skinId"
+        ],
+        "properties": {
+          "name": {
+            "const": "deleteSkin"
+          },
+          "skinId": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{2,47}$"
+          }
+        },
+        "additionalProperties": false,
+        "examples": [
+          {
+            "name": "deleteSkin",
+            "skinId": "my-skin_2"
+          }
+        ]
+      },
+      "invokeOption": {
+        "type": "object",
+        "required": [
+          "name",
+          "id"
+        ],
+        "properties": {
+          "name": {
+            "const": "invokeOption"
+          },
+          "id": {
+            "enum": [
+              "calendar.import.file",
+              "calendar.import.system",
+              "calendar.export.ics",
+              "data.backup.export",
+              "data.backup.restore",
+              "skin.import",
+              "skin.exportClear",
+              "reminders.exactAlarmSettings",
+              "reminders.notificationPermission",
+              "reminders.reconcile"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "examples": [
+          {
+            "name": "invokeOption",
+            "id": "calendar.import.file"
+          }
+        ]
+      },
+      "jumpTimelineDay": {
+        "type": "object",
+        "required": [
+          "name",
+          "date"
+        ],
+        "properties": {
+          "name": {
+            "const": "jumpTimelineDay"
+          },
+          "date": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(19[0-9]{2}|20[0-9]{2}|21[0-9]{2}|2200)-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$",
+            "description": "ISO local date; Host also checks that the date exists."
+          }
+        },
+        "additionalProperties": false,
+        "examples": [
+          {
+            "name": "jumpTimelineDay",
+            "date": "2026-10-22"
+          }
+        ]
+      },
+      "memo": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "const": "memo"
+          }
+        },
+        "additionalProperties": false,
+        "examples": [
+          {
+            "name": "memo"
+          }
+        ]
+      },
+      "month": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "const": "month"
+          }
+        },
+        "additionalProperties": false,
+        "examples": [
+          {
+            "name": "month"
+          }
+        ]
+      },
+      "openDeck": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "const": "openDeck"
+          }
+        },
+        "additionalProperties": false,
+        "examples": [
+          {
+            "name": "openDeck"
+          }
+        ]
+      },
+      "openEvent": {
+        "type": "object",
+        "required": [
+          "name",
+          "eventSeq",
+          "expectedRevision"
+        ],
+        "properties": {
+          "name": {
+            "const": "openEvent"
+          },
+          "eventSeq": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "originalOccurrenceKey": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}$",
+            "description": "Optional canonical recurrence slot key; Host verifies it is a real generated slot."
+          }
+        },
+        "additionalProperties": false,
+        "examples": [
+          {
+            "name": "openEvent",
+            "eventSeq": 42,
+            "expectedRevision": 7
+          },
+          {
+            "name": "openEvent",
+            "eventSeq": 42,
+            "expectedRevision": 7,
+            "originalOccurrenceKey": "2026-10-22T09:00"
+          }
+        ]
+      },
+      "panTimeline": {
+        "type": "object",
+        "required": [
+          "name",
+          "deltaMinutes"
+        ],
+        "properties": {
+          "name": {
+            "const": "panTimeline"
+          },
+          "deltaMinutes": {
+            "type": "integer",
+            "minimum": -2880,
+            "maximum": 2880,
+            "not": {
+              "const": 0
+            }
+          }
+        },
+        "additionalProperties": false,
+        "examples": [
+          {
+            "name": "panTimeline",
+            "deltaMinutes": 30
+          }
+        ]
+      },
+      "pickAiFile": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "const": "pickAiFile"
+          }
+        },
+        "additionalProperties": false,
+        "examples": [
+          {
+            "name": "pickAiFile"
+          }
+        ]
+      },
+      "pickAiImage": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "const": "pickAiImage"
+          }
+        },
+        "additionalProperties": false,
+        "examples": [
+          {
+            "name": "pickAiImage"
+          }
+        ]
+      },
+      "resolveAiProposal": {
+        "type": "object",
+        "required": [
+          "name",
+          "reviewId",
+          "decision",
+          "indices"
+        ],
+        "properties": {
+          "name": {
+            "const": "resolveAiProposal"
+          },
+          "reviewId": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "decision": {
+            "enum": [
+              "publish",
+              "stage",
+              "reject",
+              "supplement"
+            ]
+          },
+          "indices": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 99
+            },
+            "maxItems": 100,
+            "uniqueItems": true
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "decision": {
+                  "const": "supplement"
+                }
+              },
+              "required": [
+                "decision"
+              ]
+            },
+            "then": {
+              "properties": {
+                "indices": {
+                  "maxItems": 0
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "indices": {
+                  "minItems": 1
+                }
+              }
+            }
+          }
+        ],
+        "additionalProperties": false,
+        "examples": [
+          {
+            "name": "resolveAiProposal",
+            "reviewId": "11111111-1111-4111-8111-111111111111",
+            "decision": "publish",
+            "indices": [
+              0
+            ]
+          }
+        ]
+      },
+      "selectMonth": {
+        "type": "object",
+        "required": [
+          "name",
+          "yearMonth"
+        ],
+        "properties": {
+          "name": {
+            "const": "selectMonth"
+          },
+          "yearMonth": {
+            "type": "string",
+            "pattern": "^(19[0-9]{2}|20[0-9]{2}|2100)-(0[1-9]|1[0-2])$",
+            "description": "Canonical YYYY-MM."
+          }
+        },
+        "additionalProperties": false,
+        "examples": [
+          {
+            "name": "selectMonth",
+            "yearMonth": "2030-02"
+          }
+        ]
+      },
+      "selectMonthDate": {
+        "type": "object",
+        "required": [
+          "name",
+          "date"
+        ],
+        "properties": {
+          "name": {
+            "const": "selectMonthDate"
+          },
+          "date": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(19[0-9]{2}|20[0-9]{2}|2100)-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$",
+            "description": "ISO local date; Host also checks that the date exists and is in the active displayed month."
+          }
+        },
+        "additionalProperties": false,
+        "examples": [
+          {
+            "name": "selectMonthDate",
+            "date": "2030-02-14"
+          }
+        ]
+      },
+      "selectSkin": {
+        "type": "object",
+        "required": [
+          "name",
+          "skinId"
+        ],
+        "properties": {
+          "name": {
+            "const": "selectSkin"
+          },
+          "skinId": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{2,47}$"
+          }
+        },
+        "additionalProperties": false,
+        "examples": [
+          {
+            "name": "selectSkin",
+            "skinId": "my-skin_2"
+          }
+        ]
+      },
+      "sendChat": {
+        "type": "object",
+        "required": [
+          "name",
+          "text"
+        ],
+        "properties": {
+          "name": {
+            "const": "sendChat"
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 6000,
+            "pattern": "\\S",
+            "description": "Host rejects whitespace-only text and enforces the 6000 UTF-16 code-unit limit.",
+            "x-runtimeMaxUtf16CodeUnits": 6000
+          }
+        },
+        "additionalProperties": false,
+        "examples": [
+          {
+            "name": "sendChat",
+            "text": "Review next week's schedule"
+          }
+        ]
+      },
+      "settings": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "const": "settings"
+          }
+        },
+        "additionalProperties": false,
+        "examples": [
+          {
+            "name": "settings"
+          }
+        ]
+      },
+      "skinSettings": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "const": "skinSettings"
+          }
+        },
+        "additionalProperties": false,
+        "examples": [
+          {
+            "name": "skinSettings"
+          }
+        ]
+      },
+      "timeline": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "const": "timeline"
+          }
+        },
+        "additionalProperties": false,
+        "examples": [
+          {
+            "name": "timeline"
+          }
+        ]
+      },
+      "today": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "const": "today"
+          }
+        },
+        "additionalProperties": false,
+        "examples": [
+          {
+            "name": "today"
+          }
+        ]
+      },
+      "todayInMonth": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "const": "todayInMonth"
+          }
+        },
+        "additionalProperties": false,
+        "examples": [
+          {
+            "name": "todayInMonth"
+          }
+        ]
+      },
+      "toggleMemo": {
+        "type": "object",
+        "required": [
+          "name",
+          "eventSeq",
+          "expectedRevision",
+          "occurrenceKey",
+          "completed"
+        ],
+        "properties": {
+          "name": {
+            "const": "toggleMemo"
+          },
+          "eventSeq": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "occurrenceKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "Host additionally requires every character to satisfy Kotlin Char.isLetterOrDigit or be ':', '_', '-', or '.'.",
+            "x-runtimeMaxUtf16CodeUnits": 100
+          },
+          "completed": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "examples": [
+          {
+            "name": "toggleMemo",
+            "eventSeq": 42,
+            "expectedRevision": 7,
+            "occurrenceKey": "2026-10-22T09:00",
+            "completed": true
+          }
+        ]
+      }
+    },
+    "commandPayloads": {
+      "deck.close": {
+        "type": "object",
+        "required": [
+          "name",
+          "requestId"
+        ],
+        "properties": {
+          "name": {
+            "const": "deck.close"
+          },
+          "requestId": {
+            "$ref": "#/$defs/requestId"
+          }
+        },
+        "additionalProperties": false,
+        "examples": [
+          {
+            "name": "deck.close",
+            "requestId": "req_12345678"
+          }
+        ]
+      },
+      "deck.commit": {
+        "type": "object",
+        "required": [
+          "name",
+          "requestId",
+          "draftId",
+          "draftVersion"
+        ],
+        "properties": {
+          "name": {
+            "const": "deck.commit"
+          },
+          "requestId": {
+            "$ref": "#/$defs/requestId"
+          },
+          "draftId": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "draftVersion": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false,
+        "examples": [
+          {
+            "name": "deck.commit",
+            "requestId": "req_12345678",
+            "draftId": 1,
+            "draftVersion": 0
+          }
+        ]
+      },
+      "deck.create": {
+        "type": "object",
+        "required": [
+          "name",
+          "requestId",
+          "kind"
+        ],
+        "properties": {
+          "name": {
+            "const": "deck.create"
+          },
+          "requestId": {
+            "$ref": "#/$defs/requestId"
+          },
+          "kind": {
+            "enum": [
+              "ALARM",
+              "ACTIVITY",
+              "DEADLINE",
+              "MEMO"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "examples": [
+          {
+            "name": "deck.create",
+            "requestId": "req_12345678",
+            "kind": "ACTIVITY"
+          }
+        ]
+      },
+      "deck.discard": {
+        "type": "object",
+        "required": [
+          "name",
+          "requestId",
+          "draftId",
+          "draftVersion"
+        ],
+        "properties": {
+          "name": {
+            "const": "deck.discard"
+          },
+          "requestId": {
+            "$ref": "#/$defs/requestId"
+          },
+          "draftId": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "draftVersion": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false,
+        "examples": [
+          {
+            "name": "deck.discard",
+            "requestId": "req_12345678",
+            "draftId": 1,
+            "draftVersion": 0
+          }
+        ]
+      },
+      "deck.flush": {
+        "type": "object",
+        "required": [
+          "name",
+          "requestId"
+        ],
+        "properties": {
+          "name": {
+            "const": "deck.flush"
+          },
+          "requestId": {
+            "$ref": "#/$defs/requestId"
+          }
+        },
+        "additionalProperties": false,
+        "examples": [
+          {
+            "name": "deck.flush",
+            "requestId": "req_12345678"
+          }
+        ]
+      },
+      "deck.open": {
+        "type": "object",
+        "required": [
+          "name",
+          "requestId",
+          "draftId"
+        ],
+        "properties": {
+          "name": {
+            "const": "deck.open"
+          },
+          "requestId": {
+            "$ref": "#/$defs/requestId"
+          },
+          "draftId": {
+            "oneOf": [
+              {
+                "type": "integer",
+                "minimum": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "examples": [
+          {
+            "name": "deck.open",
+            "requestId": "req_12345678",
+            "draftId": null
+          }
+        ]
+      },
+      "deck.patch": {
+        "type": "object",
+        "required": [
+          "name",
+          "requestId",
+          "draftId",
+          "draftVersion",
+          "field",
+          "value"
+        ],
+        "properties": {
+          "name": {
+            "const": "deck.patch"
+          },
+          "requestId": {
+            "$ref": "#/$defs/requestId"
+          },
+          "draftId": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "draftVersion": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "field": {
+            "$ref": "#/$defs/commandPayloads/patchField"
+          },
+          "value": {
+            "type": "string",
+            "maxLength": 2000,
+            "pattern": "^[^\\u0000]*$",
+            "description": "NUL is rejected by Host; apply the selected field UTF-16 length limit.",
+            "x-runtimeMaxUtf16CodeUnits": 2000
+          }
+        },
+        "allOf": [
+          {
+            "$ref": "#/$defs/commandPayloads/patchValueLengthByField"
+          }
+        ],
+        "additionalProperties": false,
+        "examples": [
+          {
+            "name": "deck.patch",
+            "requestId": "req_12345678",
+            "draftId": 1,
+            "draftVersion": 0,
+            "field": "title",
+            "value": "Review"
+          }
+        ]
+      },
+      "deck.reviewConflict": {
+        "type": "object",
+        "required": [
+          "name",
+          "requestId"
+        ],
+        "properties": {
+          "name": {
+            "const": "deck.reviewConflict"
+          },
+          "requestId": {
+            "$ref": "#/$defs/requestId"
+          }
+        },
+        "additionalProperties": false,
+        "examples": [
+          {
+            "name": "deck.reviewConflict",
+            "requestId": "req_12345678"
+          }
+        ]
+      },
+      "deck.reviewRestore": {
+        "type": "object",
+        "required": [
+          "name",
+          "requestId"
+        ],
+        "properties": {
+          "name": {
+            "const": "deck.reviewRestore"
+          },
+          "requestId": {
+            "$ref": "#/$defs/requestId"
+          }
+        },
+        "additionalProperties": false,
+        "examples": [
+          {
+            "name": "deck.reviewRestore",
+            "requestId": "req_12345678"
+          }
+        ]
+      },
+      "deck.select": {
+        "type": "object",
+        "required": [
+          "name",
+          "requestId",
+          "draftId"
+        ],
+        "properties": {
+          "name": {
+            "const": "deck.select"
+          },
+          "requestId": {
+            "$ref": "#/$defs/requestId"
+          },
+          "draftId": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "additionalProperties": false,
+        "examples": [
+          {
+            "name": "deck.select",
+            "requestId": "req_12345678",
+            "draftId": 1
+          }
+        ]
+      },
+      "deck.undo": {
+        "type": "object",
+        "required": [
+          "name",
+          "requestId"
+        ],
+        "properties": {
+          "name": {
+            "const": "deck.undo"
+          },
+          "requestId": {
+            "$ref": "#/$defs/requestId"
+          }
+        },
+        "additionalProperties": false,
+        "examples": [
+          {
+            "name": "deck.undo",
+            "requestId": "req_12345678"
+          }
+        ]
+      },
+      "editor.close": {
+        "type": "object",
+        "required": [
+          "name",
+          "requestId",
+          "sessionId"
+        ],
+        "properties": {
+          "name": {
+            "const": "editor.close"
+          },
+          "requestId": {
+            "$ref": "#/$defs/requestId"
+          },
+          "sessionId": {
+            "$ref": "#/$defs/sessionId"
+          }
+        },
+        "additionalProperties": false,
+        "examples": [
+          {
+            "name": "editor.close",
+            "requestId": "req_12345678",
+            "sessionId": "00000000-0000-0000-0000-000000000001"
+          }
+        ]
+      },
+      "editor.delete": {
+        "type": "object",
+        "required": [
+          "name",
+          "requestId",
+          "sessionId"
+        ],
+        "properties": {
+          "name": {
+            "const": "editor.delete"
+          },
+          "requestId": {
+            "$ref": "#/$defs/requestId"
+          },
+          "sessionId": {
+            "$ref": "#/$defs/sessionId"
+          }
+        },
+        "additionalProperties": false,
+        "examples": [
+          {
+            "name": "editor.delete",
+            "requestId": "req_12345678",
+            "sessionId": "00000000-0000-0000-0000-000000000001"
+          }
+        ]
+      },
+      "editor.discardChanges": {
+        "type": "object",
+        "required": [
+          "name",
+          "requestId",
+          "sessionId"
+        ],
+        "properties": {
+          "name": {
+            "const": "editor.discardChanges"
+          },
+          "requestId": {
+            "$ref": "#/$defs/requestId"
+          },
+          "sessionId": {
+            "$ref": "#/$defs/sessionId"
+          }
+        },
+        "additionalProperties": false,
+        "examples": [
+          {
+            "name": "editor.discardChanges",
+            "requestId": "req_12345678",
+            "sessionId": "00000000-0000-0000-0000-000000000001"
+          }
+        ]
+      },
+      "editor.open": {
+        "type": "object",
+        "required": [
+          "name",
+          "requestId",
+          "eventSeq",
+          "expectedRevision"
+        ],
+        "properties": {
+          "name": {
+            "const": "editor.open"
+          },
+          "requestId": {
+            "$ref": "#/$defs/requestId"
+          },
+          "eventSeq": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "occurrenceKey": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}$"
+          }
+        },
+        "additionalProperties": false,
+        "examples": [
+          {
+            "name": "editor.open",
+            "requestId": "req_12345678",
+            "eventSeq": 42,
+            "expectedRevision": 7
+          },
+          {
+            "name": "editor.open",
+            "requestId": "req_12345678",
+            "eventSeq": 42,
+            "expectedRevision": 7,
+            "occurrenceKey": "2026-10-22T09:00"
+          }
+        ]
+      },
+      "editor.patch": {
+        "type": "object",
+        "required": [
+          "name",
+          "requestId",
+          "sessionId",
+          "field",
+          "value"
+        ],
+        "properties": {
+          "name": {
+            "const": "editor.patch"
+          },
+          "requestId": {
+            "$ref": "#/$defs/requestId"
+          },
+          "sessionId": {
+            "$ref": "#/$defs/sessionId"
+          },
+          "field": {
+            "$ref": "#/$defs/commandPayloads/patchField"
+          },
+          "value": {
+            "type": "string",
+            "maxLength": 2000,
+            "pattern": "^[^\\u0000]*$",
+            "description": "NUL is rejected by Host; apply the selected field UTF-16 length limit.",
+            "x-runtimeMaxUtf16CodeUnits": 2000
+          }
+        },
+        "allOf": [
+          {
+            "$ref": "#/$defs/commandPayloads/patchValueLengthByField"
+          }
+        ],
+        "additionalProperties": false,
+        "examples": [
+          {
+            "name": "editor.patch",
+            "requestId": "req_12345678",
+            "sessionId": "00000000-0000-0000-0000-000000000001",
+            "field": "title",
+            "value": "Review"
+          }
+        ]
+      },
+      "editor.save": {
+        "type": "object",
+        "required": [
+          "name",
+          "requestId",
+          "sessionId"
+        ],
+        "properties": {
+          "name": {
+            "const": "editor.save"
+          },
+          "requestId": {
+            "$ref": "#/$defs/requestId"
+          },
+          "sessionId": {
+            "$ref": "#/$defs/sessionId"
+          }
+        },
+        "additionalProperties": false,
+        "examples": [
+          {
+            "name": "editor.save",
+            "requestId": "req_12345678",
+            "sessionId": "00000000-0000-0000-0000-000000000001"
+          }
+        ]
+      },
+      "editor.scope": {
+        "type": "object",
+        "required": [
+          "name",
+          "requestId",
+          "sessionId",
+          "scope"
+        ],
+        "properties": {
+          "name": {
+            "const": "editor.scope"
+          },
+          "requestId": {
+            "$ref": "#/$defs/requestId"
+          },
+          "sessionId": {
+            "$ref": "#/$defs/sessionId"
+          },
+          "scope": {
+            "enum": [
+              "SINGLE_OCCURRENCE",
+              "THIS_AND_FUTURE",
+              "WHOLE_SERIES"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "examples": [
+          {
+            "name": "editor.scope",
+            "requestId": "req_12345678",
+            "sessionId": "00000000-0000-0000-0000-000000000001",
+            "scope": "WHOLE_SERIES"
+          }
+        ]
+      },
+      "patchField": {
+        "type": "string",
+        "enum": [
+          "kind",
+          "title",
+          "startText",
+          "endText",
+          "notes",
+          "location",
+          "reminderMinutes",
+          "reminderMethod",
+          "reminderTiming",
+          "enabled",
+          "trackingEnabled",
+          "recurrenceFreq",
+          "recurrenceInterval",
+          "recurrenceFrom",
+          "recurrenceUntil"
+        ]
+      },
+      "patchValueLengthByField": {
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "field": {
+                  "const": "kind"
+                }
+              },
+              "required": [
+                "field"
+              ]
+            },
+            "then": {
+              "properties": {
+                "value": {
+                  "maxLength": 10,
+                  "examples": [
+                    "ACTIVITY"
+                  ],
+                  "x-runtimeMaxUtf16CodeUnits": 10,
+                  "enum": [
+                    "ALARM",
+                    "ACTIVITY",
+                    "DEADLINE",
+                    "MEMO"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "field": {
+                  "const": "title"
+                }
+              },
+              "required": [
+                "field"
+              ]
+            },
+            "then": {
+              "properties": {
+                "value": {
+                  "maxLength": 240,
+                  "examples": [
+                    "Review"
+                  ],
+                  "x-runtimeMaxUtf16CodeUnits": 240
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "field": {
+                  "const": "startText"
+                }
+              },
+              "required": [
+                "field"
+              ]
+            },
+            "then": {
+              "properties": {
+                "value": {
+                  "maxLength": 40,
+                  "examples": [
+                    "2026-10-28 09:00"
+                  ],
+                  "x-runtimeMaxUtf16CodeUnits": 40
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "field": {
+                  "const": "endText"
+                }
+              },
+              "required": [
+                "field"
+              ]
+            },
+            "then": {
+              "properties": {
+                "value": {
+                  "maxLength": 40,
+                  "examples": [
+                    "2026-10-28 10:00"
+                  ],
+                  "x-runtimeMaxUtf16CodeUnits": 40
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "field": {
+                  "const": "notes"
+                }
+              },
+              "required": [
+                "field"
+              ]
+            },
+            "then": {
+              "properties": {
+                "value": {
+                  "maxLength": 2000,
+                  "examples": [
+                    "Bring notes"
+                  ],
+                  "x-runtimeMaxUtf16CodeUnits": 2000
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "field": {
+                  "const": "location"
+                }
+              },
+              "required": [
+                "field"
+              ]
+            },
+            "then": {
+              "properties": {
+                "value": {
+                  "maxLength": 240,
+                  "examples": [
+                    "Office"
+                  ],
+                  "x-runtimeMaxUtf16CodeUnits": 240
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "field": {
+                  "const": "reminderMinutes"
+                }
+              },
+              "required": [
+                "field"
+              ]
+            },
+            "then": {
+              "properties": {
+                "value": {
+                  "maxLength": 6,
+                  "pattern": "^(?:\\+?0*(?:0|[1-9][0-9]{0,3}|100[0-7][0-9]|10080)|-(?:0+|0*1))$",
+                  "description": "Decimal Int accepted by toIntOrNull and in -1..10080.",
+                  "examples": [
+                    "-1",
+                    "0",
+                    "10080",
+                    "+001"
+                  ],
+                  "x-runtimeMaxUtf16CodeUnits": 6
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "field": {
+                  "const": "reminderMethod"
+                }
+              },
+              "required": [
+                "field"
+              ]
+            },
+            "then": {
+              "properties": {
+                "value": {
+                  "enum": [
+                    "MESSAGE",
+                    "ALARM"
+                  ],
+                  "examples": [
+                    "MESSAGE"
+                  ],
+                  "x-runtimeMaxUtf16CodeUnits": 20
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "field": {
+                  "const": "reminderTiming"
+                }
+              },
+              "required": [
+                "field"
+              ]
+            },
+            "then": {
+              "properties": {
+                "value": {
+                  "enum": [
+                    "OFFSET",
+                    "DAY_START"
+                  ],
+                  "examples": [
+                    "OFFSET"
+                  ],
+                  "x-runtimeMaxUtf16CodeUnits": 20
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "field": {
+                  "const": "enabled"
+                }
+              },
+              "required": [
+                "field"
+              ]
+            },
+            "then": {
+              "properties": {
+                "value": {
+                  "enum": [
+                    "true",
+                    "false"
+                  ],
+                  "examples": [
+                    "true"
+                  ],
+                  "x-runtimeMaxUtf16CodeUnits": 5
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "field": {
+                  "const": "trackingEnabled"
+                }
+              },
+              "required": [
+                "field"
+              ]
+            },
+            "then": {
+              "properties": {
+                "value": {
+                  "enum": [
+                    "true",
+                    "false"
+                  ],
+                  "examples": [
+                    "false"
+                  ],
+                  "x-runtimeMaxUtf16CodeUnits": 5
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "field": {
+                  "const": "recurrenceFreq"
+                }
+              },
+              "required": [
+                "field"
+              ]
+            },
+            "then": {
+              "properties": {
+                "value": {
+                  "enum": [
+                    "NONE",
+                    "DAILY",
+                    "WEEKLY",
+                    "MONTHLY"
+                  ],
+                  "examples": [
+                    "DAILY"
+                  ],
+                  "x-runtimeMaxUtf16CodeUnits": 20
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "field": {
+                  "const": "recurrenceInterval"
+                }
+              },
+              "required": [
+                "field"
+              ]
+            },
+            "then": {
+              "properties": {
+                "value": {
+                  "maxLength": 3,
+                  "pattern": "^\\+?0*(?:[1-9]|[1-9][0-9]|[12][0-9]{2}|3[0-5][0-9]|36[0-5])$",
+                  "description": "Decimal Int accepted by toIntOrNull and in 1..365.",
+                  "examples": [
+                    "1",
+                    "365",
+                    "+01"
+                  ],
+                  "x-runtimeMaxUtf16CodeUnits": 3
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "field": {
+                  "const": "recurrenceFrom"
+                }
+              },
+              "required": [
+                "field"
+              ]
+            },
+            "then": {
+              "properties": {
+                "value": {
+                  "maxLength": 10,
+                  "pattern": "^$|^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+                  "description": "Empty clears the date; otherwise Host requires a real canonical ISO local date.",
+                  "examples": [
+                    "",
+                    "2026-10-28"
+                  ],
+                  "x-runtimeMaxUtf16CodeUnits": 10,
+                  "format": "date"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "field": {
+                  "const": "recurrenceUntil"
+                }
+              },
+              "required": [
+                "field"
+              ]
+            },
+            "then": {
+              "properties": {
+                "value": {
+                  "maxLength": 10,
+                  "pattern": "^$|^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+                  "description": "Empty clears the date; otherwise Host requires a real canonical ISO local date.",
+                  "examples": [
+                    "",
+                    "2026-12-31"
+                  ],
+                  "x-runtimeMaxUtf16CodeUnits": 10,
+                  "format": "date"
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "x-runtimeSources": [
+    "app/src/main/java/dev/powerfulcalendar/ui/v2/WebSkinHost.kt#decodeBridgeAction",
+    "app/src/main/java/dev/powerfulcalendar/ui/v2/WebSkinEditBridge.kt#WebEditWire.decode"
+  ],
+  "x-trustBoundary": "Schema validity permits a message to reach Host validation; it does not grant user approval or authorize a formal write. Host state, identity, version, permission and trusted-confirmation checks remain authoritative.",
+  "x-runtimeFrameMaxUtf16CodeUnits": 8192,
+  "x-runtimeStringLengthUnit": "Host uses Kotlin/JVM String.length (UTF-16 code units). Standard JSON Schema maxLength counts Unicode code points; x-runtimeMaxUtf16CodeUnits records the additional runtime limit when strings can contain non-BMP characters."
+}

@@ -5,6 +5,17 @@
 > editing commands. The narrower statements below describe that checkpoint, not current
 > implementation. See `SKIN_SEPARATION_PARITY_MATRIX_2026-10-27.md` for the current audit.
 
+## 2026-10-28 security amendment: session-scoped WebView origin
+
+The historical wire-format examples below use the former fixed origin. Current
+`SecureWebSkin` creates a random HTTPS origin per WebView session under
+`<random>.skin.powercal.local` and accepts only that session's packaged entrypoint
+and resources. Cookies are disabled; process-wide Service Worker settings block
+network/file/content access and reject worker requests. See
+[`SKIN_PACK_V3.md`](SKIN_PACK_V3.md) for the current runtime boundary and
+[`PC-ISSUE-SEPARATION-WEBVIEW-SESSION-ORIGIN.md`](issues/PC-ISSUE-SEPARATION-WEBVIEW-SESSION-ORIGIN.md)
+for implementation evidence and device-test limits.
+
 ## 2026-10-27 addition: recurring event scope and host review
 
 The v1 command envelope remains unchanged. `editor.open` accepts its legacy
@@ -40,6 +51,29 @@ device accessibility and recovery cases are complete.
 
 Date: 2026-10-22. Current milestone: **protocol and host coordination,
 not complete Clear Web editor/deck UI and not factory cutover**.
+
+## 2026-10-28 addition: draft conflict and deleted-event recovery review
+
+Clear can request a Host-owned review when `deck.commit` leaves the existing
+DeckController in a version-conflict or deleted-event restore state. The closed
+schema commands are `deck.reviewConflict` and `deck.reviewRestore`; both take an
+empty payload. They only request the trusted Compose review and never carry an
+`approve` flag, confirmation token, target form or revision supplied by JavaScript.
+
+For a conflict, the Host displays the current formal version and the complete
+before/after form snapshot. Before applying the user's decision it verifies that
+the exact DeckController prompt, selected draft and approved form still match.
+The controller then rechecks the formal revision and form; a stale prompt stays
+uncommitted and must be reviewed again. For a deleted event, the Host displays
+the existing same-sequence/new-revision restore warning and calls the existing
+`DeckController.requestRestore()` only after trusted confirmation. Cancel keeps
+the draft and performs no formal write.
+
+Clear exposes request actions only while the corresponding Host state is active.
+Studio models these as explicitly non-writing Mock confirmations. The two
+commands do not expose `deck.confirmConflict` or `deck.confirmRestore`; a skin
+cannot authorize a write or resurrection with a JavaScript boolean. Evidence is
+tracked in `docs/issues/PC-ISSUE-SEPARATION-DRAFT-DECK-CONFLICT-RESTORE.md`.
 
 ## Architectural invariants
 
