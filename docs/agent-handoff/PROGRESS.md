@@ -6,6 +6,7 @@
 - 定向 WebSkinRecurrenceBridgeTest + WebSkinHostProjectionTest **23/23 PASS**；Skin Studio Python **51/51 PASS**；Chrome/CDP Mock 断言重复 Memo 的 eventSeq=31、revision=2、slot=2026-10-22T00:00、MEMO 编辑器和完成动作分离；Clear package **8 files / 378,086 bytes PASS**。完整 Gradle **603/603 JVM、83 suites、0 failures/errors/skips、59/59 tasks**；source boundary、Debug APK、lint 通过，lint 0 errors / 52 warnings。AndroidTest APK 仅编译通过。
 - 完整 Gradle 日志 SHA-256 B396DD2AD012B0839D7A69CEDA0C2A3E0BB2A85B9640F0FD1AC6057CAB530A87；Debug / AndroidTest APK SHA-256 BBFCEC10BD012910D9035EB624C22ECC029087E9424DCAE8CB90B75337E7C697 / 60F08FFC420D8C67860FE9D85938C5237CF3C48CD49D5EFC260DC1187C5C9B90。详细日志哈希、定向结果及中间测试假设修正见 docs/issues/PC-ISSUE-SEPARATION-MEMO-OPEN.md。
 - ADB daemon 本机无法启动且未发现 emulator launcher；Android WebView/AVD/实体设备均 **NOT TESTED**（实体设备留给用户）。完整 Native/Skin replay 未做，S0-ME-03 和 SEP-03 parity 仍 **NOT TESTED**，S0 继续 IN PROGRESS。
+- 后续边界：规范 Clear 的 edit.js 会传递实例 key；旧 openEvent fallback 只传 eventSeq/revision，本轮未覆盖，见 S0-ME-03 行和独立 Issue 报告。
 - 设备探测原始日志 SHA-256 8CA75F86FF950EFB778C629F9BA89CC10441371749092D846FB3E8781D4F7300；Clear package verify 日志 SHA-256 6865600F770048037ECDD6880B6E12D2354C9D1B854237D5C210B06EBE0A5C61。失败尝试及其分类见独立 Issue 报告。
 - 实现与独立报告/矩阵 follow-up 已提交：f9c45febcb50e42606c0b84ace1247405ae6f75b（fix(分离): 接通 Clear Memo 正式编辑）。
 

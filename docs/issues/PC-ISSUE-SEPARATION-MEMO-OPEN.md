@@ -60,6 +60,7 @@ Host Bridge 不向皮肤公开内部 occurrenceKey 状态字段。正式编辑�
 ## 未解决边界与阶段状态
 
 - 尚无 Android WebView 内 Clear Memo row → WebMessagePort → Android Host → 正式编辑器的端到端运行证据；没有实体设备/OEM 验收。
+- 规范 Clear 路径由 edit.js 接管并向 editor.open 传入 originalOccurrenceKey；app.js 保留的旧 openEvent fallback 只发送 eventSeq/revision。该 fallback 未在本轮触发或验证，不能据当前结果声称无 edit.js 时重复实例槽位仍保留；需要单独验证/补齐。
 - 没有完成冻结 Native 与 Clear 的双版本完整回放；因此 S0-ME-03 的 Android runtime parity 和父级 SEP-03 保持 **NOT TESTED**。
 - S0 全面调查仍未结束：Memo 分页/250 条截断、stale revision/retry/restart 全链路、其他 Memo 操作、其他 61 个重建项、完整双轨等价回放尚未闭环。不能以本 Issue 关闭 S0 或宣布 Skin separation GO。
 - 本次没有修改 Core 业务语义、事件数据、权限或 Native fallback；没有做 factory skin cutover。
