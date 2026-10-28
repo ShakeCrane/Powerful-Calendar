@@ -186,6 +186,62 @@ class SkinPackageManagerTest {
         }
     }
 
+    @Test fun v3UnknownManifestMetadataIsAcceptedAndDoesNotGrantHostAccess() {
+        val factoryBytes = context.assets.open("powercal-clear-default.pcskin")
+            .use { it.readBytes() }
+        val entries = linkedMapOf<String, ByteArray>()
+        ZipInputStream(factoryBytes.inputStream()).use { zip ->
+            while (true) {
+                val entry = zip.nextEntry ?: break
+                entries[entry.name] = zip.readBytes()
+                zip.closeEntry()
+            }
+        }
+
+        val manifest = JSONObject(String(entries.getValue("manifest.json"), Charsets.UTF_8))
+            .put("id", "opaque-" + UUID.randomUUID().toString().take(20))
+            .put("name", "Opaque Metadata Test")
+            .put("capabilities", org.json.JSONArray())
+            .put("x-vendor-metadata", JSONObject()
+                .put("publisher", "fixture")
+                .put("custom", JSONObject().put("labels",
+                    org.json.JSONArray().put("preserve").put("only")))
+                .put("claims", org.json.JSONArray().put("host.action")))
+        entries["manifest.json"] = manifest.toString().toByteArray(Charsets.UTF_8)
+
+        val id = manifest.getString("id")
+        val packageBytes = archive(*entries.map { it.key to it.value }.toTypedArray())
+        val unsupportedManifest = JSONObject(manifest.toString())
+            .put("capabilities", org.json.JSONArray().put("host.delete"))
+        val unsupportedEntries = LinkedHashMap(entries).apply {
+            put("manifest.json", unsupportedManifest.toString().toByteArray(Charsets.UTF_8))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            manager.decode(archive(*unsupportedEntries.map { it.key to it.value }.toTypedArray()), false)
+        }
+
+        val source = File.createTempFile("powercal-opaque-metadata-", ".pcskin", context.cacheDir)
+        val database = context.getDatabasePath("powercal-v2.db")
+        val databaseLengthBefore = if (database.isFile) database.length() else -1L
+        try {
+            source.writeBytes(packageBytes)
+            assertEquals(id, manager.install(Uri.fromFile(source)).id)
+            val installedBytes = File(context.filesDir, "skin-packs/$id.pcskin").readBytes()
+            assertArrayEquals(packageBytes, installedBytes)
+
+            manager.select(id)
+            val web = requireNotNull(PowerCalSkinRegistry.active.web)
+            assertTrue(web.capabilities.isEmpty())
+            assertFalse(WebSkinCapabilityPolicy.mayRead(web))
+            assertFalse(WebSkinCapabilityPolicy.mayAct(web))
+            assertEquals(databaseLengthBefore, if (database.isFile) database.length() else -1L)
+        } finally {
+            manager.select("powercal-default")
+            runCatching { manager.delete(id) }
+            source.delete()
+        }
+    }
+
     @Test fun webBridgeCapabilitiesDependOnDeclaredPermissionsNotSkinIdentity() {
         val html = mapOf("web/index.html" to "<main/>".toByteArray())
         val noPermissions = WebSkinBundle("web/index.html", html, emptySet(), true)

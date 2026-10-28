@@ -58,6 +58,39 @@ class PreviewParityTest(unittest.TestCase):
         for name, raw in exported_files.items():
             self.assertEqual(base64.b64decode(obj["files"][name]), raw, name)
 
+    def test_import_preview_export_reimport_preserves_opaque_manifest_metadata(self):
+        template = json.loads(self.get("/api/template-v3"))
+        metadata = {"publisher": "fixture", "custom": {"labels": ["preserve", "only"]},
+                    "claims": ["host.action"]}
+        template["manifest"]["x-vendor-metadata"] = metadata
+        source_files = {path: base64.b64decode(data)
+                        for path, data in template["files"].items()}
+        source_package = v3.build_files(template["manifest"], source_files)
+        import_request = Request(self.base + "/api/import-v3", source_package,
+                                 {"Content-Type": "application/octet-stream"}, method="POST")
+        with urlopen(import_request) as response:
+            imported = json.loads(response.read())
+        self.assertEqual(metadata, imported["manifest"]["x-vendor-metadata"])
+
+        edited = {"manifest": imported["manifest"], "files": imported["files"]}
+        css = base64.b64decode(edited["files"]["web/style.css"]) + b"\n/* retained edit */\n"
+        edited["files"]["web/style.css"] = base64.b64encode(css).decode()
+        preview_url = json.loads(self.post("/api/preview-v3", edited))["url"]
+        self.assertEqual(css, self.get(preview_url.replace("web/index.html", "web/style.css")))
+
+        exported = self.post("/api/export-v3", edited)
+        exported_manifest, exported_files = v3.unpack(exported)
+        self.assertEqual(metadata, exported_manifest["x-vendor-metadata"])
+        self.assertEqual(css, exported_files["web/style.css"])
+        reimport_request = Request(self.base + "/api/import-v3", exported,
+                                   {"Content-Type": "application/octet-stream"}, method="POST")
+        with urlopen(reimport_request) as response:
+            reimported = json.loads(response.read())
+        self.assertEqual(metadata, reimported["manifest"]["x-vendor-metadata"])
+        self.assertEqual(exported_files,
+                         {path: base64.b64decode(data)
+                          for path, data in reimported["files"].items()})
+
     def test_block_traversal_and_missing_token(self):
         obj = json.loads(self.get("/api/template-v3"))
         endpoint = json.loads(self.post("/api/preview-v3", obj))["url"]

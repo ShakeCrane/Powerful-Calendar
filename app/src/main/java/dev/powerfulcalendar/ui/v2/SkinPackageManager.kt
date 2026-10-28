@@ -258,6 +258,8 @@ class SkinPackageManager(private val context: Context) {
         require("<iframe" !in html && "<object" !in html) { "Embedded frames/objects are forbidden" }
         val capsJson = json.optJSONArray("capabilities") ?: org.json.JSONArray()
         val capabilities = (0 until capsJson.length()).map { capsJson.getString(it) }.toSet()
+        // Unknown top-level v3 fields remain opaque package metadata. Only this
+        // closed capability list can affect Host access; install retains the ZIP bytes.
         // host.edit is retained as inert metadata so existing v3 packages round-trip.
         require(capabilities.all { it in setOf("host.read", "host.action", "host.edit") }) {
             "Unsupported Web skin capability"

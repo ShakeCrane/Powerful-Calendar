@@ -122,6 +122,47 @@ class ProjectOpsV3Test(unittest.TestCase):
         }])
         self.assertEqual(edited_manifest["capabilities"], [])
 
+    def test_cli_import_edit_export_reimport_preserves_opaque_manifest_metadata(self):
+        metadata = {"publisher": "fixture", "custom": {"labels": ["preserve", "only"]},
+                    "claims": ["host.action"]}
+        source_manifest = dict(self.manifest)
+        source_manifest["x-vendor-metadata"] = metadata
+        source = build_files(source_manifest, self.files)
+
+        with isolated_temp_dir() as temp:
+            root = Path(temp)
+            source_path = root / "input.pcskin"
+            source_path.write_bytes(source)
+            inspected = subprocess.run(
+                [sys.executable, str(STUDIO / "skin_studio.py"), "inspect-v3", str(source_path)],
+                text=True, encoding="utf-8", capture_output=True, check=False)
+            self.assertEqual(inspected.returncode, 0, inspected.stderr)
+            self.assertEqual(json.loads(inspected.stdout)["manifest"]["x-vendor-metadata"], metadata)
+
+            manifest_sha = json.loads(inspected.stdout)["manifestSha256"]
+            operations_path = root / "operations.json"
+            output_path = root / "edited.pcskin"
+            operations_path.write_text(json.dumps({"operations": [{
+                "op": "manifest-patch", "expectedSha256": manifest_sha,
+                "patch": [{"op": "replace", "path": "/name", "value": "Edited Skin"}],
+            }]}), encoding="utf-8")
+            edited = subprocess.run(
+                [sys.executable, str(STUDIO / "skin_studio.py"), "edit-v3",
+                 "--file", str(source_path), "--operations", str(operations_path),
+                 "--out", str(output_path)],
+                text=True, encoding="utf-8", capture_output=True, check=False)
+            self.assertEqual(edited.returncode, 0, edited.stderr)
+            validated = subprocess.run(
+                [sys.executable, str(STUDIO / "skin_studio.py"), "validate", str(output_path),
+                 "--json"],
+                text=True, encoding="utf-8", capture_output=True, check=False)
+            self.assertEqual(validated.returncode, 0, validated.stderr)
+
+            imported_manifest, imported_files = unpack(output_path.read_bytes())
+            self.assertEqual("Edited Skin", imported_manifest["name"])
+            self.assertEqual(metadata, imported_manifest["x-vendor-metadata"])
+            self.assertEqual(self.files, imported_files)
+
     def test_stale_hash_unsafe_path_and_invalid_final_project_reject_whole_batch(self):
         with self.assertRaisesRegex(SkinError, "changed since inspection"):
             edit_package(self.source, [

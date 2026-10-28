@@ -50,8 +50,8 @@ def validate_project(project):
 
 def validate_manifest(manifest, files, verify_hash=True):
     check(type(manifest) is dict, "manifest must be an object")
-    allowed = skin_studio.FIELDS | {"entrypoint", "project", "capabilities", "fullCanvas"}
-    check(set(manifest) <= allowed, "unknown v3 manifest key")
+    # Preserve unknown top-level v3 metadata losslessly. Android ignores these
+    # fields; only the explicitly parsed capabilities field can affect Host access.
     check(manifest.get("format") == "powercal-skin" and manifest.get("schemaVersion") == 3,
           "not a .pcskin schemaVersion 3 package")
     check(type(manifest.get("id")) is str and skin_studio.ID.fullmatch(manifest["id"])

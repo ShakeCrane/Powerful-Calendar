@@ -20,10 +20,13 @@ capabilities, and a SHA-256 digest for every non-manifest entry. The complete ba
 archive; a Compose class name or an external parent is not a base.
 
 Limits: 10 MB compressed, 16 MB inflated, 97 ZIP entries including the manifest, 600 KB per text
-file, 3 MB per binary asset. Duplicate paths, traversal, symlinks, undeclared files, remote HTML
-resources, iframes/objects, unknown capabilities, and incomplete hashes are rejected. Installation
-uses a temporary file, fsync, bounded readback, whole-ZIP hash comparison, revalidation, and atomic
-rename. Failed activation returns to the native skin.
+file, 3 MB per binary asset. Unknown top-level v3 manifest fields are opaque metadata: Skin Studio
+preserves them during import/edit/export, and the current Android host ignores them. They do not
+grant permissions or change runtime behavior. The `capabilities` field remains a closed allowlist;
+unknown capabilities are rejected. Duplicate paths, traversal, symlinks, undeclared files, remote
+HTML resources, iframes/objects, and incomplete hashes are also rejected. Installation uses a
+temporary file, fsync, bounded readback, whole-ZIP hash comparison, revalidation, and atomic rename.
+Failed activation returns to the native skin.
 
 ## Host bridge v1
 

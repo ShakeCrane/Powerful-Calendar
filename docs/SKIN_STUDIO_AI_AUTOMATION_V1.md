@@ -83,6 +83,11 @@ Supported operations:
 | `json-patch` | `path: "project.json"`, current file `expectedSha256`, and a JSON Patch list. Supported ops are `add`, `remove`, `replace`, `move`, `copy`, and `test`; paths use RFC 6901 JSON Pointers. |
 | `manifest-patch` | current `expectedSha256` from `inspect-v3`, and JSON Patch ops. `format`, `schemaVersion`, `entrypoint`, `project`, and `sha256` are managed and cannot be changed. Changing `capabilities` additionally requires `allowCapabilityChange: true`; the package is still subject to Android Host capability enforcement. |
 
+Unknown top-level fields in v3 manifests are preserved as opaque metadata through
+`inspect-v3`, `edit-v3`, build, and re-import. The Android Host ignores those fields;
+only the explicitly validated `capabilities` list can affect access, and that list
+still rejects unsupported values.
+
 Each edit has a SHA precondition to reject stale work. When applying multiple changes
 to one JSON file, combine them in one `json-patch` operation. Filesystem names are
 validated; traversal, absolute paths, backslashes, and `manifest.json` writes are
