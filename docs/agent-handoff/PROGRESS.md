@@ -1,5 +1,13 @@
 # Core freeze progress
 
+## Separation — native fallback for a failed skin editor checkpoint (2026-10-28)
+
+- Root cause: when a skin failed and `prepareSkinChange()` could not checkpoint, Host correctly retained the editor lease/form but still switched to native fallback without exposing the retained session. Added a read-only Host recovery projection and native dialog for formal edits, transient new events and open draft decks; users can inspect the full form and retry the existing safe checkpoint. Success stages and refreshes without formal publication; failure keeps the session and dialog active.
+- Added service snapshot assertions and a Compose recovery-surface test. The full run initially exposed an immediate UI assertion in the existing asynchronous AI Host confirmation test; updated it to wait for the real confirmation surface while advancing the Robolectric main Looper. The exact test passes after the wait.
+- Final full offline gate: **634/634 JVM tests, 88 suites, 0 failures/errors/skips, 59 tasks**; source boundary, Debug APK and lint pass (0 errors / 52 warnings). Final log SHA-256 `3C541168C666D50E91741D7AA97CD93EE7A2BF305354ECA7A5C4C1406AE0ACFF`; first failed full-run diagnostic log SHA-256 `CAFFDA03092BF7F48CEDE016539D730537B238A09F49077E98B852666A2A9C82`. Debug APK SHA-256 `8974331FDF045FD88C41944CCE2869D414D4FC8EAE24F69486E417F3DFF3283A`; size 66,274,089 bytes. Full Issue report and XML/log artifacts: `docs/issues/PC-ISSUE-SEPARATION-SKIN-FAILURE-EDITOR-RECOVERY.md` and `.local/android-test/reports/separation-20261028/skin-failure-fallback-recovery/`.
+- Implementation commit `d10559b65d3e197a20ea7480e579553b24788d86` pushed to `origin/codex/separation-skin-settings`. ADB daemon did not start and no emulator executable exists; no Android WebView, AVD or physical result is claimed. Process death before storage recovery, WebView/skin crashes, malformed/malicious skins and complete Native/Skin replay remain untested; SEP-14 remains **NOT TESTED**.
+- Concurrent `WebSkinManagementInstrumentedTest.kt` remains untouched and unstaged.
+
 ## Separation — failed skin-change checkpoint retry (2026-10-28)
 
 - Failure injection reproduced a formal-editor recovery dead-end: after a draft checkpoint failed once, a later successful checkpoint did not clear `EditSession.lastError`; Host `prepareSkinChange()` consequently refused to close the editor even after data was durable. Successful formal checkpoints now clear a prior error without changing business data, revision, identity or authorization semantics.
