@@ -1126,3 +1126,10 @@ Updated: 2026-10-24
 - 完整离线门禁 **649/649 JVM、90 suites、0 failures/errors/skips、88/88 tasks**；source boundary、Debug / AndroidTest APK、Lint 通过，Lint 0 errors / 52 warnings。Studio Python **72/72**，Chrome Headless E2E 确认设置动作到达非写入 Host Mock。日志、APK 和 Lint hash 见 `docs/issues/PC-ISSUE-SEPARATION-LEGACY-MIGRATION.md` 与 `.local/android-test/reports/separation-legacy-import-20261028/`。
 - 本机 ADB server 无法启动，本 Issue 未运行 Android WebView、AVD、真机或真实 SAF/Provider；设备路径保持 NOT TESTED。完整 SEP-11 仍 **NOT TESTED**，其他设置、凭据、真实系统能力与 Native/Skin 回放缺口仍开放。
 - 实现提交 `d09a2492aff770d3776ff5a529e11253a1763815`（`fix(分离): 支持经宿主确认的旧版数据迁移`）已推送至 `origin/codex/separation-legacy-import`。独立 Issue 与矩阵/进度文档另行提交推送。
+## Separation — SEP-11 Skin Host 备份 URI 回调往返（2026-10-28）
+
+- 前置备份入口测试只观察 `ACTION_CREATE_DOCUMENT` / `ACTION_OPEN_DOCUMENT` Intent，没有派发 URI；它未证明文件写入、回读校验或 Host 恢复流程。此 follow-up 只修改测试，不改生产代码、备份格式或 Studio。
+- 隔离 Robolectric `ShadowContentResolver` + `ActivityResultRegistry` 回归验证：导出取消零字节/零 Store 变化；成功导出后 envelope 和完整 canonical payload 与来源 Store 相等，并出现 Host SHA-256 回读成功消息；恢复取消保持空库；损坏 SHA-256 文件被拒且零写入；恢复有效备份成功并保持事件字段、identity、commit 计数；对非空目标重放被拒且原状态不变。`WebSkinBackupActionIntegrationTest` 3/3 PASS。
+- 完整离线门禁 **650/650 JVM、90 suites、0 failures/errors/skips、88/88 tasks**；source boundary、Debug/AndroidTest APK 通过；Lint 0 errors / 52 warnings。定向日志 SHA-256 `57CFA040DBA4C3508D8C05278A0701CF6A4783BBDFDEF23D7E71E1B489F704C9`；完整日志 SHA-256 `2CEFEC7EB959706547266138737EA2388B39016D6F9C8CA0AA78EDCABBA53168`。APK、JUnit、Lint hash 及步骤见 `docs/issues/PC-ISSUE-SEPARATION-BACKUP-ROUNDTRIP.md`；证据位于 `.local/android-test/reports/separation-backup-roundtrip-20261028/`。
+- 测试提交 `b2f81a0b83379b5fd68ad79aa8098488af9b3a05` 已推送至 `origin/codex/separation-legacy-import`。Studio 未修改，既有 Studio Python/Chrome 结果作为 PREVIOUS PASS 而非本轮重测。
+- 本轮没有运行 Android WebView、AVD、真实 DocumentsUI/Provider 或实体设备测试。Robolectric URI 回调不替代系统 SAF。SEP-11 仍 **NOT TESTED**，其它设置、凭据、权限、ICS、真实文件提供器和 Native/Skin 全量回放继续开放。
