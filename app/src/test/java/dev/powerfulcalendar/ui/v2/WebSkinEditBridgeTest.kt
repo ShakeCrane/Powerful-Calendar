@@ -599,6 +599,168 @@ class WebSkinEditBridgeTest {
             service.snapshot().getJSONObject("deck").getJSONObject("form").getString("title"))
     }
 
+    @Test fun failedSkinChangeCheckpointRetainsDraftFormAndCanRetry() = runBlocking {
+        val draft = store.newDraft(DraftForm(kind=TemporalKind.MEMO,title="持久化原文"))
+        assertEquals("opened", service.execute(WebEditCommand.OpenDeck(
+            request(), draft.draftId)).getString("status"))
+        val version = service.snapshot().getJSONObject("deck").getLong("version")
+        service.execute(WebEditCommand.PatchDeck(
+            request(), draft.draftId, version, "title", "皮肤切换前的新输入"))
+        assertEquals("皮肤切换前的新输入", service.snapshot().getJSONObject("deck")
+            .getJSONObject("form").getString("title"))
+
+        store.writableDatabase.execSQL(
+            """CREATE TRIGGER fail_skin_switch_deck_checkpoint
+               BEFORE UPDATE OF payload ON drafts WHEN OLD.draft_id=${draft.draftId}
+               BEGIN SELECT RAISE(ABORT,'injected skin-switch deck checkpoint failure'); END"""
+        )
+        val versionBeforeFailure = store.draft(draft.draftId)!!.draftVersion
+        val commitsBeforeFailure = store.commitCount()
+        assertFalse(service.prepareSkinChange())
+        assertTrue("failed checkpoint must keep the host editor session live", service.hasLiveEditor())
+        assertEquals("皮肤切换前的新输入", service.snapshot().getJSONObject("deck")
+            .getJSONObject("form").getString("title"))
+        assertEquals("持久化原文", store.draft(draft.draftId)!!.form.title)
+        assertEquals(versionBeforeFailure, store.draft(draft.draftId)!!.draftVersion)
+        assertEquals(commitsBeforeFailure, store.commitCount())
+
+        store.writableDatabase.execSQL("DROP TRIGGER fail_skin_switch_deck_checkpoint")
+        assertTrue("checkpoint should succeed after the storage failure is removed",
+            service.prepareSkinChange())
+        assertFalse(service.hasLiveEditor())
+        val recovered = store.draft(draft.draftId)!!
+        assertEquals("皮肤切换前的新输入", recovered.form.title)
+        assertEquals(versionBeforeFailure + 1, recovered.draftVersion)
+        assertEquals(commitsBeforeFailure, store.commitCount())
+
+        assertTrue("repeated lifecycle callback must be harmless", service.prepareSkinChange())
+        assertEquals("皮肤切换前的新输入", store.draft(draft.draftId)!!.form.title)
+        assertEquals(versionBeforeFailure + 1, store.draft(draft.draftId)!!.draftVersion)
+    }
+
+    @Test fun failedNewEventCheckpointKeepsTransientEditorUntilItCanBePersisted() = runBlocking {
+        val opened = service.execute(WebEditCommand.CreateDeck(request(), TemporalKind.MEMO))
+        val clientDraftId = opened.getString("detail").toLong()
+        val version = service.snapshot().getJSONObject("deck").getLong("version")
+        service.execute(WebEditCommand.PatchDeck(
+            request(), clientDraftId, version, "title", "尚未落库的新事项"))
+
+        val draftsBefore = store.draftCount()
+        val identitiesBefore = store.identityCount()
+        val nextSequenceBefore = store.nextSequencePreview()
+        val commitsBefore = store.commitCount()
+        store.writableDatabase.execSQL(
+            """CREATE TRIGGER fail_skin_switch_new_event_checkpoint
+               BEFORE INSERT ON drafts
+               BEGIN SELECT RAISE(ABORT,'injected skin-switch new-event checkpoint failure'); END"""
+        )
+
+        assertFalse(service.prepareSkinChange())
+        assertTrue("failed checkpoint must retain the transient host session", service.hasLiveEditor())
+        assertEquals("尚未落库的新事项", service.snapshot().getJSONObject("deck")
+            .getJSONObject("form").getString("title"))
+        assertEquals(draftsBefore, store.draftCount())
+        assertEquals("allocated sequence is permanently retired after failed first-draft insert",
+            identitiesBefore + 1, store.identityCount())
+        assertEquals(nextSequenceBefore + 1, store.nextSequencePreview())
+        assertEquals(commitsBefore, store.commitCount())
+        store.readableDatabase.rawQuery(
+            "SELECT retired_ms FROM identities WHERE event_seq=?",
+            arrayOf(nextSequenceBefore.toString())
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertFalse(cursor.isNull(0))
+        }
+
+        store.writableDatabase.execSQL("DROP TRIGGER fail_skin_switch_new_event_checkpoint")
+        assertTrue("transient form should checkpoint after storage recovers",
+            service.prepareSkinChange())
+        assertFalse(service.hasLiveEditor())
+        val recovered = store.pendingDrafts().single()
+        assertEquals("尚未落库的新事项", recovered.form.title)
+        assertEquals(draftsBefore + 1, store.draftCount())
+        assertEquals(identitiesBefore + 2, store.identityCount())
+        assertEquals(nextSequenceBefore + 2, store.nextSequencePreview())
+        assertEquals(nextSequenceBefore + 1, recovered.eventSeq)
+        assertEquals(commitsBefore, store.commitCount())
+
+        assertTrue("repeated close/checkpoint callback must not duplicate the draft",
+            service.prepareSkinChange())
+        assertEquals(draftsBefore + 1, store.draftCount())
+        assertEquals(identitiesBefore + 2, store.identityCount())
+        assertEquals(nextSequenceBefore + 2, store.nextSequencePreview())
+        assertEquals(commitsBefore, store.commitCount())
+    }
+
+    @Test fun failedSkinChangeCheckpointRetainsFormalEditorAndRetriesAsDraft() = runBlocking {
+        val originalDraft = store.newDraft(DraftForm(kind=TemporalKind.MEMO,title="正式事项原文"))
+        assertTrue(store.commit(originalDraft.draftId) is PowerStore.CommitOutcome.Committed)
+        val original = requireNotNull(store.get(originalDraft.eventSeq))
+        assertEquals("opened", service.execute(WebEditCommand.OpenEvent(
+            request(), original.eventSeq, original.revision)).getString("status"))
+        val sessionId = service.snapshot().getJSONObject("editor").getString("sessionId")
+        assertEquals("edited", service.execute(WebEditCommand.PatchEvent(
+            request(), sessionId, "title", "切换前的正式编辑输入")).getString("status"))
+        val commitsBefore = store.commitCount()
+
+        store.writableDatabase.execSQL(
+            """CREATE TRIGGER fail_skin_switch_formal_checkpoint
+               BEFORE INSERT ON drafts
+               BEGIN SELECT RAISE(ABORT,'injected skin-switch formal checkpoint failure'); END"""
+        )
+        assertFalse(service.prepareSkinChange())
+        assertTrue("failed checkpoint must keep the formal editor lease live", service.hasLiveEditor())
+        assertTrue(service.snapshot().getJSONObject("editor").getBoolean("open"))
+        assertEquals("切换前的正式编辑输入", service.snapshot().getJSONObject("editor")
+            .getJSONObject("form").getString("title"))
+        assertEquals(original, store.get(original.eventSeq))
+        assertTrue(store.pendingDraftsFor(original.eventSeq).isEmpty())
+        assertEquals(commitsBefore, store.commitCount())
+
+        store.writableDatabase.execSQL("DROP TRIGGER fail_skin_switch_formal_checkpoint")
+        assertTrue("formal input should checkpoint after storage recovers",
+            service.prepareSkinChange())
+        assertFalse(service.hasLiveEditor())
+        assertEquals("formal edits are staged, never published by a skin switch",
+            original, store.get(original.eventSeq))
+        val checkpoint = store.pendingDraftsFor(original.eventSeq).single()
+        assertEquals(DraftOperation.REPLACE, checkpoint.operation)
+        assertEquals("切换前的正式编辑输入", checkpoint.form.title)
+        assertEquals(original.revision, checkpoint.baseRevision)
+        assertEquals(commitsBefore, store.commitCount())
+
+        assertTrue(service.prepareSkinChange())
+        assertEquals(1, store.pendingDraftsFor(original.eventSeq).size)
+        assertEquals(commitsBefore, store.commitCount())
+    }
+
+    @Test fun skinChangeCancelsPendingFormalWriteReviewAfterCheckpoint() = runBlocking {
+        val originalDraft = store.newDraft(DraftForm(kind=TemporalKind.MEMO,title="待确认事项"))
+        assertTrue(store.commit(originalDraft.draftId) is PowerStore.CommitOutcome.Committed)
+        val original = requireNotNull(store.get(originalDraft.eventSeq))
+        assertEquals("opened", service.execute(WebEditCommand.OpenEvent(
+            request(), original.eventSeq, original.revision)).getString("status"))
+        val sessionId = service.snapshot().getJSONObject("editor").getString("sessionId")
+        assertEquals("edited", service.execute(WebEditCommand.PatchEvent(
+            request(), sessionId, "title", "待 Host 确认的内容")).getString("status"))
+        val save = WebEditCommand.SaveEvent(request(), sessionId)
+        assertEquals("confirmation_required", service.execute(save).getString("status"))
+        val review = requireNotNull(service.pendingWriteReview)
+        val commitsBefore = store.commitCount()
+
+        assertTrue(service.prepareSkinChange())
+        assertFalse(service.hasLiveEditor())
+        assertNull(service.pendingWriteReview)
+        assertEquals("cancelled", service.execute(save).getString("status"))
+        assertEquals("stale", service.resolveFormalWriteReview(review.token, approved=true)
+            .getString("status"))
+        assertEquals(original, store.get(original.eventSeq))
+        val recoveryDraft = store.pendingDraftsFor(original.eventSeq).single()
+        assertEquals("待 Host 确认的内容", recoveryDraft.form.title)
+        assertEquals(DraftOperation.REPLACE, recoveryDraft.operation)
+        assertEquals(commitsBefore, store.commitCount())
+    }
+
     @Test fun secondDeckOpenDoesNotOverwriteUnsavedForm()= runBlocking {
         val created=service.execute(WebEditCommand.CreateDeck(request(),TemporalKind.MEMO))
         val id=created.getString("detail").toLong()

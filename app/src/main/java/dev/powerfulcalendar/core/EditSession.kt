@@ -79,7 +79,11 @@ class EditSession private constructor(
         val checkpointForm = if (meaningfulDiff) form else baseline
         store.checkpointFormalEdit(
             eventSeq, expectedRevision, baseline, checkpointForm, lease.token
-        )
+        ).also {
+            // A successful retry is the recovery boundary: do not keep a prior storage error
+            // latched, or the Host will refuse to end this editor even though it is durable.
+            lastError = null
+        }
     } catch (error: Exception) {
         lastError = error.message ?: error.javaClass.simpleName
         null
