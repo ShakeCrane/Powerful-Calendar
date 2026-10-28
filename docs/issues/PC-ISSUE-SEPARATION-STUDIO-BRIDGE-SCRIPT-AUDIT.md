@@ -49,4 +49,4 @@
 
 本 Issue 只关闭 Skin Studio 审计工具漏扫 JS 调用点这一窄问题。SEP-15 / S5 的完整 Studio 作者能力、Android WebView/设备验证及 Native/Skin 全量功能等价仍 **NOT TESTED**；不据此更新为 PASS。
 
-实现与报告提交：待提交后补录。
+实现提交 `2f81465ad7418f117b4538df8d593aa3010d89ce`（`feat(分离): 扩展 Bridge JavaScript 静态审计`）已推送至 `origin/codex/separation-legacy-import`。本报告与进度记录随后单独提交。
