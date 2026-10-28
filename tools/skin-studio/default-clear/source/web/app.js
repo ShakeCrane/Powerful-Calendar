@@ -7,6 +7,7 @@ function applyTheme(){document.documentElement.classList.toggle("dark",darkMedia
 applyTheme();
 darkMedia.addEventListener("change",applyTheme);
 let port=null, state={}, currentPage="TIMELINE", memoFilter="open",localOptions=false;
+let timelineScrollInitialized=false;
 let aiReviewSelectionId="",aiReviewSelected=new Set();
 let attachmentRequestPending=false;
 let timelineCreateDialog=null;
@@ -98,6 +99,8 @@ function onAction(button){
   else if(name==="loadMoreMemo")send(name);
   else if(name==="invokeOption")send(name,{id:button.dataset.optionId});
   else if(name==="panTimeline")send(name,{deltaMinutes:Number(button.dataset.deltaMinutes)});
+  else if(name==="zoomTimeline")send(name,{direction:button.dataset.direction});
+  else if(name==="resetTimelineZoom")send(name);
   else if(name==="jumpTimelineDay")send(name,{date:button.dataset.date});
   else if(name==="browseMonth")send(name,{deltaMonths:Number(button.dataset.deltaMonths)});
   else {if(["timeline","memo","month","ai"].includes(name))localOptions=false;send(name)}
@@ -162,37 +165,123 @@ function renderPage(){
 function renderTimeline(){
   const t=state.timeline;
   const labels=$("timeLabels"),left=$("timelineLeft"),right=$("timelineRight"),now=$("timeNow");
-  for(const el of [labels,left,right,now])el.replaceChildren();
+  const leftLanes=left.querySelector(".timelineLanes"),rightLanes=right.querySelector(".timelineLanes");
+  const dates=$("dateDeadlineBar");
+  const previousLeftScroll=left.scrollLeft,previousRightScroll=right.scrollLeft;
+  const previousLeftOverflow=left.scrollWidth>left.clientWidth+1;
+  const previousRightOverflow=right.scrollWidth>right.clientWidth+1;
+  for(const el of [labels,leftLanes,rightLanes,now,dates])el.replaceChildren();
+  dates.hidden=true;
   if(!t){$("timeRangeLabel").textContent="尚无宿主数据";return}
   $("timeRangeLabel").textContent=t.hours+" 小时";
-  const from=t.visibleStartMillis,to=t.visibleEndMillis,span=Math.max(1,to-from);
-  const zone=t.zoneId,axis=$("timelineSurface");
+  const from=Number(t.visibleStartMillis),to=Number(t.visibleEndMillis),span=Math.max(1,to-from);
+  const zone=t.zoneId,axis=$("timelineSurface"),height=Math.max(1,axis.clientHeight);
+  if(!Number.isFinite(from)||!Number.isFinite(to)||to<=from)return;
   const position=ms=>100*(ms-from)/span;
+  const kindLabel={ACTIVITY:"活动",ALARM:"提醒",DEADLINE:"截止事项"};
+  const items=Array.isArray(t.items)?t.items:[];
+  const isDateOnlyDeadline=item=>String(item.kind).toUpperCase()==="DEADLINE"&&
+    typeof item.deadlineDate==="string"&&/^\d{4}-\d{2}-\d{2}$/.test(item.deadlineDate);
+  const dateItems=items.filter(isDateOnlyDeadline);
+  const makeEventButton=(item,kind,ariaLabel)=>{
+    const button=node("button","tEvent "+kind);
+    button.type="button";button.dataset.action="openEvent";
+    button.dataset.eventSeq=String(item.eventSeq);button.dataset.revision=String(item.revision);
+    button.dataset.kind=kind;button.dataset.eventTitle=String(item.title||"");
+    if(typeof item.occurrenceKey==="string")button.dataset.occurrenceKey=item.occurrenceKey;
+    if(typeof item.originalOccurrenceKey==="string")
+      button.dataset.originalOccurrenceKey=item.originalOccurrenceKey;
+    button.setAttribute("aria-label",ariaLabel);button.title=ariaLabel;
+    return button;
+  };
+  if(dateItems.length){
+    dates.hidden=false;
+    for(const item of dateItems){
+      const title=String(item.title||"截止事项");
+      const label=`截止事项：${title}，${item.deadlineDate}，无具体时刻`;
+      const button=makeEventButton(item,"DEADLINE",label);
+      button.className="dateDeadline";button.dataset.temporalGeometry="date";
+      button.dataset.deadlineDate=item.deadlineDate;
+      button.append(node("span","dateDeadlineTitle",title),
+        node("span","dateDeadlineDate",`${item.deadlineDate} · 截止，无具体时刻`));
+      dates.append(button);
+    }
+  }
   for(let i=0;i<=Math.ceil(t.hours);i++){
     const ms=from+i*3600000;if(ms>to)break;
     const top=position(ms)+"%";
     const grid=node("div","timeGrid"),tick=node("div","timeTick",relativeTime(ms,zone));
     grid.style.top=top;tick.style.top=top;labels.append(grid,tick);
   }
-  for(const item of t.items||[]){
-    const ms=Number(item.startMillis);
-    if(!Number.isFinite(ms))continue;
+  const timedItems=items.filter(item=>kindLabel[String(item.kind).toUpperCase()]&&
+    !isDateOnlyDeadline(item));
+  const laneWidth=84,laneGap=4;
+  const laneCountFor=sideItems=>Math.max(1,...sideItems.map(item=>Math.max(0,Math.floor(Number(item.lane)||0))+1));
+  for(const [container,lanes,sideName] of [
+    [left,leftLanes,"LEFT"],[right,rightLanes,"RIGHT"]
+  ]){
+    const sideItems=timedItems.filter(item=>
+      String(item.side||(String(item.kind).toUpperCase()==="ACTIVITY"?"RIGHT":"LEFT")).toUpperCase()===sideName);
+    const laneCount=laneCountFor(sideItems);
+    const width=Math.max(container.clientWidth,laneCount*(laneWidth+laneGap)-laneGap);
+    lanes.style.width=width+"px";lanes.dataset.laneCount=String(laneCount);
+  }
+  for(const item of timedItems){
     const kind=String(item.kind||"ACTIVITY").toUpperCase();
-    // Respect the host's authoritative side; keep a safe fallback for old projections.
-    const side=String(item.side || (kind==="ACTIVITY"?"RIGHT":"LEFT")).toUpperCase()==="LEFT"?left:right;
-    const start=Math.max(0,Math.min(100,position(ms)));
-    const stop=item.endMillis==null?start+4:Math.min(100,position(Number(item.endMillis)));
-    const height=Math.min(100-start,Math.max(4,stop-start));
-    const card=node("button","tEvent "+kind,item.title);
-    card.type="button";card.dataset.action="openEvent";
-    card.dataset.eventSeq=item.eventSeq;card.dataset.revision=item.revision;
-    if(item.originalOccurrenceKey)card.dataset.originalOccurrenceKey=item.originalOccurrenceKey;
-    card.style.top=start+"%";card.style.height=height+"%";
-    const lane=Number(item.lane)||0;
-    card.style.width=Math.min(84,Math.max(42,84-4*lane))+"%";
-    if(side===right)card.style.left=lane*14+"%";
-    else card.style.right=lane*14+"%";
-    side.append(card);
+    if(!kindLabel[kind])continue;
+    // Respect the Host side and lane. A date-only Deadline was already moved to its date strip.
+    const sideName=String(item.side||(kind==="ACTIVITY"?"RIGHT":"LEFT")).toUpperCase();
+    const lanes=sideName==="LEFT"?leftLanes:rightLanes;
+    const startMillis=Number(item.startMillis),lane=Math.max(0,Math.floor(Number(item.lane)||0));
+    if(!Number.isFinite(startMillis))continue;
+    const isActivity=kind==="ACTIVITY";
+    let actualStart,actualEnd,anchorY;
+    if(isActivity){
+      const endMillis=Number(item.endMillis);
+      if(!Number.isFinite(endMillis)||endMillis<=startMillis||startMillis>=to||endMillis<=from)continue;
+      actualStart=Math.max(from,startMillis);actualEnd=Math.min(to,endMillis);
+    }else{
+      if(startMillis<from||startMillis>=to)continue;
+      actualStart=startMillis;actualEnd=startMillis;anchorY=(startMillis-from)/span*height;
+    }
+    const rawEnd=isActivity?Number(item.endMillis):startMillis;
+    const timeText=relativeTime(startMillis,zone);
+    const ariaLabel=isActivity
+      ?`${kindLabel[kind]}：${item.title}，${timeText} 至 ${relativeTime(rawEnd,zone)}`
+      :`${kindLabel[kind]}：${timeText}，${item.title}`;
+    const button=makeEventButton(item,kind,ariaLabel);
+    button.dataset.temporalGeometry=isActivity?"interval":"point";
+    button.dataset.startMillis=String(startMillis);button.dataset.endMillis=String(rawEnd);
+    button.dataset.visibleStartMillis=String(from);button.dataset.visibleEndMillis=String(to);
+    button.dataset.lane=String(lane);button.dataset.side=sideName;
+    button.style.width=laneWidth+"px";
+    if(sideName==="LEFT")button.style.right=(lane*(laneWidth+laneGap))+"px";
+    else button.style.left=(lane*(laneWidth+laneGap))+"px";
+    if(isActivity){
+      const visualTop=(actualStart-from)/span*height;
+      const visualBottom=(actualEnd-from)/span*height;
+      const visualHeight=Math.max(0,visualBottom-visualTop);
+      const hitHeight=Math.min(height,Math.max(44,visualHeight));
+      const hitTop=Math.max(0,Math.min(height-hitHeight,
+        (visualTop+visualBottom)/2-hitHeight/2));
+      button.style.top=hitTop+"px";button.style.height=hitHeight+"px";
+      const visual=node("div","tEventVisual ACTIVITY",item.title);
+      visual.setAttribute("aria-hidden","true");
+      visual.style.top=(visualTop-hitTop)+"px";visual.style.height=visualHeight+"px";
+      button.append(visual);
+    }else{
+      const hitHeight=Math.min(height,44);
+      const hitTop=Math.max(0,Math.min(height-hitHeight,anchorY-hitHeight/2));
+      button.style.top=hitTop+"px";button.style.height=hitHeight+"px";
+      const line=node("span","tPointLine "+kind);
+      line.setAttribute("aria-hidden","true");line.dataset.anchorMillis=String(startMillis);
+      line.style.top=(anchorY-hitTop-0.75)+"px";
+      const title=node("span","tPointLabel "+kind,`${timeText} · ${item.title}`);
+      title.setAttribute("aria-hidden","true");
+      title.style.top=(anchorY-hitTop+(kind==="ALARM"?3:-18))+"px";
+      button.append(line,title);
+    }
+    lanes.append(button);
   }
   if(t.nowMillis>=from&&t.nowMillis<to){
     const marker=node("div","now-line");marker.style.top=position(t.nowMillis)+"%";now.append(marker);
@@ -201,6 +290,13 @@ function renderTimeline(){
     const warning=node("p","quiet","可见事件过多，未全部显示");
     warning.style.cssText="position:absolute;bottom:4px;right:4px";now.append(warning);
   }
+  const newLeftOverflow=left.scrollWidth>left.clientWidth+1;
+  const newRightOverflow=right.scrollWidth>right.clientWidth+1;
+  left.scrollLeft=(!timelineScrollInitialized||(!previousLeftOverflow&&newLeftOverflow))
+    ?left.scrollWidth:previousLeftScroll;
+  right.scrollLeft=(!timelineScrollInitialized||(!previousRightOverflow&&newRightOverflow))
+    ?0:previousRightScroll;
+  timelineScrollInitialized=true;
 }
 function renderMonth(){
   const month=state.month||{},t=state.timeline||{};

@@ -41,11 +41,12 @@ fs.mkdirSync(TEST_TEMP_ROOT,{recursive:true});
     }));
     assert.ok(normal.items>=2);assert.equal(normal.options,2);assert.ok(normal.ruler>=8);
     const sides=await frame.evaluate(()=>({
-      deadline:document.querySelector("#timelineLeft .tEvent.DEADLINE")?.textContent,
+      deadline:document.querySelector("#dateDeadlineBar .dateDeadline")?.textContent,
       alarm:document.querySelector("#timelineLeft .tEvent.ALARM")?.textContent,
       activity:document.querySelector("#timelineRight .tEvent.ACTIVITY")?.textContent
     }));
-    assert.ok(sides.deadline,"Deadline must render in left wing");
+    assert.ok(sides.deadline.includes("2026-10-22")&&sides.deadline.includes("无具体时刻"),
+      "Date-only Deadline must render in the independent date strip without a time");
     assert.ok(sides.alarm,"Alarm must render in left wing");
     assert.ok(sides.activity,"Activity must render in right wing");
     assert.ok(["#2A62E0","#5A8DFF"].includes(normal.css),
@@ -54,9 +55,176 @@ fs.mkdirSync(TEST_TEMP_ROOT,{recursive:true});
       "新建事件");
     console.log("Initial WYSIWYG preview",normal);
 
+    await page.click("#interactMode");
+    const zoomLabels=await frame.$$eval('.timeline-view-controls button',buttons=>
+      buttons.map(button=>button.getAttribute("aria-label")));
+    assert.deepEqual(zoomLabels,["缩小时间轴，显示更多小时","放大时间轴，显示更少小时",
+      "重置时间轴缩放为24小时"]);
+    await frame.click('[data-action="zoomTimeline"][data-direction="in"]');
+    await frame.waitForFunction(()=>document.querySelector("#timeRangeLabel").textContent==="16 小时");
+    await page.waitForFunction(()=>document.querySelector("#bridgeLog").textContent
+      .includes("zoomTimeline · in · 16 小时"));
+    await frame.click('[data-action="zoomTimeline"][data-direction="out"]');
+    await frame.waitForFunction(()=>document.querySelector("#timeRangeLabel").textContent==="24 小时");
+    await page.waitForFunction(()=>document.querySelector("#bridgeLog").textContent
+      .includes("zoomTimeline · out · 24 小时"));
+    const validZoom=await frame.$eval('[data-action="zoomTimeline"][data-direction="in"]',button=>{
+      button.dataset.direction="sideways";button.click();button.dataset.direction="in";
+      return button.getAttribute("aria-label");
+    });
+    assert.ok(validZoom);
+    await page.waitForFunction(()=>document.querySelector("#bridgeLog").textContent
+      .includes("拒绝无效 zoomTimeline payload"));
+    await frame.waitForFunction(()=>document.querySelector("#timeRangeLabel").textContent==="24 小时");
+    for(let i=0;i<20;i++)await frame.click('[data-action="zoomTimeline"][data-direction="in"]');
+    await frame.waitForFunction(()=>document.querySelector("#timeRangeLabel").textContent==="0.25 小时");
+    for(let i=0;i<20;i++)await frame.click('[data-action="zoomTimeline"][data-direction="out"]');
+    await frame.waitForFunction(()=>document.querySelector("#timeRangeLabel").textContent==="48 小时");
+    await frame.click('[data-action="resetTimelineZoom"]');
+    await frame.waitForFunction(()=>document.querySelector("#timeRangeLabel").textContent==="24 小时");
+    await page.waitForFunction(()=>document.querySelector("#bridgeLog").textContent
+      .includes("resetTimelineZoom · 24 小时"));
+    console.log("Studio Mock validates zoom/reset actions, clamps hours, and restores 24h");
+
+    await page.select("#scenario","timeline-geometry");
+    await frame.waitForFunction(()=>document.querySelectorAll("#timelineLeft .tEvent").length>=12&&
+      document.querySelectorAll("#timelineRight .tEvent").length>=12);
+    const geometry=await frame.evaluate(()=>{
+      const surfaceElement=document.querySelector("#timelineSurface");
+      const surface=surfaceElement.getBoundingClientRect();
+      const event=seq=>document.querySelector(`[data-event-seq="${seq}"]`);
+      const rect=element=>{const r=element.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height}};
+      const activity=seq=>{
+        const button=event(seq),visual=button.querySelector(".tEventVisual");
+        return {button:rect(button),visual:rect(visual),start:Number(button.dataset.startMillis),
+          end:Number(button.dataset.endMillis),from:Number(button.dataset.visibleStartMillis),
+          to:Number(button.dataset.visibleEndMillis),surfaceY:surface.y,surfaceHeight:surface.height,
+          surfaceClientHeight:surfaceElement.clientHeight,
+          visualStyleHeight:visual.style.height,title:button.dataset.eventTitle,lane:Number(button.dataset.lane),
+          occurrenceKey:button.dataset.occurrenceKey,aria:button.getAttribute("aria-label")};
+      };
+      const point=seq=>{
+        const button=event(seq),line=button.querySelector(".tPointLine"),r=rect(line);
+        return {line:r,start:Number(button.dataset.startMillis),from:Number(button.dataset.visibleStartMillis),
+          to:Number(button.dataset.visibleEndMillis),surfaceY:surface.y,surfaceHeight:surface.height,
+          aria:button.getAttribute("aria-label"),geometry:button.dataset.temporalGeometry};
+      };
+      const left=document.querySelector("#timelineLeft"),right=document.querySelector("#timelineRight");
+      return {
+        oneMinute:activity(101),normal:activity(103),long:activity(102),alarm:point(201),exactDeadline:point(202),
+        dateDeadline:{text:document.querySelector("#dateDeadlineBar .dateDeadline")?.textContent,
+          aria:document.querySelector("#dateDeadlineBar .dateDeadline")?.getAttribute("aria-label"),
+          date:document.querySelector("#dateDeadlineBar .dateDeadline")?.dataset.deadlineDate,
+          inWing:!!document.querySelector('#timelineLeft [data-event-seq="204"],#timelineRight [data-event-seq="204"]')},
+        left:{scrollWidth:left.scrollWidth,clientWidth:left.clientWidth,scrollLeft:left.scrollLeft,
+          laneCount:Number(left.querySelector(".timelineLanes").dataset.laneCount),
+          laneZero:rect(left.querySelector('.tEvent[data-lane="0"]')),
+          viewport:rect(left)},
+        right:{scrollWidth:right.scrollWidth,clientWidth:right.clientWidth,scrollLeft:right.scrollLeft,
+          laneCount:Number(right.querySelector(".timelineLanes").dataset.laneCount),
+          laneZero:rect(right.querySelector('.tEvent[data-lane="0"]')),
+          viewport:rect(right)},
+        events:[...document.querySelectorAll("#timelineLeft [data-event-seq],#timelineRight [data-event-seq],#dateDeadlineBar [data-event-seq]")]
+          .map(button=>({seq:button.dataset.eventSeq,revision:button.dataset.revision,
+            occurrenceKey:button.dataset.occurrenceKey,originalOccurrenceKey:button.dataset.originalOccurrenceKey,
+            title:button.dataset.eventTitle,aria:button.getAttribute("aria-label"),tabIndex:button.tabIndex,
+            geometry:button.dataset.temporalGeometry}))
+      };
+    });
+    const expectedRect=event=>{
+      const visibleStart=Math.max(event.start,event.from),visibleEnd=Math.min(event.end,event.to);
+      const scale=event.surfaceHeight/(event.to-event.from);
+      return {top:event.surfaceY+(visibleStart-event.from)*scale,
+        height:(visibleEnd-visibleStart)*scale};
+    };
+    for(const event of [geometry.oneMinute,geometry.normal,geometry.long]){
+      const expected=expectedRect(event);
+      assert.ok(Math.abs(event.visual.y-expected.top)<1.1,
+        "Activity top must use its clipped start without a minimum-height block");
+      const heightTolerance=Math.max(0.02,Math.abs(expected.height)*0.005);
+      assert.ok(Math.abs(event.visual.height-expected.height)<heightTolerance,
+        "Activity height must equal the true clipped start/end interval");
+      assert.equal(event.button.width,84,"Lane width remains fixed and readable");
+      assert.ok(event.aria.includes(event.title),
+        "Full Activity title remains in its accessible name");
+      assert.ok(event.occurrenceKey,"Activity occurrence identity remains attached");
+    }
+    assert.equal(geometry.long.visual.height,geometry.long.button.height,
+      "The long interval is clipped to the full visible timeline height");
+    for(const point of [geometry.alarm,geometry.exactDeadline]){
+      const expectedY=point.surfaceY+(point.start-point.from)/(point.to-point.from)*point.surfaceHeight;
+      assert.equal(point.geometry,"point");
+      assert.ok(Math.abs((point.line.y+point.line.height/2)-expectedY)<1.1,
+        "Point marker line must stay at the exact projected instant");
+      assert.ok(point.aria,"Point remains separately accessible and clickable");
+    }
+    assert.ok(geometry.dateDeadline.text.includes("2026-10-22")&&
+      geometry.dateDeadline.text.includes("无具体时刻"));
+    assert.equal(geometry.dateDeadline.date,"2026-10-22");
+    assert.equal(geometry.dateDeadline.inWing,false,"Date Deadline is outside time lanes");
+    assert.equal(geometry.left.laneCount,12,"Date Deadline lane 99 does not inflate left lanes");
+    assert.equal(geometry.right.laneCount,12);
+    assert.ok(geometry.left.scrollWidth>geometry.left.clientWidth&&
+      geometry.right.scrollWidth>geometry.right.clientWidth,"Both wings have independent overflow");
+    assert.ok(geometry.left.scrollLeft>0&&geometry.right.scrollLeft===0,
+      "Initial view anchors the left wing at the center and the right wing at its first lane");
+    assert.ok(Math.abs((geometry.left.laneZero.x+geometry.left.laneZero.width)-
+      (geometry.left.viewport.x+geometry.left.viewport.width))<1.1);
+    assert.ok(Math.abs(geometry.right.laneZero.x-geometry.right.viewport.x)<1.1);
+    const changedScroll=await frame.evaluate(()=>{
+      const left=document.querySelector("#timelineLeft"),right=document.querySelector("#timelineRight");
+      const leftStart=left.scrollLeft;
+      right.scrollLeft=right.scrollWidth;
+      const rightEnd=right.scrollLeft;
+      const leftAfterRight=left.scrollLeft;
+      left.scrollLeft=0;
+      return {leftStart,leftAfterRight,leftAfterOwn:left.scrollLeft,
+        rightEnd,rightAfterLeft:right.scrollLeft};
+    });
+    assert.ok(changedScroll.leftStart>0&&changedScroll.rightEnd>0);
+    assert.equal(changedScroll.leftAfterRight,changedScroll.leftStart,
+      "Right wing scrolling must not move the left wing");
+    assert.equal(changedScroll.leftAfterOwn,0);
+    assert.equal(changedScroll.rightAfterLeft,changedScroll.rightEnd,
+      "Left wing scrolling must not move the right wing");
+    await frame.click('[data-action="zoomTimeline"][data-direction="in"]');
+    await frame.waitForFunction(()=>document.querySelector("#timeRangeLabel").textContent==="16 小时");
+    const zoomedScroll=await frame.evaluate(()=>({
+      left:document.querySelector("#timelineLeft").scrollLeft,
+      right:document.querySelector("#timelineRight").scrollLeft,
+      oneMinute:document.querySelector('[data-event-seq="101"] .tEventVisual').getBoundingClientRect().height,
+      height:document.querySelector("#timelineSurface").getBoundingClientRect().height
+    }));
+    assert.equal(zoomedScroll.left,0,"Y zoom preserves independent left-wing scroll state");
+    assert.equal(zoomedScroll.right,changedScroll.rightEnd,"Y zoom preserves independent right-wing scroll state");
+    assert.ok(Math.abs(zoomedScroll.oneMinute-
+      zoomedScroll.height*60000/(16*3600000))<1.1,
+      "Y zoom changes scale while the one-minute interval remains geometrically exact");
+    await frame.click('[data-action="resetTimelineZoom"]');
+    await frame.waitForFunction(()=>document.querySelector("#timeRangeLabel").textContent==="24 小时");
+    assert.equal(geometry.events.length,25,"All mock events, including the date Deadline, remain present");
+    for(const event of geometry.events){
+      assert.ok(event.aria&&event.title&&event.aria.includes(event.title),
+        "Every complete event title remains in Accessibility");
+      assert.ok(event.tabIndex>=0,"Every event remains in the keyboard focus order");
+      assert.ok(event.occurrenceKey&&event.revision,"Every event retains occurrence key and revision");
+      await frame.$eval(`[data-event-seq="${event.seq}"]`,element=>{element.focus();element.click()});
+      await frame.waitForFunction(seq=>{
+        const sheet=document.querySelector("#skinSheet");
+        return sheet&&!sheet.hidden&&
+          document.querySelector("#sheetSubtitle").textContent.includes("#"+seq+" ·");
+      },{},event.seq);
+      await frame.click("#sheetClose");
+      await frame.waitForFunction(()=>document.querySelector("#skinSheet").hidden);
+    }
+    console.log("Clear timeline true interval/point/date geometry, accessible targets, and independent wing scroll PASS",
+      {oneMinute:geometry.oneMinute.visual,long:geometry.long.visual,
+        left:geometry.left,right:geometry.right,events:geometry.events.length});
+    await page.select("#scenario","normal");
+    await frame.waitForSelector(".tEvent.ACTIVITY");
+
     // The Web UI must work through the same typed command envelopes as Android,
     // not by silently opening a native Compose editor.
-    await page.click("#interactMode");
     await frame.click(".tEvent.ACTIVITY");
     await frame.waitForFunction(()=>!document.querySelector("#skinSheet").hidden);
     assert.equal(await frame.$eval("#sheetTitle",e=>e.textContent),"编辑事件");
@@ -292,6 +460,10 @@ fs.mkdirSync(TEST_TEMP_ROOT,{recursive:true});
     await page.$eval("#cssCode",e=>{e.value=e.value+"\n/* browser-proof */";e.dispatchEvent(new Event("input",{bubbles:true}))});
     await page.waitForFunction(()=>document.querySelector("#previewState").textContent.includes("连接成功"));
     const source=await page.evaluate(()=>payload());
+    const clearHtml=Buffer.from(source.files["web/index.html"],"base64").toString("utf8");
+    assert.ok(clearHtml.includes('data-action="zoomTimeline"')&&
+      clearHtml.includes('data-action="resetTimelineZoom"'),
+      "The editable canonical Clear source must contain both Host action controls");
     const exportResponse=await page.evaluate(async()=>{
       const data=payload();
       const r=await fetch("/api/export-v3",{method:"POST",

@@ -1226,6 +1226,18 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                         }
                     }
                 }
+                is WebSkinAction.ZoomTimeline -> {
+                    if (page == Page.TIMELINE.name) {
+                        val multiplier = when (action.direction) {
+                            TimelineZoomDirection.IN -> 1.0 / 1.5
+                            TimelineZoomDirection.OUT -> 1.5
+                        }
+                        hours = TimelineCoordinate.clampHours(hours * multiplier)
+                    }
+                }
+                WebSkinAction.ResetTimelineZoom -> {
+                    if (page == Page.TIMELINE.name) hours = 24.0
+                }
                 is WebSkinAction.JumpTimelineDay -> {
                     if (page == Page.TIMELINE.name || page == Page.MONTH.name) {
                         val date = java.time.LocalDate.parse(action.date)

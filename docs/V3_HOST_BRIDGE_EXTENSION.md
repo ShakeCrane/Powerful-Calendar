@@ -44,6 +44,12 @@ envelope and known fields only:
 {"version":1,"type":"action","payload":{"name":"panTimeline","deltaMinutes":30}}
 ```
 ```json
+{"version":1,"type":"action","payload":{"name":"zoomTimeline","direction":"in"}}
+```
+```json
+{"version":1,"type":"action","payload":{"name":"resetTimelineZoom"}}
+```
+```json
 {"version":1,"type":"action","payload":{"name":"jumpTimelineDay","date":"2026-10-22"}}
 ```
 ```json
@@ -58,6 +64,13 @@ envelope and known fields only:
 
 - `panTimeline` accepts nonzero integer minutes [-2880, 2880]. It does not
   change the time span or introduce horizontal zoom.
+- `zoomTimeline` accepts only `direction: "in"` or `"out"`, with no additional
+  payload fields. It changes the vertical span by the same 1.5 factor as the
+  Native zoom controls, clamped by `TimelineCoordinate` to 0.25–48 hours; the
+  camera's center instant is unchanged. `resetTimelineZoom` accepts only its
+  name and restores a 24-hour span while retaining that center. Both actions
+  are ignored outside the active timeline page and write no calendar data.
+  The `today` action remains distinct: it centers local noon and resets 24h.
 - `jumpTimelineDay` accepts an ISO date from years 1900–2200 and retains
   the existing camera span.
 - Existing navigation, the additive `memo` page action, and `openEvent(eventSeq,expectedRevision)` remain.

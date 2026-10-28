@@ -2,6 +2,11 @@
 /* Skin Studio v3: one canonical collection of bytes for editing, preview and export.
    No second DOM/CSS/JS renderer, no string-replacement mock preview. */
 const $ = id => document.getElementById(id);
+const timelineGeometryFixture=document.createElement("option");
+timelineGeometryFixture.value="timeline-geometry";
+timelineGeometryFixture.textContent="时间轴真实几何与泳道（回归夹具）";
+timelineGeometryFixture.hidden=true;
+$("scenario").append(timelineGeometryFixture);
 const enc = new TextEncoder(), dec = new TextDecoder();
 const escapeHtml = s => String(s).replaceAll("&","&amp;").replaceAll("<","&lt;")
   .replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;");
@@ -376,7 +381,8 @@ const ACTIONS=[
   ["timeline","时间轴"],
   ["month","月历"],["memo","Memo"],["ai","AI"],
   ["settings","原生设置"],["openDeck","草稿卡组"],
-  ["panTimeline","时间轴向后 30 分钟"],["jumpTimelineDay","跳到今天"],
+  ["panTimeline","时间轴向后 30 分钟"],["zoomTimeline","时间轴缩放"],
+  ["resetTimelineZoom","重置时间轴缩放"],["jumpTimelineDay","跳到今天"],
   ["invokeOption","导入日历文件"]
 ];
 function renderIconChoices(){
@@ -429,6 +435,7 @@ function layerMarkup(layer){
   if(action){
     props+=' data-action="'+escapeHtml(action)+'"';
     if(action==="panTimeline")props+=' data-delta-minutes="30"';
+    if(action==="zoomTimeline")props+=' data-direction="in"';
     if(action==="createDraft")props+=' data-kind="ACTIVITY"';
     if(action==="browseMonth")props+=' data-delta-months="1"';
     if(action==="jumpTimelineDay")props+=' data-date="2026-10-22"';
@@ -595,7 +602,7 @@ function refreshOverlay(){
 
 function simulatedState(){
   const scenario=$("scenario").value,base=new Date("2026-10-22T04:00:00Z").getTime();
-  const anchor=mockAnchor??base,hours=24;
+  const anchor=mockAnchor??base,hours=mockHours;
   let rows=[
     {eventSeq:4,revision:2,occurrenceKey:"4:single",kind:"ACTIVITY",
       title:"上午课程",side:"RIGHT",lane:0,startMillis:base-10800000,endMillis:base-5400000,precision:"INSTANT",deadlineDate:null},
@@ -610,6 +617,44 @@ function simulatedState(){
     title:"并行事件 "+(i+1),side:"RIGHT",lane:i,
     startMillis:base-6000000,endMillis:base+4500000,precision:"INSTANT",deadlineDate:null
   }));
+  if(scenario==="timeline-geometry")rows=[
+    {eventSeq:101,revision:3,occurrenceKey:"101:one-minute",kind:"ACTIVITY",
+      title:"一分钟活动",side:"RIGHT",lane:1,startMillis:base-7200000,
+      endMillis:base-7140000,precision:"INSTANT",deadlineDate:null},
+    {eventSeq:102,revision:2,occurrenceKey:"102:long",kind:"ACTIVITY",
+      title:"跨越可见区的长活动",side:"RIGHT",lane:0,startMillis:base-72000000,
+      endMillis:base+72000000,precision:"INSTANT",deadlineDate:null},
+    {eventSeq:103,revision:1,occurrenceKey:"103:parallel-a",kind:"ACTIVITY",
+      title:"并行活动 A",side:"RIGHT",lane:2,startMillis:base-7200000,
+      endMillis:base+10800000,precision:"INSTANT",deadlineDate:null},
+    {eventSeq:104,revision:4,occurrenceKey:"104:parallel-b",kind:"ACTIVITY",
+      title:"并行活动 B",side:"RIGHT",lane:3,startMillis:base-7200000,
+      endMillis:base+10800000,precision:"INSTANT",deadlineDate:null},
+    {eventSeq:201,revision:5,occurrenceKey:"201:alarm",kind:"ALARM",
+      title:"时刻提醒",side:"LEFT",lane:0,startMillis:base+7200000,
+      endMillis:base+7200000,precision:"INSTANT",deadlineDate:null},
+    {eventSeq:202,revision:2,occurrenceKey:"202:deadline-exact",kind:"DEADLINE",
+      title:"精确截止",side:"LEFT",lane:1,startMillis:base+7200000,
+      endMillis:base+7200000,precision:"INSTANT",deadlineDate:null},
+    {eventSeq:203,revision:1,occurrenceKey:"203:alarm-parallel",kind:"ALARM",
+      title:"并行提醒",side:"LEFT",lane:2,startMillis:base+7200000,
+      endMillis:base+7200000,precision:"INSTANT",deadlineDate:null},
+    {eventSeq:204,revision:7,occurrenceKey:"204:date-deadline",kind:"DEADLINE",
+      title:"日期级截止事项",side:"LEFT",lane:99,startMillis:base,
+      endMillis:null,precision:"DATE",deadlineDate:"2026-10-22"}
+  ];
+  if(scenario==="timeline-geometry"){
+    rows.push(...Array.from({length:8},(_,index)=>({
+      eventSeq:105+index,revision:1,occurrenceKey:`${105+index}:parallel`,kind:"ACTIVITY",
+      title:`并行活动 ${index+3}`,side:"RIGHT",lane:index+4,
+      startMillis:base-7200000,endMillis:base+10800000,precision:"INSTANT",deadlineDate:null
+    })));
+    rows.push(...Array.from({length:9},(_,index)=>({
+      eventSeq:205+index,revision:1,occurrenceKey:`${205+index}:point`,kind:index%2?"DEADLINE":"ALARM",
+      title:`并行时刻 ${index+1}`,side:"LEFT",lane:index+3,
+      startMillis:base+7200000,endMillis:base+7200000,precision:"INSTANT",deadlineDate:null
+    })));
+  }
   if(scenario==="repeating")rows=[
     {...rows[0],eventSeq:8,occurrenceKey:"8:20261022T090000",
       originalOccurrenceKey:"2026-10-22T09:00",title:"重复课程 · 本次"},
@@ -895,6 +940,21 @@ function onSkinAction(message){
       // Keep a mock camera anchor in a distinct variable so other state changes preserve it.
       mockAnchor=state.timeline.anchorMillis;
     }
+    if(name==="zoomTimeline"){
+      if(Object.keys(p).sort().join(",")!=="direction,name"||
+        !["in","out"].includes(p.direction)||
+        mockPage!=="TIMELINE"){
+        logAction("拒绝无效 zoomTimeline payload 或非时间轴请求");return;
+      }
+      const factor=p.direction==="in"?1/1.5:1.5;
+      mockHours=Math.max(0.25,Math.min(48,mockHours*factor));
+    }
+    if(name==="resetTimelineZoom"){
+      if(Object.keys(p).join(",")!=="name"||mockPage!=="TIMELINE"){
+        logAction("拒绝无效 resetTimelineZoom payload 或非时间轴请求");return;
+      }
+      mockHours=24;
+    }
     if(name==="jumpTimelineDay"&&/^\d{4}-\d{2}-\d{2}$/.test(p.date||"")){
       const date=new Date(p.date+"T04:00:00Z").getTime();
       if(Number.isFinite(date))mockAnchor=date;
@@ -968,13 +1028,15 @@ function onSkinAction(message){
       logAction("锁定状态拒绝执行选项");return;
     }
     logAction("模拟宿主收到："+name+
+      (name==="zoomTimeline"?" · "+p.direction+" · "+mockHours+" 小时":"")+
+      (name==="resetTimelineZoom"?" · "+mockHours+" 小时":"")+
       (p.id?" · "+p.id:"")+
       (name==="openEvent"?" · "+p.eventSeq:""));
-    if(["today","panTimeline","jumpTimelineDay","browseMonth","timeline","month","memo","ai",
+    if(["today","panTimeline","zoomTimeline","resetTimelineZoom","jumpTimelineDay","browseMonth","timeline","month","memo","ai",
       "toggleMemo","sendChat"].includes(name))postState();
   }catch(error){logAction("Bridge 消息错误："+error.message)}
 }
-let mockAnchor=null,mockPage="TIMELINE",mockMemoDone=false,mockChat=[];
+let mockAnchor=null,mockHours=24,mockPage="TIMELINE",mockMemoDone=false,mockChat=[];
 let mockMemoVisibleLimit=250;
 let mockAiErrorMessages=[
   {role:"user",content:"请帮我概括明天的安排。"},

@@ -9,8 +9,14 @@
 </div></header>
 <section id="timelinePage" class="page">
 <div class="section-label">时间轴 <span id="timeRangeLabel"></span></div>
+<div class="timeline-view-controls" role="group" aria-label="时间轴缩放与复位">
+<button type="button" data-action="zoomTimeline" data-direction="out" aria-label="缩小时间轴，显示更多小时" title="缩小时间轴">−</button>
+<button type="button" data-action="zoomTimeline" data-direction="in" aria-label="放大时间轴，显示更少小时" title="放大时间轴">＋</button>
+<button type="button" data-action="resetTimelineZoom" aria-label="重置时间轴缩放为24小时" title="重置为24小时">24h</button>
+</div>
+<div id="dateDeadlineBar" class="deadline-date-bar" role="region" aria-label="日期级截止事项" hidden></div>
 <div id="axisScroll" class="axis-scroll" role="region" aria-label="时间轴" tabindex="0">
-<div class="timeline-surface" id="timelineSurface"><div class="tl-axis" id="tlAxis"></div><div id="timelineLeft" class="timelineWing left"></div><div id="timelineRight" class="timelineWing right"></div><div id="timeLabels"></div><div id="timeNow"></div></div>
+<div class="timeline-surface" id="timelineSurface"><div class="tl-axis" id="tlAxis"></div><div id="timelineLeft" class="timelineWing left" role="region" aria-label="左侧事件泳道，可独立水平滚动" tabindex="0"><div class="timelineLanes"></div></div><div id="timelineRight" class="timelineWing right" role="region" aria-label="右侧事件泳道，可独立水平滚动" tabindex="0"><div class="timelineLanes"></div></div><div id="timeLabels"></div><div id="timeNow"></div></div>
 </div><div class="timeline-buttons glass"><button data-action="panTimeline" data-delta-minutes="-180">较早</button><button data-action="panTimeline" data-delta-minutes="180">稍后</button></div></section>
 <section id="monthPage" class="page" hidden><div class="page-head"><h1>月历</h1><button data-local="options">导入选项</button><button data-action="today">今天</button></div><div class="month-bar"><button data-action="browseMonth" data-delta-months="-1" aria-label="上个月">‹</button><span id="monthTitle"></span><button data-action="browseMonth" data-delta-months="1" aria-label="下个月">›</button></div><div id="monthGrid" class="month-grid"></div><div id="monthAgenda"></div><p class="quiet">只显示宿主实际投影的日程；尚未投影到此范围的重复事项不会被推测。</p></section>
 <section id="memoPage" class="page" hidden><div class="page-head"><h1>Memo</h1><button data-action="createMemo">＋ 新建</button></div><div class="tabs"><button data-filter="open" class="selected">未完成</button><button data-filter="done">已完成</button></div><div id="memoList" class="memo-list"></div><button id="memoLimit" class="memo-limit" type="button" data-action="loadMoreMemo" aria-controls="memoList" hidden>加载更多 Memo</button></section>

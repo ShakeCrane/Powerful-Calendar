@@ -111,6 +111,10 @@ internal sealed interface WebSkinAction {
     data class InvokeOption(val id: String) : WebSkinAction
     /** Relative browsing only; cannot change the vertical time scale. */
     data class PanTimeline(val deltaMinutes: Int) : WebSkinAction
+    /** Change only the vertical time scale; the camera's center instant is retained. */
+    data class ZoomTimeline(val direction: TimelineZoomDirection) : WebSkinAction
+    /** Restore a 24-hour viewport while retaining the current camera center. */
+    data object ResetTimelineZoom : WebSkinAction
     /** Select a calendar day while preserving the existing time span. */
     data class JumpTimelineDay(val date: String) : WebSkinAction
     data class ToggleMemo(
@@ -131,6 +135,8 @@ internal sealed interface WebSkinAction {
         val indices: List<Int>
     ) : WebSkinAction
 }
+
+internal enum class TimelineZoomDirection { IN, OUT }
 
 internal enum class AiProposalDecision { PUBLISH, STAGE, REJECT, SUPPLEMENT }
 
@@ -353,6 +359,16 @@ internal fun decodeBridgeAction(raw: String): WebSkinAction? {
                 WebSkinAction.PanTimeline(minutes)
             else null
         }
+        "zoomTimeline" -> {
+            if (keys != setOf("name", "direction")) return null
+            when (payload.opt("direction")) {
+                "in" -> WebSkinAction.ZoomTimeline(TimelineZoomDirection.IN)
+                "out" -> WebSkinAction.ZoomTimeline(TimelineZoomDirection.OUT)
+                else -> null
+            }
+        }
+        "resetTimelineZoom" ->
+            if (keys == setOf("name")) WebSkinAction.ResetTimelineZoom else null
         "jumpTimelineDay" -> {
             if (keys != setOf("name", "date")) return null
             val date = payload.opt("date")

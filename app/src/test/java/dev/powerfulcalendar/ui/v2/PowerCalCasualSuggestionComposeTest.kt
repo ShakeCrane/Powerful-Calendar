@@ -156,6 +156,49 @@ class PowerCalCasualSuggestionComposeTest {
     }
 
     @Test
+    fun webTimelineZoomMatchesNativeScaleBoundsAndResetPreservesCenterWithoutWrites() {
+        ui.activity.setContent {
+            CompositionLocalProvider(LocalContext provides context) {
+                PowerCalTheme { PowerCalApp(store) }
+            }
+        }
+        ui.waitForIdle()
+
+        fun dispatch(action: WebSkinAction) {
+            ui.runOnIdle { WebSkinBridgeRuntime.onAction(action) }
+            ui.waitForIdle()
+        }
+
+        val before = timelineCameraSnapshot()
+        val storeBefore = StoreCounts.read(store)
+        assertEquals(24.0, before.hours, 0.0)
+
+        dispatch(WebSkinAction.ZoomTimeline(TimelineZoomDirection.OUT))
+        assertEquals(36.0, timelineCameraSnapshot().hours, 0.0)
+        assertEquals(before.anchorMillis, timelineCameraSnapshot().anchorMillis)
+
+        dispatch(WebSkinAction.ZoomTimeline(TimelineZoomDirection.IN))
+        assertEquals(24.0, timelineCameraSnapshot().hours, 0.0)
+        repeat(8) { dispatch(WebSkinAction.ZoomTimeline(TimelineZoomDirection.OUT)) }
+        assertEquals(48.0, timelineCameraSnapshot().hours, 0.0)
+        repeat(20) { dispatch(WebSkinAction.ZoomTimeline(TimelineZoomDirection.IN)) }
+        assertEquals(TimelineCoordinate.MIN_HOURS, timelineCameraSnapshot().hours, 0.0)
+
+        dispatch(WebSkinAction.ResetTimelineZoom)
+        assertEquals(24.0, timelineCameraSnapshot().hours, 0.0)
+        assertEquals(before.anchorMillis, timelineCameraSnapshot().anchorMillis)
+
+        dispatch(WebSkinAction.ZoomTimeline(TimelineZoomDirection.OUT))
+        dispatch(WebSkinAction.Routed("month"))
+        dispatch(WebSkinAction.ZoomTimeline(TimelineZoomDirection.IN))
+        dispatch(WebSkinAction.ResetTimelineZoom)
+        assertEquals("non-timeline pages cannot mutate the timeline scale", 36.0,
+            timelineCameraSnapshot().hours, 0.0)
+        assertEquals(before.anchorMillis, timelineCameraSnapshot().anchorMillis)
+        assertEquals(storeBefore, StoreCounts.read(store))
+    }
+
+    @Test
     fun timelineCreateCommandUsesCurrentCameraAndZoneForAllKindsWithoutWrites() {
         ui.activity.setContent {
             CompositionLocalProvider(LocalContext provides context) {

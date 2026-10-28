@@ -194,6 +194,12 @@ class WebSkinHostProjectionTest {
             """{"version":1,"type":"action","payload":$payload}""")
         assertEquals(WebSkinAction.PanTimeline(-45),
             decode("""{"name":"panTimeline","deltaMinutes":-45}"""))
+        assertEquals(WebSkinAction.ZoomTimeline(TimelineZoomDirection.IN),
+            decode("""{"name":"zoomTimeline","direction":"in"}"""))
+        assertEquals(WebSkinAction.ZoomTimeline(TimelineZoomDirection.OUT),
+            decode("""{"name":"zoomTimeline","direction":"out"}"""))
+        assertEquals(WebSkinAction.ResetTimelineZoom,
+            decode("""{"name":"resetTimelineZoom"}"""))
         assertEquals(WebSkinAction.JumpTimelineDay("2026-10-22"),
             decode("""{"name":"jumpTimelineDay","date":"2026-10-22"}"""))
         assertEquals(WebSkinAction.Routed("today"), decode("""{"name":"today"}"""))
@@ -223,6 +229,10 @@ class WebSkinHostProjectionTest {
         assertNull(decode("""{"name":"panTimeline","deltaMinutes":2.5}"""))
         assertNull(decode("""{"name":"panTimeline","deltaMinutes":"60"}"""))
         assertNull(decode("""{"name":"panTimeline","deltaMinutes":60,"hours":24}"""))
+        assertNull(decode("""{"name":"zoomTimeline","direction":"middle"}"""))
+        assertNull(decode("""{"name":"zoomTimeline","direction":1}"""))
+        assertNull(decode("""{"name":"zoomTimeline","direction":"in","hours":1}"""))
+        assertNull(decode("""{"name":"resetTimelineZoom","hours":24}"""))
         assertNull(decode("""{"name":"jumpTimelineDay","date":"2026-10-32"}"""))
         assertNull(decode("""{"name":"jumpTimelineDay","date":"2500-01-01"}"""))
     }
