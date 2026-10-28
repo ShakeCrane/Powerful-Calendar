@@ -18,7 +18,7 @@ Run commands from the repository root with Python 3:
 python tools/skin-studio/skin_studio.py inspect-v3 path\to\skin.pcskin
 python tools/skin-studio/skin_studio.py analyze-v3 path\to\skin.pcskin
 python tools/skin-studio/skin_studio.py audit-bridge-v3 path\to\skin.pcskin
-python tools/skin-studio/skin_studio.py read-v3 --file path\to\skin.pcskin --path web\app.js
+python tools/skin-studio/skin_studio.py read-v3 --file path\to\skin.pcskin --path web/app.js
 python tools/skin-studio/skin_studio.py edit-v3 --file path\to\skin.pcskin --operations operations.json --out path\to\skin-edited.pcskin
 python tools/skin-studio/skin_studio.py build-v3 --manifest manifest.json --source-dir source --out path\to\skin-built.pcskin --json
 python tools/skin-studio/skin_studio.py scaffold-v3 --id my-skin --name "My Skin" --out path\to\my-skin.pcskin --json

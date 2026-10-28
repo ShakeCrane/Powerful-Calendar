@@ -795,6 +795,32 @@ class ProjectOpsV3Test(unittest.TestCase):
             }])
         self.assertEqual(unpack(self.source)[1]["project.json"], self.files["project.json"])
 
+    def test_ai_automation_guide_read_example_uses_runnable_package_path(self):
+        guide = STUDIO.parents[1] / "docs" / "SKIN_STUDIO_AI_AUTOMATION_V1.md"
+        command = next(
+            line.strip() for line in guide.read_text(encoding="utf-8").splitlines()
+            if line.strip().startswith(
+                "python tools/skin-studio/skin_studio.py read-v3 --file"
+            )
+        )
+        path_match = re.search(r"--path\s+([^\s`]+)", command)
+        self.assertIsNotNone(path_match, command)
+        package_path = path_match.group(1)
+        self.assertEqual(
+            "web/app.js", package_path,
+            "package-internal paths in the AI guide must use POSIX separators",
+        )
+
+        read = subprocess.run(
+            [sys.executable, str(STUDIO / "skin_studio.py"), "read-v3",
+             "--file", str(ASSET), "--path", package_path],
+            text=True, encoding="utf-8", capture_output=True, check=False)
+        self.assertEqual(read.returncode, 0, read.stderr)
+        receipt = json.loads(read.stdout)
+        self.assertEqual(receipt["command"], "read-v3")
+        self.assertEqual(receipt["path"], package_path)
+        self.assertGreater(receipt["bytes"], 0)
+
     def test_cli_is_machine_readable_and_does_not_write_on_invalid_batch(self):
         with isolated_temp_dir() as temp:
             root = Path(temp)
