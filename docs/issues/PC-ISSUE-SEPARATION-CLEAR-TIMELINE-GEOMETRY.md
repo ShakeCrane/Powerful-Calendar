@@ -4,6 +4,7 @@
 - Status: **PARTIAL — 本 Issue 所列实现及窄范围回归通过；Android WebView 与 Native/Clear 配对验收仍 NOT TESTED**
 - Worktree: `codex/separation-s0-inventory`
 - Base commit: `6bf2a792a8edf9ee6825543f16751f038bfa4f89`
+- Implementation, regression, matrix and Issue report commit: `4125e909865bcf0d30b8d158be932a5ab2b0eaa5` (`feat(分离): 修复 Clear 时间轴几何并接入缩放`)
 
 ## Scope and disposition
 
