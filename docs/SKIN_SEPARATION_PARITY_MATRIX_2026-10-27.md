@@ -149,3 +149,8 @@ In the table, Studio support means source availability, not proof of arbitrary v
 
 - Added a Host regression that checkpoints a changed formal event, closes and reopens `PowerStore`, simulates an expired human-editor owner, runs lease recovery, constructs a new Web edit service and resumes the same dirty form. Formal event data/revision and commit count stay unchanged; one `REPLACE` draft remains, with no duplicate queue or identity allocation. `WebSkinEditBridgeTest` **27/27 PASS**; full gate **636/636 JVM**. See `PC-ISSUE-SEPARATION-FORMAL-EDIT-REOPEN-RECOVERY.md`.
 - This is a SQLite/lease simulation only; real Android process death, Activity/WebView restart, device behavior and full Native/Skin replay remain **NOT TESTED**. SEP-05 and SEP-14 remain **NOT TESTED** overall.
+
+## SEP-15 follow-up — AI guide package-path example (2026-10-28)
+
+- The AI automation guide's `read-v3` example now uses the required POSIX package path `web/app.js`. A regression extracts that exact documented command and invokes the real CLI against the canonical Clear bundle; focused test **1/1 PASS**, full Skin Studio Python suite **73/73 PASS**, Clear bundle verification PASS. See `PC-ISSUE-SEPARATION-STUDIO-DOC-EXAMPLE.md`.
+- This closes one documentation example defect only. It does not establish complete Studio authoring, full Goal C automation, Android/WebView/device parity or any SEP-15 feature-row PASS. SEP-15 remains **NOT TESTED**.

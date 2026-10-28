@@ -1,5 +1,11 @@
 # Core freeze progress
 
+## Separation — 修正 AI 自动化指南的 `.pcskin` 包内路径（2026-10-28）
+
+- 红灯复现：指南将 `read-v3 --path` 写成 Windows `web\app.js`；CLI 拒绝此包内路径。改为 `web/app.js`，并新增回归测试从文档提取真实命令后调用 CLI 读取 canonical Clear 包，校验 JSON 回执和字节数。
+- 定向回归 **1/1 PASS**；完整 Skin Studio Python 套件在沙箱限制外的本地测试执行中 **73/73 PASS**。无提升权限的首次全套运行因 loopback socket / 临时原子替换权限被拒而报 11 个环境错误；该失败日志保留，未计为通过。Clear 验证 **8 files / 382786 bytes / SHA-256 `5ea7da58dde8722320ab6f32b16e854293260788eb930f8e0cce1321252d8080`**。日志和各 SHA 见 `docs/issues/PC-ISSUE-SEPARATION-STUDIO-DOC-EXAMPLE.md` 及 `.local/android-test/reports/separation-studio-doc-path-20261028/`。
+- 文档与测试提交 `1f0d8e553c5bec133527d02ebb298d78e315e078` 已推送到 `origin/codex/separation-legacy-import`。没有 Android WebView/AVD/实体设备测试；该文档修复不改变 SEP-15 状态，S5 与完整分离仍 **NOT TESTED**。
+
 ## Separation — Windows Robolectric AtomicFile 测试替身并发读写修复（2026-10-28）
 
 - 一次全量回归出现 `skinImageRequiresExplicitUploadConsentAndNeverStoresRawImageInChatHistory` 超时；失败栈显示 `.new` 文件在 rename 时消失。根因为 Windows `ShadowAtomicFileReplaceOnWindows.openRead()` 会删除仍在写入的临时文件。修正为只读已提交文件，并增加“读期间保留正在写入的 `.new`”回归；没有修改生产 `AiChatHistoryStore`。
