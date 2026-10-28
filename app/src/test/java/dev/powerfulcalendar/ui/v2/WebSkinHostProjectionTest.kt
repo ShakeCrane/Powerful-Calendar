@@ -266,9 +266,11 @@ class WebSkinHostProjectionTest {
         val group = parent.copy(items = parent.items + sibling)
         val output = SemanticOptions.toJson(enabled = false, collection = listOf(group))
         val entries = output.getJSONObject(0).getJSONArray("items")
-        assertEquals(3, entries.length())
-        assertEquals("calendar.import.future", entries.getJSONObject(2).getString("id"))
-        assertFalse(entries.getJSONObject(2).getBoolean("enabled"))
+        assertEquals(parent.items.size + 1, entries.length())
+        val projectedSibling = (0 until entries.length())
+            .map(entries::getJSONObject)
+            .single { it.getString("id") == "calendar.import.future" }
+        assertFalse(projectedSibling.getBoolean("enabled"))
         assertFalse(SemanticOptions.supports("calendar.import.future"))
     }
 

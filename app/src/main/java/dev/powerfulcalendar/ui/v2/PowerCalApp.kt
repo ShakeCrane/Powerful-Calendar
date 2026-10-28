@@ -1249,6 +1249,8 @@ private fun PowerCalAppContent(
                         importSkin.launch(arrayOf("application/zip", "application/octet-stream", "*/*"))
                     skinSettingsOpen && action.id == "skin.exportClear" ->
                         exportOriginalSkin.launch("PowerCal-Clear-Preview.pcskin")
+                    skinSettingsOpen && action.id == "data.legacy.migrate" ->
+                        confirmingLegacy = true
                     action.id == "calendar.import.file" ->
                         openAiDocument.launch(arrayOf("*/*"))
                     action.id == "calendar.import.system" -> {

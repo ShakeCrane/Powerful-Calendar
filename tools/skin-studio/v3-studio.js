@@ -1051,7 +1051,9 @@ function simulatedState(){
   ];
   const items=[
     {id:"calendar.import.file",label:"导入日历文件",detail:"本地优先",icon:"file",enabled:scenario!=="locked"},
-    {id:"calendar.import.system",label:"从系统日历导入",detail:"静态快照",icon:"calendar",enabled:scenario!=="locked"}
+    {id:"calendar.import.system",label:"从系统日历导入",detail:"静态快照",icon:"calendar",enabled:scenario!=="locked"},
+    {id:"data.legacy.migrate",label:"迁移旧版 PowerCal 数据",
+      detail:"宿主确认后只读导入；预览 Mock 不读取旧库或写入数据",icon:"migration",enabled:scenario!=="locked"}
   ];
   const reminderItems=[
     {id:"reminders.exactAlarmSettings",label:"精确闹钟权限",detail:"Android 系统授权 Mock",icon:"alarm",enabled:scenario!=="locked"},
@@ -1462,6 +1464,10 @@ function onSkinAction(message){
     }
     if(name==="settings"){
       logAction("Preview Mock：请求既有 Android 宿主工具页；不会展示或操作系统权限、凭据或数据。");
+      return;
+    }
+    if(name==="invokeOption"&&p.id==="data.legacy.migrate"){
+      logAction("Preview Mock：invokeOption · data.legacy.migrate；Host 会打开可信确认并只读导入旧版数据库；Mock 未读取旧数据库、未写入或删除数据。");
       return;
     }
     if(name==="invokeOption"&&p.id==="calendar.export.ics"){

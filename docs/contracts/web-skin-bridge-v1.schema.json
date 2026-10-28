@@ -321,6 +321,7 @@
               "calendar.export.ics",
               "data.backup.export",
               "data.backup.restore",
+              "data.legacy.migrate",
               "skin.import",
               "skin.exportClear",
               "reminders.exactAlarmSettings",
@@ -334,6 +335,10 @@
           {
             "name": "invokeOption",
             "id": "calendar.import.file"
+          },
+          {
+            "name": "invokeOption",
+            "id": "data.legacy.migrate"
           }
         ]
       },

@@ -78,6 +78,29 @@ class LegacyMigrationTest {
         db.close()
     }
 
+    private fun createLegacyDatabaseWithoutEvents() {
+        val db = SQLiteDatabase.openOrCreateDatabase(legacyPath, null)
+        db.execSQL("CREATE TABLE unrelated_metadata (value TEXT NOT NULL)")
+        db.close()
+    }
+
+    private fun migrationCounts(): Pair<Int, Int> {
+        val path = context.getDatabasePath(store.databaseName)
+        val db = SQLiteDatabase.openDatabase(path.path, null, SQLiteDatabase.OPEN_READONLY)
+        return try {
+            db.rawQuery(
+                "SELECT COUNT(*), COALESCE(SUM(CASE WHEN finished_ms IS NULL THEN 1 ELSE 0 END), 0) " +
+                    "FROM migrations WHERE source=?",
+                arrayOf(LegacyImporter.SOURCE)
+            ).use { cursor ->
+                check(cursor.moveToFirst())
+                cursor.getInt(0) to cursor.getInt(1)
+            }
+        } finally {
+            db.close()
+        }
+    }
+
     private fun legacyRowCount(): Int {
         val db = SQLiteDatabase.openDatabase(legacyPath.path, null, SQLiteDatabase.OPEN_READONLY)
         return try {
@@ -119,6 +142,26 @@ class LegacyMigrationTest {
         assertFalse(result.available)
         assertFalse(legacyPath.exists())
         assertEquals(0, store.all().size)
+    }
+
+    @Test
+    fun missingEventsTableClosesMigrationBatchAndIsSafeToRetry() {
+        createLegacyDatabaseWithoutEvents()
+        val originalSize = legacyPath.length()
+
+        val first = LegacyImporter.migrate(context, store)
+        assertTrue(first.available)
+        assertEquals(listOf("旧版数据库没有 events 表"), first.warnings)
+        assertEquals(1 to 0, migrationCounts())
+        assertEquals(listOf("旧版数据库没有 events 表"), store.migrationSummary(first.batchId)?.third)
+        assertEquals(0, store.all().size)
+
+        val second = LegacyImporter.migrate(context, store)
+        assertTrue(second.available)
+        assertEquals(listOf("旧版数据库没有 events 表"), second.warnings)
+        assertEquals(2 to 0, migrationCounts())
+        assertEquals(0, store.all().size)
+        assertEquals(originalSize, legacyPath.length())
     }
 
     @Test

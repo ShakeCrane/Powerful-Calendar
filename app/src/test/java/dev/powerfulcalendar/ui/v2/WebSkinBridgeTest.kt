@@ -84,6 +84,8 @@ class WebSkinBridgeTest {
             """{"version":1,"type":"action","payload":{"name":"invokeOption","id":"data.backup.export"}}"""))
         assertEquals(WebSkinAction.InvokeOption("data.backup.restore"), decodeBridgeAction(
             """{"version":1,"type":"action","payload":{"name":"invokeOption","id":"data.backup.restore"}}"""))
+        assertEquals(WebSkinAction.InvokeOption("data.legacy.migrate"), decodeBridgeAction(
+            """{"version":1,"type":"action","payload":{"name":"invokeOption","id":"data.legacy.migrate"}}"""))
         assertEquals(WebSkinAction.InvokeOption("reminders.exactAlarmSettings"), decodeBridgeAction(
             """{"version":1,"type":"action","payload":{"name":"invokeOption","id":"reminders.exactAlarmSettings"}}"""))
         assertEquals(WebSkinAction.InvokeOption("reminders.notificationPermission"), decodeBridgeAction(

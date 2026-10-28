@@ -393,6 +393,7 @@ async function main(){
         const imports=options.filter(button=>button.dataset.optionId.startsWith('calendar.import.'));
         const exports=options.filter(button=>button.dataset.optionId.startsWith('calendar.export.'));
         const backups=options.filter(button=>button.dataset.optionId.startsWith('data.backup.'));
+        const legacyMigration=options.filter(button=>button.dataset.optionId==='data.legacy.migrate');
         const skinOptions=options.filter(button=>button.dataset.optionId.startsWith('skin.'));
         const reminders=options.filter(button=>button.dataset.optionId.startsWith('reminders.'));
         check(imports.length===2,'settings landing must retain the two bounded Host import options');
@@ -402,6 +403,10 @@ async function main(){
         check(backups.length===2,'settings landing must expose the two bounded native backup actions');
         check(backups[0].textContent.includes('明文 JSON'),'backup export sensitivity must be visible in the skin');
         check(backups[1].textContent.includes('空数据库'),'backup restore empty-store limit must be visible in the skin');
+        check(legacyMigration.length===1&&legacyMigration[0].textContent.includes('只读导入'),
+          'settings landing must expose confirmed read-only migration from the legacy PowerCal database');
+        check(legacyMigration[0].textContent.includes('不读取旧库或写入数据'),
+          'Studio migration preview must state that its Mock does not read or mutate app data');
         check(skinOptions.length===2,'settings landing must expose bounded skin import/export actions');
         check(skinOptions[0].textContent.includes('导入后不会自动启用'),'skin import must explain it does not activate packages');
         check(skinOptions[1].textContent.includes('不更改当前皮肤'),'Clear package export must not be described as activation');
@@ -432,8 +437,10 @@ async function main(){
           'backup and package access boundary was not explained');
         imports[0].click();
         exports[0].click();
+        legacyMigration[0].click();
         return {settingsLanding:true,hostImportOptions:imports.length,hostExportOptions:exports.length,
           hostBackupActions:backups.length,
+          legacyMigrationActions:legacyMigration.length,
           hostSkinPackageOptions:skinOptions.length,installedSkinRows:installed.length,
           userSkinDeleteRows:removals.length,
           reminderHostActions:reminders.length,
@@ -441,6 +448,19 @@ async function main(){
           accessibleReconcileStatus:true,reminderPrivateTextAbsent:true,browserMockWroteData:false};
       })()`});
     if(settings.exceptionDetails)throw Error(settings.exceptionDetails.exception?.description || settings.exceptionDetails.text);
+    if(settings.result.value.legacyMigrationActions!==1)
+      throw Error('legacy migration action was not projected into the settings Mock: '+JSON.stringify(settings.result.value));
+    const legacyMigrationMock=await call("Runtime.evaluate",{awaitPromise:true,returnByValue:true,expression:`(async()=>{
+      for(let i=0;i<100;i++){
+        const text=document.querySelector('#bridgeLog').textContent;
+        if(text.includes('invokeOption · data.legacy.migrate')&&
+          text.includes('未读取旧数据库、未写入或删除数据'))return true;
+        await new Promise(r=>setTimeout(r,100));
+      }
+      return false;
+    })()`});
+    if(legacyMigrationMock.exceptionDetails)throw Error(legacyMigrationMock.exceptionDetails.exception?.description || legacyMigrationMock.exceptionDetails.text);
+    if(!legacyMigrationMock.result.value)throw Error('legacy migration did not reach its non-writing Host Mock');
     const reminderContract=await call("Runtime.evaluate",{returnByValue:true,expression:`(()=>{
       const state=simulatedState(),diagnostics=state.reminderDiagnostics,result=state.reminderReconcile;
       return {page:state.page,diagnosticKeys:Object.keys(diagnostics||{}).sort(),
