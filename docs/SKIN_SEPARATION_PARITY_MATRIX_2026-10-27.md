@@ -97,4 +97,10 @@ In the table, Studio support means source availability, not proof of arbitrary v
 - Added `scaffold-v3` to create a deterministic, valid, editable v3 shell from scratch. The command defaults to no Host capabilities, routes through the production v3 builder/validator and refuses output overwrite. Invalid explicit capability requests fail without publishing a package.
 - Focused workflow **2/2 PASS**, complete Skin Studio suite **70/70 PASS**, and canonical Clear bundle verification **PASS**. Independent evidence: `docs/issues/PC-ISSUE-SEPARATION-STUDIO-SCAFFOLD-V3.md`.
 - Implementation commit: `a9dd0a20463a13bd8bd25b79168af6fc4cfd5883`.
-- This only closes a machine-callable blank-project creation slice. Browser Studio import/edit/export E2E for the scaffold, Android WebView/device behavior, full visual/interaction editing and Native/Skin functional parity remain **NOT TESTED**; SEP-15/S5 remains open.
+- At the initial CLI-only implementation point, browser Studio import/edit/export E2E for the scaffold, Android WebView/device behavior, full visual/interaction editing and Native/Skin functional parity remained **NOT TESTED**; see the follow-up below for updated desktop-browser evidence. SEP-15/S5 remains open.
+
+### Blank scaffold browser Studio roundtrip (2026-10-28)
+
+- The real Chrome Headless source E2E now creates a blank package with the CLI, imports it through the Studio file handler, inserts a static component, checks preview bytes, and validates export/reimport plus a second Studio load preserves the edit and empty capability list. **Desktop browser slice PASS**; final log SHA-256 `9B9171319B8049B4556B9F241A7A4D708AB6C76780CFEB1918EA774981EB9064`.
+- E2E test commit: `86e2f3f550fc6738ddd944e68a8044e475ca487a`.
+- This narrows the scaffold's `NOT TESTED` status only for browser Studio import/edit/preview/export. Android WebView/device behavior, full Studio visual/interaction authoring, and Native/Skin parity remain **NOT TESTED**; SEP-15/S5 remains open.

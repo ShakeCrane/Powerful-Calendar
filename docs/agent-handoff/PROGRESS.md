@@ -987,4 +987,11 @@ Updated: 2026-10-24
 
 - 新增 `scaffold-v3`，可从零生成可编辑、确定性、默认无 Host capability 的 v3 `.pcskin`，并复用生产 builder/validator、原子拒绝覆盖及结构化 JSON 回执；非法 capability 不发布文件。
 - 定向 AI workflow **2/2 PASS**；Skin Studio 全套 **70/70 PASS**；Clear bundle verify **PASS**（8 files / 380,940 bytes；SHA-256 `9cc6bdd86a53c693b8cec6e84950ed89ec49bcde9fb78d773034e4147e45a454`）；`git diff --check` PASS。日志与 hash 见 `docs/issues/PC-ISSUE-SEPARATION-STUDIO-SCAFFOLD-V3.md` 和 `.local/android-test/reports/separation-20261028/studio-v3-scaffold-20261028-112525-637/`。
-- 实现提交 `a9dd0a20463a13bd8bd25b79168af6fc4cfd5883` 已创建；本 Issue/进度/矩阵记录独立提交。本切片未做 Browser Studio import E2E、Android WebView/设备或 Native/Skin 功能等价。SEP-15/S5 和总体分离目标保持进行中。
+- CLI-only 初始实现提交 `a9dd0a20463a13bd8bd25b79168af6fc4cfd5883` 已创建；浏览器往返验证见下方 follow-up。Android WebView/设备或 Native/Skin 功能等价未测。SEP-15/S5 和总体分离目标保持进行中。
+
+### Scaffold 浏览器 Studio 往返补测（2026-10-28）
+
+- 扩展 `e2e_v3_source.cjs`：Chrome Headless 通过真实 Studio import handler 加载 CLI 新建包，在结构树插入组件，校验预览原样提供 canonical HTML，导出/重导入后再载入 Studio 检查组件仍在树中，且零 capability 保持。结果 **PASS**；脚手架包 SHA-256 `4e5d60cda376b6b9295cb8aa4f4a6efbc6b881f999424310dd48e64f2de0156c`，日志和截图哈希见独立 Issue 报告与 `.local/android-test/reports/separation-20261028/studio-v3-scaffold-browser-20261028-113628-271/`。
+- 首次 E2E 因新增场景未恢复原 Clear fixture 而在后续断言失败；恢复 fixture 后完整 E2E 通过，失败日志保留。更新 E2E 支持 `STUDIO_E2E_REPORT_DIR`，避免覆盖旧截图证据。
+- E2E 与文档提交 `86e2f3f550fc6738ddd944e68a8044e475ca487a` 已创建；最终日志 SHA-256 `9B9171319B8049B4556B9F241A7A4D708AB6C76780CFEB1918EA774981EB9064`。
+- 该回归只证明桌面 Chrome Studio 路径；Android WebView/设备与 Native/Skin 功能等价未测，SEP-15/S5 仍进行中。
