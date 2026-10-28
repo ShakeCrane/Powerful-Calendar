@@ -47,4 +47,4 @@
 
 ## Git
 
-代码与独立 Issue 报告通过单独提交推送；提交 SHA 记录在交付报告中。并发 Agent 的 `app/src/androidTest/java/dev/powerfulcalendar/ui/v2/WebSkinManagementInstrumentedTest.kt` 未修改、未暂存、未提交。
+提交：`4cfd3947c481e5c056d15173b5eb61932654bdde` — `test(分离): 修复 Windows AtomicFile 测试替身竞态`，已推送至 `origin/codex/separation-skin-settings`。并发 Agent 的 `app/src/androidTest/java/dev/powerfulcalendar/ui/v2/WebSkinManagementInstrumentedTest.kt` 未修改、未暂存、未提交。

@@ -4,7 +4,7 @@
 
 - 一次全量回归出现 `skinImageRequiresExplicitUploadConsentAndNeverStoresRawImageInChatHistory` 超时；失败栈显示 `.new` 文件在 rename 时消失。根因为 Windows `ShadowAtomicFileReplaceOnWindows.openRead()` 会删除仍在写入的临时文件。修正为只读已提交文件，并增加“读期间保留正在写入的 `.new`”回归；没有修改生产 `AiChatHistoryStore`。
 - 两个定向回归通过；修复后完整离线门禁 **637/637 JVM、88 suites、0 failures/errors/skips、59 tasks**，源码边界、Debug APK、Lint 通过（0 errors / 52 warnings）。最终 Gradle 日志 SHA-256 `E34460BE1C503DAB8CDB491D5B305695351ACD175481957CC149775A933348E9`；JUnit ZIP `29DC48EA3BAFAFDE1053CA5551CE586763E03DADE8B67550FCD4F8B62329DC9E`；APK SHA-256 `8974331FDF045FD88C41944CCE2869D414D4FC8EAE24F69486E417F3DFF3283A`。失败日志和修复后日志都保存在 `.local/android-test/reports/separation-20261028/`。独立报告：`docs/issues/PC-ISSUE-SEPARATION-WINDOWS-ATOMICFILE-SHADOW-RACE.md`。
-- 此项只修正 Windows 测试替身；Android 平台 AtomicFile、AVD/实体设备和完整 Native/Skin 等价仍未验证。并发 Agent 的 Android instrumentation 测试保持未改动、未暂存。
+- 此项只修正 Windows 测试替身；Android 平台 AtomicFile、AVD/实体设备和完整 Native/Skin 等价仍未验证。提交 `4cfd3947c481e5c056d15173b5eb61932654bdde` 已推送到 `origin/codex/separation-skin-settings`。并发 Agent 的 Android instrumentation 测试保持未改动、未暂存。
 
 ## Separation — Web 正式编辑检查点重开恢复回归（2026-10-28）
 
