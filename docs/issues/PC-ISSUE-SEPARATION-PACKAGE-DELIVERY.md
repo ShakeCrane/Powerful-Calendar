@@ -69,3 +69,8 @@ python -m unittest discover -s tools/skin-studio/tests -v
 - 物理设备及 OEM WebView 行为：**NOT TESTED**，按当前分工由用户验证。
 - `S0-PKG-06` Chrome Preview↔Android WebView 全维度比较、其他第三方包矩阵及完整 Native/Skin 等价：仍 **NOT TESTED**。
 - Skin-First 分离仍 **IN PROGRESS**；本 Issue 不是总体 S0 完成、release GO 或 skin cutover 授权。
+
+## Git 交付
+
+- 实现、fixture、测试及本 Issue/矩阵更新：`32beb48b4e589aa5540cd8419ea8410e67070ae6`。
+- 已推送：`origin/codex/separation-s0-inventory`。未合并到 `main`。

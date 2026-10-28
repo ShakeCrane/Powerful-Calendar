@@ -5,6 +5,7 @@
 - 新增 Studio v3 Builder 产出的 deterministic `.pcskin` fixture 与 Android instrumentation。第一次 AVD 实际运行暴露测试 URL host 拼写错误，之后还修正 marker 目录和异步 SharedPreferences 清理顺序；最终没有生产 runtime 源码变更。
 - Skin Studio Python 全套 **55/55 PASS**；完整离线 Gradle 门禁 **606/606 JVM、83 suites、0 failures/errors/skips、88/88 tasks PASS**；lint **0 errors / 52 warnings**。APK、测试日志及哈希见 [独立 Issue 报告](../issues/PC-ISSUE-SEPARATION-PACKAGE-DELIVERY.md)。
 - 新建 API 35 AVD `emulator-5572` 两阶段 instrumentation **1/1 + 1/1 PASS**。MainActivity PID `7238` 经 `force-stop` 退出；新进程真实启动 MainActivity，恢复所选包并验证 WebView 中 HTML/JS/CSS/PNG 与 `.pcskin` 导出逐字节相符。无阶段参数整类运行也检查清理逻辑；最后设备文件清单无测试包、专属偏好或 marker 残留。
+- 提交与推送：`32beb48b4e589aa5540cd8419ea8410e67070ae6` → `origin/codex/separation-s0-inventory`。
 - 仅签核 `S0-PKG-05` 的隔离 Android runtime 路径。物理/OEM 未测；Studio Chrome↔Android WebView 全维度比较 `S0-PKG-06`、宽泛包矩阵和其他 S0 均未签核。S0 / Skin-First 仍 **IN PROGRESS**，无 release/cutover GO。下一个独立包项为 `S0-PKG-06`。
 
 ## Separation — v3 Manifest 扩展元数据兼容（2026-10-29）
