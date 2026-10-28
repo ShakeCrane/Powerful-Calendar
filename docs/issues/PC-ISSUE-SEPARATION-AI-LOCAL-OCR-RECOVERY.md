@@ -53,4 +53,4 @@ Studio / Clear 源码没有变化；Skin Studio **70/70 Python**、Chrome Headle
 - 系统 DocumentsUI、Android WebView/AVD、实体设备、真实 AI Provider 与完整 Native/Skin 回放未测。
 - 因此只签核 Host 的本地 OCR 选择、核对界面和同步异常恢复；SEP-09 与 S3 整体仍 **NOT TESTED / 进行中**。
 
-测试与报告提交 SHA 在提交推送后补入本报告和进度记录。
+实现、测试与报告提交 `17c99adbd1c95c5e3279ce7bcb1ec3ec08db0592`（`fix(分离): 封闭本地 OCR 同步失败边界`）已推送至 `origin/codex/separation-skin-settings`。
