@@ -139,6 +139,84 @@ class AiSkinWorkflowV3Test(unittest.TestCase):
                 "originalApkAssetPreserved": True,
             }, ensure_ascii=False, sort_keys=True))
 
+    def test_scaffold_v3_creates_a_buildable_least_privilege_skin_from_scratch(self):
+        evidence_root = ROOT / ".local" / "android-test"
+        evidence_root.mkdir(parents=True, exist_ok=True)
+
+        with tempfile.TemporaryDirectory(prefix="v3-scaffold-", dir=evidence_root) as temp:
+            work = Path(temp)
+            first = work / "blank-skin.pcskin"
+            second = work / "same-blank-skin.pcskin"
+            created = self.cli_json(
+                "scaffold-v3", "--id", "agent-blank-v3", "--name", "Agent Blank Skin",
+                "--out", first, "--json")
+
+            self.assertEqual(created["command"], "scaffold-v3")
+            self.assertTrue(created["ok"])
+            self.assertEqual(created["manifest"]["capabilities"], [])
+            self.assertEqual(created["fileCount"], 4)
+            self.assertTrue(first.is_file())
+
+            inspected = self.cli_json("inspect-v3", first)
+            self.assertEqual(inspected["packageSha256"], created["packageSha256"])
+            self.assertEqual(inspected["manifest"]["id"], "agent-blank-v3")
+            self.assertEqual(inspected["manifest"]["capabilities"], [])
+            self.assertEqual(
+                {item["path"] for item in inspected["files"]},
+                {"project.json", "web/index.html", "web/style.css", "web/app.js"})
+
+            page = self.cli_json("analyze-v3", first)["pages"]
+            self.assertEqual(len(page), 1)
+            self.assertEqual(page[0]["path"], "web/index.html")
+            audit = self.cli_json("audit-bridge-v3", first)
+            self.assertTrue(audit["ok"])
+            self.assertEqual(audit["bindings"], [])
+            self.assertEqual(audit["requiredCapabilities"], [])
+            self.assertTrue(audit["requiresSourceReview"])
+
+            validation = self.cli_json("validate", first, "--json")
+            self.assertEqual(validation["runtimeVersion"], 3)
+            self.assertEqual(validation["packageSha256"], created["packageSha256"])
+
+            repeat = self.cli_json(
+                "scaffold-v3", "--id", "agent-blank-v3", "--name", "Agent Blank Skin",
+                "--out", second, "--json")
+            self.assertEqual(repeat["packageSha256"], created["packageSha256"])
+            self.assertEqual(first.read_bytes(), second.read_bytes())
+
+            explicit = self.cli_json(
+                "scaffold-v3", "--id", "agent-requested-v3", "--name", "Explicit Request",
+                "--capability", "host.read", "--capability", "host.action",
+                "--out", work / "explicit.pcskin", "--json")
+            self.assertEqual(explicit["manifest"]["capabilities"],
+                             ["host.read", "host.action"])
+
+            existing = work / "existing.pcskin"
+            sentinel = b"leave this file untouched"
+            existing.write_bytes(sentinel)
+            rejected = subprocess.run(
+                [sys.executable, str(STUDIO / "skin_studio.py"), "scaffold-v3",
+                 "--id", "agent-blank-v3", "--name", "Agent Blank Skin",
+                 "--out", str(existing), "--json"],
+                cwd=ROOT, text=True, encoding="utf-8", capture_output=True, check=False)
+            self.assertEqual(rejected.returncode, 2)
+            error = json.loads(rejected.stderr)
+            self.assertEqual(error["command"], "scaffold-v3")
+            self.assertFalse(error["ok"])
+            self.assertEqual(existing.read_bytes(), sentinel)
+
+            invalid_capability = work / "invalid-capability.pcskin"
+            rejected_capability = subprocess.run(
+                [sys.executable, str(STUDIO / "skin_studio.py"), "scaffold-v3",
+                 "--id", "agent-invalid-v3", "--name", "Invalid Capability",
+                 "--capability", "host.database", "--out", str(invalid_capability), "--json"],
+                cwd=ROOT, text=True, encoding="utf-8", capture_output=True, check=False)
+            self.assertEqual(rejected_capability.returncode, 2)
+            capability_error = json.loads(rejected_capability.stderr)
+            self.assertEqual(capability_error["command"], "scaffold-v3")
+            self.assertFalse(capability_error["ok"])
+            self.assertFalse(invalid_capability.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

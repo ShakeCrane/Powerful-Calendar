@@ -54,6 +54,18 @@ python tools/skin-studio/skin_studio.py serve --port 8765
 这不代表浏览器 UI 已具备完整 IDE 编辑能力。具体 JSON 协议与边界见
 [`docs/SKIN_STUDIO_AI_AUTOMATION_V1.md`](../../docs/SKIN_STUDIO_AI_AUTOMATION_V1.md)。
 
+`scaffold-v3` 可从空白创建最小、可导入和可继续编辑的 v3 项目：
+
+```powershell
+python tools/skin-studio/skin_studio.py scaffold-v3 --id my-skin --name "My Skin" --out my-skin.pcskin --json
+```
+
+新项目默认不声明任何 Host capability；只有调用者显式重复传入 `--capability`
+才会写入请求声明。声明本身不会授予权限，Android Host 仍按运行时合同验证。生成器会通过
+生产 v3 builder/validator 创建确定性包，并以独占原子写入拒绝覆盖已有输出。该命令提供空白
+工程起点，不代表生成了与 Native 功能等价的成品皮肤；其 `web/app.js` 已由本地页面引用，
+因此 `audit-bridge-v3` 会要求对脚本源码进行审阅。
+
 ```powershell
 python tools/skin-studio/skin_studio.py inspect-v3 my-skin.pcskin
 python tools/skin-studio/skin_studio.py analyze-v3 my-skin.pcskin

@@ -335,6 +335,16 @@ def main():
     build3.add_argument("--out", type=Path, required=True)
     build3.add_argument("--json", action="store_true",
                         help="emit a machine-readable build receipt")
+    scaffold3 = sub.add_parser(
+        "scaffold-v3", help="create a minimal editable v3 skin project from scratch")
+    scaffold3.add_argument("--id", required=True, help="unique skin id")
+    scaffold3.add_argument("--name", required=True, help="display name")
+    scaffold3.add_argument("--out", type=Path, required=True,
+                           help="new .pcskin output path; existing files are never overwritten")
+    scaffold3.add_argument("--capability", action="append", default=[],
+                           help="explicitly request one Host capability (repeatable; default: none)")
+    scaffold3.add_argument("--json", action="store_true",
+                           help="emit a machine-readable scaffold receipt")
     inspect3 = sub.add_parser("inspect-v3", help="inspect a v3 skin as machine-readable JSON")
     inspect3.add_argument("file", type=Path)
     analyze3 = sub.add_parser("analyze-v3", help="index static HTML pages and components in a v3 skin")
@@ -454,6 +464,66 @@ def main():
                 }, sys.stdout)
             else:
                 print(f"Built v3 {output_path} ({len(result)} bytes)")
+        elif args.command == "scaffold-v3":
+            from runtime_package_v3 import build_files, unpack
+            from project_ops_v3 import write_atomic
+            check(len(args.capability) == len(set(args.capability)),
+                  "a Host capability may only be requested once")
+            manifest = {
+                "format": "powercal-skin",
+                "schemaVersion": 3,
+                "id": args.id,
+                "name": args.name,
+                "entrypoint": "web/index.html",
+                "project": "project.json",
+                "fullCanvas": True,
+                "capabilities": args.capability,
+                "light": {},
+                "dark": {},
+                "layout": {},
+                "imagesLight": {},
+                "imagesDark": {},
+                "sha256": {},
+            }
+            files = {
+                "project.json": json.dumps(
+                    {"projectVersion": 3, "mode": "advanced", "slots": []},
+                    ensure_ascii=False, indent=2).encode("utf-8") + b"\n",
+                "web/index.html": (
+                    "<!doctype html>\n"
+                    "<html lang=\"zh-CN\"><head><meta charset=\"utf-8\">\n"
+                    "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n"
+                    "<link rel=\"stylesheet\" href=\"style.css\"></head>\n"
+                    "<body><main id=\"app\" aria-label=\"PowerCal skin\"></main>"
+                    "<script src=\"app.js\"></script></body></html>\n"
+                ).encode("utf-8"),
+                "web/style.css": (
+                    ":root { color-scheme: light dark; }\n"
+                    "* { box-sizing: border-box; }\n"
+                    "html, body { margin: 0; min-height: 100%; }\n"
+                    "body { font: 16px/1.5 system-ui, sans-serif; }\n"
+                    "#app { min-height: 100vh; min-height: 100dvh; }\n"
+                ).encode("utf-8"),
+                "web/app.js": b'"use strict";\n',
+            }
+            result = build_files(manifest, files)
+            checked_manifest, checked_files = unpack(result)
+            output_path = args.out.resolve()
+            write_atomic(output_path, result)
+            receipt = {
+                "schemaVersion": 1,
+                "command": "scaffold-v3",
+                "ok": True,
+                "output": str(output_path),
+                "packageSha256": hashlib.sha256(result).hexdigest(),
+                "bytes": len(result),
+                "fileCount": len(checked_files),
+                "manifest": checked_manifest,
+            }
+            if args.json:
+                _write_machine_json(receipt, sys.stdout)
+            else:
+                print(f"Scaffolded v3 {output_path} ({len(result)} bytes)")
         else:
             port = getattr(args, "port", 8765)
             with ThreadingHTTPServer(("127.0.0.1", port), Handler) as server:
@@ -465,7 +535,7 @@ def main():
     except (SkinError, OSError, ValueError, UnicodeError, TypeError, BadZipFile,
             KeyError, RuntimeError, EOFError, zlib.error) as exc:
         if (args.command in ("inspect-v3", "analyze-v3", "audit-bridge-v3",
-                             "read-v3", "edit-v3")
+                             "read-v3", "edit-v3", "scaffold-v3")
                 or getattr(args, "json", False)):
             _write_machine_json({"schemaVersion": 1, "command": args.command,
                                  "ok": False, "error": str(exc)}, sys.stderr)
