@@ -108,6 +108,40 @@ envelope and known fields only:
   action; Host checks the live permission again before launch. On Android
   versions without a notification runtime permission, the skin can distinguish
   “not required” from an actual permission grant.
+- The additive `reminderDiagnostics` and `reminderReconcile` state fields are
+  populated only while `skinSettings` is open (`page: "SETTINGS"`); they are
+  JSON `null` on every other page. Their versioned fragment schema is
+  `docs/contracts/web-skin-reminder-state-v1.schema.json`.
+  `reminderDiagnostics` follows the Native tools visibility rule
+  (`record.enabled && reminderMinutes >= 0`), has at most 40 rows, sorts by
+  scheduled/anchor instant, kind, title and a private stable event-sequence
+  tie-breaker, and sets `truncated` when more eligible rows exist. Each row has
+  exactly `displayId`, `title`, `titleTruncated`, `kind`, `desiredState`,
+  `androidHint`, and `lastExecution`. `displayId` is a generated display ordinal;
+  event sequence, occurrence keys, notes, location, credentials and exception
+  detail are not projected. Titles are limited to 120 UTF-16 code units;
+  hints and execution labels are allowlisted and bounded. A prior `MISSED` or
+  `SNOOZED` execution remains in `lastExecution` and does not imply a desired
+  `FIRED` state. `NO_INTENT` means no current schedule intent is present for a
+  configured reminder.
+- `reminderReconcile` starts at `IDLE`, changes synchronously to `RUNNING` when
+  the existing Host `reminders.reconcile` option starts, then reports
+  `SUCCEEDED` or `FAILED` with nonnegative `checked`, `scheduled`, `blocked`,
+  `pending`, and `failed` counts plus a `truncated` boolean. The option is
+  disabled in state while running,
+  and Host also rejects re-entry. Missing exact-alarm permission is an expected
+  `blocked` outcome, not an operation failure. Any per-intent exception,
+  unresolved `pending` work, or omitted candidate due to the existing 400
+  active/blocked and 100 cancelled processing caps yields `FAILED`. The Host
+  reads one extra sentinel row per cap (401/101) to set `truncated`, but does
+  not process sentinels or include them in `checked`; `checked` counts only
+  processed active intents and CANCELLED cleanup attempts. Host errors expose
+  no exception text. The operation reuses `ReminderScheduler.reconcile` and
+  does not change the scheduler's chosen times, permission policy, or event-write
+  semantics. Studio Preview must model `truncated` as a distinct incomplete
+  result: when it is true, the Mock should say that this pass left candidates
+  unchecked and offer a retry, rather than mapping zero `pending`/`failed`
+  counts to a generic execution exception.
   ICS export uses the existing Host `CreateDocument` flow and exports Activity
   records only; the format cannot preserve other event kinds or completion state.
 - The existing `settings` action continues to open the protected Android

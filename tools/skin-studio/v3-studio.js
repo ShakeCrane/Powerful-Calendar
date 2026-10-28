@@ -985,6 +985,39 @@ function refreshOverlay(){
   }
 }
 
+let mockReminderReconcile=null,mockReminderResolved=false;
+function reminderDiagnosticsSample(){
+  const items=[
+    {displayId:"reminder-01",title:"未设置提醒的 Memo",titleTruncated:false,kind:"MEMO",
+      desiredState:"NO_INTENT",androidHint:null,lastExecution:null},
+    {displayId:"reminder-02",title:"等待处理的训练提醒",titleTruncated:false,kind:"ALARM",
+      desiredState:"PENDING",androidHint:null,lastExecution:null},
+    {displayId:"reminder-03",title:"已安排的上午活动",titleTruncated:false,kind:"ACTIVITY",
+      desiredState:"SCHEDULED",androidHint:null,lastExecution:"MISSED"},
+    {displayId:"reminder-04",title:"权限受阻的截止提醒",titleTruncated:false,kind:"DEADLINE",
+      desiredState:"BLOCKED",androidHint:"缺少精确闹钟权限",lastExecution:null},
+    {displayId:"reminder-05",title:"已取消的旧提醒",titleTruncated:false,kind:"ALARM",
+      desiredState:"CANCELLED",androidHint:"事件已更新或删除",lastExecution:"IGNORED_STALE"},
+    {displayId:"reminder-06",title:"一段用于展示标题截断的较长事件名称",titleTruncated:true,kind:"ACTIVITY",
+      desiredState:"FIRED",androidHint:null,lastExecution:"FIRED"}
+  ];
+  if(mockReminderResolved){
+    for(const item of items)if(item.desiredState==="PENDING"){
+      item.desiredState="SCHEDULED";item.androidHint="Studio Mock · 模拟结果已安排";
+    }
+  }
+  return {itemLimit:40,truncated:false,items};
+}
+function reminderReconcileSample(scenario){
+  if(mockReminderReconcile)return {...mockReminderReconcile};
+  if(scenario==="reminder-pending")
+    return {status:"FAILED",checked:6,scheduled:2,blocked:1,pending:1,failed:0,truncated:false};
+  if(scenario==="reminder-failed")
+    return {status:"FAILED",checked:6,scheduled:2,blocked:1,pending:0,failed:1,truncated:false};
+  if(scenario==="reminder-truncated")
+    return {status:"FAILED",checked:400,scheduled:400,blocked:0,pending:0,failed:0,truncated:true};
+  return {status:"IDLE",checked:0,scheduled:0,blocked:0,pending:0,failed:0,truncated:false};
+}
 function simulatedState(){
   const scenario=$("scenario").value,base=new Date("2026-10-22T04:00:00Z").getTime();
   const aiReviewScenario=scenario==="ai-review"||scenario==="ai-review-failure-retry";
@@ -1074,6 +1107,10 @@ function simulatedState(){
     ],
     reminderPermissions:{exactAlarmAllowed:false,notificationsAllowed:false,
       notificationsRuntimePermissionRequired:true},
+    ...(mockPage==="SETTINGS"?{
+      reminderDiagnostics:scenario==="reminder-unavailable"?null:reminderDiagnosticsSample(),
+      reminderReconcile:scenario==="reminder-unavailable"?null:reminderReconcileSample(scenario)
+    }:{}),
     timeline:{zoneId:zone,anchorMillis:anchor,hours,
       visibleStartMillis:start,visibleEndMillis:anchor+hours*1800000,
       nowMillis,itemLimit:300,truncated:false,items:rows},
@@ -1458,10 +1495,33 @@ function onSkinAction(message){
       return;
     }
     if(name==="invokeOption"&&typeof p.id==="string"&&p.id.startsWith("reminders.")){
+      if(mockPage!=="SETTINGS"){
+        logAction("拒绝设置页之外的提醒选项请求");return;
+      }
+      if(p.id==="reminders.reconcile"){
+        mockReminderResolved=false;
+        mockReminderReconcile={status:"RUNNING",checked:0,scheduled:0,blocked:0,pending:0,failed:0,truncated:false};
+        logAction("Studio Preview Mock：正在演示重新同步状态；没有调用 Android 提醒调度器，也没有读取或写入数据库。");
+        postState();
+        setTimeout(()=>{
+          const scenario=$("scenario").value;
+          if(scenario==="reminder-pending"){
+            mockReminderReconcile={status:"FAILED",checked:6,scheduled:2,blocked:1,pending:1,failed:0,truncated:false};
+          }else if(scenario==="reminder-failed"){
+            mockReminderReconcile={status:"FAILED",checked:6,scheduled:2,blocked:1,pending:0,failed:1,truncated:false};
+          }else if(scenario==="reminder-truncated"){
+            mockReminderReconcile={status:"FAILED",checked:400,scheduled:400,blocked:0,pending:0,failed:0,truncated:true};
+          }else{
+            mockReminderResolved=true;
+            mockReminderReconcile={status:"SUCCEEDED",checked:6,scheduled:3,blocked:1,pending:0,failed:0,truncated:false};
+          }
+          postState();
+        },250);
+        return;
+      }
       const mock={
         "reminders.exactAlarmSettings":"Preview Mock：Host 会请求打开精确闹钟系统授权页；未打开真实系统设置。",
         "reminders.notificationPermission":"Preview Mock：Host 会请求 Android 通知权限；未弹真实权限对话框。",
-        "reminders.reconcile":"Preview Mock：Host 会重建提醒调度；没有调用真实调度器。"
       }[p.id];
       if(!mock){logAction("拒绝未知提醒 Host action");return;}
       logAction(mock);
@@ -1670,6 +1730,9 @@ function bindUI(){
   for(const id of ["scenario","theme","reduced"])$(id).onchange=()=>{
     if(id==="theme")$("webPreview").style.colorScheme=$("theme").value;
     mockAnchor=null;
+    if(id==="scenario"){
+      mockReminderReconcile=null;mockReminderResolved=false;
+    }
     if(id==="scenario"&&$("scenario").value==="ai-error")mockAiErrorMessages=[
       {role:"user",content:"请帮我概括明天的安排。"},
       {role:"assistant",content:"Studio Mock：AI 请求未完成（模拟 HTTP 503）；上下文已保留，可编辑后手动重发。"}

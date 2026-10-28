@@ -124,6 +124,21 @@ button:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outl
  border:0;border-bottom:1px solid var(--sep);background:transparent}
 .optionRow{display:block;width:100%;text-align:left;background:var(--bg-elevated);
  border:0;border-bottom:1px solid var(--sep);padding:14px;color:var(--label)}
+.reminderDiagnostics{margin:8px 0 18px;padding:14px;border:1px solid var(--sep);
+ border-radius:18px;background:var(--bg-grouped);color:var(--label)}
+.reminderDiagnostics h2{margin:0 0 8px;font-size:17px;font-weight:680}
+.reminderPermissionsStatus,.reminderReconcileStatus,.reminderDiagnosticsEmpty,
+.reminderDiagnosticsLimit{margin:7px 0;color:var(--label-2);font-size:13px;line-height:1.5}
+.reminderReconcileStatus{padding:9px 11px;border-radius:12px;background:var(--bg-elevated)}
+.reminderReconcileStatus[data-status="FAILED"]{color:var(--danger)}
+.reminderDiagnosticsList{display:grid;gap:8px;margin:10px 0 0;padding:0;list-style:none}
+.reminderDiagnosticsItem{min-width:0;padding:11px 12px;border:1px solid var(--sep);
+ border-radius:14px;background:var(--bg-elevated)}
+.reminderDiagnosticsHeading{display:flex;align-items:baseline;gap:8px;min-width:0;overflow-wrap:anywhere}
+.reminderDiagnosticsId{flex:none;color:var(--label-3);font-size:11px;font-variant-numeric:tabular-nums}
+.reminderDiagnosticsTitle{min-width:0;font-size:14px;font-weight:650;overflow-wrap:anywhere}
+.reminderDiagnosticsMeta{margin:5px 0 0;color:var(--label-2);font-size:12px;line-height:1.45;overflow-wrap:anywhere}
+.reminderDiagnosticsTruncated{display:inline-block;margin-top:5px;color:var(--label-3);font-size:11px}
 .skinPackageRow{display:flex;align-items:center;justify-content:space-between;gap:10px;
  padding:8px 0;border-bottom:1px solid var(--sep)}
 .skinPackageName{flex:1;min-width:0;overflow-wrap:anywhere;font-size:14px}

@@ -14,6 +14,7 @@ import dev.powerfulcalendar.core.TemporalKind
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -68,6 +69,27 @@ class ReminderValidationTest {
         return card.eventSeq
     }
 
+    private fun insertSyntheticIntents(
+        state: PowerStore.DesiredSchedule,
+        count: Int,
+        firstEventSeq: Long
+    ) {
+        val now = System.currentTimeMillis()
+        repeat(count) { index ->
+            store.writableDatabase.execSQL(
+                """INSERT INTO schedule_intents(
+                    event_seq,trigger_id,revision,occurrence_key,instant_ms,requirement,
+                    desired_state,android_hint,updated_ms
+                ) VALUES(?,?,?,?,?,?,?,?,?)""",
+                arrayOf<Any?>(
+                    firstEventSeq + index, "primary", 1L, "slot-$index", now + 60_000L + index,
+                    PowerStore.TriggerRequirement.INEXACT.name, state.name,
+                    if (state == PowerStore.DesiredSchedule.BLOCKED) "权限未授予" else null, now
+                )
+            )
+        }
+    }
+
     @Test
     fun theScheduledOccurrenceOfTheCurrentRevisionIsValid() {
         val seq = createAlarm(60)
@@ -117,12 +139,17 @@ class ReminderValidationTest {
         val requested = store.intentFor(seq)!!
         assertEquals(PowerStore.TriggerRequirement.EXACT, requested.requirement)
 
-        ReminderScheduler.reconcile(context, store)
+        val report = ReminderScheduler.reconcile(context, store)
 
         val blocked = store.intentFor(seq)!!
         assertEquals(PowerStore.DesiredSchedule.BLOCKED, blocked.desired)
         assertTrue(blocked.androidHint.orEmpty().contains("精确闹钟权限"))
         assertTrue(shadowAlarmManager.scheduledAlarms.isEmpty())
+        assertEquals(1, report.checked)
+        assertEquals(0, report.scheduled)
+        assertEquals(1, report.blocked)
+        assertEquals(0, report.pending)
+        assertEquals(0, report.failed)
     }
 
     @Test
@@ -140,8 +167,10 @@ class ReminderValidationTest {
         )
         assertTrue(store.commit(exactReminder.draftId) is PowerStore.CommitOutcome.Committed)
 
-        ReminderScheduler.reconcile(context, store)
+        val blockedReport = ReminderScheduler.reconcile(context, store)
         assertEquals(PowerStore.DesiredSchedule.BLOCKED, store.intentFor(seq)!!.desired)
+        assertEquals(1, blockedReport.blocked)
+        assertEquals(0, blockedReport.failed)
         assertTrue(shadowAlarmManager.scheduledAlarms.isEmpty())
         val notificationManager = context.getSystemService(NotificationManager::class.java)!!
         assertTrue(notificationManager.activeNotifications.any {
@@ -149,10 +178,14 @@ class ReminderValidationTest {
         })
 
         ShadowAlarmManager.setCanScheduleExactAlarms(true)
-        ReminderScheduler.reconcile(context, store)
+        val recoveredReport = ReminderScheduler.reconcile(context, store)
 
         assertEquals(PowerStore.DesiredSchedule.SCHEDULED, store.intentFor(seq)!!.desired)
         assertEquals(1, shadowAlarmManager.scheduledAlarms.size)
+        assertEquals(1, recoveredReport.scheduled)
+        assertEquals(0, recoveredReport.blocked)
+        assertEquals(0, recoveredReport.pending)
+        assertEquals(0, recoveredReport.failed)
         assertTrue(notificationManager.activeNotifications.none {
             it.id == AlarmContract.NOTIFICATION_STATUS_ID
         })
@@ -191,6 +224,53 @@ class ReminderValidationTest {
         assertTrue(batch.any {
             it.eventSeq == scheduledSeq && it.desired == PowerStore.DesiredSchedule.SCHEDULED
         })
+    }
+
+    @Test
+    fun reconcileCountsCancelledCleanupAttemptsAsChecked() {
+        val seq = createAlarm(60)
+        val intent = store.intentFor(seq)!!
+        assertTrue(store.markIntent(
+            seq, intent.triggerId, PowerStore.DesiredSchedule.CANCELLED,
+            "事件已更新或删除", intent.revision, intent.occurrenceKey
+        ))
+
+        val report = ReminderScheduler.reconcile(context, store)
+
+        assertEquals(1, report.checked)
+        assertEquals(0, report.scheduled)
+        assertEquals(0, report.blocked)
+        assertEquals(0, report.pending)
+        assertEquals(0, report.failed)
+        assertFalse(report.truncated)
+        assertNull(store.intentFor(seq))
+    }
+
+    @Test
+    fun reconcileReportsOverflowWithoutProcessingPastExistingActiveCap() {
+        insertSyntheticIntents(PowerStore.DesiredSchedule.PENDING, 401, 20_000L)
+
+        val report = ReminderScheduler.reconcile(context, store)
+
+        assertEquals(500, report.checked) // 400 active attempts + 100 cancelled cleanup attempts.
+        assertTrue(report.truncated)
+        assertEquals(0, report.failed)
+        val remainingActive = store.reconciliationIntents(limit = 10)
+        assertEquals(1, remainingActive.size)
+        assertEquals(PowerStore.DesiredSchedule.PENDING, remainingActive.single().desired)
+        assertEquals(300, store.intentsInState(PowerStore.DesiredSchedule.CANCELLED, limit = 500).size)
+    }
+
+    @Test
+    fun reconcileReportsBlockedGroupOverflowWithoutProcessingPastItsCap() {
+        insertSyntheticIntents(PowerStore.DesiredSchedule.BLOCKED, 401, 30_000L)
+
+        val report = ReminderScheduler.reconcile(context, store)
+
+        assertEquals(500, report.checked) // 400 blocked attempts + 100 cancelled cleanup attempts.
+        assertTrue(report.truncated)
+        assertEquals(PowerStore.DesiredSchedule.BLOCKED, store.reconciliationIntents(limit = 10).single().desired)
+        assertEquals(300, store.intentsInState(PowerStore.DesiredSchedule.CANCELLED, limit = 500).size)
     }
 
     @Test

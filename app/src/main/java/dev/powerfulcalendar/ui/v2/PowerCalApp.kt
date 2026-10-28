@@ -157,7 +157,14 @@ internal class LifecycleCheckpointGate {
 }
 
 internal data class ReminderDisplay(val record: TemporalRecord, val intent: PowerStore.ScheduleIntent?, val execution: String?)
-internal data class UiDiagnostics(val nextSequence: Long = 1, val identities: Long = 0, val reminders: List<ReminderDisplay> = emptyList())
+internal data class UiDiagnostics(
+    val nextSequence: Long = 1,
+    val identities: Long = 0,
+    /** Native tools preserves its existing 40-row list. */
+    val reminders: List<ReminderDisplay> = emptyList(),
+    /** Full eligible set is held only in Host memory so the skin projection can report truncation. */
+    val reminderCandidates: List<ReminderDisplay> = emptyList()
+)
 
 private data class AppData(
     val records: List<TemporalRecord>,
@@ -170,19 +177,29 @@ private data class AppData(
 
 @Composable
 fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
-    PowerCalAppContent(store, nativeRecoverySignal, MlKitLocalImageOcr)
+    PowerCalAppContent(store, nativeRecoverySignal, MlKitLocalImageOcr, ReminderScheduler::reconcile)
 }
 
 @Composable
 internal fun PowerCalAppWithLocalImageOcr(store: PowerStore, localImageOcr: LocalImageOcr) {
-    PowerCalAppContent(store, 0, localImageOcr)
+    PowerCalAppContent(store, 0, localImageOcr, ReminderScheduler::reconcile)
+}
+
+/** Keeps the real Host/Bridge path testable with a controlled scheduler result in Robolectric. */
+@Composable
+internal fun PowerCalAppWithReminderReconciler(
+    store: PowerStore,
+    reconciler: (Context, PowerStore) -> ReminderScheduler.ReconcileReport
+) {
+    PowerCalAppContent(store, 0, MlKitLocalImageOcr, reconciler)
 }
 
 @Composable
 private fun PowerCalAppContent(
     store: PowerStore,
     nativeRecoverySignal: Int,
-    localImageOcr: LocalImageOcr
+    localImageOcr: LocalImageOcr,
+    reminderReconciler: (Context, PowerStore) -> ReminderScheduler.ReconcileReport
 ) {
     val context = LocalContext.current
     val appContext = context.applicationContext
@@ -203,6 +220,7 @@ private fun PowerCalAppContent(
     var pendingCount by remember { mutableIntStateOf(0) }
     var aiLocked by remember { mutableStateOf(false) }
     var aiSession by remember { mutableStateOf<PowerStore.AiSession?>(null) }
+    var reminderReconcile by remember { mutableStateOf(ReminderReconcileSnapshot()) }
     var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var message by remember { mutableStateOf<String?>(null) }
     var webFailureRecovery by remember { mutableStateOf<WebSkinEditRecoverySnapshot?>(null) }
@@ -300,15 +318,23 @@ private fun PowerCalAppContent(
         val data = withContext(Dispatchers.IO) {
             val pending = store.pendingDrafts()
             val formal = store.all()
+            val reminderCandidates = formal.filter {
+                it.enabled && it.reminderMinutes >= 0
+            }.map {
+                ReminderDisplay(it, store.intentFor(it.eventSeq), store.lastExecution(it.eventSeq))
+            }
             AppData(
                 records = formal,
                 pending = pending.size,
                 locked = store.isLocked(),
                 session = store.currentAiSession(),
                 cards = pending,
-                diagnostics = UiDiagnostics(store.nextSequencePreview(), store.identityCount(), formal.filter { it.enabled && it.reminderMinutes >= 0 }.take(40).map {
-                    ReminderDisplay(it, store.intentFor(it.eventSeq), store.lastExecution(it.eventSeq))
-                })
+                diagnostics = UiDiagnostics(
+                    nextSequence = store.nextSequencePreview(),
+                    identities = store.identityCount(),
+                    reminders = reminderCandidates.take(40),
+                    reminderCandidates = reminderCandidates
+                )
             )
         }
         withContext(Dispatchers.Main) {
@@ -346,8 +372,8 @@ private fun PowerCalAppContent(
         newEventBusy = false
     }
 
-    suspend fun reconcile() {
-        withContext(Dispatchers.IO) { ReminderScheduler.reconcile(appContext, store) }
+    suspend fun reconcile(): ReminderScheduler.ReconcileReport = withContext(Dispatchers.IO) {
+        reminderReconciler(appContext, store)
     }
 
     suspend fun openDeckAt(draftId: Long?) {
@@ -1254,10 +1280,34 @@ private fun PowerCalAppContent(
                             )
                         }
                     }
-                    action.id == "reminders.reconcile" -> scope.launch {
-                        reconcile()
-                        reload()
-                        WebSkinBridgeRuntime.stateRevision++
+                    action.id == "reminders.reconcile" -> {
+                        if (reminderReconcile.status != "RUNNING") {
+                            reminderReconcile = ReminderReconcileSnapshot.running()
+                            WebSkinBridgeRuntime.stateRevision++
+                            scope.launch {
+                                val completed = try {
+                                    ReminderReconcileSnapshot.completed(reconcile())
+                                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                                    reminderReconcile = ReminderReconcileSnapshot.failed()
+                                    WebSkinBridgeRuntime.stateRevision++
+                                    throw cancelled
+                                } catch (_: Exception) {
+                                    ReminderReconcileSnapshot.failed()
+                                }
+                                reminderReconcile = completed
+                                try {
+                                    reload()
+                                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                                    reminderReconcile = ReminderReconcileSnapshot.failed()
+                                    WebSkinBridgeRuntime.stateRevision++
+                                    throw cancelled
+                                } catch (_: Exception) {
+                                    // Keep the scheduler result visible; a projection refresh failure
+                                    // must not leave the Host operation in RUNNING or escape the job.
+                                }
+                                WebSkinBridgeRuntime.stateRevision++
+                            }
+                        }
                     }
                     else -> Unit
                 }
@@ -1387,6 +1437,7 @@ private fun PowerCalAppContent(
                 if (android.os.Build.VERSION.SDK_INT >= 33 && notificationsAllowed) {
                     add("reminders.notificationPermission")
                 }
+                if (reminderReconcile.status == "RUNNING") add("reminders.reconcile")
             }
             JSONObject().put("bridgeVersion", WebSkinBridgeRuntime.VERSION)
                 .put("page", if (skinSettingsOpen) "SETTINGS" else page)
@@ -1437,6 +1488,12 @@ private fun PowerCalAppContent(
                         notificationsRuntimePermissionRequired = android.os.Build.VERSION.SDK_INT >= 33
                     )
                     else JSONObject.NULL)
+                .put("reminderDiagnostics", if (skinSettingsOpen)
+                    WebSkinReminderProjection.toJson(diagnostics.reminderCandidates.map { row ->
+                        ReminderDiagnosticInput(row.record, row.intent, row.execution)
+                    })
+                    else JSONObject.NULL)
+                .put("reminderReconcile", if (skinSettingsOpen) reminderReconcile.toJson() else JSONObject.NULL)
                 .put("timeline", if (skinSettingsOpen) JSONObject() else
                     WebSkinTimelineProjection.build(records, camera, nowMillis, zone))
                 .put("month", if (page == Page.MONTH.name && !skinSettingsOpen)

@@ -34,6 +34,21 @@ import java.time.format.DateTimeFormatter
 object ReminderScheduler {
     private const val TAG = "PowerCalScheduler"
 
+    data class ReconcileReport(
+        val checked: Int,
+        val scheduled: Int,
+        val blocked: Int,
+        val pending: Int,
+        val failed: Int,
+        val truncated: Boolean = false
+    ) {
+        init {
+            require(checked >= 0 && scheduled >= 0 && blocked >= 0 && pending >= 0 && failed >= 0)
+        }
+    }
+
+    private enum class ReconcileDisposition { SCHEDULED, BLOCKED, PENDING, TERMINAL }
+
     fun exactAlarmAllowed(context: Context): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return true
         val manager = context.getSystemService(AlarmManager::class.java) ?: return false
@@ -47,23 +62,60 @@ object ReminderScheduler {
     }
 
     /** Idempotent: safe to call after boot, timezone change, permission change or a commit. */
-    fun reconcile(context: Context, store: PowerStore) {
+    fun reconcile(context: Context, store: PowerStore): ReconcileReport {
         val now = System.currentTimeMillis()
+        var checked = 0
+        var scheduled = 0
+        var blocked = 0
+        var pending = 0
+        var failed = 0
+        val candidates = store.reconciliationIntents(limit = 401)
+        val activeCandidates = candidates.filter { it.desired != PowerStore.DesiredSchedule.BLOCKED }
+        val blockedCandidates = candidates.filter { it.desired == PowerStore.DesiredSchedule.BLOCKED }
+        var truncated = activeCandidates.size > 400 || blockedCandidates.size > 400
         // Revisit blocked rows as well: a permission or OS state change can make them schedulable
         // without a new event revision. `markIntent` remains revision-guarded against concurrent
-        // commits.
-        store.reconciliationIntents(limit = 400).forEach { intent ->
-            runCatching { apply(context, store, intent, now) }
-                .onFailure { Log.w(TAG, "reconcile #${intent.eventSeq} failed", it) }
+        // commits. Sentinel rows expose overflow without increasing the existing 400-row work cap.
+        (activeCandidates.take(400) + blockedCandidates.take(400)).forEach { intent ->
+            checked++
+            val disposition = try {
+                apply(context, store, intent, now)
+            } catch (failure: Exception) {
+                failed++
+                Log.w(TAG, "reconcile #${intent.eventSeq} failed", failure)
+                null
+            }
+            when (disposition) {
+                ReconcileDisposition.SCHEDULED -> scheduled++
+                ReconcileDisposition.BLOCKED -> blocked++
+                ReconcileDisposition.PENDING -> pending++
+                ReconcileDisposition.TERMINAL, null -> Unit
+            }
         }
         // Cancelled intents may still have an armed PendingIntent (delete/disable). Disarm it once.
-        store.intentsInState(PowerStore.DesiredSchedule.CANCELLED, limit = 100).forEach { intent ->
-            cancel(context, intent.eventSeq)
-            store.deleteIntent(intent.eventSeq, intent.triggerId)
+        val cancelledCandidates = store.intentsInState(PowerStore.DesiredSchedule.CANCELLED, limit = 101)
+        if (cancelledCandidates.size > 100) truncated = true
+        for (intent in cancelledCandidates.take(100)) {
+            checked++
+            try {
+                cancel(context, intent.eventSeq)
+                store.deleteIntent(intent.eventSeq, intent.triggerId)
+            } catch (failure: Exception) {
+                failed++
+                Log.w(TAG, "cancel reconcile #${intent.eventSeq} failed", failure)
+                // Preserve the existing stop-on-first-cleanup-error behavior.
+                break
+            }
         }
+        return ReconcileReport(checked, scheduled, blocked, pending, failed, truncated)
     }
 
-    private fun apply(context: Context, store: PowerStore, intent: PowerStore.ScheduleIntent, now: Long) {
+    private fun apply(
+        context: Context,
+        store: PowerStore,
+        intent: PowerStore.ScheduleIntent,
+        now: Long
+    ): ReconcileDisposition {
         val record = store.get(intent.eventSeq)
         if (record == null || record.revision != intent.revision || !record.enabled) {
             // Only disarm when the row still belongs to this revision; a newer schedule must survive.
@@ -72,7 +124,7 @@ object ReminderScheduler {
                 "事件已更新或删除", intent.revision, intent.occurrenceKey
             )
             if (owned) cancel(context, intent.eventSeq)
-            return
+            return ReconcileDisposition.TERMINAL
         }
         if (AlarmContract.isOutsideGraceWindow(intent.instantMillis, now)) {
             // The window has passed while we were not running. Ringing now would be a lie.
@@ -81,7 +133,7 @@ object ReminderScheduler {
                 "MISSED", "错过宽限窗口，未补响"
             )
             store.advanceIntentAfterFiring(intent.eventSeq, intent.occurrenceKey)
-            return
+            return ReconcileDisposition.TERMINAL
         }
         if (intent.requirement == PowerStore.TriggerRequirement.EXACT && !exactAlarmAllowed(context)) {
             val owned = store.markIntent(
@@ -89,7 +141,7 @@ object ReminderScheduler {
                 "缺少精确闹钟权限", intent.revision, intent.occurrenceKey
             )
             if (owned) NotificationHelper.postExactAlarmBlocked(context, record)
-            return
+            return currentDisposition(store, intent)
         }
         if (!notificationsAllowed(context)) {
             // The alarm can still be scheduled; delivery will be silent until permission returns.
@@ -99,7 +151,8 @@ object ReminderScheduler {
             context, intent.eventSeq, record.revision, intent.occurrenceKey,
             intent.triggerId, intent.instantMillis, snooze = false
         )
-        val manager = context.getSystemService(AlarmManager::class.java) ?: return
+        val manager = context.getSystemService(AlarmManager::class.java)
+            ?: return ReconcileDisposition.PENDING
         try {
             if (intent.requirement == PowerStore.TriggerRequirement.EXACT) {
                 manager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, intent.instantMillis, pending)
@@ -114,13 +167,27 @@ object ReminderScheduler {
             if (markedScheduled && store.intentsInState(PowerStore.DesiredSchedule.BLOCKED, limit = 1).isEmpty()) {
                 NotificationHelper.cancelExactAlarmBlocked(context)
             }
+            return if (markedScheduled) ReconcileDisposition.SCHEDULED else currentDisposition(store, intent)
         } catch (security: SecurityException) {
             val owned = store.markIntent(
                 intent.eventSeq, intent.triggerId, PowerStore.DesiredSchedule.BLOCKED,
                 "系统拒绝精确闹钟", intent.revision, intent.occurrenceKey
             )
             if (owned) NotificationHelper.postExactAlarmBlocked(context, record)
+            return currentDisposition(store, intent)
         }
+    }
+
+    private fun currentDisposition(
+        store: PowerStore,
+        intent: PowerStore.ScheduleIntent
+    ): ReconcileDisposition = when (store.intentFor(intent.eventSeq, intent.triggerId)?.desired) {
+        PowerStore.DesiredSchedule.SCHEDULED -> ReconcileDisposition.SCHEDULED
+        PowerStore.DesiredSchedule.BLOCKED -> ReconcileDisposition.BLOCKED
+        PowerStore.DesiredSchedule.PENDING -> ReconcileDisposition.PENDING
+        PowerStore.DesiredSchedule.CANCELLED,
+        PowerStore.DesiredSchedule.FIRED,
+        null -> ReconcileDisposition.TERMINAL
     }
 
     fun cancel(context: Context, eventSeq: Long) {

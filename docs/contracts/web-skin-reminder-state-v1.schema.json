@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://powercal.local/contracts/web-skin-reminder-state-v1.schema.json",
+  "title": "PowerCal Web Skin reminder state extension v1",
+  "description": "Closed schemas for the additive reminder fields inside the existing Web Skin Bridge v1 SETTINGS state payload. This is a state fragment, not the full Host state schema.",
+  "x-contractVersion": 1,
+  "type": "object",
+  "properties": {
+    "reminderDiagnostics": {
+      "oneOf": [
+        { "$ref": "#/$defs/reminderDiagnostics" },
+        { "type": "null" }
+      ]
+    },
+    "reminderReconcile": {
+      "oneOf": [
+        { "$ref": "#/$defs/reminderReconcile" },
+        { "type": "null" }
+      ]
+    }
+  },
+  "required": ["reminderDiagnostics", "reminderReconcile"],
+  "additionalProperties": true,
+  "$defs": {
+    "reminderDiagnostics": {
+      "type": "object",
+      "required": ["itemLimit", "truncated", "items"],
+      "properties": {
+        "itemLimit": { "const": 40 },
+        "truncated": { "type": "boolean" },
+        "items": {
+          "type": "array",
+          "maxItems": 40,
+          "items": { "$ref": "#/$defs/reminderDiagnosticItem" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "reminderDiagnosticItem": {
+      "type": "object",
+      "required": [
+        "displayId",
+        "title",
+        "titleTruncated",
+        "kind",
+        "desiredState",
+        "androidHint",
+        "lastExecution"
+      ],
+      "properties": {
+        "displayId": {
+          "type": "string",
+          "pattern": "^reminder-[0-9]{2}$",
+          "maxLength": 11
+        },
+        "title": { "type": "string", "maxLength": 120 },
+        "titleTruncated": { "type": "boolean" },
+        "kind": { "enum": ["ALARM", "ACTIVITY", "DEADLINE", "MEMO"] },
+        "desiredState": {
+          "enum": ["NO_INTENT", "PENDING", "SCHEDULED", "BLOCKED", "CANCELLED", "FIRED"]
+        },
+        "androidHint": {
+          "type": ["string", "null"],
+          "maxLength": 160
+        },
+        "lastExecution": {
+          "type": ["string", "null"],
+          "maxLength": 32,
+          "enum": [
+            "FIRED",
+            "MISSED",
+            "BLOCKED",
+            "SNOOZED",
+            "SNOOZE_INEXACT",
+            "IGNORED_STALE",
+            "IGNORED_SNOOZE_STALE",
+            null
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "reminderReconcile": {
+      "type": "object",
+      "required": ["status", "checked", "scheduled", "blocked", "pending", "failed", "truncated"],
+      "properties": {
+        "status": { "enum": ["IDLE", "RUNNING", "SUCCEEDED", "FAILED"] },
+        "checked": { "type": "integer", "minimum": 0 },
+        "scheduled": { "type": "integer", "minimum": 0 },
+        "blocked": { "type": "integer", "minimum": 0 },
+        "pending": { "type": "integer", "minimum": 0 },
+        "failed": { "type": "integer", "minimum": 0 },
+        "truncated": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

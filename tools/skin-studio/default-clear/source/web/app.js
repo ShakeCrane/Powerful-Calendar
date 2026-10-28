@@ -516,18 +516,106 @@ function renderAiProposalReview(list){
   for(const warning of (review.warnings||[]))root.append(node("p","",`提示：${warning}`));
   list.append(root);
 }
+function reminderCount(value){return Number.isInteger(value)&&value>=0?value:0}
+function renderReminderDiagnostics(root){
+  const section=node("section","reminderDiagnostics");
+  section.setAttribute("role","region");
+  section.setAttribute("aria-labelledby","reminderDiagnosticsTitle");
+  const heading=node("h2","","提醒状态");heading.id="reminderDiagnosticsTitle";
+  section.append(heading);
+  const permissions=state.reminderPermissions||{};
+  const exact=permissions.exactAlarmAllowed===true?"已允许":
+    permissions.exactAlarmAllowed===false?"未允许":"状态未知";
+  const notifications=permissions.notificationsRuntimePermissionRequired===false?"此 Android 版本无需运行时授权":
+    permissions.notificationsAllowed===true?"已允许":
+    permissions.notificationsAllowed===false?"未允许":"状态未知";
+  const permissionStatus=node("p","reminderPermissionsStatus",
+    `精确闹钟：${exact}；通知运行时权限：${notifications}`);
+  permissionStatus.setAttribute("role","status");
+  section.append(permissionStatus);
+
+  const result=state.reminderReconcile;
+  const status=result&&typeof result.status==="string"?result.status:null;
+  const counts={checked:reminderCount(result?.checked),scheduled:reminderCount(result?.scheduled),
+    blocked:reminderCount(result?.blocked),pending:reminderCount(result?.pending),
+    failed:reminderCount(result?.failed),truncated:result?.truncated===true};
+  let message=result==null?"宿主尚未提供提醒同步状态。":"尚未执行提醒同步。";
+  let displayStatus=result==null?"UNAVAILABLE":"IDLE";
+  if(status==="RUNNING"){
+    displayStatus="RUNNING";message="正在同步提醒…";
+  }else if(status==="SUCCEEDED"&&counts.failed===0&&counts.pending===0&&!counts.truncated){
+    displayStatus="SUCCEEDED";
+    message=`提醒同步已完成：检查 ${counts.checked} 项，安排 ${counts.scheduled} 项；`+
+      `阻止 ${counts.blocked} 项单独统计，待处理 ${counts.pending} 项，失败 ${counts.failed} 项。`;
+  }else if(status==="FAILED"||status==="SUCCEEDED"){
+    displayStatus="FAILED";
+    const reasons=[];
+    if(counts.failed>0)reasons.push(`失败 ${counts.failed} 项`);
+    if(counts.pending>0)reasons.push(`待处理 ${counts.pending} 项`);
+    if(counts.truncated)reasons.push("本轮达到处理上限，仍有提醒未检查");
+    if(!reasons.length)reasons.push("执行异常或计数不可用");
+    message=`提醒同步未完成：${reasons.length?reasons.join("；"):"Host 未提供有效完成计数"}。`+
+      `检查 ${counts.checked} 项，安排 ${counts.scheduled} 项，阻止 ${counts.blocked} 项。`;
+  }else if(result==null){
+    displayStatus="UNAVAILABLE";
+  }else if(status!=="IDLE"){
+    displayStatus="UNAVAILABLE";message="提醒同步状态无法识别。";
+  }
+  const live=node("p","reminderReconcileStatus",message);
+  live.id="reminderReconcileStatus";
+  live.setAttribute("role","status");live.setAttribute("aria-live","polite");
+  live.setAttribute("aria-atomic","true");live.dataset.status=displayStatus;
+  section.append(live);
+
+  const diagnostics=state.reminderDiagnostics;
+  if(!diagnostics){
+    section.append(node("p","reminderDiagnosticsEmpty","宿主尚未提供逐项提醒诊断。"));
+  }else{
+    if(diagnostics.truncated===true){
+      const limit=reminderCount(diagnostics.itemLimit);
+      section.append(node("p","reminderDiagnosticsLimit",
+        `仅显示前 ${limit} 项；其余提醒仍由宿主管理。`));
+    }
+    const items=Array.isArray(diagnostics.items)?diagnostics.items:[];
+    if(!items.length){
+      section.append(node("p","reminderDiagnosticsEmpty","当前没有逐项提醒记录。"));
+    }else{
+      const list=document.createElement("ul");
+      list.className="reminderDiagnosticsList";
+      list.setAttribute("aria-label","各事件提醒状态");
+      const kinds={ALARM:"提醒",ACTIVITY:"活动",DEADLINE:"截止事项",MEMO:"Memo"};
+      const states={NO_INTENT:"未设置提醒",PENDING:"等待处理",SCHEDULED:"已安排",
+        BLOCKED:"受阻",CANCELLED:"已取消",FIRED:"已触发"};
+      for(const item of items){
+        if(!item||typeof item!=="object")continue;
+        const row=node("li","reminderDiagnosticsItem");
+        const titleLine=node("div","reminderDiagnosticsHeading");
+        titleLine.append(node("span","reminderDiagnosticsId",
+          typeof item.displayId==="string"?item.displayId:""));
+        const title=node("strong","reminderDiagnosticsTitle",
+          (typeof item.title==="string"&&item.title.length?item.title:"未命名事件")+
+            (item.titleTruncated===true?"…":""));
+        titleLine.append(title);row.append(titleLine);
+        const stateLine=node("p","reminderDiagnosticsMeta",
+          `${kinds[item.kind]||"事件"} · ${states[item.desiredState]||"状态未知"}`);
+        row.append(stateLine);
+        row.append(node("p","reminderDiagnosticsMeta",
+          `Android：${typeof item.androidHint==="string"&&item.androidHint.length?item.androidHint:"—"}`));
+        row.append(node("p","reminderDiagnosticsMeta",
+          `最近执行：${typeof item.lastExecution==="string"&&item.lastExecution.length?item.lastExecution:"—"}`));
+        if(item.titleTruncated===true)
+          row.append(node("span","reminderDiagnosticsTruncated","标题已截断"));
+        list.append(row);
+      }
+      section.append(list);
+    }
+  }
+  root.append(section);
+}
 function renderOptions(){
   const root=$("optionGroups");root.replaceChildren();
   if(currentPage==="SETTINGS"){
-    const permissions=state.reminderPermissions||{};
-    const exact=permissions.exactAlarmAllowed===true?"已允许":
-      permissions.exactAlarmAllowed===false?"未允许":"状态未知";
-    const notifications=permissions.notificationsRuntimePermissionRequired===false?"此 Android 版本无需运行时授权":
-      permissions.notificationsAllowed===true?"已允许":
-      permissions.notificationsAllowed===false?"未允许":"状态未知";
-    const status=node("p","",`精确闹钟：${exact}；通知运行时权限：${notifications}`);
-    status.setAttribute("role","status");status.setAttribute("aria-live","polite");
-    root.append(node("h2","","提醒状态"),status);
+    renderReminderDiagnostics(root);
   }
   for(const group of state.optionGroups||[]){
     root.append(node("h2","",group.label));

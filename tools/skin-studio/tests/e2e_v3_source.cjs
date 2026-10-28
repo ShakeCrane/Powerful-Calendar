@@ -411,6 +411,23 @@ async function main(){
         check(reminders.length===3,'settings landing must expose the three bounded reminder Host actions');
         check(document.querySelector('#optionGroups').textContent.includes('精确闹钟：未允许；通知运行时权限：未允许'),
           'settings landing must show the Host-projected reminder permission state');
+        const reminderList=document.querySelector('.reminderDiagnosticsList');
+        const reconcileStatus=document.querySelector('#reminderReconcileStatus');
+        check(reminderList?.querySelectorAll('li').length===6,
+          'settings must show each bounded per-event reminder diagnostic');
+        check(reconcileStatus?.getAttribute('role')==='status'&&
+          reconcileStatus.getAttribute('aria-live')==='polite'&&
+          reconcileStatus.getAttribute('aria-atomic')==='true'&&
+          reconcileStatus.dataset.status==='IDLE'&&reconcileStatus.textContent.includes('尚未执行'),
+          'reconcile state must use an accessible live status region');
+        const reminderText=reminderList.textContent;
+        for(const label of ['未设置提醒','等待处理','已安排','受阻','已取消','已触发'])
+          check(reminderText.includes(label),'reminder list omitted desired state '+label);
+        check(document.querySelector('#optionGroups').textContent.includes('标题已截断'),
+          'truncated reminder titles must be identified');
+        const renderedSettingsText=document.querySelector('#optionGroups').textContent;
+        check(!/notes|private/i.test(renderedSettingsText)&&!renderedSettingsText.includes('PRIVATE_'),
+          'settings must not render notes or private reminder fields');
         check(document.querySelector('#optionGroups').textContent.includes('备份与皮肤包只由可信 Android 宿主读写和校验'),
           'backup and package access boundary was not explained');
         imports[0].click();
@@ -420,9 +437,65 @@ async function main(){
           hostSkinPackageOptions:skinOptions.length,installedSkinRows:installed.length,
           userSkinDeleteRows:removals.length,
           reminderHostActions:reminders.length,
-          reminderPermissionProjection:true,browserMockWroteData:false};
+          reminderPermissionProjection:true,perEventReminderStates:6,
+          accessibleReconcileStatus:true,reminderPrivateTextAbsent:true,browserMockWroteData:false};
       })()`});
     if(settings.exceptionDetails)throw Error(settings.exceptionDetails.exception?.description || settings.exceptionDetails.text);
+    const reminderContract=await call("Runtime.evaluate",{returnByValue:true,expression:`(()=>{
+      const state=simulatedState(),diagnostics=state.reminderDiagnostics,result=state.reminderReconcile;
+      return {page:state.page,diagnosticKeys:Object.keys(diagnostics||{}).sort(),
+        itemKeys:Object.keys(diagnostics?.items?.[0]||{}).sort(),
+        itemLimit:diagnostics?.itemLimit,truncated:diagnostics?.truncated,
+        itemTypesValid:(diagnostics?.items||[]).every(item=>
+          typeof item.displayId==='string'&&typeof item.title==='string'&&
+          typeof item.titleTruncated==='boolean'&&['ALARM','ACTIVITY','DEADLINE','MEMO'].includes(item.kind)&&
+          /^reminder-[0-9]{2}$/.test(item.displayId)&&item.title.length<=120&&
+          ['NO_INTENT','PENDING','SCHEDULED','BLOCKED','CANCELLED','FIRED'].includes(item.desiredState)&&
+          ([null,'事件已更新或删除','缺少精确闹钟权限','系统拒绝精确闹钟'].includes(item.androidHint))&&
+          ([null,'FIRED','MISSED','BLOCKED','SNOOZED','SNOOZE_INEXACT','IGNORED_STALE','IGNORED_SNOOZE_STALE']
+            .includes(item.lastExecution))),
+        countTypesValid:['checked','scheduled','blocked','pending','failed'].every(key=>
+          Number.isInteger(result?.[key])&&result[key]>=0)&&typeof result?.truncated==='boolean',
+        kinds:[...new Set((diagnostics?.items||[]).map(item=>item.kind))].sort(),
+        desiredStates:[...new Set((diagnostics?.items||[]).map(item=>item.desiredState))].sort(),
+        reconcileKeys:Object.keys(result||{}).sort(),
+        privateFieldsPresent:/notes|private/i.test(JSON.stringify({diagnostics,result}))};})()`});
+    if(reminderContract.exceptionDetails)throw Error(reminderContract.exceptionDetails.exception?.description || reminderContract.exceptionDetails.text);
+    const contract=reminderContract.result.value;
+    const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
+    if(contract.page!=="SETTINGS"||
+      !same(contract.diagnosticKeys,["itemLimit","items","truncated"])||
+      !same(contract.itemKeys,["androidHint","desiredState","displayId","kind","lastExecution","title","titleTruncated"])||
+      contract.itemLimit!==40||contract.truncated!==false||!contract.itemTypesValid||!contract.countTypesValid||
+      !same(contract.kinds,["ACTIVITY","ALARM","DEADLINE","MEMO"])||
+      !same(contract.desiredStates,["BLOCKED","CANCELLED","FIRED","NO_INTENT","PENDING","SCHEDULED"])||
+      !same(contract.reconcileKeys,["blocked","checked","failed","pending","scheduled","status","truncated"])||
+      contract.privateFieldsPresent)
+      throw Error("Studio reminder Mock violates the bounded projection contract: "+JSON.stringify(contract));
+    if(!settings.result.value.reminderPrivateTextAbsent)
+      throw Error("Settings rendered notes or private reminder fields");
+    const reminderSettingsScreenshot=await call("Page.captureScreenshot",{format:"png",captureBeyondViewport:true});
+    fs.writeFileSync(path.join(reportDir,"reminder-diagnostics-settings.png"),
+      Buffer.from(reminderSettingsScreenshot.data,"base64"));
+    const reminderScroll=await call("Runtime.evaluate",{contextId:world.executionContextId,returnByValue:true,
+      expression:`(()=>{
+        const rows=[...document.querySelectorAll('.reminderDiagnosticsList li')];
+        const last=rows.at(-1),tab=document.querySelector('.clear-tabbar');
+        if(!last||!tab)throw Error('reminder list or fixed navigation missing');
+        last.scrollIntoView({block:'end'});
+        let item=last.getBoundingClientRect(),nav=tab.getBoundingClientRect();
+        window.scrollBy(0,Math.max(0,item.bottom-nav.top+12));
+        item=last.getBoundingClientRect();nav=tab.getBoundingClientRect();
+        return {count:rows.length,itemTop:item.top,itemBottom:item.bottom,navTop:nav.top,
+          fullyVisible:item.top>=0&&item.bottom<=nav.top};
+      })()`});
+    if(reminderScroll.exceptionDetails)throw Error(reminderScroll.exceptionDetails.exception?.description || reminderScroll.exceptionDetails.text);
+    if(reminderScroll.result.value.count!==6||!reminderScroll.result.value.fullyVisible)
+      throw Error('last reminder row is not reachable above the fixed navigation: '+JSON.stringify(reminderScroll.result.value));
+    const reminderLastRowScreenshot=await call("Page.captureScreenshot",{format:"png",captureBeyondViewport:true});
+    fs.writeFileSync(path.join(reportDir,"reminder-diagnostics-last-row.png"),
+      Buffer.from(reminderLastRowScreenshot.data,"base64"));
+    console.log('BROWSER REMINDER LIST SCROLL PASS',JSON.stringify(reminderScroll.result.value));
     const calendarMocks=await call("Runtime.evaluate",{awaitPromise:true,returnByValue:true,expression:`(async()=>{
       for(let i=0;i<100;i++){
         const text=document.querySelector('#bridgeLog').textContent;
@@ -483,30 +556,141 @@ async function main(){
     if(!skinMocks.result.value.matched)throw Error('skin management Host Mocks missing: '+skinMocks.result.value.text);
     const reminderActions=await call("Runtime.evaluate",{contextId:world.executionContextId,
       awaitPromise:true,returnByValue:true,expression:`(async()=>{
+        const wait=async(fn,m)=>{for(let i=0;i<150;i++){if(fn())return;await new Promise(r=>setTimeout(r,20))}throw Error(m)};
         const reminders=[...document.querySelectorAll('#optionGroups [data-action="invokeOption"]')]
           .filter(button=>button.dataset.optionId.startsWith('reminders.'));
         reminders[0].click();reminders[1].click();reminders[2].click();
+        await wait(()=>document.querySelector('#reminderReconcileStatus')?.dataset.status==='RUNNING',
+          'reconcile did not expose RUNNING status');
+        const runningFeedback=document.querySelector('#reminderReconcileStatus').textContent;
+        await wait(()=>document.querySelector('#reminderReconcileStatus')?.dataset.status==='SUCCEEDED',
+          'successful mock reconcile did not finish');
+        const successFeedback=document.querySelector('#reminderReconcileStatus').textContent;
+        if(!successFeedback.includes('阻止 1 项单独统计')||
+          !successFeedback.includes('待处理 0 项')||!successFeedback.includes('失败 0 项'))
+          throw Error('success must require zero pending/failed and report blocked items separately: '+successFeedback);
+        return {reminderHostActions:reminders.length,runningFeedback,successFeedback};
+      })()`});
+    if(reminderActions.exceptionDetails)throw Error(reminderActions.exceptionDetails.exception?.description || reminderActions.exceptionDetails.text);
+    const reminderActionLog=await call("Runtime.evaluate",{returnByValue:true,expression:`(()=>{
+      const text=document.querySelector('#bridgeLog')?.textContent||'';
+      return {exactAlarm:text.includes('未打开真实系统设置'),
+        notification:text.includes('未弹真实权限对话框'),
+        reconcile:text.includes('没有调用 Android 提醒调度器')&&text.includes('没有读取或写入数据库')};})()`});
+    if(reminderActionLog.exceptionDetails)throw Error(reminderActionLog.exceptionDetails.exception?.description || reminderActionLog.exceptionDetails.text);
+    if(!reminderActionLog.result.value.exactAlarm||!reminderActionLog.result.value.notification||
+      !reminderActionLog.result.value.reconcile)
+      throw Error('Reminder settings actions did not reach their explicit Studio Host Mocks: '+JSON.stringify(reminderActionLog.result.value));
+    for(const [scenario,expected] of [["reminder-pending","待处理 1 项"],["reminder-failed","失败 1 项"]]){
+      const selected=await call("Runtime.evaluate",{returnByValue:true,expression:`(()=>{
+        const select=document.querySelector('#scenario');select.value=${JSON.stringify(scenario)};
+        select.dispatchEvent(new Event('change',{bubbles:true}));return simulatedState();})()`});
+      if(selected.exceptionDetails)throw Error(selected.exceptionDetails.exception?.description || selected.exceptionDetails.text);
+      const projected=selected.result.value;
+      if(projected.reminderReconcile?.status!=="FAILED"||
+        (scenario==="reminder-pending"&&projected.reminderReconcile.pending!==1)||
+        (scenario==="reminder-failed"&&projected.reminderReconcile.failed!==1))
+        throw Error("Failure scenario has incorrect reconcile counts: "+JSON.stringify(projected.reminderReconcile));
+      const visible=await call("Runtime.evaluate",{contextId:world.executionContextId,
+        awaitPromise:true,returnByValue:true,expression:`(async()=>{
+          for(let i=0;i<100;i++){
+            const live=document.querySelector('#reminderReconcileStatus');
+            if(live?.dataset.status==='FAILED'&&live.textContent.includes(${JSON.stringify(expected)}))
+              return {status:live.dataset.status,text:live.textContent};
+            await new Promise(r=>setTimeout(r,50));
+          }
+          throw Error('FAILED status feedback missing for '+${JSON.stringify(scenario)});
+        })()`});
+      if(visible.exceptionDetails)throw Error(visible.exceptionDetails.exception?.description || visible.exceptionDetails.text);
+    }
+    await call("Runtime.evaluate",{returnByValue:true,expression:`(()=>{
+      const select=document.querySelector('#scenario');select.value='reminder-truncated';
+      select.dispatchEvent(new Event('change',{bubbles:true}));
+      return true;
+    })()`});
+    const truncatedReminder=await call("Runtime.evaluate",{contextId:world.executionContextId,
+      awaitPromise:true,returnByValue:true,expression:`(async()=>{
+        const wait=async(fn,m)=>{for(let i=0;i<150;i++){if(fn())return;await new Promise(r=>setTimeout(r,20))}throw Error(m)};
+        const action=[...document.querySelectorAll('#optionGroups [data-action="invokeOption"]')]
+          .find(button=>button.dataset.optionId==='reminders.reconcile');
+        if(!action)throw Error('reconcile action missing in truncated scenario');
+        action.click();
+        await wait(()=>document.querySelector('#reminderReconcileStatus')?.dataset.status==='RUNNING',
+          'truncated reconcile did not enter RUNNING');
+        await new Promise(r=>setTimeout(r,350));
+        const live=document.querySelector('#reminderReconcileStatus');
+        return {status:live?.dataset.status||null,text:live?.textContent||null,
+          truncatedFeedback:Boolean(live?.textContent.includes('达到处理上限')&&
+            live?.textContent.includes('仍有提醒未检查'))};
+      })()`});
+    if(truncatedReminder.exceptionDetails)
+      throw Error(truncatedReminder.exceptionDetails.exception?.description || truncatedReminder.exceptionDetails.text);
+    const truncatedContract=await call("Runtime.evaluate",{returnByValue:true,expression:`(()=>{
+      const result=simulatedState().reminderReconcile;
+      return {valid:result?.status==='FAILED'&&result.truncated===true&&result.failed===0&&result.pending===0,
+        result,scenario:document.querySelector('#scenario')?.value,
+        bridgeLog:document.querySelector('#bridgeLog')?.textContent.slice(-900)};
+    })()`});
+    if(truncatedContract.exceptionDetails)
+      throw Error(truncatedContract.exceptionDetails.exception?.description || truncatedContract.exceptionDetails.text);
+    if(truncatedContract.result.value.valid!==true)throw Error('truncated Mock payload does not match the Host status contract: '+JSON.stringify(truncatedContract.result.value));
+    if(!truncatedReminder.result.value.truncatedFeedback||truncatedReminder.result.value.status!=='FAILED')
+      throw Error('truncated batch feedback mismatch: '+JSON.stringify({view:truncatedReminder.result.value,
+        state:truncatedContract.result.value}));
+    const unavailableState=await call("Runtime.evaluate",{returnByValue:true,expression:`(()=>{
+      const select=document.querySelector('#scenario');select.value='reminder-unavailable';
+      select.dispatchEvent(new Event('change',{bubbles:true}));return simulatedState();})()`});
+    if(unavailableState.exceptionDetails)throw Error(unavailableState.exceptionDetails.exception?.description || unavailableState.exceptionDetails.text);
+    if(unavailableState.result.value.page!=="SETTINGS"||
+      unavailableState.result.value.reminderDiagnostics!==null||
+      unavailableState.result.value.reminderReconcile!==null)
+      throw Error("Studio unavailable scenario must preserve the nullable settings projection contract");
+    const unavailableVisible=await call("Runtime.evaluate",{contextId:world.executionContextId,
+      awaitPromise:true,returnByValue:true,expression:`(async()=>{
+        for(let i=0;i<100;i++){
+          const live=document.querySelector('#reminderReconcileStatus');
+          const text=document.querySelector('.reminderDiagnostics')?.textContent||'';
+          if(live?.dataset.status==='UNAVAILABLE'&&live.textContent.includes('尚未提供提醒同步状态')&&
+            text.includes('尚未提供逐项提醒诊断'))return true;
+          await new Promise(r=>setTimeout(r,50));
+        }
+        throw Error('null reminder projections were not shown as unavailable');
+      })()`});
+    if(unavailableVisible.exceptionDetails)throw Error(unavailableVisible.exceptionDetails.exception?.description || unavailableVisible.exceptionDetails.text);
+    const resetReminderScenario=await call("Runtime.evaluate",{returnByValue:true,expression:`(()=>{
+      const select=document.querySelector('#scenario');select.value='repeating';
+      select.dispatchEvent(new Event('change',{bubbles:true}));
+      const state=simulatedState();return state.page==='SETTINGS'&&state.reminderReconcile?.status==='IDLE';})()`});
+    if(resetReminderScenario.exceptionDetails)throw Error(resetReminderScenario.exceptionDetails.exception?.description || resetReminderScenario.exceptionDetails.text);
+    if(resetReminderScenario.result.value!==true)throw Error("Reminder E2E did not restore its baseline Studio scenario");
+    await call("Runtime.evaluate",{contextId:world.executionContextId,awaitPromise:true,
+      returnByValue:true,expression:`(async()=>{
         document.querySelector('#optionGroups [data-action="settings"]').click();
         document.querySelector('.clear-tabbar [data-action="timeline"]').click();
         for(let i=0;i<100;i++){
-          if(!document.querySelector('#timelinePage').hidden)
-            return {reminderHostActions:reminders.length,nativeToolsRequest:true,timelineReturned:true};
-          await new Promise(r=>setTimeout(r,100));
+          if(!document.querySelector('#timelinePage').hidden)return true;
+          await new Promise(r=>setTimeout(r,50));
         }
         throw Error('timeline route did not leave settings');
       })()`});
-    if(reminderActions.exceptionDetails)throw Error(reminderActions.exceptionDetails.exception?.description || reminderActions.exceptionDetails.text);
+    const outsideSettings=await call("Runtime.evaluate",{returnByValue:true,expression:`(()=>{
+      const state=simulatedState();return {page:state.page,
+        hasDiagnostics:Object.prototype.hasOwnProperty.call(state,'reminderDiagnostics'),
+        hasReconcile:Object.prototype.hasOwnProperty.call(state,'reminderReconcile')};})()`});
+    if(outsideSettings.exceptionDetails)throw Error(outsideSettings.exceptionDetails.exception?.description || outsideSettings.exceptionDetails.text);
+    if(outsideSettings.result.value.hasDiagnostics||outsideSettings.result.value.hasReconcile)
+      throw Error("Reminder diagnostics must only be projected on the skin settings page");
     const settingsLog=await call("Runtime.evaluate",{returnByValue:true,expression:`(()=>{
       const text=document.querySelector('#bridgeLog').textContent;
-      return {exactAlarmMock:text.includes('未打开真实系统设置'),
-        notificationMock:text.includes('未弹真实权限对话框'),
-        reminderMock:text.includes('没有调用真实调度器'),
-        nativeToolsMock:text.includes('Android 宿主工具页')};})()`});
+      return {nativeToolsMock:text.includes('Android 宿主工具页')};})()`});
     if(settingsLog.exceptionDetails)throw Error(settingsLog.exceptionDetails.exception?.description || settingsLog.exceptionDetails.text);
-    if(!settingsLog.result.value.exactAlarmMock||!settingsLog.result.value.notificationMock||
-      !settingsLog.result.value.reminderMock||!settingsLog.result.value.nativeToolsMock)
+    if(!settingsLog.result.value.nativeToolsMock)
       throw Error("Settings actions did not reach the explicit Studio Host Mock: "+JSON.stringify(settingsLog.result.value));
-    console.log("BROWSER SKIN SETTINGS MOCK PASS",JSON.stringify({...settings.result.value,...reminderActions.result.value}));
+    console.log("BROWSER SKIN SETTINGS MOCK PASS",JSON.stringify({...settings.result.value,
+      reminderContract:contract,privateFieldsNotRendered:settings.result.value.reminderPrivateTextAbsent,
+      ...reminderActions.result.value,settingsOnlyProjection:true,
+      pendingFailureShown:true,exceptionFailureShown:true,
+      truncatedBatchShown:truncatedReminder.result.value}));
     const conversion=await call("Runtime.evaluate",{contextId:world.executionContextId,awaitPromise:true,returnByValue:true,expression:`(async()=>{
       const check=(v,m)=>{if(!v)throw Error(m)};
       const wait=async(fn,m)=>{for(let i=0;i<150;i++){if(fn())return;await new Promise(r=>setTimeout(r,100))}throw Error(m)};
