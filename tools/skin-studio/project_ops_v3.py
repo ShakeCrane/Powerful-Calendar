@@ -22,6 +22,7 @@ MAX_OPERATION_DOCUMENT = 24_000_000
 SHA256 = re.compile(r"[0-9a-fA-F]{64}\Z")
 REQUIRED_FILES = frozenset(package_v3.WEB_REQUIRED)
 MAX_ANALYZED_COMPONENTS = 20_000
+BRIDGE_V1_ACTION_REGISTRY = Path(__file__).with_name("bridge_v1_action_registry.json")
 VOID_HTML_TAGS = frozenset({
     "area", "base", "br", "col", "embed", "hr", "img", "input", "link",
     "meta", "param", "source", "track", "wbr",
@@ -713,6 +714,81 @@ def analyze_package(source: bytes) -> dict:
         "analysisScope": "static HTML source; no JavaScript execution or computed browser DOM",
         "pages": pages,
     }
+
+
+def audit_bridge_package(source: bytes) -> dict:
+    """Check static HTML data-action names against the Host v1 registry."""
+    manifest, files = package_v3.unpack(source)
+    try:
+        registry = json.loads(BRIDGE_V1_ACTION_REGISTRY.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise skin_studio.SkinError("Bridge v1 action registry is unavailable or invalid") from exc
+    _fail(type(registry) is dict and registry.get("schemaVersion") == 1 and
+          registry.get("bridgeVersion") == 1 and
+          type(registry.get("requiredCapability")) is str and
+          registry["requiredCapability"] == "host.action" and
+          type(registry.get("actions")) is list and
+          all(type(name) is str and name for name in registry["actions"]) and
+          len(registry["actions"]) == len(set(registry["actions"])),
+          "Bridge v1 action registry has an invalid schema")
+    known_actions = set(registry["actions"])
+    bindings = []
+    unknown_bindings = []
+    inline_script_count = 0
+    linked_scripts = set()
+    total_components = 0
+    for path, data in sorted(files.items()):
+        if not path.startswith("web/") or not path.lower().endswith((".html", ".htm")):
+            continue
+        try:
+            html = data.decode("utf-8", errors="strict")
+        except UnicodeDecodeError as exc:
+            raise skin_studio.SkinError(f"HTML page is not UTF-8: {path}") from exc
+        page = _StaticHtmlInventory(path).parse(html)
+        total_components += page["componentCount"]
+        _fail(total_components <= MAX_ANALYZED_COMPONENTS,
+              f"HTML inventory exceeds {MAX_ANALYZED_COMPONENTS} components")
+        inline_script_count += page["inlineScriptCount"]
+        linked_scripts.update(page["scriptSources"])
+        for node in page["components"]:
+            attribute = next((item for item in node["attributes"]
+                              if item["name"] == "data-action"), None)
+            if attribute is None:
+                continue
+            action = attribute["value"]
+            binding = {"path": path, "nodeId": node["nodeId"], "action": action}
+            bindings.append(binding)
+            if type(action) is not str or action not in known_actions:
+                unknown_bindings.append(binding)
+
+    required_capabilities = ([registry["requiredCapability"]] if bindings else [])
+    declared_capabilities = manifest.get("capabilities", [])
+    missing_capabilities = [capability for capability in required_capabilities
+                            if capability not in declared_capabilities]
+    requires_source_review = bool(linked_scripts or inline_script_count)
+    result = {
+        "schemaVersion": 1,
+        "command": "audit-bridge-v3",
+        "ok": not unknown_bindings and not missing_capabilities,
+        "skin": {"id": manifest["id"], "name": manifest["name"],
+                 "packageSha256": _file_sha256(source)},
+        "registry": {"bridgeVersion": registry["bridgeVersion"],
+                     "requiredCapability": registry["requiredCapability"],
+                     "actionCount": len(known_actions)},
+        "declaredCapabilities": declared_capabilities,
+        "requiredCapabilities": required_capabilities,
+        "missingCapabilities": missing_capabilities,
+        "bindings": bindings,
+        "unknownBindings": unknown_bindings,
+        "scope": "literal data-action attributes in static web/*.html and web/*.htm",
+        "requiresSourceReview": requires_source_review,
+        "limitations": [
+            "Does not execute JavaScript or enumerate controls created at runtime.",
+            "Does not validate JavaScript-generated Bridge payloads or their field schemas.",
+            "Review linked JavaScript source and V3_HOST_BRIDGE_EXTENSION.md before export."
+        ],
+    }
+    return result
 
 
 def read_file(source: bytes, path: str) -> dict:

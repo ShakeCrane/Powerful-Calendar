@@ -1,6 +1,6 @@
 # Skin Studio AI Automation Interface v1
 
-Status: **implemented for validated `.pcskin` v3 inspection, editing, building and validation**.
+Status: **implemented for `.pcskin` v3 inspection, editing, building, validation and static Bridge v1 action auditing**.
 This interface makes source, assets, `project.json`, and package metadata callable by
 scripts and agents. It does not claim complete visual Studio editing or Native/Skin
 functional parity.
@@ -12,6 +12,7 @@ Run commands from the repository root with Python 3:
 ```powershell
 python tools/skin-studio/skin_studio.py inspect-v3 path\to\skin.pcskin
 python tools/skin-studio/skin_studio.py analyze-v3 path\to\skin.pcskin
+python tools/skin-studio/skin_studio.py audit-bridge-v3 path\to\skin.pcskin
 python tools/skin-studio/skin_studio.py read-v3 --file path\to\skin.pcskin --path web\app.js
 python tools/skin-studio/skin_studio.py edit-v3 --file path\to\skin.pcskin --operations operations.json --out path\to\skin-edited.pcskin
 python tools/skin-studio/skin_studio.py build-v3 --manifest manifest.json --source-dir source --out path\to\skin-built.pcskin --json
@@ -50,6 +51,27 @@ HTML5 tree-repair rules may not appear with runtime structure. `nodeId` is only 
 for the same page source/order; recalculate it after edits and use the source/package
 hashes as the concurrency snapshot. Read linked scripts and styles with `read-v3` before
 editing. The command does not modify or normalize package bytes.
+
+## Static Host Bridge v1 action audit
+
+Run `audit-bridge-v3 <skin.pcskin>` on a built or edited package. It indexes literal
+`data-action` attributes in packaged `web/*.html` and `web/*.htm`, checks each action
+name against the closed Bridge v1 decoder registry, and checks that a package declaring
+static actions also requests `host.action`. A regression test compares the checked-in
+registry to `WebSkinHost.decodeBridgeAction`, so runtime action changes fail the Studio
+test suite until the registry is updated.
+
+The UTF-8 JSON receipt includes the package hash, known bindings with page and static
+node IDs, unknown bindings, declared/required/missing capabilities, the audit scope,
+`requiresSourceReview`, and explicit limitations. A successful audit writes JSON to
+stdout and exits 0. Unknown actions, a missing required capability, or an input/schema
+error writes structured JSON to stderr and exits 2. The audit does not modify the package.
+
+This is a **static-name and manifest-declaration check only**. It does not execute
+JavaScript, discover runtime-created controls, validate payload fields, or prove Android
+Host behavior. Packages with linked or inline scripts set `requiresSourceReview`; inspect
+those scripts and [`V3_HOST_BRIDGE_EXTENSION.md`](V3_HOST_BRIDGE_EXTENSION.md) before
+export. A passing receipt is not full Bridge compatibility or runtime-parity evidence.
 
 ## Inspection and source reads
 
@@ -184,7 +206,9 @@ hash come from the same `analyze-v3` / `inspect-v3` snapshot:
 5. For source-directory projects, run `build-v3 --json` to create a validated package;
    for edited packages, run `validate --json` on the exported `.pcskin`. Both return
    hashes and counts; build refuses an existing output path.
-6. Inspect/read the result again and compare intended
+6. Run `audit-bridge-v3` on the resulting package. Resolve unknown static action names
+   and missing capability declarations; inspect linked/inline scripts when requested.
+7. Inspect/read the result again and compare intended
    changes and hashes. Use the Studio browser preview and Android WebView/device
    acceptance for visual and runtime claims.
 

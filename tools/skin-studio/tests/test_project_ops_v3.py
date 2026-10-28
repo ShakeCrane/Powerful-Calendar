@@ -2,6 +2,7 @@ import base64
 import hashlib
 import json
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -11,7 +12,8 @@ STUDIO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(STUDIO))
 
 from build_default_clear import ASSET
-from project_ops_v3 import analyze_package, edit_package, inspect_package, read_file, write_atomic
+from project_ops_v3 import (analyze_package, audit_bridge_package, edit_package,
+                            inspect_package, read_file, write_atomic)
 from runtime_package_v3 import build_files, unpack
 from skin_studio import SkinError
 
@@ -115,6 +117,84 @@ class ProjectOpsV3Test(unittest.TestCase):
         self.assertTrue(any("unmatched closing tag </ghost>" in warning
                             for warning in month["warnings"]))
         self.assertEqual(unpack(source)[1], self.files)
+
+    def test_bridge_audit_cli_indexes_static_bindings_and_capability(self):
+        self.files["web/index.html"] = (
+            '<!doctype html><html><body><button data-action="month">Month</button>'
+            '<button data-action="browseMonth" data-delta-months="1">Next</button>'
+            '</body></html>'
+        ).encode("utf-8")
+        source = build_files(self.manifest, self.files)
+        with isolated_temp_dir() as temp:
+            package_path = Path(temp) / "audit.pcskin"
+            package_path.write_bytes(source)
+            result = subprocess.run(
+                [sys.executable, str(STUDIO / "skin_studio.py"),
+                 "audit-bridge-v3", str(package_path)],
+                cwd=STUDIO.parents[1], text=True, encoding="utf-8",
+                capture_output=True, check=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stderr, "")
+        audit = json.loads(result.stdout)
+        self.assertEqual(audit["command"], "audit-bridge-v3")
+        self.assertTrue(audit["ok"])
+        self.assertEqual(audit["requiredCapabilities"], ["host.action"])
+        self.assertEqual({binding["action"] for binding in audit["bindings"]},
+                         {"month", "browseMonth"})
+        self.assertEqual(audit["unknownBindings"], [])
+        self.assertIn("static web/*.html", audit["scope"])
+
+    def test_bridge_audit_rejects_unknown_actions_and_missing_capability(self):
+        self.files["web/index.html"] = (
+            '<!doctype html><html><body><button data-action="inventedAction">Run</button>'
+            '</body></html>'
+        ).encode("utf-8")
+        self.manifest["capabilities"].remove("host.action")
+        source = build_files(self.manifest, self.files)
+
+        audit = audit_bridge_package(source)
+
+        self.assertFalse(audit["ok"])
+        self.assertEqual(audit["missingCapabilities"], ["host.action"])
+        self.assertEqual(audit["unknownBindings"][0]["action"], "inventedAction")
+
+    def test_bridge_audit_cli_emits_json_error_and_exit_code_two(self):
+        self.files["web/index.html"] = (
+            '<!doctype html><html><body><button data-action="inventedAction">Run</button>'
+            '</body></html>'
+        ).encode("utf-8")
+        self.manifest["capabilities"].remove("host.action")
+        source = build_files(self.manifest, self.files)
+        with isolated_temp_dir() as temp:
+            package_path = Path(temp) / "invalid-audit.pcskin"
+            package_path.write_bytes(source)
+            result = subprocess.run(
+                [sys.executable, str(STUDIO / "skin_studio.py"),
+                 "audit-bridge-v3", str(package_path)],
+                cwd=STUDIO.parents[1], text=True, encoding="utf-8",
+                capture_output=True, check=False)
+
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(result.stdout, "")
+        error = json.loads(result.stderr)
+        self.assertEqual(error["command"], "audit-bridge-v3")
+        self.assertFalse(error["ok"])
+        self.assertEqual(error["missingCapabilities"], ["host.action"])
+        self.assertEqual(error["unknownBindings"][0]["action"], "inventedAction")
+
+    def test_bridge_action_registry_matches_runtime_closed_decoder(self):
+        registry_path = STUDIO / "bridge_v1_action_registry.json"
+        registry = json.loads(registry_path.read_text(encoding="utf-8"))
+        host_source = (STUDIO.parents[1] /
+                       "app/src/main/java/dev/powerfulcalendar/ui/v2/WebSkinHost.kt")
+        source = host_source.read_text(encoding="utf-8")
+        decoder = source.split("return when (name) {", 1)[1].split("\n    }\n}", 1)[0]
+        rows = re.findall(r'^        ((?:"[A-Za-z0-9_.]+"\s*,?\s*)+)->',
+                          decoder, re.MULTILINE)
+        runtime_actions = {name for row in rows
+                           for name in re.findall(r'"([A-Za-z0-9_.]+)"', row)}
+
+        self.assertEqual(set(registry["actions"]), runtime_actions)
 
     def test_analyze_enforces_total_component_bound(self):
         self.files["web/index.html"] = ("<i></i>" * 20_001).encode("utf-8")

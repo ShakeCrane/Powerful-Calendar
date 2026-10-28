@@ -71,7 +71,8 @@ class AiSkinWorkflowV3Test(unittest.TestCase):
                     "position": "append",
                     "html": ('<section id="agent-workflow-panel" '
                              'data-component="agent-workflow"><h2>Agent authored</h2>'
-                             '<p>Built from the documented v3 interfaces.</p></section>'),
+                             '<p>Built from the documented v3 interfaces.</p>'
+                             '<button data-action="month">Open month</button></section>'),
                 },
                 {
                     "op": "write",
@@ -97,6 +98,14 @@ class AiSkinWorkflowV3Test(unittest.TestCase):
             self.assertEqual(validation["packageSha256"], edited["packageSha256"])
             self.assertEqual(validation["skinId"], inspected["manifest"]["id"])
 
+            bridge_audit = self.cli_json("audit-bridge-v3", output_package)
+            self.assertTrue(bridge_audit["ok"])
+            self.assertEqual(bridge_audit["requiredCapabilities"], ["host.action"])
+            self.assertIn("month", {binding["action"]
+                                     for binding in bridge_audit["bindings"]})
+            self.assertTrue(bridge_audit["requiresSourceReview"])
+            self.assertIn("payloads", " ".join(bridge_audit["limitations"]))
+
             final_inspection = self.cli_json("inspect-v3", output_package)
             final_analysis = self.cli_json("analyze-v3", output_package)
             final_stylesheet = self.cli_json("read-v3", "--file", output_package,
@@ -115,7 +124,8 @@ class AiSkinWorkflowV3Test(unittest.TestCase):
             self.assertEqual(hashlib.sha256(ASSET.read_bytes()).hexdigest(), original_asset_sha)
             print("AI V3 WORKFLOW PASS " + json.dumps({
                 "commands": ["build-v3", "inspect-v3", "analyze-v3", "read-v3",
-                             "edit-v3", "validate", "inspect-v3", "analyze-v3", "read-v3"],
+                             "edit-v3", "validate", "audit-bridge-v3", "inspect-v3",
+                             "analyze-v3", "read-v3"],
                 "baselinePackageSha256": original_asset_sha,
                 "editedPackageSha256": edited["packageSha256"],
                 "changedPaths": sorted(changed_paths),

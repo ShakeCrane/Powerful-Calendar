@@ -45,7 +45,8 @@ python tools/skin-studio/skin_studio.py serve --port 8765
 当前源码界面已提供 `project.json` 原始 JSON 编辑、文本文件增删及任意资源文件新增/替换/删除；不认识的项目字段随有效 JSON 修改保留，非法 JSON 会阻止预览与导出并保留编辑草稿。删除保护按文本源码中的路径/文件名引用扫描，不能替代语义分析。浏览器 Studio 的「HTML 结构树」复用 `analyze-v3` 静态节点清单，可插入、替换、删除和移动闭合 HTML 节点；操作经本地 v3 分析/编辑 API 与最终包校验，并直接更新预览和导出共用的源文件。JS 生成的运行时节点需通过源码编辑。该结构树不编辑计算后 DOM、CSS 布局或交互语义；完整页面设计、所有属性语义校验及完整 AI 设计工作流仍未完成，不能据此宣称完整 IDE。
 
 **AI/脚本项目操作：** v3 `.pcskin` 可通过机器可读的 `inspect-v3`、`analyze-v3`、
-`read-v3`、`edit-v3` 命令检查项目、枚举 HTML 页面及静态节点、读取任意文本/二进制资源、
+`audit-bridge-v3`、`read-v3`、`edit-v3` 命令检查项目、枚举 HTML 页面及静态节点、
+核对静态 `data-action` 名称与 Bridge v1 注册表及 `host.action` 声明、读取任意文本/二进制资源、
 按节点结构编辑静态 HTML，并编辑 `project.json` 结构及新增/修改/移动/删除文件，再经同一生产校验器构建到新包路径。SHA 前置条件防止
 覆盖检查之后已变化的文件；能力声明变更必须显式确认。该 CLI 补足 AI 操作层，
 `build-v3 --json` / `validate --json` 则提供带哈希和计数的结构化回执；构建会原子
@@ -56,10 +57,16 @@ python tools/skin-studio/skin_studio.py serve --port 8765
 ```powershell
 python tools/skin-studio/skin_studio.py inspect-v3 my-skin.pcskin
 python tools/skin-studio/skin_studio.py analyze-v3 my-skin.pcskin
+python tools/skin-studio/skin_studio.py audit-bridge-v3 my-skin.pcskin
 python tools/skin-studio/skin_studio.py read-v3 --file my-skin.pcskin --path web/app.js
 python tools/skin-studio/skin_studio.py edit-v3 --file my-skin.pcskin --operations operations.json --out my-skin-edited.pcskin
 python tools/skin-studio/skin_studio.py validate my-skin-edited.pcskin --json
 ```
+
+`audit-bridge-v3` 只检查静态 HTML 中的 literal `data-action` 名称和所需
+`host.action` 声明；不会执行 JS，也不会校验动态生成的 Bridge payload。带有 inline
+或 linked script 的皮肤会标记 `requiresSourceReview`。成功 JSON 写 stdout、退出码为 0；
+审计失败写结构化 JSON 到 stderr、退出码为 2。它不替代 Android WebView 或设备验收。
 
 仅切换源码/可视化面板或编辑其他源码文件时，原始 `project.json` 保持字节不变；面板模式仅是当前 Studio 视图。确实修改材质或图层后，项目元数据按修改后的模型输出，并保留未知字段。
 

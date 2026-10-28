@@ -339,6 +339,9 @@ def main():
     inspect3.add_argument("file", type=Path)
     analyze3 = sub.add_parser("analyze-v3", help="index static HTML pages and components in a v3 skin")
     analyze3.add_argument("file", type=Path)
+    audit3 = sub.add_parser("audit-bridge-v3",
+                            help="check static HTML actions and Host v1 capability declarations")
+    audit3.add_argument("file", type=Path)
     read3 = sub.add_parser("read-v3", help="read one packaged source or asset as machine-readable JSON")
     read3.add_argument("--file", type=Path, required=True)
     read3.add_argument("--path", required=True)
@@ -354,6 +357,12 @@ def main():
         elif args.command == "analyze-v3":
             from project_ops_v3 import analyze_package
             _write_machine_json(analyze_package(args.file.read_bytes()), sys.stdout)
+        elif args.command == "audit-bridge-v3":
+            from project_ops_v3 import audit_bridge_package
+            result = audit_bridge_package(args.file.read_bytes())
+            _write_machine_json(result, sys.stdout if result["ok"] else sys.stderr)
+            if not result["ok"]:
+                return 2
         elif args.command == "read-v3":
             from project_ops_v3 import read_file
             _write_machine_json(read_file(args.file.read_bytes(), args.path), sys.stdout)
@@ -455,7 +464,8 @@ def main():
                     pass
     except (SkinError, OSError, ValueError, UnicodeError, TypeError, BadZipFile,
             KeyError, RuntimeError, EOFError, zlib.error) as exc:
-        if (args.command in ("inspect-v3", "analyze-v3", "read-v3", "edit-v3")
+        if (args.command in ("inspect-v3", "analyze-v3", "audit-bridge-v3",
+                             "read-v3", "edit-v3")
                 or getattr(args, "json", False)):
             _write_machine_json({"schemaVersion": 1, "command": args.command,
                                  "ok": False, "error": str(exc)}, sys.stderr)
