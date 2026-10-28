@@ -76,6 +76,30 @@ class PreviewParityTest(unittest.TestCase):
                 self.post(endpoint, obj)
             self.assertEqual(400, got.exception.code)
 
+    def test_browser_component_api_analyzes_edits_and_rejects_stale_source(self):
+        project = json.loads(self.get("/api/template-v3"))
+        analysis = json.loads(self.post("/api/analyze-v3", project))
+        page = next(item for item in analysis["pages"] if item["path"] == "web/index.html")
+        target = next(node for node in page["components"] if node["id"] == "app")
+        operation = {"op": "component-insert", "path": page["path"],
+                     "expectedSha256": page["sourceSha256"],
+                     "targetNodeId": target["nodeId"], "position": "after",
+                     "html": '<section id="studio-http-node">Browser tree</section>'}
+        edited = dict(project)
+        edited["operation"] = operation
+        receipt = json.loads(self.post("/api/edit-components-v3", edited))
+        self.assertIn("web/index.html", receipt["changedFiles"])
+        source = base64.b64decode(receipt["changedFiles"]["web/index.html"]).decode()
+        self.assertIn('<section id="studio-http-node">Browser tree</section>', source)
+        self.assertTrue(any(node["id"] == "studio-http-node"
+                            for node in next(item for item in receipt["analysis"]["pages"]
+                                             if item["path"] == "web/index.html")["components"]))
+        operation["expectedSha256"] = "0" * 64
+        edited["operation"] = operation
+        with self.assertRaises(HTTPError) as got:
+            self.post("/api/edit-components-v3", edited)
+        self.assertEqual(400, got.exception.code)
+
 
 if __name__ == "__main__":
     unittest.main()

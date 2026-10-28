@@ -59,6 +59,25 @@
       <div id="bridgeLog" class="bridgeLog" aria-live="polite"></div></div>
   </section>
   <aside class="panel editor">
+    <section id="structureSection"><h2>HTML 结构树</h2>
+      <p class="muted">按静态 HTML 源码浏览和重组节点。结构操作会更新预览、源码和导出使用的同一份文件；动态 JavaScript 节点请用源码编辑。</p>
+      <label>页面<select id="componentPage"></select></label>
+      <div class="barActions"><button id="refreshComponents" type="button">重新分析</button><span id="componentCount" class="muted" role="status"></span></div>
+      <div id="componentTree" class="componentTree" role="region" aria-label="HTML 静态组件"></div>
+      <p id="componentSelection" class="muted" aria-live="polite">选择一个节点进行编辑。</p>
+      <label>插入或替换的 HTML 片段<textarea id="componentMarkup" spellcheck="false" rows="4" placeholder="例如：&lt;section id=&quot;custom-panel&quot;&gt;内容&lt;/section&gt;"></textarea></label>
+      <div class="componentActions">
+        <button id="insertComponentBefore" type="button">前插</button><button id="insertComponentAfter" type="button">后插</button>
+        <button id="insertComponentFirst" type="button">作为首子节点</button><button id="insertComponentLast" type="button">作为末子节点</button>
+        <button id="replaceComponent" type="button">替换选中节点</button><button id="removeComponent" class="danger" type="button">删除选中节点</button>
+      </div>
+      <label>移动选中节点<select id="componentTarget"></select></label>
+      <div class="fields"><label>相对位置<select id="componentPosition">
+        <option value="before">目标之前</option><option value="after">目标之后</option>
+        <option value="prepend">目标首子节点</option><option value="append">目标末子节点</option>
+      </select></label><button id="moveComponent" type="button">移动节点</button></div>
+      <p class="muted">删除和替换遵循 HTML 根节点保护；脚本生成的运行时 DOM 不会出现在静态树中。</p>
+    </section>
     <section id="layerSection"><h2>自由图层</h2>
       <div class="barActions"><button id="addText">+ 文字</button><button id="addImage">+ 图片</button><button id="addButton">+ 功能按钮</button></div>
       <div id="layerList" class="list"></div>

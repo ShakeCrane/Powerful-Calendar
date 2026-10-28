@@ -18,6 +18,8 @@ let manifest=null, project=null, projectBaseline=null, sourceFiles=new Map(), se
 let activeMode="simple", editCanvas=true, previewTimer=null, previewSeq=0;
 let previewPort=null, lastState=null, lastPreviewUrl="", dirty=false;
 let projectSourceError=null, projectDraftText=null;
+let componentAnalysis=null, selectedComponent=null, componentAnalysisTimer=null;
+let componentAnalysisRequest=0, componentAnalysisPending=false;
 const REQUIRED_SOURCE_FILES=new Set(["web/index.html","web/style.css","web/app.js","project.json"]);
 const TEXT_SOURCE_EXTENSIONS=/\.(cjs|css|html?|ini|js|json|jsx|kt|less|md|mjs|properties|py|scss|sh|sql|toml|tsx?|txt|xml|ya?ml|svg)$/i;
 function say(message,isError=false){$("toast").textContent=message;$("toast").classList.toggle("error",isError)}
@@ -75,6 +77,9 @@ async function loadPackage(data){
     throw Error("皮肤包缺少必需 Web 源码");
   sourceFiles=files;manifest=copy(data.manifest);
   projectSourceError=null;projectDraftText=null;
+  componentAnalysis=null;selectedComponent=null;
+  $("componentPage").replaceChildren();$("componentTarget").replaceChildren();
+  $("componentTree").replaceChildren();$("componentCount").textContent="正在分析…";
   project=parseProject();
   projectBaseline=JSON.stringify(project);
   mockEditing={editor:{open:false},deck:{open:false},lastResult:null};
@@ -89,6 +94,7 @@ async function loadPackage(data){
   switchMode(project.mode==="advanced"?"advanced":"simple");
   syncSourceInputs();renderMaterials();renderAssets();renderLayers();
   schedulePreview(0);
+  refreshComponentTree();
   say(factory
     ?"已载入 APK 同源 Clear 基础皮肤。导出使用独立 ID，不覆盖受保护的出厂包。"
     :"已加载完整 v3 项目（含所有素材）。预览与导出共享同一组源文件。");
@@ -97,6 +103,170 @@ function change(){
   dirty=true;
   if(projectSourceError){$("previewState").textContent="project.json 有错误，修复后才能预览/导出";return}
   schedulePreview();
+}
+function currentComponentPage(){
+  return componentAnalysis?.pages?.find(page=>page.path===$("componentPage").value)||null;
+}
+function componentLabel(node){
+  const identity=node.id?"#"+node.id:"";
+  const component=node.component?" · "+node.component:"";
+  const text=node.directText?" — "+node.directText.slice(0,64):"";
+  return "<"+node.tag+identity+">"+component+text;
+}
+function renderComponentTree(){
+  const pageSelect=$("componentPage"),tree=$("componentTree"),target=$("componentTarget");
+  const previousPath=pageSelect.value,previousTarget=target.value;
+  pageSelect.replaceChildren();
+  for(const page of componentAnalysis?.pages||[]){
+    const option=document.createElement("option");option.value=page.path;
+    option.textContent=page.path;pageSelect.append(option);
+  }
+  if((componentAnalysis?.pages||[]).some(page=>page.path===previousPath))pageSelect.value=previousPath;
+  const page=currentComponentPage(),components=page?.components||[];
+  const byId=new Map(components.map(node=>[node.nodeId,node]));
+  if(!byId.has(selectedComponent))
+    selectedComponent=components.find(node=>node.tag==="body")?.nodeId||components[0]?.nodeId||null;
+  tree.replaceChildren();target.replaceChildren();
+  if(!page){
+    tree.innerHTML='<div class="empty">当前皮肤没有可分析的静态 HTML 页面。</div>';
+    $("componentCount").textContent="0 页面";$("componentSelection").textContent="没有可选节点。";
+    for(const id of ["insertComponentBefore","insertComponentAfter","insertComponentFirst",
+      "insertComponentLast","replaceComponent","removeComponent","moveComponent"])
+      $(id).disabled=true;
+    pageSelect.disabled=componentAnalysisPending||!componentAnalysis?.pages?.length;
+    target.disabled=true;
+    return;
+  }
+  const targetOptionFor=node=>{
+    const option=document.createElement("option");option.value=node.nodeId;
+    option.dataset.htmlId=node.id||"";option.textContent=componentLabel(node).slice(0,100);target.append(option);
+  };
+  for(const node of components)targetOptionFor(node);
+  if(byId.has(previousTarget))target.value=previousTarget;
+  else if(byId.has(selectedComponent))target.value=selectedComponent;
+  if(components.length){
+    const list=document.createElement("ul");tree.append(list);
+    const roots=components.filter(node=>!node.parentId);
+    const tasks=roots.slice().reverse().map(node=>({node,list}));
+    while(tasks.length){
+      const task=tasks.pop(),node=task.node,parentList=task.list;
+      const item=document.createElement("li"),button=document.createElement("button");
+      button.type="button";button.dataset.nodeId=node.nodeId;
+      if(node.id)button.dataset.htmlId=node.id;
+      button.textContent=componentLabel(node);button.title=componentLabel(node);
+      button.setAttribute("aria-pressed",String(node.nodeId===selectedComponent));
+      button.onclick=()=>{
+        selectedComponent=node.nodeId;
+        tree.querySelectorAll("button[data-node-id]").forEach(item=>
+          item.setAttribute("aria-pressed",String(item.dataset.nodeId===selectedComponent)));
+        const current=byId.get(selectedComponent);
+        $("componentSelection").textContent="已选："+componentLabel(current)+"（第 "+current.line+" 行）";
+        if(!byId.has(target.value))target.value=selectedComponent;
+      };
+      item.append(button);parentList.append(item);
+      const children=(node.childIds||[]).map(id=>byId.get(id)).filter(Boolean);
+      if(children.length){
+        const childList=document.createElement("ul");item.append(childList);
+        for(let index=children.length-1;index>=0;index--)
+          tasks.push({node:children[index],list:childList});
+      }
+    }
+  }else tree.innerHTML='<div class="empty">此页面没有 HTML 元素。</div>';
+  const selected=byId.get(selectedComponent);
+  $("componentCount").textContent=components.length+" 节点 · "+page.path;
+  $("componentSelection").textContent=selected?"已选："+componentLabel(selected)+"（第 "+selected.line+" 行）":"选择一个节点进行编辑。";
+  const enabled=Boolean(selected);
+  for(const id of ["insertComponentBefore","insertComponentAfter","insertComponentFirst",
+    "insertComponentLast","replaceComponent","removeComponent","moveComponent"])
+    $(id).disabled=!enabled||componentAnalysisPending;
+  pageSelect.disabled=componentAnalysisPending||!componentAnalysis?.pages?.length;
+  target.disabled=componentAnalysisPending||!components.length;
+}
+function setComponentActionsDisabled(disabled){
+  for(const id of ["insertComponentBefore","insertComponentAfter","insertComponentFirst",
+    "insertComponentLast","replaceComponent","removeComponent","moveComponent"])
+    $(id).disabled=disabled;
+}
+async function refreshComponentTree(knownAnalysis=null,requestId=null){
+  if(!manifest)return;
+  if(requestId===null){clearTimeout(componentAnalysisTimer);componentAnalysisTimer=null}
+  const request=requestId===null?++componentAnalysisRequest:requestId;
+  if(request!==componentAnalysisRequest)return;
+  componentAnalysisPending=!knownAnalysis;
+  if(componentAnalysisPending){
+    $("componentCount").textContent="源码有变化，正在重新分析…";
+    setComponentActionsDisabled(true);
+    $("componentPage").disabled=true;$("componentTarget").disabled=true;
+  }
+  try{
+    const next=knownAnalysis||await api("/api/analyze-v3",payload());
+    if(request!==componentAnalysisRequest)return;
+    componentAnalysisPending=false;componentAnalysis=next;
+    renderComponentTree();
+  }catch(error){
+    if(request!==componentAnalysisRequest)return;
+    componentAnalysisPending=false;componentAnalysis=null;selectedComponent=null;
+    renderComponentTree();
+    $("componentCount").textContent="结构分析失败";
+    const message=document.createElement("div");message.className="empty";message.textContent=error.message;
+    $("componentTree").replaceChildren(message);
+  }
+}
+function scheduleComponentAnalysis(){
+  const request=++componentAnalysisRequest;
+  componentAnalysisPending=true;
+  $("componentCount").textContent="源码有变化，正在重新分析…";
+  setComponentActionsDisabled(true);
+  $("componentPage").disabled=true;$("componentTarget").disabled=true;
+  clearTimeout(componentAnalysisTimer);
+  componentAnalysisTimer=setTimeout(()=>refreshComponentTree(null,request),500);
+}
+async function applyComponentOperation(operation,description){
+  const body=payload();body.operation=operation;
+  const result=await api("/api/edit-components-v3",body);
+  if(!result.changes?.length){
+    await refreshComponentTree(result.analysis);
+    say("源码已处于所选结构位置，没有产生更改。");return;
+  }
+  for(const [path,encoded] of Object.entries(result.changedFiles||{})){
+    sourceFiles.set(path,base64ToBytes(encoded));
+    if(path==="web/index.html"&&document.activeElement!==$("htmlCode"))
+      $("htmlCode").value=getText(path);
+    if(path===$("extraSourceFile").value&&document.activeElement!==$("extraSourceCode"))
+      $("extraSourceCode").value=getText(path);
+  }
+  dirty=true;selectedComponent=null;
+  await refreshComponentTree(result.analysis);
+  schedulePreview(0);
+  say(description+"；已更新唯一源码、预览和导出内容。");
+}
+function selectedComponentOperation(op,extra={}){
+  const page=currentComponentPage(),node=page?.components.find(item=>item.nodeId===selectedComponent);
+  if(!page||!node)throw Error("请先选择一个仍有效的 HTML 节点");
+  return {op,path:page.path,expectedSha256:page.sourceSha256,targetNodeId:node.nodeId,...extra};
+}
+async function insertComponent(position){
+  const html=$("componentMarkup").value;
+  if(!html.trim())throw Error("请先输入要插入的 HTML 片段");
+  await applyComponentOperation(selectedComponentOperation("component-insert",{position,html}),"HTML 节点已插入");
+}
+async function replaceComponent(){
+  const html=$("componentMarkup").value;
+  if(!html.trim())throw Error("请先输入用于替换的 HTML 片段");
+  await applyComponentOperation(selectedComponentOperation("component-replace",{html}),"HTML 节点已替换");
+}
+async function removeComponent(){
+  const operation=selectedComponentOperation("component-remove");
+  if(!confirm("删除选中的 <"+currentComponentPage().components.find(node=>node.nodeId===selectedComponent).tag+"> 节点？此修改只作用于当前工程。"))return;
+  await applyComponentOperation(operation,"HTML 节点已删除");
+}
+async function moveComponent(){
+  const page=currentComponentPage(),source=page?.components.find(node=>node.nodeId===selectedComponent);
+  const target=page?.components.find(node=>node.nodeId===$("componentTarget").value);
+  if(!page||!source||!target)throw Error("请选择有效的源节点和移动目标");
+  await applyComponentOperation({op:"component-move",path:page.path,
+    expectedSha256:page.sourceSha256,sourceNodeId:source.nodeId,targetNodeId:target.nodeId,
+    position:$("componentPosition").value},"HTML 节点已移动");
 }
 function syncSourceInputs(){
   $("htmlCode").value=getText("web/index.html");
@@ -1197,6 +1367,15 @@ function bindUI(){
     $("interactMode").classList.add("active");refreshOverlay();
   };
   $("refresh").onclick=()=>schedulePreview(0);
+  $("refreshComponents").onclick=()=>refreshComponentTree();
+  $("componentPage").onchange=()=>{selectedComponent=null;renderComponentTree()};
+  $("insertComponentBefore").onclick=()=>insertComponent("before").catch(error=>say(error.message,true));
+  $("insertComponentAfter").onclick=()=>insertComponent("after").catch(error=>say(error.message,true));
+  $("insertComponentFirst").onclick=()=>insertComponent("prepend").catch(error=>say(error.message,true));
+  $("insertComponentLast").onclick=()=>insertComponent("append").catch(error=>say(error.message,true));
+  $("replaceComponent").onclick=()=>replaceComponent().catch(error=>say(error.message,true));
+  $("removeComponent").onclick=()=>removeComponent().catch(error=>say(error.message,true));
+  $("moveComponent").onclick=()=>moveComponent().catch(error=>say(error.message,true));
   $("webPreview").onload=()=>connectPreview();
   $("skinId").onchange=change;$("skinName").onchange=change;$("fullCanvas").onchange=change;
   for(const id of ["scenario","theme","reduced"])$(id).onchange=()=>{
@@ -1218,7 +1397,8 @@ function bindUI(){
     "layerHeight","layerZ","layerOpacity","layerAction"])$(id).onchange=updateLayer;
   for(const [id,path] of [["htmlCode","web/index.html"],["cssCode","web/style.css"],
     ["jsCode","web/app.js"]]){
-    $(id).oninput=()=>{setText(path,$(id).value);change()};
+    $(id).oninput=()=>{setText(path,$(id).value);change();
+      if(/\.html?$/i.test(path)||/\.htm$/i.test(path))scheduleComponentAnalysis()};
   }
   $("extraSourceFile").onchange=()=>{
     const path=$("extraSourceFile").value;
@@ -1229,7 +1409,10 @@ function bindUI(){
   $("extraSourceCode").oninput=()=>{
     const path=$("extraSourceFile").value;
     if(path==="project.json"){updateProjectSource($("extraSourceCode").value);return;}
-    if(path&&sourceFiles.has(path)){setText(path,$("extraSourceCode").value);change()}
+    if(path&&sourceFiles.has(path)){
+      setText(path,$("extraSourceCode").value);change();
+      if(/^web\/.*\.html?$/i.test(path)||/^web\/.*\.htm$/i.test(path))scheduleComponentAnalysis();
+    }
   };
   $("addTextSource").onclick=addTextSource;
   $("removeExtraSource").onclick=removeExtraSource;

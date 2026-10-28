@@ -244,7 +244,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         if self.path not in ("/api/validate", "/api/export", "/api/import",
-                             "/api/export-v3", "/api/import-v3", "/api/preview-v3"):
+                             "/api/export-v3", "/api/import-v3", "/api/preview-v3",
+                             "/api/analyze-v3", "/api/edit-components-v3"):
             return self.send_json(404, {"error": "Not Found"})
         origin = self.headers.get("Origin")
         if origin and origin not in (f"http://127.0.0.1:{self.server.server_port}",
@@ -270,16 +271,36 @@ class Handler(BaseHTTPRequestHandler):
                     path: base64.b64encode(blob).decode("ascii") for path, blob in assets.items()}})
                 return
             obj = json.loads(data.decode("utf-8"))
-            if self.path in ("/api/export-v3", "/api/preview-v3"):
+            if self.path in ("/api/export-v3", "/api/preview-v3",
+                             "/api/analyze-v3", "/api/edit-components-v3"):
                 from runtime_package_v3 import build_files
                 raw_files = obj.get("files", {})
                 check(type(raw_files) is dict and len(raw_files) <= 96, "invalid v3 files")
                 files = {path: base64.b64decode(value, validate=True)
                          for path, value in raw_files.items()}
+                compiled = build_files(obj.get("manifest"), files)
                 if self.path == "/api/preview-v3":
                     from studio_v3_preview import publish
                     return self.send_json(200, {"url": publish(obj.get("manifest"), files)})
-                compiled = build_files(obj.get("manifest"), files)
+                if self.path == "/api/analyze-v3":
+                    from project_ops_v3 import analyze_package
+                    return self.send_json(200, analyze_package(compiled))
+                if self.path == "/api/edit-components-v3":
+                    from project_ops_v3 import analyze_package, edit_package
+                    check(set(obj) == {"manifest", "files", "operation"} and
+                          type(obj["operation"]) is dict,
+                          "component edit requires manifest, files, and one operation")
+                    final_manifest, final_files, final_package, changes = edit_package(
+                        compiled, [obj["operation"]])
+                    changed_paths = sorted({entry["path"] for entry in changes
+                                            if entry["path"] != "manifest.json"})
+                    return self.send_json(200, {
+                        "manifest": final_manifest,
+                        "changedFiles": {path: base64.b64encode(final_files[path]).decode("ascii")
+                                         for path in changed_paths if path in final_files},
+                        "changes": changes,
+                        "analysis": analyze_package(final_package),
+                    })
                 return self.reply(200, compiled, "application/octet-stream",
                                   "PowerCal-" + obj["manifest"]["id"] + ".pcskin")
             manifest, assets = from_json(obj)

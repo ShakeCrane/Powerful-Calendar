@@ -3,7 +3,7 @@ const {spawn} = require("node:child_process");
 const fs = require("node:fs"), path = require("node:path"), readline = require("node:readline");
 const root = path.resolve(__dirname, "../../..");
 const chrome = process.env.CHROME_PATH || "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
-const reportDir = path.join(root, ".local/android-test/reports/separation-20261027/source-editor");
+const reportDir = path.join(root, ".local/android-test/reports/separation-20261028/studio-component-tree");
 const delay = ms => new Promise(resolve=>setTimeout(resolve,ms));
 async function main(){
   fs.mkdirSync(reportDir,{recursive:true});
@@ -59,13 +59,64 @@ async function main(){
         await new Promise(r=>setTimeout(r,100));
       }
       const data=await (await fetch('/api/template-v3')).json();
+      const waitFor=async(fn,message)=>{for(let i=0;i<150;i++){if(fn())return;await new Promise(r=>setTimeout(r,100))}throw Error(message)};
+      await loadPackage(data);
+      await waitFor(()=>document.querySelector('#componentTree button[data-html-id="app"]'),
+        'static HTML component tree did not load');
+      const nodeButton=id=>document.querySelector('#componentTree button[data-html-id="'+id+'"]');
+      const markup=document.querySelector('#componentMarkup');
+      nodeButton('app').click();markup.value='<section id="studio-component-one">one</section>';
+      document.querySelector('#insertComponentAfter').click();
+      await waitFor(()=>nodeButton('studio-component-one'),'component insert was not reflected in tree/source');
+      nodeButton('app').click();markup.value='<article id="studio-component-two">two</article>';
+      document.querySelector('#insertComponentAfter').click();
+      await waitFor(()=>nodeButton('studio-component-two'),'second component insert was not reflected');
+      nodeButton('studio-component-one').click();
+      const target=document.querySelector('#componentTarget');
+      target.value=[...target.options].find(option=>option.dataset.htmlId==='studio-component-two').value;
+      document.querySelector('#componentPosition').value='before';
+      document.querySelector('#moveComponent').click();
+      await waitFor(()=>sourceFiles.get('web/index.html')&&
+        dec.decode(sourceFiles.get('web/index.html')).indexOf('studio-component-one')<
+        dec.decode(sourceFiles.get('web/index.html')).indexOf('studio-component-two'),
+        'component reorder did not update canonical HTML source');
+      nodeButton('studio-component-two').click();markup.value='<aside id="studio-component-two">replaced</aside>';
+      document.querySelector('#replaceComponent').click();
+      await waitFor(()=>dec.decode(sourceFiles.get('web/index.html')).includes('<aside id="studio-component-two">'),
+        'component replace did not update canonical HTML source');
+      const confirmBeforeTree=window.confirm;window.confirm=()=>true;
+      nodeButton('studio-component-one').click();document.querySelector('#removeComponent').click();
+      await waitFor(()=>!dec.decode(sourceFiles.get('web/index.html')).includes('studio-component-one'),
+        'component remove did not update canonical HTML source');
+      window.confirm=confirmBeforeTree;
+      const treePayload=payload(),treeSource=dec.decode(sourceFiles.get('web/index.html'));
+      const treePreviewResponse=await fetch('/api/preview-v3',{method:'POST',
+        headers:{'Content-Type':'application/json'},body:JSON.stringify(treePayload)});
+      check(treePreviewResponse.ok,'component preview failed');
+      const treePreview=await treePreviewResponse.json();
+      const servedTreeSource=await (await fetch(treePreview.url)).text();
+      check(servedTreeSource===treeSource,'component preview did not serve the edited canonical HTML bytes');
+      const treeExportResponse=await fetch('/api/export-v3',{method:'POST',
+        headers:{'Content-Type':'application/json'},body:JSON.stringify(treePayload)});
+      check(treeExportResponse.ok,'component export failed');
+      const treeImportResponse=await fetch('/api/import-v3',{method:'POST',
+        headers:{'Content-Type':'application/octet-stream'},body:await treeExportResponse.arrayBuffer()});
+      check(treeImportResponse.ok,'component export could not be reimported');
+      const treeImported=await treeImportResponse.json();
+      check(treeImported.files['web/index.html']===treePayload.files['web/index.html'],
+        'component edits were lost in package roundtrip');
       data.manifest.id='restricted-source-test'; data.manifest.capabilities=['host.read'];
       data.files['web/agent-unused-90f4.txt']=btoa('unused source');
       data.files['assets/replace.bin']=btoa('old resource');
       const meta=JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(data.files['project.json']),c=>c.charCodeAt(0))));
       delete meta.layers;meta.thirdPartyMetadata={keep:'原样保留'};
       data.files['project.json']=btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(meta)+'\\n')));
-      await loadPackage(data); document.querySelector('#advancedMode').click();
+      await loadPackage(data);
+      await waitFor(()=>document.querySelector('#componentTree button[data-node-id="'+selectedComponent+'"]'),
+        'component selection did not reset when another project loaded');
+      check(document.querySelector('#componentTarget').value===selectedComponent,
+        'move target leaked from the previous project');
+      document.querySelector('#advancedMode').click();
       const select=document.querySelector('#extraSourceFile');
       check([...select.options].some(o=>o.value==='web/edit.js'),'edit.js missing');
       check([...select.options].some(o=>o.value==='project.json'),'project.json missing from source editor');
@@ -147,11 +198,17 @@ async function main(){
       const visualImported=await (await post('/api/import-v3',visualZip,'application/octet-stream')).json();
       check(visualImported.files['project.json']===visual.files['project.json'],'visual metadata roundtrip changed');
       return {file:'web/edit.js', files:Object.keys(authored.files).length, capabilities:imported.manifest.capabilities,
+        componentTree:true,componentInsert:true,componentReplace:true,componentMove:true,componentRemove:true,
+        componentPreviewExportRoundtrip:true,componentReloadState:true,
         projectTree:true,newText:true,newBinary:true,replacedBinary:true,delete:true,referenceGuard:true};
     })()`;
     const result=await call("Runtime.evaluate",{expression,awaitPromise:true,returnByValue:true});
     if(result.exceptionDetails)throw Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text);
     console.log("BROWSER SOURCE ROUNDTRIP PASS",JSON.stringify(result.result.value));
+    await call("Page.enable");
+    await call("Emulation.setDeviceMetricsOverride",{width:1440,height:1280,deviceScaleFactor:1,mobile:false});
+    const componentScreenshot=await call("Page.captureScreenshot",{format:"png",captureBeyondViewport:true});
+    fs.writeFileSync(path.join(reportDir,"studio-component-tree.png"),Buffer.from(componentScreenshot.data,"base64"));
     const setup=await call("Runtime.evaluate",{awaitPromise:true,returnByValue:true,expression:`(async()=>{
       for(let i=0;i<150;i++){
         if(document.querySelector('#previewState').textContent.includes('连接成功'))break;
@@ -164,7 +221,6 @@ async function main(){
       return true;
     })()`});
     if(setup.exceptionDetails)throw Error(setup.exceptionDetails.exception?.description || setup.exceptionDetails.text);
-    await call("Page.enable");
     const tree=await call("Page.getFrameTree");
     const child=tree.frameTree.childFrames?.find(frame=>frame.frame.url.includes("/preview/"));
     if(!child)throw Error("Preview frame not found: "+JSON.stringify(tree.frameTree));

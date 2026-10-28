@@ -123,6 +123,24 @@ editable through ordinary source `write` operations. The operations preserve all
 outside the selected source range and validate/rebuild the complete v3 package before
 publishing an output file.
 
+## Browser Studio structure editor
+
+The local browser Studio uses the same v3 source model and the same static inventory and
+component operations. `POST /api/analyze-v3` accepts `{ "manifest": ..., "files": ... }`,
+where each file value is Base64, validates the project with the production v3 builder, and
+returns the `analyze-v3` receipt. `POST /api/edit-components-v3` accepts those fields plus
+one `operation` from the table below; it returns changed source files as Base64, before/after
+hash receipts, and a fresh analysis. Stale page hashes and invalid structures return HTTP
+400 without changing the browser project's source map.
+
+In the Studio, the **HTML 结构树** panel selects a packaged HTML page and supports source
+fragment insertion before/after/inside a selected node, replacement, deletion, and moving
+the selected node relative to a target. Each accepted edit updates the same in-memory source
+bytes used by the source editor, live package preview, project save and `.pcskin` export.
+The tree is a static source inventory: JavaScript-generated nodes remain available through
+the advanced source editor. This structural panel does not yet provide a full CSS layout,
+computed-style, interaction-logic or accessibility editor.
+
 Example: insert a component under an analyzed container. `targetNodeId` and the page
 hash come from the same `analyze-v3` / `inspect-v3` snapshot:
 
