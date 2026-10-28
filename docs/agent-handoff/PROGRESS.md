@@ -1,5 +1,12 @@
 # Core freeze progress
 
+## Separation — v3 Manifest 扩展元数据兼容（2026-10-29）
+
+- 关闭 `S0-PKG-04` 的窄兼容缺陷：Studio v3 解析器此前拒绝未知顶层 Manifest 字段，而 Android 接受并忽略这些字段。现将未知字段定义为不授予权限的 opaque metadata，Studio 导入/编辑/导出保留其值；`capabilities` 仍为封闭白名单，非法权限仍拒绝。
+- 实现及合同提交 `fe94518b74e927f5f7eef39bcd28804a6b32ce59` 已推送至 `origin/codex/separation-s0-inventory`。对应独立报告：`docs/issues/PC-ISSUE-SEPARATION-V3-MANIFEST-METADATA.md`；矩阵 `S0-PKG-04` 仅标记窄 metadata compatibility PASS。
+- Skin Studio Python **54/54 PASS**；Chrome/CDP 相邻 E2E PASS；Clear package 验证 **8 files / 378,172 bytes PASS**；定向 `SkinPackageManagerTest` **10/10 PASS**。完整离线 Gradle 门禁 **606/606 JVM、83 suites、0 failures/errors/skips、88/88 tasks**，lint **0 errors / 51 warnings**。完整门禁先于最后一个断言测试变更；随后重跑更新的 Robolectric 类 10/10。日志及 APK 哈希见独立报告。
+- Android WebView、AVD 实际运行、实体设备和宽泛第三方包兼容矩阵均 **NOT TESTED**。S0 和 Skin-First 分离继续 **IN PROGRESS**；本项不构成 cutover GO。
+
 ## Separation — Clear Memo 列表分页续载（2026-10-29）
 
 - 根因：Host 把已排序的完整 `TodoProjection` 额外截断为前 250 行；Clear 只显示不可操作的提示，剩余 Memo 无法从皮肤入口打开或切换完成。现增加 Host 控制的 250 行前缀续载、无参数闭合 Bridge 动作和 Clear 可访问按钮；进入 Memo 时刷新 Host records snapshot。续载从当前记录重建稳定前缀，不修改 Store。
