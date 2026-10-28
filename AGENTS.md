@@ -154,3 +154,12 @@ For machine-operated v3 skin work, read `docs/SKIN_STUDIO_AI_AUTOMATION_V1.md` a
 `skin_studio.py inspect-v3`, `read-v3`, `edit-v3`, `build-v3 --json`, and
 `validate --json`; build and edit create new package paths and emit machine-readable
 hash receipts. Package validation does not prove visual or device parity.
+
+### Separation agent pickup and paired delivery
+
+- Work on `feat/skin-first-separation`; if that worktree is occupied, create an isolated worktree from the separation branch rather than switching or rewriting another active worktree. Preserve all pre-existing changes and stage only owned paths.
+- Before choosing work, inspect `docs/SKIN_SEPARATION_PARITY_MATRIX_2026-10-27.md`, the latest separation entries in `docs/agent-handoff/PROGRESS.md`, the relevant Issue report, and the actual Native, Host, Clear, and Studio source. Treat matrix status as a live inventory, not proof; use `NOT TESTED` until the row's declared scope has evidence.
+- Deliver Track A (Host contract, Clear interaction, state/error/recovery behavior and frozen-Native semantic comparison) together with Track B (Studio source/structure editability, preview, build/export, re-import and AI-operable documentation). A runtime slice is not closed while its customizable surface cannot be edited and round-tripped in Studio.
+- Keep `.pcskin v3` as the shared runtime format and canonical Clear source. Do not add a parallel store, scheduler or AI authority; keep trusted writes, credentials, permissions and recovery in Host. Native fallback stays available, and factory cutover requires its independent gate and owner authorization.
+- Distinguish source tests, browser Mock/Chrome, Robolectric, Android WebView on an emulator, and physical/OEM results. Do not promote evidence across these environments. Record the tested source commit, package/APK hashes, exact command, result, and remaining gap in an independent Issue report and the progress log.
+- For the live phase and next feasible work item, use the latest parity matrix and progress entries rather than copying test counts or statuses into this file. Start with a concrete open matrix gap and continue autonomously after each independently reported closure.
