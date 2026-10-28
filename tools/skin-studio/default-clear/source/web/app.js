@@ -189,7 +189,7 @@ $("monthYearForm").addEventListener("submit",event=>{
 $("chatForm").addEventListener("submit",e=>{
   e.preventDefault();
   const field=$("chatInput"),text=field.value.trim();
-  if(!text||text.length>4000||state.aiLocked||state.chatBusy)return;
+  if(!text||text.length>6000||state.aiLocked||state.chatBusy)return;
   send("sendChat",{text});field.value="";
 });
 window.addEventListener("message",e=>{

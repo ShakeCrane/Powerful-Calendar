@@ -674,10 +674,10 @@
           "text": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 4000,
+            "maxLength": 6000,
             "pattern": "\\S",
-            "description": "Host also rejects whitespace-only text.",
-            "x-runtimeMaxUtf16CodeUnits": 4000
+            "description": "Host rejects whitespace-only text and enforces the 6000 UTF-16 code-unit limit.",
+            "x-runtimeMaxUtf16CodeUnits": 6000
           }
         },
         "additionalProperties": false,

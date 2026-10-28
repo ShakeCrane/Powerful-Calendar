@@ -448,7 +448,7 @@ internal fun decodeBridgeAction(raw: String): WebSkinAction? {
         "sendChat" -> {
             if (keys != setOf("name", "text")) return null
             val text = payload.opt("text")
-            if (text is String && text.isNotBlank() && text.length <= 4000)
+            if (text is String && text.isNotBlank() && text.length <= 6000)
                 WebSkinAction.SendChat(text)
             else null
         }

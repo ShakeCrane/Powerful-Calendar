@@ -68,6 +68,7 @@ envelope and known fields only:
 {"version":1,"type":"action","payload":{"name":"todayInMonth"}}
 ```
 
+- `sendChat` accepts nonblank text up to 6000 UTF-16 code units, matching the Native composer. The 8192-unit message-frame limit still applies to the complete JSON envelope.
 - `panTimeline` accepts nonzero integer minutes [-2880, 2880]. It does not
   change the time span or introduce horizontal zoom.
 - `jumpTimelineDay` accepts an ISO date from years 1900–2200 and retains

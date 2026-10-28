@@ -43,6 +43,20 @@ class WebSkinHostProjectionTest {
         assertNull(decode("""{"name":"pickAiImage","mime":"image/png"}"""))
     }
 
+    @Test fun sendChatUsesTheNativeUtf16LengthBoundary() {
+        fun decodeChat(text: String) = decodeBridgeAction(
+            JSONObject().put("version", 1).put("type", "action")
+                .put("payload", JSONObject().put("name", "sendChat").put("text", text))
+                .toString()
+        )
+
+        val nativeLimitAscii = "x".repeat(6000)
+        val nativeLimitSupplementary = "\uD83D\uDE00".repeat(3000)
+        assertEquals(6000, nativeLimitSupplementary.length)
+        assertEquals(WebSkinAction.SendChat(nativeLimitAscii), decodeChat(nativeLimitAscii))
+        assertEquals(WebSkinAction.SendChat(nativeLimitSupplementary), decodeChat(nativeLimitSupplementary))
+        assertNull(decodeChat("x".repeat(6001)))
+    }
     @Test fun exposesTrueIntervalsOwnerRevisionAndNoPrivilegedContent() {
         val payload = project(listOf(activity(7)))
         val row = payload.getJSONArray("items").getJSONObject(0)

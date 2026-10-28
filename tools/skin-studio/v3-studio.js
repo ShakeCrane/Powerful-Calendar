@@ -1338,7 +1338,7 @@ function onSkinAction(message){
       if(!Number.isInteger(p.eventSeq)||typeof p.completed!=="boolean"||!p.occurrenceKey)return;
       if(p.eventSeq===31)mockMemoDone=!p.completed;
     }
-    if(name==="sendChat"&&typeof p.text==="string"&&p.text.length<=4000){
+    if(name==="sendChat"&&typeof p.text==="string"&&p.text.length<=6000){
       if($("scenario").value==="ai-error"){
         mockAiErrorMessages.push({role:"user",content:p.text},
           {role:"assistant",content:"Studio Mock：已收到你手动重发的消息；没有调用真实 AI 或写入日历。"});

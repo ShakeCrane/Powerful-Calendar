@@ -782,7 +782,19 @@ async function main(){
         check(field.value==='','successful send did not clear the composer');
         check(list.textContent.split(prompt).length-1===2, 'the same prompt must appear once as the failed turn and once as the explicit resend');
         check(list.textContent.includes('没有调用真实 AI 或写入日历'),'Mock boundary was not disclosed');
-        return {scenario:'AI HTTP 503 then explicit composer resend',providerCalled:false,calendarWrites:false};
+        const inputLimit=field.maxLength;
+        check(inputLimit===6000,'Clear composer does not expose the native 6000-unit limit: '+inputLimit);
+        const boundary='x'.repeat(6000);
+        field.value=boundary;field.dispatchEvent(new Event('input',{bubbles:true}));
+        document.querySelector('#chatForm').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
+        await wait(()=>list.textContent.includes(boundary),'Clear/Studio rejected a 6000-unit chat message');
+        const afterBoundary=list.textContent;
+        field.value='x'.repeat(6001);
+        document.querySelector('#chatForm').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
+        await new Promise(r=>setTimeout(r,100));
+        check(list.textContent===afterBoundary,'Clear/Studio accepted a message above the native limit');
+        return {scenario:'AI HTTP 503 then explicit composer resend',providerCalled:false,calendarWrites:false,
+          textLimitUtf16:inputLimit,acceptedAtLimit:6000,rejectedAboveLimit:true};
       })()`});
     if(aiErrorResend.exceptionDetails)throw Error(aiErrorResend.exceptionDetails.exception?.description || aiErrorResend.exceptionDetails.text);
     console.log("BROWSER AI error/manual resend Mock PASS",JSON.stringify(aiErrorResend.result.value));
