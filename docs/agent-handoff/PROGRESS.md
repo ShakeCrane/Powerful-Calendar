@@ -930,6 +930,7 @@ Updated: 2026-10-24
 
 ## Separation — S0 reconstructed Native/Host/Clear/Studio inventory expansion (2026-10-28)
 
+- Initial audit artifact commit: `cbb16b5f6f5ebc7cdabf037ee4e152c37762592f` (matrix, Issue report, and this progress entry).
 - On clean isolated worktree baseline `cc31026f81d4df6704dd89704a4ee93f030a5c00` (Core frozen source `b1f7629f0c52812e1887443872f43aa6c49908c4`), expanded the 16 coarse SEP groups into **62 RECONSTRUCTED audit IDs** across timeline, month, Memo, editor/recurrence, draft deck, AI, 22 Native settings/system actions, Studio authoring and package/runtime. IDs are newly reconstructed; no historical 209 IDs are claimed.
 - The matrix records missing or divergent source paths, including Clear timeline zoom/wing scroll/drag parity, temporal geometry/date precision, missing Memo-row open, deck conflict/restore and AI batch commands, Native-only system/settings routes, Studio Mock/runtime boundary and installed-package round trips. All child and parent full-parity states remain `NOT TESTED`.
 - Source review found the v3 Manifest parser mismatch recorded in `S0-PKG-04`: Python rejects unknown Manifest keys; Android decode does not. This is source evidence only; no paired package fixture was executed and no format policy changed.

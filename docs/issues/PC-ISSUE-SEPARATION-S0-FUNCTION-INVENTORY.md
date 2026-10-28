@@ -6,6 +6,8 @@ Status: **S0 IN PROGRESS — source inventory expanded; complete S0 and all Nati
 
 Audit worktree: `codex/separation-s0-inventory`
 
+Initial audit artifact commit: `cbb16b5f6f5ebc7cdabf037ee4e152c37762592f`
+
 Audited source baseline: `cc31026f81d4df6704dd89704a4ee93f030a5c00`
 
 Frozen Core source baseline: `b1f7629f0c52812e1887443872f43aa6c49908c4`
