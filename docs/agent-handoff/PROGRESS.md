@@ -1,11 +1,13 @@
 # Core freeze progress
 
-## Separation — Studio 预览与 Android WebView parity `S0-PKG-06`（2026-10-29，BLOCKED）
+## Separation — Studio 预览与 Android WebView parity `S0-PKG-06`（2026-10-29，PASS：限定覆盖范围）
 
-- 根因与修复：sandbox 字体请求以 opaque `Origin: null` 到达 token-host，CORS 未允许字体；Studio root-resource 路由、Android `Uri.path` 解码、大小写 MIME 和错误响应安全头存在差异；Studio Mock 未按 `host.read` / `host.action` 隔离。已将 Python 预览路由/字体 CORS、Android MIME/统一响应头、Studio capability gate 和对应回归一并修复。只读源码往返夹具与具备编辑权限的 Mock 预览夹具现分开。
-- Skin Studio Python **57/57 PASS**；Edge/Chrome CDP browser 与 source E2E **PASS**；Clear bundle **8 files / 378,172 bytes PASS**。完整离线 Gradle **608/608 JVM、83 suites、0 failures/errors/skips、88/88 tasks PASS**；lint **0 errors / 52 warnings**；Debug/AndroidTest APK SHA-256 `6B39CA84B4D7414A791E658F87DF99617C4937518A8EE5E62EA19A0160C6EABE` / `27C405BFB941CB0C14B8CEA7E4FD9BB6240CD75023B7FAC8AC5A3532DDB79D7B`。日志与各浏览器轨迹 hash 见 [独立 Issue 报告](../issues/PC-ISSUE-SEPARATION-PREVIEW-WEBVIEW-PARITY.md)。
-- API 35 instrumentation 已编译；运行时未测。唯一在线 `emulator-5572` 当时运行既有 PowerCal 冷启动任务（PID 7194），本轮未安装、停止或覆盖。故 `S0-PKG-06` full parity **NOT TESTED**，不签核；实体/OEM 由用户测试。
-- 实现提交 `12ae4402956336ce0e0a09b9796f3726e2e5dd23` 已推送至 `origin/codex/separation-s0-inventory`。S0 / Skin-First 继续 **IN PROGRESS**，不构成 release/cutover GO。
+- 最终窄范围结论：Studio Python/Edge/Chrome 与隔离 API 35 Android WebView 的资源、CSP、失败路径和 capability instrumentation 均通过；`S0-PKG-06` 仅对独立报告列明的重建覆盖项签核 PASS。整体 Native/Skin parity、全部第三方包与系统/OEM 兼容仍 NOT TESTED，S0 / Skin-First 继续 IN PROGRESS，不构成 release/cutover GO。
+- 最终模拟器证据：新建隔离 `emulator-5582`，Capability Gate instrumentation **1/1 PASS**，Resource Parity instrumentation **1/1 PASS**。测试 fixture 根因是把 JSON string 再交给会 JSON.stringify 的 JS helper，导致 Host 正确收到但无法解码为 object；改为 `JSON.parse(...)` 后 action/write 分别恰好一次通过。另修正 resource helper 的重复 JSON 解析。修复前后非敏感 probe SHA-256 `A0C965F00E1217BE374AF897CFDE7FDE11D5684F0826053488C16D5735F21CF2`；最终 instrumentation 日志 SHA-256：`24F5B04C973488085E10A26DB5151DF8861A85EE073B6E16DDC85257BABA3C10` / `E33BB4CB87CD66F7BB0D47808712197EB0F6CF82F12CBEF69BBC376969340BAC`。
+- 最终离线 Gradle 门禁 **608/608 JVM tests、83 suites、0 failures/errors/skips、88/88 tasks PASS**；source boundary、Debug/AndroidTest APK 和 lint 成功，lint 0 errors / 52 warnings。Python **57/57 PASS**，Clear 验证 **8 files / 378,172 bytes PASS**，Edge/Chrome CDP E2E 与三个 `node --check` 均 PASS。最终 APK SHA-256、全部日志路径/哈希和范围限制见 [独立 Issue 报告](../issues/PC-ISSUE-SEPARATION-PREVIEW-WEBVIEW-PARITY.md)。
+- 最终 Debug / AndroidTest APK SHA-256：`6B39CA84B4D7414A791E658F87DF99617C4937518A8EE5E62EA19A0160C6EABE` / `8C60C8A1B73E766028D82FAF384A29E74253E7444B2472152D03617A7816C681`；完整 Gradle 日志 SHA-256 `D4A1B1B3F5DFED0521B78D7528C74E6208007CE03A9C3244D19CC4C11BEA7C90`。
+- 实现前置提交 `12ae4402956336ce0e0a09b9796f3726e2e5dd23` 已在本分离分支；本轮两项 AndroidTest 修正及独立报告作为单独提交推送至 `origin/codex/separation-s0-inventory`，最终 SHA 见下方后续提交记录。
+- 实体/OEM 测试由用户执行；`S0-PKG-07`（安装的第三方包重新打开 Studio、编辑、导出往返）仍未验证，是下一项独立包交付缺口。所有更广验收行保持原状态。
 
 ## Separation — Studio package 冷启动交付 `S0-PKG-05`（2026-10-29）
 

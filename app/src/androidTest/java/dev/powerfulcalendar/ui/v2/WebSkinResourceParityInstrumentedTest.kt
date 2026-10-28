@@ -207,7 +207,7 @@ class WebSkinResourceParityInstrumentedTest {
     }
 
     private fun evaluateText(web: WebView, expression: String): String =
-        JSONTokener(evaluate(web, "JSON.stringify($expression)")).nextValue() as String
+        JSONTokener(evaluate(web, expression)).nextValue() as String
 
     private fun awaitJs(web: WebView, expression: String) {
         compose.waitUntil(30_000) { evaluate(web, expression) == "true" }

@@ -172,7 +172,7 @@ class WebSkinCapabilityGateInstrumentedTest {
     private fun sendAction(web: WebView) {
         val frame = JSONObject().put("version", 1).put("type", "action")
             .put("payload", JSONObject().put("name", "memo")).toString()
-        evaluate(web, "window.__sendHostFrame(${JSONObject.quote(frame)}); true")
+        evaluate(web, "window.__sendHostFrame(JSON.parse(${JSONObject.quote(frame)})); true")
     }
 
     private fun sendWrite(web: WebView) {
@@ -182,7 +182,7 @@ class WebSkinCapabilityGateInstrumentedTest {
             .put("payload", JSONObject().put("name", "deck.open")
                 .put("requestId", "capability01").put("draftId", JSONObject.NULL))
             .toString()
-        evaluate(web, "window.__sendHostFrame(${JSONObject.quote(frame)}); true")
+        evaluate(web, "window.__sendHostFrame(JSON.parse(${JSONObject.quote(frame)})); true")
     }
 
     @Test
@@ -235,18 +235,33 @@ class WebSkinCapabilityGateInstrumentedTest {
                 assertEquals("Host state callback gate (${capabilityCase.label})",
                     capabilityCase.mayRead, stateCalls.get() > 0)
 
-                sendAction(web)
-                sendWrite(web)
-                awaitJs(web, "window.__sentHostFrames === 2")
-
                 if (capabilityCase.mayAct) {
+                    sendAction(web)
+                    awaitJs(web, "window.__sentHostFrames === 1")
                     compose.waitUntil(10_000) {
-                        actionCalls.get() == 1 && writeCalls.get() == 1
+                        actionCalls.get() > 0
                     }
+                    androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
+                        .waitForIdleSync()
+                    assertEquals("action must be delivered exactly once (${capabilityCase.label})",
+                        1, actionCalls.get())
                     assertEquals(WebSkinAction.Routed("memo"), observedAction.get())
+
+                    sendWrite(web)
+                    awaitJs(web, "window.__sentHostFrames === 2")
+                    compose.waitUntil(10_000) {
+                        writeCalls.get() > 0
+                    }
+                    androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
+                        .waitForIdleSync()
+                    assertEquals("write must be delivered exactly once (${capabilityCase.label})",
+                        1, writeCalls.get())
                     assertTrue("write mock should receive the valid WebView command",
                         observedWrite.get() is WebEditCommand.OpenDeck)
                 } else {
+                    sendAction(web)
+                    sendWrite(web)
+                    awaitJs(web, "window.__sentHostFrames === 2")
                     // The current bridge intentionally has no denial acknowledgement. Let the
                     // WebView/Android message queues settle before asserting there was no effect.
                     android.os.SystemClock.sleep(750)
