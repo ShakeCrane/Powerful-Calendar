@@ -1,5 +1,13 @@
 # Core freeze progress
 
+## Separation — Clear Memo 列表分页续载（2026-10-29）
+
+- 根因：Host 把已排序的完整 `TodoProjection` 额外截断为前 250 行；Clear 只显示不可操作的提示，剩余 Memo 无法从皮肤入口打开或切换完成。现增加 Host 控制的 250 行前缀续载、无参数闭合 Bridge 动作和 Clear 可访问按钮；进入 Memo 时刷新 Host records snapshot。续载从当前记录重建稳定前缀，不修改 Store。
+- 新增 251 条 Memo 的真实 Store/Compose Host 集成回归；验证顺序、首屏 250 项、续载第 251 项、非 Memo 页动作无效、Store 草稿/正式事件/身份/提交计数不变。测试数据库经 `IsolatedContext` 命名空间打开和清理。对应实现提交：`e4b6e620d56e72da7280a8c91ada0555f6755b8f`。
+- 定向 Bridge/Host/集成测试 **23/23 PASS**；完整离线 Gradle **605/605 tests、83 suites、0 failures/errors/skips、88/88 tasks PASS**；source boundary、Debug 与 AndroidTest APK 构建及 lint 成功（0 errors / 52 warnings）。完整日志 SHA-256 `1DCD208351BF100EB47FE58A01E0BF2972A53DB2FF8C41068F96E1C4143E4EE7`；Debug / AndroidTest APK SHA-256 `0A3DF0259F877E66354E80C777EAA3496C1535727C69C92B3A24D723CD9C57F6` / `60F08FFC420D8C67860FE9D85938C5237CF3C48CD49D5EFC260DC1187C5C9B90`。
+- Skin Studio Python **51/51 PASS**；Chrome/CDP Studio Mock 验证 250→251 后剩余数清零、按钮隐藏。规范 Clear package **8 files / 378,172 bytes PASS**，SHA-256 `0dc5a9bc6606e3b7a60aa2af5014ccedeb3303f421c7956dad0c0ba036d353a7`。完整测试与日志索引见 [独立 Issue 报告](../issues/PC-ISSUE-SEPARATION-MEMO-PAGING.md)。
+- ADB daemon 握手失败且无 `emulator.exe`；Android WebView、AVD、实体设备均 **NOT TESTED**。真实 Native/Clear 配对及 S0-ME-01 全 parity 仍 **NOT TESTED**；S0 继续 **IN PROGRESS**，本项不构成分离或 cutover 的 GO。
+
 ## Separation — Clear Memo 行打开正式编辑器（2026-10-29）
 
 - 根因：Clear Memo 标题原先是纯文本，不能进入既有正式编辑流程；projection 没有把重复事件原始槽位独立交给 editor.open。现新增纯 Memo projection，标题成为带无障碍名称的 openEvent 按钮，传递 eventSeq/revision/可选 original occurrence key。完成状态仍走独立 toggleMemo；Host 继续重读 revision 并解析 occurrence；不向 Skin 暴露 Host 内部 key。
