@@ -283,6 +283,14 @@ python -m unittest discover -s tools/skin-studio/tests -p test_ai_skin_workflow_
 This exercises the documented tool workflow, not a model's design quality or an Android
 runtime result. The browser E2E and device checks remain separate evidence.
 
+The no-npm Chrome E2E `tools/skin-studio/tests/e2e_v3_source.cjs` also creates a blank
+package through `scaffold-v3`, imports it through the browser Studio's package input,
+inserts a static component, verifies the preview serves the canonical bytes, and checks
+export/import preserves that edit and the empty capability list. Set
+`STUDIO_E2E_REPORT_DIR` to a fresh ignored `.local/android-test/...` path before each run
+to preserve previous screenshots and logs. This remains desktop-browser evidence; it is
+not Android WebView or device acceptance.
+
 The interface enables arbitrary v3 source/asset file CRUD, generic JSON tree edits, and
 guarded structural edits to explicit static HTML elements; it does not impose a formal
 page/component schema on `project.json`, nor does it inspect script-generated runtime

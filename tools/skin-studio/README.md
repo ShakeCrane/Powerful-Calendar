@@ -100,6 +100,12 @@ node --check tools/skin-studio/v3-studio.js
 .\gradlew.bat :app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --console=plain
 ```
 
+`tools/skin-studio/tests/e2e_v3_source.cjs` is a real local Chrome Headless E2E with no
+npm dependencies. It now includes `scaffold-v3` → browser Studio import → static component
+edit → preview → export/import verification. Set `STUDIO_E2E_REPORT_DIR` to a new ignored
+`.local/android-test/...` directory for each run so screenshots and logs from prior runs
+remain untouched; set `CHROME_PATH` only when Chrome is not at the script's default path.
+
 可选浏览器端到端脚本：`tools/skin-studio/tests/e2e_v3_browser.cjs`，
 需要已安装的 Puppeteer/Chromium；运行前设置 `PUPPETEER_PATH` 指向 Puppeteer
 模块所在目录，再设置 `STUDIO_URL` 指向本地运行的 Studio。此测试验证 Bridge

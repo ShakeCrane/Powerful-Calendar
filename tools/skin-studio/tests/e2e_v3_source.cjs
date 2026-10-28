@@ -1,13 +1,23 @@
 /* Real browser source edit, preview and package round trip. No npm dependencies. */
-const {spawn} = require("node:child_process");
+const {spawn,execFileSync} = require("node:child_process");
 const fs = require("node:fs"), path = require("node:path"), readline = require("node:readline");
 const root = path.resolve(__dirname, "../../..");
 const chrome = process.env.CHROME_PATH || "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
-const reportDir = path.join(root, ".local/android-test/reports/separation-20261028/studio-component-attributes");
+const reportDir = path.resolve(process.env.STUDIO_E2E_REPORT_DIR ||
+  path.join(root, ".local/android-test/reports/separation-20261028/studio-component-attributes"));
 const delay = ms => new Promise(resolve=>setTimeout(resolve,ms));
 async function main(){
   fs.mkdirSync(reportDir,{recursive:true});
   const profile=fs.mkdtempSync(path.join(reportDir,"browser-profile-"));
+  const scaffoldDir=fs.mkdtempSync(path.join(reportDir,"blank-scaffold-"));
+  const scaffoldPath=path.join(scaffoldDir,"agent-blank.pcskin");
+  const scaffoldReceipt=JSON.parse(execFileSync("python",[
+    "tools/skin-studio/skin_studio.py","scaffold-v3","--id","browser-blank-v3",
+    "--name","Browser Blank Skin","--out",scaffoldPath,"--json"
+  ],{cwd:root,encoding:"utf8"}));
+  if(!scaffoldReceipt.ok||scaffoldReceipt.manifest.capabilities.length!==0)
+    throw Error("blank scaffold did not use the least-privilege manifest");
+  const scaffoldBase64=fs.readFileSync(scaffoldPath).toString("base64");
   const server=spawn("python",["tools/skin-studio/skin_studio.py","serve","--port","0"],
     {cwd:root,stdio:["ignore","pipe","pipe"]});
   let browser;
@@ -216,15 +226,51 @@ async function main(){
       check(visualImported.files['project.json']===visual.files['project.json'],'visual metadata roundtrip changed');
       await loadPackage(treeImported);
       await waitFor(()=>nodeButton('studio-component-attributes'),'attribute node missing after exported package reload');
+      const blankPackage=new File([Uint8Array.from(atob('__BLANK_PACKAGE_BASE64__'),c=>c.charCodeAt(0))],
+        'agent-blank.pcskin',{type:'application/zip'});
+      await document.querySelector('#importZip').onchange({target:{files:[blankPackage],value:'selected'}});
+      await waitFor(()=>document.querySelector('#skinName').value==='Browser Blank Skin',
+        'blank v3 package was not loaded by the Studio import handler');
+      check(manifest.id==='browser-blank-v3'&&JSON.stringify(manifest.capabilities)==='[]',
+        'blank scaffold identity or least-privilege capabilities changed on Studio import');
+      check(sourceFiles.size===4&&sourceFiles.has('project.json')&&sourceFiles.has('web/app.js'),
+        'Studio did not retain every blank scaffold source file');
+      await waitFor(()=>nodeButton('app'),'blank scaffold HTML tree did not load');
+      nodeButton('app').click();
+      markup.value='<section id="browser-authored-from-blank"><h1>From scratch</h1></section>';
+      document.querySelector('#insertComponentAfter').click();
+      await waitFor(()=>dec.decode(sourceFiles.get('web/index.html')).includes('browser-authored-from-blank'),
+        'Studio could not structurally edit the imported blank scaffold');
+      const blankPayload=payload();
+      const blankPreview=await (await post('/api/preview-v3',JSON.stringify(blankPayload),'application/json')).json();
+      const servedBlankHtml=await (await fetch(blankPreview.url)).text();
+      check(servedBlankHtml===dec.decode(sourceFiles.get('web/index.html')),
+        'blank scaffold preview did not serve the canonical edited source bytes');
+      const blankZip=await post('/api/export-v3',JSON.stringify(blankPayload),'application/json');
+      const blankReimport=await (await post('/api/import-v3',await blankZip.arrayBuffer(),
+        'application/octet-stream')).json();
+      check(blankReimport.files['web/index.html']===blankPayload.files['web/index.html'],
+        'Studio export/import changed the edited blank scaffold HTML');
+      check(JSON.stringify(blankReimport.manifest.capabilities)==='[]',
+        'Studio roundtrip added Host capabilities to the blank scaffold');
+      await loadPackage(blankReimport);
+      await waitFor(()=>nodeButton('browser-authored-from-blank'),
+        'edited blank scaffold did not return to the Studio component tree after reimport');
+      await loadPackage(treeImported);
+      await waitFor(()=>nodeButton('studio-component-attributes'),
+        'Clear fixture was not restored after blank scaffold E2E');
       return {file:'web/edit.js', files:Object.keys(authored.files).length, capabilities:imported.manifest.capabilities,
         componentTree:true,componentInsert:true,componentReplace:true,componentMove:true,componentRemove:true,
         componentAttributes:true,
         componentPreviewExportRoundtrip:true,componentReloadState:true,
+        blankScaffoldImport:true,blankScaffoldEdit:true,blankScaffoldPreviewExportImport:true,
+        blankScaffoldReimportedIntoStudio:true,
         projectTree:true,newText:true,newBinary:true,replacedBinary:true,delete:true,referenceGuard:true};
-    })()`;
+    })()`.replace('__BLANK_PACKAGE_BASE64__',scaffoldBase64);
     const result=await call("Runtime.evaluate",{expression,awaitPromise:true,returnByValue:true});
     if(result.exceptionDetails)throw Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text);
     console.log("BROWSER SOURCE ROUNDTRIP PASS",JSON.stringify(result.result.value));
+    console.log("BROWSER BLANK SCAFFOLD PACKAGE SHA-256",scaffoldReceipt.packageSha256);
     await call("Page.enable");
     await call("Emulation.setDeviceMetricsOverride",{width:1440,height:1280,deviceScaleFactor:1,mobile:false});
     const attributeInspector=await call("Runtime.evaluate",{expression:`(()=>{
@@ -691,9 +737,7 @@ async function main(){
     const clip=previewRect.result.value;
     const aiScreenshot=await call("Page.captureScreenshot",{format:"png",captureBeyondViewport:true,
       clip:{...clip,scale:1}});
-    const evidenceDir=path.join(root,".local/android-test/reports/separation-20261027/ai-proposal-review");
-    fs.mkdirSync(evidenceDir,{recursive:true});
-    fs.writeFileSync(path.join(evidenceDir,"ai-review-studio-mock.png"),Buffer.from(aiScreenshot.data,"base64"));
+    fs.writeFileSync(path.join(reportDir,"ai-review-studio-mock.png"),Buffer.from(aiScreenshot.data,"base64"));
     console.log("AI review computed colors",JSON.stringify(aiColors.result.value));
     const aiReview=await call("Runtime.evaluate",{contextId:world.executionContextId,
       awaitPromise:true,returnByValue:true,expression:`(async()=>{
