@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
 import android.database.sqlite.SQLiteDatabase
+import android.net.Uri
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.LocalActivityResultRegistryOwner
 import androidx.activity.compose.setContent
@@ -12,6 +13,7 @@ import androidx.activity.result.ActivityResultRegistryOwner
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onAllNodesWithText
@@ -19,10 +21,12 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.core.app.ActivityOptionsCompat
 import androidx.test.core.app.ApplicationProvider
+import dev.powerfulcalendar.core.BackupEnvelope
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.data.LegacyImporter
+import org.json.JSONObject
 import org.junit.After
 import org.junit.Before
 import org.junit.Assert.assertEquals
@@ -32,8 +36,11 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import java.io.ByteArrayOutputStream
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicReference
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -170,13 +177,153 @@ class WebSkinBackupActionIntegrationTest {
         assertEquals(1, legacyEventCount())
     }
 
-    private fun renderAndOpenSkinSettings() {
+    @Test fun skinBackupActionsExportAndRestoreThroughHostFileResults() {
+        val draft = store.newDraft(DraftForm(
+            kind = TemporalKind.MEMO,
+            title = "ROUNDTRIP_PRIVATE_TITLE",
+            notes = "roundtrip private notes"
+        ))
+        assertTrue(store.commit(draft.draftId) is PowerStore.CommitOutcome.Committed)
+        val sourceRecord = store.all().single()
+        val expectedPayload = store.exportBackup().getJSONObject("payload")
+        val sourceCounts = counts()
+        val authority = namespace.replace("-", "")
+        val backupUri = Uri.parse("content://$authority/PowerCal-backup.json")
+        val output = ByteArrayOutputStream()
+        val readOverride = AtomicReference<ByteArray?>(null)
+        listOf(context.contentResolver, ui.activity.contentResolver).distinct().forEach { resolver ->
+            shadowOf(resolver).registerOutputStreamSupplier(backupUri) { output }
+            shadowOf(resolver).registerInputStreamSupplier(backupUri) {
+                (readOverride.get() ?: output.toByteArray()).inputStream()
+            }
+        }
+
+        renderAndOpenSkinSettings()
+        registry.clear()
+        ui.runOnIdle {
+            WebSkinBridgeRuntime.onAction(WebSkinAction.InvokeOption("data.backup.export"))
+        }
+        ui.waitUntil(5_000) { registry.lastIntent?.action == Intent.ACTION_CREATE_DOCUMENT }
+        assertTrue("cancelling the export picker must be accepted", registry.dispatch(null))
+        assertEquals("cancelling export writes no bytes", 0, output.size())
+        assertEquals("cancelling export does not mutate the store", sourceCounts, counts())
+
+        registry.clear()
+        ui.runOnIdle {
+            WebSkinBridgeRuntime.onAction(WebSkinAction.InvokeOption("data.backup.export"))
+        }
+        ui.waitUntil(5_000) { registry.lastIntent?.action == Intent.ACTION_CREATE_DOCUMENT }
+        assertTrue(registry.dispatch(backupUri))
+        var visibleFailure: String? = null
+        ui.waitUntil(10_000) {
+            if (output.size() > 0) return@waitUntil true
+            val failure = ui.onAllNodesWithText("备份失败", substring = true)
+                .fetchSemanticsNodes().firstOrNull()
+            if (failure != null) {
+                visibleFailure = failure.config[SemanticsProperties.Text]
+                    .joinToString(separator = "") { it.text }
+                return@waitUntil true
+            }
+            false
+        }
+        assertTrue("Host export did not write a file; visible Host message=$visibleFailure", output.size() > 0)
+        val exportedText = output.toByteArray().toString(Charsets.UTF_8)
+        val exportedEnvelope = JSONObject(exportedText)
+        val verifiedExport = BackupEnvelope.verify(exportedEnvelope, PowerStore.VERSION)
+        assertEquals(
+            "Host export contains the source store's complete logical payload",
+            BackupEnvelope.canonicalJson(expectedPayload),
+            BackupEnvelope.canonicalJson(verifiedExport.payload)
+        )
+        ui.waitUntil(5_000) {
+            ui.onAllNodesWithText("原生备份已导出并回读校验", substring = true)
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        assertEquals("export does not mutate the source store", sourceCounts, counts())
+
+        val restoredDatabaseName = "$namespace-restored.db"
+        val restoredStore = PowerStore(context, restoredDatabaseName)
+        try {
+            renderAndOpenSkinSettings(restoredStore)
+            val emptyCounts = counts(restoredStore)
+            registry.clear()
+            ui.runOnIdle {
+                WebSkinBridgeRuntime.onAction(WebSkinAction.InvokeOption("data.backup.restore"))
+            }
+            ui.waitUntil(5_000) { registry.lastIntent?.action == Intent.ACTION_OPEN_DOCUMENT }
+
+            assertTrue("cancelling restore must be accepted", registry.dispatch(null))
+            assertEquals("cancel leaves restore target empty", emptyCounts, counts(restoredStore))
+
+            val tamperedEnvelope = JSONObject(exportedText).put("payloadSha256", "0".repeat(64))
+            readOverride.set(tamperedEnvelope.toString().toByteArray(Charsets.UTF_8))
+            registry.clear()
+            ui.runOnIdle {
+                WebSkinBridgeRuntime.onAction(WebSkinAction.InvokeOption("data.backup.restore"))
+            }
+            ui.waitUntil(5_000) { registry.lastIntent?.action == Intent.ACTION_OPEN_DOCUMENT }
+            assertTrue(registry.dispatch(backupUri))
+            ui.waitUntil(10_000) {
+                ui.onAllNodesWithText("恢复失败", substring = true).fetchSemanticsNodes().isNotEmpty()
+            }
+            assertEquals("tampered backup must not mutate the target", emptyCounts, counts(restoredStore))
+
+            readOverride.set(null)
+            registry.clear()
+            ui.runOnIdle {
+                WebSkinBridgeRuntime.onAction(WebSkinAction.InvokeOption("data.backup.restore"))
+            }
+            ui.waitUntil(5_000) { registry.lastIntent?.action == Intent.ACTION_OPEN_DOCUMENT }
+            assertTrue(registry.dispatch(backupUri))
+            ui.waitUntil(10_000) {
+                restoredStore.all().size == 1 &&
+                    restoredStore.identityCount() == store.identityCount() &&
+                    restoredStore.commitCount() == store.commitCount()
+            }
+
+            val restoredRecord = restoredStore.all().single()
+            assertEquals(sourceRecord.eventSeq, restoredRecord.eventSeq)
+            assertEquals(sourceRecord.kind, restoredRecord.kind)
+            assertEquals(sourceRecord.title, restoredRecord.title)
+            assertEquals(sourceRecord.notes, restoredRecord.notes)
+            assertEquals(sourceRecord.startMillis, restoredRecord.startMillis)
+            assertEquals(sourceRecord.endMillis, restoredRecord.endMillis)
+            assertEquals(store.identityCount(), restoredStore.identityCount())
+            assertEquals(store.commitCount(), restoredStore.commitCount())
+            assertEquals(store.draftCount(), restoredStore.draftCount())
+            assertEquals(store.pendingCount(), restoredStore.pendingCount())
+            assertEquals(sourceCounts, counts())
+            ui.waitUntil(5_000) {
+                ui.onAllNodesWithText("已恢复", substring = true).fetchSemanticsNodes().isNotEmpty()
+            }
+
+            val restoredCounts = counts(restoredStore)
+            registry.clear()
+            ui.runOnIdle {
+                WebSkinBridgeRuntime.onAction(WebSkinAction.InvokeOption("data.backup.restore"))
+            }
+            ui.waitUntil(5_000) { registry.lastIntent?.action == Intent.ACTION_OPEN_DOCUMENT }
+            assertTrue(registry.dispatch(backupUri))
+            ui.waitUntil(10_000) {
+                ui.onAllNodesWithText("恢复失败", substring = true).fetchSemanticsNodes().isNotEmpty()
+            }
+            assertEquals("restore into a nonempty target must not overwrite or duplicate data",
+                restoredCounts, counts(restoredStore))
+        } finally {
+            ui.activity.runOnUiThread { ui.activity.setContent { } }
+            ui.waitForIdle()
+            restoredStore.close()
+            context.deleteDatabase(restoredDatabaseName)
+        }
+    }
+
+    private fun renderAndOpenSkinSettings(hostStore: PowerStore = store) {
         ui.activity.setContent {
             CompositionLocalProvider(
                 LocalContext provides context,
                 LocalActivityResultRegistryOwner provides registryOwner
             ) {
-                PowerCalTheme { PowerCalApp(store) }
+                PowerCalTheme { PowerCalApp(hostStore) }
             }
         }
         ui.waitUntil(20_000) {
@@ -227,12 +374,13 @@ class WebSkinBackupActionIntegrationTest {
         }
     }
 
-    private fun counts() = listOf(
-        store.draftCount(), store.pendingCount(), store.identityCount(),
-        store.commitCount(), store.all().size.toLong()
+    private fun counts(hostStore: PowerStore = store) = listOf(
+        hostStore.draftCount(), hostStore.pendingCount(), hostStore.identityCount(),
+        hostStore.commitCount(), hostStore.all().size.toLong()
     )
 
     private class RecordingActivityResultRegistry : ActivityResultRegistry() {
+        private var requestCode: Int? = null
         var lastIntent: Intent? = null
             private set
 
@@ -242,9 +390,18 @@ class WebSkinBackupActionIntegrationTest {
             input: I,
             options: ActivityOptionsCompat?
         ) {
+            this.requestCode = requestCode
             lastIntent = contract.createIntent(ApplicationProvider.getApplicationContext(), input)
         }
 
-        fun clear() { lastIntent = null }
+        fun dispatch(uri: Uri?): Boolean = dispatchResult(
+            requireNotNull(requestCode) { "No Host picker launch was recorded" }, uri
+        )
+
+        fun clear() {
+            requestCode = null
+            lastIntent = null
+        }
     }
+
 }
