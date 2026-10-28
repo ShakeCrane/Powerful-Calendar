@@ -176,6 +176,22 @@ hash come from the same `analyze-v3` / `inspect-v3` snapshot:
    changes and hashes. Use the Studio browser preview and Android WebView/device
    acceptance for visual and runtime claims.
 
+## Executable end-to-end authoring example
+
+The regression `tools/skin-studio/tests/test_ai_skin_workflow_v3.py` runs the documented
+machine interface against the canonical Clear source without modifying the bundled APK
+asset. It builds an isolated `.pcskin`, reads machine receipts to locate `#app` and the
+stylesheet hash, inserts a static component, updates CSS with its SHA guard, validates the
+new package, then re-inspects and checks that only the intended HTML/CSS files changed and
+the Host capability declaration stayed identical. Run it with:
+
+```powershell
+python -m unittest discover -s tools/skin-studio/tests -p test_ai_skin_workflow_v3.py -v
+```
+
+This exercises the documented tool workflow, not a model's design quality or an Android
+runtime result. The browser E2E and device checks remain separate evidence.
+
 The interface enables arbitrary v3 source/asset file CRUD, generic JSON tree edits, and
 guarded structural edits to explicit static HTML elements; it does not impose a formal
 page/component schema on `project.json`, nor does it inspect script-generated runtime

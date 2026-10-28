@@ -72,6 +72,7 @@ python tools/skin-studio/skin_studio.py validate my-skin-edited.pcskin --json
 ```powershell
 python tools/skin-studio/skin_studio.py build-v3 --manifest tools/skin-studio/examples/v3/manifest.json --source-dir tools/skin-studio/examples/v3/source --out PowerCal-Web-v3.pcskin --json
 python tools/skin-studio/skin_studio.py validate PowerCal-Web-v3.pcskin --json
+python -m unittest discover -s tools/skin-studio/tests -p test_ai_skin_workflow_v3.py -v
 python -m unittest discover -s tools/skin-studio/tests -v
 node --check tools/skin-studio/v3-studio.js
 .\gradlew.bat :app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --console=plain
