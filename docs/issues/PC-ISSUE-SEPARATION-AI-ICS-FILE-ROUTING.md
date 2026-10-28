@@ -71,4 +71,4 @@
 - 未验证 Android WebView、模拟器或实体设备行为，也未完成 Native/Skin 对照回放。
 - 因此本 Issue 只为 SEP-09 增加一个已验证的自动化切片，不代表 SEP-09 或 S3 完成；上述设备与端到端场景仍 `NOT TESTED`。
 
-交付提交 SHA 由同日期的 `docs/agent-handoff/PROGRESS.md` 记录；本报告、回归测试和验收矩阵说明按独立 Issue 一并交付。
+实现和回归提交 `c38579e5c3a2e7e44a8ab9f80a657ede92287de6`（`test(分离): 覆盖 AI 附件 ICS 本地路由`）已推送至 `origin/codex/separation-skin-settings`。本报告、回归测试和验收矩阵说明按独立 Issue 一并交付。
