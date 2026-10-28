@@ -4,7 +4,7 @@ const fs = require("node:fs"), path = require("node:path"), readline = require("
 const root = path.resolve(__dirname, "../../..");
 const chrome = process.env.CHROME_PATH || "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
 const reportDir = path.resolve(process.env.STUDIO_E2E_REPORT_DIR ||
-  path.join(root, ".local/android-test/reports/separation-20261028/studio-component-attributes"));
+  path.join(root, ".local/android-test/reports/separation-20261028/studio-component-styles"));
 const delay = ms => new Promise(resolve=>setTimeout(resolve,ms));
 async function main(){
   fs.mkdirSync(reportDir,{recursive:true});
@@ -98,6 +98,47 @@ async function main(){
       await waitFor(()=>dec.decode(sourceFiles.get('web/index.html')).includes(
         'data-studio-author="attribute &amp; value" aria-label="Editable node" hidden>'),
         'component attribute edit did not update canonical HTML source');
+      nodeButton('studio-component-attributes').click();
+      const styleSelect=document.querySelector('#componentStylePath');
+      check(styleSelect.value.endsWith('.css'),'linked package CSS was not offered to the component style editor');
+      const cssPath=styleSelect.value,authoredCssBefore=dec.decode(sourceFiles.get(cssPath));
+      const addStyle=(name,value)=>{
+        document.querySelector('#addComponentStyle').click();
+        const rows=[...document.querySelectorAll('#componentStyleRows .componentStyleRow')];
+        const inputs=rows.at(-1).querySelectorAll('input');inputs[0].value=name;inputs[1].value=value;
+      };
+      addStyle('color','#2563eb');addStyle('--studio-gap','calc(2px + 1vw)');
+      document.querySelector('#saveComponentStyles').click();
+      await waitFor(()=>dec.decode(sourceFiles.get('web/index.html')).includes('data-pcskin-studio-style="pcss-')&&
+        dec.decode(sourceFiles.get(cssPath)).includes('color: #2563eb;'),
+        'component style edit did not update the canonical HTML/CSS sources');
+      check(dec.decode(sourceFiles.get(cssPath)).startsWith(authoredCssBefore),
+        'component style operation rewrote pre-existing CSS bytes');
+      nodeButton('studio-component-attributes').click();
+      const styleRows=[...document.querySelectorAll('#componentStyleRows .componentStyleRow')];
+      const colorRow=styleRows.find(row=>row.querySelectorAll('input')[0].value==='color');
+      const customRow=styleRows.find(row=>row.querySelectorAll('input')[0].value==='--studio-gap');
+      check(colorRow&&customRow,'managed component styles did not rehydrate in the editor');
+      colorRow.querySelectorAll('input')[1].value='#0f766e';customRow.querySelector('button').click();
+      document.querySelector('#saveComponentStyles').click();
+      await waitFor(()=>dec.decode(sourceFiles.get(cssPath)).includes('color: #0f766e;')&&
+        !dec.decode(sourceFiles.get(cssPath)).includes('--studio-gap:'),
+        'component style update/removal did not update the canonical CSS source');
+      check(dec.decode(sourceFiles.get(cssPath)).startsWith(authoredCssBefore)&&
+        dec.decode(sourceFiles.get(cssPath)).split('pcskin-studio-style-begin:').length===2,
+        'component styles changed authored CSS or left duplicate managed rules');
+      nodeButton('app').click();markup.value='<p id="studio-style-proof">Studio 样式回归</p>';
+      document.querySelector('#insertComponentFirst').click();
+      await waitFor(()=>nodeButton('studio-style-proof'),'visible style proof component was not inserted');
+      nodeButton('studio-style-proof').click();
+      addStyle('color','#ff00ff');addStyle('font-weight','900');
+      document.querySelector('#saveComponentStyles').click();
+      await waitFor(()=>dec.decode(sourceFiles.get(cssPath)).includes('color: #ff00ff;'),
+        'visible component style did not update its stylesheet');
+      const styledMarkup=dec.decode(sourceFiles.get('web/index.html'));
+      check(styledMarkup.includes('data-pcskin-studio-style="pcss-')&&
+        styledMarkup.includes('id="studio-style-proof"'),
+        'visible component was not bound to its scoped style rule');
       nodeButton('studio-component-one').click();
       const target=document.querySelector('#componentTarget');
       target.value=[...target.options].find(option=>option.dataset.htmlId==='studio-component-two').value;
@@ -123,6 +164,9 @@ async function main(){
       const treePreview=await treePreviewResponse.json();
       const servedTreeSource=await (await fetch(treePreview.url)).text();
       check(servedTreeSource===treeSource,'component preview did not serve the edited canonical HTML bytes');
+      const servedTreeCss=await (await fetch(treePreview.url.replace('web/index.html',cssPath))).text();
+      check(servedTreeCss===dec.decode(sourceFiles.get(cssPath)),
+        'component style preview did not serve the edited canonical CSS bytes');
       const treeExportResponse=await fetch('/api/export-v3',{method:'POST',
         headers:{'Content-Type':'application/json'},body:JSON.stringify(treePayload)});
       check(treeExportResponse.ok,'component export failed');
@@ -132,6 +176,8 @@ async function main(){
       const treeImported=await treeImportResponse.json();
       check(treeImported.files['web/index.html']===treePayload.files['web/index.html'],
         'component edits were lost in package roundtrip');
+      check(treeImported.files[cssPath]===treePayload.files[cssPath],
+        'component style edits were lost in package roundtrip');
       data.manifest.id='restricted-source-test'; data.manifest.capabilities=['host.read'];
       data.files['web/agent-unused-90f4.txt']=btoa('unused source');
       data.files['assets/replace.bin']=btoa('old resource');
@@ -267,7 +313,7 @@ async function main(){
         'Clear fixture was not restored after blank scaffold E2E');
       return {file:'web/edit.js', files:Object.keys(authored.files).length, capabilities:imported.manifest.capabilities,
         componentTree:true,componentInsert:true,componentReplace:true,componentMove:true,componentRemove:true,
-        componentAttributes:true,
+        componentAttributes:true,componentStyles:true,componentStylePreviewExportRoundtrip:true,
          componentPreviewExportRoundtrip:true,componentReloadState:true,runtimeSourceEditRoundtrip:true,
         blankScaffoldImport:true,blankScaffoldEdit:true,blankScaffoldPreviewExportImport:true,
         blankScaffoldReimportedIntoStudio:true,
@@ -287,18 +333,28 @@ async function main(){
       check(selection.includes('studio-component-attributes'),'attribute node was not selected: '+selection);
       const rows=[...document.querySelectorAll('#componentAttributeRows .componentAttributeRow')];
       const rowFor=name=>rows.find(row=>row.querySelectorAll('input')[0].value===name)?.querySelectorAll('input');
-      check(rows.length===4,'reimported attribute rows missing: '+rows.length);
+      check(rows.length===5,'reimported attribute rows missing: '+rows.length);
       check(rowFor('id')?.[1].value==='studio-component-attributes','node id did not rehydrate');
       check(rowFor('data-studio-author')?.[1].value==='attribute & value','string attribute value did not rehydrate');
       check(rowFor('aria-label')?.[1].value==='Editable node','ARIA attribute did not rehydrate');
       check(rowFor('hidden')?.[2].checked===true,'boolean attribute did not rehydrate');
-      return {selection,attributes:rows.map(row=>{const inputs=row.querySelectorAll('input');return {name:inputs[0].value,value:inputs[1].value,boolean:inputs[2].checked}})};
+      check(/^pcss-[0-9a-f]{24}$/.test(rowFor('data-pcskin-studio-style')?.[1].value||''),
+        'component style marker did not rehydrate');
+      const styleRows=[...document.querySelectorAll('#componentStyleRows .componentStyleRow')];
+      const color=styleRows.find(row=>row.querySelectorAll('input')[0].value==='color');
+      check(styleRows.length===1&&color?.querySelectorAll('input')[1].value==='#0f766e',
+        'managed component style did not rehydrate after export/import: '+JSON.stringify({
+          count:styleRows.length,values:styleRows.map(row=>[...row.querySelectorAll('input')].map(input=>input.value)),
+          status:document.querySelector('#componentStyleStatus').textContent,
+          stylesheet:document.querySelector('#componentStylePath').value}));
+      return {selection,attributes:rows.map(row=>{const inputs=row.querySelectorAll('input');return {name:inputs[0].value,value:inputs[1].value,boolean:inputs[2].checked}}),
+        styles:styleRows.map(row=>{const inputs=row.querySelectorAll('input');return {name:inputs[0].value,value:inputs[1].value}})};
     })()`,returnByValue:true});
     if(attributeInspector.exceptionDetails)
       throw Error(attributeInspector.exceptionDetails.exception?.description || attributeInspector.exceptionDetails.text);
     console.log("BROWSER COMPONENT ATTRIBUTE RELOAD PASS",JSON.stringify(attributeInspector.result.value));
     const componentScreenshot=await call("Page.captureScreenshot",{format:"png",captureBeyondViewport:true});
-    fs.writeFileSync(path.join(reportDir,"studio-component-attributes.png"),Buffer.from(componentScreenshot.data,"base64"));
+    fs.writeFileSync(path.join(reportDir,"studio-component-styles.png"),Buffer.from(componentScreenshot.data,"base64"));
     const setup=await call("Runtime.evaluate",{awaitPromise:true,returnByValue:true,expression:`(async()=>{
       for(let i=0;i<150;i++){
         if(document.querySelector('#previewState').textContent.includes('连接成功'))break;
@@ -315,6 +371,16 @@ async function main(){
     const child=tree.frameTree.childFrames?.find(frame=>frame.frame.url.includes("/preview/"));
     if(!child)throw Error("Preview frame not found: "+JSON.stringify(tree.frameTree));
     const world=await call("Page.createIsolatedWorld",{frameId:child.frame.id,worldName:"powercal-source-qa"});
+    const styleRender=await call("Runtime.evaluate",{contextId:world.executionContextId,
+      awaitPromise:true,returnByValue:true,expression:`(()=>{
+        const node=document.querySelector('#studio-style-proof');
+        if(!node)throw Error('styled proof node missing from runtime preview');
+        return {text:node.textContent,color:getComputedStyle(node).color,fontWeight:getComputedStyle(node).fontWeight};
+      })()`});
+    if(styleRender.exceptionDetails)throw Error(styleRender.exceptionDetails.exception?.description || styleRender.exceptionDetails.text);
+    if(styleRender.result.value.color!=="rgb(255, 0, 255)"||styleRender.result.value.fontWeight!=="900")
+      throw Error("component style did not render in the real browser preview: "+JSON.stringify(styleRender.result.value));
+    console.log("BROWSER COMPONENT COMPUTED STYLE PASS",JSON.stringify(styleRender.result.value));
     const settings=await call("Runtime.evaluate",{contextId:world.executionContextId,
       awaitPromise:true,returnByValue:true,expression:`(async()=>{
         const check=(v,m)=>{if(!v)throw Error(m)};

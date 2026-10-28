@@ -27,6 +27,7 @@ let previewPort=null, lastState=null, lastPreviewUrl="", dirty=false;
 let projectSourceError=null, projectDraftText=null;
 let componentAnalysis=null, selectedComponent=null, componentAnalysisTimer=null;
 let componentAnalysisRequest=0, componentAnalysisPending=false;
+let componentStyleBaseline=new Map();
 const REQUIRED_SOURCE_FILES=new Set(["web/index.html","web/style.css","web/app.js","project.json"]);
 const TEXT_SOURCE_EXTENSIONS=/\.(cjs|css|html?|ini|js|json|jsx|kt|less|md|mjs|properties|py|scss|sh|sql|toml|tsx?|txt|xml|ya?ml|svg)$/i;
 function say(message,isError=false){$("toast").textContent=message;$("toast").classList.toggle("error",isError)}
@@ -207,6 +208,124 @@ async function saveComponentAttributes(){
   await applyComponentOperation(selectedComponentOperation("component-attributes",{
     setAttributes,removeAttributes}),"节点属性已更新");
 }
+function resolveComponentStylesheets(page){
+  const base="https://skin-studio.invalid/"+page.path;
+  const paths=[];
+  for(const href of page.stylesheetSources||[]){
+    try{
+      const resolved=new URL(href,base);
+      if(resolved.origin!=="https://skin-studio.invalid")continue;
+      const path=decodeURIComponent(resolved.pathname.replace(/^\//,""));
+      if(path.startsWith("web/")&&path.toLowerCase().endsWith(".css")&&sourceFiles.has(path)&&!paths.includes(path))
+        paths.push(path);
+    }catch{}
+  }
+  return paths;
+}
+function parseComponentStyleBlock(css,token){
+  const begin=`/* pcskin-studio-style-begin:${token} */`,end=`/* pcskin-studio-style-end:${token} */`;
+  const beginCount=css.split(begin).length-1,endCount=css.split(end).length-1;
+  if(beginCount===0&&endCount===0)return {properties:new Map(),error:null};
+  if(beginCount!==1||endCount!==1)return {properties:new Map(),error:"组件样式标记重复或不完整；请在 CSS 源码中修复。"};
+  const escaped=token.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+  const block=new RegExp(`${begin.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")}([\\s\\S]*?)${end.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")}`);
+  const match=css.match(block);
+  if(!match)return {properties:new Map(),error:"组件样式块结构错误；请在 CSS 源码中修复。"};
+  const rule=new RegExp(`^\\s*\\[data-pcskin-studio-style="${escaped}"\\]\\s*\\{\\s*([\\s\\S]*?)\\s*\\}\\s*$`)
+    .exec(match[1]);
+  if(!rule)return {properties:new Map(),error:"组件样式选择器被修改；请在 CSS 源码中修复。"};
+  const properties=new Map();
+  const declaration=/^\s*((?:--[A-Za-z_][A-Za-z0-9_-]*|-?[A-Za-z][A-Za-z0-9-]*))\s*:\s*(.*?)\s*;\s*$/;
+  for(const line of rule[1].split(/\r?\n/)){
+    if(!line.trim())continue;
+    const parsed=declaration.exec(line);
+    if(!parsed)return {properties:new Map(),error:"组件样式块含有源码编辑器格式；请直接编辑 CSS 源码。"};
+    const key=parsed[1].startsWith("--")?parsed[1]:parsed[1].toLowerCase();
+    if(properties.has(key))return {properties:new Map(),error:"组件样式块含有重复属性；请直接编辑 CSS 源码。"};
+    properties.set(key,parsed[2]);
+  }
+  return {properties,error:null};
+}
+function updateComponentStyleCount(){
+  const count=$("componentStyleRows").querySelectorAll(".componentStyleRow").length;
+  $("componentStyleCount").textContent=count?count+" 项":"";
+}
+function addComponentStyleRow(property={name:"",value:""},focusName=false){
+  const row=document.createElement("div");row.className="componentStyleRow";
+  const name=document.createElement("input");name.type="text";name.value=property.name||"";
+  name.maxLength=256;name.autocomplete="off";name.spellcheck=false;
+  name.setAttribute("aria-label","CSS 属性名称");
+  const value=document.createElement("input");value.type="text";value.value=property.value||"";
+  value.maxLength=4096;value.autocomplete="off";value.spellcheck=false;
+  value.setAttribute("aria-label","CSS 属性值");
+  const remove=document.createElement("button");remove.type="button";remove.textContent="移除";
+  remove.setAttribute("aria-label","移除此样式属性");
+  remove.onclick=()=>{row.remove();updateComponentStyleCount()};
+  row.append(name,value,remove);$("componentStyleRows").append(row);
+  updateComponentStyleCount();if(focusName)name.focus();return row;
+}
+function renderComponentStyleEditor(node){
+  const pathSelect=$("componentStylePath"),rows=$("componentStyleRows");
+  const previousPath=pathSelect.value,page=currentComponentPage();
+  const paths=node&&page?resolveComponentStylesheets(page):[];
+  const marker=(node?.attributes||[]).find(attribute=>attribute.name.toLowerCase()==="data-pcskin-studio-style")?.value;
+  if(marker&&/^pcss-[0-9a-f]{24}$/.test(marker)){
+    for(const path of sourceFiles.keys()){
+      if(!path.startsWith("web/")||!path.toLowerCase().endsWith(".css")||paths.includes(path))continue;
+      if(getText(path).includes(`/* pcskin-studio-style-begin:${marker} */`))paths.push(path);
+    }
+  }
+  pathSelect.replaceChildren();
+  for(const path of paths){const option=document.createElement("option");option.value=path;option.textContent=path;pathSelect.append(option)}
+  const existing=marker&&paths.find(path=>getText(path).includes(`/* pcskin-studio-style-begin:${marker} */`));
+  if(existing)pathSelect.value=existing;
+  else if(paths.includes(previousPath))pathSelect.value=previousPath;
+  if(!pathSelect.value&&paths.length)pathSelect.value=paths[0];
+  rows.replaceChildren();componentStyleBaseline=new Map();
+  const enabled=Boolean(node)&&paths.length>0&&!componentAnalysisPending;
+  let parsed={properties:new Map(),error:null};
+  if(marker&&!/^pcss-[0-9a-f]{24}$/.test(marker))
+    parsed.error="选中节点的 Studio 样式标记格式不受支持；请直接编辑 HTML/CSS 源码。";
+  else if(enabled&&marker)
+    parsed=parseComponentStyleBlock(getText(pathSelect.value),marker);
+  if(parsed.error){$("componentStyleStatus").textContent=parsed.error}
+  else if(!node){$("componentStyleStatus").textContent="选择节点后可编辑其样式覆盖；复杂规则仍可在源码面板修改。"}
+  else if(!paths.length){$("componentStyleStatus").textContent="当前页面没有可编辑的本地 CSS 链接；先在 HTML 源码中添加样式表引用。"}
+  else $("componentStyleStatus").textContent="只管理本面板生成的节点级覆盖；其他 CSS 规则和源文件字节保持不变。";
+  componentStyleBaseline=new Map(parsed.properties);
+  for(const [name,value] of parsed.properties)addComponentStyleRow({name,value});
+  pathSelect.disabled=!enabled;
+  $("addComponentStyle").disabled=!enabled||Boolean(parsed.error);
+  $("saveComponentStyles").disabled=!enabled||Boolean(parsed.error);
+}
+async function sha256Hex(bytes){
+  const digest=await crypto.subtle.digest("SHA-256",bytes);
+  return [...new Uint8Array(digest)].map(value=>value.toString(16).padStart(2,"0")).join("");
+}
+async function saveComponentStyles(){
+  const page=currentComponentPage(),node=page?.components.find(item=>item.nodeId===selectedComponent);
+  const cssPath=$("componentStylePath").value,cssBytes=sourceFiles.get(cssPath);
+  if(!page||!node||!cssPath||!cssBytes)throw Error("请先选择带有本地 CSS 样式表的节点");
+  const after=new Map();
+  for(const row of $("componentStyleRows").querySelectorAll(".componentStyleRow")){
+    const inputs=row.querySelectorAll("input"),rawName=inputs[0].value.trim(),value=inputs[1].value.trim();
+    if(!rawName&&!value)continue;
+    if(!/^(?:--[A-Za-z_][A-Za-z0-9_-]*|-?[A-Za-z][A-Za-z0-9-]*)$/u.test(rawName))
+      throw Error("请输入有效的 CSS 属性名；复杂语法请使用源码面板。");
+    const name=rawName.startsWith("--")?rawName:rawName.toLowerCase();
+    if(after.has(name))throw Error("同一组件不能重复填写 CSS 属性："+name);
+    if(!value||/[\u0000\r\n;{}]/u.test(value)||value.includes("/*")||value.includes("*/"))
+      throw Error("CSS 值不能为空，且不能包含分号、花括号或注释边界；复杂语法请使用源码面板。");
+    after.set(name,value);
+  }
+  const setProperties=Object.create(null),removeProperties=[];
+  for(const [name,value] of after)if(componentStyleBaseline.get(name)!==value)setProperties[name]=value;
+  for(const name of componentStyleBaseline.keys())if(!after.has(name))removeProperties.push(name);
+  if(!Object.keys(setProperties).length&&!removeProperties.length){say("组件样式没有变化。");return}
+  await applyComponentOperation(selectedComponentOperation("component-style",{
+    cssPath,expectedCssSha256:await sha256Hex(cssBytes),setProperties,removeProperties
+  }),"组件样式已更新");
+}
 function renderComponentTree(){
   const pageSelect=$("componentPage"),tree=$("componentTree"),target=$("componentTarget");
   const previousPath=pageSelect.value,previousTarget=target.value;
@@ -223,6 +342,7 @@ function renderComponentTree(){
   tree.replaceChildren();target.replaceChildren();
   if(!page){
     renderComponentAttributeEditor(null);
+    renderComponentStyleEditor(null);
     tree.innerHTML='<div class="empty">当前皮肤没有可分析的静态 HTML 页面。</div>';
     $("componentCount").textContent="0 页面";$("componentSelection").textContent="没有可选节点。";
     for(const id of ["insertComponentBefore","insertComponentAfter","insertComponentFirst",
@@ -257,6 +377,7 @@ function renderComponentTree(){
         const current=byId.get(selectedComponent);
         $("componentSelection").textContent="已选："+componentLabel(current)+"（第 "+current.line+" 行）";
         renderComponentAttributeEditor(current);
+        renderComponentStyleEditor(current);
         if(!byId.has(target.value))target.value=selectedComponent;
       };
       item.append(button);parentList.append(item);
@@ -272,6 +393,7 @@ function renderComponentTree(){
   $("componentCount").textContent=components.length+" 节点 · "+page.path;
   $("componentSelection").textContent=selected?"已选："+componentLabel(selected)+"（第 "+selected.line+" 行）":"选择一个节点进行编辑。";
   renderComponentAttributeEditor(selected);
+  renderComponentStyleEditor(selected);
   const enabled=Boolean(selected);
   for(const id of ["insertComponentBefore","insertComponentAfter","insertComponentFirst",
     "insertComponentLast","replaceComponent","removeComponent","moveComponent"])
@@ -282,9 +404,11 @@ function renderComponentTree(){
 function setComponentActionsDisabled(disabled){
   for(const id of ["insertComponentBefore","insertComponentAfter","insertComponentFirst",
     "insertComponentLast","replaceComponent","removeComponent","moveComponent",
-    "addComponentAttribute","saveComponentAttributes"])
+    "addComponentAttribute","saveComponentAttributes","componentStylePath",
+    "addComponentStyle","saveComponentStyles"])
     $(id).disabled=disabled;
   $("componentAttributeRows").querySelectorAll("input,button").forEach(item=>item.disabled=disabled);
+  $("componentStyleRows").querySelectorAll("input,button").forEach(item=>item.disabled=disabled);
 }
 async function refreshComponentTree(knownAnalysis=null,requestId=null){
   if(!manifest)return;
@@ -331,6 +455,8 @@ async function applyComponentOperation(operation,description){
     sourceFiles.set(path,base64ToBytes(encoded));
     if(path==="web/index.html"&&document.activeElement!==$("htmlCode"))
       $("htmlCode").value=getText(path);
+    if(path==="web/style.css"&&document.activeElement!==$("cssCode"))
+      $("cssCode").value=getText(path);
     if(path===$("extraSourceFile").value&&document.activeElement!==$("extraSourceCode"))
       $("extraSourceCode").value=getText(path);
   }
@@ -1526,6 +1652,12 @@ function bindUI(){
   $("componentPage").onchange=()=>{selectedComponent=null;renderComponentTree()};
   $("addComponentAttribute").onclick=()=>addComponentAttributeRow({},true);
   $("saveComponentAttributes").onclick=()=>saveComponentAttributes().catch(error=>say(error.message,true));
+  $("componentStylePath").onchange=()=>{
+    const page=currentComponentPage(),node=page?.components.find(item=>item.nodeId===selectedComponent);
+    renderComponentStyleEditor(node);
+  };
+  $("addComponentStyle").onclick=()=>addComponentStyleRow({},true);
+  $("saveComponentStyles").onclick=()=>saveComponentStyles().catch(error=>say(error.message,true));
   $("insertComponentBefore").onclick=()=>insertComponent("before").catch(error=>say(error.message,true));
   $("insertComponentAfter").onclick=()=>insertComponent("after").catch(error=>say(error.message,true));
   $("insertComponentFirst").onclick=()=>insertComponent("prepend").catch(error=>say(error.message,true));

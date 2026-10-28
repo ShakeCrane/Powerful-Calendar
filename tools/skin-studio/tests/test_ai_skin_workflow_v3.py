@@ -33,6 +33,7 @@ class AiSkinWorkflowV3Test(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="ai-skin-workflow-", dir=evidence_root) as temp:
             work = Path(temp)
             source_package = work / "clear-source.pcskin"
+            structure_package = work / "agent-structure.pcskin"
             output_package = work / "agent-authored.pcskin"
             manifest_path = STUDIO / "default-clear" / "manifest.json"
             source_dir = STUDIO / "default-clear" / "source"
@@ -74,18 +75,37 @@ class AiSkinWorkflowV3Test(unittest.TestCase):
                              '<p>Built from the documented v3 interfaces.</p>'
                              '<button data-action="month">Open month</button></section>'),
                 },
-                {
-                    "op": "write",
-                    "path": "web/style.css",
-                    "encoding": "utf-8",
-                    "expectedSha256": stylesheet["sha256"],
-                    "content": stylesheet["content"] +
-                               "\n#agent-workflow-panel{padding:1rem;border-radius:1rem}\n",
-                },
             ]}, ensure_ascii=False), encoding="utf-8")
 
             edited = self.cli_json("edit-v3", "--file", source_package,
                                    "--operations", operations_path,
+                                   "--out", structure_package)
+            self.assertEqual(edited["command"], "edit-v3")
+            self.assertTrue(edited["ok"])
+            self.assertEqual({change["path"] for change in edited["changes"]},
+                             {"web/index.html"})
+
+            structured_analysis = self.cli_json("analyze-v3", structure_package)
+            structured_page = next(item for item in structured_analysis["pages"]
+                                   if item["path"] == "web/index.html")
+            panel = next(node for node in structured_page["components"]
+                         if node["id"] == "agent-workflow-panel")
+            structured_stylesheet = self.cli_json("read-v3", "--file", structure_package,
+                                                   "--path", "web/style.css")
+            style_operations_path = work / "style-operations.json"
+            style_operations_path.write_text(json.dumps({"operations": [{
+                "op": "component-style",
+                "path": structured_page["path"],
+                "expectedSha256": structured_page["sourceSha256"],
+                "targetNodeId": panel["nodeId"],
+                "cssPath": "web/style.css",
+                "expectedCssSha256": structured_stylesheet["sha256"],
+                "setProperties": {"padding": "1rem", "border-radius": "1rem",
+                                   "--agent-card-gap": "0.75rem"},
+                "removeProperties": [],
+            }]}, ensure_ascii=False), encoding="utf-8")
+            edited = self.cli_json("edit-v3", "--file", structure_package,
+                                   "--operations", style_operations_path,
                                    "--out", output_package)
             self.assertEqual(edited["command"], "edit-v3")
             self.assertTrue(edited["ok"])
@@ -118,7 +138,11 @@ class AiSkinWorkflowV3Test(unittest.TestCase):
                                              "--path", "web/style.css")
             self.assertTrue(any(node["id"] == "agent-workflow-panel"
                                 for node in final_analysis["pages"][0]["components"]))
-            self.assertIn("#agent-workflow-panel", final_stylesheet["content"])
+            self.assertIn("--agent-card-gap: 0.75rem;", final_stylesheet["content"])
+            final_panel = next(node for node in final_analysis["pages"][0]["components"]
+                               if node["id"] == "agent-workflow-panel")
+            self.assertTrue(any(attribute["name"] == "data-pcskin-studio-style"
+                                 for attribute in final_panel["attributes"]))
             self.assertEqual(final_inspection["manifest"]["capabilities"],
                              inspected["manifest"]["capabilities"])
 
@@ -130,7 +154,8 @@ class AiSkinWorkflowV3Test(unittest.TestCase):
             self.assertEqual(hashlib.sha256(ASSET.read_bytes()).hexdigest(), original_asset_sha)
             print("AI V3 WORKFLOW PASS " + json.dumps({
                 "commands": ["build-v3", "inspect-v3", "analyze-v3", "read-v3",
-                             "edit-v3", "validate", "audit-bridge-v3", "inspect-v3",
+                             "edit-v3", "analyze-v3", "read-v3", "edit-v3",
+                             "validate", "audit-bridge-v3", "inspect-v3",
                              "analyze-v3", "read-v3"],
                 "baselinePackageSha256": original_asset_sha,
                 "editedPackageSha256": edited["packageSha256"],

@@ -75,6 +75,16 @@
         </div>
         <p id="componentAttributeStatus" class="muted" role="status">选择节点后可编辑 HTML 属性；样式和脚本仍可在源码面板修改。</p>
       </div>
+      <div class="componentStyleEditor" role="group" aria-label="选中节点样式">
+        <div class="barActions"><strong>组件样式覆盖</strong><span id="componentStyleCount" class="muted"></span></div>
+        <label>样式表<select id="componentStylePath"></select></label>
+        <div id="componentStyleRows" class="componentStyleRows"></div>
+        <div class="componentAttributeActions">
+          <button id="addComponentStyle" type="button">添加样式属性</button>
+          <button id="saveComponentStyles" class="primary" type="button">应用样式</button>
+        </div>
+        <p id="componentStyleStatus" class="muted" role="status">为选中节点追加独立样式规则；原有 CSS 保持不变。复杂规则可在源码面板编辑。</p>
+      </div>
       <label>插入或替换的 HTML 片段<textarea id="componentMarkup" spellcheck="false" rows="4" placeholder="例如：&lt;section id=&quot;custom-panel&quot;&gt;内容&lt;/section&gt;"></textarea></label>
       <div class="componentActions">
         <button id="insertComponentBefore" type="button">前插</button><button id="insertComponentAfter" type="button">后插</button>

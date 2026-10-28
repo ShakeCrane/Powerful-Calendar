@@ -364,6 +364,100 @@ class ProjectOpsV3Test(unittest.TestCase):
         self.assertEqual(changes[0]["op"], "component-attributes")
         self.assertEqual(original_files[path], html)
 
+    def test_component_style_edits_scoped_properties_and_roundtrips(self):
+        html_path, css_path = "web/index.html", "web/style.css"
+        html = b'<!doctype html><html><head><link rel="stylesheet" href="style.css"></head><body><button id="save">Save</button></body></html>'
+        css = b"/* authored */\nbutton { color: black; }\n"
+        source = build_files(self.manifest, {
+            **self.files, html_path: html, css_path: css,
+        })
+        first = {
+            "op": "component-style", "path": html_path,
+            "expectedSha256": hashlib.sha256(html).hexdigest(),
+            "cssPath": css_path, "expectedCssSha256": hashlib.sha256(css).hexdigest(),
+            "targetNodeId": html_node_id(source, "save"),
+            "setProperties": {"color": "#123456", "--card-gap": "calc(2px + 1vw)"},
+            "removeProperties": [],
+        }
+
+        _, files, styled, changes = edit_package(source, [first])
+
+        page = analyze_package(styled)["pages"][0]
+        button = next(node for node in page["components"] if node.get("id") == "save")
+        marker = next(attribute["value"] for attribute in button["attributes"]
+                      if attribute["name"] == "data-pcskin-studio-style")
+        self.assertRegex(marker, r"^pcss-[0-9a-f]{24}$")
+        self.assertEqual(files[html_path], html.replace(
+            b">Save", f' data-pcskin-studio-style="{marker}">Save'.encode()))
+        self.assertIn(f'[data-pcskin-studio-style="{marker}"] {{'.encode(), files[css_path])
+        self.assertIn(b"--card-gap: calc(2px + 1vw);", files[css_path])
+        self.assertIn(b"button { color: black; }", files[css_path])
+        self.assertEqual({entry["path"] for entry in changes}, {html_path, css_path})
+        self.assertEqual(unpack(styled)[1], files)
+
+        next_html, next_css = files[html_path], files[css_path]
+        update = {
+            **first,
+            "expectedSha256": hashlib.sha256(next_html).hexdigest(),
+            "expectedCssSha256": hashlib.sha256(next_css).hexdigest(),
+            "targetNodeId": html_node_id(styled, "save"),
+            "setProperties": {"COLOR": "#abcdef", "padding": "4px"},
+            "removeProperties": ["--card-gap"],
+        }
+        _, files, updated, update_changes = edit_package(styled, [update])
+        self.assertIn(b"color: #abcdef;", files[css_path])
+        self.assertIn(b"padding: 4px;", files[css_path])
+        self.assertNotIn(b"--card-gap:", files[css_path])
+        self.assertIn(b"/* authored */", files[css_path])
+        self.assertEqual({entry["path"] for entry in update_changes}, {css_path})
+
+        current_html, current_css = files[html_path], files[css_path]
+        noop = {
+            **update,
+            "expectedSha256": hashlib.sha256(current_html).hexdigest(),
+            "expectedCssSha256": hashlib.sha256(current_css).hexdigest(),
+            "targetNodeId": html_node_id(updated, "save"),
+            "setProperties": {"color": "#abcdef", "padding": "4px"},
+            "removeProperties": [],
+        }
+        _, noop_files, _, noop_changes = edit_package(updated, [noop])
+        self.assertEqual(noop_files, files)
+        self.assertEqual(noop_changes, [])
+
+        clear = {
+            **noop,
+            "setProperties": {},
+            "removeProperties": ["color", "padding"],
+        }
+        _, cleared_files, cleared, clear_changes = edit_package(updated, [clear])
+        self.assertNotIn(b"pcskin-studio-style-begin:", cleared_files[css_path])
+        self.assertNotIn(b"data-pcskin-studio-style", cleared_files[html_path])
+        self.assertIn(b"button { color: black; }", cleared_files[css_path])
+        self.assertEqual(cleared_files[html_path], html)
+        self.assertEqual({entry["path"] for entry in clear_changes}, {html_path, css_path})
+        self.assertEqual(unpack(cleared)[1], cleared_files)
+
+    def test_component_style_rejects_stale_sources_and_css_injection(self):
+        html_path, css_path = "web/index.html", "web/style.css"
+        html = b'<!doctype html><html><body><button id="save">Save</button></body></html>'
+        css = b"button { color: black; }\n"
+        source = build_files(self.manifest, {**self.files, html_path: html, css_path: css})
+        base = {
+            "op": "component-style", "path": html_path,
+            "expectedSha256": hashlib.sha256(html).hexdigest(),
+            "cssPath": css_path, "expectedCssSha256": hashlib.sha256(css).hexdigest(),
+            "targetNodeId": html_node_id(source, "save"),
+            "setProperties": {"color": "red"}, "removeProperties": [],
+        }
+        with self.assertRaisesRegex(SkinError, "changed since inspection"):
+            edit_package(source, [{**base, "expectedCssSha256": "0" * 64}])
+        with self.assertRaisesRegex(SkinError, "unsupported delimiters"):
+            edit_package(source, [{**base, "setProperties": {"color": "red;} body {display:none"}}])
+        with self.assertRaisesRegex(SkinError, "valid property name"):
+            edit_package(source, [{**base, "setProperties": {"bad property": "red"}}])
+        self.assertEqual(unpack(source)[1][html_path], html)
+        self.assertEqual(unpack(source)[1][css_path], css)
+
     def test_component_attribute_noop_preserves_original_opening_tag_bytes(self):
         path = "web/index.html"
         html = b"<!doctype html><html><body><button id='save' class = old>Save</button></body></html>"

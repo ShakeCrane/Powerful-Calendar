@@ -50,16 +50,23 @@ label.check{display:flex;align-items:center;gap:9px;line-height:1.5}
 .componentActions button:nth-child(5),.componentActions button:nth-child(6){grid-column:span 2}
 .componentTree .empty{padding:8px;color:#687990;font-size:12px}
 .componentAttributeEditor{margin:10px 0;padding:9px;border:1px solid #dce4ef;border-radius:9px;background:#fbfcff}
+.componentStyleEditor{margin:10px 0;padding:9px;border:1px solid #dce4ef;border-radius:9px;background:#f7faff}
 .componentAttributeEditor strong{font-size:12px}
+.componentStyleEditor strong{font-size:12px}
 .componentAttributeRows{display:grid;gap:6px;margin:6px 0}
 .componentAttributeRow{display:grid;grid-template-columns:minmax(76px,.9fr) minmax(86px,1.1fr) auto minmax(42px,auto);align-items:center;gap:5px}
 .componentAttributeRow input[type=text]{width:100%;min-width:0;padding:6px 7px;border:1px solid #ccd6e5;border-radius:7px;font-size:11px}
 .componentAttributeBoolean{display:flex;align-items:center;gap:3px;font-size:10px;white-space:nowrap}
 .componentAttributeBoolean input{margin:0}
 .componentAttributeRow button{padding:5px 6px;font-size:10px;white-space:nowrap}
+.componentStyleRows{display:grid;gap:6px;margin:6px 0}
+.componentStyleRow{display:grid;grid-template-columns:minmax(76px,.9fr) minmax(100px,1.1fr) auto;align-items:center;gap:5px}
+.componentStyleRow input{width:100%;min-width:0;padding:6px 7px;border:1px solid #ccd6e5;border-radius:7px;font-size:11px}
+.componentStyleRow button{padding:5px 6px;font-size:10px;white-space:nowrap}
 .componentAttributeActions{display:flex;gap:6px;flex-wrap:wrap}
 .componentAttributeActions button{font-size:11px;padding:6px 8px}
 .componentAttributeEditor p{margin:6px 0 0;font-size:11px}
+.componentStyleEditor p{margin:6px 0 0;font-size:11px}
 .fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 .fields label{margin:4px 0}
 .previewPanel{display:flex;flex-direction:column;min-height:600px}

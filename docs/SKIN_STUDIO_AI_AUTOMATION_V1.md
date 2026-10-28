@@ -160,6 +160,7 @@ Supported operations:
 | `component-replace` | `path`, current HTML `expectedSha256`, `targetNodeId`, and a balanced replacement fragment. |
 | `component-move` | `path`, current HTML `expectedSha256`, `sourceNodeId`, `targetNodeId`, and `position`; the source and destination are in the same page. Moving a node into itself or a descendant is rejected. |
 | `component-attributes` | `path`, current HTML `expectedSha256`, `targetNodeId`, `setAttributes` (attribute name → string value or `null` for a boolean attribute), and `removeAttributes`. Names are HTML case-insensitive; touched duplicate names are reduced to one value. Values are escaped and the resulting page/package is revalidated. |
+| `component-style` | `path`, HTML `expectedSha256`, `targetNodeId`, linked package `cssPath`, `expectedCssSha256`, `setProperties` (CSS property → value), and `removeProperties`. CSS values are single-line and cannot contain declaration/block/comment delimiters. The operation adds one unique `data-pcskin-studio-style` marker and a Studio-owned CSS rule; updates touch only that marked rule, and clearing all properties removes the generated rule and marker while preserving the rest of both source files. |
 | `json-patch` | `path: "project.json"`, current file `expectedSha256`, and a JSON Patch list. Supported ops are `add`, `remove`, `replace`, `move`, `copy`, and `test`; paths use RFC 6901 JSON Pointers. |
 | `manifest-patch` | current `expectedSha256` from `inspect-v3`, and JSON Patch ops. `format`, `schemaVersion`, `entrypoint`, `project`, and `sha256` are managed and cannot be changed. Changing `capabilities` additionally requires `allowCapabilityChange: true`; the package is still subject to Android Host capability enforcement. |
 
@@ -195,12 +196,15 @@ hash receipts, and a fresh analysis. Stale page hashes and invalid structures re
 In the Studio, the **HTML 结构树** panel selects a packaged HTML page and supports source
 fragment insertion before/after/inside a selected node, replacement, deletion, moving
 the selected node relative to a target, and editing arbitrary attributes on a selected
-static node, including string-valued and boolean attributes. Each accepted edit updates the same in-memory source
-bytes used by the source editor, live package preview, project save and `.pcskin` export.
+static node, including string-valued and boolean attributes. It can also add, update and
+remove simple CSS declarations in a linked local stylesheet as a scoped node-level override.
+Each accepted edit updates the same in-memory source bytes used by the source editor, live
+package preview, project save and `.pcskin` export.
 The tree is a static source inventory: JavaScript-generated nodes remain available through
-the advanced source editor. The attribute inspector edits source attributes; it does not
-provide a full CSS layout, computed-style, interaction-logic or accessibility editor.
-Those areas remain editable through the complete source editor.
+the advanced source editor. The style panel manages only its marked simple declaration block;
+complex selectors, responsive rules, computed browser styles, interaction logic and complete
+accessibility semantics remain editable through the full source editor, not represented as
+structured visual properties.
 
 Clear's month page uses source-editable `selectMonth`, `selectMonthDate`, and `todayInMonth`
 Host actions for year/month navigation and local-date selection. The Studio's action catalog
@@ -242,6 +246,25 @@ use `null` to write a boolean attribute and list names in `removeAttributes` to 
     "targetNodeId": "web/index.html#n00012",
     "setAttributes": {"class": "custom-panel", "aria-label": "自定义面板", "hidden": null},
     "removeAttributes": ["title"]
+  }]
+}
+```
+
+Example: add scoped visual overrides to an analyzed static component. Both source hashes
+must come from the current package snapshot. The generated marker stays on that node so the
+browser editor can find and rehydrate the rule after project or `.pcskin` import:
+
+```json
+{
+  "operations": [{
+    "op": "component-style",
+    "path": "web/index.html",
+    "expectedSha256": "<current-page-sha256>",
+    "targetNodeId": "web/index.html#n00012",
+    "cssPath": "web/style.css",
+    "expectedCssSha256": "<current-css-sha256>",
+    "setProperties": {"color": "#2358a8", "--card-gap": "calc(2px + 1vw)"},
+    "removeProperties": []
   }]
 }
 ```

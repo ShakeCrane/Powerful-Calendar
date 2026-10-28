@@ -23,6 +23,11 @@ SHA256 = re.compile(r"[0-9a-fA-F]{64}\Z")
 REQUIRED_FILES = frozenset(package_v3.WEB_REQUIRED)
 MAX_ANALYZED_COMPONENTS = 20_000
 MAX_COMPONENT_ATTRIBUTES = 256
+MAX_COMPONENT_STYLE_PROPERTIES = 128
+MAX_COMPONENT_STYLE_VALUE_BYTES = 4_096
+COMPONENT_STYLE_ATTRIBUTE = "data-pcskin-studio-style"
+COMPONENT_STYLE_TOKEN = re.compile(r"pcss-[0-9a-f]{24}\Z")
+CSS_PROPERTY = re.compile(r"(?:--[A-Za-z_][A-Za-z0-9_-]*|-?[A-Za-z][A-Za-z0-9-]*)\Z")
 BRIDGE_V1_ACTION_REGISTRY = Path(__file__).with_name("bridge_v1_action_registry.json")
 BRIDGE_V1_CONTRACT_SCHEMA = Path(__file__).resolve().parents[2] / (
     "docs/contracts/web-skin-bridge-v1.schema.json")
@@ -385,8 +390,186 @@ def _apply_component_attributes(files: dict[str, bytes], operation: dict) -> dic
     return files
 
 
+def _normalize_css_property(value: object) -> str:
+    _fail(type(value) is str and len(value) <= 256 and CSS_PROPERTY.fullmatch(value) is not None,
+          "CSS property must be a valid property name")
+    return value if value.startswith("--") else value.lower()
+
+
+def _component_style_markers(token: str) -> tuple[str, str]:
+    return (f"/* pcskin-studio-style-begin:{token} */",
+            f"/* pcskin-studio-style-end:{token} */")
+
+
+def _read_component_style_block(css: str, token: str) -> tuple[re.Match | None, dict[str, str]]:
+    begin, end = _component_style_markers(token)
+    _fail(css.count(begin) <= 1 and css.count(end) <= 1,
+          "component style markers are duplicated; edit the CSS source directly")
+    if begin not in css and end not in css:
+        return None, {}
+    _fail(css.count(begin) == 1 and css.count(end) == 1,
+          "component style block is incomplete; edit the CSS source directly")
+    pattern = re.compile(re.escape(begin) + r"(.*?)" + re.escape(end), re.DOTALL)
+    matches = list(pattern.finditer(css))
+    _fail(len(matches) == 1, "component style block is malformed; edit the CSS source directly")
+    match = matches[0]
+    rule = re.fullmatch(
+        r"\s*\[data-pcskin-studio-style=\"" + re.escape(token) +
+        r"\"\]\s*\{\s*(.*?)\s*\}\s*", match.group(1), re.DOTALL)
+    _fail(rule is not None,
+          "component style block selector is malformed; edit the CSS source directly")
+    properties: dict[str, str] = {}
+    declaration = re.compile(r"\s*((?:--[A-Za-z_][A-Za-z0-9_-]*|-?[A-Za-z][A-Za-z0-9-]*))\s*:\s*(.*?)\s*;\s*\Z")
+    for line in rule.group(1).splitlines():
+        if not line.strip():
+            continue
+        parsed = declaration.fullmatch(line)
+        _fail(parsed is not None,
+              "component style block contains unsupported syntax; edit the CSS source directly")
+        name = _normalize_css_property(parsed.group(1))
+        _fail(name not in properties, "component style block contains duplicate properties")
+        properties[name] = parsed.group(2)
+    return match, properties
+
+
+def _render_component_style_block(token: str, properties: dict[str, str]) -> str:
+    begin, end = _component_style_markers(token)
+    selector = f'[data-pcskin-studio-style="{token}"]'
+    declarations = "\n".join(f"  {name}: {value};" for name, value in sorted(properties.items()))
+    return f"{begin}\n{selector} {{\n{declarations}\n}}\n{end}"
+
+
+def _write_component_style_attribute(files: dict[str, bytes], path: str, source: str,
+                                     parser: _StaticHtmlInventory, node: dict,
+                                     token: str | None) -> None:
+    start, end = node["_sourceStart"], node["_sourceOpenEnd"]
+    opening = source[start:end]
+    _fail(bool(opening) and opening.startswith("<") and opening.endswith(">"),
+          "selected component has no safe opening tag")
+    if token is None:
+        pattern = re.compile(
+            r"\s+" + re.escape(COMPONENT_STYLE_ATTRIBUTE) + r"\s*=\s*([\"'])" +
+            re.escape(str(next(attribute["value"] for attribute in node["attributes"]
+                               if attribute["name"].lower() == COMPONENT_STYLE_ATTRIBUTE))) +
+            r"\1", re.IGNORECASE)
+        rendered, count = pattern.subn("", opening, count=1)
+        _fail(count == 1, "Studio style marker source could not be removed safely")
+    else:
+        insert_at = len(opening) - (2 if re.search(r"/\s*>$", opening) else 1)
+        rendered = opening[:insert_at] + f' {COMPONENT_STYLE_ATTRIBUTE}="{token}"' + opening[insert_at:]
+    updated = source[:start] + rendered + source[end:]
+    files[path] = _validate_component_result(path, parser, updated)
+
+
+def _apply_component_style(files: dict[str, bytes], operation: dict) -> dict[str, bytes]:
+    fields = {"op", "path", "expectedSha256", "cssPath", "expectedCssSha256",
+              "targetNodeId", "setProperties", "removeProperties"}
+    _fail(set(operation) == fields, "component-style has unsupported or missing fields")
+    html_path, html_source, parser = _component_page(
+        files, operation["path"], operation["expectedSha256"])
+    node = _component_node(parser, operation["targetNodeId"])
+    css_path = _validate_path(operation["cssPath"])
+    _fail(css_path.startswith("web/") and css_path.lower().endswith(".css"),
+          "component styles require a package CSS source under web/")
+    css_bytes = _expect_existing(files, css_path, operation["expectedCssSha256"])
+    try:
+        css = css_bytes.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise skin_studio.SkinError("component stylesheet is not valid UTF-8") from exc
+
+    raw_set = operation["setProperties"]
+    raw_remove = operation["removeProperties"]
+    _fail(type(raw_set) is dict and len(raw_set) <= MAX_COMPONENT_STYLE_PROPERTIES,
+          f"setProperties must be an object with at most {MAX_COMPONENT_STYLE_PROPERTIES} items")
+    _fail(type(raw_remove) is list and len(raw_remove) <= MAX_COMPONENT_STYLE_PROPERTIES,
+          f"removeProperties must be an array with at most {MAX_COMPONENT_STYLE_PROPERTIES} items")
+    set_properties: dict[str, str] = {}
+    for raw_name, raw_value in raw_set.items():
+        name = _normalize_css_property(raw_name)
+        _fail(name not in set_properties, "setProperties contains duplicate CSS properties")
+        _fail(type(raw_value) is str, f"CSS value for {name!r} must be a string")
+        try:
+            value_bytes = raw_value.encode("utf-8")
+        except UnicodeEncodeError as exc:
+            raise skin_studio.SkinError(f"CSS value for {name!r} is not valid Unicode") from exc
+        value = raw_value.strip()
+        _fail(bool(value) and len(value_bytes) <= MAX_COMPONENT_STYLE_VALUE_BYTES and
+              not any(character in value for character in "\x00\r\n;{}") and
+              "/*" not in value and "*/" not in value,
+              f"CSS value for {name!r} is empty, too large, or contains unsupported delimiters")
+        set_properties[name] = value
+
+    remove_properties: set[str] = set()
+    for raw_name in raw_remove:
+        name = _normalize_css_property(raw_name)
+        _fail(name not in remove_properties, "removeProperties contains duplicate CSS properties")
+        remove_properties.add(name)
+    _fail(not (set(set_properties) & remove_properties),
+          "a CSS property cannot be both set and removed")
+
+    marker_values = [attribute["value"] for attribute in node["attributes"]
+                     if attribute["name"].lower() == COMPONENT_STYLE_ATTRIBUTE]
+    _fail(len(marker_values) <= 1, "selected HTML node has duplicate Studio style markers")
+    token = marker_values[0] if marker_values else None
+    if token is not None:
+        _fail(type(token) is str and COMPONENT_STYLE_TOKEN.fullmatch(token) is not None,
+              "selected HTML node has an invalid Studio style marker; edit the HTML source directly")
+        _fail(sum(1 for candidate in parser.nodes
+                  for attribute in candidate["attributes"]
+                  if attribute["name"].lower() == COMPONENT_STYLE_ATTRIBUTE and
+                  attribute["value"] == token) == 1,
+              "Studio style marker is shared by multiple HTML nodes")
+
+    style_match, old_properties = _read_component_style_block(css, token) if token else (None, {})
+    for name in list(set_properties):
+        current = old_properties.get(name)
+        if current == set_properties[name]:
+            del set_properties[name]
+    remove_properties = {name for name in remove_properties if name in old_properties}
+    if not set_properties and not remove_properties:
+        return files
+
+    next_properties = dict(old_properties)
+    for name in remove_properties:
+        next_properties.pop(name, None)
+    next_properties.update(set_properties)
+
+    if next_properties and token is None:
+        token = "pcss-" + hashlib.sha256(
+            (html_path + "\0" + node["nodeId"] + "\0" +
+             _file_sha256(html_source.encode("utf-8"))).encode("utf-8")
+        ).hexdigest()[:24]
+        _fail(not any(attribute["name"].lower() == COMPONENT_STYLE_ATTRIBUTE and
+                      attribute["value"] == token
+                      for candidate in parser.nodes for attribute in candidate["attributes"]),
+              "generated Studio style marker collides with an existing node")
+
+    if token is not None:
+        if style_match:
+            replacement = _render_component_style_block(token, next_properties) if next_properties else ""
+            updated_css = css[:style_match.start()] + replacement + css[style_match.end():]
+        elif next_properties:
+            separator = "" if not css or css.endswith("\n") else "\n"
+            updated_css = css + separator + _render_component_style_block(token, next_properties) + "\n"
+        else:
+            updated_css = css
+        if updated_css != css:
+            encoded_css = updated_css.encode("utf-8")
+            _fail(len(encoded_css) <= package_v3.TEXT_LIMIT,
+                  "component stylesheet exceeds the package text-file limit")
+            files[css_path] = encoded_css
+
+        if next_properties and not marker_values:
+            _write_component_style_attribute(files, html_path, html_source, parser, node, token)
+        elif not next_properties and marker_values:
+            _write_component_style_attribute(files, html_path, html_source, parser, node, None)
+    return files
+
+
 def _apply_component_operation(files: dict[str, bytes], operation: dict) -> dict[str, bytes]:
     op = operation.get("op")
+    if op == "component-style":
+        return _apply_component_style(files, operation)
     if op == "component-attributes":
         return _apply_component_attributes(files, operation)
     common = {"op", "path", "expectedSha256"}
@@ -493,7 +676,7 @@ def _apply_one(files: dict[str, bytes], operation: object) -> dict[str, bytes]:
         files[target] = files.pop(source)
         return files
 
-    if op in {"component-insert", "component-remove", "component-attributes",
+    if op in {"component-insert", "component-remove", "component-attributes", "component-style",
               "component-replace", "component-move"}:
         return _apply_component_operation(files, operation)
 
