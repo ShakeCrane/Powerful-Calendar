@@ -234,4 +234,33 @@ class SkinPackageManagerTest {
             manager.select("powercal-default")
         }
     }
+
+    @Test fun corruptSelectedSkinOnRestartFallsBackToNativeAndRetainsPackageFile() {
+        val id = "restore-" + UUID.randomUUID().toString().take(24)
+        val source = File.createTempFile("powercal-corrupt-skin-", ".pcskin", context.cacheDir)
+        val installedFile = File(File(context.filesDir, "skin-packs"), "$id.pcskin")
+        try {
+            source.writeBytes(pack(manifest(id)))
+            manager.select("powercal-default")
+            assertEquals(id, manager.install(Uri.fromFile(source)).id)
+            manager.select(id)
+            assertEquals(id, manager.currentId())
+            assertEquals(id, PowerCalSkinRegistry.active.key)
+
+            // Simulate package corruption after selection was persisted and before next startup.
+            installedFile.writeBytes(byteArrayOf(0x50, 0x4b, 0x03, 0x04))
+            manager.restoreSelection()
+
+            assertEquals("powercal-default", manager.currentId())
+            assertEquals("powercal-default", SkinPackageManager(context).currentId())
+            assertEquals("powercal-default", PowerCalSkinRegistry.active.key)
+            assertNull(PowerCalSkinRegistry.active.web)
+            assertTrue("fallback must not delete user skin bytes", installedFile.isFile)
+            assertFalse(manager.installed().any { it.id == id })
+        } finally {
+            source.delete()
+            manager.select("powercal-default")
+            runCatching { manager.delete(id) }
+        }
+    }
 }
