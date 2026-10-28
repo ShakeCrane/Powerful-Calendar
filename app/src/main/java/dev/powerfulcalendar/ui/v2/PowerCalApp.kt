@@ -268,6 +268,10 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
     val initialCamera = remember { TimelineCoordinate.initialCamera(System.currentTimeMillis(), zone) }
     var anchorMillis by rememberSaveable { mutableLongStateOf(initialCamera.anchorMillis) }
     var hours by rememberSaveable { mutableDoubleStateOf(initialCamera.hours) }
+    var webMonthSelectedDateText by rememberSaveable { mutableStateOf("") }
+    fun webMonthSelectedDate(): java.time.LocalDate = runCatching {
+        java.time.LocalDate.parse(webMonthSelectedDateText)
+    }.getOrElse { Instant.ofEpochMilli(anchorMillis).atZone(zone).toLocalDate() }
     val camera = TimelineCoordinate.Camera(anchorMillis, TimelineCoordinate.clampHours(hours))
     val todayKey = Instant.ofEpochMilli(nowMillis).atZone(zone).toLocalDate()
     val todoEntries = remember(records, todayKey) {
@@ -1147,8 +1151,10 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
     androidx.compose.runtime.SideEffect {
         WebSkinBridgeRuntime.owner = webBridgeOwner
         WebSkinBridgeRuntime.onEdit = { command ->
-            val selection = if (command is WebEditCommand.CreateDeck)
-                newEventSelectionForPage(page, camera, zone) else null
+            val selection = if (command is WebEditCommand.CreateDeck) {
+                if (page == Page.MONTH.name) EditorSelection.OnDate(webMonthSelectedDate())
+                else newEventSelectionForPage(page, camera, zone)
+            } else null
             val response = webEditing.execute(
                 command, newEventZone = zone, newEventSelection = selection
             )
@@ -1171,17 +1177,26 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
         WebSkinBridgeRuntime.onAction = { action ->
             when (action) {
                 is WebSkinAction.Routed -> {
+                    val previousPage = page
                     val navigation = reduceWebSkinNavigation(
                         WebSkinNavigationState(page, skinSettingsOpen), action.name
                     )
                     page = navigation.hostPage
                     skinSettingsOpen = navigation.skinSettingsOpen
+                    if (action.name == "month" && previousPage != Page.MONTH.name) {
+                        webMonthSelectedDateText = Instant.ofEpochMilli(anchorMillis)
+                            .atZone(zone).toLocalDate().toString()
+                    }
                     when (action.name) {
                         "openDeck" -> scope.launch { openDeckAt(null) }
                         "today" -> {
                             nowMillis = System.currentTimeMillis()
                             val today = TimelineCoordinate.todayCamera(nowMillis, zone)
                             anchorMillis = today.anchorMillis; hours = today.hours
+                            if (page == Page.MONTH.name) {
+                                webMonthSelectedDateText = Instant.ofEpochMilli(nowMillis)
+                                    .atZone(zone).toLocalDate().toString()
+                            }
                         }
                         else -> Unit
                     }
@@ -1264,18 +1279,43 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                 }
                 is WebSkinAction.BrowseMonth -> {
                     if (page == Page.MONTH.name) {
-                        val day = Instant.ofEpochMilli(anchorMillis).atZone(zone).toLocalDate()
-                        val target = runCatching { day.plusMonths(action.deltaMonths.toLong()) }
-                            .getOrNull()
-                        if (target != null && target.year in 1900..2200) {
-                            anchorMillis = target.atTime(12,0).atZone(zone)
-                                .toInstant().toEpochMilli()
+                        val target = runCatching {
+                            java.time.YearMonth.from(webMonthSelectedDate())
+                                .plusMonths(action.deltaMonths.toLong())
+                        }.getOrNull()
+                        if (target != null && target.year in 1900..2100) {
+                            webMonthSelectedDateText = target.atDay(1).toString()
                         }
+                    }
+                }
+                is WebSkinAction.SelectMonth -> {
+                    if (page == Page.MONTH.name) {
+                        val target = runCatching { java.time.YearMonth.parse(action.yearMonth) }
+                            .getOrNull()
+                        if (target != null && target.toString() == action.yearMonth &&
+                            target.year in 1900..2100
+                        ) webMonthSelectedDateText = target.atDay(1).toString()
+                    }
+                }
+                is WebSkinAction.SelectMonthDate -> {
+                    if (page == Page.MONTH.name) {
+                        val target = runCatching { java.time.LocalDate.parse(action.date) }
+                            .getOrNull()
+                        if (target != null && target.year in 1900..2100 &&
+                            java.time.YearMonth.from(target) ==
+                            java.time.YearMonth.from(webMonthSelectedDate())
+                        ) webMonthSelectedDateText = target.toString()
+                    }
+                }
+                WebSkinAction.TodayInMonth -> {
+                    if (page == Page.MONTH.name) {
+                        webMonthSelectedDateText = java.time.LocalDate.now(zone).toString()
                     }
                 }
                 is WebSkinAction.CreateDraft -> if (!aiLocked && editSession == null) {
                     val kind = TemporalKind.valueOf(action.kind)
-                    val day = Instant.ofEpochMilli(anchorMillis).atZone(zone).toLocalDate()
+                    val day = if (page == Page.MONTH.name) webMonthSelectedDate()
+                        else Instant.ofEpochMilli(anchorMillis).atZone(zone).toLocalDate()
                     openNewEvent(kind, EditorSelection.OnDate(day))
                 }
                 WebSkinAction.CreateMemo -> if (!aiLocked && editSession == null) {
@@ -1318,7 +1358,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                     } else if (validated == null) {
                         message = "Calendar editor is currently unavailable"
                     } else {
-                        openFormalEditor(validated)
+                        openFormalEditor(validated, action.originalOccurrenceKey)
                     }
                 }
             }
@@ -1384,7 +1424,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                 .put("timeline", if (skinSettingsOpen) JSONObject() else
                     WebSkinTimelineProjection.build(records, camera, nowMillis, zone))
                 .put("month", if (page == Page.MONTH.name && !skinSettingsOpen)
-                    WebSkinMonthProjection.build(records, anchorMillis, zone)
+                    WebSkinMonthProjection.build(records, webMonthSelectedDate(), zone)
                     else JSONObject())
                 .put("events", org.json.JSONArray((if (skinSettingsOpen) emptyList() else records.take(300)).map { record ->
                     JSONObject().put("eventSeq", record.eventSeq).put("revision", record.revision)

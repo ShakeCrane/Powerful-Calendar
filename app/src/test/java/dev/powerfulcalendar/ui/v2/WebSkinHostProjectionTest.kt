@@ -89,7 +89,8 @@ class WebSkinHostProjectionTest {
         assertEquals(9L, occurrence.getLong("eventSeq"))
         assertTrue(occurrence.getString("occurrenceKey").startsWith("9:"))
         assertEquals("2026-10-22T09:00", occurrence.getString("originalOccurrenceKey"))
-        val month = WebSkinMonthProjection.build(listOf(daily), noon, zone).getJSONArray("items")
+        val selectedDate = Instant.ofEpochMilli(noon).atZone(zone).toLocalDate()
+        val month = WebSkinMonthProjection.build(listOf(daily), selectedDate, zone).getJSONArray("items")
         val sameDay = (0 until month.length()).map { month.getJSONObject(it) }
             .single { it.getString("date") == "2026-10-22" }
         assertEquals("2026-10-22T09:00", sameDay.getString("originalOccurrenceKey"))
@@ -141,6 +142,19 @@ class WebSkinHostProjectionTest {
             decode("""{"name":"browseMonth","deltaMonths":-1}"""))
         assertNull(decode("""{"name":"browseMonth","deltaMonths":0}"""))
         assertNull(decode("""{"name":"browseMonth","deltaMonths":50}"""))
+        assertEquals(WebSkinAction.SelectMonth("2030-02"),
+            decode("""{"name":"selectMonth","yearMonth":"2030-02"}"""))
+        assertEquals(WebSkinAction.SelectMonthDate("2030-02-14"),
+            decode("""{"name":"selectMonthDate","date":"2030-02-14"}"""))
+        assertEquals(WebSkinAction.TodayInMonth,
+            decode("""{"name":"todayInMonth"}"""))
+        assertNull(decode("""{"name":"selectMonth","yearMonth":"1899-12"}"""))
+        assertNull(decode("""{"name":"selectMonth","yearMonth":"2101-01"}"""))
+        assertNull(decode("""{"name":"selectMonth","yearMonth":"2030-13"}"""))
+        assertNull(decode("""{"name":"selectMonth","yearMonth":"2030-2"}"""))
+        assertNull(decode("""{"name":"selectMonth","yearMonth":"2030-02","day":1}"""))
+        assertNull(decode("""{"name":"selectMonthDate","date":"2030-02-30"}"""))
+        assertNull(decode("""{"name":"todayInMonth","date":"2030-02-01"}"""))
         assertEquals(WebSkinAction.SendChat("你好"),
             decode("""{"name":"sendChat","text":"你好"}"""))
         assertEquals(WebSkinAction.ToggleMemo(31,2,"single",false),
@@ -221,7 +235,8 @@ class WebSkinHostProjectionTest {
     }
 
     @Test fun monthProjectionUsesRealHostOccurrencesAndExactDateWindow() {
-        val output = WebSkinMonthProjection.build(listOf(activity(71)), noon, zone)
+        val selectedDate = Instant.ofEpochMilli(noon).atZone(zone).toLocalDate()
+        val output = WebSkinMonthProjection.build(listOf(activity(71)), selectedDate, zone)
         assertEquals("2026-10", output.getString("month"))
         assertEquals("2026-09-28", output.getString("gridFrom"))
         val first = output.getJSONArray("items").getJSONObject(0)

@@ -141,6 +141,18 @@ The tree is a static source inventory: JavaScript-generated nodes remain availab
 the advanced source editor. This structural panel does not yet provide a full CSS layout,
 computed-style, interaction-logic or accessibility editor.
 
+Clear's month page uses source-editable `selectMonth`, `selectMonthDate`, and `todayInMonth`
+Host actions for year/month navigation and local-date selection. The Studio's action catalog
+and preview Mock recognize these bindings. `selectMonth` carries a canonical `YYYY-MM`,
+`selectMonthDate` carries an ISO date within the displayed month, and `todayInMonth` has no
+extra fields. They update only Host month-selection state; use `jumpTimelineDay` for the
+separate action that opens the selected day on the Timeline. Month agenda cards preserve a
+projected repeating event's `originalOccurrenceKey`; the Host revalidates it before opening
+the existing scoped editor. Clear renders selected/today dates in the Host-projected zone,
+including when the UTC date differs. See
+[`V3_HOST_BRIDGE_EXTENSION.md`](V3_HOST_BRIDGE_EXTENSION.md) for the closed schemas and
+validation behavior. The Mock is non-writing and is not Android WebView evidence.
+
 Example: insert a component under an analyzed container. `targetNodeId` and the page
 hash come from the same `analyze-v3` / `inspect-v3` snapshot:
 

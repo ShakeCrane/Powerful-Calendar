@@ -10,6 +10,7 @@ let port=null, state={}, currentPage="TIMELINE", memoFilter="open",localOptions=
 let aiReviewSelectionId="",aiReviewSelected=new Set();
 let attachmentRequestPending=false;
 let timelineCreateDialog=null;
+let monthPickerReturn=null;
 const send=(name,extra={})=>{
   if(!port)return;
   port.postMessage(JSON.stringify({version:1,type:"action",payload:{name,...extra}}));
@@ -19,6 +20,14 @@ const node=(tag,cls,text)=>{
   if(cls)el.className=cls;
   if(text!=null)el.textContent=String(text);
   return el;
+};
+const localDateInZone=(epochMillis,zone)=>{
+  const parts=new Intl.DateTimeFormat("en-CA",{
+    timeZone:zone,year:"numeric",month:"2-digit",day:"2-digit"
+  }).formatToParts(new Date(epochMillis));
+  const values=Object.fromEntries(parts.filter(part=>part.type!=="literal")
+    .map(part=>[part.type,part.value]));
+  return values.year+"-"+values.month+"-"+values.day;
 };
 const dateText=(ms,zone,options)=>{
   try{return new Intl.DateTimeFormat("zh-CN",{timeZone:zone||"Asia/Shanghai",...options}).format(new Date(ms))}
@@ -89,8 +98,13 @@ function onAction(button){
     showTimelineCreateDialog(button);return;
   }
   if(window.PowerCalEdit?.routeAction(button,state))return;
-  if(name==="openEvent")send(name,{eventSeq:Number(button.dataset.eventSeq),
-    expectedRevision:Number(button.dataset.revision)});
+  if(name==="openEvent"){
+    const payload={eventSeq:Number(button.dataset.eventSeq),
+      expectedRevision:Number(button.dataset.revision)};
+    if(button.dataset.originalOccurrenceKey)
+      payload.originalOccurrenceKey=button.dataset.originalOccurrenceKey;
+    send(name,payload);
+  }
   else if(name==="createDraft")send(name,{kind:button.dataset.kind});
   else if(name==="selectSkin"||name==="deleteSkin")send(name,{skinId:button.dataset.skinId});
   else if(name==="toggleMemo")send(name,{eventSeq:Number(button.dataset.eventSeq),
@@ -100,6 +114,9 @@ function onAction(button){
   else if(name==="panTimeline")send(name,{deltaMinutes:Number(button.dataset.deltaMinutes)});
   else if(name==="jumpTimelineDay")send(name,{date:button.dataset.date});
   else if(name==="browseMonth")send(name,{deltaMonths:Number(button.dataset.deltaMonths)});
+  else if(name==="selectMonth")send(name,{yearMonth:button.dataset.yearMonth});
+  else if(name==="selectMonthDate")send(name,{date:button.dataset.date});
+  else if(name==="todayInMonth")send(name);
   else {
     if(["timeline","memo","month","ai","settings","skinSettings"].includes(name))localOptions=false;
     // Preserve the v1 `settings` action for existing skins and protected tools. Clear's
@@ -109,12 +126,64 @@ function onAction(button){
   }
 }
 document.addEventListener("click",e=>{
+  const monthPicker=e.target.closest("[data-month-picker]");
+  if(monthPicker){openMonthPicker(monthPicker.dataset.monthPicker,monthPicker);return}
   const local=e.target.closest("[data-local]");
   if(local){localOptions=local.dataset.local==="options";renderPage();return}
   const toggle=e.target.closest("[data-filter]");
   if(toggle){memoFilter=toggle.dataset.filter;renderMemo();return}
   const button=e.target.closest("[data-action]");
   if(button)onAction(button);
+});
+function closeMonthPicker(){
+  const dialog=$("monthPickerDialog");
+  if(typeof dialog.close==="function")dialog.close();
+  else dialog.removeAttribute("open");
+}
+function sendMonthSelection(yearMonth){
+  if(!port){$("monthPickerStatus").textContent="宿主暂不可用，请稍后重试。";return}
+  send("selectMonth",{yearMonth});closeMonthPicker();
+}
+function openMonthPicker(field,source){
+  const current=String(state.month?.month||"2026-10"),parts=current.split("-");
+  const year=Number(parts[0]),month=Number(parts[1]);
+  const dialog=$("monthPickerDialog"),yearForm=$("monthYearForm"),monthGrid=$("monthNumberPanel");
+  monthPickerReturn=source;
+  $("monthPickerStatus").textContent="";
+  $("monthPickerTitle").textContent=field==="year"?"选择年份":"选择月份 · "+year+" 年";
+  yearForm.hidden=field!=="year";monthGrid.hidden=field!=="month";
+  $("monthYearInput").value=String(year);
+  if(field==="month"){
+    monthGrid.replaceChildren();
+    for(let value=1;value<=12;value++){
+      const button=node("button","",value+" 月");
+      button.type="button";button.dataset.pickerMonth=String(value);
+      button.setAttribute("aria-pressed",String(value===month));
+      monthGrid.append(button);
+    }
+  }
+  if(typeof dialog.showModal==="function")dialog.showModal();
+  else dialog.setAttribute("open","");
+  (field==="year"?$("monthYearInput"):monthGrid.querySelector("button[aria-pressed='true']"))?.focus();
+}
+$("monthPickerDialog").addEventListener("close",()=>{
+  monthPickerReturn?.focus();monthPickerReturn=null;
+});
+$("monthPickerDialog").addEventListener("click",event=>{
+  if(event.target===$("monthPickerDialog"))closeMonthPicker();
+  const button=event.target.closest("[data-picker-month]");
+  if(!button)return;
+  const year=String(state.month?.month||"2026-10").slice(0,4);
+  sendMonthSelection(year+"-"+String(Number(button.dataset.pickerMonth)).padStart(2,"0"));
+});
+$("monthPickerCancel").addEventListener("click",closeMonthPicker);
+$("monthYearForm").addEventListener("submit",event=>{
+  event.preventDefault();
+  const year=Number($("monthYearInput").value),current=String(state.month?.month||"2026-10");
+  if(!Number.isInteger(year)||year<1900||year>2100){
+    $("monthPickerStatus").textContent="年份范围为 1900～2100。";return;
+  }
+  sendMonthSelection(String(year).padStart(4,"0")+"-"+current.slice(5,7));
 });
 $("chatForm").addEventListener("submit",e=>{
   e.preventDefault();
@@ -218,7 +287,15 @@ function renderMonth(){
   const month=state.month||{},t=state.timeline||{};
   const zone=month.zoneId||t.zoneId||"Asia/Shanghai";
   const firstIso=month.gridFrom||new Date().toISOString().slice(0,10);
-  $("monthTitle").textContent=(month.month||"") + " · " + zone;
+  const yearMonth=String(month.month||""),[year,monthNumber]=yearMonth.split("-");
+  const now=Number(t.nowMillis);
+  const today=localDateInZone(Number.isFinite(now)?now:Date.now(),zone);
+  $("monthYearButton").textContent=year?year+" 年":"选择年份";
+  $("monthYearButton").setAttribute("aria-label",year?"选择年份，当前"+year+"年":"选择年份");
+  $("monthNumberButton").textContent=monthNumber?Number(monthNumber)+" 月":"选择月份";
+  $("monthNumberButton").setAttribute("aria-label",monthNumber?"选择月份，当前"+Number(monthNumber)+"月":"选择月份");
+  $("monthZone").textContent=zone;
+  $("viewMonthDate").dataset.date=month.selectedDate||"";
   const grid=$("monthGrid");grid.replaceChildren();
   const events=month.items||[];
   const counts=new Map();
@@ -227,10 +304,13 @@ function renderMonth(){
   const origin=Date.parse(firstIso+"T00:00:00Z");
   for(let i=0;i<42;i++){
     const date=new Date(origin+i*86400000),iso=date.toISOString().slice(0,10);
+    if(iso.slice(0,7)!==yearMonth){grid.append(node("span","month-empty",""));continue}
     const button=node("button","month-cell",date.getUTCDate());
-    button.dataset.action="jumpTimelineDay";button.dataset.date=iso;
+    button.type="button";button.dataset.action="selectMonthDate";button.dataset.date=iso;
+    button.setAttribute("aria-label",iso+"，"+(counts.get(iso)||0)+" 项");
+    button.setAttribute("aria-pressed",String(iso===month.selectedDate));
     if(iso===month.selectedDate)button.classList.add("selected");
-    if(iso===new Date(t.nowMillis||Date.now()).toISOString().slice(0,10))button.classList.add("today");
+    if(iso===today)button.classList.add("today");
     const count=counts.get(iso)||0;
     if(count)button.append(node("span","month-dot",count>3?"•••":"•".repeat(count)));
     grid.append(button);

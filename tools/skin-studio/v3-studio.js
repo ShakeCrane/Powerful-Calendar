@@ -14,6 +14,13 @@ const bytesToBase64 = bytes => {
 const base64ToBytes = text => Uint8Array.from(atob(text), c=>c.charCodeAt(0));
 const safeFilename = name => /^[A-Za-z0-9][A-Za-z0-9_.-]{0,90}$/.test(name);
 const copy = value => JSON.parse(JSON.stringify(value));
+const localDateInZone=(instant,zone)=>{
+  const values=Object.fromEntries(new Intl.DateTimeFormat("en-CA",{
+    timeZone:zone,year:"numeric",month:"2-digit",day:"2-digit"
+  }).formatToParts(new Date(instant)).filter(part=>part.type!=="literal")
+    .map(part=>[part.type,part.value]));
+  return values.year+"-"+values.month+"-"+values.day;
+};
 let manifest=null, project=null, projectBaseline=null, sourceFiles=new Map(), selectedLayer=null;
 let activeMode="simple", editCanvas=true, previewTimer=null, previewSeq=0;
 let previewPort=null, lastState=null, lastPreviewUrl="", dirty=false;
@@ -536,6 +543,8 @@ async function addPackageAssets(list){
 const ACTIONS=[
   ["","无动作"],["today","返回今天"],["createMemo","新建 Memo"],
   ["createDraft","新建事件"],["browseMonth","浏览月份"],
+  ["selectMonth","选择指定年月"],["selectMonthDate","选择月历日期"],
+  ["todayInMonth","月历回到今天"],
   ["timeline","时间轴"],
   ["month","月历"],["memo","Memo"],["ai","AI"],
   ["settings","宿主工具与设置"],["skinSettings","皮肤设置"],["openDeck","草稿卡组"],
@@ -594,6 +603,8 @@ function layerMarkup(layer){
     if(action==="panTimeline")props+=' data-delta-minutes="30"';
     if(action==="createDraft")props+=' data-kind="ACTIVITY"';
     if(action==="browseMonth")props+=' data-delta-months="1"';
+    if(action==="selectMonth")props+=' data-year-month="2026-11"';
+    if(action==="selectMonthDate")props+=' data-date="2026-10-22"';
     if(action==="jumpTimelineDay")props+=' data-date="2026-10-22"';
     if(action==="invokeOption")
       props+=' data-option-id="calendar.import.file"';
@@ -758,7 +769,13 @@ function refreshOverlay(){
 
 function simulatedState(){
   const scenario=$("scenario").value,base=new Date("2026-10-22T04:00:00Z").getTime();
+  const zone="Asia/Shanghai",nowMillis=new Date("2026-10-21T16:30:00Z").getTime();
   const anchor=mockAnchor??base,hours=24;
+  const selectedMonthDate=mockMonthDate??localDateInZone(anchor,zone);
+  const [monthYear,monthValue]=selectedMonthDate.slice(0,7).split("-").map(Number);
+  const monthFirst=Date.UTC(monthYear,monthValue-1,1);
+  const monthGridFrom=new Date(monthFirst-
+    ((new Date(monthFirst).getUTCDay()+6)%7)*86400000).toISOString().slice(0,10);
   let rows=[
     {eventSeq:4,revision:2,occurrenceKey:"4:single",kind:"ACTIVITY",
       title:"上午课程",side:"RIGHT",lane:0,startMillis:base-10800000,endMillis:base-5400000,precision:"INSTANT",deadlineDate:null},
@@ -838,11 +855,11 @@ function simulatedState(){
     ],
     reminderPermissions:{exactAlarmAllowed:false,notificationsAllowed:false,
       notificationsRuntimePermissionRequired:true},
-    timeline:{zoneId:"Asia/Shanghai",anchorMillis:anchor,hours,
+    timeline:{zoneId:zone,anchorMillis:anchor,hours,
       visibleStartMillis:start,visibleEndMillis:anchor+hours*1800000,
-      nowMillis:base,itemLimit:300,truncated:false,items:rows},
-    month:{zoneId:"Asia/Shanghai",month:"2026-10",
-      selectedDate:"2026-10-22",gridFrom:"2026-09-28",
+      nowMillis,itemLimit:300,truncated:false,items:rows},
+    month:{zoneId:zone,month:selectedMonthDate.slice(0,7),
+      selectedDate:selectedMonthDate,gridFrom:monthGridFrom,
       itemLimit:350,truncated:false,
       items:rows.map(r=>({...r,date:"2026-10-22"}))}};
 }
@@ -1135,16 +1152,52 @@ function onSkinAction(message){
     }
     if(name==="jumpTimelineDay"&&/^\d{4}-\d{2}-\d{2}$/.test(p.date||"")){
       const date=new Date(p.date+"T04:00:00Z").getTime();
-      if(Number.isFinite(date))mockAnchor=date;
+      if(Number.isFinite(date)){mockAnchor=date;mockPage="TIMELINE";mockMonthDate=null}
     }
-    if(name==="today")mockAnchor=null;
+    if(name==="today"){
+      mockAnchor=null;
+      if(mockPage==="MONTH")mockMonthDate=localDateInZone(new Date("2026-10-21T16:30:00Z").getTime(),"Asia/Shanghai");
+    }
     if(name==="browseMonth"&&Number.isInteger(p.deltaMonths)&&
       p.deltaMonths!==0&&Math.abs(p.deltaMonths)<=12){
-      mockAnchor=(mockAnchor??new Date("2026-10-22T04:00:00Z").getTime())+
-        p.deltaMonths*30*86400000;
+      if(mockPage!=="MONTH"){logAction("拒绝月历之外的月份导航");return}
+      const current=mockMonthDate??localDateInZone(mockAnchor??new Date("2026-10-22T04:00:00Z").getTime(),"Asia/Shanghai");
+      const target=new Date(current.slice(0,7)+"-01T00:00:00Z");
+      target.setUTCMonth(target.getUTCMonth()+p.deltaMonths);
+      const year=target.getUTCFullYear();
+      if(year>=1900&&year<=2100)mockMonthDate=target.toISOString().slice(0,7)+"-01";
+    }
+    if(name==="selectMonth"){
+      if(mockPage!=="MONTH"||!/^\d{4}-(0[1-9]|1[0-2])$/.test(p.yearMonth||"")||
+        Number(p.yearMonth.slice(0,4))<1900||Number(p.yearMonth.slice(0,4))>2100){
+        logAction("拒绝当前月历之外或格式无效的年月选择");return;
+      }
+      mockMonthDate=p.yearMonth+"-01";
+    }
+    if(name==="selectMonthDate"){
+      const parsedDate=/^\d{4}-\d{2}-\d{2}$/.test(p.date||"")
+        ?new Date(p.date+"T00:00:00Z"):null;
+      const valid=!!parsedDate&&Number.isFinite(parsedDate.getTime())&&
+        Number(p.date.slice(0,4))>=1900&&Number(p.date.slice(0,4))<=2100&&
+        parsedDate.toISOString().slice(0,10)===p.date;
+      if(mockPage!=="MONTH"||!valid||
+          p.date.slice(0,7)!==(mockMonthDate??localDateInZone(mockAnchor??new Date("2026-10-22T04:00:00Z").getTime(),"Asia/Shanghai"))
+            .slice(0,7)){
+        logAction("拒绝当前月份之外或格式无效的日期选择");return;
+      }
+      mockMonthDate=p.date;
+    }
+    if(name==="todayInMonth"){
+      if(mockPage!=="MONTH"){logAction("拒绝月历之外的今日选择");return}
+      mockMonthDate=localDateInZone(new Date("2026-10-21T16:30:00Z").getTime(),"Asia/Shanghai");
     }
     if(name==="skinSettings")mockPage="SETTINGS";
-    else if(["timeline","month","memo","ai"].includes(name))mockPage=name.toUpperCase();
+    else if(["timeline","month","memo","ai"].includes(name)){
+      if(name==="month"&&mockPage!=="MONTH"){
+        mockMonthDate=localDateInZone(mockAnchor??new Date("2026-10-22T04:00:00Z").getTime(),"Asia/Shanghai");
+      }
+      mockPage=name.toUpperCase();
+    }
     if(name==="settings"){
       logAction("Preview Mock：请求既有 Android 宿主工具页；不会展示或操作系统权限、凭据或数据。");
       return;
@@ -1252,12 +1305,14 @@ function onSkinAction(message){
     }
     logAction("模拟宿主收到："+name+
       (p.id?" · "+p.id:"")+
-      (name==="openEvent"?" · "+p.eventSeq:""));
-    if(["today","panTimeline","jumpTimelineDay","browseMonth","timeline","month","memo","ai","skinSettings",
+      (name==="openEvent"?" · "+p.eventSeq+
+        (p.originalOccurrenceKey?" · 原始实例 "+p.originalOccurrenceKey:""):""));
+    if(["today","panTimeline","jumpTimelineDay","browseMonth","selectMonth","selectMonthDate",
+      "todayInMonth","timeline","month","memo","ai","skinSettings",
       "toggleMemo","sendChat"].includes(name))postState();
   }catch(error){logAction("Bridge 消息错误："+error.message)}
 }
-let mockAnchor=null,mockPage="TIMELINE",mockMemoDone=false,mockChat=[];
+let mockAnchor=null,mockMonthDate=null,mockPage="TIMELINE",mockMemoDone=false,mockChat=[];
 let mockAiErrorMessages=[
   {role:"user",content:"请帮我概括明天的安排。"},
   {role:"assistant",content:"Studio Mock：AI 请求未完成（模拟 HTTP 503）；上下文已保留，可编辑后手动重发。"}

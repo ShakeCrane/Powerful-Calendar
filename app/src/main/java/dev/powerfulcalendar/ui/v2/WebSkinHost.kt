@@ -1,6 +1,7 @@
 package dev.powerfulcalendar.ui.v2
 
 import dev.powerfulcalendar.core.EditorSelection
+import dev.powerfulcalendar.core.RecurrenceEngine
 import dev.powerfulcalendar.core.TimelineCoordinate
 import android.annotation.SuppressLint
 import android.graphics.Color
@@ -35,7 +36,10 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
 import java.time.Instant
+import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.ZoneId
+import java.time.YearMonth
 
 /** Preserves the explicit date/time context of the active native creation surface. */
 internal fun newEventSelectionForPage(
@@ -79,7 +83,11 @@ internal object WebSkinBridgeRuntime {
 
 internal sealed interface WebSkinAction {
     data class Routed(val name: String) : WebSkinAction
-    data class OpenEvent(val eventSeq: Long, val expectedRevision: Long) : WebSkinAction
+    data class OpenEvent(
+        val eventSeq: Long,
+        val expectedRevision: Long,
+        val originalOccurrenceKey: String? = null
+    ) : WebSkinAction
     data class InvokeOption(val id: String) : WebSkinAction
     data class SelectSkin(val skinId: String) : WebSkinAction
     data class DeleteSkin(val skinId: String) : WebSkinAction
@@ -97,6 +105,9 @@ internal sealed interface WebSkinAction {
     data object CreateMemo : WebSkinAction
     data class CreateDraft(val kind: String) : WebSkinAction
     data class BrowseMonth(val deltaMonths: Int) : WebSkinAction
+    data class SelectMonth(val yearMonth: String) : WebSkinAction
+    data class SelectMonthDate(val date: String) : WebSkinAction
+    data object TodayInMonth : WebSkinAction
     data class ResolveAiProposal(
         val reviewId: String,
         val decision: AiProposalDecision,
@@ -149,7 +160,11 @@ internal fun validateOpenEvent(
     current: dev.powerfulcalendar.core.TemporalRecord?,
     writerAvailable: Boolean
 ): dev.powerfulcalendar.core.TemporalRecord? = current?.takeIf {
-    writerAvailable && it.eventSeq == action.eventSeq && it.revision == action.expectedRevision
+    writerAvailable && it.eventSeq == action.eventSeq && it.revision == action.expectedRevision &&
+        (action.originalOccurrenceKey == null ||
+            (it.recurrence.isRepeating && RecurrenceEngine.occurrenceForKey(
+                it, action.originalOccurrenceKey
+            ) != null))
 }
 
 @Composable
@@ -399,11 +414,28 @@ internal fun decodeBridgeAction(raw: String): WebSkinAction? {
             else null
         }
         "createMemo" -> if (keys == setOf("name")) WebSkinAction.CreateMemo else null
+        "todayInMonth" -> if (keys == setOf("name")) WebSkinAction.TodayInMonth else null
         "browseMonth" -> {
             if (keys != setOf("name", "deltaMonths")) return null
             val raw = payload.opt("deltaMonths")
             if (raw is Int && raw in -12..12 && raw != 0)
                 WebSkinAction.BrowseMonth(raw)
+            else null
+        }
+        "selectMonth" -> {
+            if (keys != setOf("name", "yearMonth")) return null
+            val raw = payload.opt("yearMonth") as? String ?: return null
+            val parsed = runCatching { YearMonth.parse(raw) }.getOrNull()
+            if (parsed != null && parsed.toString() == raw && parsed.year in 1900..2100)
+                WebSkinAction.SelectMonth(raw)
+            else null
+        }
+        "selectMonthDate" -> {
+            if (keys != setOf("name", "date")) return null
+            val raw = payload.opt("date") as? String ?: return null
+            val parsed = if (raw.length == 10) runCatching { LocalDate.parse(raw) }.getOrNull() else null
+            if (parsed != null && parsed.year in 1900..2100)
+                WebSkinAction.SelectMonthDate(parsed.toString())
             else null
         }
         "createDraft" -> {
@@ -466,14 +498,21 @@ internal fun decodeBridgeAction(raw: String): WebSkinAction? {
             } else null
         }
         "openEvent" -> {
-            if (keys != setOf("name", "eventSeq", "expectedRevision")) return null
+            val baseKeys = setOf("name", "eventSeq", "expectedRevision")
+            if (keys != baseKeys && keys != baseKeys + "originalOccurrenceKey") return null
             val seq = payload.optLong("eventSeq", -1L)
             val revision = payload.optLong("expectedRevision", -1L)
             val rawSeq = payload.opt("eventSeq")
             val rawRevision = payload.opt("expectedRevision")
+            val originalOccurrenceKey = if ("originalOccurrenceKey" in keys) {
+                val raw = payload.opt("originalOccurrenceKey") as? String ?: return null
+                val parsed = runCatching { LocalDateTime.parse(raw) }.getOrNull() ?: return null
+                if (RecurrenceEngine.keyFor(parsed) != raw) return null
+                raw
+            } else null
             if (seq <= 0L || revision <= 0L || rawSeq !is Number || rawRevision !is Number ||
                 rawSeq is Float || rawSeq is Double || rawRevision is Float || rawRevision is Double) null
-            else WebSkinAction.OpenEvent(seq, revision)
+            else WebSkinAction.OpenEvent(seq, revision, originalOccurrenceKey)
         }
         else -> null
     }
