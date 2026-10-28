@@ -1204,4 +1204,84 @@ class WebSkinEditBridgeTest {
         assertEquals("stale",service.execute(WebEditCommand.OpenEvent(
             request(),card.eventSeq,rec.revision+10)).getString("status"))
     }
+
+    @Test fun checkpointedWebFormalEditResumesAfterAbandonedOwnerAndSqliteReopen() = runBlocking {
+        val databaseName = store.databaseName
+        val card = store.newDraft(DraftForm(
+            kind = TemporalKind.MEMO,
+            title = "Formal baseline",
+            notes = "original notes"
+        ))
+        assertTrue(store.commit(card.draftId) is PowerStore.CommitOutcome.Committed)
+        val formal = requireNotNull(store.get(card.eventSeq))
+        fun counts() = listOf(
+            store.draftCount().toLong(), store.pendingCount().toLong(), store.identityCount(),
+            store.nextSequencePreview(), store.nextQueueOrderPreview(), store.commitCount()
+        )
+        val before = counts()
+
+        assertEquals("opened", service.execute(WebEditCommand.OpenEvent(
+            request(), formal.eventSeq, formal.revision
+        )).getString("status"))
+        val sessionId = service.snapshot().getJSONObject("editor").getString("sessionId")
+        assertEquals("edited", service.execute(WebEditCommand.PatchEvent(
+            request(), sessionId, "title", "Recovered skin edit"
+        )).getString("status"))
+        assertEquals("edited", service.execute(WebEditCommand.PatchEvent(
+            request(), sessionId, "notes", "checkpoint survives owner restart"
+        )).getString("status"))
+        assertTrue(service.checkpoint())
+
+        val checkpoint = store.pendingDraftsFor(formal.eventSeq).single()
+        assertEquals(DraftOperation.REPLACE, checkpoint.operation)
+        assertEquals("Recovered skin edit", checkpoint.form.title)
+        assertEquals(formal.revision, requireNotNull(store.get(formal.eventSeq)).revision)
+        assertEquals(before.last(), store.commitCount())
+        val checkpointCounts = counts()
+        assertEquals(before[0] + 1L, checkpointCounts[0])
+        assertEquals(before[1] + 1, checkpointCounts[1])
+        assertEquals(before[2], checkpointCounts[2])
+        assertEquals(before[3], checkpointCounts[3])
+        assertEquals(before[4] + 1L, checkpointCounts[4])
+        assertEquals(before[5], checkpointCounts[5])
+
+        // Model a process-owned lease left by a dead owner; preserve its durable edit checkpoint.
+        store.writableDatabase.execSQL(
+            "UPDATE human_editor SET owner_token=?, touched_ms=? WHERE id=1",
+            arrayOf<Any>("terminated-process", System.currentTimeMillis() - 120_000L)
+        )
+        store.close()
+        store = PowerStore(context, databaseName)
+        assertTrue(store.recoverAbandonedHumanEdit(60_000L))
+        service = WebSkinEditService(store, DeckController(StoreDeckPersistence(store)))
+
+        val afterRestart = requireNotNull(store.get(formal.eventSeq))
+        assertEquals(formal.revision, afterRestart.revision)
+        assertEquals(formal.title, afterRestart.title)
+        assertEquals(formal.notes, afterRestart.notes)
+        assertEquals("opened", service.execute(WebEditCommand.OpenEvent(
+            request(), afterRestart.eventSeq, afterRestart.revision
+        )).getString("status"))
+
+        val editor = service.snapshot().getJSONObject("editor")
+        val webForm = editor.getJSONObject("form")
+        assertEquals("Recovered skin edit", webForm.getString("title"))
+        assertEquals("checkpoint survives owner restart", webForm.getString("notes"))
+        assertTrue(editor.getBoolean("dirty"))
+        assertEquals(checkpoint.draftId,
+            store.pendingDraftsFor(formal.eventSeq).single().draftId)
+        assertEquals(checkpointCounts, counts())
+
+        val resumedSessionId = editor.getString("sessionId")
+        assertEquals("closed", service.execute(WebEditCommand.CloseEvent(
+            request(), resumedSessionId
+        )).getString("status"))
+        assertEquals(checkpointCounts, counts())
+        val nativeResume = dev.powerfulcalendar.core.EditSession.open(
+            store, requireNotNull(store.get(formal.eventSeq))
+        )
+        assertEquals(nativeResume.form.title, webForm.getString("title"))
+        assertEquals(nativeResume.form.notes, webForm.getString("notes"))
+        nativeResume.close()
+    }
 }

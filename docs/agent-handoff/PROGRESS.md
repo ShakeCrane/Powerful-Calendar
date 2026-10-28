@@ -1,5 +1,11 @@
 # Core freeze progress
 
+## Separation — Web 正式编辑检查点重开恢复回归（2026-10-28）
+
+- 既有 Web 编辑检查点测试没有覆盖数据库重开、过期进程所有者恢复和新服务恢复表单。新增 `checkpointedWebFormalEditResumesAfterAbandonedOwnerAndSqliteReopen`：在 SQLite/租约模拟后重新打开服务，修改表单继续可见且 dirty，正式事件版本/内容、提交记录和身份不变，只有一张 `REPLACE` 草稿，关闭和原生 `EditSession` 恢复不重复分配。
+- `WebSkinEditBridgeTest` **27/27 PASS**；完整离线门禁 **636/636 JVM、88 suites、0 failures/errors/skips、59 tasks**；源码边界、Debug APK、Lint 通过（0 errors / 52 warnings）。最终日志 SHA-256 `DDCF6D9E42ED4AB50AFBAA5EE87FDD855B0AE27B8DED751832EF533EB029A92B`；JUnit ZIP `08A65A0A24796A1CA07AEFFB2CF3CB168395952FCF85E4CC42FEBEB7A616691C`；APK SHA-256 `8974331FDF045FD88C41944CCE2869D414D4FC8EAE24F69486E417F3DFF3283A`。详见 `docs/issues/PC-ISSUE-SEPARATION-FORMAL-EDIT-REOPEN-RECOVERY.md`。
+- 这是 SQLite 和过期租约测试模拟，不是真实 Android 进程死亡。设备/Activity/WebView 重启和完整 Native/Skin 等价回放仍未测试；SEP-05、SEP-14 和整体分离仍为 **NOT TESTED**。
+
 ## Separation — corrupted selected skin startup fallback coverage (2026-10-28)
 
 - Added an isolated random-ID package test that corrupts a selected `.pcskin` before invoking the production `restoreSelection()` method. It verifies that the persisted selection and active registry return to the native skin, while the corrupt package file remains available and is excluded from the valid skin catalogue. No production code changed because the existing fallback behavior passed the new regression.
