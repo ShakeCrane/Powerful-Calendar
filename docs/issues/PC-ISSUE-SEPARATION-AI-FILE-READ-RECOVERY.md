@@ -76,4 +76,4 @@ $env:ANDROID_SDK_ROOT='E:\android-sdk'
 - 未验证真实 AI Provider、OCR 识别成功/失败、文件权限撤销、进程死亡恢复和 Native/Skin 对照回放。
 - SEP-09 的聊天/附件/上下文/错误全量功能等价尚未闭环，仍为 **NOT TESTED**；S3 与总体分离任务继续进行。
 
-实现与回归提交 SHA 在提交并推送后补入本报告及进度记录。
+测试与报告提交 `512bfe5b4623dd638eddbd53e6d79caf5172b44e`（`test(分离): 验证 AI 附件读取失败恢复`）已推送至 `origin/codex/separation-skin-settings`。
