@@ -553,6 +553,11 @@ class WebAiProposalReviewIntegrationTest {
                     indices = listOf(0)
                 ))
             }
+            ui.waitUntil(10_000) {
+                shadowOf(Looper.getMainLooper()).idle()
+                ui.onAllNodesWithText("确认 AI 批量正式操作")
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
             ui.onNodeWithText("确认 AI 批量正式操作").assertExists()
             assertEquals("proposal remains unchanged before a concurrent edit", before, counts())
 

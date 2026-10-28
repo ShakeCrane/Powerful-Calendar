@@ -259,6 +259,13 @@ internal data class WebFormalWriteReview(
     val deckVersion: Long? = null
 )
 
+/** Read-only Host projection used when a broken skin cannot safely checkpoint its live editor. */
+internal data class WebSkinEditRecoverySnapshot(
+    val description: String,
+    val form: DraftForm?,
+    val error: String?
+)
+
 /** A skin may ask for these reviews, but only the trusted Host can resolve them. */
 internal sealed interface WebDeckResolutionReview {
     val token: String
@@ -362,6 +369,38 @@ internal class WebSkinEditService(
                 .put("error",current?.lastError))
             .put("deck",deckState())
             .put("lastResult",latest)
+    }
+
+    /**
+     * A skin failure must not strand a live editor behind the native fallback. This projection
+     * contains only display data; persistence remains behind [prepareSkinChange].
+     */
+    fun recoverySnapshot(): WebSkinEditRecoverySnapshot? {
+        session?.let { active ->
+            return WebSkinEditRecoverySnapshot(
+                description = "正式事件 ${active.eventSeq} 的修改",
+                form = active.form,
+                error = active.lastError
+            )
+        }
+        newEventSession?.let { active ->
+            return WebSkinEditRecoverySnapshot(
+                description = "新建 ${active.form.kind.label}",
+                form = active.form,
+                error = active.lastError
+            )
+        }
+        if (deckOpen) {
+            val current = deck.state
+            val form = current.form ?: return null
+            return WebSkinEditRecoverySnapshot(
+                description = current.current?.let { "待处理草稿 ${it.draftId}" }
+                    ?: "待处理草稿",
+                form = form,
+                error = current.error
+            )
+        }
+        return null
     }
 
     suspend fun execute(

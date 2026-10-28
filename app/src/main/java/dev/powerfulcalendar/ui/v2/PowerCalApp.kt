@@ -205,6 +205,8 @@ private fun PowerCalAppContent(
     var aiSession by remember { mutableStateOf<PowerStore.AiSession?>(null) }
     var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var message by remember { mutableStateOf<String?>(null) }
+    var webFailureRecovery by remember { mutableStateOf<WebSkinEditRecoverySnapshot?>(null) }
+    var webFailureRecoveryBusy by remember { mutableStateOf(false) }
 
     // The Activity has persisted the native selection independently of the Web layer.
     LaunchedEffect(nativeRecoverySignal) {
@@ -1493,6 +1495,12 @@ private fun PowerCalAppContent(
         onWebSkinFailure = {
             scope.launch {
                 val safe = webEditing.prepareSkinChange()
+                webFailureRecovery = if (safe) null else webEditing.recoverySnapshot()
+                    ?: WebSkinEditRecoverySnapshot(
+                        description = "Host 编辑会话",
+                        form = null,
+                        error = "安全检查点未完成；编辑服务仍保持活动状态"
+                    )
                 runCatching { skins.select("powercal-default") }
                 selectedSkin = skins.currentId()
                 skinSettingsOpen = false
@@ -1801,6 +1809,44 @@ private fun PowerCalAppContent(
                 Modifier.align(Alignment.BottomCenter)
                     .padding(horizontal = 16.dp)
                     .padding(bottom = 92.dp)
+            )
+        }
+    }
+
+    webFailureRecovery?.let { recovery ->
+        if (webEditing.pendingWriteReview == null &&
+            webEditing.pendingDeckResolutionReview == null
+        ) {
+            WebSkinFailureRecoveryDialog(
+                recovery = recovery,
+                busy = webFailureRecoveryBusy,
+                onRetry = {
+                    if (!webFailureRecoveryBusy) {
+                        webFailureRecoveryBusy = true
+                        scope.launch {
+                            try {
+                                if (webEditing.prepareSkinChange()) {
+                                    webFailureRecovery = null
+                                    message = if (runCatching { reload() }.isSuccess) {
+                                        "编辑已安全暂存；可在待处理中继续编辑。"
+                                    } else {
+                                        "编辑已安全暂存，但界面刷新失败；请重新打开待处理列表。"
+                                    }
+                                } else {
+                                    webFailureRecovery = webEditing.recoverySnapshot() ?: recovery
+                                    message = "检查点仍未成功；编辑内容继续保留，请修复存储问题后重试。"
+                                }
+                            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                                throw cancelled
+                            } catch (error: Exception) {
+                                webFailureRecovery = webEditing.recoverySnapshot() ?: recovery
+                                message = "暂存重试失败：${error.message ?: error.javaClass.simpleName}"
+                            } finally {
+                                webFailureRecoveryBusy = false
+                            }
+                        }
+                    }
+                }
             )
         }
     }
