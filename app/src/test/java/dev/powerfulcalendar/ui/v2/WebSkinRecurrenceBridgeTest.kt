@@ -7,6 +7,7 @@ import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.EditSession
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.Recurrence
+import dev.powerfulcalendar.core.RecurrenceEngine
 import dev.powerfulcalendar.core.RecurrenceFreq
 import dev.powerfulcalendar.core.RecurrenceEditScope
 import dev.powerfulcalendar.core.StoreDeckPersistence
@@ -58,6 +59,27 @@ class WebSkinRecurrenceBridgeTest {
         assertTrue(target.commit(card.draftId) is PowerStore.CommitOutcome.Committed)
         return card.eventSeq
     }
+
+    private fun dailyForm(kind: TemporalKind): DraftForm {
+        val date = LocalDate.of(2026, 10, 20)
+        val zoneId = "Asia/Shanghai"
+        val recurrence = Recurrence(freq = RecurrenceFreq.DAILY, count = 4)
+        return when (kind) {
+            TemporalKind.ALARM -> DraftForm(kind, "跨类型重复", "$date 07:30",
+                zoneId = zoneId, reminderMinutes = -1, recurrence = recurrence)
+            TemporalKind.ACTIVITY -> DraftForm(kind, "跨类型重复", "$date 07:30", "$date 08:30",
+                zoneId = zoneId, reminderMinutes = -1, recurrence = recurrence)
+            TemporalKind.DEADLINE -> DraftForm(kind, "跨类型重复", endText = date.toString(),
+                zoneId = zoneId, recurrence = recurrence)
+            TemporalKind.MEMO -> DraftForm(kind, "跨类型重复", startText = date.toString(),
+                zoneId = zoneId, recurrence = recurrence)
+        }
+    }
+
+    private fun occurrenceKey(kind: TemporalKind): String =
+        if (kind == TemporalKind.DEADLINE || kind == TemporalKind.MEMO)
+            "2026-10-22T00:00"
+        else "2026-10-22T07:30"
 
     @Test fun memoOccurrenceKeyOpensTheProjectedMemoSlotWithoutWriting() = runBlocking {
         val card = store.newDraft(DraftForm(kind = TemporalKind.MEMO, title = "每日备忘",
@@ -360,23 +382,29 @@ class WebSkinRecurrenceBridgeTest {
     }
 
     @Test fun nativeAndWebEditingProduceTheSameRecordsForEachScope() = runBlocking {
-        for (scope in RecurrenceEditScope.entries) {
+        for (kind in TemporalKind.entries) for (scope in RecurrenceEditScope.entries) {
             val native = PowerStore(context, "native-pair-${id()}.db")
             val web = PowerStore(context, "web-pair-${id()}.db")
             val nativeDb = native.databaseName
             val webDb = web.databaseName
             try {
-                val nativeSeq = daily(native)
-                val webSeq = daily(web)
-                val key = "2026-10-22T07:30"
+                val nativeDraft = native.newDraft(dailyForm(kind))
+                val webDraft = web.newDraft(dailyForm(kind))
+                assertTrue(native.commit(nativeDraft.draftId) is PowerStore.CommitOutcome.Committed)
+                assertTrue(web.commit(webDraft.draftId) is PowerStore.CommitOutcome.Committed)
+                val nativeSeq = nativeDraft.eventSeq
+                val webSeq = webDraft.eventSeq
+                val key = occurrenceKey(kind)
                 val original = requireNotNull(native.get(nativeSeq))
                 val edit = EditSession.open(native, original, key)
                 try {
                     edit.selectRecurrenceScope(scope)
                     edit.edit(edit.form.copy(title = "同一修改"))
                     if (scope == RecurrenceEditScope.THIS_AND_FUTURE)
-                        assertTrue(edit.saveThisAndFuture() is PowerStore.RecurrenceSplitOutcome.Applied)
-                    else assertTrue(edit.save() is PowerStore.DirectEditOutcome.Saved)
+                        assertTrue("kind=$kind scope=$scope",
+                            edit.saveThisAndFuture() is PowerStore.RecurrenceSplitOutcome.Applied)
+                    else assertTrue("kind=$kind scope=$scope",
+                        edit.save() is PowerStore.DirectEditOutcome.Saved)
                 } finally { edit.close() }
 
                 val bridge = WebSkinEditService(web, DeckController(StoreDeckPersistence(web)))
@@ -388,7 +416,7 @@ class WebSkinRecurrenceBridgeTest {
                     "scope" to scope.name)).getString("status"))
                 assertEquals("edited", bridge.execute(command("editor.patch", "sessionId" to session,
                     "field" to "title", "value" to "同一修改")).getString("status"))
-                val save=command("editor.save", "sessionId" to session)
+                val save = command("editor.save", "sessionId" to session)
                 assertEquals("confirmation_required", bridge.execute(save).getString("status"))
                 assertEquals("saved", bridge.resolveFormalWriteReview(
                     requireNotNull(bridge.pendingWriteReview).token, true).getString("status"))
@@ -401,7 +429,7 @@ class WebSkinRecurrenceBridgeTest {
                     .map { it.copy(createdAtMillis = 0, updatedAtMillis = 0) }
                 val right = web.all().sortedBy { it.eventSeq }
                     .map { it.copy(createdAtMillis = 0, updatedAtMillis = 0) }
-                assertEquals("scope=$scope", left, right)
+                assertEquals("kind=$kind scope=$scope", left, right)
                 assertEquals(native.identityCount(), web.identityCount())
                 assertEquals(native.draftCount(), web.draftCount())
                 assertEquals(native.commitCount(), web.commitCount())
@@ -409,6 +437,97 @@ class WebSkinRecurrenceBridgeTest {
             } finally {
                 native.close(); web.close()
                 context.deleteDatabase(nativeDb); context.deleteDatabase(webDb)
+            }
+        }
+    }
+
+    @Test fun everyRecurrenceScopeCheckpointResumesAcrossAllKinds() = runBlocking {
+        for (kind in TemporalKind.entries) for (scope in RecurrenceEditScope.entries) {
+            val database = "r-${kind.name}-${scope.name}.db"
+            context.getDatabasePath(database).parentFile?.let { directory ->
+                check(directory.mkdirs() || directory.isDirectory)
+            }
+            var target = PowerStore(context, database)
+            try {
+                val draft = target.newDraft(dailyForm(kind))
+                assertTrue(target.commit(draft.draftId) is PowerStore.CommitOutcome.Committed)
+                val original = requireNotNull(target.get(draft.eventSeq))
+                val key = occurrenceKey(kind)
+                var bridge = WebSkinEditService(target, DeckController(StoreDeckPersistence(target)))
+                assertEquals("opened", bridge.execute(command("editor.open", "eventSeq" to draft.eventSeq,
+                    "expectedRevision" to original.revision, "occurrenceKey" to key)).getString("status"))
+                var editor = bridge.snapshot().getJSONObject("editor")
+                val session = editor.getString("sessionId")
+                assertEquals("selected", bridge.execute(command("editor.scope", "sessionId" to session,
+                    "scope" to scope.name)).getString("status"))
+                assertEquals("edited", bridge.execute(command("editor.patch", "sessionId" to session,
+                    "field" to "title", "value" to "恢复-${kind.name}")).getString("status"))
+                assertEquals("closed", bridge.execute(command("editor.close", "sessionId" to session))
+                    .getString("status"))
+                val checkpoint = target.pendingDraftsFor(draft.eventSeq).single()
+                assertEquals(scope, checkpoint.form.recurrenceEditScope)
+                assertEquals(if (scope == RecurrenceEditScope.WHOLE_SERIES) null else key,
+                    checkpoint.form.editOccurrenceKey)
+                assertEquals(original, target.get(draft.eventSeq))
+
+                target.close()
+                target = PowerStore(context, database)
+                bridge = WebSkinEditService(target, DeckController(StoreDeckPersistence(target)))
+                assertEquals("opened", bridge.execute(command("editor.open", "eventSeq" to draft.eventSeq,
+                    "expectedRevision" to original.revision)).getString("status"))
+                editor = bridge.snapshot().getJSONObject("editor")
+                assertEquals(scope.name, editor.getString("recurrenceScope"))
+                assertTrue(editor.getBoolean("dirty"))
+                assertEquals("恢复-${kind.name}", editor.getJSONObject("form").getString("title"))
+                val resumedSession = editor.getString("sessionId")
+                val save = command("editor.save", "sessionId" to resumedSession)
+                assertEquals("confirmation_required", bridge.execute(save).getString("status"))
+                val review = requireNotNull(bridge.pendingWriteReview)
+                assertEquals(scope, review.scope)
+                assertEquals(if (scope == RecurrenceEditScope.WHOLE_SERIES) null else key,
+                    review.occurrenceKey)
+                assertEquals("saved", bridge.resolveFormalWriteReview(review.token, approved = true)
+                    .getString("status"))
+                assertEquals("saved", bridge.execute(save).getString("status"))
+
+                val records = target.all().associateBy { it.eventSeq }
+                assertTrue(target.pendingDraftsFor(draft.eventSeq).isEmpty())
+                assertEquals(if (scope == RecurrenceEditScope.THIS_AND_FUTURE) 2 else 1,
+                    records.size)
+                assertEquals(if (scope == RecurrenceEditScope.THIS_AND_FUTURE) 2L else 1L,
+                    target.identityCount())
+                when (scope) {
+                    RecurrenceEditScope.SINGLE_OCCURRENCE -> {
+                        val saved = requireNotNull(records[original.eventSeq])
+                        assertEquals(original.revision + 1, saved.revision)
+                        assertEquals(original.title, saved.title)
+                        assertEquals("恢复-${kind.name}", saved.recurrence.overrides[key]?.title)
+                    }
+                    RecurrenceEditScope.WHOLE_SERIES -> {
+                        val saved = requireNotNull(records[original.eventSeq])
+                        assertEquals(original.revision + 1, saved.revision)
+                        assertEquals("恢复-${kind.name}", saved.title)
+                        assertEquals(original.startMillis, saved.startMillis)
+                        assertEquals(original.deadlineDate, saved.deadlineDate)
+                        assertEquals(original.memoStartDate, saved.memoStartDate)
+                        assertEquals(original.recurrence, saved.recurrence)
+                    }
+                    RecurrenceEditScope.THIS_AND_FUTURE -> {
+                        val oldSeries = requireNotNull(records[original.eventSeq])
+                        val newSeries = records.values.single { it.eventSeq != original.eventSeq }
+                        assertEquals(original.revision + 1, oldSeries.revision)
+                        assertEquals(original.title, oldSeries.title)
+                        assertEquals(2, newSeries.recurrence.count)
+                        assertEquals("恢复-${kind.name}", newSeries.title)
+                        assertEquals(key, RecurrenceEngine.keyFor(
+                            java.time.Instant.ofEpochMilli(requireNotNull(newSeries.anchorMillis()))
+                                .atZone(newSeries.zone).toLocalDateTime()
+                        ))
+                    }
+                }
+            } finally {
+                target.close()
+                context.deleteDatabase(database)
             }
         }
     }
