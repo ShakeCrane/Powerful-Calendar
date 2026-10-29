@@ -438,6 +438,7 @@ internal class WebSkinEditService(
                 .put("version", active.version).put("dirty", active.meaningfulDiff)
                 .put("busy", false).put("aiLocked", false)
                 .put("error", active.lastError)
+                .put("notice", JSONObject.NULL).put("completion", JSONObject.NULL)
                 .put("form", WebEditWire.form(active.form))
                 .put("hasConflict", false).put("hasRestore", false)
                 .put("conflict", JSONObject.NULL).put("restore", JSONObject.NULL)
@@ -505,6 +506,10 @@ internal class WebSkinEditService(
                     ?: JSONObject.NULL)
                 .put("proposed", state.form?.let(WebEditWire::form) ?: JSONObject.NULL)
         } ?: JSONObject.NULL
+        val completion = state.completion?.let { value ->
+            JSONObject().put("published", value.published)
+                .put("discarded", value.discarded).put("conflicts", value.conflicts)
+        } ?: JSONObject.NULL
         return JSONObject().put("open",deckOpen)
             .put("transient",false)
             .put("lastDiscardId",state.lastDiscardId)
@@ -518,7 +523,8 @@ internal class WebSkinEditService(
             .put("currentId",state.currentId)
             .put("version",state.version).put("dirty",state.dirty)
             .put("busy",state.busy).put("aiLocked",state.aiLocked)
-            .put("error",state.error)
+            .put("error",state.error).put("notice",state.notice)
+            .put("completion",completion)
             .put("form",state.form?.let(WebEditWire::form))
             .put("hasConflict",state.conflict!=null)
             .put("hasRestore",state.restore!=null)

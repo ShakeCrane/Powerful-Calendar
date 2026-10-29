@@ -35,7 +35,9 @@ function perform(name,args={}){
   });
 }
 function showReply(reply){
-    const labels={saved:"事件已保存",committed:"草稿已发布",discarded:"已丢弃，可以撤销",
+    const labels={saved:"事件已保存",committed:"草稿已发布",
+      committed_preview_only:"预览模拟发布流程已完成；真实日历数据未更改",
+      discarded:"已丢弃，可以撤销",
       discarded_changes:"已放弃本次修改",selected:"已选择",
       confirmation_required:"请在宿主确认此操作",cancelled:"已取消宿主操作，内容仍保留",
       restored:"已恢复",replaced:"已按审阅快照覆盖",kept:"已保留草稿，正式事件未变化",
@@ -139,6 +141,7 @@ function render(){
     retired:(deck.retiredResults||[]).map(item=>[item.eventSeq,item.revision,item.title]),
     retiredOffset:deck.retiredOffset,retiredTotal:deck.retiredTotal,
     retiredLoaded:deck.retiredLoaded,
+    completion:deck.completion,lastDiscardId:deck.lastDiscardId,
     position:deck.position,count:deck.cardCount,previous:deck.canGoPrevious,next:deck.canGoNext,
     truncated:deck.truncated,transient:deck.transient===true
   }:null;
@@ -156,7 +159,9 @@ function render(){
   const deckCount=Number.isFinite(Number(deck.cardCount))?Number(deck.cardCount):(deck.cards||[]).length;
   $("sheetSubtitle").textContent=mode==="event"?
     "#"+(editor.eventSeq||"?")+" · "+(form?.kind||""):
-    String(deckCount)+" 张 · "+(deck.dirty?"尚未暂存":"已暂存");
+    deck.completion?"本次完成 · 发布 "+Number(deck.completion.published||0)+
+      " · 丢弃 "+Number(deck.completion.discarded||0):
+      String(deckCount)+" 张 · "+(deck.dirty?"尚未暂存":"已暂存");
   $("sheetSave").textContent=mode==="event"?"保存":"发布";
   const requiresScope=mode==="event"&&editor.requiresRecurrenceScope===true;
   const scope=editor.recurrenceScope||"";
@@ -242,7 +247,18 @@ function render(){
       else if(deck.truncated)fields.append(el("p","草稿列表仅显示前 80 张；使用搜索查找其他草稿。","sheet-note"));
     }
     if(form&&!deck.conflict&&!deck.restore)renderForm(form);
-    else if(!transient&&!deck.cards?.length&&!(deck.formalMatches||[]).length)
+    else if(!transient&&deck.currentId==null&&!deck.conflict&&!deck.restore){
+      const completion=deck.completion;
+      const status=el("section",null,"deck-review-snapshot deck-completion");
+      status.setAttribute("aria-label",completion?"本次草稿处理结果":"草稿卡组状态");
+      status.append(el("h3",completion?"本次处理已完成":"当前没有待处理草稿","sheet-label"));
+      if(completion){
+        status.append(el("p","已发布 "+Number(completion.published||0)+
+          " 张 · 已丢弃 "+Number(completion.discarded||0)+
+          " 张 · 冲突 "+Number(completion.conflicts||0)+" 张","sheet-note"));
+      }else status.append(el("p","你可以关闭卡组；待处理草稿会在下次打开时重新载入。","sheet-note"));
+      fields.append(status);
+    }else if(!transient&&!deck.cards?.length&&!(deck.formalMatches||[]).length)
       fields.append(el("p","当前没有可编辑的待处理草稿。","sheet-note"));
 
     if(deck.retiredLoaded===true&&!deck.conflict&&!deck.restore){
@@ -324,8 +340,10 @@ function render(){
       paging.append(previous,count,nextButton);actions.append(paging);
     }
     if(!deck.conflict&&!deck.restore){
-      actions.append(button("暂存","flush","sheet-secondary"));
-      actions.append(button("丢弃草稿","discard","sheet-danger"));
+      if(deck.currentId!=null){
+        actions.append(button("暂存","flush","sheet-secondary"));
+        actions.append(button("丢弃草稿","discard","sheet-danger"));
+      }
       if(deck.lastDiscardId!=null)actions.append(button("撤销丢弃","undo","sheet-secondary"));
       actions.append(button("完成并退出","close","sheet-secondary"));
     }else actions.append(button("关闭","close","sheet-secondary"));

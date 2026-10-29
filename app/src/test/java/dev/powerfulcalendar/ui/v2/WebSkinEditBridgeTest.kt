@@ -1143,4 +1143,87 @@ class WebSkinEditBridgeTest {
         assertEquals("stale",service.execute(WebEditCommand.OpenEvent(
             request(),card.eventSeq,rec.revision+10)).getString("status"))
     }
+
+    @Test fun clearDeckCheckpointRecoversThroughFreshBridgeAfterStoreReopen() = runBlocking {
+        val card = store.newDraft(DraftForm(kind = TemporalKind.MEMO, title = "before checkpoint"))
+        assertEquals("opened", service.execute(WebEditCommand.OpenDeck(request(), card.draftId))
+            .getString("status"))
+        val version = service.snapshot().getJSONObject("deck").getLong("version")
+        assertEquals("edited", service.execute(WebEditCommand.PatchDeck(
+            request(), card.draftId, version, "title", "checkpoint survives bridge recreation"
+        )).getString("status"))
+        assertTrue(service.checkpoint())
+        val database = store.databaseName
+        assertEquals("checkpoint survives bridge recreation", store.draft(card.draftId)!!.form.title)
+        assertEquals(0, store.all().size)
+        assertEquals(0, store.commitCount())
+
+        store.close()
+        store = PowerStore(context, database)
+        controller = DeckController(StoreDeckPersistence(store))
+        service = WebSkinEditService(store, controller)
+
+        assertEquals("opened", service.execute(WebEditCommand.OpenDeck(request(), card.draftId))
+            .getString("status"))
+        val recovered = service.snapshot().getJSONObject("deck")
+        assertEquals(card.draftId, recovered.getLong("currentId"))
+        assertEquals("checkpoint survives bridge recreation",
+            recovered.getJSONObject("form").getString("title"))
+        assertEquals(1L, recovered.getLong("version"))
+        assertEquals(1, recovered.getInt("cardCount"))
+        assertEquals(1, store.pendingCount())
+        assertEquals(0, store.commitCount())
+        assertTrue(store.all().isEmpty())
+    }
+
+    @Test fun clearDeckProjectsCompletionAndKeepsUndoSessionScoped() = runBlocking {
+        var now = 1_000L
+        controller = DeckController(StoreDeckPersistence(store), clock = { now })
+        service = WebSkinEditService(store, controller)
+        val card = store.newDraft(DraftForm(kind = TemporalKind.MEMO, title = "only pending draft"))
+        assertEquals("opened", service.execute(WebEditCommand.OpenDeck(request(), card.draftId))
+            .getString("status"))
+        val version = service.snapshot().getJSONObject("deck").getLong("version")
+        assertEquals("discarded", service.execute(WebEditCommand.DiscardDeck(
+            request(), card.draftId, version
+        )).getString("status"))
+
+        val discarded = service.snapshot().getJSONObject("deck")
+        assertEquals(0, discarded.getInt("cardCount"))
+        assertTrue(discarded.isNull("currentId"))
+        assertEquals(card.draftId, discarded.getLong("lastDiscardId"))
+        assertEquals(1, discarded.getJSONObject("completion").getInt("discarded"))
+        assertEquals(DraftStatus.DISCARDED, store.draft(card.draftId)!!.status)
+
+        assertEquals("restored", service.execute(WebEditCommand.UndoDeck(request()))
+            .getString("status"))
+        val restored = service.snapshot().getJSONObject("deck")
+        assertEquals(card.draftId, restored.getLong("currentId"))
+        assertEquals(1, restored.getInt("cardCount"))
+        assertEquals("only pending draft", restored.getJSONObject("form").getString("title"))
+        assertTrue(restored.isNull("completion"))
+        assertTrue(restored.isNull("lastDiscardId"))
+        assertEquals(DraftStatus.PENDING, store.draft(card.draftId)!!.status)
+        assertEquals(0, store.commitCount())
+        assertTrue(store.all().isEmpty())
+
+        now += 601L // advance the controller's deterministic duplicate-action guard
+        val restoredVersion = restored.getLong("version")
+        assertEquals("discarded", service.execute(WebEditCommand.DiscardDeck(
+            request(), card.draftId, restoredVersion
+        )).getString("status"))
+        assertEquals("closed", service.execute(WebEditCommand.CloseDeck(request()))
+            .getString("status"))
+        assertEquals("opened", service.execute(WebEditCommand.OpenDeck(request(), card.draftId))
+            .getString("status"))
+        val reopened = service.snapshot().getJSONObject("deck")
+        assertTrue(reopened.isNull("lastDiscardId"))
+        assertTrue(reopened.isNull("completion"))
+        assertTrue(reopened.isNull("currentId"))
+        assertNotEquals("restored", service.execute(WebEditCommand.UndoDeck(request()))
+            .getString("status"))
+        assertEquals(DraftStatus.DISCARDED, store.draft(card.draftId)!!.status)
+        assertEquals(0, store.commitCount())
+        assertTrue(store.all().isEmpty())
+    }
 }
