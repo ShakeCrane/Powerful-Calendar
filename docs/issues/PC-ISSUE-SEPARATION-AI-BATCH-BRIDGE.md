@@ -64,3 +64,7 @@
 
 - 实现提交：`9c67da744feb542dde8d5b2ed42541a20a1a7319` — `修复：收紧 AI 批次取消与恢复边界`。
 - 本 Issue、进度和 Parity 更新采用独立文档提交。
+
+## 后续状态（2026-10-29）
+
+本报告撰写时，AI 历史清理与 rewind 仍是未实现的独立缺口。后续已加入 Clear/Host 历史清理与回退实现，详见 [PC-ISSUE-SEPARATION-AI-CHAT-HISTORY](PC-ISSUE-SEPARATION-AI-CHAT-HISTORY.md)。该后续切片的 Studio 证据通过，但 Kotlin/Android 与生产 WebView→Host 验收仍为 **NOT TESTED**；不能据此解除本 Issue 或父项 `S0-AI-04` 的 **PARTIAL / HOLD**。

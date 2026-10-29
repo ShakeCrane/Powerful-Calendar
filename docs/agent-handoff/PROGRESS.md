@@ -1,5 +1,14 @@
 # Core freeze progress
 
+## Separation — Clear AI 聊天历史清空与回退 `S0-AI-01` / `S0-AI-04`（2026-10-29，PARTIAL / HOLD）
+
+- 根因：Native 历史存于 `AiChatHistoryStore` 且已有清空/回退语义；Clear 只显示最近 40 条角色与文本，没有稳定消息 ID、清空/回退动作或安全 prefill 通知，因此只能改 DOM，不能修改 Host 持有的历史。
+- 修复：新增纯 Host 历史 reducer、稳定 Host 消息 ID、revision fencing 和 closed-schema `clearChat` / `rewindChat`；用户编辑重发/撤回移除所选用户消息及后续轮次，助手回退保留该回复。空历史清空及最后助手回复回退为 no-op。Host 只有真实历史变化时才更新 revision/持久化；只有“编辑并重发”会替换 composer，清空/撤回/助手回退保留未发送文本；普通状态重绘也不覆盖用户输入。历史动作不接触正式事件、草稿、提交记录或身份计数；正式/新建事件编辑与草稿卡组活跃时 Host 禁止历史修改。Clear 增加无障碍控件；Studio Mock 使用非写入、版本校验的模拟。
+- Studio Python **61/61 PASS**：`.local/android-test/reports/separation-s0-ai-chat-history-20261029/studio-python-final.log`，SHA-256 `709F9121BB845C7417686FA2A7B961454BC5067B7E9345E97AA8FE3B788ACBD6`。Microsoft Edge Studio Preview E2E **PASS**，覆盖编辑重发、无关页面 state 更新后保留手动修改文本、助手回退、移除后续轮次、清空且保留未发送 composer；Mock 未调用真实 Provider、未写日历：`studio-e2e-final.log`，SHA-256 `F2D533C305FA55DF2A2781C10213C53602C62B56095DF447286FDEB9A681047B`。JavaScript 三项 `node --check`、`git diff --check` 与 Clear 包校验 **PASS**；Clear 9 files / 391,549 bytes，SHA-256 `fecf7414c4da747d6dceb63022d0354ac809e91905d0684ed9eff201b8d892c1`。
+- `:app:verifySkinSourceBoundary --offline --rerun-tasks --no-daemon --console=plain` **PASS**；日志 `source-boundary.log` SHA-256 `7E7C0B6A7DC165079F1714CD5623885FE9367156DF4AB58E2F511111011CB2F7`。新增 Kotlin reducer、decoder 和 PowerCalApp 持久化集成测试 **NOT TESTED**：完整 Gradle 门禁在 Kotlin 编译前因仓库 SDK 缺少 `platforms/android-36` 失败；日志 `gradle-full.log` SHA-256 `9BD263341F93EF0E1F4215A835F2FB9A59A481A75A7C8FDAA2BDE9AE9C03AFD4`。本地没有已登记 AVD 或在线 ADB 设备；官方下载端点 `dl.google.com:443` 无法连接，未生成 APK、未做 Android WebView/模拟器测试。实体设备由用户执行。
+- 证据说明：首次 E2E 调用了脚本内硬编码的旧截图路径，覆盖了 `.local/android-test/reports/separation-20261027/ai-proposal-review/ai-review-studio-mock.png`；未发现副本，旧字节无法恢复。现已将脚本改为写入本轮隔离报告目录，当前截图 SHA-256 `7A1462EBAA37BDB9478C07BE08A1106318AB5179BC655CFE93AB902464D301A2`。不把当前截图冒充修复前证据。
+- 实现提交 `fd3b8ee1b988517a0735749c76786e5eab7faa55`（`修复：桥接 AI 聊天历史清理与回退`）、跟进提交 `b71af49a473e95b6c34b051a78033a0cb375ccee`（`修复：保留 AI 聊天未发送输入`）和编辑器门禁提交 `32d7628adefbab72344d8c88a632224296d75580`（`修复：阻止编辑期间改动聊天历史`）。独立报告：[PC-ISSUE-SEPARATION-AI-CHAT-HISTORY](../issues/PC-ISSUE-SEPARATION-AI-CHAT-HISTORY.md)。AI 历史 Android Host/Kotlin 路径、生产 WebView→Host 链路及完整 parity 保持 **PARTIAL / HOLD**。
+
 ## Separation — Clear AI 批量操作桥接 `S0-AI-04a`（2026-10-29，PARTIAL / HOLD）
 
 - 根因：Clear/Studio 之前缺少 AI 批量范围选择、状态回传和停止/恢复入口。复核还发现强制恢复可误解锁正常 RUNNING 批次，且释放报告会把未知计数显示成 0；待审 AI 提案与批次范围选择之间也缺少完整互斥。Native 回退聊天页启动范围选择后没有就地取消入口。

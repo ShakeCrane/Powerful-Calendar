@@ -35,6 +35,18 @@ New:
   Availability reflects the active AI page and Host edit/review locks; busy
   covers the system picker or a file/image review dialog. Neither field contains
   a URI, filename, MIME type or attachment bytes.
+- AI chat state includes `chatMessages` (the latest 40 Host-owned messages;
+  each row has a stable Host-local `messageId`, `role`, and content capped at
+  1,600 characters), `chatHistoryRevision`, and
+  `chatHistoryActionsAvailable`. Clear and rewind requests must echo the current
+  revision and Host-projected message ID. The revision advances only when the
+  history actually changes; stale requests and no-op mutations do not rewrite
+  the history. `chatPrefillText` plus `chatPrefillRevision` lets the Host request
+  an intentional composer update; skins apply the text only when that revision
+  changes so ordinary state renders preserve user typing. Only explicit
+  edit-and-resend replaces the composer; clear and retract/assistant rewind
+  preserve any unsent text. These fields expose no event or draft write
+  authority.
 - `aiBatch` is a read-only status projection with `phase` (`IDLE`,
   `SELECTING`, `AWAITING_HOST_REVIEW`, `RUNNING`, `CANCEL_REQUESTED`,
   `INTERRUPTED`, `COMPLETED`, `CANCELLED`, or `FAILED`), operation counts,
@@ -81,6 +93,12 @@ envelope and known fields only:
 ```
 ```json
 {"version":1,"type":"action","payload":{"name":"pickAiImage"}}
+```
+```json
+{"version":1,"type":"action","payload":{"name":"clearChat","historyRevision":12}}
+```
+```json
+{"version":1,"type":"action","payload":{"name":"rewindChat","messageId":"host-message-id","historyRevision":12,"editAndResend":true}}
 ```
 ```json
 {"version":1,"type":"action","payload":{"name":"loadMoreMemo"}}
@@ -180,6 +198,21 @@ envelope and known fields only:
   ICS detection/import and bounded text extraction with its existing consent
   review; the image path retains the existing image/OCR review. URI and bytes
   never enter a skin projection. These requests do not create drafts or events.
+- `clearChat` accepts exactly `name` and the current nonnegative
+  `historyRevision`. `rewindChat` accepts exactly `name`, `messageId`,
+  `historyRevision`, and boolean `editAndResend`. For a user message,
+  `editAndResend=true` removes that message and all later turns, then asks the
+  skin to prefill the original text; `false` retracts that message and later
+  turns. For an assistant message, `false` keeps the selected reply and removes
+  later turns; `true` is rejected. Missing, duplicate, stale, or otherwise
+  invalid targets do not mutate history. Clearing an already empty history and
+  rewinding the final assistant reply are no-ops. These Host actions only update
+  the app-private chat history; they do not create or alter formal events,
+  drafts, commit records, event identities, or the current unsent composer text.
+  They are unavailable while a conflicting editor, batch operation, picker, or
+  attachment review is active.
+  Studio Preview covers these flows with a non-writing Mock; it does not prove
+  production Android WebView transport.
 - Memo list state is projected from the complete, deterministically sorted
   Native `TodoProjection` result within its existing recurrence window. On the
   `memo` navigation action, the Host refreshes its current formal-record
