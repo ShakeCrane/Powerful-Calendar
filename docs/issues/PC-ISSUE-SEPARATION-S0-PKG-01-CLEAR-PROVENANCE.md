@@ -4,6 +4,7 @@
 - 状态：**PASS（仅重建验收项 S0-PKG-01 的源码、APK 资源和 Studio 模板来源链）**
 - 工作树：`codex/separation-s0-timeline-drag`
 - 被验证应用代码基线：`1d78353e0866c7bc19c6a555fb65cbc454aea1f2`
+- 实现、测试和独立报告提交：`ab33075ae51e76757a8c7d6f1148ba705d084dbd`
 
 ## 需求与审计发现
 

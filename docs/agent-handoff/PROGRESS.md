@@ -5,6 +5,7 @@
 - Closed the unverified provenance assertion: deterministic package bytes generated from `default-clear/manifest.json` plus `default-clear/source/` equal the repository APK asset; the built Debug APK's `assets/powercal-clear-default.pcskin` equals the same bytes; a real local Studio `/api/template-v3` HTTP request returns the exact unpacked Manifest and all file bytes.
 - Added `build_default_clear.py --verify --apk <debug.apk>` (read-only APK ZIP check) and regression coverage for exact full-Manifest equality, file bytes, and stale/missing embedded resources. Focused tests **4/4 PASS**; full Skin Studio Python suite **60/60 PASS**. APK asset/package SHA-256 `D0D136EEF118DC52CE767E8416EC1BD3B3134F75302BC64C3D3ED4FCA5192BF9`; built Debug APK SHA-256 `8E5940F2B73703E76CB0778E849487EB8F9D8D1CD96787BE207D27BF8EEC9986`; embedded skin hash matches exactly. Logs and the independent report contain all hashes.
 - This signs only reconstructed `S0-PKG-01` package provenance. Android `SkinPackageManager` activation/restart (`S0-PKG-05`), Studio preview versus production WebView (`S0-PKG-06`), complete import/edit/export round-trip, physical-device behavior, and overall separation remain separate and are not implied PASS. The test HTTP server needed local loopback permission; the sandbox-only initial `WinError 10013` was followed by successful elevated test runs.
+- Implementation, tests and Issue report committed as `ab33075ae51e76757a8c7d6f1148ba705d084dbd`.
 
 ## Separation — Clear timeline drag-to-move `S0-TL-04` (2026-10-29, PARTIAL)
 
