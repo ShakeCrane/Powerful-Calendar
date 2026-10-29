@@ -66,6 +66,24 @@ class WebSkinHostProjectionTest {
         assertNull(decode("""{"name":"pickAiImage","mime":"image/png"}"""))
     }
 
+    @Test fun aiBatchLifecycleActionsAreClosedAndNeverCarryAuthorizationData() {
+        fun decode(payload: String) = decodeBridgeAction(
+            """{"version":1,"type":"action","payload":$payload}""")
+
+        assertEquals(WebSkinAction.PrepareAiBatch(dev.powerfulcalendar.ai.AiBatchRunner.Mode.PUBLISH),
+            decode("""{"name":"prepareAiBatch","mode":"publish"}"""))
+        assertEquals(WebSkinAction.PrepareAiBatch(dev.powerfulcalendar.ai.AiBatchRunner.Mode.DISCARD),
+            decode("""{"name":"prepareAiBatch","mode":"discard"}"""))
+        assertEquals(WebSkinAction.CancelAiBatch,
+            decode("""{"name":"cancelAiBatch"}"""))
+        assertEquals(WebSkinAction.ReleaseStuckAiBatch,
+            decode("""{"name":"releaseStuckAiBatch"}"""))
+        assertNull(decode("""{"name":"prepareAiBatch","mode":"publish","authorized":true}"""))
+        assertNull(decode("""{"name":"prepareAiBatch","mode":"resume"}"""))
+        assertNull(decode("""{"name":"cancelAiBatch","sessionId":"attacker-controlled"}"""))
+        assertNull(decode("""{"name":"releaseStuckAiBatch","sessionId":"private"}"""))
+    }
+
     @Test fun exposesTrueIntervalsOwnerRevisionAndNoPrivilegedContent() {
         val payload = project(listOf(activity(7)))
         val row = payload.getJSONArray("items").getJSONObject(0)

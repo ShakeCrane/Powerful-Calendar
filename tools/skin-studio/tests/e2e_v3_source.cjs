@@ -368,6 +368,32 @@ async function main(){
         await new Promise(r=>setTimeout(r,100));
       }
       if(!document.querySelector('#previewState').textContent.includes('连接成功'))throw Error('preview not connected');
+      // Edit the actual AI screen source in Studio, preview it, then export and re-import
+      // the same complete Clear package before exercising its batch controls below.
+      document.querySelector('#advancedMode').click();
+      const sourceEditor=document.querySelector('#jsCode');
+      const aiSourceMarker='// studio-ai-batch-roundtrip-probe';
+      if(sourceEditor.value.includes(aiSourceMarker))throw Error('AI source roundtrip marker already exists');
+      sourceEditor.value+='\\n'+aiSourceMarker+'\\n';
+      sourceEditor.dispatchEvent(new Event('input',{bubbles:true}));
+      const editedSource=payload();
+      const built=await fetch('/api/export-v3',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(editedSource)});
+      if(!built.ok)throw Error('Studio could not build edited AI source package: '+built.status);
+      const archive=await built.arrayBuffer();
+      const reimport=await fetch('/api/import-v3',{method:'POST',
+        headers:{'Content-Type':'application/octet-stream'},body:archive});
+      if(!reimport.ok)throw Error('Studio could not re-import edited AI source package: '+reimport.status);
+      const reimported=await reimport.json();
+      const decodedAiSource=new TextDecoder().decode(Uint8Array.from(atob(reimported.files['web/app.js']),c=>c.charCodeAt(0)));
+      if(!decodedAiSource.includes(aiSourceMarker))throw Error('AI source edit did not survive package re-import');
+      await loadPackage(reimported);
+      for(let i=0;i<150;i++){
+        if(document.querySelector('#previewState').textContent.includes('连接成功'))break;
+        await new Promise(r=>setTimeout(r,100));
+      }
+      if(!document.querySelector('#previewState').textContent.includes('连接成功'))
+        throw Error('re-imported AI source package did not preview');
       const scenario=document.querySelector('#scenario');scenario.value='repeating';
       scenario.dispatchEvent(new Event('change',{bubbles:true}));
       document.querySelector('#interactMode').click();
@@ -671,6 +697,9 @@ async function main(){
       awaitPromise:true,returnByValue:true,expression:`(async()=>{
         for(let i=0;i<150;i++){if(document.querySelectorAll('.ai-proposal-item').length===4)break;await new Promise(r=>setTimeout(r,100))}
         const group=document.querySelectorAll('.ai-proposal-group')[0];
+        if(!document.querySelector('[data-ai-batch="publish"]').disabled||
+          !document.querySelector('[data-ai-batch="discard"]').disabled)
+          throw Error('batch actions remained enabled while proposal cards need review');
         const action=group.querySelectorAll('.ai-proposal-actions button')[0];
         if(action.disabled)throw Error('publish action unexpectedly disabled');
         action.click();
@@ -691,8 +720,47 @@ async function main(){
         throw Error('Mock Host confirmation result did not return to Clear');
       })()`});
     if(published.exceptionDetails)throw Error(published.exceptionDetails.exception?.description || published.exceptionDetails.text);
+    await call("Runtime.evaluate",{expression:"(()=>{const s=document.querySelector('#scenario');s.value='ai-review-batch';s.dispatchEvent(new Event('change',{bubbles:true}))})()",returnByValue:true});
+    const batchProposalGate=await call("Runtime.evaluate",{contextId:world.executionContextId,
+      awaitPromise:true,returnByValue:true,expression:`(async()=>{
+        for(let i=0;i<150;i++){
+          if(document.querySelectorAll('.ai-proposal-item').length===4&&
+            document.querySelector('#aiBatchCancel').textContent==='取消范围选择')break;
+          await new Promise(r=>setTimeout(r,100));
+        }
+        const proposalControls=[...document.querySelectorAll('.ai-proposal-item input, .ai-proposal-actions button')];
+        if(!proposalControls.length||proposalControls.some(control=>!control.disabled))
+          throw Error('proposal controls remained enabled during batch selection');
+        const batchControls=[...document.querySelectorAll('[data-ai-batch]')];
+        if(batchControls.some(control=>!control.disabled))
+          throw Error('batch controls remained enabled while proposal cards were present');
+        return {proposalControlsDisabled:true,batchControlsDisabled:true};
+      })()`});
+    if(batchProposalGate.exceptionDetails)throw Error(batchProposalGate.exceptionDetails.exception?.description || batchProposalGate.exceptionDetails.text);
+    await call("Runtime.evaluate",{expression:"(()=>{const s=document.querySelector('#scenario');s.value='normal';s.dispatchEvent(new Event('change',{bubbles:true}))})()",returnByValue:true});
+    const batchStart=await call("Runtime.evaluate",{awaitPromise:true,returnByValue:true,contextId:world.executionContextId,expression:"(async()=>{\n  const check=(v,m)=>{if(!v)throw Error(m)};\n  const wait=async(fn,m)=>{for(let i=0;i<150;i++){if(fn())return;await new Promise(r=>setTimeout(r,100))}throw Error(m)};\n  const publish=document.querySelector('[data-ai-batch=\"publish\"]');\n  check(publish&&!publish.disabled,'batch publish action missing or disabled');\n  publish.click();\n  await wait(()=>!document.querySelector('#aiBatchCancel').hidden,'batch selection did not render');\n  const field=document.querySelector('#chatInput');field.value='全部';\n  document.querySelector('#chatForm').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));\n  await wait(()=>document.querySelector('#aiBatchStatus').textContent.includes('PowerCal Host'),\n    'batch selection did not request the Host review');\n  check(!document.querySelector('#aiBatchStatus').hidden,'Host review state is not visible');\n  return true;\n})()"});
+    if(batchStart.exceptionDetails)throw Error(batchStart.exceptionDetails.exception?.description || batchStart.exceptionDetails.text);
+    const batchFirstReview=await call("Runtime.evaluate",{awaitPromise:true,returnByValue:true,expression:"(async()=>{\n  const wait=async(fn,m)=>{for(let i=0;i<150;i++){if(fn())return;await new Promise(r=>setTimeout(r,100))}throw Error(m)};\n  await wait(()=>{const d=document.querySelector('#mockApproval');return d&&!d.hidden&&\n    document.querySelector('#mockApprovalText').textContent.includes('Preview Mock Host')},\n    'batch selection did not reach the Preview Host review');\n  document.querySelector('#mockReject').click();\n  return true;\n})()"});
+    if(batchFirstReview.exceptionDetails)throw Error(batchFirstReview.exceptionDetails.exception?.description || batchFirstReview.exceptionDetails.text);
+    const batchRetry=await call("Runtime.evaluate",{awaitPromise:true,returnByValue:true,contextId:world.executionContextId,expression:"(async()=>{\n  const wait=async(fn,m)=>{for(let i=0;i<150;i++){if(fn())return;await new Promise(r=>setTimeout(r,100))}throw Error(m)};\n  const status=document.querySelector('#aiBatchStatus');\n  await wait(()=>status.hidden,'cancelled review did not clear batch selection state');\n  const publish=document.querySelector('[data-ai-batch=\"publish\"]');\n  publish.click();\n  await wait(()=>!document.querySelector('#aiBatchCancel').hidden,'second batch selection did not start');\n  const field=document.querySelector('#chatInput');field.value='全部';\n  document.querySelector('#chatForm').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));\n  await wait(()=>status.textContent.includes('PowerCal Host'),'second batch review was not projected');\n  return true;\n})()"});
+    if(batchRetry.exceptionDetails)throw Error(batchRetry.exceptionDetails.exception?.description || batchRetry.exceptionDetails.text);
+    const batchApprove=await call("Runtime.evaluate",{awaitPromise:true,returnByValue:true,expression:"(async()=>{\n  const wait=async(fn,m)=>{for(let i=0;i<150;i++){if(fn())return;await new Promise(r=>setTimeout(r,100))}throw Error(m)};\n  await wait(()=>{const d=document.querySelector('#mockApproval');return d&&!d.hidden&&\n    document.querySelector('#mockApprovalText').textContent.includes('Preview Mock Host')},\n    'second batch did not reach the Preview Host review');\n  document.querySelector('#mockApprove').click();\n  return true;\n})()"});
+    if(batchApprove.exceptionDetails)throw Error(batchApprove.exceptionDetails.exception?.description || batchApprove.exceptionDetails.text);
+    const batchLifecycle=await call("Runtime.evaluate",{awaitPromise:true,returnByValue:true,contextId:world.executionContextId,expression:"(async()=>{\n  const wait=async(fn,m)=>{for(let i=0;i<150;i++){if(fn())return;await new Promise(r=>setTimeout(r,100))}throw Error(m)};\n  const status=document.querySelector('#aiBatchStatus');\n  await wait(()=>!status.hidden&&!status.textContent.includes('PowerCal Host')&&\n    status.textContent.includes('\\u6279\\u6b21\\u5b8c\\u6210'),'Mock batch completion was not returned');\n  const messages=document.querySelector('#chatMessages').textContent;\n  if(!messages.includes('\\u6ca1\\u6709\\u5199\\u5165\\u771f\\u5b9e\\u8349\\u7a3f\\u6216\\u65e5\\u5386'))\n    throw Error('Mock completion did not disclose that no calendar or draft data was written');\n  return {reviewCancelled:true,confirmedMockBatch:true,selected:3,providerCalled:false,realCalendarWrites:false};\n})()"});
+    if(batchLifecycle.exceptionDetails)throw Error(batchLifecycle.exceptionDetails.exception?.description || batchLifecycle.exceptionDetails.text);
+    await call("Runtime.evaluate",{expression:"(()=>{const s=document.querySelector('#scenario');s.value='locked';s.dispatchEvent(new Event('change',{bubbles:true}))})()",returnByValue:true});
+    const batchPartialStop=await call("Runtime.evaluate",{awaitPromise:true,returnByValue:true,contextId:world.executionContextId,expression:"(async()=>{\n  const wait=async(fn,m)=>{for(let i=0;i<150;i++){if(fn())return;await new Promise(r=>setTimeout(r,100))}throw Error(m)};\n  const status=document.querySelector('#aiBatchStatus');\n  await wait(()=>status.textContent.includes('\\u6b63\\u5728\\u8fd0\\u884c'),'locked scenario did not project an active batch');\n  const stop=document.querySelector('#aiBatchCancel');\n  if(stop.disabled)throw Error('active batch cancellation is disabled');\n  stop.click();\n  await wait(()=>status.textContent.includes('\\u53d1\\u5e03 1')&&status.textContent.includes('\\u4fdd\\u7559 2'),\n    'partial cancellation counts were not projected');\n  return {cancelledAfterPartialResult:true,partialCountsVisible:true,realCalendarWrites:false};\n})()"});
+    if(batchPartialStop.exceptionDetails)throw Error(batchPartialStop.exceptionDetails.exception?.description || batchPartialStop.exceptionDetails.text);
+    await call("Runtime.evaluate",{expression:"(()=>{const s=document.querySelector('#scenario');s.value='repeating';s.dispatchEvent(new Event('change',{bubbles:true}));s.value='locked-stale';s.dispatchEvent(new Event('change',{bubbles:true}))})()",returnByValue:true});
+    const batchReleaseRequest=await call("Runtime.evaluate",{awaitPromise:true,returnByValue:true,contextId:world.executionContextId,expression:"(async()=>{\n  const wait=async(fn,m)=>{for(let i=0;i<150;i++){if(fn())return;await new Promise(r=>setTimeout(r,100))}throw Error(m)};\n  const status=document.querySelector('#aiBatchStatus');\n  await wait(()=>status.textContent.includes('已请求停止'),'stale cancellation scenario was not projected');\n  const release=document.querySelector('#aiBatchRelease');\n  if(release.hidden||release.disabled)throw Error('stale cancellation recovery action is unavailable');\n  release.click();\n  return true;\n})()"});
+    if(batchReleaseRequest.exceptionDetails)throw Error(batchReleaseRequest.exceptionDetails.exception?.description || batchReleaseRequest.exceptionDetails.text);
+    const batchReleaseConfirm=await call("Runtime.evaluate",{awaitPromise:true,returnByValue:true,expression:"(async()=>{\n  const wait=async(fn,m)=>{for(let i=0;i<150;i++){if(fn())return;await new Promise(r=>setTimeout(r,100))}throw Error(m)};\n  await wait(()=>{const d=document.querySelector('#mockApproval');return d&&!d.hidden&&\n    document.querySelector('#mockApprovalText').textContent.includes('\\u5f3a\\u5236\\u89e3\\u9664\\u6279\\u6b21\\u9501')},\n    'release action bypassed or failed to request Mock Host confirmation');\n  document.querySelector('#mockApprove').click();\n  return true;\n})()"});
+    if(batchReleaseConfirm.exceptionDetails)throw Error(batchReleaseConfirm.exceptionDetails.exception?.description || batchReleaseConfirm.exceptionDetails.text);
+    const batchStop=await call("Runtime.evaluate",{awaitPromise:true,returnByValue:true,contextId:world.executionContextId,expression:"(async()=>{\n  const wait=async(fn,m)=>{for(let i=0;i<150;i++){if(fn())return;await new Promise(r=>setTimeout(r,100))}throw Error(m)};\n  const status=document.querySelector('#aiBatchStatus');\n  await wait(()=>status.textContent.includes('\\u5f3a\\u5236\\u89e3\\u9664\\u5e76\\u4f5c\\u5e9f\\u65e7\\u6388\\u6743'),\n    'force-release outcome was not projected');\n  if(!status.textContent.includes('发布 1')||!status.textContent.includes('保留 2'))\n    throw Error('Preview Mock failed to report its known partial result counts');\n  return {forceReleaseHostConfirmation:true,oldAuthorizationInvalidated:true,realCalendarWrites:false};\n})()"});
+    if(batchStop.exceptionDetails)throw Error(batchStop.exceptionDetails.exception?.description || batchStop.exceptionDetails.text);
     console.log("BROWSER AI REVIEW MOCK PASS",JSON.stringify(aiReview.result.value));
     console.log("BROWSER AI HOST CONFIRM MOCK PASS; no real calendar data was written");
+    console.log("BROWSER AI BATCH LIFECYCLE MOCK PASS",JSON.stringify(batchLifecycle.result.value),JSON.stringify(batchStop.result.value));
     socket.close();
   }finally{
     if(browser)browser.kill();

@@ -35,6 +35,17 @@ New:
   Availability reflects the active AI page and Host edit/review locks; busy
   covers the system picker or a file/image review dialog. Neither field contains
   a URI, filename, MIME type or attachment bytes.
+- `aiBatch` is a read-only status projection with `phase` (`IDLE`,
+  `SELECTING`, `AWAITING_HOST_REVIEW`, `RUNNING`, `CANCEL_REQUESTED`,
+  `INTERRUPTED`, `COMPLETED`, `CANCELLED`, or `FAILED`), operation counts,
+  aggregate scope/selection counts, cancellation/recovery affordances, and a
+  sanitized terminal report. It never contains session IDs, lock epochs, draft
+  IDs, reviewed versions, or raw failure/exception text. Its presence does not
+  authorize or perform a write. `canRelease` becomes true only after a batch is
+  `CANCEL_REQUESTED` and its heartbeat has been stale for at least ten minutes.
+  Reports mark `outcomeKnown`; an emergency release uses `false` and omits
+  operation counts because the Host cannot infer whether an in-flight operation
+  committed at the release boundary.
 - The skin may place the ruler on the far left, move event lanes to the
   right, change icons and artwork, and draw decorations entirely itself.
   This never changes formal event times or stored recurrence.
@@ -73,6 +84,16 @@ envelope and known fields only:
 ```
 ```json
 {"version":1,"type":"action","payload":{"name":"loadMoreMemo"}}
+```
+
+```json
+{"version":1,"type":"action","payload":{"name":"prepareAiBatch","mode":"publish"}}
+```
+```json
+{"version":1,"type":"action","payload":{"name":"cancelAiBatch"}}
+```
+```json
+{"version":1,"type":"action","payload":{"name":"releaseStuckAiBatch"}}
 ```
 
 - `panTimeline` accepts nonzero integer minutes [-2880, 2880]. It does not
@@ -129,6 +150,30 @@ envelope and known fields only:
   adjacent warning communicate the whole-series effect; both controls route only
   the current session ID and never write from the skin. Skin Studio's matching
   confirmation is a non-writing preview Mock, not Android authorization.
+- `prepareAiBatch` accepts exactly `name` plus `mode: "publish" | "discard"`.
+  It only starts a Host-owned range-selection conversation. A skin command or
+  range-selection answer does not authorize the batch. Selected snapshots are
+  shown in the trusted Host review; only its explicit confirmation starts the
+  existing Store transaction and runner. Batch range selection and AI proposal
+  review are mutually exclusive; the Host rejects a batch request while a
+  proposal review is active, and Clear disables both sets of conflicting
+  controls.
+- `cancelAiBatch` accepts only `name`. During range selection it abandons
+  that transient selection without writes; during a running batch it requests
+  an idempotent stop. Completed operations remain committed and unfinished
+  drafts remain pending for a fresh review.
+- `releaseStuckAiBatch` accepts only `name` and opens a trusted Host
+  confirmation only for a `CANCEL_REQUESTED` batch whose heartbeat has been
+  stale for at least ten minutes. The Host binds that prompt to the exact
+  session ID and epoch; the Store transaction checks the active epoch, state,
+  and timeout again. Skin code cannot provide or choose the binding IDs. A
+  successful emergency release fences old authorization and reports its
+  operation counts as unknown. Startup recovery marks a batch owned by an
+  earlier process `INTERRUPTED`, fences its epoch and leaves unfinished drafts
+  pending.
+- Studio Preview models these interactions with non-writing Mock state. It is
+  not evidence for Android WebView-to-Host transport, Store authorization or
+  real batch writes.
 - `pickAiFile` and `pickAiImage` accept only the `name` field and only while
   the AI page is active and no conflicting review, edit or picker is pending.
   They launch the existing Android Host picker. The file path retains local

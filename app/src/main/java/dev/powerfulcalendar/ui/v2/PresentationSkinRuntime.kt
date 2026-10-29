@@ -134,6 +134,7 @@ internal fun MemoCenterScreen(
 internal class AiVisualContext internal constructor(
     val messages: List<AiChatMessage>,
     val busy: Boolean,
+    val batchActionsBusy: Boolean,
     val pendingCount: Int,
     val onSend: (String) -> Unit,
     val onPropose: (String) -> Unit,
@@ -148,19 +149,22 @@ internal class AiVisualContext internal constructor(
     val onPickImage: () -> Unit,
     val onPickFile: () -> Unit,
     val onPrepareBatch: (AiBatchRunner.Mode) -> Unit,
-    val onRewind: (Int) -> Unit
+    val onRewind: (Int) -> Unit,
+    val batchSelectionActive: Boolean,
+    val onCancelBatchSelection: () -> Unit
 ) {
     @Composable fun Native() {
-        NativeAiChatScreen(messages, busy, pendingCount, onSend, onPropose,
+        NativeAiChatScreen(messages, busy, batchActionsBusy, pendingCount, onSend, onPropose,
             onClear, onClearCache, proposalReview, onApplyProposals,
             onDiscardProposals, onSupplementProposals, onSettings, onOpenDeck,
-            onPickImage, onPickFile, onPrepareBatch, onRewind)
+            onPickImage, onPickFile, onPrepareBatch, onRewind,
+            batchSelectionActive, onCancelBatchSelection)
     }
 }
 
 @Composable
 fun AiChatScreen(
-    messages: List<AiChatMessage>, busy: Boolean, pendingCount: Int,
+    messages: List<AiChatMessage>, busy: Boolean, batchActionsBusy: Boolean = false, pendingCount: Int,
     onSend: (String) -> Unit, onPropose: (String) -> Unit,
     onClear: () -> Unit, onClearCache: () -> Unit,
     proposalReview: AiInterpretation? = null,
@@ -169,12 +173,14 @@ fun AiChatScreen(
     onSupplementProposals: () -> Unit = {},
     onSettings: () -> Unit, onOpenDeck: () -> Unit,
     onPickImage: () -> Unit, onPickFile: () -> Unit,
-    onPrepareBatch: (AiBatchRunner.Mode) -> Unit, onRewind: (Int) -> Unit
+    onPrepareBatch: (AiBatchRunner.Mode) -> Unit, onRewind: (Int) -> Unit,
+    batchSelectionActive: Boolean = false,
+    onCancelBatchSelection: () -> Unit = {}
 ) {
-    val context = AiVisualContext(messages, busy, pendingCount, onSend, onPropose,
+    val context = AiVisualContext(messages, busy, batchActionsBusy, pendingCount, onSend, onPropose,
         onClear, onClearCache, proposalReview, onApplyProposals, onDiscardProposals,
         onSupplementProposals, onSettings, onOpenDeck, onPickImage, onPickFile,
-        onPrepareBatch, onRewind)
+        onPrepareBatch, onRewind, batchSelectionActive, onCancelBatchSelection)
     val renderer = PresentationSkinRegistry.ai
     if (RuntimeSkinSurfaces.enabled("ai")) RuntimeSkinSurfaces.ai(context)
     else if (renderer == null) context.Native() else renderer.Render(context)
@@ -191,6 +197,7 @@ internal class SettingsVisualContext internal constructor(
     val pendingCount: Int,
     val aiLocked: Boolean,
     val aiSession: PowerStore.AiSession?,
+    val canReleaseStuckBatch: Boolean,
     val effects: GlassEffects,
     val skinChoices: List<InstalledSkin>,
     val selectedSkin: String,
@@ -222,7 +229,7 @@ internal class SettingsVisualContext internal constructor(
     @Composable fun ProtectedAiCredentials() = ProtectedAiSettingsSection()
     @Composable fun Native() {
         NativeToolsPage(
-            diagnostics, records, pendingCount, aiLocked, aiSession, effects, skinChoices,
+            diagnostics, records, pendingCount, aiLocked, aiSession, canReleaseStuckBatch, effects, skinChoices,
             selectedSkin, onSelectSkin, onImportSkin, onExportOriginalSkin,
             onExportInstalledSkin, onDeleteSkin,
             onBack, onOpenDeck, onImportIcs, onExportIcs, onImportSystem, onMigrateLegacy,
@@ -240,6 +247,7 @@ internal fun ToolsPage(
     pendingCount: Int,
     aiLocked: Boolean,
     aiSession: PowerStore.AiSession?,
+    canReleaseStuckBatch: Boolean,
     effects: GlassEffects,
     skinChoices: List<InstalledSkin>,
     selectedSkin: String,
@@ -268,7 +276,7 @@ internal fun ToolsPage(
     onReleaseStuck: () -> Unit
 ) {
     val context = SettingsVisualContext(
-        diagnostics, records, pendingCount, aiLocked, aiSession, effects, skinChoices,
+        diagnostics, records, pendingCount, aiLocked, aiSession, canReleaseStuckBatch, effects, skinChoices,
         selectedSkin, onSelectSkin, onImportSkin, onExportOriginalSkin,
         onExportInstalledSkin, onDeleteSkin,
         onBack, onOpenDeck, onImportIcs, onExportIcs, onImportSystem, onMigrateLegacy,

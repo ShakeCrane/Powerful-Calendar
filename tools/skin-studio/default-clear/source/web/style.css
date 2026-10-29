@@ -106,6 +106,13 @@ button:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outl
 .chat-bubble{border-radius:18px;padding:12px 14px;max-width:86%;white-space:pre-wrap;overflow-wrap:anywhere;
  background:var(--fill-2);align-self:flex-start}
 .chat-bubble.user{align-self:flex-end;background:var(--accent-fill);color:var(--on-accent)}
+.ai-batch-controls{display:flex;gap:6px;overflow-x:auto;flex:0 0 auto;padding:0 4px 6px}
+.ai-batch-controls[hidden],.ai-batch-status[hidden]{display:none}
+.ai-batch-controls button{min-height:38px;flex:0 0 auto;padding:7px 11px;border:1px solid var(--sep);
+ border-radius:14px;background:var(--fill-2);color:var(--label);font:inherit;font-size:12px}
+.ai-batch-controls button:disabled{opacity:.48}
+.ai-batch-status{flex:0 0 auto;margin:0 4px 6px;padding:9px 11px;border:1px solid var(--sep);
+ border-radius:12px;background:var(--fill-1);color:var(--label-2);font-size:12px;line-height:1.45}
 #chatForm{padding:8px 4px}
 #chatForm label{font-size:12px;color:var(--label-2)}
 .composer{display:flex;align-items:flex-end;gap:7px;padding:8px;border-radius:22px;background:var(--fill-2)}

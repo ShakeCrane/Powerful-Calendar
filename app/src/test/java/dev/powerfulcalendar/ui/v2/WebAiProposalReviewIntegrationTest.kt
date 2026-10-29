@@ -18,6 +18,7 @@ import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ApplicationProvider
 import dev.powerfulcalendar.ai.AiSettings
 import dev.powerfulcalendar.ai.AiSettingsStore
+import dev.powerfulcalendar.ai.AiBatchRunner
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.PowerStore.CommitOutcome
@@ -209,6 +210,15 @@ class WebAiProposalReviewIntegrationTest {
             val review = requireNotNull(proposalState)
             val proposal = review.getJSONArray("proposals").getJSONObject(0)
             assertEquals("自动提案测试", proposal.getString("title"))
+            ui.runOnIdle {
+                WebSkinBridgeRuntime.onAction(
+                    WebSkinAction.PrepareAiBatch(AiBatchRunner.Mode.PUBLISH)
+                )
+            }
+            assertEquals("batch selection must not start while proposal review is active", "IDLE",
+                WebSkinBridgeRuntime.state().getJSONObject("aiBatch").getString("phase"))
+            assertEquals(review.getString("reviewId"), WebSkinBridgeRuntime.state()
+                .getJSONObject("aiProposalReview").getString("reviewId"))
             assertFalse("attachments must wait until the active proposal review is resolved",
                 WebSkinBridgeRuntime.state().getBoolean("chatAttachmentAvailable"))
             assertEquals(before, counts())
@@ -828,6 +838,194 @@ class WebAiProposalReviewIntegrationTest {
         assertTrue(WebSkinBridgeRuntime.state().getBoolean("chatAttachmentBusy"))
         assertFalse(WebSkinBridgeRuntime.state().getBoolean("chatAttachmentAvailable"))
         assertEquals("opening the picker must not persist an event or draft", before, counts())
+    }
+
+    @Test
+    fun clearBatchSelectionRequiresHostAuthorizationAndPublishesOnlyAfterConfirmation() {
+        val zone = ZoneId.of("Asia/Shanghai")
+        val draft = store.newDraft(DraftForm(
+            kind = TemporalKind.MEMO,
+            title = "Clear 批次授权测试",
+            zoneId = zone.id
+        ))
+        assertTrue(draft.isActionable)
+        val before = counts()
+        mountAiBridgePage()
+
+        prepareWholeBatch(AiBatchRunner.Mode.PUBLISH)
+        val reviewState = WebSkinBridgeRuntime.state().getJSONObject("aiBatch")
+        assertEquals("AWAITING_HOST_REVIEW", reviewState.getString("phase"))
+        assertEquals(1, reviewState.getInt("selectedCount"))
+        assertEquals("Clear selection must not authorize or write", before, counts())
+        assertFalse(store.isLocked())
+
+        ui.onNodeWithText("取消").performClick()
+        ui.waitUntil(10_000) {
+            WebSkinBridgeRuntime.state().getJSONObject("aiBatch").getString("phase") == "IDLE"
+        }
+        assertEquals("cancelling the Host review must leave the selected draft untouched",
+            before, counts())
+
+        prepareWholeBatch(AiBatchRunner.Mode.PUBLISH)
+        ui.onNodeWithText("授权并发布 1 张").performClick()
+        ui.waitUntil(20_000) {
+            store.all().size == 1 && !store.isLocked() &&
+                store.currentAiSession()?.state == PowerStore.AiState.COMPLETED
+        }
+        val completed = WebSkinBridgeRuntime.state().getJSONObject("aiBatch")
+        assertEquals("COMPLETED", completed.getString("phase"))
+        assertEquals(1, completed.getJSONObject("report").getInt("published"))
+        assertEquals(0L, store.pendingCount())
+        assertEquals(1L, store.draftCount())
+        assertEquals(1L, store.commitCount())
+        assertEquals(1L, store.identityCount())
+        assertEquals("Clear 批次授权测试", store.all().single().title)
+    }
+
+    @Test
+    fun clearCanCancelRunningBatchAndKeepsCompletedAndPendingItems() {
+        val total = 60
+        repeat(total) { index ->
+            store.newDraft(DraftForm(
+                kind = TemporalKind.MEMO,
+                title = "批次取消 ${index + 1}",
+                zoneId = "Asia/Shanghai"
+            ))
+        }
+        mountAiBridgePage()
+        prepareWholeBatch(AiBatchRunner.Mode.PUBLISH)
+        ui.onNodeWithText("授权并发布 $total 张").performClick()
+
+        ui.waitUntil(15_000) { store.all().size >= 1 && store.isLocked() }
+        ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.CancelAiBatch) }
+        ui.waitUntil(20_000) {
+            !store.isLocked() && store.currentAiSession()?.state == PowerStore.AiState.CANCELLED
+        }
+
+        val session = requireNotNull(store.currentAiSession())
+        val report = JSONObject(requireNotNull(session.report))
+        assertTrue(report.getBoolean("cancelled"))
+        val published = report.getInt("published")
+        assertTrue("the cancellation must preserve a partial result", published in 1 until total)
+        assertEquals("remaining drafts stay pending", (total - published).toLong(), store.pendingCount())
+        assertEquals("only completed items become formal", published, store.all().size)
+        assertEquals("all original draft identities remain accounted for", total.toLong(), store.identityCount())
+        assertEquals("runner records the partial result for Clear", "CANCELLED",
+            WebSkinBridgeRuntime.state().getJSONObject("aiBatch").getString("phase"))
+    }
+
+    @Test
+    fun forceReleaseRequiresHostConfirmationAndPreservesPendingDrafts() {
+        store.newDraft(DraftForm(kind = TemporalKind.MEMO,
+            title = "等待人工恢复", zoneId = "Asia/Shanghai"))
+        val card = store.pendingDrafts().single()
+        store.beginAiBatch(mapOf(card.draftId to card.draftVersion), setOf(card.operation))
+        mountAiBridgePage()
+        ui.waitUntil(10_000) { store.isLocked() &&
+            WebSkinBridgeRuntime.state().getJSONObject("aiBatch").getString("phase") == "RUNNING" }
+
+        ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.ReleaseStuckAiBatch) }
+        ui.waitForIdle()
+        assertTrue("a running batch cannot be force-released", ui.onAllNodesWithText("强制解除 AI 批次锁？")
+            .fetchSemanticsNodes().isEmpty())
+        assertFalse(WebSkinBridgeRuntime.state().getJSONObject("aiBatch").getBoolean("canRelease"))
+        assertTrue(store.isLocked())
+
+        ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.CancelAiBatch) }
+        ui.waitUntil(10_000) {
+            store.currentAiSession()?.state == PowerStore.AiState.CANCEL_REQUESTED
+        }
+        val now = System.currentTimeMillis()
+        store.writableDatabase.execSQL(
+            "UPDATE ai_sessions SET updated_ms=? WHERE session_id=?",
+            arrayOf<Any?>(now - PowerStore.DEFAULT_STALE_MS - 60_000L,
+                requireNotNull(store.currentAiSession()).sessionId)
+        )
+        ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.Routed("memo")) }
+        ui.waitUntil(10_000) {
+            WebSkinBridgeRuntime.state().getJSONObject("aiBatch").getBoolean("canRelease")
+        }
+        ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.Routed("ai")) }
+        ui.waitForIdle()
+
+        assertTrue("a stale cancellation projects force recovery as available",
+            WebSkinBridgeRuntime.state().getJSONObject("aiBatch").getBoolean("canRelease"))
+        ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.ReleaseStuckAiBatch) }
+        ui.onNodeWithText("强制解除 AI 批次锁？").assertExists()
+        assertTrue("a skin request alone cannot unlock the Store", store.isLocked())
+        assertEquals(1L, store.pendingCount())
+
+        ui.onNodeWithText("解除并作废旧授权").performClick()
+        ui.waitUntil(10_000) { !store.isLocked() &&
+            store.currentAiSession()?.state == PowerStore.AiState.FAILED }
+        val state = WebSkinBridgeRuntime.state().getJSONObject("aiBatch")
+        assertEquals("FAILED", state.getString("phase"))
+        assertTrue(state.getJSONObject("report").getBoolean("released"))
+        assertFalse(state.getJSONObject("report").getBoolean("outcomeKnown"))
+        assertFalse(state.getJSONObject("report").has("published"))
+        assertEquals(1L, store.pendingCount())
+        assertTrue(store.all().isEmpty())
+    }
+
+    @Test
+    fun staleReleaseConfirmationCannotUnlockANewerBatch() {
+        val draft = store.newDraft(DraftForm(
+            kind = TemporalKind.MEMO,
+            title = "恢复确认必须绑定批次",
+            zoneId = "Asia/Shanghai"
+        ))
+        val card = store.pendingDrafts().single()
+        val reviewed = store.beginAiBatch(mapOf(card.draftId to card.draftVersion), setOf(card.operation))
+        assertEquals(draft.draftId, reviewed.scope.single())
+
+        assertTrue(store.finishAiBatch(reviewed.sessionId, PowerStore.AiState.FAILED))
+        val newer = store.beginAiBatch(mapOf(card.draftId to card.draftVersion), setOf(card.operation))
+        assertFalse(store.releaseStuckAiBatch(reviewed.sessionId, reviewed.lockEpoch))
+        assertTrue(store.isLocked())
+        assertEquals(newer.sessionId, store.currentAiSession()?.sessionId)
+        assertEquals(PowerStore.AiState.RUNNING, store.currentAiSession()?.state)
+    }
+
+    @Test
+    fun startupRecoveryProjectsInterruptedBatchAndDoesNotResumeIt() {
+        store.newDraft(DraftForm(kind = TemporalKind.MEMO,
+            title = "重启后重新审核", zoneId = "Asia/Shanghai"))
+        val card = store.pendingDrafts().single()
+        store.beginAiBatch(mapOf(card.draftId to card.draftVersion), setOf(card.operation))
+        store.close()
+        store = PowerStore(context, databaseName, "simulated-process-after-restart")
+        store.readableDatabase
+
+        mountAiBridgePage()
+        ui.waitUntil(15_000) {
+            !store.isLocked() && store.currentAiSession()?.state == PowerStore.AiState.INTERRUPTED &&
+                WebSkinBridgeRuntime.state().getJSONObject("aiBatch").getString("phase") == "INTERRUPTED"
+        }
+        assertEquals(1, store.pendingCount())
+        assertTrue(store.all().isEmpty())
+    }
+
+    private fun mountAiBridgePage() {
+        ui.activity.setContent {
+            CompositionLocalProvider(LocalContext provides context) {
+                PowerCalTheme { PowerCalApp(store) }
+            }
+        }
+        ui.waitForIdle()
+        ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.Routed("ai")) }
+        ui.waitUntil(10_000) { WebSkinBridgeRuntime.state().optString("page") == "AI" }
+    }
+
+    private fun prepareWholeBatch(mode: AiBatchRunner.Mode) {
+        ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.PrepareAiBatch(mode)) }
+        ui.waitUntil(10_000) {
+            WebSkinBridgeRuntime.state().optJSONObject("aiBatch")?.optString("phase") == "SELECTING"
+        }
+        ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.SendChat("全部")) }
+        ui.waitUntil(15_000) {
+            WebSkinBridgeRuntime.state().optJSONObject("aiBatch")?.optString("phase") ==
+                "AWAITING_HOST_REVIEW"
+        }
     }
 
     private data class Counts(

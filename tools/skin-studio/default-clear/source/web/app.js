@@ -390,6 +390,12 @@ $("chatForm").addEventListener("submit",e=>{
   if(!text||text.length>4000||state.aiLocked||state.chatBusy)return;
   send("sendChat",{text});field.value="";
 });
+for(const button of document.querySelectorAll("[data-ai-batch]"))button.addEventListener("click",()=>{
+  if(button.disabled)return;
+  send("prepareAiBatch",{mode:button.dataset.aiBatch});
+});
+$("aiBatchCancel").addEventListener("click",()=>send("cancelAiBatch"));
+$("aiBatchRelease").addEventListener("click",()=>send("releaseStuckAiBatch"));
 window.addEventListener("message",e=>{
   if(e.data!=="powercal-port"||!e.ports?.[0])return;
   if(port)try{port.close()}catch{}
@@ -670,8 +676,10 @@ function renderChat(){
   const messages=state.chatMessages||[];
   if(!messages.length)list.append(node("p","quiet","从这里开始与 AI 讨论日程"));
   for(const item of messages)list.append(node("div","chat-bubble "+(item.role==="user"?"user":"assistant"),item.content));
+  renderAiBatchControls();
   renderAiProposalReview(list);
-  const disabled=!!(state.aiLocked||state.chatBusy);
+  const batchPhase=String(state.aiBatch?.phase||"IDLE");
+  const disabled=!!(state.aiLocked||state.chatBusy||batchPhase==="AWAITING_HOST_REVIEW");
   $("chatInput").disabled=disabled;$("chatSend").disabled=disabled;
   const reviewPending=!!state.aiProposalReview?.proposals?.length;
   const attachmentUnavailable=state.chatAttachmentAvailable===false;
@@ -686,6 +694,42 @@ function renderChat(){
   else if(attachmentUnavailable)
     list.append(node("p","quiet","请先完成当前 AI 操作，再选择附件"));
   list.scrollTop=list.scrollHeight;
+}
+function renderAiBatchControls(){
+  const batch=state.aiBatch||{},phase=String(batch.phase||"IDLE");
+  const proposalPending=!!state.aiProposalReview?.proposals?.length;
+  const reviewActive=["SELECTING","AWAITING_HOST_REVIEW"].includes(phase);
+  const disabled=!!(state.aiLocked||state.chatBusy||proposalPending||reviewActive);
+  for(const button of document.querySelectorAll("[data-ai-batch]"))
+    button.disabled=disabled||Number(state.pendingCount)<=0;
+  const cancel=$("aiBatchCancel"),release=$("aiBatchRelease");
+  cancel.hidden=!(phase==="SELECTING"||phase==="RUNNING"||phase==="CANCEL_REQUESTED");
+  cancel.disabled=phase==="SELECTING"?!!state.chatBusy:!batch.canCancel;
+  cancel.textContent=phase==="SELECTING"?"取消范围选择":
+    phase==="CANCEL_REQUESTED"?"正在停止…":"停止批次";
+  release.hidden=!batch.canRelease;
+  release.disabled=!batch.canRelease;
+  const status=$("aiBatchStatus"),report=batch.report||{};
+  let text="";
+  if(phase==="SELECTING")text=batch.mode==="DISCARD"?
+    "请描述要丢弃的待处理草稿范围，或输入“全部”。尚未授权，也没有写入。":
+    "请描述要发布的待处理草稿范围，或输入“全部”。尚未授权，也没有写入。";
+  else if(phase==="AWAITING_HOST_REVIEW")text=`已选定 ${batch.selectedCount||0} 张草稿。PowerCal Host 正在显示完整清单；只有在 Host 审核窗口明确授权后才会执行。`;
+  else if(phase==="RUNNING"){
+    const progress=batch.progress;
+    text=`AI 批次正在运行，共 ${batch.scopeCount||0} 张草稿。已完成结果会保留。`+
+      (progress?` 进度 ${progress.done}/${progress.total}。`:"");
+  }else if(phase==="CANCEL_REQUESTED")text="已请求停止 AI 批次；当前操作结束后停止，已完成结果保留。若超过 10 分钟仍无响应，可在设置中恢复。";
+  else if(phase==="INTERRUPTED")text="上次 AI 批次已中断并解锁；未完成草稿仍待处理，需重新审核后再运行。";
+  else if(phase==="COMPLETED"||phase==="CANCELLED"||phase==="FAILED"){
+    const prefix=phase==="COMPLETED"?"AI 批次完成":phase==="CANCELLED"?"AI 批次已停止":"AI 批次结束，存在失败或恢复结果";
+    text=report.outcomeKnown===false?
+      `${prefix}：强制解除时当前执行结果数量无法确定，请检查正式事件和待处理草稿。`:
+      `${prefix}：发布 ${report.published||0}，丢弃 ${report.discarded||0}，保留 ${report.kept||0}。`;
+    text+=(report.released?" 已强制解除并作废旧授权。":"")+
+      (report.failureSummary?` ${report.failureSummary}`:"");
+  }
+  status.hidden=!text;status.textContent=text;
 }
 function installChatAttachmentControls(){
   const composer=$("chatForm").querySelector(".composer");
@@ -746,7 +790,9 @@ function renderAiProposalReview(list){
   const root=node("section","ai-proposal-review");root.setAttribute("role","region");
   root.setAttribute("aria-label","AI 日程提案审核");
   root.append(node("h2","","审核 AI 候选 · 尚未写入正式日历"));
-  const busy=!!(state.aiLocked||state.chatBusy);
+  const batchPhase=String(state.aiBatch?.phase||"IDLE");
+  const busy=!!(state.aiLocked||state.chatBusy||
+    ["SELECTING","AWAITING_HOST_REVIEW","RUNNING","CANCEL_REQUESTED"].includes(batchPhase));
   for(const [isCreate,label] of [[true,"新增事项"],[false,"修改或删除"]]){
     const entries=review.proposals.filter(item=>(item.operation==="CREATE")===isCreate);
     if(!entries.length)continue;

@@ -21,6 +21,16 @@ deckLifecycleFixture.value="deck-lifecycle";
 deckLifecycleFixture.textContent="仅预览 Mock：草稿暂存、提交、丢弃与撤销（不写数据）";
 deckLifecycleFixture.hidden=true;
 $("scenario").append(deckLifecycleFixture);
+const staleAiBatchFixture=document.createElement("option");
+staleAiBatchFixture.value="locked-stale";
+staleAiBatchFixture.textContent="仅预览 Mock：停止超时恢复（回归夹具）";
+staleAiBatchFixture.hidden=true;
+$("scenario").append(staleAiBatchFixture);
+const aiReviewBatchFixture=document.createElement("option");
+aiReviewBatchFixture.value="ai-review-batch";
+aiReviewBatchFixture.textContent="仅预览 Mock：提案审核与批次互斥（回归夹具）";
+aiReviewBatchFixture.hidden=true;
+$("scenario").append(aiReviewBatchFixture);
 const enc = new TextEncoder(), dec = new TextDecoder();
 const escapeHtml = s => String(s).replaceAll("&","&amp;").replaceAll("<","&lt;")
   .replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;");
@@ -730,14 +740,20 @@ function simulatedState(){
   const memoEntries=allMemoEntries.slice(0,memoLimit);
   const memoTruncated=memoEntries.length<allMemoEntries.length;
   return {bridgeVersion:1,page:mockPage,
-    memoCount:allMemoEntries.filter(item=>!item.completed).length,aiLocked:scenario==="locked",
+    memoCount:allMemoEntries.filter(item=>!item.completed).length,aiLocked:mockAiLocked,
+    aiBatch:scenario==="ai-review-batch"?{
+      phase:"SELECTING",state:null,active:false,canCancel:true,canRelease:false,
+      mode:"PUBLISH",scopeCount:0,selectedCount:0,operationCounts:{},
+      containsDelete:false,progress:null,report:null
+    }:mockAiBatch,
     reducedMotion:$("reduced").checked,pendingCount:3,
     editing:mockEditing,
     memoEntries,memoTruncated,memoRemainingCount:allMemoEntries.length-memoEntries.length,
     chatBusy:false,chatAttachmentBusy:false,
-    chatAttachmentAvailable:scenario!=="locked"&&!(scenario==="ai-review"&&mockAiProposals.length>0),
+    chatAttachmentAvailable:scenario!=="locked"&&scenario!=="locked-stale"&&
+      !(["ai-review","ai-review-batch"].includes(scenario)&&mockAiProposals.length>0),
     chatMessages,
-    aiProposalReview:scenario==="ai-review"&&mockAiProposals.length?{
+    aiProposalReview:["ai-review","ai-review-batch"].includes(scenario)&&mockAiProposals.length?{
       reviewId:mockAiReviewId,
       proposals:mockAiProposals.map((proposal,index)=>({...proposal,index})),
       warnings:["预览 Mock 数据；Android Host 会重新校验全部提案。"]
@@ -1026,6 +1042,47 @@ function resolveMockApproval(approved){
       mockChat.push({role:"assistant",content:"预览 Mock：Host 确认请求已完成；没有写入任何真实日历数据。"});
     }else mockChat.push({role:"assistant",content:"预览 Mock：已取消 Host 确认，没有执行操作。"});
     postState();return;
+  }
+  if(request.kind==="aiBatch"){
+    if(request.reviewId!==mockAiBatch.reviewId||mockAiBatch.phase!=="AWAITING_HOST_REVIEW"){
+      mockChat.push({role:"assistant",content:"预览 Mock：批次审核已过期；没有执行操作。"});
+      postState();return;
+    }
+    if(approved){
+      const count=mockAiBatch.selectedCount||0,mode=mockAiBatch.mode;
+      mockAiBatch={phase:"COMPLETED",state:"COMPLETED",active:false,canCancel:false,
+        canRelease:false,mode,scopeCount:count,selectedCount:0,operationCounts:{},
+        containsDelete:false,progress:null,
+        report:{mode,published:mode==="PUBLISH"?count:0,
+          discarded:mode==="DISCARD"?count:0,kept:0,cancelled:false}};
+      mockChat.push({role:"assistant",content:"预览 Mock：批次结果已模拟；没有写入真实草稿或日历。"});
+    }else{
+      mockAiBatch={phase:"IDLE",state:null,active:false,canCancel:false,canRelease:false,
+        mode:null,scopeCount:0,selectedCount:0,operationCounts:{},containsDelete:false,
+        progress:null,report:null};
+      mockChat.push({role:"assistant",content:"预览 Mock：已取消批次审核，没有执行操作。"});
+    }
+    logAction("Preview Mock 批次 Host 审核："+(approved?"模拟确认":"模拟取消")+
+      " · 不写入真实数据");postState();return;
+  }
+  if(request.kind==="aiBatchRelease"){
+    if(approved&&mockAiLocked&&mockAiBatch.phase==="CANCEL_REQUESTED"&&mockAiBatch.canRelease){
+      const mode=mockAiBatch.mode||"PUBLISH";
+      const total=mockAiBatch.scopeCount||0;
+      const done=Math.min(total,Math.max(0,mockAiBatch.progress?.done||0));
+      mockAiBatch={phase:"FAILED",state:"FAILED",active:false,canCancel:false,
+        canRelease:false,mode,scopeCount:total,selectedCount:0,
+        operationCounts:{},containsDelete:false,progress:null,
+        report:{mode,published:mode==="PUBLISH"?done:0,
+          discarded:mode==="DISCARD"?done:0,kept:Math.max(0,total-done),
+          cancelled:true,released:true,outcomeKnown:true}};
+      mockAiLocked=false;
+    }
+    mockChat.push({role:"assistant",content:approved?
+      "预览 Mock：批次锁已模拟解除；未完成草稿保留，没有写入真实日历。":
+      "预览 Mock：未解除批次锁；没有写入真实日历。"});
+    logAction("Preview Mock 批次恢复确认 · "+(approved?"解除":"取消")+
+      " · 不写入真实数据");postState();return;
   }
   const editor=mockEditing.editor;
   if(editor.open){
@@ -1473,7 +1530,9 @@ function onSkinAction(message){
       logAction("模拟宿主收到：loadMoreMemo");postState();return;
     }
     if(!ACTIONS.some(([x])=>x===name)&&!["openEvent","toggleMemo","sendChat","resolveAiProposal",
-      "pickAiFile","pickAiImage"].includes(name)){logAction("拒绝未知动作 "+String(name));return;}
+      "pickAiFile","pickAiImage","prepareAiBatch","cancelAiBatch","releaseStuckAiBatch"].includes(name)){
+      logAction("拒绝未知动作 "+String(name));return;
+    }
     if(name==="panTimeline"){
       if(!Number.isInteger(p.deltaMinutes)||Math.abs(p.deltaMinutes)>2880)return;
       const state=lastState||simulatedState();
@@ -1588,7 +1647,61 @@ function onSkinAction(message){
       }
       postState();return;
     }
+    if(name==="prepareAiBatch"){
+      if(Object.keys(p).sort().join(",")!=="mode,name"||
+        !["publish","discard"].includes(p.mode)||mockPage!=="AI"||mockAiLocked){
+        logAction("拒绝无效或锁定状态下的批次范围选择");return;
+      }
+      mockAiBatch={phase:"SELECTING",state:null,active:false,canCancel:false,
+        canRelease:false,mode:p.mode.toUpperCase(),scopeCount:0,selectedCount:0,
+        operationCounts:{},containsDelete:false,progress:null,report:null};
+      mockChat.push({role:"assistant",content:"Preview Mock：请输入“全部”模拟选择范围。最终 Host 审核不会写入真实日历。"});
+      postState();return;
+    }
+    if(name==="cancelAiBatch"){
+      if(Object.keys(p).join(",")!=="name"||mockPage!=="AI")return;
+      if(mockAiBatch.phase==="SELECTING"){
+        mockAiBatch={phase:"IDLE",state:null,active:false,canCancel:false,canRelease:false,
+          mode:null,scopeCount:0,selectedCount:0,operationCounts:{},containsDelete:false,
+          progress:null,report:null};
+        mockChat.push({role:"assistant",content:"Preview Mock：已取消范围选择，未改动草稿。"});
+      }else if(mockAiBatch.phase==="RUNNING"&&mockAiLocked){
+        const mode=mockAiBatch.mode||"PUBLISH",count=mockAiBatch.scopeCount||3;
+        mockAiBatch={phase:"CANCELLED",state:"CANCELLED",active:false,canCancel:false,
+          canRelease:false,mode,scopeCount:count,selectedCount:0,operationCounts:{},
+          containsDelete:false,progress:null,report:{mode,
+            published:mode==="PUBLISH"?1:0,discarded:mode==="DISCARD"?1:0,
+            kept:Math.max(0,count-1),cancelled:true}};
+        mockAiLocked=false;
+        mockChat.push({role:"assistant",content:"Preview Mock：已模拟部分完成后停止；剩余草稿保留。没有写入真实数据。"});
+      }else{logAction("拒绝当前状态下的批次取消");return;}
+      logAction("Preview Mock 批次取消 · 结果仅为模拟");postState();return;
+    }
+    if(name==="releaseStuckAiBatch"){
+      if(Object.keys(p).join(",")!=="name"||mockPage!=="AI"||!mockAiLocked||
+        mockAiBatch.phase!=="CANCEL_REQUESTED"||!mockAiBatch.canRelease){
+        logAction("仅停止请求超时后允许批次恢复");return;
+      }
+      mockApproval={kind:"aiBatchRelease"};
+      $("mockApprovalText").textContent="Preview Mock：模拟 Host 确认强制解除批次锁；未完成草稿保留，不写入真实数据。";
+      $("mockApproval").hidden=false;postState();return;
+    }
     if(name==="sendChat"&&typeof p.text==="string"&&p.text.length<=4000){
+      if(mockAiBatch.phase==="SELECTING"){
+        mockChat.push({role:"user",content:p.text});
+        if(["全部","所有","全选","全部草稿","所有待处理"].includes(p.text.trim())){
+          const reviewId="batch-review-"+Date.now().toString(36);
+          const mode=mockAiBatch.mode||"PUBLISH";
+          mockAiBatch={phase:"AWAITING_HOST_REVIEW",state:null,active:false,
+            canCancel:false,canRelease:false,mode,scopeCount:3,selectedCount:3,
+            operationCounts:{CREATE:2,REPLACE:1},containsDelete:false,progress:null,
+            report:null,reviewId};
+          mockApproval={kind:"aiBatch",reviewId};
+          $("mockApprovalText").textContent="Preview Mock Host 正在审核 3 张草稿并模拟一次性授权；不会写入真实数据。";
+          $("mockApproval").hidden=false;
+        }else mockChat.push({role:"assistant",content:"Preview Mock：请回复“全部”模拟选择；没有调用真实 AI。"});
+        postState();return;
+      }
       if($("scenario").value==="ai-error"){
         mockAiErrorMessages.push({role:"user",content:p.text},
           {role:"assistant",content:"Studio Mock：已收到你手动重发的消息；没有调用真实 AI 或写入日历。"});
@@ -1662,6 +1775,19 @@ function onSkinAction(message){
   }catch(error){logAction("Bridge 消息错误："+error.message)}
 }
 let mockAnchor=null,mockHours=24,mockPage="TIMELINE",mockMemoDone=false;
+const isLockedMockScenario=()=>["locked","locked-stale"].includes($("scenario").value);
+const idleMockAiBatch=()=>({phase:"IDLE",state:null,active:false,canCancel:false,
+  canRelease:false,mode:null,scopeCount:0,selectedCount:0,operationCounts:{},
+  containsDelete:false,progress:null,report:null});
+const runningMockAiBatch=()=>({phase:"RUNNING",state:"RUNNING",active:true,
+  canCancel:true,canRelease:false,mode:"PUBLISH",scopeCount:3,selectedCount:0,
+  operationCounts:{CREATE:3},containsDelete:false,progress:{done:1,total:3},report:null});
+const staleCancelMockAiBatch=()=>({phase:"CANCEL_REQUESTED",state:"CANCEL_REQUESTED",active:true,
+  canCancel:false,canRelease:true,mode:"PUBLISH",scopeCount:3,selectedCount:0,
+  operationCounts:{CREATE:3},containsDelete:false,progress:{done:1,total:3},report:null});
+let mockAiLocked=isLockedMockScenario();
+let mockAiBatch=$("scenario").value==="locked-stale"?staleCancelMockAiBatch():
+  mockAiLocked?runningMockAiBatch():idleMockAiBatch();
 let mockConflictRestoreActive=$("scenario").value==="conflict-restore";
 let mockMemoCompletion=new Map(),mockMemoRevision=new Map(),mockChat=[];
 let mockMonth="2026-10",mockSelectedMonthDate="2026-10-22";
@@ -1789,6 +1915,9 @@ function bindUI(){
       mockEditing={editor:{open:false},deck:{open:false},lastResult:null};
       mockApproval=null;$("mockApproval").hidden=true;
       mockConflictRestoreActive=$("scenario").value==="conflict-restore";
+      mockAiLocked=isLockedMockScenario();
+      mockAiBatch=$("scenario").value==="locked-stale"?staleCancelMockAiBatch():
+        mockAiLocked?runningMockAiBatch():idleMockAiBatch();
       if($("scenario").value==="timeline-drag"){
         mockHours=24;mockPage="TIMELINE";
         mockEditing={editor:{open:false},deck:{open:false},lastResult:null};
@@ -1798,7 +1927,8 @@ function bindUI(){
       {role:"user",content:"请帮我概括明天的安排。"},
       {role:"assistant",content:"Studio Mock：AI 请求未完成（模拟 HTTP 503）；上下文已保留，可编辑后手动重发。"}
     ];
-    if(id==="scenario"&&$("scenario").value==="ai-review")resetMockAiProposalReview();
+    if(id==="scenario"&&["ai-review","ai-review-batch"].includes($("scenario").value))
+      resetMockAiProposalReview();
     postState();
   };
   $("assetFile").onchange=async e=>{await addAssets(e.target.files);e.target.value=""};

@@ -233,6 +233,8 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
         }
     }
     var confirmBatch by remember { mutableStateOf<BatchReview?>(null) }
+    var confirmStuckBatchRelease by remember { mutableStateOf<PowerStore.AiSession?>(null) }
+    var stuckBatchReleaseRequestPending by remember { mutableStateOf(false) }
     // Choosing a batch mode only starts a conversation; it is never the commit authorization.
     var pendingBatchMode by remember { mutableStateOf<AiBatchRunner.Mode?>(null) }
     var pendingCards by remember { mutableStateOf<List<dev.powerfulcalendar.core.DraftCard>>(emptyList()) }
@@ -542,7 +544,8 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
     }
 
     fun beginBatchConversation(mode: AiBatchRunner.Mode) {
-        if (chatBusy || aiBusy || aiLocked) return
+        if (chatBusy || aiBusy || aiLocked || pendingBatchMode != null || confirmBatch != null ||
+            confirmStuckBatchRelease != null || webAiProposalReviewSession != null) return
         pendingBatchMode = mode
         page = Page.AI.name
         appendChat("assistant",
@@ -551,6 +554,53 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
             } else {
                 "准备批量丢弃草稿（不会删除已经发布的正式事件）。你希望丢弃哪些？可以说“全部”，或描述要筛选的草稿。随后仍需单独审核确认。"
             })
+        WebSkinBridgeRuntime.stateRevision++
+    }
+
+    fun cancelAiBatchFromSurface() {
+        if (pendingBatchMode != null && !chatBusy && !aiBusy && confirmBatch == null) {
+            pendingBatchMode = null
+            message = "已取消批量范围选择；草稿未修改"
+            WebSkinBridgeRuntime.stateRevision++
+            return
+        }
+        scope.launch {
+            val current = withContext(Dispatchers.IO) { store.currentAiSession() }
+            val requested = current?.takeIf {
+                it.state == PowerStore.AiState.RUNNING
+            }?.let { session ->
+                withContext(Dispatchers.IO) { store.requestAiCancel(session.sessionId) }
+            } ?: false
+            reload()
+            message = when {
+                requested -> "已请求停止；已完成结果保留，未完成草稿继续等待审核"
+                current?.state == PowerStore.AiState.CANCEL_REQUESTED -> "停止请求已提交，正在等待当前操作结束"
+                confirmBatch != null -> "请在当前 Host 审核窗口取消尚未授权的批次"
+                else -> "当前没有正在运行的 AI 批次"
+            }
+            WebSkinBridgeRuntime.stateRevision++
+        }
+    }
+
+    fun requestStuckBatchRelease() {
+        if (stuckBatchReleaseRequestPending || confirmStuckBatchRelease != null) return
+        stuckBatchReleaseRequestPending = true
+        scope.launch {
+            val current = withContext(Dispatchers.IO) { store.currentAiSession() }
+            val now = System.currentTimeMillis()
+            if (aiLocked && PowerStore.canReleaseStuckAiBatch(current, now)) {
+                confirmStuckBatchRelease = current
+            } else {
+                message = when (current?.state) {
+                    PowerStore.AiState.RUNNING -> "请先请求停止 AI 批次；只有停止请求 10 分钟无响应后才能恢复"
+                    PowerStore.AiState.CANCEL_REQUESTED -> "停止请求尚未超过 10 分钟无响应窗口，请继续等待"
+                    else -> "当前批次已结束或没有待恢复的批次"
+                }
+            }
+            stuckBatchReleaseRequestPending = false
+            reload()
+            WebSkinBridgeRuntime.stateRevision++
+        }
     }
 
     fun submitAiChatInput(input: String) {
@@ -1337,10 +1387,24 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                     }
                 }
                 is WebSkinAction.SendChat -> if (!aiLocked && !chatBusy && !aiBusy &&
-                    editSession == null && pendingWebAiProposalPublish == null &&
+                    editSession == null && confirmBatch == null && pendingWebAiProposalPublish == null &&
                     !aiAttachmentPickerBusy && pendingFileReview == null &&
                     pendingImageReview == null) {
                     submitAiChatInput(action.text)
+                }
+                is WebSkinAction.PrepareAiBatch -> if (page == Page.AI.name && !aiLocked &&
+                    !chatBusy && !aiBusy && pendingBatchMode == null && editSession == null && confirmBatch == null &&
+                    webAiProposalReviewSession == null && pendingWebAiProposalPublish == null && !aiAttachmentPickerBusy &&
+                    pendingFileReview == null && pendingImageReview == null) {
+                    beginBatchConversation(action.mode)
+                }
+                WebSkinAction.CancelAiBatch -> if (page == Page.AI.name &&
+                    pendingWebAiProposalPublish == null && pendingFileReview == null &&
+                    pendingImageReview == null) {
+                    cancelAiBatchFromSurface()
+                }
+                WebSkinAction.ReleaseStuckAiBatch -> if (page == Page.AI.name) {
+                    requestStuckBatchRelease()
                 }
                 WebSkinAction.PickAiFile -> launchWebAiAttachmentPicker(image = false)
                 WebSkinAction.PickAiImage -> launchWebAiAttachmentPicker(image = true)
@@ -1368,6 +1432,14 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                 .put("memoTruncated", page == Page.MEMO.name && memoRemainingCount > 0)
                 .put("memoRemainingCount", if (page == Page.MEMO.name) memoRemainingCount else 0)
                 .put("chatBusy", chatBusy || aiBusy || pendingWebAiProposalPublish != null)
+                .put("aiBatch", WebAiBatchProjection.project(
+                    session = aiSession,
+                    preparationMode = pendingBatchMode,
+                    reviewMode = confirmBatch?.mode,
+                    reviewCards = confirmBatch?.cards,
+                    progress = null,
+                    nowMillis = nowMillis
+                ))
                 .put("chatAttachmentAvailable", canLaunchWebAiAttachmentPicker())
                 .put("chatAttachmentBusy", aiAttachmentPickerBusy ||
                     pendingFileReview != null || pendingImageReview != null)
@@ -1466,6 +1538,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                 pendingCount = pendingCount,
                 aiLocked = aiLocked,
                 aiSession = aiSession,
+                canReleaseStuckBatch = PowerStore.canReleaseStuckAiBatch(aiSession, nowMillis),
                 effects = effects,
                 skinChoices = skinChoices,
                 selectedSkin = selectedSkin,
@@ -1531,14 +1604,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                     }
                 },
                 onCancelBatch = {
-                    scope.launch {
-                        val session = aiSession
-                        if (session != null) {
-                            withContext(Dispatchers.IO) { store.requestAiCancel(session.sessionId) }
-                            reload()
-                            message = "已请求停止；已完成的结果保留，剩余卡片继续等待你"
-                        }
-                    }
+                    cancelAiBatchFromSurface()
                 },
                 onReconcile = {
                     scope.launch {
@@ -1552,17 +1618,17 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                 },
                 aiBusy = aiBusy,
                 onReleaseStuck = {
-                    scope.launch {
-                        withContext(Dispatchers.IO) { store.releaseStuckAiBatch() }
-                        reload()
-                        message = "已强制解除 AI 独占；旧批次的结果被作废，剩余卡片保留"
-                    }
+                    requestStuckBatchRelease()
                 }
             )
         } else if (presentedPage == Page.AI.name) {
             AiChatScreen(
                 messages = chatHistory,
-                busy = chatBusy || aiBusy || pendingWebAiProposalPublish != null,
+                busy = chatBusy || aiBusy || aiLocked || confirmBatch != null ||
+                    pendingWebAiProposalPublish != null,
+                batchActionsBusy = pendingBatchMode != null || confirmBatch != null || aiSession?.isActive == true,
+                batchSelectionActive = pendingBatchMode != null,
+                onCancelBatchSelection = { cancelAiBatchFromSurface() },
                 pendingCount = pendingCount,
                 proposalReview = proposalReview,
                 onApplyProposals = { selected, publish ->
@@ -2526,11 +2592,53 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                     withContext(Dispatchers.Main) {
                         reload()
                         message = "AI 批次结束：发布 ${report.published} 张，丢弃 ${report.discarded} 张，保留 ${report.kept} 张" +
-                            (if (report.cancelled) "（已停止）" else "") + (report.failures.firstOrNull()?.let { "；$it" } ?: "")
+                            (if (report.cancelled) "（已停止）" else "") +
+                            (if (report.failures.isNotEmpty()) "；部分草稿未完成，可单独重新审核" else "")
                     }
                     ReminderScheduler.reconcile(appContext, store)
                     withContext(Dispatchers.Main) { reload() }
                 }
+            }
+        )
+    }
+
+    if (confirmStuckBatchRelease != null) {
+        SkinAlertDialog(
+            onDismissRequest = { confirmStuckBatchRelease = null },
+            title = { Text("强制解除 AI 批次锁？") },
+            text = {
+                Text(
+                    "仅在请求停止超过 10 分钟仍无响应时继续。当前执行结果数量可能无法确定；" +
+                        "已提交的事件操作保留，未完成草稿保留待处理。旧批次授权会被作废，不能自动续跑。"
+                )
+            },
+            confirmButton = {
+                val reviewedSession = confirmStuckBatchRelease
+                TextButton(
+                    enabled = reviewedSession != null && aiLocked && aiSession?.isActive == true &&
+                        aiSession?.sessionId == reviewedSession.sessionId &&
+                        aiSession?.lockEpoch == reviewedSession.lockEpoch &&
+                        PowerStore.canReleaseStuckAiBatch(aiSession, nowMillis),
+                    onClick = {
+                        val expected = confirmStuckBatchRelease
+                        confirmStuckBatchRelease = null
+                        if (expected != null) scope.launch {
+                            val released = withContext(Dispatchers.IO) {
+                                store.releaseStuckAiBatch(expected.sessionId, expected.lockEpoch)
+                            }
+                            reload()
+                            message = if (released) {
+                                "AI 批次锁已解除；请检查正式事件和待处理草稿，当前批次结果数量无法确定"
+                            } else {
+                                "批次已变化、结束或已恢复，无需再次解除"
+                            }
+                            WebSkinBridgeRuntime.stateRevision++
+                        }
+                    }
+                ) { Text("解除并作废旧授权") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmStuckBatchRelease = null }) { Text("返回") }
             }
         )
     }
@@ -2651,6 +2759,7 @@ internal fun NativeToolsPage(
     pendingCount: Int,
     aiLocked: Boolean,
     aiSession: PowerStore.AiSession?,
+    canReleaseStuckBatch: Boolean,
     effects: GlassEffects,
     skinChoices: List<InstalledSkin>,
     selectedSkin: String,
@@ -2774,6 +2883,25 @@ internal fun NativeToolsPage(
         }
 
         SectionCard("执行状态", "最近的期望调度与执行记录，最多 40 项") {
+            if (aiSession?.isActive == true) {
+                val activeState = aiSession.state
+                StatusLine("AI 批次", if (activeState == PowerStore.AiState.CANCEL_REQUESTED)
+                    "正在停止；已完成结果保留" else "正在运行；未完成草稿会继续等待", false)
+                ToolRow(
+                    "请求停止 AI 批次",
+                    "已完成的操作保留，剩余草稿不执行",
+                    onCancelBatch,
+                    enabled = activeState == PowerStore.AiState.RUNNING
+                )
+                if (activeState == PowerStore.AiState.CANCEL_REQUESTED) {
+                    ToolRow(
+                        "强制解除卡住的 AI 批次",
+                        "停止请求超过 10 分钟无响应后可用；当前结果数量可能无法确定",
+                        onReleaseStuck,
+                        enabled = aiLocked && canReleaseStuckBatch
+                    )
+                }
+            }
             if (diagnostics.reminders.isEmpty()) Text("还没有启用的提醒。", style = MaterialTheme.typography.bodyMedium)
             diagnostics.reminders.forEach { row ->
                 Column(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {

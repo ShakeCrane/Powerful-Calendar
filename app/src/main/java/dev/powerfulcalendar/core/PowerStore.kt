@@ -2292,15 +2292,27 @@ class PowerStore(
         true
     }
 
-    /** Explicit user escape hatch for a stuck batch; fences the epoch before unlocking. */
+    /** Explicit user escape hatch for one reviewed stuck batch; fences its epoch before unlocking. */
     @Synchronized
-    fun releaseStuckAiBatch(): Boolean = tx { db ->
+    fun releaseStuckAiBatch(
+        expectedSessionId: String,
+        expectedLockEpoch: Long,
+        nowMillis: Long = System.currentTimeMillis()
+    ): Boolean = tx { db ->
         if (!isLocked(db)) return@tx false
-        val now = System.currentTimeMillis()
-        db.execSQL(
-            "UPDATE ai_sessions SET state='FAILED', updated_ms=?, report=? WHERE state IN ('REQUESTED','RUNNING','CANCEL_REQUESTED')",
-            arrayOf<Any?>(now, "{\"released\":\"user\"}")
+        if (expectedLockEpoch != currentEpoch(db)) return@tx false
+        val updated = db.update(
+            "ai_sessions",
+            ContentValues().apply {
+                put("state", AiState.FAILED.name)
+                put("updated_ms", nowMillis)
+                put("report", "{\"released\":\"user\",\"outcomeKnown\":false}")
+            },
+            "session_id=? AND lock_epoch=? AND state='CANCEL_REQUESTED' AND updated_ms<=?",
+            arrayOf(expectedSessionId, expectedLockEpoch.toString(),
+                (nowMillis - DEFAULT_STALE_MS).toString())
         )
+        if (updated != 1) return@tx false
         db.execSQL("UPDATE meta SET ai_locked=0, ai_epoch=? WHERE id=1", arrayOf(currentEpoch(db) + 1))
         true
     }
@@ -3255,6 +3267,14 @@ class PowerStore(
 
         /** A batch whose heartbeat is older than this cannot still be running. */
         const val DEFAULT_STALE_MS = 10 * 60_000L
+
+        /** Recovery is offered only for a cancellation request with no heartbeat for the lease. */
+        fun canReleaseStuckAiBatch(session: AiSession?, nowMillis: Long): Boolean {
+            val current = session ?: return false
+            return current.state == AiState.CANCEL_REQUESTED &&
+                nowMillis >= current.updatedAtMillis &&
+                nowMillis - current.updatedAtMillis >= DEFAULT_STALE_MS
+        }
 
         /** One token per OS process; every PowerStore instance in the process shares it. */
         private val PROCESS_TOKEN: String = UUID.randomUUID().toString()

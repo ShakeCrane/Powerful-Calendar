@@ -133,6 +133,12 @@ internal sealed interface WebSkinAction {
     /** Request the next host-bounded prefix of the current Memo projection. */
     data object LoadMoreMemo : WebSkinAction
     data class SendChat(val text: String) : WebSkinAction
+    /** Starts the Host-owned range selection conversation; this does not authorize writes. */
+    data class PrepareAiBatch(val mode: dev.powerfulcalendar.ai.AiBatchRunner.Mode) : WebSkinAction
+    /** Cancels a pending range-selection conversation or requests stop for the active Host batch. */
+    data object CancelAiBatch : WebSkinAction
+    /** Requests the Host's explicit stuck-batch recovery confirmation. */
+    data object ReleaseStuckAiBatch : WebSkinAction
     data object PickAiFile : WebSkinAction
     data object PickAiImage : WebSkinAction
     data object CreateMemo : WebSkinAction
@@ -428,6 +434,17 @@ internal fun decodeBridgeAction(raw: String): WebSkinAction? {
                 WebSkinAction.SendChat(text)
             else null
         }
+        "prepareAiBatch" -> {
+            if (keys != setOf("name", "mode")) return null
+            when (payload.opt("mode")) {
+                "publish" -> WebSkinAction.PrepareAiBatch(dev.powerfulcalendar.ai.AiBatchRunner.Mode.PUBLISH)
+                "discard" -> WebSkinAction.PrepareAiBatch(dev.powerfulcalendar.ai.AiBatchRunner.Mode.DISCARD)
+                else -> null
+            }
+        }
+        "cancelAiBatch" -> if (keys == setOf("name")) WebSkinAction.CancelAiBatch else null
+        "releaseStuckAiBatch" -> if (keys == setOf("name"))
+            WebSkinAction.ReleaseStuckAiBatch else null
         "pickAiFile" -> if (keys == setOf("name")) WebSkinAction.PickAiFile else null
         "pickAiImage" -> if (keys == setOf("name")) WebSkinAction.PickAiImage else null
         "resolveAiProposal" -> {

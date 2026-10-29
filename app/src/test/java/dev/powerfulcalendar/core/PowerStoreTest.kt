@@ -3132,6 +3132,43 @@ class PowerStoreTest {
     }
 
     @Test
+    fun stuckBatchReleaseRequiresTimedOutCancellationAndReportsUnknownOutcome() {
+        val card = store.newDraft(activityForm("停止后卡住的批次"))
+        val session = store.beginAiBatch(
+            mapOf(card.draftId to card.draftVersion),
+            setOf(DraftOperation.CREATE)
+        )
+        val now = System.currentTimeMillis()
+
+        assertFalse(store.releaseStuckAiBatch(session.sessionId, session.lockEpoch, now))
+        assertTrue(store.requestAiCancel(session.sessionId))
+        val cancelRequested = requireNotNull(store.currentAiSession())
+        assertFalse(PowerStore.canReleaseStuckAiBatch(cancelRequested,
+            cancelRequested.updatedAtMillis + PowerStore.DEFAULT_STALE_MS - 1))
+        assertTrue(PowerStore.canReleaseStuckAiBatch(cancelRequested,
+            cancelRequested.updatedAtMillis + PowerStore.DEFAULT_STALE_MS))
+
+        store.writableDatabase.execSQL(
+            "UPDATE ai_sessions SET updated_ms=? WHERE session_id=?",
+            arrayOf<Any?>(now - PowerStore.DEFAULT_STALE_MS + 1, session.sessionId)
+        )
+        assertFalse(store.releaseStuckAiBatch(session.sessionId, session.lockEpoch, now))
+        assertTrue(store.isLocked())
+
+        store.writableDatabase.execSQL(
+            "UPDATE ai_sessions SET updated_ms=? WHERE session_id=?",
+            arrayOf<Any?>(now - PowerStore.DEFAULT_STALE_MS, session.sessionId)
+        )
+        assertTrue(store.releaseStuckAiBatch(session.sessionId, session.lockEpoch, now))
+        assertFalse(store.isLocked())
+        val released = requireNotNull(store.currentAiSession())
+        assertEquals(PowerStore.AiState.FAILED, released.state)
+        assertFalse(JSONObject(requireNotNull(released.report)).getBoolean("outcomeKnown"))
+        assertEquals(1, store.pendingCount())
+        assertTrue(store.all().isEmpty())
+    }
+
+    @Test
     fun aRestoredBackupRebuildsItsDesiredSchedule() {
         val card = store.newDraft(alarmForm(minutesAhead = 300))
         commit(card)
