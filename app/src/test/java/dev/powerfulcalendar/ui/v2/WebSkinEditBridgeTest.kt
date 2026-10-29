@@ -822,6 +822,68 @@ class WebSkinEditBridgeTest {
         assertEquals(commitsBeforeDelete + 1, store.commitCount())
     }
 
+    @Test fun formalRecurringDeleteCancelsTheWholeSeriesAndDiscardsItsPendingEdit() = runBlocking {
+        val zone = ZoneId.of("Asia/Shanghai")
+        val nextDate = LocalDate.now(zone).plusDays(1)
+        val original = commitFormal(DraftForm(
+            kind = TemporalKind.ACTIVITY,
+            title = "recurring series to delete",
+            startText = "$nextDate 08:00",
+            endText = "$nextDate 09:00",
+            zoneId = zone.id,
+            reminderMinutes = -1,
+            recurrence = Recurrence(freq = RecurrenceFreq.DAILY, count = 3)
+        ))
+        val pending = store.newDraft(
+            DraftForm.from(original).copy(title = "pending series edit"),
+            original.eventSeq,
+            DraftOperation.REPLACE
+        )
+        val commitsBeforeDelete = store.commitCount()
+        val identitiesBeforeDelete = store.identityCount()
+
+        assertEquals("opened", service.execute(WebEditCommand.OpenEvent(
+            request(), original.eventSeq, original.revision
+        )).getString("status"))
+        val sessionId = service.snapshot().getJSONObject("editor").getString("sessionId")
+        val cancelled = WebEditCommand.DeleteEvent(request(), sessionId)
+        assertEquals("confirmation_required", service.execute(cancelled).getString("status"))
+        val cancellationReview = requireNotNull(service.pendingWriteReview)
+        assertEquals(DraftOperation.DELETE, cancellationReview.operation)
+        val reviewRecord = requireNotNull(cancellationReview.current)
+        assertEquals(original, reviewRecord)
+        assertEquals(original.recurrence, reviewRecord.recurrence)
+        assertEquals("cancelled", service.resolveFormalWriteReview(
+            cancellationReview.token, approved = false
+        ).getString("status"))
+        assertEquals(original, store.get(original.eventSeq))
+        assertEquals(DraftStatus.PENDING, store.draft(pending.draftId)?.status)
+        assertEquals(commitsBeforeDelete, store.commitCount())
+        assertEquals(identitiesBeforeDelete, store.identityCount())
+        assertTrue(service.snapshot().getJSONObject("editor").getBoolean("open"))
+
+        val approved = WebEditCommand.DeleteEvent(request(), sessionId)
+        assertEquals("confirmation_required", service.execute(approved).getString("status"))
+        val approvalReview = requireNotNull(service.pendingWriteReview)
+        assertEquals("saved", service.resolveFormalWriteReview(
+            approvalReview.token, approved = true
+        ).getString("status"))
+
+        assertNull(store.get(original.eventSeq))
+        assertTrue(store.all().isEmpty())
+        assertTrue(store.isRetired(original.eventSeq))
+        val tombstone = requireNotNull(store.getIncludingRetired(original.eventSeq))
+        assertEquals(original.revision + 1, tombstone.revision)
+        assertEquals(original.recurrence, tombstone.recurrence)
+        assertEquals(DraftStatus.DISCARDED, store.draft(pending.draftId)?.status)
+        assertTrue(store.pendingDraftsFor(original.eventSeq).isEmpty())
+        assertEquals(commitsBeforeDelete + 1, store.commitCount())
+        assertEquals(identitiesBeforeDelete, store.identityCount())
+        assertFalse(service.snapshot().getJSONObject("editor").getBoolean("open"))
+        assertEquals("saved", service.execute(approved).getString("status"))
+        assertEquals(commitsBeforeDelete + 1, store.commitCount())
+    }
+
     @Test fun formalDeleteReviewRejectsChangedRevision() = runBlocking {
         val card = store.newDraft(DraftForm(kind = TemporalKind.MEMO, title = "Concurrent edit"))
         assertTrue(store.commit(card.draftId) is PowerStore.CommitOutcome.Committed)
