@@ -55,4 +55,4 @@
 
 ## 提交
 
-实现/测试提交：待提交后补录完整 SHA。
+实现/测试/矩阵/进度提交：`2e47ae8f1b0ee50b4e9457f6465dcf87d8758cb3`（`test(分离): 验证皮肤包编辑哈希与引用往返`），已推送至 `origin/codex/separation-s0-timeline-drag`。本 SHA 补录为独立文档提交。

@@ -5,7 +5,7 @@
 - Strengthened the actual Chrome Studio E2E to begin with the Android-delivery `.pcskin` fixture imported through `/api/import-v3`, continue source/project/binary CRUD on its re-imported package, preview a CSS-referenced binary asset, then export/re-import. The check compares semantic Manifest/capabilities, the complete sorted 9-file set, each file's SHA-256 and Manifest hash entry, the retained URL reference, exact preview-served asset bytes, deletion behavior, and post-import editability. Existing CLI regression covers source move plus structural project JSON patch and re-import.
 - Chrome Headless/CDP E2E **PASS**; complete Skin Studio Python suite **61/61 PASS**; canonical Clear verifier **9 files / 384,912 bytes PASS**; `node --check` and `git diff --check` **PASS**. Logs and all nine per-file SHA-256 values are in the independent Issue report and `.local/android-test/reports/separation-s0-timeline-drag/s0-pkg-03/`.
 - This signs the reconstructed Studio package-edit/export/re-import slice. It does not sign Android activation (separate `S0-PKG-05`), arbitrary third-party package coverage, physical/OEM behavior, or global Native/Skin parity. Overall separation remains **IN PROGRESS**.
-- Implementation, regression, independent report, matrix and progress commits: pending final SHA backfill.
+- Implementation/regression/Issue/matrix/progress commit `2e47ae8f1b0ee50b4e9457f6465dcf87d8758cb3` (`test(分离): 验证皮肤包编辑哈希与引用往返`) is pushed to `origin/codex/separation-s0-timeline-drag`; this line is the separate full-SHA backfill.
 
 ## Separation — v3 无修改导入/预览/导出往返 `S0-PKG-02` (2026-10-29, PARTIAL)
 
