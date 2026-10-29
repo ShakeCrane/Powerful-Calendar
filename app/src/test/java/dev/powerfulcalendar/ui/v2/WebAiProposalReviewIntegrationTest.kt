@@ -111,6 +111,7 @@ class WebAiProposalReviewIntegrationTest {
         assertEquals("Paging Memo 250", firstRows.getJSONObject(249).getString("title"))
 
         ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.LoadMoreMemo) }
+        ui.waitForIdle()
         ui.waitUntil(20_000) {
             val state = WebSkinBridgeRuntime.state()
             state.optJSONArray("memoEntries")?.length() == 251 &&
