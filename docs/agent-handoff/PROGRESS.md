@@ -1,5 +1,11 @@
 # Core freeze progress
 
+## Separation — Clear source / APK / Studio provenance `S0-PKG-01` (2026-10-29, PASS for provenance slice)
+
+- Closed the unverified provenance assertion: deterministic package bytes generated from `default-clear/manifest.json` plus `default-clear/source/` equal the repository APK asset; the built Debug APK's `assets/powercal-clear-default.pcskin` equals the same bytes; a real local Studio `/api/template-v3` HTTP request returns the exact unpacked Manifest and all file bytes.
+- Added `build_default_clear.py --verify --apk <debug.apk>` (read-only APK ZIP check) and regression coverage for exact full-Manifest equality, file bytes, and stale/missing embedded resources. Focused tests **4/4 PASS**; full Skin Studio Python suite **60/60 PASS**. APK asset/package SHA-256 `D0D136EEF118DC52CE767E8416EC1BD3B3134F75302BC64C3D3ED4FCA5192BF9`; built Debug APK SHA-256 `8E5940F2B73703E76CB0778E849487EB8F9D8D1CD96787BE207D27BF8EEC9986`; embedded skin hash matches exactly. Logs and the independent report contain all hashes.
+- This signs only reconstructed `S0-PKG-01` package provenance. Android `SkinPackageManager` activation/restart (`S0-PKG-05`), Studio preview versus production WebView (`S0-PKG-06`), complete import/edit/export round-trip, physical-device behavior, and overall separation remain separate and are not implied PASS. The test HTTP server needed local loopback permission; the sandbox-only initial `WinError 10013` was followed by successful elevated test runs.
+
 ## Separation — Clear timeline drag-to-move `S0-TL-04` (2026-10-29, PARTIAL)
 
 - 根因：Clear 时间轴只有打开事件的点击目标；Host Bridge 没有安全移动命令，皮肤不能请求移动正式事件。新增封闭 schema `timeline.move`，Host 从当前时间轴投影、相机与 zone 校验事件及 revision，以 Native `TimelineCoordinate.snap` 计算目标，只创建一张带来源 revision 栅栏的 `REPLACE` 草稿并打开现有 Deck；正式事件保持不变，用户仍须审核/发布。重复事件、Memo、纯日期 Deadline、过期投影、锁定操作及无效日期均拒绝或返回状态。Native 拖动也传递来源 revision，`PowerStore.newDraft` 在同一事务内检查可选 `expectedRevision`，防止读取后版本竞态。

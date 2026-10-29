@@ -4,15 +4,17 @@ import hashlib
 import json
 import subprocess
 import sys
+import tempfile
 import threading
 import unittest
 from pathlib import Path
 from urllib.request import urlopen
+from zipfile import ZipFile
 
 STUDIO=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(STUDIO))
 from skin_studio import Handler,ThreadingHTTPServer
-from build_default_clear import ASSET,expected_bytes
+from build_default_clear import ASSET,expected_bytes,verify_apk_asset
 from runtime_package_v3 import unpack
 
 class DefaultClearSingleSourceTest(unittest.TestCase):
@@ -49,6 +51,26 @@ class DefaultClearSingleSourceTest(unittest.TestCase):
         self.assertNotIn(b"https://",files["web/index.html"])
         self.assertLess(len(original),10_000_000)
 
+    def test_compiled_apk_clear_asset_verifier_checks_exact_bytes(self):
+        expected=expected_bytes()
+        asset_name="assets/powercal-clear-default.pcskin"
+        with tempfile.TemporaryDirectory() as directory:
+            apk=Path(directory)/"fixture.apk"
+            with ZipFile(apk,"w") as archive:
+                archive.writestr(asset_name,expected)
+            self.assertEqual(hashlib.sha256(expected).hexdigest(),
+                             verify_apk_asset(apk,expected))
+
+            with ZipFile(apk,"w") as archive:
+                archive.writestr(asset_name,b"x"*len(expected))
+            with self.assertRaisesRegex(ValueError,"differs from canonical"):
+                verify_apk_asset(apk,expected)
+
+            with ZipFile(apk,"w") as archive:
+                archive.writestr("assets/other.pcskin",expected)
+            with self.assertRaisesRegex(ValueError,"exactly one"):
+                verify_apk_asset(apk,expected)
+
     def test_studio_starter_reads_exact_same_apk_bundle(self):
         server=ThreadingHTTPServer(("127.0.0.1",0),Handler)
         thread=threading.Thread(target=server.serve_forever,daemon=True)
@@ -56,8 +78,8 @@ class DefaultClearSingleSourceTest(unittest.TestCase):
         try:
             with urlopen(f"http://127.0.0.1:{server.server_port}/api/template-v3") as answer:
                 project=json.loads(answer.read())
-            self.assertEqual(project["manifest"]["id"],"powercal-clear-default")
-            _,files=unpack(ASSET.read_bytes())
+            asset_manifest,files=unpack(ASSET.read_bytes())
+            self.assertEqual(project["manifest"],asset_manifest)
             self.assertEqual(set(project["files"]),set(files))
             for name,blob in files.items():
                 self.assertEqual(base64.b64decode(project["files"][name]),blob,name)

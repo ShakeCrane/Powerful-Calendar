@@ -143,4 +143,8 @@ acceptance remain separate open work.
 python -m unittest discover -s tools/skin-studio/tests -p test_project_ops_v3.py -v
 python -m unittest discover -s tools/skin-studio/tests -v
 python tools/skin-studio/build_default_clear.py --verify
+python tools/skin-studio/build_default_clear.py --verify --apk app/build/outputs/apk/debug/app-debug.apk
 ```
+
+The APK check requires a previously built Debug APK and verifies that its packaged
+`assets/powercal-clear-default.pcskin` is byte-identical to the canonical source bundle.

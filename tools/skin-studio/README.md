@@ -19,6 +19,16 @@ python tools/skin-studio/skin_studio.py serve --port 8765
 一致的 v3 校验，再通过一个本地、临时的只读预览地址原样加载这些文件；
 不再把源码替换成 `srcdoc` 的另一份版本。
 
+完成 Debug APK 构建后，可运行下面的检查确认规范源码和单独 Manifest 所生成的包，
+仓库中的 APK 皮肤资源，以及 APK ZIP 内实际打包的资源逐字节一致：
+
+```powershell
+python tools/skin-studio/build_default_clear.py --verify --apk app/build/outputs/apk/debug/app-debug.apk
+```
+
+`--verify` 单独使用时会检查规范源码到仓库 APK 资源；`--apk` 必须与 `--verify`
+同用，并且只读检查已生成的 APK，不会重写它。
+
 已实现：
 
 - 简单模式修改已声明并已绑定的 CSS 材质变量；高级模式编辑完整 HTML/CSS/JS，
