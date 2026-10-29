@@ -8,7 +8,7 @@
 - 完整 Gradle 离线门禁 **661/661 JVM tests、87 suites、0 failures/errors/skips；88/88 tasks；source boundary、Debug/AndroidTest APK、lint 全部 PASS**。Lint 0 errors / 52 warnings。完整日志 SHA-256 `B7B9418ACDDAD5F48D4E8AD5F86D9954027B1F6F5E004438AB5433A7C5D7C895`。Debug APK SHA-256 `D6B8CC95C8F01FCBA95E4F6FF37B0E7882232F934297440295149C54553738C7`；AndroidTest APK SHA-256 `C23375D347A00880431B9A2807E0BFAB005973D690A8FF8BECC4DF94B6122931`。
 - Chrome 156/CDP Clear 回归 **PASS**：Settings 路由、权限请求与 Native 恢复动作；拒绝、允许、API<33 状态显示正确。截图 `.local/android-test/reports/separation-s0-timeline-drag/notification-permission-cdp/settings-2026-10-29T16-44-33-028Z.png`，SHA-256 `C26234A6E54D47DDCE83964E6D2D7CA0DC819D34ABAF532F761D12C8F7F70728`。Studio Preview 加载实际 canonical 包后 **PASS**，Mock 未调用系统权限。Skin Studio Python **61/61 PASS**，日志 SHA-256 `840CA5D41F8D053AC14CC0834EB32C37DD44FC7DE650E9ACB82884E41065EEBB`。APK 内 canonical Clear 与源码/checked-in 包 SHA-256 一致：`af640cbca89a870c2d1ea733eb562ed35e6082b75b08fe7aa37afa9d4ff6f98a`。
 - Android WebView/系统权限弹窗 **NOT TESTED**：`adb devices -l` 为空，SDK 下没有 emulator binary；AndroidTest APK 仅已构建，未执行 instrumentation。实体/OEM 设备测试仍由用户执行。`S0-ST-18` 与 Settings 导航保持 **PARTIAL**，整体分离工作继续进行。独立报告：[PC-ISSUE-SEPARATION-NOTIFICATION-PERMISSION](../issues/PC-ISSUE-SEPARATION-NOTIFICATION-PERMISSION.md)。
-- 交付提交 SHA 在推送后回填。
+- 实现、回归、矩阵与独立报告提交并推送：`68257eb97ebd1064c4176a3742d5dc91ecf73eeb`（`feat(皮肤分离): 增加Clear通知权限入口`）。
 
 ## Separation — Clear AI 聊天历史清空与回退 `S0-AI-01` / `S0-AI-04`（2026-10-29，PARTIAL / HOLD）
 

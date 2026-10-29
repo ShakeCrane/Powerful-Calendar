@@ -80,4 +80,4 @@ Initial harness attempts stopped before product assertions because a fresh shell
 
 ## Git delivery
 
-Implementation and evidence are committed and pushed on `codex/separation-s0-timeline-drag`. Commit SHA is recorded in the final delivery section after commit creation.
+Implementation, regression tests, matrix entry, and this Issue report were committed and pushed as `68257eb97ebd1064c4176a3742d5dc91ecf73eeb` (`feat(皮肤分离): 增加Clear通知权限入口`) to `origin/codex/separation-s0-timeline-drag`.
