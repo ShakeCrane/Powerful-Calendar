@@ -1670,7 +1670,7 @@ function onSkinAction(message){
       }
       mockChat=[];mockAiErrorMessages=[];mockChatCleared=true;
       mockAiProposals=[];rotateMockAiReviewId();
-      mockChatHistoryRevision++;mockChatPrefillText="";mockChatPrefillRevision++;
+      mockChatHistoryRevision++;
       logAction("Preview Mock：清空 AI 聊天历史；没有修改事件或草稿");
       postState();return;
     }
@@ -1695,7 +1695,7 @@ function onSkinAction(message){
       }
       mockChat=messages.slice(0,keep).map(message=>({...message}));
       mockAiErrorMessages=[];mockChatCleared=true;mockChatHistoryRevision++;
-      mockChatPrefillText=p.editAndResend?item.content:"";mockChatPrefillRevision++;
+      if(p.editAndResend){mockChatPrefillText=item.content;mockChatPrefillRevision++;}
       logAction("Preview Mock：回退聊天历史；没有修改事件或草稿");
       postState();return;
     }

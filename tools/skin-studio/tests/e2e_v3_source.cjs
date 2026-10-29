@@ -638,18 +638,20 @@ async function main(){
           .find(bubble=>bubble.querySelector('.chat-message-content')?.textContent===
             '预览 Mock：消息已保留在本地聊天历史；没有调用真实 AI 或写入日历。');
         check(retainedReply,'deterministic post-rewind Mock reply is missing');
+        const unsentDraft='暂不发送的输入草稿';
+        field.value=unsentDraft;field.dispatchEvent(new Event('input',{bubbles:true}));
         retainedReply.querySelector('.chat-message-actions button').click();
-        await wait(()=>!list.textContent.includes(later)&&
+        await wait(()=>field.value===unsentDraft&&!list.textContent.includes(later)&&
           list.textContent.includes('没有调用真实 AI 或写入日历'),
-          'assistant rewind did not retain the selected reply and remove later turns');
+          'assistant rewind changed the composer or failed to remove later turns');
         const clear=document.querySelector('#chatClear');
         check(!clear.disabled,'clear history is unavailable for a non-empty chat');
         clear.click();
         await wait(()=>list.querySelectorAll('.chat-bubble').length===0&&
-          list.textContent.includes('从这里开始与 AI 讨论日程')&&clear.disabled,
-          'clear history did not leave the chat empty and disable the no-op clear control');
+          list.textContent.includes('从这里开始与 AI 讨论日程')&&clear.disabled&&field.value===unsentDraft,
+          'clear history changed the composer or failed to leave the chat empty');
         return {userEditAndResend:true,assistantRewind:true,clear:true,
-          providerCalled:false,calendarWrites:false};
+          pendingComposerPreserved:true,providerCalled:false,calendarWrites:false};
       })()`});
     if(aiHistory.exceptionDetails)throw Error(aiHistory.exceptionDetails.exception?.description || aiHistory.exceptionDetails.text);
     const aiHistoryMockBoundary=await call("Runtime.evaluate",{returnByValue:true,

@@ -9,7 +9,8 @@ internal enum class WebChatRewindMode { RETRACT, EDIT_AND_RESEND }
 internal sealed interface WebChatHistoryMutation {
     data class Applied(
         val messages: List<AiChatMessage>,
-        /** Non-null only when a user message is being edited and re-sent. */
+        /** Composer changes only for the explicit user-message edit-and-resend action. */
+        val updateComposer: Boolean = false,
         val prefillText: String? = null
     ) : WebChatHistoryMutation
 
@@ -62,9 +63,10 @@ internal object WebAiChatHistory {
         val retainedCount = if (selected.role == "user") index else index + 1
         val result = WebChatHistoryMutation.Applied(
             messages = messages.take(retainedCount),
+            updateComposer = mode == WebChatRewindMode.EDIT_AND_RESEND,
             prefillText = selected.content.takeIf { mode == WebChatRewindMode.EDIT_AND_RESEND }
         )
-        return if (result.messages == messages && result.prefillText == null) {
+        return if (result.messages == messages && !result.updateComposer) {
             WebChatHistoryMutation.NoChange
         } else result
     }

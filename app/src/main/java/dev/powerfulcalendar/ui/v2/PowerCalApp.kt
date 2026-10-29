@@ -1422,7 +1422,6 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                             replaceChatHistory(result.messages)
                             pendingBatchMode = null
                             webAiProposalReviewSession = null
-                            updateWebChatPrefill(null)
                             message = "聊天已清空；事件和待处理草稿未更改"
                         }
                         WebChatHistoryMutation.NoChange -> message = "聊天记录已经为空"
@@ -1439,7 +1438,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                         is WebChatHistoryMutation.Applied -> {
                             replaceChatHistory(result.messages)
                             pendingBatchMode = null
-                            updateWebChatPrefill(result.prefillText)
+                            if (result.updateComposer) updateWebChatPrefill(result.prefillText)
                             message = if (result.prefillText != null)
                                 "已回退后续对话；原消息已放入输入框，可修改后重新发送"
                             else "已回退这条消息及后续对话；日历和草稿未更改"
@@ -1739,7 +1738,6 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                     replaceChatHistory(emptyList())
                     pendingBatchMode = null
                     webAiProposalReviewSession = null
-                    updateWebChatPrefill(null)
                 },
                 onClearCache = {
                     scope.launch {

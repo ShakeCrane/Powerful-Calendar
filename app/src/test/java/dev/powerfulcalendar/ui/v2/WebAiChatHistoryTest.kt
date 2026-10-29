@@ -38,7 +38,9 @@ class WebAiChatHistoryTest {
             expectedRevision = 9, currentRevision = 9
         )
 
-        assertEquals(WebChatHistoryMutation.Applied(conversation.take(2), "第二条请求"), result)
+        assertEquals(WebChatHistoryMutation.Applied(
+            conversation.take(2), updateComposer = true, prefillText = "第二条请求"
+        ), result)
     }
 
     @Test
