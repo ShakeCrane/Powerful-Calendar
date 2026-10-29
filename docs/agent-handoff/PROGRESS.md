@@ -1,5 +1,12 @@
 # Core freeze progress
 
+## Separation — S0-PKG-02 browser UI no-edit package round-trip follow-up (2026-10-29, narrow PASS; row remains PARTIAL)
+
+- Extended the real Chrome Studio E2E: import the actual Android-delivery `.pcskin`, load it in the browser editor without edits, compare semantic Manifest/capabilities and the complete 5-file set, fetch all four runtime resources from the tokenized preview route, then export/re-import and check every byte, SHA-256 and Manifest hash entry. The same E2E continues into the S0-PKG-03 edit round-trip.
+- Chrome Headless/CDP no-edit import→preview→export→reimport **PASS**; focused PreviewParity HTTP suite **7/7 PASS**. Full Skin Studio Python **61/61 PASS** was run on the same unchanged Python test/source tree in the adjacent S0-PKG-03 verification.
+- Evidence and five per-file hashes are in [PC-ISSUE-SEPARATION-S0-PKG-02-ROUNDTRIP](../issues/PC-ISSUE-SEPARATION-S0-PKG-02-ROUNDTRIP.md) and `.local/android-test/reports/separation-s0-timeline-drag/s0-pkg-02/run-20261029-01/`. Arbitrary third-party package corpus, broad edge/size limits and Android/physical behavior remain **NOT TESTED**; `S0-PKG-02` stays **PARTIAL**.
+- Follow-up test/report/matrix/progress commit: pending full SHA backfill.
+
 ## Separation — v3 edited-package full CRUD/export/re-import and resource hashes `S0-PKG-03` (2026-10-29, PASS for combined Studio fixture scope)
 
 - Strengthened the actual Chrome Studio E2E to begin with the Android-delivery `.pcskin` fixture imported through `/api/import-v3`, continue source/project/binary CRUD on its re-imported package, preview a CSS-referenced binary asset, then export/re-import. The check compares semantic Manifest/capabilities, the complete sorted 9-file set, each file's SHA-256 and Manifest hash entry, the retained URL reference, exact preview-served asset bytes, deletion behavior, and post-import editability. Existing CLI regression covers source move plus structural project JSON patch and re-import.

@@ -75,6 +75,49 @@ async function main(){
       const installedMetadata={...installedPackage.manifest};delete installedMetadata.sha256;
       const installedFiles={...installedPackage.files};
       await loadPackage(installedPackage);
+      const noEditPayload=payload();
+      const noEditPayloadMetadata={...noEditPayload.manifest};delete noEditPayloadMetadata.sha256;
+      check(JSON.stringify(canonical(noEditPayloadMetadata))===JSON.stringify(canonical(installedMetadata)),
+        'no-edit browser import changed Manifest metadata or capabilities');
+      const sourcePaths=Object.keys(installedFiles).sort();
+      check(JSON.stringify(Object.keys(noEditPayload.files).sort())===JSON.stringify(sourcePaths),
+        'no-edit browser import changed the package file set');
+      const noEditPreviewResponse=await fetch('/api/preview-v3',{method:'POST',
+        headers:{'Content-Type':'application/json'},body:JSON.stringify(noEditPayload)});
+      check(noEditPreviewResponse.ok,'no-edit browser preview failed');
+      const noEditPreview=await noEditPreviewResponse.json();
+      const noEditFileSha256={};
+      for(const [name,base64] of Object.entries(installedFiles)){
+        const expectedHash=await sha256(decodeBase64(base64));
+        check(noEditPayload.files[name]===base64,'no-edit browser changed file bytes: '+name);
+        check(noEditPayload.manifest.sha256[name]===expectedHash,
+          'no-edit browser payload hash mismatch: '+name);
+        noEditFileSha256[name]=expectedHash;
+        if(name==='project.json')continue;
+        const response=await fetch(noEditPreview.url.replace('web/index.html',name));
+        check(response.ok,'no-edit preview did not serve '+name);
+        const previewHash=await sha256(new Uint8Array(await response.arrayBuffer()));
+        check(previewHash===expectedHash,'no-edit preview bytes differ from package: '+name);
+      }
+      const noEditZipResponse=await fetch('/api/export-v3',{method:'POST',
+        headers:{'Content-Type':'application/json'},body:JSON.stringify(noEditPayload)});
+      check(noEditZipResponse.ok,'no-edit browser export failed');
+      const noEditReimportResponse=await fetch('/api/import-v3',{method:'POST',
+        headers:{'Content-Type':'application/octet-stream'},body:await noEditZipResponse.arrayBuffer()});
+      check(noEditReimportResponse.ok,'no-edit browser export could not be re-imported');
+      const noEditReimport=await noEditReimportResponse.json();
+      const noEditReimportMetadata={...noEditReimport.manifest};delete noEditReimportMetadata.sha256;
+      check(JSON.stringify(canonical(noEditReimportMetadata))===JSON.stringify(canonical(installedMetadata)),
+        'no-edit browser export/reimport changed Manifest metadata or capabilities');
+      check(JSON.stringify(Object.keys(noEditReimport.files).sort())===JSON.stringify(sourcePaths),
+        'no-edit browser export/reimport changed the complete file set');
+      for(const [name,base64] of Object.entries(installedFiles)){
+        const actualHash=await sha256(decodeBase64(noEditReimport.files[name]));
+        check(noEditReimport.files[name]===base64&&actualHash===noEditFileSha256[name],
+          'no-edit browser export/reimport changed '+name);
+        check(noEditReimport.manifest.sha256[name]===actualHash,
+          'no-edit reimport Manifest hash mismatch: '+name);
+      }
       document.querySelector('#advancedMode').click();
       const installedEditor=document.querySelector('#jsCode');
       const installedBefore=installedEditor.value;
@@ -301,6 +344,8 @@ async function main(){
       const visualImported=await (await post('/api/import-v3',visualZip,'application/octet-stream')).json();
       check(visualImported.files['project.json']===visual.files['project.json'],'visual metadata roundtrip changed');
       return {installedPackageReopenEditExportReimport:true,installedPackageId:'pc-delivery-fixture',
+        noEditBrowserImportPreviewExportReimport:true,noEditPreviewedFiles:Object.keys(installedFiles).length-1,
+        noEditFileSha256,
         fullCanvasFalseAndOmittedPreserved:true,optionalProjectSlotsPreserved:true,
         file:'web/edit.js', files:Object.keys(authored.files).length,
         capabilities:imported.manifest.capabilities,projectTree:true,newText:true,

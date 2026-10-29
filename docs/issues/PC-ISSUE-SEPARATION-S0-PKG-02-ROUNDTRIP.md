@@ -1,7 +1,7 @@
 # PC-ISSUE-SEPARATION-S0-PKG-02-ROUNDTRIP — v3 无修改导入/预览/导出
 
 - 日期：2026-10-29
-- 状态：**PARTIAL。扩展 Clear v3 fixture 的 Studio HTTP no-edit 往返 PASS；任意包型、完整浏览器 UI 及 Android runtime 验收 NOT TESTED。**
+- 状态：**PARTIAL。扩展 Clear v3 fixture 的 Studio HTTP no-edit 往返及 Android-delivery fixture 的 Chrome 浏览器 no-edit 往返均 PASS；任意第三方包语料和 Android runtime parity 仍未测试。**
 - 工作树：`codex/separation-s0-timeline-drag`
 - 测试和独立报告提交：`c402b1ac02bb07a8cb265c8cf6b4845398d3d1a6`
 
@@ -29,4 +29,15 @@
 
 ## 签核范围和剩余风险
 
-已验证的窄路径：扩展 Clear 内容的无修改 v3 import→preview-resource serving→export→reimport，包含自定义 Manifest/project 数据和一个 opaque binary resource。总体 `S0-PKG-02` 仍 **PARTIAL**：任意第三方包语料、异常/极限路径、完整浏览器 UI 交互、大批量资源、Android 加载和 Native/Skin 等价没有本测试覆盖。综合 CRUD 编辑后再部署与回导是独立 `S0-PKG-03`；S0 与 Skin-First 分离不构成 GO。
+已验证的 HTTP 窄路径：扩展 Clear 内容的无修改 v3 import→preview-resource serving→export→reimport，包含自定义 Manifest/project 数据和一个 opaque binary resource。原报告时，浏览器 UI no-edit 流尚未实测。
+
+## Follow-up — Chrome Studio 浏览器无修改往返（2026-10-29）
+
+在 `e2e_v3_source.cjs` 中增加 Chrome 页面内的 no-edit 路径，先把实际 Android delivery fixture 经 `/api/import-v3` 导入，再以未变更的浏览器 payload 执行 preview、逐项 GET 所有 `web/` 与 `assets/` runtime 文件、export 和第二次 import。断言完整语义 Manifest/capabilities、5 个路径、原始文件字节和 Manifest `sha256`，且导出回导后仍逐项匹配。之后同一脚本继续已有的编辑回归。
+
+- Chrome Headless/CDP：**PASS**；预览读取 4/4 runtime resources，no-edit 5/5 file hashes 与 Manifest entries 一致；浏览器日志 SHA-256 `6369D58CF5C17B5CC8D685624604E99ECE257DE6BB5054EF12198A4EDB0868ED`，位置 `.local/android-test/reports/separation-s0-timeline-drag/s0-pkg-02/run-20261029-01/browser-e2e.log`。
+- 定向 `PreviewParityTest`：**7/7 PASS**；`python -m unittest discover -s tools/skin-studio/tests -p test_v3_preview.py -v`；日志 SHA-256 `90E7BA8A9C06B1682C1EC06339F228E5EB34AB165EF8FEAFD25655AEB9CAC4E8`，位置 `.local/android-test/reports/separation-s0-timeline-drag/s0-pkg-02/run-20261029-01/preview-parity-focused.log`。
+- 本次浏览器 no-edit fixture 的文件 SHA-256：`assets/probe.png` `d3c936ebdd73f46e6422d5946044c99d524554082272019ab738800318b04892`; `project.json` `a5f9436761c7a20653767b69d5257553b6570882a73f2ea28b7955b2d6c12e03`; `web/app.js` `1c16ea9522447f158918871e095ce27cad578f15e8a6217a2ad2a192c4df78fd`; `web/index.html` `f53b88c73efd02f22e282d6fc6a917656fb579a357032e6a9774c91bda7e3229`; `web/style.css` `a244308e5b061e7843ba208e7368a0c7a8dc71c6a56ba2cd006111b99d561090`。
+- `node --check tools/skin-studio/tests/e2e_v3_source.cjs` 与 `git diff --check` PASS。Chrome/browser 与 HTTP 服务只使用本机 loopback；未启动 AVD 或写入日历数据。
+
+更新后的签核范围：HTTP 11-file extended fixture 与浏览器 5-file Android-delivery fixture 的 no-edit 导入、预览、导出、回导均有窄路径证据。`S0-PKG-02` 仍 **PARTIAL**：没有覆盖任意第三方包语料、完整异常/大小边界，亦没有签核 Android WebView、设备运行或 Native/Skin 等价；这些缺口不由当前两组 fixture 外推。编辑后的完整 CRUD 往返单列为 `S0-PKG-03`。本项不构成 S0 或 Skin-First GO。
