@@ -25,7 +25,9 @@ class NativeRecoveryContractTest(unittest.TestCase):
         self.assertIn("onSkinFailure()", web)
         self.assertIn("override fun dispatchTouchEvent", activity)
         self.assertIn("AlternatingTapRecovery", activity)
-        self.assertIn('select("powercal-default")', activity)
+        self.assertIn("selectNativeForEmergencyRecovery()", activity)
+        self.assertIn("nativeRecoveryPersisted = SkinPackageManager(applicationContext)", activity)
+        self.assertIn("nativeRecoverySignal++", activity)
 
     def test_skin_switch_warns_and_requires_explicit_confirm(self):
         app = (UI / "PowerCalApp.kt").read_text(encoding="utf-8")
