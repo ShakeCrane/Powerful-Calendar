@@ -7,7 +7,7 @@
 - 定向 `WebSkinEditBridgeTest` + `PowerStoreTest` **116/116 PASS**；Skin Studio **59/59 PASS**；JS `node --check` 4/4；规范 Clear 包 9 files / 384,912 bytes，SHA-256 `D0D136EEF118DC52CE767E8416EC1BD3B3134F75302BC64C3D3ED4FCA5192BF9`；source boundary 与独立 `lintDebug` PASS（52 warnings / 0 errors）；Debug/AndroidTest APK 均构建成功，哈希见 Issue 报告。
 - 标准默认 worker 的完整离线 Gradle JVM 门禁两次都因已有 `WebAiProposalReviewIntegrationTest.memoPagingContinuesTheSortedProjectionWithoutStoreWrites` 60 秒等待超时而 FAIL（619 tests / 1 failure）。该测试单独运行 PASS；同一干净父提交 `057b39e` 的全量基线也为 613 tests / 同一失败。随后串行完整门禁 `--max-workers=1` **BUILD SUCCESSFUL，619/619 tests、84 suites、0 failures/errors/skips、88/88 tasks**，source boundary、Debug/AndroidTest APK 与 lint 通过（0 errors / 52 warnings）。因此全量功能回归已有串行 PASS，但默认并行的既有 Memo 测试稳定性问题仍须保留记录。`emulator-5582` 当时已在线且所有权不明，未触碰；Android WebView/AVD 和实体设备 **NOT TESTED**。S0-TL-04 与父项 `SEP-01` 仍不是完整 parity PASS / cutover GO。
 - 独立报告：[PC-ISSUE-SEPARATION-CLEAR-TIMELINE-DRAG](../issues/PC-ISSUE-SEPARATION-CLEAR-TIMELINE-DRAG.md)。串行完整门禁日志 SHA-256 `EE72E74A2015EC85E414795A684797285197E5B259BAE8CD3BC2699078AA2652`；JVM JUnit XML 84 suites 保存在 `.local/android-test/reports/separation-s0-timeline-drag/full-junit/`。第二次默认 worker 失败日志 SHA-256 `A839981EEA3B5CC7BA3B35C567B9AF5AFE5792063D71E7F1E41020C4F2C4ADBC`；基线对照日志 SHA-256 `F3E6DD815899CFE55896F676E0B1E07F7BBF236D71D86822DBBF4DA5708495C6`。
-- 实现、回归、矩阵与独立 Issue 提交后在本条补录完整 SHA。下一项从重建矩阵按风险选择；整体 Skin-First separation 仍 **IN PROGRESS**。
+- 实现、回归、矩阵与独立 Issue 已提交 `1d78353e0866c7bc19c6a555fb65cbc454aea1f2`；本条同时回填该 SHA。下一项从重建矩阵按风险选择；整体 Skin-First separation 仍 **IN PROGRESS**。
 
 ## Separation — Clear timeline measured-title greedy folding `S0-TL-05` (2026-10-29, PARTIAL)
 

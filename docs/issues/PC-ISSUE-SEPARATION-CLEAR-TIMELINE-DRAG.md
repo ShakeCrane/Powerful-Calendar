@@ -4,7 +4,7 @@
 - 状态：**PARTIAL — Bridge/Store 与 Chrome Studio Mock 窄范围通过；Android WebView/AVD 与 Native/Clear 配对验收 NOT TESTED**
 - Worktree：`codex/separation-s0-timeline-drag`
 - 基线：`057b39e5d2fd85e9725e7faffbba7ff0ea51c37c`
-- 完整实现提交 SHA：由后续进度文档提交补录
+- 实现、测试与独立报告提交 SHA：`1d78353e0866c7bc19c6a555fb65cbc454aea1f2`
 
 ## 范围与合同
 
