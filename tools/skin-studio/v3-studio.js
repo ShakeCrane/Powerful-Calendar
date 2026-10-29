@@ -91,6 +91,7 @@ async function loadPackage(data){
   project=parseProject();
   projectBaseline=JSON.stringify(project);
   mockEditing={editor:{open:false},deck:{open:false},lastResult:null};
+  resetMockDeckFixtures();
   mockApproval=null;$("mockApproval").hidden=true;
   selectedLayer=project.layers[0]?.id||null;dirty=false;
   // Fork the protected factory identity before an ordinary user exports it.
@@ -810,6 +811,71 @@ function mockPatch(form,field,value){
   return next;
 }
 let mockEditing={editor:{open:false},deck:{open:false},lastResult:null},mockApproval=null;
+let mockDeckDrafts=[],mockDeckFormalEvents=[];
+function resetMockDeckFixtures(){
+  mockDeckDrafts=[
+    {draftId:7201,eventSeq:7201,draftVersion:0,title:"示例草稿一",kind:"MEMO",status:"PENDING"},
+    {draftId:7202,eventSeq:7202,draftVersion:0,title:"示例草稿二",kind:"ALARM",status:"PENDING"},
+    {draftId:7203,eventSeq:7203,draftVersion:0,title:"示例草稿三",kind:"ACTIVITY",status:"PENDING"},
+    {draftId:7204,eventSeq:7204,draftVersion:0,title:"示例草稿四",kind:"DEADLINE",status:"PENDING"},
+    {draftId:7205,eventSeq:7205,draftVersion:0,title:"其他待处理草稿",kind:"MEMO",status:"PENDING"}
+  ];
+  mockDeckFormalEvents=[
+    {eventSeq:6201,revision:2,title:"正式事件替换目标",kind:"ACTIVITY"},
+    {eventSeq:6202,revision:5,title:"另一项正式日程",kind:"ALARM"}
+  ];
+}
+function mockDeckProject(deck,query=""){
+  const term=String(query||"").trim().toLocaleLowerCase();
+  const sequenceMatches=(seq)=>String(seq).includes(term)||
+    ("#"+String(seq).padStart(4,"0")).toLocaleLowerCase().includes(term);
+  const draftMatches=term?mockDeckDrafts.filter(card=>
+    card.title.toLocaleLowerCase().includes(term)||sequenceMatches(card.eventSeq)):
+    mockDeckDrafts;
+  const formalMatches=term?mockDeckFormalEvents.filter(record=>
+    record.title.toLocaleLowerCase().includes(term)||sequenceMatches(record.eventSeq)):[];
+  const limit=term?4:80;
+  const index=mockDeckDrafts.findIndex(card=>card.draftId===deck.currentId);
+  deck.transient=false;
+  deck.cards=draftMatches.slice(0,limit).map(card=>({...card}));
+  deck.truncated=draftMatches.length>limit;
+  deck.searchTruncated=!!term&&draftMatches.length>limit;
+  deck.formalMatches=formalMatches.slice(0,4).map(record=>({...record}));
+  deck.searchQuery=String(query||"");
+  deck.cardCount=mockDeckDrafts.length;
+  deck.position=index<0?0:index+1;
+  deck.canGoPrevious=index>0;
+  deck.canGoNext=index>=0&&index<mockDeckDrafts.length-1;
+}
+function mockFlushDeck(deck){
+  if(deck.transient){
+    if(!deck.dirty||deck.currentId==null)return;
+    const currentForm={...deck.form};
+    if(!deck.persistedForm){
+      deck.persistedForm=currentForm;
+    }else if(JSON.stringify(currentForm)!==JSON.stringify(deck.persistedForm)){
+      deck.version=Number(deck.version)+1;
+      deck.persistedForm=currentForm;
+    }
+    return;
+  }
+  if(!deck.dirty||deck.currentId==null)return;
+  const current=mockDeckDrafts.find(card=>card.draftId===deck.currentId);
+  if(current){
+    current.title=String(deck.form?.title||"");
+    current.kind=String(deck.form?.kind||current.kind);
+    current.draftVersion=Number(deck.version)+1;
+  }
+  deck.version=Number(deck.version)+1;
+  deck.dirty=false;deck.baseline={...deck.form};
+}
+function mockSelectDeckCard(deck,card){
+  mockFlushDeck(deck);
+  deck.currentId=card.draftId;deck.version=card.draftVersion;
+  deck.form={...mockForm(card.kind),title:card.title};
+  deck.baseline={...deck.form};deck.dirty=false;
+  mockDeckProject(deck);
+}
 function resolveMockApproval(approved){
   if(!mockApproval)return;
   const request=mockApproval;mockApproval=null;$("mockApproval").hidden=true;
@@ -973,26 +1039,87 @@ function onSkinCommand(p){
           form.startText="";form.endText=mockSelectedMonthDate;
         }
       }
-      mockEditing.deck={open:true,cards:[{draftId:id,title:form.title,kind:p.kind}],
-        currentId:id,version:0,dirty:false,aiLocked:false,form,baseline:{...form}};
+      mockEditing.deck={open:true,transient:true,cards:[{draftId:id,title:form.title,
+        kind:p.kind,status:"PENDING"}],currentId:id,version:0,position:1,cardCount:1,
+        canGoPrevious:false,canGoNext:false,searchQuery:"",formalMatches:[],
+        truncated:false,searchTruncated:false,dirty:false,aiLocked:false,form,baseline:{...form}};
       result.status="created";result.detail=String(id);break;
     }
     case "deck.open":
       if(!deck.open){
-        mockEditing.deck={open:true,cards:[],currentId:null,version:0,
-          dirty:false,aiLocked:false,form:null};
+        const initial=mockDeckDrafts[0];
+        const form={...mockForm(initial.kind),title:initial.title};
+        mockEditing.deck={open:true,currentId:initial.draftId,version:initial.draftVersion,
+          dirty:false,aiLocked:false,form,baseline:{...form},truncated:false,
+          searchTruncated:false,searchQuery:"",formalMatches:[]};
+        mockDeckProject(mockEditing.deck);
       }
       result.status="opened";break;
+    case "deck.search":{
+      if(Object.keys(p).sort().join(",")!=="name,query,requestId"||
+        typeof p.query!=="string"||p.query.length>120||/[\u0000-\u001f\u007f-\u009f]/.test(p.query)){
+        result.status="invalid";break;
+      }
+      if(!deck.open){result.status="missing";break}
+      if(deck.transient){result.status="unsupported";break}
+      mockDeckProject(deck,p.query);result.status="searched";break;
+    }
+    case "deck.jump":{
+      if(Object.keys(p).sort().join(",")!=="name,requestId,steps"||
+        !Number.isInteger(p.steps)||p.steps< -1000||p.steps>1000){
+        result.status="invalid";break;
+      }
+      if(!deck.open){result.status="missing";break}
+      if(deck.transient){result.status="unsupported";break}
+      if(deck.aiLocked||deck.busy){result.status="locked";break}
+      const index=mockDeckDrafts.findIndex(card=>card.draftId===deck.currentId);
+      if(index<0){result.status="failed";break}
+      mockFlushDeck(deck);
+      const target=Math.max(0,Math.min(mockDeckDrafts.length-1,index+p.steps));
+      mockSelectDeckCard(deck,mockDeckDrafts[target]);
+      result.status="moved";break;
+    }
+    case "deck.proposeReplace":{
+      if(Object.keys(p).sort().join(",")!=="eventSeq,expectedRevision,name,requestId"||
+        !Number.isSafeInteger(p.eventSeq)||p.eventSeq<=0||
+        !Number.isSafeInteger(p.expectedRevision)||p.expectedRevision<=0){
+        result.status="invalid";break;
+      }
+      if(!deck.open||deck.transient){result.status="missing";break}
+      if(editor.open||deck.aiLocked||deck.busy){result.status="locked";break}
+      const searched=deck.formalMatches?.some(record=>
+        record.eventSeq===p.eventSeq&&record.revision===p.expectedRevision);
+      const record=mockDeckFormalEvents.find(value=>value.eventSeq===p.eventSeq);
+      if(!searched||!record||record.revision!==p.expectedRevision){result.status="stale";break}
+      let card=mockDeckDrafts.find(value=>value.eventSeq===p.eventSeq&&
+        ["REPLACE","CONVERT"].includes(value.operation));
+      if(!card){
+        const form={...mockForm(record.kind),title:record.title};
+        card={draftId:Math.max(...mockDeckDrafts.map(value=>value.draftId))+1,
+          eventSeq:record.eventSeq,draftVersion:0,title:record.title,kind:record.kind,
+          status:"PENDING",operation:"REPLACE",baseRevision:record.revision};
+        mockDeckDrafts.push(card);
+      }
+      deck.currentId=card.draftId;deck.version=card.draftVersion;
+      deck.form={...mockForm(card.kind),title:card.title};deck.baseline={...deck.form};
+      deck.dirty=false;mockDeckProject(deck);
+      result.status="opened";result.detail=String(card.draftId);break;
+    }
     case "deck.patch":
       if(deck.open&&deck.currentId===p.draftId){
         const next=mockPatch(deck.form,p.field,p.value);
         if(!next)result.status="invalid";
         else {deck.form=next;deck.dirty=JSON.stringify(next)!==JSON.stringify(deck.baseline);
-          deck.cards[0].title=deck.form.title;deck.cards[0].kind=deck.form.kind;
+          const current=mockDeckDrafts.find(card=>card.draftId===deck.currentId);
+          if(current){current.title=deck.form.title;current.kind=deck.form.kind}
           result.status="edited"}
       }else result.status="stale";break;
     case "deck.flush":
-      if(deck.open){deck.version++;deck.dirty=false;deck.baseline={...deck.form};result.status="flushed"}
+      if(deck.open){
+        mockFlushDeck(deck);
+        if(!deck.transient)mockDeckProject(deck,deck.searchQuery);
+        result.status="flushed";
+      }
       break;
     case "deck.commit":
       if(deck.open){mockEditing.deck={open:false};result.status="committed"}
@@ -1004,8 +1131,15 @@ function onSkinCommand(p){
       mockEditing.deck={open:false};result.status="closed";break;
     case "deck.undo":
       result.status="missing";break;
-    case "deck.select":
-      result.status="selected";break;
+    case "deck.select":{
+      if(Object.keys(p).sort().join(",")!=="draftId,name,requestId"||
+        !Number.isSafeInteger(p.draftId)){result.status="invalid";break}
+      if(!deck.open){result.status="missing";break}
+      if(deck.transient){result.status="missing";break}
+      const card=mockDeckDrafts.find(value=>value.draftId===p.draftId);
+      if(!card){result.status="missing";break}
+      mockSelectDeckCard(deck,card);result.status="selected";break;
+    }
   }
   mockEditing.lastResult=result;
   logAction("预览编辑命令 "+p.name+

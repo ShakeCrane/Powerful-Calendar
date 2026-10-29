@@ -11,7 +11,9 @@ import dev.powerfulcalendar.core.TimelineCoordinate
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.DraftCard
+import dev.powerfulcalendar.core.DraftQueueSearch
 import dev.powerfulcalendar.core.DraftOperation
+import dev.powerfulcalendar.core.FormalEventSearch
 import dev.powerfulcalendar.core.FormBuild
 import dev.powerfulcalendar.core.RecurrenceFreq
 import dev.powerfulcalendar.core.Recurrence
@@ -56,6 +58,10 @@ internal sealed interface WebEditCommand {
     data class DeleteEvent(override val requestId: String, val sessionId: String): WebEditCommand
     data class CloseEvent(override val requestId: String, val sessionId: String): WebEditCommand
     data class OpenDeck(override val requestId: String, val draftId: Long?): WebEditCommand
+    data class SearchDeck(override val requestId: String, val query: String): WebEditCommand
+    data class JumpDeck(override val requestId: String, val steps: Int): WebEditCommand
+    data class ProposeReplaceDeck(override val requestId: String, val eventSeq: Long,
+        val expectedRevision: Long): WebEditCommand
     data class CreateDeck(override val requestId: String, val kind: TemporalKind): WebEditCommand
     data class PatchDeck(override val requestId: String, val draftId: Long,
         val draftVersion: Long, val field: String, val value: String): WebEditCommand
@@ -101,6 +107,11 @@ internal object WebEditWire {
             val value = payload.opt(key)
             if (value !is Int && value !is Long) return null
             return (value as Number).toLong()
+        }
+        fun boundedInt(key: String, min: Int, max: Int): Int? {
+            val value = payload.opt(key)
+            if (value !is Int && value !is Long) return null
+            return (value as Number).toLong().takeIf { it in min.toLong()..max.toLong() }?.toInt()
         }
         fun field(): Pair<String, String>? {
             val key = payload.opt("field") as? String ?: return null
@@ -154,6 +165,21 @@ internal object WebEditWire {
                 if(rawId==JSONObject.NULL) WebEditCommand.OpenDeck(id,null)
                 else WebEditCommand.OpenDeck(id,number("draftId")?:return null)
             } else null
+            "deck.search" -> if(exact("query")) {
+                val query = payload.opt("query") as? String ?: return null
+                if(query.length > 120 || query.any { it == '\u0000' || it.isISOControl() }) null
+                else WebEditCommand.SearchDeck(id, query)
+            } else null
+            "deck.jump" -> if(exact("steps"))
+                WebEditCommand.JumpDeck(id, boundedInt("steps", -1000, 1000) ?: return null)
+            else null
+            "deck.proposeReplace" -> if(exact("eventSeq", "expectedRevision"))
+                WebEditCommand.ProposeReplaceDeck(
+                    id,
+                    number("eventSeq") ?: return null,
+                    number("expectedRevision") ?: return null
+                )
+            else null
             "deck.create" -> {
                 if(!exact("kind")) return null
                 val kind = (payload.opt("kind") as? String)?.let {
@@ -288,6 +314,8 @@ internal class WebSkinEditService(
     private var sessionId: String? = null
     private var newEventSession: NewEventEditSession? = null
     private var deckOpen = false
+    private var deckSearchQuery = ""
+    private var formalSearchResults: List<TemporalRecord> = emptyList()
     var pendingWriteReview by mutableStateOf<WebFormalWriteReview?>(null)
         private set
     // Compose-observable lifetime signal for reliable Android Back interception.
@@ -299,6 +327,11 @@ internal class WebSkinEditService(
     private fun result(id: String, status: String, detail: String? = null): JSONObject =
         JSONObject().put("requestId",id).put("status",status)
             .apply { if(detail!=null)put("detail",detail.take(240)) }
+
+    private fun clearDeckSearch() {
+        deckSearchQuery = ""
+        formalSearchResults = emptyList()
+    }
 
     private fun editorMatches(id: String) = session != null && sessionId == id
     private fun deckState(): JSONObject {
@@ -312,8 +345,12 @@ internal class WebSkinEditService(
                 .put("kind", preview.form.kind.name)
                 .put("status", preview.status.name))
             return JSONObject().put("open", deckOpen)
+                .put("transient", true)
                 .put("lastDiscardId", JSONObject.NULL)
                 .put("cards", items).put("truncated", false)
+                .put("cardCount", 1).put("position", 1)
+                .put("canGoPrevious", false).put("canGoNext", false)
+                .put("searchQuery", "").put("formalMatches", org.json.JSONArray())
                 .put("currentId", active.clientDraftId)
                 .put("version", active.version).put("dirty", active.meaningfulDiff)
                 .put("busy", false).put("aiLocked", false)
@@ -323,15 +360,33 @@ internal class WebSkinEditService(
         }
         val state = deck.state
         val items = org.json.JSONArray()
-        state.cards.take(80).forEach { card ->
+        val matches = if (deckSearchQuery.isBlank()) state.cards
+            else DraftQueueSearch.filter(state.cards, deckSearchQuery)
+        val cardLimit = if (deckSearchQuery.isBlank()) 80 else 4
+        matches.take(cardLimit).forEach { card ->
             items.put(JSONObject().put("draftId",card.draftId)
                 .put("eventSeq",card.eventSeq).put("draftVersion",card.draftVersion)
                 .put("title",card.form.title.take(240))
                 .put("kind",card.form.kind.name).put("status",card.status.name))
         }
+        val formalItems = org.json.JSONArray()
+        formalSearchResults.take(4).forEach { record ->
+            formalItems.put(JSONObject()
+                .put("eventSeq", record.eventSeq)
+                .put("revision", record.revision)
+                .put("title", record.title.take(240))
+                .put("kind", record.kind.name))
+        }
         return JSONObject().put("open",deckOpen)
+            .put("transient",false)
             .put("lastDiscardId",state.lastDiscardId)
-            .put("cards",items).put("truncated",state.cards.size>80)
+            .put("cards",items).put("truncated",matches.size>cardLimit)
+            .put("searchTruncated",deckSearchQuery.isNotBlank() && matches.size>cardLimit)
+            .put("cardCount",state.cards.size)
+            .put("position",if(state.cards.isEmpty()) 0 else state.position+1)
+            .put("canGoPrevious",state.canGoPrevious)
+            .put("canGoNext",state.canGoNext)
+            .put("searchQuery",deckSearchQuery).put("formalMatches",formalItems)
             .put("currentId",state.currentId)
             .put("version",state.version).put("dirty",state.dirty)
             .put("busy",state.busy).put("aiLocked",state.aiLocked)
@@ -566,6 +621,7 @@ internal class WebSkinEditService(
                         val opened = NewEventEditSession.open(
                             cmd.kind, zone = newEventZone, selection = newEventSelection
                         )
+                        clearDeckSearch()
                         newEventSession = opened
                         deckOpen = true
                         result(cmd.requestId,"created",opened.clientDraftId.toString())
@@ -580,11 +636,84 @@ internal class WebSkinEditService(
                             result(cmd.requestId,"opened")
                         else if(activeNew != null) result(cmd.requestId,"locked")
                         else if(cmd.draftId==null) result(cmd.requestId,"opened")
-                        else if(deck.select(cmd.draftId)) result(cmd.requestId,"selected")
+                        else if(deck.select(cmd.draftId)) {
+                            clearDeckSearch()
+                            result(cmd.requestId,"selected")
+                        }
                         else result(cmd.requestId,"failed",deck.state.error)
                     } else {
+                        clearDeckSearch()
                         deck.open(cmd.draftId);deckOpen=true
                         result(cmd.requestId,"opened")
+                    }
+                }
+                is WebEditCommand.SearchDeck -> {
+                    when {
+                        !deckOpen -> result(cmd.requestId,"missing")
+                        newEventSession != null -> result(cmd.requestId,"unsupported")
+                        else -> {
+                            deckSearchQuery = cmd.query
+                            formalSearchResults = if (cmd.query.isBlank()) emptyList()
+                                else withContext(Dispatchers.IO) {
+                                    FormalEventSearch.filter(store.all(), cmd.query).take(4)
+                                }
+                            result(cmd.requestId,"searched")
+                        }
+                    }
+                }
+                is WebEditCommand.JumpDeck -> {
+                    when {
+                        !deckOpen -> result(cmd.requestId,"missing")
+                        newEventSession != null -> result(cmd.requestId,"unsupported")
+                        deck.state.aiLocked || deck.state.busy -> result(cmd.requestId,"locked")
+                        deck.jump(cmd.steps) -> {
+                            clearDeckSearch()
+                            result(cmd.requestId,"moved")
+                        }
+                        else -> result(cmd.requestId,"failed",deck.state.error)
+                    }
+                }
+                is WebEditCommand.ProposeReplaceDeck -> {
+                    when {
+                        !deckOpen || newEventSession != null -> result(cmd.requestId,"missing")
+                        session != null || externalEditorActive() -> result(cmd.requestId,"locked")
+                        withContext(Dispatchers.IO) { store.isLocked() } -> result(cmd.requestId,"locked")
+                        formalSearchResults.none {
+                            it.eventSeq == cmd.eventSeq && it.revision == cmd.expectedRevision
+                        } -> result(cmd.requestId,"stale")
+                        !deck.flush() -> result(cmd.requestId,"failed",deck.state.error)
+                        else -> {
+                            val proposal = withContext(Dispatchers.IO) {
+                                // Keep the revision check, compatible-draft lookup and existing
+                                // PowerStore proposal operation under the Store monitor. All host
+                                // paths share this Store instance and its synchronized API.
+                                synchronized(store) {
+                                    val current = store.get(cmd.eventSeq)
+                                    when {
+                                        current == null -> null to "stale"
+                                        current.revision != cmd.expectedRevision -> null to "stale"
+                                        else -> {
+                                            val existing = store.pendingDraftsFor(cmd.eventSeq)
+                                                .firstOrNull {
+                                                    it.operation == DraftOperation.REPLACE ||
+                                                        it.operation == DraftOperation.CONVERT
+                                                }
+                                            val card = existing ?: store.proposeReplace(cmd.eventSeq)
+                                            if (card.operation == DraftOperation.REPLACE ||
+                                                card.operation == DraftOperation.CONVERT) card to null
+                                            else null to "conflict"
+                                        }
+                                    }
+                                }
+                            }
+                            val card = proposal.first
+                            if (card == null) result(cmd.requestId,proposal.second ?: "failed")
+                            else {
+                                deck.refresh(card.draftId)
+                                clearDeckSearch()
+                                result(cmd.requestId,"opened",card.draftId.toString())
+                            }
+                        }
                     }
                 }
                 is WebEditCommand.PatchDeck -> {
@@ -616,7 +745,10 @@ internal class WebSkinEditService(
                     else if(activeNew != null && activeNew.clientDraftId == cmd.draftId)
                         result(cmd.requestId,"selected")
                     else if(activeNew != null) result(cmd.requestId,"missing")
-                    else if(deck.select(cmd.draftId))result(cmd.requestId,"selected")
+                    else if(deck.select(cmd.draftId)) {
+                        clearDeckSearch()
+                        result(cmd.requestId,"selected")
+                    }
                     else result(cmd.requestId,"failed",deck.state.error)
                 }
                 is WebEditCommand.FlushDeck -> {
@@ -635,9 +767,14 @@ internal class WebSkinEditService(
                         val saved = withContext(Dispatchers.IO) { activeNew.close(store) }
                         newEventSession = null
                         deckOpen = false
+                        clearDeckSearch()
                         runCatching { deck.open(saved?.draftId) }
                         result(cmd.requestId,"closed",saved?.draftId?.toString())
-                    } else if(deck.flush()) {deckOpen=false;result(cmd.requestId,"closed")}
+                    } else if(deck.flush()) {
+                        deckOpen=false
+                        clearDeckSearch()
+                        result(cmd.requestId,"closed")
+                    }
                     else result(cmd.requestId,"failed",deck.state.error)
                 }
                 is WebEditCommand.CommitDeck -> requestCommitReview(cmd)
@@ -649,6 +786,7 @@ internal class WebSkinEditService(
                         else if(withContext(Dispatchers.IO) { activeNew.discard(store) }) {
                             newEventSession = null
                             deckOpen = false
+                            clearDeckSearch()
                             runCatching { deck.open() }
                             result(cmd.requestId,"discarded")
                         } else result(cmd.requestId,"failed",activeNew.lastError)

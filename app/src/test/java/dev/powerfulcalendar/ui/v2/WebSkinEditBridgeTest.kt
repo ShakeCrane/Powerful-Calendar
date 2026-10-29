@@ -85,6 +85,21 @@ class WebSkinEditBridgeTest {
         assertNull(WebEditWire.decode(wire("deck.flush", ""","unexpected":false""")))
         assertNull(WebEditWire.decode(wire("deck.confirmConflict")))
         assertNull(WebEditWire.decode(wire("deck.confirmRestore")))
+        assertTrue(WebEditWire.decode(wire("deck.search", ",\"query\":\"needle\""))
+            is WebEditCommand.SearchDeck)
+        assertNull(WebEditWire.decode(wire("deck.search",
+            ",\"query\":\"${"q".repeat(121)}\"")))
+        assertNull(WebEditWire.decode(wire("deck.search",
+            ",\"query\":\"needle\",\"unbounded\":true")))
+        assertEquals(-12, (WebEditWire.decode(wire("deck.jump", ",\"steps\":-12"))
+            as WebEditCommand.JumpDeck).steps)
+        assertNull(WebEditWire.decode(wire("deck.jump", ",\"steps\":1001")))
+        assertNull(WebEditWire.decode(wire("deck.jump", ",\"steps\":1.5")))
+        assertTrue(WebEditWire.decode(wire("deck.proposeReplace",
+            ",\"eventSeq\":42,\"expectedRevision\":3"))
+            is WebEditCommand.ProposeReplaceDeck)
+        assertNull(WebEditWire.decode(wire("deck.proposeReplace",
+            ",\"eventSeq\":42,\"expectedRevision\":3,\"form\":{}")))
         val deleteSession = request()
         assertNotNull(WebEditWire.decode(wire("editor.delete",
             ",\"sessionId\":\"$deleteSession\"")))
@@ -263,6 +278,135 @@ class WebSkinEditBridgeTest {
         assertEquals(beforeDrafts, store.draftCount())
         assertEquals(beforeCommits, store.commitCount())
         assertEquals(original, store.get(original.eventSeq))
+    }
+
+    @Test fun deckSearchReturnsBoundedDraftAndFormalMatchesWithoutWrites() = runBlocking {
+        val zone = ZoneId.of("Asia/Shanghai")
+        val start = LocalDateTime.of(2030, 10, 21, 9, 0)
+            .atZone(zone).toInstant().toEpochMilli()
+        val formalRecords = mutableListOf<TemporalRecord>()
+        repeat(5) { index ->
+            formalRecords += commitFormal(DraftForm(
+                kind = TemporalKind.ALARM,
+                title = "Target formal $index",
+                startText = DraftForm.formatInstant(start + index * 3_600_000L, zone),
+                zoneId = zone.id
+            ))
+            store.newDraft(DraftForm(kind = TemporalKind.MEMO,
+                title = "Queue needle $index", zoneId = zone.id))
+        }
+        val drafts = store.draftCount()
+        val identities = store.identityCount()
+        val commits = store.commitCount()
+        val nextSequence = store.nextSequencePreview()
+        val nextQueueOrder = store.nextQueueOrderPreview()
+        assertEquals("opened", service.execute(WebEditCommand.OpenDeck(request(), null))
+            .getString("status"))
+
+        assertEquals("searched", service.execute(WebEditCommand.SearchDeck(request(), "needle"))
+            .getString("status"))
+        val draftSearch = service.snapshot().getJSONObject("deck")
+        assertEquals(5, draftSearch.getInt("cardCount"))
+        assertEquals(4, draftSearch.getJSONArray("cards").length())
+        assertTrue(draftSearch.getBoolean("truncated"))
+        assertEquals(0, draftSearch.getJSONArray("formalMatches").length())
+
+        assertEquals("searched", service.execute(WebEditCommand.SearchDeck(request(), "Target"))
+            .getString("status"))
+        val formalSearch = service.snapshot().getJSONObject("deck")
+        assertEquals(0, formalSearch.getJSONArray("cards").length())
+        assertEquals(4, formalSearch.getJSONArray("formalMatches").length())
+        val resultKeys = formalSearch.getJSONArray("formalMatches").getJSONObject(0)
+            .keys().asSequence().toSet()
+        assertEquals(setOf("eventSeq", "revision", "title", "kind"), resultKeys)
+
+        val formattedSequence = TemporalRecord.formatSeq(formalRecords.first().eventSeq)
+        assertEquals("searched", service.execute(WebEditCommand.SearchDeck(
+            request(), formattedSequence
+        )).getString("status"))
+        val formattedSearch = service.snapshot().getJSONObject("deck").getJSONArray("formalMatches")
+        assertEquals(1, formattedSearch.length())
+        assertEquals(formalRecords.first().eventSeq,
+            formattedSearch.getJSONObject(0).getLong("eventSeq"))
+
+        assertEquals(drafts, store.draftCount())
+        assertEquals(identities, store.identityCount())
+        assertEquals(commits, store.commitCount())
+        assertEquals(nextSequence, store.nextSequencePreview())
+        assertEquals(nextQueueOrder, store.nextQueueOrderPreview())
+    }
+
+    @Test fun deckNavigationUsesControllerAndKeepsQueueOrder() = runBlocking {
+        val cards = listOf("First", "Second", "Third").map { title ->
+            store.newDraft(DraftForm(kind = TemporalKind.MEMO, title = title))
+        }
+        val queueBefore = cards.map { store.draft(it.draftId)!!.queueOrder }
+        assertEquals("opened", service.execute(WebEditCommand.OpenDeck(request(), null))
+            .getString("status"))
+        assertEquals(cards.first().draftId,
+            service.snapshot().getJSONObject("deck").getLong("currentId"))
+
+        assertEquals("moved", service.execute(WebEditCommand.JumpDeck(request(), 2))
+            .getString("status"))
+        var deck = service.snapshot().getJSONObject("deck")
+        assertEquals(cards.last().draftId, deck.getLong("currentId"))
+        assertEquals(3, deck.getInt("position"))
+        assertTrue(deck.getBoolean("canGoPrevious"))
+        assertFalse(deck.getBoolean("canGoNext"))
+
+        assertEquals("moved", service.execute(WebEditCommand.JumpDeck(request(), -1))
+            .getString("status"))
+        deck = service.snapshot().getJSONObject("deck")
+        assertEquals(cards[1].draftId, deck.getLong("currentId"))
+        assertEquals(queueBefore, cards.map { store.draft(it.draftId)!!.queueOrder })
+        assertEquals(cards.map { 0L }, cards.map { store.draft(it.draftId)!!.draftVersion })
+    }
+
+    @Test fun formalSearchSelectionReusesRevisionCheckedReplaceDraft() = runBlocking {
+        val zone = ZoneId.of("Asia/Tokyo")
+        val start = LocalDateTime.of(2030, 10, 21, 9, 0)
+            .atZone(zone).toInstant().toEpochMilli()
+        val original = commitFormal(DraftForm(
+            kind = TemporalKind.ACTIVITY,
+            title = "Renewal target",
+            startText = DraftForm.formatInstant(start, zone),
+            endText = DraftForm.formatInstant(start + 3_600_000L, zone),
+            zoneId = zone.id,
+            trackingEnabled = true
+        ))
+        store.newDraft(DraftForm(kind = TemporalKind.MEMO, title = "Unrelated draft"))
+        assertEquals("opened", service.execute(WebEditCommand.OpenDeck(request(), null))
+            .getString("status"))
+        assertEquals("searched", service.execute(WebEditCommand.SearchDeck(request(), "Renewal"))
+            .getString("status"))
+        val beforeStale = store.draftCount()
+        assertTrue(store.setCompleted(original.eventSeq, "single", true, original.revision))
+        val current = requireNotNull(store.get(original.eventSeq))
+        assertTrue(current.revision > original.revision)
+        val stale = service.execute(WebEditCommand.ProposeReplaceDeck(
+            request(), original.eventSeq, original.revision
+        ))
+        assertEquals("stale", stale.getString("status"))
+        assertEquals(beforeStale, store.draftCount())
+        assertTrue(store.pendingDraftsFor(original.eventSeq).isEmpty())
+
+        assertEquals("searched", service.execute(WebEditCommand.SearchDeck(request(), "Renewal"))
+            .getString("status"))
+        val command = WebEditCommand.ProposeReplaceDeck(request(), original.eventSeq, current.revision)
+        val opened = service.execute(command)
+        assertEquals("opened", opened.getString("status"))
+        val draftId = opened.getString("detail").toLong()
+        val candidate = requireNotNull(store.draft(draftId))
+        assertEquals(DraftOperation.REPLACE, candidate.operation)
+        assertEquals(current.revision, candidate.baseRevision)
+        assertEquals(current.title, candidate.form.title)
+        assertEquals(current, store.get(original.eventSeq))
+        assertEquals(draftId, service.snapshot().getJSONObject("deck").getLong("currentId"))
+
+        val replay = service.execute(command)
+        assertEquals(opened.toString(), replay.toString())
+        assertEquals(beforeStale + 1, store.draftCount())
+        assertEquals(candidate.queueOrder, store.draft(draftId)!!.queueOrder)
     }
 
     @Test fun timelineMoveRejectsStaleOwnerRevisionWithoutStaging() = runBlocking {
@@ -595,6 +739,37 @@ class WebSkinEditBridgeTest {
         assertEquals(drafts,store.draftCount())
         assertEquals(0,store.pendingCount())
         assertTrue(store.all().isEmpty())
+    }
+
+    @Test fun transientNewEventDeckDoesNotExposePersistentDeckSearch() = runBlocking {
+        val identities = store.identityCount()
+        val nextSequence = store.nextSequencePreview()
+        val nextQueueOrder = store.nextQueueOrderPreview()
+        val commits = store.commitCount()
+        val drafts = store.draftCount()
+        val pending = store.pendingCount()
+
+        assertEquals("created", service.execute(
+            WebEditCommand.CreateDeck(request(), TemporalKind.MEMO)
+        ).getString("status"))
+        var deck = service.snapshot().getJSONObject("deck")
+        assertTrue(deck.getBoolean("transient"))
+        assertEquals(1, deck.getInt("cardCount"))
+        assertEquals("unsupported", service.execute(
+            WebEditCommand.SearchDeck(request(), "existing draft")
+        ).getString("status"))
+        deck = service.snapshot().getJSONObject("deck")
+        assertTrue(deck.getBoolean("transient"))
+        assertEquals("", deck.getString("searchQuery"))
+
+        assertEquals("closed", service.execute(WebEditCommand.CloseDeck(request()))
+            .getString("status"))
+        assertEquals(identities, store.identityCount())
+        assertEquals(nextSequence, store.nextSequencePreview())
+        assertEquals(nextQueueOrder, store.nextQueueOrderPreview())
+        assertEquals(commits, store.commitCount())
+        assertEquals(drafts, store.draftCount())
+        assertEquals(pending, store.pendingCount())
     }
 
     @Test fun timelineCreateUsesSnappedAnchorAndConfiguredZoneForEveryKindWithoutWrites() = runBlocking {

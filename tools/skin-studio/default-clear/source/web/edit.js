@@ -39,6 +39,7 @@ function showReply(reply){
       discarded_changes:"已放弃本次修改",selected:"已选择",
       confirmation_required:"请在宿主确认此操作",cancelled:"已取消宿主操作，内容仍保留",
       restored:"已恢复",flushed:"修改已暂存",closed:"已安全退出",
+      opened:"已打开替换草稿",searched:"搜索结果已更新",moved:"已切换草稿",
       staged:"移动修改已暂存为草稿；正式事件尚未改变",
       unchanged:"事件已位于该时间，没有创建草稿",
       unsupported:"此事项不支持时间轴拖动",
@@ -129,7 +130,13 @@ function render(){
   if(!next){mode="";identity="";fingerprint="";visible(false);return}
   visible(true);
   const form=next==="event"?editor.form:deck.form;
-  const current=JSON.stringify({form,scope:editor.recurrenceScope,
+  const deckView=next==="deck"?{
+    query:deck.searchQuery,cards:(deck.cards||[]).map(card=>[card.draftId,card.draftVersion,card.title]),
+    formal:(deck.formalMatches||[]).map(item=>[item.eventSeq,item.revision]),
+    position:deck.position,count:deck.cardCount,previous:deck.canGoPrevious,next:deck.canGoNext,
+    truncated:deck.truncated,transient:deck.transient===true
+  }:null;
+  const current=JSON.stringify({form,deck:deckView,scope:editor.recurrenceScope,
     requiresScope:editor.requiresRecurrenceScope,dirty:editor.dirty,
     awaitingConfirmation:editor.awaitingConfirmation});
   const focused=!!document.activeElement?.closest?.("#sheetFields");
@@ -139,17 +146,18 @@ function render(){
   fingerprint=current;
   fields.replaceChildren();actions.replaceChildren();
   $("sheetTitle").textContent=mode==="event"?"编辑事件":"待处理草稿";
+  const deckCount=Number.isFinite(Number(deck.cardCount))?Number(deck.cardCount):(deck.cards||[]).length;
   $("sheetSubtitle").textContent=mode==="event"?
     "#"+(editor.eventSeq||"?")+" · "+(form?.kind||""):
-    String(deck.cards?.length||0)+" 张 · "+(deck.dirty?"尚未暂存":"已暂存");
+    String(deckCount)+" 张 · "+(deck.dirty?"尚未暂存":"已暂存");
   $("sheetSave").textContent=mode==="event"?"保存":"发布";
   const requiresScope=mode==="event"&&editor.requiresRecurrenceScope===true;
   const scope=editor.recurrenceScope||"";
   $("sheetSave").disabled=!form||deck.aiLocked===true||editor.awaitingConfirmation===true||
     (requiresScope&&!scope);
-  if(form&&(!requiresScope||scope))renderForm(form,scope==="SINGLE_OCCURRENCE");
-  else if(requiresScope)fields.append(el("p","请先选择编辑范围，再修改字段或保存。","sheet-note"));
   if(mode==="event"){
+    if(form&&(!requiresScope||scope))renderForm(form,scope==="SINGLE_OCCURRENCE");
+    else if(requiresScope)fields.append(el("p","请先选择编辑范围，再修改字段或保存。","sheet-note"));
     if(requiresScope){
       const chooser=el("nav",null,"sheet-cards");chooser.setAttribute("aria-label","重复事件编辑范围");
       for(const [value,label] of [["SINGLE_OCCURRENCE","仅本次"],
@@ -175,14 +183,70 @@ function render(){
       "删除将移除整个重复系列及其全部实例，并须由 Android 宿主再次确认。":
       "删除须由 Android 宿主再次确认；取消不会删除事件。","sheet-note"));
   }else{
-    const nav=el("nav",null,"sheet-cards");
-    for(const card of deck.cards||[]){
-      const b=button(card.title||"未命名草稿","select","sheet-card");
-      b.dataset.draftId=card.draftId;
-      if(card.draftId===deck.currentId)b.classList.add("selected");
-      nav.append(b);
+    const transient=deck.transient===true;
+    if(!transient){
+      const search=el("form",null,"deck-search");
+      search.setAttribute("role","search");
+      const searchLabel=el("label","搜索草稿和正式事件","sheet-label");
+      const input=el("input");input.type="search";input.maxLength=120;
+      input.autocomplete="off";input.value=deck.searchQuery||"";
+      input.setAttribute("aria-label","搜索草稿标题或正式事件标题、序号");
+      const submit=el("button","查找","sheet-secondary");submit.type="submit";
+      search.append(searchLabel,input,submit);
+      search.addEventListener("submit",event=>{
+        event.preventDefault();
+        input.blur();
+        void perform("deck.search",{query:input.value.trim().slice(0,120)});
+      });
+      fields.append(search);
+
+      const formal=deck.formalMatches||[];
+      if((deck.searchQuery||"").trim()){
+        if(!deck.cards?.length&&!formal.length)
+          fields.append(el("p","没有匹配的草稿或正式事件","sheet-note"));
+        if(formal.length){
+          const results=el("nav",null,"deck-formal-results");
+          results.setAttribute("aria-label","匹配的正式事件，可生成替换草稿");
+          for(const match of formal){
+            const seq=Number(match.eventSeq),revision=Number(match.revision);
+            const item=button("#"+String(match.eventSeq).padStart(4,"0")+" · "+
+              (match.title||"未命名事件"),"replace","deck-result");
+            item.dataset.eventSeq=String(match.eventSeq);item.dataset.revision=String(match.revision);
+            item.disabled=!Number.isSafeInteger(seq)||seq<=0||
+              !Number.isSafeInteger(revision)||revision<=0;
+            results.append(item);
+          }
+          fields.append(results);
+        }
+      }
+
+      const nav=el("nav",null,"sheet-cards");
+      nav.setAttribute("aria-label","待处理草稿；选择卡片继续编辑");
+      for(const card of deck.cards||[]){
+        const b=button("#"+String(card.eventSeq).padStart(4,"0")+" · "+
+          (card.title||"未命名草稿"),"select","sheet-card");
+        b.dataset.draftId=card.draftId;
+        if(card.draftId===deck.currentId)b.classList.add("selected");
+        nav.append(b);
+      }
+      if(deck.cards?.length||!(deck.searchQuery||"").trim())fields.append(nav);
+      if(deck.searchTruncated)fields.append(el("p","仅显示前 4 条匹配草稿。","sheet-note"));
+      else if(deck.truncated)fields.append(el("p","草稿列表仅显示前 80 张；使用搜索查找其他草稿。","sheet-note"));
     }
-    fields.prepend(nav);
+    if(form)renderForm(form);
+    else if(!transient&&!deck.cards?.length&&!(deck.formalMatches||[]).length)
+      fields.append(el("p","当前没有可编辑的待处理草稿。","sheet-note"));
+
+    if(!transient&&Number(deck.cardCount)>1){
+      const paging=el("nav",null,"sheet-deck-navigation");
+      paging.setAttribute("aria-label","草稿导航");
+      const previous=button("上一张","jump","sheet-secondary");
+      previous.dataset.steps="-1";previous.disabled=deck.canGoPrevious!==true;
+      const count=el("span",String(deck.position||0)+" / "+String(deck.cardCount||0));
+      const nextButton=button("下一张","jump","sheet-secondary");
+      nextButton.dataset.steps="1";nextButton.disabled=deck.canGoNext!==true;
+      paging.append(previous,count,nextButton);actions.append(paging);
+    }
     actions.append(button("暂存","flush","sheet-secondary"));
     actions.append(button("丢弃草稿","discard","sheet-danger"));
     if(deck.lastDiscardId!=null)actions.append(button("撤销丢弃","undo","sheet-secondary"));
@@ -258,6 +322,17 @@ async function close(){
 }
 $("sheetClose").addEventListener("click",()=>void close());
 $("sheetShade").addEventListener("click",()=>void close());
+fields.addEventListener("click",event=>{
+  const b=event.target.closest("[data-do]");if(!b||busy)return;
+  if(b.dataset.do==="select"&&b.dataset.draftId)
+    void perform("deck.select",{draftId:Number(b.dataset.draftId)});
+  else if(b.dataset.do==="replace"){
+    const eventSeq=Number(b.dataset.eventSeq),expectedRevision=Number(b.dataset.revision);
+    if(Number.isSafeInteger(eventSeq)&&eventSeq>0&&
+      Number.isSafeInteger(expectedRevision)&&expectedRevision>0)
+      void perform("deck.proposeReplace",{eventSeq,expectedRevision});
+  }
+});
 actions.addEventListener("click",event=>{
   const b=event.target.closest("[data-do]");if(!b||busy)return;
   const deck=state.editing?.deck||{};
@@ -270,8 +345,12 @@ actions.addEventListener("click",event=>{
     case "deleteEvent":if(editor.sessionId&&!editor.awaitingConfirmation)
       void perform("editor.delete",{sessionId:editor.sessionId});break;
     case "close":void close();break;
-    case "select":if(b.dataset.draftId)
-      void perform("deck.select",{draftId:Number(b.dataset.draftId)});break;
+    case "jump":{
+      const steps=Number(b.dataset.steps);
+      if(Number.isInteger(steps)&&steps>=-1000&&steps<=1000)
+        void perform("deck.jump",{steps});
+      break;
+    }
     case "flush":void perform("deck.flush");break;
     case "undo":void perform("deck.undo");break;
     case "discard":

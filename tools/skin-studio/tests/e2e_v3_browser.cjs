@@ -180,8 +180,33 @@ fs.mkdirSync(TEST_TEMP_ROOT,{recursive:true});
       "Full titles remain accessible when their rendered labels are folded");
     assert.ok(geometry.greedy.every(item=>item.pointerEvents==="none"&&item.ariaHidden==="true"),
       "Decorative title overlays do not intercept the event button or duplicate accessibility speech");
-    assert.ok(geometry.independentLaneTitles.every(item=>item.state==="visible"),
-      "Non-occluding lane titles remain visible at the same or nearby times");
+    assert.deepEqual(geometry.independentLaneTitles.map(item=>[item.seq,item.state]),[
+      [103,"clipped"],[104,"clipped"],[201,"visible"],[202,"visible"],[203,"clipped"]
+    ],"Only titles in the initial horizontal viewport are eligible for folding");
+    await frame.evaluate(()=>{
+      const left=document.querySelector("#timelineLeft"),right=document.querySelector("#timelineRight");
+      left.scrollLeft=Math.max(0,left.scrollLeft-176);right.scrollLeft=176;
+    });
+    await frame.waitForFunction(()=>[103,104,203].every(seq=>
+      document.querySelector(`[data-event-seq="${seq}"] .timelineTitle`).dataset.titleFoldState==="visible"));
+    const visibleIndependentLanes=await frame.evaluate(()=>({
+      scroll:{left:document.querySelector("#timelineLeft").scrollLeft,
+        right:document.querySelector("#timelineRight").scrollLeft},
+      items:[103,104,201,202,203].map(seq=>{
+        const title=document.querySelector(`[data-event-seq="${seq}"] .timelineTitle`),r=title.getBoundingClientRect();
+        return {seq,state:title.dataset.titleFoldState,rect:{left:r.left,top:r.top,right:r.right,bottom:r.bottom}};
+      })
+    }));
+    assert.ok(visibleIndependentLanes.items.filter(item=>[103,104,203].includes(item.seq))
+      .every(item=>item.state==="visible"),
+      "Non-occluding labels in the scrolled lanes remain visible: "+
+        JSON.stringify(visibleIndependentLanes));
+    await frame.evaluate(position=>{
+      document.querySelector("#timelineLeft").scrollLeft=position.left;
+      document.querySelector("#timelineRight").scrollLeft=position.right;
+    },{left:geometry.left.scrollLeft,right:geometry.right.scrollLeft});
+    await frame.waitForFunction(()=>[103,104,203].every(seq=>
+      document.querySelector(`[data-event-seq="${seq}"] .timelineTitle`).dataset.titleFoldState==="clipped"));
     assert.ok(geometry.longTitle.foldedTitle.text.endsWith("…")&&
       geometry.longTitle.foldedTitle.source.length>geometry.longTitle.foldedTitle.text.length,
       "An overlong title is truncated on one line with a visible ellipsis");
@@ -234,18 +259,35 @@ fs.mkdirSync(TEST_TEMP_ROOT,{recursive:true});
     assert.equal(changedScroll.leftAfterOwn,0);
     assert.equal(changedScroll.rightAfterLeft,changedScroll.rightEnd,
       "Left wing scrolling must not move the right wing");
-    await frame.waitForFunction(()=>[101,301,302,303].every(seq=>
+    const clippedAfterWingScroll=()=>[101,301,302,303].every(seq=>
       document.querySelector(`[data-event-seq="${seq}"] .timelineTitle`).dataset.titleFoldState==="clipped")&&
       [201,202,203].every(seq=>document.querySelector(`[data-event-seq="${seq}"] .timelineTitle`)
-        .dataset.titleFoldState==="clipped"));
+        .dataset.titleFoldState==="clipped");
+    await frame.waitForFunction(clippedAfterWingScroll,{timeout:8000}).catch(async error=>{
+      const actual=await frame.evaluate(()=>[101,301,302,303,201,202,203].map(seq=>({seq,
+        state:document.querySelector(`[data-event-seq="${seq}"] .timelineTitle`).dataset.titleFoldState,
+        screenRect:document.querySelector(`[data-event-seq="${seq}"] .timelineTitle`).dataset.titleScreenRect||null})));
+      console.error("Title states after independent wing scroll",JSON.stringify(actual));
+      throw error;
+    });
     await frame.evaluate(()=>{
       const left=document.querySelector("#timelineLeft"),right=document.querySelector("#timelineRight");
       left.scrollLeft=left.scrollWidth;right.scrollLeft=0;
     });
-    await frame.waitForFunction(()=>{
+    const restoredFoldState=()=>{
       const read=seq=>document.querySelector(`[data-event-seq="${seq}"] .timelineTitle`).dataset.titleFoldState;
       return read(101)==="visible"&&read(301)==="folded"&&read(302)==="visible"&&read(303)==="folded"&&
-        [201,202,203].every(seq=>read(seq)==="visible");
+        read(201)==="visible"&&read(202)==="visible"&&read(203)==="clipped";
+    };
+    await frame.waitForFunction(restoredFoldState,{timeout:8000}).catch(async error=>{
+      const actual=await frame.evaluate(()=>({scroll:{left:document.querySelector("#timelineLeft").scrollLeft,
+        right:document.querySelector("#timelineRight").scrollLeft},items:[101,301,302,303,201,202,203].map(seq=>{
+          const title=document.querySelector(`[data-event-seq="${seq}"] .timelineTitle`),r=title.getBoundingClientRect();
+          return {seq,state:title.dataset.titleFoldState,comparedTo:title.dataset.titleComparedTo||null,
+            rect:{left:r.left,right:r.right,top:r.top,bottom:r.bottom}};
+        })}));
+      console.error("Title states after left-wing scroll",JSON.stringify(actual));
+      throw error;
     });
     const afterHorizontalReturn=await frame.evaluate(()=>[101,301,302,303].map(seq=>{
       const title=document.querySelector(`[data-event-seq="${seq}"] .timelineTitle`);
@@ -317,11 +359,18 @@ fs.mkdirSync(TEST_TEMP_ROOT,{recursive:true});
     await frame.waitForFunction(()=>document.querySelector('[data-event-seq="101"] .timelineTitle')
       .dataset.titleFoldState==="visible");
     for(let i=0;i<8;i++)await frame.click('[data-action="panTimeline"][data-delta-minutes="180"]');
-    await frame.waitForFunction(()=>document.querySelector('[data-event-seq="101"] .timelineTitle')
-      .dataset.titleFoldState==="clipped");
+    await frame.waitForFunction(()=>!document.querySelector('[data-event-seq="101"]'),
+      {timeout:8000});
     await frame.click('[data-action="today"]');
     await frame.waitForFunction(()=>document.querySelector('[data-event-seq="101"] .timelineTitle')
-      .dataset.titleFoldState==="visible");
+      ?.dataset.titleFoldState==="visible",{timeout:8000}).catch(async error=>{
+      const actual=await frame.evaluate(()=>({anchor:window.PowerCalSkin?.state?.timeline?.anchorMillis,
+        title:document.querySelector('[data-event-seq="101"] .timelineTitle')?.dataset.titleFoldState||null,
+        scroll:{left:document.querySelector("#timelineLeft").scrollLeft,
+          right:document.querySelector("#timelineRight").scrollLeft},
+        timeRange:document.querySelector("#timeRangeLabel").textContent}));
+      console.error("Title state after Today",JSON.stringify(actual));throw error;
+    });
     assert.equal(geometry.events.length,28,"All mock events, including the date Deadline, remain present");
     for(const event of geometry.events){
       assert.ok(event.aria&&event.title&&event.aria.includes(event.title),
@@ -390,7 +439,7 @@ fs.mkdirSync(TEST_TEMP_ROOT,{recursive:true});
     }]});
     await touchSession.send("Input.dispatchTouchEvent",{type:"touchEnd",touchPoints:[]});
     await touchSession.send("Emulation.setTouchEmulationEnabled",{enabled:false});
-    await page.waitForFunction(()=>document.querySelector("#timelineMoveStatus").textContent
+    await frame.waitForFunction(()=>document.querySelector("#timelineMoveStatus").textContent
       .includes("重复事件暂不支持拖动"));
     assert.equal(await frame.$eval("#skinSheet",element=>element.hidden),true,
       "A repeated occurrence is refused without opening a replacement draft");
@@ -405,8 +454,21 @@ fs.mkdirSync(TEST_TEMP_ROOT,{recursive:true});
 
     // The Web UI must work through the same typed command envelopes as Android,
     // not by silently opening a native Compose editor.
+    await new Promise(resolve=>setTimeout(resolve,1100));
     await frame.click(".tEvent.ACTIVITY");
-    await frame.waitForFunction(()=>!document.querySelector("#skinSheet").hidden);
+    await frame.waitForFunction(()=>!document.querySelector("#skinSheet").hidden,
+      {timeout:8000}).catch(async error=>{
+      const bridge=await page.evaluate(()=>({
+        log:document.querySelector("#bridgeLog")?.textContent||"",
+        editing:typeof mockEditing==="undefined"?null:mockEditing,
+        projected:typeof lastState==="undefined"?null:lastState?.editing
+      }));
+      const preview=await frame.evaluate(()=>({url:location.href,page:document.querySelector("#app")?.textContent
+        .slice(0,160),events:[...document.querySelectorAll(".tEvent")].map(item=>({seq:item.dataset.eventSeq,
+          action:item.dataset.action,rect:(()=>{const r=item.getBoundingClientRect();return [r.x,r.y,r.width,r.height]})()})),
+        sheetHidden:document.querySelector("#skinSheet")?.hidden}));
+      console.error("Formal editor open after timeline click",JSON.stringify({bridge,preview}));throw error;
+    });
     assert.equal(await frame.$eval("#sheetTitle",e=>e.textContent),"编辑事件");
     await frame.$eval('#sheetFields [data-field="title"]',input=>{
       input.value="浏览器协议编辑验证";
@@ -463,12 +525,42 @@ fs.mkdirSync(TEST_TEMP_ROOT,{recursive:true});
     await frame.waitForFunction(()=>document.querySelector("#skinSheet").hidden);
     console.log("Clear Web editor and deck command round-trip PASS");
 
+    await frame.click('[data-action="openDeck"]');
+    await frame.waitForFunction(()=>!document.querySelector("#skinSheet").hidden&&
+      !!document.querySelector(".deck-search"));
+    await frame.$eval(".deck-search input",input=>{
+      input.value="正式事件替换目标";document.querySelector(".deck-search").requestSubmit();
+    });
+    await frame.waitForFunction(()=>document.querySelector(".deck-formal-results .deck-result")?.textContent
+      .includes("正式事件替换目标"));
+    await frame.click(".deck-formal-results [data-do=replace]");
+    await frame.waitForFunction(()=>document.querySelector('#sheetFields [data-field="title"]')?.value===
+      "正式事件替换目标");
+    await frame.$eval(".deck-search input",input=>{
+      input.value="示例草稿";document.querySelector(".deck-search").requestSubmit();
+    });
+    await frame.waitForFunction(()=>document.querySelectorAll('.sheet-cards [data-draft-id="7202"]').length===1);
+    await frame.click('.sheet-cards [data-draft-id="7202"]');
+    await frame.waitForFunction(()=>document.querySelector('#sheetFields [data-field="title"]')?.value===
+      "示例草稿二");
+    await frame.click('[data-do="jump"][data-steps="1"]');
+    await frame.waitForFunction(()=>document.querySelector('#sheetFields [data-field="title"]')?.value===
+      "示例草稿三"&&document.querySelector(".sheet-deck-navigation span")?.textContent==="3 / 6");
+    for(const name of ["deck.search","deck.proposeReplace","deck.select","deck.jump"])
+      assert.ok(await page.evaluate(value=>document.querySelector("#bridgeLog").textContent
+        .includes("预览编辑命令 "+value),name),name+" runs through the Studio Preview Host Mock");
+    await frame.click("#sheetClose");
+    await frame.waitForFunction(()=>document.querySelector("#skinSheet").hidden);
+    console.log("Studio Preview Mock searches drafts/formals, proposes replace and navigates the seeded deck");
+
     for(const kind of ["ALARM","ACTIVITY","DEADLINE","MEMO"]){
       await frame.click('[data-action="createDraft"]');
       await frame.waitForSelector("#timelineCreateDialog[open]");
       await frame.click('[data-timeline-create-kind="'+kind+'"]');
       await frame.waitForFunction(()=>!document.querySelector("#skinSheet").hidden &&
         document.querySelector("#sheetTitle").textContent==="待处理草稿");
+      assert.equal(await frame.$(".deck-search"),null,
+        kind+" transient new-event session must not expose persisted-deck search");
       await page.waitForFunction(value=>document.querySelector("#bridgeLog").textContent
         .includes("deck.create · "+value+" → created"),{},kind);
       const labels=await frame.$$eval("#sheetFields .sheet-row .sheet-label",
@@ -577,9 +669,16 @@ fs.mkdirSync(TEST_TEMP_ROOT,{recursive:true});
     await frame.waitForFunction(()=>!document.querySelector("#monthPage").hidden);
     const month=await frame.evaluate(()=>({
       cells:document.querySelectorAll(".month-cell").length,
+      gridSlots:document.querySelectorAll(".month-cell,.month-cell-empty").length,
+      weekdays:document.querySelectorAll(".month-weekday").length,
+      children:document.querySelector("#monthGrid").childElementCount,
       agenda:document.querySelectorAll(".agenda-event").length
     }));
-    assert.equal(month.cells,42);
+    assert.equal(month.cells,31,"The October fixture renders each in-month date once");
+    assert.ok(month.gridSlots>=month.cells&&month.gridSlots<=42&&month.gridSlots%7===0,
+      "Month padding uses complete week rows");
+    assert.equal(month.weekdays,7);
+    assert.equal(month.children,month.gridSlots+month.weekdays);
     assert.ok(month.agenda>0);
     await frame.click('.clear-tabbar [data-action="ai"]');
     await frame.waitForFunction(()=>!document.querySelector("#aiPage").hidden);
