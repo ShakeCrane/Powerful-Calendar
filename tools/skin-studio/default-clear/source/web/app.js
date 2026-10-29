@@ -8,6 +8,7 @@ applyTheme();
 darkMedia.addEventListener("change",applyTheme);
 let port=null, state={}, currentPage="TIMELINE", memoFilter="open",localOptions=false;
 let timelineScrollInitialized=false;
+let titleFoldFrame=0,titleFoldResizeObserver=null;
 let aiReviewSelectionId="",aiReviewSelected=new Set();
 let attachmentRequestPending=false;
 let timelineCreateDialog=null;
@@ -21,6 +22,132 @@ const node=(tag,cls,text)=>{
   if(text!=null)el.textContent=String(text);
   return el;
 };
+function titleGraphemes(value){
+  if(typeof Intl.Segmenter==="function")
+    return [...new Intl.Segmenter(undefined,{granularity:"grapheme"}).segment(value)]
+      .map(part=>part.segment);
+  return Array.from(value);
+}
+function renderedTextRect(element){
+  const range=document.createRange();
+  range.selectNodeContents(element);
+  const rects=[...range.getClientRects()].filter(rect=>rect.width>0&&rect.height>0);
+  if(!rects.length)return null;
+  return{
+    left:Math.min(...rects.map(rect=>rect.left)),
+    top:Math.min(...rects.map(rect=>rect.top)),
+    right:Math.max(...rects.map(rect=>rect.right)),
+    bottom:Math.max(...rects.map(rect=>rect.bottom))
+  };
+}
+function intersectScreenRects(first,second){
+  if(!first||!second)return null;
+  const rect={left:Math.max(first.left,second.left),top:Math.max(first.top,second.top),
+    right:Math.min(first.right,second.right),bottom:Math.min(first.bottom,second.bottom)};
+  return rect.right>rect.left&&rect.bottom>rect.top?rect:null;
+}
+function elementClientRect(element){
+  if(!element)return null;
+  const bounds=element.getBoundingClientRect();
+  const left=bounds.left+element.clientLeft,top=bounds.top+element.clientTop;
+  const rect={left,top,right:left+element.clientWidth,bottom:top+element.clientHeight};
+  return rect.right>rect.left&&rect.bottom>rect.top?rect:null;
+}
+function fitTimelineTitle(element){
+  const source=String(element.dataset.titleSource||"").replace(/[\r\n]+/g," ");
+  const maxWidth=Math.max(0,Number(element.dataset.titleMaxWidth)||0);
+  element.style.visibility="hidden";
+  element.style.width="max-content";
+  element.textContent=source;
+  let measured=renderedTextRect(element);
+  let shown=source;
+  if(measured&&measured.right-measured.left>maxWidth){
+    const parts=titleGraphemes(source);
+    let low=0,high=parts.length,best="";
+    while(low<=high){
+      const middle=(low+high)>>>1,candidate=parts.slice(0,middle).join("")+"…";
+      element.textContent=candidate;
+      const rect=renderedTextRect(element);
+      if(rect&&rect.right-rect.left<=maxWidth){best=candidate;low=middle+1}
+      else high=middle-1;
+    }
+    shown=best;
+    element.textContent=shown;
+    measured=renderedTextRect(element);
+  }
+  element.dataset.titleDisplay=shown;
+  if(!measured||maxWidth<=0){
+    element.style.width="0px";
+    element.style.visibility="hidden";
+    return null;
+  }
+  const width=measured.right-measured.left;
+  element.style.width=width+"px";
+  if(element.dataset.titleFrameHeight){
+    const frameHeight=Number(element.dataset.titleFrameHeight);
+    const inside=Number.isFinite(frameHeight)&&frameHeight>=measured.bottom-measured.top;
+    element.dataset.titlePlacement=inside?"inside":"start-anchor";
+    const frameTop=Number(element.dataset.titleFrameTop)||0;
+    element.style.top=(frameTop+(inside?Math.min(3,Math.max(0,frameHeight-(measured.bottom-measured.top))):0))+"px";
+  }
+  return renderedTextRect(element);
+}
+function recomputeTimelineTitleFolding(){
+  const timeline=document.querySelector("#timelineSurface");
+  const viewport=document.querySelector("#axisScroll");
+  const folding=window.PowerCalTitleFolding;
+  if(!timeline||!viewport||!folding?.fold)return;
+  const viewportRect=elementClientRect(viewport);
+  const screenRect={left:0,top:0,right:window.innerWidth,bottom:window.innerHeight};
+  const candidates=[],elementsById=new Map();
+  for(const element of timeline.querySelectorAll("[data-title-fold-id]")){
+    const wing=element.closest(".timelineWing");
+    const clip=intersectScreenRects(elementClientRect(wing),intersectScreenRects(viewportRect,screenRect));
+    const measured=fitTimelineTitle(element);
+    const visibleRect=intersectScreenRects(measured,clip);
+    element.dataset.titleMeasuredRect=measured?JSON.stringify(measured):"";
+    if(!visibleRect){
+      element.classList.add("title-fold-hidden");
+      element.dataset.titleFoldState="clipped";
+      element.dataset.titleComparedTo="";
+      element.dataset.titleScreenRect="";
+      continue;
+    }
+    const button=element.closest(".tEvent");
+    const stableId=element.dataset.titleFoldId;
+    candidates.push({stableId,eventSeq:Number(button?.dataset.eventSeq)||0,
+      regionId:"timeline-visible",rect:visibleRect});
+    elementsById.set(stableId,element);
+  }
+  const result=folding.fold(candidates);
+  for(const decision of result.decisions){
+    const element=elementsById.get(decision.candidate.stableId);
+    if(!element)continue;
+    element.classList.toggle("title-fold-hidden",!decision.visible);
+    element.dataset.titleFoldState=decision.visible?"visible":"folded";
+    element.dataset.titleComparedTo=decision.comparedTo||"";
+    element.dataset.titleScreenRect=JSON.stringify(decision.candidate.rect);
+    element.style.visibility=decision.visible?"visible":"hidden";
+  }
+}
+function scheduleTimelineTitleFolding(){
+  if(titleFoldFrame)return;
+  titleFoldFrame=requestAnimationFrame(()=>{
+    titleFoldFrame=0;
+    recomputeTimelineTitleFolding();
+  });
+}
+for(const id of ["axisScroll","timelineLeft","timelineRight"]){
+  $(id)?.addEventListener("scroll",scheduleTimelineTitleFolding,{passive:true});
+}
+window.addEventListener("resize",scheduleTimelineTitleFolding,{passive:true});
+if(typeof ResizeObserver==="function"){
+  titleFoldResizeObserver=new ResizeObserver(scheduleTimelineTitleFolding);
+  for(const id of ["axisScroll","timelineLeft","timelineRight"]){
+    const element=$(id);if(element)titleFoldResizeObserver.observe(element);
+  }
+}
+if(document.fonts?.ready)document.fonts.ready.then(scheduleTimelineTitleFolding).catch(()=>{});
 const dateText=(ms,zone,options)=>{
   try{return new Intl.DateTimeFormat("zh-CN",{timeZone:zone||"Asia/Shanghai",...options}).format(new Date(ms))}
   catch{return new Date(ms).toISOString().slice(0,10)}
@@ -194,6 +321,17 @@ function renderTimeline(){
     button.setAttribute("aria-label",ariaLabel);button.title=ariaLabel;
     return button;
   };
+  const makeTimelineTitle=(item,kind,text,maxWidth)=>{
+    const occurrence=String(item.occurrenceKey||item.originalOccurrenceKey||
+      `${item.startMillis}:${item.revision??0}`);
+    const stableId=[String(item.eventSeq??0),kind,occurrence].join(":");
+    const title=node("span","timelineTitle",text);
+    title.setAttribute("aria-hidden","true");
+    title.dataset.titleFoldId=stableId;
+    title.dataset.titleSource=String(text??"");
+    title.dataset.titleMaxWidth=String(maxWidth);
+    return title;
+  };
   if(dateItems.length){
     dates.hidden=false;
     for(const item of dateItems){
@@ -265,10 +403,15 @@ function renderTimeline(){
       const hitTop=Math.max(0,Math.min(height-hitHeight,
         (visualTop+visualBottom)/2-hitHeight/2));
       button.style.top=hitTop+"px";button.style.height=hitHeight+"px";
-      const visual=node("div","tEventVisual ACTIVITY",item.title);
+      const visual=node("div","tEventVisual ACTIVITY");
       visual.setAttribute("aria-hidden","true");
       visual.style.top=(visualTop-hitTop)+"px";visual.style.height=visualHeight+"px";
-      button.append(visual);
+      const title=makeTimelineTitle(item,kind,String(item.title||""),laneWidth-13);
+      title.classList.add("tActivityTitle");
+      title.dataset.titleFrameTop=String(visualTop-hitTop);
+      title.dataset.titleFrameHeight=String(visualHeight);
+      title.style.top=(visualTop-hitTop)+"px";
+      button.append(visual,title);
     }else{
       const hitHeight=Math.min(height,44);
       const hitTop=Math.max(0,Math.min(height-hitHeight,anchorY-hitHeight/2));
@@ -276,8 +419,8 @@ function renderTimeline(){
       const line=node("span","tPointLine "+kind);
       line.setAttribute("aria-hidden","true");line.dataset.anchorMillis=String(startMillis);
       line.style.top=(anchorY-hitTop-0.75)+"px";
-      const title=node("span","tPointLabel "+kind,`${timeText} · ${item.title}`);
-      title.setAttribute("aria-hidden","true");
+      const title=makeTimelineTitle(item,kind,`${timeText} · ${item.title}`,laneWidth-6);
+      title.classList.add("tPointLabel",kind);
       title.style.top=(anchorY-hitTop+(kind==="ALARM"?3:-18))+"px";
       button.append(line,title);
     }
@@ -297,6 +440,7 @@ function renderTimeline(){
   right.scrollLeft=(!timelineScrollInitialized||(!previousRightOverflow&&newRightOverflow))
     ?0:previousRightScroll;
   timelineScrollInitialized=true;
+  recomputeTimelineTitleFolding();
 }
 function renderMonth(){
   const month=state.month||{},t=state.timeline||{};

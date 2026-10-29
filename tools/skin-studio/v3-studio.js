@@ -619,8 +619,17 @@ function simulatedState(){
   }));
   if(scenario==="timeline-geometry")rows=[
     {eventSeq:101,revision:3,occurrenceKey:"101:one-minute",kind:"ACTIVITY",
-      title:"一分钟活动",side:"RIGHT",lane:1,startMillis:base-7200000,
+      title:"Greedy_A",side:"RIGHT",lane:1,startMillis:base-7200000,
       endMillis:base-7140000,precision:"INSTANT",deadlineDate:null},
+    {eventSeq:301,revision:1,occurrenceKey:"301:greedy-b",kind:"ACTIVITY",
+      title:"Greedy_B",side:"RIGHT",lane:1,startMillis:base-7140000,
+      endMillis:base-7080000,precision:"INSTANT",deadlineDate:null},
+    {eventSeq:302,revision:1,occurrenceKey:"302:greedy-c",kind:"ACTIVITY",
+      title:"Greedy_C",side:"RIGHT",lane:1,startMillis:base-3600000,
+      endMillis:base-3540000,precision:"INSTANT",deadlineDate:null},
+    {eventSeq:303,revision:1,occurrenceKey:"303:greedy-d",kind:"ACTIVITY",
+      title:"Greedy_D",side:"RIGHT",lane:1,startMillis:base-3540000,
+      endMillis:base-3480000,precision:"INSTANT",deadlineDate:null},
     {eventSeq:102,revision:2,occurrenceKey:"102:long",kind:"ACTIVITY",
       title:"跨越可见区的长活动",side:"RIGHT",lane:0,startMillis:base-72000000,
       endMillis:base+72000000,precision:"INSTANT",deadlineDate:null},
@@ -646,7 +655,8 @@ function simulatedState(){
   if(scenario==="timeline-geometry"){
     rows.push(...Array.from({length:8},(_,index)=>({
       eventSeq:105+index,revision:1,occurrenceKey:`${105+index}:parallel`,kind:"ACTIVITY",
-      title:`并行活动 ${index+3}`,side:"RIGHT",lane:index+4,
+      title:index===0?"非常长的时间轴活动标题用于验证实际文字矩形、单行截断和完整无障碍名称":
+        `并行活动 ${index+3}`,side:"RIGHT",lane:index+4,
       startMillis:base-7200000,endMillis:base+10800000,precision:"INSTANT",deadlineDate:null
     })));
     rows.push(...Array.from({length:9},(_,index)=>({

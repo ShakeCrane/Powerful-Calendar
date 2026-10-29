@@ -41,8 +41,11 @@ class DefaultClearSingleSourceTest(unittest.TestCase):
         self.assertIn("web/fonts/InterVariable.woff2",files)
         self.assertIn("web/fonts/LICENSE-Inter.txt",files)
         self.assertIn("web/app.js",files)
+        self.assertIn("web/title-folding.js",files)
         self.assertIn("project.json",files)
         self.assertIn(b"powercal-port",files["web/app.js"])
+        self.assertIn(b'<script src="title-folding.js"></script>',files["web/index.html"])
+        self.assertIn(b"PowerCalTitleFolding",files["web/title-folding.js"])
         self.assertNotIn(b"https://",files["web/index.html"])
         self.assertLess(len(original),10_000_000)
 

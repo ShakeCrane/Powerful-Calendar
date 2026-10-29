@@ -1,5 +1,12 @@
 # Core freeze progress
 
+## Separation — Clear timeline measured-title greedy folding `S0-TL-05` (2026-10-29, PARTIAL)
+
+- Root cause: Clear had no measured-label collision policy; labels rendered with event controls and could not fold by actual visible text geometry. Added deterministic `title-folding.js` pure strategy (screen Y/event sequence/stable ID order, strict rectangle overlap, hidden candidates never replace lead), DOM `Range` measurement, unified viewport coordinates with left/right clipping, one-line lane-width ellipsis, Activity start anchoring when its true visual frame is too short, and reflow after scroll/resize/render/font readiness. Only labels hide; event geometry, event buttons, complete accessible names and date-only Deadline strip remain. No `×N`.
+- Evidence: Node pure function **10/10 PASS**; Skin Studio Python **59/59 PASS**; JS syntax, deterministic Clear bundle and v3 validation PASS. Edge 156 Studio Mock at 1460×960 retained 28/28 events and unchanged geometry; measured A/B and C/D text collisions fold correctly although event times do not overlap; left/right horizontal clipping and restoration, vertical scroll, zoom/reset/date reset, folded-event pointer hit and accessibility checks PASS. Trace, screenshots, package/test logs and SHA-256 are in the independent Issue report and ignored `.local/android-test/reports/separation-s0-greedy-title-folding/run-20261029-16/` evidence directory.
+- Gradle boundary/JVM/APK/lint gate is **BLOCKED** because repository-local SDK lacks `platforms;android-36`. Android WebView, AVD, physical/OEM and matched Native/Clear parity are **NOT TESTED**; full `S0-TL-05` parity remains NOT TESTED, and this is not release/cutover GO. See [PC-ISSUE-SEPARATION-CLEAR-GREEDY-LABEL-FOLDING](../issues/PC-ISSUE-SEPARATION-CLEAR-GREEDY-LABEL-FOLDING.md).
+- Code and narrow evidence are committed separately from later commit-SHA documentation backfill; overall Skin-First separation remains IN PROGRESS.
+
 ## Separation — Clear 时间轴缩放控制与真实时间几何 `S0-TL-01 / S0-TL-06`（2026-10-29，PARTIAL）
 
 - 定向复现发现 24 小时视口里的 1 分钟 Activity 被画成 6px 高：视觉层上下 padding 各 3px，旧逻辑还对短事件使用虚构最小高度、对缺失结束时刻合成 `start+4`。现改为按真实区间裁切并绘制，视觉矩形与 44px 点击按钮分离；ALARM/精确 Deadline 为时刻点，日期 Deadline 进入日期条。左右泳道独立横向滚动，新增 Host zoom/reset 闭合动作及 Clear 控件。
