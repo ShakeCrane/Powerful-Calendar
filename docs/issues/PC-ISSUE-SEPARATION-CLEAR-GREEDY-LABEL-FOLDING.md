@@ -4,6 +4,7 @@
 - 状态：**PARTIAL**。Clear 源码、确定性算法、Skin Studio 往返与 Edge Studio Mock 的窄范围视觉/交互回归通过；Android Gradle/API 36 门禁 **BLOCKED**，Android WebView 与 Native/Clear 完整 parity **NOT TESTED**。
 - 工作树：`codex/separation-s0-inventory`
 - 基线：`2a02ae71fbeb8b50e2cb099533665e66243a2e53`
+- 实现/回归/报告提交：`c6b6f7d10e068ee0d4d292505f643b0fab4d1164` (`feat(分离): 实现 Clear 时间轴标题贪心折叠`)
 - 范围：重建矩阵 `S0-TL-05` 的 Clear 运行时标题折叠；不更改 Native 时间轴、Host 时间几何或事件存储。
 
 ## 需求和根因
