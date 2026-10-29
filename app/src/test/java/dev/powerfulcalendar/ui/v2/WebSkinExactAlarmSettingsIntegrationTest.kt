@@ -116,21 +116,27 @@ class WebSkinExactAlarmSettingsIntegrationTest {
 
         ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.Routed("settings")) }
         val lifecycle = ui.activity.lifecycle as LifecycleRegistry
+        var deniedResumeRevision = 0L
+        ui.runOnIdle { deniedResumeRevision = WebSkinBridgeRuntime.stateRevision }
         ui.runOnIdle {
             lifecycle.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
             lifecycle.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
         }
+        ui.waitUntil(20_000) { WebSkinBridgeRuntime.stateRevision > deniedResumeRevision }
         ui.waitForIdle()
         assertEquals(PowerStore.DesiredSchedule.BLOCKED, store.intentFor(eventSeq)!!.desired)
         assertFalse(WebSkinBridgeRuntime.state().getJSONObject("exactAlarmPermission").getBoolean("allowed"))
 
+        var grantedResumeRevision = 0L
+        ui.runOnIdle { grantedResumeRevision = WebSkinBridgeRuntime.stateRevision }
         ShadowAlarmManager.setCanScheduleExactAlarms(true)
         ui.runOnIdle {
             lifecycle.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
             lifecycle.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
         }
         ui.waitUntil(20_000) {
-            store.intentFor(eventSeq)?.desired == PowerStore.DesiredSchedule.SCHEDULED
+            store.intentFor(eventSeq)?.desired == PowerStore.DesiredSchedule.SCHEDULED &&
+                WebSkinBridgeRuntime.stateRevision > grantedResumeRevision
         }
         val grantedStatus = WebSkinBridgeRuntime.state().getJSONObject("exactAlarmPermission")
         assertTrue(grantedStatus.getBoolean("required"))

@@ -7,6 +7,7 @@ import android.content.Intent
 import androidx.test.core.app.ApplicationProvider
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.PowerStore
+import dev.powerfulcalendar.core.ReminderMethod
 import dev.powerfulcalendar.core.TemporalKind
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -141,6 +142,60 @@ class BootReceiverRecoveryTest {
                 assertEquals(PowerStore.DesiredSchedule.SCHEDULED, scheduled!!.desired)
                 assertEquals("Every supported recovery action should be idempotent", 1, shadowAlarmManager.scheduledAlarms.size)
                 assertFalse(reopened.isLocked())
+            } finally {
+                reopened.close()
+            }
+        } finally {
+            store?.close()
+            context.deleteDatabase(databaseName)
+            ShadowAlarmManager.setCanScheduleExactAlarms(true)
+        }
+    }
+
+    @Test
+    fun exactAlarmPermissionBroadcastRetriesBlockedExactReminder() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        ShadowAlarmManager.setCanScheduleExactAlarms(false)
+        val alarmManager = context.getSystemService(AlarmManager::class.java)!!
+        val shadowAlarmManager = Shadows.shadowOf(alarmManager)
+        var store: PowerStore? = PowerStore(context)
+        val databaseName = requireNotNull(store).databaseName
+
+        try {
+            assertTrue(requireNotNull(store).all().isEmpty())
+            val zone = ZoneId.systemDefault()
+            val draft = requireNotNull(store).newDraft(
+                DraftForm(
+                    kind = TemporalKind.ALARM,
+                    title = "Exact alarm permission recovery",
+                    startText = DraftForm.formatInstant(System.currentTimeMillis() + 60 * 60_000L, zone),
+                    reminderMinutes = 0,
+                    reminderMethod = ReminderMethod.ALARM,
+                    zoneId = zone.id
+                )
+            )
+            assertTrue(requireNotNull(store).commit(draft.draftId) is PowerStore.CommitOutcome.Committed)
+            val eventSeq = draft.eventSeq
+
+            ReminderScheduler.reconcile(context, requireNotNull(store))
+            assertEquals(PowerStore.DesiredSchedule.BLOCKED, requireNotNull(store).intentFor(eventSeq)!!.desired)
+            assertTrue(shadowAlarmManager.scheduledAlarms.isEmpty())
+            requireNotNull(store).close()
+            store = null
+
+            ShadowAlarmManager.setCanScheduleExactAlarms(true)
+            dispatchAndAwait(
+                context,
+                "android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED"
+            )
+
+            val reopened = PowerStore(context)
+            try {
+                val recovered = reopened.intentFor(eventSeq)
+                assertNotNull(recovered)
+                assertEquals(PowerStore.DesiredSchedule.SCHEDULED, recovered!!.desired)
+                assertEquals(null, recovered.androidHint)
+                assertEquals(1, shadowAlarmManager.scheduledAlarms.size)
             } finally {
                 reopened.close()
             }

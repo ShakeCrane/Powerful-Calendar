@@ -86,7 +86,7 @@ object ReminderScheduler {
         if (intent.requirement == PowerStore.TriggerRequirement.EXACT && !exactAlarmAllowed(context)) {
             val owned = store.markIntent(
                 intent.eventSeq, intent.triggerId, PowerStore.DesiredSchedule.BLOCKED,
-                "缺少精确闹钟权限", intent.revision, intent.occurrenceKey
+                PowerStore.EXACT_ALARM_PERMISSION_REQUIRED_HINT, intent.revision, intent.occurrenceKey
             )
             if (owned) NotificationHelper.postExactAlarmBlocked(context, record)
             return
@@ -112,9 +112,10 @@ object ReminderScheduler {
                 null, intent.revision, intent.occurrenceKey
             )
         } catch (security: SecurityException) {
+            val hint = exactAlarmSecurityExceptionHint(exactAlarmAllowed(context))
             val owned = store.markIntent(
                 intent.eventSeq, intent.triggerId, PowerStore.DesiredSchedule.BLOCKED,
-                "系统拒绝精确闹钟", intent.revision, intent.occurrenceKey
+                hint, intent.revision, intent.occurrenceKey
             )
             if (owned) NotificationHelper.postExactAlarmBlocked(context, record)
         }
@@ -294,3 +295,11 @@ object ReminderScheduler {
         )
     }
 }
+
+/** Keep a permission race retryable, but leave unrelated system rejections visibly blocked. */
+internal fun exactAlarmSecurityExceptionHint(exactAccessAllowed: Boolean): String =
+    if (exactAccessAllowed) {
+        PowerStore.EXACT_ALARM_SYSTEM_REJECTED_HINT
+    } else {
+        PowerStore.EXACT_ALARM_PERMISSION_REQUIRED_HINT
+    }

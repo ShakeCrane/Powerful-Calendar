@@ -480,7 +480,16 @@ fun PowerCalApp(
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
                 editError = activeEditSession?.lastError
                 newEventError = activeNewEventSession?.lastError
-                scope.launch { reconcile(); reload() }
+                scope.launch {
+                    try {
+                        reconcile()
+                        reload()
+                    } finally {
+                        // Exact-alarm access is an OS property, not Compose state. Force the
+                        // Web Host snapshot to publish after returning from system settings.
+                        WebSkinBridgeRuntime.stateRevision++
+                    }
+                }
             }
             if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP &&
                 webEditing.hasLiveEditor()) {

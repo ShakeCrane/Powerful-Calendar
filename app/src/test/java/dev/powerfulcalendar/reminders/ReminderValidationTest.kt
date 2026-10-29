@@ -181,6 +181,23 @@ class ReminderValidationTest {
         assertEquals(PowerStore.DesiredSchedule.SCHEDULED, store.intentFor(seq)!!.desired)
         assertEquals("permission grant retries the durable exact reminder",
             1, shadowAlarmManager.scheduledAlarms.size)
+
+        ReminderScheduler.reconcile(context, store)
+        assertEquals(PowerStore.DesiredSchedule.SCHEDULED, store.intentFor(seq)!!.desired)
+        assertEquals("a repeated grant reconciliation must not duplicate the alarm",
+            1, shadowAlarmManager.scheduledAlarms.size)
+    }
+
+    @Test
+    fun securityExceptionAfterPermissionRevocationUsesRetryableHint() {
+        assertEquals(
+            PowerStore.EXACT_ALARM_PERMISSION_REQUIRED_HINT,
+            exactAlarmSecurityExceptionHint(exactAccessAllowed = false)
+        )
+        assertEquals(
+            PowerStore.EXACT_ALARM_SYSTEM_REJECTED_HINT,
+            exactAlarmSecurityExceptionHint(exactAccessAllowed = true)
+        )
     }
 
     @Test

@@ -2466,7 +2466,7 @@ class PowerStore(
                 arrayOf(
                     TriggerRequirement.EXACT.name,
                     DesiredSchedule.BLOCKED.name,
-                    "缺少精确闹钟权限"
+                    EXACT_ALARM_PERMISSION_REQUIRED_HINT
                 )
             )
         }
@@ -3287,6 +3287,9 @@ class PowerStore(
 
         /** A batch whose heartbeat is older than this cannot still be running. */
         const val DEFAULT_STALE_MS = 10 * 60_000L
+
+        const val EXACT_ALARM_PERMISSION_REQUIRED_HINT = "缺少精确闹钟权限"
+        const val EXACT_ALARM_SYSTEM_REJECTED_HINT = "系统拒绝精确闹钟"
 
         /** Recovery is offered only for a cancellation request with no heartbeat for the lease. */
         fun canReleaseStuckAiBatch(session: AiSession?, nowMillis: Long): Boolean {
