@@ -28,6 +28,12 @@ import java.util.UUID
  *    lock; every AI write is fenced by session + lock epoch + scope (I-06/I-07).
  *  - commit records are idempotent; re-clicking checkmark cannot double-publish (I-15).
  */
+class DraftSourceRevisionMismatchException(
+    val eventSeq: Long,
+    val expectedRevision: Long,
+    val actualRevision: Long
+) : IllegalStateException("事件版本已变化，请重新打开后再拖动")
+
 class PowerStore(
     context: Context,
     databaseName: String = DATABASE_NAME,
@@ -797,8 +803,12 @@ class PowerStore(
         form: DraftForm,
         eventSeq: Long? = null,
         operation: DraftOperation = DraftOperation.CREATE,
-        actor: String = "user"
+        actor: String = "user",
+        expectedRevision: Long? = null
     ): DraftCard {
+        require(expectedRevision == null || eventSeq != null) {
+            "只有针对现有事件的候选才能检查来源版本"
+        }
         require(form.recurrenceEditScope == null && form.editOccurrenceKey == null) {
             "重复范围编辑只能通过正式事件检查点保存，不能分配新草稿身份"
         }
@@ -840,6 +850,11 @@ class PowerStore(
             require(operation != DraftOperation.CREATE) { "已有事件不能用新建操作创建第二张卡" }
             val existing = readObject(db, targetSeq)
             requireNotNull(existing) { "事件不存在或已删除，需先显式恢复" }
+            if (expectedRevision != null && existing.revision != expectedRevision) {
+                throw DraftSourceRevisionMismatchException(
+                    targetSeq, expectedRevision, existing.revision
+                )
+            }
             val base = existing.revision
 
             val existingId = db.rawQuery(

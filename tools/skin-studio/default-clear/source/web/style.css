@@ -47,13 +47,17 @@ button:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outl
 .timeTick{position:absolute;left:50%;transform:translate(-50%,-50%);background:var(--bg-canvas);
  color:var(--label-3);font-size:10px;font-variant-numeric:tabular-nums;padding:3px 5px;z-index:2}
 .timelineWing{position:absolute;top:0;bottom:0;width:calc(50% - 10px);overflow-x:auto;overflow-y:hidden;
- overscroll-behavior-x:contain;touch-action:pan-x;-webkit-overflow-scrolling:touch;scrollbar-width:thin}
+ overscroll-behavior-x:contain;touch-action:pan-x pan-y;-webkit-overflow-scrolling:touch;scrollbar-width:thin}
 .timelineWing.left{left:0}.timelineWing.right{right:0}
 .timelineLanes{position:relative;height:100%;min-width:100%;}
 .tEvent{position:absolute;display:block;box-sizing:border-box;min-width:84px;width:84px;max-width:none;
  min-height:0;margin:0;padding:0;border:0;border-radius:0;background:transparent;color:inherit;
  text-align:left;overflow:visible;z-index:3;cursor:pointer}
 .tEvent:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;z-index:7}
+.tEvent.timeline-dragging{z-index:8;cursor:grabbing;outline:2px solid var(--accent);outline-offset:1px;
+ filter:drop-shadow(0 5px 9px rgba(0,0,0,.24))}
+.sr-only{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
+ clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .tEventVisual{position:absolute;left:0;right:0;box-sizing:border-box;overflow:hidden;
  border-radius:7px 0 0 7px;pointer-events:none;box-shadow:var(--shadow-card)}
 .tEventVisual.ACTIVITY{background:var(--activity-tint);color:var(--activity-ink);

@@ -39,6 +39,9 @@ function showReply(reply){
       discarded_changes:"已放弃本次修改",selected:"已选择",
       confirmation_required:"请在宿主确认此操作",cancelled:"已取消宿主操作，内容仍保留",
       restored:"已恢复",flushed:"修改已暂存",closed:"已安全退出",
+      staged:"移动修改已暂存为草稿；正式事件尚未改变",
+      unchanged:"事件已位于该时间，没有创建草稿",
+      unsupported:"此事项不支持时间轴拖动",
       stale:"数据已变化，请重新审查",locked:"被其他业务操作锁定",
       invalid:"输入无效，请检查完整性",conflict:"存在版本冲突，请审查差异",
       restore_required:"原事件已删除，需要受保护的恢复确认",
@@ -215,6 +218,29 @@ function routeAction(b,host){
   }
   return false;
 }
+async function moveTimelineEvent(item,targetMillis){
+  const statusElement=document.getElementById("timelineMoveStatus");
+  const announce=value=>{if(statusElement)statusElement.textContent=value};
+  const eventSeq=Number(item?.eventSeq),expectedRevision=Number(item?.revision);
+  if(!Number.isSafeInteger(eventSeq)||eventSeq<=0||
+    !Number.isSafeInteger(expectedRevision)||expectedRevision<=0||
+    !Number.isSafeInteger(targetMillis)){
+    announce("移动请求无效，事件没有变化");return {status:"invalid"};
+  }
+  const reply=await perform("timeline.move",{eventSeq,expectedRevision,targetMillis});
+  const messages={
+    staged:"移动已暂存为草稿；正式事件尚未改变，请检查草稿后再发布",
+    unchanged:"事件已经位于该时间，没有创建草稿",
+    unsupported:reply.detail||"此事项不支持时间轴拖动",
+    stale:reply.detail||"事件已变化，请刷新后重新尝试",
+    locked:reply.detail||"当前有其他编辑操作，请稍后重试",
+    invalid:reply.detail||"移动请求无效，事件没有变化",
+    failed:reply.detail||"移动未完成，事件仍保持原样",
+    unavailable:"宿主桥不可用，事件仍保持原样"
+  };
+  announce(messages[reply.status]||reply.detail||"移动结果："+reply.status);
+  return reply;
+}
 $("sheetSave").addEventListener("click",()=>{
   if(busy)return;
   const e=state.editing||{};
@@ -257,5 +283,5 @@ actions.addEventListener("click",event=>{
       break;
   }
 });
-window.PowerCalEdit={onState,onResult,routeAction,resetTransport};
+window.PowerCalEdit={onState,onResult,routeAction,resetTransport,moveTimelineEvent};
 })();

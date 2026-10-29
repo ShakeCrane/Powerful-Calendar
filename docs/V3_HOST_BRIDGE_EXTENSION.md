@@ -17,6 +17,7 @@ New:
   `visibleStartMillis`, `visibleEndMillis`, `nowMillis`,
   `itemLimit` (300), `truncated`, and `items`.
 - Each timeline item: `eventSeq`, `revision`, `occurrenceKey`,
+  `originalOccurrenceKey` (null for a non-repeating item),
   `kind`, `title`, `side`, `lane`, `startMillis`,
   `endMillis`, `precision`, and `deadlineDate`.
 - `startMillis` is the **displayed occurrence**, not merely the series
@@ -152,6 +153,37 @@ explicit timeline instant selects exact-time mode, and Memo retains its
 existing date semantics. Opening and closing without a meaningful edit still
 does not persist a draft. Month, Memo, and other non-timeline creation paths
 continue to use their existing selection/default behavior.
+
+## Timeline move
+
+Clear's timed event buttons support a long-press vertical drag. A plain click
+continues to open the event editor. The skin sends the raw target instant and
+the revision it rendered; it cannot choose the snap interval, time zone, edit
+operation, or occurrence scope:
+
+```json
+{"version":1,"type":"command","payload":{"name":"timeline.move","requestId":"clear_abc123_1","eventSeq":44,"expectedRevision":3,"targetMillis":1792581900000}}
+```
+
+The Host accepts this only on the active timeline page and only when that
+`eventSeq` and revision occur in the Host's current bounded timeline
+projection. It re-reads the formal record, applies the Native
+`TimelineCoordinate.snap(targetMillis, camera.hours, zone)` rule, and
+atomically checks the displayed source revision while staging a
+`DraftOperation.REPLACE` candidate through the existing store/deck. ACTIVITY
+moves retain their elapsed duration; ALARM and exact-time DEADLINE move their
+time anchor. The existing formal event is not changed or published. The Host
+opens the resulting draft for review; any eventual formal write still follows
+the established trusted review/commit path.
+
+Repeating events are refused because this command does not carry an explicit
+occurrence-edit scope. MEMO and date-only DEADLINE are not timed timeline move
+targets. A target that snaps to the current anchor returns `unchanged` without
+creating a draft. A missing/stale projection or owner revision returns
+`stale`; an active editor, deck, or protected operation returns `locked`;
+unsupported event/page cases return `unsupported`. Existing request-ID replay
+protection makes retransmission idempotent. Skin Studio's Preview Host models
+this command without persistent writes and is not Android WebView evidence.
 
 ## Sandboxing and lifecycle
 

@@ -14,6 +14,7 @@
 <button type="button" data-action="zoomTimeline" data-direction="in" aria-label="放大时间轴，显示更少小时" title="放大时间轴">＋</button>
 <button type="button" data-action="resetTimelineZoom" aria-label="重置时间轴缩放为24小时" title="重置为24小时">24h</button>
 </div>
+<p id="timelineMoveStatus" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></p>
 <div id="dateDeadlineBar" class="deadline-date-bar" role="region" aria-label="日期级截止事项" hidden></div>
 <div id="axisScroll" class="axis-scroll" role="region" aria-label="时间轴" tabindex="0">
 <div class="timeline-surface" id="timelineSurface"><div class="tl-axis" id="tlAxis"></div><div id="timelineLeft" class="timelineWing left" role="region" aria-label="左侧事件泳道，可独立水平滚动" tabindex="0"><div class="timelineLanes"></div></div><div id="timelineRight" class="timelineWing right" role="region" aria-label="右侧事件泳道，可独立水平滚动" tabindex="0"><div class="timelineLanes"></div></div><div id="timeLabels"></div><div id="timeNow"></div></div>

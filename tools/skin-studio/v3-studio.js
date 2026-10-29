@@ -7,6 +7,11 @@ timelineGeometryFixture.value="timeline-geometry";
 timelineGeometryFixture.textContent="时间轴真实几何与泳道（回归夹具）";
 timelineGeometryFixture.hidden=true;
 $("scenario").append(timelineGeometryFixture);
+const timelineDragFixture=document.createElement("option");
+timelineDragFixture.value="timeline-drag";
+timelineDragFixture.textContent="时间轴拖动与重复事件拒绝（回归夹具）";
+timelineDragFixture.hidden=true;
+$("scenario").append(timelineDragFixture);
 const enc = new TextEncoder(), dec = new TextDecoder();
 const escapeHtml = s => String(s).replaceAll("&","&amp;").replaceAll("<","&lt;")
   .replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;");
@@ -665,6 +670,15 @@ function simulatedState(){
       startMillis:base+7200000,endMillis:base+7200000,precision:"INSTANT",deadlineDate:null
     })));
   }
+  if(scenario==="timeline-drag")rows=[
+    {eventSeq:501,revision:4,occurrenceKey:"501:single",kind:"ACTIVITY",
+      title:"可移动活动",side:"RIGHT",lane:0,startMillis:base-10800000,
+      endMillis:base-7200000,precision:"INSTANT",deadlineDate:null},
+    {eventSeq:502,revision:7,occurrenceKey:"502:2026-10-22T10:00",
+      originalOccurrenceKey:"2026-10-22T10:00",kind:"ACTIVITY",
+      title:"重复活动 · 拒绝拖动",side:"RIGHT",lane:1,startMillis:base-7200000,
+      endMillis:base-3600000,precision:"INSTANT",deadlineDate:null}
+  ];
   if(scenario==="repeating")rows=[
     {...rows[0],eventSeq:8,occurrenceKey:"8:20261022T090000",
       originalOccurrenceKey:"2026-10-22T09:00",title:"重复课程 · 本次"},
@@ -745,6 +759,23 @@ const mockForm=kind=>({kind,title:"",startText:"2026-10-22 09:00",
   reminderMethod:"MESSAGE",reminderTiming:"OFFSET",source:"local",
   zoneId:"Asia/Shanghai",recurrenceFreq:"NONE",recurrenceInterval:1,
   recurrenceFrom:null,recurrenceUntil:null});
+function mockTimelineSnap(millis,hours,zone){
+  const parts=Object.fromEntries(new Intl.DateTimeFormat("en-GB",{
+    timeZone:zone,year:"numeric",month:"2-digit",day:"2-digit",
+    hour:"2-digit",minute:"2-digit",second:"2-digit",hourCycle:"h23"
+  }).formatToParts(new Date(millis)).map(part=>[part.type,part.value]));
+  const minutes=hours<=6?1:hours<=10?5:hours<=16?10:hours<=26?15:hours<=36?30:60;
+  const seconds=Number(parts.hour)*3600+Number(parts.minute)*60+Number(parts.second);
+  const step=minutes*60,rounded=Math.round(seconds/step)*step;
+  return millis-(millis%1000)+(rounded-seconds)*1000;
+}
+function mockLocalDateTime(millis,zone){
+  const parts=Object.fromEntries(new Intl.DateTimeFormat("en-CA",{
+    timeZone:zone,year:"numeric",month:"2-digit",day:"2-digit",
+    hour:"2-digit",minute:"2-digit",hourCycle:"h23"
+  }).formatToParts(new Date(millis)).map(part=>[part.type,part.value]));
+  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`;
+}
 const mockKinds=new Set(["ALARM","ACTIVITY","DEADLINE","MEMO"]);
 function mockPatch(form,field,value){
   if(field!=="kind")return {...form,[field]:value};
@@ -814,6 +845,47 @@ function onSkinCommand(p){
     postState();return;
   }
   switch(p.name){
+    case "timeline.move":{
+      const keys=Object.keys(p).sort().join(",");
+      if(keys!=="eventSeq,expectedRevision,name,requestId,targetMillis"||
+        !Number.isSafeInteger(p.eventSeq)||p.eventSeq<=0||
+        !Number.isSafeInteger(p.expectedRevision)||p.expectedRevision<=0||
+        !Number.isSafeInteger(p.targetMillis)){
+        result.status="invalid";break;
+      }
+      if(mockPage!=="TIMELINE"){
+        result.status="unsupported";result.detail="只能从时间轴移动定时事件";break;
+      }
+      if(editor.open||deck.open){result.status="locked";break}
+      const item=lastState?.timeline?.items?.find(value=>
+        value.eventSeq===p.eventSeq&&value.revision===p.expectedRevision);
+      if(!item){result.status="stale";break}
+      if(item.originalOccurrenceKey||item.kind==="MEMO"||
+        item.kind==="DEADLINE"&&item.precision==="DATE"){
+        result.status="unsupported";result.detail=item.originalOccurrenceKey
+          ?"重复事件暂不支持拖动；请打开卡片选择编辑范围"
+          :"此类事项没有可拖动的时间轴时刻";break;
+      }
+      const zone=lastState.timeline.zoneId||"Asia/Shanghai";
+      const snapped=mockTimelineSnap(p.targetMillis,Number(lastState.timeline.hours),zone);
+      if(snapped===Number(item.startMillis)){
+        result.status="unchanged";break;
+      }
+      const form=mockForm(item.kind);
+      form.title=String(item.title||"");form.zoneId=zone;
+      const duration=Math.max(0,Number(item.endMillis)-Number(item.startMillis));
+      if(item.kind==="ALARM")form.startText=mockLocalDateTime(snapped,zone);
+      else if(item.kind==="ACTIVITY"){
+        form.startText=mockLocalDateTime(snapped,zone);
+        form.endText=mockLocalDateTime(snapped+duration,zone);
+      }else form.endText=mockLocalDateTime(snapped,zone);
+      const draftId=7501;
+      mockEditing.deck={open:true,cards:[{draftId,eventSeq:item.eventSeq,
+        draftVersion:0,title:form.title,kind:form.kind,status:"PENDING",
+        operation:"REPLACE"}],currentId:draftId,version:0,dirty:false,
+        aiLocked:false,form,baseline:{...form}};
+      result.status="staged";result.detail=String(draftId);break;
+    }
     case "editor.open":
       const memoEntry=lastState?.memoEntries?.find(item=>item.eventSeq===p.eventSeq&&
         (!p.occurrenceKey||item.originalOccurrenceKey===p.occurrenceKey));
@@ -1163,7 +1235,13 @@ function bindUI(){
   for(const id of ["scenario","theme","reduced"])$(id).onchange=()=>{
     if(id==="theme")$("webPreview").style.colorScheme=$("theme").value;
     mockAnchor=null;
-    if(id==="scenario")mockMemoVisibleLimit=250;
+    if(id==="scenario"){
+      mockMemoVisibleLimit=250;
+      if($("scenario").value==="timeline-drag"){
+        mockHours=24;mockPage="TIMELINE";
+        mockEditing={editor:{open:false},deck:{open:false},lastResult:null};
+      }
+    }
     if(id==="scenario"&&$("scenario").value==="ai-error")mockAiErrorMessages=[
       {role:"user",content:"请帮我概括明天的安排。"},
       {role:"assistant",content:"Studio Mock：AI 请求未完成（模拟 HTTP 503）；上下文已保留，可编辑后手动重发。"}

@@ -8,6 +8,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -3372,5 +3373,42 @@ class PowerStoreTest {
             stored.startMillis
         )
         assertTrue(JSONObject(store.exportBackup().toString()).getJSONObject("payload").has("objects"))
+    }
+
+    @Test
+    fun replacementDraftCanAtomicallyRequireTheDisplayedSourceRevision() {
+        val created = store.newDraft(activityForm("Version guarded move").copy(trackingEnabled = true))
+        assertTrue(commit(created) is PowerStore.CommitOutcome.Committed)
+        val original = requireNotNull(store.get(created.eventSeq))
+        val staleCandidate = DraftForm.from(original).copy(startText = "2030-10-21 10:00")
+
+        assertTrue(store.setCompleted(original.eventSeq, "single", true, original.revision))
+        val latest = requireNotNull(store.get(original.eventSeq))
+        assertEquals(original.revision + 1, latest.revision)
+        val commitsBeforeStaleAttempt = store.commitCount()
+
+        assertThrows(DraftSourceRevisionMismatchException::class.java) {
+            store.newDraft(
+                staleCandidate,
+                original.eventSeq,
+                DraftOperation.REPLACE,
+                expectedRevision = original.revision
+            )
+        }
+        assertTrue(store.pendingDraftsFor(original.eventSeq).isEmpty())
+        assertEquals(latest, store.get(original.eventSeq))
+        assertEquals(commitsBeforeStaleAttempt, store.commitCount())
+
+        val currentCandidate = DraftForm.from(latest).copy(startText = "2030-10-21 10:00")
+        val staged = store.newDraft(
+            currentCandidate,
+            original.eventSeq,
+            DraftOperation.REPLACE,
+            expectedRevision = latest.revision
+        )
+        assertEquals(original.eventSeq, staged.eventSeq)
+        assertEquals(latest.revision, staged.baseRevision)
+        assertEquals(currentCandidate, staged.form)
+        assertEquals(commitsBeforeStaleAttempt, store.commitCount())
     }
 }

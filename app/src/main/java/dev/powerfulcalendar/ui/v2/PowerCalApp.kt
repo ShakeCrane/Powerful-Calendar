@@ -1166,8 +1166,21 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
         WebSkinBridgeRuntime.onEdit = { command ->
             val selection = if (command is WebEditCommand.CreateDeck)
                 newEventSelectionForPage(page, camera, zone) else null
+            val moveContext = if (page == Page.TIMELINE.name &&
+                command is WebEditCommand.MoveTimelineEvent) {
+                val projectedItems = WebSkinTimelineProjection.build(
+                    records, camera, nowMillis, zone
+                ).getJSONArray("items")
+                val visibleRevisions = linkedMapOf<Long, Long>()
+                for (index in 0 until projectedItems.length()) {
+                    val item = projectedItems.optJSONObject(index) ?: continue
+                    visibleRevisions[item.getLong("eventSeq")] = item.getLong("revision")
+                }
+                TimelineMoveContext(camera, zone, visibleRevisions)
+            } else null
             val response = webEditing.execute(
-                command, newEventZone = zone, newEventSelection = selection
+                command, newEventZone = zone, newEventSelection = selection,
+                timelineMoveContext = moveContext
             )
             val status = response.optString("status")
             if(status in setOf("saved","staged","committed","discarded","restored")) {
@@ -1662,7 +1675,8 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                                     form,
                                     record.eventSeq,
                                     DraftOperation.REPLACE,
-                                    actor = "user"
+                                    actor = "user",
+                                    expectedRevision = record.revision
                                 )
                             }
                         }.onSuccess { card ->

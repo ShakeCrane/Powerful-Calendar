@@ -8,6 +8,7 @@ applyTheme();
 darkMedia.addEventListener("change",applyTheme);
 let port=null, state={}, currentPage="TIMELINE", memoFilter="open",localOptions=false;
 let timelineScrollInitialized=false;
+let timelineDrag=null,suppressTimelineClickUntil=0;
 let titleFoldFrame=0,titleFoldResizeObserver=null;
 let aiReviewSelectionId="",aiReviewSelected=new Set();
 let attachmentRequestPending=false;
@@ -232,12 +233,113 @@ function onAction(button){
   else if(name==="browseMonth")send(name,{deltaMonths:Number(button.dataset.deltaMonths)});
   else {if(["timeline","memo","month","ai"].includes(name))localOptions=false;send(name)}
 }
+function cancelTimelineDrag(){
+  const gesture=timelineDrag;
+  if(!gesture)return;
+  clearTimeout(gesture.timer);
+  gesture.button.classList.remove("timeline-dragging");
+  gesture.button.style.transform=gesture.originalTransform;
+  timelineDrag=null;
+  scheduleTimelineTitleFolding();
+}
+function startTimelineDrag(button,item,surface,source,pointerId,x,y){
+  if(timelineDrag||!Number.isFinite(Number(item.startMillis)))return;
+  const gesture={button,item,surface,source,pointerId,startX:x,startY:y,
+    deltaY:0,active:false,timer:0,originalTransform:button.style.transform};
+  timelineDrag=gesture;
+  gesture.timer=setTimeout(()=>{
+    if(timelineDrag!==gesture||!button.isConnected)return;
+    gesture.active=true;
+    button.classList.add("timeline-dragging");
+    const status=$("timelineMoveStatus");
+    if(status)status.textContent=`正在移动：${String(item.title||"未命名事项")}`;
+  },500);
+}
+function updateTimelineDrag(x,y,event){
+  const gesture=timelineDrag;
+  if(!gesture)return;
+  const dx=x-gesture.startX,dy=y-gesture.startY;
+  if(!gesture.active){
+    if(Math.hypot(dx,dy)>10)cancelTimelineDrag();
+    return;
+  }
+  gesture.deltaY=dy;
+  if(event?.cancelable)event.preventDefault();
+  gesture.button.style.transform=`translateY(${dy}px)`;
+  scheduleTimelineTitleFolding();
+}
+function finishTimelineDrag(x,y,event){
+  const gesture=timelineDrag;
+  if(!gesture)return;
+  updateTimelineDrag(x,y,event);
+  const shouldMove=gesture.active&&gesture.button.isConnected&&Math.abs(gesture.deltaY)>2;
+  const item=gesture.item;
+  const deltaY=gesture.deltaY;
+  const surfaceHeight=gesture.surface.getBoundingClientRect().height;
+  const hours=Number(state.timeline?.hours);
+  const anchor=Number(item.startMillis);
+  cancelTimelineDrag();
+  if(!shouldMove)return;
+  suppressTimelineClickUntil=Date.now()+900;
+  const targetMillis=Math.round(anchor+deltaY*hours*3_600_000/Math.max(1,surfaceHeight));
+  if(!Number.isSafeInteger(targetMillis)){
+    const status=$("timelineMoveStatus");
+    if(status)status.textContent="移动位置超出支持范围";
+    return;
+  }
+  void window.PowerCalEdit?.moveTimelineEvent(item,targetMillis);
+}
+function attachTimelineDrag(button,item,surface){
+  button.addEventListener("pointerdown",event=>{
+    if(event.pointerType==="touch"||event.button!==0)return;
+    startTimelineDrag(button,item,surface,"pointer",event.pointerId,event.clientX,event.clientY);
+  });
+  button.addEventListener("touchstart",event=>{
+    if(event.touches.length!==1)return;
+    const touch=event.touches[0];
+    startTimelineDrag(button,item,surface,"touch",touch.identifier,touch.clientX,touch.clientY);
+  },{passive:true});
+  button.addEventListener("contextmenu",event=>{
+    if(timelineDrag?.button===button&&timelineDrag.active)event.preventDefault();
+  });
+}
+document.addEventListener("pointermove",event=>{
+  if(timelineDrag?.source==="pointer"&&timelineDrag.pointerId===event.pointerId)
+    updateTimelineDrag(event.clientX,event.clientY,event);
+},{passive:false});
+document.addEventListener("pointerup",event=>{
+  if(timelineDrag?.source==="pointer"&&timelineDrag.pointerId===event.pointerId)
+    finishTimelineDrag(event.clientX,event.clientY,event);
+});
+document.addEventListener("pointercancel",event=>{
+  if(timelineDrag?.source==="pointer"&&timelineDrag.pointerId===event.pointerId)
+    cancelTimelineDrag();
+});
+document.addEventListener("touchmove",event=>{
+  const gesture=timelineDrag;
+  if(gesture?.source!=="touch")return;
+  const touch=[...event.touches].find(value=>value.identifier===gesture.pointerId);
+  if(touch)updateTimelineDrag(touch.clientX,touch.clientY,event);
+},{passive:false});
+document.addEventListener("touchend",event=>{
+  const gesture=timelineDrag;
+  if(gesture?.source!=="touch")return;
+  const touch=[...event.changedTouches].find(value=>value.identifier===gesture.pointerId);
+  if(touch)finishTimelineDrag(touch.clientX,touch.clientY,event);
+  else cancelTimelineDrag();
+});
+document.addEventListener("touchcancel",()=>{
+  if(timelineDrag?.source==="touch")cancelTimelineDrag();
+});
 document.addEventListener("click",e=>{
   const local=e.target.closest("[data-local]");
   if(local){localOptions=local.dataset.local==="options";renderPage();return}
   const toggle=e.target.closest("[data-filter]");
   if(toggle){memoFilter=toggle.dataset.filter;renderMemo();return}
   const button=e.target.closest("[data-action]");
+  if(button?.classList.contains("tEvent")&&Date.now()<suppressTimelineClickUntil){
+    e.preventDefault();e.stopPropagation();return;
+  }
   if(button)onAction(button);
 });
 $("chatForm").addEventListener("submit",e=>{
@@ -290,6 +392,7 @@ function renderPage(){
   window.PowerCalEdit?.onState(state);
 }
 function renderTimeline(){
+  cancelTimelineDrag();
   const t=state.timeline;
   const labels=$("timeLabels"),left=$("timelineLeft"),right=$("timelineRight"),now=$("timeNow");
   const leftLanes=left.querySelector(".timelineLanes"),rightLanes=right.querySelector(".timelineLanes");
@@ -424,6 +527,7 @@ function renderTimeline(){
       title.style.top=(anchorY-hitTop+(kind==="ALARM"?3:-18))+"px";
       button.append(line,title);
     }
+    attachTimelineDrag(button,item,axis);
     lanes.append(button);
   }
   if(t.nowMillis>=from&&t.nowMillis<to){

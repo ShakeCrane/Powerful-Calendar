@@ -340,6 +340,66 @@ fs.mkdirSync(TEST_TEMP_ROOT,{recursive:true});
     console.log("Clear timeline true interval/point/date geometry, greedy title folding, accessible targets, and independent wing scroll PASS",
       {oneMinute:geometry.oneMinute.visual,long:geometry.long.visual,
         greedy:geometry.greedy,left:geometry.left,right:geometry.right,events:geometry.events.length});
+
+    await page.select("#scenario","timeline-drag");
+    await frame.waitForSelector('.tEvent[data-event-seq="501"]');
+    await frame.click('.tEvent[data-event-seq="501"]');
+    await frame.waitForFunction(()=>!document.querySelector("#skinSheet").hidden&&
+      document.querySelector("#sheetTitle").textContent==="编辑事件");
+    assert.equal(await page.evaluate(()=>document.querySelector("#bridgeLog").textContent
+      .includes("timeline.move")),false,"A normal event click opens edit and does not move it");
+    await frame.click("#sheetClose");
+    await frame.waitForFunction(()=>document.querySelector("#skinSheet").hidden);
+
+    const frameRect=await page.$eval("#webPreview",iframe=>{
+      const r=iframe.getBoundingClientRect();return {x:r.x,y:r.y};
+    });
+    const dragRect=await frame.$eval('.tEvent[data-event-seq="501"]',element=>{
+      const r=element.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height};
+    });
+    await page.mouse.move(frameRect.x+dragRect.x+dragRect.width/2,
+      frameRect.y+dragRect.y+dragRect.height/2);
+    await page.mouse.down();
+    await new Promise(resolve=>setTimeout(resolve,560));
+    await page.mouse.move(frameRect.x+dragRect.x+dragRect.width/2,
+      frameRect.y+dragRect.y+dragRect.height/2+60,{steps:4});
+    await page.mouse.up();
+    await page.waitForFunction(()=>document.querySelector("#bridgeLog").textContent
+      .includes("timeline.move → staged"));
+    await frame.waitForFunction(()=>!document.querySelector("#skinSheet").hidden&&
+      document.querySelector("#sheetTitle").textContent==="待处理草稿");
+    const stagedStart=await frame.$eval('#sheetFields [data-field="startText"]',input=>input.value);
+    assert.notEqual(stagedStart,"2026-10-22 09:00","Drag moves the preview draft's start field");
+    assert.ok((await frame.$eval("#timelineMoveStatus",element=>element.textContent))
+      .includes("正式事件尚未改变"),"The live region states that formal data is unchanged");
+    const formalStart=await frame.$eval('.tEvent[data-event-seq="501"]',element=>element.dataset.startMillis);
+    await frame.click("#sheetClose");
+    await frame.waitForFunction(()=>document.querySelector("#skinSheet").hidden);
+
+    const repeatRect=await frame.$eval('.tEvent[data-event-seq="502"]',element=>{
+      const r=element.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height};
+    });
+    const touchSession=await page.target().createCDPSession();
+    await touchSession.send("Emulation.setTouchEmulationEnabled",{enabled:true,maxTouchPoints:1});
+    const touchPoint={id:1,x:frameRect.x+repeatRect.x+repeatRect.width/2,
+      y:frameRect.y+repeatRect.y+repeatRect.height/2,radiusX:2,radiusY:2,force:1};
+    await touchSession.send("Input.dispatchTouchEvent",{type:"touchStart",touchPoints:[touchPoint]});
+    await new Promise(resolve=>setTimeout(resolve,560));
+    await touchSession.send("Input.dispatchTouchEvent",{type:"touchMove",touchPoints:[{
+      ...touchPoint,y:touchPoint.y+60
+    }]});
+    await touchSession.send("Input.dispatchTouchEvent",{type:"touchEnd",touchPoints:[]});
+    await touchSession.send("Emulation.setTouchEmulationEnabled",{enabled:false});
+    await page.waitForFunction(()=>document.querySelector("#timelineMoveStatus").textContent
+      .includes("重复事件暂不支持拖动"));
+    assert.equal(await frame.$eval("#skinSheet",element=>element.hidden),true,
+      "A repeated occurrence is refused without opening a replacement draft");
+    assert.equal(await frame.$eval('.tEvent[data-event-seq="501"]',element=>element.dataset.startMillis),
+      formalStart,"Preview formal-event geometry stays unchanged after staging");
+    await page.waitForFunction(()=>document.querySelector("#bridgeLog").textContent
+      .includes("timeline.move → unsupported"));
+    console.log("Clear mouse long-press stages a Mock replacement, normal click opens editor, touch drag refuses recurrence");
+
     await page.select("#scenario","normal");
     await frame.waitForSelector(".tEvent.ACTIVITY");
 

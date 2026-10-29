@@ -6,6 +6,8 @@ import dev.powerfulcalendar.core.EditorSelection
 import dev.powerfulcalendar.core.NewEventEditSession
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.DraftForm
+import dev.powerfulcalendar.core.DraftSourceRevisionMismatchException
+import dev.powerfulcalendar.core.TimelineCoordinate
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.DraftCard
@@ -19,6 +21,7 @@ import dev.powerfulcalendar.core.ReminderMethod
 import dev.powerfulcalendar.core.ReminderTiming
 import dev.powerfulcalendar.core.TemporalConversion
 import java.time.LocalDate
+import java.time.Instant
 import java.time.ZoneId
 import org.json.JSONObject
 import kotlinx.coroutines.Dispatchers
@@ -42,6 +45,8 @@ internal sealed interface WebEditCommand {
     val requestId: String
     data class OpenEvent(override val requestId: String, val eventSeq: Long,
         val revision: Long, val occurrenceKey: String? = null): WebEditCommand
+    data class MoveTimelineEvent(override val requestId: String, val eventSeq: Long,
+        val expectedRevision: Long, val targetMillis: Long): WebEditCommand
     data class SelectScope(override val requestId: String, val sessionId: String,
         val scope: RecurrenceEditScope): WebEditCommand
     data class DiscardEventChanges(override val requestId: String, val sessionId: String): WebEditCommand
@@ -92,6 +97,11 @@ internal object WebEditWire {
             val n = (value as Number).toLong()
             return n.takeIf { if (zeroAllowed) it >= 0 else it > 0 }
         }
+        fun signedLong(key: String): Long? {
+            val value = payload.opt(key)
+            if (value !is Int && value !is Long) return null
+            return (value as Number).toLong()
+        }
         fun field(): Pair<String, String>? {
             val key = payload.opt("field") as? String ?: return null
             val value = payload.opt("value") as? String ?: return null
@@ -109,6 +119,15 @@ internal object WebEditWire {
                 } else null
                 WebEditCommand.OpenEvent(id,number("eventSeq")?:return null,
                     number("expectedRevision")?:return null,key)
+            }
+            "timeline.move" -> {
+                if (!exact("eventSeq", "expectedRevision", "targetMillis")) return null
+                WebEditCommand.MoveTimelineEvent(
+                    id,
+                    number("eventSeq") ?: return null,
+                    number("expectedRevision") ?: return null,
+                    signedLong("targetMillis") ?: return null
+                )
             }
             "editor.scope" -> {
                 if (!exact("sessionId","scope")) return null
@@ -252,6 +271,13 @@ internal data class WebFormalWriteReview(
     val deckVersion: Long? = null
 )
 
+/** Host-owned timeline camera and zone; skins never choose the drag snap grid. */
+internal data class TimelineMoveContext(
+    val camera: TimelineCoordinate.Camera,
+    val zone: ZoneId,
+    val visibleEventRevisions: Map<Long, Long>
+)
+
 internal class WebSkinEditService(
     private val store: PowerStore,
     private val deck: DeckController,
@@ -333,10 +359,61 @@ internal class WebSkinEditService(
             .put("lastResult",latest)
     }
 
+    private suspend fun stageTimelineMove(
+        cmd: WebEditCommand.MoveTimelineEvent,
+        context: TimelineMoveContext?
+    ): JSONObject {
+        if (context == null)
+            return result(cmd.requestId, "unsupported", "只能从时间轴移动定时事件")
+        if (session != null || newEventSession != null || externalEditorActive() || deckOpen)
+            return result(cmd.requestId, "locked", "请先关闭当前编辑器或草稿")
+        if (withContext(Dispatchers.IO) { store.isLocked() })
+            return result(cmd.requestId, "locked", "当前有受保护的业务操作")
+
+        val record = withContext(Dispatchers.IO) { store.get(cmd.eventSeq) }
+            ?: return result(cmd.requestId, "stale", "事件已不存在")
+        if (record.revision != cmd.expectedRevision)
+            return result(cmd.requestId, "stale", "事件版本已变化，请刷新时间轴")
+        if (context.visibleEventRevisions[cmd.eventSeq] != cmd.expectedRevision)
+            return result(cmd.requestId, "stale", "事件已离开当前时间轴投影，请刷新后重试")
+        if (record.recurrence.isRepeating)
+            return result(cmd.requestId, "unsupported", "重复事件暂不支持拖动；请打开卡片选择编辑范围")
+        if (record.kind == TemporalKind.MEMO ||
+            (record.kind == TemporalKind.DEADLINE && record.isDateOnlyDeadline()))
+            return result(cmd.requestId, "unsupported", "此类事项没有可拖动的时间轴时刻")
+
+        val currentAnchor = record.anchorMillis()
+            ?: return result(cmd.requestId, "unsupported", "事件没有可移动的时间锚点")
+        val snappedTarget = TimelineCoordinate.snap(
+            cmd.targetMillis, context.camera.hours, context.zone
+        )
+        val targetYear = Instant.ofEpochMilli(snappedTarget).atZone(record.zone).year
+        if (targetYear !in 1900..2200)
+            return result(cmd.requestId, "invalid", "移动后的日期超出支持范围")
+        if (snappedTarget == currentAnchor)
+            return result(cmd.requestId, "unchanged", "事件已位于该时间")
+
+        val form = movedDraftForm(record, snappedTarget)
+        val card = withContext(Dispatchers.IO) {
+            store.newDraft(
+                form,
+                record.eventSeq,
+                DraftOperation.REPLACE,
+                actor = "user",
+                expectedRevision = cmd.expectedRevision
+            )
+        }
+        // The formal event is untouched; the existing queue owns the replacement candidate.
+        deck.open(card.draftId)
+        deckOpen = true
+        return result(cmd.requestId, "staged", card.draftId.toString())
+    }
+
     suspend fun execute(
         cmd: WebEditCommand,
         newEventZone: ZoneId = ZoneId.systemDefault(),
-        newEventSelection: EditorSelection? = null
+        newEventSelection: EditorSelection? = null,
+        timelineMoveContext: TimelineMoveContext? = null
     ): JSONObject = gate.withLock {
         completed[cmd.requestId]?.let { (original, reply) ->
             // A caller cannot rebind an already seen request ID to a different write.
@@ -372,6 +449,8 @@ internal class WebSkinEditService(
                         }
                     }
                 }
+                is WebEditCommand.MoveTimelineEvent ->
+                    stageTimelineMove(cmd, timelineMoveContext)
                 is WebEditCommand.SelectScope -> {
                     val current=session
                     if(!editorMatches(cmd.sessionId) || current==null) result(cmd.requestId,"stale")
@@ -588,6 +667,9 @@ internal class WebSkinEditService(
                     else result(cmd.requestId,"failed",deck.state.error)
             }
         } catch(e:kotlinx.coroutines.CancellationException) {throw e}
+          catch(e:DraftSourceRevisionMismatchException) {
+              result(cmd.requestId,"stale",e.message ?: "事件版本已变化，请刷新后重试")
+          }
           catch(e:java.time.DateTimeException) {result(cmd.requestId,"invalid","Invalid date")}
           catch(e:IllegalArgumentException) {result(cmd.requestId,"invalid","Invalid field value")}
           catch(e:Exception){ result(cmd.requestId,"failed","Host operation failed; retry or recover") }

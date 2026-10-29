@@ -8,9 +8,12 @@ import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.DraftStatus
 import dev.powerfulcalendar.core.EditorSelection
 import dev.powerfulcalendar.core.PowerStore
+import dev.powerfulcalendar.core.Recurrence
+import dev.powerfulcalendar.core.RecurrenceFreq
 import dev.powerfulcalendar.core.StoreDeckPersistence
 import dev.powerfulcalendar.core.TemporalConversion
 import dev.powerfulcalendar.core.TemporalKind
+import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.TimelineCoordinate
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
@@ -22,6 +25,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.time.Instant
+import java.time.LocalDateTime
 import java.time.ZoneId
 import java.util.UUID
 
@@ -55,6 +59,12 @@ class WebSkinEditBridgeTest {
             .put("payload",payload).toString()
     }
 
+    private suspend fun commitFormal(form: DraftForm): TemporalRecord {
+        val card = store.newDraft(form)
+        assertTrue(store.commit(card.draftId) is PowerStore.CommitOutcome.Committed)
+        return requireNotNull(store.get(card.eventSeq))
+    }
+
     @Test fun closedSchemaRejectsMetadataOverwritesAndUntrustedInput(){
         assertNotNull(WebEditWire.decode(wire("editor.open", ""","eventSeq":42,"expectedRevision":1""")))
         assertNull(WebEditWire.decode(wire("editor.open", ""","eventSeq":"42","expectedRevision":1""")))
@@ -82,6 +92,204 @@ class WebSkinEditBridgeTest {
 
         assertNull(WebEditWire.decode(wire("deck.create").replace("\"command\"","\"other\"")))
         assertNull(WebEditWire.decode("x".repeat(8193)))
+    }
+
+    @Test fun timelineMoveWireUsesClosedSchemaAndSignedIntegerTarget() {
+        val decoded = WebEditWire.decode(wire("timeline.move",
+            ",\"eventSeq\":42,\"expectedRevision\":3,\"targetMillis\":-123456"))
+        assertTrue(decoded is WebEditCommand.MoveTimelineEvent)
+        assertEquals(-123456L, (decoded as WebEditCommand.MoveTimelineEvent).targetMillis)
+        assertNull(WebEditWire.decode(wire("timeline.move",
+            ",\"eventSeq\":42,\"expectedRevision\":3,\"targetMillis\":1.5")))
+        assertNull(WebEditWire.decode(wire("timeline.move",
+            ",\"eventSeq\":42,\"expectedRevision\":3,\"targetMillis\":\"123\"")))
+        assertNull(WebEditWire.decode(wire("timeline.move",
+            ",\"eventSeq\":42,\"expectedRevision\":3")))
+        assertNull(WebEditWire.decode(wire("timeline.move",
+            ",\"eventSeq\":42,\"expectedRevision\":3,\"targetMillis\":123,\"zoneId\":\"UTC\"")))
+        assertNull(WebEditWire.decode(wire("timeline.move",
+            ",\"eventSeq\":42,\"expectedRevision\":0,\"targetMillis\":123")))
+    }
+
+    @Test fun timelineMoveStagesOneRevisionGuardedReplacementAndPreservesDuration() = runBlocking {
+        val zone = ZoneId.of("America/Los_Angeles")
+        val start = LocalDateTime.of(2030, 10, 21, 9, 0).atZone(zone).toInstant().toEpochMilli()
+        val original = commitFormal(DraftForm(
+            kind = TemporalKind.ACTIVITY,
+            title = "Move me",
+            startText = DraftForm.formatInstant(start, zone),
+            endText = DraftForm.formatInstant(start + 3_600_000L, zone),
+            zoneId = zone.id
+        ))
+        val context = TimelineMoveContext(TimelineCoordinate.Camera(start, 24.0), zone,
+            mapOf(original.eventSeq to original.revision))
+        val initialDrafts = store.draftCount()
+        val initialIdentities = store.identityCount()
+        val initialCommits = store.commitCount()
+        val initialNextSequence = store.nextSequencePreview()
+        val initialNextOrder = store.nextQueueOrderPreview()
+        val target = LocalDateTime.of(2030, 10, 21, 10, 8)
+            .atZone(zone).toInstant().toEpochMilli()
+        val expectedStart = TimelineCoordinate.snap(target, 24.0, zone)
+        val unchanged = service.execute(WebEditCommand.MoveTimelineEvent(
+            request(), original.eventSeq, original.revision, start + 60_000L
+        ), timelineMoveContext = context)
+        assertEquals("unchanged", unchanged.getString("status"))
+        assertTrue(store.pendingDraftsFor(original.eventSeq).isEmpty())
+        assertEquals(initialDrafts, store.draftCount())
+        val command = WebEditCommand.MoveTimelineEvent(
+            request(), original.eventSeq, original.revision, target
+        )
+
+        val first = service.execute(command, timelineMoveContext = context)
+        assertEquals("staged", first.getString("status"))
+        val nextQueueOrderAfterStage = initialNextOrder + 1
+        val draftId = first.getString("detail").toLong()
+        val staged = store.pendingDraftsFor(original.eventSeq).single()
+        assertEquals(draftId, staged.draftId)
+        assertEquals(DraftOperation.REPLACE, staged.operation)
+        assertEquals(original.revision, staged.baseRevision)
+        assertEquals(DraftForm.formatInstant(expectedStart, zone), staged.form.startText)
+        assertEquals(DraftForm.formatInstant(expectedStart + 3_600_000L, zone), staged.form.endText)
+        assertEquals(original, store.get(original.eventSeq))
+        assertTrue(service.snapshot().getJSONObject("deck").getBoolean("open"))
+        assertEquals(draftId, service.snapshot().getJSONObject("deck").getLong("currentId"))
+        assertEquals(initialDrafts + 1, store.draftCount())
+        assertEquals(initialIdentities, store.identityCount())
+        assertEquals(initialCommits, store.commitCount())
+        assertEquals(initialNextSequence, store.nextSequencePreview())
+        assertEquals(nextQueueOrderAfterStage, store.nextQueueOrderPreview())
+
+        val replay = service.execute(command, timelineMoveContext = context)
+        assertEquals(first.toString(), replay.toString())
+        assertEquals(initialDrafts + 1, store.draftCount())
+        assertEquals(1, store.pendingDraftsFor(original.eventSeq).size)
+
+        assertEquals("closed", service.execute(WebEditCommand.CloseDeck(request()))
+            .getString("status"))
+        val secondTarget = LocalDateTime.of(2030, 10, 21, 11, 2)
+            .atZone(zone).toInstant().toEpochMilli()
+        val second = service.execute(WebEditCommand.MoveTimelineEvent(
+            request(), original.eventSeq, original.revision, secondTarget
+        ), timelineMoveContext = context)
+        assertEquals("staged", second.getString("status"))
+        assertEquals(draftId, second.getString("detail").toLong())
+        assertEquals(1, store.pendingDraftsFor(original.eventSeq).size)
+        assertEquals(initialDrafts + 1, store.draftCount())
+        assertEquals(initialIdentities, store.identityCount())
+        assertEquals(initialCommits, store.commitCount())
+        assertEquals(initialNextSequence, store.nextSequencePreview())
+        assertEquals(nextQueueOrderAfterStage, store.nextQueueOrderPreview())
+        assertEquals(original, store.get(original.eventSeq))
+    }
+
+    @Test fun timelineMoveRefusesRepeatingAndNonTimelineItemsWithoutWrites() = runBlocking {
+        val zone = ZoneId.of("Asia/Shanghai")
+        val start = LocalDateTime.of(2030, 10, 21, 9, 0).atZone(zone).toInstant().toEpochMilli()
+        val repeating = commitFormal(DraftForm(
+            kind = TemporalKind.ACTIVITY,
+            title = "Repeating",
+            startText = DraftForm.formatInstant(start, zone),
+            endText = DraftForm.formatInstant(start + 3_600_000L, zone),
+            zoneId = zone.id,
+            recurrence = Recurrence(freq = RecurrenceFreq.DAILY, count = 3)
+        ))
+        val dateDeadline = commitFormal(DraftForm(
+            kind = TemporalKind.DEADLINE,
+            title = "Date only",
+            endText = "2030-10-22",
+            zoneId = zone.id
+        ))
+        val memo = commitFormal(DraftForm(
+            kind = TemporalKind.MEMO,
+            title = "Undated memo",
+            zoneId = zone.id
+        ))
+        val camera = TimelineMoveContext(TimelineCoordinate.Camera(start, 24.0), zone,
+            mapOf(repeating.eventSeq to repeating.revision,
+                dateDeadline.eventSeq to dateDeadline.revision, memo.eventSeq to memo.revision))
+        val drafts = store.draftCount()
+        val identities = store.identityCount()
+        val commits = store.commitCount()
+        val seq = store.nextSequencePreview()
+        val order = store.nextQueueOrderPreview()
+        val target = start + 7_200_000L
+
+        val refused = service.execute(WebEditCommand.MoveTimelineEvent(
+            request(), repeating.eventSeq, repeating.revision, target
+        ), timelineMoveContext = camera)
+        assertEquals("unsupported", refused.getString("status"))
+        assertEquals(repeating, store.get(repeating.eventSeq))
+        assertTrue(store.pendingDraftsFor(repeating.eventSeq).isEmpty())
+
+        for (record in listOf(dateDeadline, memo)) {
+            val unsupported = service.execute(WebEditCommand.MoveTimelineEvent(
+                request(), record.eventSeq, record.revision, target
+            ), timelineMoveContext = camera)
+            assertEquals("unsupported", unsupported.getString("status"))
+            assertEquals(record, store.get(record.eventSeq))
+            assertTrue(store.pendingDraftsFor(record.eventSeq).isEmpty())
+        }
+        val outsideTimeline = service.execute(WebEditCommand.MoveTimelineEvent(
+            request(), repeating.eventSeq, repeating.revision, target
+        ))
+        assertEquals("unsupported", outsideTimeline.getString("status"))
+        assertEquals(drafts, store.draftCount())
+        assertEquals(identities, store.identityCount())
+        assertEquals(commits, store.commitCount())
+        assertEquals(seq, store.nextSequencePreview())
+        assertEquals(order, store.nextQueueOrderPreview())
+    }
+
+    @Test fun timelineMoveRequiresOwnerProjectionForTheDisplayedRevision() = runBlocking {
+        val zone = ZoneId.of("Asia/Shanghai")
+        val start = LocalDateTime.of(2030, 10, 21, 9, 0).atZone(zone).toInstant().toEpochMilli()
+        val original = commitFormal(DraftForm(
+            kind = TemporalKind.ALARM,
+            title = "Not projected",
+            startText = DraftForm.formatInstant(start, zone),
+            zoneId = zone.id
+        ))
+        val beforeDrafts = store.draftCount()
+        val beforeCommits = store.commitCount()
+        val result = service.execute(WebEditCommand.MoveTimelineEvent(
+            request(), original.eventSeq, original.revision, start + 3_600_000L
+        ), timelineMoveContext = TimelineMoveContext(
+            TimelineCoordinate.Camera(start, 24.0), zone, emptyMap()
+        ))
+        assertEquals("stale", result.getString("status"))
+        assertTrue(store.pendingDraftsFor(original.eventSeq).isEmpty())
+        assertEquals(beforeDrafts, store.draftCount())
+        assertEquals(beforeCommits, store.commitCount())
+        assertEquals(original, store.get(original.eventSeq))
+    }
+
+    @Test fun timelineMoveRejectsStaleOwnerRevisionWithoutStaging() = runBlocking {
+        val zone = ZoneId.of("Asia/Shanghai")
+        val start = LocalDateTime.of(2030, 10, 21, 9, 0).atZone(zone).toInstant().toEpochMilli()
+        val original = commitFormal(DraftForm(
+            kind = TemporalKind.ACTIVITY,
+            title = "Stale move",
+            startText = DraftForm.formatInstant(start, zone),
+            endText = DraftForm.formatInstant(start + 3_600_000L, zone),
+            zoneId = zone.id,
+            trackingEnabled = true
+        ))
+        assertTrue(store.setCompleted(original.eventSeq, "single", true, original.revision))
+        val current = requireNotNull(store.get(original.eventSeq))
+        assertTrue(current.revision > original.revision)
+        val beforeDrafts = store.draftCount()
+        val target = start + 7_200_000L
+        val result = service.execute(WebEditCommand.MoveTimelineEvent(
+            request(), original.eventSeq, original.revision, target
+        ), timelineMoveContext = TimelineMoveContext(
+            TimelineCoordinate.Camera(start, 24.0), zone,
+            mapOf(original.eventSeq to original.revision)
+        ))
+        assertEquals("stale", result.getString("status"))
+        assertTrue(store.pendingDraftsFor(original.eventSeq).isEmpty())
+        assertEquals(beforeDrafts, store.draftCount())
+        assertEquals(current, store.get(original.eventSeq))
     }
 
     @Test fun semanticFieldsPreserveProtectedMetadataAndRejectOutOfRangeValues() {
