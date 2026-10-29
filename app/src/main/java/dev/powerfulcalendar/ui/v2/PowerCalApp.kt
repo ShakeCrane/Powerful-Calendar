@@ -550,7 +550,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
 
     fun canEditChatHistory(): Boolean = page == Page.AI.name && !aiLocked &&
         !chatBusy && !aiBusy && pendingBatchMode == null && confirmBatch == null &&
-        confirmStuckBatchRelease == null && editSession == null &&
+        confirmStuckBatchRelease == null && editSession == null && newEventSession == null && !deckOpen &&
         pendingWebAiProposalPublish == null && !aiAttachmentPickerBusy &&
         pendingFileReview == null && pendingImageReview == null
 
