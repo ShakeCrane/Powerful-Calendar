@@ -1133,6 +1133,12 @@ internal class WebSkinEditService(
             if (!deckOpen || activeNew.clientDraftId != cmd.draftId ||
                 activeNew.version != cmd.draftVersion) return result(cmd.requestId, "stale")
             if (!activeNew.meaningfulDiff) return result(cmd.requestId, "no_changes")
+            // A transient new-event session has no DeckController snapshot to project aiLocked
+            // from. Check the authoritative Store before either requesting formal-write review
+            // or attempting to stage an incomplete form. Store transactions remain the final
+            // guard if a batch starts after this read.
+            if (withContext(Dispatchers.IO) { store.isLocked() })
+                return result(cmd.requestId, "locked", "当前有受保护的业务操作，内容仍保留在编辑器中")
             val form = activeNew.form
             return when (form.build(1L, 1L, activeNew.defaults.nowMillis)) {
                 is FormBuild.Ready -> {
@@ -1148,8 +1154,14 @@ internal class WebSkinEditService(
                     when (val saved = withContext(Dispatchers.IO) { activeNew.save(store) }) {
                         is NewEventEditSession.SaveOutcome.Staged ->
                             result(cmd.requestId, "staged", activeNew.clientDraftId.toString())
-                        is NewEventEditSession.SaveOutcome.Failed ->
-                            result(cmd.requestId, "failed", saved.message)
+                        is NewEventEditSession.SaveOutcome.Failed -> {
+                            // The batch may acquire its lock after the preflight read. Preserve
+                            // the form and report the same retryable state as a non-racy lock.
+                            if (withContext(Dispatchers.IO) { store.isLocked() })
+                                result(cmd.requestId, "locked",
+                                    "当前有受保护的业务操作，内容仍保留在编辑器中")
+                            else result(cmd.requestId, "failed", saved.message)
+                        }
                         NewEventEditSession.SaveOutcome.NoChanges -> result(cmd.requestId, "no_changes")
                         is NewEventEditSession.SaveOutcome.Published ->
                             result(cmd.requestId, "failed", "发布状态变化，请重新检查")

@@ -1181,6 +1181,181 @@ class WebSkinEditBridgeTest {
         assertEquals(1,store.commitCount())
     }
 
+    @Test fun incompleteWebPublishStagesAndResumesEveryEventKindWithoutDuplicateWrites() = runBlocking {
+        val clock = Clock.fixed(Instant.parse("2026-10-25T15:07:42Z"), ZoneOffset.UTC)
+        val zone = ZoneId.of("Asia/Tokyo")
+
+        TemporalKind.entries.forEachIndexed { index, kind ->
+            val created = service.execute(
+                WebEditCommand.CreateDeck(request(), kind),
+                newEventClock = clock,
+                newEventZone = zone
+            )
+            assertEquals("created", created.getString("status"))
+            val clientId = created.getString("detail").toLong()
+            var version = service.snapshot().getJSONObject("deck").getLong("version")
+            val note = "recoverable-${kind.name}"
+            assertEquals("edited", service.execute(WebEditCommand.PatchDeck(
+                request(), clientId, version, "notes", note
+            )).getString("status"))
+
+            val stagedReply = service.execute(WebEditCommand.CommitDeck(request(), clientId, version))
+            assertEquals("staged", stagedReply.getString("status"))
+            assertEquals(clientId.toString(), stagedReply.getString("detail"))
+            val staged = requireNotNull(store.pendingDrafts().singleOrNull { it.form.notes == note })
+            assertEquals(kind, staged.form.kind)
+            assertEquals("incomplete $kind must remain unpublished", index, store.all().size)
+            assertEquals(index.toLong(), store.commitCount())
+            assertEquals(1, store.pendingCount())
+            assertEquals(index + 1L, store.draftCount())
+            assertEquals(index + 1L, store.identityCount())
+
+            version = service.snapshot().getJSONObject("deck").getLong("version")
+            val title = "完成-${kind.name}"
+            assertEquals("edited", service.execute(WebEditCommand.PatchDeck(
+                request(), clientId, version, "title", title
+            )).getString("status"))
+            version = service.snapshot().getJSONObject("deck").getLong("version")
+            val publish = WebEditCommand.CommitDeck(request(), clientId, version)
+            assertEquals("confirmation_required", service.execute(publish).getString("status"))
+            assertEquals("$kind must not publish before trusted Host approval", index,
+                store.all().size)
+            assertEquals("committed", service.resolveFormalWriteReview(
+                requireNotNull(service.pendingWriteReview).token, approved = true
+            ).getString("status"))
+            assertEquals("committed", service.execute(publish).getString("status"))
+
+            val record = requireNotNull(store.get(staged.eventSeq))
+            assertEquals(kind, record.kind)
+            assertEquals(title, record.title)
+            assertEquals(note, record.notes)
+            assertEquals(zone.id, record.zoneId)
+            when (kind) {
+                TemporalKind.ALARM -> {
+                    assertNotNull(record.startMillis)
+                    assertNull(record.endMillis)
+                }
+                TemporalKind.ACTIVITY -> {
+                    assertTrue(requireNotNull(record.endMillis) > requireNotNull(record.startMillis))
+                }
+                TemporalKind.DEADLINE -> {
+                    assertNotNull(record.deadlineDate)
+                    assertNull(record.deadlineMillis)
+                }
+                TemporalKind.MEMO -> {
+                    assertNull(record.memoStartDate)
+                    assertNull(record.memoEndDate)
+                }
+            }
+            assertTrue("$kind should leave no pending draft after publish",
+                store.pendingDrafts().isEmpty())
+        }
+
+        assertEquals(TemporalKind.entries.size, store.all().size)
+        assertEquals(TemporalKind.entries.size.toLong(), store.draftCount())
+        assertEquals(0, store.pendingCount())
+        assertEquals(TemporalKind.entries.size.toLong(), store.identityCount())
+        assertEquals(TemporalKind.entries.size.toLong(), store.commitCount())
+        assertEquals(TemporalKind.entries.size.toLong() + 1L, store.nextSequencePreview())
+        assertEquals(TemporalKind.entries.size.toLong() + 1L, store.nextQueueOrderPreview())
+    }
+
+    @Test fun incompleteTransientSaveReportsAiLockAndRecoversTheSameFormAfterUnlock() = runBlocking {
+        val created = service.execute(WebEditCommand.CreateDeck(request(), TemporalKind.MEMO))
+        val clientId = created.getString("detail").toLong()
+        val version = service.snapshot().getJSONObject("deck").getLong("version")
+        val note = "must survive the AI batch lock"
+        assertEquals("edited", service.execute(WebEditCommand.PatchDeck(
+            request(), clientId, version, "notes", note
+        )).getString("status"))
+
+        val seed = store.newDraft(DraftForm(kind = TemporalKind.MEMO, title = "AI batch seed"))
+        val ai = store.beginAiBatch(
+            mapOf(seed.draftId to seed.draftVersion), setOf(DraftOperation.CREATE)
+        )
+        val sequenceBefore = store.nextSequencePreview()
+        val queueBefore = store.nextQueueOrderPreview()
+        val blocked = service.execute(WebEditCommand.CommitDeck(request(), clientId, version))
+        assertEquals("locked", blocked.getString("status"))
+        assertNull(service.pendingWriteReview)
+        assertTrue(store.isLocked())
+        assertEquals(1L, store.draftCount())
+        assertEquals(1L, store.identityCount())
+        assertEquals(sequenceBefore, store.nextSequencePreview())
+        assertEquals(queueBefore, store.nextQueueOrderPreview())
+        assertEquals(0L, store.commitCount())
+        val lockedDeck = service.snapshot().getJSONObject("deck")
+        assertTrue(lockedDeck.getBoolean("open"))
+        assertEquals(note, lockedDeck.getJSONObject("form").getString("notes"))
+
+        assertTrue(store.finishAiBatch(ai.sessionId))
+        val stagedReply = service.execute(WebEditCommand.CommitDeck(request(), clientId, version))
+        assertEquals("staged", stagedReply.getString("status"))
+        val staged = requireNotNull(store.pendingDrafts().singleOrNull { it.form.notes == note })
+        val nextVersion = service.snapshot().getJSONObject("deck").getLong("version")
+        assertEquals("edited", service.execute(WebEditCommand.PatchDeck(
+            request(), clientId, nextVersion, "title", "完成恢复"
+        )).getString("status"))
+
+        val publish = WebEditCommand.CommitDeck(
+            request(), clientId, service.snapshot().getJSONObject("deck").getLong("version")
+        )
+        assertEquals("confirmation_required", service.execute(publish).getString("status"))
+        assertEquals("committed", service.resolveFormalWriteReview(
+            requireNotNull(service.pendingWriteReview).token, approved = true
+        ).getString("status"))
+        assertEquals(staged.eventSeq, store.all().single().eventSeq)
+        assertEquals("完成恢复", store.get(staged.eventSeq)?.title)
+        assertEquals(note, store.get(staged.eventSeq)?.notes)
+        assertEquals(2L, store.draftCount())
+        assertEquals(1, store.pendingCount())
+        assertEquals(2L, store.identityCount())
+        assertEquals(1L, store.commitCount())
+        assertEquals(sequenceBefore + 1L, store.nextSequencePreview())
+        assertEquals(queueBefore + 1L, store.nextQueueOrderPreview())
+    }
+
+    @Test fun completeTransientPublishWaitsForAiLockToClearBeforeHostReview() = runBlocking {
+        val created = service.execute(WebEditCommand.CreateDeck(request(), TemporalKind.ALARM))
+        val clientId = created.getString("detail").toLong()
+        val version = service.snapshot().getJSONObject("deck").getLong("version")
+        assertEquals("edited", service.execute(WebEditCommand.PatchDeck(
+            request(), clientId, version, "title", "发布应等待解锁"
+        )).getString("status"))
+
+        val seed = store.newDraft(DraftForm(kind = TemporalKind.MEMO, title = "AI batch seed"))
+        val ai = store.beginAiBatch(
+            mapOf(seed.draftId to seed.draftVersion), setOf(DraftOperation.CREATE)
+        )
+        val sequenceBefore = store.nextSequencePreview()
+        val queueBefore = store.nextQueueOrderPreview()
+        val blocked = service.execute(WebEditCommand.CommitDeck(request(), clientId, version))
+        assertEquals("locked", blocked.getString("status"))
+        assertNull(service.pendingWriteReview)
+        assertTrue(store.all().isEmpty())
+        assertEquals(1L, store.draftCount())
+        assertEquals(1L, store.identityCount())
+        assertEquals(sequenceBefore, store.nextSequencePreview())
+        assertEquals(queueBefore, store.nextQueueOrderPreview())
+
+        assertTrue(store.finishAiBatch(ai.sessionId))
+        val publish = WebEditCommand.CommitDeck(request(), clientId, version)
+        assertEquals("confirmation_required", service.execute(publish).getString("status"))
+        assertTrue(store.all().isEmpty())
+        assertEquals("committed", service.resolveFormalWriteReview(
+            requireNotNull(service.pendingWriteReview).token, approved = true
+        ).getString("status"))
+        assertEquals("committed", service.execute(publish).getString("status"))
+        assertEquals("发布应等待解锁", store.all().single().title)
+        assertEquals(1, store.all().size)
+        assertEquals(1L, store.draftCount())
+        assertEquals(1, store.pendingCount())
+        assertEquals(2L, store.identityCount())
+        assertEquals(1L, store.commitCount())
+        assertEquals(sequenceBefore + 1L, store.nextSequencePreview())
+        assertEquals(queueBefore, store.nextQueueOrderPreview())
+    }
+
     @Test fun checkpointPersistsWebChangesAcrossClose()= runBlocking {
         val card=store.newDraft(DraftForm(kind=TemporalKind.MEMO,title="baseline"))
         assertTrue(store.commit(card.draftId) is PowerStore.CommitOutcome.Committed)
