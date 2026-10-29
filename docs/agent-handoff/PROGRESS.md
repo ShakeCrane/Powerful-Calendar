@@ -7,7 +7,7 @@
 - 定向回归 **32/32 PASS**，覆盖 Provider 范围/字段/稳定 ID、权限拒绝无查询和无写入、批次创建边界取消、AI 锁竞争拒绝、中途 SQLite 失败、批次结束、部分成功安全重试、重复导入及提醒意图。修复前同一 Host 用例在等待批次完成时 20 秒超时；原始首次控制台未单独留档。最终定向日志 `.local/android-test/reports/separation-s0-st11-system-import-20261030/targeted-final.log`，SHA-256 `E5D821051DD359FF7ECFEC0E4A7141EEDF00DCBB25DEFFC73B27D3D5E10AA9C7`。
 - 最终完整离线 Gradle **673/673 JVM、89 suites、0 failures/errors/skips**；源码边界、Debug APK、lint 均 PASS。日志 `.local/android-test/reports/separation-s0-st11-system-import-20261030/full-gradle-final-r3.log`，SHA-256 `4E7E3FAD9020986360E495C1D2670D766E5103C1BEB033ACD54D4AEC415A2095`。APK 67,498,300 bytes，SHA-256 `DBD9E1844510F6BFCD9C24880F4CB2D4A86ED05F11DD34FD2C04DEDBD752A221`。
 - `adb devices -l` 无在线设备。Android WebView、实际 Provider/权限弹窗与撤销流程 **NOT TESTED**；系统日历源提醒是否导入仍无明确合同，且显式 `ALL_DAY` 精度未覆盖。Matrix 状态 **PARTIAL / HOLD**，不据模拟测试签核设备 parity。详见 [独立 Issue](../issues/PC-ISSUE-SEPARATION-SYSTEM-CALENDAR-IMPORT.md)。
-- 实现提交 SHA 将在提交后补记。
+- 实现提交并推送：`a0e4353` (`fix(分离): 补齐系统日历导入失败恢复`)。
 
 ## Separation — Clear 旧版数据库迁移 `S0-ST-12`（2026-10-30，Host/Preview 自动化 PASS；Android WebView/设备 HOLD）
 
