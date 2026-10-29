@@ -604,6 +604,59 @@ async function main(){
       })()`});
     if(aiAttachments.exceptionDetails)throw Error(aiAttachments.exceptionDetails.exception?.description || aiAttachments.exceptionDetails.text);
     console.log("BROWSER AI attachment Host-action Mock PASS",JSON.stringify(aiAttachments.result.value));
+    const aiHistory=await call("Runtime.evaluate",{contextId:world.executionContextId,
+      awaitPromise:true,returnByValue:true,expression:`(async()=>{
+        const check=(v,m)=>{if(!v)throw Error(m)};
+        const wait=async(fn,m)=>{for(let i=0;i<120;i++){if(fn())return;await new Promise(r=>setTimeout(r,100))}throw Error(m)};
+        const list=document.querySelector('#chatMessages'),field=document.querySelector('#chatInput');
+        const send=async text=>{
+          field.value=text;field.dispatchEvent(new Event('input',{bubbles:true}));
+          document.querySelector('#chatForm').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
+          await wait(()=>[...list.querySelectorAll('.chat-message-content')].some(node=>node.textContent===text),
+            'chat message was not appended: '+text);
+        };
+        const first='历史第一条请求',second='历史第二条请求';
+        await send(first);await send(second);
+        const firstBubble=[...list.querySelectorAll('.chat-bubble.user')]
+          .find(bubble=>bubble.querySelector('.chat-message-content')?.textContent===first);
+        check(firstBubble,'first user message is missing before rewind');
+        firstBubble.querySelector('.chat-message-actions button').click();
+        await wait(()=>field.value===first&&!list.textContent.includes(second),
+          'edit-and-resend did not prefill the selected user message and remove later turns');
+        const edited='修改后的第一条请求';
+        field.value=edited;field.dispatchEvent(new Event('input',{bubbles:true}));
+        document.querySelector('.clear-tabbar [data-action="timeline"]').click();
+        await wait(()=>!document.querySelector('#timelinePage').hidden,
+          'timeline navigation did not publish an unrelated Host state update');
+        document.querySelector('.clear-tabbar [data-action="ai"]').click();
+        await wait(()=>!document.querySelector('#aiPage').hidden,
+          'AI chat did not return after unrelated navigation');
+        check(field.value===edited,'unrelated page state overwrote text typed after the Host prefill');
+        await send(edited);
+        const later='回退到助手回复之后的请求';await send(later);
+        const retainedReply=[...list.querySelectorAll('.chat-bubble.assistant')]
+          .find(bubble=>bubble.querySelector('.chat-message-content')?.textContent===
+            '预览 Mock：消息已保留在本地聊天历史；没有调用真实 AI 或写入日历。');
+        check(retainedReply,'deterministic post-rewind Mock reply is missing');
+        retainedReply.querySelector('.chat-message-actions button').click();
+        await wait(()=>!list.textContent.includes(later)&&
+          list.textContent.includes('没有调用真实 AI 或写入日历'),
+          'assistant rewind did not retain the selected reply and remove later turns');
+        const clear=document.querySelector('#chatClear');
+        check(!clear.disabled,'clear history is unavailable for a non-empty chat');
+        clear.click();
+        await wait(()=>list.querySelectorAll('.chat-bubble').length===0&&
+          list.textContent.includes('从这里开始与 AI 讨论日程')&&clear.disabled,
+          'clear history did not leave the chat empty and disable the no-op clear control');
+        return {userEditAndResend:true,assistantRewind:true,clear:true,
+          providerCalled:false,calendarWrites:false};
+      })()`});
+    if(aiHistory.exceptionDetails)throw Error(aiHistory.exceptionDetails.exception?.description || aiHistory.exceptionDetails.text);
+    const aiHistoryMockBoundary=await call("Runtime.evaluate",{returnByValue:true,
+      expression:"document.querySelector('#bridgeLog').textContent.includes('清空 AI 聊天历史；没有修改事件或草稿')"});
+    if(aiHistoryMockBoundary.result.value!==true)
+      throw Error("Studio Host Mock did not disclose that history actions leave calendar data untouched");
+    console.log("BROWSER AI history edit/rewind/clear Mock PASS",JSON.stringify(aiHistory.result.value));
     await call("Runtime.evaluate",{expression:`(()=>{const e=document.querySelector('#scenario');e.value='ai-error';e.dispatchEvent(new Event('change',{bubbles:true}))})()`,returnByValue:true});
     const aiErrorResend=await call("Runtime.evaluate",{contextId:world.executionContextId,
       awaitPromise:true,returnByValue:true,expression:`(async()=>{
@@ -664,7 +717,7 @@ async function main(){
     const clip=previewRect.result.value;
     const aiScreenshot=await call("Page.captureScreenshot",{format:"png",captureBeyondViewport:true,
       clip:{...clip,scale:1}});
-    const evidenceDir=path.join(root,".local/android-test/reports/separation-20261027/ai-proposal-review");
+    const evidenceDir=path.join(reportDir,"ai-proposal-review");
     fs.mkdirSync(evidenceDir,{recursive:true});
     fs.writeFileSync(path.join(evidenceDir,"ai-review-studio-mock.png"),Buffer.from(aiScreenshot.data,"base64"));
     console.log("AI review computed colors",JSON.stringify(aiColors.result.value));

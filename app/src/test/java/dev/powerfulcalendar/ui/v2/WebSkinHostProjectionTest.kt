@@ -84,6 +84,22 @@ class WebSkinHostProjectionTest {
         assertNull(decode("""{"name":"releaseStuckAiBatch","sessionId":"private"}"""))
     }
 
+    @Test fun chatHistoryActionsUseStableHostIdsAndRejectForgedOrStalePayloadShapes() {
+        fun decode(payload: String) = decodeBridgeAction(
+            """{"version":1,"type":"action","payload":$payload}""")
+
+        assertEquals(WebSkinAction.ClearChat(7),
+            decode("""{"name":"clearChat","historyRevision":7}"""))
+        assertEquals(WebSkinAction.RewindChat("local-message-id", 7, true),
+            decode("""{"name":"rewindChat","messageId":"local-message-id","historyRevision":7,"editAndResend":true}"""))
+        assertNull(decode("""{"name":"clearChat","historyRevision":7,"deleteEvents":true}"""))
+        assertNull(decode("""{"name":"clearChat","historyRevision":-1}"""))
+        assertNull(decode("""{"name":"rewindChat","messageId":"","historyRevision":7,"editAndResend":false}"""))
+        assertNull(decode("""{"name":"rewindChat","messageId":"id","historyRevision":7.5,"editAndResend":false}"""))
+        assertNull(decode("""{"name":"rewindChat","messageId":"id","historyRevision":7,"editAndResend":"true"}"""))
+        assertNull(decode("""{"name":"rewindChat","messageId":"id","historyRevision":7,"editAndResend":false,"content":"forged"}"""))
+    }
+
     @Test fun exposesTrueIntervalsOwnerRevisionAndNoPrivilegedContent() {
         val payload = project(listOf(activity(7)))
         val row = payload.getJSONArray("items").getJSONObject(0)

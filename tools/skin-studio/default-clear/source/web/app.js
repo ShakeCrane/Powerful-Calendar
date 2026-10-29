@@ -12,6 +12,7 @@ let timelineDrag=null,suppressTimelineClickUntil=0;
 let titleFoldFrame=0,titleFoldResizeObserver=null;
 let aiReviewSelectionId="",aiReviewSelected=new Set();
 let attachmentRequestPending=false;
+let appliedChatPrefillRevision=null;
 let timelineCreateDialog=null;
 const send=(name,extra={})=>{
   if(!port)return;
@@ -390,6 +391,14 @@ $("chatForm").addEventListener("submit",e=>{
   if(!text||text.length>4000||state.aiLocked||state.chatBusy)return;
   send("sendChat",{text});field.value="";
 });
+$("chatClear").addEventListener("click",()=>{
+  if($("chatClear").disabled)return;
+  send("clearChat",{historyRevision:Number(state.chatHistoryRevision)||0});
+});
+function rewindChat(messageId,editAndResend){
+  if(state.chatHistoryActionsAvailable!==true||typeof messageId!=="string")return;
+  send("rewindChat",{messageId,historyRevision:Number(state.chatHistoryRevision)||0,editAndResend});
+}
 for(const button of document.querySelectorAll("[data-ai-batch]"))button.addEventListener("click",()=>{
   if(button.disabled)return;
   send("prepareAiBatch",{mode:button.dataset.aiBatch});
@@ -675,7 +684,25 @@ function renderChat(){
   const list=$("chatMessages");list.replaceChildren();
   const messages=state.chatMessages||[];
   if(!messages.length)list.append(node("p","quiet","从这里开始与 AI 讨论日程"));
-  for(const item of messages)list.append(node("div","chat-bubble "+(item.role==="user"?"user":"assistant"),item.content));
+  for(const item of messages){
+    const bubble=node("article","chat-bubble "+(item.role==="user"?"user":"assistant"));
+    bubble.append(node("p","chat-message-content",item.content));
+    const actions=node("div","chat-message-actions");
+    const addAction=(label,accessible,edit)=>{
+      const button=node("button","",label);button.type="button";
+      button.setAttribute("aria-label",accessible);
+      button.disabled=state.chatHistoryActionsAvailable!==true||typeof item.messageId!=="string";
+      button.addEventListener("click",()=>{
+        if(!button.disabled)rewindChat(item.messageId,edit);
+      });
+      actions.append(button);
+    };
+    if(item.role==="user"){
+      addAction("编辑并重新发送","编辑这条消息并移除后续对话",true);
+      addAction("撤回及后续","撤回这条消息及后续对话",false);
+    }else addAction("回退到此条","保留这条回复并移除后续对话",false);
+    bubble.append(actions);list.append(bubble);
+  }
   renderAiBatchControls();
   renderAiProposalReview(list);
   const batchPhase=String(state.aiBatch?.phase||"IDLE");
@@ -693,6 +720,13 @@ function renderChat(){
     list.append(node("p","quiet","请先处理当前提案审核，再添加新附件"));
   else if(attachmentUnavailable)
     list.append(node("p","quiet","请先完成当前 AI 操作，再选择附件"));
+  const clear=$("chatClear");
+  clear.disabled=state.chatHistoryActionsAvailable!==true||messages.length===0;
+  const prefillRevision=String(state.chatPrefillRevision??"");
+  if(prefillRevision!==appliedChatPrefillRevision){
+    $("chatInput").value=String(state.chatPrefillText||"");
+    appliedChatPrefillRevision=prefillRevision;
+  }
   list.scrollTop=list.scrollHeight;
 }
 function renderAiBatchControls(){

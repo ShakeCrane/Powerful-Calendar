@@ -227,6 +227,9 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
         WebSkinBridgeRuntime.stateRevision++
     }
     var chatHistory by remember { mutableStateOf(AiChatHistoryStore.load(appContext)) }
+    var chatHistoryRevision by remember { mutableLongStateOf(0L) }
+    var webChatPrefillText by remember { mutableStateOf("") }
+    var webChatPrefillRevision by remember { mutableLongStateOf(0L) }
     LaunchedEffect(chatHistory) {
         withContext(Dispatchers.IO) {
             AiChatHistoryStore.save(appContext, chatHistory)
@@ -533,14 +536,32 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
         }
     }
 
+    fun replaceChatHistory(messages: List<AiChatMessage>) {
+        val bounded = messages.takeLast(200)
+        if (bounded == chatHistory) return
+        chatHistory = bounded
+        chatHistoryRevision++
+    }
+
+    fun updateWebChatPrefill(text: String?) {
+        webChatPrefillText = text.orEmpty()
+        webChatPrefillRevision++
+    }
+
+    fun canEditChatHistory(): Boolean = page == Page.AI.name && !aiLocked &&
+        !chatBusy && !aiBusy && pendingBatchMode == null && confirmBatch == null &&
+        confirmStuckBatchRelease == null && editSession == null &&
+        pendingWebAiProposalPublish == null && !aiAttachmentPickerBusy &&
+        pendingFileReview == null && pendingImageReview == null
+
     fun appendChat(role: String, text: String, proposalSource: String? = null) {
-        chatHistory = (chatHistory + AiChatMessage(
+        replaceChatHistory(chatHistory + AiChatMessage(
             role = role,
             content = text,
             proposalSource = proposalSource,
             createdAtMillis = if (role == "user") System.currentTimeMillis() else null,
             zoneId = if (role == "user") zone.id else null
-        )).takeLast(200)
+        ))
     }
 
     fun beginBatchConversation(mode: AiBatchRunner.Mode) {
@@ -606,6 +627,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
     fun submitAiChatInput(input: String) {
         val text = input.trim()
         if (text.isEmpty() || chatBusy || aiBusy) return
+        updateWebChatPrefill("")
         appendChat("user", text)
         val currentHistory = chatHistory.takeLast(80)
         val mode = pendingBatchMode
@@ -1392,6 +1414,40 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                     pendingImageReview == null) {
                     submitAiChatInput(action.text)
                 }
+                is WebSkinAction.ClearChat -> if (canEditChatHistory()) {
+                    when (val result = WebAiChatHistory.clear(
+                        chatHistory, action.historyRevision, chatHistoryRevision
+                    )) {
+                        is WebChatHistoryMutation.Applied -> {
+                            replaceChatHistory(result.messages)
+                            pendingBatchMode = null
+                            webAiProposalReviewSession = null
+                            updateWebChatPrefill(null)
+                            message = "聊天已清空；事件和待处理草稿未更改"
+                        }
+                        WebChatHistoryMutation.NoChange -> message = "聊天记录已经为空"
+                        else -> message = "聊天已变化，请刷新后重试清理"
+                    }
+                }
+                is WebSkinAction.RewindChat -> if (canEditChatHistory()) {
+                    val mode = if (action.editAndResend) WebChatRewindMode.EDIT_AND_RESEND
+                        else WebChatRewindMode.RETRACT
+                    when (val result = WebAiChatHistory.rewind(
+                        chatHistory, action.messageId, mode,
+                        action.historyRevision, chatHistoryRevision
+                    )) {
+                        is WebChatHistoryMutation.Applied -> {
+                            replaceChatHistory(result.messages)
+                            pendingBatchMode = null
+                            updateWebChatPrefill(result.prefillText)
+                            message = if (result.prefillText != null)
+                                "已回退后续对话；原消息已放入输入框，可修改后重新发送"
+                            else "已回退这条消息及后续对话；日历和草稿未更改"
+                        }
+                        WebChatHistoryMutation.NoChange -> message = "这条回复后没有更多对话可回退"
+                        else -> message = "聊天已变化或目标已不存在，请刷新后重试"
+                    }
+                }
                 is WebSkinAction.PrepareAiBatch -> if (page == Page.AI.name && !aiLocked &&
                     !chatBusy && !aiBusy && pendingBatchMode == null && editSession == null && confirmBatch == null &&
                     webAiProposalReviewSession == null && pendingWebAiProposalPublish == null && !aiAttachmentPickerBusy &&
@@ -1432,6 +1488,10 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                 .put("memoTruncated", page == Page.MEMO.name && memoRemainingCount > 0)
                 .put("memoRemainingCount", if (page == Page.MEMO.name) memoRemainingCount else 0)
                 .put("chatBusy", chatBusy || aiBusy || pendingWebAiProposalPublish != null)
+                .put("chatHistoryRevision", chatHistoryRevision)
+                .put("chatHistoryActionsAvailable", canEditChatHistory())
+                .put("chatPrefillText", webChatPrefillText)
+                .put("chatPrefillRevision", webChatPrefillRevision)
                 .put("aiBatch", WebAiBatchProjection.project(
                     session = aiSession,
                     preparationMode = pendingBatchMode,
@@ -1443,12 +1503,8 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                 .put("chatAttachmentAvailable", canLaunchWebAiAttachmentPicker())
                 .put("chatAttachmentBusy", aiAttachmentPickerBusy ||
                     pendingFileReview != null || pendingImageReview != null)
-                .put("chatMessages", org.json.JSONArray(
-                    (if (page == Page.AI.name) chatHistory.takeLast(40) else emptyList())
-                        .map { item ->
-                        JSONObject().put("role", item.role)
-                            .put("content", item.content.take(1600))
-                    }
+                .put("chatMessages", WebAiChatHistory.project(
+                    if (page == Page.AI.name) chatHistory else emptyList()
                 ))
                 .put("aiProposalReview", if (page == Page.AI.name) {
                     webAiProposalReviewSession?.let(WebAiProposalProjection::project) ?: JSONObject.NULL
@@ -1680,9 +1736,10 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                     scope.launch { generateAiDraft(text, shareForRequest = false) }
                 },
                 onClear = {
-                    chatHistory = emptyList()
+                    replaceChatHistory(emptyList())
                     pendingBatchMode = null
                     webAiProposalReviewSession = null
+                    updateWebChatPrefill(null)
                 },
                 onClearCache = {
                     scope.launch {
@@ -1698,7 +1755,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                 onPickFile = { openAiDocument.launch(arrayOf("*/*")) },
                 onPrepareBatch = { beginBatchConversation(it) },
                 onRewind = { lastIndex ->
-                    chatHistory = chatHistory.take((lastIndex + 1).coerceAtLeast(0))
+                    replaceChatHistory(chatHistory.take((lastIndex + 1).coerceAtLeast(0)))
                     pendingBatchMode = null
                 }
             )

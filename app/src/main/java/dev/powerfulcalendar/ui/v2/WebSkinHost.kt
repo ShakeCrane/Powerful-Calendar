@@ -133,6 +133,12 @@ internal sealed interface WebSkinAction {
     /** Request the next host-bounded prefix of the current Memo projection. */
     data object LoadMoreMemo : WebSkinAction
     data class SendChat(val text: String) : WebSkinAction
+    data class ClearChat(val historyRevision: Long) : WebSkinAction
+    data class RewindChat(
+        val messageId: String,
+        val historyRevision: Long,
+        val editAndResend: Boolean
+    ) : WebSkinAction
     /** Starts the Host-owned range selection conversation; this does not authorize writes. */
     data class PrepareAiBatch(val mode: dev.powerfulcalendar.ai.AiBatchRunner.Mode) : WebSkinAction
     /** Cancels a pending range-selection conversation or requests stop for the active Host batch. */
@@ -433,6 +439,29 @@ internal fun decodeBridgeAction(raw: String): WebSkinAction? {
             if (text is String && text.isNotBlank() && text.length <= 4000)
                 WebSkinAction.SendChat(text)
             else null
+        }
+        "clearChat" -> {
+            if (keys != setOf("name", "historyRevision")) return null
+            val rawRevision = payload.opt("historyRevision")
+            val revision = when (rawRevision) {
+                is Int -> rawRevision.toLong()
+                is Long -> rawRevision
+                else -> null
+            }
+            revision?.takeIf { it >= 0 }?.let { WebSkinAction.ClearChat(it) }
+        }
+        "rewindChat" -> {
+            if (keys != setOf("name", "messageId", "historyRevision", "editAndResend")) return null
+            val messageId = (payload.opt("messageId") as? String)?.takeIf { it.length in 1..100 }
+                ?: return null
+            val rawRevision = payload.opt("historyRevision")
+            val revision = when (rawRevision) {
+                is Int -> rawRevision.toLong()
+                is Long -> rawRevision
+                else -> null
+            }?.takeIf { it >= 0 } ?: return null
+            val editAndResend = payload.opt("editAndResend") as? Boolean ?: return null
+            WebSkinAction.RewindChat(messageId, revision, editAndResend)
         }
         "prepareAiBatch" -> {
             if (keys != setOf("name", "mode")) return null

@@ -717,9 +717,15 @@ function simulatedState(){
     detail:"模拟未来软件版本新增的平行选项",icon:"table",enabled:true
   });
   const start=anchor-hours*1800000;
-  const chatMessages=scenario==="ai-error"
+  const rawChatMessages=mockChatCleared?mockChat:scenario==="ai-error"
     ? [{role:"assistant",content:"你好！今天有什么安排？"},...mockAiErrorMessages]
     : [{role:"assistant",content:"你好！今天有什么安排？"},...mockChat];
+  const chatMessages=rawChatMessages.map((item,index)=>({...item,
+    messageId:item.messageId||"preview-seed-"+index}));
+  const projectedBatch=scenario==="ai-review-batch"?{phase:"SELECTING"}:mockAiBatch;
+  const chatHistoryActionsAvailable=!mockAiLocked&&
+    !["SELECTING","AWAITING_HOST_REVIEW","RUNNING","CANCEL_REQUESTED"].includes(projectedBatch?.phase)&&
+    !(["aiProposal","aiBatch","aiBatchRelease"].includes(mockApproval?.kind));
   const allMemoEntries=scenario==="memo-overflow"?Array.from({length:251},(_,i)=>({
     eventSeq:1000+i,revision:1,occurrenceKey:"single",
     title:"溢出 Memo "+(i+1),completed:false,startMillis:base+i*60000
@@ -750,6 +756,10 @@ function simulatedState(){
     editing:mockEditing,
     memoEntries,memoTruncated,memoRemainingCount:allMemoEntries.length-memoEntries.length,
     chatBusy:false,chatAttachmentBusy:false,
+    chatHistoryRevision:mockChatHistoryRevision,
+    chatHistoryActionsAvailable,
+    chatPrefillText:mockChatPrefillText,
+    chatPrefillRevision:mockChatPrefillRevision,
     chatAttachmentAvailable:scenario!=="locked"&&scenario!=="locked-stale"&&
       !(["ai-review","ai-review-batch"].includes(scenario)&&mockAiProposals.length>0),
     chatMessages,
@@ -1032,20 +1042,20 @@ function resolveMockApproval(approved){
   }
   if(request.kind==="aiProposal"){
     if(request.reviewId!==mockAiReviewId){
-      mockChat.push({role:"assistant",content:"预览 Mock：审核卡已过期，模拟 Host 拒绝了旧请求。"});
+      pushMockChat({role:"assistant",content:"预览 Mock：审核卡已过期，模拟 Host 拒绝了旧请求。"});
       postState();return;
     }
     if(approved){
       const selected=new Set(request.indices);
       mockAiProposals=mockAiProposals.filter((_,index)=>!selected.has(index));
       rotateMockAiReviewId();
-      mockChat.push({role:"assistant",content:"预览 Mock：Host 确认请求已完成；没有写入任何真实日历数据。"});
-    }else mockChat.push({role:"assistant",content:"预览 Mock：已取消 Host 确认，没有执行操作。"});
+      pushMockChat({role:"assistant",content:"预览 Mock：Host 确认请求已完成；没有写入任何真实日历数据。"});
+    }else pushMockChat({role:"assistant",content:"预览 Mock：已取消 Host 确认，没有执行操作。"});
     postState();return;
   }
   if(request.kind==="aiBatch"){
     if(request.reviewId!==mockAiBatch.reviewId||mockAiBatch.phase!=="AWAITING_HOST_REVIEW"){
-      mockChat.push({role:"assistant",content:"预览 Mock：批次审核已过期；没有执行操作。"});
+      pushMockChat({role:"assistant",content:"预览 Mock：批次审核已过期；没有执行操作。"});
       postState();return;
     }
     if(approved){
@@ -1055,12 +1065,12 @@ function resolveMockApproval(approved){
         containsDelete:false,progress:null,
         report:{mode,published:mode==="PUBLISH"?count:0,
           discarded:mode==="DISCARD"?count:0,kept:0,cancelled:false}};
-      mockChat.push({role:"assistant",content:"预览 Mock：批次结果已模拟；没有写入真实草稿或日历。"});
+      pushMockChat({role:"assistant",content:"预览 Mock：批次结果已模拟；没有写入真实草稿或日历。"});
     }else{
       mockAiBatch={phase:"IDLE",state:null,active:false,canCancel:false,canRelease:false,
         mode:null,scopeCount:0,selectedCount:0,operationCounts:{},containsDelete:false,
         progress:null,report:null};
-      mockChat.push({role:"assistant",content:"预览 Mock：已取消批次审核，没有执行操作。"});
+      pushMockChat({role:"assistant",content:"预览 Mock：已取消批次审核，没有执行操作。"});
     }
     logAction("Preview Mock 批次 Host 审核："+(approved?"模拟确认":"模拟取消")+
       " · 不写入真实数据");postState();return;
@@ -1078,7 +1088,7 @@ function resolveMockApproval(approved){
           cancelled:true,released:true,outcomeKnown:true}};
       mockAiLocked=false;
     }
-    mockChat.push({role:"assistant",content:approved?
+    pushMockChat({role:"assistant",content:approved?
       "预览 Mock：批次锁已模拟解除；未完成草稿保留，没有写入真实日历。":
       "预览 Mock：未解除批次锁；没有写入真实日历。"});
     logAction("Preview Mock 批次恢复确认 · "+(approved?"解除":"取消")+
@@ -1530,7 +1540,8 @@ function onSkinAction(message){
       logAction("模拟宿主收到：loadMoreMemo");postState();return;
     }
     if(!ACTIONS.some(([x])=>x===name)&&!["openEvent","toggleMemo","sendChat","resolveAiProposal",
-      "pickAiFile","pickAiImage","prepareAiBatch","cancelAiBatch","releaseStuckAiBatch"].includes(name)){
+      "pickAiFile","pickAiImage","prepareAiBatch","cancelAiBatch","releaseStuckAiBatch",
+      "clearChat","rewindChat"].includes(name)){
       logAction("拒绝未知动作 "+String(name));return;
     }
     if(name==="panTimeline"){
@@ -1647,6 +1658,47 @@ function onSkinAction(message){
       }
       postState();return;
     }
+    if(name==="clearChat"){
+      if(Object.keys(p).sort().join(",")!=="historyRevision,name"||
+        !Number.isSafeInteger(p.historyRevision)||p.historyRevision<0||
+        mockPage!=="AI"||!simulatedState().chatHistoryActionsAvailable||
+        p.historyRevision!==mockChatHistoryRevision){
+        logAction("拒绝过期或当前不可用的聊天清理请求");return;
+      }
+      if(simulatedState().chatMessages.length===0){
+        logAction("Preview Mock：聊天已经为空；清理无操作");return;
+      }
+      mockChat=[];mockAiErrorMessages=[];mockChatCleared=true;
+      mockAiProposals=[];rotateMockAiReviewId();
+      mockChatHistoryRevision++;mockChatPrefillText="";mockChatPrefillRevision++;
+      logAction("Preview Mock：清空 AI 聊天历史；没有修改事件或草稿");
+      postState();return;
+    }
+    if(name==="rewindChat"){
+      const expectedKeys="editAndResend,historyRevision,messageId,name";
+      const messages=simulatedState().chatMessages;
+      const matches=messages.map((item,index)=>({item,index}))
+        .filter(row=>row.item.messageId===p.messageId);
+      if(Object.keys(p).sort().join(",")!==expectedKeys||
+        typeof p.messageId!=="string"||p.messageId.length<1||p.messageId.length>100||
+        !Number.isSafeInteger(p.historyRevision)||p.historyRevision<0||
+        typeof p.editAndResend!=="boolean"||mockPage!=="AI"||
+        !simulatedState().chatHistoryActionsAvailable||
+        p.historyRevision!==mockChatHistoryRevision||matches.length!==1||
+        (p.editAndResend&&matches[0]?.item.role!=="user")){
+        logAction("拒绝过期或不匹配的聊天回退请求");return;
+      }
+      const {item,index}=matches[0];
+      const keep=index+(item.role==="user"?0:1);
+      if(keep===messages.length&&!p.editAndResend){
+        logAction("Preview Mock：助手回复后没有后续对话；回退无操作");return;
+      }
+      mockChat=messages.slice(0,keep).map(message=>({...message}));
+      mockAiErrorMessages=[];mockChatCleared=true;mockChatHistoryRevision++;
+      mockChatPrefillText=p.editAndResend?item.content:"";mockChatPrefillRevision++;
+      logAction("Preview Mock：回退聊天历史；没有修改事件或草稿");
+      postState();return;
+    }
     if(name==="prepareAiBatch"){
       if(Object.keys(p).sort().join(",")!=="mode,name"||
         !["publish","discard"].includes(p.mode)||mockPage!=="AI"||mockAiLocked){
@@ -1655,7 +1707,7 @@ function onSkinAction(message){
       mockAiBatch={phase:"SELECTING",state:null,active:false,canCancel:false,
         canRelease:false,mode:p.mode.toUpperCase(),scopeCount:0,selectedCount:0,
         operationCounts:{},containsDelete:false,progress:null,report:null};
-      mockChat.push({role:"assistant",content:"Preview Mock：请输入“全部”模拟选择范围。最终 Host 审核不会写入真实日历。"});
+      pushMockChat({role:"assistant",content:"Preview Mock：请输入“全部”模拟选择范围。最终 Host 审核不会写入真实日历。"});
       postState();return;
     }
     if(name==="cancelAiBatch"){
@@ -1664,7 +1716,7 @@ function onSkinAction(message){
         mockAiBatch={phase:"IDLE",state:null,active:false,canCancel:false,canRelease:false,
           mode:null,scopeCount:0,selectedCount:0,operationCounts:{},containsDelete:false,
           progress:null,report:null};
-        mockChat.push({role:"assistant",content:"Preview Mock：已取消范围选择，未改动草稿。"});
+        pushMockChat({role:"assistant",content:"Preview Mock：已取消范围选择，未改动草稿。"});
       }else if(mockAiBatch.phase==="RUNNING"&&mockAiLocked){
         const mode=mockAiBatch.mode||"PUBLISH",count=mockAiBatch.scopeCount||3;
         mockAiBatch={phase:"CANCELLED",state:"CANCELLED",active:false,canCancel:false,
@@ -1673,7 +1725,7 @@ function onSkinAction(message){
             published:mode==="PUBLISH"?1:0,discarded:mode==="DISCARD"?1:0,
             kept:Math.max(0,count-1),cancelled:true}};
         mockAiLocked=false;
-        mockChat.push({role:"assistant",content:"Preview Mock：已模拟部分完成后停止；剩余草稿保留。没有写入真实数据。"});
+        pushMockChat({role:"assistant",content:"Preview Mock：已模拟部分完成后停止；剩余草稿保留。没有写入真实数据。"});
       }else{logAction("拒绝当前状态下的批次取消");return;}
       logAction("Preview Mock 批次取消 · 结果仅为模拟");postState();return;
     }
@@ -1688,7 +1740,7 @@ function onSkinAction(message){
     }
     if(name==="sendChat"&&typeof p.text==="string"&&p.text.length<=4000){
       if(mockAiBatch.phase==="SELECTING"){
-        mockChat.push({role:"user",content:p.text});
+        pushMockChat({role:"user",content:p.text});
         if(["全部","所有","全选","全部草稿","所有待处理"].includes(p.text.trim())){
           const reviewId="batch-review-"+Date.now().toString(36);
           const mode=mockAiBatch.mode||"PUBLISH";
@@ -1699,13 +1751,18 @@ function onSkinAction(message){
           mockApproval={kind:"aiBatch",reviewId};
           $("mockApprovalText").textContent="Preview Mock Host 正在审核 3 张草稿并模拟一次性授权；不会写入真实数据。";
           $("mockApproval").hidden=false;
-        }else mockChat.push({role:"assistant",content:"Preview Mock：请回复“全部”模拟选择；没有调用真实 AI。"});
+        }else pushMockChat({role:"assistant",content:"Preview Mock：请回复“全部”模拟选择；没有调用真实 AI。"});
         postState();return;
       }
-      if($("scenario").value==="ai-error"){
+      mockChatPrefillText="";mockChatPrefillRevision++;
+      if(mockChatCleared){
+        pushMockChat({role:"user",content:p.text});
+        pushMockChat({role:"assistant",content:"预览 Mock：消息已保留在本地聊天历史；没有调用真实 AI 或写入日历。"});
+      }else if($("scenario").value==="ai-error"){
         mockAiErrorMessages.push({role:"user",content:p.text},
           {role:"assistant",content:"Studio Mock：已收到你手动重发的消息；没有调用真实 AI 或写入日历。"});
-      }else mockChat.push({role:"user",content:p.text});
+        mockChatHistoryRevision++;
+      }else pushMockChat({role:"user",content:p.text});
     }
     if(name==="pickAiFile"||name==="pickAiImage"){
       if(Object.keys(p).length!==1||mockPage!=="AI"||scenario==="locked"){
@@ -1714,7 +1771,7 @@ function onSkinAction(message){
       const reply=name==="pickAiFile"?
         "预览 Mock：未打开真实选择器，也不会读取、上传或导入文件。":
         "预览 Mock：未打开真实选择器，也不会读取、上传或识别图片。";
-      mockChat.push({role:"assistant",content:reply});
+      pushMockChat({role:"assistant",content:reply});
       logAction(reply);postState();
       return;
     }
@@ -1746,10 +1803,10 @@ function onSkinAction(message){
         const chosen=new Set(p.indices);
         mockAiProposals=mockAiProposals.filter((_,index)=>!chosen.has(index));
         rotateMockAiReviewId();
-        mockChat.push({role:"assistant",content:p.decision==="stage"?
+        pushMockChat({role:"assistant",content:p.decision==="stage"?
           "预览 Mock：候选已模拟写入草稿，未写入真实数据。":"预览 Mock：候选已模拟拒绝，未写入真实数据。"});
       }else if(p.decision==="supplement"){
-        mockChat.push({role:"assistant",content:"请补充需要更正的字段；预览不会调用真实 AI。"});
+        pushMockChat({role:"assistant",content:"请补充需要更正的字段；预览不会调用真实 AI。"});
       }else return;
       logAction("模拟宿主收到：resolveAiProposal · "+p.decision);postState();return;
     }
@@ -1790,6 +1847,12 @@ let mockAiBatch=$("scenario").value==="locked-stale"?staleCancelMockAiBatch():
   mockAiLocked?runningMockAiBatch():idleMockAiBatch();
 let mockConflictRestoreActive=$("scenario").value==="conflict-restore";
 let mockMemoCompletion=new Map(),mockMemoRevision=new Map(),mockChat=[];
+let mockChatHistoryRevision=0,mockChatPrefillRevision=0,mockChatPrefillText="",mockChatCleared=false;
+let mockChatSequence=0;
+function pushMockChat(message){
+  mockChat.push({...message,messageId:message.messageId||"studio-chat-"+(++mockChatSequence)});
+  mockChatHistoryRevision++;
+}
 let mockMonth="2026-10",mockSelectedMonthDate="2026-10-22";
 let mockMemoVisibleLimit=250;
 let mockAiErrorMessages=[
@@ -1908,6 +1971,8 @@ function bindUI(){
     if(id==="theme")$("webPreview").style.colorScheme=$("theme").value;
     mockAnchor=null;
     if(id==="scenario"){
+      mockChat=[];mockChatCleared=false;mockChatHistoryRevision++;
+      mockChatPrefillText="";mockChatPrefillRevision++;
       mockMemoVisibleLimit=250;
       mockMemoCompletion=new Map();
       mockMemoRevision=new Map();

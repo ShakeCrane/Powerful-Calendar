@@ -19,6 +19,8 @@ import androidx.test.core.app.ApplicationProvider
 import dev.powerfulcalendar.ai.AiSettings
 import dev.powerfulcalendar.ai.AiSettingsStore
 import dev.powerfulcalendar.ai.AiBatchRunner
+import dev.powerfulcalendar.ai.AiChatHistoryStore
+import dev.powerfulcalendar.ai.AiChatMessage
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.PowerStore.CommitOutcome
@@ -1003,6 +1005,75 @@ class WebAiProposalReviewIntegrationTest {
         }
         assertEquals(1, store.pendingCount())
         assertTrue(store.all().isEmpty())
+    }
+
+    @Test
+    fun webChatRewindAndClearUseHostHistoryAndNeverTouchCalendarRows() {
+        val previousHistory = AiChatHistoryStore.load(context)
+        val history = listOf(
+            AiChatMessage("user", "第一轮请求", messageId = "history-u1"),
+            AiChatMessage("assistant", "第一轮回复", messageId = "history-a1"),
+            AiChatMessage("user", "第二轮请求", messageId = "history-u2"),
+            AiChatMessage("assistant", "第二轮回复", messageId = "history-a2")
+        )
+        AiChatHistoryStore.save(context, history)
+        val before = counts()
+
+        try {
+            mountAiBridgePage()
+            val initial = WebSkinBridgeRuntime.state()
+            val initialMessages = initial.getJSONArray("chatMessages")
+            assertEquals("history-u2", initialMessages.getJSONObject(2).getString("messageId"))
+            assertTrue(initial.getBoolean("chatHistoryActionsAvailable"))
+
+            ui.runOnIdle {
+                WebSkinBridgeRuntime.onAction(WebSkinAction.RewindChat(
+                    messageId = "history-u2",
+                    historyRevision = initial.getLong("chatHistoryRevision"),
+                    editAndResend = true
+                ))
+            }
+            ui.waitUntil(10_000) {
+                val current = WebSkinBridgeRuntime.state()
+                current.getJSONArray("chatMessages").length() == 2 &&
+                    current.getString("chatPrefillText") == "第二轮请求" &&
+                    current.getLong("chatHistoryRevision") > initial.getLong("chatHistoryRevision")
+            }
+            assertEquals(listOf("history-u1", "history-a1"),
+                AiChatHistoryStore.load(context).map { it.messageId })
+
+            val afterRewind = WebSkinBridgeRuntime.state()
+            ui.runOnIdle {
+                WebSkinBridgeRuntime.onAction(WebSkinAction.ClearChat(
+                    historyRevision = initial.getLong("chatHistoryRevision")
+                ))
+            }
+            ui.waitForIdle()
+            assertEquals(2, WebSkinBridgeRuntime.state().getJSONArray("chatMessages").length())
+
+            ui.runOnIdle {
+                WebSkinBridgeRuntime.onAction(WebSkinAction.ClearChat(
+                    historyRevision = afterRewind.getLong("chatHistoryRevision")
+                ))
+            }
+            ui.waitUntil(10_000) {
+                WebSkinBridgeRuntime.state().getJSONArray("chatMessages").length() == 0 &&
+                    AiChatHistoryStore.load(context).isEmpty()
+            }
+            val clearedRevision = WebSkinBridgeRuntime.state().getLong("chatHistoryRevision")
+            ui.runOnIdle {
+                WebSkinBridgeRuntime.onAction(WebSkinAction.ClearChat(clearedRevision))
+            }
+            ui.waitForIdle()
+            assertEquals("re-clearing empty history is a no-op", clearedRevision,
+                WebSkinBridgeRuntime.state().getLong("chatHistoryRevision"))
+            assertTrue(AiChatHistoryStore.load(context).isEmpty())
+            assertEquals(before, counts())
+        } finally {
+            ui.activity.runOnUiThread { ui.activity.setContent {} }
+            ui.waitForIdle()
+            AiChatHistoryStore.save(context, previousHistory)
+        }
     }
 
     private fun mountAiBridgePage() {

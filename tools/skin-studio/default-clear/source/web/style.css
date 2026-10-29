@@ -106,6 +106,13 @@ button:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outl
 .chat-bubble{border-radius:18px;padding:12px 14px;max-width:86%;white-space:pre-wrap;overflow-wrap:anywhere;
  background:var(--fill-2);align-self:flex-start}
 .chat-bubble.user{align-self:flex-end;background:var(--accent-fill);color:var(--on-accent)}
+.chat-message-content{margin:0}
+.chat-message-actions{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+.chat-message-actions button{min-height:36px;padding:6px 9px;border:1px solid var(--sep);
+ border-radius:12px;background:var(--bg-elevated);color:var(--label);font:inherit;font-size:11px}
+.chat-bubble.user .chat-message-actions button{background:color-mix(in srgb,var(--on-accent) 12%,transparent);
+ border-color:color-mix(in srgb,var(--on-accent) 35%,transparent);color:var(--on-accent)}
+.chat-message-actions button:disabled,#chatClear:disabled{opacity:.45}
 .ai-batch-controls{display:flex;gap:6px;overflow-x:auto;flex:0 0 auto;padding:0 4px 6px}
 .ai-batch-controls[hidden],.ai-batch-status[hidden]{display:none}
 .ai-batch-controls button{min-height:38px;flex:0 0 auto;padding:7px 11px;border:1px solid var(--sep);
