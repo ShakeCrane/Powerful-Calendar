@@ -1,5 +1,14 @@
 # Core freeze progress
 
+## Separation — Clear 旧版数据库迁移 `S0-ST-12`（2026-10-30，Host/Preview 自动化 PASS；Android WebView/设备 HOLD）
+
+- 根因：旧数据库存在但缺少 `events` 表时，`LegacyImporter` 创建批次后提前返回，未写入结束时间；重复尝试持续留下未完成批次。Host 的 `SemanticOptions` 未注册旧版迁移动作，因此 Clear 无法到达已有原生确认流程。
+- 修复：缺表分支把警告写入并结束迁移批次；Host 增加闭合选项 `data.legacy.migrate`，并复用 Android 原生确认对话框；Studio Preview 增加非写入选项与 Mock 轨迹。旧数据库仍只读、保留，`v01:<legacyId>` 来源映射及幂等机制不变。
+- 修复前红测证实缺表连续运行后迁移批次未结束（预期 `(1,0)`，实际 `(1,1)`）。定向回归 **28/28 PASS**：`LegacyMigrationTest` 4、Bridge 4、Host 投影 19、PowerCalApp Robolectric/Compose 集成 1。集成验证取消无写入、确认后只读导入隔离 fixture、旧文件 SHA 不变、重试不增加事件/身份/序号。红测/定向日志及哈希见 [独立 Issue](../issues/PC-ISSUE-SEPARATION-LEGACY-MIGRATION.md)。
+- 最终完整离线 Gradle **666/666 JVM、88 suites、0 failures/errors/skips、88/88 tasks PASS**；源码边界、Debug 与 AndroidTest APK、lint 成功（0 errors / 52 warnings）。最终日志 `.local/android-test/reports/separation-s0-st12-migration-20261030/full-gradle-final.log`，SHA-256 `8749EABA40B6BCBF762E564857D9BEB5472F9FF6652F0BBD9D7A58858399206F`。Debug APK SHA-256 `4C516E4067F2C74FFF05F927CB469B23E137B587EAD12A66EABF76927D6DB61D`；AndroidTest APK SHA-256 `C23375D347A00880431B9A2807E0BFAB005973D690A8FF8BECC4DF94B6122931`。
+- Skin Studio Python **61/61 PASS**；Chrome Headless/CDP Preview 从 Clear 月历“导入选项”点击迁移项，Mock 收到动作并断言无数据库读写/删除，**PASS（Mock）**。canonical Clear 9 files / 392,170 bytes；源码、checked-in skin、APK 中资源 SHA-256 均为 `af640cbca89a870c2d1ea733eb562ed35e6082b75b08fe7aa37afa9d4ff6f98a`。证据均在 `.local/android-test/reports/separation-s0-st12-migration-20261030/`。
+- `adb devices -l` 没有在线设备，AndroidTest APK 仅构建，生产 Android WebView、设备迁移与旧闹钟 handoff **NOT TESTED**。S0-ST-12 保持 **PARTIAL / HOLD**，不签核整体 parity/GO；原生确认继续提示用户检查旧时钟闹钟。独立报告：[PC-ISSUE-SEPARATION-LEGACY-MIGRATION](../issues/PC-ISSUE-SEPARATION-LEGACY-MIGRATION.md)。实现提交并推送：`2a2cb7ab7bf500d761f0594c97ee4ede797cbd7b`（`fix(皮肤分离): 接入旧版数据迁移并收尾失败批次`）。
+
 ## Separation — Clear AI 批次实时进度 `S0-AI-04a`（2026-10-30，Host/Preview PASS；Android WebView HOLD）
 
 - 根因：`AiBatchRunner` 原已逐项提供 `onProgress(done,total)`，Clear 已渲染 `aiBatch.progress`，但 `PowerCalApp` 生产投影始终传 `progress=null`。
