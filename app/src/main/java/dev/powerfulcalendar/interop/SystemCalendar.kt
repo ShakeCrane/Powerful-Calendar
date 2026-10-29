@@ -17,8 +17,9 @@ object SystemCalendar {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CALENDAR)
             != PackageManager.PERMISSION_GRANTED) return emptyList()
         val zone = ZoneId.systemDefault()
-        val from = LocalDate.now().minusDays(30).atStartOfDay(zone).toInstant().toEpochMilli()
-        val to = LocalDate.now().plusDays(365).atStartOfDay(zone).toInstant().toEpochMilli()
+        val today = LocalDate.now(zone)
+        val from = today.minusDays(30).atStartOfDay(zone).toInstant().toEpochMilli()
+        val to = today.plusDays(365).atStartOfDay(zone).toInstant().toEpochMilli()
         val uri = CalendarContract.Instances.CONTENT_URI.buildUpon().also {
             ContentUris.appendId(it, from)
             ContentUris.appendId(it, to)

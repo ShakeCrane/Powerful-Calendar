@@ -130,6 +130,23 @@ import java.time.ZoneId
 import java.time.YearMonth
 import java.util.UUID
 
+internal suspend fun beginSystemCalendarBatchTracked(
+    store: PowerStore,
+    onCreated: (String) -> Unit
+): String = withContext(Dispatchers.IO) {
+    store.beginMigration("android-calendar").also(onCreated)
+}
+
+internal suspend fun finishSystemCalendarBatch(
+    store: PowerStore,
+    batchId: String,
+    warnings: List<String>
+) {
+    withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) {
+        store.finishMigration(batchId, warnings)
+    }
+}
+
 /** Process-wide store: alarms, boot receivers and the UI must agree on one database and one token. */
 object PowerCalStores {
     @Volatile
@@ -1008,32 +1025,69 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
     }
 
     suspend fun importSystemCalendar() {
+        var imported = 0
+        var batchId: String? = null
         try {
             val incoming = withContext(Dispatchers.IO) { SystemCalendar.readUpcoming(appContext) }
             if (incoming.isEmpty()) {
                 message = "系统日历没有可导入的事件"
                 return
             }
-            val batchId = withContext(Dispatchers.IO) { store.beginMigration("android-calendar") }
-            var imported = 0
-            withContext(Dispatchers.IO) {
-                incoming.forEach { event ->
-                    val external = event.externalId ?: ("cal:" + event.startMillis + ":" + event.title)
-                    if (store.importStructured(
-                            event.toRecord(),
-                            external,
-                            batchId,
-                            "android-calendar"
-                        ) is PowerStore.ImportOutcome.Imported
-                    ) imported++
+            val warnings = mutableListOf<String>()
+            var importFailure: Exception? = null
+            var rejected = 0
+            try {
+                // Publish the committed ID before withContext returns, so finally can close it
+                // even if cancellation wins at the dispatcher-return boundary.
+                beginSystemCalendarBatchTracked(store) { batchId = it }
+                val activeBatchId = checkNotNull(batchId)
+                withContext(Dispatchers.IO) {
+                    incoming.forEachIndexed { index, event ->
+                        val external = event.externalId ?: ("cal:" + event.startMillis + ":" + event.title)
+                        when (val result = store.importStructured(
+                            event.toRecord(), external, activeBatchId, "android-calendar"
+                        )) {
+                            is PowerStore.ImportOutcome.Imported -> imported++
+                            is PowerStore.ImportOutcome.AlreadyImported -> Unit
+                            is PowerStore.ImportOutcome.Rejected -> {
+                                rejected++
+                                warnings += "第 ${index + 1} 条系统日历事件未导入：${result.reason}"
+                            }
+                        }
+                    }
                 }
-                store.finishMigration(batchId)
+            } catch (error: Exception) {
+                importFailure = error
+                warnings += "系统日历导入中断；已提交记录可通过重试自动去重"
+            } finally {
+                batchId?.let { createdBatchId ->
+                    try {
+                        finishSystemCalendarBatch(store, createdBatchId, warnings.toList())
+                    } catch (finishError: Exception) {
+                        if (importFailure == null) importFailure = finishError
+                        else importFailure?.addSuppressed(finishError)
+                    }
+                }
             }
+            importFailure?.let { throw it }
             reload()
             reconcile()
-            message = "已从系统日历导入 $imported 条（一次性快照，不是双向同步）"
+            message = if (rejected == 0) {
+                "已从系统日历导入 $imported 条（一次性快照，不是双向同步）"
+            } else {
+                "已从系统日历导入 $imported 条；有 $rejected 条未导入，可重试（一次性快照，不是双向同步）"
+            }
         } catch (error: Exception) {
-            message = "读取系统日历失败：" + (error.message ?: "未知错误")
+            if (error is kotlinx.coroutines.CancellationException) throw error
+            if (batchId != null) {
+                if (imported > 0) {
+                    runCatching { reload(); reconcile() }.onFailure(error::addSuppressed)
+                }
+                message = "系统日历导入中断，已导入 $imported 条；可重试，已写入记录会自动去重：" +
+                    (error.message ?: "未知错误")
+            } else {
+                message = "读取系统日历失败：" + (error.message ?: "未知错误")
+            }
         }
     }
 

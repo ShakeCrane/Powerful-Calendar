@@ -1,5 +1,14 @@
 # Core freeze progress
 
+## Separation — Clear 系统日历导入 `S0-ST-11`（2026-10-30，Host/Store 自动化 PASS；Android 设备 HOLD）
+
+- 根因：Clear 的 `calendar.import.system` 权限/动作路由实际已经存在，但 parity matrix 的“没有对应命令”描述过时。导入批次只在完整循环正常结束时调用 `finishMigration()`；单条写入异常会留下开放批次。`Rejected` 结果被忽略，查询起止日期也分别读取当前日，存在跨本地午夜时窗口不一致的窄竞态。
+- 修复：创建批次时在 IO block 内同步捕获 ID，确保取消与 dispatcher 返回竞态下仍进入收尾；创建成功后在 `NonCancellable` finalizer 结束批次并保留警告。部分成功失败后刷新已提交事件并协调提醒。拒绝的行记录原因并向用户显示计数；重试沿用 `(source, externalId)` 幂等键。系统日历查询现在只捕获一次本地日期。
+- 定向回归 **32/32 PASS**，覆盖 Provider 范围/字段/稳定 ID、权限拒绝无查询和无写入、批次创建边界取消、AI 锁竞争拒绝、中途 SQLite 失败、批次结束、部分成功安全重试、重复导入及提醒意图。修复前同一 Host 用例在等待批次完成时 20 秒超时；原始首次控制台未单独留档。最终定向日志 `.local/android-test/reports/separation-s0-st11-system-import-20261030/targeted-final.log`，SHA-256 `E5D821051DD359FF7ECFEC0E4A7141EEDF00DCBB25DEFFC73B27D3D5E10AA9C7`。
+- 最终完整离线 Gradle **673/673 JVM、89 suites、0 failures/errors/skips**；源码边界、Debug APK、lint 均 PASS。日志 `.local/android-test/reports/separation-s0-st11-system-import-20261030/full-gradle-final-r3.log`，SHA-256 `4E7E3FAD9020986360E495C1D2670D766E5103C1BEB033ACD54D4AEC415A2095`。APK 67,498,300 bytes，SHA-256 `DBD9E1844510F6BFCD9C24880F4CB2D4A86ED05F11DD34FD2C04DEDBD752A221`。
+- `adb devices -l` 无在线设备。Android WebView、实际 Provider/权限弹窗与撤销流程 **NOT TESTED**；系统日历源提醒是否导入仍无明确合同，且显式 `ALL_DAY` 精度未覆盖。Matrix 状态 **PARTIAL / HOLD**，不据模拟测试签核设备 parity。详见 [独立 Issue](../issues/PC-ISSUE-SEPARATION-SYSTEM-CALENDAR-IMPORT.md)。
+- 实现提交 SHA 将在提交后补记。
+
 ## Separation — Clear 旧版数据库迁移 `S0-ST-12`（2026-10-30，Host/Preview 自动化 PASS；Android WebView/设备 HOLD）
 
 - 根因：旧数据库存在但缺少 `events` 表时，`LegacyImporter` 创建批次后提前返回，未写入结束时间；重复尝试持续留下未完成批次。Host 的 `SemanticOptions` 未注册旧版迁移动作，因此 Clear 无法到达已有原生确认流程。

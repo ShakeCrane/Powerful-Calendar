@@ -390,6 +390,15 @@ class WebSkinHostProjectionTest {
         assertFalse(SemanticOptions.supports("calendar.import.future"))
     }
 
+    @Test fun systemCalendarImportOptionIsHostRegisteredAndSnapshotOnly() {
+        val item = SemanticOptions.groups.flatMap { it.items }
+            .single { it.id == "calendar.import.system" }
+        assertTrue(SemanticOptions.supports(item.id))
+        assertEquals("从系统日历导入", item.label)
+        assertTrue(item.detail.contains("静态快照"))
+        assertTrue(item.detail.contains("不同步"))
+    }
+
     @Test fun legacyMigrationOptionIsHostRegisteredAndExplainsReadOnlyImport() {
         val item = SemanticOptions.groups.flatMap { it.items }
             .single { it.id == "data.legacy.migrate" }
