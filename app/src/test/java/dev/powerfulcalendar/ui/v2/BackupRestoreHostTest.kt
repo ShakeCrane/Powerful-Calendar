@@ -18,6 +18,7 @@ import androidx.core.app.ActivityOptionsCompat
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.TemporalKind
+import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -35,6 +36,7 @@ import java.io.File
 import java.time.Instant
 import java.time.ZoneId
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicReference
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -171,6 +173,22 @@ class BackupRestoreHostTest {
         assertTrue(store.all().isEmpty())
     }
 
+    @Test fun restoreRejectedWhileWebEditorActive() {
+        showApp()
+        val created = runWebEdit(WebEditCommand.CreateDeck("restore-web-editor", TemporalKind.MEMO))
+        assertEquals("created", created.getString("status"))
+        ui.waitForIdle()
+
+        launchBackupRestore()
+
+        assertEquals(0, resultRegistry.launchCount)
+        assertEquals(null, resultRegistry.lastIntent)
+        assertTrue(store.all().isEmpty())
+        assertEquals(0L, store.draftCount())
+        val closed = runWebEdit(WebEditCommand.CloseDeck("close-restore-web-editor"))
+        assertEquals("closed", closed.getString("status"))
+    }
+
     @Test fun nonEmptyTarget() {
         store.newDraft(DraftForm(
             kind = TemporalKind.MEMO,
@@ -255,6 +273,24 @@ class BackupRestoreHostTest {
             WebSkinBridgeRuntime.onAction(WebSkinAction.InvokeOption("data.backup.restore"))
         }
         ui.waitForIdle()
+    }
+
+    private fun runWebEdit(command: WebEditCommand): JSONObject {
+        val response = AtomicReference<JSONObject?>()
+        val failure = AtomicReference<Throwable?>()
+        Thread({
+            try {
+                response.set(runBlocking { WebSkinBridgeRuntime.onEdit(command) })
+            } catch (error: Throwable) {
+                failure.set(error)
+            }
+        }, "powercal-restore-web-edit-test").apply {
+            isDaemon = true
+            start()
+        }
+        ui.waitUntil(10_000) { response.get() != null || failure.get() != null }
+        failure.get()?.let { throw AssertionError("web edit command failed", it) }
+        return requireNotNull(response.get())
     }
 
     private fun captureStoreState() = StoreState(

@@ -304,10 +304,10 @@ fun PowerCalApp(
     var legacyRestoreText by remember { mutableStateOf<String?>(null) }
     val backupRestoreAllowed = androidx.compose.runtime.rememberUpdatedState(
         !aiLocked && editSession == null && !deckOpen && !deckOpening && newEventSession == null &&
-            !backupRestoreBusy && !confirmingLegacy
+            !webEditing.hasLiveEditor() && !backupRestoreBusy && !confirmingLegacy
     )
     val semanticOptionsEnabled = !aiLocked && editSession == null && !deckOpen && !deckOpening &&
-        newEventSession == null && !backupRestoreBusy && !confirmingLegacy
+        newEventSession == null && !webEditing.hasLiveEditor() && !backupRestoreBusy && !confirmingLegacy
 
     val initialCamera = remember { TimelineCoordinate.initialCamera(System.currentTimeMillis(), zone) }
     var anchorMillis by rememberSaveable { mutableLongStateOf(initialCamera.anchorMillis) }
@@ -1444,7 +1444,7 @@ fun PowerCalApp(
                     action.id == "data.backup.export" ->
                         createBackup.launch("powercal-backup.json")
                     action.id == "data.backup.restore" ->
-                        if (!deckOpening) launchRestoreBackup()
+                        if (!deckOpening && !webEditing.hasLiveEditor()) launchRestoreBackup()
                     action.id == "calendar.import.system" -> {
                         if (ContextCompat.checkSelfPermission(appContext,
                                 Manifest.permission.READ_CALENDAR) == PackageManager.PERMISSION_GRANTED
