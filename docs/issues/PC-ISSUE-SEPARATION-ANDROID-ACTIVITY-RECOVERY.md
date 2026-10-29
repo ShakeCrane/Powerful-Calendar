@@ -73,3 +73,11 @@ Debug APK：67,500,112 bytes，SHA-256 `7E1FCEA722A7FC86F9792794B3560E24F5B448AE
 - **Web 加载失败次路径：** 持久化失败提示已处理，但对应 Compose 故障注入用例未补齐。
 
 因此，`S0-ST-10` 为 **PARTIAL / HOLD**。本 Issue 只签核 Activity 级回退路径、Store 无写入和错误偏好防崩溃这些已直接验证的子项，不构成 Android 设备签核或整体分离 GO。
+
+## Follow-up — Skin Studio 静态合同与现行回退 API 对齐（2026-10-30）
+
+后续运行 Skin Studio Python 全套时，`test_native_settings_and_hidden_activity_rescue_are_both_available` 因仍查找旧的 `select("powercal-default")` 失败。当前 `MainActivity` 已使用本 Issue 新增的 `selectNativeForEmergencyRecovery()`，并根据同步持久化结果发出 `nativeRecoverySignal`。这是测试断言落后于已提交实现，不是新生产缺陷。
+
+仅更新静态合同测试，断言现行回退 API、持久化结果处理和 UI 信号均存在；未修改生产代码。定向测试 **3/3 PASS**，日志 `.local/android-test/reports/separation-s0-st14-ics-export-20261030/s0-st10-contract-focused.log`，SHA-256 `76AC5F02F0C2622ABEE14378532BD484DDA51BE57A07008056DAA8AE1DB815FB`。Skin Studio 完整 Python 套件 **61/61 PASS**，日志 `.local/android-test/reports/separation-s0-st14-ics-export-20261030/skin-studio-python-final.log`，SHA-256 `BE2E5662208C8735AE5D3D4045A781EBE975DCAC1534C5C68A2DFD62E52D14C2`。
+
+独立测试提交 `4dce206`（`test(分离): 对齐原生回退静态契约`）已推送至 `origin/codex/separation-s0-timeline-drag`。S0-ST-10 原有双指/设备/无障碍风险与 `PARTIAL / HOLD` 结论不变。
