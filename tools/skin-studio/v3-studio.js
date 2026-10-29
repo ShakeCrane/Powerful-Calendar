@@ -703,17 +703,17 @@ function simulatedState(){
     eventSeq:1000+i,revision:1,occurrenceKey:"single",
     title:"溢出 Memo "+(i+1),completed:false,startMillis:base+i*60000
   })):scenario==="repeating"?[
-    {eventSeq:31,revision:2,occurrenceKey:"2026-10-22T00:00",
+    {eventSeq:31,revision:mockMemoRevision.get(31)??2,occurrenceKey:"2026-10-22T00:00",
       originalOccurrenceKey:"2026-10-22T00:00",title:"重复 Memo · 今天",
-      completed:mockMemoDone,startMillis:base},
-    {eventSeq:31,revision:2,occurrenceKey:"2026-10-23T00:00",
+      completed:mockMemoCompletion.get("31:2026-10-22T00:00")??mockMemoDone,startMillis:base},
+    {eventSeq:31,revision:mockMemoRevision.get(31)??2,occurrenceKey:"2026-10-23T00:00",
       originalOccurrenceKey:"2026-10-23T00:00",title:"重复 Memo · 明天",
-      completed:false,startMillis:base+86400000}
+      completed:mockMemoCompletion.get("31:2026-10-23T00:00")??false,startMillis:base+86400000}
   ]:[
-    {eventSeq:31,revision:2,occurrenceKey:"single",title:"整理会议笔记",
-      completed:mockMemoDone,startMillis:base},
-    {eventSeq:44,revision:1,occurrenceKey:"single",title:"提交报告",
-      completed:false,startMillis:base+7200000}
+    {eventSeq:31,revision:mockMemoRevision.get(31)??2,occurrenceKey:"single",title:"整理会议笔记",
+      completed:mockMemoCompletion.get("31:single")??mockMemoDone,startMillis:base},
+    {eventSeq:44,revision:mockMemoRevision.get(44)??1,occurrenceKey:"single",title:"提交报告",
+      completed:mockMemoCompletion.get("44:single")??false,startMillis:base+7200000}
   ];
   const memoLimit=scenario==="memo-overflow"?Math.min(allMemoEntries.length,mockMemoVisibleLimit):allMemoEntries.length;
   const memoEntries=allMemoEntries.slice(0,memoLimit);
@@ -1109,8 +1109,21 @@ function onSkinAction(message){
       mockMonth=date.slice(0,7);mockSelectedMonthDate=date;mockPage="MONTH";
     }
     if(name==="toggleMemo"){
-      if(!Number.isInteger(p.eventSeq)||typeof p.completed!=="boolean"||!p.occurrenceKey)return;
-      if(p.eventSeq===31)mockMemoDone=!p.completed;
+      const expectedKeys="completed,eventSeq,expectedRevision,name,occurrenceKey";
+      const target=lastState?.memoEntries?.find(item=>item.eventSeq===p.eventSeq&&
+        item.revision===p.expectedRevision&&item.occurrenceKey===p.occurrenceKey);
+      if(Object.keys(p).sort().join(",")!==expectedKeys||
+        !Number.isSafeInteger(p.eventSeq)||p.eventSeq<=0||
+        !Number.isSafeInteger(p.expectedRevision)||p.expectedRevision<=0||
+        typeof p.occurrenceKey!=="string"||typeof p.completed!=="boolean"||
+        !target||target.completed!==p.completed){
+        logAction("Studio Mock 拒绝过期或不匹配的 Memo 槽位请求");
+      }else{
+        mockMemoCompletion.set(`${p.eventSeq}:${p.occurrenceKey}`,!target.completed);
+        mockMemoRevision.set(p.eventSeq,target.revision+1);
+        logAction("Studio Mock 切换 Memo 槽位 "+p.occurrenceKey);
+      }
+      postState();return;
     }
     if(name==="sendChat"&&typeof p.text==="string"&&p.text.length<=4000){
       if($("scenario").value==="ai-error"){
@@ -1185,7 +1198,8 @@ function onSkinAction(message){
       "toggleMemo","sendChat"].includes(name))postState();
   }catch(error){logAction("Bridge 消息错误："+error.message)}
 }
-let mockAnchor=null,mockHours=24,mockPage="TIMELINE",mockMemoDone=false,mockChat=[];
+let mockAnchor=null,mockHours=24,mockPage="TIMELINE",mockMemoDone=false;
+let mockMemoCompletion=new Map(),mockMemoRevision=new Map(),mockChat=[];
 let mockMonth="2026-10",mockSelectedMonthDate="2026-10-22";
 let mockMemoVisibleLimit=250;
 let mockAiErrorMessages=[
@@ -1305,6 +1319,8 @@ function bindUI(){
     mockAnchor=null;
     if(id==="scenario"){
       mockMemoVisibleLimit=250;
+      mockMemoCompletion=new Map();
+      mockMemoRevision=new Map();
       if($("scenario").value==="timeline-drag"){
         mockHours=24;mockPage="TIMELINE";
         mockEditing={editor:{open:false},deck:{open:false},lastResult:null};

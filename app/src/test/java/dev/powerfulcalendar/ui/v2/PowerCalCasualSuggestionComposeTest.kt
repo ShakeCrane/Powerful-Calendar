@@ -23,6 +23,8 @@ import dev.powerfulcalendar.ai.AiChatActionParser
 import dev.powerfulcalendar.ai.AiSettings
 import dev.powerfulcalendar.ai.AiSettingsStore
 import dev.powerfulcalendar.core.PowerStore
+import dev.powerfulcalendar.core.Recurrence
+import dev.powerfulcalendar.core.RecurrenceFreq
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TimelineCoordinate
@@ -31,8 +33,10 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -382,6 +386,83 @@ class PowerCalCasualSuggestionComposeTest {
         assertEquals(cameraAnchor, timeline.getLong("anchorMillis"))
         assertEquals(cameraHours, timeline.getDouble("hours"), 0.0)
         assertEquals(before, StoreCounts.read(store))
+    }
+
+    @Test
+    fun webMemoToggleIsOccurrenceScopedRevisionGuardedAndStableAcrossRestart() {
+        val zone = ZoneId.of("Asia/Shanghai")
+        val firstDate = LocalDate.now(zone).plusDays(1)
+        val card = store.newDraft(DraftForm(
+            kind = TemporalKind.MEMO,
+            title = "重复 Memo 完成状态",
+            startText = firstDate.toString(),
+            zoneId = zone.id,
+            recurrence = Recurrence(freq = RecurrenceFreq.DAILY, count = 3)
+        ))
+        assertTrue(store.commit(card.draftId) is PowerStore.CommitOutcome.Committed)
+        val owner = requireNotNull(store.get(card.eventSeq))
+        val selectedKey = "${firstDate}T00:00"
+        val nextKey = "${firstDate.plusDays(1)}T00:00"
+
+        ui.activity.setContent {
+            CompositionLocalProvider(LocalContext provides context) {
+                PowerCalTheme { PowerCalApp(store) }
+            }
+        }
+        ui.waitForIdle()
+        ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.Routed("memo")) }
+        ui.waitUntil(10_000) {
+            val entries = WebSkinBridgeRuntime.state().optJSONArray("memoEntries")
+                ?: return@waitUntil false
+            (0 until entries.length()).any { index ->
+                entries.getJSONObject(index).optString("occurrenceKey") == selectedKey
+            }
+        }
+        val projected = WebSkinBridgeRuntime.state().getJSONArray("memoEntries")
+            .let { entries -> (0 until entries.length()).map(entries::getJSONObject) }
+            .single { it.getString("occurrenceKey") == selectedKey }
+        assertEquals(owner.eventSeq, projected.getLong("eventSeq"))
+        assertEquals(owner.revision, projected.getLong("revision"))
+        assertEquals(selectedKey, projected.getString("originalOccurrenceKey"))
+        assertFalse(projected.getBoolean("completed"))
+        val countsBeforeToggle = StoreCounts.read(store)
+        val toggle = WebSkinAction.ToggleMemo(
+            owner.eventSeq, owner.revision, selectedKey, completed = false
+        )
+
+        ui.runOnIdle { WebSkinBridgeRuntime.onAction(toggle) }
+        ui.waitUntil(10_000) {
+            val current = store.get(owner.eventSeq)
+            current?.revision == owner.revision + 1 && selectedKey in current.completedKeys
+        }
+        val completed = requireNotNull(store.get(owner.eventSeq))
+        assertEquals(owner.revision + 1, completed.revision)
+        assertTrue(selectedKey in completed.completedKeys)
+        assertFalse(nextKey in completed.completedKeys)
+        val countsAfterToggle = countsBeforeToggle.copy(commits = countsBeforeToggle.commits + 1)
+        assertEquals(countsAfterToggle, StoreCounts.read(store))
+        ui.waitForIdle()
+
+        var revisionBeforeReplay = 0L
+        ui.runOnIdle { revisionBeforeReplay = WebSkinBridgeRuntime.stateRevision }
+        ui.runOnIdle { WebSkinBridgeRuntime.onAction(toggle) }
+        ui.waitUntil(10_000) {
+            var revision = revisionBeforeReplay
+            ui.runOnUiThread { revision = WebSkinBridgeRuntime.stateRevision }
+            revision > revisionBeforeReplay
+        }
+        assertEquals("a replay with the old revision/completion snapshot cannot toggle twice",
+            completed, store.get(owner.eventSeq))
+        assertEquals(countsAfterToggle, StoreCounts.read(store))
+
+        ui.runOnUiThread { ui.activity.setContent {} }
+        ui.waitForIdle()
+        store.close()
+        store = PowerStore(storage, databaseName)
+        val reopened = requireNotNull(store.get(owner.eventSeq))
+        assertTrue(selectedKey in reopened.completedKeys)
+        assertFalse(nextKey in reopened.completedKeys)
+        assertEquals(completed.revision, reopened.revision)
     }
 
     @Test

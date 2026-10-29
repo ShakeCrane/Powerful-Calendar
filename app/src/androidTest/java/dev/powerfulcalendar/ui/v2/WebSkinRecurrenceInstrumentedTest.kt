@@ -18,6 +18,7 @@ import dev.powerfulcalendar.core.Recurrence
 import dev.powerfulcalendar.core.RecurrenceFreq
 import dev.powerfulcalendar.core.TemporalKind
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -251,6 +252,100 @@ class WebSkinRecurrenceInstrumentedTest {
             assertEquals(pendingBefore, store.pendingCount())
             awaitJs(view, "document.querySelector('#sheetStatus').textContent.includes('草稿已发布')")
             awaitJs(view, "document.querySelector('#skinSheet').hidden")
+        } finally {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            store.close()
+            context.deleteDatabase(database)
+        }
+    }
+
+    @Test fun webViewMemoToggleIsOccurrenceScopedRevisionGuardedAndDurable() {
+        val context: Context = compose.activity.applicationContext
+        val database = "skin-memo-toggle-${UUID.randomUUID()}.db"
+        var store = PowerStore(context, database)
+        val zone = ZoneId.systemDefault()
+        val firstDate = LocalDate.now(zone).plusDays(1)
+        val card = store.newDraft(DraftForm(kind = TemporalKind.MEMO,
+            title = "重复 Memo 状态测试", startText = firstDate.toString(), zoneId = zone.id,
+            recurrence = Recurrence(freq = RecurrenceFreq.DAILY, count = 3)))
+        assertTrue(store.commit(card.draftId) is PowerStore.CommitOutcome.Committed)
+        val owner = requireNotNull(store.get(card.eventSeq))
+        val key = "${firstDate}T00:00"
+        context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+            .edit().putBoolean("system-calendar-import-asked", true).commit()
+
+        try {
+            compose.runOnUiThread {
+                SkinPackageManager(context).select("powercal-clear-default")
+                compose.activity.setContent { PowerCalTheme { PowerCalApp(store) } }
+            }
+            var web: WebView? = null
+            compose.waitUntil(30_000) {
+                compose.runOnUiThread {
+                    web = findWebView(compose.activity.findViewById(android.R.id.content))
+                }
+                web != null
+            }
+            val view = requireNotNull(web)
+            awaitJs(view, "!!document.querySelector(\".clear-tabbar [data-action='memo']\")")
+            evaluate(view, "document.querySelector(\".clear-tabbar [data-action='memo']\").click(); true")
+            awaitJs(view, "!document.querySelector('#memoPage').hidden")
+            val button = "document.querySelector(\"#memoList [data-action='toggleMemo']" +
+                "[data-event-seq='${card.eventSeq}'][data-occurrence-key='$key']\")"
+            awaitJs(view, "!!$button")
+            assertEquals("true", evaluate(view,
+                "$button.dataset.revision==='${owner.revision}' && $button.dataset.completed==='false'"))
+
+            val draftsBefore = store.draftCount()
+            val identitiesBefore = store.identityCount()
+            val commitsBefore = store.commitCount()
+            evaluate(view, "$button.click(); true")
+            compose.waitUntil(30_000) {
+                val current = store.get(owner.eventSeq)
+                current?.revision == owner.revision + 1 && key in current.completedKeys
+            }
+            val completed = requireNotNull(store.get(owner.eventSeq))
+            assertEquals(owner.revision + 1, completed.revision)
+            assertTrue(key in completed.completedKeys)
+            assertFalse("a sibling recurrence slot must remain incomplete",
+                "${firstDate.plusDays(1)}T00:00" in completed.completedKeys)
+            assertEquals(draftsBefore, store.draftCount())
+            assertEquals(identitiesBefore, store.identityCount())
+            assertEquals(commitsBefore + 1, store.commitCount())
+
+            evaluate(view, "document.querySelector('[data-filter=done]').click(); true")
+            awaitJs(view, "$button.dataset.completed==='true' && " +
+                "$button.getAttribute('aria-label')==='恢复未完成' && " +
+                "$button.dataset.revision==='${completed.revision}'")
+
+            var revisionBeforeReplay = 0L
+            compose.runOnIdle { revisionBeforeReplay = WebSkinBridgeRuntime.stateRevision }
+            compose.runOnUiThread {
+                WebSkinBridgeRuntime.onAction(WebSkinAction.ToggleMemo(
+                    owner.eventSeq, owner.revision, key, completed = false
+                ))
+            }
+            compose.waitUntil(10_000) {
+                var revision = revisionBeforeReplay
+                compose.runOnUiThread { revision = WebSkinBridgeRuntime.stateRevision }
+                revision > revisionBeforeReplay
+            }
+            assertEquals("replaying the stale UI snapshot cannot toggle the slot again",
+                completed, store.get(owner.eventSeq))
+            assertEquals(commitsBefore + 1, store.commitCount())
+
+            compose.runOnUiThread { compose.activity.setContent { } }
+            compose.waitForIdle()
+            store.close()
+            store = PowerStore(context, database)
+            val reopened = requireNotNull(store.get(owner.eventSeq))
+            assertEquals(completed.revision, reopened.revision)
+            assertTrue(key in reopened.completedKeys)
+            assertFalse("${firstDate.plusDays(1)}T00:00" in reopened.completedKeys)
         } finally {
             compose.runOnUiThread {
                 compose.activity.setContent { }
