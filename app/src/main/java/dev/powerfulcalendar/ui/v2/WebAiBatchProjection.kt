@@ -3,6 +3,9 @@ package dev.powerfulcalendar.ui.v2
 import dev.powerfulcalendar.ai.AiBatchRunner
 import dev.powerfulcalendar.core.DraftCard
 import dev.powerfulcalendar.core.PowerStore
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONObject
 
 /** Process-local progress only; identity and authorization data stay in the Host. */
@@ -12,6 +15,34 @@ internal data class WebAiBatchProgress(
     val done: Int,
     val total: Int
 )
+
+/** Process-lifetime, session-fenced progress shared by the runner and recreated UI compositions. */
+internal class WebAiBatchProgressTracker {
+    private val mutableProgress = MutableStateFlow<WebAiBatchProgress?>(null)
+    val progress: StateFlow<WebAiBatchProgress?> = mutableProgress.asStateFlow()
+
+    @Synchronized
+    fun begin(sessionId: String, mode: AiBatchRunner.Mode, total: Int) {
+        mutableProgress.value = if (total > 0) {
+            WebAiBatchProgress(sessionId, mode, done = 0, total = total)
+        } else null
+    }
+
+    @Synchronized
+    fun report(sessionId: String, mode: AiBatchRunner.Mode, done: Int, total: Int) {
+        val current = mutableProgress.value ?: return
+        if (current.sessionId != sessionId || current.mode != mode || current.total != total) return
+        val boundedDone = done.coerceIn(0, total)
+        if (boundedDone >= current.done) {
+            mutableProgress.value = current.copy(done = boundedDone)
+        }
+    }
+
+    @Synchronized
+    fun finish(sessionId: String) {
+        if (mutableProgress.value?.sessionId == sessionId) mutableProgress.value = null
+    }
+}
 
 /** Safe status projection for skins. It deliberately omits session IDs, epochs and draft IDs. */
 internal object WebAiBatchProjection {

@@ -894,6 +894,51 @@ class WebAiProposalReviewIntegrationTest {
     }
 
     @Test
+    fun clearBatchProjectionPublishesLiveRunnerProgress() {
+        val total = 10
+        repeat(total) { index ->
+            store.newDraft(DraftForm(
+                kind = TemporalKind.MEMO,
+                title = "进度投影 ${index + 1}",
+                zoneId = "Asia/Shanghai"
+            ))
+        }
+        mountAiBridgePage()
+        prepareWholeBatch(AiBatchRunner.Mode.PUBLISH)
+        ui.onNodeWithText("授权并发布 $total 张").performClick()
+
+        var observedProgress: JSONObject? = null
+        try {
+            ui.waitUntil(15_000) {
+                shadowOf(Looper.getMainLooper()).idle()
+                val batch = WebSkinBridgeRuntime.state().optJSONObject("aiBatch")
+                val progress = batch?.optJSONObject("progress")
+                if (batch?.optString("phase") == "RUNNING" && progress != null &&
+                    progress.optInt("done") in 1 until total && progress.optInt("total") == total) {
+                    observedProgress = progress
+                    true
+                } else false
+            }
+        } catch (error: Throwable) {
+            throw AssertionError(
+                "Clear Host projection never exposed live Runner progress: ${WebSkinBridgeRuntime.state()}",
+                error
+            )
+        }
+        assertNotNull(observedProgress)
+        assertTrue(requireNotNull(observedProgress).getInt("done") in 1 until total)
+        assertEquals(total, requireNotNull(observedProgress).getInt("total"))
+
+        ui.waitUntil(20_000) {
+            shadowOf(Looper.getMainLooper()).idle()
+            val batch = WebSkinBridgeRuntime.state().optJSONObject("aiBatch")
+            batch != null && batch.optString("phase") == "COMPLETED" && batch.isNull("progress")
+        }
+        assertEquals(total, store.all().size)
+        assertEquals(0, store.pendingCount())
+    }
+
+    @Test
     fun clearCanCancelRunningBatchAndKeepsCompletedAndPendingItems() {
         val total = 60
         repeat(total) { index ->

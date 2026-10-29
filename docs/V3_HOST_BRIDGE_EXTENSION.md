@@ -50,8 +50,10 @@ New:
 - `aiBatch` is a read-only status projection with `phase` (`IDLE`,
   `SELECTING`, `AWAITING_HOST_REVIEW`, `RUNNING`, `CANCEL_REQUESTED`,
   `INTERRUPTED`, `COMPLETED`, `CANCELLED`, or `FAILED`), operation counts,
-  aggregate scope/selection counts, cancellation/recovery affordances, and a
-  sanitized terminal report. It never contains session IDs, lock epochs, draft
+  aggregate scope/selection counts, cancellation/recovery affordances, optional
+  live `progress` (`done` / `total`) while the matching Host session is active,
+  and a sanitized terminal report. Progress is process-local, session-fenced,
+  and cleared when the runner ends; it never contains session IDs, lock epochs, draft
   IDs, reviewed versions, or raw failure/exception text. Its presence does not
   authorize or perform a write. `canRelease` becomes true only after a batch is
   `CANCEL_REQUESTED` and its heartbeat has been stale for at least ten minutes.

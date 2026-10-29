@@ -20,6 +20,25 @@ import org.robolectric.annotation.Config
 @Config(sdk = [34])
 class WebAiBatchProjectionTest {
     @Test
+    fun progressTrackerIsSessionFencedMonotonicAndClearedByOwner() {
+        val tracker = WebAiBatchProgressTracker()
+        tracker.begin("first", AiBatchRunner.Mode.PUBLISH, total = 3)
+        tracker.report("first", AiBatchRunner.Mode.PUBLISH, done = 1, total = 3)
+        tracker.report("first", AiBatchRunner.Mode.PUBLISH, done = 0, total = 3)
+        tracker.report("stale", AiBatchRunner.Mode.PUBLISH, done = 2, total = 3)
+
+        assertEquals(WebAiBatchProgress("first", AiBatchRunner.Mode.PUBLISH, 1, 3),
+            tracker.progress.value)
+        tracker.begin("second", AiBatchRunner.Mode.DISCARD, total = 2)
+        tracker.finish("first")
+        assertEquals(WebAiBatchProgress("second", AiBatchRunner.Mode.DISCARD, 0, 2),
+            tracker.progress.value)
+        tracker.report("second", AiBatchRunner.Mode.DISCARD, done = 2, total = 2)
+        tracker.finish("second")
+        assertEquals(null, tracker.progress.value)
+    }
+
+    @Test
     fun activeStateAndTerminalReportExposeOutcomesWithoutAuthorizationIdentity() {
         val session = PowerStore.AiSession(
             sessionId = "private-session-id",

@@ -62,6 +62,7 @@ import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableFloatStateOf
@@ -141,6 +142,7 @@ object PowerCalStores {
     val appScope = kotlinx.coroutines.CoroutineScope(
         kotlinx.coroutines.SupervisorJob() + Dispatchers.IO
     )
+    internal val aiBatchProgress = WebAiBatchProgressTracker()
 
     fun get(context: Context): PowerStore = instance ?: synchronized(this) {
         instance ?: PowerStore(context.applicationContext).also { instance = it }
@@ -177,6 +179,7 @@ private data class AppData(
 fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
     val context = LocalContext.current
     val appContext = context.applicationContext
+    val webAiBatchProgress by PowerCalStores.aiBatchProgress.progress.collectAsState()
     // Re-read on composition so sessions opened after a timezone change capture the current zone.
     val zone = ZoneId.systemDefault()
     val scope = rememberCoroutineScope()
@@ -1516,7 +1519,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                     preparationMode = pendingBatchMode,
                     reviewMode = confirmBatch?.mode,
                     reviewCards = confirmBatch?.cards,
-                    progress = null,
+                    progress = webAiBatchProgress,
                     nowMillis = nowMillis
                 ))
                 .put("chatAttachmentAvailable", canLaunchWebAiAttachmentPicker())
@@ -2670,7 +2673,18 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                         return@launch
                     }
                     withContext(Dispatchers.Main) { reload() }
-                    val report = AiBatchRunner(store).run(session, review.mode)
+                    PowerCalStores.aiBatchProgress.begin(
+                        session.sessionId, review.mode, session.scope.size
+                    )
+                    val report = try {
+                        AiBatchRunner(store).run(session, review.mode) { done, total ->
+                            PowerCalStores.aiBatchProgress.report(
+                                session.sessionId, review.mode, done, total
+                            )
+                        }
+                    } finally {
+                        PowerCalStores.aiBatchProgress.finish(session.sessionId)
+                    }
                     controller.refresh()
                     withContext(Dispatchers.Main) {
                         reload()
