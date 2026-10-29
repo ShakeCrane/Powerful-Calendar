@@ -30,8 +30,11 @@ internal object WebAiBatchProjection {
         val reportMode = persistedReport?.optString("mode")?.takeIf {
             it == AiBatchRunner.Mode.PUBLISH.name || it == AiBatchRunner.Mode.DISCARD.name
         }
+        val currentProgress = progress?.takeIf {
+            active && it.sessionId == session?.sessionId
+        }
         val mode = when {
-            active && progress?.sessionId == session?.sessionId -> progress.mode
+            currentProgress != null -> currentProgress.mode
             reviewCards != null -> reviewMode
             preparationMode != null -> preparationMode
             reportMode != null -> runCatching { AiBatchRunner.Mode.valueOf(reportMode) }.getOrNull()

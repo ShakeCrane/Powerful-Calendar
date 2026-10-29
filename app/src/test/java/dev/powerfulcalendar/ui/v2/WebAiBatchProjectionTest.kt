@@ -12,7 +12,12 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])
 class WebAiBatchProjectionTest {
     @Test
     fun activeStateAndTerminalReportExposeOutcomesWithoutAuthorizationIdentity() {
@@ -92,6 +97,33 @@ class WebAiBatchProjectionTest {
         assertTrue(awaitingHost.getBoolean("containsDelete"))
         assertFalse(awaitingHost.toString().contains("8101"))
         assertFalse(awaitingHost.toString().contains("待删事项"))
+    }
+
+    @Test
+    fun progressModeIsUsedOnlyForTheMatchingActiveSession() {
+        val session = PowerStore.AiSession(
+            sessionId = "active-session", lockEpoch = 7, scope = emptySet(),
+            allowedOperations = emptySet(), state = PowerStore.AiState.RUNNING,
+            startedAtMillis = 10, updatedAtMillis = 20
+        )
+        val matching = WebAiBatchProgress(
+            sessionId = "active-session", mode = AiBatchRunner.Mode.PUBLISH, done = 1, total = 2
+        )
+        val stale = matching.copy(sessionId = "previous-session", mode = AiBatchRunner.Mode.DISCARD)
+
+        val currentProjection = WebAiBatchProjection.project(
+            session, null, null, null, matching
+        )
+        val staleProjection = WebAiBatchProjection.project(
+            session, null, null, null, stale
+        )
+        val terminalProjection = WebAiBatchProjection.project(
+            session.copy(state = PowerStore.AiState.COMPLETED), null, null, null, matching
+        )
+
+        assertEquals("PUBLISH", currentProjection.getString("mode"))
+        assertTrue(staleProjection.isNull("mode"))
+        assertTrue(terminalProjection.isNull("mode"))
     }
 
     @Test
