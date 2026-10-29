@@ -122,9 +122,16 @@ async function main(){
       document.querySelector('#notificationPermissionStatus').textContent.includes('BLOCKED')`,
       "Mock permission state projection");
     const deniedText=await frameEval("document.querySelector('#notificationPermissionStatus').textContent");
+    await waitFor(frameEval,`document.querySelector('#exactAlarmPermissionStatus').textContent.includes('BLOCKED')&&
+      !document.querySelector('[data-action="openExactAlarmSettings"]').hidden`,
+      "Mock exact-alarm permission state projection");
+    const exactDeniedText=await frameEval("document.querySelector('#exactAlarmPermissionStatus').textContent");
     await frameEval(`document.querySelector('[data-action="requestNotificationPermission"]').click()`);
     await waitFor(evaluate,"document.querySelector('#bridgeLog').textContent.includes('不会调用 Android 系统权限')",
       "Mock permission action handling");
+    await frameEval(`document.querySelector('[data-action="openExactAlarmSettings"]').click()`);
+    await waitFor(evaluate,"document.querySelector('#bridgeLog').textContent.includes('不会启动 Android 系统设置')",
+      "Mock exact-alarm settings action");
     await frameEval(`document.querySelector('[data-action="nativeSettings"]').click()`);
     await waitFor(evaluate,"document.querySelector('#bridgeLog').textContent.includes('不启动 Android Host')",
       "Mock native recovery route");
@@ -134,6 +141,7 @@ async function main(){
       package:loaded,
       page:await evaluate("mockPage"),
       deniedText,
+      exactDeniedText,
       mockLog:(await evaluate("document.querySelector('#bridgeLog').innerText")).split("\n").slice(0,5)
     };
     const resultPath=path.join(reportDir,`studio-mock-${runId}.json`);

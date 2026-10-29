@@ -1435,6 +1435,12 @@ fun PowerCalApp(
                     }
                     WebSkinBridgeRuntime.stateRevision++
                 }
+                WebSkinAction.OpenExactAlarmSettings -> {
+                    if (exactAlarmSettingsLaunch(page, android.os.Build.VERSION.SDK_INT) ==
+                        ExactAlarmSettingsLaunch.OPEN_SETTINGS
+                    ) ReminderScheduler.openExactAlarmSettings(appContext)
+                    WebSkinBridgeRuntime.stateRevision++
+                }
                 is WebSkinAction.InvokeOption -> when {
                     aiLocked || editSession != null -> Unit
                     action.id == "calendar.import.file" ->
@@ -1614,6 +1620,10 @@ fun PowerCalApp(
                 android.os.Build.VERSION.SDK_INT,
                 ReminderScheduler.notificationsAllowed(appContext)
             )
+            val exactAlarmStatus = exactAlarmPermissionStatus(
+                android.os.Build.VERSION.SDK_INT,
+                ReminderScheduler.exactAlarmAllowed(appContext)
+            )
             JSONObject().put("bridgeVersion", WebSkinBridgeRuntime.VERSION).put("page", page)
                 .put("aiLocked", aiLocked).put("pendingCount", pendingCount)
                 .put("memoCount", todoCount)
@@ -1648,6 +1658,10 @@ fun PowerCalApp(
                 .put("notificationPermission", if (page == Page.SETTINGS.name) {
                     JSONObject().put("required", notificationStatus.required)
                         .put("allowed", notificationStatus.allowed)
+                } else JSONObject())
+                .put("exactAlarmPermission", if (page == Page.SETTINGS.name) {
+                    JSONObject().put("required", exactAlarmStatus.required)
+                        .put("allowed", exactAlarmStatus.allowed)
                 } else JSONObject())
                 .put("editing", webEditing.snapshot())
                 .put("optionGroups", SemanticOptions.toJson(enabled = semanticOptionsEnabled))

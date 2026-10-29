@@ -111,6 +111,7 @@ internal object WebSkinBridgeRuntime {
 internal sealed interface WebSkinAction {
     data class Routed(val name: String) : WebSkinAction
     data object RequestNotificationPermission : WebSkinAction
+    data object OpenExactAlarmSettings : WebSkinAction
     data class OpenEvent(
         val eventSeq: Long,
         val expectedRevision: Long,
@@ -171,6 +172,13 @@ internal data class NotificationPermissionStatus(
     val allowed: Boolean
 )
 
+internal enum class ExactAlarmSettingsLaunch { UNAVAILABLE, OPEN_SETTINGS }
+
+internal data class ExactAlarmPermissionStatus(
+    val required: Boolean,
+    val allowed: Boolean
+)
+
 internal fun notificationPermissionLaunch(page: String, sdkInt: Int): NotificationPermissionLaunch {
     if (page != "SETTINGS") return NotificationPermissionLaunch.UNAVAILABLE
     return if (sdkInt >= Build.VERSION_CODES.TIRAMISU) {
@@ -186,6 +194,21 @@ internal fun notificationPermissionStatus(
 ): NotificationPermissionStatus {
     val required = sdkInt >= Build.VERSION_CODES.TIRAMISU
     return NotificationPermissionStatus(required, allowed = !required || permissionAllowed)
+}
+
+internal fun exactAlarmSettingsLaunch(page: String, sdkInt: Int): ExactAlarmSettingsLaunch =
+    if (page == "SETTINGS" && sdkInt >= Build.VERSION_CODES.S) {
+        ExactAlarmSettingsLaunch.OPEN_SETTINGS
+    } else {
+        ExactAlarmSettingsLaunch.UNAVAILABLE
+    }
+
+internal fun exactAlarmPermissionStatus(
+    sdkInt: Int,
+    permissionAllowed: Boolean
+): ExactAlarmPermissionStatus {
+    val required = sdkInt >= Build.VERSION_CODES.S
+    return ExactAlarmPermissionStatus(required, allowed = !required || permissionAllowed)
 }
 
 internal enum class AiProposalDecision { PUBLISH, STAGE, REJECT, SUPPLEMENT }
@@ -399,6 +422,8 @@ internal fun decodeBridgeAction(raw: String): WebSkinAction? {
             if (keys == setOf("name")) WebSkinAction.Routed(name) else null
         "requestNotificationPermission" -> if (keys == setOf("name"))
             WebSkinAction.RequestNotificationPermission else null
+        "openExactAlarmSettings" -> if (keys == setOf("name"))
+            WebSkinAction.OpenExactAlarmSettings else null
         "invokeOption" -> {
             if (keys != setOf("name", "id")) return null
             val id = payload.opt("id")

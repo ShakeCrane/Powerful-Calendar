@@ -24,6 +24,10 @@ class WebSkinBridgeTest {
             """{"version":1,"type":"action","payload":{"name":"requestNotificationPermission"}}"""))
         assertNull(decodeBridgeAction(
             """{"version":1,"type":"action","payload":{"name":"requestNotificationPermission","granted":true}}"""))
+        assertEquals(WebSkinAction.OpenExactAlarmSettings, decodeBridgeAction(
+            """{"version":1,"type":"action","payload":{"name":"openExactAlarmSettings"}}"""))
+        assertNull(decodeBridgeAction(
+            """{"version":1,"type":"action","payload":{"name":"openExactAlarmSettings","package":"other.app"}}"""))
         assertEquals(WebSkinAction.LoadMoreMemo, decodeBridgeAction(
             """{"version":1,"type":"action","payload":{"name":"loadMoreMemo"}}"""))
         assertNull(decodeBridgeAction(
@@ -110,5 +114,21 @@ class WebSkinBridgeTest {
             notificationPermissionStatus(35, permissionAllowed = false))
         assertEquals(NotificationPermissionStatus(required = true, allowed = true),
             notificationPermissionStatus(35, permissionAllowed = true))
+    }
+
+    @Test fun exactAlarmSettingsAreAvailableOnlyOnSettingsAndAndroid12Plus() {
+        assertEquals(ExactAlarmSettingsLaunch.UNAVAILABLE,
+            exactAlarmSettingsLaunch("TIMELINE", 35))
+        assertEquals(ExactAlarmSettingsLaunch.UNAVAILABLE,
+            exactAlarmSettingsLaunch("SETTINGS", 30))
+        assertEquals(ExactAlarmSettingsLaunch.OPEN_SETTINGS,
+            exactAlarmSettingsLaunch("SETTINGS", 31))
+
+        assertEquals(ExactAlarmPermissionStatus(required = false, allowed = true),
+            exactAlarmPermissionStatus(30, permissionAllowed = false))
+        assertEquals(ExactAlarmPermissionStatus(required = true, allowed = false),
+            exactAlarmPermissionStatus(35, permissionAllowed = false))
+        assertEquals(ExactAlarmPermissionStatus(required = true, allowed = true),
+            exactAlarmPermissionStatus(35, permissionAllowed = true))
     }
 }

@@ -26,6 +26,9 @@
 <section id="settingsPage" class="page" hidden>
 <div class="page-head"><h1>设置</h1></div>
 <div class="section-label">提醒可靠性</div>
+<p id="exactAlarmPermissionStatus" class="quiet" role="status" aria-live="polite" aria-atomic="true">正在读取精确闹钟权限状态…</p>
+<button class="memo-limit" type="button" data-action="openExactAlarmSettings" hidden>打开精确闹钟设置</button>
+<p class="quiet">精确闹钟访问被拒绝时，需要精确时刻的提醒会保持 BLOCKED。</p>
 <p id="notificationPermissionStatus" class="quiet" role="status" aria-live="polite" aria-atomic="true">正在读取通知权限状态…</p>
 <button class="memo-limit" type="button" data-action="requestNotificationPermission">管理通知权限</button>
 <p class="quiet">通知权限被拒绝时，提醒触发会被记录为 BLOCKED；PowerCal 不会假装已提醒。</p>

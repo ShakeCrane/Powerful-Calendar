@@ -49,6 +49,7 @@ object ReminderScheduler {
     /** Idempotent: safe to call after boot, timezone change, permission change or a commit. */
     fun reconcile(context: Context, store: PowerStore) {
         val now = System.currentTimeMillis()
+        if (exactAlarmAllowed(context)) store.retryExactIntentsAfterPermissionGrant(now)
         // One pass over a generous window; `markIntent` is revision-guarded so a row replaced by a
         // concurrent commit is never mislabelled.
         store.dueIntents(limit = 400).forEach { intent ->

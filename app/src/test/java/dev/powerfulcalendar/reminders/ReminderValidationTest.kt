@@ -174,6 +174,13 @@ class ReminderValidationTest {
         val blocked = store.intentFor(seq)!!
         assertEquals(PowerStore.DesiredSchedule.BLOCKED, blocked.desired)
         assertTrue(blocked.androidHint.orEmpty().contains("精确闹钟权限"))
+
+        ShadowAlarmManager.setCanScheduleExactAlarms(true)
+        ReminderScheduler.reconcile(context, store)
+
+        assertEquals(PowerStore.DesiredSchedule.SCHEDULED, store.intentFor(seq)!!.desired)
+        assertEquals("permission grant retries the durable exact reminder",
+            1, shadowAlarmManager.scheduledAlarms.size)
     }
 
     @Test

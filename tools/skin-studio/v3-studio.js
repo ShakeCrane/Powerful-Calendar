@@ -408,6 +408,7 @@ const ACTIONS=[
   ["timeline","时间轴"],
   ["month","月历"],["memo","Memo"],["ai","AI"],
   ["settings","设置"],["requestNotificationPermission","请求通知权限"],
+  ["openExactAlarmSettings","打开精确闹钟设置"],
   ["nativeSettings","打开原生设置"],["openDeck","草稿卡组"],
   ["panTimeline","时间轴向后 30 分钟"],["zoomTimeline","时间轴缩放"],
   ["resetTimelineZoom","重置时间轴缩放"],["jumpTimelineDay","跳到今天"],
@@ -764,6 +765,7 @@ function simulatedState(){
   const memoTruncated=memoEntries.length<allMemoEntries.length;
   return {bridgeVersion:1,page:mockPage,
     notificationPermission:mockPage==="SETTINGS"?{required:true,allowed:false}:{},
+    exactAlarmPermission:mockPage==="SETTINGS"?{required:true,allowed:false}:{},
     memoCount:allMemoEntries.filter(item=>!item.completed).length,aiLocked:mockAiLocked,
     aiBatch:scenario==="ai-review-batch"?{
       phase:"SELECTING",state:null,active:false,canCancel:true,canRelease:false,
@@ -1644,6 +1646,13 @@ function onSkinAction(message){
         logAction("拒绝非设置页或格式无效的通知权限请求");return;
       }
       logAction("Studio Mock 收到通知权限请求；不会调用 Android 系统权限或修改真实状态");
+      return;
+    }
+    if(name==="openExactAlarmSettings"){
+      if(Object.keys(p).sort().join(",")!=="name"||mockPage!=="SETTINGS"){
+        logAction("拒绝非设置页或格式无效的精确闹钟设置请求");return;
+      }
+      logAction("Studio Mock 收到精确闹钟设置请求；不会启动 Android 系统设置");
       return;
     }
     if(name==="nativeSettings"){

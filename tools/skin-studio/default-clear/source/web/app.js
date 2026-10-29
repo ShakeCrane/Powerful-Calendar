@@ -453,21 +453,41 @@ function renderSettings(){
   const status=state.notificationPermission;
   const label=$("notificationPermissionStatus");
   const button=document.querySelector('[data-action="requestNotificationPermission"]');
-  if(!label||!button)return;
-  if(!status||typeof status.required!=="boolean"||typeof status.allowed!=="boolean"){
-    label.textContent="暂时无法读取通知权限状态。";
-    button.textContent="重新读取通知权限";
-    return;
+  if(label&&button){
+    if(!status||typeof status.required!=="boolean"||typeof status.allowed!=="boolean"){
+      label.textContent="暂时无法读取通知权限状态。";
+      button.textContent="重新读取通知权限";
+    }else if(!status.required){
+      label.textContent="当前 Android 版本无需运行时通知权限。";
+      button.textContent="打开系统通知设置";
+    }else if(status.allowed){
+      label.textContent="通知权限已允许；提醒仍可能受系统闹钟或后台限制影响。";
+      button.textContent="通知权限已允许";
+    }else{
+      label.textContent="通知权限未允许；提醒触发会被记录为 BLOCKED。";
+      button.textContent="请求通知权限";
+    }
   }
-  if(!status.required){
-    label.textContent="当前 Android 版本无需运行时通知权限。";
-    button.textContent="打开系统通知设置";
-  }else if(status.allowed){
-    label.textContent="通知权限已允许；提醒仍可能受系统闹钟或后台限制影响。";
-    button.textContent="通知权限已允许";
+
+  const exactStatus=state.exactAlarmPermission;
+  const exactLabel=$("exactAlarmPermissionStatus");
+  const exactButton=document.querySelector('[data-action="openExactAlarmSettings"]');
+  if(!exactLabel||!exactButton)return;
+  if(!exactStatus||typeof exactStatus.required!=="boolean"||
+    typeof exactStatus.allowed!=="boolean"){
+    exactLabel.textContent="暂时无法读取精确闹钟权限状态。";
+    exactButton.hidden=true;
+  }else if(!exactStatus.required){
+    exactLabel.textContent="当前 Android 版本无需单独授权精确闹钟。";
+    exactButton.hidden=true;
+  }else if(exactStatus.allowed){
+    exactLabel.textContent="精确闹钟访问已允许；后台投递仍可能受设备厂商限制。";
+    exactButton.textContent="精确闹钟设置";
+    exactButton.hidden=false;
   }else{
-    label.textContent="通知权限未允许；提醒触发会被记录为 BLOCKED。";
-    button.textContent="请求通知权限";
+    exactLabel.textContent="精确闹钟访问未允许；需要精确时刻的提醒会保持 BLOCKED。";
+    exactButton.textContent="打开精确闹钟设置";
+    exactButton.hidden=false;
   }
 }
 function renderTimeline(){

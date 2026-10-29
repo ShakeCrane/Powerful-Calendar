@@ -2451,6 +2451,26 @@ class PowerStore(
             arrayOf(limit.toString())
         ).use { cursor -> readIntents(cursor) }
 
+    /** Requeue only exact reminders that were blocked because Android denied exact-alarm access. */
+    @Synchronized
+    fun retryExactIntentsAfterPermissionGrant(nowMillis: Long = System.currentTimeMillis()): Int =
+        tx { db ->
+            db.update(
+                "schedule_intents",
+                ContentValues().apply {
+                    put("desired_state", DesiredSchedule.PENDING.name)
+                    putNull("android_hint")
+                    put("updated_ms", nowMillis)
+                },
+                "requirement=? AND desired_state=? AND android_hint=?",
+                arrayOf(
+                    TriggerRequirement.EXACT.name,
+                    DesiredSchedule.BLOCKED.name,
+                    "缺少精确闹钟权限"
+                )
+            )
+        }
+
     @Synchronized
     fun intentsInState(state: DesiredSchedule, limit: Int = 100): List<ScheduleIntent> =
         readableDatabase.rawQuery(
