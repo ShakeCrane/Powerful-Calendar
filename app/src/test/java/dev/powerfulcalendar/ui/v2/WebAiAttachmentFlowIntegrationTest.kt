@@ -238,7 +238,7 @@ class WebAiAttachmentFlowIntegrationTest {
     }
 
     @Test
-    fun skinPickedIcsCreatesUserDraftsAndSameFileReimportIsIdempotent() {
+    fun clearMonthFileImportAndAiAttachmentShareLocalIcsImportAndIdempotence() {
         val ics = """BEGIN:VCALENDAR
 VERSION:2.0
 PRODID:-//PowerCal Test//ICS Import//EN
@@ -281,7 +281,21 @@ END:VCALENDAR
         ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.Routed("ai")) }
         ui.waitForIdle()
 
-        fun pickTheSameIcs() {
+        fun importFromClearMonthFileOption() {
+            ui.runOnIdle {
+                WebSkinBridgeRuntime.onAction(WebSkinAction.InvokeOption("calendar.import.file"))
+            }
+            ui.waitForIdle()
+            assertEquals(Intent.ACTION_OPEN_DOCUMENT, resultRegistry.lastIntent?.action)
+            assertTrue(resultRegistry.dispatch(uri))
+            ui.waitUntil(20_000) {
+                store.pendingDrafts().size == 2 &&
+                    ui.onAllNodesWithContentDescription("保存并退出待处理")
+                        .fetchSemanticsNodes().isNotEmpty()
+            }
+        }
+
+        fun reimportFromAiAttachment() {
             ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.PickAiFile) }
             ui.waitForIdle()
             assertTrue("Host must mark the attachment picker active",
@@ -304,7 +318,7 @@ END:VCALENDAR
             }
         }
 
-        pickTheSameIcs()
+        importFromClearMonthFileOption()
 
         val firstImport = store.pendingDrafts()
         assertEquals(listOf("Separation kickoff", "Parity review"),
@@ -327,7 +341,7 @@ END:VCALENDAR
         val nextSequenceAfterFirstImport = store.nextSequencePreview()
 
         closeDeck()
-        pickTheSameIcs()
+        reimportFromAiAttachment()
         closeDeck()
 
         assertEquals("re-import must not create duplicate drafts", firstImport,
