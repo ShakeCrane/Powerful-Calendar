@@ -1218,7 +1218,7 @@ fun PowerCalApp(
                     } ?: error("无法写入所选文件")
                 }
             }.onSuccess {
-                message = "已导出活动 ICS；未包含活动提醒、闹钟、截止、备忘与完成状态。" +
+                message = "已导出活动 ICS；未包含活动启用/停用状态、活动提醒、闹钟、截止、备忘与完成状态。" +
                     "请使用原生备份保留完整数据"
             }.onFailure { error ->
                 message = "ICS 导出受阻：" + (error.message ?: error.javaClass.simpleName)
@@ -3028,7 +3028,7 @@ internal fun NativeToolsPage(
                 onRestoreBackup,
                 enabled = !aiLocked
             )
-            ToolRow("导出 ICS", "仅导出活动且不含活动提醒；闹钟、截止、备忘与完成状态不会由 ICS 保留",
+            ToolRow("导出 ICS", "仅导出活动且不含活动启用/停用状态与活动提醒；闹钟、截止、备忘与完成状态不会由 ICS 保留",
                 onExportIcs)
         }
 

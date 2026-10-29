@@ -412,7 +412,7 @@ class WebSkinHostProjectionTest {
             .single { it.id == "calendar.export.ics" }
         assertTrue(SemanticOptions.supports(item.id))
         assertEquals("导出 ICS", item.label)
-        listOf("活动提醒", "闹钟", "截止", "备忘", "完成状态", "原生备份")
+        listOf("活动启用/停用状态", "活动提醒", "闹钟", "截止", "备忘", "完成状态", "原生备份")
             .forEach { assertTrue("ICS warning must include $it", item.detail.contains(it)) }
     }
 }

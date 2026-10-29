@@ -103,6 +103,7 @@ class SemanticIcsExportIntegrationTest {
         val option = SemanticOptions.groups.flatMap { it.items }
             .single { it.id == "calendar.export.ics" }
         assertTrue(SemanticOptions.supports(option.id))
+        assertTrue(option.detail.contains("活动启用/停用状态"))
         assertTrue(option.detail.contains("活动提醒"))
         assertTrue(option.detail.contains("闹钟"))
         assertTrue(option.detail.contains("截止"))
@@ -123,7 +124,7 @@ class SemanticIcsExportIntegrationTest {
             launched.getStringExtra(Intent.EXTRA_TITLE))
         assertTrue(resultRegistry.dispatch(outputUri))
 
-        val success = "已导出活动 ICS；未包含活动提醒、闹钟、截止、备忘与完成状态。请使用原生备份保留完整数据"
+        val success = "已导出活动 ICS；未包含活动启用/停用状态、活动提醒、闹钟、截止、备忘与完成状态。请使用原生备份保留完整数据"
         ui.waitUntil(20_000) {
             output.size() > 0 &&
                 ui.onAllNodesWithText(success).fetchSemanticsNodes().isNotEmpty()

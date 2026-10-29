@@ -477,7 +477,7 @@ async function main(){
         const option=document.querySelector('[data-action="invokeOption"][data-option-id="calendar.export.ics"]');
         if(!option||!option.textContent.includes('导出 ICS'))throw Error('ICS export option missing');
         const detail=option.querySelector('.optionDescription')?.textContent||'';
-        for(const term of ['活动提醒','闹钟','截止','备忘','原生备份'])
+        for(const term of ['活动启用/停用状态','活动提醒','闹钟','截止','备忘','原生备份'])
           if(!detail.includes(term))throw Error('ICS loss warning missing: '+term);
         option.click();
         return {visible:true,lossWarningVisible:true,clicked:true};

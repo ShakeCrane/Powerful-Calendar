@@ -721,7 +721,7 @@ function simulatedState(){
   });
   const exportItems=[{
     id:"calendar.export.ics",label:"导出 ICS",
-    detail:"仅导出活动且不含活动提醒；闹钟、截止、备忘与完成状态不会由 ICS 保留。需要完整恢复请使用原生备份。",
+    detail:"仅导出活动且不含活动启用/停用状态与活动提醒；闹钟、截止、备忘与完成状态不会由 ICS 保留。需要完整恢复请使用原生备份。",
     icon:"file",enabled:scenario!=="locked"
   }];
   const start=anchor-hours*1800000;
