@@ -1,5 +1,15 @@
 # Core freeze progress
 
+## Separation — Clear AI 批次实时进度 `S0-AI-04a`（2026-10-30，Host/Preview PASS；Android WebView HOLD）
+
+- 根因：`AiBatchRunner` 原已逐项提供 `onProgress(done,total)`，Clear 已渲染 `aiBatch.progress`，但 `PowerCalApp` 生产投影始终传 `progress=null`。
+- 修复：新增进程级 session-fenced StateFlow tracker；Host Compose 收集并投影当前匹配 session 的进度，Runner 回调逐项更新，结束时由对应 session 清理。过期回调不能覆盖新批次；投影不暴露身份或授权信息、不写数据库。Clear Preview E2E 增加 `进度 1/3` 文案断言。
+- 定向回归 **20/20 PASS**（投影/tracker 5/5，PowerCalApp Host 集成 15/15），其中 10 项真实 Store Runner 流程验证了中途进度以及完成后的清理。日志 SHA-256 `A538E9DE979AABD6C122E4F6A9EB700065FA251518C2F02B56E286615ABBD689`。
+- 完整离线 Gradle **663/663 JVM tests、87 suites、0 failures/errors/skips、88/88 tasks PASS**；源码边界、Debug/AndroidTest APK 构建、Lint 全通过（0 errors / 52 warnings）。日志 SHA-256 `DB7827B520B12D8C26FC2398536937A30408ADA84467D94A9C4A820A0CBFB317`。Debug APK SHA-256 `6C042F46386C5071C1BFDB82A6A06BBB364F87D0A400A42B2793A0BD3589B89D`；AndroidTest APK SHA-256 `C23375D347A00880431B9A2807E0BFAB005973D690A8FF8BECC4DF94B6122931`。
+- Skin Studio Python **61/61 PASS**，Clear Preview Chrome E2E **PASS**（真实 Clear 文案显示 `进度 1/3`，仅 Preview Mock），canonical Clear **9 files / 392,170 bytes PASS**，SHA-256 `af640cbca89a870c2d1ea733eb562ed35e6082b75b08fe7aa37afa9d4ff6f98a`。日志见 `.local/android-test/reports/separation-s0-ai-progress-20261030/` 及 Issue 报告。
+- 生产 Android WebView/WebMessagePort 传输、真机和模拟器 **NOT TESTED**：`adb devices -l` 无设备、SDK 无 emulator binary，instrumentation 未运行。AI 实时进度实现与 Preview 子项 PASS，父项 `S0-AI-04` 仍 **PARTIAL / HOLD**。
+- 实现提交并推送：`c67fd0b5abdbf2a0c45f5f27c8d98e2cdb101c83`（`fix(分离): 接通 Clear AI 批次实时进度`）。独立报告：[PC-ISSUE-SEPARATION-AI-BATCH-LIVE-PROGRESS](../issues/PC-ISSUE-SEPARATION-AI-BATCH-LIVE-PROGRESS.md)。
+
 ## Separation — Clear 通知权限入口 `S0-ST-18` / Settings 路由 `S0-ST-01`（2026-10-30，PARTIAL / HOLD）
 
 - 根因：Clear 的 `settings` 直接进入受保护的 Native Tools；Bridge 没有通知权限 action/state，Studio Mock 也不识别该路由。Native Android 权限 launcher 和 `BLOCKED` 提醒语义原本已存在。

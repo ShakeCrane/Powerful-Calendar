@@ -94,3 +94,7 @@
 
 - 批次投影修复：`9bc84263980b7af54601867808d6c19b5afe7bb6` — `fix(分离): 修复 AI 批次进度空值投影`，已推送。
 - AI Host 集成测试稳定化：`4afc9a46221cb70e2230a25b3dc41a8577610f7f` — `test(分离): 稳定 AI Host 集成回归`，已推送。
+
+### 实时进度连接补记（2026-10-30）
+
+后续复查发现 Runner 已发出进度回调、Clear 也已能呈现 `done/total`，但生产 `PowerCalApp` 状态投影固定传 `null`。该连接缺口已通过进程级 session-fenced StateFlow 和真实 Host 批次回归修复；定向 20/20、当前完整 Gradle 663/663、Studio Python 61/61、Clear Preview E2E 和 canonical 包校验均通过。详细根因、命令、日志哈希及 APK 哈希见 [PC-ISSUE-SEPARATION-AI-BATCH-LIVE-PROGRESS](PC-ISSUE-SEPARATION-AI-BATCH-LIVE-PROGRESS.md)。生产 Android WebView 到 Clear 的设备链路仍未测试，因此本父 Issue 继续 **PARTIAL / HOLD**。
