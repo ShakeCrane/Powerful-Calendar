@@ -43,3 +43,16 @@ Clear 的规范 `edit.js` 路径会把 Memo 重复实例的原始槽位键传给
 
 - `a10c18d64fabb86052e28c04343bea3fac53cc5d` — `fix(分离): 保留 Memo fallback 的重复实例`，已推送至 `origin/codex/separation-s0-timeline-drag`。
 - fallback 的特定缺陷已修复并有 Host/Compose/Chrome Mock 证据。由于 Android WebView 执行和同数据 Native/Clear 配对回放未做，重建矩阵 `S0-ME-03` 及父级 Memo parity 仍为 **NOT TESTED / unsigned**；需后续可用 Android 环境与配对回放补齐，不能将本报告解释为皮肤分离 GO。
+
+## 当前分支复核（2026-10-30）
+
+此前进度记录把 S0-ME-03 再次列为待查源代码缺口；本次核对当前分支后确认这条候选已由 `a10c18d` 及后续 Issue 记录修复，不需要更改 action schema。规范 `edit.js` 路径和 `app.js` 通用 fallback 都从 Memo title button 读取 `data-original-occurrence-key`；现有 Chrome/CDP 脚本会强制 `PowerCalEdit.routeAction=()=>false`，实际触发 generic fallback 并断言完整 payload。
+
+在当前提交树上重跑：
+
+- `node tools/skin-studio/tests/e2e_v3_memo_occurrence_toggle.cjs`：**Chrome 156/CDP PASS**。加载 canonical Clear 9-file 包；目标 Memo `eventSeq=31 / revision=3 / occurrenceKey=2026-10-23T00:00` 被单独完成，邻近实例保持未完成，stale toggle 被拒；强制 fallback 后 Preview Mock 收到相同 owner/revision/key。
+- 结果 JSON：`.local/android-test/reports/separation-s0-ai-batch-20261030/memo-occurrence-toggle/memo-occurrence-toggle-result.json`，SHA-256 `40470E1C2E2026E3D02988FE426E1EAC821CCAAE23E2EFEDD01E0A5B9EB70318`。
+- Chrome Preview 截图：`memo-occurrence-toggle-studio-preview.png`，SHA-256 `D11D77D9AD75ACC4DA578907C973416AC687C5152247754C59184F09ECADF9ED`；运行日志 SHA-256 `C3B726705C32CFB824D4D26BB0319C1F2670BCF1C915D196BCE9DDED6403C397`。
+- `node --check tools/skin-studio/tests/e2e_v3_memo_occurrence_toggle.cjs`：PASS。
+
+本次仅复核已有行为，没有源码改动。Chrome/Studio Mock 不能替代 Android WebView。`S0-ME-03` 的 source/Host/Mock 路径已验证；Android WebView、物理/OEM 运行和同数据 Native/Clear 完整配对仍 **NOT TESTED**，该 parity 行保持 **NOT TESTED / unsigned**。
