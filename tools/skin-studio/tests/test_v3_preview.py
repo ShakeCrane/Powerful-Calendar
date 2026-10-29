@@ -112,6 +112,59 @@ class PreviewParityTest(unittest.TestCase):
                          {path: base64.b64decode(data)
                           for path, data in reimported["files"].items()})
 
+    def test_unedited_v3_import_preview_export_reimport_preserves_every_file(self):
+        template = json.loads(self.get("/api/template-v3"))
+        template["manifest"]["x-vendor-metadata"] = {
+            "publisher": "roundtrip-fixture",
+            "nested": {"labels": ["keep", "all"], "enabled": True},
+        }
+        files = {path: base64.b64decode(value)
+                 for path, value in template["files"].items()}
+        project = json.loads(files["project.json"])
+        project["x-vendor-project"] = {"custom": ["untouched", 17]}
+        files["project.json"] = json.dumps(
+            project, ensure_ascii=False, separators=(",", ":")
+        ).encode("utf-8")
+        files["web/extra.js"] = b"window.roundTripFixture = 'preserve';\n"
+        files["assets/provenance.bin"] = b"\x00\xff\x10binary\x00asset"
+
+        original_package = v3.build_files(template["manifest"], files)
+        original_manifest, original_files = v3.unpack(original_package)
+        request = Request(self.base + "/api/import-v3", original_package,
+                          {"Content-Type": "application/octet-stream"}, method="POST")
+        with urlopen(request) as response:
+            imported = json.loads(response.read())
+        imported_files = {path: base64.b64decode(value)
+                          for path, value in imported["files"].items()}
+        self.assertEqual(original_manifest, imported["manifest"])
+        self.assertEqual(original_files, imported_files)
+
+        preview = json.loads(self.post("/api/preview-v3", imported))
+        preview_prefix, entrypoint, suffix = preview["url"].rpartition("web/index.html")
+        self.assertEqual("web/index.html", entrypoint)
+        self.assertEqual("", suffix)
+        for path, expected in original_files.items():
+            if path == "project.json":
+                continue
+            with self.subTest(preview_path=path):
+                self.assertEqual(expected, self.get(preview_prefix + path), path)
+
+        exported = self.post("/api/export-v3", imported)
+        exported_manifest, exported_files = v3.unpack(exported)
+        # ZIP container serialization may normalize JSON key order; the contract
+        # here is exact project/resource bytes and equivalent Manifest fields.
+        self.assertEqual(original_manifest, exported_manifest)
+        self.assertEqual(original_files, exported_files)
+
+        request = Request(self.base + "/api/import-v3", exported,
+                          {"Content-Type": "application/octet-stream"}, method="POST")
+        with urlopen(request) as response:
+            reimported = json.loads(response.read())
+        self.assertEqual(original_manifest, reimported["manifest"])
+        self.assertEqual(original_files,
+                         {path: base64.b64decode(value)
+                          for path, value in reimported["files"].items()})
+
     def test_block_traversal_and_missing_token(self):
         obj = json.loads(self.get("/api/template-v3"))
         endpoint = json.loads(self.post("/api/preview-v3", obj))["url"]

@@ -1,5 +1,11 @@
 # Core freeze progress
 
+## Separation — v3 无修改导入/预览/导出往返 `S0-PKG-02` (2026-10-29, PARTIAL)
+
+- 新增生产 Studio HTTP 流程回归：从含 vendor Manifest 元数据、原有能力、扩展 `project.json` 字段、额外 JS 与 binary asset 的 11-file v3 包开始；无编辑导入、预览并逐文件请求所有 Web/asset 路径、导出、重新导入，完整 Manifest 和每份文件字节都一致。导出的 ZIP 容器编码不要求与输入 archive 相同；测试按合同校验 Manifest 字段与内容字节，发现这不是内容丢失。
+- `PreviewParityTest` 定向 **7/7 PASS**；完整 Skin Studio Python **61/61 PASS**。日志 SHA-256 和精确测试边界见 [PC-ISSUE-SEPARATION-S0-PKG-02-ROUNDTRIP](../issues/PC-ISSUE-SEPARATION-S0-PKG-02-ROUNDTRIP.md)。
+- 本证据只覆盖一个扩展 Clear 的 v3 no-edit fixture 和真实 Studio HTTP endpoints；浏览器 UI 全部导入形状、任意 package corpus、Android 安装运行和设备行为仍 **NOT TESTED**。`S0-PKG-02` 保持 PARTIAL，S0-PKG-03 组合编辑 CRUD→runtime round-trip 继续开放。
+
 ## Separation — Clear source / APK / Studio provenance `S0-PKG-01` (2026-10-29, PASS for provenance slice)
 
 - Closed the unverified provenance assertion: deterministic package bytes generated from `default-clear/manifest.json` plus `default-clear/source/` equal the repository APK asset; the built Debug APK's `assets/powercal-clear-default.pcskin` equals the same bytes; a real local Studio `/api/template-v3` HTTP request returns the exact unpacked Manifest and all file bytes.
