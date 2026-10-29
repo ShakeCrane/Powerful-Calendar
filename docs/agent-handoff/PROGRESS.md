@@ -1,5 +1,13 @@
 # Core freeze progress
 
+## Separation — Clear 草稿搜索、选择与导航 `S0-DK-01`（2026-10-29，PARTIAL）
+
+- 修复 Bridge 缺少 `deck.search`、`deck.jump`、`deck.proposeReplace` 的能力缺口。复用 `DraftQueueSearch`、`FormalEventSearch`、`DeckController.jump` 和 `PowerStore.proposeReplace`；Host 用当前 revision、锁与既有兼容草稿复核替换提案，正式事件仍须走可信发布审核。Native 仅有卡片导航、没有持久化队列重排，本次未新增重排语义。
+- 修复 Clear 卡片按钮事件代理挂错容器、搜索结果在 Flex 布局中被压缩、副标题误显示筛选计数；Host 以 transient 标记区分内存新建编辑器，避免在 transient 表单显示持久化搜索。Studio Preview Mock checkpoint 保留 transient 表单，支持带 `#` 的格式序号搜索；专用 E2E 将未捕获 JS 异常作为失败。
+- 定向 `WebSkinEditBridgeTest` **25/25 PASS**；完整 Gradle **630/630 JVM、84 suites、0 failures/errors/skips、88/88 tasks PASS**，lint 0 errors / 52 warnings。Skin Studio Python **61/61 PASS**；Preview 专用 E2E 与综合 Chrome 156 E2E PASS；所有修改 JS 通过 `node --check`；canonical Clear 9 files / 387,597 bytes 与 Debug APK 内资源逐字节一致。
+- 证据：全量 Gradle 日志 `.local/android-test/reports/separation-s0-dk-01-20261029/gradle-full-final.log` SHA-256 `815209BA15F9C033E62A75F221DF8C5C47A79D99AE0B723F1EEFB55DF955B81E`；定向日志 SHA-256 `8F88230179B46611329595108492C347C4C55B8B5F8BF440BD7453F964ADECF9`；Studio Python `AE7B71809B7EC7CC043A40B638744205ECFC5AEBC972B927D4EF95C1951FF067`；Preview 专用 E2E `ED32CA8A9490E983749637A421C7AF336D4B3EDAF29F80063805A84D5DBC009A`；综合浏览器 E2E `C493CAA31F252E0D967DA884CFB4BDBF8BFCBE6D73E389BE1932DDD04AE7367B`。Debug APK SHA-256 `11E61272BFAA51698897DAB08EF7391B0B97A4F500689291B16FB17C7A29C684`；AndroidTest APK `0883557A280C1F834EFD33A177FFACD423E1269FF285391B1E395FACF1252AA5`（仅编译）；Clear 包 `FEDC9D282672297587FE96BCC83752B51FBA01907F002299B5B7A4BA4AD941EE`。逐项截图、JSON 与日志哈希见独立报告 [PC-ISSUE-SEPARATION-DRAFT-DECK-SEARCH-NAVIGATION](../issues/PC-ISSUE-SEPARATION-DRAFT-DECK-SEARCH-NAVIGATION.md)。
+- 当前 ADB 设备列表为空，SDK 无 Emulator 二进制；Android WebView、模拟器执行、实体设备与同数据 Native/Clear 回放 **NOT TESTED**；`S0-DK-01` 实现切片通过但整行保持 **PARTIAL / unsigned**。`S0-DK-03` 冲突处理与删除恢复缺口独立保留。代码提交 `3aa03c3453475bee1ebf10f0efaf910c3ab537ab` 已推送；本进度与 Issue/契约文档由随后独立文档提交同步。后续优先接续 `S0-DK-03`。
+
 ## Separation — Clear Memo legacy openEvent fallback occurrence identity (2026-10-29)
 
 - Fixed S0-ME-03 fallback data loss: the generic Clear `openEvent` action now optionally sends `data-original-occurrence-key`; Host accepts legacy keyless payloads and validates any supplied key against the current revision, writer state and repeating owner before opening `EditSession`. Updated V3 bridge contract, strict Studio Preview Mock, and canonical `.pcskin`.

@@ -97,6 +97,12 @@ node --check tools/skin-studio/v3-studio.js
 模块所在目录，再设置 `STUDIO_URL` 指向本地运行的 Studio。此测试验证 Bridge
 预览、材质、自由图层拖拽、PNG 真正加载以及导出/重导入文件字节一致性。
 
+草稿卡组 Bridge 的独立预览回归为
+`tools/skin-studio/tests/e2e_v3_deck_search.cjs`；它使用 Studio seeded Mock 验证
+草稿/正式事件搜索、替换提案、卡片选择、导航及 transient 新建编辑器的 UI。
+运行前同样启动本地 Studio，并设置 `PUPPETEER_PATH` 和 `STUDIO_URL`。该 Preview
+Mock 不写 Android 数据，也不能代替 Android WebView 或实际 Store 验收。
+
 ## 旧版 CLI
 
 v2 声明式皮肤：

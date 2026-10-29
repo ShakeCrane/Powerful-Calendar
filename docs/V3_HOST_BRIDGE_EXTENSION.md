@@ -161,6 +161,57 @@ envelope and known fields only:
   automatically display future sibling options without rendering the
   shared group.
 
+## Draft deck search and navigation (2026-10-29)
+
+The existing v1 edit-command envelope is unchanged. These exact-schema commands
+extend the Host-owned persistent draft deck; they do not grant the skin direct
+Store access or formal-write authority:
+
+```json
+{"version":1,"type":"command","payload":{"name":"deck.search","requestId":"clear_abc123_1","query":"planning"}}
+```
+```json
+{"version":1,"type":"command","payload":{"name":"deck.jump","requestId":"clear_abc123_2","steps":1}}
+```
+```json
+{"version":1,"type":"command","payload":{"name":"deck.proposeReplace","requestId":"clear_abc123_3","eventSeq":42,"expectedRevision":3}}
+```
+
+- `deck.search` accepts only a string `query` of at most 120 UTF-16 code units
+  with no ISO control characters. It is available only while a persistent deck
+  is open; a transient `deck.create` session returns `unsupported`. The Host
+  uses the existing `DraftQueueSearch` and `FormalEventSearch` functions. A
+  blank query projects the ordinary queue. A nonblank query projects at most
+  four draft cards and four formal records; an unfiltered queue projects at
+  most 80 cards. The state reports `searchQuery`, `searchTruncated`, `truncated`,
+  total `cardCount`, one-based `position`, `canGoPrevious`, `canGoNext`, and
+  bounded `formalMatches` (`eventSeq,revision,title,kind`). Search writes no
+  calendar data.
+- `deck.jump` accepts only integer `steps` from −1000 through 1000. The Host
+  delegates to `DeckController.jump`, which flushes the current form before
+  changing the selected card. Navigation does not change persistent
+  `queueOrder`; this command does not implement queue reordering. Results use
+  the existing `moved`, `locked`, `missing`, `unsupported` and `failed` statuses.
+- `deck.proposeReplace` accepts only its exact integer `eventSeq` and
+  `expectedRevision` fields, and only proceeds for a positive target/revision
+  pair in the current bounded formal search results. The Host re-reads the
+  formal event and rechecks its revision and
+  writer lock. It reuses an existing compatible `REPLACE` / `CONVERT` draft or
+  asks the existing `PowerStore.proposeReplace` path to create one, then opens
+  that draft in the Host-owned deck. It never modifies or publishes the formal
+  event. A stale result is rejected; a successful request returns `opened`
+  with the draft ID. Formal publication remains subject to the existing trusted
+  Host review and current-record checks.
+- Persistent deck state includes `transient:false`; a new in-memory editor
+  opened through `deck.create` includes `transient:true`. Clear hides persisted
+  deck search, card selection and navigation for the transient editor. This
+  marker is descriptive state, not an authorization token.
+- All commands remain behind the existing `host.action` gate; projections
+  remain behind `host.read`. Clear source and CSS are editable in Skin Studio.
+  Studio Preview implements these commands against seeded, non-writing Mock
+  data; its results demonstrate UI command wiring only, not Android Store or
+  Android WebView behavior.
+
 ## Timeline new-event context
 
 The bundled Clear timeline offers all four event kinds and sends the existing
