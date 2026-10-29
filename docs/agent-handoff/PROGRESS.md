@@ -1,5 +1,15 @@
 # Core freeze progress
 
+## Separation — Clear AI 批量操作桥接 `S0-AI-04a`（2026-10-29，PARTIAL / HOLD）
+
+- 根因：Clear/Studio 之前缺少 AI 批量范围选择、状态回传和停止/恢复入口。复核还发现强制恢复可误解锁正常 RUNNING 批次，且释放报告会把未知计数显示成 0；待审 AI 提案与批次范围选择之间也缺少完整互斥。Native 回退聊天页启动范围选择后没有就地取消入口。
+- 修复：Clear 只发起 Host 范围选择、请求停止或请求恢复；Host/Store 继续拥有版本快照、审核授权和写入。强制恢复只允许 `CANCEL_REQUESTED` 且心跳过期至少 10 分钟，并在事务内核对精确 session、epoch、当前锁 epoch、状态和时间。释放结果投影为 `outcomeKnown=false` 且不输出计数。AI 提案审核和批次选择互斥；Studio Mock 具有“已取消但超时”的独立夹具，只在其已知的部分结果中显示 1 发布/2 保留。Native 回退页增加取消范围选择入口，批次期间禁用清聊天/缓存；此原生 UI 尚未 Android 验证。
+- 定向 Android/JVM 回归已补充：普通 RUNNING/新鲜停止请求拒绝释放、10 分钟边界、释放事务及未知计数投影、Host 强制确认、过期确认 fencing、不同进程启动恢复、提案/批次互斥。**Gradle 未能进入 Kotlin 编译或测试执行，因此这些用例为 NOT TESTED，不得记 PASS。**
+- 已执行验证：Skin Studio Python **61/61 PASS**，日志 `.local/android-test/reports/separation-s0-ai-batch-20261029/studio-unittest-hardening.log`，SHA-256 `93f9b8307d7cd6baa2bc8e16b26c4aa09201571a030b82613b98972e266168e1`；Chrome Headless/CDP Preview E2E **PASS**，包含 AI 提案与批次控件互斥、批次审核取消/确认、部分取消及超时恢复 Mock 的已知计数，日志 `.local/android-test/reports/separation-s0-ai-batch-20261029/studio-e2e-hardening.log`，SHA-256 `ef7c692fc32bbd620cd1cdf082997008ad2d0fa767d6b41dfebf6f1364fc055c`。三份 JS `node --check`、`git diff --check`、Clear canonical package verify **PASS**。Clear 包 9 files / 390,997 bytes，SHA-256 `009a27cc4271d13184fcda7482f7fdec9c35d85a6f42b4c8e0380a660e7d7105`。
+- `:app:verifySkinSourceBoundary --offline --rerun-tasks --no-daemon` **PASS**，日志 `.local/android-test/reports/separation-s0-ai-batch-20261029/source-boundary-final.log`，SHA-256 `7e7c0b6a7dc165079f1714cd5623885fe9367156df4ab58e2f511111011cb2f7`。完整 Gradle 门禁 **BLOCKED / NOT TESTED**：本次使用仓库 SDK 路径正确设置 `ANDROID_HOME` 后，在 `:app:testDebugUnitTest` 依赖解析阶段因缺少 `platforms/android-36` 退出，尚未进入 Kotlin 编译或测试；日志 `.local/android-test/reports/separation-s0-ai-batch-20261029/gradle-final.log`，SHA-256 `9bd263341f93ef0e1f4215a835f2fb9a59a481a75a7c8fdaa2bde9ae9c03afd4`。仓库 SDK 无已安装平台和预期位置的 `sdkmanager`；ADB 在线设备列表为空，本轮没有可安装 APK 的模拟器。
+- 实现提交 `9c67da744feb542dde8d5b2ed42541a20a1a7319`（`修复：收紧 AI 批次取消与恢复边界`）。Android/Kotlin 回归及 Native 回退 UI **NOT TESTED**；没有生成 APK。
+- Physical/OEM 测试由用户执行；本轮未运行真机测试。DeepSeek 未调用。未读取/清除用户数据库、凭据或 AVD 数据。Issue 保持 **PARTIAL / HOLD**；父项 `S0-AI-04` 的生产 Android WebView→Host 实链、AI 历史清理/rewind 和完整平台回归仍 **NOT TESTED**。详见 [PC-ISSUE-SEPARATION-AI-BATCH-BRIDGE](../issues/PC-ISSUE-SEPARATION-AI-BATCH-BRIDGE.md)。
+
 ## Separation — Clear 草稿卡组生命周期与完成态 `S0-DK-02`（2026-10-29，PARTIAL / unsigned）
 
 - 根因：Bridge 未投影 `DeckController.State.completion/notice`，Clear 空队列仍显示无目标“暂存/丢弃”；Studio Preview Mock 的 undo 恒为 missing，commit/discard 直接关闭卡组，不能回归 Native/Core 生命周期。新增 Bridge 覆盖 Store checkpoint 后关闭数据库、重建 Store/Controller/Bridge 并恢复内容；另验证同会话撤销有效、关闭并重开后撤销身份清空而 DISCARDED 行仍留在 Store。
