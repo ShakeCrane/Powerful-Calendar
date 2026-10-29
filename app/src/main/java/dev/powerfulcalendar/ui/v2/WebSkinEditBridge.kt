@@ -23,6 +23,7 @@ import dev.powerfulcalendar.core.RecurrenceEngine
 import dev.powerfulcalendar.core.ReminderMethod
 import dev.powerfulcalendar.core.ReminderTiming
 import dev.powerfulcalendar.core.TemporalConversion
+import java.time.Clock
 import java.time.LocalDate
 import java.time.Instant
 import java.time.ZoneId
@@ -608,7 +609,8 @@ internal class WebSkinEditService(
         cmd: WebEditCommand,
         newEventZone: ZoneId = ZoneId.systemDefault(),
         newEventSelection: EditorSelection? = null,
-        timelineMoveContext: TimelineMoveContext? = null
+        timelineMoveContext: TimelineMoveContext? = null,
+        newEventClock: Clock = Clock.systemUTC()
     ): JSONObject = gate.withLock {
         completed[cmd.requestId]?.let { (original, reply) ->
             // A caller cannot rebind an already seen request ID to a different write.
@@ -759,7 +761,8 @@ internal class WebSkinEditService(
                         result(cmd.requestId,"locked")
                     else {
                         val opened = NewEventEditSession.open(
-                            cmd.kind, zone = newEventZone, selection = newEventSelection
+                            cmd.kind, clock = newEventClock, zone = newEventZone,
+                            selection = newEventSelection
                         )
                         clearDeckSearch()
                         newEventSession = opened

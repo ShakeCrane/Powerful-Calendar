@@ -24,10 +24,12 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
+import java.time.ZoneOffset
 import java.util.UUID
 
 @RunWith(RobolectricTestRunner::class)
@@ -994,6 +996,56 @@ class WebSkinEditBridgeTest {
         assertEquals(commits,store.commitCount())
         assertEquals(drafts,store.draftCount())
         assertEquals(0,store.pendingCount())
+        assertTrue(store.all().isEmpty())
+    }
+
+    @Test fun bridgeNewEventDefaultsUseOneCapturedClockAndCloseWithoutWrites() = runBlocking {
+        val zone = ZoneId.of("Asia/Tokyo")
+        val fixedClock = Clock.fixed(Instant.parse("2026-10-25T15:07:42.987Z"), ZoneOffset.UTC)
+        val identities = store.identityCount()
+        val nextSequence = store.nextSequencePreview()
+        val nextQueueOrder = store.nextQueueOrderPreview()
+        val commits = store.commitCount()
+        val drafts = store.draftCount()
+
+        for (kind in TemporalKind.entries) {
+            val opened = service.execute(
+                WebEditCommand.CreateDeck(request(), kind),
+                newEventZone = zone,
+                newEventClock = fixedClock
+            )
+            assertEquals("created", opened.getString("status"))
+            val deck = service.snapshot().getJSONObject("deck")
+            val form = deck.getJSONObject("form")
+            assertFalse("$kind defaults are not user edits", deck.getBoolean("dirty"))
+            assertEquals(kind.name, form.getString("kind"))
+            assertEquals(zone.id, form.getString("zoneId"))
+            when (kind) {
+                TemporalKind.ALARM -> assertEquals("2026-10-26 00:08", form.getString("startText"))
+                TemporalKind.ACTIVITY -> {
+                    assertEquals("2026-10-26 00:08", form.getString("startText"))
+                    assertEquals("2026-10-26 01:08", form.getString("endText"))
+                }
+                TemporalKind.DEADLINE -> {
+                    assertEquals("2026-10-26", form.getString("endText"))
+                    assertEquals(0, form.getInt("reminderMinutes"))
+                    assertEquals("DAY_START", form.getString("reminderTiming"))
+                }
+                TemporalKind.MEMO -> {
+                    assertEquals("", form.getString("startText"))
+                    assertEquals("", form.getString("endText"))
+                }
+            }
+            assertEquals("closed", service.execute(WebEditCommand.CloseDeck(request()))
+                .getString("status"))
+        }
+
+        assertEquals(identities, store.identityCount())
+        assertEquals(nextSequence, store.nextSequencePreview())
+        assertEquals(nextQueueOrder, store.nextQueueOrderPreview())
+        assertEquals(commits, store.commitCount())
+        assertEquals(drafts, store.draftCount())
+        assertEquals(0, store.pendingCount())
         assertTrue(store.all().isEmpty())
     }
 
