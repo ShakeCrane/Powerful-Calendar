@@ -2,7 +2,7 @@
 
 ## 状态
 
-**PARTIAL / OPEN**。Host 桥的受保护删除流程、Clear 删除入口及 Skin Studio Mock 已实现并通过 JVM/浏览器回归；API 35 WebView instrumentation 因 AVD 断连未取得测试结果。SEP-07 与整体 Native/Skin parity 仍为 `NOT TESTED`，不能把浏览器 Mock 当成设备行为或完整功能等价。
+**历史状态（2026-10-28）：PARTIAL / OPEN**。Host 桥的受保护删除流程、Clear 删除入口及 Skin Studio Mock 已实现并通过 JVM/浏览器回归；API 35 WebView instrumentation 因 AVD 断连未取得测试结果。SEP-07 与整体 Native/Skin parity 仍为 `NOT TESTED`，不能把浏览器 Mock 当成设备行为或完整功能等价。最新重建验收 `S0-ED-05` 的状态见本文末尾 2026-10-30 复核记录。
 
 ## 根因与 Native 对照
 
@@ -69,3 +69,26 @@ Native 正式事件编辑器调用 `EditSession.delete()`，最终复用 `PowerS
 ## 后续
 
 在可用 API 35 虚拟设备上重跑 Clear WebView 确认/取消/重复请求 instrumentation，并完成冲突对照、正式事件恢复及草稿恢复的 Native/Skin 等价。SEP-07 仍开放；整体分离与 cutover 不因本切片改变状态。
+
+## Separation S0-ED-05 current verification (2026-10-30)
+
+- **验收状态：`PARTIAL / HOLD`。** `S0-ED-05` 是重建验收 ID（`RECONSTRUCTED`），不声称恢复了历史 209 项中的原始编号。
+- **分支：** `codex/separation-s0-timeline-drag`。
+- **测试提交：** `3b0278aca9aaada2c7270b48bfc3f89832854f6e`（`test(分离): 覆盖重复系列正式删除`，已推送）。
+- **代码结论：** 没有复现生产缺陷。Host 将删除作为待审查操作保存当前正式记录、活动编辑会话与表单快照；审批时再次核对会话、表单和完整正式记录，并由 `EditSession.delete()` / `PowerStore.deleteFormalEvent()` 在事务内再次核对 editor lease 和 expected revision。Store 删除会生成墓碑和 DELETE commit，取消提醒意图，并将关联的活动草稿置为 `DISCARDED`。本轮只新增了此前缺失的重复系列 JVM 回归，没有更改生产代码。
+
+### 本轮测试和实际结果
+
+新增 `app/src/test/java/dev/powerfulcalendar/ui/v2/WebSkinEditBridgeTest.kt` 测试 `formalRecurringDeleteCancelsTheWholeSeriesAndDiscardsItsPendingEdit`：创建三次每日重复的正式 Activity 和一条关联待处理修改，先取消 Host 删除审查，再以新请求重新发起并批准。测试断言取消保留正式记录、重复规则、待处理修改、永久身份及提交数；批准后正式记录不再出现在活动 Store 列表、同一身份保留 tombstone 且 revision 增一、墓碑保留原重复规则、待处理修改被丢弃、恰好生成一项提交，重复审批请求不再重复提交。
+
+| 检查 | 结果 | 可追溯证据 |
+| --- | --- | --- |
+| 新增重复系列删除回归 | `PASS` | 单例强制运行 **1/1**，0 failures/errors/skips；日志 SHA-256 `5308ED25933031B3197DE3346B51C3303E460A7B0A5B94B587A5FC11069B9D47`，文件 `.local/android-test/reports/separation-s0-ed05-20261030/recurring-delete-focused.log`。 |
+| 删除与重复事件 Bridge 定向集 | `PASS` | `WebSkinEditBridgeTest` **37/37** + `WebSkinRecurrenceBridgeTest` **12/12**，合计 **49/49**，0 failures/errors/skips；`--rerun-tasks` 强制运行，32 个 Gradle tasks 执行。日志 SHA-256 `1D935A3AC4C28038B9139A41962AC7138A2C5DEDC4D09CB7B1239E94A791FD3C`。 |
+| 完整离线 Android 门禁 | `PASS`（设备部分除外） | `:app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug --offline --console=plain --max-workers=1` 成功；完整 JVM 结果 **725/725，99 suites，0 failures/errors/skips**；88 actionable tasks（5 executed / 83 up-to-date）；Lint **0 errors / 53 warnings**。Gradle 日志 SHA-256 `875694B0B7BB8D612709B9F64D6193EFF608770479427598B664F38D3E789883`。 |
+| 全 JVM 强制重跑 | `PASS` | `:app:testDebugUnitTest --offline --rerun-tasks --console=plain --max-workers=1`；32/32 tasks 执行；从 99 份 JUnit XML 汇总为 **725/725**、0 failures/errors/skips。日志 SHA-256 `DF9BEB898CBCA8C183CA48504BA9124594214EA47AFF9EEDAD99DFA791E201F4`。 |
+| Skin Studio / Clear 包 | `PASS` | Skin Studio Python **61/61**，日志 SHA-256 `D2BAB439FB05A46D2568A53FD8389D850964486157BA10C1007A29E56C11C15B`。`build_default_clear.py --verify` 验证 9 files / 394,087 bytes，Clear SHA-256 `544eb2b9ec1bd1ea3c3cf9d5949d944cba48018bc08478f60c08eea5a4e1cf3f`；校验日志 SHA-256 `DF604CEA83C0DBB1A255BD9579EE9E8587260FFD4636E67901D2E9E63D9EFD5B`。Studio Mock/CDP 删除交互证据是旧基线 `PREVIOUS PASS`，来源为本报告上文所列的 2026-10-28 记录；不当作当前 Android WebView 证据。 |
+| APK | `PASS`（仅构建/组装） | Debug APK 67,513,497 bytes，SHA-256 `71C8E45C967CAFDA3BC77FBCD2062AD25D20801B2CDFE8062DCFFAB4B24B097C`。AndroidTest APK 1,557,196 bytes，SHA-256 `371A9C1AF76B5F0530FE4A69FA2FAF9BF1AFA053256DC8B24F7264129930653E`。仪器测试源码已编译进 APK；未安装或执行。 |
+| Android WebView / 模拟器 / 设备 | `BLOCKED / NOT TESTED` | `WebSkinFormalDeleteInstrumentedTest.formalRecurringEventDeleteWaitsForHostConfirmationAndCancellationPreservesSeries` 当前只确认源码编译。`E:\android-sdk\platform-tools\adb.exe devices -l` 没有设备；`E:\android-sdk\emulator\emulator.exe` 不存在。TalkBack、实体/OEM 与真实 WebView 确认、取消、并发冲突及重复请求均未运行。 |
+
+详细忽略日志位于 `.local/android-test/reports/separation-s0-ed05-20261030/`。本轮没有导出用户数据库、生产数据、凭据或 AVD 数据。因 Android WebView 和设备行为没有实际运行，`S0-ED-05` 保持 **`PARTIAL / HOLD`**；新增加的 JVM 覆盖和全门禁通过不等于设备签核。
