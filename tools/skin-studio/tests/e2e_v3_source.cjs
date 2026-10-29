@@ -3,7 +3,8 @@ const {spawn} = require("node:child_process");
 const fs = require("node:fs"), path = require("node:path"), readline = require("node:readline");
 const root = path.resolve(__dirname, "../../..");
 const chrome = process.env.CHROME_PATH || "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
-const reportDir = path.join(root, ".local/android-test/reports/separation-20261027/source-editor");
+const reportDir = path.resolve(process.env.POWERCAL_E2E_REPORT_DIR ||
+  path.join(root, ".local/android-test/reports/separation-20261027/source-editor"));
 const canonicalClearFiles=Object.fromEntries(["index.html","style.css","app.js","edit.js"].map(name=>[
   "web/"+name,fs.readFileSync(path.join(root,"tools/skin-studio/default-clear/source/web",name)).toString("base64")
 ]));
@@ -59,6 +60,12 @@ async function main(){
     if(!ready)throw Error("Studio page startup timed out");
     const expression=`(async()=>{
       const check=(v,m)=>{if(!v)throw Error(m)};
+      const decodeBase64=value=>Uint8Array.from(atob(value),c=>c.charCodeAt(0));
+      const sha256=async bytes=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))]
+        .map(value=>value.toString(16).padStart(2,'0')).join('');
+      const canonical=value=>Array.isArray(value)?value.map(canonical):
+        value&&typeof value==='object'?Object.fromEntries(Object.keys(value).sort()
+          .map(key=>[key,canonical(value[key])])):value;
       const androidArchive=Uint8Array.from(atob("${androidDeliveryFixture}"),c=>c.charCodeAt(0));
       const androidImport=await fetch('/api/import-v3',{method:'POST',
         headers:{'Content-Type':'application/octet-stream'},body:androidArchive});
@@ -167,7 +174,9 @@ async function main(){
         if(typeof loadPackage==='function' && document.querySelector('#skinName')?.value)break;
         await new Promise(r=>setTimeout(r,100));
       }
-      const data=await (await fetch('/api/template-v3')).json();
+      // Continue editing the package that was imported, exported and re-imported above.
+      // This ties the combined CRUD flow to an actual .pcskin package, not only a template object.
+      const data=JSON.parse(JSON.stringify(installedReimport));
       Object.assign(data.files,${JSON.stringify(canonicalClearFiles)});
       data.manifest.id='restricted-source-test'; data.manifest.capabilities=['host.read'];
       data.files['web/agent-unused-90f4.txt']=btoa('unused source');
@@ -236,11 +245,46 @@ async function main(){
       const preview=await (await post('/api/preview-v3',JSON.stringify(authored),'application/json')).json();
       const previewText=await (await fetch(preview.url.replace('web/index.html','web/components/agent-card.js'))).text();
       check(previewText.includes('browser'),'preview source differs');
+      const authoredCss=new TextDecoder().decode(decodeBase64(authored.files['web/style.css']));
+      check(authoredCss.includes("url('../assets/replace.bin')"),
+        'authored stylesheet resource reference is missing');
+      check(Object.hasOwn(authored.files,'assets/replace.bin'),
+        'referenced binary resource is missing from the complete package');
+      const previewAssetResponse=await fetch(preview.url.replace('web/index.html','assets/replace.bin'));
+      check(previewAssetResponse.ok,'preview did not serve the referenced binary resource');
+      const previewAssetBytes=new Uint8Array(await previewAssetResponse.arrayBuffer());
+      const authoredAssetBytes=decodeBase64(authored.files['assets/replace.bin']);
+      check(await sha256(previewAssetBytes)===await sha256(authoredAssetBytes),
+        'preview served bytes that differ from the referenced package asset');
       const zip=await (await post('/api/export-v3',JSON.stringify(authored),'application/json')).arrayBuffer();
       const imported=await (await post('/api/import-v3',zip,'application/octet-stream')).json();
       check(JSON.stringify(imported.manifest.capabilities)==='["host.read"]','import capabilities changed');
+      const expectedManifest={...authored.manifest};delete expectedManifest.sha256;
+      const actualManifest={...imported.manifest};delete actualManifest.sha256;
+      check(JSON.stringify(canonical(actualManifest))===JSON.stringify(canonical(expectedManifest)),
+        'export/reimport changed Manifest fields or package capabilities');
+      const expectedPaths=Object.keys(authored.files).sort();
+      const actualPaths=Object.keys(imported.files).sort();
+      check(JSON.stringify(actualPaths)===JSON.stringify(expectedPaths),
+        'export/reimport changed the complete package file set');
+      const fileSha256={};
       for(const [name,bytes] of Object.entries(authored.files))
+      {
         check(imported.files[name]===bytes,'round trip changed '+name);
+        const expectedHash=await sha256(decodeBase64(bytes));
+        const actualHash=await sha256(decodeBase64(imported.files[name]));
+        check(actualHash===expectedHash,'round-trip SHA-256 mismatch: '+name);
+        check(imported.manifest.sha256[name]===actualHash,
+          're-imported Manifest hash does not match its file bytes: '+name);
+        fileSha256[name]=actualHash;
+      }
+      check(!Object.hasOwn(imported.files,'web/agent-unused-90f4.txt'),
+        'deleted source returned after export/reimport');
+      check(new TextDecoder().decode(decodeBase64(imported.files['web/style.css']))
+        .includes("url('../assets/replace.bin')"),
+        'resource reference was lost after export/reimport');
+      check(await sha256(decodeBase64(imported.files['assets/replace.bin']))===
+        await sha256(authoredAssetBytes),'navigable asset changed after export/reimport');
       await loadPackage(imported);document.querySelector('#advancedMode').click();
       select.value='web/edit.js';select.dispatchEvent(new Event('change'));
       check(field.value===before+'\\n// browser-source-roundtrip\\n','reimport edit missing');
@@ -260,7 +304,8 @@ async function main(){
         fullCanvasFalseAndOmittedPreserved:true,optionalProjectSlotsPreserved:true,
         file:'web/edit.js', files:Object.keys(authored.files).length,
         capabilities:imported.manifest.capabilities,projectTree:true,newText:true,
-        newBinary:true,replacedBinary:true,delete:true,referenceGuard:true};
+        newBinary:true,replacedBinary:true,delete:true,referenceGuard:true,
+        resourceReferencePreviewed:true,fileSha256};
     })()`;
     const result=await call("Runtime.evaluate",{expression,awaitPromise:true,returnByValue:true});
     if(result.exceptionDetails)throw Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text);

@@ -1,5 +1,12 @@
 # Core freeze progress
 
+## Separation — v3 edited-package full CRUD/export/re-import and resource hashes `S0-PKG-03` (2026-10-29, PASS for combined Studio fixture scope)
+
+- Strengthened the actual Chrome Studio E2E to begin with the Android-delivery `.pcskin` fixture imported through `/api/import-v3`, continue source/project/binary CRUD on its re-imported package, preview a CSS-referenced binary asset, then export/re-import. The check compares semantic Manifest/capabilities, the complete sorted 9-file set, each file's SHA-256 and Manifest hash entry, the retained URL reference, exact preview-served asset bytes, deletion behavior, and post-import editability. Existing CLI regression covers source move plus structural project JSON patch and re-import.
+- Chrome Headless/CDP E2E **PASS**; complete Skin Studio Python suite **61/61 PASS**; canonical Clear verifier **9 files / 384,912 bytes PASS**; `node --check` and `git diff --check` **PASS**. Logs and all nine per-file SHA-256 values are in the independent Issue report and `.local/android-test/reports/separation-s0-timeline-drag/s0-pkg-03/`.
+- This signs the reconstructed Studio package-edit/export/re-import slice. It does not sign Android activation (separate `S0-PKG-05`), arbitrary third-party package coverage, physical/OEM behavior, or global Native/Skin parity. Overall separation remains **IN PROGRESS**.
+- Implementation, regression, independent report, matrix and progress commits: pending final SHA backfill.
+
 ## Separation — v3 无修改导入/预览/导出往返 `S0-PKG-02` (2026-10-29, PARTIAL)
 
 - 新增生产 Studio HTTP 流程回归：从含 vendor Manifest 元数据、原有能力、扩展 `project.json` 字段、额外 JS 与 binary asset 的 11-file v3 包开始；无编辑导入、预览并逐文件请求所有 Web/asset 路径、导出、重新导入，完整 Manifest 和每份文件字节都一致。导出的 ZIP 容器编码不要求与输入 archive 相同；测试按合同校验 Manifest 字段与内容字节，发现这不是内容丢失。
