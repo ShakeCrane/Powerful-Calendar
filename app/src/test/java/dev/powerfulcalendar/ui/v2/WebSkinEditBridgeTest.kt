@@ -35,12 +35,14 @@ import java.util.UUID
 class WebSkinEditBridgeTest {
     private lateinit var context: Context
     private lateinit var store: PowerStore
+    private lateinit var controller: DeckController
     private lateinit var service: WebSkinEditService
     private fun request()=UUID.randomUUID().toString()
     @Before fun setup(){
         context=ApplicationProvider.getApplicationContext()
         store=PowerStore(context,"web-edit-"+request()+".db")
-        service=WebSkinEditService(store,DeckController(StoreDeckPersistence(store)))
+        controller=DeckController(StoreDeckPersistence(store))
+        service=WebSkinEditService(store,controller)
     }
     @After fun teardown(){
         val db=store.databaseName
@@ -85,6 +87,20 @@ class WebSkinEditBridgeTest {
         assertNull(WebEditWire.decode(wire("deck.flush", ""","unexpected":false""")))
         assertNull(WebEditWire.decode(wire("deck.confirmConflict")))
         assertNull(WebEditWire.decode(wire("deck.confirmRestore")))
+        assertTrue(WebEditWire.decode(wire("deck.retired", ",\"offset\":50"))
+            is WebEditCommand.LoadRetiredPage)
+        assertNull(WebEditWire.decode(wire("deck.retired", ",\"offset\":-1")))
+        assertNull(WebEditWire.decode(wire("deck.retired", ",\"offset\":1.5")))
+        assertNull(WebEditWire.decode(wire("deck.retired", ",\"offset\":50,\"limit\":999")))
+        assertTrue(WebEditWire.decode(wire("deck.beginRestore",
+            ",\"eventSeq\":42,\"expectedRevision\":3")) is WebEditCommand.BeginRestoreDeck)
+        for (name in listOf("deck.keepConflict", "deck.requestConflictReview",
+                "deck.keepRestore", "deck.requestRestoreReview")) {
+            assertNotNull(WebEditWire.decode(wire(name,
+                ",\"draftId\":9,\"draftVersion\":0,\"eventSeq\":42,\"expectedRevision\":3")))
+            assertNull(WebEditWire.decode(wire(name,
+                ",\"draftId\":9,\"draftVersion\":0,\"eventSeq\":42,\"expectedRevision\":3,\"approved\":true")))
+        }
         assertTrue(WebEditWire.decode(wire("deck.search", ",\"query\":\"needle\""))
             is WebEditCommand.SearchDeck)
         assertNull(WebEditWire.decode(wire("deck.search",
@@ -334,6 +350,246 @@ class WebSkinEditBridgeTest {
         assertEquals(commits, store.commitCount())
         assertEquals(nextSequence, store.nextSequencePreview())
         assertEquals(nextQueueOrder, store.nextQueueOrderPreview())
+    }
+
+    @Test fun conflictSnapshotRequiresHostReviewAndReplacesOnlyAfterRevalidation() = runBlocking {
+        val zone = ZoneId.of("Asia/Shanghai")
+        val start = LocalDateTime.of(2032, 4, 5, 9, 0).atZone(zone).toInstant().toEpochMilli()
+        val original = commitFormal(DraftForm(
+            kind = TemporalKind.ACTIVITY, title = "Conflict original",
+            startText = DraftForm.formatInstant(start, zone),
+            endText = DraftForm.formatInstant(start + 3_600_000, zone),
+            zoneId = zone.id, trackingEnabled = true
+        ))
+        val proposal = store.newDraft(DraftForm.from(original).copy(title = "Conflict proposal"),
+            original.eventSeq, DraftOperation.REPLACE, expectedRevision = original.revision)
+        assertTrue(store.setCompleted(original.eventSeq, "single", true, original.revision))
+        val current = requireNotNull(store.get(original.eventSeq))
+        assertEquals("opened", service.execute(WebEditCommand.OpenDeck(request(), proposal.draftId))
+            .getString("status"))
+        val initial = service.snapshot().getJSONObject("deck")
+        val publish = WebEditCommand.CommitDeck(request(), proposal.draftId, initial.getLong("version"))
+        assertEquals("confirmation_required", service.execute(publish).getString("status"))
+        assertEquals("conflict", service.resolveFormalWriteReview(
+            requireNotNull(service.pendingWriteReview).token, approved = true).getString("status"))
+
+        var conflict = service.snapshot().getJSONObject("deck").getJSONObject("conflict")
+        assertEquals(proposal.draftId, conflict.getLong("draftId"))
+        assertEquals(original.eventSeq, conflict.getLong("eventSeq"))
+        assertEquals(current.revision, conflict.getLong("currentRevision"))
+        assertEquals("Conflict original", conflict.getJSONObject("current").getString("title"))
+        assertEquals("Conflict proposal", conflict.getJSONObject("proposed").getString("title"))
+        assertTrue((0 until conflict.getJSONArray("changes").length()).any {
+            conflict.getJSONArray("changes").getJSONObject(it).getString("label") == "标题"
+        })
+        val commitsBeforeConflictReview = store.commitCount()
+        assertEquals(current, store.get(original.eventSeq))
+
+        val args = WebEditCommand.RequestConflictReviewDeck(request(), proposal.draftId,
+            conflict.getLong("draftVersion"), original.eventSeq, current.revision)
+        assertEquals("confirmation_required", service.execute(args).getString("status"))
+        val review = requireNotNull(service.pendingWriteReview)
+        assertEquals(current, review.current)
+        assertEquals(DraftForm.from(current), review.before?.let { DraftForm.from(it) })
+        assertEquals(DraftForm.from(original).copy(title = "Conflict proposal"), review.proposed)
+        val commitsBeforeApproval = store.commitCount()
+        assertEquals(commitsBeforeConflictReview, commitsBeforeApproval)
+        assertEquals("replaced", service.resolveFormalWriteReview(review.token, approved = true)
+            .getString("status"))
+
+        val replaced = requireNotNull(store.get(original.eventSeq))
+        assertEquals("Conflict proposal", replaced.title)
+        assertEquals(current.revision + 1, replaced.revision)
+        assertEquals(commitsBeforeApproval + 1, store.commitCount())
+        assertFalse(store.isRetired(original.eventSeq))
+        assertEquals(JSONObject.NULL, service.snapshot().getJSONObject("deck").get("conflict"))
+    }
+
+    @Test fun staleHostConflictReviewCannotOverwriteAndKeepLeavesDraftUntouched() = runBlocking {
+        val zone = ZoneId.of("Asia/Shanghai")
+        val start = LocalDateTime.of(2032, 4, 5, 9, 0).atZone(zone).toInstant().toEpochMilli()
+        val original = commitFormal(DraftForm(
+            kind = TemporalKind.ACTIVITY, title = "Keep original",
+            startText = DraftForm.formatInstant(start, zone),
+            endText = DraftForm.formatInstant(start + 3_600_000, zone),
+            zoneId = zone.id, trackingEnabled = true
+        ))
+        val proposal = store.newDraft(DraftForm.from(original).copy(title = "Keep proposal"),
+            original.eventSeq, DraftOperation.REPLACE, expectedRevision = original.revision)
+        assertTrue(store.setCompleted(original.eventSeq, "single", true, original.revision))
+        val firstCurrent = store.get(original.eventSeq)!!
+        service.execute(WebEditCommand.OpenDeck(request(), proposal.draftId))
+        val version = service.snapshot().getJSONObject("deck").getLong("version")
+        val publish = WebEditCommand.CommitDeck(request(), proposal.draftId, version)
+        assertEquals("confirmation_required", service.execute(publish).getString("status"))
+        assertEquals("conflict", service.resolveFormalWriteReview(
+            requireNotNull(service.pendingWriteReview).token, true).getString("status"))
+        val conflict = service.snapshot().getJSONObject("deck").getJSONObject("conflict")
+        val cancelReview = WebEditCommand.RequestConflictReviewDeck(request(), proposal.draftId,
+            conflict.getLong("draftVersion"), original.eventSeq, firstCurrent.revision)
+        assertEquals("confirmation_required", service.execute(cancelReview).getString("status"))
+        assertEquals("cancelled", service.resolveFormalWriteReview(
+            requireNotNull(service.pendingWriteReview).token, approved = false).getString("status"))
+        assertNotNull(service.snapshot().getJSONObject("deck").get("conflict"))
+
+        val review = WebEditCommand.RequestConflictReviewDeck(request(), proposal.draftId,
+            conflict.getLong("draftVersion"), original.eventSeq, firstCurrent.revision)
+        assertEquals("confirmation_required", service.execute(review).getString("status"))
+        val token = requireNotNull(service.pendingWriteReview).token
+        assertTrue(store.setCompleted(original.eventSeq, "single", false, firstCurrent.revision))
+        val newer = requireNotNull(store.get(original.eventSeq))
+        val commitsBeforeRejectedReview = store.commitCount()
+
+        assertEquals("conflict", service.resolveFormalWriteReview(token, true).getString("status"))
+        assertEquals(newer, store.get(original.eventSeq))
+        assertEquals(commitsBeforeRejectedReview, store.commitCount())
+        assertEquals(DraftStatus.CONFLICT, store.draft(proposal.draftId)!!.status)
+
+        val kept = service.execute(WebEditCommand.KeepConflictDeck(request(), proposal.draftId,
+            conflict.getLong("draftVersion"), original.eventSeq, firstCurrent.revision))
+        assertEquals("kept", kept.getString("status"))
+        assertEquals(newer, store.get(original.eventSeq))
+        assertEquals(DraftStatus.CONFLICT, store.draft(proposal.draftId)!!.status)
+        assertEquals(commitsBeforeRejectedReview, store.commitCount())
+    }
+
+    @Test fun retiredPickerCreatesRecoverableDraftAndRestoreNeedsSeparateHostApproval() = runBlocking {
+        val zone = ZoneId.of("Asia/Tokyo")
+        val start = LocalDateTime.of(2032, 4, 5, 9, 0).atZone(zone).toInstant().toEpochMilli()
+        val original = commitFormal(DraftForm(
+            kind = TemporalKind.ACTIVITY, title = "Restore from picker",
+            startText = DraftForm.formatInstant(start, zone),
+            endText = DraftForm.formatInstant(start + 3_600_000, zone),
+            zoneId = zone.id, trackingEnabled = true
+        ))
+        val deletion = store.newDraft(DraftForm.from(original), original.eventSeq,
+            DraftOperation.DELETE, expectedRevision = original.revision)
+        assertTrue(store.commit(deletion.draftId) is PowerStore.CommitOutcome.Committed)
+        val tombstone = requireNotNull(store.getIncludingRetired(original.eventSeq))
+        assertTrue(store.isRetired(original.eventSeq))
+        val ids = store.identityCount()
+        val nextSeq = store.nextSequencePreview()
+        val queueOrder = store.nextQueueOrderPreview()
+        val commitsAfterDelete = store.commitCount()
+
+        assertEquals("opened", service.execute(WebEditCommand.OpenDeck(request(), null))
+            .getString("status"))
+        var deck = service.snapshot().getJSONObject("deck")
+        assertTrue(deck.getBoolean("retiredLoaded"))
+        assertEquals(1, deck.getInt("retiredTotal"))
+        val listed = deck.getJSONArray("retiredResults").getJSONObject(0)
+        assertEquals(original.eventSeq, listed.getLong("eventSeq"))
+        assertEquals(tombstone.revision, listed.getLong("revision"))
+        assertEquals("Restore from picker", listed.getString("title"))
+        val beforeStaleSelection = store.draftCount()
+        assertEquals("stale", service.execute(WebEditCommand.BeginRestoreDeck(
+            request(), original.eventSeq, tombstone.revision + 1)).getString("status"))
+        assertEquals(beforeStaleSelection, store.draftCount())
+        assertEquals("loaded", service.execute(WebEditCommand.LoadRetiredPage(request(), 999))
+            .getString("status"))
+        deck = service.snapshot().getJSONObject("deck")
+        assertEquals(0, deck.getInt("retiredOffset"))
+
+        val proposal = WebEditCommand.BeginRestoreDeck(request(), original.eventSeq, tombstone.revision)
+        assertEquals("opened", service.execute(proposal).getString("status"))
+        deck = service.snapshot().getJSONObject("deck")
+        val draftId = deck.getLong("currentId")
+        assertEquals(tombstone.revision, store.draft(draftId)!!.baseRevision)
+        assertEquals(tombstone.title, deck.getJSONObject("form").getString("title"))
+        assertEquals(ids, store.identityCount())
+        assertEquals(nextSeq, store.nextSequencePreview())
+        assertEquals(queueOrder + 1, store.nextQueueOrderPreview())
+        assertEquals(commitsAfterDelete, store.commitCount())
+
+        val firstCommit = WebEditCommand.CommitDeck(request(), draftId, deck.getLong("version"))
+        assertEquals("restore_required", service.execute(firstCommit).getString("status"))
+        var prompt = service.snapshot().getJSONObject("deck").getJSONObject("restore")
+        assertEquals(tombstone.revision, prompt.getLong("expectedRevision"))
+        assertEquals("Restore from picker", prompt.getJSONObject("current").getString("title"))
+        assertEquals("Restore from picker", prompt.getJSONObject("proposed").getString("title"))
+
+        val keep = WebEditCommand.KeepRestoreDeck(request(), draftId,
+            prompt.getLong("draftVersion"), original.eventSeq, tombstone.revision)
+        assertEquals("kept", service.execute(keep).getString("status"))
+        assertTrue(store.isRetired(original.eventSeq))
+        assertEquals(DraftStatus.PENDING, store.draft(draftId)!!.status)
+        assertEquals(JSONObject.NULL, service.snapshot().getJSONObject("deck").get("restore"))
+
+        deck = service.snapshot().getJSONObject("deck")
+        val retryCommit = WebEditCommand.CommitDeck(request(), draftId, deck.getLong("version"))
+        assertEquals("restore_required", service.execute(retryCommit).getString("status"))
+        prompt = service.snapshot().getJSONObject("deck").getJSONObject("restore")
+        val cancel = WebEditCommand.RequestRestoreReviewDeck(request(), draftId,
+            prompt.getLong("draftVersion"), original.eventSeq, tombstone.revision)
+        assertEquals("confirmation_required", service.execute(cancel).getString("status"))
+        val cancelToken = requireNotNull(service.pendingWriteReview).token
+        assertEquals("cancelled", service.resolveFormalWriteReview(cancelToken, approved = false)
+            .getString("status"))
+        assertTrue(store.isRetired(original.eventSeq))
+        assertEquals(commitsAfterDelete, store.commitCount())
+        assertEquals(DraftStatus.PENDING, store.draft(draftId)!!.status)
+
+        deck = service.snapshot().getJSONObject("deck")
+        assertEquals(original.eventSeq, deck.getJSONObject("restore").getLong("eventSeq"))
+        prompt = service.snapshot().getJSONObject("deck").getJSONObject("restore")
+        val approve = WebEditCommand.RequestRestoreReviewDeck(request(), draftId,
+            prompt.getLong("draftVersion"), original.eventSeq, tombstone.revision)
+        assertEquals("confirmation_required", service.execute(approve).getString("status"))
+        val review = requireNotNull(service.pendingWriteReview)
+        assertEquals(tombstone, review.current)
+        assertEquals("restored", service.resolveFormalWriteReview(review.token, true)
+            .getString("status"))
+
+        val restored = requireNotNull(store.get(original.eventSeq))
+        assertEquals(original.eventSeq, restored.eventSeq)
+        assertEquals(tombstone.revision + 1, restored.revision)
+        assertEquals(tombstone.title, restored.title)
+        assertFalse(store.isRetired(original.eventSeq))
+        assertEquals(nextSeq, store.nextSequencePreview())
+        assertEquals(commitsAfterDelete + 1, store.commitCount())
+    }
+
+    @Test fun restoreHostReviewRejectsConcurrentRestorationOfTheSameTombstone() = runBlocking {
+        val zone = ZoneId.of("Asia/Tokyo")
+        val start = LocalDateTime.of(2032, 4, 6, 9, 0).atZone(zone).toInstant().toEpochMilli()
+        val original = commitFormal(DraftForm(
+            kind = TemporalKind.ACTIVITY, title = "Concurrent restore",
+            startText = DraftForm.formatInstant(start, zone),
+            endText = DraftForm.formatInstant(start + 3_600_000, zone),
+            zoneId = zone.id, trackingEnabled = true
+        ))
+        val deletion = store.newDraft(DraftForm.from(original), original.eventSeq,
+            DraftOperation.DELETE, expectedRevision = original.revision)
+        assertTrue(store.commit(deletion.draftId) is PowerStore.CommitOutcome.Committed)
+        val tombstone = store.getIncludingRetired(original.eventSeq)!!
+        service.execute(WebEditCommand.OpenDeck(request(), null))
+        val listed = service.snapshot().getJSONObject("deck").getJSONArray("retiredResults")
+            .getJSONObject(0)
+        assertEquals(original.eventSeq, listed.getLong("eventSeq"))
+        assertEquals("opened", service.execute(WebEditCommand.BeginRestoreDeck(
+            request(), original.eventSeq, tombstone.revision)).getString("status"))
+        val deck = service.snapshot().getJSONObject("deck")
+        val draftId = deck.getLong("currentId")
+        assertEquals("restore_required", service.execute(WebEditCommand.CommitDeck(
+            request(), draftId, deck.getLong("version"))).getString("status"))
+        val prompt = service.snapshot().getJSONObject("deck").getJSONObject("restore")
+        val requestReview = WebEditCommand.RequestRestoreReviewDeck(request(), draftId,
+            prompt.getLong("draftVersion"), original.eventSeq, tombstone.revision)
+        assertEquals("confirmation_required", service.execute(requestReview).getString("status"))
+        val review = requireNotNull(service.pendingWriteReview)
+
+        val concurrent = store.restoreDraft(draftId, DraftForm.from(tombstone)
+            .copy(title = "Restored by the other host")) as PowerStore.CommitOutcome.Committed
+        val deckAfterConcurrentRestore = service.snapshot().getJSONObject("deck")
+        val commitsAfterConcurrentRestore = store.commitCount()
+        assertEquals("conflict", service.resolveFormalWriteReview(review.token, approved = true)
+            .getString("status"))
+        assertEquals(concurrent.eventSeq, original.eventSeq)
+        assertEquals("Restored by the other host", store.get(original.eventSeq)?.title)
+        assertFalse(store.isRetired(original.eventSeq))
+        assertEquals(commitsAfterConcurrentRestore, store.commitCount())
+        assertEquals(DraftStatus.COMMITTED, store.draft(draftId)!!.status)
+        assertTrue(deckAfterConcurrentRestore.getBoolean("hasRestore"))
     }
 
     @Test fun deckNavigationUsesControllerAndKeepsQueueOrder() = runBlocking {

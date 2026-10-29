@@ -1996,6 +1996,52 @@ class PowerStoreTest {
     }
 
     @Test
+    fun reviewedReplacementRejectsARevisionThatChangesAfterHostReview() {
+        val base = store.newDraft(activityForm("Reviewed base").copy(trackingEnabled = true))
+        assertTrue(commit(base) is PowerStore.CommitOutcome.Committed)
+        val current = requireNotNull(store.get(base.eventSeq))
+        val replacement = store.newDraft(
+            DraftForm.from(current).copy(title = "Reviewed replacement"),
+            base.eventSeq,
+            DraftOperation.REPLACE,
+            expectedRevision = current.revision
+        )
+
+        assertTrue(store.setCompleted(base.eventSeq, "single", true, current.revision))
+        assertTrue(store.commit(replacement.draftId) is PowerStore.CommitOutcome.Conflict)
+        val reviewed = requireNotNull(store.get(base.eventSeq))
+        assertEquals(DraftStatus.CONFLICT, store.draft(replacement.draftId)!!.status)
+
+        // Simulate another writer changing the formal event after Host displayed revision 2.
+        assertTrue(store.setCompleted(base.eventSeq, "single", false, reviewed.revision))
+        val concurrent = requireNotNull(store.get(base.eventSeq))
+        val historyBeforeRejectedReview = store.history(base.eventSeq)
+        val commitsBeforeRejectedReview = store.commitCount()
+        val rejected = store.commit(
+            replacement.draftId,
+            approveStale = true,
+            actor = "human-review",
+            expectedCurrentRevision = reviewed.revision
+        )
+
+        assertTrue(rejected is PowerStore.CommitOutcome.Conflict)
+        assertEquals(concurrent, store.get(base.eventSeq))
+        assertEquals(historyBeforeRejectedReview, store.history(base.eventSeq))
+        assertEquals(commitsBeforeRejectedReview, store.commitCount())
+        assertEquals(DraftStatus.CONFLICT, store.draft(replacement.draftId)!!.status)
+
+        val approved = store.commit(
+            replacement.draftId,
+            approveStale = true,
+            actor = "human-review",
+            expectedCurrentRevision = concurrent.revision
+        )
+        assertTrue(approved is PowerStore.CommitOutcome.Committed)
+        assertEquals("Reviewed replacement", store.get(base.eventSeq)!!.title)
+        assertEquals(concurrent.revision + 1, store.get(base.eventSeq)!!.revision)
+    }
+
+    @Test
     fun staleBaseRevisionReturnsConflictWithoutOverwritingAcrossRestart() {
         val card = store.newDraft(activityForm("Base").copy(trackingEnabled = true))
         assertTrue(commit(card) is PowerStore.CommitOutcome.Committed)
@@ -2260,6 +2306,38 @@ class PowerStoreTest {
         assertNotNull(intent)
         assertEquals(restored.revision, intent!!.revision)
         assertEquals(PowerStore.DesiredSchedule.PENDING, intent.desired)
+    }
+
+    @Test
+    fun retiredPageIsBoundedOrderedAndReadOnly() {
+        val retiredSeqs = (1..3).map { index ->
+            val draft = store.newDraft(alarmForm("墓碑列表 $index"))
+            assertTrue(commit(draft) is PowerStore.CommitOutcome.Committed)
+            val record = store.get(draft.eventSeq)!!
+            val delete = store.newDraft(
+                DraftForm.from(record), draft.eventSeq, DraftOperation.DELETE
+            )
+            assertTrue(commit(delete) is PowerStore.CommitOutcome.Committed)
+            draft.eventSeq
+        }
+        val counts = Triple(store.draftCount(), store.commitCount(), store.identityCount())
+        val sequence = store.nextSequencePreview()
+        val order = store.nextQueueOrderPreview()
+
+        val first = store.retiredPage(offset = 0, limit = 2)
+        val second = store.retiredPage(offset = 2, limit = 2)
+
+        assertEquals(3, first.total)
+        assertEquals(2, first.records.size)
+        assertEquals(1, second.records.size)
+        assertEquals(retiredSeqs.toSet(), (first.records + second.records).map { it.eventSeq }.toSet())
+        assertEquals(first.records.map { it.eventSeq },
+            store.retiredPage(offset = 0, limit = 2).records.map { it.eventSeq })
+        assertTrue((first.records + second.records).all { store.isRetired(it.eventSeq) })
+        assertEquals(counts, Triple(store.draftCount(), store.commitCount(), store.identityCount()))
+        assertEquals(sequence, store.nextSequencePreview())
+        assertEquals(order, store.nextQueueOrderPreview())
+        assertEquals(3, store.retiredPage(offset = 0, limit = 100).records.size)
     }
 
     // ---------------------------------------------------------------- optimistic staging

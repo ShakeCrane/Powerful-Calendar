@@ -99,7 +99,11 @@ class DeckControllerConcurrencyTest {
             return PowerStore.StageResult.Saved(updated.draftVersion)
         }
 
-        override fun commit(draftId: Long, approveStale: Boolean): PowerStore.CommitOutcome {
+        override fun commit(
+            draftId: Long,
+            approveStale: Boolean,
+            expectedCurrentRevision: Long?
+        ): PowerStore.CommitOutcome {
             val card = cards.remove(draftId) ?: return PowerStore.CommitOutcome.Invalid("缺失")
             return PowerStore.CommitOutcome.Committed(card.eventSeq, 1, "c-$draftId")
         }

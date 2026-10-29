@@ -13,6 +13,7 @@ import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.DraftCard
 import dev.powerfulcalendar.core.DraftQueueSearch
 import dev.powerfulcalendar.core.DraftOperation
+import dev.powerfulcalendar.core.DraftStatus
 import dev.powerfulcalendar.core.FormalEventSearch
 import dev.powerfulcalendar.core.FormBuild
 import dev.powerfulcalendar.core.RecurrenceFreq
@@ -59,9 +60,20 @@ internal sealed interface WebEditCommand {
     data class CloseEvent(override val requestId: String, val sessionId: String): WebEditCommand
     data class OpenDeck(override val requestId: String, val draftId: Long?): WebEditCommand
     data class SearchDeck(override val requestId: String, val query: String): WebEditCommand
+    data class LoadRetiredPage(override val requestId: String, val offset: Int): WebEditCommand
     data class JumpDeck(override val requestId: String, val steps: Int): WebEditCommand
     data class ProposeReplaceDeck(override val requestId: String, val eventSeq: Long,
         val expectedRevision: Long): WebEditCommand
+    data class BeginRestoreDeck(override val requestId: String, val eventSeq: Long,
+        val expectedRevision: Long): WebEditCommand
+    data class KeepConflictDeck(override val requestId: String, val draftId: Long,
+        val draftVersion: Long, val eventSeq: Long, val expectedRevision: Long): WebEditCommand
+    data class RequestConflictReviewDeck(override val requestId: String, val draftId: Long,
+        val draftVersion: Long, val eventSeq: Long, val expectedRevision: Long): WebEditCommand
+    data class KeepRestoreDeck(override val requestId: String, val draftId: Long,
+        val draftVersion: Long, val eventSeq: Long, val expectedRevision: Long): WebEditCommand
+    data class RequestRestoreReviewDeck(override val requestId: String, val draftId: Long,
+        val draftVersion: Long, val eventSeq: Long, val expectedRevision: Long): WebEditCommand
     data class CreateDeck(override val requestId: String, val kind: TemporalKind): WebEditCommand
     data class PatchDeck(override val requestId: String, val draftId: Long,
         val draftVersion: Long, val field: String, val value: String): WebEditCommand
@@ -170,9 +182,34 @@ internal object WebEditWire {
                 if(query.length > 120 || query.any { it == '\u0000' || it.isISOControl() }) null
                 else WebEditCommand.SearchDeck(id, query)
             } else null
+            "deck.retired" -> if(exact("offset"))
+                WebEditCommand.LoadRetiredPage(id, boundedInt("offset", 0, 1_000_000) ?: return null)
+            else null
             "deck.jump" -> if(exact("steps"))
                 WebEditCommand.JumpDeck(id, boundedInt("steps", -1000, 1000) ?: return null)
             else null
+            "deck.beginRestore" -> if(exact("eventSeq", "expectedRevision"))
+                WebEditCommand.BeginRestoreDeck(id, number("eventSeq") ?: return null,
+                    number("expectedRevision") ?: return null)
+            else null
+            "deck.keepConflict", "deck.requestConflictReview",
+            "deck.keepRestore", "deck.requestRestoreReview" -> {
+                if (!exact("draftId", "draftVersion", "eventSeq", "expectedRevision")) return null
+                val draftId = number("draftId") ?: return null
+                val draftVersion = number("draftVersion", true) ?: return null
+                val eventSeq = number("eventSeq") ?: return null
+                val expectedRevision = number("expectedRevision") ?: return null
+                when (name) {
+                    "deck.keepConflict" -> WebEditCommand.KeepConflictDeck(
+                        id, draftId, draftVersion, eventSeq, expectedRevision)
+                    "deck.requestConflictReview" -> WebEditCommand.RequestConflictReviewDeck(
+                        id, draftId, draftVersion, eventSeq, expectedRevision)
+                    "deck.keepRestore" -> WebEditCommand.KeepRestoreDeck(
+                        id, draftId, draftVersion, eventSeq, expectedRevision)
+                    else -> WebEditCommand.RequestRestoreReviewDeck(
+                        id, draftId, draftVersion, eventSeq, expectedRevision)
+                }
+            }
             "deck.proposeReplace" -> if(exact("eventSeq", "expectedRevision"))
                 WebEditCommand.ProposeReplaceDeck(
                     id,
@@ -294,7 +331,9 @@ internal data class WebFormalWriteReview(
     val newEventSession: NewEventEditSession? = null,
     val deckCard: DraftCard? = null,
     val deckForm: DraftForm? = null,
-    val deckVersion: Long? = null
+    val deckVersion: Long? = null,
+    val conflictPrompt: DeckController.ConflictPrompt? = null,
+    val restorePrompt: DeckController.RestorePrompt? = null
 )
 
 /** Host-owned timeline camera and zone; skins never choose the drag snap grid. */
@@ -316,6 +355,12 @@ internal class WebSkinEditService(
     private var deckOpen = false
     private var deckSearchQuery = ""
     private var formalSearchResults: List<TemporalRecord> = emptyList()
+    private var retiredOffset = 0
+    private var retiredTotal = 0
+    private var retiredResults: List<TemporalRecord> = emptyList()
+    private var retiredLoaded = false
+    private var restoreTombstone: TemporalRecord? = null
+    private val retiredPageSize = 50
     var pendingWriteReview by mutableStateOf<WebFormalWriteReview?>(null)
         private set
     // Compose-observable lifetime signal for reliable Android Back interception.
@@ -331,6 +376,44 @@ internal class WebSkinEditService(
     private fun clearDeckSearch() {
         deckSearchQuery = ""
         formalSearchResults = emptyList()
+        retiredOffset = 0
+        retiredTotal = 0
+        retiredResults = emptyList()
+        retiredLoaded = false
+    }
+
+    private suspend fun loadRetiredPage(requestedOffset: Int): Boolean {
+        var offset = requestedOffset / retiredPageSize * retiredPageSize
+        var page = withContext(Dispatchers.IO) {
+            store.retiredPage(offset = offset, limit = retiredPageSize)
+        }
+        if (page.total > 0 && offset >= page.total) {
+            offset = (page.total - 1) / retiredPageSize * retiredPageSize
+            page = withContext(Dispatchers.IO) {
+                store.retiredPage(offset = offset, limit = retiredPageSize)
+            }
+        } else if (page.total == 0) {
+            offset = 0
+        }
+        retiredOffset = offset
+        retiredTotal = page.total
+        retiredResults = page.records
+        retiredLoaded = true
+        return true
+    }
+
+    private suspend fun loadRestoreTombstoneIfNeeded() {
+        val prompt = deck.state.restore ?: run {
+            restoreTombstone = null
+            return
+        }
+        restoreTombstone = withContext(Dispatchers.IO) {
+            synchronized(store) {
+                store.getIncludingRetired(prompt.eventSeq)?.takeIf {
+                    store.isRetired(prompt.eventSeq)
+                }
+            }
+        }
     }
 
     private fun editorMatches(id: String) = session != null && sessionId == id
@@ -357,6 +440,11 @@ internal class WebSkinEditService(
                 .put("error", active.lastError)
                 .put("form", WebEditWire.form(active.form))
                 .put("hasConflict", false).put("hasRestore", false)
+                .put("conflict", JSONObject.NULL).put("restore", JSONObject.NULL)
+                .put("retiredResults", org.json.JSONArray())
+                .put("retiredOffset", 0).put("retiredTotal", 0)
+                .put("retiredHasPrevious", false).put("retiredHasNext", false)
+                .put("retiredLoaded", false)
         }
         val state = deck.state
         val items = org.json.JSONArray()
@@ -377,6 +465,46 @@ internal class WebSkinEditService(
                 .put("title", record.title.take(240))
                 .put("kind", record.kind.name))
         }
+        val retiredItems = org.json.JSONArray()
+        retiredResults.forEach { record ->
+            val form = DraftForm.from(record)
+            retiredItems.put(JSONObject()
+                .put("eventSeq", record.eventSeq)
+                .put("revision", record.revision)
+                .put("title", record.title.take(240))
+                .put("kind", record.kind.name)
+                .put("startText", form.startText.take(40))
+                .put("endText", form.endText.take(40)))
+        }
+        val conflict = state.conflict?.let { prompt ->
+            JSONObject()
+                .put("draftId", prompt.draftId)
+                .put("eventSeq", prompt.eventSeq)
+                .put("draftVersion", prompt.card.draftVersion)
+                .put("currentRevision", prompt.currentRevision ?: JSONObject.NULL)
+                .put("operation", prompt.card.operation.name)
+                .put("current", prompt.current?.let { WebEditWire.form(DraftForm.from(it)) }
+                    ?: JSONObject.NULL)
+                .put("proposed", WebEditWire.form(prompt.approvedForm))
+                .put("changes", org.json.JSONArray().apply {
+                    prompt.changes.forEach { change ->
+                        put(JSONObject().put("label", change.label)
+                            .put("before", change.before).put("after", change.after))
+                    }
+                })
+        } ?: JSONObject.NULL
+        val restore = state.restore?.let { prompt ->
+            val tombstone = restoreTombstone?.takeIf { it.eventSeq == prompt.eventSeq }
+            JSONObject()
+                .put("eventSeq", prompt.eventSeq)
+                .put("draftId", prompt.card.draftId)
+                .put("draftVersion", state.version)
+                .put("expectedRevision", tombstone?.revision ?: JSONObject.NULL)
+                .put("message", prompt.message)
+                .put("current", tombstone?.let { WebEditWire.form(DraftForm.from(it)) }
+                    ?: JSONObject.NULL)
+                .put("proposed", state.form?.let(WebEditWire::form) ?: JSONObject.NULL)
+        } ?: JSONObject.NULL
         return JSONObject().put("open",deckOpen)
             .put("transient",false)
             .put("lastDiscardId",state.lastDiscardId)
@@ -394,6 +522,12 @@ internal class WebSkinEditService(
             .put("form",state.form?.let(WebEditWire::form))
             .put("hasConflict",state.conflict!=null)
             .put("hasRestore",state.restore!=null)
+            .put("conflict",conflict).put("restore",restore)
+            .put("retiredResults",retiredItems)
+            .put("retiredOffset",retiredOffset).put("retiredTotal",retiredTotal)
+            .put("retiredHasPrevious",retiredOffset>0)
+            .put("retiredHasNext",retiredOffset+retiredResults.size<retiredTotal)
+            .put("retiredLoaded",retiredLoaded)
     }
 
     /** Snapshots contain no lease token or reference to raw PowerStore objects. */
@@ -635,15 +769,25 @@ internal class WebSkinEditService(
                         if(activeNew != null && (cmd.draftId == null || cmd.draftId == activeNew.clientDraftId))
                             result(cmd.requestId,"opened")
                         else if(activeNew != null) result(cmd.requestId,"locked")
-                        else if(cmd.draftId==null) result(cmd.requestId,"opened")
+                        else if(cmd.draftId==null) {
+                            loadRetiredPage(0)
+                            loadRestoreTombstoneIfNeeded()
+                            result(cmd.requestId,"opened")
+                        }
                         else if(deck.select(cmd.draftId)) {
                             clearDeckSearch()
+                            loadRetiredPage(0)
+                            loadRestoreTombstoneIfNeeded()
                             result(cmd.requestId,"selected")
                         }
                         else result(cmd.requestId,"failed",deck.state.error)
                     } else {
                         clearDeckSearch()
                         deck.open(cmd.draftId);deckOpen=true
+                        if (newEventSession == null) {
+                            loadRetiredPage(0)
+                            loadRestoreTombstoneIfNeeded()
+                        }
                         result(cmd.requestId,"opened")
                     }
                 }
@@ -658,6 +802,17 @@ internal class WebSkinEditService(
                                     FormalEventSearch.filter(store.all(), cmd.query).take(4)
                                 }
                             result(cmd.requestId,"searched")
+                        }
+                    }
+                }
+                is WebEditCommand.LoadRetiredPage -> {
+                    when {
+                        !deckOpen -> result(cmd.requestId,"missing")
+                        newEventSession != null -> result(cmd.requestId,"unsupported")
+                        deck.state.aiLocked || deck.state.busy -> result(cmd.requestId,"locked")
+                        else -> {
+                            loadRetiredPage(cmd.offset)
+                            result(cmd.requestId,"loaded")
                         }
                     }
                 }
@@ -716,6 +871,43 @@ internal class WebSkinEditService(
                         }
                     }
                 }
+                is WebEditCommand.BeginRestoreDeck -> {
+                    val state = deck.state
+                    val listed = retiredResults.firstOrNull {
+                        it.eventSeq == cmd.eventSeq && it.revision == cmd.expectedRevision
+                    }
+                    val stillRetired = if (listed == null) false else withContext(Dispatchers.IO) {
+                        synchronized(store) {
+                            store.isRetired(cmd.eventSeq) &&
+                                store.getIncludingRetired(cmd.eventSeq) == listed
+                        }
+                    }
+                    when {
+                        !deckOpen || newEventSession != null -> result(cmd.requestId,"missing")
+                        session != null || externalEditorActive() -> result(cmd.requestId,"locked")
+                        state.aiLocked || state.busy ||
+                            withContext(Dispatchers.IO) { store.isLocked() } -> result(cmd.requestId,"locked")
+                        !stillRetired -> result(cmd.requestId,"stale")
+                        state.conflict != null || state.restore != null -> result(cmd.requestId,"locked")
+                        !deck.flush() -> result(cmd.requestId,"failed",deck.state.error)
+                        else -> {
+                            val opened = deck.beginRestore(cmd.eventSeq)
+                            val card = deck.state.current
+                            if (!opened || card == null) result(cmd.requestId,"failed",deck.state.error)
+                            else {
+                                clearDeckSearch()
+                                restoreTombstone = null
+                                if (card.baseRevision != cmd.expectedRevision)
+                                    result(cmd.requestId,"updated",card.draftId.toString())
+                                else result(cmd.requestId,"opened",card.draftId.toString())
+                            }
+                        }
+                    }
+                }
+                is WebEditCommand.KeepConflictDeck -> keepConflict(cmd)
+                is WebEditCommand.RequestConflictReviewDeck -> requestConflictReview(cmd)
+                is WebEditCommand.KeepRestoreDeck -> keepRestore(cmd)
+                is WebEditCommand.RequestRestoreReviewDeck -> requestRestoreReview(cmd)
                 is WebEditCommand.PatchDeck -> {
                     val activeNew = newEventSession
                     if(activeNew != null) {
@@ -818,6 +1010,114 @@ internal class WebSkinEditService(
         reply
     }
 
+    private fun matchingConflict(
+        draftId: Long, draftVersion: Long, eventSeq: Long, expectedRevision: Long
+    ): DeckController.ConflictPrompt? = deck.state.conflict?.takeIf { prompt ->
+        prompt.draftId == draftId && prompt.card.draftVersion == draftVersion &&
+            prompt.eventSeq == eventSeq && prompt.currentRevision == expectedRevision &&
+            deck.state.currentId == draftId && deck.state.version == draftVersion
+    }
+
+    private fun matchingRestore(
+        draftId: Long, draftVersion: Long, eventSeq: Long, expectedRevision: Long
+    ): DeckController.RestorePrompt? = deck.state.restore?.takeIf { prompt ->
+        prompt.card.draftId == draftId && deck.state.currentId == draftId &&
+            deck.state.version == draftVersion && prompt.eventSeq == eventSeq &&
+            restoreTombstone?.eventSeq == eventSeq &&
+            restoreTombstone?.revision == expectedRevision
+    }
+
+    private fun matchesPersistedConflictDraft(
+        persisted: DraftCard?, prompt: DeckController.ConflictPrompt
+    ): Boolean = persisted != null && persisted.status == DraftStatus.CONFLICT &&
+        persisted.draftId == prompt.card.draftId && persisted.eventSeq == prompt.card.eventSeq &&
+        persisted.queueOrder == prompt.card.queueOrder &&
+        persisted.operation == prompt.card.operation && persisted.form == prompt.approvedForm &&
+        persisted.baseRevision == prompt.card.baseRevision &&
+        persisted.draftVersion == prompt.card.draftVersion
+
+    private fun keepConflict(cmd: WebEditCommand.KeepConflictDeck): JSONObject {
+        if (!deckOpen || matchingConflict(cmd.draftId, cmd.draftVersion, cmd.eventSeq,
+                cmd.expectedRevision) == null) return result(cmd.requestId, "stale")
+        deck.dismissConflict()
+        return result(cmd.requestId, "kept")
+    }
+
+    private suspend fun requestConflictReview(
+        cmd: WebEditCommand.RequestConflictReviewDeck
+    ): JSONObject {
+        val state = deck.state
+        val prompt = matchingConflict(cmd.draftId, cmd.draftVersion, cmd.eventSeq,
+            cmd.expectedRevision) ?: return result(cmd.requestId, "stale")
+        if (!deckOpen || newEventSession != null || session != null || externalEditorActive())
+            return result(cmd.requestId, "locked")
+        if (state.aiLocked || state.busy || state.dirty ||
+            withContext(Dispatchers.IO) { store.isLocked() }) return result(cmd.requestId, "locked")
+        val live = withContext(Dispatchers.IO) {
+            synchronized(store) {
+                store.get(prompt.eventSeq)?.takeIf { it.revision == cmd.expectedRevision }
+            }
+        } ?: return result(cmd.requestId, "stale", "正式事件已变化，请重新提交草稿以刷新差异")
+        val persisted = withContext(Dispatchers.IO) { store.draft(prompt.draftId) }
+        if (!matchesPersistedConflictDraft(persisted, prompt) || state.form != prompt.approvedForm)
+            return result(cmd.requestId, "stale", "草稿内容已变化，请重新检查")
+        pendingWriteReview = WebFormalWriteReview(
+            token = UUID.randomUUID().toString(), command = cmd,
+            operation = prompt.card.operation, current = live, before = live,
+            proposed = prompt.approvedForm, deckCard = persisted,
+            deckForm = prompt.approvedForm, deckVersion = state.version,
+            conflictPrompt = prompt
+        )
+        return result(cmd.requestId, "confirmation_required")
+    }
+
+    private suspend fun keepRestore(cmd: WebEditCommand.KeepRestoreDeck): JSONObject {
+        val prompt = matchingRestore(cmd.draftId, cmd.draftVersion, cmd.eventSeq,
+            cmd.expectedRevision) ?: return result(cmd.requestId, "stale")
+        if (!deckOpen || deck.state.aiLocked || deck.state.busy) return result(cmd.requestId, "locked")
+        val unchanged = withContext(Dispatchers.IO) {
+            synchronized(store) {
+                store.isRetired(prompt.eventSeq) &&
+                    store.getIncludingRetired(prompt.eventSeq) == restoreTombstone
+            }
+        }
+        if (!unchanged || withContext(Dispatchers.IO) { store.draft(prompt.card.draftId) } != prompt.card)
+            return result(cmd.requestId, "stale", "墓碑或恢复草稿已变化")
+        deck.dismissRestore()
+        restoreTombstone = null
+        return result(cmd.requestId, "kept")
+    }
+
+    private suspend fun requestRestoreReview(
+        cmd: WebEditCommand.RequestRestoreReviewDeck
+    ): JSONObject {
+        val state = deck.state
+        val prompt = matchingRestore(cmd.draftId, cmd.draftVersion, cmd.eventSeq,
+            cmd.expectedRevision) ?: return result(cmd.requestId, "stale")
+        if (!deckOpen || newEventSession != null || session != null || externalEditorActive())
+            return result(cmd.requestId, "locked")
+        if (state.aiLocked || state.busy || state.dirty ||
+            withContext(Dispatchers.IO) { store.isLocked() }) return result(cmd.requestId, "locked")
+        val tombstone = withContext(Dispatchers.IO) {
+            synchronized(store) {
+                store.getIncludingRetired(prompt.eventSeq)?.takeIf {
+                    store.isRetired(prompt.eventSeq) && it.revision == cmd.expectedRevision
+                }
+            }
+        } ?: return result(cmd.requestId, "stale", "已删除事件的版本已变化，请重新检查")
+        val form = state.form ?: return result(cmd.requestId, "missing")
+        val persisted = withContext(Dispatchers.IO) { store.draft(prompt.card.draftId) }
+        if (persisted != prompt.card || form != prompt.card.form || tombstone != restoreTombstone)
+            return result(cmd.requestId, "stale", "恢复草稿或墓碑已变化，请重新检查")
+        pendingWriteReview = WebFormalWriteReview(
+            token = UUID.randomUUID().toString(), command = cmd,
+            operation = prompt.card.operation, current = tombstone, before = tombstone,
+            proposed = form, deckCard = prompt.card, deckForm = form,
+            deckVersion = state.version, restorePrompt = prompt
+        )
+        return result(cmd.requestId, "confirmation_required")
+    }
+
     private suspend fun requestCommitReview(cmd: WebEditCommand.CommitDeck): JSONObject {
         val activeNew = newEventSession
         if (activeNew != null) {
@@ -894,12 +1194,26 @@ internal class WebSkinEditService(
         return result(cmd.requestId, "confirmation_required")
     }
 
-    private suspend fun commitDeckResult(requestId: String): JSONObject =
-        if (deck.commit()) result(requestId, "committed")
-        else result(requestId,
+    private suspend fun commitDeckResult(requestId: String): JSONObject {
+        if (deck.commit()) {
+            restoreTombstone = null
+            return result(requestId, "committed")
+        }
+        val restore = deck.state.restore
+        if (restore != null) {
+            restoreTombstone = withContext(Dispatchers.IO) {
+                synchronized(store) {
+                    store.getIncludingRetired(restore.eventSeq)?.takeIf {
+                        store.isRetired(restore.eventSeq)
+                    }
+                }
+            }
+        } else restoreTombstone = null
+        return result(requestId,
             if (deck.state.conflict != null) "conflict"
-            else if (deck.state.restore != null) "restore_required"
+            else if (restore != null) "restore_required"
             else "failed", deck.state.error)
+    }
 
     private suspend fun resolveDeckCommit(review: WebFormalWriteReview): JSONObject {
         val command = review.command as? WebEditCommand.CommitDeck
@@ -943,14 +1257,80 @@ internal class WebSkinEditService(
         return commitDeckResult(command.requestId)
     }
 
+    private suspend fun resolveConflictReview(
+        review: WebFormalWriteReview,
+        command: WebEditCommand.RequestConflictReviewDeck,
+        approved: Boolean
+    ): JSONObject {
+        val prompt = review.conflictPrompt ?: return result(command.requestId, "stale")
+        val currentPrompt = matchingConflict(command.draftId, command.draftVersion,
+            command.eventSeq, command.expectedRevision)
+        if (currentPrompt != prompt || !matchesPersistedConflictDraft(review.deckCard, prompt) ||
+            review.deckVersion != command.draftVersion || review.deckForm != prompt.approvedForm)
+            return result(command.requestId, "conflict", "冲突卡片或审阅内容已变化")
+        val live = withContext(Dispatchers.IO) {
+            synchronized(store) { store.get(command.eventSeq) }
+        }
+        val persisted = withContext(Dispatchers.IO) { store.draft(command.draftId) }
+        if (live != review.current || live?.revision != command.expectedRevision ||
+            persisted != review.deckCard || !matchesPersistedConflictDraft(persisted, prompt) ||
+            deck.state.form != review.deckForm || deck.state.dirty)
+            return result(command.requestId, "conflict", "正式事件或草稿已变化，请重新审查")
+        if (!approved) {
+            return result(command.requestId, "cancelled")
+        }
+        return if (deck.confirmConflictReplacement(command.expectedRevision)) {
+            if (review.operation == DraftOperation.DELETE)
+                result(command.requestId, "saved", command.eventSeq.toString())
+            else result(command.requestId, "replaced", command.eventSeq.toString())
+        } else result(command.requestId, "conflict", deck.state.error ?: "请重新审查冲突")
+    }
+
+    private suspend fun resolveRestoreReview(
+        review: WebFormalWriteReview,
+        command: WebEditCommand.RequestRestoreReviewDeck,
+        approved: Boolean
+    ): JSONObject {
+        val prompt = review.restorePrompt ?: return result(command.requestId, "stale")
+        val expectedRevision = review.current?.revision ?: return result(command.requestId, "stale")
+        val currentPrompt = matchingRestore(command.draftId, command.draftVersion,
+            command.eventSeq, command.expectedRevision)
+        if (currentPrompt != prompt || review.deckCard != prompt.card ||
+            review.deckVersion != command.draftVersion || review.deckForm != deck.state.form ||
+            expectedRevision != command.expectedRevision)
+            return result(command.requestId, "conflict", "恢复草稿或审阅内容已变化")
+        val live = withContext(Dispatchers.IO) {
+            synchronized(store) {
+                store.getIncludingRetired(command.eventSeq)?.takeIf {
+                    store.isRetired(command.eventSeq)
+                }
+            }
+        }
+        val persisted = withContext(Dispatchers.IO) { store.draft(command.draftId) }
+        if (live != review.current || persisted != review.deckCard ||
+            deck.state.form != review.deckForm || deck.state.dirty)
+            return result(command.requestId, "conflict", "墓碑或恢复草稿已变化，请重新审查")
+        if (!approved) {
+            return result(command.requestId, "cancelled")
+        }
+        return if (deck.requestRestore()) {
+            restoreTombstone = null
+            result(command.requestId, "restored", command.eventSeq.toString())
+        } else result(command.requestId, "conflict", deck.state.error ?: "恢复未完成，草稿仍保留")
+    }
+
     /** Called only by the host-owned confirmation UI, never by a Web command. */
     suspend fun resolveFormalWriteReview(token: String, approved: Boolean): JSONObject = gate.withLock {
         val review=pendingWriteReview
             ?: return@withLock result("host-review","stale")
         if(review.token!=token) return@withLock result("host-review","stale")
         val reply = try {
-            if(!approved) result(review.command.requestId,"cancelled")
-            else when (review.command) {
+            when (val command = review.command) {
+                is WebEditCommand.RequestConflictReviewDeck ->
+                    resolveConflictReview(review, command, approved)
+                is WebEditCommand.RequestRestoreReviewDeck ->
+                    resolveRestoreReview(review, command, approved)
+                else -> if(!approved) result(review.command.requestId,"cancelled") else when (command) {
                 is WebEditCommand.SaveEvent -> {
                     val active = review.editorSession
                     if(active==null || session!==active || sessionId!=review.command.sessionId ||
@@ -1000,6 +1380,7 @@ internal class WebSkinEditService(
                 }
                 is WebEditCommand.CommitDeck -> resolveDeckCommit(review)
                 else -> result(review.command.requestId,"stale")
+                }
             }
         } catch(e:kotlinx.coroutines.CancellationException) { throw e }
           catch(e:Exception) { result(review.command.requestId,"failed","Host operation failed; retry or recover") }

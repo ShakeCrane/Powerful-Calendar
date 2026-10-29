@@ -39,6 +39,8 @@ class PowerStore(
     databaseName: String = DATABASE_NAME,
     private val processIdentity: String = PROCESS_TOKEN
 ) : SQLiteOpenHelper(context.applicationContext, databaseName, null, VERSION) {
+    data class RetiredPage(val records: List<TemporalRecord>, val total: Int)
+
     private val appContext = context.applicationContext
 
     /** Stable typed preflight/transaction failure. Callers must not infer this from locale text. */
@@ -1304,7 +1306,8 @@ class PowerStore(
         approveStale: Boolean = false,
         actor: String = "user",
         aiSession: AiSession? = null,
-        idempotencyKey: String? = null
+        idempotencyKey: String? = null,
+        expectedCurrentRevision: Long? = null
     ): CommitOutcome = tx { db ->
         if (aiSession != null) {
             val authorization = authorize(db, aiSession, draftId)
@@ -1357,6 +1360,11 @@ class PowerStore(
         if (draft.operation == DraftOperation.CREATE && retired) {
             db.execSQL("UPDATE drafts SET status='CONFLICT' WHERE draft_id=?", arrayOf(draftId))
             return@tx CommitOutcome.NeedsRestore(draft.eventSeq)
+        }
+
+        if (expectedCurrentRevision != null && current?.revision != expectedCurrentRevision) {
+            db.execSQL("UPDATE drafts SET status='CONFLICT' WHERE draft_id=?", arrayOf(draftId))
+            return@tx CommitOutcome.Conflict(current)
         }
 
         val stale = CommitRules.isStale(draft.baseRevision, current?.revision)
@@ -1951,6 +1959,25 @@ class PowerStore(
         ).use { cursor ->
             buildList { while (cursor.moveToNext()) add(decodeRecord(cursor.getString(0))) }
         }
+
+    /** Read-only, bounded tombstone page for the explicit recovery picker. */
+    @Synchronized
+    fun retiredPage(offset: Int = 0, limit: Int = 50): RetiredPage {
+        require(offset in 0..1_000_000) { "墓碑页偏移无效" }
+        require(limit in 1..100) { "墓碑页大小无效" }
+        val db = readableDatabase
+        val total = db.rawQuery("SELECT COUNT(*) FROM objects WHERE retired=1", null).use { cursor ->
+            if (cursor.moveToFirst()) cursor.getInt(0) else 0
+        }
+        val records = db.rawQuery(
+            """SELECT payload FROM objects WHERE retired=1
+               ORDER BY updated_ms DESC, event_seq DESC LIMIT ? OFFSET ?""",
+            arrayOf(limit.toString(), offset.toString())
+        ).use { cursor ->
+            buildList { while (cursor.moveToNext()) add(decodeRecord(cursor.getString(0))) }
+        }
+        return RetiredPage(records, total)
+    }
 
     /** Rebuild only floating daily Alarm intents after a system-zone change or recovery event. */
     @Synchronized

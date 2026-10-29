@@ -12,6 +12,10 @@ timelineDragFixture.value="timeline-drag";
 timelineDragFixture.textContent="时间轴拖动与重复事件拒绝（回归夹具）";
 timelineDragFixture.hidden=true;
 $("scenario").append(timelineDragFixture);
+const conflictRestoreFixture=document.createElement("option");
+conflictRestoreFixture.value="conflict-restore";
+conflictRestoreFixture.textContent="仅预览 Mock：冲突与已删除恢复（不写数据）";
+$("scenario").append(conflictRestoreFixture);
 const enc = new TextEncoder(), dec = new TextDecoder();
 const escapeHtml = s => String(s).replaceAll("&","&amp;").replaceAll("<","&lt;")
   .replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;");
@@ -92,6 +96,7 @@ async function loadPackage(data){
   projectBaseline=JSON.stringify(project);
   mockEditing={editor:{open:false},deck:{open:false},lastResult:null};
   resetMockDeckFixtures();
+  mockConflictRestoreActive=$("scenario").value==="conflict-restore";
   mockApproval=null;$("mockApproval").hidden=true;
   selectedLayer=project.layers[0]?.id||null;dirty=false;
   // Fork the protected factory identity before an ordinary user exports it.
@@ -812,6 +817,14 @@ function mockPatch(form,field,value){
 }
 let mockEditing={editor:{open:false},deck:{open:false},lastResult:null},mockApproval=null;
 let mockDeckDrafts=[],mockDeckFormalEvents=[];
+const mockRetiredEvents=Array.from({length:151},(_,index)=>{
+  const eventSeq=8901+index,kind=["ACTIVITY","ALARM","DEADLINE","MEMO"][index%4];
+  const date=`2026-10-${String(index%28+1).padStart(2,"0")}`;
+  return {eventSeq,revision:2+index%6,title:`预览已删除事件 ${index+1}`,kind,
+    updatedMillis:1800000000000+Math.floor(index/2)*1000,
+    startText:kind==="ACTIVITY"||kind==="ALARM"?date+" 09:00":"",
+    endText:kind==="ACTIVITY"?date+" 10:00":kind==="DEADLINE"?date:""};
+}).sort((left,right)=>right.updatedMillis-left.updatedMillis||right.eventSeq-left.eventSeq);
 function resetMockDeckFixtures(){
   mockDeckDrafts=[
     {draftId:7201,eventSeq:7201,draftVersion:0,title:"示例草稿一",kind:"MEMO",status:"PENDING"},
@@ -846,6 +859,60 @@ function mockDeckProject(deck,query=""){
   deck.position=index<0?0:index+1;
   deck.canGoPrevious=index>0;
   deck.canGoNext=index>=0&&index<mockDeckDrafts.length-1;
+  deck.conflict=deck.conflict||null;
+  deck.restore=deck.restore||null;
+  deck.hasConflict=!!deck.conflict;
+  deck.hasRestore=!!deck.restore;
+  const retired=$("scenario").value==="conflict-restore"?mockRetiredEvents:[];
+  const retiredOffset=Math.max(0,Number(deck.retiredOffset)||0);
+  deck.retiredLoaded=deck.retiredLoaded===true;
+  deck.retiredResults=retired.slice(retiredOffset,retiredOffset+50)
+    .map(({eventSeq,revision,title,kind,startText,endText})=>
+      ({eventSeq,revision,title,kind,startText,endText}));
+  deck.retiredOffset=retiredOffset;
+  deck.retiredTotal=retired.length;
+  deck.retiredHasPrevious=retiredOffset>0;
+  deck.retiredHasNext=retiredOffset+deck.retiredResults.length<retired.length;
+}
+function mockConflictFixture(deck){
+  const eventSeq=6201,draftId=7801,draftVersion=4,currentRevision=6;
+  const current={...mockForm("ACTIVITY"),title:"当前正式标题",
+    startText:"2026-10-22 09:00",endText:"2026-10-22 10:00",
+    location:"原教学楼",notes:"正式记录中的说明"};
+  const proposed={...current,title:"冲突草稿标题",
+    startText:"2026-10-22 10:30",endText:"2026-10-22 11:30",
+    location:"新教学楼",notes:"草稿中的新说明"};
+  const record=mockDeckFormalEvents.find(value=>value.eventSeq===eventSeq);
+  if(record){record.revision=currentRevision;record.title=current.title}
+  let card=mockDeckDrafts.find(value=>value.draftId===draftId);
+  if(!card){
+    card={draftId,eventSeq,draftVersion,title:proposed.title,kind:proposed.kind,
+      status:"CONFLICT",operation:"REPLACE",baseRevision:2};
+    mockDeckDrafts.push(card);
+  }
+  deck.open=true;deck.transient=false;deck.currentId=draftId;deck.version=draftVersion;
+  deck.form={...proposed};deck.baseline={...proposed};deck.dirty=false;
+  deck.conflict={draftId,eventSeq,draftVersion,currentRevision,operation:"REPLACE",
+    current,proposed,changes:[
+      {label:"标题",before:current.title,after:proposed.title},
+      {label:"开始时间",before:current.startText,after:proposed.startText},
+      {label:"结束时间",before:current.endText,after:proposed.endText},
+      {label:"地点",before:current.location,after:proposed.location},
+      {label:"备注",before:current.notes,after:proposed.notes}
+    ]};
+  deck.restore=null;deck.hasConflict=true;deck.hasRestore=false;deck.retiredOffset=0;
+}
+function mockSetRetiredPage(deck,offset){
+  const retired=$("scenario").value==="conflict-restore"?mockRetiredEvents:[];
+  const safeOffset=Math.max(0,Math.min(retired.length,offset));
+  deck.retiredOffset=safeOffset;
+  deck.retiredResults=retired.slice(safeOffset,safeOffset+50)
+    .map(({eventSeq,revision,title,kind,startText,endText})=>
+      ({eventSeq,revision,title,kind,startText,endText}));
+  deck.retiredTotal=retired.length;
+  deck.retiredHasPrevious=safeOffset>0;
+  deck.retiredHasNext=safeOffset+deck.retiredResults.length<retired.length;
+  deck.retiredLoaded=true;
 }
 function mockFlushDeck(deck){
   if(deck.transient){
@@ -880,6 +947,27 @@ function resolveMockApproval(approved){
   if(!mockApproval)return;
   const request=mockApproval;mockApproval=null;$("mockApproval").hidden=true;
   $("mockApprovalText").textContent="预览模拟宿主确认，不会写入真实数据。";
+  if(request.kind==="deckConflictReview"||request.kind==="deckRestoreReview"){
+    const deck=mockEditing.deck;
+    const prompt=request.kind==="deckConflictReview"?deck.conflict:deck.restore;
+    const matches=prompt&&prompt.draftId===request.draftId&&
+      prompt.draftVersion===request.draftVersion&&prompt.eventSeq===request.eventSeq&&
+      (request.kind==="deckConflictReview"
+        ?prompt.currentRevision===request.expectedRevision
+        :prompt.expectedRevision===request.expectedRevision);
+    const status=approved&&matches
+      ?request.kind==="deckConflictReview"?"replaced_preview_only":"restored_preview_only"
+      :approved?"stale":"cancelled";
+    if(approved&&matches){
+      if(request.kind==="deckConflictReview")deck.conflict=null;
+      else deck.restore=null;
+    }
+    if(deck.open)mockDeckProject(deck,deck.searchQuery);
+    mockEditing.lastResult={requestId:request.requestId,status};
+    logAction("仅预览、无持久化写入：Mock Host "+
+      (approved&&matches?"模拟确认":"取消或拒绝")+" · "+status);
+    postState();return;
+  }
   if(request.kind==="aiProposal"){
     if(request.reviewId!==mockAiReviewId){
       mockChat.push({role:"assistant",content:"预览 Mock：审核卡已过期，模拟 Host 拒绝了旧请求。"});
@@ -957,7 +1045,9 @@ function onSkinCommand(p){
       mockEditing.deck={open:true,cards:[{draftId,eventSeq:item.eventSeq,
         draftVersion:0,title:form.title,kind:form.kind,status:"PENDING",
         operation:"REPLACE"}],currentId:draftId,version:0,dirty:false,
-        aiLocked:false,form,baseline:{...form}};
+        aiLocked:false,form,baseline:{...form},conflict:null,restore:null,
+        hasConflict:false,hasRestore:false,retiredResults:[],retiredOffset:0,
+        retiredTotal:0,retiredHasPrevious:false,retiredHasNext:false,retiredLoaded:false};
       result.status="staged";result.detail=String(draftId);break;
     }
     case "editor.open":
@@ -1042,7 +1132,10 @@ function onSkinCommand(p){
       mockEditing.deck={open:true,transient:true,cards:[{draftId:id,title:form.title,
         kind:p.kind,status:"PENDING"}],currentId:id,version:0,position:1,cardCount:1,
         canGoPrevious:false,canGoNext:false,searchQuery:"",formalMatches:[],
-        truncated:false,searchTruncated:false,dirty:false,aiLocked:false,form,baseline:{...form}};
+        truncated:false,searchTruncated:false,dirty:false,aiLocked:false,form,baseline:{...form},
+        conflict:null,restore:null,hasConflict:false,hasRestore:false,retiredResults:[],
+        retiredOffset:0,retiredTotal:0,retiredHasPrevious:false,retiredHasNext:false,
+        retiredLoaded:false};
       result.status="created";result.detail=String(id);break;
     }
     case "deck.open":
@@ -1051,8 +1144,15 @@ function onSkinCommand(p){
         const form={...mockForm(initial.kind),title:initial.title};
         mockEditing.deck={open:true,currentId:initial.draftId,version:initial.draftVersion,
           dirty:false,aiLocked:false,form,baseline:{...form},truncated:false,
-          searchTruncated:false,searchQuery:"",formalMatches:[]};
+          searchTruncated:false,searchQuery:"",formalMatches:[],conflict:null,restore:null,
+          retiredOffset:0,retiredResults:[],retiredTotal:0,
+          retiredHasPrevious:false,retiredHasNext:false,retiredLoaded:false};
         mockDeckProject(mockEditing.deck);
+        mockSetRetiredPage(mockEditing.deck,0);
+        if($("scenario").value==="conflict-restore"){
+          mockConflictFixture(mockEditing.deck);
+          mockDeckProject(mockEditing.deck);
+        }
       }
       result.status="opened";break;
     case "deck.search":{
@@ -1104,6 +1204,103 @@ function onSkinCommand(p){
       deck.form={...mockForm(card.kind),title:card.title};deck.baseline={...deck.form};
       deck.dirty=false;mockDeckProject(deck);
       result.status="opened";result.detail=String(card.draftId);break;
+    }
+    case "deck.retired":{
+      if(Object.keys(p).sort().join(",")!=="name,offset,requestId"||
+        !Number.isSafeInteger(p.offset)||p.offset<0){result.status="invalid";break}
+      if(!deck.open||deck.transient){result.status="missing";break}
+      if(editor.open||deck.aiLocked||deck.busy||deck.dirty){result.status="locked";break}
+      mockSetRetiredPage(deck,p.offset);result.status="loaded";break;
+    }
+    case "deck.beginRestore":{
+      if(Object.keys(p).sort().join(",")!=="eventSeq,expectedRevision,name,requestId"||
+        !Number.isSafeInteger(p.eventSeq)||p.eventSeq<=0||
+        !Number.isSafeInteger(p.expectedRevision)||p.expectedRevision<=0){
+        result.status="invalid";break;
+      }
+      if(!deck.open||deck.transient){result.status="missing";break}
+      if(editor.open||deck.aiLocked||deck.busy||deck.dirty){result.status="locked";break}
+      const record=deck.retiredResults?.find(value=>value.eventSeq===p.eventSeq&&
+        value.revision===p.expectedRevision);
+      if($("scenario").value!=="conflict-restore"||deck.retiredLoaded!==true||!record){
+        result.status="stale";break;
+      }
+      if(deck.conflict||deck.restore){result.status="locked";break}
+      let card=mockDeckDrafts.find(value=>value.eventSeq===record.eventSeq&&
+        value.operation==="RESTORE");
+      if(!card){
+        card={draftId:8000+record.eventSeq,eventSeq:record.eventSeq,draftVersion:0,
+          title:record.title,kind:record.kind,status:"PENDING",operation:"RESTORE",
+          baseRevision:record.revision};
+        mockDeckDrafts.push(card);
+      }
+      const form={...mockForm(record.kind),title:record.title,
+        startText:record.startText,endText:record.endText};
+      deck.currentId=card.draftId;deck.version=card.draftVersion;
+      deck.form=form;deck.baseline={...form};deck.dirty=false;
+      deck.restore={eventSeq:record.eventSeq,draftId:card.draftId,
+        draftVersion:card.draftVersion,expectedRevision:record.revision,
+        message:"事件已删除。预览夹具可申请宿主确认恢复原事件身份。",
+        current:{...form},proposed:{...form}};
+      deck.conflict=null;mockDeckProject(deck);result.status="opened";break;
+    }
+    case "deck.keepConflict":
+    case "deck.requestConflictReview":{
+      if(Object.keys(p).sort().join(",")!==
+        "draftId,draftVersion,eventSeq,expectedRevision,name,requestId"||
+        !Number.isSafeInteger(p.draftId)||p.draftId<=0||
+        !Number.isSafeInteger(p.draftVersion)||p.draftVersion<0||
+        !Number.isSafeInteger(p.eventSeq)||p.eventSeq<=0||
+        !Number.isSafeInteger(p.expectedRevision)||p.expectedRevision<=0){
+        result.status="invalid";break;
+      }
+      const prompt=deck.conflict;
+      if(!deck.open||!prompt){result.status="missing";break}
+      if(editor.open||deck.aiLocked||deck.busy){result.status="locked";break}
+      if(prompt.draftId!==p.draftId||prompt.draftVersion!==p.draftVersion||
+        prompt.eventSeq!==p.eventSeq||prompt.currentRevision!==p.expectedRevision){
+        result.status="stale";break;
+      }
+      if(p.name==="deck.keepConflict"){
+        deck.conflict=null;mockDeckProject(deck,deck.searchQuery);result.status="kept";
+      }else{
+        mockApproval={kind:"deckConflictReview",requestId:p.requestId,
+          draftId:p.draftId,draftVersion:p.draftVersion,eventSeq:p.eventSeq,
+          expectedRevision:p.expectedRevision};
+        $("mockApprovalText").textContent=
+          "预览 Mock：冲突替换需由模拟宿主受信确认；此按钮不写入真实数据。";
+        $("mockApproval").hidden=false;result.status="confirmation_required";
+      }
+      break;
+    }
+    case "deck.keepRestore":
+    case "deck.requestRestoreReview":{
+      if(Object.keys(p).sort().join(",")!==
+        "draftId,draftVersion,eventSeq,expectedRevision,name,requestId"||
+        !Number.isSafeInteger(p.draftId)||p.draftId<=0||
+        !Number.isSafeInteger(p.draftVersion)||p.draftVersion<0||
+        !Number.isSafeInteger(p.eventSeq)||p.eventSeq<=0||
+        !Number.isSafeInteger(p.expectedRevision)||p.expectedRevision<=0){
+        result.status="invalid";break;
+      }
+      const prompt=deck.restore;
+      if(!deck.open||!prompt){result.status="missing";break}
+      if(editor.open||deck.aiLocked||deck.busy){result.status="locked";break}
+      if(prompt.draftId!==p.draftId||prompt.draftVersion!==p.draftVersion||
+        prompt.eventSeq!==p.eventSeq||prompt.expectedRevision!==p.expectedRevision){
+        result.status="stale";break;
+      }
+      if(p.name==="deck.keepRestore"){
+        deck.restore=null;mockDeckProject(deck,deck.searchQuery);result.status="kept";
+      }else{
+        mockApproval={kind:"deckRestoreReview",requestId:p.requestId,
+          draftId:p.draftId,draftVersion:p.draftVersion,eventSeq:p.eventSeq,
+          expectedRevision:p.expectedRevision};
+        $("mockApprovalText").textContent=
+          "预览 Mock：恢复原事件需由模拟宿主受信确认；此按钮不写入真实数据。";
+        $("mockApproval").hidden=false;result.status="confirmation_required";
+      }
+      break;
     }
     case "deck.patch":
       if(deck.open&&deck.currentId===p.draftId){
@@ -1357,6 +1554,7 @@ function onSkinAction(message){
   }catch(error){logAction("Bridge 消息错误："+error.message)}
 }
 let mockAnchor=null,mockHours=24,mockPage="TIMELINE",mockMemoDone=false;
+let mockConflictRestoreActive=$("scenario").value==="conflict-restore";
 let mockMemoCompletion=new Map(),mockMemoRevision=new Map(),mockChat=[];
 let mockMonth="2026-10",mockSelectedMonthDate="2026-10-22";
 let mockMemoVisibleLimit=250;
@@ -1479,6 +1677,13 @@ function bindUI(){
       mockMemoVisibleLimit=250;
       mockMemoCompletion=new Map();
       mockMemoRevision=new Map();
+      const nextConflictRestore=$("scenario").value==="conflict-restore";
+      if(nextConflictRestore!==mockConflictRestoreActive){
+        resetMockDeckFixtures();
+        mockEditing={editor:{open:false},deck:{open:false},lastResult:null};
+        mockApproval=null;$("mockApproval").hidden=true;
+        mockConflictRestoreActive=nextConflictRestore;
+      }
       if($("scenario").value==="timeline-drag"){
         mockHours=24;mockPage="TIMELINE";
         mockEditing={editor:{open:false},deck:{open:false},lastResult:null};

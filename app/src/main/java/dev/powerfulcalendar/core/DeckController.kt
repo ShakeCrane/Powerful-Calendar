@@ -43,7 +43,11 @@ interface DeckPersistence {
     fun pending(): List<DraftCard>
     fun card(draftId: Long): DraftCard?
     fun stage(draftId: Long, form: DraftForm, expectedVersion: Long): PowerStore.StageResult
-    fun commit(draftId: Long, approveStale: Boolean): PowerStore.CommitOutcome
+    fun commit(
+        draftId: Long,
+        approveStale: Boolean,
+        expectedCurrentRevision: Long? = null
+    ): PowerStore.CommitOutcome
     fun discard(draftId: Long): Boolean
     fun undo(draftId: Long): Boolean
     fun pendingCount(): Int
@@ -286,8 +290,8 @@ class DeckController(
         command { commitInternal(approveStale) }
 
     /** User explicitly approved replacing the now-current revision with this card's snapshot. */
-    suspend fun confirmConflictReplacement(): Boolean =
-        command { confirmConflictReplacementInternal() }
+    suspend fun confirmConflictReplacement(expectedCurrentRevision: Long? = null): Boolean =
+        command { confirmConflictReplacementInternal(expectedCurrentRevision) }
 
     suspend fun requestRestore(): Boolean = command { requestRestoreInternal() }
 
@@ -505,7 +509,10 @@ class DeckController(
         }
     }
 
-    private fun commitInternal(approveStale: Boolean): Boolean {
+    private fun commitInternal(
+        approveStale: Boolean,
+        expectedCurrentRevision: Long? = null
+    ): Boolean {
         val snapshot = state
         val id = snapshot.currentId ?: return false
         val now = clock()
@@ -516,7 +523,7 @@ class DeckController(
         }
         if (!flushFully()) return false
         val order = state.current?.queueOrder ?: Long.MAX_VALUE
-        return when (val outcome = persistence.commit(id, approveStale)) {
+        return when (val outcome = persistence.commit(id, approveStale, expectedCurrentRevision)) {
             is PowerStore.CommitOutcome.Committed -> {
                 lastTerminalActionAt = clock()
                 processedInSession++
@@ -571,7 +578,7 @@ class DeckController(
         }
     }
 
-    private fun confirmConflictReplacementInternal(): Boolean {
+    private fun confirmConflictReplacementInternal(expectedCurrentRevision: Long?): Boolean {
         val prompt = state.conflict ?: return false
         if (prompt.draftId != state.currentId) {
             update { it.copy(conflict = null, error = "冲突卡片已切换，请重新检查") }
@@ -579,6 +586,11 @@ class DeckController(
         }
         // Re-verify what the user actually saw: another card may have committed, or the user may
         // have kept typing while the dialog was open. Never overwrite a diff that no longer holds.
+        val reviewedRevision = expectedCurrentRevision ?: prompt.currentRevision
+        if (reviewedRevision == null || prompt.currentRevision != reviewedRevision) {
+            update { it.copy(error = "审阅版本已变化，请重新检查差异后再确认") }
+            return false
+        }
         val latest = persistence.record(prompt.eventSeq)
         val form = state.form ?: prompt.approvedForm
         if (latest?.revision != prompt.currentRevision || form != prompt.approvedForm) {
@@ -595,8 +607,10 @@ class DeckController(
             }
             return false
         }
-        val result = commitInternal(approveStale = true)
-        update { it.copy(conflict = null) }
+        val result = commitInternal(
+            approveStale = true,
+            expectedCurrentRevision = reviewedRevision
+        )
         return result
     }
 

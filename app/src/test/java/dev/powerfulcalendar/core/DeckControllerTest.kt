@@ -41,10 +41,12 @@ class DeckControllerTest {
         var conflictOnCommit = false
         var needsRestoreOnCommit = false
         var currentRevisionForRecord: Long? = null
+        var advanceRevisionOnCommit = false
         var published = 0
         var discarded = 0
         var stageCalls = 0
         var commitCalls = 0
+        var expectedCurrentRevisionOnCommit: Long? = null
 
         fun add(title: String, seq: Long? = null, operation: DraftOperation = DraftOperation.CREATE): DraftCard {
             val card = DraftCard(
@@ -82,9 +84,19 @@ class DeckControllerTest {
             return PowerStore.StageResult.Saved(updated.draftVersion)
         }
 
-        override fun commit(draftId: Long, approveStale: Boolean): PowerStore.CommitOutcome {
+        override fun commit(
+            draftId: Long,
+            approveStale: Boolean,
+            expectedCurrentRevision: Long?
+        ): PowerStore.CommitOutcome {
             commitCalls++
+            expectedCurrentRevisionOnCommit = expectedCurrentRevision
             if (locked) return PowerStore.CommitOutcome.Locked
+            if (advanceRevisionOnCommit)
+                currentRevisionForRecord = currentRevisionForRecord?.plus(1)
+            if (expectedCurrentRevision != null &&
+                currentRevisionForRecord != expectedCurrentRevision)
+                return PowerStore.CommitOutcome.Conflict(record(1L))
             if (conflictOnCommit && !approveStale) {
                 return PowerStore.CommitOutcome.Conflict(record(1L))
             }
@@ -323,6 +335,7 @@ class DeckControllerTest {
         val fake = Fake()
         fake.add("旧卡")
         fake.conflictOnCommit = true
+        fake.currentRevisionForRecord = 1L
         val controller = controller(fake)
         controller.open()
 
@@ -400,6 +413,30 @@ class DeckControllerTest {
 
         // After re-reading the new diff the user can confirm for real.
         assertTrue(controller.confirmConflictReplacement())
+        assertEquals(1, fake.published)
+        assertEquals(3L, fake.expectedCurrentRevisionOnCommit)
+        assertNull(controller.state.conflict)
+    }
+
+    @Test
+    fun transactionRevisionMismatchKeepsConflictPromptAfterReview() = runBlocking {
+        val fake = Fake()
+        fake.add("并发变化")
+        fake.conflictOnCommit = true
+        fake.currentRevisionForRecord = 4L
+        val controller = controller(fake)
+        controller.open()
+        assertFalse(controller.commit())
+        assertEquals(4L, controller.state.conflict!!.currentRevision)
+
+        fake.conflictOnCommit = false
+        fake.advanceRevisionOnCommit = true
+        assertFalse(controller.confirmConflictReplacement(4L))
+        assertEquals(5L, controller.state.conflict!!.currentRevision)
+        assertEquals(0, fake.published)
+
+        fake.advanceRevisionOnCommit = false
+        assertTrue(controller.confirmConflictReplacement(5L))
         assertEquals(1, fake.published)
         assertNull(controller.state.conflict)
     }

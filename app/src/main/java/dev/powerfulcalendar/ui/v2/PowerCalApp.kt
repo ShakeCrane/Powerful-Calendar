@@ -1847,20 +1847,33 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                     try {
                         val reply = webEditing.resolveFormalWriteReview(review.token, approved)
                         when (reply.optString("status")) {
-                            "saved" -> {
+                            "saved", "committed", "replaced", "restored" -> {
                                 val refreshed = runCatching { reload() }.isSuccess
                                 val reconciled = runCatching { reconcile() }.isSuccess
                                 message = when {
                                     !refreshed -> "修改已保存，但界面同步失败；请刷新查看"
                                     !reconciled -> "修改已保存，提醒同步尚未完成"
                                     else -> when {
+                                        review.command is WebEditCommand.RequestRestoreReviewDeck ->
+                                            "已恢复同一事件序号"
+                                        review.command is WebEditCommand.RequestConflictReviewDeck &&
+                                            review.operation != DraftOperation.DELETE ->
+                                            "已按审阅差异整份覆盖正式事件"
                                         review.operation == DraftOperation.DELETE -> "正式事件已删除"
-                                        review.command is WebEditCommand.CommitDeck -> "日程已正式发布"
+                                        review.command is WebEditCommand.CommitDeck ||
+                                            reply.optString("status") == "committed" -> "日程已正式发布"
                                         else -> "正式事件修改已保存"
                                     }
                                 }
                             }
-                            "cancelled" -> message = "已取消保存，修改仍保留在编辑器中"
+                            "cancelled" -> message = when (review.command) {
+                                is WebEditCommand.RequestConflictReviewDeck ->
+                                    "已取消整份覆盖；冲突草稿与正式事件均未改变"
+                                is WebEditCommand.RequestRestoreReviewDeck ->
+                                    "已取消恢复；恢复草稿仍保留，事件仍处于已删除状态"
+                                else -> "已取消保存，修改仍保留在编辑器中"
+                            }
+                            "kept" -> message = "已保留草稿；正式事件没有变化"
                             else -> message = reply.optString("detail").ifBlank { "保存未完成，请重新检查" }
                         }
                         WebSkinBridgeRuntime.stateRevision++
@@ -1869,6 +1882,9 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
             }
         }
         val reviewTitle = when {
+            review.command is WebEditCommand.RequestConflictReviewDeck ->
+                if (review.operation == DraftOperation.DELETE) "确认删除冲突事件" else "确认整份覆盖"
+            review.command is WebEditCommand.RequestRestoreReviewDeck -> "确认恢复同一事件"
             review.operation == DraftOperation.DELETE -> "确认删除正式事件"
             review.command is WebEditCommand.CommitDeck -> "确认发布正式事件"
             else -> "确认保存正式事件修改"
@@ -1892,13 +1908,24 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                         })
                     }
                     review.occurrenceKey?.let { Text("原始实例：$it") }
-                    Text(if (review.operation == DraftOperation.DELETE) {
+                    Text(when {
+                        review.command is WebEditCommand.RequestRestoreReviewDeck ->
+                            "该事件已删除。确认后会恢复同一事件序号并创建新版本；请核对墓碑快照与恢复内容。"
+                        review.command is WebEditCommand.RequestConflictReviewDeck &&
+                            review.operation != DraftOperation.DELETE ->
+                            "此草稿基于旧版本。确认后会按下方完整内容整份覆盖当前正式事件。"
+                        review.operation == DraftOperation.DELETE -> {
                         if (review.current?.recurrence?.freq?.name?.let { it != "NONE" } == true)
                             "确认后将删除整个正式重复事件及其所有实例。请核对事件内容后确认。"
                         else "确认后将删除该正式事件。请核对事件内容后确认。"
-                    }
-                    else "请核对完整内容；只有在此宿主对话框确认后才会写入正式事件。")
+                        }
+                        else -> "请核对完整内容；只有在此宿主对话框确认后才会写入正式事件。"
+                    })
                     when {
+                        review.operation == DraftOperation.DELETE &&
+                            review.command is WebEditCommand.RequestConflictReviewDeck ->
+                            review.before?.let { before -> snapshotRows(before, DraftForm.from(before)) }
+                                ?.forEach { row -> Text("${row.label}：${row.before} → （删除）") }
                         review.proposed != null -> snapshotRows(review.before, review.proposed)
                             .forEach { row -> Text("${row.label}：${row.before} → ${row.after}") }
                         review.before != null -> snapshotRows(review.before,

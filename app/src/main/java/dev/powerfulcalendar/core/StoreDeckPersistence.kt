@@ -9,8 +9,16 @@ class StoreDeckPersistence(private val store: PowerStore) : DeckPersistence {
     override fun stage(draftId: Long, form: DraftForm, expectedVersion: Long): PowerStore.StageResult =
         store.stageDraft(draftId, form, expectedVersion)
 
-    override fun commit(draftId: Long, approveStale: Boolean): PowerStore.CommitOutcome =
-        store.commit(draftId, approveStale = approveStale, actor = "user")
+    override fun commit(
+        draftId: Long,
+        approveStale: Boolean,
+        expectedCurrentRevision: Long?
+    ): PowerStore.CommitOutcome = store.commit(
+        draftId,
+        approveStale = approveStale,
+        actor = "user",
+        expectedCurrentRevision = expectedCurrentRevision
+    )
 
     override fun discard(draftId: Long): Boolean = store.discard(draftId)
 
