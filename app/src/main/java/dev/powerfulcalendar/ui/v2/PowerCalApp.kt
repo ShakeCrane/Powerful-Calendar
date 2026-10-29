@@ -1353,7 +1353,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                     } else if (validated == null) {
                         message = "Calendar editor is currently unavailable"
                     } else {
-                        openFormalEditor(validated)
+                        openFormalEditor(validated, action.occurrenceKey)
                     }
                 }
             }

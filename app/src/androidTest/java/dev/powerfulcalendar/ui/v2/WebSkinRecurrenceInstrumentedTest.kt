@@ -8,9 +8,12 @@ import android.webkit.WebView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.PowerStore
@@ -346,6 +349,78 @@ class WebSkinRecurrenceInstrumentedTest {
             assertEquals(completed.revision, reopened.revision)
             assertTrue(key in reopened.completedKeys)
             assertFalse("${firstDate.plusDays(1)}T00:00" in reopened.completedKeys)
+        } finally {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            store.close()
+            context.deleteDatabase(database)
+        }
+    }
+
+    @Test fun webViewOpenEventFallbackCarriesOriginalMemoOccurrence() {
+        val context: Context = compose.activity.applicationContext
+        val database = "skin-memo-open-${UUID.randomUUID()}.db"
+        var store = PowerStore(context, database)
+        val zone = ZoneId.of("Asia/Shanghai")
+        val firstDate = LocalDate.now(zone).plusDays(2)
+        val card = store.newDraft(DraftForm(
+            kind = TemporalKind.MEMO,
+            title = "Memo fallback occurrence",
+            startText = firstDate.toString(),
+            zoneId = zone.id,
+            recurrence = Recurrence(freq = RecurrenceFreq.DAILY, count = 3)
+        ))
+        assertTrue(store.commit(card.draftId) is PowerStore.CommitOutcome.Committed)
+        val owner = requireNotNull(store.get(card.eventSeq))
+        val selectedDate = firstDate.plusDays(1)
+        val key = "${selectedDate}T00:00"
+        val countsBeforeOpen = listOf(store.draftCount(), store.identityCount(), store.commitCount())
+        context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+            .edit().putBoolean("system-calendar-import-asked", true).commit()
+
+        try {
+            compose.runOnUiThread {
+                SkinPackageManager(context).select("powercal-clear-default")
+                compose.activity.setContent { PowerCalTheme { PowerCalApp(store) } }
+            }
+            var web: WebView? = null
+            compose.waitUntil(30_000) {
+                compose.runOnUiThread {
+                    web = findWebView(compose.activity.findViewById(android.R.id.content))
+                }
+                web != null
+            }
+            val view = requireNotNull(web)
+            awaitJs(view, "!!document.querySelector(\".clear-tabbar [data-action='memo']\")")
+            evaluate(view, "document.querySelector(\".clear-tabbar [data-action='memo']\").click(); true")
+            awaitJs(view, "!document.querySelector('#memoPage').hidden")
+            val title = "document.querySelector(\"#memoList .memo-title[data-event-seq='${owner.eventSeq}']" +
+                "[data-original-occurrence-key='$key']\")"
+            awaitJs(view, "!!$title")
+            assertEquals("true", evaluate(view,
+                "$title.dataset.revision==='${owner.revision}' && " +
+                    "$title.dataset.originalOccurrenceKey==='$key'"))
+
+            evaluate(view, "window.__powerCalOriginalRouteAction=window.PowerCalEdit.routeAction;" +
+                "window.PowerCalEdit.routeAction=()=>false; $title.click(); true")
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithText("重复事件编辑范围（必须明确选择）")
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText("仅本次").assertIsEnabled().performClick()
+            compose.onNodeWithText(selectedDate.toString()).performScrollTo().assertIsDisplayed()
+            assertEquals(countsBeforeOpen,
+                listOf(store.draftCount(), store.identityCount(), store.commitCount()))
+            compose.onNodeWithText("存档并退出").performClick()
+            compose.waitUntil(10_000) {
+                compose.onAllNodesWithText("重复事件编辑范围（必须明确选择）")
+                    .fetchSemanticsNodes().isEmpty()
+            }
+            assertEquals(countsBeforeOpen,
+                listOf(store.draftCount(), store.identityCount(), store.commitCount()))
         } finally {
             compose.runOnUiThread {
                 compose.activity.setContent { }

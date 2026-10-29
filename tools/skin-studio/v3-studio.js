@@ -1125,6 +1125,30 @@ function onSkinAction(message){
       }
       postState();return;
     }
+    if(name==="openEvent"){
+      const hasKey=Object.prototype.hasOwnProperty.call(p,"occurrenceKey");
+      const expectedKeys=hasKey?"eventSeq,expectedRevision,name,occurrenceKey":
+        "eventSeq,expectedRevision,name";
+      const key=p.occurrenceKey;
+      const projected=[...(lastState?.memoEntries||[]),...(lastState?.month?.items||[]),
+        ...(lastState?.timeline?.items||[])];
+      const occurrenceMatch=hasKey&&projected.some(item=>item.eventSeq===p.eventSeq&&
+        item.revision===p.expectedRevision&&item.originalOccurrenceKey===key);
+      const ownerMatch=!hasKey&&lastState?.events?.some(item=>item.eventSeq===p.eventSeq&&
+        item.revision===p.expectedRevision);
+      if(Object.keys(p).sort().join(",")!==expectedKeys||
+        !Number.isSafeInteger(p.eventSeq)||p.eventSeq<=0||
+        !Number.isSafeInteger(p.expectedRevision)||p.expectedRevision<=0||
+        (hasKey&&(typeof key!=="string"||!key.length||key.length>100||
+          !/^[\p{L}\p{N}:_.-]+$/u.test(key)))||
+        !(hasKey?occurrenceMatch:ownerMatch)){
+        logAction("Studio Mock 拒绝过期或不匹配的 openEvent 请求");
+      }else{
+        logAction("Studio Mock accepted openEvent eventSeq="+p.eventSeq+
+          " revision="+p.expectedRevision+" occurrenceKey="+(hasKey?key:"none"));
+      }
+      postState();return;
+    }
     if(name==="sendChat"&&typeof p.text==="string"&&p.text.length<=4000){
       if($("scenario").value==="ai-error"){
         mockAiErrorMessages.push({role:"user",content:p.text},

@@ -9,6 +9,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -17,6 +18,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.swipeUp
 import androidx.test.core.app.ApplicationProvider
 import dev.powerfulcalendar.ai.AiChatActionParser
@@ -463,6 +465,60 @@ class PowerCalCasualSuggestionComposeTest {
         assertTrue(selectedKey in reopened.completedKeys)
         assertFalse(nextKey in reopened.completedKeys)
         assertEquals(completed.revision, reopened.revision)
+    }
+
+    @Test
+    fun openEventFallbackRetainsTheSelectedMemoOccurrence() {
+        val zone = ZoneId.of("Asia/Shanghai")
+        val firstDate = LocalDate.now(zone).plusDays(2)
+        val card = store.newDraft(DraftForm(
+            kind = TemporalKind.MEMO,
+            title = "Fallback 重复 Memo 编辑",
+            startText = firstDate.toString(),
+            zoneId = zone.id,
+            recurrence = Recurrence(freq = RecurrenceFreq.DAILY, count = 3)
+        ))
+        assertTrue(store.commit(card.draftId) is PowerStore.CommitOutcome.Committed)
+        val owner = requireNotNull(store.get(card.eventSeq))
+        val selectedDate = firstDate.plusDays(1)
+        val selectedKey = "${selectedDate}T00:00"
+
+        ui.activity.setContent {
+            CompositionLocalProvider(LocalContext provides context) {
+                PowerCalTheme { PowerCalApp(store) }
+            }
+        }
+        ui.waitForIdle()
+        val before = StoreCounts.read(store)
+        ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.Routed("memo")) }
+        ui.waitUntil(10_000) {
+            WebSkinBridgeRuntime.state().optString("page") == "MEMO" &&
+                WebSkinBridgeRuntime.state().optJSONArray("memoEntries")?.let { entries ->
+                    (0 until entries.length()).any { index ->
+                        entries.getJSONObject(index).optString("originalOccurrenceKey") == selectedKey
+                    }
+                } == true
+        }
+
+        ui.runOnIdle {
+            WebSkinBridgeRuntime.onAction(WebSkinAction.OpenEvent(
+                owner.eventSeq, owner.revision, occurrenceKey = selectedKey
+            ))
+        }
+        ui.waitForIdle()
+        ui.waitUntil(10_000) {
+            ui.onAllNodesWithText("重复事件编辑范围（必须明确选择）")
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        ui.onNodeWithText("仅本次").assertIsEnabled().performClick()
+        ui.onNodeWithText(selectedDate.toString()).performScrollTo().assertIsDisplayed()
+        assertEquals("the fallback open action is read-only", before, StoreCounts.read(store))
+        ui.onNodeWithText("存档并退出").performClick()
+        ui.waitUntil(10_000) {
+            ui.onAllNodesWithText("重复事件编辑范围（必须明确选择）")
+                .fetchSemanticsNodes().isEmpty()
+        }
+        assertEquals(before, StoreCounts.read(store))
     }
 
     @Test

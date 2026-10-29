@@ -97,9 +97,13 @@ envelope and known fields only:
   These actions do not change the timeline camera or write calendar data.
   Creating an event from the Month page uses the selected local date captured
   by the Host; the skin does not submit a timestamp.
-- Existing navigation, the additive `memo` page action, and `openEvent(eventSeq,expectedRevision)` remain.
-  Formal event opens re-read the current record and check revision/writer
-  availability; an occurrence key cannot bypass those checks.
+- Existing navigation, the additive `memo` page action, and
+  `openEvent(eventSeq,expectedRevision[,occurrenceKey])` remain. Skins pass the
+  projected `originalOccurrenceKey` as `occurrenceKey` when opening a repeating
+  occurrence; legacy actions may omit it. The Host re-reads the current owner,
+  checks revision/writer availability, verifies any supplied key belongs to
+  that repeating owner, and forwards it to `EditSession`. A key cannot bypass
+  those checks.
 - `invokeOption` only accepts registered host IDs. When AI/editor writes
   are locked, option rows are disabled in state and invocation is denied.
 - Existing `editor.patch` and `deck.patch` accept the semantic field `kind`

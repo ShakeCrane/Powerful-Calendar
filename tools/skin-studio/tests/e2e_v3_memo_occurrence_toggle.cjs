@@ -40,8 +40,19 @@ async function main(){
     socket=new WebSocket(target.webSocketDebuggerUrl);
     await new Promise((resolve,reject)=>{socket.onopen=resolve;socket.onerror=reject});
     let nextId=0;const pending=new Map();
+    const executionContexts=new Map();
     socket.onmessage=event=>{
-      const message=JSON.parse(event.data);if(!message.id||!pending.has(message.id))return;
+      const message=JSON.parse(event.data);
+      if(!message.id){
+        if(message.method==="Runtime.executionContextCreated")
+          executionContexts.set(message.params.context.id,message.params.context);
+        else if(message.method==="Runtime.executionContextDestroyed")
+          executionContexts.delete(message.params.executionContextId);
+        else if(message.method==="Runtime.executionContextsCleared")
+          executionContexts.clear();
+        return;
+      }
+      if(!pending.has(message.id))return;
       const {resolve,reject}=pending.get(message.id);pending.delete(message.id);
       message.error?reject(Error(message.error.message)):resolve(message.result);
     };
@@ -87,8 +98,25 @@ async function main(){
       if(!frame)await delay(100);
     }
     if(!frame)throw Error("Studio Preview iframe was not created");
-    const world=await call("Page.createIsolatedWorld",{frameId:frame.id,worldName:"memo-toggle-qa"});
-    const frameEval=expression=>evaluate(expression,{contextId:world.executionContextId});
+    const frameEval=async expression=>{
+      let lastContextError;
+      for(let attempt=0;attempt<30;attempt++){
+        const contexts=[...executionContexts.values()].filter(context=>
+          context.auxData?.frameId===frame.id&&context.auxData?.isDefault).reverse();
+        for(const context of contexts){
+          try{return await evaluate(expression,{contextId:context.id})}
+          catch(error){
+            if(!/Cannot find context with specified id|Cannot find execution context/i.test(error.message))
+              throw error;
+            executionContexts.delete(context.id);lastContextError=error;
+          }
+        }
+        await delay(50);
+      }
+      throw lastContextError||Error("Clear Preview main-world execution context was not created");
+    };
+    await waitFor(frameEval,"typeof window.PowerCalEdit==='object'&&document.querySelector('#memoPage')",
+      "Clear Preview main-world application");
     const fixture=await evaluate(`(()=>{
       const select=document.querySelector('#scenario');select.value='repeating';
       select.dispatchEvent(new Event('change',{bubbles:true}));
@@ -144,11 +172,26 @@ async function main(){
     if(!replay.selected||replay.sibling||!replay.rejected)
       throw Error("Duplicate/stale toggle changed the wrong occurrence or was accepted: "+JSON.stringify(replay));
 
+    const fallbackClicked=await frameEval(`(()=>{
+      if(!window.PowerCalEdit)return false;
+      window.PowerCalEdit.routeAction=()=>false;
+      const title=[...document.querySelectorAll('#memoList .memo-title')]
+        .find(item=>item.dataset.originalOccurrenceKey==='${key}');
+      title?.click();return !!title;
+    })()`);
+    if(!fallbackClicked)throw Error("Could not force the generic openEvent fallback");
+    const fallback=await waitFor(evaluate,`(()=>{
+      const line=[...(document.querySelector('#bridgeLog')?.children||[])]
+        .map(item=>item.textContent)
+        .find(text=>text.includes('Studio Mock accepted openEvent eventSeq=31'));
+      return line?.includes('revision=3 occurrenceKey=${key}')?line:null;
+    })()` ,"Occurrence-preserving openEvent fallback");
+
     const screenshot=await call("Page.captureScreenshot",{format:"png",captureBeyondViewport:false});
     fs.writeFileSync(path.join(reportDir,"memo-occurrence-toggle-studio-preview.png"),
       Buffer.from(screenshot.data,"base64"));
     const result={package:loaded,initial,afterToggle:{selected:toggled.selected,sibling:toggled.sibling},
-      visible,replay};
+      visible,replay,fallback};
     fs.writeFileSync(path.join(reportDir,"memo-occurrence-toggle-result.json"),
       JSON.stringify(result,null,2)+"\n");
     console.log("CLEAR MEMO OCCURRENCE TOGGLE CDP PASS",JSON.stringify(result));

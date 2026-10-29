@@ -1,6 +1,7 @@
 package dev.powerfulcalendar.ui.v2
 
 import dev.powerfulcalendar.core.EditorSelection
+import dev.powerfulcalendar.core.RecurrenceEngine
 import dev.powerfulcalendar.core.TimelineCoordinate
 import android.annotation.SuppressLint
 import android.graphics.Color
@@ -109,7 +110,11 @@ internal object WebSkinBridgeRuntime {
 
 internal sealed interface WebSkinAction {
     data class Routed(val name: String) : WebSkinAction
-    data class OpenEvent(val eventSeq: Long, val expectedRevision: Long) : WebSkinAction
+    data class OpenEvent(
+        val eventSeq: Long,
+        val expectedRevision: Long,
+        val occurrenceKey: String? = null
+    ) : WebSkinAction
     data class InvokeOption(val id: String) : WebSkinAction
     /** Relative browsing only; cannot change the vertical time scale. */
     data class PanTimeline(val deltaMinutes: Int) : WebSkinAction
@@ -149,7 +154,9 @@ internal fun validateOpenEvent(
     current: dev.powerfulcalendar.core.TemporalRecord?,
     writerAvailable: Boolean
 ): dev.powerfulcalendar.core.TemporalRecord? = current?.takeIf {
-    writerAvailable && it.eventSeq == action.eventSeq && it.revision == action.expectedRevision
+    writerAvailable && it.eventSeq == action.eventSeq && it.revision == action.expectedRevision &&
+        (action.occurrenceKey == null || (it.recurrence.isRepeating &&
+            RecurrenceEngine.occurrenceForKey(it, action.occurrenceKey) != null))
 }
 
 @Composable
@@ -467,14 +474,23 @@ internal fun decodeBridgeAction(raw: String): WebSkinAction? {
             } else null
         }
         "openEvent" -> {
-            if (keys != setOf("name", "eventSeq", "expectedRevision")) return null
+            val baseKeys = setOf("name", "eventSeq", "expectedRevision")
+            val hasOccurrenceKey = "occurrenceKey" in keys
+            if (keys != baseKeys && keys != baseKeys + "occurrenceKey") return null
             val seq = payload.optLong("eventSeq", -1L)
             val revision = payload.optLong("expectedRevision", -1L)
             val rawSeq = payload.opt("eventSeq")
             val rawRevision = payload.opt("expectedRevision")
+            val occurrenceKey = if (hasOccurrenceKey) {
+                (payload.opt("occurrenceKey") as? String)?.takeIf { key ->
+                    key.length in 1..100 && key.all {
+                        it.isLetterOrDigit() || it == ':' || it == '_' || it == '-' || it == '.'
+                    }
+                } ?: return null
+            } else null
             if (seq <= 0L || revision <= 0L || rawSeq !is Number || rawRevision !is Number ||
                 rawSeq is Float || rawSeq is Double || rawRevision is Float || rawRevision is Double) null
-            else WebSkinAction.OpenEvent(seq, revision)
+            else WebSkinAction.OpenEvent(seq, revision, occurrenceKey)
         }
         else -> null
     }

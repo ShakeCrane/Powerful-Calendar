@@ -218,8 +218,13 @@ function onAction(button){
     showTimelineCreateDialog(button);return;
   }
   if(window.PowerCalEdit?.routeAction(button,state))return;
-  if(name==="openEvent")send(name,{eventSeq:Number(button.dataset.eventSeq),
-    expectedRevision:Number(button.dataset.revision)});
+  if(name==="openEvent"){
+    const payload={eventSeq:Number(button.dataset.eventSeq),
+      expectedRevision:Number(button.dataset.revision)};
+    if(button.dataset.originalOccurrenceKey)
+      payload.occurrenceKey=button.dataset.originalOccurrenceKey;
+    send(name,payload);
+  }
   else if(name==="createDraft")send(name,{kind:button.dataset.kind});
   else if(name==="toggleMemo")send(name,{eventSeq:Number(button.dataset.eventSeq),
     expectedRevision:Number(button.dataset.revision),

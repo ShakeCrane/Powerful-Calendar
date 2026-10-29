@@ -2,6 +2,8 @@ package dev.powerfulcalendar.ui.v2
 
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
+import dev.powerfulcalendar.core.Recurrence
+import dev.powerfulcalendar.core.RecurrenceFreq
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -22,6 +24,10 @@ class WebSkinBridgeTest {
             """{"version":1,"type":"action","payload":{"name":"loadMoreMemo","count":250}}"""))
         assertEquals(WebSkinAction.OpenEvent(42, 7), decodeBridgeAction(
             """{"version":1,"type":"action","payload":{"name":"openEvent","eventSeq":42,"expectedRevision":7}}"""))
+        assertEquals(WebSkinAction.OpenEvent(42, 7, "2026-10-23T00:00"), decodeBridgeAction(
+            """{"version":1,"type":"action","payload":{"name":"openEvent","eventSeq":42,"expectedRevision":7,"occurrenceKey":"2026-10-23T00:00"}}"""))
+        assertNull(decodeBridgeAction(
+            """{"version":1,"type":"action","payload":{"name":"openEvent","eventSeq":42,"expectedRevision":7,"occurrenceKey":"../invalid"}}"""))
         assertNull(decodeBridgeAction(
             """{"version":1,"type":"action","payload":{"name":"openEvent","eventSeq":42,"expectedRevision":7,"url":"https://evil.test"}}"""))
         assertNull(decodeBridgeAction(
@@ -48,5 +54,27 @@ class WebSkinBridgeTest {
         assertNull(validateOpenEvent(action, record.copy(revision = 8), true))
         assertNull(validateOpenEvent(action, record.copy(eventSeq = 43), true))
         assertNull(validateOpenEvent(action, record, false))
+    }
+
+    @Test fun eventOpenPreservesOnlyAnOccurrenceOwnedByTheCurrentSeries() {
+        val recurring = TemporalRecord(
+            eventSeq = 42,
+            revision = 7,
+            kind = TemporalKind.MEMO,
+            title = "safe",
+            memoStartDate = "2026-10-22",
+            recurrence = Recurrence(freq = RecurrenceFreq.DAILY, count = 2),
+            zoneId = "Asia/Shanghai"
+        )
+        val selectedKey = "2026-10-23T00:00"
+        val action = WebSkinAction.OpenEvent(42, 7, selectedKey)
+        assertEquals(recurring, validateOpenEvent(action, recurring, true))
+        assertNull(validateOpenEvent(
+            action.copy(occurrenceKey = "2026-10-24T00:00"), recurring, true
+        ))
+        assertNull(validateOpenEvent(
+            action, recurring.copy(recurrence = Recurrence.NONE), true
+        ))
+        assertNull(validateOpenEvent(action.copy(expectedRevision = 6), recurring, true))
     }
 }
