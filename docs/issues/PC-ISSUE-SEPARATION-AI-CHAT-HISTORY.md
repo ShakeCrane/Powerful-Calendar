@@ -62,3 +62,26 @@ Clear/Studio 的交互与 Mock 子项通过。Host Kotlin 代码、reducer、Bri
 - 输入保留跟进提交：`b71af49a473e95b6c34b051a78033a0cb375ccee` — `修复：保留 AI 聊天未发送输入`。
 - 编辑器门禁提交：`32d7628adefbab72344d8c88a632224296d75580` — `修复：阻止编辑期间改动聊天历史`。
 - 本 Issue、Parity 与 Bridge 合同更新在独立文档提交中记录。
+
+## Android Host 回归补记（2026-10-30）
+
+### 调查结果
+
+API 36 SDK 恢复后，Host reducer、Bridge revision fencing、清空/回退逻辑、未发送输入保留、事件 Store 计数不变及 app-private 历史保存/恢复路径均通过定向 Robolectric 回归。本轮未复现需要改动生产聊天持久化逻辑的缺陷。
+
+第一次集成测试失败由 Windows Robolectric 测试替身造成：`AtomicFile` rename 替换行为与 Windows 不同，已有 shadow 被遗漏；随后读操作会移除未提交 `.new`，以及 Windows 打开读取流期间替换目标文件会报 sharing violation。补齐 shadow 后，让测试读取已提交文件并通过共享文件锁协调读取和替换。生产 `PowerCalApp` / `AiChatHistoryStore` 源码保持原状。
+
+### 新增验证证据
+
+| 检查 | 结果 | 证据与边界 |
+|---|---|---|
+| reducer、Host projection、PowerCalApp 历史操作和持久化、附件相关定向回归 | **47/47 PASS**，5 个测试类、0 failures/errors/skips | `WebAiChatHistoryTest` 7/7、`WebSkinHostProjectionTest` 18/18、`WebAiBatchProjectionTest` 4/4、`WebAiProposalReviewIntegrationTest` 14/14、`WebAiAttachmentFlowIntegrationTest` 4/4。日志 `.local/android-test/reports/separation-s0-sdk-recovery-20261029/ai-batch-history-related-targeted.log`，SHA-256 `03E3E440CFBFE3CB0BAE3A03A104B6C15DE4C555DC0A4711BFDDF374D63327D4`。该 persistence 用例运行于 Robolectric，应用了 Windows-aware `AtomicFile` 测试替身，不等同真实 Android Framework/WebView 设备验证。 |
+| 完整离线 Android Gradle 门禁 | **659/659 JVM tests、86 suites、0 failures/errors/skips、88/88 tasks PASS**；Debug 与 AndroidTest APK 构建通过；Lint 0 errors / 52 warnings | 完整日志 `.local/android-test/reports/separation-s0-ai-batch-20261030/full-gradle.log`，SHA-256 `0548C39E54622F12C88A3BE112B057B9E4A5A84FABA215F1309F333D93F4C74E`。 |
+| Skin Studio、Clear 包和脚本检查 | Studio **61/61 PASS**；Clear **9 files / 391,549 bytes PASS**；四个 JS 文件 `node --check` PASS | Studio SHA-256 `AA3D4AA4A591F61B6EA82B8CEF162261F6DF2775B9E240BD17DE33B56766B978`；Clear 包 SHA-256 `fecf7414c4da747d6dceb63022d0354ac809e91905d0684ed9eff201b8d892c1`；Node 日志 SHA-256 `1CE66F2946AFF5457C534E38C574B41BD439E5CE9DDD5A9113A8D4BBFEBC93AA`。 |
+| APK 复现基线 | Debug SHA-256 `7FE29DEB8D2496F1C1C672BE000DCDB37A968F296143430214DDD0FC85D9DE2F`；AndroidTest SHA-256 `C23375D347A00880431B9A2807E0BFAB005973D690A8FF8BECC4DF94B6122931` | AndroidTest APK 编译/打包通过；本机 ADB 设备列表为空，SDK 无 emulator 可执行文件，instrumentation **未运行**。 |
+
+### 当前结论
+
+AI 历史 Host 实现和当前 JVM/Robolectric 子项可以标记 **PASS**，但 `S0-AI-01` / `S0-AI-04` 的完整行仍 **PARTIAL / HOLD**：没有 Android WebView → Bridge → Host 真机/模拟器链路、系统 WebView 行为、Android 进程重启实测、真实 Provider 或完整 Native/Clear 配对回放证据。不能将 APK 构建或 Robolectric 冒充设备通过。
+
+此次测试基础设施修复与批次 projection 回归分两次约定式提交并已推送：`9bc84263980b7af54601867808d6c19b5afe7bb6`、`4afc9a46221cb70e2230a25b3dc41a8577610f7f`。后者只修改测试和 Robolectric Shadow；没有改变生产历史存储代码。

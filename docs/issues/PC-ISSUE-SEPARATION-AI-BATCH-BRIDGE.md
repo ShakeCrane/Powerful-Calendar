@@ -68,3 +68,29 @@
 ## 后续状态（2026-10-29）
 
 本报告撰写时，AI 历史清理与 rewind 仍是未实现的独立缺口。后续已加入 Clear/Host 历史清理与回退实现，详见 [PC-ISSUE-SEPARATION-AI-CHAT-HISTORY](PC-ISSUE-SEPARATION-AI-CHAT-HISTORY.md)。该后续切片的 Studio 证据通过，但 Kotlin/Android 与生产 WebView→Host 验收仍为 **NOT TESTED**；不能据此解除本 Issue 或父项 `S0-AI-04` 的 **PARTIAL / HOLD**。
+
+## Android Host 回归补记（2026-10-30）
+
+### 新发现与处理
+
+在 API 36 SDK 可用后，完整 Kotlin 编译发现批次投影把 nullable `progress` 的安全调用与后续非空访问分开，导致 `progress.mode` 编译失败。改为先计算当前 session 匹配且处于 active 状态的 `currentProgress`，再读取其 mode；过期 session 和已结束 batch 不再贡献进度模式。新增投影回归覆盖匹配 session、旧 session 与 terminal session。
+
+聊天历史集成用例起初在 Windows Robolectric 下读到旧 JSON。检查证明这是 test shadow 与 Windows 文件替换语义不匹配：原测试类没有应用仓库已有的 `AtomicFile` shadow；该 shadow 的 `openRead()` 还会删除正在写入的 `.new` 文件，并且 Windows 目标文件被读取期间不能直接替换。修正了 test shadow 的应用范围及同一路径读/提交锁。`PowerCalApp` 与 `AiChatHistoryStore` 的生产持久化代码没有因此改写。
+
+### 验证结果
+
+| 检查 | 结果 | 证据 |
+|---|---|---|
+| AI 批次投影 + Host 集成定向用例 | **18/18 PASS** | `WebAiBatchProjectionTest` 4/4、`WebAiProposalReviewIntegrationTest` 14/14；日志 `.local/android-test/reports/separation-s0-sdk-recovery-20261029/ai-batch-history-targeted-shadow-lock.log`，SHA-256 `6E0492D671FBC13EDEFB0D72FDF9C48623CD39713078061206081AD23FCF5B46`。 |
+| AI 历史、Host 投影、批次、PowerCalApp 与附件相关用例 | **47/47 PASS** | `WebAiChatHistoryTest` 7/7、`WebSkinHostProjectionTest` 18/18、`WebAiBatchProjectionTest` 4/4、`WebAiProposalReviewIntegrationTest` 14/14、`WebAiAttachmentFlowIntegrationTest` 4/4；日志 `.local/android-test/reports/separation-s0-sdk-recovery-20261029/ai-batch-history-related-targeted.log`，SHA-256 `03E3E440CFBFE3CB0BAE3A03A104B6C15DE4C555DC0A4711BFDDF374D63327D4`。 |
+| 完整离线 Android Gradle 门禁 | **659/659 JVM tests、86 suites、0 failures/errors/skips、88/88 tasks PASS**；`verifySkinSourceBoundary`、Debug APK、AndroidTest APK、Lint 全通过；Lint 0 errors / 52 warnings | 命令：`:app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug --offline --rerun-tasks --no-daemon --console=plain --max-workers=1`。日志 `.local/android-test/reports/separation-s0-ai-batch-20261030/full-gradle.log`，SHA-256 `0548C39E54622F12C88A3BE112B057B9E4A5A84FABA215F1309F333D93F4C74E`。 |
+| Skin Studio 与 Clear 包 | **61/61 PASS**；canonical Clear **9 files / 391,549 bytes PASS**，SHA-256 `fecf7414c4da747d6dceb63022d0354ac809e91905d0684ed9eff201b8d892c1` | Python 日志 `.local/android-test/reports/separation-s0-ai-batch-20261030/skin-studio-unittest.log`，SHA-256 `AA3D4AA4A591F61B6EA82B8CEF162261F6DF2775B9E240BD17DE33B56766B978`；包校验日志 `clear-package-verify.log`，SHA-256 `D6AFA32E8A0D882B60EA0EAF47A99E73B5E2FE299098706ECA05D17F4B148F41`。 |
+| JavaScript 语法 | **PASS** | Node 检查 Clear `app.js`、`edit.js`、Studio `v3-studio.js`、`e2e_v3_source.cjs`；日志 SHA-256 `1CE66F2946AFF5457C534E38C574B41BD439E5CE9DDD5A9113A8D4BBFEBC93AA`。 |
+| APK SHA-256 | **Debug `7FE29DEB8D2496F1C1C672BE000DCDB37A968F296143430214DDD0FC85D9DE2F`；AndroidTest `C23375D347A00880431B9A2807E0BFAB005973D690A8FF8BECC4DF94B6122931`** | 分别为 66,333,601 与 1,337,236 bytes；来自上述完整门禁的 APK。 |
+
+### 状态与 Git
+
+`S0-AI-04a` 的批次投影与 Android Host/Robolectric 验收子集现为 **PASS**。生产 Android WebView 到 Bridge 的传输、Native fallback UI 的设备行为、Android 模拟器/物理设备验证及完整 Native/Clear parity 仍 **NOT TESTED**。本机 `adb devices -l` 为空且 SDK 没有 Emulator 可执行文件；AndroidTest APK 只构建，未运行 instrumentation。因此 Issue 与父项保持 **PARTIAL / HOLD**，不签核整体 `S0-AI-04` 或 separation GO。
+
+- 批次投影修复：`9bc84263980b7af54601867808d6c19b5afe7bb6` — `fix(分离): 修复 AI 批次进度空值投影`，已推送。
+- AI Host 集成测试稳定化：`4afc9a46221cb70e2230a25b3dc41a8577610f7f` — `test(分离): 稳定 AI Host 集成回归`，已推送。
