@@ -25,6 +25,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.time.Instant
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.util.UUID
@@ -607,6 +608,8 @@ class WebSkinEditBridgeTest {
             EditorSelection.OnDate(Instant.ofEpochMilli(anchor).atZone(zone).toLocalDate()),
             newEventSelectionForPage("MONTH", camera, zone)
         )
+        assertEquals(EditorSelection.OnDate(LocalDate.of(2027, 4, 19)),
+            newEventSelectionForPage("MONTH", camera, zone, LocalDate.of(2027, 4, 19)))
         assertNull(newEventSelectionForPage("MEMO", camera, zone))
 
         val identities = store.identityCount()

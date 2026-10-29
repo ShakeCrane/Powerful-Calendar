@@ -231,6 +231,7 @@ function onAction(button){
   else if(name==="resetTimelineZoom")send(name);
   else if(name==="jumpTimelineDay")send(name,{date:button.dataset.date});
   else if(name==="browseMonth")send(name,{deltaMonths:Number(button.dataset.deltaMonths)});
+  else if(name==="selectMonthDate")send(name,{date:button.dataset.date});
   else {if(["timeline","memo","month","ai"].includes(name))localOptions=false;send(name)}
 }
 function cancelTimelineDrag(){
@@ -341,6 +342,42 @@ document.addEventListener("click",e=>{
     e.preventDefault();e.stopPropagation();return;
   }
   if(button)onAction(button);
+});
+let monthSwipeStart=null,monthSwipeConsumed=false,monthSwipeReset=0;
+$("monthGrid").addEventListener("pointerdown",event=>{
+  if(event.isPrimary&&event.button===0)
+    monthSwipeStart={x:event.clientX,y:event.clientY,pointerId:event.pointerId};
+});
+document.addEventListener("pointerup",event=>{
+  const start=monthSwipeStart;
+  if(!start||start.pointerId!==event.pointerId)return;
+  monthSwipeStart=null;
+  const dx=event.clientX-start.x,dy=event.clientY-start.y;
+  if(Math.abs(dx)<72||Math.abs(dx)<=Math.abs(dy))return;
+  monthSwipeConsumed=true;
+  clearTimeout(monthSwipeReset);
+  monthSwipeReset=setTimeout(()=>monthSwipeConsumed=false,500);
+  send("browseMonth",{deltaMonths:dx<0?1:-1});
+});
+$("monthGrid").addEventListener("click",event=>{
+  if(!monthSwipeConsumed)return;
+  event.preventDefault();event.stopImmediatePropagation();
+  monthSwipeConsumed=false;clearTimeout(monthSwipeReset);
+},true);
+$("monthTitle").addEventListener("click",()=>{
+  const month=state.month||{};
+  const [year,number]=String(month.month||"2026-10").split("-").map(Number);
+  $("monthYear").value=year;
+  $("monthNumber").value=String(number);
+  $("monthPickerDialog").showModal();
+});
+$("monthPickerCancel").addEventListener("click",()=>$("monthPickerDialog").close());
+$("monthPickerForm").addEventListener("submit",event=>{
+  event.preventDefault();
+  const year=Number($("monthYear").value),month=Number($("monthNumber").value);
+  if(!Number.isInteger(year)||year<1900||year>2100||!Number.isInteger(month)||month<1||month>12)return;
+  $("monthPickerDialog").close();
+  send("selectMonth",{month:`${String(year).padStart(4,"0")}-${String(month).padStart(2,"0")}`});
 });
 $("chatForm").addEventListener("submit",e=>{
   e.preventDefault();
@@ -557,13 +594,26 @@ function renderMonth(){
   for(const event of events)counts.set(event.date,(counts.get(event.date)||0)+1);
   for(const wd of ["一","二","三","四","五","六","日"])grid.append(node("div","month-weekday",wd));
   const origin=Date.parse(firstIso+"T00:00:00Z");
-  for(let i=0;i<42;i++){
+  const [shownYear,shownMonth]=String(month.month||firstIso.slice(0,7)).split("-").map(Number);
+  const daysInMonth=new Date(Date.UTC(shownYear,shownMonth,0)).getUTCDate();
+  const offset=(new Date(Date.UTC(shownYear,shownMonth-1,1)).getUTCDay()+6)%7;
+  const cellCount=Math.ceil((offset+daysInMonth)/7)*7;
+  const nowParts=Object.fromEntries(new Intl.DateTimeFormat("en-CA",{
+    timeZone:zone,year:"numeric",month:"2-digit",day:"2-digit"
+  }).formatToParts(new Date(t.nowMillis||Date.now())).map(part=>[part.type,part.value]));
+  const todayIso=`${nowParts.year}-${nowParts.month}-${nowParts.day}`;
+  for(let i=0;i<cellCount;i++){
     const date=new Date(origin+i*86400000),iso=date.toISOString().slice(0,10);
+    if(iso.slice(0,7)!==(month.month||firstIso.slice(0,7))){
+      grid.append(node("div","month-cell-empty"));continue;
+    }
     const button=node("button","month-cell",date.getUTCDate());
-    button.dataset.action="jumpTimelineDay";button.dataset.date=iso;
+    button.type="button";button.dataset.action="selectMonthDate";button.dataset.date=iso;
     if(iso===month.selectedDate)button.classList.add("selected");
-    if(iso===new Date(t.nowMillis||Date.now()).toISOString().slice(0,10))button.classList.add("today");
+    if(iso===todayIso)button.classList.add("today");
+    button.setAttribute("aria-pressed",String(iso===month.selectedDate));
     const count=counts.get(iso)||0;
+    button.setAttribute("aria-label",`${iso}，${count} 项${iso===todayIso?"，今天":""}`);
     if(count)button.append(node("span","month-dot",count>3?"•••":"•".repeat(count)));
     grid.append(button);
   }
@@ -579,6 +629,7 @@ function renderMonth(){
     agenda.append(button);
   }
   if(month.truncated)agenda.append(node("p","quiet","本月事件超过投影上限，部分数据未显示"));
+  $("viewMonthDate").dataset.date=month.selectedDate||firstIso;
 }
 function renderMemo(){
   const list=$("memoList");list.replaceChildren();

@@ -124,9 +124,18 @@ button:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outl
 
 .month-bar{display:flex;align-items:center;justify-content:space-between;padding:6px 10px 12px}
 .month-bar button{width:42px;height:42px;border:0;border-radius:22px;background:var(--fill-1);font-size:28px;color:var(--accent)}
+#monthTitle{width:auto;min-width:132px;padding:0 16px;font-size:16px;font-weight:650}
 .month-dot{display:block;font-size:11px;line-height:6px;color:var(--accent)}
 #monthAgenda{padding:18px 8px}
 #monthAgenda h2{font-size:16px;font-weight:650}
+.month-cell-empty{min-height:57px}
+.month-actions,.month-picker-actions{display:flex;gap:8px;justify-content:center;padding:8px}
+.month-actions button,.month-picker-actions button{min-height:44px;padding:0 14px;border:0;border-radius:22px;background:var(--fill-1);color:var(--accent);font:inherit}
+#monthPickerDialog{width:min(340px,calc(100vw - 32px));border:1px solid var(--sep);border-radius:20px;background:var(--bg-canvas);color:var(--label-1);box-shadow:var(--shadow-2)}
+#monthPickerDialog::backdrop{background:#0006}
+#monthPickerForm{display:grid;gap:10px}
+#monthPickerForm h2{margin:0 0 8px;font-size:18px}
+#monthPickerForm input,#monthPickerForm select{min-height:44px;padding:8px;border:1px solid var(--sep);border-radius:10px;background:var(--fill-1);color:inherit;font:inherit}
 .agenda-event{display:block;text-align:left;width:100%;min-height:46px;padding:12px 10px;
  border:0;border-bottom:1px solid var(--sep);background:transparent}
 .optionRow{display:block;width:100%;text-align:left;background:var(--bg-elevated);

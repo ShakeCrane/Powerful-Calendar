@@ -16,7 +16,9 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
+import java.time.YearMonth
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -110,7 +112,9 @@ class WebSkinHostProjectionTest {
         assertEquals(9L, occurrence.getLong("eventSeq"))
         assertTrue(occurrence.getString("occurrenceKey").startsWith("9:"))
         assertEquals("2026-10-22T09:00", occurrence.getString("originalOccurrenceKey"))
-        val month = WebSkinMonthProjection.build(listOf(daily), noon, zone).getJSONArray("items")
+        val month = WebSkinMonthProjection.build(
+            listOf(daily), WebSkinMonthProjection.initial(noon, zone), zone
+        ).getJSONArray("items")
         val sameDay = (0 until month.length()).map { month.getJSONObject(it) }
             .single { it.getString("date") == "2026-10-22" }
         assertEquals("2026-10-22T09:00", sameDay.getString("originalOccurrenceKey"))
@@ -210,8 +214,16 @@ class WebSkinHostProjectionTest {
             decode("""{"name":"createDraft","kind":"ACTIVITY"}"""))
         assertEquals(WebSkinAction.BrowseMonth(-1),
             decode("""{"name":"browseMonth","deltaMonths":-1}"""))
+        assertEquals(WebSkinAction.SelectMonthDate(LocalDate.parse("2026-10-23")),
+            decode("""{"name":"selectMonthDate","date":"2026-10-23"}"""))
+        assertEquals(WebSkinAction.SelectMonth(YearMonth.of(2027, 4)),
+            decode("""{"name":"selectMonth","month":"2027-04"}"""))
         assertNull(decode("""{"name":"browseMonth","deltaMonths":0}"""))
         assertNull(decode("""{"name":"browseMonth","deltaMonths":50}"""))
+        assertNull(decode("""{"name":"selectMonthDate","date":"2026-02-30"}"""))
+        assertNull(decode("""{"name":"selectMonthDate","date":"2026-10-23","month":"2026-10"}"""))
+        assertNull(decode("""{"name":"selectMonth","month":"2101-01"}"""))
+        assertNull(decode("""{"name":"selectMonth","month":"2026-13"}"""))
         assertEquals(WebSkinAction.SendChat("你好"),
             decode("""{"name":"sendChat","text":"你好"}"""))
         assertEquals(WebSkinAction.ToggleMemo(31,2,"single",false),
@@ -296,14 +308,40 @@ class WebSkinHostProjectionTest {
     }
 
     @Test fun monthProjectionUsesRealHostOccurrencesAndExactDateWindow() {
-        val output = WebSkinMonthProjection.build(listOf(activity(71)), noon, zone)
+        val view = WebSkinMonthProjection.initial(noon, zone)
+        val output = WebSkinMonthProjection.build(listOf(activity(71)), view, zone)
         assertEquals("2026-10", output.getString("month"))
         assertEquals("2026-09-28", output.getString("gridFrom"))
+        assertEquals("2026-10-22", output.getString("selectedDate"))
         val first = output.getJSONArray("items").getJSONObject(0)
         assertEquals("2026-10-22", first.getString("date"))
         assertEquals(71, first.getInt("eventSeq"))
         assertEquals(2, first.getInt("revision"))
         assertFalse(output.getBoolean("truncated"))
+    }
+
+    @Test fun monthSelectionNavigationTodayAndProjectionStayIndependentFromTimelineAnchor() {
+        val initial = WebSkinMonthProjection.initial(noon, zone)
+        val selected = WebSkinMonthProjection.selectDate(initial, LocalDate.of(2026, 10, 23))
+        assertEquals(LocalDate.of(2026, 10, 23), selected?.selectedDate)
+        assertEquals(initial.month, selected?.month)
+        assertNull(WebSkinMonthProjection.selectDate(initial, LocalDate.of(2026, 11, 1)))
+
+        val next = WebSkinMonthProjection.browseMonth(requireNotNull(selected), 1)
+        assertEquals(YearMonth.of(2026, 11), next?.month)
+        assertEquals(LocalDate.of(2026, 11, 1), next?.selectedDate)
+        assertNull(WebSkinMonthProjection.browseMonth(initial, 0))
+        assertNull(WebSkinMonthProjection.browseMonth(initial, 13))
+
+        val chosen = WebSkinMonthProjection.selectMonth(YearMonth.of(2027, 4))
+        assertEquals(LocalDate.of(2027, 4, 1), chosen?.selectedDate)
+        assertNull(WebSkinMonthProjection.selectMonth(YearMonth.of(2101, 1)))
+
+        val today = LocalDate.of(2026, 10, 29)
+        assertEquals(WebSkinMonthViewState(YearMonth.of(2026, 10), today),
+            WebSkinMonthProjection.today(today))
+        assertEquals(YearMonth.of(2026, 10), initial.month)
+        assertEquals(LocalDate.of(2026, 10, 22), initial.selectedDate)
     }
 
     @Test fun siblingOptionsInheritGroupStateAndHostDisablesThemDuringLocks() {

@@ -25,6 +25,12 @@ New:
   `deadlineDate`; `endMillis` is null. Times are epoch milliseconds.
 - `truncated=true` means not all visible items fit the bounded host
   projection. Do not infer that omitted occurrences are nonexistent.
+- `month` is present while the Month page is active and contains `zoneId`,
+  `month` (`YYYY-MM`), `selectedDate` (`YYYY-MM-DD`), `gridFrom`, bounded
+  `items`, and `truncated`. The selected day and displayed month are Host-owned
+  view state and are independent from the timeline camera. Month items are
+  projected from actual host occurrences; a skin must not synthesize missing
+  recurrence occurrences.
 - AI state includes `chatAttachmentAvailable` and `chatAttachmentBusy` booleans.
   Availability reflects the active AI page and Host edit/review locks; busy
   covers the system picker or a file/image review dialog. Neither field contains
@@ -54,6 +60,12 @@ envelope and known fields only:
 {"version":1,"type":"action","payload":{"name":"jumpTimelineDay","date":"2026-10-22"}}
 ```
 ```json
+{"version":1,"type":"action","payload":{"name":"selectMonthDate","date":"2026-10-23"}}
+```
+```json
+{"version":1,"type":"action","payload":{"name":"selectMonth","month":"2027-04"}}
+```
+```json
 {"version":1,"type":"action","payload":{"name":"pickAiFile"}}
 ```
 ```json
@@ -71,9 +83,20 @@ envelope and known fields only:
   camera's center instant is unchanged. `resetTimelineZoom` accepts only its
   name and restores a 24-hour span while retaining that center. Both actions
   are ignored outside the active timeline page and write no calendar data.
-  The `today` action remains distinct: it centers local noon and resets 24h.
+  On the timeline page, `today` uses the configured zone's current date,
+  centers local noon and resets to 24 hours. On the Month page it selects the
+  current local date and month without leaving that page or changing the
+  timeline camera, matching the Native Month control.
 - `jumpTimelineDay` accepts an ISO date from years 1900–2200 and retains
   the existing camera span.
+- On the Month page, `selectMonthDate` accepts a valid ISO date in the currently
+  displayed month (1900–2100) and changes only the selected-day projection.
+  `selectMonth` accepts `YYYY-MM` in years 1900–2100 and selects that month's
+  first day. `browseMonth` navigates relative to the displayed month and also
+  selects its first day, matching Native arrows and month-picker behavior.
+  These actions do not change the timeline camera or write calendar data.
+  Creating an event from the Month page uses the selected local date captured
+  by the Host; the skin does not submit a timestamp.
 - Existing navigation, the additive `memo` page action, and `openEvent(eventSeq,expectedRevision)` remain.
   Formal event opens re-read the current record and check revision/writer
   availability; an occurrence key cannot bypass those checks.

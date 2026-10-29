@@ -34,21 +34,23 @@ import androidx.compose.ui.viewinterop.AndroidView
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
+import java.time.YearMonth
 import java.util.Locale
 
 /** Preserves the explicit date/time context of the active native creation surface. */
 internal fun newEventSelectionForPage(
     page: String,
     camera: TimelineCoordinate.Camera,
-    zone: ZoneId
+    zone: ZoneId,
+    selectedMonthDate: LocalDate? = null
 ): EditorSelection? = when (page) {
     "TIMELINE" -> EditorSelection.AtInstant(
         TimelineCoordinate.snap(camera.anchorMillis, camera.hours, zone)
     )
-    "MONTH" -> EditorSelection.OnDate(
-        Instant.ofEpochMilli(camera.anchorMillis).atZone(zone).toLocalDate()
-    )
+    "MONTH" -> EditorSelection.OnDate(selectedMonthDate
+        ?: Instant.ofEpochMilli(camera.anchorMillis).atZone(zone).toLocalDate())
     else -> null
 }
 
@@ -117,6 +119,8 @@ internal sealed interface WebSkinAction {
     data object ResetTimelineZoom : WebSkinAction
     /** Select a calendar day while preserving the existing time span. */
     data class JumpTimelineDay(val date: String) : WebSkinAction
+    data class SelectMonthDate(val date: LocalDate) : WebSkinAction
+    data class SelectMonth(val month: YearMonth) : WebSkinAction
     data class ToggleMemo(
         val eventSeq: Long, val expectedRevision: Long,
         val occurrenceKey: String, val completed: Boolean
@@ -386,6 +390,22 @@ internal fun decodeBridgeAction(raw: String): WebSkinAction? {
             if (raw is Int && raw in -12..12 && raw != 0)
                 WebSkinAction.BrowseMonth(raw)
             else null
+        }
+        "selectMonthDate" -> {
+            if (keys != setOf("name", "date")) return null
+            val raw = payload.opt("date") as? String ?: return null
+            val date = if (raw.length == 10)
+                runCatching { LocalDate.parse(raw) }.getOrNull() else null
+            date?.takeIf { it.year in WebSkinMonthProjection.MIN_YEAR..WebSkinMonthProjection.MAX_YEAR }
+                ?.let { WebSkinAction.SelectMonthDate(it) }
+        }
+        "selectMonth" -> {
+            if (keys != setOf("name", "month")) return null
+            val raw = payload.opt("month") as? String ?: return null
+            val month = if (raw.length == 7)
+                runCatching { YearMonth.parse(raw) }.getOrNull() else null
+            month?.takeIf { it.year in WebSkinMonthProjection.MIN_YEAR..WebSkinMonthProjection.MAX_YEAR }
+                ?.let { WebSkinAction.SelectMonth(it) }
         }
         "createDraft" -> {
             if (keys != setOf("name", "kind")) return null

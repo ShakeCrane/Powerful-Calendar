@@ -348,4 +348,25 @@ class GlassComposeTest {
         val minimum = with(ui.density) { 48.dp.toPx() }
         assertTrue("Date target: $date", date.width >= minimum && date.height >= minimum)
     }
+
+    @Test fun selectingNativeMonthDateUpdatesAgendaAndDateActionsWithoutLeavingMonth() {
+        val selectedDate = LocalDate.of(2026, 10, 23)
+        var created: LocalDate? = null
+        var timelineDate: LocalDate? = null
+        ui.setContent {
+            PowerCalTheme {
+                MonthScreen(emptyList(), LocalDate.of(2026, 10, 20), zone, false,
+                    {}, { timelineDate = it }, { _, _ -> }, { created = it })
+            }
+        }
+        ui.onNodeWithContentDescription("2026-10-23，0 项").performClick()
+        ui.onNodeWithContentDescription("2026-10-23，0 项").assertIsSelected()
+        ui.runOnIdle {
+            assertNull("selecting a grid date must not jump to the timeline", timelineDate)
+        }
+        ui.onNodeWithText("为这一天新建活动").performClick()
+        ui.runOnIdle { assertEquals(selectedDate, created) }
+        ui.onNodeWithText("在时间轴查看这一天").performClick()
+        ui.runOnIdle { assertEquals(selectedDate, timelineDate) }
+    }
 }

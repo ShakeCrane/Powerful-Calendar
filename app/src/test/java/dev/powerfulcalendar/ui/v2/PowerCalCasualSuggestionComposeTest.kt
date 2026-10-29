@@ -45,7 +45,9 @@ import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.SocketTimeoutException
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
+import java.time.YearMonth
 import java.util.UUID
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
@@ -297,6 +299,88 @@ class PowerCalCasualSuggestionComposeTest {
         )
         assertEquals("closed", monthClose.getString("status"))
         ui.waitForIdle()
+        assertEquals(before, StoreCounts.read(store))
+    }
+
+    @Test
+    fun webMonthSelectionNavigationAndTodayStayIndependentFromTimelineCamera() {
+        ui.activity.setContent {
+            CompositionLocalProvider(LocalContext provides context) {
+                PowerCalTheme { PowerCalApp(store) }
+            }
+        }
+        ui.waitForIdle()
+        val before = StoreCounts.read(store)
+
+        fun dispatch(action: WebSkinAction) {
+            ui.runOnIdle { WebSkinBridgeRuntime.onAction(action) }
+            ui.waitForIdle()
+        }
+        fun runWebEdit(command: WebEditCommand): JSONObject {
+            val response = AtomicReference<JSONObject?>()
+            val failure = AtomicReference<Throwable?>()
+            Thread({
+                try { response.set(runBlocking { WebSkinBridgeRuntime.onEdit(command) }) }
+                catch (error: Throwable) { failure.set(error) }
+            }, "powercal-web-month-compose-test").apply {
+                isDaemon = true
+                start()
+            }
+            ui.waitUntil(10_000) { response.get() != null || failure.get() != null }
+            failure.get()?.let { throw AssertionError("Web month edit command failed", it) }
+            return requireNotNull(response.get())
+        }
+
+        dispatch(WebSkinAction.Routed("month"))
+        val initial = WebSkinBridgeRuntime.state()
+        val initialCamera = initial.getJSONObject("timeline")
+        val cameraAnchor = initialCamera.getLong("anchorMillis")
+        val cameraHours = initialCamera.getDouble("hours")
+        val month = initial.getJSONObject("month")
+        val initialMonth = YearMonth.parse(month.getString("month"))
+        val initialSelection = LocalDate.parse(month.getString("selectedDate"))
+        val chosenDate = if (initialSelection != initialMonth.atDay(1))
+            initialMonth.atDay(1) else initialMonth.atDay(2)
+
+        dispatch(WebSkinAction.SelectMonthDate(chosenDate))
+        var state = WebSkinBridgeRuntime.state()
+        assertEquals("MONTH", state.getString("page"))
+        assertEquals(chosenDate.toString(), state.getJSONObject("month").getString("selectedDate"))
+        assertEquals(cameraAnchor, state.getJSONObject("timeline").getLong("anchorMillis"))
+        assertEquals(cameraHours, state.getJSONObject("timeline").getDouble("hours"), 0.0)
+
+        dispatch(WebSkinAction.BrowseMonth(1))
+        state = WebSkinBridgeRuntime.state()
+        val nextMonth = initialMonth.plusMonths(1)
+        assertEquals(nextMonth.toString(), state.getJSONObject("month").getString("month"))
+        assertEquals(nextMonth.atDay(1).toString(), state.getJSONObject("month").getString("selectedDate"))
+
+        dispatch(WebSkinAction.SelectMonth(YearMonth.of(2027, 4)))
+        dispatch(WebSkinAction.SelectMonthDate(LocalDate.of(2027, 4, 19)))
+        val selected = WebSkinBridgeRuntime.state().getJSONObject("month")
+        assertEquals("2027-04", selected.getString("month"))
+        assertEquals("2027-04-19", selected.getString("selectedDate"))
+
+        val created = runWebEdit(WebEditCommand.CreateDeck("selected-month-day", TemporalKind.ACTIVITY))
+        assertEquals("created", created.getString("status"))
+        ui.waitForIdle()
+        val form = WebSkinBridgeRuntime.state().getJSONObject("editing")
+            .getJSONObject("deck").getJSONObject("form")
+        assertEquals("2027-04-19", form.getString("startText").take(10))
+        assertEquals("closed", runWebEdit(WebEditCommand.CloseDeck("selected-month-close"))
+            .getString("status"))
+        ui.waitForIdle()
+
+        dispatch(WebSkinAction.Routed("today"))
+        state = WebSkinBridgeRuntime.state()
+        val timeline = state.getJSONObject("timeline")
+        val zone = ZoneId.of(timeline.getString("zoneId"))
+        val today = Instant.ofEpochMilli(timeline.getLong("nowMillis")).atZone(zone).toLocalDate()
+        assertEquals("MONTH", state.getString("page"))
+        assertEquals(YearMonth.from(today).toString(), state.getJSONObject("month").getString("month"))
+        assertEquals(today.toString(), state.getJSONObject("month").getString("selectedDate"))
+        assertEquals(cameraAnchor, timeline.getLong("anchorMillis"))
+        assertEquals(cameraHours, timeline.getDouble("hours"), 0.0)
         assertEquals(before, StoreCounts.read(store))
     }
 

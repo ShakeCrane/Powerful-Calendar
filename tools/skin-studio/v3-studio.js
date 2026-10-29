@@ -382,6 +382,7 @@ async function addPackageAssets(list){
 const ACTIONS=[
   ["","无动作"],["today","返回今天"],["createMemo","新建 Memo"],
   ["createDraft","新建事件"],["browseMonth","浏览月份"],
+  ["selectMonthDate","选择月历日期"],["selectMonth","选择年月"],
   ["loadMoreMemo","加载更多 Memo"],
   ["timeline","时间轴"],
   ["month","月历"],["memo","Memo"],["ai","AI"],
@@ -736,10 +737,17 @@ function simulatedState(){
     timeline:{zoneId:"Asia/Shanghai",anchorMillis:anchor,hours,
       visibleStartMillis:start,visibleEndMillis:anchor+hours*1800000,
       nowMillis:base,itemLimit:300,truncated:false,items:rows},
-    month:{zoneId:"Asia/Shanghai",month:"2026-10",
-      selectedDate:"2026-10-22",gridFrom:"2026-09-28",
+    month:{zoneId:"Asia/Shanghai",month:mockMonth,
+      selectedDate:mockSelectedMonthDate,gridFrom:mockMonthGridFrom(mockMonth),
       itemLimit:350,truncated:false,
       items:rows.map(r=>({...r,date:"2026-10-22"}))}};
+}
+function mockMonthGridFrom(value){
+  const [year,month]=String(value).split("-").map(Number);
+  const first=new Date(Date.UTC(year,month-1,1));
+  const offset=(first.getUTCDay()+6)%7;
+  first.setUTCDate(first.getUTCDate()-offset);
+  return first.toISOString().slice(0,10);
 }
 function postState(){
   if(!previewPort)return;
@@ -954,6 +962,16 @@ function onSkinCommand(p){
     case "deck.create":{
       const id=7001;
       const form=mockForm(p.kind);
+      if(mockPage==="MONTH"&&mockKinds.has(p.kind)){
+        if(p.kind==="ACTIVITY"){
+          form.startText=mockSelectedMonthDate+form.startText.slice(10);
+          form.endText=mockSelectedMonthDate+form.endText.slice(10);
+        }else if(p.kind==="ALARM"){
+          form.startText=mockSelectedMonthDate+form.startText.slice(10);
+        }else if(p.kind==="DEADLINE"){
+          form.startText="";form.endText=mockSelectedMonthDate;
+        }
+      }
       mockEditing.deck={open:true,cards:[{draftId:id,title:form.title,kind:p.kind}],
         currentId:id,version:0,dirty:false,aiLocked:false,form,baseline:{...form}};
       result.status="created";result.detail=String(id);break;
@@ -990,7 +1008,8 @@ function onSkinCommand(p){
   }
   mockEditing.lastResult=result;
   logAction("预览编辑命令 "+p.name+
-    (p.name==="deck.create"?" · "+p.kind:"")+" → "+result.status);
+    (p.name==="deck.create"?" · "+p.kind+
+      (mockPage==="MONTH"?" · "+mockSelectedMonthDate:""):"")+" → "+result.status);
   try{previewPort?.postMessage(JSON.stringify({version:1,type:"result",payload:result}))}
   catch(e){logAction("编辑回执失败 "+e.message)}
   postState();
@@ -1037,17 +1056,57 @@ function onSkinAction(message){
       }
       mockHours=24;
     }
-    if(name==="jumpTimelineDay"&&/^\d{4}-\d{2}-\d{2}$/.test(p.date||"")){
-      const date=new Date(p.date+"T04:00:00Z").getTime();
-      if(Number.isFinite(date))mockAnchor=date;
+    if(name==="jumpTimelineDay"&&Object.keys(p).sort().join(",")==="date,name"&&
+      (mockPage==="TIMELINE"||mockPage==="MONTH")&&/^\d{4}-\d{2}-\d{2}$/.test(p.date||"")){
+      const localDate=new Date(p.date+"T00:00:00Z");
+      if(Number.isFinite(localDate.getTime())&&localDate.toISOString().slice(0,10)===p.date&&
+        localDate.getUTCFullYear()>=1900&&localDate.getUTCFullYear()<=2200){
+        mockAnchor=new Date(p.date+"T04:00:00Z").getTime();mockPage="TIMELINE";
+      }
     }
-    if(name==="today")mockAnchor=null;
+    if(name==="today"){
+      if(mockPage==="MONTH"){
+        mockMonth="2026-10";mockSelectedMonthDate="2026-10-22";
+      }else mockAnchor=null;
+    }
     if(name==="browseMonth"&&Number.isInteger(p.deltaMonths)&&
+      Object.keys(p).sort().join(",")==="deltaMonths,name"&&mockPage==="MONTH"&&
       p.deltaMonths!==0&&Math.abs(p.deltaMonths)<=12){
-      mockAnchor=(mockAnchor??new Date("2026-10-22T04:00:00Z").getTime())+
-        p.deltaMonths*30*86400000;
+      const [year,month]=mockMonth.split("-").map(Number);
+      const next=new Date(Date.UTC(year,month-1+p.deltaMonths,1));
+      if(next.getUTCFullYear()>=1900&&next.getUTCFullYear()<=2100){
+        mockMonth=next.toISOString().slice(0,7);
+        mockSelectedMonthDate=mockMonth+"-01";
+      }
     }
-    if(["timeline","month","memo","ai"].includes(name))mockPage=name.toUpperCase();
+    if(name==="selectMonthDate"&&(mockPage!=="MONTH"||
+      Object.keys(p).sort().join(",")!=="date,name"||
+      !/^\d{4}-\d{2}-\d{2}$/.test(p.date||""))){
+      logAction("拒绝非月历页面或格式无效的 selectMonthDate 请求");return;
+    }
+    if(name==="selectMonthDate"&&
+      /^\d{4}-\d{2}-\d{2}$/.test(p.date||"")&&p.date.slice(0,7)===mockMonth){
+      const date=new Date(p.date+"T00:00:00Z");
+      if(Number.isFinite(date.getTime())&&date.toISOString().slice(0,10)===p.date&&
+        date.getUTCFullYear()>=1900&&date.getUTCFullYear()<=2100)
+        mockSelectedMonthDate=p.date;
+    }
+    if(name==="selectMonth"&&(mockPage!=="MONTH"||
+      Object.keys(p).sort().join(",")!=="month,name"||
+      !/^\d{4}-(0[1-9]|1[0-2])$/.test(p.month||""))){
+      logAction("拒绝非月历页面或格式无效的 selectMonth 请求");return;
+    }
+    if(name==="selectMonth"&&
+      /^\d{4}-(0[1-9]|1[0-2])$/.test(p.month||"")){
+      const year=Number(p.month.slice(0,4));
+      if(year>=1900&&year<=2100){mockMonth=p.month;mockSelectedMonthDate=mockMonth+"-01"}
+    }
+    if(["timeline","memo","ai"].includes(name))mockPage=name.toUpperCase();
+    if(name==="month"){
+      const anchor=mockAnchor??new Date("2026-10-22T04:00:00Z").getTime();
+      const date=new Date(anchor+8*3600000).toISOString().slice(0,10);
+      mockMonth=date.slice(0,7);mockSelectedMonthDate=date;mockPage="MONTH";
+    }
     if(name==="toggleMemo"){
       if(!Number.isInteger(p.eventSeq)||typeof p.completed!=="boolean"||!p.occurrenceKey)return;
       if(p.eventSeq===31)mockMemoDone=!p.completed;
@@ -1104,8 +1163,15 @@ function onSkinAction(message){
       }else return;
       logAction("模拟宿主收到：resolveAiProposal · "+p.decision);postState();return;
     }
-    if(name==="createDraft"&&
-      !["ACTIVITY","ALARM","DEADLINE","MEMO"].includes(p.kind))return;
+    if(name==="createDraft"){
+      if(Object.keys(p).sort().join(",")!=="kind,name"||
+        !["ACTIVITY","ALARM","DEADLINE","MEMO"].includes(p.kind))return;
+      const base=new Date("2026-10-22T04:00:00Z").getTime();
+      const selectedDate=mockPage==="MONTH"?mockSelectedMonthDate:
+        new Date((mockAnchor??base)+8*3600000).toISOString().slice(0,10);
+      logAction(`模拟宿主收到：createDraft · ${p.kind} · ${selectedDate}（不会写入真实数据）`);
+      return;
+    }
     if(name==="invokeOption"&&$("scenario").value==="locked"){
       logAction("锁定状态拒绝执行选项");return;
     }
@@ -1114,11 +1180,12 @@ function onSkinAction(message){
       (name==="resetTimelineZoom"?" · "+mockHours+" 小时":"")+
       (p.id?" · "+p.id:"")+
       (name==="openEvent"?" · "+p.eventSeq:""));
-    if(["today","panTimeline","zoomTimeline","resetTimelineZoom","jumpTimelineDay","browseMonth","timeline","month","memo","ai",
+    if(["today","panTimeline","zoomTimeline","resetTimelineZoom","jumpTimelineDay","browseMonth","selectMonthDate","selectMonth","timeline","month","memo","ai",
       "toggleMemo","sendChat"].includes(name))postState();
   }catch(error){logAction("Bridge 消息错误："+error.message)}
 }
 let mockAnchor=null,mockHours=24,mockPage="TIMELINE",mockMemoDone=false,mockChat=[];
+let mockMonth="2026-10",mockSelectedMonthDate="2026-10-22";
 let mockMemoVisibleLimit=250;
 let mockAiErrorMessages=[
   {role:"user",content:"请帮我概括明天的安排。"},

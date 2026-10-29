@@ -124,7 +124,9 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
+import java.time.YearMonth
 import java.util.UUID
 
 /** Process-wide store: alarms, boot receivers and the UI must agree on one database and one token. */
@@ -267,6 +269,20 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
     val initialCamera = remember { TimelineCoordinate.initialCamera(System.currentTimeMillis(), zone) }
     var anchorMillis by rememberSaveable { mutableLongStateOf(initialCamera.anchorMillis) }
     var hours by rememberSaveable { mutableDoubleStateOf(initialCamera.hours) }
+    var monthText by rememberSaveable { mutableStateOf("") }
+    var monthSelectedDateText by rememberSaveable { mutableStateOf("") }
+    fun monthViewState(): WebSkinMonthViewState? = runCatching {
+        WebSkinMonthViewState(YearMonth.parse(monthText), LocalDate.parse(monthSelectedDateText))
+            .takeIf { YearMonth.from(it.selectedDate) == it.month }
+    }.getOrNull()
+    fun setMonthViewState(view: WebSkinMonthViewState) {
+        monthText = view.month.toString()
+        monthSelectedDateText = view.selectedDate.toString()
+    }
+    fun openMonthPage() {
+        setMonthViewState(WebSkinMonthProjection.initial(anchorMillis, zone))
+        page = Page.MONTH.name
+    }
     val camera = TimelineCoordinate.Camera(anchorMillis, TimelineCoordinate.clampHours(hours))
     val todayKey = Instant.ofEpochMilli(nowMillis).atZone(zone).toLocalDate()
     val todoEntries = remember(records, todayKey) {
@@ -1165,7 +1181,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
         WebSkinBridgeRuntime.owner = webBridgeOwner
         WebSkinBridgeRuntime.onEdit = { command ->
             val selection = if (command is WebEditCommand.CreateDeck)
-                newEventSelectionForPage(page, camera, zone) else null
+                newEventSelectionForPage(page, camera, zone, monthViewState()?.selectedDate) else null
             val moveContext = if (page == Page.TIMELINE.name &&
                 command is WebEditCommand.MoveTimelineEvent) {
                 val projectedItems = WebSkinTimelineProjection.build(
@@ -1202,7 +1218,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
             when (action) {
                 is WebSkinAction.Routed -> when (action.name) {
                     "timeline" -> page = Page.TIMELINE.name
-                    "month" -> page = Page.MONTH.name
+                    "month" -> openMonthPage()
                     "memo" -> {
                         page = Page.MEMO.name
                         scope.launch { reload() }
@@ -1212,8 +1228,13 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                     "openDeck" -> scope.launch { openDeckAt(null) }
                     "today" -> {
                         nowMillis = System.currentTimeMillis()
-                        val today = TimelineCoordinate.todayCamera(nowMillis, zone)
-                        anchorMillis = today.anchorMillis; hours = today.hours
+                        if (page == Page.MONTH.name) {
+                            val today = Instant.ofEpochMilli(nowMillis).atZone(zone).toLocalDate()
+                            WebSkinMonthProjection.today(today)?.let(::setMonthViewState)
+                        } else {
+                            val today = TimelineCoordinate.todayCamera(nowMillis, zone)
+                            anchorMillis = today.anchorMillis; hours = today.hours
+                        }
                     }
                     else -> Unit
                 }
@@ -1261,18 +1282,28 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                 }
                 is WebSkinAction.BrowseMonth -> {
                     if (page == Page.MONTH.name) {
-                        val day = Instant.ofEpochMilli(anchorMillis).atZone(zone).toLocalDate()
-                        val target = runCatching { day.plusMonths(action.deltaMonths.toLong()) }
-                            .getOrNull()
-                        if (target != null && target.year in 1900..2200) {
-                            anchorMillis = target.atTime(12,0).atZone(zone)
-                                .toInstant().toEpochMilli()
-                        }
+                        val current = monthViewState()
+                            ?: WebSkinMonthProjection.initial(anchorMillis, zone)
+                        WebSkinMonthProjection.browseMonth(current, action.deltaMonths)
+                            ?.let(::setMonthViewState)
                     }
+                }
+                is WebSkinAction.SelectMonthDate -> if (page == Page.MONTH.name) {
+                    val current = monthViewState()
+                        ?: WebSkinMonthProjection.initial(anchorMillis, zone)
+                    WebSkinMonthProjection.selectDate(current, action.date)
+                        ?.let(::setMonthViewState)
+                }
+                is WebSkinAction.SelectMonth -> if (page == Page.MONTH.name) {
+                    WebSkinMonthProjection.selectMonth(action.month)
+                        ?.let(::setMonthViewState)
                 }
                 is WebSkinAction.CreateDraft -> if (!aiLocked && editSession == null) {
                     val kind = TemporalKind.valueOf(action.kind)
-                    val day = Instant.ofEpochMilli(anchorMillis).atZone(zone).toLocalDate()
+                    val day = if (page == Page.MONTH.name)
+                        monthViewState()?.selectedDate
+                            ?: Instant.ofEpochMilli(anchorMillis).atZone(zone).toLocalDate()
+                    else Instant.ofEpochMilli(anchorMillis).atZone(zone).toLocalDate()
                     openNewEvent(kind, EditorSelection.OnDate(day))
                 }
                 WebSkinAction.CreateMemo -> if (!aiLocked && editSession == null) {
@@ -1357,7 +1388,11 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                 .put("timeline", WebSkinTimelineProjection.build(
                     records, camera, nowMillis, zone))
                 .put("month", if (page == Page.MONTH.name)
-                    WebSkinMonthProjection.build(records, anchorMillis, zone)
+                    WebSkinMonthProjection.build(
+                        records,
+                        monthViewState() ?: WebSkinMonthProjection.initial(anchorMillis, zone),
+                        zone
+                    )
                     else JSONObject())
                 .put("events", org.json.JSONArray(records.take(300).map { record ->
                     JSONObject().put("eventSeq", record.eventSeq).put("revision", record.revision)
