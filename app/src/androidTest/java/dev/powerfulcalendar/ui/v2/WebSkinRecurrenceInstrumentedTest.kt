@@ -69,7 +69,7 @@ class WebSkinRecurrenceInstrumentedTest {
         throw AssertionError("WebView condition timed out: $condition; state=$diagnostic")
     }
 
-    @Test fun actualWebViewEditsOnlyTheSelectedRecurrence() {
+    @Test fun actualWebViewMonthOccurrenceOpenPreservesOriginalSlotForSingleEdit() {
         val context: Context = compose.activity.applicationContext
         val database = "skin-rec-${UUID.randomUUID()}.db"
         val store = PowerStore(context, database)
@@ -99,14 +99,40 @@ class WebSkinRecurrenceInstrumentedTest {
             }
             assertNotNull(web)
             val view = requireNotNull(web)
-            val event = "document.querySelector('[data-original-occurrence-key=\"$key\"]')"
-            awaitJs(view, "!!$event")
-            evaluate(view, "$event.click(); true")
+            val monthTab = "document.querySelector(\".clear-tabbar [data-action='month']\")"
+            awaitJs(view, "!!$monthTab")
+            evaluate(view, "$monthTab.click(); true")
+            awaitJs(view, "!document.querySelector('#monthPage').hidden")
+            evaluate(view, "document.querySelector(\".month-cell[data-date='$today']\").click(); true")
+            awaitJs(view, "document.querySelector('#monthAgenda h2')?.textContent==='$today'")
+            val agendaEvent = "document.querySelector(\"#monthAgenda .agenda-event" +
+                "[data-event-seq='${card.eventSeq}'][data-original-occurrence-key='$key']\")"
+            awaitJs(view, "!!$agendaEvent")
+            evaluate(view, "$agendaEvent.click(); true")
             awaitJs(view, "!document.querySelector('#skinSheet').hidden")
+            var openedEditor: org.json.JSONObject? = null
+            compose.runOnIdle {
+                openedEditor = WebSkinBridgeRuntime.state().getJSONObject("editing")
+                    .getJSONObject("editor")
+            }
+            val editorBeforeScope = requireNotNull(openedEditor)
+            assertEquals(card.eventSeq, editorBeforeScope.getLong("eventSeq"))
+            assertTrue("Month open must carry a valid original occurrence key",
+                editorBeforeScope.getBoolean("canEditSelectedOccurrence"))
             assertEquals("true", evaluate(view, "document.querySelector('#sheetSave').disabled"))
             assertEquals("true", evaluate(view, "!document.querySelector('#sheetFields [data-field=title]')"))
             evaluate(view, "document.querySelector('[data-scope=SINGLE_OCCURRENCE]').click(); true")
             awaitJs(view, "document.querySelector('[data-scope=SINGLE_OCCURRENCE]').getAttribute('aria-pressed')==='true'")
+            var selectedEditor: org.json.JSONObject? = null
+            compose.runOnIdle {
+                selectedEditor = WebSkinBridgeRuntime.state().getJSONObject("editing")
+                    .getJSONObject("editor")
+            }
+            val selectedForm = requireNotNull(selectedEditor).getJSONObject("form")
+            assertEquals("SINGLE_OCCURRENCE", requireNotNull(selectedEditor)
+                .getString("recurrenceScope"))
+            assertEquals(DraftForm.formatInstant(today.atTime(9, 0).atZone(zone)
+                .toInstant().toEpochMilli(), zone), selectedForm.getString("startText"))
             assertEquals("true", evaluate(view, "!document.querySelector('#sheetFields [data-field=notes]')"))
             evaluate(view, "const input=document.querySelector('#sheetFields [data-field=title]'); input.value='仅本次 WebView'; input.dispatchEvent(new Event('change',{bubbles:true})); true")
             awaitJs(view, "!!document.querySelector('[data-do=discardChanges]')")

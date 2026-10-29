@@ -901,7 +901,8 @@ function onSkinCommand(p){
         title:memoEntry?.title||"测试活动"};
       if(memoEntry?.originalOccurrenceKey)form.recurrenceFreq="DAILY";
       mockEditing.editor={open:true,sessionId:"00000000-0000-0000-0000-000000000001",
-        eventSeq:p.eventSeq,dirty:false,requiresRecurrenceScope:!!p.occurrenceKey,
+        eventSeq:p.eventSeq,revision:p.expectedRevision,dirty:false,
+        requiresRecurrenceScope:!!p.occurrenceKey,
         canEditSelectedOccurrence:!!p.occurrenceKey,recurrenceScope:null,
         occurrenceKey:p.occurrenceKey||null,form};
       mockEditing.editor.baseline={...mockEditing.editor.form};

@@ -20,8 +20,9 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
-import java.util.UUID
+import java.time.LocalDate
 import java.time.ZoneId
+import java.util.UUID
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -92,6 +93,44 @@ class WebSkinRecurrenceBridgeTest {
         assertEquals("仅这一次", pending.form.title)
         assertEquals(identities, store.identityCount())
         assertEquals(commits, store.commitCount())
+    }
+
+    @Test fun projectedMonthOccurrenceOpensTheMatchingFormalOwnerAndOriginalSlot() = runBlocking {
+        val seq = daily()
+        val owner = requireNotNull(store.get(seq))
+        val zone = ZoneId.of("Asia/Shanghai")
+        val selectedDate = LocalDate.of(2026, 10, 21)
+        val anchor = selectedDate.atTime(12, 0).atZone(zone).toInstant().toEpochMilli()
+        val month = WebSkinMonthProjection.build(
+            listOf(owner), WebSkinMonthProjection.initial(anchor, zone), zone
+        )
+        val projected = month.getJSONArray("items").let { items ->
+            (0 until items.length()).map(items::getJSONObject)
+                .single { it.getString("date") == selectedDate.toString() }
+        }
+        val key = "2026-10-21T07:30"
+        assertEquals(owner.eventSeq, projected.getLong("eventSeq"))
+        assertEquals(owner.revision, projected.getLong("revision"))
+        assertEquals(key, projected.getString("originalOccurrenceKey"))
+        val counts = listOf(store.draftCount(), store.identityCount(), store.commitCount())
+
+        assertEquals("opened", service.execute(WebEditCommand.OpenEvent(
+            id(), projected.getLong("eventSeq"), projected.getLong("revision"),
+            projected.getString("originalOccurrenceKey")
+        )).getString("status"))
+        var editor = service.snapshot().getJSONObject("editor")
+        assertEquals(owner.eventSeq, editor.getLong("eventSeq"))
+        assertTrue(editor.getBoolean("canEditSelectedOccurrence"))
+        val sessionId = editor.getString("sessionId")
+        assertEquals("selected", service.execute(command("editor.scope",
+            "sessionId" to sessionId, "scope" to "SINGLE_OCCURRENCE"))
+            .getString("status"))
+        editor = service.snapshot().getJSONObject("editor")
+        assertEquals("2026-10-21 07:30", editor.getJSONObject("form").getString("startText"))
+        assertEquals("closed", service.execute(command("editor.close",
+            "sessionId" to sessionId)).getString("status"))
+        assertEquals(owner, store.get(seq))
+        assertEquals(counts, listOf(store.draftCount(), store.identityCount(), store.commitCount()))
     }
 
     @Test fun singleOccurrenceRequiresScopeAndSurvivesCheckpoint() = runBlocking {
