@@ -1,5 +1,13 @@
 # Core freeze progress
 
+## Separation — Clear 冲突审查与已删除事件恢复 `S0-DK-03`（2026-10-29，PARTIAL / unsigned）
+
+- 根因：Bridge 只投影冲突/恢复布尔值，Clear 没有冲突复核、墓碑浏览和恢复操作。Store 没有有界只读墓碑页。复核还存在 TOCTOU 窗口：Host 虽重新读取 revision，Controller 之后仍以 `approveStale=true` 无条件提交。Clear 恢复渲染引用未定义的 `args`；长墓碑列表遮住恢复快照；焦点保护把按钮误当作输入控件，导致分页后旧按钮状态不刷新。
+- 增加无迁移的 `PowerStore.retiredPage`（每页至多 50 项）；Bridge 增加封闭 schema 命令、完整 before/after 投影、keep/restore 提案和 Host Compose 审查。冲突覆盖把用户看到的 revision 传进 `DeckController`，并在 Store 写事务内再次 CAS；失败保持冲突提示。恢复批准继续走原有同序号恢复事务。Host 取消保留提案及提示，明确 Keep 才关闭提示；皮肤不能携带批准位。Clear 修正恢复按钮参数，审阅期间收起墓碑列表并仅在输入控件聚焦时暂停重绘。
+- 定向回归：CAS、Controller 保留冲突提示、Host 取消保留冲突/恢复提案及恢复同序号批准通过；详见 `.local/android-test/reports/separation-s0-dk-03-20261029/gradle-cas-focused.log`（SHA-256 `DE8F88ECB775FA9DEE33796F5320FCFDBF62E8F92E239A26EF50BDF493FA20AB`）和 `gradle-conflict-controller.log`（`8FBBDBB37AAF7CEDD3F6EF535EEDE7C7FFAAFB633A72B5FADFD2E71DE4AA70AF`）。完整离线 Gradle 门禁 **637/637 JVM、84 suites、0 failures/errors/skips、88/88 tasks PASS**；Skin Studio **61/61 PASS**；Edge 156 Preview Mock 冲突/恢复 E2E PASS；三份 JavaScript `node --check` 与 `git diff --check` PASS。
+- 包交付：规范 Clear 9 files / 389,356 bytes，SHA-256 `74E82A11444E9BB6A79D3E222EE9D6F5DF3437A94EBB537C01814B6AEB0BCEF2`；Debug APK 内资源字节一致。Debug APK SHA-256 `D271AB748990CCB303FD7B7350CC9100B29F8466C9F256AEE25BD569320C158B`；AndroidTest APK SHA-256 `33FC27215E84DE4D2BFCC919C1D46854879AB4A49FE1CAA0A1C45778A0B6DC31`（仅构建）。全量 Gradle 日志 SHA-256 `F9F0AA83D150931708917E6CC82720EBCB067A095B058EA33A23A10781649473`；Python 日志 `4DC13C4C8E2C837BCB12B0A6F1BE227FF3C575D115A74FCC5BC46565C767BF4B`；Preview E2E 日志 `4D878FB894119E2BF8BF0684FF8508D1EAFCC97D0214CB2CB4DC411E2AB2BA4F`。屏幕证据 `restore-proposal.png` SHA-256 `E8316C67DDD2F4477F37F6B2789B14814D7B01128B5091E78D14D96319C06A6E`。详情见独立 Issue 报告。
+- API 35 未安装；SDK 只有 API 36，没有 Emulator 可执行文件，`adb devices -l` 为空。Android WebView、模拟器执行和实体设备 **NOT TESTED**；Browser Preview 使用不写 Store 的 Mock。实现/桌面回归通过，但 S0-DK-03 仍 **PARTIAL / unsigned**，待 Android WebView 与设备 parity 证据。代码提交 `e04b2723e10ebb57e22a9c2c4da7580631bcd7c2`；见[独立 Issue 报告](../issues/PC-ISSUE-SEPARATION-DRAFT-CONFLICT-RESTORE.md)。
+
 ## Separation — Clear 草稿搜索、选择与导航 `S0-DK-01`（2026-10-29，PARTIAL）
 
 - 修复 Bridge 缺少 `deck.search`、`deck.jump`、`deck.proposeReplace` 的能力缺口。复用 `DraftQueueSearch`、`FormalEventSearch`、`DeckController.jump` 和 `PowerStore.proposeReplace`；Host 用当前 revision、锁与既有兼容草稿复核替换提案，正式事件仍须走可信发布审核。Native 仅有卡片导航、没有持久化队列重排，本次未新增重排语义。

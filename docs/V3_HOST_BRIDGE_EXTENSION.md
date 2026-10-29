@@ -212,6 +212,57 @@ Store access or formal-write authority:
   data; its results demonstrate UI command wiring only, not Android Store or
   Android WebView behavior.
 
+## Conflict review and deleted-event recovery (2026-10-29)
+
+The v1 command envelope also exposes read-only tombstone browsing and actions
+that request, but never supply, trusted formal-write approval:
+
+```json
+{"version":1,"type":"command","payload":{"name":"deck.retired","requestId":"clear_abc123_4","offset":0}}
+```
+```json
+{"version":1,"type":"command","payload":{"name":"deck.beginRestore","requestId":"clear_abc123_5","eventSeq":42,"expectedRevision":4}}
+```
+```json
+{"version":1,"type":"command","payload":{"name":"deck.requestConflictReview","requestId":"clear_abc123_6","draftId":9,"draftVersion":2,"eventSeq":42,"expectedRevision":5}}
+```
+
+- `deck.retired` accepts only an integer offset in `0..1,000,000`. The Host
+  reads one page of at most 50 deleted formal records, ordered by most recent
+  update and then descending event sequence. State returns `retiredResults`
+  (`eventSeq,revision,title,kind,startText,endText`), `retiredOffset`,
+  `retiredTotal`, page flags and `retiredLoaded`. It performs no writes. The
+  Store API is additive and read-only; there is no database migration.
+- `deck.beginRestore` accepts only a positive event sequence and revision that
+  appear together in the current tombstone page. The Host re-reads the
+  tombstone, checks that it is still retired, checkpoints the current card and
+  delegates proposal creation to the existing `DeckController` /
+  `PowerStore.proposeRestoreDraft` path. The event remains deleted; the command
+  creates or resumes a reviewable draft and never allocates a new event
+  identity or commits a formal event.
+- Persistent deck state exposes `conflict:null|object` and
+  `restore:null|object`, including draft identity/version, target identity and
+  revision, the current/tombstone form, proposed form and readable field
+  changes. These are display snapshots, not authorization credentials.
+- `deck.keepConflict` and `deck.keepRestore` only dismiss their respective
+  prompts while retaining the actionable draft. `deck.requestConflictReview`
+  and `deck.requestRestoreReview` accept only the exact draft/version/event/
+  revision tuple shown in state. They open a private Android Compose review;
+  no `approved` field, JavaScript callback or Mock result can approve the
+  operation. Conflict replacement and restore approval re-read the persisted
+  draft and live formal/tombstone snapshot immediately before delegating to
+  the existing controller/store transaction. Conflict replacement also sends
+  the revision shown by Compose into `PowerStore.commit`; the SQLite write
+  transaction compares it with the then-current revision before accepting the
+  stale replacement. This closes the race between Host preflight and commit.
+  Cancelling the Compose review keeps both the proposal and its prompt open;
+  the explicit Keep action closes the prompt while retaining the draft. A stale
+  snapshot is rejected for renewed review.
+- Clear exposes the full before/after conflict fields, keep and replacement
+  requests, a paginated deleted-event picker, and the same-event recovery
+  review/keep actions. Studio Preview fixtures are non-writing and verify only
+  command wiring. They do not prove Android WebView or device behavior.
+
 ## Timeline new-event context
 
 The bundled Clear timeline offers all four event kinds and sends the existing
