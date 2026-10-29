@@ -496,6 +496,31 @@ async function main(){
     })()`,awaitPromise:true,returnByValue:true});
     if(icsExportMock.exceptionDetails)throw Error(icsExportMock.exceptionDetails.exception?.description || icsExportMock.exceptionDetails.text);
     console.log("BROWSER ICS EXPORT OPTION MOCK PASS",JSON.stringify(icsExportOption.result.value),JSON.stringify(icsExportMock.result.value));
+    const backupExportOption=await call("Runtime.evaluate",{contextId:world.executionContextId,
+      awaitPromise:true,returnByValue:true,expression:`(async()=>{
+        await new Promise(r=>setTimeout(r,100));
+        const option=document.querySelector('[data-action="invokeOption"][data-option-id="data.backup.export"]');
+        if(!option||!option.textContent.includes('导出原生备份'))throw Error('native backup option missing');
+        const detail=option.querySelector('.optionDescription')?.textContent||'';
+        for(const term of ['一致性快照','SHA-256','序号水位','迁移记录','AI 任务收据','不含 API 密钥','明文敏感数据','有界回读','未验证'])
+          if(!detail.includes(term))throw Error('backup warning missing: '+term);
+        option.click();
+        return {visible:true,integrityAndPlaintextWarningVisible:true,clicked:true};
+      })()`});
+    if(backupExportOption.exceptionDetails)throw Error(backupExportOption.exceptionDetails.exception?.description || backupExportOption.exceptionDetails.text);
+    const backupExportMock=await call("Runtime.evaluate",{expression:`(async()=>{
+      for(let i=0;i<150;i++){
+        if(document.querySelector('#bridgeLog').textContent.includes('原生备份导出请求仅模拟到达')){
+          const log=document.querySelector('#bridgeLog').textContent;
+          if(!log.includes('未创建文件或读取数据库'))throw Error('backup export Mock must disclose its non-writing boundary');
+          return {hostRequestReceived:true,fileCreated:false,databaseRead:false,databaseWritten:false};
+        }
+        await new Promise(r=>setTimeout(r,100));
+      }
+      throw Error('native backup option did not reach Preview Mock Host');
+    })()`,awaitPromise:true,returnByValue:true});
+    if(backupExportMock.exceptionDetails)throw Error(backupExportMock.exceptionDetails.exception?.description || backupExportMock.exceptionDetails.text);
+    console.log("BROWSER BACKUP EXPORT OPTION MOCK PASS",JSON.stringify(backupExportOption.result.value),JSON.stringify(backupExportMock.result.value));
     const legacyMock=await call("Runtime.evaluate",{expression:`(async()=>{
       for(let i=0;i<150;i++){
         if(document.querySelector('#bridgeLog').textContent.includes('迁移请求仅模拟到达')){

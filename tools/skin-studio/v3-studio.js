@@ -724,6 +724,11 @@ function simulatedState(){
     detail:"仅导出活动且不含活动启用/停用状态与活动提醒；闹钟、截止、备忘与完成状态不会由 ICS 保留。需要完整恢复请使用原生备份。",
     icon:"file",enabled:scenario!=="locked"
   }];
+  const backupItems=[{
+    id:"data.backup.export",label:"导出原生备份",
+    detail:"单一 SQLite 一致性快照与 SHA-256；含事件、身份与墓碑、草稿、提交、来源链接、迁移记录、AI 任务收据和序号水位；不含 API 密钥。文件为明文敏感数据。写后有界回读；无法回读时会明确提示未验证。",
+    icon:"file",enabled:scenario!=="locked"
+  }];
   const start=anchor-hours*1800000;
   const rawChatMessages=mockChatCleared?mockChat:scenario==="ai-error"
     ? [{role:"assistant",content:"你好！今天有什么安排？"},...mockAiErrorMessages]
@@ -780,7 +785,8 @@ function simulatedState(){
     events:rows.map(r=>({eventSeq:r.eventSeq,revision:r.revision,title:r.title,kind:r.kind,
       anchorMillis:r.startMillis,endMillis:r.endMillis})),
     optionGroups:[{id:"calendar.import",label:"导入",items},
-      {id:"calendar.export",label:"导出",items:exportItems}],
+      {id:"calendar.export",label:"导出",items:exportItems},
+      {id:"data.backup",label:"备份",items:backupItems}],
     timeline:{zoneId:"Asia/Shanghai",anchorMillis:anchor,hours,
       visibleStartMillis:start,visibleEndMillis:anchor+hours*1800000,
       nowMillis:base,itemLimit:300,truncated:false,items:rows},
@@ -1859,6 +1865,10 @@ function onSkinAction(message){
     }
     if(name==="invokeOption"&&p.id==="calendar.export.ics"){
       logAction("Preview Mock：ICS 导出请求仅模拟到达；未创建文件或读取真实事件。Android Host 处理文件写入。");
+      return;
+    }
+    if(name==="invokeOption"&&p.id==="data.backup.export"){
+      logAction("Preview Mock：原生备份导出请求仅模拟到达；未创建文件或读取数据库。Android Host 负责一致性快照、写入和回读校验。");
       return;
     }
     logAction("模拟宿主收到："+name+

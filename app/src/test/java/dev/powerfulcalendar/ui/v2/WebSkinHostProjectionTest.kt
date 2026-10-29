@@ -415,4 +415,14 @@ class WebSkinHostProjectionTest {
         listOf("活动启用/停用状态", "活动提醒", "闹钟", "截止", "备忘", "完成状态", "原生备份")
             .forEach { assertTrue("ICS warning must include $it", item.detail.contains(it)) }
     }
+
+    @Test fun nativeBackupExportOptionDisclosesIntegrityAndPlaintextLimits() {
+        val item = SemanticOptions.groups.flatMap { it.items }
+            .single { it.id == "data.backup.export" }
+        assertTrue(SemanticOptions.supports(item.id))
+        assertEquals("导出原生备份", item.label)
+        listOf("一致性快照", "SHA-256", "序号水位", "迁移记录", "AI 任务收据", "不含 API 密钥",
+            "明文敏感数据", "有界回读", "未验证")
+            .forEach { assertTrue("backup warning must include $it", item.detail.contains(it)) }
+    }
 }

@@ -1400,6 +1400,8 @@ fun PowerCalApp(
                         openAiDocument.launch(arrayOf("*/*"))
                     action.id == "calendar.export.ics" ->
                         exportIcs.launch("PowerfulCalendar-activities.ics")
+                    action.id == "data.backup.export" ->
+                        createBackup.launch("powercal-backup.json")
                     action.id == "calendar.import.system" -> {
                         if (ContextCompat.checkSelfPermission(appContext,
                                 Manifest.permission.READ_CALENDAR) == PackageManager.PERMISSION_GRANTED

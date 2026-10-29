@@ -33,6 +33,11 @@ internal object SemanticOptions {
             SemanticOption("calendar.export.ics", "导出 ICS",
                 "仅导出活动且不含活动启用/停用状态与活动提醒；闹钟、截止、备忘与完成状态不会由 ICS 保留。" +
                     "需要完整恢复请使用原生备份。", "file")
+        )),
+        SemanticOptionGroup("data.backup", "备份", listOf(
+            SemanticOption("data.backup.export", "导出原生备份",
+                "单一 SQLite 一致性快照与 SHA-256；含事件、身份与墓碑、草稿、提交、来源链接、迁移记录、AI 任务收据和序号水位；" +
+                    "不含 API 密钥。文件为明文敏感数据。写后有界回读；无法回读时会明确提示未验证。", "file")
         ))
     )
     private val allowed = groups.flatMap { it.items }.map { it.id }.toSet()
