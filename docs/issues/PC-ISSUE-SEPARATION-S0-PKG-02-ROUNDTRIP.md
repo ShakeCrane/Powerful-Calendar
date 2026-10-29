@@ -39,5 +39,6 @@
 - 定向 `PreviewParityTest`：**7/7 PASS**；`python -m unittest discover -s tools/skin-studio/tests -p test_v3_preview.py -v`；日志 SHA-256 `90E7BA8A9C06B1682C1EC06339F228E5EB34AB165EF8FEAFD25655AEB9CAC4E8`，位置 `.local/android-test/reports/separation-s0-timeline-drag/s0-pkg-02/run-20261029-01/preview-parity-focused.log`。
 - 本次浏览器 no-edit fixture 的文件 SHA-256：`assets/probe.png` `d3c936ebdd73f46e6422d5946044c99d524554082272019ab738800318b04892`; `project.json` `a5f9436761c7a20653767b69d5257553b6570882a73f2ea28b7955b2d6c12e03`; `web/app.js` `1c16ea9522447f158918871e095ce27cad578f15e8a6217a2ad2a192c4df78fd`; `web/index.html` `f53b88c73efd02f22e282d6fc6a917656fb579a357032e6a9774c91bda7e3229`; `web/style.css` `a244308e5b061e7843ba208e7368a0c7a8dc71c6a56ba2cd006111b99d561090`。
 - `node --check tools/skin-studio/tests/e2e_v3_source.cjs` 与 `git diff --check` PASS。Chrome/browser 与 HTTP 服务只使用本机 loopback；未启动 AVD 或写入日历数据。
+- 浏览器 no-edit 跟进的测试、Issue、矩阵与进度更新已提交并推送：`570ed9d0e87f418613799f1a51a88687b77b0a34` (`test(分离): 覆盖 Studio 无修改浏览器往返`)，分支 `codex/separation-s0-timeline-drag`。
 
 更新后的签核范围：HTTP 11-file extended fixture 与浏览器 5-file Android-delivery fixture 的 no-edit 导入、预览、导出、回导均有窄路径证据。`S0-PKG-02` 仍 **PARTIAL**：没有覆盖任意第三方包语料、完整异常/大小边界，亦没有签核 Android WebView、设备运行或 Native/Skin 等价；这些缺口不由当前两组 fixture 外推。编辑后的完整 CRUD 往返单列为 `S0-PKG-03`。本项不构成 S0 或 Skin-First GO。
