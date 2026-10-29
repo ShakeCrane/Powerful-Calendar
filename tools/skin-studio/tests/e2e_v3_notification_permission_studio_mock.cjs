@@ -126,6 +126,10 @@ async function main(){
       !document.querySelector('[data-action="openExactAlarmSettings"]').hidden`,
       "Mock exact-alarm permission state projection");
     const exactDeniedText=await frameEval("document.querySelector('#exactAlarmPermissionStatus').textContent");
+    await waitFor(frameEval,`document.querySelector('#reminderDiagnostics').innerText.includes('Studio Mock 提醒诊断')&&
+      document.querySelector('#reminderDiagnostics').innerText.includes('最近执行：MISSED')`,
+      "Mock reminder diagnostics projection");
+    const reminderDiagnosticText=await frameEval("document.querySelector('#reminderDiagnostics').innerText");
     await frameEval(`document.querySelector('[data-action="requestNotificationPermission"]').click()`);
     await waitFor(evaluate,"document.querySelector('#bridgeLog').textContent.includes('不会调用 Android 系统权限')",
       "Mock permission action handling");
@@ -145,6 +149,7 @@ async function main(){
       page:await evaluate("mockPage"),
       deniedText,
       exactDeniedText,
+      reminderDiagnosticText,
       mockLog:(await evaluate("document.querySelector('#bridgeLog').innerText")).split("\n").slice(0,5)
     };
     const resultPath=path.join(reportDir,`studio-mock-${runId}.json`);

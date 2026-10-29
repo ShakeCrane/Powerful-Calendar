@@ -124,6 +124,63 @@ class WebSkinManualReminderReconcileIntegrationTest {
     }
 
     @Test
+    fun settingsProjectsReminderIntentAndExecutionDiagnosticsOnlyOnSettings() {
+        mountSettingsHost()
+        val zone = ZoneId.of("UTC")
+        val draft = store.newDraft(
+            DraftForm(
+                kind = TemporalKind.ALARM,
+                title = "Projected reminder diagnostic",
+                notes = "private reminder notes sentinel",
+                startText = DraftForm.formatInstant(System.currentTimeMillis() + 60 * 60_000L, zone),
+                reminderMinutes = 0,
+                reminderMethod = ReminderMethod.ALARM,
+                zoneId = zone.id
+            )
+        )
+        val eventSeq = draft.eventSeq
+        assertTrue(store.commit(draft.draftId) is PowerStore.CommitOutcome.Committed)
+        val record = store.get(eventSeq)!!
+        val intent = store.intentFor(eventSeq)!!
+        store.recordExecution(
+            eventSeq = eventSeq,
+            revision = intent.revision,
+            occurrenceKey = intent.occurrenceKey,
+            triggerId = intent.triggerId,
+            result = "MISSED",
+            detail = "private execution detail sentinel"
+        )
+        val commits = store.commitCount()
+        val identities = store.identityCount()
+        val nextSequence = store.nextSequencePreview()
+
+        ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.ReconcileReminders) }
+        ui.waitUntil(20_000) {
+            shadowOf(Looper.getMainLooper()).idle()
+            val state = WebSkinBridgeRuntime.state()
+            state.getJSONObject("reminderReconcile").optString("status") == "BLOCKED" &&
+                state.getJSONArray("reminderDiagnostics").length() == 1
+        }
+
+        val state = WebSkinBridgeRuntime.state()
+        val diagnostic = state.getJSONArray("reminderDiagnostics").getJSONObject(0)
+        assertEquals(eventSeq, diagnostic.getLong("eventSeq"))
+        assertEquals(record.title, diagnostic.getString("title"))
+        assertEquals("MISSED", diagnostic.getString("lastExecutionResult"))
+        assertEquals("BLOCKED", diagnostic.getJSONObject("intent").getString("desiredState"))
+        assertTrue(diagnostic.getJSONObject("intent").getString("androidHint").contains("精确闹钟权限"))
+        assertFalse(state.toString().contains("private reminder notes sentinel"))
+        assertFalse(state.toString().contains("private execution detail sentinel"))
+        assertEquals(commits, store.commitCount())
+        assertEquals(identities, store.identityCount())
+        assertEquals(nextSequence, store.nextSequencePreview())
+
+        ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.Routed("timeline")) }
+        ui.waitUntil(20_000) { WebSkinBridgeRuntime.state().optString("page") == "TIMELINE" }
+        assertEquals(0, WebSkinBridgeRuntime.state().getJSONArray("reminderDiagnostics").length())
+    }
+
+    @Test
     fun manualReconcileReportsStoreFailureInsteadOfFalseSuccess() {
         mountSettingsHost()
         ui.waitForIdle()

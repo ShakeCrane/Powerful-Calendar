@@ -79,7 +79,11 @@ async function main(){
     await evaluate(`window.__clearHostPort.postMessage(JSON.stringify({version:1,type:'state',payload:{
       page:'SETTINGS',notificationPermission:{required:true,allowed:false},
       exactAlarmPermission:{required:true,allowed:false},
-      reminderReconcile:{status:'IDLE',message:'可以按当前已保存的数据手动重建提醒调度。'}
+      reminderReconcile:{status:'IDLE',message:'可以按当前已保存的数据手动重建提醒调度。'},
+      reminderDiagnostics:[{eventSeq:17,displaySeq:'#0017',eventRevision:3,title:'CDP 诊断提醒',
+        intent:{triggerId:'alarm:17',revision:3,occurrenceKey:'single',
+          instantMillis:1792803600000,requirement:'EXACT',desiredState:'BLOCKED',
+          androidHint:'需要精确闹钟权限'},lastExecutionResult:'MISSED'}]
     }}))`);
     await waitFor(`!document.querySelector('#settingsPage').hidden&&
       document.querySelector('#notificationPermissionStatus').textContent.includes('BLOCKED')`,
@@ -89,6 +93,11 @@ async function main(){
       !document.querySelector('[data-action="openExactAlarmSettings"]').hidden`,
       "Denied exact-alarm status");
     const exactDeniedText=await evaluate("document.querySelector('#exactAlarmPermissionStatus').textContent");
+    await waitFor(`document.querySelector('#reminderDiagnostics').innerText.includes('CDP 诊断提醒')&&
+      document.querySelector('#reminderDiagnostics').innerText.includes('受阻，请检查权限')&&
+      document.querySelector('#reminderDiagnostics').innerText.includes('最近执行：MISSED')`,
+      "Reminder execution diagnostics projection");
+    const reminderDiagnosticText=await evaluate("document.querySelector('#reminderDiagnostics').innerText");
     const screenshot=await call("Page.captureScreenshot",{format:"png",captureBeyondViewport:true});
     const screenshotPath=path.join(reportDir,`settings-${runId}.png`);
     fs.writeFileSync(screenshotPath,Buffer.from(screenshot.data,"base64"));
@@ -158,6 +167,7 @@ async function main(){
       actions:[route.payload.name,permissionRequest.payload.name,
         exactAlarmRequest.payload.name,reconcileRequest.payload.name,recovery.payload.name],
       deniedText,grantedText,legacyText,exactDeniedText,exactGrantedText,exactLegacyText,
+      reminderDiagnosticText,
       canonicalClearAssetSha256:crypto.createHash("sha256").update(fs.readFileSync(assetPath)).digest("hex"),
       screenshotPath:path.relative(root,screenshotPath).replaceAll("\\","/")
     };

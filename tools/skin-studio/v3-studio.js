@@ -770,6 +770,13 @@ function simulatedState(){
     reminderReconcile:mockPage==="SETTINGS"?{
       status:"IDLE",message:"可以按当前已保存的数据手动重建提醒调度。"
     }:{},
+    reminderDiagnostics:mockPage==="SETTINGS"?[{
+      eventSeq:17,displaySeq:"#0017",eventRevision:3,title:"Studio Mock 提醒诊断",
+      intent:{triggerId:"alarm:17",revision:3,occurrenceKey:"single",
+        instantMillis:base+3600000,requirement:"EXACT",desiredState:"BLOCKED",
+        androidHint:"需要精确闹钟权限"},
+      lastExecutionResult:"MISSED"
+    }]:[],
     memoCount:allMemoEntries.filter(item=>!item.completed).length,aiLocked:mockAiLocked,
     aiBatch:scenario==="ai-review-batch"?{
       phase:"SELECTING",state:null,active:false,canCancel:true,canRelease:false,

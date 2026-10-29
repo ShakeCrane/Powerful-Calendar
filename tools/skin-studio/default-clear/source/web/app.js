@@ -503,6 +503,42 @@ function renderSettings(){
     reconcileButton.textContent=reconcileStatus==="RUNNING"?
       "正在重建提醒…":"按当前数据重建提醒调度";
   }
+
+  const diagnosticsRoot=$("reminderDiagnostics");
+  if(diagnosticsRoot){
+    diagnosticsRoot.replaceChildren();
+    const diagnostics=(Array.isArray(state.reminderDiagnostics)?
+      state.reminderDiagnostics:[]).filter(item=>item&&typeof item==="object").slice(0,40);
+    if(!diagnostics.length){
+      const empty=node("p","quiet","还没有启用的提醒。");
+      empty.setAttribute("role","listitem");
+      diagnosticsRoot.append(empty);
+    }
+    const scheduleLabels={
+      PENDING:"等待调度",SCHEDULED:"已交给系统",BLOCKED:"受阻，请检查权限",
+      CANCELLED:"已取消",FIRED:"已触发"
+    };
+    for(const item of diagnostics){
+      const row=node("div","reminder-diagnostic");
+      row.setAttribute("role","listitem");
+      const displaySeq=typeof item.displaySeq==="string"?item.displaySeq:"#????";
+      row.append(node("strong","reminder-diagnostic-title",
+        `${displaySeq} · ${String(item.title||"提醒")}`));
+      const intent=item.intent&&typeof item.intent==="object"?item.intent:null;
+      const desired=intent&&typeof intent.desiredState==="string"?intent.desiredState:"";
+      const status=node("p","reminder-diagnostic-meta",
+        "调度："+(scheduleLabels[desired]||"无待执行调度"));
+      if(desired)status.dataset.state=desired.toLowerCase();
+      row.append(status);
+      if(intent&&typeof intent.androidHint==="string"&&intent.androidHint){
+        row.append(node("p","reminder-diagnostic-meta",intent.androidHint));
+      }
+      if(typeof item.lastExecutionResult==="string"&&item.lastExecutionResult){
+        row.append(node("p","reminder-diagnostic-meta","最近执行："+item.lastExecutionResult));
+      }
+      diagnosticsRoot.append(row);
+    }
+  }
 }
 function renderTimeline(){
   cancelTimelineDrag();

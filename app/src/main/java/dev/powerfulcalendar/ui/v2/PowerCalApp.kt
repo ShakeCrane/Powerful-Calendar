@@ -1733,6 +1733,9 @@ fun PowerCalApp(
                     JSONObject().put("status", manualReminderReconcileStatus)
                         .put("message", manualReminderReconcileMessage)
                 } else JSONObject())
+                .put("reminderDiagnostics", if (page == Page.SETTINGS.name) {
+                    WebSkinReminderDiagnosticsProjection.build(diagnostics.reminders)
+                } else org.json.JSONArray())
                 .put("editing", webEditing.snapshot())
                 .put("optionGroups", SemanticOptions.toJson(enabled = semanticOptionsEnabled))
                 .put("timeline", WebSkinTimelineProjection.build(
