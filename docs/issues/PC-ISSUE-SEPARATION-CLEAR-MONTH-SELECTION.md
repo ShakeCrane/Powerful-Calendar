@@ -96,4 +96,7 @@ The saved Chrome Preview frame is 484 px tall; the selected-day DOM rectangle wa
 - Android instrumentation source: `app/src/androidTest/java/dev/powerfulcalendar/ui/v2/TimelineCreateContextWebViewInstrumentedTest.kt`
 - Reconstructed matrix: `docs/SKIN_SEPARATION_PARITY_MATRIX_2026-10-27.md`
 
-Commit and push are recorded in the follow-up handoff entry after verification.
+## Git delivery
+
+- Implementation commit: `008532a505530a8d060dbaaae88bc0bdd76376ec` (`feat(皮肤分离): 让月历选日独立于时间轴`).
+- Pushed as a normal fast-forward to `origin/codex/separation-s0-timeline-drag`.
