@@ -1,6 +1,6 @@
 # 皮肤重复事件编辑与宿主可信审查
 
-日期：2026-10-27。状态：**JVM、Studio、Chrome Mock 和 API 35 隔离 WebView 定向验证通过；实现已提交并推送；全功能等价、其他事件类型及实体设备尚未签核。**
+日期：2026-10-27。历史状态：**JVM、Studio、Chrome Mock 和 API 35 隔离 WebView 定向验证通过；实现已提交并推送；全功能等价、其他事件类型及实体设备尚未签核。** 本文末尾追加 2026-10-30 的重建验收 `S0-RP-01` 复核。
 
 ## 问题与根因
 
@@ -46,3 +46,29 @@
 ## 证据位置
 
 详细日志与 APK 保存在忽略目录 `.local/android-test/reports/separation-20261027/source-editor/`。本报告没有复制密钥、用户数据或 AVD 数据。实体设备由用户测试。
+
+## 2026-10-30 S0-RP-01 current verification
+
+- **验收状态：`PARTIAL / HOLD`。** `S0-RP-01` 是 `RECONSTRUCTED` 验收项；历史 209 项原始编号未恢复。
+- **当前分支：** `codex/separation-s0-timeline-drag`。
+- **测试提交：** `e7f084cc0075d2438cb38d867134968e448da407`（`test(分离): 覆盖跨类型重复范围恢复`，已推送至 `origin/codex/separation-s0-timeline-drag`）。
+- **生产代码：** 未修改。本轮补的是跨类型范围对照和 checkpoint 恢复证据；没有发现可复现的生产缺陷。
+
+### 本轮新增的覆盖
+
+1. 扩展 `WebSkinRecurrenceBridgeTest.nativeAndWebEditingProduceTheSameRecordsForEachScope`，遍历全部 `TemporalKind`（ALARM、ACTIVITY、DEADLINE、MEMO）和全部 `RecurrenceEditScope`（SINGLE_OCCURRENCE、THIS_AND_FUTURE、WHOLE_SERIES），共 **12 组**。每组分别通过 Native `EditSession` 与 Web Host Bridge 执行相同标题修改，再比较全部正式记录、eventSeq、revision、重复规则、提醒字段、身份数、草稿数、提交数和待处理数；只规范化两份隔离 SQLite 数据库各自的审计时间戳。
+2. 新增 `everyRecurrenceScopeCheckpointResumesAcrossAllKinds`，同样覆盖 **4 种类型 × 3 种范围 = 12 组**：选中原始槽位并选择范围，修改标题，通过编辑器关闭写 checkpoint，关闭并重开隔离 Store，再以不带 `occurrenceKey` 的打开请求恢复；验证 scope 和待恢复输入仍在 Host/Core 会话中。单次和本次及以后范围保留精确原始槽位 key；整系列 scope 不携带实例 key。Host 审查批准后，逐组检查单次 override、整系列原身份更新或未来规则从所选槽位拆成旧/新身份，且检查 revision、重复 count 与待处理状态。
+
+### 当前验证结果
+
+| 检查 | 结果 | 证据 |
+| --- | --- | --- |
+| 重复编辑 Bridge 定向强制重跑 | `PASS` | `:app:testDebugUnitTest --tests dev.powerfulcalendar.ui.v2.WebSkinRecurrenceBridgeTest --offline --rerun-tasks --console=plain --max-workers=1`；**13/13**，0 failures/errors/skips，32 个 Gradle tasks 执行。日志 SHA-256 `5308ED25933031B3197DE3346B51C3303E460A7B0A5B94B587A5FC11069B9D47`，`.local/android-test/reports/separation-s0-rp01-20261030/focused-bridge-r4.log`。 |
+| 完整离线 Android 门禁 | `PASS`（设备执行除外） | `:app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug --offline --console=plain --max-workers=1`；**726/726 JVM、99 suites、0 failures/errors/skips**；88 actionable tasks（5 executed / 83 up-to-date）；Lint **0 errors / 53 warnings**。日志 SHA-256 `062D9B9A21F436A111315A871E881ABCF6D4A87EE6EAB3F106679C9907BE0F1A`。 |
+| 关键回归实际执行 | `PASS` | JUnit XML 记录 `nativeAndWebEditingProduceTheSameRecordsForEachScope` 与 `everyRecurrenceScopeCheckpointResumesAcrossAllKinds` 均通过；前者内部比较 12 组，后者内部执行 12 组 Store 关闭/重开恢复。 |
+| APK | `PASS`（仅构建/组装） | Debug APK 67,513,497 bytes，SHA-256 `71C8E45C967CAFDA3BC77FBCD2062AD25D20801B2CDFE8062DCFFAB4B24B097C`。AndroidTest APK 1,557,196 bytes，SHA-256 `371A9C1AF76B5F0530FE4A69FA2FAF9BF1AFA053256DC8B24F7264129930653E`。 |
+| API 35 WebView / ADB / 实体设备 | `NOT TESTED`（当前环境） | `E:\android-sdk\platform-tools\adb.exe devices -l` 没有设备；`E:\android-sdk\emulator\emulator.exe` 不存在。旧报告中的 API 35 `PREVIOUS PASS` 仅覆盖旧 QA APK 上的一个 ALARM 单次范围；AndroidTest 源码在本轮完整门禁中编译/组装，但没有安装或运行。当前代码的四种类型 WebView、不同 scope UI、TalkBack、物理/OEM 仍未签核。 |
+
+本轮测试源码只改 `app/src/test/java/dev/powerfulcalendar/ui/v2/WebSkinRecurrenceBridgeTest.kt`。测试编写期间有两次被保留的测试夹具失败：第一轮因 Robolectric 临时数据库目录未创建而无法打开隔离数据库；修正为显式创建目录后，下一编译轮发现测试缺少 `RecurrenceEngine` import，补齐后定向与完整门禁均通过。这两项是测试夹具/编译错误，不是产品行为失败。失败日志及最终日志均位于忽略目录 `.local/android-test/reports/separation-s0-rp01-20261030/`。
+
+因此 `S0-RP-01` 的 JVM Core/Bridge 跨类型结果与恢复子项有当前通过证据，但整个矩阵行保持 **`PARTIAL / HOLD`**：当前源快照没有可用 Android 虚拟机，且没有实体/OEM 与当前版 WebView UI parity 实测。旧 Chrome Studio Mock 不作为 Host/WebView 完整签核。
