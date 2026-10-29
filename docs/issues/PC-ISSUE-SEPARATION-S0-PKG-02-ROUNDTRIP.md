@@ -3,6 +3,7 @@
 - 日期：2026-10-29
 - 状态：**PARTIAL。扩展 Clear v3 fixture 的 Studio HTTP no-edit 往返 PASS；任意包型、完整浏览器 UI 及 Android runtime 验收 NOT TESTED。**
 - 工作树：`codex/separation-s0-timeline-drag`
+- 测试和独立报告提交：`c402b1ac02bb07a8cb265c8cf6b4845398d3d1a6`
 
 ## 需求和根因
 
