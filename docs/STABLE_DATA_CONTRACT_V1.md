@@ -51,7 +51,9 @@
 
 ## 4. 原生备份：发布前必须完成的格式契约
 
-**目前代码实际状态**：`exportBackup()` 返回含 `format=powercal-native` / `version=2` / 数据数组的 JSON；`restoreBackup()` 目前只严格检查 `format` 且只接受空库，未对 `version` 做严格拒绝或迁移、未验证文件 hash，亦未保证跨多数据库实例读到同一个一致性快照。这三项是**稳定试用版前的阻断项**，不应假装已完成。
+**历史实现快照（已过期，保留用于记录本节最初编写时的状态）**：`exportBackup()` 当时返回含 `format=powercal-native` / `version=2` / 数据数组的 JSON；`restoreBackup()` 当时只严格检查 `format` 且只接受空库，未对 `version` 做严格拒绝或迁移、未验证文件 hash，亦未保证跨多数据库实例读到同一个一致性快照。不要把这段历史描述当作当前代码状态。
+
+**当前实现状态（复核：2026-10-30）**：`PowerStore.exportBackup()` 生成 BackupEnvelope v1，在单一 SQLite 读快照中收集逻辑表与 `nextSeq` / `nextOrder` 水位，再对 canonical payload 计算 SHA-256；`PowerCalApp` 通过 Android `CreateDocument` 写入 JSON 文件，随后用有界读取和 `BackupEnvelope.verifyReadback` 校验。无法回读时明确显示“已写入但未经回读校验”，不得报告已验证成功；校验异常显示失败。`restoreBackup()` 对 Envelope 版本、schema、hash 和引用进行写入前校验，只向空库恢复；flat v2 需要单独确认。Core 回归与 API 35 Robolectric Host 集成证据见 [PC-ISSUE-SEPARATION-ICS-EXPORT-INTEGRATION](issues/PC-ISSUE-SEPARATION-ICS-EXPORT-INTEGRATION.md) 和 [PC-ISSUE-SEPARATION-BACKUP-EXPORT-INTEGRATION](issues/PC-ISSUE-SEPARATION-BACKUP-EXPORT-INTEGRATION.md)。真实 Android WebView、SAF provider/OEM 和设备恢复流程仍需独立验证。
 
 建议从首次稳定发行起固定 **BackupEnvelope v1**：
 
