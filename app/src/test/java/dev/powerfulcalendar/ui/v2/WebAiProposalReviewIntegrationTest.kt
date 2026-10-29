@@ -55,7 +55,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [35])
+@Config(sdk = [35], shadows = [ShadowAtomicFileReplaceOnWindows::class])
 class WebAiProposalReviewIntegrationTest {
     @get:Rule val ui = createAndroidComposeRule<ComponentActivity>()
 
@@ -67,7 +67,7 @@ class WebAiProposalReviewIntegrationTest {
 
     @Before fun setUp() {
         storage = ApplicationProvider.getApplicationContext()
-        namespace = "wair-${UUID.randomUUID()}"
+        namespace = "w-${UUID.randomUUID().toString().take(12)}"
         // Robolectric embeds the full method name in its Windows temp path.
         databaseName = "a.db"
         context = IsolatedContext(ui.activity, storage, namespace)
@@ -133,6 +133,11 @@ class WebAiProposalReviewIntegrationTest {
     @After fun tearDown() {
         ui.activity.runOnUiThread { ui.activity.setContent {} }
         ui.waitForIdle()
+        val appJob = PowerCalStores.appScope.coroutineContext[kotlinx.coroutines.Job]
+        ui.waitUntil(15_000) {
+            shadowOf(Looper.getMainLooper()).idle()
+            appJob?.children?.none() ?: true
+        }
         store.close()
         context.deleteDatabase(databaseName)
         listOf("powercal-ai", "powercal-onboarding", "powercal-ui", "powercal-skin-choice",
@@ -843,7 +848,7 @@ class WebAiProposalReviewIntegrationTest {
     }
 
     @Test
-    fun clearBatchSelectionRequiresHostAuthorizationAndPublishesOnlyAfterConfirmation() {
+    fun clearBatchNeedsHostApproval() {
         val zone = ZoneId.of("Asia/Shanghai")
         val draft = store.newDraft(DraftForm(
             kind = TemporalKind.MEMO,
@@ -863,6 +868,7 @@ class WebAiProposalReviewIntegrationTest {
 
         ui.onNodeWithText("取消").performClick()
         ui.waitUntil(10_000) {
+            shadowOf(Looper.getMainLooper()).idle()
             WebSkinBridgeRuntime.state().getJSONObject("aiBatch").getString("phase") == "IDLE"
         }
         assertEquals("cancelling the Host review must leave the selected draft untouched",
@@ -871,13 +877,16 @@ class WebAiProposalReviewIntegrationTest {
         prepareWholeBatch(AiBatchRunner.Mode.PUBLISH)
         ui.onNodeWithText("授权并发布 1 张").performClick()
         ui.waitUntil(20_000) {
+            shadowOf(Looper.getMainLooper()).idle()
+            val batch = WebSkinBridgeRuntime.state().getJSONObject("aiBatch")
             store.all().size == 1 && !store.isLocked() &&
-                store.currentAiSession()?.state == PowerStore.AiState.COMPLETED
+                store.currentAiSession()?.state == PowerStore.AiState.COMPLETED &&
+                batch.getString("phase") == "COMPLETED"
         }
         val completed = WebSkinBridgeRuntime.state().getJSONObject("aiBatch")
         assertEquals("COMPLETED", completed.getString("phase"))
         assertEquals(1, completed.getJSONObject("report").getInt("published"))
-        assertEquals(0L, store.pendingCount())
+        assertEquals(0, store.pendingCount())
         assertEquals(1L, store.draftCount())
         assertEquals(1L, store.commitCount())
         assertEquals(1L, store.identityCount())
@@ -898,10 +907,15 @@ class WebAiProposalReviewIntegrationTest {
         prepareWholeBatch(AiBatchRunner.Mode.PUBLISH)
         ui.onNodeWithText("授权并发布 $total 张").performClick()
 
-        ui.waitUntil(15_000) { store.all().size >= 1 && store.isLocked() }
+        ui.waitUntil(15_000) {
+            shadowOf(Looper.getMainLooper()).idle()
+            store.all().size >= 1 && store.isLocked()
+        }
         ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.CancelAiBatch) }
         ui.waitUntil(20_000) {
-            !store.isLocked() && store.currentAiSession()?.state == PowerStore.AiState.CANCELLED
+            shadowOf(Looper.getMainLooper()).idle()
+            !store.isLocked() && store.currentAiSession()?.state == PowerStore.AiState.CANCELLED &&
+                WebSkinBridgeRuntime.state().getJSONObject("aiBatch").getString("phase") == "CANCELLED"
         }
 
         val session = requireNotNull(store.currentAiSession())
@@ -909,7 +923,7 @@ class WebAiProposalReviewIntegrationTest {
         assertTrue(report.getBoolean("cancelled"))
         val published = report.getInt("published")
         assertTrue("the cancellation must preserve a partial result", published in 1 until total)
-        assertEquals("remaining drafts stay pending", (total - published).toLong(), store.pendingCount())
+        assertEquals("remaining drafts stay pending", total - published, store.pendingCount())
         assertEquals("only completed items become formal", published, store.all().size)
         assertEquals("all original draft identities remain accounted for", total.toLong(), store.identityCount())
         assertEquals("runner records the partial result for Clear", "CANCELLED",
@@ -935,6 +949,7 @@ class WebAiProposalReviewIntegrationTest {
 
         ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.CancelAiBatch) }
         ui.waitUntil(10_000) {
+            shadowOf(Looper.getMainLooper()).idle()
             store.currentAiSession()?.state == PowerStore.AiState.CANCEL_REQUESTED
         }
         val now = System.currentTimeMillis()
@@ -943,8 +958,9 @@ class WebAiProposalReviewIntegrationTest {
             arrayOf<Any?>(now - PowerStore.DEFAULT_STALE_MS - 60_000L,
                 requireNotNull(store.currentAiSession()).sessionId)
         )
-        ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.Routed("memo")) }
+        ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.CancelAiBatch) }
         ui.waitUntil(10_000) {
+            shadowOf(Looper.getMainLooper()).idle()
             WebSkinBridgeRuntime.state().getJSONObject("aiBatch").getBoolean("canRelease")
         }
         ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.Routed("ai")) }
@@ -953,19 +969,27 @@ class WebAiProposalReviewIntegrationTest {
         assertTrue("a stale cancellation projects force recovery as available",
             WebSkinBridgeRuntime.state().getJSONObject("aiBatch").getBoolean("canRelease"))
         ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.ReleaseStuckAiBatch) }
-        ui.onNodeWithText("强制解除 AI 批次锁？").assertExists()
+        ui.waitUntil(10_000) {
+            shadowOf(Looper.getMainLooper()).idle()
+            ui.onAllNodesWithText("强制解除 AI 批次锁？", useUnmergedTree = true)
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        ui.onNodeWithText("强制解除 AI 批次锁？", useUnmergedTree = true).assertExists()
         assertTrue("a skin request alone cannot unlock the Store", store.isLocked())
-        assertEquals(1L, store.pendingCount())
+        assertEquals(1, store.pendingCount())
 
         ui.onNodeWithText("解除并作废旧授权").performClick()
-        ui.waitUntil(10_000) { !store.isLocked() &&
-            store.currentAiSession()?.state == PowerStore.AiState.FAILED }
+        ui.waitUntil(10_000) {
+            shadowOf(Looper.getMainLooper()).idle()
+            !store.isLocked() && store.currentAiSession()?.state == PowerStore.AiState.FAILED &&
+                WebSkinBridgeRuntime.state().getJSONObject("aiBatch").getString("phase") == "FAILED"
+        }
         val state = WebSkinBridgeRuntime.state().getJSONObject("aiBatch")
         assertEquals("FAILED", state.getString("phase"))
         assertTrue(state.getJSONObject("report").getBoolean("released"))
         assertFalse(state.getJSONObject("report").getBoolean("outcomeKnown"))
         assertFalse(state.getJSONObject("report").has("published"))
-        assertEquals(1L, store.pendingCount())
+        assertEquals(1, store.pendingCount())
         assertTrue(store.all().isEmpty())
     }
 
@@ -1000,6 +1024,7 @@ class WebAiProposalReviewIntegrationTest {
 
         mountAiBridgePage()
         ui.waitUntil(15_000) {
+            shadowOf(Looper.getMainLooper()).idle()
             !store.isLocked() && store.currentAiSession()?.state == PowerStore.AiState.INTERRUPTED &&
                 WebSkinBridgeRuntime.state().getJSONObject("aiBatch").getString("phase") == "INTERRUPTED"
         }
@@ -1033,11 +1058,25 @@ class WebAiProposalReviewIntegrationTest {
                     editAndResend = true
                 ))
             }
-            ui.waitUntil(10_000) {
-                val current = WebSkinBridgeRuntime.state()
-                current.getJSONArray("chatMessages").length() == 2 &&
-                    current.getString("chatPrefillText") == "第二轮请求" &&
-                    current.getLong("chatHistoryRevision") > initial.getLong("chatHistoryRevision")
+            ui.waitForIdle()
+            try {
+                ui.waitUntil(10_000) {
+                    shadowOf(Looper.getMainLooper()).idle()
+                    val current = WebSkinBridgeRuntime.state()
+                    current.getJSONArray("chatMessages").length() == 2 &&
+                        current.getString("chatPrefillText") == "第二轮请求" &&
+                        current.getLong("chatHistoryRevision") > initial.getLong("chatHistoryRevision") &&
+                        AiChatHistoryStore.load(context).map { it.messageId } ==
+                            listOf("history-u1", "history-a1")
+                }
+            } catch (error: Throwable) {
+                throw AssertionError(
+                    "chat rewind state=${WebSkinBridgeRuntime.state()}, " +
+                        "persisted=${AiChatHistoryStore.load(context).map { it.messageId }}, " +
+                        "contextDir=${context.filesDir.absolutePath}, " +
+                        "saveErrorVisible=${ui.onAllNodesWithText("聊天记录保存失败", substring = true, useUnmergedTree = true).fetchSemanticsNodes().size}",
+                    error
+                )
             }
             assertEquals(listOf("history-u1", "history-a1"),
                 AiChatHistoryStore.load(context).map { it.messageId })
@@ -1056,7 +1095,9 @@ class WebAiProposalReviewIntegrationTest {
                     historyRevision = afterRewind.getLong("chatHistoryRevision")
                 ))
             }
+            ui.waitForIdle()
             ui.waitUntil(10_000) {
+                shadowOf(Looper.getMainLooper()).idle()
                 WebSkinBridgeRuntime.state().getJSONArray("chatMessages").length() == 0 &&
                     AiChatHistoryStore.load(context).isEmpty()
             }
@@ -1084,18 +1125,29 @@ class WebAiProposalReviewIntegrationTest {
         }
         ui.waitForIdle()
         ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.Routed("ai")) }
-        ui.waitUntil(10_000) { WebSkinBridgeRuntime.state().optString("page") == "AI" }
+        val expectedPending = store.pendingCount()
+        ui.waitUntil(10_000) {
+            shadowOf(Looper.getMainLooper()).idle()
+            val state = WebSkinBridgeRuntime.state()
+            state.optString("page") == "AI" && state.optInt("pendingCount") == expectedPending
+        }
     }
 
     private fun prepareWholeBatch(mode: AiBatchRunner.Mode) {
         ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.PrepareAiBatch(mode)) }
         ui.waitUntil(10_000) {
+            shadowOf(Looper.getMainLooper()).idle()
             WebSkinBridgeRuntime.state().optJSONObject("aiBatch")?.optString("phase") == "SELECTING"
         }
         ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.SendChat("全部")) }
-        ui.waitUntil(15_000) {
-            WebSkinBridgeRuntime.state().optJSONObject("aiBatch")?.optString("phase") ==
-                "AWAITING_HOST_REVIEW"
+        try {
+            ui.waitUntil(15_000) {
+                shadowOf(Looper.getMainLooper()).idle()
+                WebSkinBridgeRuntime.state().optJSONObject("aiBatch")?.optString("phase") ==
+                    "AWAITING_HOST_REVIEW"
+            }
+        } catch (error: Throwable) {
+            throw AssertionError("AI batch did not reach host review: ${WebSkinBridgeRuntime.state()}", error)
         }
     }
 

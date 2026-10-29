@@ -65,10 +65,13 @@ import java.nio.file.StandardCopyOption
 import java.time.LocalDate
 import java.time.ZoneId
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.locks.ReentrantLock
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], shadows = [ShadowAtomicFileReplaceOnWindows::class])
@@ -726,6 +729,27 @@ class ShadowAtomicFileReplaceOnWindows {
     private lateinit var baseFile: File
     private val newFile: File
         get() = File(baseFile.parentFile, baseFile.name + ".new")
+    private fun fileLock(): ReentrantLock =
+        fileLocks.computeIfAbsent(baseFile.absolutePath) { ReentrantLock() }
+
+    private class LockedFileInputStream(
+        file: File,
+        private val lock: ReentrantLock
+    ) : FileInputStream(file) {
+        private val released = AtomicBoolean(false)
+
+        override fun close() {
+            try {
+                super.close()
+            } finally {
+                if (released.compareAndSet(false, true)) lock.unlock()
+            }
+        }
+    }
+
+    private companion object {
+        val fileLocks = ConcurrentHashMap<String, ReentrantLock>()
+    }
 
     @Implementation
     fun __constructor__(baseName: File) {
@@ -741,9 +765,15 @@ class ShadowAtomicFileReplaceOnWindows {
     @Implementation
     fun finishWrite(stream: FileOutputStream?) {
         if (stream == null) return
-        stream.fd.sync()
-        stream.close()
-        Files.move(newFile.toPath(), baseFile.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        val lock = fileLock()
+        lock.lock()
+        try {
+            stream.fd.sync()
+            stream.close()
+            Files.move(newFile.toPath(), baseFile.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        } finally {
+            lock.unlock()
+        }
     }
 
     @Implementation
@@ -754,7 +784,14 @@ class ShadowAtomicFileReplaceOnWindows {
 
     @Implementation
     fun openRead(): FileInputStream {
-        if (newFile.exists()) newFile.delete()
-        return FileInputStream(baseFile)
+        val lock = fileLock()
+        lock.lock()
+        return try {
+            // Read the last committed base while keeping any in-flight .new file intact.
+            LockedFileInputStream(baseFile, lock)
+        } catch (error: Exception) {
+            lock.unlock()
+            throw error
+        }
     }
 }
