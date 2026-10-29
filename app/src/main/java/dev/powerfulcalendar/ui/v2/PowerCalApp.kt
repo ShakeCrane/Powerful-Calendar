@@ -147,7 +147,7 @@ object PowerCalStores {
     }
 }
 
-private enum class Page { TIMELINE, MONTH, MEMO, AI, TOOLS }
+private enum class Page { TIMELINE, MONTH, MEMO, AI, SETTINGS, TOOLS }
 
 private data class BatchReview(val mode: AiBatchRunner.Mode, val cards: List<dev.powerfulcalendar.core.DraftCard>)
 
@@ -1044,6 +1044,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         if (!granted) message = "没有通知权限时，提醒会被记录为 BLOCKED，而不会假装已提醒"
+        WebSkinBridgeRuntime.stateRevision++
     }
     val openIcs = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -1296,7 +1297,8 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                         scope.launch { reload() }
                     }
                     "ai" -> page = Page.AI.name
-                    "settings" -> page = Page.TOOLS.name
+                    "settings" -> page = Page.SETTINGS.name
+                    "nativeSettings" -> page = Page.TOOLS.name
                     "openDeck" -> scope.launch { openDeckAt(null) }
                     "today" -> {
                         nowMillis = System.currentTimeMillis()
@@ -1309,6 +1311,20 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                         }
                     }
                     else -> Unit
+                }
+                WebSkinAction.RequestNotificationPermission -> {
+                    when (notificationPermissionLaunch(page, android.os.Build.VERSION.SDK_INT)) {
+                        NotificationPermissionLaunch.UNAVAILABLE -> Unit
+                        NotificationPermissionLaunch.REQUEST_RUNTIME_PERMISSION -> {
+                            if (android.os.Build.VERSION.SDK_INT >=
+                                android.os.Build.VERSION_CODES.TIRAMISU
+                            ) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        }
+                        NotificationPermissionLaunch.OPEN_APP_NOTIFICATION_SETTINGS ->
+                            context.startActivity(Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                                .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, appContext.packageName))
+                    }
+                    WebSkinBridgeRuntime.stateRevision++
                 }
                 is WebSkinAction.InvokeOption -> when {
                     aiLocked || editSession != null -> Unit
@@ -1478,6 +1494,10 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
             }
         }
         WebSkinBridgeRuntime.state = {
+            val notificationStatus = notificationPermissionStatus(
+                android.os.Build.VERSION.SDK_INT,
+                ReminderScheduler.notificationsAllowed(appContext)
+            )
             JSONObject().put("bridgeVersion", WebSkinBridgeRuntime.VERSION).put("page", page)
                 .put("aiLocked", aiLocked).put("pendingCount", pendingCount)
                 .put("memoCount", todoCount)
@@ -1509,6 +1529,10 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                     webAiProposalReviewSession?.let(WebAiProposalProjection::project) ?: JSONObject.NULL
                 } else JSONObject.NULL)
                 .put("reducedMotion", effects.reduceMotion)
+                .put("notificationPermission", if (page == Page.SETTINGS.name) {
+                    JSONObject().put("required", notificationStatus.required)
+                        .put("allowed", notificationStatus.allowed)
+                } else JSONObject())
                 .put("editing", webEditing.snapshot())
                 .put("optionGroups", SemanticOptions.toJson(
                     enabled = !aiLocked && editSession == null))
@@ -1555,6 +1579,10 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
         enabled = fullCanvasWeb && page == Page.TIMELINE.name &&
             !deckOpen && editSession == null && !webEditing.hasLiveEditor()
     ) { page = Page.TOOLS.name }
+
+    androidx.activity.compose.BackHandler(
+        enabled = fullCanvasWeb && page == Page.SETTINGS.name
+    ) { page = Page.TIMELINE.name }
 
     // An active Web editor consumes Back before the native page navigation.
     // It performs the same durable checkpoint as a skin change, without

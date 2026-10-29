@@ -238,7 +238,7 @@ function onAction(button){
   else if(name==="jumpTimelineDay")send(name,{date:button.dataset.date});
   else if(name==="browseMonth")send(name,{deltaMonths:Number(button.dataset.deltaMonths)});
   else if(name==="selectMonthDate")send(name,{date:button.dataset.date});
-  else {if(["timeline","memo","month","ai"].includes(name))localOptions=false;send(name)}
+  else {if(["timeline","memo","month","ai","settings","nativeSettings"].includes(name))localOptions=false;send(name)}
 }
 function cancelTimelineDrag(){
   const gesture=timelineDrag;
@@ -432,7 +432,7 @@ function renderPage(){
   const page=currentPage==="TOOLS"?"TIMELINE":currentPage;
   const createButton=document.querySelector('[data-action="createDraft"]');
   if(createButton){createButton.title="新建事件";createButton.setAttribute("aria-label","新建事件")}
-  const pages={TIMELINE:"timelinePage",MONTH:"monthPage",MEMO:"memoPage",AI:"aiPage"};
+  const pages={TIMELINE:"timelinePage",MONTH:"monthPage",MEMO:"memoPage",AI:"aiPage",SETTINGS:"settingsPage"};
   for(const [key,id] of Object.entries(pages))$(id).hidden=key!==page||localOptions;
   $("extraOptions").hidden=!localOptions;
   document.querySelectorAll(".clear-tabbar button").forEach(b=>{
@@ -445,8 +445,30 @@ function renderPage(){
   if(page==="MONTH")renderMonth();
   if(page==="MEMO")renderMemo();
   if(page==="AI")renderChat();
+  if(page==="SETTINGS")renderSettings();
   renderOptions();
   window.PowerCalEdit?.onState(state);
+}
+function renderSettings(){
+  const status=state.notificationPermission;
+  const label=$("notificationPermissionStatus");
+  const button=document.querySelector('[data-action="requestNotificationPermission"]');
+  if(!label||!button)return;
+  if(!status||typeof status.required!=="boolean"||typeof status.allowed!=="boolean"){
+    label.textContent="暂时无法读取通知权限状态。";
+    button.textContent="重新读取通知权限";
+    return;
+  }
+  if(!status.required){
+    label.textContent="当前 Android 版本无需运行时通知权限。";
+    button.textContent="打开系统通知设置";
+  }else if(status.allowed){
+    label.textContent="通知权限已允许；提醒仍可能受系统闹钟或后台限制影响。";
+    button.textContent="通知权限已允许";
+  }else{
+    label.textContent="通知权限未允许；提醒触发会被记录为 BLOCKED。";
+    button.textContent="请求通知权限";
+  }
 }
 function renderTimeline(){
   cancelTimelineDrag();

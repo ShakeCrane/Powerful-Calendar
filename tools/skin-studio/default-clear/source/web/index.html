@@ -23,6 +23,16 @@
 <dialog id="monthPickerDialog" aria-labelledby="monthPickerHeading"><form id="monthPickerForm" method="dialog"><h2 id="monthPickerHeading">选择年份和月份</h2><label for="monthYear">年份</label><input id="monthYear" type="number" min="1900" max="2100" required><label for="monthNumber">月份</label><select id="monthNumber"><option value="1">1 月</option><option value="2">2 月</option><option value="3">3 月</option><option value="4">4 月</option><option value="5">5 月</option><option value="6">6 月</option><option value="7">7 月</option><option value="8">8 月</option><option value="9">9 月</option><option value="10">10 月</option><option value="11">11 月</option><option value="12">12 月</option></select><div class="month-picker-actions"><button id="monthPickerCancel" type="button">取消</button><button type="submit">跳转</button></div></form></dialog>
 <section id="memoPage" class="page" hidden><div class="page-head"><h1>Memo</h1><button data-action="createMemo">＋ 新建</button></div><div class="tabs"><button data-filter="open" class="selected">未完成</button><button data-filter="done">已完成</button></div><div id="memoList" class="memo-list"></div><button id="memoLimit" class="memo-limit" type="button" data-action="loadMoreMemo" aria-controls="memoList" hidden>加载更多 Memo</button></section>
 <section id="aiPage" class="page" hidden><div class="page-head"><h1>AI 助手</h1><button id="chatClear" type="button" aria-label="清空 AI 聊天历史" title="清空 AI 聊天历史">清空聊天</button><button data-action="settings">配置</button></div><div id="aiBatchControls" class="ai-batch-controls" role="group" aria-label="AI 批次操作"><button type="button" data-ai-batch="publish">批量发布草稿</button><button type="button" data-ai-batch="discard">批量丢弃草稿</button><button id="aiBatchCancel" type="button" hidden></button><button id="aiBatchRelease" type="button" hidden>强制解除卡住的批次</button></div><div id="aiBatchStatus" class="ai-batch-status" role="status" aria-live="polite" hidden></div><div id="chatMessages" class="chat-list" aria-live="polite"></div><form id="chatForm"><label for="chatInput">向 AI 发送消息</label><div class="composer"><textarea id="chatInput" maxlength="4000" rows="2" placeholder="描述你的日程需求…"></textarea><button id="chatSend" type="submit">发送</button></div></form></section>
+<section id="settingsPage" class="page" hidden>
+<div class="page-head"><h1>设置</h1></div>
+<div class="section-label">提醒可靠性</div>
+<p id="notificationPermissionStatus" class="quiet" role="status" aria-live="polite" aria-atomic="true">正在读取通知权限状态…</p>
+<button class="memo-limit" type="button" data-action="requestNotificationPermission">管理通知权限</button>
+<p class="quiet">通知权限被拒绝时，提醒触发会被记录为 BLOCKED；PowerCal 不会假装已提醒。</p>
+<div class="section-label">恢复</div>
+<p class="quiet">皮肤或页面不可用时，原生完整设置和恢复工具仍可使用。</p>
+<button class="memo-limit" type="button" data-action="nativeSettings">打开原生完整设置与恢复工具</button>
+</section>
 <section id="extraOptions" class="page" hidden><h1>可用选项</h1><div id="optionGroups"></div></section>
 <nav class="clear-tabbar glass" aria-label="页面导航"><button data-action="timeline" class="current">时间轴</button><button data-action="month">月历</button><button data-action="memo">Memo</button><button data-action="ai">AI</button><button data-action="settings">设置</button></nav>
 <section id="skinSheet" role="dialog" aria-modal="true" aria-label="编辑" hidden>

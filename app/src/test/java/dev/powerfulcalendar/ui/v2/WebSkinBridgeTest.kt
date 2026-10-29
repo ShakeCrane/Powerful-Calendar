@@ -18,6 +18,12 @@ class WebSkinBridgeTest {
     @Test fun acceptsOnlyClosedTypedActions() {
         assertEquals(WebSkinAction.Routed("today"), decodeBridgeAction(
             """{"version":1,"type":"action","payload":{"name":"today"}}"""))
+        assertEquals(WebSkinAction.Routed("nativeSettings"), decodeBridgeAction(
+            """{"version":1,"type":"action","payload":{"name":"nativeSettings"}}"""))
+        assertEquals(WebSkinAction.RequestNotificationPermission, decodeBridgeAction(
+            """{"version":1,"type":"action","payload":{"name":"requestNotificationPermission"}}"""))
+        assertNull(decodeBridgeAction(
+            """{"version":1,"type":"action","payload":{"name":"requestNotificationPermission","granted":true}}"""))
         assertEquals(WebSkinAction.LoadMoreMemo, decodeBridgeAction(
             """{"version":1,"type":"action","payload":{"name":"loadMoreMemo"}}"""))
         assertNull(decodeBridgeAction(
@@ -76,5 +82,23 @@ class WebSkinBridgeTest {
             action, recurring.copy(recurrence = Recurrence.NONE), true
         ))
         assertNull(validateOpenEvent(action.copy(expectedRevision = 6), recurring, true))
+    }
+
+    @Test fun notificationPermissionUsesHostOwnedPlatformFlowAndStatus() {
+        assertEquals(NotificationPermissionLaunch.UNAVAILABLE,
+            notificationPermissionLaunch("TIMELINE", 35))
+        assertEquals(NotificationPermissionLaunch.UNAVAILABLE,
+            notificationPermissionLaunch("TOOLS", 35))
+        assertEquals(NotificationPermissionLaunch.REQUEST_RUNTIME_PERMISSION,
+            notificationPermissionLaunch("SETTINGS", 35))
+        assertEquals(NotificationPermissionLaunch.OPEN_APP_NOTIFICATION_SETTINGS,
+            notificationPermissionLaunch("SETTINGS", 32))
+
+        assertEquals(NotificationPermissionStatus(required = false, allowed = true),
+            notificationPermissionStatus(32, permissionAllowed = false))
+        assertEquals(NotificationPermissionStatus(required = true, allowed = false),
+            notificationPermissionStatus(35, permissionAllowed = false))
+        assertEquals(NotificationPermissionStatus(required = true, allowed = true),
+            notificationPermissionStatus(35, permissionAllowed = true))
     }
 }

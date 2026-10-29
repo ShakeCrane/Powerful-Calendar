@@ -407,7 +407,8 @@ const ACTIONS=[
   ["loadMoreMemo","加载更多 Memo"],
   ["timeline","时间轴"],
   ["month","月历"],["memo","Memo"],["ai","AI"],
-  ["settings","原生设置"],["openDeck","草稿卡组"],
+  ["settings","设置"],["requestNotificationPermission","请求通知权限"],
+  ["nativeSettings","打开原生设置"],["openDeck","草稿卡组"],
   ["panTimeline","时间轴向后 30 分钟"],["zoomTimeline","时间轴缩放"],
   ["resetTimelineZoom","重置时间轴缩放"],["jumpTimelineDay","跳到今天"],
   ["invokeOption","导入日历文件"]
@@ -746,6 +747,7 @@ function simulatedState(){
   const memoEntries=allMemoEntries.slice(0,memoLimit);
   const memoTruncated=memoEntries.length<allMemoEntries.length;
   return {bridgeVersion:1,page:mockPage,
+    notificationPermission:mockPage==="SETTINGS"?{required:true,allowed:false}:{},
     memoCount:allMemoEntries.filter(item=>!item.completed).length,aiLocked:mockAiLocked,
     aiBatch:scenario==="ai-review-batch"?{
       phase:"SELECTING",state:null,active:false,canCancel:true,canRelease:false,
@@ -1612,6 +1614,27 @@ function onSkinAction(message){
       if(year>=1900&&year<=2100){mockMonth=p.month;mockSelectedMonthDate=mockMonth+"-01"}
     }
     if(["timeline","memo","ai"].includes(name))mockPage=name.toUpperCase();
+    if(name==="settings"){
+      if(Object.keys(p).sort().join(",")!=="name"){
+        logAction("拒绝无效 settings payload");return;
+      }
+      mockPage="SETTINGS";
+      logAction("Studio Mock 打开设置页；通知权限状态为模拟值");postState();return;
+    }
+    if(name==="requestNotificationPermission"){
+      if(Object.keys(p).sort().join(",")!=="name"||mockPage!=="SETTINGS"){
+        logAction("拒绝非设置页或格式无效的通知权限请求");return;
+      }
+      logAction("Studio Mock 收到通知权限请求；不会调用 Android 系统权限或修改真实状态");
+      return;
+    }
+    if(name==="nativeSettings"){
+      if(Object.keys(p).sort().join(",")!=="name"){
+        logAction("拒绝无效 nativeSettings payload");return;
+      }
+      logAction("Studio Mock 收到原生设置/恢复路由；此页面不启动 Android Host");
+      return;
+    }
     if(name==="month"){
       const anchor=mockAnchor??new Date("2026-10-22T04:00:00Z").getTime();
       const date=new Date(anchor+8*3600000).toISOString().slice(0,10);

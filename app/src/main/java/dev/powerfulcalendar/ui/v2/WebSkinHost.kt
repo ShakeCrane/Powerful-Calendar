@@ -110,6 +110,7 @@ internal object WebSkinBridgeRuntime {
 
 internal sealed interface WebSkinAction {
     data class Routed(val name: String) : WebSkinAction
+    data object RequestNotificationPermission : WebSkinAction
     data class OpenEvent(
         val eventSeq: Long,
         val expectedRevision: Long,
@@ -158,6 +159,34 @@ internal sealed interface WebSkinAction {
 }
 
 internal enum class TimelineZoomDirection { IN, OUT }
+
+internal enum class NotificationPermissionLaunch {
+    UNAVAILABLE,
+    REQUEST_RUNTIME_PERMISSION,
+    OPEN_APP_NOTIFICATION_SETTINGS
+}
+
+internal data class NotificationPermissionStatus(
+    val required: Boolean,
+    val allowed: Boolean
+)
+
+internal fun notificationPermissionLaunch(page: String, sdkInt: Int): NotificationPermissionLaunch {
+    if (page != "SETTINGS") return NotificationPermissionLaunch.UNAVAILABLE
+    return if (sdkInt >= Build.VERSION_CODES.TIRAMISU) {
+        NotificationPermissionLaunch.REQUEST_RUNTIME_PERMISSION
+    } else {
+        NotificationPermissionLaunch.OPEN_APP_NOTIFICATION_SETTINGS
+    }
+}
+
+internal fun notificationPermissionStatus(
+    sdkInt: Int,
+    permissionAllowed: Boolean
+): NotificationPermissionStatus {
+    val required = sdkInt >= Build.VERSION_CODES.TIRAMISU
+    return NotificationPermissionStatus(required, allowed = !required || permissionAllowed)
+}
 
 internal enum class AiProposalDecision { PUBLISH, STAGE, REJECT, SUPPLEMENT }
 
@@ -366,8 +395,10 @@ internal fun decodeBridgeAction(raw: String): WebSkinAction? {
     val name = payload.optString("name")
     if (name.length !in 1..40) return null
     return when (name) {
-        "timeline", "month", "memo", "ai", "settings", "openDeck", "today" ->
+        "timeline", "month", "memo", "ai", "settings", "nativeSettings", "openDeck", "today" ->
             if (keys == setOf("name")) WebSkinAction.Routed(name) else null
+        "requestNotificationPermission" -> if (keys == setOf("name"))
+            WebSkinAction.RequestNotificationPermission else null
         "invokeOption" -> {
             if (keys != setOf("name", "id")) return null
             val id = payload.opt("id")
