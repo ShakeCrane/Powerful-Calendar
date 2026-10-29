@@ -106,6 +106,13 @@ button:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outl
  border:1px solid var(--sep);border-radius:12px;background:var(--bg-elevated)}
 .reminder-diagnostic-title{font-size:13px;overflow-wrap:anywhere}
 .reminder-diagnostic-meta{margin:0;font-size:12px;color:var(--label-2);overflow-wrap:anywhere}
+.system-diagnostics{display:flex;flex-direction:column;gap:1px;margin:0 14px 12px;
+ border:1px solid var(--sep);border-radius:12px;background:var(--bg-elevated)}
+.system-diagnostic{display:grid;grid-template-columns:minmax(112px,42%) minmax(0,1fr);gap:10px;
+ padding:9px 11px;border-bottom:1px solid var(--sep);font-size:12px}
+.system-diagnostic:last-child{border-bottom:0}
+.system-diagnostic-label{color:var(--label-2)}
+.system-diagnostic-value{color:var(--label);text-align:right;overflow-wrap:anywhere}
 .quiet{font-size:12px;color:var(--label-3);padding:14px}
 .chat-list{display:flex;flex-direction:column;gap:12px;min-height:42vh;padding:14px 4px;overflow-y:auto;max-height:60vh}
 .chat-bubble{border-radius:18px;padding:12px 14px;max-width:86%;white-space:pre-wrap;overflow-wrap:anywhere;

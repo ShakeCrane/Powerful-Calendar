@@ -777,6 +777,14 @@ function simulatedState(){
         androidHint:"需要精确闹钟权限"},
       lastExecutionResult:"MISSED"
     }]:[],
+    systemDiagnostics:mockPage==="SETTINGS"?{
+      formalCount:5,nextSequence:"#0045",identityCount:"44",
+      databaseVersion:5,databaseName:"powercal-v2.db",blurEnabled:true,reduceMotion:false,
+      recurrences:[
+        {label:"重复 #4",value:"下一次 2026-10-31 09:00"},
+        {label:"重复 #8",value:"没有后续实例"}
+      ]
+    }:{},
     memoCount:allMemoEntries.filter(item=>!item.completed).length,aiLocked:mockAiLocked,
     aiBatch:scenario==="ai-review-batch"?{
       phase:"SELECTING",state:null,active:false,canCancel:true,canRelease:false,

@@ -539,6 +539,43 @@ function renderSettings(){
       diagnosticsRoot.append(row);
     }
   }
+
+  const systemRoot=$("systemDiagnostics");
+  if(systemRoot){
+    systemRoot.replaceChildren();
+    const diagnostics=state.systemDiagnostics&&typeof state.systemDiagnostics==="object"?
+      state.systemDiagnostics:null;
+    if(!diagnostics||Array.isArray(diagnostics)||!Object.keys(diagnostics).length){
+      const empty=node("p","quiet","诊断信息暂不可用。");
+      empty.setAttribute("role","listitem");
+      systemRoot.append(empty);
+    }else{
+      const addRow=(label,value)=>{
+        const row=node("div","system-diagnostic");
+        row.setAttribute("role","listitem");
+        row.append(node("span","system-diagnostic-label",label));
+        row.append(node("span","system-diagnostic-value",value));
+        systemRoot.append(row);
+      };
+      const formalCount=Number(diagnostics.formalCount);
+      addRow("正式事件",`${Number.isFinite(formalCount)?formalCount:"?"} 条`);
+      addRow("下一个事件序号",typeof diagnostics.nextSequence==="string"?
+        diagnostics.nextSequence:"未知");
+      addRow("已分配序号",`${typeof diagnostics.identityCount==="string"?
+        diagnostics.identityCount:"未知"} 个（含退役）`);
+      const dbVersion=Number(diagnostics.databaseVersion);
+      const dbName=typeof diagnostics.databaseName==="string"?diagnostics.databaseName:"未知";
+      addRow("数据库版本",`v${Number.isFinite(dbVersion)?dbVersion:"?"} · ${dbName}`);
+      addRow("视觉效果",diagnostics.blurEnabled===true?"分层玻璃":"简化实色界面");
+      addRow("减少动画",diagnostics.reduceMotion===true?"已遵循系统设置":"未启用");
+      const recurrences=Array.isArray(diagnostics.recurrences)?
+        diagnostics.recurrences.filter(item=>item&&typeof item==="object").slice(0,3):[];
+      for(const recurrence of recurrences){
+        if(typeof recurrence.label==="string"&&typeof recurrence.value==="string")
+          addRow(recurrence.label,recurrence.value);
+      }
+    }
+  }
 }
 function renderTimeline(){
   cancelTimelineDrag();

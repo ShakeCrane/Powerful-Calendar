@@ -83,7 +83,15 @@ async function main(){
       reminderDiagnostics:[{eventSeq:17,displaySeq:'#0017',eventRevision:3,title:'CDP 诊断提醒',
         intent:{triggerId:'alarm:17',revision:3,occurrenceKey:'single',
           instantMillis:1792803600000,requirement:'EXACT',desiredState:'BLOCKED',
-          androidHint:'需要精确闹钟权限'},lastExecutionResult:'MISSED'}]
+          androidHint:'需要精确闹钟权限'},lastExecutionResult:'MISSED'}],
+      systemDiagnostics:{formalCount:5,nextSequence:'#0045',identityCount:'44',
+        databaseVersion:5,databaseName:'powercal-v2.db',blurEnabled:true,reduceMotion:false,
+        recurrences:[
+          {label:'重复 #4',value:'下一次 2026-10-31 09:00'},
+          {label:'重复 #8',value:'没有后续实例'},
+          {label:'重复 #12',value:'下一次 2026-11-01 09:00'},
+          {label:'隐藏的第四项',value:'不得显示'}
+        ]}
     }}))`);
     await waitFor(`!document.querySelector('#settingsPage').hidden&&
       document.querySelector('#notificationPermissionStatus').textContent.includes('BLOCKED')`,
@@ -98,6 +106,19 @@ async function main(){
       document.querySelector('#reminderDiagnostics').innerText.includes('最近执行：MISSED')`,
       "Reminder execution diagnostics projection");
     const reminderDiagnosticText=await evaluate("document.querySelector('#reminderDiagnostics').innerText");
+    await waitFor(`document.querySelector('#systemDiagnostics').innerText.includes('正式事件')&&
+      document.querySelector('#systemDiagnostics').innerText.includes('#0045')&&
+      document.querySelector('#systemDiagnostics').innerText.includes('已分配序号')&&
+      document.querySelector('#systemDiagnostics').innerText.includes('v5 · powercal-v2.db')&&
+      document.querySelector('#systemDiagnostics').innerText.includes('分层玻璃')&&
+      document.querySelector('#systemDiagnostics').innerText.includes('未启用')&&
+      document.querySelector('#systemDiagnostics').innerText.includes('没有后续实例')&&
+      document.querySelector('#systemDiagnostics').innerText.includes('重复 #12')&&
+      document.querySelector('#systemDiagnostics').getAttribute('role')==='list'&&
+      document.querySelectorAll('#systemDiagnostics [role="listitem"]').length===9&&
+      !document.querySelector('#systemDiagnostics').innerText.includes('隐藏的第四项')`,
+      "System diagnostics projection and recurrence limit");
+    const systemDiagnosticText=await evaluate("document.querySelector('#systemDiagnostics').innerText");
     const screenshot=await call("Page.captureScreenshot",{format:"png",captureBeyondViewport:true});
     const screenshotPath=path.join(reportDir,`settings-${runId}.png`);
     fs.writeFileSync(screenshotPath,Buffer.from(screenshot.data,"base64"));
@@ -168,6 +189,7 @@ async function main(){
         exactAlarmRequest.payload.name,reconcileRequest.payload.name,recovery.payload.name],
       deniedText,grantedText,legacyText,exactDeniedText,exactGrantedText,exactLegacyText,
       reminderDiagnosticText,
+      systemDiagnosticText,
       canonicalClearAssetSha256:crypto.createHash("sha256").update(fs.readFileSync(assetPath)).digest("hex"),
       screenshotPath:path.relative(root,screenshotPath).replaceAll("\\","/")
     };

@@ -1736,6 +1736,11 @@ fun PowerCalApp(
                 .put("reminderDiagnostics", if (page == Page.SETTINGS.name) {
                     WebSkinReminderDiagnosticsProjection.build(diagnostics.reminders)
                 } else org.json.JSONArray())
+                .put("systemDiagnostics", if (page == Page.SETTINGS.name) {
+                    WebSkinSystemDiagnosticsProjection.build(
+                        records, diagnostics.nextSequence, diagnostics.identities, effects, nowMillis, zone
+                    )
+                } else JSONObject())
                 .put("editing", webEditing.snapshot())
                 .put("optionGroups", SemanticOptions.toJson(enabled = semanticOptionsEnabled))
                 .put("timeline", WebSkinTimelineProjection.build(

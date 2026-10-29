@@ -130,6 +130,14 @@ async function main(){
       document.querySelector('#reminderDiagnostics').innerText.includes('最近执行：MISSED')`,
       "Mock reminder diagnostics projection");
     const reminderDiagnosticText=await frameEval("document.querySelector('#reminderDiagnostics').innerText");
+    await waitFor(frameEval,`document.querySelector('#systemDiagnostics').innerText.includes('下一个事件序号')&&
+      document.querySelector('#systemDiagnostics').innerText.includes('#0045')&&
+      document.querySelector('#systemDiagnostics').innerText.includes('v5 · powercal-v2.db')&&
+      document.querySelector('#systemDiagnostics').innerText.includes('分层玻璃')&&
+      document.querySelector('#systemDiagnostics').getAttribute('role')==='list'&&
+      document.querySelector('#systemDiagnostics').innerText.includes('重复 #4')`,
+      "Mock system diagnostics projection");
+    const systemDiagnosticText=await frameEval("document.querySelector('#systemDiagnostics').innerText");
     await frameEval(`document.querySelector('[data-action="requestNotificationPermission"]').click()`);
     await waitFor(evaluate,"document.querySelector('#bridgeLog').textContent.includes('不会调用 Android 系统权限')",
       "Mock permission action handling");
@@ -150,6 +158,7 @@ async function main(){
       deniedText,
       exactDeniedText,
       reminderDiagnosticText,
+      systemDiagnosticText,
       mockLog:(await evaluate("document.querySelector('#bridgeLog').innerText")).split("\n").slice(0,5)
     };
     const resultPath=path.join(reportDir,`studio-mock-${runId}.json`);
