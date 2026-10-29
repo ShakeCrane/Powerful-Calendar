@@ -226,6 +226,10 @@ fun PowerCalApp(
     var aiSession by remember { mutableStateOf<PowerStore.AiSession?>(null) }
     var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var message by remember { mutableStateOf<String?>(null) }
+    var manualReminderReconcileStatus by remember { mutableStateOf("IDLE") }
+    var manualReminderReconcileMessage by remember {
+        mutableStateOf("可以按当前已保存的数据手动重建提醒调度。")
+    }
     var backupRestoreBusy by remember { mutableStateOf(false) }
 
     // The Activity attempts to persist native selection independently of the Web layer.
@@ -390,8 +394,58 @@ fun PowerCalApp(
         newEventBusy = false
     }
 
-    suspend fun reconcile() {
-        withContext(Dispatchers.IO) { ReminderScheduler.reconcile(appContext, store) }
+    suspend fun reconcile(): ReminderScheduler.ReconcileReport {
+        return withContext(Dispatchers.IO) { ReminderScheduler.reconcile(appContext, store) }
+    }
+
+    fun reconcileCount(size: Int): String = if (size > 400) "400+" else size.toString()
+
+    fun requestManualReminderReconcile() {
+        if (manualReminderReconcileStatus == "RUNNING") return
+        manualReminderReconcileStatus = "RUNNING"
+        manualReminderReconcileMessage = "正在按当前数据重建提醒调度…"
+        WebSkinBridgeRuntime.stateRevision++
+        scope.launch {
+            try {
+                val report = withContext(Dispatchers.IO) {
+                    ReminderScheduler.reconcileAll(appContext, store)
+                }
+                val remaining = withContext(Dispatchers.IO) {
+                    store.intentsInState(PowerStore.DesiredSchedule.BLOCKED, limit = 401) to
+                        store.intentsInState(PowerStore.DesiredSchedule.PENDING, limit = 401)
+                }
+                reload()
+                val blocked = remaining.first
+                val pending = remaining.second
+                manualReminderReconcileStatus = when {
+                    report.failed > 0 || pending.isNotEmpty() -> "ERROR"
+                    blocked.isNotEmpty() -> "BLOCKED"
+                    else -> "SUCCESS"
+                }
+                manualReminderReconcileMessage = when (manualReminderReconcileStatus) {
+                    "ERROR" -> "重建未完成：${report.failed} 项处理失败，${reconcileCount(pending.size)} 项仍待调度。请检查执行状态后重试。"
+                    "BLOCKED" -> {
+                        val hint = blocked.firstNotNullOfOrNull { it.androidHint?.takeIf(String::isNotBlank) }
+                        "重建已执行，但 ${reconcileCount(blocked.size)} 项提醒仍受阻" +
+                            (hint?.let { "：$it" } ?: "。请检查提醒权限与执行状态。")
+                    }
+                    else -> if (report.attempted == 0) {
+                        "当前没有待处理的提醒调度。"
+                    } else {
+                        "已按当前数据重建提醒调度。"
+                    }
+                }
+                message = manualReminderReconcileMessage
+            } catch (cancel: kotlinx.coroutines.CancellationException) {
+                throw cancel
+            } catch (_: Exception) {
+                manualReminderReconcileStatus = "ERROR"
+                manualReminderReconcileMessage = "重建失败：无法读取或更新提醒调度，请检查应用存储状态后重试。"
+                message = manualReminderReconcileMessage
+            } finally {
+                WebSkinBridgeRuntime.stateRevision++
+            }
+        }
     }
 
     fun openDeckAt(draftId: Long?) {
@@ -1450,6 +1504,9 @@ fun PowerCalApp(
                     ) ReminderScheduler.openExactAlarmSettings(appContext)
                     WebSkinBridgeRuntime.stateRevision++
                 }
+                WebSkinAction.ReconcileReminders -> {
+                    if (manualReminderReconcileAllowed(page)) requestManualReminderReconcile()
+                }
                 is WebSkinAction.InvokeOption -> when {
                     aiLocked || editSession != null -> Unit
                     action.id == "calendar.import.file" ->
@@ -1672,6 +1729,10 @@ fun PowerCalApp(
                     JSONObject().put("required", exactAlarmStatus.required)
                         .put("allowed", exactAlarmStatus.allowed)
                 } else JSONObject())
+                .put("reminderReconcile", if (page == Page.SETTINGS.name) {
+                    JSONObject().put("status", manualReminderReconcileStatus)
+                        .put("message", manualReminderReconcileMessage)
+                } else JSONObject())
                 .put("editing", webEditing.snapshot())
                 .put("optionGroups", SemanticOptions.toJson(enabled = semanticOptionsEnabled))
                 .put("timeline", WebSkinTimelineProjection.build(
@@ -1832,11 +1893,7 @@ fun PowerCalApp(
                     cancelAiBatchFromSurface()
                 },
                 onReconcile = {
-                    scope.launch {
-                        reconcile()
-                        reload()
-                        message = "已按当前数据重建提醒调度"
-                    }
+                    requestManualReminderReconcile()
                 },
                 onAiDraft = { text, shareForRequest ->
                     scope.launch { generateAiDraft(text, shareForRequest) }

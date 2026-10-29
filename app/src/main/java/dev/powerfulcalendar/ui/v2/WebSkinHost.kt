@@ -112,6 +112,7 @@ internal sealed interface WebSkinAction {
     data class Routed(val name: String) : WebSkinAction
     data object RequestNotificationPermission : WebSkinAction
     data object OpenExactAlarmSettings : WebSkinAction
+    data object ReconcileReminders : WebSkinAction
     data class OpenEvent(
         val eventSeq: Long,
         val expectedRevision: Long,
@@ -202,6 +203,8 @@ internal fun exactAlarmSettingsLaunch(page: String, sdkInt: Int): ExactAlarmSett
     } else {
         ExactAlarmSettingsLaunch.UNAVAILABLE
     }
+
+internal fun manualReminderReconcileAllowed(page: String): Boolean = page == "SETTINGS"
 
 internal fun exactAlarmPermissionStatus(
     sdkInt: Int,
@@ -424,6 +427,8 @@ internal fun decodeBridgeAction(raw: String): WebSkinAction? {
             WebSkinAction.RequestNotificationPermission else null
         "openExactAlarmSettings" -> if (keys == setOf("name"))
             WebSkinAction.OpenExactAlarmSettings else null
+        "reconcileReminders" -> if (keys == setOf("name"))
+            WebSkinAction.ReconcileReminders else null
         "invokeOption" -> {
             if (keys != setOf("name", "id")) return null
             val id = payload.opt("id")

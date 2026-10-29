@@ -34,6 +34,8 @@ import java.time.format.DateTimeFormatter
 object ReminderScheduler {
     private const val TAG = "PowerCalScheduler"
 
+    data class ReconcileReport(val attempted: Int, val failed: Int)
+
     fun exactAlarmAllowed(context: Context): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return true
         val manager = context.getSystemService(AlarmManager::class.java) ?: return false
@@ -47,20 +49,54 @@ object ReminderScheduler {
     }
 
     /** Idempotent: safe to call after boot, timezone change, permission change or a commit. */
-    fun reconcile(context: Context, store: PowerStore) {
+    fun reconcile(context: Context, store: PowerStore): ReconcileReport =
+        reconcile(context, store, exhaustive = false)
+
+    /** Exhaustive pass for the user's explicit recovery action; uses keyset pages to bound memory. */
+    fun reconcileAll(context: Context, store: PowerStore): ReconcileReport =
+        reconcile(context, store, exhaustive = true)
+
+    private fun reconcile(
+        context: Context,
+        store: PowerStore,
+        exhaustive: Boolean
+    ): ReconcileReport {
         val now = System.currentTimeMillis()
         if (exactAlarmAllowed(context)) store.retryExactIntentsAfterPermissionGrant(now)
-        // One pass over a generous window; `markIntent` is revision-guarded so a row replaced by a
-        // concurrent commit is never mislabelled.
-        store.dueIntents(limit = 400).forEach { intent ->
-            runCatching { apply(context, store, intent, now) }
-                .onFailure { Log.w(TAG, "reconcile #${intent.eventSeq} failed", it) }
+        var failures = 0
+        var attempted = 0
+        var dueCursor: PowerStore.ScheduleIntent? = null
+        while (true) {
+            // The default pass stays bounded for lifecycle-triggered recovery. An explicit user
+            // request walks stable keyset pages so scheduled rows cannot starve later rows.
+            val due = if (exhaustive) store.dueIntentsAfter(dueCursor, limit = 400)
+                else store.dueIntents(limit = 400)
+            due.forEach { intent ->
+                runCatching { apply(context, store, intent, now) }
+                    .onFailure {
+                        failures++
+                        Log.w(TAG, "reconcile #${intent.eventSeq} failed", it)
+                    }
+            }
+            attempted += due.size
+            if (!exhaustive || due.size < 400) break
+            dueCursor = due.last()
         }
-        // Cancelled intents may still have an armed PendingIntent (delete/disable). Disarm it once.
-        store.intentsInState(PowerStore.DesiredSchedule.CANCELLED, limit = 100).forEach { intent ->
-            cancel(context, intent.eventSeq)
-            store.deleteIntent(intent.eventSeq, intent.triggerId)
+
+        // Cancelled intents may still have an armed PendingIntent (delete/disable). Disarm each
+        // once; stable keyset paging remains valid while rows are deleted from the current page.
+        var cancelledCursor: PowerStore.ScheduleIntent? = null
+        while (true) {
+            val cancelled = if (exhaustive) store.cancelledIntentsAfter(cancelledCursor, limit = 100)
+                else store.intentsInState(PowerStore.DesiredSchedule.CANCELLED, limit = 100)
+            cancelled.forEach { intent ->
+                cancel(context, intent.eventSeq)
+                store.deleteIntent(intent.eventSeq, intent.triggerId)
+            }
+            if (!exhaustive || cancelled.size < 100) break
+            cancelledCursor = cancelled.last()
         }
+        return ReconcileReport(attempted = attempted, failed = failures)
     }
 
     private fun apply(context: Context, store: PowerStore, intent: PowerStore.ScheduleIntent, now: Long) {

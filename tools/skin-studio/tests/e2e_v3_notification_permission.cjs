@@ -78,7 +78,8 @@ async function main(){
     if(route?.payload?.name!=="settings")throw Error("Clear settings tab emitted the wrong route");
     await evaluate(`window.__clearHostPort.postMessage(JSON.stringify({version:1,type:'state',payload:{
       page:'SETTINGS',notificationPermission:{required:true,allowed:false},
-      exactAlarmPermission:{required:true,allowed:false}
+      exactAlarmPermission:{required:true,allowed:false},
+      reminderReconcile:{status:'IDLE',message:'可以按当前已保存的数据手动重建提醒调度。'}
     }}))`);
     await waitFor(`!document.querySelector('#settingsPage').hidden&&
       document.querySelector('#notificationPermissionStatus').textContent.includes('BLOCKED')`,
@@ -101,6 +102,25 @@ async function main(){
     const exactAlarmRequest=await evaluate("window.__clearActions[2]");
     if(exactAlarmRequest?.payload?.name!=="openExactAlarmSettings")
       throw Error("Clear emitted the wrong exact alarm settings action");
+    await evaluate(`document.querySelector('[data-action="reconcileReminders"]').click()`);
+    await waitFor("window.__clearActions?.length===4","Manual reminder reconcile action");
+    const reconcileRequest=await evaluate("window.__clearActions[3]");
+    if(reconcileRequest?.payload?.name!=="reconcileReminders")
+      throw Error("Clear emitted the wrong reminder reconcile action");
+    await evaluate(`window.__clearHostPort.postMessage(JSON.stringify({version:1,type:'state',payload:{
+      page:'SETTINGS',notificationPermission:{required:true,allowed:false},
+      exactAlarmPermission:{required:true,allowed:false},
+      reminderReconcile:{status:'BLOCKED',message:'重建已执行，但 1 项提醒仍受阻：缺少精确闹钟权限'}
+    }}))`);
+    await waitFor("document.querySelector('#reminderReconcileStatus').textContent.includes('1 项提醒仍受阻')",
+      "Blocked reconcile feedback");
+    await evaluate(`window.__clearHostPort.postMessage(JSON.stringify({version:1,type:'state',payload:{
+      page:'SETTINGS',notificationPermission:{required:true,allowed:false},
+      exactAlarmPermission:{required:true,allowed:false},
+      reminderReconcile:{status:'ERROR',message:'重建失败：无法读取或更新提醒调度，请检查应用存储状态后重试。'}
+    }}))`);
+    await waitFor("document.querySelector('#reminderReconcileStatus').textContent.includes('重建失败')",
+      "Reconcile error feedback");
 
     await evaluate(`window.__clearHostPort.postMessage(JSON.stringify({version:1,type:'state',payload:{
       page:'SETTINGS',notificationPermission:{required:true,allowed:true},
@@ -126,8 +146,8 @@ async function main(){
     const exactLegacyText=await evaluate("document.querySelector('#exactAlarmPermissionStatus').textContent");
 
     await evaluate(`document.querySelector('[data-action="nativeSettings"]').click()`);
-    await waitFor("window.__clearActions?.length===4","Native recovery route action");
-    const recovery=await evaluate("window.__clearActions[3]");
+    await waitFor("window.__clearActions?.length===5","Native recovery route action");
+    const recovery=await evaluate("window.__clearActions[4]");
     if(recovery?.payload?.name!=="nativeSettings")
       throw Error("Clear did not preserve its native settings recovery route");
 
@@ -136,7 +156,7 @@ async function main(){
       status:"PASS",
       scope:"Chrome 156 Headless/CDP rendering of canonical Clear source with a protocol-level Mock Host; not Android WebView or OS permission UI",
       actions:[route.payload.name,permissionRequest.payload.name,
-        exactAlarmRequest.payload.name,recovery.payload.name],
+        exactAlarmRequest.payload.name,reconcileRequest.payload.name,recovery.payload.name],
       deniedText,grantedText,legacyText,exactDeniedText,exactGrantedText,exactLegacyText,
       canonicalClearAssetSha256:crypto.createHash("sha256").update(fs.readFileSync(assetPath)).digest("hex"),
       screenshotPath:path.relative(root,screenshotPath).replaceAll("\\","/")

@@ -2443,13 +2443,30 @@ class PowerStore(
     }
 
     @Synchronized
-    fun dueIntents(limit: Int = 400): List<ScheduleIntent> =
-        readableDatabase.rawQuery(
+    fun dueIntents(limit: Int = 400): List<ScheduleIntent> = dueIntentsAfter(null, limit)
+
+    /** Stable keyset page for exhaustive reconciliation without loading every local intent at once. */
+    @Synchronized
+    fun dueIntentsAfter(after: ScheduleIntent?, limit: Int = 400): List<ScheduleIntent> {
+        val cursorClause = if (after == null) "" else
+            " AND (instant_ms>? OR (instant_ms=? AND event_seq>?) OR " +
+                "(instant_ms=? AND event_seq=? AND trigger_id>?))"
+        val args = if (after == null) {
+            arrayOf(limit.coerceAtLeast(1).toString())
+        } else {
+            arrayOf(
+                after.instantMillis.toString(), after.instantMillis.toString(),
+                after.eventSeq.toString(), after.instantMillis.toString(),
+                after.eventSeq.toString(), after.triggerId, limit.coerceAtLeast(1).toString()
+            )
+        }
+        return readableDatabase.rawQuery(
             """SELECT event_seq,trigger_id,revision,occurrence_key,instant_ms,requirement,desired_state,android_hint
-               FROM schedule_intents WHERE desired_state IN ('PENDING','SCHEDULED')
-               ORDER BY instant_ms ASC LIMIT ?""",
-            arrayOf(limit.toString())
+               FROM schedule_intents WHERE desired_state IN ('PENDING','SCHEDULED')$cursorClause
+               ORDER BY instant_ms ASC,event_seq ASC,trigger_id ASC LIMIT ?""",
+            args
         ).use { cursor -> readIntents(cursor) }
+    }
 
     /** Requeue only exact reminders that were blocked because Android denied exact-alarm access. */
     @Synchronized
@@ -2478,6 +2495,27 @@ class PowerStore(
                FROM schedule_intents WHERE desired_state=? ORDER BY instant_ms ASC LIMIT ?""",
             arrayOf(state.name, limit.toString())
         ).use { cursor -> readIntents(cursor) }
+
+    /** Stable keyset page used while cancelled rows are removed during exhaustive reconciliation. */
+    @Synchronized
+    fun cancelledIntentsAfter(after: ScheduleIntent?, limit: Int = 100): List<ScheduleIntent> {
+        val cursorClause = if (after == null) "" else
+            " AND (event_seq>? OR (event_seq=? AND trigger_id>?))"
+        val args = if (after == null) {
+            arrayOf(limit.coerceAtLeast(1).toString())
+        } else {
+            arrayOf(
+                after.eventSeq.toString(), after.eventSeq.toString(), after.triggerId,
+                limit.coerceAtLeast(1).toString()
+            )
+        }
+        return readableDatabase.rawQuery(
+            """SELECT event_seq,trigger_id,revision,occurrence_key,instant_ms,requirement,desired_state,android_hint
+               FROM schedule_intents WHERE desired_state='CANCELLED'$cursorClause
+               ORDER BY event_seq ASC,trigger_id ASC LIMIT ?""",
+            args
+        ).use { cursor -> readIntents(cursor) }
+    }
 
     @Synchronized
     fun deleteIntent(eventSeq: Long, triggerId: String) {

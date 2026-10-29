@@ -5,6 +5,7 @@ import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.Recurrence
 import dev.powerfulcalendar.core.RecurrenceFreq
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -28,6 +29,10 @@ class WebSkinBridgeTest {
             """{"version":1,"type":"action","payload":{"name":"openExactAlarmSettings"}}"""))
         assertNull(decodeBridgeAction(
             """{"version":1,"type":"action","payload":{"name":"openExactAlarmSettings","package":"other.app"}}"""))
+        assertEquals(WebSkinAction.ReconcileReminders, decodeBridgeAction(
+            """{"version":1,"type":"action","payload":{"name":"reconcileReminders"}}"""))
+        assertNull(decodeBridgeAction(
+            """{"version":1,"type":"action","payload":{"name":"reconcileReminders","force":true}}"""))
         assertEquals(WebSkinAction.LoadMoreMemo, decodeBridgeAction(
             """{"version":1,"type":"action","payload":{"name":"loadMoreMemo"}}"""))
         assertNull(decodeBridgeAction(
@@ -130,5 +135,11 @@ class WebSkinBridgeTest {
             exactAlarmPermissionStatus(35, permissionAllowed = false))
         assertEquals(ExactAlarmPermissionStatus(required = true, allowed = true),
             exactAlarmPermissionStatus(35, permissionAllowed = true))
+    }
+
+    @Test fun manualReminderReconciliationIsSettingsOnly() {
+        assertTrue(manualReminderReconcileAllowed("SETTINGS"))
+        assertFalse(manualReminderReconcileAllowed("TIMELINE"))
+        assertFalse(manualReminderReconcileAllowed("AI"))
     }
 }

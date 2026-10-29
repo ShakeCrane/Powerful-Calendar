@@ -409,6 +409,7 @@ const ACTIONS=[
   ["month","月历"],["memo","Memo"],["ai","AI"],
   ["settings","设置"],["requestNotificationPermission","请求通知权限"],
   ["openExactAlarmSettings","打开精确闹钟设置"],
+  ["reconcileReminders","重建提醒调度"],
   ["nativeSettings","打开原生设置"],["openDeck","草稿卡组"],
   ["panTimeline","时间轴向后 30 分钟"],["zoomTimeline","时间轴缩放"],
   ["resetTimelineZoom","重置时间轴缩放"],["jumpTimelineDay","跳到今天"],
@@ -766,6 +767,9 @@ function simulatedState(){
   return {bridgeVersion:1,page:mockPage,
     notificationPermission:mockPage==="SETTINGS"?{required:true,allowed:false}:{},
     exactAlarmPermission:mockPage==="SETTINGS"?{required:true,allowed:false}:{},
+    reminderReconcile:mockPage==="SETTINGS"?{
+      status:"IDLE",message:"可以按当前已保存的数据手动重建提醒调度。"
+    }:{},
     memoCount:allMemoEntries.filter(item=>!item.completed).length,aiLocked:mockAiLocked,
     aiBatch:scenario==="ai-review-batch"?{
       phase:"SELECTING",state:null,active:false,canCancel:true,canRelease:false,
@@ -1653,6 +1657,13 @@ function onSkinAction(message){
         logAction("拒绝非设置页或格式无效的精确闹钟设置请求");return;
       }
       logAction("Studio Mock 收到精确闹钟设置请求；不会启动 Android 系统设置");
+      return;
+    }
+    if(name==="reconcileReminders"){
+      if(Object.keys(p).sort().join(",")!=="name"||mockPage!=="SETTINGS"){
+        logAction("拒绝非设置页或格式无效的提醒重建请求");return;
+      }
+      logAction("Studio Mock 收到提醒重建请求；不会调用 Android Host 或修改真实调度");
       return;
     }
     if(name==="nativeSettings"){

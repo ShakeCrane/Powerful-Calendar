@@ -472,22 +472,36 @@ function renderSettings(){
   const exactStatus=state.exactAlarmPermission;
   const exactLabel=$("exactAlarmPermissionStatus");
   const exactButton=document.querySelector('[data-action="openExactAlarmSettings"]');
-  if(!exactLabel||!exactButton)return;
-  if(!exactStatus||typeof exactStatus.required!=="boolean"||
-    typeof exactStatus.allowed!=="boolean"){
-    exactLabel.textContent="暂时无法读取精确闹钟权限状态。";
-    exactButton.hidden=true;
-  }else if(!exactStatus.required){
-    exactLabel.textContent="当前 Android 版本无需单独授权精确闹钟。";
-    exactButton.hidden=true;
-  }else if(exactStatus.allowed){
-    exactLabel.textContent="精确闹钟访问已允许；后台投递仍可能受设备厂商限制。";
-    exactButton.textContent="精确闹钟设置";
-    exactButton.hidden=false;
-  }else{
-    exactLabel.textContent="精确闹钟访问未允许；需要精确时刻的提醒会保持 BLOCKED。";
-    exactButton.textContent="打开精确闹钟设置";
-    exactButton.hidden=false;
+  if(exactLabel&&exactButton){
+    if(!exactStatus||typeof exactStatus.required!=="boolean"||
+      typeof exactStatus.allowed!=="boolean"){
+      exactLabel.textContent="暂时无法读取精确闹钟权限状态。";
+      exactButton.hidden=true;
+    }else if(!exactStatus.required){
+      exactLabel.textContent="当前 Android 版本无需单独授权精确闹钟。";
+      exactButton.hidden=true;
+    }else if(exactStatus.allowed){
+      exactLabel.textContent="精确闹钟访问已允许；后台投递仍可能受设备厂商限制。";
+      exactButton.textContent="精确闹钟设置";
+      exactButton.hidden=false;
+    }else{
+      exactLabel.textContent="精确闹钟访问未允许；需要精确时刻的提醒会保持 BLOCKED。";
+      exactButton.textContent="打开精确闹钟设置";
+      exactButton.hidden=false;
+    }
+  }
+
+  const reconcile=state.reminderReconcile;
+  const reconcileLabel=$("reminderReconcileStatus");
+  const reconcileButton=$("reconcileReminders");
+  if(reconcileLabel&&reconcileButton){
+    const reconcileStatus=reconcile&&typeof reconcile.status==="string"?reconcile.status:"IDLE";
+    reconcileLabel.textContent=reconcile&&typeof reconcile.message==="string"?
+      reconcile.message:"暂时无法读取提醒重建状态。";
+    reconcileLabel.dataset.status=reconcileStatus.toLowerCase();
+    reconcileButton.disabled=reconcileStatus==="RUNNING";
+    reconcileButton.textContent=reconcileStatus==="RUNNING"?
+      "正在重建提醒…":"按当前数据重建提醒调度";
   }
 }
 function renderTimeline(){
