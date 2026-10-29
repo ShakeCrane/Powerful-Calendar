@@ -23,7 +23,13 @@ data class InstalledSkin(val id: String, val name: String, val builtIn: Boolean 
  * passes through the strictly limited host action bridge.
  * Compressed and inflated ZIP sizes, contents and resource hashes are bounded.
  */
-class SkinPackageManager(private val context: Context) {
+class SkinPackageManager(
+    private val context: Context,
+    private val nativePreferenceCommit: (Context, String) -> Boolean = { appContext, id ->
+        appContext.getSharedPreferences("powercal-skin-choice", Context.MODE_PRIVATE)
+            .edit().putString("selected", id).commit()
+    }
+) {
     private val prefs = context.getSharedPreferences("powercal-skin-choice", Context.MODE_PRIVATE)
     private val folder = File(context.filesDir, "skin-packs")
     private val original = InstalledSkin("powercal-default", "PowerCal 原生玻璃（安全回退）", true)
@@ -76,7 +82,13 @@ class SkinPackageManager(private val context: Context) {
     private fun loadPackage(id: String): Verified =
         if (id == clearCandidate.id) readBundledClear() else readInstalled(id)
 
-    fun currentId(): String = prefs.getString("selected", original.id) ?: original.id
+    fun currentId(): String = try {
+        prefs.getString("selected", original.id) ?: original.id
+    } catch (_: ClassCastException) {
+        // A damaged preference must not crash Activity-level emergency recovery.
+        selectNativeForEmergencyRecovery()
+        original.id
+    }
 
     fun installed(): List<InstalledSkin> = buildList {
         add(original)
@@ -104,8 +116,7 @@ class SkinPackageManager(private val context: Context) {
 
     fun select(id: String) {
         if (id == original.id) {
-            prefs.edit().putString("selected", id).apply()
-            PowerCalSkinRegistry.reset()
+            selectNativeForEmergencyRecovery()
             return
         }
         // A factory-installed skin and a user-imported skin have precisely one
@@ -113,6 +124,17 @@ class SkinPackageManager(private val context: Context) {
         val verified = loadPackage(id)
         PowerCalSkinRegistry.activate(verified.pack)
         prefs.edit().putString("selected", id).apply()
+    }
+
+    /**
+     * Immediately returns to Native in this process and reports whether the selection was
+     * synchronously persisted. Callers must not present a durable-recovery success on false.
+     */
+    fun selectNativeForEmergencyRecovery(): Boolean {
+        val persisted = runCatching { nativePreferenceCommit(context, original.id) }
+            .getOrDefault(false)
+        PowerCalSkinRegistry.reset()
+        return persisted
     }
 
     fun install(uri: Uri): InstalledSkin {

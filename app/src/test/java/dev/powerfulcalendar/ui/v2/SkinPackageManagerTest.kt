@@ -23,6 +23,13 @@ class SkinPackageManagerTest {
     private val context get() = ApplicationProvider.getApplicationContext<Context>()
     private val manager get() = SkinPackageManager(context)
 
+    @Test fun failedEmergencyPersistenceHasExplicitRecoveryMessage() {
+        assertEquals(
+            "当前已切换至原生设置页，但未能确认回退设置已保存；请在皮肤设置中再次选择原生皮肤。",
+            nativeRecoveryMessage(persisted = false)
+        )
+    }
+
     private fun manifest(id: String = "unit-skin"): JSONObject = JSONObject()
         .put("format", "powercal-skin").put("schemaVersion", 1)
         .put("id", id).put("name", "Test Skin")
@@ -88,6 +95,49 @@ class SkinPackageManagerTest {
         assertThrows(IllegalArgumentException::class.java) {
             manager.decode(pack(manifest().put("layout",
                 JSONObject().put("cardRadiusDp", 999))), false)
+        }
+    }
+
+    @Test fun malformedSelectedPreferenceFallsBackToNativeSkin() {
+        val preferences = context.getSharedPreferences("powercal-skin-choice", Context.MODE_PRIVATE)
+        val previous = manager.currentId()
+        try {
+            manager.select("powercal-clear-default")
+            preferences.edit().putBoolean("selected", true).commit()
+
+            assertEquals("powercal-default", manager.currentId())
+            assertEquals("powercal-default", preferences.getString("selected", null))
+            assertEquals("powercal-default", PowerCalSkinRegistry.active.key)
+
+            val nextManager = SkinPackageManager(context)
+            nextManager.restoreSelection()
+            assertEquals("powercal-default", nextManager.currentId())
+            assertEquals("powercal-default", PowerCalSkinRegistry.active.key)
+        } finally {
+            runCatching { manager.select(previous) }
+                .onFailure { manager.select("powercal-default") }
+        }
+    }
+
+    @Test fun emergencyRecoveryReportsPreferenceCommitFailure() {
+        val preferences = context.getSharedPreferences("powercal-skin-choice", Context.MODE_PRIVATE)
+        val previous = manager.currentId()
+        try {
+            manager.select("powercal-clear-default")
+
+            val rejectedCommit = SkinPackageManager(context) { _, _ -> false }
+            assertFalse(rejectedCommit.selectNativeForEmergencyRecovery())
+            assertEquals("powercal-default", PowerCalSkinRegistry.active.key)
+            assertEquals("powercal-clear-default", preferences.getString("selected", null))
+
+            val thrownCommit = SkinPackageManager(context) { _, _ -> error("simulated disk error") }
+            assertFalse(thrownCommit.selectNativeForEmergencyRecovery())
+            assertEquals("powercal-default", PowerCalSkinRegistry.active.key)
+            assertEquals("powercal-clear-default", preferences.getString("selected", null))
+        } finally {
+            runCatching { manager.select(previous) }
+                .onFailure { manager.select("powercal-default") }
+            manager.restoreSelection()
         }
     }
 

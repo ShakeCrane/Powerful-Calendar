@@ -4,6 +4,7 @@ import android.os.Bundle
 import android.view.MotionEvent
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import dev.powerfulcalendar.ui.v2.AlternatingTapRecovery
 import androidx.activity.ComponentActivity
@@ -26,6 +27,7 @@ class MainActivity : ComponentActivity() {
     private val fingers = mutableMapOf<Int, Down>()
     private var alternatingRecovery: AlternatingTapRecovery? = null
     private var nativeRecoverySignal by mutableIntStateOf(0)
+    private var nativeRecoveryPersisted by mutableStateOf(true)
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         // Observe at the Activity boundary, before Compose/WebView dispatch.
@@ -57,8 +59,9 @@ class MainActivity : ComponentActivity() {
                     if (movement <= 24f * resources.displayMetrics.density &&
                         detector.completedTap(x, y, event.eventTime, duration) &&
                         SkinPackageManager(applicationContext).currentId() != "powercal-default") {
-                        // Immediate persistent native rollback; no database/skin uninstall.
-                        SkinPackageManager(applicationContext).select("powercal-default")
+                        // Switch in-memory immediately and disclose whether persistence succeeded.
+                        nativeRecoveryPersisted = SkinPackageManager(applicationContext)
+                            .selectNativeForEmergencyRecovery()
                         nativeRecoverySignal++
                         return true
                     }
@@ -85,7 +88,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             PowerCalTheme(effects = rememberSystemGlassEffects()) {
-                PowerCalApp(store, nativeRecoverySignal)
+                PowerCalApp(store, nativeRecoverySignal, nativeRecoveryPersisted)
             }
         }
     }

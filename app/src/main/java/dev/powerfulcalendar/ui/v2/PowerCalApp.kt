@@ -170,6 +170,12 @@ private enum class Page { TIMELINE, MONTH, MEMO, AI, SETTINGS, TOOLS }
 
 private data class BatchReview(val mode: AiBatchRunner.Mode, val cards: List<dev.powerfulcalendar.core.DraftCard>)
 
+internal fun nativeRecoveryMessage(persisted: Boolean): String = if (persisted) {
+    "已切换至原生设置页，日历数据及已安装皮肤均保留。"
+} else {
+    "当前已切换至原生设置页，但未能确认回退设置已保存；请在皮肤设置中再次选择原生皮肤。"
+}
+
 internal class LifecycleCheckpointGate {
     private var checkpointedSession: Any? = null
     fun onStart() { checkpointedSession = null }
@@ -193,7 +199,11 @@ private data class AppData(
 )
 
 @Composable
-fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
+fun PowerCalApp(
+    store: PowerStore,
+    nativeRecoverySignal: Int = 0,
+    nativeRecoveryPersisted: Boolean = true
+) {
     val context = LocalContext.current
     val appContext = context.applicationContext
     val webAiBatchProgress by PowerCalStores.aiBatchProgress.progress.collectAsState()
@@ -217,13 +227,13 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
     var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var message by remember { mutableStateOf<String?>(null) }
 
-    // The Activity has persisted the native selection independently of the Web layer.
-    LaunchedEffect(nativeRecoverySignal) {
+    // The Activity attempts to persist native selection independently of the Web layer.
+    LaunchedEffect(nativeRecoverySignal, nativeRecoveryPersisted) {
         if (nativeRecoverySignal > 0) {
-            selectedSkin = skins.currentId()
+            selectedSkin = if (nativeRecoveryPersisted) skins.currentId() else "powercal-default"
             skinToActivate = null
             page = Page.TOOLS.name
-            message = "已通过双指交替敲击恢复原生皮肤，日历数据及已安装皮肤均保留。"
+            message = nativeRecoveryMessage(nativeRecoveryPersisted)
         }
     }
     var deckOpen by rememberSaveable { mutableStateOf(false) }
@@ -1659,11 +1669,15 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
         onWebSkinFailure = {
             scope.launch {
                 val safe = webEditing.prepareSkinChange()
-                runCatching { skins.select("powercal-default") }
-                selectedSkin = skins.currentId()
+                val persisted = skins.selectNativeForEmergencyRecovery()
+                selectedSkin = if (persisted) skins.currentId() else "powercal-default"
                 page = Page.TOOLS.name
-                message = if(safe) "皮肤加载失败，编辑已存档并恢复安全界面。"
-                    else "皮肤已失效，编辑检查点失败；已进入安全界面，切勿强制结束应用。"
+                message = when {
+                    !safe && !persisted -> "皮肤已失效，编辑检查点失败且原生回退设置未能确认保存；当前已进入安全界面，请勿强制结束应用。"
+                    !safe -> "皮肤已失效，编辑检查点失败；已进入安全界面，切勿强制结束应用。"
+                    persisted -> "皮肤加载失败，编辑已存档并恢复安全界面。"
+                    else -> "编辑已存档并切换至原生界面，但未能确认回退设置已保存；请在皮肤设置中再次选择原生皮肤。"
+                }
             }
         }
     ) {
