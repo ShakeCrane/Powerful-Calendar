@@ -272,6 +272,7 @@ class BackupRestoreHostTest {
 
     @Test fun confirmedLegacyFlatV2RestoresUnderANewLineage() {
         val legacyBackup = createLegacyFlatV2Backup()
+        assertFalse("flat v2 must not carry a payload hash", legacyBackup.has("payloadSha256"))
         assertFalse("flat v2 must not carry a lineage id", legacyBackup.has("storeLineageId"))
         val sourceEnvelopeLineage = sourceStore.exportBackup().getString("storeLineageId")
         val emptyTargetLineage = store.exportBackup().getString("storeLineageId")
@@ -384,7 +385,8 @@ class BackupRestoreHostTest {
         identityCount = store.identityCount(),
         nextSequence = store.nextSequencePreview(),
         commitCount = store.commitCount(),
-        reminders = PowerStore.DesiredSchedule.entries.flatMap { store.intentsInState(it) }
+        reminders = PowerStore.DesiredSchedule.entries.flatMap { store.intentsInState(it) },
+        lineageId = store.exportBackup().getString("storeLineageId")
     )
 
     private data class StoreState(
@@ -394,7 +396,8 @@ class BackupRestoreHostTest {
         val identityCount: Long,
         val nextSequence: Long,
         val commitCount: Long,
-        val reminders: List<PowerStore.ScheduleIntent>
+        val reminders: List<PowerStore.ScheduleIntent>,
+        val lineageId: String
     )
 
     private class RecordingActivityResultRegistry : ActivityResultRegistry() {
