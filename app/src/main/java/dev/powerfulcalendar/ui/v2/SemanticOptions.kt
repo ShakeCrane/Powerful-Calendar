@@ -28,6 +28,11 @@ internal object SemanticOptions {
             SemanticOption("calendar.import.system", "从系统日历导入", "读取当前静态快照，不同步", "calendar"),
             SemanticOption("data.legacy.migrate", "迁移旧版 PowerCal 数据",
                 "经 Android 宿主确认后只读导入；旧数据库文件保留", "migration")
+        )),
+        SemanticOptionGroup("calendar.export", "导出", listOf(
+            SemanticOption("calendar.export.ics", "导出 ICS",
+                "仅导出活动且不含活动提醒；闹钟、截止、备忘与完成状态不会由 ICS 保留。" +
+                    "需要完整恢复请使用原生备份。", "file")
         ))
     )
     private val allowed = groups.flatMap { it.items }.map { it.id }.toSet()

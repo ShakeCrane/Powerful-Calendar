@@ -1218,7 +1218,8 @@ fun PowerCalApp(
                     } ?: error("无法写入所选文件")
                 }
             }.onSuccess {
-                message = "已导出 Activity ICS；请使用原生备份保留闹钟、截止、备忘与完成状态"
+                message = "已导出活动 ICS；未包含活动提醒、闹钟、截止、备忘与完成状态。" +
+                    "请使用原生备份保留完整数据"
             }.onFailure { error ->
                 message = "ICS 导出受阻：" + (error.message ?: error.javaClass.simpleName)
             }
@@ -1397,6 +1398,8 @@ fun PowerCalApp(
                     aiLocked || editSession != null -> Unit
                     action.id == "calendar.import.file" ->
                         openAiDocument.launch(arrayOf("*/*"))
+                    action.id == "calendar.export.ics" ->
+                        exportIcs.launch("PowerfulCalendar-activities.ics")
                     action.id == "calendar.import.system" -> {
                         if (ContextCompat.checkSelfPermission(appContext,
                                 Manifest.permission.READ_CALENDAR) == PackageManager.PERMISSION_GRANTED
@@ -3025,7 +3028,8 @@ internal fun NativeToolsPage(
                 onRestoreBackup,
                 enabled = !aiLocked
             )
-            ToolRow("导出 ICS", "仅活动类事件；闹钟与截止的语义会被该格式丢失", onExportIcs)
+            ToolRow("导出 ICS", "仅导出活动且不含活动提醒；闹钟、截止、备忘与完成状态不会由 ICS 保留",
+                onExportIcs)
         }
 
         SectionCard("提醒可靠性", "保存 ≠ 已调度 ≠ 已触发") {

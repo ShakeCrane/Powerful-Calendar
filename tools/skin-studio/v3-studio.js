@@ -719,6 +719,11 @@ function simulatedState(){
     id:"calendar.import.future",label:"新功能：导入课程表",
     detail:"模拟未来软件版本新增的平行选项",icon:"table",enabled:true
   });
+  const exportItems=[{
+    id:"calendar.export.ics",label:"导出 ICS",
+    detail:"仅导出活动且不含活动提醒；闹钟、截止、备忘与完成状态不会由 ICS 保留。需要完整恢复请使用原生备份。",
+    icon:"file",enabled:scenario!=="locked"
+  }];
   const start=anchor-hours*1800000;
   const rawChatMessages=mockChatCleared?mockChat:scenario==="ai-error"
     ? [{role:"assistant",content:"你好！今天有什么安排？"},...mockAiErrorMessages]
@@ -774,7 +779,8 @@ function simulatedState(){
     }:null,
     events:rows.map(r=>({eventSeq:r.eventSeq,revision:r.revision,title:r.title,kind:r.kind,
       anchorMillis:r.startMillis,endMillis:r.endMillis})),
-    optionGroups:[{id:"calendar.import",label:"导入",items}],
+    optionGroups:[{id:"calendar.import",label:"导入",items},
+      {id:"calendar.export",label:"导出",items:exportItems}],
     timeline:{zoneId:"Asia/Shanghai",anchorMillis:anchor,hours,
       visibleStartMillis:start,visibleEndMillis:anchor+hours*1800000,
       nowMillis:base,itemLimit:300,truncated:false,items:rows},
@@ -1849,6 +1855,10 @@ function onSkinAction(message){
     }
     if(name==="invokeOption"&&p.id==="data.legacy.migrate"){
       logAction("Preview Mock：迁移请求仅模拟到达；未读取、写入或删除任何数据库。Android 需经宿主确认。");
+      return;
+    }
+    if(name==="invokeOption"&&p.id==="calendar.export.ics"){
+      logAction("Preview Mock：ICS 导出请求仅模拟到达；未创建文件或读取真实事件。Android Host 处理文件写入。");
       return;
     }
     logAction("模拟宿主收到："+name+

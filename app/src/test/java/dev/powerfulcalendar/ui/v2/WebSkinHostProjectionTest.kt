@@ -406,4 +406,13 @@ class WebSkinHostProjectionTest {
         assertTrue(item.detail.contains("只读导入"))
         assertTrue(item.detail.contains("旧数据库文件保留"))
     }
+
+    @Test fun icsExportOptionIsHostRegisteredAndDisclosesLostSemantics() {
+        val item = SemanticOptions.groups.flatMap { it.items }
+            .single { it.id == "calendar.export.ics" }
+        assertTrue(SemanticOptions.supports(item.id))
+        assertEquals("导出 ICS", item.label)
+        listOf("活动提醒", "闹钟", "截止", "备忘", "完成状态", "原生备份")
+            .forEach { assertTrue("ICS warning must include $it", item.detail.contains(it)) }
+    }
 }

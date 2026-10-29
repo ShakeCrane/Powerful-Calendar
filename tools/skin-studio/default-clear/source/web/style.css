@@ -152,8 +152,10 @@ button:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outl
 #monthPickerForm input,#monthPickerForm select{min-height:44px;padding:8px;border:1px solid var(--sep);border-radius:10px;background:var(--fill-1);color:inherit;font:inherit}
 .agenda-event{display:block;text-align:left;width:100%;min-height:46px;padding:12px 10px;
  border:0;border-bottom:1px solid var(--sep);background:transparent}
-.optionRow{display:block;width:100%;text-align:left;background:var(--bg-elevated);
- border:0;border-bottom:1px solid var(--sep);padding:14px;color:var(--label)}
+.optionRow{display:flex;flex-direction:column;gap:5px;width:100%;text-align:left;
+ background:var(--bg-elevated);border:0;border-bottom:1px solid var(--sep);
+ padding:14px;color:var(--label)}
+.optionDescription{color:var(--label-2);font-size:12px;font-weight:400;line-height:1.4}
 
 /* Keep the interactive AI composer above the floating tabbar at every viewport height. */
 #aiPage:not([hidden]){display:flex;flex-direction:column;

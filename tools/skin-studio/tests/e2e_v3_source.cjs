@@ -470,6 +470,32 @@ async function main(){
         return {monthImportOptions:true,legacyMigrationOption:true,clicked:true};
       })()`});
     if(legacyOption.exceptionDetails)throw Error(legacyOption.exceptionDetails.exception?.description || legacyOption.exceptionDetails.text);
+    const icsExportOption=await call("Runtime.evaluate",{contextId:world.executionContextId,
+      awaitPromise:true,returnByValue:true,expression:`(async()=>{
+        const wait=async(fn,m)=>{for(let i=0;i<150;i++){if(fn())return;await new Promise(r=>setTimeout(r,100))}throw Error(m)};
+        await wait(()=>!document.querySelector('#extraOptions').hidden,'data options did not remain open');
+        const option=document.querySelector('[data-action="invokeOption"][data-option-id="calendar.export.ics"]');
+        if(!option||!option.textContent.includes('导出 ICS'))throw Error('ICS export option missing');
+        const detail=option.querySelector('.optionDescription')?.textContent||'';
+        for(const term of ['活动提醒','闹钟','截止','备忘','原生备份'])
+          if(!detail.includes(term))throw Error('ICS loss warning missing: '+term);
+        option.click();
+        return {visible:true,lossWarningVisible:true,clicked:true};
+      })()`});
+    if(icsExportOption.exceptionDetails)throw Error(icsExportOption.exceptionDetails.exception?.description || icsExportOption.exceptionDetails.text);
+    const icsExportMock=await call("Runtime.evaluate",{expression:`(async()=>{
+      for(let i=0;i<150;i++){
+        if(document.querySelector('#bridgeLog').textContent.includes('ICS 导出请求仅模拟到达')){
+          const log=document.querySelector('#bridgeLog').textContent;
+          if(!log.includes('未创建文件或读取真实事件'))throw Error('ICS export Mock must disclose its non-writing boundary');
+          return {hostRequestReceived:true,fileCreated:false,calendarRead:false};
+        }
+        await new Promise(r=>setTimeout(r,100));
+      }
+      throw Error('ICS export option did not reach Preview Mock Host');
+    })()`,awaitPromise:true,returnByValue:true});
+    if(icsExportMock.exceptionDetails)throw Error(icsExportMock.exceptionDetails.exception?.description || icsExportMock.exceptionDetails.text);
+    console.log("BROWSER ICS EXPORT OPTION MOCK PASS",JSON.stringify(icsExportOption.result.value),JSON.stringify(icsExportMock.result.value));
     const legacyMock=await call("Runtime.evaluate",{expression:`(async()=>{
       for(let i=0;i<150;i++){
         if(document.querySelector('#bridgeLog').textContent.includes('迁移请求仅模拟到达')){

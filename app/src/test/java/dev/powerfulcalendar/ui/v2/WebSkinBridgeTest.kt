@@ -46,6 +46,8 @@ class WebSkinBridgeTest {
             """{"version":1,"type":"action","payload":{"name":"invokeOption","id":"calendar.import.file"}}"""))
         assertEquals(WebSkinAction.InvokeOption("calendar.import.system"), decodeBridgeAction(
             """{"version":1,"type":"action","payload":{"name":"invokeOption","id":"calendar.import.system"}}"""))
+        assertEquals(WebSkinAction.InvokeOption("calendar.export.ics"), decodeBridgeAction(
+            """{"version":1,"type":"action","payload":{"name":"invokeOption","id":"calendar.export.ics"}}"""))
         assertEquals(WebSkinAction.InvokeOption("data.legacy.migrate"), decodeBridgeAction(
             """{"version":1,"type":"action","payload":{"name":"invokeOption","id":"data.legacy.migrate"}}"""))
         assertNull(decodeBridgeAction(
