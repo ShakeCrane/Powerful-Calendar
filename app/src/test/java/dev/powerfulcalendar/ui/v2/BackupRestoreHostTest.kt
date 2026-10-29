@@ -13,8 +13,11 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
 import androidx.core.app.ActivityOptionsCompat
+import dev.powerfulcalendar.core.BackupEnvelope
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.TemporalKind
@@ -237,6 +240,72 @@ class BackupRestoreHostTest {
         assertTrue(store.all().isEmpty())
     }
 
+    @Test fun legacyFlatV2RequiresExplicitConsentAndCancelDoesNotWrite() {
+        val legacyBackup = createLegacyFlatV2Backup()
+        val inputUri = Uri.parse("content://$namespace/legacy-unverified.json")
+        shadowOf(ui.activity.contentResolver).registerInputStreamSupplier(inputUri) {
+            ByteArrayInputStream(legacyBackup.toString().toByteArray(Charsets.UTF_8))
+        }
+        val before = captureStoreState()
+        showApp()
+
+        launchBackupRestore()
+        assertTrue(resultRegistry.dispatch(inputUri))
+        ui.waitUntil(20_000) {
+            ui.onAllNodesWithText("恢复早期格式备份？", substring = true)
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+
+        assertTrue(ui.onAllNodesWithText("没有 SHA-256 或 lineageId", substring = true)
+            .fetchSemanticsNodes().isNotEmpty())
+        assertTrue(ui.onAllNodesWithText("确认来源", substring = true)
+            .fetchSemanticsNodes().isNotEmpty())
+        assertEquals("showing the consent dialog must not persist imported state", before,
+            captureStoreState())
+
+        ui.onNodeWithText("取消").performClick()
+        ui.waitForIdle()
+        assertEquals("canceling legacy consent must leave the empty target unchanged", before,
+            captureStoreState())
+        assertFalse(store.all().any { it.title == "Restored formal alarm" })
+    }
+
+    @Test fun confirmedLegacyFlatV2RestoresUnderANewLineage() {
+        val legacyBackup = createLegacyFlatV2Backup()
+        assertFalse("flat v2 must not carry a lineage id", legacyBackup.has("storeLineageId"))
+        val sourceEnvelopeLineage = sourceStore.exportBackup().getString("storeLineageId")
+        val emptyTargetLineage = store.exportBackup().getString("storeLineageId")
+        val inputUri = Uri.parse("content://$namespace/legacy-consented.json")
+        shadowOf(ui.activity.contentResolver).registerInputStreamSupplier(inputUri) {
+            ByteArrayInputStream(legacyBackup.toString().toByteArray(Charsets.UTF_8))
+        }
+        showApp()
+
+        launchBackupRestore()
+        assertTrue(resultRegistry.dispatch(inputUri))
+        ui.waitUntil(20_000) {
+            ui.onAllNodesWithText("恢复早期格式备份？", substring = true)
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        ui.onNodeWithText("仍要恢复").performClick()
+
+        ui.waitUntil(30_000) {
+            ui.onAllNodesWithText("旧格式备份已恢复（未验证完整性）", substring = true)
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        assertEquals("Restored formal alarm", store.all().single().title)
+        assertEquals(2L, store.draftCount())
+        assertEquals("Pending restored memo", store.pendingDrafts().single().form.title)
+        val restoredLineage = store.exportBackup().getString("storeLineageId")
+        assertTrue("restored flat data must not claim the source Envelope lineage",
+            restoredLineage != sourceEnvelopeLineage)
+        assertTrue("accepted flat data must receive a distinct target lineage",
+            restoredLineage != emptyTargetLineage)
+        assertTrue("the UI must disclose that this restore was unverified", ui.onAllNodesWithText(
+            "未验证完整性", substring = true
+        ).fetchSemanticsNodes().isNotEmpty())
+    }
+
     private fun createSourceBackup(): JSONObject {
         val zone = ZoneId.of("UTC")
         val start = Instant.parse("2035-01-01T09:00:00Z").toEpochMilli()
@@ -254,6 +323,21 @@ class BackupRestoreHostTest {
             zoneId = zone.id
         ))
         return sourceStore.exportBackup()
+    }
+
+    private fun createLegacyFlatV2Backup(): JSONObject {
+        val payload = backup.getJSONObject("payload")
+        return JSONObject().apply {
+            put("format", "powercal-native")
+            put("version", 2)
+            put("exportedMs", 1_893_456_000_000L)
+            payload.keys().forEach { key ->
+                if (key != "nextSeq" && key != "nextOrder" &&
+                    key !in BackupEnvelope.OPTIONAL_TABLES
+                ) put(key, payload.get(key))
+            }
+            put("nextSeq", payload.getLong("nextSeq"))
+        }
     }
 
     private fun showApp() {
