@@ -46,7 +46,9 @@ object LegacyImporter {
                 "SELECT name FROM sqlite_master WHERE type='table' AND name='events'", null
             ).use { it.moveToFirst() }
             if (!hasTable) {
-                return Result(available = true, batchId = batchId, warnings = listOf("旧版数据库没有 events 表"))
+                val warning = "旧版数据库没有 events 表"
+                store.finishMigration(batchId, listOf(warning))
+                return Result(available = true, batchId = batchId, warnings = listOf(warning))
             }
             legacy.rawQuery(
                 """SELECT id,title,start_ms,end_ms,notes,location,priority,reminder_minutes,

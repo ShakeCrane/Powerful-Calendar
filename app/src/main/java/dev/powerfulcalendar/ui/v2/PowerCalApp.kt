@@ -1339,6 +1339,7 @@ fun PowerCalApp(store: PowerStore, nativeRecoverySignal: Int = 0) {
                         ) scope.launch { importSystemCalendar() }
                         else calendarPermission.launch(Manifest.permission.READ_CALENDAR)
                     }
+                    action.id == "data.legacy.migrate" -> confirmingLegacy = true
                     else -> Unit
                 }
                 is WebSkinAction.PanTimeline -> {

@@ -457,6 +457,32 @@ async function main(){
       return {deckConversion:'ACTIVITY→DEADLINE',formalConversion:'ACTIVITY→ALARM',key};
     })()`});
     if(conversion.exceptionDetails)throw Error(conversion.exceptionDetails.exception?.description || conversion.exceptionDetails.text);
+    const legacyOption=await call("Runtime.evaluate",{contextId:world.executionContextId,
+      awaitPromise:true,returnByValue:true,expression:`(async()=>{
+        const wait=async(fn,m)=>{for(let i=0;i<150;i++){if(fn())return;await new Promise(r=>setTimeout(r,100))}throw Error(m)};
+        document.querySelector('.clear-tabbar [data-action="month"]').click();
+        await wait(()=>!document.querySelector('#monthPage').hidden,'Month page did not open');
+        document.querySelector('[data-local="options"]').click();
+        await wait(()=>!document.querySelector('#extraOptions').hidden,'Month import options did not open');
+        const option=document.querySelector('[data-action="invokeOption"][data-option-id="data.legacy.migrate"]');
+        if(!option)throw Error('legacy migration option missing from Host option projection');
+        option.click();
+        return {monthImportOptions:true,legacyMigrationOption:true,clicked:true};
+      })()`});
+    if(legacyOption.exceptionDetails)throw Error(legacyOption.exceptionDetails.exception?.description || legacyOption.exceptionDetails.text);
+    const legacyMock=await call("Runtime.evaluate",{expression:`(async()=>{
+      for(let i=0;i<150;i++){
+        if(document.querySelector('#bridgeLog').textContent.includes('迁移请求仅模拟到达')){
+          const log=document.querySelector('#bridgeLog').textContent;
+          if(!log.includes('未读取、写入或删除任何数据库'))throw Error('migration preview did not disclose non-writing behavior');
+          return {hostRequestReceived:true,databaseRead:false,databaseWrite:false,databaseDelete:false};
+        }
+        await new Promise(r=>setTimeout(r,100));
+      }
+      throw Error('migration option did not reach Preview Mock Host');
+    })()`,awaitPromise:true,returnByValue:true});
+    if(legacyMock.exceptionDetails)throw Error(legacyMock.exceptionDetails.exception?.description || legacyMock.exceptionDetails.text);
+    console.log("BROWSER LEGACY MIGRATION OPTION MOCK PASS",JSON.stringify(legacyOption.result.value),JSON.stringify(legacyMock.result.value));
     const cancelled=await call("Runtime.evaluate",{awaitPromise:true,returnByValue:true,expression:`(async()=>{
       for(let i=0;i<150;i++){
         const approval=document.querySelector('#mockApproval');

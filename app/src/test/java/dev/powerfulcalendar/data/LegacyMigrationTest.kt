@@ -15,6 +15,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import java.security.MessageDigest
 import java.util.UUID
 
 /**
@@ -90,6 +91,33 @@ class LegacyMigrationTest {
         }
     }
 
+    private fun createLegacyDatabaseWithoutEvents() {
+        val db = SQLiteDatabase.openOrCreateDatabase(legacyPath, null)
+        db.execSQL("CREATE TABLE unrelated_metadata (value TEXT NOT NULL)")
+        db.close()
+    }
+
+    private fun migrationCounts(): Pair<Int, Int> {
+        val path = context.getDatabasePath(store.databaseName)
+        val db = SQLiteDatabase.openDatabase(path.path, null, SQLiteDatabase.OPEN_READONLY)
+        return try {
+            db.rawQuery(
+                "SELECT COUNT(*), COALESCE(SUM(CASE WHEN finished_ms IS NULL THEN 1 ELSE 0 END), 0) " +
+                    "FROM migrations WHERE source=?",
+                arrayOf(LegacyImporter.SOURCE)
+            ).use { cursor ->
+                check(cursor.moveToFirst())
+                cursor.getInt(0) to cursor.getInt(1)
+            }
+        } finally {
+            db.close()
+        }
+    }
+
+    private fun legacySha256(): String = MessageDigest.getInstance("SHA-256")
+        .digest(legacyPath.readBytes())
+        .joinToString("") { "%02x".format(it) }
+
     @Test
     fun migrationImportsOnceAndLeavesTheOldFileIntact() {
         createLegacyDatabase(rows = 2)
@@ -119,6 +147,30 @@ class LegacyMigrationTest {
         assertFalse(result.available)
         assertFalse(legacyPath.exists())
         assertEquals(0, store.all().size)
+    }
+
+    @Test
+    fun missingEventsTableClosesMigrationBatchAndIsSafeToRetry() {
+        createLegacyDatabaseWithoutEvents()
+        val originalHash = legacySha256()
+
+        val first = LegacyImporter.migrate(context, store)
+        assertTrue(first.available)
+        assertEquals(listOf("旧版数据库没有 events 表"), first.warnings)
+        assertEquals(1 to 0, migrationCounts())
+        assertEquals(listOf("旧版数据库没有 events 表"), store.migrationSummary(first.batchId)?.third)
+        assertTrue(store.all().isEmpty())
+        assertEquals(0L, store.identityCount())
+        assertEquals(1L, store.nextSequencePreview())
+
+        val second = LegacyImporter.migrate(context, store)
+        assertTrue(second.available)
+        assertEquals(listOf("旧版数据库没有 events 表"), second.warnings)
+        assertEquals(2 to 0, migrationCounts())
+        assertTrue(store.all().isEmpty())
+        assertEquals(0L, store.identityCount())
+        assertEquals(1L, store.nextSequencePreview())
+        assertEquals(originalHash, legacySha256())
     }
 
     @Test

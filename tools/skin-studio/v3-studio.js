@@ -711,7 +711,9 @@ function simulatedState(){
   ];
   const items=[
     {id:"calendar.import.file",label:"导入日历文件",detail:"本地优先",icon:"file",enabled:scenario!=="locked"},
-    {id:"calendar.import.system",label:"从系统日历导入",detail:"静态快照",icon:"calendar",enabled:scenario!=="locked"}
+    {id:"calendar.import.system",label:"从系统日历导入",detail:"静态快照",icon:"calendar",enabled:scenario!=="locked"},
+    {id:"data.legacy.migrate",label:"迁移旧版 PowerCal 数据",
+      detail:"Android 宿主确认后只读导入；旧数据库文件保留",icon:"migration",enabled:scenario!=="locked"}
   ];
   if(scenario==="future")items.push({
     id:"calendar.import.future",label:"新功能：导入课程表",
@@ -1844,6 +1846,10 @@ function onSkinAction(message){
     }
     if(name==="invokeOption"&&$("scenario").value==="locked"){
       logAction("锁定状态拒绝执行选项");return;
+    }
+    if(name==="invokeOption"&&p.id==="data.legacy.migrate"){
+      logAction("Preview Mock：迁移请求仅模拟到达；未读取、写入或删除任何数据库。Android 需经宿主确认。");
+      return;
     }
     logAction("模拟宿主收到："+name+
       (name==="zoomTimeline"?" · "+p.direction+" · "+mockHours+" 小时":"")+

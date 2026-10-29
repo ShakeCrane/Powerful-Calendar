@@ -147,6 +147,11 @@ envelope and known fields only:
   those checks.
 - `invokeOption` only accepts registered host IDs. When AI/editor writes
   are locked, option rows are disabled in state and invocation is denied.
+- `data.legacy.migrate` is a Host-owned migration request. It opens the existing
+  native confirmation before accessing the legacy database; the importer opens
+  that source read-only, keeps the file, and records a finished migration batch
+  even when the source has no `events` table. A skin cannot trigger migration
+  without that confirmation.
 - Existing `editor.patch` and `deck.patch` accept the semantic field `kind`
   with exactly one of `ALARM`, `ACTIVITY`, `DEADLINE`, or `MEMO`. The Host
   applies the frozen `TemporalConversion` rules and returns the updated form;

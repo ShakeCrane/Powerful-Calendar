@@ -44,6 +44,8 @@ class WebSkinBridgeTest {
             """{"version":1,"type":"action","payload":{"name":"deleteEvent"}}"""))
         assertEquals(WebSkinAction.InvokeOption("calendar.import.file"), decodeBridgeAction(
             """{"version":1,"type":"action","payload":{"name":"invokeOption","id":"calendar.import.file"}}"""))
+        assertEquals(WebSkinAction.InvokeOption("data.legacy.migrate"), decodeBridgeAction(
+            """{"version":1,"type":"action","payload":{"name":"invokeOption","id":"data.legacy.migrate"}}"""))
         assertNull(decodeBridgeAction(
             """{"version":1,"type":"action","payload":{"name":"invokeOption","id":"untrusted.delete"}}"""))
         assertNull(decodeBridgeAction(

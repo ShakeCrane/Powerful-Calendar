@@ -384,9 +384,17 @@ class WebSkinHostProjectionTest {
         val group = parent.copy(items = parent.items + sibling)
         val output = SemanticOptions.toJson(enabled = false, collection = listOf(group))
         val entries = output.getJSONObject(0).getJSONArray("items")
-        assertEquals(3, entries.length())
-        assertEquals("calendar.import.future", entries.getJSONObject(2).getString("id"))
-        assertFalse(entries.getJSONObject(2).getBoolean("enabled"))
+        assertEquals(4, entries.length())
+        assertEquals("calendar.import.future", entries.getJSONObject(3).getString("id"))
+        assertFalse(entries.getJSONObject(3).getBoolean("enabled"))
         assertFalse(SemanticOptions.supports("calendar.import.future"))
+    }
+
+    @Test fun legacyMigrationOptionIsHostRegisteredAndExplainsReadOnlyImport() {
+        val item = SemanticOptions.groups.flatMap { it.items }
+            .single { it.id == "data.legacy.migrate" }
+        assertTrue(SemanticOptions.supports(item.id))
+        assertTrue(item.detail.contains("只读导入"))
+        assertTrue(item.detail.contains("旧数据库文件保留"))
     }
 }

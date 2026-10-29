@@ -25,7 +25,9 @@ internal object SemanticOptions {
     val groups = listOf(
         SemanticOptionGroup("calendar.import", "导入", listOf(
             SemanticOption("calendar.import.file", "导入日历文件", "选择文件，由本地程序优先处理", "file"),
-            SemanticOption("calendar.import.system", "从系统日历导入", "读取当前静态快照，不同步", "calendar")
+            SemanticOption("calendar.import.system", "从系统日历导入", "读取当前静态快照，不同步", "calendar"),
+            SemanticOption("data.legacy.migrate", "迁移旧版 PowerCal 数据",
+                "经 Android 宿主确认后只读导入；旧数据库文件保留", "migration")
         ))
     )
     private val allowed = groups.flatMap { it.items }.map { it.id }.toSet()
