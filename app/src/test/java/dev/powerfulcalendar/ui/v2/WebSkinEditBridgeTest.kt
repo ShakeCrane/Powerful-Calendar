@@ -845,6 +845,45 @@ class WebSkinEditBridgeTest {
         assertEquals("conflict", service.execute(command).getString("status"))
     }
 
+    @Test fun formalEditorSaveReviewRejectsChangedRevisionAndKeepsTheProposal() = runBlocking {
+        val original = commitFormal(DraftForm(
+            kind = TemporalKind.MEMO,
+            title = "formal baseline",
+            zoneId = "UTC"
+        ))
+        assertEquals("opened", service.execute(WebEditCommand.OpenEvent(
+            request(), original.eventSeq, original.revision
+        )).getString("status"))
+        val sessionId = service.snapshot().getJSONObject("editor").getString("sessionId")
+        assertEquals("edited", service.execute(WebEditCommand.PatchEvent(
+            request(), sessionId, "title", "unapproved proposal"
+        )).getString("status"))
+
+        val save = WebEditCommand.SaveEvent(request(), sessionId)
+        assertEquals("confirmation_required", service.execute(save).getString("status"))
+        val review = requireNotNull(service.pendingWriteReview)
+        val commitsBeforeConcurrentChange = store.commitCount()
+        assertTrue(store.setCompleted(
+            original.eventSeq, "single", completed = true, expectedRevision = original.revision
+        ))
+
+        val reply = service.resolveFormalWriteReview(review.token, approved = true)
+
+        assertEquals("conflict", reply.getString("status"))
+        val latest = requireNotNull(store.get(original.eventSeq))
+        assertEquals(original.revision + 1, latest.revision)
+        assertEquals(original.title, latest.title)
+        assertEquals(setOf("single"), latest.completedKeys)
+        assertEquals(commitsBeforeConcurrentChange + 1, store.commitCount())
+        assertEquals(1L, store.identityCount())
+        assertTrue(store.pendingDraftsFor(original.eventSeq).isEmpty())
+
+        val editor = service.snapshot().getJSONObject("editor")
+        assertTrue(editor.getBoolean("open"))
+        assertEquals("unapproved proposal", editor.getJSONObject("form").getString("title"))
+        assertEquals("conflict", service.execute(save).getString("status"))
+    }
+
     @Test fun formalEditorKindConversionRequiresHostReviewAndKeepsIdentity() = runBlocking {
         val card = store.newDraft(DraftForm(kind = TemporalKind.ALARM, title = "Wake up",
             startText = "2026-10-22 07:30", reminderMinutes = -1, zoneId = "UTC"))

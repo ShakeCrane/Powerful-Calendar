@@ -119,6 +119,90 @@ class PowerStoreTest {
     }
 
     @Test
+    fun directFormalEditRejectsConcurrentRevisionAndKeepsTheProposalInMemory() {
+        val created = store.newDraft(DraftForm(
+            kind = TemporalKind.MEMO,
+            title = "formal baseline",
+            zoneId = zone.id
+        ))
+        assertTrue(commit(created) is PowerStore.CommitOutcome.Committed)
+        val original = requireNotNull(store.get(created.eventSeq))
+        val session = EditSession.open(store, original)
+        try {
+            session.edit(session.form.copy(title = "unpublished editor proposal"))
+            assertTrue(session.meaningfulDiff)
+            assertTrue(store.hasHumanEditor())
+
+            // Completion tracking is an independent versioned write and may win the race first.
+            assertTrue(store.setCompleted(
+                original.eventSeq, "single", completed = true, expectedRevision = original.revision
+            ))
+            val concurrent = requireNotNull(store.get(original.eventSeq))
+            val commitCountAfterConcurrentWrite = store.commitCount()
+
+            val result = session.save()
+
+            assertTrue(result is PowerStore.DirectEditOutcome.Conflict)
+            assertEquals("unpublished editor proposal", session.form.title)
+            assertTrue(session.meaningfulDiff)
+            assertEquals("formal baseline", concurrent.title)
+            assertEquals(concurrent, store.get(original.eventSeq))
+            assertEquals(original.revision + 1, concurrent.revision)
+            assertEquals(setOf("single"), concurrent.completedKeys)
+            assertEquals(commitCountAfterConcurrentWrite, store.commitCount())
+            assertTrue(store.pendingDraftsFor(original.eventSeq).isEmpty())
+            assertEquals(1L, store.identityCount())
+            assertTrue(store.hasHumanEditor())
+        } finally {
+            session.close()
+        }
+        assertFalse(store.hasHumanEditor())
+    }
+
+    @Test
+    fun directFormalEditCheckpointResumesAfterStoreReopen() {
+        val created = store.newDraft(activityForm("formal before checkpoint"))
+        assertTrue(commit(created) is PowerStore.CommitOutcome.Committed)
+        val original = requireNotNull(store.get(created.eventSeq))
+        val nextSequence = store.nextSequencePreview()
+        val session = EditSession.open(store, original)
+        try {
+            session.edit(session.form.copy(title = "formal checkpoint to resume"))
+            val checkpoint = requireNotNull(session.checkpoint())
+            assertEquals(original.eventSeq, checkpoint.eventSeq)
+            assertEquals(original, store.get(original.eventSeq))
+            assertEquals(nextSequence, store.nextSequencePreview())
+        } finally {
+            session.close()
+        }
+
+        val database = store.databaseName
+        store.close()
+        store = PowerStore(context, database)
+        assertEquals(original, store.get(original.eventSeq))
+        assertEquals(1, store.pendingDraftsFor(original.eventSeq).size)
+
+        val resumed = EditSession.open(store, requireNotNull(store.get(original.eventSeq)))
+        try {
+            assertEquals("formal checkpoint to resume", resumed.form.title)
+            assertTrue(resumed.meaningfulDiff)
+            val saved = resumed.save()
+            assertTrue(saved is PowerStore.DirectEditOutcome.Saved && saved.changed)
+        } finally {
+            resumed.close()
+        }
+
+        val after = requireNotNull(store.get(original.eventSeq))
+        assertEquals(original.eventSeq, after.eventSeq)
+        assertEquals(original.revision + 1, after.revision)
+        assertEquals("formal checkpoint to resume", after.title)
+        assertTrue(store.pendingDraftsFor(original.eventSeq).isEmpty())
+        assertEquals(1L, store.identityCount())
+        assertEquals(nextSequence, store.nextSequencePreview())
+        assertEquals(2L, store.commitCount())
+    }
+
+    @Test
     fun skippingOneRecurringOccurrencePersistsWithoutChangingTheSeriesAcrossRestart() {
         val shanghai = ZoneId.of("Asia/Shanghai")
         val firstLocal = LocalDateTime.of(2026, 10, 20, 7, 30)
