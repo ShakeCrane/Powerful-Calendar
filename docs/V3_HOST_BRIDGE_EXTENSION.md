@@ -206,6 +206,12 @@ Store access or formal-write authority:
   opened through `deck.create` includes `transient:true`. Clear hides persisted
   deck search, card selection and navigation for the transient editor. This
   marker is descriptive state, not an authorization token.
+- Persistent deck state also projects `completion:null|{published,discarded,conflicts}`
+  and `notice`. A completion summary is emitted only after the
+  current deck session empties the queue; it is presentation state, not
+  a durable receipt. `lastDiscardId` and `deck.undo` are session-scoped, matching
+  Native `DeckController.open()` behavior. The discarded draft row remains in
+  Store across restart, but reopening a deck clears that session's undo affordance.
 - All commands remain behind the existing `host.action` gate; projections
   remain behind `host.read`. Clear source and CSS are editable in Skin Studio.
   Studio Preview implements these commands against seeded, non-writing Mock

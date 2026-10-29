@@ -1,5 +1,14 @@
 # Core freeze progress
 
+## Separation — Clear 草稿卡组生命周期与完成态 `S0-DK-02`（2026-10-29，PARTIAL / unsigned）
+
+- 根因：Bridge 未投影 `DeckController.State.completion/notice`，Clear 空队列仍显示无目标“暂存/丢弃”；Studio Preview Mock 的 undo 恒为 missing，commit/discard 直接关闭卡组，不能回归 Native/Core 生命周期。新增 Bridge 覆盖 Store checkpoint 后关闭数据库、重建 Store/Controller/Bridge 并恢复内容；另验证同会话撤销有效、关闭并重开后撤销身份清空而 DISCARDED 行仍留在 Store。
+- 修复：Bridge 补齐持久 deck 的 `completion`/`notice` 投影，transient 会话返回 null；Clear 呈现空队列/完成摘要并隐藏无目标操作；Preview Mock 建立非写入的 flush/reopen、模拟 Host 审核、discard/undo/完成流及专用浏览器 E2E。Mock 不执行真实 Host 发布校验；冲突计数未建模，不用作验收证据。Bridge 合同明确 undo 只在当前 deck 会话内有效。
+- 聚焦 `WebSkinEditBridgeTest`、`DeckControllerTest`、`PowerStoreTest` **146/146 PASS**，日志 `.local/android-test/reports/separation-s0-dk-02-20261029/gradle-focused-final.log` SHA-256 `697D2E82EE84BCDFF5B5358EEA198139EBEE6FFDC7B295DDAF3E46DFD1FDE96C`。完整离线 Gradle **639/639 测试、84 suites、0 failures/errors/skips、88/88 tasks PASS**；源码边界、Debug/AndroidTest APK 构建和 lint 通过。全量日志 SHA-256 `55112D6CA954DC0153B5A3550B5E7A11E09289FDE4339F97D4A7B470C4B72B29`。
+- Skin Studio Python **61/61 PASS**（最终日志 SHA-256 `C38E56CA4C241AD9DFA2A3B56B3E76DB9DC1A57973795702D6A5F5D833E8953A`）；Edge 156 Preview 生命周期 E2E PASS（日志 SHA-256 `13F4F2747BA6332363274503E40A8F524C0D01150A70764EE5C29D6439794BD1`），DK-01 搜索导航和 DK-03 冲突恢复回归 E2E 均 PASS。JavaScript `node --check`、`git diff --check` 通过。
+- Clear 包 9 files / 389,653 bytes，SHA-256 `9ad7425d1963a11c0be11214c36ee73f7c597456dfba62378d4943613b0a7c55`；APK 内资源校验一致。Debug APK SHA-256 `9CA66191D3252DB6325D76BE62F1508E18798D2FBB71DC1E70E8CA1B508EA5F9`；AndroidTest APK SHA-256 `33FC27215E84DE4D2BFCC919C1D46854879AB4A49FE1CAA0A1C45778A0B6DC31`（仅构建）。完成态截图 SHA-256 `587792B7273CD110FC3D449DB4DD18FFCFE5BEE738B2B0F978B7C55E657BE723`。
+- Android `ON_STOP`、Activity/WebView 重建与进程重启 **NOT TESTED**；本机 API 35 缺失、仅有 API 36 SDK、没有 Emulator 二进制，ADB 列表为空。实体设备验收仍由用户执行。实现/JVM/桌面 Preview 通过，`S0-DK-02` 保持 **PARTIAL / unsigned**。代码提交 `157b1f08fcc5c9742a2b6226e3cc31374afdadde` 已推送。独立报告见[PC-ISSUE-SEPARATION-DRAFT-DECK-LIFECYCLE](../issues/PC-ISSUE-SEPARATION-DRAFT-DECK-LIFECYCLE.md)。
+
 ## Separation — Clear 冲突审查与已删除事件恢复 `S0-DK-03`（2026-10-29，PARTIAL / unsigned）
 
 - 根因：Bridge 只投影冲突/恢复布尔值，Clear 没有冲突复核、墓碑浏览和恢复操作。Store 没有有界只读墓碑页。复核还存在 TOCTOU 窗口：Host 虽重新读取 revision，Controller 之后仍以 `approveStale=true` 无条件提交。Clear 恢复渲染引用未定义的 `args`；长墓碑列表遮住恢复快照；焦点保护把按钮误当作输入控件，导致分页后旧按钮状态不刷新。
