@@ -1,7 +1,7 @@
 # PC-ISSUE-SEPARATION-CLEAR-GREEDY-LABEL-FOLDING — Clear 时间轴标题贪心折叠
 
 - 日期：2026-10-29
-- 状态：**PARTIAL**。Clear 源码、确定性算法、Skin Studio 往返与 Edge Studio Mock 的窄范围视觉/交互回归通过；Android Gradle/API 36 门禁 **BLOCKED**，Android WebView 与 Native/Clear 完整 parity **NOT TESTED**。
+- 状态：**PARTIAL**。Clear 源码、确定性算法、Skin Studio 往返与 Edge Studio Mock 的窄范围视觉/交互回归通过。初次 Android Gradle/API 36 门禁 BLOCKED；后续在实现代码对应提交 `1d78353e0866c7bc19c6a555fb65cbc454aea1f2` 的完整离线 Gradle 门禁已 PASS。Android WebView 与 Native/Clear 完整 parity 仍 **NOT TESTED**。
 - 工作树：`codex/separation-s0-inventory`
 - 基线：`2a02ae71fbeb8b50e2cb099533665e66243a2e53`
 - 实现/回归/报告提交：`c6b6f7d10e068ee0d4d292505f643b0fab4d1164` (`feat(分离): 实现 Clear 时间轴标题贪心折叠`)
@@ -66,7 +66,7 @@
 | `python tools/skin-studio/build_default_clear.py --verify` | **PASS**；9 files / 383,312 bytes |
 | `skin_studio.py validate ...powercal-clear-default.pcskin --json` | **PASS**；v3 schema，9 files |
 | `git diff --check` | **PASS** |
-| 完整 Gradle：source boundary、JVM、Debug APK、lint | **BLOCKED**；本地 SDK `E:\Project\Powerful-Calendar\.local\android-test\sdk` 缺少项目要求的 `platforms;android-36`，失败文本为 `Failed to find target with hash string 'android-36'` |
+| 初次完整 Gradle：source boundary、JVM、Debug APK、lint | **BLOCKED**；当时指定的本地 SDK `E:\Project\Powerful-Calendar\.local\android-test\sdk` 缺少项目要求的 `platforms;android-36`，失败文本为 `Failed to find target with hash string 'android-36'`。后续完整重跑结果见下方 Follow-up |
 | Android WebView / Android instrumentation / 模拟器 / 实体设备 | **NOT TESTED**；本轮没有安装、启动或清理任何设备/AVD |
 | Native 与 Clear 同场景完整 parity | **NOT TESTED** |
 
@@ -76,5 +76,14 @@
 
 - 本结论只证明 Clear 的独立 JavaScript 策略及 Edge Studio Mock 行为；Host/WebView 注入、Android WebView 字体和触摸、Native/Clear 等价及 OEM 表现没有设备证据。`S0-TL-05` 全 parity 不能签 PASS，分离/发布 cutover 不构成 GO。
 - 项目最低 WebView 若不提供 `Intl.Segmenter`，当前 fallback 使用 Unicode code point 迭代，对 ZWJ/组合字符簇的截断边界仍需验证或加强。
-- Android Gradle 门禁需要安装/配置 API 36 平台后重跑；此处不安装 SDK、不进行联网下载。
+- 后续完整 Gradle 门禁已通过；上面的 BLOCKED 是初次环境结果，不再是当前 Gradle/APK 构建阻塞。设备侧验收仍未完成。
 - 一次扩展 Mock 检查曾把固定占位编辑字段误当作完整事件标题断言，随后改为核实真实指针打开 `#301` 与完整 accessible name，并在 Edge 重跑通过；因此报告只认定打开事件和无障碍标题保留，不宣称 Mock 表单展示了原始标题。
+
+## Follow-up verification（2026-10-29）
+
+在同一 Clear 标题折叠实现代码树（后续实现提交 `1d78353e0866c7bc19c6a555fb65cbc454aea1f2`，包含本 Issue 的 `c6b6f7d`）上补做自动化门禁复验；本 follow-up 没有改动 S0-TL-05 生产源码：
+
+- 纯贪心策略 `node --test tools/skin-studio/tests/title-folding.unit.test.cjs`：**10/10 PASS**。日志 `.local/android-test/reports/separation-s0-timeline-drag/title-folding-followup-node-test.log`，SHA-256 `DFAF1719A43DE82014FB966D4392D5CE87C68A68E25FD37BAAF480995F1A06B4`。
+- `python tools/skin-studio/build_default_clear.py --verify`：**PASS**，9 files / 384,912 bytes，Clear 包 SHA-256 `D0D136EEF118DC52CE767E8416EC1BD3B3134F75302BC64C3D3ED4FCA5192BF9`。校验日志 SHA-256 `61EC37F0FA3F862E62CDFCC60D0DBBA1880377A41EACF3878E82BC928BFA6283`。
+- S0-TL-04 同一已提交代码树上的串行完整离线门禁 `:app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug --offline --rerun-tasks --no-daemon --max-workers=1 --console=plain`：**BUILD SUCCESSFUL，619/619 JVM tests、84 suites、0 failures/errors/skips、88/88 tasks**。这为包含本 Issue 皮肤资源的完整源码树补上了之前缺少的 Gradle/JVM/APK/lint 证据，不替代设备 WebView 行为验收。日志 `.local/android-test/reports/separation-s0-timeline-drag/gradle-full-serial-final.log` SHA-256 `EE72E74A2015EC85E414795A684797285197E5B259BAE8CD3BC2699078AA2652`。Debug / AndroidTest APK SHA-256 分别为 `8E5940F2B73703E76CB0778E849487EB8F9D8D1CD96787BE207D27BF8EEC9986` / `A9570307F3BDAD8F4336A48AD0868B22AB3DEE90CEEF95B858603BB08AF720AD`。
+- 本 follow-up 未执行 Android WebView/Instrumentation/实体设备测试。当前可用 SDK 没有独立 Emulator 程序和系统映像；共享 ADB daemon 启动失败，本轮没有对已知在线但归属不明的 `emulator-5582` 执行设备操作。Native/Clear 同场景 parity 仍 **NOT TESTED**；S0-TL-05 及分离 cutover 继续 **PARTIAL / NOT GO**。
