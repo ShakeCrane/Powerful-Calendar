@@ -81,3 +81,13 @@ Native `TodoProjection` 已生成排序后的 Memo 行，但 Host 只向 Clear �
 - 本修复没有改变 `TodoProjection` 的日期窗口、重复事项生成规则、完成筛选、提醒语义或 Store 数据。因而不替代对这些投影边界的独立 parity 验收。
 - lint 有 52 个 warning，0 个 error；本 Issue 未清理其他模块警告。
 - S0 与皮肤分离工作继续 **IN PROGRESS**。未切换默认皮肤、未移除 Native recovery，也未声称 Release QA/cutover GO。
+
+## Follow-up — Compose 分页回归的空闲同步（2026-10-29）
+
+复跑完整 Gradle 门禁时，`memoPagingContinuesTheSortedProjectionWithoutStoreWrites` 在第二页断言处超时。独立重跑可复现。诊断显示 Memo 页已投影 250/251 行，Host 收到 `LoadMoreMemo` 后 `stateRevision` 从 3 增至 4，但测试在 Compose 完成重组前开始读取 Host snapshot，仍看到 250 行。
+
+只在该集成测试的 `LoadMoreMemo` action 后加入 `ui.waitForIdle()`，没有修改生产分页逻辑。隔离用例随后 PASS；包含 251 项 Host 数据、Studio Mock occurrence toggle 新回归的完整离线门禁 **624/624 tests、84 suites、0 failures/errors/skips**，Debug 构建和 lint 通过。
+
+证据位于 `.local/android-test/reports/separation-s0-timeline-drag/memo-occurrence-toggle-cdp/`：`memo-paging-isolated-20261029.log` 记录首次失败；`memo-paging-revision-diagnostic-20261029.log` 记录 action 已执行但 Compose snapshot 未稳定；`memo-paging-idle-fix-focused-20261029.log` SHA-256 `C6C41B84FCBC7694C2DE838F665B62DD8B2F8DA7CFA5F1E99815AFC777DCD430` 记录修正后的隔离 PASS；`gradle-full-final-20261029.log` SHA-256 `352DBE0C2BBFEB5E270FE12B5B72D47845E7A9349A745414D3B1F9C87DB15142` 记录全量 PASS。
+
+测试同步修正独立提交 `1965f93030444cead1643c42cb8500ad89d9bb46`（`test(分离): 等待 Memo 分页状态刷新`），已推送。此结果只校正 Robolectric/Compose 测试观测时点，不扩大 Android WebView 或 Native/Clear parity 签核。
