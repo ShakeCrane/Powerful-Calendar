@@ -24,7 +24,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextClearance
@@ -34,7 +36,12 @@ import dev.powerfulcalendar.ai.AiChatHistoryStore
 import dev.powerfulcalendar.ai.AiFileFallbackConsent
 import dev.powerfulcalendar.ai.AiSettings
 import dev.powerfulcalendar.ai.AiSettingsStore
+import dev.powerfulcalendar.core.DraftOperation
+import dev.powerfulcalendar.core.DraftStatus
 import dev.powerfulcalendar.core.PowerStore
+import dev.powerfulcalendar.core.TemporalKind
+import dev.powerfulcalendar.interop.IcsImportPlanner
+import dev.powerfulcalendar.interop.ImportCheckpoint
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.After
@@ -107,7 +114,8 @@ class WebAiAttachmentFlowIntegrationTest {
         storage.deleteDatabase(databaseName)
         listOf(
             "powercal-ai", "powercal-file-ai-consent", "powercal-onboarding",
-            "powercal-ui", "powercal-skin-choice", "powercal-profile"
+            "powercal-ui", "powercal-skin-choice", "powercal-profile",
+            "powercal-import-checkpoints"
         ).forEach { storage.deleteSharedPreferences("$namespace-$it") }
         File(storage.cacheDir, namespace).deleteRecursively()
         PowerCalSkinRegistry.reset()
@@ -227,6 +235,158 @@ class WebAiAttachmentFlowIntegrationTest {
             assertFalse("an unresolved proposal must keep attachment controls locked",
                 WebSkinBridgeRuntime.state().getBoolean("chatAttachmentAvailable"))
         }
+    }
+
+    @Test
+    fun skinPickedIcsCreatesUserDraftsAndSameFileReimportIsIdempotent() {
+        val ics = """BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//PowerCal Test//ICS Import//EN
+BEGIN:VEVENT
+UID:powercal-s0-st13-kickoff
+DTSTART:20261101T010000Z
+DTEND:20261101T020000Z
+SUMMARY:Separation kickoff
+END:VEVENT
+BEGIN:VEVENT
+UID:powercal-s0-st13-review
+DTSTART:20261102T030000Z
+DTEND:20261102T033000Z
+SUMMARY:Parity review
+END:VEVENT
+END:VCALENDAR
+"""
+        val uri = Uri.parse("content://powercal-ics-test-$namespace/calendar.ics")
+        val sourceBytes = ics.toByteArray(Charsets.UTF_8)
+        val fingerprint = IcsImportPlanner.prepare(ics, ZoneId.of("UTC")).fingerprint
+        assertFalse("this isolated fixture must not configure an AI provider",
+            AiSettingsStore.load(context).configured)
+
+        ShadowContentResolver.registerProviderInternal(
+            requireNotNull(uri.authority), TestAttachmentProvider("calendar.ics", "text/calendar")
+        )
+        shadowOf(ui.activity.contentResolver).registerInputStreamSupplier(uri) {
+            sourceBytes.inputStream()
+        }
+
+        ui.activity.setContent {
+            CompositionLocalProvider(
+                LocalContext provides context,
+                LocalActivityResultRegistryOwner provides resultRegistryOwner
+            ) {
+                PowerCalTheme { PowerCalApp(store) }
+            }
+        }
+        ui.waitForIdle()
+        ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.Routed("ai")) }
+        ui.waitForIdle()
+
+        fun pickTheSameIcs() {
+            ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.PickAiFile) }
+            ui.waitForIdle()
+            assertTrue("Host must mark the attachment picker active",
+                WebSkinBridgeRuntime.state().getBoolean("chatAttachmentBusy"))
+            assertEquals(Intent.ACTION_OPEN_DOCUMENT, resultRegistry.lastIntent?.action)
+            assertEquals("*/*", resultRegistry.lastIntent?.type)
+            ui.runOnIdle { assertTrue(resultRegistry.dispatch(uri)) }
+            ui.waitUntil(20_000) {
+                store.pendingDrafts().size == 2 &&
+                    ui.onAllNodesWithContentDescription("保存并退出待处理")
+                        .fetchSemanticsNodes().isNotEmpty()
+            }
+        }
+
+        fun closeDeck() {
+            ui.onNodeWithContentDescription("保存并退出待处理").performClick()
+            ui.waitUntil(10_000) {
+                ui.onAllNodesWithContentDescription("保存并退出待处理")
+                    .fetchSemanticsNodes().isEmpty()
+            }
+        }
+
+        pickTheSameIcs()
+
+        val firstImport = store.pendingDrafts()
+        assertEquals(listOf("Separation kickoff", "Parity review"),
+            firstImport.map { it.form.title })
+        assertTrue("local ICS import must stage CREATE drafts",
+            firstImport.all { it.operation == DraftOperation.CREATE &&
+                it.status == DraftStatus.PENDING && it.form.kind == TemporalKind.ACTIVITY &&
+                it.form.source == "ics" })
+        assertEquals(2L, store.draftCount())
+        assertTrue("ICS import must not publish formal events", store.all().isEmpty())
+        assertEquals("draft creation must not create formal commit records", 0L, store.commitCount())
+
+        val matchingReceipt = ImportCheckpoint.recent(context)
+            .filter { it.fingerprint == fingerprint }
+        assertEquals("the local import must persist exactly one matching receipt",
+            1, matchingReceipt.size)
+        assertEquals(firstImport.map { it.draftId }, matchingReceipt.single().draftIds)
+        assertEquals(0, matchingReceipt.single().problemCount)
+        val afterFirstImport = counts()
+        val nextSequenceAfterFirstImport = store.nextSequencePreview()
+
+        closeDeck()
+        pickTheSameIcs()
+        closeDeck()
+
+        assertEquals("re-import must not create duplicate drafts", firstImport,
+            store.pendingDrafts())
+        assertEquals("re-import must not allocate identities or commit events",
+            afterFirstImport, counts())
+        assertEquals("re-import must not advance permanent event numbering",
+            nextSequenceAfterFirstImport, store.nextSequencePreview())
+        assertTrue("re-import must still leave formal events untouched", store.all().isEmpty())
+        val receiptsAfterRetry = ImportCheckpoint.recent(context)
+            .filter { it.fingerprint == fingerprint }
+        assertEquals("a retry updates the same receipt instead of appending another",
+            1, receiptsAfterRetry.size)
+        assertEquals(firstImport.map { it.draftId }, receiptsAfterRetry.single().draftIds)
+    }
+
+    @Test
+    fun skinPickedOversizedIcsIsRejectedBeforeAnyCalendarPersistence() {
+        val uri = Uri.parse("content://powercal-ics-test-$namespace/too-large.ics")
+        val sourceBytes = ByteArray(2_000_001) { 'X'.code.toByte() }
+        val before = counts()
+        val nextSequenceBefore = store.nextSequencePreview()
+        assertFalse("oversize fixture must not configure an AI provider",
+            AiSettingsStore.load(context).configured)
+
+        ShadowContentResolver.registerProviderInternal(
+            requireNotNull(uri.authority), TestAttachmentProvider("too-large.ics", "text/calendar")
+        )
+        shadowOf(ui.activity.contentResolver).registerInputStreamSupplier(uri) {
+            sourceBytes.inputStream()
+        }
+
+        ui.activity.setContent {
+            CompositionLocalProvider(
+                LocalContext provides context,
+                LocalActivityResultRegistryOwner provides resultRegistryOwner
+            ) {
+                PowerCalTheme { PowerCalApp(store) }
+            }
+        }
+        ui.waitForIdle()
+        ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.Routed("ai")) }
+        ui.waitForIdle()
+        ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.PickAiFile) }
+        ui.waitForIdle()
+        assertTrue(WebSkinBridgeRuntime.state().getBoolean("chatAttachmentBusy"))
+        assertEquals(Intent.ACTION_OPEN_DOCUMENT, resultRegistry.lastIntent?.action)
+        ui.runOnIdle { assertTrue(resultRegistry.dispatch(uri)) }
+        ui.waitUntil(20_000) {
+            !WebSkinBridgeRuntime.state().getBoolean("chatAttachmentBusy")
+        }
+
+        assertEquals("oversize input must not add drafts or formal events", before, counts())
+        assertEquals("rejected input must not allocate a permanent event identity",
+            nextSequenceBefore, store.nextSequencePreview())
+        assertTrue(store.pendingDrafts().isEmpty())
+        assertTrue(store.all().isEmpty())
+        assertTrue("rejected input must not create an import receipt",
+            ImportCheckpoint.recent(context).isEmpty())
     }
 
     @Test
