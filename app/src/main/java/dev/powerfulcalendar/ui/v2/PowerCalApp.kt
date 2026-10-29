@@ -226,6 +226,7 @@ fun PowerCalApp(
     var aiSession by remember { mutableStateOf<PowerStore.AiSession?>(null) }
     var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var message by remember { mutableStateOf<String?>(null) }
+    var backupRestoreBusy by remember { mutableStateOf(false) }
 
     // The Activity attempts to persist native selection independently of the Web layer.
     LaunchedEffect(nativeRecoverySignal, nativeRecoveryPersisted) {
@@ -237,6 +238,7 @@ fun PowerCalApp(
         }
     }
     var deckOpen by rememberSaveable { mutableStateOf(false) }
+    var deckOpening by remember { mutableStateOf(false) }
     var deckInitialId by rememberSaveable { mutableStateOf<Long?>(null) }
     var textDialogOpen by remember { mutableStateOf(false) }
     var ocrReviewText by remember { mutableStateOf<String?>(null) }
@@ -300,6 +302,12 @@ fun PowerCalApp(
     var confirmingLegacy by remember { mutableStateOf(false) }
     // Holds an early flat v2 file until the user explicitly accepts its unverified nature.
     var legacyRestoreText by remember { mutableStateOf<String?>(null) }
+    val backupRestoreAllowed = androidx.compose.runtime.rememberUpdatedState(
+        !aiLocked && editSession == null && !deckOpen && !deckOpening && newEventSession == null &&
+            !backupRestoreBusy && !confirmingLegacy
+    )
+    val semanticOptionsEnabled = !aiLocked && editSession == null && !deckOpen && !deckOpening &&
+        newEventSession == null && !backupRestoreBusy && !confirmingLegacy
 
     val initialCamera = remember { TimelineCoordinate.initialCamera(System.currentTimeMillis(), zone) }
     var anchorMillis by rememberSaveable { mutableLongStateOf(initialCamera.anchorMillis) }
@@ -386,10 +394,22 @@ fun PowerCalApp(
         withContext(Dispatchers.IO) { ReminderScheduler.reconcile(appContext, store) }
     }
 
-    suspend fun openDeckAt(draftId: Long?) {
-        withContext(Dispatchers.IO) { controller.open(draftId) }
-        deckInitialId = draftId
-        deckOpen = true
+    fun openDeckAt(draftId: Long?) {
+        if (deckOpening || deckOpen) return
+        deckOpening = true
+        scope.launch {
+            try {
+                withContext(Dispatchers.IO) { controller.open(draftId) }
+                deckInitialId = draftId
+                deckOpen = true
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                message = error.message ?: "无法打开待处理列表"
+            } finally {
+                deckOpening = false
+            }
+        }
     }
 
     /** Hardware-safe read: a crafted or corrupt file cannot exhaust memory before verification. */
@@ -407,15 +427,17 @@ fun PowerCalApp(
     ): Pair<PowerStore.RestoreReport, List<String>> {
         val report = withContext(Dispatchers.IO) { store.restoreBackup(parsed, allowLegacy) }
         val problems = mutableListOf<String>()
-        runCatching { reload() }.onFailure { problems += "界面刷新失败，请重启应用查看已恢复数据" }
         runCatching { reconcile() }.onFailure { problems += "提醒调度重建失败，请稍后重试" }
+        // Load diagnostics after reconciliation so the restored UI reflects the scheduler's
+        // final durable state (SCHEDULED/BLOCKED), matching the application startup order.
+        runCatching { reload() }.onFailure { problems += "界面刷新失败，请重启应用查看已恢复数据" }
         return report to problems
     }
 
     fun restoreMessage(report: PowerStore.RestoreReport, prefix: String): String = buildString {
         append(prefix)
         append("${report.objects} 个事件、${report.drafts} 张草稿、${report.commits} 条提交")
-        append("；调度已重建，旧授权与旧执行记录未恢复")
+        append("；提醒计划已重新核对，实际投递状态见“提醒可靠性”；旧授权与旧执行记录未恢复")
         report.warnings.firstOrNull()?.let { append("。").append(it) }
     }
 
@@ -1252,24 +1274,43 @@ fun PowerCalApp(
     val restoreBackup = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri ->
-        if (uri != null) scope.launch {
+        if (uri == null) {
+            backupRestoreBusy = false
+            WebSkinBridgeRuntime.stateRevision++
+        } else scope.launch {
             var text: String? = null
-            runCatching {
-                val loaded = readBackupText(uri)
-                text = loaded
-                val parsed = runCatching { JSONObject(loaded) }
-                    .getOrElse { throw IllegalArgumentException("备份文件不是有效 JSON") }
-                val (report, problems) = restoreAndRefresh(parsed, allowLegacy = false)
-                message = restoreMessage(report, "已恢复 ") + problems.joinToString("", "；", "") { it }
-            }.onFailure { error ->
-                when (error) {
-                    is LegacyBackupConsentRequired -> {
-                        legacyRestoreText = text
-                        message = "该备份是早期 flat v2 格式，缺少 SHA-256；需要你确认来源可信后才能恢复"
+            try {
+                runCatching {
+                    val loaded = readBackupText(uri)
+                    text = loaded
+                    val parsed = runCatching { JSONObject(loaded) }
+                        .getOrElse { throw IllegalArgumentException("备份文件不是有效 JSON") }
+                    val (report, problems) = restoreAndRefresh(parsed, allowLegacy = false)
+                    message = restoreMessage(report, "已恢复 ") + problems.joinToString("", "；", "") { it }
+                }.onFailure { error ->
+                    when (error) {
+                        is LegacyBackupConsentRequired -> {
+                            legacyRestoreText = text
+                            message = "该备份是早期 flat v2 格式，缺少 SHA-256；需要你确认来源可信后才能恢复"
+                        }
+                        else -> message = "恢复失败：" + RestoreFailureExplanation.explain(error)
                     }
-                    else -> message = "恢复失败：" + RestoreFailureExplanation.explain(error)
                 }
+            } finally {
+                backupRestoreBusy = false
+                WebSkinBridgeRuntime.stateRevision++
             }
+        }
+    }
+    val launchRestoreBackup = {
+        if (backupRestoreAllowed.value) {
+            backupRestoreBusy = true
+            runCatching { restoreBackup.launch(arrayOf("application/json", "*/*")) }
+                .onFailure {
+                    backupRestoreBusy = false
+                    message = "无法打开备份选择器：" + it.readable()
+                }
+            WebSkinBridgeRuntime.stateRevision++
         }
     }
     fun runLocalOcr(uri: Uri) {
@@ -1367,7 +1408,7 @@ fun PowerCalApp(
                     "ai" -> page = Page.AI.name
                     "settings" -> page = Page.SETTINGS.name
                     "nativeSettings" -> page = Page.TOOLS.name
-                    "openDeck" -> scope.launch { openDeckAt(null) }
+                    "openDeck" -> openDeckAt(null)
                     "today" -> {
                         nowMillis = System.currentTimeMillis()
                         if (page == Page.MONTH.name) {
@@ -1402,6 +1443,8 @@ fun PowerCalApp(
                         exportIcs.launch("PowerfulCalendar-activities.ics")
                     action.id == "data.backup.export" ->
                         createBackup.launch("powercal-backup.json")
+                    action.id == "data.backup.restore" ->
+                        if (!deckOpening) launchRestoreBackup()
                     action.id == "calendar.import.system" -> {
                         if (ContextCompat.checkSelfPermission(appContext,
                                 Manifest.permission.READ_CALENDAR) == PackageManager.PERMISSION_GRANTED
@@ -1607,8 +1650,7 @@ fun PowerCalApp(
                         .put("allowed", notificationStatus.allowed)
                 } else JSONObject())
                 .put("editing", webEditing.snapshot())
-                .put("optionGroups", SemanticOptions.toJson(
-                    enabled = !aiLocked && editSession == null))
+                .put("optionGroups", SemanticOptions.toJson(enabled = semanticOptionsEnabled))
                 .put("timeline", WebSkinTimelineProjection.build(
                     records, camera, nowMillis, zone))
                 .put("month", if (page == Page.MONTH.name)
@@ -1743,7 +1785,7 @@ fun PowerCalApp(
                 onPickImage = { ocrPicker.launch("image/*") },
                 onTextDraft = { textDialogOpen = true },
                 onExportBackup = { createBackup.launch("powercal-backup.json") },
-                onRestoreBackup = { restoreBackup.launch(arrayOf("application/json", "*/*")) },
+                onRestoreBackup = launchRestoreBackup,
                 onRequestNotificationPermission = {
                     if (android.os.Build.VERSION.SDK_INT >= 33) {
                         notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -3026,7 +3068,8 @@ internal fun NativeToolsPage(
             )
             ToolRow(
                 "从备份恢复",
-                "校验版本/哈希/引用；只允许恢复到空数据库；旧 flat v2 需显式确认",
+                "校验版本、哈希完整性与引用；哈希不证明来源可信；只允许恢复到空数据库；" +
+                    "恢复后可查看提醒权限状态；旧 flat v2 需显式确认",
                 onRestoreBackup,
                 enabled = !aiLocked
             )

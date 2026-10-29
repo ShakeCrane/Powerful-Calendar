@@ -425,4 +425,15 @@ class WebSkinHostProjectionTest {
             "明文敏感数据", "有界回读", "未验证")
             .forEach { assertTrue("backup warning must include $it", item.detail.contains(it)) }
     }
+
+    @Test fun nativeBackupRestoreOptionDisclosesEmptyDatabaseAndRecoveryLimits() {
+        val item = SemanticOptions.groups.flatMap { it.items }
+            .single { it.id == "data.backup.restore" }
+        assertTrue(SemanticOptions.supports(item.id))
+        assertEquals("恢复原生备份", item.label)
+        listOf("空数据库", "SHA-256 完整性", "数据引用", "哈希不证明来源可信",
+            "重新核对提醒调度", "权限状态", "二次确认",
+            "旧授权", "旧执行记录")
+            .forEach { assertTrue("restore warning must include $it", item.detail.contains(it)) }
+    }
 }

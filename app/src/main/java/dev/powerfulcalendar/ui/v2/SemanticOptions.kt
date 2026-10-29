@@ -37,7 +37,11 @@ internal object SemanticOptions {
         SemanticOptionGroup("data.backup", "备份", listOf(
             SemanticOption("data.backup.export", "导出原生备份",
                 "单一 SQLite 一致性快照与 SHA-256；含事件、身份与墓碑、草稿、提交、来源链接、迁移记录、AI 任务收据和序号水位；" +
-                    "不含 API 密钥。文件为明文敏感数据。写后有界回读；无法回读时会明确提示未验证。", "file")
+                    "不含 API 密钥。文件为明文敏感数据。写后有界回读；无法回读时会明确提示未验证。", "file"),
+            SemanticOption("data.backup.restore", "恢复原生备份",
+                "仅允许恢复到空数据库；校验版本、SHA-256 完整性与数据引用（哈希不证明来源可信），" +
+                    "恢复后重新核对提醒调度并显示权限状态。" +
+                    "早期 flat v2 需二次确认；旧授权与旧执行记录不会恢复。", "file")
         ))
     )
     private val allowed = groups.flatMap { it.items }.map { it.id }.toSet()

@@ -728,6 +728,10 @@ function simulatedState(){
     id:"data.backup.export",label:"导出原生备份",
     detail:"单一 SQLite 一致性快照与 SHA-256；含事件、身份与墓碑、草稿、提交、来源链接、迁移记录、AI 任务收据和序号水位；不含 API 密钥。文件为明文敏感数据。写后有界回读；无法回读时会明确提示未验证。",
     icon:"file",enabled:scenario!=="locked"
+  },{
+    id:"data.backup.restore",label:"恢复原生备份",
+    detail:"仅允许恢复到空数据库；校验版本、SHA-256 完整性与数据引用（哈希不证明来源可信），恢复后重新核对提醒调度并显示权限状态。早期 flat v2 需二次确认；旧授权与旧执行记录不会恢复。",
+    icon:"file",enabled:scenario!=="locked"
   }];
   const start=anchor-hours*1800000;
   const rawChatMessages=mockChatCleared?mockChat:scenario==="ai-error"
@@ -1869,6 +1873,10 @@ function onSkinAction(message){
     }
     if(name==="invokeOption"&&p.id==="data.backup.export"){
       logAction("Preview Mock：原生备份导出请求仅模拟到达；未创建文件或读取数据库。Android Host 负责一致性快照、写入和回读校验。");
+      return;
+    }
+    if(name==="invokeOption"&&p.id==="data.backup.restore"){
+      logAction("Preview Mock：原生备份恢复请求仅模拟到达；未读取、写入或覆盖任何数据库。真实来源与空库校验由 Android Host 执行。");
       return;
     }
     logAction("模拟宿主收到："+name+

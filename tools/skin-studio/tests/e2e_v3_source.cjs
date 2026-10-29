@@ -521,6 +521,31 @@ async function main(){
     })()`,awaitPromise:true,returnByValue:true});
     if(backupExportMock.exceptionDetails)throw Error(backupExportMock.exceptionDetails.exception?.description || backupExportMock.exceptionDetails.text);
     console.log("BROWSER BACKUP EXPORT OPTION MOCK PASS",JSON.stringify(backupExportOption.result.value),JSON.stringify(backupExportMock.result.value));
+    const backupRestoreOption=await call("Runtime.evaluate",{contextId:world.executionContextId,
+      awaitPromise:true,returnByValue:true,expression:`(async()=>{
+        const option=document.querySelector('[data-action="invokeOption"][data-option-id="data.backup.restore"]');
+        if(!option||!option.textContent.includes('恢复原生备份'))throw Error('native backup restore option missing');
+        const detail=option.querySelector('.optionDescription')?.textContent||'';
+        for(const term of ['空数据库','SHA-256 完整性','哈希不证明来源可信','重新核对提醒调度',
+          '权限状态','二次确认','旧授权','旧执行记录'])
+          if(!detail.includes(term))throw Error('backup restore warning missing: '+term);
+        option.click();
+        return {visible:true,emptyDatabaseAndIntegrityLimitsVisible:true,clicked:true};
+      })()`});
+    if(backupRestoreOption.exceptionDetails)throw Error(backupRestoreOption.exceptionDetails.exception?.description || backupRestoreOption.exceptionDetails.text);
+    const backupRestoreMock=await call("Runtime.evaluate",{expression:`(async()=>{
+      for(let i=0;i<150;i++){
+        if(document.querySelector('#bridgeLog').textContent.includes('原生备份恢复请求仅模拟到达')){
+          const log=document.querySelector('#bridgeLog').textContent;
+          if(!log.includes('未读取、写入或覆盖任何数据库'))throw Error('backup restore Mock must disclose its non-writing boundary');
+          return {hostRequestReceived:true,fileRead:false,databaseRead:false,databaseWritten:false};
+        }
+        await new Promise(r=>setTimeout(r,100));
+      }
+      throw Error('native backup restore option did not reach Preview Mock Host');
+    })()`,awaitPromise:true,returnByValue:true});
+    if(backupRestoreMock.exceptionDetails)throw Error(backupRestoreMock.exceptionDetails.exception?.description || backupRestoreMock.exceptionDetails.text);
+    console.log("BROWSER BACKUP RESTORE OPTION MOCK PASS",JSON.stringify(backupRestoreOption.result.value),JSON.stringify(backupRestoreMock.result.value));
     const legacyMock=await call("Runtime.evaluate",{expression:`(async()=>{
       for(let i=0;i<150;i++){
         if(document.querySelector('#bridgeLog').textContent.includes('迁移请求仅模拟到达')){
