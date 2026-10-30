@@ -1,7 +1,7 @@
 # PC-ISSUE-SEPARATION-DRAFT-DECK-SEARCH-NAVIGATION — Clear 草稿搜索、选择与导航
 
 日期：2026-10-29
-状态：**Host Bridge、Clear 源码、JVM、Skin Studio Preview Mock 与 Chrome 浏览器回归实现切片 PASS；API 35 Android WebView 与配对 Native/Clear parity NOT TESTED。`S0-DK-01` 保持 PARTIAL / unsigned。**
+状态：**Host Bridge、Clear 源码、JVM、Preview 与 Chrome 回归 PASS；API 35 Clear Android WebView 已验证，独立 Native Compose 基线也通过；同一夹具 Native/Clear 配对回放和实体设备验收仍 NOT TESTED。`S0-DK-01` 保持 PARTIAL / unsigned。**
 
 ## 问题与验收边界
 
@@ -9,7 +9,7 @@ Native 草稿卡组可以搜索待处理草稿和正式事件、选择匹配草�
 
 本 Issue 补齐上述现有 Native/Core 能力。检查 `DeckController` 后，`move` / `jump` 只改变当前卡片位置并在切换前 flush 当前修改，未发现改变永久 `queueOrder` 的重排操作。因此实现的是草稿导航与选择，没有创造 Native 不具备的持久队列重排功能。
 
-本报告的 PASS 仅覆盖所列代码路径和测试夹具。完整 Android WebView、同一数据集的 Native/Clear 配对回放以及设备验收仍未执行，不据此签核完整 `S0-DK-01` 或整体分离。
+本报告的 PASS 仅覆盖所列代码路径和测试夹具。2026-10-30 已在 API 35 模拟器的实际 Android WebView 验证 Clear 搜索与替换提案；Native Compose 通过独立基线夹具。尚未完成同一夹具的 Native/Clear 配对回放及实体设备验收，因此不签核完整 `S0-DK-01` 或整体分离。
 
 ## 根因
 
@@ -46,7 +46,7 @@ Native 草稿卡组可以搜索待处理草稿和正式事件、选择匹配草�
 | Studio Preview Mock 专用浏览器回归 | **PASS**。覆盖 `#6201` 格式序号搜索、正式事件搜索与替换提案、草稿搜索、选择、导航，以及 transient 新建表单 checkpoint 后仍保留当前表单且不显示持久化搜索。未捕获页面异常计数为 0。 | `tools/skin-studio/tests/e2e_v3_deck_search.cjs`；日志 `.local/android-test/reports/separation-s0-dk-01-20261029/studio-deck-focused-final.log` SHA-256 `ED32CA8A9490E983749637A421C7AF336D4B3EDAF29F80063805A84D5DBC009A`。 |
 | Skin Studio 综合 Chrome E2E | **BROWSER E2E PASS**。覆盖时间轴真实几何和实际文字矩形贪心折叠、独立翼区滚动、鼠标/触摸行为、编辑与 Host Mock 确认、草稿搜索/替换/导航、新建入口、Memo、月份、AI Review、自由图层/材质/PNG 资源、导出重导入及 Preview/WebView 资源策略。运行 Chrome 156，使用临时 profile；未调用真实 Provider 或 Android WebView。 | `tools/skin-studio/tests/e2e_v3_browser.cjs`；日志 `.local/android-test/reports/separation-s0-dk-01-20261029/studio-browser-edge-final.log` SHA-256 `C493CAA31F252E0D967DA884CFB4BDBF8BFCBE6D73E389BE1932DDD04AE7367B`。 |
 | JavaScript、规范包、内嵌 APK 资产 | 所有修改的 Studio / E2E / Clear JavaScript 通过 `node --check`。`python tools/skin-studio/build_default_clear.py --verify --apk app/build/outputs/apk/debug/app-debug.apk` 通过；canonical Clear 与 APK 内嵌资产字节相同：9 files / 387,597 bytes。 | `.pcskin` SHA-256 `FEDC9D282672297587FE96BCC83752B51FBA01907F002299B5B7A4BA4AD941EE`，APK 内资源同值。 |
-| Android WebView / AVD / 真机 / 配对 Native-Clear 回放 | **NOT TESTED**。`adb devices -l` 为空；AndroidTest APK 未执行。Chrome Mock 结果未冒充 Android WebView 或设备证据。 | 本地 ADB 空设备列表；实体设备测试由用户执行。 |
+| Android WebView / AVD / 真机 / 配对 Native-Clear 回放 | **部分验证**。API 35 Android 15 模拟器、WebView 124.0.6367.219 上 Clear AndroidTest **1/1 PASS**；Native Compose 独立基线 **1/1 PASS**，使用不同夹具，不算配对回放。实体设备由用户测试；同夹具 Native/Clear 回放仍 **NOT TESTED**。证据见 2026-10-30 follow-up。 | API 35 AVD 截图和仪器日志见 follow-up；实体设备由用户测试。 |
 
 本地详细日志、JUnit XML、浏览器 JSON 和截图存于忽略目录 `.local/android-test/reports/separation-s0-dk-01-20261029-*`；未加入 Git。
 
@@ -62,6 +62,19 @@ Native 草稿卡组可以搜索待处理草稿和正式事件、选择匹配草�
 
 ## 结论与后续
 
-正式事件搜索（包含带 `#` 的格式化序号）、替换草稿提案、草稿卡片选择/导航和 transient UI 区分的实现缺口已由 Bridge JVM、Studio Preview Mock、Chrome E2E 与包一致性证据覆盖。独立复核提出的 3 项 Preview Mock/E2E 差异已修复并验证。完整 `S0-DK-01` 仍 **PARTIAL / unsigned**，因为 Android WebView 和同数据集的冻结 Native/Clear 回放尚未执行。`S0-DK-03` 仍有独立缺口：Clear 尚无完整的冲突快照替换/保留和删除后恢复 Host 操作；本次只移除了“缺少正式事件搜索”的过期描述，没有把该项标 PASS。
+正式事件搜索（包含带 `#` 的格式化序号）、替换草稿提案、草稿卡片选择/导航和 transient UI 区分的实现缺口已由 Bridge JVM、Studio Preview Mock、Chrome E2E 与包一致性证据覆盖。独立复核提出的 3 项 Preview Mock/E2E 差异已修复并验证。完整 `S0-DK-01` 仍 **PARTIAL / unsigned**：Clear Android WebView 已通过 API 35 实测，同数据集 Native/Clear 配对回放和实体设备验收尚未完成。`S0-DK-03` 仍有独立缺口：Clear 尚无完整的冲突快照替换/保留和删除后恢复 Host 操作；本次只移除了“缺少正式事件搜索”的过期描述，没有把该项标 PASS。
 
 代码提交 `3aa03c3453475bee1ebf10f0efaf910c3ab537ab`（`fix(分离): 补齐 Clear 草稿搜索与导航`）已推送至 `origin/codex/separation-s0-timeline-drag`。本 Issue 与契约/验收进度文档作为独立文档提交随后推送；提交 SHA 见本轮交付报告与 Git 历史。
+
+## Follow-up — Android WebView 编辑抽屉可见性与真实 Deck 回归（2026-10-30）
+
+本节更新并取代上方 2026-10-29 的 Android WebView `NOT TESTED` 状态；历史结果保留作基线。
+
+- 根因：Android 15 API 35 模拟器的 Android WebView `com.google.android.webview 124.0.6367.219` 中，`55vh` 与 `100dvh` 计算结果为 `0px`。当 `.sheet-panel` DOM 显示时，实际矩形仍为 `[x=0,y=684,width=412,height=0]`，搜索表单虽在 DOM 中却无法看见。调试探针显示固定全屏父容器中的百分比高度正常计算到 654.19 CSS px。
+- 最小修复：Clear `.sheet-panel` 从 `max-height: calc(100dvh - 30px); min-height: 55vh` 改为相对 `#skinSheet` 的 `max-height: calc(100% - 30px); min-height: 55%`；重新生成规范 9 文件 `.pcskin`。没有改 Host 命令、Store 语义或事件数据。
+- 新增真实 AndroidTest：隔离 Store 中建立 3 张待处理 MEMO 和 1 个正式 MEMO，打开实际 `PowerCalApp`/WebView；执行正式事件 `#0004` 搜索、草稿选择、卡组导航和替换提案。断言正式事件和 revision 不变、commit 数不变、身份和正式序号水位不变、队列顺序不变，并且恰好多一张 REPLACE 草稿。真实窗口使用 `PixelCopy` 截图；断言抽屉在 WebView 中可见且高度不少于视口一半，搜索和提案画面不同。
+- API 35 Clear WebView 仪器回归 **1/1 PASS**（最终 Debug/AndroidTest APK，6.94 秒）；独立 Native Compose Deck 基线 **1/1 PASS**。两者不是同夹具配对回放。截图：搜索 `.local/android-test/reports/separation-s0-dk01-audit-20261030/s0-dk01-formal-search-final-verified-apk.png` SHA-256 `CB851C6CD10B9E0CE4CB98E113284C33AA611ACFB598418AAE6E4D6AAE851914`；替换提案 `.local/android-test/reports/separation-s0-dk01-audit-20261030/s0-dk01-replacement-proposal-final-verified-apk.png` SHA-256 `81787F5C90F354B3C0FF4FA32D0584780B99A869999886F1D221CAADF990C677`。两张均为 1080×1920 的模拟器 PixelCopy 图像。
+- 全量离线 Gradle 强制重跑 **727/727 JVM 测试、100 suites、0 failures/errors/skips，88/88 tasks PASS**；源码边界、Debug/AndroidTest APK 构建、Lint 通过（0 errors / 53 warnings）。Skin Studio Python **61/61 PASS**；Edge/CDP Studio source E2E **PASS**；规范 Clear 与 APK 内资源逐字节一致：9 files / 394,086 bytes，SHA-256 `8f7f5680bfd27976b2792aab06d051baf0f03f4a914636ea73e82e48431f8035`。
+- 环境：Android 15 / API 35、1080×1920 AVD `emulator-5582`、WebView 124.0.6367.219；Gradle 8.14.3、JDK 20、SDK `E:\android-sdk`。最终 APK SHA-256：Debug `195BA8FAE40F3B487C1345CEA242C9380A2B1088FBED38CB57E6418E340BD78A`，AndroidTest `67EAC00E441F9A60728501D7A5391C327F6322D89B707E0BC3D5FEF125E9C1F5`。全量日志 `.local/android-test/reports/separation-s0-dk01-audit-20261030/full-gradle-post-gesture.log` SHA-256 `68D8D1CFFDCA45F152608A026E81D39C54A89C58A3EBDBC11E7947BC30A278FB`；最终 WebView 仪器日志 `webview-instrumented-final-verified-apk-after-reboot.log` SHA-256 `F439256E63D1EF3E0213A5D46A97FE90C6A3C94FB39A3CC875544755E473C694`；Python 日志 `BAF094294F60432040E3AAD18A7CB16322B3648CC174EA2AE92ED685A72FA6E7`；Edge source E2E 日志 `5EE084EB5A0DACDD7E3562E2629FBE796E9E32BD9107100D82B85B8C8E983E6A`。
+- 初次最终 APK 仪器启动时，模拟器进程在测试开始后退出（exit 255，无 JUnit 结果）；保留原 AVD 数据、不 wipe，按原启动参数重启后重新安装并复跑，最终为上方 **1/1 PASS**。没有将中断运行计为通过。
+- 修复提交 `6214354`（`fix(分离): 修复 Android WebView 编辑抽屉高度`）已推送至 `origin/codex/separation-s0-timeline-drag`。本 Issue 仍 **PARTIAL / unsigned**，等待同夹具 Native/Clear 回放和用户实体设备验收；`S0-DK-03` 的冲突恢复缺口仍独立保留。
