@@ -31,9 +31,21 @@
 
 ## 尚未验证
 
-本结果只覆盖已加载 Clear 的 WebView renderer 进程终止与 Native 紧急恢复。它**不代表 SEP-14 完成**。以下仍未验证：renderer 退出瞬间存在未保存的 dirty editor；普通 Activity/process death 与重启后的草稿恢复；损坏/恶意包和脚本异常；升级失败；设备重启后的数据保持；实体设备/OEM/WebView 版本差异。
+本结果只覆盖已加载 Clear 的 WebView renderer 进程终止与 Native 紧急恢复。它**不代表 SEP-14 完成**。Activity 重建后的编辑器恢复已由下方 follow-up 验证；以下仍未验证：renderer 退出瞬间存在未保存的 dirty editor；操作系统杀进程/冷启动后的草稿恢复；损坏/恶意包和脚本异常；升级失败；设备重启后的数据保持；实体设备/OEM/WebView 版本差异。
+
+## Follow-up — Clear 编辑器 Activity 重建恢复
+
+API 35 AVD 的新增真实 WebView 回归覆盖了两条 Activity 重建路径：未修改的新建编辑器重建前后均不产生 Store 写入；标题有实际修改时，重建后恰好恢复一张可从 Clear “待办”入口重新打开的草稿，正式事件与提交记录仍为零。该回归没有发现生产代码缺陷，因此只增加 Android instrumentation 测试，没有修改 Runtime、Bridge 或业务代码。
+
+- 设备回归：`ClearActivityRecreationRecoveryInstrumentedTest` **1/1 PASS**，Android 15 / API 35，AVD `codex-clear-api35`。覆盖无 Diff 不写入、脏输入的 Activity 重建、Clear 待处理卡组重开与事件/身份/队列水位计数。
+- Connected log SHA-256：`8609457D4F177A15EC252CF3A939333669C364C71546A57C03646C257E93F3AA`；JUnit XML SHA-256：`01929D722B15C2D83A66C8EBD19E0BDDE859DE8FDB2A4F555E5A9C597A8CBA8F`。
+- 完整离线门禁 `:app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:lintDebug`：**784/784 JVM、125 suites、0 failures/errors/skips**；源码边界与 Debug 构建通过；Lint **0 errors / 55 warnings**。日志 SHA-256：`BFDB3D9BBCA7ABB85A82BEF0B58A257037962B9199F83C0ECA877E2B43B6E3CD`。Debug APK SHA-256：`F924AF9CABD50ECF6F3D68CB0CFB595D81669466A35A8C27C75C7B95320F1F46`。
+- 新测试位于 `app/src/androidTest/java/dev/powerfulcalendar/ui/v2/ClearActivityRecreationRecoveryInstrumentedTest.kt`；全部详细证据保存在忽略目录 `.local/android-test/reports/sep14-activity-recreation-20261031/`。
+
+此项只证明 Activity 重建后的恢复，不等同于操作系统杀进程后的冷启动恢复。dirty editor 遇到 renderer 终止、真实进程死亡/重新启动、损坏皮肤/脚本、升级失败、设备重启、实体设备/OEM 仍为 **NOT TESTED**；SEP-14 保持 **INCOMPLETE / HOLD**。
 
 ## Git
 
 - 测试提交：`89e6cd3e24a3ed65964620f4d31a9cde3a9a20a6` — `test(皮肤分离): 验证Clear WebView崩溃恢复`
+- Activity 重建回归测试提交：`5d6b421` — `test(皮肤分离): 验证Clear Activity重建恢复`，已推送至 `origin/feat/skin-first-separation`。
 - 本报告、SEP-14 状态补充和进度记录随后单独提交，避免报告 SHA 冒充测试时的代码基线。
