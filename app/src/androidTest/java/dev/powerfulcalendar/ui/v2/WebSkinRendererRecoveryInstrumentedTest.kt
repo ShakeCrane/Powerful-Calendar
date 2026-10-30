@@ -48,6 +48,10 @@ class WebSkinRendererRecoveryInstrumentedTest {
         return result.get()
     }
 
+    private fun awaitJs(web: WebView, condition: String) {
+        compose.waitUntil(30_000) { evaluate(web, condition) == "true" }
+    }
+
     @Test
     fun clearRendererExitPersistsNativeRecoveryAndPreservesStore() {
         val context = compose.activity.applicationContext
@@ -113,6 +117,111 @@ class WebSkinRendererRecoveryInstrumentedTest {
             assertEquals(commitsBefore, store.commitCount())
             assertEquals(identitiesBefore, store.identityCount())
             assertEquals(sequenceBefore, store.nextSequencePreview())
+        } finally {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            store.close()
+            context.deleteDatabase(databaseName)
+            runCatching { skins.select(originalSkin) }
+                .onFailure { skins.select("powercal-default") }
+            val restoreOnboarding = onboarding.edit()
+            if (hadAskedForCalendarImport) {
+                restoreOnboarding.putBoolean("system-calendar-import-asked", askedForCalendarImport)
+            } else {
+                restoreOnboarding.remove("system-calendar-import-asked")
+            }
+            restoreOnboarding.commit()
+        }
+    }
+
+    @Test
+    fun clearDirtyTransientEditorIsCheckpointedWhenRendererProcessTerminates() {
+        val context = compose.activity.applicationContext
+        val databaseName = "skin-renderer-dirty-${UUID.randomUUID()}.db"
+        val store = PowerStore(context, databaseName)
+        val skins = SkinPackageManager(context)
+        val originalSkin = skins.currentId()
+        val onboarding = context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+        val hadAskedForCalendarImport = onboarding.contains("system-calendar-import-asked")
+        val askedForCalendarImport = onboarding.getBoolean("system-calendar-import-asked", false)
+        val title = "RENDERER_DIRTY_EDITOR_CHECKPOINT"
+
+        try {
+            onboarding.edit().putBoolean("system-calendar-import-asked", true).commit()
+            compose.runOnUiThread {
+                PowerCalSkinRegistry.reset()
+                skins.select("powercal-clear-default")
+                compose.activity.setContent { PowerCalTheme { PowerCalApp(store) } }
+            }
+
+            var web: WebView? = null
+            compose.waitUntil(30_000) {
+                compose.runOnUiThread {
+                    web = findWebView(compose.activity.findViewById(android.R.id.content))
+                }
+                web != null && evaluate(requireNotNull(web),
+                    "!!window.PowerCalSkin && !!window.PowerCalSkin.receive && " +
+                        "!!document.querySelector('[data-action=\\\"createDraft\\\"]')") == "true"
+            }
+            val view = requireNotNull(web)
+            evaluate(view, "document.querySelector('[data-action=\\\"createDraft\\\"]').click();true")
+            awaitJs(view, "!!document.querySelector('#timelineCreateDialog[open]')")
+            evaluate(view, "document.querySelector('[data-timeline-create-kind=\\\"ACTIVITY\\\"]').click();true")
+            awaitJs(view, "!document.querySelector('#skinSheet').hidden && " +
+                "!!document.querySelector('#sheetFields [data-field=\\\"title\\\"]')")
+            evaluate(view, "(()=>{const field=document.querySelector('#sheetFields [data-field=\\\"title\\\"]');" +
+                "field.value='$title';field.dispatchEvent(new Event('change',{bubbles:true}));return true})()")
+            compose.waitUntil(15_000) {
+                WebSkinBridgeRuntime.state().getJSONObject("editing")
+                    .getJSONObject("deck").optJSONObject("form")?.optString("title") == title
+            }
+
+            assertTrue("dirty editor is still transient before renderer failure", store.all().isEmpty())
+            assertEquals(0L, store.draftCount())
+            assertEquals(0, store.pendingCount())
+            assertEquals(0L, store.commitCount())
+            assertEquals(0L, store.identityCount())
+            assertEquals(1L, store.nextSequencePreview())
+
+            val terminateResult = AtomicReference<Boolean?>(null)
+            compose.runOnUiThread {
+                val renderer = requireNotNull(view.webViewRenderProcess) {
+                    "API 35 WebView must expose its renderer process"
+                }
+                terminateResult.set(renderer.terminate())
+            }
+            assertTrue("Renderer process termination should be accepted", terminateResult.get() == true)
+
+            compose.waitUntil(20_000) {
+                skins.currentId() == "powercal-default" &&
+                    compose.onAllNodesWithText(
+                        "皮肤加载失败，编辑已存档并恢复安全界面。"
+                    ).fetchSemanticsNodes().isNotEmpty() &&
+                    compose.onAllNodesWithText("工具与设置")
+                        .fetchSemanticsNodes().isNotEmpty() &&
+                    store.pendingCount() == 1
+            }
+            compose.runOnIdle {
+                assertEquals("powercal-default", PowerCalSkinRegistry.active.key)
+                assertEquals(null, PowerCalSkinRegistry.active.web)
+            }
+
+            assertTrue(store.all().isEmpty())
+            assertEquals("renderer failure checkpoints only the changed form", 1L, store.draftCount())
+            assertEquals(1, store.pendingCount())
+            assertEquals(0L, store.commitCount())
+            assertEquals(1L, store.identityCount())
+            assertEquals(2L, store.nextSequencePreview())
+            assertEquals(2L, store.nextQueueOrderPreview())
+            val checkpoint = store.pendingDrafts().single()
+            assertEquals(title, checkpoint.form.title)
+            assertEquals(TemporalKind.ACTIVITY, checkpoint.form.kind)
+            println("CLEAR_DIRTY_RENDERER_RECOVERY_VERIFIED=draft=${checkpoint.draftId}; " +
+                "title=${checkpoint.form.title}; formal=${store.all().size}; commits=${store.commitCount()}; " +
+                "identities=${store.identityCount()}; sequence=${store.nextSequencePreview()}; native=true")
         } finally {
             compose.runOnUiThread {
                 compose.activity.setContent { }
