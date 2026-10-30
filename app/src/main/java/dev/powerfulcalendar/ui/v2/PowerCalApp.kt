@@ -5,6 +5,7 @@ import dev.powerfulcalendar.ui.v2.nativeui.NativeAiFileReview
 import dev.powerfulcalendar.ui.v2.nativeui.NativeAiImageConsentReview
 import dev.powerfulcalendar.ui.v2.nativeui.NativeAiOcrTextReview
 import dev.powerfulcalendar.ui.v2.nativeui.NativeAiStuckBatchReleaseReview
+import dev.powerfulcalendar.ui.v2.nativeui.NativeCalendarImportPrompt
 import dev.powerfulcalendar.ui.v2.nativeui.NativeEventInspection
 import dev.powerfulcalendar.ui.v2.nativeui.NativeLegacyDataReview
 import dev.powerfulcalendar.ui.v2.nativeui.NativeSkinCatalogReview
@@ -2631,32 +2632,30 @@ fun PowerCalApp(
     }
 
     if (firstCalendarImportPrompt) {
-        SkinAlertDialog(
-            onDismissRequest = {
-                appContext.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
-                    .edit().putBoolean("system-calendar-import-asked", true).apply()
-                firstCalendarImportPrompt = false
+        val markCalendarImportPromptShown = {
+            appContext.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                .edit().putBoolean("system-calendar-import-asked", true).apply()
+            firstCalendarImportPrompt = false
+        }
+        NativeCalendarImportPrompt(
+            onDismiss = markCalendarImportPromptShown,
+            onImportOnce = {
+                markCalendarImportPromptShown()
+                if (ContextCompat.checkSelfPermission(
+                        appContext,
+                        Manifest.permission.READ_CALENDAR
+                    ) == PackageManager.PERMISSION_GRANTED
+                ) scope.launch { importSystemCalendar() }
+                else calendarPermission.launch(Manifest.permission.READ_CALENDAR)
             },
-            title = { Text("导入系统日历？") },
-            text = { Text("可以读取设备当前的日历日程作为一次性快照。" +
-                "以后不会监测或同步原日历；也可以稍后在设置中手动导入。") },
-            confirmButton = {
-                TextButton(onClick = {
-                    appContext.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
-                        .edit().putBoolean("system-calendar-import-asked", true).apply()
-                    firstCalendarImportPrompt = false
-                    if (ContextCompat.checkSelfPermission(appContext,
-                            Manifest.permission.READ_CALENDAR) == PackageManager.PERMISSION_GRANTED
-                    ) scope.launch { importSystemCalendar() }
-                    else calendarPermission.launch(Manifest.permission.READ_CALENDAR)
-                }) { Text("导入一次") }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    appContext.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
-                        .edit().putBoolean("system-calendar-import-asked", true).apply()
-                    firstCalendarImportPrompt = false
-                }) { Text("暂不导入") }
+            showDialog = { dialog ->
+                SkinAlertDialog(
+                    onDismissRequest = dialog.onDismissRequest,
+                    title = dialog.title,
+                    text = dialog.text,
+                    confirmButton = dialog.confirmButton,
+                    dismissButton = dialog.dismissButton
+                )
             }
         )
     }
