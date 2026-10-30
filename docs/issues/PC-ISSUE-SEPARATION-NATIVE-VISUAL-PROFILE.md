@@ -49,4 +49,4 @@ Studio 不编辑受信 Kotlin 源码；本项未增加新的 Studio runtime capa
 
 完整单元回归中 Clear Memo 分页失败需要单独处理；遵照本项范围，没有在这里更改 Clear 或把失败判成环境通过。完整 SEP 状态、Skin Studio 等价、其他页面的 UI/无障碍及实体 OEM 验收仍未由本 Issue 签核。
 
-本 Issue 对应实现提交 SHA 将由紧随实现提交的 provenance 更新补录；推送后以该完整 SHA 和 APK 摘要复核。
+实现提交：`439eee336903f1b16606b406c5e74734f1f05c0a`（`feat(皮肤分离): 显式注册原生呈现皮肤`），已推送到 `origin/feat/skin-first-separation`。该提交对应 APK 与所有测试日志哈希如上。
