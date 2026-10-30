@@ -850,6 +850,144 @@ class ClearSettingsOptionsInstrumentedTest {
         }
     }
 
+    @Test
+    fun clearBackupRestoreUsesDocumentsUiAndRestoresOnlyTheEmptyIsolatedStore() {
+        assumeTrue("DocumentsUI restore flow must run on an isolated Android emulator",
+            Build.HARDWARE == "ranchu" || Build.HARDWARE == "goldfish")
+        assumeTrue("Downloads MediaStore requires API 29+", Build.VERSION.SDK_INT >= 29)
+        val context = compose.activity.applicationContext
+        val sourceDatabase = "clear-backup-restore-source-${UUID.randomUUID()}.db"
+        val targetDatabase = "clear-backup-restore-target-${UUID.randomUUID()}.db"
+        val sourceStore = PowerStore(context, sourceDatabase)
+        val store = PowerStore(context, targetDatabase)
+        val skinManager = SkinPackageManager(context)
+        val originalSkin = skinManager.currentId()
+        val onboarding = context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+        val hadAskedForCalendarImport = onboarding.contains("system-calendar-import-asked")
+        val askedForCalendarImport = onboarding.getBoolean("system-calendar-import-asked", false)
+        val fixtureName = "powercal-qa-restore-${UUID.randomUUID()}.json"
+        var backupUri: Uri? = null
+
+        try {
+            val zone = ZoneId.of("Asia/Shanghai")
+            val memo = sourceStore.newDraft(DraftForm(
+                kind = TemporalKind.MEMO,
+                title = "CLEAR_BACKUP_RESTORE_FIXTURE",
+                startText = LocalDate.now(zone).plusDays(2).toString(),
+                zoneId = zone.id,
+                trackingEnabled = true
+            ))
+            assertTrue(sourceStore.commit(memo.draftId) is PowerStore.CommitOutcome.Committed)
+            val sourceBackup = sourceStore.exportBackup()
+            val expectedPayload = BackupEnvelope.verify(sourceBackup, PowerStore.VERSION).payload
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, fixtureName)
+                put(MediaStore.MediaColumns.MIME_TYPE, "application/json")
+                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/")
+            }
+            backupUri = requireNotNull(context.contentResolver.insert(
+                MediaStore.Downloads.EXTERNAL_CONTENT_URI, values
+            )) { "Could not create isolated backup fixture in Downloads" }
+            context.contentResolver.openOutputStream(backupUri!!)?.bufferedWriter(Charsets.UTF_8)?.use {
+                it.write(sourceBackup.toString(2))
+            } ?: error("Could not write isolated backup fixture")
+
+            val emptyTarget = listOf(
+                store.all(), store.pendingCount(), store.commitCount(),
+                store.identityCount(), store.nextSequencePreview()
+            )
+            assertTrue(store.all().isEmpty())
+            assertEquals(0, store.pendingCount())
+            assertEquals(0L, store.commitCount())
+            assertEquals(0L, store.identityCount())
+
+            onboarding.edit().putBoolean("system-calendar-import-asked", true).commit()
+            PowerCalSkinRegistry.reset()
+            skinManager.select("powercal-clear-default")
+            compose.runOnUiThread {
+                compose.activity.setContent { PowerCalTheme { PowerCalApp(store) } }
+            }
+            var web: WebView? = null
+            compose.waitUntil(30_000) {
+                compose.runOnUiThread {
+                    web = findWebView(compose.activity.findViewById(android.R.id.content))
+                }
+                web != null
+            }
+            val view = requireNotNull(web)
+            compose.waitUntil(30_000) {
+                evaluate(view, "!!window.PowerCalSkin && !!window.PowerCalSkin.receive") == "true"
+            }
+            evaluate(view, "document.querySelector('.clear-tabbar [data-action=settings]').click(); true")
+            compose.waitUntil(15_000) { WebSkinBridgeRuntime.state().optString("page") == "SETTINGS" }
+            evaluate(view, "Array.from(document.querySelectorAll(" +
+                "'#settingsOptionGroups [data-option-id]')).find(" +
+                "el=>el.dataset.optionId==='data.backup.restore').click(); true")
+
+            tapPickerNode(waitForPickerNode(contentDescription = "Show roots"))
+            tapPickerNode(waitForPickerNode(text = "Downloads"))
+            assertEquals("Opening the real picker must not mutate the empty target Store",
+                emptyTarget, listOf(
+                    store.all(), store.pendingCount(), store.commitCount(),
+                    store.identityCount(), store.nextSequencePreview()
+                ))
+            tapPickerNode(waitForPickerNode(text = fixtureName))
+            val instrumentation = InstrumentationRegistry.getInstrumentation()
+            val restoreDeadline = SystemClock.elapsedRealtime() + 30_000
+            while (SystemClock.elapsedRealtime() < restoreDeadline && store.all().isEmpty()) {
+                val root = instrumentation.uiAutomation.rootInActiveWindow
+                if (root?.packageName?.toString() == "com.google.android.documentsui") {
+                    val open = findAccessibilityNode(root, text = "OPEN")
+                        ?: findAccessibilityNode(root, text = "Open")
+                        ?: findAccessibilityNode(root, contentDescription = "Open")
+                        ?: findAccessibilityNode(root, viewId = "android:id/button1")
+                    if (open != null) tapPickerNode(open)
+                }
+                SystemClock.sleep(150)
+            }
+            compose.waitUntil(30_000) { store.all().size == 1 }
+            val restoredPayload = BackupEnvelope.verify(store.exportBackup(), PowerStore.VERSION).payload
+            assertEquals("Restore must preserve all verified logical backup tables",
+                BackupEnvelope.canonicalJson(expectedPayload),
+                BackupEnvelope.canonicalJson(restoredPayload))
+            assertEquals("Restore preserves formal records", sourceStore.all(), store.all())
+            assertEquals("Restore preserves pending drafts", sourceStore.pendingCount(), store.pendingCount())
+            assertEquals("Restore preserves commit history", sourceStore.commitCount(), store.commitCount())
+            assertEquals("Restore preserves persistent identities", sourceStore.identityCount(), store.identityCount())
+            assertEquals("Restore preserves the sequence high-water mark",
+                sourceStore.nextSequencePreview(), store.nextSequencePreview())
+            println("CLEAR_BACKUP_RESTORE_VERIFIED=$fixtureName; objects=" +
+                "${store.all().size}; commits=${store.commitCount()}; identities=${store.identityCount()}; " +
+                "sequence=${store.nextSequencePreview()}; payload=canonical-match")
+        } finally {
+            val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+            repeat(2) {
+                if (automation.rootInActiveWindow?.packageName?.toString() == "com.google.android.documentsui") {
+                    automation.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+                    SystemClock.sleep(200)
+                }
+            }
+            backupUri?.let { runCatching { context.contentResolver.delete(it, null, null) } }
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            sourceStore.close()
+            store.close()
+            context.deleteDatabase(sourceDatabase)
+            context.deleteDatabase(targetDatabase)
+            skinManager.select(originalSkin)
+            val restoreOnboarding = onboarding.edit()
+            if (hadAskedForCalendarImport) {
+                restoreOnboarding.putBoolean("system-calendar-import-asked", askedForCalendarImport)
+            } else {
+                restoreOnboarding.remove("system-calendar-import-asked")
+            }
+            restoreOnboarding.commit()
+        }
+    }
+
     private fun skinPackageFixture(id: String): ByteArray {
         val original = InstrumentationRegistry.getInstrumentation().context.assets
             .open("skin-delivery-fixture.pcskin").use { it.readBytes() }
