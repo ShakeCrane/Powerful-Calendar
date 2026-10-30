@@ -12,7 +12,7 @@ projections, lifecycle and action adapters remain in `:app`.
 
 # PowerCal Visual Skin Contract v4 — as built
 
-Updated 2026-10-21; Native profile plus Settings, Month, Timeline, Draft Deck, formal editor, AI input/proposal/batch review, protected AI settings, Chrome, Overlay, and Picker module boundaries clarified 2026-10-30. This document records executable Android source interfaces, not a proposal or a promised future plugin format.
+Updated 2026-10-21; Native profile plus Settings, Month, Timeline, Draft Deck, formal editor, AI input/proposal/batch review, protected AI settings, timeline inspection content, Chrome, Overlay, and Picker module boundaries clarified 2026-10-30. This document records executable Android source interfaces, not a proposal or a promised future plugin format.
 
 ## Separation
 
@@ -155,6 +155,12 @@ Current callbacks, event time geometry, titles, and route behavior are unchanged
 recurrence dragging remains refused by the existing Host behavior until that separate editor
 capability is implemented.
 
+The timeline's read-only inspection content also uses the `:native-skin` `NativeEventInspection`
+renderer. The app adapter supplies the dialog values and skin-aware `SkinAlertDialog` shell; it
+retains the timeline's original AI-lock explanation and “完成” button label. Other inspection
+routes continue to use the renderer's default copy. Compose coverage follows a locked timeline
+event through the Host adapter, Native content, modal display and dismissal.
+
 ### AI chat display boundary (2026-10-30)
 
 `NativeAiChatScreen` is compiled in `:native-skin` and consumes `NativeAiMessage` plus the Native
@@ -262,7 +268,7 @@ Source module map:
 - `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativeAiProposalReview.kt` — Native proposal-review card renderer consuming display-only rows and Host action callbacks
 - `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativeAiBatchAuthorizationReview.kt` — Native frozen-batch authorization review renderer with Host-provided dialog shell and callbacks
 - `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativeAiStuckBatchReleaseReview.kt` — Native force-release warning and button state renderer with Host-provided eligibility and callbacks
-- `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativeEventInspection.kt` — Native read-only locked-event detail renderer
+- `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativeEventInspection.kt` — Native read-only event-detail content renderer reused by timeline and locked-event routes
 - `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativeCalendarImportPrompt.kt` — Native one-time system-calendar import explanation and action buttons
 - `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativeAiInputReview.kt` — Native image-consent, OCR-text and extracted-file review dialogs with Host-provided dialog shell and callbacks
 - `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativeSkinCatalogReview.kt` — Native skin activation/deletion confirmation display with Host-provided dialog shell and callbacks
@@ -279,7 +285,7 @@ Source module map:
 - `app/src/main/java/dev/powerfulcalendar/ui/v2/HostProtectedSettings.kt` — Host-owned AI credential form and profile preference adapter
 - `app/src/main/java/dev/powerfulcalendar/ui/v2/NativeMonthProjection.kt` — Core-backed month projection and opaque recurrence action mapping
 - `app/src/main/java/dev/powerfulcalendar/ui/v2/NativeTimelineProjection.kt` — Core-backed occurrence/lane projection and geometry adapter
-- `app/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/TimelineScreen.kt` — existing app route adapter into the Native Timeline module
+- `app/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/TimelineScreen.kt` — Host projection/skin-aware modal adapter into Native Timeline and Native event-inspection renderers
 - `app/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativeVisualSkin.kt` — explicit Native profile adapters for all ten surfaces
 - `app/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/DraftDeck.kt` — DeckController Host adapter, Core projection and picker interpretation
 - `app/src/main/java/dev/powerfulcalendar/ui/v2/DirectEventEditor.kt` — formal-edit session and confirmation Host surface using the shared Native form renderer

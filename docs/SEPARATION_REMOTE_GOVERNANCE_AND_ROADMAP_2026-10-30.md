@@ -57,7 +57,7 @@
 
 | SEP | 本阶段状态 | 下一轮验收目标 |
 | --- | --- | --- |
-| SEP-01 时间轴 | **BLOCKED** | S0-TL-04 真正手指拖动：浏览器 → WebView → Host → Camera 写回，全链有实测闭环；保持时间、刻度、双翼和贪心标题 |
+| SEP-01 时间轴 | **BLOCKED**（Native 锁定事件详情内容已迁入 `:native-skin`，Adapter/Renderer 4/4 TESTED；完整 JVM 780/780） | S0-TL-04 真正手指拖动：浏览器 → WebView → Host → Camera 写回，全链有实测闭环；保持时间、刻度、双翼和贪心标题 |
 | SEP-02 月历 | 部分路径 TESTED | 选日、新建、打开重复实例、返回与状态恢复双版本回放 |
 | SEP-03 Memo/Todo | 部分路径 TESTED | 翻页、完成状态、恢复、重复和极端内容对照 |
 | SEP-04 新建 | 主要路径 TESTED | 四类型、不同入口、默认时间、无 Diff、重建和 DST 全流程双版本回放 |
