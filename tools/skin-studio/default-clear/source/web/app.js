@@ -1062,16 +1062,20 @@ function renderAiProposalReview(list){
   list.append(root);
 }
 function renderOptions(){
-  const root=$("optionGroups");root.replaceChildren();
-  for(const group of state.optionGroups||[]){
-    root.append(node("h2","",group.label));
-    for(const item of group.items||[]){
-      const button=node("button","optionRow");
-      button.append(node("span","optionTitle",item.label));
-      if(item.detail)button.append(node("span","optionDescription",item.detail));
-      button.dataset.action="invokeOption";button.dataset.optionId=item.id;
-      button.disabled=item.enabled===false;
-      root.append(button);
+  for(const id of ["optionGroups","settingsOptionGroups"]){
+    const root=$(id);
+    if(!root)continue;
+    root.replaceChildren();
+    for(const group of state.optionGroups||[]){
+      root.append(node("h2","",group.label));
+      for(const item of group.items||[]){
+        const button=node("button","optionRow");
+        button.append(node("span","optionTitle",item.label));
+        if(item.detail)button.append(node("span","optionDescription",item.detail));
+        button.dataset.action="invokeOption";button.dataset.optionId=item.id;
+        button.disabled=item.enabled===false;
+        root.append(button);
+      }
     }
   }
 }

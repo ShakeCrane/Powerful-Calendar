@@ -79,6 +79,17 @@ async function main(){
     await evaluate(`window.__clearHostPort.postMessage(JSON.stringify({version:1,type:'state',payload:{
       page:'SETTINGS',notificationPermission:{required:true,allowed:false},
       exactAlarmPermission:{required:true,allowed:false},
+      optionGroups:[
+        {id:'calendar.import',label:'导入',items:[
+          {id:'calendar.import.file',label:'导入日历文件',detail:'选择文件',enabled:true},
+          {id:'calendar.import.system',label:'从系统日历导入',detail:'读取快照',enabled:true},
+          {id:'data.legacy.migrate',label:'迁移旧版 PowerCal 数据',detail:'宿主确认',enabled:true}]},
+        {id:'calendar.export',label:'导出',items:[
+          {id:'calendar.export.ics',label:'导出 ICS',detail:'活动数据',enabled:true}]},
+        {id:'data.backup',label:'备份',items:[
+          {id:'data.backup.export',label:'导出原生备份',detail:'敏感数据',enabled:true},
+          {id:'data.backup.restore',label:'恢复原生备份',detail:'空数据库',enabled:true}]}
+      ],
       reminderReconcile:{status:'IDLE',message:'可以按当前已保存的数据手动重建提醒调度。'},
       reminderDiagnostics:[{eventSeq:17,displaySeq:'#0017',eventRevision:3,title:'CDP 诊断提醒',
         intent:{triggerId:'alarm:17',revision:3,occurrenceKey:'single',
@@ -119,22 +130,35 @@ async function main(){
       !document.querySelector('#systemDiagnostics').innerText.includes('隐藏的第四项')`,
       "System diagnostics projection and recurrence limit");
     const systemDiagnosticText=await evaluate("document.querySelector('#systemDiagnostics').innerText");
+    await waitFor("document.querySelectorAll('#settingsOptionGroups [data-option-id]').length===6",
+      "Host-owned calendar and data options in Settings");
+    const settingsOptionIds=await evaluate("JSON.stringify(Array.from(" +
+      "document.querySelectorAll('#settingsOptionGroups [data-option-id]'))" +
+      ".map(button=>button.dataset.optionId).sort())");
+    await evaluate("Array.from(document.querySelectorAll(" +
+      "'#settingsOptionGroups [data-option-id]')).find(" +
+      "button=>button.dataset.optionId==='data.legacy.migrate').click(); true");
+    await waitFor("window.__clearActions?.length===2","Host-owned migration option action");
+    const migrationRequest=await evaluate("window.__clearActions[1]");
+    if(migrationRequest?.payload?.name!=="invokeOption"||
+      migrationRequest?.payload?.id!=="data.legacy.migrate")
+      throw Error("Settings migration option did not invoke its registered Host action");
     const screenshot=await call("Page.captureScreenshot",{format:"png",captureBeyondViewport:true});
     const screenshotPath=path.join(reportDir,`settings-${runId}.png`);
     fs.writeFileSync(screenshotPath,Buffer.from(screenshot.data,"base64"));
     await evaluate(`document.querySelector('[data-action="requestNotificationPermission"]').click()`);
-    await waitFor("window.__clearActions?.length===2","Permission request action");
-    const permissionRequest=await evaluate("window.__clearActions[1]");
+    await waitFor("window.__clearActions?.length===3","Permission request action");
+    const permissionRequest=await evaluate("window.__clearActions[2]");
     if(permissionRequest?.payload?.name!=="requestNotificationPermission")
       throw Error("Clear emitted the wrong notification permission action");
     await evaluate(`document.querySelector('[data-action="openExactAlarmSettings"]').click()`);
-    await waitFor("window.__clearActions?.length===3","Exact alarm settings action");
-    const exactAlarmRequest=await evaluate("window.__clearActions[2]");
+    await waitFor("window.__clearActions?.length===4","Exact alarm settings action");
+    const exactAlarmRequest=await evaluate("window.__clearActions[3]");
     if(exactAlarmRequest?.payload?.name!=="openExactAlarmSettings")
       throw Error("Clear emitted the wrong exact alarm settings action");
     await evaluate(`document.querySelector('[data-action="reconcileReminders"]').click()`);
-    await waitFor("window.__clearActions?.length===4","Manual reminder reconcile action");
-    const reconcileRequest=await evaluate("window.__clearActions[3]");
+    await waitFor("window.__clearActions?.length===5","Manual reminder reconcile action");
+    const reconcileRequest=await evaluate("window.__clearActions[4]");
     if(reconcileRequest?.payload?.name!=="reconcileReminders")
       throw Error("Clear emitted the wrong reminder reconcile action");
     await evaluate(`window.__clearHostPort.postMessage(JSON.stringify({version:1,type:'state',payload:{
@@ -176,8 +200,8 @@ async function main(){
     const exactLegacyText=await evaluate("document.querySelector('#exactAlarmPermissionStatus').textContent");
 
     await evaluate(`document.querySelector('[data-action="nativeSettings"]').click()`);
-    await waitFor("window.__clearActions?.length===5","Native recovery route action");
-    const recovery=await evaluate("window.__clearActions[4]");
+    await waitFor("window.__clearActions?.length===6","Native recovery route action");
+    const recovery=await evaluate("window.__clearActions[5]");
     if(recovery?.payload?.name!=="nativeSettings")
       throw Error("Clear did not preserve its native settings recovery route");
 
@@ -185,8 +209,10 @@ async function main(){
     const result={
       status:"PASS",
       scope:"Chrome 156 Headless/CDP rendering of canonical Clear source with a protocol-level Mock Host; not Android WebView or OS permission UI",
-      actions:[route.payload.name,permissionRequest.payload.name,
-        exactAlarmRequest.payload.name,reconcileRequest.payload.name,recovery.payload.name],
+      actions:[route.payload.name,migrationRequest.payload.name+":"+migrationRequest.payload.id,
+        permissionRequest.payload.name,exactAlarmRequest.payload.name,
+        reconcileRequest.payload.name,recovery.payload.name],
+      settingsOptionIds:JSON.parse(settingsOptionIds),
       deniedText,grantedText,legacyText,exactDeniedText,exactGrantedText,exactLegacyText,
       reminderDiagnosticText,
       systemDiagnosticText,
