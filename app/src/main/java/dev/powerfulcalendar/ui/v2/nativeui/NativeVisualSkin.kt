@@ -83,6 +83,6 @@ internal object NativeVisualSkin {
     private object Chrome : ChromeVisualRenderer {
         override val id = "native/chrome"
         @androidx.compose.runtime.Composable
-        override fun Render(context: ChromeVisualContext) = context.Native()
+        override fun Render(context: ChromeVisualContext) = NativeChromeSkin.Render(context)
     }
 }
