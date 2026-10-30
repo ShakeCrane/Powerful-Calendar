@@ -4,6 +4,7 @@ import dev.powerfulcalendar.ui.v2.nativeui.NewEventEditorDialog
 import dev.powerfulcalendar.ui.v2.nativeui.NativeAiFileReview
 import dev.powerfulcalendar.ui.v2.nativeui.NativeAiImageConsentReview
 import dev.powerfulcalendar.ui.v2.nativeui.NativeAiOcrTextReview
+import dev.powerfulcalendar.ui.v2.nativeui.NativeAiStuckBatchReleaseReview
 import dev.powerfulcalendar.ui.v2.nativeui.NativeLegacyDataReview
 import dev.powerfulcalendar.ui.v2.nativeui.NativeSkinCatalogReview
 
@@ -2860,42 +2861,38 @@ fun PowerCalApp(
     }
 
     if (confirmStuckBatchRelease != null) {
-        SkinAlertDialog(
-            onDismissRequest = { confirmStuckBatchRelease = null },
-            title = { Text("强制解除 AI 批次锁？") },
-            text = {
-                Text(
-                    "仅在请求停止超过 10 分钟仍无响应时继续。当前执行结果数量可能无法确定；" +
-                        "已提交的事件操作保留，未完成草稿保留待处理。旧批次授权会被作废，不能自动续跑。"
-                )
-            },
-            confirmButton = {
-                val reviewedSession = confirmStuckBatchRelease
-                TextButton(
-                    enabled = reviewedSession != null && aiLocked && aiSession?.isActive == true &&
-                        aiSession?.sessionId == reviewedSession.sessionId &&
-                        aiSession?.lockEpoch == reviewedSession.lockEpoch &&
-                        PowerStore.canReleaseStuckAiBatch(aiSession, nowMillis),
-                    onClick = {
-                        val expected = confirmStuckBatchRelease
-                        confirmStuckBatchRelease = null
-                        if (expected != null) scope.launch {
-                            val released = withContext(Dispatchers.IO) {
-                                store.releaseStuckAiBatch(expected.sessionId, expected.lockEpoch)
-                            }
-                            reload()
-                            message = if (released) {
-                                "AI 批次锁已解除；请检查正式事件和待处理草稿，当前批次结果数量无法确定"
-                            } else {
-                                "批次已变化、结束或已恢复，无需再次解除"
-                            }
-                            WebSkinBridgeRuntime.stateRevision++
-                        }
+        val reviewedSession = confirmStuckBatchRelease
+        val canConfirmRelease = reviewedSession != null && aiLocked && aiSession?.isActive == true &&
+            aiSession?.sessionId == reviewedSession.sessionId &&
+            aiSession?.lockEpoch == reviewedSession.lockEpoch &&
+            PowerStore.canReleaseStuckAiBatch(aiSession, nowMillis)
+        NativeAiStuckBatchReleaseReview(
+            canConfirm = canConfirmRelease,
+            onConfirm = {
+                val expected = confirmStuckBatchRelease
+                confirmStuckBatchRelease = null
+                if (expected != null) scope.launch {
+                    val released = withContext(Dispatchers.IO) {
+                        store.releaseStuckAiBatch(expected.sessionId, expected.lockEpoch)
                     }
-                ) { Text("解除并作废旧授权") }
+                    reload()
+                    message = if (released) {
+                        "AI 批次锁已解除；请检查正式事件和待处理草稿，当前批次结果数量无法确定"
+                    } else {
+                        "批次已变化、结束或已恢复，无需再次解除"
+                    }
+                    WebSkinBridgeRuntime.stateRevision++
+                }
             },
-            dismissButton = {
-                TextButton(onClick = { confirmStuckBatchRelease = null }) { Text("返回") }
+            onDismiss = { confirmStuckBatchRelease = null },
+            showDialog = { dialog ->
+                SkinAlertDialog(
+                    onDismissRequest = dialog.onDismissRequest,
+                    title = dialog.title,
+                    text = dialog.text,
+                    confirmButton = dialog.confirmButton,
+                    dismissButton = dialog.dismissButton
+                )
             }
         )
     }

@@ -44,6 +44,16 @@ data class NativeAiBatchAuthorizationDialog(
 
 typealias NativeAiBatchAuthorizationDialogSlot = @Composable (NativeAiBatchAuthorizationDialog) -> Unit
 
+data class NativeAiStuckBatchReleaseDialog(
+    val onDismissRequest: () -> Unit,
+    val title: @Composable () -> Unit,
+    val text: @Composable () -> Unit,
+    val confirmButton: @Composable () -> Unit,
+    val dismissButton: @Composable () -> Unit
+)
+
+typealias NativeAiStuckBatchReleaseDialogSlot = @Composable (NativeAiStuckBatchReleaseDialog) -> Unit
+
 data class NativeAiInputReviewDialog(
     val onDismissRequest: () -> Unit,
     val title: @Composable () -> Unit,
