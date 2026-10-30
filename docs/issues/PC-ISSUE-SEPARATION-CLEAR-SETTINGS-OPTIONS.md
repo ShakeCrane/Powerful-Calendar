@@ -76,4 +76,6 @@ Verification on AVD `codex-clear-api35` (Android 15 / API 35, serial `emulator-5
 
 The two early connected-management attempts failed because the ActivityResult test monitor omitted the launcher's `CATEGORY_OPENABLE` / MIME match; the monitor was corrected and the final 3/3 run passed. Those failed harness logs and the passing `connected-management-retry2.log` (SHA-256 `E023969C99D6AF5663EB5E69F51054B98098EBFB28DAE3F8A932D23CDD6B69CF`) are preserved under `.local/android-test/reports/sep11-clear-skin-management-20261031/`.
 
+Implementation and test commit `fde41fe` (`feat(皮肤分离): 在Clear设置中管理皮肤包`) is pushed to `origin/feat/skin-first-separation`.
+
 S0-ST-07/08/09 are now **PARTIAL / HOLD**, not closed; SEP-11 remains **NOT TESTED / INCOMPLETE** because actual SAF UX/failure handling, Settings/credential/backup parity, complete Native/Skin replay and device/OEM evidence remain open. This slice does not switch the default skin or remove Native recovery.
