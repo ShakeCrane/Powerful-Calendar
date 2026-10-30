@@ -1746,7 +1746,11 @@ fun PowerCalApp(
                 .put("editing", webEditing.snapshot())
                 .put("optionGroups", SemanticOptions.toJson(enabled = semanticOptionsEnabled))
                 .put("timeline", WebSkinTimelineProjection.build(
-                    records, camera, nowMillis, zone))
+                    records,
+                    // The host republishes synchronously from the action callback, before this
+                    // composition's local camera value is rebuilt. Read live camera state here.
+                    TimelineCoordinate.Camera(anchorMillis, TimelineCoordinate.clampHours(hours)),
+                    nowMillis, zone))
                 .put("month", if (page == Page.MONTH.name)
                     WebSkinMonthProjection.build(
                         records,
