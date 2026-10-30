@@ -1,5 +1,12 @@
 # Core freeze progress
 
+## Separation — Native Month renderer module boundary (2026-10-30, CODE COMPLETE; 745 JVM TESTED; device NOT TESTED)
+
+- 将 `MonthScreen` 从 `:app` 迁入 `:native-skin`。在 `:skin-api` 新增只含展示字段、原始视觉 token 与 Host Compose slot 的月历模型；Host 继续按既有 occurrence/date-window 规则投影，并用不透明 row key 解析回正式 owner 与原 recurrence occurrence key。月历样式通过原 Native Host slot 注入，业务回调仍由 Host 持有。没有修改 Clear、冻结 Core、持久化或皮肤默认选择。
+- 新增投影/Compose 回归 **5/5 PASS**；月历网格与重复事件编辑相关宽回归 **30/30 PASS**。完整离线门禁 **745/745 JVM PASS、108 个 XML suite、0 failure/error/skip**；Native/skin 两项源码边界、AndroidTest Kotlin 编译、Debug APK assemble、lint **PASS**（152 actionable tasks）。首次完整门禁一次性失败在 `:app:packageDebug`，单独重试及随后全门禁复测成功，根因未确认，已保留记录。
+- APK SHA-256 `D8EB6FBE87D9B63EED0A5596ABF8C020135D3E7FC482B74FA7DD903D5B72CDB2`，66,434,642 bytes；全门禁日志 SHA-256 `82CB58731DF8A723D65ABAC20D672178551327B6106C702E771035045D37D9D8`。`.local/android-test/reports/separation-native-month-module-20261030/` 保存日志。ADB 无设备，AVD 列表为空，因此仪器/设备交互 **NOT TESTED**。详见 [Native Month module Issue](../issues/PC-ISSUE-SEPARATION-NATIVE-MONTH-MODULE.md)。
+- 实现提交 `7488c89820b7ff8be2d4cb24e0c68dfd26f1ab3c` 已推送至 `origin/feat/skin-first-separation`。两份既有 WebSkin instrumentation 测试仍未暂存、未提交。
+
 ## Separation — Native AI chat renderer module boundary (2026-10-30, CODE COMPLETE; 740 JVM TESTED; device NOT TESTED)
 
 - 将 `NativeAiChatScreen` 从 `:app` 迁入 `:native-skin`。新增 `NativeAiMessage`、`NativeAiBatchMode` 展示接口；Host 继续执行 AI 消息投影、批量命令映射和剪贴板访问，并通过 Compose slot 注入提案审核与头像。Core/AI 授权、提案审阅、提交及文件选择逻辑保持在 Host。没有改 Clear 或 Core。
