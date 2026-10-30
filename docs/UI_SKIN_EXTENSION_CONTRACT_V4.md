@@ -5,12 +5,12 @@ As of 2026-10-21, the presentation host additionally interprets signed-by-integr
 They can live-switch ten existing screen surfaces with a strict built-in node/action
 library, animation and route transitions. The ten compiled-skin surfaces and Native
 fallback behavior remain. The Settings, Navigation, Memo, AI chat, Month, Timeline, and Draft Deck
-value APIs are in `:skin-api`; their Native renderers are in `:native-skin`. Core-backed Host
+value APIs are in `:skin-api`; their Native renderers are in `:native-skin`. Root/notice Chrome context and rendering also live in `:native-skin`. Core-backed Host
 projections, lifecycle and action adapters remain in `:app`.
 
 # PowerCal Visual Skin Contract v4 — as built
 
-Updated 2026-10-21; Native profile plus Settings, Month, Timeline, and staged Native module boundaries clarified 2026-10-30. This document records executable Android source interfaces, not a proposal or a promised future plugin format.
+Updated 2026-10-21; Native profile plus Settings, Month, Timeline, Draft Deck, and Chrome module boundaries clarified 2026-10-30. This document records executable Android source interfaces, not a proposal or a promised future plugin format.
 
 ## Separation
 
@@ -19,7 +19,7 @@ The functional host exclusively owns persisted events, eventSeq/revision/occurre
 This ABI is intended for audited Kotlin source compiled into the same APK; it is not a sandbox for untrusted Kotlin, a dynamically loaded plugin, or an Android-installable executable ZIP.
 
 The production `native` source-compiled profile explicitly registers adapters for all ten
-surfaces. Each adapter delegates to that surface's existing `context.Native()` implementation,
+surfaces. Each adapter uses the corresponding Native renderer (most through `context.Native()`; Chrome delegates to `NativeChromeSkin.Render`),
 so the Native UI has a named presentation profile without creating a second screen implementation
 or gaining Host capabilities. Clearing the compiled registry still restores the direct first-party
 fallback. This profile is independent of `.pcskin` package selection and is not an executable or
@@ -29,14 +29,14 @@ The `:skin-api` module currently contains the Settings and Navigation value cont
 display-only `NativeMemoRow`, `NativeAiMessage`, `NativeAiBatchMode`, Native Month, Timeline, and
 Draft Deck models/appearance slots. The `:native-skin` Android library contains `NativeToolsPage`,
 `NativePowerNavigation`, `NativeMemoCenterScreen`, `NativeAiChatScreen`, `NativeMonthScreen`,
-`NativeTimelineScreen`, and `NativeDraftDeckScreen`;
+`NativeTimelineScreen`, `NativeDraftDeckScreen`, `NativeChromeSkin`, and its Chrome context;
 the Host supplies values, action callbacks, protected content slots, and presentation
 shapes/icons. The
 module direction is `:app → :native-skin → :skin-api`, with `:app → :skin-api` for Host adapters.
 A Gradle boundary check rejects known Host/Core service references from `:native-skin`.
 
 This is an incremental compile/module boundary, not a security sandbox or separate APK. The
-Native Timeline and Draft Deck renderers are in `:native-skin`; their Core-backed projections,
+Native Timeline, Draft Deck, and Chrome renderers are in `:native-skin`; their Host-owned projections and wrappers,
 geometry/form adapters, controller lifecycle, and route adapters remain in `:app`. Native renderer
 IDs and product behavior are unchanged.
 
@@ -53,7 +53,7 @@ IDs and product behavior are unchanged.
 | Navigation | NavigationVisualRenderer / NavigationVisualContext | NativePowerNavigation |
 | Compose alert/window dialogs | OverlayVisualRenderer / OverlayVisualContext | Material3 AlertDialog / Compose Dialog |
 | Date/time picker | PickerVisualRenderer / PickerVisualContext | Android native DatePickerDialog / TimePickerDialog |
-| App root and message banner | ChromeVisualRenderer / ChromeVisualContext | first-party viewport and message Surface |
+| App root and message banner | ChromeVisualRenderer / ChromeVisualContext | NativeChromeSkin via Host adapter |
 
 Every native fallback remains callable through context.Native(). All Compose AlertDialogs in the current PowerCal UI route through SkinAlertDialog; Draft Deck's full-screen Dialog routes through SkinWindowDialog; its platform pickers route through SkinPickers. Window/picker opening and dismissal callbacks remain supplied by their host, not invented by the skin.
 
@@ -82,7 +82,7 @@ ID so the Host resolves the authoritative installed package. `SettingsVisualEffe
 The Settings, Navigation, Memo, AI chat, Month, Timeline, and Draft Deck display API types compile in
 `:skin-api`; their Native renderers compile in `:native-skin`. Memo, Month, Timeline, and Draft Deck
 renderers receive display values and Host callbacks. Opaque row/card keys resolve in Host code to
-the authoritative owner and, where supported, the original occurrence. This module boundary is not
+the authoritative owner and, where supported, the original occurrence. The Chrome context and renderer are provided by `:native-skin` to keep Compose UI dependencies with presentation code. This module boundary is not
 a sandbox. Core-backed projections, DeckController lifecycle/commands, picker operations, and
 renderer adapters remain in `:app`.
 
@@ -135,6 +135,17 @@ edit sessions, save/exit decisions, scoped authorization, and outer Host confirm
 in `:app`. This slice establishes a source-module boundary; it does not sign SEP-08 or Native/Clear
 functional parity, Android WebView/device behavior, or Skin Studio support.
 
+### Native Chrome display boundary (2026-10-30)
+
+`ChromeVisualContext` and `ChromeVisualRenderer` are provided with `:native-skin`; the Host
+continues to own `SkinAppShell` selection, web/runtime fallback, `RuntimeSkinPickerHost`, and
+notice lifecycle. `NativeChromeSkin` renders the root Box with the established background and
+status/navigation/IME insets. It renders notices with the existing Material colors, 14 dp chip
+radius, padding, and polite live-region semantics. The explicit Native profile delegates to this
+module renderer, and the direct Native recovery path calls the same implementation. This is a
+source-module boundary; it does not complete SEP-12, move Android pickers, or assert device/
+TalkBack parity.
+
 ## Contract sources
 
 Source module map:
@@ -164,7 +175,9 @@ Source module map:
 - `app/src/main/java/dev/powerfulcalendar/ui/v2/SkinnableDraftDeck.kt` — controller adaptation with autosave, serialized guarded operations
 - `app/src/main/java/dev/powerfulcalendar/ui/v2/SkinnableOverlays.kt` — Compose Alert and Window slots
 - `app/src/main/java/dev/powerfulcalendar/ui/v2/SkinnablePickers.kt` — date/time imperative picker intents
-- `app/src/main/java/dev/powerfulcalendar/ui/v2/SkinnableChrome.kt` — root viewport and message banner
+- `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/ChromeVisualContext.kt` — typed root/notice context and renderer contract
+- `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativeChromeSkin.kt` — Native root shell and accessible notice renderer
+- `app/src/main/java/dev/powerfulcalendar/ui/v2/SkinnableChrome.kt` — Host renderer selection and notice lifecycle
 - `app/src/main/java/dev/powerfulcalendar/ui/v2/skins/ActiveVisualSkin.kt` — single source-compiled profile selection and registration
 - `app/src/main/java/dev/powerfulcalendar/ui/v2/skins/StudioExampleDeck.kt`, `StudioExampleOverlay.kt`, `StudioExamplePicker.kt`, `StudioExampleChrome.kt` — runnable reference implementations
 
