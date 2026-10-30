@@ -1586,3 +1586,10 @@ Updated: 2026-10-24
 - 全量失败/隔离复跑/非测试构建日志 SHA-256：`90003F110A68405FB128D3F9F52654F19209B6F08273F5E831CECA6C6E237A3B` / `4E83DFB5E79F5F042274F338BBB8D3042564B50AE2ABCC203816CACC072A76E6` / `B451F7C98966C87180F01FD46A5CC802FBBC9F19FB82EDC2C4314D798D947933`；证据在 `.local/android-test/reports/native-host-adapter-namespace-20261030/`。ADB 无在线设备、AVD 列表为空；Native/Skin 设备回放 **NOT TESTED**。
 - 代码提交 `aab3e52e7e6edafb814f39124041353419ebf8c7` 已推送；结案报告：[PC-ISSUE-SEPARATION-NATIVE-HOST-ADAPTER-NAMESPACE](../issues/PC-ISSUE-SEPARATION-NATIVE-HOST-ADAPTER-NAMESPACE.md)。SEP parity 和整体分离仍开放，继续推进后续自动化工作。
 - 后续单独执行 `:native-skin:assembleDebug --offline --rerun-tasks --max-workers=1 --console=plain`：**35/35 tasks PASS**，任务图只有 `:native-skin` 与 `:skin-api`，未构建 `:app`。AAR SHA-256 `F8BFE2D1B8A6E5F9E3F7126F7E0074035324CF34E6906C16AE3519AFFB739A50`；日志 SHA-256 `09364383539267156380F6BF7CA1C0CE2099184A8F59CC6FB204D5357842F2FC`。同一 Issue 报告已补此证据。
+
+## Separation — Clear 初始投影与编辑命令队列（2026-10-31）
+
+- 根因与修复：Memo 投影曾在 Store reload 之后通过 Compose 派生，Bridge 可先发布旧空快照；Clear 在 Port/Host 未 ready 时丢弃命令，字段 patch 在途时点击 Save 也会直接被 `busy` 丢弃。现由一次 Store 读取生成记录和 Memo 投影，Ready 在两者应用后发布；Clear 使用有限 FIFO outbox，编辑器串行执行并将 Save 排在 patch 后。提醒同步错误不会覆盖已加载日历。Bridge 契约同步更新。
+- API 35 `codex-clear-api35`：Clear 首屏/立即保存 **2/2**；重复事件 **4/4**；时间轴拖动、缩放及复位 **1/1**；正式删除 **2/2**；AI 审核 **2/2**。完整 JVM **784/784、125 suites、0 failures/errors/skips**；两项边界、AndroidTest 编译、Debug APK 与 lint 通过（152 tasks）。Studio Python **62/62**，JS syntax、Clear APK 资源逐字节校验通过。
+- APK SHA-256 `4EAAD84A88A78FE1A785DD20AB2A078956D2A3BC3DBC5E37CE14C4370AE716BF`；Clear 包 SHA-256 `465cfd1b980f897a7540cfd49a2fc046f70662d7e9266195ba1ac65359359c82`。完整门禁日志 SHA-256 `8FEC1BF46AD66EDEFC1D704B286486E6BBE2855E3CCF4BA42D721EAEF78DB062`；证据位于 `.local/android-test/reports/clear-runtime-api35/`。
+- 代码提交 `733d2542f72473e37317e5dc2dd4cdaf0b5ee75e` 已推送至唯一集成主线。`WebSkinFormalDeleteInstrumentedTest.kt` 与 `WebSkinRecurrenceInstrumentedTest.kt` 的其他 Agent 未提交修改未纳入本提交，仍保留在工作区。实体/OEM、TalkBack、完整双版本等价矩阵未测；Clear 整体等价及 Skin-First 仍未完成。结案报告：[PC-ISSUE-SEPARATION-CLEAR-STARTUP-AND-EDIT-QUEUE](../issues/PC-ISSUE-SEPARATION-CLEAR-STARTUP-AND-EDIT-QUEUE.md)。
