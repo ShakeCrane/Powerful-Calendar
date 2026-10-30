@@ -1,7 +1,7 @@
 # PC-ISSUE-SEPARATION-CLEAR-GREEDY-LABEL-FOLDING — Clear 时间轴标题贪心折叠
 
-- 日期：2026-10-29；API 35 Android WebView follow-up：2026-10-30
-- 状态：**PARTIAL**。Clear 源码、确定性算法、Skin Studio 往返、Edge Studio Mock 的视觉/交互回归和 Android 15 API 35 的真实 Clear WebView 窄范围回归通过。Android WebView 实测不等于 Native/Clear 同夹具 parity；该对照以及实体/OEM 行为仍 **NOT TESTED**。初次 Android Gradle/API 36 门禁 BLOCKED 已被实现提交 `1d78353e0866c7bc19c6a555fb65cbc454aea1f2` 上的完整离线 Gradle PASS 取代。
+- 日期：2026-10-29；API 35 Android WebView / Native 对照 follow-up：2026-10-30
+- 状态：**PARTIAL**。Clear 源码、确定性算法、Skin Studio 往返、Edge Studio Mock 视觉/交互、Android 15 API 35 Clear WebView，以及同一正式事件夹具在 Native/Clear 两个真实 `PowerCalApp` 路径上的 lead 集合对照均通过。完整设备/OEM、TalkBack 和所有交互状态的跨皮肤 parity 仍 **NOT TESTED**。初次 Android Gradle/API 36 门禁 BLOCKED 已被实现提交 `1d78353e0866c7bc19c6a555fb65cbc454aea1f2` 上的完整离线 Gradle PASS 取代。
 - 工作树：`codex/separation-s0-inventory`
 - 基线：`2a02ae71fbeb8b50e2cb099533665e66243a2e53`
 - 实现/回归/报告提交：`c6b6f7d10e068ee0d4d292505f643b0fab4d1164` (`feat(分离): 实现 Clear 时间轴标题贪心折叠`)
@@ -102,4 +102,15 @@
 - Gradle `verifySkinSourceBoundary + testDebugUnitTest + assembleDebug + lintDebug`：BUILD SUCCESSFUL；另强制重跑 JVM **727/727、100 suites、0 failures/errors/skips**。门禁日志 SHA-256 `48394B8091FDFEA4FC0C6453BEF78469AB21EA0B3DE0A687B58BEA5358D1C08B`；强制 JVM 日志 SHA-256 `F73DB96764DECCAD40FAAC28DE1B4E5B267F575E53AA95570016F3EFA9E671C3`；lint `0 errors / 53 warnings`。AndroidTest 重编译命令 `:app:assembleDebugAndroidTest --offline --rerun-tasks --no-daemon --console=plain` 53/53 tasks PASS；Clear verify log SHA-256 `C5CA0FF65E4A70A32B8103595A22E5F31BBA174BD0D229B86CBB472523FC547B`。
 - 保留失败证据：前几次 AVD 在 JUnit 返回前退出，日志没有测试结果；另一次初始夹具把 C/D 放在 13:00/13:01，44px 按钮热区覆盖 B 标题测试点，观测到点击落在序号 4。将 C/D 移至 14:00/14:01 后，不改变 A/B、C/D 文本碰撞关系，最终点击落在 B 自身序号 2 并通过。原诊断失败日志 `timeline-greedy-folding-instrumented-hittrace-r2.log` SHA-256 `C6214624D30CCA4B6CC46647DA86A88B4F814F99F41784147407D7B0909FEEC0`，没有把夹具失败伪报成产品缺陷或 PASS。
 
-本 follow-up 只签核 Clear/API 35 上述子项。左右翼滚动/裁切与缩放重算由既有 Edge Studio Mock 测试覆盖；Native 与 Clear 同场景实际 Android 渲染对照、TalkBack/实体设备/OEM 仍 **NOT TESTED**，所以 `S0-TL-05` 总体及 Separation/Cutover 仍 **PARTIAL / HOLD**。
+本 follow-up 只签核 Clear/API 35 上述子项。左右翼滚动/裁切与缩放重算由既有 Edge Studio Mock 测试覆盖；当时 Native 与 Clear 同场景实际 Android 渲染对照尚未运行，因此 `S0-TL-05` 总体及 Separation/Cutover 仍 **PARTIAL / HOLD**。
+
+## Follow-up — API 35 Native/Clear 同夹具对照（2026-10-30）
+
+在同一个 AndroidJUnitRunner 场景中，先让真实 `PowerCalApp` 走 Native Compose 时间轴，再激活 bundled Clear 并通过真实 Android WebView 重放同一 `PowerStore` 中的同四条正式 ACTIVITY。对照不依赖两个独立的仿造 fixture；Clear 的矩形/触摸断言仍在同一测试里执行。
+
+- AndroidTest 增量提交 `1c59a79fc423e73ee287843880bec926a7063d90`（`test(分离): 验证 Native 与 Clear 标题 lead 一致`）已推送。它在 Native 真实 Compose 语义树中断言 A/C 标题存在、B/D 标题不存在，四个事件按钮都有点击语义且无障碍描述包含完整标题；随后显式断言 Clear 可见 lead 集等于 Native 可见 lead 集。
+- API 35 Native measured title bounds（Android root px；viewport `1080×1920`，density `2.625`）：A `[601,918,711,981]`，C `[601,1028,711,1091]`；Native 可见集 `Fold_A/Fold_C`。同一 Store fixture 的 Clear `Range` rectangles 与比较轨迹见前一 follow-up。
+- AndroidJUnitRunner **1/1 PASS**；直接日志 `.local/android-test/reports/separation-s0-tl05-api35-20261030/timeline-greedy-folding-native-parity-final1.log`，SHA-256 `C53564041F627B7F3A918187E634B81A9E3C3922CE4E0821F4D09ECB6540E7F0`。Native/Clear trace `.local/android-test/reports/separation-s0-tl05-api35-20261030/timeline-greedy-folding-native-parity-final-trace.txt`，SHA-256 `C46A4E6F1FE75EE18426EE369B56CE8EDF297FEEC38249417F3366FF60155345`。
+- 最终 API 35 Clear 截图 SHA-256 `B78A0D44BEAE1D72C7238ED43F0E9967D7F131B8425569992F5A887F4BC8FBAB`；Debug APK SHA-256 `195BA8FAE40F3B487C1345CEA242C9380A2B1088FBED38CB57E6418E340BD78A`；含 Native/Clear 对照断言的 AndroidTest APK SHA-256 `BAB430859788F73130DA9AD20902F7477AFB4050537148BF1A99E84CD5158392`。强制 AndroidTest 重新编译 53/53 tasks PASS，日志 SHA-256 `D2FC24E0C14D89CAFC74B00B1CCEC94C7B7B575C7E570F60AFAA29D4419FD885`。
+
+Native/Clear 同夹具的标题可见集和完整事件辅助语义现为 **PASS（限 API 35 本 fixture）**，不等同于全功能 parity。实际触摸设备/OEM、TalkBack，以及滚动/缩放/裁切在 Native 与 Clear 之间的完整端到端同场景对照仍 **NOT TESTED**；`S0-TL-05` 总体和 cutover 继续 **PARTIAL / HOLD**。
