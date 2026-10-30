@@ -7,6 +7,7 @@ import dev.powerfulcalendar.ui.v2.nativeui.NativeAiOcrTextReview
 import dev.powerfulcalendar.ui.v2.nativeui.NativeAiStuckBatchReleaseReview
 import dev.powerfulcalendar.ui.v2.nativeui.NativeCalendarImportPrompt
 import dev.powerfulcalendar.ui.v2.nativeui.NativeEventInspection
+import dev.powerfulcalendar.ui.v2.nativeui.NativeFormalWriteReview
 import dev.powerfulcalendar.ui.v2.nativeui.NativeLegacyDataReview
 import dev.powerfulcalendar.ui.v2.nativeui.NativeSkinCatalogReview
 
@@ -2224,58 +2225,60 @@ fun PowerCalApp(
             review.command is WebEditCommand.CommitDeck -> "确认发布正式事件"
             else -> "确认保存正式事件修改"
         }
-        SkinAlertDialog(
-            onDismissRequest = { resolveReview(false) },
-            title = { Text(reviewTitle) },
-            text = {
-                Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    review.current?.let {
-                        Text("事件 #${it.eventSeq} · 版本 ${it.revision}")
-                    } ?: review.deckCard?.let {
-                        Text("草稿 #${it.draftId} · ${review.operation.label}")
+        val reviewExplanation = when {
+            review.command is WebEditCommand.RequestRestoreReviewDeck ->
+                "该事件已删除。确认后会恢复同一事件序号并创建新版本；请核对墓碑快照与恢复内容。"
+            review.command is WebEditCommand.RequestConflictReviewDeck &&
+                review.operation != DraftOperation.DELETE ->
+                "此草稿基于旧版本。确认后会按下方完整内容整份覆盖当前正式事件。"
+            review.operation == DraftOperation.DELETE -> {
+                if (review.current?.recurrence?.freq?.name?.let { it != "NONE" } == true)
+                    "确认后将删除整个正式重复事件及其所有实例。请核对事件内容后确认。"
+                else "确认后将删除该正式事件。请核对事件内容后确认。"
+            }
+            else -> "请核对完整内容；只有在此宿主对话框确认后才会写入正式事件。"
+        }
+        val reviewRows = when {
+            review.operation == DraftOperation.DELETE &&
+                review.command is WebEditCommand.RequestConflictReviewDeck ->
+                review.before?.let { before -> snapshotRows(before, DraftForm.from(before)) }
+                    .orEmpty().map { NativeFormalWriteReviewRow(it.label, it.before, "（删除）") }
+            review.proposed != null -> snapshotRows(review.before, review.proposed)
+                .map { NativeFormalWriteReviewRow(it.label, it.before, it.after) }
+            review.before != null -> snapshotRows(review.before, DraftForm.from(review.before))
+                .map { NativeFormalWriteReviewRow(it.label, it.before, "（删除）") }
+            else -> emptyList()
+        }
+        NativeFormalWriteReview(
+            model = NativeFormalWriteReviewModel(
+                title = reviewTitle,
+                targetSummary = review.current?.let {
+                    "事件 #${it.eventSeq} · 版本 ${it.revision}"
+                } ?: review.deckCard?.let { "草稿 #${it.draftId} · ${review.operation.label}" },
+                scopeSummary = review.scope?.let { scope ->
+                    "范围：" + when (scope) {
+                        RecurrenceEditScope.SINGLE_OCCURRENCE -> "仅本次"
+                        RecurrenceEditScope.THIS_AND_FUTURE -> "本次及以后（拆分为新系列）"
+                        RecurrenceEditScope.WHOLE_SERIES -> "整个系列"
                     }
-                    review.scope?.let { scope ->
-                        Text("范围：" + when(scope) {
-                            RecurrenceEditScope.SINGLE_OCCURRENCE -> "仅本次"
-                            RecurrenceEditScope.THIS_AND_FUTURE -> "本次及以后（拆分为新系列）"
-                            RecurrenceEditScope.WHOLE_SERIES -> "整个系列"
-                        })
-                    }
-                    review.occurrenceKey?.let { Text("原始实例：$it") }
-                    Text(when {
-                        review.command is WebEditCommand.RequestRestoreReviewDeck ->
-                            "该事件已删除。确认后会恢复同一事件序号并创建新版本；请核对墓碑快照与恢复内容。"
-                        review.command is WebEditCommand.RequestConflictReviewDeck &&
-                            review.operation != DraftOperation.DELETE ->
-                            "此草稿基于旧版本。确认后会按下方完整内容整份覆盖当前正式事件。"
-                        review.operation == DraftOperation.DELETE -> {
-                        if (review.current?.recurrence?.freq?.name?.let { it != "NONE" } == true)
-                            "确认后将删除整个正式重复事件及其所有实例。请核对事件内容后确认。"
-                        else "确认后将删除该正式事件。请核对事件内容后确认。"
-                        }
-                        else -> "请核对完整内容；只有在此宿主对话框确认后才会写入正式事件。"
-                    })
-                    when {
-                        review.operation == DraftOperation.DELETE &&
-                            review.command is WebEditCommand.RequestConflictReviewDeck ->
-                            review.before?.let { before -> snapshotRows(before, DraftForm.from(before)) }
-                                ?.forEach { row -> Text("${row.label}：${row.before} → （删除）") }
-                        review.proposed != null -> snapshotRows(review.before, review.proposed)
-                            .forEach { row -> Text("${row.label}：${row.before} → ${row.after}") }
-                        review.before != null -> snapshotRows(review.before,
-                            DraftForm.from(review.before)).forEach { row ->
-                            Text("${row.label}：${row.before} → （删除）")
-                        }
-                    }
-                }
-            },
-            confirmButton = { TextButton(enabled = !resolving, onClick = { resolveReview(true) }) {
-                Text(if (review.operation == DraftOperation.DELETE) "确认删除" else "确认")
-            } },
-            dismissButton = { TextButton(enabled = !resolving, onClick = { resolveReview(false) }) {
-                Text("取消")
-            } }
+                },
+                occurrenceSummary = review.occurrenceKey?.let { "原始实例：$it" },
+                explanation = reviewExplanation,
+                rows = reviewRows,
+                confirmLabel = if (review.operation == DraftOperation.DELETE) "确认删除" else "确认",
+                resolving = resolving
+            ),
+            onConfirm = { resolveReview(true) },
+            onDismiss = { resolveReview(false) },
+            showDialog = { dialog ->
+                SkinAlertDialog(
+                    onDismissRequest = dialog.onDismissRequest,
+                    title = dialog.title,
+                    text = dialog.text,
+                    confirmButton = dialog.confirmButton,
+                    dismissButton = dialog.dismissButton
+                )
+            }
         )
     }
 
