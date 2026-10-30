@@ -14,6 +14,7 @@ import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.powerfulcalendar.core.PowerStore
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -183,6 +184,76 @@ class ClearSettingsOptionsInstrumentedTest {
             compose.waitUntil(15_000) { skinManager.currentId() == "powercal-default" }
             assertEquals("Confirmed activation uses the existing Host package manager",
                 "powercal-default", skinManager.currentId())
+        } finally {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            store.close()
+            context.deleteDatabase(databaseName)
+            skinManager.select(originalSkin)
+            val restoreOnboarding = onboarding.edit()
+            if (hadAskedForCalendarImport) {
+                restoreOnboarding.putBoolean("system-calendar-import-asked", askedForCalendarImport)
+            } else {
+                restoreOnboarding.remove("system-calendar-import-asked")
+            }
+            restoreOnboarding.commit()
+        }
+    }
+
+    @Test
+    fun clearSettingsRoutesAiCredentialsAndContextControlsToProtectedHostUi() {
+        val context = compose.activity.applicationContext
+        val databaseName = "clear-ai-settings-${UUID.randomUUID()}.db"
+        val store = PowerStore(context, databaseName)
+        val skinManager = SkinPackageManager(context)
+        val originalSkin = skinManager.currentId()
+        val onboarding = context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+        val hadAskedForCalendarImport = onboarding.contains("system-calendar-import-asked")
+        val askedForCalendarImport = onboarding.getBoolean("system-calendar-import-asked", false)
+        try {
+            onboarding.edit().putBoolean("system-calendar-import-asked", true).commit()
+            PowerCalSkinRegistry.reset()
+            skinManager.select("powercal-clear-default")
+            compose.runOnUiThread {
+                compose.activity.setContent { PowerCalTheme { PowerCalApp(store) } }
+            }
+
+            var web: WebView? = null
+            compose.waitUntil(30_000) {
+                compose.runOnUiThread {
+                    web = findWebView(compose.activity.findViewById(android.R.id.content))
+                }
+                web != null
+            }
+            val view = requireNotNull(web)
+            compose.waitUntil(30_000) {
+                evaluate(view, "!!window.PowerCalSkin && !!window.PowerCalSkin.receive") == "true"
+            }
+            evaluate(view, "document.querySelector('.clear-tabbar [data-action=settings]').click(); true")
+            compose.waitUntil(15_000) {
+                WebSkinBridgeRuntime.state().optString("page") == "SETTINGS"
+            }
+            compose.waitUntil(10_000) {
+                evaluate(view, "!!document.querySelector('#openAiSettings')") == "true"
+            }
+
+            evaluate(view, "document.querySelector('#openAiSettings').click(); true")
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithText("单一 AI").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText("配置端点、模型与密钥").performClick()
+            compose.waitUntil(10_000) {
+                compose.onAllNodesWithText("允许按次共享事件上下文")
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+            assertTrue(compose.onAllNodesWithText("端点 · https://api.example.com/v1")
+                .fetchSemanticsNodes().isNotEmpty())
+            assertTrue(compose.onAllNodesWithText("启用 AI").fetchSemanticsNodes().isNotEmpty())
+            assertFalse("Credentials must not be projected to the Clear WebView",
+                WebSkinBridgeRuntime.state().toString().contains("apiKey"))
         } finally {
             compose.runOnUiThread {
                 compose.activity.setContent { }

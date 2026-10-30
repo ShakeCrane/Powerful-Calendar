@@ -161,7 +161,10 @@ async function main(){
     await frameEval(`document.querySelector('[data-action="reconcileReminders"]').click()`);
     await waitFor(evaluate,"document.querySelector('#bridgeLog').textContent.includes('不会调用 Android Host 或修改真实调度')",
       "Mock reminder reconciliation action");
-    await frameEval(`document.querySelector('[data-action="nativeSettings"]').click()`);
+    await frameEval(`document.querySelector('#openAiSettings').click()`);
+    await waitFor(evaluate,"document.querySelector('#bridgeLog').textContent.includes('此页面不启动 Android Host')",
+      "Mock protected AI settings route");
+    await frameEval(`document.querySelector('#nativeRecoverySettings').click()`);
     await waitFor(evaluate,"document.querySelector('#bridgeLog').textContent.includes('不启动 Android Host')",
       "Mock native recovery route");
     const result={

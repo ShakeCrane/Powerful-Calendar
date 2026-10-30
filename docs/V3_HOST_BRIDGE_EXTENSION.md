@@ -171,6 +171,11 @@ envelope and known fields only:
   validation; cancellation does not change selection. The action cannot submit a
   path or package bytes, and it does not write calendar records. Preview Mock
   confirmation is simulated and cannot activate an Android skin.
+- Clear's AI/privacy settings link uses the existing `nativeSettings` route to
+  open the Host-protected Native Tools form for endpoint, model, credentials,
+  context sharing, and file-fallback consent. The route adds no Bridge state or
+  credential write authority; the API key remains inside Host-owned Compose and
+  private preferences. Studio Preview Mock only logs the route.
 - `data.legacy.migrate` is a Host-owned migration request. It opens the existing
   native confirmation before accessing the legacy database; the importer opens
   that source read-only, keeps the file, and records a finished migration batch

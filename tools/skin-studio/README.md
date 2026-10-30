@@ -41,6 +41,7 @@ python tools/skin-studio/build_default_clear.py --verify --apk app/build/outputs
 - 模拟常规、空白、密集、重复、AI 锁定、AI 请求失败后手动重发和提案审核场景；用真实 v1 消息结构模拟宿主的
   `state/action`，包括时间轴状态、重复实例身份及 `optionGroups`。
 - Clear 设置页会显示 Host 投影的已安装皮肤目录，并通过 `selectSkin` 请求 Host 确认；Preview Mock 允许模拟确认或取消，但不会启用 Android 皮肤或写入设备数据。
+- Clear 的 AI/隐私入口通过既有 `nativeSettings` 路由打开 Host 保护的端点、模型、凭证和上下文表单；Preview Mock 只记录该路由，不会读取密钥、启动 Android 设置或保存真实偏好。
 - 重复事件保存预览会显示“模拟确认/模拟取消”；这只是 Studio 的 Mock，Android 实际写入必须经过 Host 的原生确认。重复范围编辑源文件为 `web/edit.js`，与导出包及 Android Clear 资产同源。
 - 通过“软件新增平行功能”场景检查通用选项列表是否自动继承新的同级选项。
 - 可导入已有的自包含 v3 ZIP，保留 `web/`、`assets/` 中的额外文件；
