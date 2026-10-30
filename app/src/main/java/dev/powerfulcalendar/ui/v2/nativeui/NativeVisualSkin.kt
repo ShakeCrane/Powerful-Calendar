@@ -21,7 +21,7 @@ internal object NativeVisualSkin {
         PresentationSkinRegistry.useNavigation(Navigation)
         DeckPresentationSkinRegistry.use(Deck)
         PresentationSkinRegistry.useOverlay(Overlay)
-        PresentationSkinRegistry.usePicker(Picker)
+        PresentationSkinRegistry.usePicker(NativePickerSkin)
         PresentationSkinRegistry.useChrome(Chrome)
     }
 
@@ -73,11 +73,6 @@ internal object NativeVisualSkin {
         override val id = "native/overlay"
         @androidx.compose.runtime.Composable
         override fun Render(context: OverlayVisualContext) = NativeOverlaySkin.Render(context)
-    }
-
-    private object Picker : PickerVisualRenderer {
-        override val id = "native/picker"
-        override fun Render(context: PickerVisualContext) = context.Native()
     }
 
     private object Chrome : ChromeVisualRenderer {
