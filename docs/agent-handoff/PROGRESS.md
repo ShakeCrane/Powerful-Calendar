@@ -1,10 +1,17 @@
 # Core freeze progress
 
+## Separation — Native AI chat renderer module boundary (2026-10-30, CODE COMPLETE; 740 JVM TESTED; device NOT TESTED)
+
+- 将 `NativeAiChatScreen` 从 `:app` 迁入 `:native-skin`。新增 `NativeAiMessage`、`NativeAiBatchMode` 展示接口；Host 继续执行 AI 消息投影、批量命令映射和剪贴板访问，并通过 Compose slot 注入提案审核与头像。Core/AI 授权、提案审阅、提交及文件选择逻辑保持在 Host。没有改 Clear 或 Core。
+- 定向 Compose/投影回归 **4/4 PASS**；Native/skin source 边界 **PASS**；完整 AndroidTest Kotlin 编译 **PASS**；Debug APK assemble **PASS**；`:app:lintDebug` **PASS**。完整 JVM 套件复测 **740/740 PASS，0 failure/error/skip**（106 个 XML）。APK SHA-256 `96A1B3AF4F96DEA1B050D0A82F7CB084F38BAF90A61A8A8E891A6A50A5F0C623`，66,418,258 bytes；全量复测日志 SHA-256 `55A7635B15ADFE39442332B42FD2AB0EBB877DA6FA2E6AAA2E5AB5B70CFA7F17`。首轮全量曾有 Memo 分页用例 60 秒超时（740 项中 1 项）；该用例单独复测和后续完整复测均 PASS，未确认首轮原因，详见 [Native AI module Issue](../issues/PC-ISSUE-SEPARATION-NATIVE-AI-MODULE.md)。
+- `adb devices -l` 没有在线设备，因此 Android instrumentation 与实体设备交互 **NOT TESTED**；AndroidTest 仅完成 Kotlin 编译。当前 Native Timeline、Month、Draft Deck 和 renderer adapters 仍未迁入独立 Native 模块。Clear 保持不变。
+- 代码提交 `cbec81a6500300ef0a16ded1af999c83de10ded3` 已推送至 `origin/feat/skin-first-separation`。两份既有 WebSkin instrumentation 测试修改仍未暂存、未提交。
+
 ## Separation — Native Memo renderer module boundary (2026-10-30, CODE COMPLETE; 736 JVM/build TESTED; device NOT TESTED)
 
 - 将 `NativeMemoCenterScreen` 从 `:app` 移入 `:native-skin`，新增 `:skin-api` 中的 `NativeMemoRow` 纯显示 DTO。Host 保留 `TodoProjection`、递归实例和记录解析；Native 只发回不透明 row key，由 Host 映射到当前 `TodoEntry` 后执行原 toggle/open 回调，重复事件继续携带原 occurrence key。日期仍按记录自身时区投影，无日期 Memo 不会生成日期。
 - 完整离线 Gradle 门禁 **736/736 JVM PASS，0 failure/error/skip**；两项模块边界检查、AndroidTest Kotlin 编译、Debug APK、lint **PASS**（152 actionable tasks）。APK SHA-256 `FF6A8D207B9658B1647BBE163EDB506A61912DA87A9EAF3E2DED02ECF6795907`，66,418,258 bytes；日志 SHA-256 `B3C8AF885CC97A6D874980B61A6C3677C812DB0F812B36AF6DC0026C8C7B2051`。详见 [Native Memo module Issue](../issues/PC-ISSUE-SEPARATION-NATIVE-MEMO-MODULE.md)。
-- ADB 无在线设备且无可用 AVD；Android 设备交互 **NOT TESTED**。Timeline、Month、AI、Draft Deck 与其他 Host projections 仍在 `:app`。没有修改 Clear/Core。
+- ADB 无在线设备且无可用 AVD；Android 设备交互 **NOT TESTED**。Timeline、Month、Draft Deck 与其他 Host projections 仍在 `:app`。没有修改 Clear/Core。
 - 实现提交 `e9c619a6f8b1ac3cc6a0ffa68e6aa173649d0f4f` 已推送到 `origin/feat/skin-first-separation`。
 
 
@@ -12,7 +19,7 @@
 
 - 将 Settings/Navigation value-only context 移入 `:skin-api`，将 Native Settings 与底部导航移入 `:native-skin`；依赖方向为 `:app → :native-skin → :skin-api`。Host 通过 DTO、动作回调、形状、设置图标及受保护内容 slot 注入能力。新增 `verifyNativeSkinBoundary` 与导航 Compose 回归。没有改 Clear 或 Core。
 - 完整在线 Gradle 门禁 **732/732 JVM PASS，0 failure/error/skip**；Native/skin source 边界、AndroidTest Kotlin 编译、Debug APK、lint **PASS**（152 actionable tasks）。APK SHA-256 `8982F085F3953339456A38317A7BC7F9EFBAE80ADFCDEE108D114910D1C078FC`，66,418,258 bytes；门禁日志 SHA-256 `8819DFFE47F8C87AEDEBC089E865C08F1F82822CD648F93E7E08CD8A9F25702B`。详见 [Native Settings/Navigation module Issue](../issues/PC-ISSUE-SEPARATION-NATIVE-SETTINGS-NAVIGATION-MODULE.md)。
-- `adb devices -l` 无设备、AVD 列表为空；Android 设备交互 **NOT TESTED**。Native Timeline、Month、AI、Draft Deck 与 Host projections 仍在 `:app`，完整 Native 分离仍进行中。
+- `adb devices -l` 无设备、AVD 列表为空；Android 设备交互 **NOT TESTED**。Native Timeline、Month、Draft Deck 与 Host projections 仍在 `:app`，完整 Native 分离仍进行中。
 - 实现提交 `48f30fe07b6fa1deb99ed017bcf8e9329ac62fa8` 已推送到 `origin/feat/skin-first-separation`；两份既有 WebSkin dirty instrumentation tests 未暂存、未提交。
 
 
