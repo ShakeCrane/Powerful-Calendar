@@ -120,6 +120,8 @@ android {
 }
 
 dependencies {
+    implementation(project(":skin-api"))
+    implementation(project(":native-skin"))
     val bom = platform("androidx.compose:compose-bom:2025.10.00")
     implementation(bom)
     implementation("androidx.activity:activity-compose:1.10.1")
@@ -255,4 +257,38 @@ val verifySkinSourceBoundary = tasks.register("verifySkinSourceBoundary") {
         }
     }
 }
-tasks.named("preBuild").configure { dependsOn(verifySkinSourceBoundary) }
+val nativeForbiddenApis = listOf(
+    "dev.powerfulcalendar.core.", "dev.powerfulcalendar.ai.", "PowerStore", "DeckController",
+    "AiBatchRunner", "ReminderScheduler", "UiDiagnostics", "LocalContext",
+    "ContentResolver", "SQLiteDatabase", "GlassShapes", "skinPainter(", "SkinImage(",
+    "skinCardShape(", "SkinAlertDialog", "SkinWindowDialog"
+)
+val verifyNativeSkinBoundary = tasks.register("verifyNativeSkinBoundary") {
+    group = "verification"
+    description = "Keep the Native presentation module independent from Host and Core services."
+    doLast {
+        val moduleBuildFile = rootProject.file("native-skin/build.gradle.kts")
+        if (!moduleBuildFile.isFile) throw GradleException("Missing :native-skin build file")
+        if (Regex("""project\(\s*":app"\s*\)""").containsMatchIn(moduleBuildFile.readText())) {
+            throw GradleException(":native-skin must not depend on the Host :app module")
+        }
+        val nativeSourceRoot = rootProject.file("native-skin/src/main/java")
+        val sources = fileTree(nativeSourceRoot) { include("**/*.kt") }.files.sortedBy { it.path }
+        if (sources.isEmpty()) throw GradleException("No Native skin sources found")
+        sources.forEach { source ->
+            val withoutComments = source.readText()
+                .replace(Regex("""(?s)/\*.*?\*/"""), "")
+                .replace(Regex("""(?m)//[^\n]*"""), "")
+            val violation = nativeForbiddenApis.firstOrNull { withoutComments.contains(it) }
+            if (violation != null) {
+                throw GradleException(
+                    "Native skin " + source.name + " references Host/Core API " + violation +
+                        "; pass value-only state or a Host action slot instead."
+                )
+            }
+        }
+    }
+}
+tasks.named("preBuild").configure {
+    dependsOn(verifySkinSourceBoundary, verifyNativeSkinBoundary)
+}

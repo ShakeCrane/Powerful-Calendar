@@ -1,13 +1,11 @@
 package dev.powerfulcalendar.ui.v2.nativeui
 
-import dev.powerfulcalendar.ui.v2.*
+import dev.powerfulcalendar.ui.v2.VisualTab
 
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Timeline
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -23,7 +21,11 @@ import androidx.compose.ui.unit.dp
  * The profile-specific Memo page remains reachable from the timeline header.
  */
 @Composable
-internal fun NativePowerNavigation(selected: VisualTab?, onSelect: (VisualTab) -> Unit) {
+fun NativePowerNavigation(
+    selected: VisualTab?,
+    onSelect: (VisualTab) -> Unit,
+    settingsIcon: @Composable () -> Unit
+) {
     NavigationBar(
         modifier = Modifier.fillMaxWidth(),
         containerColor = MaterialTheme.colorScheme.surface,
@@ -50,11 +52,7 @@ internal fun NativePowerNavigation(selected: VisualTab?, onSelect: (VisualTab) -
         NavigationBarItem(
             selected = selected == VisualTab.TOOLS,
             onClick = { onSelect(VisualTab.TOOLS) },
-            icon = {
-                if (skinPainter(SkinSlot.SETTINGS_ICON) != null)
-                    SkinImage(SkinSlot.SETTINGS_ICON, Modifier.size(24.dp))
-                else Icon(Icons.Default.Settings, contentDescription = null)
-            },
+            icon = settingsIcon,
             label = { Text("设置") }
         )
     }

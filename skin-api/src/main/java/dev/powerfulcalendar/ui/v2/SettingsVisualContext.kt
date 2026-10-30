@@ -3,7 +3,7 @@ package dev.powerfulcalendar.ui.v2
 import androidx.compose.runtime.Composable
 
 /** Value-only settings state passed across the Host/renderer boundary. */
-internal data class SettingsDisplaySnapshot(
+data class SettingsDisplaySnapshot(
     val pendingCount: Int = 0,
     val formalEventCount: Int = 0,
     val nextSequenceLabel: String = "#0001",
@@ -20,7 +20,7 @@ internal data class SettingsDisplaySnapshot(
     val recurrence: List<SettingsRecurrencePreview> = emptyList()
 )
 
-internal data class SettingsReminderDiagnostic(
+data class SettingsReminderDiagnostic(
     val eventLabel: String,
     val title: String,
     val scheduleLabel: String,
@@ -29,11 +29,11 @@ internal data class SettingsReminderDiagnostic(
     val execution: String?
 )
 
-internal data class SettingsRecurrencePreview(val label: String, val next: String)
+data class SettingsRecurrencePreview(val label: String, val next: String)
 
-internal data class SettingsSkinChoice(val id: String, val name: String, val builtIn: Boolean)
+data class SettingsSkinChoice(val id: String, val name: String, val builtIn: Boolean)
 
-internal data class SettingsVisualEffects(
+data class SettingsVisualEffects(
     val blur: Boolean = true,
     val animationScale: Float = 1f,
     val reduceMotion: Boolean = false
@@ -43,7 +43,7 @@ internal data class SettingsVisualEffects(
  * Skin-facing Settings API. Host state is reduced to values and actions; Native and protected
  * content arrive as composable slots so this API does not depend on either implementation.
  */
-internal class SettingsVisualContext internal constructor(
+class SettingsVisualContext(
     val display: SettingsDisplaySnapshot,
     val effects: SettingsVisualEffects,
     val skinChoices: List<SettingsSkinChoice>,
@@ -76,5 +76,17 @@ internal class SettingsVisualContext internal constructor(
 
     @Composable fun ProtectedProfile() = protectedProfileContent()
     @Composable fun ProtectedAiCredentials() = protectedAiCredentialsContent()
+    @Composable fun Native() = nativeFallback()
+}
+
+enum class VisualTab(val title: String) {
+    TIMELINE("时间轴"), MONTH("月历"), AI("AI 助手"), TOOLS("设置")
+}
+
+class NavigationVisualContext(
+    val selected: VisualTab?,
+    val onSelect: (VisualTab) -> Unit,
+    private val nativeFallback: @Composable () -> Unit
+) {
     @Composable fun Native() = nativeFallback()
 }

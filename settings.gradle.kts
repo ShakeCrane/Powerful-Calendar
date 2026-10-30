@@ -13,4 +13,4 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "PowerfulCalendar"
-include(":app")
+include(":app", ":skin-api", ":native-skin")

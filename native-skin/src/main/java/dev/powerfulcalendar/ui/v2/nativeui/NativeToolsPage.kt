@@ -1,6 +1,8 @@
 package dev.powerfulcalendar.ui.v2.nativeui
 
-import dev.powerfulcalendar.ui.v2.*
+import dev.powerfulcalendar.ui.v2.SettingsDisplaySnapshot
+import dev.powerfulcalendar.ui.v2.SettingsSkinChoice
+import dev.powerfulcalendar.ui.v2.SettingsVisualEffects
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
@@ -36,14 +38,17 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.dp
 /** First-party Native settings and recovery UI; host actions remain supplied by SettingsVisualContext. */
 @Composable
-internal fun NativeToolsPage(
+fun NativeToolsPage(
     display: SettingsDisplaySnapshot,
     effects: SettingsVisualEffects,
+    cardShape: Shape,
+    rowShape: Shape,
     skinChoices: List<SettingsSkinChoice>,
     selectedSkin: String,
     onSelectSkin: (String) -> Unit,
@@ -82,7 +87,7 @@ internal fun NativeToolsPage(
         protectedProfile()
         protectedAiCredentials()
 
-        SectionCard("皮肤", "支持独立 .pcskin 包、即时切换、重启保留；原生主题始终可用") {
+        SectionCard("皮肤", "支持独立 .pcskin 包、即时切换、重启保留；原生主题始终可用", cardShape) {
             skinChoices.forEach { item ->
                 Row(verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -114,29 +119,31 @@ internal fun NativeToolsPage(
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
 
-        SectionCard("导入", "仅保留系统级来源，其他文件请从 AI 助手 ＋ 添加") {
-            ToolRow("从系统日历一次性导入", "读取过去 30 天与未来一年；不是双向同步", onImportSystem, enabled = !display.aiLocked)
-            ToolRow("从旧版 PowerCal 迁移", "只读旧数据库，保留原文件", onMigrateLegacy, enabled = !display.aiLocked)
+        SectionCard("导入", "仅保留系统级来源，其他文件请从 AI 助手 ＋ 添加", cardShape) {
+            ToolRow("从系统日历一次性导入", "读取过去 30 天与未来一年；不是双向同步", onImportSystem, shape = rowShape, enabled = !display.aiLocked)
+            ToolRow("从旧版 PowerCal 迁移", "只读旧数据库，保留原文件", onMigrateLegacy, shape = rowShape, enabled = !display.aiLocked)
         }
 
-        SectionCard("备份与导出", "原生备份优先于有损格式") {
+        SectionCard("备份与导出", "原生备份优先于有损格式", cardShape) {
             ToolRow(
                 "导出原生备份（Envelope v1）",
                 "单一致性快照 + SHA-256；含序号水位、草稿、提交与迁移记录；不含密钥。文件为明文敏感数据，请自行保管",
-                onExportBackup
+                onExportBackup,
+                shape = rowShape
             )
             ToolRow(
                 "从备份恢复",
                 "校验版本、哈希完整性与引用；哈希不证明来源可信；只允许恢复到空数据库；" +
                     "恢复后可查看提醒权限状态；旧 flat v2 需显式确认",
                 onRestoreBackup,
+                shape = rowShape,
                 enabled = !display.aiLocked
             )
             ToolRow("导出 ICS", "仅导出活动且不含活动启用/停用状态与活动提醒；闹钟、截止、备忘与完成状态不会由 ICS 保留",
-                onExportIcs)
+                onExportIcs, shape = rowShape)
         }
 
-        SectionCard("提醒可靠性", "保存 ≠ 已调度 ≠ 已触发") {
+        SectionCard("提醒可靠性", "保存 ≠ 已调度 ≠ 已触发", cardShape) {
             StatusLine("精确闹钟权限", if (display.exactAlarmAllowed) "已允许" else "未允许 · 需要的提醒会显示为受阻", !display.exactAlarmAllowed)
             StatusLine("通知权限", if (display.notificationsAllowed) "已允许" else "未允许 · 触发会被记录为 BLOCKED", !display.notificationsAllowed)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -154,7 +161,7 @@ internal fun NativeToolsPage(
             }
         }
 
-        SectionCard("执行状态", "最近的期望调度与执行记录，最多 40 项") {
+        SectionCard("执行状态", "最近的期望调度与执行记录，最多 40 项", cardShape) {
             if (display.aiBatchActive) {
                 StatusLine("AI 批次", if (display.aiBatchCancelRequested)
                     "正在停止；已完成结果保留" else "正在运行；未完成草稿会继续等待", false)
@@ -162,6 +169,7 @@ internal fun NativeToolsPage(
                     "请求停止 AI 批次",
                     "已完成的操作保留，剩余草稿不执行",
                     onCancelBatch,
+                    shape = rowShape,
                     enabled = !display.aiBatchCancelRequested
                 )
                 if (display.aiBatchCancelRequested) {
@@ -169,6 +177,7 @@ internal fun NativeToolsPage(
                         "强制解除卡住的 AI 批次",
                         "停止请求超过 10 分钟无响应后可用；当前结果数量可能无法确定",
                         onReleaseStuck,
+                        shape = rowShape,
                         enabled = display.aiLocked && display.canReleaseStuckBatch
                     )
                 }
@@ -184,7 +193,7 @@ internal fun NativeToolsPage(
                 }
             }
         }
-        SectionCard("诊断", "只读") {
+        SectionCard("诊断", "只读", cardShape) {
             StatusLine("正式事件", "${display.formalEventCount} 条", false)
             StatusLine("下一个事件序号", display.nextSequenceLabel, false)
             StatusLine("已分配序号", "${display.identityCount} 个（含退役）", false)
@@ -201,10 +210,10 @@ internal fun NativeToolsPage(
 }
 
 @Composable
-private fun SectionCard(title: String, subtitle: String, content: @Composable () -> Unit) {
+private fun SectionCard(title: String, subtitle: String, shape: Shape, content: @Composable () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-        shape = skinCardShape(),
+        shape = shape,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerLow
         ),
@@ -228,11 +237,11 @@ private fun SectionCard(title: String, subtitle: String, content: @Composable ()
 }
 
 @Composable
-private fun ToolRow(title: String, description: String, onClick: () -> Unit, enabled: Boolean = true) {
+private fun ToolRow(title: String, description: String, onClick: () -> Unit, shape: Shape, enabled: Boolean = true) {
     Surface(
         onClick = onClick,
         enabled = enabled,
-        shape = GlassShapes.chip,
+        shape = shape,
         color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.7f),
         modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)
     ) {

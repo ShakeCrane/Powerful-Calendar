@@ -5,6 +5,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Icon
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import dev.powerfulcalendar.ai.AiBatchRunner
 import dev.powerfulcalendar.ai.AiChatMessage
 import dev.powerfulcalendar.ai.AiInterpretation
@@ -292,6 +298,8 @@ internal fun ToolsPage(
         NativeToolsPage(
             display = settingsDisplay,
             effects = settingsEffects,
+            cardShape = skinCardShape(),
+            rowShape = GlassShapes.chip,
             skinChoices = skinOptions,
             selectedSkin = selectedSkin,
             onSelectSkin = onSelectSkin,
@@ -348,20 +356,17 @@ internal fun ToolsPage(
     else if (renderer == null) context.Native() else renderer.Render(context)
 }
 
-internal enum class VisualTab(val title: String) {
-    TIMELINE("时间轴"), MONTH("月历"), AI("AI 助手"), TOOLS("设置")
-}
-
-internal class NavigationVisualContext internal constructor(
-    val selected: VisualTab?,
-    val onSelect: (VisualTab) -> Unit
-) {
-    @Composable fun Native() = NativePowerNavigation(selected, onSelect)
-}
-
 @Composable
 internal fun PowerCalNavigation(selected: VisualTab?, onSelect: (VisualTab) -> Unit) {
-    val context = NavigationVisualContext(selected, onSelect)
+    val context = NavigationVisualContext(selected, onSelect) {
+        NativePowerNavigation(selected, onSelect) {
+            if (skinPainter(SkinSlot.SETTINGS_ICON) != null) {
+                SkinImage(SkinSlot.SETTINGS_ICON, Modifier.size(24.dp))
+            } else {
+                Icon(Icons.Default.Settings, contentDescription = null)
+            }
+        }
+    }
     val renderer = PresentationSkinRegistry.navigation
     if (RuntimeSkinSurfaces.enabled("navigation")) RuntimeSkinSurfaces.navigation(context)
     else if (renderer == null) context.Native() else renderer.Render(context)

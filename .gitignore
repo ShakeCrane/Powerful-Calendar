@@ -22,3 +22,5 @@ signing.properties
 
 # Local Android emulator, system images, virtual devices and test evidence
 /.local/android-test/
+/native-skin/build/
+/skin-api/build/
