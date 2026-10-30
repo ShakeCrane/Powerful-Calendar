@@ -1,17 +1,24 @@
 # Core freeze progress
 
-## Separation — Native text-draft prompt presentation (2026-10-30, CODE COMPLETE; focused/build TESTED; full JVM NOT RUN at this SHA; device NOT TESTED)
+## Separation — Native presentation module integrated baseline (2026-10-30, source boundary COMPLETE; full JVM/build PASS; device NOT TESTED)
+
+- At integrated Git SHA `c93ace28a038f42a5f539a92ae0ec575495a3326`, the Native renderer implementations (timeline, month, memo, AI, settings/navigation, deck/editor, picker, chrome/overlays, and review prompts) are in `:native-skin`; display models and callback slots are in `:skin-api`. `:app` retains Host projections/controller adapters, the Native renderer registry, and protected credential/profile slots. The Native module has no Core, AI, Store, or Android system-service dependency.
+- Final serial JVM regression **784/784 PASS, 125 suites, 0 failures/errors/skips**. `verifyNativeSkinBoundary` and `verifySkinSourceBoundary` PASS. AndroidTest Kotlin compilation, Debug APK assembly, and lint PASS (144 actionable tasks). An earlier full run had one Memo integration timeout; it was not reproduced by this final run, and its cause is unknown.
+- Final Debug APK: 66,516,562 bytes, SHA-256 `83B78E837330F9D224A4003681F9858004E16DE530E12DE0BC97AE8846C09BE0`. Full JVM log `.local/android-test/reports/native-skin-separation-final-20261030/full-jvm.log`, SHA-256 `3533C0415A71600FFDE277B38B8C63E6EAE50B2D53A55A2F64803768C5BE4766`; Android build log `android-build.log`, SHA-256 `27C1BE88CCB18FBA7DE3221943FB48F39854A617208D457A2C7F606C592135E0`.
+- ADB has no online device and `emulator -list-avds` returns none; Android instrumentation and physical/OEM behavior remain **NOT TESTED**. The two pre-existing unstaged WebSkin instrumentation changes remain untouched. Clear is currently broken and was not modified; no Clear parity, Studio parity, or cutover GO is claimed.
+
+## Separation — Native text-draft prompt presentation (2026-10-30, CODE COMPLETE; focused/build TESTED; final integrated JVM PASS; device NOT TESTED)
 
 - 将 `PowerCalApp` 内联的 Native 文字草稿输入视图迁入 `:native-skin`；模块只持有临时输入并通过 Host callback 提交字符串。`TextParser`、默认时间与草稿创建仍由 Host 执行，没有改时间语义、Core、Clear、默认皮肤或 Native 回退。
-- Compose 定向回归 **2/2 PASS**（空输入禁用、原文回调、取消不提交）；Native/Skin 边界、AndroidTest Kotlin 编译、Debug APK 和 lint **PASS**（152 actionable tasks）。本提交未重跑全量 JVM；前一完整结果来自 `c7b7567`，782 项中 1 项 Memo 分页超时，隔离重跑 1/1 PASS，需在最终集成 SHA 重跑完整套件。
-- APK 66,516,562 bytes，SHA-256 `EDE00390FD36283694DC309BA798EC5EC7E972C5DFE54B9C0751CF337DAEAC59`；日志 `.local/android-test/reports/native-text-draft-dialog-20261030/focused-build.log` SHA-256 `F9FF3B264E2E2344FB29D7B533D4AE7910A11CEAD5C61E85B4D264209E22C30F`。ADB 无在线设备，Android 仪器与真机/OEM **NOT TESTED**。
+- Compose 定向回归 **2/2 PASS**（空输入禁用、原文回调、取消不提交）；最终集成串行全量 JVM **784/784 PASS，125 suites，0 failure/error/skip**；Native/Skin 边界、AndroidTest Kotlin 编译、Debug APK 和 lint **PASS**。前一全量曾出现 1 项 Memo 分页超时；最终回归没有复现，原因未知。
+- 最终 APK 66,516,562 bytes，SHA-256 `83B78E837330F9D224A4003681F9858004E16DE530E12DE0BC97AE8846C09BE0`。最终全量/Android 构建日志 SHA-256 `3533C0415A71600FFDE277B38B8C63E6EAE50B2D53A55A2F64803768C5BE4766` / `27C1BE88CCB18FBA7DE3221943FB48F39854A617208D457A2C7F606C592135E0`，位于 `.local/android-test/reports/native-skin-separation-final-20261030/`。ADB/AVD 均无设备，UI 仪器与真机/OEM **NOT TESTED**。
 - 代码提交 `c006049edbd562725f533c5b21c82c4f3c7566da` 已推送。见 [Native text-draft dialog Issue](../issues/PC-ISSUE-SEPARATION-NATIVE-TEXT-DRAFT-DIALOG.md)。Clear 未修改。
 
-## Separation — Native formal-write review presentation (2026-10-30, CODE COMPLETE; focused/build TESTED; full JVM FAIL; device NOT TESTED)
+## Separation — Native formal-write review presentation (2026-10-30, CODE COMPLETE; focused/build TESTED; final integrated JVM PASS; device NOT TESTED)
 
 - 将 `PowerCalApp` 内联的正式写入审查展示迁入 `:native-skin`；`:skin-api` 仅承载标题、目标/重复范围摘要、说明和差异行。Host 继续保留审查 token、快照、版本核验、授权和写入回调；没有改 Core、Bridge 安全语义、Clear、默认皮肤或 Native 回退。
-- Native Compose 定向回归 **2/2 PASS**；`verifyNativeSkinBoundary`、`verifySkinSourceBoundary`、AndroidTest Kotlin 编译、Debug APK 与 lint **PASS**。完整 JVM **782 项 / 1 项失败**：`WebAiProposalReviewIntegrationTest.memoPagingContinuesTheSortedProjectionWithoutStoreWrites` 超时且 `memoCount=0`；独立重跑 **1/1 PASS**，全量门禁仍记 FAIL。
-- APK 66,516,562 bytes，SHA-256 `6154B14BCAF66C2EE6EAD6F636700EB4DB0628B8F75BDF9E1BC04FC5995C3230`。Focused/full/isolated-build 日志 SHA-256：`11DAED52137B8013776197439F8E0576604A44D36B4026DA52068972A753B651` / `3A1469D58B55EAE987CD988AB9D2CE66454B9A8FBBE38A06D47C11DE351BB606` / `C13BE2234D6FF41D920C2451710B3E098F44C6785F4752B1E578036A68EABCF4`，位于 `.local/android-test/reports/native-formal-write-review-20261030/`。ADB 无在线设备；仪器与真实设备 UI **NOT TESTED**。
+- Native Compose 定向回归 **2/2 PASS**。较早完整 JVM 运行 **782 项 / 1 项失败**：`WebAiProposalReviewIntegrationTest.memoPagingContinuesTheSortedProjectionWithoutStoreWrites` 超时且 `memoCount=0`；独立重跑 **1/1 PASS**。最终集成串行全量 **784/784 PASS，125 suites**；该失败未复现，原因未知。最终边界、AndroidTest 编译、Debug APK 和 lint 均 PASS。
+- 最终 APK 66,516,562 bytes，SHA-256 `83B78E837330F9D224A4003681F9858004E16DE530E12DE0BC97AE8846C09BE0`。最终全量/Android 构建日志 SHA-256：`3533C0415A71600FFDE277B38B8C63E6EAE50B2D53A55A2F64803768C5BE4766` / `27C1BE88CCB18FBA7DE3221943FB48F39854A617208D457A2C7F606C592135E0`，位于 `.local/android-test/reports/native-skin-separation-final-20261030/`。ADB/AVD 无设备；仪器与真实设备 UI **NOT TESTED**。
 - 代码提交 `c7b7567cf1f89783978be4a400399c135f49a1ac` 已推送至 `origin/feat/skin-first-separation`。见 [Native formal-write review Issue](../issues/PC-ISSUE-SEPARATION-NATIVE-FORMAL-WRITE-REVIEW.md)。Clear 当前损坏状态保持未修改。
 
 ## Separation — Native legacy migration and backup confirmation boundary (2026-10-30, CODE COMPLETE; 768 JVM TESTED; device NOT TESTED)
