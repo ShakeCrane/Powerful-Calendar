@@ -1538,6 +1538,11 @@ fun PowerCalApp(
                     action.id == "data.legacy.migrate" -> confirmingLegacy = true
                     else -> Unit
                 }
+                is WebSkinAction.SelectSkin -> {
+                    if (page == Page.SETTINGS.name && action.id != selectedSkin) {
+                        skinChoices.firstOrNull { it.id == action.id }?.let { skinToActivate = it }
+                    }
+                }
                 is WebSkinAction.PanTimeline -> {
                     if (page == Page.TIMELINE.name) {
                         val next = runCatching { Math.addExact(anchorMillis,
@@ -1762,6 +1767,15 @@ fun PowerCalApp(
                 } else JSONObject())
                 .put("editing", webEditing.snapshot())
                 .put("optionGroups", SemanticOptions.toJson(enabled = semanticOptionsEnabled))
+                .put("skinChoices", org.json.JSONArray().apply {
+                    if (page == Page.SETTINGS.name) {
+                        skinChoices.forEach { item ->
+                            put(JSONObject().put("id", item.id).put("name", item.name)
+                                .put("builtIn", item.builtIn))
+                        }
+                    }
+                })
+                .put("selectedSkinId", if (page == Page.SETTINGS.name) selectedSkin else JSONObject.NULL)
                 .put("timeline", WebSkinTimelineProjection.build(
                     records,
                     // The host republishes synchronously from the action callback, before this

@@ -168,6 +168,13 @@ button:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outl
  background:var(--bg-elevated);border:0;border-bottom:1px solid var(--sep);
  padding:14px;color:var(--label)}
 .optionDescription{color:var(--label-2);font-size:12px;font-weight:400;line-height:1.4}
+.skin-choice-list{display:flex;flex-direction:column;gap:7px}
+.skin-choice-row{display:flex;flex-direction:column;gap:3px;padding:8px 12px;
+ border:1px solid var(--sep);border-radius:14px;background:var(--bg-elevated)}
+.skin-choice-button{display:flex;align-items:center;justify-content:space-between;gap:12px;
+ width:100%;min-height:40px;padding:2px 0;border:0;background:transparent;text-align:left}
+.skin-choice-name{overflow-wrap:anywhere;font-weight:600}
+.skin-choice-state,.skin-choice-meta{color:var(--label-2);font-size:12px}
 
 /* Keep the interactive AI composer above the floating tabbar at every viewport height. */
 #aiPage:not([hidden]){display:flex;flex-direction:column;

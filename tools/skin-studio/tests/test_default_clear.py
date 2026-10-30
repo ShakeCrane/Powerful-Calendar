@@ -51,6 +51,18 @@ class DefaultClearSingleSourceTest(unittest.TestCase):
         self.assertNotIn(b"https://",files["web/index.html"])
         self.assertLess(len(original),10_000_000)
 
+    def test_clear_settings_has_host_confirmed_installed_skin_selection(self):
+        _,files=unpack(expected_bytes())
+        html=files["web/index.html"].decode("utf-8")
+        script=files["web/app.js"].decode("utf-8")
+        style=files["web/style.css"].decode("utf-8")
+        self.assertIn('id="skinChoices"',html)
+        self.assertIn('button.dataset.action="selectSkin"',script)
+        self.assertIn('send(name,{id:button.dataset.skinId})',script)
+        self.assertIn('.skin-choice-list',style)
+        self.assertIn('item.name',script)
+        self.assertNotIn('innerHTML',script)
+
     def test_compiled_apk_clear_asset_verifier_checks_exact_bytes(self):
         expected=expected_bytes()
         asset_name="assets/powercal-clear-default.pcskin"

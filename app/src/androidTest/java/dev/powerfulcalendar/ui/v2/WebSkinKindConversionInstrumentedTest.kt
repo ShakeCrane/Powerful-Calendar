@@ -156,7 +156,7 @@ class WebSkinKindConversionInstrumentedTest {
 
             evaluate(view, "$eventSelector.click(); true")
             awaitJs(view, "!document.querySelector('#skinSheet').hidden && !!document.querySelector('[data-do=\\\"scope\\\"]')")
-            evaluate(view, "document.querySelector('[data-do=\\\"scope\\\'][data-scope=\\\"SINGLE_OCCURRENCE\\\"]').click(); true")
+            evaluate(view, "document.querySelector(\"[data-do='scope'][data-scope='SINGLE_OCCURRENCE']\").click(); true")
             awaitJs(view, "document.querySelector('[data-scope=\\\"SINGLE_OCCURRENCE\\\"]').getAttribute('aria-pressed')==='true'")
             assertEquals("false", evaluate(view, "!!document.querySelector('#sheetFields [data-field=\\\"kind\\\"]')"))
             evaluate(view, "document.querySelector('#sheetClose').click(); true")
@@ -166,9 +166,9 @@ class WebSkinKindConversionInstrumentedTest {
 
             evaluate(view, "$eventSelector.click(); true")
             awaitJs(view, "!document.querySelector('#skinSheet').hidden && !!document.querySelector('[data-do=\\\"scope\\\"]')")
-            evaluate(view, "document.querySelector('[data-do=\\\"scope\\\'][data-scope=\\\"WHOLE_SERIES\\\"]').click(); true")
+            evaluate(view, "document.querySelector(\"[data-do='scope'][data-scope='WHOLE_SERIES']\").click(); true")
             awaitJs(view, "document.querySelector('[data-scope=\\\"WHOLE_SERIES\\\"]').getAttribute('aria-pressed')==='true' && !!document.querySelector('#sheetFields [data-field=\\\"kind\\\"]')")
-            assertEquals("ALARM,ACTIVITY,DEADLINE,MEMO", evaluate(view,
+            assertEquals("\"ALARM,ACTIVITY,DEADLINE,MEMO\"", evaluate(view,
                 "[...document.querySelector('#sheetFields [data-field=\\\"kind\\\"]').options].map(o=>o.value).join(',')"))
 
             evaluate(view, "const kind=document.querySelector('#sheetFields [data-field=\\\"kind\\\"]');kind.value='ALARM';kind.dispatchEvent(new Event('change',{bubbles:true}));true")
@@ -194,7 +194,7 @@ class WebSkinKindConversionInstrumentedTest {
             assertEquals(original, store.get(eventSeq))
             assertEquals(commitsBefore, store.commitCount())
             compose.onNodeWithText("取消").performClick()
-            awaitJs(view, "!document.querySelector('#skinSheet').hidden && document.querySelector('#sheetStatus').textContent.includes('已取消保存')")
+            awaitJs(view, "!document.querySelector('#skinSheet').hidden && document.querySelector('#sheetStatus').textContent.includes('已取消宿主操作') && document.querySelector('#sheetStatus').textContent.includes('内容仍保留')")
             assertEquals("cancelled review must preserve the formal event", original, store.get(eventSeq))
             assertEquals(commitsBefore, store.commitCount())
 

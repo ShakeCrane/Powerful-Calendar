@@ -138,6 +138,20 @@ async function main(){
       document.querySelector('#systemDiagnostics').innerText.includes('重复 #4')`,
       "Mock system diagnostics projection");
     const systemDiagnosticText=await frameEval("document.querySelector('#systemDiagnostics').innerText");
+    await waitFor(frameEval,`document.querySelectorAll('#skinChoices [data-action="selectSkin"]').length===2&&
+      document.querySelector('#skinChoices [data-skin-id="powercal-clear-default"]')?.disabled===true`,
+      "Mock installed-skin catalogue");
+    await frameEval(`document.querySelector('#skinChoices [data-skin-id="powercal-default"]').click()`);
+    await waitFor(evaluate,"mockApproval?.kind==='skinActivation'&&lastState?.selectedSkinId==='powercal-clear-default'",
+      "Mock Host skin confirmation");
+    await evaluate("document.querySelector('#mockReject').click()");
+    await waitFor(evaluate,"mockApproval===null&&lastState?.selectedSkinId==='powercal-clear-default'",
+      "Mock skin selection cancellation");
+    await frameEval(`document.querySelector('#skinChoices [data-skin-id="powercal-default"]').click()`);
+    await waitFor(evaluate,"mockApproval?.kind==='skinActivation'","second Mock skin confirmation");
+    await evaluate("document.querySelector('#mockApprove').click()");
+    await waitFor(evaluate,"mockApproval===null&&lastState?.selectedSkinId==='powercal-default'",
+      "Mock skin selection approval");
     await frameEval(`document.querySelector('[data-action="requestNotificationPermission"]').click()`);
     await waitFor(evaluate,"document.querySelector('#bridgeLog').textContent.includes('不会调用 Android 系统权限')",
       "Mock permission action handling");
@@ -159,6 +173,8 @@ async function main(){
       exactDeniedText,
       reminderDiagnosticText,
       systemDiagnosticText,
+      skinChoiceIds:(await evaluate("lastState.skinChoices.map(item=>item.id)")),
+      mockSelectedSkinId:await evaluate("lastState.selectedSkinId"),
       mockLog:(await evaluate("document.querySelector('#bridgeLog').innerText")).split("\n").slice(0,5)
     };
     const resultPath=path.join(reportDir,`studio-mock-${runId}.json`);

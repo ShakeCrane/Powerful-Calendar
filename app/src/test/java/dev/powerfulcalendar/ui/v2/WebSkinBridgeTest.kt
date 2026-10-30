@@ -65,6 +65,12 @@ class WebSkinBridgeTest {
             """{"version":1,"type":"action","payload":{"name":"invokeOption","id":"data.legacy.migrate"}}"""))
         assertNull(decodeBridgeAction(
             """{"version":1,"type":"action","payload":{"name":"invokeOption","id":"untrusted.delete"}}"""))
+        assertEquals(WebSkinAction.SelectSkin("powercal-default"), decodeBridgeAction(
+            """{"version":1,"type":"action","payload":{"name":"selectSkin","id":"powercal-default"}}"""))
+        assertNull(decodeBridgeAction(
+            """{"version":1,"type":"action","payload":{"name":"selectSkin","id":"powercal-default","path":"/data/data"}}"""))
+        assertNull(decodeBridgeAction(
+            """{"version":1,"type":"action","payload":{"name":"selectSkin","id":123}}"""))
         assertNull(decodeBridgeAction(
             """{"version":1,"type":"action","payload":{"name":"invokeOption","id":"calendar.import.file","force":true}}"""))
         assertNull(decodeBridgeAction("x".repeat(8_193)))

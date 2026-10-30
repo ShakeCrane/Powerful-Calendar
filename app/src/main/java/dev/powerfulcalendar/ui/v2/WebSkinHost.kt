@@ -119,6 +119,8 @@ internal sealed interface WebSkinAction {
         val occurrenceKey: String? = null
     ) : WebSkinAction
     data class InvokeOption(val id: String) : WebSkinAction
+    /** Requests Host-reviewed activation of an installed skin by its projected catalogue id. */
+    data class SelectSkin(val id: String) : WebSkinAction
     /** Relative browsing only; cannot change the vertical time scale. */
     data class PanTimeline(val deltaMinutes: Int) : WebSkinAction
     /** Change only the vertical time scale; the camera's center instant is retained. */
@@ -434,6 +436,11 @@ internal fun decodeBridgeAction(raw: String): WebSkinAction? {
             val id = payload.opt("id")
             if (id is String && SemanticOptions.supports(id)) WebSkinAction.InvokeOption(id)
             else null
+        }
+        "selectSkin" -> {
+            if (keys != setOf("name", "id")) return null
+            val id = payload.opt("id") as? String ?: return null
+            id.takeIf { it.length in 1..128 }?.let { WebSkinAction.SelectSkin(it) }
         }
         "panTimeline" -> {
             if (keys != setOf("name", "deltaMinutes")) return null

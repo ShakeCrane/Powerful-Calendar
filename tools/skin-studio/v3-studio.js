@@ -428,7 +428,8 @@ const ACTIONS=[
   ["loadMoreMemo","加载更多 Memo"],
   ["timeline","时间轴"],
   ["month","月历"],["memo","Memo"],["ai","AI"],
-  ["settings","设置"],["requestNotificationPermission","请求通知权限"],
+  ["settings","设置"],["selectSkin","选择已安装皮肤"],
+  ["requestNotificationPermission","请求通知权限"],
   ["openExactAlarmSettings","打开精确闹钟设置"],
   ["reconcileReminders","重建提醒调度"],
   ["nativeSettings","打开原生设置"],["openDeck","草稿卡组"],
@@ -786,6 +787,11 @@ function simulatedState(){
   const memoEntries=allMemoEntries.slice(0,memoLimit);
   const memoTruncated=memoEntries.length<allMemoEntries.length;
   return {bridgeVersion:1,page:mockPage,
+    skinChoices:mockPage==="SETTINGS"?[
+      {id:"powercal-default",name:"PowerCal 原生玻璃（安全回退）",builtIn:true},
+      {id:"powercal-clear-default",name:"Clear · Studio Mock",builtIn:true}
+    ]:[],
+    selectedSkinId:mockPage==="SETTINGS"?mockSelectedSkinId:null,
     notificationPermission:mockPage==="SETTINGS"?{required:true,allowed:false}:{},
     exactAlarmPermission:mockPage==="SETTINGS"?{required:true,allowed:false}:{},
     reminderReconcile:mockPage==="SETTINGS"?{
@@ -1052,6 +1058,14 @@ function resolveMockApproval(approved){
   if(!mockApproval)return;
   const request=mockApproval;mockApproval=null;$("mockApproval").hidden=true;
   $("mockApprovalText").textContent="预览模拟宿主确认，不会写入真实数据。";
+  if(request.kind==="skinActivation"){
+    if(approved&&Array.isArray(lastState?.skinChoices)&&
+      lastState.skinChoices.some(item=>item.id===request.id)){
+      mockSelectedSkinId=request.id;
+      logAction("Preview Mock：Host 模拟确认皮肤选择；没有启用真实皮肤或修改本机数据");
+    }else logAction("Preview Mock：已取消皮肤选择；没有改变模拟状态或本机数据");
+    postState();return;
+  }
   if(request.kind==="deckCommitReview"){
     const deck=mockEditing.deck;
     const card=mockDeckDrafts.find(value=>value.draftId===request.draftId&&
@@ -1681,6 +1695,18 @@ function onSkinAction(message){
       mockPage="SETTINGS";
       logAction("Studio Mock 打开设置页；通知权限状态为模拟值");postState();return;
     }
+    if(name==="selectSkin"){
+      const choices=mockPage==="SETTINGS"?lastState?.skinChoices:[];
+      const valid=Object.keys(p).sort().join(",")==="id,name"&&
+        typeof p.id==="string"&&p.id.length>0&&!mockApproval&&
+        Array.isArray(choices)&&choices.some(item=>item.id===p.id)&&
+        p.id!==mockSelectedSkinId;
+      if(!valid){logAction("拒绝非设置页、未知皮肤或重复的皮肤切换请求");return}
+      mockApproval={kind:"skinActivation",id:p.id};
+      $("mockApprovalText").textContent="Preview Mock：模拟 Android Host 确认切换皮肤；不会启用真实皮肤或修改持久数据。";
+      $("mockApproval").hidden=false;
+      logAction("Studio Mock 收到已安装皮肤选择请求；等待模拟 Host 确认");return;
+    }
     if(name==="requestNotificationPermission"){
       if(Object.keys(p).sort().join(",")!=="name"||mockPage!=="SETTINGS"){
         logAction("拒绝非设置页或格式无效的通知权限请求");return;
@@ -1944,7 +1970,8 @@ function onSkinAction(message){
       "toggleMemo","sendChat"].includes(name))postState();
   }catch(error){logAction("Bridge 消息错误："+error.message)}
 }
-let mockAnchor=null,mockHours=24,mockPage="TIMELINE",mockMemoDone=false;
+let mockAnchor=null,mockHours=24,mockPage="TIMELINE",
+  mockSelectedSkinId="powercal-clear-default",mockMemoDone=false;
 const isLockedMockScenario=()=>["locked","locked-stale"].includes($("scenario").value);
 const idleMockAiBatch=()=>({phase:"IDLE",state:null,active:false,canCancel:false,
   canRelease:false,mode:null,scopeCount:0,selectedCount:0,operationCounts:{},

@@ -20,6 +20,11 @@ New:
   data-options page. Invoke an item only with its registered `invokeOption`
   ID; file pickers, system permissions, migration and restore confirmations
   remain Host-owned. Keep a native recovery route available if the skin fails.
+- `skinChoices` and `selectedSkinId` are populated only on `page="SETTINGS"`.
+  Each choice contains only its installed catalogue `id`, display `name`, and
+  `builtIn` flag. Outside Settings the list is empty and the selected ID is null;
+  skin package paths, manifest contents, credentials, and preference storage are
+  never projected.
 - `timeline`: `zoneId`, `anchorMillis`, `hours`,
   `visibleStartMillis`, `visibleEndMillis`, `nowMillis`,
   `itemLimit` (300), `truncated`, and `items`.
@@ -78,6 +83,9 @@ envelope and known fields only:
 
 ```json
 {"version":1,"type":"action","payload":{"name":"invokeOption","id":"calendar.import.file"}}
+```
+```json
+{"version":1,"type":"action","payload":{"name":"selectSkin","id":"powercal-default"}}
 ```
 ```json
 {"version":1,"type":"action","payload":{"name":"panTimeline","deltaMinutes":30}}
@@ -156,6 +164,13 @@ envelope and known fields only:
   are locked, option rows are disabled in state and invocation is denied.
   Rendering the same projection in Settings does not grant a new capability or
   bypass the Host action checks and confirmation flows.
+- `selectSkin` accepts exactly `name` and an installed catalogue `id`, only on
+  Settings. The Host resolves that ID against its current installed catalogue,
+  ignores the currently selected skin, and opens the existing trusted activation
+  confirmation. Confirmation still runs the Host editor checkpoint and package
+  validation; cancellation does not change selection. The action cannot submit a
+  path or package bytes, and it does not write calendar records. Preview Mock
+  confirmation is simulated and cannot activate an Android skin.
 - `data.legacy.migrate` is a Host-owned migration request. It opens the existing
   native confirmation before accessing the legacy database; the importer opens
   that source read-only, keeps the file, and records a finished migration batch

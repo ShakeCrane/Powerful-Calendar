@@ -1601,6 +1601,12 @@ Updated: 2026-10-24
 - 完整 Gradle 门禁 784/784 JVM、125 suites、0 failures/errors/skips、152 tasks PASS；边界检查、AndroidTest 编译、Debug APK 与 lint 通过。Clear 源包/APK asset SHA-256 601e84ffe4316140dcf0310d9977482478b3f9dbfadf986d5d6da4d0cb10a884，APK SHA-256 7D6A3A37C86116DEB94A1CFEEC5E1235AD0245BBD4C1AFBCAEA096A9B727B634；证据位于 .local/android-test/reports/clear-settings-options-20261031/。
 - Runtime/test 提交 dfcd5948f4b5404302a202825f61507d1a415492 已推送。SEP-11 仍 NOT TESTED / INCOMPLETE：实际 SAF 导入导出/备份恢复、系统日历权限、AI 凭证与皮肤管理、Native/Skin 完整对照及实体/OEM 未签核。见 [PC-ISSUE-SEPARATION-CLEAR-SETTINGS-OPTIONS](../issues/PC-ISSUE-SEPARATION-CLEAR-SETTINGS-OPTIONS.md)。
 
+## Separation — Clear installed skin selection (2026-10-31)
+
+- Clear Settings exposes the Host's installed skin IDs/names and requests selection through the existing trusted Host confirmation and package manager. Studio Preview Mock covers simulated approval/cancellation. No credentials, paths, calendar writes, or default-skin cutover were added.
+- API 35 packaged Clear WebView smoke: **9/9 PASS** (Settings, Memo, month/timeline create context, AI proposal review, kind conversion). Full Gradle gate **784/784 JVM, 125 suites, 0 failures/errors/skips, 152 tasks PASS**; AndroidTest Kotlin compile, Debug APK, source boundaries, lint (0 errors / 55 warnings) pass. Studio Python **63/63**; Chrome/CDP Preview Mock and JS checks pass. APK SHA-256 `BF7B3633CC49CEB776F8A14E26C2DAC8E014E39E0F888595F0AA2EA60ADF2529`; Clear package/APK asset SHA-256 `49e0f09edceb21834fa7bf2ac5ec0b15f2a81d75bb2ef67486531bd92f9246e2`. Detailed hashes and evidence are in the existing [Clear Settings Issue](../issues/PC-ISSUE-SEPARATION-CLEAR-SETTINGS-OPTIONS.md) and `.local/android-test/reports/sep11-clear-skin-catalog-20261031/`.
+- This signs only the skin-selection slice; SEP-11 stays **NOT TESTED / INCOMPLETE**, S0-ST-06 is **PARTIAL / HOLD**, and no overall Clear parity claim is made. The two pre-existing Agent edits in formal-delete and recurrence instrumentation tests remain unstaged and untouched.
+
 ## Separation — Clear WebView renderer recovery evidence (2026-10-31)
 
 - 只读追踪确认 `WebSkinHost.onRenderProcessGone` 进入既有 `PowerCalApp` 故障处理：先请求 Web 编辑检查点，再同步持久选择 Native、切至 Host 的 Tools/Settings 页面并显示恢复提示。没有复现 Clear renderer 恢复缺陷，因此本切片只增加 API 35 故障注入回归，没有修改 Runtime、Bridge、冻结 Core 或默认皮肤。

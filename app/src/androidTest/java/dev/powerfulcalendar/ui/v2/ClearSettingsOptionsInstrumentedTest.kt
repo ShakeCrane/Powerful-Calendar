@@ -118,6 +118,34 @@ class ClearSettingsOptionsInstrumentedTest {
             assertTrue(evaluate(view,
                 "document.querySelector('[data-action=nativeSettings]')?.isConnected===true") == "true")
 
+            val projectedSkins = requireNotNull(WebSkinBridgeRuntime.state().optJSONArray("skinChoices"))
+            val projectedSkinIds = (0 until projectedSkins.length()).mapNotNull { index ->
+                projectedSkins.optJSONObject(index)?.optString("id")
+            }
+            assertTrue("Settings must expose the Native recovery skin", "powercal-default" in projectedSkinIds)
+            assertTrue("Settings must expose the active Clear skin", "powercal-clear-default" in projectedSkinIds)
+            assertEquals("The selected skin is host-projected", "powercal-clear-default",
+                WebSkinBridgeRuntime.state().optString("selectedSkinId"))
+            assertTrue("The skin projection must contain catalogue metadata only",
+                projectedSkins.toString().contains("powercal-clear-default") &&
+                    !projectedSkins.toString().contains("path") &&
+                    !projectedSkins.toString().contains("endpoint") &&
+                    !projectedSkins.toString().contains("apiKey"))
+            assertEquals("true", evaluate(view,
+                "document.querySelectorAll('#skinChoices [data-action=selectSkin]').length>=2"))
+            assertEquals("true", evaluate(view,
+                "document.querySelector('#skinChoices [data-skin-id=powercal-clear-default]')?.disabled===true"))
+            evaluate(view, "document.querySelector('#skinChoices [data-skin-id=powercal-default]').click(); true")
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithText("切换皮肤前请确认").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText("取消").performClick()
+            compose.waitUntil(10_000) {
+                compose.onAllNodesWithText("切换皮肤前请确认").fetchSemanticsNodes().isEmpty()
+            }
+            assertEquals("Cancelling the Host confirmation must keep Clear active",
+                "powercal-clear-default", skinManager.currentId())
+
             val initialFormal = store.all()
             val initialPending = store.pendingCount()
             val initialCommits = store.commitCount()
@@ -146,6 +174,15 @@ class ClearSettingsOptionsInstrumentedTest {
             assertEquals(initialCommits, store.commitCount())
             assertEquals(initialIdentities, store.identityCount())
             assertEquals(initialSequence, store.nextSequencePreview())
+
+            evaluate(view, "document.querySelector('#skinChoices [data-skin-id=powercal-default]').click(); true")
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithText("切换皮肤前请确认").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText("确认切换").performClick()
+            compose.waitUntil(15_000) { skinManager.currentId() == "powercal-default" }
+            assertEquals("Confirmed activation uses the existing Host package manager",
+                "powercal-default", skinManager.currentId())
         } finally {
             compose.runOnUiThread {
                 compose.activity.setContent { }
