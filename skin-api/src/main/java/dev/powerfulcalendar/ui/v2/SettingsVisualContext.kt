@@ -48,6 +48,29 @@ data class NativeProtectedProfileActions(
     val onSave: () -> Unit
 )
 
+/** Display-only state for the built-in protected AI settings renderer. The API key is never part
+ * of this model; the Host renders its password field through a protected content slot. */
+data class NativeProtectedAiSettingsDisplay(
+    val configured: Boolean,
+    val model: String,
+    val endpoint: String,
+    val enabled: Boolean,
+    val shareContext: Boolean,
+    val hasUnsavedChanges: Boolean,
+    val hasFileAutomationConsent: Boolean
+)
+
+/** AI settings edits and persistence stay Host-owned. */
+data class NativeProtectedAiSettingsActions(
+    val onEndpointChange: (String) -> Unit,
+    val onModelChange: (String) -> Unit,
+    val onEnabledChange: (Boolean) -> Unit,
+    val onShareContextChange: (Boolean) -> Unit,
+    val onSave: () -> Unit,
+    val onSaveAndEnable: () -> Unit,
+    val onRevokeFileAutomationConsent: () -> Unit
+)
+
 /**
  * Skin-facing Settings API. Host state is reduced to values and actions; Native and protected
  * content arrive as composable slots so this API does not depend on either implementation.
