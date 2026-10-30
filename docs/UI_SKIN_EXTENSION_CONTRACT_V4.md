@@ -12,7 +12,7 @@ projections, lifecycle and action adapters remain in `:app`.
 
 # PowerCal Visual Skin Contract v4 — as built
 
-Updated 2026-10-21; Native profile plus Settings, Month, Timeline, Draft Deck, formal editor, AI proposal review, Chrome, Overlay, and Picker module boundaries clarified 2026-10-30. This document records executable Android source interfaces, not a proposal or a promised future plugin format.
+Updated 2026-10-21; Native profile plus Settings, Month, Timeline, Draft Deck, formal editor, AI proposal review and batch authorization review, Chrome, Overlay, and Picker module boundaries clarified 2026-10-30. This document records executable Android source interfaces, not a proposal or a promised future plugin format.
 
 ## Separation
 
@@ -165,7 +165,7 @@ Source module map:
 - `app/src/main/java/dev/powerfulcalendar/ui/v2/CompiledSkinTimeline.kt` — timeline context, yOf geometry, default preview
 - `skin-api/src/main/java/dev/powerfulcalendar/ui/v2/SettingsVisualContext.kt` — Settings/Navigation value contexts and injected Host/Native slots
 - `skin-api/src/main/java/dev/powerfulcalendar/ui/v2/NativeMemoRow.kt` — display-only Memo row contract
-- `skin-api/src/main/java/dev/powerfulcalendar/ui/v2/NativeAiChatModel.kt` — AI chat/batch action and proposal-review display DTOs; proposal rows contain no Core or AI parser objects
+- `skin-api/src/main/java/dev/powerfulcalendar/ui/v2/NativeAiChatModel.kt` — AI chat/batch action, proposal-review and batch-authorization display DTOs, plus dialog slots; no Core or AI parser objects cross the boundary
 - `skin-api/src/main/java/dev/powerfulcalendar/ui/v2/NativeMonthModel.kt` — Native month display row and appearance slots
 - `skin-api/src/main/java/dev/powerfulcalendar/ui/v2/NativeTimelineModel.kt` — Native timeline event/state/action/geometry and appearance values
 - `skin-api/src/main/java/dev/powerfulcalendar/ui/v2/NativeDeckModel.kt` — Native deck/form display DTOs, callbacks and appearance slots
@@ -174,13 +174,15 @@ Source module map:
 - `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/MemoCenterScreen.kt` — Native Memo renderer consuming only value rows and opaque action keys
 - `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/AiChatScreen.kt` — Native AI chat renderer consuming display DTOs and Host callbacks/slots
 - `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativeAiProposalReview.kt` — Native proposal-review card renderer consuming display-only rows and Host action callbacks
+- `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativeAiBatchAuthorizationReview.kt` — Native frozen-batch authorization review renderer with Host-provided dialog shell and callbacks
 - `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/MonthScreen.kt` — Native month renderer consuming display DTOs and Host callbacks/slots
 - `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativeTimelineScreen.kt` — Native timeline renderer consuming display DTOs and Host callbacks/slots
 - `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativeDraftDeckScreen.kt` — Native deck and shared event-form renderer consuming display DTOs
 - `app/src/main/java/dev/powerfulcalendar/ui/v2/PresentationSkinRuntime.kt` — route registry, Host projection, settings controls and slots
 - `app/src/main/java/dev/powerfulcalendar/ui/v2/MemoProjection.kt` — Core-backed occurrence projection and display-only Native row mapping
-- `app/src/main/java/dev/powerfulcalendar/ui/v2/NativeAiProjection.kt` — AI message/proposal display projection and Host batch mode mapping
+- `app/src/main/java/dev/powerfulcalendar/ui/v2/NativeAiProjection.kt` — AI message, proposal and batch-review display projection plus Host batch mode mapping
 - `app/src/main/java/dev/powerfulcalendar/ui/v2/AiProposalReview.kt` — thin Host adapter projecting AI proposals and binding authorization callbacks to the Native renderer
+- `app/src/main/java/dev/powerfulcalendar/ui/v2/AiBatchAuthorizationReview.kt` — Host adapter retaining the frozen `DraftCard` snapshot and skin-aware dialog selection while projecting display-only batch review data
 - `app/src/main/java/dev/powerfulcalendar/ui/v2/NativeMonthProjection.kt` — Core-backed month projection and opaque recurrence action mapping
 - `app/src/main/java/dev/powerfulcalendar/ui/v2/NativeTimelineProjection.kt` — Core-backed occurrence/lane projection and geometry adapter
 - `app/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/TimelineScreen.kt` — existing app route adapter into the Native Timeline module

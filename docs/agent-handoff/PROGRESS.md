@@ -1,5 +1,11 @@
 # Core freeze progress
 
+## Separation — Native AI batch authorization review module boundary (2026-10-30, CODE COMPLETE; 760 JVM TESTED; device NOT TESTED)
+
+- 将批量授权审核的冻结快照摘要、操作计数、删除提示、标题/确认/取消控件与滚动正文迁入 `:native-skin`。`:skin-api` DTO 只包含显示值和 Skin-aware dialog slot；Host 仍持有原 `DraftCard` 列表及其 draft ID/version 快照，通过确认回调送入现有 `beginAiBatch` 版本校验事务。Native 模块自身不授权或写入数据。没有改 Clear、冻结 Core、AI 批次事务或 Native fallback。
+- 定向 AI Compose/投影回归 **12/12 PASS**；`:app:verifyNativeSkinBoundary`、`:app:verifySkinSourceBoundary`、完整 AndroidTest Kotlin 编译、Debug APK assemble、`:app:lintDebug` 均 **PASS**；完整 JVM 回归 **760/760 PASS，114 XML suites，0 failure/error/skip，152 actionable tasks**。APK 为 66,500,178 bytes，SHA-256 `794EDF6192472A72054ACD8A13883994587165250066DEAB82141B561768F763`；完整门禁日志 SHA-256 `98DCECF6BCA3C48398F75E784326825AF08B68C893470DE7E0117BE68413BAD0`；定向日志 SHA-256 `4C07207EE12EA4C63F6729013EF3EF9B91004B50F32DB4EB3B9BDE99C4CBE2A8`。ADB 无在线设备，Dialog Android instrumentation **NOT TESTED**。
+- 独立报告：[Native AI batch authorization review Issue](../issues/PC-ISSUE-SEPARATION-NATIVE-AI-BATCH-AUTH-REVIEW-MODULE.md)。SEP-10 仍为 PARTIAL，其他 AI 路径及设备交互尚未完成。前一功能的 Native proposal review 报告另见 [Native AI proposal review Issue](../issues/PC-ISSUE-SEPARATION-NATIVE-AI-PROPOSAL-REVIEW-MODULE.md)。两份既有 WebSkin AndroidTest 修改仍未暂存/提交。
+
 ## Separation — Native AI proposal review renderer module boundary (2026-10-30, CODE COMPLETE; 759 JVM TESTED; device NOT TESTED)
 
 - 将 AI 提案审核卡渲染从 `:app` 移入 `:native-skin`。`:skin-api` DTO 只携带 Host 投影后的标题、类型/操作 caption、时间文本、阻塞原因、可发布状态和原列表位置；Host 继续持有 `AiInterpretation`、Core `DraftForm`、校验与授权，并通过回调处理应用、丢弃和补充。Native 不访问 AI/Core/Store，也不执行持久化写入。没有修改 Clear、冻结 Core、持久化或 Native fallback。
