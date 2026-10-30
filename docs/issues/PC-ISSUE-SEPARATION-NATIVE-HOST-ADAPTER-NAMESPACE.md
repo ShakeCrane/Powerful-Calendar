@@ -24,6 +24,7 @@
 | Native/Skin 与源边界门禁 | **PASS** | `:app:verifyNativeSkinBoundary`、`:app:verifySkinSourceBoundary`；Host app 中 `nativeui` 源文件及旧 Host 导入扫描均为空 |
 | AndroidTest 编译 | **PASS** | `:app:compileDebugAndroidTestKotlin`；覆盖本次包搬迁后的 8 个 instrumentation 调用点 |
 | Debug APK 与 lint | **PASS** | `:app:assembleDebug`、`:app:lintDebug`；144/144 actionable tasks。Lint **0 errors / 55 warnings**。APK `app/build/outputs/apk/debug/app-debug.apk`，66,500,119 bytes，SHA-256 `8A793156DF9690840E28A0B19A0D5F26FB02F53FACE8B5403E1E097E5F1DA7D2`。构建日志 SHA-256 `B451F7C98966C87180F01FD46A5CC802FBBC9F19FB82EDC2C4314D798D947933` |
+| 独立 Native 模块构建 | **PASS** | `:native-skin:assembleDebug --offline --rerun-tasks --max-workers=1 --console=plain`；35/35 tasks，只构建 `:native-skin` 与 `:skin-api`，任务图没有 `:app`。AAR `native-skin/build/outputs/aar/native-skin-debug.aar`，672,668 bytes，SHA-256 `F8BFE2D1B8A6E5F9E3F7126F7E0074035324CF34E6906C16AE3519AFFB739A50`；日志 SHA-256 `09364383539267156380F6BF7CA1C0CE2099184A8F59CC6FB204D5357842F2FC` |
 | 补丁检查 | **PASS** | `git diff HEAD --check`、暂存区 `git diff --cached --check` |
 
 所有详细日志保存在忽略目录 `.local/android-test/reports/native-host-adapter-namespace-20261030/`。Android SDK 使用本机既有 `E:\android-sdk`，通过单次 shell 环境变量指定，没有修改 SDK 或仓库 `local.properties`。
@@ -55,9 +56,12 @@ PowerShell 环境：`$env:ANDROID_HOME='E:\android-sdk'`。
 .\gradlew.bat :app:verifyNativeSkinBoundary :app:verifySkinSourceBoundary `
   :app:compileDebugAndroidTestKotlin :app:assembleDebug :app:lintDebug `
   --offline --rerun-tasks --max-workers=1 --console=plain
+
+.\gradlew.bat :native-skin:assembleDebug `
+  --offline --rerun-tasks --max-workers=1 --console=plain
 ```
 
-中间命令运行完整 JVM 套件并保留了上述 1 项失败；末尾命令单独重跑其余构建门禁并成功。
+中间命令运行完整 JVM 套件并保留了上述 1 项失败；第三条命令单独重跑其余 app 构建门禁并成功。最后一条命令进一步证明 Native AAR 不依赖 app 构建。
 
 ## 尚未签核
 
