@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.database.DatabaseErrorHandler
 import android.database.sqlite.SQLiteDatabase
+import android.database.sqlite.SQLiteDatabaseLockedException
 import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -95,7 +96,7 @@ class LegacyHostMigrationTest {
         confirmAndStartMigration()
         ui.waitUntil(20_000) {
             shadowOf(Looper.getMainLooper()).idle()
-            store.all().size == 1 && migrationBatchCounts() == (1 to 0)
+            migrationStateMatches(recordCount = 1, batches = 1 to 0)
         }
         val imported = store.all().single()
         assertEquals("旧事件 1", imported.title)
@@ -110,7 +111,7 @@ class LegacyHostMigrationTest {
         confirmAndStartMigration()
         ui.waitUntil(20_000) {
             shadowOf(Looper.getMainLooper()).idle()
-            migrationBatchCounts() == (2 to 0)
+            migrationStateMatches(recordCount = 1, batches = 2 to 0)
         }
         assertEquals("repeat must preserve the complete formal record snapshot", importedSnapshot, store.all())
         assertEquals(1L, store.identityCount())
@@ -155,6 +156,13 @@ class LegacyHostMigrationTest {
         } finally {
             db.close()
         }
+    }
+
+    /** Busy snapshots mean the writer is still working; let waitUntil poll again. */
+    private fun migrationStateMatches(recordCount: Int, batches: Pair<Int, Int>): Boolean = try {
+        store.all().size == recordCount && migrationBatchCounts() == batches
+    } catch (_: SQLiteDatabaseLockedException) {
+        false
     }
 
     private fun migrationBatchCounts(): Pair<Int, Int> {
