@@ -1,5 +1,7 @@
 package dev.powerfulcalendar.ui.v2
 
+import androidx.compose.runtime.Composable
+
 /** Chat text needed by the Native renderer; provider and persistence metadata stay in the Host. */
 data class NativeAiMessage(
     val mine: Boolean,
@@ -11,6 +13,36 @@ enum class NativeAiBatchMode {
     PUBLISH,
     DISCARD
 }
+
+data class NativeAiBatchOperationCount(
+    val operationLabel: String,
+    val count: Int
+)
+
+data class NativeAiBatchReviewRow(
+    val sequenceLabel: String,
+    val operationLabel: String,
+    val title: String
+)
+
+/** Display-only frozen batch review. Draft IDs, versions, and Core models stay in the Host. */
+data class NativeAiBatchAuthorizationModel(
+    val mode: NativeAiBatchMode,
+    val count: Int,
+    val operationCounts: List<NativeAiBatchOperationCount>,
+    val containsFormalDeletion: Boolean,
+    val rows: List<NativeAiBatchReviewRow>
+)
+
+data class NativeAiBatchAuthorizationDialog(
+    val onDismissRequest: () -> Unit,
+    val title: @Composable () -> Unit,
+    val text: @Composable () -> Unit,
+    val confirmButton: @Composable () -> Unit,
+    val dismissButton: @Composable () -> Unit
+)
+
+typealias NativeAiBatchAuthorizationDialogSlot = @Composable (NativeAiBatchAuthorizationDialog) -> Unit
 
 enum class NativeAiProposalGroup { CREATE, EXISTING }
 

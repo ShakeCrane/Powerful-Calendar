@@ -4,8 +4,10 @@ import dev.powerfulcalendar.ai.AiBatchRunner
 import dev.powerfulcalendar.ai.AiChatMessage
 import dev.powerfulcalendar.ai.AiInterpretation
 import dev.powerfulcalendar.ai.AiProposal
+import dev.powerfulcalendar.core.DraftCard
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.DraftOperation
+import dev.powerfulcalendar.core.DraftStatus
 import dev.powerfulcalendar.core.TemporalKind
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -80,4 +82,54 @@ class NativeAiProjectionTest {
         )
         assertEquals(listOf("提示一", "提示二"), projected.warnings)
     }
+
+    @Test fun projectsFrozenBatchReviewWithoutDraftIdsOrVersions() {
+        val cards = listOf(
+            batchCard(301, 101, DraftOperation.CREATE, "Create one", 4),
+            batchCard(302, 202, DraftOperation.REPLACE, "Replace two", 8),
+            batchCard(303, 303, DraftOperation.DELETE, "Delete three", 5)
+        )
+
+        val publish = projectNativeAiBatchAuthorization(AiBatchRunner.Mode.PUBLISH, cards)
+        assertEquals(NativeAiBatchMode.PUBLISH, publish.mode)
+        assertEquals(3, publish.count)
+        assertEquals(
+            listOf(
+                NativeAiBatchOperationCount("新建", 1),
+                NativeAiBatchOperationCount("修改", 1),
+                NativeAiBatchOperationCount("删除", 1)
+            ),
+            publish.operationCounts
+        )
+        assertEquals(true, publish.containsFormalDeletion)
+        assertEquals(
+            listOf(
+                NativeAiBatchReviewRow("#0101", "新建", "Create one"),
+                NativeAiBatchReviewRow("#0202", "修改", "Replace two"),
+                NativeAiBatchReviewRow("#0303", "删除", "Delete three")
+            ),
+            publish.rows
+        )
+
+        val discard = projectNativeAiBatchAuthorization(AiBatchRunner.Mode.DISCARD, cards)
+        assertEquals(NativeAiBatchMode.DISCARD, discard.mode)
+        assertEquals(false, discard.containsFormalDeletion)
+    }
+
+    private fun batchCard(
+        draftId: Long,
+        eventSeq: Long,
+        operation: DraftOperation,
+        title: String,
+        version: Long
+    ) = DraftCard(
+        draftId = draftId,
+        eventSeq = eventSeq,
+        queueOrder = draftId,
+        operation = operation,
+        form = DraftForm(kind = TemporalKind.ACTIVITY, title = title),
+        status = DraftStatus.PENDING,
+        baseRevision = null,
+        draftVersion = version
+    )
 }
