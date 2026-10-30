@@ -114,3 +114,17 @@
 - 最终 API 35 Clear 截图 SHA-256 `B78A0D44BEAE1D72C7238ED43F0E9967D7F131B8425569992F5A887F4BC8FBAB`；Debug APK SHA-256 `195BA8FAE40F3B487C1345CEA242C9380A2B1088FBED38CB57E6418E340BD78A`；含 Native/Clear 对照断言的 AndroidTest APK SHA-256 `BAB430859788F73130DA9AD20902F7477AFB4050537148BF1A99E84CD5158392`。强制 AndroidTest 重新编译 53/53 tasks PASS，日志 SHA-256 `D2FC24E0C14D89CAFC74B00B1CCEC94C7B7B575C7E570F60AFAA29D4419FD885`。
 
 Native/Clear 同夹具的标题可见集和完整事件辅助语义现为 **PASS（限 API 35 本 fixture）**，不等同于全功能 parity。实际触摸设备/OEM、TalkBack，以及滚动/缩放/裁切在 Native 与 Clear 之间的完整端到端同场景对照仍 **NOT TESTED**；`S0-TL-05` 总体和 cutover 继续 **PARTIAL / HOLD**。
+
+## Follow-up — API 35 Clear scroll/zoom reflow and Host state (2026-10-30)
+
+本 follow-up 用真实触屏事件扩展同一正式事件 fixture，覆盖左右横滚、裁切、回滚、纵向滚动、16 小时缩放和 24 小时复位后的重排。测试未修改折叠算法或 Clear 生产资源。
+
+- AndroidJUnitRunner 测试类 `dev.powerfulcalendar.ui.v2.TimelineGreedyFoldingWebViewInstrumentedTest` **2/2 PASS**，环境 API 35 / Android 15 / WebView `124.0.6367.219` / `emulator-5582`。新增单独的 `actualClearZoomControlsUpdateHostAndWebViewTimelineScale` 测试用真实触摸点击缩放和复位控件，验证 DOM click、桥接消息、Host timeline 投影及 WebView 标签分别从 24→16→24 小时。
+- 同夹具折叠测试在真实缩放与滚动后都断言 lead 决策 `A visible → B folded against A → C visible compared with A → D folded against C`。横向滚动 8 CSS px 后测量矩形同步平移；横向裁切时四个标题均标记 `clipped`，四个正式事件按钮仍在；恢复滚动后矩形回到 baseline ±1 CSS px。纵向滚动 120 CSS px 后矩形同步上移，返回顶部后同样恢复。16 小时缩放与 24 小时复位后，标题 lead 及重置矩形稳定。
+- 本次 API 35 实测的基线 Clear 标题矩形（WebView screen CSS px）：A `(224.0952,343.9048)—(261.9107,358.7619)`；B `(224.0952,344.1548)—(261.8869,359.0119)`；C `(224.0952,373.9048)—(261.9226,388.7619)`；D `(224.0952,374.1548)—(262.6964,389.0119)`。A/B 与 C/D 矩形分别相交，A/C 不相交。缩放后 C/D 变为约 `y=388.90/389.27`，而 lead 序列不变；复位回到 baseline。实际 Native/Clear baseline 可见 lead 仍均为 A/C，原生测量边界和同 fixture 结果记录在此前 follow-up 中。
+- 缩放还暴露了独立的 `S0-TL-01` Host 投影问题：动作已修改 Compose `hours`，但同一同步发布回调读取旧 composition 捕获的 `camera`，导致 Host/WebView 暂时仍为 24 小时。以最小方式修复 `PowerCalApp.kt`，在发布快照时从 live `anchorMillis` 和夹限后的 `hours` 构建相机。独立原因、修复和测试证据记录在 [时间轴几何/缩放 Issue](PC-ISSUE-SEPARATION-CLEAR-TIMELINE-GEOMETRY.md)。
+- 完整强制 JVM 回归 **727/727、100 suites、0 failures/errors/skips**；完整 Gradle source-boundary/JVM/Debug/lint gate、AndroidTest rebuild、Skin Studio Python **61/61**、纯折叠策略 **10/10**、Clear canonical verify（9 files / 394,086 bytes）均通过。Lint 为 **0 errors / 53 warnings**。
+
+新增设备轨迹、runner 输出、APK 和日志 SHA-256 收录在关联 Issue 的 Follow-up 表中；完整可复核轨迹位于忽略目录 `.local/android-test/reports/separation-s0-tl05-api35-20261030/tl05-api35-final-run-trace.txt`，SHA-256 `4929252FA8A73B6F1D84D1158815AD0EF26CA1F0130FE6605A25EDCA7378E0AC`。AndroidTest runner log SHA-256 `438972A22823E7E17A1E16A469CD02D7A33C2C39B90433E99060B61217DC5758`。生产/测试提交 `2c4f9afe2d91c99fb016ec09d2702444be4c6f30` 已推送。
+
+此证据只覆盖 API 35 Clear 实测重排和此前已通过的 Native/Clear baseline lead-set 子项。TalkBack、实体/OEM、完整跨皮肤滚动/缩放/裁切同场景 parity 仍 **NOT TESTED**；`S0-TL-05` 总体保持 **PARTIAL / HOLD**。

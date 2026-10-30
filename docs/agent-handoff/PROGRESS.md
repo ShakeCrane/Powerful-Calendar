@@ -174,13 +174,21 @@
 - Follow-up at code tree `1d78353e0866c7bc19c6a555fb65cbc454aea1f2`: pure greedy strategy **10/10 PASS**, Clear canonical package verify PASS (9 files / 384,912 bytes), and the serialized full offline Gradle gate **619/619 JVM, 84 suites, 88/88 tasks PASS**. The earlier API 36 SDK BLOCKED result is superseded for compile/test/APK/lint only. Android WebView/AVD, physical/OEM and matched Native/Clear parity remain **NOT TESTED**; full `S0-TL-05` parity remains NOT TESTED, not release/cutover GO. Follow-up logs and APK hashes are in the independent Issue report and `.local/android-test/reports/separation-s0-timeline-drag/`.
 - 实现、回归、独立 Issue 与矩阵/进度窄项已提交 `c6b6f7d10e068ee0d4d292505f643b0fab4d1164`（`feat(分离): 实现 Clear 时间轴标题贪心折叠`）；完整 SHA 回填由后续独立文档提交记录。整体 Skin-First separation 继续 IN PROGRESS。
 
+### Follow-up — API 35 Clear scroll/zoom reflow（2026-10-30）
+
+- 在真实 `PowerCalApp` + Clear WebView 上扩展横向滚动/裁切/恢复、纵向滚动/恢复、16h 缩放和 24h 复位；AndroidJUnitRunner 类 **2/2 PASS**。所有阶段都按实际测量矩形重算并维持 `A visible → B folded against A → C visible compared with A → D folded against C`；恢复后 rectangles 与 baseline 差在 1 CSS px 内，四个事件命中目标保留。API 35 / Android 15 / WebView `124.0.6367.219` / `emulator-5582`。
+- 缩放实测另外定位 `S0-TL-01` Host 发布缺陷：action 更新 `hours` 后，同步 projection 使用旧 composition 捕获的 `camera`，导致 24h stale state。`PowerCalApp.kt` 现在在发布时由 live `anchorMillis` + clamp 后 `hours` 构造投影相机；真实触摸验证 Host 与 Clear 从 24→16→24h。该根因独立记入 `PC-ISSUE-SEPARATION-CLEAR-TIMELINE-GEOMETRY`。
+- 强制 JVM **727/727 / 100 suites / 0 failures/errors/skips**；source-boundary/JVM/Debug/lint Gradle gate BUILD SUCCESSFUL，lint 0 errors / 53 warnings；AndroidTest rebuild 53/53 tasks，Skin Studio Python 61/61，纯策略 10/10，Clear canonical package 9 files / 394,086 bytes PASS。详细环境、矩形、APK 与日志 hashes 见两个独立 Issue 报告；trace SHA-256 `4929252FA8A73B6F1D84D1158815AD0EF26CA1F0130FE6605A25EDCA7378E0AC`，runner SHA-256 `438972A22823E7E17A1E16A469CD02D7A33C2C39B90433E99060B61217DC5758`。
+- 代码/AndroidTest commit `2c4f9afe2d91c99fb016ec09d2702444be4c6f30`（`fix(分离): 发布 Clear 时间轴缩放状态并补充实测`）已推送。API35 测试窄项已签核；TalkBack、实体/OEM 与完整跨皮肤 camera/scroll/zoom parity 仍 NOT TESTED，`S0-TL-05` 总体 PARTIAL / HOLD。
+
 ## Separation — Clear 时间轴缩放控制与真实时间几何 `S0-TL-01 / S0-TL-06`（2026-10-29，PARTIAL）
 
 - 定向复现发现 24 小时视口里的 1 分钟 Activity 被画成 6px 高：视觉层上下 padding 各 3px，旧逻辑还对短事件使用虚构最小高度、对缺失结束时刻合成 `start+4`。现改为按真实区间裁切并绘制，视觉矩形与 44px 点击按钮分离；ALARM/精确 Deadline 为时刻点，日期 Deadline 进入日期条。左右泳道独立横向滚动，新增 Host zoom/reset 闭合动作及 Clear 控件。
 - 修复前后 Chrome CDP 几何对照：1 分钟视觉高度 `6px → 0.3125px`（CSS 目标 0.325px，浏览器子像素量化），5 小时 97.5px，跨视口长事件裁切 468px；25 事件、每侧 12 lanes、25 个点击目标、缩放夹限/复位和错误 payload 拒绝 PASS。Studio Python **59/59**；完整离线 Gradle **613/613 JVM、84 suites、0 failures/errors/skips、88/88 tasks**；Clear 包 8 files / 380,049 bytes 验证通过；lint 0 errors / 52 warnings。
 - 独立报告 [PC-ISSUE-SEPARATION-CLEAR-TIMELINE-GEOMETRY](../issues/PC-ISSUE-SEPARATION-CLEAR-TIMELINE-GEOMETRY.md) 含测量值、APK/日志/截图 SHA-256。Studio Chrome 使用 Mock Host；当前没有 adb/emulator 命令，Android WebView、实体设备及匹配 Native/Clear parity **NOT TESTED**。`S0-TL-01`、`S0-TL-06` 仅为实现窄项有证据，完整 parity 与父项 `SEP-01` 继续 NOT TESTED；不构成分离完成或 cutover GO。
 - 实现、回归、矩阵及独立报告已提交 `4125e909865bcf0d30b8d158be932a5ab2b0eaa5`（`feat(分离): 修复 Clear 时间轴几何并接入缩放`）；本 SHA 回填另以文档提交记录。
-- 下一独立时间轴项为 `S0-TL-05` 实测文字矩形贪心折叠；`S0-TL-04` drag-to-move 仍缺 Bridge 能力。没有更改历史 209 项 ID 或将未测项标 PASS。
+- API 35 Follow-up `2026-10-30`：真实 Clear WebView 缩放/复位触摸与 Host 投影 **PASS**（类 2/2）；修复旧 composition camera 导致同步状态仍报 24h 的问题。详见 greedy-folding follow-up 与本 Issue 的新增证据节；`S0-TL-01` 的实体/OEM、TalkBack 和完整 Native/Clear interaction parity 仍 NOT TESTED / PARTIAL，不扩展为完整行 PASS。修复代码 commit `2c4f9afe2d91c99fb016ec09d2702444be4c6f30` 已推送。
+- 截至 2026-10-29 的下一项是 `S0-TL-05`；其 API 35 WebView follow-up 现记录在上文。`S0-TL-04` drag-to-move 仍有独立 parity 缺口。没有更改历史 209 项 ID 或将未测项标 PASS。
 
 ## Separation — 已安装第三方皮肤导出与 v3 Studio 重编辑 `S0-PKG-07`（2026-10-29，PARTIAL）
 

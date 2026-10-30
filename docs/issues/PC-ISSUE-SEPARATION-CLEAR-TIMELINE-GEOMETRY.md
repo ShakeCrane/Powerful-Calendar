@@ -1,10 +1,11 @@
 # PC-ISSUE-SEPARATION-CLEAR-TIMELINE-GEOMETRY — Clear 时间轴真实几何与缩放控制
 
-- Date: 2026-10-29
-- Status: **PARTIAL — 本 Issue 所列实现及窄范围回归通过；Android WebView 与 Native/Clear 配对验收仍 NOT TESTED**
+- Date: 2026-10-29; API 35 Host/WebView zoom follow-up: 2026-10-30
+- Status: **PARTIAL — API 35 Clear zoom/reset narrow path PASS; full Native/Clear parity remains NOT TESTED**
 - Worktree: `codex/separation-s0-inventory`
 - Base commit: `6bf2a792a8edf9ee6825543f16751f038bfa4f89`
 - Implementation, regression, matrix and Issue report commit: `4125e909865bcf0d30b8d158be932a5ab2b0eaa5` (`feat(分离): 修复 Clear 时间轴几何并接入缩放`)
+- Follow-up Host state fix and AndroidTest commit: `2c4f9afe2d91c99fb016ec09d2702444be4c6f30` (`fix(分离): 发布 Clear 时间轴缩放状态并补充实测`)
 
 ## Scope and disposition
 
@@ -101,4 +102,38 @@ This report, the corresponding two child rows in `docs/SKIN_SEPARATION_PARITY_MA
 
 ## Next action
 
-Continue with the independent `S0-TL-05` greedy title folding task. Preserve its key constraints: use actual rendered text rectangles in common screen coordinates; compare each candidate only with the current visible lead; hide titles only; keep event geometry, tap targets and accessibility semantics. After implementation, run a separate Android WebView gate when a safe emulator is available and retain the complete Native/Skin parity rows as NOT TESTED until matched replay evidence exists.
+The API 35 follow-up below verifies the actual Clear WebView zoom/reset touch path and Host projection. Continue with remaining `S0-TL-01` / `S0-TL-06` parity gaps; preserve complete Native/Skin parity as NOT TESTED until the corresponding matched replay evidence exists.
+
+## Follow-up — API 35 zoom touch and Host projection (2026-10-30)
+
+The first real Android WebView zoom run exposed a Host state publication defect that was not visible in the Studio Mock. `WebSkinBridgeRuntime` handled the decoded zoom action and updated Compose `hours` from 24 to 16, but synchronously published a timeline projection built with the `camera` value captured by the previous composition. Until a later recomposition, the Host projection and WebView continued to report 24 hours, so zoom-triggered title reflow could not be trusted.
+
+`PowerCalApp.kt` now constructs the published camera from the live `anchorMillis` and clamped `hours` state at publication time. This keeps the focal instant and existing zoom bounds while ensuring the immediate Host snapshot reflects the action before recomposition. Reset publishes 24 hours through the same path. No Store or event geometry is changed by zoom.
+
+### Device verification
+
+- Environment: `PowerCal_API35_S0_20261030`, serial `emulator-5582`, Android 15 / API 35, WebView `124.0.6367.219`, display `1080×1920 @ 420dpi`. Existing app/test APKs were updated with `adb install -r`; app data was not cleared.
+- Instrumentation class `dev.powerfulcalendar.ui.v2.TimelineGreedyFoldingWebViewInstrumentedTest`: **2/2 PASS**. `actualClearZoomControlsUpdateHostAndWebViewTimelineScale` tapped the actual Clear zoom and reset buttons; the WebView click and versioned bridge post were observed, Host projection changed to 16 hours, the visible label changed to `16 小时`, and the reset returned both Host and WebView to 24 hours. The title-folding test separately exercised the same user touch path while checking reflow.
+- Reflow after horizontal scroll, horizontal clipping/restoration, 120px vertical scroll/restoration, 16-hour zoom, and 24-hour reset retained the deterministic `A visible → B folded against A → C visible compared with A → D folded against C` lead sequence. Restored rectangles matched baseline within 1 CSS px. Every stage emitted measured and screen-coordinate rectangles; evidence is in the ignored local trace below.
+- The current-time marker visibility assertion was evaluated against the Host visible time bounds after zoom and reset. At the test clock, the 16-hour centered range excludes current time, so marker absence is expected; the 24-hour reset puts it back in the visible range.
+- Unit rerun: **727/727 tests, 100 XML suites, 0 failures/errors/skips**. Full source-boundary / unit / Debug APK / lint Gradle gate: **BUILD SUCCESSFUL**, lint **0 errors / 53 warnings**. AndroidTest rebuild: **53/53 tasks PASS**. Skin Studio Python: **61/61 PASS**. Pure title strategy: **10/10 PASS**. Canonical Clear verification: **9 files / 394,086 bytes PASS**.
+
+### Trace and build evidence
+
+All detailed logs and traces are ignored local artifacts under `.local/android-test/reports/separation-s0-tl05-api35-20261030/`:
+
+| Evidence | Result / SHA-256 |
+| --- | --- |
+| AndroidJUnitRunner class output `tl05-final-test-class-rerun.log` | 2/2 PASS; `438972A22823E7E17A1E16A469CD02D7A33C2C39B90433E99060B61217DC5758` |
+| Reflow, Host state, title rectangles and native bounds `tl05-api35-final-run-trace.txt` | `4929252FA8A73B6F1D84D1158815AD0EF26CA1F0130FE6605A25EDCA7378E0AC` |
+| AndroidTest rebuild `tl05-final-androidtest-build-rerun.log` | 53/53 tasks; `F58170CE3352DEE255F21D22CC523D7D140A75E57A88455115470924C2DF7E96` |
+| Full Gradle gate `full-gradle-gate-095410.log` | BUILD SUCCESSFUL; `80C377224A8E8D9C215A0149A443A5E2B7A0E36BFE3E4C662C3AAAF8FC365E62` |
+| Forced JVM rerun `full-gradle-unit-test-rerun-095649.log` | 727 tests / 100 suites; `6F3725C5C7C82DB29262F945350ACEC3BD782021554DB55F887CCA8EACBE7146` |
+| Skin Studio Python `skin-studio-python-095410.log` | 61/61; `B5FEA36D9544192D0D4D5D8497EA5B970136F6FCB156C0C7EB3FFC1AB73FB043` |
+| Greedy strategy `title-folding-node-final.log` | 10/10; `AD35A2781A63D7E5F46E2C6031CFCA9D23D492C6D739B83E22F1E0AF9B948348` |
+| Clear canonical verification log | 9 files / 394,086 bytes; log `C5CA0FF65E4A70A32B8103595A22E5F31BBA174BD0D229B86CBB472523FC547B`; package SHA-256 `8F7F5680BFD27976B2792AAB06D051BAF0F03F4A914636EA73E82E48431F8035` |
+| Debug / AndroidTest APK | `6CF8835E82479F651D2A2019F0CBBCB798C497C00AB6689C7AE186479420A0CD` / `72101800F5F580291B2019DE85F1B8019DB56CE799C196B6605A90E341D87A84` |
+
+Code and instrumented regression were committed and pushed as `2c4f9afe2d91c99fb016ec09d2702444be4c6f30` (`fix(分离): 发布 Clear 时间轴缩放状态并补充实测`).
+
+This signs only the actual API 35 Clear zoom/reset Host projection and the tested reflow slice. Physical/OEM devices, TalkBack, all camera/date paths, and full matched Native/Clear interaction parity remain **NOT TESTED**; `S0-TL-01`, `S0-TL-06` and parent `SEP-01` remain **PARTIAL / HOLD**.
