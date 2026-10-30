@@ -3,11 +3,14 @@ package dev.powerfulcalendar.ui.v2
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import dev.powerfulcalendar.ai.AiBatchRunner
 import dev.powerfulcalendar.ai.AiChatMessage
 import dev.powerfulcalendar.ai.AiInterpretation
+import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.PowerStore
+import dev.powerfulcalendar.core.RecurrenceEngine
 import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.ui.v2.nativeui.*
 import java.time.LocalDate
@@ -224,26 +227,102 @@ internal class SettingsVisualContext internal constructor(
     val onReconcile: () -> Unit,
     val onAiDraft: (String, Boolean) -> Unit,
     val aiBusy: Boolean,
-    val onReleaseStuck: () -> Unit
+    val onReleaseStuck: () -> Unit,
+    internal val nativeDiagnostics: NativeSettingsDiagnostics = NativeSettingsDiagnostics()
 ) {
-    @Composable fun ProtectedProfile() = ProtectedProfileSection()
-    @Composable fun ProtectedAiCredentials() = ProtectedAiSettingsSection()
+    @Composable fun ProtectedProfile() = HostProtectedProfileSection()
+    @Composable fun ProtectedAiCredentials() = HostProtectedAiSettingsSection()
     @Composable fun Native() {
         NativeToolsPage(
-            diagnostics, records, pendingCount, aiLocked, aiSession, canReleaseStuckBatch, effects, skinChoices,
+            nativeDiagnostics, aiLocked, canReleaseStuckBatch, effects, skinChoices,
             selectedSkin, onSelectSkin, onImportSkin, onExportOriginalSkin,
             onExportInstalledSkin, onDeleteSkin,
             onBack, onOpenDeck, onImportIcs, onExportIcs, onImportSystem, onMigrateLegacy,
             onPickImage, onTextDraft, onExportBackup, onRestoreBackup,
             onRequestNotificationPermission, onOpenExactAlarmSettings, onRunBatch,
-            onCancelBatch, onReconcile, onAiDraft, aiBusy, onReleaseStuck
+            onCancelBatch, onReconcile, onAiDraft, aiBusy, onReleaseStuck,
+            protectedProfile = { ProtectedProfile() },
+            protectedAiCredentials = { ProtectedAiCredentials() }
         )
     }
 }
 
+internal data class NativeReminderDiagnostic(
+    val eventLabel: String,
+    val title: String,
+    val scheduleLabel: String,
+    val blocked: Boolean,
+    val androidHint: String?,
+    val execution: String?
+)
+
+internal data class NativeRecurrenceDiagnostic(val label: String, val next: String)
+
+/** Host-computed display snapshot; Native settings do not query Core or Android services. */
+internal data class NativeSettingsDiagnostics(
+    val formalEventCount: Int = 0,
+    val nextSequenceLabel: String = TemporalRecord.formatSeq(1),
+    val identityCount: Long = 0,
+    val databaseVersion: Int = 0,
+    val databaseName: String = "",
+    val exactAlarmAllowed: Boolean = false,
+    val notificationsAllowed: Boolean = false,
+    val aiBatchActive: Boolean = false,
+    val aiBatchCancelRequested: Boolean = false,
+    val reminders: List<NativeReminderDiagnostic> = emptyList(),
+    val recurrence: List<NativeRecurrenceDiagnostic> = emptyList()
+)
+
+private fun nativeSettingsDiagnostics(
+    diagnostics: UiDiagnostics,
+    records: List<TemporalRecord>,
+    aiSession: PowerStore.AiSession?,
+    exactAlarmAllowed: Boolean,
+    notificationsAllowed: Boolean,
+    nowMillis: Long
+): NativeSettingsDiagnostics = NativeSettingsDiagnostics(
+    formalEventCount = records.size,
+    nextSequenceLabel = TemporalRecord.formatSeq(diagnostics.nextSequence),
+    identityCount = diagnostics.identities,
+    databaseVersion = PowerStore.VERSION,
+    databaseName = PowerStore.DATABASE_NAME,
+    exactAlarmAllowed = exactAlarmAllowed,
+    notificationsAllowed = notificationsAllowed,
+    aiBatchActive = aiSession?.isActive == true,
+    aiBatchCancelRequested = aiSession?.state == PowerStore.AiState.CANCEL_REQUESTED,
+    reminders = diagnostics.reminders.map { row ->
+        val state = row.intent?.desired
+        NativeReminderDiagnostic(
+            eventLabel = row.record.displaySeq(),
+            title = row.record.title,
+            scheduleLabel = when (state) {
+                PowerStore.DesiredSchedule.PENDING -> "等待调度"
+                PowerStore.DesiredSchedule.SCHEDULED -> "已交给系统"
+                PowerStore.DesiredSchedule.BLOCKED -> "受阻，请检查权限"
+                PowerStore.DesiredSchedule.CANCELLED -> "已取消"
+                PowerStore.DesiredSchedule.FIRED -> "已触发"
+                null -> "无待执行调度"
+            },
+            blocked = state == PowerStore.DesiredSchedule.BLOCKED,
+            androidHint = row.intent?.androidHint,
+            execution = row.execution
+        )
+    },
+    recurrence = records.filter { it.recurrence.isRepeating }.take(3).map { record ->
+        val next = RecurrenceEngine.nextOccurrence(record, nowMillis)
+        NativeRecurrenceDiagnostic(
+            label = "重复 #${record.eventSeq}",
+            next = next?.let { "下一次 " + DraftForm.formatInstant(it.startMillis) } ?: "没有后续实例"
+        )
+    }
+)
+
 @Composable
 internal fun ToolsPage(
     diagnostics: UiDiagnostics,
+    exactAlarmAllowed: Boolean,
+    notificationsAllowed: Boolean,
+    nowMillis: Long,
     records: List<TemporalRecord>,
     pendingCount: Int,
     aiLocked: Boolean,
@@ -276,6 +355,13 @@ internal fun ToolsPage(
     aiBusy: Boolean,
     onReleaseStuck: () -> Unit
 ) {
+    val nativeDiagnostics = remember(
+        diagnostics, exactAlarmAllowed, notificationsAllowed, records, aiSession, nowMillis
+    ) {
+        nativeSettingsDiagnostics(
+            diagnostics, records, aiSession, exactAlarmAllowed, notificationsAllowed, nowMillis
+        )
+    }
     val context = SettingsVisualContext(
         diagnostics, records, pendingCount, aiLocked, aiSession, canReleaseStuckBatch, effects, skinChoices,
         selectedSkin, onSelectSkin, onImportSkin, onExportOriginalSkin,
@@ -283,7 +369,8 @@ internal fun ToolsPage(
         onBack, onOpenDeck, onImportIcs, onExportIcs, onImportSystem, onMigrateLegacy,
         onPickImage, onTextDraft, onExportBackup, onRestoreBackup,
         onRequestNotificationPermission, onOpenExactAlarmSettings, onRunBatch,
-        onCancelBatch, onReconcile, onAiDraft, aiBusy, onReleaseStuck
+        onCancelBatch, onReconcile, onAiDraft, aiBusy, onReleaseStuck,
+        nativeDiagnostics = nativeDiagnostics
     )
     val renderer = PresentationSkinRegistry.settings
     if (RuntimeSkinSurfaces.enabled("settings")) RuntimeSkinSurfaces.settings(context)

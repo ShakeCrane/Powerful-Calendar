@@ -1808,6 +1808,9 @@ fun PowerCalApp(
         if (presentedPage == Page.TOOLS.name) {
             ToolsPage(
                 diagnostics = diagnostics,
+                exactAlarmAllowed = ReminderScheduler.exactAlarmAllowed(appContext),
+                notificationsAllowed = ReminderScheduler.notificationsAllowed(appContext),
+                nowMillis = nowMillis,
                 records = records,
                 pendingCount = pendingCount,
                 aiLocked = aiLocked,
