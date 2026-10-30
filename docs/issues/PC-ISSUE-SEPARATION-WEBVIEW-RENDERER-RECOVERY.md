@@ -3,7 +3,7 @@
 - **日期：** 2026-10-31
 - **状态：** 此故障场景 `PASS`；父项 SEP-14 仍 `INCOMPLETE / HOLD`
 - **验收来源：** 重建矩阵 SEP-14（非历史 209 项 ID）
-- **验证提交：** `89e6cd3e24a3ed65964620f4d31a9cde3a9a20a6`，已推送到 `origin/feat/skin-first-separation`
+- **验证提交：** `d46e341673da6eb24d6b6fb6344d43de55de8481`，已推送到 `origin/feat/skin-first-separation`
 
 ## 结果
 
@@ -42,7 +42,20 @@ API 35 AVD 的新增真实 WebView 回归覆盖了两条 Activity 重建路径�
 - 完整离线门禁 `:app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:lintDebug`：**784/784 JVM、125 suites、0 failures/errors/skips**；源码边界与 Debug 构建通过；Lint **0 errors / 55 warnings**。日志 SHA-256：`BFDB3D9BBCA7ABB85A82BEF0B58A257037962B9199F83C0ECA877E2B43B6E3CD`。Debug APK SHA-256：`F924AF9CABD50ECF6F3D68CB0CFB595D81669466A35A8C27C75C7B95320F1F46`。
 - 新测试位于 `app/src/androidTest/java/dev/powerfulcalendar/ui/v2/ClearActivityRecreationRecoveryInstrumentedTest.kt`；全部详细证据保存在忽略目录 `.local/android-test/reports/sep14-activity-recreation-20261031/`。
 
-此项只证明 Activity 重建后的恢复，不等同于操作系统杀进程后的冷启动恢复。dirty editor 遇到 renderer 终止、真实进程死亡/重新启动、损坏皮肤/脚本、升级失败、设备重启、实体设备/OEM 仍为 **NOT TESTED**；SEP-14 保持 **INCOMPLETE / HOLD**。
+此项只证明 Activity 重建后的恢复，不等同于操作系统杀进程后的冷启动恢复。真实进程死亡/重新启动、损坏皮肤/脚本、升级失败、设备重启、实体设备/OEM 仍为 **NOT TESTED**；SEP-14 保持 **INCOMPLETE / HOLD**。
+
+## Follow-up — dirty transient editor during renderer termination
+
+在 API 35 AVD 的实际 Clear WebView 中打开 ACTIVITY 新建编辑器并修改标题。renderer 故障前验证表单只存在于内存：正式事件、草稿、待处理项、提交和身份均为 0，下一序号为 1。随后通过 `WebViewRenderProcess.terminate()` 终止真实 renderer。Host 故障回调完成 checkpoint 后切换至 Native 安全页；Store 恰好保存一张保留完整标题的 ACTIVITY 草稿，没有创建正式事件或提交记录，身份、事件序号和队列序号各只前进一次。没有发现生产代码缺陷，本次仅增加 Android instrumentation 回归。
+
+- 聚焦用例 `clearDirtyTransientEditorIsCheckpointedWhenRendererProcessTerminates` **1/1 PASS**；`WebSkinRendererRecoveryInstrumentedTest` 整类 **2/2 PASS**。设备为 `codex-clear-api35` / `emulator-5568`，Android 15 / API 35 / WebView 124.0.6367.219；通过直接 `adb shell am instrument` 运行。
+- 设备轨迹：`draft=1; title=RENDERER_DIRTY_EDITOR_CHECKPOINT; formal=0; commits=0; identities=1; sequence=2; native=true`。聚焦 runner SHA-256 `D4E91E6B971A5D46907B56F75A98E6542211D761661ACF87AFC752DA73B2F437`；整类 runner SHA-256 `DC80BB91414D95FAF6AEA2D6FD2DEC35BEEFDE073FC3B76046EFE311A55B6671`；Logcat 轨迹 SHA-256 `A0DFAE84DE7B72D888EB8B0644209BDE96386C2C9FB3B7CB6D923DE5BCF9E8F9`。
+- 完整离线门禁 **784/784 JVM、125 suites、0 failures/errors/skips；171/171 tasks PASS**，包含 Native/Skin 源码边界、AndroidTest Kotlin 编译、Debug 与 AndroidTest APK、Lint **0 errors / 55 warnings**。门禁日志 SHA-256 `C3E05B6DA1AED17F95EFB411217CB83555FC27FEBBB68075C5989815E16814D5`。
+- Debug APK：66,517,863 bytes，SHA-256 `779B0CF777BD5E1EE377249CD4156DB426DC87690B6D35EDD458E5F27A27CD1B`。AndroidTest APK：1,496,216 bytes，SHA-256 `D554AC3E0F2B35294E1485DA3229EF5B91AEF655E841B02330E3862D6F3C4053`。
+- 证据目录：`.local/android-test/reports/sep14-dirty-renderer-20261031/`。测试使用唯一临时数据库并恢复测试偏好；清理后没有 `skin-renderer-*` 数据库残留。没有卸载应用、清除应用数据或擦除 AVD。
+- 测试提交：`d46e341673da6eb24d6b6fb6344d43de55de8481` — `test(皮肤分离): 验证脏编辑器renderer故障恢复`，已推送。
+
+这项新增证据关闭 dirty transient editor + renderer termination 场景；冷进程死亡/重启、损坏皮肤/脚本、升级失败、设备重启和实体设备/OEM 仍未验证，因此 SEP-14 继续 **INCOMPLETE / HOLD**。
 
 ## Git
 
