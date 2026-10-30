@@ -70,7 +70,7 @@
 | SEP-11 设置/权限 | **INCOMPLETE**；Native 个人资料、AI 配置卡片（API key 输入仍为 Host slot）、首次系统日历导入提示、旧数据库迁移/旧备份确认展示已 CODE COMPLETE 于 `:native-skin`；AI settings/profile/protected-slot 定向 7/7，当前全量 JVM 778/778 TESTED；AI 存储与密钥仍由 Host 保管；Android Emulator NOT TESTED | 设置页面完整皮肤化，敏感能力经受信 Host，覆盖权限、ICS、备份、提醒诊断与设备验收 |
 | SEP-12 导航/Picker | **INCOMPLETE**; Native root/notice/modal/system Picker renderers CODE COMPLETE in `:native-skin`; Picker Robolectric + full JVM tested | 页面等价、多窗口/IME/返回导航和 Android 设备 Picker 验收 |
 | SEP-13 包格式 | 有限路径 TESTED；Native 设置页皮肤启用/删除确认已 CODE COMPLETE 于 `:native-skin`，focused Compose、Native 设置与导出路径 TESTED；设备 NOT TESTED | 官方与第三方包同权限，同源构建、导入/导出/升级及危险包检查 |
-| SEP-14 切换/故障恢复 | **INCOMPLETE**；Native 旧数据库迁移/旧格式备份确认展示已 CODE COMPLETE 于 `:native-skin`，focused/full JVM TESTED；设备 NOT TESTED | 损坏包、WebView 崩溃、进程死、未保存编辑、设备重启后数据保持及独立恢复入口 |
+| SEP-14 切换/故障恢复 | **INCOMPLETE**；API 35 AVD 已对 Clear 实际终止 WebView renderer，持久选择切回 Native、显示“工具与设置”恢复页，正式 Store 与身份/序号/提交计数不变（1/1 device-instrumented PASS，`89e6cd3`）；旧数据库迁移/旧格式备份确认路径此前已做 JVM TESTED | 损坏包、renderer 退出时未保存编辑恢复、进程死亡/重启、升级失败、设备重启后的数据保持，以及更多恢复组合 |
 | SEP-15 Skin Studio | **INCOMPLETE**；浏览器现可显式编辑三项 Host 能力请求，源/资源回归 62/62 与 Chrome 导出重导入通过 | 完成全定制内容的无损编辑/重构、可视结构能力、绑定及 AI 工作流；跨皮肤与 Android 行为仍需验证 |
 | SEP-16 可信写入 | **INCOMPLETE** | 各类正式增删改、草稿发布、AI 批量提交、版本变更和取消操作共用 Host 受信审核 |
 
