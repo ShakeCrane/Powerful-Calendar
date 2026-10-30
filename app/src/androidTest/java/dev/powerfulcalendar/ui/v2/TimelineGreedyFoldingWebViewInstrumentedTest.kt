@@ -17,12 +17,16 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import dev.powerfulcalendar.core.DraftForm
+import dev.powerfulcalendar.core.RecurrenceEngine
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.TemporalKind
+import dev.powerfulcalendar.core.TemporalRecord
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -200,6 +204,22 @@ class TimelineGreedyFoldingWebViewInstrumentedTest {
             first.getDouble("top") < second.getDouble("bottom") &&
             second.getDouble("top") < first.getDouble("bottom")
 
+    private fun nativeOccurrenceKey(record: TemporalRecord): String {
+        val localStart = java.time.Instant.ofEpochMilli(requireNotNull(record.startMillis))
+            .atZone(record.zone).toLocalDateTime()
+        return "${record.eventSeq}:${RecurrenceEngine.keyFor(localStart)}"
+    }
+
+    private fun nativeTitleTag(record: TemporalRecord): String {
+        val stableId = "${record.eventSeq}:${nativeOccurrenceKey(record)}"
+        return "timeline-title-${record.eventSeq}-${stableId.hashCode().toUInt().toString(16)}"
+    }
+
+    private fun nativeEventTag(record: TemporalRecord): String {
+        val occurrence = nativeOccurrenceKey(record)
+        return "timeline-event-${record.eventSeq}-${occurrence.hashCode().toUInt().toString(16)}"
+    }
+
     @Test
     fun actualClearTimelineFoldsOnlyCollidingMeasuredTitlesAndKeepsEventTapAndGeometry() {
         val storage = compose.activity.applicationContext
@@ -239,6 +259,56 @@ class TimelineGreedyFoldingWebViewInstrumentedTest {
             context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
                 .edit().putBoolean("system-calendar-import-asked", true).commit()
             PowerCalSkinRegistry.reset()
+
+            // Replay this exact persisted fixture through the Native PowerCalApp route first.
+            assertTrue("Native baseline should persist in the isolated fixture",
+                SkinPackageManager(context).selectNativeForEmergencyRecovery())
+            compose.runOnUiThread {
+                compose.activity.setContent {
+                    CompositionLocalProvider(LocalContext provides context) {
+                        PowerCalTheme { PowerCalApp(store) }
+                    }
+                }
+            }
+            fun nativeNodeExists(tag: String) = runCatching {
+                compose.onAllNodesWithTag(tag, useUnmergedTree = true)
+                    .fetchSemanticsNodes().isNotEmpty()
+            }.getOrDefault(false)
+            compose.waitUntil(30_000) {
+                records.all { nativeNodeExists(nativeEventTag(it)) }
+            }
+            val nativeVisible = titles.filter { name ->
+                val record = records[titles.indexOf(name)]
+                nativeNodeExists(nativeTitleTag(record))
+            }
+            assertEquals("Native should use the same visible lead titles as Clear",
+                listOf("Fold_A", "Fold_C"), nativeVisible)
+            for ((index, name) in titles.withIndex()) {
+                val record = records[index]
+                val eventNode = compose.onNodeWithTag(nativeEventTag(record), useUnmergedTree = true)
+                eventNode.assertExists().assertHasClickAction()
+                val descriptions = eventNode.fetchSemanticsNode()
+                    .config[SemanticsProperties.ContentDescription]
+                assertTrue("Native event keeps the full accessible title: " + name,
+                    descriptions.any { name in it })
+                val titleNode = compose.onNodeWithTag(nativeTitleTag(record), useUnmergedTree = true)
+                if (name in nativeVisible) titleNode.assertExists() else titleNode.assertDoesNotExist()
+            }
+            val nativeRectangles = nativeVisible.associateWith { name ->
+                val record = records[titles.indexOf(name)]
+                val bounds = compose.onNodeWithTag(nativeTitleTag(record), useUnmergedTree = true)
+                    .fetchSemanticsNode().boundsInRoot
+                JSONObject().put("left", bounds.left).put("top", bounds.top)
+                    .put("right", bounds.right).put("bottom", bounds.bottom)
+            }
+            val nativeEvidence = JSONObject()
+                .put("visibleTitles", JSONArray(nativeVisible))
+                .put("viewportPx", JSONObject().put("width", compose.activity.window.decorView.width)
+                    .put("height", compose.activity.window.decorView.height))
+                .put("density", compose.activity.resources.displayMetrics.density)
+                .put("titleBoundsRootPx", JSONObject(nativeRectangles))
+            println("S0_TL05_NATIVE_API35_TRACE=" + nativeEvidence)
+
             SkinPackageManager(context).select("powercal-clear-default")
 
             compose.runOnUiThread {
@@ -309,6 +379,9 @@ class TimelineGreedyFoldingWebViewInstrumentedTest {
                 val item = items.getJSONObject(index)
                 item.getString("name") to item
             }
+            val clearVisible = titles.filter { byName.getValue(it).getString("state") == "visible" }
+            assertEquals("Native and Clear render the same visible greedy leads for one stored fixture",
+                nativeVisible, clearVisible)
             val a = byName.getValue("Fold_A")
             val b = byName.getValue("Fold_B")
             val c = byName.getValue("Fold_C")
