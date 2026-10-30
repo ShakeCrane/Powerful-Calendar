@@ -31,7 +31,7 @@
 
 ## 尚未验证
 
-本结果只覆盖已加载 Clear 的 WebView renderer 进程终止与 Native 紧急恢复。它**不代表 SEP-14 完成**。Activity 重建后的编辑器恢复已由下方 follow-up 验证；以下仍未验证：renderer 退出瞬间存在未保存的 dirty editor；操作系统杀进程/冷启动后的草稿恢复；损坏/恶意包和脚本异常；升级失败；设备重启后的数据保持；实体设备/OEM/WebView 版本差异。
+本结果只覆盖已加载 Clear 的 WebView renderer 进程终止与 Native 紧急恢复。它**不代表 SEP-14 完成**。后续章节已分别验证 Activity 重建、renderer 退出时的 dirty editor checkpoint，以及操作系统杀进程后的冷启动草稿恢复；以下仍未验证：损坏/恶意包和脚本异常；升级失败；设备重启后的数据保持；实体设备/OEM/WebView 版本差异。
 
 ## Follow-up — Clear 编辑器 Activity 重建恢复
 
@@ -42,7 +42,7 @@ API 35 AVD 的新增真实 WebView 回归覆盖了两条 Activity 重建路径�
 - 完整离线门禁 `:app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:lintDebug`：**784/784 JVM、125 suites、0 failures/errors/skips**；源码边界与 Debug 构建通过；Lint **0 errors / 55 warnings**。日志 SHA-256：`BFDB3D9BBCA7ABB85A82BEF0B58A257037962B9199F83C0ECA877E2B43B6E3CD`。Debug APK SHA-256：`F924AF9CABD50ECF6F3D68CB0CFB595D81669466A35A8C27C75C7B95320F1F46`。
 - 新测试位于 `app/src/androidTest/java/dev/powerfulcalendar/ui/v2/ClearActivityRecreationRecoveryInstrumentedTest.kt`；全部详细证据保存在忽略目录 `.local/android-test/reports/sep14-activity-recreation-20261031/`。
 
-此项只证明 Activity 重建后的恢复，不等同于操作系统杀进程后的冷启动恢复。真实进程死亡/重新启动、损坏皮肤/脚本、升级失败、设备重启、实体设备/OEM 仍为 **NOT TESTED**；SEP-14 保持 **INCOMPLETE / HOLD**。
+此项当时只证明 Activity 重建后的恢复；后续冷进程恢复证据见本文最后一节。损坏皮肤/脚本、升级失败、设备重启、实体设备/OEM 仍为 **NOT TESTED**；SEP-14 保持 **INCOMPLETE / HOLD**。
 
 ## Follow-up — dirty transient editor during renderer termination
 
@@ -55,7 +55,20 @@ API 35 AVD 的新增真实 WebView 回归覆盖了两条 Activity 重建路径�
 - 证据目录：`.local/android-test/reports/sep14-dirty-renderer-20261031/`。测试使用唯一临时数据库并恢复测试偏好；清理后没有 `skin-renderer-*` 数据库残留。没有卸载应用、清除应用数据或擦除 AVD。
 - 测试提交：`d46e341673da6eb24d6b6fb6344d43de55de8481` — `test(皮肤分离): 验证脏编辑器renderer故障恢复`，已推送。
 
-这项新增证据关闭 dirty transient editor + renderer termination 场景；冷进程死亡/重启、损坏皮肤/脚本、升级失败、设备重启和实体设备/OEM 仍未验证，因此 SEP-14 继续 **INCOMPLETE / HOLD**。
+这项新增证据关闭 dirty transient editor + renderer termination 场景；冷进程恢复由本文最后一节补充验证。损坏皮肤/脚本、升级失败、设备重启和实体设备/OEM 仍未验证，因此 SEP-14 继续 **INCOMPLETE / HOLD**。
+
+## Follow-up — Clear 脏草稿冷进程恢复与运行链路核验
+
+补充了 `ClearProcessRestartRecoveryInstrumentedTest`。第一阶段在实际打包的 Clear 中打开 ACTIVITY 新建编辑器、修改标题，再将 Activity 移到后台触发 `ON_STOP`；Store 只产生一张含完整标题的待处理草稿，正式事件与提交仍为 0。脚本随后 force-stop 两个进程包，第二阶段确认 PID 和进程 token 均变化，数据库中的 `draftId`、`eventSeq` 和标题与 marker 一致；通过 Clear 的“待办”入口打开草稿后，Host `deck.open=true`，没有重复写入。
+
+- `dirtyClearEditorCheckpointsOnStopForColdProcessRecovery` 与 `coldProcessRestartRestoresTheDirtyClearEditorDraft` 分别 **1/1 PASS**；两阶段 PID 为 `4927` 与 `5116`。设备轨迹：`draft=1; formal=0; commits=0; sameIdentity=true; clear=true`。轨迹 SHA-256 `45CCE95DB3495E8D69E3661FB3C7980B392F5C63CA786B59C53B3B89B610C1D3`；prepare/restore runner SHA-256 分别为 `92CE75E874E7B9F46F9040CBE9A66407D2230EBE3AAE3B75C555C9ADBFB7894E` 与 `502F2D60D6C38A0444619BB600D047B3BBEE59F58A4BC4B0764DE0F61B6784C5`。
+- 本次没有复现 Clear 的生产运行故障。前两次新探针失败是测试把 `evaluateJavascript` 返回的 JSON 编码字符串直接与原始文字比较；保留的诊断轨迹已证明真实 DOM 点击通过 `routeAction`，发送 `deck.open`，收到 Host `opened` 回执且 Host 状态为 open。断言改成布尔比较后，两阶段恢复测试通过。该测试问题不应记作产品缺陷。
+- 额外 API 35 WebView 定向回归 **27/27 PASS**，覆盖 Clear 待办搜索与提案、Memo、Activity 重建、renderer 故障、时间轴缩放/复位/拖动、AI 提案审查、设置入口、时间轴/月历创建上下文、类型转换及正式删除触控。逐类 runner、状态和哈希在 `.local/android-test/reports/sep14-cold-process-20261031/clear-runtime-recheck-manifest.json`，manifest SHA-256 `264F6D5FBDCD1F69C16A2C8C3E964BB070BC0ADC4255DBD8EA9FDA2D8A21B257`。该目录的 logcat 扫描没有发现未捕获的 JavaScript SyntaxError、TypeError 或 ReferenceError（SHA-256 `40DBBE051FC847941AC8E94D689FE484D9633911375255D2808275124D338F44`）。
+- 使用的是仓库现有的 `PowerCal_API35` **只读** AVD，serial `emulator-5570`，Android 15 / API 35 / WebView 124.0.6367.219；不是原 `codex-clear-api35` 实例。原实例的 qemu 与 ADB shell 在本轮验证时无响应，因此没有擦除、强制结束或覆盖它。它上面唯一测试 UUID `8ffe06a7-212f-41d0-b830-fb0f1571eabd` 的合成恢复夹具无法经 ADB 检查或清理；本轮未触及 `powercal-v2.db`。只读 AVD 上的本轮 UUID fixture 已确认清理完毕。
+- 完整离线门禁：**784/784 JVM、125 suites、0 failures/errors/skips；171/171 tasks PASS**；Native/Skin 边界、AndroidTest Kotlin 编译、Debug 与 AndroidTest APK、Lint 均通过，Lint 0 errors / 55 warnings。门禁日志 SHA-256 `29A7F367D9AE545CCACC1E2D43A723AE8107A7E28547EF04DD11E5D8A831576E`。Debug APK SHA-256 `779B0CF777BD5E1EE377249CD4156DB426DC87690B6D35EDD458E5F27A27CD1B`；AndroidTest APK SHA-256 `32374ACEED6F973E6DC7C4631BA5AA96F4101854344E7191DAFCC51E9208FAE4`（1,508,964 bytes）。
+- 测试提交 `0ff36e7`（`test(皮肤分离): 验证Clear冷进程草稿恢复`）已推送到唯一集成主线。其他 Agent 对 `WebSkinFormalDeleteInstrumentedTest.kt` 与 `WebSkinRecurrenceInstrumentedTest.kt` 的修改只参与本轮只读验证，未编辑、暂存或包含在本提交中。
+
+此证据关闭 SEP-14 的脏新建编辑器 `ON_STOP` checkpoint 与冷进程恢复场景。损坏/脚本异常皮肤、升级失败、设备重启、实体设备/OEM 仍未验证，SEP-14 继续 **INCOMPLETE / HOLD**。
 
 ## Git
 
