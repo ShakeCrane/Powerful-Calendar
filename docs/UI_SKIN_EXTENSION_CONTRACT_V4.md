@@ -12,7 +12,7 @@ projections, lifecycle and action adapters remain in `:app`.
 
 # PowerCal Visual Skin Contract v4 — as built
 
-Updated 2026-10-21; Native profile plus Settings, Month, Timeline, Draft Deck, formal editor, AI input/proposal/batch review, Chrome, Overlay, and Picker module boundaries clarified 2026-10-30. This document records executable Android source interfaces, not a proposal or a promised future plugin format.
+Updated 2026-10-21; Native profile plus Settings, Month, Timeline, Draft Deck, formal editor, AI input/proposal/batch review, protected AI settings, Chrome, Overlay, and Picker module boundaries clarified 2026-10-30. This document records executable Android source interfaces, not a proposal or a promised future plugin format.
 
 ## Separation
 
@@ -28,13 +28,14 @@ fallback. This profile is independent of `.pcskin` package selection and is not 
 Skin Studio package.
 
 The `:skin-api` module currently contains the Settings and Navigation value contexts/DTOs, the
-Native protected-profile display/actions, plus the display-only `NativeMemoRow`,
+Native protected-profile and protected-AI-settings display/actions (the AI API key is excluded), plus the display-only `NativeMemoRow`,
 `NativeAiMessage`, `NativeAiBatchMode`, Native Month, Timeline, and Draft Deck models/appearance
 slots. The `:native-skin` Android library contains `NativeToolsPage`,
 `NativePowerNavigation`, `NativeMemoCenterScreen`, `NativeAiChatScreen`, `NativeMonthScreen`,
 `NativeTimelineScreen`, `NativeDraftDeckScreen`, and `NativeDirectEventEditor`; `NativeChromeSkin`, `NativeOverlaySkin`, and
 `NativePickerSkin` render root/notice, modal, and Android date/time picker surfaces; it also renders
-the protected profile form through `NativeProtectedProfileSection`;
+the protected profile form through `NativeProtectedProfileSection` and the protected AI settings
+card through `NativeProtectedAiSettingsSection`;
 the Host supplies values, action callbacks, protected content slots, and presentation
 shapes/icons. The
 module direction is `:app → :native-skin → :skin-api`, with `:app → :skin-api` for Host adapters.
@@ -70,7 +71,7 @@ Every native fallback remains callable through context.Native(). All Compose Ale
 
 Root Shell is an independent Chrome surface. The host children retain the BoxScope layout contract, and the Chrome renderer may introduce its own background, scope-wide theme, insets and surface arrangement via context.Body(modifier). It also styles ephemeral status notices without changing when they appear.
 
-Settings exposes two additional protected composable slots: context.ProtectedProfile() and context.ProtectedAiCredentials(). These can be placed in arbitrary custom layouts without passing API keys or preference objects to renderer code. The Host owns profile preference reads/writes and supplies the name value and edit/save callbacks only to the built-in `NativeProtectedProfileSection`; custom renderers receive the opaque Host slot. The AI credentials form remains Host-rendered and its secret values do not enter `:skin-api` or `:native-skin`. Any other settings action is a supplied callback.
+Settings exposes two additional protected composable slots: context.ProtectedProfile() and context.ProtectedAiCredentials(). These can be placed in arbitrary custom layouts without passing API keys or preference objects to renderer code. The Host owns profile preference reads/writes and supplies the name value and edit/save callbacks only to the built-in `NativeProtectedProfileSection`; custom renderers receive the opaque Host slot. The Host also owns AI settings storage, file-consent state, and every save/revoke action. The built-in Native `NativeProtectedAiSettingsSection` renders the configuration card from value-only display/action models; the API-key password field remains a Host-composed protected slot, and the key value does not enter `:skin-api` or `:native-skin`. Custom renderers continue to receive only the opaque Host slot. Any other settings action is a supplied callback.
 
 ### Settings renderer data boundary (2026-10-30)
 
@@ -99,6 +100,19 @@ ID so the Host resolves the authoritative installed package. `SettingsVisualEffe
 initial read, and explicit save. The Native module receives no Android `Context`, preferences,
 credential value or persistence service. The existing 80-character input cap and save-on-button
 behavior are covered by Compose regressions. The AI endpoint/model/key settings remain Host-owned.
+
+### Native protected AI settings presentation boundary (2026-10-30)
+
+`NativeProtectedAiSettingsSection` renders the Native settings card, endpoint/model fields, enable
+and context-sharing switches, file-consent revoke action, and save buttons. Its
+`NativeProtectedAiSettingsDisplay` carries the endpoint, model, toggle/dirty state and consent
+availability; `NativeProtectedAiSettingsActions` carries callbacks only. Neither type contains an
+API key, Android `Context`, preferences, or AI storage service. `HostProtectedAiSettingsSection`
+in `:app` retains `AiSettingsStore`, file-consent reads/writes and current key state, and composes
+the password field into the renderer's `protectedApiKeyField` slot. Thus the Native settings
+presentation is in `:native-skin` while the secret input and persistence remain Host-owned. The
+Compose regression verifies collapsed/expanded rendering, Host-field slot placement, edit/save
+callbacks, and that the display DTO has no key/secret field.
 
 ### Native first-run calendar import prompt boundary (2026-10-30)
 
@@ -229,7 +243,7 @@ TalkBack parity.
 
 Source module map:
 - `app/src/main/java/dev/powerfulcalendar/ui/v2/CompiledSkinTimeline.kt` — timeline context, yOf geometry, default preview
-- `skin-api/src/main/java/dev/powerfulcalendar/ui/v2/SettingsVisualContext.kt` — Settings/Navigation value contexts, Native profile display/actions and injected Host/Native slots
+- `skin-api/src/main/java/dev/powerfulcalendar/ui/v2/SettingsVisualContext.kt` — Settings/Navigation value contexts, Native profile and protected-AI display/actions, and injected Host/Native slots; protected AI DTO excludes API-key data
 - `skin-api/src/main/java/dev/powerfulcalendar/ui/v2/NativeMemoRow.kt` — display-only Memo row contract
 - `skin-api/src/main/java/dev/powerfulcalendar/ui/v2/NativeAiChatModel.kt` — AI chat/batch action, image/OCR input, proposal/batch authorization and stuck-batch release display DTOs, plus dialog slots; no Core, session identity or AI parser objects cross the boundary
 - `skin-api/src/main/java/dev/powerfulcalendar/ui/v2/NativeEventInspectionModel.kt` — string-only locked-event inspection content and dialog slot
@@ -241,6 +255,7 @@ Source module map:
 - `skin-api/src/main/java/dev/powerfulcalendar/ui/v2/NativeDeckModel.kt` — Native deck/form display DTOs, callbacks and appearance slots
 - `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativeToolsPage.kt` — Native Settings renderer
 - `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativeProtectedProfileSection.kt` — Native protected-profile form renderer; preference reads and writes remain in Host
+- `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativeProtectedAiSettingsSection.kt` — Native protected AI settings card; API-key field and credential persistence remain Host-owned
 - `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativePowerNavigation.kt` — Native bottom navigation
 - `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/MemoCenterScreen.kt` — Native Memo renderer consuming only value rows and opaque action keys
 - `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/AiChatScreen.kt` — Native AI chat renderer consuming display DTOs and Host callbacks/slots
