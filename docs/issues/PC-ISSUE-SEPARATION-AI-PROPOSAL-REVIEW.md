@@ -2,7 +2,7 @@
 
 日期：2026-10-27
 
-状态：**AI 提案审核首个 Host–Clear–Studio 纵向切片已实现并通过 JVM / Chrome Mock 回归；完整 S3 与 Native/Skin parity 仍 NOT TESTED。**
+状态：**AI 提案审核 Host–Clear–Studio 纵向切片已实现；JVM、Chrome Mock 与 API 35 Clear WebView 的有限决策路径已测试；完整 S3 与 Native/Skin parity 仍 NOT TESTED。**
 
 ## 问题
 
@@ -30,8 +30,18 @@ Clear v3 已有聊天历史和发送能力，但没有可供皮肤消费的受�
 
 ## 未完成范围与验收状态
 
-- 没有 Android WebView、模拟器或实体设备 AI 审核回归，也没有真实 AI provider 调用。SEP-10 和 SEP-16 **仍 NOT TESTED**，不得将单个创建/确认场景扩大为全功能等价 PASS。
+- API 35 真实 Android WebView AI 审核现已有有限证据，详见下方 2026-10-31 follow-up 和 `PC-ISSUE-SEPARATION-TRUSTED-FORMAL-WRITES.md`。所有 AI 响应来自隔离设备的本地 stub；没有真实 AI provider 调用。SEP-10 和 SEP-16 **仍 NOT TESTED**，不得将已测试决策路径扩大为全功能等价 PASS。
 - S3 仍需完成附件、取消/网络错误/重试路径、多轮及批量部分结果恢复、各操作类型与 Native 对照回放，以及 Android WebView 验收。
 - 不改变冻结 Core 的 AI 解释、审批、草稿和事务语义；不切换默认皮肤、不移除 Native 恢复路径。
 
-实现提交 SHA：`4b6c75a31d040320b39728a940a254c724627fff`（已提交到 `feat/skin-first-separation`，待推送）。
+早期实现提交 SHA：`4b6c75a31d040320b39728a940a254c724627fff`。API 35 后续设备证据见 follow-up；本 Issue 不签核 SEP-10/SEP-16 总项。
+
+## API 35 Clear WebView follow-up（2026-10-31）
+
+API 35 `codex-clear-api35` 使用隔离 QA application ID、本地免费 loopback stub 和实际打包 Clear WebView，`PowerCalAiProposalReviewWebViewInstrumentedTest` **3/3 PASS**：
+
+- AI CREATE：Host 批准前零写入；取消后零写入且提案仍可审核；再次明确批准后创建一项 ACTIVITY、一个正式 commit、一个 identity，并保留一个已解决审计草稿。
+- AI REPLACE/DELETE：实际 Clear 选择提案并打开 Host Compose 完整审核；批准后只执行所选修改/删除。
+- AI STAGE/REJECT/SUPPLEMENT：Clear 经 Host 决策；未批准时不产生正式写入，暂存结果继续保持 pending。
+
+此测试已在提交 `39554ccfd042195d2847a2ead7f17100fb6b4506` 上重跑：XML SHA-256 `C22AC4A3F6535A5CDCAE2F9A0DCFCDDC5D57EB233472397BD009B1E3527B7B69`；Gradle connected log SHA-256 `03F2AE28D6C000E76DD1F0629AC1E12B9B6C6A7E3F27919A9F2ACD208EA74248`。日志在 `.local/android-test/reports/sep16-ai-create-20261031/`。此证据不包含实体/OEM、真实 Provider、完整 AI 生命周期或 Native/Skin 全量对照。

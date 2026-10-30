@@ -75,3 +75,29 @@
 实现和测试提交：725e1c79c300272ec9e2f6b1cae3a38dda364733，已推送到 origin/feat/skin-first-separation。本报告、进度记录和 SEP-16 矩阵更新随后作为独立文档提交推送；两次提交分离，便于按代码或结案文档单独回档。
 
 整体皮肤分离、功能等价、Release QA 和默认皮肤切换仍未完成；本 Issue 不构成总体 GO 或 cutover 授权。
+
+## API 35 AI CREATE trusted-write follow-up（2026-10-31）
+
+SEP-16 的 API 35 AI WebView 覆盖此前已通过本地 stub 检查 REPLACE/DELETE 的 Host 审核，以及 STAGE/REJECT/SUPPLEMENT 决策，但没有验证 AI `CREATE` 正式发布从 Clear 提案卡到 Host 授权再到 Store 的真实闭环。本次只补 AndroidTest，不改 AI、Bridge、Store、默认皮肤或 Clear 源码。
+
+新增 `PowerCalAiProposalReviewWebViewInstrumentedTest.actualClearWebViewPublishesCreateOnlyAfterHostConfirmation`，使用隔离 QA application ID `dev.powerfulcalendar.d05qasep16create20261031`、唯一数据库/偏好命名空间和设备本机 `local-stub:free` loopback 服务：
+
+1. 提案卡出现后，Store 正式事件、草稿、pending、commit、identity 和下一个序号均不变。
+2. 点击 Clear 的“批量同意”后，PowerCal 显示独立 Host Compose “确认 AI 批量正式操作”对话框；未确认时 Store 仍不变。
+3. 取消后无写入且提案可再次审核。
+4. 再次明确确认后，Store 恰有一条预期 ACTIVITY、一个 commit、一个 identity、一个序号增量且无 pending 草稿。Core 会保留一条已解决 AI 审计草稿，因此总 draft row 增 1；这不是待处理草稿。
+
+首次整类 3 项运行时，新增测试最后把 `draftCount` 误当成 pending 数，导致断言 `0` 对实际已解决审计行 `1` 失败；未发现 Host 未授权写入。对照 `AiDraftService` 与现有 JVM 合同后，将断言修为“正式发布时保留一条已解决审计草稿”，发布前和取消阶段仍要求计数不变。该失败保留在 `connected-android-test.log`，不冒充生产缺陷，也不隐去失败。
+
+### 新增证据
+
+| 验证 | 结果 | 证据 |
+| --- | --- | --- |
+| AI CREATE 单项真实 Clear WebView | `PASS` | 聚焦用例 1/1，`connected-android-test-rerun.log` SHA-256 `45632A58915360CFA5FC77875426A7141CD4815859F5E3641EB36644D616618E`。 |
+| Clear AI proposal WebView 类 | `PASS` | 3/3：CREATE 批准/取消、REPLACE/DELETE Host 审核、STAGE/REJECT/SUPPLEMENT；已在测试提交 `39554cc` 上重跑。XML SHA-256 `C22AC4A3F6535A5CDCAE2F9A0DCFCDDC5D57EB233472397BD009B1E3527B7B69`；Gradle 日志 `connected-android-test-post-commit.log` SHA-256 `03F2AE28D6C000E76DD1F0629AC1E12B9B6C6A7E3F27919A9F2ACD208EA74248`。 |
+| Host/Core JVM 定向回归 | `PASS` | `WebAiProposalReviewIntegrationTest`、`WebSkinEditBridgeTest`、`WebSkinRecurrenceBridgeTest`、`WebSkinTrustedWriteReviewTest` **69/69**；另 `AiTaskPipelineTest` **1/1**。日志 SHA-256 `9BE639AE8C4E652F1EAFF55E1AD2922C91772D87AFE4384CA95348A7AF8412D2` / `3AA8B227949B276B3AB23B65A102487A750E120A8FDF34BD1F6B5FF599B34BFA`。 |
+| API 35 QA APK | `PASS` | Debug QA APK SHA-256 `00E3921B742A2F601488BEBBD8246FB3016F576AC811E3D9AC6F7943E9961301`；AndroidTest APK SHA-256 `04BE0577802BB9727A30E1AFBA5670121DB480D8B383A8354714B741913852F7`。 |
+
+证据目录：`.local/android-test/reports/sep16-ai-create-20261031/`。本次未接触真实 Provider、付费模型或应用默认数据库；没有卸载/清空应用数据或 wipe AVD。API 35 不是实体/OEM 验收。
+
+这使 AI proposal 的几个常用决策拥有真实 WebView → Host 审核证据，但**不关闭 SEP-16**。CONVERT、四类事件完整对照、其他正式写入/草稿组合、版本冲突与并发、生命周期/进程恢复、完整 Native/Skin replay、真实 Provider 和实体/OEM 仍未全部验证。
