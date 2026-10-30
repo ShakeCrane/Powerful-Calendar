@@ -1,6 +1,10 @@
 package dev.powerfulcalendar.ui.v2
 
-import dev.powerfulcalendar.ui.v2.nativeui.UnifiedEventFormFields
+import dev.powerfulcalendar.ui.v2.nativeui.NativeDeckEventForm
+import dev.powerfulcalendar.ui.v2.nativeui.createPickerActions
+import dev.powerfulcalendar.ui.v2.nativeui.nativeDeckAppearance
+import dev.powerfulcalendar.ui.v2.nativeui.toCoreForm
+import dev.powerfulcalendar.ui.v2.nativeui.toNativeDeckForm
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,12 +29,19 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.EditSession
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalConversion
 import dev.powerfulcalendar.core.RecurrenceEditScope
+import dev.powerfulcalendar.core.TemporalRecord
+import dev.powerfulcalendar.ui.v2.NativeDeckCard
+import dev.powerfulcalendar.ui.v2.NativeDeckFormActions
+import dev.powerfulcalendar.ui.v2.NativeDeckFormContext
+import dev.powerfulcalendar.ui.v2.NativeDeckOperation
+import dev.powerfulcalendar.ui.v2.NativeDeckStatus
 
 /** Host-owned confirmation surface; programmable skins cannot replace these persistence controls. */
 @Composable
@@ -71,6 +82,22 @@ internal fun DirectEventEditorContent(
 ) {
     var confirmingDelete by remember(session) { mutableStateOf(false) }
     var choosingType by remember(session) { mutableStateOf(false) }
+    val androidContext = LocalContext.current
+    val pickerNowMillis = remember(session) { System.currentTimeMillis() }
+    val nativeForm = form.toNativeDeckForm(pickerNowMillis).copy(
+        occurrenceScoped = session.recurrenceScope == RecurrenceEditScope.SINGLE_OCCURRENCE,
+        restrictOccurrenceFields = session.recurrenceScope == RecurrenceEditScope.SINGLE_OCCURRENCE
+    )
+    val nativeCard = NativeDeckCard(
+        cardKey = "formal:${session.eventSeq}",
+        sequenceLabel = TemporalRecord.formatSeq(session.eventSeq),
+        operation = NativeDeckOperation.REPLACE,
+        operationLabel = "修改",
+        status = NativeDeckStatus.PENDING,
+        draftVersion = 0L,
+        form = nativeForm
+    )
+    val pickerActions = createPickerActions(androidContext, form, pickerNowMillis, onChange)
     androidx.compose.runtime.key(session, editorRevision) {
         androidx.compose.material3.Surface(
             modifier = Modifier.fillMaxWidth().padding(12.dp),
@@ -134,14 +161,21 @@ internal fun DirectEventEditorContent(
                 // editing long reminder/recurrence forms or using the soft keyboard.
                 Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
                     if (!session.requiresRecurrenceScope || session.recurrenceScope != null) {
-                        UnifiedEventFormFields(
-                            form = form,
-                            expanded = true,
-                            aiLocked = false,
-                            instanceKey = session.eventSeq,
-                            occurrenceOnlyScope = session.recurrenceScope ==
-                                RecurrenceEditScope.SINGLE_OCCURRENCE,
-                            onFormChange = onChange
+                        NativeDeckEventForm(
+                            NativeDeckFormContext(
+                                form = nativeForm,
+                                card = nativeCard,
+                                aiLocked = false,
+                                appearance = nativeDeckAppearance(),
+                                actions = NativeDeckFormActions(
+                                    onChange = { onChange(it.toCoreForm(form)) },
+                                    onPickStartDate = pickerActions.startDate,
+                                    onPickStartTime = pickerActions.startTime,
+                                    onPickEndDate = pickerActions.endDate,
+                                    onPickEndTime = pickerActions.endTime,
+                                    onDeadlineDateToInstant = pickerActions.deadlineDateToInstant
+                                )
+                            )
                         )
                     } else {
                         Text("请先选择编辑范围，再修改字段或保存。")
