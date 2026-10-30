@@ -172,6 +172,7 @@ internal data class UiDiagnostics(val nextSequence: Long = 1, val identities: Lo
 
 private data class AppData(
     val records: List<TemporalRecord>,
+    val todoEntries: List<TodoEntry>,
     val pending: Int,
     val locked: Boolean,
     val session: PowerStore.AiSession?,
@@ -202,6 +203,8 @@ fun PowerCalApp(
 
     var page by rememberSaveable { mutableStateOf(Page.TIMELINE.name) }
     var records by remember { mutableStateOf<List<TemporalRecord>>(emptyList()) }
+    var hostDataReady by remember(store) { mutableStateOf(false) }
+    var todoEntries by remember(store) { mutableStateOf<List<TodoEntry>>(emptyList()) }
     var pendingCount by remember { mutableIntStateOf(0) }
     var aiLocked by remember { mutableStateOf(false) }
     var aiSession by remember { mutableStateOf<PowerStore.AiSession?>(null) }
@@ -313,9 +316,6 @@ fun PowerCalApp(
     }
     val camera = TimelineCoordinate.Camera(anchorMillis, TimelineCoordinate.clampHours(hours))
     val todayKey = Instant.ofEpochMilli(nowMillis).atZone(zone).toLocalDate()
-    val todoEntries = remember(records, todayKey) {
-        TodoProjection.entries(records, nowMillis, includeCompleted = true)
-    }
     val todoCount = todoEntries.count { !it.completed }
     var memoVisibleLimit by rememberSaveable { mutableIntStateOf(MemoProjectionPaging.PAGE_SIZE) }
     val memoVisibleCount = MemoProjectionPaging.visibleCount(todoEntries.size, memoVisibleLimit)
@@ -326,11 +326,14 @@ fun PowerCalApp(
     // Title placement is always outside; old user preference intentionally ignored.
 
     suspend fun reload() {
+        val projectionNowMillis = nowMillis
         val data = withContext(Dispatchers.IO) {
             val pending = store.pendingDrafts()
             val formal = store.all()
             AppData(
                 records = formal,
+                todoEntries = TodoProjection.entries(formal, projectionNowMillis,
+                    includeCompleted = true),
                 pending = pending.size,
                 locked = store.isLocked(),
                 session = store.currentAiSession(),
@@ -342,11 +345,14 @@ fun PowerCalApp(
         }
         withContext(Dispatchers.Main) {
             records = data.records
+            todoEntries = data.todoEntries
+            hostDataReady = true
             pendingCount = data.pending
             aiLocked = data.locked
             aiSession = data.session
             pendingCards = data.cards
             diagnostics = data.diagnostics
+            WebSkinBridgeRuntime.stateRevision++
         }
     }
 
@@ -480,9 +486,21 @@ fun PowerCalApp(
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) { store.recoverAbandonedHumanEdit() }
-        reconcile()
+        val restoreDeckOnStartup = deckOpen
+        val restoreDeckIdOnStartup = deckInitialId
+        if (restoreDeckOnStartup) {
+            withContext(Dispatchers.IO) { controller.open(restoreDeckIdOnStartup) }
+        }
+        // Calendar projections should not stay empty while reminder scheduling reconciles.
         reload()
-        if (deckOpen) withContext(Dispatchers.IO) { controller.open(deckInitialId) }
+        runCatching { reconcile() }.onFailure {
+            message = "提醒同步暂不可用，日历数据仍可查看；可在设置中重试"
+        }
+        // Refresh diagnostics after reconciliation, while retaining the first loaded projection
+        // if the scheduler store is unavailable.
+        runCatching { reload() }.onFailure {
+            if (message == null) message = "提醒状态刷新失败；日历数据仍可查看"
+        }
         val onboarding = appContext.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
         if (!onboarding.getBoolean("system-calendar-import-asked", false)) {
             firstCalendarImportPrompt = true
@@ -559,6 +577,16 @@ fun PowerCalApp(
         while (true) {
             nowMillis = System.currentTimeMillis()
             delay(20_000)
+        }
+    }
+
+    LaunchedEffect(todayKey, hostDataReady) {
+        if (hostDataReady) {
+            val refreshed = TodoProjection.entries(records, nowMillis, includeCompleted = true)
+            if (refreshed != todoEntries) {
+                todoEntries = refreshed
+                WebSkinBridgeRuntime.stateRevision++
+            }
         }
     }
 
@@ -1674,14 +1702,21 @@ fun PowerCalApp(
                 android.os.Build.VERSION.SDK_INT,
                 ReminderScheduler.exactAlarmAllowed(appContext)
             )
+            val stateTodoEntries = todoEntries
+            val stateTodoCount = stateTodoEntries.count { !it.completed }
+            val stateMemoVisibleCount = MemoProjectionPaging.visibleCount(
+                stateTodoEntries.size, memoVisibleLimit
+            )
+            val stateMemoRemainingCount = (stateTodoEntries.size - stateMemoVisibleCount).coerceAtLeast(0)
             JSONObject().put("bridgeVersion", WebSkinBridgeRuntime.VERSION).put("page", page)
+                .put("hostDataReady", hostDataReady)
                 .put("aiLocked", aiLocked).put("pendingCount", pendingCount)
-                .put("memoCount", todoCount)
+                .put("memoCount", stateTodoCount)
                 .put("memoEntries", WebSkinMemoProjection.build(
-                    if (page == Page.MEMO.name) todoEntries.take(memoVisibleCount) else emptyList()
+                    if (page == Page.MEMO.name) stateTodoEntries.take(stateMemoVisibleCount) else emptyList()
                 ))
-                .put("memoTruncated", page == Page.MEMO.name && memoRemainingCount > 0)
-                .put("memoRemainingCount", if (page == Page.MEMO.name) memoRemainingCount else 0)
+                .put("memoTruncated", page == Page.MEMO.name && stateMemoRemainingCount > 0)
+                .put("memoRemainingCount", if (page == Page.MEMO.name) stateMemoRemainingCount else 0)
                 .put("chatBusy", chatBusy || aiBusy || pendingWebAiProposalPublish != null)
                 .put("chatHistoryRevision", chatHistoryRevision)
                 .put("chatHistoryActionsAvailable", canEditChatHistory())

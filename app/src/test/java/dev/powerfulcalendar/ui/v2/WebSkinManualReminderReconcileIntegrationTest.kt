@@ -55,7 +55,8 @@ class WebSkinManualReminderReconcileIntegrationTest {
         }
         ui.waitUntil(20_000) {
             shadowOf(Looper.getMainLooper()).idle()
-            WebSkinBridgeRuntime.owner != null
+            WebSkinBridgeRuntime.owner != null &&
+                WebSkinBridgeRuntime.state().optBoolean("hostDataReady")
         }
         ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.Routed("settings")) }
         ui.waitUntil(20_000) { WebSkinBridgeRuntime.state().optString("page") == "SETTINGS" }

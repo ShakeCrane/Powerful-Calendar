@@ -6,7 +6,9 @@ const darkMedia=window.matchMedia("(prefers-color-scheme: dark)");
 function applyTheme(){document.documentElement.classList.toggle("dark",darkMedia.matches)}
 applyTheme();
 darkMedia.addEventListener("change",applyTheme);
-let port=null, state={}, currentPage="TIMELINE", memoFilter="open",localOptions=false;
+let port=null, bridgeReady=false, state={}, currentPage="TIMELINE", memoFilter="open",localOptions=false;
+const bridgeOutbox=[];
+const MAX_PENDING_BRIDGE_MESSAGES=64;
 let timelineScrollInitialized=false;
 let timelineDrag=null,suppressTimelineClickUntil=0;
 let titleFoldFrame=0,titleFoldResizeObserver=null;
@@ -14,9 +16,28 @@ let aiReviewSelectionId="",aiReviewSelected=new Set();
 let attachmentRequestPending=false;
 let appliedChatPrefillRevision=null;
 let timelineCreateDialog=null;
+function postBridgeMessage(message){
+  const encoded=JSON.stringify(message);
+  if(!port||!bridgeReady){
+    if(bridgeOutbox.length>=MAX_PENDING_BRIDGE_MESSAGES)return false;
+    bridgeOutbox.push(encoded);
+    return true;
+  }
+  try{port.postMessage(encoded);return true}catch{return false}
+}
+function flushBridgeOutbox(){
+  if(!port||!bridgeReady)return;
+  while(bridgeOutbox.length){
+    const encoded=bridgeOutbox.shift();
+    try{port.postMessage(encoded)}catch{
+      bridgeOutbox.unshift(encoded);
+      bridgeReady=false;
+      return;
+    }
+  }
+}
 const send=(name,extra={})=>{
-  if(!port)return;
-  port.postMessage(JSON.stringify({version:1,type:"action",payload:{name,...extra}}));
+  return postBridgeMessage({version:1,type:"action",payload:{name,...extra}});
 };
 const node=(tag,cls,text)=>{
   const el=document.createElement(tag);
@@ -410,9 +431,12 @@ $("aiBatchCancel").addEventListener("click",()=>send("cancelAiBatch"));
 $("aiBatchRelease").addEventListener("click",()=>send("releaseStuckAiBatch"));
 window.addEventListener("message",e=>{
   if(e.data!=="powercal-port"||!e.ports?.[0])return;
-  if(port)try{port.close()}catch{}
+  if(port){
+    try{port.close()}catch{}
+    port=null;bridgeReady=false;bridgeOutbox.length=0;
+    window.PowerCalEdit?.resetTransport();
+  }
   port=e.ports[0];
-  window.PowerCalEdit?.resetTransport();
   port.onmessage=event=>receive(event.data);
 });
 function receive(raw){
@@ -430,6 +454,8 @@ function receive(raw){
   $("memoCounter").textContent=Number(state.memoCount)||"";
   $("app").classList.toggle("reduced",Boolean(state.reducedMotion));
   renderPage();
+  if(state.hostDataReady===false)bridgeReady=false;
+  else if(!bridgeReady){bridgeReady=true;flushBridgeOutbox()}
 }
 function renderPage(){
   const page=currentPage==="TOOLS"?"TIMELINE":currentPage;
@@ -1049,10 +1075,6 @@ function renderOptions(){
     }
   }
 }
-window.PowerCalSkin={receive,sendCommand:(name,requestId,extra={})=>{
-  if(!port)return false;
-  port.postMessage(JSON.stringify({version:1,type:"command",
-    payload:{name,requestId,...extra}}));
-  return true;
-}};
+window.PowerCalSkin={receive,sendCommand:(name,requestId,extra={})=>
+  postBridgeMessage({version:1,type:"command",payload:{name,requestId,...extra}})};
 })();

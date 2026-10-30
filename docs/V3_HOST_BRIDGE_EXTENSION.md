@@ -8,7 +8,10 @@ bump, UI source rewrite, new permission or automatic publishing authority.
 The host pushes a complete `{version:1,type:"state",payload:{...}}` frame on
 each relevant Compose state update (and once on connection). Existing fields
 remain valid: `bridgeVersion`, `page`, `aiLocked`, `pendingCount`,
-`reducedMotion`, and `events`.
+`reducedMotion`, and `events`. `hostDataReady` is true only after the initial durable
+Store snapshot and its initial projections (including Memo entries) have loaded, even
+when the Store is empty. Before that frame, a skin should queue outbound actions and
+commands rather than treating an empty projection as the loaded calendar.
 
 New:
 - `optionGroups`: host-owned semantic choices; render every option of a group

@@ -3,7 +3,7 @@
 // UI-only implementation. The Host Bridge owns writes, session locks and rollback.
 const $=id=>document.getElementById(id),sheet=$("skinSheet");
 const status=$("sheetStatus"),fields=$("sheetFields"),actions=$("sheetActions");
-let state={},mode="",identity="",fingerprint="",busy=false,seq=0,queue=Promise.resolve();
+let state={},mode="",identity="",fingerprint="",busy=false,pendingOperations=0,saveQueued=false,seq=0,queue=Promise.resolve();
 const pending=new Map();
 const el=(tag,content,cls)=>{
   const node=document.createElement(tag);
@@ -25,14 +25,17 @@ function send(name,args){
   });
 }
 function perform(name,args={}){
+  pendingOperations++;
   busy=true;
   const job=queue.catch(()=>({status:"failed"})).then(()=>send(name,args));
-  queue=job;
-  return job.then(reply=>{
-    busy=false;
+  queue=job.then(reply=>{
     showReply(reply);
     return reply;
+  }).finally(()=>{
+    pendingOperations=Math.max(0,pendingOperations-1);
+    busy=pendingOperations>0;
   });
+  return queue;
 }
 function showReply(reply){
     const labels={saved:"事件已保存",committed:"草稿已发布",
@@ -414,12 +417,17 @@ async function moveTimelineEvent(item,targetMillis){
   return reply;
 }
 $("sheetSave").addEventListener("click",()=>{
-  if(busy)return;
+  if(saveQueued)return;
   const e=state.editing||{};
+  let request=null;
   if(mode==="event"&&e.editor?.sessionId)
-    void perform("editor.save",{sessionId:e.editor.sessionId});
+    request=perform("editor.save",{sessionId:e.editor.sessionId});
   else if(mode==="deck"&&e.deck?.currentId!=null)
-    void perform("deck.commit",{draftId:e.deck.currentId,draftVersion:e.deck.version});
+    request=perform("deck.commit",{draftId:e.deck.currentId,draftVersion:e.deck.version});
+  if(request){
+    saveQueued=true;
+    void request.then(()=>{saveQueued=false},()=>{saveQueued=false});
+  }
 });
 async function close(){
   if(busy)return;
