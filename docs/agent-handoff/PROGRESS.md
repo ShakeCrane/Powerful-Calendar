@@ -1,5 +1,12 @@
 # Core freeze progress
 
+## Separation — colocate the Native profile adapters (2026-10-30, CODE COMPLETE; 22 JVM/build TESTED; device NOT TESTED)
+
+- 将 Native 十个 presentation adapter 从通用 `skins/NativeVisualSkin.kt` 移入 `ui/v2/nativeui/NativeVisualSkin.kt`，并改用 `dev.powerfulcalendar.ui.v2.nativeui` package。`skins/ActiveVisualSkin` 继续只管理 profile 选择；Draft Deck 现有 Native 专用单观察者路径保留，无业务行为变化。
+- `PresentationSkinRegistryTest` + `GlassComposeTest` **22/22 PASS**；主代码/单测/Android 测试编译、`verifySkinSourceBoundary`、Debug APK、`:app:lintDebug` **PASS**。Clear 源码/资源未修改。
+- Android 仪器测试因无在线 ADB 设备及可启动 AVD **NOT TESTED**；全量 JVM 套件未重跑。Debug APK SHA-256 `3A6591B256725C46CA85FF204990CF48948F19CE00FEB9CDF5DD77AA4CABF917`，67,160,866 bytes。细节见 [Native profile ownership Issue](../issues/PC-ISSUE-SEPARATION-NATIVE-PROFILE-OWNERSHIP.md)。
+- 实现提交 `2b7049ce6415afe5ae30b496ae8be28a3085cd79`（`refactor(皮肤分离): 归并原生呈现适配器`）已推送至 `origin/feat/skin-first-separation`。
+
 ## Separation — Native screen package boundary (2026-10-30, CODE COMPLETE; focused JVM/build TESTED; device NOT TESTED)
 
 - 将七个 Native UI 源文件从旧 `ui.v2.native` 目录迁入 `ui.v2.nativeui` 包；共享 `TodoEntry`/`TodoProjection` 精确保留在 Host 的 `ui.v2` 包中。更新了运行时、编译时间轴、编辑器、草稿卡组和相应单测/仪器测试的包导入。没有改变屏幕实现、Host 操作、持久化或 skin profile ID；Clear 源码/资源未触碰。

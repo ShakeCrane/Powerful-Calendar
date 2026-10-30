@@ -50,3 +50,7 @@ Studio 不编辑受信 Kotlin 源码；本项未增加新的 Studio runtime capa
 完整单元回归中 Clear Memo 分页失败需要单独处理；遵照本项范围，没有在这里更改 Clear 或把失败判成环境通过。完整 SEP 状态、Skin Studio 等价、其他页面的 UI/无障碍及实体 OEM 验收仍未由本 Issue 签核。
 
 实现提交：`439eee336903f1b16606b406c5e74734f1f05c0a`（`feat(皮肤分离): 显式注册原生呈现皮肤`），已推送到 `origin/feat/skin-first-separation`。该提交对应 APK 与所有测试日志哈希如上。
+
+## 后续源码归属（2026-10-30）
+
+Native screen 命名空间及 profile adapter 的源码归属后续分别由 [Native package boundary Issue](PC-ISSUE-SEPARATION-NATIVE-PACKAGE-BOUNDARY.md) 和 [Native profile ownership Issue](PC-ISSUE-SEPARATION-NATIVE-PROFILE-OWNERSHIP.md) 更新。十个 renderer ID、`ActiveVisualSkin` 选择规则及 profile 行为保持本 Issue 的定义。

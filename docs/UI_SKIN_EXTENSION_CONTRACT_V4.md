@@ -54,7 +54,7 @@ Settings exposes two additional protected composable slots: context.ProtectedPro
 In app/src/main/java/dev/powerfulcalendar/ui/v2:
 - CompiledSkinTimeline.kt — timeline context, yOf geometry, default preview
 - PresentationSkinRuntime.kt — route registry, settings controls and navigation
-- skins/NativeVisualSkin.kt — explicit Native profile adapters for the ten presentation surfaces
+- nativeui/NativeVisualSkin.kt — explicit Native profile adapters for the ten presentation surfaces
 - nativeui/ — first-party Native timeline, month, memo, AI, Deck, navigation and Settings UI implementations; `PowerCalApp.kt` remains the route/Host orchestrator
 - SkinnableDraftDeck.kt — controller adaptation with autosave, serialized guarded operations
 - SkinnableOverlays.kt — Compose Alert and Window slots
