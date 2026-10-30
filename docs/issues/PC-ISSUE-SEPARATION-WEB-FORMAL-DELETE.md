@@ -4,6 +4,8 @@
 
 **历史状态（2026-10-28）：PARTIAL / OPEN**。Host 桥的受保护删除流程、Clear 删除入口及 Skin Studio Mock 已实现并通过 JVM/浏览器回归；API 35 WebView instrumentation 因 AVD 断连未取得测试结果。SEP-07 与整体 Native/Skin parity 仍为 `NOT TESTED`，不能把浏览器 Mock 当成设备行为或完整功能等价。最新重建验收 `S0-ED-05` 的状态见本文末尾 2026-10-30 复核记录。
 
+**当前状态（2026-10-30）：PARTIAL / OPEN。** API 35 Android WebView 的重复系列删除、Host 取消/批准与单次 Store 删除闭环现已通过 1/1 仪器测试；这是受测窄项，不代表全 SEP-07、Native/Skin parity、触摸可访问性或实体/OEM 签核完成。
+
 ## 根因与 Native 对照
 
 Native 正式事件编辑器调用 `EditSession.delete()`，最终复用 `PowerStore.deleteFormalEvent()`。删除会创建 tombstone/DELETE 提交、取消提醒意图，并把相关待处理草稿标为 `DISCARDED`。
@@ -92,3 +94,18 @@ Native 正式事件编辑器调用 `EditSession.delete()`，最终复用 `PowerS
 | Android WebView / 模拟器 / 设备 | `BLOCKED / NOT TESTED` | `WebSkinFormalDeleteInstrumentedTest.formalRecurringEventDeleteWaitsForHostConfirmationAndCancellationPreservesSeries` 当前只确认源码编译。`E:\android-sdk\platform-tools\adb.exe devices -l` 没有设备；`E:\android-sdk\emulator\emulator.exe` 不存在。TalkBack、实体/OEM 与真实 WebView 确认、取消、并发冲突及重复请求均未运行。 |
 
 详细忽略日志位于 `.local/android-test/reports/separation-s0-ed05-20261030/`。本轮没有导出用户数据库、生产数据、凭据或 AVD 数据。因 Android WebView 和设备行为没有实际运行，`S0-ED-05` 保持 **`PARTIAL / HOLD`**；新增加的 JVM 覆盖和全门禁通过不等于设备签核。
+
+## API 35 Android WebView follow-up（2026-10-30）
+
+- **窄项状态：`TESTED`；SEP-07 整体仍 `NOT TESTED`。** 在本轮隔离的 `PowerCal_Sep01_API35`（Android 15 / API 35）执行 `WebSkinFormalDeleteInstrumentedTest.formalRecurringEventDeleteWaitsForHostConfirmationAndCancellationPreservesSeries`，最终 **1/1 PASS，0 failures/errors/skips**。测试运行于真实 Android WebView、WebSkin Bridge、Host Compose 确认及隔离 PowerStore；WebView 内的事件与删除按钮由测试在页面 DOM 触发，Host 取消/批准由 Compose 测试语义触发，故不把它描述成真实手指触摸或 TalkBack 验收。
+- 取消阶段断言正式重复系列、身份数、提交数与待处理数不变；批准阶段断言正式事件/所有实例从 Store 移除、只增加一项 DELETE 提交、身份数不变、无待处理草稿，编辑器关闭。测试只使用 UUID 数据库、偏好和缓存名称空间，并在 `finally` 删除自身 fixture；没有打开或清理应用默认数据库。
+- 首次运行在取消断言处发现既有测试把 `Int` 返回的 `pendingCount()` 与 `Long(0L)` 比较；已改为类型一致的 `0`。第二次 AVD 在 UTP 结果收集阶段断连，报告为 `Expected 1 tests, received 0`，不计 PASS。使用同一隔离 AVD、无 wipe 重启后第三次运行通过。相关日志：`.local/android-test/reports/sep07-formal-delete-api35-20261030/`。
+
+| 证据 | 结果 |
+| --- | --- |
+| `connected-test-run-3.log` | SHA-256 `5C3C4D412A20DB99E63D128E1CAF40084D36A6CF0494098412914F736EF98861` |
+| AndroidJUnit XML（1 test, 0 failures） | SHA-256 `1DFE6BD8EDB22F993DB39CB3EC7523D8EF65374EF63A646C68810AC254AFFBEA` |
+| Android test result PB | SHA-256 `ACD1EC1DB446044598C3D4A6F84713C2E3AA14ECDFAAD57F0C2C315CFAB3C791` |
+| 运行期间 logcat | SHA-256 `99698B115B515E602416AE4FE67EE14F60D5BFE4609E3B6D01D847EAEEE6BE00` |
+
+全 SEP-07 尚缺真实触摸与 TalkBack、正式事件并发冲突、恢复工作流、Native/Clear 同数据完整回放及实体/OEM 验收；这些未完成项继续保持未签核。

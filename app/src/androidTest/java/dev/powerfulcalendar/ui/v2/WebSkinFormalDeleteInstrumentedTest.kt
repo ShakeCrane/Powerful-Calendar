@@ -165,7 +165,7 @@ class WebSkinFormalDeleteInstrumentedTest {
             assertEquals(original, store.get(eventSeq))
             assertEquals(commitsBefore, store.commitCount())
             assertEquals(identitiesBefore, store.identityCount())
-            assertEquals(0L, store.pendingCount())
+            assertEquals(0, store.pendingCount())
 
             compose.onNodeWithText("取消").performClick()
             awaitJs(view, "!document.querySelector('#skinSheet').hidden && !!$deleteControl && !$deleteControl.disabled")
@@ -187,7 +187,7 @@ class WebSkinFormalDeleteInstrumentedTest {
             assertTrue(store.all().isEmpty())
             assertEquals(commitsBefore + 1L, store.commitCount())
             assertEquals(identitiesBefore, store.identityCount())
-            assertEquals(0L, store.pendingCount())
+            assertEquals(0, store.pendingCount())
         } finally {
             compose.runOnUiThread {
                 compose.activity.setContent { }
