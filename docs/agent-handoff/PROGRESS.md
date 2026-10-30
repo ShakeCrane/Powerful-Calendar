@@ -4,6 +4,7 @@
 
 - 将 Native 时间轴、月历、Memo、AI、Draft Deck、底部导航实现整理到 `app/src/main/java/dev/powerfulcalendar/ui/v2/native/`；从 `PowerCalApp.kt` 抽出 `NativeToolsPage` 及其私有视觉 helper。Kotlin package 和调用 API 保持不变；抽出函数体与原来源对比（换行归一后）完全一致。
 - 定向 `PresentationSkinRegistryTest` + `GlassComposeTest` **22/22 PASS**；API 35 Android 15 AVD `emulator-5554` 的 `DraftDeckTouchPriorityInstrumentedTest` **2/2 PASS**；三类 Kotlin 编译、`verifySkinSourceBoundary`、Debug APK 和 lint PASS（0 errors / 53 warnings）。本次没有重跑全量 728 项套件；最近全量结果仍是前一 Issue 记录的 **727 PASS / 1 Clear Memo timeout FAIL**，不伪称当前全量回归通过。
+- 实现提交 `7a1d0bd94cff07d3baba6fd3d7439c01f09befe5`（`refactor(皮肤分离): 归组原生界面源码`）已推送至 `origin/feat/skin-first-separation`；独立记录见 [Native source isolation Issue](../issues/PC-ISSUE-SEPARATION-NATIVE-SOURCE-ISOLATION.md)。
 - 本变更仅实现 source tree 分组；没有拆成独立 Gradle module 或独立 APK，也不声称 Native/Skin 行为等价签核。Clear 源码/资源未改。细节见 [Native source isolation Issue](../issues/PC-ISSUE-SEPARATION-NATIVE-SOURCE-ISOLATION.md)。
 
 ## Separation — Native visual profile is explicit (2026-10-30, slice TESTED; full regression FAIL)

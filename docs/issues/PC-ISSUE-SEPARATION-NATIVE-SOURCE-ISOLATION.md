@@ -48,4 +48,4 @@ JUnit XML SHA-256：`GlassComposeTest` `3DD7EE7C3731598D451D7073D67F229265D907DA
 
 没有完整重跑 728 项测试，最近全量回归的 Clear Memo 失败仍开放；Native Settings/OEM 权限页、TalkBack、不同字号以及全部 SEP Native/Skin 双版本回放没有由本 Issue 签核。Clear 不在当前实现范围。
 
-本 Issue 对应的实现提交 SHA 将在提交推送后补入 provenance 更新。
+实现提交：`7a1d0bd94cff07d3baba6fd3d7439c01f09befe5`（`refactor(皮肤分离): 归组原生界面源码`），已推送至 `origin/feat/skin-first-separation`。
