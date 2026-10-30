@@ -98,3 +98,33 @@ Skin Studio 已从归档源码根目录启动验证：`python tools/skin-studio/
 4. SEP-15 完整组件树/结构化页面编辑、SEP-11/12 原生设置/Picker/对话框等价仍是后续能力，不阻塞这个保留 Native 回退的阶段候选。
 
 **阶段结论：可交付阶段候选；整体 Native/Skin parity、实体设备签核和 cutover 继续 HOLD。** 本轮完成后停止自动扩展任务。
+
+## 最终统一 SHA 复跑与交付清单补记（2026-10-30）
+
+前述 `c54cb47` 是阶段候选的首次完整回归基线。收口报告提交 `6cd755621cc1c599dd72871d4e1eb77442998d4a` 后，我在干净 detached worktree 对该精确 SHA 重新执行完整回归；`c54` 到 `6cd` 只有本收口报告文档变化，应用源码未变。此处结果以 `6cd7556` 为最终验证代码 SHA，交付 APK 也由该 SHA 再构建，哈希与前一 APK 一致。
+
+最终 Gradle 命令：
+
+```text
+.\gradlew.bat :app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug --offline --rerun-tasks --no-daemon --console=plain
+```
+
+结果：`BUILD SUCCESSFUL`，88/88 tasks；727/727 JVM 测试、100 suites、0 failure/error/skip；Lint 0 errors、53 warnings。另有 Skin Studio Python 61/61 PASS、Clear 9 文件/394086 字节与 APK 内置资源校验 PASS、JavaScript `node --check` 4/4 PASS、APK v2 签名校验 PASS。
+
+最终从源码归档 `PowerCal-source-6cd7556.zip` 解压后，直接从解压目录启动 Studio；`GET /` 返回 HTTP 200、标题 `PowerCal Skin Studio v3`，`GET /api/template-v3` 返回 HTTP 200、654094 字节。服务在验证后停止。完整回归没有运行 connected instrumentation，也没有实体/OEM 设备验收。
+
+最终交付包目录为 `.local/android-test/deliveries/powercal-separation-stage-20261030/`；清单和可独立查看的原始日志一并置于该目录。交付物 SHA-256：
+
+| 文件 | SHA-256 |
+| --- | --- |
+| `PowerCal-stage-debug.apk` | `27B32DB71211BECFEAED06D1C8CBA61DA72B098CF6515AE34608665622633E27` |
+| `PowerCal-Clear.pcskin` | `8F7F5680BFD27976B2792AAB06D051BAF0F03F4A914636EA73E82E48431F8035` |
+| `PowerCal-source-6cd7556.zip` | `949FB8D1E0D01950A696A048F4B99AD31BF64C2594D6E664ACE2FDBD8DB63A5C` |
+
+证据日志 SHA-256：完整 Gradle `F10653379E68EA1044D6A41C48E4EE1E7B444D58B42C2BF81EA288D3240D298C`；Studio Python `248E7602B7BAD484E475B7239027C4E4D521B826F6673625916F70C48DAB645C`；Clear/APK `FF97FE166A92B6674BDA6591DFE18FC976239EE964DFB8E91842B6495C742408`；从源码归档启动 Studio 的 smoke `196E9CA84EBF67E5F89513765808AE5F595F1555768C578C4F537C66BAE93D60`。先前 `PowerCal-source-c54cb47.zip` 保留作历史基线；本轮交付以 `6cd7556` 源码归档为准。
+
+最终结论仍是阶段候选可独立验收，完整 Native/Skin 等价与 release cutover 保持 HOLD。SEP-01 时间轴拖动、SEP-07 删除设备路径及各项完整双轨/异常恢复仍按上表阻塞或未测试状态保留；Native 回退和默认皮肤均未改动。
+
+复核环境说明：第一次在新 worktree 启动 Gradle 时，因未设置 `local.properties`/`ANDROID_HOME`，任务依赖解析前即退出；随后只对 Gradle 进程设置 `ANDROID_HOME=E:\android-sdk` 并完整复跑，未修改仓库 SDK 配置，最终结果如上。
+
+交付相对路径说明：`.local/android-test/deliveries/powercal-separation-stage-20261030/` 相对于干净验证 worktree `E:\Project\Powerful-Calendar\.local\android-test\worktrees\delivery-closure-20261030\`；源码归档、APK、皮肤包和 evidence 文件均位于该目录。
