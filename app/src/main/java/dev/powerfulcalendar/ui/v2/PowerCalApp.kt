@@ -10,6 +10,7 @@ import dev.powerfulcalendar.ui.v2.nativeui.NativeEventInspection
 import dev.powerfulcalendar.ui.v2.nativeui.NativeFormalWriteReview
 import dev.powerfulcalendar.ui.v2.nativeui.NativeLegacyDataReview
 import dev.powerfulcalendar.ui.v2.nativeui.NativeSkinCatalogReview
+import dev.powerfulcalendar.ui.v2.nativeui.NativeTextDraftDialog
 
 import android.content.Context
 import android.content.Intent
@@ -37,7 +38,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.collectAsState
@@ -2335,11 +2335,20 @@ fun PowerCalApp(
     }
 
     if (textDialogOpen) {
-        TextDraftDialog(
+        NativeTextDraftDialog(
             onDismiss = { textDialogOpen = false },
             onConfirm = { text ->
                 textDialogOpen = false
                 scope.launch { createDraftFromText(text, "text") }
+            },
+            showDialog = { dialog ->
+                SkinAlertDialog(
+                    onDismissRequest = dialog.onDismissRequest,
+                    title = dialog.title,
+                    text = dialog.text,
+                    confirmButton = dialog.confirmButton,
+                    dismissButton = dialog.dismissButton
+                )
             }
         )
     }
@@ -2988,33 +2997,3 @@ private fun CalendarEvent.toRecord(): TemporalRecord = TemporalRecord(
     enabled = reminderMinutes >= 0,
     source = source
 )
-
-@Composable
-private fun TextDraftDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
-    var text by remember { mutableStateOf("") }
-    SkinAlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("用文字创建草稿") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    "本地解析器先给出一个可编辑草稿；不会直接写入时间轴。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                OutlinedTextField(
-                    value = text,
-                    onValueChange = { text = it },
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 110.dp),
-                    label = { Text("例如：明天下午 3 点开组会") }
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = { if (text.isNotBlank()) onConfirm(text) }, enabled = text.isNotBlank()) {
-                Text("生成草稿")
-            }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
-    )
-}
