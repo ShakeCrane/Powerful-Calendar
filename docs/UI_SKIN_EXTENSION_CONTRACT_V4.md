@@ -5,12 +5,13 @@ As of 2026-10-21, the presentation host additionally interprets signed-by-integr
 They can live-switch ten existing screen surfaces with a strict built-in node/action
 library, animation and route transitions. The ten compiled-skin surfaces and Native
 fallback behavior remain. The Settings, Navigation, Memo, AI chat, Month, Timeline, and Draft Deck
-value APIs are in `:skin-api`; their Native renderers are in `:native-skin`. Native Chrome and Overlay contexts and renderers also live in `:native-skin`. Core-backed Host
+value APIs are in `:skin-api`; their Native renderers are in `:native-skin`. Native Chrome, Overlay,
+and Picker contexts and renderers also live in `:native-skin`. Core-backed Host
 projections, lifecycle and action adapters remain in `:app`.
 
 # PowerCal Visual Skin Contract v4 — as built
 
-Updated 2026-10-21; Native profile plus Settings, Month, Timeline, Draft Deck, and Chrome module boundaries clarified 2026-10-30. This document records executable Android source interfaces, not a proposal or a promised future plugin format.
+Updated 2026-10-21; Native profile plus Settings, Month, Timeline, Draft Deck, Chrome, Overlay, and Picker module boundaries clarified 2026-10-30. This document records executable Android source interfaces, not a proposal or a promised future plugin format.
 
 ## Separation
 
@@ -29,7 +30,8 @@ The `:skin-api` module currently contains the Settings and Navigation value cont
 display-only `NativeMemoRow`, `NativeAiMessage`, `NativeAiBatchMode`, Native Month, Timeline, and
 Draft Deck models/appearance slots. The `:native-skin` Android library contains `NativeToolsPage`,
 `NativePowerNavigation`, `NativeMemoCenterScreen`, `NativeAiChatScreen`, `NativeMonthScreen`,
-`NativeTimelineScreen` and `NativeDraftDeckScreen`; `NativeChromeSkin` and `NativeOverlaySkin` render root/notice and modal surfaces;
+`NativeTimelineScreen` and `NativeDraftDeckScreen`; `NativeChromeSkin`, `NativeOverlaySkin`, and
+`NativePickerSkin` render root/notice, modal, and Android date/time picker surfaces;
 the Host supplies values, action callbacks, protected content slots, and presentation
 shapes/icons. The
 module direction is `:app → :native-skin → :skin-api`, with `:app → :skin-api` for Host adapters.
@@ -52,7 +54,7 @@ IDs and product behavior are unchanged.
 | Draft Deck | DeckVisualRenderer / DeckVisualContext | NativeDraftDeckDialog |
 | Navigation | NavigationVisualRenderer / NavigationVisualContext | NativePowerNavigation |
 | Compose alert/window dialogs | OverlayVisualRenderer / OverlayVisualContext | NativeOverlaySkin via Host adapter |
-| Date/time picker | PickerVisualRenderer / PickerVisualContext | Android native DatePickerDialog / TimePickerDialog |
+| Date/time picker | PickerVisualRenderer / PickerVisualContext | NativePickerSkin via Host adapter; Android DatePickerDialog / TimePickerDialog |
 | App root and message banner | ChromeVisualRenderer / ChromeVisualContext | NativeChromeSkin via Host adapter |
 
 Every native fallback remains callable through context.Native(). All Compose AlertDialogs in the current PowerCal UI route through SkinAlertDialog; Draft Deck's full-screen Dialog routes through SkinWindowDialog; its platform pickers route through SkinPickers. Window/picker opening and dismissal callbacks remain supplied by their host, not invented by the skin.

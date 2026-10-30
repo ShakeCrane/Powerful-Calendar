@@ -68,7 +68,7 @@
 | SEP-09 AI 聊天 | 部分路径 TESTED | 真正 Picker/OCR、权限、记录持久化、错误/重试及可用免费 Provider |
 | SEP-10 AI 提案 | 部分路径 TESTED | 四按钮、完整 CREATE/REPLACE/DELETE、多轮、不完整提案及跨进程恢复；正式发布只经 Host 授权 |
 | SEP-11 设置/权限 | **INCOMPLETE** | 设置页面完全皮肤化，敏感能力经受信 Host，覆盖权限、ICS、备份、提醒诊断 |
-| SEP-12 导航/Picker | **INCOMPLETE**; Native root/notice/modal renderers CODE COMPLETE in `:native-skin` | 页面、系统 Picker 和多窗口/IME/返回导航功能闭环 |
+| SEP-12 导航/Picker | **INCOMPLETE**; Native root/notice/modal/system Picker renderers CODE COMPLETE in `:native-skin`; Picker Robolectric + full JVM tested | 页面等价、多窗口/IME/返回导航和 Android 设备 Picker 验收 |
 | SEP-13 包格式 | 有限路径 TESTED | 官方与第三方包同权限，同源构建、导入/导出/升级及危险包检查 |
 | SEP-14 切换/故障恢复 | **INCOMPLETE** | 损坏包、WebView 崩溃、进程死、未保存编辑、设备重启后数据保持及独立恢复入口 |
 | SEP-15 Skin Studio | **INCOMPLETE** | 可编辑任意页面、组件树、脚本、样式、资源、绑定；无损源/视图往返；AI CLI 操作与文档可执行 |
