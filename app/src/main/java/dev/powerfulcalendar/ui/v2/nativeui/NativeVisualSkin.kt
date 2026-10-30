@@ -72,7 +72,7 @@ internal object NativeVisualSkin {
     private object Overlay : OverlayVisualRenderer {
         override val id = "native/overlay"
         @androidx.compose.runtime.Composable
-        override fun Render(context: OverlayVisualContext) = context.Native()
+        override fun Render(context: OverlayVisualContext) = NativeOverlaySkin.Render(context)
     }
 
     private object Picker : PickerVisualRenderer {
