@@ -1,5 +1,11 @@
 # Core freeze progress
 
+## Separation — Native AI proposal review renderer module boundary (2026-10-30, CODE COMPLETE; 759 JVM TESTED; device NOT TESTED)
+
+- 将 AI 提案审核卡渲染从 `:app` 移入 `:native-skin`。`:skin-api` DTO 只携带 Host 投影后的标题、类型/操作 caption、时间文本、阻塞原因、可发布状态和原列表位置；Host 继续持有 `AiInterpretation`、Core `DraftForm`、校验与授权，并通过回调处理应用、丢弃和补充。Native 不访问 AI/Core/Store，也不执行持久化写入。没有修改 Clear、冻结 Core、持久化或 Native fallback。
+- 定向审核/投影 Compose 回归 **11/11 PASS**；`:app:verifyNativeSkinBoundary`、`:app:verifySkinSourceBoundary`、完整 AndroidTest Kotlin 编译、Debug APK assemble、`:app:lintDebug` 均 **PASS**；完整 JVM 回归 **759/759 PASS，114 XML suites，0 failure/error/skip，152 actionable tasks**。APK 为 66,483,794 bytes，SHA-256 `A246BA5CDCC7A31D23AE29563553334B7AE4862AD32C75E0180F498C5483AC44`；完整门禁日志 SHA-256 `24D8099505EAEE8F5E77C43F4D7214151756FED567E04E1188FB7692C0178E6D`；定向测试日志 SHA-256 `4D2689D59802E5E36B89813A2BDD972C60A9CB7CC4D4C80CAD86F9D2BD6105CD`。本机 ADB 没有在线设备，Native UI 设备交互 **NOT TESTED**。
+- 独立报告：[Native AI proposal review renderer Issue](../issues/PC-ISSUE-SEPARATION-NATIVE-AI-PROPOSAL-REVIEW-MODULE.md)。SEP-10 整体仍为 PARTIAL；AI 批量授权对话框及其他 AI 路径尚未分离。既有两份 WebSkin AndroidTest 修改未暂存/提交。
+
 ## Separation — Native Timeline renderer module boundary (2026-10-30, CODE COMPLETE; 749 JVM TESTED; device NOT TESTED)
 
 - 将 Native `TimelineScreen` 与时间轴布局/手势/标题测量辅助代码迁入 `:native-skin`；新增 `:skin-api` 纯展示模型、相机/几何/动作接口与视觉 slots。`:app` 保留重复槽展开、真实时间泳道、事件 owner/revision/original occurrence 映射、日期截止时区规则和 `TimelineCoordinate` 几何适配，并保留现有 app 路由签名。Native renderer 不引用 Core/Store。没有改 Clear、冻结 Core、持久化、皮肤选择或 Native fallback。
