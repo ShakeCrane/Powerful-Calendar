@@ -4,9 +4,9 @@ As of 2026-10-21, the presentation host additionally interprets signed-by-integr
 (not author-signed) .pcskin v2 ZIP payloads: see [SKIN_PACK_V2.md](SKIN_PACK_V2.md).
 They can live-switch ten existing screen surfaces with a strict built-in node/action
 library, animation and route transitions. The ten compiled-skin surfaces and Native
-fallback behavior remain. The Settings, Navigation, Memo, AI chat, Month, and Timeline value APIs
-are in `:skin-api`; their Native renderers are in `:native-skin`. Draft Deck remains in `:app` for
-staged extraction.
+fallback behavior remain. The Settings, Navigation, Memo, AI chat, Month, Timeline, and Draft Deck
+value APIs are in `:skin-api`; their Native renderers are in `:native-skin`. Core-backed Host
+projections, lifecycle and action adapters remain in `:app`.
 
 # PowerCal Visual Skin Contract v4 — as built
 
@@ -26,19 +26,19 @@ fallback. This profile is independent of `.pcskin` package selection and is not 
 Skin Studio package.
 
 The `:skin-api` module currently contains the Settings and Navigation value contexts/DTOs plus the
-display-only `NativeMemoRow`, `NativeAiMessage`, `NativeAiBatchMode`, Native Month model, and Native
-Timeline model/appearance slots. The `:native-skin` Android library contains `NativeToolsPage`,
-`NativePowerNavigation`, `NativeMemoCenterScreen`, `NativeAiChatScreen`, `NativeMonthScreen`, and
-`NativeTimelineScreen`;
+display-only `NativeMemoRow`, `NativeAiMessage`, `NativeAiBatchMode`, Native Month, Timeline, and
+Draft Deck models/appearance slots. The `:native-skin` Android library contains `NativeToolsPage`,
+`NativePowerNavigation`, `NativeMemoCenterScreen`, `NativeAiChatScreen`, `NativeMonthScreen`,
+`NativeTimelineScreen`, and `NativeDraftDeckScreen`;
 the Host supplies values, action callbacks, protected content slots, and presentation
 shapes/icons. The
 module direction is `:app → :native-skin → :skin-api`, with `:app → :skin-api` for Host adapters.
 A Gradle boundary check rejects known Host/Core service references from `:native-skin`.
 
 This is an incremental compile/module boundary, not a security sandbox or separate APK. The
-Native Timeline renderer is in `:native-skin`; its Core-backed projection, geometry adapter, and
-route adapter remain in `:app`. Draft Deck, renderer adapters, and other shared Host projections
-remain in `:app` for staged migration. Native renderer IDs and product behavior are unchanged.
+Native Timeline and Draft Deck renderers are in `:native-skin`; their Core-backed projections,
+geometry/form adapters, controller lifecycle, and route adapters remain in `:app`. Native renderer
+IDs and product behavior are unchanged.
 
 ## Ten replaceable presentation surfaces
 
@@ -79,12 +79,12 @@ the audited source-compiled renderer; they do not grant a Store, filesystem or m
 ID so the Host resolves the authoritative installed package. `SettingsVisualEffects` contains
 `blur`, `animationScale` and `reduceMotion` values.
 
-The Settings, Navigation, Memo, AI chat, Month, and Timeline display API types compile in
-`:skin-api`; their migrated Native implementations compile in `:native-skin`. Memo, Month, and
-Timeline renderers receive display values and opaque row keys; Host projections resolve actions
-back to the formal owner and, where supported, the original occurrence. This module boundary is not
-a sandbox. The Native Timeline projection and geometry adapter, Draft Deck, and renderer adapters
-remain in `:app`.
+The Settings, Navigation, Memo, AI chat, Month, Timeline, and Draft Deck display API types compile in
+`:skin-api`; their Native renderers compile in `:native-skin`. Memo, Month, Timeline, and Draft Deck
+renderers receive display values and Host callbacks. Opaque row/card keys resolve in Host code to
+the authoritative owner and, where supported, the original occurrence. This module boundary is not
+a sandbox. Core-backed projections, DeckController lifecycle/commands, picker operations, and
+renderer adapters remain in `:app`.
 
 ### Month display boundary (2026-10-30)
 
@@ -121,6 +121,20 @@ review and avatar content through composable slots. AI interpretation, proposal 
 commit behavior remain in `:app`; message text and a proposal-source string are display/input values,
 not authorization. Native code has no direct provider, Core, Store or Android clipboard dependency.
 
+### Draft Deck display boundary (2026-10-30)
+
+`NativeDraftDeckScreen` consumes `NativeDeckState`, `NativeDeckForm`, card/search/conflict display
+rows, Host callbacks, and `NativeDeckAppearance` Compose slots from `:skin-api`. The renderer has
+no Core, Store, Controller, provider, Android picker, or app-theme dependency. The Host adapter in
+`:app` retains the single `DeckController` observer, serial command/flush/commit/discard/undo/
+conflict/restore flow, field validation and `TemporalConversion`, Core-backed search projection,
+and date/time picker interpretation. Native form edits are mapped onto the current Host form so
+unexposed fields such as source provenance, completion keys, and recurrence metadata are preserved.
+The standalone Native new-event editor and formal editor reuse the same module form renderer; their
+edit sessions, save/exit decisions, scoped authorization, and outer Host confirmation surfaces stay
+in `:app`. This slice establishes a source-module boundary; it does not sign SEP-08 or Native/Clear
+functional parity, Android WebView/device behavior, or Skin Studio support.
+
 ## Contract sources
 
 Source module map:
@@ -130,12 +144,14 @@ Source module map:
 - `skin-api/src/main/java/dev/powerfulcalendar/ui/v2/NativeAiChatModel.kt` — AI chat display DTOs and batch action enum
 - `skin-api/src/main/java/dev/powerfulcalendar/ui/v2/NativeMonthModel.kt` — Native month display row and appearance slots
 - `skin-api/src/main/java/dev/powerfulcalendar/ui/v2/NativeTimelineModel.kt` — Native timeline event/state/action/geometry and appearance values
+- `skin-api/src/main/java/dev/powerfulcalendar/ui/v2/NativeDeckModel.kt` — Native deck/form display DTOs, callbacks and appearance slots
 - `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativeToolsPage.kt` — Native Settings renderer
 - `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativePowerNavigation.kt` — Native bottom navigation
 - `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/MemoCenterScreen.kt` — Native Memo renderer consuming only value rows and opaque action keys
 - `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/AiChatScreen.kt` — Native AI chat renderer consuming display DTOs and Host callbacks/slots
 - `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/MonthScreen.kt` — Native month renderer consuming display DTOs and Host callbacks/slots
 - `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativeTimelineScreen.kt` — Native timeline renderer consuming display DTOs and Host callbacks/slots
+- `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativeDraftDeckScreen.kt` — Native deck and shared event-form renderer consuming display DTOs
 - `app/src/main/java/dev/powerfulcalendar/ui/v2/PresentationSkinRuntime.kt` — route registry, Host projection, settings controls and slots
 - `app/src/main/java/dev/powerfulcalendar/ui/v2/MemoProjection.kt` — Core-backed occurrence projection and display-only Native row mapping
 - `app/src/main/java/dev/powerfulcalendar/ui/v2/NativeAiProjection.kt` — AI message projection and Host batch mode mapping
@@ -143,7 +159,8 @@ Source module map:
 - `app/src/main/java/dev/powerfulcalendar/ui/v2/NativeTimelineProjection.kt` — Core-backed occurrence/lane projection and geometry adapter
 - `app/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/TimelineScreen.kt` — existing app route adapter into the Native Timeline module
 - `app/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativeVisualSkin.kt` — explicit Native profile adapters for all ten surfaces
-- `app/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/` — Native Draft Deck implementation remains pending extraction; `PowerCalApp.kt` remains the route/Host orchestrator
+- `app/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/DraftDeck.kt` — DeckController Host adapter, Core projection and picker interpretation
+- `app/src/main/java/dev/powerfulcalendar/ui/v2/DirectEventEditor.kt` — formal-edit session and confirmation Host surface using the shared Native form renderer
 - `app/src/main/java/dev/powerfulcalendar/ui/v2/SkinnableDraftDeck.kt` — controller adaptation with autosave, serialized guarded operations
 - `app/src/main/java/dev/powerfulcalendar/ui/v2/SkinnableOverlays.kt` — Compose Alert and Window slots
 - `app/src/main/java/dev/powerfulcalendar/ui/v2/SkinnablePickers.kt` — date/time imperative picker intents
