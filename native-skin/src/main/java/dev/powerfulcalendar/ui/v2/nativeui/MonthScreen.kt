@@ -1,10 +1,6 @@
 package dev.powerfulcalendar.ui.v2.nativeui
 
-import dev.powerfulcalendar.ui.v2.*
-
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
@@ -19,22 +15,29 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import dev.powerfulcalendar.core.*
+import dev.powerfulcalendar.ui.v2.NativeMonthAppearance
+import dev.powerfulcalendar.ui.v2.NativeMonthDialog
+import dev.powerfulcalendar.ui.v2.NativeMonthRow
 import java.time.LocalDate
 import java.time.YearMonth
-import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 @Composable
-internal fun NativeMonthScreen(
-    records: List<TemporalRecord>, initialDate: LocalDate, zone: ZoneId, aiLocked: Boolean,
+fun NativeMonthScreen(
+    initialDate: LocalDate,
+    today: LocalDate,
+    aiLocked: Boolean,
+    rowsForMonth: (YearMonth) -> List<NativeMonthRow>,
     onBack: () -> Unit, onDate: (LocalDate) -> Unit,
-    onOpen: (TemporalRecord, String?) -> Unit,
-    onCreate: (LocalDate) -> Unit
+    onOpen: (String) -> Unit,
+    onCreate: (LocalDate) -> Unit,
+    appearance: NativeMonthAppearance
 ) {
     var selectedText by rememberSaveable { mutableStateOf(initialDate.toString()) }
     var monthText by rememberSaveable { mutableStateOf(YearMonth.from(initialDate).toString()) }
@@ -48,23 +51,16 @@ internal fun NativeMonthScreen(
         monthText = target.toString()
         selectedText = target.atDay(1).toString()
     }
-    val from = month.atDay(1).atStartOfDay(zone).toInstant().toEpochMilli()
-    val to = month.plusMonths(1).atDay(1).atStartOfDay(zone).toInstant().toEpochMilli()
-    val entries = remember(records, from, to, zone) { displayOccurrences(records, from, to) }
-    fun entriesOn(day: LocalDate): List<DisplayOccurrence> {
-        val begin = day.atStartOfDay(zone).toInstant().toEpochMilli()
-        val end = day.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
-        return entries.filter {
-            val record = it.record
-            if (record.isDateOnlyDeadline()) record.deadlineDate == day.toString()
-            else overlapsDayWindow(record, begin, end)
-        }.sortedBy { it.record.anchorMillis() }
+    val entries = remember(month, rowsForMonth) { rowsForMonth(month) }
+    val daily = remember(entries, month) {
+        (1..month.lengthOfMonth()).associate { day ->
+            val date = month.atDay(day)
+            date to entries.filter { date.toString() in it.visibleDateKeys }
+        }
     }
-    val daily = remember(entries, month, zone) { (1..month.lengthOfMonth()).associate { day -> month.atDay(day) to entriesOn(month.atDay(day)) } }
-    val today = LocalDate.now(zone)
     var swipeDistance by remember { mutableFloatStateOf(0f) }
     LazyColumn(
-        Modifier.fillMaxSize().skinBackdrop(SkinSlot.MONTH_BACKGROUND)
+        Modifier.fillMaxSize()
             .pointerInput(monthText) {
                 detectHorizontalDragGestures(
                     onDragStart = { swipeDistance = 0f },
@@ -94,7 +90,7 @@ internal fun NativeMonthScreen(
             }
         }
         item {
-            GlassPanel(contentPadding = PaddingValues(0.dp)) {
+            appearance.panel {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { monthText = month.minusMonths(1).toString(); selectedText = month.minusMonths(1).atDay(1).toString() }) { Icon(Icons.Default.ChevronLeft, "上个月") }
                     Row(Modifier.weight(1f), horizontalArrangement = Arrangement.Center,
@@ -126,7 +122,7 @@ internal fun NativeMonthScreen(
                                         contentDescription = "${date}，$count 项${if (date == today) "，今天" else ""}"
                                         this.selected = date == selected
                                     },
-                                    shape = GlassShapes.chip,
+                                    shape = RoundedCornerShape(appearance.gridCellCornerRadiusDp.dp),
                                     color = if (date == selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface.copy(alpha = 0f),
                                     border = if (date == today) BorderStroke(1.dp, MaterialTheme.colorScheme.primary) else null
                                 ) {
@@ -151,14 +147,14 @@ internal fun NativeMonthScreen(
         }
         val selectedEntries = daily[selected].orEmpty()
         if (selectedEntries.isEmpty()) item { Text("这一天还很从容。", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(vertical = 16.dp)) }
-        items(selectedEntries, key = { it.key }) { entry ->
+        items(selectedEntries, key = { it.rowKey }) { entry ->
             Surface(onClick = {
-                onOpen(entry.owner, entry.occurrenceKey.takeIf { entry.owner.recurrence.isRepeating })
-            }, shape = skinBarShape(), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+                onOpen(entry.rowKey)
+            }, shape = RoundedCornerShape(appearance.eventRowCornerRadiusDp.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
                 Column(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(16.dp)) {
-                    Text("${entry.record.kind.label} · ${entry.record.title}", style = MaterialTheme.typography.titleMedium, color = kindColor(entry.record.kind))
-                    Text(TemporalText.summarize(entry.record), style = MaterialTheme.typography.bodyMedium)
-                    Text(entry.owner.displaySeq() + if (aiLocked) " · AI 处理中，仅查看" else "", style = MaterialTheme.typography.labelSmall)
+                    Text("${entry.kindLabel} · ${entry.title}", style = MaterialTheme.typography.titleMedium, color = Color(appearance.kindColors.getValue(entry.kind)))
+                    Text(entry.summary, style = MaterialTheme.typography.bodyMedium)
+                    Text(entry.sequenceLabel + if (aiLocked) " · AI 处理中，仅查看" else "", style = MaterialTheme.typography.labelSmall)
                 }
             }
         }
@@ -171,7 +167,7 @@ internal fun NativeMonthScreen(
     }
     if (yearPickerOpen) {
         val year = yearInput.toIntOrNull()
-        SkinAlertDialog(
+        appearance.showDialog(NativeMonthDialog(
             onDismissRequest = { yearPickerOpen = false },
             title = { Text("选择年份") },
             text = {
@@ -193,10 +189,10 @@ internal fun NativeMonthScreen(
                 ) { Text("跳转") }
             },
             dismissButton = { TextButton(onClick = { yearPickerOpen = false }) { Text("取消") } }
-        )
+        ))
     }
     if (monthPickerOpen) {
-        SkinAlertDialog(
+        appearance.showDialog(NativeMonthDialog(
             onDismissRequest = { monthPickerOpen = false },
             title = { Text("选择月份 · ${month.year} 年") },
             text = {
@@ -215,6 +211,6 @@ internal fun NativeMonthScreen(
                 }
             },
             confirmButton = { TextButton(onClick = { monthPickerOpen = false }) { Text("关闭") } }
-        )
+        ))
     }
 }

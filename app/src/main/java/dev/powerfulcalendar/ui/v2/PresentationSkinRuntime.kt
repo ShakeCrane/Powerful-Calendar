@@ -8,11 +8,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import dev.powerfulcalendar.ai.AiBatchRunner
@@ -21,6 +25,7 @@ import dev.powerfulcalendar.ai.AiInterpretation
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.RecurrenceEngine
+import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.ui.v2.nativeui.*
 import java.time.LocalDate
@@ -102,7 +107,48 @@ internal class MonthVisualContext internal constructor(
     val onCreate: (LocalDate) -> Unit
 ) {
     @Composable fun Native() {
-        NativeMonthScreen(records, initialDate, zone, aiLocked, onBack, onDate, onOpen, onCreate)
+        val projection = remember(records, zone) {
+            NativeMonthProjectionSession(records, zone)
+        }
+        val rowsForMonth = remember(projection) { projection::rowsFor }
+        val appearance = NativeMonthAppearance(
+            eventRowCornerRadiusDp = LocalSkinVisual.current.barRadiusDp,
+            panel = { content -> GlassPanel(contentPadding = PaddingValues(0.dp)) { content() } },
+            showDialog = { dialog ->
+                SkinAlertDialog(
+                    onDismissRequest = dialog.onDismissRequest,
+                    title = dialog.title,
+                    text = dialog.text,
+                    confirmButton = dialog.confirmButton,
+                    dismissButton = dialog.dismissButton
+                )
+            },
+            kindColors = NativeMonthKind.values().associateWith { kind ->
+                kindColor(when (kind) {
+                    NativeMonthKind.ALARM -> TemporalKind.ALARM
+                    NativeMonthKind.ACTIVITY -> TemporalKind.ACTIVITY
+                    NativeMonthKind.DEADLINE -> TemporalKind.DEADLINE
+                    NativeMonthKind.MEMO -> TemporalKind.MEMO
+                }).toArgb()
+            }
+        )
+        Box(Modifier.fillMaxSize().skinBackdrop(SkinSlot.MONTH_BACKGROUND)) {
+            NativeMonthScreen(
+                initialDate = initialDate,
+                today = LocalDate.now(zone),
+                aiLocked = aiLocked,
+                rowsForMonth = rowsForMonth,
+                onBack = onBack,
+                onDate = onDate,
+                onOpen = { rowKey ->
+                    projection.openTarget(rowKey)?.let { target ->
+                        onOpen(target.owner, target.occurrenceKey)
+                    }
+                },
+                onCreate = onCreate,
+                appearance = appearance
+            )
+        }
     }
 }
 
