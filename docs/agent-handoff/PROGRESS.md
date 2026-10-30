@@ -1,5 +1,12 @@
 # Core freeze progress
 
+## Separation — Native AI extracted-file review module boundary (2026-10-30, CODE COMPLETE; 764 JVM TESTED; device NOT TESTED)
+
+- 将提取文件的核对对话框（文件名、隐私提示、提取说明、文本编辑、可选的记住授权复选框、ICS 本地预检和确定性导入按钮）迁入 `:native-skin`。Host 保留 URI/文件读取、24,000 字符边界、ICS 解析及直导判断、授权持久化、AI 发送和 ICS 导入动作；Native 只接收显示值与回调。没有改 Clear 源码、Core、持久化语义、AI 网络或 Native 回退。
+- 定向回归 **10/10 PASS**：`NativeAiInputReviewComposeTest` 4/4（含编辑/隐私删改回调、授权复选框、ICS 预检与 Host 选择的直导按钮）及 `WebAiAttachmentFlowIntegrationTest` 6/6。全量 JVM **764/764 PASS，115 suites**；`verifyNativeSkinBoundary`、`verifySkinSourceBoundary`、AndroidTest Kotlin 编译、Debug APK assemble、lint 均通过。命令完整结果 `BUILD SUCCESSFUL`，152 actionable tasks。
+- Debug APK `app/build/outputs/apk/debug/app-debug.apk`，66,500,178 bytes，SHA-256 `E979D74E3B2FDC325053F782E4108C7C480F51065AACB93A60564CBA9C1C542D`。完整门禁日志 `.local/android-test/reports/native-ai-file-review-20261030/full-gate.log` SHA-256 `06E337649348C4DD394B4B100A5608FE91561B1B0C87A73ED53F83CADD059B53`；定向日志 `.local/android-test/reports/native-ai-file-review-20261030/focused-retry.log` SHA-256 `ED04B2069C710F4155664F693B82A5D0AF911968A51C9E23F1D0F13A6DC896BB`。
+- ADB 当前无在线设备；Android UI instrumentation 与真机/OEM 路径 **NOT TESTED**。SEP-09 仍为 PARTIAL。独立报告：[Native AI file review Issue](../issues/PC-ISSUE-SEPARATION-NATIVE-AI-FILE-REVIEW-MODULE.md)。实现提交 `80859e3b0a8e9d456a16011314f3afb992930960`。
+
 ## Separation — Native AI image consent and OCR review module boundary (2026-10-30, CODE COMPLETE; focused/build TESTED; full JVM gate BLOCKED; device NOT TESTED)
 
 - 将 Native AI 图片上传同意与 OCR 原文核对的对话框内容迁入 `:native-skin`。`:skin-api` 只提供 dialog slots；图片 URI、文件读取、OCR、AI 客户端、用户输入状态、提交与取消行为仍由 `PowerCalApp` Host 持有。Native 只得到忙碌状态/文本和回调。未改 Clear 源码、Core、AI 网络/持久化或 Native fallback。

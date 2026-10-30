@@ -65,7 +65,7 @@
 | SEP-06 重复实例 | 部分范围 TESTED | 单次/此后/整个系列，occurrence key、身份、提醒和重启后对照 |
 | SEP-07 正式删除 | **BLOCKED** | 真正 Android WebView → 受信 Host 审核 → 确认/取消/版本冲突 → Store；不能仅据 JVM/Mock 签核 |
 | SEP-08 草稿卡组 | Native Compose renderer **CODE COMPLETE** in `:native-skin`; focused Host/Compose cases TESTED; overall SEP remains PARTIAL | 批次导航、patch、flush、提交/拒绝、撤销、IME 与异常恢复的完整双路径回放；AndroidTest 设备执行 |
-| SEP-09 AI 聊天 | 部分路径 TESTED；Native 图片授权与 OCR 核对对话框已 CODE COMPLETE 于 `:native-skin`，focused Compose/Host 附件路径 TESTED；设备 NOT TESTED | 真正 Picker/OCR 权限与设备闭环、记录持久化、错误/重试及可用免费 Provider |
+| SEP-09 AI 聊天 | 部分路径 TESTED；Native 图片授权、OCR 核对与提取文件/ICS 预检视图已 CODE COMPLETE 于 `:native-skin`，focused Compose/Host 附件及全量 JVM TESTED；设备 NOT TESTED | 真正 Picker/OCR 权限与设备闭环、记录持久化、错误/重试及可用免费 Provider |
 | SEP-10 AI 提案 | 部分路径 TESTED；Native 提案审核卡与批量授权审核对话框均 CODE COMPLETE 于 `:native-skin`，focused/full JVM TESTED；设备 NOT TESTED | 四按钮、完整 CREATE/REPLACE/DELETE、多轮、不完整提案及跨进程恢复；正式发布只经 Host 授权 |
 | SEP-11 设置/权限 | **INCOMPLETE** | 设置页面完全皮肤化，敏感能力经受信 Host，覆盖权限、ICS、备份、提醒诊断 |
 | SEP-12 导航/Picker | **INCOMPLETE**; Native root/notice/modal/system Picker renderers CODE COMPLETE in `:native-skin`; Picker Robolectric + full JVM tested | 页面等价、多窗口/IME/返回导航和 Android 设备 Picker 验收 |

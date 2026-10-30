@@ -132,13 +132,14 @@ not authorization. Native code has no direct provider, Core, Store or Android cl
 
 ### AI image consent and OCR review boundary (2026-10-30)
 
-`NativeAiImageConsentReview` and `NativeAiOcrTextReview` are rendered by `:native-skin` through
-display-only `:skin-api` dialog slots. The Host supplies busy state, OCR text and action callbacks;
-it retains the selected URI, file access and size checks, OCR service, AI provider request, state
-transitions and submit/cancel behavior. The Host also selects the skin-aware dialog shell. No URI,
-file resolver, recognizer, provider client, Core object or persistence service crosses into the
-Native renderer. This is a Native source-module boundary only; Android/device behavior is not
-implied by the source move.
+`NativeAiImageConsentReview`, `NativeAiOcrTextReview`, and `NativeAiFileReview` are rendered by
+`:native-skin` through display-only `:skin-api` dialog slots. The Host supplies display text,
+preflight summaries, busy/consent/import state and callbacks; it retains the selected URI, file
+access and size checks, OCR service, ICS parsing and import decision, consent persistence, AI
+provider request, state transitions and submit/cancel behavior. The Host also selects the skin-aware
+dialog shell. No URI, file resolver, recognizer, provider client, Core object or persistence service
+crosses into the Native renderer. This is a Native source-module boundary only; Android/device
+behavior is not implied by the source move.
 
 ### Draft Deck display boundary (2026-10-30)
 
@@ -185,7 +186,7 @@ Source module map:
 - `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/AiChatScreen.kt` — Native AI chat renderer consuming display DTOs and Host callbacks/slots
 - `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativeAiProposalReview.kt` — Native proposal-review card renderer consuming display-only rows and Host action callbacks
 - `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativeAiBatchAuthorizationReview.kt` — Native frozen-batch authorization review renderer with Host-provided dialog shell and callbacks
-- `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativeAiInputReview.kt` — Native image-consent and OCR-text review dialogs with Host-provided dialog shell and callbacks
+- `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativeAiInputReview.kt` — Native image-consent, OCR-text and extracted-file review dialogs with Host-provided dialog shell and callbacks
 - `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/MonthScreen.kt` — Native month renderer consuming display DTOs and Host callbacks/slots
 - `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativeTimelineScreen.kt` — Native timeline renderer consuming display DTOs and Host callbacks/slots
 - `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativeDraftDeckScreen.kt` — Native deck and shared event-form renderer consuming display DTOs
