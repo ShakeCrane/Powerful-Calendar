@@ -1,5 +1,12 @@
 # Core freeze progress
 
+## Separation — Native skin catalog activation/deletion confirmation boundary (2026-10-30, CODE COMPLETE; focused/build TESTED; full JVM gate FAIL; device NOT TESTED)
+
+- 将 Native 设置页的皮肤启用前警告、恢复手势说明、删除确认文案与按钮迁入 `:native-skin`。`:skin-api` 只传入 review kind、名称/说明和回调；Host 保留 skin identity、编辑器安全检查、注册表选择/删除、列表刷新与结果消息。没有改 Clear 源码、默认皮肤、自动启用行为或 Native 回退。
+- 定向回归 **6/6 PASS**：新 `NativeSkinCatalogReviewComposeTest` 2/2、`NativeToolsPageProtectedSlotsComposeTest` 3/3、`SkinPackageExportFlowTest` 1/1。完整 JVM 门禁 **766 tests / 1 failure**：仅 `WebAiProposalReviewIntegrationTest.memoPagingContinuesTheSortedProjectionWithoutStoreWrites` 等待 60 秒后 `memoCount=0`；单独重跑该用例 **1/1 PASS**。全量门禁记 FAIL，不记 PASS。去掉单测任务后，Native/Skin 源码边界、AndroidTest Kotlin 编译、Debug APK assemble 与 lint **PASS**（144 actionable tasks）。
+- 当前 APK `app/build/outputs/apk/debug/app-debug.apk`：66,500,178 bytes，SHA-256 `26263D7964977E91CAD07A3F7E10F813E8E0FDDBF8F7C3AD7F6138C06FC0B18C`。定向、全量失败、隔离失败用例、独立构建门禁日志位于 `.local/android-test/reports/native-skin-catalog-review-20261030/`；SHA-256 依次为 `0EC83DD6A9A95D819A15977B419D46FC063B42ADADE4F1D4F336F675D51058CE`、`257F47743AE8BB63464CBF62A760CBAF4D596DA83A6A2C24DC97E73D80D89EE5`、`4E83DFB5E79F5F042274F338BBB8D3042564B50AE2ABCC203816CACC072A76E6`、`0E8D341202188570BFE7FE2A40E9A20C0C031921B974315F9D85A3CC285BDEA0`。
+- ADB 无在线设备；Android UI instrumentation 与物理设备/OEM 路径 **NOT TESTED**。SEP-13 仍为 PARTIAL。独立报告：[Native skin catalog review Issue](../issues/PC-ISSUE-SEPARATION-NATIVE-SKIN-CATALOG-REVIEW.md)。实现提交 `843a5a721fd80f34e24f82d84fb61bcf1e723e7f`。
+
 ## Separation — Native AI extracted-file review module boundary (2026-10-30, CODE COMPLETE; 764 JVM TESTED; device NOT TESTED)
 
 - 将提取文件的核对对话框（文件名、隐私提示、提取说明、文本编辑、可选的记住授权复选框、ICS 本地预检和确定性导入按钮）迁入 `:native-skin`。Host 保留 URI/文件读取、24,000 字符边界、ICS 解析及直导判断、授权持久化、AI 发送和 ICS 导入动作；Native 只接收显示值与回调。没有改 Clear 源码、Core、持久化语义、AI 网络或 Native 回退。
