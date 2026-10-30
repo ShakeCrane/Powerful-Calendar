@@ -128,3 +128,49 @@ Skin Studio 已从归档源码根目录启动验证：`python tools/skin-studio/
 复核环境说明：第一次在新 worktree 启动 Gradle 时，因未设置 `local.properties`/`ANDROID_HOME`，任务依赖解析前即退出；随后只对 Gradle 进程设置 `ANDROID_HOME=E:\android-sdk` 并完整复跑，未修改仓库 SDK 配置，最终结果如上。
 
 交付相对路径说明：`.local/android-test/deliveries/powercal-separation-stage-20261030/` 相对于干净验证 worktree `E:\Project\Powerful-Calendar\.local\android-test\worktrees\delivery-closure-20261030\`；源码归档、APK、皮肤包和 evidence 文件均位于该目录。
+
+## DELIVERY CLOSURE 最终复核（2026-10-30）
+
+### 最新集成基线与范围
+
+本次复核基于已推送的分离集成头 `88b04441a5110dd9fd12f9563e27b7e01d8c0537`。它包含阶段源码验证基线 `6cd755621cc1c599dd72871d4e1eb77442998d4a`。`6cd7556..88b0444` 之间的变更只涉及 `AGENTS.md` 与分离治理/状态文档；`app/`、`tools/` 源码无差异。故本次 APK、皮肤包和完整回归统一针对同一应用源码 SHA `88b0444`。
+
+远端只读核对：`main=af229d9829b692dc4f4d6c5189809f65bef6675f`、`feat/skin-first-separation=88b04441a5110dd9fd12f9563e27b7e01d8c0537`、`codex/separation-legacy-import=d43bac3c5a2b6ea6325c50874d6354b55fd43662`、`codex/separation-skin-settings=c81690602c980e234500c0fd7714cf3ebd1205a4`。两个独立评审分支未被强行合并。
+
+本地 `feat/skin-first-separation` worktree 仍在 `cc31026`，落后目标远端 123 个提交，且有他人未提交的 `PROGRESS.md`/Studio 资源修改；主 `main` worktree 与 SEP-11 Track A/B、AI/Studio、设置、类型选择等 worktree 也有未提交资产。全部原样保留。旧本地 `codex/separation-s0-timeline-drag` 位于 `3d099d3`、`codex/separation-s0-inventory` 位于 `057b39e`，两者的远端跟踪分支已不存在；候选提交已在 `88b0444` 历史中。23 个 worktree 均已盘点，未做清理、重置或批量暂存。
+
+### `88b0444` 统一源码 SHA 回归
+
+完整命令：
+
+```text
+.\gradlew.bat :app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug --offline --rerun-tasks --no-daemon --console=plain
+```
+
+结果为 `BUILD SUCCESSFUL`，88/88 Gradle tasks；727/727 JVM 测试、100 suites、0 failures/errors/skips；Lint 0 errors、53 warnings。Skin Studio Python 测试 61/61 PASS，JavaScript `node --check` 4/4 PASS。日志位于交付目录的 `evidence/`。
+
+Clear 由 Studio `build-v3` 导出并通过 `validate --json`：runtime v3、9 个文件、394086 字节；包哈希 `8F7F5680BFD27976B2792AAB06D051BAF0F03F4A914636EA73E82E48431F8035`。`build_default_clear.py --verify --apk` 确认 APK 内置资源与导出包哈希一致。APK v2 签名校验通过。源码归档包含可运行 Skin Studio；从解压目录启动后，`GET /` 重试返回 HTTP 200（标题 `PowerCal Skin Studio v3`），`GET /api/template-v3` 返回 HTTP 200、654094 字节。首次冷启动的 10 秒 HTTP 请求超时已记录，服务随后完成响应且重试通过。
+
+### API 35 WebView 证据更新
+
+在隔离的 API 35 AVD `emulator-5582` 上，`TimelineGreedyFoldingWebViewInstrumentedTest` 首次整类运行 2 个用例：缩放及 Host 状态更新用例 PASS；标题/几何综合用例在 16 小时缩放后尝试触摸 24 小时复位时失败，记录为 `clickCount=0`，但目标仍可见且 `elementFromPoint` 命中按钮。该失败用例单独重放 1 次 PASS。因此它有非确定性，不能签为稳定 PASS。完整首次日志与隔离重放日志均保存在 `evidence/api35-greedy-folding-88b0444.log`、`evidence/api35-greedy-folding-fail-only-rerun1.log`。历史基线上的标题可视化证据仍可参考上表 Issue，但本次复验要求保持 SEP-01 BLOCKED。
+
+S0-TL-04 触屏拖动诊断在 API 35 上失败：期望 Host `unsupported`，读到 `lastResult=closed`；该 `closed` 是先前点击并关闭正式编辑器留下的结果。触摸轨迹进入 `touchstart/touchmove/touchend`，但 JS `moveCalls=[]`、Host Bridge 只有 `editor.open/editor.close`，没有 `timeline.move`。当次诊断快照显示 `pendingCount=0`、计数 `[0,2,2]`；测试在 Host 结果断言处提前失败，后续一致性断言未执行。测试源码及日志作为诊断证据留在交付目录，未并入应用源码包。触屏拖动仍是 BLOCKED；不把过期 Host 结果或 Studio Mock 当作 Android 成功。
+
+### 阶段判定及状态分类
+
+逐项实现、Studio 支持和历史真实验收证据见本报告上方 SEP-01～SEP-16 表。当前分类为：CODE COMPLETE 1 项（SEP-05）、局部 TESTED 8 项（SEP-02/03/04/06/08/09/10/13）、BLOCKED 2 项（SEP-01/07）、INCOMPLETE 5 项（SEP-11/12/14/15/16）。这些局部测试不等于完整 Native/Skin parity。SEP-07 Android WebView 正式删除仍缺有效仪器结果；SEP-16 全正式写入确认覆盖未完成。物理/OEM 测试由所有者执行。
+
+交付仍是可以独立验收的阶段候选，不是 100% 功能等价，不是 Release QA/cutover GO。Native 回退仍保留，默认皮肤未切换；完整等价、异常/进程恢复、无障碍与实体设备签核均保持 HOLD。本轮到此停止扩展。
+
+### 最新可复现交付物
+
+稳定交付目录：`.local/android-test/deliveries/powercal-separation-stage-20261030/`（相对仓库根目录）。APK 与 Clear `.pcskin` 来自 `88b0444`；源码 ZIP 为精确 `88b0444` 的 Git 归档。
+
+| 文件 | 大小 | SHA-256 |
+|---|---:|---|
+| `PowerCal-stage-debug.apk` | 66368897 bytes | `27B32DB71211BECFEAED06D1C8CBA61DA72B098CF6515AE34665622633E27` |
+| `PowerCal-Clear.pcskin` | 394086 bytes | `8F7F5680BFD27976B2792AAB06D051BAF0F03F4A914636EA73E82E48431F8035` |
+| `PowerCal-source-88b0444.zip` | 4644321 bytes | `2C88C55955752EFC11ED9FB076C0A27FE4CF054560F08DBAFD3E7569FA27E723` |
+
+APK application id 为 `dev.powerfulcalendar`，版本 `0.9.5-rc.1`，target SDK 35；这是可安装 Debug 包，不是商店发布签名包。`README-DELIVERY.txt` 给出安装、运行 Studio、导出和验证新 `.pcskin` 的命令；`manifest.json` 记录产物与证据哈希。
