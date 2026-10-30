@@ -1578,3 +1578,10 @@ Updated: 2026-10-24
 ## Status correction — recent API 35 evidence (2026-10-30)
 
 - 较早文档中 SEP-01 的“拖动未到 Bridge”和 SEP-07 的“正式删除 BLOCKED”摘要已过时。API 35 生产 WebView 跟踪记录中，SEP-01 触摸→Host→Store 拖动 1/1、复位触摸 2/2、立即重复复位 3/3；SEP-07 重复系列取消/批准 1/1。现更新为 **PARTIAL / HOLD**，只承认这些具体子路径；完整 Native/Skin 配对、触摸/TalkBack、版本冲突/恢复及实体/OEM 仍未签核。参见 [SEP-01 follow-up](../issues/PC-ISSUE-SEPARATION-CLEAR-TIMELINE-DRAG.md) 与 [SEP-07](../issues/PC-ISSUE-SEPARATION-WEB-FORMAL-DELETE.md)。
+
+## Separation — Native Host adapter namespace cleanup (2026-10-30)
+
+- 把仍位于 app `ui/v2/nativeui` 的三个 Host 文件移到 `ui/v2`，明确区分 Core/Store 投影适配与 `:native-skin` 的 Compose renderer；Host 逻辑及默认路径未变。`:app:verifyNativeSkinBoundary` 增加门禁，禁止 Native renderer 源文件回到 app 的 `nativeui` 路径。Clear、Core 与 Native fallback 未修改。
+- Native Host projection/Compose 定向 **49/49 PASS，11 suites**。完整 JVM **784 项、1 项失败**：`WebAiProposalReviewIntegrationTest.memoPagingContinuesTheSortedProjectionWithoutStoreWrites` 等待 Memo Host snapshot 60 秒超时；独立复跑 **1/1 PASS**，根因未确定并保留 FAIL。两个源码边界、AndroidTest Kotlin 编译、Debug APK、lint **PASS**（构建任务 144/144；0 lint errors / 55 warnings）。APK SHA-256 `8A793156DF9690840E28A0B19A0D5F26FB02F53FACE8B5403E1E097E5F1DA7D2`。
+- 全量失败/隔离复跑/非测试构建日志 SHA-256：`90003F110A68405FB128D3F9F52654F19209B6F08273F5E831CECA6C6E237A3B` / `4E83DFB5E79F5F042274F338BBB8D3042564B50AE2ABCC203816CACC072A76E6` / `B451F7C98966C87180F01FD46A5CC802FBBC9F19FB82EDC2C4314D798D947933`；证据在 `.local/android-test/reports/native-host-adapter-namespace-20261030/`。ADB 无在线设备、AVD 列表为空；Native/Skin 设备回放 **NOT TESTED**。
+- 代码提交 `aab3e52e7e6edafb814f39124041353419ebf8c7` 已推送；结案报告：[PC-ISSUE-SEPARATION-NATIVE-HOST-ADAPTER-NAMESPACE](../issues/PC-ISSUE-SEPARATION-NATIVE-HOST-ADAPTER-NAMESPACE.md)。SEP parity 和整体分离仍开放，继续推进后续自动化工作。

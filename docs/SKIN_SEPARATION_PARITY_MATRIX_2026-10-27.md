@@ -10,6 +10,10 @@ Last broad source inventory pass: 2026-10-28, separation source snapshot `cc3102
 
 The source audit and SkinPackageManagerTest confirm the Bridge v1 policy: host.read gates state projection; host.action gates both action messages and edit commands; host.edit is accepted and preserved for v3 compatibility but grants no access by itself. Studio preserves existing declarations, while its v3 mock is not runtime capability evidence. Giving host.edit independent authority would be a permission change and requires a versioned migration.
 
+## Native renderer module boundary update — 2026-10-30
+
+The first-party Native Compose renderers reside in `:native-skin`; `app/src/main/java/dev/powerfulcalendar/ui/v2/nativeui` contains no sources. Host-owned Core projection, editor/session orchestration, and Native renderer registration live under the app's `ui/v2` Host layer. `:app:verifyNativeSkinBoundary` now rejects Native renderer sources under the app's `nativeui` path. This is a source/module boundary result, not Native/Skin feature parity. Evidence and the 784-test result (including the retained Memo paging timeout) are in [PC-ISSUE-SEPARATION-NATIVE-HOST-ADAPTER-NAMESPACE](issues/PC-ISSUE-SEPARATION-NATIVE-HOST-ADAPTER-NAMESPACE.md).
+
 ## Initial feature inventory
 
 In the table, Studio support means source availability, not proof of arbitrary visual restructuring. Android/WebView and physical evidence must be filled per feature as execution proceeds.
