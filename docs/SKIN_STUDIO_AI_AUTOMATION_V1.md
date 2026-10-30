@@ -129,13 +129,15 @@ compatibility.
 
 The interface enables arbitrary v3 source/asset file CRUD and generic JSON tree edits;
 it does not impose a formal page/component schema on `project.json`. The browser Studio
-also exposes direct project JSON editing, supported UTF-8 file creation/deletion, and
-arbitrary asset add/replace/delete with text-reference guards; this is not a semantic
-component-tree editor. Host capabilities remain requests declared by the skin and never
-constitute user approval. Browser Mocks and successful package validation do not prove
-Android behavior, accessibility, device compatibility, or Core/Host/Skin parity. Full
-visual component editing, Host Bridge parity, default-skin cutover, and physical-device
-acceptance remain separate open work.
+also exposes direct project JSON editing, supported UTF-8 file creation/deletion,
+arbitrary asset add/replace/delete with text-reference guards, and explicit controls for
+the three supported Host capability declarations. Capability controls change only the
+package request; they do not bypass Android Host validation or user review. These are
+not a semantic component-tree editor. Host capabilities remain requests declared by the
+skin and never constitute user approval. Browser Mocks and successful package validation
+do not prove Android behavior, accessibility, device compatibility, or Core/Host/Skin
+parity. Full visual component editing, Host Bridge parity, default-skin cutover, and
+physical-device acceptance remain separate open work.
 
 ## Automated verification
 

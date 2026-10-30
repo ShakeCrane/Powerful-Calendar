@@ -1568,3 +1568,13 @@ Updated: 2026-10-24
 - 定向 adapter/renderer Compose **4/4 PASS**；完整 JVM **780/780、123 suites、0 failures/errors/skips**；Native/Skin 边界、AndroidTest Kotlin 编译、Debug APK 与 lint 全部通过，完整门禁 **152/152 tasks PASS**。APK 66,516,562 bytes，SHA-256 `F042C5AA496099E577F8B04FB7C2BADD25FE2ED9E9C17B0FC26D49017E52A487`。
 - 定向/完整门禁日志 SHA-256：`781640A2BB01B9BDADEFC4E6EA5C389770D16F6CA0D4DBB0DB68CAA17AA0D88F` / `915E2C6AE3B6F09090C7837FACB195D71842963E0DA04CE478EFEBD92415455C`；日志在 `.local/android-test/reports/native-timeline-inspection-content-separation-20261030/`。ADB 无在线设备；Android Emulator、真机/OEM 与 TalkBack **NOT TESTED**，AndroidTest 源码已编译但未执行。
 - 代码提交 `6d8a459d04b4d4c1e6250a9091c98ad8789600ca`（`refactor(皮肤分离): 迁入时间轴只读查看内容`）已推送到 `origin/feat/skin-first-separation`。SEP-01 整体仍 **BLOCKED** 于 WebView 手指拖动 Host/Camera 写回链路；Native 详情内容只是已测试子路径。见 [PC-ISSUE-SEPARATION-NATIVE-TIMELINE-INSPECTION-CONTENT](../issues/PC-ISSUE-SEPARATION-NATIVE-TIMELINE-INSPECTION-CONTENT.md)。
+
+## Separation — Studio Host capability request editor (2026-10-30)
+
+- 浏览器 Skin Studio 新增 `host.read`、`host.action`、`host.edit` 显式请求编辑器。打开/导入/预览/源码编辑/导出只同步当前声明；用户切换控件后才写入 Manifest。Host 仍独立校验能力，声明不构成用户授权；Clear、Core、默认皮肤及 Native 回退未修改。
+- Studio 源编辑定向 **5/5 PASS**，全量 Python **62/62 PASS**；Chrome 156/CDP 真实页面回归通过控件编辑、导出/重导入以及源/资源字节保留。首次全量中的三项失败是 Native renderer 移入 `:native-skin` 后未更新的旧架构断言，修正断言后同一全量通过。JS 语法和 `git diff --check` 通过。日志：`.local/android-test/reports/studio-capability-ui-20261030/`；Python SHA-256 `F9F0C43E8BAD264AB64048612FEB36975D319E89DA83C504F63826F55D2F73D6`，Chrome E2E SHA-256 `A20A5523DB6121803E13E85CC3C64D24E690BC358FBA2F5EE9721DE5560C3EF3`。
+- 代码提交 `35b72f026027f69185f9484a99f0d5b79fc45b0c` 已推送到唯一集成主线。完整 SEP-15 仍 **INCOMPLETE**；语义组件树、绑定和任意皮肤的完整编辑/重构尚未交付。结案报告：[PC-ISSUE-SEPARATION-STUDIO-CAPABILITY-EDITOR](../issues/PC-ISSUE-SEPARATION-STUDIO-CAPABILITY-EDITOR.md)。
+
+## Status correction — recent API 35 evidence (2026-10-30)
+
+- 较早文档中 SEP-01 的“拖动未到 Bridge”和 SEP-07 的“正式删除 BLOCKED”摘要已过时。API 35 生产 WebView 跟踪记录中，SEP-01 触摸→Host→Store 拖动 1/1、复位触摸 2/2、立即重复复位 3/3；SEP-07 重复系列取消/批准 1/1。现更新为 **PARTIAL / HOLD**，只承认这些具体子路径；完整 Native/Skin 配对、触摸/TalkBack、版本冲突/恢复及实体/OEM 仍未签核。参见 [SEP-01 follow-up](../issues/PC-ISSUE-SEPARATION-CLEAR-TIMELINE-DRAG.md) 与 [SEP-07](../issues/PC-ISSUE-SEPARATION-WEB-FORMAL-DELETE.md)。

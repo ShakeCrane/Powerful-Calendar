@@ -57,13 +57,13 @@
 
 | SEP | 本阶段状态 | 下一轮验收目标 |
 | --- | --- | --- |
-| SEP-01 时间轴 | **BLOCKED**（Native 锁定事件详情内容已迁入 `:native-skin`，Adapter/Renderer 4/4 TESTED；完整 JVM 780/780） | S0-TL-04 真正手指拖动：浏览器 → WebView → Host → Camera 写回，全链有实测闭环；保持时间、刻度、双翼和贪心标题 |
+| SEP-01 时间轴 | **PARTIAL / HOLD**（提交 `10da1cc` 的 API 35 生产 WebView 触摸→Host→Store 拖动闭环 1/1；缩放后复位触摸 2/2，立即复位重复 3/3。完整 Native/Clear 配对、TalkBack 与实体/OEM 未签核） | 完成相同事件/相机/时区的 Native/Skin 配对回放；保持时间、刻度、双翼和贪心标题；补设备矩阵 |
 | SEP-02 月历 | 部分路径 TESTED | 选日、新建、打开重复实例、返回与状态恢复双版本回放 |
 | SEP-03 Memo/Todo | 部分路径 TESTED | 翻页、完成状态、恢复、重复和极端内容对照 |
 | SEP-04 新建 | 主要路径 TESTED | 四类型、不同入口、默认时间、无 Diff、重建和 DST 全流程双版本回放 |
 | SEP-05 正式编辑 | **CODE COMPLETE**; Native formal editor shell in `:native-skin`; Host Compose/Robolectric/full JVM tested; device not signed off | Android 真实设备编辑、类型转换、冲突与恢复 |
 | SEP-06 重复实例 | 部分范围 TESTED | 单次/此后/整个系列，occurrence key、身份、提醒和重启后对照 |
-| SEP-07 正式删除 | **BLOCKED** | 真正 Android WebView → 受信 Host 审核 → 确认/取消/版本冲突 → Store；不能仅据 JVM/Mock 签核 |
+| SEP-07 正式删除 | **PARTIAL / HOLD**（API 35 生产 WebView、Host Compose 与 Store 的重复系列取消/批准闭环 1/1；该测试用 DOM 点击与 Compose 语义触发，不是触摸验收） | 补真实触摸/TalkBack、并发版本冲突、恢复工作流与 Native/Skin 配对；不能据此签核整项 |
 | SEP-08 草稿卡组 | Native Compose renderer **CODE COMPLETE** in `:native-skin`; focused Host/Compose cases TESTED; overall SEP remains PARTIAL | 批次导航、patch、flush、提交/拒绝、撤销、IME 与异常恢复的完整双路径回放；AndroidTest 设备执行 |
 | SEP-09 AI 聊天 | 部分路径 TESTED；Native 图片授权、OCR 核对与提取文件/ICS 预检视图已 CODE COMPLETE 于 `:native-skin`，focused Compose/Host 附件及全量 JVM TESTED；设备 NOT TESTED | 真正 Picker/OCR 权限与设备闭环、记录持久化、错误/重试及可用免费 Provider |
 | SEP-10 AI 提案 | 部分路径 TESTED；Native 提案审核卡、批量授权、卡住批次强制解除审核及锁定期间只读事件详情均 CODE COMPLETE 于 `:native-skin`；本路径 focused Compose 2/2，当前全量 JVM 774/774 TESTED；Android Emulator NOT TESTED（无 AVD，SDK emulator package metadata 缺失） | 四按钮、完整 CREATE/REPLACE/DELETE、多轮、不完整提案及跨进程恢复；正式发布只经 Host 授权 |
@@ -71,7 +71,7 @@
 | SEP-12 导航/Picker | **INCOMPLETE**; Native root/notice/modal/system Picker renderers CODE COMPLETE in `:native-skin`; Picker Robolectric + full JVM tested | 页面等价、多窗口/IME/返回导航和 Android 设备 Picker 验收 |
 | SEP-13 包格式 | 有限路径 TESTED；Native 设置页皮肤启用/删除确认已 CODE COMPLETE 于 `:native-skin`，focused Compose、Native 设置与导出路径 TESTED；设备 NOT TESTED | 官方与第三方包同权限，同源构建、导入/导出/升级及危险包检查 |
 | SEP-14 切换/故障恢复 | **INCOMPLETE**；Native 旧数据库迁移/旧格式备份确认展示已 CODE COMPLETE 于 `:native-skin`，focused/full JVM TESTED；设备 NOT TESTED | 损坏包、WebView 崩溃、进程死、未保存编辑、设备重启后数据保持及独立恢复入口 |
-| SEP-15 Skin Studio | **INCOMPLETE** | 可编辑任意页面、组件树、脚本、样式、资源、绑定；无损源/视图往返；AI CLI 操作与文档可执行 |
+| SEP-15 Skin Studio | **INCOMPLETE**；浏览器现可显式编辑三项 Host 能力请求，源/资源回归 62/62 与 Chrome 导出重导入通过 | 完成全定制内容的无损编辑/重构、可视结构能力、绑定及 AI 工作流；跨皮肤与 Android 行为仍需验证 |
 | SEP-16 可信写入 | **INCOMPLETE** | 各类正式增删改、草稿发布、AI 批量提交、版本变更和取消操作共用 Host 受信审核 |
 
 当前 **没有任何一项可以仅凭阶段报告认定为完整 100% Native/Skin 等价签核**。
