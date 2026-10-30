@@ -23,6 +23,11 @@ or gaining Host capabilities. Clearing the compiled registry still restores the 
 fallback. This profile is independent of `.pcskin` package selection and is not an executable or
 Skin Studio package.
 
+The first-party Native screen sources now declare `dev.powerfulcalendar.ui.v2.nativeui`; shared
+Host projections such as `TodoProjection` remain in `dev.powerfulcalendar.ui.v2`. This is a Kotlin
+package boundary inside the existing `:app` module. It does not create an independent Gradle
+module, process, APK, or security sandbox, and does not change Native renderer IDs or behavior.
+
 ## Ten replaceable presentation surfaces
 
 | Surface | Typed contract | Default fallback |
@@ -50,12 +55,12 @@ In app/src/main/java/dev/powerfulcalendar/ui/v2:
 - CompiledSkinTimeline.kt — timeline context, yOf geometry, default preview
 - PresentationSkinRuntime.kt — route registry, settings controls and navigation
 - skins/NativeVisualSkin.kt — explicit Native profile adapters for the ten presentation surfaces
-- native/ — first-party Native timeline, month, memo, AI, Deck, navigation and Settings UI implementations; `PowerCalApp.kt` remains the route/Host orchestrator
+- nativeui/ — first-party Native timeline, month, memo, AI, Deck, navigation and Settings UI implementations; `PowerCalApp.kt` remains the route/Host orchestrator
 - SkinnableDraftDeck.kt — controller adaptation with autosave, serialized guarded operations
 - SkinnableOverlays.kt — Compose Alert and Window slots
 - SkinnablePickers.kt — date/time imperative picker intents
 - SkinnableChrome.kt — root viewport and message banner
-- NativePowerNavigation.kt — stock navigation
+- nativeui/NativePowerNavigation.kt — stock navigation
 - skins/ActiveVisualSkin.kt — single source-compiled profile selection and registration
 - skins/StudioExampleDeck.kt, skins/StudioExampleOverlay.kt, skins/StudioExamplePicker.kt, skins/StudioExampleChrome.kt — runnable reference implementations
 

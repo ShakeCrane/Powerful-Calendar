@@ -49,3 +49,7 @@ JUnit XML SHA-256：`GlassComposeTest` `3DD7EE7C3731598D451D7073D67F229265D907DA
 没有完整重跑 728 项测试，最近全量回归的 Clear Memo 失败仍开放；Native Settings/OEM 权限页、TalkBack、不同字号以及全部 SEP Native/Skin 双版本回放没有由本 Issue 签核。Clear 不在当前实现范围。
 
 实现提交：`7a1d0bd94cff07d3baba6fd3d7439c01f09befe5`（`refactor(皮肤分离): 归组原生界面源码`），已推送至 `origin/feat/skin-first-separation`。
+
+## 后续状态（2026-10-30）
+
+目录归组后仍留在公共 Kotlin package 的缺口，已由 [Native package boundary Issue](PC-ISSUE-SEPARATION-NATIVE-PACKAGE-BOUNDARY.md) 的实现提交 `9dcdf70828a65e5e0ccb996ac64251426d13ccb6` 处理：Native screen 文件现在声明 `dev.powerfulcalendar.ui.v2.nativeui`。它们仍处于原 `:app` Gradle module；本后续提交没有声称建立 module 隔离或安全沙箱。

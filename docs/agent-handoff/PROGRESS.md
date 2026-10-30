@@ -1,5 +1,13 @@
 # Core freeze progress
 
+## Separation — Native screen package boundary (2026-10-30, CODE COMPLETE; focused JVM/build TESTED; device NOT TESTED)
+
+- 将七个 Native UI 源文件从旧 `ui.v2.native` 目录迁入 `ui.v2.nativeui` 包；共享 `TodoEntry`/`TodoProjection` 精确保留在 Host 的 `ui.v2` 包中。更新了运行时、编译时间轴、编辑器、草稿卡组和相应单测/仪器测试的包导入。没有改变屏幕实现、Host 操作、持久化或 skin profile ID；Clear 源码/资源未触碰。
+- `verifySkinSourceBoundary` 与主代码、单测、androidTest 三类 Kotlin source set 强制编译 **PASS**。Native 时间轴/表单/无障碍/皮肤注册等 **44/44 定向 JVM 测试 PASS**（10 suites）；Debug APK 构建、`:app:lintDebug` **PASS**。Memo Host 投影与基线源码抽取正文逐字一致；代码全仓扫描未发现活动源码中旧包 FQN 引用。
+- Android 仪器测试 **NOT TESTED**：`adb devices -l` 无在线设备，`emulator -list-avds` 未列出可启动 AVD。上一目录归组 Issue 的 API35 结果属于 `PREVIOUS PASS`，不代替本 SHA 设备验证。全量 JVM 套件本切片未重跑；最新历史全量结果见 Native profile Issue（728 项中 727 PASS、Clear Memo 分页 1 FAIL），不声称全量 PASS，也不在本范围修 Clear。
+- 实现提交 `9dcdf70828a65e5e0ccb996ac64251426d13ccb6`（`refactor(皮肤分离): 建立原生界面包边界`）已推送到 `origin/feat/skin-first-separation`。日志、测试 XML 与 APK SHA 见 [Native package boundary Issue](../issues/PC-ISSUE-SEPARATION-NATIVE-PACKAGE-BOUNDARY.md)。
+- 该改动建立 Kotlin namespace，不是独立 Gradle module 或安全隔离；Native 与 Host 仍同处 `:app` module。Clear 当前状态不变。
+
 ## Separation — Native screen source grouping (2026-10-30, focused tests PASS; full suite not rerun)
 
 - 将 Native 时间轴、月历、Memo、AI、Draft Deck、底部导航实现整理到 `app/src/main/java/dev/powerfulcalendar/ui/v2/native/`；从 `PowerCalApp.kt` 抽出 `NativeToolsPage` 及其私有视觉 helper。Kotlin package 和调用 API 保持不变；抽出函数体与原来源对比（换行归一后）完全一致。
