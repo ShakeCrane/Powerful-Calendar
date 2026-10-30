@@ -170,6 +170,8 @@ private enum class Page { TIMELINE, MONTH, MEMO, AI, SETTINGS, TOOLS }
 
 private data class BatchReview(val mode: AiBatchRunner.Mode, val cards: List<dev.powerfulcalendar.core.DraftCard>)
 
+internal const val SKIN_RECOVERY_GESTURE_COPY = "紧急回退：在屏幕上相隔的两处位置交替快速轻点，共连续轻点 8 下，即可强制恢复原生皮肤。"
+
 internal fun nativeRecoveryMessage(persisted: Boolean): String = if (persisted) {
     "已切换至原生设置页，日历数据及已安装皮肤均保留。"
 } else {
@@ -2370,7 +2372,7 @@ fun PowerCalApp(
                 Text(
                     """即将启用“${item.name}”。第三方皮肤可能遮挡设置入口，甚至导致界面无法操作。
 
-紧急回退：在屏幕上相隔的两处位置，用双指轮流快速轻点，共连续敲击 8 下（每指 4 下），即可强制恢复原生皮肤。
+$SKIN_RECOVERY_GESTURE_COPY
 
 回退不会删除日历事件、草稿或已安装皮肤。导入新皮肤本身不会自动启用。""".trimIndent()
                 )

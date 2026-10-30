@@ -4,7 +4,7 @@ import kotlin.math.hypot
 
 /**
  * Secret native fallback: 8 brief alternating taps (A B A B A B A B)
- * in two distinct zones, representing four alternating taps per finger.
+ * in two distinct zones. Detection uses positions and does not identify physical fingers.
  *
  * This recognizer consumes *completed* taps; the Activity observes raw touch
  * dispatch before forwarding events to any WebView or Compose skin.
