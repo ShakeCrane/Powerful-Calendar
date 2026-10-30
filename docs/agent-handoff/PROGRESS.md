@@ -1,5 +1,12 @@
 # Core freeze progress
 
+## Separation — Native formal-write review presentation (2026-10-30, CODE COMPLETE; focused/build TESTED; full JVM FAIL; device NOT TESTED)
+
+- 将 `PowerCalApp` 内联的正式写入审查展示迁入 `:native-skin`；`:skin-api` 仅承载标题、目标/重复范围摘要、说明和差异行。Host 继续保留审查 token、快照、版本核验、授权和写入回调；没有改 Core、Bridge 安全语义、Clear、默认皮肤或 Native 回退。
+- Native Compose 定向回归 **2/2 PASS**；`verifyNativeSkinBoundary`、`verifySkinSourceBoundary`、AndroidTest Kotlin 编译、Debug APK 与 lint **PASS**。完整 JVM **782 项 / 1 项失败**：`WebAiProposalReviewIntegrationTest.memoPagingContinuesTheSortedProjectionWithoutStoreWrites` 超时且 `memoCount=0`；独立重跑 **1/1 PASS**，全量门禁仍记 FAIL。
+- APK 66,516,562 bytes，SHA-256 `6154B14BCAF66C2EE6EAD6F636700EB4DB0628B8F75BDF9E1BC04FC5995C3230`。Focused/full/isolated-build 日志 SHA-256：`11DAED52137B8013776197439F8E0576604A44D36B4026DA52068972A753B651` / `3A1469D58B55EAE987CD988AB9D2CE66454B9A8FBBE38A06D47C11DE351BB606` / `C13BE2234D6FF41D920C2451710B3E098F44C6785F4752B1E578036A68EABCF4`，位于 `.local/android-test/reports/native-formal-write-review-20261030/`。ADB 无在线设备；仪器与真实设备 UI **NOT TESTED**。
+- 代码提交 `c7b7567cf1f89783978be4a400399c135f49a1ac` 已推送至 `origin/feat/skin-first-separation`。见 [Native formal-write review Issue](../issues/PC-ISSUE-SEPARATION-NATIVE-FORMAL-WRITE-REVIEW.md)。Clear 当前损坏状态保持未修改。
+
 ## Separation — Native legacy migration and backup confirmation boundary (2026-10-30, CODE COMPLETE; 768 JVM TESTED; device NOT TESTED)
 
 - 将 Native 设置中旧数据库只读迁移和旧 flat backup v2 的确认标题、风险说明与按钮迁入 `:native-skin`。Host 保留用户选中的备份 JSON、迁移器、解析/完整性校验、空库要求、恢复执行、提醒重建和所有数据操作回调。未改 Clear 源码、Core、存储语义、默认皮肤或 Native 回退。
