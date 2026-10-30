@@ -1,5 +1,12 @@
 # Core freeze progress
 
+## Separation — Native legacy migration and backup confirmation boundary (2026-10-30, CODE COMPLETE; 768 JVM TESTED; device NOT TESTED)
+
+- 将 Native 设置中旧数据库只读迁移和旧 flat backup v2 的确认标题、风险说明与按钮迁入 `:native-skin`。Host 保留用户选中的备份 JSON、迁移器、解析/完整性校验、空库要求、恢复执行、提醒重建和所有数据操作回调。未改 Clear 源码、Core、存储语义、默认皮肤或 Native 回退。
+- 定向测试 **31/31 PASS**：Native Compose 2 项、Host 迁移 1 项、迁移规则 4 项、Backup Envelope 24 项；全量 JVM **768/768 PASS，117 suites**。完整门禁 `BUILD SUCCESSFUL`、152 actionable tasks；Native/Skin 源码边界、AndroidTest Kotlin 编译、Debug APK assemble、lint 全部通过。
+- APK `app/build/outputs/apk/debug/app-debug.apk`：66,500,178 bytes，SHA-256 `C975DFDB5DBBE34525A517930FBD9E79FC3871C14FD015F7126694F9E9DDE01B`。定向日志 `.local/android-test/reports/native-legacy-data-review-20261030/focused.log` SHA-256 `4690C13F015F78DB57E01FD4D37EDAD6DAD7C2B99B6A62CFBCE1805BC9CBF555`；完整门禁日志 `.local/android-test/reports/native-legacy-data-review-20261030/full-gate.log` SHA-256 `3B7F4042F9756B88DEEAA0ABC0C1EBED67A5C007512D9217C07D3B312CE354E1`。
+- ADB 无在线设备；Android UI instrumentation 与真机/OEM 恢复路径 **NOT TESTED**。SEP-14 仍为 INCOMPLETE。独立报告：[Native legacy data review Issue](../issues/PC-ISSUE-SEPARATION-NATIVE-LEGACY-DATA-REVIEW.md)。实现提交 `1157da3e182870673a77a7edf518377485cfb369`。
+
 ## Separation — Native skin catalog activation/deletion confirmation boundary (2026-10-30, CODE COMPLETE; focused/build TESTED; full JVM gate FAIL; device NOT TESTED)
 
 - 将 Native 设置页的皮肤启用前警告、恢复手势说明、删除确认文案与按钮迁入 `:native-skin`。`:skin-api` 只传入 review kind、名称/说明和回调；Host 保留 skin identity、编辑器安全检查、注册表选择/删除、列表刷新与结果消息。没有改 Clear 源码、默认皮肤、自动启用行为或 Native 回退。
