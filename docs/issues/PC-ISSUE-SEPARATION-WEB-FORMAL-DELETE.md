@@ -4,7 +4,7 @@
 
 **历史状态（2026-10-28）：PARTIAL / OPEN**。Host 桥的受保护删除流程、Clear 删除入口及 Skin Studio Mock 已实现并通过 JVM/浏览器回归；API 35 WebView instrumentation 因 AVD 断连未取得测试结果。SEP-07 与整体 Native/Skin parity 仍为 `NOT TESTED`，不能把浏览器 Mock 当成设备行为或完整功能等价。最新重建验收 `S0-ED-05` 的状态见本文末尾 2026-10-30 复核记录。
 
-**当前状态（2026-10-30）：PARTIAL / OPEN。** API 35 Android WebView 的重复系列删除、Host 取消/批准与单次 Store 删除闭环现已通过 1/1 仪器测试；这是受测窄项，不代表全 SEP-07、Native/Skin parity、触摸可访问性或实体/OEM 签核完成。
+**当前状态（2026-10-31）：PARTIAL / HOLD。** API 35 Android WebView 的重复系列删除、Host 取消/批准与 Store 删除闭环已经通过实际 Android 触屏 3/3；整项仍缺并发冲突/恢复、TalkBack、完整 Native/Clear 对照及实体/OEM 验收，不代表 SEP-07 已签核。
 
 ## 根因与 Native 对照
 
@@ -68,9 +68,9 @@ Native 正式事件编辑器调用 `EditSession.delete()`，最终复用 `PowerS
 - 当前 follow-up 实现提交 `cb5e23d1ead0e4d7d21ae717bbf763685747f5e6`，提交说明 `feat(分离): 在 Clear 提供正式事件删除入口`，已正常推送至 `origin/feat/skin-first-separation`。完整 Gradle / Studio / CDP 证据对应该提交中所含的同一工作树快照；本地 `verification.json` 记录其执行结果和制品哈希。
 - 并行改动 `docs/agent-handoff/PROGRESS.md`、`project.json`、Inter 字体许可证、`web/index.html` 和 `web/style.css` 保持未暂存；本 follow-up 不拥有这些变更。
 
-## 后续
+## 当前未完成事项
 
-在可用 API 35 虚拟设备上重跑 Clear WebView 确认/取消/重复请求 instrumentation，并完成冲突对照、正式事件恢复及草稿恢复的 Native/Skin 等价。SEP-07 仍开放；整体分离与 cutover 不因本切片改变状态。
+实际 Android 触屏确认/取消/批准已在 2026-10-31 follow-up 完成。仍需覆盖 TalkBack、正式事件并发版本冲突、正式事件恢复及草稿恢复的 Native/Skin 等价回放；SEP-07 保持开放，整体分离与 cutover 状态不变。
 
 ## Separation S0-ED-05 current verification (2026-10-30)
 
@@ -108,4 +108,13 @@ Native 正式事件编辑器调用 `EditSession.delete()`，最终复用 `PowerS
 | Android test result PB | SHA-256 `ACD1EC1DB446044598C3D4A6F84713C2E3AA14ECDFAAD57F0C2C315CFAB3C791` |
 | 运行期间 logcat | SHA-256 `99698B115B515E602416AE4FE67EE14F60D5BFE4609E3B6D01D847EAEEE6BE00` |
 
-全 SEP-07 尚缺真实触摸与 TalkBack、正式事件并发冲突、恢复工作流、Native/Clear 同数据完整回放及实体/OEM 验收；这些未完成项继续保持未签核。
+截至 2026-10-30，SEP-07 尚缺真实触摸与 TalkBack、正式事件并发冲突、恢复工作流、Native/Clear 同数据完整回放及实体/OEM 验收。次日的实际触摸验证见下节；其余未完成项仍保持未签核。
+
+## API 35 touchscreen follow-up（2026-10-31）
+
+- 在 `codex-clear-api35`（Android 15 / API 35，`emulator-5568`，WebView 124.0.6367.219）对当前集成 Clear 执行新增的 `WebSkinFormalDeleteTouchInstrumentedTest.touchscreenDeleteWaitsForHostApprovalAndCancelPreservesSeries`。测试从实际渲染 WebView 测量事件和删除按钮矩形，将屏幕坐标转换后发送 Android `SOURCE_TOUCHSCREEN` `MotionEvent`，并要求 WebView 产生 `event.isTrusted == true` 的点击及 `deleteEvent` action；不是 DOM click 或 Compose 语义代替触摸。
+- 测量记录：事件入口 CSS 矩形 `(216.095,471.155)-(300.095,515.155)`，屏幕触点 `(676.56,1429.72)`；删除按钮 CSS 矩形 `(209.595,728.238)-(343.548,770.238)`，屏幕触点 `(724.993,2101.522)`。触摸删除后 Host 确认出现；取消不改变正式系列、identity 数、commit 数或 pending 数。再次触摸并批准后，所有系列实例消失，恰好增加一项 commit，identity 数不变且无 pending 草稿。
+- 同一直接 instrumentation 命令连续 **3/3 PASS**。第一次尝试暴露测试等待 Compose 对话框完全收起前便再次触摸的 harness race；保留失败日志，随后增加对话框消失、Compose idle 和短暂帧间隔，再连续通过三次。生产代码未因该测试 harness 问题修改。
+- 证据目录：`.local/android-test/reports/sep07-touch-delete-20261031/`。三次通过日志 SHA-256：`47C1F2FB371F9BE3FCB951D342348A3C24FCFAEFA92BD58B6B7E37A2BFB3EC55`、`FDF271E3C497F857F37A7312AEFC0839BC0C61FD6971DD73074953E35AB3541C`、`5A76B649A1C2ACBADB31C8F032534E9C3179E18693D8032A150BDDD29764C784`；失败 harness 日志 SHA-256 `D9376ED30923255354744CFDA7AA4E8A7FB2D4005A05D4E319820130C03F96AF`；实际坐标及可信点击轨迹 SHA-256 `2A2B42B6B0B839A9EE059B9BA9E2054E5702C5B21B89B2413FEBA794E40A2C54`。
+- 同一工作树完整离线门禁：`verifySkinSourceBoundary`、`verifyNativeSkinBoundary`、Debug/AndroidTest 组装、Lint 和 **784/784 JVM tests（125 suites，0 failures/errors/skips）**全部通过，171/171 tasks 成功；Lint 0 errors / 55 warnings。完整日志 SHA-256 `73797AAFB602EC08E3689C0CFC2ECA52E85799A9476D9844B9AEC966C1516A90`。Debug APK SHA-256 `779B0CF777BD5E1EE377249CD4156DB426DC87690B6D35EDD458E5F27A27CD1B`；AndroidTest APK SHA-256 `0749F2A89444948719C48393D05028D316164F79244A6FAB842650E973655016`。该门禁工作树还含两份其他 Agent 的未提交 AndroidTest 源码；本次提交只包含本测试与其文档，未包含那两份文件。
+- SEP-07 继续 **PARTIAL / HOLD**：TalkBack/无障碍实际操作、并发版本冲突、正式事件恢复、完整同数据 Native/Clear 回放及实体/OEM 验收仍未完成。
