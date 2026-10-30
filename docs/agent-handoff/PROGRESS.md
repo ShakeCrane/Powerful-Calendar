@@ -27,6 +27,12 @@
 - Skin Studio Python **61/61 PASS**；Chrome Headless/CDP Preview 从 Clear 月历“导入选项”点击迁移项，Mock 收到动作并断言无数据库读写/删除，**PASS（Mock）**。canonical Clear 9 files / 392,170 bytes；源码、checked-in skin、APK 中资源 SHA-256 均为 `af640cbca89a870c2d1ea733eb562ed35e6082b75b08fe7aa37afa9d4ff6f98a`。证据均在 `.local/android-test/reports/separation-s0-st12-migration-20261030/`。
 - `adb devices -l` 没有在线设备，AndroidTest APK 仅构建，生产 Android WebView、设备迁移与旧闹钟 handoff **NOT TESTED**。S0-ST-12 保持 **PARTIAL / HOLD**，不签核整体 parity/GO；原生确认继续提示用户检查旧时钟闹钟。独立报告：[PC-ISSUE-SEPARATION-LEGACY-MIGRATION](../issues/PC-ISSUE-SEPARATION-LEGACY-MIGRATION.md)。实现提交并推送：`2a2cb7ab7bf500d761f0594c97ee4ede797cbd7b`（`fix(皮肤分离): 接入旧版数据迁移并收尾失败批次`）。
 
+### Follow-up — S0-ST-12 migration poller SQLite BUSY (2026-10-30)
+
+- A forced full run found the read-only status poll in LegacyHostMigrationTest could overlap an active writer transaction; SQLITE_BUSY escaped the test poller. The fix retries only SQLiteDatabaseLockedException within the existing deadline; unexpected failures still fail. Production LegacyImporter was unchanged.
+- Before-fix full-run log: .local/android-test/reports/separation-s0-st10-gesture-copy-20261030/full-gradle-final.log, SHA-256 78587A569CAD3BC7BEE14424991B54B3C7B2577D9F7EA2B10317C09E39442949. Focused post-fix test **1/1 PASS**: .local/android-test/reports/separation-s0-st12-migration-20261030/sqlite-busy-poll-fix-targeted.log, SHA-256 E4477F1C020AB52DBC146C811F49E947129692FD16810AA27C5584A6F345238F.
+- Later full offline Gradle **727/727 JVM, 100 suites, 0 failures/errors/skips; 88/88 tasks PASS; lint 0 errors / 53 warnings**; log SHA-256 68D8D1CFFDCA45F152608A026E81D39C54A89C58A3EBDBC11E7947BC30A278FB. Commit b913839 is pushed. Actual Android migration WebView/SAF and old-alarm handoff remain NOT TESTED; S0-ST-12 stays PARTIAL / HOLD.
+
 ## Separation — Clear AI 批次实时进度 `S0-AI-04a`（2026-10-30，Host/Preview PASS；Android WebView HOLD）
 
 - 根因：`AiBatchRunner` 原已逐项提供 `onProgress(done,total)`，Clear 已渲染 `aiBatch.progress`，但 `PowerCalApp` 生产投影始终传 `progress=null`。

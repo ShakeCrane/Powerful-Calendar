@@ -46,3 +46,13 @@ Clear 需要能发起旧版 PowerCal 数据迁移；迁移必须继续由 Androi
 - 本 Issue 的 Host 代码和自动化行为为 **PASS**；`S0-ST-12` 的设备/旧闹钟交接与总体分离 parity 继续 **PARTIAL / HOLD**，不构成整体 GO。
 
 实现提交：`2a2cb7ab7bf500d761f0594c97ee4ede797cbd7b`（`fix(皮肤分离): 接入旧版数据迁移并收尾失败批次`，已推送至 `origin/codex/separation-s0-timeline-drag`）。证据目录：`.local/android-test/reports/separation-s0-st12-migration-20261030/`。
+
+## Follow-up — SQLite BUSY in migration test polling（2026-10-30）
+
+A later forced full Gradle run exposed a test-harness race in LegacyHostMigrationTest. While the migration writer transaction was active, the test opened a read-only connection to poll the migrations table. SQLite returned SQLITE_BUSY, and the polling helper treated the transient lock as a test failure. This was a test synchronization defect; it did not indicate a production LegacyImporter failure.
+
+- The test poller now catches only SQLiteDatabaseLockedException and retries within its existing wait deadline. Other exceptions still fail the test. No production migration code or data behavior changed.
+- The initial full-run failure is recorded at .local/android-test/reports/separation-s0-st10-gesture-copy-20261030/full-gradle-final.log (SHA-256 78587A569CAD3BC7BEE14424991B54B3C7B2577D9F7EA2B10317C09E39442949).
+- Focused LegacyHostMigrationTest after the harness fix: **1/1 PASS**; log .local/android-test/reports/separation-s0-st12-migration-20261030/sqlite-busy-poll-fix-targeted.log, SHA-256 E4477F1C020AB52DBC146C811F49E947129692FD16810AA27C5584A6F345238F.
+- Subsequent forced offline Gradle gate: **727/727 JVM, 100 suites, 0 failures/errors/skips; 88/88 tasks PASS; lint 0 errors / 53 warnings**. Log .local/android-test/reports/separation-s0-dk01-audit-20261030/full-gradle-post-gesture.log, SHA-256 68D8D1CFFDCA45F152608A026E81D39C54A89C58A3EBDBC11E7947BC30A278FB.
+- The gate assembled AndroidTest but did not execute migration instrumentation. Clear production WebView migration, actual device/SAF migration, and old-alarm handoff remain NOT TESTED; S0-ST-12 stays PARTIAL / HOLD. Test-harness commit b913839 is pushed to origin/codex/separation-s0-timeline-drag.
