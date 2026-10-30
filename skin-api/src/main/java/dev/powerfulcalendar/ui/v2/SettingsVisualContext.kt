@@ -39,7 +39,7 @@ data class SettingsVisualEffects(
     val reduceMotion: Boolean = false
 )
 
-/** Non-sensitive profile display state for the Native settings renderer. */
+/** Profile display value supplied to the built-in Native settings renderer. */
 data class NativeProtectedProfileDisplay(val displayName: String)
 
 /** Host-owned profile edits; persistence remains in the app process. */
