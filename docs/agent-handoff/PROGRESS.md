@@ -1,5 +1,12 @@
 # Core freeze progress
 
+## Separation — Native Timeline renderer module boundary (2026-10-30, CODE COMPLETE; 749 JVM TESTED; device NOT TESTED)
+
+- 将 Native `TimelineScreen` 与时间轴布局/手势/标题测量辅助代码迁入 `:native-skin`；新增 `:skin-api` 纯展示模型、相机/几何/动作接口与视觉 slots。`:app` 保留重复槽展开、真实时间泳道、事件 owner/revision/original occurrence 映射、日期截止时区规则和 `TimelineCoordinate` 几何适配，并保留现有 app 路由签名。Native renderer 不引用 Core/Store。没有改 Clear、冻结 Core、持久化、皮肤选择或 Native fallback。
+- 定向时间轴回归 **51/51 PASS**（10 XML suites）；全离线门禁 **749/749 JVM PASS、109 XML suites、0 failure/error/skip、152 actionable tasks**。`:app:verifyNativeSkinBoundary`、`:app:verifySkinSourceBoundary`、AndroidTest Kotlin 编译、Debug APK assemble 与 lint 均 PASS。首轮全套有 1 项 Memo Host 60 秒超时；该项独立重跑 PASS，后续完整门禁 PASS。与 Native Timeline 源码无交集，间歇原因未确认。
+- APK `66,451,026` bytes，SHA-256 `D055E80721C44A09D53F7011CC8E9603D2469796C6E67547250F539DB7BF6884`；全门禁日志 SHA-256 `D37CC388D0F61884492DB2399F602D2AF41C5DC66860D7F9E64A9568888993AD`，证据在 `.local/android-test/reports/separation-native-timeline-module-20261030/`。ADB 与 AVD 均不可用，设备/Android instrumentation UI **NOT TESTED**。
+- 源码提交 `09a1fe27964bbeb5950706cdcdbdc99919616ef2` 已推送至 `origin/feat/skin-first-separation`。独立报告：[Native Timeline module Issue](../issues/PC-ISSUE-SEPARATION-NATIVE-TIMELINE-MODULE.md)。两份既有 WebSkin instrumentation 未暂存、未提交；Native Draft Deck 与剩余 Host adapters 仍在 `:app`，分离继续进行。
+
 ## Separation — Native Month renderer module boundary (2026-10-30, CODE COMPLETE; 745 JVM TESTED; device NOT TESTED)
 
 - 将 `MonthScreen` 从 `:app` 迁入 `:native-skin`。在 `:skin-api` 新增只含展示字段、原始视觉 token 与 Host Compose slot 的月历模型；Host 继续按既有 occurrence/date-window 规则投影，并用不透明 row key 解析回正式 owner 与原 recurrence occurrence key。月历样式通过原 Native Host slot 注入，业务回调仍由 Host 持有。没有修改 Clear、冻结 Core、持久化或皮肤默认选择。
