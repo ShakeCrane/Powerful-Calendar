@@ -112,6 +112,17 @@ limits enforced by the production validator.
    changes and hashes. Use the Studio browser preview and Android WebView/device
    acceptance for visual and runtime claims.
 
+### Android Back in a v3 skin
+
+The Host optionally calls the synchronous `window.PowerCalSkin.handleHostBack()` hook
+before its normal page-navigation or Native recovery action. Return `true` only after
+the skin has consumed Back by closing or changing its own transient UI; return `false`
+when Host navigation should continue. The hook grants no Host capability and must not
+perform business writes. Edit it as ordinary `web/app.js` source with `read-v3` / `edit-v3`
+or the Studio source editor. Verify both handled and unhandled cases in Studio Preview,
+then verify actual Android Back behavior in WebView; Chrome behavior alone is not Android
+device evidence.
+
 ### Re-editing an Android-installed v3 skin
 
 In Android Settings, export the installed third-party skin with the system file

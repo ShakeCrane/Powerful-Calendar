@@ -245,6 +245,10 @@ TalkBack parity.
 
 `OverlayVisualContext` and `OverlayVisualRenderer` are provided by `:native-skin`; `NativeOverlaySkin` mounts Material3 `AlertDialog` and Compose `Dialog` using the exact Host-provided content slots, action callbacks, `Modifier`, and `DialogProperties`. `SkinnableOverlays.kt` remains the Host adapter that selects the Native/compiled/runtime renderer and owns open/dismiss timing. The module renderer receives no Core, Store, controller, or authorization object. Native visuals and confirmation behavior are unchanged. This source-module move does not complete SEP-12 or prove device/TalkBack parity.
 
+### Optional v3 skin-owned Android Back dismissal hook (2026-10-31)
+
+For a full-canvas v3 Web skin, Android Back is first offered to the loaded skin through the optional synchronous `window.PowerCalSkin.handleHostBack()` function. Return `true` only when the skin consumed Back by dismissing or changing its own transient presentation; return `false` (or omit the function) to let the Host perform its existing page-navigation or Native recovery action. The Host treats the return value only as UI routing: it does not grant a capability, authorize a write, or pass data. The hook must not perform business mutations. Clear implements it by closing its topmost open HTML `<dialog>`. The Host continues to own active-editor checkpointing, protected confirmations, page navigation and the Native fallback. This is an additive runtime callback; the v1 WebMessage command schema and package capabilities do not change.
+
 ## Contract sources
 
 Source module map:

@@ -1834,21 +1834,26 @@ fun PowerCalApp(
         }
     }
 
-    // System back on the tools page returns to the timeline instead of leaving the app.
-    androidx.activity.compose.BackHandler(enabled = page != Page.TIMELINE.name && !deckOpen) {
-        page = Page.TIMELINE.name
-        scope.launch { reload() }
+    val dispatchSkinBack: ((() -> Unit) -> Unit) = { onUnhandled ->
+        if (fullCanvasWeb) WebSkinBridgeRuntime.requestSkinBack(onUnhandled)
+        else onUnhandled()
     }
 
-    // The hardware Back key is a secondary recovery route for an unusable Web skin.
+    // One stable handler avoids stale BackHandler priority while a full-canvas skin changes pages.
+    // A skin gets first refusal for its transient UI; the Host then navigates or recovers.
     androidx.activity.compose.BackHandler(
-        enabled = fullCanvasWeb && page == Page.TIMELINE.name &&
-            !deckOpen && editSession == null && !webEditing.hasLiveEditor()
-    ) { page = Page.TOOLS.name }
-
-    androidx.activity.compose.BackHandler(
-        enabled = fullCanvasWeb && page == Page.SETTINGS.name
-    ) { page = Page.TIMELINE.name }
+        enabled = !deckOpen && (page != Page.TIMELINE.name ||
+            (fullCanvasWeb && editSession == null && !webEditing.hasLiveEditor()))
+    ) {
+        dispatchSkinBack {
+            if (page == Page.TIMELINE.name) {
+                page = Page.TOOLS.name
+            } else {
+                page = Page.TIMELINE.name
+                scope.launch { reload() }
+            }
+        }
+    }
 
     // An active Web editor consumes Back before the native page navigation.
     // It performs the same durable checkpoint as a skin change, without

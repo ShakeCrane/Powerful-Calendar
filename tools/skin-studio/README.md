@@ -106,6 +106,11 @@ node --check tools/skin-studio/v3-studio.js
 运行前同样启动本地 Studio，并设置 `PUPPETEER_PATH` 和 `STUDIO_URL`。该 Preview
 Mock 不写 Android 数据，也不能代替 Android WebView 或实际 Store 验收。
 
+Clear 的 Android 返回键皮肤钩子预览回归为
+`tools/skin-studio/tests/e2e_v3_system_back_hook.cjs`；它验证打开 HTML 对话框时
+Clear 消费返回键、无对话框时将处理权留给 Host。Chrome/Studio Preview 只证明源码钩子
+可编辑且行为可预览；Android Back 的运行时结论仍以实际 WebView 仿真器或设备测试为准。
+
 ## 旧版 CLI
 
 v2 声明式皮肤：

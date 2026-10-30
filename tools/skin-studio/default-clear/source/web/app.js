@@ -1125,6 +1125,14 @@ function renderOptions(){
     }
   }
 }
-window.PowerCalSkin={receive,sendCommand:(name,requestId,extra={})=>
-  postBridgeMessage({version:1,type:"command",payload:{name,requestId,...extra}})};
+function handleHostBack(){
+  const dialogs=document.querySelectorAll("dialog[open]");
+  const active=dialogs[dialogs.length-1];
+  if(!active)return false;
+  active.close();
+  return true;
+}
+window.PowerCalSkin={receive,handleHostBack,
+  sendCommand:(name,requestId,extra={})=>
+    postBridgeMessage({version:1,type:"command",payload:{name,requestId,...extra}})};
 })();

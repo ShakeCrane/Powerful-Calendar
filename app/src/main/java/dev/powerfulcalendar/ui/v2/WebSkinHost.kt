@@ -99,10 +99,22 @@ internal object WebSkinBridgeRuntime {
     const val VERSION = 1
     var owner: Any? = null
     var onAction: (WebSkinAction) -> Unit = {}
+    /** Optional skin-only dismissal hook; it grants no Host action or write authority. */
+    var skinBackHandler: (((Boolean) -> Unit) -> Unit)? = null
     var onEdit: suspend (WebEditCommand) -> JSONObject = { cmd ->
         JSONObject().put("requestId",cmd.requestId).put("status","unavailable")
     }
     var state: () -> JSONObject = { JSONObject().put("bridgeVersion", VERSION) }
+
+    fun requestSkinBack(onUnhandled: () -> Unit) {
+        val handler = skinBackHandler
+        if (handler == null) {
+            onUnhandled()
+        } else {
+            handler { handled -> if (!handled) onUnhandled() }
+        }
+    }
+
     // Only the collector reads this Compose observable. Publishing from the application's
     // SideEffect does not itself cause the owning Composable to recompose.
     var stateRevision by androidx.compose.runtime.mutableLongStateOf(0L)
@@ -373,6 +385,33 @@ private fun SecureWebSkin(bundle: WebSkinBundle, modifier: Modifier, onFailure: 
         }
     }
     AndroidView({ webView }, modifier)
+    DisposableEffect(webView, bundle, live) {
+        val handler: ((Boolean) -> Unit) -> Unit = { onHandled ->
+            val invokingOwner = WebSkinBridgeRuntime.owner
+            if (!live.get() || invokingOwner == null ||
+                PowerCalSkinRegistry.active.web !== bundle
+            ) {
+                onHandled(false)
+            } else {
+                runCatching {
+                    webView.evaluateJavascript(
+                        "window.PowerCalSkin?.handleHostBack?.() === true"
+                    ) { result ->
+                        onHandled(live.get() &&
+                            PowerCalSkinRegistry.active.web === bundle &&
+                            WebSkinBridgeRuntime.owner === invokingOwner &&
+                            result?.trim() == "true")
+                    }
+                }.onFailure { onHandled(false) }
+            }
+        }
+        WebSkinBridgeRuntime.skinBackHandler = handler
+        onDispose {
+            if (WebSkinBridgeRuntime.skinBackHandler === handler) {
+                WebSkinBridgeRuntime.skinBackHandler = null
+            }
+        }
+    }
     LaunchedEffect(webView, feed) {
         snapshotFlow {
             // SideEffect installs a new immutable snapshot closure on every host change.
