@@ -90,3 +90,13 @@ Debug APK：67,500,112 bytes，SHA-256 `7E1FCEA722A7FC86F9792794B3560E24F5B448AE
 - 新增无 Activity/Store 副作用的文案回归；与 ActivityRecoveryTest 定向运行 **2/2 PASS**。命令： .\gradlew.bat :app:testDebugUnitTest --tests dev.powerfulcalendar.ui.v2.ActivityRecoveryTest --tests dev.powerfulcalendar.ui.v2.SkinRecoveryGestureCopyTest --offline --rerun-tasks --no-daemon --console=plain。日志路径：.local/android-test/reports/separation-s0-st10-gesture-copy-20261030/targeted-final.log；SHA-256 A42062F1E290636B27C21A72792944FE94A5185EAEEF739CBFA1603329ECBD22。
 - 该回归包含于后续 **727/727** JVM 全量门禁，详见 S0-DK-01 API 35 follow-up。提交 1f5faa3（fix(分离): 对齐原生回退手势文案）已推送至 origin/codex/separation-s0-timeline-drag。
 - S0-ST-10 仍为 **PARTIAL / HOLD**：模拟器/真机的实际触摸输入、TalkBack/无障碍和冷进程恢复未验证；这些缺口不再包含手势定义歧义。
+
+## Follow-up — 对齐负责人签核后的回退提示静态断言（2026-10-30）
+
+负责人批准位置交替文案后，Skin Studio 源码合同测试仍查找旧文案“连续敲击 8 下”，导致 Python 全套出现 1 项失败。生产提示已由 `SKIN_RECOVERY_GESTURE_COPY` 定义为“两处位置交替快速轻点”，该失败是静态断言滞后，不是用户可见行为回归。
+
+- 只更新 `tools/skin-studio/tests/test_native_recovery_contract.py`：断言现行位置交替和 8 次规则，并拒绝“双指 / 每指”措辞；没有改动生产代码。
+- 定向静态契约测试 **3/3 PASS**，日志 `.local/android-test/reports/separation-s0-tl05-api35-20261030/st10-recovery-copy-focused.log`，SHA-256 `22781169098326A549EFF429F430087E7E83943683FD7D635124CACCF2BF78EC`。
+- 修复前全套失败日志保留为 `.local/android-test/reports/separation-s0-tl05-api35-20261030/skin-studio-python-post-tl05test.log`，SHA-256 `E29CB460E0A8047BF9846E4F481FBAF0A54954CA80DCABF5D8433915E42E3D34`；修复后 `python -m unittest discover -s tools/skin-studio/tests -v` **61/61 PASS**，日志 SHA-256 `098D5DE055178172078D260911572D9AC363BA387F77B451E2088600B89CC875`。
+
+这一静态测试修复不扩展手势验收范围。S0-ST-10 仍为 **PARTIAL / HOLD**，实际设备触摸、TalkBack/无障碍与冷进程恢复保持 **NOT TESTED**。

@@ -1,5 +1,12 @@
 # Core freeze progress
 
+## Follow-up — S0-ST-10 静态手势文案契约对齐（2026-10-30）
+
+- 根因：负责人批准“两处位置交替”提示后，Skin Studio 静态测试仍查找旧的“连续敲击 8 下”，使 Python 全套失败 1 项。
+- 只更新 `test_native_recovery_contract.py`：检查位置交替与 8 次，并排除“双指 / 每指”文案；生产实现未改。
+- 定向 **3/3 PASS**，日志 SHA-256 `22781169098326A549EFF429F430087E7E83943683FD7D635124CACCF2BF78EC`；完整 Python **61/61 PASS**，日志 SHA-256 `098D5DE055178172078D260911572D9AC363BA387F77B451E2088600B89CC875`。修复前失败日志 SHA-256 `E29CB460E0A8047BF9846E4F481FBAF0A54954CA80DCABF5D8433915E42E3D34` 原样保留。
+- S0-ST-10 仍 **PARTIAL / HOLD**：设备触摸、TalkBack/无障碍和冷进程恢复没有因此获得验证。独立记录见 [Android Activity recovery Issue](../issues/PC-ISSUE-SEPARATION-ANDROID-ACTIVITY-RECOVERY.md)。
+
 ## Separation — Android Activity 原生回退 S0-ST-10（2026-10-30，子项 PASS；规格已签核，设备 HOLD）
 
 - 根因：没有从真实 `MainActivity.dispatchTouchEvent` 到 Native Tools 的集成回归；损坏的 `selected` 偏好类型会让 `currentId()` 抛异常；原生回退用异步 `apply()`，调用侧无法确认持久化成功却无条件报成功。Web 皮肤加载失败的安全回退也忽略选择结果。

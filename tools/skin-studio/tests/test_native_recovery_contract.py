@@ -32,7 +32,13 @@ class NativeRecoveryContractTest(unittest.TestCase):
     def test_skin_switch_warns_and_requires_explicit_confirm(self):
         app = (UI / "PowerCalApp.kt").read_text(encoding="utf-8")
         self.assertIn("skinToActivate?.let", app)
-        self.assertIn("连续敲击 8 下", app)
+        gesture_copy = app.split(
+            "internal const val SKIN_RECOVERY_GESTURE_COPY =", 1
+        )[1].split("\n", 1)[0]
+        self.assertIn("相隔的两处位置交替快速轻点", gesture_copy)
+        self.assertIn("连续轻点 8 下", gesture_copy)
+        self.assertNotIn("双指", gesture_copy)
+        self.assertNotIn("每指", gesture_copy)
         self.assertIn("确认切换", app)
         self.assertIn("skinToActivate = skinChoices.firstOrNull", app)
         self.assertNotIn("skins.select(result.id)", app)
