@@ -36,31 +36,26 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import dev.powerfulcalendar.ai.AiFileFallbackConsent
 import dev.powerfulcalendar.ai.AiSettingsStore
+import dev.powerfulcalendar.ui.v2.nativeui.NativeProtectedProfileSection
 
 /** Host-owned profile editor. The visual context never receives private preferences. */
 @Composable
 internal fun HostProtectedProfileSection() {
     val appContext = LocalContext.current.applicationContext
-    HostProtectedSectionCard("个人信息", "本机资料 · 不上传给 AI") {
-        var displayName by remember {
-            mutableStateOf(appContext.getSharedPreferences("powercal-profile", Context.MODE_PRIVATE)
-                .getString("displayName", "").orEmpty())
-        }
-        Text("头像与云端资料将在皮肤系统完成后支持；个人资料不是日历业务数据。",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
-        OutlinedTextField(
-            value = displayName,
-            onValueChange = { if (it.length <= 80) displayName = it },
-            label = { Text("你的名字（可选）") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true
-        )
-        OutlinedButton(onClick = {
-            appContext.getSharedPreferences("powercal-profile", Context.MODE_PRIVATE).edit()
-                .putString("displayName", displayName).apply()
-        }) { Text("保存个人信息") }
+    val preferences = remember(appContext) {
+        appContext.getSharedPreferences("powercal-profile", Context.MODE_PRIVATE)
     }
+    var displayName by remember(preferences) {
+        mutableStateOf(preferences.getString("displayName", "").orEmpty())
+    }
+    NativeProtectedProfileSection(
+        display = NativeProtectedProfileDisplay(displayName),
+        actions = NativeProtectedProfileActions(
+            onDisplayNameChange = { displayName = it },
+            onSave = { preferences.edit().putString("displayName", displayName).apply() }
+        ),
+        cardShape = skinCardShape()
+    )
 }
 
 /** Host-owned AI settings control; renderer code cannot read or persist the key. */

@@ -64,7 +64,9 @@ class NativeToolsPageProtectedSlotsComposeTest {
             SettingsVisualContext::class.java,
             SettingsDisplaySnapshot::class.java,
             SettingsSkinChoice::class.java,
-            SettingsVisualEffects::class.java
+            SettingsVisualEffects::class.java,
+            NativeProtectedProfileDisplay::class.java,
+            NativeProtectedProfileActions::class.java
         )
         val exposedTypes = apiTypes.flatMap { type ->
             type.declaredFields.map { it.genericType.typeName } +
@@ -81,6 +83,9 @@ class NativeToolsPageProtectedSlotsComposeTest {
         assertFalse(exposedTypes.any { it.contains("InstalledSkin") })
         assertFalse(exposedTypes.any { it.contains("GlassEffects") })
         assertFalse(exposedTypes.any { it.contains("NativeToolsPage") })
+        assertFalse(exposedTypes.any { it.contains("SharedPreferences") })
+        assertFalse(exposedTypes.any { it.contains("android.content.Context") })
+        assertFalse(exposedTypes.any { it.contains("AiSettingsStore") })
     }
 
     @Test fun hostProjectsSettingsInputsIntoValueOnlyDisplayState() {

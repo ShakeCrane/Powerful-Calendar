@@ -39,6 +39,15 @@ data class SettingsVisualEffects(
     val reduceMotion: Boolean = false
 )
 
+/** Non-sensitive profile display state for the Native settings renderer. */
+data class NativeProtectedProfileDisplay(val displayName: String)
+
+/** Host-owned profile edits; persistence remains in the app process. */
+data class NativeProtectedProfileActions(
+    val onDisplayNameChange: (String) -> Unit,
+    val onSave: () -> Unit
+)
+
 /**
  * Skin-facing Settings API. Host state is reduced to values and actions; Native and protected
  * content arrive as composable slots so this API does not depend on either implementation.
