@@ -50,6 +50,7 @@ In app/src/main/java/dev/powerfulcalendar/ui/v2:
 - CompiledSkinTimeline.kt — timeline context, yOf geometry, default preview
 - PresentationSkinRuntime.kt — route registry, settings controls and navigation
 - skins/NativeVisualSkin.kt — explicit Native profile adapters for the ten presentation surfaces
+- native/ — first-party Native timeline, month, memo, AI, Deck, navigation and Settings UI implementations; `PowerCalApp.kt` remains the route/Host orchestrator
 - SkinnableDraftDeck.kt — controller adaptation with autosave, serialized guarded operations
 - SkinnableOverlays.kt — Compose Alert and Window slots
 - SkinnablePickers.kt — date/time imperative picker intents
