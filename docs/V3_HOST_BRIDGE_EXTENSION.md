@@ -176,6 +176,30 @@ envelope and known fields only:
   context sharing, and file-fallback consent. The route adds no Bridge state or
   credential write authority; the API key remains inside Host-owned Compose and
   private preferences. Studio Preview Mock only logs the route.
+- Clear Settings skin management uses these exact closed-schema actions:
+
+  ```json
+  {"version":1,"type":"action","payload":{"name":"importSkin"}}
+  {"version":1,"type":"action","payload":{"name":"exportClearSkin"}}
+  {"version":1,"type":"action","payload":{"name":"exportInstalledSkin","id":"user-skin-id"}}
+  {"version":1,"type":"action","payload":{"name":"deleteSkin","id":"user-skin-id"}}
+  ```
+
+  The first two accept only `name`; the latter two accept only `name` and the
+  projected catalogue `id`. They are accepted only from Clear Settings when no
+  conflicting AI/editor/deck session is active. The Host resolves exports and
+  deletion against its current installed catalogue and rejects built-in IDs.
+  Import launches the existing Host `OpenDocument` contract and
+  `SkinPackageManager.install`; package validation and atomic temp-file/readback
+  checks remain Host-owned, and a successful import never activates the package.
+  `exportClearSkin` writes the verified canonical Clear bundle; installed-skin
+  export preserves the original validated archive bytes. `deleteSkin` opens the
+  existing trusted Host confirmation and uses the package manager; deleting the
+  active third-party skin first selects Native recovery. These actions do not
+  expose URIs, package paths, archive bytes, credentials, or calendar write
+  authority to the skin. Studio Preview Mock only logs import/export and models
+  deletion with a non-writing fixture; it does not invoke Android pickers or
+  mutate installed packages.
 - `data.legacy.migrate` is a Host-owned migration request. It opens the existing
   native confirmation before accessing the legacy database; the importer opens
   that source read-only, keeps the file, and records a finished migration batch

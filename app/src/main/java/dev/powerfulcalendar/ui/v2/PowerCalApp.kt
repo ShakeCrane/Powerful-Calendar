@@ -1415,6 +1415,10 @@ fun PowerCalApp(
             pendingWebAiProposalPublish == null && pendingFileReview == null &&
             pendingImageReview == null && webAiProposalReviewSession == null
 
+    fun canManageSkinFromSettings(): Boolean =
+        page == Page.SETTINGS.name && !aiLocked && !deckOpen && editSession == null &&
+            newEventSession == null && !webEditing.hasLiveEditor()
+
     fun launchWebAiAttachmentPicker(image: Boolean) {
         if (!canLaunchWebAiAttachmentPicker()) return
         aiAttachmentPickerBusy = true
@@ -1541,6 +1545,24 @@ fun PowerCalApp(
                 is WebSkinAction.SelectSkin -> {
                     if (page == Page.SETTINGS.name && action.id != selectedSkin) {
                         skinChoices.firstOrNull { it.id == action.id }?.let { skinToActivate = it }
+                    }
+                }
+                WebSkinAction.ImportSkin -> if (canManageSkinFromSettings()) {
+                    importSkin.launch(arrayOf("application/zip", "application/octet-stream", "*/*"))
+                }
+                WebSkinAction.ExportClearSkin -> if (canManageSkinFromSettings()) {
+                    exportOriginalSkin.launch("PowerCal-Clear-Preview.pcskin")
+                }
+                is WebSkinAction.ExportInstalledSkin -> if (canManageSkinFromSettings()) {
+                    skinChoices.firstOrNull { it.id == action.id && !it.builtIn }?.let { item ->
+                        pendingSkinExportId = item.id
+                        message = "请选择保存位置以导出 ${item.name}"
+                        exportInstalledSkin.launch(item.id + ".pcskin")
+                    }
+                }
+                is WebSkinAction.DeleteSkin -> if (canManageSkinFromSettings()) {
+                    skinChoices.firstOrNull { it.id == action.id && !it.builtIn }?.let {
+                        skinToDelete = it
                     }
                 }
                 is WebSkinAction.PanTimeline -> {

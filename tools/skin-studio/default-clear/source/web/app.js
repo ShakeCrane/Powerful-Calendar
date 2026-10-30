@@ -254,6 +254,8 @@ function onAction(button){
   else if(name==="loadMoreMemo")send(name);
   else if(name==="invokeOption")send(name,{id:button.dataset.optionId});
   else if(name==="selectSkin")send(name,{id:button.dataset.skinId});
+  else if(name==="exportInstalledSkin"||name==="deleteSkin")
+    send(name,{id:button.dataset.skinId});
   else if(name==="panTimeline")send(name,{deltaMinutes:Number(button.dataset.deltaMinutes)});
   else if(name==="zoomTimeline")send(name,{direction:button.dataset.direction});
   else if(name==="resetTimelineZoom")send(name);
@@ -545,6 +547,21 @@ function renderSettings(){
       button.append(node("span","skin-choice-state",isSelected?"正在使用":"选择"));
       row.append(button);
       if(item.builtIn===true)row.append(node("span","skin-choice-meta","内置皮肤"));
+      else{
+        const actions=node("div","skin-choice-actions");
+        const exportButton=node("button","skin-choice-action","导出");
+        exportButton.type="button";
+        exportButton.dataset.action="exportInstalledSkin";
+        exportButton.dataset.skinId=item.id;
+        exportButton.setAttribute("aria-label","导出 "+item.name);
+        const deleteButton=node("button","skin-choice-action","删除");
+        deleteButton.type="button";
+        deleteButton.dataset.action="deleteSkin";
+        deleteButton.dataset.skinId=item.id;
+        deleteButton.setAttribute("aria-label","删除 "+item.name);
+        actions.append(exportButton,deleteButton);
+        row.append(actions);
+      }
       skinRoot.append(row);
     }
   }

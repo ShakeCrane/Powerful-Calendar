@@ -429,6 +429,8 @@ const ACTIONS=[
   ["timeline","时间轴"],
   ["month","月历"],["memo","Memo"],["ai","AI"],
   ["settings","设置"],["selectSkin","选择已安装皮肤"],
+  ["importSkin","导入皮肤"],["exportClearSkin","导出 Clear 皮肤"],
+  ["exportInstalledSkin","导出已安装皮肤"],["deleteSkin","删除已安装皮肤"],
   ["requestNotificationPermission","请求通知权限"],
   ["openExactAlarmSettings","打开精确闹钟设置"],
   ["reconcileReminders","重建提醒调度"],
@@ -789,7 +791,10 @@ function simulatedState(){
   return {bridgeVersion:1,page:mockPage,
     skinChoices:mockPage==="SETTINGS"?[
       {id:"powercal-default",name:"PowerCal 原生玻璃（安全回退）",builtIn:true},
-      {id:"powercal-clear-default",name:"Clear · Studio Mock",builtIn:true}
+      {id:"powercal-clear-default",name:"Clear · Studio Mock",builtIn:true},
+      ...(mockPreviewSkinInstalled?[{
+        id:"studio-preview-fixture",name:"Studio Preview Fixture",builtIn:false
+      }]:[])
     ]:[],
     selectedSkinId:mockPage==="SETTINGS"?mockSelectedSkinId:null,
     notificationPermission:mockPage==="SETTINGS"?{required:true,allowed:false}:{},
@@ -1064,6 +1069,14 @@ function resolveMockApproval(approved){
       mockSelectedSkinId=request.id;
       logAction("Preview Mock：Host 模拟确认皮肤选择；没有启用真实皮肤或修改本机数据");
     }else logAction("Preview Mock：已取消皮肤选择；没有改变模拟状态或本机数据");
+    postState();return;
+  }
+  if(request.kind==="skinDelete"){
+    if(approved&&request.id==="studio-preview-fixture"&&mockPreviewSkinInstalled&&
+      request.id!==mockSelectedSkinId){
+      mockPreviewSkinInstalled=false;
+      logAction("Preview Mock：Host 模拟确认删除第三方皮肤；没有修改 Android 安装包或日历数据");
+    }else logAction("Preview Mock：已取消或拒绝内置/未知皮肤删除；没有改变模拟安装目录");
     postState();return;
   }
   if(request.kind==="deckCommitReview"){
@@ -1707,6 +1720,36 @@ function onSkinAction(message){
       $("mockApproval").hidden=false;
       logAction("Studio Mock 收到已安装皮肤选择请求；等待模拟 Host 确认");return;
     }
+    if(name==="importSkin"||name==="exportClearSkin"){
+      if(mockPage!=="SETTINGS"||Object.keys(p).sort().join(",")!=="name"){
+        logAction("拒绝非设置页或格式无效的皮肤包请求");return;
+      }
+      logAction(name==="importSkin"?
+        "Studio Mock 收到皮肤导入请求；不会打开文件选择器或安装皮肤":
+        "Studio Mock 收到 Clear 导出请求；不会打开 SAF 或写入文件");
+      return;
+    }
+    if(name==="exportInstalledSkin"){
+      const item=mockPage==="SETTINGS"&&Array.isArray(lastState?.skinChoices)?
+        lastState.skinChoices.find(value=>value.id===p.id&&!value.builtIn):null;
+      if(Object.keys(p).sort().join(",")!=="id,name"||!item){
+        logAction("拒绝未知或内置皮肤导出请求");return;
+      }
+      logAction("Studio Mock 收到已安装皮肤导出请求；不会打开 SAF 或写入文件");
+      return;
+    }
+    if(name==="deleteSkin"){
+      const item=mockPage==="SETTINGS"&&Array.isArray(lastState?.skinChoices)?
+        lastState.skinChoices.find(value=>value.id===p.id&&!value.builtIn):null;
+      if(Object.keys(p).sort().join(",")!=="id,name"||!item||
+        p.id===mockSelectedSkinId||mockApproval){
+        logAction("拒绝未知、内置、当前活动或并发皮肤删除请求");return;
+      }
+      mockApproval={kind:"skinDelete",id:p.id};
+      $("mockApprovalText").textContent="Preview Mock：模拟 Android Host 确认删除该皮肤；不会删除真实安装文件或日历数据。";
+      $("mockApproval").hidden=false;
+      logAction("Studio Mock 收到第三方皮肤删除请求；等待模拟 Host 确认");return;
+    }
     if(name==="requestNotificationPermission"){
       if(Object.keys(p).sort().join(",")!=="name"||mockPage!=="SETTINGS"){
         logAction("拒绝非设置页或格式无效的通知权限请求");return;
@@ -1971,7 +2014,7 @@ function onSkinAction(message){
   }catch(error){logAction("Bridge 消息错误："+error.message)}
 }
 let mockAnchor=null,mockHours=24,mockPage="TIMELINE",
-  mockSelectedSkinId="powercal-clear-default",mockMemoDone=false;
+  mockSelectedSkinId="powercal-clear-default",mockPreviewSkinInstalled=true,mockMemoDone=false;
 const isLockedMockScenario=()=>["locked","locked-stale"].includes($("scenario").value);
 const idleMockAiBatch=()=>({phase:"IDLE",state:null,active:false,canCancel:false,
   canRelease:false,mode:null,scopeCount:0,selectedCount:0,operationCounts:{},

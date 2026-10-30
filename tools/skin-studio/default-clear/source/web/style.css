@@ -175,6 +175,10 @@ button:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outl
  width:100%;min-height:40px;padding:2px 0;border:0;background:transparent;text-align:left}
 .skin-choice-name{overflow-wrap:anywhere;font-weight:600}
 .skin-choice-state,.skin-choice-meta{color:var(--label-2);font-size:12px}
+.skin-catalog-actions,.skin-choice-actions{display:flex;align-items:center;gap:8px}
+.skin-catalog-actions>*{flex:1;min-width:0}
+.skin-choice-action{min-width:64px;min-height:36px;padding:5px 12px;border:1px solid var(--sep);
+ border-radius:12px;background:var(--fill-1);color:var(--label);font:inherit}
 
 /* Keep the interactive AI composer above the floating tabbar at every viewport height. */
 #aiPage:not([hidden]){display:flex;flex-direction:column;

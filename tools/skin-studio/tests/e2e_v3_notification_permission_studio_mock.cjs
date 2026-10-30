@@ -138,7 +138,7 @@ async function main(){
       document.querySelector('#systemDiagnostics').innerText.includes('重复 #4')`,
       "Mock system diagnostics projection");
     const systemDiagnosticText=await frameEval("document.querySelector('#systemDiagnostics').innerText");
-    await waitFor(frameEval,`document.querySelectorAll('#skinChoices [data-action="selectSkin"]').length===2&&
+    await waitFor(frameEval,`document.querySelectorAll('#skinChoices [data-action="selectSkin"]').length===3&&
       document.querySelector('#skinChoices [data-skin-id="powercal-clear-default"]')?.disabled===true`,
       "Mock installed-skin catalogue");
     await frameEval(`document.querySelector('#skinChoices [data-skin-id="powercal-default"]').click()`);
@@ -152,6 +152,25 @@ async function main(){
     await evaluate("document.querySelector('#mockApprove').click()");
     await waitFor(evaluate,"mockApproval===null&&lastState?.selectedSkinId==='powercal-default'",
       "Mock skin selection approval");
+    await frameEval(`document.querySelector('#importSkinButton').click()`);
+    await waitFor(evaluate,"document.querySelector('#bridgeLog').textContent.includes('不会打开文件选择器或安装皮肤')",
+      "Mock skin import action");
+    await frameEval(`document.querySelector('#exportClearSkinButton').click()`);
+    await waitFor(evaluate,"document.querySelector('#bridgeLog').textContent.includes('不会打开 SAF 或写入文件')",
+      "Mock Clear package export action");
+    await frameEval(`document.querySelector('[data-action="exportInstalledSkin"][data-skin-id="studio-preview-fixture"]').click()`);
+    await waitFor(evaluate,"document.querySelector('#bridgeLog').textContent.includes('已安装皮肤导出请求')",
+      "Mock installed package export action");
+    await frameEval(`document.querySelector('[data-action="deleteSkin"][data-skin-id="studio-preview-fixture"]').click()`);
+    await waitFor(evaluate,"mockApproval?.kind==='skinDelete'","Mock installed package delete confirmation");
+    await evaluate("document.querySelector('#mockReject').click()");
+    await waitFor(evaluate,"mockApproval===null&&lastState?.skinChoices.some(item=>item.id==='studio-preview-fixture')",
+      "Mock skin deletion cancellation");
+    await frameEval(`document.querySelector('[data-action="deleteSkin"][data-skin-id="studio-preview-fixture"]').click()`);
+    await waitFor(evaluate,"mockApproval?.kind==='skinDelete'","second Mock installed package delete confirmation");
+    await evaluate("document.querySelector('#mockApprove').click()");
+    await waitFor(evaluate,"mockApproval===null&&!lastState?.skinChoices.some(item=>item.id==='studio-preview-fixture')",
+      "Mock skin deletion approval");
     await frameEval(`document.querySelector('[data-action="requestNotificationPermission"]').click()`);
     await waitFor(evaluate,"document.querySelector('#bridgeLog').textContent.includes('不会调用 Android 系统权限')",
       "Mock permission action handling");
@@ -178,6 +197,7 @@ async function main(){
       systemDiagnosticText,
       skinChoiceIds:(await evaluate("lastState.skinChoices.map(item=>item.id)")),
       mockSelectedSkinId:await evaluate("lastState.selectedSkinId"),
+      previewFixtureDeleted:await evaluate("!mockPreviewSkinInstalled"),
       mockLog:(await evaluate("document.querySelector('#bridgeLog').innerText")).split("\n").slice(0,5)
     };
     const resultPath=path.join(reportDir,`studio-mock-${runId}.json`);

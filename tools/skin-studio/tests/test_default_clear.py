@@ -62,6 +62,12 @@ class DefaultClearSingleSourceTest(unittest.TestCase):
         self.assertIn('id="openAiSettings"',html)
         self.assertIn('data-action="nativeSettings"',html)
         self.assertIn('密钥不会发送给皮肤',html)
+        self.assertIn('id="importSkinButton"',html)
+        self.assertIn('data-action="importSkin"',html)
+        self.assertIn('id="exportClearSkinButton"',html)
+        self.assertIn('data-action="exportClearSkin"',html)
+        for action in ("exportInstalledSkin","deleteSkin"):
+            self.assertIn(f'name==="{action}"',script)
         self.assertIn('.skin-choice-list',style)
         self.assertIn('item.name',script)
         self.assertNotIn('innerHTML',script)
