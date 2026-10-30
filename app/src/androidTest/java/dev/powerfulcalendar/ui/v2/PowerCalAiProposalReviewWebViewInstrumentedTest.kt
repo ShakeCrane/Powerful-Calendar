@@ -20,6 +20,7 @@ import dev.powerfulcalendar.ai.AiChatHistoryStore
 import dev.powerfulcalendar.ai.AiSettings
 import dev.powerfulcalendar.ai.AiSettingsStore
 import dev.powerfulcalendar.core.DraftForm
+import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.TemporalKind
 import org.json.JSONArray
@@ -572,6 +573,185 @@ class PowerCalAiProposalReviewWebViewInstrumentedTest {
                 assertEquals(identitiesBefore + 1, store.identityCount())
                 assertEquals(sequenceBefore + 1, store.nextSequencePreview())
                 awaitJs(view, "document.querySelectorAll('.ai-proposal-item').length===0")
+            }
+        } finally {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            store.close()
+            context.deleteDatabase(database)
+            listOf("powercal-ai", "powercal-onboarding", "powercal-ui",
+                "powercal-skin-choice", "powercal-profile", "powercal-file-ai-consent")
+                .forEach { name -> storage.deleteSharedPreferences("$namespace-$name") }
+            File(storage.cacheDir, namespace).deleteRecursively()
+        }
+    }
+
+    @Test
+    fun actualClearWebViewConvertsExistingEventOnlyAfterHostConfirmation() {
+        val storage: Context = compose.activity.applicationContext
+        val namespace = "pc-ai-convert-review-${UUID.randomUUID()}"
+        val context = IsolatedAppContext(compose.activity, storage, namespace)
+        val database = "convert-review.db"
+        val store = PowerStore(context, database)
+        val zone = ZoneId.systemDefault()
+        val startMillis = java.time.LocalDateTime.parse("2026-12-01T19:00")
+            .atZone(zone).toInstant().toEpochMilli()
+        val endMillis = java.time.LocalDateTime.parse("2026-12-01T20:00")
+            .atZone(zone).toInstant().toEpochMilli()
+        val title = "待转换闹钟"
+        val prompt = "把闹钟 #1 转换为活动，保留 2026-12-01 19:00 开始，结束时间为 20:00。"
+        val requests = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val serverFailure = AtomicReference<Throwable?>()
+        val served = CountDownLatch(2)
+
+        try {
+            val seeded = store.createFormalEvent(
+                DraftForm(
+                    kind = TemporalKind.ALARM,
+                    title = title,
+                    startText = DraftForm.formatInstant(startMillis, zone),
+                    reminderMinutes = -1,
+                    zoneId = zone.id
+                ),
+                idempotencyKey = "seed-${UUID.randomUUID()}"
+            ) as PowerStore.CommitOutcome.Committed
+            val original = requireNotNull(store.get(seeded.eventSeq))
+            val proposal = JSONObject().put("events", JSONArray().put(JSONObject()
+                .put("operation", "CONVERT")
+                .put("eventSeq", seeded.eventSeq)
+                .put("kind", "ACTIVITY")
+                .put("title", title)
+                .put("start", "2026-12-01 19:00")
+                .put("end", "2026-12-01 20:00"))).toString()
+            val formalBefore = store.all()
+            val draftsBefore = store.draftCount()
+            val pendingBefore = store.pendingCount()
+            val commitsBefore = store.commitCount()
+            val identitiesBefore = store.identityCount()
+            val sequenceBefore = store.nextSequencePreview()
+            val userText = prompt.replace("#1", "#${seeded.eventSeq}")
+
+            context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                .edit().putBoolean("system-calendar-import-asked", true).commit()
+            AiChatHistoryStore.save(context, emptyList())
+            ServerSocket(0, 4, InetAddress.getByName("127.0.0.1")).use { server ->
+                server.soTimeout = 20_000
+                AiSettingsStore.save(context, AiSettings(
+                    endpoint = "http://127.0.0.1:${server.localPort}/v1",
+                    model = "local-stub:free",
+                    apiKey = "LOCAL_TEST_ONLY",
+                    enabled = true,
+                    shareContext = true
+                ))
+                val responses = listOf(
+                    "我会检查目标事项并准备类型转换提案。" +
+                        "[[POWERCAL_DRAFT]]{\"type\":\"draft\",\"intent\":\"explicit\"}[[/POWERCAL_DRAFT]]",
+                    proposal
+                )
+                val serverThread = Thread {
+                    try {
+                        repeat(responses.size) { index ->
+                            server.accept().use { socket ->
+                                socket.soTimeout = 15_000
+                                requests += readRequest(socket)
+                                writeReply(socket, responses[index])
+                            }
+                            served.countDown()
+                        }
+                    } catch (error: Throwable) {
+                        serverFailure.set(error)
+                        while (served.count > 0) served.countDown()
+                    }
+                }.apply { name = "pc-ai-convert-review-webview-local-stub"; isDaemon = true; start() }
+
+                compose.runOnUiThread {
+                    SkinPackageManager(context).select("powercal-clear-default")
+                    compose.activity.setContent {
+                        CompositionLocalProvider(LocalContext provides context) {
+                            PowerCalTheme { PowerCalApp(store) }
+                        }
+                    }
+                }
+                var web: WebView? = null
+                compose.waitUntil(30_000) {
+                    compose.runOnUiThread {
+                        web = findWebView(compose.activity.findViewById(android.R.id.content))
+                    }
+                    web != null
+                }
+                val view = requireNotNull(web)
+                awaitJs(view, "!!document.querySelector('.clear-tabbar [data-action=ai]')")
+                awaitJs(view, "document.querySelector('#dateSubtitle')?.textContent !== '日历 · Clear'")
+                evaluate(view, "document.querySelector('.clear-tabbar [data-action=ai]').click(); true")
+                awaitJs(view, "!document.querySelector('#aiPage').hidden")
+                evaluate(view, "(()=>{const input=document.querySelector('#chatInput');" +
+                    "input.value=${JSONObject.quote(userText)};" +
+                    "document.querySelector('#chatForm').requestSubmit();return true})()")
+                awaitJs(view, "document.querySelectorAll('.ai-proposal-item').length===1 && " +
+                    "document.querySelector('.ai-proposal-title')?.textContent.includes('CONVERT')")
+                awaitJs(view, "Array.from(document.querySelectorAll('.ai-proposal-actions button'))" +
+                    ".some(button=>button.textContent.trim()==='批量同意'&&!button.disabled)")
+                assertNull("local AI stub failed: ${serverFailure.get()}", serverFailure.get())
+                assertTrue("both AI requests must reach the local free stub",
+                    served.await(1, TimeUnit.SECONDS))
+                serverThread.join(2_000)
+                assertNull("local AI stub failed: ${serverFailure.get()}", serverFailure.get())
+                assertEquals(2, requests.size)
+                assertTrue("AI context must include the conversion target",
+                    requests.last().contains(title))
+                assertEquals(formalBefore, store.all())
+                assertEquals(draftsBefore, store.draftCount())
+                assertEquals(pendingBefore, store.pendingCount())
+                assertEquals(commitsBefore, store.commitCount())
+                assertEquals(identitiesBefore, store.identityCount())
+                assertEquals(sequenceBefore, store.nextSequencePreview())
+
+                evaluate(view,
+                    "document.querySelector('.ai-proposal-actions button.primary').click(); true")
+                compose.onNodeWithText("确认 AI 批量正式操作").assertExists()
+                compose.onNodeWithText("确认并提交 1 项").assertExists()
+                assertEquals("Host review stays read-only until explicit approval",
+                    original, store.get(seeded.eventSeq))
+                assertEquals(commitsBefore, store.commitCount())
+                assertEquals(identitiesBefore, store.identityCount())
+                assertEquals(sequenceBefore, store.nextSequencePreview())
+
+                compose.onNodeWithText("取消").performClick()
+                compose.waitForIdle()
+                assertEquals("cancelling Host review must not convert the event",
+                    original, store.get(seeded.eventSeq))
+                assertEquals(draftsBefore, store.draftCount())
+                assertEquals(pendingBefore, store.pendingCount())
+                assertEquals(commitsBefore, store.commitCount())
+                assertEquals(identitiesBefore, store.identityCount())
+                assertEquals(sequenceBefore, store.nextSequencePreview())
+                awaitJs(view, "document.querySelectorAll('.ai-proposal-item').length===1 && " +
+                    "Array.from(document.querySelectorAll('.ai-proposal-actions button'))" +
+                    ".some(button=>button.textContent.trim()==='批量同意'&&!button.disabled)")
+
+                evaluate(view,
+                    "document.querySelector('.ai-proposal-actions button.primary').click(); true")
+                compose.onNodeWithText("确认 AI 批量正式操作").assertExists()
+                compose.onNodeWithText("确认并提交 1 项").performClick()
+                compose.waitUntil(30_000) {
+                    val saved = store.get(seeded.eventSeq)
+                    saved?.kind == TemporalKind.ACTIVITY && saved.title == title &&
+                        saved.startMillis == startMillis && saved.endMillis == endMillis
+                }
+                val converted = requireNotNull(store.get(seeded.eventSeq))
+                assertEquals(seeded.eventSeq, converted.eventSeq)
+                assertEquals(original.revision + 1, converted.revision)
+                assertEquals(commitsBefore + 1, store.commitCount())
+                assertEquals(0, store.pendingCount())
+                assertEquals(identitiesBefore, store.identityCount())
+                assertEquals(sequenceBefore, store.nextSequencePreview())
+                awaitJs(view, "document.querySelectorAll('.ai-proposal-item').length===0")
+                println("CLEAR_AI_CONVERT_VERIFIED=eventSeq=${converted.eventSeq}; revision=${converted.revision}; " +
+                    "kind=${converted.kind}; commits=${store.commitCount()}; identities=${store.identityCount()}; " +
+                    "sequence=${store.nextSequencePreview()}; cancel-preserved=true")
             }
         } finally {
             compose.runOnUiThread {
