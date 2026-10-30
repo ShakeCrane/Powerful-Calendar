@@ -429,6 +429,165 @@ class PowerCalAiProposalReviewWebViewInstrumentedTest {
         }
     }
 
+    @Test
+    fun actualClearWebViewPublishesCreateOnlyAfterHostConfirmation() {
+        val storage: Context = compose.activity.applicationContext
+        val namespace = "pc-ai-create-review-${UUID.randomUUID()}"
+        val context = IsolatedAppContext(compose.activity, storage, namespace)
+        val database = "create-review.db"
+        val store = PowerStore(context, database)
+        val requests = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val serverFailure = AtomicReference<Throwable?>()
+        val served = CountDownLatch(2)
+        val title = "可信发布活动"
+        val prompt = "请新建活动：2026-12-01 19:00 开始，20:00 结束，标题是可信发布活动。"
+        val proposal = JSONObject().put("events", JSONArray().put(JSONObject()
+            .put("operation", "CREATE")
+            .put("kind", "ACTIVITY")
+            .put("title", title)
+            .put("start", "2026-12-01 19:00")
+            .put("end", "2026-12-01 20:00"))).toString()
+
+        try {
+            store.readableDatabase
+            val formalBefore = store.all()
+            val draftsBefore = store.draftCount()
+            val pendingBefore = store.pendingCount()
+            val identitiesBefore = store.identityCount()
+            val commitsBefore = store.commitCount()
+            val sequenceBefore = store.nextSequencePreview()
+            context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                .edit().putBoolean("system-calendar-import-asked", true).commit()
+            AiChatHistoryStore.save(context, emptyList())
+
+            ServerSocket(0, 4, InetAddress.getByName("127.0.0.1")).use { server ->
+                server.soTimeout = 20_000
+                AiSettingsStore.save(context, AiSettings(
+                    endpoint = "http://127.0.0.1:${server.localPort}/v1",
+                    model = "local-stub:free",
+                    apiKey = "LOCAL_TEST_ONLY",
+                    enabled = true,
+                    shareContext = false
+                ))
+                val responses = listOf(
+                    "我会准备一项待核对提案。" +
+                        "[[POWERCAL_DRAFT]]{\"type\":\"draft\",\"intent\":\"explicit\"}[[/POWERCAL_DRAFT]]",
+                    proposal
+                )
+                val serverThread = Thread {
+                    try {
+                        repeat(responses.size) { index ->
+                            server.accept().use { socket ->
+                                socket.soTimeout = 15_000
+                                requests += readRequest(socket)
+                                writeReply(socket, responses[index])
+                            }
+                            served.countDown()
+                        }
+                    } catch (error: Throwable) {
+                        serverFailure.set(error)
+                        while (served.count > 0) served.countDown()
+                    }
+                }.apply { name = "pc-ai-create-review-webview-local-stub"; isDaemon = true; start() }
+
+                compose.runOnUiThread {
+                    SkinPackageManager(context).select("powercal-clear-default")
+                    compose.activity.setContent {
+                        CompositionLocalProvider(LocalContext provides context) {
+                            PowerCalTheme { PowerCalApp(store) }
+                        }
+                    }
+                }
+                var web: WebView? = null
+                compose.waitUntil(30_000) {
+                    compose.runOnUiThread {
+                        web = findWebView(compose.activity.findViewById(android.R.id.content))
+                    }
+                    web != null
+                }
+                val view = requireNotNull(web)
+                awaitJs(view, "!!document.querySelector('.clear-tabbar [data-action=ai]')")
+                awaitJs(view, "document.querySelector('#dateSubtitle')?.textContent !== '日历 · Clear'")
+                evaluate(view, "document.querySelector('.clear-tabbar [data-action=ai]').click(); true")
+                awaitJs(view, "!document.querySelector('#aiPage').hidden")
+                evaluate(view, "(()=>{const input=document.querySelector('#chatInput');" +
+                    "input.value=${JSONObject.quote(prompt)};" +
+                    "document.querySelector('#chatForm').requestSubmit();return true})()")
+                awaitJs(view, "document.querySelectorAll('.ai-proposal-item').length===1 && " +
+                    "document.querySelector('.ai-proposal-title')?.textContent.includes(${JSONObject.quote(title)})")
+                awaitJs(view, "Array.from(document.querySelectorAll('.ai-proposal-actions button'))" +
+                    ".some(button=>button.textContent.trim()==='批量同意'&&!button.disabled)")
+                assertNull("local AI stub failed: ${serverFailure.get()}", serverFailure.get())
+                assertTrue("both AI requests must reach the local free stub",
+                    served.await(1, TimeUnit.SECONDS))
+                serverThread.join(2_000)
+                assertNull("local AI stub failed: ${serverFailure.get()}", serverFailure.get())
+                assertEquals(2, requests.size)
+
+                assertEquals(formalBefore, store.all())
+                assertEquals(draftsBefore, store.draftCount())
+                assertEquals(pendingBefore, store.pendingCount())
+                assertEquals(identitiesBefore, store.identityCount())
+                assertEquals(commitsBefore, store.commitCount())
+                assertEquals(sequenceBefore, store.nextSequencePreview())
+
+                evaluate(view,
+                    "document.querySelector('.ai-proposal-actions button.primary').click(); true")
+                compose.onNodeWithText("确认 AI 批量正式操作").assertExists()
+                compose.onNodeWithText("确认并提交 1 项").assertExists()
+                assertEquals("Host review is read-only before approval", formalBefore, store.all())
+                assertEquals(commitsBefore, store.commitCount())
+                assertEquals(identitiesBefore, store.identityCount())
+                assertEquals(sequenceBefore, store.nextSequencePreview())
+
+                compose.onNodeWithText("取消").performClick()
+                compose.waitForIdle()
+                assertEquals("cancelling Host review must not publish", formalBefore, store.all())
+                assertEquals(draftsBefore, store.draftCount())
+                assertEquals(pendingBefore, store.pendingCount())
+                assertEquals(identitiesBefore, store.identityCount())
+                assertEquals(commitsBefore, store.commitCount())
+                assertEquals(sequenceBefore, store.nextSequencePreview())
+                awaitJs(view, "document.querySelectorAll('.ai-proposal-item').length===1 && " +
+                    "Array.from(document.querySelectorAll('.ai-proposal-actions button'))" +
+                    ".some(button=>button.textContent.trim()==='批量同意'&&!button.disabled)")
+
+                evaluate(view,
+                    "document.querySelector('.ai-proposal-actions button.primary').click(); true")
+                compose.onNodeWithText("确认 AI 批量正式操作").assertExists()
+                compose.onNodeWithText("确认并提交 1 项").performClick()
+                compose.waitUntil(30_000) {
+                    store.all().singleOrNull()?.let {
+                        it.kind == TemporalKind.ACTIVITY && it.title == title &&
+                            it.startMillis == java.time.LocalDateTime.parse("2026-12-01T19:00")
+                                .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli() &&
+                            it.endMillis == java.time.LocalDateTime.parse("2026-12-01T20:00")
+                                .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                    } == true
+                }
+                // A committed AI CREATE keeps one resolved audit receipt in drafts; it is not pending.
+                assertEquals(draftsBefore + 1, store.draftCount())
+                assertEquals(pendingBefore, store.pendingCount())
+                assertEquals(commitsBefore + 1, store.commitCount())
+                assertEquals(identitiesBefore + 1, store.identityCount())
+                assertEquals(sequenceBefore + 1, store.nextSequencePreview())
+                awaitJs(view, "document.querySelectorAll('.ai-proposal-item').length===0")
+            }
+        } finally {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            store.close()
+            context.deleteDatabase(database)
+            listOf("powercal-ai", "powercal-onboarding", "powercal-ui",
+                "powercal-skin-choice", "powercal-profile", "powercal-file-ai-consent")
+                .forEach { name -> storage.deleteSharedPreferences("$namespace-$name") }
+            File(storage.cacheDir, namespace).deleteRecursively()
+        }
+    }
+
     private fun readRequest(socket: java.net.Socket): String {
         val input = socket.getInputStream().buffered()
         fun line(): String {
