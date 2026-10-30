@@ -1,10 +1,5 @@
 package dev.powerfulcalendar.ui.v2.nativeui
 
-import dev.powerfulcalendar.ui.v2.*
-
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
@@ -20,12 +15,10 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import dev.powerfulcalendar.ai.AiBatchRunner
-import dev.powerfulcalendar.ai.AiChatMessage
-import dev.powerfulcalendar.ai.AiInterpretation
+import dev.powerfulcalendar.ui.v2.NativeAiBatchMode
+import dev.powerfulcalendar.ui.v2.NativeAiMessage
 
 /**
  * Compact messenger-style shell. Text is ordinary chat; no ordinary message authorizes writes.
@@ -34,36 +27,34 @@ import dev.powerfulcalendar.ai.AiInterpretation
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun NativeAiChatScreen(
-    messages: List<AiChatMessage>,
+    messages: List<NativeAiMessage>,
     busy: Boolean,
-    batchActionsBusy: Boolean = false,
+    batchActionsBusy: Boolean,
     pendingCount: Int,
     onSend: (String) -> Unit,
     onPropose: (String) -> Unit,
     onClear: () -> Unit,
     onClearCache: () -> Unit,
-    proposalReview: AiInterpretation? = null,
-    onApplyProposals: (Set<Int>, Boolean) -> Unit = { _, _ -> },
-    onDiscardProposals: (Set<Int>) -> Unit = {},
-    onSupplementProposals: () -> Unit = {},
     onSettings: () -> Unit,
     onOpenDeck: () -> Unit,
     onPickImage: () -> Unit,
     onPickFile: () -> Unit,
-    onPrepareBatch: (AiBatchRunner.Mode) -> Unit,
+    onPrepareBatch: (NativeAiBatchMode) -> Unit,
     onRewind: (Int) -> Unit,
+    onCopyMessage: (String) -> Unit,
+    proposalPending: Boolean = false,
     batchSelectionActive: Boolean = false,
-    onCancelBatchSelection: () -> Unit = {}
+    onCancelBatchSelection: () -> Unit = {},
+    proposalReviewContent: @Composable (actionsDisabled: Boolean) -> Unit = {},
+    assistantAvatarContent: @Composable () -> Unit = {}
 ) {
     val actionsDisabled = busy || batchActionsBusy
-    val proposalPending = proposalReview?.proposals?.isNotEmpty() == true
     val attachmentsDisabled = actionsDisabled || proposalPending
     var composer by rememberSaveable { mutableStateOf("") }
     var attachmentMenu by remember { mutableStateOf(false) }
     var pendingMenu by remember { mutableStateOf(false) }
     var selectedIndex by remember { mutableIntStateOf(-1) }
     val listState = rememberLazyListState()
-    val context = LocalContext.current
 
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) {
@@ -102,11 +93,11 @@ fun NativeAiChatScreen(
                     })
                     DropdownMenuItem(text = { Text("AI 批量发布 · 先选择范围") }, onClick = {
                         pendingMenu = false
-                        onPrepareBatch(AiBatchRunner.Mode.PUBLISH)
+                        onPrepareBatch(NativeAiBatchMode.PUBLISH)
                     }, enabled = !actionsDisabled && !proposalPending && pendingCount > 0)
                     DropdownMenuItem(text = { Text("AI 批量丢弃 · 先选择范围") }, onClick = {
                         pendingMenu = false
-                        onPrepareBatch(AiBatchRunner.Mode.DISCARD)
+                        onPrepareBatch(NativeAiBatchMode.DISCARD)
                     }, enabled = !actionsDisabled && !proposalPending && pendingCount > 0)
                     HorizontalDivider()
                     DropdownMenuItem(text = { Text("清理 AI 临时缓存（保留聊天与事件）") }, onClick = {
@@ -137,7 +128,8 @@ fun NativeAiChatScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             itemsIndexed(messages) { index, msg ->
-                val mine = msg.role == "user"
+                val mine = msg.mine
+                val proposalSource = msg.proposalSource
                 Row(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start
@@ -159,9 +151,7 @@ fun NativeAiChatScreen(
                             Column(Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                                    if (!mine && skinPainter(SkinSlot.AI_AVATAR) != null) {
-                                        SkinImage(SkinSlot.AI_AVATAR, Modifier.size(19.dp))
-                                    }
+                                    if (!mine) assistantAvatarContent()
                                     Text(if (mine) "我" else "PowerCal AI",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -170,9 +160,9 @@ fun NativeAiChatScreen(
                                     style = MaterialTheme.typography.bodyMedium,
                                     maxLines = 75,
                                     overflow = TextOverflow.Ellipsis)
-                                if (!mine && msg.proposalSource != null) {
+                                if (!mine && proposalSource != null) {
                                     TextButton(onClick = {
-                                        onPropose(msg.proposalSource)
+                                        onPropose(proposalSource)
                                     }, enabled = !actionsDisabled) {
                                         Text("从此消息创建事件草稿")
                                     }
@@ -207,8 +197,7 @@ fun NativeAiChatScreen(
                             )
                             DropdownMenuItem(text = { Text("复制文字") }, onClick = {
                                 selectedIndex = -1
-                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                clipboard.setPrimaryClip(ClipData.newPlainText("PowerCal 消息", msg.content))
+                                onCopyMessage(msg.content)
                             })
                         }
                     }
@@ -216,10 +205,7 @@ fun NativeAiChatScreen(
             }
         }
 
-        proposalReview?.takeIf { it.proposals.isNotEmpty() }?.let { preview ->
-            AiProposalReview(preview, actionsDisabled, onApplyProposals, onDiscardProposals,
-                onSupplementProposals)
-        }
+        if (proposalPending) proposalReviewContent(actionsDisabled)
 
         if (busy) Text("正在处理…", style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)

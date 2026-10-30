@@ -9,7 +9,6 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import dev.powerfulcalendar.ai.AiChatMessage
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -34,8 +33,9 @@ class AiChatImeInstrumentedTest {
             PowerCalTheme {
                 SkinAppShell(forceNative = true) {
                     NativeAiChatScreen(
-                        messages = listOf(AiChatMessage("assistant", "IME_SCROLL_SENTINEL")),
+                        messages = listOf(NativeAiMessage(false, "IME_SCROLL_SENTINEL")),
                         busy = false,
+                        batchActionsBusy = false,
                         pendingCount = 0,
                         onSend = {},
                         onPropose = {},
@@ -46,7 +46,8 @@ class AiChatImeInstrumentedTest {
                         onPickImage = {},
                         onPickFile = {},
                         onPrepareBatch = {},
-                        onRewind = {}
+                        onRewind = {},
+                        onCopyMessage = {}
                     )
                 }
             }

@@ -6,7 +6,6 @@ import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import dev.powerfulcalendar.ai.AiChatMessage
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Rule
@@ -24,9 +23,9 @@ class AiChatSuggestionAffordanceInstrumentedTest {
         val actionLabel = "从此消息创建事件草稿"
         var proposedSource: String? = null
         val messages = listOf(
-            AiChatMessage("user", casualSource),
-            AiChatMessage(
-                role = "assistant",
+            NativeAiMessage(true, casualSource),
+            NativeAiMessage(
+                mine = false,
                 content = "如果需要，可以从此消息创建事件草稿。",
                 proposalSource = casualSource
             )
@@ -38,6 +37,7 @@ class AiChatSuggestionAffordanceInstrumentedTest {
                     NativeAiChatScreen(
                         messages = messages,
                         busy = false,
+                        batchActionsBusy = false,
                         pendingCount = 0,
                         onSend = {},
                         onPropose = { proposedSource = it },
@@ -48,7 +48,8 @@ class AiChatSuggestionAffordanceInstrumentedTest {
                         onPickImage = {},
                         onPickFile = {},
                         onPrepareBatch = {},
-                        onRewind = {}
+                        onRewind = {},
+                        onCopyMessage = {}
                     )
                 }
             }

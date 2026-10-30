@@ -1,5 +1,8 @@
 package dev.powerfulcalendar.ui.v2
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -10,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import dev.powerfulcalendar.ai.AiBatchRunner
 import dev.powerfulcalendar.ai.AiChatMessage
@@ -179,11 +183,45 @@ internal class AiVisualContext internal constructor(
     val onCancelBatchSelection: () -> Unit
 ) {
     @Composable fun Native() {
-        NativeAiChatScreen(messages, busy, batchActionsBusy, pendingCount, onSend, onPropose,
-            onClear, onClearCache, proposalReview, onApplyProposals,
-            onDiscardProposals, onSupplementProposals, onSettings, onOpenDeck,
-            onPickImage, onPickFile, onPrepareBatch, onRewind,
-            batchSelectionActive, onCancelBatchSelection)
+        val platformContext = LocalContext.current
+        val clipboard = remember(platformContext) {
+            platformContext.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        }
+        val nativeMessages = remember(messages) { projectNativeAiMessages(messages) }
+        val review = proposalReview?.takeIf { it.proposals.isNotEmpty() }
+        NativeAiChatScreen(
+            messages = nativeMessages,
+            busy = busy,
+            batchActionsBusy = batchActionsBusy,
+            pendingCount = pendingCount,
+            onSend = onSend,
+            onPropose = onPropose,
+            onClear = onClear,
+            onClearCache = onClearCache,
+            onSettings = onSettings,
+            onOpenDeck = onOpenDeck,
+            onPickImage = onPickImage,
+            onPickFile = onPickFile,
+            onPrepareBatch = { onPrepareBatch(hostAiBatchMode(it)) },
+            onRewind = onRewind,
+            onCopyMessage = { content ->
+                clipboard.setPrimaryClip(ClipData.newPlainText("PowerCal 消息", content))
+            },
+            proposalPending = review != null,
+            batchSelectionActive = batchSelectionActive,
+            onCancelBatchSelection = onCancelBatchSelection,
+            proposalReviewContent = { actionsDisabled ->
+                review?.let {
+                    AiProposalReview(it, actionsDisabled, onApplyProposals, onDiscardProposals,
+                        onSupplementProposals)
+                }
+            },
+            assistantAvatarContent = {
+                if (skinPainter(SkinSlot.AI_AVATAR) != null) {
+                    SkinImage(SkinSlot.AI_AVATAR, Modifier.size(19.dp))
+                }
+            }
+        )
     }
 }
 

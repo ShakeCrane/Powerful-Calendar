@@ -7,7 +7,6 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import dev.powerfulcalendar.ai.AiChatMessage
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -18,19 +17,20 @@ class AiChatConversationAnchoringInstrumentedTest {
     @get:Rule
     val compose = createAndroidComposeRule<ComponentActivity>()
 
-    private fun initialHistory() = mutableStateListOf<AiChatMessage>().apply {
+    private fun initialHistory() = mutableStateListOf<NativeAiMessage>().apply {
         repeat(32) { index ->
-            add(AiChatMessage("user", "CHAT_HISTORY_${index.toString().padStart(2, '0')}"))
+            add(NativeAiMessage(true, "CHAT_HISTORY_${index.toString().padStart(2, '0')}"))
         }
     }
 
-    private fun showChat(messages: List<AiChatMessage>) {
+    private fun showChat(messages: List<NativeAiMessage>) {
         compose.setContent {
             PowerCalTheme {
                 SkinAppShell(forceNative = true) {
                     NativeAiChatScreen(
                         messages = messages,
                         busy = false,
+                        batchActionsBusy = false,
                         pendingCount = 0,
                         onSend = {},
                         onPropose = {},
@@ -41,7 +41,8 @@ class AiChatConversationAnchoringInstrumentedTest {
                         onPickImage = {},
                         onPickFile = {},
                         onPrepareBatch = {},
-                        onRewind = {}
+                        onRewind = {},
+                        onCopyMessage = {}
                     )
                 }
             }
@@ -56,7 +57,7 @@ class AiChatConversationAnchoringInstrumentedTest {
 
         compose.onNodeWithText("CHAT_HISTORY_31").assertIsDisplayed()
         compose.runOnIdle {
-            messages.add(AiChatMessage("assistant", "CHAT_LATEST_WHILE_AT_BOTTOM"))
+            messages.add(NativeAiMessage(false, "CHAT_LATEST_WHILE_AT_BOTTOM"))
         }
         compose.waitForIdle()
 
@@ -84,7 +85,7 @@ class AiChatConversationAnchoringInstrumentedTest {
         compose.onNodeWithText("CHAT_HISTORY_00").assertIsDisplayed()
 
         compose.runOnIdle {
-            messages.add(AiChatMessage("assistant", "CHAT_LATEST_WHILE_READING"))
+            messages.add(NativeAiMessage(false, "CHAT_LATEST_WHILE_READING"))
         }
         compose.waitForIdle()
 
