@@ -35,30 +35,21 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.dp
-import dev.powerfulcalendar.ai.AiBatchRunner
-
 /** First-party Native settings and recovery UI; host actions remain supplied by SettingsVisualContext. */
 @Composable
 internal fun NativeToolsPage(
-    diagnostics: NativeSettingsDiagnostics,
-    aiLocked: Boolean,
-    canReleaseStuckBatch: Boolean,
-    effects: GlassEffects,
-    skinChoices: List<InstalledSkin>,
+    display: SettingsDisplaySnapshot,
+    effects: SettingsVisualEffects,
+    skinChoices: List<SettingsSkinChoice>,
     selectedSkin: String,
     onSelectSkin: (String) -> Unit,
     onImportSkin: () -> Unit,
     onExportOriginalSkin: () -> Unit,
-    onExportInstalledSkin: (InstalledSkin) -> Unit,
+    onExportInstalledSkin: (String) -> Unit,
     onDeleteSkin: (String) -> Unit,
     onBack: () -> Unit,
     onOpenDeck: () -> Unit,
@@ -66,24 +57,16 @@ internal fun NativeToolsPage(
     onExportIcs: () -> Unit,
     onImportSystem: () -> Unit,
     onMigrateLegacy: () -> Unit,
-    onPickImage: () -> Unit,
-    onTextDraft: () -> Unit,
     onExportBackup: () -> Unit,
     onRestoreBackup: () -> Unit,
     onRequestNotificationPermission: () -> Unit,
     onOpenExactAlarmSettings: () -> Unit,
-    onRunBatch: (AiBatchRunner.Mode) -> Unit,
     onCancelBatch: () -> Unit,
     onReconcile: () -> Unit,
-    onAiDraft: (String, Boolean) -> Unit,
-    aiBusy: Boolean,
     onReleaseStuck: () -> Unit,
     protectedProfile: @Composable () -> Unit,
     protectedAiCredentials: @Composable () -> Unit
 ) {
-    var aiText by rememberSaveable { mutableStateOf("") }
-    var shareForRequest by rememberSaveable { mutableStateOf(false) }
-
     Column(
         Modifier
             .fillMaxSize()
@@ -112,7 +95,7 @@ internal fun NativeToolsPage(
                     Spacer(Modifier.weight(1f))
                     if (!item.builtIn) {
                         TextButton(
-                            onClick = { onExportInstalledSkin(item) },
+                            onClick = { onExportInstalledSkin(item.id) },
                             modifier = Modifier.semantics {
                                 contentDescription = "导出 ${item.name} 皮肤包"
                             }
@@ -132,8 +115,8 @@ internal fun NativeToolsPage(
         }
 
         SectionCard("导入", "仅保留系统级来源，其他文件请从 AI 助手 ＋ 添加") {
-            ToolRow("从系统日历一次性导入", "读取过去 30 天与未来一年；不是双向同步", onImportSystem, enabled = !aiLocked)
-            ToolRow("从旧版 PowerCal 迁移", "只读旧数据库，保留原文件", onMigrateLegacy, enabled = !aiLocked)
+            ToolRow("从系统日历一次性导入", "读取过去 30 天与未来一年；不是双向同步", onImportSystem, enabled = !display.aiLocked)
+            ToolRow("从旧版 PowerCal 迁移", "只读旧数据库，保留原文件", onMigrateLegacy, enabled = !display.aiLocked)
         }
 
         SectionCard("备份与导出", "原生备份优先于有损格式") {
@@ -147,15 +130,15 @@ internal fun NativeToolsPage(
                 "校验版本、哈希完整性与引用；哈希不证明来源可信；只允许恢复到空数据库；" +
                     "恢复后可查看提醒权限状态；旧 flat v2 需显式确认",
                 onRestoreBackup,
-                enabled = !aiLocked
+                enabled = !display.aiLocked
             )
             ToolRow("导出 ICS", "仅导出活动且不含活动启用/停用状态与活动提醒；闹钟、截止、备忘与完成状态不会由 ICS 保留",
                 onExportIcs)
         }
 
         SectionCard("提醒可靠性", "保存 ≠ 已调度 ≠ 已触发") {
-            StatusLine("精确闹钟权限", if (diagnostics.exactAlarmAllowed) "已允许" else "未允许 · 需要的提醒会显示为受阻", !diagnostics.exactAlarmAllowed)
-            StatusLine("通知权限", if (diagnostics.notificationsAllowed) "已允许" else "未允许 · 触发会被记录为 BLOCKED", !diagnostics.notificationsAllowed)
+            StatusLine("精确闹钟权限", if (display.exactAlarmAllowed) "已允许" else "未允许 · 需要的提醒会显示为受阻", !display.exactAlarmAllowed)
+            StatusLine("通知权限", if (display.notificationsAllowed) "已允许" else "未允许 · 触发会被记录为 BLOCKED", !display.notificationsAllowed)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = onOpenExactAlarmSettings) { Text("精确闹钟设置") }
                 OutlinedButton(onClick = onRequestNotificationPermission) { Text("通知权限") }
@@ -172,26 +155,26 @@ internal fun NativeToolsPage(
         }
 
         SectionCard("执行状态", "最近的期望调度与执行记录，最多 40 项") {
-            if (diagnostics.aiBatchActive) {
-                StatusLine("AI 批次", if (diagnostics.aiBatchCancelRequested)
+            if (display.aiBatchActive) {
+                StatusLine("AI 批次", if (display.aiBatchCancelRequested)
                     "正在停止；已完成结果保留" else "正在运行；未完成草稿会继续等待", false)
                 ToolRow(
                     "请求停止 AI 批次",
                     "已完成的操作保留，剩余草稿不执行",
                     onCancelBatch,
-                    enabled = !diagnostics.aiBatchCancelRequested
+                    enabled = !display.aiBatchCancelRequested
                 )
-                if (diagnostics.aiBatchCancelRequested) {
+                if (display.aiBatchCancelRequested) {
                     ToolRow(
                         "强制解除卡住的 AI 批次",
                         "停止请求超过 10 分钟无响应后可用；当前结果数量可能无法确定",
                         onReleaseStuck,
-                        enabled = aiLocked && canReleaseStuckBatch
+                        enabled = display.aiLocked && display.canReleaseStuckBatch
                     )
                 }
             }
-            if (diagnostics.reminders.isEmpty()) Text("还没有启用的提醒。", style = MaterialTheme.typography.bodyMedium)
-            diagnostics.reminders.forEach { row ->
+            if (display.reminders.isEmpty()) Text("还没有启用的提醒。", style = MaterialTheme.typography.bodyMedium)
+            display.reminders.forEach { row ->
                 Column(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("${row.eventLabel} · ${row.title}", style = MaterialTheme.typography.titleSmall)
                     Text("调度：${row.scheduleLabel}", style = MaterialTheme.typography.bodyMedium,
@@ -202,13 +185,13 @@ internal fun NativeToolsPage(
             }
         }
         SectionCard("诊断", "只读") {
-            StatusLine("正式事件", "${diagnostics.formalEventCount} 条", false)
-            StatusLine("下一个事件序号", diagnostics.nextSequenceLabel, false)
-            StatusLine("已分配序号", "${diagnostics.identityCount} 个（含退役）", false)
-            StatusLine("数据库版本", "v${diagnostics.databaseVersion} · ${diagnostics.databaseName}", false)
+            StatusLine("正式事件", "${display.formalEventCount} 条", false)
+            StatusLine("下一个事件序号", display.nextSequenceLabel, false)
+            StatusLine("已分配序号", "${display.identityCount} 个（含退役）", false)
+            StatusLine("数据库版本", "v${display.databaseVersion} · ${display.databaseName}", false)
             StatusLine("视觉效果", if (effects.blur) "分层玻璃" else "简化实色界面", false)
             StatusLine("减少动画", if (effects.reduceMotion) "已遵循系统设置" else "未启用", false)
-            diagnostics.recurrence.forEach { row ->
+            display.recurrence.forEach { row ->
                 StatusLine(row.label, row.next, false)
             }
         }

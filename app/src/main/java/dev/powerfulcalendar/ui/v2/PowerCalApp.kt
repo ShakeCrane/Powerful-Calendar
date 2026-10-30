@@ -1828,10 +1828,12 @@ fun PowerCalApp(
                     importSkin.launch(arrayOf("application/zip", "application/octet-stream", "*/*"))
                 },
                 onExportOriginalSkin = { exportOriginalSkin.launch("PowerCal-Clear-Preview.pcskin") },
-                onExportInstalledSkin = { item ->
-                    pendingSkinExportId = item.id
-                    message = "请选择保存位置以导出 ${item.name}"
-                    exportInstalledSkin.launch(item.id + ".pcskin")
+                onExportInstalledSkin = { id ->
+                    skinChoices.firstOrNull { it.id == id }?.let { item ->
+                        pendingSkinExportId = item.id
+                        message = "请选择保存位置以导出 ${item.name}"
+                        exportInstalledSkin.launch(item.id + ".pcskin")
+                    }
                 },
                 onDeleteSkin = { id ->
                     skinToDelete = skinChoices.firstOrNull { it.id == id && !it.builtIn }
@@ -1857,8 +1859,6 @@ fun PowerCalApp(
                     }
                 },
                 onMigrateLegacy = { confirmingLegacy = true },
-                onPickImage = { ocrPicker.launch("image/*") },
-                onTextDraft = { textDialogOpen = true },
                 onExportBackup = { createBackup.launch("powercal-backup.json") },
                 onRestoreBackup = launchRestoreBackup,
                 onRequestNotificationPermission = {
@@ -1872,24 +1872,12 @@ fun PowerCalApp(
                 onOpenExactAlarmSettings = {
                     ReminderScheduler.openExactAlarmSettings(appContext)
                 },
-                onRunBatch = { mode ->
-                    // Show the review with the freshest versions: authorization itself is still
-                    // atomic, but a stale dialog would only fail after the user read it.
-                    scope.launch {
-                        reload()
-                        confirmBatch = BatchReview(mode, pendingCards.toList())
-                    }
-                },
                 onCancelBatch = {
                     cancelAiBatchFromSurface()
                 },
                 onReconcile = {
                     requestManualReminderReconcile()
                 },
-                onAiDraft = { text, shareForRequest ->
-                    scope.launch { generateAiDraft(text, shareForRequest) }
-                },
-                aiBusy = aiBusy,
                 onReleaseStuck = {
                     requestStuckBatchRelease()
                 }

@@ -190,97 +190,18 @@ fun AiChatScreen(
     else if (renderer == null) context.Native() else renderer.Render(context)
 }
 
-/**
- * Exposing only callbacks for settings actions prevents custom screens from needing access to
- * secret API keys. Native() hosts the existing secure credential form until a separate scoped
- * credential editor action is introduced. No credentials are handed into this context.
- */
-internal class SettingsVisualContext internal constructor(
-    val diagnostics: UiDiagnostics,
-    val records: List<TemporalRecord>,
-    val pendingCount: Int,
-    val aiLocked: Boolean,
-    val aiSession: PowerStore.AiSession?,
-    val canReleaseStuckBatch: Boolean,
-    val effects: GlassEffects,
-    val skinChoices: List<InstalledSkin>,
-    val selectedSkin: String,
-    val onSelectSkin: (String) -> Unit,
-    val onImportSkin: () -> Unit,
-    val onExportOriginalSkin: () -> Unit,
-    val onExportInstalledSkin: (InstalledSkin) -> Unit,
-    val onDeleteSkin: (String) -> Unit,
-    val onBack: () -> Unit,
-    val onOpenDeck: () -> Unit,
-    val onImportIcs: () -> Unit,
-    val onExportIcs: () -> Unit,
-    val onImportSystem: () -> Unit,
-    val onMigrateLegacy: () -> Unit,
-    val onPickImage: () -> Unit,
-    val onTextDraft: () -> Unit,
-    val onExportBackup: () -> Unit,
-    val onRestoreBackup: () -> Unit,
-    val onRequestNotificationPermission: () -> Unit,
-    val onOpenExactAlarmSettings: () -> Unit,
-    val onRunBatch: (AiBatchRunner.Mode) -> Unit,
-    val onCancelBatch: () -> Unit,
-    val onReconcile: () -> Unit,
-    val onAiDraft: (String, Boolean) -> Unit,
-    val aiBusy: Boolean,
-    val onReleaseStuck: () -> Unit,
-    internal val nativeDiagnostics: NativeSettingsDiagnostics = NativeSettingsDiagnostics()
-) {
-    @Composable fun ProtectedProfile() = HostProtectedProfileSection()
-    @Composable fun ProtectedAiCredentials() = HostProtectedAiSettingsSection()
-    @Composable fun Native() {
-        NativeToolsPage(
-            nativeDiagnostics, aiLocked, canReleaseStuckBatch, effects, skinChoices,
-            selectedSkin, onSelectSkin, onImportSkin, onExportOriginalSkin,
-            onExportInstalledSkin, onDeleteSkin,
-            onBack, onOpenDeck, onImportIcs, onExportIcs, onImportSystem, onMigrateLegacy,
-            onPickImage, onTextDraft, onExportBackup, onRestoreBackup,
-            onRequestNotificationPermission, onOpenExactAlarmSettings, onRunBatch,
-            onCancelBatch, onReconcile, onAiDraft, aiBusy, onReleaseStuck,
-            protectedProfile = { ProtectedProfile() },
-            protectedAiCredentials = { ProtectedAiCredentials() }
-        )
-    }
-}
-
-internal data class NativeReminderDiagnostic(
-    val eventLabel: String,
-    val title: String,
-    val scheduleLabel: String,
-    val blocked: Boolean,
-    val androidHint: String?,
-    val execution: String?
-)
-
-internal data class NativeRecurrenceDiagnostic(val label: String, val next: String)
-
-/** Host-computed display snapshot; Native settings do not query Core or Android services. */
-internal data class NativeSettingsDiagnostics(
-    val formalEventCount: Int = 0,
-    val nextSequenceLabel: String = TemporalRecord.formatSeq(1),
-    val identityCount: Long = 0,
-    val databaseVersion: Int = 0,
-    val databaseName: String = "",
-    val exactAlarmAllowed: Boolean = false,
-    val notificationsAllowed: Boolean = false,
-    val aiBatchActive: Boolean = false,
-    val aiBatchCancelRequested: Boolean = false,
-    val reminders: List<NativeReminderDiagnostic> = emptyList(),
-    val recurrence: List<NativeRecurrenceDiagnostic> = emptyList()
-)
-
-private fun nativeSettingsDiagnostics(
+internal fun projectSettingsDisplaySnapshot(
     diagnostics: UiDiagnostics,
     records: List<TemporalRecord>,
+    pendingCount: Int,
+    aiLocked: Boolean,
     aiSession: PowerStore.AiSession?,
+    canReleaseStuckBatch: Boolean,
     exactAlarmAllowed: Boolean,
     notificationsAllowed: Boolean,
     nowMillis: Long
-): NativeSettingsDiagnostics = NativeSettingsDiagnostics(
+): SettingsDisplaySnapshot = SettingsDisplaySnapshot(
+    pendingCount = pendingCount,
     formalEventCount = records.size,
     nextSequenceLabel = TemporalRecord.formatSeq(diagnostics.nextSequence),
     identityCount = diagnostics.identities,
@@ -288,11 +209,13 @@ private fun nativeSettingsDiagnostics(
     databaseName = PowerStore.DATABASE_NAME,
     exactAlarmAllowed = exactAlarmAllowed,
     notificationsAllowed = notificationsAllowed,
+    aiLocked = aiLocked,
+    canReleaseStuckBatch = canReleaseStuckBatch,
     aiBatchActive = aiSession?.isActive == true,
     aiBatchCancelRequested = aiSession?.state == PowerStore.AiState.CANCEL_REQUESTED,
     reminders = diagnostics.reminders.map { row ->
         val state = row.intent?.desired
-        NativeReminderDiagnostic(
+        SettingsReminderDiagnostic(
             eventLabel = row.record.displaySeq(),
             title = row.record.title,
             scheduleLabel = when (state) {
@@ -310,7 +233,7 @@ private fun nativeSettingsDiagnostics(
     },
     recurrence = records.filter { it.recurrence.isRepeating }.take(3).map { record ->
         val next = RecurrenceEngine.nextOccurrence(record, nowMillis)
-        NativeRecurrenceDiagnostic(
+        SettingsRecurrencePreview(
             label = "重复 #${record.eventSeq}",
             next = next?.let { "下一次 " + DraftForm.formatInstant(it.startMillis) } ?: "没有后续实例"
         )
@@ -334,7 +257,7 @@ internal fun ToolsPage(
     onSelectSkin: (String) -> Unit,
     onImportSkin: () -> Unit,
     onExportOriginalSkin: () -> Unit,
-    onExportInstalledSkin: (InstalledSkin) -> Unit,
+    onExportInstalledSkin: (String) -> Unit,
     onDeleteSkin: (String) -> Unit,
     onBack: () -> Unit,
     onOpenDeck: () -> Unit,
@@ -342,35 +265,83 @@ internal fun ToolsPage(
     onExportIcs: () -> Unit,
     onImportSystem: () -> Unit,
     onMigrateLegacy: () -> Unit,
-    onPickImage: () -> Unit,
-    onTextDraft: () -> Unit,
     onExportBackup: () -> Unit,
     onRestoreBackup: () -> Unit,
     onRequestNotificationPermission: () -> Unit,
     onOpenExactAlarmSettings: () -> Unit,
-    onRunBatch: (AiBatchRunner.Mode) -> Unit,
     onCancelBatch: () -> Unit,
     onReconcile: () -> Unit,
-    onAiDraft: (String, Boolean) -> Unit,
-    aiBusy: Boolean,
     onReleaseStuck: () -> Unit
 ) {
-    val nativeDiagnostics = remember(
-        diagnostics, exactAlarmAllowed, notificationsAllowed, records, aiSession, nowMillis
+    val settingsDisplay = remember(
+        diagnostics, records, pendingCount, aiLocked, aiSession, canReleaseStuckBatch,
+        exactAlarmAllowed, notificationsAllowed, nowMillis
     ) {
-        nativeSettingsDiagnostics(
-            diagnostics, records, aiSession, exactAlarmAllowed, notificationsAllowed, nowMillis
+        projectSettingsDisplaySnapshot(
+            diagnostics, records, pendingCount, aiLocked, aiSession, canReleaseStuckBatch,
+            exactAlarmAllowed, notificationsAllowed, nowMillis
+        )
+    }
+    val settingsEffects = SettingsVisualEffects(effects.blur, effects.animationScale, effects.reduceMotion)
+    val skinOptions = remember(skinChoices) {
+        skinChoices.map { SettingsSkinChoice(it.id, it.name, it.builtIn) }
+    }
+    val protectedProfile: @Composable () -> Unit = { HostProtectedProfileSection() }
+    val protectedAiCredentials: @Composable () -> Unit = { HostProtectedAiSettingsSection() }
+    val nativeFallback: @Composable () -> Unit = {
+        NativeToolsPage(
+            display = settingsDisplay,
+            effects = settingsEffects,
+            skinChoices = skinOptions,
+            selectedSkin = selectedSkin,
+            onSelectSkin = onSelectSkin,
+            onImportSkin = onImportSkin,
+            onExportOriginalSkin = onExportOriginalSkin,
+            onExportInstalledSkin = onExportInstalledSkin,
+            onDeleteSkin = onDeleteSkin,
+            onBack = onBack,
+            onOpenDeck = onOpenDeck,
+            onImportIcs = onImportIcs,
+            onExportIcs = onExportIcs,
+            onImportSystem = onImportSystem,
+            onMigrateLegacy = onMigrateLegacy,
+            onExportBackup = onExportBackup,
+            onRestoreBackup = onRestoreBackup,
+            onRequestNotificationPermission = onRequestNotificationPermission,
+            onOpenExactAlarmSettings = onOpenExactAlarmSettings,
+            onCancelBatch = onCancelBatch,
+            onReconcile = onReconcile,
+            onReleaseStuck = onReleaseStuck,
+            protectedProfile = protectedProfile,
+            protectedAiCredentials = protectedAiCredentials
         )
     }
     val context = SettingsVisualContext(
-        diagnostics, records, pendingCount, aiLocked, aiSession, canReleaseStuckBatch, effects, skinChoices,
-        selectedSkin, onSelectSkin, onImportSkin, onExportOriginalSkin,
-        onExportInstalledSkin, onDeleteSkin,
-        onBack, onOpenDeck, onImportIcs, onExportIcs, onImportSystem, onMigrateLegacy,
-        onPickImage, onTextDraft, onExportBackup, onRestoreBackup,
-        onRequestNotificationPermission, onOpenExactAlarmSettings, onRunBatch,
-        onCancelBatch, onReconcile, onAiDraft, aiBusy, onReleaseStuck,
-        nativeDiagnostics = nativeDiagnostics
+        display = settingsDisplay,
+        effects = settingsEffects,
+        skinChoices = skinOptions,
+        selectedSkin = selectedSkin,
+        onSelectSkin = onSelectSkin,
+        onImportSkin = onImportSkin,
+        onExportOriginalSkin = onExportOriginalSkin,
+        onExportInstalledSkin = onExportInstalledSkin,
+        onDeleteSkin = onDeleteSkin,
+        onBack = onBack,
+        onOpenDeck = onOpenDeck,
+        onImportIcs = onImportIcs,
+        onExportIcs = onExportIcs,
+        onImportSystem = onImportSystem,
+        onMigrateLegacy = onMigrateLegacy,
+        onExportBackup = onExportBackup,
+        onRestoreBackup = onRestoreBackup,
+        onRequestNotificationPermission = onRequestNotificationPermission,
+        onOpenExactAlarmSettings = onOpenExactAlarmSettings,
+        onCancelBatch = onCancelBatch,
+        onReconcile = onReconcile,
+        onReleaseStuck = onReleaseStuck,
+        nativeFallback = nativeFallback,
+        protectedProfileContent = protectedProfile,
+        protectedAiCredentialsContent = protectedAiCredentials
     )
     val renderer = PresentationSkinRegistry.settings
     if (RuntimeSkinSurfaces.enabled("settings")) RuntimeSkinSurfaces.settings(context)
