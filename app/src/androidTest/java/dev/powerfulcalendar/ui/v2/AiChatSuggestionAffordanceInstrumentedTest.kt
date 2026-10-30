@@ -1,5 +1,7 @@
 package dev.powerfulcalendar.ui.v2
 
+import dev.powerfulcalendar.ui.v2.nativeui.NativeAiChatScreen
+
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule

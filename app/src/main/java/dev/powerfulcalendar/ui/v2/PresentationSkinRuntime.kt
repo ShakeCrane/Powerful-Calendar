@@ -9,6 +9,7 @@ import dev.powerfulcalendar.ai.AiChatMessage
 import dev.powerfulcalendar.ai.AiInterpretation
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.TemporalRecord
+import dev.powerfulcalendar.ui.v2.nativeui.*
 import java.time.LocalDate
 import java.time.ZoneId
 

@@ -1,5 +1,7 @@
 package dev.powerfulcalendar.ui.v2
 
+import dev.powerfulcalendar.ui.v2.nativeui.NewEventEditorDialog
+
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager

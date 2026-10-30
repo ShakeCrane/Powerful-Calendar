@@ -1,5 +1,7 @@
 package dev.powerfulcalendar.ui.v2
 
+import dev.powerfulcalendar.ui.v2.nativeui.NewEventEditorDialog
+
 import android.content.Context
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasSetTextAction

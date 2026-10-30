@@ -1,5 +1,7 @@
 package dev.powerfulcalendar.ui.v2
 
+import dev.powerfulcalendar.ui.v2.nativeui.NativeAiChatScreen
+
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.*

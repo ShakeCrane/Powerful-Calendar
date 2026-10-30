@@ -1,4 +1,6 @@
-package dev.powerfulcalendar.ui.v2
+package dev.powerfulcalendar.ui.v2.nativeui
+
+import dev.powerfulcalendar.ui.v2.*
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.horizontalScroll

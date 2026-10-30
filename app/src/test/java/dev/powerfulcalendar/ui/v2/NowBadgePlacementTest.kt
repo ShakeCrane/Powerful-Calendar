@@ -1,5 +1,7 @@
 package dev.powerfulcalendar.ui.v2
 
+import dev.powerfulcalendar.ui.v2.nativeui.findUnblockedLabelTopLeft
+
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
