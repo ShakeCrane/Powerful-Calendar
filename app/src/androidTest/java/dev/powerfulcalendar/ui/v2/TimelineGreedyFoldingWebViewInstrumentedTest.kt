@@ -275,7 +275,8 @@ class TimelineGreedyFoldingWebViewInstrumentedTest {
                 hitTag:hit?.tagName||"",hitAction:hit?.closest("[data-action]")?.dataset.action||"",
                 hitTarget:hit===element||hit?.closest("button")===element,
                 disabled:element.disabled,display:getComputedStyle(element).display,
-                visibility:getComputedStyle(element).visibility};
+                visibility:getComputedStyle(element).visibility,
+                touchAction:getComputedStyle(element).touchAction};
               window.__pcTestTouchProbe=probe;
               return probe;
             })()
@@ -288,6 +289,8 @@ class TimelineGreedyFoldingWebViewInstrumentedTest {
                 rect.getDouble("bottom") <= target.getDouble("height"))
         assertTrue("Touch center is not owned by its button: $target", target.getBoolean("hitTarget"))
         assertTrue("Touch target is disabled: $target", !target.getBoolean("disabled"))
+        assertEquals("Timeline controls must avoid double-tap click suppression", "manipulation",
+            target.optString("touchAction"))
         tap(web, target.getDouble("x"), target.getDouble("y"),
             target.getDouble("width"), target.getDouble("height"))
         val after = evaluateObject(web, """

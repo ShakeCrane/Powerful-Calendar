@@ -267,7 +267,10 @@ function updateTimelineDrag(x,y,event){
   if(!gesture)return;
   const dx=x-gesture.startX,dy=y-gesture.startY;
   if(!gesture.active){
-    if(Math.hypot(dx,dy)>10)cancelTimelineDrag();
+    if(Math.hypot(dx,dy)>10){
+      if(gesture.source==="touch")suppressTimelineClickUntil=Date.now()+900;
+      cancelTimelineDrag();
+    }
     return;
   }
   gesture.deltaY=dy;

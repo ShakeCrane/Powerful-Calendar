@@ -1427,19 +1427,22 @@ fun PowerCalApp(
     androidx.compose.runtime.SideEffect {
         WebSkinBridgeRuntime.owner = webBridgeOwner
         WebSkinBridgeRuntime.onEdit = { command ->
+            val activeCamera = TimelineCoordinate.Camera(
+                anchorMillis, TimelineCoordinate.clampHours(hours)
+            )
             val selection = if (command is WebEditCommand.CreateDeck)
-                newEventSelectionForPage(page, camera, zone, monthViewState()?.selectedDate) else null
+                newEventSelectionForPage(page, activeCamera, zone, monthViewState()?.selectedDate) else null
             val moveContext = if (page == Page.TIMELINE.name &&
                 command is WebEditCommand.MoveTimelineEvent) {
                 val projectedItems = WebSkinTimelineProjection.build(
-                    records, camera, nowMillis, zone
+                    records, activeCamera, nowMillis, zone
                 ).getJSONArray("items")
                 val visibleRevisions = linkedMapOf<Long, Long>()
                 for (index in 0 until projectedItems.length()) {
                     val item = projectedItems.optJSONObject(index) ?: continue
                     visibleRevisions[item.getLong("eventSeq")] = item.getLong("revision")
                 }
-                TimelineMoveContext(camera, zone, visibleRevisions)
+                TimelineMoveContext(activeCamera, zone, visibleRevisions)
             } else null
             val response = webEditing.execute(
                 command, newEventZone = zone, newEventSelection = selection,
