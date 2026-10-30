@@ -1,4 +1,4 @@
-package dev.powerfulcalendar.ui.v2.nativeui
+package dev.powerfulcalendar.ui.v2
 
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.OccurrenceOverride

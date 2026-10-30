@@ -1,4 +1,4 @@
-package dev.powerfulcalendar.ui.v2.nativeui
+package dev.powerfulcalendar.ui.v2
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -12,28 +12,8 @@ import androidx.compose.ui.unit.dp
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.TimelineCoordinate
-import dev.powerfulcalendar.ui.v2.CoreNativeTimelineGeometry
-import dev.powerfulcalendar.ui.v2.LocalAxisPalette
-import dev.powerfulcalendar.ui.v2.LocalSkinVisual
-import dev.powerfulcalendar.ui.v2.NativeEventInspectionModel
-import dev.powerfulcalendar.ui.v2.NativeTimelineActions
-import dev.powerfulcalendar.ui.v2.NativeTimelineAppearance
-import dev.powerfulcalendar.ui.v2.NativeTimelineAsset
-import dev.powerfulcalendar.ui.v2.NativeTimelineAxisColors
-import dev.powerfulcalendar.ui.v2.NativeTimelineCamera
-import dev.powerfulcalendar.ui.v2.NativeTimelineContext
-import dev.powerfulcalendar.ui.v2.NativeTimelineDialog
-import dev.powerfulcalendar.ui.v2.NativeTimelineGeometry
-import dev.powerfulcalendar.ui.v2.NativeTimelineKind
-import dev.powerfulcalendar.ui.v2.NativeTimelineState
-import dev.powerfulcalendar.ui.v2.SkinAlertDialog
-import dev.powerfulcalendar.ui.v2.SkinImage
-import dev.powerfulcalendar.ui.v2.SkinSlot
-import dev.powerfulcalendar.ui.v2.axisBackground
-import dev.powerfulcalendar.ui.v2.kindColor
-import dev.powerfulcalendar.ui.v2.projectNativeTimeline
-import dev.powerfulcalendar.ui.v2.skinBackdrop
-import dev.powerfulcalendar.ui.v2.skinPainter
+import dev.powerfulcalendar.ui.v2.nativeui.NativeEventInspection
+import dev.powerfulcalendar.ui.v2.nativeui.NativeTimelineScreen
 import java.time.Instant
 import java.time.ZoneId
 

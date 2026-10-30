@@ -1,6 +1,5 @@
 package dev.powerfulcalendar.ui.v2
 
-import dev.powerfulcalendar.ui.v2.nativeui.TimelineScreen
 
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent

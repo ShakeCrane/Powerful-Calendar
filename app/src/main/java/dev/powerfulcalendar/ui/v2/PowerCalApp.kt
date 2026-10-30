@@ -1,6 +1,5 @@
 package dev.powerfulcalendar.ui.v2
 
-import dev.powerfulcalendar.ui.v2.nativeui.NewEventEditorDialog
 import dev.powerfulcalendar.ui.v2.nativeui.NativeAiFileReview
 import dev.powerfulcalendar.ui.v2.nativeui.NativeAiImageConsentReview
 import dev.powerfulcalendar.ui.v2.nativeui.NativeAiOcrTextReview

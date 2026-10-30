@@ -14,7 +14,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalText
-import dev.powerfulcalendar.ui.v2.nativeui.NativeVisualSkin
+import dev.powerfulcalendar.ui.v2.NativeSkinHostRegistration
 
 /**
  * Single editable skin activation point. Edit only files in this skins folder, not PowerCalApp.
@@ -24,9 +24,9 @@ object ActiveVisualSkin {
     const val PROFILE = "native"
     fun install() {
         when (PROFILE) {
-            "native" -> NativeVisualSkin.install()
+            "native" -> NativeSkinHostRegistration.install()
             "studio-example" -> installExample()
-            else -> NativeVisualSkin.install() // invalid config always falls back
+            else -> NativeSkinHostRegistration.install() // invalid config always falls back
         }
     }
 

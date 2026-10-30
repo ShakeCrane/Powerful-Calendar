@@ -6,7 +6,6 @@ import dev.powerfulcalendar.core.RecurrenceEngine
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.TimelineCoordinate
-import dev.powerfulcalendar.ui.v2.nativeui.TimelineScreen
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith

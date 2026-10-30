@@ -14,8 +14,6 @@ import dev.powerfulcalendar.core.TemporalConversion
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.PowerStore
-import dev.powerfulcalendar.ui.v2.nativeui.NativeDraftDeckDialog
-import dev.powerfulcalendar.ui.v2.nativeui.NativeVisualSkin
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -80,7 +78,7 @@ fun DraftDeckDialog(
 ) {
     val renderer = DeckPresentationSkinRegistry.active
     val runtime = RuntimeSkinSurfaces.enabled("deck")
-    if ((renderer == null || NativeVisualSkin.isDeckRenderer(renderer)) && !runtime) {
+    if ((renderer == null || NativeSkinHostRegistration.isDeckRenderer(renderer)) && !runtime) {
         NativeDraftDeckDialog(controller, aiSession, onDismissRequest,
             onOpenFormalEvent, onCancelAiBatch, onDeckChanged, formalSearch,
             initialEditorOpen = initialEditorOpen)

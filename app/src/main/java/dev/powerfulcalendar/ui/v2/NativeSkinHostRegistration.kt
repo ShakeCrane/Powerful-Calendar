@@ -1,6 +1,8 @@
-package dev.powerfulcalendar.ui.v2.nativeui
+package dev.powerfulcalendar.ui.v2
 
-import dev.powerfulcalendar.ui.v2.*
+import dev.powerfulcalendar.ui.v2.nativeui.NativeChromeSkin
+import dev.powerfulcalendar.ui.v2.nativeui.NativeOverlaySkin
+import dev.powerfulcalendar.ui.v2.nativeui.NativePickerSkin
 
 /**
  * First-party Native presentation profile. Each adapter delegates to the existing Native
@@ -10,7 +12,7 @@ import dev.powerfulcalendar.ui.v2.*
  * These adapters receive presentation snapshots and host callbacks only. They do not add a
  * persistence, authorization, or Android-system capability of their own.
  */
-internal object NativeVisualSkin {
+internal object NativeSkinHostRegistration {
     fun install() {
         PresentationSkinRegistry.reset()
         CompiledSkinRuntime.registerTimeline(Timeline)

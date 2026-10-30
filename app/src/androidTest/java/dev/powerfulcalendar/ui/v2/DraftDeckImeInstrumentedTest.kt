@@ -1,6 +1,5 @@
 package dev.powerfulcalendar.ui.v2
 
-import dev.powerfulcalendar.ui.v2.nativeui.NativeDraftDeckDialog
 
 import android.content.Context
 import android.view.WindowManager

@@ -13,8 +13,6 @@ import androidx.compose.ui.test.performClick
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.ui.v2.nativeui.NativeDirectEventEditor
-import dev.powerfulcalendar.ui.v2.nativeui.nativeDeckAppearance
-import dev.powerfulcalendar.ui.v2.nativeui.toNativeDeckForm
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test

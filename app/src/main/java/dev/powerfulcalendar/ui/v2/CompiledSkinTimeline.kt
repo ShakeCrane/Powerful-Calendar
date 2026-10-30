@@ -12,7 +12,6 @@ import androidx.compose.ui.tooling.preview.Preview
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.TimelineCoordinate
-import dev.powerfulcalendar.ui.v2.nativeui.TimelineScreen
 import java.time.ZoneId
 
 /**

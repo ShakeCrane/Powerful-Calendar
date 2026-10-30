@@ -272,6 +272,17 @@ val verifyNativeSkinBoundary = tasks.register("verifyNativeSkinBoundary") {
         if (!nativeModuleBuild.isFile || !apiModuleBuild.isFile) {
             throw GradleException("Missing :native-skin or :skin-api build file")
         }
+        val hostNativeUiSources = fileTree(rootProject.file("app/src/main/java")) {
+            include("**/nativeui/**/*.kt")
+        }.files
+        if (hostNativeUiSources.isNotEmpty()) {
+            throw GradleException(
+                "First-party Native renderer sources must live in :native-skin; " +
+                    "move Host projections/adapters out of app/.../nativeui: " +
+                    hostNativeUiSources.sortedBy { it.path }
+                        .joinToString { it.relativeTo(rootProject.projectDir).path }
+            )
+        }
         val reverseDependency = Regex("""project\(\s*":(app|native-skin)"\s*\)""")
         if (reverseDependency.containsMatchIn(nativeModuleBuild.readText())) {
             throw GradleException(":native-skin must not depend on :app or depend back from :skin-api")
