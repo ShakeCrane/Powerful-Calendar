@@ -1,5 +1,12 @@
 # Core freeze progress
 
+## Separation — Native text-draft prompt presentation (2026-10-30, CODE COMPLETE; focused/build TESTED; full JVM NOT RUN at this SHA; device NOT TESTED)
+
+- 将 `PowerCalApp` 内联的 Native 文字草稿输入视图迁入 `:native-skin`；模块只持有临时输入并通过 Host callback 提交字符串。`TextParser`、默认时间与草稿创建仍由 Host 执行，没有改时间语义、Core、Clear、默认皮肤或 Native 回退。
+- Compose 定向回归 **2/2 PASS**（空输入禁用、原文回调、取消不提交）；Native/Skin 边界、AndroidTest Kotlin 编译、Debug APK 和 lint **PASS**（152 actionable tasks）。本提交未重跑全量 JVM；前一完整结果来自 `c7b7567`，782 项中 1 项 Memo 分页超时，隔离重跑 1/1 PASS，需在最终集成 SHA 重跑完整套件。
+- APK 66,516,562 bytes，SHA-256 `EDE00390FD36283694DC309BA798EC5EC7E972C5DFE54B9C0751CF337DAEAC59`；日志 `.local/android-test/reports/native-text-draft-dialog-20261030/focused-build.log` SHA-256 `F9FF3B264E2E2344FB29D7B533D4AE7910A11CEAD5C61E85B4D264209E22C30F`。ADB 无在线设备，Android 仪器与真机/OEM **NOT TESTED**。
+- 代码提交 `c006049edbd562725f533c5b21c82c4f3c7566da` 已推送。见 [Native text-draft dialog Issue](../issues/PC-ISSUE-SEPARATION-NATIVE-TEXT-DRAFT-DIALOG.md)。Clear 未修改。
+
 ## Separation — Native formal-write review presentation (2026-10-30, CODE COMPLETE; focused/build TESTED; full JVM FAIL; device NOT TESTED)
 
 - 将 `PowerCalApp` 内联的正式写入审查展示迁入 `:native-skin`；`:skin-api` 仅承载标题、目标/重复范围摘要、说明和差异行。Host 继续保留审查 token、快照、版本核验、授权和写入回调；没有改 Core、Bridge 安全语义、Clear、默认皮肤或 Native 回退。
