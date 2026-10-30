@@ -1,12 +1,12 @@
 # Core freeze progress
 
-## Separation — Android Activity 原生回退 `S0-ST-10`（2026-10-30，子项 PASS；规格/设备 HOLD）
+## Separation — Android Activity 原生回退 S0-ST-10（2026-10-30，子项 PASS；规格已签核，设备 HOLD）
 
 - 根因：没有从真实 `MainActivity.dispatchTouchEvent` 到 Native Tools 的集成回归；损坏的 `selected` 偏好类型会让 `currentId()` 抛异常；原生回退用异步 `apply()`，调用侧无法确认持久化成功却无条件报成功。Web 皮肤加载失败的安全回退也忽略选择结果。
 - 修复：损坏偏好类型回退到 Native；新增同步 Native 选择接口并返回 Boolean；Activity 与 Web 皮肤失败路径根据写入结果呈现成功或“未能确认保存”提示。当前进程仍立即切至 Native，不改 Store。
 - 定向测试 **17/17 PASS**：API 35 Robolectric 真实 Activity 触摸分发、单位置序列不触发、第 8 个两位置交替触发并打开 Native Tools、Store 记录/身份/序号/待处理/commit 快照不变；偏好类型损坏恢复；commit 返回 false 或抛异常时报告失败。日志 `.local/android-test/reports/separation-s0-st10-activity-recovery-20261030/targeted-final.log`，SHA-256 `45D4412BFDCCAEEB30967E2EA138EAB8787F2B8DC9F786895F7C159975DD9CDD`。
 - 完整离线 Gradle：**677/677 JVM、90 suites、0 failures/errors/skips**；源码边界、Debug APK 和 Lint 通过（0 errors / 53 warnings）。日志 `.local/android-test/reports/separation-s0-st10-activity-recovery-20261030/full-gradle-final.log`，SHA-256 `1770092AE808F228C08A61EDD6BD1C6A0427661B6F5FA333BA2A158F28EC5C58`。APK 67,500,112 bytes，SHA-256 `7E1FCEA722A7FC86F9792794B3560E24F5B448AE1BA2F559D54F0460315222F9`。
-- 手势规格仍有 P1 歧义：包合同/确认文案称“双指、每指四下”，实际 recognizer 按两个位置交替；测试只发送一个 pointer ID。等待负责人选择修正文案保留位置规则、改为必须同时双指，或维持未决。`adb devices -l` 无设备，SDK 无 `emulator.exe`；双指设备行为、TalkBack 和冷进程恢复均 **NOT TESTED**。`S0-ST-10` 保持 **PARTIAL / HOLD**，不签整体 parity/GO。
+- 负责人于 2026-10-30 签核保留两处屏幕位置交替、累计 8 次的回退规则；提示文案改为描述位置，不承诺识别实体手指。Activity 与文案定向回归 2/2 PASS，日志 .local/android-test/reports/separation-s0-st10-gesture-copy-20261030/targeted-final.log，SHA-256 A42062F1E290636B27C21A72792944FE94A5185EAEEF739CBFA1603329ECBD22；文案提交 1f5faa3 已推送。实际设备触摸、TalkBack/无障碍和冷进程恢复仍 NOT TESTED，S0-ST-10 保持 PARTIAL / HOLD。
 - 代码与测试提交 `4978ec999c34fa514d7cb2000a024d39fb1a4fd3` 已推送至 `origin/codex/separation-s0-timeline-drag`。独立报告：[PC-ISSUE-SEPARATION-ANDROID-ACTIVITY-RECOVERY](../issues/PC-ISSUE-SEPARATION-ANDROID-ACTIVITY-RECOVERY.md)。
 
 ## Separation — Clear 系统日历导入 `S0-ST-11`（2026-10-30，Host/Store 自动化 PASS；Android 设备 HOLD）

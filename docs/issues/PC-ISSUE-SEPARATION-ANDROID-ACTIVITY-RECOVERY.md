@@ -11,7 +11,7 @@
 
 本 Issue 检查皮肤无法操作时，`MainActivity.dispatchTouchEvent` 是否能切回受保护的原生 Tools 页面，是否会改写日历数据，以及选中原生皮肤的偏好设置写入失败时是否会误报成功。
 
-API 35 Robolectric 已验证 Activity 的真实触摸分发入口和原生页面交接，Store 状态前后相同。S0-ST-10 仍不能签核：当前 recognizer 实际判断的是一个触点在两个空间位置间交替，而产品合同及确认对话框写的是“双指、每指四下”。本次测试用同一个 pointer ID，不能证明两根实体手指，也没有 Android 设备、辅助功能或冷进程验证。手势的产品定义待负责人裁定。
+API 35 Robolectric 已验证 Activity 的真实触摸分发入口和原生页面交接，Store 状态前后相同。负责人于 2026-10-30 签核保留两处屏幕位置交替的八次轻点规则，并要求提示文案不承诺识别实体手指。该产品定义已经明确；实际设备触摸输入、无障碍和冷启动仍未验证，因此 S0-ST-10 保持 PARTIAL / HOLD。
 
 ## 根因
 
@@ -19,7 +19,7 @@ API 35 Robolectric 已验证 Activity 的真实触摸分发入口和原生页面
 2. `SkinPackageManager.currentId()` 对损坏的 `selected` 偏好值直接调用 `getString`；类型错误会抛出 `ClassCastException`，使 Activity 恢复入口可能在切回原生前崩溃。
 3. 原生选择使用 `SharedPreferences.apply()`，调用返回时无法确认偏好已同步写入。Activity 随后无条件显示恢复成功，写入失败会被误报。
 4. Web 皮肤加载失败时的安全回退也忽略了原生选择持久化结果。
-5. 实现和合同存在手势定义缺口：合同写了每根手指四次，recognizer 只按坐标分区和交替顺序计数，不检查实体手指身份。
+5. 初始合同与提示文案写成“双指、每指四下”，而 recognizer 按两个坐标区域交替计数，措辞超出了实现可判断的实体触点信息。负责人于 2026-10-30 确认保留位置交替规则，并修改提示文案。
 
 ## 修改
 
@@ -34,13 +34,13 @@ API 35 Robolectric 已验证 Activity 的真实触摸分发入口和原生页面
 | 场景 | 结果 | 证据边界 |
 | --- | --- | --- |
 | API 35 Robolectric：同一位置连续点击不触发回退 | `PASS` | 通过 `MainActivity.dispatchTouchEvent` 发送实际 `MotionEvent` |
-| API 35 Robolectric：两个空间位置交替，第 8 次进入原生 Tools | `PASS` | 此测试每次都是 pointer ID 0；仅证明当前两位置规则，不证明双指 |
+| API 35 Robolectric：两个空间位置交替，第 8 次进入原生 Tools | PASS | 每次使用 pointer ID 0，验证规则按两个坐标位置交替计数；设备实际触摸分发仍未验证 |
 | 回退前后正式记录、身份数、序号水位、待处理数、提交数 | `PASS` | 集成测试快照相等；回退不写 Store |
 | 错误类型的 `selected` 偏好 | `PASS` | `SkinPackageManagerTest` 验证恢复 Native 且不崩溃 |
 | 同步偏好写入返回 `false` 或抛异常 | `PASS` | 注入失败写入器；函数报告失败并切换当前进程注册表至 Native |
 | 持久化失败提示文案 | `PASS` | 纯函数测试；Activity 成功路径另验证 Tools 页及成功提示 |
 | 新进程/强制结束后偏好值仍可恢复 | `NOT TESTED` | Robolectric 新 manager 仍在同一进程和偏好实例内；没有冷进程测试 |
-| 双指身份、Android WebView/设备触摸、TalkBack/无障碍行为 | `NOT TESTED` | 当前测试没有独立实体手指或设备输入证据 |
+| Android 设备实际触摸输入、TalkBack/无障碍行为、冷进程恢复 | NOT TESTED | 当前测试为 Robolectric；没有设备输入、辅助功能服务或冷进程证据 |
 | Web 皮肤加载失败且同步偏好提交失败的完整 Compose 路径 | `NOT TESTED` | 已修正结果处理与文案，未添加该分支的端到端 Compose 回归 |
 
 ## 测试与构建证据
@@ -67,8 +67,8 @@ Debug APK：67,500,112 bytes，SHA-256 `7E1FCEA722A7FC86F9792794B3560E24F5B448AE
 
 ## 剩余风险与验收状态
 
-- **规格待裁定：** 是保留两处位置交替并修正文案，还是将手势改成需要同时触摸的双指模式。Android 在分别抬起的独立点击间不能可靠识别实体手指身份；当前仅按空间位置判定。裁定前不签核产品手势符合性。
-- **设备待测：** 实际 Android/WebView 输入、无障碍、强制结束后的冷启动恢复均未测试。
+- **设备待测：** 两处位置交替规则已由负责人签核，提示文案已同步修正。实际 Android 触摸输入、TalkBack/无障碍行为和强制结束后的冷启动恢复仍未测试。
+
 - **存储故障语义：** 同步提交失败时，本进程会进入 Native 并明确提示；系统重启后仍可能恢复此前选中的皮肤，用户需要再次选择 Native。未声称失败写入仍具有跨进程持久性。
 - **Web 加载失败次路径：** 持久化失败提示已处理，但对应 Compose 故障注入用例未补齐。
 
@@ -80,4 +80,13 @@ Debug APK：67,500,112 bytes，SHA-256 `7E1FCEA722A7FC86F9792794B3560E24F5B448AE
 
 仅更新静态合同测试，断言现行回退 API、持久化结果处理和 UI 信号均存在；未修改生产代码。定向测试 **3/3 PASS**，日志 `.local/android-test/reports/separation-s0-st14-ics-export-20261030/s0-st10-contract-focused.log`，SHA-256 `76AC5F02F0C2622ABEE14378532BD484DDA51BE57A07008056DAA8AE1DB815FB`。Skin Studio 完整 Python 套件 **61/61 PASS**，日志 `.local/android-test/reports/separation-s0-st14-ics-export-20261030/skin-studio-python-final.log`，SHA-256 `BE2E5662208C8735AE5D3D4045A781EBE975DCAC1534C5C68A2DFD62E52D14C2`。
 
-独立测试提交 `4dce206`（`test(分离): 对齐原生回退静态契约`）已推送至 `origin/codex/separation-s0-timeline-drag`。S0-ST-10 原有双指/设备/无障碍风险与 `PARTIAL / HOLD` 结论不变。
+独立测试提交 `4dce206`（`test(分离): 对齐原生回退静态契约`）已推送至 `origin/codex/separation-s0-timeline-drag`。该历史记录中的手势定义歧义已由本报告后续签核解决；设备触摸、无障碍和冷启动风险仍未覆盖，整体状态继续为 `PARTIAL / HOLD`。
+
+## Follow-up — 位置交替手势规格与文案签核（2026-10-30）
+
+负责人确认继续采用“在屏幕上相隔的两处位置交替轻点，共连续轻点 8 下”的回退规则。实现只根据坐标区域和顺序计数，提示文案不再声称能够辨认实体手指。
+
+- PowerCalApp 的统一提示更新为：“紧急回退：在屏幕上相隔的两处位置交替快速轻点，共连续轻点 8 下，即可强制恢复原生皮肤。” recognizer KDoc 明确说明它只识别位置，不识别实体手指。
+- 新增无 Activity/Store 副作用的文案回归；与 ActivityRecoveryTest 定向运行 **2/2 PASS**。命令： .\gradlew.bat :app:testDebugUnitTest --tests dev.powerfulcalendar.ui.v2.ActivityRecoveryTest --tests dev.powerfulcalendar.ui.v2.SkinRecoveryGestureCopyTest --offline --rerun-tasks --no-daemon --console=plain。日志路径：.local/android-test/reports/separation-s0-st10-gesture-copy-20261030/targeted-final.log；SHA-256 A42062F1E290636B27C21A72792944FE94A5185EAEEF739CBFA1603329ECBD22。
+- 该回归包含于后续 **727/727** JVM 全量门禁，详见 S0-DK-01 API 35 follow-up。提交 1f5faa3（fix(分离): 对齐原生回退手势文案）已推送至 origin/codex/separation-s0-timeline-drag。
+- S0-ST-10 仍为 **PARTIAL / HOLD**：模拟器/真机的实际触摸输入、TalkBack/无障碍和冷进程恢复未验证；这些缺口不再包含手势定义歧义。
