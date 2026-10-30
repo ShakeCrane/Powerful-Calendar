@@ -1,5 +1,12 @@
 # Core freeze progress
 
+## Separation — Native AI image consent and OCR review module boundary (2026-10-30, CODE COMPLETE; focused/build TESTED; full JVM gate BLOCKED; device NOT TESTED)
+
+- 将 Native AI 图片上传同意与 OCR 原文核对的对话框内容迁入 `:native-skin`。`:skin-api` 只提供 dialog slots；图片 URI、文件读取、OCR、AI 客户端、用户输入状态、提交与取消行为仍由 `PowerCalApp` Host 持有。Native 只得到忙碌状态/文本和回调。未改 Clear 源码、Core、AI 网络/持久化或 Native fallback。
+- 定向 Native Compose 与现有 Host 附件集成 **8/8 PASS**；`:app:verifyNativeSkinBoundary`、`:app:verifySkinSourceBoundary`、AndroidTest Kotlin 编译、Debug APK assemble、lint **PASS**（144 actionable tasks）。APK 66,500,178 bytes，SHA-256 `007CEF18C872EF977F6A6840304A5692698E1F96B6D786BD7B969E265B5E8A90`。Debug APK 对应实现提交 `1c502b728f49165daa268563419346cea4ce1dd9`。
+- 完整 JVM 套件两次均为 **762 tests / 1 failure**，同一非本功能失败：`WebAiProposalReviewIntegrationTest.memoPagingContinuesTheSortedProjectionWithoutStoreWrites` 60 秒等待后仍显示 `memoCount=0`；以 `--max-workers=1` 单独重跑该用例 **1/1 PASS**。因此完整 JVM 门禁记录为 **BLOCKED/FAIL**，不记为 PASS；不改 Web/Clear 路径。完整日志 SHA-256：首轮 `1ABA3AFB5BB54AE9D7F91852DD2B3EB03F715E49F2CD689C7DD1DCB8F09279EA`，串行复跑 `E2F2AE596E5C6FFAC7288E164C207FABB2B1FD30C6AD7811503DC02050B169F4`；隔离用例日志 `8FBA97A925A810308F55253598BF191A17B8BB4ADD0A18C6676C7C143D8A90B5`。无单测构建/边界门禁日志 SHA-256 `517BCDC25DE922C57CB453B2B65D36758E9CC1E5EBB1B3CD3A2740C44352EBC2`。
+- 定向最终日志 `.local/android-test/reports/native-ai-input-review-20261030/focused-final.log` SHA-256 `2CCD71F236961B630DB191D6737031339C4F0E812F46CD2BCAD7ED216054E7DD`。早期 Compose 测试尝试因缺少 Robolectric runner 标注和弹窗 TextField 测量 OOM 失败；已保留日志并调整测试宿主槽，当前定向 8 项全过。ADB 无设备，Android/实体设备交互 **NOT TESTED**。独立报告：[Native AI input review Issue](../issues/PC-ISSUE-SEPARATION-NATIVE-AI-INPUT-REVIEW-MODULE.md)。
+
 ## Separation — Native AI batch authorization review module boundary (2026-10-30, CODE COMPLETE; 760 JVM TESTED; device NOT TESTED)
 
 - 将批量授权审核的冻结快照摘要、操作计数、删除提示、标题/确认/取消控件与滚动正文迁入 `:native-skin`。`:skin-api` DTO 只包含显示值和 Skin-aware dialog slot；Host 仍持有原 `DraftCard` 列表及其 draft ID/version 快照，通过确认回调送入现有 `beginAiBatch` 版本校验事务。Native 模块自身不授权或写入数据。没有改 Clear、冻结 Core、AI 批次事务或 Native fallback。
