@@ -57,3 +57,7 @@ Native Settings 页面原先直接从 Android `Context`/私有偏好读取个人
 ## 继续项
 
 下一步沿 Native 分离主线收窄 `SettingsVisualContext` 的 Core-bearing 字段，确定自定义 Renderer 需要的最小展示投影和受控动作，并为迁移增加接口回归测试；随后继续拆除 Native 页面剩余父包/Core 依赖，再评估独立 Gradle module。
+
+## Follow-up — Settings renderer DTO boundary (2026-10-30)
+
+The previous residual “`SettingsVisualContext` still exposes `UiDiagnostics`, `TemporalRecord` and `PowerStore.AiSession`” was resolved by [PC-ISSUE-SEPARATION-SETTINGS-CONTEXT-DTO](PC-ISSUE-SEPARATION-SETTINGS-CONTEXT-DTO.md), implementation commit `2ecd3ec9fad9df7c6bf08796432f9ad325547df9`. The renderer context now carries display DTOs, skin IDs, Host callbacks and injected composable slots. The independent Gradle module boundary and other screen-context dependencies remain open; this does not complete Native separation.

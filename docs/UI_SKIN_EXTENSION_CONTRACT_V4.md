@@ -3,12 +3,13 @@
 As of 2026-10-21, the presentation host additionally interprets signed-by-integrity
 (not author-signed) .pcskin v2 ZIP payloads: see [SKIN_PACK_V2.md](SKIN_PACK_V2.md).
 They can live-switch ten existing screen surfaces with a strict built-in node/action
-library, animation and route transitions. The v4 compiled skin interfaces and native
-fallback contract remain available and unchanged.
+library, animation and route transitions. The ten compiled-skin surfaces and Native
+fallback behavior remain. Settings renderer data is now a value-only context; see the
+2026-10-30 boundary clarification below.
 
 # PowerCal Visual Skin Contract v4 — as built
 
-Updated 2026-10-21; Native profile clarification added 2026-10-30. This document records executable Android source interfaces, not a proposal or a promised future plugin format.
+Updated 2026-10-21; Native profile and Settings renderer boundary clarified 2026-10-30. This document records executable Android source interfaces, not a proposal or a promised future plugin format.
 
 ## Separation
 
@@ -49,11 +50,33 @@ Root Shell is an independent Chrome surface. The host children retain the BoxSco
 
 Settings exposes two additional protected composable slots: context.ProtectedProfile() and context.ProtectedAiCredentials(). These can be placed in arbitrary custom layouts without passing API keys or local profile preferences to renderer code. The native settings form uses the same host controls. Any other settings action is a supplied callback.
 
+### Settings renderer data boundary (2026-10-30)
+
+`SettingsVisualContext` is defined in `SettingsVisualContext.kt` and contains only display values,
+skin identifiers, visual-effect values, Host action callbacks, and injected Compose content slots.
+It does not retain `UiDiagnostics`, `TemporalRecord`, `PowerStore.AiSession`, `InstalledSkin`,
+`GlassEffects`, `AiBatchRunner.Mode`, Android services, preference objects, or a direct reference to
+`NativeToolsPage`. `Native()` and the two protected sections invoke Host-injected composable slots.
+
+`SettingsDisplaySnapshot` carries the Settings facts needed by the Native fallback and compatible
+renderers: pending/formal counts, sequence and identity counters, database version/name, reminder
+permission and AI-lock/recovery flags, AI-batch activity, and up to 40 reminder display rows plus
+three recurrence previews. A reminder row includes its event label and title, schedule result,
+Android hint and latest execution text. These fields are local calendar data and are available to
+the audited source-compiled renderer; they do not grant a Store, filesystem or mutation API.
+`SettingsSkinChoice` contains only `id`, `name` and `builtIn`; export and delete actions receive an
+ID so the Host resolves the authoritative installed package. `SettingsVisualEffects` contains
+`blur`, `animationScale` and `reduceMotion` values.
+
+This is an API/data boundary inside `:app`, not a sandbox or independent Gradle module. Other
+screen contexts have their own contracts and are not covered by this Settings-only clarification.
+
 ## Contract sources
 
 In app/src/main/java/dev/powerfulcalendar/ui/v2:
 - CompiledSkinTimeline.kt — timeline context, yOf geometry, default preview
 - PresentationSkinRuntime.kt — route registry, settings controls and navigation
+- SettingsVisualContext.kt — value-only Settings renderer API and injected Host/Native slots
 - nativeui/NativeVisualSkin.kt — explicit Native profile adapters for the ten presentation surfaces
 - nativeui/ — first-party Native timeline, month, memo, AI, Deck, navigation and Settings UI implementations; `PowerCalApp.kt` remains the route/Host orchestrator
 - SkinnableDraftDeck.kt — controller adaptation with autosave, serialized guarded operations
