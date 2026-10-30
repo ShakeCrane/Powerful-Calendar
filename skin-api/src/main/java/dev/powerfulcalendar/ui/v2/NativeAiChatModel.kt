@@ -44,6 +44,16 @@ data class NativeAiBatchAuthorizationDialog(
 
 typealias NativeAiBatchAuthorizationDialogSlot = @Composable (NativeAiBatchAuthorizationDialog) -> Unit
 
+data class NativeAiInputReviewDialog(
+    val onDismissRequest: () -> Unit,
+    val title: @Composable () -> Unit,
+    val text: @Composable () -> Unit,
+    val confirmButton: @Composable () -> Unit,
+    val dismissButton: @Composable () -> Unit
+)
+
+typealias NativeAiInputReviewDialogSlot = @Composable (NativeAiInputReviewDialog) -> Unit
+
 enum class NativeAiProposalGroup { CREATE, EXISTING }
 
 /** Display-only fields for one AI proposal; its original position keys Host callbacks. */

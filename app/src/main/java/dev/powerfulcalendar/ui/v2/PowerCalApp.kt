@@ -1,6 +1,8 @@
 package dev.powerfulcalendar.ui.v2
 
 import dev.powerfulcalendar.ui.v2.nativeui.NewEventEditorDialog
+import dev.powerfulcalendar.ui.v2.nativeui.NativeAiImageConsentReview
+import dev.powerfulcalendar.ui.v2.nativeui.NativeAiOcrTextReview
 
 import android.content.Context
 import android.content.Intent
@@ -2723,15 +2725,9 @@ $SKIN_RECOVERY_GESTURE_COPY
     }
 
     pendingImageReview?.let { uri ->
-        SkinAlertDialog(
-            onDismissRequest = { pendingImageReview = null },
-            title = { Text("图片识别方式") },
-            text = {
-                Text("如果当前 AI 服务支持视觉，可以直接上传图片由模型读图。图片可能含个人信息；" +
-                    "只有点击「发送原图给 AI」才会向配置的端点上传。也可以只在本地 OCR，之后核对文字。")
-            },
-            confirmButton = {
-                TextButton(onClick = {
+        NativeAiImageConsentReview(
+            busy = chatBusy,
+            onSendOriginal = {
                     pendingImageReview = null
                     page = Page.AI.name
                     chatBusy = true
@@ -2779,45 +2775,42 @@ $SKIN_RECOVERY_GESTURE_COPY
                             message = "图片处理失败：" + (error.message ?: "未知错误")
                         } finally { chatBusy = false }
                     }
-                }, enabled = !chatBusy) { Text("发送原图给 AI") }
             },
-            dismissButton = {
-                Row {
-                    TextButton(onClick = { pendingImageReview = null }) { Text("取消") }
-                    TextButton(onClick = { pendingImageReview = null; runLocalOcr(uri) }) {
-                        Text("仅本地 OCR")
-                    }
-                }
+            onLocalOcr = { pendingImageReview = null; runLocalOcr(uri) },
+            onDismiss = { pendingImageReview = null },
+            showDialog = { dialog ->
+                SkinAlertDialog(
+                    onDismissRequest = dialog.onDismissRequest,
+                    title = dialog.title,
+                    text = dialog.text,
+                    confirmButton = dialog.confirmButton,
+                    dismissButton = dialog.dismissButton
+                )
             }
         )
     }
 
     ocrReviewText?.let { extracted ->
-        SkinAlertDialog(
-            onDismissRequest = { ocrReviewText = null },
-            title = { Text("核对 OCR 识别原文") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("先修正 OCR 错字，然后发送给 AI 理解；缺少日期、时刻或结束时间时 AI 应先追问。不会自动创建或发布事件。",
-                        style = MaterialTheme.typography.bodySmall)
-                    OutlinedTextField(
-                        value = extracted,
-                        onValueChange = { ocrReviewText = it },
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 160.dp, max = 360.dp),
-                        label = { Text("识别原文（可编辑）") }
-                    )
-                }
+        NativeAiOcrTextReview(
+            text = extracted,
+            onTextChange = { ocrReviewText = it },
+            onSubmit = { reviewedText ->
+                ocrReviewText = null
+                submitEvidence(AiFileEvidence(
+                    filename = "OCR 图片文字", format = "ocr", text = reviewedText,
+                    truncated = false, note = "OCR 文本由用户核对后发送"
+                ))
             },
-            confirmButton = {
-                TextButton(enabled = extracted.isNotBlank(), onClick = {
-                    ocrReviewText = null
-                    submitEvidence(AiFileEvidence(
-                        filename = "OCR 图片文字", format = "ocr", text = extracted,
-                        truncated = false, note = "OCR 文本由用户核对后发送"
-                    ))
-                }) { Text("发送给 AI 理解") }
-            },
-            dismissButton = { TextButton(onClick = { ocrReviewText = null }) { Text("取消") } }
+            onDismiss = { ocrReviewText = null },
+            showDialog = { dialog ->
+                SkinAlertDialog(
+                    onDismissRequest = dialog.onDismissRequest,
+                    title = dialog.title,
+                    text = dialog.text,
+                    confirmButton = dialog.confirmButton,
+                    dismissButton = dialog.dismissButton
+                )
+            }
         )
     }
 
