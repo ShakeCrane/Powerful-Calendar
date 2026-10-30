@@ -100,6 +100,14 @@ initial read, and explicit save. The Native module receives no Android `Context`
 credential value or persistence service. The existing 80-character input cap and save-on-button
 behavior are covered by Compose regressions. The AI endpoint/model/key settings remain Host-owned.
 
+### Native first-run calendar import prompt boundary (2026-10-30)
+
+`NativeCalendarImportPrompt` renders the one-time snapshot explanation and the import/defer actions.
+`PowerCalApp` keeps the onboarding preference, permission check/request, and actual system-calendar
+import callback; it supplies the existing skin-aware dialog shell. The Native renderer receives no
+permission result, `Context`, calendar provider or import service. Prompt timing and the existing
+one-time import semantics are unchanged.
+
 The Settings, Navigation, Memo, AI chat, Month, Timeline, and Draft Deck display API types compile in
 `:skin-api`; their Native renderers compile in `:native-skin`. Memo, Month, Timeline, and Draft Deck
 renderers receive display values and Host callbacks. Opaque row/card keys resolve in Host code to
@@ -225,6 +233,7 @@ Source module map:
 - `skin-api/src/main/java/dev/powerfulcalendar/ui/v2/NativeMemoRow.kt` — display-only Memo row contract
 - `skin-api/src/main/java/dev/powerfulcalendar/ui/v2/NativeAiChatModel.kt` — AI chat/batch action, image/OCR input, proposal/batch authorization and stuck-batch release display DTOs, plus dialog slots; no Core, session identity or AI parser objects cross the boundary
 - `skin-api/src/main/java/dev/powerfulcalendar/ui/v2/NativeEventInspectionModel.kt` — string-only locked-event inspection content and dialog slot
+- `skin-api/src/main/java/dev/powerfulcalendar/ui/v2/NativeCalendarImportPromptModel.kt` — first-run calendar prompt dialog slots
 - `skin-api/src/main/java/dev/powerfulcalendar/ui/v2/NativeSkinCatalogModel.kt` — display-only activation/deletion review kind and dialog slots; skin IDs and mutation services remain in Host
 - `skin-api/src/main/java/dev/powerfulcalendar/ui/v2/NativeLegacyDataReviewModel.kt` — legacy migration/restore review kind and dialog slots; backup data and recovery authority remain in Host
 - `skin-api/src/main/java/dev/powerfulcalendar/ui/v2/NativeMonthModel.kt` — Native month display row and appearance slots
@@ -239,6 +248,7 @@ Source module map:
 - `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativeAiBatchAuthorizationReview.kt` — Native frozen-batch authorization review renderer with Host-provided dialog shell and callbacks
 - `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativeAiStuckBatchReleaseReview.kt` — Native force-release warning and button state renderer with Host-provided eligibility and callbacks
 - `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativeEventInspection.kt` — Native read-only locked-event detail renderer
+- `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativeCalendarImportPrompt.kt` — Native one-time system-calendar import explanation and action buttons
 - `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativeAiInputReview.kt` — Native image-consent, OCR-text and extracted-file review dialogs with Host-provided dialog shell and callbacks
 - `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativeSkinCatalogReview.kt` — Native skin activation/deletion confirmation display with Host-provided dialog shell and callbacks
 - `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativeLegacyDataReview.kt` — Native legacy database migration/flat backup confirmation display with Host-provided dialog shell and callbacks
@@ -250,7 +260,7 @@ Source module map:
 - `app/src/main/java/dev/powerfulcalendar/ui/v2/NativeAiProjection.kt` — AI message, proposal and batch-review display projection plus Host batch mode mapping
 - `app/src/main/java/dev/powerfulcalendar/ui/v2/AiProposalReview.kt` — thin Host adapter projecting AI proposals and binding authorization callbacks to the Native renderer
 - `app/src/main/java/dev/powerfulcalendar/ui/v2/AiBatchAuthorizationReview.kt` — Host adapter retaining the frozen `DraftCard` snapshot and skin-aware dialog selection while projecting display-only batch review data
-- `app/src/main/java/dev/powerfulcalendar/ui/v2/PowerCalApp.kt` — Host orchestration of AI file/image operations, authorization, locked-event inspection projection, stuck-batch release eligibility, installed-skin lifecycle and legacy recovery; Native review surfaces receive display values and action callbacks only
+- `app/src/main/java/dev/powerfulcalendar/ui/v2/PowerCalApp.kt` — Host orchestration of AI file/image operations, calendar permission/import, authorization, locked-event inspection projection, stuck-batch release eligibility, installed-skin lifecycle and legacy recovery; Native review surfaces receive display values and action callbacks only
 - `app/src/main/java/dev/powerfulcalendar/ui/v2/HostProtectedSettings.kt` — Host-owned AI credential form and profile preference adapter
 - `app/src/main/java/dev/powerfulcalendar/ui/v2/NativeMonthProjection.kt` — Core-backed month projection and opaque recurrence action mapping
 - `app/src/main/java/dev/powerfulcalendar/ui/v2/NativeTimelineProjection.kt` — Core-backed occurrence/lane projection and geometry adapter
