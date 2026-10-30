@@ -1,7 +1,7 @@
 # PC-ISSUE-SEPARATION-CLEAR-GREEDY-LABEL-FOLDING — Clear 时间轴标题贪心折叠
 
-- 日期：2026-10-29
-- 状态：**PARTIAL**。Clear 源码、确定性算法、Skin Studio 往返与 Edge Studio Mock 的窄范围视觉/交互回归通过。初次 Android Gradle/API 36 门禁 BLOCKED；后续在实现代码对应提交 `1d78353e0866c7bc19c6a555fb65cbc454aea1f2` 的完整离线 Gradle 门禁已 PASS。Android WebView 与 Native/Clear 完整 parity 仍 **NOT TESTED**。
+- 日期：2026-10-29；API 35 Android WebView follow-up：2026-10-30
+- 状态：**PARTIAL**。Clear 源码、确定性算法、Skin Studio 往返、Edge Studio Mock 的视觉/交互回归和 Android 15 API 35 的真实 Clear WebView 窄范围回归通过。Android WebView 实测不等于 Native/Clear 同夹具 parity；该对照以及实体/OEM 行为仍 **NOT TESTED**。初次 Android Gradle/API 36 门禁 BLOCKED 已被实现提交 `1d78353e0866c7bc19c6a555fb65cbc454aea1f2` 上的完整离线 Gradle PASS 取代。
 - 工作树：`codex/separation-s0-inventory`
 - 基线：`2a02ae71fbeb8b50e2cb099533665e66243a2e53`
 - 实现/回归/报告提交：`c6b6f7d10e068ee0d4d292505f643b0fab4d1164` (`feat(分离): 实现 Clear 时间轴标题贪心折叠`)
@@ -87,3 +87,19 @@
 - `python tools/skin-studio/build_default_clear.py --verify`：**PASS**，9 files / 384,912 bytes，Clear 包 SHA-256 `D0D136EEF118DC52CE767E8416EC1BD3B3134F75302BC64C3D3ED4FCA5192BF9`。校验日志 SHA-256 `61EC37F0FA3F862E62CDFCC60D0DBBA1880377A41EACF3878E82BC928BFA6283`。
 - S0-TL-04 同一已提交代码树上的串行完整离线门禁 `:app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug --offline --rerun-tasks --no-daemon --max-workers=1 --console=plain`：**BUILD SUCCESSFUL，619/619 JVM tests、84 suites、0 failures/errors/skips、88/88 tasks**。这为包含本 Issue 皮肤资源的完整源码树补上了之前缺少的 Gradle/JVM/APK/lint 证据，不替代设备 WebView 行为验收。日志 `.local/android-test/reports/separation-s0-timeline-drag/gradle-full-serial-final.log` SHA-256 `EE72E74A2015EC85E414795A684797285197E5B259BAE8CD3BC2699078AA2652`。Debug / AndroidTest APK SHA-256 分别为 `8E5940F2B73703E76CB0778E849487EB8F9D8D1CD96787BE207D27BF8EEC9986` / `A9570307F3BDAD8F4336A48AD0868B22AB3DEE90CEEF95B858603BB08AF720AD`。
 - 本 follow-up 未执行 Android WebView/Instrumentation/实体设备测试。当前可用 SDK 没有独立 Emulator 程序和系统映像；共享 ADB daemon 启动失败，本轮没有对已知在线但归属不明的 `emulator-5582` 执行设备操作。Native/Clear 同场景 parity 仍 **NOT TESTED**；S0-TL-05 及分离 cutover 继续 **PARTIAL / NOT GO**。
+
+## Follow-up — API 35 Android WebView 实测（2026-10-30）
+
+本次补上 Clear 真实 Android WebView 的窄范围运行证据，未修改 `title-folding.js`、Clear 生产包或 Native 时间轴实现。此前缺少的是 Android WebView 的 DOM 文字测量、点击穿透和打开完整标题证据。
+
+- 新增 `app/src/androidTest/java/dev/powerfulcalendar/ui/v2/TimelineGreedyFoldingWebViewInstrumentedTest.kt`。它创建独立临时数据库和四条正式 ACTIVITY（12:00、12:01、14:00、14:01），运行实际 `PowerCalApp` + bundled Clear WebView，读取 DOM 实际标题矩形、事件时间/可视几何、按钮 accessible name 和可点击状态；点击折叠 B 后验证编辑器标题为 `Fold_B`，并检查没有正式事件修订或新 commit。测试数据与 SharedPreferences 均使用随机隔离命名空间并在 finally 中清理。
+- AndroidTest 代码提交 `4146c0132d8c3690365f736e81eb02d623f7715d`（`test(分离): 验证 Clear 标题折叠 WebView 交互`）已推送至 `origin/codex/separation-s0-timeline-drag`。
+- 环境：`PowerCal_API35_S0_20261030` / `emulator-5582`，API 35 / Android 15，WebView `124.0.6367.219`，显示 `1080×1920 @ 420dpi`；WebView 内容视口 `412×684 CSS px`。真机/OEM 未测。
+- 实际测量矩形（WebView 视口 CSS px）：A `(224.095,343.905)—(261.911,358.762)`；B `(224.095,344.155)—(261.887,359.012)`；C `(224.095,373.905)—(261.923,388.762)`；D `(224.095,374.155)—(262.696,389.012)`。A/B 与 C/D 分别真实重叠；A/C 不重叠。轨迹为 `A visible → B folded against A → C visible compared with A → D folded against C`，证明隐藏 B 没有成为后续 lead。
+- AndroidJUnitRunner **1/1 PASS**。事件按钮仍为 4 个，全部原 `ACTIVITY` 时间区间/事件序号/泳道保留；实测几何匹配开始和结束时间（1 分钟可视高度 0.25 CSS px），25 个时间刻度和当前时间线仍渲染。B 标题 `pointer-events:none`，屏幕点 `(226.095,346.155)` 命中 `BUTTON.tEvent` 的事件序号 2；打开后表单标题完整为 `Fold_B`，Store 快照与 commit 数未变。
+- 截图：`.local/android-test/reports/separation-s0-tl05-api35-20261030/s0-tl05-greedy-folding-api35.png`，SHA-256 `F3BE4BA18DA3526A809AC7E82BF95E0EF41C1AFEB689E183C02B5F95C0FBDEFA`。原始 rectangles/hit trace：`timeline-greedy-folding-api35-logcat-trace.txt`，SHA-256 `C10ACE817B28F4DE2286C36F73417BFEB2EDCDDBB96F8569DACA93D7B0176EBC`；最终 AndroidJUnit log SHA-256 `1DB56E886D367D8A0BA0431D7935263C9E1B8340376B9F582890E57108B28E87`。Debug APK SHA-256 `195BA8FAE40F3B487C1345CEA242C9380A2B1088FBED38CB57E6418E340BD78A`；AndroidTest APK SHA-256 `D006B41DCE367C544A451E31C849BFCCC5292840C26651AB44928F814D262518`。
+- 定向验证：贪心策略 **10/10 PASS**，log SHA-256 `AD35A2781A63D7E5F46E2C6031CFCA9D23D492C6D739B83E22F1E0AF9B948348`；Skin Studio Python **61/61 PASS**，log SHA-256 `098D5DE055178172078D260911572D9AC363BA387F77B451E2088600B89CC875`；Clear canonical verify **9 files / 394,086 bytes PASS**，package SHA-256 `8F7F5680BFD27976B2792AAB06D051BAF0F03F4A914636EA73E82E48431F8035`。
+- Gradle `verifySkinSourceBoundary + testDebugUnitTest + assembleDebug + lintDebug`：BUILD SUCCESSFUL；另强制重跑 JVM **727/727、100 suites、0 failures/errors/skips**。门禁日志 SHA-256 `48394B8091FDFEA4FC0C6453BEF78469AB21EA0B3DE0A687B58BEA5358D1C08B`；强制 JVM 日志 SHA-256 `F73DB96764DECCAD40FAAC28DE1B4E5B267F575E53AA95570016F3EFA9E671C3`；lint `0 errors / 53 warnings`。AndroidTest 重编译命令 `:app:assembleDebugAndroidTest --offline --rerun-tasks --no-daemon --console=plain` 53/53 tasks PASS；Clear verify log SHA-256 `C5CA0FF65E4A70A32B8103595A22E5F31BBA174BD0D229B86CBB472523FC547B`。
+- 保留失败证据：前几次 AVD 在 JUnit 返回前退出，日志没有测试结果；另一次初始夹具把 C/D 放在 13:00/13:01，44px 按钮热区覆盖 B 标题测试点，观测到点击落在序号 4。将 C/D 移至 14:00/14:01 后，不改变 A/B、C/D 文本碰撞关系，最终点击落在 B 自身序号 2 并通过。原诊断失败日志 `timeline-greedy-folding-instrumented-hittrace-r2.log` SHA-256 `C6214624D30CCA4B6CC46647DA86A88B4F814F99F41784147407D7B0909FEEC0`，没有把夹具失败伪报成产品缺陷或 PASS。
+
+本 follow-up 只签核 Clear/API 35 上述子项。左右翼滚动/裁切与缩放重算由既有 Edge Studio Mock 测试覆盖；Native 与 Clear 同场景实际 Android 渲染对照、TalkBack/实体设备/OEM 仍 **NOT TESTED**，所以 `S0-TL-05` 总体及 Separation/Cutover 仍 **PARTIAL / HOLD**。

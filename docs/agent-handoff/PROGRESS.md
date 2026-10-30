@@ -1,5 +1,15 @@
 # Core freeze progress
 
+## Follow-up — Clear 贪心标题 Android WebView 实测 `S0-TL-05`（2026-10-30，子项 PASS；Parity HOLD）
+
+- 新增真实 Android `PowerCalApp` + Clear WebView instrumentation，使用随机隔离 Store 写入四个 ACTIVITY，读取四个 DOM 标题实际矩形，验证 lead 对比、事件时间几何、刻度、折叠点击穿透和完整标题打开；没有改动生产源码。
+- API 35 / Android 15 / WebView 124.0.6367.219 / `emulator-5582`：A/B 矩形重叠并折叠 B；C 不与 A 重叠并成为新 lead；D 与 C 重叠后折叠。所有 4 事件仍保留、true geometry 未变、25 个刻度与当前时间线可见；B 标题点命中事件 seq 2，编辑器呈现完整 `Fold_B`，Store 和 commit 数不变。AndroidJUnitRunner **1/1 PASS**。
+- AndroidTest commit `4146c0132d8c3690365f736e81eb02d623f7715d`（`test(分离): 验证 Clear 标题折叠 WebView 交互`）已推送。
+- 截图 SHA-256 `F3BE4BA18DA3526A809AC7E82BF95E0EF41C1AFEB689E183C02B5F95C0FBDEFA`；矩形/命中轨迹 SHA-256 `C10ACE817B28F4DE2286C36F73417BFEB2EDCDDBB96F8569DACA93D7B0176EBC`；测试日志 SHA-256 `1DB56E886D367D8A0BA0431D7935263C9E1B8340376B9F582890E57108B28E87`；APK/Test APK SHA-256 `195BA8FAE40F3B487C1345CEA242C9380A2B1088FBED38CB57E6418E340BD78A` / `D006B41DCE367C544A451E31C849BFCCC5292840C26651AB44928F814D262518`。完整测试细节见 [独立 Issue](../issues/PC-ISSUE-SEPARATION-CLEAR-GREEDY-LABEL-FOLDING.md)。
+- 定向策略 **10/10**、Skin Studio Python **61/61**、强制 JVM **727/727 / 100 suites / 0 failures-errors-skips**、源码边界、Debug/AndroidTest 编译、lint `0 errors/53 warnings`、Clear canonical package verify 均 PASS。
+- 初始一轮无 JUnit 结果的 AVD 中断和一轮点击夹具被 seq 4 的 44px 热区遮住的失败日志均保留；将 C/D 从 13 点移至 14 点后，碰撞关系不变且 B 点击目标通过。未把夹具错误当作生产缺陷。
+- **总体仍 PARTIAL / HOLD**：Native/Clear 同夹具实际 Android 渲染对照、实体设备/TalkBack/OEM 仍 NOT TESTED。没有因此宣布完整 S0-TL-05、Separation 或 cutover GO。
+
 ## Follow-up — S0-ST-10 静态手势文案契约对齐（2026-10-30）
 
 - 根因：负责人批准“两处位置交替”提示后，Skin Studio 静态测试仍查找旧的“连续敲击 8 下”，使 Python 全套失败 1 项。
