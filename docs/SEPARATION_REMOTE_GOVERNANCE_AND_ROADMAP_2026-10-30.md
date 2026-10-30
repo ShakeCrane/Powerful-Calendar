@@ -66,7 +66,7 @@
 | SEP-07 正式删除 | **BLOCKED** | 真正 Android WebView → 受信 Host 审核 → 确认/取消/版本冲突 → Store；不能仅据 JVM/Mock 签核 |
 | SEP-08 草稿卡组 | Native Compose renderer **CODE COMPLETE** in `:native-skin`; focused Host/Compose cases TESTED; overall SEP remains PARTIAL | 批次导航、patch、flush、提交/拒绝、撤销、IME 与异常恢复的完整双路径回放；AndroidTest 设备执行 |
 | SEP-09 AI 聊天 | 部分路径 TESTED；Native 图片授权、OCR 核对与提取文件/ICS 预检视图已 CODE COMPLETE 于 `:native-skin`，focused Compose/Host 附件及全量 JVM TESTED；设备 NOT TESTED | 真正 Picker/OCR 权限与设备闭环、记录持久化、错误/重试及可用免费 Provider |
-| SEP-10 AI 提案 | 部分路径 TESTED；Native 提案审核卡、批量授权与卡住批次强制解除审核均 CODE COMPLETE 于 `:native-skin`，focused Compose TESTED；设备 NOT TESTED；当前全量 JVM 有 1 条非本路径 Memo 超时 | 四按钮、完整 CREATE/REPLACE/DELETE、多轮、不完整提案及跨进程恢复；正式发布只经 Host 授权 |
+| SEP-10 AI 提案 | 部分路径 TESTED；Native 提案审核卡、批量授权、卡住批次强制解除审核及锁定期间只读事件详情均 CODE COMPLETE 于 `:native-skin`；本路径 focused Compose 2/2，当前全量 JVM 774/774 TESTED；Android Emulator NOT TESTED（无 AVD，SDK emulator package metadata 缺失） | 四按钮、完整 CREATE/REPLACE/DELETE、多轮、不完整提案及跨进程恢复；正式发布只经 Host 授权 |
 | SEP-11 设置/权限 | **INCOMPLETE**；Native 个人资料展示、旧数据库迁移/旧备份确认展示已 CODE COMPLETE 于 `:native-skin`；个人资料定向 Compose 5/5、全量 JVM 772/772 TESTED；AI 凭据表单仍由 Host 保管 | 设置页面完整皮肤化，敏感能力经受信 Host，覆盖权限、ICS、备份、提醒诊断与设备验收 |
 | SEP-12 导航/Picker | **INCOMPLETE**; Native root/notice/modal/system Picker renderers CODE COMPLETE in `:native-skin`; Picker Robolectric + full JVM tested | 页面等价、多窗口/IME/返回导航和 Android 设备 Picker 验收 |
 | SEP-13 包格式 | 有限路径 TESTED；Native 设置页皮肤启用/删除确认已 CODE COMPLETE 于 `:native-skin`，focused Compose、Native 设置与导出路径 TESTED；设备 NOT TESTED | 官方与第三方包同权限，同源构建、导入/导出/升级及危险包检查 |
