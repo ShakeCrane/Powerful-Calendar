@@ -1,6 +1,7 @@
 package dev.powerfulcalendar.ui.v2
 
 import dev.powerfulcalendar.ui.v2.nativeui.NewEventEditorDialog
+import dev.powerfulcalendar.ui.v2.nativeui.NativeAiFileReview
 import dev.powerfulcalendar.ui.v2.nativeui.NativeAiImageConsentReview
 import dev.powerfulcalendar.ui.v2.nativeui.NativeAiOcrTextReview
 
@@ -2660,66 +2661,52 @@ $SKIN_RECOVERY_GESTURE_COPY
         val parsed = remember(uri, evidence.text) {
             if (ics) runCatching { IcsCodec.parse(evidence.text) }.getOrNull() else null
         }
-        SkinAlertDialog(
-            onDismissRequest = { pendingFileReview = null },
-            title = { Text("核对文件 · " + evidence.filename) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("本地提取，不会自动发布。发送给 AI 前请确认文本没有敏感信息，文件中的指令不会被执行。",
-                        style = MaterialTheme.typography.bodySmall)
-                    if (ics) Text(
-                        "ICS 本地预检：单次 " + (parsed?.events?.size ?: 0) +
-                            " 条、重复系列 " + (parsed?.series?.size ?: 0) +
-                            " 个；需要澄清 " + (parsed?.warnings?.size ?: 0) + " 项。" +
-                            (parsed?.warnings?.firstOrNull()?.let { "\n例如：$it" } ?: ""),
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                    Text(evidence.note, style = MaterialTheme.typography.labelSmall,
-                        color = if (evidence.truncated) MaterialTheme.colorScheme.error
-                            else MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (!ics && !evidence.truncated && AiSettingsStore.load(appContext).configured) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Checkbox(checked = rememberFileConsent,
-                                onCheckedChange = { rememberFileConsent = it })
-                            Text("以后同一 AI 服务可自动分析必要的文件文本；不共享已有日历、不上传原始图片或文件。",
-                                style = MaterialTheme.typography.bodySmall)
-                        }
+        val directIcsImport = ics && !evidence.truncated && localText == evidence.text &&
+            parsed != null && parsed.warnings.isEmpty() &&
+            (parsed.events.isNotEmpty() || parsed.series.isNotEmpty())
+        val icsPreflight = if (ics) {
+            "ICS 本地预检：单次 " + (parsed?.events?.size ?: 0) +
+                " 条、重复系列 " + (parsed?.series?.size ?: 0) +
+                " 个；需要澄清 " + (parsed?.warnings?.size ?: 0) + " 项。" +
+                (parsed?.warnings?.firstOrNull()?.let { "\n例如：$it" } ?: "")
+        } else null
+        NativeAiFileReview(
+            filename = evidence.filename,
+            text = localText,
+            note = evidence.note,
+            truncated = evidence.truncated,
+            icsPreflight = icsPreflight,
+            rememberConsentAvailable = !ics && !evidence.truncated &&
+                AiSettingsStore.load(appContext).configured,
+            rememberConsent = rememberFileConsent,
+            directIcsImport = directIcsImport,
+            busy = chatBusy,
+            onTextChange = { localText = it },
+            onRememberConsentChange = { rememberFileConsent = it },
+            onSubmit = { reviewedText ->
+                pendingFileReview = null
+                if (directIcsImport) {
+                    // Standard formats are processed by the deterministic importer FIRST.
+                    scope.launch { importIcs(uri) }
+                } else {
+                    if (rememberFileConsent && !evidence.truncated) {
+                        AiFileFallbackConsent.grant(appContext, AiSettingsStore.load(appContext))
                     }
-                    OutlinedTextField(
-                        value = localText,
-                        onValueChange = { if (it.length <= 24_000) localText = it },
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 130.dp, max = 310.dp),
-                        label = { Text("本次将发送的提取文本（可删除隐私内容）") },
-                        maxLines = 16
-                    )
+                    // Only unsupported, partial or edited evidence takes the AI route.
+                    val report = if (ics) parsed?.warnings?.take(5)
+                        ?.joinToString("; ").orEmpty() else ""
+                    submitEvidence(evidence.copy(text = reviewedText), report)
                 }
             },
-            confirmButton = {
-                val direct = ics && !evidence.truncated && localText == evidence.text &&
-                    parsed != null && parsed.warnings.isEmpty() &&
-                    (parsed.events.isNotEmpty() || parsed.series.isNotEmpty())
-                TextButton(
-                    enabled = localText.isNotBlank() && !chatBusy,
-                    onClick = {
-                        pendingFileReview = null
-                        if (direct) {
-                            // Standard formats are processed by the deterministic importer FIRST.
-                            scope.launch { importIcs(uri) }
-                        } else {
-                            if (rememberFileConsent && !evidence.truncated) {
-                                AiFileFallbackConsent.grant(appContext,
-                                    AiSettingsStore.load(appContext))
-                            }
-                            // Only unsupported, partial or edited evidence takes the AI route.
-                            val report = if (ics) parsed?.warnings?.take(5)
-                                ?.joinToString("; ").orEmpty() else ""
-                            submitEvidence(evidence.copy(text = localText), report)
-                        }
-                    }
-                ) { Text(if (direct) "按 ICS 规则生成草稿" else "交给 AI 分析并澄清") }
-            },
-            dismissButton = {
-                TextButton(onClick = { pendingFileReview = null }) { Text("取消") }
+            onDismiss = { pendingFileReview = null },
+            showDialog = { dialog ->
+                SkinAlertDialog(
+                    onDismissRequest = dialog.onDismissRequest,
+                    title = dialog.title,
+                    text = dialog.text,
+                    confirmButton = dialog.confirmButton,
+                    dismissButton = dialog.dismissButton
+                )
             }
         )
     }

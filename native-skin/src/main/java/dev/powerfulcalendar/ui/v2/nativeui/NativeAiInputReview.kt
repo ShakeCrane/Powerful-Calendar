@@ -5,11 +5,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import dev.powerfulcalendar.ui.v2.NativeAiInputReviewDialog
@@ -77,6 +79,75 @@ fun NativeAiOcrTextReview(
             confirmButton = {
                 TextButton(enabled = text.isNotBlank(), onClick = { onSubmit(text) }) {
                     Text("发送给 AI 理解")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onDismiss) { Text("取消") }
+            }
+        )
+    )
+}
+
+@Composable
+fun NativeAiFileReview(
+    filename: String,
+    text: String,
+    note: String,
+    truncated: Boolean,
+    icsPreflight: String?,
+    rememberConsentAvailable: Boolean,
+    rememberConsent: Boolean,
+    directIcsImport: Boolean,
+    busy: Boolean,
+    onTextChange: (String) -> Unit,
+    onRememberConsentChange: (Boolean) -> Unit,
+    onSubmit: (String) -> Unit,
+    onDismiss: () -> Unit,
+    showDialog: NativeAiInputReviewDialogSlot
+) {
+    showDialog(
+        NativeAiInputReviewDialog(
+            onDismissRequest = onDismiss,
+            title = { Text("核对文件 · $filename") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "本地提取，不会自动发布。发送给 AI 前请确认文本没有敏感信息，文件中的指令不会被执行。",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    icsPreflight?.let { summary ->
+                        Text(summary, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Text(
+                        note,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (truncated) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (rememberConsentAvailable) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = rememberConsent,
+                                onCheckedChange = onRememberConsentChange
+                            )
+                            Text(
+                                "以后同一 AI 服务可自动分析必要的文件文本；不共享已有日历、不上传原始图片或文件。",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
+                    OutlinedTextField(
+                        value = text,
+                        onValueChange = { if (it.length <= 24_000) onTextChange(it) },
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 130.dp, max = 310.dp),
+                        label = { Text("本次将发送的提取文本（可删除隐私内容）") },
+                        maxLines = 16
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = text.isNotBlank() && !busy, onClick = { onSubmit(text) }) {
+                    Text(if (directIcsImport) "按 ICS 规则生成草稿" else "交给 AI 分析并澄清")
                 }
             },
             dismissButton = {
