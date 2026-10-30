@@ -48,10 +48,30 @@ let activeMode="simple", editCanvas=true, previewTimer=null, previewSeq=0;
 let previewPort=null, lastState=null, lastPreviewUrl="", dirty=false;
 let projectSourceError=null, projectDraftText=null, implicitFullCanvas=false, fullCanvasTouched=false;
 const REQUIRED_SOURCE_FILES=new Set(["web/index.html","web/style.css","web/app.js","project.json"]);
+const HOST_CAPABILITY_CONTROLS=[
+  ["host.read","capHostRead"],
+  ["host.action","capHostAction"],
+  ["host.edit","capHostEdit"],
+];
 const TEXT_SOURCE_EXTENSIONS=/\.(cjs|css|html?|ini|js|json|jsx|kt|less|md|mjs|properties|py|scss|sh|sql|toml|tsx?|txt|xml|ya?ml|svg)$/i;
 function say(message,isError=false){$("toast").textContent=message;$("toast").classList.toggle("error",isError)}
 function setText(name,value){sourceFiles.set(name,enc.encode(value))}
 function getText(name){return dec.decode(sourceFiles.get(name)||new Uint8Array())}
+function syncHostCapabilityControls(){
+  const declared=new Set(Array.isArray(manifest?.capabilities)?manifest.capabilities:[]);
+  for(const [capability,id] of HOST_CAPABILITY_CONTROLS)
+    $(id).checked=declared.has(capability);
+}
+function updateHostCapabilities(){
+  if(!manifest)return;
+  // A declaration changes only after an explicit checkbox action. Loading,
+  // previewing, source edits, and export leave the imported list untouched.
+  manifest.capabilities=HOST_CAPABILITY_CONTROLS
+    .filter(([,id])=>$(id).checked)
+    .map(([capability])=>capability);
+  change();
+  say("Host 能力请求已更新；实际访问仍受 Android Host 校验和现有授权流程约束。");
+}
 function parseProject(){
   const obj=JSON.parse(getText("project.json"));
   if(!obj||typeof obj!=="object"||Array.isArray(obj)||obj.projectVersion!==3||
@@ -120,6 +140,7 @@ async function loadPackage(data){
   $("skinId").value=factory?"powercal-clear-custom":manifest.id;
   $("skinName").value=factory?"我的 PowerCal Clear":manifest.name;
   $("fullCanvas").checked=manifest.fullCanvas===true;
+  syncHostCapabilityControls();
   switchMode(project.mode==="advanced"?"advanced":"simple");
   syncSourceInputs();renderMaterials();renderAssets();renderLayers();
   schedulePreview(0);
@@ -2059,6 +2080,8 @@ function bindUI(){
   $("webPreview").onload=()=>connectPreview();
   $("skinId").onchange=change;$("skinName").onchange=change;
   $("fullCanvas").onchange=()=>{fullCanvasTouched=true;change()};
+  for(const [,id] of HOST_CAPABILITY_CONTROLS)
+    $(id).onchange=updateHostCapabilities;
   for(const id of ["scenario","theme","reduced"])$(id).onchange=()=>{
     if(id==="theme")$("webPreview").style.colorScheme=$("theme").value;
     mockAnchor=null;

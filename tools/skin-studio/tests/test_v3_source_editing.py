@@ -17,7 +17,10 @@ class StudioSourceEditingTest(unittest.TestCase):
     def run_studio(self, capabilities):
         manifest, files = unpack(ASSET.read_bytes())
         manifest["id"] = "source-edit-test"
-        manifest["capabilities"] = capabilities
+        if capabilities is None:
+            manifest.pop("capabilities", None)
+        else:
+            manifest["capabilities"] = capabilities
         project = json.loads(files["project.json"])
         project.pop("layers", None)
         project["thirdPartyMetadata"] = {"keep": "原样保留"}
@@ -61,6 +64,36 @@ class StudioSourceEditingTest(unittest.TestCase):
                 files = {name: base64.b64decode(data) for name, data in payload["files"].items()}
                 imported, _ = unpack(build_files(payload["manifest"], files))
                 self.assertEqual(imported["capabilities"], capabilities)
+
+    def test_capability_requests_change_only_after_an_explicit_control_edit(self):
+        for capabilities in (None, [], ["host.read"], ["host.read", "host.action", "host.edit"]):
+            with self.subTest(capabilities=capabilities):
+                original_files, result = self.run_studio(capabilities)
+                unchanged = result["capabilityBefore"]
+                if capabilities is None:
+                    self.assertNotIn("capabilities", unchanged["manifest"])
+                    self.assertEqual([False, False, False], result["capabilitySelectionBefore"])
+                else:
+                    self.assertEqual(capabilities, unchanged["manifest"]["capabilities"])
+                    self.assertEqual([capability in capabilities for capability in
+                                      ("host.read", "host.action", "host.edit")],
+                                     result["capabilitySelectionBefore"])
+                self.assertEqual(original_files, {
+                    name: base64.b64decode(encoded)
+                    for name, encoded in unchanged["files"].items()
+                }, "loading the Studio must not rewrite source bytes")
+
+                edited = result["capabilityPayload"]
+                self.assertEqual(["host.action", "host.edit"], edited["manifest"]["capabilities"])
+                edited_files = {name: base64.b64decode(encoded)
+                                for name, encoded in edited["files"].items()}
+                source_before = {name: base64.b64decode(encoded)
+                                 for name, encoded in result["recoveredPayload"]["files"].items()}
+                self.assertEqual(source_before, edited_files,
+                                 "changing capability requests must not rewrite package sources")
+                imported_manifest, imported_files = unpack(build_files(edited["manifest"], edited_files))
+                self.assertEqual(["host.action", "host.edit"], imported_manifest["capabilities"])
+                self.assertEqual(source_before, imported_files)
 
     def test_visual_change_updates_metadata_without_dropping_custom_fields(self):
         _, result = self.run_studio(["host.read"])

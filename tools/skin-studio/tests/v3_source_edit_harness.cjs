@@ -33,6 +33,9 @@ vm.runInContext("bindUI()", sandbox);
 sandbox.fixture = fixture;
 (async()=>{
   await vm.runInContext("loadPackage(fixture)", sandbox);
+  const capabilityBefore = vm.runInContext("payload()", sandbox);
+  const capabilitySelectionBefore = ["capHostRead","capHostAction","capHostEdit"]
+    .map(id=>document.getElementById(id).checked);
   document.getElementById("advancedMode").onclick();
   const selector = document.getElementById("extraSourceFile");
   const choices = selector.children.map(x=>x.value);
@@ -86,7 +89,13 @@ sandbox.fixture = fixture;
   const invalidProjectDraftRestored = editor.value === "{ invalid json";
   editor.value = validProjectText;editor.oninput();
   const recoveredPayload = vm.runInContext("payload()", sandbox);
+  document.getElementById("capHostRead").checked = false;
+  document.getElementById("capHostAction").checked = true;
+  document.getElementById("capHostEdit").checked = true;
+  document.getElementById("capHostAction").onchange();
+  const capabilityPayload = vm.runInContext("payload()", sandbox);
   process.stdout.write(JSON.stringify({choices, original, payload, projectPayload,
-    managedPayload, visualPayload, recoveredPayload, invalidProjectRejected,
+    managedPayload, visualPayload, recoveredPayload, capabilityBefore,
+    capabilitySelectionBefore, capabilityPayload, invalidProjectRejected,
     invalidProjectDraftRestored, rejectedTextExtension}));
 })().catch(error=>{console.error(error);process.exitCode=1});

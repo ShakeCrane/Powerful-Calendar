@@ -118,6 +118,40 @@ async function main(){
         check(noEditReimport.manifest.sha256[name]===actualHash,
           'no-edit reimport Manifest hash mismatch: '+name);
       }
+      const capabilityFixture=JSON.parse(JSON.stringify(installedPackage));
+      capabilityFixture.manifest.id='studio-capability-editor-test';
+      capabilityFixture.manifest.capabilities=[];
+      await loadPackage(capabilityFixture);
+      const capabilitySourceBefore=payload();
+      check(['capHostRead','capHostAction','capHostEdit']
+        .every(id=>!document.querySelector('#'+id).checked),
+        'empty imported capability list was not reflected in the editor');
+      for(const id of ['capHostRead','capHostAction','capHostEdit']){
+        const control=document.querySelector('#'+id);
+        control.checked=true;
+        control.dispatchEvent(new Event('change',{bubbles:true}));
+      }
+      const capabilityEdited=payload();
+      check(JSON.stringify(capabilityEdited.manifest.capabilities)===
+        '["host.read","host.action","host.edit"]',
+        'explicit capability controls did not update the Manifest request');
+      check(JSON.stringify(canonical(capabilityEdited.files))===
+        JSON.stringify(canonical(capabilitySourceBefore.files)),
+        'editing capability requests modified source/resource bytes');
+      const capabilityZipResponse=await fetch('/api/export-v3',{method:'POST',
+        headers:{'Content-Type':'application/json'},body:JSON.stringify(capabilityEdited)});
+      check(capabilityZipResponse.ok,'capability-edited package export failed');
+      const capabilityImportResponse=await fetch('/api/import-v3',{method:'POST',
+        headers:{'Content-Type':'application/octet-stream'},body:await capabilityZipResponse.arrayBuffer()});
+      check(capabilityImportResponse.ok,'capability-edited package re-import failed');
+      const capabilityReimport=await capabilityImportResponse.json();
+      check(JSON.stringify(capabilityReimport.manifest.capabilities)===
+        '["host.read","host.action","host.edit"]',
+        'capability declarations changed during export/re-import');
+      check(JSON.stringify(canonical(capabilityReimport.files))===
+        JSON.stringify(canonical(capabilitySourceBefore.files)),
+        'capability package round trip changed source/resource bytes');
+      await loadPackage(installedPackage);
       document.querySelector('#advancedMode').click();
       const installedEditor=document.querySelector('#jsCode');
       const installedBefore=installedEditor.value;
@@ -345,7 +379,7 @@ async function main(){
       check(visualImported.files['project.json']===visual.files['project.json'],'visual metadata roundtrip changed');
       return {installedPackageReopenEditExportReimport:true,installedPackageId:'pc-delivery-fixture',
         noEditBrowserImportPreviewExportReimport:true,noEditPreviewedFiles:Object.keys(installedFiles).length-1,
-        noEditFileSha256,
+        noEditFileSha256,capabilityRequestsExplicitlyEdited:true,
         fullCanvasFalseAndOmittedPreserved:true,optionalProjectSlotsPreserved:true,
         file:'web/edit.js', files:Object.keys(authored.files).length,
         capabilities:imported.manifest.capabilities,projectTree:true,newText:true,

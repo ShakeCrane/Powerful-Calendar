@@ -20,6 +20,13 @@
       <label>唯一 ID <input id="skinId" value="new-powercal-skin"></label>
       <label>显示名称 <input id="skinName" value="My PowerCal Skin"></label>
       <label class="check"><input id="fullCanvas" type="checkbox" checked>完整画布（宿主原生设置仍可恢复）</label>
+      <fieldset class="capabilityRequests" aria-describedby="capabilityHelp">
+        <legend>Host 能力请求</legend>
+        <label class="check"><input id="capHostRead" type="checkbox">host.read：读取宿主投影数据</label>
+        <label class="check"><input id="capHostAction" type="checkbox">host.action：请求宿主执行开放动作</label>
+        <label class="check"><input id="capHostEdit" type="checkbox">host.edit：兼容声明（当前不单独授权）</label>
+      </fieldset>
+      <p id="capabilityHelp" class="muted">勾选会明确修改 Manifest 能力请求。它不会绕过 Android Host 的动作校验、用户审核或数据权限规则。</p>
     </section>
     <section><h2>编辑模式</h2><div class="tabs">
       <button id="simpleMode" class="active">可视化</button><button id="advancedMode">源码</button>
