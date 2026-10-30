@@ -9,7 +9,7 @@ import androidx.compose.ui.unit.sp
 import java.text.BreakIterator
 import java.util.Locale
 
-internal data class TimelineTitleTextMeasurement(
+data class TimelineTitleTextMeasurement(
     val layout: TextLayoutResult,
     val drawWidthPx: Int,
     val fontSizeSp: Float,
@@ -17,7 +17,7 @@ internal data class TimelineTitleTextMeasurement(
 )
 
 /** Measures one-line titles at the SAME design font size on both wings and all event kinds. */
-internal fun measureTimelineTitleText(
+fun measureTimelineTitleText(
     textMeasurer: TextMeasurer,
     text: String,
     baseStyle: TextStyle,

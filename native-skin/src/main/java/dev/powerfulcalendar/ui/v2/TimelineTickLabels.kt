@@ -4,12 +4,12 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
-internal data class TimelineTickLabel(val instantMillis: Long, val text: String)
+data class TimelineTickLabel(val instantMillis: Long, val text: String)
 
 private val timelineClockFormat = DateTimeFormatter.ofPattern("HH:mm")
 
 /** Build the labels used by the time ruler and by current-time badge collision avoidance. */
-internal fun timelineTickLabels(
+fun timelineTickLabels(
     fromMillis: Long,
     toMillis: Long,
     tickMinutes: Long,

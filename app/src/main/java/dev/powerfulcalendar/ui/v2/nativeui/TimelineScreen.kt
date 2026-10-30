@@ -1,115 +1,45 @@
 package dev.powerfulcalendar.ui.v2.nativeui
 
-import dev.powerfulcalendar.ui.v2.*
-
-import androidx.compose.animation.core.animate
-import androidx.compose.foundation.*
-import androidx.compose.foundation.gestures.*
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.material3.LocalTextStyle
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.input.pointer.*
-import androidx.compose.ui.input.pointer.util.VelocityTracker
-import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.semantics.*
-import androidx.compose.ui.text.TextLayoutResult
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.drawText
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.rememberTextMeasurer
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Constraints
-import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.compose.ui.zIndex
-import dev.powerfulcalendar.core.*
+import dev.powerfulcalendar.core.TemporalKind
+import dev.powerfulcalendar.core.TemporalRecord
+import dev.powerfulcalendar.core.TimelineCoordinate
+import dev.powerfulcalendar.ui.v2.CoreNativeTimelineGeometry
+import dev.powerfulcalendar.ui.v2.LocalAxisPalette
+import dev.powerfulcalendar.ui.v2.LocalSkinVisual
+import dev.powerfulcalendar.ui.v2.NativeTimelineActions
+import dev.powerfulcalendar.ui.v2.NativeTimelineAppearance
+import dev.powerfulcalendar.ui.v2.NativeTimelineAsset
+import dev.powerfulcalendar.ui.v2.NativeTimelineAxisColors
+import dev.powerfulcalendar.ui.v2.NativeTimelineCamera
+import dev.powerfulcalendar.ui.v2.NativeTimelineContext
+import dev.powerfulcalendar.ui.v2.NativeTimelineDialog
+import dev.powerfulcalendar.ui.v2.NativeTimelineGeometry
+import dev.powerfulcalendar.ui.v2.NativeTimelineKind
+import dev.powerfulcalendar.ui.v2.NativeTimelineState
+import dev.powerfulcalendar.ui.v2.SkinAlertDialog
+import dev.powerfulcalendar.ui.v2.SkinImage
+import dev.powerfulcalendar.ui.v2.SkinSlot
+import dev.powerfulcalendar.ui.v2.axisBackground
+import dev.powerfulcalendar.ui.v2.kindColor
+import dev.powerfulcalendar.ui.v2.projectNativeTimeline
+import dev.powerfulcalendar.ui.v2.skinBackdrop
+import dev.powerfulcalendar.ui.v2.skinPainter
 import java.time.Instant
-import java.time.LocalDate
 import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import kotlin.math.abs
-import kotlin.math.ceil
-import kotlin.math.exp
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
 
-private val CLOCK_FORMAT = DateTimeFormatter.ofPattern("HH:mm")
-
-private data class MeasuredTimelineTitle(
-    val candidate: TimelineTitleCandidate,
-    val layout: TextLayoutResult,
-    val drawWidthPx: Int,
-    val offset: IntOffset,
-    val testTag: String,
-    val sourceRecord: TemporalRecord,
-    val sourceKey: String,
-    val anchorMillis: Long
-)
-
-internal fun Modifier.timeAxisResetSemantics(onReset: () -> Unit): Modifier = semantics {
-    contentDescription = "双击当前时间刻度尺返回24小时视图"
-    onClick(label = "复位为24小时视图") {
-        onReset()
-        true
-    }
-}
-
-internal fun findUnblockedLabelTopLeft(
-    preferred: Offset,
-    labelSize: Size,
-    canvasSize: Size,
-    obstacles: List<Rect>,
-    stepPx: Float,
-    gapPx: Float
-): Offset {
-    fun fits(point: Offset): Boolean {
-        if (point.x < 0f || point.y < 0f ||
-            point.x + labelSize.width > canvasSize.width ||
-            point.y + labelSize.height > canvasSize.height
-        ) return false
-        return obstacles.none { obstacle ->
-            point.x < obstacle.right + gapPx && point.x + labelSize.width > obstacle.left - gapPx &&
-                point.y < obstacle.bottom + gapPx && point.y + labelSize.height > obstacle.top - gapPx
-        }
-    }
-
-    if (fits(preferred) || stepPx <= 0f) return preferred
-    val directions = listOf(
-        Offset(1f, 0f), Offset(-1f, 0f), Offset(0f, -1f), Offset(0f, 1f),
-        Offset(1f, -1f), Offset(1f, 1f), Offset(-1f, -1f), Offset(-1f, 1f)
-    )
-    val maxSteps = ceil(maxOf(canvasSize.width, canvasSize.height) / stepPx).toInt()
-    for (step in 1..maxSteps) {
-        val distance = step * stepPx
-        for (direction in directions) {
-            val candidate = preferred + direction * distance
-            if (fits(candidate)) return candidate
-        }
-    }
-    return preferred
-}
-private val DAY_FORMAT = DateTimeFormatter.ofPattern("M月d日 EEE", java.util.Locale.SIMPLIFIED_CHINESE)
-private val HEADER_DAY_FORMAT = DateTimeFormatter.ofPattern("yyyy年M月d日 EEE", java.util.Locale.SIMPLIFIED_CHINESE)
-
-/** Every UI projection retains its formal owner; moving a repeating slot is never a series edit. */
+/**
+ * Host adapter retained for app routes and regression tests. Core records and identity stop here;
+ * the renderer in :native-skin consumes NativeTimelineContext and returns opaque action keys.
+ */
 @Composable
 fun TimelineScreen(
     records: List<TemporalRecord>, camera: TimelineCoordinate.Camera, nowMillis: Long, zone: ZoneId,
@@ -122,768 +52,109 @@ fun TimelineScreen(
     modifier: Modifier = Modifier, blockedReminders: Int = 0,
     onOpenOccurrence: (TemporalRecord, String?) -> Unit = { record, _ -> onOpenEvent(record) }
 ) {
-    val scope = rememberCoroutineScope()
-    val effects = LocalGlassEffects.current
-    val motion = glassMotion()
-    val latestCamera by rememberUpdatedState(camera)
-    var inertia by remember { mutableStateOf<Job?>(null) }
-    var inspected by remember { mutableStateOf<TemporalRecord?>(null) }
-    val owners = remember(records) { records.associateBy { it.eventSeq } }
-    val day = Instant.ofEpochMilli(camera.anchorMillis).atZone(zone).toLocalDate()
-    val projection = remember(records, day, zone) {
-        // Cache an overscan window independently from pixel scroll. Repeating slots and one-off
-        // overrides/exceptions share the same read-only occurrence projection.
-        val from = day.minusDays(8).atStartOfDay(zone).toInstant().toEpochMilli()
-        val to = day.plusDays(9).atStartOfDay(zone).toInstant().toEpochMilli()
-        records.filter { !it.recurrence.isRepeating }.mapNotNull(::singleDisplayOccurrence) +
-            displayOccurrences(records.filter { it.recurrence.isRepeating }, from, to)
+    val localDay = Instant.ofEpochMilli(camera.anchorMillis).atZone(zone).toLocalDate()
+    val projection = remember(records, localDay, zone) {
+        projectNativeTimeline(records, camera, zone)
     }
-    val slotKeys = remember(projection) {
-        java.util.IdentityHashMap<TemporalRecord, String>().apply {
-            projection.forEach { put(it.record, it.key) }
-        }
-    }
-    val occurrenceKeys = remember(projection) {
-        java.util.IdentityHashMap<TemporalRecord, String>().apply {
-            projection.forEach { put(it.record, it.occurrenceKey) }
-        }
-    }
-    fun open(record: TemporalRecord) {
-        inertia?.cancel()
-        val owner = owners[record.eventSeq] ?: record
-        val occurrenceKey = occurrenceKeys[record]?.takeIf { owner.recurrence.isRepeating }
-        if (aiLocked) inspected = record else onOpenOccurrence(owner, occurrenceKey)
-    }
-    fun changeCamera(updated: TimelineCoordinate.Camera) { inertia?.cancel(); onCameraChange(updated) }
-
-    Column(modifier.fillMaxSize().background(axisBackground()).skinBackdrop(SkinSlot.TIMELINE_BACKGROUND)) {
-        // Single actionable toolbar. Page navigation lives ONLY in the bottom tab bar.
-        var createMenu by remember { mutableStateOf(false) }
-        Row(
-            Modifier.fillMaxWidth().padding(start = 14.dp, end = 6.dp, top = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    SkinImage(SkinSlot.BRAND_MARK, Modifier.size(19.dp))
-                    Text("Powerful Calendar", style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-                Text(day.format(HEADER_DAY_FORMAT), style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            IconButton(onClick = { inertia?.cancel(); onToday() }, modifier = Modifier.size(44.dp)) {
-                Icon(Icons.Default.Today, "今日 · 复位为全天")
-            }
-            IconButton(onClick = { inertia?.cancel(); onOpenMemo() }, modifier = Modifier.size(44.dp)) {
-                BadgedBox(badge = {
-                    if (memoCount > 0) Badge { Text(if (memoCount > 999) "999+" else memoCount.toString()) }
-                }) { Icon(Icons.Default.Checklist, "Memo 未完成 " + memoCount) }
-            }
-            IconButton(onClick = { inertia?.cancel(); onOpenDeck() }, modifier = Modifier.size(44.dp)) {
-                BadgedBox(badge = {
-                    if (pendingCount > 0) Badge { Text(pendingCount.toString()) }
-                }) {
-                    Icon(if (aiLocked) Icons.Default.Lock else Icons.Default.Layers, "待处理 $pendingCount")
-                }
-            }
-            Box {
-                IconButton(onClick = { createMenu = true }, enabled = !aiLocked, modifier = Modifier.size(44.dp)) {
-                    Icon(Icons.Default.Add, "新建事件")
-                }
-                DropdownMenu(expanded = createMenu, onDismissRequest = { createMenu = false }) {
-                    TemporalKind.entries.forEach { kind ->
-                        DropdownMenuItem(text = { Text(kind.label) }, onClick = {
-                            createMenu = false
-                            onCreate(kind, TimelineCoordinate.snap(camera.anchorMillis, camera.hours, zone))
-                        })
-                    }
-                }
-            }
-        }
-        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { changeCamera(camera.copy(hours = TimelineCoordinate.clampHours(camera.hours * 1.5))) }, enabled = camera.hours < 48) {
-                Icon(Icons.Default.Remove, "缩小，显示更长时间")
-            }
-            Text("${if (camera.hours % 1.0 == 0.0) camera.hours.toInt().toString() else String.format(java.util.Locale.US, "%.1f", camera.hours)} 小时 / 屏",
-                style = MaterialTheme.typography.labelMedium, modifier = Modifier.semantics { stateDescription = "时间轴缩放 ${camera.hours} 小时" })
-            IconButton(onClick = { changeCamera(camera.copy(hours = TimelineCoordinate.clampHours(camera.hours / 1.5))) }, enabled = camera.hours > TimelineCoordinate.MIN_HOURS) {
-                Icon(Icons.Default.Add, "放大，显示更短时间")
-            }
-            Spacer(Modifier.weight(1f))
-            Text(if (aiLocked) "AI 处理中" else "↕ 时间", style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(end = 8.dp))
-        }
-        if (blockedReminders > 0) Surface(onClick = onOpenTools, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-            shape = GlassShapes.chip, color = MaterialTheme.colorScheme.errorContainer) {
-            Row(Modifier.heightIn(min = 48.dp).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.ErrorOutline, null, Modifier.size(20.dp)); Spacer(Modifier.width(8.dp))
-                Text("$blockedReminders 项提醒受阻 · 查看权限与状态", style = MaterialTheme.typography.bodyMedium)
-            }
-        }
-        val halfSpan = (TimelineCoordinate.spanMillis(camera.hours) / 2).toLong()
-        val visibleDates = projection.filter { entry ->
-            val record = entry.record
-            if (!record.isDateOnlyDeadline()) false else {
-                val start = LocalDate.parse(record.deadlineDate).atStartOfDay(record.zone).toInstant().toEpochMilli()
-                val end = LocalDate.parse(record.deadlineDate).plusDays(1).atStartOfDay(record.zone).toInstant().toEpochMilli()
-                start < camera.anchorMillis + halfSpan && end > camera.anchorMillis - halfSpan
-            }
-        }
-        if (records.any { it.isDateOnlyDeadline() }) Box(Modifier.fillMaxWidth().height(64.dp * LocalDensity.current.fontScale), contentAlignment = Alignment.Center) {
-        if (visibleDates.isEmpty()) Text("可见日期内没有日期级截止", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        LazyRow(Modifier.fillMaxWidth().padding(bottom = 8.dp), contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(visibleDates, key = { it.key }) { entry ->
-                Surface(onClick = { open(entry.record) }, shape = GlassShapes.chip, color = MaterialTheme.colorScheme.tertiaryContainer) {
-                    Row(Modifier.heightIn(min = 48.dp).padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Flag, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp))
-                        Column(Modifier.widthIn(max = 240.dp)) {
-                            Text(entry.record.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelLarge)
-                            Text("${entry.record.deadlineDate} · 截止，无具体时刻", style = MaterialTheme.typography.labelSmall)
-                        }
-                    }
-                }
-            }
-        }
-        }
-        BoxWithConstraints(Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(0.dp))) {
-            val density = LocalDensity.current
-            val height = with(density) { maxHeight.toPx() }.coerceAtLeast(1f)
-            val viewportWidth = maxWidth
-            val viewportHeight = maxHeight
-            val width = with(density) { viewportWidth.toPx() }
-            val heightNow by rememberUpdatedState(height)
-            val unlocked by rememberUpdatedState(!aiLocked)
-            // All true overlapping events get independent lanes. Excess columns scroll sideways;
-            // event boxes are never compressed into 8dp stripes or replaced by an overflow band.
-            // MEMO is date-only and does not occupy a minute-scale lane.
-            val layout = remember(projection) {
-                val projected = projection.map { it.record }
-                    .filterNot { it.kind == TemporalKind.MEMO }
-                TimelineLayout.layout(projected)
-            }
-            val textMeasurer = rememberTextMeasurer()
-            val nowBadgeObstacles = mutableListOf<Rect>()
-            var dragKey by remember { mutableStateOf<String?>(null) }
-            var dragTarget by remember { mutableStateOf<Long?>(null) }
-            var dragTravel by remember { mutableFloatStateOf(0f) }
-            val cameraChange by rememberUpdatedState(onCameraChange)
-
-            Box(Modifier.fillMaxSize().testTag("timeline-viewport").pointerInput(Unit) {
-                timelineGestures({ latestCamera }, { heightNow }, { inertia?.cancel() }, { cameraChange(it) },
-                    { velocity, releasedCamera ->
-                    inertia?.cancel()
-                    inertia = scope.launch {
-                        var cam = releasedCamera
-                        var speed = velocity
-                        var last = withFrameNanos { it }
-                        while (abs(speed) > 24f) {
-                            val frame = withFrameNanos { it }
-                            val dt = ((frame - last) / 1_000_000_000f).coerceIn(0f, 0.05f)
-                            last = frame
-                            cam = cam.copy(anchorMillis = cam.anchorMillis - (speed * dt * TimelineCoordinate.spanMillis(cam.hours) / heightNow).toLong())
-                            cameraChange(cam)
-                            speed *= exp(-4.2f * dt)
-                        }
-                    }
-                })
-            }.semantics {
-                contentDescription = "中央时间轴，左侧闹钟，右侧活动和截止"
-                customActions = listOf(
-                    CustomAccessibilityAction("向后浏览半屏") { changeCamera(camera.copy(anchorMillis = camera.anchorMillis + halfSpan)); true },
-                    CustomAccessibilityAction("向前浏览半屏") { changeCamera(camera.copy(anchorMillis = camera.anchorMillis - halfSpan)); true }
-                )
-            }) {
-                TimelineCanvas(camera.anchorMillis, camera.hours, height, width, nowMillis, zone)
-                val gutter = 20.dp
-                val leftSide = (viewportWidth / 2 - gutter - 12.dp).coerceAtLeast(24.dp)
-                val rightSide = (viewportWidth / 2 - gutter - 12.dp).coerceAtLeast(24.dp)
-                // Keep each wing's scroll independent of the vertical time camera.
-                // Left starts nearest the centre (scroll at end); right starts at scroll zero.
-                for (side in AxisSide.entries) {
-                    key(side) {
-                        val sideWidth = if (side == AxisSide.LEFT) leftSide else rightSide
-                        val lanes = (layout.items.filter { it.side == side }
-                            .maxOfOrNull { it.lane + 1 } ?: 1)
-                        // Each wing keeps stable lane widths and scrolls independently. The
-                        // left wing starts at its center-proximal lanes (the content's right edge).
-                        val spacing = 4.dp
-                        val laneWidth = minOf(84.dp, sideWidth)
-                        val contentWidth = maxOf(sideWidth, (laneWidth + spacing) * lanes - spacing)
-                        val wingX = if (side == AxisSide.LEFT)
-                            viewportWidth / 2 - gutter - sideWidth
-                            else viewportWidth / 2 + gutter
-                        val horizontalState = rememberScrollState(
-                            if (side == AxisSide.LEFT) Int.MAX_VALUE else 0
-                        )
-                        Box(
-                            Modifier.offset(x = wingX).width(sideWidth).fillMaxHeight()
-                                .clipToBounds()
-                                .horizontalScroll(horizontalState)
-                                .testTag(if (side == AxisSide.LEFT)
-                                    "timeline-left-lanes" else "timeline-right-lanes")
-                        ) {
-                            Box(Modifier.width(contentWidth).fillMaxHeight()) {
-                    val titleCandidates = mutableListOf<MeasuredTimelineTitle>()
-                    layout.items.filter { it.side == side }.forEach { item ->
-                    val y = TimelineCoordinate.yOf(item.anchorMillis, camera.anchorMillis, height, camera.hours)
-                    val endY = TimelineCoordinate.yOf(item.record.spanEndMillis() ?: item.anchorMillis, camera.anchorMillis, height, camera.hours)
-                    if (endY < -80 || y > height + 80) return@forEach
-                    val key = slotKeys[item.record] ?: "${item.record.eventSeq}:${item.anchorMillis}"
-                    // Activities use real start/end projected onto the same ruler.
-                    // Never inflate a short interval to fit typography or the touch target.
-                    val activitySpan = if (item.record.kind == TemporalKind.ACTIVITY) {
-                        ActivityGeometry.visible(item.anchorMillis,
-                            item.record.endMillis ?: item.anchorMillis,
-                            camera.anchorMillis, height, camera.hours)
-                    } else null
-                    if (item.record.kind == TemporalKind.ACTIVITY && activitySpan == null) return@forEach
-                    val cardHeight = with(density) {
-                        (activitySpan?.heightPx ?: 0f).toDp()
-                    }
-                    // The time axis stays fixed while only the event wing scrolls.
-                    val x = if (side == AxisSide.LEFT)
-                        contentWidth - (laneWidth + spacing) * (item.lane + 1) + spacing
-                        else (laneWidth + spacing) * item.lane
-                    val point = item.record.kind != TemporalKind.ACTIVITY
-                    val pointHeight = 56.dp
-                    // A sub-pixel Activity keeps its exact visual height below; retain a
-                    // separate 1dp interaction surface so rounding cannot erase its click target.
-                    val hitHeight = if (point) pointHeight else maxOf(cardHeight, 1.dp)
-                    val topPx = if (item.record.kind == TemporalKind.DEADLINE) {
-                        y - with(density) { pointHeight.toPx() }
-                    } else if (item.record.kind == TemporalKind.ALARM) y else activitySpan!!.topPx
-                    val cardLeftPx = with(density) {
-                        (wingX.roundToPx() + x.roundToPx() - horizontalState.value).toFloat()
-                    }
-                    val cardWidthPx = with(density) { laneWidth.roundToPx().toFloat() }
-                    val cardHeightPx = with(density) {
-                        if (point) pointHeight.toPx() else cardHeight.toPx()
-                    }
-                    // Point and duration labels share the same outside title pipeline.
-                    if (point || activitySpan != null) {
-                        val baseStyle = LocalTextStyle.current.copy(
-                            fontSize = 13.sp, color = kindColor(item.record.kind)
-                        )
-                        val laneWidthPx = with(density) { laneWidth.roundToPx() }
-                        val startPadding = 3.dp
-                        val endPadding = 3.dp
-                        val startPaddingPx = with(density) { startPadding.roundToPx() }
-                        val endPaddingPx = with(density) { endPadding.roundToPx() }
-                        val availablePx = laneWidthPx - startPaddingPx - endPaddingPx
-                        val measuredTitle = run {
-                            if (availablePx <= 0 || startPaddingPx >= laneWidthPx) return@run null
-                            val titleText = if (point) {
-                                Instant.ofEpochMilli(item.anchorMillis).atZone(zone)
-                                    .format(CLOCK_FORMAT) + " \u00b7 " + item.record.title
-                            } else item.record.title
-                            val measuredText = measureTimelineTitleText(
-                                textMeasurer, titleText, baseStyle, availablePx
-                            ) ?: return@run null
-                            val textLayout = measuredText.layout
-                            val drawWidthPx = measuredText.drawWidthPx
-                            val insetPx = with(density) { 2.dp.toPx() }
-                            // Left ALARM markers put the line at y and its outside
-                            // label immediately BELOW that line. Using the 56dp hit-box
-                            // top for all point kinds displaced the left wing upward.
-                            // DEADLINE has its line at y and label immediately ABOVE it.
-                            // Leave the approved right ACTIVITY placement untouched.
-                            val titleTopPx = when (item.record.kind) {
-                                TemporalKind.ALARM -> y + insetPx
-                                TemporalKind.DEADLINE -> y - textLayout.size.height - insetPx
-                                else -> topPx - textLayout.size.height - insetPx
-                            }
-                            val titleX = x + startPadding
-                            val localLeftPx = with(density) { titleX.roundToPx() }
-                            val localTopPx = with(density) { titleTopPx.toDp().roundToPx() }
-                            val wingLeftPx = with(density) { wingX.roundToPx() }
-                            val sideWidthPx = with(density) { sideWidth.roundToPx() }
-                            val screenLeft = wingLeftPx + localLeftPx - horizontalState.value
-                            val unclipped = Rect(
-                                left = screenLeft.toFloat(),
-                                top = localTopPx.toFloat(),
-                                right = (screenLeft + drawWidthPx).toFloat(),
-                                bottom = (localTopPx + textLayout.size.height).toFloat()
-                            )
-                            val screenRect = unclipped.intersect(
-                                Rect(wingLeftPx.toFloat(), 0f,
-                                    (wingLeftPx + sideWidthPx).toFloat(), height)
-                            )
-                            if (screenRect.width <= 0f || screenRect.height <= 0f) return@run null
-                            val stableId = "${item.record.eventSeq}:$key"
-                            MeasuredTimelineTitle(
-                                candidate = TimelineTitleCandidate(
-                                    stableId = stableId,
-                                    eventSeq = item.record.eventSeq,
-                                    regionId = "${item.side.name}:${item.lane}",
-                                    screenRect = screenRect
-                                ),
-                                layout = textLayout,
-                                drawWidthPx = drawWidthPx,
-                                offset = IntOffset(localLeftPx, localTopPx),
-                                testTag = "timeline-title-${item.record.eventSeq}-" +
-                                    stableId.hashCode().toUInt().toString(16),
-                                sourceRecord = item.record,
-                                sourceKey = key,
-                                anchorMillis = item.anchorMillis
-                            )
-                        }
-                        if (measuredTitle != null) titleCandidates += measuredTitle
-                    }
-                    nowBadgeObstacles += Rect(
-                        left = cardLeftPx,
-                        top = topPx,
-                        right = cardLeftPx + cardWidthPx,
-                        bottom = topPx + cardHeightPx
-                    )
-                    key(key) {
-                        Surface(
-                            onClick = { if (dragKey == null) open(item.record) },
-                            modifier = Modifier.offset(x, with(density) { topPx.toDp() }).width(laneWidth)
-                                .testTag("timeline-event-${item.record.eventSeq}-" +
-                                    key.hashCode().toUInt().toString(16))
-                                .height(hitHeight)
-                                .pointerInput(key, item.record.revision, item.anchorMillis, aiLocked) {
-                                    if (!unlocked) return@pointerInput
-                                    detectDragGesturesAfterLongPress(
-                                        onDragStart = { inertia?.cancel(); dragKey = key; dragTarget = item.anchorMillis; dragTravel = 0f },
-                                        onDrag = { change, amount ->
-                                            change.consume(); dragTravel += amount.y
-                                            dragTarget = TimelineCoordinate.snap(item.anchorMillis + (dragTravel * TimelineCoordinate.spanMillis(latestCamera.hours) / heightNow).toLong(), latestCamera.hours, zone)
-                                        },
-                                        onDragEnd = {
-                                            val target = dragTarget
-                                            dragKey = null; dragTarget = null
-                                            if (target != null && target != item.anchorMillis) onMoveEvent(owners[item.record.eventSeq] ?: item.record, target)
-                                        }, onDragCancel = { dragKey = null; dragTarget = null })
-                                }
-                                .semantics { contentDescription = "${item.record.kind.label}，${item.record.title}，${TemporalText.summarize(item.record)}，${item.record.displaySeq()}" },
-                            shape = RoundedCornerShape(0.dp),
-                            color = androidx.compose.ui.graphics.Color.Transparent,
-                            border = null
-                        ) {
-                            if (point) {
-                                AxisPointMarker(item.record, item.anchorMillis, zone)
-                            } else {
-                            Box(Modifier.fillMaxSize()) {
-                                Box(
-                                    Modifier.align(Alignment.TopStart)
-                                        .width(laneWidth)
-                                        .height(cardHeight)
-                                        .testTag("timeline-event-geometry-${item.record.eventSeq}-" +
-                                            key.hashCode().toUInt().toString(16))
-                                        .background(
-                                            if (dragKey == key) MaterialTheme.colorScheme.surfaceContainerHighest
-                                            else LocalAxisPalette.current.glassFill
-                                        )
-                                        .border(
-                                            1.dp,
-                                            kindColor(item.record.kind).copy(alpha = 0.36f),
-                                            RoundedCornerShape(0.dp)
-                                        )
-                                ) {
-                                    Box(Modifier.align(Alignment.CenterStart).width(2.dp).fillMaxHeight()
-                                        .background(kindColor(item.record.kind)))
-                                    if (cardHeight >= 28.dp) {
-                                        Text(Instant.ofEpochMilli(item.anchorMillis).atZone(zone).format(CLOCK_FORMAT),
-                                            Modifier.align(Alignment.TopStart).padding(start = 5.dp),
-                                            fontSize = 10.sp, maxLines = 1, softWrap = false,
-                                            overflow = TextOverflow.Clip)
-                                    }
-                                    if (cardHeight >= 47.dp) {
-                                        Text(Instant.ofEpochMilli(item.record.endMillis ?: item.anchorMillis)
-                                                .atZone(zone).format(CLOCK_FORMAT),
-                                            Modifier.align(Alignment.BottomStart).padding(start = 5.dp),
-                                            fontSize = 10.sp, maxLines = 1, softWrap = false,
-                                            overflow = TextOverflow.Clip)
-                                    }
-                                }
-                            }
-                            }
-                        }
-                    }
-                }
-                    val titleFold = GreedyTitleFolding.fold(titleCandidates.map { it.candidate })
-                    val visibleTitles = titleFold.visibleIds
-                    titleCandidates.filter { it.candidate.stableId in visibleTitles }.forEach { title ->
-                        nowBadgeObstacles += title.candidate.screenRect
-                        Canvas(
-                            Modifier.offset { title.offset }
-                                .requiredSize(
-                                    with(density) { title.drawWidthPx.toDp() },
-                                    with(density) { title.layout.size.height.toDp() }
-                                )
-                                .clipToBounds()
-                                .testTag(title.testTag)
-                                .clickable(enabled = !aiLocked) {
-                                    if (dragKey == null) open(title.sourceRecord)
-                                }
-                                .pointerInput(title.sourceKey, title.sourceRecord.revision,
-                                    title.anchorMillis, aiLocked) {
-                                    if (!unlocked) return@pointerInput
-                                    detectDragGesturesAfterLongPress(
-                                        onDragStart = {
-                                            inertia?.cancel()
-                                            dragKey = title.sourceKey
-                                            dragTarget = title.anchorMillis
-                                            dragTravel = 0f
-                                        },
-                                        onDrag = { change, amount ->
-                                            change.consume()
-                                            dragTravel += amount.y
-                                            dragTarget = TimelineCoordinate.snap(
-                                                title.anchorMillis +
-                                                    (dragTravel * TimelineCoordinate.spanMillis(latestCamera.hours) /
-                                                        heightNow).toLong(),
-                                                latestCamera.hours, zone)
-                                        },
-                                        onDragEnd = {
-                                            val target = dragTarget
-                                            dragKey = null
-                                            dragTarget = null
-                                            if (target != null && target != title.anchorMillis) {
-                                                onMoveEvent(owners[title.sourceRecord.eventSeq] ?: title.sourceRecord, target)
-                                            }
-                                        },
-                                        onDragCancel = { dragKey = null; dragTarget = null }
-                                    )
-                                }
-                        ) {
-                            drawText(title.layout, topLeft = Offset.Zero)
-                        }
-                    }
-                            }
-                        }
-                    }
-                }
-                TimelineCanvas(camera.anchorMillis, camera.hours, height, width, nowMillis, zone,
-                    nowOnly = true, eventObstacles = nowBadgeObstacles)
-                // Double-tap the *current-time ruler*, not anywhere on an event.
-                val resetCameraToDay = {
-                    inertia?.cancel()
-                    cameraChange(latestCamera.copy(hours = 24.0))
-                }
-                Box(Modifier.align(Alignment.Center).width(25.dp).fillMaxHeight()
-                    .pointerInput(Unit) {
-                        detectTapGestures(onDoubleTap = {
-                            resetCameraToDay()
-                        })
-                    }.timeAxisResetSemantics { resetCameraToDay() })
-                dragTarget?.let { target ->
-                    val y = TimelineCoordinate.yOf(target, camera.anchorMillis, height, camera.hours)
-                    Surface(Modifier.align(Alignment.TopCenter).offset(y = with(density) { y.toDp() }), shape = GlassShapes.chip, color = MaterialTheme.colorScheme.primaryContainer) {
-                        Text("${Instant.ofEpochMilli(target).atZone(zone).format(CLOCK_FORMAT)} · 松开后确认草稿", Modifier.padding(10.dp), style = MaterialTheme.typography.labelMedium)
-                    }
-                }
-                if (records.isEmpty() && viewportHeight >= 480.dp && density.fontScale <= 1.3f) Text(
-                    "还没有事件 · 点击右上角 + 开始",
-                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 24.dp),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-
-    }
-    inspected?.let { record -> SkinAlertDialog(onDismissRequest = { inspected = null }, title = { Text(record.title) },
-        text = { Column { Text(TemporalText.summarize(record)); Text(record.notes); Text("AI 正在处理卡组，暂时只可查看。") } },
-        confirmButton = { TextButton(onClick = { inspected = null }) { Text("完成") } }) }
-
-}
-
-/**
- * Different temporal primitives must never share the same rectangle.
- * ALARM = line at the top with its label BELOW.
- * DEADLINE = label ABOVE a line exactly at its occurrence instant.
- * ACTIVITY is the only interval rectangle, rendered in the viewport loop.
- */
-@Composable
-private fun AxisPointMarker(record: TemporalRecord, occurrenceMillis: Long, zone: ZoneId) {
-    val color = kindColor(record.kind)
-    // Full title rendered by measured outside-title fold; marker remains clickable.
-    Column(Modifier.fillMaxSize()) {
-        if (record.kind == TemporalKind.DEADLINE) {
-            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.BottomStart) {
-                if (skinPainter(SkinSlot.DEADLINE_MARKER) != null) {
-                    SkinImage(SkinSlot.DEADLINE_MARKER,
-                        Modifier.align(Alignment.TopEnd).size(18.dp))
-                }
-            }
-        }
-        HorizontalDivider(color = color, thickness = LocalSkinVisual.current.pointLineDp.dp)
-        if (record.kind == TemporalKind.ALARM) {
-            Row(verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                if (skinPainter(SkinSlot.ALARM_MARKER) != null) {
-                    SkinImage(SkinSlot.ALARM_MARKER, Modifier.size(18.dp))
-                }
-            }
-        }
-    }
-}
-
-private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.timelineGestures(
-    camera: () -> TimelineCoordinate.Camera, height: () -> Float, onStart: () -> Unit,
-    onCamera: (TimelineCoordinate.Camera) -> Unit,
-    onFling: (Float, TimelineCoordinate.Camera) -> Unit
-) {
-    awaitEachGesture {
-        val down = awaitFirstDown(requireUnconsumed = false)
-        onStart()
-        var cam = camera()
-        var previousY = down.position.y
-        var count = 1
-        var travel = 0f
-        var active = false
-        var zoomed = false
-        var ownedByChild = false
-        var gestureCamera = cam
-        var gestureStartY = previousY
-        var initialDx = 0f
-        var initialDy = 0f
-        val tracker = VelocityTracker()
-        tracker.addPosition(down.uptimeMillis, down.position)
-        while (true) {
-            val event = awaitPointerEvent()
-            val pressed = event.changes.filter { it.pressed }
-            if (pressed.isEmpty()) {
-                event.changes.firstOrNull()?.let { tracker.addPosition(it.uptimeMillis, it.position) }
-                break
-            }
-            // Two-finger zoom is a viewport gesture even if the first finger landed on
-            // a clickable title or event. A single-finger child drag still owns its input.
-            if (pressed.size >= 2) ownedByChild = false
-            else if (event.changes.any { it.isConsumed }) { ownedByChild = true; continue }
-            if (ownedByChild) continue
-            val y = pressed.map { it.position.y }.average().toFloat()
-            if (pressed.size != count) {
-                count = pressed.size; previousY = y
-                if (count > 1) {
-                    zoomed = true
-                    val a = pressed[0]; val b = pressed[1]
-                    initialDx = a.position.x - b.position.x
-                    initialDy = a.position.y - b.position.y
-                    gestureCamera = cam
-                    gestureStartY = y
-                }
-                tracker.resetTracking()
-                continue
-            }
-            val pan = y - previousY
-            travel += abs(pan)
-            if (pressed.size >= 2) zoomed = true
-            if (!active && !zoomed && travel < viewConfiguration.touchSlop) {
-                previousY = y; tracker.addPosition(pressed.first().uptimeMillis, pressed.first().position); continue
-            }
-            active = true
-            if (pressed.size >= 2) {
-                val a = pressed[0]; val b = pressed[1]
-                val components = AxisPinch.decompose(
-                    initialDx, initialDy,
-                    a.position.x - b.position.x, a.position.y - b.position.y,
-                    viewConfiguration.touchSlop
-                )
-                // Absolute gesture baseline: no frame-by-frame multiplying,
-                // no sudden snapping to a different lane count.
-                cam = transformedCamera(
-                    gestureCamera, gestureStartY,
-                    gestureStartY + AxisPinch.dampCentroidPan(y - gestureStartY),
-                    components.y, height()
-                )
-            } else {
-                cam = transformedCamera(cam, previousY, y, 1f, height())
-            }
-            if (cam != camera()) {
-                onCamera(cam)
-            }
-            pressed.forEach { it.consume() }
-            previousY = y
-            tracker.addPosition(pressed.first().uptimeMillis, pressed.first().position)
-        }
-        if (active && !zoomed && !ownedByChild) {
-            val velocity = tracker.calculateVelocity().y
-            if (abs(velocity) > 120f) onFling(velocity.coerceIn(-8000f, 8000f), cam)
-        }
-    }
-}
-
-@Composable
-private fun TimelineCanvas(
-    anchor: Long,
-    hours: Double,
-    heightPx: Float,
-    widthPx: Float,
-    nowMillis: Long,
-    zone: ZoneId,
-    nowOnly: Boolean = false,
-    eventObstacles: List<Rect> = emptyList()
-) {
     val palette = LocalAxisPalette.current
-    val scheme = MaterialTheme.colorScheme
-    val measurer = rememberTextMeasurer()
-    val density = LocalDensity.current
-    val tickStyle = TextStyle(color = scheme.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-    val dayStyle = TextStyle(color = scheme.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-    val centerX = widthPx / 2f
-    val spanMillis = TimelineCoordinate.spanMillis(hours)
-    val from = anchor - spanMillis / 2
-    val to = anchor + spanMillis / 2
-    val tickMinutes = when {
-        hours <= 0.75 -> 1L
-        hours <= 2 -> 5L
-        hours <= 4 -> 10L
-        hours <= 6 -> 30L
-        hours <= 12 -> 60L
-        hours <= 26 -> 120L
-        else -> 240L
+    val kindColors = NativeTimelineKind.entries.associateWith { kind ->
+        kindColor(when (kind) {
+            NativeTimelineKind.ALARM -> TemporalKind.ALARM
+            NativeTimelineKind.ACTIVITY -> TemporalKind.ACTIVITY
+            NativeTimelineKind.DEADLINE -> TemporalKind.DEADLINE
+            NativeTimelineKind.MEMO -> TemporalKind.MEMO
+        }).toArgb()
     }
-    val tickLabels = remember(from, to, tickMinutes, zone) {
-        timelineTickLabels(from.toLong(), to.toLong(), tickMinutes, zone)
-    }
-
-    Canvas(Modifier.fillMaxSize()) {
-        if (!nowOnly) {
-        // The central vertical time ruler is a required part of the timeline.
-        // Do not confuse it with the separate unwanted horizontal grey decoration.
-        drawLine(
-            brush = Brush.verticalGradient(
-                listOf(
-                    palette.glassBorder.copy(alpha = 0f),
-                    palette.glassBorder.copy(alpha = 0.85f),
-                    palette.glassBorder.copy(alpha = 0.85f),
-                    palette.glassBorder.copy(alpha = 0f)
-                )
-            ),
-            start = Offset(centerX, 0f),
-            end = Offset(centerX, size.height),
-            strokeWidth = 1.5.dp.toPx()
-        )
-
-        // Day separators follow local midnight, so DST days stay honest.
-        val startDay = Instant.ofEpochMilli(from.toLong()).atZone(zone).toLocalDate()
-        val endDay = Instant.ofEpochMilli(to.toLong()).atZone(zone).toLocalDate()
-        var day = startDay
-        var guard = 0
-        while (!day.isAfter(endDay) && guard < 400) {
-            val dayStart = day.atStartOfDay(zone).toInstant().toEpochMilli()
-            val y = TimelineCoordinate.yOf(dayStart, anchor, heightPx, hours)
-            if (y > -30f && y < size.height + 30f) {
-                drawLine(
-                    color = palette.gridLine.copy(alpha = 0.5f),
-                    start = Offset(0f, y),
-                    end = Offset(size.width, y),
-                    strokeWidth = 1.dp.toPx(),
-                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f))
-                )
-                val measured = measurer.measure(day.format(DAY_FORMAT), dayStyle)
-                drawText(measured, topLeft = Offset(12.dp.toPx(), y + 4.dp.toPx()))
-            }
-            day = day.plusDays(1)
-            guard++
-        }
-
-        // Hour ticks computed in wall-clock minutes so labels match the ruler through DST.
-        var lastTickLabelBottom = Float.NEGATIVE_INFINITY
-        tickLabels.forEach { tick ->
-            val y = TimelineCoordinate.yOf(tick.instantMillis, anchor, heightPx, hours)
-            if (y > -20f && y < size.height + 20f) {
-                drawLine(
-                    color = palette.gridLine,
-                    start = Offset(centerX - 8f, y),
-                    end = Offset(centerX - 2f, y),
-                    strokeWidth = 1.dp.toPx()
-                )
-                drawLine(
-                    color = palette.gridLine,
-                    start = Offset(centerX + 2f, y),
-                    end = Offset(centerX + 8f, y),
-                    strokeWidth = 1.dp.toPx()
-                )
-                val measured = measurer.measure(tick.text, tickStyle)
-                val labelTop = y - measured.size.height / 2f
-                val labelBottom = y + measured.size.height / 2f
-                if (y > measured.size.height / 2 &&
-                    y < size.height - measured.size.height / 2 &&
-                    labelTop >= lastTickLabelBottom + 4.dp.toPx()
-                ) {
-                    drawText(
-                        measured,
-                        topLeft = Offset(centerX - measured.size.width / 2f, labelTop)
-                    )
-                    lastTickLabelBottom = labelBottom
-                }
-            }
-        }
-
-        }
-        // NOW at its true position, never pinned to the centre.
-        val nowY = TimelineCoordinate.yOf(nowMillis, anchor, heightPx, hours)
-        if (nowOnly && nowY in 0f..size.height) {
-            drawLine(
-                brush = Brush.horizontalGradient(
-                    listOf(
-                        palette.nowLine.copy(alpha = 0f),
-                        palette.nowLine.copy(alpha = 0.85f),
-                        palette.nowLine.copy(alpha = 0.85f),
-                        palette.nowLine.copy(alpha = 0f)
-                    )
-                ),
-                start = Offset(0f, nowY),
-                end = Offset(size.width, nowY),
-                strokeWidth = 1.6.dp.toPx()
-            )
-            drawCircle(palette.nowLine, radius = 4.dp.toPx(), center = Offset(centerX, nowY))
-            drawCircle(
-                palette.nowLine.copy(alpha = 0.2f),
-                radius = 9.dp.toPx(),
-                center = Offset(centerX, nowY)
-            )
-            val text = "现在 " + Instant.ofEpochMilli(nowMillis).atZone(zone).format(CLOCK_FORMAT)
-            val measured = measurer.measure(
-                text,
-                TextStyle(color = palette.nowLine, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-            )
-            val badgeSize = Size(measured.size.width + 18f, measured.size.height + 8f)
-            val tickObstacles = mutableListOf<Rect>()
-            var lastObstacleLabelBottom = Float.NEGATIVE_INFINITY
-            tickLabels.forEach { tick ->
-                val y = TimelineCoordinate.yOf(tick.instantMillis, anchor, heightPx, hours)
-                if (y > -20f && y < size.height + 20f) {
-                    val tickMeasured = measurer.measure(tick.text, tickStyle)
-                    val labelTop = y - tickMeasured.size.height / 2f
-                    val labelBottom = y + tickMeasured.size.height / 2f
-                    if (y > tickMeasured.size.height / 2f &&
-                        y < size.height - tickMeasured.size.height / 2f &&
-                        labelTop >= lastObstacleLabelBottom + 4.dp.toPx()
-                    ) {
-                        tickObstacles += Rect(
-                            left = centerX - tickMeasured.size.width / 2f,
-                            top = labelTop,
-                            right = centerX + tickMeasured.size.width / 2f,
-                            bottom = labelBottom
-                        )
-                        lastObstacleLabelBottom = labelBottom
+    val appearance = NativeTimelineAppearance(
+        page = { content ->
+            Box(
+                Modifier.fillMaxSize()
+                    .background(axisBackground())
+                    .skinBackdrop(SkinSlot.TIMELINE_BACKGROUND)
+            ) { content() }
+        },
+        showDialog = { dialog: NativeTimelineDialog ->
+            SkinAlertDialog(
+                onDismissRequest = dialog.onDismissRequest,
+                title = { androidx.compose.material3.Text(dialog.title) },
+                text = {
+                    androidx.compose.foundation.layout.Column {
+                        androidx.compose.material3.Text(dialog.summary)
+                        androidx.compose.material3.Text(dialog.notes)
+                        androidx.compose.material3.Text("AI 正在处理卡组，暂时只可查看。")
+                    }
+                },
+                confirmButton = {
+                    androidx.compose.material3.TextButton(onClick = dialog.onDismissRequest) {
+                        androidx.compose.material3.Text("完成")
                     }
                 }
+            )
+        },
+        image = { asset, sizeDp ->
+            SkinImage(timelineSkinSlot(asset), Modifier.size(sizeDp.dp))
+        },
+        hasImage = { asset -> skinPainter(timelineSkinSlot(asset)) != null },
+        axis = NativeTimelineAxisColors(
+            alarm = palette.alarm.toArgb(),
+            activity = palette.activity.toArgb(),
+            deadline = palette.deadline.toArgb(),
+            nowLine = palette.nowLine.toArgb(),
+            gridLine = palette.gridLine.toArgb(),
+            glassFill = palette.glassFill.toArgb(),
+            glassBorder = palette.glassBorder.toArgb(),
+            glassHighlight = palette.glassHighlight.toArgb()
+        ),
+        kindColors = kindColors,
+        pointLineDp = LocalSkinVisual.current.pointLineDp,
+        chipCornerRadiusDp = 14f
+    )
+    val state = NativeTimelineState(
+        events = projection.events,
+        camera = NativeTimelineCamera(camera.anchorMillis, camera.hours),
+        nowMillis = nowMillis,
+        zone = zone,
+        pendingCount = pendingCount,
+        aiLocked = aiLocked,
+        memoCount = memoCount,
+        titlesOutside = titlesOutside,
+        blockedReminders = blockedReminders,
+        hasRecords = projection.hasRecords,
+        hasDateOnlyDeadlines = projection.hasDateOnlyDeadlines
+    )
+    val actions = NativeTimelineActions(
+        onCameraChange = { updated ->
+            onCameraChange(TimelineCoordinate.Camera(updated.anchorMillis, updated.hours))
+        },
+        onOpenEvent = { rowKey ->
+            projection.openTargets[rowKey]?.let { target ->
+                onOpenOccurrence(target.owner, target.occurrenceKey)
             }
-            val badgeTopLeft = findUnblockedLabelTopLeft(
-                preferred = Offset(centerX - badgeSize.width / 2f, nowY - badgeSize.height / 2f),
-                labelSize = badgeSize,
-                canvasSize = size,
-                obstacles = tickObstacles + eventObstacles,
-                stepPx = 4.dp.toPx(),
-                gapPx = 2.dp.toPx()
-            )
-            drawRoundRect(
-                color = scheme.surface.copy(alpha = 0.94f),
-                topLeft = badgeTopLeft,
-                size = badgeSize,
-                cornerRadius = CornerRadius(10f, 10f)
-            )
-            drawText(
-                measured,
-                topLeft = badgeTopLeft + Offset(9f, 4f)
-            )
-        }
-    }
+        },
+        onMoveEvent = { rowKey, targetMillis ->
+            projection.openTargets[rowKey]?.let { target -> onMoveEvent(target.owner, targetMillis) }
+        },
+        onCreate = { kind, atMillis -> onCreate(TemporalKind.valueOf(kind.name), atMillis) },
+        onToday = onToday,
+        onOpenDeck = onOpenDeck,
+        onOpenTools = onOpenTools,
+        onOpenMonth = onOpenMonth,
+        onOpenMemo = onOpenMemo,
+        onTitlesOutsideChange = onTitlesOutsideChange
+    )
+    NativeTimelineScreen(
+        context = NativeTimelineContext(
+            state = state,
+            geometry = CoreNativeTimelineGeometry,
+            actions = actions,
+            appearance = appearance
+        ),
+        modifier = modifier
+    )
+}
+
+private fun timelineSkinSlot(asset: NativeTimelineAsset): SkinSlot = when (asset) {
+    NativeTimelineAsset.BRAND_MARK -> SkinSlot.BRAND_MARK
+    NativeTimelineAsset.ALARM_MARKER -> SkinSlot.ALARM_MARKER
+    NativeTimelineAsset.DEADLINE_MARKER -> SkinSlot.DEADLINE_MARKER
 }

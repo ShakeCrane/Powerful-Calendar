@@ -240,6 +240,18 @@ class GlassComposeTest {
             up(0); up(1)
         }
         ui.runOnIdle { assertTrue(camera.value.hours in 4.0..48.0); assertTrue(camera.value.hours < 24.0) }
+        ui.onNodeWithContentDescription("双击当前时间刻度尺返回24小时视图")
+            .performTouchInput { doubleClick(center) }
+        ui.runOnIdle { assertEquals(24.0, camera.value.hours, 0.0) }
+        ui.onNodeWithTag("timeline-viewport").performTouchInput {
+            val y = height / 2f
+            down(0, androidx.compose.ui.geometry.Offset(width / 2f, y - 40f))
+            down(1, androidx.compose.ui.geometry.Offset(width / 2f, y + 40f))
+            moveBy(0, androidx.compose.ui.geometry.Offset(0f, -80f))
+            moveBy(1, androidx.compose.ui.geometry.Offset(0f, 80f))
+            up(0); up(1)
+        }
+        ui.runOnIdle { assertTrue(camera.value.hours < 24.0) }
         ui.onNodeWithTag("timeline-viewport").performTouchInput { swipeUp() }
         ui.onNodeWithContentDescription("今日 · 复位为全天").performClick()
         ui.mainClock.advanceTimeBy(2000)

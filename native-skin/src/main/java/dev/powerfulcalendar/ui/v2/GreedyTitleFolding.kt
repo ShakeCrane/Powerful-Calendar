@@ -3,7 +3,7 @@ package dev.powerfulcalendar.ui.v2
 import androidx.compose.ui.geometry.Rect
 
 /** A single already-measured, already-clipped title in common screen coordinates. */
-internal data class TimelineTitleCandidate(
+data class TimelineTitleCandidate(
     val stableId: String,
     val eventSeq: Long,
     /** Physically independent strip (normally one side/lane). */
@@ -11,14 +11,14 @@ internal data class TimelineTitleCandidate(
     val screenRect: Rect
 )
 
-internal data class TimelineTitleDecision(
+data class TimelineTitleDecision(
     val candidate: TimelineTitleCandidate,
     val visible: Boolean,
     /** The visible lead that was checked; hidden titles never become a lead. */
     val comparedTo: String?
 )
 
-internal data class TimelineTitleFoldResult(val decisions: List<TimelineTitleDecision>) {
+data class TimelineTitleFoldResult(val decisions: List<TimelineTitleDecision>) {
     val visibleIds: Set<String> get() = decisions.asSequence()
         .filter { it.visible }.mapTo(LinkedHashSet()) { it.candidate.stableId }
 
@@ -33,7 +33,7 @@ internal data class TimelineTitleFoldResult(val decisions: List<TimelineTitleDec
  * coordinates, so clips and either wing's horizontal scroll are reflected in the decision.
  * Merely touching edges do not collide. A hidden title never replaces or blocks its visible lead.
  */
-internal object GreedyTitleFolding {
+object GreedyTitleFolding {
     fun fold(candidates: List<TimelineTitleCandidate>): TimelineTitleFoldResult {
         require(candidates.map { it.stableId }.distinct().size == candidates.size) {
             "Timeline title candidate IDs must be unique"

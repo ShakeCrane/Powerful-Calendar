@@ -11,7 +11,7 @@ import kotlin.math.sqrt
  * separation, NEVER accumulate individually rounded frame ratios. This removes
  * FPS-dependent drift and keeps diagonal fingers continuously two-dimensional.
  */
-internal object AxisPinch {
+object AxisPinch {
     data class Components(val x: Float, val y: Float)
 
     fun decompose(
