@@ -47,4 +47,4 @@ Clear Settings now renders the Host-projected installed catalogue and sends only
 
 This is evidence for the installed-skin selection slice only. It does not close SEP-11 or establish total Clear parity: AI profile/credential settings, skin import/export/delete, SAF and system permission completion, broader Native/Skin replay, accessibility and physical/OEM behavior remain unverified. The SEP-11 row remains **NOT TESTED** overall; S0-ST-06 remains **PARTIAL / HOLD**.
 
-The implementation, tests, regenerated Clear source package, Studio Mock, matrix update, and this evidence update are committed together on the integration branch; the resulting SHA is recorded in the Git history and delivery summary.
+Implementation commit `886c1b779f7e2b11a8eeeacf80d1c42e7e6ce7ce` (`feat(皮肤分离): 在Clear设置中支持宿主确认切肤`) is pushed to `origin/feat/skin-first-separation`.
