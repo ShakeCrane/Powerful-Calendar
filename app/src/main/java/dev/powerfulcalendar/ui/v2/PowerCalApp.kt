@@ -5,6 +5,7 @@ import dev.powerfulcalendar.ui.v2.nativeui.NativeAiFileReview
 import dev.powerfulcalendar.ui.v2.nativeui.NativeAiImageConsentReview
 import dev.powerfulcalendar.ui.v2.nativeui.NativeAiOcrTextReview
 import dev.powerfulcalendar.ui.v2.nativeui.NativeAiStuckBatchReleaseReview
+import dev.powerfulcalendar.ui.v2.nativeui.NativeEventInspection
 import dev.powerfulcalendar.ui.v2.nativeui.NativeLegacyDataReview
 import dev.powerfulcalendar.ui.v2.nativeui.NativeSkinCatalogReview
 
@@ -2808,9 +2809,22 @@ fun PowerCalApp(
     }
 
     monthInspection?.let { record ->
-        SkinAlertDialog(onDismissRequest = { monthInspection = null }, title = { Text(record.title) },
-            text = { Column { Text(TemporalText.summarize(record)); Text(record.notes); Text("AI 处理中，卡组只读。") } },
-            confirmButton = { TextButton(onClick = { monthInspection = null }) { Text("关闭") } })
+        NativeEventInspection(
+            model = NativeEventInspectionModel(
+                title = record.title,
+                summary = TemporalText.summarize(record),
+                notes = record.notes
+            ),
+            onDismiss = { monthInspection = null },
+            showDialog = { dialog ->
+                SkinAlertDialog(
+                    onDismissRequest = dialog.onDismissRequest,
+                    title = dialog.title,
+                    text = dialog.text,
+                    confirmButton = dialog.confirmButton
+                )
+            }
+        )
     }
     confirmBatch?.let { review ->
         AiBatchAuthorizationReview(
