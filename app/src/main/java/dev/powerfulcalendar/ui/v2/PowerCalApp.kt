@@ -4,6 +4,7 @@ import dev.powerfulcalendar.ui.v2.nativeui.NewEventEditorDialog
 import dev.powerfulcalendar.ui.v2.nativeui.NativeAiFileReview
 import dev.powerfulcalendar.ui.v2.nativeui.NativeAiImageConsentReview
 import dev.powerfulcalendar.ui.v2.nativeui.NativeAiOcrTextReview
+import dev.powerfulcalendar.ui.v2.nativeui.NativeLegacyDataReview
 import dev.powerfulcalendar.ui.v2.nativeui.NativeSkinCatalogReview
 
 import android.content.Context
@@ -2900,17 +2901,9 @@ fun PowerCalApp(
     }
 
     if (confirmingLegacy) {
-        SkinAlertDialog(
-            onDismissRequest = { confirmingLegacy = false },
-            title = { Text("迁移旧版事件？") },
-            text = {
-                Text(
-                    "旧版数据库只会被只读打开，不会被删除或修改。每条旧事件会获得新的永久序号，" +
-                        "并标记来源为旧版迁移；重复执行不会产生重复记录。旧闹钟可能仍在原时钟中运行，迁入后请先检查并关闭旧闹钟，再启用 PowerCal 提醒，避免重复响铃。"
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
+        NativeLegacyDataReview(
+            kind = NativeLegacyDataReviewKind.MIGRATE_DATABASE,
+            onConfirm = {
                     confirmingLegacy = false
                     scope.launch {
                         val result = withContext(Dispatchers.IO) {
@@ -2923,25 +2916,24 @@ fun PowerCalApp(
                             "旧版迁移完成：导入 ${result.imported} 条，跳过 ${result.skipped} 条"
                         }
                     }
-                }) { Text("开始迁移") }
             },
-            dismissButton = { TextButton(onClick = { confirmingLegacy = false }) { Text("取消") } }
+            onDismiss = { confirmingLegacy = false },
+            showDialog = { dialog ->
+                SkinAlertDialog(
+                    onDismissRequest = dialog.onDismissRequest,
+                    title = dialog.title,
+                    text = dialog.text,
+                    confirmButton = dialog.confirmButton,
+                    dismissButton = dialog.dismissButton
+                )
+            },
         )
     }
 
     legacyRestoreText?.let { legacyText ->
-        SkinAlertDialog(
-            onDismissRequest = { legacyRestoreText = null },
-            title = { Text("恢复早期格式备份？") },
-            text = {
-                Text(
-                    "该文件是早期 flat backup v2，没有 SHA-256 或 lineageId，无法验证是否被修改。" +
-                        "仅在你能确认文件来源和完整性时继续。恢复后会被视为新的数据库 lineage，" +
-                        "并重建提醒调度；AI 授权不会恢复。"
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
+        NativeLegacyDataReview(
+            kind = NativeLegacyDataReviewKind.RESTORE_FLAT_BACKUP,
+            onConfirm = {
                     legacyRestoreText = null
                     scope.launch {
                         runCatching {
@@ -2955,11 +2947,17 @@ fun PowerCalApp(
                             message = "恢复失败：" + RestoreFailureExplanation.explain(error)
                         }
                     }
-                }) { Text("仍要恢复") }
             },
-            dismissButton = {
-                TextButton(onClick = { legacyRestoreText = null }) { Text("取消") }
-            }
+            onDismiss = { legacyRestoreText = null },
+            showDialog = { dialog ->
+                SkinAlertDialog(
+                    onDismissRequest = dialog.onDismissRequest,
+                    title = dialog.title,
+                    text = dialog.text,
+                    confirmButton = dialog.confirmButton,
+                    dismissButton = dialog.dismissButton
+                )
+            },
         )
     }
 }
