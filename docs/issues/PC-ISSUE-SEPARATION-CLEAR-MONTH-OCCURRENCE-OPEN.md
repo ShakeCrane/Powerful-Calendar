@@ -2,7 +2,9 @@
 
 Date: 2026-10-29
 Area: Skin separation / reconstructed S0-MO-02 (P1)
-State: **Source path confirmed; JVM and Chrome Mock evidence PASS; Android WebView and full parity NOT TESTED**
+State: **Source path confirmed; JVM and Chrome Mock evidence PASS; Android WebView recheck PASS (2026-10-31); full Native/Clear parity NOT TESTED**
+
+> Status update (2026-10-31): the Android WebView method described below was executed on the integrated mainline; see “Integrated API 35 runtime recheck” at the end. The original “NOT TESTED” statements describe the 2026-10-29 report-time state.
 
 ## Scope and outcome
 
@@ -87,3 +89,9 @@ Therefore Android WebView runtime behavior, paired Native/Clear replay, and full
 - Test and instrumentation commit: `e4aa5228884fd3beb72e5b53e9152e888848b5c5` — `test(分离): 验证月历重复事件的原始槽位传递`.
 - Pushed to `origin/codex/separation-s0-timeline-drag`.
 - No production app behavior or canonical Clear package changed.
+
+## Integrated API 35 runtime recheck (2026-10-31)
+
+- On source SHA `2f69d27c578e18688fcf60f6d46276479e11bce8`, API 35 AVD `codex-clear-api35` / Android 15 / WebView 124.0.6367.219, `WebSkinRecurrenceInstrumentedTest#actualWebViewMonthOccurrenceOpenPreservesOriginalSlotForSingleEdit` passed as part of the class **4/4 PASS**. The actual packaged Clear WebView opened the Month occurrence, preserved owner/revision/original slot, selected `SINGLE_OCCURRENCE`, and exposed the matching slot form. Direct instrumentation log: `.local/android-test/reports/clear-runtime-diagnostic-20261031/WebSkinRecurrenceInstrumentedTest-direct.log`, SHA-256 `9EED3A5C5D74712ADF032C0B1182C804B518F18CBCCBD7AAF63B1600CEAAE870`.
+- The AVD's buffered logcat contained an older `querySelector` `SyntaxError` at 19:41:57, before the current app install/update at 21:14:22. The current Clear `edit.js` contains no such malformed selector and the current scoped-occurrence path did not reproduce it. No current uncaught JS exception was found after install; CSP rejection lines came from the deliberate CSP probe in `WebSkinResourceParityInstrumentedTest`.
+- The rerun used a current API 35 WebView and provides runtime evidence, but the test file contains another Agent's uncommitted diagnostic edits. Those edits were left untouched and are not part of this documentation commit. Matched Native/Clear replay, complete recurrence-scope parity, TalkBack and physical/OEM behavior remain **NOT TESTED**; S0-MO-02 remains **PARTIAL / HOLD**.
