@@ -16,10 +16,12 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.powerfulcalendar.core.DraftForm
+import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.Recurrence
 import dev.powerfulcalendar.core.RecurrenceFreq
 import dev.powerfulcalendar.core.TemporalKind
+import dev.powerfulcalendar.core.TemporalConversion
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -218,6 +220,129 @@ class WebSkinKindConversionInstrumentedTest {
             assertEquals(identitiesBefore, store.identityCount())
             assertEquals(draftsBefore, store.draftCount())
             assertFalse(saved.recurrence.freq == RecurrenceFreq.NONE)
+        } finally {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            store.close()
+            isolated.deleteDatabase(databaseName)
+            listOf("powercal-onboarding", "powercal-skin-choice", "powercal-ui", "powercal-profile")
+                .forEach { storage.deleteSharedPreferences("$namespace-$it") }
+            File(storage.cacheDir, namespace).deleteRecursively()
+        }
+    }
+
+    @Test
+    fun clearDeckConversionWaitsForHostApprovalAndCancellationPreservesCandidate() {
+        val storage = compose.activity.applicationContext
+        val namespace = "pc-web-deck-convert-${UUID.randomUUID()}"
+        val isolated = IsolatedAppContext(compose.activity, storage, namespace)
+        val databaseName = "deck-convert.db"
+        val store = PowerStore(isolated, databaseName)
+        val zone = ZoneId.systemDefault()
+        val start = (System.currentTimeMillis() / 60_000L) * 60_000L + 2 * 3_600_000L
+        val initial = store.newDraft(DraftForm(
+            kind = TemporalKind.ALARM,
+            title = "WEB_DECK_CONVERT_FIXTURE",
+            startText = DraftForm.formatInstant(start, zone),
+            reminderMinutes = -1,
+            zoneId = zone.id
+        ))
+        assertTrue(store.commit(initial.draftId) is PowerStore.CommitOutcome.Committed)
+        val original = requireNotNull(store.get(initial.eventSeq))
+        val conversion = TemporalConversion.convert(DraftForm.from(original), TemporalKind.ACTIVITY)
+        val end = start + 45 * 60_000L
+        val candidate = store.newDraft(
+            conversion.form.copy(endText = DraftForm.formatInstant(end, zone)),
+            eventSeq = original.eventSeq,
+            operation = DraftOperation.CONVERT,
+            expectedRevision = original.revision
+        )
+        val commitsBefore = store.commitCount()
+        val identitiesBefore = store.identityCount()
+        val sequenceBefore = store.nextSequencePreview()
+        val draftCountBefore = store.draftCount()
+        val pendingBefore = store.pendingCount()
+
+        try {
+            SkinPackageManager(isolated).select("powercal-clear-default")
+            isolated.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                .edit().putBoolean("system-calendar-import-asked", true).commit()
+            compose.runOnUiThread {
+                compose.activity.setContent {
+                    CompositionLocalProvider(LocalContext provides isolated) {
+                        PowerCalTheme { PowerCalApp(store) }
+                    }
+                }
+            }
+            var web: WebView? = null
+            compose.waitUntil(30_000) {
+                compose.runOnUiThread {
+                    web = findWebView(compose.activity.findViewById(android.R.id.content))
+                }
+                web != null
+            }
+            val view = requireNotNull(web)
+            awaitJs(view, "!!document.querySelector('[data-action=\\\"openDeck\\\"]')")
+            awaitJs(view, "window.PowerCalSkin && document.querySelector('#pendingCounter')?.textContent==='1'")
+            evaluate(view, "document.querySelector('[data-action=\\\"openDeck\\\"]').click();true")
+            awaitJs(view, "!!document.querySelector('.deck-search input[type=search]') && " +
+                "document.querySelector('#skinSheet')?.hidden===false && " +
+                "document.querySelector('#sheetFields [data-field=title]')?.value==='WEB_DECK_CONVERT_FIXTURE'")
+
+            evaluate(view, "document.querySelector('#sheetSave').click();true")
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithText("确认发布正式事件").fetchSemanticsNodes().isNotEmpty()
+            }
+            assertEquals("CONVERT must not modify the formal event before Host approval",
+                original, store.get(original.eventSeq))
+            assertEquals(commitsBefore, store.commitCount())
+            assertEquals(identitiesBefore, store.identityCount())
+            assertEquals(sequenceBefore, store.nextSequencePreview())
+            assertEquals(draftCountBefore, store.draftCount())
+            assertEquals(pendingBefore, store.pendingCount())
+
+            compose.onNodeWithText("取消").performClick()
+            compose.waitUntil(10_000) {
+                compose.onAllNodesWithText("确认发布正式事件").fetchSemanticsNodes().isEmpty()
+            }
+            assertEquals("cancelling review preserves the formal event",
+                original, store.get(original.eventSeq))
+            assertEquals(commitsBefore, store.commitCount())
+            assertEquals(identitiesBefore, store.identityCount())
+            assertEquals(sequenceBefore, store.nextSequencePreview())
+            assertEquals(1, store.pendingCount())
+            assertEquals(DraftOperation.CONVERT, store.draft(candidate.draftId)?.operation)
+            awaitJs(view, "!document.querySelector('#skinSheet').hidden && " +
+                "document.querySelector('#sheetStatus').textContent.includes('已取消宿主操作')")
+
+            evaluate(view, "document.querySelector('#sheetSave').click();true")
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithText("确认发布正式事件").fetchSemanticsNodes().isNotEmpty()
+            }
+            assertEquals(original, store.get(original.eventSeq))
+            assertEquals(commitsBefore, store.commitCount())
+            compose.onNodeWithText("确认").performClick()
+            compose.waitUntil(30_000) {
+                val saved = store.get(original.eventSeq)
+                saved?.kind == TemporalKind.ACTIVITY && saved.revision == original.revision + 1
+            }
+
+            val converted = requireNotNull(store.get(original.eventSeq))
+            assertEquals(original.eventSeq, converted.eventSeq)
+            assertEquals(TemporalKind.ACTIVITY, converted.kind)
+            assertEquals(start, converted.startMillis)
+            assertEquals(end, converted.endMillis)
+            assertEquals(commitsBefore + 1L, store.commitCount())
+            assertEquals(identitiesBefore, store.identityCount())
+            assertEquals(sequenceBefore, store.nextSequencePreview())
+            assertEquals(draftCountBefore, store.draftCount())
+            assertEquals(0, store.pendingCount())
+            println("CLEAR_DECK_CONVERT_VERIFIED=eventSeq=${converted.eventSeq}; revision=${converted.revision}; " +
+                "kind=${converted.kind}; commits=${store.commitCount()}; identities=${store.identityCount()}; " +
+                "sequence=${store.nextSequencePreview()}; cancel-preserved=true")
         } finally {
             compose.runOnUiThread {
                 compose.activity.setContent { }

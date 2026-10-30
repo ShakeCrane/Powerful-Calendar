@@ -100,4 +100,16 @@ SEP-16 的 API 35 AI WebView 覆盖此前已通过本地 stub 检查 REPLACE/DEL
 
 证据目录：`.local/android-test/reports/sep16-ai-create-20261031/`。本次未接触真实 Provider、付费模型或应用默认数据库；没有卸载/清空应用数据或 wipe AVD。API 35 不是实体/OEM 验收。
 
-这使 AI proposal 的几个常用决策拥有真实 WebView → Host 审核证据，但**不关闭 SEP-16**。CONVERT、四类事件完整对照、其他正式写入/草稿组合、版本冲突与并发、生命周期/进程恢复、完整 Native/Skin replay、真实 Provider 和实体/OEM 仍未全部验证。
+这使 AI proposal 的几个常用决策拥有真实 WebView → Host 审核证据，但**不关闭 SEP-16**。四类事件完整对照、其他正式写入/草稿组合、版本冲突与并发、生命周期/进程恢复、完整 Native/Skin replay、真实 Provider 和实体/OEM 仍未全部验证。
+
+## API 35 Clear deck CONVERT trusted-write follow-up (2026-10-31)
+
+The editor kind-conversion flow already had WebView evidence, but it did not exercise a persisted `DraftOperation.CONVERT` through the draft deck's `deck.commit` Host review. Added `WebSkinKindConversionInstrumentedTest.clearDeckConversionWaitsForHostApprovalAndCancellationPreservesCandidate` without production-code changes.
+
+- On API 35 AVD `codex-clear-api35` / Android 15 / `emulator-5568`, the test seeds one isolated formal ALARM plus a valid ALARM→ACTIVITY CONVERT candidate, opens the packaged Clear deck and invokes its save/publish action.
+- Before Host approval, the formal event, commit count, identity count, sequence watermark, draft count and pending count remain unchanged. Cancelling the Compose review preserves the formal event and pending CONVERT candidate. Retrying and approving updates the same event to revision 2 / ACTIVITY with the expected end time; the commit count advances once, identity remains 1 and sequence remains 2.
+- Focused API 35 instrumentation **1/1 PASS**; the full `WebSkinKindConversionInstrumentedTest` class **2/2 PASS**. Focused log SHA-256 `90FC035AA4B1C6246324BC782EECFC9C27A3CE58B365C00D6329DD5710AB1A63`; class log SHA-256 `0CE8E120AB75EC962C3236BF9477CB37E283532108AA81BAACA307A3FF50B31A`; filtered device trace SHA-256 `0C4E9EF2F2616725A1A7666147C1F3D7EDBF3AC12AC645C11CF3A353DE808C67`.
+- Full offline Gradle gate: **784/784 JVM tests**, 125 suites, zero failures/errors/skips; both source boundaries, AndroidTest compilation, Debug and AndroidTest APK assembly and Lint passed (**171/171 tasks**, 0 lint errors / 55 warnings). Gate log SHA-256 `05F148EDF6BE543EB63AE14815B3D5FD5AC10F3FABFBD764636859BFDF97C528`. Debug APK SHA-256 `779B0CF777BD5E1EE377249CD4156DB426DC87690B6D35EDD458E5F27A27CD1B`; AndroidTest APK SHA-256 `A3D6F5FBE3DFE8BA89020A114890404525412F7FB86A99BB1D85F3BD1F5D03D2` (1,486,788 bytes).
+- Logs are under `.local/android-test/reports/sep16-deck-convert-20261031/`. The test uses an isolated UUID namespace and teardown scans found no database, preference or cache residue. This is emulator-only evidence; no physical/OEM, production database or Native/Skin paired replay is claimed. The two other-Agent instrumented test edits remain separate and untouched.
+
+This closes only the Clear deck `CONVERT` confirmation slice. SEP-16 remains **PARTIAL / HOLD / INCOMPLETE** pending broader event-kind/operation combinations, AI `CONVERT`, conflicts/concurrency, lifecycle/process recovery, Native/Skin paired replay and external device evidence.
