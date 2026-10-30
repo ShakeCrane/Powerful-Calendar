@@ -4,6 +4,7 @@ import dev.powerfulcalendar.ui.v2.nativeui.NewEventEditorDialog
 import dev.powerfulcalendar.ui.v2.nativeui.NativeAiFileReview
 import dev.powerfulcalendar.ui.v2.nativeui.NativeAiImageConsentReview
 import dev.powerfulcalendar.ui.v2.nativeui.NativeAiOcrTextReview
+import dev.powerfulcalendar.ui.v2.nativeui.NativeSkinCatalogReview
 
 import android.content.Context
 import android.content.Intent
@@ -2337,20 +2338,11 @@ fun PowerCalApp(
     }
 
     skinToActivate?.let { item ->
-        SkinAlertDialog(
-            onDismissRequest = { skinToActivate = null },
-            title = { Text("切换皮肤前请确认") },
-            text = {
-                Text(
-                    """即将启用“${item.name}”。第三方皮肤可能遮挡设置入口，甚至导致界面无法操作。
-
-$SKIN_RECOVERY_GESTURE_COPY
-
-回退不会删除日历事件、草稿或已安装皮肤。导入新皮肤本身不会自动启用。""".trimIndent()
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
+        NativeSkinCatalogReview(
+            kind = NativeSkinCatalogReviewKind.ACTIVATE,
+            skinName = item.name,
+            recoveryGesture = SKIN_RECOVERY_GESTURE_COPY,
+            onConfirm = {
                     skinToActivate = null
                     scope.launch {
                         if(!webEditing.prepareSkinChange()) {
@@ -2366,21 +2358,25 @@ $SKIN_RECOVERY_GESTURE_COPY
                                 message = "无法切换皮肤：" + error.message
                             }
                     }
-                }) { Text("确认切换") }
             },
-            dismissButton = {
-                TextButton(onClick = { skinToActivate = null }) { Text("取消") }
+            onDismiss = { skinToActivate = null },
+            showDialog = { dialog ->
+                SkinAlertDialog(
+                    onDismissRequest = dialog.onDismissRequest,
+                    title = dialog.title,
+                    text = dialog.text,
+                    confirmButton = dialog.confirmButton,
+                    dismissButton = dialog.dismissButton
+                )
             }
         )
     }
 
     skinToDelete?.let { item ->
-        SkinAlertDialog(
-            onDismissRequest = { skinToDelete = null },
-            title = { Text("删除皮肤？") },
-            text = { Text("确认删除“" + item.name + "”？此操作仅删除皮肤素材，日历事件不会改变。") },
-            confirmButton = {
-                TextButton(onClick = {
+        NativeSkinCatalogReview(
+            kind = NativeSkinCatalogReviewKind.DELETE,
+            skinName = item.name,
+            onConfirm = {
                     skinToDelete = null
                     runCatching { skins.delete(item.id) }
                         .onSuccess {
@@ -2389,9 +2385,17 @@ $SKIN_RECOVERY_GESTURE_COPY
                             message = "已删除皮肤：" + item.name
                         }
                         .onFailure { error -> message = "删除皮肤失败：" + error.message }
-                }) { Text("确认删除") }
             },
-            dismissButton = { TextButton(onClick = { skinToDelete = null }) { Text("取消") } }
+            onDismiss = { skinToDelete = null },
+            showDialog = { dialog ->
+                SkinAlertDialog(
+                    onDismissRequest = dialog.onDismissRequest,
+                    title = dialog.title,
+                    text = dialog.text,
+                    confirmButton = dialog.confirmButton,
+                    dismissButton = dialog.dismissButton
+                )
+            }
         )
     }
 
