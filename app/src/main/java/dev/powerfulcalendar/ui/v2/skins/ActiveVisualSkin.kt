@@ -14,6 +14,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalText
+import dev.powerfulcalendar.ui.v2.nativeui.NativeVisualSkin
 
 /**
  * Single editable skin activation point. Edit only files in this skins folder, not PowerCalApp.

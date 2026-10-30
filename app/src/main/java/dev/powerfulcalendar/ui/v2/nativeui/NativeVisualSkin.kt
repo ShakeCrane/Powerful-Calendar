@@ -1,4 +1,6 @@
-package dev.powerfulcalendar.ui.v2
+package dev.powerfulcalendar.ui.v2.nativeui
+
+import dev.powerfulcalendar.ui.v2.*
 
 /**
  * First-party Native presentation profile. Each adapter delegates to the existing Native
