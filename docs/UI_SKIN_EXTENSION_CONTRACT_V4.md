@@ -5,13 +5,14 @@ As of 2026-10-21, the presentation host additionally interprets signed-by-integr
 They can live-switch ten existing screen surfaces with a strict built-in node/action
 library, animation and route transitions. The ten compiled-skin surfaces and Native
 fallback behavior remain. The Settings, Navigation, Memo, AI chat, Month, Timeline, and Draft Deck
-value APIs are in `:skin-api`; their Native renderers are in `:native-skin`. Native Chrome, Overlay,
-and Picker contexts and renderers also live in `:native-skin`. Core-backed Host
+value APIs are in `:skin-api`; their Native renderers are in `:native-skin`. The formal editor's
+Host presentation context is also in `:skin-api`, with its Native renderer in `:native-skin`.
+Native Chrome, Overlay, and Picker contexts and renderers also live in `:native-skin`. Core-backed Host
 projections, lifecycle and action adapters remain in `:app`.
 
 # PowerCal Visual Skin Contract v4 — as built
 
-Updated 2026-10-21; Native profile plus Settings, Month, Timeline, Draft Deck, Chrome, Overlay, and Picker module boundaries clarified 2026-10-30. This document records executable Android source interfaces, not a proposal or a promised future plugin format.
+Updated 2026-10-21; Native profile plus Settings, Month, Timeline, Draft Deck, formal editor, Chrome, Overlay, and Picker module boundaries clarified 2026-10-30. This document records executable Android source interfaces, not a proposal or a promised future plugin format.
 
 ## Separation
 
@@ -30,7 +31,7 @@ The `:skin-api` module currently contains the Settings and Navigation value cont
 display-only `NativeMemoRow`, `NativeAiMessage`, `NativeAiBatchMode`, Native Month, Timeline, and
 Draft Deck models/appearance slots. The `:native-skin` Android library contains `NativeToolsPage`,
 `NativePowerNavigation`, `NativeMemoCenterScreen`, `NativeAiChatScreen`, `NativeMonthScreen`,
-`NativeTimelineScreen` and `NativeDraftDeckScreen`; `NativeChromeSkin`, `NativeOverlaySkin`, and
+`NativeTimelineScreen`, `NativeDraftDeckScreen`, and `NativeDirectEventEditor`; `NativeChromeSkin`, `NativeOverlaySkin`, and
 `NativePickerSkin` render root/notice, modal, and Android date/time picker surfaces;
 the Host supplies values, action callbacks, protected content slots, and presentation
 shapes/icons. The
@@ -38,9 +39,15 @@ module direction is `:app → :native-skin → :skin-api`, with `:app → :skin-
 A Gradle boundary check rejects known Host/Core service references from `:native-skin`.
 
 This is an incremental compile/module boundary, not a security sandbox or separate APK. The
-Native Timeline, Draft Deck, and Chrome renderers are in `:native-skin`; their Host-owned projections and wrappers,
+Native Timeline, Draft Deck, formal event editor, and Chrome renderers are in `:native-skin`; their Host-owned projections and wrappers,
 geometry/form adapters, controller lifecycle, and route adapters remain in `:app`. Native renderer
 IDs and product behavior are unchanged.
+
+`NativeDirectEventEditor` consumes `NativeDirectEventEditorContext` from `:skin-api` and reuses the
+Native Draft Deck event form. The Host still owns the `EditSession`, recurrence-scope validation,
+form conversion, picker requests, persistence, and save/exit/delete callbacks; the moved module
+renders the Native editor shell and forwards explicit actions to those callbacks. This is a
+Host-owned Native renderer contract, not an additional runtime-skin surface.
 
 ## Ten replaceable presentation surfaces
 

@@ -61,7 +61,7 @@
 | SEP-02 月历 | 部分路径 TESTED | 选日、新建、打开重复实例、返回与状态恢复双版本回放 |
 | SEP-03 Memo/Todo | 部分路径 TESTED | 翻页、完成状态、恢复、重复和极端内容对照 |
 | SEP-04 新建 | 主要路径 TESTED | 四类型、不同入口、默认时间、无 Diff、重建和 DST 全流程双版本回放 |
-| SEP-05 正式编辑 | CODE COMPLETE，设备未签核 | Android WebView 真正编辑、类型转换、冲突与恢复 |
+| SEP-05 正式编辑 | **CODE COMPLETE**; Native formal editor shell in `:native-skin`; Host Compose/Robolectric/full JVM tested; device not signed off | Android 真实设备编辑、类型转换、冲突与恢复 |
 | SEP-06 重复实例 | 部分范围 TESTED | 单次/此后/整个系列，occurrence key、身份、提醒和重启后对照 |
 | SEP-07 正式删除 | **BLOCKED** | 真正 Android WebView → 受信 Host 审核 → 确认/取消/版本冲突 → Store；不能仅据 JVM/Mock 签核 |
 | SEP-08 草稿卡组 | Native Compose renderer **CODE COMPLETE** in `:native-skin`; focused Host/Compose cases TESTED; overall SEP remains PARTIAL | 批次导航、patch、flush、提交/拒绝、撤销、IME 与异常恢复的完整双路径回放；AndroidTest 设备执行 |
