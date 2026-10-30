@@ -125,7 +125,22 @@ internal class MemoVisualContext internal constructor(
     val onOpen: (TemporalRecord, String?) -> Unit
 ) {
     @Composable fun Native() {
-        NativeMemoCenterScreen(items, zone, busy, onBack, onCreateMemo, onToggle, onOpen)
+        val rows = remember(items) { projectNativeMemoRows(items) }
+        val entriesByKey = remember(items) { items.associateBy { it.id } }
+        NativeMemoCenterScreen(
+            items = rows,
+            busy = busy,
+            onBack = onBack,
+            onCreateMemo = onCreateMemo,
+            onToggle = { rowKey -> entriesByKey[rowKey]?.let(onToggle) },
+            onOpen = { rowKey ->
+                entriesByKey[rowKey]?.let { entry ->
+                    onOpen(entry.owner, entry.occurrenceKey.takeIf {
+                        entry.owner.recurrence.isRepeating
+                    })
+                }
+            }
+        )
     }
 }
 

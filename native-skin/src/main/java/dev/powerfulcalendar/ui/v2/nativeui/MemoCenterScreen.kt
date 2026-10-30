@@ -1,7 +1,5 @@
 package dev.powerfulcalendar.ui.v2.nativeui
 
-import dev.powerfulcalendar.ui.v2.*
-
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -13,33 +11,35 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import dev.powerfulcalendar.core.*
-import java.time.Instant
-import java.time.ZoneId
-import java.time.temporal.ChronoUnit
+import dev.powerfulcalendar.ui.v2.NativeMemoRow
 
 @Composable
-internal fun NativeMemoCenterScreen(
-    items: List<TodoEntry>,
-    zone: ZoneId,
+fun NativeMemoCenterScreen(
+    items: List<NativeMemoRow>,
     busy: Boolean,
     onBack: () -> Unit,
     onCreateMemo: () -> Unit,
-    onToggle: (TodoEntry) -> Unit,
-    onOpen: (TemporalRecord, String?) -> Unit
+    onToggle: (String) -> Unit,
+    onOpen: (String) -> Unit
 ) {
     var showCompleted by remember { mutableStateOf(false) }
     val visible = items.filter { it.completed == showCompleted }
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-        Row(Modifier.fillMaxWidth().heightIn(min = 60.dp),
-            verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = 60.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回") }
             Column(Modifier.weight(1f)) {
-                Text(if (showCompleted) "Memo · 已完成" else "Memo · 未完成",
-                    style = MaterialTheme.typography.titleLarge)
-                Text("统一待办中心 · " + visible.size + " 项（重复任务展示近一年及未来七日）",
+                Text(
+                    if (showCompleted) "Memo · 已完成" else "Memo · 未完成",
+                    style = MaterialTheme.typography.titleLarge
+                )
+                Text(
+                    "统一待办中心 · " + visible.size + " 项（重复任务展示近一年及未来七日）",
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
             IconButton(onClick = onCreateMemo, enabled = !busy) {
                 Icon(Icons.Default.Add, "新增无日期 Memo")
@@ -58,37 +58,39 @@ internal fun NativeMemoCenterScreen(
                 Text("目前没有待处理事项", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         } else {
-            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                items(visible, key = { it.id }) { entry ->
+            LazyColumn(
+                Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                items(visible, key = { it.rowKey }) { entry ->
                     Surface(
-                        onClick = {
-                            onOpen(entry.owner, entry.occurrenceKey.takeIf {
-                                entry.owner.recurrence.isRepeating
-                            })
-                        },
+                        onClick = { onOpen(entry.rowKey) },
                         shape = MaterialTheme.shapes.medium,
                         color = MaterialTheme.colorScheme.surfaceContainerLow
                     ) {
-                        Row(Modifier.fillMaxWidth().heightIn(min = 60.dp).padding(8.dp),
+                        Row(
+                            Modifier.fillMaxWidth().heightIn(min = 60.dp).padding(8.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Checkbox(checked = entry.completed, enabled = !busy,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Checkbox(
+                                checked = entry.completed,
+                                enabled = !busy,
                                 onCheckedChange = { checked ->
-                                    if (checked != entry.completed) onToggle(entry)
-                                })
+                                    if (checked != entry.completed) onToggle(entry.rowKey)
+                                }
+                            )
                             Column(Modifier.weight(1f)) {
-                                Text(entry.title, style = MaterialTheme.typography.bodyLarge,
-                                    maxLines = 1)
-                                val displayDate = entry.startMillis?.let {
-                                    Instant.ofEpochMilli(it).atZone(entry.owner.zone).toLocalDate().toString()
-                                } ?: "无日期"
-                                Text(entry.owner.kind.label + " · " + displayDate +
-                                    if (entry.owner.recurrence.isRepeating) " · 重复" else "",
+                                Text(entry.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
+                                Text(
+                                    entry.kindLabel + " · " + entry.dateLabel +
+                                        if (entry.repeating) " · 重复" else "",
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
-                            Text(entry.owner.displaySeq(), style = MaterialTheme.typography.labelSmall,
+                            Text(entry.sequenceLabel, style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }

@@ -2,6 +2,7 @@ package dev.powerfulcalendar.ui.v2
 
 import dev.powerfulcalendar.core.RecurrenceEngine
 import dev.powerfulcalendar.core.TemporalRecord
+import java.time.Instant
 
 /** Lightweight read projection. Nothing here creates extra linked event objects. */
 internal data class TodoEntry(
@@ -42,3 +43,20 @@ internal object TodoProjection {
             { it.owner.eventSeq }, { it.occurrenceKey }))
     }
 }
+
+
+/** Converts Core-backed entries into the display-only row model consumed by :native-skin. */
+internal fun projectNativeMemoRows(entries: List<TodoEntry>): List<NativeMemoRow> =
+    entries.map { entry ->
+        NativeMemoRow(
+            rowKey = entry.id,
+            title = entry.title,
+            completed = entry.completed,
+            kindLabel = entry.owner.kind.label,
+            dateLabel = entry.startMillis?.let { millis ->
+                Instant.ofEpochMilli(millis).atZone(entry.owner.zone).toLocalDate().toString()
+            } ?: "无日期",
+            repeating = entry.owner.recurrence.isRepeating,
+            sequenceLabel = entry.owner.displaySeq()
+        )
+    }

@@ -267,24 +267,37 @@ val verifyNativeSkinBoundary = tasks.register("verifyNativeSkinBoundary") {
     group = "verification"
     description = "Keep the Native presentation module independent from Host and Core services."
     doLast {
-        val moduleBuildFile = rootProject.file("native-skin/build.gradle.kts")
-        if (!moduleBuildFile.isFile) throw GradleException("Missing :native-skin build file")
-        if (Regex("""project\(\s*":app"\s*\)""").containsMatchIn(moduleBuildFile.readText())) {
-            throw GradleException(":native-skin must not depend on the Host :app module")
+        val nativeModuleBuild = rootProject.file("native-skin/build.gradle.kts")
+        val apiModuleBuild = rootProject.file("skin-api/build.gradle.kts")
+        if (!nativeModuleBuild.isFile || !apiModuleBuild.isFile) {
+            throw GradleException("Missing :native-skin or :skin-api build file")
         }
-        val nativeSourceRoot = rootProject.file("native-skin/src/main/java")
-        val sources = fileTree(nativeSourceRoot) { include("**/*.kt") }.files.sortedBy { it.path }
-        if (sources.isEmpty()) throw GradleException("No Native skin sources found")
-        sources.forEach { source ->
-            val withoutComments = source.readText()
-                .replace(Regex("""(?s)/\*.*?\*/"""), "")
-                .replace(Regex("""(?m)//[^\n]*"""), "")
-            val violation = nativeForbiddenApis.firstOrNull { withoutComments.contains(it) }
-            if (violation != null) {
-                throw GradleException(
-                    "Native skin " + source.name + " references Host/Core API " + violation +
-                        "; pass value-only state or a Host action slot instead."
-                )
+        val reverseDependency = Regex("""project\(\s*":(app|native-skin)"\s*\)""")
+        if (reverseDependency.containsMatchIn(nativeModuleBuild.readText())) {
+            throw GradleException(":native-skin must not depend on :app or depend back from :skin-api")
+        }
+        if (reverseDependency.containsMatchIn(apiModuleBuild.readText())) {
+            throw GradleException(":skin-api must not depend on :app or :native-skin")
+        }
+        val sourceRoots = listOf(
+            "native-skin/src/main/java" to "Native skin",
+            "skin-api/src/main/java" to "Skin API"
+        )
+        sourceRoots.forEach { (relativeRoot, label) ->
+            val sourceRoot = rootProject.file(relativeRoot)
+            val sources = fileTree(sourceRoot) { include("**/*.kt") }.files.sortedBy { it.path }
+            if (sources.isEmpty()) throw GradleException("No $label sources found")
+            sources.forEach { source ->
+                val withoutComments = source.readText()
+                    .replace(Regex("""(?s)/\*.*?\*/"""), "")
+                    .replace(Regex("""(?m)//[^\n]*"""), "")
+                val violation = nativeForbiddenApis.firstOrNull { withoutComments.contains(it) }
+                if (violation != null) {
+                    throw GradleException(
+                        label + " " + source.name + " references Host/Core API " + violation +
+                            "; pass value-only state or a Host action slot instead."
+                    )
+                }
             }
         }
     }
