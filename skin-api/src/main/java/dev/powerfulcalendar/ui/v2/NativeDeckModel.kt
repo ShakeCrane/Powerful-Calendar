@@ -178,3 +178,31 @@ data class NativeDeckFormContext(
     val appearance: NativeDeckAppearance,
     val actions: NativeDeckFormActions
 )
+
+enum class NativeDirectEditScope { SINGLE_OCCURRENCE, THIS_AND_FUTURE, WHOLE_SERIES }
+
+data class NativeDirectEditScopeOption(
+    val scope: NativeDirectEditScope,
+    val selected: Boolean,
+    val enabled: Boolean
+)
+
+/** Presentation state and Host callbacks for the Native formal-event editor shell. */
+data class NativeDirectEventEditorContext(
+    val editorKey: String,
+    val editorRevision: Int,
+    val form: NativeDeckFormContext,
+    val error: String?,
+    val hasChanges: Boolean,
+    val busy: Boolean,
+    val canChangeKind: Boolean,
+    val requiresRecurrenceScope: Boolean,
+    val selectedRecurrenceScope: NativeDirectEditScope?,
+    val recurrenceScopes: List<NativeDirectEditScopeOption>,
+    val onChangeKind: (NativeDeckKind) -> Unit,
+    val onChangeRecurrenceScope: (NativeDirectEditScope) -> Unit,
+    val onSave: () -> Unit,
+    val onDiscardChanges: () -> Unit,
+    val onExit: () -> Unit,
+    val onDelete: () -> Unit
+)
