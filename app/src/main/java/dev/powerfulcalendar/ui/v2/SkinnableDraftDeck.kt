@@ -78,7 +78,7 @@ fun DraftDeckDialog(
 ) {
     val renderer = DeckPresentationSkinRegistry.active
     val runtime = RuntimeSkinSurfaces.enabled("deck")
-    if (renderer == null && !runtime) {
+    if ((renderer == null || NativeVisualSkin.isDeckRenderer(renderer)) && !runtime) {
         NativeDraftDeckDialog(controller, aiSession, onDismissRequest,
             onOpenFormalEvent, onCancelAiBatch, onDeckChanged, formalSearch,
             initialEditorOpen = initialEditorOpen)

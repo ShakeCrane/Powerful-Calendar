@@ -8,13 +8,20 @@ fallback contract remain available and unchanged.
 
 # PowerCal Visual Skin Contract v4 — as built
 
-Updated 2026-10-21. This document records executable Android source interfaces, not a proposal or a promised future plugin format.
+Updated 2026-10-21; Native profile clarification added 2026-10-30. This document records executable Android source interfaces, not a proposal or a promised future plugin format.
 
 ## Separation
 
 The functional host exclusively owns persisted events, eventSeq/revision/occurrence identity, timezones/recurrence, AI interpretation and approval, authorization boundaries, reminder scheduling, credential storage, file/import/export, and DeckController serialized durable edits. Presentation code may design any Compose layout, drawing, typography, animation, gesture affordance and overlay, while invoking only the provided host actions. Skins do not independently persist state or claim successful authorization.
 
 This ABI is intended for audited Kotlin source compiled into the same APK; it is not a sandbox for untrusted Kotlin, a dynamically loaded plugin, or an Android-installable executable ZIP.
+
+The production `native` source-compiled profile explicitly registers adapters for all ten
+surfaces. Each adapter delegates to that surface's existing `context.Native()` implementation,
+so the Native UI has a named presentation profile without creating a second screen implementation
+or gaining Host capabilities. Clearing the compiled registry still restores the direct first-party
+fallback. This profile is independent of `.pcskin` package selection and is not an executable or
+Skin Studio package.
 
 ## Ten replaceable presentation surfaces
 
@@ -42,6 +49,7 @@ Settings exposes two additional protected composable slots: context.ProtectedPro
 In app/src/main/java/dev/powerfulcalendar/ui/v2:
 - CompiledSkinTimeline.kt — timeline context, yOf geometry, default preview
 - PresentationSkinRuntime.kt — route registry, settings controls and navigation
+- skins/NativeVisualSkin.kt — explicit Native profile adapters for the ten presentation surfaces
 - SkinnableDraftDeck.kt — controller adaptation with autosave, serialized guarded operations
 - SkinnableOverlays.kt — Compose Alert and Window slots
 - SkinnablePickers.kt — date/time imperative picker intents

@@ -115,6 +115,26 @@ class GlassComposeTest {
         ui.onNodeWithText("2 / 100 · 已暂存").assertIsDisplayed()
     }
 
+    @Test fun explicitNativeSkinKeepsDeckOnItsSingleObserverPath() {
+        val cards = (1..2).map { index ->
+            store.newDraft(DraftForm.fresh(TemporalKind.ACTIVITY,
+                LocalDate.of(2026, 10, 20), zone).copy(title = "Native 分离草稿 $index"))
+        }
+        val controller = newController(StoreDeckPersistence(store)).also { it.openNow(cards.first().draftId) }
+        ActiveVisualSkin.install()
+        try {
+            ui.setContent { PowerCalTheme {
+                DraftDeckDialog(controller, null, {}, {}, {}, {}, { emptyList() })
+            } }
+            ui.onNodeWithText("Native 分离草稿 1").assertIsDisplayed()
+            ui.onNodeWithContentDescription("下一张草稿").performClick()
+            ui.waitUntil(10_000) { controller.state.currentId == cards[1].draftId }
+            ui.onNodeWithText("Native 分离草稿 2").assertIsDisplayed()
+        } finally {
+            PresentationSkinRegistry.reset()
+        }
+    }
+
     @Test fun failedFlushBlocksTheDialogCloseAndRetainsVisibleText() {
         val card = store.newDraft(DraftForm.fresh(TemporalKind.ACTIVITY, LocalDate.of(2026, 10, 20), zone).copy(title = "原始"))
         val persistence = object : DeckPersistence by StoreDeckPersistence(store) {

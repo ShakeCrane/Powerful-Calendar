@@ -11,8 +11,29 @@ import org.junit.Test
 class PresentationSkinRegistryTest {
     @After fun reset() { PresentationSkinRegistry.reset() }
 
-    @Test fun productionDefaultsUseAllNativeScreens() {
+    @Test fun productionProfileExplicitlyRegistersAllNativeSurfaces() {
+        val activePackage = PowerCalSkinRegistry.active
         ActiveVisualSkin.install()
+        val ids = listOfNotNull(
+            CompiledSkinRuntime.timeline?.rendererId,
+            PresentationSkinRegistry.month?.id,
+            PresentationSkinRegistry.memo?.id,
+            PresentationSkinRegistry.ai?.id,
+            PresentationSkinRegistry.settings?.id,
+            PresentationSkinRegistry.navigation?.id,
+            DeckPresentationSkinRegistry.active?.id,
+            PresentationSkinRegistry.overlay?.id,
+            PresentationSkinRegistry.picker?.id,
+            PresentationSkinRegistry.chrome?.id
+        )
+        assertEquals(10, ids.size)
+        assertEquals(ids.size, ids.toSet().size)
+        assertTrue(ids.all { it.startsWith("native/") })
+
+        // A compiled presentation profile must not mutate the independent .pcskin selection.
+        assertSame(activePackage, PowerCalSkinRegistry.active)
+
+        PresentationSkinRegistry.reset()
         assertNull(CompiledSkinRuntime.timeline)
         assertNull(PresentationSkinRegistry.month)
         assertNull(PresentationSkinRegistry.memo)

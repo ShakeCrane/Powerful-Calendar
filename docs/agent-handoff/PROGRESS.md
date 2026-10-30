@@ -1,5 +1,15 @@
 # Core freeze progress
 
+## Separation — Native visual profile is explicit (2026-10-30, slice TESTED; full regression FAIL)
+
+- 当前工作方向按 Owner 最新说明收窄到 Native 呈现分离；本项没有修改 Clear 源码或 `.pcskin`，不代表 Clear 恢复或完整 Native/Skin parity。
+- 根因：启动配置虽名为 `native`，实际只清空 renderer registry，让各路由隐式落到原生 fallback；生产配置无法以具名 profile 显式映射十个 surface。
+- 新增 Native renderer adapters，分别委托现有 `context.Native()`，没有复制屏幕、持久化、授权或系统操作逻辑；`ActiveVisualSkin.install()` 明确安装该 profile。Deck 保持现有原生单观察者路径，避免 pass-through renderer 同时挂接第二个 controller listener。直接 reset registry 仍可回到既有 fallback，`.pcskin` selection 不受影响。
+- `PresentationSkinRegistryTest` + `GlassComposeTest` **22/22 PASS**：覆盖十个唯一 `native/*` renderer ID、registry reset、`.pcskin` selection 独立及 Native profile 下的 Deck 前进导航。API 35 / Android 15 AVD `emulator-5554` 的 `DraftDeckTouchPriorityInstrumentedTest` **2/2 PASS**。`verifySkinSourceBoundary`、`assembleDebug` 与 `lintDebug` PASS；lint 0 errors / 53 warnings。Debug APK SHA-256 `389E3DEAA6A64E94EBE233734AE12EECAC49FF847AA653FD949AEE99F257D257`（67,553,486 bytes）。
+- 完整单元回归 **728 tests：727 PASS、1 FAIL**：`WebAiProposalReviewIntegrationTest.memoPagingContinuesTheSortedProjectionWithoutStoreWrites` 导航至 Memo 后 Host state 为 `memoCount=0`，60 秒等待超时。此失败在 Clear Memo 路径；本项未修改 Clear，也不把全量回归记为 PASS。Gradle 日志 `.local/android-test/reports/separation-native-profile-20261030/full-gradle.log` SHA-256 `EF60F6A9BB043D19BA7AA27B1507D717A1B39590E6ED7FE3A7F9CCDAEC0DF07D`；build/lint 日志 SHA-256 `25B4FEBAAD5E4BC6FEAFD45AE6BFECFEA20EC7E4E5E91706388906B9F316EA09`；API 35 instrumentation 日志 SHA-256 `FC97030E65CF4200EEFC08B5C15177E28470040A6357EDDD53CDD0E319D6CFCD`。
+- 本实现提交 SHA 将在提交推送后由后续 provenance 更新记录；独立验收边界与风险见 [Native visual profile Issue](../issues/PC-ISSUE-SEPARATION-NATIVE-VISUAL-PROFILE.md)。
+- 实现范围仅为 Native presentation profile 注册与路由，不签核 SEP-01～SEP-16 的功能等价、Studio 可编辑性、WebView/Clear 行为或实体设备。详情见 [Native visual profile Issue](../issues/PC-ISSUE-SEPARATION-NATIVE-VISUAL-PROFILE.md)。
+
 ## Follow-up — Clear 贪心标题 Android WebView 实测 `S0-TL-05`（2026-10-30，子项 PASS；Parity HOLD）
 
 - 新增真实 Android `PowerCalApp` + Clear WebView instrumentation，使用随机隔离 Store 写入四个 ACTIVITY，读取四个 DOM 标题实际矩形，验证 lead 对比、事件时间几何、刻度、折叠点击穿透和完整标题打开；没有改动生产源码。

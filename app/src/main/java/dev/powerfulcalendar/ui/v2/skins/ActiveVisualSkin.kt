@@ -22,11 +22,10 @@ import dev.powerfulcalendar.core.TemporalText
 object ActiveVisualSkin {
     const val PROFILE = "native"
     fun install() {
-        PresentationSkinRegistry.reset()
         when (PROFILE) {
-            "native" -> Unit
+            "native" -> NativeVisualSkin.install()
             "studio-example" -> installExample()
-            else -> PresentationSkinRegistry.reset() // invalid config always falls back
+            else -> NativeVisualSkin.install() // invalid config always falls back
         }
     }
 

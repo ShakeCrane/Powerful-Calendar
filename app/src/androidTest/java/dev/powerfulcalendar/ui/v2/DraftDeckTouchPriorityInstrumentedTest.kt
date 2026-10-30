@@ -37,6 +37,7 @@ class DraftDeckTouchPriorityInstrumentedTest {
         }
 
     private fun renderExpandedDeck(controller: DeckController) {
+        compose.activity.runOnUiThread { ActiveVisualSkin.install() }
         compose.setContent {
             PowerCalTheme {
                 DraftDeckDialog(
@@ -61,7 +62,10 @@ class DraftDeckTouchPriorityInstrumentedTest {
         try {
             block(store, context, databaseName)
         } finally {
-            compose.activity.runOnUiThread { compose.activity.setContent {} }
+            compose.activity.runOnUiThread {
+                compose.activity.setContent { }
+                PresentationSkinRegistry.reset()
+            }
             compose.waitForIdle()
             store.close()
             context.deleteDatabase(databaseName)
