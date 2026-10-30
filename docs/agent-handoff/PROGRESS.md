@@ -1593,3 +1593,10 @@ Updated: 2026-10-24
 - API 35 `codex-clear-api35`：Clear 首屏/立即保存 **2/2**；重复事件 **4/4**；时间轴拖动、缩放及复位 **1/1**；正式删除 **2/2**；AI 审核 **2/2**。完整 JVM **784/784、125 suites、0 failures/errors/skips**；两项边界、AndroidTest 编译、Debug APK 与 lint 通过（152 tasks）。Studio Python **62/62**，JS syntax、Clear APK 资源逐字节校验通过。
 - APK SHA-256 `4EAAD84A88A78FE1A785DD20AB2A078956D2A3BC3DBC5E37CE14C4370AE716BF`；Clear 包 SHA-256 `465cfd1b980f897a7540cfd49a2fc046f70662d7e9266195ba1ac65359359c82`。完整门禁日志 SHA-256 `8FEC1BF46AD66EDEFC1D704B286486E6BBE2855E3CCF4BA42D721EAEF78DB062`；证据位于 `.local/android-test/reports/clear-runtime-api35/`。
 - 代码提交 `733d2542f72473e37317e5dc2dd4cdaf0b5ee75e` 已推送至唯一集成主线。`WebSkinFormalDeleteInstrumentedTest.kt` 与 `WebSkinRecurrenceInstrumentedTest.kt` 的其他 Agent 未提交修改未纳入本提交，仍保留在工作区。实体/OEM、TalkBack、完整双版本等价矩阵未测；Clear 整体等价及 Skin-First 仍未完成。结案报告：[PC-ISSUE-SEPARATION-CLEAR-STARTUP-AND-EDIT-QUEUE](../issues/PC-ISSUE-SEPARATION-CLEAR-STARTUP-AND-EDIT-QUEUE.md)。
+
+## Separation — Clear Settings Host options (2026-10-31)
+
+- Clear 设置页补入 Host 已有的六项日历/数据操作，继续使用已登记的 invokeOption 分派；保留原生恢复入口，未增加 Bridge 能力或改变冻结业务语义。
+- API 35 codex-clear-api35 的打包 Clear WebView/Host 回归 1/1 PASS：点击旧数据迁移进入宿主确认，取消后正式事件、草稿、提交数、身份计数和序号水位不变。Chrome 156/CDP 与 Skin Studio 浏览器源/项目/资源导出重导入 E2E 通过；Studio Python 62/62 PASS。
+- 完整 Gradle 门禁 784/784 JVM、125 suites、0 failures/errors/skips、152 tasks PASS；边界检查、AndroidTest 编译、Debug APK 与 lint 通过。Clear 源包/APK asset SHA-256 601e84ffe4316140dcf0310d9977482478b3f9dbfadf986d5d6da4d0cb10a884，APK SHA-256 7D6A3A37C86116DEB94A1CFEEC5E1235AD0245BBD4C1AFBCAEA096A9B727B634；证据位于 .local/android-test/reports/clear-settings-options-20261031/。
+- Runtime/test 提交 dfcd5948f4b5404302a202825f61507d1a415492 已推送。SEP-11 仍 NOT TESTED / INCOMPLETE：实际 SAF 导入导出/备份恢复、系统日历权限、AI 凭证与皮肤管理、Native/Skin 完整对照及实体/OEM 未签核。见 [PC-ISSUE-SEPARATION-CLEAR-SETTINGS-OPTIONS](../issues/PC-ISSUE-SEPARATION-CLEAR-SETTINGS-OPTIONS.md)。

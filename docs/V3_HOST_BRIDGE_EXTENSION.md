@@ -16,6 +16,10 @@ commands rather than treating an empty projection as the loaded calendar.
 New:
 - `optionGroups`: host-owned semantic choices; render every option of a group
   with the same style. Each item carries `id,label,detail,icon,enabled`.
+  Skins may render these groups in their Settings page as well as a separate
+  data-options page. Invoke an item only with its registered `invokeOption`
+  ID; file pickers, system permissions, migration and restore confirmations
+  remain Host-owned. Keep a native recovery route available if the skin fails.
 - `timeline`: `zoneId`, `anchorMillis`, `hours`,
   `visibleStartMillis`, `visibleEndMillis`, `nowMillis`,
   `itemLimit` (300), `truncated`, and `items`.
@@ -150,6 +154,8 @@ envelope and known fields only:
   those checks.
 - `invokeOption` only accepts registered host IDs. When AI/editor writes
   are locked, option rows are disabled in state and invocation is denied.
+  Rendering the same projection in Settings does not grant a new capability or
+  bypass the Host action checks and confirmation flows.
 - `data.legacy.migrate` is a Host-owned migration request. It opens the existing
   native confirmation before accessing the legacy database; the importer opens
   that source read-only, keeps the file, and records a finished migration batch
