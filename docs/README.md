@@ -7,6 +7,9 @@ Read [Core owner sign-off](CORE_FREEZE_OWNER_SIGNOFF_2026-10-27.md),
 For current source-level gaps and next work, read the
 [Skin separation parity matrix](SKIN_SEPARATION_PARITY_MATRIX_2026-10-27.md).
 The v3 Skin-First cutover is not complete and native fallback stays intact.
+For the **post-delivery 2026-10-30 branch structure and milestone-by-milestone next work**,
+read [Remote Git governance and separation roadmap](SEPARATION_REMOTE_GOVERNANCE_AND_ROADMAP_2026-10-30.md).
+
 
 ## Runtime .pcskin v2 packages
 

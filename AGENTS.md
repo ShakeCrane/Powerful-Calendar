@@ -2,6 +2,17 @@
 
 This file applies repository-wide to autonomous coding agents, code reviewers, and assistants.
 It defines **durable engineering rules**, not a frozen snapshot of the current task or test counts.
+
+
+**Current separation handoff (2026-10-30):** read
+`docs/SEPARATION_REMOTE_GOVERNANCE_AND_ROADMAP_2026-10-30.md`
+before making new branches, merging legacy results or claiming Skin-First parity.
+The only integration branch is `feat/skin-first-separation`; `main` remains
+the frozen core. The two `codex/separation-*` remote branches named in the
+roadmap are UNMERGED review branches, not automatic merge targets. The
+`skin-separation-stage-2026-10-30` tag is a stage checkpoint, NOT cutover GO.
+Do not recreate the five retired remote branches, or discard any worktree edits.
+
 Read the latest user instructions and relevant specs first. When this file and a current user
 decision conflict, follow the user decision and update documentation explicitly.
 
