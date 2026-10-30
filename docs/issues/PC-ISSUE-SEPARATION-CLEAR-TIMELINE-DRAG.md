@@ -1,7 +1,7 @@
 # PC-ISSUE-SEPARATION-CLEAR-TIMELINE-DRAG — Clear 时间轴拖动改期
 
 - 日期：2026-10-29
-- 状态：**PARTIAL — Bridge/Store 与 Chrome Studio Mock 窄范围通过；Android WebView/AVD 与 Native/Clear 配对验收 NOT TESTED**
+- 状态：**PARTIAL — 已有 API 35 Clear WebView 拖动到 Bridge/Store 的窄范围实测；完整 Native/Clear 配对与设备矩阵仍 NOT TESTED**
 - Worktree：`codex/separation-s0-timeline-drag`
 - 基线：`057b39e5d2fd85e9725e7faffbba7ff0ea51c37c`
 - 实现、测试与独立报告提交 SHA：`1d78353e0866c7bc19c6a555fb65cbc454aea1f2`
@@ -89,3 +89,11 @@ event #502 recurring touch drag → unsupported; no draft opened
 3. 默认 worker 配置下，全量 JVM 门禁会在父基线已有 Memo 分页 Compose 用例超时；串行 full gate 已 619/619 通过。应把默认并行路径的不稳定作为独立测试稳定性缺口继续处理，不能归因或折算成 S0-TL-04 的 PASS/FAIL。
 4. 仓库 Puppeteer E2E harness 本轮未运行，因为该 worktree 没有 Puppeteer 依赖；Chrome/CDP 三条动作由本地 `.local` focused CDP harness 实际驱动并留有 JSON/截图证据。已提交的 E2E 源文件已执行 `node --check`。
 5. S0-TL-04 只标为 **PARTIAL**；不代表时间轴完整 parity、SEP-01 完成或 Skin cutover GO。
+
+## Follow-up — API 35 touch-to-Bridge、缩放相机与复位点击（2026-10-30）
+
+- 真实 API 35 WebView 回放确认了两处生产缺陷。第一，Timeline 页面同步发布已读取最新 `anchorMillis`/`hours`，但 `WebSkinBridgeRuntime.onEdit` 的闭包仍使用上一轮 composition 捕获的 `camera`；16 小时视图的 Skin 请求目标为 `2026-10-30 11:40`，Host 却按旧 24 小时相机以 15 分钟步长存成 `11:45`。现在命令处理时用实时 `anchorMillis` 和限幅后的 `hours` 重建 `Camera`，同一个实时相机用于可见事件校验与吸附。第二，事件按钮允许 WebView 原生纵向手势仲裁抢走长按；事件目标改为 `touch-action: pan-x`，让长按拖动的纵向触点流交给 JS，阈值前的触摸移动取消拖动并抑制随后的合成点击。缩放/复位按钮设为 `touch-action: manipulation`，避免连续触摸时双击判定吞掉复位点击。
+- API 35 / Android 15 隔离 AVD `PowerCal_Sep01_API35`、Clear 生产 WebView：`TimelineDragWebViewInstrumentedTest` **1/1 PASS**。真实普通点击仍打开编辑器且零写入；阈值前纵向移动无编辑/写入；重复事件拖动通过 Host 返回 `unsupported`、不产生草稿；非重复 Activity 长按触摸产生新 `timeline.move` Bridge request，Host 打开现有 Deck 并暂存恰好一张 `REPLACE` 草稿，开始/结束时间为 `11:40–12:40`，正式记录、身份数和 commit 数保持不变。触摸轨迹与 WebMessagePort 命令记录在 `.local/android-test/reports/sep01-tl04-runtime-20261030/touch-drag-api35/`；JUnit `test-result.textproto` SHA-256 `B8F69483CF654BA8B35FD3BAC84958EC8BC2BE2136F2BF81FAE777631D14522A`，完整 Gradle 定向日志 SHA-256 `498C47BA4AA6F7AE96FFD0457D3D68D6BB7647E86C6DD09C23CE1FF4AD0D7490`。
+- `TimelineGreedyFoldingWebViewInstrumentedTest` 在同一 AVD **2/2 PASS**；其中放大后立即复位的真实触摸用例再连续运行 **3/3 PASS**。第三次 JUnit 结果 SHA-256 `3374EDEDEF95485F5300D180BCB730195D3B71D592F0D275CCC14E3EBC553CDE`，触摸/控件轨迹 SHA-256 `60ABD558BB37D4A5EED3AEEF975ABF17BF871E2D0C62DFA7D5543A6EC71EC086`，结果副本位于 `.local/android-test/reports/sep01-tl04-runtime-20261030/reset-touch-run-3/`。较早一次 AVD 在 UTP 清理时断连，未计作 PASS；使用同一隔离 AVD 数据重新启动后完成了上述 PASS，没有 wipe 或清除设备数据。
+- 完整离线门禁 `:app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --max-workers=1` **BUILD SUCCESSFUL**：JVM **727/727、100 suites、0 failures/errors/skips**；Lint **0 errors / 53 warnings**。Skin Studio Python **61/61 PASS**，Clear 包验证 **9 files / 394,120 bytes PASS**，APK 中皮肤资源 SHA-256 与 canonical 源/checked-in 包一致：`2595704798da12d7309ea165e90e190b56f02640ddd10254b1d4f98cb55d9b81`；Debug APK SHA-256 `1A1E9D86C978B5247D633C86785E673F8CFE73C3607B9F743B8FFB16F50F0BB1`。完整 JVM XML 和 Lint 报告副本在同一 `.local/android-test/reports/sep01-tl04-runtime-20261030/` 证据目录。
+- Runtime、Clear source、内嵌 `.pcskin` 与 Android 回归提交为 `10da1cc6683453cec5192b5a8e9207f965d02b55`（`fix(分离): 修复Clear时间轴拖动与复位触控`）。这仅签核长按到 Bridge/Host 暂存与复位触摸的 API 35 窄范围；真实设备/OEM、TalkBack、Native/Clear 同事件回放及整行 SEP-01 parity 仍 **NOT TESTED**，不改变 Native 回退或默认皮肤。

@@ -167,6 +167,12 @@
 - 独立报告：[PC-ISSUE-SEPARATION-CLEAR-TIMELINE-DRAG](../issues/PC-ISSUE-SEPARATION-CLEAR-TIMELINE-DRAG.md)。串行完整门禁日志 SHA-256 `EE72E74A2015EC85E414795A684797285197E5B259BAE8CD3BC2699078AA2652`；JVM JUnit XML 84 suites 保存在 `.local/android-test/reports/separation-s0-timeline-drag/full-junit/`。第二次默认 worker 失败日志 SHA-256 `A839981EEA3B5CC7BA3B35C567B9AF5AFE5792063D71E7F1E41020C4F2C4ADBC`；基线对照日志 SHA-256 `F3E6DD815899CFE55896F676E0B1E07F7BBF236D71D86822DBBF4DA5708495C6`。
 - 实现、回归、矩阵与独立 Issue 已提交 `1d78353e0866c7bc19c6a555fb65cbc454aea1f2`；本条同时回填该 SHA。下一项从重建矩阵按风险选择；整体 Skin-First separation 仍 **IN PROGRESS**。
 
+## Separation — SEP-01 Clear long-press drag / zoom-reset touch follow-up（2026-10-30，窄项 API 35 TESTED；整行仍 NOT TESTED）
+
+- API 35 真实 Clear WebView 复现 Host move-context 闭包仍拿旧 24h `camera`：16h 画面发出 11:40 目标却按 15 分钟步长暂存成 11:45。命令处理现在用实时 Host `anchorMillis` / `hours` 重建相机并同时用于投影版本校验和吸附。事件触摸目标采用 `touch-action:pan-x`，阈值前的触摸移动取消候选并抑制合成点击；缩放/复位控件采用 `touch-action:manipulation`。
+- `TimelineDragWebViewInstrumentedTest` **1/1 PASS**：真实触点从普通点击、阈值前移动、重复事件拒绝到非重复事件 `timeline.move`、Bridge reply、Deck 及单张替换草稿；正式记录保持不变。`TimelineGreedyFoldingWebViewInstrumentedTest` **2/2 PASS**；缩放后真实复位点击用例连续 **3/3 PASS**。完整离线 Gradle **727/727 JVM、100 suites、0 failures/errors/skips**，source boundary、Debug build 与 lint 通过（0 errors / 53 warnings）；Skin Studio **61/61**，canonical 包/APK 资源 9 files / 394,120 bytes 校验一致。原始结果和 SHA 在 `.local/android-test/reports/sep01-tl04-runtime-20261030/` 与 [独立 Issue](../issues/PC-ISSUE-SEPARATION-CLEAR-TIMELINE-DRAG.md)。
+- 实现、测试和皮肤包提交 `10da1cc6683453cec5192b5a8e9207f965d02b55`。矩阵补录受测窄项，但 `SEP-01` 整行仍 **NOT TESTED**：Matched Native/Clear 全面回放、实体/OEM 与 TalkBack 证据尚缺。Native 回退和默认皮肤保持不变；Skin-First separation 继续 **IN PROGRESS**。
+
 ## Separation — Clear timeline measured-title greedy folding `S0-TL-05` (2026-10-29, PARTIAL)
 
 - Root cause: Clear had no measured-label collision policy; labels rendered with event controls and could not fold by actual visible text geometry. Added deterministic `title-folding.js` pure strategy (screen Y/event sequence/stable ID order, strict rectangle overlap, hidden candidates never replace lead), DOM `Range` measurement, unified viewport coordinates with left/right clipping, one-line lane-width ellipsis, Activity start anchoring when its true visual frame is too short, and reflow after scroll/resize/render/font readiness. Only labels hide; event geometry, event buttons, complete accessible names and date-only Deadline strip remain. No `×N`.
