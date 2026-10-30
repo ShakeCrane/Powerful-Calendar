@@ -34,7 +34,7 @@ v3 Manifest 的 `capabilities` 是皮肤包向 Android Host 声明的请求。CL
 
 - 本 Issue 只交付 Host 能力声明编辑及项目结构测试。没有修改 Clear 源码、Core、Android Runtime 授权逻辑或皮肤默认选择。
 - Studio 的浏览器 Mock 不是 Android Host 权限验收；此处证明的是控件状态、明确编辑以及包往返保真。
-- 任意皮肤语义组件树、页面结构化重构与绑定编辑仍未完成。SEP-15 继续标记 **INCOMPLETE**；Native/Skin 完整等价、Android/WebView 与实体设备验收均不由本 Issue 签核。
+- 本 Issue 本身只签核 capability 请求控件。2026-10-31 的 SEP-15 follow-up 已验证 Studio 通过统一 v3 项目模型编辑 `project.json`、源文件、资源、层级及 capability 声明，并能无损导出/重新导入；不把“通用语义组件树 IDE”作为要求。复杂自定义项目实际运行时与 Native/Skin parity、完整 AI 自动修改到 Runtime 的闭环及实体/OEM 仍未签核，SEP-15 保持 **PARTIAL / HOLD**，详情见 [Studio 项目往返 Issue](PC-ISSUE-SEPARATION-STUDIO-PROJECT-ROUNDTRIP.md)。
 
 ## 交付
 
