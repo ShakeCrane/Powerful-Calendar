@@ -10,6 +10,8 @@ import android.content.IntentFilter
 import android.net.Uri
 import android.graphics.Rect
 import android.os.Build
+import android.os.Bundle
+import android.os.ParcelFileDescriptor
 import android.os.Environment
 import android.os.SystemClock
 import android.provider.MediaStore
@@ -28,7 +30,10 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import dev.powerfulcalendar.core.BackupEnvelope
+import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.PowerStore
+import dev.powerfulcalendar.core.TemporalKind
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -38,6 +43,8 @@ import org.junit.Test
 import org.junit.Assume.assumeTrue
 import org.junit.runner.RunWith
 import java.util.UUID
+import java.time.LocalDate
+import java.time.ZoneId
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
@@ -106,6 +113,35 @@ class ClearSettingsOptionsInstrumentedTest {
             SystemClock.sleep(150)
         }
         throw AssertionError("DocumentsUI picker control did not appear")
+    }
+
+    private fun waitForPickerEditableNode(timeoutMillis: Long = 15_000): AccessibilityNodeInfo {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val deadline = SystemClock.elapsedRealtime() + timeoutMillis
+        while (SystemClock.elapsedRealtime() < deadline) {
+            val root = instrumentation.uiAutomation.rootInActiveWindow
+            if (root?.packageName?.toString() == "com.google.android.documentsui") {
+                fun findEditable(node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
+                    if (node == null) return null
+                    if (node.isEditable) return node
+                    for (index in 0 until node.childCount) {
+                        findEditable(node.getChild(index))?.let { return it }
+                    }
+                    return null
+                }
+                findEditable(root)?.let { return it }
+            }
+            SystemClock.sleep(150)
+        }
+        throw AssertionError("DocumentsUI filename field did not appear")
+    }
+
+    private fun setPickerText(node: AccessibilityNodeInfo, text: String) {
+        val arguments = Bundle().apply {
+            putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
+        }
+        assertTrue("DocumentsUI filename field must accept text",
+            node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments))
     }
 
     private fun accessibilitySnapshot(root: AccessibilityNodeInfo?): String {
@@ -665,6 +701,145 @@ class ClearSettingsOptionsInstrumentedTest {
             context.deleteDatabase(databaseName)
             skinManager.select(originalSkin)
             if (fixtureInstalled) runCatching { skinManager.delete(fixtureId) }
+            val restoreOnboarding = onboarding.edit()
+            if (hadAskedForCalendarImport) {
+                restoreOnboarding.putBoolean("system-calendar-import-asked", askedForCalendarImport)
+            } else {
+                restoreOnboarding.remove("system-calendar-import-asked")
+            }
+            restoreOnboarding.commit()
+        }
+    }
+
+    @Test
+    fun clearBackupExportUsesDocumentsUiAndVerifiesTheWrittenSnapshot() {
+        assumeTrue("DocumentsUI export flow must run on an isolated Android emulator",
+            Build.HARDWARE == "ranchu" || Build.HARDWARE == "goldfish")
+        assumeTrue("Downloads MediaStore requires API 29+", Build.VERSION.SDK_INT >= 29)
+        val context = compose.activity.applicationContext
+        val databaseName = "clear-backup-export-${UUID.randomUUID()}.db"
+        val store = PowerStore(context, databaseName)
+        val skinManager = SkinPackageManager(context)
+        val originalSkin = skinManager.currentId()
+        val onboarding = context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+        val hadAskedForCalendarImport = onboarding.contains("system-calendar-import-asked")
+        val askedForCalendarImport = onboarding.getBoolean("system-calendar-import-asked", false)
+        val outputName = "powercal-qa-backup-${UUID.randomUUID()}.json"
+        val outputPath = "/sdcard/Download/$outputName"
+        var saveActionInvoked = false
+        val zone = ZoneId.of("Asia/Shanghai")
+        val memo = store.newDraft(DraftForm(
+            kind = TemporalKind.MEMO,
+            title = "CLEAR_BACKUP_EXPORT_FIXTURE",
+            startText = LocalDate.now(zone).plusDays(1).toString(),
+            zoneId = zone.id,
+            trackingEnabled = true
+        ))
+        assertTrue(store.commit(memo.draftId) is PowerStore.CommitOutcome.Committed)
+        val storeBefore = listOf(
+            store.all(), store.pendingCount(), store.commitCount(),
+            store.identityCount(), store.nextSequencePreview()
+        )
+        val expectedPayload = BackupEnvelope.verify(store.exportBackup(), PowerStore.VERSION).payload
+
+        try {
+            onboarding.edit().putBoolean("system-calendar-import-asked", true).commit()
+            PowerCalSkinRegistry.reset()
+            skinManager.select("powercal-clear-default")
+            compose.runOnUiThread {
+                compose.activity.setContent { PowerCalTheme { PowerCalApp(store) } }
+            }
+            var web: WebView? = null
+            compose.waitUntil(30_000) {
+                compose.runOnUiThread {
+                    web = findWebView(compose.activity.findViewById(android.R.id.content))
+                }
+                web != null
+            }
+            val view = requireNotNull(web)
+            compose.waitUntil(30_000) {
+                evaluate(view, "!!window.PowerCalSkin && !!window.PowerCalSkin.receive") == "true"
+            }
+            evaluate(view, "document.querySelector('.clear-tabbar [data-action=settings]').click(); true")
+            compose.waitUntil(15_000) { WebSkinBridgeRuntime.state().optString("page") == "SETTINGS" }
+            evaluate(view, "Array.from(document.querySelectorAll(" +
+                "'#settingsOptionGroups [data-option-id]')).find(" +
+                "el=>el.dataset.optionId==='data.backup.export').click(); true")
+
+            val rootButton = waitForPickerNode(contentDescription = "Show roots")
+            assertEquals("A real Android DocumentsUI Save dialog must own the picker",
+                "com.google.android.documentsui",
+                InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow
+                    ?.packageName?.toString())
+            tapPickerNode(rootButton)
+            tapPickerNode(waitForPickerNode(text = "Downloads"))
+
+            val filenameNode = waitForPickerEditableNode()
+            setPickerText(filenameNode, outputName)
+            val instrumentation = InstrumentationRegistry.getInstrumentation()
+            val saveDeadline = SystemClock.elapsedRealtime() + 15_000
+            var saveButton: AccessibilityNodeInfo? = null
+            var saveScreen = ""
+            while (SystemClock.elapsedRealtime() < saveDeadline && saveButton == null) {
+                val root = instrumentation.uiAutomation.rootInActiveWindow
+                saveScreen = accessibilitySnapshot(root)
+                saveButton = findAccessibilityNode(root, text = "SAVE")
+                    ?: findAccessibilityNode(root, text = "Save")
+                    ?: findAccessibilityNode(root, contentDescription = "Save")
+                    ?: findAccessibilityNode(root, viewId = "android:id/button1")
+                if (saveButton == null) SystemClock.sleep(150)
+            }
+            assertTrue("DocumentsUI must expose its Save action: $saveScreen", saveButton != null)
+            assertTrue("Save action must be a positive save button, not Cancel",
+                saveButton?.text?.toString().equals("Save", ignoreCase = true) ||
+                    saveButton?.contentDescription?.toString().equals("Save", ignoreCase = true))
+            println("CLEAR_BACKUP_EXPORT_PICKER_SAVE=" +
+                "${saveButton?.text}|${saveButton?.contentDescription}|${saveButton?.viewIdResourceName}")
+            tapPickerNode(requireNotNull(saveButton))
+            saveActionInvoked = true
+
+            compose.waitUntil(30_000) {
+                instrumentation.uiAutomation.rootInActiveWindow?.packageName?.toString() ==
+                    compose.activity.packageName
+            }
+            assertEquals("Backup export must not mutate the source database", storeBefore, listOf(
+                store.all(), store.pendingCount(), store.commitCount(),
+                store.identityCount(), store.nextSequencePreview()
+            ))
+
+            val descriptor = instrumentation.uiAutomation.executeShellCommand("cat $outputPath")
+            val savedJson = ParcelFileDescriptor.AutoCloseInputStream(descriptor)
+                .bufferedReader(Charsets.UTF_8).use { it.readText() }
+            assertTrue("The uniquely named backup must exist in Downloads after saving", savedJson.isNotBlank())
+            val verified = BackupEnvelope.verify(JSONObject(savedJson), PowerStore.VERSION)
+            assertEquals("The exported snapshot must contain the seeded formal Memo",
+                1, verified.payload.getJSONArray("objects").length())
+            assertEquals("Downloads backup payload must match the isolated Store snapshot",
+                BackupEnvelope.canonicalJson(expectedPayload),
+                BackupEnvelope.canonicalJson(verified.payload))
+            println("CLEAR_BACKUP_EXPORT_VERIFIED=$outputName; bytes=${savedJson.toByteArray().size}; " +
+                "result=SHA-256-and-payload-match")
+        } finally {
+            val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+            repeat(2) {
+                if (automation.rootInActiveWindow?.packageName?.toString() == "com.google.android.documentsui") {
+                    automation.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+                    SystemClock.sleep(200)
+                }
+            }
+            if (saveActionInvoked) {
+                val cleanup = InstrumentationRegistry.getInstrumentation().uiAutomation
+                    .executeShellCommand("rm -f $outputPath")
+                ParcelFileDescriptor.AutoCloseInputStream(cleanup).close()
+            }
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            store.close()
+            context.deleteDatabase(databaseName)
+            skinManager.select(originalSkin)
             val restoreOnboarding = onboarding.edit()
             if (hadAskedForCalendarImport) {
                 restoreOnboarding.putBoolean("system-calendar-import-asked", askedForCalendarImport)
