@@ -1,5 +1,13 @@
 # Core freeze progress
 
+## Separation — Native Settings and Navigation Gradle modules (2026-10-30, CODE COMPLETE; 732 JVM/build TESTED; device NOT TESTED)
+
+- 将 Settings/Navigation value-only context 移入 `:skin-api`，将 Native Settings 与底部导航移入 `:native-skin`；依赖方向为 `:app → :native-skin → :skin-api`。Host 通过 DTO、动作回调、形状、设置图标及受保护内容 slot 注入能力。新增 `verifyNativeSkinBoundary` 与导航 Compose 回归。没有改 Clear 或 Core。
+- 完整在线 Gradle 门禁 **732/732 JVM PASS，0 failure/error/skip**；Native/skin source 边界、AndroidTest Kotlin 编译、Debug APK、lint **PASS**（152 actionable tasks）。APK SHA-256 `8982F085F3953339456A38317A7BC7F9EFBAE80ADFCDEE108D114910D1C078FC`，66,418,258 bytes；门禁日志 SHA-256 `8819DFFE47F8C87AEDEBC089E865C08F1F82822CD648F93E7E08CD8A9F25702B`。详见 [Native Settings/Navigation module Issue](../issues/PC-ISSUE-SEPARATION-NATIVE-SETTINGS-NAVIGATION-MODULE.md)。
+- `adb devices -l` 无设备、AVD 列表为空；Android 设备交互 **NOT TESTED**。Native Timeline、Month、Memo、AI、Draft Deck 与 Host projections 仍在 `:app`，完整 Native 分离仍进行中。
+- 实现提交 `48f30fe07b6fa1deb99ed017bcf8e9329ac62fa8` 已推送到 `origin/feat/skin-first-separation`；两份既有 WebSkin dirty instrumentation tests 未暂存、未提交。
+
+
 ## Separation — colocate the Native profile adapters (2026-10-30, CODE COMPLETE; 22 JVM/build TESTED; device NOT TESTED)
 
 - 将 Native 十个 presentation adapter 从通用 `skins/NativeVisualSkin.kt` 移入 `ui/v2/nativeui/NativeVisualSkin.kt`，并改用 `dev.powerfulcalendar.ui.v2.nativeui` package。`skins/ActiveVisualSkin` 继续只管理 profile 选择；Draft Deck 现有 Native 专用单观察者路径保留，无业务行为变化。

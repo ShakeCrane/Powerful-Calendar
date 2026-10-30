@@ -4,12 +4,12 @@ As of 2026-10-21, the presentation host additionally interprets signed-by-integr
 (not author-signed) .pcskin v2 ZIP payloads: see [SKIN_PACK_V2.md](SKIN_PACK_V2.md).
 They can live-switch ten existing screen surfaces with a strict built-in node/action
 library, animation and route transitions. The ten compiled-skin surfaces and Native
-fallback behavior remain. Settings renderer data is now a value-only context; see the
-2026-10-30 boundary clarification below.
+fallback behavior remain. The Settings and Navigation APIs are now in `:skin-api`, and their
+Native renderers are in `:native-skin`; the remaining Native surfaces are still in `:app`.
 
 # PowerCal Visual Skin Contract v4 — as built
 
-Updated 2026-10-21; Native profile and Settings renderer boundary clarified 2026-10-30. This document records executable Android source interfaces, not a proposal or a promised future plugin format.
+Updated 2026-10-21; Native profile, Settings renderer boundary and staged Native module extraction clarified 2026-10-30. This document records executable Android source interfaces, not a proposal or a promised future plugin format.
 
 ## Separation
 
@@ -24,10 +24,15 @@ or gaining Host capabilities. Clearing the compiled registry still restores the 
 fallback. This profile is independent of `.pcskin` package selection and is not an executable or
 Skin Studio package.
 
-The first-party Native screen sources now declare `dev.powerfulcalendar.ui.v2.nativeui`; shared
-Host projections such as `TodoProjection` remain in `dev.powerfulcalendar.ui.v2`. This is a Kotlin
-package boundary inside the existing `:app` module. It does not create an independent Gradle
-module, process, APK, or security sandbox, and does not change Native renderer IDs or behavior.
+The `:skin-api` module currently contains the Settings and Navigation value-only contexts and DTOs.
+The `:native-skin` Android library contains `NativeToolsPage` and `NativePowerNavigation`; the Host
+supplies values, action callbacks, protected content slots, and presentation shapes/icons. The
+module direction is `:app → :native-skin → :skin-api`, with `:app → :skin-api` for Host adapters.
+A Gradle boundary check rejects known Host/Core service references from `:native-skin`.
+
+This is an incremental compile/module boundary, not a security sandbox or separate APK. Native
+Timeline, Month, Memo, AI, Draft Deck, renderer adapters, and shared Host projections remain in
+`:app`; they are pending staged migration. Native renderer IDs and product behavior are unchanged.
 
 ## Ten replaceable presentation surfaces
 
@@ -68,24 +73,26 @@ the audited source-compiled renderer; they do not grant a Store, filesystem or m
 ID so the Host resolves the authoritative installed package. `SettingsVisualEffects` contains
 `blur`, `animationScale` and `reduceMotion` values.
 
-This is an API/data boundary inside `:app`, not a sandbox or independent Gradle module. Other
-screen contexts have their own contracts and are not covered by this Settings-only clarification.
+The Settings and Navigation API types compile in `:skin-api`, and the migrated Native Settings and
+Navigation implementations compile in `:native-skin`. This module boundary is not a sandbox. Other
+Native screen contexts and implementations remain in `:app` and have not yet been extracted.
 
 ## Contract sources
 
-In app/src/main/java/dev/powerfulcalendar/ui/v2:
-- CompiledSkinTimeline.kt — timeline context, yOf geometry, default preview
-- PresentationSkinRuntime.kt — route registry, settings controls and navigation
-- SettingsVisualContext.kt — value-only Settings renderer API and injected Host/Native slots
-- nativeui/NativeVisualSkin.kt — explicit Native profile adapters for the ten presentation surfaces
-- nativeui/ — first-party Native timeline, month, memo, AI, Deck, navigation and Settings UI implementations; `PowerCalApp.kt` remains the route/Host orchestrator
-- SkinnableDraftDeck.kt — controller adaptation with autosave, serialized guarded operations
-- SkinnableOverlays.kt — Compose Alert and Window slots
-- SkinnablePickers.kt — date/time imperative picker intents
-- SkinnableChrome.kt — root viewport and message banner
-- nativeui/NativePowerNavigation.kt — stock navigation
-- skins/ActiveVisualSkin.kt — single source-compiled profile selection and registration
-- skins/StudioExampleDeck.kt, skins/StudioExampleOverlay.kt, skins/StudioExamplePicker.kt, skins/StudioExampleChrome.kt — runnable reference implementations
+Source module map:
+- `app/src/main/java/dev/powerfulcalendar/ui/v2/CompiledSkinTimeline.kt` — timeline context, yOf geometry, default preview
+- `skin-api/src/main/java/dev/powerfulcalendar/ui/v2/SettingsVisualContext.kt` — Settings/Navigation value contexts, DTOs and injected Host/Native slots
+- `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativeToolsPage.kt` — Native Settings renderer
+- `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativePowerNavigation.kt` — Native bottom navigation
+- `app/src/main/java/dev/powerfulcalendar/ui/v2/PresentationSkinRuntime.kt` — route registry, Host projection, settings controls and slots
+- `app/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativeVisualSkin.kt` — explicit Native profile adapters for all ten surfaces
+- `app/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/` — Native Timeline, Month, Memo, AI and Draft Deck implementations still pending extraction; `PowerCalApp.kt` remains the route/Host orchestrator
+- `app/src/main/java/dev/powerfulcalendar/ui/v2/SkinnableDraftDeck.kt` — controller adaptation with autosave, serialized guarded operations
+- `app/src/main/java/dev/powerfulcalendar/ui/v2/SkinnableOverlays.kt` — Compose Alert and Window slots
+- `app/src/main/java/dev/powerfulcalendar/ui/v2/SkinnablePickers.kt` — date/time imperative picker intents
+- `app/src/main/java/dev/powerfulcalendar/ui/v2/SkinnableChrome.kt` — root viewport and message banner
+- `app/src/main/java/dev/powerfulcalendar/ui/v2/skins/ActiveVisualSkin.kt` — single source-compiled profile selection and registration
+- `app/src/main/java/dev/powerfulcalendar/ui/v2/skins/StudioExampleDeck.kt`, `StudioExampleOverlay.kt`, `StudioExamplePicker.kt`, `StudioExampleChrome.kt` — runnable reference implementations
 
 A renderer's Kotlin id must be nonempty and unique among installed surfaces. Some contracts are internal to one Android source module, not promised as external AAR binary ABI. No skin source code should need PowerCalApp.kt or MainActivity.kt edits.
 
@@ -97,7 +104,7 @@ A renderer's Kotlin id must be nonempty and unique among installed surfaces. Som
 - A custom Deck sees state and host callbacks only, never DeckController or PowerStore. Edits are debounced and flushed before leaving, commit/undo/restore are serialized in the domain controller. Conflict and AI lock states must be represented.
 - Text fields must remain accessible during IME, large type and landscape; reduce motion, TalkBack semantics, action focus and usable touch targets are required.
 - Canvas animation may change apparent transition or opacity, never exact event time or verified persistence status.
-- In source-level skin code, accessing local files, credentials, AI clients, reminder scheduling or the database directly is prohibited. Gradle :app:verifySkinSourceBoundary is an automated guard but does not replace security review.
+- In source-level skin code, accessing local files, credentials, AI clients, reminder scheduling or the database directly is prohibited. `:app:verifySkinSourceBoundary` and `:app:verifyNativeSkinBoundary` are static guards, not security sandboxes or substitutes for review.
 
 ## Three different user artifacts
 
@@ -117,7 +124,7 @@ Run:
 
     python -m unittest discover -s tools/skin-studio/tests -v
     node --check tools/skin-studio/app.js
-    .\gradlew.bat :app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --console=plain
+    .\gradlew.bat :app:verifySkinSourceBoundary :app:verifyNativeSkinBoundary :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --console=plain
 
 Production native default and compiled example registration/recovery are covered by unit tests. Browser mockups are NOT screenshots of real Compose. A brand-new visual skin additionally needs Android-device testing for dialog gestures, IME, navigation, reduced motion, TalkBack, permissions, recurrence, one-minute event geometry, DST and restore flows. External Android OS permission screens and OS file chooser remain system-controlled and are not claimed to be reskinnable.
 
