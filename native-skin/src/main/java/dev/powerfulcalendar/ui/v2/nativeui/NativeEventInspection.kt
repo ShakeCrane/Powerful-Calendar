@@ -13,7 +13,9 @@ import dev.powerfulcalendar.ui.v2.NativeEventInspectionModel
 fun NativeEventInspection(
     model: NativeEventInspectionModel,
     onDismiss: () -> Unit,
-    showDialog: NativeEventInspectionDialogSlot
+    showDialog: NativeEventInspectionDialogSlot,
+    readOnlyMessage: String = "AI 处理中，卡组只读。",
+    dismissButtonLabel: String = "关闭"
 ) {
     showDialog(
         NativeEventInspectionDialog(
@@ -23,11 +25,11 @@ fun NativeEventInspection(
                 Column {
                     Text(model.summary)
                     Text(model.notes)
-                    Text("AI 处理中，卡组只读。")
+                    Text(readOnlyMessage)
                 }
             },
             confirmButton = {
-                TextButton(onClick = onDismiss) { Text("关闭") }
+                TextButton(onClick = onDismiss) { Text(dismissButtonLabel) }
             }
         )
     )

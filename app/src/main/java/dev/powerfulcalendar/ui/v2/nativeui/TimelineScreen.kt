@@ -15,6 +15,7 @@ import dev.powerfulcalendar.core.TimelineCoordinate
 import dev.powerfulcalendar.ui.v2.CoreNativeTimelineGeometry
 import dev.powerfulcalendar.ui.v2.LocalAxisPalette
 import dev.powerfulcalendar.ui.v2.LocalSkinVisual
+import dev.powerfulcalendar.ui.v2.NativeEventInspectionModel
 import dev.powerfulcalendar.ui.v2.NativeTimelineActions
 import dev.powerfulcalendar.ui.v2.NativeTimelineAppearance
 import dev.powerfulcalendar.ui.v2.NativeTimelineAsset
@@ -74,21 +75,23 @@ fun TimelineScreen(
             ) { content() }
         },
         showDialog = { dialog: NativeTimelineDialog ->
-            SkinAlertDialog(
-                onDismissRequest = dialog.onDismissRequest,
-                title = { androidx.compose.material3.Text(dialog.title) },
-                text = {
-                    androidx.compose.foundation.layout.Column {
-                        androidx.compose.material3.Text(dialog.summary)
-                        androidx.compose.material3.Text(dialog.notes)
-                        androidx.compose.material3.Text("AI 正在处理卡组，暂时只可查看。")
-                    }
+            NativeEventInspection(
+                model = NativeEventInspectionModel(
+                    title = dialog.title,
+                    summary = dialog.summary,
+                    notes = dialog.notes
+                ),
+                onDismiss = dialog.onDismissRequest,
+                showDialog = { inspection ->
+                    SkinAlertDialog(
+                        onDismissRequest = inspection.onDismissRequest,
+                        title = inspection.title,
+                        text = inspection.text,
+                        confirmButton = inspection.confirmButton
+                    )
                 },
-                confirmButton = {
-                    androidx.compose.material3.TextButton(onClick = dialog.onDismissRequest) {
-                        androidx.compose.material3.Text("完成")
-                    }
-                }
+                readOnlyMessage = "AI 正在处理卡组，暂时只可查看。",
+                dismissButtonLabel = "完成"
             )
         },
         image = { asset, sizeDp ->

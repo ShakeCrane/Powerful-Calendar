@@ -53,6 +53,39 @@ class NativeEventInspectionComposeTest {
     }
 
     @Test
+    fun timelineInspectionUsesNativeContentAndPreservesItsExistingCopy() {
+        var dismissed = false
+        ui.setContent {
+            PowerCalTheme {
+                NativeEventInspection(
+                    model = NativeEventInspectionModel(
+                        title = "复诊预约",
+                        summary = "活动 · 2026-10-30 09:00",
+                        notes = "带检查报告"
+                    ),
+                    onDismiss = { dismissed = true },
+                    showDialog = { dialog ->
+                        Column {
+                            dialog.title()
+                            dialog.text()
+                            dialog.confirmButton()
+                        }
+                    },
+                    readOnlyMessage = "AI 正在处理卡组，暂时只可查看。",
+                    dismissButtonLabel = "完成"
+                )
+            }
+        }
+
+        ui.onNodeWithText("复诊预约").assertIsDisplayed()
+        ui.onNodeWithText("活动 · 2026-10-30 09:00").assertIsDisplayed()
+        ui.onNodeWithText("带检查报告").assertIsDisplayed()
+        ui.onNodeWithText("AI 正在处理卡组，暂时只可查看。").assertIsDisplayed()
+        ui.onNodeWithText("完成").performClick()
+        assertTrue(dismissed)
+    }
+
+    @Test
     fun eventDisplayProjectionContainsOnlyStrings() {
         val modelClass = NativeEventInspectionModel::class.java
         val displayFields = listOf("title", "summary", "notes").map(modelClass::getDeclaredField)
