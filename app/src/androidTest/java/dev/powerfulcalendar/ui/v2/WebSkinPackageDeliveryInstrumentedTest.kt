@@ -42,6 +42,8 @@ private const val DELIVERY_PACKAGE_SHA256 = "d9b34053464d9cfb959e6d9ee8827a054e3
 private const val AI_EDITED_DELIVERY_PACKAGE_SHA256 = "c7a8f20336f9c6e6ddaaada2c963403b28a6e6a6bd020b397b2438b9c6a87023"
 private const val SKIN_CHOICE_PREFERENCES = "powercal-skin-choice"
 
+private data class DeliveryFixture(val assetName: String, val sha256: String, val aiEdited: Boolean)
+
 /** A new value is generated only when the Android process loads this test class. */
 private object DeliveryTestProcess {
     val token: String = UUID.randomUUID().toString()
@@ -50,6 +52,16 @@ private object DeliveryTestProcess {
 @RunWith(AndroidJUnit4::class)
 class WebSkinPackageDeliveryInstrumentedTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+
+    private fun selectedDeliveryFixture(): DeliveryFixture =
+        when (InstrumentationRegistry.getArguments().getString("skinDeliveryFixture")) {
+            null, "baseline" -> DeliveryFixture(
+                "skin-delivery-fixture.pcskin", DELIVERY_PACKAGE_SHA256, aiEdited = false)
+            "ai-edited" -> DeliveryFixture(
+                "skin-ai-edited-fixture.pcskin", AI_EDITED_DELIVERY_PACKAGE_SHA256,
+                aiEdited = true)
+            else -> throw IllegalArgumentException("unknown skinDeliveryFixture argument")
+        }
 
     private fun requireIsolatedSkinStore(storage: Context) {
         val manager = SkinPackageManager(storage)
@@ -218,6 +230,7 @@ class WebSkinPackageDeliveryInstrumentedTest {
     fun studioBuiltPackageInstallsActivatesAndRendersResourcesThroughAndroidWebView() {
         val keepForColdRestart = InstrumentationRegistry.getArguments()
             .getString("skinDeliveryPhase") == "prepare"
+        val fixture = selectedDeliveryFixture()
         val storage = compose.activity.applicationContext
         requireIsolatedSkinStore(storage)
         val isolatedRoot = File(storage.cacheDir, DELIVERY_TEST_NAMESPACE)
@@ -225,10 +238,10 @@ class WebSkinPackageDeliveryInstrumentedTest {
         cleanupSkinChoice(storage)
         val manager = SkinPackageManager(storage)
         val packageBytes = InstrumentationRegistry.getInstrumentation().context.assets
-            .open("skin-delivery-fixture.pcskin").use { it.readBytes() }
+            .open(fixture.assetName).use { it.readBytes() }
         val packageSha = MessageDigest.getInstance("SHA-256").digest(packageBytes)
             .joinToString("") { "%02x".format(it) }
-        assertEquals(DELIVERY_PACKAGE_SHA256, packageSha)
+        assertEquals(fixture.sha256, packageSha)
         val expectedFiles = expectedRuntimeFiles(packageBytes)
 
         val packageFile = File(storage.cacheDir, "$DELIVERY_TEST_NAMESPACE-studio-export.pcskin")
@@ -255,7 +268,7 @@ class WebSkinPackageDeliveryInstrumentedTest {
             assertTrue(selected.fullCanvas)
             assertTrue(selected.capabilities.isEmpty())
             assertRuntimeFilesEqual(expectedFiles, selected)
-            renderAndAssert(selected, failed)
+            renderAndAssert(selected, failed, aiEdited = fixture.aiEdited)
 
             if (keepForColdRestart) {
                 // Checked by a second instrumentation invocation after the host force-stops
@@ -324,6 +337,7 @@ class WebSkinPackageDeliveryInstrumentedTest {
     fun afterColdProcessRestartRestoresAndServesTheExactStudioExport() {
         assumeTrue("run the restore phase with -e skinDeliveryPhase restore",
             InstrumentationRegistry.getArguments().getString("skinDeliveryPhase") == "restore")
+        val fixture = selectedDeliveryFixture()
         val storage = compose.activity.applicationContext
         val isolatedRoot = File(storage.cacheDir, DELIVERY_TEST_NAMESPACE)
         assumeTrue("the prepare phase must complete before restore",
@@ -340,10 +354,10 @@ class WebSkinPackageDeliveryInstrumentedTest {
                 previousPid, android.os.Process.myPid())
 
             val packageBytes = InstrumentationRegistry.getInstrumentation().context.assets
-                .open("skin-delivery-fixture.pcskin").use { it.readBytes() }
+                .open(fixture.assetName).use { it.readBytes() }
             val packageSha = MessageDigest.getInstance("SHA-256").digest(packageBytes)
                 .joinToString("") { "%02x".format(it) }
-            assertEquals(DELIVERY_PACKAGE_SHA256, packageSha)
+            assertEquals(fixture.sha256, packageSha)
             val expectedFiles = expectedRuntimeFiles(packageBytes)
             val stored = File(storage.filesDir, "skin-packs/$DELIVERY_PACKAGE_ID.pcskin")
             assertArrayEquals("installed export must survive process restart", packageBytes,
@@ -365,9 +379,13 @@ class WebSkinPackageDeliveryInstrumentedTest {
                 webView.get() != null
             }
             val actualWebView = requireNotNull(webView.get())
+            val editedProbeReady = if (fixture.aiEdited) {
+                " && document.documentElement.dataset.aiEditProbe === 'studio-cli-ai-edit-v1' && " +
+                    "document.querySelector('#aiEditedProbe')?.textContent === 'AI_EDITED_RUNTIME_V1'"
+            } else ""
             awaitJs(actualWebView, "document.readyState === 'complete' && " +
                 "document.documentElement.dataset.deliveryScriptProbe === 'studio-js-delivery-fixture-v1' && " +
-                "document.querySelector('#assetProbe')?.complete === true")
+                "document.querySelector('#assetProbe')?.complete === true" + editedProbeReady)
             assertEquals("studio-html-delivery-fixture",
                 evaluate(actualWebView, "document.querySelector('#htmlProbe').textContent").trim('"'))
             assertEquals("studio-js-delivery-fixture-v1",
@@ -378,6 +396,20 @@ class WebSkinPackageDeliveryInstrumentedTest {
             assertEquals("true", evaluate(actualWebView,
                 "document.querySelector('#assetProbe').complete && " +
                     "document.querySelector('#assetProbe').naturalWidth === 1"))
+            if (fixture.aiEdited) {
+                assertEquals("AI_EDITED_RUNTIME_V1",
+                    evaluate(actualWebView, "document.querySelector('#aiEditedProbe').textContent")
+                        .trim('"'))
+                assertEquals("AI edited skin marker",
+                    evaluate(actualWebView,
+                        "document.querySelector('#aiEditedProbe').getAttribute('aria-label')")
+                        .trim('"'))
+                assertEquals("studio-cli-ai-edit-v1",
+                    evaluate(actualWebView, "document.documentElement.dataset.aiEditProbe")
+                        .trim('"'))
+                assertEquals("rgb(126, 42, 201)", evaluate(actualWebView,
+                    "getComputedStyle(document.querySelector('#aiEditedProbe')).color").trim('"'))
+            }
             assertEquals("https://skin.powercal.local/web/style.css",
                 evaluate(actualWebView, "document.styleSheets[0].href").trim('"'))
             assertEquals("https://skin.powercal.local/web/app.js",
