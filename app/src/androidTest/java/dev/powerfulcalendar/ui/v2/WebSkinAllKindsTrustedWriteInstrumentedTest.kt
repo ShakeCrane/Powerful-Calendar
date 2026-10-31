@@ -35,6 +35,7 @@ import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.TemporalKind
+import dev.powerfulcalendar.core.TemporalRecord
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -148,9 +149,15 @@ class WebSkinAllKindsTrustedWriteInstrumentedTest {
                 target.optBoolean("hitTarget") && !target.optBoolean("disabled"))
         val location = IntArray(2)
         val dimensions = AtomicReference<Pair<Int, Int>>()
+        val windowState = AtomicReference<String>()
         compose.runOnUiThread {
             web.getLocationOnScreen(location)
             dimensions.set(web.width to web.height)
+            val visible = android.graphics.Rect()
+            val globalVisible = web.getGlobalVisibleRect(visible)
+            windowState.set("activityFocus=${compose.activity.window.decorView.hasWindowFocus()} " +
+                "webFocus=${web.hasWindowFocus()} shown=${web.isShown} attached=${web.isAttachedToWindow} " +
+                "globalVisible=$globalVisible rect=$visible")
         }
         val (width, height) = requireNotNull(dimensions.get())
         val scaleX = width / target.getDouble("cssWidth")
@@ -158,7 +165,11 @@ class WebSkinAllKindsTrustedWriteInstrumentedTest {
         assertEquals("WebView touchscreen coordinates preserve aspect ratio", scaleX, scaleY, 0.03)
         val x = location[0] + (target.getDouble("x") * scaleX).toFloat()
         val y = location[1] + (target.getDouble("y") * scaleY).toFloat()
-        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val deliveredTouches = java.util.concurrent.atomic.AtomicInteger()
+        compose.runOnUiThread {
+            web.setOnTouchListener { _, _ -> deliveredTouches.incrementAndGet(); false }
+        }
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
         val downTime = SystemClock.uptimeMillis()
         val down = MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, y, 0).apply {
             source = InputDevice.SOURCE_TOUCHSCREEN
@@ -167,14 +178,32 @@ class WebSkinAllKindsTrustedWriteInstrumentedTest {
             source = InputDevice.SOURCE_TOUCHSCREEN
         }
         try {
-            instrumentation.sendPointerSync(down)
-            instrumentation.sendPointerSync(up)
+            assertTrue("Android accepted touchscreen down", automation.injectInputEvent(down, true))
+            assertTrue("Android accepted touchscreen up", automation.injectInputEvent(up, true))
         } finally {
             down.recycle()
             up.recycle()
+            compose.runOnUiThread { web.setOnTouchListener(null) }
         }
+        assertTrue("Android touchscreen sequence must reach the Clear WebView",
+            deliveredTouches.get() >= 2)
         val click = evaluateObject(web, "window.__pcTrustedWriteTouch||{}")
-        assertTrue("Android touchscreen must dispatch a trusted Clear click: $click",
+        val dispatchState = if (click.optBoolean("trusted")) JSONObject() else evaluateObject(web, """
+            (()=>{
+              const element=document.querySelector($selectorLiteral);
+              const rect=element?.getBoundingClientRect();
+              const hit=rect&&document.elementFromPoint(rect.left+rect.width/2,rect.top+rect.height/2);
+              return {sheetHidden:document.querySelector('#skinSheet')?.hidden,
+                rect:rect&&{left:rect.left,top:rect.top,right:rect.right,bottom:rect.bottom},
+                hitTarget:!!element&&(hit===element||hit?.closest('button')===element),
+                scrollY:scrollY,activeTag:document.activeElement?.tagName,
+                trustedTrace:window.__pcTrustedWriteTouch||null};
+            })()
+        """.trimIndent())
+        assertTrue("Android touchscreen must dispatch a trusted Clear click: target=$target " +
+            "screen=($x,$y) webLocation=${location.toList()} webSize=${width}x${height} " +
+            "window=$windowState deliveredTouches=$deliveredTouches " +
+            "dispatch=$dispatchState trace=$click",
             click.optBoolean("trusted"))
         return JSONObject().put("selector", selector).put("cssX", target.getDouble("x"))
             .put("cssY", target.getDouble("y")).put("screenX", x).put("screenY", y)
@@ -1340,6 +1369,219 @@ class WebSkinAllKindsTrustedWriteInstrumentedTest {
                 "revision=${clearTombstone.revision} commits=${clearStore.commitCount()} " +
                 "identities=${clearStore.identityCount()} sequence=${clearStore.nextSequencePreview()} " +
                 "cancelTouch=$cancelTouch approveTouch=$approveTouch tombstone=${DraftForm.from(clearTombstone)}")
+        } finally {
+            resetClear()
+            nativeStore.close()
+            clearStore.close()
+            nativeContext.deleteDatabase(nativeDatabase)
+            clearContext.deleteDatabase(clearDatabase)
+            listOf(nativeNamespace, clearNamespace).forEach { namespace ->
+                listOf("powercal-onboarding", "powercal-skin-choice", "powercal-ui", "powercal-profile")
+                    .forEach { storage.deleteSharedPreferences("$namespace-$it") }
+                File(storage.cacheDir, namespace).deleteRecursively()
+            }
+        }
+    }
+
+    @Test
+    fun sameFormalAlarmAndInstantDeadlineDeleteProduceEquivalentNativeAndClearTombstones() {
+        val storage = compose.activity.applicationContext
+        val nativeNamespace = "pc-native-clear-point-delete-native-${UUID.randomUUID()}"
+        val clearNamespace = "pc-native-clear-point-delete-clear-${UUID.randomUUID()}"
+        val nativeContext = IsolatedAppContext(compose.activity, storage, nativeNamespace)
+        val clearContext = IsolatedAppContext(compose.activity, storage, clearNamespace)
+        val nativeDatabase = "point-delete-parity-native.db"
+        val clearDatabase = "point-delete-parity-clear.db"
+        val nativeStore = PowerStore(nativeContext, nativeDatabase)
+        val clearStore = PowerStore(clearContext, clearDatabase)
+        var web: WebView? = null
+        try {
+            val zone = ZoneId.systemDefault()
+            val point = ZonedDateTime.now(zone).plusMinutes(20).withSecond(0).withNano(0)
+            val pointText = DraftForm.formatInstant(point.toInstant().toEpochMilli(), zone)
+            val forms = linkedMapOf(
+                TemporalKind.ALARM to DraftForm(
+                    kind = TemporalKind.ALARM,
+                    title = "Native/Clear delete parity Alarm",
+                    startText = pointText,
+                    zoneId = zone.id,
+                    reminderMinutes = -1
+                ),
+                TemporalKind.DEADLINE to DraftForm(
+                    kind = TemporalKind.DEADLINE,
+                    title = "Native/Clear delete parity Deadline",
+                    endText = pointText,
+                    zoneId = zone.id,
+                    reminderMinutes = -1
+                )
+            )
+            val nativeOriginals = linkedMapOf<TemporalKind, TemporalRecord>()
+            val clearOriginals = linkedMapOf<TemporalKind, TemporalRecord>()
+            forms.forEach { (kind, form) ->
+                val nativeCreated = nativeStore.createFormalEvent(form, "point-delete-${kind.name}-native")
+                    as PowerStore.CommitOutcome.Committed
+                val clearCreated = clearStore.createFormalEvent(form, "point-delete-${kind.name}-clear")
+                    as PowerStore.CommitOutcome.Committed
+                nativeOriginals[kind] = requireNotNull(nativeStore.get(nativeCreated.eventSeq))
+                clearOriginals[kind] = requireNotNull(clearStore.get(clearCreated.eventSeq))
+                assertEquals(DraftForm.from(nativeOriginals.getValue(kind)),
+                    DraftForm.from(clearOriginals.getValue(kind)))
+                assertEquals(nativeOriginals.getValue(kind).eventSeq,
+                    clearOriginals.getValue(kind).eventSeq)
+                assertEquals(kind, nativeOriginals.getValue(kind).kind)
+                assertEquals(kind, clearOriginals.getValue(kind).kind)
+            }
+            listOf(nativeStore, clearStore).forEach { store ->
+                assertEquals(2L, store.commitCount())
+                assertEquals(2, store.identityCount())
+                assertEquals(0L, store.draftCount())
+                assertEquals(0, store.pendingCount())
+                assertEquals(3L, store.nextSequencePreview())
+            }
+
+            val nativeTombstones = linkedMapOf<TemporalKind, TemporalRecord>()
+            resetClear()
+            web = launchClear(clearContext, clearStore)
+            val clearTouchTraces = linkedMapOf<TemporalKind, Pair<JSONObject, JSONObject>>()
+            val clearTombstones = linkedMapOf<TemporalKind, TemporalRecord>()
+            for (kind in forms.keys) {
+                val original = clearOriginals.getValue(kind)
+                val before = clearStore.commitCount()
+                val eventSelector = "[data-event-seq='${original.eventSeq}']"
+                awaitJs(web, "!!document.querySelector(${JSONObject.quote(eventSelector)})")
+                evaluate(web, "document.querySelector(${JSONObject.quote(eventSelector)}).click();true")
+                awaitJs(web, "!document.querySelector('#skinSheet').hidden && " +
+                    "document.querySelector('#sheetFields [data-field=title]')?.value===" +
+                    "${JSONObject.quote(original.title)}")
+                assertEquals("Clear $kind editor must not be covered by Native editor UI", 0,
+                    compose.onAllNodesWithText("保存检查点并退出").fetchSemanticsNodes().size)
+                val activityFocused = AtomicReference<Boolean>()
+                compose.runOnUiThread {
+                    activityFocused.set(compose.activity.window.decorView.hasWindowFocus())
+                }
+                assertTrue("Clear $kind editor must retain Activity window focus", activityFocused.get())
+                val deleteSelector = "#sheetActions [data-do=deleteEvent]"
+                val cancelTouch = tapWebSelector(web, deleteSelector)
+                compose.waitUntil(30_000) {
+                    compose.onAllNodesWithText("确认删除正式事件").fetchSemanticsNodes().isNotEmpty()
+                }
+                assertEquals("Clear $kind review must not write", original,
+                    clearStore.get(original.eventSeq))
+                assertEquals(before, clearStore.commitCount())
+                assertEquals(2, clearStore.identityCount())
+                assertEquals(3L, clearStore.nextSequencePreview())
+                assertEquals(0L, clearStore.draftCount())
+                assertEquals(0, clearStore.pendingCount())
+                compose.onNodeWithText("取消").performTouchInput { click() }
+                compose.waitUntil(10_000) {
+                    compose.onAllNodesWithText("确认删除正式事件").fetchSemanticsNodes().isEmpty()
+                }
+                assertEquals("Clear $kind cancellation preserves the formal event", original,
+                    clearStore.get(original.eventSeq))
+                assertEquals(before, clearStore.commitCount())
+                val approveTouch = tapWebSelector(web, deleteSelector)
+                compose.waitUntil(30_000) {
+                    compose.onAllNodesWithText("确认删除正式事件").fetchSemanticsNodes().isNotEmpty()
+                }
+                assertEquals(original, clearStore.get(original.eventSeq))
+                compose.onNodeWithText("确认删除").performTouchInput { click() }
+                compose.waitUntil(30_000) {
+                    clearStore.get(original.eventSeq) == null &&
+                        clearStore.isRetired(original.eventSeq)
+                }
+                awaitJs(web, "document.querySelector('#skinSheet').hidden")
+                clearTombstones[kind] = requireNotNull(
+                    clearStore.getIncludingRetired(original.eventSeq)
+                )
+                clearTouchTraces[kind] = cancelTouch to approveTouch
+                assertEquals(before + 1, clearStore.commitCount())
+            }
+
+            // Exercise Clear before opening Native's separate Compose editor in this
+            // shared test Activity so its touchscreen path is independently exercised.
+            resetClear()
+            nativeContext.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                .edit().putBoolean("system-calendar-import-asked", true).commit()
+            SkinPackageManager(nativeContext).selectNativeForEmergencyRecovery()
+            compose.runOnUiThread {
+                compose.activity.setContent {
+                    CompositionLocalProvider(LocalContext provides nativeContext) {
+                        PowerCalTheme { PowerCalApp(nativeStore) }
+                    }
+                }
+            }
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithContentDescription("今日 · 复位为全天")
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithContentDescription("今日 · 复位为全天").performClick()
+
+            for (kind in forms.keys) {
+                val original = nativeOriginals.getValue(kind)
+                val before = nativeStore.commitCount()
+                val eventMatcher = hasContentDescription(original.title, substring = true) and hasClickAction()
+                compose.waitUntil(30_000) {
+                    compose.onAllNodes(eventMatcher).fetchSemanticsNodes().size == 1
+                }
+                compose.onNode(eventMatcher).performClick()
+                compose.waitUntil(30_000) {
+                    compose.onAllNodesWithText("删除事件").fetchSemanticsNodes().isNotEmpty()
+                }
+                compose.onNodeWithText("删除事件").performTouchInput { click() }
+                compose.waitUntil(30_000) {
+                    compose.onAllNodesWithText("确认删除事件？").fetchSemanticsNodes().isNotEmpty()
+                }
+                assertEquals("Native $kind review must not write", original,
+                    nativeStore.get(original.eventSeq))
+                assertEquals(before, nativeStore.commitCount())
+                compose.onNodeWithText("取消").performTouchInput { click() }
+                compose.waitUntil(10_000) {
+                    compose.onAllNodesWithText("确认删除事件？").fetchSemanticsNodes().isEmpty()
+                }
+                assertEquals("Native $kind cancellation preserves the formal event", original,
+                    nativeStore.get(original.eventSeq))
+                assertEquals(before, nativeStore.commitCount())
+                compose.onNodeWithText("删除事件").performTouchInput { click() }
+                compose.waitUntil(30_000) {
+                    compose.onAllNodesWithText("确认删除事件？").fetchSemanticsNodes().isNotEmpty()
+                }
+                compose.onNodeWithText("确认删除").performTouchInput { click() }
+                compose.waitUntil(30_000) {
+                    nativeStore.get(original.eventSeq) == null &&
+                        nativeStore.isRetired(original.eventSeq)
+                }
+                nativeTombstones[kind] = requireNotNull(
+                    nativeStore.getIncludingRetired(original.eventSeq)
+                )
+                assertEquals(before + 1, nativeStore.commitCount())
+            }
+
+            for (kind in forms.keys) {
+                val original = nativeOriginals.getValue(kind)
+                val nativeTombstone = nativeTombstones.getValue(kind)
+                val clearTombstone = clearTombstones.getValue(kind)
+                assertEquals("Native and Clear $kind tombstone forms match",
+                    DraftForm.from(nativeTombstone), DraftForm.from(clearTombstone))
+                assertEquals(original.eventSeq, clearTombstone.eventSeq)
+                assertEquals(original.revision + 1, nativeTombstone.revision)
+                assertEquals(nativeTombstone.revision, clearTombstone.revision)
+                for ((label, store) in listOf("Native" to nativeStore, "Clear" to clearStore)) {
+                    assertTrue("$label $kind remains as a restorable tombstone",
+                        store.isRetired(original.eventSeq))
+                    assertEquals("DELETE", store.history(original.eventSeq).first().operation)
+                    assertEquals(4L, store.commitCount())
+                    assertEquals(2, store.identityCount())
+                    assertEquals(3L, store.nextSequencePreview())
+                    assertEquals(0L, store.draftCount())
+                    assertEquals(0, store.pendingCount())
+                }
+                val touches = clearTouchTraces.getValue(kind)
+                println("NATIVE_CLEAR_PARITY operation=DELETE kind=$kind " +
+                    "eventSeq=${clearTombstone.eventSeq} revision=${clearTombstone.revision} " +
+                    "commits=${clearStore.commitCount()} identities=${clearStore.identityCount()} " +
+                    "sequence=${clearStore.nextSequencePreview()} cancelTouch=${touches.first} " +
+                    "approveTouch=${touches.second} tombstone=${DraftForm.from(clearTombstone)}")
+            }
         } finally {
             resetClear()
             nativeStore.close()
