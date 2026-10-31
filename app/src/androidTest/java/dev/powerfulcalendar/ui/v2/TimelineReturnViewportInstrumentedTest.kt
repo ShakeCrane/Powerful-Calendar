@@ -5,16 +5,20 @@ import android.content.ContextWrapper
 import android.database.DatabaseErrorHandler
 import android.database.sqlite.SQLiteDatabase
 import android.os.SystemClock
+import android.view.InputDevice
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import dev.powerfulcalendar.core.PowerStore
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
@@ -22,6 +26,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.util.UUID
@@ -117,6 +122,55 @@ class TimelineReturnViewportInstrumentedTest {
         }
         assertTrue("WebView script callback should complete", finished.await(10, TimeUnit.SECONDS))
         return result.get()
+    }
+
+    private fun evaluateObject(web: WebView, expression: String): JSONObject {
+        val encoded = evaluate(web, "JSON.stringify($expression)")
+        return JSONObject(JSONArray("[$encoded]").getString(0))
+    }
+
+    private fun tapWebSelector(web: WebView, selector: String): JSONObject {
+        val selectorLiteral = JSONObject.quote(selector)
+        val probe = evaluateObject(web, """(() => {
+          const element=document.querySelector($selectorLiteral);
+          if(!element)return {found:false};
+          const rect=element.getBoundingClientRect();
+          const style=getComputedStyle(element);
+          return {found:true,x:rect.left+rect.width/2,y:rect.top+rect.height/2,
+            width:rect.width,height:rect.height,cssWidth:document.documentElement.clientWidth,
+            cssHeight:window.innerHeight,visible:style.display!=='none'&&style.visibility!=='hidden'&&
+              rect.width>0&&rect.height>0};
+        })()""")
+        assertTrue("Clear target should exist and be visible: $selector, $probe",
+            probe.optBoolean("found") && probe.optBoolean("visible"))
+        val location = IntArray(2)
+        val dimensions = AtomicReference<Pair<Int, Int>>()
+        compose.runOnUiThread {
+            web.getLocationOnScreen(location)
+            dimensions.set(web.width to web.height)
+        }
+        val (widthPx, heightPx) = requireNotNull(dimensions.get())
+        val scaleX = widthPx / probe.getDouble("cssWidth")
+        val scaleY = heightPx / probe.getDouble("cssHeight")
+        assertEquals("WebView touch coordinates preserve aspect ratio", scaleX, scaleY, 0.02)
+        val x = location[0] + (probe.getDouble("x") * scaleX).toFloat()
+        val y = location[1] + (probe.getDouble("y") * scaleY).toFloat()
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val downTime = SystemClock.uptimeMillis()
+        fun send(action: Int, eventTime: Long) {
+            val event = MotionEvent.obtain(downTime, eventTime, action, x, y, 0)
+            try {
+                event.source = InputDevice.SOURCE_TOUCHSCREEN
+                instrumentation.sendPointerSync(event)
+            } finally {
+                event.recycle()
+            }
+        }
+        send(MotionEvent.ACTION_DOWN, downTime)
+        SystemClock.sleep(80)
+        send(MotionEvent.ACTION_UP, SystemClock.uptimeMillis())
+        return probe.put("screenX", x).put("screenY", y)
+            .put("scaleX", scaleX).put("scaleY", scaleY)
     }
 
     private fun awaitJs(web: WebView, expression: String) {
@@ -300,6 +354,98 @@ class TimelineReturnViewportInstrumentedTest {
             assertEquals("Native axis double-tap and Clear reset control must agree",
                 nativeReset, clearReset)
             println("NATIVE_CLEAR_CAMERA_PARITY today=$nativeToday zoom=$nativeZoomed reset=$nativeReset")
+        } finally {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            nativeStore.close()
+            clearStore.close()
+            nativeContext.deleteDatabase(nativeDatabase)
+            clearContext.deleteDatabase(clearDatabase)
+            listOf(nativeNamespace, clearNamespace).forEach { namespace ->
+                listOf("powercal-onboarding", "powercal-ui", "powercal-skin-choice", "powercal-profile")
+                    .forEach { storage.deleteSharedPreferences("$namespace-$it") }
+                File(storage.cacheDir, namespace).deleteRecursively()
+            }
+        }
+    }
+
+    @Test
+    fun nativeVerticalPanAndClearLaterControlProduceTheSameCamera() {
+        val storage = compose.activity.applicationContext
+        val nativeNamespace = "pc-timeline-pan-parity-native-${UUID.randomUUID()}"
+        val clearNamespace = "pc-timeline-pan-parity-clear-${UUID.randomUUID()}"
+        val nativeContext = IsolatedAppContext(compose.activity, storage, nativeNamespace)
+        val clearContext = IsolatedAppContext(compose.activity, storage, clearNamespace)
+        val nativeDatabase = "timeline-pan-native.db"
+        val clearDatabase = "timeline-pan-clear.db"
+        val nativeStore = PowerStore(nativeContext, nativeDatabase)
+        val clearStore = PowerStore(clearContext, clearDatabase)
+        try {
+            val zone = java.time.ZoneId.systemDefault()
+            val todayNoon = java.time.LocalDate.now(zone).atTime(12, 0)
+                .atZone(zone).toInstant().toEpochMilli()
+            val expectedLater = todayNoon + 180L * 60_000L
+            nativeContext.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                .edit().putBoolean("system-calendar-import-asked", true).commit()
+            SkinPackageManager(nativeContext).selectNativeForEmergencyRecovery()
+            compose.runOnUiThread {
+                compose.activity.setContent {
+                    CompositionLocalProvider(LocalContext provides nativeContext) {
+                        PowerCalTheme { PowerCalApp(nativeStore) }
+                    }
+                }
+            }
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithContentDescription("今日 · 复位为全天")
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithContentDescription("今日 · 复位为全天").performClick()
+            val nativeToday = awaitCamera(todayNoon, 24.0)
+            val nativeViewport = compose.onNodeWithTag("timeline-viewport").fetchSemanticsNode()
+            val nativeHeight = nativeViewport.boundsInRoot.height
+            assertTrue("Native timeline viewport must have measurable height", nativeHeight > 0f)
+            val nativePanDistance = nativeHeight / 8f
+            val nativeStart = Offset(nativeViewport.boundsInRoot.center.x,
+                nativeViewport.boundsInRoot.top + nativeHeight * 0.75f)
+            compose.onNodeWithTag("timeline-viewport").performTouchInput {
+                down(Offset(nativeStart.x - nativeViewport.boundsInRoot.left, nativeStart.y -
+                    nativeViewport.boundsInRoot.top))
+                repeat(8) {
+                    moveBy(Offset(0f, -nativePanDistance / 8f))
+                    advanceEventTime(250)
+                }
+                up()
+            }
+            val nativePanned = awaitCamera(expectedLater, 24.0)
+            assertEquals("Native vertical pan maps one eighth of a 24h viewport to 3h",
+                expectedLater, nativePanned.anchorMillis)
+            assertEquals(nativeToday.page, nativePanned.page)
+
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            val web = launchClear(clearContext, clearStore)
+            val clearTodayTouch = tapWebSelector(web, "[data-action='today']")
+            val clearToday = awaitCamera(todayNoon, 24.0)
+            assertEquals(nativeToday, clearToday)
+            val clearLaterTouch = tapWebSelector(web,
+                "[data-action='panTimeline'][data-delta-minutes='180']")
+            val clearPanned = awaitCamera(expectedLater, 24.0)
+            assertEquals("Native and Clear must produce the same 3-hour later camera",
+                nativePanned, clearPanned)
+            assertEquals(0, nativeStore.commitCount())
+            assertEquals(0, clearStore.commitCount())
+            assertEquals(0, nativeStore.draftCount())
+            assertEquals(0, clearStore.draftCount())
+            println("NATIVE_CLEAR_TIMELINE_PAN_PARITY today=$todayNoon target=$expectedLater " +
+                "native=$nativePanned clear=$clearPanned nativeViewportPx=$nativeHeight " +
+                "nativeDeltaPx=$nativePanDistance clearTodayTouch=$clearTodayTouch " +
+                "clearLaterTouch=$clearLaterTouch commits=0 drafts=0")
         } finally {
             compose.runOnUiThread {
                 compose.activity.setContent { }
