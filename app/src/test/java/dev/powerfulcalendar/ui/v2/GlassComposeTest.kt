@@ -10,6 +10,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.Color
@@ -271,6 +272,74 @@ class GlassComposeTest {
         } }
         ui.runOnIdle { println("Light glass text contrast: $ratios"); assertTrue("Light: $ratios", ratios.all { it >= 4.5f }); dark.value = true }
         ui.runOnIdle { println("Dark glass text contrast: $ratios"); assertTrue("Dark: $ratios", ratios.all { it >= 4.5f }) }
+    }
+
+    @Test fun nativeSkinOwnsTheUnchangedLightAndDarkThemeBaseline() {
+        data class Baseline(
+            val primary: Color,
+            val background: Color,
+            val onSurface: Color,
+            val tertiary: Color,
+            val surfaceVariant: Color,
+            val alarm: Color,
+            val activity: Color,
+            val deadline: Color,
+            val nowLine: Color,
+            val gridLine: Color,
+            val glassFill: Color,
+            val glassBorder: Color,
+            val glassHighlight: Color,
+            val titleWeight: androidx.compose.ui.text.font.FontWeight?,
+            val titleTracking: androidx.compose.ui.unit.TextUnit
+        )
+        val dark = mutableStateOf(false)
+        var observed: Baseline? = null
+        ui.setContent {
+            PowerCalTheme(darkTheme = dark.value, skin = PowerCalSkinRegistry.default) {
+                val scheme = MaterialTheme.colorScheme
+                val palette = LocalAxisPalette.current
+                observed = Baseline(
+                    primary = scheme.primary,
+                    background = scheme.background,
+                    onSurface = scheme.onSurface,
+                    tertiary = scheme.tertiary,
+                    surfaceVariant = scheme.surfaceVariant,
+                    alarm = palette.alarm,
+                    activity = palette.activity,
+                    deadline = palette.deadline,
+                    nowLine = palette.nowLine,
+                    gridLine = palette.gridLine,
+                    glassFill = palette.glassFill,
+                    glassBorder = palette.glassBorder,
+                    glassHighlight = palette.glassHighlight,
+                    titleWeight = MaterialTheme.typography.titleMedium.fontWeight,
+                    titleTracking = MaterialTheme.typography.displaySmall.letterSpacing
+                )
+            }
+        }
+
+        ui.runOnIdle {
+            assertEquals(Baseline(
+                Color(0xFF2457D6), Color(0xFFF3F5FA), Color(0xFF11151C),
+                Color(0xFF9A4A1F), Color(0xFFE4E8F1),
+                Color(0xFF3D5FD8), Color(0xFF177A63), Color(0xFFA8501C),
+                Color(0xFF2457D6), Color(0x1A0B1220), Color(0xCCFFFFFF),
+                Color(0x2E0B1220), Color(0x80FFFFFF),
+                androidx.compose.ui.text.font.FontWeight.Medium, (-0.5).sp
+            ), observed)
+            dark.value = true
+        }
+        ui.waitForIdle()
+        ui.runOnIdle {
+            assertEquals(Baseline(
+                Color(0xFF9DB8FF), Color(0xFF0A0D13), Color(0xFFE6EAF2),
+                Color(0xFFFFB68C), Color(0xFF2A303B),
+                Color(0xFF9DB8FF), Color(0xFF7FD6C2), Color(0xFFFFB68C),
+                Color(0xFF9DB8FF), Color(0x22FFFFFF), Color(0xB31A2130),
+                Color(0x33FFFFFF), Color(0x1AFFFFFF),
+                androidx.compose.ui.text.font.FontWeight.Medium, (-0.5).sp
+            ), observed)
+        }
     }
 
     @Test fun disabledGlassKeepsOpaqueNativeSurfaceReadableInLightAndDarkThemes() {

@@ -283,6 +283,34 @@ val verifyNativeSkinBoundary = tasks.register("verifyNativeSkinBoundary") {
                         .joinToString { it.relativeTo(rootProject.projectDir).path }
             )
         }
+        val hostThemeFile = rootProject.file("app/src/main/java/dev/powerfulcalendar/ui/v2/PowerTheme.kt")
+        val nativeThemeFile = rootProject.file(
+            "native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativeSkinThemeDefaults.kt"
+        )
+        if (!hostThemeFile.isFile || !nativeThemeFile.isFile) {
+            throw GradleException("Native skin theme defaults must be defined in :native-skin")
+        }
+        val hostThemeSource = hostThemeFile.readText()
+        val missingNativeThemeWiring = listOf(
+            "NativeSkinThemeDefaults.scheme(darkTheme)",
+            "NativeSkinThemeDefaults.axisPalette(darkTheme)",
+            "NativeSkinThemeDefaults.unboundAxisPalette",
+            "NativeSkinThemeDefaults.typography"
+        ).filterNot(hostThemeSource::contains)
+        if (missingNativeThemeWiring.isNotEmpty()) {
+            throw GradleException(
+                "Host theme must consume Native defaults from :native-skin: " +
+                    missingNativeThemeWiring.joinToString()
+            )
+        }
+        val inlineNativeThemeDefaults = Regex(
+            """(?m)^\s*private\s+val\s+(LightColors|DarkColors|PowerTypography)\s*="""
+        ).find(hostThemeSource)
+        if (inlineNativeThemeDefaults != null) {
+            throw GradleException(
+                "Native color schemes and typography must remain owned by :native-skin"
+            )
+        }
         val reverseDependency = Regex("""project\(\s*":(app|native-skin)"\s*\)""")
         if (reverseDependency.containsMatchIn(nativeModuleBuild.readText())) {
             throw GradleException(":native-skin must not depend on :app or depend back from :skin-api")
