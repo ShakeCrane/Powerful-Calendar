@@ -108,3 +108,11 @@ Debug APK：67,500,112 bytes，SHA-256 `7E1FCEA722A7FC86F9792794B3560E24F5B448AE
 - API 35 / Android 15 / WebView `124.0.6367.219` / `emulator-5570`：完整 `ClearActivityRecreationRecoveryInstrumentedTest` **2/2 PASS**，包含既有干净/脏编辑器恢复测试与新 Memo 投影测试。JUnit XML SHA-256 `884CDD75D7C5D5DECFB372B4790FF821852BE12C472989FA3BC4249882149796`；类 Gradle log SHA-256 `53A7C3B24F68AFFF82F538E67F54E1F68B51ABED07DEAEFCA3B1A265E632A814`；Memo device marker SHA-256 `01E756395BD083781E6202E1C958715B3675919C48BEFC2B22C2FA2E69D7447E`。
 - 强制离线 Gradle 全门禁 **785/785 JVM、125 suites、0 failures/errors/skips、171/171 tasks PASS**，两个源边界、Debug/AndroidTest APK、Lint 均通过（0 errors/55 warnings）。日志 SHA-256 `291E665490345A27ECC8DA5E67B10AB0C0A242DAA90AD44FBF7E4BC50363434F`。本次完整回归同时编译了另外两份并行 Agent 的未提交 AndroidTest 文件，但只执行了 `ClearActivityRecreationRecoveryInstrumentedTest` 类；worktree-specific APK 与详细日志见 `.local/android-test/reports/sep03-memo-activity-recreate-20261031/`。
 - 该回归增加 Activity 重建后的 Clear projection 证据，不覆盖正式 Memo 状态的冷进程恢复、WebView renderer 故障恢复、用户输入/无障碍服务或实体/OEM。SEP-14 保持 **PARTIAL / HOLD**；`S0-ST-10` 既有结论与手势签核不变。
+
+## Follow-up — SEP-03 正式 Memo 与脏编辑器共同经历冷进程重启（2026-10-31）
+
+复用既有两阶段 `ClearProcessRestartRecoveryInstrumentedTest`，不增加第二套恢复架构。在带 UUID 的隔离数据库中，prepare phase 创建并完成一个重复 Memo 的首个 occurrence，同时打开一份未保存 ACTIVITY 表单；`ON_STOP` 只生成一份恢复草稿。独立脚本 force-stop app 与 instrumentation package，确认两者进程退出，再由 restore phase 启动新 app PID。
+
+- API 35 / Android 15 / WebView `124.0.6367.219` / `emulator-5570`：prepare PID `9355`，restore PID `9517`；两 phase 各 **1/1 PASS**。新进程在 Store 中读回相同 Memo eventSeq/revision/completed occurrence/history 与唯一草稿身份；Clear Host/Skin 显示 Open=2、Done=1，并恢复原编辑器标题。commit=2、identity=2、next sequence=3、queue order=2，无重复写入；测试数据库和 marker 成功清除。
+- runner、设备 trace、fixture UUID、完整强制回归与 APK SHA-256 收录于 [Memo occurrence Issue](PC-ISSUE-SEPARATION-MEMO-OCCURRENCE-TOGGLE.md) 和 `.local/android-test/reports/sep03-memo-cold-process-20261031/`。回归仅扩展测试与证据，不修改 Core/Host/Native/Clear 生产代码。
+- 该项只补齐正式 Memo 状态参与冷进程恢复的窄切片；SEP-14 的 renderer 故障、坏皮肤脚本、升级/重启及实体/OEM验收仍开放，状态保持 **PARTIAL / HOLD**。

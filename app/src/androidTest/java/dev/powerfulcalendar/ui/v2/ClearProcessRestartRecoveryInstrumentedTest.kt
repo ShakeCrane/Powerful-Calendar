@@ -10,7 +10,11 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.Lifecycle
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.PowerStore
+import dev.powerfulcalendar.core.Recurrence
+import dev.powerfulcalendar.core.RecurrenceFreq
+import dev.powerfulcalendar.core.TemporalKind
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -22,6 +26,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
 import java.io.FileOutputStream
+import java.time.LocalDate
+import java.time.ZoneId
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -85,6 +91,30 @@ class ClearProcessRestartRecoveryInstrumentedTest {
 
     private fun awaitJs(web: WebView, expression: String) {
         compose.waitUntil(30_000) { evaluate(web, expression) == "true" }
+    }
+
+    private fun assertRestoredMemoProjection(
+        web: WebView,
+        eventSeq: Long,
+        occurrenceKey: String,
+        revision: Long
+    ) {
+        val target = JSONObject.quote(
+            "#memoList [data-action='toggleMemo'][data-event-seq='$eventSeq']" +
+                "[data-occurrence-key='$occurrenceKey']"
+        )
+        evaluate(web, "document.querySelector('.clear-tabbar [data-action=memo]').click();true")
+        awaitJs(web, "!document.querySelector('#memoPage').hidden && " +
+            "document.querySelector('#memoCounter')?.textContent==='2' && " +
+            "document.querySelectorAll('#memoList .memo-row').length===2 && " +
+            "!document.querySelector($target)")
+        evaluate(web, "document.querySelector('.tabs [data-filter=done]').click();true")
+        awaitJs(web, "document.querySelectorAll('#memoList .memo-row').length===1 && " +
+            "document.querySelector($target)?.dataset.revision==='${revision}' && " +
+            "document.querySelector($target)?.getAttribute('aria-label')==='恢复未完成'")
+        evaluate(web, "document.querySelector('.tabs [data-filter=open]').click();true")
+        awaitJs(web, "document.querySelectorAll('#memoList .memo-row').length===2 && " +
+            "!document.querySelector($target)")
     }
 
     private fun attachClear(store: PowerStore, manager: SkinPackageManager) {
@@ -179,10 +209,36 @@ class ClearProcessRestartRecoveryInstrumentedTest {
         val store = PowerStore(context, dbName)
         var prepared = false
         try {
-            assertTrue(store.all().isEmpty())
+            val memoStart = LocalDate.now(ZoneId.of("Asia/Shanghai")).plusDays(1)
+            val memoOccurrenceKey = "${memoStart}T00:00"
+            val memoCreated = store.createFormalEvent(
+                DraftForm(
+                    kind = TemporalKind.MEMO,
+                    title = "Clear formal Memo survives cold process recovery $id",
+                    startText = memoStart.toString(),
+                    zoneId = "Asia/Shanghai",
+                    trackingEnabled = true,
+                    recurrence = Recurrence(freq = RecurrenceFreq.DAILY, count = 3)
+                ),
+                "clear-cold-memo-$id"
+            ) as PowerStore.CommitOutcome.Committed
+            assertEquals(1L, memoCreated.eventSeq)
+            assertTrue(store.setCompleted(memoCreated.eventSeq, memoOccurrenceKey, true,
+                memoCreated.revision))
+            val completedMemo = requireNotNull(store.get(memoCreated.eventSeq))
+            assertEquals(2L, completedMemo.revision)
+            assertEquals(setOf(memoOccurrenceKey), completedMemo.completedKeys)
+            assertEquals(listOf("CREATE", "COMPLETE"),
+                store.history(memoCreated.eventSeq).asReversed().map { it.operation })
+
+            assertEquals(listOf(completedMemo), store.all())
             assertEquals(0L, store.draftCount())
-            assertEquals(0L, store.identityCount())
-            assertEquals(1L, store.nextSequencePreview())
+            assertEquals(1, store.identityCount())
+            assertEquals(2L, store.nextSequencePreview())
+            assertEquals(2L, store.commitCount())
+            metadata.put("memoEventSeq", memoCreated.eventSeq)
+                .put("memoOccurrenceKey", memoOccurrenceKey)
+                .put("memoRevision", completedMemo.revision)
 
             check(onboarding.edit().putBoolean("system-calendar-import-asked", true).commit())
             val manager = SkinPackageManager(context)
@@ -196,12 +252,13 @@ class ClearProcessRestartRecoveryInstrumentedTest {
             val title = "$CLEAR_PROCESS_RECOVERY_TITLE-$id"
             openDirtyActivity(web, title)
 
-            assertTrue("new form must remain transient before ON_STOP", store.all().isEmpty())
+            assertEquals("new form must remain transient before ON_STOP", listOf(completedMemo),
+                store.all())
             assertEquals(0L, store.draftCount())
             assertEquals(0, store.pendingCount())
-            assertEquals(0L, store.commitCount())
-            assertEquals(0L, store.identityCount())
-            assertEquals(1L, store.nextSequencePreview())
+            assertEquals(2L, store.commitCount())
+            assertEquals(1, store.identityCount())
+            assertEquals(2L, store.nextSequencePreview())
 
             val movedToBackground = AtomicReference<Boolean?>(null)
             compose.runOnUiThread { movedToBackground.set(compose.activity.moveTaskToBack(true)) }
@@ -214,10 +271,11 @@ class ClearProcessRestartRecoveryInstrumentedTest {
 
             val draft = store.pendingDrafts().single()
             assertEquals(title, draft.form.title)
-            assertEquals(0L, store.commitCount())
-            assertTrue(store.all().isEmpty())
-            assertEquals(1L, store.identityCount())
-            assertEquals(2L, store.nextSequencePreview())
+            assertEquals(2L, store.commitCount())
+            assertEquals("ON_STOP must preserve the formal Memo snapshot", listOf(completedMemo),
+                store.all())
+            assertEquals(2, store.identityCount())
+            assertEquals(3L, store.nextSequencePreview())
             assertEquals(2L, store.nextQueueOrderPreview())
             metadata.put("title", title)
                 .put("processPid", android.os.Process.myPid())
@@ -227,7 +285,9 @@ class ClearProcessRestartRecoveryInstrumentedTest {
             saveMetadata(markerFile, metadata)
             prepared = true
             println("CLEAR_COLD_RECOVERY_PREPARED=pid=${android.os.Process.myPid()}; " +
-                "draft=${draft.draftId}; title=${draft.form.title}; onStop=true; formal=0; commits=0")
+                "draft=${draft.draftId}; title=${draft.form.title}; onStop=true; " +
+                "memoEventSeq=${memoCreated.eventSeq}; memoRevision=${completedMemo.revision}; " +
+                "memoOccurrence=$memoOccurrenceKey; formal=1; commits=${store.commitCount()}")
         } finally {
             if (!prepared) {
                 compose.runOnUiThread {
@@ -258,6 +318,9 @@ class ClearProcessRestartRecoveryInstrumentedTest {
         assertEquals(dbName, metadata.getString("databaseName"))
 
         val store = PowerStore(context, dbName)
+        val memoEventSeq = metadata.getLong("memoEventSeq")
+        val memoOccurrenceKey = metadata.getString("memoOccurrenceKey")
+        val expectedMemoRevision = metadata.getLong("memoRevision")
         var verified = false
         try {
             assertNotEquals("the app process must be new after force-stop",
@@ -269,14 +332,19 @@ class ClearProcessRestartRecoveryInstrumentedTest {
             assertEquals("Clear selection must survive process death", CLEAR_BUILT_IN_ID,
                 manager.currentId())
             manager.restoreSelection()
+            val completedMemo = requireNotNull(store.get(memoEventSeq))
+            assertEquals(expectedMemoRevision, completedMemo.revision)
+            assertEquals(setOf(memoOccurrenceKey), completedMemo.completedKeys)
+            assertEquals(listOf("CREATE", "COMPLETE"),
+                store.history(memoEventSeq).asReversed().map { it.operation })
+            assertEquals(listOf(completedMemo), store.all())
+            assertEquals(2L, store.commitCount())
             val draft = store.pendingDrafts().single()
             assertEquals(metadata.getLong("draftId"), draft.draftId)
             assertEquals(metadata.getLong("eventSeq"), draft.eventSeq)
             assertEquals(metadata.getString("title"), draft.form.title)
-            assertEquals(0L, store.commitCount())
-            assertTrue(store.all().isEmpty())
-            assertEquals(1L, store.identityCount())
-            assertEquals(2L, store.nextSequencePreview())
+            assertEquals(2, store.identityCount())
+            assertEquals(3L, store.nextSequencePreview())
             assertEquals(2L, store.nextQueueOrderPreview())
 
             compose.runOnUiThread {
@@ -290,6 +358,9 @@ class ClearProcessRestartRecoveryInstrumentedTest {
                         .optJSONArray("cards")?.length() == 1 &&
                     evaluate(web, "document.querySelector('#pendingCounter')?.textContent==='1'") == "true"
             }
+            assertRestoredMemoProjection(web, memoEventSeq, memoOccurrenceKey, expectedMemoRevision)
+            evaluate(web, "document.querySelector('.clear-tabbar [data-action=timeline]').click();true")
+            awaitJs(web, "!document.querySelector('#timelinePage').hidden")
             val instrumentation = evaluate(web,
                 "(()=>{window.__pcColdReplies=[];window.__pcColdCommands=[];" +
                     "const edit=window.PowerCalEdit,skin=window.PowerCalSkin;" +
@@ -338,13 +409,19 @@ class ClearProcessRestartRecoveryInstrumentedTest {
 
             assertEquals(1L, store.draftCount())
             assertEquals(1, store.pendingCount())
-            assertEquals(0L, store.commitCount())
-            assertTrue(store.all().isEmpty())
+            assertEquals(2L, store.commitCount())
+            assertEquals(listOf(completedMemo), store.all())
+            assertEquals(2, store.identityCount())
+            assertEquals(3L, store.nextSequencePreview())
+            assertEquals(2L, store.nextQueueOrderPreview())
             val projection = WebSkinBridgeRuntime.state().getJSONObject("editing")
                 .getJSONObject("deck")
+            println("CLEAR_COLD_MEMO_VERIFIED=pid=${android.os.Process.myPid()}; " +
+                "eventSeq=$memoEventSeq; revision=${completedMemo.revision}; " +
+                "occurrence=$memoOccurrenceKey; open=2; done=1; commits=${store.commitCount()}")
             println("CLEAR_COLD_RECOVERY_VERIFIED=pid=${android.os.Process.myPid()}; " +
                 "draft=${draft.draftId}; title=${projection.getJSONObject("form").optString("title")}; " +
-                "formal=0; commits=0; sameIdentity=true; clear=true")
+                "formal=1; commits=${store.commitCount()}; sameIdentity=true; clear=true")
             verified = true
         } finally {
             compose.runOnUiThread {

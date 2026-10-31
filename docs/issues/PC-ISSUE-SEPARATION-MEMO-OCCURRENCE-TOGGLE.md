@@ -2,13 +2,13 @@
 
 日期：2026-10-31
 验收项：`S0-ME-02`；父项 `SEP-03`
-状态：Host/JVM、Chrome Studio Mock 与 API 35 Native/Clear 重复 Memo 完成/撤销、真实 Android stale-action replay、Clear Activity 重建后 Memo 投影 **PASS**；SEP-03 全功能等价仍 **PARTIAL / HOLD**。
+状态：Host/JVM、Chrome Studio Mock 与 API 35 Native/Clear 重复 Memo 完成/撤销、真实 Android stale-action replay、Clear Activity 重建和冷进程重启后的 Memo 投影 **PASS**；SEP-03 全功能等价仍 **PARTIAL / HOLD**。
 
 ## 结论
 
 Memo 完成状态按正式事件 owner、revision 和 occurrence key 重新验证。Host 在执行前重新读取事件，并确认版本和该 occurrence 的当前完成值；有效切换只提交一次并刷新投影。API 35 Android 15 模拟器上的 Native/Clear 重复 Memo 配对覆盖完成、Done 筛选、撤销与邻接槽位隔离。后续 stale replay 回归在 Clear WebView 中捕获真实可信触屏产生的原始 `toggleMemo` Bridge 消息；Store 前进到 revision 2 后，将 `expectedRevision=1` 的同一原始消息经当前 WebMessagePort 重放。Host 将“Memo 已变化，请刷新”投影回 Skin，正式记录、提交数、身份数和待处理状态均不变。
 
-没有发现需要修改的 Host/Core 持久化实现缺陷。重复 Memo 的目标槽位完成/撤销及 Android stale-action rejection 已由配对设备回放证明；Clear Activity 重建后也能从 Store 重新投影两个未完成槽位和一个已完成槽位，且没有追加写入。全 Memo 入口、正式 Memo 状态的冷进程恢复、Studio 所有编辑包路径与系统无障碍服务仍未覆盖，所以 `S0-ME-02` 有已验证切片，`SEP-03` 仍 **PARTIAL / HOLD**。
+没有发现需要修改的 Host/Core 持久化实现缺陷。重复 Memo 的目标槽位完成/撤销及 Android stale-action rejection 已由配对设备回放证明；Clear Activity 重建及冷进程重启后也能从 Store 重新投影两个未完成槽位和一个已完成槽位，且没有追加写入。全 Memo 入口、Studio 所有编辑包路径与系统无障碍服务仍未覆盖，所以 `S0-ME-02` 有已验证切片，`SEP-03` 仍 **PARTIAL / HOLD**。
 
 ## 根因与工作对应
 
@@ -101,3 +101,11 @@ Memo 完成状态按正式事件 owner、revision 和 occurrence key 重新验�
 - API 35 / Android 15 / WebView `124.0.6367.219` / `emulator-5570`：整个 `ClearActivityRecreationRecoveryInstrumentedTest` **2/2 PASS**，既有 clean/dirty editor recreation 回归仍通过，新 Memo 投影方法也通过。JUnit XML SHA-256 `884CDD75D7C5D5DECFB372B4790FF821852BE12C472989FA3BC4249882149796`；类 Gradle log SHA-256 `53A7C3B24F68AFFF82F538E67F54E1F68B51ABED07DEAEFCA3B1A265E632A814`；设备 marker log SHA-256 `01E756395BD083781E6202E1C958715B3675919C48BEFC2B22C2FA2E69D7447E`。首轮单测断言脚本的字符串多转义一层，WebView 没有返回布尔结果；修正测试表达式后，定向方法及整个类均通过，没有生产行为缺陷证据。
 - 强制离线 Gradle 全门禁 **785/785 JVM、125 suites、0 failures/errors/skips、171/171 tasks PASS**，其中 Skin/Native source boundary、Debug/AndroidTest APK 与 Lint 全过（0 errors/55 warnings）。门禁日志 SHA-256 `291E665490345A27ECC8DA5E67B10AB0C0A242DAA90AD44FBF7E4BC50363434F`；Debug APK SHA-256 `DE876D09D11689F98131C9DAD0A977AA1271E1657612B6A95DB89ABBBB80C31C`；AndroidTest APK SHA-256 `7849D6F20D6723748226234B6727CFDFC9F8234B0D647BB434CB5405C89C046A`，属于该工作树构建并含两份其他 Agent 未提交 AndroidTest 源文件；本次运行仅执行恢复测试类。证据目录 `.local/android-test/reports/sep03-memo-activity-recreate-20261031/`。
 - SEP-03 仍 **PARTIAL / HOLD**：该 Slice 覆盖 Activity 重建，不覆盖正式 Memo 完成状态的冷进程重启、所有 Memo 入口、系统无障碍服务、Studio 任意编辑包全路径与实体/OEM。
+
+## 2026-10-31 formal Memo 与脏编辑器共同经历冷进程重启
+
+- 扩展既有 `ClearProcessRestartRecoveryInstrumentedTest` 两阶段 fixture，在同一 UUID 隔离数据库内创建一个每日重复正式 Memo，并完成首个 occurrence `2026-11-01T00:00`。`ON_STOP` 为同时打开的 ACTIVITY 编辑器只 checkpoint 一张草稿；两个独立 instrumentation phase 之间，脚本对 app 和 test package 执行真实 `am force-stop`，确认旧 PID 退出后才启动恢复 phase。
+- API 35 / Android 15 / WebView `124.0.6367.219` / `emulator-5570`：prepare PID `9355`、restore PID `9517`；prepare 与 restore 各 **1/1 PASS**。恢复后正式 Memo 仍为 eventSeq 1 / revision 2 / `CREATE, COMPLETE` / commit 2；Clear Open 显示剩余 2 槽，Done 显示已完成槽。脏编辑器恢复为原 draftId/eventSeq/title 的唯一待处理草稿；正式事件仍 1 个、identity 2、next sequence 3、queue order 2，没有新增 commit。脚本确认 UUID 数据库及 marker 均无残留。
+- 完整离线 Gradle 强制门禁 **785/785 JVM、125 suites、0 failures/errors/skips、171/171 tasks PASS**；Skin/Native source boundary、Debug/AndroidTest APK assembly 与 lint 通过（0 lint errors）。门禁日志 SHA-256 `985AACB47487F81E2B119AAC27E74949CA81F62B21ED128253E5DA05F4EA21C3`；debug APK SHA-256 `DE876D09D11689F98131C9DAD0A977AA1271E1657612B6A95DB89ABBBB80C31C`。实际安装用于冷进程回放的 AndroidTest APK SHA-256 `7C7535DFF199F3F97074AB8EBC78D747FADEFFE2FE4182EEE1961E794B17EE06`；强制门禁产物 AndroidTest APK SHA-256 `2CB2E4310957DE2C049D2E4FE80E27BA825A58A570FC1004915EF372CC0A0EC5`。后者编译时包含两份其他 Agent 的未提交 AndroidTest 编辑，本次没有执行这两份测试。
+- 原始设备脚本输出 `.local/android-test/reports/sep03-memo-cold-process-20261031/cold-process-run.txt` SHA-256 `C7586D410783C4EC2450340168A9CB8936A145BCB4623D2D91B275B79F29AC01`；设备 System.out trace SHA-256 `C119F69C46DE5EEBA94FF82239A16CE75735A4932B88CE3607004329171D919A`。完整门禁日志与 APK 位于同一证据目录/Gradle 输出目录。
+- 此回归关闭正式重复 Memo 状态与单张脏编辑器草稿在真实冷进程重启中的持久恢复切片；它不是 Native/Clear 的 Memo 写入操作配对，不覆盖其他 Memo 入口、TalkBack/无障碍服务或实体/OEM。SEP-03 与 SEP-14 仍 **PARTIAL / HOLD**。
