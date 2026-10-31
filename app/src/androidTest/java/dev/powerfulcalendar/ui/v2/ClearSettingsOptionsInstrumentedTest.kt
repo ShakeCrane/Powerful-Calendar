@@ -2702,6 +2702,190 @@ class ClearSettingsOptionsInstrumentedTest {
     }
 
     @Test
+    fun nativeAndClearBackupRestoreRejectTheSameFileForNonEmptyStore() {
+        assumeTrue("DocumentsUI restore flow must run on an isolated Android emulator",
+            Build.HARDWARE == "ranchu" || Build.HARDWARE == "goldfish")
+        assumeTrue("Downloads MediaStore requires API 29+", Build.VERSION.SDK_INT >= 29)
+
+        val context = compose.activity.applicationContext
+        val sourceDatabase = "sep11-nonempty-restore-source-${UUID.randomUUID()}.db"
+        val targetDatabase = "sep11-nonempty-restore-target-${UUID.randomUUID()}.db"
+        val sourceStore = PowerStore(context, sourceDatabase)
+        val store = PowerStore(context, targetDatabase)
+        val skinManager = SkinPackageManager(context)
+        val originalSkin = skinManager.currentId()
+        val onboarding = context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+        val hadAskedForCalendarImport = onboarding.contains("system-calendar-import-asked")
+        val askedForCalendarImport = onboarding.getBoolean("system-calendar-import-asked", false)
+        val fixtureName = "powercal-qa-nonempty-restore-${UUID.randomUUID()}.json"
+        var backupUri: Uri? = null
+
+        fun addFormalMemo(target: PowerStore, title: String) {
+            val zone = ZoneId.of("Asia/Shanghai")
+            val draft = target.newDraft(DraftForm(
+                kind = TemporalKind.MEMO,
+                title = title,
+                startText = LocalDate.now(zone).plusDays(2).toString(),
+                zoneId = zone.id,
+                trackingEnabled = true
+            ))
+            assertTrue("Synthetic restore fixture must commit",
+                target.commit(draft.draftId) is PowerStore.CommitOutcome.Committed)
+        }
+
+        fun persistentSnapshot(): List<Any?> {
+            val payload = BackupEnvelope.verify(store.exportBackup(), PowerStore.VERSION).payload
+            return listOf(
+                BackupEnvelope.canonicalJson(payload), store.all(), store.draftCount(),
+                store.pendingCount(), store.commitCount(), store.identityCount(),
+                store.nextSequencePreview()
+            )
+        }
+
+        fun openFixtureFromDocumentsUi() {
+            val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+            val roots = waitForPickerNode(contentDescription = "Show roots")
+            assertEquals("Restore must use Android's actual DocumentsUI picker",
+                "com.google.android.documentsui",
+                automation.rootInActiveWindow?.packageName?.toString())
+            tapPickerNode(roots)
+            tapPickerNode(waitForPickerNode(text = "Downloads"))
+            tapPickerNode(waitForPickerNode(text = fixtureName))
+
+            val deadline = SystemClock.elapsedRealtime() + 15_000
+            var openActionClicked = false
+            while (SystemClock.elapsedRealtime() < deadline && !openActionClicked) {
+                val root = automation.rootInActiveWindow
+                val packageName = root?.packageName?.toString()
+                if (packageName != "com.google.android.documentsui") break
+                val open = findAccessibilityNode(root, text = "OPEN")
+                    ?: findAccessibilityNode(root, text = "Open")
+                    ?: findAccessibilityNode(root, contentDescription = "Open")
+                    ?: findAccessibilityNode(root, viewId = "android:id/button1")
+                if (open != null) {
+                    tapPickerNode(open)
+                    openActionClicked = true
+                } else SystemClock.sleep(150)
+            }
+            compose.waitUntil(30_000) {
+                automation.rootInActiveWindow?.packageName?.toString() == compose.activity.packageName
+            }
+        }
+
+        try {
+            addFormalMemo(sourceStore, "SEP11_RESTORE_SOURCE_${UUID.randomUUID()}")
+            addFormalMemo(store, "SEP11_RESTORE_TARGET_${UUID.randomUUID()}")
+            val sourceBackup = sourceStore.exportBackup()
+            val fixtureValues = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, fixtureName)
+                put(MediaStore.MediaColumns.MIME_TYPE, "application/json")
+                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/")
+            }
+            backupUri = requireNotNull(context.contentResolver.insert(
+                MediaStore.Downloads.EXTERNAL_CONTENT_URI, fixtureValues
+            )) { "Could not create isolated backup fixture in Downloads" }
+            context.contentResolver.openOutputStream(backupUri!!)?.bufferedWriter(Charsets.UTF_8)?.use {
+                it.write(sourceBackup.toString(2))
+            } ?: error("Could not write isolated backup fixture")
+
+            val before = persistentSnapshot()
+            assertEquals("The isolated target must start with exactly one formal record", 1,
+                store.all().size)
+            assertEquals("The protected target fixture must start with no pending drafts", 0,
+                store.pendingCount())
+            assertFalse("The restore source must not already exist in the target",
+                before.first().toString().contains("SEP11_RESTORE_SOURCE_"))
+
+            onboarding.edit().putBoolean("system-calendar-import-asked", true).commit()
+            PowerCalSkinRegistry.reset()
+            skinManager.select("powercal-default")
+            compose.runOnUiThread {
+                compose.activity.setContent { PowerCalTheme { PowerCalApp(store) } }
+            }
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithText("时间轴").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText("设置").performClick()
+            compose.onNodeWithText("工具与设置").assertExists()
+            compose.onNodeWithText("从备份恢复").performScrollTo().performClick()
+            openFixtureFromDocumentsUi()
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithText("恢复失败：目标数据库不是空库", substring = true)
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+            assertEquals("Native restore refusal must preserve every persisted target value",
+                before, persistentSnapshot())
+
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+                skinManager.select("powercal-clear-default")
+                compose.activity.setContent { PowerCalTheme { PowerCalApp(store) } }
+            }
+            var web: WebView? = null
+            compose.waitUntil(30_000) {
+                compose.runOnUiThread {
+                    web = findWebView(compose.activity.findViewById(android.R.id.content))
+                }
+                web != null
+            }
+            val view = requireNotNull(web)
+            compose.waitUntil(30_000) {
+                evaluate(view, "!!window.PowerCalSkin && !!window.PowerCalSkin.receive") == "true"
+            }
+            tapWebSelector(view, ".clear-tabbar [data-action=settings]")
+            compose.waitUntil(15_000) {
+                WebSkinBridgeRuntime.state().optString("page") == "SETTINGS"
+            }
+            tapWebSelector(view,
+                "#settingsOptionGroups [data-option-id='data.backup.restore']")
+            openFixtureFromDocumentsUi()
+            compose.waitUntil(15_000) {
+                evaluate(view, "document.getElementById('hostNotice')?.textContent||''")
+                    .contains("恢复失败：目标数据库不是空库")
+            }
+            assertEquals("Clear restore refusal must preserve every persisted target value",
+                before, persistentSnapshot())
+            assertEquals("The protected record remains the sole target event", 1,
+                store.all().size)
+            assertTrue("The protected target record remains readable",
+                store.all().single().title.startsWith("SEP11_RESTORE_TARGET_"))
+            assertFalse("The un-restored source record remains absent",
+                store.all().any { it.title.startsWith("SEP11_RESTORE_SOURCE_") })
+
+            println("SEP11_NATIVE_CLEAR_NONEMPTY_RESTORE_REFUSAL " +
+                "sameBackup=true nativeDenied=true clearDenied=true targetNonEmpty=true " +
+                "snapshotUnchanged=true trustedClearTouch=true")
+        } finally {
+            val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+            repeat(2) {
+                if (automation.rootInActiveWindow?.packageName?.toString() == "com.google.android.documentsui") {
+                    automation.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+                    SystemClock.sleep(200)
+                }
+            }
+            backupUri?.let { runCatching { context.contentResolver.delete(it, null, null) } }
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            sourceStore.close()
+            store.close()
+            context.deleteDatabase(sourceDatabase)
+            context.deleteDatabase(targetDatabase)
+            skinManager.select(originalSkin)
+            val restoreOnboarding = onboarding.edit()
+            if (hadAskedForCalendarImport) {
+                restoreOnboarding.putBoolean("system-calendar-import-asked", askedForCalendarImport)
+            } else {
+                restoreOnboarding.remove("system-calendar-import-asked")
+            }
+            restoreOnboarding.commit()
+        }
+    }
+
+    @Test
     fun clearIcsExportUsesDocumentsUiAndContainsOnlyActivitySnapshots() {
         assumeTrue("DocumentsUI export flow must run on an isolated Android emulator",
             Build.HARDWARE == "ranchu" || Build.HARDWARE == "goldfish")
