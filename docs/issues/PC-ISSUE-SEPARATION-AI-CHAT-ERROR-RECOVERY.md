@@ -2,7 +2,7 @@
 
 Date: 2026-10-27
 
-Status: **The bounded local-provider failure and user-resend path passes Robolectric integration and the full offline Gradle gate. This does not sign off SEP-09/SEP-10 or S3.**
+Status: **Robolectric plus API 35 Native/Clear device replay verify sanitized HTTP 503 failure and explicit manual resend; no AI provider implementation, Core, Bridge, Clear or Studio runtime code changed. This closes one SEP-09 slice only; SEP-09/10 and S3 remain PARTIAL / HOLD.**
 
 ## Scope and finding
 
@@ -92,3 +92,21 @@ Evidence directory: `.local/android-test/reports/separation-20261027/ai-chat-rec
 ## Git
 
 This issue is test-only; no production app or Studio source changed. Test, narrow SEP-09 wording, and this report are committed separately from the pre-existing Clear source edits. Test commit: `0be7053cb59f1bb799b67d3736599dc0fd6507b3` (`test(skin): 验证 AI 失败后的手动重发安全性`).
+
+## API 35 Native/Clear provider failure and explicit resend (2026-11-01)
+
+The earlier report covered the real Host failure/re-send path only through Robolectric and a Studio Preview Mock. This follow-up runs the actual Native Compose UI and packaged Clear WebView on Android 15/API 35 (`emulator-5570`, WebView `124.0.6367.219`) against a deterministic loopback provider; it changes only the instrumentation test and evidence docs.
+
+For each skin, the local provider first returns HTTP 503 with a synthetic secret body marker. Neither skin retries automatically. The visible/persisted assistant error contains the sanitized status but not the provider body. A user then re-enters the same prompt and taps Send; only that action causes the second provider call, which returns the same success reply. Both retry request histories retain the original user turn and sanitized error, Native/Clear persisted and Clear-projected histories match exactly, and formal events/drafts/pending/commits/identities/sequence remain unchanged. Clear navigation, input and both Send actions use the existing real-touch helper, which asserts trusted touch events.
+
+### Evidence
+
+- Focused API 35 method `nativeAndClearProviderFailureRequiresExplicitResendAndSanitizesHistory`: **1/1 PASS**. The complete `PowerCalAiProposalReviewWebViewInstrumentedTest` class: **8/8 PASS**, zero failures/errors/skips. Marker: `http503=true automaticRetry=false explicitRequests=4 sanitizedBody=true historyParity=true storeWrite=false`.
+- Focused XML/logcat SHA-256: `A6C6F2F485AABF82057FDA20520D536CEB5A9E22E3FABED2B357BF4F4270E85E` / `E0819F5A494AE58ECF26CD467A843CE567C7964FD13EAD4EB3B462B02A81876B`.
+- Complete AI class XML/SHA-256: `FA90571275ABBDD4EEC83C36061EF1DAB60BA77DBEB25477F22517140A6B45BF`; class Gradle log SHA-256 `54894D13B65D687B39CAF33C3C1755D6B0F2D030A3C3F560ABD8E2C9FBB179E5`; error/resend device log SHA-256 `C028D54A4BBC11AFF419921D793ECC406CA42602F395E85DF837E146F08976EB`.
+- Forced offline full Gradle gate: **786/786 JVM, 125 suites, 0 failures/errors/skips; both boundaries and Debug/AndroidTest APK assembly pass; 171/171 tasks; lint 0 errors / 56 warnings**. Gate log SHA-256 `5D6A872EA5E0A036A822B5A3349DC6F6DA3027DC9DB46E92824A1B9C824CD77C`; lint XML SHA-256 `15F260CFDAB12D96889070F0467B3C69ADFB8E4AFD4B033D42B2049414CAF549`.
+- Skin Studio Python tests: **65/65 PASS**, log SHA-256 `F0078AE7A1F8847C19A1FEF31624469AD3DC655A9EF2478AC2C39D29F6641FD3`.
+- Debug/AndroidTest APK SHA-256: `EF85EA15AB31353F9A26C3EEEC3B5DBFC9CEB38BC73069752F7AB66F85965650` / `25FBAB5240B7FD23A72ED6DF60952753A8CF4E874BCF8CE737EDA6651BF67ED8`. The AndroidTest APK also compiles two protected other-Agent test files; neither file was edited, staged, or executed by the focused AI class.
+- Test source SHA-256 `FB56C264B0D0BE4884DCDF4DBA5E76E5887E3AD372331545225CAA5F85985ABD`. Evidence files are under `.local/android-test/reports/sep09-provider-error-resend-api35-20261101/`.
+
+The first harness attempt stopped before an outbound request because `Instrumentation.sendStringSync` left a Chinese prompt empty in the WebView; the test now uses an ASCII prompt. A later assertion sampled persisted history before the async save completed; the final test waits for the full durable history before comparing. Neither was a reproduced product failure. This proves one local-stub manual resend slice, not live-provider behavior, one-tap retry, process-death recovery, physical/OEM operation, or full SEP-09/10 parity. Those rows remain **PARTIAL / HOLD**.

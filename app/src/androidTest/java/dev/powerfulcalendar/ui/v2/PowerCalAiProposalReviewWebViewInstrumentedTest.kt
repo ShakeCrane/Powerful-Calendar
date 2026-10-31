@@ -485,6 +485,221 @@ class PowerCalAiProposalReviewWebViewInstrumentedTest {
     }
 
     @Test
+    fun nativeAndClearProviderFailureRequiresExplicitResendAndSanitizesHistory() {
+        val storage = compose.activity.applicationContext
+        val nativeNamespace = "pc-ai-retry-native-${UUID.randomUUID()}"
+        val clearNamespace = "pc-ai-retry-clear-${UUID.randomUUID()}"
+        val nativeContext = IsolatedAppContext(compose.activity, storage, nativeNamespace)
+        val clearContext = IsolatedAppContext(compose.activity, storage, clearNamespace)
+        val nativeDatabase = "ai-retry-native.db"
+        val clearDatabase = "ai-retry-clear.db"
+        val nativeStore = PowerStore(nativeContext, nativeDatabase)
+        val clearStore = PowerStore(clearContext, clearDatabase)
+        val prompt = "summarize tomorrow's plan"
+        val providerSecret = "PROVIDER_SECRET_ERROR_BODY_MUST_NOT_ESCAPE"
+        val recoveredReply = "连接已恢复，我继续回答刚才的问题。"
+        val requests = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val responseSent = CountDownLatch(4)
+        val serverFailure = AtomicReference<Throwable?>()
+
+        fun initialize(context: IsolatedAppContext, store: PowerStore) {
+            context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                .edit().putBoolean("system-calendar-import-asked", true).commit()
+            AiChatHistoryStore.save(context, emptyList())
+            assertTrue("retry fixture Store must start empty", store.all().isEmpty())
+        }
+
+        fun storeSnapshot(store: PowerStore) = listOf(
+            store.all().size.toLong(), store.draftCount(), store.pendingCount().toLong(),
+            store.commitCount(), store.identityCount(), store.nextSequencePreview()
+        )
+
+        fun assertFailureIsSanitized(context: IsolatedAppContext, expectedRequests: Int) {
+            compose.waitUntil(20_000) {
+                requests.size >= expectedRequests && AiChatHistoryStore.load(context).any {
+                    it.role == "assistant" && it.content.contains("HTTP 503")
+                }
+            }
+            SystemClock.sleep(500)
+            assertEquals("HTTP 503 must not trigger an automatic retry", expectedRequests,
+                requests.size)
+            assertFalse("provider error body must be absent from persisted history",
+                AiChatHistoryStore.load(context).any { it.content.contains(providerSecret) })
+        }
+
+        try {
+            initialize(nativeContext, nativeStore)
+            initialize(clearContext, clearStore)
+            val nativeBefore = storeSnapshot(nativeStore)
+            val clearBefore = storeSnapshot(clearStore)
+
+            ServerSocket(0, 4, InetAddress.getByName("127.0.0.1")).use { server ->
+                server.soTimeout = 30_000
+                val endpoint = "http://127.0.0.1:${server.localPort}/v1"
+                listOf(nativeContext, clearContext).forEach { context ->
+                    AiSettingsStore.save(context, AiSettings(
+                        endpoint = endpoint,
+                        model = "local-stub:free",
+                        apiKey = "LOCAL_TEST_ONLY",
+                        enabled = true,
+                        shareContext = false
+                    ))
+                }
+                val serverThread = Thread {
+                    try {
+                        repeat(4) { index ->
+                            server.accept().use { socket ->
+                                socket.soTimeout = 15_000
+                                requests += readRequest(socket)
+                                if (index == 0 || index == 2) {
+                                    writeFailure(socket, providerSecret)
+                                } else {
+                                    writeReply(socket, recoveredReply)
+                                }
+                            }
+                            responseSent.countDown()
+                        }
+                    } catch (error: Throwable) {
+                        serverFailure.set(error)
+                        while (responseSent.count > 0) responseSent.countDown()
+                    }
+                }.apply { name = "pc-native-clear-ai-error-resend"; isDaemon = true; start() }
+
+                compose.runOnUiThread {
+                    PowerCalSkinRegistry.reset()
+                    SkinPackageManager(nativeContext).selectNativeForEmergencyRecovery()
+                    compose.activity.setContent {
+                        CompositionLocalProvider(LocalContext provides nativeContext) {
+                            PowerCalTheme { PowerCalApp(nativeStore) }
+                        }
+                    }
+                }
+                compose.waitUntil(30_000) {
+                    compose.onAllNodesWithText("AI 助手").fetchSemanticsNodes().isNotEmpty()
+                }
+                compose.onNodeWithText("AI 助手").performClick()
+                compose.onNodeWithText("发送消息…").performTextInput(prompt)
+                compose.onNodeWithText("发送").performClick()
+                compose.waitUntil(20_000) {
+                    compose.onAllNodesWithText("HTTP 503", substring = true)
+                        .fetchSemanticsNodes().isNotEmpty()
+                }
+                assertFailureIsSanitized(nativeContext, expectedRequests = 1)
+                compose.onNodeWithText("AI 请求未完成", substring = true).assertExists()
+                compose.onNodeWithText("发送消息…").performTextInput(prompt)
+                compose.onNodeWithText("发送").performClick()
+                compose.waitUntil(20_000) {
+                    compose.onAllNodesWithText(recoveredReply)
+                        .fetchSemanticsNodes().isNotEmpty()
+                }
+                assertEquals("only an explicit Native resend may issue the second request",
+                    2, requests.size)
+                val nativeHistory = AiChatHistoryStore.load(nativeContext)
+                    .map { it.role to it.content }
+                assertEquals(listOf("user", "assistant", "user", "assistant"),
+                    nativeHistory.map { it.first })
+                assertTrue(nativeHistory[1].second.contains("HTTP 503"))
+                assertEquals(recoveredReply, nativeHistory[3].second)
+
+                compose.runOnUiThread {
+                    compose.activity.setContent { }
+                    PowerCalSkinRegistry.reset()
+                    SkinPackageManager(clearContext).select("powercal-clear-default")
+                    compose.activity.setContent {
+                        CompositionLocalProvider(LocalContext provides clearContext) {
+                            PowerCalTheme { PowerCalApp(clearStore) }
+                        }
+                    }
+                }
+                var web: WebView? = null
+                compose.waitUntil(30_000) {
+                    compose.runOnUiThread {
+                        web = findWebView(compose.activity.findViewById(android.R.id.content))
+                    }
+                    web != null
+                }
+                val view = requireNotNull(web)
+                awaitJs(view, "!!document.querySelector('.clear-tabbar [data-action=ai]')")
+                val aiTabTouch = tapWebSelector(view, ".clear-tabbar [data-action=ai]")
+                awaitJs(view, "!document.querySelector('#aiPage').hidden")
+                val firstInputTouch = tapWebSelector(view, "#chatInput", requireTrustedClick = false)
+                InstrumentationRegistry.getInstrumentation().sendStringSync(prompt)
+                awaitJs(view, "document.querySelector('#chatInput')?.value===${JSONObject.quote(prompt)}")
+                val firstSendTouch = tapWebSelector(view, "#chatSend")
+                compose.waitUntil(20_000) {
+                    requests.size >= 3 &&
+                        !WebSkinBridgeRuntime.state().optBoolean("chatBusy") &&
+                        evaluate(view, "document.querySelector('#chatMessages')?.textContent.includes('HTTP 503')") == "true"
+                }
+                assertFailureIsSanitized(clearContext, expectedRequests = 3)
+                assertFalse("provider response body must not enter the Clear projection",
+                    WebSkinBridgeRuntime.state().toString().contains(providerSecret))
+                val secondInputTouch = tapWebSelector(view, "#chatInput", requireTrustedClick = false)
+                InstrumentationRegistry.getInstrumentation().sendStringSync(prompt)
+                awaitJs(view, "document.querySelector('#chatInput')?.value===${JSONObject.quote(prompt)}")
+                val secondSendTouch = tapWebSelector(view, "#chatSend")
+                awaitJs(view, "document.querySelector('#chatMessages')?.textContent.includes(" +
+                    "${JSONObject.quote(recoveredReply)})")
+
+                assertTrue("all four user-triggered provider responses must finish",
+                    responseSent.await(2, TimeUnit.SECONDS))
+                serverThread.join(2_000)
+                assertNull("local provider server failed", serverFailure.get())
+                assertEquals("Native and Clear each send once, then only after explicit resend", 4,
+                    requests.size)
+                compose.waitUntil(20_000) {
+                    AiChatHistoryStore.load(clearContext).size == nativeHistory.size
+                }
+                val clearHistory = AiChatHistoryStore.load(clearContext).map { it.role to it.content }
+                assertEquals("Native and Clear must persist the same failed and recovered turns",
+                    nativeHistory, clearHistory)
+                val projected = WebSkinBridgeRuntime.state().getJSONArray("chatMessages")
+                val clearProjection = (0 until projected.length()).map { index ->
+                    val message = projected.getJSONObject(index)
+                    message.getString("role") to message.getString("content")
+                }
+                assertEquals(nativeHistory, clearProjection)
+                assertTrue("the sanitized error must remain available for explicit retry context",
+                    requests[1].contains("HTTP 503") && requests[3].contains("HTTP 503"))
+                assertTrue("both retry requests must retain the original and resent prompt",
+                    listOf(requests[1], requests[3]).all { body ->
+                        body.windowed(prompt.length).count { it == prompt } >= 2
+                    })
+                assertFalse("provider error body must not leak into either retry request",
+                    requests.toString().contains(providerSecret))
+                assertFalse("provider error body must not leak into Clear's final history",
+                    clearHistory.any { it.second.contains(providerSecret) })
+                assertEquals("Native chat failure and resend must not write calendar data",
+                    nativeBefore, storeSnapshot(nativeStore))
+                assertEquals("Clear chat failure and resend must not write calendar data",
+                    clearBefore, storeSnapshot(clearStore))
+                assertEquals("Native and Clear stores must remain equivalent",
+                    nativeBefore, clearBefore)
+                println("NATIVE_CLEAR_AI_PROVIDER_FAILURE_RESEND " +
+                    "http503=true automaticRetry=false explicitRequests=4 sanitizedBody=true " +
+                    "historyParity=true storeWrite=false trustedTouches=" +
+                    "$aiTabTouch,$firstInputTouch,$firstSendTouch,$secondInputTouch,$secondSendTouch")
+            }
+        } finally {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            nativeStore.close()
+            clearStore.close()
+            nativeContext.deleteDatabase(nativeDatabase)
+            clearContext.deleteDatabase(clearDatabase)
+            listOf(nativeNamespace, clearNamespace).forEach { namespace ->
+                listOf("powercal-ai", "powercal-onboarding", "powercal-ui",
+                    "powercal-skin-choice", "powercal-profile", "powercal-file-ai-consent")
+                    .forEach { storage.deleteSharedPreferences("$namespace-$it") }
+                File(storage.cacheDir, namespace).deleteRecursively()
+            }
+        }
+    }
+
+    @Test
     fun nativeAndClearImageUploadRequiresConsentAndNeverPersistsRawBytes() {
         val storage = compose.activity.applicationContext
         val nativeNamespace = "pc-ai-image-native-${UUID.randomUUID()}"
@@ -1835,6 +2050,16 @@ class PowerCalAiProposalReviewWebViewInstrumentedTest {
             .put("message", JSONObject().put("role", "assistant").put("content", content))
             .put("finish_reason", "stop"))).toString().toByteArray(Charsets.UTF_8)
         val headers = ("HTTP/1.1 200 OK\r\n" +
+            "Content-Type: application/json; charset=utf-8\r\n" +
+            "Content-Length: ${body.size}\r\n" +
+            "Connection: close\r\n\r\n").toByteArray(Charsets.US_ASCII)
+        socket.getOutputStream().apply { write(headers); write(body); flush() }
+    }
+
+    private fun writeFailure(socket: java.net.Socket, providerBodyMarker: String) {
+        val body = JSONObject().put("error", providerBodyMarker).toString()
+            .toByteArray(Charsets.UTF_8)
+        val headers = ("HTTP/1.1 503 Service Unavailable\r\n" +
             "Content-Type: application/json; charset=utf-8\r\n" +
             "Content-Length: ${body.size}\r\n" +
             "Connection: close\r\n\r\n").toByteArray(Charsets.US_ASCII)
