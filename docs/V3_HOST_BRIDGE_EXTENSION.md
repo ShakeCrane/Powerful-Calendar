@@ -193,7 +193,12 @@ envelope and known fields only:
   `SkinPackageManager.install`; package validation and atomic temp-file/readback
   checks remain Host-owned, and a successful import never activates the package.
   `exportClearSkin` writes the verified canonical Clear bundle; installed-skin
-  export preserves the original validated archive bytes. `deleteSkin` opens the
+  export preserves the original validated archive bytes. Both exports use the
+  Host-owned SAF `CreateDocument` MIME `application/vnd.powercal.skin+zip` and a
+  `.pcskin` filename. The import picker accepts this MIME as well as ZIP and
+  octet-stream packages. On the tested API 35 DocumentsUI this keeps the custom
+  `.pcskin` suffix instead of appending `.zip`; other providers remain a separate
+  compatibility check. `deleteSkin` opens the
   existing trusted Host confirmation and uses the package manager; deleting the
   active third-party skin first selects Native recovery. These actions do not
   expose URIs, package paths, archive bytes, credentials, or calendar write
