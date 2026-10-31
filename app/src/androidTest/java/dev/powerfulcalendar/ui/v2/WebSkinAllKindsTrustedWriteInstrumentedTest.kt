@@ -1326,6 +1326,29 @@ class WebSkinAllKindsTrustedWriteInstrumentedTest {
             assertEquals(0L, nativeStore.draftCount())
             assertEquals(0, nativeStore.pendingCount())
 
+            compose.onNodeWithText("查看已完成").performTouchInput { click() }
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithText(seed.title, substring = true).fetchSemanticsNodes().isNotEmpty() &&
+                    compose.onAllNodes(isToggleable()).fetchSemanticsNodes().size == 1
+            }
+            compose.onAllNodes(isToggleable()).onFirst().performTouchInput { click() }
+            compose.waitUntil(30_000) {
+                nativeStore.get(nativeCreated.eventSeq)?.completedKeys?.isEmpty() == true
+            }
+            val nativeReopened = requireNotNull(nativeStore.get(nativeCreated.eventSeq))
+            assertEquals(3L, nativeReopened.revision)
+            assertEquals(emptySet<String>(), nativeReopened.completedKeys)
+            assertEquals(3L, nativeStore.commitCount())
+            assertEquals(1, nativeStore.identityCount())
+            assertEquals(2L, nativeStore.nextSequencePreview())
+            assertEquals(0L, nativeStore.draftCount())
+            assertEquals(0, nativeStore.pendingCount())
+            assertEquals(listOf("CREATE", "COMPLETE", "REOPEN"),
+                nativeStore.history(nativeCreated.eventSeq).asReversed().map { it.operation })
+            assertEquals(initialKeys,
+                TodoProjection.entries(listOf(nativeReopened), System.currentTimeMillis())
+                    .map { it.occurrenceKey })
+
             compose.runOnUiThread {
                 compose.activity.setContent { }
                 PowerCalSkinRegistry.reset()
@@ -1351,14 +1374,13 @@ class WebSkinAllKindsTrustedWriteInstrumentedTest {
             }
             val clearCompleted = requireNotNull(clearStore.get(clearCreated.eventSeq))
 
-            assertEquals("Native and Clear must persist the same occurrence-scoped form",
+            assertEquals("Native and Clear completion states must match before undo",
                 DraftForm.from(nativeCompleted), DraftForm.from(clearCompleted))
             assertEquals(nativeCompleted.eventSeq, clearCompleted.eventSeq)
             assertEquals(nativeCompleted.revision, clearCompleted.revision)
             assertEquals("other recurring slots remain incomplete",
                 setOf(occurrenceKey), clearCompleted.completedKeys)
             assertEquals(2L, clearStore.commitCount())
-            assertEquals(nativeStore.commitCount(), clearStore.commitCount())
             assertEquals(nativeStore.identityCount(), clearStore.identityCount())
             assertEquals(nativeStore.nextSequencePreview(), clearStore.nextSequencePreview())
             assertEquals(0L, clearStore.draftCount())
@@ -1367,10 +1389,47 @@ class WebSkinAllKindsTrustedWriteInstrumentedTest {
                 .map { it.occurrenceKey }
             assertEquals(listOf("${firstDate.plusDays(1)}T00:00", "${firstDate.plusDays(2)}T00:00"),
                 remainingKeys)
-            println("NATIVE_CLEAR_PARITY operation=COMPLETE kind=MEMO eventSeq=${clearCompleted.eventSeq} " +
-                "occurrenceKey=$occurrenceKey revision=${clearCompleted.revision} " +
+
+            val doneFilterTouch = tapWebSelector(web, ".tabs [data-filter='done']")
+            assertTrue("Clear Done filter must use trusted Android touchscreen input",
+                doneFilterTouch.getJSONObject("trustedClick").optBoolean("trusted"))
+            awaitJs(web, "document.querySelector(${JSONObject.quote(clearToggleSelector)})" +
+                "?.getAttribute('aria-label')==='恢复未完成'")
+            val reopenTouch = tapWebSelector(web, clearToggleSelector)
+            assertTrue("Clear recurring Memo undo must use a trusted touchscreen tap",
+                reopenTouch.getJSONObject("trustedClick").optBoolean("trusted"))
+            compose.waitUntil(30_000) {
+                clearStore.get(clearCreated.eventSeq)?.completedKeys?.isEmpty() == true
+            }
+            val clearReopened = requireNotNull(clearStore.get(clearCreated.eventSeq))
+            assertEquals(3L, clearReopened.revision)
+            assertEquals(emptySet<String>(), clearReopened.completedKeys)
+            assertEquals(3L, clearStore.commitCount())
+            assertEquals(nativeStore.commitCount(), clearStore.commitCount())
+            assertEquals(nativeStore.identityCount(), clearStore.identityCount())
+            assertEquals(nativeStore.nextSequencePreview(), clearStore.nextSequencePreview())
+            assertEquals(0L, clearStore.draftCount())
+            assertEquals(0, clearStore.pendingCount())
+            assertEquals(listOf("CREATE", "COMPLETE", "REOPEN"),
+                clearStore.history(clearCreated.eventSeq).asReversed().map { it.operation })
+            assertEquals(initialKeys,
+                TodoProjection.entries(listOf(clearReopened), System.currentTimeMillis())
+                    .map { it.occurrenceKey })
+            assertEquals("Native and Clear must persist the same reopened occurrence state",
+                DraftForm.from(nativeReopened), DraftForm.from(clearReopened))
+            assertEquals(nativeReopened.eventSeq, clearReopened.eventSeq)
+            assertEquals(nativeReopened.revision, clearReopened.revision)
+
+            val openFilterTouch = tapWebSelector(web, ".tabs [data-filter='open']")
+            assertTrue("Clear Open filter must use trusted Android touchscreen input",
+                openFilterTouch.getJSONObject("trustedClick").optBoolean("trusted"))
+            awaitJs(web, "document.querySelector(${JSONObject.quote(clearToggleSelector)})" +
+                "?.getAttribute('aria-label')==='完成 Memo'")
+            println("NATIVE_CLEAR_PARITY operation=COMPLETE_REOPEN kind=MEMO eventSeq=${clearReopened.eventSeq} " +
+                "occurrenceKey=$occurrenceKey revision=${clearReopened.revision} " +
+                "history=${clearStore.history(clearReopened.eventSeq).map { it.operation }} " +
                 "commits=${clearStore.commitCount()} identities=${clearStore.identityCount()} " +
-                "remaining=$remainingKeys")
+                "remaining=$initialKeys trustedUndo=true")
         } finally {
             resetClear()
             nativeStore.close()
