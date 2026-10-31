@@ -2063,3 +2063,10 @@ Updated: 2026-10-24
 - 配对方法 **1/1 PASS**，完整 `PowerCalAiProposalReviewWebViewInstrumentedTest` **6/6 PASS**。类 XML `DC78B7EBEA5BFFBC89A4D68CC7820D2028F31EBFCE806CB56BAFD0D72A27ACB9`；类 Gradle log `556A2E171914A55E0521AEABEB2636A0724CB1B20D33A1953362126298F8E128`。
 - 强制离线全门禁 **785/785 JVM / 125 suites / 0 failures/errors/skips / 171 tasks PASS**，两个 boundary、Debug/AndroidTest APK、lint 均过（0 errors/55 warnings）。日志 SHA-256 `CFD792E4A027A663E44D6CB38790B8244B33459C789A7BDFD9C1784CD20059B7`。首次 UTP 后处理挂在 ADB 用户查询，未计 PASS；恢复无快照保存的只读 AVD 后重新完整运行成功。
 - 本轮只有 AndroidTest 触屏辅助与配对用例、既有 AI Proposal Issue/SEP 矩阵/进度更新，无生产、Core 或 Bridge 修改。两份其他 Agent 的未提交 FormalDelete/Recurrence 测试保留且未暂存。SEP-10 仅该 CREATE→STAGE/ACTIVITY 切片有新配对证据；母项保持 **PARTIAL / HOLD**。详见 `PC-ISSUE-SEPARATION-AI-PROPOSAL-REVIEW.md` 与 `.local/android-test/reports/sep10-paired-ai-stage-20261031/`。
+
+## SEP-11 Native/Clear system-calendar permission denial 配对（2026-10-31）
+
+- API 35 Android 15 `emulator-5570`，同一隔离 Store 和空系统日历 provider。Native Settings 与 Clear Settings 各自真实触发 READ_CALENDAR Android 权限弹窗并拒绝；Clear 入口为可信触屏（pointerdown/up/click 均 isTrusted）。两侧拒绝前后 Store 正式事项、草稿/pending、commit、identity、序号水位及 calendar migration 数相同且不变，权限都为 DENIED；Clear 正确显示 Host 未授权通知。
+- 配对方法 **1/1 PASS**，XML `C70D04FF703D416C49085EE75C40D5445B60878B3A150D9F13E7EB7676AC3121`，设备结果 `AB33D7C29B2B4C32716FB4E74E186DD65C07C1250EEDDE61370AC87B82ED3978`，focused log `AEDDF518078EAD0738F67092BC9F2857BBF755E6437FC8F1E6AC36889C86C143`。
+- 强制离线全门禁 **785/785 JVM / 125 suites / 0 failures/errors/skips / 171 tasks PASS**，Skin/Native boundaries、Debug/AndroidTest APK、lint通过（0 errors/55 warnings）；门禁 SHA-256 `29513DEFC5D1FA133E49BD99C42D01EB49B2A34AF43EFDC53050EF24719A7FB4`。首轮测试助手 off-main WebView 访问导致的失败已保留并修正；最终连接任务通过。
+- 本轮只改 AndroidTest、SEP-11 既有 Issue/矩阵/进度，无生产/Core/Bridge语义变更。其他 Agent 的 FormalDelete/Recurrence 两份测试仍未暂存。该拒绝切片已验证；授权、非空日历导入、权限撤回、其余设置/系统操作、Studio-edited runtime 和实体/OEM未签核，SEP-11 仍 **PARTIAL / HOLD**。详见 `PC-ISSUE-SEPARATION-CLEAR-SETTINGS-OPTIONS.md` 与 `.local/android-test/reports/sep11-system-calendar-denial-parity-20261031/`。
