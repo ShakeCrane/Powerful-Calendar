@@ -1364,6 +1364,45 @@ class WebSkinAllKindsTrustedWriteInstrumentedTest {
             val clearToggleSelector = "#memoList [data-action='toggleMemo']" +
                 "[data-event-seq='${clearCreated.eventSeq}'][data-occurrence-key='$occurrenceKey']"
             awaitJs(web, "!!document.querySelector(${JSONObject.quote(clearToggleSelector)})")
+            val staleReplayHook = evaluateObject(web, """
+                (()=>{
+                  const channel=new MessageChannel();
+                  const portPrototype=Object.getPrototypeOf(channel.port1);
+                  channel.port1.close();channel.port2.close();
+                  const hadOwn=Object.prototype.hasOwnProperty.call(portPrototype,"postMessage");
+                  const descriptor=hadOwn?Object.getOwnPropertyDescriptor(portPrototype,"postMessage"):null;
+                  const original=portPrototype.postMessage;
+                  if(typeof original!=="function")return {installed:false,reason:"missing postMessage"};
+                  const capture={eventSeq:${clearCreated.eventSeq},occurrenceKey:${JSONObject.quote(occurrenceKey)},
+                    message:null,port:null,portPrototype,hadOwn,descriptor,original};
+                  try{
+                    Object.defineProperty(portPrototype,"postMessage",{
+                      configurable:true,enumerable:descriptor?.enumerable??false,writable:true,
+                      value:function(message,...args){
+                        if(capture.message===null&&typeof message==="string"){
+                          try{
+                            const envelope=JSON.parse(message),payload=envelope?.payload;
+                            if(envelope?.version===1&&envelope?.type==="action"&&
+                              payload?.name==="toggleMemo"&&payload.eventSeq===capture.eventSeq&&
+                              payload.occurrenceKey===capture.occurrenceKey){
+                              capture.message=message;capture.port=this;
+                            }
+                          }catch{}
+                        }
+                        return Reflect.apply(capture.original,this,[message,...args]);
+                      }
+                    });
+                    window.__pcMemoStaleReplay=capture;
+                    return {installed:portPrototype.postMessage!==original,
+                      prototype:"MessagePort",targetEventSeq:capture.eventSeq,
+                      targetOccurrenceKey:capture.occurrenceKey};
+                  }catch(error){
+                    return {installed:false,reason:String(error)};
+                  }
+                })()
+            """.trimIndent())
+            assertTrue("Clear stale-message capture must wrap the real WebMessagePort method: $staleReplayHook",
+                staleReplayHook.optBoolean("installed"))
             val completionTouch = tapWebSelector(web, clearToggleSelector)
             assertTrue("Memo completion must use a trusted Android touchscreen input",
                 completionTouch.getJSONObject("trustedClick").optBoolean("trusted"))
@@ -1373,6 +1412,43 @@ class WebSkinAllKindsTrustedWriteInstrumentedTest {
                 clearStore.get(clearCreated.eventSeq)?.completedKeys == setOf(occurrenceKey)
             }
             val clearCompleted = requireNotNull(clearStore.get(clearCreated.eventSeq))
+
+            val staleReplay = evaluateObject(web, """
+                (()=>{
+                  const capture=window.__pcMemoStaleReplay;
+                  if(!capture?.message||!capture.port)return {sent:false,reason:"trusted action was not captured"};
+                  const envelope=JSON.parse(capture.message),payload=envelope.payload;
+                  if(payload.expectedRevision!==1||payload.completed!==false)
+                    return {sent:false,reason:"captured action is not the pre-completion revision",payload};
+                  if(capture.hadOwn)Object.defineProperty(capture.portPrototype,"postMessage",capture.descriptor);
+                  else delete capture.portPrototype.postMessage;
+                  const raw=capture.message,port=capture.port;
+                  port.postMessage(raw);
+                  return {sent:true,eventSeq:payload.eventSeq,expectedRevision:payload.expectedRevision,
+                    occurrenceKey:payload.occurrenceKey,completed:payload.completed,
+                    exactMessage:raw};
+                })()
+            """.trimIndent())
+            assertTrue("Clear must replay the exact action emitted by the trusted completion tap: $staleReplay",
+                staleReplay.optBoolean("sent"))
+            assertEquals(clearCreated.eventSeq, staleReplay.getLong("eventSeq"))
+            assertEquals(1L, staleReplay.getLong("expectedRevision"))
+            assertEquals(occurrenceKey, staleReplay.getString("occurrenceKey"))
+            assertFalse(staleReplay.getBoolean("completed"))
+            awaitJs(web, "document.querySelector('#hostNotice')?.textContent.includes('Memo 已变化，请刷新')")
+            assertEquals("processing the stale Clear bridge action must not alter the completed record",
+                clearCompleted, clearStore.get(clearCreated.eventSeq))
+            assertEquals("stale replay cannot add another commit", 2L, clearStore.commitCount())
+            assertEquals(listOf("CREATE", "COMPLETE"),
+                clearStore.history(clearCreated.eventSeq).asReversed().map { it.operation })
+            assertEquals(1, clearStore.identityCount())
+            assertEquals(2L, clearStore.nextSequencePreview())
+            assertEquals(0L, clearStore.draftCount())
+            assertEquals(0, clearStore.pendingCount())
+            println("NATIVE_CLEAR_PARITY operation=STALE_REPLAY kind=MEMO eventSeq=${clearCreated.eventSeq} " +
+                "expectedRevision=${staleReplay.getLong("expectedRevision")} currentRevision=${clearCompleted.revision} " +
+                "occurrenceKey=$occurrenceKey accepted=false commits=${clearStore.commitCount()} " +
+                "hostNotice=Memo已变化")
 
             assertEquals("Native and Clear completion states must match before undo",
                 DraftForm.from(nativeCompleted), DraftForm.from(clearCompleted))
