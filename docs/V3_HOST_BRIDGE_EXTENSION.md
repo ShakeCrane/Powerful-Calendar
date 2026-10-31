@@ -13,6 +13,12 @@ Store snapshot and its initial projections (including Memo entries) have loaded,
 when the Store is empty. Before that frame, a skin should queue outbound actions and
 commands rather than treating an empty projection as the loaded calendar.
 
+`hostNotice` is the current Host-owned transient status message, capped at 1,000
+characters; it is `null` when no message is active and the Host clears it after five
+seconds. A skin should show nonblank values in a visible, accessible status region and
+hide that region when the value is null or blank. Render it as text, never as HTML.
+This field carries presentation feedback only and grants no action or data capability.
+
 New:
 - `optionGroups`: host-owned semantic choices; render every option of a group
   with the same style. Each item carries `id,label,detail,icon,enabled`.

@@ -1740,6 +1740,7 @@ fun PowerCalApp(
             )
             val stateMemoRemainingCount = (stateTodoEntries.size - stateMemoVisibleCount).coerceAtLeast(0)
             JSONObject().put("bridgeVersion", WebSkinBridgeRuntime.VERSION).put("page", page)
+                .put("hostNotice", message?.take(1_000) ?: JSONObject.NULL)
                 .put("hostDataReady", hostDataReady)
                 .put("aiLocked", aiLocked).put("pendingCount", pendingCount)
                 .put("memoCount", stateTodoCount)

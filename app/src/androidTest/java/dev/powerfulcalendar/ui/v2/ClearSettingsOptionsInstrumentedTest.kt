@@ -1,5 +1,6 @@
 package dev.powerfulcalendar.ui.v2
 
+import android.Manifest
 import android.app.Activity
 import android.app.Instrumentation
 import android.accessibilityservice.AccessibilityService
@@ -7,6 +8,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.graphics.Rect
 import android.os.Build
@@ -115,6 +117,33 @@ class ClearSettingsOptionsInstrumentedTest {
             SystemClock.sleep(150)
         }
         throw AssertionError("DocumentsUI picker control did not appear")
+    }
+
+    private fun waitForPermissionAction(vararg labels: String): AccessibilityNodeInfo {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val deadline = SystemClock.elapsedRealtime() + 15_000
+        while (SystemClock.elapsedRealtime() < deadline) {
+            val root = instrumentation.uiAutomation.rootInActiveWindow
+            val packageName = root?.packageName?.toString().orEmpty()
+            if (packageName.contains("permissioncontroller", ignoreCase = true)) {
+                labels.forEach { label ->
+                    findAccessibilityNode(root, text = label)?.let { return it }
+                }
+            }
+            SystemClock.sleep(150)
+        }
+        val root = instrumentation.uiAutomation.rootInActiveWindow
+        throw AssertionError(
+            "Android calendar permission action ${labels.toList()} did not appear; " +
+                "package=${root?.packageName}; ${accessibilitySnapshot(root)}"
+        )
+    }
+
+    private fun executeShell(command: String): String {
+        val descriptor = InstrumentationRegistry.getInstrumentation()
+            .uiAutomation.executeShellCommand(command)
+        return ParcelFileDescriptor.AutoCloseInputStream(descriptor)
+            .bufferedReader().use { it.readText() }
     }
 
     private fun waitForPickerEditableNode(timeoutMillis: Long = 15_000): AccessibilityNodeInfo {
@@ -352,6 +381,154 @@ class ClearSettingsOptionsInstrumentedTest {
                 restoreOnboarding.remove("system-calendar-import-asked")
             }
             restoreOnboarding.commit()
+        }
+    }
+
+    @Test
+    fun clearSystemCalendarPermissionDenyAndAllowAreVisibleAndDoNotWriteWhenProviderIsEmpty() {
+        assumeTrue("permission decision test requires an isolated Android emulator",
+            Build.HARDWARE == "ranchu" || Build.HARDWARE == "goldfish")
+        val context = compose.activity.applicationContext
+        val permission = Manifest.permission.READ_CALENDAR
+        val packageName = context.packageName
+        val initialGranted = context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
+        assumeTrue("The AVD must begin with calendar permission denied", !initialGranted)
+        fun permissionFlagNames(): Set<String> {
+            val dump = executeShell("dumpsys package $packageName")
+            val flags = Regex(
+                "android\\.permission\\.READ_CALENDAR: granted=(?:true|false), flags=\\[(.*?)]",
+                RegexOption.DOT_MATCHES_ALL
+            ).find(dump)?.groupValues?.get(1).orEmpty()
+            return flags.split('|').map(String::trim).filter(String::isNotEmpty).toSet()
+        }
+        val initialFlags = permissionFlagNames()
+        val initialUserSet = "USER_SET" in initialFlags
+        val initialUserFixed = "USER_FIXED" in initialFlags
+        val calendarRows = executeShell(
+            "content query --uri content://com.android.calendar/calendars --projection _id"
+        )
+        assumeTrue("The isolated AVD must contain no system calendars or user events",
+            calendarRows.contains("No result found", ignoreCase = true))
+
+        val databaseName = "clear-calendar-permission-${UUID.randomUUID()}.db"
+        val store = PowerStore(context, databaseName)
+        val skinManager = SkinPackageManager(context)
+        val originalSkin = skinManager.currentId()
+        val onboarding = context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+        val hadOnboardingFlag = onboarding.contains("system-calendar-import-asked")
+        val originalOnboardingFlag = onboarding.getBoolean("system-calendar-import-asked", false)
+        var web: WebView? = null
+
+        fun storeSnapshot() = listOf(
+            store.all(), store.pendingCount(), store.commitCount(),
+            store.identityCount(), store.nextSequencePreview(),
+            store.readableDatabase.rawQuery(
+                "SELECT COUNT(*) FROM migrations WHERE source='android-calendar'", null
+            ).use { cursor -> cursor.moveToFirst(); cursor.getInt(0) }
+        )
+
+        try {
+            executeShell("pm clear-permission-flags $packageName $permission user-set user-fixed")
+            assertEquals(PackageManager.PERMISSION_DENIED, context.checkSelfPermission(permission))
+            onboarding.edit().putBoolean("system-calendar-import-asked", true).commit()
+            PowerCalSkinRegistry.reset()
+            skinManager.select("powercal-clear-default")
+            compose.runOnUiThread {
+                compose.activity.setContent { PowerCalTheme { PowerCalApp(store) } }
+            }
+
+            compose.waitUntil(30_000) {
+                compose.runOnUiThread {
+                    web = findWebView(compose.activity.findViewById(android.R.id.content))
+                }
+                web != null
+            }
+            val view = requireNotNull(web)
+            compose.waitUntil(30_000) {
+                evaluate(view, "!!window.PowerCalSkin?.receive") == "true"
+            }
+            evaluate(view,
+                "document.querySelector('.clear-tabbar [data-action=settings]').click(); true")
+            compose.waitUntil(15_000) {
+                WebSkinBridgeRuntime.state().optString("page") == "SETTINGS"
+            }
+            compose.waitUntil(15_000) {
+                evaluate(view, "Array.from(document.querySelectorAll(" +
+                    "'#settingsOptionGroups [data-option-id]')).some(" +
+                    "el=>el.dataset.optionId==='calendar.import.system')") == "true"
+            }
+
+            val before = storeSnapshot()
+            fun requestSystemCalendarImport() {
+                evaluate(view, "Array.from(document.querySelectorAll(" +
+                    "'#settingsOptionGroups [data-option-id]')).find(" +
+                    "el=>el.dataset.optionId==='calendar.import.system').click(); true")
+            }
+            fun hostNoticeIsVisibleAndAccessible(text: String): Boolean {
+                val expected = JSONObject.quote(text)
+                return evaluate(view, "(()=>{const e=document.getElementById('hostNotice');" +
+                    "return !!e&&e.textContent===$expected&&!e.hidden&&" +
+                    "getComputedStyle(e).display!=='none'&&e.getClientRects().length>0&&" +
+                    "e.getAttribute('role')==='status'&&e.getAttribute('aria-live')==='polite'})()") == "true"
+            }
+
+            requestSystemCalendarImport()
+            tapPickerNode(waitForPermissionAction("Don't allow", "Don’t allow", "不允许", "拒绝"))
+            compose.waitUntil(10_000) {
+                hostNoticeIsVisibleAndAccessible("未授权读取系统日历")
+            }
+            assertEquals(PackageManager.PERMISSION_DENIED, context.checkSelfPermission(permission))
+            assertEquals("Denying system-calendar permission must not query-import or write the Store",
+                before, storeSnapshot())
+
+            requestSystemCalendarImport()
+            tapPickerNode(waitForPermissionAction("Allow", "允许", "允许访问日历"))
+            compose.waitUntil(15_000) {
+                context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED &&
+                    hostNoticeIsVisibleAndAccessible("系统日历没有可导入的事件")
+            }
+            assertEquals("The real granted path reads the empty system provider without creating a batch",
+                before, storeSnapshot())
+        } finally {
+            repeat(2) {
+                if (InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow
+                        ?.packageName?.toString()?.contains("permissioncontroller", ignoreCase = true) == true
+                ) {
+                    InstrumentationRegistry.getInstrumentation().uiAutomation.performGlobalAction(
+                        AccessibilityService.GLOBAL_ACTION_BACK
+                    )
+                    SystemClock.sleep(200)
+                }
+            }
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            store.close()
+            context.deleteDatabase(databaseName)
+            skinManager.select(originalSkin)
+            val restoreOnboarding = onboarding.edit()
+            if (hadOnboardingFlag) {
+                restoreOnboarding.putBoolean("system-calendar-import-asked", originalOnboardingFlag)
+            } else {
+                restoreOnboarding.remove("system-calendar-import-asked")
+            }
+            check(restoreOnboarding.commit())
+
+            executeShell("pm clear-permission-flags $packageName $permission user-set user-fixed")
+            if (initialUserSet) {
+                executeShell("pm set-permission-flags $packageName $permission user-set")
+            }
+            if (initialUserFixed) {
+                executeShell("pm set-permission-flags $packageName $permission user-fixed")
+            }
+            // Revoking a granted runtime permission kills this package's process, which also
+            // hosts the instrumentation runner. The ADB test harness restores grant state after
+            // am instrument exits; this test restores only permission decision flags here.
+            val finalFlags = permissionFlagNames()
+            assertEquals(initialUserSet, "USER_SET" in finalFlags)
+            assertEquals(initialUserFixed, "USER_FIXED" in finalFlags)
         }
     }
 

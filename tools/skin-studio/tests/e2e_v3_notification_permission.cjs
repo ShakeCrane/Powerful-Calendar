@@ -77,7 +77,8 @@ async function main(){
     const route=await evaluate("window.__clearActions[0]");
     if(route?.payload?.name!=="settings")throw Error("Clear settings tab emitted the wrong route");
     await evaluate(`window.__clearHostPort.postMessage(JSON.stringify({version:1,type:'state',payload:{
-      page:'SETTINGS',notificationPermission:{required:true,allowed:false},
+      page:'SETTINGS',hostNotice:'从 Android 宿主接收的测试通知',
+      notificationPermission:{required:true,allowed:false},
       exactAlarmPermission:{required:true,allowed:false},
       optionGroups:[
         {id:'calendar.import',label:'导入',items:[
@@ -107,6 +108,12 @@ async function main(){
     await waitFor(`!document.querySelector('#settingsPage').hidden&&
       document.querySelector('#notificationPermissionStatus').textContent.includes('BLOCKED')`,
       "Denied permission status");
+    await waitFor(`(()=>{const e=document.querySelector('#hostNotice');return !!e&&
+      e.textContent==='从 Android 宿主接收的测试通知'&&!e.hidden&&
+      getComputedStyle(e).display!=='none'&&e.getClientRects().length>0&&
+      e.getAttribute('role')==='status'&&e.getAttribute('aria-live')==='polite'})()`,
+      "Accessible Host notice rendering");
+    const hostNoticeText=await evaluate("document.querySelector('#hostNotice').textContent");
     const deniedText=await evaluate("document.querySelector('#notificationPermissionStatus').textContent");
     await waitFor(`document.querySelector('#exactAlarmPermissionStatus').textContent.includes('BLOCKED')&&
       !document.querySelector('[data-action="openExactAlarmSettings"]').hidden`,
@@ -213,7 +220,7 @@ async function main(){
         permissionRequest.payload.name,exactAlarmRequest.payload.name,
         reconcileRequest.payload.name,recovery.payload.name],
       settingsOptionIds:JSON.parse(settingsOptionIds),
-      deniedText,grantedText,legacyText,exactDeniedText,exactGrantedText,exactLegacyText,
+      hostNoticeText,deniedText,grantedText,legacyText,exactDeniedText,exactGrantedText,exactLegacyText,
       reminderDiagnosticText,
       systemDiagnosticText,
       canonicalClearAssetSha256:crypto.createHash("sha256").update(fs.readFileSync(assetPath)).digest("hex"),

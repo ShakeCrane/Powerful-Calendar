@@ -455,6 +455,9 @@ function receive(raw){
   attachmentRequestPending=Boolean(state.chatAttachmentBusy);
   $("pendingCounter").textContent=Number(state.pendingCount)||"";
   $("memoCounter").textContent=Number(state.memoCount)||"";
+  const hostNotice=typeof state.hostNotice==="string"?state.hostNotice.trim():"";
+  $("hostNotice").textContent=hostNotice;
+  $("hostNotice").hidden=hostNotice.length===0;
   $("app").classList.toggle("reduced",Boolean(state.reducedMotion));
   renderPage();
   if(state.hostDataReady===false)bridgeReady=false;
