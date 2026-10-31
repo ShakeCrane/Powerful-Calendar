@@ -100,3 +100,5 @@ Store 前后快照相等，涵盖正式对象序号/版本/类型、待处理草
 - 生产 Host 与回归测试提交 `f5fb8d420def3a933b365bc0f9f4a62323dd5c77`（`fix(皮肤分离): 捕获脚本异常并触发原生恢复`）已快进推送至 `origin/feat/skin-first-separation`。其他 Agent 的 FormalDelete/Recurrence AndroidTest 修改保持未触碰、未暂存；它们参与 AndroidTest APK 编译，但本次定向恢复类没有执行。
 
 该 follow-up 关闭“皮肤来源的未捕获 JavaScript 异常”恢复切片；没有证明 caught/silent failures、恶意但不抛错的行为、升级失败、设备重启或实体/OEM。SEP-14 仍为 **PARTIAL / HOLD**。
+
+2026-10-31 Studio Python 全量回归暴露了一条过期静态断言：它仍要求源码出现 `onSkinFailure()`，而 `f5fb8d4` 已把回调收束为每 bundle 幂等的 `reportFailure → currentOnSkinFailure()`。仅更新测试契约以检查 compare-and-set 闸门、当前回调调用和传给 `SecureWebSkin` 的转发；没有生产源码变更。Studio Python suite **65/65 PASS**，`WebSkinRendererRecoveryInstrumentedTest` 在 API 35 / `emulator-5570` 复跑 **3/3 PASS**。JUnit XML SHA-256 `adb77c6823ea5bd63ef11b8eaec5d9d3edc6c0b3f78d187f3296601a86cbeb38`；完整日志位于 `.local/android-test/reports/sep15-studio-clear-bridge-20261031/studio-python-tests.log` 与 `renderer-recovery-android-test.log`。SEP-14 总项保持 **PARTIAL / HOLD**。
