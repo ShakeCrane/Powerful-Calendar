@@ -28,6 +28,8 @@ import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.click
+import androidx.compose.ui.test.swipeLeft
+import androidx.compose.ui.test.swipeRight
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import dev.powerfulcalendar.core.DraftForm
@@ -164,6 +166,115 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
         awaitJs(web, "window.__monthOccurrenceTap?.trusted===true")
         return JSONObject(JSONArray("[${evaluate(web, "JSON.stringify(window.__monthOccurrenceTap)")}]" )
             .getString(0))
+    }
+
+    private fun injectHorizontalSwipe(startX: Float, endX: Float, y: Float) {
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        val downTime = SystemClock.uptimeMillis()
+
+        fun inject(action: Int, eventTime: Long, x: Float) {
+            val event = MotionEvent.obtain(downTime, eventTime, action, x, y, 0).apply {
+                source = InputDevice.SOURCE_TOUCHSCREEN
+            }
+            try {
+                assertTrue("Android rejected touchscreen swipe event action=$action",
+                    automation.injectInputEvent(event, true))
+            } finally {
+                event.recycle()
+            }
+        }
+
+        inject(MotionEvent.ACTION_DOWN, downTime, startX)
+        repeat(8) { index ->
+            SystemClock.sleep(24)
+            val fraction = (index + 1) / 8f
+            inject(MotionEvent.ACTION_MOVE, SystemClock.uptimeMillis(),
+                startX + (endX - startX) * fraction)
+        }
+        SystemClock.sleep(24)
+        inject(MotionEvent.ACTION_UP, SystemClock.uptimeMillis(), endX)
+    }
+
+    private fun swipeClearMonthGrid(web: WebView, forward: Boolean): JSONObject {
+        val rawProbe = evaluate(web, """(()=>{
+          const grid=document.querySelector('#monthGrid');
+          if(!grid)return JSON.stringify({found:false});
+          const rect=grid.getBoundingClientRect();
+          window.__monthSwipeProbe={down:false,up:false,cancelled:false,downTrusted:false,upTrusted:false,pointerId:null};
+          document.addEventListener('pointerdown',event=>{
+            const target=event.target instanceof Element?event.target:event.target?.parentElement;
+            if(target?.closest('#monthGrid')){
+              window.__monthSwipeProbe.down=true;
+              window.__monthSwipeProbe.downTrusted=event.isTrusted;
+              window.__monthSwipeProbe.pointerId=event.pointerId;
+            }
+          },true);
+          document.addEventListener('pointerup',event=>{
+            if(window.__monthSwipeProbe?.pointerId===event.pointerId){
+              window.__monthSwipeProbe.up=true;
+              window.__monthSwipeProbe.upTrusted=event.isTrusted;
+            }
+          },true);
+          document.addEventListener('pointercancel',event=>{
+            if(window.__monthSwipeProbe?.pointerId===event.pointerId){
+              window.__monthSwipeProbe.cancelled=true;
+              window.__monthSwipeProbe.cancelX=event.clientX;
+              window.__monthSwipeProbe.cancelY=event.clientY;
+            }
+          },true);
+          return JSON.stringify({found:true,left:rect.left,right:rect.right,top:rect.top,
+            height:rect.height,width:rect.width,cssWidth:innerWidth,cssHeight:innerHeight,
+            gridTouchAction:getComputedStyle(grid).touchAction,
+            cellTouchAction:getComputedStyle(grid.querySelector('button')).touchAction});
+        })()""")
+        val probe = JSONObject(JSONArray("[$rawProbe]").getString(0))
+        assertTrue("Clear month grid is missing or not laid out: $probe",
+            probe.optBoolean("found") && probe.getDouble("width") > 100 &&
+                probe.getDouble("height") > 100)
+
+        val location = IntArray(2)
+        val webSize = AtomicReference<Pair<Int, Int>>()
+        compose.runOnUiThread {
+            web.getLocationOnScreen(location)
+            webSize.set(web.width to web.height)
+        }
+        val (width, height) = requireNotNull(webSize.get())
+        val scaleX = width / probe.getDouble("cssWidth")
+        val scaleY = height / probe.getDouble("cssHeight")
+        assertEquals("WebView touch mapping must preserve aspect ratio", scaleX, scaleY, 0.03)
+        val edgeGuard = 80.0
+        val startCssX = if (forward) {
+            minOf(probe.getDouble("right") - 12, probe.getDouble("cssWidth") - edgeGuard)
+        } else {
+            maxOf(probe.getDouble("left") + 12, edgeGuard)
+        }
+        val endCssX = if (forward) {
+            maxOf(probe.getDouble("left") + 12, edgeGuard)
+        } else {
+            minOf(probe.getDouble("right") - 12, probe.getDouble("cssWidth") - edgeGuard)
+        }
+        val yCss = probe.getDouble("top") + probe.getDouble("height") / 2
+        injectHorizontalSwipe(
+            location[0] + (startCssX * scaleX).toFloat(),
+            location[0] + (endCssX * scaleX).toFloat(),
+            location[1] + (yCss * scaleY).toFloat()
+        )
+        val completed = runCatching {
+            compose.waitUntil(3_000) {
+                evaluate(web, "window.__monthSwipeProbe?.down===true&&" +
+                    "(window.__monthSwipeProbe?.up===true||window.__monthSwipeProbe?.cancelled===true)") == "true"
+            }
+        }.isSuccess
+        val result = evaluate(web, "JSON.stringify(window.__monthSwipeProbe)")
+        val details = JSONObject(JSONArray("[$result]").getString(0))
+            .put("startCssX", startCssX).put("endCssX", endCssX).put("yCss", yCss)
+            .put("gridTouchAction", probe.getString("gridTouchAction"))
+            .put("cellTouchAction", probe.getString("cellTouchAction"))
+            .put("gestureCompleted", completed)
+        println("CLEAR_MONTH_SWIPE_TOUCH $details")
+        assertTrue("Clear grid did not receive a complete trusted pointer swipe: $details",
+            completed && details.optBoolean("downTrusted") && details.optBoolean("upTrusted"))
+        return details
     }
 
     @Test
@@ -529,6 +640,162 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
                 "pickedMonth=$targetMonth selectedDate=$targetDate today=$clearToday " +
                 "nativeCameraUnchanged=true clearCameraUnchanged=true storesUnchanged=true " +
                 "trustedTouches=${listOf(monthSubmit, clearDateTap, todayTap).map { it.optBoolean("trusted") }}")
+        } finally {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            nativeStore.close()
+            clearStore.close()
+            nativeContext.deleteDatabase(database)
+            clearContext.deleteDatabase(database)
+            listOf(nativeNamespace, clearNamespace).forEach { namespace ->
+                listOf("powercal-onboarding", "powercal-skin-choice", "powercal-ui", "powercal-profile")
+                    .forEach { storage.deleteSharedPreferences("$namespace-$it") }
+                File(storage.cacheDir, namespace).deleteRecursively()
+            }
+        }
+    }
+
+    @Test
+    fun nativeAndClearMonthGridSwipesNavigateOneMonthWithoutSelectingOrWriting() {
+        val storage = compose.activity.applicationContext
+        val nativeNamespace = "pc-month-swipe-native-${UUID.randomUUID()}"
+        val clearNamespace = "pc-month-swipe-clear-${UUID.randomUUID()}"
+        val nativeContext = IsolatedAppContext(compose.activity, storage, nativeNamespace)
+        val clearContext = IsolatedAppContext(compose.activity, storage, clearNamespace)
+        val database = "month-swipe.db"
+        val nativeStore = PowerStore(nativeContext, database)
+        val clearStore = PowerStore(clearContext, database)
+        val zone = ZoneId.systemDefault()
+        var web: WebView? = null
+
+        fun counts(store: PowerStore) = listOf(
+            store.draftCount(), store.pendingCount(), store.identityCount(), store.commitCount(),
+            store.nextSequencePreview(), store.nextQueueOrderPreview(), store.all().size.toLong()
+        )
+
+        fun timeline(state: JSONObject) = state.getJSONObject("timeline")
+
+        fun awaitNativeMonth(month: YearMonth) {
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithText("${month.year} 年").fetchSemanticsNodes().isNotEmpty() &&
+                    compose.onAllNodesWithText("${month.monthValue} 月").fetchSemanticsNodes().isNotEmpty()
+            }
+        }
+
+        try {
+            nativeContext.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                .edit().putBoolean("system-calendar-import-asked", true).commit()
+            PowerCalSkinRegistry.reset()
+            SkinPackageManager(nativeContext).selectNativeForEmergencyRecovery()
+            compose.runOnUiThread {
+                compose.activity.setContent {
+                    CompositionLocalProvider(LocalContext provides nativeContext) {
+                        PowerCalTheme { PowerCalApp(nativeStore) }
+                    }
+                }
+            }
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithText("日历").fetchSemanticsNodes().isNotEmpty()
+            }
+            val nativeInitial = WebSkinBridgeRuntime.state()
+            val nativeCamera = timeline(nativeInitial)
+            val nativeAnchor = nativeCamera.getLong("anchorMillis")
+            val nativeHours = nativeCamera.getDouble("hours")
+            val nativeCounts = counts(nativeStore)
+            val initialMonth = YearMonth.from(
+                java.time.Instant.ofEpochMilli(nativeAnchor).atZone(zone).toLocalDate()
+            )
+
+            compose.onNodeWithText("日历").performTouchInput { click() }
+            awaitNativeMonth(initialMonth)
+            val monthScrollNodes = compose.onAllNodes(hasScrollToIndexAction()).fetchSemanticsNodes()
+            assertEquals("Native Month should expose one swipeable calendar list", 1, monthScrollNodes.size)
+            compose.onNode(hasScrollToIndexAction()).performTouchInput { swipeLeft() }
+            val nextMonth = initialMonth.plusMonths(1)
+            awaitNativeMonth(nextMonth)
+            compose.onNodeWithContentDescription("${nextMonth.atDay(1)}，0 项").assertIsSelected()
+            val nativeAfterNext = WebSkinBridgeRuntime.state()
+            assertEquals(nativeAnchor, timeline(nativeAfterNext).getLong("anchorMillis"))
+            assertEquals(nativeHours, timeline(nativeAfterNext).getDouble("hours"), 0.0)
+            assertEquals(nativeCounts, counts(nativeStore))
+
+            compose.onNode(hasScrollToIndexAction()).performTouchInput { swipeRight() }
+            awaitNativeMonth(initialMonth)
+            compose.onNodeWithContentDescription("${initialMonth.atDay(1)}，0 项").assertIsSelected()
+            val nativeAfterPrevious = WebSkinBridgeRuntime.state()
+            assertEquals(nativeAnchor, timeline(nativeAfterPrevious).getLong("anchorMillis"))
+            assertEquals(nativeHours, timeline(nativeAfterPrevious).getDouble("hours"), 0.0)
+            assertEquals(nativeCounts, counts(nativeStore))
+
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+
+            clearContext.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                .edit().putBoolean("system-calendar-import-asked", true).commit()
+            SkinPackageManager(clearContext).select("powercal-clear-default")
+            compose.runOnUiThread {
+                compose.activity.setContent {
+                    CompositionLocalProvider(LocalContext provides clearContext) {
+                        PowerCalTheme { PowerCalApp(clearStore) }
+                    }
+                }
+            }
+            compose.waitUntil(30_000) {
+                compose.runOnUiThread {
+                    web = findWebView(compose.activity.findViewById(android.R.id.content))
+                }
+                web != null
+            }
+            val clearWeb = requireNotNull(web)
+            awaitJs(clearWeb, "!!window.PowerCalSkin&&!!document.querySelector('.clear-tabbar [data-action=month]')")
+            val clearBefore = WebSkinBridgeRuntime.state()
+            val clearCamera = timeline(clearBefore)
+            val clearAnchor = clearCamera.getLong("anchorMillis")
+            val clearHours = clearCamera.getDouble("hours")
+            val clearCounts = counts(clearStore)
+            tapClear(clearWeb, ".clear-tabbar [data-action='month']")
+            awaitJs(clearWeb, "!document.querySelector('#monthPage').hidden")
+            val clearInitialMonth = YearMonth.parse(
+                WebSkinBridgeRuntime.state().getJSONObject("month").getString("month")
+            )
+            assertEquals("Both skins begin at the same current month", initialMonth, clearInitialMonth)
+
+            val clearNextTouch = swipeClearMonthGrid(clearWeb, forward = true)
+            awaitJs(clearWeb, "document.querySelector('#monthTitle')?.textContent.startsWith('$nextMonth')")
+            val nextMonthState = WebSkinBridgeRuntime.state().getJSONObject("month")
+            assertEquals(nextMonth, YearMonth.parse(nextMonthState.getString("month")))
+            assertEquals(nextMonth.atDay(1).toString(), nextMonthState.getString("selectedDate"))
+            assertTrue("Clear swipe must arrive as trusted touchscreen down/up: $clearNextTouch",
+                clearNextTouch.optBoolean("downTrusted") && clearNextTouch.optBoolean("upTrusted"))
+            val clearAfterNext = WebSkinBridgeRuntime.state()
+            assertEquals(clearAnchor, timeline(clearAfterNext).getLong("anchorMillis"))
+            assertEquals(clearHours, timeline(clearAfterNext).getDouble("hours"), 0.0)
+            assertEquals(clearCounts, counts(clearStore))
+
+            val clearPreviousTouch = swipeClearMonthGrid(clearWeb, forward = false)
+            awaitJs(clearWeb, "document.querySelector('#monthTitle')?.textContent.startsWith('$initialMonth')")
+            val previousMonthState = WebSkinBridgeRuntime.state().getJSONObject("month")
+            assertEquals(initialMonth, YearMonth.parse(previousMonthState.getString("month")))
+            assertEquals(initialMonth.atDay(1).toString(), previousMonthState.getString("selectedDate"))
+            assertTrue("Clear reverse swipe must also be trusted: $clearPreviousTouch",
+                clearPreviousTouch.optBoolean("downTrusted") && clearPreviousTouch.optBoolean("upTrusted"))
+            val clearAfterPrevious = WebSkinBridgeRuntime.state()
+            assertEquals(clearAnchor, timeline(clearAfterPrevious).getLong("anchorMillis"))
+            assertEquals(clearHours, timeline(clearAfterPrevious).getDouble("hours"), 0.0)
+            assertEquals(clearCounts, counts(clearStore))
+            assertEquals(nativeCounts, counts(nativeStore))
+            println("NATIVE_CLEAR_PARITY operation=MONTH_GRID_SWIPE " +
+                "month=$initialMonth next=$nextMonth back=$initialMonth " +
+                "nativeSelected=${initialMonth.atDay(1)} clearSelected=${previousMonthState.getString("selectedDate")} " +
+                "camerasUnchanged=true storesUnchanged=true " +
+                "clearTrusted=${clearNextTouch.optBoolean("downTrusted")}/${clearNextTouch.optBoolean("upTrusted")}," +
+                "${clearPreviousTouch.optBoolean("downTrusted")}/${clearPreviousTouch.optBoolean("upTrusted")}")
         } finally {
             compose.runOnUiThread {
                 compose.activity.setContent { }

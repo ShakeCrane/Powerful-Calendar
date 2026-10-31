@@ -437,6 +437,9 @@ document.addEventListener("pointerup",event=>{
   monthSwipeReset=setTimeout(()=>monthSwipeConsumed=false,500);
   send("browseMonth",{deltaMonths:dx<0?1:-1});
 });
+document.addEventListener("pointercancel",event=>{
+  if(monthSwipeStart?.pointerId===event.pointerId)monthSwipeStart=null;
+});
 $("monthGrid").addEventListener("click",event=>{
   if(!monthSwipeConsumed)return;
   event.preventDefault();event.stopImmediatePropagation();
