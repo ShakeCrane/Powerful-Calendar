@@ -75,3 +75,16 @@ API 35 AVD 的新增真实 WebView 回归覆盖了两条 Activity 重建路径�
 - 测试提交：`89e6cd3e24a3ed65964620f4d31a9cde3a9a20a6` — `test(皮肤分离): 验证Clear WebView崩溃恢复`
 - Activity 重建回归测试提交：`5d6b421` — `test(皮肤分离): 验证Clear Activity重建恢复`，已推送至 `origin/feat/skin-first-separation`。
 - 本报告、SEP-14 状态补充和进度记录随后单独提交，避免报告 SHA 冒充测试时的代码基线。
+
+## Follow-up — 已选中损坏归档的冷启动 Native 回退（2026-10-31）
+
+新增 `WebSkinCorruptPackageColdRecoveryInstrumentedTest`，验证一份已持久化选择、但不是有效 ZIP 的 `.pcskin` 在应用进程冷启动时如何恢复。测试使用 API 35 模拟器和 UUID 专属测试包；启动前通过 ADB 确认 SharedPreferences 指向该坏包，再 force-stop 并由测试规则直接启动真实 `MainActivity`。`restoreSelection()` 捕获解码失败，持久化选择回到 `powercal-default`，注册表恢复 Native；坏归档不会进入皮肤目录列表。前台无 WebView，Native Compose“时间轴”节点可见。
+
+Store 前后快照相等，涵盖正式对象序号/版本/类型、待处理草稿身份、草稿及待处理数量、提交数、身份数、下一事件序号和队列水位。恢复后只清除本测试 UUID 的坏包与 marker，并把皮肤选择及首次启动偏好恢复到各自原有键值和文件存在状态。没有清除应用数据、修改正式记录、卸载应用或擦除 AVD。
+
+- 模拟器：`emulator-5570`，Android 15 / API 35，WebView `124.0.6367.219`。prepare **1/1 PASS**；冷启动 restore **1/1 PASS**。启动前 ADB 确认选中的坏包 ID 为 `pc-corrupt-96cacfd3`；restore 断言 PID 与进程 token 更新、Native 选择与注册表恢复、坏包仍可诊断但不出现在目录、无残留 WebView、时间轴语义节点可见，以及 Store 快照相等。
+- 最终 prepare / restore runner SHA-256：`3240EB7EFA5631DE4181EDF3DD675D5BE17C9D85EDC1F09459BF5D820B427A23` / `F03E93C21FF6D0F3A68615F2C4B03FCA413135A44164CC61EC8260E7AA88F081`。门禁日志 SHA-256：`4A0C2D4C1164334344C561CC14B2DC238378A3ABEFAE95C937ABD5870AC1748B`。
+- 完整离线门禁 `:app:verifyNativeSkinBoundary :app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug --offline --rerun-tasks --console=plain`：**785/785 JVM、125 suites、0 failures/errors/skips；171/171 tasks PASS**。Debug APK：66,518,075 bytes，SHA-256 `ED2F8F9827EF820361CC663F9C89D7F84A2545AB6DB313F36587C2E1DA1D064B`；AndroidTest APK：1,690,264 bytes，SHA-256 `AD3253649208E839E74F0F0FF3547748780E3E9D73674C4C11FE304ACD02D2A5`。
+- 详细忽略目录证据：`.local/android-test/reports/sep14-corrupt-package-cold-recovery-20261031/`。最初使用独立 `ComponentActivity` 的全局 Accessibility 探针没有绑定到 `MainActivity` Compose 树，该次断言失败且未计入通过；改用 `MainActivity` Compose 规则后，最终两阶段均通过。没有发现需要修改 Runtime/Host/Core 的产品缺陷。
+
+这只关闭“已选择、不可解码 ZIP 在冷启动时回退”的窄场景。可解码但脚本异常/恶意行为、升级失败、设备重启及实体/OEM 恢复仍为 **NOT TESTED**，SEP-14 继续 **INCOMPLETE / HOLD**。测试提交 `84902b5` 已推送到唯一集成主线。
