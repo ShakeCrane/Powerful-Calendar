@@ -9,6 +9,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.content.ContextWrapper
+import android.database.DatabaseErrorHandler
+import android.database.sqlite.SQLiteDatabase
 import android.net.Uri
 import android.graphics.Rect
 import android.os.Build
@@ -26,10 +29,13 @@ import android.view.accessibility.AccessibilityNodeInfo
 import android.webkit.WebView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -45,12 +51,15 @@ import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.ai.AiFileFallbackConsent
+import dev.powerfulcalendar.ai.AiChatHistoryStore
 import dev.powerfulcalendar.ai.AiSettings
 import dev.powerfulcalendar.ai.AiSettingsStore
 import dev.powerfulcalendar.interop.IcsCodec
 import org.json.JSONObject
+import org.json.JSONArray
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -63,6 +72,8 @@ import java.time.ZoneId
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
+import java.net.InetAddress
+import java.net.ServerSocket
 import kotlin.math.abs
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -108,20 +119,24 @@ class ClearSettingsOptionsInstrumentedTest {
           target.addEventListener('pointerup',event=>{receipt.up=event.isTrusted},{once:true});
           target.addEventListener('click',event=>{receipt.click=event.isTrusted},{once:true});
           return {found:true,x:rect.left+rect.width/2,y:rect.top+rect.height/2,
+            cssWidth:document.documentElement.clientWidth,cssHeight:window.innerHeight,
             visible:rect.width>0&&rect.height>0&&rect.bottom>0&&rect.top<innerHeight&&
               rect.right>0&&rect.left<document.documentElement.clientWidth};
         })()"""))
         assertTrue("Clear settings control must be visible in the WebView: $selector $probe",
             probe.optBoolean("found") && probe.optBoolean("visible"))
         val location = IntArray(2)
-        val scale = AtomicReference<Float>()
+        val size = AtomicReference<Pair<Int, Int>>()
         compose.runOnUiThread {
             web.getLocationOnScreen(location)
-            scale.set(web.scale)
+            size.set(web.width to web.height)
         }
-        val viewScale = requireNotNull(scale.get())
-        val x = location[0] + probe.getDouble("x").toFloat() * viewScale
-        val y = location[1] + probe.getDouble("y").toFloat() * viewScale
+        val (widthPx, heightPx) = requireNotNull(size.get())
+        val scaleX = widthPx / probe.getDouble("cssWidth")
+        val scaleY = heightPx / probe.getDouble("cssHeight")
+        assertEquals("Clear touch mapping must preserve WebView aspect ratio", scaleX, scaleY, 0.02)
+        val x = location[0] + (probe.getDouble("x") * scaleX).toFloat()
+        val y = location[1] + (probe.getDouble("y") * scaleY).toFloat()
         val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
         val downTime = SystemClock.uptimeMillis()
         val down = MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, y, 0).apply {
@@ -146,7 +161,8 @@ class ClearSettingsOptionsInstrumentedTest {
             SystemClock.sleep(50)
             receipt = JSONObject(evaluate(web, "window.__settingsParityTouch||{}"))
         }
-        assertTrue("Clear system-settings route must receive trusted touchscreen events: $receipt",
+        assertTrue("Clear control must receive trusted touchscreen events: " +
+            "selector=$selector probe=$probe receipt=$receipt",
             receipt.optBoolean("down") && receipt.optBoolean("up") && receipt.optBoolean("click"))
     }
 
@@ -1279,6 +1295,277 @@ class ClearSettingsOptionsInstrumentedTest {
                 restoreOnboarding.remove("system-calendar-import-asked")
             }
             check(restoreOnboarding.commit())
+        }
+    }
+
+    @Test
+    fun nativeAndClearAiFileConsentGrantAndUploadMatchThroughRealDocumentsUi() {
+        assumeTrue("AI file consent replay requires an isolated Android emulator",
+            Build.HARDWARE == "ranchu" || Build.HARDWARE == "goldfish")
+        assumeTrue("Downloads MediaStore requires API 29+", Build.VERSION.SDK_INT >= 29)
+
+        val backing = compose.activity.applicationContext
+        val namespace = "pc-ai-file-grant-${UUID.randomUUID()}"
+        val context = IsolatedAppContext(compose.activity, backing, namespace)
+        val databaseName = "ai-file-grant.db"
+        val store = PowerStore(context, databaseName)
+        val skinManager = SkinPackageManager(context)
+        val onboarding = context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+        val sourceText = "PRIVATE_ONLY=REMOVE_BEFORE_UPLOAD; Study group on 2035-03-04 14:00 to 15:00."
+        val reviewedText = "Study group on 2035-03-04 14:00 to 15:00."
+        val storeBefore = listOf(
+            store.all(), store.draftCount(), store.pendingCount(), store.commitCount(),
+            store.identityCount(), store.nextSequencePreview()
+        )
+        val filename = "powercal-ai-review-${UUID.randomUUID()}.txt"
+        val fixtureBytes = sourceText.toByteArray(Charsets.UTF_8)
+        val fixtureValues = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, filename)
+            put(MediaStore.MediaColumns.MIME_TYPE, "text/plain")
+            put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/")
+        }
+        var fixtureUri: Uri? = null
+        val proposal = JSONObject().put("events", JSONArray().put(JSONObject()
+            .put("operation", "CREATE")
+            .put("kind", "ACTIVITY")
+            .put("title", "Study group")
+            .put("start", "2035-03-04 14:00")
+            .put("end", "2035-03-04 15:00")
+            .put("zoneId", ZoneId.systemDefault().id))).toString()
+        val requestBodies = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val consentAtProvider = java.util.concurrent.CopyOnWriteArrayList<Boolean>()
+        val providerFailure = AtomicReference<Throwable?>()
+        val receivedRequests = CountDownLatch(2)
+
+        fun storeSnapshot() = listOf(
+            store.all(), store.draftCount(), store.pendingCount(), store.commitCount(),
+            store.identityCount(), store.nextSequencePreview()
+        )
+
+        fun showSkin(skinId: String) {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+                skinManager.select(skinId)
+                compose.activity.setContent {
+                    CompositionLocalProvider(LocalContext provides context) {
+                        PowerCalTheme { PowerCalApp(store) }
+                    }
+                }
+            }
+            compose.waitForIdle()
+        }
+
+        fun pickFileAndWaitForReview(fromClear: Boolean, web: WebView? = null) {
+            if (fromClear) {
+                val view = requireNotNull(web)
+                tapWebSelector(view, ".clear-tabbar [data-action=ai]")
+                compose.waitUntil(15_000) {
+                    WebSkinBridgeRuntime.state().optString("page") == "AI" &&
+                        WebSkinBridgeRuntime.state().optBoolean("chatAttachmentAvailable")
+                }
+                tapWebSelector(view,
+                    ".chat-attachment-controls button[aria-label='选择日历或文档附件']")
+            } else {
+                compose.waitUntil(15_000) {
+                    compose.onAllNodesWithText("AI 助手").fetchSemanticsNodes().isNotEmpty()
+                }
+                compose.onNodeWithText("AI 助手").performClick()
+                compose.onNodeWithContentDescription("添加图片或文件").performClick()
+                compose.onNodeWithText("添加 ICS / 文档 / 表格").performClick()
+            }
+
+            val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+            val rootsButton = waitForPickerNode(contentDescription = "Show roots")
+            assertEquals("The actual Android DocumentsUI must own file selection",
+                "com.google.android.documentsui",
+                automation.rootInActiveWindow?.packageName?.toString())
+            tapPickerNode(rootsButton)
+            tapPickerNode(waitForPickerNode(text = "Downloads"))
+            tapPickerNode(waitForPickerNode(text = filename))
+
+            val openDeadline = SystemClock.elapsedRealtime() + 20_000
+            while (SystemClock.elapsedRealtime() < openDeadline &&
+                automation.rootInActiveWindow?.packageName?.toString() ==
+                "com.google.android.documentsui"
+            ) {
+                val root = automation.rootInActiveWindow
+                val open = findAccessibilityNode(root, text = "OPEN")
+                    ?: findAccessibilityNode(root, text = "Open")
+                    ?: findAccessibilityNode(root, contentDescription = "Open")
+                    ?: findAccessibilityNode(root, viewId = "android:id/button1")
+                if (open != null) tapPickerNode(open) else SystemClock.sleep(150)
+            }
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithText("核对文件 · $filename")
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText("本次将发送的提取文本（可删除隐私内容）").assertExists()
+        }
+
+        fun grantAndSubmit(fromClear: Boolean, web: WebView? = null): List<Pair<String, String>> {
+            val settings = AiSettingsStore.load(context)
+            val requestCountBefore = requestBodies.size
+            val before = storeSnapshot()
+            assertFalse("Each skin path must begin without remembered file consent",
+                AiFileFallbackConsent.allowed(context, settings))
+            pickFileAndWaitForReview(fromClear, web)
+            assertEquals("Opening and extracting a local file must not write calendar data",
+                before, storeSnapshot())
+            assertEquals("No Provider call may happen before Host review is submitted",
+                requestCountBefore, requestBodies.size)
+
+            compose.onNode(isToggleable()).assertIsOff().performClick().assertIsOn()
+            compose.onNode(hasText(sourceText, substring = false) and hasSetTextAction())
+                .performTextReplacement(reviewedText)
+            compose.onNodeWithText("交给 AI 分析并澄清").performClick()
+
+            compose.waitUntil(30_000) {
+                AiFileFallbackConsent.allowed(context, settings) &&
+                    requestBodies.size > requestCountBefore
+            }
+            assertNull("local attachment Provider failed", providerFailure.get())
+            assertTrue("consent must already be active when the reviewed text reaches Provider",
+                consentAtProvider.getOrNull(requestCountBefore) == true)
+            val request = requestBodies[requestCountBefore]
+            assertTrue("Provider must receive the user-reviewed text", request.contains(reviewedText))
+            assertFalse("removed private text must not reach Provider",
+                request.contains("PRIVATE_ONLY=REMOVE_BEFORE_UPLOAD"))
+            compose.waitUntil(20_000) {
+                AiChatHistoryStore.load(context).any {
+                    it.role == "assistant" && it.content.contains("已从文件识别 1 项候选日程")
+                }
+            }
+            assertEquals("Candidate review must remain read-only", before, storeSnapshot())
+            val history = AiChatHistoryStore.load(context).map { it.role to it.content }
+            assertTrue("extracted source text must not be copied into chat history",
+                history.none { it.second.contains(sourceText) || it.second.contains(reviewedText) })
+            if (fromClear) {
+                val bridge = WebSkinBridgeRuntime.state().toString()
+                assertFalse("Clear Bridge must not expose consent", bridge.contains("consent"))
+                assertFalse("Clear Bridge must not expose the test credential", bridge.contains("PC_LOCAL_ATTACHMENT_STUB"))
+                val proposals = WebSkinBridgeRuntime.state().optJSONObject("aiProposalReview")
+                    ?.optJSONArray("proposals")
+                assertEquals("Clear must render the same single read-only AI proposal", 1,
+                    proposals?.length())
+                assertEquals("Clear proposal title must match the Provider candidate",
+                    "Study group", proposals?.optJSONObject(0)?.optString("title"))
+            } else {
+                compose.onNodeWithText("识别到新增 · 是否创建草稿？").assertExists()
+                compose.onNodeWithText("Study group · 活动", substring = true).assertExists()
+            }
+            return history
+        }
+
+        try {
+            assumeTrue("The isolated provider scope must start without consent",
+                !AiFileFallbackConsent.allowed(context, AiSettingsStore.load(context)))
+            assertTrue(onboarding.edit().putBoolean("system-calendar-import-asked", true).commit())
+            fixtureUri = requireNotNull(backing.contentResolver.insert(
+                MediaStore.Downloads.EXTERNAL_CONTENT_URI, fixtureValues
+            )) { "Could not create the isolated AI text fixture in Downloads" }
+            backing.contentResolver.openOutputStream(fixtureUri!!)?.use { it.write(fixtureBytes) }
+                ?: error("Could not write isolated AI text fixture")
+
+            ServerSocket(0, 4, InetAddress.getByName("127.0.0.1")).use { server ->
+                server.soTimeout = 30_000
+                val settings = AiSettings(
+                    endpoint = "http://127.0.0.1:${server.localPort}/v1",
+                    model = "local-stub:free",
+                    apiKey = "PC_LOCAL_ATTACHMENT_STUB",
+                    enabled = true,
+                    shareContext = false
+                )
+                AiSettingsStore.save(context, settings)
+                AiFileFallbackConsent.revoke(context)
+                val serverThread = Thread {
+                    try {
+                        repeat(2) {
+                            server.accept().use { socket ->
+                                socket.soTimeout = 15_000
+                                requestBodies += readAttachmentRequest(socket)
+                                consentAtProvider += AiFileFallbackConsent.allowed(context, settings)
+                                writeAttachmentReply(socket, proposal)
+                            }
+                            receivedRequests.countDown()
+                        }
+                    } catch (error: Throwable) {
+                        providerFailure.set(error)
+                        while (receivedRequests.count > 0) receivedRequests.countDown()
+                    }
+                }.apply { name = "pc-native-clear-file-consent-stub"; isDaemon = true; start() }
+
+                showSkin("powercal-default")
+                val nativeHistory = grantAndSubmit(fromClear = false)
+                assertTrue("Native path must remember endpoint/model-scoped consent",
+                    AiFileFallbackConsent.allowed(context, settings))
+                compose.onNodeWithText("批量拒绝").performClick()
+                compose.waitUntil(10_000) {
+                    compose.onAllNodesWithText("识别到新增 · 是否创建草稿？")
+                        .fetchSemanticsNodes().isEmpty()
+                }
+                assertEquals("Dismissing the read-only Native proposal must not write data",
+                    storeBefore, storeSnapshot())
+
+                AiFileFallbackConsent.revoke(context)
+                AiChatHistoryStore.save(context, emptyList())
+                showSkin("powercal-clear-default")
+                var web: WebView? = null
+                compose.waitUntil(30_000) {
+                    compose.runOnUiThread {
+                        web = findWebView(compose.activity.findViewById(android.R.id.content))
+                    }
+                    web != null
+                }
+                val view = requireNotNull(web)
+                compose.waitUntil(30_000) {
+                    evaluate(view, "!!window.PowerCalSkin && !!window.PowerCalSkin.receive") == "true"
+                }
+                val clearHistory = grantAndSubmit(fromClear = true, web = view)
+                assertEquals("Native and Clear must append the same file-analysis messages",
+                    nativeHistory, clearHistory.takeLast(nativeHistory.size))
+                assertTrue("Clear path must remember the same endpoint/model-scoped consent",
+                    AiFileFallbackConsent.allowed(context, settings))
+                assertTrue("the real DocumentsUI picker must route both uploads to Provider",
+                    receivedRequests.await(5, TimeUnit.SECONDS))
+                serverThread.join(2_000)
+                assertNull("local attachment Provider failed", providerFailure.get())
+                assertEquals("Each skin must generate exactly one Stub request", 2,
+                    requestBodies.size)
+                assertEquals("The Store must stay unchanged through both reviews",
+                    storeBefore, storeSnapshot())
+                assertTrue("Both requests must follow the user grant",
+                    consentAtProvider.size == 2 && consentAtProvider.all { it })
+                assertEquals("The synthetic file selection must not stage proposals automatically",
+                    0, store.pendingCount())
+                assertEquals("Neither skin may write formal events from an AI candidate",
+                    0, store.all().size)
+                println("SEP11_NATIVE_CLEAR_AI_FILE_CONSENT_GRANT_UPLOAD " +
+                    "documentsUi=true nativeUploaded=true clearUploaded=true reviewedTextOnly=true " +
+                    "providerScopedConsent=true readOnlyProposal=true storeUnchanged=true")
+            }
+        } finally {
+            val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+            repeat(2) {
+                if (automation.rootInActiveWindow?.packageName?.toString() ==
+                    "com.google.android.documentsui"
+                ) {
+                    automation.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+                    SystemClock.sleep(200)
+                }
+            }
+            fixtureUri?.let { runCatching { backing.contentResolver.delete(it, null, null) } }
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            store.close()
+            context.deleteDatabase(databaseName)
+            listOf("powercal-ai", "powercal-onboarding", "powercal-ui", "powercal-skin-choice",
+                "powercal-profile", "powercal-file-ai-consent")
+                .forEach { name -> backing.deleteSharedPreferences("$namespace-$name") }
+            File(backing.cacheDir, namespace).deleteRecursively()
         }
     }
 
@@ -2427,6 +2714,86 @@ class ClearSettingsOptionsInstrumentedTest {
             }
             check(restoreOnboarding.commit())
         }
+    }
+
+    private fun readAttachmentRequest(socket: java.net.Socket): String {
+        val input = socket.getInputStream().buffered()
+        fun readLine(): String {
+            val bytes = ByteArrayOutputStream()
+            while (true) {
+                val byte = input.read()
+                require(byte >= 0) { "truncated attachment request header" }
+                if (byte == '\n'.code) break
+                if (byte != '\r'.code) bytes.write(byte)
+                require(bytes.size() <= 8_192) { "oversized attachment request header" }
+            }
+            return bytes.toString(Charsets.US_ASCII.name())
+        }
+        require(readLine().startsWith("POST /v1/chat/completions HTTP/1.1"))
+        var contentLength = -1
+        while (true) {
+            val header = readLine()
+            if (header.isEmpty()) break
+            if (header.startsWith("Content-Length:", ignoreCase = true)) {
+                contentLength = header.substringAfter(':').trim().toInt()
+            }
+        }
+        require(contentLength in 1..100_000) { "invalid attachment request length=$contentLength" }
+        val body = ByteArray(contentLength)
+        var offset = 0
+        while (offset < body.size) {
+            val count = input.read(body, offset, body.size - offset)
+            require(count > 0) { "truncated attachment request body" }
+            offset += count
+        }
+        return String(body, Charsets.UTF_8)
+    }
+
+    private fun writeAttachmentReply(socket: java.net.Socket, content: String) {
+        val body = JSONObject().put("choices", JSONArray().put(JSONObject()
+            .put("message", JSONObject().put("role", "assistant").put("content", content))
+            .put("finish_reason", "stop"))).toString().toByteArray(Charsets.UTF_8)
+        val headers = ("HTTP/1.1 200 OK\r\n" +
+            "Content-Type: application/json; charset=utf-8\r\n" +
+            "Content-Length: ${body.size}\r\n" +
+            "Connection: close\r\n\r\n").toByteArray(Charsets.US_ASCII)
+        socket.getOutputStream().apply { write(headers); write(body); flush() }
+    }
+
+    private class IsolatedAppContext(
+        target: Context,
+        private val backing: Context,
+        private val namespace: String
+    ) : ContextWrapper(target) {
+        private val root = File(backing.cacheDir, namespace).apply {
+            check(mkdirs() || isDirectory)
+        }
+
+        private fun alias(name: String) = "$namespace-$name"
+
+        private fun databasePath(name: String): File = backing.getDatabasePath(alias(name)).also {
+            check(it.parentFile?.mkdirs() == true || it.parentFile?.isDirectory == true)
+        }
+
+        override fun getApplicationContext(): Context = this
+        override fun getSharedPreferences(name: String, mode: Int) =
+            backing.getSharedPreferences(alias(name), mode)
+        override fun getFilesDir(): File = root
+        override fun getCacheDir(): File = File(root, "cache").apply { mkdirs() }
+        override fun getNoBackupFilesDir(): File = File(root, "no_backup").apply { mkdirs() }
+        override fun getDir(name: String, mode: Int): File = File(root, "dirs/$name").apply { mkdirs() }
+        override fun getDatabasePath(name: String): File = databasePath(name)
+        override fun openOrCreateDatabase(name: String, mode: Int,
+            factory: SQLiteDatabase.CursorFactory?): SQLiteDatabase {
+            databasePath(name)
+            return backing.openOrCreateDatabase(alias(name), mode, factory)
+        }
+        override fun openOrCreateDatabase(name: String, mode: Int,
+            factory: SQLiteDatabase.CursorFactory?, errorHandler: DatabaseErrorHandler?): SQLiteDatabase {
+            databasePath(name)
+            return backing.openOrCreateDatabase(alias(name), mode, factory, errorHandler)
+        }
+        override fun deleteDatabase(name: String): Boolean = backing.deleteDatabase(alias(name))
     }
 
     private fun skinPackageFixture(id: String): ByteArray {
