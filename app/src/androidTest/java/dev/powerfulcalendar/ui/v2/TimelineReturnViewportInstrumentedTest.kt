@@ -14,12 +14,17 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import dev.powerfulcalendar.core.AxisSide
+import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.PowerStore
+import dev.powerfulcalendar.core.TemporalKind
+import dev.powerfulcalendar.core.TimelineLayout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
@@ -33,6 +38,7 @@ import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
+import kotlin.math.abs
 
 @RunWith(AndroidJUnit4::class)
 class TimelineReturnViewportInstrumentedTest {
@@ -170,6 +176,105 @@ class TimelineReturnViewportInstrumentedTest {
         SystemClock.sleep(80)
         send(MotionEvent.ACTION_UP, SystemClock.uptimeMillis())
         return probe.put("screenX", x).put("screenY", y)
+            .put("scaleX", scaleX).put("scaleY", scaleY)
+    }
+
+    private fun nativeEventBounds(title: String): Rect {
+        val matcher = hasContentDescription(title, substring = true) and hasClickAction()
+        val nodes = compose.onAllNodes(matcher).fetchSemanticsNodes()
+        assertEquals("Native fixture event should be uniquely accessible: $title", 1, nodes.size)
+        return nodes.single().boundsInRoot
+    }
+
+    private fun nativeHorizontalScrollRange(testTag: String): Pair<Float, Float> {
+        val range = compose.onNodeWithTag(testTag).fetchSemanticsNode()
+            .config[androidx.compose.ui.semantics.SemanticsProperties.HorizontalScrollAxisRange]
+        return range.value() to range.maxValue()
+    }
+
+    private fun clearWingSnapshot(web: WebView, side: String, eventSeq: Long): JSONObject {
+        val wingId = if (side == "LEFT") "timelineLeft" else "timelineRight"
+        val expression = """(() => {
+          const wing=document.querySelector(${JSONObject.quote("#$wingId")});
+          const event=wing?.querySelector(${JSONObject.quote(".tEvent[data-event-seq='$eventSeq']")});
+          if(!wing||!event)return {found:false,wing:"$wingId",eventSeq:$eventSeq};
+          const rect=event.getBoundingClientRect();
+          return {found:true,wing:"$wingId",eventSeq:$eventSeq,scrollLeft:wing.scrollLeft,
+            maxScroll:wing.scrollWidth-wing.clientWidth,clientWidth:wing.clientWidth,
+            clientHeight:wing.clientHeight,eventLeft:rect.left,eventTop:rect.top,
+            eventWidth:rect.width,lane:Number(event.dataset.lane),axisScrollTop:
+              document.querySelector('#axisScroll').scrollTop};
+        })()"""
+        return evaluateObject(web, expression)
+    }
+
+    private fun swipeNativeWing(testTag: String, direction: Int) {
+        require(direction == -1 || direction == 1)
+        compose.onNodeWithTag(testTag).performTouchInput {
+            val y = height * 0.8f
+            val dx = width * 0.38f * direction
+            down(Offset(width * if (direction < 0) 0.78f else 0.22f, y))
+            repeat(8) {
+                moveBy(Offset(dx / 8f, 0f))
+                advanceEventTime(100)
+            }
+            up()
+        }
+    }
+
+    private fun swipeClearWing(web: WebView, side: String, eventSeq: Long, direction: Int): JSONObject {
+        require(side == "LEFT" || side == "RIGHT")
+        require(direction == -1 || direction == 1)
+        val wingId = if (side == "LEFT") "timelineLeft" else "timelineRight"
+        val probe = evaluateObject(web, """(() => {
+          const wing=document.querySelector(${JSONObject.quote("#$wingId")});
+          const event=wing?.querySelector(${JSONObject.quote(".tEvent[data-event-seq='$eventSeq']")});
+          if(!wing||!event)return {found:false};
+          const rect=wing.getBoundingClientRect();
+          return {found:true,left:rect.left,top:rect.top,width:wing.clientWidth,
+            height:wing.clientHeight,scrollLeft:wing.scrollLeft,maxScroll:wing.scrollWidth-wing.clientWidth,
+            eventLeft:event.getBoundingClientRect().left,
+            cssWidth:document.documentElement.clientWidth,cssHeight:window.innerHeight};
+        })()""")
+        assertTrue("Clear wing event should be rendered: $probe", probe.optBoolean("found"))
+        assertTrue("Clear wing needs horizontal overflow before touch: $probe",
+            probe.getDouble("maxScroll") > 20.0)
+        val location = IntArray(2)
+        val dimensions = AtomicReference<Pair<Int, Int>>()
+        compose.runOnUiThread {
+            web.getLocationOnScreen(location)
+            dimensions.set(web.width to web.height)
+        }
+        val (widthPx, heightPx) = requireNotNull(dimensions.get())
+        val scaleX = widthPx / probe.getDouble("cssWidth")
+        val scaleY = heightPx / probe.getDouble("cssHeight")
+        assertEquals("WebView touch coordinates preserve aspect ratio", scaleX, scaleY, 0.02)
+        val startCssX = probe.getDouble("left") + probe.getDouble("width") *
+            if (direction < 0) 0.78 else 0.22
+        val startCssY = probe.getDouble("top") + probe.getDouble("height") * 0.8
+        val deltaCssX = probe.getDouble("width") * 0.38 * direction
+        val startX = location[0] + (startCssX * scaleX).toFloat()
+        val startY = location[1] + (startCssY * scaleY).toFloat()
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val downTime = SystemClock.uptimeMillis()
+        fun send(action: Int, eventTime: Long, x: Float) {
+            val event = MotionEvent.obtain(downTime, eventTime, action, x, startY, 0)
+            try {
+                event.source = InputDevice.SOURCE_TOUCHSCREEN
+                instrumentation.sendPointerSync(event)
+            } finally {
+                event.recycle()
+            }
+        }
+        send(MotionEvent.ACTION_DOWN, downTime, startX)
+        repeat(8) { step ->
+            SystemClock.sleep(100)
+            val x = startX + (deltaCssX * (step + 1) / 8.0 * scaleX).toFloat()
+            send(MotionEvent.ACTION_MOVE, SystemClock.uptimeMillis(), x)
+        }
+        SystemClock.sleep(100)
+        send(MotionEvent.ACTION_UP, SystemClock.uptimeMillis(), startX + (deltaCssX * scaleX).toFloat())
+        return probe.put("direction", direction).put("deltaCssX", deltaCssX)
             .put("scaleX", scaleX).put("scaleY", scaleY)
     }
 
@@ -446,6 +551,232 @@ class TimelineReturnViewportInstrumentedTest {
                 "native=$nativePanned clear=$clearPanned nativeViewportPx=$nativeHeight " +
                 "nativeDeltaPx=$nativePanDistance clearTodayTouch=$clearTodayTouch " +
                 "clearLaterTouch=$clearLaterTouch commits=0 drafts=0")
+        } finally {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            nativeStore.close()
+            clearStore.close()
+            nativeContext.deleteDatabase(nativeDatabase)
+            clearContext.deleteDatabase(clearDatabase)
+            listOf(nativeNamespace, clearNamespace).forEach { namespace ->
+                listOf("powercal-onboarding", "powercal-ui", "powercal-skin-choice", "powercal-profile")
+                    .forEach { storage.deleteSharedPreferences("$namespace-$it") }
+                File(storage.cacheDir, namespace).deleteRecursively()
+            }
+        }
+    }
+
+    @Test
+    fun nativeAndClearLeftAndRightTimelineWingsScrollIndependently() {
+        val storage = compose.activity.applicationContext
+        val nativeNamespace = "pc-timeline-wings-native-${UUID.randomUUID()}"
+        val clearNamespace = "pc-timeline-wings-clear-${UUID.randomUUID()}"
+        val nativeContext = IsolatedAppContext(compose.activity, storage, nativeNamespace)
+        val clearContext = IsolatedAppContext(compose.activity, storage, clearNamespace)
+        val nativeDatabase = "timeline-wings-native.db"
+        val clearDatabase = "timeline-wings-clear.db"
+        val nativeStore = PowerStore(nativeContext, nativeDatabase)
+        val clearStore = PowerStore(clearContext, clearDatabase)
+        try {
+            val zone = java.time.ZoneId.systemDefault()
+            val today = java.time.LocalDate.now(zone)
+            val start = today.atTime(9, 0).atZone(zone).toInstant().toEpochMilli()
+            val end = start + 3_600_000L
+            fun seed(store: PowerStore, key: String): Map<String, Long> {
+                val result = linkedMapOf<String, Long>()
+                for (lane in 0..3) {
+                    val title = "WING_LEFT_$lane"
+                    val outcome = store.createFormalEvent(
+                        DraftForm(kind = TemporalKind.ALARM, title = title,
+                            startText = DraftForm.formatInstant(start, zone),
+                            reminderMinutes = -1, zoneId = zone.id),
+                        "$key-left-$lane"
+                    ) as? PowerStore.CommitOutcome.Committed
+                        ?: throw AssertionError("Unable to seed left wing event $title")
+                    result[title] = outcome.eventSeq
+                }
+                for (lane in 0..3) {
+                    val title = "WING_RIGHT_$lane"
+                    val outcome = store.createFormalEvent(
+                        DraftForm(kind = TemporalKind.ACTIVITY, title = title,
+                            startText = DraftForm.formatInstant(start, zone),
+                            endText = DraftForm.formatInstant(end, zone),
+                            reminderMinutes = -1, zoneId = zone.id),
+                        "$key-right-$lane"
+                    ) as? PowerStore.CommitOutcome.Committed
+                        ?: throw AssertionError("Unable to seed right wing event $title")
+                    result[title] = outcome.eventSeq
+                }
+                return result
+            }
+            val nativeSequences = seed(nativeStore, nativeNamespace)
+            val clearSequences = seed(clearStore, clearNamespace)
+            assertEquals(nativeSequences.keys, clearSequences.keys)
+            val nativeLayout = TimelineLayout.layout(nativeStore.all())
+            assertEquals("Fixture must force four right-side lanes", (0..3).toSet(),
+                nativeLayout.items.filter { it.side == AxisSide.RIGHT }.map { it.lane }.toSet())
+            assertEquals("Fixture must force four left-side lanes", (0..3).toSet(),
+                nativeLayout.items.filter { it.side == AxisSide.LEFT }.map { it.lane }.toSet())
+            val nativeCounts = Triple(nativeStore.draftCount(), nativeStore.commitCount(),
+                nativeStore.identityCount())
+            val clearCounts = Triple(clearStore.draftCount(), clearStore.commitCount(),
+                clearStore.identityCount())
+
+            nativeContext.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                .edit().putBoolean("system-calendar-import-asked", true).commit()
+            SkinPackageManager(nativeContext).selectNativeForEmergencyRecovery()
+            compose.runOnUiThread {
+                compose.activity.setContent {
+                    CompositionLocalProvider(LocalContext provides nativeContext) {
+                        PowerCalTheme { PowerCalApp(nativeStore) }
+                    }
+                }
+            }
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithContentDescription("今日 · 复位为全天")
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithContentDescription("今日 · 复位为全天").performClick()
+            val todayNoon = today.atTime(12, 0).atZone(zone).toInstant().toEpochMilli()
+            val nativeCamera = awaitCamera(todayNoon, 24.0)
+            val rightSeq = requireNotNull(nativeSequences["WING_RIGHT_1"])
+            val leftSeq = requireNotNull(nativeSequences["WING_LEFT_0"])
+            compose.waitUntil(15_000) {
+                compose.onAllNodes(hasContentDescription("WING_RIGHT_1", substring = true) and
+                    hasClickAction()).fetchSemanticsNodes().isNotEmpty() &&
+                    compose.onAllNodes(hasContentDescription("WING_LEFT_0", substring = true) and
+                        hasClickAction()).fetchSemanticsNodes().isNotEmpty()
+            }
+            val nativeRightBefore = nativeEventBounds("WING_RIGHT_1")
+            val nativeLeftBefore = nativeEventBounds("WING_LEFT_0")
+            val nativeRightRangeBefore = nativeHorizontalScrollRange("timeline-right-lanes")
+            val nativeLeftRangeBefore = nativeHorizontalScrollRange("timeline-left-lanes")
+            println("NATIVE_WING_INITIAL rightEvent=$nativeRightBefore rightRange=$nativeRightRangeBefore " +
+                "leftEvent=$nativeLeftBefore leftRange=$nativeLeftRangeBefore")
+            assertTrue("Native left fixture event must be initially visible: $nativeLeftBefore",
+                nativeLeftBefore.width > 0f && nativeLeftBefore.height > 0f)
+            assertTrue("Native right fixture event must be initially visible: $nativeRightBefore",
+                nativeRightBefore.width > 0f && nativeRightBefore.height > 0f)
+            assertTrue("Native left wing starts at its center-proximal maximum: $nativeLeftRangeBefore",
+                nativeLeftRangeBefore.second > 0f &&
+                    abs(nativeLeftRangeBefore.first - nativeLeftRangeBefore.second) <= 1f)
+            assertEquals("Native right wing starts at its outer edge", 0f,
+                nativeRightRangeBefore.first, 1f)
+            swipeNativeWing("timeline-right-lanes", direction = -1)
+            compose.waitUntil(10_000) {
+                abs(nativeEventBounds("WING_RIGHT_1").left - nativeRightBefore.left) > 10f
+            }
+            val nativeRightAfter = nativeEventBounds("WING_RIGHT_1")
+            val nativeLeftAfterRightScroll = nativeEventBounds("WING_LEFT_0")
+            val nativeRightRangeAfter = nativeHorizontalScrollRange("timeline-right-lanes")
+            val nativeLeftRangeAfterRightScroll = nativeHorizontalScrollRange("timeline-left-lanes")
+            assertTrue("Native right wing touch must move its lane horizontally",
+                nativeRightAfter.left < nativeRightBefore.left - 10f)
+            assertTrue("Native right scroll range must change", nativeRightRangeAfter.first >
+                nativeRightRangeBefore.first + 10f)
+            assertEquals("Native right wing scroll must not move the left wing event",
+                nativeLeftBefore.left, nativeLeftAfterRightScroll.left, 1f)
+            assertEquals("Native right wing scroll must not change left scroll state",
+                nativeLeftRangeBefore, nativeLeftRangeAfterRightScroll)
+            assertEquals("Native horizontal scroll leaves the time camera unchanged",
+                nativeCamera, cameraSnapshot())
+
+            swipeNativeWing("timeline-left-lanes", direction = 1)
+            compose.waitForIdle()
+            val nativeLeftAfter = nativeEventBounds("WING_LEFT_0")
+            val nativeLeftRangeAfter = nativeHorizontalScrollRange("timeline-left-lanes")
+            val nativeRightRangeAfterLeftScroll = nativeHorizontalScrollRange("timeline-right-lanes")
+            println("NATIVE_LEFT_WING_SCROLL_TRACE before=$nativeLeftAfterRightScroll " +
+                "after=$nativeLeftAfter rangeBefore=$nativeLeftRangeBefore " +
+                "rangeAfter=$nativeLeftRangeAfter")
+            assertTrue("Native left wing touch must move its lane horizontally",
+                nativeLeftAfter.left > nativeLeftAfterRightScroll.left + 10f)
+            assertTrue("Native left scroll range must change",
+                nativeLeftRangeAfter.first < nativeLeftRangeBefore.first - 10f)
+            val nativeRightAfterLeftScroll = nativeEventBounds("WING_RIGHT_1")
+            assertEquals("Native left wing scroll must not move the right wing event",
+                nativeRightAfter.left, nativeRightAfterLeftScroll.left, 1f)
+            assertEquals("Native left wing scroll must not change right scroll state",
+                nativeRightRangeAfter, nativeRightRangeAfterLeftScroll)
+            assertEquals("Native wing scrolling leaves the time camera unchanged",
+                nativeCamera, cameraSnapshot())
+
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            val web = launchClear(clearContext, clearStore)
+            val todayTouch = tapWebSelector(web, "[data-action='today']")
+            val clearCamera = awaitCamera(todayNoon, 24.0)
+            assertEquals("Native and Clear start the lane replay at the same camera",
+                nativeCamera, clearCamera)
+            val clearRightSeq = requireNotNull(clearSequences["WING_RIGHT_1"])
+            val clearLeftSeq = requireNotNull(clearSequences["WING_LEFT_0"])
+            awaitJs(web, "!!document.querySelector('#timelineRight .tEvent[data-event-seq=\"$clearRightSeq\"]')")
+            awaitJs(web, "!!document.querySelector('#timelineLeft .tEvent[data-event-seq=\"$clearLeftSeq\"]')")
+            val clearRightBefore = clearWingSnapshot(web, "RIGHT", clearRightSeq)
+            val clearLeftBefore = clearWingSnapshot(web, "LEFT", clearLeftSeq)
+            assertTrue("Clear right wing must expose four-lane overflow: $clearRightBefore",
+                clearRightBefore.getDouble("maxScroll") > 20.0)
+            assertTrue("Clear left wing must expose four-lane overflow: $clearLeftBefore",
+                clearLeftBefore.getDouble("maxScroll") > 20.0)
+            assertEquals("Clear left wing initializes at its center-proximal maximum",
+                clearLeftBefore.getDouble("maxScroll"), clearLeftBefore.getDouble("scrollLeft"), 1.0)
+            assertEquals("Clear right wing initializes at its outer edge", 0.0,
+                clearRightBefore.getDouble("scrollLeft"), 1.0)
+            assertTrue("Clear lane event fixture must preserve measured lane 1",
+                clearRightBefore.getInt("lane") == 1)
+            assertTrue("Clear lane event fixture must preserve measured lane 0",
+                clearLeftBefore.getInt("lane") == 0)
+
+            val clearRightTouch = swipeClearWing(web, "RIGHT", clearRightSeq, direction = -1)
+            awaitJs(web, "document.querySelector('#timelineRight').scrollLeft > " +
+                (clearRightBefore.getDouble("scrollLeft") + 2.0))
+            val clearRightAfter = clearWingSnapshot(web, "RIGHT", clearRightSeq)
+            val clearLeftAfterRightScroll = clearWingSnapshot(web, "LEFT", clearLeftSeq)
+            assertTrue("Clear right wing touch must scroll its event toward the center",
+                clearRightAfter.getDouble("eventLeft") < clearRightBefore.getDouble("eventLeft") - 10.0)
+            assertEquals("Clear right wing scroll must not move left scroll offset",
+                clearLeftBefore.getDouble("scrollLeft"),
+                clearLeftAfterRightScroll.getDouble("scrollLeft"), 1.0)
+            assertEquals("Clear right wing scroll must not move left event geometry",
+                clearLeftBefore.getDouble("eventLeft"),
+                clearLeftAfterRightScroll.getDouble("eventLeft"), 1.0)
+            assertEquals("Clear wing scrolling leaves the time camera unchanged",
+                clearCamera, cameraSnapshot())
+
+            val clearLeftTouch = swipeClearWing(web, "LEFT", clearLeftSeq, direction = 1)
+            awaitJs(web, "document.querySelector('#timelineLeft').scrollLeft < " +
+                (clearLeftBefore.getDouble("scrollLeft") - 2.0))
+            val clearLeftAfter = clearWingSnapshot(web, "LEFT", clearLeftSeq)
+            val clearRightAfterLeftScroll = clearWingSnapshot(web, "RIGHT", clearRightSeq)
+            assertTrue("Clear left wing touch must move its event away from the center",
+                clearLeftAfter.getDouble("eventLeft") > clearLeftAfterRightScroll.getDouble("eventLeft") + 10.0)
+            assertEquals("Clear left wing scroll must not move right scroll offset",
+                clearRightAfter.getDouble("scrollLeft"),
+                clearRightAfterLeftScroll.getDouble("scrollLeft"), 1.0)
+            assertEquals("Clear left wing scroll must not move right event geometry",
+                clearRightAfter.getDouble("eventLeft"),
+                clearRightAfterLeftScroll.getDouble("eventLeft"), 1.0)
+            assertEquals("Native and Clear wing scrolling leaves equivalent camera state",
+                nativeCamera, cameraSnapshot())
+
+            assertEquals(nativeCounts, Triple(nativeStore.draftCount(), nativeStore.commitCount(),
+                nativeStore.identityCount()))
+            assertEquals(clearCounts, Triple(clearStore.draftCount(), clearStore.commitCount(),
+                clearStore.identityCount()))
+            assertEquals(nativeStore.all().size, clearStore.all().size)
+            println("NATIVE_CLEAR_WING_SCROLL_PARITY camera=$nativeCamera nativeRight=" +
+                "before=${nativeRightBefore.left} after=${nativeRightAfter.left} " +
+                "nativeLeftBefore=${nativeLeftBefore.left} nativeLeftAfter=${nativeLeftAfter.left} " +
+                "clearRightBefore=$clearRightBefore clearRightAfter=$clearRightAfter " +
+                "clearLeftBefore=$clearLeftBefore clearLeftAfter=$clearLeftAfter " +
+                "clearTodayTouch=$todayTouch clearRightTouch=$clearRightTouch " +
+                "clearLeftTouch=$clearLeftTouch formalEvents=${nativeStore.all().size} writes=0")
         } finally {
             compose.runOnUiThread {
                 compose.activity.setContent { }

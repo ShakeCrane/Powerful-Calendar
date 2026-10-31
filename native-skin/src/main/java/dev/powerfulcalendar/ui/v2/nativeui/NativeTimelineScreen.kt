@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -45,6 +46,7 @@ import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.exp
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 private val CLOCK_FORMAT = DateTimeFormatter.ofPattern("HH:mm")
@@ -274,9 +276,18 @@ fun NativeTimelineScreen(context: NativeTimelineContext, modifier: Modifier = Mo
                         val wingX = if (side == NativeTimelineSide.LEFT)
                             viewportWidth / 2 - gutter - sideWidth
                             else viewportWidth / 2 + gutter
-                        val horizontalState = rememberScrollState(
-                            if (side == NativeTimelineSide.LEFT) Int.MAX_VALUE else 0
-                        )
+                        val horizontalState = rememberScrollState()
+                        var leftWingInitiallyPositioned by rememberSaveable {
+                            mutableStateOf(side != NativeTimelineSide.LEFT)
+                        }
+                        LaunchedEffect(horizontalState, side) {
+                            if (side == NativeTimelineSide.LEFT && !leftWingInitiallyPositioned) {
+                                val maxValue = snapshotFlow { horizontalState.maxValue }
+                                    .first { it in 1 until Int.MAX_VALUE }
+                                horizontalState.scrollTo(maxValue)
+                                leftWingInitiallyPositioned = true
+                            }
+                        }
                         Box(
                             Modifier.offset(x = wingX).width(sideWidth).fillMaxHeight()
                                 .clipToBounds()
