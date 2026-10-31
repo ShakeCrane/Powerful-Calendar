@@ -2,9 +2,9 @@
 
 Date: 2026-10-29
 Area: Skin separation / reconstructed S0-MO-02 (P1)
-State: **Source path confirmed; JVM and Chrome Mock evidence PASS; Android WebView recheck PASS (2026-10-31); full Native/Clear parity NOT TESTED**
+State: **Source path confirmed; JVM, Chrome Mock, and one matched Native/Clear Android month occurrence-open slice PASS (2026-10-31); full S0-MO-02 remains PARTIAL / HOLD**
 
-> Status update (2026-10-31): the Android WebView method described below was executed on the integrated mainline; see “Integrated API 35 runtime recheck” at the end. The original “NOT TESTED” statements describe the 2026-10-29 report-time state.
+> Status update (2026-10-31): the Android WebView method described below was executed on the integrated mainline, followed by a matched Native/Clear occurrence-open replay on API 35; see the dated follow-up sections below. Earlier “NOT TESTED” statements describe their report-time state. This verifies one concrete slice and does not close full S0-MO-02 parity.
 
 ## Scope and outcome
 
@@ -95,3 +95,14 @@ Therefore Android WebView runtime behavior, paired Native/Clear replay, and full
 - On source SHA `2f69d27c578e18688fcf60f6d46276479e11bce8`, API 35 AVD `codex-clear-api35` / Android 15 / WebView 124.0.6367.219, `WebSkinRecurrenceInstrumentedTest#actualWebViewMonthOccurrenceOpenPreservesOriginalSlotForSingleEdit` passed as part of the class **4/4 PASS**. The actual packaged Clear WebView opened the Month occurrence, preserved owner/revision/original slot, selected `SINGLE_OCCURRENCE`, and exposed the matching slot form. Direct instrumentation log: `.local/android-test/reports/clear-runtime-diagnostic-20261031/WebSkinRecurrenceInstrumentedTest-direct.log`, SHA-256 `9EED3A5C5D74712ADF032C0B1182C804B518F18CBCCBD7AAF63B1600CEAAE870`.
 - The AVD's buffered logcat contained an older `querySelector` `SyntaxError` at 19:41:57, before the current app install/update at 21:14:22. The current Clear `edit.js` contains no such malformed selector and the current scoped-occurrence path did not reproduce it. No current uncaught JS exception was found after install; CSP rejection lines came from the deliberate CSP probe in `WebSkinResourceParityInstrumentedTest`.
 - The rerun used a current API 35 WebView and provides runtime evidence, but the test file contains another Agent's uncommitted diagnostic edits. Those edits were left untouched and are not part of this documentation commit. Matched Native/Clear replay, complete recurrence-scope parity, TalkBack and physical/OEM behavior remain **NOT TESTED**; S0-MO-02 remains **PARTIAL / HOLD**.
+
+## Matched Native/Clear month occurrence-open replay (2026-10-31)
+
+- Added `NativeClearMonthOccurrenceParityInstrumentedTest#sameSelectedRecurringOccurrenceOpensEquivalentNativeAndClearMonthEditor`. On Android 15/API 35 (`emulator-5570`, WebView 124), it seeded isolated Native and Clear stores with the same daily recurring ACTIVITY, advanced both Month pages to November, selected `2026-11-02T09:00`, and explicitly selected `SINGLE_OCCURRENCE`.
+- Both editors exposed the same `2026-11-02 09:00–10:00` form. The formal recurrence owner and Store snapshot remained unchanged while opening. Clear navigation, date, occurrence, and scope were injected as `SOURCE_TOUCHSCREEN` events and each was verified as trusted (`isTrusted=true`). No persistence write occurred merely by opening the editor.
+- Focused paired Android test: **1/1 PASS**. Full offline gate: **785/785 JVM tests / 125 suites / 0 failures, errors, or skips / 171 Gradle tasks PASS**, including Native/Skin boundaries, Debug and AndroidTest APK assembly, and lint.
+- Evidence: `.local/android-test/reports/sep02-month-occurrence-parity-20261031/focused-attempt4.log` SHA-256 `2D49FDE7774CA41D05256BD8CEB61F0745D9ABCC6B9A24BC5AAA32CB46DF37AB`; device instrumentation log `app/build/outputs/androidTest-results/connected/debug/PowerCal_API35(AVD) - 15/logcat-dev.powerfulcalendar.ui.v2.NativeClearMonthOccurrenceParityInstrumentedTest-sameSelectedRecurringOccurrenceOpensEquivalentNativeAndClearMonthEditor.txt` SHA-256 `1D87BC73912116E8159B11D7B3D0C2400C9D3C5224106BB8194F75EFA5E7E94A`; test XML SHA-256 `9ABFB880477333222054C726B0E7A7E708ACD71D24E1C653423A922BF00D3AE0`; full gate log SHA-256 `E2FD2738C29E625B2326D5B4D075F4C5C0C52AA5B60996EEF78E0B47101CB878`.
+- Built artifact SHA-256: Debug APK `DE876D09D11689F98131C9DAD0A977AA1271E1657612B6A95DB89ABBBB80C31C`; AndroidTest APK `62B3ED1670C2083486BF81ADDCCCFF9D6223DCFC0CB90595C4DC7951EA40C877`.
+- The first test setup timed out because the target date was outside the displayed month; the harness was corrected to exercise the next-month control before selecting the occurrence, and the final Android replay passed. No product defect was reproduced and no production/Core/Host/Clear source changed.
+
+Full S0-MO-02 remains **PARTIAL / HOLD**: this replay covers one recurring ACTIVITY occurrence-open path only. Other kinds, arbitrary-year selection, swipe/Today, save/version-conflict/recovery paths, complete accessibility behavior, Studio-edited package runtime, and physical/OEM behavior remain unverified.
