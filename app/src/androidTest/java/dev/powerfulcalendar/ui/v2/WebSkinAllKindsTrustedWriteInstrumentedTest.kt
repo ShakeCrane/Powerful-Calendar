@@ -1350,6 +1350,190 @@ class WebSkinAllKindsTrustedWriteInstrumentedTest {
     }
 
     @Test
+    fun sameFormalAlarmConversionToActivityProducesEquivalentNativeAndClearRecords() {
+        val storage = compose.activity.applicationContext
+        val nativeNamespace = "pc-native-clear-kind-convert-native-${UUID.randomUUID()}"
+        val clearNamespace = "pc-native-clear-kind-convert-clear-${UUID.randomUUID()}"
+        val nativeContext = IsolatedAppContext(compose.activity, storage, nativeNamespace)
+        val clearContext = IsolatedAppContext(compose.activity, storage, clearNamespace)
+        val nativeDatabase = "kind-convert-native.db"
+        val clearDatabase = "kind-convert-clear.db"
+        val nativeStore = PowerStore(nativeContext, nativeDatabase)
+        val clearStore = PowerStore(clearContext, clearDatabase)
+        var web: WebView? = null
+        try {
+            val zone = ZoneId.systemDefault()
+            val start = ZonedDateTime.now(zone).withHour(15).withMinute(0)
+                .withSecond(0).withNano(0)
+            val end = start.plusHours(1)
+            val startText = DraftForm.formatInstant(start.toInstant().toEpochMilli(), zone)
+            val endText = DraftForm.formatInstant(end.toInstant().toEpochMilli(), zone)
+            val seed = DraftForm(
+                kind = TemporalKind.ALARM,
+                title = "Native/Clear kind conversion parity",
+                startText = startText,
+                zoneId = zone.id,
+                reminderMinutes = -1
+            )
+            val nativeCreated = nativeStore.createFormalEvent(seed, "kind-conversion-parity-seed")
+                as PowerStore.CommitOutcome.Committed
+            val clearCreated = clearStore.createFormalEvent(seed, "kind-conversion-parity-seed")
+                as PowerStore.CommitOutcome.Committed
+            assertEquals(nativeCreated.eventSeq, clearCreated.eventSeq)
+            val eventSeq = nativeCreated.eventSeq
+            val nativeOriginal = requireNotNull(nativeStore.get(eventSeq))
+            val clearOriginal = requireNotNull(clearStore.get(eventSeq))
+            assertEquals(DraftForm.from(nativeOriginal), DraftForm.from(clearOriginal))
+            assertEquals(nativeOriginal.revision, clearOriginal.revision)
+            listOf(nativeStore, clearStore).forEach { store ->
+                assertEquals(1L, store.commitCount())
+                assertEquals(1, store.identityCount())
+                assertEquals(2L, store.nextSequencePreview())
+                assertEquals(0L, store.draftCount())
+                assertEquals(0, store.pendingCount())
+            }
+
+            nativeContext.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                .edit().putBoolean("system-calendar-import-asked", true).commit()
+            SkinPackageManager(nativeContext).selectNativeForEmergencyRecovery()
+            compose.runOnUiThread {
+                compose.activity.setContent {
+                    CompositionLocalProvider(LocalContext provides nativeContext) {
+                        PowerCalTheme { PowerCalApp(nativeStore) }
+                    }
+                }
+            }
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithContentDescription("今日 · 复位为全天")
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithContentDescription("今日 · 复位为全天")
+                .performTouchInput { click() }
+            val eventMatcher = hasContentDescription(nativeOriginal.title, substring = true) and hasClickAction()
+            compose.waitUntil(30_000) {
+                compose.onAllNodes(eventMatcher).fetchSemanticsNodes().size == 1
+            }
+            compose.onNode(eventMatcher).performTouchInput { click() }
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithText("保存修改").fetchSemanticsNodes().isNotEmpty() &&
+                    compose.onAllNodesWithText("闹钟 ▾").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText("闹钟 ▾").performTouchInput { click() }
+            compose.waitUntil(10_000) {
+                compose.onAllNodesWithText("活动").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText("活动").performTouchInput { click() }
+            compose.waitUntil(10_000) {
+                compose.onAllNodesWithText("结束").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText("结束").performScrollTo().performTextReplacement(endText)
+            assertEquals("Native conversion proposal must not write before Save",
+                nativeOriginal, nativeStore.get(eventSeq))
+            assertEquals(1L, nativeStore.commitCount())
+            compose.onNodeWithText("保存修改").performTouchInput { click() }
+            compose.waitUntil(30_000) {
+                val saved = nativeStore.get(eventSeq)
+                saved?.kind == TemporalKind.ACTIVITY && saved.endMillis == end.toInstant().toEpochMilli()
+            }
+            val nativeSaved = requireNotNull(nativeStore.get(eventSeq))
+            assertEquals(eventSeq, nativeSaved.eventSeq)
+            assertEquals(nativeOriginal.revision + 1, nativeSaved.revision)
+            assertEquals(2L, nativeStore.commitCount())
+            assertEquals(1, nativeStore.identityCount())
+            assertEquals(2L, nativeStore.nextSequencePreview())
+            assertEquals(0L, nativeStore.draftCount())
+            assertEquals(0, nativeStore.pendingCount())
+
+            resetClear()
+            web = launchClear(clearContext, clearStore)
+            val clearEventSelector = "[data-event-seq='$eventSeq']"
+            awaitJs(web, "!!document.querySelector(${JSONObject.quote(clearEventSelector)})")
+            evaluate(web, "document.querySelector(${JSONObject.quote(clearEventSelector)}).click();true")
+            awaitJs(web, "!document.querySelector('#skinSheet').hidden && " +
+                "!!document.querySelector('#sheetFields [data-field=kind]')")
+            evaluate(web, "(()=>{const field=document.querySelector('#sheetFields [data-field=kind]');" +
+                "field.value='ACTIVITY';field.dispatchEvent(new Event('change',{bubbles:true}));return true})()")
+            awaitJs(web, "document.querySelector('#sheetFields [data-field=kind]')?.value==='ACTIVITY' && " +
+                "!!document.querySelector('#sheetFields [data-field=endText]')")
+            evaluate(web, "(()=>{const field=document.querySelector('#sheetFields [data-field=endText]');" +
+                "field.value=${JSONObject.quote(endText)};" +
+                "field.dispatchEvent(new Event('change',{bubbles:true}));return true})()")
+            awaitJs(web, "document.querySelector('#sheetFields [data-field=endText]')?.value===" +
+                "${JSONObject.quote(endText)} && !document.querySelector('#sheetSave').disabled")
+            compose.runOnIdle {
+                val projected = WebSkinBridgeRuntime.state().getJSONObject("editing")
+                    .getJSONObject("editor").getJSONObject("form")
+                assertEquals("ACTIVITY", projected.getString("kind"))
+                assertEquals(startText, projected.getString("startText"))
+                assertEquals(endText, projected.getString("endText"))
+            }
+            assertEquals("Clear conversion remains a proposal before Host review",
+                clearOriginal, clearStore.get(eventSeq))
+            assertEquals(1L, clearStore.commitCount())
+            assertEquals(1, clearStore.identityCount())
+            assertEquals(2L, clearStore.nextSequencePreview())
+            assertEquals(0L, clearStore.draftCount())
+            assertEquals(0, clearStore.pendingCount())
+
+            focusClearWindowForTouch(web)
+            val saveTouch = tapWebSelector(web, "#sheetSave")
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithText("确认保存正式事件修改").fetchSemanticsNodes().isNotEmpty()
+            }
+            assertEquals(clearOriginal, clearStore.get(eventSeq))
+            assertEquals(1L, clearStore.commitCount())
+            compose.onNodeWithText("取消").performTouchInput { click() }
+            awaitJs(web, "document.querySelector('#sheetStatus').textContent.includes('已取消宿主操作')")
+            assertEquals("Host review cancellation keeps the original kind", clearOriginal,
+                clearStore.get(eventSeq))
+            assertEquals(1L, clearStore.commitCount())
+
+            focusClearWindowForTouch(web)
+            tapWebSelector(web, "#sheetSave")
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithText("确认保存正式事件修改").fetchSemanticsNodes().isNotEmpty()
+            }
+            assertEquals(clearOriginal, clearStore.get(eventSeq))
+            compose.onNodeWithText("确认").performTouchInput { click() }
+            compose.waitUntil(30_000) {
+                val saved = clearStore.get(eventSeq)
+                saved?.kind == TemporalKind.ACTIVITY && saved.endMillis == end.toInstant().toEpochMilli()
+            }
+            val clearSaved = requireNotNull(clearStore.get(eventSeq))
+            assertEquals("Native and Clear conversion produce the same business form",
+                DraftForm.from(nativeSaved), DraftForm.from(clearSaved))
+            assertEquals(nativeSaved.eventSeq, clearSaved.eventSeq)
+            assertEquals(nativeSaved.revision, clearSaved.revision)
+            assertEquals(TemporalKind.ACTIVITY, clearSaved.kind)
+            assertEquals(start.toInstant().toEpochMilli(), clearSaved.startMillis)
+            assertEquals(end.toInstant().toEpochMilli(), clearSaved.endMillis)
+            listOf(nativeStore, clearStore).forEach { store ->
+                assertEquals(2L, store.commitCount())
+                assertEquals(1, store.identityCount())
+                assertEquals(2L, store.nextSequencePreview())
+                assertEquals(0L, store.draftCount())
+                assertEquals(0, store.pendingCount())
+            }
+            println("NATIVE_CLEAR_PARITY operation=CONVERT from=ALARM to=ACTIVITY " +
+                "eventSeq=$eventSeq revision=${clearSaved.revision} commits=${clearStore.commitCount()} " +
+                "identities=${clearStore.identityCount()} sequence=${clearStore.nextSequencePreview()} " +
+                "cancelledHostReview=true trustedSave=${saveTouch.getJSONObject("trustedClick").optBoolean("trusted")} " +
+                "businessForm=${DraftForm.from(clearSaved)}")
+        } finally {
+            resetClear()
+            nativeStore.close()
+            clearStore.close()
+            nativeContext.deleteDatabase(nativeDatabase)
+            clearContext.deleteDatabase(clearDatabase)
+            listOf(nativeNamespace, clearNamespace).forEach { namespace ->
+                listOf("powercal-onboarding", "powercal-skin-choice", "powercal-ui", "powercal-profile")
+                    .forEach { storage.deleteSharedPreferences("$namespace-$it") }
+                File(storage.cacheDir, namespace).deleteRecursively()
+            }
+        }
+    }
+
+    @Test
     fun sameFormalMemoDeleteProducesEquivalentNativeAndClearTombstones() {
         val storage = compose.activity.applicationContext
         val nativeNamespace = "pc-native-clear-memo-delete-native-${UUID.randomUUID()}"

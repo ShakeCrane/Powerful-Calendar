@@ -2,7 +2,7 @@
 
 ## 状态
 
-**PARTIAL / OPEN**。Host 的四类转换 patch 已通过回归；2026-10-28 已为 Clear 正式编辑器和草稿编辑器补上类型选择器，并同步 Studio 非写入预览。完整离线门禁、Edge Studio E2E 和 AndroidTest 编译通过，但 Android WebView/AVD 交互没有执行，Native/Skin 完整等价也未完成；SEP-05 和整体 parity 继续 `NOT TESTED`。
+**PARTIAL / OPEN**。Host 的四类转换 patch、Clear 类型选择器和 Studio 非写入预览已实现。2026-10-31 在 Android 15/API 35 AVD 上新增并通过一条同 fixture Native/Clear 正式事件 `ALARM→ACTIVITY` 转换配对：批准前均不写入，Clear Host 审查取消零写入，批准后表单、eventSeq、revision 和 Store 计数一致。此证据仅覆盖一个转换方向；其余类型组合、Studio 编辑后实际运行、恢复/冲突和无障碍等仍未完成，因此 SEP-05 保持 **PARTIAL / HOLD / INCOMPLETE**。
 
 ## 需求与复现
 
@@ -18,7 +18,7 @@ Native 正式事件编辑器允许将事件转换为 `ALARM`、`ACTIVITY`、`DEA
 
 正式事件仍沿既有 Host 审查与重新校验路径保存；测试确认转换审查批准后保留原 `eventSeq`，仅在确认后递增 revision，且不创建额外草稿。草稿卡组继续经现有 `DeckController` 转换与暂存。`SINGLE_OCCURRENCE` 仍只允许其原有标题和时间字段，类型转换被拒绝。
 
-更新了 [V3_HOST_BRIDGE_EXTENSION.md](../../docs/V3_HOST_BRIDGE_EXTENSION.md)、[SKIN_EDIT_BRIDGE_S1_S2_2026-10-22.md](../../docs/SKIN_EDIT_BRIDGE_S1_S2_2026-10-22.md) 和 [SKIN_SEPARATION_PARITY_MATRIX_2026-10-27.md](../../docs/SKIN_SEPARATION_PARITY_MATRIX_2026-10-27.md)。矩阵明确标注 Clear 编辑器尚无类型选择器，SEP-05 保持 `NOT TESTED`。
+当时（2026-10-28）更新了 [V3_HOST_BRIDGE_EXTENSION.md](../../docs/V3_HOST_BRIDGE_EXTENSION.md)、[SKIN_EDIT_BRIDGE_S1_S2_2026-10-22.md](../../docs/SKIN_EDIT_BRIDGE_S1_S2_2026-10-22.md) 和 [SKIN_SEPARATION_PARITY_MATRIX_2026-10-27.md](../../docs/SKIN_SEPARATION_PARITY_MATRIX_2026-10-27.md)，并记录 Clear 类型选择器缺失。该缺口随后已修复；2026-10-31 的配对设备证据见本文末尾。
 
 ## 验证结果
 
@@ -63,7 +63,7 @@ Native 正式事件编辑器允许将事件转换为 `ALARM`、`ACTIVITY`、`DEA
 
 ## 下一步
 
-在可用的隔离 API 35 AVD 上运行本报告新增的 `WebSkinKindConversionInstrumentedTest`，确认真实 Clear WebView 的 `SINGLE_OCCURRENCE` 隐藏选择器、整系列转换 Host 审查/取消/批准及正式事件身份保留；随后补齐全四类 Native/Skin 对照。完成前 SEP-05 与整体分离验收维持 `NOT TESTED`，不据此宣布功能 parity 或切换 GO。
+此前建议的 AVD 运行已由后续证据补做；这不代表剩余转换组合或整体 SEP-05 已关闭。
 
 ## Clear UI follow-up — `kind` 转换入口（2026-10-28）
 
@@ -83,11 +83,19 @@ Native 正式事件编辑器允许将事件转换为 `ALARM`、`ACTIVITY`、`DEA
 - Skin Studio Python 全套：**51/51 PASS**。日志 SHA-256 `E511607A75563FDB52CDF49D2F0D8A3DB505067852BF8BB5586AB88475854DD8`。`build_default_clear.py --verify` 通过，8 files / 377,973 bytes；bundle SHA-256 `683E1CF8FEDD5F46A7099B7DBBF8A637EFD60CEAA2647EFCA25EA2C3A329EDD1`。
 - 完整离线 Gradle 命令 `:app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug --offline --rerun-tasks --no-daemon --console=plain`：**601/601 JVM tests、83 suites、0 failures/errors/skips、88/88 tasks**；source boundary、Debug / AndroidTest APK 和 lint 通过，lint **0 errors / 52 warnings**。完整日志 SHA-256 `9393A342DEC973CDFCB345B9462E2309B1671DB14C7431FE0D064A82D9EB3C27`。83 份 JUnit XML 已归档。AndroidTest Kotlin 定向编译也成功，日志 SHA-256 `C1614A151E3851BB4F52A42CC9BF8348445F9D7A839BC94305BEC4A24D72A3C8`。
 - Debug APK SHA-256 `BE9FFF581016286D36B42DF82E9277DCEE2628E2581F7550FD92C93594EA5FCC`；AndroidTest APK SHA-256 `60F08FFC420D8C67860FE9D85938C5237CF3C48CD49D5EFC260DC1187C5C9B90`。
-- 真实 AVD 未测。只读 `adb devices -l` 状态日志 SHA-256 `EE3823CBD4248DAD20FA8E16CC8CB4F1AF488E4D96FBF4C2F97D55117E5B2D82`；ADB daemon 无法启动，两个检查位置都没有 emulator launcher。实体设备没有触碰。
+- 截至 2026-10-28，该次 follow-up 的真实 AVD 未测；ADB daemon 无法启动，两个检查位置都没有 emulator launcher。2026-10-31 后续 API 35 AVD 配对回放已补做，见本文末尾。实体设备仍未触碰。
 - 迭代中保留了一次 Studio E2E 能力声明断言失败日志（SHA-256 `A6B3C47F6651874259F3511AF7F5325E36FF28E816F3DAABE6030D6634E74E42`）；随后增加实际值诊断，两次诊断运行均通过。另两次更早失败分别由未重建的隔离 bundle 和跨 frame 测试误查 parent DOM 引起，均已纠正测试准备/断言路径。最终结论以最后两次 E2E 通过及 51/51 Studio 全套为准，同时保留上述失败日志供追溯。
 
 ### Git 与状态
 
 - 实现/测试/bundle 提交：`3c1ec3a8635fd0816647fe1de0985f7d329e0a38`，`feat(分离): 为 Clear 编辑器加入事件类型转换`，已推送至 `origin/feat/skin-first-separation`。
 - 本 follow-up 的报告和矩阵另作文档提交。共享 `docs/agent-handoff/PROGRESS.md` 及并行 Clear 源码修改仍归其他 Agent，本轮未编辑、暂存或提交。
-- 本补丁只补齐 UI 入口和 Studio 支持；Host 原转换仍由此前提交 `0f944401ca28705429383955489fd70cc83b5426` 提供。由于真实 WebView 和完整 Native/Skin 回放未执行，本 Issue 仍为 **PARTIAL / OPEN**。
+- 截至 2026-10-28，该补丁只补齐 UI 入口和 Studio 支持；Host 原转换由此前提交 `0f944401ca28705429383955489fd70cc83b5426` 提供。当时真实 WebView 和 Native/Skin 配对尚未执行；后续证据见下。
+
+## API 35 Native/Clear 类型转换配对补证（2026-10-31）
+
+- 新增 `sameFormalAlarmConversionToActivityProducesEquivalentNativeAndClearRecords`，在隔离的同 fixture Stores 中分别打开 Native 正式编辑器与已打包 Clear WebView。Native 通过触屏选择 ACTIVITY 并输入结束时刻；Clear 经现有 `kind` 选择字段发出 ACTIVITY patch，再输入同一结束时刻。Native 保存、Clear 实际 `SOURCE_TOUCHSCREEN` 保存和 Host 审查取消/批准均走真实 Host/Store 路径。
+- 审查前两侧正式 ALARM 均未改变。Clear 取消后 Store 仍为 1 commit；再次批准后两侧均得到相同 ACTIVITY `DraftForm`，开始/结束时刻为本地 15:00/16:00，保留 `eventSeq=1`，revision 为 2。最终两 Store 均为 2 commits、1 identity、next sequence 2、0 drafts、0 pending。触屏 Save 轨迹的 `isTrusted=true`。
+- 目标配对 **1/1 PASS**；完整 `WebSkinAllKindsTrustedWriteInstrumentedTest` 在 Android 15/API 35/WebView 124（`emulator-5570`）**14/14 PASS**。测试类日志 SHA-256 `E322B9CEB3B7D9529871171DF5D502FBBD8153EACCCDCFC0426205BF036D4186`；目标 logcat SHA-256 `24F9369A8DCF9432383A6335A605B33E53BCDBD869BBD827F90C18FF38E0968A`。
+- 完整离线 Gradle 门禁 `:app:verifyNativeSkinBoundary :app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug` 成功：**784/784 JVM，125 suites，0 failures/errors/skips；171 tasks（12 executed、159 up-to-date）**；Lint 0 errors / 55 warnings。日志 SHA-256 `A3AC7C4C384860A3089E94CA0D92E0ED371B52586CE248B2B8CB878F98F71CDE`。Debug APK SHA-256 `83C9EDAD5DBE47F3D78C5E9BC35435CAD59C674FBF79D66C6054A982C51D767D`；AndroidTest APK SHA-256 `A2A3A182182828D71E444C3E94338C14C1651E7C3A78465C38FA7C4C70C3B719`。
+- 完整本地证据和哈希索引：`.local/android-test/reports/sep05-kind-conversion-parity-20261031/manifest.json`。该增量只改 AndroidTest 与状态文档，无生产代码或 Studio 源码变更。其他转换方向、Studio 编辑后构建/导入并在 Runtime 复播、TalkBack 和实体/OEM 仍未验证；SEP-05 与整体分离继续 **PARTIAL / HOLD / INCOMPLETE**。
