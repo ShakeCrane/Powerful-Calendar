@@ -10,6 +10,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.content.ContextWrapper
+import android.content.ContentUris
 import android.database.DatabaseErrorHandler
 import android.database.sqlite.SQLiteDatabase
 import android.net.Uri
@@ -19,6 +20,7 @@ import android.os.Bundle
 import android.os.ParcelFileDescriptor
 import android.os.Environment
 import android.os.SystemClock
+import android.provider.CalendarContract
 import android.provider.MediaStore
 import android.util.Log
 import android.view.View
@@ -2883,6 +2885,285 @@ class ClearSettingsOptionsInstrumentedTest {
                 restoreOnboarding.remove("system-calendar-import-asked")
             }
             check(restoreOnboarding.commit())
+        }
+    }
+
+    @Test
+    fun nativeAndClearImportTheSameRealSystemCalendarEventIntoEquivalentStores() {
+        assumeTrue("system calendar provider parity requires an isolated Android emulator",
+            Build.HARDWARE == "ranchu" || Build.HARDWARE == "goldfish")
+        val context = compose.activity.applicationContext
+        assumeTrue("the app must have the existing READ_CALENDAR grant",
+            context.checkSelfPermission(Manifest.permission.READ_CALENDAR) ==
+                PackageManager.PERMISSION_GRANTED)
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        val resolver = context.contentResolver
+        fun <T> withCalendarProviderAccess(block: () -> T): T {
+            automation.adoptShellPermissionIdentity(
+                Manifest.permission.READ_CALENDAR,
+                Manifest.permission.WRITE_CALENDAR
+            )
+            return try { block() } finally { automation.dropShellPermissionIdentity() }
+        }
+        fun syncAdapterUri(uri: Uri, accountName: String): Uri = uri.buildUpon()
+            .appendQueryParameter(CalendarContract.CALLER_IS_SYNCADAPTER, "true")
+            .appendQueryParameter(CalendarContract.Calendars.ACCOUNT_NAME, accountName)
+            .appendQueryParameter(CalendarContract.Calendars.ACCOUNT_TYPE,
+                CalendarContract.ACCOUNT_TYPE_LOCAL)
+            .build()
+        fun providerRowCount(uri: Uri): Int = resolver.query(
+            uri, arrayOf(CalendarContract.Calendars._ID), null, null, null
+        )?.use { it.count } ?: 0
+
+        val calendarsBefore = withCalendarProviderAccess {
+            providerRowCount(CalendarContract.Calendars.CONTENT_URI)
+        }
+        val eventsBefore = withCalendarProviderAccess {
+            resolver.query(CalendarContract.Events.CONTENT_URI,
+                arrayOf(CalendarContract.Events._ID), null, null, null)?.use { it.count } ?: 0
+        }
+        assumeTrue("the API 35 fixture emulator must have no pre-existing calendar data",
+            calendarsBefore == 0 && eventsBefore == 0)
+
+        val fixtureId = UUID.randomUUID().toString().replace("-", "")
+        val accountName = "powercal-sep11-$fixtureId"
+        val title = "PowerCal SEP11 synthetic import $fixtureId"
+        val notes = "PowerCal isolated system-calendar fixture"
+        val location = "QA fixture only"
+        val zone = ZoneId.systemDefault()
+        val startMillis = LocalDate.now(zone).plusDays(10).atTime(10, 30)
+            .atZone(zone).toInstant().toEpochMilli()
+        val endMillis = startMillis + 45 * 60_000L
+        val nativeDatabase = "pc-sep11-native-calendar-$fixtureId.db"
+        val clearDatabase = "pc-sep11-clear-calendar-$fixtureId.db"
+        val skinManager = SkinPackageManager(context)
+        val originalSkin = skinManager.currentId()
+        val onboarding = context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+        val hadOnboarding = onboarding.contains("system-calendar-import-asked")
+        val originalOnboarding = onboarding.getBoolean("system-calendar-import-asked", false)
+        var calendarId: Long? = null
+        var eventId: Long? = null
+        var nativeStore: PowerStore? = null
+        var clearStore: PowerStore? = null
+        var web: WebView? = null
+
+        fun systemImportBatches(store: PowerStore): List<Pair<String, Triple<Int, Int, List<String>>>> =
+            store.readableDatabase.rawQuery(
+                "SELECT batch_id FROM migrations WHERE source=? ORDER BY started_ms ASC",
+                arrayOf("android-calendar")
+            ).use { cursor ->
+                buildList {
+                    while (cursor.moveToNext()) {
+                        val id = cursor.getString(0)
+                        add(id to requireNotNull(store.migrationSummary(id)))
+                    }
+                }
+            }
+
+        fun hasFinishedImportedBatch(store: PowerStore): Boolean {
+            val id = systemImportBatches(store).firstOrNull { it.second.first == 1 }?.first
+                ?: return false
+            return store.readableDatabase.rawQuery(
+                "SELECT finished_ms FROM migrations WHERE batch_id=?", arrayOf(id)
+            ).use { cursor -> cursor.moveToFirst() && !cursor.isNull(0) }
+        }
+
+        fun assertImported(store: PowerStore) {
+            val externalId = "${requireNotNull(eventId)}:$startMillis"
+            val records = store.all()
+            assertEquals("The empty isolated Store must receive exactly the fixture event",
+                1, records.size)
+            val record = records.single()
+            assertEquals(title, record.title)
+            assertEquals(notes, record.notes)
+            assertEquals(location, record.location)
+            assertEquals(TemporalKind.ACTIVITY, record.kind)
+            assertEquals(startMillis, record.startMillis)
+            assertEquals(endMillis, record.endMillis)
+            assertEquals("android-calendar", record.source)
+            assertEquals(record.eventSeq, store.sourceLink("android-calendar", externalId))
+            assertEquals(1L, store.identityCount())
+            assertEquals(2L, store.nextSequencePreview())
+            assertEquals(1, store.commitCount())
+            assertEquals(0, store.pendingCount())
+            val batches = systemImportBatches(store)
+            assertEquals(1, batches.size)
+            assertEquals(Triple(1, 0, emptyList<String>()), batches.first().second)
+            val finished = store.readableDatabase.rawQuery(
+                "SELECT finished_ms FROM migrations WHERE batch_id=?",
+                arrayOf(batches.first().first)
+            ).use { cursor -> cursor.moveToFirst() && !cursor.isNull(0) }
+            assertTrue("Native and Clear must finish the import batch", finished)
+        }
+
+        try {
+            check(onboarding.edit().putBoolean("system-calendar-import-asked", true).commit())
+            withCalendarProviderAccess {
+                val calendarValues = ContentValues().apply {
+                    put(CalendarContract.Calendars.ACCOUNT_NAME, accountName)
+                    put(CalendarContract.Calendars.ACCOUNT_TYPE, CalendarContract.ACCOUNT_TYPE_LOCAL)
+                    put(CalendarContract.Calendars.NAME, accountName)
+                    put(CalendarContract.Calendars.CALENDAR_DISPLAY_NAME,
+                        "PowerCal isolated test calendar")
+                    put(CalendarContract.Calendars.CALENDAR_COLOR, 0xFF4B72A8.toInt())
+                    put(CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL,
+                        CalendarContract.Calendars.CAL_ACCESS_OWNER)
+                    put(CalendarContract.Calendars.OWNER_ACCOUNT, accountName)
+                    put(CalendarContract.Calendars.CALENDAR_TIME_ZONE, zone.id)
+                    put(CalendarContract.Calendars.VISIBLE, 1)
+                    put(CalendarContract.Calendars.SYNC_EVENTS, 1)
+                }
+                val insertedCalendar = requireNotNull(resolver.insert(
+                    syncAdapterUri(CalendarContract.Calendars.CONTENT_URI, accountName),
+                    calendarValues
+                )) { "The isolated system CalendarProvider rejected the UUID calendar fixture" }
+                calendarId = ContentUris.parseId(insertedCalendar)
+                val eventValues = ContentValues().apply {
+                    put(CalendarContract.Events.CALENDAR_ID, requireNotNull(calendarId))
+                    put(CalendarContract.Events.TITLE, title)
+                    put(CalendarContract.Events.DESCRIPTION, notes)
+                    put(CalendarContract.Events.EVENT_LOCATION, location)
+                    put(CalendarContract.Events.DTSTART, startMillis)
+                    put(CalendarContract.Events.DTEND, endMillis)
+                    put(CalendarContract.Events.EVENT_TIMEZONE, zone.id)
+                    put(CalendarContract.Events.ALL_DAY, 0)
+                    put(CalendarContract.Events.STATUS, CalendarContract.Events.STATUS_CONFIRMED)
+                    put(CalendarContract.Events.AVAILABILITY,
+                        CalendarContract.Events.AVAILABILITY_BUSY)
+                    put(CalendarContract.Events.ACCESS_LEVEL, CalendarContract.Events.ACCESS_PRIVATE)
+                    put(CalendarContract.Events.HAS_ALARM, 0)
+                }
+                val insertedEvent = requireNotNull(resolver.insert(
+                    syncAdapterUri(CalendarContract.Events.CONTENT_URI, accountName), eventValues
+                )) { "The isolated system CalendarProvider rejected the UUID event fixture" }
+                eventId = ContentUris.parseId(insertedEvent)
+            }
+
+            val externalId = "${requireNotNull(eventId)}:$startMillis"
+            compose.waitUntil(15_000) {
+                withCalendarProviderAccess {
+                    dev.powerfulcalendar.interop.SystemCalendar.readUpcoming(context)
+                        .any { it.externalId == externalId && it.title == title }
+                }
+            }
+            assertEquals("The real provider must expose exactly this one synthetic event",
+                listOf(externalId), withCalendarProviderAccess {
+                    dev.powerfulcalendar.interop.SystemCalendar.readUpcoming(context)
+                        .mapNotNull { it.externalId }
+                })
+
+            nativeStore = PowerStore(context, nativeDatabase)
+            clearStore = PowerStore(context, clearDatabase)
+            check(nativeStore!!.all().isEmpty() && clearStore!!.all().isEmpty())
+
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+                skinManager.select("powercal-default")
+                compose.activity.setContent { PowerCalTheme { PowerCalApp(nativeStore!!) } }
+            }
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithText("时间轴").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText("设置").performClick()
+            compose.waitUntil(10_000) {
+                compose.onAllNodesWithText("工具与设置").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText("从系统日历一次性导入").performScrollTo().performClick()
+            compose.waitUntil(20_000) {
+                nativeStore!!.sourceLink("android-calendar", externalId) != null &&
+                    hasFinishedImportedBatch(nativeStore!!)
+            }
+            assertImported(nativeStore!!)
+            val nativeRecord = nativeStore!!.all().single()
+
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+                skinManager.select("powercal-clear-default")
+                compose.activity.setContent { PowerCalTheme { PowerCalApp(clearStore!!) } }
+            }
+            compose.waitUntil(30_000) {
+                compose.runOnUiThread {
+                    web = findWebView(compose.activity.findViewById(android.R.id.content))
+                }
+                web != null
+            }
+            val clearWeb = requireNotNull(web)
+            compose.waitUntil(20_000) {
+                evaluate(clearWeb, "!!window.PowerCalSkin?.receive") == "true"
+            }
+            tapWebSelector(clearWeb, ".clear-tabbar [data-action=settings]")
+            compose.waitUntil(15_000) {
+                WebSkinBridgeRuntime.state().optString("page") == "SETTINGS"
+            }
+            tapWebSelector(clearWeb,
+                "#settingsOptionGroups [data-option-id='calendar.import.system']")
+            compose.waitUntil(20_000) {
+                clearStore!!.sourceLink("android-calendar", externalId) != null &&
+                    hasFinishedImportedBatch(clearStore!!)
+            }
+            assertImported(clearStore!!)
+            val clearRecord = clearStore!!.all().single()
+            assertEquals("Native and Clear must persist the same structured event snapshot",
+                nativeRecord.copy(createdAtMillis = 0L, updatedAtMillis = 0L),
+                clearRecord.copy(createdAtMillis = 0L, updatedAtMillis = 0L))
+            assertEquals("One-shot system import must not create an editor draft",
+                0, clearStore!!.draftCount())
+            println("SEP11_NATIVE_CLEAR_NONEMPTY_SYSTEM_CALENDAR_IMPORT " +
+                "providerEvent=1 nativeImported=1 clearImported=1 sameRecord=true " +
+                "sameSourceLink=true oneFormalPerStore=true noPending=true")
+        } finally {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            nativeStore?.close()
+            clearStore?.close()
+            context.deleteDatabase(nativeDatabase)
+            context.deleteDatabase(clearDatabase)
+            skinManager.select(originalSkin)
+            val restoreOnboarding = onboarding.edit()
+            if (hadOnboarding) {
+                restoreOnboarding.putBoolean("system-calendar-import-asked", originalOnboarding)
+            } else {
+                restoreOnboarding.remove("system-calendar-import-asked")
+            }
+            check(restoreOnboarding.commit())
+            withCalendarProviderAccess {
+                val eventSelection = "${CalendarContract.Events.CALENDAR_ID}=?"
+                calendarId?.let { id ->
+                    resolver.delete(
+                        syncAdapterUri(CalendarContract.Events.CONTENT_URI, accountName),
+                        eventSelection, arrayOf(id.toString())
+                    )
+                }
+                resolver.delete(
+                    syncAdapterUri(CalendarContract.Calendars.CONTENT_URI, accountName),
+                    "${CalendarContract.Calendars.ACCOUNT_NAME}=? AND " +
+                        "${CalendarContract.Calendars.ACCOUNT_TYPE}=?",
+                    arrayOf(accountName, CalendarContract.ACCOUNT_TYPE_LOCAL)
+                )
+                eventId?.let { id ->
+                    resolver.delete(ContentUris.withAppendedId(
+                        syncAdapterUri(CalendarContract.Events.CONTENT_URI, accountName), id
+                    ), null, null)
+                }
+                assertEquals("The UUID calendar fixture must be removed after the test",
+                    0, resolver.query(CalendarContract.Calendars.CONTENT_URI,
+                        arrayOf(CalendarContract.Calendars._ID),
+                        "${CalendarContract.Calendars.ACCOUNT_NAME}=?",
+                        arrayOf(accountName), null)?.use { it.count } ?: 0)
+                eventId?.let { id ->
+                    assertEquals("The UUID event fixture must be removed after the test", 0,
+                        resolver.query(CalendarContract.Events.CONTENT_URI,
+                            arrayOf(CalendarContract.Events._ID),
+                            "${CalendarContract.Events._ID}=?", arrayOf(id.toString()), null)
+                            ?.use { it.count } ?: 0)
+                }
+            }
+            PowerCalSkinRegistry.reset()
         }
     }
 
