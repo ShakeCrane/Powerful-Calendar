@@ -16,13 +16,23 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performTouchInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.PowerStore
+import dev.powerfulcalendar.core.TemporalKind
 import java.io.File
 import java.security.MessageDigest
+import java.time.LocalDate
 import java.time.YearMonth
+import java.time.ZoneId
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -39,7 +49,7 @@ import org.junit.runner.RunWith
 private const val STUDIO_AUTHORED_SKIN_ID = "pc-clear-studio-bridge-proof"
 private const val STUDIO_AUTHORED_SKIN_ASSET = "skin-studio-authored-clear-bridge.pcskin"
 private const val STUDIO_AUTHORED_SKIN_SHA256 =
-    "1da62188d944e3b9b27111df4da47041f0ac570634235058fb88ba3e59720daa"
+    "3a754789878c3ab7042351b3af0cd58e204abad4770ba69eac25b940d156aaf7"
 
 @RunWith(AndroidJUnit4::class)
 class StudioAuthoredSkinBridgeInstrumentedTest {
@@ -258,4 +268,228 @@ class StudioAuthoredSkinBridgeInstrumentedTest {
             File(storage.cacheDir, namespace).deleteRecursively()
         }
     }
+
+    @Test
+    fun studioAuthoredSkinAndNativeMemoOpenCloseReopenWithoutWrites() {
+        assumeTrue("requires Android 15/API 35 emulator", Build.VERSION.SDK_INT == 35 &&
+            (Build.HARDWARE == "ranchu" || Build.HARDWARE == "goldfish"))
+        val storage = compose.activity.applicationContext
+        val nativeNamespace = "pc-studio-memo-native-${UUID.randomUUID()}"
+        val clearNamespace = "pc-studio-memo-clear-${UUID.randomUUID()}"
+        val nativeContext = IsolatedStudioContext(compose.activity, storage, nativeNamespace)
+        val clearContext = IsolatedStudioContext(compose.activity, storage, clearNamespace)
+        val nativeDatabase = "studio-memo-native.db"
+        val clearDatabase = "studio-memo-clear.db"
+        val nativeStore = PowerStore(nativeContext, nativeDatabase)
+        val clearStore = PowerStore(clearContext, clearDatabase)
+        val nativeManager = SkinPackageManager(nativeContext)
+        val clearManager = SkinPackageManager(clearContext)
+        val packageFile = File(clearContext.cacheDir, "$STUDIO_AUTHORED_SKIN_ID.pcskin")
+        val zone = ZoneId.systemDefault()
+        val seed = DraftForm(
+            kind = TemporalKind.MEMO,
+            title = "Studio Native Memo open-close-reopen",
+            startText = LocalDate.now(zone).plusDays(3).toString(),
+            zoneId = zone.id
+        )
+        val nativeCreated = nativeStore.createFormalEvent(seed, "studio-memo-open-seed")
+            as PowerStore.CommitOutcome.Committed
+        val clearCreated = clearStore.createFormalEvent(seed, "studio-memo-open-seed")
+            as PowerStore.CommitOutcome.Committed
+        assertEquals(nativeCreated.eventSeq, clearCreated.eventSeq)
+        val eventSeq = nativeCreated.eventSeq
+        assertEquals("fixture must project exactly one unfinished Memo",
+            1, TodoProjection.entries(nativeStore.all(), System.currentTimeMillis()).size)
+        val nativeBaseline = memoStoreSnapshot(nativeStore, eventSeq)
+        val clearBaseline = memoStoreSnapshot(clearStore, eventSeq)
+        var installed = false
+        try {
+            assertEquals(DraftForm.from(requireNotNull(nativeStore.get(eventSeq))),
+                DraftForm.from(requireNotNull(clearStore.get(eventSeq))))
+            assertEquals(1L, nativeStore.commitCount())
+            assertEquals(1L, clearStore.commitCount())
+
+            nativeContext.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                .edit().putBoolean("system-calendar-import-asked", true).commit()
+            PowerCalSkinRegistry.reset()
+            assertTrue("Native recovery renderer selection must persist",
+                nativeManager.selectNativeForEmergencyRecovery())
+            compose.runOnUiThread {
+                compose.activity.setContent {
+                    CompositionLocalProvider(LocalContext provides nativeContext) {
+                        PowerCalTheme { PowerCalApp(nativeStore) }
+                    }
+                }
+            }
+
+            fun openNativeMemoEditor() {
+                compose.waitUntil(30_000) {
+                    compose.onAllNodesWithText("Memo · 未完成").fetchSemanticsNodes().isNotEmpty() ||
+                        compose.onAllNodesWithContentDescription("Memo 未完成 1")
+                            .fetchSemanticsNodes().isNotEmpty()
+                }
+                if (compose.onAllNodesWithText("Memo · 未完成").fetchSemanticsNodes().isEmpty()) {
+                    compose.onNodeWithContentDescription("Memo 未完成 1")
+                        .performTouchInput { click() }
+                }
+                compose.waitUntil(30_000) {
+                    compose.onAllNodesWithText("Memo · 未完成").fetchSemanticsNodes().isNotEmpty()
+                }
+                compose.waitUntil(30_000) {
+                    compose.onAllNodesWithText(seed.title, substring = true)
+                        .fetchSemanticsNodes().isNotEmpty()
+                }
+                compose.onNodeWithText(seed.title, substring = true).performTouchInput { click() }
+                compose.waitUntil(30_000) {
+                    compose.onAllNodesWithText("存档并退出").fetchSemanticsNodes().isNotEmpty()
+                }
+            }
+
+            fun closeNativeMemoEditor() {
+                compose.onNodeWithText("存档并退出").performTouchInput { click() }
+                compose.waitUntil(30_000) {
+                    compose.onAllNodesWithText("存档并退出").fetchSemanticsNodes().isEmpty()
+                }
+            }
+
+            openNativeMemoEditor()
+            assertEquals("Native open has no persistence side effect", nativeBaseline,
+                memoStoreSnapshot(nativeStore, eventSeq))
+            closeNativeMemoEditor()
+            assertEquals("Native no-diff exit has no persistence side effect", nativeBaseline,
+                memoStoreSnapshot(nativeStore, eventSeq))
+            openNativeMemoEditor()
+            assertEquals("Native reopen preserves the same untouched record", nativeBaseline,
+                memoStoreSnapshot(nativeStore, eventSeq))
+            closeNativeMemoEditor()
+            assertEquals("Native second no-diff exit remains idempotent", nativeBaseline,
+                memoStoreSnapshot(nativeStore, eventSeq))
+
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+
+            clearContext.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                .edit().putBoolean("system-calendar-import-asked", true).commit()
+            val packageBytes = InstrumentationRegistry.getInstrumentation().context.assets
+                .open(STUDIO_AUTHORED_SKIN_ASSET).use { it.readBytes() }
+            val packageSha = MessageDigest.getInstance("SHA-256").digest(packageBytes)
+                .joinToString("") { "%02x".format(it) }
+            assertEquals(STUDIO_AUTHORED_SKIN_SHA256, packageSha)
+            packageFile.writeBytes(packageBytes)
+            val skin = clearManager.install(Uri.fromFile(packageFile))
+            installed = true
+            assertEquals(STUDIO_AUTHORED_SKIN_ID, skin.id)
+            PowerCalSkinRegistry.reset()
+            clearManager.select(skin.id)
+            compose.runOnUiThread {
+                compose.activity.setContent {
+                    CompositionLocalProvider(LocalContext provides clearContext) {
+                        PowerCalTheme { PowerCalApp(clearStore) }
+                    }
+                }
+            }
+            val webReference = AtomicReference<WebView?>()
+            compose.waitUntil(30_000) {
+                compose.runOnUiThread {
+                    webReference.set(findWebView(compose.activity.findViewById(android.R.id.content)))
+                }
+                webReference.get() != null
+            }
+            val web = requireNotNull(webReference.get())
+            compose.waitUntil(30_000) {
+                evaluate(web, "!!window.PowerCalSkin") == "true"
+            }
+            val memoTabTouch = tapBySelector(web, ".clear-tabbar [data-action='memo']")
+            compose.waitUntil(10_000) {
+                evaluate(web, "!document.querySelector('#memoPage').hidden") == "true"
+            }
+            assertTrue("Memo navigation must be a trusted Android touchscreen tap",
+                memoTabTouch.optBoolean("trusted"))
+            val titleSelector = "#memoList .memo-title[data-event-seq='$eventSeq']"
+            val encodedTitleSelector = JSONObject.quote(titleSelector)
+            compose.waitUntil(10_000) {
+                evaluate(web, "!!document.querySelector($encodedTitleSelector)") == "true"
+            }
+            assertEquals("Studio CSS edit must be active on the actual Memo component", "44px",
+                evaluate(web, "getComputedStyle(document.querySelector($encodedTitleSelector)).minHeight")
+                    .trim('"'))
+
+            fun openClearMemoEditor(): JSONObject = tapBySelector(web, titleSelector)
+            fun closeClearMemoEditor(): JSONObject = tapBySelector(web, "#sheetClose")
+            fun awaitClearMemoEditor() {
+                compose.waitUntil(10_000) {
+                    evaluate(web, "!document.querySelector('#skinSheet').hidden && " +
+                        "document.querySelector('#sheetFields [data-field=title]')?.value===" +
+                        JSONObject.quote(seed.title)) == "true"
+                }
+            }
+            fun awaitClearMemoClosed() {
+                compose.waitUntil(10_000) {
+                    evaluate(web, "document.querySelector('#skinSheet').hidden") == "true"
+                }
+            }
+
+            val clearFirstOpen = openClearMemoEditor()
+            awaitClearMemoEditor()
+            assertTrue("Studio Clear Memo must open from a trusted touch",
+                clearFirstOpen.optBoolean("trusted"))
+            assertEquals("Studio Clear open has no persistence side effect", clearBaseline,
+                memoStoreSnapshot(clearStore, eventSeq))
+            val clearFirstClose = closeClearMemoEditor()
+            awaitClearMemoClosed()
+            assertTrue("Studio Clear no-diff exit must use a trusted touch",
+                clearFirstClose.optBoolean("trusted"))
+            assertEquals("Studio Clear no-diff exit has no persistence side effect", clearBaseline,
+                memoStoreSnapshot(clearStore, eventSeq))
+
+            val clearSecondOpen = openClearMemoEditor()
+            awaitClearMemoEditor()
+            assertTrue("Studio Clear editor must reopen from a trusted touch",
+                clearSecondOpen.optBoolean("trusted"))
+            assertEquals("Studio Clear reopen shows the original record without writes", clearBaseline,
+                memoStoreSnapshot(clearStore, eventSeq))
+            val clearSecondClose = closeClearMemoEditor()
+            awaitClearMemoClosed()
+            assertTrue("Studio Clear second no-diff exit must use a trusted touch",
+                clearSecondClose.optBoolean("trusted"))
+            assertEquals("Studio Clear second no-diff exit remains idempotent", clearBaseline,
+                memoStoreSnapshot(clearStore, eventSeq))
+
+            assertEquals("Native and Studio-authored Skin expose the same Memo business form",
+                DraftForm.from(requireNotNull(nativeStore.get(eventSeq))),
+                DraftForm.from(requireNotNull(clearStore.get(eventSeq))))
+            println("MEMO_OPEN_REOPEN_PARITY PASS packageSha256=$packageSha eventSeq=$eventSeq " +
+                "nativeNoDiffExits=2 clearNoDiffExits=2 commits=${clearStore.commitCount()} " +
+                "identities=${clearStore.identityCount()} sequence=${clearStore.nextSequencePreview()} " +
+                "customMemoMinHeight=44px trustedTouches=true")
+        } finally {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            if (installed) {
+                clearManager.select("powercal-default")
+                clearManager.delete(STUDIO_AUTHORED_SKIN_ID)
+            }
+            nativeStore.close()
+            clearStore.close()
+            nativeContext.deleteDatabase(nativeDatabase)
+            clearContext.deleteDatabase(clearDatabase)
+            listOf(nativeNamespace, clearNamespace).forEach { namespace ->
+                listOf("powercal-onboarding", "powercal-skin-choice", "powercal-ui",
+                    "powercal-profile").forEach { storage.deleteSharedPreferences("$namespace-$it") }
+                File(storage.cacheDir, namespace).deleteRecursively()
+            }
+        }
+    }
+
+    private fun memoStoreSnapshot(store: PowerStore, eventSeq: Long): List<Any?> = listOf(
+        store.all(), store.get(eventSeq), store.history(eventSeq), store.commitCount(),
+        store.identityCount(), store.nextSequencePreview(), store.nextQueueOrderPreview(),
+        store.draftCount(), store.pendingCount()
+    )
 }

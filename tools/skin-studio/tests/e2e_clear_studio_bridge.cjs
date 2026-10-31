@@ -106,6 +106,7 @@ async function main() {
       html.value=html.value.slice(0,monthBarEnd)+authoredButton+html.value.slice(monthBarEnd);
       html.dispatchEvent(new Event('input',{bubbles:true}));
       css.value+='\\n#monthPage .studio-authored-month-advance{min-width:72px;padding-inline:8px}\\n';
+      css.value+='\\n#memoList .memo-title{min-height:44px;padding-inline:8px}\\n';
       css.dispatchEvent(new Event('input',{bubbles:true}));
 
       const captureUiExport=async()=>{
@@ -158,6 +159,8 @@ async function main() {
         'final HTML edit did not survive export/reimport');
       check(text(finalPackage.files['web/style.css']).includes('.studio-authored-month-advance'),
         'final CSS edit did not survive export/reimport');
+      check(text(finalPackage.files['web/style.css']).includes('#memoList .memo-title{min-height:44px'),
+        'Memo component style edit did not survive export/reimport');
       const expectedPaths=Object.keys(original.files).sort();
       check(JSON.stringify(Object.keys(finalPackage.files).sort())===JSON.stringify(expectedPaths),
         'Studio changed the Clear package file set');
@@ -172,6 +175,7 @@ async function main() {
         sourceFiles:Object.keys(finalPackage.files).length,editedFiles:['web/index.html','web/style.css'],
         reopenedAndContinuedEdit:true,studioExportButton:true,
         authoredAction:{name:'browseMonth',deltaMonths:1,selector:'#studioAuthoredMonthAdvance'},
+        memoStyle:{selector:'#memoList .memo-title',minHeight:'44px'},
         untouchedFiles:Object.keys(original.files).filter(file=>!['web/index.html','web/style.css'].includes(file)).length};
     })()`;
     const evaluation=await call("Runtime.evaluate", {expression, awaitPromise:true, returnByValue:true});
