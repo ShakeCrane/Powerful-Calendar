@@ -40,9 +40,15 @@ private const val DELIVERY_TEST_NAMESPACE = "pc-skin-delivery-cold-restart"
 private const val DELIVERY_PACKAGE_ID = "pc-delivery-fixture"
 private const val DELIVERY_PACKAGE_SHA256 = "d9b34053464d9cfb959e6d9ee8827a054e300fe580dc52db614898a8a6321868"
 private const val AI_EDITED_DELIVERY_PACKAGE_SHA256 = "c7a8f20336f9c6e6ddaaada2c963403b28a6e6a6bd020b397b2438b9c6a87023"
+private const val STUDIO_GUI_DELIVERY_PACKAGE_SHA256 = "885468b1ab1d615e2ebc137a0d513841760d3f26efa666dd893f1932d9822da6"
 private const val SKIN_CHOICE_PREFERENCES = "powercal-skin-choice"
 
-private data class DeliveryFixture(val assetName: String, val sha256: String, val aiEdited: Boolean)
+private data class DeliveryFixture(
+    val assetName: String,
+    val sha256: String,
+    val scriptMarker: String,
+    val aiEdited: Boolean
+)
 
 /** A new value is generated only when the Android process loads this test class. */
 private object DeliveryTestProcess {
@@ -56,10 +62,14 @@ class WebSkinPackageDeliveryInstrumentedTest {
     private fun selectedDeliveryFixture(): DeliveryFixture =
         when (InstrumentationRegistry.getArguments().getString("skinDeliveryFixture")) {
             null, "baseline" -> DeliveryFixture(
-                "skin-delivery-fixture.pcskin", DELIVERY_PACKAGE_SHA256, aiEdited = false)
+                "skin-delivery-fixture.pcskin", DELIVERY_PACKAGE_SHA256,
+                "studio-js-delivery-fixture-v1", aiEdited = false)
             "ai-edited" -> DeliveryFixture(
                 "skin-ai-edited-fixture.pcskin", AI_EDITED_DELIVERY_PACKAGE_SHA256,
-                aiEdited = true)
+                "studio-js-delivery-fixture-v1", aiEdited = true)
+            "studio-edited" -> DeliveryFixture(
+                "skin-studio-gui-edited-fixture.pcskin", STUDIO_GUI_DELIVERY_PACKAGE_SHA256,
+                "studio-js-delivery-fixture-v2", aiEdited = false)
             else -> throw IllegalArgumentException("unknown skinDeliveryFixture argument")
         }
 
@@ -167,7 +177,8 @@ class WebSkinPackageDeliveryInstrumentedTest {
     private fun renderAndAssert(
         bundle: WebSkinBundle,
         failed: AtomicBoolean,
-        aiEdited: Boolean = false
+        aiEdited: Boolean = false,
+        scriptMarker: String = "studio-js-delivery-fixture-v1"
     ) {
         compose.runOnUiThread {
             compose.activity.setContent {
@@ -192,12 +203,12 @@ class WebSkinPackageDeliveryInstrumentedTest {
                 "document.querySelector('#aiEditedProbe')?.textContent === 'AI_EDITED_RUNTIME_V1'"
         } else ""
         awaitJs(web, "document.readyState === 'complete' && " +
-            "document.documentElement.dataset.deliveryScriptProbe === 'studio-js-delivery-fixture-v1' && " +
+            "document.documentElement.dataset.deliveryScriptProbe === '$scriptMarker' && " +
             "document.querySelector('#assetProbe')?.complete === true" + editedProbeReady)
 
         assertEquals("studio-html-delivery-fixture",
             evaluate(web, "document.querySelector('#htmlProbe').textContent" ).trim('"'))
-        assertEquals("studio-js-delivery-fixture-v1",
+        assertEquals(scriptMarker,
             evaluate(web, "document.documentElement.dataset.deliveryScriptProbe").trim('"'))
         assertEquals("rgb(21, 67, 123)",
             evaluate(web, "getComputedStyle(document.documentElement).getPropertyValue('--delivery-css-probe').trim()")
@@ -268,7 +279,8 @@ class WebSkinPackageDeliveryInstrumentedTest {
             assertTrue(selected.fullCanvas)
             assertTrue(selected.capabilities.isEmpty())
             assertRuntimeFilesEqual(expectedFiles, selected)
-            renderAndAssert(selected, failed, aiEdited = fixture.aiEdited)
+            renderAndAssert(selected, failed, aiEdited = fixture.aiEdited,
+                scriptMarker = fixture.scriptMarker)
 
             if (keepForColdRestart) {
                 // Checked by a second instrumentation invocation after the host force-stops
@@ -384,11 +396,11 @@ class WebSkinPackageDeliveryInstrumentedTest {
                     "document.querySelector('#aiEditedProbe')?.textContent === 'AI_EDITED_RUNTIME_V1'"
             } else ""
             awaitJs(actualWebView, "document.readyState === 'complete' && " +
-                "document.documentElement.dataset.deliveryScriptProbe === 'studio-js-delivery-fixture-v1' && " +
+                "document.documentElement.dataset.deliveryScriptProbe === '${fixture.scriptMarker}' && " +
                 "document.querySelector('#assetProbe')?.complete === true" + editedProbeReady)
             assertEquals("studio-html-delivery-fixture",
                 evaluate(actualWebView, "document.querySelector('#htmlProbe').textContent").trim('"'))
-            assertEquals("studio-js-delivery-fixture-v1",
+            assertEquals(fixture.scriptMarker,
                 evaluate(actualWebView, "document.documentElement.dataset.deliveryScriptProbe").trim('"'))
             assertEquals("rgb(21, 67, 123)", evaluate(actualWebView,
                 "getComputedStyle(document.documentElement).getPropertyValue('--delivery-css-probe').trim()")

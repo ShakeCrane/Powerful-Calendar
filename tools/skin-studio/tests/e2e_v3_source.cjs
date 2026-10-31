@@ -5,6 +5,8 @@ const root = path.resolve(__dirname, "../../..");
 const chrome = process.env.CHROME_PATH || "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
 const reportDir = path.resolve(process.env.POWERCAL_E2E_REPORT_DIR ||
   path.join(root, ".local/android-test/reports/separation-20261027/source-editor"));
+const studioPackageOut = process.env.POWERCAL_E2E_STUDIO_PACKAGE_OUT
+  ? path.resolve(process.env.POWERCAL_E2E_STUDIO_PACKAGE_OUT) : null;
 const canonicalClearFiles=Object.fromEntries(["index.html","style.css","app.js","edit.js"].map(name=>[
   "web/"+name,fs.readFileSync(path.join(root,"tools/skin-studio/default-clear/source/web",name)).toString("base64")
 ]));
@@ -165,6 +167,10 @@ async function main(){
         'installed-package source edit was not applied');
       const installedZip=await (await fetch('/api/export-v3',{method:'POST',
         headers:{'Content-Type':'application/json'},body:JSON.stringify(installedPayload)})).arrayBuffer();
+      if(${studioPackageOut ? "true" : "false"}){
+        let binary='';for(const byte of new Uint8Array(installedZip))binary+=String.fromCharCode(byte);
+        window.__powercalStudioRuntimeExport=btoa(binary);
+      }
       const installedReimportResponse=await fetch('/api/import-v3',{method:'POST',
         headers:{'Content-Type':'application/octet-stream'},body:installedZip});
       check(installedReimportResponse.ok,'installed-package export reimport failed: '+
@@ -389,6 +395,16 @@ async function main(){
     const result=await call("Runtime.evaluate",{expression,awaitPromise:true,returnByValue:true});
     if(result.exceptionDetails)throw Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text);
     console.log("BROWSER SOURCE ROUNDTRIP PASS",JSON.stringify(result.result.value));
+    if(studioPackageOut){
+      const exported=await call("Runtime.evaluate",{expression:"window.__powercalStudioRuntimeExport",returnByValue:true});
+      const base64=exported.result?.value;
+      if(typeof base64!=="string"||base64.length===0)throw Error("Studio GUI edit export was not captured");
+      fs.mkdirSync(path.dirname(studioPackageOut),{recursive:true});
+      const bytes=Buffer.from(base64,"base64");
+      fs.writeFileSync(studioPackageOut,bytes);
+      const sha256=require("node:crypto").createHash("sha256").update(bytes).digest("hex");
+      console.log("BROWSER STUDIO EXPORT SAVED",JSON.stringify({path:studioPackageOut,bytes:bytes.length,sha256}));
+    }
     const setup=await call("Runtime.evaluate",{awaitPromise:true,returnByValue:true,expression:`(async()=>{
       const previewPackage=payload();
       if(JSON.stringify(previewPackage.manifest.capabilities)!=='["host.read"]')

@@ -20,6 +20,8 @@ ANDROID_ASSET = (TEST_DIR.parents[2] / "app" / "src" / "androidTest" / "assets" 
                  "skin-delivery-fixture.pcskin")
 AI_EDITED_ANDROID_ASSET = (TEST_DIR.parents[2] / "app" / "src" / "androidTest" / "assets" /
                            "skin-ai-edited-fixture.pcskin")
+STUDIO_GUI_ANDROID_ASSET = (TEST_DIR.parents[2] / "app" / "src" / "androidTest" / "assets" /
+                            "skin-studio-gui-edited-fixture.pcskin")
 AI_EDIT_OPERATIONS = FIXTURE_DIR / "ai-runtime-edit-operations.json"
 
 
@@ -100,6 +102,21 @@ class AndroidDeliveryFixtureTest(unittest.TestCase):
             _, edited_files = v3.unpack(AI_EDITED_ANDROID_ASSET.read_bytes())
             self.assertEqual(set(baseline_files), set(edited_files))
             self.assertEqual(baseline_files["assets/probe.png"], edited_files["assets/probe.png"])
+
+    def test_android_runtime_skin_is_browser_studio_edited_package(self):
+        package = STUDIO_GUI_ANDROID_ASSET.read_bytes()
+        self.assertEqual(
+            hashlib.sha256(package).hexdigest(),
+            "885468b1ab1d615e2ebc137a0d513841760d3f26efa666dd893f1932d9822da6")
+        manifest, files = v3.unpack(package)
+        baseline_manifest, baseline_files = v3.unpack(ANDROID_ASSET.read_bytes())
+        self.assertEqual(manifest["id"], baseline_manifest["id"])
+        self.assertEqual(set(files), set(baseline_files))
+        self.assertIn(b"studio-js-delivery-fixture-v2", files["web/app.js"])
+        self.assertNotIn(b"studio-js-delivery-fixture-v1", files["web/app.js"])
+        for path, content in baseline_files.items():
+            if path != "web/app.js":
+                self.assertEqual(files[path], content, f"Browser Studio unexpectedly changed {path}")
 
     def test_android_installed_v3_fixture_can_be_reopened_edited_and_reexported(self):
         original = ANDROID_ASSET.read_bytes()
