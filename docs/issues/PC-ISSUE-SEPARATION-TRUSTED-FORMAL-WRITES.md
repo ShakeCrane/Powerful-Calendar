@@ -230,3 +230,13 @@ Added `sameFormalActivityDeleteProducesEquivalentNativeAndClearTombstones`. Nati
 - Logs/XML/textproto and both touch traces are indexed in `.local/android-test/reports/sep07-native-clear-delete-parity-20261031/manifest-24db390.json` (SHA-256 `077B656FE13C6D5343ECFD290D5A99D43512A240CCE81794E804376612519EF0`). Test commit `24db390` is pushed.
 
 This verifies one repeated-free formal editor DELETE operation for two of four kinds. ALARM/DEADLINE delete pairs, recurring scopes, additional persisted-deck operation pairs, the broader conflict/recovery matrix, Studio edit/build/re-import equivalence, TalkBack and physical/OEM remain **NOT TESTED / INCOMPLETE**. SEP-16 remains **PARTIAL / HOLD / INCOMPLETE**; unrelated uncommitted tests were not touched.
+
+## Matched Native/Clear formal ALARM and exact-time DEADLINE DELETE replay（2026-10-31）
+
+继 MEMO 与 ACTIVITY 后，本次补齐 ALARM 和精确时刻 DEADLINE 的同 fixture Native/Clear 正式删除对照。每种事件分别通过两端实际编辑/确认流程发起删除；取消无写入，批准后墓碑字段和 revision 一致，身份及序号保持一致，提交/身份/草稿/待处理计数相同。Clear 的两次取消与两次批准均由 Android `SOURCE_TOUCHSCREEN` 注入，WebView 记录 `isTrusted=true` 与 `deleteEvent`。精确时刻 DEADLINE 不覆盖纯日期模式、重复实例或系列删除。
+
+- 配对测试 **1/1 PASS**；`WebSkinAllKindsTrustedWriteInstrumentedTest` 完整类 **12/12 PASS**，API 35 / Android 15 / WebView 124 / `emulator-5570`。
+- 全门禁：784/784 JVM、125 suites、无失败/错误/跳过；两项边界、Debug/AndroidTest APK、Lint 全部通过，172 tasks。APK 与日志哈希、逐用例 XML/trace 位于 `.local/android-test/reports/sep07-native-clear-delete-parity-20261031/alarm-deadline-full-class/manifest-5b253cb.json`；manifest SHA-256 `6ED5CFADB302AB16C1D1C67B4A4593F4EE9914C0275A915D427C9BC69D408B6D`。
+- 测试提交 `5b253cb` 已推送。未更改生产实现，也未包含其他 Agent 的两个未提交测试文件；未重跑无源码变化的 Studio 套件。
+
+这四类单次事件 DELETE 配对补充了 SEP-16 证据，但**不关闭**该项：其它 CREATE/EDIT/DECK/AI 操作的 Native/Clear 配对、重复范围、更多冲突及生命周期/进程恢复、TalkBack 和实体/OEM 仍未完成。SEP-16 继续 **PARTIAL / HOLD / INCOMPLETE**。

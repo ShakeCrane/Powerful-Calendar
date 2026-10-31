@@ -171,3 +171,13 @@ Native 正式事件编辑器调用 `EditSession.delete()`，最终复用 `PowerS
 - 证据目录 `.local/android-test/reports/sep07-native-clear-delete-parity-20261031/`；本次 clean-source manifest `manifest-24db390.json` SHA-256 `077B656FE13C6D5343ECFD290D5A99D43512A240CCE81794E804376612519EF0`，源码归档 SHA-256 `380D287DDD7159F05B20C714B6E9B4A511A2C15C4A162A4DFF455F29ECB8376D`。实现/测试提交 `24db390` 已推送。
 
 本次扩展只签核 Activity 与 Memo 两个单次正式事件删除配对。Alarm、Deadline、重复系列范围、更多冲突/恢复状态、TalkBack 和实体/OEM 尚未验证；SEP-07 继续 **PARTIAL / HOLD**。两个其他 Agent 的未提交测试文件仍未更改、未暂存。
+
+## Matched Native/Clear formal ALARM and exact-time DEADLINE deletion replay（2026-10-31）
+
+在 `5b253cb` 新增的 `sameFormalAlarmAndInstantDeadlineDeleteProducesEquivalentNativeAndClearTombstones` 中，分别为 ALARM 与精确时刻 DEADLINE 建立相同起始 Store fixture，经 Native 正式编辑器与打包 Clear WebView 执行取消和批准删除。每种事件取消均不写入；批准后 Native/Clear 墓碑业务字段一致，revision 为 2，既有身份与序号不变，计数为 4 次提交（2 次播种、2 次删除）、2 个身份、下一个序号 3，且无草稿/待处理卡。Clear 的取消和批准通过 Android `SOURCE_TOUCHSCREEN` 输入；轨迹中两次 DOM click 均为 `isTrusted=true`、action=`deleteEvent`。精确时刻 DEADLINE 使用日期时间字段，不代表纯日期 DEADLINE。
+
+- 本配对测试 **1/1 PASS**；包含现有 CREATE/EDIT/DELETE/Host-review 与冲突测试的 `WebSkinAllKindsTrustedWriteInstrumentedTest` **12/12 PASS**，设备为 Android 15 / API 35 / WebView 124 / `emulator-5570`。Focused 测试及全类 XML、runner 输出、两类实际触屏轨迹已留存。
+- 同一 `5b253cb` 源码的离线全门禁通过：JVM **784/784**、125 suites，无失败/错误/跳过；两项 Skin 边界检查、Debug 与 AndroidTest APK、Lint 通过，172 tasks（23 executed、149 up-to-date），Lint 0 errors / 55 warnings。Debug APK SHA-256 `97EDDB79D0FE5DA0CCCE849CC35D5A2D6CD187E91F28940B73A749B3BF20BA3C`；AndroidTest APK SHA-256 `0AA051A6A1A88BDCB44C5D9E0420DFCFC8CCB711EC3243A27BB3648B64A9B637`；完整门禁/设备类日志 SHA-256 `AFEDCC35B0CBFD70C42E0F5303C34769B5E356F86F70D44172374FE92B3B7BF2`。
+- 可复核证据索引 `.local/android-test/reports/sep07-native-clear-delete-parity-20261031/alarm-deadline-full-class/manifest-5b253cb.json`，SHA-256 `6ED5CFADB302AB16C1D1C67B4A4593F4EE9914C0275A915D427C9BC69D408B6D`。测试代码提交 `5b253cb21947660f00f0400ad54dff8511f9f741` 已正常推送到 `origin/feat/skin-first-separation`。
+
+这是 API 35 模拟器上四类事件的单次正式 DELETE 等价证据；没有改 Clear、Host、Core、Native 或 Studio 生产源码。SEP-07/SEP-16 仍为 **PARTIAL / HOLD / INCOMPLETE**：重复系列范围、其他操作配对、恢复/冲突的更广组合、TalkBack 与实体/OEM 验收仍未闭环。本次未触碰两个其他 Agent 对 `WebSkinFormalDeleteInstrumentedTest.kt`、`WebSkinRecurrenceInstrumentedTest.kt` 的未提交修改；本次也未重跑 Studio，因为其源码及接口没有变化。
