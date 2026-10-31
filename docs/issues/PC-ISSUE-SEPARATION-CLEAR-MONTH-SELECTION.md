@@ -2,7 +2,7 @@
 
 Date: 2026-10-29
 Area: Skin separation / reconstructed S0-MO-01 and S0-MO-03 (P1 behavior slice)
-State: **IMPLEMENTED; narrow evidence PASS; Android WebView and full parity NOT TESTED**
+State: **IMPLEMENTED; selected-date Activity CREATE has a matched Android 15 Native/Clear PASS; general Month parity remains PARTIAL / HOLD**
 
 ## Summary
 
@@ -10,7 +10,7 @@ Clear's Month page previously treated a date-cell click as a timeline jump. This
 
 Month now has an independent Host-owned month and selected date. Selecting a day stays in Month and updates the agenda. Month/year navigation and Today select the first/current day. Creating an Activity uses the selected local date while leaving the timeline camera unchanged. The explicit “在时间轴查看这一天” action remains the only Month action that moves the camera and opens Timeline.
 
-This closes the reported Clear behavior discrepancy and supplies narrow evidence for the two reconstructed matrix slices. It does **not** close S0-MO-02, prove occurrence-opening parity, establish a complete Native/Clear replay, or prove Android WebView/device behavior.
+This closes the reported Clear date-selection/create behavior slice and now has a matched Android WebView Native/Clear Activity-creation replay. It does **not** close S0-MO-02, prove occurrence-opening parity, establish full Month navigation equivalence, or prove physical/OEM behavior.
 
 ## Root cause
 
@@ -27,7 +27,7 @@ This closes the reported Clear behavior discrepancy and supplies narrow evidence
 - Updated Clear HTML/JS/CSS: accessible selectable date buttons, agenda refresh, year/month picker, month arrows/swipe, Today and a distinct timeline-jump action.
 - Updated Studio Preview Mock action registration, page guards, selected-date Activity form and interaction log.
 - Rebuilt the canonical `powercal-clear-default.pcskin` from the Clear source.
-- Added Compose regressions and an Android WebView instrumentation test for selection, Activity creation, camera independence, zero-write close and explicit jump. The method compiled into the final AndroidTest APK, but it has not been executed on a device.
+- Added Compose regressions and Android WebView instrumentation for selection, Activity creation, camera independence, zero-write close and explicit jump. The original Clear-only method remains in the class; a separate matched Native/Clear selected-date CREATE now executes on API 35.
 
 ## Evidence and results
 
@@ -79,12 +79,17 @@ This is real Chrome rendering of the Studio Preview Mock, not Android WebView an
 
 ### Android WebView/device execution
 
-The isolated Android WebView regression source is in `TimelineCreateContextWebViewInstrumentedTest.monthSelectionAndActivityCreateUseSelectedDateWithoutMovingTimeline`; its Kotlin compilation and APK packaging passed, but it has not produced a JUnit/device result. `E:\android-sdk\platform-tools\adb.exe devices -l` failed with `could not read ok from ADB Server` / `failed to start daemon`; no emulator was available. No app data, installed package, or AVD was cleared, replaced, or wiped. Physical-device testing remains owner-run.
+At the time of the original report, ADB failed with `could not read ok from ADB Server` / `failed to start daemon`; the source compiled but had no device result. The later rerun on API 35 `emulator-5570` completes a same-fixture Native/Clear Month-selected Activity CREATE. Both begin with empty isolated Stores; the selected local date is carried into the Activity start/end dates, and the final `DraftForm`, eventSeq, revision, commits, identities and sequence watermark match. Clear month navigation, date cell, create entry and sheet Save are each injected with `SOURCE_TOUCHSCREEN`; the WebView capture asserts `event.isTrusted=true` for every action. Native editor publish and Host approval use Compose touchscreen input. Stores remain unchanged before publish/Host approval.
+
+- Focused pair **1/1 PASS**; full `TimelineCreateContextWebViewInstrumentedTest` **3/3 PASS**, Android 15/API 35/WebView 124/`emulator-5570`.
+- Full offline gate: **785/785 JVM / 125 suites / zero failures/errors/skips / 171 tasks**, both boundaries, Debug/AndroidTest APK and Lint pass (0 errors / 55 warnings). Debug APK SHA-256 `ED2F8F9827EF820361CC663F9C89D7F84A2545AB6DB313F36587C2E1DA1D064B`; AndroidTest APK SHA-256 `3169C0E361A74C3CF3B26512CD9A830F7F9C8770D4F270E94D51AD236A9BC551`.
+- Test source commit `337ddce` is pushed. Focused and class logs, gate and APK hashes are indexed by `.local/android-test/reports/sep02-month-create-parity-20261031/manifest.json` (SHA-256 `59D4F7431561747EDB654EAF400A8BD96CF47F57D62639C303D4FF48C2477C08`). The two independently modified AndroidTest files (`WebSkinFormalDeleteInstrumentedTest.kt`, `WebSkinRecurrenceInstrumentedTest.kt`) were present and compiled into the AndroidTest APK, but were not changed/staged by this task or executed by the focused invocation.
+- Test inputs for the Clear title/start/end values are normalized by the instrumentation script so both sides use the exact Native persisted form; this is not a software-keyboard parity test. No app data, installed user data, or AVD was cleared or wiped. Physical/OEM remains owner-run.
 
 ## Matrix sign-off
 
-- `S0-MO-01`: implementation and narrow Compose/Chrome behavior evidence **PASS**; Android WebView and matched Native/Clear replay **NOT TESTED**; full parity **NOT TESTED**.
-- `S0-MO-03`: selected-date Activity and explicit-jump behavior evidence **PASS** in Compose/Chrome Mock; Android WebView and matched Native/Clear replay **NOT TESTED**; full parity **NOT TESTED**.
+- `S0-MO-01`: implementation and narrow Compose/Chrome behavior evidence **PASS**; the paired device case now selects a date as part of creation, but general month navigation/agenda parity remains **NOT TESTED**.
+- `S0-MO-03`: selected-date Activity creation and explicit-jump behavior have Compose/Chrome evidence; selected-date Activity CREATE now has a matched API 35 Native/Clear persisted result **PASS**. Full Month create/lifecycle parity remains **PARTIAL / HOLD**.
 - `S0-MO-02`: unchanged, **NOT TESTED**.
 - This Issue does not authorize an overall separation GO or close S0/S5.
 
@@ -100,3 +105,14 @@ The saved Chrome Preview frame is 484 px tall; the selected-day DOM rectangle wa
 
 - Implementation commit: `008532a505530a8d060dbaaae88bc0bdd76376ec` (`feat(皮肤分离): 让月历选日独立于时间轴`).
 - Pushed as a normal fast-forward to `origin/codex/separation-s0-timeline-drag`.
+
+## Matched Native/Clear Month-selected Activity CREATE follow-up（2026-10-31）
+
+Added `monthSelectedActivityCreateMatchesNativeAndClearBusinessRecord` to the existing create-context instrumentation class. The AVD test taps the Native Month tab/day/create/publish through Compose and uses touchscreen injection for Clear Month navigation, the selected date, create entry and sheet Save; all four WebView clicks are checked as `isTrusted=true`. Clear's Host confirmation is a Native Compose touchscreen action. The Native saved start/end text is copied into the Clear form so the pair compares identical user-visible time values, not two separately captured defaults.
+
+- The selected date is retained on both Activity start and end; `DraftForm`, `eventSeq`, revision, commit/identity counts and next sequence match. Both editors are transient until publish/Host approval, and Clear has no write before approval.
+- Focused pair **1/1 PASS**; containing instrumentation class **3/3 PASS**; API 35 / Android 15 / WebView 124 / `emulator-5570`.
+- Full offline gate: **785/785 JVM / 125 suites / zero failures/errors/skips / 171 tasks**, both Skin boundaries, Debug/AndroidTest APK assembly and Lint pass (0 errors / 55 warnings). Debug / AndroidTest APK hashes: `ED2F8F9827EF820361CC663F9C89D7F84A2545AB6DB313F36587C2E1DA1D064B` / `3169C0E361A74C3CF3B26512CD9A830F7F9C8770D4F270E94D51AD236A9BC551`.
+- Test commit `337ddce` is pushed. Evidence manifest SHA-256 `59D4F7431561747EDB654EAF400A8BD96CF47F57D62639C303D4FF48C2477C08`; artifacts are under `.local/android-test/reports/sep02-month-create-parity-20261031/`. The two independently modified AndroidTest files were included in APK compilation, not changed/staged by this task, and not run by this test invocation.
+
+This closes only the selected-date Activity-create slice; month/year paging, occurrence opening, other Month operations, Studio-edited package parity, accessibility and physical/OEM remain incomplete. SEP-02 stays **PARTIAL / HOLD**; SEP-02 and SEP-04 are not globally closed.
