@@ -238,7 +238,8 @@ class WebSkinFormalDeleteTouchInstrumentedTest {
                 "!!document.querySelector('#sheetActions [data-do=deleteEvent]')")
             val deleteSelector = "#sheetActions [data-do=deleteEvent]"
             awaitJs(view, "(()=>{const e=document.querySelector(${
-                JSONObject.quote(deleteSelector)});if(!e)return false;e.scrollIntoView({block:'center'});" +
+                JSONObject.quote(deleteSelector)});if(!e)return false;" +
+                "e.scrollIntoView({block:'center',behavior:'instant'});" +
                 "const r=e.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight})()")
 
             val cancelTrace = tapElementCenter(view, deleteSelector)
