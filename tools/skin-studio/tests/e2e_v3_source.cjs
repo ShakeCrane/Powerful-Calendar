@@ -12,6 +12,8 @@ const canonicalClearFiles=Object.fromEntries(["index.html","style.css","app.js",
 ]));
 const androidDeliveryFixture=fs.readFileSync(path.join(root,
   "app/src/androidTest/assets/skin-delivery-fixture.pcskin")).toString("base64");
+const studioAuthoredFont=fs.readFileSync(path.join(root,
+  "tools/skin-studio/default-clear/source/web/fonts/InterVariable.woff2")).toString("base64");
 const delay = ms => new Promise(resolve=>setTimeout(resolve,ms));
 async function main(){
   fs.mkdirSync(reportDir,{recursive:true});
@@ -74,6 +76,8 @@ async function main(){
       check(androidImport.ok,'Android-installed Studio fixture import failed: '+androidImport.status);
       const installedPackage=await androidImport.json();
       check(installedPackage.manifest.id==='pc-delivery-fixture','installed fixture identity changed');
+      installedPackage.manifest['x-vendor-metadata']={publisher:'third-party-fixture',
+        custom:{labels:['preserve','studio-runtime']},claims:['host.action']};
       const installedMetadata={...installedPackage.manifest};delete installedMetadata.sha256;
       const installedFiles={...installedPackage.files};
       await loadPackage(installedPackage);
@@ -162,9 +166,85 @@ async function main(){
       installedEditor.value=installedBefore.replace('studio-js-delivery-fixture-v1',
         'studio-js-delivery-fixture-v2');
       installedEditor.dispatchEvent(new Event('input',{bubbles:true}));
+
+      const deliveryHtmlEditor=document.querySelector('#htmlCode');
+      const componentMarkup='<section id="studioAuthoredComponent" class="studio-authored-component">' +
+        'Studio-authored component</section>';
+      check(deliveryHtmlEditor.value.includes('</body>'),'third-party HTML body close missing');
+      deliveryHtmlEditor.value=deliveryHtmlEditor.value.replace('</body>',componentMarkup+'</body>');
+      deliveryHtmlEditor.dispatchEvent(new Event('input',{bubbles:true}));
+
+      const deliveryCssEditor=document.querySelector('#cssCode');
+      deliveryCssEditor.value+='\\n@font-face { font-family: StudioAuthoredFont; ' +
+        'src: url(../assets/studio-authored.woff2) format(woff2); font-weight: 100 900; }\\n' +
+        '.studio-authored-component { font-family: StudioAuthoredFont, sans-serif;' +
+        ' color: rgb(90, 38, 135); min-height: 48px; padding: 4px; }\\n';
+      deliveryCssEditor.dispatchEvent(new Event('input',{bubbles:true}));
+
+      const deliverySourceSelect=document.querySelector('#extraSourceFile');
+      deliverySourceSelect.value='project.json';
+      deliverySourceSelect.dispatchEvent(new Event('change'));
+      const deliveryProjectEditor=document.querySelector('#extraSourceCode');
+      const deliveryProject=JSON.parse(deliveryProjectEditor.value);
+      deliveryProject.thirdPartyStudioStructure={
+        id:'studio-authored-component',type:'section',
+        source:'web/components/studio-component.js',asset:'assets/studio-authored.woff2'};
+      deliveryProjectEditor.value=JSON.stringify(deliveryProject,null,2);
+      deliveryProjectEditor.dispatchEvent(new Event('input',{bubbles:true}));
+
+      const promptBeforeDeliverySource=window.prompt;
+      window.prompt=()=> 'web/components/studio-component.js';
+      document.querySelector('#addTextSource').click();
+      window.prompt=promptBeforeDeliverySource;
+      const deliveryModuleEditor=document.querySelector('#extraSourceCode');
+      deliveryModuleEditor.value="const component=document.querySelector('#studioAuthoredComponent');\\n"+
+        "if(!component)throw new Error('Studio-authored component is missing');\\n"+
+        "component.dataset.studioComponentProbe='browser-studio-runtime-v1';\\n"+
+        "document.fonts.load('16px StudioAuthoredFont','Studio-authored component')\\n"+
+        " .then(fonts=>{if(!fonts.some(face=>face.status==='loaded'))throw new Error('Studio font did not load');\\n"+
+        " component.dataset.studioFontProbe='loaded'})\\n"+
+        " .catch(error=>{component.dataset.studioFontError=error.message});\\n";
+      deliveryModuleEditor.dispatchEvent(new Event('input',{bubbles:true}));
+      installedEditor.value+="\\nimport('./components/studio-component.js');\\n";
+      installedEditor.dispatchEvent(new Event('input',{bubbles:true}));
+
+      const deliveryAssetBytes=decodeBase64("${studioAuthoredFont}");
+      const deliveryAssetInput=document.querySelector('#packageAssetFile');
+      await deliveryAssetInput.onchange({target:{files:[
+        new File([deliveryAssetBytes],'studio-authored.woff2',{type:'font/woff2'})
+      ],value:'selected'}});
+
       const installedPayload=payload();
       check(installedPayload.files['web/app.js']!==installedFiles['web/app.js'],
         'installed-package source edit was not applied');
+      check(installedPayload.files['web/index.html']!==installedFiles['web/index.html'],
+        'Studio-authored page structure edit was not applied');
+      check(installedPayload.files['web/style.css']!==installedFiles['web/style.css'],
+        'Studio-authored CSS edit was not applied');
+      check(installedPayload.files['project.json']!==installedFiles['project.json'],
+        'Studio-authored project tree metadata edit was not applied');
+      check(installedPayload.files['web/components/studio-component.js'],
+        'Studio-created component source is missing');
+      check(installedPayload.files['assets/studio-authored.woff2'],
+        'Studio-added binary package resource is missing: '+document.querySelector('#toast')?.textContent);
+      const deliveryProjectResult=JSON.parse(new TextDecoder().decode(
+        decodeBase64(installedPayload.files['project.json'])));
+      check(deliveryProjectResult.thirdPartyStudioStructure?.id==='studio-authored-component',
+        'Studio-authored component structure metadata was lost');
+      check(await sha256(decodeBase64(installedPayload.files['assets/studio-authored.woff2']))===
+        await sha256(deliveryAssetBytes),'Studio-authored font bytes changed');
+      const deliveryRuntimePreview=await fetch('/api/preview-v3',{method:'POST',
+        headers:{'Content-Type':'application/json'},body:JSON.stringify(installedPayload)});
+      check(deliveryRuntimePreview.ok,'edited third-party package preview failed');
+      const deliveryPreview=await deliveryRuntimePreview.json();
+      for(const name of ['web/components/studio-component.js','assets/studio-authored.woff2']){
+        const previewResponse=await fetch(deliveryPreview.url.replace('web/index.html',name));
+        check(previewResponse.ok,'Studio preview did not serve '+name);
+        const previewBytes=new Uint8Array(await previewResponse.arrayBuffer());
+        check(await sha256(previewBytes)===
+          await sha256(decodeBase64(installedPayload.files[name])),
+          'Studio preview resource differs from exported '+name);
+      }
       const installedZip=await (await fetch('/api/export-v3',{method:'POST',
         headers:{'Content-Type':'application/json'},body:JSON.stringify(installedPayload)})).arrayBuffer();
       if(${studioPackageOut ? "true" : "false"}){
@@ -181,8 +261,22 @@ async function main(){
         'installed package metadata or capabilities changed');
       check(installedReimport.files['web/app.js']===installedPayload.files['web/app.js'],
         'edited installed-package source was lost on reimport');
-      for(const [name,bytes] of Object.entries(installedFiles))if(name!=='web/app.js')
+      check(installedReimport.manifest['x-vendor-metadata'].custom.labels[1]==='studio-runtime',
+        'third-party Manifest metadata was lost on export/reimport');
+      check(installedReimport.files['web/index.html']===installedPayload.files['web/index.html']&&
+        installedReimport.files['web/style.css']===installedPayload.files['web/style.css']&&
+        installedReimport.files['project.json']===installedPayload.files['project.json']&&
+        installedReimport.files['web/components/studio-component.js']===
+          installedPayload.files['web/components/studio-component.js']&&
+        installedReimport.files['assets/studio-authored.woff2']===
+          installedPayload.files['assets/studio-authored.woff2'],
+        'Studio-authored structure/source/asset edits changed during reimport');
+      const studioChangedDeliveryFiles=new Set(['web/app.js','web/index.html','web/style.css',
+        'project.json','web/components/studio-component.js','assets/studio-authored.woff2']);
+      for(const [name,bytes] of Object.entries(installedFiles))if(!studioChangedDeliveryFiles.has(name))
         check(installedReimport.files[name]===bytes,'unmodified installed-package file changed: '+name);
+      check(Object.keys(installedReimport.files).length===Object.keys(installedFiles).length+2,
+        'Studio source and asset additions changed the complete package count unexpectedly');
 
       const partial=await (await fetch('/api/template-v3')).json();
       partial.manifest.id='partial-canvas-test';partial.manifest.fullCanvas=false;
@@ -384,6 +478,8 @@ async function main(){
       const visualImported=await (await post('/api/import-v3',visualZip,'application/octet-stream')).json();
       check(visualImported.files['project.json']===visual.files['project.json'],'visual metadata roundtrip changed');
       return {installedPackageReopenEditExportReimport:true,installedPackageId:'pc-delivery-fixture',
+        unknownVendorManifestPreserved:true,studioPageStructureCssAndProjectTreeEdited:true,
+        studioComponentSourceAdded:true,studioFontAssetAddedAndPreviewed:true,
         noEditBrowserImportPreviewExportReimport:true,noEditPreviewedFiles:Object.keys(installedFiles).length-1,
         noEditFileSha256,capabilityRequestsExplicitlyEdited:true,
         fullCanvasFalseAndOmittedPreserved:true,optionalProjectSlotsPreserved:true,

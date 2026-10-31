@@ -107,16 +107,38 @@ class AndroidDeliveryFixtureTest(unittest.TestCase):
         package = STUDIO_GUI_ANDROID_ASSET.read_bytes()
         self.assertEqual(
             hashlib.sha256(package).hexdigest(),
-            "885468b1ab1d615e2ebc137a0d513841760d3f26efa666dd893f1932d9822da6")
+            "70b2c136f674ee8a0124f405f3fbde5ee6e37fcbf33661037c7aeeb53496e4e5")
         manifest, files = v3.unpack(package)
         baseline_manifest, baseline_files = v3.unpack(ANDROID_ASSET.read_bytes())
         self.assertEqual(manifest["id"], baseline_manifest["id"])
-        self.assertEqual(set(files), set(baseline_files))
+        self.assertEqual(set(files), set(baseline_files) | {
+            "web/components/studio-component.js", "assets/studio-authored.woff2"})
+        self.assertEqual(manifest["x-vendor-metadata"], {
+            "publisher": "third-party-fixture",
+            "custom": {"labels": ["preserve", "studio-runtime"]},
+            "claims": ["host.action"],
+        })
         self.assertIn(b"studio-js-delivery-fixture-v2", files["web/app.js"])
         self.assertNotIn(b"studio-js-delivery-fixture-v1", files["web/app.js"])
+        self.assertIn(b"import('./components/studio-component.js')", files["web/app.js"])
+        self.assertIn(b"studioAuthoredComponent", files["web/index.html"])
+        self.assertIn(b"StudioAuthoredFont", files["web/style.css"])
+        self.assertIn(b"../assets/studio-authored.woff2", files["web/style.css"])
+        self.assertIn(b"browser-studio-runtime-v1", files["web/components/studio-component.js"])
+        project = json.loads(files["project.json"])
+        self.assertEqual(project["thirdPartyStudioStructure"], {
+            "id": "studio-authored-component",
+            "type": "section",
+            "source": "web/components/studio-component.js",
+            "asset": "assets/studio-authored.woff2",
+        })
+        source_font = (TEST_DIR.parents[2] / "tools" / "skin-studio" / "default-clear" /
+                       "source" / "web" / "fonts" / "InterVariable.woff2").read_bytes()
+        self.assertEqual(files["assets/studio-authored.woff2"], source_font)
         for path, content in baseline_files.items():
-            if path != "web/app.js":
-                self.assertEqual(files[path], content, f"Browser Studio unexpectedly changed {path}")
+            if path == "assets/probe.png":
+                self.assertEqual(files[path], content,
+                                 f"Browser Studio unexpectedly changed {path}")
 
     def test_android_installed_v3_fixture_can_be_reopened_edited_and_reexported(self):
         original = ANDROID_ASSET.read_bytes()

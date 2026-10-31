@@ -15,6 +15,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.core.app.ActivityScenario
 import dev.powerfulcalendar.MainActivity
+import org.json.JSONObject
 import java.io.ByteArrayInputStream
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -40,14 +41,15 @@ private const val DELIVERY_TEST_NAMESPACE = "pc-skin-delivery-cold-restart"
 private const val DELIVERY_PACKAGE_ID = "pc-delivery-fixture"
 private const val DELIVERY_PACKAGE_SHA256 = "d9b34053464d9cfb959e6d9ee8827a054e300fe580dc52db614898a8a6321868"
 private const val AI_EDITED_DELIVERY_PACKAGE_SHA256 = "c7a8f20336f9c6e6ddaaada2c963403b28a6e6a6bd020b397b2438b9c6a87023"
-private const val STUDIO_GUI_DELIVERY_PACKAGE_SHA256 = "885468b1ab1d615e2ebc137a0d513841760d3f26efa666dd893f1932d9822da6"
+private const val STUDIO_GUI_DELIVERY_PACKAGE_SHA256 = "70b2c136f674ee8a0124f405f3fbde5ee6e37fcbf33661037c7aeeb53496e4e5"
 private const val SKIN_CHOICE_PREFERENCES = "powercal-skin-choice"
 
 private data class DeliveryFixture(
     val assetName: String,
     val sha256: String,
     val scriptMarker: String,
-    val aiEdited: Boolean
+    val aiEdited: Boolean,
+    val studioAuthoredRuntime: Boolean = false
 )
 
 /** A new value is generated only when the Android process loads this test class. */
@@ -69,7 +71,7 @@ class WebSkinPackageDeliveryInstrumentedTest {
                 "studio-js-delivery-fixture-v1", aiEdited = true)
             "studio-edited" -> DeliveryFixture(
                 "skin-studio-gui-edited-fixture.pcskin", STUDIO_GUI_DELIVERY_PACKAGE_SHA256,
-                "studio-js-delivery-fixture-v2", aiEdited = false)
+                "studio-js-delivery-fixture-v2", aiEdited = false, studioAuthoredRuntime = true)
             else -> throw IllegalArgumentException("unknown skinDeliveryFixture argument")
         }
 
@@ -132,6 +134,24 @@ class WebSkinPackageDeliveryInstrumentedTest {
             files
         }
 
+    private fun assertThirdPartyManifestPreserved(packageBytes: ByteArray) {
+        var manifest: JSONObject? = null
+        ZipInputStream(ByteArrayInputStream(packageBytes)).use { zip ->
+            while (true) {
+                val entry = zip.nextEntry ?: break
+                if (entry.name == "manifest.json") {
+                    manifest = JSONObject(zip.readBytes().toString(Charsets.UTF_8))
+                }
+                zip.closeEntry()
+            }
+        }
+        val vendor = requireNotNull(manifest).getJSONObject("x-vendor-metadata")
+        assertEquals("third-party-fixture", vendor.getString("publisher"))
+        assertEquals("studio-runtime", vendor.getJSONObject("custom").getJSONArray("labels")
+            .getString(1))
+        assertEquals("host.action", vendor.getJSONArray("claims").getString(0))
+    }
+
     private fun assertRuntimeFilesEqual(
         expected: Map<String, ByteArray>,
         bundle: WebSkinBundle
@@ -140,6 +160,16 @@ class WebSkinPackageDeliveryInstrumentedTest {
         expected.forEach { (path, bytes) ->
             assertArrayEquals("Android runtime resource changed: $path", bytes, bundle.files[path])
         }
+    }
+
+    private fun assertStudioAuthoredProject(bundle: WebSkinBundle) {
+        val project = JSONObject(requireNotNull(bundle.files["project.json"]).toString(Charsets.UTF_8))
+        val component = project.getJSONObject("thirdPartyStudioStructure")
+        assertEquals("studio-authored-component", component.getString("id"))
+        assertEquals("web/components/studio-component.js", component.getString("source"))
+        assertEquals("assets/studio-authored.woff2", component.getString("asset"))
+        assertTrue(bundle.files.containsKey("web/components/studio-component.js"))
+        assertTrue(bundle.files.containsKey("assets/studio-authored.woff2"))
     }
 
     private fun findWebView(view: View): WebView? {
@@ -178,7 +208,8 @@ class WebSkinPackageDeliveryInstrumentedTest {
         bundle: WebSkinBundle,
         failed: AtomicBoolean,
         aiEdited: Boolean = false,
-        scriptMarker: String = "studio-js-delivery-fixture-v1"
+        scriptMarker: String = "studio-js-delivery-fixture-v1",
+        studioAuthoredRuntime: Boolean = false
     ) {
         compose.runOnUiThread {
             compose.activity.setContent {
@@ -202,9 +233,16 @@ class WebSkinPackageDeliveryInstrumentedTest {
             " && document.documentElement.dataset.aiEditProbe === 'studio-cli-ai-edit-v1' && " +
                 "document.querySelector('#aiEditedProbe')?.textContent === 'AI_EDITED_RUNTIME_V1'"
         } else ""
+        val studioAuthoredProbeReady = if (studioAuthoredRuntime) {
+            " && document.querySelector('#studioAuthoredComponent')?.dataset.studioComponentProbe === " +
+                "'browser-studio-runtime-v1' && " +
+                "document.querySelector('#studioAuthoredComponent')?.dataset.studioFontProbe === 'loaded' && " +
+                "document.fonts.check('16px StudioAuthoredFont','Studio-authored component')"
+        } else ""
         awaitJs(web, "document.readyState === 'complete' && " +
             "document.documentElement.dataset.deliveryScriptProbe === '$scriptMarker' && " +
-            "document.querySelector('#assetProbe')?.complete === true" + editedProbeReady)
+            "document.querySelector('#assetProbe')?.complete === true" + editedProbeReady +
+            studioAuthoredProbeReady)
 
         assertEquals("studio-html-delivery-fixture",
             evaluate(web, "document.querySelector('#htmlProbe').textContent" ).trim('"'))
@@ -228,6 +266,10 @@ class WebSkinPackageDeliveryInstrumentedTest {
                 evaluate(web, "getComputedStyle(document.querySelector('#aiEditedProbe')).color")
                     .trim('"'))
         }
+        if (studioAuthoredRuntime) {
+            assertStudioAuthoredProject(bundle)
+            assertStudioAuthoredWebView(web)
+        }
         val styleUrl = evaluate(web, "document.styleSheets[0].href").trim('"')
         val scriptUrl = evaluate(web, "document.querySelector('script[src]').src").trim('"')
         val imageUrl = evaluate(web, "document.querySelector('#assetProbe').currentSrc").trim('"')
@@ -235,6 +277,23 @@ class WebSkinPackageDeliveryInstrumentedTest {
         assertEquals("https://skin.powercal.local/web/app.js", scriptUrl)
         assertEquals("https://skin.powercal.local/assets/probe.png", imageUrl)
         assertFalse("package load triggered the Native fallback", failed.get())
+    }
+
+    private fun assertStudioAuthoredWebView(web: WebView) {
+        assertEquals("Studio-authored component",
+            evaluate(web, "document.querySelector('#studioAuthoredComponent').firstChild.textContent")
+                .trim('"'))
+        assertEquals("rgb(90, 38, 135)",
+            evaluate(web, "getComputedStyle(document.querySelector('#studioAuthoredComponent')).color")
+                .trim('"'))
+        assertEquals("48px", evaluate(web,
+            "getComputedStyle(document.querySelector('#studioAuthoredComponent')).minHeight").trim('"'))
+        assertTrue("Studio-authored font family was not applied", evaluate(web,
+            "getComputedStyle(document.querySelector('#studioAuthoredComponent')).fontFamily")
+            .contains("StudioAuthoredFont"))
+        assertEquals("true", evaluate(web,
+            "Array.from(document.fonts).some(face => face.family === 'StudioAuthoredFont' && " +
+                "face.status === 'loaded')"))
     }
 
     @Test
@@ -253,6 +312,7 @@ class WebSkinPackageDeliveryInstrumentedTest {
         val packageSha = MessageDigest.getInstance("SHA-256").digest(packageBytes)
             .joinToString("") { "%02x".format(it) }
         assertEquals(fixture.sha256, packageSha)
+        if (fixture.studioAuthoredRuntime) assertThirdPartyManifestPreserved(packageBytes)
         val expectedFiles = expectedRuntimeFiles(packageBytes)
 
         val packageFile = File(storage.cacheDir, "$DELIVERY_TEST_NAMESPACE-studio-export.pcskin")
@@ -280,7 +340,8 @@ class WebSkinPackageDeliveryInstrumentedTest {
             assertTrue(selected.capabilities.isEmpty())
             assertRuntimeFilesEqual(expectedFiles, selected)
             renderAndAssert(selected, failed, aiEdited = fixture.aiEdited,
-                scriptMarker = fixture.scriptMarker)
+                scriptMarker = fixture.scriptMarker,
+                studioAuthoredRuntime = fixture.studioAuthoredRuntime)
 
             if (keepForColdRestart) {
                 // Checked by a second instrumentation invocation after the host force-stops
@@ -370,6 +431,7 @@ class WebSkinPackageDeliveryInstrumentedTest {
             val packageSha = MessageDigest.getInstance("SHA-256").digest(packageBytes)
                 .joinToString("") { "%02x".format(it) }
             assertEquals(fixture.sha256, packageSha)
+            if (fixture.studioAuthoredRuntime) assertThirdPartyManifestPreserved(packageBytes)
             val expectedFiles = expectedRuntimeFiles(packageBytes)
             val stored = File(storage.filesDir, "skin-packs/$DELIVERY_PACKAGE_ID.pcskin")
             assertArrayEquals("installed export must survive process restart", packageBytes,
@@ -395,9 +457,16 @@ class WebSkinPackageDeliveryInstrumentedTest {
                 " && document.documentElement.dataset.aiEditProbe === 'studio-cli-ai-edit-v1' && " +
                     "document.querySelector('#aiEditedProbe')?.textContent === 'AI_EDITED_RUNTIME_V1'"
             } else ""
+            val studioAuthoredProbeReady = if (fixture.studioAuthoredRuntime) {
+                " && document.querySelector('#studioAuthoredComponent')?.dataset.studioComponentProbe === " +
+                    "'browser-studio-runtime-v1' && " +
+                    "document.querySelector('#studioAuthoredComponent')?.dataset.studioFontProbe === 'loaded' && " +
+                    "document.fonts.check('16px StudioAuthoredFont','Studio-authored component')"
+            } else ""
             awaitJs(actualWebView, "document.readyState === 'complete' && " +
                 "document.documentElement.dataset.deliveryScriptProbe === '${fixture.scriptMarker}' && " +
-                "document.querySelector('#assetProbe')?.complete === true" + editedProbeReady)
+                "document.querySelector('#assetProbe')?.complete === true" + editedProbeReady +
+                studioAuthoredProbeReady)
             assertEquals("studio-html-delivery-fixture",
                 evaluate(actualWebView, "document.querySelector('#htmlProbe').textContent").trim('"'))
             assertEquals(fixture.scriptMarker,
@@ -421,6 +490,10 @@ class WebSkinPackageDeliveryInstrumentedTest {
                         .trim('"'))
                 assertEquals("rgb(126, 42, 201)", evaluate(actualWebView,
                     "getComputedStyle(document.querySelector('#aiEditedProbe')).color").trim('"'))
+            }
+            if (fixture.studioAuthoredRuntime) {
+                assertStudioAuthoredProject(restored)
+                assertStudioAuthoredWebView(actualWebView)
             }
             assertEquals("https://skin.powercal.local/web/style.css",
                 evaluate(actualWebView, "document.styleSheets[0].href").trim('"'))
