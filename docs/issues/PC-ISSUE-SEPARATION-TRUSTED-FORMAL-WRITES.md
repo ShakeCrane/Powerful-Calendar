@@ -181,3 +181,19 @@ The first harness attempt waited for internal Bridge detail strings, while the C
 - Evidence files are retained in `.local/android-test/reports/sep16-conflict-review-20261031/`. This is AVD evidence using isolated test data; no app data was cleared. It does not verify physical touches, TalkBack or OEM behavior.
 
 This closes the two tested stale-review races only. Competing-version rejection for the remaining DELETE/REPLACE/CONVERT/restore operation paths, pending-review process recovery, same-fixture Native/Clear result replay and physical/OEM acceptance remain unverified. SEP-16 remains **PARTIAL / HOLD / INCOMPLETE**; the new test commit is pushed as `fa8e70a`.
+
+## First same-fixture Native/Clear outcome replay (2026-10-31)
+
+Added `sameEmptyMemoFixtureProducesEquivalentFormalRecordFromNativeAndClear` to compare one matched user operation through the real Native `PowerCalApp` UI and packaged Clear WebView. Two isolated Stores begin empty with zero commits/identities and next sequence 1. Both paths create the same no-date Memo through their Memo page with title `Native/Clear parity Memo`.
+
+- Before Native publish and before Clear Host approval, each Store still has no formal event, commit or identity.
+- After completion, `DraftForm.from(nativeRecord)` equals `DraftForm.from(clearRecord)`. Both events have `eventSeq=1`, `revision=1`, one commit, one identity, next sequence 2 and zero drafts.
+- The pair passed **1/1**, and the complete `WebSkinAllKindsTrustedWriteInstrumentedTest` passed **8/8** on Android 15 / API 35 / WebView 124 `emulator-5570`, built from exact clean source commit `0d729a0a017c59a3fdb10842809ec28b95769ada`.
+
+An initial suite run did not commit from the Native editor after a direct click while the software keyboard could cover the bottom action. The test now scrolls the publish button into view with Compose `performScrollTo()` before clicking. The isolated pair and complete class then passed; no production code or business behavior was changed.
+
+- Clean source archive SHA-256 `79E2DD4955648D6F560459A91A18BF77871A4B6EA21FDC2CD50C05FF9B07CF93`.
+- Full Gradle gate: **784/784 JVM, 125 suites, zero failures/errors/skips, 171/171 tasks**, both source boundaries and Debug/AndroidTest APK assembly passed; Lint **0 errors / 51 warnings**. Gate log SHA-256 `602E5B62085D2B3B281D6DE38E8468036776D188473C50FC1AD2A3EA93484610`.
+- Debug APK SHA-256 `8CC46EED2FE1569CB349C7C913C3BFFE85344E4C6E9C527342373367C3E8F886`; AndroidTest APK SHA-256 `1F8BD1DA1347FC5FA94CB440034D81AD89884A0C1DB9402A2332219D77BE1C21`; device class log SHA-256 `333603EDA6FC3B985EE75229774E1CBEF4FBBFDBCFBC09113D761F6DB2C40AB9`. Evidence: `.local/android-test/reports/sep16-native-clear-parity-20261031/`.
+
+The code-only test commit `0d729a0` is pushed. This is one CREATE/Memo comparison; other Native/Clear paired operation outcomes, remaining conflict/recovery paths, TalkBack and physical/OEM remain **NOT TESTED / INCOMPLETE**. SEP-16 remains **PARTIAL / HOLD / INCOMPLETE**.
