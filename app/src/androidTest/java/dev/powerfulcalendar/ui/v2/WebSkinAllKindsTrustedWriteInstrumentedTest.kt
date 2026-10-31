@@ -24,6 +24,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
@@ -903,7 +904,9 @@ class WebSkinAllKindsTrustedWriteInstrumentedTest {
             assertTrue("native editing remains memory-only before publish", nativeStore.all().isEmpty())
             assertEquals(0, nativeStore.commitCount())
             assertEquals(0, nativeStore.identityCount())
-            compose.onNodeWithText("发布").performScrollTo().performClick()
+            val publishNode = compose.onNodeWithText("发布")
+            publishNode.assertIsDisplayed()
+            publishNode.performTouchInput { click() }
             compose.waitUntil(30_000) { nativeStore.all().size == 1 }
             val nativeRecord = nativeStore.all().single()
 
@@ -1519,6 +1522,206 @@ class WebSkinAllKindsTrustedWriteInstrumentedTest {
                 "identities=${clearStore.identityCount()} sequence=${clearStore.nextSequencePreview()} " +
                 "cancelledHostReview=true trustedSave=${saveTouch.getJSONObject("trustedClick").optBoolean("trusted")} " +
                 "businessForm=${DraftForm.from(clearSaved)}")
+        } finally {
+            resetClear()
+            nativeStore.close()
+            clearStore.close()
+            nativeContext.deleteDatabase(nativeDatabase)
+            clearContext.deleteDatabase(clearDatabase)
+            listOf(nativeNamespace, clearNamespace).forEach { namespace ->
+                listOf("powercal-onboarding", "powercal-skin-choice", "powercal-ui", "powercal-profile")
+                    .forEach { storage.deleteSharedPreferences("$namespace-$it") }
+                File(storage.cacheDir, namespace).deleteRecursively()
+            }
+        }
+    }
+
+    @Test
+    fun samePersistedMemoDeckEditFlushReopenPublishMatchesNativeAndClear() {
+        val storage = compose.activity.applicationContext
+        val nativeNamespace = "pc-native-clear-deck-life-native-${UUID.randomUUID()}"
+        val clearNamespace = "pc-native-clear-deck-life-clear-${UUID.randomUUID()}"
+        val nativeContext = IsolatedAppContext(compose.activity, storage, nativeNamespace)
+        val clearContext = IsolatedAppContext(compose.activity, storage, clearNamespace)
+        val nativeDatabase = "deck-life-native.db"
+        val clearDatabase = "deck-life-clear.db"
+        val nativeStore = PowerStore(nativeContext, nativeDatabase)
+        val clearStore = PowerStore(clearContext, clearDatabase)
+        var web: WebView? = null
+        try {
+            val initialTitle = "Native/Clear persisted Memo draft"
+            val updatedTitle = "Native/Clear flushed Memo draft"
+            val form = DraftForm(
+                kind = TemporalKind.MEMO,
+                title = initialTitle,
+                zoneId = ZoneId.systemDefault().id
+            )
+            val nativeCard = nativeStore.newDraft(form, actor = "deck-lifecycle-parity")
+            val clearCard = clearStore.newDraft(form, actor = "deck-lifecycle-parity")
+            assertEquals(nativeCard.draftId, clearCard.draftId)
+            assertEquals(nativeCard.eventSeq, clearCard.eventSeq)
+            assertEquals(form, nativeStore.draft(nativeCard.draftId)?.form)
+            assertEquals(form, clearStore.draft(clearCard.draftId)?.form)
+            listOf(nativeStore, clearStore).forEach { store ->
+                assertTrue(store.all().isEmpty())
+                assertEquals(1L, store.draftCount())
+                assertEquals(1, store.pendingCount())
+                assertEquals(1L, store.identityCount())
+                assertEquals(2L, store.nextSequencePreview())
+                assertEquals(0L, store.commitCount())
+            }
+
+            nativeContext.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                .edit().putBoolean("system-calendar-import-asked", true).commit()
+            SkinPackageManager(nativeContext).selectNativeForEmergencyRecovery()
+            compose.runOnUiThread {
+                compose.activity.setContent {
+                    CompositionLocalProvider(LocalContext provides nativeContext) {
+                        PowerCalTheme { PowerCalApp(nativeStore) }
+                    }
+                }
+            }
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithContentDescription("待处理 1").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithContentDescription("待处理 1").performTouchInput { click() }
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithContentDescription("保存并退出待处理")
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithContentDescription("展开完整编辑").performTouchInput { click() }
+            val nativeTitleMatcher = hasSetTextAction() and hasText(initialTitle)
+            compose.waitUntil(15_000) {
+                compose.onAllNodes(nativeTitleMatcher).fetchSemanticsNodes().size == 1
+            }
+            compose.onNode(nativeTitleMatcher).performTextReplacement(updatedTitle)
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithText("1 / 1 · 待暂存").fetchSemanticsNodes().isNotEmpty()
+            }
+            assertEquals("Native keystrokes remain a proposal until the deck is closed",
+                form, nativeStore.draft(nativeCard.draftId)?.form)
+            compose.onNodeWithContentDescription("保存并退出待处理")
+                .performTouchInput { click() }
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithContentDescription("保存并退出待处理")
+                    .fetchSemanticsNodes().isEmpty() &&
+                    nativeStore.draft(nativeCard.draftId)?.form?.title == updatedTitle
+            }
+            val nativeFlushed = requireNotNull(nativeStore.draft(nativeCard.draftId))
+            assertEquals(1, nativeStore.pendingCount())
+            assertEquals(0L, nativeStore.commitCount())
+            assertTrue(nativeStore.all().isEmpty())
+
+            compose.onNodeWithContentDescription("待处理 1").performTouchInput { click() }
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithText(updatedTitle).fetchSemanticsNodes().isNotEmpty() &&
+                    compose.onAllNodesWithText("发布").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText("发布").performTouchInput { click() }
+            compose.waitUntil(30_000) {
+                nativeStore.get(nativeCard.eventSeq)?.title == updatedTitle
+            }
+            val nativePublished = requireNotNull(nativeStore.get(nativeCard.eventSeq))
+            assertEquals(TemporalKind.MEMO, nativePublished.kind)
+            assertEquals(nativeCard.eventSeq, nativePublished.eventSeq)
+            assertEquals(updatedTitle, nativePublished.title)
+            assertEquals(1L, nativeStore.commitCount())
+            assertEquals(1L, nativeStore.draftCount())
+            assertEquals(0, nativeStore.pendingCount())
+            assertEquals(1L, nativeStore.identityCount())
+            assertEquals(2L, nativeStore.nextSequencePreview())
+
+            resetClear()
+            web = launchClear(clearContext, clearStore)
+            awaitJs(web, "window.PowerCalSkin && document.querySelector('#pendingCounter')?.textContent==='1'")
+            focusClearWindowForTouch(web)
+            val openTouch = tapWebSelector(web, "[data-action=openDeck]")
+            awaitJs(web, "!document.querySelector('#skinSheet').hidden && " +
+                "document.querySelectorAll('.sheet-cards .sheet-card').length===1")
+            val clearCardSelector = ".sheet-cards .sheet-card[data-draft-id='${clearCard.draftId}']"
+            tapWebSelector(web, clearCardSelector)
+            awaitJs(web, "document.querySelector('#sheetFields [data-field=title]')?.value===" +
+                "${JSONObject.quote(initialTitle)}")
+            editTitle(web, updatedTitle)
+            awaitJs(web, "document.querySelector('#sheetSubtitle')?.textContent.includes('尚未暂存')")
+            assertEquals("Clear edits remain dirty in the real Host controller before flush",
+                form, clearStore.draft(clearCard.draftId)?.form)
+            focusClearWindowForTouch(web)
+            val closeTouch = tapWebSelector(web, "#sheetClose")
+            awaitJs(web, "document.querySelector('#skinSheet').hidden")
+            compose.waitUntil(15_000) {
+                clearStore.draft(clearCard.draftId)?.form?.title == updatedTitle
+            }
+            val clearFlushed = requireNotNull(clearStore.draft(clearCard.draftId))
+            assertEquals("Native and Clear close flush the same persisted form",
+                nativeFlushed.form, clearFlushed.form)
+            assertEquals(nativeFlushed.draftVersion, clearFlushed.draftVersion)
+            assertEquals(1, clearStore.pendingCount())
+            assertEquals(0L, clearStore.commitCount())
+            assertTrue(clearStore.all().isEmpty())
+
+            focusClearWindowForTouch(web)
+            tapWebSelector(web, "[data-action=openDeck]")
+            awaitJs(web, "!document.querySelector('#skinSheet').hidden && " +
+                "document.querySelectorAll('.sheet-cards .sheet-card').length===1")
+            tapWebSelector(web, clearCardSelector)
+            awaitJs(web, "document.querySelector('#sheetFields [data-field=title]')?.value===" +
+                "${JSONObject.quote(updatedTitle)}")
+            val projectedDraftVersion = compose.runOnIdle {
+                WebSkinBridgeRuntime.state().getJSONObject("editing")
+                    .getJSONObject("deck").getLong("version")
+            }
+            assertEquals(clearFlushed.draftVersion, projectedDraftVersion)
+            assertEquals(0L, clearStore.commitCount())
+            assertEquals(1, clearStore.pendingCount())
+            assertEquals("Host review may not publish the persisted deck candidate early",
+                emptyList<TemporalRecord>(), clearStore.all())
+            compose.runOnIdle { assertEquals(0L, clearStore.commitCount()) }
+            focusClearWindowForTouch(web)
+            val firstPublishTouch = tapWebSelector(web, "#sheetSave")
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithText("确认发布正式事件").fetchSemanticsNodes().isNotEmpty()
+            }
+            assertTrue(clearStore.all().isEmpty())
+            assertEquals(0L, clearStore.commitCount())
+            compose.onNodeWithText("取消").performTouchInput { click() }
+            awaitJs(web, "document.querySelector('#sheetStatus').textContent.includes('已取消宿主操作')")
+            assertEquals(clearCard.draftId, clearStore.pendingDrafts().single().draftId)
+            assertEquals(updatedTitle, clearStore.draft(clearCard.draftId)?.form?.title)
+            assertTrue(clearStore.all().isEmpty())
+            assertEquals(0L, clearStore.commitCount())
+
+            focusClearWindowForTouch(web)
+            val approvedPublishTouch = tapWebSelector(web, "#sheetSave")
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithText("确认发布正式事件").fetchSemanticsNodes().isNotEmpty()
+            }
+            assertTrue(clearStore.all().isEmpty())
+            compose.onNodeWithText("确认").performTouchInput { click() }
+            compose.waitUntil(30_000) {
+                clearStore.get(clearCard.eventSeq)?.title == updatedTitle
+            }
+            val clearPublished = requireNotNull(clearStore.get(clearCard.eventSeq))
+            assertEquals("Native and Clear deck lifecycle publish the same event",
+                DraftForm.from(nativePublished), DraftForm.from(clearPublished))
+            assertEquals(nativePublished.eventSeq, clearPublished.eventSeq)
+            assertEquals(nativePublished.revision, clearPublished.revision)
+            listOf(nativeStore, clearStore).forEach { store ->
+                assertEquals(1L, store.commitCount())
+                assertEquals(1L, store.draftCount())
+                assertEquals(0, store.pendingCount())
+                assertEquals(1L, store.identityCount())
+                assertEquals(2L, store.nextSequencePreview())
+            }
+            println("NATIVE_CLEAR_PARITY operation=DECK_LIFECYCLE kind=MEMO draftId=${clearCard.draftId} " +
+                "eventSeq=${clearPublished.eventSeq} version=${clearFlushed.draftVersion} " +
+                "commits=${clearStore.commitCount()} identities=${clearStore.identityCount()} " +
+                "sequence=${clearStore.nextSequencePreview()} " +
+                "openTouch=${openTouch.getJSONObject("trustedClick").optBoolean("trusted")} " +
+                "closeTouch=${closeTouch.getJSONObject("trustedClick").optBoolean("trusted")} " +
+                "cancelledPublish=${firstPublishTouch.getJSONObject("trustedClick").optBoolean("trusted")} " +
+                "approvedPublish=${approvedPublishTouch.getJSONObject("trustedClick").optBoolean("trusted")} " +
+                "businessForm=${DraftForm.from(clearPublished)}")
         } finally {
             resetClear()
             nativeStore.close()

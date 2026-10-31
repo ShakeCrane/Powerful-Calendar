@@ -526,11 +526,8 @@ private fun DeckCardBody(
     val motion = if (appearance.reduceMotion) snap<Float>() else spring<Float>(dampingRatio = 0.86f, stiffness = 380f)
     val entrance by animateFloatAsState(if (arrived) 1f else 0.86f, motion, label = "deckArrival")
 
-    BoxWithConstraints(Modifier.fillMaxSize().graphicsLayer { alpha = entrance }) {
-        val compactViewport = maxHeight < 320.dp || WindowInsets.ime.getBottom(LocalDensity.current) > 0
-        Column(Modifier.fillMaxSize()
-            .then(if (compactViewport) Modifier.verticalScroll(rememberScrollState()) else Modifier)
-            .padding(horizontal = 14.dp, vertical = 10.dp)) {
+    Box(Modifier.fillMaxSize().graphicsLayer { alpha = entrance }) {
+        Column(Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 FlowRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(if (transientNewEvent) "新建" else card.sequenceLabel,
@@ -557,7 +554,7 @@ private fun DeckCardBody(
                         if (expanded) "收起详细编辑" else "展开完整编辑")
                 }
             }
-            Column(Modifier.then(if (compactViewport) Modifier else Modifier.weight(1f).verticalScroll(rememberScrollState())),
+            Column(Modifier.weight(1f).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (!expanded) {
                     Column(Modifier.fillMaxWidth().clickable(onClickLabel = "展开完整编辑", onClick = onExpandToggle)
