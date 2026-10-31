@@ -17,9 +17,11 @@ import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.click
+import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performTouchInput
@@ -270,7 +272,7 @@ class StudioAuthoredSkinBridgeInstrumentedTest {
     }
 
     @Test
-    fun studioAuthoredSkinAndNativeMemoOpenCloseReopenWithoutWrites() {
+    fun studioAuthoredSkinAndNativeMemoNoDiffReopenAndCompletionUndo() {
         assumeTrue("requires Android 15/API 35 emulator", Build.VERSION.SDK_INT == 35 &&
             (Build.HARDWARE == "ranchu" || Build.HARDWARE == "goldfish"))
         val storage = compose.activity.applicationContext
@@ -365,6 +367,25 @@ class StudioAuthoredSkinBridgeInstrumentedTest {
             assertEquals("Native second no-diff exit remains idempotent", nativeBaseline,
                 memoStoreSnapshot(nativeStore, eventSeq))
 
+            assertEquals("the unfinished Native Memo shows one completion control", 1,
+                compose.onAllNodes(isToggleable()).fetchSemanticsNodes().size)
+            compose.onAllNodes(isToggleable()).onFirst().performTouchInput { click() }
+            compose.waitUntil(30_000) {
+                nativeStore.get(eventSeq)?.completedKeys == setOf("single")
+            }
+            assertMemoCompletionState(nativeStore, eventSeq, 2L, setOf("single"), nativeBaseline[6] as Long)
+            compose.onNodeWithText("查看已完成").performTouchInput { click() }
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithText(seed.title, substring = true)
+                    .fetchSemanticsNodes().isNotEmpty() &&
+                    compose.onAllNodes(isToggleable()).fetchSemanticsNodes().size == 1
+            }
+            compose.onAllNodes(isToggleable()).onFirst().performTouchInput { click() }
+            compose.waitUntil(30_000) {
+                nativeStore.get(eventSeq)?.completedKeys?.isEmpty() == true
+            }
+            assertMemoCompletionState(nativeStore, eventSeq, 3L, emptySet(), nativeBaseline[6] as Long)
+
             compose.runOnUiThread {
                 compose.activity.setContent { }
                 PowerCalSkinRegistry.reset()
@@ -458,11 +479,47 @@ class StudioAuthoredSkinBridgeInstrumentedTest {
             assertEquals("Studio Clear second no-diff exit remains idempotent", clearBaseline,
                 memoStoreSnapshot(clearStore, eventSeq))
 
+            val toggleSelector = "#memoList [data-action='toggleMemo']" +
+                "[data-event-seq='$eventSeq'][data-occurrence-key='single']"
+            val encodedToggleSelector = JSONObject.quote(toggleSelector)
+            val clearCompleteTouch = tapBySelector(web, toggleSelector)
+            assertTrue("Studio Clear Memo completion must use a trusted touchscreen tap",
+                clearCompleteTouch.optBoolean("trusted"))
+            compose.waitUntil(30_000) {
+                clearStore.get(eventSeq)?.completedKeys == setOf("single")
+            }
+            assertMemoCompletionState(clearStore, eventSeq, 2L, setOf("single"), clearBaseline[6] as Long)
+
+            val clearDoneFilterTouch = tapBySelector(web, ".tabs [data-filter='done']")
+            assertTrue("Studio Clear completed filter must use a trusted touchscreen tap",
+                clearDoneFilterTouch.optBoolean("trusted"))
+            compose.waitUntil(10_000) {
+                evaluate(web, "!!document.querySelector($encodedTitleSelector) && " +
+                    "document.querySelector($encodedTitleSelector).getAttribute('aria-label')===" +
+                    JSONObject.quote("编辑事项：${seed.title}") + " && " +
+                    "document.querySelector($encodedToggleSelector)?.getAttribute('aria-label')===" +
+                    JSONObject.quote("恢复未完成")) == "true"
+            }
+            val clearReopenTouch = tapBySelector(web, toggleSelector)
+            assertTrue("Studio Clear completed Memo must be reopenable with trusted touch",
+                clearReopenTouch.optBoolean("trusted"))
+            compose.waitUntil(30_000) {
+                clearStore.get(eventSeq)?.completedKeys?.isEmpty() == true
+            }
+            assertMemoCompletionState(clearStore, eventSeq, 3L, emptySet(), clearBaseline[6] as Long)
+
+            val clearOpenFilterTouch = tapBySelector(web, ".tabs [data-filter='open']")
+            assertTrue("Studio Clear unfinished filter must use a trusted touchscreen tap",
+                clearOpenFilterTouch.optBoolean("trusted"))
+            compose.waitUntil(10_000) {
+                evaluate(web, "!!document.querySelector($encodedTitleSelector)") == "true"
+            }
+
             assertEquals("Native and Studio-authored Skin expose the same Memo business form",
                 DraftForm.from(requireNotNull(nativeStore.get(eventSeq))),
                 DraftForm.from(requireNotNull(clearStore.get(eventSeq))))
-            println("MEMO_OPEN_REOPEN_PARITY PASS packageSha256=$packageSha eventSeq=$eventSeq " +
-                "nativeNoDiffExits=2 clearNoDiffExits=2 commits=${clearStore.commitCount()} " +
+            println("MEMO_OPEN_REOPEN_UNDO_PARITY PASS packageSha256=$packageSha eventSeq=$eventSeq " +
+                "nativeNoDiffExits=2 clearNoDiffExits=2 completionAndUndo=true commits=${clearStore.commitCount()} " +
                 "identities=${clearStore.identityCount()} sequence=${clearStore.nextSequencePreview()} " +
                 "customMemoMinHeight=44px trustedTouches=true")
         } finally {
@@ -492,4 +549,32 @@ class StudioAuthoredSkinBridgeInstrumentedTest {
         store.identityCount(), store.nextSequencePreview(), store.nextQueueOrderPreview(),
         store.draftCount(), store.pendingCount()
     )
+
+    private fun assertMemoCompletionState(
+        store: PowerStore,
+        eventSeq: Long,
+        revision: Long,
+        completedKeys: Set<String>,
+        queueOrder: Long
+    ) {
+        val record = requireNotNull(store.get(eventSeq))
+        assertEquals("Memo completion revision", revision, record.revision)
+        assertEquals("Memo completion commits", revision, store.commitCount())
+        assertEquals("Memo completion is scoped to its expected key", completedKeys,
+            record.completedKeys)
+        assertEquals("Memo remains the same persisted event", 1, store.all().size)
+        assertEquals("completion does not allocate another identity", 1, store.identityCount())
+        assertEquals("completion does not allocate another event sequence", 2L,
+            store.nextSequencePreview())
+        assertEquals("completion does not allocate draft queue order", queueOrder,
+            store.nextQueueOrderPreview())
+        assertEquals("completion does not create an editor draft", 0L, store.draftCount())
+        assertEquals("completion does not create a pending proposal", 0, store.pendingCount())
+        assertEquals("each state transition has one auditable commit", revision.toInt(),
+            store.history(eventSeq).size)
+        if (revision == 3L) {
+            assertEquals(setOf("CREATE", "COMPLETE", "REOPEN"),
+                store.history(eventSeq).map { it.operation }.toSet())
+        }
+    }
 }

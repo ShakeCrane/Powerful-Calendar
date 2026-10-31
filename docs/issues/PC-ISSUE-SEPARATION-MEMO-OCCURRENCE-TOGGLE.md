@@ -48,9 +48,16 @@ Memo 完成状态按正式事件 owner、revision 和 occurrence key 重新验�
 
 ## 未验证项
 
-- Native/Clear 重复 Memo 完成的基础设备回放已通过。Android stale revision/replay、完成后再次打开/撤销、无障碍服务与 Activity/进程恢复仍 **NOT TESTED**。Studio 编辑后的皮肤包已验证一次性日期 Memo 的无差异打开/退出/重开路径；没有验证该包上的重复槽完成/撤销。
+- Native/Clear 重复 Memo 完成的基础设备回放已通过；一次性日期 Memo 在 Studio 导出皮肤上的打开/退出/重开，以及完成后切换已完成列表并撤销，也已完成 API 35 配对回放。Android stale revision/replay、重复 occurrence 完成后再次打开/撤销、无障碍服务与 Activity/进程恢复仍 **NOT TESTED**。
 - 实体/OEM 验收仍未执行。API 35 AVD 结果不能替代实体设备验证。
 - 因其余 Memo 场景未闭环，父项 `SEP-03` 保持 **PARTIAL / HOLD**；本 Issue 不为其余行为签核。
+
+## 2026-10-31 Studio 导出包上的一次性 Memo 完成与撤销配对
+
+- 在既有 Browser Studio 导出包（`.pcskin` SHA-256 `3a754789878c3ab7042351b3af0cd58e204abad4770ba69eac25b940d156aaf7`）上扩展 Android 回放。Native Compose 与安装后的 Studio-authored Clear WebView 对同一隔离日期 Memo 各执行两次无差异打开/退出，然后执行完成 → 查看已完成 → 撤销 → 返回未完成列表。Skin 的 checkbox 与过滤器操作均为 `SOURCE_TOUCHSCREEN` 并校验 `isTrusted=true`。
+- 两端每次完成/撤销后均逐项核对 Store：revision/commit 由 1 增至 2、再至 3；最终仅一个正式事件和身份、next sequence 为 2、queue order 保持基线，无草稿或 pending；历史操作恰为 `CREATE / COMPLETE / REOPEN`。Native 与 Skin 最终 `DraftForm` 相等。
+- API 35 / Android 15 / WebView 124 / `emulator-5570`，`StudioAuthoredSkinBridgeInstrumentedTest` **2/2 PASS**（其中 Studio Month Bridge 既有回归 1 项、Memo 配对流程 1 项）。XML SHA-256 `7B8EE912F189583845D68957B701DF0595D4743B99DAB63AB32296186AF6707F`；focused Gradle log SHA-256 `F03A5C0EAFC6069B6667DED9E51E461DBBE726EC7E4346422A2359493254C516`；触摸回放 marker SHA-256 `62CBF8635A7DEF3FE5054A5A425A3FB0D0452852D10250C8EBF26265A9184AB8`。具体命令与 Store 断言在 `StudioAuthoredSkinBridgeInstrumentedTest#studioAuthoredSkinAndNativeMemoNoDiffReopenAndCompletionUndo`。
+- 证据清单 `.local/android-test/reports/sep03-memo-open-reopen-studio-20261031/verification-manifest.json` 随本次测试更新。该用例关闭一次性日期 Memo 的完成/撤销交互切片，不覆盖 recurring occurrence 的 stale replay/undo，也不替代生命周期恢复、系统无障碍及实体/OEM 验收；因此 `SEP-03` 仍 **PARTIAL / HOLD**。
 
 ## 提交
 
@@ -68,6 +75,6 @@ Memo 完成状态按正式事件 owner、revision 和 occurrence key 重新验�
 
 - 真实 Chrome/CDP Browser Studio 导入 APK 内的 Clear 包，使用源码编辑器增加月份按钮/Bridge 绑定，并编辑 Memo 标题样式；实际 `.pcskin v3` 导出后重导入、继续编辑并二次导出。最终包 395,815 bytes，SHA-256 `3a754789878c3ab7042351b3af0cd58e204abad4770ba69eac25b940d156aaf7`；能力声明和文件集合保留，7 个未编辑文件逐字节不变。
 - API 35 Android 15 / WebView 124 / `emulator-5570` 使用相同日期 Memo 分别运行 Native Compose 和该 Studio 导出包：两端均完成打开、无差异退出、再次打开、再次退出。每一步比较正式对象、历史、commit、identity、next sequence、queue order、draft 和 pending 快照，均未产生变化；Clear 两次打开与退出均由可信 Android 触摸完成。Studio 修改的 Memo 标题最小高度在 Runtime 计算为 44px。定向类 **2/2 PASS**（月历 Bridge 与 Memo 重开两项）；Memo 用例实际 Store 写入为 0。
-- Skin Studio Python 全套 **65/65 PASS**；强制离线 Gradle 门禁 **785/785 JVM、125 suites、0 failures/errors/skips、171/171 tasks PASS**，Native/Skin boundaries 与 Debug/AndroidTest APK 构建通过，Lint 0 errors/55 warnings。门禁日志 SHA-256 `f09ab4ff6af8d116413ded94608bd0565ca38ce4cae83d4bb5f413bec53829dc`；Debug/AndroidTest APK SHA-256 `de876d09d11689f98131c9dad0a977aa1271e1657612b6a95db89abbbb80c31c` / `a91940da275f370db72f3ff8d848658e0dc0cf9ab8ddf2c6ee0fbf99a5ed6d1d`。AndroidTest APK 为 worktree-specific，包含未暂存且未执行的两个并行 Agent 测试文件。Android JUnit XML SHA-256 `f8cc66aba70d538fc72aa8d31dd55bd321484161457ce032a29b3b08a0f4bd1d`；设备日志 SHA-256 `6da835f0e8254d97c3ee92f6d4f36e3b22e69ded6705fd93c49087b07a8785ff`；Python 日志 SHA-256 `2e2e6cd9eb8664143da1d6a875d80b72e1eb315243a3f21e8123d9e90c4f4483`；manifest SHA-256 `50296c7f957532b7c3c853fc08a42a98506835c08c6198d494291c57a477477f`。证据清单 `.local/android-test/reports/sep03-memo-open-reopen-studio-20261031/verification-manifest.json`。
+- Skin Studio Python 全套 **65/65 PASS**；强制离线 Gradle 门禁 **785/785 JVM、125 suites、0 failures/errors/skips、171/171 tasks PASS**，Native/Skin boundaries 与 Debug/AndroidTest APK 构建通过，Lint 0 errors/55 warnings。门禁日志 SHA-256 `b1689f52aeb906e5ff4d1b95ee69e1606cd572015edee0416b05867113cacc2a`；Debug/AndroidTest APK SHA-256 `de876d09d11689f98131c9dad0a977aa1271e1657612b6a95db89abbbb80c31c` / `f1dc88d6d0941d6e7beeb49bf0f63ef058a3d98fb582b5fb8d44095619b47ccd`。AndroidTest APK 为 worktree-specific，包含未暂存且未执行的两个并行 Agent 测试文件。Android JUnit XML SHA-256 `7b8ee912f189583845d68957b701df0595d4743b99dab63ab32296186af6707f`；设备日志 SHA-256 `6da835f0e8254d97c3ee92f6d4f36e3b22e69ded6705fd93c49087b07a8785ff`；Python 日志 SHA-256 `2e2e6cd9eb8664143da1d6a875d80b72e1eb315243a3f21e8123d9e90c4f4483`；manifest SHA-256 `e0f2e6798edc99810c28b151310307acd199f4ebd006773272a9b7785b3e5e4d`。证据清单 `.local/android-test/reports/sep03-memo-open-reopen-studio-20261031/verification-manifest.json`。
 - 首轮失败均是测试夹具问题：Native Compose Activity 恢复了 Memo 页状态，测试起初假设从时间轴开始；另一次测试将含引号的 CSS selector 未转义地拼进 `evaluateJavascript`。页面/selector 检测现已修正，旧新 `.pcskin` 的 HTML/JS 字节一致，故障不在 Clear 生产包。成功日志在 PASS 标记后记录 WebView renderer 随测试 Activity 退出而终止、随后进程正常退出；该用例不把 teardown 当作 SEP-14 恢复验收。
 - 这只关闭 SEP-03 的单实例无差异编辑器打开/重开切片。Android stale replay、重复槽完成后的重开/撤销、完整 Activity/进程恢复、系统无障碍及实体/OEM仍未验证；SEP-03 保持 **PARTIAL / HOLD**。
