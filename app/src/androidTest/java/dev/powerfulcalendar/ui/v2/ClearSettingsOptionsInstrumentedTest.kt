@@ -3775,14 +3775,22 @@ class ClearSettingsOptionsInstrumentedTest {
         val token = UUID.randomUUID().toString().replace("-", "")
         val nativeNamespace = "pc-sep11-ics-native-$token"
         val clearNamespace = "pc-sep11-ics-clear-$token"
+        val nativeAttachmentNamespace = "pc-sep11-ai-ics-native-$token"
+        val clearAttachmentNamespace = "pc-sep11-ai-ics-clear-$token"
         val nativeContext = IsolatedAppContext(compose.activity, backing, nativeNamespace)
         val clearContext = IsolatedAppContext(compose.activity, backing, clearNamespace)
+        val nativeAttachmentContext =
+            IsolatedAppContext(compose.activity, backing, nativeAttachmentNamespace)
+        val clearAttachmentContext =
+            IsolatedAppContext(compose.activity, backing, clearAttachmentNamespace)
         val nativeStore = PowerStore(nativeContext, "native-ics.db")
         val clearStore = PowerStore(clearContext, "clear-ics.db")
+        val nativeAttachmentStore = PowerStore(nativeAttachmentContext, "native-ai-ics.db")
+        val clearAttachmentStore = PowerStore(clearAttachmentContext, "clear-ai-ics.db")
         val nativeSkinManager = SkinPackageManager(nativeContext)
         val clearSkinManager = SkinPackageManager(clearContext)
         val originalSkin = SkinPackageManager(backing).currentId()
-        val filename = "powercal-sep11-${token.take(12)}.ics"
+        val filename = "powercal-sep11-${token.take(12)}.bin"
         val uid = "sep11-$token@powercal.local"
         val title = "SEP11 paired ICS $token"
         val notes = "Local review only, fixture $token"
@@ -3807,7 +3815,8 @@ class ClearSettingsOptionsInstrumentedTest {
         ).joinToString("\r\n")
         val fixtureValues = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, filename)
-            put(MediaStore.MediaColumns.MIME_TYPE, "text/calendar")
+            // The AI attachment route must recognize this calendar by VCALENDAR bytes alone.
+            put(MediaStore.MediaColumns.MIME_TYPE, "application/octet-stream")
             put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/")
             put(MediaStore.MediaColumns.IS_PENDING, 1)
         }
@@ -3829,7 +3838,9 @@ class ClearSettingsOptionsInstrumentedTest {
                     SkinPackageManager(context).select(skinId)
                 }
                 compose.activity.setContent {
-                    androidx.compose.runtime.key("sep11-ics-$skinId") {
+                    androidx.compose.runtime.key(
+                        "sep11-ics-$skinId-${System.identityHashCode(context)}"
+                    ) {
                         CompositionLocalProvider(LocalContext provides context) {
                             PowerCalTheme { PowerCalApp(store) }
                         }
@@ -3839,7 +3850,7 @@ class ClearSettingsOptionsInstrumentedTest {
             compose.waitForIdle()
         }
 
-        fun selectIcsFromDownloads(store: PowerStore) {
+        fun selectIcsFromDownloads(store: PowerStore, waitForDraft: Boolean = true) {
             val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
             assertEquals("ICS must be selected by Android DocumentsUI", "com.google.android.documentsui",
                 automation.rootInActiveWindow?.packageName?.toString())
@@ -3847,19 +3858,65 @@ class ClearSettingsOptionsInstrumentedTest {
             tapPickerNode(waitForPickerNode(text = "Downloads"))
             tapPickerNode(waitForPickerNode(text = filename))
             val deadline = SystemClock.elapsedRealtime() + 20_000
-            while (SystemClock.elapsedRealtime() < deadline && store.pendingCount() == 0 &&
+            var openTapped = false
+            while (SystemClock.elapsedRealtime() < deadline &&
                 automation.rootInActiveWindow?.packageName?.toString() == "com.google.android.documentsui"
             ) {
                 val root = automation.rootInActiveWindow
-                val open = findAccessibilityNode(root, text = "OPEN")
-                    ?: findAccessibilityNode(root, text = "Open")
-                    ?: findAccessibilityNode(root, contentDescription = "Open")
-                    ?: findAccessibilityNode(root, viewId = "android:id/button1")
-                if (open != null) tapPickerNode(open) else SystemClock.sleep(150)
+                if (!openTapped) {
+                    val open = findAccessibilityNode(root, text = "OPEN")
+                        ?: findAccessibilityNode(root, text = "Open")
+                        ?: findAccessibilityNode(root, contentDescription = "Open")
+                        ?: findAccessibilityNode(root, viewId = "android:id/button1")
+                    if (open != null) {
+                        tapPickerNode(open)
+                        openTapped = true
+                    } else SystemClock.sleep(150)
+                } else SystemClock.sleep(150)
             }
             compose.waitUntil(30_000) {
-                store.pendingCount() == 1 &&
+                (!waitForDraft || store.pendingCount() == 1) &&
                     automation.rootInActiveWindow?.packageName?.toString() == compose.activity.packageName
+            }
+        }
+
+        fun currentClearWebView(): WebView {
+            web = null
+            compose.waitUntil(30_000) {
+                compose.runOnUiThread {
+                    web = findWebView(compose.activity.findViewById(android.R.id.content))
+                }
+                web != null
+            }
+            val view = requireNotNull(web)
+            compose.waitUntil(30_000) {
+                evaluate(view, "!!window.PowerCalSkin && !!window.PowerCalSkin.receive") == "true"
+            }
+            return view
+        }
+
+        fun openAiAttachmentPicker(fromClear: Boolean, clearView: WebView? = null) {
+            if (fromClear) {
+                val view = requireNotNull(clearView)
+                tapWebSelector(view, ".clear-tabbar [data-action=ai]")
+                compose.waitUntil(15_000) {
+                    WebSkinBridgeRuntime.state().optString("page") == "AI" &&
+                        WebSkinBridgeRuntime.state().optBoolean("chatAttachmentAvailable")
+                }
+                tapWebSelector(view,
+                    ".chat-attachment-controls button[aria-label='选择日历或文档附件']")
+            } else {
+                compose.waitUntil(15_000) {
+                    compose.onAllNodesWithText("AI 助手").fetchSemanticsNodes().isNotEmpty()
+                }
+                compose.onAllNodes(hasText("AI 助手") and hasClickAction())
+                    .onFirst().performClick()
+                compose.onNodeWithContentDescription("添加图片或文件").performClick()
+                compose.onNodeWithText("添加 ICS / 文档 / 表格").performClick()
+            }
+            compose.waitUntil(15_000) {
+                InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow
+                    ?.packageName?.toString() == "com.google.android.documentsui"
             }
         }
 
@@ -3907,16 +3964,7 @@ class ClearSettingsOptionsInstrumentedTest {
             assertEquals(listOf(0L, 1L, 1L, 0L, 1L, 2L), storeSnapshot(nativeStore))
 
             showSkin("powercal-clear-default", clearContext, clearStore)
-            compose.waitUntil(30_000) {
-                compose.runOnUiThread {
-                    web = findWebView(compose.activity.findViewById(android.R.id.content))
-                }
-                web != null
-            }
-            val clearWeb = requireNotNull(web)
-            compose.waitUntil(30_000) {
-                evaluate(clearWeb, "!!window.PowerCalSkin && !!window.PowerCalSkin.receive") == "true"
-            }
+            val clearWeb = currentClearWebView()
             tapWebSelector(clearWeb, ".clear-tabbar [data-action=settings]")
             compose.waitUntil(15_000) {
                 WebSkinBridgeRuntime.state().optString("page") == "SETTINGS"
@@ -3925,6 +3973,15 @@ class ClearSettingsOptionsInstrumentedTest {
                 "#settingsOptionGroups [data-option-id='calendar.import.file']")
             waitForPickerNode(contentDescription = "Show roots")
             selectIcsFromDownloads(clearStore)
+            compose.waitUntil(15_000) {
+                WebSkinBridgeRuntime.state().optJSONObject("editing")
+                    ?.optJSONObject("deck")?.optBoolean("open") == true
+            }
+            assertEquals("Clear direct ICS import must render its editable deck in Clear",
+                "true", evaluate(clearWeb,
+                    "!!document.getElementById('skinSheet') && " +
+                        "!document.getElementById('skinSheet').hidden && " +
+                        "document.getElementById('sheetTitle').textContent === '待处理草稿'"))
 
             val clearCard = clearStore.pendingDrafts().single()
             assertEquals("Native and Clear import the same user-visible form",
@@ -3934,8 +3991,86 @@ class ClearSettingsOptionsInstrumentedTest {
             assertEquals("Clear import creates no formal event", 0, clearStore.all().size)
             assertEquals("Clear import preserves the exact draft/sequence/commit counts",
                 storeSnapshot(nativeStore), storeSnapshot(clearStore))
+
+            assertFalse("Native AI attachment route starts without provider configuration",
+                AiSettingsStore.load(nativeAttachmentContext).configured)
+            assertFalse("Clear AI attachment route starts without provider configuration",
+                AiSettingsStore.load(clearAttachmentContext).configured)
+            listOf(nativeAttachmentContext, clearAttachmentContext).forEach { context ->
+                context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                    .edit().putBoolean("system-calendar-import-asked", true).commit()
+            }
+            assertTrue("Native AI attachment Store starts empty",
+                nativeAttachmentStore.all().isEmpty())
+            assertTrue("Clear AI attachment Store starts empty",
+                clearAttachmentStore.all().isEmpty())
+            showSkin("powercal-default", nativeAttachmentContext, nativeAttachmentStore)
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithText("时间轴").fetchSemanticsNodes().isNotEmpty()
+            }
+            openAiAttachmentPicker(fromClear = false)
+            selectIcsFromDownloads(nativeAttachmentStore, waitForDraft = false)
+            compose.waitUntil(30_000) {
+                nativeAttachmentStore.pendingCount() == 1 &&
+                    compose.onAllNodesWithText(title, substring = true)
+                        .fetchSemanticsNodes().isNotEmpty()
+            }
+            assertTrue("Magic-detected ICS must route to local parsing, not AI file review",
+                compose.onAllNodesWithText("核对文件 · $filename")
+                    .fetchSemanticsNodes().isEmpty())
+            val nativeAttachmentCard = nativeAttachmentStore.pendingDrafts().single()
+            assertEquals(TemporalKind.ACTIVITY, nativeAttachmentCard.form.kind)
+            assertEquals(title, nativeAttachmentCard.form.title)
+            assertEquals(startInstant, nativeAttachmentCard.form.parseStart())
+            assertEquals(endInstant, nativeAttachmentCard.form.parseEnd())
+            assertEquals(java.time.ZoneOffset.UTC.id, nativeAttachmentCard.form.zoneId)
+            assertEquals(listOf(0L, 1L, 1L, 0L, 1L, 2L),
+                storeSnapshot(nativeAttachmentStore))
+
+            showSkin("powercal-clear-default", clearAttachmentContext, clearAttachmentStore)
+            val clearAiWeb = currentClearWebView()
+            openAiAttachmentPicker(fromClear = true, clearView = clearAiWeb)
+            selectIcsFromDownloads(clearAttachmentStore, waitForDraft = false)
+            val clearDeckOpened = runCatching {
+                compose.waitUntil(30_000) {
+                    clearAttachmentStore.pendingCount() == 1 &&
+                        WebSkinBridgeRuntime.state().optJSONObject("editing")
+                            ?.optJSONObject("deck")?.optBoolean("open") == true
+                }
+            }.isSuccess
+            val clearAttachmentState = WebSkinBridgeRuntime.state()
+            val clearDeckState = clearAttachmentState.optJSONObject("editing")
+                ?.optJSONObject("deck")
+            Log.i("Sep11IcsAttachmentState", "page=${clearAttachmentState.optString("page")}; " +
+                "deckOpen=${clearDeckState?.optBoolean("open")}; " +
+                "busy=${clearAttachmentState.optBoolean("chatAttachmentBusy")}; " +
+                "pending=${clearAttachmentStore.pendingCount()}; " +
+                "identities=${clearAttachmentStore.identityCount()}; " +
+                "notice=${clearAttachmentState.optString("hostNotice").take(120)}")
+            assertTrue("Clear magic-detected ICS must bypass AI review and open its draft",
+                clearDeckOpened)
+            assertTrue("Clear Bridge must project the opened draft deck",
+                clearDeckState?.optBoolean("open") == true)
+            assertEquals("Clear AI attachment import must render its editable deck in Clear",
+                "true", evaluate(clearAiWeb,
+                    "!!document.getElementById('skinSheet') && " +
+                        "!document.getElementById('skinSheet').hidden && " +
+                        "document.getElementById('sheetTitle').textContent === '待处理草稿'"))
+            assertFalse("Clear must not leave the attachment in AI review state",
+                clearAttachmentState.optBoolean("chatAttachmentBusy"))
+            val clearAttachmentCard = clearAttachmentStore.pendingDrafts().single()
+            assertEquals(TemporalKind.ACTIVITY, clearAttachmentCard.form.kind)
+            assertEquals(title, clearAttachmentCard.form.title)
+            assertEquals(startInstant, clearAttachmentCard.form.parseStart())
+            assertEquals(endInstant, clearAttachmentCard.form.parseEnd())
+            assertEquals(java.time.ZoneOffset.UTC.id, clearAttachmentCard.form.zoneId)
+            assertEquals("Native and Clear remain equivalent after AI attachment import",
+                nativeAttachmentCard.form, clearAttachmentCard.form)
+            assertEquals(listOf(0L, 1L, 1L, 0L, 1L, 2L),
+                storeSnapshot(clearAttachmentStore))
             println("SEP11_NATIVE_CLEAR_ICS_IMPORT_PARITY documentsUi=true " +
                 "trustedClearTouch=true sameActivityDraft=true sameInstant=true " +
+                "clearOwnedDeck=true aiAttachmentMagicFallback=true firstImport=true " +
                 "formal=0 drafts=1 pending=1 commits=0 identities=1 sequence=2")
         } finally {
             val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
@@ -3950,16 +4085,24 @@ class ClearSettingsOptionsInstrumentedTest {
             compose.waitForIdle()
             nativeStore.close()
             clearStore.close()
+            nativeAttachmentStore.close()
+            clearAttachmentStore.close()
             nativeContext.deleteDatabase("native-ics.db")
             clearContext.deleteDatabase("clear-ics.db")
+            nativeAttachmentContext.deleteDatabase("native-ai-ics.db")
+            clearAttachmentContext.deleteDatabase("clear-ai-ics.db")
             listOf("powercal-onboarding", "powercal-ai", "powercal-ui", "powercal-profile",
                 "powercal-skin-choice", "powercal-import-checkpoints", "powercal-file-ai-consent")
                 .forEach { name ->
                     backing.deleteSharedPreferences("$nativeNamespace-$name")
                     backing.deleteSharedPreferences("$clearNamespace-$name")
+                    backing.deleteSharedPreferences("$nativeAttachmentNamespace-$name")
+                    backing.deleteSharedPreferences("$clearAttachmentNamespace-$name")
                 }
             File(backing.cacheDir, nativeNamespace).deleteRecursively()
             File(backing.cacheDir, clearNamespace).deleteRecursively()
+            File(backing.cacheDir, nativeAttachmentNamespace).deleteRecursively()
+            File(backing.cacheDir, clearAttachmentNamespace).deleteRecursively()
             runCatching { SkinPackageManager(backing).select(originalSkin) }
                 .onFailure { SkinPackageManager(backing).selectNativeForEmergencyRecovery() }
         }

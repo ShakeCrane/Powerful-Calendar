@@ -443,6 +443,20 @@ fun PowerCalApp(
     }
 
     fun openDeckAt(draftId: Long?) {
+        if (PowerCalSkinRegistry.active.web?.fullCanvas == true && page != Page.TOOLS.name) {
+            scope.launch {
+                val response = webEditing.execute(
+                    WebEditCommand.OpenDeck("host-open-deck-${System.nanoTime()}", draftId),
+                    newEventZone = zone
+                )
+                if (response.optString("status") !in setOf("opened", "selected")) {
+                    message = response.optString("detail")
+                        .ifBlank { "无法打开待处理草稿；草稿仍保存在宿主" }
+                }
+                WebSkinBridgeRuntime.stateRevision++
+            }
+            return
+        }
         if (deckOpening || deckOpen) return
         deckOpening = true
         scope.launch {
