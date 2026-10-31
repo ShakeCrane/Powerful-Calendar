@@ -40,7 +40,7 @@ Clear 顶部“＋”固定携带 data-kind=ACTIVITY，时间轴上无法像冻�
 
 ## 尚未签核
 
-- 新增的 Native/Clear 配对只覆盖 24 小时初始本地正午相机上的 ACTIVITY CREATE。非网格相机与不同缩放下的吸附、四种类型分别从时间轴相机进入并配对、关闭/恢复组合、Studio 修改包运行、长时稳定性及实体/OEM 仍 **NOT TESTED**。
+- Native/Clear 时间轴相机正式 CREATE 配对现覆盖初始本地正午下的 ACTIVITY、ALARM 和精确时刻 DEADLINE；仍未测试非网格/不同缩放吸附、时间轴选择器中的 MEMO 正式发布、关闭与恢复组合、Studio 修改包运行、长时稳定性及实体/OEM。
 - Month 选日 ACTIVITY CREATE 已在独立测试中通过 API 35 配对；SEP-02 与 SEP-04 其余功能仍需逐项等价验证，不能以本 Issue 的窄切片签核母项。
 
 ## 2026-10-31 Native/Clear 时间轴相机 ACTIVITY 配对
@@ -49,3 +49,11 @@ Clear 顶部“＋”固定携带 data-kind=ACTIVITY，时间轴上无法像冻�
 - 编辑与 Host 确认前两边 Store 均无写入；批准后 `DraftForm`、eventSeq=1、revision=1、commit=1、identity=1、next sequence=2 一致，draft/pending=0。API 35 `emulator-5570` focused **1/1 PASS**，整个 `TimelineCreateContextWebViewInstrumentedTest` **4/4 PASS**。
 - 全量离线门禁 **785/785 JVM / 125 suites / 0 failures/errors/skips / 171 tasks PASS**，含 Native/Skin boundaries、Debug/AndroidTest APK 和 lint。class log SHA-256 `3B0B161F5FC5EF29E2507444D9190EC472FABF7D107D5D1B3AEEE69EA8F5276AF64E54C786`；full gate `76A87374C490B1F6BE2A708C2A33F336B398F80D966468B8A4B3999C65C9C0DF`；focused logcat `ED7D7515B6F55320B0C36060162BEEC755E25E1775C3FC2E30A1598A3E0D625B`；class XML `6DC643C6C6CE73D7AB8654F0363DBA3C2DFC2B18AAFB3D942CD0FD36CB419675`。Debug / AndroidTest APK SHA-256 `DE876D09D11689F98131C9DAD0A977AA1271E1657612B6A95DB89ABBBB80C31C` / `356993EBA0CF56CE2A201A7FB26485A54CEE59BC59FC5B5B36137B0C39BA79ED`。
 - 日志与设备追踪在 `.local/android-test/reports/sep04-timeline-create-parity-20261031/`。测试提交 `76feaa4` 已推送。Core/Host/Clear 生产代码均未修改；因为相机固定在正午，非网格吸附行为不由本配对证明。
+
+### 2026-10-31 Native/Clear 时间轴相机 ALARM 与精确时刻 DEADLINE 配对
+
+- 在 API 35 / Android 15 / WebView 124 的 `emulator-5570` 上，使用隔离 Native/Clear Store，通过 Native Compose 时间轴新建和 Clear APK WebView 时间轴创建入口分别发布 ALARM 与精确时刻 DEADLINE。两路相机锚点和 `TimelineCoordinate.snap` 均为当地 `2026-10-31 12:00`；Clear 创建、类型选择、保存均由 Android 触屏注入且 `event.isTrusted=true`，Host 发布确认由 Compose 触屏完成。
+- Native 发布与 Clear Host 批准前均无 Store 写入。批准后两侧 `DraftForm`、eventSeq、revision、commit、identity、next sequence、draft/pending 计数一致。ALARM 保存 `startText=2026-10-31 12:00`；DEADLINE 保存 `endText=2026-10-31 12:00` 且 `deadlineDate=null`，证实没有降为日期级截止。
+- 新增 ALARM+DEADLINE 配对 **1/1 PASS**，同一 `TimelineCreateContextWebViewInstrumentedTest` **5/5 PASS**。测试输出 `timeline-create-class-runner.txt` SHA-256 `8FD3F9DB88F6AE7690CF9FC24ADD89B1E5563833C065452490246D49CB1BF0A9`，业务 marker `timeline-create-class-markers.txt` SHA-256 `2449E981C3BE0F61256E315F3536338E11CFB71AEE342FDE8A1766443485CB9F`。完整强制离线 Gradle gate：**785/785 JVM / 125 suites / 0 failures/errors/skips / 171 tasks PASS**，含 Skin/Native source boundaries、Debug 与 AndroidTest APK、Lint **0 errors / 55 warnings**；日志 SHA-256 `7C9F098480813FE56A303220AF5C371C446E322972596203787DD302708814F8`。
+- Debug APK SHA-256 `DE876D09D11689F98131C9DAD0A977AA1271E1657612B6A95DB89ABBBB80C31C`；AndroidTest APK SHA-256 `7D7E8A4A498ADA5E23CFFDAC998E267E13A84B88CC8D3EDEBE0925E90E6DC5EB`。AndroidTest 包含工作区内另外两份 Agent 的未提交测试编辑；本切片只执行上述时间轴测试类，没有执行那两份测试。
+- 证据位于 `.local/android-test/reports/sep04-timeline-create-alarm-deadline-20261031/`。本切片只变更 Android 回归测试及此 Issue、SEP 矩阵和进度记录；未改 Core、Host、Native 或 Clear 生产源码。时间轴非网格/缩放吸附、MEMO 选择器正式发布、全退出/恢复路径、Studio 改包及实体/OEM 仍未覆盖，因此 SEP-04 保持 **PARTIAL / HOLD**。

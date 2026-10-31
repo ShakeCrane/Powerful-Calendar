@@ -580,6 +580,182 @@ class TimelineCreateContextWebViewInstrumentedTest {
     }
 
     @Test
+    fun timelineAlarmAndDeadlineCreateMatchNativeAndClearSnappedCameraSelection() {
+        val storage = compose.activity.applicationContext
+        val nativeNamespace = "pc-timeline-clock-parity-native-${UUID.randomUUID()}"
+        val clearNamespace = "pc-timeline-clock-parity-clear-${UUID.randomUUID()}"
+        val nativeContext = IsolatedAppContext(compose.activity, storage, nativeNamespace)
+        val clearContext = IsolatedAppContext(compose.activity, storage, clearNamespace)
+        val nativeDatabase = "timeline-clock-native.db"
+        val clearDatabase = "timeline-clock-clear.db"
+        val nativeStore = PowerStore(nativeContext, nativeDatabase)
+        val clearStore = PowerStore(clearContext, clearDatabase)
+        var web: WebView? = null
+        val kinds = listOf(TemporalKind.ALARM, TemporalKind.DEADLINE)
+        try {
+            for (kind in kinds) {
+                val zone = ZoneId.systemDefault()
+                val expectedCamera = TimelineCoordinate.initialCamera(System.currentTimeMillis(), zone)
+                val expectedStart = TimelineCoordinate.snap(
+                    expectedCamera.anchorMillis, expectedCamera.hours, zone
+                )
+                val title = "Native/Clear timeline ${kind.name} camera pair"
+                val nativeBaseline = nativeStore.all().map { DraftForm.from(it) }
+                val clearBaseline = clearStore.all().map { DraftForm.from(it) }
+                assertEquals("paired stores begin each kind from equal records", nativeBaseline, clearBaseline)
+                val nativeCountsBefore = listOf(
+                    nativeStore.draftCount(), nativeStore.pendingCount(), nativeStore.identityCount(),
+                    nativeStore.commitCount(), nativeStore.nextSequencePreview(),
+                    nativeStore.nextQueueOrderPreview()
+                )
+                val clearCountsBefore = listOf(
+                    clearStore.draftCount(), clearStore.pendingCount(), clearStore.identityCount(),
+                    clearStore.commitCount(), clearStore.nextSequencePreview(),
+                    clearStore.nextQueueOrderPreview()
+                )
+                assertEquals(nativeCountsBefore, clearCountsBefore)
+
+                resetClear()
+                nativeContext.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                    .edit().putBoolean("system-calendar-import-asked", true).commit()
+                SkinPackageManager(nativeContext).selectNativeForEmergencyRecovery()
+                compose.runOnUiThread {
+                    compose.activity.setContent {
+                        CompositionLocalProvider(LocalContext provides nativeContext) {
+                            PowerCalTheme { PowerCalApp(nativeStore) }
+                        }
+                    }
+                }
+                compose.waitUntil(30_000) {
+                    compose.onAllNodesWithContentDescription("新建事件").fetchSemanticsNodes().isNotEmpty()
+                }
+                compose.onNodeWithContentDescription("新建事件").performTouchInput { click() }
+                val nativeKindOption = hasText(kind.label) and hasClickAction()
+                compose.waitUntil(10_000) {
+                    compose.onAllNodes(nativeKindOption).fetchSemanticsNodes().isNotEmpty()
+                }
+                compose.onNode(nativeKindOption).performTouchInput { click() }
+                compose.waitUntil(30_000) {
+                    compose.onAllNodes(hasSetTextAction() and hasText("标题"))
+                        .fetchSemanticsNodes().isNotEmpty()
+                }
+                compose.onNode(hasSetTextAction() and hasText("标题")).performTextInput(title)
+                compose.onNodeWithText("发布").performTouchInput { click() }
+                compose.waitUntil(30_000) {
+                    nativeStore.all().any { it.kind == kind && it.title == title }
+                }
+                val nativeRecord = nativeStore.all().single { it.title == title }
+                val nativeForm = DraftForm.from(nativeRecord)
+                assertEquals(kind, nativeRecord.kind)
+                assertEquals(zone.id, nativeForm.zoneId)
+                when (kind) {
+                    TemporalKind.ALARM -> assertEquals(
+                        DraftForm.formatInstant(expectedStart, zone), nativeForm.startText
+                    )
+                    TemporalKind.DEADLINE -> {
+                        assertEquals(
+                            "timeline selection retains exact-instant deadline precision",
+                            DraftForm.formatInstant(expectedStart, zone), nativeForm.endText
+                        )
+                        assertEquals("a timeline deadline is not silently downgraded to date-only",
+                            null, nativeRecord.deadlineDate)
+                    }
+                    else -> error("this pair covers only the remaining clock-based timeline kinds")
+                }
+                assertEquals("Native publish advances one formal commit", (nativeCountsBefore[3] as Long) + 1L,
+                    nativeStore.commitCount())
+                assertTrue("Native timeline editing does not leave drafts or pending entries",
+                    nativeStore.draftCount() == 0L && nativeStore.pendingCount() == 0)
+                assertEquals("Clear has not written before its own operation", clearBaseline,
+                    clearStore.all().map { DraftForm.from(it) })
+                assertEquals(clearCountsBefore, listOf(
+                    clearStore.draftCount(), clearStore.pendingCount(), clearStore.identityCount(),
+                    clearStore.commitCount(), clearStore.nextSequencePreview(),
+                    clearStore.nextQueueOrderPreview()
+                ))
+
+                web = launchClear(clearContext, clearStore)
+                val clearCamera = WebSkinBridgeRuntime.state().getJSONObject("timeline")
+                assertEquals("both apps use the same local date camera",
+                    expectedCamera.anchorMillis, clearCamera.getLong("anchorMillis"))
+                assertEquals(expectedCamera.hours, clearCamera.getDouble("hours"), 0.0)
+                assertEquals(zone.id, clearCamera.getString("zoneId"))
+                val createTouch = tapClearSelector(web, "[data-action='createDraft']")
+                assertTrue("Clear timeline chooser is opened by touchscreen", createTouch.optBoolean("trusted"))
+                awaitJs(web, "!!document.querySelector('#timelineCreateDialog[open]')")
+                val kindSelector = "#timelineCreateDialog [data-timeline-create-kind=\"${kind.name}\"]"
+                val kindTouch = tapClearSelector(web, kindSelector)
+                assertTrue("Clear $kind selection is a trusted Android touch", kindTouch.optBoolean("trusted"))
+                awaitJs(web, "!document.querySelector('#timelineCreateDialog[open]') && " +
+                    "!document.querySelector('#skinSheet').hidden")
+                val clearForm = WebSkinBridgeRuntime.state().getJSONObject("editing")
+                    .getJSONObject("deck").getJSONObject("form")
+                assertEquals(kind.name, clearForm.getString("kind"))
+                assertEquals(zone.id, clearForm.getString("zoneId"))
+                when (kind) {
+                    TemporalKind.ALARM -> assertEquals(nativeForm.startText, clearForm.getString("startText"))
+                    TemporalKind.DEADLINE -> assertEquals(nativeForm.endText, clearForm.getString("endText"))
+                    else -> error("this pair covers only the remaining clock-based timeline kinds")
+                }
+                assertEquals("Clear is transient before title entry and Host review", clearBaseline,
+                    clearStore.all().map { DraftForm.from(it) })
+                assertEquals(clearCountsBefore, listOf(
+                    clearStore.draftCount(), clearStore.pendingCount(), clearStore.identityCount(),
+                    clearStore.commitCount(), clearStore.nextSequencePreview(),
+                    clearStore.nextQueueOrderPreview()
+                ))
+
+                editTitleForParity(web, title)
+                val saveTouch = tapClearSelector(web, "#sheetSave")
+                assertTrue("Clear formal publish request uses touchscreen", saveTouch.optBoolean("trusted"))
+                compose.waitUntil(30_000) {
+                    compose.onAllNodesWithText("确认发布正式事件").fetchSemanticsNodes().isNotEmpty()
+                }
+                assertEquals("Host confirmation is write-free until approval", clearBaseline,
+                    clearStore.all().map { DraftForm.from(it) })
+                assertEquals(clearCountsBefore, listOf(
+                    clearStore.draftCount(), clearStore.pendingCount(), clearStore.identityCount(),
+                    clearStore.commitCount(), clearStore.nextSequencePreview(),
+                    clearStore.nextQueueOrderPreview()
+                ))
+                compose.onNodeWithText("确认").performTouchInput { click() }
+                compose.waitUntil(30_000) {
+                    clearStore.all().any { it.kind == kind && it.title == title }
+                }
+                val clearRecord = clearStore.all().single { it.title == title }
+                assertEquals("same camera selection and input produce equal business forms",
+                    nativeForm, DraftForm.from(clearRecord))
+                assertEquals(nativeRecord.eventSeq, clearRecord.eventSeq)
+                assertEquals(nativeRecord.revision, clearRecord.revision)
+                assertEquals("paired stores preserve full formal record sequence",
+                    nativeStore.all().map { DraftForm.from(it) }, clearStore.all().map { DraftForm.from(it) })
+                assertEquals(nativeStore.commitCount(), clearStore.commitCount())
+                assertEquals(nativeStore.identityCount(), clearStore.identityCount())
+                assertEquals(nativeStore.nextSequencePreview(), clearStore.nextSequencePreview())
+                assertTrue("both accepted candidates leave no drafts or pending rows",
+                    nativeStore.draftCount() == 0L && clearStore.draftCount() == 0L &&
+                        nativeStore.pendingCount() == 0 && clearStore.pendingCount() == 0)
+                println("NATIVE_CLEAR_PARITY operation=TIMELINE_CREATE kind=${kind.name} " +
+                    "cameraAnchor=${expectedCamera.anchorMillis} snap=$expectedStart " +
+                    "eventSeq=${clearRecord.eventSeq} revision=${clearRecord.revision} " +
+                    "commits=${clearStore.commitCount()} identities=${clearStore.identityCount()} " +
+                    "businessForm=${DraftForm.from(clearRecord)}")
+            }
+        } finally {
+            resetClear()
+            nativeStore.close()
+            clearStore.close()
+            nativeContext.deleteDatabase(nativeDatabase)
+            clearContext.deleteDatabase(clearDatabase)
+            listOf(nativeNamespace, clearNamespace).forEach { namespace ->
+                listOf("powercal-onboarding", "powercal-skin-choice", "powercal-ui", "powercal-profile")
+                    .forEach { storage.deleteSharedPreferences("$namespace-$it") }
+                File(storage.cacheDir, namespace).deleteRecursively()
+            }
+        }
+    }
+
+    @Test
     fun monthSelectedActivityCreateMatchesNativeAndClearBusinessRecord() {
         val storage = compose.activity.applicationContext
         val nativeNamespace = "pc-month-create-parity-native-${UUID.randomUUID()}"
