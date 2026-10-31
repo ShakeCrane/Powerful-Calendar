@@ -125,3 +125,18 @@ The frozen AI protocol explicitly supports `CONVERT` proposals. Added `PowerCalA
 - Evidence is under `.local/android-test/reports/sep16-ai-convert-20261031/`. The fixture database/preferences/cache were isolated and post-run residue scans were empty. No paid/external provider, production database, or physical device was used.
 
 This closes only the AI `CONVERT` confirmation slice. SEP-16 remains **PARTIAL / HOLD / INCOMPLETE** for remaining kind/operation combinations, version conflicts/concurrency, lifecycle/process recovery, complete Native/Skin paired replay and physical/OEM evidence.
+
+## API 35 Clear trusted writes across all four event kinds (2026-10-31)
+
+Added `WebSkinAllKindsTrustedWriteInstrumentedTest` as a standalone test file, leaving other in-flight instrumentation files untouched. No Runtime, Core, Host, Clear skin source or Studio source changed.
+
+- `clearTransientFormalPublishForEveryKindWaitsForHostApproval` opens each of the four kinds through Clear's visible new-event chooser. It checks the Host form kind, transient/no-write counters, read-only Host review, cancellation without writes, then retry approval. Each of ALARM, ACTIVITY, DEADLINE and MEMO creates exactly one formal event, commit, identity and sequence; it leaves draft/pending counts unchanged.
+- `clearFormalEditForEveryKindWaitsForHostApprovalAndKeepsIdentity` seeds one formal event of each kind into a UUID-namespaced Store, opens it through the Clear timeline or Memo page, changes its title, and requests Host review. For every kind, the original record and counters remain unchanged before approval and after cancel; retry approval updates the same `eventSeq`, increments revision and commit exactly once, and creates no identity, draft or pending item.
+- Both cases use the packaged Clear WebView, production `WebSkinEditBridge`, Android Compose Host review and isolated `PowerStore` on API 35 / Android 15 / WebView 124 / `emulator-5570`. The page controls are invoked through the instrumented WebView DOM; this proves actual packaged UI routing and Host outcome, but does not claim physical-finger/TalkBack evidence.
+- Final installed-APK instrumentation class: **2/2 PASS**. Log `.local/android-test/reports/sep16-all-kinds-20261031/all-kinds-final-installed-apk.log`, SHA-256 `1BE964F29B748783D5D924E13664815FD1D2A6AFFCD0304031ECCB8ACF6CB458`.
+- Full offline Gradle gate: **784/784 JVM, 125 suites, zero failures/errors/skips; 171/171 tasks PASS**, including both source boundaries, Debug and AndroidTest APK assembly and Lint (0 errors / 55 warnings). Gate log SHA-256 `BB4F1981632A2689C07501DD89110A25B629DDEFC40618885878C3B76011E1B6`.
+- Installed Debug APK SHA-256 `8CC46EED2FE1569CB349C7C913C3BFFE85344E4C6E9C527342373367C3E8F886` (66,518,075 bytes); AndroidTest APK SHA-256 `13A2FE5C3487EEA4564F7AB54BE9549959994EAAFB93E808C1A1B369ABC4725C` (1,551,120 bytes).
+
+The first AndroidTest compile reported a missing test-only Compose import; the import was added and `assembleDebugAndroidTest` then passed before device execution. This was a harness compile issue, not a Runtime behavior failure. Evidence is under `.local/android-test/reports/sep16-all-kinds-20261031/`.
+
+This closes direct Clear Host-review coverage for ordinary transient publish and formal editor save across all four event kinds. It does **not** close SEP-16: persisted deck CREATE/REPLACE combinations, complete conflict and process-recovery matrices, same-fixture Native/Clear outcome replay, TalkBack and physical/OEM validation remain open. Existing Studio Preview confirmation is a non-writing Mock and was not rerun for this AndroidTest-only change. SEP-16 remains **PARTIAL / HOLD / INCOMPLETE**.
