@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.Color
 import androidx.test.core.app.ApplicationProvider
 import dev.powerfulcalendar.core.*
+import dev.powerfulcalendar.ui.v2.nativeui.NativeGlassPanel
 import org.junit.*
 import org.junit.Assert.*
 import org.junit.runner.RunWith
@@ -364,7 +365,14 @@ class GlassComposeTest {
                     fill = palette.glassFill,
                     highlight = palette.glassHighlight
                 )
-                GlassPanel(Modifier.testTag("native-glass-fallback")) {
+                NativeGlassPanel(
+                    modifier = Modifier.testTag("native-glass-fallback"),
+                    cornerRadiusDp = LocalSkinVisual.current.cardRadiusDp,
+                    blur = LocalGlassEffects.current.blur,
+                    glassFill = palette.glassFill,
+                    surfaceColor = scheme.surface,
+                    outlineVariant = scheme.outlineVariant
+                ) {
                     androidx.compose.material3.Text("可读的原生表面")
                 }
             }

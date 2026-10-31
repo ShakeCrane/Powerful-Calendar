@@ -1895,3 +1895,9 @@ Updated: 2026-10-24
 - `verifyNativeSkinBoundary` 现在扫描 app 主源码中的 `@Composable fun Native*` 声明；除负责 `DeckController` 观察和 Android 生命周期的 `NativeDraftDeckDialog` Host 包装器外，Native 渲染器必须继续位于 `:native-skin`。允许名单同时校验声明仍存在；app 中的 `nativeui/` 目录仍禁止新增。
 - 只读审计确认 `CalendarScreens.kt` / `EventEditor.kt` 使用旧 `CalendarEvent` 模型，app 主源码没有调用点；未删除旧回退代码。当前 Host 页面适配、状态投影及安全操作回调保留在 app，实际 Native 内容委托给 `:native-skin`。
 - `:app:verifyNativeSkinBoundary` 和 `:app:assembleDebug` **PASS**（Android SDK 通过 `ANDROID_HOME=E:\android-sdk` 提供；未触碰运行中的模拟器）。日志 `.local/android-test/reports/native-skin-boundary-20261031/boundary-assemble-debug.log` SHA-256 `E6F936FA42D9E9ADA565E447CBB94A83CD15A8394D91775011A335FF34923DC8`；APK SHA-256 `CDEE42C0391E3A85910957004DBAC1A32263AAF1F51E7F65C9AB4CF85115A13D`。这是边界与构建证据，不代表 Clear/Native 功能等价或整项分离完成。两个其他 Agent 的 AndroidTest 改动保持原样、未暂存。
+
+### Native 月历玻璃面板归属 :native-skin（2026-10-31）
+
+- 将月份 Native renderer 使用的 `GlassPanel` 绘制实现从 app `PowerTheme.kt` 迁到 `:native-skin/NativeGlassPanel.kt`。Host 仍将当前 skin 的圆角/玻璃色、Material surface/outline 和平台 blur 状态作为只读外观值传入；边框 alpha、阴影、内容 padding、禁用 blur 时的不透明回退保持原值。
+- `GlassComposeTest` 全类 **20/20 PASS**（含浅/深色与禁用 blur 后可读性）；完整离线门禁 **785/785 JVM / 125 suites / 0 failures/errors/skips**，Native/Skin source boundary、Debug APK、Lint 均 PASS（142 tasks，22 executed / 120 up-to-date）。设备运行未验证；本次未启动 Clear。
+- 完整日志 `.local/android-test/reports/native-glass-panel-20261031/full-offline-gate.log` SHA-256 `020515D7CAADB6883D0432B46DB7BB39D75B887E3C82E5DFA6EF3BABB442EC81`；GlassComposeTest XML SHA-256 `4742E578D4D6F801D3876EB682FE62945E293BF04A918358A8D48F283FD784D7`；Debug APK SHA-256 `960E21512503A1A36AE26B8EEF4FB52A67621A41BBC4DC2497FF23460CA8B329`。Native 模块 UI 归属切片完成，不代表 Clear/Native parity 或整体 Skin-First 完成。

@@ -4,12 +4,6 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -152,18 +146,6 @@ object PowerMotion {
 @Composable
 internal fun glassMotion(): FiniteAnimationSpec<Float> =
     if (LocalGlassEffects.current.reduceMotion) snap() else spring(dampingRatio = 0.86f, stiffness = 380f)
-
-@Composable
-internal fun GlassPanel(modifier: Modifier = Modifier, contentPadding: PaddingValues = PaddingValues(20.dp), content: @Composable ColumnScope.() -> Unit) {
-    val effects = LocalGlassEffects.current
-    Surface(
-        modifier = modifier,
-        shape = skinCardShape(),
-        color = if (effects.blur) LocalAxisPalette.current.glassFill else MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)),
-        shadowElevation = if (effects.blur) 2.dp else 0.dp
-    ) { Column(Modifier.padding(contentPadding), content = content) }
-}
 
 /** Body text minimum used in cards; kept here so accessibility review has one number to check. */
 val BodyLineHeight = TextStyle(lineHeight = 22.sp)

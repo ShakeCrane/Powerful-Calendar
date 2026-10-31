@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
@@ -113,7 +114,16 @@ internal class MonthVisualContext internal constructor(
         val rowsForMonth = remember(projection) { projection::rowsFor }
         val appearance = NativeMonthAppearance(
             eventRowCornerRadiusDp = LocalSkinVisual.current.barRadiusDp,
-            panel = { content -> GlassPanel(contentPadding = PaddingValues(0.dp)) { content() } },
+            panel = { content ->
+                NativeGlassPanel(
+                    contentPadding = PaddingValues(0.dp),
+                    cornerRadiusDp = LocalSkinVisual.current.cardRadiusDp,
+                    blur = LocalGlassEffects.current.blur,
+                    glassFill = LocalAxisPalette.current.glassFill,
+                    surfaceColor = MaterialTheme.colorScheme.surface,
+                    outlineVariant = MaterialTheme.colorScheme.outlineVariant
+                ) { content() }
+            },
             showDialog = { dialog ->
                 SkinAlertDialog(
                     onDismissRequest = dialog.onDismissRequest,
