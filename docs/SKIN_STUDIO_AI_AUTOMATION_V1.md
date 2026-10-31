@@ -123,6 +123,17 @@ or the Studio source editor. Verify both handled and unhandled cases in Studio P
 then verify actual Android Back behavior in WebView; Chrome behavior alone is not Android
 device evidence.
 
+### Host-owned profile form in Clear
+
+The profile form is skin-authored HTML/CSS/JS. The Host exposes only the displayName scalar
+through profileEditor while Settings is active and the user has opened the editor; ordinary
+Settings frames carry profileEditor: null. A skin requests the form with openProfileEditor,
+saves with saveProfileEditor and a displayName string of at most 80 characters without control
+characters, and closes with closeProfileEditor. Android validates the action and owns
+persistence. The Host removes the projection when Settings closes or the active skin changes. The Studio Preview Mock uses a synthetic name and performs no Android preference
+or calendar Store writes. This action does not expose credentials, preferences, Android context,
+or Store access.
+
 ### Re-editing an Android-installed v3 skin
 
 In Android Settings, export the installed third-party skin with the system file

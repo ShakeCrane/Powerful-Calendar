@@ -51,6 +51,9 @@
 </div>
 <div id="skinChoices" class="skin-choice-list" role="list" aria-label="已安装皮肤"></div>
 <p class="quiet">选择皮肤后，Android 宿主会显示确认；皮肤本身不能直接启用或读取本机文件。</p>
+<div class="section-label">个人资料</div>
+<p class="quiet">个人显示名称仍由 Android 宿主保存；仅在打开编辑器时提供给当前皮肤。</p>
+<button id="openProfileSettings" class="memo-limit" type="button" data-action="openProfileEditor">编辑个人资料</button>
 <div class="section-label">AI 连接与隐私</div>
 <p class="quiet">端点、模型、密钥、事件上下文与文件处理授权由 Android 宿主的受保护设置管理；密钥不会发送给皮肤。</p>
 <button id="openAiSettings" class="memo-limit" type="button" data-action="nativeSettings">打开 AI 配置与隐私设置</button>
@@ -58,6 +61,19 @@
 <p class="quiet">皮肤或页面不可用时，原生完整设置和恢复工具仍可使用。</p>
 <button id="nativeRecoverySettings" class="memo-limit" type="button" data-action="nativeSettings">打开原生完整设置与恢复工具</button>
 </section>
+<dialog id="profileEditorDialog" aria-labelledby="profileEditorHeading" aria-describedby="profileEditorPrivacy">
+  <form id="profileEditorForm">
+    <h2 id="profileEditorHeading" tabindex="-1">个人资料</h2>
+    <p id="profileEditorPrivacy" class="quiet">显示名称最多 80 个字符，由 Android 宿主保存。</p>
+    <label for="profileDisplayName">显示名称</label>
+    <input id="profileDisplayName" type="text" maxlength="80" autocomplete="nickname" aria-label="个人资料显示名称">
+    <p id="profileEditorStatus" role="status" aria-live="polite" aria-atomic="true"></p>
+    <div class="profile-editor-actions">
+      <button id="profileCancelButton" type="button">取消</button>
+      <button id="profileSaveButton" type="button" class="primary">保存个人资料</button>
+    </div>
+  </form>
+</dialog>
 <section id="extraOptions" class="page" hidden><h1>可用选项</h1><div id="optionGroups"></div></section>
 <nav class="clear-tabbar glass" aria-label="页面导航"><button data-action="timeline" class="current">时间轴</button><button data-action="month">月历</button><button data-action="memo">Memo</button><button data-action="ai">AI</button><button data-action="settings">设置</button></nav>
 <section id="skinSheet" role="dialog" aria-modal="true" aria-label="编辑" hidden>

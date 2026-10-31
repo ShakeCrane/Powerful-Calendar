@@ -101,6 +101,19 @@ initial read, and explicit save. The Native module receives no Android `Context`
 credential value or persistence service. The existing 80-character input cap and save-on-button
 behavior are covered by Compose regressions. The AI endpoint/model/key settings remain Host-owned.
 
+### Clear-owned profile form boundary (2026-10-31)
+
+The full-canvas Clear Settings page renders the profile form in its editable HTML/CSS/JS. The
+Android Host remains the only owner of the powercal-profile preference and exposes only the
+displayName scalar while the SETTINGS page is active and the user has opened that form:
+profileEditor is null in ordinary Settings state and outside the form. The Host accepts the
+exact openProfileEditor, closeProfileEditor, and saveProfileEditor { displayName } action
+schemas. It rejects names over 80 UTF-16 code units and ISO control characters, and persists
+only an explicit save. Closing the form, leaving Settings, changing the active skin, or using
+Android Back removes the profile projection. No preference object, Android Context, Store,
+credentials, or other profile fields enter the skin. Native recovery continues to use
+HostProtectedProfileSection; this Bridge path does not replace that fallback.
+
 ### Native protected AI settings presentation boundary (2026-10-30)
 
 `NativeProtectedAiSettingsSection` renders the Native settings card, endpoint/model fields, enable

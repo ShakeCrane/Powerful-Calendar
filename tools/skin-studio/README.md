@@ -45,6 +45,7 @@ python tools/skin-studio/build_default_clear.py --verify --apk app/build/outputs
 - Clear 设置中的皮肤导入、Clear/第三方包导出和第三方包删除使用现有 Host 文件选择器、`SkinPackageManager` 与 Native 确认。Preview Mock 用本地 fixture 模拟导入/导出/删除，不调用 Android SAF、不写入已安装皮肤或日历数据。API 35 的 ActivityResult 注入回归证明了 Host 收到结果后的安装、字节导出和确认删除；它没有覆盖系统 DocumentsUI、真实文档提供方及其失败恢复。
 - 重复事件保存预览会显示“模拟确认/模拟取消”；这只是 Studio 的 Mock，Android 实际写入必须经过 Host 的原生确认。重复范围编辑源文件为 `web/edit.js`，与导出包及 Android Clear 资产同源。
 - 通过“软件新增平行功能”场景检查通用选项列表是否自动继承新的同级选项。
+- Clear 设置中的个人资料表单由可编辑的 HTML/CSS/JS 渲染；Android Host 仅在用户打开表单时投影显示名称，并且只在明确保存后写入个人资料偏好。Studio Preview Mock 使用合成名称，不读取 Android 偏好或写入设备数据；离开设置页或切换活动皮肤会清除模拟投影。
 - 可导入已有的自包含 v3 ZIP，保留 `web/`、`assets/` 中的额外文件；
   导出后仍是 Android 可安装的 `.pcskin`，可再次导入继续编辑。
 - Android 设置中的第三方皮肤“导出”会通过系统文件选择器保存已安装的原始

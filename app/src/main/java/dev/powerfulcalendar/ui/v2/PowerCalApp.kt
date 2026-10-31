@@ -202,6 +202,11 @@ fun PowerCalApp(
     var skinToDelete by remember { mutableStateOf<InstalledSkin?>(null) }
     var skinToActivate by remember { mutableStateOf<InstalledSkin?>(null) }
     var pendingSkinExportId by rememberSaveable { mutableStateOf<String?>(null) }
+    // Only project the Host-owned profile name while a user-opened skin profile editor is active.
+    var webProfileEditorName by remember { mutableStateOf<String?>(null) }
+    var webProfileEditorSkinId by remember { mutableStateOf<String?>(null) }
+    var webProfileEditorSaved by remember { mutableStateOf(false) }
+    var webProfileSaveRevision by remember { mutableIntStateOf(0) }
 
     var page by rememberSaveable { mutableStateOf(Page.TIMELINE.name) }
     var records by remember { mutableStateOf<List<TemporalRecord>>(emptyList()) }
@@ -1421,6 +1426,21 @@ fun PowerCalApp(
         page == Page.SETTINGS.name && !aiLocked && !deckOpen && editSession == null &&
             newEventSession == null && !webEditing.hasLiveEditor()
 
+    LaunchedEffect(page) {
+        if (page != Page.SETTINGS.name) {
+            webProfileEditorName = null
+            webProfileEditorSkinId = null
+            webProfileEditorSaved = false
+        }
+    }
+    LaunchedEffect(selectedSkin) {
+        if (webProfileEditorSkinId != null && webProfileEditorSkinId != selectedSkin) {
+            webProfileEditorName = null
+            webProfileEditorSkinId = null
+            webProfileEditorSaved = false
+        }
+    }
+
     fun launchWebAiAttachmentPicker(image: Boolean) {
         if (!canLaunchWebAiAttachmentPicker()) return
         aiAttachmentPickerBusy = true
@@ -1481,15 +1501,29 @@ fun PowerCalApp(
         WebSkinBridgeRuntime.onAction = { action ->
             when (action) {
                 is WebSkinAction.Routed -> when (action.name) {
-                    "timeline" -> page = Page.TIMELINE.name
-                    "month" -> openMonthPage()
+                    "timeline" -> {
+                        webProfileEditorName = null; webProfileEditorSkinId = null
+                        page = Page.TIMELINE.name
+                    }
+                    "month" -> {
+                        webProfileEditorName = null; webProfileEditorSkinId = null
+                        openMonthPage()
+                    }
                     "memo" -> {
+                        webProfileEditorName = null
+                        webProfileEditorSkinId = null
                         page = Page.MEMO.name
                         scope.launch { reload() }
                     }
-                    "ai" -> page = Page.AI.name
+                    "ai" -> {
+                        webProfileEditorName = null; webProfileEditorSkinId = null
+                        page = Page.AI.name
+                    }
                     "settings" -> page = Page.SETTINGS.name
-                    "nativeSettings" -> page = Page.TOOLS.name
+                    "nativeSettings" -> {
+                        webProfileEditorName = null; webProfileEditorSkinId = null
+                        page = Page.TOOLS.name
+                    }
                     "openDeck" -> openDeckAt(null)
                     "today" -> {
                         nowMillis = System.currentTimeMillis()
@@ -1502,6 +1536,32 @@ fun PowerCalApp(
                         }
                     }
                     else -> Unit
+                }
+                WebSkinAction.OpenProfileEditor -> if (fullCanvasWeb && canManageSkinFromSettings()) {
+                    webProfileEditorSkinId = selectedSkin
+                    webProfileEditorName = appContext
+                        .getSharedPreferences("powercal-profile", Context.MODE_PRIVATE)
+                        .getString("displayName", "").orEmpty()
+                    webProfileEditorSaved = false
+                }
+                is WebSkinAction.SaveProfileEditor -> if (
+                    fullCanvasWeb && canManageSkinFromSettings() &&
+                    webProfileEditorSkinId == selectedSkin &&
+                    webProfileEditorName != null && action.displayName.length <= 80 &&
+                    action.displayName.none(Char::isISOControl)
+                ) {
+                    appContext.getSharedPreferences("powercal-profile", Context.MODE_PRIVATE)
+                        .edit().putString("displayName", action.displayName).apply()
+                    webProfileEditorName = action.displayName
+                    webProfileEditorSaved = true
+                    webProfileSaveRevision++
+                }
+                WebSkinAction.CloseProfileEditor -> if (
+                    fullCanvasWeb && page == Page.SETTINGS.name
+                ) {
+                    webProfileEditorName = null
+                    webProfileEditorSkinId = null
+                    webProfileEditorSaved = false
                 }
                 WebSkinAction.RequestNotificationPermission -> {
                     when (notificationPermissionLaunch(page, android.os.Build.VERSION.SDK_INT)) {
@@ -1804,6 +1864,13 @@ fun PowerCalApp(
                     }
                 })
                 .put("selectedSkinId", if (page == Page.SETTINGS.name) selectedSkin else JSONObject.NULL)
+                .put("profileEditor", if (fullCanvasWeb && page == Page.SETTINGS.name &&
+                    webProfileEditorName != null && webProfileEditorSkinId == selectedSkin
+                ) {
+                    JSONObject().put("displayName", webProfileEditorName)
+                        .put("saved", webProfileEditorSaved)
+                        .put("saveRevision", webProfileSaveRevision)
+                } else JSONObject.NULL)
                 .put("timeline", WebSkinTimelineProjection.build(
                     records,
                     // The host republishes synchronously from the action callback, before this

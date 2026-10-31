@@ -162,6 +162,14 @@ button:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outl
 #monthPickerForm{display:grid;gap:10px}
 #monthPickerForm h2{margin:0 0 8px;font-size:18px}
 #monthPickerForm input,#monthPickerForm select{min-height:44px;padding:8px;border:1px solid var(--sep);border-radius:10px;background:var(--fill-1);color:inherit;font:inherit}
+#profileEditorDialog{width:min(360px,calc(100vw - 32px));border:1px solid var(--sep);border-radius:20px;background:var(--bg-canvas);color:var(--label-1);box-shadow:var(--shadow-2)}
+#profileEditorDialog::backdrop{background:#0006}
+#profileEditorForm{display:grid;gap:10px}
+#profileEditorForm h2{margin:0 0 4px;font-size:18px}
+#profileEditorForm input{min-height:44px;padding:8px;border:1px solid var(--sep);border-radius:10px;background:var(--fill-1);color:inherit;font:inherit}
+.profile-editor-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
+.profile-editor-actions button{min-height:44px;padding:0 14px;border:1px solid var(--sep);border-radius:22px;background:var(--fill-1);color:var(--accent);font:inherit}
+.profile-editor-actions button.primary{border:0;background:var(--accent-fill);color:var(--on-accent)}
 .agenda-event{display:block;text-align:left;width:100%;min-height:46px;padding:12px 10px;
  border:0;border-bottom:1px solid var(--sep);background:transparent}
 .optionRow{display:flex;flex-direction:column;gap:5px;width:100%;text-align:left;

@@ -125,6 +125,9 @@ internal object WebSkinBridgeRuntime {
 
 internal sealed interface WebSkinAction {
     data class Routed(val name: String) : WebSkinAction
+    data object OpenProfileEditor : WebSkinAction
+    data object CloseProfileEditor : WebSkinAction
+    data class SaveProfileEditor(val displayName: String) : WebSkinAction
     data object RequestNotificationPermission : WebSkinAction
     data object OpenExactAlarmSettings : WebSkinAction
     data object ReconcileReminders : WebSkinAction
@@ -487,6 +490,16 @@ internal fun decodeBridgeAction(raw: String): WebSkinAction? {
     return when (name) {
         "timeline", "month", "memo", "ai", "settings", "nativeSettings", "openDeck", "today" ->
             if (keys == setOf("name")) WebSkinAction.Routed(name) else null
+        "openProfileEditor" -> if (keys == setOf("name"))
+            WebSkinAction.OpenProfileEditor else null
+        "closeProfileEditor" -> if (keys == setOf("name"))
+            WebSkinAction.CloseProfileEditor else null
+        "saveProfileEditor" -> {
+            if (keys != setOf("name", "displayName")) return null
+            val displayName = payload.opt("displayName") as? String ?: return null
+            if (displayName.length <= 80 && displayName.none(Char::isISOControl))
+                WebSkinAction.SaveProfileEditor(displayName) else null
+        }
         "requestNotificationPermission" -> if (keys == setOf("name"))
             WebSkinAction.RequestNotificationPermission else null
         "openExactAlarmSettings" -> if (keys == setOf("name"))

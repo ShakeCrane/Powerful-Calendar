@@ -89,6 +89,23 @@ class WebSkinBridgeTest {
         assertTrue(decodeBridgeAction("") == null)
     }
 
+    @Test fun profileEditorActionsAreClosedAndLimitNamesToTheNativeFieldContract() {
+        assertEquals(WebSkinAction.OpenProfileEditor, decodeBridgeAction(
+            """{"version":1,"type":"action","payload":{"name":"openProfileEditor"}}"""))
+        assertEquals(WebSkinAction.CloseProfileEditor, decodeBridgeAction(
+            """{"version":1,"type":"action","payload":{"name":"closeProfileEditor"}}"""))
+        assertEquals(WebSkinAction.SaveProfileEditor(""), decodeBridgeAction(
+            """{"version":1,"type":"action","payload":{"name":"saveProfileEditor","displayName":""}}"""))
+        assertEquals(WebSkinAction.SaveProfileEditor("x".repeat(80)), decodeBridgeAction(
+            """{"version":1,"type":"action","payload":{"name":"saveProfileEditor","displayName":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}}"""))
+        assertNull(decodeBridgeAction(
+            """{"version":1,"type":"action","payload":{"name":"saveProfileEditor","displayName":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}}"""))
+        assertNull(decodeBridgeAction(
+            """{"version":1,"type":"action","payload":{"name":"saveProfileEditor","displayName":"name","path":"/data/data"}}"""))
+        assertNull(decodeBridgeAction(
+            """{"version":1,"type":"action","payload":{"name":"saveProfileEditor","displayName":"line\nbreak"}}"""))
+    }
+
     @Test fun eventOpenRejectsMissingStaleMismatchedAndClosedWriter() {
         val record = TemporalRecord(42, 7, TemporalKind.MEMO, "safe")
         val action = WebSkinAction.OpenEvent(42, 7)

@@ -130,6 +130,7 @@ async function loadPackage(data){
   project=parseProject();
   projectBaseline=JSON.stringify(project);
   mockEditing={editor:{open:false},deck:{open:false},lastResult:null};
+  mockProfileEditor=null;mockProfileSaveRevision=0;
   resetMockDeckFixtures();
   mockConflictRestoreActive=$("scenario").value==="conflict-restore";
   mockApproval=null;$("mockApproval").hidden=true;
@@ -789,6 +790,7 @@ function simulatedState(){
   const memoEntries=allMemoEntries.slice(0,memoLimit);
   const memoTruncated=memoEntries.length<allMemoEntries.length;
   return {bridgeVersion:1,page:mockPage,
+    profileEditor:mockPage==="SETTINGS"&&mockProfileEditor?{...mockProfileEditor}:null,
     skinChoices:mockPage==="SETTINGS"?[
       {id:"powercal-default",name:"PowerCal 原生玻璃（安全回退）",builtIn:true},
       {id:"powercal-clear-default",name:"Clear · Studio Mock",builtIn:true},
@@ -1067,6 +1069,7 @@ function resolveMockApproval(approved){
     if(approved&&Array.isArray(lastState?.skinChoices)&&
       lastState.skinChoices.some(item=>item.id===request.id)){
       mockSelectedSkinId=request.id;
+      mockProfileEditor=null;
       logAction("Preview Mock：Host 模拟确认皮肤选择；没有启用真实皮肤或修改本机数据");
     }else logAction("Preview Mock：已取消皮肤选择；没有改变模拟状态或本机数据");
     postState();return;
@@ -1630,7 +1633,8 @@ function onSkinAction(message){
     }
     if(!ACTIONS.some(([x])=>x===name)&&!["openEvent","toggleMemo","sendChat","resolveAiProposal",
       "pickAiFile","pickAiImage","prepareAiBatch","cancelAiBatch","releaseStuckAiBatch",
-      "clearChat","rewindChat"].includes(name)){
+      "clearChat","rewindChat","openProfileEditor","saveProfileEditor",
+      "closeProfileEditor"].includes(name)){
       logAction("拒绝未知动作 "+String(name));return;
     }
     if(name==="panTimeline"){
@@ -1700,7 +1704,9 @@ function onSkinAction(message){
       const year=Number(p.month.slice(0,4));
       if(year>=1900&&year<=2100){mockMonth=p.month;mockSelectedMonthDate=mockMonth+"-01"}
     }
-    if(["timeline","memo","ai"].includes(name))mockPage=name.toUpperCase();
+    if(["timeline","memo","ai"].includes(name)){
+      mockProfileEditor=null;mockPage=name.toUpperCase();
+    }
     if(name==="settings"){
       if(Object.keys(p).sort().join(",")!=="name"){
         logAction("拒绝无效 settings payload");return;
@@ -1771,16 +1777,49 @@ function onSkinAction(message){
       logAction("Studio Mock 收到提醒重建请求；不会调用 Android Host 或修改真实调度");
       return;
     }
+    if(name==="openProfileEditor"){
+      if(Object.keys(p).sort().join(",")!=="name"||mockPage!=="SETTINGS"){
+        logAction("拒绝非设置页或格式无效的个人资料读取请求");return;
+      }
+      mockProfileEditor={displayName:"Studio Profile Preview",saved:false,
+        saveRevision:mockProfileSaveRevision};
+      logAction("Studio Mock 打开个人资料表单；仅使用合成预览名称，不读取 Android 个人数据");
+      postState();return;
+    }
+    if(name==="saveProfileEditor"){
+      const invalidControl=typeof p.displayName==="string"&&
+        p.displayName.split("").some(char=>char.charCodeAt(0)<32||char.charCodeAt(0)===127);
+      if(Object.keys(p).sort().join(",")!=="displayName,name"||mockPage!=="SETTINGS"||
+        !mockProfileEditor||typeof p.displayName!=="string"||p.displayName.length>80||
+        invalidControl){
+        logAction("拒绝未打开表单、超长或格式无效的个人资料保存请求");return;
+      }
+      mockProfileSaveRevision++;
+      mockProfileEditor={displayName:p.displayName,saved:true,
+        saveRevision:mockProfileSaveRevision};
+      logAction("Studio Mock 保存合成个人资料；不会写入 Android 偏好或数据库");
+      postState();return;
+    }
+    if(name==="closeProfileEditor"){
+      if(Object.keys(p).sort().join(",")!=="name"||mockPage!=="SETTINGS"||!mockProfileEditor){
+        logAction("拒绝非设置页或未打开表单的个人资料关闭请求");return;
+      }
+      mockProfileEditor=null;
+      logAction("Studio Mock 关闭个人资料表单；合成名称已从投影移除");
+      postState();return;
+    }
     if(name==="nativeSettings"){
       if(Object.keys(p).sort().join(",")!=="name"){
         logAction("拒绝无效 nativeSettings payload");return;
       }
+      mockProfileEditor=null;postState();
       logAction("Studio Mock 收到原生设置/恢复路由；此页面不启动 Android Host");
       return;
     }
     if(name==="month"){
       const anchor=mockAnchor??new Date("2026-10-22T04:00:00Z").getTime();
       const date=new Date(anchor+8*3600000).toISOString().slice(0,10);
+      mockProfileEditor=null;
       mockMonth=date.slice(0,7);mockSelectedMonthDate=date;mockPage="MONTH";
     }
     if(name==="toggleMemo"){
@@ -2015,6 +2054,7 @@ function onSkinAction(message){
 }
 let mockAnchor=null,mockHours=24,mockPage="TIMELINE",
   mockSelectedSkinId="powercal-clear-default",mockPreviewSkinInstalled=true,mockMemoDone=false;
+let mockProfileEditor=null,mockProfileSaveRevision=0;
 const isLockedMockScenario=()=>["locked","locked-stale"].includes($("scenario").value);
 const idleMockAiBatch=()=>({phase:"IDLE",state:null,active:false,canCancel:false,
   canRelease:false,mode:null,scopeCount:0,selectedCount:0,operationCounts:{},
@@ -2156,6 +2196,7 @@ function bindUI(){
     if(id==="theme")$("webPreview").style.colorScheme=$("theme").value;
     mockAnchor=null;
     if(id==="scenario"){
+      mockProfileEditor=null;mockProfileSaveRevision=0;
       mockChat=[];mockChatCleared=false;mockChatHistoryRevision++;
       mockChatPrefillText="";mockChatPrefillRevision++;
       mockMemoVisibleLimit=250;

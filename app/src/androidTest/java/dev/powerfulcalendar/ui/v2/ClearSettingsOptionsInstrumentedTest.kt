@@ -1703,6 +1703,176 @@ class ClearSettingsOptionsInstrumentedTest {
     }
 
     @Test
+    fun nativeAndClearAuthoredProfileEditorSaveMatchWithScopedBridgeProjection() {
+        assumeTrue("profile parity test requires an isolated Android emulator",
+            Build.HARDWARE == "ranchu" || Build.HARDWARE == "goldfish")
+        val context = compose.activity.applicationContext
+        val databaseName = "native-clear-authored-profile-" + UUID.randomUUID() + ".db"
+        val store = PowerStore(context, databaseName)
+        val skinManager = SkinPackageManager(context)
+        val originalSkin = skinManager.currentId()
+        val profile = context.getSharedPreferences("powercal-profile", Context.MODE_PRIVATE)
+        val hadDisplayName = profile.contains("displayName")
+        val originalDisplayName = profile.getString("displayName", null)
+        val onboarding = context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+        val hadOnboardingFlag = onboarding.contains("system-calendar-import-asked")
+        val originalOnboardingFlag = onboarding.getBoolean("system-calendar-import-asked", false)
+        val baseName = "PCProfileBase" + UUID.randomUUID().toString().replace("-", "")
+        val savedName = "PCProfileSaved" + UUID.randomUUID().toString().replace("-", "")
+        val storeBefore = listOf(
+            store.all(), store.draftCount(), store.pendingCount(), store.commitCount(),
+            store.identityCount(), store.nextSequencePreview()
+        )
+        var web: WebView? = null
+
+        fun setProfileName(value: String) {
+            assertTrue(profile.edit().putString("displayName", value).commit())
+        }
+
+        fun saveNativeProfile() {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+                skinManager.select("powercal-default")
+                compose.activity.setContent { PowerCalTheme { PowerCalApp(store) } }
+            }
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithText("时间轴").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText("设置").performClick()
+            compose.waitUntil(10_000) {
+                compose.onAllNodesWithText("工具与设置").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText("个人信息").assertExists()
+            val field = compose.onNode(hasSetTextAction())
+            assertEquals(baseName, field.fetchSemanticsNode()
+                .config[SemanticsProperties.EditableText].text)
+            field.performTextReplacement(savedName)
+            compose.onNodeWithText("保存个人信息").performScrollTo().performClick()
+            compose.waitUntil(10_000) { profile.getString("displayName", null) == savedName }
+        }
+
+        try {
+            assertTrue(onboarding.edit().putBoolean("system-calendar-import-asked", true).commit())
+            setProfileName(baseName)
+            saveNativeProfile()
+            setProfileName(baseName)
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+                skinManager.select("powercal-clear-default")
+                compose.activity.setContent { PowerCalTheme { PowerCalApp(store) } }
+            }
+            compose.waitUntil(30_000) {
+                compose.runOnUiThread {
+                    web = findWebView(compose.activity.findViewById(android.R.id.content))
+                }
+                web != null
+            }
+            val view = requireNotNull(web)
+            compose.waitUntil(20_000) {
+                evaluate(view, "!!window.PowerCalSkin?.receive") == "true"
+            }
+            tapWebSelector(view, ".clear-tabbar [data-action=settings]")
+            compose.waitUntil(15_000) {
+                WebSkinBridgeRuntime.state().optString("page") == "SETTINGS"
+            }
+            val closedProjection = WebSkinBridgeRuntime.state()
+            assertTrue("Clear Bridge must omit profile data until the user opens its editor",
+                closedProjection.isNull("profileEditor") &&
+                    !closedProjection.toString().contains(baseName))
+
+            tapWebSelector(view, "#openProfileSettings")
+            compose.waitUntil(10_000) {
+                val profileState = WebSkinBridgeRuntime.state().optJSONObject("profileEditor")
+                profileState?.optString("displayName") == baseName &&
+                    evaluate(view, "document.querySelector('#profileEditorDialog').open") == "true"
+            }
+            assertEquals("The opened skin-owned form receives only the stored display name",
+                baseName, WebSkinBridgeRuntime.state().getJSONObject("profileEditor")
+                    .getString("displayName"))
+            assertEquals("Profile input keeps the Native 80-character contract",
+                "true", evaluate(view,
+                    "Number(document.querySelector('#profileDisplayName').getAttribute('maxlength'))===80"))
+            assertTrue("The editor must expose an accessible label and status",
+                evaluate(view, "document.querySelector('label[for=profileDisplayName]')!==null&&" +
+                    "document.querySelector('#profileEditorStatus').getAttribute('aria-live')==='polite'") ==
+                    "true")
+            val savedLiteral = JSONObject.quote(savedName)
+            assertEquals("Test input edits the actual Clear form field",
+                "true", evaluate(view, "(()=>{const input=document.querySelector('#profileDisplayName');" +
+                    "input.value=$savedLiteral;input.dispatchEvent(new Event('input',{bubbles:true}));" +
+                    "return input.value===$savedLiteral})()"))
+            tapWebSelector(view, "#profileSaveButton")
+            compose.waitUntil(10_000) {
+                profile.getString("displayName", null) == savedName &&
+                    WebSkinBridgeRuntime.state().optJSONObject("profileEditor")
+                        ?.optBoolean("saved") == true
+            }
+            assertEquals("Native and Clear forms persist the same profile value",
+                savedName, profile.getString("displayName", null))
+            assertEquals("Skin profile editing must not write calendar data",
+                storeBefore, listOf(
+                    store.all(), store.draftCount(), store.pendingCount(), store.commitCount(),
+                    store.identityCount(), store.nextSequencePreview()
+                ))
+
+            evaluate(view, "(()=>{const input=document.querySelector('#profileDisplayName');" +
+                "input.value='UNSAVED_PROFILE_VALUE';input.dispatchEvent(new Event('input',{bubbles:true}));" +
+                "return true})()")
+            InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(
+                android.view.KeyEvent.KEYCODE_BACK
+            )
+            compose.waitUntil(10_000) {
+                WebSkinBridgeRuntime.state().isNull("profileEditor") &&
+                    evaluate(view, "document.querySelector('#profileEditorDialog').open") == "false"
+            }
+            assertEquals("Android Back closes the skin editor without saving later edits",
+                savedName, profile.getString("displayName", null))
+            assertFalse("Closed profile values must be removed from the Bridge frame",
+                WebSkinBridgeRuntime.state().toString().contains(savedName) ||
+                    WebSkinBridgeRuntime.state().toString().contains("UNSAVED_PROFILE_VALUE"))
+            tapWebSelector(view, "#skinChoices [data-skin-id=powercal-default]")
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithText("切换皮肤前请确认").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText("确认切换").performClick()
+            compose.waitUntil(15_000) {
+                skinManager.currentId() == "powercal-default" &&
+                    WebSkinBridgeRuntime.state().isNull("profileEditor")
+            }
+            assertFalse("Changing the active skin must not retain the prior profile projection",
+                WebSkinBridgeRuntime.state().toString().contains(savedName))
+            println("SEP11_NATIVE_CLEAR_AUTHORED_PROFILE_EDITOR " +
+                "nativeSaved=true clearSkinSaved=true valueOnlyWhileOpen=true backDiscardsDraft=true " +
+                "skinSwitchClearsProjection=true storeUnchanged=true")
+        } finally {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            store.close()
+            context.deleteDatabase(databaseName)
+            skinManager.select(originalSkin)
+            val restoreProfile = profile.edit()
+            if (hadDisplayName && originalDisplayName != null) {
+                restoreProfile.putString("displayName", originalDisplayName)
+            } else {
+                restoreProfile.remove("displayName")
+            }
+            check(restoreProfile.commit())
+            val restoreOnboarding = onboarding.edit()
+            if (hadOnboardingFlag) {
+                restoreOnboarding.putBoolean("system-calendar-import-asked", originalOnboardingFlag)
+            } else {
+                restoreOnboarding.remove("system-calendar-import-asked")
+            }
+            check(restoreOnboarding.commit())
+        }
+    }
+
+    @Test
     fun clearHostAiSettingsBackRestoresSelectedSkinTimeline() {
         assumeTrue("navigation parity test requires an isolated Android emulator",
             Build.HARDWARE == "ranchu" || Build.HARDWARE == "goldfish")

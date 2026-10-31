@@ -16,6 +16,7 @@ let aiReviewSelectionId="",aiReviewSelected=new Set();
 let attachmentRequestPending=false;
 let appliedChatPrefillRevision=null;
 let timelineCreateDialog=null;
+let profileEditorSaveRevision=-1,profileEditorDirty=false;
 function postBridgeMessage(message){
   const encoded=JSON.stringify(message);
   if(!port||!bridgeReady){
@@ -456,6 +457,30 @@ $("monthPickerForm").addEventListener("submit",event=>{
   $("monthPickerDialog").close();
   send("selectMonth",{month:`${String(year).padStart(4,"0")}-${String(month).padStart(2,"0")}`});
 });
+function closeProfileEditor(){
+  const dialog=$("profileEditorDialog");
+  if(dialog.open)dialog.close();
+  profileEditorDirty=false;
+  send("closeProfileEditor");
+}
+function saveProfileEditor(){
+  const displayName=$("profileDisplayName").value;
+  if(displayName.length>80)return;
+  if(send("saveProfileEditor",{displayName}))
+    $("profileEditorStatus").textContent="正在保存…";
+}
+$("profileDisplayName").addEventListener("input",()=>{
+  profileEditorDirty=true;
+  $("profileEditorStatus").textContent="";
+});
+$("profileSaveButton").addEventListener("click",saveProfileEditor);
+$("profileEditorForm").addEventListener("submit",event=>{
+  event.preventDefault();saveProfileEditor();
+});
+$("profileCancelButton").addEventListener("click",closeProfileEditor);
+$("profileEditorDialog").addEventListener("cancel",event=>{
+  event.preventDefault();closeProfileEditor();
+});
 $("chatForm").addEventListener("submit",e=>{
   e.preventDefault();
   const field=$("chatInput"),text=field.value.trim();
@@ -525,6 +550,7 @@ function renderPage(){
   if(page==="MEMO")renderMemo();
   if(page==="AI")renderChat();
   if(page==="SETTINGS")renderSettings();
+  renderProfileEditor();
   renderOptions();
   window.PowerCalEdit?.onState(state);
 }
@@ -1154,6 +1180,29 @@ function renderAiProposalReview(list){
   for(const warning of (review.warnings||[]))root.append(node("p","",`提示：${warning}`));
   list.append(root);
 }
+function renderProfileEditor(){
+  const dialog=$("profileEditorDialog"),profile=state.profileEditor;
+  const input=$("profileDisplayName"),status=$("profileEditorStatus");
+  if(!profile||typeof profile.displayName!=="string"){
+    if(dialog.open)dialog.close();
+    profileEditorDirty=false;profileEditorSaveRevision=-1;
+    return;
+  }
+  const revision=Number(profile.saveRevision)||0;
+  if(!dialog.open){
+    input.value=profile.displayName;
+    profileEditorDirty=false;profileEditorSaveRevision=revision;
+    status.textContent=profile.saved?"已保存":"";
+    dialog.showModal();
+    $("profileEditorHeading").focus({preventScroll:true});
+  }else if(revision!==profileEditorSaveRevision){
+    input.value=profile.displayName;
+    profileEditorDirty=false;profileEditorSaveRevision=revision;
+    status.textContent=profile.saved?"已保存":"";
+  }else if(!profileEditorDirty){
+    status.textContent=profile.saved?"已保存":"";
+  }
+}
 function renderOptions(){
   for(const id of ["optionGroups","settingsOptionGroups"]){
     const root=$(id);
@@ -1176,6 +1225,7 @@ function handleHostBack(){
   const dialogs=document.querySelectorAll("dialog[open]");
   const active=dialogs[dialogs.length-1];
   if(!active)return false;
+  if(active.id==="profileEditorDialog"){closeProfileEditor();return true}
   active.close();
   return true;
 }

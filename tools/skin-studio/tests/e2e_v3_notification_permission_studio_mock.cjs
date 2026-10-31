@@ -89,6 +89,21 @@ async function main(){
       return {id:skin.manifest.id,fileCount:Object.keys(skin.files).length};
     })()`);
     if(loaded?.id!=="powercal-clear-default")throw Error("Canonical Clear package did not load");
+    await evaluate("document.querySelector('#advancedMode').click()");
+    await waitFor(evaluate,"document.querySelector('#htmlCode')?.value.includes('profileEditorDialog')&&"+
+      "document.querySelector('#cssCode')?.value.includes('#profileEditorDialog')&&"+
+      "document.querySelector('#jsCode')?.value.includes('renderProfileEditor')",
+      "profile form HTML/CSS/JS source in Studio");
+    const sourceEdit=await evaluate("(()=>{const editor=document.querySelector('#htmlCode');"+
+      "const original=editor.value;const changed=original.replace('编辑个人资料',"+
+      "'编辑个人资料 · Studio源编辑探针');if(changed===original)return {changed:false};"+
+      "editor.value=changed;editor.dispatchEvent(new Event('input',{bubbles:true}));"+
+      "const updated=getText('web/index.html')===changed;editor.value=original;"+
+      "editor.dispatchEvent(new Event('input',{bubbles:true}));"+
+      "return {changed:updated,restored:getText('web/index.html')===original}})()");
+    if(!sourceEdit?.changed||!sourceEdit?.restored)
+      throw Error("Studio profile HTML editor did not update and restore the package model");
+    await evaluate("document.querySelector('#simpleMode').click()");
     await waitFor(evaluate,"document.querySelector('#previewState')?.textContent.includes('连接成功')",
       "Preview Mock connection");
     await evaluate("document.querySelector('#webPreview').scrollIntoView({block:'center'})");
@@ -118,6 +133,48 @@ async function main(){
     await waitFor(frameEval,"Boolean(document.querySelector('#settingsPage'))","Clear Settings DOM");
     await frameEval(`document.querySelector('.clear-tabbar [data-action="settings"]').click()`);
     await waitFor(evaluate,"mockPage==='SETTINGS'&&lastState?.page==='SETTINGS'","Mock Settings route");
+    if(await evaluate("lastState?.profileEditor!==null"))
+      throw Error("profile value was projected before the explicit editor action");
+    await frameEval("document.querySelector('[data-action=\"openProfileEditor\"]').click()");
+    await waitFor(evaluate,"mockProfileEditor?.displayName==='Studio Profile Preview'&&"+
+      "lastState?.profileEditor?.displayName==='Studio Profile Preview'",
+      "synthetic profile editor projection");
+    await waitFor(frameEval,"document.querySelector('#profileEditorDialog').open",
+      "skin-authored profile dialog");
+    await frameEval("(()=>{const input=document.querySelector('#profileDisplayName');"+
+      "input.value='Synthetic Studio Name';input.dispatchEvent(new Event('input',{bubbles:true}));"+
+      "document.querySelector('#profileSaveButton').click()})()");
+    await waitFor(evaluate,"lastState?.profileEditor?.displayName==='Synthetic Studio Name'&&"+
+      "lastState?.profileEditor?.saved===true","synthetic profile save in Mock");
+    await frameEval("document.querySelector('#profileCancelButton').click()");
+    await waitFor(evaluate,"mockProfileEditor===null&&lastState?.profileEditor===null",
+      "profile value removed after explicit close");
+    await frameEval("document.querySelector('[data-action=\"openProfileEditor\"]').click()");
+    await waitFor(evaluate,"Boolean(mockProfileEditor)","reopen profile editor before route change");
+    await evaluate("onSkinAction(JSON.stringify({version:1,type:'action',payload:"+
+      "{name:'selectSkin',id:'powercal-default'}}))");
+    await waitFor(evaluate,"mockApproval?.kind==='skinActivation'&&"+
+      "mockApproval?.id==='powercal-default'","profile Mock skin-change review");
+    await evaluate("document.querySelector('#mockApprove').click()");
+    await waitFor(evaluate,"mockSelectedSkinId==='powercal-default'&&"+
+      "mockProfileEditor===null&&lastState?.profileEditor===null",
+      "profile projection cleared after approved skin change");
+    await evaluate("onSkinAction(JSON.stringify({version:1,type:'action',payload:"+
+      "{name:'selectSkin',id:'powercal-clear-default'}}))");
+    await waitFor(evaluate,"mockApproval?.kind==='skinActivation'&&"+
+      "mockApproval?.id==='powercal-clear-default'","return-to-Clear Mock skin review");
+    await evaluate("document.querySelector('#mockApprove').click()");
+    await waitFor(evaluate,"mockSelectedSkinId==='powercal-clear-default'&&"+
+      "mockProfileEditor===null&&lastState?.profileEditor===null",
+      "profile projection remains closed after returning to Clear");
+    await frameEval("document.querySelector('[data-action=\"openProfileEditor\"]').click()");
+    await waitFor(evaluate,"Boolean(mockProfileEditor)","reopen profile editor before route change");
+    await frameEval("document.querySelector('.clear-tabbar [data-action=\"timeline\"]').click()");
+    await waitFor(evaluate,"mockPage==='TIMELINE'&&lastState?.profileEditor===null",
+      "profile projection removed after leaving Settings");
+    await frameEval("document.querySelector('.clear-tabbar [data-action=\"settings\"]').click()");
+    await waitFor(evaluate,"mockPage==='SETTINGS'&&lastState?.profileEditor===null",
+      "Settings reopened without stale profile projection");
     await waitFor(frameEval,`!document.querySelector('#settingsPage').hidden&&
       document.querySelector('#notificationPermissionStatus').textContent.includes('BLOCKED')`,
       "Mock permission state projection");
@@ -195,6 +252,11 @@ async function main(){
       exactDeniedText,
       reminderDiagnosticText,
       systemDiagnosticText,
+      profileEditorMock:{opened:true,savedSyntheticName:true,closed:true,
+        projectionClearedOnRouteChange:true,skinSwitchClearsProjection:true,
+        androidPreferencesWritten:false,
+        calendarStoreWritten:false},
+      profileSourceEditor:sourceEdit,
       skinChoiceIds:(await evaluate("lastState.skinChoices.map(item=>item.id)")),
       mockSelectedSkinId:await evaluate("lastState.selectedSkinId"),
       previewFixtureDeleted:await evaluate("!mockPreviewSkinInstalled"),
