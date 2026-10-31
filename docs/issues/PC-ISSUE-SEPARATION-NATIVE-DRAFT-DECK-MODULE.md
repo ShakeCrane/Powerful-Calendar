@@ -46,4 +46,12 @@ $env:ANDROID_HOME='E:\android-sdk'
 
 ## 未签核范围
 
-本次证明 Native renderer 的源码模块边界和 JVM/编译构建行为，不代表完整 SEP-08 通过，也不代表 Clear 与 Native 功能等价、Android 设备行为已通过、Skin Studio 能编辑此 Native Compose renderer，或分离目标已整体完成。设备交互仍待可用模拟器/设备验证。Clear 当前已知问题独立保留，本 Issue 不处理。
+原始模块化提交证明了 Native renderer 的源码模块边界和 JVM/编译构建行为，不代表完整 SEP-08 通过、Clear 与 Native 完全等价、Skin Studio 能编辑 Native Compose renderer，或整体分离目标已完成。下方 2026-10-31 follow-up 补充了一个 API 35 设备交互切片；其余卡组行为及可编辑性仍待验证。Clear 当前已知问题独立保留，本 Issue 不处理。
+
+## 后续 Native 设备缺陷：紧凑视口下的卡组操作栏（2026-10-31）
+
+- **复现与根因：** API 35 AVD 的 Native MEMO 新建表单在软键盘/紧凑视口下将整张卡片设为纵向滚动。表单内容挤出底部“发布”按钮，按钮 bounds 为零；触摸没有触发发布，反而落入关闭路径并留下待处理草稿。
+- **最小修复：** `NativeDraftDeckScreen.kt` 固定卡片列、标题和底部操作区，只让表单字段列滚动；没有修改 Host、Core 或 Clear 生产代码。
+- **回归证据：** `WebSkinAllKindsTrustedWriteInstrumentedTest.sameEmptyMemoFixtureProducesEquivalentFormalRecordFromNativeAndClear` 现断言 Native“发布”节点可见并用 Compose 实际触摸点击；focused **1/1 PASS**。新增同 fixture 的持久 MEMO 卡组修改、flush、重开、取消/批准路径配对回归后，整类 **15/15 PASS**，Android 15 / API 35 / WebView 124 / `emulator-5570`。
+- **精确提交快照全门禁：** 代码提交 `2f55ec672421125ec6fe7a25847a9baffc36c526` 已推送。干净本地克隆无未提交文件；运行 `:app:verifyNativeSkinBoundary :app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=dev.powerfulcalendar.ui.v2.WebSkinAllKindsTrustedWriteInstrumentedTest --offline --max-workers=2 --console=plain`，**BUILD SUCCESSFUL，172/172 tasks 执行**。JVM **784/784**、125 suites、0 failures/errors/skips；设备类 **15/15**、0 failures/errors/skips；Lint 0 errors、51 warnings。全门禁日志 SHA-256 `B764FC5E19936CC64A83F8CBFD7528E6E7D83FB1628D08EA483D1BCDA4247300`；instrumentation XML SHA-256 `CDE913E64F17B97543E46C9CDE13797A69B448BA7E11F7D3A660217D4585953F`。干净快照 Debug APK SHA-256 `42165B9BEBE0E598DAAA780A35FB7CE1F5F4421788D824F749A03F83A5A5A4D3`，AndroidTest APK SHA-256 `BDEA44359C55080A23E256912B21AC78544A341A092B654568B7A479F17B01EC`。manifest `.local/android-test/reports/sep08-deck-lifecycle-parity-20261031/manifest-2f55ec6.json` SHA-256 `49880C88D580B5DDD76E48B7B359E381C67A8D209C49AF888337EF25A6F26483`；完整产物位于 `.local/android-test/reports/sep08-deck-lifecycle-parity-20261031/` 与 `.local/android-test/clean-validation-2f55ec6-20261031/repo/`。
+- **限制：** 这是 Native 卡组可见操作的一项设备修复和一条卡组生命周期配对回放，不代表 SEP-08 完成；进程死亡恢复、其他卡组操作、Studio 编辑 Native renderer、TalkBack 与实体/OEM 仍未签核。配对测试使用原有 Clear runtime 作行为参照，本次没有修复或改动任何 Clear 生产代码。
