@@ -4,7 +4,7 @@
 
 **历史状态（2026-10-28）：PARTIAL / OPEN**。Host 桥的受保护删除流程、Clear 删除入口及 Skin Studio Mock 已实现并通过 JVM/浏览器回归；API 35 WebView instrumentation 因 AVD 断连未取得测试结果。SEP-07 与整体 Native/Skin parity 仍为 `NOT TESTED`，不能把浏览器 Mock 当成设备行为或完整功能等价。最新重建验收 `S0-ED-05` 的状态见本文末尾 2026-10-30 复核记录。
 
-**当前状态（2026-10-31）：PARTIAL / HOLD。** API 35 Clear WebView 已通过触屏删除取消/批准、并发版本冲突拒绝、无修改旧会话安全退出，以及墓碑恢复取消/批准并复用原身份。SEP-07 仍缺 TalkBack、完整同数据 Native/Clear 对照及实体/OEM 验收，不代表该项已签核。
+**当前状态（2026-10-31）：PARTIAL / HOLD。** API 35 Clear WebView 已通过触屏删除取消/批准、并发版本冲突拒绝、无修改旧会话安全退出及墓碑恢复取消/批准并复用原身份；同一隔离 Memo fixture 的 Native/Clear 正式删除结果也已匹配（1/1）。SEP-07 仍缺 TalkBack、其他类型/范围的配对覆盖及实体/OEM 验收，不代表该项已签核。
 
 ## 根因与 Native 对照
 
@@ -150,3 +150,14 @@ Native 正式事件编辑器调用 `EditSession.delete()`，最终复用 `PowerS
 两次首次恢复尝试的用例等待顺序错误地在“生成恢复草稿”后立即等待 Host 恢复确认按钮，遗漏了用户须先显式点击“发布”才会进入 tombstone restore prompt；保留失败日志并修正步骤后通过。一次早期全量运行因将所有 `closed` 状态都触发 reload，连带使临时 `CloseDeck` Compose 回归超时；刷新条件已收窄至 `CloseEvent`，受影响类定向通过，最终全量回归通过。上述失败均为本次实现/验证路径，未隐藏。
 
 本 follow-up 只签核实际冲突拒绝及恢复闭环。TalkBack、完整 Native/Clear 配对 replay 与实体/OEM 仍为 NOT TESTED；SEP-07、整体 Skin parity 和 cutover 继续 **PARTIAL / HOLD**。本工作树其他 Agent 对 `WebSkinFormalDeleteInstrumentedTest.kt` 与 `WebSkinRecurrenceInstrumentedTest.kt` 的未提交改动没有纳入本次提交。
+
+## Matched Native/Clear formal Memo deletion replay（2026-10-31）
+
+新增 `sameFormalMemoDeleteProducesEquivalentNativeAndClearTombstones`，在两个隔离 Store 中播种完全相同的无日期 MEMO，再分别从 Native Memo 页面和打包的 Clear WebView 执行正式删除。两边在确认前都保持原记录、1 次既有提交、1 个身份、序号水位 2、0 草稿/待处理项；取消不写入。批准后两边生成相同的墓碑业务字段，`eventSeq=1`、`revision=2`、共 2 次提交、1 个身份、序号水位仍为 2、0 草稿/待处理项。Clear 删除按钮由 Android `SOURCE_TOUCHSCREEN` 触发，轨迹显示 `event.isTrusted=true`、action=`deleteEvent`。
+
+- 配对回放 **1/1 PASS**；`WebSkinAllKindsTrustedWriteInstrumentedTest` **10/10 PASS**，源提交 `4b681f4`。API 35 Android 15 / WebView 124 / `emulator-5570`。此前真实删除/冲突/恢复类在旧测试源码上通过 **3/3**。
+- 复跑时发现删除按钮测试先执行受 CSS 平滑滚动影响的 `scrollIntoView`，只等到按钮刚进入视口就按中间帧坐标注入触摸。保留失败 XML/logcat；将测试滚动指定为 `behavior:'instant'` 后，`WebSkinFormalDeleteTouchInstrumentedTest` **3/3 PASS**，其中真实触屏取消/批准用例另独立重复 **2/2 PASS**。这是 harness 坐标稳定性修复，没有改 Runtime 或产品交互。
+- 在修正后的源码提交 `2e4886a769e026b135ff86db186521e366dc9d4e` 上，边界检查、完整离线 Gradle/Debug 与 AndroidTest APK/Lint 门禁成功（172 tasks；JVM 测试结果为同一产品源码 `4b681f4` 的 784/784、125 suites，修正只改 AndroidTest 文件）；Studio Python **63/63 PASS**。Debug APK SHA-256 `83C9EDAD5DBE47F3D78C5E9BC35435CAD59C674FBF79D66C6054A982C51D767D`；修正后的 AndroidTest APK SHA-256 `C0CF33F244B5708DDFF2BFAF4C66D8DFFAE26BA06FDFEBA539F6FFA93DD82F0F`。
+- 代码提交 `2e4886a` 已推送；原配对回放测试在 `4b681f4` 已推送。可复核源码归档 SHA-256 `C02747835A173805A223B5779A4D4ABBD5CA4296A73AB58B8BF6E37220168F27`；门禁、Studio、设备 XML/logcat、失败重现与两次重跑的哈希均列于 `.local/android-test/reports/sep07-native-clear-delete-parity-20261031/manifest.json`（manifest SHA-256 `C3EA64E74209559524F0E3DEB780EF3E87A09CE703AA0ED0ADDE0D9453EE5CB3`）。
+
+本回放只关闭一个 no-date Memo 的 Native/Clear 删除等价样例。TalkBack、Alarm/Activity/Deadline、重复系列/单次范围、更多并发冲突与恢复配对、实体/OEM 仍未完成；SEP-07 继续 **PARTIAL / HOLD**。其他 Agent 的两个未提交 AndroidTest 文件没有被纳入本次提交。
