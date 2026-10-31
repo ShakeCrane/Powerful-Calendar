@@ -18,6 +18,15 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -441,8 +450,8 @@ class TimelineDragWebViewInstrumentedTest {
                     Triple(store.draftCount(), store.commitCount(), store.identityCount())))
 
             // Repeating events traverse the same touch gesture but are refused by the Host.
-            val previousRequestId = hostState().getJSONObject("editing").getJSONObject("lastResult")
-                .optString("requestId")
+            val previousRequestId = hostState().optJSONObject("editing")
+                ?.optJSONObject("lastResult")?.optString("requestId").orEmpty()
             val recurringProbe = eventProbe(view, recurringSeq)
             val recurringDrag = sendTouch(view, recurringProbe, holdMillis = 700, deltaCssY = 60.0)
             var repeatedHost = awaitHostResultAfter(previousRequestId, "unsupported")
@@ -553,6 +562,183 @@ class TimelineDragWebViewInstrumentedTest {
                 "powercal-ui", "powercal-profile", "powercal-ai", "powercal-file-ai-consent")
                 .forEach { name -> storage.deleteSharedPreferences("$namespace-$name") }
             File(storage.cacheDir, namespace).deleteRecursively()
+        }
+    }
+
+    @Test
+    fun sameActivityFixtureLongPressMoveProducesEquivalentNativeAndClearDrafts() {
+        val storage = compose.activity.applicationContext
+        val nativeNamespace = "pc-timeline-move-parity-native-${UUID.randomUUID()}"
+        val clearNamespace = "pc-timeline-move-parity-clear-${UUID.randomUUID()}"
+        val nativeContext = IsolatedAppContext(compose.activity, storage, nativeNamespace)
+        val clearContext = IsolatedAppContext(compose.activity, storage, clearNamespace)
+        val nativeDatabase = "timeline-move-native.db"
+        val clearDatabase = "timeline-move-clear.db"
+        val nativeStore = PowerStore(nativeContext, nativeDatabase)
+        val clearStore = PowerStore(clearContext, clearDatabase)
+        var web: WebView? = null
+        try {
+            val zone = ZoneId.systemDefault()
+            val date = LocalDate.now(zone)
+            val start = date.atTime(9, 0).atZone(zone).toInstant().toEpochMilli()
+            val input = DraftForm(
+                kind = TemporalKind.ACTIVITY,
+                title = "Native/Clear drag parity Activity",
+                startText = DraftForm.formatInstant(start, zone),
+                endText = DraftForm.formatInstant(start + 3_600_000L, zone),
+                zoneId = zone.id
+            )
+            val nativeCreated = nativeStore.createFormalEvent(input, "timeline-move-parity-seed")
+                as PowerStore.CommitOutcome.Committed
+            val clearCreated = clearStore.createFormalEvent(input, "timeline-move-parity-seed")
+                as PowerStore.CommitOutcome.Committed
+            val eventSeq = nativeCreated.eventSeq
+            assertEquals(eventSeq, clearCreated.eventSeq)
+            val nativeOriginal = requireNotNull(nativeStore.get(eventSeq))
+            val clearOriginal = requireNotNull(clearStore.get(eventSeq))
+            assertEquals(DraftForm.from(nativeOriginal), DraftForm.from(clearOriginal))
+            assertEquals(0, nativeStore.draftCount())
+            assertEquals(1L, nativeStore.commitCount())
+            assertEquals(1, nativeStore.identityCount())
+            assertEquals(2L, nativeStore.nextSequencePreview())
+
+            nativeContext.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                .edit().putBoolean("system-calendar-import-asked", true).commit()
+            SkinPackageManager(nativeContext).selectNativeForEmergencyRecovery()
+            compose.runOnUiThread {
+                compose.activity.setContent {
+                    CompositionLocalProvider(LocalContext provides nativeContext) {
+                        PowerCalTheme { PowerCalApp(nativeStore) }
+                    }
+                }
+            }
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithContentDescription("今日 · 复位为全天")
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+            val expectedNoon = date.atTime(12, 0).atZone(zone).toInstant().toEpochMilli()
+            compose.onNodeWithContentDescription("今日 · 复位为全天").performClick()
+            compose.waitUntil(15_000) {
+                val camera = hostState().getJSONObject("timeline")
+                camera.getDouble("hours") == 24.0 && camera.getLong("anchorMillis") == expectedNoon
+            }
+            val nativeTimeline = hostState().getJSONObject("timeline")
+            assertEquals(24.0, nativeTimeline.getDouble("hours"), 0.0)
+            assertEquals(expectedNoon, nativeTimeline.getLong("anchorMillis"))
+
+            val eventMatcher = hasContentDescription(input.title, substring = true) and hasClickAction()
+            val nativeEvent = compose.onAllNodes(eventMatcher).onFirst()
+            nativeEvent.assertExists()
+            val nativeSurface = compose.onNodeWithTag("timeline-viewport").fetchSemanticsNode()
+            val nativeHeight = nativeSurface.boundsInRoot.height
+            assertTrue("Native timeline viewport must have a measurable height", nativeHeight > 0f)
+            val requestedMoveMillis = 60L * 60_000L
+            val nativeDeltaPx = (requestedMoveMillis / TimelineCoordinate.spanMillis(24.0) *
+                nativeHeight.toDouble()).toFloat()
+            nativeEvent.performTouchInput {
+                down(center)
+                advanceEventTime(700)
+                moveBy(Offset(0f, nativeDeltaPx))
+                up()
+            }
+            compose.waitUntil(30_000) { nativeStore.pendingDraftsFor(eventSeq).size == 1 }
+            val nativeDraft = nativeStore.pendingDraftsFor(eventSeq).single()
+
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+
+            clearContext.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                .edit().putBoolean("system-calendar-import-asked", true).commit()
+            PowerCalSkinRegistry.reset()
+            SkinPackageManager(clearContext).select("powercal-clear-default")
+            compose.runOnUiThread {
+                compose.activity.setContent {
+                    CompositionLocalProvider(LocalContext provides clearContext) {
+                        PowerCalTheme { PowerCalApp(clearStore) }
+                    }
+                }
+            }
+            compose.waitUntil(30_000) {
+                compose.runOnUiThread {
+                    web = findWebView(compose.activity.findViewById(android.R.id.content))
+                }
+                web != null
+            }
+            val view = requireNotNull(web)
+            awaitJs(view, "!!window.PowerCalSkin && !!document.querySelector('#timelineSurface')")
+            evaluate(view, "document.querySelector('[data-action=\\\"today\\\"]').click();true")
+            compose.waitUntil(15_000) {
+                val camera = hostState().getJSONObject("timeline")
+                camera.getDouble("hours") == 24.0 && camera.getLong("anchorMillis") == expectedNoon
+            }
+            val clearTimeline = hostState().getJSONObject("timeline")
+            assertEquals(24.0, clearTimeline.getDouble("hours"), 0.0)
+            assertEquals(expectedNoon, clearTimeline.getLong("anchorMillis"))
+            awaitJs(view, "!!document.querySelector(\".tEvent[data-event-seq='$eventSeq']\")")
+            val clearProbe = eventProbe(view, eventSeq)
+            val clearHeightCss = clearProbe.getDouble("surfaceHeight")
+            assertTrue("Clear timeline surface must have a measurable height: $clearProbe",
+                clearHeightCss > 0.0)
+            val clearDeltaCssY = requestedMoveMillis / TimelineCoordinate.spanMillis(24.0) * clearHeightCss
+            val previousRequestId = hostState().optJSONObject("editing")
+                ?.optJSONObject("lastResult")?.optString("requestId").orEmpty()
+            val touch = sendTouch(view, clearProbe, holdMillis = 700, deltaCssY = clearDeltaCssY)
+            val stagedHost = awaitHostResultAfter(previousRequestId, "staged")
+            assertEquals("Clear long-press drag must reach the Host timeline.move action",
+                "staged", stagedHost.getJSONObject("editing").getJSONObject("lastResult")
+                    .getString("status"))
+            val clearDraft = clearStore.pendingDraftsFor(eventSeq).single()
+
+            val expectedStart = TimelineCoordinate.snap(start + requestedMoveMillis, 24.0, zone)
+            assertEquals("Native drag creates a replacement draft", DraftOperation.REPLACE,
+                nativeDraft.operation)
+            assertEquals("Clear drag creates a replacement draft", DraftOperation.REPLACE,
+                clearDraft.operation)
+            assertEquals(nativeOriginal.revision, nativeDraft.baseRevision)
+            assertEquals(clearOriginal.revision, clearDraft.baseRevision)
+            assertEquals(DraftForm.formatInstant(expectedStart, zone), nativeDraft.form.startText)
+            assertEquals(DraftForm.formatInstant(expectedStart, zone), clearDraft.form.startText)
+            assertEquals(DraftForm.formatInstant(expectedStart + 3_600_000L, zone),
+                nativeDraft.form.endText)
+            assertEquals(nativeDraft.form, clearDraft.form)
+            assertEquals(nativeOriginal, nativeStore.get(eventSeq))
+            assertEquals(clearOriginal, clearStore.get(eventSeq))
+            assertEquals(1, nativeStore.draftCount())
+            assertEquals(nativeStore.draftCount(), clearStore.draftCount())
+            assertEquals(1L, nativeStore.commitCount())
+            assertEquals(nativeStore.commitCount(), clearStore.commitCount())
+            assertEquals(1, nativeStore.identityCount())
+            assertEquals(nativeStore.identityCount(), clearStore.identityCount())
+            assertEquals(2L, nativeStore.nextSequencePreview())
+            assertEquals(nativeStore.nextSequencePreview(), clearStore.nextSequencePreview())
+            assertEquals(1, nativeStore.pendingCount())
+            assertEquals(nativeStore.pendingCount(), clearStore.pendingCount())
+            assertEquals(nativeStore.nextQueueOrderPreview(), clearStore.nextQueueOrderPreview())
+            println("NATIVE_CLEAR_TIMELINE_MOVE_PARITY eventSeq=$eventSeq requestedDeltaMillis=$requestedMoveMillis " +
+                "expectedStart=${DraftForm.formatInstant(expectedStart, zone)} " +
+                "native=${nativeDraft.form.startText} clear=${clearDraft.form.startText} " +
+                "nativeViewportPx=$nativeHeight clearViewportCss=$clearHeightCss touch=$touch " +
+                "drafts=${nativeStore.draftCount()} commits=${nativeStore.commitCount()} " +
+                "identities=${nativeStore.identityCount()} sequence=${nativeStore.nextSequencePreview()}")
+        } finally {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            nativeStore.close()
+            clearStore.close()
+            nativeContext.deleteDatabase(nativeDatabase)
+            clearContext.deleteDatabase(clearDatabase)
+            listOf(nativeNamespace, clearNamespace).forEach { namespace ->
+                listOf("powercal-onboarding", "powercal-skin-choice", "powercal-skin-registry",
+                    "powercal-ui", "powercal-profile", "powercal-ai", "powercal-file-ai-consent")
+                    .forEach { storage.deleteSharedPreferences("$namespace-$it") }
+                File(storage.cacheDir, namespace).deleteRecursively()
+            }
         }
     }
 }
