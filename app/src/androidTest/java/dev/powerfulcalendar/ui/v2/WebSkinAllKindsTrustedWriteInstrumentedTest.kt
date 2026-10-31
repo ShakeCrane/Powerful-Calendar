@@ -30,11 +30,15 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.isToggleable
+import androidx.compose.ui.test.onFirst
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.PowerStore
+import dev.powerfulcalendar.core.Recurrence
+import dev.powerfulcalendar.core.RecurrenceFreq
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
 import org.json.JSONArray
@@ -1232,6 +1236,141 @@ class WebSkinAllKindsTrustedWriteInstrumentedTest {
                 "eventSeq=${clearEdited.eventSeq} revision=${clearEdited.revision} " +
                 "commits=${clearStore.commitCount()} identities=${clearStore.identityCount()} " +
                 "sequence=${clearStore.nextSequencePreview()} businessForm=${DraftForm.from(clearEdited)}")
+        } finally {
+            resetClear()
+            nativeStore.close()
+            clearStore.close()
+            nativeContext.deleteDatabase(nativeDatabase)
+            clearContext.deleteDatabase(clearDatabase)
+            listOf(nativeNamespace, clearNamespace).forEach { namespace ->
+                listOf("powercal-onboarding", "powercal-skin-choice", "powercal-ui", "powercal-profile")
+                    .forEach { storage.deleteSharedPreferences("$namespace-$it") }
+                File(storage.cacheDir, namespace).deleteRecursively()
+            }
+        }
+    }
+
+    @Test
+    fun sameRecurringMemoCompletionProducesEquivalentNativeAndClearOccurrenceState() {
+        val storage = compose.activity.applicationContext
+        val nativeNamespace = "pc-native-clear-memo-completion-native-${UUID.randomUUID()}"
+        val clearNamespace = "pc-native-clear-memo-completion-clear-${UUID.randomUUID()}"
+        val nativeContext = IsolatedAppContext(compose.activity, storage, nativeNamespace)
+        val clearContext = IsolatedAppContext(compose.activity, storage, clearNamespace)
+        val nativeDatabase = "memo-completion-native.db"
+        val clearDatabase = "memo-completion-clear.db"
+        val nativeStore = PowerStore(nativeContext, nativeDatabase)
+        val clearStore = PowerStore(clearContext, clearDatabase)
+        var web: WebView? = null
+        try {
+            val zone = ZoneId.of("Asia/Shanghai")
+            val firstDate = LocalDate.now(zone).plusDays(1)
+            val occurrenceKey = "${firstDate}T00:00"
+            val seed = DraftForm(
+                kind = TemporalKind.MEMO,
+                title = "Native/Clear recurring Memo completion",
+                startText = firstDate.toString(),
+                zoneId = zone.id,
+                recurrence = Recurrence(freq = RecurrenceFreq.DAILY, count = 3),
+                trackingEnabled = true
+            )
+            val nativeCreated = nativeStore.createFormalEvent(seed, "memo-completion-parity-seed")
+                as PowerStore.CommitOutcome.Committed
+            val clearCreated = clearStore.createFormalEvent(seed, "memo-completion-parity-seed")
+                as PowerStore.CommitOutcome.Committed
+            assertEquals(nativeCreated.eventSeq, clearCreated.eventSeq)
+            assertEquals(DraftForm.from(requireNotNull(nativeStore.get(nativeCreated.eventSeq))),
+                DraftForm.from(requireNotNull(clearStore.get(clearCreated.eventSeq))))
+            val initialKeys = TodoProjection.entries(nativeStore.all(), System.currentTimeMillis(),
+                includeCompleted = true).map { it.occurrenceKey }
+            assertEquals("fixture must expose all three stable occurrence slots",
+                listOf(0L, 1L, 2L).map { "${firstDate.plusDays(it)}T00:00" }, initialKeys)
+            listOf(nativeStore, clearStore).forEach { store ->
+                assertEquals(1L, store.commitCount())
+                assertEquals(1, store.identityCount())
+                assertEquals(0L, store.draftCount())
+                assertEquals(0, store.pendingCount())
+                assertEquals(2L, store.nextSequencePreview())
+            }
+
+            nativeContext.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                .edit().putBoolean("system-calendar-import-asked", true).commit()
+            SkinPackageManager(nativeContext).selectNativeForEmergencyRecovery()
+            compose.runOnUiThread {
+                compose.activity.setContent {
+                    CompositionLocalProvider(LocalContext provides nativeContext) {
+                        PowerCalTheme { PowerCalApp(nativeStore) }
+                    }
+                }
+            }
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithContentDescription("Memo 未完成 3").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithContentDescription("Memo 未完成 3").performTouchInput { click() }
+            compose.waitUntil(30_000) {
+                compose.onAllNodes(isToggleable()).fetchSemanticsNodes().size == 3
+            }
+            compose.onAllNodes(isToggleable()).onFirst().performTouchInput { click() }
+            compose.waitUntil(30_000) {
+                nativeStore.get(nativeCreated.eventSeq)?.completedKeys == setOf(occurrenceKey)
+            }
+            compose.waitUntil(30_000) {
+                compose.onAllNodes(isToggleable()).fetchSemanticsNodes().size == 2
+            }
+            val nativeCompleted = requireNotNull(nativeStore.get(nativeCreated.eventSeq))
+            assertEquals(2L, nativeCompleted.revision)
+            assertEquals(setOf(occurrenceKey), nativeCompleted.completedKeys)
+            assertEquals(2L, nativeStore.commitCount())
+            assertEquals(1, nativeStore.identityCount())
+            assertEquals(2L, nativeStore.nextSequencePreview())
+            assertEquals(0L, nativeStore.draftCount())
+            assertEquals(0, nativeStore.pendingCount())
+
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+
+            web = launchClear(clearContext, clearStore)
+            val memoTabTouch = tapWebSelector(web, ".clear-tabbar [data-action='memo']")
+            assertTrue("Memo navigation must use a trusted Android touchscreen input",
+                memoTabTouch.getJSONObject("trustedClick").optBoolean("trusted"))
+            awaitJs(web, "!document.querySelector('#memoPage').hidden")
+            awaitJs(web, "document.querySelector('#memoCounter')?.textContent==='3'")
+            val clearToggleSelector = "#memoList [data-action='toggleMemo']" +
+                "[data-event-seq='${clearCreated.eventSeq}'][data-occurrence-key='$occurrenceKey']"
+            awaitJs(web, "!!document.querySelector(${JSONObject.quote(clearToggleSelector)})")
+            val completionTouch = tapWebSelector(web, clearToggleSelector)
+            assertTrue("Memo completion must use a trusted Android touchscreen input",
+                completionTouch.getJSONObject("trustedClick").optBoolean("trusted"))
+            awaitJs(web, "document.querySelector('#memoCounter')?.textContent==='2' && " +
+                "!document.querySelector(${JSONObject.quote(clearToggleSelector)})")
+            compose.waitUntil(30_000) {
+                clearStore.get(clearCreated.eventSeq)?.completedKeys == setOf(occurrenceKey)
+            }
+            val clearCompleted = requireNotNull(clearStore.get(clearCreated.eventSeq))
+
+            assertEquals("Native and Clear must persist the same occurrence-scoped form",
+                DraftForm.from(nativeCompleted), DraftForm.from(clearCompleted))
+            assertEquals(nativeCompleted.eventSeq, clearCompleted.eventSeq)
+            assertEquals(nativeCompleted.revision, clearCompleted.revision)
+            assertEquals("other recurring slots remain incomplete",
+                setOf(occurrenceKey), clearCompleted.completedKeys)
+            assertEquals(2L, clearStore.commitCount())
+            assertEquals(nativeStore.commitCount(), clearStore.commitCount())
+            assertEquals(nativeStore.identityCount(), clearStore.identityCount())
+            assertEquals(nativeStore.nextSequencePreview(), clearStore.nextSequencePreview())
+            assertEquals(0L, clearStore.draftCount())
+            assertEquals(0, clearStore.pendingCount())
+            val remainingKeys = TodoProjection.entries(listOf(clearCompleted), System.currentTimeMillis())
+                .map { it.occurrenceKey }
+            assertEquals(listOf("${firstDate.plusDays(1)}T00:00", "${firstDate.plusDays(2)}T00:00"),
+                remainingKeys)
+            println("NATIVE_CLEAR_PARITY operation=COMPLETE kind=MEMO eventSeq=${clearCompleted.eventSeq} " +
+                "occurrenceKey=$occurrenceKey revision=${clearCompleted.revision} " +
+                "commits=${clearStore.commitCount()} identities=${clearStore.identityCount()} " +
+                "remaining=$remainingKeys")
         } finally {
             resetClear()
             nativeStore.close()
