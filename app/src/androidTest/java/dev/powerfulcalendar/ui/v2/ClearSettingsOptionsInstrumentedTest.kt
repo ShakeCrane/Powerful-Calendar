@@ -36,6 +36,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isToggleable
@@ -52,6 +53,7 @@ import dev.powerfulcalendar.core.BackupEnvelope
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.TemporalKind
+import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.ai.AiFileFallbackConsent
 import dev.powerfulcalendar.ai.AiChatHistoryStore
 import dev.powerfulcalendar.ai.AiSettings
@@ -113,7 +115,7 @@ class ClearSettingsOptionsInstrumentedTest {
         val probe = JSONObject(evaluate(web, """(() => {
           const target=document.querySelector(${JSONObject.quote(selector)});
           if(!target)return {found:false};
-          target.scrollIntoView({block:'center',inline:'nearest'});
+          target.scrollIntoView({behavior:'instant',block:'center',inline:'nearest'});
           const rect=target.getBoundingClientRect();
           const receipt={down:false,up:false,click:false};
           window.__settingsParityTouch=receipt;
@@ -670,7 +672,8 @@ class ClearSettingsOptionsInstrumentedTest {
             compose.onNodeWithText("设置").performClick()
             compose.onNodeWithText("工具与设置").assertExists()
             val beforeNative = storeSnapshot()
-            compose.onNodeWithText("从系统日历一次性导入").performScrollTo().performClick()
+            compose.onNodeWithText("从系统日历一次性导入")
+                .performScrollTo().performClick()
             tapPickerNode(waitForPermissionAction("Allow", "允许", "允许访问日历"))
             compose.waitUntil(15_000) {
                 context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED &&
@@ -2968,6 +2971,56 @@ class ClearSettingsOptionsInstrumentedTest {
             ).use { cursor -> cursor.moveToFirst() && !cursor.isNull(0) }
         }
 
+        fun finishedSystemImportBatchCount(store: PowerStore): Int =
+            store.readableDatabase.rawQuery(
+                "SELECT COUNT(*) FROM migrations WHERE source=? AND finished_ms IS NOT NULL",
+                arrayOf("android-calendar")
+            ).use { cursor -> cursor.moveToFirst(); cursor.getInt(0) }
+
+        fun assertRepeatedImportIsIdempotent(
+            route: String,
+            store: PowerStore,
+            original: List<TemporalRecord>
+        ) {
+            val completed = runCatching {
+                compose.waitUntil(20_000) { finishedSystemImportBatchCount(store) == 2 }
+            }.isSuccess
+            val batches = systemImportBatches(store)
+            val providerStillHasFixture = withCalendarProviderAccess {
+                dev.powerfulcalendar.interop.SystemCalendar.readUpcoming(context)
+                    .any { it.externalId == "${requireNotNull(eventId)}:$startMillis" }
+            }
+            val noEventsNoticeVisible = compose.onAllNodesWithText("系统日历没有可导入的事件")
+                .fetchSemanticsNodes().isNotEmpty()
+            val skippedRepeatNoticeVisible = compose.onAllNodesWithText(
+                "已从系统日历导入 0 条（一次性快照，不是双向同步）"
+            ).fetchSemanticsNodes().isNotEmpty()
+            val importRowVisible = compose.onAllNodesWithText("从系统日历一次性导入")
+                .fetchSemanticsNodes().isNotEmpty()
+            val readPermissionGranted = context.checkSelfPermission(Manifest.permission.READ_CALENDAR) ==
+                PackageManager.PERMISSION_GRANTED
+            assertTrue(
+                "$route retry did not finish; batches=${batches.size}, " +
+                    "finished=${finishedSystemImportBatchCount(store)}, " +
+                    "providerStillHasFixture=$providerStillHasFixture, " +
+                    "readPermission=$readPermissionGranted, importRowVisible=$importRowVisible, " +
+                    "noEventsNoticeVisible=$noEventsNoticeVisible, " +
+                    "skippedRepeatNoticeVisible=$skippedRepeatNoticeVisible",
+                completed
+            )
+            assertEquals("A retry should close one additional import batch", 2, batches.size)
+            assertEquals("The initial import and retry should each have one expected summary", 1,
+                batches.count { it.second == Triple(1, 0, emptyList<String>()) })
+            assertEquals("The retry should skip the stable source link", 1,
+                batches.count { it.second == Triple(0, 1, emptyList<String>()) })
+            assertEquals(original, store.all())
+            assertEquals(1L, store.identityCount())
+            assertEquals(2L, store.nextSequencePreview())
+            assertEquals(1, store.commitCount())
+            assertEquals(0, store.draftCount())
+            assertEquals(0, store.pendingCount())
+        }
+
         fun assertImported(store: PowerStore) {
             val externalId = "${requireNotNull(eventId)}:$startMillis"
             val records = store.all()
@@ -3076,6 +3129,21 @@ class ClearSettingsOptionsInstrumentedTest {
             }
             assertImported(nativeStore!!)
             val nativeRecord = nativeStore!!.all().single()
+            compose.waitUntil(10_000) {
+                compose.onAllNodesWithText(
+                    "已从系统日历导入 1 条（一次性快照，不是双向同步）"
+                ).fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.waitUntil(10_000) {
+                compose.onAllNodesWithText(
+                    "已从系统日历导入 1 条（一次性快照，不是双向同步）"
+                ).fetchSemanticsNodes().isEmpty()
+            }
+            compose.onNodeWithText("从系统日历一次性导入")
+                .assertIsEnabled()
+                .performScrollTo()
+                .performClick()
+            assertRepeatedImportIsIdempotent("Native", nativeStore!!, listOf(nativeRecord))
 
             compose.runOnUiThread {
                 compose.activity.setContent { }
@@ -3105,6 +3173,18 @@ class ClearSettingsOptionsInstrumentedTest {
             }
             assertImported(clearStore!!)
             val clearRecord = clearStore!!.all().single()
+            val clearImportNotice = "已从系统日历导入 1 条（一次性快照，不是双向同步）"
+            compose.waitUntil(10_000) {
+                evaluate(clearWeb,
+                    "document.getElementById('hostNotice')?.textContent===${JSONObject.quote(clearImportNotice)}"
+                ) == "true"
+            }
+            compose.waitUntil(10_000) {
+                evaluate(clearWeb, "document.getElementById('hostNotice')?.hidden === true") == "true"
+            }
+            tapWebSelector(clearWeb,
+                "#settingsOptionGroups [data-option-id='calendar.import.system']")
+            assertRepeatedImportIsIdempotent("Clear", clearStore!!, listOf(clearRecord))
             assertEquals("Native and Clear must persist the same structured event snapshot",
                 nativeRecord.copy(createdAtMillis = 0L, updatedAtMillis = 0L),
                 clearRecord.copy(createdAtMillis = 0L, updatedAtMillis = 0L))
