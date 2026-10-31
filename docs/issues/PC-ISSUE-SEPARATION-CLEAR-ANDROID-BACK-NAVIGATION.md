@@ -44,3 +44,10 @@ Clear 皮肤包与该 APK 中的资源逐字节一致：9 个文件、395,556 �
 ## 状态边界
 
 本 Issue 只证明上述 API 35 Android Back 路由和 Studio 对应源代码钩子。SEP-12 的系统 Picker、TalkBack/无障碍行为、多窗口/IME、通知与完整 Native/Skin 页面等价以及实体/OEM 行为仍未签核；通用浏览器 E2E 的完整套件也未通过。本切片不关闭 SEP-12，不代表完整 Skin-First 或 cutover GO。
+
+## SEP-12 follow-up：Clear Host AI Settings 返回皮肤时间轴（2026-10-31）
+
+- API 35 Android 仿真器测试 `ClearSettingsOptionsInstrumentedTest#clearHostAiSettingsBackRestoresSelectedSkinTimeline` 通过可信 Android 触控打开 Clear Settings 与 `#openAiSettings` Host 路由，再通过可访问的“返回时间轴”Host 控件返回。恢复后的 WebView 已附着且 Clear 时间轴可见。
+- 选中皮肤仍为 `powercal-clear-default`；隔离 Store 的正式事件、草稿、pending、commit、identity 与下一序号快照完全不变。Android instrumentation **1/1 PASS**。XML SHA-256 `82650553651BCE7155EA63FCB00173826F7FA629BBFCA7480FBB12FEBF76442A`；设备结果 `789F1B8050ED976CD680E51D326D0D0880B45FA6CC0C8EEA418ED455B5142FA6`；UTP `DAA50AAF3D8386C563BF031D8E0DC36FF22CD192A2CE0EDEA2DDA535A81033EE`；logcat `9F488E7E5A5D3763A1063E71A361E7FE78D8B6062EB70F9E65CED42872E3AB85`；focused Gradle log `64EB2C2FBA714B5E92E50B9343A28BFCF1AE09E55B9AA123772A565339C91CC4`。证据目录：`.local/android-test/reports/sep12-clear-host-ai-settings-back-20261031/`。
+- 随后在同一集成工作树强制运行离线全门禁：两个 boundary、JVM 单元测试、Debug/AndroidTest APK 与 lint，**785/785 JVM、125 suites、0 failures/errors/skips，171/171 tasks PASS**；Lint 0 errors / 55 warnings。完整日志 SHA-256 `192E3DC4E32F02FA08E42799D5650057C2DC5012CE9C35247E240C7898E09EB4`；Debug APK SHA-256 `6C30F06090D2E2EB13DCC310EF2807C0D622982BA57D38AEB9F44BA9469DA3CF`。
+- 本次没有生产代码、Core 或 Bridge 变更。AndroidTest APK SHA-256 `2B26B0EA32EFDA630C7B8B966BB4EE429094E3BDAFAFC2E34E66D36E17859CF8`；该 APK 编译时包含工作区里两份其他 Agent 尚未提交的 FormalDelete/Recurrence instrumentation 源文件，它们未由本切片暂存或提交。SEP-12 仍为 **PARTIAL / HOLD**；Picker、TalkBack、IME/多窗口、完整 Native/Skin 导航配对及实体/OEM 仍未签核。

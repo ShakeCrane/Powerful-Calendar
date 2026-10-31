@@ -31,6 +31,7 @@ import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -1105,6 +1106,114 @@ class ClearSettingsOptionsInstrumentedTest {
             skinManager.select(originalSkin)
             AiSettingsStore.save(context, originalAiSettings)
             check(aiPreferences.edit().commit())
+            val restoreOnboarding = onboarding.edit()
+            if (hadOnboardingFlag) {
+                restoreOnboarding.putBoolean("system-calendar-import-asked", originalOnboardingFlag)
+            } else {
+                restoreOnboarding.remove("system-calendar-import-asked")
+            }
+            check(restoreOnboarding.commit())
+        }
+    }
+
+    @Test
+    fun clearHostAiSettingsBackRestoresSelectedSkinTimeline() {
+        assumeTrue("navigation parity test requires an isolated Android emulator",
+            Build.HARDWARE == "ranchu" || Build.HARDWARE == "goldfish")
+        val context = compose.activity.applicationContext
+        val databaseName = "clear-ai-settings-back-${UUID.randomUUID()}.db"
+        val store = PowerStore(context, databaseName)
+        val skinManager = SkinPackageManager(context)
+        val originalSkin = skinManager.currentId()
+        val onboarding = context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+        val hadOnboardingFlag = onboarding.contains("system-calendar-import-asked")
+        val originalOnboardingFlag = onboarding.getBoolean("system-calendar-import-asked", false)
+        var web: WebView? = null
+
+        fun storeSnapshot() = listOf(
+            store.all(), store.draftCount(), store.pendingCount(), store.commitCount(),
+            store.identityCount(), store.nextSequencePreview()
+        )
+
+        val before = storeSnapshot()
+        try {
+            assertTrue(onboarding.edit().putBoolean("system-calendar-import-asked", true).commit())
+            PowerCalSkinRegistry.reset()
+            skinManager.select("powercal-default")
+            skinManager.select("powercal-clear-default")
+            compose.runOnUiThread {
+                compose.activity.setContent { PowerCalTheme { PowerCalApp(store) } }
+            }
+            compose.waitUntil(30_000) {
+                compose.runOnUiThread {
+                    web = findWebView(compose.activity.findViewById(android.R.id.content))
+                }
+                web != null
+            }
+            val clearTimeline = requireNotNull(web)
+            compose.waitUntil(20_000) {
+                evaluate(clearTimeline, "!!window.PowerCalSkin?.receive && " +
+                    "!document.querySelector('#timelinePage')?.hidden") == "true"
+            }
+            tapWebSelector(clearTimeline, ".clear-tabbar [data-action=settings]")
+            compose.waitUntil(15_000) {
+                WebSkinBridgeRuntime.state().optString("page") == "SETTINGS"
+            }
+            tapWebSelector(clearTimeline, "#openAiSettings")
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithText("单一 AI").fetchSemanticsNodes().isNotEmpty()
+            }
+            assertEquals("Host AI Settings opens the Native Tools page", 1,
+                compose.onAllNodesWithText("工具与设置").fetchSemanticsNodes().size)
+
+            compose.onNodeWithContentDescription("返回时间轴").performClick()
+            var restored = false
+            try {
+                compose.waitUntil(15_000) {
+                    compose.runOnUiThread {
+                        web = findWebView(compose.activity.findViewById(android.R.id.content))
+                    }
+                    val candidate = web
+                    if (candidate == null) false else {
+                        val attached = AtomicReference(false)
+                        compose.runOnUiThread { attached.set(candidate.isAttachedToWindow) }
+                        attached.get() && evaluate(candidate,
+                            "!!window.PowerCalSkin?.receive && " +
+                                "!document.querySelector('#timelinePage')?.hidden") == "true"
+                    }
+                }
+                restored = true
+            } catch (_: androidx.compose.ui.test.ComposeTimeoutException) {
+                val activeSkin = PowerCalSkinRegistry.active.key
+                val entrypoint = PowerCalSkinRegistry.active.web?.entrypoint ?: "<no-web-entrypoint>"
+                val page = WebSkinBridgeRuntime.state().optString("page", "<missing>")
+                val attached = AtomicReference(false)
+                web?.let { candidate ->
+                    compose.runOnUiThread { attached.set(candidate.isAttachedToWindow) }
+                }
+                println("SEP12_CLEAR_HOST_AI_BACK_DIAGNOSTIC " +
+                    "selectedSkin=${skinManager.currentId()} activeSkin=$activeSkin " +
+                    "entrypoint=$entrypoint hostPage=$page webViewFound=${web != null} " +
+                    "webViewAttached=${attached.get()}")
+            }
+            assertTrue("Host AI Settings Back must restore the selected Clear timeline",
+                restored)
+            assertEquals("Host route/back must not create or modify calendar business data",
+                before, storeSnapshot())
+            assertEquals("Returning from protected Host settings retains the selected skin",
+                "powercal-clear-default", skinManager.currentId())
+            println("SEP12_CLEAR_HOST_AI_SETTINGS_BACK_PARITY selectedSkin=" +
+                "${skinManager.currentId()} trustedEntry=true timelineRestored=true " +
+                "storeUnchanged=true")
+        } finally {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            store.close()
+            context.deleteDatabase(databaseName)
+            skinManager.select(originalSkin)
             val restoreOnboarding = onboarding.edit()
             if (hadOnboardingFlag) {
                 restoreOnboarding.putBoolean("system-calendar-import-asked", originalOnboardingFlag)
