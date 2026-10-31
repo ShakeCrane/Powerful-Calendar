@@ -1889,3 +1889,9 @@ Updated: 2026-10-24
 - `GlassComposeTest.nativeSkinOwnsTheUnchangedLightAndDarkThemeBaseline` **1/1 PASS**；API 35 `DraftDeckThemeSwitchInstrumentedTest` **1/1 PASS**，仅运行 Native Compose 草稿卡、UUID 隔离数据库，未启动 Clear。
 - 精确提交 `53ec4759a24c80cec876b655a3c79dd52f74151f` 干净验证：全离线门禁 **785/785 JVM / 125 suites / 0 failures/errors/skips / 171 tasks**；Debug/AndroidTest APK、Native/Skin source boundaries、lint 通过（0 errors / 51 warnings）。独立 `:native-skin` 和 `:skin-api` AAR 也各自构建成功。完整证据及 APK/AAR SHA-256 见 [Native theme defaults Issue](../issues/PC-ISSUE-SEPARATION-NATIVE-THEME-DEFAULTS.md) 与 `.local/android-test/reports/native-skin-theme-20261031/manifest-53ec475.json`（SHA-256 `A804015D632CCF6C14B474D2AB289D6CA91E3DE8DAD01049FDBF3AD96B299CF4`）。
 - 仅 Native 主题基线归属切片完成；剩余 Host presentation adapter/helper 分类、Native/Skin parity、Studio 可编辑范围和实体/OEM 验收仍开放。未改 Clear；其他 Agent 两个 AndroidTest 文件继续保持未暂存。
+
+### Native renderer Host 防回流检查（2026-10-31）
+
+- `verifyNativeSkinBoundary` 现在扫描 app 主源码中的 `@Composable fun Native*` 声明；除负责 `DeckController` 观察和 Android 生命周期的 `NativeDraftDeckDialog` Host 包装器外，Native 渲染器必须继续位于 `:native-skin`。允许名单同时校验声明仍存在；app 中的 `nativeui/` 目录仍禁止新增。
+- 只读审计确认 `CalendarScreens.kt` / `EventEditor.kt` 使用旧 `CalendarEvent` 模型，app 主源码没有调用点；未删除旧回退代码。当前 Host 页面适配、状态投影及安全操作回调保留在 app，实际 Native 内容委托给 `:native-skin`。
+- `:app:verifyNativeSkinBoundary` 和 `:app:assembleDebug` **PASS**（Android SDK 通过 `ANDROID_HOME=E:\android-sdk` 提供；未触碰运行中的模拟器）。日志 `.local/android-test/reports/native-skin-boundary-20261031/boundary-assemble-debug.log` SHA-256 `E6F936FA42D9E9ADA565E447CBB94A83CD15A8394D91775011A335FF34923DC8`；APK SHA-256 `CDEE42C0391E3A85910957004DBAC1A32263AAF1F51E7F65C9AB4CF85115A13D`。这是边界与构建证据，不代表 Clear/Native 功能等价或整项分离完成。两个其他 Agent 的 AndroidTest 改动保持原样、未暂存。

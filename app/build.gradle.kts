@@ -283,6 +283,42 @@ val verifyNativeSkinBoundary = tasks.register("verifyNativeSkinBoundary") {
                         .joinToString { it.relativeTo(rootProject.projectDir).path }
             )
         }
+        val hostComposableSources = fileTree(rootProject.file("app/src/main/java")) {
+            include("**/*.kt")
+        }.files.sortedBy { it.path }
+        val hostNativeComposables = hostComposableSources.flatMap { source ->
+            val withoutComments = source.readText()
+                .replace(Regex("""(?s)/\*.*?\*/"""), "")
+                .replace(Regex("""(?m)//[^\n]*"""), "")
+            Regex("""(?m)^\s*@Composable\s*\r?\n\s*(?:(?:public|internal|private)\s+)?fun\s+(Native[A-Z][A-Za-z0-9_]*)\s*\(""")
+                .findAll(withoutComments)
+                .map { match -> match.groupValues[1] to source }
+                .toList()
+        }
+        val hostOnlyNativeComposition = setOf(
+            // Owns DeckController observation and Android lifecycle; its visual content is in :native-skin.
+            "NativeDraftDeckDialog"
+        )
+        val missingHostNativeComposition = hostOnlyNativeComposition -
+            hostNativeComposables.map { (name, _) -> name }.toSet()
+        if (missingHostNativeComposition.isNotEmpty()) {
+            throw GradleException(
+                "Update the Host Native composition allowlist; declarations no longer exist: " +
+                    missingHostNativeComposition.sorted().joinToString()
+            )
+        }
+        val nativeRendererDeclarationsInHost = hostNativeComposables.filterNot { (name, _) ->
+            name in hostOnlyNativeComposition
+        }
+        if (nativeRendererDeclarationsInHost.isNotEmpty()) {
+            throw GradleException(
+                "Native composable renderers must live in :native-skin; Host may only declare " +
+                    hostOnlyNativeComposition.sorted().joinToString() + ". Found: " +
+                    nativeRendererDeclarationsInHost.joinToString { (name, source) ->
+                        "${source.relativeTo(rootProject.projectDir).path}:$name"
+                    }
+            )
+        }
         val hostThemeFile = rootProject.file("app/src/main/java/dev/powerfulcalendar/ui/v2/PowerTheme.kt")
         val nativeThemeFile = rootProject.file(
             "native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativeSkinThemeDefaults.kt"
