@@ -9,6 +9,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.TemporalKind
@@ -18,6 +19,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -26,6 +28,11 @@ import java.util.concurrent.atomic.AtomicReference
 @RunWith(AndroidJUnit4::class)
 class WebSkinRendererRecoveryInstrumentedTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+
+    private companion object {
+        const val STUDIO_FAULT_PACKAGE_SHA256 =
+            "120bb0c2e8c022149de111b15573f1f1a39e0455e279480f52ee3c49f2fd0bd2"
+    }
 
     private fun findWebView(view: View): WebView? {
         if (view is WebView) return view
@@ -253,18 +260,21 @@ class WebSkinRendererRecoveryInstrumentedTest {
         val hadAskedForCalendarImport = onboarding.contains("system-calendar-import-asked")
         val askedForCalendarImport = onboarding.getBoolean("system-calendar-import-asked", false)
         val title = "UNCAUGHT_SKIN_RUNTIME_ERROR_CHECKPOINT"
-        val clearArchive = context.assets.open("powercal-clear-default.pcskin").use { it.readBytes() }
-        val baselinePack = skins.decode(clearArchive, loadImages = true).pack
-        val baselineWeb = requireNotNull(baselinePack.web)
-        val modifiedFiles = baselineWeb.files.toMutableMap()
-        val appSource = String(requireNotNull(modifiedFiles["web/app.js"]), Charsets.UTF_8)
-        modifiedFiles["web/app.js"] = (appSource + "\n" +
-            "window.__pcSep14TriggerUncaughtError=()=>setTimeout(" +
-            "()=>{throw new Error('SEP14_UNCAUGHT_SKIN_RUNTIME_ERROR')},0);\n")
-            .toByteArray(Charsets.UTF_8)
-        val faultyPack = baselinePack.copy(
+        val studioArchive = InstrumentationRegistry.getInstrumentation().context.assets
+            .open("skin-studio-fault-injection-clear.pcskin")
+            .use { it.readBytes() }
+        val archiveSha256 = MessageDigest.getInstance("SHA-256").digest(studioArchive)
+            .joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') }
+        assertEquals("runtime fault fixture must be the validated Studio v3 export",
+            STUDIO_FAULT_PACKAGE_SHA256, archiveSha256)
+        val studioPack = skins.decode(studioArchive, loadImages = true).pack
+        val studioAppSource = String(
+            requireNotNull(requireNotNull(studioPack.web).files["web/app.js"]), Charsets.UTF_8
+        )
+        assertTrue("Studio v3 export must contain the explicit deferred fault trigger",
+            studioAppSource.contains("window.__pcSep14TriggerUncaughtError=()=>setTimeout("))
+        val faultyPack = studioPack.copy(
             key = "sep14-runtime-error-${UUID.randomUUID().toString().take(8)}",
-            web = baselineWeb.copy(files = modifiedFiles)
         )
 
         try {
@@ -337,7 +347,8 @@ class WebSkinRendererRecoveryInstrumentedTest {
             assertEquals(2L, store.nextSequencePreview())
             assertEquals(title, store.pendingDrafts().single().form.title)
             assertEquals(TemporalKind.ACTIVITY, store.pendingDrafts().single().form.kind)
-            println("SEP14_SKIN_JS_ERROR_RECOVERY_VERIFIED=title=$title; pending=1; commits=0; " +
+            println("SEP14_STUDIO_SKIN_JS_ERROR_RECOVERY_VERIFIED=title=$title; " +
+                "packageSha256=$archiveSha256; pending=1; commits=0; " +
                 "formal=0; identities=${store.identityCount()}; native=true")
         } finally {
             compose.runOnUiThread {
