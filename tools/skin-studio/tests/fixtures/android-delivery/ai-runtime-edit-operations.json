@@ -1,0 +1,40 @@
+{
+  "operations": [
+    {
+      "op": "write",
+      "path": "web/index.html",
+      "encoding": "utf-8",
+      "content": "<!doctype html>\r\n<html lang=\"en\">\r\n<head>\r\n  <meta charset=\"utf-8\">\r\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\r\n  <link rel=\"stylesheet\" href=\"style.css\">\r\n  <title>Android delivery fixture</title>\r\n</head>\r\n<body>\r\n  <main id=\"htmlProbe\">studio-html-delivery-fixture</main>\r\n  <p id=\"aiEditedProbe\" aria-label=\"AI edited skin marker\">AI_EDITED_RUNTIME_V1</p>\r\n  <img id=\"assetProbe\" src=\"../assets/probe.png\" alt=\"\">\r\n  <script src=\"app.js\"></script>\r\n</body>\r\n</html>\r\n",
+      "expectedSha256": "f53b88c73efd02f22e282d6fc6a917656fb579a357032e6a9774c91bda7e3229"
+    },
+    {
+      "op": "write",
+      "path": "web/style.css",
+      "encoding": "utf-8",
+      "content": ":root {\r\n  --delivery-css-probe: rgb(21, 67, 123);\r\n}\r\n\r\nbody {\r\n  margin: 0;\r\n  color: var(--delivery-css-probe);\r\n  background: rgb(245, 247, 250);\r\n}\r\n\r\n#aiEditedProbe {\r\n  color: rgb(126, 42, 201);\r\n}\r\n",
+      "expectedSha256": "a244308e5b061e7843ba208e7368a0c7a8dc71c6a56ba2cd006111b99d561090"
+    },
+    {
+      "op": "write",
+      "path": "web/app.js",
+      "encoding": "utf-8",
+      "content": "document.documentElement.dataset.deliveryScriptProbe = \"studio-js-delivery-fixture-v1\";\r\ndocument.documentElement.dataset.aiEditProbe = \"studio-cli-ai-edit-v1\";\r\n",
+      "expectedSha256": "1c16ea9522447f158918871e095ce27cad578f15e8a6217a2ad2a192c4df78fd"
+    },
+    {
+      "op": "json-patch",
+      "path": "project.json",
+      "expectedSha256": "a5f9436761c7a20653767b69d5257553b6570882a73f2ea28b7955b2d6c12e03",
+      "patch": [
+        {
+          "op": "add",
+          "path": "/aiAutomationProbe",
+          "value": {
+            "source": "skin-studio-edit-v3",
+            "purpose": "android-runtime-verification"
+          }
+        }
+      ]
+    }
+  ]
+}

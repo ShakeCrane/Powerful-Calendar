@@ -1,6 +1,8 @@
 import hashlib
 import json
+import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -16,9 +18,18 @@ SOURCE_DIR = FIXTURE_DIR / "source"
 MANIFEST = json.loads((FIXTURE_DIR / "manifest.json").read_text(encoding="utf-8"))
 ANDROID_ASSET = (TEST_DIR.parents[2] / "app" / "src" / "androidTest" / "assets" /
                  "skin-delivery-fixture.pcskin")
+AI_EDITED_ANDROID_ASSET = (TEST_DIR.parents[2] / "app" / "src" / "androidTest" / "assets" /
+                           "skin-ai-edited-fixture.pcskin")
+AI_EDIT_OPERATIONS = FIXTURE_DIR / "ai-runtime-edit-operations.json"
 
 
 class AndroidDeliveryFixtureTest(unittest.TestCase):
+    def run_cli(self, *arguments):
+        return subprocess.run(
+            [sys.executable, str(STUDIO_DIR / "skin_studio.py"),
+             *(str(argument) for argument in arguments)],
+            text=True, encoding="utf-8", capture_output=True, check=False)
+
     def test_android_test_package_is_exact_studio_v3_builder_output(self):
         package = ANDROID_ASSET.read_bytes()
         self.assertEqual(package, v3.build(MANIFEST, SOURCE_DIR))
@@ -32,6 +43,63 @@ class AndroidDeliveryFixtureTest(unittest.TestCase):
         self.assertIn(b"studio-js-delivery-fixture-v1", files["web/app.js"])
         self.assertIn(b"--delivery-css-probe", files["web/style.css"])
         self.assertTrue(files["assets/probe.png"].startswith(b"\x89PNG\r\n\x1a\n"))
+
+    def test_android_runtime_skin_is_exact_guarded_studio_cli_edit_output(self):
+        with tempfile.TemporaryDirectory(prefix="studio-ai-runtime-") as temp:
+            root = Path(temp)
+            baseline_path = root / "baseline.pcskin"
+            built = self.run_cli(
+                "build-v3", "--manifest", FIXTURE_DIR / "manifest.json",
+                "--source-dir", SOURCE_DIR, "--out", baseline_path, "--json")
+            self.assertEqual(built.returncode, 0, built.stderr)
+            self.assertEqual("build-v3", json.loads(built.stdout)["command"])
+
+            baseline = self.run_cli("inspect-v3", baseline_path)
+            self.assertEqual(baseline.returncode, 0, baseline.stderr)
+            baseline_receipt = json.loads(baseline.stdout)
+            self.assertEqual("pc-delivery-fixture", baseline_receipt["manifest"]["id"])
+            baseline_script = self.run_cli(
+                "read-v3", "--file", baseline_path, "--path", "web/app.js")
+            self.assertEqual(baseline_script.returncode, 0, baseline_script.stderr)
+            self.assertIn("studio-js-delivery-fixture-v1",
+                          json.loads(baseline_script.stdout)["content"])
+
+            edited_path = root / "ai-edited.pcskin"
+            edited = self.run_cli(
+                "edit-v3", "--file", baseline_path,
+                "--operations", AI_EDIT_OPERATIONS, "--out", edited_path)
+            self.assertEqual(edited.returncode, 0, edited.stderr)
+            edit_receipt = json.loads(edited.stdout)
+            self.assertEqual("edit-v3", edit_receipt["command"])
+            self.assertEqual({"web/index.html", "web/style.css", "web/app.js", "project.json"},
+                             {change["path"] for change in edit_receipt["changes"]})
+
+            validation = self.run_cli("validate", edited_path, "--json")
+            self.assertEqual(validation.returncode, 0, validation.stderr)
+            self.assertTrue(json.loads(validation.stdout)["ok"])
+            inspected = self.run_cli("inspect-v3", edited_path)
+            self.assertEqual(inspected.returncode, 0, inspected.stderr)
+            inspected_receipt = json.loads(inspected.stdout)
+            self.assertEqual("pc-delivery-fixture", inspected_receipt["manifest"]["id"])
+            self.assertEqual("android-runtime-verification",
+                             inspected_receipt["project"]["aiAutomationProbe"]["purpose"])
+
+            expected_content = {
+                "web/index.html": "AI_EDITED_RUNTIME_V1",
+                "web/style.css": "#aiEditedProbe",
+                "web/app.js": "studio-cli-ai-edit-v1",
+                "project.json": "aiAutomationProbe",
+            }
+            for package_path, marker in expected_content.items():
+                read = self.run_cli("read-v3", "--file", edited_path, "--path", package_path)
+                self.assertEqual(read.returncode, 0, read.stderr)
+                self.assertIn(marker, json.loads(read.stdout)["content"])
+
+            self.assertEqual(edited_path.read_bytes(), AI_EDITED_ANDROID_ASSET.read_bytes())
+            _, baseline_files = v3.unpack(baseline_path.read_bytes())
+            _, edited_files = v3.unpack(AI_EDITED_ANDROID_ASSET.read_bytes())
+            self.assertEqual(set(baseline_files), set(edited_files))
+            self.assertEqual(baseline_files["assets/probe.png"], edited_files["assets/probe.png"])
 
     def test_android_installed_v3_fixture_can_be_reopened_edited_and_reexported(self):
         original = ANDROID_ASSET.read_bytes()

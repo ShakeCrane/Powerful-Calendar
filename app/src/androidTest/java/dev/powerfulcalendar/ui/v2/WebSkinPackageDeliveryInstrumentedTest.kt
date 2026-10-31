@@ -38,7 +38,8 @@ import java.util.zip.ZipInputStream
 
 private const val DELIVERY_TEST_NAMESPACE = "pc-skin-delivery-cold-restart"
 private const val DELIVERY_PACKAGE_ID = "pc-delivery-fixture"
-private const val DELIVERY_PACKAGE_SHA256 = "e7f200d4ddb6cb64cea3eda71f770b9dd920657f615d524319a3858897e5bddf"
+private const val DELIVERY_PACKAGE_SHA256 = "d9b34053464d9cfb959e6d9ee8827a054e300fe580dc52db614898a8a6321868"
+private const val AI_EDITED_DELIVERY_PACKAGE_SHA256 = "c7a8f20336f9c6e6ddaaada2c963403b28a6e6a6bd020b397b2438b9c6a87023"
 private const val SKIN_CHOICE_PREFERENCES = "powercal-skin-choice"
 
 /** A new value is generated only when the Android process loads this test class. */
@@ -151,7 +152,11 @@ class WebSkinPackageDeliveryInstrumentedTest {
         throw AssertionError("WebView delivery timed out: $expression; url=$url")
     }
 
-    private fun renderAndAssert(bundle: WebSkinBundle, failed: AtomicBoolean) {
+    private fun renderAndAssert(
+        bundle: WebSkinBundle,
+        failed: AtomicBoolean,
+        aiEdited: Boolean = false
+    ) {
         compose.runOnUiThread {
             compose.activity.setContent {
                 WebSkinRoot(
@@ -170,9 +175,13 @@ class WebSkinPackageDeliveryInstrumentedTest {
             webView != null
         }
         val web = requireNotNull(webView)
+        val editedProbeReady = if (aiEdited) {
+            " && document.documentElement.dataset.aiEditProbe === 'studio-cli-ai-edit-v1' && " +
+                "document.querySelector('#aiEditedProbe')?.textContent === 'AI_EDITED_RUNTIME_V1'"
+        } else ""
         awaitJs(web, "document.readyState === 'complete' && " +
             "document.documentElement.dataset.deliveryScriptProbe === 'studio-js-delivery-fixture-v1' && " +
-            "document.querySelector('#assetProbe')?.complete === true")
+            "document.querySelector('#assetProbe')?.complete === true" + editedProbeReady)
 
         assertEquals("studio-html-delivery-fixture",
             evaluate(web, "document.querySelector('#htmlProbe').textContent" ).trim('"'))
@@ -184,6 +193,18 @@ class WebSkinPackageDeliveryInstrumentedTest {
         assertEquals("true", evaluate(web,
             "document.querySelector('#assetProbe').complete && " +
                 "document.querySelector('#assetProbe').naturalWidth === 1"))
+        if (aiEdited) {
+            assertEquals("AI_EDITED_RUNTIME_V1",
+                evaluate(web, "document.querySelector('#aiEditedProbe').textContent").trim('"'))
+            assertEquals("AI edited skin marker",
+                evaluate(web, "document.querySelector('#aiEditedProbe').getAttribute('aria-label')")
+                    .trim('"'))
+            assertEquals("studio-cli-ai-edit-v1",
+                evaluate(web, "document.documentElement.dataset.aiEditProbe").trim('"'))
+            assertEquals("rgb(126, 42, 201)",
+                evaluate(web, "getComputedStyle(document.querySelector('#aiEditedProbe')).color")
+                    .trim('"'))
+        }
         val styleUrl = evaluate(web, "document.styleSheets[0].href").trim('"')
         val scriptUrl = evaluate(web, "document.querySelector('script[src]').src").trim('"')
         val imageUrl = evaluate(web, "document.querySelector('#assetProbe').currentSrc").trim('"')
@@ -255,6 +276,47 @@ class WebSkinPackageDeliveryInstrumentedTest {
             if (!(keepForColdRestart && prepared)) {
                 cleanupPreparedSkin(storage, manager, packageFile)
             }
+        }
+    }
+
+    @Test
+    fun aiEditedStudioPackageActivatesAndRendersProjectHtmlCssAndJsThroughAndroidWebView() {
+        val storage = compose.activity.applicationContext
+        requireIsolatedSkinStore(storage)
+        val isolatedRoot = File(storage.cacheDir, DELIVERY_TEST_NAMESPACE)
+        isolatedRoot.deleteRecursively()
+        cleanupSkinChoice(storage)
+        val manager = SkinPackageManager(storage)
+        val packageBytes = InstrumentationRegistry.getInstrumentation().context.assets
+            .open("skin-ai-edited-fixture.pcskin").use { it.readBytes() }
+        val packageSha = MessageDigest.getInstance("SHA-256").digest(packageBytes)
+            .joinToString("") { "%02x".format(it) }
+        assertEquals(AI_EDITED_DELIVERY_PACKAGE_SHA256, packageSha)
+        val expectedFiles = expectedRuntimeFiles(packageBytes)
+        val packageFile = File(storage.cacheDir, "$DELIVERY_TEST_NAMESPACE-studio-export.pcskin")
+        val failed = AtomicBoolean(false)
+        PowerCalSkinRegistry.reset()
+        try {
+            val selectedBeforeInstall = manager.currentId()
+            packageFile.writeBytes(packageBytes)
+            val installed = manager.install(Uri.fromFile(packageFile))
+            assertEquals(DELIVERY_PACKAGE_ID, installed.id)
+            assertEquals(selectedBeforeInstall, manager.currentId())
+            assertNull(PowerCalSkinRegistry.active.web)
+
+            manager.select(installed.id)
+            val selected = requireNotNull(PowerCalSkinRegistry.active.web)
+            assertEquals(installed.id, PowerCalSkinRegistry.active.key)
+            assertTrue(selected.capabilities.isEmpty())
+            assertRuntimeFilesEqual(expectedFiles, selected)
+            renderAndAssert(selected, failed, aiEdited = true)
+        } finally {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            cleanupPreparedSkin(storage, manager, packageFile)
         }
     }
 
