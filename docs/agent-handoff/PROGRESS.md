@@ -2056,3 +2056,10 @@ Updated: 2026-10-24
 - 设备回放定位到 `AtomicFile.openRead()` 恢复备份与后台 `startWrite/finishWrite` 交错导致 `.new` rename 失败。`AiChatHistoryStore.load()` 现在与 `save()` 使用同一对象监视器串行化；无历史格式或 Core 业务语义变化。
 - 修改限于 AI 历史 store 同步标注、SEP-09 Android 配对测试与既有 AI Issue/矩阵/进度。完整强制门禁：785/785 JVM、125 suites、0 failures/errors/skips、171/171 tasks；两个 source boundary、Debug/AndroidTest APK 与 lint PASS（0 errors / 55 warnings）。门禁及 APK 哈希见 AI Chat History Issue；仪器化日志保存在 `.local/android-test/reports/sep09-native-clear-chat-parity-20261031/`。并行 Agent 的正式删除和重复事件 AndroidTest 文件仍未暂存。
 - SEP-09 更新为 **PARTIAL / HOLD**，只关闭本轮真实聊天发送/历史投影子项；附件、系统 picker、OCR/ICS、外部 Provider、多轮 Native/Clear 配对、消息编辑/回退的设备级配对、TalkBack 和实体/OEM 未验证。
+
+## SEP-10 Native/Clear AI CREATE → STAGE 配对（2026-10-31）
+
+- Android 15/API 35 `emulator-5570` 使用相同隔离 Store 和 `local-stub:free`，对照 Native Compose 与实际 Clear WebView 的 CREATE 提案审核及 STAGE。决定前历史/Host 投影匹配且 Store 零变化；可信触控发送和暂存后，两侧得到相同 ACTIVITY `DraftForm`、eventSeq 与计数，正式事件/commit 不变；隐私 sentinel 未发送。中文测试提示由 JS 填入，发送和 Stage 均由真实 Android 触摸，键盘输入证据由 SEP-09 独立覆盖。
+- 配对方法 **1/1 PASS**，完整 `PowerCalAiProposalReviewWebViewInstrumentedTest` **6/6 PASS**。类 XML `DC78B7EBEA5BFFBC89A4D68CC7820D2028F31EBFCE806CB56BAFD0D72A27ACB9`；类 Gradle log `556A2E171914A55E0521AEABEB2636A0724CB1B20D33A1953362126298F8E128`。
+- 强制离线全门禁 **785/785 JVM / 125 suites / 0 failures/errors/skips / 171 tasks PASS**，两个 boundary、Debug/AndroidTest APK、lint 均过（0 errors/55 warnings）。日志 SHA-256 `CFD792E4A027A663E44D6CB38790B8244B33459C789A7BDFD9C1784CD20059B7`。首次 UTP 后处理挂在 ADB 用户查询，未计 PASS；恢复无快照保存的只读 AVD 后重新完整运行成功。
+- 本轮只有 AndroidTest 触屏辅助与配对用例、既有 AI Proposal Issue/SEP 矩阵/进度更新，无生产、Core 或 Bridge 修改。两份其他 Agent 的未提交 FormalDelete/Recurrence 测试保留且未暂存。SEP-10 仅该 CREATE→STAGE/ACTIVITY 切片有新配对证据；母项保持 **PARTIAL / HOLD**。详见 `PC-ISSUE-SEPARATION-AI-PROPOSAL-REVIEW.md` 与 `.local/android-test/reports/sep10-paired-ai-stage-20261031/`。
