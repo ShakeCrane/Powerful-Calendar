@@ -109,6 +109,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
+internal const val POWER_CAL_SKIN_PACKAGE_MIME = "application/vnd.powercal.skin+zip"
+
 internal suspend fun beginSystemCalendarBatchTracked(
     store: PowerStore,
     onCreated: (String) -> Unit
@@ -1274,7 +1276,7 @@ fun PowerCalApp(
         }
     }
     val exportOriginalSkin = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("application/zip")
+        ActivityResultContracts.CreateDocument(POWER_CAL_SKIN_PACKAGE_MIME)
     ) { uri ->
         if (uri != null) scope.launch {
             runCatching { withContext(Dispatchers.IO) { skins.exportBundledClear(uri) } }
@@ -1283,7 +1285,7 @@ fun PowerCalApp(
         }
     }
     val exportInstalledSkin = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("application/zip")
+        ActivityResultContracts.CreateDocument(POWER_CAL_SKIN_PACKAGE_MIME)
     ) { uri ->
         val id = pendingSkinExportId
         pendingSkinExportId = null
@@ -1548,7 +1550,9 @@ fun PowerCalApp(
                     }
                 }
                 WebSkinAction.ImportSkin -> if (canManageSkinFromSettings()) {
-                    importSkin.launch(arrayOf("application/zip", "application/octet-stream", "*/*"))
+                    importSkin.launch(arrayOf(
+                        POWER_CAL_SKIN_PACKAGE_MIME, "application/zip", "application/octet-stream", "*/*"
+                    ))
                 }
                 WebSkinAction.ExportClearSkin -> if (canManageSkinFromSettings()) {
                     exportOriginalSkin.launch("PowerCal-Clear-Preview.pcskin")
@@ -1909,7 +1913,9 @@ fun PowerCalApp(
                     }
                 },
                 onImportSkin = {
-                    importSkin.launch(arrayOf("application/zip", "application/octet-stream", "*/*"))
+                    importSkin.launch(arrayOf(
+                        POWER_CAL_SKIN_PACKAGE_MIME, "application/zip", "application/octet-stream", "*/*"
+                    ))
                 },
                 onExportOriginalSkin = { exportOriginalSkin.launch("PowerCal-Clear-Preview.pcskin") },
                 onExportInstalledSkin = { id ->

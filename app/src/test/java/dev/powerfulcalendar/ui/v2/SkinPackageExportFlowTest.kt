@@ -120,7 +120,7 @@ class SkinPackageExportFlowTest {
                 "installed skin action did not launch CreateDocument"
             }
             assertEquals(Intent.ACTION_CREATE_DOCUMENT, launched.action)
-            assertEquals("application/zip", launched.type)
+            assertEquals(POWER_CAL_SKIN_PACKAGE_MIME, launched.type)
             assertEquals("$packageId.pcskin",
                 launched.getStringExtra(Intent.EXTRA_TITLE))
             assertTrue(resultRegistry.dispatch(outputUri))
