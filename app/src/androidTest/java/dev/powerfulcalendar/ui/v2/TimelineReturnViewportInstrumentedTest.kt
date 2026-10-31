@@ -4,6 +4,10 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.database.DatabaseErrorHandler
 import android.database.sqlite.SQLiteDatabase
+import android.os.SystemClock
+import android.view.View
+import android.view.ViewGroup
+import android.webkit.WebView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
@@ -14,11 +18,16 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.powerfulcalendar.core.PowerStore
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.json.JSONObject
 import java.io.File
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 
 @RunWith(AndroidJUnit4::class)
 class TimelineReturnViewportInstrumentedTest {
@@ -92,6 +101,69 @@ class TimelineReturnViewportInstrumentedTest {
         return requireNotNull(snapshot)
     }
 
+    private fun findWebView(view: View): WebView? {
+        if (view is WebView) return view
+        if (view is ViewGroup) for (index in 0 until view.childCount) {
+            findWebView(view.getChildAt(index))?.let { return it }
+        }
+        return null
+    }
+
+    private fun evaluate(web: WebView, expression: String): String {
+        val result = AtomicReference<String>()
+        val finished = CountDownLatch(1)
+        compose.runOnUiThread {
+            web.evaluateJavascript(expression) { value -> result.set(value); finished.countDown() }
+        }
+        assertTrue("WebView script callback should complete", finished.await(10, TimeUnit.SECONDS))
+        return result.get()
+    }
+
+    private fun awaitJs(web: WebView, expression: String) {
+        val deadline = SystemClock.uptimeMillis() + 30_000
+        while (SystemClock.uptimeMillis() < deadline) {
+            if (evaluate(web, expression) == "true") return
+            Thread.sleep(100)
+        }
+        val diagnostic = runCatching {
+            evaluate(web, "JSON.stringify({page:document.querySelector('.page:not([hidden])')?.id," +
+                "range:document.querySelector('#timeRangeLabel')?.textContent})")
+        }.getOrDefault("unavailable")
+        throw AssertionError("Clear condition timed out: $expression; state=$diagnostic")
+    }
+
+    private fun launchClear(context: IsolatedAppContext, store: PowerStore): WebView {
+        context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+            .edit().putBoolean("system-calendar-import-asked", true).commit()
+        SkinPackageManager(context).select("powercal-clear-default")
+        compose.runOnUiThread {
+            compose.activity.setContent {
+                CompositionLocalProvider(LocalContext provides context) {
+                    PowerCalTheme { PowerCalApp(store) }
+                }
+            }
+        }
+        var web: WebView? = null
+        compose.waitUntil(30_000) {
+            compose.runOnUiThread {
+                web = findWebView(compose.activity.findViewById(android.R.id.content))
+            }
+            web != null
+        }
+        return requireNotNull(web).also {
+            awaitJs(it, "!!window.PowerCalSkin && !!document.querySelector('#timelinePage') && " +
+                "!!document.querySelector('[data-action=\\\"today\\\"]')")
+        }
+    }
+
+    private fun awaitCamera(anchorMillis: Long, hours: Double): CameraSnapshot {
+        compose.waitUntil(15_000) {
+            val latest = cameraSnapshot()
+            latest.anchorMillis == anchorMillis && latest.hours == hours
+        }
+        return cameraSnapshot()
+    }
+
     @Test
     fun returningFromMemoPreservesTimelineAnchorAndZoom() {
         val testStorage = compose.activity.applicationContext
@@ -159,6 +231,90 @@ class TimelineReturnViewportInstrumentedTest {
             listOf("powercal-onboarding", "powercal-ui", "powercal-skin-choice", "powercal-profile")
                 .forEach { testStorage.deleteSharedPreferences("$namespace-$it") }
             File(testStorage.cacheDir, namespace).deleteRecursively()
+        }
+    }
+
+    @Test
+    fun nativeAndClearTodayZoomAndResetProduceTheSameCamera() {
+        val storage = compose.activity.applicationContext
+        val nativeNamespace = "pc-timeline-camera-parity-native-${UUID.randomUUID()}"
+        val clearNamespace = "pc-timeline-camera-parity-clear-${UUID.randomUUID()}"
+        val nativeContext = IsolatedAppContext(compose.activity, storage, nativeNamespace)
+        val clearContext = IsolatedAppContext(compose.activity, storage, clearNamespace)
+        val nativeDatabase = "timeline-camera-native.db"
+        val clearDatabase = "timeline-camera-clear.db"
+        val nativeStore = PowerStore(nativeContext, nativeDatabase)
+        val clearStore = PowerStore(clearContext, clearDatabase)
+        try {
+            val zone = java.time.ZoneId.systemDefault()
+            val expectedTodayNoon = java.time.LocalDate.now(zone).atTime(12, 0)
+                .atZone(zone).toInstant().toEpochMilli()
+            SkinPackageManager(nativeContext).selectNativeForEmergencyRecovery()
+            nativeContext.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                .edit().putBoolean("system-calendar-import-asked", true).commit()
+            compose.runOnUiThread {
+                compose.activity.setContent {
+                    CompositionLocalProvider(LocalContext provides nativeContext) {
+                        PowerCalTheme { PowerCalApp(nativeStore) }
+                    }
+                }
+            }
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithContentDescription("今日 · 复位为全天")
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithContentDescription("今日 · 复位为全天").performClick()
+            val nativeToday = awaitCamera(expectedTodayNoon, 24.0)
+            assertEquals("Native Today uses local noon", expectedTodayNoon, nativeToday.anchorMillis)
+            compose.onNodeWithContentDescription("放大，显示更短时间").performClick()
+            val nativeZoomed = awaitCamera(nativeToday.anchorMillis, 16.0)
+            assertEquals(nativeToday.anchorMillis, nativeZoomed.anchorMillis)
+            compose.onNodeWithContentDescription("双击当前时间刻度尺返回24小时视图")
+                .performTouchInput { doubleClick() }
+            val nativeReset = awaitCamera(nativeZoomed.anchorMillis, 24.0)
+            assertEquals("Native reset changes zoom without moving the anchor",
+                nativeZoomed.anchorMillis, nativeReset.anchorMillis)
+
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+
+            val web = launchClear(clearContext, clearStore)
+            evaluate(web, "document.querySelector('[data-action=\\\"today\\\"]').click();true")
+            val clearToday = awaitCamera(expectedTodayNoon, 24.0)
+            assertEquals("Clear Today uses the same local-noon anchor",
+                expectedTodayNoon, clearToday.anchorMillis)
+            evaluate(web, "document.querySelector('[data-action=\\\"zoomTimeline\\\"]" +
+                "[data-direction=\\\"in\\\"]').click();true")
+            val clearZoomed = awaitCamera(clearToday.anchorMillis, 16.0)
+            assertEquals(clearToday.anchorMillis, clearZoomed.anchorMillis)
+            evaluate(web, "document.querySelector('[data-action=\\\"resetTimelineZoom\\\"]').click();true")
+            val clearReset = awaitCamera(clearZoomed.anchorMillis, 24.0)
+            assertEquals("Clear reset changes zoom without moving the anchor",
+                clearZoomed.anchorMillis, clearReset.anchorMillis)
+
+            assertEquals("Native and Clear Today must produce the same camera", nativeToday, clearToday)
+            assertEquals("Native and Clear zoom must produce the same camera", nativeZoomed, clearZoomed)
+            assertEquals("Native axis double-tap and Clear reset control must agree",
+                nativeReset, clearReset)
+            println("NATIVE_CLEAR_CAMERA_PARITY today=$nativeToday zoom=$nativeZoomed reset=$nativeReset")
+        } finally {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            nativeStore.close()
+            clearStore.close()
+            nativeContext.deleteDatabase(nativeDatabase)
+            clearContext.deleteDatabase(clearDatabase)
+            listOf(nativeNamespace, clearNamespace).forEach { namespace ->
+                listOf("powercal-onboarding", "powercal-ui", "powercal-skin-choice", "powercal-profile")
+                    .forEach { storage.deleteSharedPreferences("$namespace-$it") }
+                File(storage.cacheDir, namespace).deleteRecursively()
+            }
         }
     }
 }
