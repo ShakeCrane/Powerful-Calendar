@@ -2,7 +2,7 @@
 
 日期：2026-10-27
 
-状态：**本 Issue 的宿主审查实现与所列 JVM/API 35 定向验证通过；代码及报告已推送。SEP-16 全量 Native/Skin 等价仍为 NOT TESTED。**
+状态：**Host 可信审查实现及已列定向验证通过；Native/Clear 已形成 CREATE、EDIT、DELETE 的全四类事件配对切片。SEP-16 仍为 PARTIAL / HOLD，其他操作与恢复矩阵尚未关闭。**
 
 ## 问题与根因
 
@@ -63,7 +63,7 @@
 ## 签核范围与剩余风险
 
 - **本 Issue 已验证**：Host 能阻止未确认的普通编辑与新建发布；明确批准后沿原有核心写入路径完成；相关快照/版本和临时 ID 回归通过；重复实例路径继续通过 API 35 WebView 测试。
-- SEP-16 在矩阵中继续标记 **NOT TESTED**：这代表该行要求的完整 Native/Skin 业务结果等价还没有完成，不否认本报告中的窄范围安全行为证据。API 35 实测只覆盖一个普通 ALARM 编辑、一个新建 ACTIVITY 发布及重复实例场景；deck 的 CREATE/REPLACE/CONVERT/DELETE 组合、四类事件完整对照、异常恢复、进程死亡与完整生命周期尚未全部经过 WebView 端到端验证。
+- 本节原始验证窗口的 SEP-16 状态为 **NOT TESTED**；后续配对回放见本文末尾。当前 SEP-16 仍为 **PARTIAL / HOLD**：完整要求还包括 deck/AI 操作组合、冲突与恢复、Studio 编辑后皮肤运行等，不能由已通过的四类 CREATE/EDIT/DELETE 切片替代。
 - 没有实体/OEM 设备测试；按用户约定由用户负责实体设备。不能把 AVD 结果当作实体设备签核。
 - host.edit 与 host.action 的能力门禁差异、所有 Host 命令分派的系统安全审计，以及恢复/冲突路径的皮肤等价仍需独立完成。
 - Studio / Chrome Mock 全量没有在本 Issue 重跑；修改集中于 Android Host/桥接，集成行为由 JVM 和上述真实 Android WebView 验证覆盖。其他皮肤外观、无障碍和完整功能 parity 仍未签核。
@@ -251,3 +251,14 @@ Added `sameFormalAlarmActivityAndInstantDeadlineEditsProduceEquivalentNativeAndC
 - A first ordered full-class run exposed test-Activity/WebView window focus loss before a subsequent existing formal-delete touch assertion. Its XML/logcats are retained. The test harness now dismisses IME and restores Activity/WebView focus before injecting touchscreen input; the previously failing delete case then passed **1/1**, and the final ordered class passed **13/13**. This was AndroidTest focus setup; no Runtime, Host, Core, Native, Clear or Studio production source changed.
 
 The edit replay covers ordinary formal edits only. Single/future/series scopes, type-conversion parity, conflicts/recovery breadth, a built skin edited through Studio then run in Runtime, TalkBack and physical/OEM acceptance remain incomplete. Studio tests were not rerun because no Studio or skin source/interface changed. SEP-05 and SEP-16 remain **PARTIAL / HOLD / INCOMPLETE**.
+
+## Same-fixture Native/Clear formal ALARM, ACTIVITY and DEADLINE CREATE replay（2026-10-31）
+
+Added `sameEmptyAlarmActivityAndDeadlineFixturesProduceEquivalentNativeAndClearRecords` beside the existing MEMO CREATE pair. On each side, ALARM, ACTIVITY and date-only DEADLINE are created from an initially empty isolated Store through actual UI: Native's timeline kind chooser and new-event editor, and the packaged Clear chooser/sheet followed by Host-owned Compose confirmation. Both paths remain write-free while their forms are open; Clear remains unchanged until Host approval. Since each renderer captures its clock separately, the test copies only the Native persisted start/end text into the matching Clear form before approval, so final comparison uses the same user-visible input rather than timing coincidence.
+
+- All three pairs **PASS** on Android 15 / API 35 / WebView 124 / `emulator-5570`; `DraftForm`, kind, `eventSeq`, revision, commit/identity counts, next sequence, and draft/pending counts match. The existing no-date MEMO CREATE pair remains in the same test class, so ordinary formal CREATE now has paired coverage for all four kinds.
+- The focused CREATE test is **1/1 PASS**; complete `WebSkinAllKindsTrustedWriteInstrumentedTest` is **16/16 PASS**. Test commit `5428038` is pushed. Device logs: `.local/android-test/reports/sep16-create-parity-20261031/instrumentation-run3.log` SHA-256 `D2239C8537F2F9F00D0307D61CB9DDBBBED5B975701CB33923FB8F759B8DF4AE`; full-class log SHA-256 `63F2AA78105DDB5D5546A95C38CAAF41DF89BEFCB64372EE05FEE096395A1F17`.
+- Offline gate command was `:app:verifyNativeSkinBoundary :app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug --offline --rerun-tasks --console=plain`: **785/785 JVM tests / 125 suites / 0 failures, errors or skips; 171 tasks passed; Lint 0 errors / 55 warnings**. Gate log SHA-256 `5783F42F5CA5725489A5E87C2C43BA79095C234EF429C7A2405A327E4B2A7EAA`. Debug APK SHA-256 `ED2F8F9827EF820361CC663F9C89D7F84A2545AB6DB313F36587C2E1DA1D064B`; AndroidTest APK SHA-256 `4C8D8EEF3F692EC918A660F4802D6F09514C135B5C33D3D2E69FD65F55F91443`.
+- The first two targeted attempts exposed incorrect test-only expectations (Int versus Long and draft count versus event count); both were corrected, and the final targeted test plus full class passed. No production Core, Host, Native, Clear or Studio source changed. The other-agent formal-delete and recurrence AndroidTest edits remain unstaged and are not part of the commit. Evidence manifest `.local/android-test/reports/sep16-create-parity-20261031/manifest.json` SHA-256 `694777D8B1E5466DD584CB8A219D97CB853BA2E883D4F5AF423D205F6CF7456B`; retained attempt logs are in the same directory.
+
+This closes the ordinary formal CREATE pair for all four kinds, not SEP-16 overall. Persisted-deck operation pairs, all conflict/recovery cases, AI interaction equivalence breadth, Studio-edited-skin Runtime parity, TalkBack and physical/OEM acceptance remain **INCOMPLETE / NOT TESTED**. SEP-16 remains **PARTIAL / HOLD**.
