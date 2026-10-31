@@ -119,7 +119,9 @@ fun NativeToolsPage(
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
 
-        SectionCard("导入", "仅保留系统级来源，其他文件请从 AI 助手 ＋ 添加", cardShape) {
+        SectionCard("导入", "日历文件在本地解析为待审核草稿；其他文件请从 AI 助手 ＋ 添加", cardShape) {
+            ToolRow("从 ICS 文件导入", "校验后保存为草稿，不会直接发布", onImportIcs,
+                shape = rowShape, enabled = !display.aiLocked)
             ToolRow("从系统日历一次性导入", "读取过去 30 天与未来一年；不是双向同步", onImportSystem, shape = rowShape, enabled = !display.aiLocked)
             ToolRow("从旧版 PowerCal 迁移", "只读旧数据库，保留原文件", onMigrateLegacy, shape = rowShape, enabled = !display.aiLocked)
         }

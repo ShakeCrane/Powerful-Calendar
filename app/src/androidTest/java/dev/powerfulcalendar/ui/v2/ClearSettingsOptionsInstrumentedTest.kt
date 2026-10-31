@@ -3766,6 +3766,206 @@ class ClearSettingsOptionsInstrumentedTest {
     }
 
     @Test
+    fun nativeAndClearIcsDocumentsUiImportCreateEquivalentReviewableDrafts() {
+        assumeTrue("ICS import parity requires an isolated Android emulator",
+            Build.HARDWARE == "ranchu" || Build.HARDWARE == "goldfish")
+        assumeTrue("Downloads MediaStore requires API 29+", Build.VERSION.SDK_INT >= 29)
+
+        val backing = compose.activity.applicationContext
+        val token = UUID.randomUUID().toString().replace("-", "")
+        val nativeNamespace = "pc-sep11-ics-native-$token"
+        val clearNamespace = "pc-sep11-ics-clear-$token"
+        val nativeContext = IsolatedAppContext(compose.activity, backing, nativeNamespace)
+        val clearContext = IsolatedAppContext(compose.activity, backing, clearNamespace)
+        val nativeStore = PowerStore(nativeContext, "native-ics.db")
+        val clearStore = PowerStore(clearContext, "clear-ics.db")
+        val nativeSkinManager = SkinPackageManager(nativeContext)
+        val clearSkinManager = SkinPackageManager(clearContext)
+        val originalSkin = SkinPackageManager(backing).currentId()
+        val filename = "powercal-sep11-${token.take(12)}.ics"
+        val uid = "sep11-$token@powercal.local"
+        val title = "SEP11 paired ICS $token"
+        val notes = "Local review only, fixture $token"
+        val location = "PowerCal QA room"
+        val startInstant = java.time.Instant.parse("2035-03-04T06:00:00Z").toEpochMilli()
+        val endInstant = java.time.Instant.parse("2035-03-04T07:00:00Z").toEpochMilli()
+        val calendarText = listOf(
+            "BEGIN:VCALENDAR",
+            "VERSION:2.0",
+            "PRODID:-//PowerCal QA//ICS Import Parity//EN",
+            "BEGIN:VEVENT",
+            "UID:$uid",
+            "DTSTAMP:20261031T000000Z",
+            "DTSTART:20350304T060000Z",
+            "DTEND:20350304T070000Z",
+            "SUMMARY:$title",
+            "DESCRIPTION:$notes",
+            "LOCATION:$location",
+            "END:VEVENT",
+            "END:VCALENDAR",
+            ""
+        ).joinToString("\r\n")
+        val fixtureValues = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, filename)
+            put(MediaStore.MediaColumns.MIME_TYPE, "text/calendar")
+            put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/")
+            put(MediaStore.MediaColumns.IS_PENDING, 1)
+        }
+        var fixtureUri: Uri? = null
+        var web: WebView? = null
+
+        fun storeSnapshot(store: PowerStore) = listOf(
+            store.all().size.toLong(), store.draftCount(), store.pendingCount().toLong(),
+            store.commitCount(), store.identityCount(), store.nextSequencePreview()
+        )
+
+        fun showSkin(skinId: String, context: IsolatedAppContext, store: PowerStore) {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+                if (skinId == "powercal-default") {
+                    SkinPackageManager(context).selectNativeForEmergencyRecovery()
+                } else {
+                    SkinPackageManager(context).select(skinId)
+                }
+                compose.activity.setContent {
+                    androidx.compose.runtime.key("sep11-ics-$skinId") {
+                        CompositionLocalProvider(LocalContext provides context) {
+                            PowerCalTheme { PowerCalApp(store) }
+                        }
+                    }
+                }
+            }
+            compose.waitForIdle()
+        }
+
+        fun selectIcsFromDownloads(store: PowerStore) {
+            val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+            assertEquals("ICS must be selected by Android DocumentsUI", "com.google.android.documentsui",
+                automation.rootInActiveWindow?.packageName?.toString())
+            tapPickerNode(waitForPickerNode(contentDescription = "Show roots"))
+            tapPickerNode(waitForPickerNode(text = "Downloads"))
+            tapPickerNode(waitForPickerNode(text = filename))
+            val deadline = SystemClock.elapsedRealtime() + 20_000
+            while (SystemClock.elapsedRealtime() < deadline && store.pendingCount() == 0 &&
+                automation.rootInActiveWindow?.packageName?.toString() == "com.google.android.documentsui"
+            ) {
+                val root = automation.rootInActiveWindow
+                val open = findAccessibilityNode(root, text = "OPEN")
+                    ?: findAccessibilityNode(root, text = "Open")
+                    ?: findAccessibilityNode(root, contentDescription = "Open")
+                    ?: findAccessibilityNode(root, viewId = "android:id/button1")
+                if (open != null) tapPickerNode(open) else SystemClock.sleep(150)
+            }
+            compose.waitUntil(30_000) {
+                store.pendingCount() == 1 &&
+                    automation.rootInActiveWindow?.packageName?.toString() == compose.activity.packageName
+            }
+        }
+
+        try {
+            assertTrue("Native ICS Store starts empty", nativeStore.all().isEmpty())
+            assertTrue("Clear ICS Store starts empty", clearStore.all().isEmpty())
+            nativeContext.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                .edit().putBoolean("system-calendar-import-asked", true).commit()
+            clearContext.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                .edit().putBoolean("system-calendar-import-asked", true).commit()
+            fixtureUri = requireNotNull(backing.contentResolver.insert(
+                MediaStore.Downloads.EXTERNAL_CONTENT_URI, fixtureValues
+            )) { "Could not create the isolated ICS fixture in Downloads" }
+            backing.contentResolver.openOutputStream(fixtureUri!!)?.use {
+                it.write(calendarText.toByteArray(Charsets.UTF_8))
+            } ?: error("Could not write the isolated ICS fixture")
+            assertEquals("ICS fixture must publish only after its bytes are complete", 1,
+                backing.contentResolver.update(fixtureUri!!,
+                    ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null))
+            assertEquals("The local parser must accept the exact fixture without unresolved units",
+                1, IcsCodec.parse(calendarText).events.size)
+
+            showSkin("powercal-default", nativeContext, nativeStore)
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithText("时间轴").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText("设置").performClick()
+            compose.onNodeWithText("从 ICS 文件导入").performScrollTo().performClick()
+            waitForPickerNode(contentDescription = "Show roots")
+            selectIcsFromDownloads(nativeStore)
+
+            val nativeCard = nativeStore.pendingDrafts().single()
+            assertEquals("ICS import produces an ACTIVITY draft", TemporalKind.ACTIVITY,
+                nativeCard.form.kind)
+            assertEquals(title, nativeCard.form.title)
+            assertEquals(notes, nativeCard.form.notes)
+            assertEquals(location, nativeCard.form.location)
+            assertEquals("ICS UTC DTSTART must retain its instant and source zone",
+                startInstant, nativeCard.form.parseStart())
+            assertEquals("ICS UTC DTEND must retain its instant and source zone",
+                endInstant, nativeCard.form.parseEnd())
+            assertEquals(java.time.ZoneOffset.UTC.id, nativeCard.form.zoneId)
+            assertTrue("Native import creates a candidate, not a formal event",
+                nativeStore.all().isEmpty())
+            assertEquals(listOf(0L, 1L, 1L, 0L, 1L, 2L), storeSnapshot(nativeStore))
+
+            showSkin("powercal-clear-default", clearContext, clearStore)
+            compose.waitUntil(30_000) {
+                compose.runOnUiThread {
+                    web = findWebView(compose.activity.findViewById(android.R.id.content))
+                }
+                web != null
+            }
+            val clearWeb = requireNotNull(web)
+            compose.waitUntil(30_000) {
+                evaluate(clearWeb, "!!window.PowerCalSkin && !!window.PowerCalSkin.receive") == "true"
+            }
+            tapWebSelector(clearWeb, ".clear-tabbar [data-action=settings]")
+            compose.waitUntil(15_000) {
+                WebSkinBridgeRuntime.state().optString("page") == "SETTINGS"
+            }
+            tapWebSelector(clearWeb,
+                "#settingsOptionGroups [data-option-id='calendar.import.file']")
+            waitForPickerNode(contentDescription = "Show roots")
+            selectIcsFromDownloads(clearStore)
+
+            val clearCard = clearStore.pendingDrafts().single()
+            assertEquals("Native and Clear import the same user-visible form",
+                nativeCard.form, clearCard.form)
+            assertEquals("Native and Clear preserve the same candidate operation",
+                nativeCard.operation, clearCard.operation)
+            assertEquals("Clear import creates no formal event", 0, clearStore.all().size)
+            assertEquals("Clear import preserves the exact draft/sequence/commit counts",
+                storeSnapshot(nativeStore), storeSnapshot(clearStore))
+            println("SEP11_NATIVE_CLEAR_ICS_IMPORT_PARITY documentsUi=true " +
+                "trustedClearTouch=true sameActivityDraft=true sameInstant=true " +
+                "formal=0 drafts=1 pending=1 commits=0 identities=1 sequence=2")
+        } finally {
+            val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+            if (automation.rootInActiveWindow?.packageName?.toString() ==
+                "com.google.android.documentsui"
+            ) automation.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+            fixtureUri?.let { runCatching { backing.contentResolver.delete(it, null, null) } }
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            nativeStore.close()
+            clearStore.close()
+            nativeContext.deleteDatabase("native-ics.db")
+            clearContext.deleteDatabase("clear-ics.db")
+            listOf("powercal-onboarding", "powercal-ai", "powercal-ui", "powercal-profile",
+                "powercal-skin-choice", "powercal-import-checkpoints", "powercal-file-ai-consent")
+                .forEach { name ->
+                    backing.deleteSharedPreferences("$nativeNamespace-$name")
+                    backing.deleteSharedPreferences("$clearNamespace-$name")
+                }
+            File(backing.cacheDir, nativeNamespace).deleteRecursively()
+            File(backing.cacheDir, clearNamespace).deleteRecursively()
+            runCatching { SkinPackageManager(backing).select(originalSkin) }
+                .onFailure { SkinPackageManager(backing).selectNativeForEmergencyRecovery() }
+        }
+    }
+
+    @Test
     fun nativeAndClearImportTheSameRealSystemCalendarEventIntoEquivalentStores() {
         assumeTrue("system calendar provider parity requires an isolated Android emulator",
             Build.HARDWARE == "ranchu" || Build.HARDWARE == "goldfish")
