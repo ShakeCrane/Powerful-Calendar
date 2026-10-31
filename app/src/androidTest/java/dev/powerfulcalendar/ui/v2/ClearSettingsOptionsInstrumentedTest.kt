@@ -583,6 +583,141 @@ class ClearSettingsOptionsInstrumentedTest {
     }
 
     @Test
+    fun nativeAndClearSystemCalendarPermissionGrantWithEmptyProviderLeavesStoresIdentical() {
+        assumeTrue("permission parity test requires an isolated Android emulator",
+            Build.HARDWARE == "ranchu" || Build.HARDWARE == "goldfish")
+        val context = compose.activity.applicationContext
+        val permission = Manifest.permission.READ_CALENDAR
+        val packageName = context.packageName
+        val initialGranted = context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
+        assumeTrue("The AVD must begin with calendar permission denied", !initialGranted)
+        val calendarRows = executeShell(
+            "content query --uri content://com.android.calendar/calendars --projection _id"
+        )
+        assumeTrue("The isolated AVD must contain no system calendars or user events",
+            calendarRows.contains("No result found", ignoreCase = true))
+
+        fun permissionFlagNames(): Set<String> {
+            val dump = executeShell("dumpsys package $packageName")
+            val flags = Regex(
+                "android\\.permission\\.READ_CALENDAR: granted=(?:true|false), flags=\\[(.*?)]",
+                RegexOption.DOT_MATCHES_ALL
+            ).find(dump)?.groupValues?.get(1).orEmpty()
+            return flags.split('|').map(String::trim).filter(String::isNotEmpty).toSet()
+        }
+
+        val initialFlags = permissionFlagNames()
+        val initialUserSet = "USER_SET" in initialFlags
+        val initialUserFixed = "USER_FIXED" in initialFlags
+        val databaseName = "native-clear-calendar-grant-${UUID.randomUUID()}.db"
+        val store = PowerStore(context, databaseName)
+        val skinManager = SkinPackageManager(context)
+        val originalSkin = skinManager.currentId()
+        val onboarding = context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+        val hadOnboardingFlag = onboarding.contains("system-calendar-import-asked")
+        val originalOnboardingFlag = onboarding.getBoolean("system-calendar-import-asked", false)
+        var web: WebView? = null
+
+        fun storeSnapshot() = listOf(
+            store.all(), store.draftCount(), store.pendingCount(), store.commitCount(),
+            store.identityCount(), store.nextSequencePreview(),
+            store.readableDatabase.rawQuery(
+                "SELECT COUNT(*) FROM migrations WHERE source='android-calendar'", null
+            ).use { cursor -> cursor.moveToFirst(); cursor.getInt(0) }
+        )
+
+        try {
+            executeShell("pm clear-permission-flags $packageName $permission user-set user-fixed")
+            check(context.checkSelfPermission(permission) == PackageManager.PERMISSION_DENIED)
+            check(onboarding.edit().putBoolean("system-calendar-import-asked", true).commit())
+            PowerCalSkinRegistry.reset()
+            skinManager.select("powercal-default")
+            compose.runOnUiThread {
+                compose.activity.setContent { PowerCalTheme { PowerCalApp(store) } }
+            }
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithText("时间轴").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText("设置").performClick()
+            compose.onNodeWithText("工具与设置").assertExists()
+            val beforeNative = storeSnapshot()
+            compose.onNodeWithText("从系统日历一次性导入").performScrollTo().performClick()
+            tapPickerNode(waitForPermissionAction("Allow", "允许", "允许访问日历"))
+            compose.waitUntil(15_000) {
+                context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED &&
+                    compose.onAllNodesWithText("系统日历没有可导入的事件")
+                        .fetchSemanticsNodes().isNotEmpty()
+            }
+            assertEquals("Native grant + empty provider must not write a migration batch",
+                beforeNative, storeSnapshot())
+
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+                skinManager.select("powercal-clear-default")
+                compose.activity.setContent { PowerCalTheme { PowerCalApp(store) } }
+            }
+            compose.waitUntil(30_000) {
+                compose.runOnUiThread {
+                    web = findWebView(compose.activity.findViewById(android.R.id.content))
+                }
+                web != null
+            }
+            val view = requireNotNull(web)
+            compose.waitUntil(15_000) {
+                evaluate(view, "!!window.PowerCalSkin?.receive") == "true"
+            }
+            assertEquals("Skin begins with the same state as the completed Native empty import",
+                beforeNative, storeSnapshot())
+            compose.waitUntil(10_000) { WebSkinBridgeRuntime.state().isNull("hostNotice") }
+            tapWebSelector(view, ".clear-tabbar [data-action=settings]")
+            compose.waitUntil(15_000) {
+                WebSkinBridgeRuntime.state().optString("page") == "SETTINGS"
+            }
+            tapWebSelector(view,
+                "#settingsOptionGroups [data-option-id='calendar.import.system']")
+            compose.waitUntil(15_000) {
+                context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED &&
+                    evaluate(view, "document.getElementById('hostNotice')?.textContent===" +
+                        "${JSONObject.quote("系统日历没有可导入的事件")}") == "true"
+            }
+            assertEquals("Clear grant + empty provider must preserve the identical Store snapshot",
+                beforeNative, storeSnapshot())
+            println("SEP11_NATIVE_CLEAR_SYSTEM_CALENDAR_EMPTY_GRANT_PARITY " +
+                "permission=granted provider=empty storeUnchanged=true trustedClearTouch=true")
+        } finally {
+            if (InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow
+                    ?.packageName?.toString()?.contains("permissioncontroller", ignoreCase = true) == true
+            ) {
+                InstrumentationRegistry.getInstrumentation().uiAutomation.performGlobalAction(
+                    AccessibilityService.GLOBAL_ACTION_BACK
+                )
+                SystemClock.sleep(200)
+            }
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            store.close()
+            context.deleteDatabase(databaseName)
+            skinManager.select(originalSkin)
+            val restoreOnboarding = onboarding.edit()
+            if (hadOnboardingFlag) {
+                restoreOnboarding.putBoolean("system-calendar-import-asked", originalOnboardingFlag)
+            } else {
+                restoreOnboarding.remove("system-calendar-import-asked")
+            }
+            check(restoreOnboarding.commit())
+            executeShell("pm clear-permission-flags $packageName $permission user-set user-fixed")
+            if (initialUserSet) executeShell("pm set-permission-flags $packageName $permission user-set")
+            if (initialUserFixed) executeShell("pm set-permission-flags $packageName $permission user-fixed")
+            // Runtime permission revocation kills the in-process instrumentation runner;
+            // the connected-test harness restores the initial grant state after am instrument exits.
+        }
+    }
+
+    @Test
     fun clearSystemCalendarPermissionDenyAndAllowAreVisibleAndDoNotWriteWhenProviderIsEmpty() {
         assumeTrue("permission decision test requires an isolated Android emulator",
             Build.HARDWARE == "ranchu" || Build.HARDWARE == "goldfish")
