@@ -1957,3 +1957,9 @@ Updated: 2026-10-24
 - 验证迭代：初次 AndroidTest 编译因误导入 Compose rule 成员而失败；修正导入后，第一版设备用例等待了 Native 页面不存在的计数 content description，超时前 Store 已完成目标槽位写入。断言改为检查实际 checkbox 投影 `3→2`，同一配对 **1/1 PASS**。这是测试等待条件修正，没有发现产品故障。
 - 完整离线 Gradle **785/785 JVM / 125 suites / 0 failures/errors/skips / 171/171 tasks PASS**，含两项边界、Debug/AndroidTest APK、lint。focused/class/full-gate 日志 SHA-256 分别为 `D4E9CEDCA46BDC814171AA6744D9190EC472FABF7D107D5D1B3AEEE69EA1AE76`、`4E6E672EB70B9EA2B6FDEC69B7DA751F2AAB933CF71A108D6781E3BE12A94BFE`、`C12A5ECE61CA522296D821EA24DAACB51196091022461300AAE74EE02E13CA06`；APK SHA-256 `DE876D09D11689F98131C9DAD0A977AA1271E1657612B6A95DB89ABBBB80C31C` / `3A2EB64DD2EF7D2F87CAAD9BEC77B04FEB02129105BE915E1AA4386F46AB4831`。详细证据在 `.local/android-test/reports/sep03-memo-completion-parity-20261031/`。
 - 测试提交 `db5b67a1a9f93aa5e7c96483f256c5fe8fce324d` 已推送。Core/Host/Clear 生产代码未修改；Memo 打开/重开、Android stale replay、生命周期恢复、Studio 编辑包、系统无障碍与实体/OEM 仍未闭环，因此 SEP-03 保持 **PARTIAL / HOLD**。
+
+### SEP-04 时间轴相机 ACTIVITY 新建 Native/Clear 配对（2026-10-31）
+
+- 同一 API 35 `emulator-5570`、隔离 Native/Clear Store，从 Native 时间轴 ACTIVITY 菜单与 Clear APK WebView 创建 ACTIVITY。两边初始相机均为当地 12:00、24 小时/屏；起始时间相同，结束建议 +1 小时。Native 使用 Compose 触屏；Clear 创建、ACTIVITY 选择和保存使用 `SOURCE_TOUCHSCREEN` 且 `isTrusted=true`；Host 批准前零 Store 写入，批准后两边表单、eventSeq、revision、commit、identity、sequence、draft/pending 一致。focused pair **1/1 PASS**，时间轴新建上下文类 **4/4 PASS**。
+- 全量离线 Gradle **785/785 JVM / 125 suites / 0 failures/errors/skips / 171/171 tasks PASS**，171 tasks；APK 与日志 SHA 见 `PC-ISSUE-SEPARATION-TIMELINE-CREATE.md`。测试提交 `76feaa4` 已推送；Core/Host/Clear 生产代码未改。该配对只覆盖初始正午相机，非网格/缩放吸附、更多类型与生命周期仍未证，SEP-04 继续 **PARTIAL / HOLD**。
+- 测试迭代中修正了 Store 计数断言的数据类型与 Clear 创建入口 selector；修正前失败均发生在测试夹具/定位阶段，没有暴露产品行为差异。最终 focused 和全类回归通过。

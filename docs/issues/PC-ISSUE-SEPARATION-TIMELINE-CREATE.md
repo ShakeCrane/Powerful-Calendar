@@ -2,7 +2,7 @@
 
 日期：2026-10-28
 
-状态：**本 Issue 实现与虚拟设备行为验证 PASS；SEP-02/SEP-04 的完整 Native/Skin 等价仍 NOT TESTED。**
+状态：**本 Issue 实现与 API 35 虚拟设备行为验证 PASS；时间轴 ACTIVITY 新建已有 Native/Clear 配对切片，SEP-04 全功能等价仍 PARTIAL / HOLD。**
 
 实现提交：`2ba08a0`（`fix(分离): 补全时间轴四类事件新建上下文`）。
 
@@ -40,5 +40,12 @@ Clear 顶部“＋”固定携带 data-kind=ACTIVITY，时间轴上无法像冻�
 
 ## 尚未签核
 
-- SEP-02/SEP-04 的完整冻结 Native 与 Skin 同输入回放、全路径功能等价及实体设备/OEM 行为仍 **NOT TESTED**，parity ledger 继续保持 NOT TESTED。
-- 当前模拟器回归证明时间轴入口及四种 transient 表单行为，不覆盖 Month Android WebView、新建后编辑/保存的全链路、长时稳定性，也不构成实体设备签核。
+- 新增的 Native/Clear 配对只覆盖 24 小时初始本地正午相机上的 ACTIVITY CREATE。非网格相机与不同缩放下的吸附、四种类型分别从时间轴相机进入并配对、关闭/恢复组合、Studio 修改包运行、长时稳定性及实体/OEM 仍 **NOT TESTED**。
+- Month 选日 ACTIVITY CREATE 已在独立测试中通过 API 35 配对；SEP-02 与 SEP-04 其余功能仍需逐项等价验证，不能以本 Issue 的窄切片签核母项。
+
+## 2026-10-31 Native/Clear 时间轴相机 ACTIVITY 配对
+
+- 在两个隔离 Store 中经 Native 时间轴新增菜单和 APK Clear 时间轴创建入口创建同标题 ACTIVITY。两个初始相机均为系统时区当地 2026-10-31 12:00、24 小时/屏；两路 `TimelineCoordinate.snap` 结果为 12:00，起始字段一致，结束建议均为 13:00。Native 通过 Compose 实际点击；Clear 的创建入口、类型选择、保存由 Android `SOURCE_TOUCHSCREEN` 注入且 `event.isTrusted=true`，Host 确认由 Compose 实际点击。
+- 编辑与 Host 确认前两边 Store 均无写入；批准后 `DraftForm`、eventSeq=1、revision=1、commit=1、identity=1、next sequence=2 一致，draft/pending=0。API 35 `emulator-5570` focused **1/1 PASS**，整个 `TimelineCreateContextWebViewInstrumentedTest` **4/4 PASS**。
+- 全量离线门禁 **785/785 JVM / 125 suites / 0 failures/errors/skips / 171 tasks PASS**，含 Native/Skin boundaries、Debug/AndroidTest APK 和 lint。class log SHA-256 `3B0B161F5FC5EF29E2507444D9190EC472FABF7D107D5D1B3AEEE69EA8F5276AF64E54C786`；full gate `76A87374C490B1F6BE2A708C2A33F336B398F80D966468B8A4B3999C65C9C0DF`；focused logcat `ED7D7515B6F55320B0C36060162BEEC755E25E1775C3FC2E30A1598A3E0D625B`；class XML `6DC643C6C6CE73D7AB8654F0363DBA3C2DFC2B18AAFB3D942CD0FD36CB419675`。Debug / AndroidTest APK SHA-256 `DE876D09D11689F98131C9DAD0A977AA1271E1657612B6A95DB89ABBBB80C31C` / `356993EBA0CF56CE2A201A7FB26485A54CEE59BC59FC5B5B36137B0C39BA79ED`。
+- 日志与设备追踪在 `.local/android-test/reports/sep04-timeline-create-parity-20261031/`。测试提交 `76feaa4` 已推送。Core/Host/Clear 生产代码均未修改；因为相机固定在正午，非网格吸附行为不由本配对证明。
