@@ -1,14 +1,21 @@
 package dev.powerfulcalendar.ui.v2
 
+import android.content.ContentValues
 import android.content.Context
 import android.content.ContextWrapper
 import android.database.DatabaseErrorHandler
 import android.database.sqlite.SQLiteDatabase
+import android.graphics.Bitmap
+import android.graphics.Color
+import android.graphics.Rect
+import android.os.Environment
 import android.os.SystemClock
+import android.provider.MediaStore
 import android.view.InputDevice
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.accessibility.AccessibilityNodeInfo
 import android.webkit.WebView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -16,6 +23,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
@@ -31,6 +39,7 @@ import dev.powerfulcalendar.core.TemporalKind
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -147,6 +156,146 @@ class PowerCalAiProposalReviewWebViewInstrumentedTest {
         }
         return probe.put("screenX", x).put("screenY", y)
             .put("scaleX", scaleX).put("scaleY", scaleY)
+    }
+
+    private fun findSystemNode(
+        root: AccessibilityNodeInfo?,
+        text: String? = null,
+        contentDescription: String? = null,
+        viewId: String? = null,
+        textContains: String? = null
+    ): AccessibilityNodeInfo? {
+        if (root == null) return null
+        if ((text == null || root.text?.toString() == text) &&
+            (contentDescription == null || root.contentDescription?.toString() == contentDescription) &&
+            (viewId == null || root.viewIdResourceName == viewId) &&
+            (textContains == null || root.text?.toString()?.contains(textContains) == true ||
+                root.contentDescription?.toString()?.contains(textContains) == true)
+        ) return root
+        for (index in 0 until root.childCount) {
+            findSystemNode(root.getChild(index), text, contentDescription, viewId, textContains)
+                ?.let { return it }
+        }
+        return null
+    }
+
+    private fun waitForSystemNode(
+        packageName: String,
+        text: String? = null,
+        contentDescription: String? = null,
+        viewId: String? = null,
+        textContains: String? = null,
+        timeoutMillis: Long = 15_000
+    ): AccessibilityNodeInfo {
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        val deadline = SystemClock.elapsedRealtime() + timeoutMillis
+        while (SystemClock.elapsedRealtime() < deadline) {
+            val root = automation.rootInActiveWindow
+            if (root?.packageName?.toString() == packageName) {
+                findSystemNode(root, text, contentDescription, viewId, textContains)
+                    ?.let { return it }
+            }
+            SystemClock.sleep(120)
+        }
+        val activeRoot = automation.rootInActiveWindow
+        val visibleNodes = buildList {
+            fun visit(node: AccessibilityNodeInfo?) {
+                if (node == null || size >= 80) return
+                val label = listOfNotNull(
+                    node.text?.toString()?.takeIf(String::isNotBlank),
+                    node.contentDescription?.toString()?.takeIf(String::isNotBlank),
+                    node.viewIdResourceName?.takeIf(String::isNotBlank)
+                ).distinct().joinToString("|")
+                if (label.isNotEmpty() || node.isClickable) {
+                    val bounds = Rect().also(node::getBoundsInScreen)
+                    add("$label:${node.className}:click=${node.isClickable}:$bounds")
+                }
+                for (index in 0 until node.childCount) visit(node.getChild(index))
+            }
+            visit(activeRoot)
+        }.joinToString(" < ")
+        throw AssertionError("System picker node not found: package=$packageName text=$text " +
+            "description=$contentDescription viewId=$viewId textContains=$textContains " +
+            "active=${activeRoot?.packageName}; " +
+            "visible=$visibleNodes")
+    }
+
+    private fun tapSystemNode(node: AccessibilityNodeInfo) {
+        if (node.isClickable && node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+            SystemClock.sleep(200)
+            return
+        }
+        val bounds = Rect()
+        node.getBoundsInScreen(bounds)
+        assertFalse("Picker node must have visible bounds", bounds.isEmpty)
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val x = bounds.exactCenterX().toInt()
+        val y = bounds.exactCenterY().toInt()
+        val command = instrumentation.uiAutomation.executeShellCommand("input tap $x $y")
+        android.os.ParcelFileDescriptor.AutoCloseInputStream(command).use { it.readBytes() }
+        SystemClock.sleep(200)
+    }
+
+    private fun visiblePhotoPickerImages(root: AccessibilityNodeInfo?): List<AccessibilityNodeInfo> {
+        val images = mutableListOf<AccessibilityNodeInfo>()
+        fun visit(node: AccessibilityNodeInfo?) {
+            if (node == null) return
+            if (node.packageName?.toString() == "com.google.android.providers.media.module" &&
+                node.isClickable &&
+                node.contentDescription?.toString()?.startsWith("Photo taken on ") == true
+            ) {
+                images += node
+            }
+            for (index in 0 until node.childCount) visit(node.getChild(index))
+        }
+        visit(root)
+        return images
+    }
+
+    private fun selectImageFromAndroidPicker(displayName: String) {
+        val pickerPackage = "com.google.android.providers.media.module"
+        waitForSystemNode(pickerPackage, viewId =
+            "com.google.android.providers.media.module:id/picker_tab_recyclerview")
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        val deadline = SystemClock.elapsedRealtime() + 15_000
+        var pickerRoot: AccessibilityNodeInfo? = null
+        var imageNodes = emptyList<AccessibilityNodeInfo>()
+        while (SystemClock.elapsedRealtime() < deadline && imageNodes.isEmpty()) {
+            pickerRoot = automation.rootInActiveWindow
+            imageNodes = visiblePhotoPickerImages(pickerRoot)
+            if (imageNodes.isEmpty()) SystemClock.sleep(120)
+        }
+        assertTrue("Android Photo Picker must expose the isolated image fixture $displayName; " +
+            "visible=${pickerRoot?.packageName}; tiles=${imageNodes.size}", imageNodes.isNotEmpty())
+        tapSystemNode(imageNodes.first())
+
+        val returnDeadline = SystemClock.elapsedRealtime() + 12_000
+        while (SystemClock.elapsedRealtime() < returnDeadline &&
+            automation.rootInActiveWindow?.packageName?.toString() != compose.activity.packageName
+        ) {
+            SystemClock.sleep(120)
+        }
+        val activeRoot = automation.rootInActiveWindow
+        val activeNodes = buildList {
+            fun visit(node: AccessibilityNodeInfo?) {
+                if (node == null || size >= 100) return
+                val label = listOfNotNull(
+                    node.text?.toString()?.takeIf(String::isNotBlank),
+                    node.contentDescription?.toString()?.takeIf(String::isNotBlank),
+                    node.viewIdResourceName?.takeIf(String::isNotBlank)
+                ).distinct().joinToString("|")
+                if (label.isNotEmpty() || node.isClickable) {
+                    val bounds = Rect().also(node::getBoundsInScreen)
+                    add("$label:${node.className}:click=${node.isClickable}:$bounds")
+                }
+                for (index in 0 until node.childCount) visit(node.getChild(index))
+            }
+            visit(activeRoot)
+        }.joinToString(" < ")
+        assertTrue("Selecting the image must return the result to the PowerCal Host; " +
+            "expected=${compose.activity.packageName}; active=${activeRoot?.packageName}; " +
+            "nodes=$activeNodes",
+            activeRoot?.packageName?.toString() == compose.activity.packageName)
     }
 
     @Test
@@ -332,6 +481,360 @@ class PowerCalAiProposalReviewWebViewInstrumentedTest {
                     .forEach { storage.deleteSharedPreferences("$namespace-$it") }
                 File(storage.cacheDir, namespace).deleteRecursively()
             }
+        }
+    }
+
+    @Test
+    fun nativeAndClearImageUploadRequiresConsentAndNeverPersistsRawBytes() {
+        val storage = compose.activity.applicationContext
+        val nativeNamespace = "pc-ai-image-native-${UUID.randomUUID()}"
+        val clearNamespace = "pc-ai-image-clear-${UUID.randomUUID()}"
+        val nativeContext = IsolatedAppContext(compose.activity, storage, nativeNamespace)
+        val clearContext = IsolatedAppContext(compose.activity, storage, clearNamespace)
+        val nativeDatabase = "ai-image-native.db"
+        val clearDatabase = "ai-image-clear.db"
+        val nativeStore = PowerStore(nativeContext, nativeDatabase)
+        val clearStore = PowerStore(clearContext, clearDatabase)
+        val imageBuffer = ByteArrayOutputStream()
+        val imageBitmap = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888).apply {
+            eraseColor(Color.rgb(32, 96, 160))
+        }
+        try {
+            assertTrue("test image must encode as PNG",
+                imageBitmap.compress(Bitmap.CompressFormat.PNG, 100, imageBuffer))
+        } finally {
+            imageBitmap.recycle()
+        }
+        val imageBytes = imageBuffer.toByteArray()
+        val encodedImage = android.util.Base64.encodeToString(imageBytes,
+            android.util.Base64.NO_WRAP)
+        val imageName = "powercal-ai-image-${UUID.randomUUID()}.png"
+        val imageValues = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, imageName)
+            put(MediaStore.MediaColumns.MIME_TYPE, "image/png")
+            put(MediaStore.MediaColumns.RELATIVE_PATH,
+                Environment.DIRECTORY_PICTURES + "/PowerCalTest/")
+            put(MediaStore.MediaColumns.IS_PENDING, 1)
+        }
+        var imageUri: android.net.Uri? = null
+        val assistantReply = "测试图片已读取；没有生成日历操作。"
+        val requests = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val requestReceived = CountDownLatch(2)
+        val serverFailure = AtomicReference<Throwable?>()
+
+        fun initialize(context: IsolatedAppContext, store: PowerStore) {
+            context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                .edit().putBoolean("system-calendar-import-asked", true).commit()
+            AiChatHistoryStore.save(context, emptyList())
+            assertTrue("image fixture Stores must begin empty", store.all().isEmpty())
+        }
+
+        fun storeSnapshot(store: PowerStore): List<Long> = listOf(
+            store.all().size.toLong(), store.draftCount(), store.pendingCount().toLong(),
+            store.commitCount(), store.identityCount(), store.nextSequencePreview()
+        )
+
+        fun waitForImageConsent() {
+            compose.waitUntil(20_000) {
+                compose.onAllNodesWithText("图片识别方式").fetchSemanticsNodes().isNotEmpty()
+            }
+            assertTrue("the selected image must remain locked behind Host consent",
+                WebSkinBridgeRuntime.state().optBoolean("chatAttachmentBusy"))
+        }
+
+        fun launchNativeImagePicker() {
+            compose.onNodeWithContentDescription("添加图片或文件").performClick()
+            compose.onNodeWithText("添加图片 · 智能识别").performClick()
+            waitForSystemNode("com.google.android.providers.media.module",
+                contentDescription = "More options")
+        }
+
+        fun launchClearImagePicker(web: WebView) {
+            awaitJs(web, "document.querySelector('#aiPage') && !document.querySelector('#aiPage').hidden")
+            tapWebSelector(web,
+                ".chat-attachment-controls button[aria-label='选择图片附件']")
+            compose.waitUntil(15_000) {
+                WebSkinBridgeRuntime.state().optBoolean("chatAttachmentBusy")
+            }
+            waitForSystemNode("com.google.android.providers.media.module",
+                contentDescription = "More options")
+        }
+
+        fun cancelAndroidPicker() {
+            tapSystemNode(waitForSystemNode("com.google.android.providers.media.module",
+                contentDescription = "Cancel"))
+            compose.waitUntil(15_000) {
+                compose.activity.packageName ==
+                    InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow
+                        ?.packageName?.toString()
+            }
+        }
+
+        fun cancelImageConsent() {
+            compose.onNodeWithText("取消").performClick()
+            compose.waitUntil(10_000) {
+                compose.onAllNodesWithText("图片识别方式").fetchSemanticsNodes().isEmpty()
+            }
+        }
+
+        fun authorizeAndWaitForReply(context: IsolatedAppContext, store: PowerStore,
+            clearWeb: WebView? = null): List<Pair<String, String>> {
+            val before = storeSnapshot(store)
+            val requestCountBefore = requests.size
+            val expectedPendingRequests = 1L - requestCountBefore.toLong()
+            compose.onNodeWithText("发送原图给 AI").performClick()
+            compose.waitUntil(20_000) {
+                serverFailure.get() != null ||
+                    (requests.size == requestCountBefore + 1 &&
+                        AiChatHistoryStore.load(context).any { it.content == assistantReply })
+            }
+            assertNull("local image provider failed", serverFailure.get())
+            compose.waitUntil(20_000) {
+                requestReceived.count == expectedPendingRequests
+            }
+            assertEquals("image analysis must not write formal calendar data", before,
+                storeSnapshot(store))
+            if (clearWeb != null) {
+                compose.waitUntil(10_000) {
+                    !WebSkinBridgeRuntime.state().optBoolean("chatBusy")
+                }
+                val bridge = WebSkinBridgeRuntime.state().toString()
+                assertFalse("the WebView projection must not contain raw image bytes",
+                    bridge.contains(encodedImage))
+                assertFalse("the WebView projection must not reveal the AI key",
+                    bridge.contains("LOCAL_TEST_ONLY"))
+            }
+            val history = AiChatHistoryStore.load(context)
+            assertTrue("accepted image must leave an explicit consent marker", history.any {
+                it.role == "user" && it.content.contains("已授权 AI 读取图片")
+            })
+            assertTrue("raw image bytes must never enter chat history",
+                history.all { !it.content.contains(encodedImage) })
+            val historyFile = File(context.filesDir, "powercal-chat-history.json")
+            compose.waitUntil(10_000) {
+                historyFile.isFile && !historyFile.readText(Charsets.UTF_8).contains(encodedImage)
+            }
+            assertEquals("Native and Clear must append the same image consent and reply",
+                listOf("user" to "已授权 AI 读取图片（原始图片不写入聊天历史）",
+                    "assistant" to assistantReply),
+                history.map { it.role to it.content })
+            return history.map { it.role to it.content }
+        }
+
+        try {
+            initialize(nativeContext, nativeStore)
+            initialize(clearContext, clearStore)
+            val nativeBefore = storeSnapshot(nativeStore)
+            val clearBefore = storeSnapshot(clearStore)
+
+            imageUri = requireNotNull(storage.contentResolver.insert(
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI, imageValues
+            )) { "Could not create isolated image fixture in Pictures" }
+            storage.contentResolver.openOutputStream(imageUri!!)?.use { it.write(imageBytes) }
+                ?: error("Could not write isolated image fixture")
+            val publishedFixture = storage.contentResolver.update(imageUri!!,
+                ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
+            assertEquals("Photo Picker fixture must become visible", 1, publishedFixture)
+            val fixtureName = requireNotNull(storage.contentResolver.query(
+                imageUri!!, arrayOf(MediaStore.MediaColumns.DISPLAY_NAME), null, null, null
+            )).use { cursor ->
+                assertTrue("MediaStore must return the isolated image row", cursor.moveToFirst())
+                cursor.getString(0)
+            }
+            assertEquals("MediaStore must preserve the unique fixture filename",
+                imageName, fixtureName)
+
+            ServerSocket(0, 4, InetAddress.getByName("127.0.0.1")).use { server ->
+                server.soTimeout = 30_000
+                val endpoint = "http://127.0.0.1:${server.localPort}/v1"
+                AiSettingsStore.save(nativeContext, AiSettings(endpoint = endpoint,
+                    model = "local-stub:free", apiKey = "LOCAL_TEST_ONLY",
+                    enabled = true, shareContext = false))
+                AiSettingsStore.save(clearContext, AiSettings(endpoint = endpoint,
+                    model = "local-stub:free", apiKey = "LOCAL_TEST_ONLY",
+                    enabled = true, shareContext = false))
+                val serverThread = Thread {
+                    try {
+                        repeat(2) {
+                            server.accept().use { socket ->
+                                socket.soTimeout = 15_000
+                                requests += readRequest(socket)
+                                writeReply(socket, assistantReply)
+                            }
+                            requestReceived.countDown()
+                        }
+                    } catch (error: Throwable) {
+                        serverFailure.set(error)
+                        while (requestReceived.count > 0) requestReceived.countDown()
+                    }
+                }.apply { name = "pc-native-clear-ai-image-local-stub"; isDaemon = true; start() }
+
+                compose.runOnUiThread {
+                    PowerCalSkinRegistry.reset()
+                    SkinPackageManager(nativeContext).selectNativeForEmergencyRecovery()
+                    compose.activity.setContent {
+                        CompositionLocalProvider(LocalContext provides nativeContext) {
+                            PowerCalTheme { PowerCalApp(nativeStore) }
+                        }
+                    }
+                }
+                compose.waitUntil(30_000) {
+                    compose.onAllNodesWithText("AI 助手").fetchSemanticsNodes().isNotEmpty()
+                }
+                compose.onNodeWithText("AI 助手").performClick()
+                launchNativeImagePicker()
+                cancelAndroidPicker()
+                assertEquals("canceling the Android picker must not send or write",
+                    nativeBefore, storeSnapshot(nativeStore))
+                assertTrue("canceling the picker must leave chat history empty",
+                    AiChatHistoryStore.load(nativeContext).isEmpty())
+
+                launchNativeImagePicker()
+                selectImageFromAndroidPicker(imageName)
+                waitForImageConsent()
+                assertTrue("Native image selection must remain read-only before consent",
+                    nativeBefore == storeSnapshot(nativeStore))
+                assertFalse("Provider must not receive the image before the user approves",
+                    requestReceived.await(300, TimeUnit.MILLISECONDS))
+                cancelImageConsent()
+                assertTrue("canceling image consent must not call the provider",
+                    requestReceived.count == 2L && requests.isEmpty())
+                assertEquals("canceling image consent must not change calendar data",
+                    nativeBefore, storeSnapshot(nativeStore))
+                assertTrue("canceling image consent must not persist image history",
+                    AiChatHistoryStore.load(nativeContext).isEmpty())
+
+                launchNativeImagePicker()
+                selectImageFromAndroidPicker(imageName)
+                waitForImageConsent()
+                val nativeHistory = authorizeAndWaitForReply(nativeContext, nativeStore)
+                val nativeRequest = JSONObject(requests.single())
+                val nativeMessages = nativeRequest.getJSONArray("messages")
+                val nativeUser = (0 until nativeMessages.length()).map {
+                    nativeMessages.getJSONObject(it)
+                }.last { it.getString("role") == "user" }
+                val nativeParts = nativeUser.getJSONArray("content")
+                val nativeImage = (0 until nativeParts.length()).map {
+                    nativeParts.getJSONObject(it)
+                }.first { it.optString("type") == "image_url" }
+                assertEquals("Native consent must send the selected image bytes to the local stub",
+                    "data:image/png;base64,$encodedImage",
+                    nativeImage.getJSONObject("image_url").getString("url"))
+
+                compose.runOnUiThread {
+                    compose.activity.setContent { }
+                    PowerCalSkinRegistry.reset()
+                    SkinPackageManager(clearContext).select("powercal-clear-default")
+                    compose.activity.setContent {
+                        CompositionLocalProvider(LocalContext provides clearContext) {
+                            PowerCalTheme { PowerCalApp(clearStore) }
+                        }
+                    }
+                }
+                var clearWeb: WebView? = null
+                compose.waitUntil(30_000) {
+                    compose.runOnUiThread {
+                        clearWeb = findWebView(compose.activity.findViewById(android.R.id.content))
+                    }
+                    clearWeb != null
+                }
+                val web = requireNotNull(clearWeb)
+                awaitJs(web, "!!document.querySelector('.clear-tabbar [data-action=ai]')")
+                tapWebSelector(web, ".clear-tabbar [data-action=ai]")
+                awaitJs(web,
+                    "document.querySelector('#aiPage') && !document.querySelector('#aiPage').hidden")
+                awaitJs(web, "!!document.querySelector('#chatAttachmentControls')")
+                val clearBefore = storeSnapshot(clearStore)
+                launchClearImagePicker(web)
+                cancelAndroidPicker()
+                compose.waitUntil(10_000) {
+                    !WebSkinBridgeRuntime.state().optBoolean("chatAttachmentBusy")
+                }
+                assertTrue("Clear picker cancel must not write Store data",
+                    clearBefore == storeSnapshot(clearStore))
+                assertTrue("Clear picker cancel must not write chat history",
+                    AiChatHistoryStore.load(clearContext).isEmpty())
+
+                launchClearImagePicker(web)
+                selectImageFromAndroidPicker(imageName)
+                waitForImageConsent()
+                assertEquals("Clear image selection must remain read-only before consent",
+                    clearBefore, storeSnapshot(clearStore))
+                assertFalse("Clear provider must not receive image before approval",
+                    requestReceived.await(300, TimeUnit.MILLISECONDS))
+                cancelImageConsent()
+                assertTrue("Clear consent cancel must not call provider",
+                    requestReceived.count == 1L)
+                assertEquals("Clear consent cancel must not write calendar data",
+                    clearBefore, storeSnapshot(clearStore))
+                assertTrue("Clear consent cancel must not persist image history",
+                    AiChatHistoryStore.load(clearContext).isEmpty())
+
+                launchClearImagePicker(web)
+                selectImageFromAndroidPicker(imageName)
+                waitForImageConsent()
+                val clearHistory = authorizeAndWaitForReply(clearContext, clearStore, web)
+                assertEquals("Native and Clear must persist the same image interaction history",
+                    nativeHistory, clearHistory)
+                val clearProjection = WebSkinBridgeRuntime.state().getJSONArray("chatMessages")
+                val projectedHistory = (0 until clearProjection.length()).map { index ->
+                    val item = clearProjection.getJSONObject(index)
+                    item.getString("role") to item.getString("content")
+                }
+                assertEquals("Clear must render Host-projected image history", nativeHistory,
+                    projectedHistory)
+                assertEquals("one local vision request must be sent per explicitly approved image",
+                    2, requests.size)
+                requests.forEach { body ->
+                    val request = JSONObject(body)
+                    val messages = request.getJSONArray("messages")
+                    val user = (0 until messages.length()).map { messages.getJSONObject(it) }
+                        .last { it.getString("role") == "user" }
+                    val image = (0 until user.getJSONArray("content").length()).map {
+                        user.getJSONArray("content").getJSONObject(it)
+                    }.first { it.optString("type") == "image_url" }
+                    assertEquals("both skins must send the same selected image bytes",
+                        "data:image/png;base64,$encodedImage",
+                        image.getJSONObject("image_url").getString("url"))
+                }
+                assertNull("local image provider must complete both requests", serverFailure.get())
+                assertEquals("Native and Clear must leave their isolated Stores unchanged",
+                    nativeBefore, storeSnapshot(nativeStore))
+                assertEquals("Clear must have no formal or draft writes", clearBefore,
+                    storeSnapshot(clearStore))
+                assertEquals("Native/Clear image history and request count match",
+                    nativeHistory, clearHistory)
+                serverThread.join(2_000)
+                println("NATIVE_CLEAR_AI_IMAGE_PARITY picker=Android15_PhotoPicker " +
+                    "consentRequired=true providerRequests=${requests.size} imageBytesPersisted=false " +
+                    "storeSnapshots=$nativeBefore/$clearBefore")
+            }
+        } finally {
+            val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+            repeat(3) {
+                val packageName = automation.rootInActiveWindow?.packageName?.toString()
+                if (packageName == "com.google.android.documentsui" ||
+                    packageName == "com.google.android.providers.media.module") {
+                    InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(
+                        android.view.KeyEvent.KEYCODE_BACK)
+                }
+            }
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            nativeStore.close()
+            clearStore.close()
+            storage.deleteDatabase("$nativeNamespace-$nativeDatabase")
+            storage.deleteDatabase("$clearNamespace-$clearDatabase")
+            listOf(nativeNamespace, clearNamespace).forEach { namespace ->
+                listOf("powercal-ai", "powercal-onboarding", "powercal-ui",
+                    "powercal-skin-choice", "powercal-profile", "powercal-file-ai-consent")
+                    .forEach { storage.deleteSharedPreferences("$namespace-$it") }
+                File(storage.cacheDir, namespace).deleteRecursively()
+            }
+            imageUri?.let { storage.contentResolver.delete(it, null, null) }
         }
     }
 

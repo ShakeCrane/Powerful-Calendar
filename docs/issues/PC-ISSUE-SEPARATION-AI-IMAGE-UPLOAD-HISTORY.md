@@ -2,7 +2,7 @@
 
 Date: 2026-10-27
 
-Status: **This bounded Robolectric integration slice passes. No production source changed. SEP-09 and SEP-10 remain NOT TESTED as full Native/Skin parity rows; S3 remains open.**
+Status: **The bounded Robolectric privacy slice and the 2026-11-01 API 35 Native/Clear Android Photo Picker image-chat replay pass. No production source changed in the follow-up. This does not close SEP-09 or SEP-10; both remain PARTIAL / HOLD.**
 
 ## Scope and finding
 
@@ -59,3 +59,20 @@ No emulator binary or Android system image is available in this SDK environment.
 ## Git
 
 The test-only change and narrow SEP-09 evidence update were committed as `327a9aa9604d83bffa0154f795faeabb3913e22a` (`test(skin): 验证图片上传授权与聊天历史隐私`) and pushed to `origin/feat/skin-first-separation`.
+
+## Android Photo Picker Native/Clear follow-up (2026-11-01)
+
+API 35 Android 15 `emulator-5570` / WebView `124.0.6367.219` now runs the real Android Photo Picker through Native Compose and the packaged Clear WebView. Each path selects the same isolated PNG fixture. Picker cancellation and image-consent cancellation send no provider request, write no chat history, and leave the isolated Store unchanged. After the explicit “发送原图给 AI” approval, both paths send the identical PNG data URI to a loopback deterministic free stub; Native and Clear chat histories and Clear's Host-projected history match. The image bytes are absent from chat history, serialized history, and WebView state. Formal events, drafts, pending counts, commits, identities and sequence watermarks remain unchanged.
+
+The instrumentation test creates the image in the Android Pictures collection so the real Photo Picker exposes its accessible photo tile. The image is removed in the test `finally` path. The earlier ADB picker probe was also removed by exact path after diagnosis. This covers the AI chat image-analysis path only; it does not verify text-file extraction/redaction, image OCR review, ICS import, live/external providers, provider recovery, full message-history parity, accessibility or physical/OEM behavior.
+
+### Verification evidence
+
+- `PowerCalAiProposalReviewWebViewInstrumentedTest` on API 35: **7/7 PASS**, zero failures/errors/skips. The class includes real Native/Clear AI chat and proposal-review paths; the image marker records `picker=Android15_PhotoPicker`, `consentRequired=true`, `providerRequests=2`, `imageBytesPersisted=false`, and zero Store counts on both sides.
+- Image-case XML SHA-256: `12E34308FEB72BDA8D744338B2106312EDAD529CC257CCB77B2AA6453A7A25F7`; device logcat SHA-256: `6A6A6E2C4460D0E37C8EDA18C1294D35DADDEB549D032DAB86C0A16AAE140B59`.
+- Full offline Gradle gate: **786/786 JVM, 125 suites, 0 failures/errors/skips, 171/171 tasks PASS**. Native and skin source boundaries, Debug/AndroidTest APKs, and Lint pass; lint reports 0 errors / 56 warnings. Gate SHA-256: `5D6A872EA5E0A036A822B5A3349DC6F6DA3027DC9DB46E92824A1B9C824CD77C`.
+- Skin Studio Python suite: **65/65 PASS**, log SHA-256 `65875745B94A3C9B04372C975FA1B41F378F35C4BF019D6BBCF5AF1AF1088E42`. No Studio source changed in this follow-up; prior non-reading attachment Mock behavior is not elevated to device or provider evidence.
+- Debug APK SHA-256 `EF85EA15AB31353F9A26C3EEEC3B5DBFC9CEB38BC73069752F7AB66F85965650`; full-gate AndroidTest APK SHA-256 `F5C29D76A569B5A987769E550C6F4BE6D2AA5BC322345EECFA5AFF61B1EB39C8`. The final focused rerun used AndroidTest APK SHA-256 `8324FEDFA02DC9D6891B989BC8BF4BFC563147B4C5D75BF297FB6942E474F3DB`; it includes the two protected other-Agent instrumentation files, and the focused class did not execute those test methods. Current test source SHA-256: `D03C15C55038B0B2FF8E64CF00B4CA829CBCB9628E253792062E0867A78D0E83`.
+- Reproducible local artifacts: `.local/android-test/reports/sep09-native-clear-photo-picker-parity-20261101/` (`ai-webview-class.xml`, `ai-image-picker-logcat.txt`, `full-gradle-gate.log`, `skin-studio-python.log`, `summary.txt`).
+
+This follow-up closes only the real Android AI chat image picker → explicit consent → local upload → privacy/history/store parity slice. SEP-09 remains **PARTIAL / HOLD / INCOMPLETE**; SEP-10 is unchanged.
