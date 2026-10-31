@@ -4,7 +4,7 @@
 
 **历史状态（2026-10-28）：PARTIAL / OPEN**。Host 桥的受保护删除流程、Clear 删除入口及 Skin Studio Mock 已实现并通过 JVM/浏览器回归；API 35 WebView instrumentation 因 AVD 断连未取得测试结果。SEP-07 与整体 Native/Skin parity 仍为 `NOT TESTED`，不能把浏览器 Mock 当成设备行为或完整功能等价。最新重建验收 `S0-ED-05` 的状态见本文末尾 2026-10-30 复核记录。
 
-**当前状态（2026-10-31）：PARTIAL / HOLD。** API 35 Clear WebView 已通过触屏删除取消/批准、并发版本冲突拒绝、无修改旧会话安全退出及墓碑恢复取消/批准并复用原身份；同一隔离 Memo fixture 的 Native/Clear 正式删除结果也已匹配（1/1）。SEP-07 仍缺 TalkBack、其他类型/范围的配对覆盖及实体/OEM 验收，不代表该项已签核。
+**当前状态（2026-10-31）：PARTIAL / HOLD。** API 35 Clear WebView 已通过触屏删除取消/批准、并发版本冲突拒绝、无修改旧会话安全退出及墓碑恢复取消/批准并复用原身份；同一隔离 Memo 与 Activity fixture 的 Native/Clear 正式删除结果均已匹配（2/2）。SEP-07 仍缺 Alarm/Deadline、重复范围、TalkBack 及实体/OEM 验收，不代表该项已签核。
 
 ## 根因与 Native 对照
 
@@ -161,3 +161,13 @@ Native 正式事件编辑器调用 `EditSession.delete()`，最终复用 `PowerS
 - 代码提交 `2e4886a` 已推送；原配对回放测试在 `4b681f4` 已推送。可复核源码归档 SHA-256 `C02747835A173805A223B5779A4D4ABBD5CA4296A73AB58B8BF6E37220168F27`；门禁、Studio、设备 XML/logcat、失败重现与两次重跑的哈希均列于 `.local/android-test/reports/sep07-native-clear-delete-parity-20261031/manifest.json`（manifest SHA-256 `C3EA64E74209559524F0E3DEB780EF3E87A09CE703AA0ED0ADDE0D9453EE5CB3`）。
 
 本回放只关闭一个 no-date Memo 的 Native/Clear 删除等价样例。TalkBack、Alarm/Activity/Deadline、重复系列/单次范围、更多并发冲突与恢复配对、实体/OEM 仍未完成；SEP-07 继续 **PARTIAL / HOLD**。其他 Agent 的两个未提交 AndroidTest 文件没有被纳入本次提交。
+
+## Matched Native/Clear formal Activity deletion replay（2026-10-31）
+
+新增 `sameFormalActivityDeleteProducesEquivalentNativeAndClearTombstones`。两个隔离 Store 以相同的 ACTIVITY（`eventSeq=1`、revision 1、相同开始/结束时间）开始；Native 从真实时间轴事件卡打开编辑器，Clear 从真实 WebView 时间轴打开同一事件。两边删除请求等待各自 Host 确认，取消后原记录和提交数不变；批准后两边形成相同的 Activity 墓碑，revision 2、共 2 次提交、1 个身份、序号水位 2、无草稿/待处理项。Clear 两次 `SOURCE_TOUCHSCREEN` 点击均报告 `isTrusted=true` 且 action=`deleteEvent`。
+
+- Activity 配对回放 **1/1 PASS**；包含 Memo 与 Activity 配对删除的 `WebSkinAllKindsTrustedWriteInstrumentedTest` **11/11 PASS**，Android 15 / API 35 / WebView 124 / `emulator-5570`，源码提交 `24db390fc0bd1b88c4704929a82fc9eccf7e4310`。
+- 同一版本完整 Gradle 边界/单元测试/Debug 与 AndroidTest APK/Lint/设备类门禁成功，172 tasks（6 executed、166 up-to-date）。JVM 产品源码未变；同一基线 `4b681f4` 的 JVM 全套为 784/784、125 suites、无失败/错误/跳过。APK：Debug SHA-256 `83C9EDAD5DBE47F3D78C5E9BC35435CAD59C674FBF79D66C6054A982C51D767D`；AndroidTest SHA-256 `D200E4CC538EFB7BFFF6F24BBDBEF7A6BF19548FC366038D6E7FD84638543EAC`。
+- 证据目录 `.local/android-test/reports/sep07-native-clear-delete-parity-20261031/`；本次 clean-source manifest `manifest-24db390.json` SHA-256 `077B656FE13C6D5343ECFD290D5A99D43512A240CCE81794E804376612519EF0`，源码归档 SHA-256 `380D287DDD7159F05B20C714B6E9B4A511A2C15C4A162A4DFF455F29ECB8376D`。实现/测试提交 `24db390` 已推送。
+
+本次扩展只签核 Activity 与 Memo 两个单次正式事件删除配对。Alarm、Deadline、重复系列范围、更多冲突/恢复状态、TalkBack 和实体/OEM 尚未验证；SEP-07 继续 **PARTIAL / HOLD**。两个其他 Agent 的未提交测试文件仍未更改、未暂存。
