@@ -888,6 +888,8 @@ class WebSkinEditBridgeTest {
         val card = store.newDraft(DraftForm(kind = TemporalKind.MEMO, title = "Concurrent edit"))
         assertTrue(store.commit(card.draftId) is PowerStore.CommitOutcome.Committed)
         val original = requireNotNull(store.get(card.eventSeq))
+        val commitsBeforeDelete = store.commitCount()
+        val identitiesBeforeDelete = store.identityCount()
         assertEquals("opened", service.execute(WebEditCommand.OpenEvent(
             request(), original.eventSeq, original.revision)).getString("status"))
         val sessionId = service.snapshot().getJSONObject("editor").getString("sessionId")
@@ -905,6 +907,14 @@ class WebSkinEditBridgeTest {
         assertFalse(store.isRetired(original.eventSeq))
         assertTrue(service.snapshot().getJSONObject("editor").getBoolean("open"))
         assertEquals("conflict", service.execute(command).getString("status"))
+
+        val closed = service.execute(WebEditCommand.CloseEvent(request(), sessionId))
+        assertEquals("a clean stale editor must be dismissible without writing over the new revision",
+            "closed", closed.getString("status"))
+        assertFalse(service.snapshot().getJSONObject("editor").getBoolean("open"))
+        assertEquals(latest, store.get(original.eventSeq))
+        assertEquals(commitsBeforeDelete + 1, store.commitCount())
+        assertEquals(identitiesBeforeDelete, store.identityCount())
     }
 
     @Test fun formalEditorSaveReviewRejectsChangedRevisionAndKeepsTheProposal() = runBlocking {
@@ -944,6 +954,13 @@ class WebSkinEditBridgeTest {
         assertTrue(editor.getBoolean("open"))
         assertEquals("unapproved proposal", editor.getJSONObject("form").getString("title"))
         assertEquals("conflict", service.execute(save).getString("status"))
+
+        assertEquals("a dirty stale editor must retain its form when close cannot checkpoint",
+            "failed", service.execute(WebEditCommand.CloseEvent(request(), sessionId))
+                .getString("status"))
+        assertTrue(service.snapshot().getJSONObject("editor").getBoolean("open"))
+        assertEquals("unapproved proposal", service.snapshot().getJSONObject("editor")
+            .getJSONObject("form").getString("title"))
     }
 
     @Test fun formalEditorKindConversionRequiresHostReviewAndKeepsIdentity() = runBlocking {

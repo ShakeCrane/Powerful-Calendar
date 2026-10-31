@@ -26,6 +26,8 @@ class EditSession private constructor(
 
     val meaningfulDiff: Boolean
         get() = form.hasMeaningfulDiffFrom(scopeBaseline)
+    /** A clean stale editor may be dismissed without checkpointing over a newer formal version. */
+    fun formalVersionIsCurrent(): Boolean = store.get(eventSeq)?.revision == expectedRevision
     val baselineForm: DraftForm get() = baseline
     val recurrenceScope: RecurrenceEditScope? get() = form.recurrenceEditScope
     val requiresRecurrenceScope: Boolean get() = formalRecord.recurrence.isRepeating

@@ -21,6 +21,8 @@ import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import dev.powerfulcalendar.core.DraftForm
+import dev.powerfulcalendar.core.DraftOperation
+import dev.powerfulcalendar.core.DraftStatus
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.Recurrence
 import dev.powerfulcalendar.core.RecurrenceFreq
@@ -275,6 +277,262 @@ class WebSkinFormalDeleteTouchInstrumentedTest {
             assertEquals(0, store.pendingCount())
             println("SEP07_TOUCH_DELETE_TRACE=" + JSONObject().put("open", openTrace)
                 .put("cancel", cancelTrace).put("approve", approveTrace))
+        } finally {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            store.close()
+            isolated.deleteDatabase(databaseName)
+            listOf("powercal-onboarding", "powercal-skin-choice", "powercal-ui", "powercal-profile")
+                .forEach { storage.deleteSharedPreferences("$namespace-$it") }
+            File(storage.cacheDir, namespace).deleteRecursively()
+        }
+    }
+
+    @Test
+    fun staleDeleteApprovalPreservesConcurrentVersionAndRefreshesClearTimeline() {
+        val storage = compose.activity.applicationContext
+        val namespace = "pc-web-delete-conflict-${UUID.randomUUID()}"
+        val isolated = IsolatedContext(compose.activity, storage, namespace)
+        val databaseName = "formal-delete-conflict.db"
+        val store = PowerStore(isolated, databaseName)
+        val concurrentStore = PowerStore(isolated, databaseName)
+        val zone = ZoneId.systemDefault()
+        val start = ZonedDateTime.now(zone).withSecond(0).withNano(0).toInstant().toEpochMilli()
+        val initial = store.newDraft(DraftForm(
+            kind = TemporalKind.ACTIVITY,
+            title = "SEP07_CONFLICT_ORIGINAL",
+            startText = DraftForm.formatInstant(start, zone),
+            endText = DraftForm.formatInstant(start + 3_600_000L, zone),
+            zoneId = zone.id,
+            reminderMinutes = -1
+        ))
+        assertTrue(store.commit(initial.draftId) is PowerStore.CommitOutcome.Committed)
+        val original = requireNotNull(store.get(initial.eventSeq))
+        val commitsBefore = store.commitCount()
+        val identitiesBefore = store.identityCount()
+
+        try {
+            SkinPackageManager(isolated).select("powercal-clear-default")
+            isolated.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                .edit().putBoolean("system-calendar-import-asked", true).commit()
+            compose.runOnUiThread {
+                compose.activity.setContent {
+                    CompositionLocalProvider(LocalContext provides isolated) {
+                        PowerCalTheme { PowerCalApp(store) }
+                    }
+                }
+            }
+
+            var web: WebView? = null
+            compose.waitUntil(30_000) {
+                compose.runOnUiThread {
+                    web = findWebView(compose.activity.findViewById(android.R.id.content))
+                }
+                web != null
+            }
+            val view = requireNotNull(web)
+            val eventSelector = "[data-event-seq=\"${original.eventSeq}\"]"
+            val selectorJson = JSONObject.quote(eventSelector)
+            awaitJs(view, "!!document.querySelector($selectorJson)")
+            evaluate(view, "document.querySelector($selectorJson).click();true")
+            awaitJs(view, "!document.querySelector('#skinSheet').hidden && " +
+                "!!document.querySelector('#sheetActions [data-do=deleteEvent]')")
+            evaluate(view, "document.querySelector('#sheetActions [data-do=deleteEvent]').click();true")
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithText("确认删除正式事件").fetchSemanticsNodes().isNotEmpty()
+            }
+            assertEquals(original, store.get(original.eventSeq))
+            assertEquals(commitsBefore, store.commitCount())
+
+            val newerTitle = "SEP07_CONFLICT_NEWER_VERSION"
+            val newerDraft = concurrentStore.newDraft(
+                DraftForm.from(original).copy(title = newerTitle),
+                eventSeq = original.eventSeq,
+                operation = DraftOperation.REPLACE,
+                expectedRevision = original.revision
+            )
+            assertTrue(
+                "the concurrent writer must commit against the exact current revision",
+                concurrentStore.commit(
+                    newerDraft.draftId,
+                    expectedCurrentRevision = original.revision
+                ) is PowerStore.CommitOutcome.Committed
+            )
+            val latest = requireNotNull(store.get(original.eventSeq))
+            assertEquals(original.revision + 1, latest.revision)
+            assertEquals(newerTitle, latest.title)
+
+            compose.onNodeWithText("确认删除").performClick()
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithText("确认删除正式事件").fetchSemanticsNodes().isEmpty()
+            }
+            awaitJs(view, "!document.querySelector('#skinSheet').hidden && " +
+                "document.querySelector('#sheetStatus').textContent.includes('版本冲突')")
+
+            assertEquals("a stale Host approval must preserve the concurrent formal version",
+                latest, store.get(original.eventSeq))
+            assertEquals("only the concurrent update may add a commit",
+                commitsBefore + 1, store.commitCount())
+            assertEquals(identitiesBefore, store.identityCount())
+            assertTrue("the event must remain active", !store.isRetired(original.eventSeq))
+            assertEquals(0, store.pendingCount())
+
+            evaluate(view, "document.querySelector('#sheetClose').click();true")
+            awaitJs(view, "document.querySelector('#skinSheet').hidden")
+            awaitJs(view, "document.querySelector($selectorJson)?.dataset.eventTitle===" +
+                JSONObject.quote(newerTitle))
+            println("SEP07_STALE_DELETE_CONFLICT=seq=${original.eventSeq}; " +
+                "revision=${latest.revision}; title=${latest.title}; " +
+                "commits=${store.commitCount()}; retired=${store.isRetired(original.eventSeq)}")
+        } finally {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            concurrentStore.close()
+            store.close()
+            isolated.deleteDatabase(databaseName)
+            listOf("powercal-onboarding", "powercal-skin-choice", "powercal-ui", "powercal-profile")
+                .forEach { storage.deleteSharedPreferences("$namespace-$it") }
+            File(storage.cacheDir, namespace).deleteRecursively()
+        }
+    }
+
+    @Test
+    fun clearRestoreOfDeletedFormalEventWaitsForHostApprovalAndReusesIdentity() {
+        val storage = compose.activity.applicationContext
+        val namespace = "pc-web-delete-restore-${UUID.randomUUID()}"
+        val isolated = IsolatedContext(compose.activity, storage, namespace)
+        val databaseName = "formal-delete-restore.db"
+        val store = PowerStore(isolated, databaseName)
+        val zone = ZoneId.systemDefault()
+        val start = ZonedDateTime.now(zone).withSecond(0).withNano(0).toInstant().toEpochMilli()
+        val initial = store.newDraft(DraftForm(
+            kind = TemporalKind.ACTIVITY,
+            title = "SEP07_RESTORE_FIXTURE",
+            startText = DraftForm.formatInstant(start, zone),
+            endText = DraftForm.formatInstant(start + 3_600_000L, zone),
+            zoneId = zone.id,
+            reminderMinutes = -1
+        ))
+        assertTrue(store.commit(initial.draftId) is PowerStore.CommitOutcome.Committed)
+        val original = requireNotNull(store.get(initial.eventSeq))
+        val identitiesBefore = store.identityCount()
+        val sequenceBefore = store.nextSequencePreview()
+        val commitsBeforeDelete = store.commitCount()
+
+        try {
+            SkinPackageManager(isolated).select("powercal-clear-default")
+            isolated.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                .edit().putBoolean("system-calendar-import-asked", true).commit()
+            compose.runOnUiThread {
+                compose.activity.setContent {
+                    CompositionLocalProvider(LocalContext provides isolated) {
+                        PowerCalTheme { PowerCalApp(store) }
+                    }
+                }
+            }
+            var web: WebView? = null
+            compose.waitUntil(30_000) {
+                compose.runOnUiThread {
+                    web = findWebView(compose.activity.findViewById(android.R.id.content))
+                }
+                web != null
+            }
+            val view = requireNotNull(web)
+            val selector = "[data-event-seq=\"${original.eventSeq}\"]"
+            val selectorJson = JSONObject.quote(selector)
+            awaitJs(view, "!!document.querySelector($selectorJson)")
+            evaluate(view, "document.querySelector($selectorJson).click();true")
+            awaitJs(view, "!document.querySelector('#skinSheet').hidden && " +
+                "!!document.querySelector('#sheetActions [data-do=deleteEvent]')")
+            evaluate(view, "document.querySelector('#sheetActions [data-do=deleteEvent]').click();true")
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithText("确认删除正式事件").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText("确认删除").performClick()
+            compose.waitUntil(30_000) { store.get(original.eventSeq) == null }
+            assertTrue("approved deletion must leave a restorable tombstone",
+                store.isRetired(original.eventSeq))
+            val deletedTombstone = requireNotNull(store.getIncludingRetired(original.eventSeq))
+            assertEquals(original.eventSeq, deletedTombstone.eventSeq)
+            assertEquals(original.revision + 1, deletedTombstone.revision)
+            assertEquals(original.title, deletedTombstone.title)
+            val commitsAfterDelete = store.commitCount()
+            assertEquals(commitsBeforeDelete + 1, commitsAfterDelete)
+            assertEquals(identitiesBefore, store.identityCount())
+            assertEquals(sequenceBefore, store.nextSequencePreview())
+
+            evaluate(view, "document.querySelector('[data-action=\\\"openDeck\\\"]').click();true")
+            awaitJs(view, "!document.querySelector('#skinSheet').hidden && " +
+                "!!document.querySelector('#sheetFields [data-do=beginRestore]')")
+            val restoreButton = "#sheetFields [data-do=beginRestore]"
+            assertEquals("true", evaluate(view,
+                "document.querySelector('$restoreButton')?.dataset.eventSeq==='${original.eventSeq}'"))
+            evaluate(view, "document.querySelector('$restoreButton').click();true")
+            awaitJs(view, "!document.querySelector('#skinSheet').hidden && " +
+                "document.querySelector('#sheetFields [data-field=title]')?.value===" +
+                "${JSONObject.quote(original.title)}")
+            val restoreDraft = store.pendingDrafts().single()
+            assertEquals(DraftOperation.REPLACE, restoreDraft.operation)
+            assertEquals(original.eventSeq, restoreDraft.eventSeq)
+            assertEquals(deletedTombstone, store.getIncludingRetired(original.eventSeq))
+            assertTrue(store.isRetired(original.eventSeq))
+            assertEquals(commitsAfterDelete, store.commitCount())
+            assertEquals(identitiesBefore, store.identityCount())
+            assertEquals(sequenceBefore, store.nextSequencePreview())
+
+            evaluate(view, "document.querySelector('#sheetSave').click();true")
+            val requestRestore = "#sheetActions [data-do=requestRestoreReview]"
+            awaitJs(view, "!!document.querySelector('$requestRestore')")
+            evaluate(view, "document.querySelector('$requestRestore').click();true")
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithText("确认恢复同一事件").fetchSemanticsNodes().isNotEmpty()
+            }
+            assertEquals("restore request must not reactivate the tombstone before approval",
+                null, store.get(original.eventSeq))
+            assertTrue(store.isRetired(original.eventSeq))
+            assertEquals(commitsAfterDelete, store.commitCount())
+            assertEquals(DraftOperation.REPLACE, store.draft(restoreDraft.draftId)?.operation)
+            compose.onNodeWithText("取消").performClick()
+            compose.waitUntil(10_000) {
+                compose.onAllNodesWithText("确认恢复同一事件").fetchSemanticsNodes().isEmpty()
+            }
+            awaitJs(view, "document.querySelector('#sheetStatus').textContent.includes('已取消宿主操作')")
+            assertEquals(null, store.get(original.eventSeq))
+            assertTrue(store.isRetired(original.eventSeq))
+            assertEquals(commitsAfterDelete, store.commitCount())
+            assertEquals(DraftOperation.REPLACE, store.draft(restoreDraft.draftId)?.operation)
+            assertEquals(identitiesBefore, store.identityCount())
+            assertEquals(sequenceBefore, store.nextSequencePreview())
+
+            evaluate(view, "document.querySelector('$requestRestore').click();true")
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithText("确认恢复同一事件").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText("确认").performClick()
+            compose.waitUntil(30_000) {
+                store.get(original.eventSeq)?.revision == original.revision + 2
+            }
+            val restored = requireNotNull(store.get(original.eventSeq))
+            assertEquals(original.eventSeq, restored.eventSeq)
+            assertEquals(original.revision + 2, restored.revision)
+            assertEquals(original.title, restored.title)
+            assertEquals(commitsAfterDelete + 1, store.commitCount())
+            assertEquals(identitiesBefore, store.identityCount())
+            assertEquals(sequenceBefore, store.nextSequencePreview())
+            assertEquals(0, store.pendingCount())
+            assertTrue(!store.isRetired(original.eventSeq))
+            assertEquals(DraftStatus.COMMITTED, store.draft(restoreDraft.draftId)?.status)
+
+            println("SEP07_CLEAR_RESTORE=seq=${restored.eventSeq}; " +
+                "revision=${restored.revision}; commits=${store.commitCount()}; " +
+                "identities=${store.identityCount()}; sequence=${store.nextSequencePreview()}; " +
+                "cancel-preserved-tombstone=true")
         } finally {
             compose.runOnUiThread {
                 compose.activity.setContent { }

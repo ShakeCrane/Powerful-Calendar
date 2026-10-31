@@ -1462,7 +1462,8 @@ fun PowerCalApp(
                 timelineMoveContext = moveContext
             )
             val status = response.optString("status")
-            if(status in setOf("saved","staged","committed","discarded","restored")) {
+            if(status in setOf("saved","staged","committed","discarded","restored") ||
+                (status == "closed" && command is WebEditCommand.CloseEvent)) {
                 // A completed host transaction must refresh the app-wide projections;
                 // an unsuccessful UI refresh must not turn success into a retryable write.
                 runCatching { reload() }

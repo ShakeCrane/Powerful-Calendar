@@ -4,7 +4,7 @@
 
 **历史状态（2026-10-28）：PARTIAL / OPEN**。Host 桥的受保护删除流程、Clear 删除入口及 Skin Studio Mock 已实现并通过 JVM/浏览器回归；API 35 WebView instrumentation 因 AVD 断连未取得测试结果。SEP-07 与整体 Native/Skin parity 仍为 `NOT TESTED`，不能把浏览器 Mock 当成设备行为或完整功能等价。最新重建验收 `S0-ED-05` 的状态见本文末尾 2026-10-30 复核记录。
 
-**当前状态（2026-10-31）：PARTIAL / HOLD。** API 35 Android WebView 的重复系列删除、Host 取消/批准与 Store 删除闭环已经通过实际 Android 触屏 3/3；整项仍缺并发冲突/恢复、TalkBack、完整 Native/Clear 对照及实体/OEM 验收，不代表 SEP-07 已签核。
+**当前状态（2026-10-31）：PARTIAL / HOLD。** API 35 Clear WebView 已通过触屏删除取消/批准、并发版本冲突拒绝、无修改旧会话安全退出，以及墓碑恢复取消/批准并复用原身份。SEP-07 仍缺 TalkBack、完整同数据 Native/Clear 对照及实体/OEM 验收，不代表该项已签核。
 
 ## 根因与 Native 对照
 
@@ -70,7 +70,7 @@ Native 正式事件编辑器调用 `EditSession.delete()`，最终复用 `PowerS
 
 ## 当前未完成事项
 
-实际 Android 触屏确认/取消/批准已在 2026-10-31 follow-up 完成。仍需覆盖 TalkBack、正式事件并发版本冲突、正式事件恢复及草稿恢复的 Native/Skin 等价回放；SEP-07 保持开放，整体分离与 cutover 状态不变。
+实际 Android 触屏删除、并发版本冲突和正式事件墓碑恢复已在 2026-10-31 follow-up 完成。仍需覆盖 TalkBack、完整同数据 Native/Skin 删除与恢复等价回放及实体/OEM 验收；SEP-07 保持开放，整体分离与 cutover 状态不变。
 
 ## Separation S0-ED-05 current verification (2026-10-30)
 
@@ -117,4 +117,36 @@ Native 正式事件编辑器调用 `EditSession.delete()`，最终复用 `PowerS
 - 同一直接 instrumentation 命令连续 **3/3 PASS**。第一次尝试暴露测试等待 Compose 对话框完全收起前便再次触摸的 harness race；保留失败日志，随后增加对话框消失、Compose idle 和短暂帧间隔，再连续通过三次。生产代码未因该测试 harness 问题修改。
 - 证据目录：`.local/android-test/reports/sep07-touch-delete-20261031/`。三次通过日志 SHA-256：`47C1F2FB371F9BE3FCB951D342348A3C24FCFAEFA92BD58B6B7E37A2BFB3EC55`、`FDF271E3C497F857F37A7312AEFC0839BC0C61FD6971DD73074953E35AB3541C`、`5A76B649A1C2ACBADB31C8F032534E9C3179E18693D8032A150BDDD29764C784`；失败 harness 日志 SHA-256 `D9376ED30923255354744CFDA7AA4E8A7FB2D4005A05D4E319820130C03F96AF`；实际坐标及可信点击轨迹 SHA-256 `2A2B42B6B0B839A9EE059B9BA9E2054E5702C5B21B89B2413FEBA794E40A2C54`。
 - 同一工作树完整离线门禁：`verifySkinSourceBoundary`、`verifyNativeSkinBoundary`、Debug/AndroidTest 组装、Lint 和 **784/784 JVM tests（125 suites，0 failures/errors/skips）**全部通过，171/171 tasks 成功；Lint 0 errors / 55 warnings。完整日志 SHA-256 `73797AAFB602EC08E3689C0CFC2ECA52E85799A9476D9844B9AEC966C1516A90`。Debug APK SHA-256 `779B0CF777BD5E1EE377249CD4156DB426DC87690B6D35EDD458E5F27A27CD1B`；AndroidTest APK SHA-256 `0749F2A89444948719C48393D05028D316164F79244A6FAB842650E973655016`。该门禁工作树还含两份其他 Agent 的未提交 AndroidTest 源码；本次提交只包含本测试与其文档，未包含那两份文件。
-- SEP-07 继续 **PARTIAL / HOLD**：TalkBack/无障碍实际操作、并发版本冲突、正式事件恢复、完整同数据 Native/Clear 回放及实体/OEM 验收仍未完成。
+- SEP-07 继续 **PARTIAL / HOLD**：API 35 已覆盖触屏删除、并发版本冲突和墓碑恢复；TalkBack/无障碍实际操作、完整同数据 Native/Clear 回放及实体/OEM 验收仍未完成。
+
+## API 35 stale-delete conflict and tombstone restore follow-up（2026-10-31）
+
+新增 `WebSkinFormalDeleteTouchInstrumentedTest.staleDeleteApprovalPreservesConcurrentVersionAndRefreshesClearTimeline` 与 `clearRestoreOfDeletedFormalEventWaitsForHostApprovalAndReusesIdentity`，补齐真实 Android WebView → WebSkin Bridge → Host Compose → 隔离 PowerStore 的版本冲突和恢复路径。未改变冻结事件语义或 Native UI。
+
+- 并发冲突用例在 Clear 删除审查对话框打开时，通过同一隔离数据库的第二个 Store 连接提交正式事件新版本，再批准旧删除审查。Host 拒绝过期删除；新版仍活动、revision 为 2、只增加并发写入那一条 commit、identity/序号不变、没有待处理草稿。旧会话无有效 Diff，可安全退出；`CloseEvent` 完成后 Clear 时间轴显示并使用新版记录。单项 API 35 PASS。
+- 恢复用例通过 Clear 正式删除 Host 确认生成 tombstone，再从“已删除事件”打开同身份恢复草稿。点击发布只进入恢复审查准备，不提前恢复事件；Host 取消保留墓碑和恢复草稿。再次申请并经 Host 明确批准后，原 eventSeq 恢复、revision 为原始 revision +2，正式标题和 identity 保持、序号水位不变、pending 清零。单项 API 35 PASS。
+- 旧编辑器关闭的根因是 `CloseEvent` 对所有会话都先 checkpoint；干净会话遇到新 revision 时 checkpoint 拒绝，导致编辑器无法退出。`EditSession.formalVersionIsCurrent()` 为 Host 提供只读版本判定；Bridge 仅在“无有效 Diff 且版本已变化”时无写入释放会话，dirty stale 会话仍保留输入并拒绝不安全关闭。PowerCalApp 仅在正式 `CloseEvent` 结束后刷新投影，避免把普通 `CloseDeck` 混入刷新路径。
+
+### 最新验证
+
+| 验证 | 结果 | 证据 |
+| --- | --- | --- |
+| API 35 删除触屏、冲突、恢复 instrumentation 类 | **3/3 PASS** | Android 15 / `emulator-5570` / WebView 124；最终日志与 SHA-256 记录在 `.local/android-test/reports/sep07-delete-conflict-20261031/`。删除触屏用例发送 `SOURCE_TOUCHSCREEN` 并校验 `event.isTrusted=true`；冲突和恢复用例使用真实 Clear WebView 与 Host 对话框。 |
+| JVM 冲突关闭回归 | **PASS** | `WebSkinEditBridgeTest.formalDeleteReviewRejectsChangedRevision` 验证干净 stale editor 关闭不修改新版；`formalEditorSaveReviewRejectsChangedRevisionAndKeepsTheProposal` 验证 dirty stale editor 保留输入。定向 `WebSkinEditBridgeTest` 与相关 Compose suites 已通过。 |
+| 完整离线 Android 门禁 | **784/784 JVM、125 suites、0 failures/errors/skips；171/171 tasks PASS** | `verifySkinSourceBoundary`、`verifyNativeSkinBoundary`、Debug/AndroidTest APK 组装和 Lint 均通过；Lint 0 errors / 55 warnings。最终门禁日志、APK hashes、设备日志 hashes 见证据目录。 |
+| Skin Studio | **63/63 PASS** | `.local/android-test/reports/sep07-delete-conflict-20261031/skin-studio-tests.log`。本次不改 Studio 或 Clear 源码。 |
+
+### 可复核 SHA-256
+
+| 产物 | SHA-256 |
+| --- | --- |
+| 完整门禁日志 `final-with-restore-gradle-gate.log` | `7D069648272A5320A3C17219D91E814C393A497A0F948914D3B7765FEF044C49` |
+| 最终 API 35 三用例日志 `final-device-class-with-restore.log` | `685550A129E4F48398287B5F9E54DA3C794C0668824184479DF3FC1C8BC20B61` |
+| 定向恢复用例日志 `restore-device-third.log` | `FB03D1F982B0E8E15BDEFEF39B95ADDBF83983CEC7483BA23E94D112DBC24E10` |
+| Skin Studio 测试日志 `skin-studio-tests.log` | `D975246C79E0CDF09EE56E6A3F3C956723D927316F6D5DCB3E995604DC439B5D` |
+| Debug APK `app-debug.apk` | `8CC46EED2FE1569CB349C7C913C3BFFE85344E4C6E9C527342373367C3E8F886` |
+| AndroidTest APK `app-debug-androidTest.apk` | `20918717C8692DB695A612DAC5F35F79ADBCAE2412E79E044BD153BC384C1308` |
+
+两次首次恢复尝试的用例等待顺序错误地在“生成恢复草稿”后立即等待 Host 恢复确认按钮，遗漏了用户须先显式点击“发布”才会进入 tombstone restore prompt；保留失败日志并修正步骤后通过。一次早期全量运行因将所有 `closed` 状态都触发 reload，连带使临时 `CloseDeck` Compose 回归超时；刷新条件已收窄至 `CloseEvent`，受影响类定向通过，最终全量回归通过。上述失败均为本次实现/验证路径，未隐藏。
+
+本 follow-up 只签核实际冲突拒绝及恢复闭环。TalkBack、完整 Native/Clear 配对 replay 与实体/OEM 仍为 NOT TESTED；SEP-07、整体 Skin parity 和 cutover 继续 **PARTIAL / HOLD**。本工作树其他 Agent 对 `WebSkinFormalDeleteInstrumentedTest.kt` 与 `WebSkinRecurrenceInstrumentedTest.kt` 的未提交改动没有纳入本次提交。

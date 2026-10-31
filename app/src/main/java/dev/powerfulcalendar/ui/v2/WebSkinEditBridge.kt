@@ -745,8 +745,12 @@ internal class WebSkinEditService(
                     if(!editorMatches(cmd.sessionId)) result(cmd.requestId,"stale")
                     else {
                         val old=session!!
-                        val checkpoint=withContext(Dispatchers.IO){old.checkpoint()}
-                        if(old.lastError!=null) result(cmd.requestId,"failed",old.lastError)
+                        val cleanStaleSession = !old.meaningfulDiff &&
+                            !withContext(Dispatchers.IO) { old.formalVersionIsCurrent() }
+                        val checkpoint = if (cleanStaleSession) null else
+                            withContext(Dispatchers.IO) { old.checkpoint() }
+                        if(old.lastError!=null && !cleanStaleSession)
+                            result(cmd.requestId,"failed",old.lastError)
                         else {
                             withContext(Dispatchers.IO){old.close()}
                             session=null;sessionId=null
