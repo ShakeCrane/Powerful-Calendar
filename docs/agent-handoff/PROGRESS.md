@@ -1981,3 +1981,9 @@ Updated: 2026-10-24
 
 - Studio Python 源码契约测试仍要求旧调用文本 `onSkinFailure()`；它与 `f5fb8d4` 已实现的幂等回调链不符。本次只将断言同步为 `failureReported.compareAndSet(false, true)`、`currentOnSkinFailure()` 与 `onFailure = reportFailure`，无生产代码改动。
 - Studio Python suite **65/65 PASS**；API 35 / `emulator-5570` 重跑 `WebSkinRendererRecoveryInstrumentedTest` **3/3 PASS**。JUnit XML SHA-256 `adb77c6823ea5bd63ef11b8eaec5d9d3edc6c0b3f78d187f3296601a86cbeb38`，日志和完整门禁证据位于 `.local/android-test/reports/sep15-studio-clear-bridge-20261031/`。SEP-14 仍 **PARTIAL / HOLD**。
+
+### SEP-15 Browser Studio Clear 页面/Bridge 编辑 → Android Runtime（2026-10-31）
+
+- 使用真实 Chrome/CDP Studio 导入 APK 同源 Clear，通过高级源码编辑器新增月份页 `browseMonth(+1)` 按钮并修改样式；点击 Studio 正式 `.pcskin v3` 导出，重导入后再次修改按钮文本并二次导出。最终包 395,801 bytes，SHA-256 `1da62188d944e3b9b27111df4da47041f0ac570634235058fb88ba3e59720daa`；能力声明、画布模式、完整文件集合和七个未编辑文件均保留。
+- Android 15/API 35/WebView 124/`emulator-5570` 安装并运行同一 Studio 导出包。实际 `SOURCE_TOUCHSCREEN` 触摸新按钮且 `event.isTrusted=true`，Host 月份状态从 `2026-10` 到 `2026-11`，Store 0 行，时间轴 anchor/zoom 不变；配对类 **1/1 PASS**。Studio Python **65/65 PASS**；全量离线 gate **785/785 JVM / 125 suites / 0 failures/errors/skips / 171 tasks PASS**，Lint 0 errors / 55 warnings。详细哈希和原始证据见现有 Studio Issue 与 `.local/android-test/reports/sep15-studio-clear-bridge-20261031/`。
+- 仅新增 Studio E2E、AndroidTest 运行夹具/回放和证据记录，没有修改 Core、Host、Native 或 Clear 生产源码。AndroidTest APK 构建还包含两个其他 Agent 的未提交 FormalDelete/Recurrence 测试编辑；它们没有暂存或执行，测试 APK 哈希因此明确标为 worktree-specific。SEP-15 仍 **PARTIAL / HOLD**：任意组件/结构编辑广度、其余 SEP 的 Native/Skin 等价、真实 AI 模型自主制作和实体/OEM 仍开放。
