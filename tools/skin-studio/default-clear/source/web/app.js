@@ -10,7 +10,7 @@ let port=null, bridgeReady=false, state={}, currentPage="TIMELINE", memoFilter="
 const bridgeOutbox=[];
 const MAX_PENDING_BRIDGE_MESSAGES=64;
 let timelineScrollInitialized=false;
-let timelineDrag=null,suppressTimelineClickUntil=0;
+let timelineDrag=null,timelineCameraPan=null,suppressTimelineClickUntil=0;
 let titleFoldFrame=0,titleFoldResizeObserver=null;
 let aiReviewSelectionId="",aiReviewSelected=new Set();
 let attachmentRequestPending=false;
@@ -364,6 +364,50 @@ document.addEventListener("touchend",event=>{
 });
 document.addEventListener("touchcancel",()=>{
   if(timelineDrag?.source==="touch")cancelTimelineDrag();
+});
+function canStartTimelineCameraPan(target){
+  if(!(target instanceof Element))return false;
+  return !target.closest("button,a,input,select,textarea,[contenteditable='true'],"+
+    "[data-action],[data-local],.tEvent,[role='button'],dialog");
+}
+function updateTimelineCameraPan(event){
+  const gesture=timelineCameraPan;
+  if(!gesture||gesture.pointerId!==event.pointerId)return;
+  const dx=event.clientX-gesture.startX,dy=event.clientY-gesture.startY;
+  if(!gesture.active){
+    if(Math.hypot(dx,dy)<10)return;
+    if(Math.abs(dx)>Math.abs(dy)*1.2){timelineCameraPan=null;return}
+    if(Math.abs(dy)<=Math.abs(dx)*1.2)return;
+    gesture.active=true;
+    try{gesture.axis.setPointerCapture(event.pointerId)}catch{}
+  }
+  if(event.cancelable)event.preventDefault();
+  const desiredMinutes=Math.round(-dy/gesture.height*gesture.hours*60);
+  let remaining=desiredMinutes-gesture.sentMinutes;
+  while(remaining!==0){
+    const deltaMinutes=Math.max(-2880,Math.min(2880,remaining));
+    if(!send("panTimeline",{deltaMinutes}))break;
+    gesture.sentMinutes+=deltaMinutes;
+    remaining=desiredMinutes-gesture.sentMinutes;
+  }
+}
+$("axisScroll")?.addEventListener("pointerdown",event=>{
+  if((event.pointerType!=="touch"&&event.pointerType!=="")||!event.isTrusted||!event.isPrimary||event.button!==0||
+      currentPage!=="TIMELINE"||localOptions||timelineCameraPan||!canStartTimelineCameraPan(event.target))return;
+  const axis=$("axisScroll"),hours=Number(state.timeline?.hours),height=axis?.clientHeight||0;
+  if(!axis||!Number.isFinite(hours)||hours<=0||height<=0)return;
+  timelineCameraPan={axis,pointerId:event.pointerId,startX:event.clientX,startY:event.clientY,
+    hours,height,sentMinutes:0,active:false};
+});
+document.addEventListener("pointermove",event=>{
+  updateTimelineCameraPan(event);
+},{passive:false});
+document.addEventListener("pointerup",event=>{
+  updateTimelineCameraPan(event);
+  if(timelineCameraPan?.pointerId===event.pointerId)timelineCameraPan=null;
+});
+document.addEventListener("pointercancel",event=>{
+  if(timelineCameraPan?.pointerId===event.pointerId)timelineCameraPan=null;
 });
 document.addEventListener("click",e=>{
   const local=e.target.closest("[data-local]");

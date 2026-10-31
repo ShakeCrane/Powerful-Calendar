@@ -179,6 +179,89 @@ class TimelineReturnViewportInstrumentedTest {
             .put("scaleX", scaleX).put("scaleY", scaleY)
     }
 
+    private fun swipeClearTimelineByMinutes(web: WebView, hours: Double, minutes: Int): JSONObject {
+        val probe = evaluateObject(web, """(() => {
+          const axis=document.querySelector('#axisScroll');
+          if(!axis)return {found:false};
+          if(!window.__clearCameraPanProbe){
+            const probe={trustedDown:false,pointerType:'',eventClass:'',targetId:'',button:-1,
+              sourceTouch:false,moves:0,trustedMove:false,trustedUp:false,cancelled:false,pointerId:-1};
+            window.__clearCameraPanProbe=probe;
+            axis.addEventListener('pointerdown',event=>{
+              probe.trustedDown=event.isTrusted;probe.pointerType=String(event.pointerType);
+              probe.eventClass=event.constructor?.name||'';probe.targetId=event.target?.id||'';
+              probe.button=event.button;probe.sourceTouch=!!event.sourceCapabilities?.firesTouchEvents;
+              probe.pointerId=event.pointerId;
+            },{once:true});
+            document.addEventListener('pointermove',event=>{
+              if(event.pointerId!==probe.pointerId)return;
+              probe.moves++;probe.trustedMove=probe.trustedMove||event.isTrusted;
+            },true);
+            document.addEventListener('pointerup',event=>{
+              if(event.pointerId===probe.pointerId)probe.trustedUp=event.isTrusted;
+            },true);
+            document.addEventListener('pointercancel',event=>{
+              if(event.pointerId===probe.pointerId)probe.cancelled=true;
+            },true);
+          }
+          const rect=axis.getBoundingClientRect();
+          return {found:true,x:rect.left+rect.width/2,y:rect.top+axis.clientHeight*.75,
+            height:axis.clientHeight,cssWidth:document.documentElement.clientWidth,
+            cssHeight:window.innerHeight,scrollTop:axis.scrollTop};
+        })()""")
+        assertTrue("Clear timeline viewport should exist", probe.optBoolean("found"))
+        val location = IntArray(2)
+        val dimensions = AtomicReference<Pair<Int, Int>>()
+        compose.runOnUiThread {
+            web.getLocationOnScreen(location)
+            dimensions.set(web.width to web.height)
+        }
+        val (widthPx, heightPx) = requireNotNull(dimensions.get())
+        val scaleX = widthPx / probe.getDouble("cssWidth")
+        val scaleY = heightPx / probe.getDouble("cssHeight")
+        assertEquals("WebView touch coordinates preserve aspect ratio", scaleX, scaleY, 0.02)
+        val startX = location[0] + (probe.getDouble("x") * scaleX).toFloat()
+        val startY = location[1] + (probe.getDouble("y") * scaleY).toFloat()
+        val deltaY = (-probe.getDouble("height") * minutes / (hours * 60.0) * scaleY).toFloat()
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val downTime = SystemClock.uptimeMillis()
+        fun send(action: Int, x: Float, y: Float, eventTime: Long) {
+            val event = MotionEvent.obtain(downTime, eventTime, action, x, y, 0)
+            try {
+                event.source = InputDevice.SOURCE_TOUCHSCREEN
+                instrumentation.sendPointerSync(event)
+            } finally {
+                event.recycle()
+            }
+        }
+        send(MotionEvent.ACTION_DOWN, startX, startY, downTime)
+        repeat(8) { index ->
+            SystemClock.sleep(120)
+            val fraction = (index + 1) / 8f
+            send(MotionEvent.ACTION_MOVE, startX, startY + deltaY * fraction,
+                SystemClock.uptimeMillis())
+        }
+        SystemClock.sleep(120)
+        send(MotionEvent.ACTION_UP, startX, startY + deltaY, SystemClock.uptimeMillis())
+        val result = evaluateObject(web, """(() => {
+          const axis=document.querySelector('#axisScroll');
+          return {probe:window.__clearCameraPanProbe,scrollTop:axis?.scrollTop};
+        })()""")
+        val gesture = requireNotNull(result.optJSONObject("probe"))
+        assertTrue("Clear must receive a real trusted touchscreen pointerdown", gesture.optBoolean("trustedDown"))
+        assertTrue("Clear must identify touchscreen input (API 35 WebView reports an empty " +
+            "pointerType for injected SOURCE_TOUCHSCREEN events): $gesture",
+            gesture.optString("pointerType") == "touch" || gesture.optString("pointerType").isEmpty())
+        assertTrue("Clear must receive trusted pointer movement", gesture.optBoolean("trustedMove"))
+        assertTrue("Clear must process the entire slow pan", gesture.optInt("moves") >= 6)
+        assertTrue("Clear pan must end normally", gesture.optBoolean("trustedUp"))
+        assertTrue("Clear pan must not be handed to browser scrolling", !gesture.optBoolean("cancelled"))
+        assertEquals("camera panning must not scroll the timeline DOM", probe.getDouble("scrollTop"),
+            result.getDouble("scrollTop"), 0.0)
+        return JSONObject().put("minutes", minutes).put("startX", startX).put("startY", startY)
+            .put("deltaYpx", deltaY).put("scaleY", scaleY).put("probe", gesture)
+    }
+
     private fun nativeEventBounds(title: String): Rect {
         val matcher = hasContentDescription(title, substring = true) and hasClickAction()
         val nodes = compose.onAllNodes(matcher).fetchSemanticsNodes()
@@ -551,6 +634,99 @@ class TimelineReturnViewportInstrumentedTest {
                 "native=$nativePanned clear=$clearPanned nativeViewportPx=$nativeHeight " +
                 "nativeDeltaPx=$nativePanDistance clearTodayTouch=$clearTodayTouch " +
                 "clearLaterTouch=$clearLaterTouch commits=0 drafts=0")
+        } finally {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            nativeStore.close()
+            clearStore.close()
+            nativeContext.deleteDatabase(nativeDatabase)
+            clearContext.deleteDatabase(clearDatabase)
+            listOf(nativeNamespace, clearNamespace).forEach { namespace ->
+                listOf("powercal-onboarding", "powercal-ui", "powercal-skin-choice", "powercal-profile")
+                    .forEach { storage.deleteSharedPreferences("$namespace-$it") }
+                File(storage.cacheDir, namespace).deleteRecursively()
+            }
+        }
+    }
+
+    @Test
+    fun nativeAndClearSingleFingerVerticalPanProduceTheSameCamera() {
+        val storage = compose.activity.applicationContext
+        val nativeNamespace = "pc-timeline-touch-pan-native-${UUID.randomUUID()}"
+        val clearNamespace = "pc-timeline-touch-pan-clear-${UUID.randomUUID()}"
+        val nativeContext = IsolatedAppContext(compose.activity, storage, nativeNamespace)
+        val clearContext = IsolatedAppContext(compose.activity, storage, clearNamespace)
+        val nativeDatabase = "timeline-touch-pan-native.db"
+        val clearDatabase = "timeline-touch-pan-clear.db"
+        val nativeStore = PowerStore(nativeContext, nativeDatabase)
+        val clearStore = PowerStore(clearContext, clearDatabase)
+        val shiftMinutes = 180
+        try {
+            val zone = java.time.ZoneId.systemDefault()
+            val todayNoon = java.time.LocalDate.now(zone).atTime(12, 0)
+                .atZone(zone).toInstant().toEpochMilli()
+            val targetAnchor = todayNoon + shiftMinutes * 60_000L
+            nativeContext.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                .edit().putBoolean("system-calendar-import-asked", true).commit()
+            SkinPackageManager(nativeContext).selectNativeForEmergencyRecovery()
+            compose.runOnUiThread {
+                compose.activity.setContent {
+                    CompositionLocalProvider(LocalContext provides nativeContext) {
+                        PowerCalTheme { PowerCalApp(nativeStore) }
+                    }
+                }
+            }
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithContentDescription("今日 · 复位为全天")
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithContentDescription("今日 · 复位为全天").performClick()
+            awaitCamera(todayNoon, 24.0)
+            compose.onNodeWithContentDescription("放大，显示更短时间").performClick()
+            awaitCamera(todayNoon, 16.0)
+            val nativeViewport = compose.onNodeWithTag("timeline-viewport").fetchSemanticsNode()
+            val nativeHeight = nativeViewport.boundsInRoot.height
+            assertTrue("Native timeline viewport must have measurable height", nativeHeight > 0f)
+            val nativeDeltaY = nativeHeight * shiftMinutes / (16f * 60f)
+            val nativeStart = Offset(nativeViewport.boundsInRoot.center.x,
+                nativeViewport.boundsInRoot.top + nativeHeight * 0.75f)
+            compose.onNodeWithTag("timeline-viewport").performTouchInput {
+                down(Offset(nativeStart.x - nativeViewport.boundsInRoot.left,
+                    nativeStart.y - nativeViewport.boundsInRoot.top))
+                repeat(8) {
+                    moveBy(Offset(0f, -nativeDeltaY / 8f))
+                    advanceEventTime(350)
+                }
+                up()
+            }
+            println("NATIVE_TIMELINE_TOUCH_PAN cameraAfterTouch=${cameraSnapshot()} " +
+                "expectedAnchor=$targetAnchor viewportHeight=$nativeHeight deltaPx=$nativeDeltaY")
+            val nativePanned = awaitCamera(targetAnchor, 16.0)
+
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            val web = launchClear(clearContext, clearStore)
+            tapWebSelector(web, "[data-action='today']")
+            awaitCamera(todayNoon, 24.0)
+            tapWebSelector(web, "[data-action='zoomTimeline'][data-direction='in']")
+            awaitCamera(todayNoon, 16.0)
+            val touch = swipeClearTimelineByMinutes(web, 16.0, shiftMinutes)
+            val clearPanned = awaitCamera(targetAnchor, 16.0)
+            assertEquals("single-finger pan must yield the same Native and Clear camera",
+                nativePanned, clearPanned)
+            assertEquals(0, nativeStore.commitCount())
+            assertEquals(0, clearStore.commitCount())
+            assertEquals(0, nativeStore.draftCount())
+            assertEquals(0, clearStore.draftCount())
+            println("NATIVE_CLEAR_TIMELINE_TOUCH_PAN_PARITY today=$todayNoon target=$targetAnchor " +
+                "native=$nativePanned clear=$clearPanned nativeViewportPx=$nativeHeight " +
+                "nativeDeltaPx=$nativeDeltaY clearTouch=$touch commits=0 drafts=0")
         } finally {
             compose.runOnUiThread {
                 compose.activity.setContent { }

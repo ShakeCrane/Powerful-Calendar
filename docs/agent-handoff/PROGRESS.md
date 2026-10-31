@@ -2041,3 +2041,11 @@ Updated: 2026-10-24
 - 三种时间轴类型配对方法 **1/1 PASS**；时间轴创建上下文类 **5/5 PASS**。Instrumentation XML SHA-256 `1E7EBF3042514CC99286770B274A130221E88843AAA2A6E76C1CA6C790B734A4`；focused log `9C318AED28D39CC6880AA1EB66AB3BA5BCA1EBED366673B15689F408223E00FB`；class log `FE050EC38DED1576480C4A05319265274D7F7106CB60ECE785BC5A3F37A0B13F`；业务 marker `9B7D424281E14AAEB72DA756E956DCF745DA1B35BB352CCE09B77D0EEDBE5016`。
 - 强制离线全门禁 **785/785 JVM / 125 suites / 0 failures/errors/skips / 171 tasks PASS**，含 Skin/Native 边界、Debug/AndroidTest APK 与 Lint（0 errors/55 warnings）。门禁日志 SHA-256 `D039AC7ECBC5A46598D8C17D979C72CE240E798B2D06377EAC7895F6EF03603C`；Debug APK `DE876D09D11689F98131C9DAD0A977AA1271E1657612B6A95DB89ABBBB80C31C`；worktree-specific AndroidTest APK `F0146A5FA49E52228E8B25DEA3175AE37DB72DD54EA402806C8305879CC743B4` 含另外两份 Agent 未提交测试，本切片未执行它们。证据：`.local/android-test/reports/sep04-timeline-create-memo-parity-20261031/`。
 - SEP-04 仍 **PARTIAL / HOLD**：非网格/缩放吸附、完整生命周期/退出、Studio 修改包运行、无障碍与实体/OEM 尚未签核。无生产/Core 源码修改。
+
+
+## SEP-01 / S0-TL-01 Clear single-finger vertical camera pan parity (2026-10-31)
+
+- 修复确认的实际差异：Clear 原先没有垂直相机拖动，只能通过 ±180 分钟按钮平移；新建页内触摸无法抵达任意相机位置。现在 Clear 在空白时间轴区域接收可信单指纵向触摸，将位移按当前视窗小时数/高度换算成分钟并调用既有 panTimeline；交互控件与事件卡跳过，横向泳道仍由浏览器处理。无 Core/Host/Bridge 修改。
+- API 35 / Android 15 / WebView 124 / emulator-5570：Native 与 Clear 均由 local noon/16h 通过真实 Android 触控上移 180 分钟到 15:00/16h，Host 相机完全相同。Clear 指针 down/move/up 均可信、8 个移动、无 pointercancel、axisScroll.scrollTop 不变；两 Store 均 0 draft/0 commit。配对用例 1/1 PASS；完整 TimelineReturnViewportInstrumentedTest 5/5 PASS（含 Native/Clear 左右独立翼滚动、今日/缩放/复位和返回视口）。API 35 注入的 SOURCE_TOUCHSCREEN 在 WebView 报告空 pointerType，运行时仅对可信 primary 左键事件接受此兼容值。首次 45 分钟样本未越过 Native touch slop，第二次为错误地限定 WebView pointerType 的测试断言；修正后的最终触控配对通过。
+- node --check、Skin Studio Python 65/65、Clear canonical bundle 与 Debug APK 比对均通过。强制串行离线完整门禁 785/785 JVM / 125 suites / 0 failures/errors/skips / 171 tasks PASS；Skin/Native source boundary、Debug/AndroidTest APK 与 Lint 均通过（0 errors/55 warnings）。门禁 SHA-256 77A6D4588776B85FCA7CB49C77BE66DDBB7A5885BE1502CC83388C399FE57DD1；APK 与设备/Studio证据见现有几何 Issue 的 follow-up。
+- 本切片仅改 canonical Clear app.js/style.css、生成 .pcskin、配对 Android 回归及既有几何 Issue/SEP 矩阵/进度。其他 Agent 的正式删除与重复事项 AndroidTest 修改仍未暂存。SEP-01 继续 PARTIAL / HOLD：Native 双指 pinch、完全匹配的复位输入、TalkBack、更多时间轴交互和实体/OEM待验证。

@@ -38,7 +38,7 @@ button:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outl
  text-align:left}
 .dateDeadline .dateDeadlineTitle{font-weight:620;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
 .dateDeadline .dateDeadlineDate{font-size:11px;color:var(--label-2)}
-.axis-scroll{height:min(67vh,680px);min-height:360px;overflow:auto;overscroll-behavior:contain;
+.axis-scroll{height:min(67vh,680px);min-height:360px;overflow:auto;overscroll-behavior:contain;touch-action:pan-x;
  border-radius:6px;background:var(--bg-canvas)}
 .timeline-surface{position:relative;min-height:100%;width:100%}
 .tl-axis{position:absolute;width:1.5px;background:var(--label-4);left:50%;top:0;bottom:0}
