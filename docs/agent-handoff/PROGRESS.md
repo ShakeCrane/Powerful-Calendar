@@ -1882,3 +1882,10 @@ Updated: 2026-10-24
 - 在 Native production source SHA `2f55ec672421125ec6fe7a25847a9baffc36c526` 验证 4 个 Native-only Compose instrument tests：小屏子像素事件/真实 hit target + 日期精度/无障碍 **2/2**；真实系统字号 2× **1/1**；2400×1080 landscape-sized greedy title / hidden-event accessibility **1/1**。合计 **4/4 PASS**，Android 15 / API 35 / `emulator-5570`；本轮未启动 Clear。
 - Font scale 从 `1.0` 临时切至 `2.0` 后恢复；强制横屏用例只临时覆盖逻辑显示尺寸，测试后恢复物理 `1080×2400`。方向设置恢复为自动旋转开启、user rotation 0。此项不是传感器旋转或 OEM 结论。
 - 日志位于 `.local/android-test/reports/sep08-deck-lifecycle-parity-20261031/`，manifest SHA-256 `1FBB183EE27D700A82AB0A784BE7796F80A9BF4E017F85CEC4DCA752B8D8804C`。SEP-01 仍 **PARTIAL / HOLD**：独立翼滚动的 Native 对照、完整 TalkBack/OEM 和全 Native/Skin 输入等价仍未验收。
+
+### Native 主题默认值归属 :native-skin（2026-10-31）
+
+- 将原由 `app/.../PowerTheme.kt` 持有的浅/深色 Material scheme、Typography、时间轴/玻璃默认色板迁入 `:native-skin` 的 `NativeSkinThemeDefaults`。Host 继续做当前 skin 合成和系统效果；冻结 Native 颜色、字体和交互不变。`verifyNativeSkinBoundary` 增加主题默认值所有权和 Host 消费检查。
+- `GlassComposeTest.nativeSkinOwnsTheUnchangedLightAndDarkThemeBaseline` **1/1 PASS**；API 35 `DraftDeckThemeSwitchInstrumentedTest` **1/1 PASS**，仅运行 Native Compose 草稿卡、UUID 隔离数据库，未启动 Clear。
+- 精确提交 `53ec4759a24c80cec876b655a3c79dd52f74151f` 干净验证：全离线门禁 **785/785 JVM / 125 suites / 0 failures/errors/skips / 171 tasks**；Debug/AndroidTest APK、Native/Skin source boundaries、lint 通过（0 errors / 51 warnings）。独立 `:native-skin` 和 `:skin-api` AAR 也各自构建成功。完整证据及 APK/AAR SHA-256 见 [Native theme defaults Issue](../issues/PC-ISSUE-SEPARATION-NATIVE-THEME-DEFAULTS.md) 与 `.local/android-test/reports/native-skin-theme-20261031/manifest-53ec475.json`（SHA-256 `A804015D632CCF6C14B474D2AB289D6CA91E3DE8DAD01049FDBF3AD96B299CF4`）。
+- 仅 Native 主题基线归属切片完成；剩余 Host presentation adapter/helper 分类、Native/Skin parity、Studio 可编辑范围和实体/OEM 验收仍开放。未改 Clear；其他 Agent 两个 AndroidTest 文件继续保持未暂存。
