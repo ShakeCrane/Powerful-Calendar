@@ -1417,6 +1417,305 @@ class PowerCalAiProposalReviewWebViewInstrumentedTest {
     }
 
     @Test
+    fun nativeAndClearFormalReplaceDeleteProposalsMatchAfterScopedApproval() {
+        val storage = compose.activity.applicationContext
+        val nativeNamespace = "pc-ai-replace-delete-native-${UUID.randomUUID()}"
+        val clearNamespace = "pc-ai-replace-delete-clear-${UUID.randomUUID()}"
+        val nativeContext = IsolatedAppContext(compose.activity, storage, nativeNamespace)
+        val clearContext = IsolatedAppContext(compose.activity, storage, clearNamespace)
+        val nativeDatabase = "ai-replace-delete-native.db"
+        val clearDatabase = "ai-replace-delete-clear.db"
+        val nativeStore = PowerStore(nativeContext, nativeDatabase)
+        val clearStore = PowerStore(clearContext, clearDatabase)
+        val zone = ZoneId.systemDefault()
+        val promptPrefix = "请创建一份正式备忘操作提案："
+        val marker = "我会准备两项待审核操作。" +
+            "[[POWERCAL_DRAFT]]{\"type\":\"draft\",\"intent\":\"explicit\"}[[/POWERCAL_DRAFT]]"
+        val requests = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val serverFailure = AtomicReference<Throwable?>()
+        val served = CountDownLatch(4)
+
+        data class SeededStore(
+            val replaceSeq: Long,
+            val deleteSeq: Long,
+            val originalReplace: dev.powerfulcalendar.core.TemporalRecord,
+            val originalDelete: dev.powerfulcalendar.core.TemporalRecord
+        )
+
+        fun seed(context: IsolatedAppContext, store: PowerStore): SeededStore {
+            context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                .edit().putBoolean("system-calendar-import-asked", true).commit()
+            AiChatHistoryStore.save(context, emptyList())
+            val replace = store.createFormalEvent(
+                DraftForm(kind = TemporalKind.MEMO, title = "原会议标题", zoneId = zone.id),
+                idempotencyKey = "replace-${UUID.randomUUID()}"
+            ) as PowerStore.CommitOutcome.Committed
+            val delete = store.createFormalEvent(
+                DraftForm(kind = TemporalKind.MEMO, title = "过期提醒", zoneId = zone.id),
+                idempotencyKey = "delete-${UUID.randomUUID()}"
+            ) as PowerStore.CommitOutcome.Committed
+            return SeededStore(
+                replace.eventSeq,
+                delete.eventSeq,
+                requireNotNull(store.get(replace.eventSeq)),
+                requireNotNull(store.get(delete.eventSeq))
+            )
+        }
+
+        fun storeSnapshot(store: PowerStore) = listOf(
+            store.all().size.toLong(), store.draftCount(), store.pendingCount().toLong(),
+            store.commitCount(), store.identityCount(), store.nextSequencePreview()
+        )
+
+        fun formalSnapshot(store: PowerStore) = store.all().map {
+            "${it.eventSeq}|${it.kind}|${it.title}|${it.revision}|${it.startMillis}|${it.endMillis}"
+        }
+
+        fun proposalFor(seeded: SeededStore) = JSONObject().put("events", JSONArray()
+            .put(JSONObject()
+                .put("operation", "REPLACE")
+                .put("eventSeq", seeded.replaceSeq)
+                .put("kind", "MEMO")
+                .put("title", "项目回顾"))
+            .put(JSONObject()
+                .put("operation", "DELETE")
+                .put("eventSeq", seeded.deleteSeq)
+                .put("kind", "MEMO")
+                .put("title", seeded.originalDelete.title))).toString()
+
+        fun lastUserMessage(body: String): String? {
+            val messages = JSONObject(body).getJSONArray("messages")
+            for (index in messages.length() - 1 downTo 0) {
+                val message = messages.getJSONObject(index)
+                if (message.optString("role") == "user") return message.optString("content")
+            }
+            return null
+        }
+
+        try {
+            val nativeSeed = seed(nativeContext, nativeStore)
+            val clearSeed = seed(clearContext, clearStore)
+            assertEquals("isolated Native and Clear Stores assign matching target identities",
+                listOf(nativeSeed.replaceSeq, nativeSeed.deleteSeq),
+                listOf(clearSeed.replaceSeq, clearSeed.deleteSeq))
+            assertEquals(DraftForm.from(nativeSeed.originalReplace),
+                DraftForm.from(clearSeed.originalReplace))
+            assertEquals(DraftForm.from(nativeSeed.originalDelete),
+                DraftForm.from(clearSeed.originalDelete))
+            val nativeBefore = storeSnapshot(nativeStore)
+            val clearBefore = storeSnapshot(clearStore)
+            val nativeFormalBefore = formalSnapshot(nativeStore)
+            val clearFormalBefore = formalSnapshot(clearStore)
+            val nativePrompt = "$promptPrefix #${nativeSeed.replaceSeq} 改成“项目回顾”，" +
+                "并删除 #${nativeSeed.deleteSeq}。"
+            val clearPrompt = "$promptPrefix #${clearSeed.replaceSeq} 改成“项目回顾”，" +
+                "并删除 #${clearSeed.deleteSeq}。"
+            val structuredNative = proposalFor(nativeSeed)
+            val structuredClear = proposalFor(clearSeed)
+
+            ServerSocket(0, 4, InetAddress.getByName("127.0.0.1")).use { server ->
+                server.soTimeout = 30_000
+                val endpoint = "http://127.0.0.1:${server.localPort}/v1"
+                listOf(nativeContext, clearContext).forEach { context ->
+                    AiSettingsStore.save(context, AiSettings(
+                        endpoint = endpoint,
+                        model = "local-stub:free",
+                        apiKey = "LOCAL_TEST_ONLY",
+                        enabled = true,
+                        shareContext = true
+                    ))
+                }
+                val responses = listOf(marker, structuredNative, marker, structuredClear)
+                val serverThread = Thread {
+                    try {
+                        repeat(responses.size) { index ->
+                            server.accept().use { socket ->
+                                socket.soTimeout = 20_000
+                                requests += readRequest(socket)
+                                writeReply(socket, responses[index])
+                            }
+                            served.countDown()
+                        }
+                    } catch (error: Throwable) {
+                        serverFailure.set(error)
+                        while (served.count > 0) served.countDown()
+                    }
+                }.apply { name = "pc-ai-native-clear-replace-delete"; isDaemon = true; start() }
+
+                compose.runOnUiThread {
+                    PowerCalSkinRegistry.reset()
+                    SkinPackageManager(nativeContext).selectNativeForEmergencyRecovery()
+                    compose.activity.setContent {
+                        CompositionLocalProvider(LocalContext provides nativeContext) {
+                            PowerCalTheme { PowerCalApp(nativeStore) }
+                        }
+                    }
+                }
+                compose.waitUntil(30_000) {
+                    compose.onAllNodesWithText("AI 助手").fetchSemanticsNodes().isNotEmpty()
+                }
+                compose.onNodeWithText("AI 助手").performClick()
+                compose.onNodeWithText("发送消息…").performTextInput(nativePrompt)
+                compose.onNodeWithText("发送").performClick()
+                compose.waitUntil(30_000) {
+                    requests.size >= 2 || serverFailure.get() != null
+                }
+                assertNull("local Native proposal provider failed", serverFailure.get())
+                compose.waitUntil(30_000) {
+                    compose.onAllNodesWithText(
+                        "识别到修改 / 删除 · 是否创建修改提案？"
+                    ).fetchSemanticsNodes().isNotEmpty()
+                }
+                compose.waitUntil(30_000) {
+                    AiChatHistoryStore.load(nativeContext).size >= 2
+                }
+                val nativeHistoryBeforeApproval = AiChatHistoryStore.load(nativeContext)
+                    .take(2).map { it.role to it.content }
+                assertEquals("Native review remains read-only until the owner approves",
+                    nativeBefore, storeSnapshot(nativeStore))
+                assertEquals(nativeFormalBefore, formalSnapshot(nativeStore))
+                compose.onNodeWithText("批量同意").performClick()
+                compose.waitUntil(30_000) {
+                    nativeStore.get(nativeSeed.replaceSeq)?.title == "项目回顾" &&
+                        nativeStore.get(nativeSeed.deleteSeq) == null
+                }
+                compose.waitUntil(30_000) {
+                    AiChatHistoryStore.load(nativeContext).any {
+                        it.role == "assistant" && it.content.contains("结构化操作结果")
+                    }
+                }
+
+                compose.runOnUiThread {
+                    compose.activity.setContent { }
+                    PowerCalSkinRegistry.reset()
+                    SkinPackageManager(clearContext).select("powercal-clear-default")
+                    compose.activity.setContent {
+                        CompositionLocalProvider(LocalContext provides clearContext) {
+                            PowerCalTheme { PowerCalApp(clearStore) }
+                        }
+                    }
+                }
+                var web: WebView? = null
+                compose.waitUntil(30_000) {
+                    compose.runOnUiThread {
+                        web = findWebView(compose.activity.findViewById(android.R.id.content))
+                    }
+                    web != null
+                }
+                val view = requireNotNull(web)
+                awaitJs(view, "!!document.querySelector('.clear-tabbar [data-action=ai]')")
+                val aiTouch = tapWebSelector(view, ".clear-tabbar [data-action=ai]")
+                awaitJs(view, "!document.querySelector('#aiPage').hidden")
+                val composerValue = evaluate(view, "(()=>{const input=document.querySelector('#chatInput');" +
+                    "if(!input)return false;input.value=${JSONObject.quote(clearPrompt)};" +
+                    "input.dispatchEvent(new Event('input',{bubbles:true}));" +
+                    "return input.value===${JSONObject.quote(clearPrompt)}})()")
+                assertEquals("Clear must retain the exact Native request text", "true", composerValue)
+                awaitJs(view, "document.querySelector('#chatInput')?.value===${JSONObject.quote(clearPrompt)}")
+                val sendTouch = tapWebSelector(view, "#chatSend")
+                awaitJs(view, "document.querySelectorAll('.ai-proposal-item').length===2")
+                awaitJs(view, "Array.from(document.querySelectorAll('.ai-proposal-title')).some(e=>e.textContent.includes('REPLACE')) &&" +
+                    "Array.from(document.querySelectorAll('.ai-proposal-title')).some(e=>e.textContent.includes('DELETE'))")
+                compose.waitUntil(30_000) {
+                    AiChatHistoryStore.load(clearContext).size >= nativeHistoryBeforeApproval.size
+                }
+                val clearHistoryBeforeApproval = AiChatHistoryStore.load(clearContext)
+                    .take(2).map { it.role to it.content }
+                assertEquals("Native and Clear chat history must match before decision",
+                    nativeHistoryBeforeApproval, clearHistoryBeforeApproval)
+                assertEquals("Clear review must not write before Host confirmation",
+                    clearBefore, storeSnapshot(clearStore))
+                assertEquals(clearFormalBefore, formalSnapshot(clearStore))
+                val projection = WebSkinBridgeRuntime.state().getJSONObject("aiProposalReview")
+                    .getJSONArray("proposals")
+                assertEquals(2, projection.length())
+                assertEquals("REPLACE", projection.getJSONObject(0).getString("operation"))
+                assertEquals(nativeSeed.replaceSeq,
+                    projection.getJSONObject(0).getLong("eventSeq"))
+                assertEquals(nativeSeed.originalReplace.revision,
+                    projection.getJSONObject(0).getLong("targetRevision"))
+                assertEquals("DELETE", projection.getJSONObject(1).getString("operation"))
+                assertEquals(nativeSeed.deleteSeq,
+                    projection.getJSONObject(1).getLong("eventSeq"))
+                assertEquals(nativeSeed.originalDelete.revision,
+                    projection.getJSONObject(1).getLong("targetRevision"))
+
+                tapWebSelector(view, ".ai-proposal-group .ai-proposal-actions button.primary")
+                compose.onNodeWithText("确认 AI 批量正式操作").assertExists()
+                compose.onNodeWithText("确认并提交 2 项").assertExists()
+                assertEquals("the skin request must remain read-only until Host approval",
+                    clearBefore, storeSnapshot(clearStore))
+                assertEquals(clearFormalBefore, formalSnapshot(clearStore))
+                compose.onNodeWithText("确认并提交 2 项").performClick()
+                compose.waitUntil(30_000) {
+                    clearStore.get(clearSeed.replaceSeq)?.title == "项目回顾" &&
+                        clearStore.get(clearSeed.deleteSeq) == null
+                }
+                assertTrue("all paired chat and interpretation calls must reach the stub",
+                    served.await(2, TimeUnit.SECONDS))
+                serverThread.join(2_000)
+                assertNull("local pair provider failed", serverFailure.get())
+                assertEquals(4, requests.size)
+                assertEquals(nativePrompt, lastUserMessage(requests[0]))
+                assertEquals(clearPrompt, lastUserMessage(requests[2]))
+                assertEquals("clear and native requests are scoped to equivalent targets",
+                    nativePrompt.replace("#${nativeSeed.replaceSeq}", "#EVENT_SEQ")
+                        .replace("#${nativeSeed.deleteSeq}", "#EVENT_SEQ"),
+                    clearPrompt.replace("#${clearSeed.replaceSeq}", "#EVENT_SEQ")
+                        .replace("#${clearSeed.deleteSeq}", "#EVENT_SEQ"))
+                assertEquals("REPLACE must keep the same identity and advance one revision",
+                    nativeSeed.originalReplace.eventSeq,
+                    nativeStore.get(nativeSeed.replaceSeq)?.eventSeq)
+                assertEquals(nativeSeed.originalReplace.revision + 1,
+                    nativeStore.get(nativeSeed.replaceSeq)?.revision)
+                val nativeFinalRecords = nativeStore.all().map {
+                    Triple(it.eventSeq, it.revision, DraftForm.from(it))
+                }
+                val clearFinalRecords = clearStore.all().map {
+                    Triple(it.eventSeq, it.revision, DraftForm.from(it))
+                }
+                assertEquals("all persisted business fields, identities and revisions match",
+                    nativeFinalRecords, clearFinalRecords)
+                assertEquals("only the Replace target should remain", 1, nativeStore.all().size)
+                val nativeAfter = storeSnapshot(nativeStore)
+                val clearAfter = storeSnapshot(clearStore)
+                assertEquals("the two approved operations leave exactly two resolved proposal records",
+                    nativeBefore[1] + 2L, nativeAfter[1])
+                assertEquals("Clear must retain the same resolved proposal history",
+                    clearBefore[1] + 2L, clearAfter[1])
+                assertEquals(0, nativeAfter[2])
+                assertEquals(0, clearAfter[2])
+                assertEquals(nativeBefore[3] + 2, nativeAfter[3])
+                assertEquals(clearBefore[3] + 2, clearAfter[3])
+                assertEquals(nativeBefore[4], nativeAfter[4])
+                assertEquals(clearBefore[4], clearAfter[4])
+                assertEquals(nativeBefore[5], nativeAfter[5])
+                assertEquals(clearBefore[5], clearAfter[5])
+                println("NATIVE_CLEAR_AI_REPLACE_DELETE_PARITY " +
+                    "reviewZeroWrite=true nativeApproval=true clearHostApproval=true " +
+                    "replaceRevisionAdvanced=true deleteTargetOnly=true formalParity=true " +
+                    "storeWritesPerSide=2 trustedClearTouches=$aiTouch,$sendTouch")
+            }
+        } finally {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            nativeStore.close()
+            clearStore.close()
+            nativeContext.deleteDatabase(nativeDatabase)
+            clearContext.deleteDatabase(clearDatabase)
+            listOf(nativeNamespace, clearNamespace).forEach { namespace ->
+                listOf("powercal-ai", "powercal-onboarding", "powercal-ui",
+                    "powercal-skin-choice", "powercal-profile", "powercal-file-ai-consent")
+                    .forEach { storage.deleteSharedPreferences("$namespace-$it") }
+                File(storage.cacheDir, namespace).deleteRecursively()
+            }
+        }
+    }
+
+    @Test
     fun nativeAndClearProposalReviewStageSameCreateWithEquivalentDraftAndNoFormalWrites() {
         val storage: Context = compose.activity.applicationContext
         val nativeNamespace = "pc-ai-review-stage-native-${UUID.randomUUID()}"

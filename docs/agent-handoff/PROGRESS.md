@@ -1,5 +1,12 @@
 # Core freeze progress
 
+## Separation — SEP-10 Native/Clear formal REPLACE+DELETE paired device replay (2026-11-01, scoped PASS; SEP-10 PARTIAL / HOLD)
+
+- 新增 `nativeAndClearFormalReplaceDeleteProposalsMatchAfterScopedApproval`，在 API 35 Android 15 `emulator-5570`（WebView `124.0.6367.219`）中，以相同两条正式 MEMO 及本机 loopback stub 分别运行 Native Compose 和打包 Clear WebView。两端在审核/授权前 Store 快照与正式记录不变；Native 用户确认和 Clear Host 二次确认后，两端均只替换目标并递增 revision、只删除指定目标，最终正式记录相同。每侧提交数 +2，已结案提案记录 +2，pending 为 0，identity 与序号水位不变。Clear 的 AI tab 和发送操作由触屏事件驱动；没有调用真实 Provider。
+- 配对方法 **1/1 PASS**；AI proposal WebView 仪器类 **9/9 PASS**。强制 JVM 回归 **786/786，125 suites，0 failure/error/skip，67/67 tasks**；边界/Debug 构建/lint 门禁 **PASS**（171 actionable tasks，11 executed，160 up-to-date；lint 0 errors / 56 warnings）；Skin Studio Python 回归 **65/65 PASS**。Debug APK `66,535,987 bytes`，SHA-256 `EF85EA15AB31353F9A26C3EEEC3B5DBFC9CEB38BC73069752F7AB66F85965650`；AndroidTest APK `3,517,304 bytes`，SHA-256 `8A2A7DC15A6967CE9CA73CC48E5B5E0119DA391A72245474D73E3D43A444433B`。
+- 设备 XML SHA-256 `5B2EEBA0F79711830CE1D35C9254D9C4021244A66B67435846494B01DBFD0525`；配对 logcat SHA-256 `6210961F6F6127E3814B5FC4AD249EF6448CE87845E6B783D4BC2B30A2827C7F`；全门禁/JVM rerun/Studio 日志 SHA-256 分别为 `4C1F7FA1454A7CABB5E0418CCFCAC8A3F99196279D440BFADCAA83C59502946F`、`8B1FDF486430C98FEFA8FB1B0C8B545BC75ADDFFE3C91F2E12E469E539685FEB`、`CCFF81A58F062B5B0629A261271828284D826FFEB1E7A04F2C9F3EF81F54AD77`。本机细节与日志位于忽略目录 `.local/android-test/reports/sep10-native-clear-replace-delete-parity-api35-20261101/`。详见 [AI REPLACE/DELETE Issue](../issues/PC-ISSUE-SEPARATION-AI-REPLACE-DELETE.md) 与 [功能等价矩阵](../SKIN_SEPARATION_PARITY_MATRIX_2026-10-27.md)。
+- 这只关闭 SEP-10 的正式 REPLACE+DELETE 双端审核/写入切片；未覆盖其余决策/部分失败组合、进程死亡恢复、Studio 编辑此 UI/任意皮肤重构、实时 Provider、TalkBack 或实体/OEM。没有改生产代码、Core、Bridge、Clear、Studio 或 Native fallback，SEP-10 仍为 **PARTIAL / HOLD**。
+
 ## Separation — SEP-06 Native/Clear repeated-scope paired device replay (2026-10-31, focused JVM/API35 TESTED; PARTIAL / HOLD)
 
 - 新增 `WebSkinRecurringScopeParityInstrumentedTest`：同一隔离每日 ALARM 分别通过 Native 月历/编辑器 UI 和真实打包 Clear WebView 执行 `THIS_AND_FUTURE`、`WHOLE_SERIES`。Clear 月历事件使用 Android `SOURCE_TOUCHSCREEN` 注入，可信点击轨迹携带原始键 `2026-10-31T09:00`。Host 取消审核时正式 Store 不变；再次由 Host 确认后保存。两种范围下 Native/Clear 的记录、表单、revision、实例键、身份数、序号水位、草稿、提交及待处理数均相等。
