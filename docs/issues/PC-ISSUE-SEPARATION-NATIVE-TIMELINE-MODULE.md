@@ -1,6 +1,6 @@
 # Native Timeline renderer module boundary
 
-**Status:** CODE COMPLETE; full automated JVM/build gate TESTED; Android device interaction NOT TESTED. This closes only the Native Timeline module slice. Native separation remains in progress.
+**Status:** CODE COMPLETE; full automated JVM/build gate and selected API 35 Native Compose device slices TESTED; SEP-01 remains PARTIAL / HOLD. This closes only the Native Timeline module boundary, not full timeline parity.
 
 ## Root cause and change
 
@@ -45,6 +45,19 @@ Full-gate log: `.local/android-test/reports/separation-native-timeline-module-20
 ```
 
 `adb devices -l` and `emulator -list-avds` returned no device/AVD during the audit. Android instrumentation and physical-device UI interaction are NOT TESTED.
+
+## Native-only API 35 device follow-up (2026-10-31)
+
+Using the same production Native Timeline source at commit `2f55ec672421125ec6fe7a25847a9baffc36c526`, four Native Compose instrumentation cases passed on Android 15 / API 35 `emulator-5570`; these tests do not launch Clear or modify Clear production code:
+
+- `TimelineSmallScreenInstrumentedTest` **1/1 PASS**: portrait small viewport, sub-pixel event hit target vs true visual geometry, full-title accessibility, and both title/event taps.
+- `TimelineDateOnlyDeadlineAccessibilityInstrumentedTest` **1/1 PASS**: date-only DEADLINE remains date-precise and accessible at 4h, 24h and 48h zoom; opening preserves the date and null exact-time value.
+- `TimelineSystemFontScaleInstrumentedTest` **1/1 PASS** with actual system font scale **2.0**: timeline actions remain within the viewport and invoke their callbacks.
+- `TimelineForcedLandscapeInstrumentedTest` **1/1 PASS** at a temporary logical display size of **2400×1080**: greedy visible title leads do not overlap; hidden titles remain absent while hidden event hit targets and accessible titles remain available. The test asserts screenshot generation. This verifies a landscape-sized layout, not sensor rotation or OEM behavior.
+
+Font scale, accelerometer/user rotation settings and display size were restored after the runs (`1.0`, auto-rotation enabled / user rotation 0, physical `1080×2400`). The final four-case result is **4/4 PASS**. Logs and SHA-256 values are recorded in `.local/android-test/reports/sep08-deck-lifecycle-parity-20261031/native-timeline-*.log`; manifest `native-timeline-device-manifest-2f55ec6.json`, SHA-256 `1FBB183EE27D700A82AB0A784BE7796F80A9BF4E017F85CEC4DCA752B8D8804C`.
+
+This adds device evidence for the tested Native slices only. Matched Native/Skin gestures, all accessibility paths, real system/OEM orientation handling and physical-device behavior remain unverified; SEP-01 remains **PARTIAL / HOLD**. No Clear production files or runtime were changed or exercised by this follow-up.
 
 ## Git
 
