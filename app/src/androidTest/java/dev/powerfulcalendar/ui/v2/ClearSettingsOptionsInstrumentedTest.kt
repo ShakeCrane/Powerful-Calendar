@@ -29,12 +29,15 @@ import androidx.activity.compose.setContent
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import dev.powerfulcalendar.core.BackupEnvelope
@@ -1269,6 +1272,139 @@ class ClearSettingsOptionsInstrumentedTest {
                 restoreConsent.remove("provider-scope")
             }
             check(restoreConsent.commit())
+            val restoreOnboarding = onboarding.edit()
+            if (hadOnboardingFlag) {
+                restoreOnboarding.putBoolean("system-calendar-import-asked", originalOnboardingFlag)
+            } else {
+                restoreOnboarding.remove("system-calendar-import-asked")
+            }
+            check(restoreOnboarding.commit())
+        }
+    }
+
+    @Test
+    fun nativeAndClearProtectedProfileSaveMatchThroughHostTools() {
+        assumeTrue("profile parity test requires an isolated Android emulator",
+            Build.HARDWARE == "ranchu" || Build.HARDWARE == "goldfish")
+        val context = compose.activity.applicationContext
+        val databaseName = "native-clear-profile-${UUID.randomUUID()}.db"
+        val store = PowerStore(context, databaseName)
+        val skinManager = SkinPackageManager(context)
+        val originalSkin = skinManager.currentId()
+        val profile = context.getSharedPreferences("powercal-profile", Context.MODE_PRIVATE)
+        val hadDisplayName = profile.contains("displayName")
+        val originalDisplayName = profile.getString("displayName", null)
+        val onboarding = context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+        val hadOnboardingFlag = onboarding.contains("system-calendar-import-asked")
+        val originalOnboardingFlag = onboarding.getBoolean("system-calendar-import-asked", false)
+        val baseName = "PC Profile Base ${UUID.randomUUID()}"
+        val savedName = "PC Profile Saved ${UUID.randomUUID()}"
+        val beforeStore = listOf(
+            store.all(), store.draftCount(), store.pendingCount(), store.commitCount(),
+            store.identityCount(), store.nextSequencePreview()
+        )
+
+        fun setBaseProfile() {
+            assertTrue(profile.edit().putString("displayName", baseName).commit())
+        }
+
+        fun profileNameField() = compose.onNode(hasSetTextAction())
+
+        fun saveProfileFromHostTools() {
+            compose.onNodeWithText("个人信息").assertExists()
+            val nameField = profileNameField()
+            assertEquals(baseName, nameField.fetchSemanticsNode()
+                .config[SemanticsProperties.EditableText].text)
+            nameField.performTextReplacement(savedName)
+            compose.onNodeWithText("保存个人信息").performScrollTo().performClick()
+            compose.waitUntil(10_000) { profile.getString("displayName", null) == savedName }
+            assertEquals("Profile form must leave calendar data unchanged", beforeStore, listOf(
+                store.all(), store.draftCount(), store.pendingCount(), store.commitCount(),
+                store.identityCount(), store.nextSequencePreview()
+            ))
+        }
+
+        fun openNativeTools() {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+                skinManager.select("powercal-default")
+                compose.activity.setContent { PowerCalTheme { PowerCalApp(store) } }
+            }
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithText("时间轴").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText("设置").performClick()
+            compose.waitUntil(10_000) {
+                compose.onAllNodesWithText("工具与设置").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText("个人信息").assertExists()
+        }
+
+        fun openClearNativeRecoveryTools() {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+                skinManager.select("powercal-clear-default")
+                compose.activity.setContent { PowerCalTheme { PowerCalApp(store) } }
+            }
+            var web: WebView? = null
+            compose.waitUntil(30_000) {
+                compose.runOnUiThread {
+                    web = findWebView(compose.activity.findViewById(android.R.id.content))
+                }
+                web != null
+            }
+            val view = requireNotNull(web)
+            compose.waitUntil(20_000) {
+                evaluate(view, "!!window.PowerCalSkin?.receive") == "true"
+            }
+            tapWebSelector(view, ".clear-tabbar [data-action=settings]")
+            compose.waitUntil(15_000) {
+                WebSkinBridgeRuntime.state().optString("page") == "SETTINGS"
+            }
+            tapWebSelector(view, "#nativeRecoverySettings")
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithText("个人信息").fetchSemanticsNodes().isNotEmpty()
+            }
+            assertEquals("Clear selection remains active in the explicit Native recovery tools",
+                "powercal-clear-default", skinManager.currentId())
+            val projection = WebSkinBridgeRuntime.state().toString()
+            assertFalse("Protected profile value must not be projected into Bridge state",
+                projection.contains(baseName) || projection.contains(savedName) ||
+                    projection.contains("displayName"))
+        }
+
+        try {
+            assertTrue(onboarding.edit().putBoolean("system-calendar-import-asked", true).commit())
+            setBaseProfile()
+            openNativeTools()
+            saveProfileFromHostTools()
+
+            setBaseProfile()
+            openClearNativeRecoveryTools()
+            saveProfileFromHostTools()
+            assertEquals("Native and Clear-reachable Host tools save the same profile value",
+                savedName, profile.getString("displayName", null))
+            println("SEP11_NATIVE_CLEAR_PROFILE_SETTINGS_PARITY nativeSaved=true " +
+                "clearRecoverySaved=true valueHostOwned=true selectedSkinPreserved=true " +
+                "storeUnchanged=true")
+        } finally {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            store.close()
+            context.deleteDatabase(databaseName)
+            skinManager.select(originalSkin)
+            val restoreProfile = profile.edit()
+            if (hadDisplayName && originalDisplayName != null) {
+                restoreProfile.putString("displayName", originalDisplayName)
+            } else {
+                restoreProfile.remove("displayName")
+            }
+            check(restoreProfile.commit())
             val restoreOnboarding = onboarding.edit()
             if (hadOnboardingFlag) {
                 restoreOnboarding.putBoolean("system-calendar-import-asked", originalOnboardingFlag)
