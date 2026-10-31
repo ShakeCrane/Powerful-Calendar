@@ -17,6 +17,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onAllNodesWithContentDescription
@@ -1178,6 +1180,163 @@ class WebSkinAllKindsTrustedWriteInstrumentedTest {
                 assertEquals(0, store.pendingCount())
             }
             println("NATIVE_CLEAR_PARITY operation=DELETE kind=MEMO eventSeq=${clearTombstone.eventSeq} " +
+                "revision=${clearTombstone.revision} commits=${clearStore.commitCount()} " +
+                "identities=${clearStore.identityCount()} sequence=${clearStore.nextSequencePreview()} " +
+                "cancelTouch=$cancelTouch approveTouch=$approveTouch tombstone=${DraftForm.from(clearTombstone)}")
+        } finally {
+            resetClear()
+            nativeStore.close()
+            clearStore.close()
+            nativeContext.deleteDatabase(nativeDatabase)
+            clearContext.deleteDatabase(clearDatabase)
+            listOf(nativeNamespace, clearNamespace).forEach { namespace ->
+                listOf("powercal-onboarding", "powercal-skin-choice", "powercal-ui", "powercal-profile")
+                    .forEach { storage.deleteSharedPreferences("$namespace-$it") }
+                File(storage.cacheDir, namespace).deleteRecursively()
+            }
+        }
+    }
+
+    @Test
+    fun sameFormalActivityDeleteProducesEquivalentNativeAndClearTombstones() {
+        val storage = compose.activity.applicationContext
+        val nativeNamespace = "pc-native-clear-activity-delete-native-${UUID.randomUUID()}"
+        val clearNamespace = "pc-native-clear-activity-delete-clear-${UUID.randomUUID()}"
+        val nativeContext = IsolatedAppContext(compose.activity, storage, nativeNamespace)
+        val clearContext = IsolatedAppContext(compose.activity, storage, clearNamespace)
+        val nativeDatabase = "activity-delete-parity-native.db"
+        val clearDatabase = "activity-delete-parity-clear.db"
+        val nativeStore = PowerStore(nativeContext, nativeDatabase)
+        val clearStore = PowerStore(clearContext, clearDatabase)
+        var web: WebView? = null
+        try {
+            val zone = ZoneId.systemDefault()
+            val start = ZonedDateTime.now(zone).plusMinutes(20).withSecond(0).withNano(0)
+            val seed = DraftForm(
+                kind = TemporalKind.ACTIVITY,
+                title = "Native/Clear delete parity Activity",
+                startText = DraftForm.formatInstant(start.toInstant().toEpochMilli(), zone),
+                endText = DraftForm.formatInstant(start.plusHours(1).toInstant().toEpochMilli(), zone),
+                zoneId = zone.id,
+                reminderMinutes = -1
+            )
+            val nativeCreated = nativeStore.createFormalEvent(seed, "activity-delete-parity-seed")
+                as PowerStore.CommitOutcome.Committed
+            val clearCreated = clearStore.createFormalEvent(seed, "activity-delete-parity-seed")
+                as PowerStore.CommitOutcome.Committed
+            val nativeOriginal = requireNotNull(nativeStore.get(nativeCreated.eventSeq))
+            val clearOriginal = requireNotNull(clearStore.get(clearCreated.eventSeq))
+            assertEquals(DraftForm.from(nativeOriginal), DraftForm.from(clearOriginal))
+            assertEquals(nativeOriginal.eventSeq, clearOriginal.eventSeq)
+            assertEquals(nativeOriginal.revision, clearOriginal.revision)
+            listOf(nativeStore, clearStore).forEach { store ->
+                assertEquals(1L, store.commitCount())
+                assertEquals(1, store.identityCount())
+                assertEquals(0L, store.draftCount())
+                assertEquals(0, store.pendingCount())
+                assertEquals(2L, store.nextSequencePreview())
+            }
+
+            nativeContext.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                .edit().putBoolean("system-calendar-import-asked", true).commit()
+            SkinPackageManager(nativeContext).selectNativeForEmergencyRecovery()
+            compose.runOnUiThread {
+                compose.activity.setContent {
+                    CompositionLocalProvider(LocalContext provides nativeContext) {
+                        PowerCalTheme { PowerCalApp(nativeStore) }
+                    }
+                }
+            }
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithContentDescription("今日 · 复位为全天")
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithContentDescription("今日 · 复位为全天").performClick()
+            val eventMatcher = hasContentDescription(seed.title, substring = true) and hasClickAction()
+            compose.waitUntil(30_000) {
+                compose.onAllNodes(eventMatcher).fetchSemanticsNodes().size == 1
+            }
+            compose.onNode(eventMatcher).performClick()
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithText("删除事件").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText("删除事件").performTouchInput { click() }
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithText("确认删除事件？").fetchSemanticsNodes().isNotEmpty()
+            }
+            assertEquals("Native Activity delete review does not write", nativeOriginal,
+                nativeStore.get(nativeOriginal.eventSeq))
+            assertEquals(1L, nativeStore.commitCount())
+            compose.onNodeWithText("取消").performTouchInput { click() }
+            compose.waitUntil(10_000) {
+                compose.onAllNodesWithText("确认删除事件？").fetchSemanticsNodes().isEmpty()
+            }
+            assertEquals("Native Activity cancellation preserves the formal event", nativeOriginal,
+                nativeStore.get(nativeOriginal.eventSeq))
+            assertEquals(1L, nativeStore.commitCount())
+
+            compose.onNodeWithText("删除事件").performTouchInput { click() }
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithText("确认删除事件？").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText("确认删除").performTouchInput { click() }
+            compose.waitUntil(30_000) {
+                nativeStore.get(nativeOriginal.eventSeq) == null &&
+                    nativeStore.isRetired(nativeOriginal.eventSeq)
+            }
+            val nativeTombstone = requireNotNull(nativeStore.getIncludingRetired(nativeOriginal.eventSeq))
+
+            resetClear()
+            web = launchClear(clearContext, clearStore)
+            val eventSelector = "[data-event-seq='${clearOriginal.eventSeq}']"
+            awaitJs(web, "!!document.querySelector(${JSONObject.quote(eventSelector)})")
+            evaluate(web, "document.querySelector(${JSONObject.quote(eventSelector)}).click();true")
+            awaitJs(web, "!document.querySelector('#skinSheet').hidden && " +
+                "document.querySelector('#sheetFields [data-field=title]')?.value===${JSONObject.quote(seed.title)}")
+
+            val cancelTouch = tapWebSelector(web, "#sheetActions [data-do=deleteEvent]")
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithText("确认删除正式事件").fetchSemanticsNodes().isNotEmpty()
+            }
+            assertEquals("Clear Activity review does not write before approval", clearOriginal,
+                clearStore.get(clearOriginal.eventSeq))
+            assertEquals(1L, clearStore.commitCount())
+            compose.onNodeWithText("取消").performTouchInput { click() }
+            compose.waitUntil(10_000) {
+                compose.onAllNodesWithText("确认删除正式事件").fetchSemanticsNodes().isEmpty()
+            }
+            assertEquals("Clear Activity cancellation preserves the formal event", clearOriginal,
+                clearStore.get(clearOriginal.eventSeq))
+            assertEquals(1L, clearStore.commitCount())
+
+            val approveTouch = tapWebSelector(web, "#sheetActions [data-do=deleteEvent]")
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithText("确认删除正式事件").fetchSemanticsNodes().isNotEmpty()
+            }
+            assertEquals(clearOriginal, clearStore.get(clearOriginal.eventSeq))
+            compose.onNodeWithText("确认删除").performTouchInput { click() }
+            compose.waitUntil(30_000) {
+                clearStore.get(clearOriginal.eventSeq) == null &&
+                    clearStore.isRetired(clearOriginal.eventSeq)
+            }
+            awaitJs(web, "document.querySelector('#skinSheet').hidden")
+            val clearTombstone = requireNotNull(clearStore.getIncludingRetired(clearOriginal.eventSeq))
+
+            assertEquals(DraftForm.from(nativeTombstone), DraftForm.from(clearTombstone))
+            assertEquals(nativeOriginal.eventSeq, clearTombstone.eventSeq)
+            assertEquals(nativeTombstone.revision, clearTombstone.revision)
+            assertEquals(nativeTombstone.revision, nativeOriginal.revision + 1)
+            for ((label, store) in listOf("Native" to nativeStore, "Clear" to clearStore)) {
+                assertTrue("$label must retain the same event as a restorable tombstone",
+                    store.isRetired(nativeOriginal.eventSeq))
+                assertEquals(2L, store.commitCount())
+                assertEquals("DELETE", store.history(nativeOriginal.eventSeq).first().operation)
+                assertEquals(1, store.identityCount())
+                assertEquals(2L, store.nextSequencePreview())
+                assertEquals(0L, store.draftCount())
+                assertEquals(0, store.pendingCount())
+            }
+            println("NATIVE_CLEAR_PARITY operation=DELETE kind=ACTIVITY eventSeq=${clearTombstone.eventSeq} " +
                 "revision=${clearTombstone.revision} commits=${clearStore.commitCount()} " +
                 "identities=${clearStore.identityCount()} sequence=${clearStore.nextSequencePreview()} " +
                 "cancelTouch=$cancelTouch approveTouch=$approveTouch tombstone=${DraftForm.from(clearTombstone)}")
