@@ -2886,6 +2886,230 @@ class ClearSettingsOptionsInstrumentedTest {
     }
 
     @Test
+    fun nativeAndClearBackupRestoreCancelAndRejectTamperedHashWithoutWrites() {
+        assumeTrue("DocumentsUI restore flow must run on an isolated Android emulator",
+            Build.HARDWARE == "ranchu" || Build.HARDWARE == "goldfish")
+        assumeTrue("Downloads MediaStore requires API 29+", Build.VERSION.SDK_INT >= 29)
+
+        val context = compose.activity.applicationContext
+        val sourceDatabase = "sep11-restore-failure-source-${UUID.randomUUID()}.db"
+        val targetDatabase = "sep11-restore-failure-target-${UUID.randomUUID()}.db"
+        val sourceStore = PowerStore(context, sourceDatabase)
+        val store = PowerStore(context, targetDatabase)
+        val skinManager = SkinPackageManager(context)
+        val originalSkin = skinManager.currentId()
+        val onboarding = context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+        val hadAskedForCalendarImport = onboarding.contains("system-calendar-import-asked")
+        val askedForCalendarImport = onboarding.getBoolean("system-calendar-import-asked", false)
+        val fixtureName = "powercal-qa-tampered-restore-${UUID.randomUUID()}.json"
+        var backupUri: Uri? = null
+        var web: WebView? = null
+
+        fun seedSourceMemo() {
+            val zone = ZoneId.of("Asia/Shanghai")
+            val draft = sourceStore.newDraft(DraftForm(
+                kind = TemporalKind.MEMO,
+                title = "SEP11_TAMPER_SOURCE_${UUID.randomUUID()}",
+                startText = LocalDate.now(zone).plusDays(2).toString(),
+                zoneId = zone.id,
+                trackingEnabled = true
+            ))
+            assertTrue("Synthetic backup source must commit",
+                sourceStore.commit(draft.draftId) is PowerStore.CommitOutcome.Committed)
+        }
+
+        fun persistentSnapshot(): List<Any?> {
+            val payload = BackupEnvelope.verify(store.exportBackup(), PowerStore.VERSION).payload
+            return listOf(
+                BackupEnvelope.canonicalJson(payload), store.all(), store.draftCount(),
+                store.pendingCount(), store.commitCount(), store.identityCount(),
+                store.nextSequencePreview()
+            )
+        }
+
+        fun mountNativeSettings() {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+                skinManager.select("powercal-default")
+                compose.activity.setContent { PowerCalTheme { PowerCalApp(store) } }
+            }
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithText("时间轴").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText("设置").performClick()
+            compose.onNodeWithText("工具与设置").assertExists()
+        }
+
+        fun mountClearSettings() {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+                skinManager.select("powercal-clear-default")
+                compose.activity.setContent { PowerCalTheme { PowerCalApp(store) } }
+            }
+            compose.waitUntil(30_000) {
+                compose.runOnUiThread {
+                    web = findWebView(compose.activity.findViewById(android.R.id.content))
+                }
+                web != null
+            }
+            val view = requireNotNull(web)
+            compose.waitUntil(30_000) {
+                evaluate(view, "!!window.PowerCalSkin && !!window.PowerCalSkin.receive") == "true"
+            }
+            tapWebSelector(view, ".clear-tabbar [data-action=settings]")
+            compose.waitUntil(15_000) {
+                WebSkinBridgeRuntime.state().optString("page") == "SETTINGS"
+            }
+        }
+
+        fun launchNativeRestore() {
+            compose.onNodeWithText("从备份恢复").performScrollTo().performClick()
+        }
+
+        fun launchClearRestore() {
+            tapWebSelector(requireNotNull(web),
+                "#settingsOptionGroups [data-option-id='data.backup.restore']")
+        }
+
+        fun cancelRestorePicker() {
+            waitForPickerNode(contentDescription = "Show roots")
+            val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+            assertEquals("The restore must be open in Android DocumentsUI",
+                "com.google.android.documentsui",
+                automation.rootInActiveWindow?.packageName?.toString())
+            assertTrue("Android Back must cancel the open restore picker",
+                automation.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK))
+            compose.waitUntil(30_000) {
+                automation.rootInActiveWindow?.packageName?.toString() == compose.activity.packageName
+            }
+        }
+
+        fun selectTamperedBackup() {
+            val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+            tapPickerNode(waitForPickerNode(contentDescription = "Show roots"))
+            tapPickerNode(waitForPickerNode(text = "Downloads"))
+            tapPickerNode(waitForPickerNode(text = fixtureName))
+            val deadline = SystemClock.elapsedRealtime() + 15_000
+            var openActionClicked = false
+            while (SystemClock.elapsedRealtime() < deadline && !openActionClicked) {
+                val root = automation.rootInActiveWindow
+                if (root?.packageName?.toString() != "com.google.android.documentsui") break
+                val open = findAccessibilityNode(root, text = "OPEN")
+                    ?: findAccessibilityNode(root, text = "Open")
+                    ?: findAccessibilityNode(root, contentDescription = "Open")
+                    ?: findAccessibilityNode(root, viewId = "android:id/button1")
+                if (open != null) {
+                    tapPickerNode(open)
+                    openActionClicked = true
+                } else SystemClock.sleep(150)
+            }
+            compose.waitUntil(30_000) {
+                automation.rootInActiveWindow?.packageName?.toString() == compose.activity.packageName
+            }
+        }
+
+        try {
+            assertTrue(onboarding.edit().putBoolean("system-calendar-import-asked", true).commit())
+            seedSourceMemo()
+            val tamperedBackup = JSONObject(sourceStore.exportBackup().toString()).apply {
+                val payload = getJSONObject("payload")
+                payload.put("nextSeq", payload.getLong("nextSeq") + 1L)
+            }
+            assertTrue("Test fixture must fail the existing envelope hash verification",
+                runCatching { BackupEnvelope.verify(tamperedBackup, PowerStore.VERSION) }.isFailure)
+            val fixtureValues = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, fixtureName)
+                put(MediaStore.MediaColumns.MIME_TYPE, "application/json")
+                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/")
+            }
+            backupUri = requireNotNull(context.contentResolver.insert(
+                MediaStore.Downloads.EXTERNAL_CONTENT_URI, fixtureValues
+            )) { "Could not create isolated tampered backup fixture in Downloads" }
+            context.contentResolver.openOutputStream(backupUri!!)?.bufferedWriter(Charsets.UTF_8)?.use {
+                it.write(tamperedBackup.toString(2))
+            } ?: error("Could not write isolated tampered backup fixture")
+
+            val before = persistentSnapshot()
+            assertTrue("Refusal target must begin empty", store.all().isEmpty())
+            assertEquals(0, store.pendingCount())
+            assertEquals(0L, store.commitCount())
+            assertEquals(0L, store.identityCount())
+
+            mountNativeSettings()
+            launchNativeRestore()
+            cancelRestorePicker()
+            assertEquals("Native picker cancellation must not write the target Store",
+                before, persistentSnapshot())
+            assertTrue("Native cancellation must not display a restore failure",
+                compose.onAllNodesWithText("恢复失败：", substring = true)
+                    .fetchSemanticsNodes().isEmpty())
+
+            launchNativeRestore()
+            selectTamperedBackup()
+            compose.waitUntil(20_000) {
+                compose.onAllNodesWithText("恢复失败：备份完整性校验失败", substring = true)
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+            assertEquals("Native hash rejection must leave the empty target unchanged",
+                before, persistentSnapshot())
+
+            mountClearSettings()
+            launchClearRestore()
+            cancelRestorePicker()
+            assertEquals("Clear picker cancellation must not write the target Store",
+                before, persistentSnapshot())
+            val clearStateAfterCancel = WebSkinBridgeRuntime.state()
+            assertTrue("Clear cancellation must not produce a Host failure notice",
+                clearStateAfterCancel.isNull("hostNotice") ||
+                    clearStateAfterCancel.optString("hostNotice").isBlank())
+
+            launchClearRestore()
+            selectTamperedBackup()
+            val clearView = requireNotNull(web)
+            compose.waitUntil(20_000) {
+                evaluate(clearView, "document.getElementById('hostNotice')?.textContent||''")
+                    .contains("恢复失败：备份完整性校验失败")
+            }
+            assertEquals("Clear hash rejection must leave the empty target unchanged",
+                before, persistentSnapshot())
+            assertTrue("The tampered backup source record must not be restored",
+                store.all().isEmpty())
+
+            println("SEP11_NATIVE_CLEAR_RESTORE_CANCEL_AND_HASH_REFUSAL " +
+                "nativeCancelNoWrite=true clearCancelNoWrite=true nativeHashRejected=true " +
+                "clearHashRejected=true snapshotUnchanged=true trustedClearTouch=true")
+        } finally {
+            val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+            repeat(2) {
+                if (automation.rootInActiveWindow?.packageName?.toString() == "com.google.android.documentsui") {
+                    automation.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+                    SystemClock.sleep(200)
+                }
+            }
+            backupUri?.let { runCatching { context.contentResolver.delete(it, null, null) } }
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            sourceStore.close()
+            store.close()
+            context.deleteDatabase(sourceDatabase)
+            context.deleteDatabase(targetDatabase)
+            skinManager.select(originalSkin)
+            val restoreOnboarding = onboarding.edit()
+            if (hadAskedForCalendarImport) {
+                restoreOnboarding.putBoolean("system-calendar-import-asked", askedForCalendarImport)
+            } else {
+                restoreOnboarding.remove("system-calendar-import-asked")
+            }
+            restoreOnboarding.commit()
+        }
+    }
+
+    @Test
     fun clearIcsExportUsesDocumentsUiAndContainsOnlyActivitySnapshots() {
         assumeTrue("DocumentsUI export flow must run on an isolated Android emulator",
             Build.HARDWARE == "ranchu" || Build.HARDWARE == "goldfish")
