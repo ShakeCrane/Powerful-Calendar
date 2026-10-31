@@ -968,6 +968,157 @@ class WebSkinAllKindsTrustedWriteInstrumentedTest {
     }
 
     @Test
+    fun sameEmptyAlarmActivityAndDeadlineFixturesProduceEquivalentNativeAndClearRecords() {
+        val storage = compose.activity.applicationContext
+        val nativeNamespace = "pc-native-clear-create-parity-native-${UUID.randomUUID()}"
+        val clearNamespace = "pc-native-clear-create-parity-clear-${UUID.randomUUID()}"
+        val nativeContext = IsolatedAppContext(compose.activity, storage, nativeNamespace)
+        val clearContext = IsolatedAppContext(compose.activity, storage, clearNamespace)
+        val nativeDatabase = "create-parity-native.db"
+        val clearDatabase = "create-parity-clear.db"
+        val nativeStore = PowerStore(nativeContext, nativeDatabase)
+        val clearStore = PowerStore(clearContext, clearDatabase)
+        val kinds = listOf(TemporalKind.ALARM, TemporalKind.ACTIVITY, TemporalKind.DEADLINE)
+        val nativeRecords = linkedMapOf<TemporalKind, TemporalRecord>()
+        var web: WebView? = null
+        try {
+            listOf(nativeStore, clearStore).forEach { store ->
+                assertTrue("each renderer starts from the same empty business fixture", store.all().isEmpty())
+                assertEquals(0L, store.commitCount())
+                assertEquals(0L, store.identityCount())
+                assertEquals(1L, store.nextSequencePreview())
+                assertEquals(0L, store.draftCount())
+            }
+
+            nativeContext.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                .edit().putBoolean("system-calendar-import-asked", true).commit()
+            SkinPackageManager(nativeContext).selectNativeForEmergencyRecovery()
+            compose.runOnUiThread {
+                compose.activity.setContent {
+                    CompositionLocalProvider(LocalContext provides nativeContext) {
+                        PowerCalTheme { PowerCalApp(nativeStore) }
+                    }
+                }
+            }
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithContentDescription("新建事件").fetchSemanticsNodes().isNotEmpty()
+            }
+
+            val nativeLabels = mapOf(
+                TemporalKind.ALARM to "闹钟",
+                TemporalKind.ACTIVITY to "活动",
+                TemporalKind.DEADLINE to "截止"
+            )
+            for ((index, kind) in kinds.withIndex()) {
+                val title = "Native/Clear create parity ${kind.name}"
+                compose.onNodeWithContentDescription("新建事件").performClick()
+                val kindOption = hasText(requireNotNull(nativeLabels[kind])) and hasClickAction()
+                compose.waitUntil(10_000) {
+                    compose.onAllNodes(kindOption).fetchSemanticsNodes().isNotEmpty()
+                }
+                compose.onNode(kindOption).performClick()
+                compose.waitUntil(30_000) {
+                    compose.onAllNodes(hasSetTextAction() and hasText("标题"))
+                        .fetchSemanticsNodes().isNotEmpty()
+                }
+                compose.onNode(hasSetTextAction() and hasText("标题")).performTextInput(title)
+                compose.waitUntil(30_000) {
+                    compose.onAllNodesWithText("发布").fetchSemanticsNodes().isNotEmpty()
+                }
+                assertEquals("opening and filling Native $kind remains transient", index.toLong(), nativeStore.commitCount())
+                assertEquals(index.toLong(), nativeStore.identityCount())
+                assertEquals(0L, nativeStore.draftCount())
+                compose.onNodeWithText("发布").performTouchInput { click() }
+                compose.waitUntil(30_000) {
+                    nativeStore.all().size == index + 1 && nativeStore.all().lastOrNull()?.title == title
+                }
+                val record = nativeStore.all().last()
+                assertEquals(kind, record.kind)
+                assertEquals(index + 1L, record.eventSeq)
+                assertEquals(1, record.revision)
+                assertEquals(index + 1L, nativeStore.commitCount())
+                assertEquals(index + 1L, nativeStore.identityCount())
+                assertEquals(index + 2L, nativeStore.nextSequencePreview())
+                assertEquals(0L, nativeStore.draftCount())
+                nativeRecords[kind] = record
+            }
+
+            resetClear()
+            web = launchClear(clearContext, clearStore)
+            for ((index, kind) in kinds.withIndex()) {
+                val nativeRecord = requireNotNull(nativeRecords[kind])
+                val nativeForm = DraftForm.from(nativeRecord)
+                val title = nativeRecord.title
+                evaluate(web, "document.querySelector('[data-action=createDraft]').click();true")
+                awaitJs(web, "!!document.querySelector('#timelineCreateDialog[open]')")
+                evaluate(web, "document.querySelector('[data-timeline-create-kind=${JSONObject.quote(kind.name)}]').click();true")
+                awaitJs(web, "!document.querySelector('#skinSheet').hidden && " +
+                    "!!document.querySelector('#sheetFields [data-field=title]')")
+                editTitle(web, title)
+
+                // Native and Clear open their defaults at different instants. Match the actual
+                // Native form's visible time fields so this compares identical user input.
+                listOf("startText" to nativeForm.startText, "endText" to nativeForm.endText)
+                    .filter { (_, value) -> value.isNotEmpty() }
+                    .forEach { (field, value) ->
+                        val selector = "#sheetFields [data-field=${JSONObject.quote(field)}]"
+                        evaluate(web, "(()=>{const input=document.querySelector(${JSONObject.quote(selector)});" +
+                            "if(!input)return false;input.value=${JSONObject.quote(value)};" +
+                            "input.dispatchEvent(new Event('change',{bubbles:true}));return true})()")
+                        awaitJs(web, "document.querySelector(${JSONObject.quote(selector)})?.value===" +
+                            "${JSONObject.quote(value)}")
+                    }
+
+                assertEquals("Clear $kind remains transient before Host review", index.toLong(), clearStore.commitCount())
+                assertEquals(index.toLong(), clearStore.identityCount())
+                assertEquals(index, clearStore.all().size)
+                assertEquals(0L, clearStore.draftCount())
+                evaluate(web, "document.querySelector('#sheetSave').click();true")
+                compose.waitUntil(30_000) {
+                    compose.onAllNodesWithText("确认发布正式事件").fetchSemanticsNodes().isNotEmpty()
+                }
+                assertEquals("Host review must not write the Clear $kind candidate", index, clearStore.all().size)
+                assertEquals(index.toLong(), clearStore.commitCount())
+                assertEquals(index.toLong(), clearStore.identityCount())
+                assertEquals(index + 1L, clearStore.nextSequencePreview())
+                compose.onNodeWithText("确认").performClick()
+                compose.waitUntil(30_000) {
+                    clearStore.all().size == index + 1 && clearStore.all().lastOrNull()?.title == title
+                }
+                awaitJs(web, "document.querySelector('#skinSheet').hidden")
+                val clearRecord = clearStore.all().last()
+                assertEquals(kind, clearRecord.kind)
+                assertEquals(nativeRecord.eventSeq, clearRecord.eventSeq)
+                assertEquals(nativeRecord.revision, clearRecord.revision)
+                assertEquals("same $kind input through Native and Clear must persist the same business form",
+                    nativeForm, DraftForm.from(clearRecord))
+                assertEquals(index + 1L, clearStore.commitCount())
+                assertEquals(index + 1L, clearStore.identityCount())
+                assertEquals(index + 2L, clearStore.nextSequencePreview())
+                assertEquals(0L, clearStore.draftCount())
+                assertEquals(0, clearStore.pendingCount())
+                println("NATIVE_CLEAR_PARITY operation=CREATE kind=$kind eventSeq=${clearRecord.eventSeq} " +
+                    "revision=${clearRecord.revision} commits=${clearStore.commitCount()} " +
+                    "identities=${clearStore.identityCount()} sequence=${clearStore.nextSequencePreview()} " +
+                    "businessForm=${DraftForm.from(clearRecord)}")
+            }
+            assertEquals(kinds.map { DraftForm.from(requireNotNull(nativeRecords[it])) },
+                kinds.map { kind -> DraftForm.from(requireNotNull(clearStore.get(requireNotNull(nativeRecords[kind]).eventSeq))) })
+        } finally {
+            resetClear()
+            nativeStore.close()
+            clearStore.close()
+            nativeContext.deleteDatabase(nativeDatabase)
+            clearContext.deleteDatabase(clearDatabase)
+            listOf(nativeNamespace, clearNamespace).forEach { namespace ->
+                listOf("powercal-onboarding", "powercal-skin-choice", "powercal-ui", "powercal-profile")
+                    .forEach { storage.deleteSharedPreferences("$namespace-$it") }
+                File(storage.cacheDir, namespace).deleteRecursively()
+            }
+        }
+    }
+
+    @Test
     fun sameFormalMemoFixtureProducesEquivalentEditedRevisionFromNativeAndClear() {
         val storage = compose.activity.applicationContext
         val nativeNamespace = "pc-native-clear-memo-edit-native-${UUID.randomUUID()}"
