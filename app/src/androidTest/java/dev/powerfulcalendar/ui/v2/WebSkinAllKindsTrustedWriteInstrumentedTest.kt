@@ -610,4 +610,118 @@ class WebSkinAllKindsTrustedWriteInstrumentedTest {
             File(storage.cacheDir, namespace).deleteRecursively()
         }
     }
+
+    @Test
+    fun clearFormalEditHostApprovalRejectsAConcurrentCompletionRevision() {
+        val storage = compose.activity.applicationContext
+        val namespace = "pc-clear-formal-review-race-${UUID.randomUUID()}"
+        val context = IsolatedAppContext(compose.activity, storage, namespace)
+        val database = "formal-review-race.db"
+        val store = PowerStore(context, database)
+        val zone = ZoneId.systemDefault()
+        val created = store.createFormalEvent(
+            DraftForm(kind = TemporalKind.MEMO, title = "Concurrent base", zoneId = zone.id),
+            "formal-review-race-$namespace"
+        ) as PowerStore.CommitOutcome.Committed
+        val original = requireNotNull(store.get(created.eventSeq))
+        val web: WebView
+        try {
+            web = launchClear(context, store)
+            evaluate(web, "document.querySelector('.clear-tabbar [data-action=memo]').click();true")
+            awaitJs(web, "!document.querySelector('#memoPage').hidden")
+            awaitJs(web, "!!document.querySelector(\"#memoList .memo-title[data-event-seq='${original.eventSeq}']\")")
+            evaluate(web, "document.querySelector(\"#memoList .memo-title[data-event-seq='${original.eventSeq}']\").click();true")
+            awaitJs(web, "!document.querySelector('#skinSheet').hidden && " +
+                "document.querySelector('#sheetFields [data-field=title]')?.value===${JSONObject.quote(original.title)}")
+            editTitle(web, "Skin review proposal")
+            evaluate(web, "document.querySelector('#sheetSave').click();true")
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithText("确认保存正式事件修改").fetchSemanticsNodes().isNotEmpty()
+            }
+            assertEquals("opening Host review must not write the proposal", original,
+                store.get(original.eventSeq))
+
+            val commitsBeforeConcurrentWrite = store.commitCount()
+            assertTrue("the independent completion write should advance the record version",
+                store.setCompleted(original.eventSeq, "single", true, original.revision))
+            val concurrent = requireNotNull(store.get(original.eventSeq))
+            assertEquals(original.revision + 1, concurrent.revision)
+            assertEquals(original.title, concurrent.title)
+            assertTrue(concurrent.completedKeys.contains("single"))
+            assertEquals(commitsBeforeConcurrentWrite + 1, store.commitCount())
+
+            compose.onNodeWithText("确认").performClick()
+            awaitJs(web, "document.querySelector('#sheetStatus').textContent.includes('存在版本冲突')")
+            assertEquals("Host approval must reject the stale snapshot", concurrent,
+                store.get(original.eventSeq))
+            assertEquals("the proposed title must not replace the concurrent version",
+                original.title, store.get(original.eventSeq)?.title)
+            assertEquals("rejected Host review must add no commit",
+                commitsBeforeConcurrentWrite + 1, store.commitCount())
+            assertEquals(1, store.identityCount())
+            assertEquals(0, store.pendingCount())
+        } finally {
+            resetClear()
+            store.close()
+            context.deleteDatabase(database)
+            listOf("powercal-onboarding", "powercal-skin-choice", "powercal-ui", "powercal-profile")
+                .forEach { storage.deleteSharedPreferences("$namespace-$it") }
+            File(storage.cacheDir, namespace).deleteRecursively()
+        }
+    }
+
+    @Test
+    fun clearDeckHostApprovalRejectsAConcurrentDraftVersion() {
+        val storage = compose.activity.applicationContext
+        val namespace = "pc-clear-deck-review-race-${UUID.randomUUID()}"
+        val context = IsolatedAppContext(compose.activity, storage, namespace)
+        val database = "deck-review-race.db"
+        val store = PowerStore(context, database)
+        val pending = store.newDraft(
+            DraftForm(kind = TemporalKind.MEMO, title = "Pending base", zoneId = ZoneId.systemDefault().id)
+        )
+        var web: WebView? = null
+        try {
+            web = launchClear(context, store)
+            val commitsBeforeReview = store.commitCount()
+            val identitiesBeforeReview = store.identityCount()
+            val nextSequenceBeforeReview = store.nextSequencePreview()
+            evaluate(web, "document.querySelector('[data-action=openDeck]').click();true")
+            awaitJs(web, "!document.querySelector('#skinSheet').hidden && " +
+                "document.querySelector('#sheetFields [data-field=title]')?.value===${JSONObject.quote("Pending base")}")
+            editTitle(web, "Skin reviewed draft")
+            evaluate(web, "document.querySelector('#sheetSave').click();true")
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithText("确认发布正式事件").fetchSemanticsNodes().isNotEmpty()
+            }
+            assertTrue("Host review is read-only before approval", store.all().isEmpty())
+            val reviewedCard = requireNotNull(store.draft(pending.draftId))
+            assertEquals("Skin reviewed draft", reviewedCard.form.title)
+
+            val concurrentForm = reviewedCard.form.copy(title = "Concurrent draft revision")
+            val concurrentStage = store.stageDraft(
+                reviewedCard.draftId, concurrentForm, reviewedCard.draftVersion
+            )
+            assertTrue("test writer must advance the persisted candidate", concurrentStage is PowerStore.StageResult.Saved)
+            val concurrentCard = requireNotNull(store.draft(pending.draftId))
+            assertEquals(reviewedCard.draftVersion + 1, concurrentCard.draftVersion)
+            assertEquals("Concurrent draft revision", concurrentCard.form.title)
+
+            compose.onNodeWithText("确认").performClick()
+            awaitJs(web, "document.querySelector('#sheetStatus').textContent.includes('存在版本冲突')")
+            assertTrue("stale approval must not publish a formal event", store.all().isEmpty())
+            assertEquals(commitsBeforeReview, store.commitCount())
+            assertEquals(identitiesBeforeReview, store.identityCount())
+            assertEquals(nextSequenceBeforeReview, store.nextSequencePreview())
+            assertEquals("the concurrent candidate must remain pending",
+                concurrentCard, store.pendingDrafts().single())
+        } finally {
+            resetClear()
+            store.close()
+            context.deleteDatabase(database)
+            listOf("powercal-onboarding", "powercal-skin-choice", "powercal-ui", "powercal-profile")
+                .forEach { storage.deleteSharedPreferences("$namespace-$it") }
+            File(storage.cacheDir, namespace).deleteRecursively()
+        }
+    }
 }
