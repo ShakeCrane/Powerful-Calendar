@@ -34,6 +34,7 @@ import dev.powerfulcalendar.core.BackupEnvelope
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.TemporalKind
+import dev.powerfulcalendar.interop.IcsCodec
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -985,6 +986,196 @@ class ClearSettingsOptionsInstrumentedTest {
                 restoreOnboarding.remove("system-calendar-import-asked")
             }
             restoreOnboarding.commit()
+        }
+    }
+
+    @Test
+    fun clearIcsExportUsesDocumentsUiAndContainsOnlyActivitySnapshots() {
+        assumeTrue("DocumentsUI export flow must run on an isolated Android emulator",
+            Build.HARDWARE == "ranchu" || Build.HARDWARE == "goldfish")
+        assumeTrue("Downloads filesystem path requires API 29+", Build.VERSION.SDK_INT >= 29)
+
+        val context = compose.activity.applicationContext
+        val databaseName = "clear-ics-export-${UUID.randomUUID()}.db"
+        val store = PowerStore(context, databaseName)
+        val skinManager = SkinPackageManager(context)
+        val skinPreferences = context.getSharedPreferences("powercal-skin-choice", Context.MODE_PRIVATE)
+        val hadSkinSelection = skinPreferences.contains("selected")
+        val originalSkin = skinPreferences.getString("selected", skinManager.currentId())
+            ?: skinManager.currentId()
+        val onboarding = context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+        val hadOnboardingFlag = onboarding.contains("system-calendar-import-asked")
+        val originalOnboardingFlag = onboarding.getBoolean("system-calendar-import-asked", false)
+        val outputName = "powercal-qa-ics-${UUID.randomUUID()}.ics"
+        val outputPath = "/sdcard/Download/$outputName"
+        val zone = ZoneId.of("Asia/Shanghai")
+        val date = LocalDate.of(2035, 3, 4)
+        val start = date.atTime(9, 30).atZone(zone).toInstant().toEpochMilli()
+        val end = date.atTime(10, 45).atZone(zone).toInstant().toEpochMilli()
+        var saveActionInvoked = false
+
+        try {
+            fun createFormal(form: DraftForm): Long {
+                val result = store.createFormalEvent(form, "clear-ics-${UUID.randomUUID()}")
+                assertTrue("ICS fixture must be a committed formal event: $form",
+                    result is PowerStore.CommitOutcome.Committed)
+                return (result as PowerStore.CommitOutcome.Committed).eventSeq
+            }
+
+            val includedDisabledSeq = createFormal(DraftForm(
+                kind = TemporalKind.ACTIVITY,
+                title = "CLEAR_ICS_ACTIVITY_DISABLED",
+                startText = DraftForm.formatInstant(start, zone),
+                endText = DraftForm.formatInstant(end, zone),
+                enabled = false,
+                reminderMinutes = 15,
+                zoneId = zone.id
+            ))
+            createFormal(DraftForm(
+                kind = TemporalKind.ACTIVITY,
+                title = "CLEAR_ICS_ACTIVITY_ENABLED",
+                startText = DraftForm.formatInstant(start + 86_400_000L, zone),
+                endText = DraftForm.formatInstant(end + 86_400_000L, zone),
+                zoneId = zone.id
+            ))
+            createFormal(DraftForm(
+                kind = TemporalKind.ALARM,
+                title = "CLEAR_ICS_EXCLUDED_ALARM",
+                startText = DraftForm.formatInstant(start, zone),
+                zoneId = zone.id
+            ))
+            createFormal(DraftForm(
+                kind = TemporalKind.DEADLINE,
+                title = "CLEAR_ICS_EXCLUDED_DEADLINE",
+                endText = date.plusDays(2).toString(),
+                zoneId = zone.id
+            ))
+            createFormal(DraftForm(
+                kind = TemporalKind.MEMO,
+                title = "CLEAR_ICS_EXCLUDED_MEMO",
+                zoneId = zone.id
+            ))
+
+            val storeBefore = listOf(
+                store.all(), store.pendingCount(), store.commitCount(),
+                store.identityCount(), store.nextSequencePreview()
+            )
+
+            onboarding.edit().putBoolean("system-calendar-import-asked", true).commit()
+            PowerCalSkinRegistry.reset()
+            skinManager.select("powercal-clear-default")
+            compose.runOnUiThread {
+                compose.activity.setContent { PowerCalTheme { PowerCalApp(store) } }
+            }
+
+            var web: WebView? = null
+            compose.waitUntil(30_000) {
+                compose.runOnUiThread {
+                    web = findWebView(compose.activity.findViewById(android.R.id.content))
+                }
+                web != null
+            }
+            val view = requireNotNull(web)
+            compose.waitUntil(30_000) {
+                evaluate(view, "!!window.PowerCalSkin?.receive") == "true"
+            }
+            evaluate(view, "document.querySelector(" +
+                "'.clear-tabbar [data-action=settings]').click(); true")
+            compose.waitUntil(15_000) {
+                WebSkinBridgeRuntime.state().optString("page") == "SETTINGS"
+            }
+            evaluate(view, "Array.from(document.querySelectorAll(" +
+                "'#settingsOptionGroups [data-option-id]')).find(" +
+                "item=>item.dataset.optionId==='calendar.export.ics').click(); true")
+
+            val rootsButton = waitForPickerNode(contentDescription = "Show roots")
+            assertEquals("The export must use Android's actual DocumentsUI picker",
+                "com.google.android.documentsui",
+                InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow
+                    ?.packageName?.toString())
+            tapPickerNode(rootsButton)
+            tapPickerNode(waitForPickerNode(text = "Downloads"))
+            setPickerText(waitForPickerEditableNode(), outputName)
+
+            val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+            val deadline = SystemClock.elapsedRealtime() + 15_000
+            var save: AccessibilityNodeInfo? = null
+            while (SystemClock.elapsedRealtime() < deadline && save == null) {
+                val root = automation.rootInActiveWindow
+                save = findAccessibilityNode(root, text = "SAVE")
+                    ?: findAccessibilityNode(root, text = "Save")
+                    ?: findAccessibilityNode(root, contentDescription = "Save")
+                    ?: findAccessibilityNode(root, viewId = "android:id/button1")
+                if (save == null) SystemClock.sleep(150)
+            }
+            assertTrue("DocumentsUI Save action must be available", save != null)
+            tapPickerNode(requireNotNull(save))
+            saveActionInvoked = true
+
+            compose.waitUntil(30_000) {
+                automation.rootInActiveWindow?.packageName?.toString() == compose.activity.packageName
+            }
+            val descriptor = automation.executeShellCommand("cat $outputPath")
+            val ics = ParcelFileDescriptor.AutoCloseInputStream(descriptor)
+                .bufferedReader(Charsets.UTF_8).use { it.readText() }
+            assertTrue("The uniquely named ICS export must exist", ics.isNotBlank())
+            assertTrue("Export must have a VCALENDAR envelope", ics.startsWith("BEGIN:VCALENDAR\r\n"))
+            assertTrue("Export must close its VCALENDAR envelope", ics.endsWith("END:VCALENDAR\r\n"))
+            assertEquals("ICS output must contain exactly the two formal Activity records",
+                2, Regex("BEGIN:VEVENT").findAll(ics).count())
+            assertTrue("Disabled Activities remain included; ICS does not preserve enabled state",
+                ics.contains("UID:powercal-$includedDisabledSeq@local"))
+            assertFalse("ALARM records must not be exported", ics.contains("CLEAR_ICS_EXCLUDED_ALARM"))
+            assertFalse("DEADLINE records must not be exported", ics.contains("CLEAR_ICS_EXCLUDED_DEADLINE"))
+            assertFalse("MEMO records must not be exported", ics.contains("CLEAR_ICS_EXCLUDED_MEMO"))
+            assertFalse("Activity reminders are not represented in this ICS contract",
+                ics.contains("BEGIN:VALARM"))
+
+            val parsed = IcsCodec.parse(ics)
+            assertTrue("The exported ICS must parse without warnings: ${parsed.warnings}",
+                parsed.warnings.isEmpty())
+            assertEquals(setOf("CLEAR_ICS_ACTIVITY_DISABLED", "CLEAR_ICS_ACTIVITY_ENABLED"),
+                parsed.events.map { it.title }.toSet())
+            assertEquals("Exporting a snapshot must not mutate the Store", storeBefore, listOf(
+                store.all(), store.pendingCount(), store.commitCount(),
+                store.identityCount(), store.nextSequencePreview()
+            ))
+            println("CLEAR_ICS_EXPORT_VERIFIED=$outputName; eventCount=${parsed.events.size}; " +
+                "includedKinds=ACTIVITY; excludedKinds=ALARM,DEADLINE,MEMO; storeUnchanged=true")
+        } finally {
+            val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+            repeat(2) {
+                if (automation.rootInActiveWindow?.packageName?.toString() ==
+                    "com.google.android.documentsui"
+                ) {
+                    automation.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+                    SystemClock.sleep(200)
+                }
+            }
+            if (saveActionInvoked) {
+                val cleanup = automation.executeShellCommand("rm -f $outputPath")
+                ParcelFileDescriptor.AutoCloseInputStream(cleanup).close()
+            }
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            store.close()
+            context.deleteDatabase(databaseName)
+            if (hadSkinSelection) {
+                skinManager.select(originalSkin)
+            } else {
+                check(skinPreferences.edit().remove("selected").commit())
+                PowerCalSkinRegistry.reset()
+            }
+            val restoreOnboarding = onboarding.edit()
+            if (hadOnboardingFlag) {
+                restoreOnboarding.putBoolean("system-calendar-import-asked", originalOnboardingFlag)
+            } else {
+                restoreOnboarding.remove("system-calendar-import-asked")
+            }
+            check(restoreOnboarding.commit())
         }
     }
 
