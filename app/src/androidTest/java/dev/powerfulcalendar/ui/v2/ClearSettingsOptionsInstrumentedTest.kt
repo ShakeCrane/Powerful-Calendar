@@ -27,6 +27,9 @@ import android.webkit.WebView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -37,6 +40,8 @@ import dev.powerfulcalendar.core.BackupEnvelope
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.TemporalKind
+import dev.powerfulcalendar.ai.AiSettings
+import dev.powerfulcalendar.ai.AiSettingsStore
 import dev.powerfulcalendar.interop.IcsCodec
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -53,6 +58,7 @@ import java.time.ZoneId
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
+import kotlin.math.abs
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -932,6 +938,180 @@ class ClearSettingsOptionsInstrumentedTest {
                 restoreOnboarding.remove("system-calendar-import-asked")
             }
             restoreOnboarding.commit()
+        }
+    }
+
+    @Test
+    fun nativeAndClearAiContextPreferenceSaveAndReloadMatchWithoutProjectingSecret() {
+        assumeTrue("settings parity test requires an isolated Android emulator",
+            Build.HARDWARE == "ranchu" || Build.HARDWARE == "goldfish")
+        val context = compose.activity.applicationContext
+        val databaseName = "native-clear-ai-settings-${UUID.randomUUID()}.db"
+        val store = PowerStore(context, databaseName)
+        val skinManager = SkinPackageManager(context)
+        val originalSkin = skinManager.currentId()
+        val aiPreferences = context.getSharedPreferences("powercal-ai", Context.MODE_PRIVATE)
+        val originalAiSettings = AiSettingsStore.load(context)
+        val onboarding = context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+        val hadOnboardingFlag = onboarding.contains("system-calendar-import-asked")
+        val originalOnboardingFlag = onboarding.getBoolean("system-calendar-import-asked", false)
+        val secretSentinel = "PC_QA_SECRET_${UUID.randomUUID()}"
+        val initialSettings = AiSettings(
+            endpoint = "https://settings.example.invalid/v1",
+            model = "settings-parity-test",
+            apiKey = secretSentinel,
+            enabled = true,
+            shareContext = false
+        )
+        val expectedSettings = initialSettings.copy(shareContext = true)
+        val initialStoreSnapshot = listOf(
+            store.all(), store.draftCount(), store.pendingCount(), store.commitCount(),
+            store.identityCount(), store.nextSequencePreview()
+        )
+
+        fun shareContextSwitch() = run {
+            val label = compose.onNodeWithText("允许按次共享事件上下文")
+                .performScrollTo().fetchSemanticsNode()
+            val labelCenterY = label.boundsInRoot.center.y
+            val switches = compose.onAllNodes(isToggleable()).fetchSemanticsNodes()
+            assertTrue("AI settings must expose the context-sharing switch", switches.isNotEmpty())
+            val nearest = switches.withIndex().minByOrNull {
+                abs(it.value.boundsInRoot.center.y - labelCenterY)
+            } ?: throw AssertionError("AI context-sharing switch was not found")
+            val verticalDistance = abs(nearest.value.boundsInRoot.center.y - labelCenterY)
+            assertTrue("Context label must align with its switch: distance=$verticalDistance",
+                verticalDistance < 100f)
+            compose.onAllNodes(isToggleable())[nearest.index]
+        }
+
+        fun expandAiSettings() {
+            compose.onNodeWithText("单一 AI").assertExists()
+            val expand = compose.onAllNodesWithText("配置端点、模型与密钥")
+                .fetchSemanticsNodes().isNotEmpty()
+            if (expand) {
+                compose.onNodeWithText("配置端点、模型与密钥").performScrollTo().performClick()
+            } else {
+                compose.onNodeWithText("收起模型配置").assertExists()
+            }
+            compose.onNodeWithText("允许按次共享事件上下文").performScrollTo().assertExists()
+        }
+
+        fun saveEnabledShareContext() {
+            shareContextSwitch().assertIsOff()
+            shareContextSwitch().performClick()
+            shareContextSwitch().assertIsOn()
+            compose.onNodeWithText("保存").performScrollTo().performClick()
+            compose.waitUntil(10_000) { AiSettingsStore.load(context) == expectedSettings }
+        }
+
+        fun assertSavedSettings() {
+            val saved = AiSettingsStore.load(context)
+            assertEquals("Endpoint preference", expectedSettings.endpoint, saved.endpoint)
+            assertEquals("Model preference", expectedSettings.model, saved.model)
+            assertEquals("Enabled preference", expectedSettings.enabled, saved.enabled)
+            assertEquals("Context-sharing preference", expectedSettings.shareContext,
+                saved.shareContext)
+            assertTrue("Credential must remain unchanged in Host storage",
+                saved.apiKey == expectedSettings.apiKey)
+        }
+
+        fun openNativeSettings() {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+                skinManager.select("powercal-default")
+                compose.activity.setContent { PowerCalTheme { PowerCalApp(store) } }
+            }
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithText("时间轴").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText("设置").performClick()
+            compose.onNodeWithText("工具与设置").assertExists()
+            expandAiSettings()
+        }
+
+        fun openClearSettings() {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+                if (skinManager.currentId() == "powercal-clear-default") {
+                    skinManager.select("powercal-default")
+                }
+                skinManager.select("powercal-clear-default")
+                compose.activity.setContent { PowerCalTheme { PowerCalApp(store) } }
+            }
+            var web: WebView? = null
+            compose.waitUntil(30_000) {
+                compose.runOnUiThread {
+                    web = findWebView(compose.activity.findViewById(android.R.id.content))
+                }
+                web != null
+            }
+            val view = requireNotNull(web)
+            compose.waitUntil(20_000) {
+                evaluate(view, "!!window.PowerCalSkin?.receive") == "true"
+            }
+            tapWebSelector(view, ".clear-tabbar [data-action=settings]")
+            compose.waitUntil(15_000) {
+                WebSkinBridgeRuntime.state().optString("page") == "SETTINGS"
+            }
+            tapWebSelector(view, "#openAiSettings")
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithText("单一 AI").fetchSemanticsNodes().isNotEmpty()
+            }
+            expandAiSettings()
+        }
+
+        try {
+            assertTrue(onboarding.edit().putBoolean("system-calendar-import-asked", true).commit())
+            AiSettingsStore.save(context, initialSettings)
+            assertTrue(aiPreferences.edit().commit())
+
+            openNativeSettings()
+            saveEnabledShareContext()
+            assertSavedSettings()
+            assertEquals("Settings interaction must not change calendar state",
+                initialStoreSnapshot, listOf(store.all(), store.draftCount(), store.pendingCount(),
+                    store.commitCount(), store.identityCount(), store.nextSequencePreview()))
+
+            openNativeSettings()
+            shareContextSwitch().assertIsOn()
+
+            AiSettingsStore.save(context, initialSettings)
+            assertTrue(aiPreferences.edit().commit())
+            openClearSettings()
+            saveEnabledShareContext()
+            assertSavedSettings()
+            val webProjection = WebSkinBridgeRuntime.state().toString()
+            assertFalse("Clear projection must not expose a credential field",
+                webProjection.contains("apiKey"))
+            assertFalse("Clear projection must not expose the credential value",
+                webProjection.contains(secretSentinel))
+            assertEquals("Clear settings interaction must not change calendar state",
+                initialStoreSnapshot, listOf(store.all(), store.draftCount(), store.pendingCount(),
+                    store.commitCount(), store.identityCount(), store.nextSequencePreview()))
+
+            println("SEP11_NATIVE_CLEAR_AI_CONTEXT_SETTINGS_PARITY " +
+                "preference=shareContext:true nativeRemountRestored=true clearSaved=true " +
+                "secretProjected=false storeUnchanged=true")
+        } finally {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            store.close()
+            context.deleteDatabase(databaseName)
+            skinManager.select(originalSkin)
+            AiSettingsStore.save(context, originalAiSettings)
+            check(aiPreferences.edit().commit())
+            val restoreOnboarding = onboarding.edit()
+            if (hadOnboardingFlag) {
+                restoreOnboarding.putBoolean("system-calendar-import-asked", originalOnboardingFlag)
+            } else {
+                restoreOnboarding.remove("system-calendar-import-asked")
+            }
+            check(restoreOnboarding.commit())
         }
     }
 
