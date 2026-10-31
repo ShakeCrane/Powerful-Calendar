@@ -185,7 +185,9 @@ class WebSkinAllKindsTrustedWriteInstrumentedTest {
             up.recycle()
             compose.runOnUiThread { web.setOnTouchListener(null) }
         }
-        assertTrue("Android touchscreen sequence must reach the Clear WebView",
+        assertTrue("Android touchscreen sequence must reach the Clear WebView; " +
+            "window=$windowState deliveredTouches=${deliveredTouches.get()} " +
+            "target=$target screen=($x,$y) webLocation=${location.toList()} webSize=${width}x${height}",
             deliveredTouches.get() >= 2)
         val click = evaluateObject(web, "window.__pcTrustedWriteTouch||{}")
         val dispatchState = if (click.optBoolean("trusted")) JSONObject() else evaluateObject(web, """
@@ -253,6 +255,24 @@ class WebSkinAllKindsTrustedWriteInstrumentedTest {
         }
         return requireNotNull(web).also {
             awaitJs(it, "!!window.PowerCalSkin && !!document.querySelector('[data-action=createDraft]')")
+        }
+    }
+
+    private fun focusClearWindowForTouch(webView: WebView) {
+        compose.runOnUiThread {
+            val inputMethod = compose.activity.getSystemService(Context.INPUT_METHOD_SERVICE)
+                as android.view.inputmethod.InputMethodManager
+            inputMethod.hideSoftInputFromWindow(webView.windowToken, 0)
+            compose.activity.window.decorView.requestFocus()
+            webView.requestFocus()
+        }
+        compose.waitUntil(10_000) {
+            val focus = AtomicReference<Pair<Boolean, Boolean>>()
+            compose.runOnUiThread {
+                focus.set(compose.activity.window.decorView.hasWindowFocus() to
+                    webView.hasWindowFocus())
+            }
+            focus.get() == (true to true)
         }
     }
 
@@ -1073,6 +1093,263 @@ class WebSkinAllKindsTrustedWriteInstrumentedTest {
     }
 
     @Test
+    fun sameFormalAlarmActivityAndInstantDeadlineEditsProduceEquivalentNativeAndClearRecords() {
+        val storage = compose.activity.applicationContext
+        val nativeNamespace = "pc-native-clear-formal-edit-native-${UUID.randomUUID()}"
+        val clearNamespace = "pc-native-clear-formal-edit-clear-${UUID.randomUUID()}"
+        val nativeContext = IsolatedAppContext(compose.activity, storage, nativeNamespace)
+        val clearContext = IsolatedAppContext(compose.activity, storage, clearNamespace)
+        val nativeDatabase = "formal-edit-parity-native.db"
+        val clearDatabase = "formal-edit-parity-clear.db"
+        val nativeStore = PowerStore(nativeContext, nativeDatabase)
+        val clearStore = PowerStore(clearContext, clearDatabase)
+        var web: WebView? = null
+        try {
+            val zone = ZoneId.systemDefault()
+            val start = ZonedDateTime.now(zone).plusHours(2).withSecond(0).withNano(0)
+            val startText = DraftForm.formatInstant(start.toInstant().toEpochMilli(), zone)
+            val endText = DraftForm.formatInstant(start.plusHours(1).toInstant().toEpochMilli(), zone)
+            val forms = listOf(
+                TemporalKind.ALARM to DraftForm(
+                    kind = TemporalKind.ALARM,
+                    title = "Native/Clear edit parity ALARM seed",
+                    startText = startText,
+                    zoneId = zone.id,
+                    reminderMinutes = -1
+                ),
+                TemporalKind.ACTIVITY to DraftForm(
+                    kind = TemporalKind.ACTIVITY,
+                    title = "Native/Clear edit parity ACTIVITY seed",
+                    startText = startText,
+                    endText = endText,
+                    zoneId = zone.id,
+                    reminderMinutes = -1
+                ),
+                TemporalKind.DEADLINE to DraftForm(
+                    kind = TemporalKind.DEADLINE,
+                    title = "Native/Clear edit parity exact DEADLINE seed",
+                    endText = startText,
+                    zoneId = zone.id,
+                    reminderMinutes = -1
+                )
+            )
+            val nativeSequences = linkedMapOf<TemporalKind, Long>()
+            val clearSequences = linkedMapOf<TemporalKind, Long>()
+            forms.forEach { (kind, form) ->
+                val nativeCreated = nativeStore.createFormalEvent(
+                    form, "formal-edit-parity-$kind-native-$nativeNamespace"
+                ) as PowerStore.CommitOutcome.Committed
+                val clearCreated = clearStore.createFormalEvent(
+                    form, "formal-edit-parity-$kind-clear-$clearNamespace"
+                ) as PowerStore.CommitOutcome.Committed
+                nativeSequences[kind] = nativeCreated.eventSeq
+                clearSequences[kind] = clearCreated.eventSeq
+                assertEquals(nativeCreated.eventSeq, clearCreated.eventSeq)
+                assertEquals(
+                    DraftForm.from(requireNotNull(nativeStore.get(nativeCreated.eventSeq))),
+                    DraftForm.from(requireNotNull(clearStore.get(clearCreated.eventSeq)))
+                )
+            }
+            listOf(nativeStore, clearStore).forEach { store ->
+                assertEquals(3L, store.commitCount())
+                assertEquals(3, store.identityCount())
+                assertEquals(4L, store.nextSequencePreview())
+                assertEquals(0L, store.draftCount())
+                assertEquals(0, store.pendingCount())
+            }
+
+            fun showNativeApp() {
+                nativeContext.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                    .edit().putBoolean("system-calendar-import-asked", true).commit()
+                SkinPackageManager(nativeContext).selectNativeForEmergencyRecovery()
+                compose.runOnUiThread {
+                    compose.activity.setContent {
+                        CompositionLocalProvider(LocalContext provides nativeContext) {
+                            PowerCalTheme { PowerCalApp(nativeStore) }
+                        }
+                    }
+                }
+                compose.waitUntil(30_000) {
+                    compose.onAllNodesWithContentDescription("今日 · 复位为全天")
+                        .fetchSemanticsNodes().isNotEmpty()
+                }
+                compose.onNodeWithContentDescription("今日 · 复位为全天")
+                    .performTouchInput { click() }
+            }
+
+            val nativeEdited = linkedMapOf<TemporalKind, TemporalRecord>()
+            showNativeApp()
+            for ((kind, _) in forms) {
+                val sequence = requireNotNull(nativeSequences[kind])
+                val original = requireNotNull(nativeStore.get(sequence))
+                val newTitle = "Native/Clear edited ${kind.name}"
+                val eventMatcher = hasContentDescription(original.title, substring = true) and hasClickAction()
+                compose.waitUntil(30_000) {
+                    compose.onAllNodes(eventMatcher).fetchSemanticsNodes().size == 1
+                }
+                compose.onNode(eventMatcher).performTouchInput { click() }
+                try {
+                    compose.waitUntil(30_000) {
+                        compose.onAllNodesWithText("保存修改").fetchSemanticsNodes().isNotEmpty()
+                    }
+                } catch (error: Throwable) {
+                    val editorFailures = compose.onAllNodesWithText(
+                        "Unable to open editor", substring = true, useUnmergedTree = true
+                    ).fetchSemanticsNodes().size
+                    val visibleLabels = listOf("编辑事件", "删除事件", "保存修改", "保存检查点并退出")
+                        .associateWith { label ->
+                            compose.onAllNodesWithText(label, substring = true, useUnmergedTree = true)
+                                .fetchSemanticsNodes().size
+                        }
+                    throw AssertionError(
+                        "Native $kind editor did not open for seq=$sequence; " +
+                            "editorFailures=$editorFailures visibleLabels=$visibleLabels " +
+                            "form=${DraftForm.from(original)}",
+                        error
+                    )
+                }
+                compose.onNode(hasSetTextAction() and hasText(original.title))
+                    .performTextReplacement(newTitle)
+                assertEquals("Native $kind proposal is read-only before Save", original,
+                    nativeStore.get(sequence))
+                assertEquals(3L + nativeEdited.size, nativeStore.commitCount())
+                compose.onNodeWithText("保存修改").performTouchInput { click() }
+                compose.waitUntil(30_000) { nativeStore.get(sequence)?.title == newTitle }
+                val saved = requireNotNull(nativeStore.get(sequence))
+                assertEquals(kind, saved.kind)
+                assertEquals(sequence, saved.eventSeq)
+                assertEquals(original.revision + 1, saved.revision)
+                assertEquals(4L + nativeEdited.size, nativeStore.commitCount())
+                assertEquals(3, nativeStore.identityCount())
+                assertEquals(4L, nativeStore.nextSequencePreview())
+                assertEquals(0L, nativeStore.draftCount())
+                assertEquals(0, nativeStore.pendingCount())
+                nativeEdited[kind] = saved
+                compose.onNodeWithText("存档并退出").performTouchInput { click() }
+                compose.waitUntil(30_000) {
+                    compose.onAllNodesWithText("保存修改").fetchSemanticsNodes().isEmpty()
+                }
+                assertEquals("exiting a clean saved Native session must not stage a draft", 0L,
+                    nativeStore.draftCount())
+                assertEquals(0, nativeStore.pendingCount())
+            }
+
+            compose.runOnUiThread {
+                val focused = compose.activity.currentFocus
+                val inputMethod = compose.activity.getSystemService(Context.INPUT_METHOD_SERVICE)
+                    as android.view.inputmethod.InputMethodManager
+                focused?.let {
+                    inputMethod.hideSoftInputFromWindow(it.windowToken, 0)
+                    it.clearFocus()
+                }
+            }
+            resetClear()
+            web = launchClear(clearContext, clearStore)
+            val clearWindowFocus = AtomicReference<Pair<Boolean, Boolean>>()
+            compose.waitUntil(10_000) {
+                compose.runOnUiThread {
+                    clearWindowFocus.set(
+                        compose.activity.window.decorView.hasWindowFocus() to
+                            requireNotNull(web).hasWindowFocus()
+                    )
+                }
+                clearWindowFocus.get() == (true to true)
+            }
+            assertEquals("Clear Activity and WebView must be window-focused before edit replay",
+                true to true, clearWindowFocus.get())
+            val clearEdited = linkedMapOf<TemporalKind, TemporalRecord>()
+            for ((kind, _) in forms) {
+                val sequence = requireNotNull(clearSequences[kind])
+                val original = requireNotNull(clearStore.get(sequence))
+                val newTitle = "Native/Clear edited ${kind.name}"
+                val eventSelector = "[data-event-seq='$sequence']"
+                awaitJs(web, "!!document.querySelector(${JSONObject.quote(eventSelector)})")
+                evaluate(web, "document.querySelector(${JSONObject.quote(eventSelector)}).click();true")
+                awaitJs(web, "!document.querySelector('#skinSheet').hidden && " +
+                    "document.querySelector('#sheetFields [data-field=title]')?.value===" +
+                    "${JSONObject.quote(original.title)}")
+                focusClearWindowForTouch(web)
+                assertEquals("Clear $kind editor must not be covered by Native editor UI", 0,
+                    compose.onAllNodesWithText("保存检查点并退出").fetchSemanticsNodes().size)
+                editTitle(web, newTitle)
+                assertEquals("Clear $kind proposal is read-only before Host review", original,
+                    clearStore.get(sequence))
+                assertEquals(3L + clearEdited.size, clearStore.commitCount())
+
+                focusClearWindowForTouch(web)
+                val cancelledSave = tapWebSelector(web, "#sheetSave")
+                compose.waitUntil(30_000) {
+                    compose.onAllNodesWithText("确认保存正式事件修改").fetchSemanticsNodes().isNotEmpty()
+                }
+                assertEquals(original, clearStore.get(sequence))
+                assertEquals(3L + clearEdited.size, clearStore.commitCount())
+                compose.onNodeWithText("取消").performTouchInput { click() }
+                awaitJs(web, "document.querySelector('#sheetStatus').textContent.includes('已取消宿主操作')")
+                assertEquals("cancelling Clear $kind review must preserve the formal event", original,
+                    clearStore.get(sequence))
+                assertEquals(3L + clearEdited.size, clearStore.commitCount())
+
+                focusClearWindowForTouch(web)
+                val approvedSave = tapWebSelector(web, "#sheetSave")
+                compose.waitUntil(30_000) {
+                    compose.onAllNodesWithText("确认保存正式事件修改").fetchSemanticsNodes().isNotEmpty()
+                }
+                assertEquals(original, clearStore.get(sequence))
+                compose.onNodeWithText("确认").performTouchInput { click() }
+                compose.waitUntil(30_000) { clearStore.get(sequence)?.title == newTitle }
+                awaitJs(web, "document.querySelector('#sheetStatus').textContent.includes('事件已保存')")
+                evaluate(web, "document.querySelector('#sheetClose').click();true")
+                awaitJs(web, "document.querySelector('#skinSheet').hidden")
+                val saved = requireNotNull(clearStore.get(sequence))
+                assertEquals(kind, saved.kind)
+                assertEquals(sequence, saved.eventSeq)
+                assertEquals(original.revision + 1, saved.revision)
+                assertEquals(4L + clearEdited.size, clearStore.commitCount())
+                assertEquals(3, clearStore.identityCount())
+                assertEquals(4L, clearStore.nextSequencePreview())
+                assertEquals(0L, clearStore.draftCount())
+                assertEquals(0, clearStore.pendingCount())
+                clearEdited[kind] = saved
+                println("NATIVE_CLEAR_PARITY operation=EDIT kind=$kind eventSeq=$sequence " +
+                    "revision=${saved.revision} commits=${clearStore.commitCount()} " +
+                    "identities=${clearStore.identityCount()} sequence=${clearStore.nextSequencePreview()} " +
+                    "cancelledSave=$cancelledSave approvedSave=$approvedSave " +
+                    "businessForm=${DraftForm.from(saved)}")
+            }
+
+            for ((kind, _) in forms) {
+                val nativeRecord = nativeEdited.getValue(kind)
+                val clearRecord = clearEdited.getValue(kind)
+                assertEquals("Native and Clear $kind edits produce the same business form",
+                    DraftForm.from(nativeRecord), DraftForm.from(clearRecord))
+                assertEquals(nativeRecord.eventSeq, clearRecord.eventSeq)
+                assertEquals(nativeRecord.revision, clearRecord.revision)
+            }
+            assertEquals(6L, nativeStore.commitCount())
+            assertEquals(nativeStore.commitCount(), clearStore.commitCount())
+            assertEquals(3, nativeStore.identityCount())
+            assertEquals(nativeStore.identityCount(), clearStore.identityCount())
+            assertEquals(4L, nativeStore.nextSequencePreview())
+            assertEquals(nativeStore.nextSequencePreview(), clearStore.nextSequencePreview())
+            assertEquals(0L, nativeStore.draftCount())
+            assertEquals(nativeStore.draftCount(), clearStore.draftCount())
+            assertEquals(0, nativeStore.pendingCount())
+            assertEquals(nativeStore.pendingCount(), clearStore.pendingCount())
+        } finally {
+            resetClear()
+            nativeStore.close()
+            clearStore.close()
+            nativeContext.deleteDatabase(nativeDatabase)
+            clearContext.deleteDatabase(clearDatabase)
+            listOf(nativeNamespace, clearNamespace).forEach { namespace ->
+                listOf("powercal-onboarding", "powercal-skin-choice", "powercal-ui", "powercal-profile")
+                    .forEach { storage.deleteSharedPreferences("$namespace-$it") }
+                File(storage.cacheDir, namespace).deleteRecursively()
+            }
+        }
+    }
+
+    @Test
     fun sameFormalMemoDeleteProducesEquivalentNativeAndClearTombstones() {
         val storage = compose.activity.applicationContext
         val nativeNamespace = "pc-native-clear-memo-delete-native-${UUID.randomUUID()}"
@@ -1453,6 +1730,7 @@ class WebSkinAllKindsTrustedWriteInstrumentedTest {
                 awaitJs(web, "!document.querySelector('#skinSheet').hidden && " +
                     "document.querySelector('#sheetFields [data-field=title]')?.value===" +
                     "${JSONObject.quote(original.title)}")
+                focusClearWindowForTouch(web)
                 assertEquals("Clear $kind editor must not be covered by Native editor UI", 0,
                     compose.onAllNodesWithText("保存检查点并退出").fetchSemanticsNodes().size)
                 val activityFocused = AtomicReference<Boolean>()
