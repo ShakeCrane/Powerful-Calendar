@@ -241,4 +241,121 @@ class WebSkinRendererRecoveryInstrumentedTest {
             restoreOnboarding.commit()
         }
     }
+
+    @Test
+    fun uncaughtSkinRuntimeErrorCheckpointsDirtyEditorAndFallsBackToNative() {
+        val context = compose.activity.applicationContext
+        val databaseName = "skin-js-error-recovery-${UUID.randomUUID()}.db"
+        val store = PowerStore(context, databaseName)
+        val skins = SkinPackageManager(context)
+        val originalSkin = skins.currentId()
+        val onboarding = context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+        val hadAskedForCalendarImport = onboarding.contains("system-calendar-import-asked")
+        val askedForCalendarImport = onboarding.getBoolean("system-calendar-import-asked", false)
+        val title = "UNCAUGHT_SKIN_RUNTIME_ERROR_CHECKPOINT"
+        val clearArchive = context.assets.open("powercal-clear-default.pcskin").use { it.readBytes() }
+        val baselinePack = skins.decode(clearArchive, loadImages = true).pack
+        val baselineWeb = requireNotNull(baselinePack.web)
+        val modifiedFiles = baselineWeb.files.toMutableMap()
+        val appSource = String(requireNotNull(modifiedFiles["web/app.js"]), Charsets.UTF_8)
+        modifiedFiles["web/app.js"] = (appSource + "\n" +
+            "window.__pcSep14TriggerUncaughtError=()=>setTimeout(" +
+            "()=>{throw new Error('SEP14_UNCAUGHT_SKIN_RUNTIME_ERROR')},0);\n")
+            .toByteArray(Charsets.UTF_8)
+        val faultyPack = baselinePack.copy(
+            key = "sep14-runtime-error-${UUID.randomUUID().toString().take(8)}",
+            web = baselineWeb.copy(files = modifiedFiles)
+        )
+
+        try {
+            onboarding.edit().putBoolean("system-calendar-import-asked", true).commit()
+            compose.runOnUiThread {
+                PowerCalSkinRegistry.reset()
+                PowerCalSkinRegistry.activate(faultyPack)
+                compose.activity.setContent { PowerCalTheme { PowerCalApp(store) } }
+            }
+
+            var web: WebView? = null
+            compose.waitUntil(30_000) {
+                compose.runOnUiThread {
+                    web = findWebView(compose.activity.findViewById(android.R.id.content))
+                }
+                web != null && evaluate(requireNotNull(web),
+                    "!!window.PowerCalSkin && !!window.__pcSep14TriggerUncaughtError && " +
+                        "!!document.querySelector('[data-action=createDraft]')") == "true"
+            }
+            val view = requireNotNull(web)
+            evaluate(view, "document.querySelector('[data-action=createDraft]').click(); true")
+            awaitJs(view, "!!document.querySelector('#timelineCreateDialog[open]')")
+            evaluate(view,
+                "document.querySelector('#timelineCreateDialog [data-timeline-create-kind=ACTIVITY]').click(); true")
+            awaitJs(view, "!document.querySelector('#skinSheet').hidden && " +
+                "!!document.querySelector('#sheetFields [data-field=title]')")
+            evaluate(view, "(()=>{const input=document.querySelector('#sheetFields [data-field=title]');" +
+                "input.value='$title'; input.dispatchEvent(new Event('change',{bubbles:true})); return true})()")
+            compose.waitUntil(15_000) {
+                WebSkinBridgeRuntime.state().optJSONObject("editing")?.optJSONObject("deck")
+                    ?.optJSONObject("form")?.optString("title") == title
+            }
+
+            assertTrue("dirty editor remains transient before the runtime error", store.all().isEmpty())
+            assertEquals(0L, store.draftCount())
+            assertEquals(0, store.pendingCount())
+            assertEquals(0L, store.commitCount())
+            assertEquals(0L, store.identityCount())
+            assertEquals(1L, store.nextSequencePreview())
+
+            evaluate(view, "window.__pcSep14TriggerUncaughtError(); true")
+            try {
+                compose.waitUntil(20_000) {
+                    skins.currentId() == "powercal-default" && store.pendingCount() == 1 &&
+                        compose.onAllNodesWithText(
+                            "皮肤加载失败，编辑已存档并恢复安全界面。"
+                        ).fetchSemanticsNodes().isNotEmpty() &&
+                        compose.onAllNodesWithText("工具与设置")
+                            .fetchSemanticsNodes().isNotEmpty()
+                }
+            } catch (error: Throwable) {
+                val webState = runCatching {
+                    evaluate(view, "JSON.stringify({title:document.querySelector('#sheetFields [data-field=title]')?.value," +
+                        "body:document.body.innerText.slice(0,300)})")
+                }.getOrDefault("WebView unavailable")
+                throw AssertionError("uncaught skin JavaScript error did not recover to Native; " +
+                    "skin=${skins.currentId()}; pending=${store.pendingCount()}; web=$webState", error)
+            }
+
+            compose.runOnIdle {
+                assertEquals("powercal-default", PowerCalSkinRegistry.active.key)
+                assertEquals(null, PowerCalSkinRegistry.active.web)
+            }
+            assertTrue(store.all().isEmpty())
+            assertEquals("runtime failure must checkpoint the modified form exactly once", 1L,
+                store.draftCount())
+            assertEquals(1, store.pendingCount())
+            assertEquals(0L, store.commitCount())
+            assertEquals(1L, store.identityCount())
+            assertEquals(2L, store.nextSequencePreview())
+            assertEquals(title, store.pendingDrafts().single().form.title)
+            assertEquals(TemporalKind.ACTIVITY, store.pendingDrafts().single().form.kind)
+            println("SEP14_SKIN_JS_ERROR_RECOVERY_VERIFIED=title=$title; pending=1; commits=0; " +
+                "formal=0; identities=${store.identityCount()}; native=true")
+        } finally {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            store.close()
+            context.deleteDatabase(databaseName)
+            runCatching { skins.select(originalSkin) }
+                .onFailure { skins.select("powercal-default") }
+            val restoreOnboarding = onboarding.edit()
+            if (hadAskedForCalendarImport) {
+                restoreOnboarding.putBoolean("system-calendar-import-asked", askedForCalendarImport)
+            } else {
+                restoreOnboarding.remove("system-calendar-import-asked")
+            }
+            restoreOnboarding.commit()
+        }
+    }
 }

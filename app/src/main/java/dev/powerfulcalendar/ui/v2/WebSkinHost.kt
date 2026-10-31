@@ -7,6 +7,8 @@ import android.annotation.SuppressLint
 import android.graphics.Color
 import android.net.Uri
 import android.os.Build
+import android.webkit.ConsoleMessage
+import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
@@ -23,6 +25,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import androidx.compose.runtime.snapshotFlow
@@ -252,13 +255,18 @@ internal fun WebSkinRoot(
     onSkinFailure: () -> Unit = {}
 ) {
     var failed by remember(bundle) { mutableStateOf(false) }
+    val failureReported = remember(bundle) { AtomicBoolean(false) }
+    val currentOnSkinFailure by rememberUpdatedState(onSkinFailure)
+    val reportFailure = {
+        if (failureReported.compareAndSet(false, true)) {
+            failed = true
+            currentOnSkinFailure()
+        }
+    }
     Box(modifier) {
         if (!failed) SecureWebSkin(
             bundle, Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding(),
-            onFailure = {
-                failed = true
-                onSkinFailure()
-            }
+            onFailure = reportFailure
         )
         if (!bundle.fullCanvas || failed) native()
 
@@ -379,6 +387,17 @@ private fun SecureWebSkin(bundle: WebSkinBundle, modifier: Modifier, onFailure: 
                     }
                     runCatching { feed.publish(exposedState(bundle)) }
                         .onFailure { onFailure() }
+                }
+            }
+            webChromeClient = object : WebChromeClient() {
+                override fun onConsoleMessage(message: ConsoleMessage): Boolean {
+                    val source = runCatching { Uri.parse(message.sourceId()) }.getOrNull()
+                    if (message.messageLevel() == ConsoleMessage.MessageLevel.ERROR &&
+                        message.message().startsWith("Uncaught") &&
+                        source?.scheme == "https" && source.host == "skin.powercal.local") {
+                        onFailure()
+                    }
+                    return false
                 }
             }
             loadUrl(origin + bundle.entrypoint)
