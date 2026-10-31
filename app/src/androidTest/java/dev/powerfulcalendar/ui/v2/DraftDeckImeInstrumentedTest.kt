@@ -36,10 +36,10 @@ class DraftDeckImeInstrumentedTest {
     val compose = createAndroidComposeRule<ComponentActivity>()
 
     @Test
-    fun publishActionScrollsAboveImeAndPublishesLongNotesDraft() = runLongNotesImeAction("发布")
+    fun publishActionRemainsAboveImeAndPublishesLongNotesDraft() = runLongNotesImeAction("发布")
 
     @Test
-    fun discardActionScrollsAboveImeAndDiscardsLongNotesDraft() = runLongNotesImeAction("丢弃")
+    fun discardActionRemainsAboveImeAndDiscardsLongNotesDraft() = runLongNotesImeAction("丢弃")
 
     private fun runLongNotesImeAction(actionLabel: String) {
         val context: Context = compose.activity.applicationContext
@@ -113,8 +113,6 @@ class DraftDeckImeInstrumentedTest {
                     "imeTop=$imeTopInRoot publish=${beforeScrollPublish.boundsInRoot} " +
                     "discard=${beforeScrollDiscard.boundsInRoot}"
             )
-            publishNode.performScrollTo()
-            discardNode.performScrollTo()
             compose.waitForIdle()
             val publish = publishNode.fetchSemanticsNode()
             val discard = discardNode.fetchSemanticsNode()
