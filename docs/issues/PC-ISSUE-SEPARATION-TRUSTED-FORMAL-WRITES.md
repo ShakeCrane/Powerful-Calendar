@@ -166,3 +166,18 @@ The preceding shared-worktree gate included two independent, uncommitted Android
 - Installed that exact APK pair on Android 15 / API 35 / WebView 124 `emulator-5570`, preserving app data. `WebSkinAllKindsTrustedWriteInstrumentedTest`: **5/5 PASS**; clean-source device log SHA-256 `50B2F962AD560A88A6AA44CB2B33A0C2167F7515D20A63FF92839F9BCBAF2E5A`. The log, gate output and archive are retained under `.local/android-test/reports/sep16-all-kinds-20261031/`.
 
 This replaces ambiguity about whether the prior AndroidTest APK included other-agent edits; no such edits are present in this clean-source result. The evidence remains emulator-only and covers the five listed paths. SEP-16 remains **PARTIAL / HOLD / INCOMPLETE** for conflict/restore and restart recovery across operation paths, same-fixture Native/Clear outcome replay, TalkBack and physical/OEM acceptance.
+
+## Clear Host-review competing-version races (2026-10-31)
+
+Added two regressions to `WebSkinAllKindsTrustedWriteInstrumentedTest` to exercise version revalidation through the packaged Clear WebView and the actual Host confirmation dialog:
+
+- **Formal editor SaveEvent:** a MEMO is opened and edited in Clear, and the Host review is shown while the Store still contains the original record. A concurrent completion update advances the record revision. Confirming the stale dialog is rejected; the newer completion and original title remain, and the stale title creates no additional commit.
+- **Persisted deck CREATE:** Clear edits a pending MEMO card and opens Host review. A concurrent `stageDraft` advances its persisted `draftVersion`. Confirming the captured review is rejected; no formal event or commit is created, counters/sequence do not advance, and the newer pending candidate remains intact.
+
+The first harness attempt waited for internal Bridge detail strings, while the Clear UI intentionally displayed its normalized status `存在版本冲突，请审查差异`. The actual conflict state was reached; the regression assertion was changed to target that user-visible status. The final full class passed **7/7** on the exact clean source commit `fa8e70a72c80493d7c5c7d67b2c686b136172e7f`, Android 15 / API 35 / WebView 124 / `emulator-5570`.
+
+- Full clean-source gate: **784/784 JVM tests, 125 suites, zero failures/errors/skips; 171/171 tasks succeeded**, including both source boundaries, Android and AndroidTest APK builds, and Lint (**0 errors / 51 warnings**). Gate log SHA-256 `3DC7F4C12FA5D94D7BA34DA3D786BCFE86C5CC25CBC718B06C44B74F746359CD`.
+- Debug APK SHA-256 `8CC46EED2FE1569CB349C7C913C3BFFE85344E4C6E9C527342373367C3E8F886` (66,518,075 bytes); AndroidTest APK SHA-256 `9B731560CD8F14C8C86351F72ED31490934701716142007F57AE43556A3CF07B` (1,555,904 bytes). Installed clean-source class log SHA-256 `EEC19715F5C34598DA4EB3FD73968577D33F9423B02E6D7718CA77A70A434EA1`. Git archive SHA-256 `F582A32FBA919BBAA8DC72CC74033A6C1FAAA803B463DD58C2F863F237059D33`.
+- Evidence files are retained in `.local/android-test/reports/sep16-conflict-review-20261031/`. This is AVD evidence using isolated test data; no app data was cleared. It does not verify physical touches, TalkBack or OEM behavior.
+
+This closes the two tested stale-review races only. Competing-version rejection for the remaining DELETE/REPLACE/CONVERT/restore operation paths, pending-review process recovery, same-fixture Native/Clear result replay and physical/OEM acceptance remain unverified. SEP-16 remains **PARTIAL / HOLD / INCOMPLETE**; the new test commit is pushed as `fa8e70a`.
