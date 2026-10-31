@@ -317,7 +317,7 @@ class ClearSettingsOptionsInstrumentedTest {
         SystemClock.sleep(250)
     }
 
-    private fun selectReadFailingProviderDocument() {
+    private fun selectReadFailingProviderDocument(documentName: String = RestoreFailureDocumentsProvider.BACKUP_NAME) {
         val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
         fun findNavigationControl(node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
             if (node == null) return null
@@ -347,7 +347,7 @@ class ClearSettingsOptionsInstrumentedTest {
             accessibilitySnapshot(automation.rootInActiveWindow), pickerRoot != null)
         val currentRoot = requireNotNull(pickerRoot)
         if (findAccessibilityNode(currentRoot,
-                text = RestoreFailureDocumentsProvider.BACKUP_NAME) == null) {
+                text = documentName) == null) {
             val providerRoot = findAccessibilityNode(
                 currentRoot, text = RestoreFailureDocumentsProvider.ROOT_TITLE
             )
@@ -361,7 +361,7 @@ class ClearSettingsOptionsInstrumentedTest {
                 tapPickerNode(waitForPickerNode(text = RestoreFailureDocumentsProvider.ROOT_TITLE))
             }
         }
-        tapPickerNode(waitForPickerNode(text = RestoreFailureDocumentsProvider.BACKUP_NAME))
+        tapPickerNode(waitForPickerNode(text = documentName))
         val deadline = SystemClock.elapsedRealtime() + 15_000
         var selected = false
         while (SystemClock.elapsedRealtime() < deadline && !selected) {
@@ -3295,6 +3295,138 @@ class ClearSettingsOptionsInstrumentedTest {
             println("SEP11_NATIVE_CLEAR_PROVIDER_READ_FAILURE " +
                 "nativeSafePermissionMessage=true clearSafePermissionMessage=true " +
                 "formalAndDraftSnapshotsUnchanged=true documentsUiSelected=true trustedClearTouch=true")
+        } finally {
+            val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+            repeat(2) {
+                if (automation.rootInActiveWindow?.packageName?.toString() == "com.google.android.documentsui") {
+                    automation.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+                    SystemClock.sleep(200)
+                }
+            }
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            store.close()
+            context.deleteDatabase(databaseName)
+            skinManager.select(originalSkin)
+            val restoreOnboarding = onboarding.edit()
+            if (hadAskedForCalendarImport) {
+                restoreOnboarding.putBoolean("system-calendar-import-asked", askedForCalendarImport)
+            } else {
+                restoreOnboarding.remove("system-calendar-import-asked")
+            }
+            restoreOnboarding.commit()
+        }
+    }
+
+    @Test
+    fun nativeAndClearRestoreRejectMalformedAndFutureSchemaFilesWithoutWrites() {
+        assumeTrue("DocumentsUI restore flow must run on an isolated Android emulator",
+            Build.HARDWARE == "ranchu" || Build.HARDWARE == "goldfish")
+
+        val context = compose.activity.applicationContext
+        val databaseName = "sep11-invalid-restore-" + UUID.randomUUID() + ".db"
+        val store = PowerStore(context, databaseName)
+        val skinManager = SkinPackageManager(context)
+        val originalSkin = skinManager.currentId()
+        val onboarding = context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+        val hadAskedForCalendarImport = onboarding.contains("system-calendar-import-asked")
+        val askedForCalendarImport = onboarding.getBoolean("system-calendar-import-asked", false)
+        var web: WebView? = null
+
+        fun persistentSnapshot(): List<Any?> {
+            val payload = BackupEnvelope.verify(store.exportBackup(), PowerStore.VERSION).payload
+            return listOf(
+                BackupEnvelope.canonicalJson(payload), store.all(), store.draftCount(),
+                store.pendingCount(), store.commitCount(), store.identityCount(),
+                store.nextSequencePreview()
+            )
+        }
+
+        fun mountNativeSettings() {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+                skinManager.select("powercal-default")
+                compose.activity.setContent { PowerCalTheme { PowerCalApp(store) } }
+            }
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithText("时间轴").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText("设置").performClick()
+            compose.onNodeWithText("工具与设置").assertExists()
+        }
+
+        fun mountClearSettings() {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+                skinManager.select("powercal-clear-default")
+                compose.activity.setContent { PowerCalTheme { PowerCalApp(store) } }
+            }
+            compose.waitUntil(30_000) {
+                compose.runOnUiThread {
+                    web = findWebView(compose.activity.findViewById(android.R.id.content))
+                }
+                web != null
+            }
+            val view = requireNotNull(web)
+            compose.waitUntil(30_000) {
+                evaluate(view, "!!window.PowerCalSkin && !!window.PowerCalSkin.receive") == "true"
+            }
+            tapWebSelector(view, ".clear-tabbar [data-action=settings]")
+            compose.waitUntil(15_000) {
+                WebSkinBridgeRuntime.state().optString("page") == "SETTINGS"
+            }
+        }
+
+        val invalidFixtures = listOf(
+            RestoreFailureDocumentsProvider.MALFORMED_BACKUP_NAME to
+                "所选文件不是有效的 PowerCal JSON 备份",
+            RestoreFailureDocumentsProvider.FUTURE_SCHEMA_BACKUP_NAME to
+                "无法安全恢复此文件"
+        )
+
+        try {
+            assertTrue(onboarding.edit().putBoolean("system-calendar-import-asked", true).commit())
+            val before = persistentSnapshot()
+            assertTrue("Malformed/future-schema tests require an empty isolated target",
+                store.all().isEmpty())
+            assertEquals(0, store.pendingCount())
+            assertEquals(0L, store.commitCount())
+            assertEquals(0L, store.identityCount())
+
+            invalidFixtures.forEach { (documentName, expectedError) ->
+                mountNativeSettings()
+                compose.onNodeWithText("从备份恢复").performScrollTo().performClick()
+                selectReadFailingProviderDocument(documentName)
+                compose.waitUntil(20_000) {
+                    compose.onAllNodesWithText(expectedError, substring = true)
+                        .fetchSemanticsNodes().isNotEmpty()
+                }
+                assertEquals("Native rejection of $documentName must preserve the full Store",
+                    before, persistentSnapshot())
+
+                mountClearSettings()
+                tapWebSelector(requireNotNull(web),
+                    "#settingsOptionGroups [data-option-id='data.backup.restore']")
+                selectReadFailingProviderDocument(documentName)
+                val clearView = requireNotNull(web)
+                compose.waitUntil(20_000) {
+                    evaluate(clearView,
+                        "document.getElementById('hostNotice')?.textContent||''")
+                        .contains(expectedError)
+                }
+                assertEquals("Clear rejection of $documentName must preserve the full Store",
+                    before, persistentSnapshot())
+            }
+
+            println("SEP11_NATIVE_CLEAR_MALFORMED_AND_FUTURE_SCHEMA_RESTORE_REFUSAL " +
+                "nativeMalformedRejected=true clearMalformedRejected=true " +
+                "nativeFutureSchemaRejected=true clearFutureSchemaRejected=true " +
+                "emptyTargetSnapshotUnchanged=true trustedClearTouch=true")
         } finally {
             val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
             repeat(2) {
