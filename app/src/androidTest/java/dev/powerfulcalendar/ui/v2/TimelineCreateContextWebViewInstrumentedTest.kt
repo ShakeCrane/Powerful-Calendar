@@ -591,7 +591,7 @@ class TimelineCreateContextWebViewInstrumentedTest {
         val nativeStore = PowerStore(nativeContext, nativeDatabase)
         val clearStore = PowerStore(clearContext, clearDatabase)
         var web: WebView? = null
-        val kinds = listOf(TemporalKind.ALARM, TemporalKind.DEADLINE)
+        val kinds = listOf(TemporalKind.ALARM, TemporalKind.DEADLINE, TemporalKind.MEMO)
         try {
             for (kind in kinds) {
                 val zone = ZoneId.systemDefault()
@@ -660,6 +660,11 @@ class TimelineCreateContextWebViewInstrumentedTest {
                         assertEquals("a timeline deadline is not silently downgraded to date-only",
                             null, nativeRecord.deadlineDate)
                     }
+                    TemporalKind.MEMO -> assertEquals(
+                        "explicit timeline context seeds a date on this Memo",
+                        Instant.ofEpochMilli(expectedStart).atZone(zone).toLocalDate().toString(),
+                        nativeForm.startText
+                    )
                     else -> error("this pair covers only the remaining clock-based timeline kinds")
                 }
                 assertEquals("Native publish advances one formal commit", (nativeCountsBefore[3] as Long) + 1L,
@@ -695,6 +700,7 @@ class TimelineCreateContextWebViewInstrumentedTest {
                 when (kind) {
                     TemporalKind.ALARM -> assertEquals(nativeForm.startText, clearForm.getString("startText"))
                     TemporalKind.DEADLINE -> assertEquals(nativeForm.endText, clearForm.getString("endText"))
+                    TemporalKind.MEMO -> assertEquals(nativeForm.startText, clearForm.getString("startText"))
                     else -> error("this pair covers only the remaining clock-based timeline kinds")
                 }
                 assertEquals("Clear is transient before title entry and Host review", clearBaseline,
