@@ -12,6 +12,7 @@ object AiChatHistoryStore {
     private const val FILENAME = "powercal-chat-history.json"
     private const val MAX_BYTES = 1_500_000
 
+    @Synchronized
     fun load(context: Context): List<AiChatMessage> = runCatching {
         val file = File(context.filesDir, FILENAME)
         if (!file.exists() || file.length() > MAX_BYTES) return@runCatching emptyList<AiChatMessage>()

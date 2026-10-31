@@ -5,6 +5,8 @@ import android.content.ContextWrapper
 import android.database.DatabaseErrorHandler
 import android.database.sqlite.SQLiteDatabase
 import android.os.SystemClock
+import android.view.InputDevice
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebView
@@ -13,9 +15,12 @@ import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import dev.powerfulcalendar.ai.AiChatHistoryStore
 import dev.powerfulcalendar.ai.AiSettings
 import dev.powerfulcalendar.ai.AiSettingsStore
@@ -65,6 +70,258 @@ class PowerCalAiProposalReviewWebViewInstrumentedTest {
         assertTrue("WebView JavaScript response timed out: $expression",
             completed.await(10, TimeUnit.SECONDS))
         return value.get()
+    }
+
+    private fun evaluateObject(web: WebView, expression: String): JSONObject {
+        val encoded = evaluate(web, "JSON.stringify($expression)")
+        return JSONObject(JSONArray("[$encoded]").getString(0))
+    }
+
+    private fun tapWebSelector(
+        web: WebView,
+        selector: String,
+        requireTrustedClick: Boolean = true
+    ): JSONObject {
+        val selectorLiteral = JSONObject.quote(selector)
+        val probe = evaluateObject(web, """(() => {
+          const target=document.querySelector($selectorLiteral);
+          if(!target)return {found:false};
+          const rect=target.getBoundingClientRect(),style=getComputedStyle(target);
+          const receipt={trustedDown:false,trustedUp:false,trustedClick:false,pointerType:''};
+          window.__aiParityTrustedTap=receipt;
+          target.addEventListener('pointerdown',event=>{
+            receipt.trustedDown=event.isTrusted;receipt.pointerType=String(event.pointerType);
+          },{once:true});
+          target.addEventListener('pointerup',event=>{receipt.trustedUp=event.isTrusted},{once:true});
+          target.addEventListener('click',event=>{receipt.trustedClick=event.isTrusted},{once:true});
+          return {found:true,x:rect.left+rect.width/2,y:rect.top+rect.height/2,
+            cssWidth:document.documentElement.clientWidth,cssHeight:window.innerHeight,
+            visible:style.display!=='none'&&style.visibility!=='hidden'&&rect.width>0&&rect.height>0};
+        })()""")
+        assertTrue("AI Clear control should be visible: $selector $probe",
+            probe.optBoolean("found") && probe.optBoolean("visible"))
+        val location = IntArray(2)
+        val size = AtomicReference<Pair<Int, Int>>()
+        compose.runOnUiThread {
+            web.getLocationOnScreen(location)
+            size.set(web.width to web.height)
+        }
+        val (widthPx, heightPx) = requireNotNull(size.get())
+        val scaleX = widthPx / probe.getDouble("cssWidth")
+        val scaleY = heightPx / probe.getDouble("cssHeight")
+        assertEquals("Clear touch mapping must preserve WebView aspect ratio", scaleX, scaleY, 0.02)
+        val x = location[0] + (probe.getDouble("x") * scaleX).toFloat()
+        val y = location[1] + (probe.getDouble("y") * scaleY).toFloat()
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val downTime = SystemClock.uptimeMillis()
+        for (action in intArrayOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
+            val eventTime = if (action == MotionEvent.ACTION_DOWN) downTime else downTime + 80
+            val event = MotionEvent.obtain(downTime, eventTime, action, x, y, 0)
+            try {
+                event.source = InputDevice.SOURCE_TOUCHSCREEN
+                instrumentation.sendPointerSync(event)
+            } finally {
+                event.recycle()
+            }
+            if (action == MotionEvent.ACTION_DOWN) SystemClock.sleep(80)
+        }
+        val receipt = evaluateObject(web, "window.__aiParityTrustedTap")
+        assertTrue("Clear AI control must receive trusted touchscreen pointerdown: " +
+            "selector=$selector receipt=$receipt", receipt.optBoolean("trustedDown"))
+        assertTrue("Clear AI control must receive trusted touchscreen pointerup: " +
+            "selector=$selector receipt=$receipt", receipt.optBoolean("trustedUp"))
+        if (requireTrustedClick) {
+            assertTrue("Clear AI control must receive trusted click: selector=$selector receipt=$receipt",
+                receipt.optBoolean("trustedClick"))
+        }
+        return probe.put("screenX", x).put("screenY", y)
+            .put("scaleX", scaleX).put("scaleY", scaleY)
+    }
+
+    @Test
+    fun nativeAndClearRealChatSendMatchHistoryAndRespectDisabledContextSharing() {
+        val storage: Context = compose.activity.applicationContext
+        val nativeNamespace = "pc-ai-chat-parity-native-${UUID.randomUUID()}"
+        val clearNamespace = "pc-ai-chat-parity-clear-${UUID.randomUUID()}"
+        val nativeContext = IsolatedAppContext(compose.activity, storage, nativeNamespace)
+        val clearContext = IsolatedAppContext(compose.activity, storage, clearNamespace)
+        val nativeDatabase = "chat-parity-native.db"
+        val clearDatabase = "chat-parity-clear.db"
+        val nativeStore = PowerStore(nativeContext, nativeDatabase)
+        val clearStore = PowerStore(clearContext, clearDatabase)
+        val prompt = "Compare chat parity"
+        val assistantReply = "The same deterministic reply; no calendar action."
+        val privateSentinel = "PRIVATE_AI_CONTEXT_SENTINEL"
+        val serverFailure = AtomicReference<Throwable?>()
+        val requests = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val served = CountDownLatch(2)
+
+        fun initialize(context: IsolatedAppContext, store: PowerStore) {
+            context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                .edit().putBoolean("system-calendar-import-asked", true).commit()
+            AiChatHistoryStore.save(context, emptyList())
+            val draft = store.newDraft(DraftForm(kind = TemporalKind.MEMO,
+                title = privateSentinel, zoneId = ZoneId.systemDefault().id))
+            assertTrue(store.commit(draft.draftId) is PowerStore.CommitOutcome.Committed)
+        }
+
+        fun storeSnapshot(store: PowerStore): List<Long> = listOf(
+            store.draftCount(), store.pendingCount().toLong(), store.identityCount(), store.commitCount()
+        )
+
+        try {
+            initialize(nativeContext, nativeStore)
+            initialize(clearContext, clearStore)
+            val nativeBefore = storeSnapshot(nativeStore)
+            val clearBefore = storeSnapshot(clearStore)
+
+            ServerSocket(0, 4, InetAddress.getByName("127.0.0.1")).use { server ->
+                server.soTimeout = 20_000
+                val endpoint = "http://127.0.0.1:${server.localPort}/v1"
+                listOf(nativeContext, clearContext).forEach { context ->
+                    AiSettingsStore.save(context, AiSettings(endpoint = endpoint,
+                        model = "local-stub:free", apiKey = "LOCAL_TEST_ONLY",
+                        enabled = true, shareContext = false))
+                }
+                val serverThread = Thread {
+                    try {
+                        repeat(2) {
+                            server.accept().use { socket ->
+                                requests += readRequest(socket)
+                                writeReply(socket, assistantReply)
+                            }
+                            served.countDown()
+                        }
+                    } catch (error: Throwable) {
+                        serverFailure.set(error)
+                        while (served.count > 0) served.countDown()
+                    }
+                }.apply { name = "pc-ai-native-clear-chat-parity"; isDaemon = true; start() }
+
+                compose.runOnUiThread {
+                    PowerCalSkinRegistry.reset()
+                    SkinPackageManager(nativeContext).selectNativeForEmergencyRecovery()
+                    compose.activity.setContent {
+                        CompositionLocalProvider(LocalContext provides nativeContext) {
+                            PowerCalTheme { PowerCalApp(nativeStore) }
+                        }
+                    }
+                }
+                compose.waitUntil(30_000) {
+                    compose.onAllNodesWithText("AI 助手").fetchSemanticsNodes().isNotEmpty()
+                }
+                compose.onNodeWithText("AI 助手").performClick()
+                compose.onNodeWithText("发送消息…").performTextInput(prompt)
+                compose.onNodeWithText("发送").performClick()
+                compose.waitUntil(20_000) {
+                    serverFailure.get() != null ||
+                        compose.onAllNodesWithText(assistantReply).fetchSemanticsNodes().isNotEmpty()
+                }
+                assertNull("local Native chat provider failed", serverFailure.get())
+                val nativeHistory = AiChatHistoryStore.load(nativeContext)
+                    .map { it.role to it.content }
+                assertEquals(listOf("user" to prompt, "assistant" to assistantReply), nativeHistory)
+                assertEquals("Native chat must not publish or stage calendar data", nativeBefore,
+                    storeSnapshot(nativeStore))
+
+                compose.runOnUiThread {
+                    compose.activity.setContent { }
+                    PowerCalSkinRegistry.reset()
+                    SkinPackageManager(clearContext).select("powercal-clear-default")
+                    compose.activity.setContent {
+                        CompositionLocalProvider(LocalContext provides clearContext) {
+                            PowerCalTheme { PowerCalApp(clearStore) }
+                        }
+                    }
+                }
+                var web: WebView? = null
+                compose.waitUntil(30_000) {
+                    compose.runOnUiThread {
+                        web = findWebView(compose.activity.findViewById(android.R.id.content))
+                    }
+                    web != null
+                }
+                val view = requireNotNull(web)
+                awaitJs(view, "!!document.querySelector('.clear-tabbar [data-action=ai]')")
+                val aiTabTouch = tapWebSelector(view, ".clear-tabbar [data-action=ai]")
+                awaitJs(view, "!document.querySelector('#aiPage').hidden")
+                // The text field's behavior is focus + real keyboard entry; WebView does not
+                // consistently synthesize a DOM click for an otherwise trusted touch sequence.
+                val inputTouch = tapWebSelector(view, "#chatInput", requireTrustedClick = false)
+                InstrumentationRegistry.getInstrumentation().sendStringSync(prompt)
+                awaitJs(view, "document.querySelector('#chatInput')?.value===${JSONObject.quote(prompt)}")
+                val sendTouch = tapWebSelector(view, "#chatSend")
+                awaitJs(view, "document.querySelector('#chatMessages')?.textContent.includes("+
+                    "${JSONObject.quote(assistantReply)})")
+                val hostProjectionCount = WebSkinBridgeRuntime.state()
+                    .optJSONArray("chatMessages")?.length() ?: -1
+                val historyFile = File(clearContext.filesDir, "powercal-chat-history.json")
+                println("SEP09_CLEAR_CHAT_BEFORE_PERSIST hostProjectionCount=$hostProjectionCount " +
+                    "historyFileExists=${historyFile.isFile} historyFileBytes=${historyFile.length()}")
+                compose.waitUntil(30_000) {
+                    AiChatHistoryStore.load(clearContext).size == nativeHistory.size
+                }
+                assertTrue("both Native and Clear local-provider requests must complete",
+                    served.await(1, TimeUnit.SECONDS))
+                serverThread.join(2_000)
+                assertNull("local paired chat server failed", serverFailure.get())
+                assertEquals(2, requests.size)
+                val requestTurns = requests.map { body ->
+                    val messages = JSONObject(body).getJSONArray("messages")
+                    (0 until messages.length()).mapNotNull { index ->
+                        val message = messages.getJSONObject(index)
+                        val role = message.optString("role")
+                        if (role == "user" || role == "assistant")
+                            role to message.optString("content") else null
+                    }
+                }
+                assertEquals("Native and Clear must send equivalent chat turns",
+                    listOf(listOf("user" to prompt), listOf("user" to prompt)), requestTurns)
+
+                val clearHistory = AiChatHistoryStore.load(clearContext).map { it.role to it.content }
+                assertEquals("Native and Clear must persist the same user/assistant history",
+                    nativeHistory, clearHistory)
+                val clearProjection = WebSkinBridgeRuntime.state().getJSONArray("chatMessages")
+                val projectedHistory = (0 until clearProjection.length()).map { index ->
+                    val message = clearProjection.getJSONObject(index)
+                    message.getString("role") to message.getString("content")
+                }
+                assertEquals("Clear must render the same Host-projected history", nativeHistory,
+                    projectedHistory)
+                for (request in requests) {
+                    assertTrue("each provider request must contain the same user prompt",
+                        request.contains(prompt))
+                    assertTrue("disabled context sharing must exclude the private event fixture",
+                        !request.contains(privateSentinel))
+                }
+                assertEquals("Clear chat must not publish or stage calendar data", clearBefore,
+                    storeSnapshot(clearStore))
+                assertEquals("Native and Clear fixture Stores remain equivalent", nativeBefore,
+                    storeSnapshot(clearStore))
+                assertEquals("chat sends must preserve the same formal event in both Stores",
+                    nativeStore.all().map { Triple(it.eventSeq, it.title, it.revision) },
+                    clearStore.all().map { Triple(it.eventSeq, it.title, it.revision) })
+                println("NATIVE_CLEAR_AI_CHAT_PARITY history=${nativeHistory.size} " +
+                    "providerRequests=${requests.size} contextSharing=false privateSentinel=absent " +
+                    "storeSnapshot=$nativeBefore trustedTouches=$aiTabTouch,$inputTouch,$sendTouch")
+            }
+        } finally {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            nativeStore.close()
+            clearStore.close()
+            nativeContext.deleteDatabase(nativeDatabase)
+            clearContext.deleteDatabase(clearDatabase)
+            listOf(nativeNamespace, clearNamespace).forEach { namespace ->
+                listOf("powercal-ai", "powercal-onboarding", "powercal-ui",
+                    "powercal-skin-choice", "powercal-profile", "powercal-file-ai-consent")
+                    .forEach { storage.deleteSharedPreferences("$namespace-$it") }
+                File(storage.cacheDir, namespace).deleteRecursively()
+            }
+        }
     }
 
     private fun awaitJs(web: WebView, expression: String) {
