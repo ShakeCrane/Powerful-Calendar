@@ -41,6 +41,7 @@ import dev.powerfulcalendar.core.BackupEnvelope
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.TemporalKind
+import dev.powerfulcalendar.ai.AiFileFallbackConsent
 import dev.powerfulcalendar.ai.AiSettings
 import dev.powerfulcalendar.ai.AiSettingsStore
 import dev.powerfulcalendar.interop.IcsCodec
@@ -1106,6 +1107,168 @@ class ClearSettingsOptionsInstrumentedTest {
             skinManager.select(originalSkin)
             AiSettingsStore.save(context, originalAiSettings)
             check(aiPreferences.edit().commit())
+            val restoreOnboarding = onboarding.edit()
+            if (hadOnboardingFlag) {
+                restoreOnboarding.putBoolean("system-calendar-import-asked", originalOnboardingFlag)
+            } else {
+                restoreOnboarding.remove("system-calendar-import-asked")
+            }
+            check(restoreOnboarding.commit())
+        }
+    }
+
+    @Test
+    fun nativeAndClearAiFileFallbackConsentRevocationMatch() {
+        assumeTrue("AI consent parity test requires an isolated Android emulator",
+            Build.HARDWARE == "ranchu" || Build.HARDWARE == "goldfish")
+        val context = compose.activity.applicationContext
+        val databaseName = "native-clear-ai-consent-${UUID.randomUUID()}.db"
+        val store = PowerStore(context, databaseName)
+        val skinManager = SkinPackageManager(context)
+        val originalSkin = skinManager.currentId()
+        val originalSettings = AiSettingsStore.load(context)
+        val aiPreferences = context.getSharedPreferences("powercal-ai", Context.MODE_PRIVATE)
+        val consentPreferences = context.getSharedPreferences(
+            "powercal-file-ai-consent", Context.MODE_PRIVATE)
+        val hadConsentScope = consentPreferences.contains("provider-scope")
+        val originalConsentScope = consentPreferences.getString("provider-scope", null)
+        val onboarding = context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+        val hadOnboardingFlag = onboarding.contains("system-calendar-import-asked")
+        val originalOnboardingFlag = onboarding.getBoolean("system-calendar-import-asked", false)
+        val secretSentinel = "PC_QA_CONSENT_SECRET_${UUID.randomUUID()}"
+        val settings = AiSettings(
+            endpoint = "https://consent.example.invalid/v1",
+            model = "consent-revoke-parity-test",
+            apiKey = secretSentinel,
+            enabled = true,
+            shareContext = false
+        )
+
+        fun storeSnapshot() = listOf(
+            store.all(), store.draftCount(), store.pendingCount(), store.commitCount(),
+            store.identityCount(), store.nextSequencePreview()
+        )
+
+        fun expandAiSettings() {
+            compose.onNodeWithText("单一 AI").assertExists()
+            val collapsed = compose.onAllNodesWithText("配置端点、模型与密钥")
+                .fetchSemanticsNodes().isNotEmpty()
+            if (collapsed) {
+                compose.onNodeWithText("配置端点、模型与密钥").performScrollTo().performClick()
+            } else {
+                compose.onNodeWithText("收起模型配置").assertExists()
+            }
+            compose.waitUntil(10_000) {
+                compose.onAllNodesWithText("撤销文件 AI 自动处理授权")
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+        }
+
+        fun openNativeAiSettings() {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+                skinManager.select("powercal-default")
+                compose.activity.setContent { PowerCalTheme { PowerCalApp(store) } }
+            }
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithText("时间轴").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText("设置").performClick()
+            compose.waitUntil(10_000) {
+                compose.onAllNodesWithText("工具与设置").fetchSemanticsNodes().isNotEmpty()
+            }
+            expandAiSettings()
+        }
+
+        fun openClearAiSettings() {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+                skinManager.select("powercal-clear-default")
+                compose.activity.setContent { PowerCalTheme { PowerCalApp(store) } }
+            }
+            var web: WebView? = null
+            compose.waitUntil(30_000) {
+                compose.runOnUiThread {
+                    web = findWebView(compose.activity.findViewById(android.R.id.content))
+                }
+                web != null
+            }
+            val view = requireNotNull(web)
+            compose.waitUntil(20_000) {
+                evaluate(view, "!!window.PowerCalSkin?.receive") == "true"
+            }
+            tapWebSelector(view, ".clear-tabbar [data-action=settings]")
+            compose.waitUntil(15_000) {
+                WebSkinBridgeRuntime.state().optString("page") == "SETTINGS"
+            }
+            tapWebSelector(view, "#openAiSettings")
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithText("单一 AI").fetchSemanticsNodes().isNotEmpty()
+            }
+            val projection = WebSkinBridgeRuntime.state().toString()
+            assertFalse("AI consent must remain Host-only", projection.contains("consent"))
+            assertFalse("AI credential must remain Host-only", projection.contains(secretSentinel))
+            expandAiSettings()
+        }
+
+        fun revokeAndVerify(label: String) {
+            assertTrue("$label must begin with provider-scoped consent",
+                AiFileFallbackConsent.allowed(context, settings))
+            compose.onNodeWithText("撤销文件 AI 自动处理授权")
+                .performScrollTo().performClick()
+            compose.waitUntil(10_000) {
+                !AiFileFallbackConsent.allowed(context, settings) &&
+                    compose.onAllNodesWithText("撤销文件 AI 自动处理授权")
+                        .fetchSemanticsNodes().isEmpty()
+            }
+            assertFalse("$label must revoke the persisted provider-scoped consent",
+                AiFileFallbackConsent.allowed(context, settings))
+        }
+
+        val beforeStore = storeSnapshot()
+        try {
+            assertTrue(onboarding.edit().putBoolean("system-calendar-import-asked", true).commit())
+            AiSettingsStore.save(context, settings)
+            assertTrue(aiPreferences.edit().commit())
+
+            AiFileFallbackConsent.grant(context, settings)
+            openNativeAiSettings()
+            revokeAndVerify("Native Host settings")
+            assertEquals("Native revocation must not write calendar data", beforeStore,
+                storeSnapshot())
+
+            AiFileFallbackConsent.grant(context, settings)
+            openClearAiSettings()
+            revokeAndVerify("Clear → protected Host settings")
+            assertEquals("Clear-reachable revocation must not write calendar data", beforeStore,
+                storeSnapshot())
+            assertEquals("Revocation does not change the configured AI provider", settings,
+                AiSettingsStore.load(context))
+            assertEquals("Clear Settings must leave the selected skin active",
+                "powercal-clear-default", skinManager.currentId())
+            println("SEP11_NATIVE_CLEAR_AI_FALLBACK_CONSENT_REVOCATION " +
+                "nativeRevoked=true clearHostRevoked=true providerUnchanged=true " +
+                "consentHostOnly=true storeUnchanged=true")
+        } finally {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            store.close()
+            context.deleteDatabase(databaseName)
+            skinManager.select(originalSkin)
+            AiSettingsStore.save(context, originalSettings)
+            check(aiPreferences.edit().commit())
+            val restoreConsent = consentPreferences.edit()
+            if (hadConsentScope && originalConsentScope != null) {
+                restoreConsent.putString("provider-scope", originalConsentScope)
+            } else {
+                restoreConsent.remove("provider-scope")
+            }
+            check(restoreConsent.commit())
             val restoreOnboarding = onboarding.edit()
             if (hadOnboardingFlag) {
                 restoreOnboarding.putBoolean("system-calendar-import-asked", originalOnboardingFlag)
