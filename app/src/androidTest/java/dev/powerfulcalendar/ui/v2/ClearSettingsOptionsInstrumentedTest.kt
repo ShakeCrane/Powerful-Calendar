@@ -38,9 +38,11 @@ import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -1430,7 +1432,7 @@ class ClearSettingsOptionsInstrumentedTest {
             compose.waitForIdle()
         }
 
-        fun pickFileAndWaitForReview(fromClear: Boolean, web: WebView? = null) {
+        fun openAiFilePicker(fromClear: Boolean, web: WebView? = null) {
             if (fromClear) {
                 val view = requireNotNull(web)
                 tapWebSelector(view, ".clear-tabbar [data-action=ai]")
@@ -1444,7 +1446,8 @@ class ClearSettingsOptionsInstrumentedTest {
                 compose.waitUntil(15_000) {
                     compose.onAllNodesWithText("AI 助手").fetchSemanticsNodes().isNotEmpty()
                 }
-                compose.onNodeWithText("AI 助手").performClick()
+                compose.onAllNodes(hasText("AI 助手") and hasClickAction())
+                    .onFirst().performClick()
                 compose.onNodeWithContentDescription("添加图片或文件").performClick()
                 compose.onNodeWithText("添加 ICS / 文档 / 表格").performClick()
             }
@@ -1454,6 +1457,11 @@ class ClearSettingsOptionsInstrumentedTest {
             assertEquals("The actual Android DocumentsUI must own file selection",
                 "com.google.android.documentsui",
                 automation.rootInActiveWindow?.packageName?.toString())
+        }
+
+        fun selectFileAndWaitForReview() {
+            val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+            val rootsButton = waitForPickerNode(contentDescription = "Show roots")
             tapPickerNode(rootsButton)
             tapPickerNode(waitForPickerNode(text = "Downloads"))
             tapPickerNode(waitForPickerNode(text = filename))
@@ -1475,6 +1483,51 @@ class ClearSettingsOptionsInstrumentedTest {
                     .fetchSemanticsNodes().isNotEmpty()
             }
             compose.onNodeWithText("本次将发送的提取文本（可删除隐私内容）").assertExists()
+        }
+
+        fun pickFileAndWaitForReview(fromClear: Boolean, web: WebView? = null) {
+            openAiFilePicker(fromClear, web)
+            selectFileAndWaitForReview()
+        }
+
+        fun cancelAiFilePickerWithoutSideEffects(
+            fromClear: Boolean,
+            web: WebView?,
+            settings: AiSettings
+        ) {
+            val requestsBefore = requestBodies.size
+            val storeBeforePicker = storeSnapshot()
+            val historyBeforePicker = AiChatHistoryStore.load(context)
+            assertFalse("Picker must start without remembered file consent",
+                AiFileFallbackConsent.allowed(context, settings))
+            openAiFilePicker(fromClear, web)
+            val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+            automation.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+            compose.waitUntil(15_000) {
+                automation.rootInActiveWindow?.packageName?.toString() ==
+                    compose.activity.packageName
+            }
+            if (fromClear) {
+                assertEquals("Clear must remain on its AI page after picker cancellation",
+                    "AI", WebSkinBridgeRuntime.state().optString("page"))
+            } else {
+                assertTrue("Native AI page must remain visible after picker cancellation",
+                    compose.onAllNodesWithText("AI 助手").fetchSemanticsNodes().isNotEmpty())
+            }
+            assertTrue("Cancellation must not open the Host file-review surface",
+                compose.onAllNodesWithText("核对文件 · $filename")
+                    .fetchSemanticsNodes().isEmpty())
+            assertFalse("Cancellation must not grant endpoint/model file consent",
+                AiFileFallbackConsent.allowed(context, settings))
+            assertEquals("Cancellation must not call the configured Provider",
+                requestsBefore, requestBodies.size)
+            assertEquals("Cancellation must not alter chat history",
+                historyBeforePicker, AiChatHistoryStore.load(context))
+            assertEquals("Cancellation must not write calendar state",
+                storeBeforePicker, storeSnapshot())
+            Log.i("ClearAiFilePicker", "skin=${if (fromClear) "clear" else "native"}; " +
+                "cancelled=true; returnedToAi=true; reviewOpened=false; consentUnchanged=true; " +
+                "providerRequestsUnchanged=true; historyUnchanged=true; storeUnchanged=true")
         }
 
         fun grantAndSubmit(fromClear: Boolean, web: WebView? = null): List<Pair<String, String>> {
@@ -1570,6 +1623,8 @@ class ClearSettingsOptionsInstrumentedTest {
                 }.apply { name = "pc-native-clear-file-consent-stub"; isDaemon = true; start() }
 
                 showSkin("powercal-default")
+                cancelAiFilePickerWithoutSideEffects(fromClear = false, web = null,
+                    settings = settings)
                 val nativeHistory = grantAndSubmit(fromClear = false)
                 assertTrue("Native path must remember endpoint/model-scoped consent",
                     AiFileFallbackConsent.allowed(context, settings))
@@ -1595,6 +1650,8 @@ class ClearSettingsOptionsInstrumentedTest {
                 compose.waitUntil(30_000) {
                     evaluate(view, "!!window.PowerCalSkin && !!window.PowerCalSkin.receive") == "true"
                 }
+                cancelAiFilePickerWithoutSideEffects(fromClear = true, web = view,
+                    settings = settings)
                 val clearHistory = grantAndSubmit(fromClear = true, web = view)
                 assertEquals("Native and Clear must append the same file-analysis messages",
                     nativeHistory, clearHistory.takeLast(nativeHistory.size))
