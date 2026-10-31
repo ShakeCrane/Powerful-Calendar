@@ -100,3 +100,11 @@ Debug APK：67,500,112 bytes，SHA-256 `7E1FCEA722A7FC86F9792794B3560E24F5B448AE
 - 修复前全套失败日志保留为 `.local/android-test/reports/separation-s0-tl05-api35-20261030/skin-studio-python-post-tl05test.log`，SHA-256 `E29CB460E0A8047BF9846E4F481FBAF0A54954CA80DCABF5D8433915E42E3D34`；修复后 `python -m unittest discover -s tools/skin-studio/tests -v` **61/61 PASS**，日志 SHA-256 `098D5DE055178172078D260911572D9AC363BA387F77B451E2088600B89CC875`。
 
 这一静态测试修复不扩展手势验收范围。S0-ST-10 仍为 **PARTIAL / HOLD**，实际设备触摸、TalkBack/无障碍与冷进程恢复保持 **NOT TESTED**。
+
+## Follow-up — SEP-03 Memo projection survives Clear Activity recreation（2026-10-31）
+
+为补充 Memo 自身的生命周期证据，在 `ClearActivityRecreationRecoveryInstrumentedTest` 增加隔离 recurring Memo 场景：Store 已持久化一个完成 occurrence 后，Clear WebView 首次挂载时显示 2 个 Open 槽位和 1 个 Done 槽位；真实 Activity `recreate()` 后重新挂载 Clear，再次显示相同 occurrence 分布。对象 revision 保持 2，history 为 `CREATE / COMPLETE`，commit 保持 2、identity 1、next sequence 2、draft/pending 为 0。写入由测试 Store fixture 预置，测试观察 Host/Skin 重建投影，不把它当作 Memo 用户交互配对。
+
+- API 35 / Android 15 / WebView `124.0.6367.219` / `emulator-5570`：完整 `ClearActivityRecreationRecoveryInstrumentedTest` **2/2 PASS**，包含既有干净/脏编辑器恢复测试与新 Memo 投影测试。JUnit XML SHA-256 `884CDD75D7C5D5DECFB372B4790FF821852BE12C472989FA3BC4249882149796`；类 Gradle log SHA-256 `53A7C3B24F68AFFF82F538E67F54E1F68B51ABED07DEAEFCA3B1A265E632A814`；Memo device marker SHA-256 `01E756395BD083781E6202E1C958715B3675919C48BEFC2B22C2FA2E69D7447E`。
+- 强制离线 Gradle 全门禁 **785/785 JVM、125 suites、0 failures/errors/skips、171/171 tasks PASS**，两个源边界、Debug/AndroidTest APK、Lint 均通过（0 errors/55 warnings）。日志 SHA-256 `291E665490345A27ECC8DA5E67B10AB0C0A242DAA90AD44FBF7E4BC50363434F`。本次完整回归同时编译了另外两份并行 Agent 的未提交 AndroidTest 文件，但只执行了 `ClearActivityRecreationRecoveryInstrumentedTest` 类；worktree-specific APK 与详细日志见 `.local/android-test/reports/sep03-memo-activity-recreate-20261031/`。
+- 该回归增加 Activity 重建后的 Clear projection 证据，不覆盖正式 Memo 状态的冷进程恢复、WebView renderer 故障恢复、用户输入/无障碍服务或实体/OEM。SEP-14 保持 **PARTIAL / HOLD**；`S0-ST-10` 既有结论与手势签核不变。

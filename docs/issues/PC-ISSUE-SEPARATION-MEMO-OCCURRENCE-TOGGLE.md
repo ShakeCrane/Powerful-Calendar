@@ -2,13 +2,13 @@
 
 日期：2026-10-31
 验收项：`S0-ME-02`；父项 `SEP-03`
-状态：Host/JVM、Chrome Studio Mock 与 API 35 Native/Clear 重复 Memo 完成/撤销及真实 Android stale-action replay **PASS**；SEP-03 全功能等价仍 **PARTIAL / HOLD**。
+状态：Host/JVM、Chrome Studio Mock 与 API 35 Native/Clear 重复 Memo 完成/撤销、真实 Android stale-action replay、Clear Activity 重建后 Memo 投影 **PASS**；SEP-03 全功能等价仍 **PARTIAL / HOLD**。
 
 ## 结论
 
 Memo 完成状态按正式事件 owner、revision 和 occurrence key 重新验证。Host 在执行前重新读取事件，并确认版本和该 occurrence 的当前完成值；有效切换只提交一次并刷新投影。API 35 Android 15 模拟器上的 Native/Clear 重复 Memo 配对覆盖完成、Done 筛选、撤销与邻接槽位隔离。后续 stale replay 回归在 Clear WebView 中捕获真实可信触屏产生的原始 `toggleMemo` Bridge 消息；Store 前进到 revision 2 后，将 `expectedRevision=1` 的同一原始消息经当前 WebMessagePort 重放。Host 将“Memo 已变化，请刷新”投影回 Skin，正式记录、提交数、身份数和待处理状态均不变。
 
-没有发现需要修改的 Host/Core 持久化实现缺陷。重复 Memo 的目标槽位完成/撤销及 Android stale-action rejection 已由配对设备回放证明；Memo 全部入口、完整 Activity/进程恢复、Studio 所有编辑包路径与系统无障碍服务仍未覆盖，所以 `S0-ME-02` 有已验证切片，`SEP-03` 仍 **PARTIAL / HOLD**。
+没有发现需要修改的 Host/Core 持久化实现缺陷。重复 Memo 的目标槽位完成/撤销及 Android stale-action rejection 已由配对设备回放证明；Clear Activity 重建后也能从 Store 重新投影两个未完成槽位和一个已完成槽位，且没有追加写入。全 Memo 入口、正式 Memo 状态的冷进程恢复、Studio 所有编辑包路径与系统无障碍服务仍未覆盖，所以 `S0-ME-02` 有已验证切片，`SEP-03` 仍 **PARTIAL / HOLD**。
 
 ## 根因与工作对应
 
@@ -23,6 +23,7 @@ Memo 完成状态按正式事件 owner、revision 和 occurrence key 重新验�
 - `app/src/test/java/dev/powerfulcalendar/ui/v2/PowerCalCasualSuggestionComposeTest.kt`：生产 Host/Store completion path 的 occurrence、revision、replay 和 restart 回归。
 - `app/src/androidTest/java/dev/powerfulcalendar/ui/v2/WebSkinRecurrenceInstrumentedTest.kt`：真实 Clear Android WebView instrumentation 回归；只编译，未运行。
 - `app/src/androidTest/java/dev/powerfulcalendar/ui/v2/WebSkinAllKindsTrustedWriteInstrumentedTest.kt`：本次新增 Native/Clear 重复 Memo 完成状态配对，API 35 实际运行。
+- `app/src/androidTest/java/dev/powerfulcalendar/ui/v2/ClearActivityRecreationRecoveryInstrumentedTest.kt`：Activity 重建后重新连接 Clear，并验证已完成重复 Memo 的 Open/Done 投影及零额外写入。
 - `tools/skin-studio/v3-studio.js`：Preview Mock 改为 occurrence-scoped completion 和 owner revision。
 - `tools/skin-studio/tests/e2e_v3_memo_occurrence_toggle.cjs`：Chrome/CDP 回归脚本，导入 APK 中规范 Clear `.pcskin`。
 
@@ -48,7 +49,7 @@ Memo 完成状态按正式事件 owner、revision 和 occurrence key 重新验�
 
 ## 未验证项
 
-- 截至上文基础设备回放时，Android stale revision/replay、重复 occurrence 撤销、无障碍服务与 Activity/进程恢复仍 **NOT TESTED**。后续 stale replay 与重复 occurrence 撤销覆盖见本报告后续日期章节。
+- 截至上文早期设备回放时，Android stale revision/replay、重复 occurrence 撤销、无障碍服务与 Activity/进程恢复仍 **NOT TESTED**；后续章节补充了 stale replay、撤销以及 Activity 重建后的 Memo 投影证据。
 - 实体/OEM 验收仍未执行。API 35 AVD 结果不能替代实体设备验证。
 - 因其余 Memo 场景未闭环，父项 `SEP-03` 保持 **PARTIAL / HOLD**；本 Issue 不为其余行为签核。
 
@@ -92,4 +93,11 @@ Memo 完成状态按正式事件 owner、revision 和 occurrence key 重新验�
 - 在既有 API 35 Native/Clear recurring Memo 配对用例中，测试临时包装同一 JS realm 的 `MessagePort.prototype.postMessage`，捕获真实 Clear trusted touchscreen 完成按钮所发送的原始 JSON action。首次操作以 `expectedRevision=1` 提交后，Store 达到 revision 2；测试恢复原型方法，再通过捕获的当前页面端口原样重放该 JSON。没有更改 Clear、Host 或 Core 生产代码，也没有放宽 CSP。
 - API 35 / Android 15 / WebView `124.0.6367.219` / `emulator-5570`：`WebSkinAllKindsTrustedWriteInstrumentedTest#sameRecurringMemoCompletionProducesEquivalentNativeAndClearOccurrenceState` **1/1 PASS**。测试等待真实 Host state 投影 `Memo 已变化，请刷新`，随后核对正式记录完全相同、commit 仍为 2、identity 为 1、next sequence 为 2、draft/pending 均为 0，历史仍只有 `CREATE / COMPLETE`。设备日志 marker：`NATIVE_CLEAR_PARITY operation=STALE_REPLAY kind=MEMO eventSeq=1 expectedRevision=1 currentRevision=2 occurrenceKey=2026-11-01T00:00 accepted=false commits=2 hostNotice=Memo已变化`。
 - 证据目录 `.local/android-test/reports/sep03-stale-replay-20261031/`：JUnit XML SHA-256 `0FE0D97ADBC1F4CC776AD519673A877BBF563A96F9F8966429F02ED2C388C7BE`；focused Gradle log SHA-256 `00E3EA76978C85ED401F6C8B533E2E332CCCA89E818BCBBEC8FFDF582C348D6F`；instrumentation result log SHA-256 `D850037BF6A0006C9FFE7228823811ACFC64D246C01F08E88812A735A809F25D`；device logcat SHA-256 `6061340B8F2516760F5038BA156D9ADC14E07DDB373099657456D0EB5AA57BE6`。其后强制离线全门禁 **785/785 JVM、125 suites、0 failures/errors/skips、171/171 tasks PASS**，Lint 为 0 errors/55 warnings，门禁日志 SHA-256 `C645DF1E3FF3918894EFE4A78D385B5A559C70D3FB4350ACF590C73FF642CB94`；独立 `:app:verifyNativeSkinBoundary` 亦 **PASS**，日志 SHA-256 `FB2A326FE215AC07983A5A904AA2633DEC51BBE320634E7BE0FA504F026B87B6`。Debug APK SHA-256 `DE876D09D11689F98131C9DAD0A977AA1271E1657612B6A95DB89ABBBB80C31C`；worktree-specific AndroidTest APK SHA-256 `7C9011D7872FA62CE3D7329645D05F01041BD1B2C3030F5D4883210C664640DD`，内含另外两份 Agent 未提交测试源码，本次仅执行上列 Memo 方法。设备环境 API 35 / Android 15 / WebView `124.0.6367.219`。
-- 这关闭真实 Android stale-action rejection 的这一 Memo 子场景，不证明 Activity/进程生命周期恢复、TalkBack/无障碍服务或实体/OEM 行为。`S0-ME-02` 已有 Store/JVM、Studio Mock、Native/Clear 设备写入/撤销与 Android stale replay 证据；SEP-03 仍 **PARTIAL / HOLD**。
+- 这关闭真实 Android stale-action rejection 的这一 Memo 子场景，不证明冷进程恢复、TalkBack/无障碍服务或实体/OEM 行为。`S0-ME-02` 已有 Store/JVM、Studio Mock、Native/Clear 设备写入/撤销与 Android stale replay 证据；SEP-03 仍 **PARTIAL / HOLD**。
+
+## 2026-10-31 Clear completed Memo projection after Activity recreation
+
+- 扩展 `ClearActivityRecreationRecoveryInstrumentedTest`：使用隔离数据库创建每日重复 Memo，通过 Store fixture 将首个 occurrence 持久化为完成状态；Clear WebView 初次连接后检查 Open 列表有 2 槽、Done 列表有 1 槽。真实 Activity `recreate()` 后重新附着 Clear Runtime，再检查相同两列表和同一 occurrence key；正式对象 revision 2、history `CREATE / COMPLETE`、commit 2、identity 1、next sequence 2，draft/pending 为 0，重建后没有新增写入。该测试证明 Activity/UI 重建后的 Host→Skin 投影，不代表进程死亡/冷启动恢复。
+- API 35 / Android 15 / WebView `124.0.6367.219` / `emulator-5570`：整个 `ClearActivityRecreationRecoveryInstrumentedTest` **2/2 PASS**，既有 clean/dirty editor recreation 回归仍通过，新 Memo 投影方法也通过。JUnit XML SHA-256 `884CDD75D7C5D5DECFB372B4790FF821852BE12C472989FA3BC4249882149796`；类 Gradle log SHA-256 `53A7C3B24F68AFFF82F538E67F54E1F68B51ABED07DEAEFCA3B1A265E632A814`；设备 marker log SHA-256 `01E756395BD083781E6202E1C958715B3675919C48BEFC2B22C2FA2E69D7447E`。首轮单测断言脚本的字符串多转义一层，WebView 没有返回布尔结果；修正测试表达式后，定向方法及整个类均通过，没有生产行为缺陷证据。
+- 强制离线 Gradle 全门禁 **785/785 JVM、125 suites、0 failures/errors/skips、171/171 tasks PASS**，其中 Skin/Native source boundary、Debug/AndroidTest APK 与 Lint 全过（0 errors/55 warnings）。门禁日志 SHA-256 `291E665490345A27ECC8DA5E67B10AB0C0A242DAA90AD44FBF7E4BC50363434F`；Debug APK SHA-256 `DE876D09D11689F98131C9DAD0A977AA1271E1657612B6A95DB89ABBBB80C31C`；AndroidTest APK SHA-256 `7849D6F20D6723748226234B6727CFDFC9F8234B0D647BB434CB5405C89C046A`，属于该工作树构建并含两份其他 Agent 未提交 AndroidTest 源文件；本次运行仅执行恢复测试类。证据目录 `.local/android-test/reports/sep03-memo-activity-recreate-20261031/`。
+- SEP-03 仍 **PARTIAL / HOLD**：该 Slice 覆盖 Activity 重建，不覆盖正式 Memo 完成状态的冷进程重启、所有 Memo 入口、系统无障碍服务、Studio 任意编辑包全路径与实体/OEM。

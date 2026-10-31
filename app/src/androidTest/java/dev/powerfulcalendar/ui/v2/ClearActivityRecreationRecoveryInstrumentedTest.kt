@@ -12,7 +12,11 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.PowerStore
+import dev.powerfulcalendar.core.Recurrence
+import dev.powerfulcalendar.core.RecurrenceFreq
+import dev.powerfulcalendar.core.TemporalKind
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -21,6 +25,8 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
+import java.time.LocalDate
+import java.time.ZoneId
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -207,6 +213,94 @@ class ClearActivityRecreationRecoveryInstrumentedTest {
             assertEquals(0L, store.commitCount())
             assertTrue(store.all().isEmpty())
             assertNotNull(editorSnapshot().optJSONObject("form"))
+        } finally {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            store.close()
+            context.deleteDatabase(databaseName)
+            listOf("powercal-onboarding", "powercal-skin-choice", "powercal-ui", "powercal-profile")
+                .forEach { storage.deleteSharedPreferences("$namespace-$it") }
+            File(storage.cacheDir, namespace).deleteRecursively()
+        }
+    }
+
+    @Test
+    fun completedRecurringMemoProjectionSurvivesClearActivityRecreation() {
+        val storage = compose.activity.applicationContext
+        val namespace = "pc-clear-memo-activity-recovery-${UUID.randomUUID()}"
+        val databaseName = "memo-recovery.db"
+        var context = IsolatedContext(compose.activity, storage, namespace)
+        val store = PowerStore(context, databaseName)
+        val zone = ZoneId.of("Asia/Shanghai")
+        val firstDate = LocalDate.now(zone).plusDays(1)
+        val occurrenceKey = "${firstDate}T00:00"
+        val created = store.createFormalEvent(
+            DraftForm(
+                kind = TemporalKind.MEMO,
+                title = "Clear Memo projection after Activity recreation",
+                startText = firstDate.toString(),
+                zoneId = zone.id,
+                trackingEnabled = true,
+                recurrence = Recurrence(freq = RecurrenceFreq.DAILY, count = 3)
+            ),
+            "clear-memo-activity-recovery-$namespace"
+        ) as PowerStore.CommitOutcome.Committed
+        assertEquals(1L, created.eventSeq)
+        assertTrue(store.setCompleted(created.eventSeq, occurrenceKey, true, created.revision))
+        val completed = requireNotNull(store.get(created.eventSeq))
+        assertEquals(2L, completed.revision)
+        assertEquals(setOf(occurrenceKey), completed.completedKeys)
+
+        val onboarding = context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+        onboarding.edit().putBoolean("system-calendar-import-asked", true).commit()
+        try {
+            attachClear(context, store)
+
+            fun assertMemoProjection(web: WebView) {
+                val toggleSelector = "#memoList [data-action='toggleMemo']" +
+                    "[data-event-seq='${created.eventSeq}'][data-occurrence-key='$occurrenceKey']"
+                val quotedToggleSelector = JSONObject.quote(toggleSelector)
+                evaluate(web, "document.querySelector('.clear-tabbar [data-action=memo]').click();true")
+                compose.waitUntil(20_000) {
+                    evaluate(web, "!document.querySelector('#memoPage').hidden && " +
+                        "document.querySelector('#memoCounter')?.textContent==='2' && " +
+                        "document.querySelectorAll('#memoList .memo-row').length===2 && " +
+                        "!document.querySelector($quotedToggleSelector)") == "true"
+                }
+
+                evaluate(web, "document.querySelector('.tabs [data-filter=done]').click();true")
+                compose.waitUntil(15_000) {
+                    evaluate(web, "document.querySelectorAll('#memoList .memo-row').length===1 && " +
+                        "document.querySelector($quotedToggleSelector)?.getAttribute('aria-label')==='恢复未完成'") == "true"
+                }
+            }
+
+            var web = readyWebView()
+            assertMemoProjection(web)
+            assertEquals("opening the Memo projection must not create a commit", 2L, store.commitCount())
+
+            recreateActivity()
+            context = IsolatedContext(compose.activity, storage, namespace)
+            attachClear(context, store)
+            web = readyWebView()
+            assertMemoProjection(web)
+
+            assertEquals("recreation must preserve the exact completed owner snapshot", completed,
+                store.get(created.eventSeq))
+            assertEquals(2L, store.commitCount())
+            assertEquals(1, store.identityCount())
+            assertEquals(2L, store.nextSequencePreview())
+            assertEquals(0L, store.draftCount())
+            assertEquals(0, store.pendingCount())
+            assertEquals(listOf("CREATE", "COMPLETE"),
+                store.history(created.eventSeq).asReversed().map { it.operation })
+            println("SEP03_MEMO_ACTIVITY_RECREATE eventSeq=${created.eventSeq} " +
+                "completedOccurrence=$occurrenceKey revision=${completed.revision} " +
+                "commits=${store.commitCount()} identities=${store.identityCount()} " +
+                "openOccurrences=2 doneOccurrences=1 writesAfterRecreate=0")
         } finally {
             compose.runOnUiThread {
                 compose.activity.setContent { }
