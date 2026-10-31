@@ -2,13 +2,13 @@
 
 日期：2026-10-29
 验收项：`S0-ME-02`；父项 `SEP-03`
-状态：Host/JVM 与 Chrome Studio Mock 回归 **PASS**；Android instrumentation **COMPILED / NOT TESTED**；完整 Native/Clear parity **NOT TESTED**。
+状态：Host/JVM、Chrome Studio Mock 与 API 35 Native/Clear 重复 Memo 完成配对 **PASS**；SEP-03 全功能等价仍 **PARTIAL / HOLD**。
 
 ## 结论
 
-Memo 完成状态按正式事件 owner、revision 和 occurrence key 重新验证。Host 在执行前重新读取事件，并确认版本和该 occurrence 的当前完成值；有效切换只提交一次并刷新投影。JVM 回归验证了此生产调用路径、陈旧动作拒绝及 Store 重开后的持久性。Clear 包在 Studio Preview Mock 中验证了实际列表按钮、单槽位变化、owner revision 更新和过期请求拒绝。
+Memo 完成状态按正式事件 owner、revision 和 occurrence key 重新验证。Host 在执行前重新读取事件，并确认版本和该 occurrence 的当前完成值；有效切换只提交一次并刷新投影。既有 JVM 与 Studio Preview Mock 验证了陈旧动作拒绝和槽位隔离。2026-10-31 又在 API 35 Android 15 模拟器上执行同一重复 Memo fixture 的 Native/Clear 实际交互配对：两路均只完成目标 occurrence，owner revision 与提交数各增加一次，邻接实例仍未完成；Clear 点击来自 Android touchscreen 注入且 `event.isTrusted=true`。
 
-本轮没有发现需要修改的 Host 持久化实现缺陷。实际 Android WebView instrumentation 已新增并编译，但设备不可用，不能据此签核 Android 端到端或完整 Native/Clear parity。`S0-ME-02` 与 `SEP-03` 继续 **NOT TESTED / unsigned**。
+没有发现需要修改的 Host/Core 持久化实现缺陷。这个设备回放关闭了重复 Memo 完成状态的 Native/Clear 基础路径，但没有覆盖 Memo 全部入口、陈旧 Android replay、Studio 修改包、完整恢复与无障碍服务，所以 `S0-ME-02` 有已验证切片，`SEP-03` 仍 **PARTIAL / HOLD**。
 
 ## 根因与工作对应
 
@@ -16,12 +16,13 @@ Memo 完成状态按正式事件 owner、revision 和 occurrence key 重新验�
 | --- | --- | --- |
 | 既有 JVM 覆盖没有把重复 Memo 的选中槽位、owner revision、重复动作及进程重开串成一次生产路径回归。 | 增加 PowerCalApp Compose/Robolectric 集成测试：从真实 Store 创建每日重复 Memo，通过 Host bridge 切换指定 key；检查相邻 key 不变、revision/commit 只增一次、旧请求无副作用、重开 Store 后状态保留。 | `webMemoToggleIsOccurrenceScopedRevisionGuardedAndStableAcrossRestart`，1/1 PASS；被覆盖的是 Host/Store 路径，不是 Android WebView。 |
 | Studio Preview Mock 使用单一完成布尔值，无法模拟同一正式事件的多个 occurrence，也没有 owner revision 语义。 | Mock 改为按 `eventSeq:occurrenceKey` 记录完成状态，revision 按 owner 更新；严格匹配 `eventSeq`、`expectedRevision`、key 与期望完成状态，拒绝过期/不匹配 action。 | Chrome 156/CDP 对规范 Clear 包执行按钮交互并检查槽位隔离、可访问名称及两类 stale replay。 |
-| 缺少真实 Clear WebView 对按钮、Host bridge、revision guard 和恢复持久性的端到端 instrumentation。 | 增加 Android instrumentation 测试：打开 Clear Memo 列表、点击指定 occurrence、检查相邻槽位、revision、commit 数、无障碍名称、陈旧请求及 Store 重开。 | AndroidTest Kotlin 编译及 APK 生成 PASS；没有设备执行，结果严格标为 NOT TESTED。 |
+| 缺少真实 Clear WebView 对按钮、Host bridge、revision guard 和恢复持久性的端到端 instrumentation。 | 增加 Android instrumentation；原有 `WebSkinRecurrenceInstrumentedTest` 的 stale/restart 方法仍未执行。本次另在 `WebSkinAllKindsTrustedWriteInstrumentedTest` 加入同 fixture Native/Clear 的目标 occurrence 完成配对。 | 新配对在 API 35 模拟器 **1/1 PASS**，验证真实 Clear WebView→Host→Store、revision 与相邻槽位；不覆盖 stale replay 或 Store 重开。 |
 
 ## 修改文件
 
 - `app/src/test/java/dev/powerfulcalendar/ui/v2/PowerCalCasualSuggestionComposeTest.kt`：生产 Host/Store completion path 的 occurrence、revision、replay 和 restart 回归。
 - `app/src/androidTest/java/dev/powerfulcalendar/ui/v2/WebSkinRecurrenceInstrumentedTest.kt`：真实 Clear Android WebView instrumentation 回归；只编译，未运行。
+- `app/src/androidTest/java/dev/powerfulcalendar/ui/v2/WebSkinAllKindsTrustedWriteInstrumentedTest.kt`：本次新增 Native/Clear 重复 Memo 完成状态配对，API 35 实际运行。
 - `tools/skin-studio/v3-studio.js`：Preview Mock 改为 occurrence-scoped completion 和 owner revision。
 - `tools/skin-studio/tests/e2e_v3_memo_occurrence_toggle.cjs`：Chrome/CDP 回归脚本，导入 APK 中规范 Clear `.pcskin`。
 
@@ -39,7 +40,7 @@ Memo 完成状态按正式事件 owner、revision 和 occurrence key 重新验�
 | Skin Studio Python：`python -m unittest discover -s tools/skin-studio/tests -v` | **61/61 PASS**。 | `skin-studio-unittest-20261029.log` SHA-256 `3104154FDDB19F27AC674524818115BDFF66C7DF1D5C493BC2C93390C2E5D6BD`。 |
 | 完整离线 Gradle：`:app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:lintDebug` | **BUILD SUCCESSFUL**；624/624 JVM tests、84 suites、0 failures/errors/skips；59 actionable tasks（5 executed、54 up-to-date）；source boundary、Debug APK、lint 通过。Lint 为 0 errors / 52 warnings。 | `gradle-full-final-20261029.log` SHA-256 `352DBE0C2BBFEB5E270FE12B5B72D47845E7A9349A745414D3B1F9C87DB15142`；Debug APK SHA-256 `F730EDD3953C534FA7C9441D0061B4815FF33BC13EFCE407127E98D0EA76735F`。 |
 | Clear/Studio Node 语法与 `git diff --check` | **PASS**。 | 与 CDP 执行同一变更；命令退出码 0。 |
-| Android 设备可用性 | **NOT TESTED / BLOCKED**：没有已连接 ADB device；SDK 中无 Emulator launcher 与 system image。 | 本轮没有安装、清空或修改 AVD。CDP Studio Mock 和 JVM 测试均不代替 Android WebView。 |
+| Android 设备可用性（2026-10-29 原始运行） | 当次 **NOT TESTED / BLOCKED**：没有已连接 ADB device；SDK 中无 Emulator launcher 与 system image。 | 这是原始运行的历史状态。2026-10-31 已在 API 35 `emulator-5570` 执行本 Issue 追加的 Native/Clear 配对场景，证据见下文。 |
 
 ## 过程中的独立测试同步问题
 
@@ -47,12 +48,18 @@ Memo 完成状态按正式事件 owner、revision 和 occurrence key 重新验�
 
 ## 未验证项
 
-- 打包 Clear 在 Android WebView 内的真实 JS→Host→Store 路径、Android 重建/进程恢复和系统无障碍服务行为：**NOT TESTED**。
-- Native/Clear 成对同数据回放、重启恢复及完整 Memo parity：**NOT TESTED**。
-- 实体设备由用户执行；本机暂时没有可用 AVD。不能将 JVM/Chrome 证据提升为设备验收。
-- 因上述限制，父项 `SEP-03` 和验收项 `S0-ME-02` 保持 **NOT TESTED / unsigned**；皮肤分离不因此结束。
+- Native/Clear 重复 Memo 完成的基础设备回放已通过；Android stale revision/replay、完成后再次打开/撤销、无障碍服务、Activity/进程恢复以及 Studio 编辑后皮肤包的同路径回放仍 **NOT TESTED**。
+- 实体/OEM 验收仍未执行。API 35 AVD 结果不能替代实体设备验证。
+- 因其余 Memo 场景未闭环，父项 `SEP-03` 保持 **PARTIAL / HOLD**；本 Issue 不为其余行为签核。
 
 ## 提交
 
 - `c50d5aec22471b6522ef2748f8fae221c3f2e60a` — `test(分离): 补齐 Memo 单实例完成状态回归`（已推送）。
 - `1965f93030444cead1643c42cb8500ad89d9bb46` — `test(分离): 等待 Memo 分页状态刷新`（已推送；独立 S0-ME-01 测试同步修正）。
+
+## 2026-10-31 Android 15 Native/Clear 配对回放
+
+- 同一 `Asia/Shanghai` 每日重复 MEMO fixture（3 个实例）分别经 Native Compose 和 APK 内 Clear WebView 完成首个实例。Native checkbox 触屏后，Core 记录只包含 `2026-11-01T00:00`；Clear Memo 导航和 checkbox 通过 `SOURCE_TOUCHSCREEN` 注入，均断言 `event.isTrusted=true`。两路 `eventSeq=1`、revision `1→2`、commit `1→2`、identity `1`、next sequence `2`；剩余实例为 `2026-11-02T00:00` 与 `2026-11-03T00:00`，draft/pending 均为 0。
+- API 35 `emulator-5570` focused pair **1/1 PASS**，同一 trusted-write instrumentation class **17/17 PASS**；完整离线 Gradle gate **785/785 JVM、125 suites、0 failures/errors/skips、171/171 tasks PASS**，Native/Skin boundaries、Debug/AndroidTest APK 和 lint 通过。
+- 设备类日志 SHA-256：focused Gradle `D4E9CEDCA46BDC814171AA6744D9190EC472FABF7D107D5D1B3AEEE69EA1AE76`，class `4E6E672EB70B9EA2B6FDEC69B7DA751F2AAB933CF71A108D6781E3BE12A94BFE`；完整 Gradle gate `C12A5ECE61CA522296D821EA24DAACB51196091022461300AAE74EE02E13CA06`。单测 XML `772E98A5F54E6539E85287023579206F14E729D730E4C4747F215A69DA6DBAEE`；focused WebView/Host logcat `B401CB949CCF4AFE67EBEB8B90B4774277665437D48D9D657B277513BCBFAFDC`。Debug / AndroidTest APK SHA-256 `DE876D09D11689F98131C9DAD0A977AA1271E1657612B6A95DB89ABBBB80C31C` / `3A2EB64DD2EF7D2F87CAAD9BEC77B04FEB02129105BE915E1AA4386F46AB4831`。
+- 完整日志、XML 与触屏追踪保存在 `.local/android-test/reports/sep03-memo-completion-parity-20261031/` 及 Gradle connected-test 输出目录。新增测试提交 `db5b67a1a9f93aa5e7c96483f256c5fe8fce324d` 已推送至 `origin/feat/skin-first-separation`；Core、Host 和 Clear 生产源码均未修改。
