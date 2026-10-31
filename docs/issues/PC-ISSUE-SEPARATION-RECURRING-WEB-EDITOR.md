@@ -72,3 +72,11 @@
 本轮测试源码只改 `app/src/test/java/dev/powerfulcalendar/ui/v2/WebSkinRecurrenceBridgeTest.kt`。测试编写期间有两次被保留的测试夹具失败：第一轮因 Robolectric 临时数据库目录未创建而无法打开隔离数据库；修正为显式创建目录后，下一编译轮发现测试缺少 `RecurrenceEngine` import，补齐后定向与完整门禁均通过。这两项是测试夹具/编译错误，不是产品行为失败。失败日志及最终日志均位于忽略目录 `.local/android-test/reports/separation-s0-rp01-20261030/`。
 
 因此 `S0-RP-01` 的 JVM Core/Bridge 跨类型结果与恢复子项有当前通过证据，但整个矩阵行保持 **`PARTIAL / HOLD`**：当前源快照没有可用 Android 虚拟机，且没有实体/OEM 与当前版 WebView UI parity 实测。旧 Chrome Studio Mock 不作为 Host/WebView 完整签核。
+
+## 2026-10-31 API 35 Native/Clear 范围配对回放
+
+- 在 API 35 AVD `emulator-5570`（Android 15、WebView `124.0.6367.219`）上，`WebSkinRecurringScopeParityInstrumentedTest.sameDailyAlarmFixtureProducesEquivalentFutureAndWholeSeriesEdits` 通过。该 JUnit 方法执行两个配对场景：隔离 Store 使用同一个每日 ALARM 夹具，分别操作 Native 月历/编辑器和实际打包的 Clear WebView。
+- Android 触屏注入打开 Clear 月历中携带原始实例键 `2026-10-31T09:00` 的事件，并可信地选择 `THIS_AND_FUTURE` 或 `WHOLE_SERIES`。每个范围都先确认 Host 审查前正式数据未变，取消一次审核并确认零写入，再重新请求并批准。保存后的 Native/Clear 记录、表单、revision、重复槽位键、身份数、序号水位、草稿、提交和待处理数相等。本次及以后生成旧/新系列记录；整系列编辑保留原身份和锚点。
+- 定向 `WebSkinRecurrenceBridgeTest`：**13/13 PASS**。设备 XML：**1 项、0 failures/errors/skips**，SHA-256 `67186560C6A68659F08B9BF7312E22B084EC21156AFE1D0ED05F15CA6F7D69C3`；JVM XML SHA-256 `287198A4A5876E68BE202AFC32C4A73A310E47A1DAAB2250094A062CE215D677`。两个范围的最终可信触屏轨迹 SHA-256 `0D78CC04C07736D789B894E52D2EB93A1C6CA7637985D08ED7F028ECB2F4AB3A`；包含命令、源码及 APK 哈希的 manifest 位于 `.local/android-test/reports/sep06-scope-paired-20261031/manifest.json`，SHA-256 `13C2F83458D467C8FB2D5399E8F4686478632A4D090FC3240F7A1E79E20A7682`。
+- 首轮测试失败均由测试夹具/断言造成：种子夹具残留终态草稿、在选择范围前断言实例表单、对无滚动语义父节点调用 `performScrollTo()`，以及把实例日期错误用于整系列范围。失败 XML 均保存在忽略目录；没有发现对应的生产行为缺陷。
+- SEP-06 仍为 **PARTIAL / HOLD**：设备配对目前覆盖每日 ALARM 的两个范围；已有单次编辑测试没有 Native/Clear 配对。其他类型、完整恢复/冲突覆盖、Studio 编辑/构建/重导入往返、实体/OEM 尚未验证。本次配对测试没有修改 Core、Bridge、Clear 实现或默认皮肤。

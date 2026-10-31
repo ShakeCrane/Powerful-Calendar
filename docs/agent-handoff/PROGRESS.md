@@ -1,5 +1,11 @@
 # Core freeze progress
 
+## Separation — SEP-06 Native/Clear repeated-scope paired device replay (2026-10-31, focused JVM/API35 TESTED; PARTIAL / HOLD)
+
+- 新增 `WebSkinRecurringScopeParityInstrumentedTest`：同一隔离每日 ALARM 分别通过 Native 月历/编辑器 UI 和真实打包 Clear WebView 执行 `THIS_AND_FUTURE`、`WHOLE_SERIES`。Clear 月历事件使用 Android `SOURCE_TOUCHSCREEN` 注入，可信点击轨迹携带原始键 `2026-10-31T09:00`。Host 取消审核时正式 Store 不变；再次由 Host 确认后保存。两种范围下 Native/Clear 的记录、表单、revision、实例键、身份数、序号水位、草稿、提交及待处理数均相等。
+- 定向 JVM `WebSkinRecurrenceBridgeTest`：**13/13 PASS**。API 35 AVD `emulator-5570`、Android 15、WebView `124.0.6367.219`：**1/1 instrumentation method PASS**，内部执行两个范围场景。本次及以后拆分产生两个身份/三条提交；整系列编辑保留一个身份/两条提交。证据 manifest SHA-256 `13C2F83458D467C8FB2D5399E8F4686478632A4D090FC3240F7A1E79E20A7682`；详细日志和测试夹具修正记录位于忽略目录 `.local/android-test/reports/sep06-scope-paired-20261031/`。
+- 本次设备配对只覆盖一种 ALARM 和两个范围。已有单次 Clear 与 Native 测试是分开的证据，并非配对回放；其他事件类型、该编辑器在 Studio 的编辑/构建/重导入往返、重复恢复/冲突覆盖、实体/OEM 及 SEP-06 完整等价仍未验证，因此状态保留 **PARTIAL / HOLD**。没有修改生产 Core、Bridge、Clear、Native renderer 或默认皮肤。其他 Agent 未提交的 `WebSkinFormalDeleteInstrumentedTest.kt` 和 `WebSkinRecurrenceInstrumentedTest.kt` 保持原样、未暂存。
+
 ## Separation — Native presentation module integrated baseline (historical snapshot 2026-10-30; see the 2026-10-31 runtime recheck below)
 
 - At integrated Git SHA `c93ace28a038f42a5f539a92ae0ec575495a3326`, the Native renderer implementations (timeline, month, memo, AI, settings/navigation, deck/editor, picker, chrome/overlays, and review prompts) are in `:native-skin`; display models and callback slots are in `:skin-api`. `:app` retains Host projections/controller adapters, the Native renderer registry, and protected credential/profile slots. The Native module has no Core, AI, Store, or Android system-service dependency.
