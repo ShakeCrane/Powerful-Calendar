@@ -4,15 +4,18 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.database.DatabaseErrorHandler
 import android.database.sqlite.SQLiteDatabase
+import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import android.view.InputDevice
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.webkit.WebView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasSetTextAction
@@ -22,6 +25,7 @@ import androidx.compose.ui.test.click
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -52,6 +56,8 @@ import java.util.concurrent.atomic.AtomicReference
 @RunWith(AndroidJUnit4::class)
 class TimelineCreateContextWebViewInstrumentedTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+
+    private data class CameraSnapshot(val anchorMillis: Long, val hours: Double, val page: String)
 
     private class IsolatedAppContext(
         target: Context,
@@ -115,6 +121,112 @@ class TimelineCreateContextWebViewInstrumentedTest {
 
     private fun awaitJs(web: WebView, condition: String) {
         compose.waitUntil(30_000) { evaluate(web, condition) == "true" }
+    }
+
+    private fun cameraSnapshot(): CameraSnapshot {
+        val state = AtomicReference<org.json.JSONObject>()
+        compose.runOnIdle { state.set(WebSkinBridgeRuntime.state()) }
+        val snapshot = requireNotNull(state.get())
+        val timeline = snapshot.getJSONObject("timeline")
+        return CameraSnapshot(timeline.getLong("anchorMillis"), timeline.getDouble("hours"),
+            snapshot.getString("page"))
+    }
+
+    private fun awaitCamera(anchorMillis: Long, hours: Double): CameraSnapshot {
+        compose.waitUntil(15_000) {
+            val camera = cameraSnapshot()
+            camera.anchorMillis == anchorMillis && camera.hours == hours
+        }
+        return cameraSnapshot()
+    }
+
+    private fun panNativeTimelineByMinutes(hours: Double, minutes: Int): Float {
+        val viewport = compose.onNodeWithTag("timeline-viewport").fetchSemanticsNode()
+        val height = viewport.boundsInRoot.height
+        assertTrue("Native timeline viewport must have measurable height", height > 0f)
+        val deltaY = (height * minutes / (hours * 60.0) +
+            ViewConfiguration.get(compose.activity).scaledTouchSlop).toFloat()
+        val rootLocation = IntArray(2)
+        compose.runOnUiThread { compose.activity.window.decorView.getLocationOnScreen(rootLocation) }
+        val startX = viewport.boundsInRoot.left + viewport.boundsInRoot.width * .75f
+        val startY = viewport.boundsInRoot.top + viewport.boundsInRoot.height * .75f
+        injectTouchscreenSwipe(rootLocation[0] + startX, rootLocation[1] + startY,
+            rootLocation[0] + startX, rootLocation[1] + startY - deltaY, 1_200)
+        return deltaY
+    }
+
+    private fun injectTouchscreenSwipe(startX: Float, startY: Float, endX: Float, endY: Float,
+        durationMillis: Int) {
+        val command = "input touchscreen swipe ${startX.toInt()} ${startY.toInt()} " +
+            "${endX.toInt()} ${endY.toInt()} $durationMillis"
+        val descriptor = InstrumentationRegistry.getInstrumentation().uiAutomation
+            .executeShellCommand(command)
+        val output = ParcelFileDescriptor.AutoCloseInputStream(descriptor).bufferedReader().use { it.readText() }
+        assertTrue("Android shell touchscreen injection failed: $output", output.isBlank())
+    }
+
+    private fun panClearTimelineByMinutes(web: WebView, hours: Double, minutes: Int): JSONObject {
+        val probe = evaluate(web, """(() => {
+          const axis=document.querySelector('#axisScroll');
+          if(!axis)return {found:false};
+          const pointer={trustedDown:false,trustedMove:false,trustedUp:false,cancelled:false,
+            pointerType:'',moves:0,id:-1,startX:null,startY:null};
+          window.__sep04NonGridPanPointer=pointer;
+          axis.addEventListener('pointerdown',event=>{
+            pointer.trustedDown=event.isTrusted;pointer.pointerType=String(event.pointerType);
+            pointer.id=event.pointerId;
+            pointer.startX=event.clientX;pointer.startY=event.clientY;
+          },{once:true});
+          document.addEventListener('pointermove',event=>{
+            if(event.pointerId!==pointer.id)return;
+            pointer.moves++;pointer.trustedMove=pointer.trustedMove||event.isTrusted;
+          });
+          document.addEventListener('pointerup',event=>{
+            if(event.pointerId===pointer.id)pointer.trustedUp=event.isTrusted;
+          },true);
+          document.addEventListener('pointercancel',event=>{
+            if(event.pointerId===pointer.id){
+              pointer.cancelled=true;
+              pointer.cancelInfo={x:event.clientX,y:event.clientY,targetId:event.target?.id||'',
+                targetConnected:event.target?.isConnected===true,axisConnected:axis.isConnected,
+                hasCapture:axis.hasPointerCapture(event.pointerId),cancelable:event.cancelable,
+                defaultPrevented:event.defaultPrevented};
+            }
+          },true);
+          const rect=axis.getBoundingClientRect();
+          return {found:true,x:rect.left+rect.width*.75,y:rect.top+axis.clientHeight*.75,
+            height:axis.clientHeight,cssWidth:document.documentElement.clientWidth,
+            cssHeight:window.innerHeight,dpr:window.devicePixelRatio,
+            axisTouchAction:getComputedStyle(axis).touchAction,
+            wingTouchAction:getComputedStyle(axis.querySelector('.timelineWing')).touchAction};
+        })()""")
+        val target = JSONObject(JSONArray("[$probe]").getString(0))
+        assertTrue("Clear timeline viewport should exist for pan", target.optBoolean("found"))
+        val location = IntArray(2)
+        val dimensions = AtomicReference<Pair<Int, Int>>()
+        compose.runOnUiThread {
+            web.getLocationOnScreen(location)
+            dimensions.set(web.width to web.height)
+        }
+        val (width, height) = requireNotNull(dimensions.get())
+        val scaleX = width / target.getDouble("cssWidth")
+        val scaleY = height / target.getDouble("cssHeight")
+        assertEquals("Clear touchscreen mapping preserves aspect ratio", scaleX, scaleY, 0.02)
+        val startX = location[0] + (target.getDouble("x") * scaleX).toFloat()
+        val startY = location[1] + (target.getDouble("y") * scaleY).toFloat()
+        val deltaY = (-(target.getDouble("height") * minutes / (hours * 60.0) * scaleY +
+            ViewConfiguration.get(compose.activity).scaledTouchSlop)).toFloat()
+        injectTouchscreenSwipe(startX, startY, startX, startY + deltaY, 1_200)
+        val gestureJson = evaluate(web, "JSON.stringify(window.__sep04NonGridPanPointer)")
+        val gesture = JSONObject(JSONArray("[$gestureJson]").getString(0))
+        assertTrue("Clear receives a trusted Android pointer gesture: $gesture",
+            gesture.optBoolean("trustedDown") && gesture.optBoolean("trustedMove") &&
+                gesture.optBoolean("trustedUp") && !gesture.optBoolean("cancelled") &&
+                gesture.getInt("moves") > 0 && gesture.getString("pointerType") == "touch")
+        return JSONObject().put("gesture", gesture).put("startY", startY).put("deltaY", deltaY)
+            .put("axisHeightCss", target.getDouble("height"))
+            .put("scaleY", scaleY)
+            .put("wingTouchAction", target.getString("wingTouchAction"))
     }
 
     private fun tapClearSelector(web: WebView, selector: String): JSONObject {
@@ -425,11 +537,10 @@ class TimelineCreateContextWebViewInstrumentedTest {
         var web: WebView? = null
         try {
             val zone = ZoneId.systemDefault()
-            val expectedCamera = TimelineCoordinate.initialCamera(System.currentTimeMillis(), zone)
-            val expectedStart = TimelineCoordinate.snap(
-                expectedCamera.anchorMillis, expectedCamera.hours, zone
-            )
-            val title = "Native/Clear snapped timeline Activity"
+            val initialCamera = TimelineCoordinate.initialCamera(System.currentTimeMillis(), zone)
+            val zoomHours = 16.0
+            val nonGridShiftMinutes = 37
+            val title = "Native/Clear non-grid zoom camera Activity"
             val nativeCountsBefore = listOf(
                 nativeStore.draftCount(), nativeStore.pendingCount(), nativeStore.identityCount(),
                 nativeStore.commitCount(), nativeStore.nextSequencePreview(),
@@ -462,6 +573,27 @@ class TimelineCreateContextWebViewInstrumentedTest {
             compose.waitUntil(30_000) {
                 compose.onAllNodesWithContentDescription("新建事件").fetchSemanticsNodes().isNotEmpty()
             }
+            compose.onNodeWithContentDescription("今日 · 复位为全天").performTouchInput { click() }
+            awaitCamera(initialCamera.anchorMillis, initialCamera.hours)
+            compose.onNodeWithContentDescription("放大，显示更短时间")
+                .performTouchInput { click() }
+            awaitCamera(initialCamera.anchorMillis, zoomHours)
+            val nativePanPixels = panNativeTimelineByMinutes(zoomHours, nonGridShiftMinutes)
+            compose.waitForIdle()
+            val nativeCamera = cameraSnapshot()
+            println("SEP04_NONGRID_NATIVE requestedMinutes=$nonGridShiftMinutes " +
+                "actual=$nativeCamera deltaPx=$nativePanPixels")
+            val expectedCamera = TimelineCoordinate.Camera(
+                initialCamera.anchorMillis + nonGridShiftMinutes * 60_000L, zoomHours
+            )
+            val expectedStart = TimelineCoordinate.snap(expectedCamera.anchorMillis, expectedCamera.hours, zone)
+            assertTrue("Native pan should apply the requested 37-minute camera delta after system touch slop: " +
+                "native=$nativeCamera expected=$expectedCamera inputPx=$nativePanPixels",
+                kotlin.math.abs(nativeCamera.anchorMillis - expectedCamera.anchorMillis) <= 60_000L)
+            assertEquals(zoomHours, nativeCamera.hours, 0.0)
+            assertEquals("Native camera pan remains on Timeline", "TIMELINE", nativeCamera.page)
+            assertTrue("37-minute test input remains between zoom-dependent snap points",
+                expectedStart != expectedCamera.anchorMillis)
             compose.onNodeWithContentDescription("新建事件").performTouchInput { click() }
             compose.waitUntil(10_000) {
                 compose.onAllNodesWithText(TemporalKind.ACTIVITY.label).fetchSemanticsNodes().isNotEmpty()
@@ -474,6 +606,10 @@ class TimelineCreateContextWebViewInstrumentedTest {
             compose.onNode(hasSetTextAction() and hasText("标题")).performTextInput(title)
             assertTrue("opening the Native camera-seeded editor must remain transient",
                 nativeStore.all().isEmpty())
+            assertEquals("Native camera gestures do not write to the Store", nativeCountsBefore,
+                listOf(nativeStore.draftCount(), nativeStore.pendingCount(), nativeStore.identityCount(),
+                    nativeStore.commitCount(), nativeStore.nextSequencePreview(),
+                    nativeStore.nextQueueOrderPreview(), nativeStore.all().size.toLong()))
             assertEquals(nativeCountsBefore, listOf(
                 nativeStore.draftCount(), nativeStore.pendingCount(), nativeStore.identityCount(),
                 nativeStore.commitCount(), nativeStore.nextSequencePreview(),
@@ -501,10 +637,36 @@ class TimelineCreateContextWebViewInstrumentedTest {
                 clearCamera = WebSkinBridgeRuntime.state().getJSONObject("timeline")
             }
             val clearTimeline = requireNotNull(clearCamera)
-            assertEquals("both fixtures open on the same local date", expectedCamera.anchorMillis,
+            assertEquals("both fixtures open at the same local-noon baseline", initialCamera.anchorMillis,
                 clearTimeline.getLong("anchorMillis"))
-            assertEquals(expectedCamera.hours, clearTimeline.getDouble("hours"), 0.0)
+            assertEquals(initialCamera.hours, clearTimeline.getDouble("hours"), 0.0)
             assertEquals(zone.id, clearTimeline.getString("zoneId"))
+
+            val clearTodayTouch = tapClearSelector(web, "[data-action='today']")
+            assertTrue("Clear Today reset is a trusted touchscreen action",
+                clearTodayTouch.optBoolean("trusted"))
+            awaitCamera(initialCamera.anchorMillis, initialCamera.hours)
+            val clearZoomTouch = tapClearSelector(web,
+                "[data-action='zoomTimeline'][data-direction='in']")
+            assertTrue("Clear zoom is a trusted touchscreen action", clearZoomTouch.optBoolean("trusted"))
+            awaitCamera(initialCamera.anchorMillis, zoomHours)
+            val clearPan = panClearTimelineByMinutes(web, zoomHours, nonGridShiftMinutes)
+            runCatching {
+                compose.waitUntil(3_000) { cameraSnapshot().anchorMillis != initialCamera.anchorMillis }
+            }
+            val clearCameraAfterPan = cameraSnapshot()
+            assertTrue("Clear Android pointer gesture must reach the Host camera: " +
+                "initial=${initialCamera.anchorMillis} actual=$clearCameraAfterPan pointer=$clearPan",
+                clearCameraAfterPan.anchorMillis != initialCamera.anchorMillis)
+            assertEquals("Clear non-grid pan remains on Timeline", "TIMELINE", clearCameraAfterPan.page)
+            assertEquals(zoomHours, clearCameraAfterPan.hours, 0.0)
+            assertTrue("Native and Clear cameras agree after adding each view's system slop compensation: " +
+                "native=$nativeCamera clear=$clearCameraAfterPan expected=$expectedCamera " +
+                "nativeInputPx=$nativePanPixels clearInput=$clearPan",
+                kotlin.math.abs(nativeCamera.anchorMillis - clearCameraAfterPan.anchorMillis) <= 60_000L)
+            assertEquals("Native and Clear snap the non-grid camera to the same 10-minute instant",
+                expectedStart, TimelineCoordinate.snap(clearCameraAfterPan.anchorMillis,
+                    clearCameraAfterPan.hours, zone))
 
             val addTouch = tapClearSelector(web, "[data-action='createDraft']")
             assertTrue("Clear timeline create entry uses Android touchscreen input",
@@ -526,6 +688,8 @@ class TimelineCreateContextWebViewInstrumentedTest {
             assertEquals(zone.id, initialClearForm.getString("zoneId"))
             assertEquals("Clear uses the same Host-owned snapped camera selection",
                 nativeForm.startText, initialClearForm.getString("startText"))
+            assertEquals("Clear uses the same measured non-grid zoom snap as Native",
+                DraftForm.formatInstant(expectedStart, zone), initialClearForm.getString("startText"))
             assertEquals(nativeForm.endText, initialClearForm.getString("endText"))
             assertTrue("opening and editing the Clear candidate must remain transient",
                 clearStore.all().isEmpty())
@@ -561,7 +725,10 @@ class TimelineCreateContextWebViewInstrumentedTest {
             assertEquals(0L, clearStore.draftCount())
             assertEquals(0, clearStore.pendingCount())
             println("NATIVE_CLEAR_PARITY operation=TIMELINE_CREATE kind=ACTIVITY " +
-                "cameraAnchor=${expectedCamera.anchorMillis} snap=$expectedStart " +
+                "cameraAnchor=${expectedCamera.anchorMillis} zoomHours=$zoomHours " +
+                "requestedShiftMinutes=$nonGridShiftMinutes nativeCamera=$nativeCamera " +
+                "clearCamera=$clearCameraAfterPan snap=$expectedStart " +
+                "nativePanPx=$nativePanPixels clearPan=$clearPan " +
                 "eventSeq=${clearRecord.eventSeq} revision=${clearRecord.revision} " +
                 "commits=${clearStore.commitCount()} identities=${clearStore.identityCount()} " +
                 "businessForm=${DraftForm.from(clearRecord)}")
