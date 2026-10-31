@@ -2429,13 +2429,40 @@ class ClearSettingsOptionsInstrumentedTest {
                 store.identityCount(), store.nextSequencePreview()
             )
             val storeBefore = storeSnapshot()
+            val installedBefore = skinManager.installed().map { it.id }.toSet()
+
+            // Cancel the actual system picker first, then prove Clear Settings remains
+            // usable and a second import can be started without creating a candidate.
             evaluate(view, "document.querySelector('#importSkinButton').click(); true")
-            val rootButton = waitForPickerNode(contentDescription = "Show roots")
+            waitForPickerNode(contentDescription = "Show roots")
             assertEquals("The real Android document provider must own the picker",
                 "com.google.android.documentsui",
                 InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow
                     ?.packageName?.toString())
-            tapPickerNode(rootButton)
+            InstrumentationRegistry.getInstrumentation().uiAutomation.performGlobalAction(
+                AccessibilityService.GLOBAL_ACTION_BACK
+            )
+            compose.waitUntil(15_000) {
+                InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow
+                    ?.packageName?.toString() == compose.activity.packageName &&
+                    WebSkinBridgeRuntime.state().optString("page") == "SETTINGS"
+            }
+            assertFalse("Cancelling OpenDocument must not install the candidate",
+                skinManager.installed().any { it.id == fixtureId })
+            assertEquals("Cancelled import must preserve installed packages",
+                installedBefore, skinManager.installed().map { it.id }.toSet())
+            assertEquals("Cancelled import must preserve the active skin",
+                "powercal-clear-default", skinManager.currentId())
+            assertEquals("Cancelled import must preserve all calendar state", storeBefore,
+                storeSnapshot())
+
+            evaluate(view, "document.querySelector('#importSkinButton').click(); true")
+            val resumedRootButton = waitForPickerNode(contentDescription = "Show roots")
+            assertEquals("Clear must be able to reopen Android DocumentsUI after cancellation",
+                "com.google.android.documentsui",
+                InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow
+                    ?.packageName?.toString())
+            tapPickerNode(resumedRootButton)
             tapPickerNode(waitForPickerNode(text = "Downloads"))
             tapPickerNode(waitForPickerNode(text = pickerName))
 
@@ -2465,6 +2492,9 @@ class ClearSettingsOptionsInstrumentedTest {
             assertEquals("A real picker import must not auto-activate its candidate",
                 "powercal-clear-default", skinManager.currentId())
             assertEquals("Import must not write calendar data", storeBefore, storeSnapshot())
+            Log.i("ClearSkinSAF", "cancelledPicker=true; settingsRestored=true; " +
+                "candidateAbsentAfterCancel=true; pickerReopened=true; packageInstalled=true; " +
+                "activeSkin=${skinManager.currentId()}; storeUnchanged=true")
         } finally {
             val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
             repeat(2) {
