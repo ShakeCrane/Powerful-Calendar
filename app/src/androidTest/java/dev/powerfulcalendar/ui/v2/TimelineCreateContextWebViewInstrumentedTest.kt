@@ -4,6 +4,9 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.database.DatabaseErrorHandler
 import android.database.sqlite.SQLiteDatabase
+import android.os.SystemClock
+import android.view.InputDevice
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebView
@@ -11,8 +14,21 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.click
+import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.TemporalKind
@@ -22,6 +38,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
 import java.time.Instant
 import java.time.LocalDate
@@ -97,6 +115,62 @@ class TimelineCreateContextWebViewInstrumentedTest {
 
     private fun awaitJs(web: WebView, condition: String) {
         compose.waitUntil(30_000) { evaluate(web, condition) == "true" }
+    }
+
+    private fun tapClearSelector(web: WebView, selector: String): JSONObject {
+        val selectorLiteral = JSONObject.quote(selector)
+        val encoded = evaluate(web, """(()=>{
+            const target=document.querySelector($selectorLiteral);
+            if(!target)return JSON.stringify({found:false});
+            const rect=target.getBoundingClientRect();
+            const hit=document.elementFromPoint(rect.left+rect.width/2,rect.top+rect.height/2);
+            window.__pcMonthParityTouch=null;
+            target.addEventListener('click',event=>{
+                window.__pcMonthParityTouch={selector:$selectorLiteral,trusted:event.isTrusted};
+            },{once:true,capture:true});
+            return JSON.stringify({found:true,x:rect.left+rect.width/2,y:rect.top+rect.height/2,
+                cssWidth:innerWidth,cssHeight:innerHeight,
+                visible:rect.width>0&&rect.height>0&&rect.left>=0&&rect.top>=0&&
+                    rect.right<=innerWidth&&rect.bottom<=innerHeight,
+                hitTarget:hit===target||target.contains(hit),
+                disabled:target.disabled===true||target.getAttribute('aria-disabled')==='true'});
+        })()""")
+        val target = JSONObject(JSONArray("[$encoded]").getString(0))
+        assertTrue("Clear touchscreen target is unavailable: $selector $target",
+            target.optBoolean("found") && target.optBoolean("visible") &&
+                target.optBoolean("hitTarget") && !target.optBoolean("disabled"))
+
+        val location = IntArray(2)
+        val dimensions = AtomicReference<Pair<Int, Int>>()
+        compose.runOnUiThread {
+            web.getLocationOnScreen(location)
+            dimensions.set(web.width to web.height)
+        }
+        val (width, height) = requireNotNull(dimensions.get())
+        val scaleX = width / target.getDouble("cssWidth")
+        val scaleY = height / target.getDouble("cssHeight")
+        assertEquals("WebView input coordinates preserve aspect ratio", scaleX, scaleY, 0.03)
+        val x = location[0] + (target.getDouble("x") * scaleX).toFloat()
+        val y = location[1] + (target.getDouble("y") * scaleY).toFloat()
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        val downTime = SystemClock.uptimeMillis()
+        val down = MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, y, 0).apply {
+            source = InputDevice.SOURCE_TOUCHSCREEN
+        }
+        val up = MotionEvent.obtain(downTime, downTime + 80L, MotionEvent.ACTION_UP, x, y, 0).apply {
+            source = InputDevice.SOURCE_TOUCHSCREEN
+        }
+        try {
+            assertTrue("Android accepted WebView touchscreen down", automation.injectInputEvent(down, true))
+            assertTrue("Android accepted WebView touchscreen up", automation.injectInputEvent(up, true))
+        } finally {
+            down.recycle()
+            up.recycle()
+        }
+        awaitJs(web, "window.__pcMonthParityTouch?.selector===$selectorLiteral && " +
+            "window.__pcMonthParityTouch?.trusted===true")
+        return JSONObject(JSONArray("[${evaluate(web, "JSON.stringify(window.__pcMonthParityTouch)")}]" )
+            .getString(0))
     }
 
     @Test
@@ -335,5 +409,188 @@ class TimelineCreateContextWebViewInstrumentedTest {
                 .forEach { storage.deleteSharedPreferences("$namespace-$it") }
             File(storage.cacheDir, namespace).deleteRecursively()
         }
+    }
+
+    @Test
+    fun monthSelectedActivityCreateMatchesNativeAndClearBusinessRecord() {
+        val storage = compose.activity.applicationContext
+        val nativeNamespace = "pc-month-create-parity-native-${UUID.randomUUID()}"
+        val clearNamespace = "pc-month-create-parity-clear-${UUID.randomUUID()}"
+        val nativeContext = IsolatedAppContext(compose.activity, storage, nativeNamespace)
+        val clearContext = IsolatedAppContext(compose.activity, storage, clearNamespace)
+        val nativeDatabase = "month-create-native.db"
+        val clearDatabase = "month-create-clear.db"
+        val nativeStore = PowerStore(nativeContext, nativeDatabase)
+        val clearStore = PowerStore(clearContext, clearDatabase)
+        val zone = ZoneId.systemDefault()
+        val today = LocalDate.now(zone)
+        val selectedDate = if (today.dayOfMonth == 1) today.plusDays(1) else today.withDayOfMonth(1)
+        val title = "Native/Clear selected Month Activity"
+        try {
+            listOf(nativeStore, clearStore).forEach { store ->
+                assertTrue(store.all().isEmpty())
+                assertEquals(0L, store.commitCount())
+                assertEquals(0L, store.identityCount())
+                assertEquals(1L, store.nextSequencePreview())
+                assertEquals(0L, store.draftCount())
+            }
+
+            nativeContext.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                .edit().putBoolean("system-calendar-import-asked", true).commit()
+            SkinPackageManager(nativeContext).selectNativeForEmergencyRecovery()
+            compose.runOnUiThread {
+                compose.activity.setContent {
+                    CompositionLocalProvider(LocalContext provides nativeContext) {
+                        PowerCalTheme { PowerCalApp(nativeStore) }
+                    }
+                }
+            }
+            val monthTab = hasText("日历") and hasClickAction()
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithContentDescription("新建事件").fetchSemanticsNodes().isNotEmpty() &&
+                    compose.onAllNodes(monthTab).fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNode(monthTab).performClick()
+            compose.onNodeWithContentDescription("$selectedDate，0 项").performClick()
+            compose.onNodeWithText("为这一天新建活动").performScrollTo().performClick()
+            compose.waitUntil(30_000) {
+                compose.onAllNodes(hasSetTextAction() and hasText("标题"))
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNode(hasSetTextAction() and hasText("标题")).performTextInput(title)
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithText("发布").fetchSemanticsNodes().isNotEmpty()
+            }
+            assertTrue("Month selection and opening Native editor remain transient", nativeStore.all().isEmpty())
+            assertEquals(0L, nativeStore.commitCount())
+            assertEquals(0L, nativeStore.identityCount())
+            compose.onNodeWithText("发布").performTouchInput { click() }
+            compose.waitUntil(30_000) {
+                nativeStore.all().singleOrNull()?.title == title
+            }
+            val nativeRecord = nativeStore.all().single()
+            val nativeForm = DraftForm.from(nativeRecord)
+            assertEquals(TemporalKind.ACTIVITY, nativeRecord.kind)
+            assertEquals(selectedDate.toString(), nativeForm.startText.take(10))
+            assertEquals(selectedDate.toString(), nativeForm.endText.take(10))
+            assertEquals(1L, nativeStore.commitCount())
+            assertEquals(1L, nativeStore.identityCount())
+            assertEquals(2L, nativeStore.nextSequencePreview())
+            assertEquals(0L, nativeStore.draftCount())
+
+            resetClear()
+            val clearView = launchClear(clearContext, clearStore)
+            awaitJs(clearView, "!!document.querySelector(\".clear-tabbar [data-action='month']\")")
+            val monthTouch = tapClearSelector(clearView, ".clear-tabbar [data-action='month']")
+            assertTrue("Month navigation uses a trusted touchscreen event", monthTouch.optBoolean("trusted"))
+            awaitJs(clearView, "!document.querySelector('#monthPage').hidden")
+            val dateTouch = tapClearSelector(clearView, ".month-cell[data-date=\"$selectedDate\"]")
+            assertTrue("Selected month date uses a trusted touchscreen event", dateTouch.optBoolean("trusted"))
+            awaitJs(clearView, "document.querySelector('.month-cell.selected')?.dataset.date===" +
+                "${org.json.JSONObject.quote(selectedDate.toString())}")
+            val createTouch = tapClearSelector(clearView, "#monthPage [data-action='createDraft']")
+            assertTrue("Month Activity entry uses a trusted touchscreen event", createTouch.optBoolean("trusted"))
+            awaitJs(clearView, "!document.querySelector('#skinSheet').hidden && " +
+                "!!document.querySelector('#sheetFields [data-field=title]')")
+
+            var clearForm: org.json.JSONObject? = null
+            compose.runOnIdle {
+                clearForm = WebSkinBridgeRuntime.state().getJSONObject("editing")
+                    .getJSONObject("deck").getJSONObject("form")
+            }
+            assertEquals("Month route must create an Activity from the selected date",
+                TemporalKind.ACTIVITY.name, requireNotNull(clearForm).getString("kind"))
+            assertEquals(selectedDate.toString(), requireNotNull(clearForm).getString("startText").take(10))
+            editTitleForParity(clearView, title)
+            listOf("startText" to nativeForm.startText, "endText" to nativeForm.endText)
+                .filter { (_, value) -> value.isNotEmpty() }
+                .forEach { (field, value) ->
+                    val selector = "#sheetFields [data-field=${org.json.JSONObject.quote(field)}]"
+                    evaluate(clearView, "(()=>{const input=document.querySelector(${org.json.JSONObject.quote(selector)});" +
+                        "if(!input)return false;input.value=${org.json.JSONObject.quote(value)};" +
+                        "input.dispatchEvent(new Event('change',{bubbles:true}));return true})()")
+                    awaitJs(clearView, "document.querySelector(${org.json.JSONObject.quote(selector)})?.value===" +
+                        "${org.json.JSONObject.quote(value)}")
+                }
+            assertTrue("Clear Month editor remains write-free before Host review", clearStore.all().isEmpty())
+            assertEquals(0L, clearStore.commitCount())
+            assertEquals(0L, clearStore.identityCount())
+            val saveTouch = tapClearSelector(clearView, "#sheetSave")
+            assertTrue("Publish request uses a trusted touchscreen event", saveTouch.optBoolean("trusted"))
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithText("确认发布正式事件").fetchSemanticsNodes().isNotEmpty()
+            }
+            assertTrue("Host review must not write the Clear Month candidate", clearStore.all().isEmpty())
+            assertEquals(0L, clearStore.commitCount())
+            compose.onNodeWithText("确认").performTouchInput { click() }
+            compose.waitUntil(30_000) { clearStore.all().singleOrNull()?.title == title }
+            val clearRecord = clearStore.all().single()
+            awaitJs(clearView, "document.querySelector('#skinSheet').hidden")
+            assertEquals(TemporalKind.ACTIVITY, clearRecord.kind)
+            assertEquals(selectedDate.toString(), DraftForm.from(clearRecord).startText.take(10))
+            assertEquals(selectedDate.toString(), DraftForm.from(clearRecord).endText.take(10))
+            assertEquals(nativeForm, DraftForm.from(clearRecord))
+            assertEquals(nativeRecord.eventSeq, clearRecord.eventSeq)
+            assertEquals(nativeRecord.revision, clearRecord.revision)
+            assertEquals(1L, clearStore.commitCount())
+            assertEquals(1L, clearStore.identityCount())
+            assertEquals(2L, clearStore.nextSequencePreview())
+            assertEquals(0L, clearStore.draftCount())
+            assertEquals(0, clearStore.pendingCount())
+            println("NATIVE_CLEAR_PARITY operation=MONTH_CREATE kind=ACTIVITY date=$selectedDate " +
+                "eventSeq=${clearRecord.eventSeq} revision=${clearRecord.revision} " +
+                "commits=${clearStore.commitCount()} identities=${clearStore.identityCount()} " +
+                "businessForm=${DraftForm.from(clearRecord)}")
+        } finally {
+            resetClear()
+            nativeStore.close()
+            clearStore.close()
+            nativeContext.deleteDatabase(nativeDatabase)
+            clearContext.deleteDatabase(clearDatabase)
+            listOf(nativeNamespace, clearNamespace).forEach { namespace ->
+                listOf("powercal-onboarding", "powercal-skin-choice", "powercal-ui", "powercal-profile")
+                    .forEach { storage.deleteSharedPreferences("$namespace-$it") }
+                File(storage.cacheDir, namespace).deleteRecursively()
+            }
+        }
+    }
+
+    private fun editTitleForParity(web: WebView, title: String) {
+        evaluate(web, "(()=>{const input=document.querySelector('#sheetFields [data-field=title]');" +
+            "input.value=${org.json.JSONObject.quote(title)};" +
+            "input.dispatchEvent(new Event('change',{bubbles:true}));return true})()")
+        awaitJs(web, "document.querySelector('#sheetFields [data-field=title]')?.value===" +
+            "${org.json.JSONObject.quote(title)} && !document.querySelector('#sheetSave').disabled")
+    }
+
+    private fun launchClear(context: IsolatedAppContext, store: PowerStore): WebView {
+        context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+            .edit().putBoolean("system-calendar-import-asked", true).commit()
+        SkinPackageManager(context).select("powercal-clear-default")
+        compose.runOnUiThread {
+            compose.activity.setContent {
+                CompositionLocalProvider(LocalContext provides context) {
+                    PowerCalTheme { PowerCalApp(store) }
+                }
+            }
+        }
+        var web: WebView? = null
+        compose.waitUntil(30_000) {
+            compose.runOnUiThread {
+                web = findWebView(compose.activity.findViewById(android.R.id.content))
+            }
+            web != null
+        }
+        return requireNotNull(web).also {
+            awaitJs(it, "!!window.PowerCalSkin && !!document.querySelector('[data-action=createDraft]')")
+        }
+    }
+
+    private fun resetClear() {
+        compose.runOnUiThread {
+            compose.activity.setContent { }
+            PowerCalSkinRegistry.reset()
+        }
+        compose.waitForIdle()
     }
 }
