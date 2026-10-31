@@ -22,6 +22,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.DraftOperation
@@ -829,6 +830,134 @@ class WebSkinAllKindsTrustedWriteInstrumentedTest {
                 "revision=${clearRecord.revision} commits=${clearStore.commitCount()} " +
                 "identities=${clearStore.identityCount()} sequence=${clearStore.nextSequencePreview()} " +
                 "businessForm=${DraftForm.from(clearRecord)}")
+        } finally {
+            resetClear()
+            nativeStore.close()
+            clearStore.close()
+            nativeContext.deleteDatabase(nativeDatabase)
+            clearContext.deleteDatabase(clearDatabase)
+            listOf(nativeNamespace, clearNamespace).forEach { namespace ->
+                listOf("powercal-onboarding", "powercal-skin-choice", "powercal-ui", "powercal-profile")
+                    .forEach { storage.deleteSharedPreferences("$namespace-$it") }
+                File(storage.cacheDir, namespace).deleteRecursively()
+            }
+        }
+    }
+
+    @Test
+    fun sameFormalMemoFixtureProducesEquivalentEditedRevisionFromNativeAndClear() {
+        val storage = compose.activity.applicationContext
+        val nativeNamespace = "pc-native-clear-memo-edit-native-${UUID.randomUUID()}"
+        val clearNamespace = "pc-native-clear-memo-edit-clear-${UUID.randomUUID()}"
+        val nativeContext = IsolatedAppContext(compose.activity, storage, nativeNamespace)
+        val clearContext = IsolatedAppContext(compose.activity, storage, clearNamespace)
+        val nativeDatabase = "memo-edit-parity-native.db"
+        val clearDatabase = "memo-edit-parity-clear.db"
+        val nativeStore = PowerStore(nativeContext, nativeDatabase)
+        val clearStore = PowerStore(clearContext, clearDatabase)
+        var web: WebView? = null
+        try {
+            val seed = DraftForm(
+                kind = TemporalKind.MEMO,
+                title = "Native/Clear formal Memo seed",
+                zoneId = ZoneId.systemDefault().id
+            )
+            val nativeCreated = nativeStore.createFormalEvent(seed, "memo-edit-parity-seed")
+                as PowerStore.CommitOutcome.Committed
+            val clearCreated = clearStore.createFormalEvent(seed, "memo-edit-parity-seed")
+                as PowerStore.CommitOutcome.Committed
+            val nativeOriginal = requireNotNull(nativeStore.get(nativeCreated.eventSeq))
+            val clearOriginal = requireNotNull(clearStore.get(clearCreated.eventSeq))
+            assertEquals("both paths begin from the same persisted business fixture",
+                DraftForm.from(nativeOriginal), DraftForm.from(clearOriginal))
+            assertEquals(nativeOriginal.eventSeq, clearOriginal.eventSeq)
+            assertEquals(nativeOriginal.revision, clearOriginal.revision)
+            assertEquals(1L, nativeStore.commitCount())
+            assertEquals(nativeStore.commitCount(), clearStore.commitCount())
+            assertEquals(1, nativeStore.identityCount())
+            assertEquals(nativeStore.identityCount(), clearStore.identityCount())
+
+            nativeContext.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                .edit().putBoolean("system-calendar-import-asked", true).commit()
+            SkinPackageManager(nativeContext).selectNativeForEmergencyRecovery()
+            compose.runOnUiThread {
+                compose.activity.setContent {
+                    CompositionLocalProvider(LocalContext provides nativeContext) {
+                        PowerCalTheme { PowerCalApp(nativeStore) }
+                    }
+                }
+            }
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithContentDescription("Memo 未完成 1").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithContentDescription("Memo 未完成 1").performClick()
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithText(seed.title).fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText(seed.title).performClick()
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithText("保存修改").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNode(hasSetTextAction() and hasText(seed.title))
+                .performTextReplacement("Native/Clear edited Memo")
+            assertEquals("Native editor changes remain uncommitted until Save", nativeOriginal,
+                nativeStore.get(nativeOriginal.eventSeq))
+            assertEquals(1L, nativeStore.commitCount())
+            compose.onNodeWithText("保存修改").performClick()
+            compose.waitUntil(30_000) {
+                nativeStore.get(nativeOriginal.eventSeq)?.title == "Native/Clear edited Memo"
+            }
+            val nativeEdited = requireNotNull(nativeStore.get(nativeOriginal.eventSeq))
+
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+
+            web = launchClear(clearContext, clearStore)
+            evaluate(web, "document.querySelector('.clear-tabbar [data-action=memo]').click();true")
+            awaitJs(web, "!document.querySelector('#memoPage').hidden")
+            awaitJs(web, "!!document.querySelector(\"#memoList .memo-title[data-event-seq='${clearOriginal.eventSeq}']\")")
+            evaluate(web, "document.querySelector(\"#memoList .memo-title[data-event-seq='${clearOriginal.eventSeq}']\").click();true")
+            awaitJs(web, "!document.querySelector('#skinSheet').hidden && " +
+                "document.querySelector('#sheetFields [data-field=title]')?.value===${JSONObject.quote(seed.title)}")
+            editTitle(web, "Native/Clear edited Memo")
+            assertEquals("Clear proposal remains uncommitted before Host review", clearOriginal,
+                clearStore.get(clearOriginal.eventSeq))
+            assertEquals(1L, clearStore.commitCount())
+            evaluate(web, "document.querySelector('#sheetSave').click();true")
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithText("确认保存正式事件修改").fetchSemanticsNodes().isNotEmpty()
+            }
+            assertEquals("opening Host approval must not write the Clear proposal", clearOriginal,
+                clearStore.get(clearOriginal.eventSeq))
+            compose.onNodeWithText("确认").performClick()
+            compose.waitUntil(30_000) {
+                clearStore.get(clearOriginal.eventSeq)?.title == "Native/Clear edited Memo"
+            }
+            val clearEdited = requireNotNull(clearStore.get(clearOriginal.eventSeq))
+
+            assertEquals("same edit through both real routes must persist equal business forms",
+                DraftForm.from(nativeEdited), DraftForm.from(clearEdited))
+            assertEquals(nativeOriginal.eventSeq, nativeEdited.eventSeq)
+            assertEquals(nativeEdited.eventSeq, clearEdited.eventSeq)
+            assertEquals(nativeOriginal.revision + 1, nativeEdited.revision)
+            assertEquals(nativeEdited.revision, clearEdited.revision)
+            assertEquals(2L, nativeStore.commitCount())
+            assertEquals(nativeStore.commitCount(), clearStore.commitCount())
+            assertEquals(1, nativeStore.identityCount())
+            assertEquals(nativeStore.identityCount(), clearStore.identityCount())
+            assertEquals(2L, nativeStore.nextSequencePreview())
+            assertEquals(nativeStore.nextSequencePreview(), clearStore.nextSequencePreview())
+            assertEquals(0, nativeStore.draftCount())
+            assertEquals(nativeStore.draftCount(), clearStore.draftCount())
+            assertEquals(0, nativeStore.pendingCount())
+            assertEquals(nativeStore.pendingCount(), clearStore.pendingCount())
+            println("NATIVE_CLEAR_PARITY operation=EDIT kind=${clearEdited.kind} " +
+                "eventSeq=${clearEdited.eventSeq} revision=${clearEdited.revision} " +
+                "commits=${clearStore.commitCount()} identities=${clearStore.identityCount()} " +
+                "sequence=${clearStore.nextSequencePreview()} businessForm=${DraftForm.from(clearEdited)}")
         } finally {
             resetClear()
             nativeStore.close()
