@@ -19,5 +19,15 @@
             android:exported="true"
             android:readPermission="${applicationId}.androidtest.permission.READ_SYNTHETIC_BACKUP"
             android:grantUriPermissions="true" />
+        <provider
+            android:name="dev.powerfulcalendar.interop.RestoreFailureDocumentsProvider"
+            android:authorities="${applicationId}.androidtest.backup-documents"
+            android:exported="true"
+            android:permission="android.permission.MANAGE_DOCUMENTS"
+            android:grantUriPermissions="true">
+            <intent-filter>
+                <action android:name="android.content.action.DOCUMENTS_PROVIDER" />
+            </intent-filter>
+        </provider>
     </application>
 </manifest>

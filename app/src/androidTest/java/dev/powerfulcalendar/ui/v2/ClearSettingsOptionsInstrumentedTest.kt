@@ -54,6 +54,7 @@ import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
+import dev.powerfulcalendar.interop.RestoreFailureDocumentsProvider
 import dev.powerfulcalendar.ai.AiFileFallbackConsent
 import dev.powerfulcalendar.ai.AiChatHistoryStore
 import dev.powerfulcalendar.ai.AiSettings
@@ -314,6 +315,74 @@ class ClearSettingsOptionsInstrumentedTest {
             up.recycle()
         }
         SystemClock.sleep(250)
+    }
+
+    private fun selectReadFailingProviderDocument() {
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        fun findNavigationControl(node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
+            if (node == null) return null
+            val description = node.contentDescription?.toString().orEmpty()
+            val viewId = node.viewIdResourceName.orEmpty()
+            if (description.contains("root", ignoreCase = true) ||
+                description.contains("navigation", ignoreCase = true) ||
+                viewId.contains("navigation_button", ignoreCase = true)
+            ) return node
+            for (index in 0 until node.childCount) {
+                findNavigationControl(node.getChild(index))?.let { return it }
+            }
+            return null
+        }
+
+        val pickerDeadline = SystemClock.elapsedRealtime() + 15_000
+        var pickerRoot: AccessibilityNodeInfo? = null
+        while (SystemClock.elapsedRealtime() < pickerDeadline) {
+            val activeRoot = automation.rootInActiveWindow
+            if (activeRoot?.packageName?.toString() == "com.google.android.documentsui") {
+                pickerRoot = activeRoot
+                break
+            }
+            SystemClock.sleep(150)
+        }
+        assertTrue("Restore must launch Android DocumentsUI; " +
+            accessibilitySnapshot(automation.rootInActiveWindow), pickerRoot != null)
+        val currentRoot = requireNotNull(pickerRoot)
+        if (findAccessibilityNode(currentRoot,
+                text = RestoreFailureDocumentsProvider.BACKUP_NAME) == null) {
+            val providerRoot = findAccessibilityNode(
+                currentRoot, text = RestoreFailureDocumentsProvider.ROOT_TITLE
+            )
+            if (providerRoot != null) {
+                tapPickerNode(providerRoot)
+            } else {
+                val navigation = findNavigationControl(currentRoot)
+                    ?: throw AssertionError("DocumentsUI root navigation is unavailable: " +
+                        accessibilitySnapshot(currentRoot))
+                tapPickerNode(navigation)
+                tapPickerNode(waitForPickerNode(text = RestoreFailureDocumentsProvider.ROOT_TITLE))
+            }
+        }
+        tapPickerNode(waitForPickerNode(text = RestoreFailureDocumentsProvider.BACKUP_NAME))
+        val deadline = SystemClock.elapsedRealtime() + 15_000
+        var selected = false
+        while (SystemClock.elapsedRealtime() < deadline && !selected) {
+            val root = automation.rootInActiveWindow
+            if (root?.packageName?.toString() != "com.google.android.documentsui") {
+                selected = true
+                break
+            }
+            val open = findAccessibilityNode(root, text = "OPEN")
+                ?: findAccessibilityNode(root, text = "Open")
+                ?: findAccessibilityNode(root, contentDescription = "Open")
+                ?: findAccessibilityNode(root, viewId = "android:id/button1")
+            if (open != null) {
+                tapPickerNode(open)
+                selected = true
+            } else SystemClock.sleep(150)
+        }
+        assertTrue("The synthetic failing backup must be selectable in DocumentsUI", selected)
+        compose.waitUntil(30_000) {
+            automation.rootInActiveWindow?.packageName?.toString() == compose.activity.packageName
+        }
     }
 
     @Test
@@ -2520,9 +2589,14 @@ class ClearSettingsOptionsInstrumentedTest {
                 store.identityCount(), store.nextSequencePreview()
             ))
 
-            val descriptor = instrumentation.uiAutomation.executeShellCommand("cat $outputPath")
-            val savedJson = ParcelFileDescriptor.AutoCloseInputStream(descriptor)
-                .bufferedReader(Charsets.UTF_8).use { it.readText() }
+            var savedJson = ""
+            val readbackDeadline = SystemClock.elapsedRealtime() + 20_000
+            while (savedJson.isBlank() && SystemClock.elapsedRealtime() < readbackDeadline) {
+                val descriptor = instrumentation.uiAutomation.executeShellCommand("cat $outputPath")
+                savedJson = ParcelFileDescriptor.AutoCloseInputStream(descriptor)
+                    .bufferedReader(Charsets.UTF_8).use { it.readText() }
+                if (savedJson.isBlank()) SystemClock.sleep(200)
+            }
             assertTrue("The uniquely named backup must exist in Downloads after saving", savedJson.isNotBlank())
             val verified = BackupEnvelope.verify(JSONObject(savedJson), PowerStore.VERSION)
             assertEquals("The exported snapshot must contain the seeded formal Memo",
@@ -3098,6 +3172,144 @@ class ClearSettingsOptionsInstrumentedTest {
             store.close()
             context.deleteDatabase(sourceDatabase)
             context.deleteDatabase(targetDatabase)
+            skinManager.select(originalSkin)
+            val restoreOnboarding = onboarding.edit()
+            if (hadAskedForCalendarImport) {
+                restoreOnboarding.putBoolean("system-calendar-import-asked", askedForCalendarImport)
+            } else {
+                restoreOnboarding.remove("system-calendar-import-asked")
+            }
+            restoreOnboarding.commit()
+        }
+    }
+
+    @Test
+    fun nativeAndClearBackupRestoreShowProviderReadFailureWithoutWrites() {
+        assumeTrue("DocumentsUI restore flow must run on an isolated Android emulator",
+            Build.HARDWARE == "ranchu" || Build.HARDWARE == "goldfish")
+
+        val context = compose.activity.applicationContext
+        val databaseName = "sep11-provider-read-target-${UUID.randomUUID()}.db"
+        val store = PowerStore(context, databaseName)
+        val skinManager = SkinPackageManager(context)
+        val originalSkin = skinManager.currentId()
+        val onboarding = context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+        val hadAskedForCalendarImport = onboarding.contains("system-calendar-import-asked")
+        val askedForCalendarImport = onboarding.getBoolean("system-calendar-import-asked", false)
+        var web: WebView? = null
+
+        fun persistentSnapshot(): List<Any?> {
+            val payload = BackupEnvelope.verify(store.exportBackup(), PowerStore.VERSION).payload
+            return listOf(
+                BackupEnvelope.canonicalJson(payload), store.all(), store.draftCount(),
+                store.pendingCount(), store.commitCount(), store.identityCount(),
+                store.nextSequencePreview()
+            )
+        }
+
+        fun mountNativeSettings() {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+                skinManager.select("powercal-default")
+                compose.activity.setContent { PowerCalTheme { PowerCalApp(store) } }
+            }
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithText("时间轴").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText("设置").performClick()
+            compose.onNodeWithText("工具与设置").assertExists()
+        }
+
+        fun mountClearSettings() {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+                skinManager.select("powercal-clear-default")
+                compose.activity.setContent { PowerCalTheme { PowerCalApp(store) } }
+            }
+            compose.waitUntil(30_000) {
+                compose.runOnUiThread {
+                    web = findWebView(compose.activity.findViewById(android.R.id.content))
+                }
+                web != null
+            }
+            val view = requireNotNull(web)
+            compose.waitUntil(30_000) {
+                evaluate(view, "!!window.PowerCalSkin && !!window.PowerCalSkin.receive") == "true"
+            }
+            tapWebSelector(view, ".clear-tabbar [data-action=settings]")
+            compose.waitUntil(15_000) {
+                WebSkinBridgeRuntime.state().optString("page") == "SETTINGS"
+            }
+        }
+
+        try {
+            assertTrue(onboarding.edit().putBoolean("system-calendar-import-asked", true).commit())
+            val zone = ZoneId.of("Asia/Shanghai")
+            val formalDraft = store.newDraft(DraftForm(
+                kind = TemporalKind.ACTIVITY,
+                title = "SEP11_PROVIDER_PROTECTED_${UUID.randomUUID()}",
+                startText = "2026-11-03 10:00",
+                endText = "2026-11-03 10:30",
+                zoneId = zone.id
+            ), actor = "sep11-provider-test")
+            assertTrue("The protected formal fixture must commit",
+                store.commit(formalDraft.draftId, actor = "sep11-provider-test") is
+                    PowerStore.CommitOutcome.Committed)
+            store.newDraft(DraftForm(
+                kind = TemporalKind.MEMO,
+                title = "SEP11_PROVIDER_PENDING_${UUID.randomUUID()}",
+                startText = LocalDate.now(zone).plusDays(3).toString(),
+                zoneId = zone.id
+            ), actor = "sep11-provider-test")
+
+            val before = persistentSnapshot()
+            assertEquals("The read-error fixture protects one formal record", 1, store.all().size)
+            assertEquals("The read-error fixture also protects one pending draft", 1,
+                store.pendingCount())
+
+            mountNativeSettings()
+            compose.onNodeWithText("从备份恢复").performScrollTo().performClick()
+            selectReadFailingProviderDocument()
+            compose.waitUntil(20_000) {
+                compose.onAllNodesWithText("无权读取所选文件", substring = true)
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+            assertEquals("Native provider read failure must preserve all Store state",
+                before, persistentSnapshot())
+
+            mountClearSettings()
+            tapWebSelector(requireNotNull(web),
+                "#settingsOptionGroups [data-option-id='data.backup.restore']")
+            selectReadFailingProviderDocument()
+            val clearView = requireNotNull(web)
+            compose.waitUntil(20_000) {
+                evaluate(clearView,
+                    "document.getElementById('hostNotice')?.textContent||''")
+                    .contains("无权读取所选文件")
+            }
+            assertEquals("Clear provider read failure must preserve all Store state",
+                before, persistentSnapshot())
+
+            println("SEP11_NATIVE_CLEAR_PROVIDER_READ_FAILURE " +
+                "nativeSafePermissionMessage=true clearSafePermissionMessage=true " +
+                "formalAndDraftSnapshotsUnchanged=true documentsUiSelected=true trustedClearTouch=true")
+        } finally {
+            val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+            repeat(2) {
+                if (automation.rootInActiveWindow?.packageName?.toString() == "com.google.android.documentsui") {
+                    automation.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+                    SystemClock.sleep(200)
+                }
+            }
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            store.close()
+            context.deleteDatabase(databaseName)
             skinManager.select(originalSkin)
             val restoreOnboarding = onboarding.edit()
             if (hadAskedForCalendarImport) {
