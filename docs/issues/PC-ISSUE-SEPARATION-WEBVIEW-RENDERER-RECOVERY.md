@@ -31,7 +31,7 @@
 
 ## 尚未验证
 
-本结果只覆盖已加载 Clear 的 WebView renderer 进程终止与 Native 紧急恢复。它**不代表 SEP-14 完成**。后续章节已分别验证 Activity 重建、renderer 退出时的 dirty editor checkpoint，以及操作系统杀进程后的冷启动草稿恢复；以下仍未验证：损坏/恶意包和脚本异常；升级失败；设备重启后的数据保持；实体设备/OEM/WebView 版本差异。
+本结果只覆盖已加载 Clear 的 WebView renderer 进程终止与 Native 紧急恢复。它**不代表 SEP-14 完成**。后续章节分别验证 Activity 重建、dirty editor checkpoint、冷启动草稿恢复、坏归档回退及未捕获脚本运行错误；以下仍未验证：恶意或无异常但行为不正确的皮肤、升级失败、设备重启后的数据保持、实体设备/OEM/WebView 版本差异。
 
 ## Follow-up — Clear 编辑器 Activity 重建恢复
 
@@ -87,4 +87,16 @@ Store 前后快照相等，涵盖正式对象序号/版本/类型、待处理草
 - 完整离线门禁 `:app:verifyNativeSkinBoundary :app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug --offline --rerun-tasks --console=plain`：**785/785 JVM、125 suites、0 failures/errors/skips；171/171 tasks PASS**。Debug APK：66,518,075 bytes，SHA-256 `ED2F8F9827EF820361CC663F9C89D7F84A2545AB6DB313F36587C2E1DA1D064B`；AndroidTest APK：1,690,264 bytes，SHA-256 `AD3253649208E839E74F0F0FF3547748780E3E9D73674C4C11FE304ACD02D2A5`。
 - 详细忽略目录证据：`.local/android-test/reports/sep14-corrupt-package-cold-recovery-20261031/`。最初使用独立 `ComponentActivity` 的全局 Accessibility 探针没有绑定到 `MainActivity` Compose 树，该次断言失败且未计入通过；改用 `MainActivity` Compose 规则后，最终两阶段均通过。没有发现需要修改 Runtime/Host/Core 的产品缺陷。
 
-这只关闭“已选择、不可解码 ZIP 在冷启动时回退”的窄场景。可解码但脚本异常/恶意行为、升级失败、设备重启及实体/OEM 恢复仍为 **NOT TESTED**，SEP-14 继续 **INCOMPLETE / HOLD**。测试提交 `84902b5` 已推送到唯一集成主线。
+这只关闭“已选择、不可解码 ZIP 在冷启动时回退”的窄场景。未捕获 JavaScript 错误的 Native 恢复由后续 follow-up 覆盖；被捕获/静默的功能故障、恶意但不抛错的皮肤、升级失败、设备重启及实体/OEM 恢复仍为 **NOT TESTED**，SEP-14 继续 **INCOMPLETE / HOLD**。测试提交 `84902b5` 已推送到唯一集成主线。
+
+## Follow-up — 未捕获 JavaScript 运行错误的 Native 恢复（2026-10-31）
+
+**复现与根因：** 在 API 35 的实际 WebView 里，从 Clear 皮肤包的内存副本启动 ACTIVITY 新建编辑器并改标题，再触发 `web/app.js` 的未捕获 `Error`。修复前定向测试 **1/1 FAIL**：Android Chromium 明确记录 `Uncaught Error: SEP14_UNCAUGHT_SKIN_RUNTIME_ERROR`，但 Host 没有接到故障通知，皮肤仍留在编辑器，标题修改没有恢复草稿。原有 `WebViewClient` 只覆盖主框架资源错误和 renderer 退出。
+
+**修复：** 通用 `WebSkinHost` 新增 `WebChromeClient` 监听，只把 `skin.powercal.local` 来源、ERROR 级且以 `Uncaught` 开头的运行错误交给现有恢复路径；`WebSkinRoot` 用每 bundle 的原子闸门合并 renderer、资源及脚本错误回调，避免同一故障重复 checkpoint/恢复。没有改 Clear 生产包、Native 页面、Bridge 业务语义或 Core。测试在内存构造的 Clear 副本里注入触发器，不安装或覆盖任何皮肤包。
+
+- API 35 `emulator-5570` / Android 15 / WebView `124.0.6367.219`：修复前 **1/1 FAIL**，修复后定向 **1/1 PASS**，完整 `WebSkinRendererRecoveryInstrumentedTest` **3/3 PASS**。脏 ACTIVITY 标题被 checkpoint 为恰好一张草稿；正式事件与 commit 均为 0，身份数为 1、下个序号为 2，Native 回退页可见。前后日志与实际 Chromium console 记录位于 `.local/android-test/reports/sep14-js-error-recovery-20261031/`，manifest SHA-256 `70510F65E293AEF58F8010B77AA0A7F2E5B799A60B342B38D8E6C65A9EB20D53`。
+- 最终完整离线门禁：**785/785 JVM、125 suites、0 failures/errors/skips、171/171 tasks PASS**；Lint **0 errors / 57 warnings**。日志 SHA-256 `9F148E42E53F5B1EA9988B63191626B3BBA527EBD282F3255B970248F45EEE04`。Debug APK 为 66,518,075 bytes / SHA-256 `DE876D09D11689F98131C9DAD0A977AA1271E1657612B6A95DB89ABBBB80C31C`；AndroidTest APK 为 1,711,180 bytes / SHA-256 `B772B29958724AEFDD1B974EB625C7ED154870C6B7462BA7FEAF257443417965`。
+- 生产 Host 与回归测试提交 `f5fb8d420def3a933b365bc0f9f4a62323dd5c77`（`fix(皮肤分离): 捕获脚本异常并触发原生恢复`）已快进推送至 `origin/feat/skin-first-separation`。其他 Agent 的 FormalDelete/Recurrence AndroidTest 修改保持未触碰、未暂存；它们参与 AndroidTest APK 编译，但本次定向恢复类没有执行。
+
+该 follow-up 关闭“皮肤来源的未捕获 JavaScript 异常”恢复切片；没有证明 caught/silent failures、恶意但不抛错的行为、升级失败、设备重启或实体/OEM。SEP-14 仍为 **PARTIAL / HOLD**。
