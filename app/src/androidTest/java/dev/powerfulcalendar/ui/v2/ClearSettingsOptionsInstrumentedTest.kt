@@ -2434,32 +2434,45 @@ class ClearSettingsOptionsInstrumentedTest {
         val askedForCalendarImport = onboarding.getBoolean("system-calendar-import-asked", false)
         val fixtureId = "qa-saf-${UUID.randomUUID().toString().replace("-", "")}"
         val requestedImportName = "powercal-saf-${UUID.randomUUID()}.pcskin"
+        val requestedInvalidImportName = "powercal-invalid-${UUID.randomUUID()}.pcskin"
         val fixtureBytes = skinPackageFixture(fixtureId)
         var importUri: Uri? = null
+        var invalidImportUri: Uri? = null
         var fixtureInstalled = false
         try {
             assumeTrue("test fixture ID must not already be installed",
                 skinManager.installed().none { it.id == fixtureId })
             assumeTrue("installed skin capacity must be available",
                 skinManager.installed().count { !it.builtIn } < 12)
-            val values = ContentValues().apply {
-                put(MediaStore.MediaColumns.DISPLAY_NAME, requestedImportName)
-                put(MediaStore.MediaColumns.MIME_TYPE, "application/zip")
-                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/")
+            fun createDownloadsPackage(name: String, bytes: ByteArray): Pair<Uri, String> {
+                val values = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+                    put(MediaStore.MediaColumns.MIME_TYPE, "application/zip")
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/")
+                }
+                val uri = requireNotNull(context.contentResolver.insert(
+                    MediaStore.Downloads.EXTERNAL_CONTENT_URI, values
+                )) { "Could not create isolated SAF package in Downloads" }
+                context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
+                    ?: error("Could not write isolated SAF package")
+                val displayName = requireNotNull(context.contentResolver.query(
+                    uri, arrayOf(MediaStore.MediaColumns.DISPLAY_NAME), null, null, null
+                )).use { cursor ->
+                    assertTrue("Downloads provider must return the isolated fixture row",
+                        cursor.moveToFirst())
+                    cursor.getString(0)
+                }
+                assertTrue("Downloads provider should retain the .pcskin suffix",
+                    displayName.startsWith(name))
+                return uri to displayName
             }
-            importUri = requireNotNull(context.contentResolver.insert(
-                MediaStore.Downloads.EXTERNAL_CONTENT_URI, values
-            )) { "Could not create isolated SAF fixture in Downloads" }
-            context.contentResolver.openOutputStream(importUri!!)?.use { it.write(fixtureBytes) }
-                ?: error("Could not write isolated SAF fixture")
-            val pickerName = requireNotNull(context.contentResolver.query(
-                importUri!!, arrayOf(MediaStore.MediaColumns.DISPLAY_NAME), null, null, null
-            )).use { cursor ->
-                assertTrue("Downloads provider must return the isolated fixture row", cursor.moveToFirst())
-                cursor.getString(0)
-            }
-            assertTrue("Downloads provider should retain the package suffix",
-                pickerName.startsWith(requestedImportName))
+            val validFixture = createDownloadsPackage(requestedImportName, fixtureBytes)
+            importUri = validFixture.first
+            val pickerName = validFixture.second
+            val invalidFixture = createDownloadsPackage(requestedInvalidImportName,
+                "not a PowerCal skin archive".toByteArray(Charsets.UTF_8))
+            invalidImportUri = invalidFixture.first
+            val invalidPickerName = invalidFixture.second
 
             onboarding.edit().putBoolean("system-calendar-import-asked", true).commit()
             PowerCalSkinRegistry.reset()
@@ -2488,6 +2501,33 @@ class ClearSettingsOptionsInstrumentedTest {
             val storeBefore = storeSnapshot()
             val installedBefore = skinManager.installed().map { it.id }.toSet()
 
+            fun importFromDownloads(documentName: String, completed: () -> Boolean) {
+                evaluate(view, "document.querySelector('#importSkinButton').click(); true")
+                val rootsButton = waitForPickerNode(contentDescription = "Show roots")
+                assertEquals("Clear import must launch Android DocumentsUI",
+                    "com.google.android.documentsui",
+                    InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow
+                        ?.packageName?.toString())
+                tapPickerNode(rootsButton)
+                tapPickerNode(waitForPickerNode(text = "Downloads"))
+                tapPickerNode(waitForPickerNode(text = documentName))
+                val deadline = SystemClock.elapsedRealtime() + 20_000
+                while (SystemClock.elapsedRealtime() < deadline && !completed()) {
+                    val root = InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow
+                    if (root?.packageName?.toString() == "com.google.android.documentsui") {
+                        val open = findAccessibilityNode(root, text = "OPEN")
+                            ?: findAccessibilityNode(root, text = "Open")
+                            ?: findAccessibilityNode(root, contentDescription = "Open")
+                            ?: findAccessibilityNode(root, viewId = "android:id/button1")
+                        if (open != null) tapPickerNode(open)
+                    }
+                    SystemClock.sleep(200)
+                }
+                val root = InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow
+                assertTrue("The Host must finish processing '$documentName': " +
+                    accessibilitySnapshot(root), completed())
+            }
+
             // Cancel the actual system picker first, then prove Clear Settings remains
             // usable and a second import can be started without creating a candidate.
             evaluate(view, "document.querySelector('#importSkinButton').click(); true")
@@ -2513,28 +2553,21 @@ class ClearSettingsOptionsInstrumentedTest {
             assertEquals("Cancelled import must preserve all calendar state", storeBefore,
                 storeSnapshot())
 
-            evaluate(view, "document.querySelector('#importSkinButton').click(); true")
-            val resumedRootButton = waitForPickerNode(contentDescription = "Show roots")
-            assertEquals("Clear must be able to reopen Android DocumentsUI after cancellation",
-                "com.google.android.documentsui",
-                InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow
-                    ?.packageName?.toString())
-            tapPickerNode(resumedRootButton)
-            tapPickerNode(waitForPickerNode(text = "Downloads"))
-            tapPickerNode(waitForPickerNode(text = pickerName))
+            importFromDownloads(invalidPickerName) {
+                evaluate(view, "document.getElementById('hostNotice')?.textContent?." +
+                    "startsWith('皮肤导入已拒绝：') === true") == "true"
+            }
+            assertFalse("Malformed package must not be installed",
+                skinManager.installed().any { it.id == fixtureId })
+            assertEquals("Malformed package rejection must preserve the installed-package list",
+                installedBefore, skinManager.installed().map { it.id }.toSet())
+            assertEquals("Malformed package rejection must leave Clear active",
+                "powercal-clear-default", skinManager.currentId())
+            assertEquals("Malformed package rejection must not write calendar data",
+                storeBefore, storeSnapshot())
 
-            val importDeadline = SystemClock.elapsedRealtime() + 20_000
-            while (SystemClock.elapsedRealtime() < importDeadline &&
-                skinManager.installed().none { it.id == fixtureId }) {
-                val root = InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow
-                if (root?.packageName?.toString() == "com.google.android.documentsui") {
-                    val open = findAccessibilityNode(root, text = "OPEN")
-                        ?: findAccessibilityNode(root, text = "Open")
-                        ?: findAccessibilityNode(root, contentDescription = "Open")
-                        ?: findAccessibilityNode(root, viewId = "android:id/button1")
-                    if (open != null) tapPickerNode(open)
-                }
-                SystemClock.sleep(200)
+            importFromDownloads(pickerName) {
+                skinManager.installed().any { it.id == fixtureId }
             }
             fixtureInstalled = skinManager.installed().any { it.id == fixtureId }
             val pickerRoot = InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow
@@ -2550,7 +2583,8 @@ class ClearSettingsOptionsInstrumentedTest {
                 "powercal-clear-default", skinManager.currentId())
             assertEquals("Import must not write calendar data", storeBefore, storeSnapshot())
             Log.i("ClearSkinSAF", "cancelledPicker=true; settingsRestored=true; " +
-                "candidateAbsentAfterCancel=true; pickerReopened=true; packageInstalled=true; " +
+                "malformedPackageRejected=true; packagesUnchangedAfterReject=true; " +
+                "validPackageRetrySucceeded=true; packageNotActivated=true; " +
                 "activeSkin=${skinManager.currentId()}; storeUnchanged=true")
         } finally {
             val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
@@ -2561,6 +2595,7 @@ class ClearSettingsOptionsInstrumentedTest {
                 }
             }
             importUri?.let { runCatching { context.contentResolver.delete(it, null, null) } }
+            invalidImportUri?.let { runCatching { context.contentResolver.delete(it, null, null) } }
             compose.runOnUiThread {
                 compose.activity.setContent { }
                 PowerCalSkinRegistry.reset()
