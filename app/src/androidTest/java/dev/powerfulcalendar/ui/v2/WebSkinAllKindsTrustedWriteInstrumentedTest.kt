@@ -13,9 +13,15 @@ import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.DraftOperation
@@ -722,6 +728,118 @@ class WebSkinAllKindsTrustedWriteInstrumentedTest {
             listOf("powercal-onboarding", "powercal-skin-choice", "powercal-ui", "powercal-profile")
                 .forEach { storage.deleteSharedPreferences("$namespace-$it") }
             File(storage.cacheDir, namespace).deleteRecursively()
+        }
+    }
+
+    @Test
+    fun sameEmptyMemoFixtureProducesEquivalentFormalRecordFromNativeAndClear() {
+        val storage = compose.activity.applicationContext
+        val nativeNamespace = "pc-native-clear-memo-parity-native-${UUID.randomUUID()}"
+        val clearNamespace = "pc-native-clear-memo-parity-clear-${UUID.randomUUID()}"
+        val nativeContext = IsolatedAppContext(compose.activity, storage, nativeNamespace)
+        val clearContext = IsolatedAppContext(compose.activity, storage, clearNamespace)
+        val nativeDatabase = "memo-parity-native.db"
+        val clearDatabase = "memo-parity-clear.db"
+        val nativeStore = PowerStore(nativeContext, nativeDatabase)
+        val clearStore = PowerStore(clearContext, clearDatabase)
+        var web: WebView? = null
+        try {
+            listOf(nativeStore, clearStore).forEach { store ->
+                assertTrue("both renderers start from the same empty business fixture", store.all().isEmpty())
+                assertEquals(0, store.commitCount())
+                assertEquals(0, store.identityCount())
+                assertEquals(1L, store.nextSequencePreview())
+            }
+
+            nativeContext.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                .edit().putBoolean("system-calendar-import-asked", true).commit()
+            SkinPackageManager(nativeContext).selectNativeForEmergencyRecovery()
+            compose.runOnUiThread {
+                compose.activity.setContent {
+                    CompositionLocalProvider(LocalContext provides nativeContext) {
+                        PowerCalTheme { PowerCalApp(nativeStore) }
+                    }
+                }
+            }
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithContentDescription("新建事件").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithContentDescription("Memo 未完成 0").performClick()
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithContentDescription("新增无日期 Memo")
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithContentDescription("新增无日期 Memo").performClick()
+            compose.waitUntil(30_000) {
+                compose.onAllNodes(hasSetTextAction() and hasText("标题"))
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNode(hasSetTextAction() and hasText("标题")).performTextInput("Native/Clear parity Memo")
+            compose.onNode(hasSetTextAction() and hasText("Native/Clear parity Memo")).assertExists()
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithText("发布").fetchSemanticsNodes().isNotEmpty()
+            }
+            assertTrue("native editing remains memory-only before publish", nativeStore.all().isEmpty())
+            assertEquals(0, nativeStore.commitCount())
+            assertEquals(0, nativeStore.identityCount())
+            compose.onNodeWithText("发布").performScrollTo().performClick()
+            compose.waitUntil(30_000) { nativeStore.all().size == 1 }
+            val nativeRecord = nativeStore.all().single()
+
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+
+            web = launchClear(clearContext, clearStore)
+            evaluate(web, "document.querySelector('.clear-tabbar [data-action=memo]').click();true")
+            awaitJs(web, "!document.querySelector('#memoPage').hidden")
+            evaluate(web, "document.querySelector('#memoPage [data-action=createMemo]').click();true")
+            awaitJs(web, "!document.querySelector('#skinSheet').hidden && " +
+                "!!document.querySelector('#sheetFields [data-field=title]')")
+            editTitle(web, "Native/Clear parity Memo")
+            assertTrue("Clear editing also remains memory-only before Host review", clearStore.all().isEmpty())
+            assertEquals(0, clearStore.commitCount())
+            assertEquals(0, clearStore.identityCount())
+            evaluate(web, "document.querySelector('#sheetSave').click();true")
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithText("确认发布正式事件").fetchSemanticsNodes().isNotEmpty()
+            }
+            assertTrue("Clear Host review must not write before approval", clearStore.all().isEmpty())
+            assertEquals(0, clearStore.commitCount())
+            assertEquals(0, clearStore.identityCount())
+            compose.onNodeWithText("确认").performClick()
+            compose.waitUntil(30_000) { clearStore.all().size == 1 }
+            val clearRecord = clearStore.all().single()
+
+            assertEquals("same input through both real UI routes must persist equal business forms",
+                DraftForm.from(nativeRecord), DraftForm.from(clearRecord))
+            assertEquals(nativeRecord.eventSeq, clearRecord.eventSeq)
+            assertEquals(nativeRecord.revision, clearRecord.revision)
+            assertEquals(1L, nativeStore.commitCount())
+            assertEquals(nativeStore.commitCount(), clearStore.commitCount())
+            assertEquals(1, nativeStore.identityCount())
+            assertEquals(nativeStore.identityCount(), clearStore.identityCount())
+            assertEquals(2L, nativeStore.nextSequencePreview())
+            assertEquals(nativeStore.nextSequencePreview(), clearStore.nextSequencePreview())
+            assertEquals(0, nativeStore.draftCount())
+            assertEquals(nativeStore.draftCount(), clearStore.draftCount())
+            println("NATIVE_CLEAR_PARITY kind=${clearRecord.kind} eventSeq=${clearRecord.eventSeq} " +
+                "revision=${clearRecord.revision} commits=${clearStore.commitCount()} " +
+                "identities=${clearStore.identityCount()} sequence=${clearStore.nextSequencePreview()} " +
+                "businessForm=${DraftForm.from(clearRecord)}")
+        } finally {
+            resetClear()
+            nativeStore.close()
+            clearStore.close()
+            nativeContext.deleteDatabase(nativeDatabase)
+            clearContext.deleteDatabase(clearDatabase)
+            listOf(nativeNamespace, clearNamespace).forEach { namespace ->
+                listOf("powercal-onboarding", "powercal-skin-choice", "powercal-ui", "powercal-profile")
+                    .forEach { storage.deleteSharedPreferences("$namespace-$it") }
+                File(storage.cacheDir, namespace).deleteRecursively()
+            }
         }
     }
 }
