@@ -17,12 +17,15 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performTextClearance
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.click
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -338,6 +341,194 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
                 "monthSteps=$monthSteps counts=${counts(clearStore)} trustedTouches=" +
                 (listOf(monthTap, dateTap, eventTap, scopeTap) + monthNavigationTaps)
                     .map { it.optBoolean("trusted") })
+        } finally {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            nativeStore.close()
+            clearStore.close()
+            nativeContext.deleteDatabase(database)
+            clearContext.deleteDatabase(database)
+            listOf(nativeNamespace, clearNamespace).forEach { namespace ->
+                listOf("powercal-onboarding", "powercal-skin-choice", "powercal-ui", "powercal-profile")
+                    .forEach { storage.deleteSharedPreferences("$namespace-$it") }
+                File(storage.cacheDir, namespace).deleteRecursively()
+            }
+        }
+    }
+
+    @Test
+    fun monthYearMonthDateAndTodayTransitionsMatchWithoutMovingTimelineOrWritingStore() {
+        val storage = compose.activity.applicationContext
+        val nativeNamespace = "pc-month-nav-native-${UUID.randomUUID()}"
+        val clearNamespace = "pc-month-nav-clear-${UUID.randomUUID()}"
+        val nativeContext = IsolatedAppContext(compose.activity, storage, nativeNamespace)
+        val clearContext = IsolatedAppContext(compose.activity, storage, clearNamespace)
+        val database = "month-navigation.db"
+        val nativeStore = PowerStore(nativeContext, database)
+        val clearStore = PowerStore(clearContext, database)
+        val zone = ZoneId.systemDefault()
+        val targetDate = LocalDate.of(2027, 6, 19)
+        val targetMonth = YearMonth.from(targetDate)
+        var web: WebView? = null
+
+        fun counts(store: PowerStore) = listOf(
+            store.draftCount(), store.pendingCount(), store.identityCount(), store.commitCount(),
+            store.nextSequencePreview(), store.nextQueueOrderPreview(), store.all().size.toLong()
+        )
+
+        fun timeline(state: JSONObject) = state.getJSONObject("timeline")
+
+        try {
+            nativeContext.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                .edit().putBoolean("system-calendar-import-asked", true).commit()
+            PowerCalSkinRegistry.reset()
+            SkinPackageManager(nativeContext).selectNativeForEmergencyRecovery()
+            compose.runOnUiThread {
+                compose.activity.setContent {
+                    CompositionLocalProvider(LocalContext provides nativeContext) {
+                        PowerCalTheme { PowerCalApp(nativeStore) }
+                    }
+                }
+            }
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithText("日历").fetchSemanticsNodes().isNotEmpty()
+            }
+            val nativeBefore = WebSkinBridgeRuntime.state()
+            val nativeCamera = timeline(nativeBefore)
+            val nativeAnchor = nativeCamera.getLong("anchorMillis")
+            val nativeHours = nativeCamera.getDouble("hours")
+            val nativeCounts = counts(nativeStore)
+            val nativeInitialMonth = YearMonth.from(
+                java.time.Instant.ofEpochMilli(nativeAnchor).atZone(zone).toLocalDate()
+            )
+
+            compose.onNodeWithText("日历").performTouchInput { click() }
+            compose.onNodeWithText("${nativeInitialMonth.year} 年")
+                .performTouchInput { click() }
+            compose.onNodeWithText("选择年份").assertExists()
+            compose.onNode(hasSetTextAction()).performTextClearance()
+            compose.onNode(hasSetTextAction()).performTextInput(targetMonth.year.toString())
+            compose.onNodeWithText("跳转").performTouchInput { click() }
+            compose.waitUntil(10_000) {
+                compose.onAllNodesWithText("${targetMonth.year} 年")
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText("${nativeInitialMonth.monthValue} 月")
+                .performTouchInput { click() }
+            compose.onNodeWithText("${targetMonth.monthValue} 月")
+                .performTouchInput { click() }
+            val nativeTargetDescription = "$targetDate，0 项"
+            compose.waitUntil(10_000) {
+                compose.onAllNodesWithContentDescription(nativeTargetDescription)
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithContentDescription(nativeTargetDescription)
+                .performTouchInput { click() }
+                .assertIsSelected()
+            val nativeAfterDate = WebSkinBridgeRuntime.state()
+            assertEquals("year/month picker must remain on Month", "MONTH",
+                nativeAfterDate.getString("page"))
+            assertEquals("Native month date selection must not move the timeline camera",
+                nativeAnchor, timeline(nativeAfterDate).getLong("anchorMillis"))
+            assertEquals(nativeHours, timeline(nativeAfterDate).getDouble("hours"), 0.0)
+
+            val nativeToday = LocalDate.now(zone)
+            compose.onNodeWithText("今天").performTouchInput { click() }
+            val nativeTodayDescription = "$nativeToday，0 项，今天"
+            compose.waitUntil(10_000) {
+                compose.onAllNodesWithContentDescription(nativeTodayDescription)
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithContentDescription(nativeTodayDescription).assertIsSelected()
+            val nativeAfterToday = WebSkinBridgeRuntime.state()
+            assertEquals("Native Today remains in Month", "MONTH",
+                nativeAfterToday.getString("page"))
+            assertEquals(nativeAnchor, timeline(nativeAfterToday).getLong("anchorMillis"))
+            assertEquals(nativeHours, timeline(nativeAfterToday).getDouble("hours"), 0.0)
+            assertEquals(nativeCounts, counts(nativeStore))
+
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+
+            clearContext.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                .edit().putBoolean("system-calendar-import-asked", true).commit()
+            SkinPackageManager(clearContext).select("powercal-clear-default")
+            compose.runOnUiThread {
+                compose.activity.setContent {
+                    CompositionLocalProvider(LocalContext provides clearContext) {
+                        PowerCalTheme { PowerCalApp(clearStore) }
+                    }
+                }
+            }
+            compose.waitUntil(30_000) {
+                compose.runOnUiThread {
+                    web = findWebView(compose.activity.findViewById(android.R.id.content))
+                }
+                web != null
+            }
+            val clearWeb = requireNotNull(web)
+            awaitJs(clearWeb, "!!window.PowerCalSkin && " +
+                "!!document.querySelector('.clear-tabbar [data-action=month]')")
+            val clearInitial = WebSkinBridgeRuntime.state()
+            val clearCamera = timeline(clearInitial)
+            val clearAnchor = clearCamera.getLong("anchorMillis")
+            val clearHours = clearCamera.getDouble("hours")
+            val clearCounts = counts(clearStore)
+
+            tapClear(clearWeb, ".clear-tabbar [data-action='month']")
+            awaitJs(clearWeb, "!document.querySelector('#monthPage').hidden")
+            tapClear(clearWeb, "#monthTitle")
+            awaitJs(clearWeb, "document.querySelector('#monthPickerDialog')?.open===true")
+            assertEquals("year and month fields are available in the real skin dialog", "true",
+                evaluate(clearWeb, "!!document.querySelector('#monthYear')&&" +
+                    "!!document.querySelector('#monthNumber')"))
+            evaluate(clearWeb, "(()=>{const year=document.querySelector('#monthYear');" +
+                "year.value='${targetMonth.year}';year.dispatchEvent(new Event('input',{bubbles:true}));" +
+                "const month=document.querySelector('#monthNumber');month.value='${targetMonth.monthValue}';" +
+                "month.dispatchEvent(new Event('change',{bubbles:true}));return true})()")
+            val monthSubmit = tapClear(clearWeb, "#monthPickerForm button[type='submit']")
+            awaitJs(clearWeb, "document.querySelector('#monthTitle')?.textContent.startsWith('2027-06')")
+            val clearFirstDay = WebSkinBridgeRuntime.state().getJSONObject("month")
+            assertEquals(targetMonth.toString(), clearFirstDay.getString("month"))
+            assertEquals(targetMonth.atDay(1).toString(), clearFirstDay.getString("selectedDate"))
+            val clearDateTap = tapClear(clearWeb,
+                "#monthGrid .month-cell[data-date='$targetDate']")
+            awaitJs(clearWeb,
+                "document.querySelector('#monthAgenda h2')?.textContent==='$targetDate'")
+            val clearAfterDate = WebSkinBridgeRuntime.state()
+            val selectedMonthState = clearAfterDate.getJSONObject("month")
+            assertEquals(targetMonth.toString(), selectedMonthState.getString("month"))
+            assertEquals(targetDate.toString(), selectedMonthState.getString("selectedDate"))
+            assertEquals(clearAnchor, timeline(clearAfterDate).getLong("anchorMillis"))
+            assertEquals(clearHours, timeline(clearAfterDate).getDouble("hours"), 0.0)
+
+            val todayTap = tapClear(clearWeb, "#monthPage [data-action='today']")
+            val clearAfterToday = WebSkinBridgeRuntime.state()
+            val clearTodayTimeline = timeline(clearAfterToday)
+            val clearToday = java.time.Instant.ofEpochMilli(clearTodayTimeline.getLong("nowMillis"))
+                .atZone(zone).toLocalDate()
+            val clearTodayMonth = clearAfterToday.getJSONObject("month")
+            assertEquals(clearToday.toString(), clearTodayMonth.getString("selectedDate"))
+            assertEquals(YearMonth.from(clearToday).toString(), clearTodayMonth.getString("month"))
+            assertEquals(clearAnchor, clearTodayTimeline.getLong("anchorMillis"))
+            assertEquals(clearHours, clearTodayTimeline.getDouble("hours"), 0.0)
+            awaitJs(clearWeb, "!document.querySelector('#monthPage').hidden")
+
+            assertEquals(nativeToday.toString(), clearToday.toString())
+            assertEquals("Clear picker, date and Today are real trusted touchscreen actions", true,
+                listOf(monthSubmit, clearDateTap, todayTap).all { it.optBoolean("trusted") })
+            assertEquals(clearCounts, counts(clearStore))
+            assertEquals(nativeCounts, counts(nativeStore))
+            println("NATIVE_CLEAR_PARITY operation=MONTH_NAVIGATION kind=STATE_ONLY " +
+                "pickedMonth=$targetMonth selectedDate=$targetDate today=$clearToday " +
+                "nativeCameraUnchanged=true clearCameraUnchanged=true storesUnchanged=true " +
+                "trustedTouches=${listOf(monthSubmit, clearDateTap, todayTap).map { it.optBoolean("trusted") }}")
         } finally {
             compose.runOnUiThread {
                 compose.activity.setContent { }

@@ -2,7 +2,7 @@
 
 Date: 2026-10-29
 Area: Skin separation / reconstructed S0-MO-01 and S0-MO-03 (P1 behavior slice)
-State: **IMPLEMENTED; selected-date Activity CREATE has a matched Android 15 Native/Clear PASS; general Month parity remains PARTIAL / HOLD**
+State: **IMPLEMENTED; selected-date CREATE, one occurrence-open path, and year/month/date/Today navigation slices have matched Android 15 Native/Clear PASS; full Month parity remains PARTIAL / HOLD**
 
 ## Summary
 
@@ -10,7 +10,7 @@ Clear's Month page previously treated a date-cell click as a timeline jump. This
 
 Month now has an independent Host-owned month and selected date. Selecting a day stays in Month and updates the agenda. Month/year navigation and Today select the first/current day. Creating an Activity uses the selected local date while leaving the timeline camera unchanged. The explicit “在时间轴查看这一天” action remains the only Month action that moves the camera and opens Timeline.
 
-This closes the reported Clear date-selection/create behavior slice and now has a matched Android WebView Native/Clear Activity-creation replay. It does **not** close S0-MO-02, prove occurrence-opening parity, establish full Month navigation equivalence, or prove physical/OEM behavior.
+The selected-date Activity-creation and one recurring occurrence-open path have matched Android WebView Native/Clear replays. A later device pair now covers a selected year/month, date selection, Today, camera independence and no Store writes. These are bounded paths; they do **not** establish swipe, keyboard/IME, accessibility, complete Month parity or physical/OEM behavior.
 
 ## Root cause
 
@@ -88,12 +88,12 @@ At the time of the original report, ADB failed with `could not read ok from ADB 
 
 ## Matrix sign-off
 
-- `S0-MO-01`: implementation and narrow Compose/Chrome behavior evidence **PASS**; the paired device case now selects a date as part of creation, but general month navigation/agenda parity remains **NOT TESTED**.
+- `S0-MO-01`: the matched API 35 device class now passes the year/month selection to 2027-06, date selection to 2027-06-19, Today, unchanged timeline camera and unchanged Store counts. Clear picker submit/date/Today were trusted touchscreen actions. Clear year/month field values were injected in WebView for deterministic selection; keyboard/IME is **NOT TESTED**. Month swipe, TalkBack, short viewport visibility and complete navigation parity remain **NOT TESTED**; row remains **PARTIAL / HOLD**.
 - `S0-MO-03`: selected-date Activity creation and explicit-jump behavior have Compose/Chrome evidence; selected-date Activity CREATE now has a matched API 35 Native/Clear persisted result **PASS**. Full Month create/lifecycle parity remains **PARTIAL / HOLD**.
 - `S0-MO-02`: unchanged, **NOT TESTED**.
 - This Issue does not authorize an overall separation GO or close S0/S5.
 
-The saved Chrome Preview frame is 484 px tall; the selected-day DOM rectangle was `{left:159.42, top:416, right:208.56, bottom:473}` after Today. The fixed bottom tab bar overlaps part of that viewport row in this frame. The page is vertically scrollable, but automatic selected-cell visibility at short heights was not separately tested; recheck in Android WebView when ADB is available.
+The saved Chrome Preview frame is 484 px tall; the selected-day DOM rectangle was `{left:159.42, top:416, right:208.56, bottom:473}` after Today. The fixed bottom tab bar overlaps part of that viewport row in this frame. This remains a short-viewport visibility concern: the page is vertically scrollable, but automatic selected-cell visibility at short heights has not been separately checked on Android WebView.
 
 ## Reproduction/evidence locations
 
@@ -116,3 +116,13 @@ Added `monthSelectedActivityCreateMatchesNativeAndClearBusinessRecord` to the ex
 - Test commit `337ddce` is pushed. Evidence manifest SHA-256 `59D4F7431561747EDB654EAF400A8BD96CF47F57D62639C303D4FF48C2477C08`; artifacts are under `.local/android-test/reports/sep02-month-create-parity-20261031/`. The two independently modified AndroidTest files were included in APK compilation, not changed/staged by this task, and not run by this test invocation.
 
 This closes only the selected-date Activity-create slice; month/year paging, occurrence opening, other Month operations, Studio-edited package parity, accessibility and physical/OEM remain incomplete. SEP-02 stays **PARTIAL / HOLD**; SEP-02 and SEP-04 are not globally closed.
+
+## Native/Clear year-month, selected date and Today device replay (2026-10-31)
+
+- Added `NativeClearMonthOccurrenceParityInstrumentedTest#monthYearMonthDateAndTodayTransitionsMatchWithoutMovingTimelineOrWritingStore`. On Android 15/API 35 (`emulator-5570`, WebView 124), Native selected year 2027 and month June through the Compose picker, selected June 19, then used Today. Clear opened its actual month/year dialog, submitted June 2027, selected June 19 and used Today through the packaged WebView. Clear picker submit, date and Today were real `SOURCE_TOUCHSCREEN` clicks with `isTrusted=true`; year/month field values were set deterministically inside the WebView, so Android keyboard/IME input is not covered.
+- Both sides remained on Month; each side's timeline anchor and zoom were unchanged and both isolated Stores retained their original zero-count snapshots. The Clear Host projection reported month `2027-06`, selected date `2027-06-19`, then returned to the device-local current date after Today. Native selected-date state and Today were checked through Compose accessibility semantics.
+- The complete paired instrumentation class passed **2/2** (occurrence open + month navigation), including a final class rerun after import cleanup. Result XML: `.local/android-test/reports/sep02-month-navigation-parity-20261031/native-clear-month-navigation-tests.xml`, SHA-256 `76BDE494E2931FF5279A8646BEE0682155C3F305628C9FE199F64F98907F4BCF`. Final class Gradle log SHA-256 `173092E9BA8ED8C571EE7EB5B983BC316C36B0E47BD79CECFEA00DB0C0905592`; navigation device log SHA-256 `862ABF06B5B18646205F1524681A15C101A6FF6885D3B1BD2F9A5331942E8482`; occurrence-open device log SHA-256 `3F031238ECF86183E8D818732722A55F9AE3970CC8B500EDE86C5AC97FAA8A49`.
+- Full offline Gradle command: `:app:verifyNativeSkinBoundary :app:verifySkinSourceBoundary :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug --offline --rerun-tasks --no-daemon --max-workers=1 --console=plain`. Result **BUILD SUCCESSFUL**, **785/785 JVM tests / 125 suites / 0 failures, errors or skips / 171 tasks PASS**, Lint **0 errors / 57 warnings**. The forced gate emitted Debug / AndroidTest APK SHA-256 `DE876D09D11689F98131C9DAD0A977AA1271E1657612B6A95DB89ABBBB80C31C` / `E7889729D004E6961928AA0E00FE5AC865E67659BE6B092716851AD84619808D`. The final focused device rerun rebuilt and executed AndroidTest APK SHA-256 `056ABE3E72860B2C8A6D18399FC09F8060D1009A8BA7F056CC513C9AEA127C01`. Two unrelated uncommitted Agent tests were present and compiled, but were not executed by the focused class or staged here. Machine-readable result summary: `.local/android-test/reports/sep02-month-navigation-parity-20261031/manifest.json`, SHA-256 `8D9C72AEC4550893E1DD549DA81FD71874A8C6FA083CCB76B5D7E27BDFD98DD9`.
+- The first navigation assertion selected the date cell without sending a tap; the Native picker correctly leaves the first day selected after choosing a month. The test was corrected to tap June 19, after which the focused method and full class passed. No product defect or production source change was found.
+
+This slice advances `S0-MO-01` but leaves it **PARTIAL / HOLD**, and does not close SEP-02.
