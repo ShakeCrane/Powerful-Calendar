@@ -18,10 +18,12 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.powerfulcalendar.core.DraftForm
+import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.TemporalKind
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -330,6 +332,275 @@ class WebSkinAllKindsTrustedWriteInstrumentedTest {
                 evaluate(web, "document.querySelector('#sheetClose').click();true")
                 awaitJs(web, "document.querySelector('#skinSheet').hidden")
             }
+        } finally {
+            resetClear()
+            store.close()
+            context.deleteDatabase(database)
+            listOf("powercal-onboarding", "powercal-skin-choice", "powercal-ui", "powercal-profile")
+                .forEach { storage.deleteSharedPreferences("$namespace-$it") }
+            File(storage.cacheDir, namespace).deleteRecursively()
+        }
+    }
+
+    @Test
+    fun clearPersistedDeckCreateForEveryKindWaitsForHostApproval() {
+        val storage = compose.activity.applicationContext
+        val namespace = "pc-all-kind-deck-create-${UUID.randomUUID()}"
+        val context = IsolatedAppContext(compose.activity, storage, namespace)
+        val database = "all-kind-deck-create.db"
+        val store = PowerStore(context, database)
+        val zone = ZoneId.systemDefault()
+        val start = ZonedDateTime.now(zone).plusHours(2).withSecond(0).withNano(0)
+        val forms = linkedMapOf(
+            TemporalKind.ALARM to DraftForm(kind = TemporalKind.ALARM, title = "Deck ALARM",
+                startText = DraftForm.formatInstant(start.toInstant().toEpochMilli(), zone),
+                reminderMinutes = -1, zoneId = zone.id),
+            TemporalKind.ACTIVITY to DraftForm(kind = TemporalKind.ACTIVITY, title = "Deck ACTIVITY",
+                startText = DraftForm.formatInstant(start.toInstant().toEpochMilli(), zone),
+                endText = DraftForm.formatInstant(start.plusHours(1).toInstant().toEpochMilli(), zone),
+                reminderMinutes = -1, zoneId = zone.id),
+            TemporalKind.DEADLINE to DraftForm(kind = TemporalKind.DEADLINE, title = "Deck DEADLINE",
+                endText = LocalDate.now(zone).plusDays(1).toString(), reminderMinutes = -1, zoneId = zone.id),
+            TemporalKind.MEMO to DraftForm(kind = TemporalKind.MEMO, title = "Deck MEMO", zoneId = zone.id)
+        )
+        val cards = forms.mapValues { (_, form) -> store.newDraft(form) }
+        var web: WebView? = null
+        try {
+            web = launchClear(context, store)
+            awaitJs(web, "!!document.querySelector('[data-action=openDeck]') && " +
+                "document.querySelector('#pendingCounter')?.textContent==='4'")
+            evaluate(web, "document.querySelector('[data-action=openDeck]').click();true")
+            awaitJs(web, "!document.querySelector('#skinSheet').hidden && " +
+                "document.querySelectorAll('.sheet-cards .sheet-card').length===4")
+
+            var expectedCommits = store.commitCount()
+            val expectedIdentities = store.identityCount()
+            val expectedNextSequence = store.nextSequencePreview()
+            val expectedDrafts = store.draftCount()
+            var expectedPending = store.pendingCount()
+            assertEquals(4, expectedPending)
+            assertTrue("persisted CREATE cards must not be formal records before review", store.all().isEmpty())
+
+            for ((kind, card) in cards) {
+                val title = forms.getValue(kind).title
+                val cardSelector = ".sheet-cards .sheet-card[data-draft-id='${card.draftId}']"
+                awaitJs(web, "!!document.querySelector(${JSONObject.quote(cardSelector)})")
+                evaluate(web, "document.querySelector(${JSONObject.quote(cardSelector)}).click();true")
+                awaitJs(web, "document.querySelector('#sheetFields [data-field=title]')?.value===" +
+                    "${JSONObject.quote(title)}")
+                var projectedKind = ""
+                compose.runOnIdle {
+                    projectedKind = WebSkinBridgeRuntime.state().getJSONObject("editing")
+                        .getJSONObject("deck").getJSONObject("form").getString("kind")
+                }
+                assertEquals(kind.name, projectedKind)
+
+                val recordsBefore = store.all()
+                evaluate(web, "document.querySelector('#sheetSave').click();true")
+                compose.waitUntil(30_000) {
+                    compose.onAllNodesWithText("确认发布正式事件").fetchSemanticsNodes().isNotEmpty()
+                }
+                assertEquals("deck CREATE $kind must await trusted Host review", recordsBefore, store.all())
+                assertEquals(expectedCommits, store.commitCount())
+                assertEquals(expectedIdentities, store.identityCount())
+                assertEquals(expectedPending, store.pendingCount())
+                assertEquals(expectedNextSequence, store.nextSequencePreview())
+
+                compose.onNodeWithText("取消").performClick()
+                awaitJs(web, "!document.querySelector('#skinSheet').hidden && " +
+                    "document.querySelector('#sheetStatus').textContent.includes('已取消宿主操作')")
+                assertEquals("cancel must preserve the pending $kind card", recordsBefore, store.all())
+                assertEquals(expectedCommits, store.commitCount())
+                assertEquals(expectedPending, store.pendingCount())
+
+                evaluate(web, "document.querySelector('#sheetSave').click();true")
+                compose.waitUntil(30_000) {
+                    compose.onAllNodesWithText("确认发布正式事件").fetchSemanticsNodes().isNotEmpty()
+                }
+                assertEquals(recordsBefore, store.all())
+                compose.onNodeWithText("确认").performClick()
+                try {
+                    compose.waitUntil(30_000) {
+                        store.get(card.eventSeq)?.title == title
+                    }
+                } catch (error: Throwable) {
+                    val host = runCatching { WebSkinBridgeRuntime.state().toString() }
+                        .getOrDefault("unavailable")
+                    val webState = runCatching {
+                        evaluate(web, "JSON.stringify({status:document.querySelector('#sheetStatus')?.textContent," +
+                            "title:document.querySelector('#sheetFields [data-field=title]')?.value," +
+                            "sheetHidden:document.querySelector('#skinSheet')?.hidden})")
+                    }.getOrDefault("unavailable")
+                    throw AssertionError("deck CREATE confirmation did not commit kind=$kind seq=${card.eventSeq}; " +
+                        "records=${store.all().map { it.eventSeq to it.title }}; commits=${store.commitCount()}; " +
+                        "pending=${store.pendingCount()}; web=$webState; host=$host", error)
+                }
+                val published = requireNotNull(store.get(card.eventSeq))
+                assertEquals(kind, published.kind)
+                assertEquals(title, published.title)
+                assertEquals(card.eventSeq, published.eventSeq)
+                assertEquals(expectedCommits + 1, store.commitCount())
+                assertEquals(expectedIdentities, store.identityCount())
+                assertEquals(expectedNextSequence, store.nextSequencePreview())
+                assertEquals(expectedDrafts, store.draftCount())
+                expectedPending -= 1
+                assertEquals(expectedPending, store.pendingCount())
+                expectedCommits = store.commitCount()
+                awaitJs(web, "document.querySelector('#sheetStatus').textContent.includes('草稿已发布')")
+                // DeckController intentionally blocks terminal actions within 600 ms to prevent
+                // one double tap from publishing the next card. Model a deliberate next-card action.
+                SystemClock.sleep(650)
+            }
+            assertEquals(4, store.all().size)
+            assertEquals(0, store.pendingCount())
+        } finally {
+            resetClear()
+            store.close()
+            context.deleteDatabase(database)
+            listOf("powercal-onboarding", "powercal-skin-choice", "powercal-ui", "powercal-profile")
+                .forEach { storage.deleteSharedPreferences("$namespace-$it") }
+            File(storage.cacheDir, namespace).deleteRecursively()
+        }
+    }
+
+    @Test
+    fun clearDeckReplacementProposalWaitsForHostApprovalAndReusesIdentity() {
+        val storage = compose.activity.applicationContext
+        val namespace = "pc-deck-replace-review-${UUID.randomUUID()}"
+        val context = IsolatedAppContext(compose.activity, storage, namespace)
+        val database = "deck-replace-review.db"
+        val store = PowerStore(context, database)
+        val zone = ZoneId.systemDefault()
+        val start = ZonedDateTime.now(zone).plusHours(2).withSecond(0).withNano(0)
+        val seed = DraftForm(kind = TemporalKind.ACTIVITY, title = "Replace original",
+            startText = DraftForm.formatInstant(start.toInstant().toEpochMilli(), zone),
+            endText = DraftForm.formatInstant(start.plusHours(1).toInstant().toEpochMilli(), zone),
+            reminderMinutes = -1, zoneId = zone.id)
+        val created = store.createFormalEvent(seed, "replace-review-$namespace") as PowerStore.CommitOutcome.Committed
+        val original = requireNotNull(store.get(created.eventSeq))
+        var web: WebView? = null
+        try {
+            web = launchClear(context, store)
+            val commitsBefore = store.commitCount()
+            val identitiesBefore = store.identityCount()
+            val nextSequenceBefore = store.nextSequencePreview()
+            val draftsBefore = store.draftCount()
+
+            evaluate(web, "document.querySelector('[data-action=openDeck]').click();true")
+            awaitJs(web, "!document.querySelector('#skinSheet').hidden && !!document.querySelector('.deck-search input')")
+            val query = "#" + original.eventSeq.toString().padStart(4, '0')
+            evaluate(web, "(()=>{const form=document.querySelector('.deck-search');" +
+                "const input=form?.querySelector('input[type=search]');if(!form||!input)return false;" +
+                "input.value=${JSONObject.quote(query)};form.requestSubmit();return true})()")
+            awaitJs(web, "document.querySelectorAll('.deck-formal-results [data-do=replace]').length===1")
+            evaluate(web, "document.querySelector('.deck-formal-results [data-do=replace]').click();true")
+            awaitJs(web, "document.querySelector('#sheetFields [data-field=title]')?.value===" +
+                JSONObject.quote(original.title))
+            val proposal = store.pendingDraftsFor(original.eventSeq).single()
+            assertEquals(DraftOperation.REPLACE, proposal.operation)
+            assertEquals(original, store.get(original.eventSeq))
+            assertEquals(commitsBefore, store.commitCount())
+            assertEquals(identitiesBefore, store.identityCount())
+            assertEquals(nextSequenceBefore, store.nextSequencePreview())
+            assertEquals(draftsBefore + 1, store.draftCount())
+            assertEquals(1, store.pendingCount())
+
+            editTitle(web, "Replace approved through Clear")
+            evaluate(web, "document.querySelector('#sheetSave').click();true")
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithText("确认发布正式事件").fetchSemanticsNodes().isNotEmpty()
+            }
+            assertEquals("formal replacement is read-only before Host approval",
+                original, store.get(original.eventSeq))
+            assertEquals(commitsBefore, store.commitCount())
+            compose.onNodeWithText("取消").performClick()
+            awaitJs(web, "document.querySelector('#sheetStatus').textContent.includes('已取消宿主操作')")
+            assertEquals(original, store.get(original.eventSeq))
+            assertEquals(proposal.draftId, store.pendingDraftsFor(original.eventSeq).single().draftId)
+            assertEquals("Replace approved through Clear", store.draft(proposal.draftId)?.form?.title)
+
+            evaluate(web, "document.querySelector('#sheetSave').click();true")
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithText("确认发布正式事件").fetchSemanticsNodes().isNotEmpty()
+            }
+            assertEquals(original, store.get(original.eventSeq))
+            compose.onNodeWithText("确认").performClick()
+            compose.waitUntil(30_000) {
+                store.get(original.eventSeq)?.title == "Replace approved through Clear"
+            }
+            val replacement = requireNotNull(store.get(original.eventSeq))
+            assertEquals(original.eventSeq, replacement.eventSeq)
+            assertEquals(original.revision + 1, replacement.revision)
+            assertEquals(commitsBefore + 1, store.commitCount())
+            assertEquals(identitiesBefore, store.identityCount())
+            assertEquals(nextSequenceBefore, store.nextSequencePreview())
+            assertEquals(draftsBefore + 1, store.draftCount())
+            assertEquals(0, store.pendingCount())
+        } finally {
+            resetClear()
+            store.close()
+            context.deleteDatabase(database)
+            listOf("powercal-onboarding", "powercal-skin-choice", "powercal-ui", "powercal-profile")
+                .forEach { storage.deleteSharedPreferences("$namespace-$it") }
+            File(storage.cacheDir, namespace).deleteRecursively()
+        }
+    }
+
+    @Test
+    fun clearDeckDeleteCandidateWaitsForHostApprovalAndCancelPreservesEvent() {
+        val storage = compose.activity.applicationContext
+        val namespace = "pc-deck-delete-review-${UUID.randomUUID()}"
+        val context = IsolatedAppContext(compose.activity, storage, namespace)
+        val database = "deck-delete-review.db"
+        val store = PowerStore(context, database)
+        val zone = ZoneId.systemDefault()
+        val created = store.createFormalEvent(
+            DraftForm(kind = TemporalKind.MEMO, title = "Delete candidate target", zoneId = zone.id),
+            "delete-review-$namespace"
+        ) as PowerStore.CommitOutcome.Committed
+        val original = requireNotNull(store.get(created.eventSeq))
+        val candidate = store.newDraft(DraftForm.from(original), eventSeq = original.eventSeq,
+            operation = DraftOperation.DELETE, expectedRevision = original.revision)
+        var web: WebView? = null
+        try {
+            web = launchClear(context, store)
+            val commitsBefore = store.commitCount()
+            val identitiesBefore = store.identityCount()
+            val nextSequenceBefore = store.nextSequencePreview()
+            evaluate(web, "document.querySelector('[data-action=openDeck]').click();true")
+            awaitJs(web, "!document.querySelector('#skinSheet').hidden && " +
+                "document.querySelector('#sheetFields [data-field=title]')?.value===" +
+                JSONObject.quote(original.title))
+            assertEquals(candidate.draftId, store.pendingDraftsFor(original.eventSeq).single().draftId)
+
+            evaluate(web, "document.querySelector('#sheetSave').click();true")
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithText("确认删除正式事件").fetchSemanticsNodes().isNotEmpty()
+            }
+            assertEquals("formal deletion is read-only before Host approval",
+                original, store.get(original.eventSeq))
+            assertFalse(store.isRetired(original.eventSeq))
+            assertEquals(commitsBefore, store.commitCount())
+            assertEquals(identitiesBefore, store.identityCount())
+            compose.onNodeWithText("取消").performClick()
+            awaitJs(web, "document.querySelector('#sheetStatus').textContent.includes('已取消宿主操作')")
+            assertEquals(original, store.get(original.eventSeq))
+            assertEquals(candidate.draftId, store.pendingDraftsFor(original.eventSeq).single().draftId)
+            assertEquals(commitsBefore, store.commitCount())
+
+            evaluate(web, "document.querySelector('#sheetSave').click();true")
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithText("确认删除正式事件").fetchSemanticsNodes().isNotEmpty()
+            }
+            assertEquals(original, store.get(original.eventSeq))
+            compose.onNodeWithText("确认删除").performClick()
+            compose.waitUntil(30_000) {
+                store.get(original.eventSeq) == null && store.isRetired(original.eventSeq)
+            }
+            assertEquals(commitsBefore + 1, store.commitCount())
+            assertEquals(identitiesBefore, store.identityCount())
+            assertEquals(nextSequenceBefore, store.nextSequencePreview())
+            assertEquals(0, store.pendingCount())
         } finally {
             resetClear()
             store.close()
