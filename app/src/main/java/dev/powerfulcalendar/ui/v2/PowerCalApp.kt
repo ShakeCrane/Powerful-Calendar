@@ -92,11 +92,14 @@ import dev.powerfulcalendar.core.api.v1.EventSelectionV1
 import dev.powerfulcalendar.core.api.v1.AiProposalApplyRequestV1
 import dev.powerfulcalendar.core.api.v1.AiChatRequestV1
 import dev.powerfulcalendar.core.api.v1.AiChatStatusV1
+import dev.powerfulcalendar.core.api.v1.AiConversationMutationStatusV1
+import dev.powerfulcalendar.core.api.v1.AiConversationRewindModeV1
 import dev.powerfulcalendar.core.api.v1.AiProposalDecisionV1
 import dev.powerfulcalendar.core.api.v1.CalendarWindowQueryV1
 import dev.powerfulcalendar.core.api.v1.ImportExportFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.AndroidAiModelPortV1
+import dev.powerfulcalendar.core.api.v1.AndroidAiConversationHistoryPortV1
 import dev.powerfulcalendar.core.api.v1.StructuredCalendarEventV1
 import dev.powerfulcalendar.core.api.v1.StructuredImportBatchHandleV1
 import dev.powerfulcalendar.core.api.v1.StructuredImportStatusV1
@@ -222,7 +225,8 @@ fun PowerCalApp(
             store,
             reminderContext = appContext,
             settingsContext = appContext,
-            aiModelPort = AndroidAiModelPortV1(appContext)
+            aiModelPort = AndroidAiModelPortV1(appContext),
+            aiConversationHistoryPort = AndroidAiConversationHistoryPortV1(appContext)
         )
     }
     val calendarFeatureApi = coreFeatureApi.calendar
@@ -312,13 +316,28 @@ fun PowerCalApp(
             ?.let { WebAiProposalReviewSession.create(it, reviewRecords) }
         WebSkinBridgeRuntime.stateRevision++
     }
-    var chatHistory by remember { mutableStateOf(AiChatHistoryStore.load(appContext)) }
-    var chatHistoryRevision by remember { mutableLongStateOf(0L) }
+    val initialChatConversation = remember(aiFeatureApi) { aiFeatureApi.queryConversation() }
+    var chatConversation by remember(aiFeatureApi) { mutableStateOf(initialChatConversation) }
+    var chatHistory by remember(aiFeatureApi) {
+        mutableStateOf(initialChatConversation.messages.map { it.toAiChatMessage() })
+    }
+    var chatHistoryRevision by remember(aiFeatureApi) {
+        mutableLongStateOf(initialChatConversation.revision)
+    }
     var webChatPrefillText by remember { mutableStateOf("") }
     var webChatPrefillRevision by remember { mutableLongStateOf(0L) }
-    LaunchedEffect(chatHistory) {
-        withContext(Dispatchers.IO) {
-            AiChatHistoryStore.save(appContext, chatHistory)
+    fun applyChatConversation(snapshot: dev.powerfulcalendar.core.api.v1.AiConversationSnapshotV1) {
+        chatConversation = snapshot
+        chatHistory = snapshot.messages.map { it.toAiChatMessage() }
+        chatHistoryRevision = snapshot.revision
+    }
+
+    LaunchedEffect(chatConversation.revision, aiFeatureApi) {
+        try {
+            aiFeatureApi.persistConversation(chatConversation.revision)
+        } catch (error: Exception) {
+            if (error is kotlinx.coroutines.CancellationException) throw error
+            message = "聊天历史保存失败：" + (error.message ?: "请重试")
         }
     }
     var confirmBatch by remember { mutableStateOf<BatchReview?>(null) }
@@ -877,13 +896,6 @@ fun PowerCalApp(
         }
     }
 
-    fun replaceChatHistory(messages: List<AiChatMessage>) {
-        val bounded = messages.takeLast(200)
-        if (bounded == chatHistory) return
-        chatHistory = bounded
-        chatHistoryRevision++
-    }
-
     fun updateWebChatPrefill(text: String?) {
         webChatPrefillText = text.orEmpty()
         webChatPrefillRevision++
@@ -895,14 +907,21 @@ fun PowerCalApp(
         pendingWebAiProposalPublish == null && !aiAttachmentPickerBusy &&
         pendingFileReview == null && pendingImageReview == null
 
-    fun appendChat(role: String, text: String, proposalSource: String? = null) {
-        replaceChatHistory(chatHistory + AiChatMessage(
+    fun appendChat(role: String, text: String, proposalSource: String? = null): String? {
+        val message = AiChatMessage(
             role = role,
             content = text,
             proposalSource = proposalSource,
             createdAtMillis = if (role == "user") System.currentTimeMillis() else null,
             zoneId = if (role == "user") zone.id else null
-        ))
+        )
+        val receipt = aiFeatureApi.appendConversationMessage(
+            message.toAiConversationMessageV1(), aiFeatureApi.queryConversation().revision
+        )
+        applyChatConversation(receipt.snapshot)
+        return message.messageId.takeIf {
+            receipt.status == AiConversationMutationStatusV1.APPLIED
+        }
     }
 
     fun beginBatchConversation(mode: AiBatchRunner.Mode) {
@@ -974,9 +993,9 @@ fun PowerCalApp(
     fun submitAiChatInput(input: String) {
         val text = input.trim()
         if (text.isEmpty() || chatBusy || aiBusy) return
+        val userMessageId = appendChat("user", text) ?: return
         updateWebChatPrefill("")
-        appendChat("user", text)
-        val currentHistory = chatHistory.takeLast(80)
+        val expectedConversationRevision = chatHistoryRevision
         val mode = pendingBatchMode
         chatBusy = true
         scope.launch {
@@ -985,7 +1004,8 @@ fun PowerCalApp(
                     val settingsForChat = AiSettingsStore.load(appContext)
                     val response = aiFeatureApi.chat(AiChatRequestV1(
                         requestId = java.util.UUID.randomUUID().toString(),
-                        history = currentHistory.map { it.toAiConversationMessageV1() },
+                        userMessageId = userMessageId,
+                        expectedConversationRevision = expectedConversationRevision,
                         zoneId = zone.id,
                         shareCalendarContext = settingsForChat.shareContext
                     ))
@@ -1971,35 +1991,35 @@ fun PowerCalApp(
                     submitAiChatInput(action.text)
                 }
                 is WebSkinAction.ClearChat -> if (canEditChatHistory()) {
-                    when (val result = WebAiChatHistory.clear(
-                        chatHistory, action.historyRevision, chatHistoryRevision
-                    )) {
-                        is WebChatHistoryMutation.Applied -> {
-                            replaceChatHistory(result.messages)
+                    val result = aiFeatureApi.clearConversation(action.historyRevision)
+                    applyChatConversation(result.snapshot)
+                    when (result.status) {
+                        AiConversationMutationStatusV1.APPLIED -> {
                             pendingBatchMode = null
                             webAiProposalReviewSession = null
                             message = "聊天已清空；事件和待处理草稿未更改"
                         }
-                        WebChatHistoryMutation.NoChange -> message = "聊天记录已经为空"
+                        AiConversationMutationStatusV1.NO_CHANGE -> message = "聊天记录已经为空"
                         else -> message = "聊天已变化，请刷新后重试清理"
                     }
                 }
                 is WebSkinAction.RewindChat -> if (canEditChatHistory()) {
-                    val mode = if (action.editAndResend) WebChatRewindMode.EDIT_AND_RESEND
-                        else WebChatRewindMode.RETRACT
-                    when (val result = WebAiChatHistory.rewind(
-                        chatHistory, action.messageId, mode,
-                        action.historyRevision, chatHistoryRevision
-                    )) {
-                        is WebChatHistoryMutation.Applied -> {
-                            replaceChatHistory(result.messages)
+                    val mode = if (action.editAndResend) AiConversationRewindModeV1.EDIT_AND_RESEND
+                        else AiConversationRewindModeV1.RETRACT
+                    val result = aiFeatureApi.rewindConversation(
+                        action.messageId, mode, action.historyRevision
+                    )
+                    applyChatConversation(result.snapshot)
+                    when (result.status) {
+                        AiConversationMutationStatusV1.APPLIED -> {
                             pendingBatchMode = null
-                            if (result.updateComposer) updateWebChatPrefill(result.prefillText)
+                            if (result.prefillText != null) updateWebChatPrefill(result.prefillText)
                             message = if (result.prefillText != null)
                                 "已回退后续对话；原消息已放入输入框，可修改后重新发送"
                             else "已回退这条消息及后续对话；日历和草稿未更改"
                         }
-                        WebChatHistoryMutation.NoChange -> message = "这条回复后没有更多对话可回退"
+                        AiConversationMutationStatusV1.NO_CHANGE ->
+                            message = "这条回复后没有更多对话可回退"
                         else -> message = "聊天已变化或目标已不存在，请刷新后重试"
                     }
                 }
@@ -2385,7 +2405,8 @@ fun PowerCalApp(
                     scope.launch { generateAiDraft(text, shareForRequest = false) }
                 },
                 onClear = {
-                    replaceChatHistory(emptyList())
+                    val result = aiFeatureApi.clearConversation(chatHistoryRevision)
+                    applyChatConversation(result.snapshot)
                     pendingBatchMode = null
                     webAiProposalReviewSession = null
                 },
@@ -2403,7 +2424,18 @@ fun PowerCalApp(
                 onPickFile = { openAiDocument.launch(arrayOf("*/*")) },
                 onPrepareBatch = { beginBatchConversation(it.toRunnerMode()) },
                 onRewind = { lastIndex ->
-                    replaceChatHistory(chatHistory.take((lastIndex + 1).coerceAtLeast(0)))
+                    val result = if (lastIndex < 0) {
+                        aiFeatureApi.clearConversation(chatHistoryRevision)
+                    } else {
+                        chatHistory.getOrNull(lastIndex)?.let { target ->
+                            aiFeatureApi.rewindConversation(
+                                target.messageId,
+                                AiConversationRewindModeV1.RETRACT,
+                                chatHistoryRevision
+                            )
+                        }
+                    }
+                    if (result != null) applyChatConversation(result.snapshot)
                     pendingBatchMode = null
                 }
             )

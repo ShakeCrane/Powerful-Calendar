@@ -30,6 +30,7 @@ class AiFeatureApiV1Test {
     private lateinit var store: PowerStore
     private lateinit var core: PowerCalCoreFeatureApiV1
     private lateinit var model: FakeAiModelPort
+    private lateinit var conversationPort: FakeAiConversationHistoryPort
     private val clock = MutableClock(Instant.parse("2026-11-01T00:00:00Z"))
     private val zone = ZoneId.of("Asia/Shanghai")
 
@@ -37,7 +38,10 @@ class AiFeatureApiV1Test {
         context = ApplicationProvider.getApplicationContext()
         store = PowerStore(context, "ai-feature-api-${UUID.randomUUID()}.db")
         model = FakeAiModelPort()
-        core = PowerCalCoreFeatureApiV1(store, clock, aiModelPort = model)
+        conversationPort = FakeAiConversationHistoryPort()
+        core = PowerCalCoreFeatureApiV1(
+            store, clock, aiModelPort = model, aiConversationHistoryPort = conversationPort
+        )
     }
 
     @After fun tearDown() {
@@ -53,18 +57,13 @@ class AiFeatureApiV1Test {
 
         val first = core.ai.chat(request)
         val replay = core.ai.chat(request)
-        val conflicting = core.ai.chat(request.copy(history = listOf(
-            AiConversationMessageV1(
-                role = AiConversationRoleV1.USER,
-                content = "不同内容",
-                messageId = "user-1"
-            )
-        )))
+        val conflicting = core.ai.chat(request.copy(shareCalendarContext = false))
 
         assertEquals(AiChatStatusV1.COMPLETED, first.status)
         assertEquals("你好", first.reply)
         assertEquals(listOf(target.eventSeq), model.lastChatContext.map { it.eventSeq })
         assertEquals(1, model.chatCalls)
+        assertEquals(listOf("你好"), model.lastChatRequest?.history?.map { it.content })
         assertTrue(replay.replayed)
         assertEquals("你好", replay.reply)
         assertEquals(AiChatStatusV1.DUPLICATE_REQUEST_ID, conflicting.status)
@@ -124,18 +123,107 @@ class AiFeatureApiV1Test {
     }
 
     @Test fun invalidConversationIsRejectedBeforeProviderCall() = runBlocking {
-        val request = chatRequest("chat-invalid").copy(history = listOf(
-            AiConversationMessageV1(
-                role = AiConversationRoleV1.ASSISTANT,
-                content = "不是用户输入",
-                messageId = "assistant-1"
-            )
-        ))
+        val request = AiChatRequestV1(
+            requestId = "chat-invalid",
+            userMessageId = "missing-user-message",
+            expectedConversationRevision = core.ai.queryConversation().revision,
+            zoneId = zone.id
+        )
 
         val receipt = core.ai.chat(request)
 
         assertEquals(AiChatStatusV1.INVALID_REQUEST, receipt.status)
         assertEquals(0, model.chatCalls)
+    }
+
+    @Test fun chatBindsTheExactUserMessageAndConversationRevision() = runBlocking {
+        val initial = core.ai.queryConversation()
+        val appended = core.ai.appendConversationMessage(AiConversationMessageV1(
+            role = AiConversationRoleV1.USER,
+            content = "本轮输入",
+            messageId = "bound-user"
+        ), initial.revision)
+        assertEquals(AiConversationMutationStatusV1.APPLIED, appended.status)
+
+        val mismatchedMessage = core.ai.chat(AiChatRequestV1(
+            requestId = "chat-message-mismatch",
+            userMessageId = "other-user",
+            expectedConversationRevision = appended.snapshot.revision,
+            zoneId = zone.id
+        ))
+        assertEquals(AiChatStatusV1.INVALID_REQUEST, mismatchedMessage.status)
+        assertEquals("CHAT_MESSAGE_MISMATCH", mismatchedMessage.errorCode)
+
+        val changed = core.ai.appendConversationMessage(AiConversationMessageV1(
+            role = AiConversationRoleV1.ASSISTANT,
+            content = "追加的状态",
+            messageId = "after-user"
+        ), appended.snapshot.revision)
+        assertEquals(AiConversationMutationStatusV1.APPLIED, changed.status)
+        val stale = core.ai.chat(AiChatRequestV1(
+            requestId = "chat-stale-revision",
+            userMessageId = "bound-user",
+            expectedConversationRevision = appended.snapshot.revision,
+            zoneId = zone.id
+        ))
+        assertEquals(AiChatStatusV1.STALE_CONVERSATION, stale.status)
+        assertEquals(0, model.chatCalls)
+    }
+
+    @Test fun conversationCommandsOwnRevisionFencedMutationsAndPersistence() = runBlocking {
+        val ids = listOf("u1", "a1", "u2", "a2")
+        val contents = listOf("第一条请求", "第一条回复", "第二条请求", "第二条回复")
+        var revision = core.ai.queryConversation().revision
+        ids.indices.forEach { index ->
+            val result = core.ai.appendConversationMessage(AiConversationMessageV1(
+                role = if (index % 2 == 0) AiConversationRoleV1.USER else AiConversationRoleV1.ASSISTANT,
+                content = contents[index],
+                messageId = ids[index]
+            ), revision)
+            assertEquals(AiConversationMutationStatusV1.APPLIED, result.status)
+            revision = result.snapshot.revision
+        }
+
+        assertEquals(AiConversationMutationStatusV1.STALE,
+            core.ai.clearConversation(revision - 1).status)
+        val edited = core.ai.rewindConversation(
+            "u2", AiConversationRewindModeV1.EDIT_AND_RESEND, revision
+        )
+        assertEquals(AiConversationMutationStatusV1.APPLIED, edited.status)
+        assertEquals("第二条请求", edited.prefillText)
+        assertEquals(listOf("u1", "a1"), edited.snapshot.messages.map { it.messageId })
+        assertEquals(AiConversationPersistenceStatusV1.STALE,
+            core.ai.persistConversation(revision))
+        assertEquals(AiConversationPersistenceStatusV1.SAVED,
+            core.ai.persistConversation(edited.snapshot.revision))
+        assertEquals(edited.snapshot.messages, conversationPort.savedMessages)
+
+        val clear = core.ai.clearConversation(edited.snapshot.revision)
+        assertEquals(AiConversationMutationStatusV1.APPLIED, clear.status)
+        assertEquals(AiConversationMutationStatusV1.NO_CHANGE,
+            core.ai.clearConversation(clear.snapshot.revision).status)
+    }
+
+    @Test fun conversationRewindRejectsMissingAmbiguousAndNonUserEditTargets() {
+        val duplicates = listOf(
+            AiConversationMessageV1(AiConversationRoleV1.USER, "一", messageId = "same"),
+            AiConversationMessageV1(AiConversationRoleV1.ASSISTANT, "二", messageId = "same"),
+            AiConversationMessageV1(AiConversationRoleV1.ASSISTANT, "回复", messageId = "assistant")
+        )
+        val duplicatePort = FakeAiConversationHistoryPort(duplicates)
+        val duplicateApi = PowerCalCoreFeatureApiV1(
+            store, clock, aiConversationHistoryPort = duplicatePort
+        ).ai
+        val revision = duplicateApi.queryConversation().revision
+
+        assertEquals(AiConversationMutationStatusV1.AMBIGUOUS_MESSAGE,
+            duplicateApi.rewindConversation("same", AiConversationRewindModeV1.RETRACT, revision).status)
+        assertEquals(AiConversationMutationStatusV1.MISSING_MESSAGE,
+            duplicateApi.rewindConversation("absent", AiConversationRewindModeV1.RETRACT, revision).status)
+        assertEquals(AiConversationMutationStatusV1.EDIT_REQUIRES_USER_MESSAGE,
+            duplicateApi.rewindConversation(
+                "assistant", AiConversationRewindModeV1.EDIT_AND_RESEND, revision
+            ).status)
     }
 
     @Test fun proposalGenerationUsesBoundedApiContextAndReturnsReviewOnly() = runBlocking {
@@ -364,33 +452,42 @@ class AiFeatureApiV1Test {
         assistantSuggestions = emptyList()
     )
 
-    private fun chatRequest(requestId: String, share: Boolean = false) = AiChatRequestV1(
-        requestId = requestId,
-        history = listOf(AiConversationMessageV1(
+    private fun chatRequest(requestId: String, share: Boolean = false): AiChatRequestV1 {
+        val snapshot = core.ai.queryConversation()
+        val userMessageId = "user-$requestId"
+        val appended = core.ai.appendConversationMessage(AiConversationMessageV1(
             role = AiConversationRoleV1.USER,
             content = "你好",
-            messageId = "user-1",
+            messageId = userMessageId,
             createdAtMillis = clock.millis(),
             zoneId = zone.id
-        )),
-        zoneId = zone.id,
-        shareCalendarContext = share
-    )
+        ), snapshot.revision)
+        assertEquals(AiConversationMutationStatusV1.APPLIED, appended.status)
+        return AiChatRequestV1(
+            requestId = requestId,
+            userMessageId = userMessageId,
+            expectedConversationRevision = appended.snapshot.revision,
+            zoneId = zone.id,
+            shareCalendarContext = share
+        )
+    }
 
     private class FakeAiModelPort : AiModelPortV1 {
         var proposalOutput = AiProposalModelOutputV1(AiProposalReviewV1("unused", emptyList()), false)
         var selection = AiBatchModelSelectionV1(error = "未配置假响应")
         var chatOutput = AiChatModelOutputV1(error = "未配置假响应")
         var chatCalls = 0
+        var lastChatRequest: AiChatModelRequestV1? = null
         var proposalCalls = 0
         var lastChatContext: List<EventRecordV1> = emptyList()
         var lastContext: List<EventRecordV1> = emptyList()
 
         override suspend fun chat(
-            request: AiChatRequestV1,
+            request: AiChatModelRequestV1,
             calendarContext: List<EventRecordV1>
         ): AiChatModelOutputV1 {
             chatCalls++
+            lastChatRequest = request.copy(history = request.history.map { it.copy() })
             lastChatContext = calendarContext.toList()
             return chatOutput
         }
@@ -408,6 +505,20 @@ class AiFeatureApiV1Test {
             userRequest: String,
             candidates: List<AiBatchCandidateV1>
         ) = selection
+    }
+
+    private class FakeAiConversationHistoryPort(
+        initialMessages: List<AiConversationMessageV1> = emptyList()
+    ) : AiConversationHistoryPortV1 {
+        private val loadedMessages = initialMessages.map { it.copy() }
+        var savedMessages: List<AiConversationMessageV1> = emptyList()
+            private set
+
+        override fun load() = loadedMessages.map { it.copy() }
+
+        override suspend fun save(messages: List<AiConversationMessageV1>) {
+            savedMessages = messages.map { it.copy() }
+        }
     }
 
     private class MutableClock(private var instant: Instant) : Clock() {

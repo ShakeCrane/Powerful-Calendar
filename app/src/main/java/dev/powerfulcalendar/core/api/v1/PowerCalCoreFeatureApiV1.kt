@@ -42,13 +42,16 @@ class PowerCalCoreFeatureApiV1(
     internal val deckController: DeckController = DeckController(StoreDeckPersistence(store)),
     reminderContext: Context? = null,
     settingsContext: Context? = reminderContext,
-    aiModelPort: AiModelPortV1? = null
+    aiModelPort: AiModelPortV1? = null,
+    aiConversationHistoryPort: AiConversationHistoryPortV1? = null
 ) : CoreFeatureApiV1 {
     override val apiVersion: Int = 1
     private val calendarService = SnapshotCalendarFeatureApiV1()
     private val eventService = StoreEventFeatureApiV1(store, clock)
     private val draftReviewService = StoreDraftReviewFeatureApiV1(store, deckController, eventService)
-    private val aiService = StoreAiFeatureApiV1(store, eventService, aiModelPort, clock)
+    private val aiService = StoreAiFeatureApiV1(
+        store, eventService, aiModelPort, clock, aiConversationHistoryPort
+    )
     private val aiProposalService = StoreAiProposalFeatureApiV1(store, eventService, clock)
     private val reminderService = AndroidReminderFeatureApiV1(store, reminderContext)
     private val importExportService = StoreImportExportFeatureApiV1(

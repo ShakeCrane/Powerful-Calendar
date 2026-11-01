@@ -20,13 +20,54 @@ data class AiConversationMessageV1(
     val zoneId: String? = null
 )
 
+data class AiConversationSnapshotV1(
+    val revision: Long,
+    val messages: List<AiConversationMessageV1>
+)
+
+enum class AiConversationMutationStatusV1 {
+    APPLIED,
+    NO_CHANGE,
+    STALE,
+    MISSING_MESSAGE,
+    AMBIGUOUS_MESSAGE,
+    EDIT_REQUIRES_USER_MESSAGE,
+    INVALID
+}
+
+enum class AiConversationRewindModeV1 { RETRACT, EDIT_AND_RESEND }
+
+data class AiConversationMutationReceiptV1(
+    val status: AiConversationMutationStatusV1,
+    val snapshot: AiConversationSnapshotV1,
+    /** Populated only for EDIT_AND_RESEND on a user message. */
+    val prefillText: String? = null
+)
+
+enum class AiConversationPersistenceStatusV1 { SAVED, STALE, UNAVAILABLE }
+
+/** Host-owned persistence adapter. The Core API keeps the canonical in-memory state. */
+interface AiConversationHistoryPortV1 {
+    fun load(): List<AiConversationMessageV1>
+    suspend fun save(messages: List<AiConversationMessageV1>)
+}
+
 enum class AiChatProposalIntentV1 { EXPLICIT, SUGGESTED }
 
 data class AiChatRequestV1(
     val requestId: String,
-    val history: List<AiConversationMessageV1>,
+    val userMessageId: String,
+    val expectedConversationRevision: Long,
     val zoneId: String,
     /** Host opt-in; the Android provider adapter rechecks the persisted sharing preference. */
+    val shareCalendarContext: Boolean = false
+)
+
+/** Provider-only input assembled from the canonical Core conversation snapshot. */
+data class AiChatModelRequestV1(
+    val requestId: String,
+    val history: List<AiConversationMessageV1>,
+    val zoneId: String,
     val shareCalendarContext: Boolean = false
 )
 
@@ -35,7 +76,8 @@ enum class AiChatStatusV1 {
     INVALID_REQUEST,
     MODEL_UNAVAILABLE,
     LOCKED,
-    DUPLICATE_REQUEST_ID
+    DUPLICATE_REQUEST_ID,
+    STALE_CONVERSATION
 }
 
 /** Provider result. Task and intent are untrusted model-derived evidence, not write authority. */
@@ -244,7 +286,7 @@ data class AiBatchExecutionReceiptV1(
 /** Host adapter for provider calls; implementations own configuration and credentials. */
 interface AiModelPortV1 {
     suspend fun chat(
-        request: AiChatRequestV1,
+        request: AiChatModelRequestV1,
         calendarContext: List<EventRecordV1>
     ): AiChatModelOutputV1
 
@@ -265,6 +307,19 @@ interface AiFeatureApiV1 {
 
     /** Runs one bounded ordinary conversation turn and returns review-only proposal output. */
     suspend fun chat(request: AiChatRequestV1): AiChatReceiptV1
+
+    fun queryConversation(): AiConversationSnapshotV1
+    fun appendConversationMessage(
+        message: AiConversationMessageV1,
+        expectedRevision: Long
+    ): AiConversationMutationReceiptV1
+    fun clearConversation(expectedRevision: Long): AiConversationMutationReceiptV1
+    fun rewindConversation(
+        messageId: String,
+        mode: AiConversationRewindModeV1,
+        expectedRevision: Long
+    ): AiConversationMutationReceiptV1
+    suspend fun persistConversation(expectedRevision: Long): AiConversationPersistenceStatusV1
 
     /** Generates reviewable proposals only; it never stages or publishes a write. */
     suspend fun generateProposal(request: AiProposalGenerationRequestV1): AiProposalGenerationReceiptV1

@@ -116,6 +116,15 @@ internal fun AiChatMessage.toAiConversationMessageV1() = AiConversationMessageV1
     zoneId = zoneId
 )
 
+internal fun AiConversationMessageV1.toAiChatMessage() = AiChatMessage(
+    role = if (role == AiConversationRoleV1.USER) "user" else "assistant",
+    content = content,
+    proposalSource = proposalSource,
+    messageId = messageId,
+    createdAtMillis = createdAtMillis,
+    zoneId = zoneId
+)
+
 internal fun DraftCard.toAiBatchCandidateV1() = AiBatchCandidateV1(
     draftId = draftId,
     draftVersion = draftVersion,

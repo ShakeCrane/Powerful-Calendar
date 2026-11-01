@@ -19,20 +19,112 @@ internal class StoreAiFeatureApiV1(
     private val store: PowerStore,
     private val events: StoreEventFeatureApiV1,
     private val modelPort: AiModelPortV1?,
-    private val clock: Clock
+    private val clock: Clock,
+    private val conversationHistoryPort: AiConversationHistoryPortV1?
 ) : AiFeatureApiV1 {
     override val apiVersion: Int = 1
 
     private val chatMutex = Mutex()
+    private val conversationPersistMutex = Mutex()
     private val chatReceipts = LinkedHashMap<String, CachedChatReceipt>()
+    private var conversationRevision = 0L
+    private var conversationMessages = runCatching {
+        conversationHistoryPort?.load().orEmpty().takeLast(MAX_STORED_CHAT_MESSAGES)
+            .map { it.copy() }
+    }.getOrDefault(emptyList())
 
     private val approvalLock = Any()
     private val batchApprovals = IdentityHashMap<AiBatchApprovalV1, AiBatchReviewV1>()
     private val stuckReleaseApprovals =
         IdentityHashMap<AiBatchStuckReleaseApprovalV1, Pair<String, Long>>()
 
+    @Synchronized
+    override fun queryConversation(): AiConversationSnapshotV1 = conversationSnapshot()
+
+    @Synchronized
+    override fun appendConversationMessage(
+        message: AiConversationMessageV1,
+        expectedRevision: Long
+    ): AiConversationMutationReceiptV1 {
+        if (expectedRevision != conversationRevision) return conversationMutation(
+            AiConversationMutationStatusV1.STALE
+        )
+        if (message.messageId.isBlank() || message.messageId.length > MAX_CHAT_MESSAGE_ID_CHARS ||
+            message.content.length > MAX_CHAT_MESSAGE_CHARS ||
+            message.proposalSource?.length?.let { it > MAX_CHAT_MESSAGE_CHARS } == true ||
+            message.createdAtMillis?.let { it < 0L } == true ||
+            (message.zoneId != null && runCatching { ZoneId.of(message.zoneId) }.isFailure) ||
+            (message.role == AiConversationRoleV1.USER && message.content.isBlank()) ||
+            conversationMessages.any { it.messageId == message.messageId }
+        ) return conversationMutation(AiConversationMutationStatusV1.INVALID)
+        conversationMessages = (conversationMessages + message.copy())
+            .takeLast(MAX_STORED_CHAT_MESSAGES)
+        conversationRevision++
+        return conversationMutation(AiConversationMutationStatusV1.APPLIED)
+    }
+
+    @Synchronized
+    override fun clearConversation(expectedRevision: Long): AiConversationMutationReceiptV1 {
+        if (expectedRevision != conversationRevision) return conversationMutation(
+            AiConversationMutationStatusV1.STALE
+        )
+        if (conversationMessages.isEmpty()) return conversationMutation(
+            AiConversationMutationStatusV1.NO_CHANGE
+        )
+        conversationMessages = emptyList()
+        conversationRevision++
+        return conversationMutation(AiConversationMutationStatusV1.APPLIED)
+    }
+
+    @Synchronized
+    override fun rewindConversation(
+        messageId: String,
+        mode: AiConversationRewindModeV1,
+        expectedRevision: Long
+    ): AiConversationMutationReceiptV1 {
+        if (expectedRevision != conversationRevision) return conversationMutation(
+            AiConversationMutationStatusV1.STALE
+        )
+        val matches = conversationMessages.withIndex().filter { it.value.messageId == messageId }
+        if (matches.isEmpty()) return conversationMutation(
+            AiConversationMutationStatusV1.MISSING_MESSAGE
+        )
+        if (matches.size != 1) return conversationMutation(
+            AiConversationMutationStatusV1.AMBIGUOUS_MESSAGE
+        )
+        val (index, selected) = matches.single()
+        if (mode == AiConversationRewindModeV1.EDIT_AND_RESEND &&
+            selected.role != AiConversationRoleV1.USER
+        ) return conversationMutation(AiConversationMutationStatusV1.EDIT_REQUIRES_USER_MESSAGE)
+        val retainedCount = if (selected.role == AiConversationRoleV1.USER) index else index + 1
+        val next = conversationMessages.take(retainedCount)
+        if (next == conversationMessages && mode == AiConversationRewindModeV1.RETRACT) {
+            return conversationMutation(AiConversationMutationStatusV1.NO_CHANGE)
+        }
+        conversationMessages = next
+        conversationRevision++
+        return conversationMutation(
+            AiConversationMutationStatusV1.APPLIED,
+            prefillText = selected.content.takeIf {
+                mode == AiConversationRewindModeV1.EDIT_AND_RESEND
+            }
+        )
+    }
+
+    override suspend fun persistConversation(
+        expectedRevision: Long
+    ): AiConversationPersistenceStatusV1 = conversationPersistMutex.withLock {
+        val port = conversationHistoryPort
+            ?: return@withLock AiConversationPersistenceStatusV1.UNAVAILABLE
+        val snapshot = synchronized(this) {
+            if (expectedRevision != conversationRevision) null else conversationSnapshot()
+        } ?: return@withLock AiConversationPersistenceStatusV1.STALE
+        port.save(snapshot.messages)
+        AiConversationPersistenceStatusV1.SAVED
+    }
+
     override suspend fun chat(request: AiChatRequestV1): AiChatReceiptV1 {
-        validateChatRequest(request)?.let { (code, message) ->
+        validateChatEnvelope(request)?.let { (code, message) ->
             return AiChatReceiptV1(
                 requestId = request.requestId.take(MAX_REQUEST_ID_CHARS),
                 status = AiChatStatusV1.INVALID_REQUEST,
@@ -58,6 +150,24 @@ internal class StoreAiFeatureApiV1(
                 errorCode = "CORE_LOCKED",
                 message = "AI 批次正在处理，请稍后重试"
             )
+            val conversation = queryConversation()
+            if (request.expectedConversationRevision != conversation.revision) {
+                return@withLock AiChatReceiptV1(
+                    requestId = request.requestId,
+                    status = AiChatStatusV1.STALE_CONVERSATION,
+                    errorCode = "STALE_CONVERSATION",
+                    message = "聊天已变化，请刷新后重试"
+                )
+            }
+            val history = conversation.messages.takeLast(MAX_CHAT_HISTORY_MESSAGES)
+            validateChatHistory(history, request.userMessageId)?.let { (code, message) ->
+                return@withLock AiChatReceiptV1(
+                    requestId = request.requestId,
+                    status = AiChatStatusV1.INVALID_REQUEST,
+                    errorCode = code,
+                    message = message
+                )
+            }
             val port = modelPort ?: return@withLock AiChatReceiptV1(
                 requestId = request.requestId,
                 status = AiChatStatusV1.MODEL_UNAVAILABLE,
@@ -68,7 +178,12 @@ internal class StoreAiFeatureApiV1(
                 events.queryEvents().events.take(MAX_CALENDAR_CONTEXT_EVENTS)
             } else emptyList()
             val modelOutput = try {
-                port.chat(request.detached(), context.map { it.copy() })
+                port.chat(AiChatModelRequestV1(
+                    requestId = request.requestId,
+                    history = history.map { it.copy() },
+                    zoneId = request.zoneId,
+                    shareCalendarContext = request.shareCalendarContext
+                ), context.map { it.copy() })
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
@@ -435,18 +550,33 @@ internal class StoreAiFeatureApiV1(
         return null
     }
 
-    private fun validateChatRequest(request: AiChatRequestV1): Pair<String, String>? {
+    private fun validateChatEnvelope(request: AiChatRequestV1): Pair<String, String>? {
         if (request.requestId.isBlank() || request.requestId.length > MAX_REQUEST_ID_CHARS) {
             return "REQUEST_ID_INVALID" to "AI 请求标识无效"
+        }
+        if (request.userMessageId.isBlank() ||
+            request.userMessageId.length > MAX_CHAT_MESSAGE_ID_CHARS
+        ) return "USER_MESSAGE_ID_INVALID" to "聊天输入标识无效"
+        if (request.expectedConversationRevision < 0L) {
+            return "CONVERSATION_REVISION_INVALID" to "聊天版本无效"
         }
         if (runCatching { ZoneId.of(request.zoneId) }.isFailure) {
             return "ZONE_INVALID" to "AI 请求时区无效"
         }
-        val history = request.history
+        return null
+    }
+
+    private fun validateChatHistory(
+        history: List<AiConversationMessageV1>,
+        expectedUserMessageId: String
+    ): Pair<String, String>? {
         if (history.isEmpty() || history.size > MAX_CHAT_HISTORY_MESSAGES ||
             history.last().role != AiConversationRoleV1.USER ||
             history.last().content.isBlank()
         ) return "HISTORY_INVALID" to "请先输入一条有效消息"
+        if (history.last().messageId != expectedUserMessageId) {
+            return "CHAT_MESSAGE_MISMATCH" to "聊天输入已变化，请刷新后重试"
+        }
         if (history.any { message ->
                 message.messageId.isBlank() || message.messageId.length > MAX_CHAT_MESSAGE_ID_CHARS ||
                     message.content.length > MAX_CHAT_MESSAGE_CHARS ||
@@ -461,6 +591,21 @@ internal class StoreAiFeatureApiV1(
         return null
     }
 
+    @Synchronized
+    private fun conversationSnapshot() = AiConversationSnapshotV1(
+        revision = conversationRevision,
+        messages = conversationMessages.map { it.copy() }
+    )
+
+    private fun conversationMutation(
+        status: AiConversationMutationStatusV1,
+        prefillText: String? = null
+    ) = AiConversationMutationReceiptV1(
+        status = status,
+        snapshot = conversationSnapshot(),
+        prefillText = prefillText
+    )
+
     private fun rememberChatReceipt(
         requestId: String,
         fingerprint: String,
@@ -471,8 +616,6 @@ internal class StoreAiFeatureApiV1(
             chatReceipts.remove(chatReceipts.entries.first().key)
         }
     }
-
-    private fun AiChatRequestV1.detached() = copy(history = history.map { it.copy() })
 
     private fun AiConversationTaskV1.detached() = copy(
         userEvidence = userEvidence.map { it.copy() },
@@ -492,16 +635,10 @@ internal class StoreAiFeatureApiV1(
 
     private fun AiChatRequestV1.fingerprint(): String {
         val canonical = buildString {
+            appendPart(userMessageId)
+            appendPart(expectedConversationRevision.toString())
             appendPart(zoneId)
             appendPart(shareCalendarContext.toString())
-            history.forEach { message ->
-                appendPart(message.role.name)
-                appendPart(message.messageId)
-                appendPart(message.content)
-                appendPart(message.proposalSource)
-                appendPart(message.createdAtMillis?.toString())
-                appendPart(message.zoneId)
-            }
         }
         return MessageDigest.getInstance("SHA-256")
             .digest(canonical.toByteArray(Charsets.UTF_8))
@@ -623,6 +760,7 @@ internal class StoreAiFeatureApiV1(
         const val MAX_AI_PROPOSALS = 100
         const val MAX_CALENDAR_CONTEXT_EVENTS = 60
         const val MAX_CHAT_HISTORY_MESSAGES = 80
+        const val MAX_STORED_CHAT_MESSAGES = 200
         const val MAX_CHAT_HISTORY_CHARS = 480_000
         const val MAX_CHAT_MESSAGE_CHARS = 6_000
         const val MAX_CHAT_MESSAGE_ID_CHARS = 100

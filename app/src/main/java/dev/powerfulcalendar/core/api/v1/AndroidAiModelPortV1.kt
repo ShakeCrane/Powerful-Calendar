@@ -18,7 +18,7 @@ internal class AndroidAiModelPortV1(context: Context) : AiModelPortV1 {
     private val appContext = context.applicationContext
 
     override suspend fun chat(
-        request: AiChatRequestV1,
+        request: AiChatModelRequestV1,
         calendarContext: List<EventRecordV1>
     ): AiChatModelOutputV1 {
         val settings = AiSettingsStore.load(appContext)
