@@ -195,6 +195,14 @@ review and avatar content through composable slots. AI interpretation, proposal 
 commit behavior remain in `:app`; message text and a proposal-source string are display/input values,
 not authorization. Native code has no direct provider, Core, Store or Android clipboard dependency.
 
+Structured proposal generation and AI batch selection/state/execution now use the shared
+`CoreFeatureApiV1.ai` service. The Android model port and provider configuration remain Host-owned;
+proposal staging and publishing still require the separate `aiProposals` service and Host review.
+Native and Web presentation projections receive display state without batch session IDs, lock epochs,
+draft-scope IDs or stored exception details. Ordinary chat, image/OCR intake, and file/consent flows
+remain Host capabilities. These are source-level boundaries; device and packaged-WebView behavior
+still require their own evidence.
+
 ### AI image consent and OCR review boundary (2026-10-30)
 
 `NativeAiImageConsentReview`, `NativeAiOcrTextReview`, and `NativeAiFileReview` are rendered by

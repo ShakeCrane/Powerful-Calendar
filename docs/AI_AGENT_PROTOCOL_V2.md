@@ -34,10 +34,10 @@ permission. Unbounded write access or a silent approval bypass is not a capabili
 | --- | --- | --- |
 | chat.reply.v1 | bounded conversational reply | implemented; stateless restart, no cloud search |
 | chat.suggest_draft.v1 | recognize candidate and show action affordance | implemented via bounded untrusted hint; *not* automatic tool invocation |
-| calendar.propose.v1 | normalize CREATE / REPLACE / DELETE / CONVERT into drafts | structured parsing plus Host-reviewed `AiProposalFeatureApiV1` staging/publishing; Store-backed per-item receipts for apply operations, while outer request replay remains process-local; not a general tool-call orchestrator |
+| calendar.propose.v1 | normalize CREATE / REPLACE / DELETE / CONVERT into drafts | `AiFeatureApiV1.generateProposal` returns structured candidates through a Host-owned model port; `AiProposalFeatureApiV1` handles reviewed staging/publishing and Store-backed per-item receipts. Generation does not write; outer request replay is not durable; not a general tool-call orchestrator |
 | calendar.query.v1 | narrow formal records by date/title/kind and return revisions | partial: explicit context slice, no broad standalone Tool Call |
-| calendar.batch.select.v1 | select actionable draft IDs based on user description | implemented; all IDs checked against local candidate snapshot |
-| calendar.batch.execute.v1 | publish or discard explicitly reviewed draft versions | implemented with persisted AiSession/fencing; no unbounded auto-approval |
+| calendar.batch.select.v1 | select actionable draft IDs based on user description | implemented through `AiFeatureApiV1`; the model returns IDs only and the API resolves them against the exact local candidate snapshot |
+| calendar.batch.execute.v1 | publish or discard explicitly reviewed draft versions | implemented through `AiFeatureApiV1` with one-use Host approval, persisted `AiSession` fencing, transactional version checks, cancellation and recovery; no unbounded auto-approval |
 | calendar.batch.modify.v1 | select formal IDs, propose partial updates, enforce snapshot revision | partial: parser inherits unchanged fields; complete autonomous orchestration missing |
 | document.inspect.v1 | bounded OCR/ICS/CSV/DOCX/XLSX extraction and AI interpretation | implemented with preview; not a lossless importer for every format |
 | document.to_drafts.v1 | evidence provenance to typed complete batch | partial; complex ICS repairs and ambiguities require clarification |
@@ -159,19 +159,24 @@ Each Skill registry entry has:
 - `calendar.query.v1`: read-only, filter by date/title/kind, max 100 candidates,
   return exact `eventSeq, revision, precision, zone, recurrence, source`.
 - `calendar.propose.v1`: produce at most 100 operations (create/replace/delete/convert);
-  allocate DraftCards with durable tool-call receipts. This tool call itself never publishes.
-  After separate Host review, the current `AiProposalFeatureApiV1` implements staging and
-  selected-item application;
+  the current `AiFeatureApiV1.generateProposal` returns detached review DTOs only and does
+  not write. Its Android model port keeps settings/credentials in the Host. After separate
+  Host review, `AiProposalFeatureApiV1` implements staging and selected-item application;
   its Store-backed `ai_task_receipts` protect item retries (taskless applies use a stable
   request-derived receipt namespace), but the outer API request cache remains process-local
-  and standalone `createDrafts` replay is not durable. AI batch selection/execution remains
-  a separate path. This is partial protocol coverage, not full tool-registry or orchestration
-  compliance.
-- `calendar.batch.select.v1`: return exact allowed draftIds, versions and candidate counts.
+  and standalone `createDrafts` replay is not durable. This is partial protocol coverage,
+  not full tool-registry or orchestration compliance.
+- `calendar.batch.select.v1`: `AiFeatureApiV1` returns exact candidate snapshots after
+  resolving model-selected IDs against the local list; duplicate and out-of-scope IDs fail.
+  Host-only explicit “all” selection bypasses the model.
 - `calendar.batch.authorize.v1`: only app-originated, bound to a frozen reviewed scope.
   The model cannot generate its own approval token.
-- `calendar.batch.execute.v1`: requires a valid sessionId, lockEpoch,
-  per-draft version, operation allowlist and expiry; audit every result.
+- `calendar.batch.execute.v1`: `AiFeatureApiV1` requires a one-use Host marker bound to the
+  exact reviewed mode and candidate snapshots. Existing Store begin/commit transactions
+  recheck versions, operations, session ID and lock epoch. State query, cancellation,
+  interrupted recovery and guarded stuck-session release also route through this API.
+  Ordinary chat, image/OCR, file intake, provider configuration, and general tool registry
+  remain Host work; this does not implement the autonomous agent loop.
 - `document.extract.v1`: size-bounded, reads non-executable bytes, returns provenance
   and parser warnings; injection in source content cannot authorize operations.
 - `web.search.v1`: optional *future* adapter. Requires user-enabled provider/search
