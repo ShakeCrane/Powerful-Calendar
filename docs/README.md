@@ -6,9 +6,14 @@ Read [Core owner sign-off](CORE_FREEZE_OWNER_SIGNOFF_2026-10-27.md),
 [Current core evidence verdict](CORE_FREEZE_VERDICT.md).
 The active master direction is the PHASE 0–5 Core-first/Skin-first plan in the
 [remote governance and separation roadmap](SEPARATION_REMOTE_GOVERNANCE_AND_ROADMAP_2026-10-30.md).
-The current task is PHASE 1, Event and Draft/Review Feature API v1 slices; see the
-[implemented contracts and open gaps](CORE_FEATURE_API_V1.md) and the
-[Draft/Review implementation report](issues/PC-ISSUE-CORE-DRAFT-REVIEW-API-V1.md).
+The current task is PHASE 1, Event and Draft/Review Feature API v1 slices. Formal
+event search and Memo completion now use the Event API; see the
+[implemented contracts and open gaps](CORE_FEATURE_API_V1.md), the
+[Draft/Review report](issues/PC-ISSUE-CORE-DRAFT-REVIEW-API-V1.md), the
+[Event search report](issues/PC-ISSUE-CORE-EVENT-SEARCH-API-V1.md), and the
+[occurrence completion report](issues/PC-ISSUE-CORE-OCCURRENCE-COMPLETION-API-V1.md).
+AndroidTest harness source migration and compile-only evidence are recorded in the
+[Feature API harness report](issues/PC-ISSUE-SEPARATION-ANDROIDTEST-FEATURE-API-MIGRATION.md).
 The [Skin separation parity matrix](SKIN_SEPARATION_PARITY_MATRIX_2026-10-27.md)
 remains a functional coverage/evidence index, not the master work sequence. The v3
 Skin-First cutover is not complete and Native fallback stays intact.

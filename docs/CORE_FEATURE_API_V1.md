@@ -44,6 +44,8 @@ The Host is the only owner of Android context, database construction, trusted co
 | Operation | API behavior |
 | --- | --- |
 | `queryEvents()` | Returns all current formal events and the adapter's `featureRevision`. Draft cards are not included. No paging/filter parameters exist in v1. |
+| `searchEvents(query, snapshot)` | Searches the supplied immutable `EventQuerySnapshotV1`; it performs no Store I/O and returns the snapshot's feature revision with display-only hits (`eventSeq`, `revision`, `kind`, `title`). Blank queries return no hits. Title matching is case-insensitive; raw or formatted sequence matching is retained; snapshot order is retained; the API caps results at eight. Deck surfaces display at most four. |
+| `setOccurrenceCompletion(eventSeq, expectedRevision, occurrenceKey, expectedCompleted, completed, requestId)` | Explicitly changes one tracked, enabled occurrence. It checks the lock, current event revision, original recurrence slot, and observed completion state before delegating to the Store transaction. Actual changes return `UPDATED` and publish one `FORMAL_UPDATED`; a valid already-satisfied request returns `NO_CHANGE`; stale state returns `CONFLICT`; unavailable or invalid occurrences return `INVALID`; locked writes return `LOCKED`. Request receipts use the bounded mutation replay cache. |
 | `openNewEvent(kind, zoneId, selection)` | Validates the zone/selection, creates an in-memory editor with defaults from the injected `Clock`, and returns an opaque handle and snapshot. Opening alone does not write an event. |
 | `openFormalEvent(eventSeq, expectedRevision, occurrenceKey)` | Rejects invalid IDs, a locked Store, missing/stale events, or an invalid occurrence key; otherwise opens the existing Core edit session. |
 | `editorSnapshot(handle)` | Returns current form, baseline, version, capabilities, and recovery state for a live handle, or `null` if it is not owned by this API instance. |
@@ -98,7 +100,7 @@ For mutation and checkpoint requests:
 - Native Deck's built-in controls remain Host-driven. Runtime/imported Deck callbacks that request a formal commit, conflict replacement, or restore first open Host-owned confirmation UI. Commit/restore review displays the exact candidate's type, title, date/time, zone, location, notes, recurrence, reminder, enable/tracking state, and completed instances; conflict review adds the current revision and field differences. The UI checks its captured Deck state revision before calling the API.
 - Draft/Review request receipts are retained in a bounded, process-local 128-entry cache. Durable request replay across adapter recreation/process death is not provided; do not describe the receipt cache as exactly-once persistence.
 
-This is a Draft/Review vertical slice, not full Phase 1 closure. The Web bridge still performs some formal-event searches and Store reads, `DeckVisualContext` still projects Core types to runtime rendering, and direct authorized workflows outside the shared adapter do not publish to its change stream. Memo completion and the other domain APIs also remain outside this slice.
+These are Event and Draft/Review vertical slices, not full Phase 1 closure. Native and Web Deck formal searches now use `searchEvents`, and both Memo completion Host paths use `setOccurrenceCompletion`. The Memo visibility precheck and other Host flows still perform direct Store reads; `DeckVisualContext` and `MemoVisualContext` still project Core types to runtime rendering; and authorized workflows outside the shared adapter do not publish to its change stream. Other domain APIs remain outside this coverage.
 
 ## 8. Current adapter coverage and open work
 
@@ -106,6 +108,8 @@ Verified code paths across the Event and Draft/Review pilots:
 
 - Native event creation and ordinary formal editing/deletion call the Host's shared `EventFeatureApiV1`.
 - `PowerCalApp.reload` obtains formal events through `queryEvents()`.
+- Native and Web Deck formal search use `searchEvents` over an API query snapshot. The Native Host reuses its latest snapshot so typing does not synchronously read the Store; the Web Host queries and filters on its I/O dispatcher.
+- Native and Web Memo completion commands use `setOccurrenceCompletion`, with expected event revision and expected prior completion state. Only committed changes publish `FORMAL_UPDATED`.
 - Web event editor create/update/checkpoint/save/delete and recurrence scope use the same API instance.
 - Web timeline movement reads a Host projection, then stages the revision-guarded replacement through `stageFormalReplacement`.
 - Native and Web Draft Decks use the shared `DraftReviewFeatureApiV1` for persisted draft edits, queue navigation, formal replacement proposals, conflict and restore review, commit, discard, and undo.
@@ -113,11 +117,12 @@ Verified code paths across the Event and Draft/Review pilots:
 
 Remaining work before PHASE 1 can exit:
 
-1. Route remaining formal-event reads/writes in `WebSkinEditService` and Native Host through a domain API, including formal search and direct completion updates.
-2. Ensure all authorized formal mutations that refresh Skin projections publish through one change source, including workflows that currently bypass this adapter.
-3. Move remaining business decisions out of Web transport/Host adapters; keep the bridge focused on transport and trusted Host capabilities.
-4. Remove Core entity types from runtime Skin projections while maintaining the separate Native Presentation Contract.
-5. Add the required per-domain API contracts before claiming other feature areas are covered. Current v1 does not define Calendar paging, completion, AI, reminders, import/export, or Settings/Data APIs. Draft/Review request replay remains process-local.
-6. Run a clean full JVM suite, boundary/build/lint gates, and required device checks when the independently owned AVD is available. Instrumentation for this Draft/Review slice is **NOT TESTED**.
+1. Route remaining authorized Host/Core reads and writes through versioned queries/commands and one change source; current direct paths include AI proposal application, Calendar import, backup restore, draft creation, and Memo visibility checks.
+2. Move remaining business decisions out of Web transport/Host adapters; keep the bridge focused on transport and trusted Host capabilities.
+3. Remove Core entity types from runtime Skin projections while maintaining the separate Native Presentation Contract.
+4. Add the required per-domain API contracts before claiming other feature areas are covered. Current v1 does not define Calendar paging, AI, reminders, import/export, or Settings/Data APIs. Draft/Review request replay remains process-local.
+5. Run required device checks when the independently owned AVD is available. Instrumentation for the current Event search/completion slice is **NOT TESTED**.
 
 Latest Draft/Review verification: focused API, DeckController, Store restore, Host review UI, and Web bridge tests passed **190/190**; the forced full JVM run passed **800 tests across 128 XML reports, 0 failures/errors/skips**. `verifySkinSourceBoundary`, `verifyNativeSkinBoundary`, Debug APK assembly, and `lintDebug` all passed; lint reported **0 errors / 54 warnings**. The Debug APK SHA-256 is `C22E82E434CBE5B02CD790FF72932074DA969A10BDF9095416179D3B8331AFB4` (66,683,502 bytes). Instrumentation and AVD behavior are **NOT TESTED**. Logs and the prior Event pilot’s transient full-suite failures are recorded in the current [progress entry](agent-handoff/PROGRESS.md) and the [Draft/Review Issue](issues/PC-ISSUE-CORE-DRAFT-REVIEW-API-V1.md); no cause is asserted for those earlier failures.
+
+Latest Event search/completion verification: focused API, adapter, Deck, and Web tests **64/64 PASS**; forced full JVM **803 tests across 128 XML reports, 0 failures/errors/skips**; AndroidTest Kotlin compilation **PASS**; source-boundary checks, Debug APK assembly, `lintDebug`, and `git diff --check` **PASS** with 0 lint errors / 54 warnings. Android instrumentation and device behavior are **NOT TESTED**. The Debug APK is 67,552,075 bytes, SHA-256 `03108E62D7BE9473C65A887D87BB906EDEAAD7AFFA46B18D0415BCD864161C06`. Details and per-log hashes are recorded in the [Event search report](issues/PC-ISSUE-CORE-EVENT-SEARCH-API-V1.md), [occurrence completion report](issues/PC-ISSUE-CORE-OCCURRENCE-COMPLETION-API-V1.md), and [AndroidTest harness migration report](issues/PC-ISSUE-SEPARATION-ANDROIDTEST-FEATURE-API-MIGRATION.md). Code commit `c9948d5465bc93da7e59984342c756549df9e295` was fast-forward pushed to `origin/feat/skin-first-separation`; Phase 1 remains open.

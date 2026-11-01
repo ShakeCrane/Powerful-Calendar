@@ -9,11 +9,13 @@
 
 本节落实 `goal-objective.md` 的 PHASE 0–5 顺序，**优先级高于下文保留的 SEP/M1–M4 旧执行顺序**。功能矩阵继续记录覆盖与证据，不再决定主开发方向。
 
-**当前主阶段：PHASE 1 — ESTABLISH CORE FEATURE API。** Event Feature API v1 编辑器切片已由 `65a96b7ba97a639981d23eee7e05f8f39a85a68e` 推送；本次 Draft/Review API v1 切片提交 `a12e107b868243e0563d5ca904edaf38c777f070` 于 2026-11-01 基于远端检查点 `a3b51394bc0c546f1d7d4e02a2bd8cef9a8d22e9` 普通快进推送至 `origin/feat/skin-first-separation`。本次完整回归、APK 与路线图状态在独立文档提交中记录。独立 delivery worktree 中的未提交 AndroidTest 变更仍保留，未与本任务混写。
+**当前主阶段：PHASE 1 — ESTABLISH CORE FEATURE API。** Event Feature API v1 编辑器切片已由 `65a96b7ba97a639981d23eee7e05f8f39a85a68e` 推送；Draft/Review API v1 提交 `a12e107b868243e0563d5ca904edaf38c777f070` 已基于 `a3b51394bc0c546f1d7d4e02a2bd8cef9a8d22e9` 普通快进推送；本次搜索/完成状态 API 切片提交 `c9948d5465bc93da7e59984342c756549df9e295` 于 2026-11-01 基于新鲜远端点 `d3bb0700d6c3911c651025e92c1906e8975eae14` 普通快进推送至 `origin/feat/skin-first-separation`。本次完整回归、APK 与路线图状态在独立文档提交中记录。独立 delivery worktree 中的未提交 AndroidTest 变更仍保留，未与本任务混写。
 
-**当前切片：Event Feature API v1 + Draft/Review Feature API v1。** 纯 Kotlin `:core-api` 提供版本化 DTO/接口；Native 与 Web Deck 共用 Host 创建的 Draft/Review 服务。打开/刷新、编辑、暂存、选择/移动、正式替换提案、冲突与恢复审核、提交、丢弃及撤销现经此 API；正式提交与恢复保留 Store 事务、草稿版本和墓碑版本检查。被独立审查指出的“审核提交在暂存版本冲突时重试并覆盖并发草稿”已修复：审核路径只按已审版本暂存，冲突即拒绝且保留本地表单。自定义 Skin 的正式写入继续经 Host 确认 UI。详情见 [`CORE_FEATURE_API_V1.md`](CORE_FEATURE_API_V1.md) 和 [Draft/Review Issue](issues/PC-ISSUE-CORE-DRAFT-REVIEW-API-V1.md)。聚焦回归 **190/190 PASS**；强制全量 JVM **800/800，128 XML reports，0 failure/error/skip**。`verifySkinSourceBoundary`、`verifyNativeSkinBoundary`、Debug APK assemble 和 `lintDebug` 均 PASS；lint **0 errors / 54 warnings**。APK **66,683,502 bytes**，SHA-256 `C22E82E434CBE5B02CD790FF72932074DA969A10BDF9095416179D3B8331AFB4`。Clear 编辑器 `node --check` 与 `git diff --check` PASS。Android instrumentation/AVD 未测试，本次未触碰设备。
+**当前切片：Event Feature API v1 + Draft/Review Feature API v1。** 纯 Kotlin `:core-api` 提供版本化 DTO/接口；Native 与 Web Deck 共用 Host 创建的 Draft/Review 服务。打开/刷新、编辑、暂存、选择/移动、正式替换提案、冲突与恢复审核、提交、丢弃及撤销现经此 API；正式提交与恢复保留 Store 事务、草稿版本和墓碑版本检查。事件 API 新增基于只读快照的正式搜索和带 revision/state 前置条件的 Memo 完成命令；Native 与 Web 路径均使用同一服务，完成变更通过 `FORMAL_UPDATED` 通知。被独立审查指出的“审核提交在暂存版本冲突时重试并覆盖并发草稿”已修复：审核路径只按已审版本暂存，冲突即拒绝且保留本地表单。自定义 Skin 的正式写入继续经 Host 确认 UI。详情见 [`CORE_FEATURE_API_V1.md`](CORE_FEATURE_API_V1.md)、[Draft/Review Issue](issues/PC-ISSUE-CORE-DRAFT-REVIEW-API-V1.md)、[Event search Issue](issues/PC-ISSUE-CORE-EVENT-SEARCH-API-V1.md)、[Occurrence completion Issue](issues/PC-ISSUE-CORE-OCCURRENCE-COMPLETION-API-V1.md) 和 [AndroidTest harness migration Issue](issues/PC-ISSUE-SEPARATION-ANDROIDTEST-FEATURE-API-MIGRATION.md)。
 
-**PHASE 1 尚未退出。** Web Bridge 的正式事件搜索、直接完成状态更新和若干 Host/Core 读取或授权写入仍绕过统一领域 API/变更源；部分 runtime Skin projection 仍包含 Core 类型。Calendar、Memo/Todo、AI、Reminder、Import/Export、Settings/Data 等必需领域接口尚未齐备。当前两个切片不代表全功能 API、Native/Skin parity、runtime separation 或 cutover PASS。
+本切片聚焦回归 **64/64 PASS**；强制全量 JVM **803/803，128 XML reports，0 failure/error/skip**；AndroidTest Kotlin 编译、`verifySkinSourceBoundary`、`verifyNativeSkinBoundary`、Debug APK assemble 和 `lintDebug` 均 PASS，lint **0 errors / 54 warnings**。APK **67,552,075 bytes**，SHA-256 `03108E62D7BE9473C65A887D87BB906EDEAAD7AFFA46B18D0415BCD864161C06`。`git diff --check` PASS。Android instrumentation/AVD 未测试，本次未触碰设备。
+
+**PHASE 1 尚未退出。** 正式事件搜索与 Memo 完成命令已接入 Event API；其他授权 Host/Core 读取或写入仍绕过统一领域 API/变更源。`DeckVisualContext`、`MemoVisualContext` 等 runtime Skin projection 仍包含 Core 类型。Calendar、AI、Reminder、Import/Export、Settings/Data 等必需领域接口尚未齐备。当前切片不代表全功能 API、Native/Skin parity、runtime separation 或 cutover PASS。
 
 | 阶段 | 当前状态 | 退出条件摘要 |
 | --- | --- | --- |
@@ -24,7 +26,7 @@
 | PHASE 4 — AI Autonomous Skin Authoring | 未开始 | AI 通过 Studio 正式工具端到端完成项目分析、修改、素材、构建、校验、预览、修复及交付 |
 | PHASE 5 — Final Delivery | 未开始 | 同一交付基线集成 Core API/Runtime、多 Skin、Native fallback、Studio、AI、文档、测试、APK 与 `.pcskin`；实体/OEM 验收清单独立交付 |
 
-**唯一 NEXT_ACTION：** 收口剩余 Event/Calendar/Memo API 路径：将正式事件搜索、Memo 完成写入及授权 Host/Core 变更接入版本化查询/命令与单一变更源，并继续移除 runtime Skin projection 中的 Core 实体类型；维持冻结语义。
+**唯一 NEXT_ACTION：** 收口其余授权 Host/Core 读写及变更通知绕行，补齐 Calendar/Memo 等领域 API，并继续移除 runtime Skin projection 中的 Core 实体类型；保持冻结语义和 Native fallback。
 
 ## 1. 当前版本基准及实际证据
 
