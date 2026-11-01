@@ -24,6 +24,8 @@ import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
+import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.StructuredImportBatchHandleV1
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -98,11 +100,12 @@ class SystemCalendarImportTest {
     @Test
     fun cancellationAtBatchCreationReturnStillLeavesIdForFinalization() {
         val caller = Job()
-        var capturedBatchId: String? = null
+        var capturedBatchId: StructuredImportBatchHandleV1? = null
         var observed: Throwable? = null
+        val importExport = PowerCalCoreFeatureApiV1(store).importExport
         try {
             runBlocking(caller) {
-                beginSystemCalendarBatchTracked(store) { createdId ->
+                beginSystemCalendarBatchTracked(importExport) { createdId ->
                     capturedBatchId = createdId
                     caller.cancel()
                 }
@@ -114,7 +117,7 @@ class SystemCalendarImportTest {
         assertTrue("cancellation must propagate to the caller", observed is CancellationException)
         val createdId = requireNotNull(capturedBatchId)
         val warnings = listOf("系统日历导入中断；已提交记录可通过重试自动去重")
-        runBlocking { finishSystemCalendarBatch(store, createdId, warnings) }
+        runBlocking { finishSystemCalendarBatch(importExport, createdId, warnings) }
 
         val batch = waitForBatchCount(1).single()
         assertNotNull("the batch committed before cancellation must still be finalized",

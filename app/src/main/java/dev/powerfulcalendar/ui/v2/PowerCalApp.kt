@@ -70,7 +70,6 @@ import dev.powerfulcalendar.ai.AiFileFallbackConsent
 import dev.powerfulcalendar.ai.AiInterpretation
 import dev.powerfulcalendar.ai.AiSettingsStore
 import dev.powerfulcalendar.ai.ChatProposalIntent
-import dev.powerfulcalendar.core.BackupEnvelope
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.EditorSelection
@@ -93,7 +92,13 @@ import dev.powerfulcalendar.core.api.v1.EventSelectionV1
 import dev.powerfulcalendar.core.api.v1.AiProposalApplyRequestV1
 import dev.powerfulcalendar.core.api.v1.AiProposalDecisionV1
 import dev.powerfulcalendar.core.api.v1.CalendarWindowQueryV1
+import dev.powerfulcalendar.core.api.v1.ImportExportFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.StructuredCalendarEventV1
+import dev.powerfulcalendar.core.api.v1.StructuredImportBatchHandleV1
+import dev.powerfulcalendar.core.api.v1.StructuredImportStatusV1
+import dev.powerfulcalendar.core.api.v1.BackupRestoreReceiptV1
+import dev.powerfulcalendar.core.api.v1.newImportRequestId
 import dev.powerfulcalendar.core.api.v1.ReminderEventSnapshotV1
 import dev.powerfulcalendar.core.api.v1.ReminderReconcileModeV1
 import dev.powerfulcalendar.core.api.v1.ReminderReconcileStatusV1
@@ -101,12 +106,10 @@ import dev.powerfulcalendar.core.api.v1.ReminderScheduleStateV1
 import dev.powerfulcalendar.core.api.v1.toCoreDraftForm
 import dev.powerfulcalendar.core.api.v1.toCoreTemporalRecord
 import dev.powerfulcalendar.core.api.v1.toEventFormV1
-import dev.powerfulcalendar.data.CalendarEvent
 import dev.powerfulcalendar.data.LegacyImporter
 import dev.powerfulcalendar.interop.AiFileEvidence
 import dev.powerfulcalendar.interop.AiFileEvidenceReader
 import dev.powerfulcalendar.interop.IcsCodec
-import dev.powerfulcalendar.interop.IcsImportPlanner
 import dev.powerfulcalendar.interop.ImportCheckpoint
 import dev.powerfulcalendar.interop.SafBackupReader
 import dev.powerfulcalendar.interop.SystemCalendar
@@ -126,19 +129,19 @@ import org.json.JSONObject
 internal const val POWER_CAL_SKIN_PACKAGE_MIME = "application/vnd.powercal.skin+zip"
 
 internal suspend fun beginSystemCalendarBatchTracked(
-    store: PowerStore,
-    onCreated: (String) -> Unit
-): String = withContext(Dispatchers.IO) {
-    store.beginMigration("android-calendar").also(onCreated)
+    api: ImportExportFeatureApiV1,
+    onCreated: (StructuredImportBatchHandleV1) -> Unit
+): StructuredImportBatchHandleV1 = withContext(Dispatchers.IO) {
+    api.beginStructuredImport("android-calendar").also(onCreated)
 }
 
 internal suspend fun finishSystemCalendarBatch(
-    store: PowerStore,
-    batchId: String,
+    api: ImportExportFeatureApiV1,
+    batchId: StructuredImportBatchHandleV1,
     warnings: List<String>
 ) {
     withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) {
-        store.finishMigration(batchId, warnings)
+        api.finishStructuredImport(batchId, warnings)
     }
 }
 
@@ -217,6 +220,7 @@ fun PowerCalApp(
     val eventFeatureApi = coreFeatureApi.events
     val draftReviewApi = coreFeatureApi.draftReview
     val reminderFeatureApi = coreFeatureApi.reminders
+    val importExportApi = coreFeatureApi.importExport
     val controller = coreFeatureApi.deckController
     val effects = LocalGlassEffects.current
     val skins = remember(appContext) { SkinPackageManager(appContext) }
@@ -605,10 +609,12 @@ fun PowerCalApp(
      * warnings instead of being reported as "restore failed", which would invite a destructive retry.
      */
     suspend fun restoreAndRefresh(
-        parsed: JSONObject,
+        backupJson: String,
         allowLegacy: Boolean
-    ): Pair<PowerStore.RestoreReport, List<String>> {
-        val report = withContext(Dispatchers.IO) { store.restoreBackup(parsed, allowLegacy) }
+    ): Pair<BackupRestoreReceiptV1, List<String>> {
+        val report = withContext(Dispatchers.IO) {
+            importExportApi.restoreBackup(backupJson, allowLegacy)
+        }
         val problems = mutableListOf<String>()
         runCatching { reconcile() }.onFailure { problems += "提醒调度重建失败，请稍后重试" }
         // Load diagnostics after reconciliation so the restored UI reflects the scheduler's
@@ -617,7 +623,7 @@ fun PowerCalApp(
         return report to problems
     }
 
-    fun restoreMessage(report: PowerStore.RestoreReport, prefix: String): String = buildString {
+    fun restoreMessage(report: BackupRestoreReceiptV1, prefix: String): String = buildString {
         append(prefix)
         append("${report.objects} 个事件、${report.drafts} 张草稿、${report.commits} 条提交")
         append("；提醒计划已重新核对，实际投递状态见“提醒可靠性”；旧授权与旧执行记录未恢复")
@@ -1222,43 +1228,38 @@ fun PowerCalApp(
             } ?: error("无法读取所选文件")
             // Group by RFC UID before importing: a changed recurrence instance and its master
             // form one atomic semantic unit. Problems in independent units cannot block good ones.
-            val plan = withContext(Dispatchers.Default) { IcsImportPlanner.prepare(text, zone) }
+            val plan = withContext(Dispatchers.Default) {
+                importExportApi.prepareIcsImport(text, zone.id)
+            }
             if (plan.units == 0) {
                 message = "文件里没有可导入的日历事件"
                 return
             }
             val result = withContext(Dispatchers.IO) {
-                // Exact title/start/end comparison is only an import guard, not a promise
-                // of cross-device identity or a substitute for permanent invocation receipts.
-                fun identity(form: DraftForm): List<Any?> = listOf(
-                    form.kind, form.title.trim(), form.parseStart(), form.parseEnd(),
-                    form.parseDeadline(), form.recurrence, form.zoneId,
-                    form.location.trim(), form.notes.trim(), form.reminderMinutes
-                )
-                val known = (
-                    store.all().map { DraftForm.from(it) } +
-                        store.pendingDrafts().filter { it.operation == DraftOperation.CREATE }
-                            .map { it.form }
-                    ).map(::identity).toMutableSet()
+                val duplicateSourceIds =
+                    importExportApi.duplicateIcsCandidateSourceIds(plan.candidates)
                 var duplicated = 0
                 val created = mutableListOf<Long>()
                 val failed = mutableListOf<String>()
                 val receipt = ImportCheckpoint.recent(appContext)
                     .firstOrNull { it.fingerprint == plan.fingerprint }
                 // A receipt is a recovery hint, not permission to skip missing/discarded cards.
-                receipt?.draftIds?.filter { store.draft(it) != null }?.forEach { created += it }
+                receipt?.draftIds?.let(importExportApi::existingDraftIds)?.forEach { created += it }
                 plan.candidates.forEach { candidate ->
-                    val form = candidate.form
-                    if (!known.add(identity(form))) {
+                    if (candidate.sourceId in duplicateSourceIds) {
                         duplicated++
                         return@forEach
                     }
-                    runCatching { store.newDraft(form, actor = "user") }
-                        .onSuccess { card ->
-                            created += card.draftId
+                    runCatching {
+                        importExportApi.createIcsDraft(candidate, newImportRequestId())
+                    }.onSuccess { draftReceipt ->
+                        val draftId = draftReceipt.draftId
+                        if (draftReceipt.succeeded && draftId != null) {
+                            created.add(draftId)
                             ImportCheckpoint.record(appContext, ImportCheckpoint.Snapshot(
                                 plan.fingerprint, created.distinct(), plan.problems.size))
-                        }.onFailure { failed += candidate.sourceId.take(80) }
+                        } else failed += candidate.sourceId.take(80)
+                    }.onFailure { failed += candidate.sourceId.take(80) }
                 }
                 ImportCheckpoint.record(appContext, ImportCheckpoint.Snapshot(
                     plan.fingerprint, created.distinct(), plan.problems.size))
@@ -1298,7 +1299,7 @@ fun PowerCalApp(
 
     suspend fun importSystemCalendar() {
         var imported = 0
-        var batchId: String? = null
+        var batchId: StructuredImportBatchHandleV1? = null
         try {
             val incoming = withContext(Dispatchers.IO) { SystemCalendar.readUpcoming(appContext) }
             if (incoming.isEmpty()) {
@@ -1311,19 +1312,30 @@ fun PowerCalApp(
             try {
                 // Publish the committed ID before withContext returns, so finally can close it
                 // even if cancellation wins at the dispatcher-return boundary.
-                beginSystemCalendarBatchTracked(store) { batchId = it }
+                beginSystemCalendarBatchTracked(importExportApi) { batchId = it }
                 val activeBatchId = checkNotNull(batchId)
                 withContext(Dispatchers.IO) {
                     incoming.forEachIndexed { index, event ->
                         val external = event.externalId ?: ("cal:" + event.startMillis + ":" + event.title)
-                        when (val result = store.importStructured(
-                            event.toRecord(), external, activeBatchId, "android-calendar"
-                        )) {
-                            is PowerStore.ImportOutcome.Imported -> imported++
-                            is PowerStore.ImportOutcome.AlreadyImported -> Unit
-                            is PowerStore.ImportOutcome.Rejected -> {
+                        val importEvent = StructuredCalendarEventV1(
+                            title = event.title,
+                            startMillis = event.startMillis,
+                            endMillis = event.endMillis,
+                            notes = event.notes,
+                            location = event.location,
+                            reminderMinutes = event.reminderMinutes,
+                            source = event.source,
+                            zoneId = ZoneId.systemDefault().id
+                        )
+                        val result = importExportApi.importStructuredEvent(
+                            activeBatchId, "android-calendar", external, importEvent
+                        )
+                        when (result.status) {
+                            StructuredImportStatusV1.IMPORTED -> imported++
+                            StructuredImportStatusV1.ALREADY_IMPORTED -> Unit
+                            StructuredImportStatusV1.REJECTED -> {
                                 rejected++
-                                warnings += "第 ${index + 1} 条系统日历事件未导入：${result.reason}"
+                                warnings += "第 ${index + 1} 条系统日历事件未导入：${result.reason.orEmpty()}"
                             }
                         }
                     }
@@ -1334,7 +1346,7 @@ fun PowerCalApp(
             } finally {
                 batchId?.let { createdBatchId ->
                     try {
-                        finishSystemCalendarBatch(store, createdBatchId, warnings.toList())
+                        finishSystemCalendarBatch(importExportApi, createdBatchId, warnings.toList())
                     } catch (finishError: Exception) {
                         if (importFailure == null) importFailure = finishError
                         else importFailure?.addSuppressed(finishError)
@@ -1472,9 +1484,7 @@ fun PowerCalApp(
         if (uri != null) scope.launch {
             runCatching {
                 withContext(Dispatchers.IO) {
-                    val body = IcsCodec.exportActivities(
-                        records.filter { it.kind == TemporalKind.ACTIVITY }
-                    )
+                    val body = importExportApi.exportActivitiesIcs().content
                     appContext.contentResolver.openOutputStream(uri)?.writer(Charsets.UTF_8)?.use {
                         it.write(body)
                     } ?: error("无法写入所选文件")
@@ -1492,11 +1502,10 @@ fun PowerCalApp(
     ) { uri ->
         if (uri != null) scope.launch {
             runCatching {
-                val envelope = withContext(Dispatchers.IO) { store.exportBackup() }
-                val json = envelope.toString(2)
+                val exported = withContext(Dispatchers.IO) { importExportApi.exportBackup() }
                 withContext(Dispatchers.IO) {
                     appContext.contentResolver.openOutputStream(uri)?.writer(Charsets.UTF_8)?.use {
-                        it.write(json)
+                        it.write(exported.json)
                     } ?: error("无法写入目标文件")
                 }
                 // Read back through the same bounded reader so a hostile provider cannot bypass the
@@ -1505,7 +1514,7 @@ fun PowerCalApp(
                 if (reread == null) {
                     message = "备份已写入，但该文件提供方不支持回读校验；请自行保留并验证文件"
                 } else {
-                    BackupEnvelope.verifyReadback(envelope, JSONObject(reread), PowerStore.VERSION)
+                    importExportApi.verifyBackupReadback(exported, reread)
                     message = "原生备份已导出并回读校验（SHA-256 匹配）；文件为明文敏感数据"
                 }
             }.onFailure { message = "备份失败：" + it.readable() }
@@ -1523,9 +1532,7 @@ fun PowerCalApp(
                 runCatching {
                     val loaded = readBackupText(uri)
                     text = loaded
-                    val parsed = runCatching { JSONObject(loaded) }
-                        .getOrElse { throw IllegalArgumentException("备份文件不是有效 JSON") }
-                    val (report, problems) = restoreAndRefresh(parsed, allowLegacy = false)
+                    val (report, problems) = restoreAndRefresh(loaded, allowLegacy = false)
                     message = restoreMessage(report, "已恢复 ") + problems.joinToString("", "；", "") { it }
                 }.onFailure { error ->
                     when (error) {
@@ -3393,9 +3400,7 @@ fun PowerCalApp(
                     legacyRestoreText = null
                     scope.launch {
                         runCatching {
-                            val parsed = runCatching { JSONObject(legacyText) }
-                                .getOrElse { throw IllegalArgumentException("备份文件不是有效 JSON") }
-                            val (report, problems) = restoreAndRefresh(parsed, allowLegacy = true)
+                            val (report, problems) = restoreAndRefresh(legacyText, allowLegacy = true)
                             message = restoreMessage(report, "旧格式备份已恢复（未验证完整性）：") +
                                 problems.joinToString("", "；", "") { it } +
                                 "；建议立即导出新的 Envelope 备份"
@@ -3417,17 +3422,3 @@ fun PowerCalApp(
         )
     }
 }
-
-private fun CalendarEvent.toRecord(): TemporalRecord = TemporalRecord(
-    eventSeq = 0L,
-    revision = 0L,
-    kind = TemporalKind.ACTIVITY,
-    title = title,
-    notes = notes,
-    location = location,
-    startMillis = startMillis,
-    endMillis = endMillis.coerceAtLeast(startMillis + 60_000L),
-    reminderMinutes = reminderMinutes,
-    enabled = reminderMinutes >= 0,
-    source = source
-)

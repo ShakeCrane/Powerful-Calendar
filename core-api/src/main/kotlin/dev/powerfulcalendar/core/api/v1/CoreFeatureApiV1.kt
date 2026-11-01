@@ -192,7 +192,9 @@ data class EventSearchSnapshotV1(
     val hits: List<EventSearchHitV1>
 )
 
-enum class EventFeatureChangeTypeV1 { FORMAL_CREATED, FORMAL_UPDATED, FORMAL_DELETED, DRAFTS_CHANGED }
+enum class EventFeatureChangeTypeV1 {
+    FORMAL_CREATED, FORMAL_UPDATED, FORMAL_DELETED, DRAFTS_CHANGED, STORE_RESTORED
+}
 
 data class EventFeatureChangeV1(
     val featureRevision: Long,
@@ -291,4 +293,5 @@ interface CoreFeatureApiV1 {
     val draftReview: DraftReviewFeatureApiV1
     val aiProposals: AiProposalFeatureApiV1
     val reminders: ReminderFeatureApiV1
+    val importExport: ImportExportFeatureApiV1
 }

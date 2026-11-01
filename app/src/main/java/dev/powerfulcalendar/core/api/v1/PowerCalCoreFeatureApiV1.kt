@@ -48,11 +48,15 @@ class PowerCalCoreFeatureApiV1(
     private val draftReviewService = StoreDraftReviewFeatureApiV1(store, deckController, eventService)
     private val aiProposalService = StoreAiProposalFeatureApiV1(store, eventService, clock)
     private val reminderService = AndroidReminderFeatureApiV1(store, reminderContext)
+    private val importExportService = StoreImportExportFeatureApiV1(
+        store, draftReviewService, eventService
+    )
     override val calendar: CalendarFeatureApiV1 get() = calendarService
     override val events: EventFeatureApiV1 get() = eventService
     override val draftReview: DraftReviewFeatureApiV1 get() = draftReviewService
     override val aiProposals: AiProposalFeatureApiV1 get() = aiProposalService
     override val reminders: ReminderFeatureApiV1 get() = reminderService
+    override val importExport: ImportExportFeatureApiV1 get() = importExportService
 
     /** Test/legacy Host seam for an explicitly supplied controller; production uses [draftReview]. */
     internal fun adaptDeckController(controller: DeckController): DraftReviewFeatureApiV1 =
@@ -920,6 +924,10 @@ internal class StoreEventFeatureApiV1(
     internal fun publishDeckFormalChange(type: EventFeatureChangeTypeV1, eventSeq: Long) {
         val revision = store.getIncludingRetired(eventSeq)?.revision
         publish(type, eventSeq, revision)
+    }
+
+    internal fun publishStoreRestored() {
+        publish(EventFeatureChangeTypeV1.STORE_RESTORED)
     }
 
     internal fun prepareDeckFormalChange(
