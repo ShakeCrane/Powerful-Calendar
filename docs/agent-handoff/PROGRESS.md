@@ -2229,3 +2229,9 @@ API 35 `emulator-5570` replayed a real DocumentsUI selection of `.bin` / `applic
 ### SEP-14 / SEP-15 Studio v3 package failure recovery in Runtime — 2026-11-01
 
 Skin Studio `edit-v3` produced a SHA-pinned Clear `.pcskin` with a guarded `web/app.js` fault trigger; API 35 Runtime loaded that exact AndroidTest asset, reproduced Chromium's uncaught skin error, checkpointed the dirty ACTIVITY editor exactly once, and restored Native. Focused replay **1/1 PASS**, renderer-recovery class **3/3 PASS**, Studio Python **65/65 PASS**, full gate **786/786 JVM / 125 suites / 171 tasks PASS**, Lint 0 errors / 56 warnings. Package, receipt, logs and APK hashes are recorded in the existing renderer recovery Issue and `.local/android-test/reports/sep14-studio-authored-fault-20261101/`. This closes the shared Studio-v3-package → Runtime fatal-error-recovery slice only; SEP-14 and SEP-15 remain **PARTIAL / HOLD / INCOMPLETE**.
+
+
+
+### SEP-12 / Native-Clear IME 优先返回 — 2026-11-01
+
+API 35 emulator-5570 真实触控 Native Compose 与打包 Clear WebView 的无 Diff Memo 编辑器、聚焦标题后发送 Android Back；两边均先收起 IME、编辑器仍打开，Store formal/draft/pending/commit/identity=0 且 next sequence=1。定向 instrumentation 1/1，导航类 2/2；完整离线门禁 786/786 JVM / 125 suites / 171 tasks，boundaries 与 Debug/AndroidTest APK PASS，Lint 0 errors / 56 warnings。证据、JUnit/device/gate 哈希和边界已写入 PC-ISSUE-SEPARATION-CLEAR-ANDROID-BACK-NAVIGATION.md 与 .local/android-test/reports/sep12-native-clear-ime-back-20261101/。只关闭首次返回时 IME 优先级这一窄切片；SEP-12 仍 **PARTIAL / HOLD**，实体/OEM、TalkBack、多窗口及完整导航覆盖未签核。
