@@ -44,11 +44,11 @@ The focused command selected `AiFeatureApiV1Test`, `AiProposalFeatureApiV1Test`,
 
 ## Limits and next work
 
-- Ordinary AI chat replies, image/OCR transport, file selection/consent, provider orchestration, and the general tool registry remain Host work.
+- Subsequent Phase 1 slices moved ordinary chat and reviewed text/image evidence interpretation behind `AiFeatureApiV1`; see the [AI Conversation API Issue](PC-ISSUE-CORE-AI-CONVERSATION-API-V1.md), [AI Conversation State API Issue](PC-ISSUE-CORE-AI-CONVERSATION-STATE-API-V1.md), and [AI Evidence Intake API Issue](PC-ISSUE-CORE-AI-EVIDENCE-INTAKE-API-V1.md). URI access, pickers, bounded reads, local OCR, user consent and provider credentials remain Host-owned. General tool orchestration is not implemented.
 - The proposal-generation request has no durable replay receipt. Existing `AiProposalFeatureApiV1` replay limitations remain as documented there.
 - The API and Host/JVM integration tests do not prove behavior with a live model provider, installed Web skin, Android WebView, or physical/OEM device.
 - Native fallback remains available. This report does not authorize a skin cutover or mark any broader acceptance row PASS.
-- The Memo visibility precheck/runtime Memo projection and Web event-open/AI proposal target reads have since moved behind `MemoFeatureApiV1` and `EventFeatureApiV1`; see the [Memo API report](PC-ISSUE-CORE-MEMO-API-V1.md) and [Event current query report](PC-ISSUE-CORE-EVENT-QUERY-API-V1.md). The current PHASE 1 action is to remove Core entity types from runtime Draft Deck projections while preserving Host-owned actions and conflict/restore gates.
+- The Memo visibility precheck/runtime Memo projection and Web event-open/AI proposal target reads have since moved behind `MemoFeatureApiV1` and `EventFeatureApiV1`; see the [Memo API report](PC-ISSUE-CORE-MEMO-API-V1.md) and [Event current query report](PC-ISSUE-CORE-EVENT-QUERY-API-V1.md). The current unique PHASE 1 action is maintained in the [separation roadmap](../SEPARATION_REMOTE_GOVERNANCE_AND_ROADMAP_2026-10-30.md).
 
 ## Source paths
 

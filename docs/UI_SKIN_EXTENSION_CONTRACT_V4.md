@@ -206,13 +206,15 @@ the existing Host operation, owns clipboard access, and injects proposal review 
 through composable slots. Message text and a proposal-source string are display/input values, not
 authorization. Native code has no direct provider, Store or Android clipboard dependency.
 
-Ordinary text-chat requests, explicit-intent proposal generation, and AI batch selection/state/execution
-now use the shared `CoreFeatureApiV1.ai` service. The Android model port and provider configuration
-remain Host-owned; proposal staging and publishing still require the separate `aiProposals` service
-and explicit Host review. Native and Web presentation projections receive display state without batch
-session IDs, lock epochs, draft-scope IDs or stored exception details. Transcript persistence and
-clear/rewind, image/OCR intake, and file/consent flows remain Host capabilities. These are source-level
-boundaries; device and packaged-WebView behavior still require their own evidence.
+Ordinary text-chat requests, transcript query/append/clear/rewind, explicit-intent proposal generation,
+reviewed text/image evidence analysis, and AI batch selection/state/execution now use the shared
+`CoreFeatureApiV1.ai` service. The Android model port and provider configuration remain Host-owned;
+transcript persistence uses a Host port, and proposal staging and publishing still require the separate
+`aiProposals` service and explicit Host review. Native and Web presentation projections receive display
+state without batch session IDs, lock epochs, draft-scope IDs or stored exception details. URI grants,
+pickers, bounded reads, local OCR and user consent remain Host capabilities; the Host submits reviewed
+text or consented image bytes through the Core API. These are source-level boundaries; device and
+packaged-WebView behavior still require their own evidence.
 
 ### AI image consent and OCR review boundary (2026-10-30)
 

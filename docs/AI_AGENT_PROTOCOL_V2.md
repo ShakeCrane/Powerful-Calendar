@@ -39,8 +39,8 @@ permission. Unbounded write access or a silent approval bypass is not a capabili
 | calendar.batch.select.v1 | select actionable draft IDs based on user description | implemented through `AiFeatureApiV1`; the model returns IDs only and the API resolves them against the exact local candidate snapshot |
 | calendar.batch.execute.v1 | publish or discard explicitly reviewed draft versions | implemented through `AiFeatureApiV1` with one-use Host approval, persisted `AiSession` fencing, transactional version checks, cancellation and recovery; no unbounded auto-approval |
 | calendar.batch.modify.v1 | select formal IDs, propose partial updates, enforce snapshot revision | partial: parser inherits unchanged fields; complete autonomous orchestration missing |
-| document.inspect.v1 | bounded OCR/ICS/CSV/DOCX/XLSX extraction and AI interpretation | implemented with preview; not a lossless importer for every format |
-| document.to_drafts.v1 | evidence provenance to typed complete batch | partial; complex ICS repairs and ambiguities require clarification |
+| document.inspect.v1 | bounded OCR/ICS/CSV/DOCX/XLSX extraction and AI interpretation | Host owns picker, bounded extraction, local OCR, preview and consent; reviewed text and consented image analysis route through `AiFeatureApiV1`; not a lossless importer for every format |
+| document.to_drafts.v1 | evidence provenance to typed complete batch | partial; structured candidates use a separate review-only proposal command, and complex ICS repairs or ambiguities require clarification |
 | web.search.v1 | real internet retrieval with URL/time/source evidence | **not implemented**; ordinary chat cannot claim access |
 | agent.run.v1 | autonomous multi-step read/plan/tool/use/result loop | **not implemented**; must not be advertised as already operational |
 | memory.session.v1 | durable, user-reviewable conversation summarization | **not implemented**; current context is bounded to selected recent turns |
@@ -175,8 +175,9 @@ Each Skill registry entry has:
   exact reviewed mode and candidate snapshots. Existing Store begin/commit transactions
   recheck versions, operations, session ID and lock epoch. State query, cancellation,
   interrupted recovery and guarded stuck-session release also route through this API.
-  Ordinary chat, image/OCR, file intake, provider configuration, and general tool registry
-  remain Host work; this does not implement the autonomous agent loop.
+  Ordinary chat and reviewed evidence interpretation route through `AiFeatureApiV1`; URI
+  access, bounded reads, picker/OCR, user consent, provider configuration and general tool
+  registry remain Host work. This does not implement the autonomous agent loop.
 - `document.extract.v1`: size-bounded, reads non-executable bytes, returns provenance
   and parser warnings; injection in source content cannot authorize operations.
 - `web.search.v1`: optional *future* adapter. Requires user-enabled provider/search
