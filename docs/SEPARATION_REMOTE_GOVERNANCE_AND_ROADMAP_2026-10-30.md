@@ -9,9 +9,9 @@
 
 本节落实 `goal-objective.md` 的 PHASE 0–5 顺序，**优先级高于下文保留的 SEP/M1–M4 旧执行顺序**。功能矩阵继续记录覆盖与证据，不再决定主开发方向。
 
-**当前主阶段：PHASE 1 — ESTABLISH CORE FEATURE API。** Event Feature API v1 编辑器切片已提交为 `65a96b7ba97a639981d23eee7e05f8f39a85a68e`，并于 2026-11-01 普通快进推送至 `origin/feat/skin-first-separation`；远端现在与该提交一致。提交基于分离集成检查点 `c09d39d8161b113ad62ce8348760a2620017869b`。独立 delivery worktree 中的未提交 AndroidTest 变更已保留，未与本任务混写。
+**当前主阶段：PHASE 1 — ESTABLISH CORE FEATURE API。** Event Feature API v1 编辑器切片代码提交 `65a96b7ba97a639981d23eee7e05f8f39a85a68e` 已于 2026-11-01 普通快进推送至 `origin/feat/skin-first-separation`，基于分离集成检查点 `c09d39d8161b113ad62ce8348760a2620017869b`。本轮回归证据与路线图状态另以文档提交记录。独立 delivery worktree 中的未提交 AndroidTest 变更已保留，未与本任务混写。
 
-**当前切片：Event Feature API v1。** 已建立纯 Kotlin `:core-api` 契约及 app Host adapter；PowerCalApp 的 Native 新建/正式编辑/删除及 Web 编辑器适配器使用同一个 API 实例；Web 时间轴移动经 API 暂存正式替换。API DTO 不暴露 Android、Compose、PowerStore 或 Core 实体。详见 [`CORE_FEATURE_API_V1.md`](CORE_FEATURE_API_V1.md)。聚焦测试 **66/66 PASS**，含 API 合同、Native/Web 编辑器及正式写入/重复范围测试。最近两次强制全量 JVM 重跑均为 **789 项、1 项失败**：一次 `replaceAndDeleteCandidatesCommitOnlyAfterTrustedHostConfirmation` 未找到 Host 确认节点；另一次 `memoPagingContinuesTheSortedProjectionWithoutStoreWrites` 等待 60 秒后仍未加载（`hostDataReady=false`）。失败方法单独重跑和整个 `WebAiProposalReviewIntegrationTest` 类 **15/15 PASS**，显示为全量运行时不稳定；根因未定，故全量 JVM 门禁保持 **NOT CLEAN**。`verifySkinSourceBoundary`、`verifyNativeSkinBoundary`、Debug APK assemble 和单独 `lintDebug` 均 PASS；lint 为 **0 errors / 54 warnings**。Android instrumentation 未运行；当前 AVD 属于并行任务，保持未触碰。
+**当前切片：Event Feature API v1。** 已建立纯 Kotlin `:core-api` 契约及 app Host adapter；PowerCalApp 的 Native 新建/正式编辑/删除及 Web 编辑器适配器使用同一个 API 实例；Web 时间轴移动经 API 暂存正式替换。API DTO 不暴露 Android、Compose、PowerStore 或 Core 实体。详见 [`CORE_FEATURE_API_V1.md`](CORE_FEATURE_API_V1.md)。聚焦测试 **66/66 PASS**，含 API 合同、Native/Web 编辑器及正式写入/重复范围测试。两次强制全量 JVM 重跑各有 1 个不同的 `WebAiProposalReviewIntegrationTest` 失败；单独重跑相应方法及整个测试类 **15/15 PASS**。随后在当前 HEAD 的标准全量 JVM 运行通过 **127 suites / 789 tests，0 failure/error/skip**。强制运行的不稳定根因未确定，但最新全量门禁为 **PASS**。`verifySkinSourceBoundary`、`verifyNativeSkinBoundary`、Debug APK assemble 和单独 `lintDebug` 均 PASS；lint 为 **0 errors / 54 warnings**。Android instrumentation 未运行；当前 AVD 属于并行任务，保持未触碰。
 
 **PHASE 1 尚未退出。** Web Bridge 的 Draft Deck、冲突/恢复、正式事件搜索及若干 Host 写入仍有 `DeckController` / `PowerStore` 直连；API change stream 目前只覆盖经此 adapter 的写入，进程外或旁路写入不会自动发事件。Native Presentation projection 仍在 Host 内转换 API DTO。它们是明确的后续 API 接入缺口，不得将当前切片写成全功能 API 或 Native/Skin parity PASS。
 
@@ -24,7 +24,7 @@
 | PHASE 4 — AI Autonomous Skin Authoring | 未开始 | AI 通过 Studio 正式工具端到端完成项目分析、修改、素材、构建、校验、预览、修复及交付 |
 | PHASE 5 — Final Delivery | 未开始 | 同一交付基线集成 Core API/Runtime、多 Skin、Native fallback、Studio、AI、文档、测试、APK 与 `.pcskin`；实体/OEM 验收清单独立交付 |
 
-**唯一 NEXT_ACTION：** 查明全量 JVM 运行中 `WebAiProposalReviewIntegrationTest` 单例失败的跨套件原因，并获得一次干净的强制全量运行；保持当前事件 API 合同和 Core 语义不变。之后继续补齐 Deck/Draft/Review API 与完整变更来源。
+**唯一 NEXT_ACTION：** 建立显式 Draft/Review Core API，接入 Native/Web Deck 的正式新建、替换、删除与审批写入；保持现有 Event API 合同和冻结 Core 语义不变，并补齐覆盖所有授权写入的变更来源。
 
 ## 1. 当前版本基准及实际证据
 

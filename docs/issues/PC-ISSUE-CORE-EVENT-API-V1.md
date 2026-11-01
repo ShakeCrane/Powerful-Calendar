@@ -27,18 +27,20 @@
 | `WebAiProposalReviewIntegrationTest` 独立类 | **15/15 PASS** |
 | 全量 JVM forced run A | **789 tests，1 failure**：`replaceAndDeleteCandidatesCommitOnlyAfterTrustedHostConfirmation` 未找到 Host 确认节点；该方法单独 forced rerun **1/1 PASS** |
 | 全量 JVM forced run B | **789 tests，1 failure**：`memoPagingContinuesTheSortedProjectionWithoutStoreWrites` 等待 60 秒后 `hostDataReady=false`；整个包含它的类独立运行 **15/15 PASS** |
+| 后续标准全量 JVM run | **127 suites / 789 tests，0 failures/errors/skips，PASS** |
 | `:app:verifySkinSourceBoundary`、`:app:verifyNativeSkinBoundary` | **PASS**，在两次完整 Gradle task graph 中执行 |
 | `:app:assembleDebug` | **PASS**，组合门禁中执行 |
 | `:app:lintDebug --offline --console=plain` | **PASS**，0 errors / 54 warnings |
 | Android instrumentation / 当前并行 AVD | **NOT TESTED**；未连接或操作 AVD |
 
-两次 forced full JVM run 均有单一且不同的 Web AI/Host 集成失败；失败方法及整个测试类在独立运行时通过。现有证据表明该问题只在全量运行中出现，但根因尚未确定，不能将全量 JVM 门禁标记 PASS，也不能断言与本次 `PowerCalApp` 改动无关。当前全量 JVM 状态为 **NOT CLEAN**。
+两次 forced full JVM run 均有单一且不同的 Web AI/Host 集成失败；失败方法及整个测试类在独立运行时通过。根因尚未确定，不能断言与本次 `PowerCalApp` 改动无关。随后标准全量 JVM run 在当前 HEAD 通过 **127 suites / 789 tests**，因此当前全量 JVM 状态为 **PASS**，并保留前两次 forced run 作为未解释的不稳定观察。
 
 详细日志均位于忽略目录 `.local/android-test/reports/core-feature-api-event-20261101/`：
 
 - `focused-jvm.log` — SHA-256 `0A75CC507F095A85C20902E1D662F3DA5F207FF0A1CAFCF1A018EBA8024E26DD`。
 - `full-jvm-build-lint.log` — 组合强制门禁和 Host 确认节点失败；SHA-256 `D679CA2AB3582D01362C2A5F17A4D090FF208F56B4E44C6E56060F08F124E365`。
 - `full-jvm-rerun-3.log` — 第二次最终状态 forced JVM run 与 memo paging timeout；SHA-256 `F85BE67FD1FDDFA9DFE0318D331258E8B39F36F2033B7BFB78254E013BAAAA71`。
+- `full-jvm-final-attempt.log` — 后续标准全量 JVM **789/789 PASS**；SHA-256 `62EB9A45F758666302F47F2F15B309876394140715082A71678559C67AB54A82`。
 - `ai-replace-delete-isolated.log` — 失败方法 isolated rerun **PASS**；SHA-256 `2BEBBD440FB8DEDD76D0B4A611F886346B9E9EE4C73FAE9ACF585AF6B91FF66E`。
 - `web-ai-review-class.log` — 包含 memo paging 的测试类 **15/15 PASS**；SHA-256 `51CBB9385B7A102ADBF8B0839C79496F092FF7B275896D1CFC40389B891F9E52`。
 - `lint-debug.log` — Lint **0 errors / 54 warnings**；SHA-256 `1FD9684D5B00B1047E84C0506CBAB1AE18DDB0483FC340069A2C1719AB615180`。
@@ -55,6 +57,6 @@
 
 ## Git 与后续
 
-实现分支：`codex/core-feature-api-event`，代码提交 `65a96b7ba97a639981d23eee7e05f8f39a85a68e`，基于 `c09d39d8161b113ad62ce8348760a2620017869b`。提交前重新 fetch 验证远端仍在该 base，并已普通快进推送至 `origin/feat/skin-first-separation`；推送后远端 HEAD 为 `65a96b7ba97a639981d23eee7e05f8f39a85a68e`。本报告与 Progress 后续证据更新另行提交。
+实现分支：`codex/core-feature-api-event`，代码提交 `65a96b7ba97a639981d23eee7e05f8f39a85a68e`，基于 `c09d39d8161b113ad62ce8348760a2620017869b`。提交前重新 fetch 验证远端仍在该 base，并已普通快进推送至 `origin/feat/skin-first-separation`。本报告与 Progress 全量测试证据更新通过单独文档提交一并推送。
 
-Phase 1 保持进行中。下一动作是查明当前全量 JVM 的跨套件失败，取得干净的强制全量运行；随后用显式 Draft/Review API 收口 Native/Web Deck 的 formal 写入及统一变更来源。不得据此删除 Native fallback、切换默认 Skin 或宣称 cutover GO。
+Phase 1 保持进行中。下一项为显式 Draft/Review API：收口 Native/Web Deck 的 formal 写入及统一变更来源。不得据此删除 Native fallback、切换默认 Skin 或宣称 cutover GO。
