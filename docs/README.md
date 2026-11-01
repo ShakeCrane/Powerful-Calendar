@@ -63,7 +63,7 @@ PowerCal app. The original compiled-source skin remains the trusted fallback.
 
 | 用途 | 文档 | 使用说明 |
 | --- | --- | --- |
-| Core Feature API v1 | [Calendar, Event, Draft/Review, AI Conversation/Proposal/Batch, Reminder, Import/Export, and Settings/Data contracts](CORE_FEATURE_API_V1.md) | Implemented vertical slices and explicit API/coverage limitations; not full Core extraction, runtime separation, or parity signoff |
+| Core Feature API v1 | [Calendar, Event, Draft/Review, AI Conversation/Proposal/Batch, Reminder, Import/Export, Settings/Data, and Core Diagnostics contracts](CORE_FEATURE_API_V1.md) | Implemented vertical slices and explicit API/coverage limitations; not full Core extraction, runtime separation, or parity signoff |
 | 最新产品冻结决策 | [Core Contract v0.9.4](CORE_CONTRACT_FREEZE_2026-10-21.md) | 2026-10-21 决策，优先于旧产品草案；仍需逐项验收 |
 | 产品来源及历史决策 | [G1–G11 基线](PRODUCT_BASELINE_G1-G11.md) | 历史上下文；旧“三种事件”被新四类模型覆盖 |
 | 数据稳定性与恢复 | [稳定数据契约](STABLE_DATA_CONTRACT_V1.md) | 拟冻结，勿视为已正式批准 |

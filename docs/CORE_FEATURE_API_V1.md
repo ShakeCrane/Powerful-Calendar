@@ -1,11 +1,11 @@
-# Core Feature API v1 — Calendar, Event, Memo, Draft/Review, AI, Reminder, Import/Export, and Settings/Data slices
+# Core Feature API v1 — Calendar, Event, Memo, Draft/Review, AI, Reminder, Import/Export, Settings/Data, and Core Diagnostics slices
 
-- **Status:** Calendar window and bounded event queries, Event, Memo, Draft/Review, AI Proposal/Feature/Query, Reminder, Import/Export, and Settings/Data vertical slices implemented; PHASE 1 remains in progress.
-- **Contract source:** `:core-api`, package `dev.powerfulcalendar.core.api.v1`, including `CoreFeatureApiV1.kt`, `CalendarFeatureApiV1.kt`, `MemoFeatureApiV1.kt`, `DraftReviewFeatureApiV1.kt`, `AiProposalFeatureApiV1.kt`, `AiFeatureApiV1.kt`, `ReminderFeatureApiV1.kt`, `ImportExportFeatureApiV1.kt`, and `SettingsDataFeatureApiV1.kt`.
+- **Status:** Calendar window and bounded event queries, Event, Memo, Draft/Review, AI Proposal/Feature/Query, Reminder, Import/Export, Settings/Data, and Core Diagnostics vertical slices implemented; PHASE 1 remains in progress.
+- **Contract source:** `:core-api`, package `dev.powerfulcalendar.core.api.v1`, including `CoreFeatureApiV1.kt`, `CoreDiagnosticsFeatureApiV1.kt`, `CalendarFeatureApiV1.kt`, `MemoFeatureApiV1.kt`, `DraftReviewFeatureApiV1.kt`, `AiProposalFeatureApiV1.kt`, `AiFeatureApiV1.kt`, `ReminderFeatureApiV1.kt`, `ImportExportFeatureApiV1.kt`, and `SettingsDataFeatureApiV1.kt`.
 - **Runtime adapter:** `app/src/main/java/dev/powerfulcalendar/core/api/v1/PowerCalCoreFeatureApiV1.kt`.
 - **Updated:** 2026-11-02.
 
-This document describes the implemented Calendar, Event, Memo, Draft/Review, AI, Reminder, Import/Export, and Settings/Data API boundaries. It does not declare full Core extraction, full domain coverage, runtime cutover, or Native/Skin parity. The Kotlin source is authoritative when a detail here drifts.
+This document describes the implemented Calendar, Event, Memo, Draft/Review, AI, Reminder, Import/Export, Settings/Data, and Core Diagnostics API boundaries. It does not declare full Core extraction, full domain coverage, runtime cutover, or Native/Skin parity. The Kotlin source is authoritative when a detail here drifts.
 
 ## 1. Contract boundaries
 
@@ -14,6 +14,7 @@ The feature contracts have separate jobs:
 | Contract | Owner | Responsibility |
 | --- | --- | --- |
 | Core Feature API | `:core-api` | Versioned domain operations, queries, DTOs, results, revisions, and change notifications |
+| Core Diagnostics Feature API | `:core-api` | Versioned read-only Store diagnostic values for status presentation |
 | Memo Feature API | `:core-api` | Versioned unified todo occurrence projections and a current-occurrence visibility query |
 | Native Presentation Contract | `:skin-api` | Native renderer inputs and callbacks; contains presentation models, not Core business services |
 | Web Bridge Transport Contract | `WebEditWire` / `WebEditCommand` | Versioned JSON command decoding and Host reply transport; it is not a domain business API |
@@ -31,7 +32,7 @@ The Host is the only owner of Android context, database construction, trusted co
 
 ## 2. Version and DTO rules
 
-- `CoreFeatureApiV1`, `CalendarFeatureApiV1`, `EventFeatureApiV1`, `MemoFeatureApiV1`, and `SettingsDataFeatureApiV1` report `apiVersion == 1`.
+- `CoreFeatureApiV1`, `CoreDiagnosticsFeatureApiV1`, `CalendarFeatureApiV1`, `EventFeatureApiV1`, `MemoFeatureApiV1`, and `SettingsDataFeatureApiV1` report `apiVersion == 1`.
 - `EventKindV1` is `ALARM`, `ACTIVITY`, `DEADLINE`, or `MEMO`.
 - `EventFormV1` is the editable value. `EventRecordV1` is an immutable formal-event query result with identity and `revision`.
 - Recurrence weekday values in `EventRecurrenceV1.byDay` use ISO numbers: Monday `1` through Sunday `7`. Recurrence scope and occurrence keys preserve the existing Core recurrence semantics.
@@ -220,9 +221,23 @@ Implementation is in `SettingsDataFeatureApiV1.kt` and `AndroidSettingsDataFeatu
 Native/Web routing and scoped verification are recorded in the
 [Settings/Data API Issue](issues/PC-ISSUE-CORE-SETTINGS-DATA-API-V1.md).
 
-## 14. Current adapter coverage and open work
+## 14. Core Diagnostics API v1
 
-Verified code paths across the Calendar, Event, Memo, Draft/Review, AI Proposal, Reminder, Import/Export, and Settings/Data slices:
+`CoreFeatureApiV1.diagnostics` exposes the platform-neutral `CoreDiagnosticsFeatureApiV1` query.
+`queryDiagnostics()` returns `CoreDiagnosticsV1`, containing the existing Store's next sequence
+preview and durable identity count. The Store adapter delegates to the existing read methods;
+it does not write, publish feature changes, or change a feature revision. These two values are
+independent diagnostics and do not carry a shared transactional revision.
+
+`PowerCalApp.reload()` uses this query for its existing Native and Web system-diagnostics
+projection. The DTO contains only scalar values and exposes no Android, Store, database, or Core
+entity type. This moves the two direct `PowerStore` reads behind the versioned Core API without
+changing their values or Store semantics. Implementation and verification scope are recorded in
+the [Core Diagnostics API Issue](issues/PC-ISSUE-CORE-DIAGNOSTICS-API-V1.md).
+
+## 15. Current adapter coverage and open work
+
+Verified code paths across the Calendar, Event, Memo, Draft/Review, AI Proposal, Reminder, Import/Export, Settings/Data, and Core Diagnostics slices:
 
 - Native profile save, Web profile open/save, and the first-run system Calendar import prompt use the shared `SettingsDataFeatureApiV1`; the Web Host still applies its scoped editor gate.
 - Native event creation and ordinary formal editing/deletion call the Host's shared `EventFeatureApiV1`.
@@ -242,11 +257,12 @@ Verified code paths across the Calendar, Event, Memo, Draft/Review, AI Proposal,
 - Native and Web Host reminder diagnostics and reconciliation use the shared `ReminderFeatureApiV1`; bounded lifecycle recovery and exhaustive user-requested recovery remain distinct modes.
 - Native and Web Host timeline/month reads use Store-backed `CalendarFeatureApiV1` windows. Native month navigation asks the Host for a fresh bounded query per month; Web synchronous state refreshes select data for the live window.
 - Native and Web ICS import/export, structured Calendar import, and native backup export/restore now call `ImportExportFeatureApiV1`. ICS draft persistence delegates to Draft/Review; structured imports retain Store batch receipts and source-link idempotence; successful backup restore emits the shared `STORE_RESTORED` change.
+- `PowerCalApp.reload()` obtains the sequence preview and identity count through the read-only `CoreDiagnosticsFeatureApiV1`; the query leaves Store counts, event revisions, and feature notifications unchanged.
 - A Robolectric adapter integration test performs a Native-side API create followed by a Web bridge create/checkpoint and observes shared feature revision/change events and Store-backed state. Its Native-side write calls the API directly; it does not mount `PowerCalApp` and drive the entire Native UI route. Separate editor Compose tests cover the API-backed editor component callbacks.
 
 Remaining work before PHASE 1 can exit:
 
-1. Route remaining authorized Host/Core reads and writes through versioned queries/commands and one change source; `PowerCalApp.reload()` now reads the pending draft queue through `DraftReviewFeatureApiV1`, but still reads `store.nextSequencePreview()` and `store.identityCount()` directly. Settings/Data operations outside the profile/onboarding slice and other Host workflows also remain outside migrated paths.
+1. Route remaining authorized Host/Core reads and writes through versioned queries/commands and one change source. `PowerCalApp.reload()` now queries both the pending draft queue and Store diagnostics through their feature APIs; the Web Bridge still reads retired-event pages and restore tombstones directly from Store. Settings/Data operations outside the profile/onboarding slice and other Host workflows also remain outside migrated paths.
 2. Move remaining business decisions out of Web transport/Host adapters; keep the bridge focused on transport and trusted Host capabilities.
 3. Maintain the separate Native Presentation Contract while keeping renderer data on versioned feature DTOs and identities. `DeckVisualContext`, `AiVisualContext`, `MonthVisualContext`, and `TimelineSkinContext` expose versioned DTOs or identity-only callbacks; their Native state stays private behind Host adapters. The current audit found no remaining Core entity in these compiled renderer data contexts.
 4. Add the remaining per-domain API contracts before claiming other feature areas are covered. The bounded AI `calendar.query.v1` tool now reuses `CalendarFeatureApiV1`; Store-backed Calendar windows, Event keyset pages, and Memo occurrence pages are implemented. Draft/Review request replay and AI proposal-generation request replay remain process-local; AI Proposal item receipts are Store-backed.
