@@ -46,7 +46,8 @@ class PowerCalCoreFeatureApiV1(
     reminderContext: Context? = null,
     settingsContext: Context? = reminderContext,
     aiModelPort: AiModelPortV1? = null,
-    aiConversationHistoryPort: AiConversationHistoryPortV1? = null
+    aiConversationHistoryPort: AiConversationHistoryPortV1? = null,
+    importCheckpointContext: Context? = settingsContext
 ) : CoreFeatureApiV1 {
     override val apiVersion: Int = 1
     private val eventService = StoreEventFeatureApiV1(store, clock)
@@ -58,7 +59,7 @@ class PowerCalCoreFeatureApiV1(
     private val aiProposalService = StoreAiProposalFeatureApiV1(store, eventService, clock)
     private val reminderService = AndroidReminderFeatureApiV1(store, reminderContext)
     private val importExportService = StoreImportExportFeatureApiV1(
-        store, draftReviewService, eventService
+        store, draftReviewService, eventService, importCheckpointContext
     )
     private val diagnosticsService = StoreCoreDiagnosticsFeatureApiV1(store)
     private val settingsDataService = AndroidSettingsDataFeatureApiV1(settingsContext)

@@ -20,6 +20,13 @@ data class IcsImportPlanV1(
     val units: Int
 )
 
+/** Durable import recovery hint; it does not authorize skipping any candidate. */
+data class IcsImportCheckpointV1(
+    val fingerprint: String,
+    val draftIds: List<Long>,
+    val problemCount: Int
+)
+
 data class IcsExportDocumentV1(
     val content: String,
     val activityCount: Int
@@ -77,6 +84,10 @@ interface ImportExportFeatureApiV1 {
     /** Returns source IDs that duplicate an existing formal/pending draft or an earlier candidate. */
     fun duplicateIcsCandidateSourceIds(candidates: List<IcsImportCandidateV1>): Set<String>
     fun existingDraftIds(draftIds: List<Long>): Set<Long>
+    /** Looks up the bounded durable recovery hint for this exact input fingerprint. */
+    fun queryIcsImportCheckpoint(fingerprint: String): IcsImportCheckpointV1?
+    /** Persists a recovery hint synchronously; throws if durable Host storage is unavailable. */
+    fun recordIcsImportCheckpoint(checkpoint: IcsImportCheckpointV1)
     suspend fun createIcsDraft(
         candidate: IcsImportCandidateV1,
         requestId: String

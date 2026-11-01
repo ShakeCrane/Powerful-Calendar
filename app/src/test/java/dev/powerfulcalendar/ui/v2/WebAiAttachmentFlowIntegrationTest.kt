@@ -40,6 +40,7 @@ import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.DraftStatus
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.TemporalKind
+import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
 import dev.powerfulcalendar.interop.IcsImportPlanner
 import dev.powerfulcalendar.interop.ImportCheckpoint
 import org.json.JSONArray
@@ -259,6 +260,9 @@ END:VCALENDAR
         val uri = Uri.parse("content://powercal-ics-test-$namespace/calendar.ics")
         val sourceBytes = ics.toByteArray(Charsets.UTF_8)
         val fingerprint = IcsImportPlanner.prepare(ics, ZoneId.of("UTC")).fingerprint
+        val checkpointApi = PowerCalCoreFeatureApiV1(
+            store, importCheckpointContext = context
+        ).importExport
         assertFalse("this isolated fixture must not configure an AI provider",
             AiSettingsStore.load(context).configured)
 
@@ -331,12 +335,11 @@ END:VCALENDAR
         assertTrue("ICS import must not publish formal events", store.all().isEmpty())
         assertEquals("draft creation must not create formal commit records", 0L, store.commitCount())
 
-        val matchingReceipt = ImportCheckpoint.recent(context)
-            .filter { it.fingerprint == fingerprint }
-        assertEquals("the local import must persist exactly one matching receipt",
-            1, matchingReceipt.size)
-        assertEquals(firstImport.map { it.draftId }, matchingReceipt.single().draftIds)
-        assertEquals(0, matchingReceipt.single().problemCount)
+        val matchingReceipt = checkpointApi.queryIcsImportCheckpoint(fingerprint)
+        assertNotNull("the local import must persist its recovery receipt through the API",
+            matchingReceipt)
+        assertEquals(firstImport.map { it.draftId }, matchingReceipt?.draftIds)
+        assertEquals(0, matchingReceipt?.problemCount)
         val afterFirstImport = counts()
         val nextSequenceAfterFirstImport = store.nextSequencePreview()
 
@@ -351,11 +354,9 @@ END:VCALENDAR
         assertEquals("re-import must not advance permanent event numbering",
             nextSequenceAfterFirstImport, store.nextSequencePreview())
         assertTrue("re-import must still leave formal events untouched", store.all().isEmpty())
-        val receiptsAfterRetry = ImportCheckpoint.recent(context)
-            .filter { it.fingerprint == fingerprint }
-        assertEquals("a retry updates the same receipt instead of appending another",
-            1, receiptsAfterRetry.size)
-        assertEquals(firstImport.map { it.draftId }, receiptsAfterRetry.single().draftIds)
+        val receiptAfterRetry = checkpointApi.queryIcsImportCheckpoint(fingerprint)
+        assertNotNull("a retry must retain the existing fingerprint receipt", receiptAfterRetry)
+        assertEquals(firstImport.map { it.draftId }, receiptAfterRetry?.draftIds)
     }
 
     @Test

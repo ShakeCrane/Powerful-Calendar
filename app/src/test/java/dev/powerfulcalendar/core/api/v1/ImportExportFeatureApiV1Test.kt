@@ -8,6 +8,7 @@ import dev.powerfulcalendar.core.TemporalKind
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -64,6 +65,38 @@ END:VCALENDAR
         assertEquals(1, store.pendingDrafts().size)
         assertEquals(setOf(plan.candidates.single().sourceId),
             api.duplicateIcsCandidateSourceIds(plan.candidates))
+    }
+
+    @Test fun icsImportCheckpointIsDurableAndUpdatedThroughFeatureApi() {
+        val api = PowerCalCoreFeatureApiV1(
+            store, importCheckpointContext = context
+        ).importExport
+        val fingerprint = "b".repeat(64)
+        val first = IcsImportCheckpointV1(fingerprint, listOf(17L), 2)
+        val updated = IcsImportCheckpointV1(fingerprint, listOf(17L, 18L), 1)
+
+        api.recordIcsImportCheckpoint(first)
+        assertEquals(first, api.queryIcsImportCheckpoint(fingerprint))
+        api.recordIcsImportCheckpoint(updated)
+
+        val reopenedApi = PowerCalCoreFeatureApiV1(
+            store, importCheckpointContext = context
+        ).importExport
+        assertEquals(updated, reopenedApi.queryIcsImportCheckpoint(fingerprint))
+        assertNull(reopenedApi.queryIcsImportCheckpoint("c".repeat(64)))
+    }
+
+    @Test fun contextlessIcsCheckpointReadIsEmptyAndWriteFailsClosed() {
+        val api = core.importExport
+        val checkpoint = IcsImportCheckpointV1("d".repeat(64), emptyList(), 0)
+
+        assertNull(api.queryIcsImportCheckpoint(checkpoint.fingerprint))
+        try {
+            api.recordIcsImportCheckpoint(checkpoint)
+            throw AssertionError("checkpoint writes must fail when durable storage is unavailable")
+        } catch (expected: IllegalStateException) {
+            assertTrue(expected.message.orEmpty().contains("存储不可用"))
+        }
     }
 
     @Test fun structuredImportPublishesOnceAndUsesPersistentSourceLink() {

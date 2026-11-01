@@ -1,11 +1,13 @@
 package dev.powerfulcalendar.core.api.v1
 
+import android.content.Context
 import dev.powerfulcalendar.core.BackupEnvelope
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
+import dev.powerfulcalendar.interop.ImportCheckpoint
 import dev.powerfulcalendar.interop.IcsCodec
 import dev.powerfulcalendar.interop.IcsImportPlanner
 import org.json.JSONObject
@@ -17,8 +19,10 @@ import java.util.UUID
 internal class StoreImportExportFeatureApiV1(
     private val store: PowerStore,
     private val draftReview: DraftReviewFeatureApiV1,
-    private val events: StoreEventFeatureApiV1
+    private val events: StoreEventFeatureApiV1,
+    importCheckpointContext: Context?
 ) : ImportExportFeatureApiV1 {
+    private val importCheckpointContext = importCheckpointContext?.applicationContext
     override val apiVersion: Int = 1
 
     override fun prepareIcsImport(content: String, zoneId: String): IcsImportPlanV1 {
@@ -51,6 +55,21 @@ internal class StoreImportExportFeatureApiV1(
 
     override fun existingDraftIds(draftIds: List<Long>): Set<Long> =
         draftIds.asSequence().filter { it > 0L && store.draft(it) != null }.toSet()
+
+    override fun queryIcsImportCheckpoint(fingerprint: String): IcsImportCheckpointV1? {
+        val context = importCheckpointContext ?: return null
+        return ImportCheckpoint.recent(context).firstOrNull { it.fingerprint == fingerprint }
+            ?.let { IcsImportCheckpointV1(it.fingerprint, it.draftIds, it.problemCount) }
+    }
+
+    override fun recordIcsImportCheckpoint(checkpoint: IcsImportCheckpointV1) {
+        val context = checkNotNull(importCheckpointContext) {
+            "ICS 导入恢复收据存储不可用"
+        }
+        ImportCheckpoint.record(context, ImportCheckpoint.Snapshot(
+            checkpoint.fingerprint, checkpoint.draftIds, checkpoint.problemCount
+        ))
+    }
 
     override suspend fun createIcsDraft(
         candidate: IcsImportCandidateV1,

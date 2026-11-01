@@ -103,6 +103,7 @@ import dev.powerfulcalendar.core.api.v1.AiProposalDecisionV1
 import dev.powerfulcalendar.core.api.v1.CalendarWindowQueryV1
 import dev.powerfulcalendar.core.api.v1.CalendarWindowSnapshotV1
 import dev.powerfulcalendar.core.api.v1.ImportExportFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.IcsImportCheckpointV1
 import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.AndroidAiModelPortV1
 import dev.powerfulcalendar.core.api.v1.AndroidAiConversationHistoryPortV1
@@ -123,7 +124,6 @@ import dev.powerfulcalendar.data.LegacyImporter
 import dev.powerfulcalendar.interop.AiFileEvidence
 import dev.powerfulcalendar.interop.AiFileEvidenceReader
 import dev.powerfulcalendar.interop.IcsCodec
-import dev.powerfulcalendar.interop.ImportCheckpoint
 import dev.powerfulcalendar.interop.SafBackupReader
 import dev.powerfulcalendar.interop.SystemCalendar
 import dev.powerfulcalendar.interop.TextParser
@@ -241,7 +241,8 @@ fun PowerCalApp(
             reminderContext = appContext,
             settingsContext = appContext,
             aiModelPort = AndroidAiModelPortV1(appContext),
-            aiConversationHistoryPort = AndroidAiConversationHistoryPortV1(appContext)
+            aiConversationHistoryPort = AndroidAiConversationHistoryPortV1(appContext),
+            importCheckpointContext = appContext
         )
     }
     val calendarFeatureApi = coreFeatureApi.calendar
@@ -1501,8 +1502,7 @@ fun PowerCalApp(
                 var duplicated = 0
                 val created = mutableListOf<Long>()
                 val failed = mutableListOf<String>()
-                val receipt = ImportCheckpoint.recent(appContext)
-                    .firstOrNull { it.fingerprint == plan.fingerprint }
+                val receipt = importExportApi.queryIcsImportCheckpoint(plan.fingerprint)
                 // A receipt is a recovery hint, not permission to skip missing/discarded cards.
                 receipt?.draftIds?.let(importExportApi::existingDraftIds)?.forEach { created += it }
                 plan.candidates.forEach { candidate ->
@@ -1516,13 +1516,19 @@ fun PowerCalApp(
                         val draftId = draftReceipt.draftId
                         if (draftReceipt.succeeded && draftId != null) {
                             created.add(draftId)
-                            ImportCheckpoint.record(appContext, ImportCheckpoint.Snapshot(
-                                plan.fingerprint, created.distinct(), plan.problems.size))
+                            importExportApi.recordIcsImportCheckpoint(
+                                IcsImportCheckpointV1(
+                                    plan.fingerprint, created.distinct(), plan.problems.size
+                                )
+                            )
                         } else failed += candidate.sourceId.take(80)
                     }.onFailure { failed += candidate.sourceId.take(80) }
                 }
-                ImportCheckpoint.record(appContext, ImportCheckpoint.Snapshot(
-                    plan.fingerprint, created.distinct(), plan.problems.size))
+                importExportApi.recordIcsImportCheckpoint(
+                    IcsImportCheckpointV1(
+                        plan.fingerprint, created.distinct(), plan.problems.size
+                    )
+                )
                 Triple(created.distinct(), duplicated, failed)
             }
             reload()
