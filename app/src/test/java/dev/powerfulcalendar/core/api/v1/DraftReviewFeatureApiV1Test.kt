@@ -130,6 +130,50 @@ class DraftReviewFeatureApiV1Test {
         }
     }
 
+    @Test fun queryPendingDraftsPreservesStoreOrderAndLeavesDirtyEditorUntouched() = runBlocking {
+        val oldest = store.newDraft(newActivityDraft("Oldest persisted"))
+        val edited = store.newDraft(newActivityDraft("Persisted before edit"))
+        val discarded = store.newDraft(newActivityDraft("Discarded"))
+        assertTrue(store.discard(discarded.draftId))
+
+        val api = core.draftReview
+        val opened = api.open(edited.draftId)
+        val current = requireNotNull(opened.current)
+        assertEquals(DraftReviewReceiptStatusV1.APPLIED, api.editCurrentDraft(
+            edited.draftId,
+            current.draftVersion,
+            opened.stateRevision,
+            current.form.copy(title = "Unsaved editor value")
+        ).status)
+        val editorBeforeQuery = api.snapshot
+        val revisionBeforeQuery = core.events.featureRevision
+        val draftCountBeforeQuery = store.draftCount()
+        val commitCountBeforeQuery = store.commitCount()
+        val changes = mutableListOf<EventFeatureChangeV1>()
+        val subscription = core.events.subscribe(changes::add)
+
+        try {
+            val queue = api.queryPendingDrafts()
+
+            assertEquals(listOf(oldest.draftId, edited.draftId), queue.map { it.draftId })
+            assertEquals(listOf(oldest.queueOrder, edited.queueOrder), queue.map { it.queueOrder })
+            assertEquals(
+                listOf(DraftStatusV1.PENDING, DraftStatusV1.PENDING),
+                queue.map { it.status }
+            )
+            assertEquals("Persisted before edit", queue.last().form.title)
+            assertEquals("Unsaved editor value", api.snapshot.form?.title)
+            assertEquals(editorBeforeQuery, api.snapshot)
+            assertEquals("Persisted before edit", store.draft(edited.draftId)?.form?.title)
+            assertEquals(draftCountBeforeQuery, store.draftCount())
+            assertEquals(commitCountBeforeQuery, store.commitCount())
+            assertEquals(revisionBeforeQuery, core.events.featureRevision)
+            assertTrue(changes.isEmpty())
+        } finally {
+            subscription.close()
+        }
+    }
+
     @Test fun createDraftFingerprintSeparatesDelimiterContainingFieldValues() = runBlocking {
         val api = core.draftReview
         val base = newActivityDraft("Base").toEventFormV1()

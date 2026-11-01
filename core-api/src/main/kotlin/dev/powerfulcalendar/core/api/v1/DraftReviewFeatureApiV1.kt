@@ -109,6 +109,9 @@ interface DraftReviewFeatureApiV1 {
     val apiVersion: Int
     val snapshot: DraftReviewSnapshotV1
 
+    /** Read the persisted actionable queue without opening, refreshing, or flushing the editor. */
+    fun queryPendingDrafts(): List<DraftReviewCardV1>
+
     fun observe(listener: (DraftReviewSnapshotV1) -> Unit): AutoCloseable
     fun editCurrentDraft(
         draftId: Long,

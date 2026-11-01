@@ -1187,6 +1187,10 @@ private class StoreDraftReviewFeatureApiV1(
 
     override val snapshot get() = latestSnapshot
 
+    @Synchronized
+    override fun queryPendingDrafts(): List<DraftReviewCardV1> =
+        store.pendingDrafts().map { it.toDraftReviewCardV1() }
+
     override fun observe(listener: (DraftReviewSnapshotV1) -> Unit): AutoCloseable {
         listeners += listener
         runCatching { listener(snapshot) }

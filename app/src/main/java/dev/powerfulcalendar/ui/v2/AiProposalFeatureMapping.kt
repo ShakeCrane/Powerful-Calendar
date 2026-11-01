@@ -9,6 +9,7 @@ import dev.powerfulcalendar.ai.AiTaskEvidence
 import dev.powerfulcalendar.ai.AiProposal
 import dev.powerfulcalendar.core.DraftCard
 import dev.powerfulcalendar.core.DraftOperation
+import dev.powerfulcalendar.core.DraftStatus
 import dev.powerfulcalendar.core.api.v1.AiBatchCandidateV1
 import dev.powerfulcalendar.core.api.v1.AiBatchModeV1
 import dev.powerfulcalendar.core.api.v1.AiProposalItemV1
@@ -19,6 +20,7 @@ import dev.powerfulcalendar.core.api.v1.AiConversationMessageV1
 import dev.powerfulcalendar.core.api.v1.AiConversationRoleV1
 import dev.powerfulcalendar.core.api.v1.AiConversationTaskV1
 import dev.powerfulcalendar.core.api.v1.DraftOperationV1
+import dev.powerfulcalendar.core.api.v1.DraftReviewCardV1
 import dev.powerfulcalendar.core.api.v1.AiTaskEvidenceV1
 import dev.powerfulcalendar.core.api.v1.toCoreDraftForm
 import dev.powerfulcalendar.core.api.v1.toEventFormV1
@@ -131,6 +133,20 @@ internal fun DraftCard.toAiBatchCandidateV1() = AiBatchCandidateV1(
     operation = DraftOperationV1.valueOf(operation.name),
     kind = dev.powerfulcalendar.core.api.v1.EventKindV1.valueOf(form.kind.name),
     title = form.title
+)
+
+/** Host-only projection used by the existing trusted batch review surface. */
+internal fun DraftReviewCardV1.toHostDraftCard() = DraftCard(
+    draftId = draftId,
+    eventSeq = eventSeq,
+    queueOrder = queueOrder,
+    operation = DraftOperation.valueOf(operation.name),
+    form = form.toCoreDraftForm(),
+    status = DraftStatus.valueOf(status.name),
+    baseRevision = baseRevision,
+    draftVersion = draftVersion,
+    createdAtMillis = createdAtMillis,
+    updatedAtMillis = updatedAtMillis
 )
 
 internal fun AiBatchRunner.Mode.toAiBatchModeV1() = AiBatchModeV1.valueOf(name)

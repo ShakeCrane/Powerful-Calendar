@@ -540,7 +540,7 @@ fun PowerCalApp(
             var loaded: AppData? = null
             repeat(MAX_SNAPSHOT_LOAD_ATTEMPTS) {
                 if (loaded != null) return@repeat
-                val pending = store.pendingDrafts()
+                val pending = draftReviewApi.queryPendingDrafts().map { it.toHostDraftCard() }
                 val eventPage = eventFeatureApi.queryEventsPage(limit = HOST_EVENT_PAGE_SIZE)
                 val memoPage = memoFeatureApi.queryEntriesPage(
                     nowMillis = projectionNowMillis,
