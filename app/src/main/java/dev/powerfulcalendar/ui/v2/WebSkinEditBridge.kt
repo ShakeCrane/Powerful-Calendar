@@ -430,19 +430,6 @@ internal class WebSkinEditService(
     private val eventFeatures: EventFeatureApiV1 = coreFeatureApi.events,
     private val aiFeatures: AiFeatureApiV1 = coreFeatureApi.ai
 ) {
-    internal constructor(
-        deckController: dev.powerfulcalendar.core.DeckController,
-        externalEditorActive: () -> Boolean = { false },
-        coreFeatureApi: PowerCalCoreFeatureApiV1,
-        eventFeatures: EventFeatureApiV1 = coreFeatureApi.events,
-        aiFeatures: AiFeatureApiV1 = coreFeatureApi.ai
-    ) : this(
-        coreFeatureApi.adaptDeckController(deckController),
-        externalEditorActive,
-        coreFeatureApi,
-        eventFeatures,
-        aiFeatures
-    )
     private val gate = Mutex()
     private var session: WebFormalEditor? = null
     private var sessionId: String? = null

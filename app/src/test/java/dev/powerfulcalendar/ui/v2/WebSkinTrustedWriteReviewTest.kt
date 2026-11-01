@@ -34,7 +34,8 @@ class WebSkinTrustedWriteReviewTest {
         context = ApplicationProvider.getApplicationContext()
         store = PowerStore(context, "web-write-review-${id()}.db")
         coreFeatureApi = PowerCalCoreFeatureApiV1(store)
-        service = WebSkinEditService(DeckController(StoreDeckPersistence(store)),
+        service = WebSkinEditService(coreFeatureApi.adaptDeckController(
+            DeckController(StoreDeckPersistence(store))),
             coreFeatureApi = coreFeatureApi)
     }
 
