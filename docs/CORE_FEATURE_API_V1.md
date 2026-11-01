@@ -1,11 +1,11 @@
-# Core Feature API v1 — Calendar, Event, Draft/Review, AI Proposal, Reminder, and Import/Export slices
+# Core Feature API v1 — Calendar, Event, Draft/Review, AI Proposal, Reminder, Import/Export, and Settings/Data slices
 
-- **Status:** Calendar window queries, Event, Draft/Review, AI Proposal, and Reminder vertical slices implemented; PHASE 1 remains in progress.
-- **Contract source:** `:core-api`, package `dev.powerfulcalendar.core.api.v1`, `CoreFeatureApiV1.kt`, `CalendarFeatureApiV1.kt`, `DraftReviewFeatureApiV1.kt`, `AiProposalFeatureApiV1.kt`, and `ReminderFeatureApiV1.kt`.
+- **Status:** Calendar window queries, Event, Draft/Review, AI Proposal, Reminder, Import/Export, and Settings/Data vertical slices implemented; PHASE 1 remains in progress.
+- **Contract source:** `:core-api`, package `dev.powerfulcalendar.core.api.v1`, including `CoreFeatureApiV1.kt`, `CalendarFeatureApiV1.kt`, `DraftReviewFeatureApiV1.kt`, `AiProposalFeatureApiV1.kt`, `ReminderFeatureApiV1.kt`, `ImportExportFeatureApiV1.kt`, and `SettingsDataFeatureApiV1.kt`.
 - **Runtime adapter:** `app/src/main/java/dev/powerfulcalendar/core/api/v1/PowerCalCoreFeatureApiV1.kt`.
 - **Updated:** 2026-11-01.
 
-This document describes the implemented Calendar, Event, Draft/Review, AI Proposal, and Reminder API boundaries. It does not declare full Core extraction, full domain coverage, runtime cutover, or Native/Skin parity. The Kotlin source is authoritative when a detail here drifts.
+This document describes the implemented Calendar, Event, Draft/Review, AI Proposal, Reminder, Import/Export, and Settings/Data API boundaries. It does not declare full Core extraction, full domain coverage, runtime cutover, or Native/Skin parity. The Kotlin source is authoritative when a detail here drifts.
 
 ## 1. Contract boundaries
 
@@ -30,7 +30,7 @@ The Host is the only owner of Android context, database construction, trusted co
 
 ## 2. Version and DTO rules
 
-- `CoreFeatureApiV1`, `CalendarFeatureApiV1`, and `EventFeatureApiV1` report `apiVersion == 1`.
+- `CoreFeatureApiV1`, `CalendarFeatureApiV1`, `EventFeatureApiV1`, and `SettingsDataFeatureApiV1` report `apiVersion == 1`.
 - `EventKindV1` is `ALARM`, `ACTIVITY`, `DEADLINE`, or `MEMO`.
 - `EventFormV1` is the editable value. `EventRecordV1` is an immutable formal-event query result with identity and `revision`.
 - Recurrence weekday values in `EventRecurrenceV1.byDay` use ISO numbers: Monday `1` through Sunday `7`. Recurrence scope and occurrence keys preserve the existing Core recurrence semantics.
@@ -151,10 +151,36 @@ The implementation is in `ReminderFeatureApiV1.kt` and `AndroidReminderFeatureAp
 
 Implementation is in `ImportExportFeatureApiV1.kt` and `StoreImportExportFeatureApiV1.kt`. Android picker/SAF and device interoperability evidence remains separately gated; see the [Import/Export API Issue](issues/PC-ISSUE-CORE-IMPORT-EXPORT-API-V1.md).
 
-## 12. Current adapter coverage and open work
+## 12. Settings/Data API v1 slice
 
-Verified code paths across the Calendar, Event, Draft/Review, AI Proposal, Reminder, and Import/Export slices:
+`CoreFeatureApiV1.settingsData` exposes the platform-neutral `SettingsDataFeatureApiV1` contract.
+The Native protected-profile slot, the Web profile editor Host route, and the first-run system
+Calendar import prompt all use the same service instance. The API owns the profile-name and
+one-time-prompt queries and commands; Android preference access remains inside the app adapter.
 
+- `querySettings` reads the existing `powercal-profile/displayName` and
+  `powercal-onboarding/system-calendar-import-asked` keys. No preference names, values, schema,
+  or migration behavior changed.
+- `saveProfileDisplayName` accepts an empty name, rejects names longer than 80 UTF-16 code units
+  and ISO control characters, and returns `UPDATED`, `NO_CHANGE`, `INVALID`, or `UNAVAILABLE`.
+- `markSystemCalendarImportPromptShown` is a one-way idempotent command. Mutations increment the
+  adapter's process-local feature revision and publish typed changes; invalid and repeated writes
+  do not change the revision.
+- A contextless adapter reports `available == false` and returns `UNAVAILABLE` from writes. The
+  contract and its DTOs expose no Android, SharedPreferences, Store, Core entity, or credential type.
+- AI provider configuration, API keys and file-consent state remain in the protected Host surface
+  under the current skin contract. Android permission launches, pickers, skin-package operations,
+  and the Import/Export API's file I/O also remain Host capabilities.
+
+Implementation is in `SettingsDataFeatureApiV1.kt` and `AndroidSettingsDataFeatureApiV1.kt`;
+Native/Web routing and scoped verification are recorded in the
+[Settings/Data API Issue](issues/PC-ISSUE-CORE-SETTINGS-DATA-API-V1.md).
+
+## 13. Current adapter coverage and open work
+
+Verified code paths across the Calendar, Event, Draft/Review, AI Proposal, Reminder, Import/Export, and Settings/Data slices:
+
+- Native profile save, Web profile open/save, and the first-run system Calendar import prompt use the shared `SettingsDataFeatureApiV1`; the Web Host still applies its scoped editor gate.
 - Native event creation and ordinary formal editing/deletion call the Host's shared `EventFeatureApiV1`.
 - `PowerCalApp.reload` obtains formal events through `queryEvents()`.
 - Native and Web Deck formal search use `searchEvents` over an API query snapshot. The Native Host reuses its latest snapshot so typing does not synchronously read the Store; the Web Host queries and filters on its I/O dispatcher.
@@ -171,10 +197,10 @@ Verified code paths across the Calendar, Event, Draft/Review, AI Proposal, Remin
 
 Remaining work before PHASE 1 can exit:
 
-1. Route remaining authorized Host/Core reads and writes through versioned queries/commands and one change source; current direct or separate paths include AI batch operations, AI draft generation, Memo visibility checks, and other settings/data operations.
+1. Route remaining authorized Host/Core reads and writes through versioned queries/commands and one change source; current direct or separate paths include AI batch operations, AI draft generation, Memo visibility checks, and settings/data operations outside the profile and onboarding slice.
 2. Move remaining business decisions out of Web transport/Host adapters; keep the bridge focused on transport and trusted Host capabilities.
 3. Remove Core entity types from runtime Skin projections while maintaining the separate Native Presentation Contract.
-4. Add the remaining per-domain API contracts before claiming other feature areas are covered. Current v1 does not define Store-level Calendar paging, AI batch control, or Settings/Data APIs. Draft/Review request replay and AI outer request replay remain process-local; AI Proposal item receipts are Store-backed. Calendar source loading still uses the full Host snapshot, and other runtime Skin projections still need bounded, API-owned data paths.
+4. Add the remaining per-domain API contracts before claiming other feature areas are covered. Current v1 does not define Store-level Calendar paging, AI batch control, AI draft generation, or API-owned Memo visibility queries. Draft/Review request replay and AI outer request replay remain process-local; AI Proposal item receipts are Store-backed. Calendar source loading still uses the full Host snapshot, and other runtime Skin projections still need bounded, API-owned data paths.
 5. Run required device checks when the independently owned AVD is available. Instrumentation for Event search/completion and AI Proposal API behavior is **NOT TESTED**.
 
 Latest Draft/Review verification: focused API, DeckController, Store restore, Host review UI, and Web bridge tests passed **190/190**; the forced full JVM run passed **800 tests across 128 XML reports, 0 failures/errors/skips**. `verifySkinSourceBoundary`, `verifyNativeSkinBoundary`, Debug APK assembly, and `lintDebug` all passed; lint reported **0 errors / 54 warnings**. The Debug APK SHA-256 is `C22E82E434CBE5B02CD790FF72932074DA969A10BDF9095416179D3B8331AFB4` (66,683,502 bytes). Instrumentation and AVD behavior are **NOT TESTED**. Logs and the prior Event pilot’s transient full-suite failures are recorded in the current [progress entry](agent-handoff/PROGRESS.md) and the [Draft/Review Issue](issues/PC-ISSUE-CORE-DRAFT-REVIEW-API-V1.md); no cause is asserted for those earlier failures.

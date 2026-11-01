@@ -71,7 +71,7 @@ Every native fallback remains callable through context.Native(). All Compose Ale
 
 Root Shell is an independent Chrome surface. The host children retain the BoxScope layout contract, and the Chrome renderer may introduce its own background, scope-wide theme, insets and surface arrangement via context.Body(modifier). It also styles ephemeral status notices without changing when they appear.
 
-Settings exposes two additional protected composable slots: context.ProtectedProfile() and context.ProtectedAiCredentials(). These can be placed in arbitrary custom layouts without passing API keys or preference objects to renderer code. The Host owns profile preference reads/writes and supplies the name value and edit/save callbacks only to the built-in `NativeProtectedProfileSection`; custom renderers receive the opaque Host slot. The Host also owns AI settings storage, file-consent state, and every save/revoke action. The built-in Native `NativeProtectedAiSettingsSection` renders the configuration card from value-only display/action models; the API-key password field remains a Host-composed protected slot, and the key value does not enter `:skin-api` or `:native-skin`. Custom renderers continue to receive only the opaque Host slot. Any other settings action is a supplied callback.
+Settings exposes two additional protected composable slots: context.ProtectedProfile() and context.ProtectedAiCredentials(). These can be placed in arbitrary custom layouts without passing API keys or preference objects to renderer code. The Host supplies the profile slot and keeps its value scoped to the built-in `NativeProtectedProfileSection` or an explicitly opened Web profile editor. Profile reads and writes now go through the shared `CoreFeatureApiV1.settingsData` service; custom renderers still receive only the opaque Host slot. The Host also owns AI settings storage, file-consent state, and every save/revoke action. The built-in Native `NativeProtectedAiSettingsSection` renders the configuration card from value-only display/action models; the API-key password field remains a Host-composed protected slot, and the key value does not enter `:skin-api` or `:native-skin`. Custom renderers continue to receive only the opaque Host slot. Any other settings action is a supplied callback.
 
 ### Settings renderer data boundary (2026-10-30)
 
@@ -96,16 +96,18 @@ ID so the Host resolves the authoritative installed package. `SettingsVisualEffe
 `NativeProtectedProfileSection` renders the personal-profile card and its single-line name field.
 `NativeProtectedProfileDisplay` contains the name shown in the built-in Native settings form;
 `NativeProtectedProfileActions` contains edit/save callbacks. `HostProtectedProfileSection` in
-`:app` owns the preference object,
-initial read, and explicit save. The Native module receives no Android `Context`, preferences,
-credential value or persistence service. The existing 80-character input cap and save-on-button
-behavior are covered by Compose regressions. The AI endpoint/model/key settings remain Host-owned.
+`:app` calls the shared `CoreFeatureApiV1.settingsData` service for the initial read and explicit
+save; the Android adapter retains the existing preference keys. The Native module receives no
+Android `Context`, preferences, credential value or persistence service. The 80-character input
+cap and save-on-button behavior are covered by Compose regressions. The AI endpoint/model/key
+settings remain Host-owned.
 
 ### Clear-owned profile form boundary (2026-10-31)
 
 The full-canvas Clear Settings page renders the profile form in its editable HTML/CSS/JS. The
-Android Host remains the only owner of the powercal-profile preference and exposes only the
-displayName scalar while the SETTINGS page is active and the user has opened that form:
+Android Settings/Data adapter is the only writer of the `powercal-profile` preference; the Web
+Host gates access and routes reads/writes through `CoreFeatureApiV1.settingsData`. It exposes only
+the displayName scalar while the SETTINGS page is active and the user has opened that form:
 profileEditor is null in ordinary Settings state and outside the form. The Host accepts the
 exact openProfileEditor, closeProfileEditor, and saveProfileEditor { displayName } action
 schemas. It rejects names over 80 UTF-16 code units and ISO control characters, and persists
@@ -130,10 +132,20 @@ callbacks, and that the display DTO has no key/secret field.
 ### Native first-run calendar import prompt boundary (2026-10-30)
 
 `NativeCalendarImportPrompt` renders the one-time snapshot explanation and the import/defer actions.
-`PowerCalApp` keeps the onboarding preference, permission check/request, and actual system-calendar
-import callback; it supplies the existing skin-aware dialog shell. The Native renderer receives no
-permission result, `Context`, calendar provider or import service. Prompt timing and the existing
-one-time import semantics are unchanged.
+`PowerCalApp` queries and marks the onboarding preference through `CoreFeatureApiV1.settingsData`;
+permission checks/requests and the actual system-calendar import callback remain Host-owned. It
+supplies the existing skin-aware dialog shell. The Native renderer receives no permission result,
+`Context`, calendar provider or import service. Prompt timing and the existing one-time import
+semantics are unchanged.
+
+### Settings/Data Feature API integration (2026-11-01)
+
+Native profile presentation, the Web profile editor Host route, and the one-time system Calendar
+import prompt now use one versioned `SettingsDataFeatureApiV1` service. The Android adapter preserves
+the existing preference file/key names and provides revisions/change notifications. This updates
+the earlier Host-owned profile wording: Host still controls the protected projection and access
+gates, while the shared API owns the read/write path. AI credentials/configuration and file-consent
+storage remain Host-owned; no key or credential operation enters the API.
 
 The Settings, Navigation, Memo, AI chat, Month, Timeline, and Draft Deck display API types compile in
 `:skin-api`; their Native renderers compile in `:native-skin`. Memo, Month, Timeline, and Draft Deck
@@ -277,7 +289,7 @@ Source module map:
 - `skin-api/src/main/java/dev/powerfulcalendar/ui/v2/NativeTimelineModel.kt` — Native timeline event/state/action/geometry and appearance values
 - `skin-api/src/main/java/dev/powerfulcalendar/ui/v2/NativeDeckModel.kt` — Native deck/form display DTOs, callbacks and appearance slots
 - `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativeToolsPage.kt` — Native Settings renderer
-- `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativeProtectedProfileSection.kt` — Native protected-profile form renderer; preference reads and writes remain in Host
+- `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativeProtectedProfileSection.kt` — Native protected-profile form renderer; profile reads and writes are delegated through the shared Settings/Data Feature API
 - `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativeProtectedAiSettingsSection.kt` — Native protected AI settings card; API-key field and credential persistence remain Host-owned
 - `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativePowerNavigation.kt` — Native bottom navigation
 - `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/MemoCenterScreen.kt` — Native Memo renderer consuming only value rows and opaque action keys
