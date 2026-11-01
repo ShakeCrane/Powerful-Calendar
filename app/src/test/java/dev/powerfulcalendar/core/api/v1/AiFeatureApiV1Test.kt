@@ -192,6 +192,46 @@ class AiFeatureApiV1Test {
         assertTrue(store.all().isEmpty())
     }
 
+    @Test fun stuckBatchReleaseRequiresOneUseHostApprovalAndReturnsSanitizedUnknownOutcome() {
+        val draft = store.newDraft(form("stuck batch").toCoreDraftForm())
+        val session = store.beginAiBatch(
+            mapOf(draft.draftId to draft.draftVersion),
+            setOf(DraftOperation.CREATE)
+        )
+        assertEquals(
+            AiBatchCommandStatusV1.CANCEL_REQUESTED,
+            core.ai.requestBatchCancellation(session.sessionId).status
+        )
+        val cancellation = requireNotNull(store.currentAiSession())
+        val fakeApproval = object : AiBatchStuckReleaseApprovalV1 {}
+        assertEquals(
+            AiBatchCommandStatusV1.NOT_AUTHORIZED,
+            core.ai.releaseStuckBatch(session.sessionId, session.lockEpoch, fakeApproval).status
+        )
+        assertNull(core.issueAiBatchStuckReleaseApproval(session.sessionId, session.lockEpoch))
+
+        clock.set(Instant.ofEpochMilli(
+            cancellation.updatedAtMillis + PowerStore.DEFAULT_STALE_MS
+        ))
+        val approval = requireNotNull(
+            core.issueAiBatchStuckReleaseApproval(session.sessionId, session.lockEpoch)
+        )
+        assertEquals(
+            AiBatchCommandStatusV1.RELEASED,
+            core.ai.releaseStuckBatch(session.sessionId, session.lockEpoch, approval).status
+        )
+        assertEquals(
+            AiBatchCommandStatusV1.NOT_AUTHORIZED,
+            core.ai.releaseStuckBatch(session.sessionId, session.lockEpoch, approval).status
+        )
+
+        val terminal = requireNotNull(core.ai.queryBatchState().session?.terminalReport)
+        assertFalse(terminal.outcomeKnown)
+        assertTrue(terminal.releasedByUser)
+        assertNull(terminal.published)
+        assertFalse(core.ai.queryBatchState().locked)
+    }
+
     private fun createFormal(title: String) = store.newDraft(form(title).toCoreDraftForm()).let { draft ->
         assertTrue(store.commit(draft.draftId) is PowerStore.CommitOutcome.Committed)
         requireNotNull(store.get(draft.eventSeq))
