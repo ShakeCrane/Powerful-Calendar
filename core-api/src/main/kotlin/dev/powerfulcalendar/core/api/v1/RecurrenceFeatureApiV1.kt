@@ -30,6 +30,25 @@ data class RecurrenceNextOccurrenceV1(
     val occurrence: RecurrenceOccurrenceV1?
 )
 
+/** Core-owned lookup of one original recurrence slot from a detached event snapshot. */
+data class RecurrenceOccurrenceByKeyQueryV1(
+    val event: EventRecordV1,
+    val occurrenceKey: String,
+    val localZoneId: String
+) {
+    init {
+        require(localZoneId.isNotBlank()) { "localZoneId must not be blank" }
+        ZoneId.of(localZoneId)
+    }
+}
+
+/** Echoes snapshot identity alongside the occurrence with the requested original key, if present. */
+data class RecurrenceOccurrenceByKeyV1(
+    val eventSeq: Long,
+    val eventRevision: Long,
+    val occurrence: RecurrenceOccurrenceV1?
+)
+
 /** Versioned recurrence calculations over detached Core event values. */
 interface RecurrenceFeatureApiV1 {
     val apiVersion: Int
@@ -40,4 +59,11 @@ interface RecurrenceFeatureApiV1 {
      * it does not authorize a write or guarantee that the event is still current.
      */
     fun queryNextOccurrence(query: RecurrenceNextOccurrenceQueryV1): RecurrenceNextOccurrenceV1
+
+    /**
+     * Returns the materialized slot with this original key, or `null` when the key is invalid,
+     * excepted, or outside the event's series. The result is calculated from the supplied
+     * snapshot; it does not establish event currentness.
+     */
+    fun queryOccurrenceByKey(query: RecurrenceOccurrenceByKeyQueryV1): RecurrenceOccurrenceByKeyV1
 }

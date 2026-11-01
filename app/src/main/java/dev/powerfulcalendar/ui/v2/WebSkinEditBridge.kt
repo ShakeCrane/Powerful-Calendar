@@ -14,7 +14,6 @@ import dev.powerfulcalendar.core.FormBuild
 import dev.powerfulcalendar.core.RecurrenceFreq
 import dev.powerfulcalendar.core.Recurrence
 import dev.powerfulcalendar.core.RecurrenceEditScope
-import dev.powerfulcalendar.core.RecurrenceEngine
 import dev.powerfulcalendar.core.ReminderMethod
 import dev.powerfulcalendar.core.ReminderTiming
 import dev.powerfulcalendar.core.TemporalConversion
@@ -29,6 +28,7 @@ import dev.powerfulcalendar.core.api.v1.EventKindV1
 import dev.powerfulcalendar.core.api.v1.EventRecurrenceScopeV1
 import dev.powerfulcalendar.core.api.v1.EventSelectionV1
 import dev.powerfulcalendar.core.api.v1.EventFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.EventRecordV1
 import dev.powerfulcalendar.core.api.v1.EventSearchHitV1
 import dev.powerfulcalendar.core.api.v1.EventMutationReceiptV1
 import dev.powerfulcalendar.core.api.v1.EventMutationStatusV1
@@ -42,6 +42,8 @@ import dev.powerfulcalendar.core.api.v1.DraftReviewRestoreV1
 import dev.powerfulcalendar.core.api.v1.DraftReviewCardV1
 import dev.powerfulcalendar.core.api.v1.EventFormV1
 import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.RecurrenceFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.RecurrenceOccurrenceByKeyQueryV1
 import dev.powerfulcalendar.core.api.v1.toCoreDraftForm
 import dev.powerfulcalendar.core.api.v1.toEventFormV1
 import java.time.LocalDate
@@ -428,7 +430,8 @@ internal class WebSkinEditService(
     private val externalEditorActive: () -> Boolean = { false },
     private val coreFeatureApi: PowerCalCoreFeatureApiV1,
     private val eventFeatures: EventFeatureApiV1 = coreFeatureApi.events,
-    private val aiFeatures: AiFeatureApiV1 = coreFeatureApi.ai
+    private val aiFeatures: AiFeatureApiV1 = coreFeatureApi.ai,
+    private val recurrenceFeatures: RecurrenceFeatureApiV1 = coreFeatureApi.recurrence
 ) {
     private val gate = Mutex()
     private var session: WebFormalEditor? = null
@@ -689,10 +692,13 @@ internal class WebSkinEditService(
             .put("lastResult",latest)
     }
 
-    private suspend fun queryCurrentFormalEvent(eventSeq: Long): TemporalRecord? =
+    private suspend fun queryCurrentFormalEventRecord(eventSeq: Long): EventRecordV1? =
         withContext(Dispatchers.IO) {
-            eventFeatures.queryEvent(eventSeq)?.toCoreTemporalRecord()
+            eventFeatures.queryEvent(eventSeq)
         }
+
+    private suspend fun queryCurrentFormalEvent(eventSeq: Long): TemporalRecord? =
+        queryCurrentFormalEventRecord(eventSeq)?.toCoreTemporalRecord()
 
     private suspend fun queryPersistedDraft(draftId: Long): DraftCard? =
         withContext(Dispatchers.IO) {
@@ -855,12 +861,21 @@ internal class WebSkinEditService(
                         result(cmd.requestId,"invalid","请先选择重复事件的编辑范围")
                     else if(session!!.meaningfulDiff) {
                         val active=session!!
-                        val current = queryCurrentFormalEvent(active.eventSeq)
+                        val currentRecord = queryCurrentFormalEventRecord(active.eventSeq)
+                        val current = currentRecord?.toCoreTemporalRecord()
                         val scope=active.recurrenceScope
                         val selected=active.selectedOccurrenceKey
                         val occurrence=if((scope == RecurrenceEditScope.SINGLE_OCCURRENCE ||
                                 scope == RecurrenceEditScope.THIS_AND_FUTURE) && selected != null)
-                            current?.let { withContext(Dispatchers.IO){RecurrenceEngine.occurrenceForKey(it,selected)} }
+                            currentRecord?.let { record -> withContext(Dispatchers.IO) {
+                                recurrenceFeatures.queryOccurrenceByKey(
+                                    RecurrenceOccurrenceByKeyQueryV1(
+                                        event = record,
+                                        occurrenceKey = selected,
+                                        localZoneId = ZoneId.systemDefault().id
+                                    )
+                                ).occurrence
+                            } }
                         else null
                         if(current==null) result(cmd.requestId,"stale")
                         else if((scope == RecurrenceEditScope.SINGLE_OCCURRENCE ||

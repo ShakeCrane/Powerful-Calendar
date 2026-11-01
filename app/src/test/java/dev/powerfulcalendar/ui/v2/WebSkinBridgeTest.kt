@@ -4,6 +4,9 @@ import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.Recurrence
 import dev.powerfulcalendar.core.RecurrenceFreq
+import dev.powerfulcalendar.core.api.v1.CoreRecurrenceFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.RecurrenceOccurrenceByKeyQueryV1
+import dev.powerfulcalendar.core.api.v1.toEventRecordV1
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -128,14 +131,29 @@ class WebSkinBridgeTest {
         )
         val selectedKey = "2026-10-23T00:00"
         val action = WebSkinAction.OpenEvent(42, 7, selectedKey)
-        assertEquals(recurring, validateOpenEvent(action, recurring, true))
+        val recurrenceApi = CoreRecurrenceFeatureApiV1()
+        val occurrence = recurrenceApi.queryOccurrenceByKey(
+            RecurrenceOccurrenceByKeyQueryV1(
+                event = recurring.toEventRecordV1(),
+                occurrenceKey = selectedKey,
+                localZoneId = "Asia/Shanghai"
+            )
+        )
+        assertEquals(recurring, validateOpenEvent(action, recurring, true, occurrence))
+        val invalidOccurrence = recurrenceApi.queryOccurrenceByKey(
+            RecurrenceOccurrenceByKeyQueryV1(
+                event = recurring.toEventRecordV1(),
+                occurrenceKey = "2026-10-24T00:00",
+                localZoneId = "Asia/Shanghai"
+            )
+        )
         assertNull(validateOpenEvent(
-            action.copy(occurrenceKey = "2026-10-24T00:00"), recurring, true
+            action.copy(occurrenceKey = "2026-10-24T00:00"), recurring, true, invalidOccurrence
         ))
         assertNull(validateOpenEvent(
-            action, recurring.copy(recurrence = Recurrence.NONE), true
+            action, recurring.copy(recurrence = Recurrence.NONE), true, occurrence
         ))
-        assertNull(validateOpenEvent(action.copy(expectedRevision = 6), recurring, true))
+        assertNull(validateOpenEvent(action.copy(expectedRevision = 6), recurring, true, occurrence))
     }
 
     @Test fun notificationPermissionUsesHostOwnedPlatformFlowAndStatus() {

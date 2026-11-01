@@ -13,6 +13,11 @@ import dev.powerfulcalendar.core.RecurrenceEditScope
 import dev.powerfulcalendar.core.StoreDeckPersistence
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.RecurrenceFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.RecurrenceNextOccurrenceQueryV1
+import dev.powerfulcalendar.core.api.v1.RecurrenceNextOccurrenceV1
+import dev.powerfulcalendar.core.api.v1.RecurrenceOccurrenceByKeyQueryV1
+import dev.powerfulcalendar.core.api.v1.RecurrenceOccurrenceByKeyV1
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.After
@@ -29,6 +34,24 @@ import java.util.UUID
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class WebSkinRecurrenceBridgeTest {
+    private class RecordingRecurrenceFeatureApiV1(
+        private val delegate: RecurrenceFeatureApiV1
+    ) : RecurrenceFeatureApiV1 {
+        override val apiVersion: Int get() = delegate.apiVersion
+        val occurrenceQueries = mutableListOf<RecurrenceOccurrenceByKeyQueryV1>()
+
+        override fun queryNextOccurrence(
+            query: RecurrenceNextOccurrenceQueryV1
+        ): RecurrenceNextOccurrenceV1 = delegate.queryNextOccurrence(query)
+
+        override fun queryOccurrenceByKey(
+            query: RecurrenceOccurrenceByKeyQueryV1
+        ): RecurrenceOccurrenceByKeyV1 {
+            occurrenceQueries += query
+            return delegate.queryOccurrenceByKey(query)
+        }
+    }
+
     private lateinit var context: Context
     private lateinit var store: PowerStore
     private lateinit var service: WebSkinEditService
@@ -85,6 +108,39 @@ class WebSkinRecurrenceBridgeTest {
         if (kind == TemporalKind.DEADLINE || kind == TemporalKind.MEMO)
             "2026-10-22T00:00"
         else "2026-10-22T07:30"
+
+    @Test fun formalWriteReviewUsesTheSharedOccurrenceByKeyApi() = runBlocking {
+        val seq = daily()
+        val before = requireNotNull(store.get(seq))
+        val key = "2026-10-22T07:30"
+        val recorder = RecordingRecurrenceFeatureApiV1(coreFeatureApi.recurrence)
+        service = WebSkinEditService(
+            coreFeatureApi.adaptDeckController(DeckController(StoreDeckPersistence(store))),
+            coreFeatureApi = coreFeatureApi,
+            recurrenceFeatures = recorder
+        )
+
+        assertEquals("opened", service.execute(command(
+            "editor.open", "eventSeq" to seq, "expectedRevision" to before.revision,
+            "occurrenceKey" to key
+        )).getString("status"))
+        val session = service.snapshot().getJSONObject("editor").getString("sessionId")
+        assertEquals("selected", service.execute(command(
+            "editor.scope", "sessionId" to session, "scope" to "SINGLE_OCCURRENCE"
+        )).getString("status"))
+        assertEquals("edited", service.execute(command(
+            "editor.patch", "sessionId" to session, "field" to "title", "value" to "Reviewed"
+        )).getString("status"))
+
+        assertEquals("confirmation_required", service.execute(command(
+            "editor.save", "sessionId" to session
+        )).getString("status"))
+        val lookup = recorder.occurrenceQueries.single()
+        assertEquals(seq, lookup.event.eventSeq)
+        assertEquals(before.revision, lookup.event.revision)
+        assertEquals(key, lookup.occurrenceKey)
+        assertEquals(key, coreFeatureApi.recurrence.queryOccurrenceByKey(lookup).occurrence?.key)
+    }
 
     @Test fun memoOccurrenceKeyOpensTheProjectedMemoSlotWithoutWriting() = runBlocking {
         val card = store.newDraft(DraftForm(kind = TemporalKind.MEMO, title = "每日备忘",

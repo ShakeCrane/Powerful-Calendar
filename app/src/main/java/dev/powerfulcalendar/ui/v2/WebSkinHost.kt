@@ -1,8 +1,8 @@
 package dev.powerfulcalendar.ui.v2
 
 import dev.powerfulcalendar.core.EditorSelection
-import dev.powerfulcalendar.core.RecurrenceEngine
 import dev.powerfulcalendar.core.TimelineCoordinate
+import dev.powerfulcalendar.core.api.v1.RecurrenceOccurrenceByKeyV1
 import android.annotation.SuppressLint
 import android.graphics.Color
 import android.net.Uri
@@ -243,11 +243,15 @@ internal enum class AiProposalDecision { PUBLISH, STAGE, REJECT, SUPPLEMENT }
 internal fun validateOpenEvent(
     action: WebSkinAction.OpenEvent,
     current: dev.powerfulcalendar.core.TemporalRecord?,
-    writerAvailable: Boolean
+    writerAvailable: Boolean,
+    recurrenceOccurrence: RecurrenceOccurrenceByKeyV1? = null
 ): dev.powerfulcalendar.core.TemporalRecord? = current?.takeIf {
     writerAvailable && it.eventSeq == action.eventSeq && it.revision == action.expectedRevision &&
         (action.occurrenceKey == null || (it.recurrence.isRepeating &&
-            RecurrenceEngine.occurrenceForKey(it, action.occurrenceKey) != null))
+            recurrenceOccurrence?.let { result ->
+                result.eventSeq == it.eventSeq && result.eventRevision == it.revision &&
+                    result.occurrence?.key == action.occurrenceKey
+            } == true))
 }
 
 @Composable

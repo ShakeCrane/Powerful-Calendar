@@ -1,6 +1,7 @@
 package dev.powerfulcalendar.ui.v2
 
 import dev.powerfulcalendar.core.*
+import dev.powerfulcalendar.core.api.v1.RecurrenceOccurrenceV1
 import java.time.Instant
 import java.time.LocalDate
 import java.time.format.TextStyle
@@ -15,19 +16,30 @@ internal data class DisplayOccurrence(
     val occurrenceKey: String
 )
 
-internal fun occurrenceDisplayRecord(owner: TemporalRecord, slot: Occurrence): TemporalRecord {
+internal fun occurrenceDisplayRecord(owner: TemporalRecord, slot: Occurrence): TemporalRecord =
+    occurrenceDisplayRecord(owner, slot.key, slot.startMillis, slot.endMillis)
+
+internal fun occurrenceDisplayRecord(owner: TemporalRecord, slot: RecurrenceOccurrenceV1): TemporalRecord =
+    occurrenceDisplayRecord(owner, slot.key, slot.startMillis, slot.endMillis)
+
+private fun occurrenceDisplayRecord(
+    owner: TemporalRecord,
+    key: String,
+    startMillis: Long,
+    endMillis: Long?
+): TemporalRecord {
     val projected = when (owner.kind) {
-        TemporalKind.ALARM -> owner.copy(startMillis = slot.startMillis)
-        TemporalKind.ACTIVITY -> owner.copy(startMillis = slot.startMillis, endMillis = slot.endMillis)
+        TemporalKind.ALARM -> owner.copy(startMillis = startMillis)
+        TemporalKind.ACTIVITY -> owner.copy(startMillis = startMillis, endMillis = endMillis)
         TemporalKind.MEMO -> owner.copy(memoStartDate =
-            Instant.ofEpochMilli(slot.startMillis).atZone(owner.zone).toLocalDate().toString())
+            Instant.ofEpochMilli(startMillis).atZone(owner.zone).toLocalDate().toString())
         TemporalKind.DEADLINE -> if (owner.isDateOnlyDeadline()) {
-            owner.copy(deadlineDate = Instant.ofEpochMilli(slot.startMillis).atZone(owner.zone).toLocalDate().toString())
+            owner.copy(deadlineDate = Instant.ofEpochMilli(startMillis).atZone(owner.zone).toLocalDate().toString())
         } else {
-            owner.copy(deadlineMillis = slot.startMillis)
+            owner.copy(deadlineMillis = startMillis)
         }
     }
-    return projected.copy(title = owner.recurrence.overrides[slot.key]?.title ?: owner.title)
+    return projected.copy(title = owner.recurrence.overrides[key]?.title ?: owner.title)
 }
 
 internal fun singleDisplayOccurrence(owner: TemporalRecord): DisplayOccurrence? {

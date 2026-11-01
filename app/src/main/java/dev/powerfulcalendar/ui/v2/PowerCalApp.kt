@@ -115,6 +115,7 @@ import dev.powerfulcalendar.core.api.v1.StructuredImportStatusV1
 import dev.powerfulcalendar.core.api.v1.SettingsDataMutationStatusV1
 import dev.powerfulcalendar.core.api.v1.BackupRestoreReceiptV1
 import dev.powerfulcalendar.core.api.v1.RecurrenceNextOccurrenceQueryV1
+import dev.powerfulcalendar.core.api.v1.RecurrenceOccurrenceByKeyQueryV1
 import dev.powerfulcalendar.core.api.v1.newImportRequestId
 import dev.powerfulcalendar.core.api.v1.ReminderEventSnapshotV1
 import dev.powerfulcalendar.core.api.v1.ReminderReconcileModeV1
@@ -2236,10 +2237,23 @@ fun PowerCalApp(
                 WebSkinAction.PickAiImage -> launchWebAiAttachmentPicker(image = true)
                 is WebSkinAction.ResolveAiProposal -> resolveWebAiProposalAction(action)
                 is WebSkinAction.OpenEvent -> scope.launch {
-                    val current = withContext(Dispatchers.IO) {
-                        eventFeatureApi.queryEvent(action.eventSeq)?.toCoreTemporalRecord()
+                    val (currentRecord, recurrenceOccurrence) = withContext(Dispatchers.IO) {
+                        val snapshot = eventFeatureApi.queryEvent(action.eventSeq)
+                        val occurrence = if (snapshot != null && action.occurrenceKey != null) {
+                            recurrenceFeatureApi.queryOccurrenceByKey(
+                                RecurrenceOccurrenceByKeyQueryV1(
+                                    event = snapshot,
+                                    occurrenceKey = action.occurrenceKey,
+                                    localZoneId = java.time.ZoneId.systemDefault().id
+                                )
+                            )
+                        } else null
+                        snapshot to occurrence
                     }
-                    val validated = validateOpenEvent(action, current, !aiLocked && editSession == null)
+                    val current = currentRecord?.toCoreTemporalRecord()
+                    val validated = validateOpenEvent(
+                        action, current, !aiLocked && editSession == null, recurrenceOccurrence
+                    )
                     if (current == null || current.revision != action.expectedRevision) {
                         message = "Event changed or is no longer available"
                     } else if (validated == null) {
