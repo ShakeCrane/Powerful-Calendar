@@ -28,11 +28,14 @@ import dev.powerfulcalendar.core.api.v1.AiBatchSessionV1
 import dev.powerfulcalendar.core.api.v1.AiBatchStateV1
 import dev.powerfulcalendar.core.api.v1.AiConversationMessageV1
 import dev.powerfulcalendar.core.api.v1.AiProposalReviewV1
+import dev.powerfulcalendar.core.api.v1.EventRecordV1
 import dev.powerfulcalendar.core.RecurrenceEngine
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.api.v1.MemoEntryV1
 import dev.powerfulcalendar.core.api.v1.ReminderScheduleStateV1
+import dev.powerfulcalendar.core.api.v1.toCoreTemporalRecord
+import dev.powerfulcalendar.core.api.v1.toEventRecordV1
 import dev.powerfulcalendar.ui.v2.nativeui.*
 import java.time.LocalDate
 import java.time.ZoneId
@@ -103,19 +106,27 @@ internal object PresentationSkinRegistry {
 }
 
 internal class MonthVisualContext internal constructor(
-    val records: List<TemporalRecord>,
-    val recordsForMonth: (java.time.YearMonth) -> List<TemporalRecord>,
+    private val nativeRecords: List<TemporalRecord>,
+    private val nativeRecordsForMonth: (java.time.YearMonth) -> List<TemporalRecord>,
     val initialDate: LocalDate,
     val zone: ZoneId,
     val aiLocked: Boolean,
     val onBack: () -> Unit,
     val onDate: (LocalDate) -> Unit,
-    val onOpen: (TemporalRecord, String?) -> Unit,
+    private val onOpenNative: (TemporalRecord, String?) -> Unit,
     val onCreate: (LocalDate) -> Unit
 ) {
+    val records: List<EventRecordV1> = nativeRecords.map(TemporalRecord::toEventRecordV1)
+    val recordsForMonth: (java.time.YearMonth) -> List<EventRecordV1> = { month ->
+        nativeRecordsForMonth(month).map(TemporalRecord::toEventRecordV1)
+    }
+    val onOpen: (EventRecordV1, String?) -> Unit = { record, occurrenceKey ->
+        onOpenNative(record.toCoreTemporalRecord(), occurrenceKey)
+    }
+
     @Composable fun Native() {
-        val projection = remember(recordsForMonth, zone) {
-            NativeMonthProjectionSession(recordsForMonth, zone)
+        val projection = remember(nativeRecordsForMonth, zone) {
+            NativeMonthProjectionSession(nativeRecordsForMonth, zone)
         }
         val rowsForMonth = remember(projection) { projection::rowsFor }
         val appearance = NativeMonthAppearance(
@@ -158,7 +169,7 @@ internal class MonthVisualContext internal constructor(
                 onDate = onDate,
                 onOpen = { rowKey ->
                     projection.openTarget(rowKey)?.let { target ->
-                        onOpen(target.owner, target.occurrenceKey)
+                        onOpenNative(target.owner, target.occurrenceKey)
                     }
                 },
                 onCreate = onCreate,

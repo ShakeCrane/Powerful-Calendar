@@ -16,6 +16,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalText
+import dev.powerfulcalendar.core.api.v1.EventRecordV1
 import dev.powerfulcalendar.core.api.v1.AiConversationRoleV1
 import java.time.LocalDate
 
@@ -38,7 +39,7 @@ internal object RuntimeSkinSurfaces {
             values = mapOf("pending" to context.pendingCount.toString(),
                 "memo" to context.memoCount.toString()),
             widget = { kind ->
-                if (kind == "events") EventRows(context.records, context.zone) { record ->
+                if (kind == "events") TemporalEventRows(context.records, context.zone) { record ->
                     context.onOpenEvent(record, null)
                 }
             }
@@ -306,6 +307,28 @@ internal object RuntimeSkinSurfaces {
         node.type == kind || node.children.any { containsType(it, kind) }
 
     @Composable private fun EventRows(
+        records: List<EventRecordV1>,
+        zone: java.time.ZoneId,
+        open: (EventRecordV1) -> Unit
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            projectRuntimeSkinEventRows(records, zone).forEach { row ->
+                Surface(
+                    modifier = Modifier.fillMaxWidth().clickable { open(row.event) },
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerLow
+                ) {
+                    Column(Modifier.padding(11.dp)) {
+                        Text(row.event.title, style = MaterialTheme.typography.titleSmall)
+                        Text(row.summary,
+                            style = MaterialTheme.typography.labelSmall, maxLines = 2)
+                    }
+                }
+            }
+        }
+    }
+
+    @Composable private fun TemporalEventRows(
         records: List<dev.powerfulcalendar.core.TemporalRecord>,
         zone: java.time.ZoneId,
         open: (dev.powerfulcalendar.core.TemporalRecord) -> Unit
