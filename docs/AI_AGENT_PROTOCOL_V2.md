@@ -34,7 +34,7 @@ permission. Unbounded write access or a silent approval bypass is not a capabili
 | --- | --- | --- |
 | chat.reply.v1 | bounded conversational reply | implemented; stateless restart, no cloud search |
 | chat.suggest_draft.v1 | recognize candidate and show action affordance | implemented via bounded untrusted hint; *not* automatic tool invocation |
-| calendar.propose.v1 | normalize CREATE / REPLACE / DELETE / CONVERT into drafts | implemented via explicit structured parser and AiDraftService |
+| calendar.propose.v1 | normalize CREATE / REPLACE / DELETE / CONVERT into drafts | structured parsing plus Host-reviewed `AiProposalFeatureApiV1` staging/publishing; Store-backed per-item receipts for apply operations, while outer request replay remains process-local; not a general tool-call orchestrator |
 | calendar.query.v1 | narrow formal records by date/title/kind and return revisions | partial: explicit context slice, no broad standalone Tool Call |
 | calendar.batch.select.v1 | select actionable draft IDs based on user description | implemented; all IDs checked against local candidate snapshot |
 | calendar.batch.execute.v1 | publish or discard explicitly reviewed draft versions | implemented with persisted AiSession/fencing; no unbounded auto-approval |
@@ -159,7 +159,14 @@ Each Skill registry entry has:
 - `calendar.query.v1`: read-only, filter by date/title/kind, max 100 candidates,
   return exact `eventSeq, revision, precision, zone, recurrence, source`.
 - `calendar.propose.v1`: produce at most 100 operations (create/replace/delete/convert);
-  allocate DraftCards with durable tool-call receipts. Nothing publishes yet.
+  allocate DraftCards with durable tool-call receipts. This tool call itself never publishes.
+  After separate Host review, the current `AiProposalFeatureApiV1` implements staging and
+  selected-item application;
+  its Store-backed `ai_task_receipts` protect item retries (taskless applies use a stable
+  request-derived receipt namespace), but the outer API request cache remains process-local
+  and standalone `createDrafts` replay is not durable. AI batch selection/execution remains
+  a separate path. This is partial protocol coverage, not full tool-registry or orchestration
+  compliance.
 - `calendar.batch.select.v1`: return exact allowed draftIds, versions and candidate counts.
 - `calendar.batch.authorize.v1`: only app-originated, bound to a frozen reviewed scope.
   The model cannot generate its own approval token.

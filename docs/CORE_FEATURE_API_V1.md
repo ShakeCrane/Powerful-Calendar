@@ -1,11 +1,11 @@
-# Core Feature API v1 — Event and Draft/Review slices
+# Core Feature API v1 — Event, Draft/Review, and AI Proposal slices
 
-- **Status:** Event pilot and Draft/Review vertical slice implemented; PHASE 1 remains in progress.
-- **Contract source:** `:core-api`, package `dev.powerfulcalendar.core.api.v1`, `CoreFeatureApiV1.kt` and `DraftReviewFeatureApiV1.kt`.
+- **Status:** Event, Draft/Review, and AI Proposal vertical slices implemented; PHASE 1 remains in progress.
+- **Contract source:** `:core-api`, package `dev.powerfulcalendar.core.api.v1`, `CoreFeatureApiV1.kt`, `DraftReviewFeatureApiV1.kt`, and `AiProposalFeatureApiV1.kt`.
 - **Runtime adapter:** `app/src/main/java/dev/powerfulcalendar/core/api/v1/PowerCalCoreFeatureApiV1.kt`.
 - **Updated:** 2026-11-01.
 
-This document describes the implemented Event and Draft/Review API boundaries. It does not declare full Core extraction, full domain coverage, runtime cutover, or Native/Skin parity. The Kotlin source is authoritative when a detail here drifts.
+This document describes the implemented Event, Draft/Review, and AI Proposal API boundaries. It does not declare full Core extraction, full domain coverage, runtime cutover, or Native/Skin parity. The Kotlin source is authoritative when a detail here drifts.
 
 ## 1. Contract boundaries
 
@@ -13,7 +13,7 @@ The three contracts have separate jobs:
 
 | Contract | Owner | Responsibility |
 | --- | --- | --- |
-| Core Feature API | `:core-api` | Versioned event operations, queries, DTOs, results, revisions, and change notifications |
+| Core Feature API | `:core-api` | Versioned event and reviewed AI proposal operations, queries, DTOs, results, revisions, and change notifications |
 | Native Presentation Contract | `:skin-api` | Native renderer inputs and callbacks; contains presentation models, not Core business services |
 | Web Bridge Transport Contract | `WebEditWire` / `WebEditCommand` | Versioned JSON command decoding and Host reply transport; it is not the event business API |
 
@@ -99,13 +99,24 @@ For mutation and checkpoint requests:
 - `edit`, `flush`, `select`, `move`, `jump`, `commit`, conflict approval, restore approval, `discard`, and `undoDiscard` return `DraftReviewReceiptV1`. Draft queue changes publish `DRAFTS_CHANGED`; successful create/replace/delete/restore commits publish the corresponding formal change through the shared Event API instance.
 - Native Deck's built-in controls remain Host-driven. Runtime/imported Deck callbacks that request a formal commit, conflict replacement, or restore first open Host-owned confirmation UI. Commit/restore review displays the exact candidate's type, title, date/time, zone, location, notes, recurrence, reminder, enable/tracking state, and completed instances; conflict review adds the current revision and field differences. The UI checks its captured Deck state revision before calling the API.
 - Draft/Review request receipts are retained in a bounded, process-local 128-entry cache. Durable request replay across adapter recreation/process death is not provided; do not describe the receipt cache as exactly-once persistence.
-- Explicit user-owned text capture creates a draft through `DraftReviewFeatureApiV1.createDraft`. It accepts an `EventFormV1`, rejects recurrence-edit scope fields, uses the Store's existing user draft transaction and AI lock, and returns the new draft identity/version. The adapter snapshots collection fields before queueing and fingerprints them canonically for request replay. The Host opens the returned draft ID. AI proposal writes retain their dedicated service and durable receipts; batch imports retain their per-item checkpoint contracts.
+- Explicit user-owned text capture creates a draft through `DraftReviewFeatureApiV1.createDraft`. It accepts an `EventFormV1`, rejects recurrence-edit scope fields, uses the Store's existing user draft transaction and AI lock, and returns the new draft identity/version. The adapter snapshots collection fields before queueing and fingerprints them canonically for request replay. The Host opens the returned draft ID. AI proposal writes use the separate `AiProposalFeatureApiV1`; AI batch execution and import checkpoint contracts remain separate.
 
-These are Event and Draft/Review vertical slices, not full Phase 1 closure. Native and Web Deck formal searches now use `searchEvents`, and both Memo completion Host paths use `setOccurrenceCompletion`. The Memo visibility precheck and other Host flows still perform direct Store reads; `DeckVisualContext` and `MemoVisualContext` still project Core types to runtime rendering; and authorized workflows outside the shared adapter do not publish to its change stream. Other domain APIs remain outside this coverage.
+These are Event, Draft/Review, and AI Proposal vertical slices, not full Phase 1 closure. Native and Web Deck formal searches now use `searchEvents`, both Memo completion Host paths use `setOccurrenceCompletion`, and Native/Web reviewed proposal actions use the shared `aiProposals` service. The Memo visibility precheck and other Host flows still perform direct Store reads; `DeckVisualContext` and `MemoVisualContext` still project Core types to runtime rendering; and authorized workflows outside the shared adapters do not publish to their change stream. Other domain APIs remain outside this coverage.
 
-## 8. Current adapter coverage and open work
+## 8. AI Proposal API v1 slice
 
-Verified code paths across the Event and Draft/Review pilots:
+`CoreFeatureApiV1.aiProposals` exposes the platform-neutral `AiProposalFeatureApiV1` contract. Native and Web review paths map the Host-owned `AiInterpretation` into detached API DTOs and call the same Store adapter. The API returns typed per-item outcomes and does not expose `PowerStore`, `AiDraftService`, or Host approval issuance through `:core-api`.
+
+- `createDrafts` stages explicit user-reviewed proposals and never publishes a formal event. Existing target revisions are checked before staging, duplicate target operations in one review are blocked, and an existing human draft is preserved. Its no-task outer request replay cache remains process-local.
+- `applyReviewedProposals` acts only on selected review positions. `PUBLISH` requires a one-use Host-issued approval bound to the exact request fingerprint. Existing-target operations carry the reviewed revision; the Store checks it again inside the SQLite transaction. Pending task-backed drafts must still match the reviewed form and operation, and commits use the reviewed draft version and target revision.
+- Per-item replay uses the existing `ai_task_receipts` table. Conversation tasks use their task/revision identity. Taskless API applies use an internal, deterministic task namespace derived from the request ID, so exact retries after API recreation reuse the original staged or committed item. The outer API request cache is still process-local. No database schema or backup format changed.
+- Expired task requests may replay exact existing receipts. Staging can reuse an exact existing item receipt; publishing additionally requires a terminal receipt, enforced again inside the Store transaction. An expired request cannot create a missing receipt. Target revision and receipt fingerprint checks remain inside the transaction where required.
+- Store change snapshots are captured while the Store monitor is held; feature changes are prepared without callbacks, then listeners run only after both the Store monitor and proposal mutation lock are released.
+- AI batch selection, locking, cancellation, and recovery remain on their existing path. This API slice does not claim that batch operations or every AI/provider tool call have moved behind the feature API.
+
+## 9. Current adapter coverage and open work
+
+Verified code paths across the Event, Draft/Review, and AI Proposal slices:
 
 - Native event creation and ordinary formal editing/deletion call the Host's shared `EventFeatureApiV1`.
 - `PowerCalApp.reload` obtains formal events through `queryEvents()`.
@@ -115,18 +126,21 @@ Verified code paths across the Event and Draft/Review pilots:
 - Web event editor create/update/checkpoint/save/delete and recurrence scope use the same API instance.
 - Web timeline movement reads a Host projection, then stages the revision-guarded replacement through `stageFormalReplacement`.
 - Native and Web Draft Decks use the shared `DraftReviewFeatureApiV1` for persisted draft edits, queue navigation, formal replacement proposals, conflict and restore review, commit, discard, and undo.
+- Native and Web AI proposal review actions use `AiProposalFeatureApiV1` for staging and reviewed publication, including Host-owned publish approval and per-item Store receipts.
 - A Robolectric adapter integration test performs a Native-side API create followed by a Web bridge create/checkpoint and observes shared feature revision/change events and Store-backed state. Its Native-side write calls the API directly; it does not mount `PowerCalApp` and drive the entire Native UI route. Separate editor Compose tests cover the API-backed editor component callbacks.
 
 Remaining work before PHASE 1 can exit:
 
-1. Route remaining authorized Host/Core reads and writes through versioned queries/commands and one change source; current direct paths include AI proposal application, ICS and structured Calendar import, backup restore, AI draft generation, and Memo visibility checks.
+1. Route remaining authorized Host/Core reads and writes through versioned queries/commands and one change source; current direct or separate paths include AI batch operations, ICS and structured Calendar import, backup restore, AI draft generation, and Memo visibility checks.
 2. Move remaining business decisions out of Web transport/Host adapters; keep the bridge focused on transport and trusted Host capabilities.
 3. Remove Core entity types from runtime Skin projections while maintaining the separate Native Presentation Contract.
-4. Add the required per-domain API contracts before claiming other feature areas are covered. Current v1 does not define Calendar paging, AI, reminders, import/export, or Settings/Data APIs. Draft/Review request replay remains process-local.
-5. Run required device checks when the independently owned AVD is available. Instrumentation for the current Event search/completion slice is **NOT TESTED**.
+4. Add the required per-domain API contracts before claiming other feature areas are covered. Current v1 does not define Calendar paging, AI batch control, reminders, import/export, or Settings/Data APIs. Draft/Review request replay and AI outer request replay remain process-local; AI Proposal item receipts are Store-backed.
+5. Run required device checks when the independently owned AVD is available. Instrumentation for Event search/completion and AI Proposal API behavior is **NOT TESTED**.
 
 Latest Draft/Review verification: focused API, DeckController, Store restore, Host review UI, and Web bridge tests passed **190/190**; the forced full JVM run passed **800 tests across 128 XML reports, 0 failures/errors/skips**. `verifySkinSourceBoundary`, `verifyNativeSkinBoundary`, Debug APK assembly, and `lintDebug` all passed; lint reported **0 errors / 54 warnings**. The Debug APK SHA-256 is `C22E82E434CBE5B02CD790FF72932074DA969A10BDF9095416179D3B8331AFB4` (66,683,502 bytes). Instrumentation and AVD behavior are **NOT TESTED**. Logs and the prior Event pilot’s transient full-suite failures are recorded in the current [progress entry](agent-handoff/PROGRESS.md) and the [Draft/Review Issue](issues/PC-ISSUE-CORE-DRAFT-REVIEW-API-V1.md); no cause is asserted for those earlier failures.
 
 Latest Event search/completion verification: focused API, adapter, Deck, and Web tests **64/64 PASS**; forced full JVM **803 tests across 128 XML reports, 0 failures/errors/skips**; AndroidTest Kotlin compilation **PASS**; source-boundary checks, Debug APK assembly, `lintDebug`, and `git diff --check` **PASS** with 0 lint errors / 54 warnings. Android instrumentation and device behavior are **NOT TESTED**. The Debug APK is 67,552,075 bytes, SHA-256 `03108E62D7BE9473C65A887D87BB906EDEAAD7AFFA46B18D0415BCD864161C06`. Details and per-log hashes are recorded in the [Event search report](issues/PC-ISSUE-CORE-EVENT-SEARCH-API-V1.md), [occurrence completion report](issues/PC-ISSUE-CORE-OCCURRENCE-COMPLETION-API-V1.md), and [AndroidTest harness migration report](issues/PC-ISSUE-SEPARATION-ANDROIDTEST-FEATURE-API-MIGRATION.md). Code commit `c9948d5465bc93da7e59984342c756549df9e295` was fast-forward pushed to `origin/feat/skin-first-separation`; Phase 1 remains open.
 
 Latest Draft creation verification: focused DraftReview API tests **13/13 PASS**; forced full JVM **806 tests across 128 XML reports, 0 failures/errors/skips**; AndroidTest Kotlin compilation, source-boundary checks, Debug APK assembly, `lintDebug`, and `git diff --check` **PASS**. Lint reported **0 errors / 54 warnings**. Android instrumentation is **NOT TESTED**. The Debug APK is 67,552,443 bytes, SHA-256 `C7C52F7EB0079968D4A0E8548BD742CD931181CFFA94D23BD41871021D8A84F3`. Per-log hashes and residual scope are recorded in the [Draft Creation Issue](issues/PC-ISSUE-CORE-DRAFT-CREATION-API-V1.md). Code commit `cb5823c573c1cbc2c59c50f751e099cee4e30d5e` was ordinary fast-forward pushed to `origin/feat/skin-first-separation`; Phase 1 remains open.
+
+Latest AI Proposal verification: focused API and Store receipt suites **24/24 PASS**; forced serial full JVM **824 tests across 129 XML reports, 0 failures/errors/skips**. Skin and Native source-boundary checks, Debug APK assembly, `lintDebug` (**0 errors / 54 warnings**), and AndroidTest Kotlin compilation all **PASS**. The Debug APK is **66,749,038 bytes**, SHA-256 `70D6D0E70D955F82416DE352CC9E1DAA5B9E9404C7C794DF5AEF3685AA79BF9F`. One earlier full run exposed an immediate UI assertion before the asynchronous Host confirmation appeared; the isolated test passed, the test now waits for the confirmation node, and the final serial suite passed. Android instrumentation and device behavior are **NOT TESTED**. Final evidence is in `.local/android-test/reports/core-ai-proposal-api-20261101/` and the [AI Proposal Issue](issues/PC-ISSUE-CORE-AI-PROPOSAL-API-V1.md). Code commit `92200a86bb5aadcd767cc7e3a5b858dccffdca5f` was fast-forward pushed to `origin/feat/skin-first-separation`; Phase 1 remains open.

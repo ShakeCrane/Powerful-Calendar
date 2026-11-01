@@ -1,6 +1,6 @@
 # PowerCal 分离阶段：远端治理与后续交付路线图
 
-**核对日期：2026-10-30**
+**核对日期：2026-11-01**
 **实施状态：远端 Git 分支整理已完成；功能分离仍未达到 cutover GO。**
 **权威代码与交付记录：** `main` 保持核心冻结；分离开发以 `origin/feat/skin-first-separation` 为唯一集成主线。
 本文件是下一轮 Codex/Agent 接手入口，不能取代带测试证据的 `SEPARATION_DELIVERY_CLOSURE_2026-10-30.md`、`SKIN_SEPARATION_PARITY_MATRIX_2026-10-27.md` 和各 Issue 报告。
@@ -9,26 +9,28 @@
 
 本节落实 `goal-objective.md` 的 PHASE 0–5 顺序，**优先级高于下文保留的 SEP/M1–M4 旧执行顺序**。功能矩阵继续记录覆盖与证据，不再决定主开发方向。
 
-**当前主阶段：PHASE 1 — ESTABLISH CORE FEATURE API。** Event Feature API v1 编辑器切片已由 `65a96b7ba97a639981d23eee7e05f8f39a85a68e` 推送；Draft/Review API v1 提交 `a12e107b868243e0563d5ca904edaf38c777f070` 已基于 `a3b51394bc0c546f1d7d4e02a2bd8cef9a8d22e9` 普通快进推送；搜索/完成状态 API 切片 `c9948d5465bc93da7e59984342c756549df9e295` 已基于新鲜远端点 `d3bb0700d6c3911c651025e92c1906e8975eae14` 推送；本次文本草稿 API 切片 `cb5823c573c1cbc2c59c50f751e099cee4e30d5e` 于 2026-11-01 基于 `26ce18846de90af16d1591dbe54f42145aaf16b5` 普通快进推送至 `origin/feat/skin-first-separation`。本次完整回归、APK 与路线图状态在独立文档提交中记录。独立 delivery worktree 中的未提交 AndroidTest 变更仍保留，未与本任务混写。
+**当前主阶段：PHASE 1 — ESTABLISH CORE FEATURE API。** Event Feature API v1 编辑器切片已由 `65a96b7ba97a639981d23eee7e05f8f39a85a68e` 推送；Draft/Review API v1 提交 `a12e107b868243e0563d5ca904edaf38c777f070` 已基于 `a3b51394bc0c546f1d7d4e02a2bd8cef9a8d22e9` 普通快进推送；搜索/完成状态 API 切片 `c9948d5465bc93da7e59984342c756549df9e295` 与文本草稿 API 切片 `cb5823c573c1cbc2c59c50f751e099cee4e30d5e` 已推送。最新 AI Proposal Feature API v1 代码提交 `92200a86bb5aadcd767cc7e3a5b858dccffdca5f` 基于新鲜远端点 `fbd22bc49498487b911889ff794e9e138d086a05` 普通快进推送至 `origin/feat/skin-first-separation`；代码与远端 SHA 已核对一致。完整验证、APK 与本次独立 Issue 在下文记录。并行 delivery worktree 的未提交 AndroidTest 变更仍保留，未与本任务混写。
 
-**当前切片：Event Feature API v1 + Draft/Review Feature API v1。** 纯 Kotlin `:core-api` 提供版本化 DTO/接口；Native 与 Web Deck 共用 Host 创建的 Draft/Review 服务。打开/刷新、创建、编辑、暂存、选择/移动、正式替换提案、冲突与恢复审核、提交、丢弃及撤销现经此 API；正式提交与恢复保留 Store 事务、草稿版本和墓碑版本检查。事件 API提供基于只读快照的正式搜索和带 revision/state 前置条件的 Memo 完成命令；Native 与 Web 路径均使用同一服务，完成变更通过 `FORMAL_UPDATED` 通知。明确的文本捕获通过 DraftReview API 创建草稿，不直接写 Store；其请求快照、重放收据与单次变更发布已验证。被独立审查指出的“审核提交在暂存版本冲突时重试并覆盖并发草稿”已修复：审核路径只按已审版本暂存，冲突即拒绝且保留本地表单。自定义 Skin 的正式写入继续经 Host 确认 UI。详情见 [`CORE_FEATURE_API_V1.md`](CORE_FEATURE_API_V1.md)、[Draft/Review Issue](issues/PC-ISSUE-CORE-DRAFT-REVIEW-API-V1.md)、[Event search Issue](issues/PC-ISSUE-CORE-EVENT-SEARCH-API-V1.md)、[Occurrence completion Issue](issues/PC-ISSUE-CORE-OCCURRENCE-COMPLETION-API-V1.md)、[Draft creation Issue](issues/PC-ISSUE-CORE-DRAFT-CREATION-API-V1.md) 和 [AndroidTest harness migration Issue](issues/PC-ISSUE-SEPARATION-ANDROIDTEST-FEATURE-API-MIGRATION.md)。
+**当前切片：Event、Draft/Review、AI Proposal Feature API v1。** 纯 Kotlin `:core-api` 提供版本化 DTO/接口；Native 与 Web Host 共用同一 API adapter。既有 AI 提案映射为 detached DTO；暂存与审核后发布通过 `AiProposalFeatureApiV1`，发布要求 Host 签发、绑定请求指纹且一次性的显式批准，并按所选条目返回收据。目标 revision、待审草稿版本和任务收据在 Store 事务内复核；taskless apply 使用基于 request ID 的稳定收据命名空间，不改数据库 schema 或备份格式。外层请求缓存及独立 `createDrafts` 重放仍是进程内；AI batch、provider/tool orchestration 及其他授权路径仍分离。详情见 [`CORE_FEATURE_API_V1.md`](CORE_FEATURE_API_V1.md)、[AI Proposal Issue](issues/PC-ISSUE-CORE-AI-PROPOSAL-API-V1.md)、[Draft/Review Issue](issues/PC-ISSUE-CORE-DRAFT-REVIEW-API-V1.md)、[Event search Issue](issues/PC-ISSUE-CORE-EVENT-SEARCH-API-V1.md)、[Occurrence completion Issue](issues/PC-ISSUE-CORE-OCCURRENCE-COMPLETION-API-V1.md)、[Draft creation Issue](issues/PC-ISSUE-CORE-DRAFT-CREATION-API-V1.md) 和 [AndroidTest harness migration Issue](issues/PC-ISSUE-SEPARATION-ANDROIDTEST-FEATURE-API-MIGRATION.md)。
 
 本切片聚焦回归 **64/64 PASS**；强制全量 JVM **803/803，128 XML reports，0 failure/error/skip**；AndroidTest Kotlin 编译、`verifySkinSourceBoundary`、`verifyNativeSkinBoundary`、Debug APK assemble 和 `lintDebug` 均 PASS，lint **0 errors / 54 warnings**。APK **67,552,075 bytes**，SHA-256 `03108E62D7BE9473C65A887D87BB906EDEAAD7AFFA46B18D0415BCD864161C06`。`git diff --check` PASS。Android instrumentation/AVD 未测试，本次未触碰设备。
 
 文本草稿 API 聚焦回归 **13/13 PASS**；强制全量 JVM **806/806，128 XML reports，0 failure/error/skip**；AndroidTest Kotlin 编译、两项 source boundary、Debug APK assemble 和 `lintDebug` 均 PASS，lint **0 errors / 54 warnings**。APK **67,552,443 bytes**，SHA-256 `C7C52F7EB0079968D4A0E8548BD742CD931181CFFA94D23BD41871021D8A84F3`。Android instrumentation/AVD 未测试；详见 [Draft Creation Issue](issues/PC-ISSUE-CORE-DRAFT-CREATION-API-V1.md)。
 
-**PHASE 1 尚未退出。** 正式事件搜索与 Memo 完成命令已接入 Event API；其他授权 Host/Core 读取或写入仍绕过统一领域 API/变更源。`DeckVisualContext`、`MemoVisualContext` 等 runtime Skin projection 仍包含 Core 类型。Calendar、AI、Reminder、Import/Export、Settings/Data 等必需领域接口尚未齐备。当前切片不代表全功能 API、Native/Skin parity、runtime separation 或 cutover PASS。
+AI Proposal API v1 聚焦 API 与 Store 收据测试 **24/24 PASS**，单独复测 Web Host 确认 UI **1/1 PASS**。最终强制串行全量门禁 `:app:verifySkinSourceBoundary :app:verifyNativeSkinBoundary :app:testDebugUnitTest :app:assembleDebug :app:lintDebug :app:compileDebugAndroidTestKotlin --offline --rerun-tasks --max-workers=1 --console=plain` **BUILD SUCCESSFUL**：JVM **824/824**，129 XML reports，0 failure/error/skip；两项 source boundary、Debug APK、lint（0 errors / 54 warnings）及 AndroidTest Kotlin 编译均 PASS。APK **66,749,038 bytes**，SHA-256 `70D6D0E70D955F82416DE352CC9E1DAA5B9E9404C7C794DF5AEF3685AA79BF9F`。首次并行强制全量运行有 1 项 Web Host UI 测试在异步确认节点出现前立即断言而失败；孤立复测通过，测试改为等待该节点后，最终完整串行门禁通过。Android instrumentation/设备行为 **NOT TESTED**，本轮未触碰设备。日志及 SHA-256 见 [AI Proposal Issue](issues/PC-ISSUE-CORE-AI-PROPOSAL-API-V1.md) 与忽略目录 `.local/android-test/reports/core-ai-proposal-api-20261101/`。
+
+**PHASE 1 尚未退出。** 正式事件搜索与 Memo 完成命令已接入 Event API；AI reviewed proposal 的 staging/publishing 也已有独立 API 切片，但 AI batch、AI draft generation 及其他授权 Host/Core 读取或写入仍未全部经统一领域 API/变更源。`DeckVisualContext`、`MemoVisualContext` 等 runtime Skin projection 仍包含 Core 类型。Calendar paging、Reminder、Import/Export、Settings/Data 等必需领域接口尚未齐备。当前切片不代表全功能 API、Native/Skin parity、runtime separation 或 cutover PASS。
 
 | 阶段 | 当前状态 | 退出条件摘要 |
 | --- | --- | --- |
 | PHASE 0 — Current State Reconciliation | 本轮已核对 HEAD、脏工作区、远端 freshness、模块边界，以及 Native/Web 事件调用路径；全功能域架构映射和冻结后历史变更分类沿用现有验收资料，仍需按领域补齐，不做无边界历史重查 | 架构归属、冻结语义风险及剩余 API 缺口均有可核查清单 |
-| PHASE 1 — Establish Core Feature API | **进行中：Event v1 + Draft/Review v1 vertical slices** | Core API 有真实实现；领域契约齐全；Native/Web 使用同一服务；Skin 不依赖 Core 内部实现；Host 不承担第二套业务规则；冻结语义保持 |
+| PHASE 1 — Establish Core Feature API | **进行中：Event v1 + Draft/Review v1 + AI Proposal v1 vertical slices** | Core API 有真实实现；领域契约齐全；Native/Web 使用同一服务；Skin 不依赖 Core 内部实现；Host 不承担第二套业务规则；冻结语义保持 |
 | PHASE 2 — Complete Runtime Separation | 未开始 | Clear、第三方 `.pcskin`、Native fallback 对所有冻结功能使用统一数据、授权、错误与恢复语义；替换 Skin 不改 Core |
 | PHASE 3 — Complete Skin Studio | 未开始 | Clear 与结构不同的第三方 Skin 可任意编辑/重构、预览、构建、导出、重导入并在 Android 运行 |
 | PHASE 4 — AI Autonomous Skin Authoring | 未开始 | AI 通过 Studio 正式工具端到端完成项目分析、修改、素材、构建、校验、预览、修复及交付 |
 | PHASE 5 — Final Delivery | 未开始 | 同一交付基线集成 Core API/Runtime、多 Skin、Native fallback、Studio、AI、文档、测试、APK 与 `.pcskin`；实体/OEM 验收清单独立交付 |
 
-**唯一 NEXT_ACTION：** 建立 reviewed AI proposal API 包装既有 `AiDraftService` 路径，保持 Host 审核、显式授权、目标 revision 与持久收据；后续再分别补齐 Calendar/Import/Data/Reminder API，并继续移除 runtime Skin projection 中的 Core 实体类型，保持冻结语义和 Native fallback。
+**唯一 NEXT_ACTION：** 建立 Reminder Feature API v1，复用现有提醒调度、持久状态与恢复语义；明确 Native/Web 共用边界和版本/收据行为，不改变冻结语义。后续继续补齐 Calendar、Import/Export、Settings/Data 等领域 API，并移除 runtime Skin projection 中的 Core 实体类型；Native fallback 保持可用。
 
 ## 1. 当前版本基准及实际证据
 
