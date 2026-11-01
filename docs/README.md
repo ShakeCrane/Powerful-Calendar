@@ -28,6 +28,9 @@ the recurrence window, completion behavior, and device-verification limits.
 Native and Web timeline/month reads now use the bounded Calendar Feature API; see the
 [Calendar API report](issues/PC-ISSUE-CORE-CALENDAR-API-V1.md) for snapshot, window, and
 device-verification limits.
+The compiled Draft Deck renderer now receives versioned Draft/Review API DTOs instead of Core
+controller/form types; see the [Draft Deck projection report](issues/PC-ISSUE-CORE-DRAFT-REVIEW-PROJECTION-API-V1.md)
+for the Host callback boundary and verification limits.
 Native and Web ICS/structured Calendar import, export, and backup/restore now use Import/Export
 Feature API v1; see the [Import/Export API report](issues/PC-ISSUE-CORE-IMPORT-EXPORT-API-V1.md)
 for transaction boundaries and device/SAF verification limits.

@@ -273,6 +273,13 @@ edit sessions, save/exit decisions, scoped authorization, and outer Host confirm
 in `:app`. This slice establishes a source-module boundary; it does not sign SEP-08 or Native/Clear
 functional parity, Android WebView/device behavior, or Skin Studio support.
 
+The separate compiled Draft Deck renderer adapter (`DeckVisualContext` in `:app`) now carries the
+versioned `DraftReviewSnapshotV1`, `EventFormV1`, and `EventKindV1` contracts instead of exposing
+`DeckController.DeckState`, `DraftForm`, or `TemporalKind`. Host callbacks retain Core conversion,
+editing, commit review, and conflict/restore approval; the Native fallback remains available. This
+Compose context is a presentation adapter, not part of the Core Feature API. `NativeDeckState` and
+the Native renderer contract remain separate in `:skin-api`.
+
 ### Native Chrome display boundary (2026-10-30)
 
 `ChromeVisualContext` and `ChromeVisualRenderer` are provided with `:native-skin`; the Host
