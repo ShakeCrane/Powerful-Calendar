@@ -5,6 +5,10 @@ import dev.powerfulcalendar.core.Recurrence
 import dev.powerfulcalendar.core.RecurrenceFreq
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
+import dev.powerfulcalendar.core.api.v1.CoreRecurrenceFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.RecurrenceNextOccurrenceQueryV1
+import dev.powerfulcalendar.core.api.v1.RecurrenceNextOccurrenceV1
+import dev.powerfulcalendar.core.api.v1.toEventRecordV1
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -23,6 +27,7 @@ import java.time.ZonedDateTime
 class WebSkinSystemDiagnosticsProjectionTest {
     private val zone = ZoneId.of("UTC")
     private val now = Instant.parse("2026-10-30T12:00:00Z").toEpochMilli()
+    private val recurrenceApi = CoreRecurrenceFeatureApiV1()
 
     private fun alarm(
         eventSeq: Long,
@@ -37,6 +42,24 @@ class WebSkinSystemDiagnosticsProjectionTest {
         recurrence = recurrence,
         zoneId = zone.id
     )
+
+    private fun recurrencePreviews(
+        records: List<TemporalRecord>,
+        afterMillis: Long = now,
+        localZone: ZoneId = zone
+    ): List<RecurrenceNextOccurrenceV1> = records.asSequence()
+        .filter { it.recurrence.isRepeating }
+        .take(3)
+        .map { record ->
+            recurrenceApi.queryNextOccurrence(
+                RecurrenceNextOccurrenceQueryV1(
+                    event = record.toEventRecordV1(),
+                    afterMillis = afterMillis,
+                    localZoneId = localZone.id
+                )
+            )
+        }
+        .toList()
 
     @Test
     fun projectionMirrorsNativeCountsWatermarksEffectsAndThreeNextOccurrences() {
@@ -53,8 +76,8 @@ class WebSkinSystemDiagnosticsProjectionTest {
             nextSequence = 42,
             identityCount = 987_654_321_987_654_321L,
             effects = GlassEffects(blur = false, animationScale = 0f, reduceMotion = true),
-            nowMillis = now,
-            zone = zone
+            zone = zone,
+            recurrencePreviews = recurrencePreviews(records)
         )
 
         assertEquals(records.size, projected.getInt("formalCount"))
@@ -86,8 +109,8 @@ class WebSkinSystemDiagnosticsProjectionTest {
             nextSequence = 8,
             identityCount = 7,
             effects = GlassEffects(),
-            nowMillis = now,
-            zone = zone
+            zone = zone,
+            recurrencePreviews = recurrencePreviews(listOf(ended))
         )
 
         val recurrence = projected.getJSONArray("recurrences").getJSONObject(0)
@@ -115,8 +138,10 @@ class WebSkinSystemDiagnosticsProjectionTest {
             nextSequence = 10,
             identityCount = 9,
             effects = GlassEffects(),
-            nowMillis = Instant.parse("2026-11-01T06:00:00Z").toEpochMilli(),
-            zone = localZone
+            zone = localZone,
+            recurrencePreviews = recurrencePreviews(
+                listOf(record), Instant.parse("2026-11-01T06:00:00Z").toEpochMilli(), localZone
+            )
         )
 
         val recurrence = projected.getJSONArray("recurrences").getJSONObject(0)

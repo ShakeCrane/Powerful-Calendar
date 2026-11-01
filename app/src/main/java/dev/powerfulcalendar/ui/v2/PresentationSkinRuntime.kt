@@ -34,6 +34,7 @@ import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.api.v1.MemoEntryV1
 import dev.powerfulcalendar.core.api.v1.ReminderScheduleStateV1
+import dev.powerfulcalendar.core.api.v1.RecurrenceNextOccurrenceV1
 import dev.powerfulcalendar.core.api.v1.toEventRecordV1
 import dev.powerfulcalendar.ui.v2.nativeui.*
 import java.time.LocalDate
@@ -339,9 +340,8 @@ internal fun projectSettingsDisplaySnapshot(
     canReleaseStuckBatch: Boolean,
     exactAlarmAllowed: Boolean,
     notificationsAllowed: Boolean,
-    nowMillis: Long,
     formalEventCount: Int = records.size,
-    recurrenceRecords: List<TemporalRecord> = records
+    recurrencePreviews: List<RecurrenceNextOccurrenceV1> = emptyList()
 ): SettingsDisplaySnapshot = SettingsDisplaySnapshot(
     pendingCount = pendingCount,
     formalEventCount = formalEventCount,
@@ -373,10 +373,10 @@ internal fun projectSettingsDisplaySnapshot(
             execution = row.status.lastExecutionResult
         )
     },
-    recurrence = recurrenceRecords.filter { it.recurrence.isRepeating }.take(3).map { record ->
-        val next = RecurrenceEngine.nextOccurrence(record, nowMillis)
+    recurrence = recurrencePreviews.take(3).map { preview ->
+        val next = preview.occurrence
         SettingsRecurrencePreview(
-            label = "重复 #${record.eventSeq}",
+            label = "重复 #${preview.eventSeq}",
             next = next?.let { "下一次 " + DraftForm.formatInstant(it.startMillis) } ?: "没有后续实例"
         )
     }
@@ -387,7 +387,6 @@ internal fun ToolsPage(
     diagnostics: UiDiagnostics,
     exactAlarmAllowed: Boolean,
     notificationsAllowed: Boolean,
-    nowMillis: Long,
     records: List<TemporalRecord>,
     pendingCount: Int,
     aiLocked: Boolean,
@@ -416,15 +415,15 @@ internal fun ToolsPage(
     onReleaseStuck: () -> Unit,
     settingsDataApi: SettingsDataFeatureApiV1,
     formalEventCount: Int = records.size,
-    recurrenceRecords: List<TemporalRecord> = records
+    recurrencePreviews: List<RecurrenceNextOccurrenceV1> = emptyList()
 ) {
     val settingsDisplay = remember(
         diagnostics, records, pendingCount, aiLocked, aiSession, canReleaseStuckBatch,
-        exactAlarmAllowed, notificationsAllowed, nowMillis, formalEventCount, recurrenceRecords
+        exactAlarmAllowed, notificationsAllowed, formalEventCount, recurrencePreviews
     ) {
         projectSettingsDisplaySnapshot(
             diagnostics, records, pendingCount, aiLocked, aiSession, canReleaseStuckBatch,
-            exactAlarmAllowed, notificationsAllowed, nowMillis, formalEventCount, recurrenceRecords
+            exactAlarmAllowed, notificationsAllowed, formalEventCount, recurrencePreviews
         )
     }
     val settingsEffects = SettingsVisualEffects(effects.blur, effects.animationScale, effects.reduceMotion)

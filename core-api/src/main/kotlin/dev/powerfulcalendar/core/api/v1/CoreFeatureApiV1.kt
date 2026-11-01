@@ -319,6 +319,7 @@ interface CoreFeatureApiV1 {
     val apiVersion: Int
     val calendar: CalendarFeatureApiV1
     val events: EventFeatureApiV1
+    val recurrence: RecurrenceFeatureApiV1
     val draftReview: DraftReviewFeatureApiV1
     val ai: AiFeatureApiV1
     val aiProposals: AiProposalFeatureApiV1

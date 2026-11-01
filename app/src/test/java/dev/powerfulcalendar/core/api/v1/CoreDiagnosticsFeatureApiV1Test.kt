@@ -89,6 +89,19 @@ class CoreDiagnosticsFeatureApiV1Test {
         assertEquals(Long::class.javaPrimitiveType, CoreDiagnosticsV1::class.java.getDeclaredField("nextSequencePreview").type)
     }
 
+    @Test fun recurrenceFeatureIsRegisteredOnTheUnifiedCoreProvider() {
+        assertSame(core.recurrence, core.recurrence)
+        assertEquals(1, core.recurrence.apiVersion)
+        val signatures = RecurrenceFeatureApiV1::class.java.declaredMethods
+            .joinToString(" ") { method ->
+                method.genericReturnType.typeName + method.genericParameterTypes.joinToString()
+            }
+        assertFalse(signatures.contains("android.content.Context"))
+        assertFalse(signatures.contains("PowerStore"))
+        assertFalse(signatures.contains("TemporalRecord"))
+        assertFalse(signatures.contains("RecurrenceEngine"))
+    }
+
     private data class StoreCounts(
         val nextSequence: Long,
         val identities: Long,

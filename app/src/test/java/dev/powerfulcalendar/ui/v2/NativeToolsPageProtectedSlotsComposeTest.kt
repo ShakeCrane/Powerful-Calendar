@@ -8,6 +8,9 @@ import dev.powerfulcalendar.core.Recurrence
 import dev.powerfulcalendar.core.RecurrenceFreq
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
+import dev.powerfulcalendar.core.api.v1.CoreRecurrenceFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.RecurrenceNextOccurrenceQueryV1
+import dev.powerfulcalendar.core.api.v1.toEventRecordV1
 import dev.powerfulcalendar.core.api.v1.AndroidSettingsDataFeatureApiV1
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertEquals
@@ -30,7 +33,6 @@ class NativeToolsPageProtectedSlotsComposeTest {
                     diagnostics = UiDiagnostics(),
                     exactAlarmAllowed = false,
                     notificationsAllowed = false,
-                    nowMillis = 0L,
                     records = emptyList(),
                     pendingCount = 0,
                     aiLocked = false,
@@ -107,8 +109,7 @@ class NativeToolsPageProtectedSlotsComposeTest {
             aiSession = null,
             canReleaseStuckBatch = false,
             exactAlarmAllowed = true,
-            notificationsAllowed = false,
-            nowMillis = 0L
+            notificationsAllowed = false
         )
 
         assertEquals(3, display.pendingCount)
@@ -142,9 +143,16 @@ class NativeToolsPageProtectedSlotsComposeTest {
             canReleaseStuckBatch = false,
             exactAlarmAllowed = false,
             notificationsAllowed = false,
-            nowMillis = 0L,
             formalEventCount = 301,
-            recurrenceRecords = listOf(laterRecurrence)
+            recurrencePreviews = listOf(
+                CoreRecurrenceFeatureApiV1().queryNextOccurrence(
+                    RecurrenceNextOccurrenceQueryV1(
+                        event = laterRecurrence.toEventRecordV1(),
+                        afterMillis = 0L,
+                        localZoneId = "UTC"
+                    )
+                )
+            )
         )
 
         assertEquals(301, display.formalEventCount)

@@ -52,6 +52,7 @@ class PowerCalCoreFeatureApiV1(
     override val apiVersion: Int = 1
     private val eventService = StoreEventFeatureApiV1(store, clock)
     private val calendarService = StoreCalendarFeatureApiV1(store) { eventService.featureRevision }
+    private val recurrenceService = CoreRecurrenceFeatureApiV1()
     private val draftReviewService = StoreDraftReviewFeatureApiV1(store, deckController, eventService)
     private val aiService = StoreAiFeatureApiV1(
         store, eventService, calendarService, aiModelPort, clock, aiConversationHistoryPort
@@ -66,6 +67,7 @@ class PowerCalCoreFeatureApiV1(
     private val memoService = StoreMemoFeatureApiV1(store) { eventService.featureRevision }
     override val calendar: CalendarFeatureApiV1 get() = calendarService
     override val events: EventFeatureApiV1 get() = eventService
+    override val recurrence: RecurrenceFeatureApiV1 get() = recurrenceService
     override val draftReview: DraftReviewFeatureApiV1 get() = draftReviewService
     override val ai: AiFeatureApiV1 get() = aiService
     override val aiProposals: AiProposalFeatureApiV1 get() = aiProposalService

@@ -2,8 +2,8 @@ package dev.powerfulcalendar.ui.v2
 
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.PowerStore
-import dev.powerfulcalendar.core.RecurrenceEngine
 import dev.powerfulcalendar.core.TemporalRecord
+import dev.powerfulcalendar.core.api.v1.RecurrenceNextOccurrenceV1
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.ZoneId
@@ -17,20 +17,18 @@ internal object WebSkinSystemDiagnosticsProjection {
         nextSequence: Long,
         identityCount: Long,
         effects: GlassEffects,
-        nowMillis: Long,
         zone: ZoneId = ZoneId.systemDefault(),
         formalCount: Int = records.size,
-        recurrenceRecords: List<TemporalRecord> = records
+        recurrencePreviews: List<RecurrenceNextOccurrenceV1> = emptyList()
     ): JSONObject {
         val recurrences = JSONArray().apply {
-            recurrenceRecords.asSequence()
-                .filter { it.recurrence.isRepeating }
+            recurrencePreviews.asSequence()
                 .take(MAX_RECURRENCES)
-                .forEach { record ->
-                    val next = RecurrenceEngine.nextOccurrence(record, nowMillis, zone)
+                .forEach { preview ->
+                    val next = preview.occurrence
                     put(
                         JSONObject()
-                            .put("label", "重复 #${record.eventSeq}")
+                            .put("label", "重复 #${preview.eventSeq}")
                             .put(
                                 "value",
                                 next?.let { "下一次 ${DraftForm.formatInstant(it.startMillis, zone)}" }

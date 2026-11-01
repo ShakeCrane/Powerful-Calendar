@@ -83,6 +83,8 @@ import dev.powerfulcalendar.core.api.v1.EventEditorHandleV1
 import dev.powerfulcalendar.core.api.v1.EventEditorOpenResultV1
 import dev.powerfulcalendar.core.api.v1.EventEditorSnapshotV1
 import dev.powerfulcalendar.core.api.v1.EventKindV1
+import dev.powerfulcalendar.core.api.v1.EventRecordV1
+import dev.powerfulcalendar.core.api.v1.EventRecurrenceFrequencyV1
 import dev.powerfulcalendar.core.api.v1.EventFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.EventQueryCursorV1
 import dev.powerfulcalendar.core.api.v1.EventMutationStatusV1
@@ -112,6 +114,7 @@ import dev.powerfulcalendar.core.api.v1.StructuredImportBatchHandleV1
 import dev.powerfulcalendar.core.api.v1.StructuredImportStatusV1
 import dev.powerfulcalendar.core.api.v1.SettingsDataMutationStatusV1
 import dev.powerfulcalendar.core.api.v1.BackupRestoreReceiptV1
+import dev.powerfulcalendar.core.api.v1.RecurrenceNextOccurrenceQueryV1
 import dev.powerfulcalendar.core.api.v1.newImportRequestId
 import dev.powerfulcalendar.core.api.v1.ReminderEventSnapshotV1
 import dev.powerfulcalendar.core.api.v1.ReminderReconcileModeV1
@@ -207,7 +210,7 @@ internal data class UiDiagnostics(
     val nextSequence: Long = 1,
     val identities: Long = 0,
     val reminders: List<ReminderDisplay> = emptyList(),
-    val recurrenceRecords: List<TemporalRecord> = emptyList()
+    val recurrenceEvents: List<EventRecordV1> = emptyList()
 )
 
 private data class AppData(
@@ -247,6 +250,7 @@ fun PowerCalApp(
     }
     val calendarFeatureApi = coreFeatureApi.calendar
     val eventFeatureApi = coreFeatureApi.events
+    val recurrenceFeatureApi = coreFeatureApi.recurrence
     val memoFeatureApi = coreFeatureApi.memos
     val draftReviewApi = coreFeatureApi.draftReview
     val aiFeatureApi = coreFeatureApi.ai
@@ -379,6 +383,17 @@ fun PowerCalApp(
     var pendingBatchMode by remember { mutableStateOf<AiBatchRunner.Mode?>(null) }
     var pendingCards by remember { mutableStateOf<List<dev.powerfulcalendar.core.DraftCard>>(emptyList()) }
     var diagnostics by remember { mutableStateOf(UiDiagnostics()) }
+    val recurrencePreviews = remember(diagnostics.recurrenceEvents, nowMillis, zone.id) {
+        diagnostics.recurrenceEvents.map { event ->
+            recurrenceFeatureApi.queryNextOccurrence(
+                RecurrenceNextOccurrenceQueryV1(
+                    event = event,
+                    afterMillis = nowMillis,
+                    localZoneId = zone.id
+                )
+            )
+        }
+    }
     var monthInspection by remember { mutableStateOf<TemporalRecord?>(null) }
     var editSession by remember { mutableStateOf<EventEditorHandleV1?>(null) }
     var editEditor by remember { mutableStateOf<EventEditorSnapshotV1?>(null) }
@@ -556,16 +571,17 @@ fun PowerCalApp(
                 ) return@repeat
                 val formalPage = eventPage.events.map { it.toCoreTemporalRecord() }
                 val reminderRows = ArrayList<ReminderDisplay>(40)
-                val recurrenceRows = ArrayList<TemporalRecord>(3)
-                fun collectSettingsRows(events: List<dev.powerfulcalendar.core.api.v1.EventRecordV1>) {
+                val recurrenceRows = ArrayList<EventRecordV1>(3)
+                fun collectSettingsRows(events: List<EventRecordV1>) {
                     events.forEach { event ->
-                        val record = event.toCoreTemporalRecord()
-                        if (recurrenceRows.size < 3 && record.recurrence.isRepeating) {
-                            recurrenceRows += record
+                        if (recurrenceRows.size < 3 &&
+                            event.recurrence.frequency != EventRecurrenceFrequencyV1.NONE
+                        ) {
+                            recurrenceRows += event
                         }
-                        if (reminderRows.size < 40 && record.enabled && record.reminderMinutes >= 0) {
+                        if (reminderRows.size < 40 && event.enabled && event.reminderMinutes >= 0) {
                             reminderRows += ReminderDisplay(
-                                record, reminderFeatureApi.queryEvent(record.eventSeq)
+                                event.toCoreTemporalRecord(), reminderFeatureApi.queryEvent(event.eventSeq)
                             )
                         }
                     }
@@ -601,7 +617,7 @@ fun PowerCalApp(
                         nextSequence = coreDiagnostics.nextSequencePreview,
                         identities = coreDiagnostics.identityCount,
                         reminders = reminderRows,
-                        recurrenceRecords = recurrenceRows
+                        recurrenceEvents = recurrenceRows
                     )
                 )
             }
@@ -2320,8 +2336,8 @@ fun PowerCalApp(
                 } else org.json.JSONArray())
                 .put("systemDiagnostics", if (page == Page.SETTINGS.name) {
                     WebSkinSystemDiagnosticsProjection.build(
-                        records, diagnostics.nextSequence, diagnostics.identities, effects, nowMillis, zone,
-                        totalEventCount, diagnostics.recurrenceRecords
+                        records, diagnostics.nextSequence, diagnostics.identities, effects, zone,
+                        totalEventCount, recurrencePreviews
                     )
                 } else JSONObject())
                 .put("editing", webEditing.snapshot())
@@ -2437,7 +2453,6 @@ fun PowerCalApp(
                 diagnostics = diagnostics,
                 exactAlarmAllowed = reminderPermissions.exactAlarm.allowed == true,
                 notificationsAllowed = reminderPermissions.notifications.allowed == true,
-                nowMillis = nowMillis,
                 records = records,
                 pendingCount = pendingCount,
                 aiLocked = aiLocked,
@@ -2512,7 +2527,7 @@ fun PowerCalApp(
                 },
                 settingsDataApi = coreFeatureApi.settingsData,
                 formalEventCount = totalEventCount,
-                recurrenceRecords = diagnostics.recurrenceRecords
+                recurrencePreviews = recurrencePreviews
             )
         } else if (presentedPage == Page.AI.name) {
             AiChatScreen(
