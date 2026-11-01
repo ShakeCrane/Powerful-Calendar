@@ -87,9 +87,11 @@ Native/Clear runtime parity remain **NOT TESTED / NOT SIGNED OFF**. PHASE 1 is o
 
 The previously noted Web Bridge retired-event page and tombstone query gap has since been addressed
 by `DraftReviewFeatureApiV1`; see the [retired-event query Issue](PC-ISSUE-CORE-DRAFT-RETIRED-QUERY-API-V1.md).
-The current single NEXT_ACTION in the separation roadmap and `PROGRESS.md` is to route the Web
-occurrence-by-key reads through `RecurrenceFeatureApiV1`. The draft-create replay/backup decision
-remains owner-dependent and is not changed by this read-only slice.
+Web occurrence-by-key reads have since been routed through `RecurrenceFeatureApiV1`; see the
+[Recurrence API Issue](PC-ISSUE-CORE-RECURRENCE-API-V1.md) for its contract and current verification.
+The current single NEXT_ACTION is to move Native `GlassPresentation` recurrence-window expansion
+behind the Core API. The draft-create replay/backup decision remains owner-dependent and is not
+changed by these read-only slices.
 
 ## Git delivery
 

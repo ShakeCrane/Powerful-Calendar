@@ -1,6 +1,6 @@
 # Core Feature API v1 — Calendar, Event, Recurrence, Memo, Draft/Review, AI, Reminder, Import/Export, Settings/Data, and Core Diagnostics slices
 
-- **Status:** Calendar window and bounded event queries, Event, Recurrence next-occurrence query, Memo, Draft/Review, AI Proposal/Feature/Query, Reminder, Import/Export, Settings/Data, and Core Diagnostics vertical slices implemented; PHASE 1 remains in progress.
+- **Status:** Calendar window and bounded event queries, Event, Recurrence next-occurrence and occurrence-by-key queries, Memo, Draft/Review, AI Proposal/Feature/Query, Reminder, Import/Export, Settings/Data, and Core Diagnostics vertical slices implemented; PHASE 1 remains in progress.
 - **Contract source:** `:core-api`, package `dev.powerfulcalendar.core.api.v1`, including `CoreFeatureApiV1.kt`, `CoreDiagnosticsFeatureApiV1.kt`, `CalendarFeatureApiV1.kt`, `EventFeatureApiV1.kt`, `RecurrenceFeatureApiV1.kt`, `MemoFeatureApiV1.kt`, `DraftReviewFeatureApiV1.kt`, `AiProposalFeatureApiV1.kt`, `AiFeatureApiV1.kt`, `ReminderFeatureApiV1.kt`, `ImportExportFeatureApiV1.kt`, and `SettingsDataFeatureApiV1.kt`.
 - **Runtime adapter:** `app/src/main/java/dev/powerfulcalendar/core/api/v1/PowerCalCoreFeatureApiV1.kt`.
 - **Updated:** 2026-11-02.
@@ -255,8 +255,15 @@ identity, override handling, and DST behavior are unchanged. Native and Web Sett
 now use this same API for their up-to-three next-occurrence previews. `PowerCalApp` retains the
 revision-checked paged event scan and chooses the first three repeating records; each preview is
 computed with the current instant and local zone, then both projections receive the same detached
-API result. This slice does not migrate other recurrence callers or add recurrence edit commands.
-Focused and full-gate evidence is recorded in the [Core Diagnostics API Issue](issues/PC-ISSUE-CORE-DIAGNOSTICS-API-V1.md).
+API result.
+
+`queryOccurrenceByKey()` accepts the same detached Event snapshot, an original slot key, and an
+explicit local zone. Its result echoes event sequence/revision and returns the materialized slot
+or `null`; it does not establish currentness. Web timeline event-open validation and Web formal
+write review use this query instead of calling `RecurrenceEngine` in the Host. The later Core event
+open/save operations and trusted approval/transaction checks remain responsible for rechecking
+write authority and freshness. This does not yet migrate Native `GlassPresentation` recurrence
+expansion or add recurrence edit commands. Evidence is in the [Recurrence API Issue](issues/PC-ISSUE-CORE-RECURRENCE-API-V1.md); the initial Settings diagnostics migration is also recorded in the [Core Diagnostics API Issue](issues/PC-ISSUE-CORE-DIAGNOSTICS-API-V1.md).
 
 ## 16. Current adapter coverage and open work
 
