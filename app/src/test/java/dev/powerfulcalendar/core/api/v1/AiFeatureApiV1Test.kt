@@ -64,6 +64,10 @@ class AiFeatureApiV1Test {
         assertEquals(listOf(target.eventSeq), model.lastChatContext.map { it.eventSeq })
         assertEquals(1, model.chatCalls)
         assertEquals(listOf("你好"), model.lastChatRequest?.history?.map { it.content })
+        assertEquals(
+            listOf(AiChatToolRegistryV1.CALENDAR_PROPOSE, AiChatToolRegistryV1.CALENDAR_QUERY),
+            model.lastChatRequest?.availableTools?.map { it.name }
+        )
         assertTrue(replay.replayed)
         assertEquals("你好", replay.reply)
         assertEquals(AiChatStatusV1.DUPLICATE_REQUEST_ID, conflicting.status)
@@ -79,6 +83,134 @@ class AiFeatureApiV1Test {
 
         assertEquals(AiChatStatusV1.COMPLETED, receipt.status)
         assertTrue(model.lastChatContext.isEmpty())
+        assertEquals(
+            listOf(AiChatToolRegistryV1.CALENDAR_PROPOSE),
+            model.lastChatRequest?.availableTools?.map { it.name }
+        )
+        assertTrue(store.pendingDrafts().isEmpty())
+    }
+
+    @Test fun sharedCalendarQueryUsesCoreSnapshotAndReplaysWithoutWritesOrAnotherModelCall() = runBlocking {
+        val target = createFormal("Design review")
+        val formalBefore = store.all()
+        model.chatOutput = AiChatModelOutputV1(
+            reply = "模型文本不会充当查询结果。",
+            toolCalls = listOf(AiChatToolCallV1(
+                callId = "call-query-1",
+                providerName = AiChatToolRegistryV1.PROVIDER_CALENDAR_QUERY,
+                argumentsJson = """{"fromDate":"2026-11-02","throughDate":"2026-11-02","title":"design","kind":"ACTIVITY","maxResults":5}"""
+            ))
+        )
+        val request = chatRequest("chat-calendar-query", share = true)
+
+        val first = core.ai.chat(request)
+        val replay = core.ai.chat(request)
+        val execution = first.toolExecutions.single()
+        val queryResult = requireNotNull(execution.calendarQuery)
+
+        assertEquals(AiChatStatusV1.COMPLETED, first.status)
+        assertEquals(AiChatToolExecutionStatusV1.EXECUTED, execution.status)
+        assertEquals(AiChatToolRegistryV1.CALENDAR_QUERY, execution.toolName)
+        assertEquals("call-query-1", execution.callId)
+        assertEquals(target.eventSeq, queryResult.results.single().eventSeq)
+        assertEquals(target.revision, queryResult.results.single().revision)
+        assertEquals(CalendarEventPrecisionV1.INTERVAL, queryResult.results.single().precision)
+        assertEquals("Asia/Shanghai", queryResult.results.single().zoneId)
+        assertEquals("Design review", queryResult.results.single().title)
+        assertTrue(first.reply.contains("Design review"))
+        assertNull(first.proposalIntent)
+        assertNull(first.automaticProposal)
+        assertEquals(1, model.chatCalls)
+        assertEquals(0, model.proposalCalls)
+        assertTrue(replay.replayed)
+        assertEquals(first.reply, replay.reply)
+        assertEquals(first.toolExecutions, replay.toolExecutions)
+        assertEquals(formalBefore, store.all())
+        assertTrue(store.pendingDrafts().isEmpty())
+    }
+
+    @Test fun calendarQueryToolIsRejectedWhenSharingIsOffEvenIfProviderReturnsIt() = runBlocking {
+        createFormal("private query target")
+        model.chatOutput = AiChatModelOutputV1(toolCalls = listOf(AiChatToolCallV1(
+            "call-private-query",
+            AiChatToolRegistryV1.PROVIDER_CALENDAR_QUERY,
+            """{"title":"private"}"""
+        )))
+
+        val receipt = core.ai.chat(chatRequest("chat-private-query", share = false))
+
+        assertEquals(AiChatToolExecutionStatusV1.REJECTED, receipt.toolExecutions.single().status)
+        assertNull(receipt.toolExecutions.single().calendarQuery)
+        assertTrue(receipt.toolExecutions.single().message.orEmpty().contains("未允许共享"))
+        assertEquals(listOf(AiChatToolRegistryV1.CALENDAR_PROPOSE),
+            model.lastChatRequest?.availableTools?.map { it.name })
+        assertTrue(model.lastChatContext.isEmpty())
+        assertEquals(0, model.proposalCalls)
+        assertTrue(store.pendingDrafts().isEmpty())
+    }
+
+    @Test fun calendarQueryRejectsMalformedOrUnboundedArguments() = runBlocking {
+        val invalidArguments = listOf(
+            "{\"kind\":\"ACTIVITY\"}",
+            "{\"fromDate\":\"2026-11-01\"}",
+            "{\"title\":\"meeting\",\"unexpected\":true}",
+            "{\"title\":\"meeting\",\"kind\":\"UNKNOWN\"}",
+            "{\"title\":\"meeting\",\"maxResults\":101}",
+            "{\"title\":\"${"x".repeat(1_100)}\"}",
+            "not-json"
+        )
+
+        invalidArguments.forEachIndexed { index, arguments ->
+            model.chatOutput = AiChatModelOutputV1(toolCalls = listOf(AiChatToolCallV1(
+                "call-query-invalid-$index",
+                AiChatToolRegistryV1.PROVIDER_CALENDAR_QUERY,
+                arguments
+            )))
+            val receipt = core.ai.chat(chatRequest("chat-query-invalid-$index", share = true))
+            assertEquals("args=$arguments", AiChatToolExecutionStatusV1.REJECTED,
+                receipt.toolExecutions.single().status)
+            assertNull(receipt.toolExecutions.single().calendarQuery)
+        }
+
+        model.chatOutput = AiChatModelOutputV1(
+            toolCalls = listOf(AiChatToolCallV1(
+                "call-query-not-advertised",
+                AiChatToolRegistryV1.PROVIDER_CALENDAR_QUERY,
+                "{\"title\":\"meeting\"}"
+            )),
+            toolCallsTruncated = true
+        )
+        val unadvertised = core.ai.chat(chatRequest("chat-query-not-advertised", share = true))
+        assertEquals(AiChatToolExecutionStatusV1.REJECTED,
+            unadvertised.toolExecutions.single().status)
+        assertNull(unadvertised.toolExecutions.single().calendarQuery)
+
+        assertEquals(0, model.proposalCalls)
+        assertTrue(store.pendingDrafts().isEmpty())
+    }
+
+    @Test fun queryToolDispatchIsBlockedWhenConversationChangesDuringProviderCall() = runBlocking {
+        model.chatOutput = AiChatModelOutputV1(toolCalls = listOf(AiChatToolCallV1(
+            "call-query-stale",
+            AiChatToolRegistryV1.PROVIDER_CALENDAR_QUERY,
+            """{"title":"meeting"}"""
+        )))
+        model.beforeChatReturn = {
+            val snapshot = core.ai.queryConversation()
+            core.ai.appendConversationMessage(AiConversationMessageV1(
+                role = AiConversationRoleV1.ASSISTANT,
+                content = "更新的对话",
+                messageId = "query-stale-assistant",
+                createdAtMillis = clock.millis(),
+                zoneId = zone.id
+            ), snapshot.revision)
+        }
+
+        val receipt = core.ai.chat(chatRequest("chat-query-stale", share = true))
+
+        assertEquals(AiChatStatusV1.STALE_CONVERSATION, receipt.status)
+        assertTrue(receipt.toolExecutions.isEmpty())
+        assertEquals(0, model.proposalCalls)
         assertTrue(store.pendingDrafts().isEmpty())
     }
 
@@ -181,7 +313,7 @@ class AiFeatureApiV1Test {
         val receipt = core.ai.chat(chatRequest("chat-tool-reject"))
 
         assertEquals(AiChatStatusV1.COMPLETED, receipt.status)
-        assertEquals("日程工具请求未通过 Core 校验；未生成提案，也未修改日历。", receipt.reply)
+        assertEquals("工具请求未通过 Core 校验；未执行日历操作。", receipt.reply)
         assertEquals(2, receipt.toolExecutions.size)
         assertTrue(receipt.toolExecutions.all {
             it.status == AiChatToolExecutionStatusV1.REJECTED

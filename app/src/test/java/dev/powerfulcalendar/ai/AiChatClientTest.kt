@@ -6,7 +6,11 @@ import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
+import dev.powerfulcalendar.core.api.v1.AiChatModelRequestV1
+import dev.powerfulcalendar.core.api.v1.AiConversationMessageV1
+import dev.powerfulcalendar.core.api.v1.AiConversationRoleV1
 import dev.powerfulcalendar.core.api.v1.AiChatToolRegistryV1
+import dev.powerfulcalendar.core.api.v1.AndroidAiModelPortV1
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.Assert.*
@@ -68,9 +72,128 @@ class AiChatClientTest {
             assertEquals(ChatProposalIntent.EXPLICIT, result.proposalIntent)
             val body = JSONObject(requestBody.get())
             assertEquals("auto", body.getString("tool_choice"))
+            val providerTools = body.getJSONArray("tools")
+            assertEquals(2, providerTools.length())
             assertEquals(AiChatToolRegistryV1.PROVIDER_CALENDAR_PROPOSE,
-                body.getJSONArray("tools").getJSONObject(0)
-                    .getJSONObject("function").getString("name"))
+                providerTools.getJSONObject(0).getJSONObject("function").getString("name"))
+            val queryDefinition = AiChatToolRegistryV1.tools.single {
+                it.name == AiChatToolRegistryV1.CALENDAR_QUERY
+            }
+            val querySchema = JSONObject(queryDefinition.inputJsonSchema)
+            assertFalse(querySchema.getBoolean("additionalProperties"))
+            assertTrue(querySchema.getJSONObject("properties").has("fromDate"))
+            assertTrue(querySchema.getJSONObject("properties").has("throughDate"))
+            assertEquals(AiChatToolRegistryV1.PROVIDER_CALENDAR_QUERY,
+                providerTools.getJSONObject(1).getJSONObject("function").getString("name"))
+        }
+    }
+
+    @Test fun providerCalendarQueryCallIsReturnedAsUntrustedCoreInput() {
+        val requestBody = AtomicReference<String>()
+        val serverError = AtomicReference<Throwable?>()
+        val served = CountDownLatch(1)
+        val arguments = "{\"title\":\"Meeting\",\"kind\":\"ACTIVITY\"}"
+        val escapedArguments = arguments.replace("\\", "\\\\").replace("\"", "\\\"")
+        ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { server ->
+            server.soTimeout = 10_000
+            Thread {
+                try {
+                    server.accept().use { socket ->
+                        requestBody.set(readHttpRequest(socket))
+                        writeHttpResponse(socket, 200,
+                            """{"choices":[{"finish_reason":"tool_calls","message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_query_1","type":"function","function":{"name":"calendar_query_v1","arguments":"$escapedArguments"}}]}}]}""")
+                    }
+                } catch (error: Throwable) {
+                    serverError.set(error)
+                } finally {
+                    served.countDown()
+                }
+            }.apply { isDaemon = true; start() }
+
+            val result = runBlocking {
+                AiClient(AiSettings(
+                    endpoint = "http://127.0.0.1:${server.localPort}/v1",
+                    model = "query-tool-stub-${UUID.randomUUID()}",
+                    enabled = true,
+                    apiKey = "local-test-key"
+                )).chat(
+                    history = listOf(AiChatMessage("user", "查找我的 Meeting")),
+                    availableTools = AiChatToolRegistryV1.tools
+                )
+            }
+
+            assertTrue("Server did not finish", served.await(10, TimeUnit.SECONDS))
+            assertNull("Server error: ${serverError.get()}", serverError.get())
+            assertEquals("call_query_1", result.toolCalls.single().callId)
+            assertEquals(AiChatToolRegistryV1.PROVIDER_CALENDAR_QUERY,
+                result.toolCalls.single().providerName)
+            assertEquals(arguments, result.toolCalls.single().argumentsJson)
+            val body = JSONObject(requestBody.get())
+            assertEquals("auto", body.getString("tool_choice"))
+            assertEquals(2, body.getJSONArray("tools").length())
+        }
+    }
+
+    @Test fun androidModelPortRechecksPersistedCalendarSharingBeforeOfferingQueryTool() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val previousSettings = AiSettingsStore.load(context)
+        val requestBody = AtomicReference<String>()
+        val serverError = AtomicReference<Throwable?>()
+        val served = CountDownLatch(1)
+        ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { server ->
+            server.soTimeout = 10_000
+            AiSettingsStore.save(context, AiSettings(
+                endpoint = "http://127.0.0.1:${server.localPort}/v1",
+                model = "persisted-query-sharing-${UUID.randomUUID()}",
+                apiKey = "local-test-key",
+                enabled = true,
+                shareContext = false
+            ))
+            val serverThread = Thread {
+                try {
+                    server.accept().use { socket ->
+                        requestBody.set(readHttpRequest(socket))
+                        writeHttpResponse(socket, 200,
+                            """{"choices":[{"finish_reason":"tool_calls","message":{"role":"assistant","content":null,"tool_calls":[{"id":"unadvertised_query","type":"function","function":{"name":"calendar_query_v1","arguments":"{\"title\":\"private\"}"}}]}}]}""")
+                    }
+                } catch (error: Throwable) {
+                    serverError.set(error)
+                } finally {
+                    served.countDown()
+                }
+            }.apply { isDaemon = true; start() }
+
+            try {
+                val result = runBlocking {
+                    AndroidAiModelPortV1(context).chat(
+                        AiChatModelRequestV1(
+                            requestId = "persisted-query-sharing",
+                            history = listOf(AiConversationMessageV1(
+                                role = AiConversationRoleV1.USER,
+                                content = "查询我的日程",
+                                messageId = "persisted-query-user"
+                            )),
+                            zoneId = "UTC",
+                            shareCalendarContext = true,
+                            availableTools = AiChatToolRegistryV1.tools
+                        ),
+                        emptyList()
+                    )
+                }
+
+                assertTrue("Server did not finish", served.await(10, TimeUnit.SECONDS))
+                assertNull("Server error: ${serverError.get()}", serverError.get())
+                assertTrue(result.toolCallsTruncated)
+                assertEquals(AiChatToolRegistryV1.PROVIDER_CALENDAR_QUERY,
+                    result.toolCalls.single().providerName)
+                val tools = JSONObject(requestBody.get()).getJSONArray("tools")
+                assertEquals(1, tools.length())
+                assertEquals(AiChatToolRegistryV1.PROVIDER_CALENDAR_PROPOSE,
+                    tools.getJSONObject(0).getJSONObject("function").getString("name"))
+            } finally {
+                serverThread.join(10_000)
+                AiSettingsStore.save(context, previousSettings)
+            }
         }
     }
 

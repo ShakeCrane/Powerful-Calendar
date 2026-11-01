@@ -32,15 +32,30 @@ internal class AndroidAiModelPortV1(context: Context) : AiModelPortV1 {
                 zoneId = message.zoneId
             )
         }
+        val advertisedTools = request.availableTools.filter { candidate ->
+            candidate in AiChatToolRegistryV1.tools &&
+                (!candidate.requiresCalendarContext ||
+                    (request.shareCalendarContext && settings.shareContext))
+        }
         val result = AiClient(settings, ZoneId.of(request.zoneId)).chat(
             history,
             calendarContext.map(EventRecordV1::toCoreTemporalRecord),
-            availableTools = request.availableTools.filter { candidate ->
-                candidate in AiChatToolRegistryV1.tools &&
-                    (!candidate.requiresCalendarContext ||
-                        (request.shareCalendarContext && settings.shareContext))
-            }
+            availableTools = advertisedTools
         )
+        val advertisedProviderNames = advertisedTools.mapTo(hashSetOf()) { it.providerName }
+        val queryCallReturned = result.toolCalls.any {
+            it.providerName == AiChatToolRegistryV1.PROVIDER_CALENDAR_QUERY
+        }
+        val queryStillAuthorized = !queryCallReturned || (
+            request.shareCalendarContext &&
+                AiSettingsStore.load(appContext).shareContext &&
+                AiChatToolRegistryV1.PROVIDER_CALENDAR_QUERY in advertisedProviderNames
+            )
+        val unadvertisedCallReturned = result.toolCalls.any { call ->
+            call.providerName !in advertisedProviderNames ||
+                (call.providerName == AiChatToolRegistryV1.PROVIDER_CALENDAR_QUERY &&
+                    !queryStillAuthorized)
+        }
         return AiChatModelOutputV1(
             reply = result.reply,
             error = result.error,
@@ -52,7 +67,7 @@ internal class AndroidAiModelPortV1(context: Context) : AiModelPortV1 {
                 null -> null
             },
             toolCalls = result.toolCalls.toList(),
-            toolCallsTruncated = result.toolCallsTruncated
+            toolCallsTruncated = result.toolCallsTruncated || unadvertisedCallReturned
         )
     }
 

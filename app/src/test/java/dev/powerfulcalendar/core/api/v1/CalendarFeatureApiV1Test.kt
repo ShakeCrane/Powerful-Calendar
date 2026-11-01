@@ -161,6 +161,118 @@ class CalendarFeatureApiV1Test {
         ).events.isEmpty())
     }
 
+    @Test
+    fun boundedEventQueryUsesInclusiveViewerDatesAndReturnsVersionedMinimalHits() {
+        val matching = commit(
+            TemporalKind.ACTIVITY,
+            "Weekly Sync",
+            start = "2026-10-26 16:30",
+            end = "2026-10-26 17:30",
+            zoneId = "UTC",
+            recurrence = Recurrence(freq = RecurrenceFreq.WEEKLY, count = 3)
+        )
+        commit(
+            TemporalKind.ACTIVITY,
+            "Weekly Sync outside viewer date",
+            start = "2026-10-27 18:00",
+            end = "2026-10-27 19:00",
+            zoneId = "UTC"
+        )
+        commit(
+            TemporalKind.DEADLINE,
+            "Weekly Sync deadline",
+            end = "2026-10-27",
+            zoneId = "Asia/Shanghai"
+        )
+        val source = core.events.queryEvents()
+
+        val result = core.calendar.queryEvents(
+            CalendarEventQueryV1(
+                zoneId = "Asia/Shanghai",
+                fromDate = "2026-10-27",
+                throughDate = "2026-10-27",
+                titleQuery = "weekly sync",
+                kind = EventKindV1.ACTIVITY,
+                maxResults = 10
+            ),
+            source
+        )
+
+        val hit = result.results.single()
+        assertEquals(source.featureRevision, result.featureRevision)
+        assertEquals(1, result.totalMatches)
+        assertFalse(result.truncated)
+        assertEquals(matching, hit.eventSeq)
+        assertEquals(source.events.single { it.eventSeq == matching }.revision, hit.revision)
+        assertEquals(EventKindV1.ACTIVITY, hit.kind)
+        assertEquals("Weekly Sync", hit.title)
+        assertEquals(CalendarEventPrecisionV1.INTERVAL, hit.precision)
+        assertEquals("UTC", hit.zoneId)
+        assertEquals("local", hit.source)
+        assertEquals(EventRecurrenceFrequencyV1.WEEKLY, hit.recurrence.frequency)
+        assertEquals(instant("2026-10-26T16:30:00Z"), hit.startMillis)
+        assertEquals(instant("2026-10-26T17:30:00Z"), hit.endMillis)
+    }
+
+    @Test
+    fun boundedEventQueryCapsRowsAndDetachesRecurrenceCollections() {
+        val template = commit(
+            TemporalKind.MEMO,
+            "Record template",
+            zoneId = "UTC"
+        )
+        val record = core.events.queryEvents().events.single { it.eventSeq == template }
+        val mutableExceptions = linkedSetOf("2026-11-03")
+        val events = (1L..105L).map { seq ->
+            record.copy(
+                eventSeq = seq,
+                revision = seq + 4L,
+                title = "Record $seq",
+                recurrence = record.recurrence.copy(exceptions = mutableExceptions)
+            )
+        }
+        val result = core.calendar.queryEvents(
+            CalendarEventQueryV1(
+                zoneId = "UTC",
+                titleQuery = "record",
+                maxResults = 100
+            ),
+            EventQuerySnapshotV1(featureRevision = 77L, events = events)
+        )
+
+        mutableExceptions += "2026-11-04"
+        assertEquals(77L, result.featureRevision)
+        assertEquals(105, result.totalMatches)
+        assertEquals(100, result.results.size)
+        assertTrue(result.truncated)
+        assertEquals(1L, result.results.first().eventSeq)
+        assertEquals(100L, result.results.last().eventSeq)
+        assertEquals(setOf("2026-11-03"), result.results.first().recurrence.exceptions)
+    }
+
+    @Test
+    fun eventQueryRejectsMissingOrUnboundedSelectors() {
+        assertThrows(IllegalArgumentException::class.java) {
+            CalendarEventQueryV1(zoneId = "UTC")
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            CalendarEventQueryV1(
+                zoneId = "UTC", fromDate = "2026-01-01", titleQuery = "meeting"
+            )
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            CalendarEventQueryV1(
+                zoneId = "UTC", fromDate = "2026-01-01", throughDate = "2027-01-02"
+            )
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            CalendarEventQueryV1(zoneId = "UTC", titleQuery = "x".repeat(121))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            CalendarEventQueryV1(zoneId = "UTC", titleQuery = "meeting", maxResults = 101)
+        }
+    }
+
     private fun commit(
         kind: TemporalKind,
         title: String,

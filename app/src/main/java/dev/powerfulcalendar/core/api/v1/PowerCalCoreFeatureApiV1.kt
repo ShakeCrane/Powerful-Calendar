@@ -50,7 +50,7 @@ class PowerCalCoreFeatureApiV1(
     private val eventService = StoreEventFeatureApiV1(store, clock)
     private val draftReviewService = StoreDraftReviewFeatureApiV1(store, deckController, eventService)
     private val aiService = StoreAiFeatureApiV1(
-        store, eventService, aiModelPort, clock, aiConversationHistoryPort
+        store, eventService, calendarService, aiModelPort, clock, aiConversationHistoryPort
     )
     private val aiProposalService = StoreAiProposalFeatureApiV1(store, eventService, clock)
     private val reminderService = AndroidReminderFeatureApiV1(store, reminderContext)

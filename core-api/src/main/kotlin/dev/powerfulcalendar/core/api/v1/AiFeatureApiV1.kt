@@ -73,24 +73,41 @@ data class AiToolDefinitionV1(
     val idempotencyPolicy: AiToolIdempotencyPolicyV1
 )
 
-/** The first bounded chat registry entry only creates detached review proposals. */
+/** Bounded chat tools; every invocation is validated and dispatched by Core. */
 object AiChatToolRegistryV1 {
     const val CALENDAR_PROPOSE = "calendar.propose.v1"
     const val PROVIDER_CALENDAR_PROPOSE = "calendar_propose_v1"
+    const val CALENDAR_QUERY = "calendar.query.v1"
+    const val PROVIDER_CALENDAR_QUERY = "calendar_query_v1"
 
-    val tools: List<AiToolDefinitionV1> = listOf(AiToolDefinitionV1(
-        name = CALENDAR_PROPOSE,
-        providerName = PROVIDER_CALENDAR_PROPOSE,
-        schemaVersion = 1,
-        description = "根据当前用户明确提出的日程请求生成待审核提案；不会创建或修改正式事件。",
-        inputJsonSchema = "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}",
-        inputMaxBytes = 256,
-        outputMaxBytes = 32_000,
-        requiresCalendarContext = false,
-        permissionScope = AiToolPermissionScopeV1.NONE,
-        readWriteClass = AiToolReadWriteClassV1.PROPOSAL_ONLY,
-        idempotencyPolicy = AiToolIdempotencyPolicyV1.CHAT_REQUEST_RECEIPT
-    ))
+    val tools: List<AiToolDefinitionV1> = listOf(
+        AiToolDefinitionV1(
+            name = CALENDAR_PROPOSE,
+            providerName = PROVIDER_CALENDAR_PROPOSE,
+            schemaVersion = 1,
+            description = "根据当前用户明确提出的日程请求生成待审核提案；不会创建或修改正式事件。",
+            inputJsonSchema = "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}",
+            inputMaxBytes = 256,
+            outputMaxBytes = 32_000,
+            requiresCalendarContext = false,
+            permissionScope = AiToolPermissionScopeV1.NONE,
+            readWriteClass = AiToolReadWriteClassV1.PROPOSAL_ONLY,
+            idempotencyPolicy = AiToolIdempotencyPolicyV1.CHAT_REQUEST_RECEIPT
+        ),
+        AiToolDefinitionV1(
+            name = CALENDAR_QUERY,
+            providerName = PROVIDER_CALENDAR_QUERY,
+            schemaVersion = 1,
+            description = "仅在用户已允许共享日历上下文时，按日期、标题或类型查询正式日程；只读，最多返回 100 条。日期范围需同时提供 fromDate 和 throughDate。",
+            inputJsonSchema = "{\"type\":\"object\",\"properties\":{\"fromDate\":{\"type\":\"string\",\"maxLength\":10},\"throughDate\":{\"type\":\"string\",\"maxLength\":10},\"title\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":${CalendarEventQueryV1.MAX_TITLE_CHARS}},\"kind\":{\"type\":\"string\",\"enum\":[\"ALARM\",\"ACTIVITY\",\"DEADLINE\",\"MEMO\"]},\"maxResults\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":${CalendarEventQueryV1.MAX_RESULTS}}},\"additionalProperties\":false}",
+            inputMaxBytes = 1_024,
+            outputMaxBytes = 128_000,
+            requiresCalendarContext = true,
+            permissionScope = AiToolPermissionScopeV1.CALENDAR_CONTEXT,
+            readWriteClass = AiToolReadWriteClassV1.READ_ONLY,
+            idempotencyPolicy = AiToolIdempotencyPolicyV1.CHAT_REQUEST_RECEIPT
+        )
+    )
 }
 
 /** Provider-produced invocation; every field remains untrusted until Core dispatch validation. */
@@ -107,7 +124,8 @@ data class AiChatToolExecutionReceiptV1(
     val toolName: String,
     val status: AiChatToolExecutionStatusV1,
     val message: String? = null,
-    val proposalRequestId: String? = null
+    val proposalRequestId: String? = null,
+    val calendarQuery: CalendarEventQueryResultV1? = null
 )
 
 data class AiChatRequestV1(

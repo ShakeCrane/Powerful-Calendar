@@ -4,8 +4,11 @@ import dev.powerfulcalendar.ai.AiBatchRunner
 import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.PowerStore
 import java.time.Clock
+import java.time.Instant
 import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.IdentityHashMap
+import java.util.Locale
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -18,6 +21,7 @@ import java.security.MessageDigest
 internal class StoreAiFeatureApiV1(
     private val store: PowerStore,
     private val events: StoreEventFeatureApiV1,
+    private val calendar: CalendarFeatureApiV1,
     private val modelPort: AiModelPortV1?,
     private val clock: Clock,
     private val conversationHistoryPort: AiConversationHistoryPortV1?
@@ -185,7 +189,9 @@ internal class StoreAiFeatureApiV1(
                     history = history.map { it.copy() },
                     zoneId = request.zoneId,
                     shareCalendarContext = request.shareCalendarContext,
-                    availableTools = AiChatToolRegistryV1.tools
+                    availableTools = AiChatToolRegistryV1.tools.filter { definition ->
+                        !definition.requiresCalendarContext || request.shareCalendarContext
+                    }
                 ), context.map { it.copy() })
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -258,20 +264,37 @@ internal class StoreAiFeatureApiV1(
 
         val calls = modelOutput.toolCalls
         val call = calls.singleOrNull()
-        val definition = AiChatToolRegistryV1.tools.single()
+        val definition = call?.let { invocation ->
+            AiChatToolRegistryV1.tools.singleOrNull {
+                it.providerName == invocation.providerName
+            }
+        }
+        var calendarQuery: CalendarEventQueryV1? = null
         val rejection = when {
             modelOutput.toolCallsTruncated -> "工具调用超出长度或数量限制"
             call == null -> "本轮只允许一个日程工具调用"
-            call.providerName != definition.providerName -> "工具不在 Core 白名单中"
+            definition == null -> "工具不在 Core 白名单中"
             !call.callId.matches(TOOL_CALL_ID_PATTERN) -> "工具调用标识无效"
-            call.argumentsJson.toByteArray(Charsets.UTF_8).size > definition.inputMaxBytes ->
+            call.argumentsJson.length > definition.inputMaxBytes ||
+                call.argumentsJson.toByteArray(Charsets.UTF_8).size > definition.inputMaxBytes ->
                 "工具参数超出大小限制"
-            modelOutput.proposalIntent != AiChatProposalIntentV1.EXPLICIT || task == null ->
-                "无法将工具调用绑定到当前用户的日程请求"
-            else -> {
-                val args = runCatching { JSONObject(call.argumentsJson) }.getOrNull()
-                if (args == null || args.length() != 0) "工具参数格式无效" else null
+            definition.requiresCalendarContext && !request.shareCalendarContext ->
+                "当前请求未允许共享日历上下文"
+            definition.name == AiChatToolRegistryV1.CALENDAR_PROPOSE -> when {
+                modelOutput.proposalIntent != AiChatProposalIntentV1.EXPLICIT || task == null ->
+                    "无法将工具调用绑定到当前用户的日程请求"
+                else -> {
+                    val args = runCatching { JSONObject(call.argumentsJson) }.getOrNull()
+                    if (args == null || args.length() != 0) "工具参数格式无效" else null
+                }
             }
+            definition.name == AiChatToolRegistryV1.CALENDAR_QUERY -> {
+                calendarQuery = runCatching {
+                    parseCalendarQueryArguments(call.argumentsJson, request.zoneId)
+                }.getOrNull()
+                if (calendarQuery == null) "工具参数格式无效" else null
+            }
+            else -> "工具不在 Core 白名单中"
         }
         if (rejection != null) {
             val rejected = calls.take(MAX_PROVIDER_TOOL_CALLS).map { item ->
@@ -284,7 +307,7 @@ internal class StoreAiFeatureApiV1(
             }.ifEmpty {
                 listOf(AiChatToolExecutionReceiptV1(
                     callId = "",
-                    toolName = definition.name,
+                    toolName = definition?.name ?: "unknown",
                     status = AiChatToolExecutionStatusV1.REJECTED,
                     message = rejection
                 ))
@@ -292,7 +315,7 @@ internal class StoreAiFeatureApiV1(
             return AiChatReceiptV1(
                 requestId = request.requestId,
                 status = AiChatStatusV1.COMPLETED,
-                reply = "日程工具请求未通过 Core 校验；未生成提案，也未修改日历。",
+                reply = "工具请求未通过 Core 校验；未执行日历操作。",
                 toolExecutions = rejected,
                 errorCode = "INVALID_TOOL_CALL",
                 message = rejection
@@ -300,6 +323,44 @@ internal class StoreAiFeatureApiV1(
         }
 
         val validCall = requireNotNull(call)
+        val validDefinition = requireNotNull(definition)
+        if (validDefinition.name == AiChatToolRegistryV1.CALENDAR_QUERY) {
+            val query = requireNotNull(calendarQuery)
+            val result = try {
+                calendar.queryEvents(query, events.queryEvents())
+                    .boundedForTool(validDefinition.outputMaxBytes)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                val execution = AiChatToolExecutionReceiptV1(
+                    callId = validCall.callId,
+                    toolName = validDefinition.name,
+                    status = AiChatToolExecutionStatusV1.FAILED,
+                    message = "日历查询未能完成"
+                )
+                return AiChatReceiptV1(
+                    requestId = request.requestId,
+                    status = AiChatStatusV1.COMPLETED,
+                    reply = "日历查询暂未完成；日历数据没有更改。",
+                    toolExecutions = listOf(execution)
+                )
+            }
+            val reply = result.toChatSummary().take(MAX_CHAT_MESSAGE_CHARS)
+            val execution = AiChatToolExecutionReceiptV1(
+                callId = validCall.callId,
+                toolName = validDefinition.name,
+                status = AiChatToolExecutionStatusV1.EXECUTED,
+                message = reply.take(MAX_TOOL_RECEIPT_MESSAGE_CHARS),
+                calendarQuery = result
+            )
+            return AiChatReceiptV1(
+                requestId = request.requestId,
+                status = AiChatStatusV1.COMPLETED,
+                reply = reply,
+                toolExecutions = listOf(execution)
+            )
+        }
+
         val proposalRequestId = request.proposalRequestId()
         val generated = generateProposal(AiProposalGenerationRequestV1(
             requestId = proposalRequestId,
@@ -312,7 +373,7 @@ internal class StoreAiFeatureApiV1(
             generated.review?.items?.isNotEmpty() == true
         val execution = AiChatToolExecutionReceiptV1(
             callId = validCall.callId,
-            toolName = definition.name,
+            toolName = validDefinition.name,
             status = if (generated.status == AiProposalGenerationStatusV1.MODEL_UNAVAILABLE ||
                 generated.status == AiProposalGenerationStatusV1.INVALID_REQUEST
             ) AiChatToolExecutionStatusV1.FAILED else AiChatToolExecutionStatusV1.EXECUTED,
@@ -330,6 +391,130 @@ internal class StoreAiFeatureApiV1(
             toolExecutions = listOf(execution),
             clarification = generated.message.takeIf { !ready }
         )
+    }
+
+    private fun parseCalendarQueryArguments(
+        json: String,
+        zoneId: String
+    ): CalendarEventQueryV1 {
+        val arguments = JSONObject(json)
+        val allowed = setOf("fromDate", "throughDate", "title", "kind", "maxResults")
+        val keys = arguments.keys()
+        while (keys.hasNext()) require(keys.next() in allowed) { "Unknown query argument" }
+
+        fun optionalString(key: String): String? {
+            if (!arguments.has(key)) return null
+            return arguments.get(key) as? String ?: throw IllegalArgumentException("Invalid $key")
+        }
+
+        val kind = optionalString("kind")?.let(EventKindV1::valueOf)
+        val maxResults = if (!arguments.has("maxResults")) {
+            CalendarEventQueryV1.DEFAULT_MAX_RESULTS
+        } else {
+            val raw = arguments.get("maxResults") as? Number
+                ?: throw IllegalArgumentException("Invalid maxResults")
+            val numeric = raw.toDouble()
+            require(numeric.isFinite() && numeric % 1.0 == 0.0 &&
+                numeric in 1.0..CalendarEventQueryV1.MAX_RESULTS.toDouble()) {
+                "Invalid maxResults"
+            }
+            numeric.toInt()
+        }
+        return CalendarEventQueryV1(
+            zoneId = zoneId,
+            fromDate = optionalString("fromDate"),
+            throughDate = optionalString("throughDate"),
+            titleQuery = optionalString("title"),
+            kind = kind,
+            maxResults = maxResults
+        )
+    }
+
+    private fun CalendarEventQueryResultV1.boundedForTool(maxBytes: Int): CalendarEventQueryResultV1 {
+        var bytes = 256L + (query.titleQuery?.toByteArray(Charsets.UTF_8)?.size ?: 0)
+        val bounded = ArrayList<CalendarEventQueryHitV1>(results.size)
+        for (hit in results) {
+            val hitBytes = hit.estimatedUtf8Bytes()
+            if (bytes + hitBytes > maxBytes) break
+            bounded += hit
+            bytes += hitBytes
+        }
+        return copy(
+            results = bounded,
+            truncated = truncated || bounded.size < results.size
+        )
+    }
+
+    private fun CalendarEventQueryHitV1.estimatedUtf8Bytes(): Long {
+        fun String?.jsonSize(): Long = this?.let {
+            JSONObject.quote(it).toByteArray(Charsets.UTF_8).size.toLong()
+        } ?: 4L
+        var size = 384L + title.jsonSize() + zoneId.jsonSize() + source.jsonSize()
+        size += deadlineDate.jsonSize() + memoStartDate.jsonSize() + memoEndDate.jsonSize()
+        size += recurrence.activeFromDate.jsonSize() + recurrence.activeUntilDate.jsonSize()
+        size += recurrence.byDay.size * 8L
+        size += recurrence.exceptions.sumOf { it.jsonSize() + 8L }
+        size += recurrence.overrides.entries.sumOf { (key, value) ->
+            key.jsonSize() + value.title.jsonSize() + 48L
+        }
+        return size
+    }
+
+    private fun CalendarEventQueryResultV1.toChatSummary(): String {
+        if (totalMatches == 0) return "日历中没有符合条件的事项。"
+        if (results.isEmpty()) {
+            return "找到 $totalMatches 项符合条件的日程，但记录详情超出返回容量；请缩小日期范围或按标题筛选。"
+        }
+        val shown = results.take(MAX_QUERY_DISPLAY_RESULTS)
+        return buildString {
+            append("找到 $totalMatches 项符合条件的日程")
+            if (truncated || shown.size < totalMatches) append("，以下列出 ${shown.size} 项：")
+            else append("：")
+            shown.forEachIndexed { index, hit ->
+                append('\n').append(index + 1).append(". ")
+                    .append(hit.title.toDisplayTitle())
+                    .append("（").append(hit.kind.toDisplayName())
+                    .append("；").append(hit.displayTime()).append('）')
+            }
+            if (shown.size < totalMatches) {
+                append("\n其余 ").append(totalMatches - shown.size).append(" 项未在回复中展开。")
+            }
+        }
+    }
+
+    private fun String.toDisplayTitle(): String = map { char ->
+        if (char.isISOControl()) ' ' else char
+    }.joinToString("").replace(Regex("\\s+"), " ").trim().take(120)
+
+    private fun EventKindV1.toDisplayName(): String = when (this) {
+        EventKindV1.ALARM -> "闹钟"
+        EventKindV1.ACTIVITY -> "活动"
+        EventKindV1.DEADLINE -> "截止事项"
+        EventKindV1.MEMO -> "备忘"
+    }
+
+    private fun CalendarEventQueryHitV1.displayTime(): String {
+        val zone = runCatching { ZoneId.of(zoneId) }.getOrDefault(ZoneId.of("UTC"))
+        fun Long.displayDateTime() = Instant.ofEpochMilli(this).atZone(zone)
+            .format(QUERY_RESULT_DATE_TIME_FORMATTER)
+        return when (precision) {
+            CalendarEventPrecisionV1.INSTANT ->
+                (startMillis ?: deadlineMillis)?.displayDateTime() ?: "时间未填写"
+            CalendarEventPrecisionV1.INTERVAL -> {
+                val start = startMillis?.displayDateTime() ?: return "时间未填写"
+                val end = endMillis?.displayDateTime() ?: return start
+                "$start–$end"
+            }
+            CalendarEventPrecisionV1.DATE_ONLY -> deadlineDate ?: "日期未填写"
+            CalendarEventPrecisionV1.DATE_RANGE -> when {
+                memoStartDate != null && memoEndDate != null -> "$memoStartDate 至 $memoEndDate"
+                memoStartDate != null -> "自 $memoStartDate 起"
+                memoEndDate != null -> "至 $memoEndDate"
+                else -> "日期未填写"
+            }
+            CalendarEventPrecisionV1.UNDATED -> "未注明日期"
+            CalendarEventPrecisionV1.INCOMPLETE -> "时间未填写"
+        }
     }
 
     override suspend fun generateProposal(
@@ -932,9 +1117,22 @@ internal class StoreAiFeatureApiV1(
                 review = proposal.review?.detached(),
                 warnings = proposal.warnings.toList()
             ),
-            toolExecutions = toolExecutions.map { it.copy() }
+            toolExecutions = toolExecutions.map { execution ->
+                execution.copy(calendarQuery = execution.calendarQuery?.detached())
+            }
         )
     }
+
+    private fun CalendarEventQueryResultV1.detached() = copy(
+        query = query.copy(),
+        results = results.map { hit ->
+            hit.copy(recurrence = hit.recurrence.copy(
+                byDay = hit.recurrence.byDay.toSet(),
+                exceptions = hit.recurrence.exceptions.toSet(),
+                overrides = hit.recurrence.overrides.mapValues { (_, value) -> value.copy() }
+            ))
+        }
+    )
 
     private fun AiChatRequestV1.fingerprint(): String {
         val canonical = buildString {
@@ -1106,7 +1304,11 @@ internal class StoreAiFeatureApiV1(
         const val MAX_TOOL_CALL_ID_CHARS = 128
         const val MAX_PROVIDER_TOOL_NAME_CHARS = 120
         const val MAX_TOOL_RECEIPT_MESSAGE_CHARS = 300
+        const val MAX_QUERY_DISPLAY_RESULTS = 20
         val TOOL_CALL_ID_PATTERN = Regex("[A-Za-z0-9._-]{1,128}")
+        val QUERY_RESULT_DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern(
+            "uuuu-MM-dd HH:mm", Locale.ROOT
+        )
         const val MAX_CHAT_MESSAGE_ID_CHARS = 100
         const val MAX_CHAT_RECEIPTS = 128
         const val MAX_AI_EVIDENCE_FILENAME_CHARS = 180
