@@ -301,7 +301,7 @@ class StudioAuthoredSkinBridgeInstrumentedTest {
         assertEquals(nativeCreated.eventSeq, clearCreated.eventSeq)
         val eventSeq = nativeCreated.eventSeq
         assertEquals("fixture must project exactly one unfinished Memo",
-            1, TodoProjection.entries(nativeStore.all(), System.currentTimeMillis()).size)
+            1, queryMemoEntriesForTest(nativeStore, System.currentTimeMillis()).size)
         val nativeBaseline = memoStoreSnapshot(nativeStore, eventSeq)
         val clearBaseline = memoStoreSnapshot(clearStore, eventSeq)
         var installed = false

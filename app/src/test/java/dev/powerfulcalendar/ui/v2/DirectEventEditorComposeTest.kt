@@ -266,19 +266,14 @@ class DirectEventEditorComposeTest {
         val shanghai = ZoneId.of("Asia/Shanghai")
         val firstMillis = java.time.LocalDateTime.of(2026, 10, 20, 7, 30)
             .atZone(shanghai).toInstant().toEpochMilli()
-        val owner = TemporalRecord(
-            eventSeq = 91,
-            revision = 1,
-            kind = TemporalKind.ALARM,
-            title = "待完成重复事项",
-            startMillis = firstMillis,
-            trackingEnabled = true,
-            zoneId = shanghai.id,
-            recurrence = Recurrence(freq = RecurrenceFreq.DAILY, count = 3)
+        val entry = dev.powerfulcalendar.core.api.v1.MemoEntryV1(
+            eventSeq = 91, revision = 1,
+            kind = dev.powerfulcalendar.core.api.v1.EventKindV1.ALARM,
+            title = "待完成重复事项", occurrenceKey = "2026-10-21T07:30",
+            startMillis = firstMillis, completed = false, zoneId = shanghai.id, repeating = true
         )
-        val entry = TodoEntry(owner, "2026-10-21T07:30", firstMillis, owner.title)
-        var opened: TemporalRecord? = null
-        var key: String? = null
+        val entriesByKey = mapOf(entry.rowKey to entry)
+        var opened: dev.powerfulcalendar.core.api.v1.MemoEntryV1? = null
         PresentationSkinRegistry.useMemo(null)
         ui.setContent {
             PowerCalTheme {
@@ -289,14 +284,14 @@ class DirectEventEditorComposeTest {
                     onBack = {},
                     onCreateMemo = {},
                     onToggle = {},
-                    onOpen = { record, occurrenceKey -> opened = record; key = occurrenceKey }
+                    onOpen = { rowKey -> opened = entriesByKey[rowKey] }
                 )
             }
         }
         ui.onNodeWithText("待完成重复事项").performClick()
         ui.runOnIdle {
-            assertEquals(owner, opened)
-            assertEquals("2026-10-21T07:30", key)
+            assertEquals(entry, opened)
+            assertEquals("2026-10-21T07:30", opened?.occurrenceKey)
         }
     }
 }

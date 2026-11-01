@@ -31,6 +31,7 @@ import dev.powerfulcalendar.core.api.v1.AiBatchStateV1
 import dev.powerfulcalendar.core.RecurrenceEngine
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
+import dev.powerfulcalendar.core.api.v1.MemoEntryV1
 import dev.powerfulcalendar.core.api.v1.ReminderScheduleStateV1
 import dev.powerfulcalendar.ui.v2.nativeui.*
 import java.time.LocalDate
@@ -184,29 +185,25 @@ internal fun MonthScreen(
 }
 
 internal class MemoVisualContext internal constructor(
-    val items: List<TodoEntry>,
+    val items: List<MemoEntryV1>,
     val zone: ZoneId,
     val busy: Boolean,
     val onBack: () -> Unit,
     val onCreateMemo: () -> Unit,
-    val onToggle: (TodoEntry) -> Unit,
-    val onOpen: (TemporalRecord, String?) -> Unit
+    val onToggle: (String) -> Unit,
+    val onOpen: (String) -> Unit
 ) {
     @Composable fun Native() {
         val rows = remember(items) { projectNativeMemoRows(items) }
-        val entriesByKey = remember(items) { items.associateBy { it.id } }
+        val entriesByKey = remember(items) { items.associateBy { it.rowKey } }
         NativeMemoCenterScreen(
             items = rows,
             busy = busy,
             onBack = onBack,
             onCreateMemo = onCreateMemo,
-            onToggle = { rowKey -> entriesByKey[rowKey]?.let(onToggle) },
+            onToggle = { rowKey -> if (rowKey in entriesByKey) onToggle(rowKey) },
             onOpen = { rowKey ->
-                entriesByKey[rowKey]?.let { entry ->
-                    onOpen(entry.owner, entry.occurrenceKey.takeIf {
-                        entry.owner.recurrence.isRepeating
-                    })
-                }
+                    entriesByKey[rowKey]?.let { onOpen(it.rowKey) }
             }
         )
     }
@@ -214,9 +211,9 @@ internal class MemoVisualContext internal constructor(
 
 @Composable
 internal fun MemoCenterScreen(
-    items: List<TodoEntry>, zone: ZoneId, busy: Boolean,
+    items: List<MemoEntryV1>, zone: ZoneId, busy: Boolean,
     onBack: () -> Unit, onCreateMemo: () -> Unit,
-    onToggle: (TodoEntry) -> Unit, onOpen: (TemporalRecord, String?) -> Unit
+    onToggle: (String) -> Unit, onOpen: (String) -> Unit
 ) {
     val context = MemoVisualContext(items, zone, busy, onBack, onCreateMemo, onToggle, onOpen)
     val renderer = PresentationSkinRegistry.memo

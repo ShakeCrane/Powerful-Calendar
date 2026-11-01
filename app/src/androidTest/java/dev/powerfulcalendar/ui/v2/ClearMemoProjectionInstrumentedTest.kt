@@ -77,7 +77,7 @@ class ClearMemoProjectionInstrumentedTest {
             recurrence = Recurrence(freq = RecurrenceFreq.DAILY, count = 3)
         ))
         assertTrue(store.commit(card.draftId) is PowerStore.CommitOutcome.Committed)
-        assertEquals(3, TodoProjection.entries(store.all(), System.currentTimeMillis()).size)
+        assertEquals(3, queryMemoEntriesForTest(store, System.currentTimeMillis()).size)
 
         try {
             onboarding.edit().putBoolean("system-calendar-import-asked", true).commit()

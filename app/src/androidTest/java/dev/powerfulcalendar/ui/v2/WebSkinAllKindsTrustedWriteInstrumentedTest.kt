@@ -1281,8 +1281,9 @@ class WebSkinAllKindsTrustedWriteInstrumentedTest {
             assertEquals(nativeCreated.eventSeq, clearCreated.eventSeq)
             assertEquals(DraftForm.from(requireNotNull(nativeStore.get(nativeCreated.eventSeq))),
                 DraftForm.from(requireNotNull(clearStore.get(clearCreated.eventSeq))))
-            val initialKeys = TodoProjection.entries(nativeStore.all(), System.currentTimeMillis(),
-                includeCompleted = true).map { it.occurrenceKey }
+            val initialKeys = queryMemoEntriesForTest(
+                nativeStore, System.currentTimeMillis(), includeCompleted = true
+            ).map { it.occurrenceKey }
             assertEquals("fixture must expose all three stable occurrence slots",
                 listOf(0L, 1L, 2L).map { "${firstDate.plusDays(it)}T00:00" }, initialKeys)
             listOf(nativeStore, clearStore).forEach { store ->
@@ -1346,7 +1347,7 @@ class WebSkinAllKindsTrustedWriteInstrumentedTest {
             assertEquals(listOf("CREATE", "COMPLETE", "REOPEN"),
                 nativeStore.history(nativeCreated.eventSeq).asReversed().map { it.operation })
             assertEquals(initialKeys,
-                TodoProjection.entries(listOf(nativeReopened), System.currentTimeMillis())
+                queryMemoEntriesForTest(nativeStore, System.currentTimeMillis())
                     .map { it.occurrenceKey })
 
             compose.runOnUiThread {
@@ -1461,7 +1462,7 @@ class WebSkinAllKindsTrustedWriteInstrumentedTest {
             assertEquals(nativeStore.nextSequencePreview(), clearStore.nextSequencePreview())
             assertEquals(0L, clearStore.draftCount())
             assertEquals(0, clearStore.pendingCount())
-            val remainingKeys = TodoProjection.entries(listOf(clearCompleted), System.currentTimeMillis())
+            val remainingKeys = queryMemoEntriesForTest(clearStore, System.currentTimeMillis())
                 .map { it.occurrenceKey }
             assertEquals(listOf("${firstDate.plusDays(1)}T00:00", "${firstDate.plusDays(2)}T00:00"),
                 remainingKeys)
@@ -1489,7 +1490,7 @@ class WebSkinAllKindsTrustedWriteInstrumentedTest {
             assertEquals(listOf("CREATE", "COMPLETE", "REOPEN"),
                 clearStore.history(clearCreated.eventSeq).asReversed().map { it.operation })
             assertEquals(initialKeys,
-                TodoProjection.entries(listOf(clearReopened), System.currentTimeMillis())
+                queryMemoEntriesForTest(clearStore, System.currentTimeMillis())
                     .map { it.occurrenceKey })
             assertEquals("Native and Clear must persist the same reopened occurrence state",
                 DraftForm.from(nativeReopened), DraftForm.from(clearReopened))

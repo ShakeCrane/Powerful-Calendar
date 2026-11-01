@@ -296,4 +296,5 @@ interface CoreFeatureApiV1 {
     val reminders: ReminderFeatureApiV1
     val importExport: ImportExportFeatureApiV1
     val settingsData: SettingsDataFeatureApiV1
+    val memos: MemoFeatureApiV1
 }

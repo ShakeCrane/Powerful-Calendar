@@ -55,6 +55,7 @@ class PowerCalCoreFeatureApiV1(
         store, draftReviewService, eventService
     )
     private val settingsDataService = AndroidSettingsDataFeatureApiV1(settingsContext)
+    private val memoService = StoreMemoFeatureApiV1(store)
     override val calendar: CalendarFeatureApiV1 get() = calendarService
     override val events: EventFeatureApiV1 get() = eventService
     override val draftReview: DraftReviewFeatureApiV1 get() = draftReviewService
@@ -63,6 +64,7 @@ class PowerCalCoreFeatureApiV1(
     override val reminders: ReminderFeatureApiV1 get() = reminderService
     override val importExport: ImportExportFeatureApiV1 get() = importExportService
     override val settingsData: SettingsDataFeatureApiV1 get() = settingsDataService
+    override val memos: MemoFeatureApiV1 get() = memoService
 
     /** Test/legacy Host seam for an explicitly supplied controller; production uses [draftReview]. */
     internal fun adaptDeckController(controller: DeckController): DraftReviewFeatureApiV1 =
@@ -1658,7 +1660,7 @@ internal fun EventRecordV1.toCoreTemporalRecord(): TemporalRecord = TemporalReco
     updatedAtMillis = updatedAtMillis
 )
 
-private fun TemporalRecord.toEventRecordV1() = EventRecordV1(
+internal fun TemporalRecord.toEventRecordV1() = EventRecordV1(
     eventSeq = eventSeq,
     revision = revision,
     kind = kind.toApiKind(),

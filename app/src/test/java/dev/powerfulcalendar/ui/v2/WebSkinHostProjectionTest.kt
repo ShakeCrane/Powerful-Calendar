@@ -165,7 +165,30 @@ class WebSkinHostProjectionTest {
             eventSeq = 42, revision = 1, kind = TemporalKind.MEMO,
             title = "No date", zoneId = zone.id
         )
-        val entries = TodoProjection.entries(listOf(repeatedMemo, undatedMemo), noon)
+        val entries = listOf(
+            dev.powerfulcalendar.core.api.v1.MemoEntryV1(
+                eventSeq = repeatedMemo.eventSeq,
+                revision = repeatedMemo.revision,
+                kind = dev.powerfulcalendar.core.api.v1.EventKindV1.MEMO,
+                occurrenceKey = "2026-10-22T00:00",
+                startMillis = noon,
+                title = repeatedMemo.title,
+                completed = false,
+                zoneId = zone.id,
+                repeating = true
+            ),
+            dev.powerfulcalendar.core.api.v1.MemoEntryV1(
+                eventSeq = undatedMemo.eventSeq,
+                revision = undatedMemo.revision,
+                kind = dev.powerfulcalendar.core.api.v1.EventKindV1.MEMO,
+                occurrenceKey = "single",
+                startMillis = null,
+                title = undatedMemo.title,
+                completed = false,
+                zoneId = zone.id,
+                repeating = false
+            )
+        )
         val rows = WebSkinMemoProjection.build(entries)
         val selected = (0 until rows.length()).map(rows::getJSONObject)
             .single { it.getLong("eventSeq") == repeatedMemo.eventSeq &&

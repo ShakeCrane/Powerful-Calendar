@@ -88,6 +88,7 @@ import dev.powerfulcalendar.core.api.v1.EventKindV1
 import dev.powerfulcalendar.core.api.v1.EventFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.EventQuerySnapshotV1
 import dev.powerfulcalendar.core.api.v1.EventMutationStatusV1
+import dev.powerfulcalendar.core.api.v1.MemoEntryV1
 import dev.powerfulcalendar.core.api.v1.EventSelectionV1
 import dev.powerfulcalendar.core.api.v1.AiProposalApplyRequestV1
 import dev.powerfulcalendar.core.api.v1.AiProposalDecisionV1
@@ -195,7 +196,7 @@ private data class AppData(
     val records: List<TemporalRecord>,
     val eventSnapshot: EventQuerySnapshotV1,
     val eventFeatureRevision: Long,
-    val todoEntries: List<TodoEntry>,
+    val todoEntries: List<MemoEntryV1>,
     val pending: Int,
     val locked: Boolean,
     val session: dev.powerfulcalendar.core.api.v1.AiBatchSessionV1?,
@@ -225,6 +226,7 @@ fun PowerCalApp(
     }
     val calendarFeatureApi = coreFeatureApi.calendar
     val eventFeatureApi = coreFeatureApi.events
+    val memoFeatureApi = coreFeatureApi.memos
     val draftReviewApi = coreFeatureApi.draftReview
     val aiFeatureApi = coreFeatureApi.ai
     val reminderFeatureApi = coreFeatureApi.reminders
@@ -252,7 +254,7 @@ fun PowerCalApp(
     var eventFeatureRevision by remember { mutableLongStateOf(0L) }
     val latestEventFeatureRevision by rememberUpdatedState(eventFeatureRevision)
     var hostDataReady by remember(store) { mutableStateOf(false) }
-    var todoEntries by remember(store) { mutableStateOf<List<TodoEntry>>(emptyList()) }
+    var todoEntries by remember(store) { mutableStateOf<List<MemoEntryV1>>(emptyList()) }
     var pendingCount by remember { mutableIntStateOf(0) }
     var aiLocked by remember { mutableStateOf(false) }
     var aiSession by remember {
@@ -433,6 +435,7 @@ fun PowerCalApp(
     }
     val todayKey = Instant.ofEpochMilli(nowMillis).atZone(zone).toLocalDate()
     val todoCount = todoEntries.count { !it.completed }
+    val memoEntriesByKey = remember(todoEntries) { todoEntries.associateBy { it.rowKey } }
     var memoVisibleLimit by rememberSaveable { mutableIntStateOf(MemoProjectionPaging.PAGE_SIZE) }
     val memoVisibleCount = MemoProjectionPaging.visibleCount(todoEntries.size, memoVisibleLimit)
     val memoRemainingCount = (todoEntries.size - memoVisibleCount).coerceAtLeast(0)
@@ -452,8 +455,9 @@ fun PowerCalApp(
                 records = formal,
                 eventSnapshot = eventSnapshot,
                 eventFeatureRevision = eventSnapshot.featureRevision,
-                todoEntries = TodoProjection.entries(formal, projectionNowMillis,
-                    includeCompleted = true),
+                todoEntries = memoFeatureApi.queryEntries(
+                    eventSnapshot, projectionNowMillis, includeCompleted = true
+                ).entries,
                 pending = pending.size,
                 locked = batchState.locked,
                 session = batchState.session,
@@ -497,9 +501,13 @@ fun PowerCalApp(
         onDispose { subscription.close() }
     }
 
-    suspend fun openFormalEditor(record: TemporalRecord, occurrenceKey: String? = null) {
+    suspend fun openFormalEditorByIdentity(
+        eventSeq: Long,
+        expectedRevision: Long,
+        occurrenceKey: String? = null
+    ) {
         when (val result = withContext(Dispatchers.IO) {
-            eventFeatureApi.openFormalEvent(record.eventSeq, record.revision, occurrenceKey)
+            eventFeatureApi.openFormalEvent(eventSeq, expectedRevision, occurrenceKey)
         }) {
             is EventEditorOpenResultV1.Opened -> {
                 val opened = result.editor
@@ -516,6 +524,10 @@ fun PowerCalApp(
             EventEditorOpenResultV1.Locked -> message = "当前业务操作暂时锁定了事件编辑"
             is EventEditorOpenResultV1.Invalid -> message = result.message
         }
+    }
+
+    suspend fun openFormalEditor(record: TemporalRecord, occurrenceKey: String? = null) {
+        openFormalEditorByIdentity(record.eventSeq, record.revision, occurrenceKey)
     }
 
     fun openNewEvent(kind: TemporalKind, selection: EditorSelection? = null) {
@@ -761,7 +773,9 @@ fun PowerCalApp(
 
     LaunchedEffect(todayKey, hostDataReady) {
         if (hostDataReady) {
-            val refreshed = TodoProjection.entries(records, nowMillis, includeCompleted = true)
+            val refreshed = memoFeatureApi.queryEntries(
+                eventSnapshot, nowMillis, includeCompleted = true
+            ).entries
             if (refreshed != todoEntries) {
                 todoEntries = refreshed
                 WebSkinBridgeRuntime.stateRevision++
@@ -1925,13 +1939,16 @@ fun PowerCalApp(
                 }
                 is WebSkinAction.ToggleMemo -> if (!aiLocked && editSession == null) {
                     scope.launch {
-                        val current = withContext(Dispatchers.IO) { store.get(action.eventSeq) }
-                        val visible = current?.let {
-                            TodoProjection.entries(listOf(it), System.currentTimeMillis(),
-                                includeCompleted = true)
-                        }?.firstOrNull { it.occurrenceKey == action.occurrenceKey }
-                        if (current == null || current.revision != action.expectedRevision ||
-                            visible == null || visible.completed != action.completed) {
+                        val visible = withContext(Dispatchers.IO) {
+                            memoFeatureApi.queryCurrentEntry(
+                                action.eventSeq,
+                                action.occurrenceKey,
+                                System.currentTimeMillis(),
+                                includeCompleted = true
+                            )
+                        }
+                        if (visible == null || visible.revision != action.expectedRevision ||
+                            visible.completed != action.completed) {
                             message = "Memo 已变化，请刷新"
                         } else {
                             val result = withContext(Dispatchers.IO) {
@@ -2401,12 +2418,12 @@ fun PowerCalApp(
                 onCreateMemo = {
                     openNewEvent(TemporalKind.MEMO)
                 },
-                onToggle = { entry ->
+                onToggle = { rowKey -> memoEntriesByKey[rowKey]?.let { entry ->
                     scope.launch {
                         val receipt = withContext(Dispatchers.IO) {
                             eventFeatureApi.setOccurrenceCompletion(
-                                eventSeq = entry.owner.eventSeq,
-                                expectedRevision = entry.owner.revision,
+                                eventSeq = entry.eventSeq,
+                                expectedRevision = entry.revision,
                                 occurrenceKey = entry.occurrenceKey,
                                 expectedCompleted = entry.completed,
                                 completed = !entry.completed,
@@ -2420,12 +2437,19 @@ fun PowerCalApp(
                         ) message = "状态已变化或正在批量处理，请刷新后重试"
                         reload()
                     }
-                },
-                onOpen = { record, occurrenceKey ->
-                    if (aiLocked) monthInspection = record else scope.launch {
-                        openFormalEditor(record, occurrenceKey)
+                } },
+                onOpen = { rowKey -> memoEntriesByKey[rowKey]?.let { entry ->
+                    val record = records.firstOrNull {
+                        it.eventSeq == entry.eventSeq && it.revision == entry.revision
                     }
-                }
+                    if (aiLocked) record?.let { monthInspection = it } else scope.launch {
+                        openFormalEditorByIdentity(
+                            entry.eventSeq,
+                            entry.revision,
+                            entry.occurrenceKey.takeIf { entry.repeating }
+                        )
+                    }
+                } }
             )
         } else if (presentedPage == Page.MONTH.name) {
             MonthScreen(nativeMonthCalendarRecords,

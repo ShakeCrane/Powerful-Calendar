@@ -77,15 +77,13 @@ internal object RuntimeSkinSurfaces {
                                     Checkbox(
                                         checked = entry.completed,
                                         onCheckedChange = { next ->
-                                            if (!context.busy && next != entry.completed) context.onToggle(entry)
+                                            if (!context.busy && next != entry.completed) context.onToggle(entry.rowKey)
                                         },
                                         enabled = !context.busy
                                     )
                                     Text(entry.title, Modifier.weight(1f)
                                         .clickable {
-                                            context.onOpen(entry.owner, entry.occurrenceKey.takeIf {
-                                                entry.owner.recurrence.isRepeating
-                                            })
+                                            context.onOpen(entry.rowKey)
                                         },
                                         maxLines = 2, overflow = TextOverflow.Ellipsis)
                                 }

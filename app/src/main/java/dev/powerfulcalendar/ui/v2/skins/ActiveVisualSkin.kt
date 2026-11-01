@@ -143,19 +143,18 @@ private class StudioExampleMemo : MemoVisualRenderer {
                 Button(enabled = !context.busy, onClick = context.onCreateMemo) { Text("新建") }
             }
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(context.items.filter { it.completed == completed }, key = { it.id }) { entry ->
+                items(context.items.filter { it.completed == completed }, key = { it.rowKey }) { entry ->
                     Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = RoundedCornerShape(20.dp)) {
                         Row(Modifier.fillMaxWidth().heightIn(min = 60.dp).padding(10.dp),
                             verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(checked = entry.completed, enabled = !context.busy,
-                                onCheckedChange = { if (it != entry.completed) context.onToggle(entry) })
+                                onCheckedChange = { if (it != entry.completed) context.onToggle(entry.rowKey) })
                             Column(Modifier.weight(1f).clickable {
-                                context.onOpen(entry.owner, entry.occurrenceKey.takeIf {
-                                    entry.owner.recurrence.isRepeating
-                                })
+                                context.onOpen(entry.rowKey)
                             }) {
                                 Text(entry.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                Text(entry.owner.displaySeq(), style = MaterialTheme.typography.labelSmall)
+                                Text("#" + entry.eventSeq.toString().padStart(4, '0'),
+                                    style = MaterialTheme.typography.labelSmall)
                             }
                         }
                     }

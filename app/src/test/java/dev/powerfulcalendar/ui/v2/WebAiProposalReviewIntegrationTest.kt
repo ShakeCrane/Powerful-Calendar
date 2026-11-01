@@ -26,6 +26,7 @@ import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.PowerStore.CommitOutcome
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
+import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.After
@@ -84,8 +85,10 @@ class WebAiProposalReviewIntegrationTest {
         repeat(251) { index ->
             seedMemo(String.format(Locale.ROOT, "Paging Memo %03d", index + 1), zone)
         }
-        assertEquals(251, TodoProjection.entries(store.all(), System.currentTimeMillis(),
-            includeCompleted = true).size)
+        val memoApi = PowerCalCoreFeatureApiV1(store)
+        assertEquals(251, memoApi.memos.queryEntries(
+            memoApi.events.queryEvents(), System.currentTimeMillis(), includeCompleted = true
+        ).entries.size)
         val beforePaging = counts()
 
         ui.activity.setContent {

@@ -7,6 +7,8 @@ import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.onFirst
 import dev.powerfulcalendar.ui.v2.nativeui.NativeMemoCenterScreen
+import dev.powerfulcalendar.core.api.v1.EventKindV1
+import dev.powerfulcalendar.core.api.v1.MemoEntryV1
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -50,25 +52,16 @@ class NativeMemoCenterScreenComposeTest {
         assertEquals(listOf(pendingKey, completedKey), opened)
     }
 
-    @Test fun hostResolvesOpaqueActionKeyBackToTheOriginalTodoEntry() {
+    @Test fun memoRuntimeReturnsOnlyTheOpaqueActionKey() {
         val zone = java.time.ZoneId.of("Asia/Shanghai")
         val millis = java.time.LocalDateTime.of(2026, 10, 20, 7, 30)
             .atZone(zone).toInstant().toEpochMilli()
-        val owner = dev.powerfulcalendar.core.TemporalRecord(
-            eventSeq = 93,
-            revision = 2,
-            kind = dev.powerfulcalendar.core.TemporalKind.ALARM,
-            title = "宿主映射测试",
-            startMillis = millis,
-            trackingEnabled = true,
-            zoneId = zone.id,
-            recurrence = dev.powerfulcalendar.core.Recurrence(
-                freq = dev.powerfulcalendar.core.RecurrenceFreq.DAILY,
-                count = 3
-            )
+        val entry = MemoEntryV1(
+            eventSeq = 93, revision = 2, kind = EventKindV1.ALARM,
+            occurrenceKey = "2026-10-21T07:30", startMillis = millis,
+            title = "宿主映射测试", completed = false, zoneId = zone.id, repeating = true
         )
-        val entry = TodoEntry(owner, "2026-10-21T07:30", millis, owner.title)
-        var toggled: TodoEntry? = null
+        var toggled: String? = null
         val previousRenderer = PresentationSkinRegistry.memo
         PresentationSkinRegistry.useMemo(null)
         try {
@@ -81,12 +74,12 @@ class NativeMemoCenterScreenComposeTest {
                         onBack = {},
                         onCreateMemo = {},
                         onToggle = { toggled = it },
-                        onOpen = { _, _ -> }
+                        onOpen = {}
                     )
                 }
             }
             ui.onNode(isToggleable()).performClick()
-            ui.runOnIdle { assertEquals(entry, toggled) }
+            ui.runOnIdle { assertEquals(entry.rowKey, toggled) }
         } finally {
             PresentationSkinRegistry.useMemo(previousRenderer)
         }
