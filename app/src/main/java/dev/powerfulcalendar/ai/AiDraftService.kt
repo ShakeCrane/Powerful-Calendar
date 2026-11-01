@@ -1,6 +1,8 @@
 package dev.powerfulcalendar.ai
 
 import dev.powerfulcalendar.core.DraftOperation
+import dev.powerfulcalendar.core.DraftSourceRevisionMismatchException
+import dev.powerfulcalendar.core.DraftTargetOccupiedException
 import dev.powerfulcalendar.core.PowerStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -8,31 +10,81 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.time.Clock
 
-/** Turns a validated interpretation into real draft cards. Multiple cards may share one eventSeq. */
+/** Turns a validated interpretation into real draft cards. */
 class AiDraftService(
     private val store: PowerStore,
     private val clock: Clock = Clock.systemUTC()
 ) {
-    data class Created(val draftIds: List<Long>, val warnings: List<String>)
+    data class Created(
+        val draftIds: List<Long>,
+        val warnings: List<String>,
+        val itemResults: List<AiDraftItemResult> = emptyList()
+    )
 
     data class ReviewedApply(
         val handledIndices: Set<Int>,
         val stagedCount: Int,
         val publishedCount: Int,
         val alreadyResolvedCount: Int,
-        val warnings: List<String>
+        val warnings: List<String>,
+        val itemResults: List<AiDraftItemResult> = emptyList()
     )
 
-    fun createDrafts(interpretation: AiInterpretation): Created {
+    enum class ItemState { STAGED, PUBLISHED, ALREADY_RESOLVED, CONFLICT, BLOCKED, FAILED }
+
+    data class AiDraftItemResult(
+        val position: Int,
+        val sourceIndex: Int,
+        val operation: DraftOperation,
+        val state: ItemState,
+        val eventSeq: Long? = null,
+        val draftId: Long? = null,
+        val draftVersion: Long? = null,
+        val revision: Long? = null,
+        val commitId: String? = null,
+        val changed: Boolean = false,
+        val message: String? = null
+    )
+
+    fun createDrafts(
+        interpretation: AiInterpretation,
+        rejectExistingTargetDrafts: Boolean = false
+    ): Created {
         val ids = mutableListOf<Long>()
         val warnings = interpretation.warnings.toMutableList()
+        val itemResults = mutableListOf<AiDraftItemResult>()
+        val duplicateTargets = if (rejectExistingTargetDrafts) {
+            interpretation.proposals.asSequence()
+                .filter { it.blocked == null && it.operation != DraftOperation.CREATE }
+                .mapNotNull { it.eventSeq }
+                .groupingBy { it }
+                .eachCount()
+                .filterValues { it > 1 }
+                .keys
+        } else emptySet()
         if (interpretation.taskSnapshot != null) {
-            warnings.add("自动任务候选必须先经审核卡明确选择；未写入草稿")
-            return Created(ids, warnings)
+            val warning = "自动任务候选必须先经审核卡明确选择；未写入草稿"
+            warnings.add(warning)
+            interpretation.proposals.forEachIndexed { index, proposal ->
+                itemResults += AiDraftItemResult(index, proposal.sourceIndex, proposal.operation,
+                    ItemState.FAILED, eventSeq = proposal.eventSeq, message = warning)
+            }
+            return Created(ids, warnings, itemResults)
         }
         interpretation.proposals.forEachIndexed { index, proposal ->
             if (proposal.blocked != null) {
                 warnings.add(proposal.blocked)
+                itemResults += AiDraftItemResult(index, proposal.sourceIndex, proposal.operation,
+                    ItemState.BLOCKED, eventSeq = proposal.eventSeq, message = proposal.blocked)
+                return@forEachIndexed
+            }
+            if (proposal.operation != DraftOperation.CREATE && proposal.eventSeq != null &&
+                proposal.eventSeq in duplicateTargets
+            ) {
+                val warning = "同一审核批次包含多个针对同一事件的提案；这些项目均未暂存"
+                warnings.add(warning)
+                itemResults += AiDraftItemResult(index, proposal.sourceIndex, proposal.operation,
+                    ItemState.BLOCKED, eventSeq = proposal.eventSeq, message = warning)
                 return@forEachIndexed
             }
             val operation = proposal.operation
@@ -40,21 +92,34 @@ class AiDraftService(
             // `source` is already correct: CREATE is AI-authored, REPLACE keeps the real provenance.
             val form = proposal.form
             if (operation != DraftOperation.CREATE && (target == null || store.get(target) == null)) {
-                warnings.add("第 ${index + 1} 项目标事件不存在，未生成草稿")
+                val warning = "第 ${index + 1} 项目标事件不存在，未生成草稿"
+                warnings.add(warning)
+                itemResults += AiDraftItemResult(index, proposal.sourceIndex, operation,
+                    ItemState.FAILED, eventSeq = target, message = warning)
                 return@forEachIndexed
             }
             runCatching {
                 val card = if (operation == DraftOperation.CREATE) {
                     store.newDraft(form, null, DraftOperation.CREATE, actor = "ai")
                 } else {
-                    store.newDraft(form, target, operation, actor = "ai")
+                    store.newDraft(form, target, operation, actor = "ai",
+                        expectedRevision = proposal.expectedRevision,
+                        rejectExistingDraft = rejectExistingTargetDrafts)
                 }
                 ids.add(card.draftId)
+                itemResults += AiDraftItemResult(index, proposal.sourceIndex, operation,
+                    ItemState.STAGED, card.eventSeq, card.draftId, card.draftVersion,
+                    changed = true)
             }.onFailure {
-                warnings.add("第 ${index + 1} 项未能生成草稿：" + (it.message ?: "未知错误"))
+                val warning = "第 ${index + 1} 项未能生成草稿：" + (it.message ?: "未知错误")
+                warnings.add(warning)
+                itemResults += AiDraftItemResult(index, proposal.sourceIndex, operation,
+                    if (it is DraftSourceRevisionMismatchException ||
+                        it is DraftTargetOccupiedException) ItemState.CONFLICT else ItemState.FAILED,
+                    eventSeq = target, message = warning)
             }
         }
-        return Created(ids, warnings)
+        return Created(ids, warnings, itemResults)
     }
 
     /**
@@ -62,23 +127,61 @@ class AiDraftService(
      * previews use durable task receipts; older/manual proposal paths retain their existing draft
      * behavior. A retry can therefore neither allocate a second identity nor publish twice.
      */
-    fun applyReviewedProposals(
+    internal fun applyReviewedProposals(
         interpretation: AiInterpretation,
         selectedPositions: Set<Int>,
-        publish: Boolean
+        publish: Boolean,
+        rejectExistingTargetDrafts: Boolean = false,
+        allowExpiredReceiptReplay: Boolean = false,
+        taskContext: ReviewedAiTaskContext? = interpretation.taskSnapshot?.let {
+            ReviewedAiTaskContext(
+                taskId = it.taskId,
+                revision = it.revision,
+                anchorMillis = it.anchorMillis,
+                latestEvidenceMillis = it.userEvidence.maxOfOrNull { evidence ->
+                    evidence.createdAtMillis
+                } ?: it.anchorMillis
+            )
+        }
     ): ReviewedApply {
-        val task = interpretation.taskSnapshot
-        if (task != null && !task.isValidAt(clock.millis())) {
+        val task = taskContext
+        val expiredTask = task?.takeIf { !it.isValidAt(clock.millis()) }
+        val taskExpired = expiredTask != null
+        val expiredReceiptsMatch = expiredTask != null && allowExpiredReceiptReplay &&
+            selectedPositions.all { position ->
+                val proposal = interpretation.proposals.getOrNull(position) ?: return@all false
+                runCatching {
+                    store.hasAiTaskProposalReceipt(
+                        taskId = expiredTask.taskId,
+                        taskRevision = expiredTask.revision,
+                        itemIndex = proposal.sourceIndex,
+                        form = proposal.form,
+                        operation = proposal.operation,
+                        eventSeq = proposal.eventSeq,
+                        expectedTargetRevision = proposal.expectedRevision,
+                        terminalOnly = publish
+                    )
+                }.getOrDefault(false)
+            }
+        if (taskExpired && !expiredReceiptsMatch) {
             return ReviewedApply(
                 handledIndices = emptySet(),
                 stagedCount = 0,
                 publishedCount = 0,
                 alreadyResolvedCount = 0,
-                warnings = listOf("待处理 AI 任务已过期，请重新说明任务后再生成候选")
+                warnings = listOf("待处理 AI 任务已过期，请重新说明任务后再生成候选"),
+                itemResults = selectedPositions.sorted().mapNotNull { position ->
+                    interpretation.proposals.getOrNull(position)?.let { proposal ->
+                        AiDraftItemResult(position, proposal.sourceIndex, proposal.operation,
+                            ItemState.FAILED, eventSeq = proposal.eventSeq,
+                            message = "待处理 AI 任务已过期，请重新说明任务后再生成候选")
+                    }
+                }
             )
         }
         val handled = mutableSetOf<Int>()
         val warnings = mutableListOf<String>()
+        val itemResults = mutableListOf<AiDraftItemResult>()
         var staged = 0
         var published = 0
         var alreadyResolved = 0
@@ -87,11 +190,16 @@ class AiDraftService(
             val proposal = interpretation.proposals.getOrNull(position) ?: return@forEach
             if (proposal.blocked != null) {
                 warnings.add(proposal.blocked)
+                itemResults += AiDraftItemResult(position, proposal.sourceIndex, proposal.operation,
+                    ItemState.BLOCKED, eventSeq = proposal.eventSeq, message = proposal.blocked)
                 return@forEach
             }
             if (publish && proposal.operation != DraftOperation.DELETE &&
                 !proposal.form.isPublishable()) {
-                warnings.add("第 " + (position + 1) + " 项信息不完整，禁止直接发布；请先写入草稿补全")
+                val warning = "第 " + (position + 1) + " 项信息不完整，禁止直接发布；请先写入草稿补全"
+                warnings.add(warning)
+                itemResults += AiDraftItemResult(position, proposal.sourceIndex, proposal.operation,
+                    ItemState.FAILED, eventSeq = proposal.eventSeq, message = warning)
                 return@forEach
             }
             try {
@@ -100,24 +208,58 @@ class AiDraftService(
                     if (proposal.operation != DraftOperation.CREATE &&
                         (target == null || store.get(target) == null)
                     ) {
-                        warnings.add("第 ${position + 1} 项目标事件不存在，未生成草稿")
+                        val warning = "第 ${position + 1} 项目标事件不存在，未生成草稿"
+                        warnings.add(warning)
+                        itemResults += AiDraftItemResult(position, proposal.sourceIndex,
+                            proposal.operation, ItemState.FAILED, eventSeq = target,
+                            message = warning)
                         return@forEach
                     }
                     val draft = if (proposal.operation == DraftOperation.CREATE) {
                         store.newDraft(proposal.form, null, DraftOperation.CREATE, actor = "ai")
                     } else {
-                        store.newDraft(proposal.form, proposal.eventSeq, proposal.operation, actor = "ai")
+                        store.newDraft(proposal.form, proposal.eventSeq, proposal.operation,
+                            actor = "ai", expectedRevision = proposal.expectedRevision,
+                            rejectExistingDraft = rejectExistingTargetDrafts)
                     }
-                    handled.add(position)
                     if (publish) {
-                        when (val result = store.commit(draft.draftId, actor = "user")) {
-                            is PowerStore.CommitOutcome.Committed -> published++
+                        when (val result = store.commit(draft.draftId, actor = "user",
+                            expectedCurrentRevision = draft.baseRevision,
+                            expectedDraftVersion = draft.draftVersion)) {
+                            is PowerStore.CommitOutcome.Committed -> {
+                                handled.add(position)
+                                published++
+                                itemResults += AiDraftItemResult(position, proposal.sourceIndex,
+                                    proposal.operation, ItemState.PUBLISHED, draft.eventSeq,
+                                    draft.draftId, draft.draftVersion, result.revision,
+                                    result.commitId, changed = !result.duplicate)
+                            }
+                            is PowerStore.CommitOutcome.Conflict,
+                            is PowerStore.CommitOutcome.DraftVersionMismatch -> {
+                                val warning = "序号 ${draft.eventSeq} 的审核版本已变化；正式事件未发布"
+                                warnings.add(warning)
+                                itemResults += AiDraftItemResult(position, proposal.sourceIndex,
+                                    proposal.operation, ItemState.CONFLICT, draft.eventSeq,
+                                    draft.draftId, draft.draftVersion, message = warning)
+                            }
                             else -> {
+                                handled.add(position)
                                 staged++
-                                warnings.add("序号 ${draft.eventSeq} 未发布；草稿仍可编辑")
+                                val warning = "序号 ${draft.eventSeq} 未发布；草稿仍可编辑"
+                                warnings.add(warning)
+                                itemResults += AiDraftItemResult(position, proposal.sourceIndex,
+                                    proposal.operation, ItemState.STAGED, draft.eventSeq,
+                                    draft.draftId, draft.draftVersion, changed = true,
+                                    message = warning)
                             }
                         }
-                    } else staged++
+                    } else {
+                        handled.add(position)
+                        staged++
+                        itemResults += AiDraftItemResult(position, proposal.sourceIndex,
+                            proposal.operation, ItemState.STAGED, draft.eventSeq,
+                            draft.draftId, draft.draftVersion, changed = true)
+                    }
                     return@forEach
                 }
 
@@ -127,43 +269,129 @@ class AiDraftService(
                     itemIndex = proposal.sourceIndex,
                     form = proposal.form,
                     operation = proposal.operation,
-                    eventSeq = proposal.eventSeq
+                    eventSeq = proposal.eventSeq,
+                    expectedTargetRevision = proposal.expectedRevision,
+                    requireExistingReceipt = taskExpired,
+                    requireTerminalReceipt = taskExpired && publish
                 )) {
                     is PowerStore.AiTaskProposalStage.Pending -> {
-                        handled.add(position)
                         if (publish) {
+                            if (result.draft.form != proposal.form ||
+                                result.draft.operation != proposal.operation
+                            ) {
+                                val warning = "已审核的 AI 任务草稿在审核后发生变化；请重新审核当前草稿"
+                                warnings.add(warning)
+                                itemResults += AiDraftItemResult(position, proposal.sourceIndex,
+                                    proposal.operation, ItemState.FAILED, result.draft.eventSeq,
+                                    result.draft.draftId, result.draft.draftVersion,
+                                    message = warning)
+                                return@forEach
+                            }
                             when (val outcome = store.commit(
                                 result.draft.draftId,
                                 actor = "user",
-                                idempotencyKey = result.idempotencyKey
+                                idempotencyKey = result.idempotencyKey,
+                                expectedCurrentRevision = result.draft.baseRevision,
+                                expectedDraftVersion = result.draft.draftVersion
                             )) {
-                                is PowerStore.CommitOutcome.Committed ->
+                                is PowerStore.CommitOutcome.Committed -> {
+                                    handled.add(position)
                                     if (outcome.duplicate) alreadyResolved++ else published++
+                                    itemResults += AiDraftItemResult(position, proposal.sourceIndex,
+                                        proposal.operation,
+                                        if (outcome.duplicate) ItemState.ALREADY_RESOLVED
+                                        else ItemState.PUBLISHED,
+                                        result.draft.eventSeq, result.draft.draftId,
+                                        result.draft.draftVersion, outcome.revision,
+                                        outcome.commitId, changed = !outcome.duplicate)
+                                }
+                                is PowerStore.CommitOutcome.Conflict,
+                                is PowerStore.CommitOutcome.DraftVersionMismatch -> {
+                                    val warning = "序号 ${result.draft.eventSeq} 的审核版本已变化；正式事件未发布"
+                                    warnings.add(warning)
+                                    itemResults += AiDraftItemResult(position, proposal.sourceIndex,
+                                        proposal.operation, ItemState.CONFLICT,
+                                        result.draft.eventSeq, result.draft.draftId,
+                                        result.draft.draftVersion, message = warning)
+                                }
                                 else -> {
+                                    handled.add(position)
                                     staged++
-                                    warnings.add(
-                                        "序号 ${result.draft.eventSeq} 未发布；草稿仍可编辑")
+                                    val warning = "序号 ${result.draft.eventSeq} 未发布；草稿仍可编辑"
+                                    warnings.add(warning)
+                                    itemResults += AiDraftItemResult(position, proposal.sourceIndex,
+                                        proposal.operation, ItemState.STAGED,
+                                        result.draft.eventSeq, result.draft.draftId,
+                                        result.draft.draftVersion, changed = !result.reused,
+                                        message = warning)
                                 }
                             }
-                        } else staged++
+                        } else {
+                            handled.add(position)
+                            staged++
+                            itemResults += AiDraftItemResult(position, proposal.sourceIndex,
+                                proposal.operation, ItemState.STAGED, result.draft.eventSeq,
+                                result.draft.draftId, result.draft.draftVersion,
+                                changed = !result.reused)
+                        }
                     }
                     is PowerStore.AiTaskProposalStage.Committed -> {
                         handled.add(position)
                         alreadyResolved++
+                        itemResults += AiDraftItemResult(position, proposal.sourceIndex,
+                            proposal.operation, ItemState.ALREADY_RESOLVED,
+                            result.eventSeq, revision = result.revision,
+                            commitId = result.commitId)
                     }
                     PowerStore.AiTaskProposalStage.Discarded -> {
                         handled.add(position)
                         alreadyResolved++
+                        itemResults += AiDraftItemResult(position, proposal.sourceIndex,
+                            proposal.operation, ItemState.ALREADY_RESOLVED,
+                            proposal.eventSeq, message = "提案已由此前操作处理")
+                    }
+                    PowerStore.AiTaskProposalStage.Expired -> {
+                        val warning = "待处理 AI 任务已过期，且没有可重放的对应项目收据"
+                        warnings.add(warning)
+                        itemResults += AiDraftItemResult(position, proposal.sourceIndex,
+                            proposal.operation, ItemState.FAILED, proposal.eventSeq,
+                            message = warning)
+                    }
+                    is PowerStore.AiTaskProposalStage.Conflict -> {
+                        val warning = "目标事件 revision 已变化；本项没有暂存或发布"
+                        warnings.add(warning)
+                        itemResults += AiDraftItemResult(position, proposal.sourceIndex,
+                            proposal.operation, ItemState.CONFLICT, proposal.eventSeq,
+                            revision = result.currentRevision, message = warning)
                     }
                 }
             } catch (error: Exception) {
                 if (error is kotlinx.coroutines.CancellationException) throw error
-                warnings.add("第 ${position + 1} 项未能写入：" +
-                    (error.message ?: error.javaClass.simpleName))
+                val warning = "第 ${position + 1} 项未能写入：" +
+                    (error.message ?: error.javaClass.simpleName)
+                warnings.add(warning)
+                itemResults += AiDraftItemResult(position, proposal.sourceIndex,
+                    proposal.operation,
+                    if (error is DraftSourceRevisionMismatchException ||
+                        error is DraftTargetOccupiedException) ItemState.CONFLICT else ItemState.FAILED,
+                    eventSeq = proposal.eventSeq,
+                    message = warning)
             }
         }
-        return ReviewedApply(handled, staged, published, alreadyResolved, warnings)
+        return ReviewedApply(handled, staged, published, alreadyResolved, warnings, itemResults)
     }
+}
+
+/** App-internal projection that omits private conversation evidence from the stable API DTO. */
+internal data class ReviewedAiTaskContext(
+    val taskId: String,
+    val revision: Int,
+    val anchorMillis: Long,
+    val latestEvidenceMillis: Long
+) {
+    fun isValidAt(nowMillis: Long): Boolean = nowMillis >= anchorMillis &&
+        nowMillis - anchorMillis <= AiConversationTaskSnapshot.MAX_TASK_AGE_MILLIS &&
+        latestEvidenceMillis <= nowMillis
 }
 
 /**

@@ -34,6 +34,9 @@ class DraftSourceRevisionMismatchException(
     val actualRevision: Long
 ) : IllegalStateException("事件版本已变化，请重新打开后再拖动")
 
+class DraftTargetOccupiedException(val eventSeq: Long) :
+    IllegalStateException("事件 #$eventSeq 已有待处理草稿；请先完成当前审核")
+
 class PowerStore(
     context: Context,
     databaseName: String = DATABASE_NAME,
@@ -740,6 +743,8 @@ class PowerStore(
             val revision: Long,
             val commitId: String
         ) : AiTaskProposalStage
+        data class Conflict(val currentRevision: Long?) : AiTaskProposalStage
+        data object Expired : AiTaskProposalStage
         data object Discarded : AiTaskProposalStage
     }
 
@@ -807,7 +812,8 @@ class PowerStore(
         eventSeq: Long? = null,
         operation: DraftOperation = DraftOperation.CREATE,
         actor: String = "user",
-        expectedRevision: Long? = null
+        expectedRevision: Long? = null,
+        rejectExistingDraft: Boolean = false
     ): DraftCard {
         require(expectedRevision == null || eventSeq != null) {
             "只有针对现有事件的候选才能检查来源版本"
@@ -866,6 +872,7 @@ class PowerStore(
                 arrayOf(targetSeq.toString())
             ).use { if (it.moveToFirst()) it.getLong(0) else null }
             if (existingId != null) {
+                if (rejectExistingDraft) throw DraftTargetOccupiedException(targetSeq)
                 val active = requireNotNull(readDraft(db, existingId))
                 if (active.form != form || active.operation != operation) {
                     // Preserve base_rev for stale protection, preserve queue slot and ID.
@@ -904,7 +911,10 @@ class PowerStore(
         itemIndex: Int,
         form: DraftForm,
         operation: DraftOperation,
-        eventSeq: Long?
+        eventSeq: Long?,
+        expectedTargetRevision: Long? = null,
+        requireExistingReceipt: Boolean = false,
+        requireTerminalReceipt: Boolean = false
     ): AiTaskProposalStage {
         require(taskId.matches(Regex("[A-Za-z0-9_-]{1,100}"))) { "AI task ID 无效" }
         require(taskRevision > 0) { "AI task revision 无效" }
@@ -915,20 +925,23 @@ class PowerStore(
         require((operation == DraftOperation.CREATE) == (eventSeq == null)) {
             "AI 提案操作与目标序号不一致"
         }
+        require(expectedTargetRevision == null || eventSeq != null) {
+            "新建提案不能绑定目标事件 revision"
+        }
+        require(expectedTargetRevision == null || expectedTargetRevision > 0L) {
+            "AI 提案目标 revision 无效"
+        }
+        require(!requireTerminalReceipt || requireExistingReceipt) {
+            "终态 AI 提案收据重放必须要求已有收据"
+        }
         val idempotencyKey = "ai-task-v1/$taskId/$taskRevision/$itemIndex"
-        val fingerprintInput = JSONObject()
-            .put("operation", operation.name)
-            .put("eventSeq", eventSeq ?: JSONObject.NULL)
-            .put("form", JSONObject(encodeForm(form)))
-            .toString()
-        val fingerprint = MessageDigest.getInstance("SHA-256")
-            .digest(fingerprintInput.toByteArray(Charsets.UTF_8))
-            .joinToString("") { "%02x".format(it) }
+        val fingerprint = aiTaskProposalFingerprint(form, operation, eventSeq)
 
         return tx { db ->
             val previous = db.rawQuery(
-                """SELECT fingerprint,event_seq,draft_id,state,commit_id
-                   FROM ai_task_receipts WHERE task_id=? AND task_revision=? AND item_index=?""",
+                """SELECT r.fingerprint,r.event_seq,r.draft_id,r.state,r.commit_id,d.base_rev
+                   FROM ai_task_receipts r JOIN drafts d ON d.draft_id=r.draft_id
+                   WHERE r.task_id=? AND r.task_revision=? AND r.item_index=?""",
                 arrayOf(taskId, taskRevision.toString(), itemIndex.toString())
             ).use { cursor ->
                 if (!cursor.moveToFirst()) null else AiTaskReceiptRow(
@@ -936,12 +949,26 @@ class PowerStore(
                     eventSeq = cursor.getLong(1),
                     draftId = cursor.getLong(2),
                     state = cursor.getString(3),
-                    commitId = if (cursor.isNull(4)) null else cursor.getString(4)
+                    commitId = if (cursor.isNull(4)) null else cursor.getString(4),
+                    baseRevision = if (cursor.isNull(5)) null else cursor.getLong(5)
                 )
             }
             if (previous != null) {
                 check(previous.fingerprint == fingerprint) {
                     "同一 AI 任务版本的候选内容已变化，原审核结果未覆盖"
+                }
+                if (expectedTargetRevision != null) check(
+                    previous.baseRevision == expectedTargetRevision
+                ) { "同一 AI 任务提案的目标 revision 已变化，原审核结果未覆盖" }
+                if (requireTerminalReceipt) {
+                    val draftStatus = db.rawQuery("SELECT status FROM drafts WHERE draft_id=?",
+                        arrayOf(previous.draftId.toString())).use { cursor ->
+                        if (cursor.moveToFirst()) cursor.getString(0) else null
+                    }
+                    val terminal = previous.state in setOf("COMMITTED", "DISCARDED") ||
+                        (previous.state == "PENDING" &&
+                            draftStatus in setOf("COMMITTED", "DISCARDED"))
+                    if (!terminal) return@tx AiTaskProposalStage.Expired
                 }
                 when (previous.state) {
                     "COMMITTED" -> {
@@ -984,15 +1011,25 @@ class PowerStore(
                                 )
                                 return@tx AiTaskProposalStage.Discarded
                             }
-                            else -> if (existing.isActionable) {
-                                return@tx AiTaskProposalStage.Pending(
-                                    existing, idempotencyKey, reused = true)
-                            } else return@tx AiTaskProposalStage.Discarded
+                            else -> {
+                                if (expectedTargetRevision != null) {
+                                    val currentRevision = readObject(db, previous.eventSeq)?.revision
+                                    if (currentRevision != expectedTargetRevision) {
+                                        return@tx AiTaskProposalStage.Conflict(currentRevision)
+                                    }
+                                }
+                                if (existing.isActionable) {
+                                    return@tx AiTaskProposalStage.Pending(
+                                        existing, idempotencyKey, reused = true)
+                                } else return@tx AiTaskProposalStage.Discarded
+                            }
                         }
                     }
                     else -> error("AI 提案收据状态无效")
                 }
             }
+
+            if (requireExistingReceipt) return@tx AiTaskProposalStage.Expired
 
             checkDraftWriteAllowed(db, actor = "ai")
             val targetSeq: Long
@@ -1002,9 +1039,11 @@ class PowerStore(
                 baseRevision = null
             } else {
                 targetSeq = requireNotNull(eventSeq)
-                val current = requireNotNull(readObject(db, targetSeq)) {
-                    "AI 提案目标事件不存在或已删除"
+                val current = readObject(db, targetSeq)
+                if (expectedTargetRevision != null && current?.revision != expectedTargetRevision) {
+                    return@tx AiTaskProposalStage.Conflict(current?.revision)
                 }
+                requireNotNull(current) { "AI 提案目标事件不存在或已删除" }
                 val occupied = db.rawQuery(
                     "SELECT 1 FROM drafts WHERE event_seq=? AND status IN ('PENDING','CONFLICT','INVALID') LIMIT 1",
                     arrayOf(targetSeq.toString())
@@ -1031,12 +1070,94 @@ class PowerStore(
         }
     }
 
+    /** Read-only exact-match lookup used to replay terminal task receipts after target changes. */
+    @Synchronized
+    fun hasResolvedAiTaskProposal(
+        taskId: String,
+        taskRevision: Int,
+        itemIndex: Int,
+        form: DraftForm,
+        operation: DraftOperation,
+        eventSeq: Long?,
+        expectedTargetRevision: Long? = null
+    ): Boolean = hasAiTaskProposalReceipt(
+        taskId = taskId,
+        taskRevision = taskRevision,
+        itemIndex = itemIndex,
+        form = form,
+        operation = operation,
+        eventSeq = eventSeq,
+        expectedTargetRevision = expectedTargetRevision,
+        terminalOnly = true
+    )
+
+    /**
+     * Read-only exact receipt lookup. It may include pending receipts for replay after a task
+     * expires, but callers must still require an existing-only transactional stage operation.
+     */
+    @Synchronized
+    fun hasAiTaskProposalReceipt(
+        taskId: String,
+        taskRevision: Int,
+        itemIndex: Int,
+        form: DraftForm,
+        operation: DraftOperation,
+        eventSeq: Long?,
+        expectedTargetRevision: Long? = null,
+        terminalOnly: Boolean
+    ): Boolean {
+        require(taskId.matches(Regex("[A-Za-z0-9_-]{1,100}"))) { "AI task ID 无效" }
+        require(taskRevision > 0) { "AI task revision 无效" }
+        require(itemIndex in 0..99) { "AI 提案索引超出范围" }
+        require(expectedTargetRevision == null || eventSeq != null) {
+            "新建提案不能绑定目标事件 revision"
+        }
+        require(expectedTargetRevision == null || expectedTargetRevision > 0L) {
+            "AI 提案目标 revision 无效"
+        }
+        val fingerprint = aiTaskProposalFingerprint(form, operation, eventSeq)
+        return readableDatabase.rawQuery(
+            """SELECT r.fingerprint,r.state,d.base_rev,d.status
+               FROM ai_task_receipts r JOIN drafts d ON d.draft_id=r.draft_id
+               WHERE r.task_id=? AND r.task_revision=? AND r.item_index=?""",
+            arrayOf(taskId, taskRevision.toString(), itemIndex.toString())
+        ).use { cursor ->
+            if (!cursor.moveToFirst() || cursor.getString(0) != fingerprint ||
+                (if (cursor.isNull(2)) null else cursor.getLong(2)) != expectedTargetRevision
+            ) return@use false
+            val storedState = cursor.getString(1)
+            val draftState = cursor.getString(3)
+            val effectiveState = if (storedState == "PENDING") when (draftState) {
+                "COMMITTED" -> "COMMITTED"
+                "DISCARDED" -> "DISCARDED"
+                else -> "PENDING"
+            } else storedState
+            !terminalOnly || effectiveState in setOf("COMMITTED", "DISCARDED")
+        }
+    }
+
+    private fun aiTaskProposalFingerprint(
+        form: DraftForm,
+        operation: DraftOperation,
+        eventSeq: Long?
+    ): String {
+        val input = JSONObject()
+            .put("operation", operation.name)
+            .put("eventSeq", eventSeq ?: JSONObject.NULL)
+            .put("form", JSONObject(encodeForm(form)))
+            .toString()
+        return MessageDigest.getInstance("SHA-256")
+            .digest(input.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+    }
+
     private data class AiTaskReceiptRow(
         val fingerprint: String,
         val eventSeq: Long,
         val draftId: Long,
         val state: String,
-        val commitId: String?
+        val commitId: String?,
+        val baseRevision: Long?
     )
 
     /**

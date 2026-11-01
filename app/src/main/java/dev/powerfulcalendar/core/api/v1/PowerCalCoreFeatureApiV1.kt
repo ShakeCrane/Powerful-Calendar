@@ -43,8 +43,10 @@ class PowerCalCoreFeatureApiV1(
     override val apiVersion: Int = 1
     private val eventService = StoreEventFeatureApiV1(store, clock)
     private val draftReviewService = StoreDraftReviewFeatureApiV1(store, deckController, eventService)
+    private val aiProposalService = StoreAiProposalFeatureApiV1(store, eventService, clock)
     override val events: EventFeatureApiV1 get() = eventService
     override val draftReview: DraftReviewFeatureApiV1 get() = draftReviewService
+    override val aiProposals: AiProposalFeatureApiV1 get() = aiProposalService
 
     /** Test/legacy Host seam for an explicitly supplied controller; production uses [draftReview]. */
     internal fun adaptDeckController(controller: DeckController): DraftReviewFeatureApiV1 =
@@ -53,9 +55,14 @@ class PowerCalCoreFeatureApiV1(
     /** Called only by trusted Host code after a user-confirmation surface has accepted deletion. */
     internal fun issueFormalDeleteApproval(handle: EventEditorHandleV1): EventDeleteApprovalV1? =
         eventService.issueFormalDeleteApproval(handle)
+
+    /** Called only by trusted Host code after the exact AI proposal set received user approval. */
+    internal fun issueAiProposalPublishApproval(
+        request: AiProposalApplyRequestV1
+    ): AiProposalPublishApprovalV1? = aiProposalService.issueHostApproval(request)
 }
 
-private class StoreEventFeatureApiV1(
+internal class StoreEventFeatureApiV1(
     private val store: PowerStore,
     private val clock: Clock
 ) : EventFeatureApiV1 {
@@ -887,8 +894,21 @@ private class StoreEventFeatureApiV1(
         eventSeq: Long? = null,
         eventRevision: Long? = null
     ) {
-        val change = EventFeatureChangeV1(revision.incrementAndGet(), type, eventSeq, eventRevision)
+        dispatchPreparedChange(prepareChange(type, eventSeq, eventRevision))
+    }
+
+    private fun prepareChange(
+        type: EventFeatureChangeTypeV1,
+        eventSeq: Long? = null,
+        eventRevision: Long? = null
+    ) = EventFeatureChangeV1(revision.incrementAndGet(), type, eventSeq, eventRevision)
+
+    private fun dispatchPreparedChange(change: EventFeatureChangeV1) {
         listeners.forEach { listener -> runCatching { listener(change) } }
+    }
+
+    internal fun dispatchPreparedChanges(changes: List<EventFeatureChangeV1>) {
+        changes.forEach(::dispatchPreparedChange)
     }
 
     internal fun publishDeckFormalChange(type: EventFeatureChangeTypeV1, eventSeq: Long) {
@@ -896,9 +916,20 @@ private class StoreEventFeatureApiV1(
         publish(type, eventSeq, revision)
     }
 
+    internal fun prepareDeckFormalChange(
+        type: EventFeatureChangeTypeV1,
+        eventSeq: Long
+    ): EventFeatureChangeV1 {
+        val eventRevision = store.getIncludingRetired(eventSeq)?.revision
+        return prepareChange(type, eventSeq, eventRevision)
+    }
+
     internal fun publishDeckDraftChange() {
         publish(EventFeatureChangeTypeV1.DRAFTS_CHANGED)
     }
+
+    internal fun prepareDeckDraftChange(): EventFeatureChangeV1 =
+        prepareChange(EventFeatureChangeTypeV1.DRAFTS_CHANGED)
 
     private fun withCheckpointReceipt(
         requestId: String,
@@ -1479,7 +1510,7 @@ private fun EventFormV1.detachedDraftSnapshot(): EventFormV1 = copy(
     )
 )
 
-private fun canonicalDraftFormFingerprint(form: EventFormV1): String {
+internal fun canonicalDraftFormFingerprint(form: EventFormV1): String {
     val canonical = buildString {
         fun field(name: String, value: String?) {
             append(name.length).append(':').append(name)

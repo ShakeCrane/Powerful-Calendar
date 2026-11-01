@@ -53,7 +53,8 @@ internal data class WebAiProposalPublishReview(
     val reviewId: String,
     val interpretation: AiInterpretation,
     val selectedPositions: List<Int>,
-    val targetSnapshots: Map<Long, TemporalRecord>
+    val targetSnapshots: Map<Long, TemporalRecord>,
+    val expectedTargetRevisions: Map<Long, Long>
 )
 
 internal object WebAiProposalProjection {

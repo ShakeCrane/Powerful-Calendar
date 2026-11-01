@@ -288,4 +288,5 @@ interface CoreFeatureApiV1 {
     val apiVersion: Int
     val events: EventFeatureApiV1
     val draftReview: DraftReviewFeatureApiV1
+    val aiProposals: AiProposalFeatureApiV1
 }

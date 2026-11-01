@@ -66,7 +66,6 @@ import dev.powerfulcalendar.ai.AiBatchRunner
 import dev.powerfulcalendar.ai.AiChatHistoryStore
 import dev.powerfulcalendar.ai.AiChatMessage
 import dev.powerfulcalendar.ai.AiClient
-import dev.powerfulcalendar.ai.AiDraftService
 import dev.powerfulcalendar.ai.AiFileFallbackConsent
 import dev.powerfulcalendar.ai.AiInterpretation
 import dev.powerfulcalendar.ai.AiSettingsStore
@@ -91,6 +90,8 @@ import dev.powerfulcalendar.core.api.v1.EventFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.EventQuerySnapshotV1
 import dev.powerfulcalendar.core.api.v1.EventMutationStatusV1
 import dev.powerfulcalendar.core.api.v1.EventSelectionV1
+import dev.powerfulcalendar.core.api.v1.AiProposalApplyRequestV1
+import dev.powerfulcalendar.core.api.v1.AiProposalDecisionV1
 import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.toCoreDraftForm
 import dev.powerfulcalendar.core.api.v1.toCoreTemporalRecord
@@ -734,17 +735,27 @@ fun PowerCalApp(
             } else emptyList()
             val result = AiClient(settings, zone).interpret(text, contextForAi)
             val created = withContext(Dispatchers.IO) {
-                AiDraftService(store).createDrafts(result)
+                coreFeatureApi.aiProposals.createDrafts(
+                    result.toAiProposalReviewV1(
+                        reviewId = java.util.UUID.randomUUID().toString(),
+                        expectedTargetRevisions = contextForAi.associate { it.eventSeq to it.revision }
+                    ),
+                    requestId = java.util.UUID.randomUUID().toString()
+                )
             }
             reload()
             val sharedNote = if (contextForAi.isEmpty()) "未共享事件上下文"
                 else "已共享 ${contextForAi.size} 条事件作为本次上下文"
-            if (created.draftIds.isEmpty()) {
-                message = (result.warnings.firstOrNull()
+            val firstDraft = created.itemReceipts.firstOrNull {
+                it.status == dev.powerfulcalendar.core.api.v1.AiProposalItemStatusV1.STAGED
+            }?.draftId
+            if (firstDraft == null) {
+                message = (created.warnings.firstOrNull()
                     ?: "AI 没有返回可用的结构化草稿") + " · " + sharedNote
             } else {
-                openDeckAt(created.draftIds.first())
-                message = "AI 生成 ${created.draftIds.size} 张待确认草稿 · " + sharedNote
+                openDeckAt(firstDraft)
+                message = "AI 生成 ${created.stagedCount} 张待确认草稿 · " + sharedNote +
+                    created.warnings.take(2).joinToString("；").let { if (it.isBlank()) "" else " · $it" }
             }
         } catch (error: Exception) {
             if (error is kotlinx.coroutines.CancellationException) throw error
@@ -1049,17 +1060,20 @@ fun PowerCalApp(
                 PowerCalStores.appScope.launch {
                     try {
                         val applied = withContext(Dispatchers.IO) {
-                            synchronized(store) {
-                                if (captureAiProposalTargets(session, selected) == null) null
-                                else AiDraftService(store).applyReviewedProposals(
-                                    session.interpretation, selected.toSet(), publish = false)
-                            }
+                            val request = AiProposalApplyRequestV1(
+                                requestId = java.util.UUID.randomUUID().toString(),
+                                review = session.interpretation.toAiProposalReviewV1(
+                                    session.reviewId, session.expectedTargetRevisions),
+                                selectedPositions = selected.toSet(),
+                                decision = AiProposalDecisionV1.STAGE
+                            )
+                            coreFeatureApi.aiProposals.applyReviewedProposals(request)
                         }
                         withContext(Dispatchers.Main) {
-                            if (applied == null) {
+                            if (applied.status == dev.powerfulcalendar.core.api.v1.AiProposalApplyStatusV1.CONFLICT) {
                                 appendChat("assistant", "目标事件已变化或无法核对；没有写入草稿，请重新生成提案。")
                             } else {
-                                finishWebAiProposalRequest(session, applied.handledIndices)
+                                finishWebAiProposalRequest(session, applied.handledPositions)
                                 val refreshed = runCatching { reload() }.isSuccess
                                 appendChat("assistant", "已写入 ${applied.stagedCount} 张待处理草稿；" +
                                     (if (applied.alreadyResolvedCount > 0)
@@ -1106,7 +1120,8 @@ fun PowerCalApp(
                                     reviewId = session.reviewId,
                                     interpretation = session.interpretation,
                                     selectedPositions = selected,
-                                    targetSnapshots = targets
+                                    targetSnapshots = targets,
+                                    expectedTargetRevisions = session.expectedTargetRevisions
                                 )
                             }
                         }
@@ -2158,22 +2173,36 @@ fun PowerCalApp(
                         scope.launch {
                             try {
                                 val applied = withContext(Dispatchers.IO) {
-                                    AiDraftService(store).applyReviewedProposals(
-                                        snapshot, selected.toSet(), publish)
+                                    val request = AiProposalApplyRequestV1(
+                                        requestId = java.util.UUID.randomUUID().toString(),
+                                        review = snapshot.toAiProposalReviewV1(
+                                            session.reviewId, session.expectedTargetRevisions),
+                                        selectedPositions = selected.toSet(),
+                                        decision = if (publish) AiProposalDecisionV1.PUBLISH
+                                            else AiProposalDecisionV1.STAGE
+                                    )
+                                    val approval = if (publish)
+                                        coreFeatureApi.issueAiProposalPublishApproval(request) else null
+                                    if (publish && approval == null) null
+                                    else coreFeatureApi.aiProposals.applyReviewedProposals(request, approval)
                                 }
-                                if (webAiProposalReviewSession?.reviewId == session.reviewId) {
+                                if (applied != null &&
+                                    webAiProposalReviewSession?.reviewId == session.reviewId) {
                                     val remaining = snapshot.copy(proposals = snapshot.proposals
-                                        .filterIndexed { i, _ -> i !in applied.handledIndices })
+                                        .filterIndexed { i, _ -> i !in applied.handledPositions })
                                     webAiProposalReviewSession = if (remaining.proposals.isEmpty()) null
                                         else session.replace(remaining)
                                 }
                                 reload()
-                                if (publish && applied.publishedCount > 0) reconcile()
+                                if (publish && (applied?.publishedCount ?: 0) > 0) reconcile()
                                 appendChat("assistant", "结构化操作结果：写入或复用待处理草稿 " +
-                                    applied.stagedCount + "，正式发布 " + applied.publishedCount +
-                                    (if (applied.alreadyResolvedCount > 0)
+                                    (applied?.stagedCount ?: 0) + "，正式发布 " +
+                                    (applied?.publishedCount ?: 0) +
+                                    (if (applied != null && applied.alreadyResolvedCount > 0)
                                         "，已有收据确认已处理 " + applied.alreadyResolvedCount else "") +
-                                    "。" + applied.warnings.take(2).joinToString("；"))
+                                    (if (applied == null)
+                                        "。目标状态已变化或审批未能签发；没有执行正式操作。"
+                                    else "。" + applied.warnings.take(2).joinToString("；")))
                                 WebSkinBridgeRuntime.stateRevision++
                             } finally {
                                 aiBusy = false
@@ -2375,17 +2404,16 @@ fun PowerCalApp(
                     PowerCalStores.appScope.launch {
                         try {
                             val applied = withContext(Dispatchers.IO) {
-                                synchronized(store) {
-                                    val unchanged = review.targetSnapshots.all { (seq, snapshot) ->
-                                        store.get(seq) == snapshot
-                                    }
-                                    if (!unchanged) null else AiDraftService(store)
-                                        .applyReviewedProposals(
-                                            review.interpretation,
-                                            review.selectedPositions.toSet(),
-                                            publish = true
-                                        )
-                                }
+                                val request = AiProposalApplyRequestV1(
+                                    requestId = java.util.UUID.randomUUID().toString(),
+                                    review = review.interpretation.toAiProposalReviewV1(
+                                        review.reviewId, review.expectedTargetRevisions),
+                                    selectedPositions = review.selectedPositions.toSet(),
+                                    decision = AiProposalDecisionV1.PUBLISH
+                                )
+                                val approval = coreFeatureApi.issueAiProposalPublishApproval(request)
+                                if (approval == null) null
+                                else coreFeatureApi.aiProposals.applyReviewedProposals(request, approval)
                             }
                             withContext(Dispatchers.Main) {
                                 pendingWebAiProposalPublish = null
@@ -2394,7 +2422,7 @@ fun PowerCalApp(
                                 } else {
                                     webAiProposalReviewSession?.takeIf {
                                         it.reviewId == review.reviewId
-                                    }?.let { finishWebAiProposalRequest(it, applied.handledIndices) }
+                                    }?.let { finishWebAiProposalRequest(it, applied.handledPositions) }
                                     val refreshed = runCatching { reload() }.isSuccess
                                     val reconciled = if (applied.publishedCount > 0)
                                         runCatching { reconcile() }.isSuccess else true

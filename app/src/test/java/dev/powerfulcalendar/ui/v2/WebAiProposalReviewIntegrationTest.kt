@@ -357,6 +357,10 @@ class WebAiProposalReviewIntegrationTest {
                     indices = listOf(0, 1)
                 ))
             }
+            ui.waitUntil(5_000) {
+                ui.onAllNodesWithText("确认 AI 批量正式操作")
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
             ui.onNodeWithText("确认 AI 批量正式操作").assertExists()
             ui.onNodeWithText("确认并提交 2 项").assertExists()
             ui.onNodeWithText("#${replaceTarget.eventSeq} · 版本 ${replaceTarget.revision}",

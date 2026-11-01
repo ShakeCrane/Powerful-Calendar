@@ -89,7 +89,9 @@ data class AiProposal(
     /** Non-null when the proposal cannot be turned into a card (e.g. unknown target event). */
     val blocked: String? = null,
     /** Stable index in the model's original response array; survives review-list filtering. */
-    val sourceIndex: Int = 0
+    val sourceIndex: Int = 0,
+    /** Revision captured by the trusted review adapter; model responses never set this value. */
+    val expectedRevision: Long? = null
 )
 
 data class AiInterpretation(

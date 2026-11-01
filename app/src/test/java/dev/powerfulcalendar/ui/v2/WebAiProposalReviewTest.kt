@@ -94,7 +94,8 @@ class WebAiProposalReviewTest {
                 AiProposal(DraftOperation.DELETE, 72, DraftForm.from(removed))
             )),
             selectedPositions = listOf(0, 1),
-            targetSnapshots = mapOf(71L to current, 72L to removed)
+            targetSnapshots = mapOf(71L to current, 72L to removed),
+            expectedTargetRevisions = mapOf(71L to current.revision, 72L to removed.revision)
         )
         var confirmed = 0
         var dismissed = 0
@@ -155,7 +156,8 @@ class WebAiProposalReviewTest {
                     DraftForm(kind = TemporalKind.MEMO, title = "新备忘"))
             )),
             selectedPositions = listOf(0),
-            targetSnapshots = emptyMap()
+            targetSnapshots = emptyMap(),
+            expectedTargetRevisions = emptyMap()
         )
         ui.setContent {
             PowerCalTheme {

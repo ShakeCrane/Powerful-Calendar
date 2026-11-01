@@ -67,6 +67,125 @@ class PowerStoreAiTaskReceiptTest {
     }
 
     @Test
+    fun taskProposalStageChecksReviewedTargetRevisionInsideStoreTransaction() {
+        val create = store.newDraft(form("target before"))
+        assertTrue(store.commit(create.draftId) is PowerStore.CommitOutcome.Committed)
+        val reviewed = requireNotNull(store.get(create.eventSeq))
+        val secondConnection = openStore(store.databaseName)
+        val concurrent = secondConnection.newDraft(
+            form("target changed through another Store"),
+            eventSeq = reviewed.eventSeq,
+            operation = DraftOperation.REPLACE,
+            expectedRevision = reviewed.revision
+        )
+        assertTrue(secondConnection.commit(concurrent.draftId) is PowerStore.CommitOutcome.Committed)
+        val actualRevision = requireNotNull(store.get(reviewed.eventSeq)).revision
+
+        val result = store.stageAiTaskProposal(
+            taskId = "stale-target-task",
+            taskRevision = 1,
+            itemIndex = 0,
+            form = form("stale AI proposal"),
+            operation = DraftOperation.REPLACE,
+            eventSeq = reviewed.eventSeq,
+            expectedTargetRevision = reviewed.revision
+        )
+
+        assertEquals(PowerStore.AiTaskProposalStage.Conflict(actualRevision), result)
+        assertEquals("target changed through another Store", store.get(reviewed.eventSeq)?.title)
+        assertTrue(store.pendingDrafts().isEmpty())
+        assertEquals(0, receiptCount(store))
+    }
+
+    @Test
+    fun expiredReplayStageRequiresAnExactExistingReceiptInsideTheTransaction() {
+        val before = counters(store)
+        val absent = store.stageAiTaskProposal(
+            taskId = "existing-only-task",
+            taskRevision = 1,
+            itemIndex = 0,
+            form = form(),
+            operation = DraftOperation.CREATE,
+            eventSeq = null,
+            requireExistingReceipt = true
+        )
+        assertEquals(PowerStore.AiTaskProposalStage.Expired, absent)
+        assertEquals(before, counters(store))
+        assertEquals(0, receiptCount(store))
+
+        val staged = stage("existing-only-task", 1, 0, form())
+            as PowerStore.AiTaskProposalStage.Pending
+        assertTrue(store.hasAiTaskProposalReceipt(
+            "existing-only-task", 1, 0, form(), DraftOperation.CREATE, null,
+            terminalOnly = false))
+        assertFalse(store.hasAiTaskProposalReceipt(
+            "existing-only-task", 1, 0, form(), DraftOperation.CREATE, null,
+            terminalOnly = true))
+
+        val stillPending = store.stageAiTaskProposal(
+            taskId = "existing-only-task",
+            taskRevision = 1,
+            itemIndex = 0,
+            form = form(),
+            operation = DraftOperation.CREATE,
+            eventSeq = null,
+            requireExistingReceipt = true,
+            requireTerminalReceipt = true
+        )
+        assertEquals(PowerStore.AiTaskProposalStage.Expired, stillPending)
+
+        assertTrue(store.discard(staged.draft.draftId))
+        assertTrue(store.hasAiTaskProposalReceipt(
+            "existing-only-task", 1, 0, form(), DraftOperation.CREATE, null,
+            terminalOnly = true))
+        val secondConnection = openStore(store.databaseName)
+        assertTrue(secondConnection.undoDiscard(staged.draft.draftId))
+        val reopened = counters(store)
+        val terminalOnlyReplay = store.stageAiTaskProposal(
+            taskId = "existing-only-task",
+            taskRevision = 1,
+            itemIndex = 0,
+            form = form(),
+            operation = DraftOperation.CREATE,
+            eventSeq = null,
+            requireExistingReceipt = true,
+            requireTerminalReceipt = true
+        )
+        assertEquals(PowerStore.AiTaskProposalStage.Expired, terminalOnlyReplay)
+        assertEquals(reopened, counters(store))
+
+        val replay = store.stageAiTaskProposal(
+            taskId = "existing-only-task",
+            taskRevision = 1,
+            itemIndex = 0,
+            form = form(),
+            operation = DraftOperation.CREATE,
+            eventSeq = null,
+            requireExistingReceipt = true
+        ) as PowerStore.AiTaskProposalStage.Pending
+        assertTrue(replay.reused)
+        assertEquals(staged.draft.draftId, replay.draft.draftId)
+
+        store.commit(staged.draft.draftId, actor = "user",
+            idempotencyKey = staged.idempotencyKey) as PowerStore.CommitOutcome.Committed
+        assertTrue(store.hasAiTaskProposalReceipt(
+            "existing-only-task", 1, 0, form(), DraftOperation.CREATE, null,
+            terminalOnly = true))
+        val terminal = store.stageAiTaskProposal(
+            taskId = "existing-only-task",
+            taskRevision = 1,
+            itemIndex = 0,
+            form = form(),
+            operation = DraftOperation.CREATE,
+            eventSeq = null,
+            requireExistingReceipt = true,
+            requireTerminalReceipt = true
+        )
+        assertTrue(terminal is PowerStore.AiTaskProposalStage.Committed)
+        assertEquals(1, receiptCount(store))
+    }
+
+    @Test
     fun commitAndProcessRestartReplayReturnTheOriginalCommitReceipt() {
         val pending = stage("publish-task", 2, 0, form()) as PowerStore.AiTaskProposalStage.Pending
         val committed = store.commit(
