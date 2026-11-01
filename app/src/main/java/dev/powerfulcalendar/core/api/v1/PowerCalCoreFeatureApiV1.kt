@@ -1193,6 +1193,33 @@ private class StoreDraftReviewFeatureApiV1(
     override fun queryPendingDrafts(): List<DraftReviewCardV1> =
         store.pendingDrafts().map { it.toDraftReviewCardV1() }
 
+    @Synchronized
+    override fun queryRetiredEventsPage(offset: Int, limit: Int): DraftReviewRetiredPageV1 {
+        require(offset in 0..DraftReviewFeatureApiV1.MAX_RETIRED_PAGE_OFFSET) {
+            "墓碑页偏移无效"
+        }
+        require(limit in 1..DraftReviewFeatureApiV1.MAX_RETIRED_PAGE_SIZE) {
+            "墓碑页大小无效"
+        }
+        val page = store.retiredPage(offset, limit)
+        return DraftReviewRetiredPageV1(
+            offset = offset,
+            limit = limit,
+            total = page.total,
+            events = page.records.map { DraftReviewRetiredEventV1(it.toEventRecordV1()) }
+        )
+    }
+
+    @Synchronized
+    override fun queryRetiredEvent(eventSeq: Long): DraftReviewRetiredEventV1? {
+        if (eventSeq <= 0L) return null
+        return synchronized(store) {
+            val record = store.getIncludingRetired(eventSeq) ?: return@synchronized null
+            if (!store.isRetired(eventSeq)) return@synchronized null
+            DraftReviewRetiredEventV1(record.toEventRecordV1())
+        }
+    }
+
     override fun observe(listener: (DraftReviewSnapshotV1) -> Unit): AutoCloseable {
         listeners += listener
         runCatching { listener(snapshot) }

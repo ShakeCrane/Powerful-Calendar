@@ -448,7 +448,7 @@ internal class WebSkinEditService(
     private var retiredResults: List<TemporalRecord> = emptyList()
     private var retiredLoaded = false
     private var restoreTombstone: TemporalRecord? = null
-    private val retiredPageSize = 50
+    private val retiredPageSize = DraftReviewFeatureApiV1.DEFAULT_RETIRED_PAGE_SIZE
     var pendingWriteReview by mutableStateOf<WebFormalWriteReview?>(null)
         private set
     // Compose-observable lifetime signal for reliable Android Back interception.
@@ -528,19 +528,19 @@ internal class WebSkinEditService(
     private suspend fun loadRetiredPage(requestedOffset: Int): Boolean {
         var offset = requestedOffset / retiredPageSize * retiredPageSize
         var page = withContext(Dispatchers.IO) {
-            store.retiredPage(offset = offset, limit = retiredPageSize)
+            deck.queryRetiredEventsPage(offset = offset, limit = retiredPageSize)
         }
         if (page.total > 0 && offset >= page.total) {
             offset = (page.total - 1) / retiredPageSize * retiredPageSize
             page = withContext(Dispatchers.IO) {
-                store.retiredPage(offset = offset, limit = retiredPageSize)
+                deck.queryRetiredEventsPage(offset = offset, limit = retiredPageSize)
             }
         } else if (page.total == 0) {
             offset = 0
         }
         retiredOffset = offset
         retiredTotal = page.total
-        retiredResults = page.records
+        retiredResults = page.events.map { it.event.toCoreTemporalRecord() }
         retiredLoaded = true
         return true
     }
@@ -551,11 +551,7 @@ internal class WebSkinEditService(
             return
         }
         restoreTombstone = withContext(Dispatchers.IO) {
-            synchronized(store) {
-                store.getIncludingRetired(prompt.eventSeq)?.takeIf {
-                    store.isRetired(prompt.eventSeq)
-                }
-            }
+            deck.queryRetiredEvent(prompt.eventSeq)?.event?.toCoreTemporalRecord()
         }
     }
 
@@ -1053,10 +1049,7 @@ internal class WebSkinEditService(
                         it.eventSeq == cmd.eventSeq && it.revision == cmd.expectedRevision
                     }
                     val stillRetired = if (listed == null) false else withContext(Dispatchers.IO) {
-                        synchronized(store) {
-                            store.isRetired(cmd.eventSeq) &&
-                                store.getIncludingRetired(cmd.eventSeq) == listed
-                        }
+                        deck.queryRetiredEvent(cmd.eventSeq)?.event?.toCoreTemporalRecord() == listed
                     }
                     when {
                         !deckOpen || newEventSession != null -> result(cmd.requestId,"missing")
@@ -1307,10 +1300,7 @@ internal class WebSkinEditService(
             cmd.expectedRevision) ?: return result(cmd.requestId, "stale")
         if (!deckOpen || deck.state.aiLocked || deck.state.busy) return result(cmd.requestId, "locked")
         val unchanged = withContext(Dispatchers.IO) {
-            synchronized(store) {
-                store.isRetired(prompt.eventSeq) &&
-                    store.getIncludingRetired(prompt.eventSeq) == restoreTombstone
-            }
+            deck.queryRetiredEvent(prompt.eventSeq)?.event?.toCoreTemporalRecord() == restoreTombstone
         }
         if (!unchanged || withContext(Dispatchers.IO) { store.draft(prompt.card.draftId) } !=
             prompt.card.toCoreDraftCard())
@@ -1331,11 +1321,8 @@ internal class WebSkinEditService(
         if (state.aiLocked || state.busy || state.dirty ||
             withContext(Dispatchers.IO) { store.isLocked() }) return result(cmd.requestId, "locked")
         val tombstone = withContext(Dispatchers.IO) {
-            synchronized(store) {
-                store.getIncludingRetired(prompt.eventSeq)?.takeIf {
-                    store.isRetired(prompt.eventSeq) && it.revision == cmd.expectedRevision
-                }
-            }
+            deck.queryRetiredEvent(prompt.eventSeq)?.event?.toCoreTemporalRecord()
+                ?.takeIf { it.revision == cmd.expectedRevision }
         } ?: return result(cmd.requestId, "stale", "已删除事件的版本已变化，请重新检查")
         val form = state.form?.toCoreDraftForm() ?: return result(cmd.requestId, "missing")
         val persisted = withContext(Dispatchers.IO) { store.draft(prompt.card.draftId) }
@@ -1464,11 +1451,7 @@ internal class WebSkinEditService(
         val restore = deck.state.restore
         if (restore != null) {
             restoreTombstone = withContext(Dispatchers.IO) {
-                synchronized(store) {
-                    store.getIncludingRetired(restore.eventSeq)?.takeIf {
-                        store.isRetired(restore.eventSeq)
-                    }
-                }
+                deck.queryRetiredEvent(restore.eventSeq)?.event?.toCoreTemporalRecord()
             }
         } else restoreTombstone = null
         return result(requestId, when (committed.status) {
@@ -1573,11 +1556,7 @@ internal class WebSkinEditService(
             expectedRevision != command.expectedRevision)
             return result(command.requestId, "conflict", "恢复草稿或审阅内容已变化")
         val live = withContext(Dispatchers.IO) {
-            synchronized(store) {
-                store.getIncludingRetired(command.eventSeq)?.takeIf {
-                    store.isRetired(command.eventSeq)
-                }
-            }
+            deck.queryRetiredEvent(command.eventSeq)?.event?.toCoreTemporalRecord()
         }
         val persisted = withContext(Dispatchers.IO) { store.draft(command.draftId) }
         if (live != review.current || persisted != review.deckCard ||

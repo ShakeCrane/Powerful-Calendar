@@ -43,6 +43,19 @@ data class DraftReviewRestoreV1(
     val message: String
 )
 
+/** Detached formal snapshot returned only while its identity is retired. */
+data class DraftReviewRetiredEventV1(
+    val event: EventRecordV1
+)
+
+/** One bounded page of retired event snapshots for explicit recovery review. */
+data class DraftReviewRetiredPageV1(
+    val offset: Int,
+    val limit: Int,
+    val total: Int,
+    val events: List<DraftReviewRetiredEventV1>
+)
+
 data class DraftReviewCompletionV1(
     val published: Int,
     val discarded: Int,
@@ -109,8 +122,23 @@ interface DraftReviewFeatureApiV1 {
     val apiVersion: Int
     val snapshot: DraftReviewSnapshotV1
 
+    companion object {
+        const val DEFAULT_RETIRED_PAGE_SIZE = 50
+        const val MAX_RETIRED_PAGE_SIZE = 100
+        const val MAX_RETIRED_PAGE_OFFSET = 1_000_000
+    }
+
     /** Read the persisted actionable queue without opening, refreshing, or flushing the editor. */
     fun queryPendingDrafts(): List<DraftReviewCardV1>
+
+    /** Reads a bounded, Store-ordered page of retired formal records without opening the editor. */
+    fun queryRetiredEventsPage(
+        offset: Int = 0,
+        limit: Int = DEFAULT_RETIRED_PAGE_SIZE
+    ): DraftReviewRetiredPageV1
+
+    /** Returns a fresh tombstone snapshot only while [eventSeq] is still retired. */
+    fun queryRetiredEvent(eventSeq: Long): DraftReviewRetiredEventV1?
 
     fun observe(listener: (DraftReviewSnapshotV1) -> Unit): AutoCloseable
     fun editCurrentDraft(

@@ -174,6 +174,62 @@ class DraftReviewFeatureApiV1Test {
         }
     }
 
+    @Test fun retiredQueriesPreserveStoreOrderingAndOnlyReturnCurrentTombstones() = runBlocking {
+        val older = createFormalEvent("Older retired")
+        val newer = createFormalEvent("Newer retired")
+        val active = createFormalEvent("Still active")
+        listOf(older, newer).forEach { record ->
+            val deletion = store.newDraft(
+                DraftForm.from(record), record.eventSeq, DraftOperation.DELETE,
+                expectedRevision = record.revision
+            )
+            assertTrue(store.commit(deletion.draftId) is PowerStore.CommitOutcome.Committed)
+        }
+
+        val api = core.draftReview
+        val persistedPage = store.retiredPage(limit = 100)
+        val snapshotBeforeQuery = api.snapshot
+        val revisionBeforeQuery = core.events.featureRevision
+        val identitiesBeforeQuery = store.identityCount()
+        val sequenceBeforeQuery = store.nextSequencePreview()
+        val draftsBeforeQuery = store.draftCount()
+        val commitsBeforeQuery = store.commitCount()
+        val changes = mutableListOf<EventFeatureChangeV1>()
+        val subscription = core.events.subscribe(changes::add)
+        try {
+            val firstPage = api.queryRetiredEventsPage(offset = 0, limit = 1)
+            val secondPage = api.queryRetiredEventsPage(offset = 1, limit = 1)
+            val tombstone = requireNotNull(api.queryRetiredEvent(older.eventSeq))
+
+            assertEquals(0, firstPage.offset)
+            assertEquals(1, secondPage.offset)
+            assertEquals(1, firstPage.limit)
+            assertEquals(persistedPage.total, firstPage.total)
+            assertEquals(
+                persistedPage.records.take(1).map { it.eventSeq },
+                firstPage.events.map { it.event.eventSeq }
+            )
+            assertEquals(
+                persistedPage.records.drop(1).take(1).map { it.eventSeq },
+                secondPage.events.map { it.event.eventSeq }
+            )
+            assertEquals(persistedPage.records.first { it.eventSeq == older.eventSeq },
+                tombstone.event.toCoreTemporalRecord())
+            assertEquals(null, api.queryRetiredEvent(active.eventSeq))
+            assertEquals(null, api.queryRetiredEvent(0L))
+
+            assertEquals(snapshotBeforeQuery, api.snapshot)
+            assertEquals(revisionBeforeQuery, core.events.featureRevision)
+            assertEquals(identitiesBeforeQuery, store.identityCount())
+            assertEquals(sequenceBeforeQuery, store.nextSequencePreview())
+            assertEquals(draftsBeforeQuery, store.draftCount())
+            assertEquals(commitsBeforeQuery, store.commitCount())
+            assertTrue(changes.isEmpty())
+        } finally {
+            subscription.close()
+        }
+    }
+
     @Test fun createDraftFingerprintSeparatesDelimiterContainingFieldValues() = runBlocking {
         val api = core.draftReview
         val base = newActivityDraft("Base").toEventFormV1()
