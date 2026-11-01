@@ -393,6 +393,7 @@ class NewEventEditSession private constructor(
             is PowerStore.CommitOutcome.Committed -> null
             is PowerStore.CommitOutcome.Invalid -> outcome.reason
             is PowerStore.CommitOutcome.Conflict -> "新建事件发生冲突，请重新检查内容"
+            is PowerStore.CommitOutcome.DraftVersionMismatch -> "草稿版本已变化，请重新检查内容"
             is PowerStore.CommitOutcome.NeedsRestore -> "新建事件需要恢复确认"
             PowerStore.CommitOutcome.Locked -> "待处理卡组正由 AI 独占，修改仍保留在编辑器中"
             PowerStore.CommitOutcome.NotAuthorized -> "当前编辑会话无权发布此事件"

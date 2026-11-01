@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.Color
 import androidx.test.core.app.ApplicationProvider
 import dev.powerfulcalendar.core.*
+import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
 import dev.powerfulcalendar.ui.v2.nativeui.NativeGlassPanel
 import org.junit.*
 import org.junit.Assert.*
@@ -49,6 +50,24 @@ class GlassComposeTest {
         DeckController(persistence, ioDispatcher = kotlinx.coroutines.Dispatchers.Unconfined)
 
     private fun DeckController.openNow(draftId: Long?) = kotlinx.coroutines.runBlocking { open(draftId) }
+
+    /** Legacy test call shape backed by the same versioned API used by production Deck actions. */
+    @Composable
+    private fun DraftDeckDialog(
+        controller: DeckController,
+        aiSession: PowerStore.AiSession?,
+        onDismissRequest: () -> Unit,
+        onOpenFormalEvent: (TemporalRecord) -> Unit,
+        onCancelAiBatch: () -> Unit,
+        onDeckChanged: () -> Unit,
+        formalSearch: (String) -> List<TemporalRecord>
+    ) {
+        val api = remember(store, controller) {
+            PowerCalCoreFeatureApiV1(store, deckController = controller)
+        }.draftReview
+        DraftDeckDialog(controller, api, aiSession, onDismissRequest, onOpenFormalEvent,
+            onCancelAiBatch, onDeckChanged, formalSearch)
+    }
 
     @Test fun dateOnlyDeadlineCanBeOpenedFromNoonAtFourHourZoom() {
         val record = TemporalRecord(42, 1, TemporalKind.DEADLINE, "提交设计稿", deadlineDate = "2026-10-20", zoneId = zone.id)
@@ -116,6 +135,42 @@ class GlassComposeTest {
         ui.onNodeWithText("草稿 2").assertIsDisplayed()
         ui.onNodeWithText("草稿 100").assertDoesNotExist()
         ui.onNodeWithText("2 / 100 · 已暂存").assertIsDisplayed()
+    }
+
+    @Test fun runtimeSkinCommitActionWaitsForHostOwnedReview() {
+        val card = store.newDraft(DraftForm.fresh(
+            TemporalKind.ACTIVITY, LocalDate.of(2026, 10, 20), zone
+        ).copy(title = "Host reviewed publication", startText = "2026-10-20 09:00",
+            endText = "2026-10-20 10:00"))
+        val controller = newController(StoreDeckPersistence(store)).also { it.openNow(card.draftId) }
+        val core = PowerCalCoreFeatureApiV1(store, deckController = controller)
+        DeckPresentationSkinRegistry.use(object : DeckVisualRenderer {
+            override val id = "runtime-commit-review-test"
+            @Composable override fun Render(context: DeckVisualContext) {
+                LaunchedEffect(context.state.currentId) {
+                    if (context.state.currentId == card.draftId) context.onCommit()
+                }
+            }
+        })
+        try {
+            ui.setContent { PowerCalTheme {
+                DraftDeckDialog(controller, core.draftReview, null, {}, {}, {}, {}, { emptyList() })
+            } }
+            ui.onNodeWithText("确认提交").assertIsDisplayed()
+            ui.onNodeWithText("开始/日期：2026-10-20 09:00").assertIsDisplayed()
+            ui.onNodeWithText("时区：Asia/Shanghai").assertIsDisplayed()
+            ui.onNodeWithText("重复：不重复").assertIsDisplayed()
+            ui.onNodeWithText("提醒：", substring = true).assertExists()
+            assertEquals(null, store.get(card.eventSeq))
+            assertEquals(0L, store.commitCount())
+
+            ui.onNodeWithText("确认提交").performClick()
+            ui.waitUntil(10_000) { store.get(card.eventSeq) != null }
+            assertEquals("Host reviewed publication", store.get(card.eventSeq)?.title)
+            assertEquals(1L, store.commitCount())
+        } finally {
+            DeckPresentationSkinRegistry.reset()
+        }
     }
 
     @Test fun explicitNativeSkinKeepsDeckOnItsSingleObserverPath() {

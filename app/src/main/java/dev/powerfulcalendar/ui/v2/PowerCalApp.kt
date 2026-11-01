@@ -72,7 +72,6 @@ import dev.powerfulcalendar.ai.AiInterpretation
 import dev.powerfulcalendar.ai.AiSettingsStore
 import dev.powerfulcalendar.ai.ChatProposalIntent
 import dev.powerfulcalendar.core.BackupEnvelope
-import dev.powerfulcalendar.core.DeckController
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.EditorSelection
@@ -204,9 +203,10 @@ fun PowerCalApp(
     // Re-read on composition so sessions opened after a timezone change capture the current zone.
     val zone = ZoneId.systemDefault()
     val scope = rememberCoroutineScope()
-    val controller = remember(store) { DeckController(StoreDeckPersistence(store)) }
     val coreFeatureApi = remember(store) { PowerCalCoreFeatureApiV1(store) }
     val eventFeatureApi = coreFeatureApi.events
+    val draftReviewApi = coreFeatureApi.draftReview
+    val controller = coreFeatureApi.deckController
     val effects = LocalGlassEffects.current
     val skins = remember(appContext) { SkinPackageManager(appContext) }
     var skinChoices by remember { mutableStateOf(skins.installed()) }
@@ -302,7 +302,7 @@ fun PowerCalApp(
         editSession != null || deckOpen || newEventSession != null)
     val webEditing = remember(store, controller) {
         WebSkinEditService(
-            store, controller, { nativeEditingNow.value }, coreFeatureApi
+            store, draftReviewApi, { nativeEditingNow.value }, coreFeatureApi
         )
     }
     DisposableEffect(webEditing) {
@@ -516,7 +516,7 @@ fun PowerCalApp(
         deckOpening = true
         scope.launch {
             try {
-                withContext(Dispatchers.IO) { controller.open(draftId) }
+                withContext(Dispatchers.IO) { draftReviewApi.open(draftId) }
                 deckInitialId = draftId
                 deckOpen = true
             } catch (error: kotlinx.coroutines.CancellationException) {
@@ -565,7 +565,7 @@ fun PowerCalApp(
         val restoreDeckOnStartup = deckOpen
         val restoreDeckIdOnStartup = deckInitialId
         if (restoreDeckOnStartup) {
-            withContext(Dispatchers.IO) { controller.open(restoreDeckIdOnStartup) }
+            withContext(Dispatchers.IO) { draftReviewApi.open(restoreDeckIdOnStartup) }
         }
         // Calendar projections should not stay empty while reminder scheduling reconciles.
         reload()
@@ -590,11 +590,11 @@ fun PowerCalApp(
     }
 
     LaunchedEffect(aiLocked) {
-        withContext(Dispatchers.IO) { controller.refresh() }
+        withContext(Dispatchers.IO) { draftReviewApi.refresh() }
         while (aiLocked) {
             delay(750)
             reload()
-            withContext(Dispatchers.IO) { controller.refresh() }
+            withContext(Dispatchers.IO) { draftReviewApi.refresh() }
         }
     }
     // Refresh permissions and desired scheduling after the user returns from Android settings.
@@ -630,7 +630,9 @@ fun PowerCalApp(
             if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP && deckVisible) {
                 // Best effort: the controller serializes this after any autosave, and a failed
                 // stage keeps the draft dirty with a retryable error for the next visible session.
-                PowerCalStores.appScope.launch { controller.flush() }
+                PowerCalStores.appScope.launch {
+                    draftReviewApi.flush("native-stop-${java.util.UUID.randomUUID()}")
+                }
             }
             if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP) {
                 activeEditSession?.takeIf { checkpointGate.shouldCheckpoint(it) }?.let { session ->
@@ -2512,6 +2514,7 @@ fun PowerCalApp(
     if (deckOpen) {
         DraftDeckDialog(
             controller = controller,
+            draftReviewApi = draftReviewApi,
             aiSession = aiSession,
             onDismissRequest = {
                 deckOpen = false
@@ -2524,15 +2527,19 @@ fun PowerCalApp(
                 scope.launch {
                     runCatching {
                         withContext(Dispatchers.IO) {
-                            store.pendingDraftsFor(record.eventSeq).firstOrNull {
-                                it.operation == DraftOperation.REPLACE ||
-                                    it.operation == DraftOperation.CONVERT
-                            } ?: store.proposeReplace(record.eventSeq)
+                            draftReviewApi.beginFormalReplacement(
+                                record.eventSeq,
+                                record.revision,
+                                java.util.UUID.randomUUID().toString()
+                            )
                         }
-                    }.onSuccess { card ->
+                    }.onSuccess { proposal ->
+                        check(proposal.succeeded) {
+                            proposal.message ?: proposal.errorCode ?: "无法打开事件编辑"
+                        }
                         deckOpen = false
                         reload()
-                        openDeckAt(card.draftId)
+                        openDeckAt(proposal.draftId)
                     }.onFailure {
                         message = it.message ?: "无法打开事件编辑"
                     }
@@ -3157,7 +3164,7 @@ fun PowerCalApp(
                     } finally {
                         PowerCalStores.aiBatchProgress.finish(session.sessionId)
                     }
-                    controller.refresh()
+                    draftReviewApi.refresh()
                     withContext(Dispatchers.Main) {
                         reload()
                         message = "AI 批次结束：发布 ${report.published} 张，丢弃 ${report.discarded} 张，保留 ${report.kept} 张" +

@@ -229,6 +229,7 @@ class AiBatchRunner(private val store: PowerStore) {
                         )) {
                             is PowerStore.CommitOutcome.Committed -> published++
                             is PowerStore.CommitOutcome.Conflict,
+                            is PowerStore.CommitOutcome.DraftVersionMismatch,
                             is PowerStore.CommitOutcome.NeedsRestore,
                             PowerStore.CommitOutcome.NotAuthorized -> kept++
                             is PowerStore.CommitOutcome.Invalid -> {

@@ -85,7 +85,7 @@ class WebSkinEditBridgeTest {
         assertNull(WebEditWire.decode(wire("deck.commit", ""","draftId":1,"draftVersion":-1""")))
         assertNull(WebEditWire.decode(wire("deck.discard", ""","draftId":1,"draftVersion":0,"approve":true""")))
         assertNotNull(WebEditWire.decode(wire("deck.open", ""","draftId":null""")))
-        assertNull(WebEditWire.decode(wire("deck.patch", ""","draftId":1,"draftVersion":0,"field":"recurrence","value":"RAW"""")))
+        assertNull(WebEditWire.decode(wire("deck.patch", ""","draftId":1,"draftVersion":0,"stateRevision":0,"field":"recurrence","value":"RAW"""")))
         assertNull(WebEditWire.decode(wire("editor.save", ""","sessionId":""""+sid+
             """","actor":"ai"""")))
         assertNull(WebEditWire.decode(wire("editor.save", ""","sessionId":"bad"""")))
@@ -726,9 +726,9 @@ class WebSkinEditBridgeTest {
             WebEditWire.patch(original,"source","forged")
         }
         assertNull(WebEditWire.decode(wire("deck.patch",
-            ""","draftId":42,"draftVersion":1,"field":"zoneId","value":"Etc/UTC"""")))
+            ""","draftId":42,"draftVersion":1,"stateRevision":3,"field":"zoneId","value":"Etc/UTC"""")))
         assertNotNull(WebEditWire.decode(wire("deck.patch",
-            ""","draftId":42,"draftVersion":1,"field":"recurrenceFreq","value":"DAILY"""")))
+            ""","draftId":42,"draftVersion":1,"stateRevision":3,"field":"recurrenceFreq","value":"DAILY"""")))
     }
 
     @Test fun kindPatchUsesCoreConversionForBothEditorAndDeckCommands() {
@@ -747,7 +747,7 @@ class WebSkinEditBridgeTest {
                 .put("sessionId", request()).put("field", "kind").put("value", "ACTIVITY"))
         val deckPayload = JSONObject().put("version", 1).put("type", "command")
             .put("payload", JSONObject().put("name", "deck.patch").put("requestId", request())
-                .put("draftId", 42).put("draftVersion", 1).put("field", "kind")
+                .put("draftId", 42).put("draftVersion", 1).put("stateRevision", 3).put("field", "kind")
                 .put("value", "DEADLINE"))
         assertNotNull(WebEditWire.decode(editorPayload.toString()))
         assertNotNull(WebEditWire.decode(deckPayload.toString()))

@@ -1,11 +1,11 @@
-# Core Feature API v1 — Event domain
+# Core Feature API v1 — Event and Draft/Review slices
 
-- **Status:** implemented event pilot; PHASE 1 remains in progress.
-- **Contract source:** `:core-api`, package `dev.powerfulcalendar.core.api.v1`, `CoreFeatureApiV1.kt`.
+- **Status:** Event pilot and Draft/Review vertical slice implemented; PHASE 1 remains in progress.
+- **Contract source:** `:core-api`, package `dev.powerfulcalendar.core.api.v1`, `CoreFeatureApiV1.kt` and `DraftReviewFeatureApiV1.kt`.
 - **Runtime adapter:** `app/src/main/java/dev/powerfulcalendar/core/api/v1/PowerCalCoreFeatureApiV1.kt`.
 - **Updated:** 2026-11-01.
 
-This document describes the implemented event API boundary. It does not declare full Core extraction, full event-domain coverage, runtime cutover, or Native/Skin parity. The Kotlin source is authoritative when a detail here drifts.
+This document describes the implemented Event and Draft/Review API boundaries. It does not declare full Core extraction, full domain coverage, runtime cutover, or Native/Skin parity. The Kotlin source is authoritative when a detail here drifts.
 
 ## 1. Contract boundaries
 
@@ -87,7 +87,20 @@ For mutation and checkpoint requests:
 - `EventFormV1` input does not authorize a write by itself. Core editor update/validation, transactional save, and the explicit Host approval for formal deletion remain required.
 - A `LOCKED`, `CONFLICT`, `INVALID`, or `FAILED` result does not imply that a formal write occurred. The caller must retain or reload editor state according to the receipt.
 
-## 7. Current adapter coverage and open work
+## 7. Draft/Review API v1 slice
+
+`CoreFeatureApiV1.draftReview` exposes the platform-neutral `DraftReviewFeatureApiV1` contract. In `PowerCalApp`, Native Deck and Web Deck operations use the same Host-created API service and `DeckController`. Its DTOs project persisted cards, the selected form, conflict/restore prompts, completion summary, and command receipts without exposing `DeckController` or `PowerStore` types through `:core-api`.
+
+- `draftVersion` is the persisted card version. `stateRevision` is an in-memory monotonic revision paired atomically with the controller snapshot; edits require both values, and the controller checks the revision again when applying the edit. Approved commit, conflict-confirmation, and restore commands recheck the exact state revision when the serialized command starts.
+- `beginFormalReplacement` and `beginRestore` require the reviewed formal/tombstone revision. They create proposals and do not alter the formal event. If a reviewed commit must checkpoint a dirty form, that stage uses the reviewed persisted draft version as its optimistic precondition and stops on mismatch without rebasing stale form data over the newer card. A successful stage is followed by `PowerStore.commit` with the resulting version, checked again inside the write transaction. Stale formal conflicts return a separate `REVIEW_REQUIRED` result and require `confirmConflictReplacement` with the reviewed current revision and draft version.
+- Restore remains a separate approval. A dirty reviewed form is checkpointed against its reviewed draft version without retrying over a concurrent update; the resulting draft version, reviewed tombstone revision, and exact form are then checked inside the `PowerStore.restoreDraft` transaction. A stale tombstone, draft, or form returns a conflict and leaves the identity retired and proposal pending.
+- `edit`, `flush`, `select`, `move`, `jump`, `commit`, conflict approval, restore approval, `discard`, and `undoDiscard` return `DraftReviewReceiptV1`. Draft queue changes publish `DRAFTS_CHANGED`; successful create/replace/delete/restore commits publish the corresponding formal change through the shared Event API instance.
+- Native Deck's built-in controls remain Host-driven. Runtime/imported Deck callbacks that request a formal commit, conflict replacement, or restore first open Host-owned confirmation UI. Commit/restore review displays the exact candidate's type, title, date/time, zone, location, notes, recurrence, reminder, enable/tracking state, and completed instances; conflict review adds the current revision and field differences. The UI checks its captured Deck state revision before calling the API.
+- Draft/Review request receipts are retained in a bounded, process-local 128-entry cache. Durable request replay across adapter recreation/process death is not provided; do not describe the receipt cache as exactly-once persistence.
+
+This is a Draft/Review vertical slice, not full Phase 1 closure. The Web bridge still performs some formal-event searches and Store reads, `DeckVisualContext` still projects Core types to runtime rendering, and direct authorized workflows outside the shared adapter do not publish to its change stream. Memo completion and the other domain APIs also remain outside this slice.
+
+## 8. Current adapter coverage and open work
 
 Verified code paths in this event pilot:
 
@@ -99,11 +112,11 @@ Verified code paths in this event pilot:
 
 Remaining work before PHASE 1 can exit:
 
-1. Route applicable event reads/writes in `WebSkinEditService` and Native Host through the feature API or a domain API, including Deck formal-search/replacement paths and direct completion updates; keep Draft/Review semantics in an explicit Core API rather than hiding them in transport code.
-2. Ensure all formal mutations that must refresh Skin projections publish through one change source, or add a Store/Core event feed that also observes authorized internal workflows.
-3. Move remaining business decisions out of Web transport/Host adapters; the bridge should translate transport and manage trusted Host capabilities only.
-4. Keep `DraftForm`/Core type projections on the Host side and maintain the separate Native Presentation Contract.
-5. Add the required per-domain API contracts before claiming other feature areas are covered. Current v1 does not define calendar paging, completion commands, full Draft/Review, AI, reminders, import/export, or Settings/Data APIs.
-6. Run a clean full JVM suite, boundary/build/lint gates, and the required device checks when the independently owned AVD is available. Instrumentation for this slice is currently **NOT TESTED**.
+1. Route remaining formal-event reads/writes in `WebSkinEditService` and Native Host through a domain API, including formal search and direct completion updates.
+2. Ensure all authorized formal mutations that refresh Skin projections publish through one change source, including workflows that currently bypass this adapter.
+3. Move remaining business decisions out of Web transport/Host adapters; keep the bridge focused on transport and trusted Host capabilities.
+4. Remove Core entity types from runtime Skin projections while maintaining the separate Native Presentation Contract.
+5. Add the required per-domain API contracts before claiming other feature areas are covered. Current v1 does not define Calendar paging, completion, AI, reminders, import/export, or Settings/Data APIs. Draft/Review request replay remains process-local.
+6. Run a clean full JVM suite, boundary/build/lint gates, and required device checks when the independently owned AVD is available. Instrumentation for this Draft/Review slice is **NOT TESTED**.
 
-Current test record: focused API, Native editor, and Web bridge suites passed **66/66**. The latest two forced full JVM runs each completed **789 tests with one failure** in `WebAiProposalReviewIntegrationTest`: one lacked its expected Host confirmation node, the other timed out in memo paging with `hostDataReady=false`. Each exact failing test passed alone; the entire integration class passed **15/15**. The cause of the full-suite-only failures is unknown, so the full-suite status is **NOT CLEAN**, not PASS. Source boundaries, Debug APK assembly, and separate `lintDebug` passed (0 lint errors, 54 warnings). See the current section at the top of `docs/agent-handoff/PROGRESS.md` for the latest gate run.
+Latest Draft/Review verification: focused API, DeckController, Store restore, Host review UI, and Web bridge tests passed; the forced full JVM run passed **797 tests across 128 XML reports, 0 failures/errors/skips**. `verifySkinSourceBoundary`, `verifyNativeSkinBoundary`, Debug APK assembly, and `lintDebug` all passed; lint reported **0 errors / 54 warnings**. The Debug APK SHA-256 is `B1A4EC21E59461B35597CC08972627148457302252A3B0818967F315A9B552B6` (66,683,502 bytes). Instrumentation and AVD behavior are **NOT TESTED**. Logs and the prior Event pilot’s transient full-suite failures are recorded in the current [progress entry](agent-handoff/PROGRESS.md) and the [Draft/Review Issue](issues/PC-ISSUE-CORE-DRAFT-REVIEW-API-V1.md); no cause is asserted for those earlier failures.

@@ -15,14 +15,20 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
-import dev.powerfulcalendar.core.DeckController
-import dev.powerfulcalendar.core.DraftCard
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.DraftQueueSearch
 import dev.powerfulcalendar.core.DraftStatus
 import dev.powerfulcalendar.core.EditorDefaults
 import dev.powerfulcalendar.core.api.v1.EventEditorSnapshotV1
+import dev.powerfulcalendar.core.api.v1.DraftReviewFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.DraftReviewSnapshotV1
+import dev.powerfulcalendar.core.api.v1.DraftReviewCardV1
+import dev.powerfulcalendar.core.api.v1.DraftReviewReceiptV1
+import dev.powerfulcalendar.core.api.v1.DraftReviewReceiptStatusV1
+import dev.powerfulcalendar.core.api.v1.toCoreDraftForm
+import dev.powerfulcalendar.core.api.v1.toCoreTemporalRecord
+import dev.powerfulcalendar.core.api.v1.toEventFormV1
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.Recurrence
 import dev.powerfulcalendar.core.RecurrenceFreq
@@ -79,7 +85,7 @@ import java.time.temporal.ChronoUnit
  */
 @Composable
 fun NativeDraftDeckDialog(
-    controller: DeckController,
+    draftReviewApi: DraftReviewFeatureApiV1,
     aiSession: PowerStore.AiSession?,
     onDismissRequest: () -> Unit,
     onOpenFormalEvent: (TemporalRecord) -> Unit,
@@ -88,38 +94,46 @@ fun NativeDraftDeckDialog(
     formalSearch: (String) -> List<TemporalRecord>,
     initialEditorOpen: Boolean = false
 ) {
-    var state by remember(controller) { mutableStateOf(controller.state) }
-    var busy by remember(controller) { mutableStateOf(false) }
-    var conversionNote by remember(controller) { mutableStateOf<String?>(null) }
+    var state by remember(draftReviewApi) { mutableStateOf(draftReviewApi.snapshot) }
+    var busy by remember(draftReviewApi) { mutableStateOf(false) }
+    var conversionNote by remember(draftReviewApi) { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val androidContext = LocalContext.current
-    val pickerNowMillis = remember(controller) { System.currentTimeMillis() }
-    val formalRows = remember(controller) { mutableMapOf<String, TemporalRecord>() }
+    val pickerNowMillis = remember(draftReviewApi) { System.currentTimeMillis() }
+    val formalRows = remember(draftReviewApi) { mutableMapOf<String, TemporalRecord>() }
 
-    DisposableEffect(controller) {
-        controller.observe { next -> scope.launch { state = next } }
-        state = controller.state
-        onDispose { controller.observe { } }
+    DisposableEffect(draftReviewApi) {
+        val subscription = draftReviewApi.observe { next -> scope.launch { state = next } }
+        state = draftReviewApi.snapshot
+        onDispose { subscription.close() }
     }
     LaunchedEffect(state.currentId) { conversionNote = null }
 
     fun editCoreForm(updated: DraftForm) {
         if (busy || state.aiLocked) return
-        controller.edit(updated)
+        val current = draftReviewApi.snapshot
+        val card = current.current ?: return
+        val receipt = draftReviewApi.editCurrentDraft(
+            card.draftId, card.draftVersion, current.stateRevision, updated.toEventFormV1()
+        )
+        if (!receipt.succeeded) state = current.copy(error = receipt.message ?: receipt.errorCode)
     }
 
-    fun command(changed: Boolean = false, block: suspend () -> Unit) {
+    fun command(changed: Boolean = false, block: suspend () -> DraftReviewReceiptV1) {
         if (busy) return
         busy = true
         scope.launch {
             try {
-                withContext(Dispatchers.IO) { block() }
-                state = controller.state
-                if (changed) onDeckChanged()
+                val receipt = withContext(Dispatchers.IO) { block() }
+                state = draftReviewApi.snapshot
+                if (changed && receipt.succeeded) onDeckChanged()
+                if (!receipt.succeeded) {
+                    state = state.copy(error = receipt.message ?: receipt.errorCode ?: "操作未完成，请重试")
+                }
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                state = controller.state.copy(error = error.message ?: "操作未完成，草稿已保留，请重试")
+                state = draftReviewApi.snapshot.copy(error = error.message ?: "操作未完成，草稿已保留，请重试")
             } finally {
                 busy = false
             }
@@ -130,23 +144,34 @@ fun NativeDraftDeckDialog(
         busy = true
         scope.launch {
             try {
-                if (withContext(Dispatchers.IO) { controller.flush() }) afterSave()
-                state = controller.state
+                val receipt = withContext(Dispatchers.IO) {
+                    draftReviewApi.flush("native-deck-leave-${java.util.UUID.randomUUID()}")
+                }
+                if (receipt.succeeded) afterSave()
+                state = draftReviewApi.snapshot
+                if (!receipt.succeeded) state = state.copy(
+                    error = receipt.message ?: receipt.errorCode ?: "暂存失败，请重试"
+                )
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                state = controller.state.copy(error = "暂存失败，请重试：${error.message.orEmpty()}")
+                state = draftReviewApi.snapshot.copy(error = "暂存失败，请重试：${error.message.orEmpty()}")
             } finally {
                 busy = false
             }
         }
     }
 
-    val currentForm = state.form
+    val currentForm = state.form?.toCoreDraftForm()
     fun editViewForm(view: NativeDeckForm) {
         if (busy || state.aiLocked) return
-        val base = controller.state.form ?: return
-        controller.edit(view.toCoreForm(base))
+        val current = draftReviewApi.snapshot
+        val base = current.form?.toCoreDraftForm() ?: return
+        val card = current.current ?: return
+        draftReviewApi.editCurrentDraft(
+            card.draftId, card.draftVersion, current.stateRevision,
+            view.toCoreForm(base).toEventFormV1()
+        )
     }
     val projected = state.toNativeDeckState(pickerNowMillis, busy, conversionNote, aiSession)
     val pickerActions = currentForm?.let { form ->
@@ -156,12 +181,22 @@ fun NativeDraftDeckDialog(
         onDismiss = { leave() },
         onCancelAiBatch = onCancelAiBatch,
         onOpenFormalEvent = { key -> formalRows[key]?.let { record -> leave { onOpenFormalEvent(record) } } },
-        onSelect = { key -> key.removePrefix("draft:").toLongOrNull()?.let { id -> command { controller.select(id) } } },
-        onBrowse = { steps -> command { controller.jump(steps) } },
-        onMove = { steps -> command { controller.move(steps) } },
+        onSelect = { key -> key.removePrefix("draft:").toLongOrNull()?.let { id ->
+            command { draftReviewApi.select(id, java.util.UUID.randomUUID().toString()) }
+        } },
+        onBrowse = { steps -> command {
+            draftReviewApi.jump(steps, java.util.UUID.randomUUID().toString())
+        } },
+        onMove = { steps -> command {
+            draftReviewApi.move(steps, java.util.UUID.randomUUID().toString())
+        } },
         onSearch = { query ->
             formalRows.clear()
-            val drafts = DraftQueueSearch.filter(state.cards, query).take(4).map { hit ->
+            val drafts = state.cards.filter { card ->
+                card.form.title.contains(query, ignoreCase = true) ||
+                    card.eventSeq.toString().contains(query) ||
+                    TemporalRecord.formatSeq(card.eventSeq).contains(query)
+            }.take(4).map { hit ->
                 NativeDeckSearchHit("draft:${hit.draftId}", TemporalRecord.formatSeq(hit.eventSeq),
                     hit.form.title, formal = false)
             }
@@ -174,20 +209,55 @@ fun NativeDraftDeckDialog(
         },
         onFormChange = ::editViewForm,
         onConvert = { kind ->
-            if (!busy && !state.aiLocked) controller.state.form?.let { form ->
+            if (!busy && !state.aiLocked) state.form?.toCoreDraftForm()?.let { form ->
                 val result = TemporalConversion.convert(form, kind.toCoreKind())
-                controller.edit(result.form)
+                val current = draftReviewApi.snapshot
+                current.current?.let { card ->
+                    draftReviewApi.editCurrentDraft(
+                        card.draftId, card.draftVersion, current.stateRevision,
+                        result.form.toEventFormV1()
+                    )
+                }
                 conversionNote = result.note.ifBlank { null }
             }
         },
-        onCommit = { command(changed = true) { controller.commit() } },
-        onDiscard = { command(changed = true) { controller.discard() } },
-        onRetrySave = { command { controller.flush() } },
-        onUndoDiscard = { command(changed = true) { controller.undoDiscard() } },
-        onConfirmConflict = { command(changed = true) { controller.confirmConflictReplacement() } },
-        onKeepConflict = { controller.dismissConflict() },
-        onConfirmRestore = { command(changed = true) { controller.requestRestore() } },
-        onDeclineRestore = { controller.dismissRestore() },
+        onCommit = { draftReviewApi.snapshot.let { snapshot -> snapshot.current?.let { card ->
+            command(changed = true) { draftReviewApi.commit(
+                card.draftId, card.draftVersion, snapshot.stateRevision,
+                java.util.UUID.randomUUID().toString()
+            ) }
+        } } },
+        onDiscard = { draftReviewApi.snapshot.current?.let { card ->
+            command(changed = true) { draftReviewApi.discard(
+                card.draftId, card.draftVersion, java.util.UUID.randomUUID().toString()
+            ) }
+        } },
+        onRetrySave = { command {
+            draftReviewApi.flush(java.util.UUID.randomUUID().toString())
+        } },
+        onUndoDiscard = { draftReviewApi.snapshot.lastDiscardId?.let { draftId ->
+            command(changed = true) { draftReviewApi.undoDiscard(
+                draftId, java.util.UUID.randomUUID().toString()
+            ) }
+        } },
+        onConfirmConflict = { draftReviewApi.snapshot.let { snapshot -> snapshot.conflict?.let { prompt ->
+            prompt.currentRevision?.let { expectedRevision -> command(changed = true) {
+                draftReviewApi.confirmConflictReplacement(
+                    prompt.draftId, prompt.card.draftVersion, snapshot.stateRevision, expectedRevision,
+                    java.util.UUID.randomUUID().toString()
+                )
+            } }
+        } } },
+        onKeepConflict = { draftReviewApi.dismissConflict() },
+        onConfirmRestore = { draftReviewApi.snapshot.let { snapshot -> snapshot.restore?.let { prompt ->
+            prompt.card.baseRevision?.let { revision -> command(changed = true) {
+                draftReviewApi.requestRestore(
+                    prompt.card.draftId, prompt.card.draftVersion, snapshot.stateRevision, revision,
+                    java.util.UUID.randomUUID().toString()
+                )
+            } }
+        } } },
+        onDeclineRestore = { draftReviewApi.dismissRestore() },
         onPickStartDate = { base -> pickerActions?.startDate?.invoke(base) },
         onPickStartTime = { base -> pickerActions?.startTime?.invoke(base) },
         onPickEndDate = { base -> pickerActions?.endDate?.invoke(base) },
@@ -424,20 +494,22 @@ internal fun NativeDeckForm.toCoreForm(base: DraftForm): DraftForm {
     )
 }
 
-private fun DeckController.DeckState.toNativeDeckState(
+private fun DraftReviewSnapshotV1.toNativeDeckState(
     pickerNowMillis: Long,
     commandBusy: Boolean,
     conversionNote: String?,
     aiSession: PowerStore.AiSession?
 ): NativeDeckState {
     val drafts = cards.map { it.toNativeDeckCard(pickerNowMillis) }
-    val currentForm = form?.toNativeDeckForm(pickerNowMillis)
+    val currentForm = form?.toCoreDraftForm()?.toNativeDeckForm(pickerNowMillis)
     val conflict = conflict?.let { prompt ->
+        val current = prompt.current?.toCoreTemporalRecord()
+        val approvedForm = prompt.approvedForm.toCoreDraftForm()
         NativeDeckConflict(
             sequenceLabel = TemporalRecord.formatSeq(prompt.eventSeq),
-            delete = prompt.card.operation == DraftOperation.DELETE,
+            delete = prompt.card.operation == dev.powerfulcalendar.core.api.v1.DraftOperationV1.DELETE,
             currentRevision = prompt.currentRevision,
-            rows = snapshotRows(prompt.current, prompt.approvedForm).map {
+            rows = snapshotRows(current, approvedForm).map {
                 NativeDeckDiffRow(it.label, it.before, it.after, it.changed)
             }
         )
@@ -465,14 +537,14 @@ private fun DeckController.DeckState.toNativeDeckState(
     )
 }
 
-private fun DraftCard.toNativeDeckCard(pickerNowMillis: Long) = NativeDeckCard(
+private fun DraftReviewCardV1.toNativeDeckCard(pickerNowMillis: Long) = NativeDeckCard(
     cardKey = "draft:$draftId",
     sequenceLabel = TemporalRecord.formatSeq(eventSeq),
-    operation = operation.toNativeOperation(),
-    operationLabel = operation.label,
-    status = status.toNativeStatus(),
+    operation = DraftOperation.valueOf(operation.name).toNativeOperation(),
+    operationLabel = DraftOperation.valueOf(operation.name).label,
+    status = DraftStatus.valueOf(status.name).toNativeStatus(),
     draftVersion = draftVersion,
-    form = form.toNativeDeckForm(pickerNowMillis)
+    form = form.toCoreDraftForm().toNativeDeckForm(pickerNowMillis)
 )
 
 private fun TemporalKind.toNativeKind() = when (this) {

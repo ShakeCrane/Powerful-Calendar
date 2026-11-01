@@ -71,7 +71,7 @@ function patch(field,value){
     void perform("editor.patch",{sessionId:edit.editor.sessionId,field,value});
   else if(mode==="deck"&&edit.deck?.currentId!=null)
     void perform("deck.patch",{draftId:edit.deck.currentId,
-      draftVersion:edit.deck.version,field,value});
+      draftVersion:edit.deck.version,stateRevision:edit.deck.stateRevision,field,value});
 }
 function row(form,key,label,kind="text",choices=null){
   const container=el("label",null,"sheet-row");

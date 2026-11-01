@@ -1,7 +1,13 @@
 package dev.powerfulcalendar.core.api.v1
 
 import dev.powerfulcalendar.core.DraftForm
+import dev.powerfulcalendar.core.DraftCard
 import dev.powerfulcalendar.core.DraftOperation
+import dev.powerfulcalendar.core.DraftStatus
+import dev.powerfulcalendar.core.DeckController
+import dev.powerfulcalendar.core.DeckEditResult
+import dev.powerfulcalendar.core.DeckReviewCommandResult
+import dev.powerfulcalendar.core.DeckProposalResult
 import dev.powerfulcalendar.core.DraftSourceRevisionMismatchException
 import dev.powerfulcalendar.core.EditSession
 import dev.powerfulcalendar.core.EditorSelection
@@ -16,6 +22,7 @@ import dev.powerfulcalendar.core.ReminderMethod
 import dev.powerfulcalendar.core.ReminderTiming
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
+import dev.powerfulcalendar.core.StoreDeckPersistence
 import java.time.Clock
 import java.time.DayOfWeek
 import java.time.LocalDate
@@ -24,15 +31,24 @@ import java.util.IdentityHashMap
 import java.util.UUID
 import java.util.concurrent.CopyOnWriteArraySet
 import java.util.concurrent.atomic.AtomicLong
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /** Android/Core implementation adapter. All exposed values come from the pure :core-api module. */
 class PowerCalCoreFeatureApiV1(
-    store: PowerStore,
-    clock: Clock = Clock.systemUTC()
+    private val store: PowerStore,
+    clock: Clock = Clock.systemUTC(),
+    internal val deckController: DeckController = DeckController(StoreDeckPersistence(store))
 ) : CoreFeatureApiV1 {
     override val apiVersion: Int = 1
     private val eventService = StoreEventFeatureApiV1(store, clock)
+    private val draftReviewService = StoreDraftReviewFeatureApiV1(store, deckController, eventService)
     override val events: EventFeatureApiV1 get() = eventService
+    override val draftReview: DraftReviewFeatureApiV1 get() = draftReviewService
+
+    /** Test/legacy Host seam for an explicitly supplied controller; production uses [draftReview]. */
+    internal fun adaptDeckController(controller: DeckController): DraftReviewFeatureApiV1 =
+        StoreDraftReviewFeatureApiV1(store, controller, eventService)
 
     /** Called only by trusted Host code after a user-confirmation surface has accepted deletion. */
     internal fun issueFormalDeleteApproval(handle: EventEditorHandleV1): EventDeleteApprovalV1? =
@@ -464,6 +480,13 @@ private class StoreEventFeatureApiV1(
                             revision = outcome.current?.revision,
                             errorCode = "EVENT_CONFLICT", refreshRequired = true
                         )
+                        is PowerStore.CommitOutcome.DraftVersionMismatch -> receipt(
+                            requestId, EventMutationStatusV1.CONFLICT,
+                            eventSeq = outcome.current.eventSeq,
+                            draftId = outcome.current.draftId,
+                            draftVersion = outcome.current.draftVersion,
+                            errorCode = "DRAFT_VERSION_STALE", refreshRequired = true
+                        )
                         is PowerStore.CommitOutcome.NeedsRestore -> receipt(
                             requestId, EventMutationStatusV1.NEEDS_RESTORE,
                             eventSeq = outcome.retiredSeq, errorCode = "RESTORE_REQUIRED"
@@ -764,6 +787,15 @@ private class StoreEventFeatureApiV1(
         listeners.forEach { listener -> runCatching { listener(change) } }
     }
 
+    internal fun publishDeckFormalChange(type: EventFeatureChangeTypeV1, eventSeq: Long) {
+        val revision = store.getIncludingRetired(eventSeq)?.revision
+        publish(type, eventSeq, revision)
+    }
+
+    internal fun publishDeckDraftChange() {
+        publish(EventFeatureChangeTypeV1.DRAFTS_CHANGED)
+    }
+
     private fun withCheckpointReceipt(
         requestId: String,
         fingerprint: String,
@@ -849,6 +881,409 @@ private class StoreEventFeatureApiV1(
         override val expectedRevision: Long
     ) : EventDeleteApprovalV1
 }
+
+/** App-side adapter for the platform-neutral Draft/Review command contract. */
+private class StoreDraftReviewFeatureApiV1(
+    private val store: PowerStore,
+    private val controller: DeckController,
+    private val events: StoreEventFeatureApiV1
+) : DraftReviewFeatureApiV1 {
+    override val apiVersion = 1
+    private val listeners = CopyOnWriteArraySet<(DraftReviewSnapshotV1) -> Unit>()
+    private val mutationMutex = Mutex()
+    private val receipts = LinkedHashMap<String, Pair<String, DraftReviewReceiptV1>>()
+    private val initialControllerState = controller.stateSnapshot()
+
+    @Volatile private var latestSnapshot = initialControllerState.first.toDraftReviewSnapshotV1().copy(
+        stateRevision = initialControllerState.second
+    )
+    private var persistedFingerprint = persistedDeckFingerprint(initialControllerState.first)
+
+    init {
+        controller.observeAdditionalVersioned { state, stateRevision ->
+            val next = state.toDraftReviewSnapshotV1().copy(
+                stateRevision = stateRevision
+            )
+            latestSnapshot = next
+            listeners.forEach { runCatching { it(next) } }
+            val fingerprint = persistedDeckFingerprint(state)
+            if (fingerprint != persistedFingerprint) {
+                persistedFingerprint = fingerprint
+                events.publishDeckDraftChange()
+            }
+        }
+    }
+
+    override val snapshot get() = latestSnapshot
+
+    override fun observe(listener: (DraftReviewSnapshotV1) -> Unit): AutoCloseable {
+        listeners += listener
+        runCatching { listener(snapshot) }
+        return AutoCloseable { listeners -= listener }
+    }
+
+    @Synchronized
+    override fun editCurrentDraft(
+        draftId: Long,
+        expectedDraftVersion: Long,
+        expectedStateRevision: Long,
+        form: EventFormV1
+    ): DraftReviewReceiptV1 {
+        val (state, stateRevision) = controller.stateSnapshot()
+        val card = state.current
+        if (state.aiLocked || state.busy) return receipt("", DraftReviewReceiptStatusV1.LOCKED,
+            draftId = draftId, eventSeq = card?.eventSeq, errorCode = "DRAFT_REVIEW_LOCKED")
+        if (card == null || state.currentId != draftId || state.version != expectedDraftVersion ||
+            stateRevision != expectedStateRevision
+        ) {
+            return receipt("", DraftReviewReceiptStatusV1.CONFLICT, draftId = draftId,
+                eventSeq = card?.eventSeq, draftVersion = state.version,
+                errorCode = if (stateRevision != expectedStateRevision)
+                    "DRAFT_STATE_STALE" else "DRAFT_VERSION_STALE",
+                message = "草稿已变化，请重新读取后再编辑")
+        }
+        val updatedForm = form.toCoreDraftForm()
+        return when (controller.editIfCurrent(updatedForm, expectedStateRevision)) {
+            DeckEditResult.APPLIED -> receipt("", DraftReviewReceiptStatusV1.APPLIED,
+                draftId = draftId, eventSeq = card.eventSeq, draftVersion = card.draftVersion)
+            DeckEditResult.STALE -> receipt("", DraftReviewReceiptStatusV1.CONFLICT,
+                draftId = draftId, eventSeq = card.eventSeq, draftVersion = controller.state.version,
+                errorCode = "DRAFT_STATE_STALE", message = "草稿已变化，请重新读取后再编辑")
+            DeckEditResult.LOCKED -> receipt("", DraftReviewReceiptStatusV1.LOCKED,
+                draftId = draftId, eventSeq = card.eventSeq, errorCode = "DRAFT_REVIEW_LOCKED",
+                message = "当前草稿暂不可编辑")
+        }
+    }
+
+    override fun dismissConflict() = controller.dismissConflict()
+    override fun dismissRestore() = controller.dismissRestore()
+    override fun dismissCompletion() = controller.dismissCompletion()
+    override fun clearError() = controller.clearError()
+    override fun setAiLocked(locked: Boolean) = controller.setAiLocked(locked)
+
+    override suspend fun open(preferDraftId: Long?): DraftReviewSnapshotV1 {
+        if (!flushBeforeReopening()) return snapshot
+        controller.open(preferDraftId)
+        return snapshot
+    }
+
+    override suspend fun refresh(preferDraftId: Long?): DraftReviewSnapshotV1 {
+        if (!flushBeforeReopening()) return snapshot
+        controller.refresh(preferDraftId)
+        return snapshot
+    }
+
+    private suspend fun flushBeforeReopening(): Boolean {
+        repeat(3) {
+            if (!controller.state.dirty) return true
+            if (!controller.flush()) return false
+        }
+        return !controller.state.dirty
+    }
+
+    override suspend fun beginFormalReplacement(
+        eventSeq: Long, expectedRevision: Long, requestId: String
+    ) = execute(requestId, "REPLACE:$eventSeq:$expectedRevision") {
+        proposalReceipt(requestId, controller.beginFormalReplacement(eventSeq, expectedRevision), eventSeq)
+    }
+
+    override suspend fun beginRestore(
+        eventSeq: Long, expectedRevision: Long, requestId: String
+    ) = execute(requestId, "RESTORE_PROPOSAL:$eventSeq:$expectedRevision") {
+        proposalReceipt(requestId, controller.beginRestore(eventSeq, expectedRevision), eventSeq)
+    }
+
+    private fun proposalReceipt(
+        requestId: String,
+        result: DeckProposalResult,
+        requestedEventSeq: Long
+    ) = when (result) {
+        is DeckProposalResult.Proposed -> receipt(requestId, DraftReviewReceiptStatusV1.APPLIED,
+            draftId = result.card.draftId, eventSeq = result.card.eventSeq,
+            revision = result.card.baseRevision, draftVersion = result.card.draftVersion)
+        is DeckProposalResult.Stale -> receipt(requestId, DraftReviewReceiptStatusV1.CONFLICT,
+            eventSeq = requestedEventSeq, revision = result.currentRevision,
+            errorCode = "SOURCE_REVISION_STALE")
+        DeckProposalResult.Missing -> receipt(requestId, DraftReviewReceiptStatusV1.NOT_FOUND,
+            eventSeq = requestedEventSeq, errorCode = "SOURCE_NOT_FOUND")
+        DeckProposalResult.Locked -> receipt(requestId, DraftReviewReceiptStatusV1.LOCKED,
+            eventSeq = requestedEventSeq, errorCode = "CORE_LOCKED")
+        DeckProposalResult.Conflict -> receipt(requestId, DraftReviewReceiptStatusV1.CONFLICT,
+            eventSeq = requestedEventSeq, errorCode = "DRAFT_OPERATION_CONFLICT")
+        is DeckProposalResult.Failed -> receipt(requestId, DraftReviewReceiptStatusV1.FAILED,
+            eventSeq = requestedEventSeq, errorCode = "DRAFT_PROPOSAL_FAILED", message = result.message)
+    }
+
+    override suspend fun flush(requestId: String, lockEdits: Boolean) =
+        execute(requestId, "FLUSH:$lockEdits") {
+            val before = controller.state
+            val saved = controller.flush(lockEdits)
+            if (saved) receipt(requestId,
+                if (before.dirty) DraftReviewReceiptStatusV1.APPLIED else DraftReviewReceiptStatusV1.NO_CHANGE,
+                draftId = before.currentId, eventSeq = before.current?.eventSeq,
+                draftVersion = controller.state.version)
+            else failureReceipt(requestId, "FLUSH_FAILED", before.currentId, before.current?.eventSeq)
+        }
+
+    override suspend fun select(draftId: Long, requestId: String) =
+        execute(requestId, "SELECT:$draftId") {
+            if (controller.state.cards.none { it.draftId == draftId }) receipt(
+                requestId, DraftReviewReceiptStatusV1.NOT_FOUND, draftId = draftId)
+            else if (controller.select(draftId)) appliedCurrent(requestId)
+            else failureReceipt(requestId, "DRAFT_SELECT_FAILED", draftId)
+        }
+
+    override suspend fun move(delta: Int, requestId: String) =
+        execute(requestId, "MOVE:$delta") {
+            if (controller.move(delta)) appliedCurrent(requestId)
+            else failureReceipt(requestId, "DRAFT_MOVE_FAILED")
+        }
+
+    override suspend fun jump(steps: Int, requestId: String) =
+        execute(requestId, "JUMP:$steps") {
+            if (controller.jump(steps)) appliedCurrent(requestId)
+            else failureReceipt(requestId, "DRAFT_JUMP_FAILED")
+        }
+
+    override suspend fun commit(
+        draftId: Long,
+        expectedDraftVersion: Long,
+        expectedStateRevision: Long,
+        requestId: String
+    ) = execute(requestId, "COMMIT:$draftId:$expectedDraftVersion:$expectedStateRevision") {
+            val (before, stateRevision) = controller.stateSnapshot()
+            val card = before.current
+            if (stateRevision != expectedStateRevision || card == null ||
+                before.currentId != draftId || before.version != expectedDraftVersion
+            ) {
+                receipt(requestId, DraftReviewReceiptStatusV1.CONFLICT, draftId = draftId,
+                    eventSeq = card?.eventSeq, draftVersion = before.version,
+                    errorCode = if (stateRevision != expectedStateRevision)
+                        "DRAFT_STATE_STALE" else "DRAFT_VERSION_STALE")
+            } else when (controller.commitReviewed(draftId, expectedDraftVersion, expectedStateRevision)) {
+                DeckReviewCommandResult.APPLIED -> {
+                    val change = when (card.operation) {
+                        DraftOperation.CREATE -> EventFeatureChangeTypeV1.FORMAL_CREATED
+                        DraftOperation.DELETE -> EventFeatureChangeTypeV1.FORMAL_DELETED
+                        DraftOperation.REPLACE, DraftOperation.CONVERT -> EventFeatureChangeTypeV1.FORMAL_UPDATED
+                    }
+                    events.publishDeckFormalChange(change, card.eventSeq)
+                    receipt(requestId, DraftReviewReceiptStatusV1.APPLIED, draftId = draftId,
+                        eventSeq = card.eventSeq, revision = store.getIncludingRetired(card.eventSeq)?.revision)
+                }
+                DeckReviewCommandResult.STALE -> receipt(requestId, DraftReviewReceiptStatusV1.CONFLICT,
+                    draftId = draftId, eventSeq = card.eventSeq,
+                    draftVersion = controller.state.current?.draftVersion,
+                    errorCode = "DRAFT_REVIEW_STALE", message = "草稿已变化，请重新检查")
+                DeckReviewCommandResult.LOCKED -> receipt(requestId, DraftReviewReceiptStatusV1.LOCKED,
+                    draftId = draftId, eventSeq = card.eventSeq, errorCode = "DRAFT_REVIEW_LOCKED")
+                DeckReviewCommandResult.NOT_APPLIED -> when {
+                    controller.state.conflict != null -> receipt(requestId,
+                        DraftReviewReceiptStatusV1.REVIEW_REQUIRED, draftId = draftId,
+                        eventSeq = card.eventSeq, errorCode = "FORMAL_CONFLICT_REVIEW_REQUIRED")
+                    controller.state.restore != null -> receipt(requestId,
+                        DraftReviewReceiptStatusV1.RESTORE_REQUIRED, draftId = draftId,
+                        eventSeq = card.eventSeq, errorCode = "FORMAL_RESTORE_REVIEW_REQUIRED")
+                    else -> failureReceipt(requestId, "DRAFT_COMMIT_NOT_APPLIED", draftId, card.eventSeq)
+                }
+            }
+        }
+
+    override suspend fun confirmConflictReplacement(
+        draftId: Long,
+        expectedDraftVersion: Long,
+        expectedStateRevision: Long,
+        expectedCurrentRevision: Long,
+        requestId: String
+    ) = execute(requestId,
+        "CONFIRM_REPLACE:$draftId:$expectedDraftVersion:$expectedStateRevision:$expectedCurrentRevision") {
+        val (state, stateRevision) = controller.stateSnapshot()
+        val prompt = state.conflict
+        if (prompt == null || prompt.draftId != draftId ||
+            state.version != expectedDraftVersion || stateRevision != expectedStateRevision ||
+            prompt.currentRevision != expectedCurrentRevision
+        ) receipt(requestId, DraftReviewReceiptStatusV1.CONFLICT, draftId = draftId,
+            eventSeq = prompt?.eventSeq, revision = prompt?.currentRevision,
+            errorCode = if (stateRevision != expectedStateRevision)
+                "DRAFT_STATE_STALE" else "REVIEW_SNAPSHOT_STALE",
+            message = "审阅内容已变化，请重新检查")
+        else when (controller.confirmConflictReplacementReviewed(
+            draftId, expectedDraftVersion, expectedCurrentRevision, expectedStateRevision
+        )) {
+            DeckReviewCommandResult.APPLIED -> {
+                events.publishDeckFormalChange(EventFeatureChangeTypeV1.FORMAL_UPDATED, prompt.eventSeq)
+                receipt(requestId, DraftReviewReceiptStatusV1.APPLIED, draftId = draftId,
+                    eventSeq = prompt.eventSeq, revision = store.getIncludingRetired(prompt.eventSeq)?.revision)
+            }
+            DeckReviewCommandResult.STALE -> receipt(requestId, DraftReviewReceiptStatusV1.CONFLICT,
+                draftId = draftId, eventSeq = prompt.eventSeq,
+                draftVersion = controller.state.current?.draftVersion,
+                errorCode = "DRAFT_REVIEW_STALE", message = "草稿已变化，请重新检查")
+            DeckReviewCommandResult.LOCKED -> receipt(requestId, DraftReviewReceiptStatusV1.LOCKED,
+                draftId = draftId, eventSeq = prompt.eventSeq, errorCode = "DRAFT_REVIEW_LOCKED")
+            DeckReviewCommandResult.NOT_APPLIED -> if (controller.state.conflict != null)
+                receipt(requestId, DraftReviewReceiptStatusV1.REVIEW_REQUIRED, draftId = draftId,
+                    eventSeq = prompt.eventSeq, errorCode = "FORMAL_CONFLICT_REVIEW_REQUIRED")
+            else failureReceipt(requestId, "CONFLICT_APPROVAL_NOT_APPLIED", draftId, prompt.eventSeq)
+        }
+    }
+
+    override suspend fun requestRestore(
+        draftId: Long,
+        expectedDraftVersion: Long,
+        expectedStateRevision: Long,
+        expectedTombstoneRevision: Long,
+        requestId: String
+    ) = execute(requestId,
+        "RESTORE:$draftId:$expectedDraftVersion:$expectedStateRevision:$expectedTombstoneRevision") {
+            val (state, stateRevision) = controller.stateSnapshot()
+            val prompt = state.restore
+            if (prompt == null || prompt.card.draftId != draftId ||
+                state.version != expectedDraftVersion || stateRevision != expectedStateRevision ||
+                prompt.card.baseRevision != expectedTombstoneRevision
+            ) receipt(requestId, DraftReviewReceiptStatusV1.CONFLICT, draftId = draftId,
+                eventSeq = prompt?.eventSeq, revision = prompt?.card?.baseRevision,
+                errorCode = if (stateRevision != expectedStateRevision)
+                    "DRAFT_STATE_STALE" else "RESTORE_REVIEW_STALE")
+            else when (controller.requestRestoreReviewed(
+                draftId, expectedDraftVersion, expectedTombstoneRevision, expectedStateRevision
+            )) {
+                DeckReviewCommandResult.APPLIED -> {
+                    events.publishDeckFormalChange(EventFeatureChangeTypeV1.FORMAL_UPDATED, prompt.eventSeq)
+                    receipt(requestId, DraftReviewReceiptStatusV1.APPLIED, draftId = draftId,
+                        eventSeq = prompt.eventSeq, revision = store.getIncludingRetired(prompt.eventSeq)?.revision)
+                }
+                DeckReviewCommandResult.STALE -> receipt(requestId, DraftReviewReceiptStatusV1.CONFLICT,
+                    draftId = draftId, eventSeq = prompt.eventSeq,
+                    draftVersion = controller.state.current?.draftVersion,
+                    errorCode = "DRAFT_REVIEW_STALE", message = "恢复草稿已变化，请重新检查")
+                DeckReviewCommandResult.LOCKED -> receipt(requestId, DraftReviewReceiptStatusV1.LOCKED,
+                    draftId = draftId, eventSeq = prompt.eventSeq, errorCode = "DRAFT_REVIEW_LOCKED")
+                DeckReviewCommandResult.NOT_APPLIED -> if (controller.state.restore != null)
+                    receipt(requestId, DraftReviewReceiptStatusV1.CONFLICT, draftId = draftId,
+                        eventSeq = prompt.eventSeq, errorCode = "RESTORE_REVIEW_STALE",
+                        message = controller.state.error ?: "恢复内容已变化，请重新检查")
+                else failureReceipt(requestId, "RESTORE_NOT_APPLIED", draftId, prompt.eventSeq)
+            }
+        }
+
+    override suspend fun discard(draftId: Long, expectedDraftVersion: Long, requestId: String) =
+        execute(requestId, "DISCARD:$draftId:$expectedDraftVersion") {
+            val state = controller.state
+            if (state.currentId != draftId || state.version != expectedDraftVersion) {
+                receipt(requestId, DraftReviewReceiptStatusV1.CONFLICT, draftId = draftId,
+                    eventSeq = state.current?.eventSeq, draftVersion = state.version,
+                    errorCode = "DRAFT_VERSION_STALE")
+            } else if (controller.discard()) receipt(requestId, DraftReviewReceiptStatusV1.APPLIED,
+                draftId = draftId, eventSeq = state.current?.eventSeq, draftVersion = expectedDraftVersion)
+            else failureReceipt(requestId, "DRAFT_DISCARD_FAILED", draftId, state.current?.eventSeq)
+        }
+
+    override suspend fun undoDiscard(draftId: Long, requestId: String) =
+        execute(requestId, "UNDO_DISCARD:$draftId") {
+            if (controller.state.lastDiscardId != draftId) receipt(
+                requestId, DraftReviewReceiptStatusV1.NOT_FOUND, draftId = draftId)
+            else if (controller.undoDiscard()) appliedCurrent(requestId, draftId)
+            else failureReceipt(requestId, "DRAFT_UNDO_FAILED", draftId)
+        }
+
+    private suspend fun execute(
+        requestId: String,
+        fingerprint: String,
+        operation: suspend () -> DraftReviewReceiptV1
+    ): DraftReviewReceiptV1 {
+        invalidRequest(requestId)?.let {
+            return receipt(requestId, DraftReviewReceiptStatusV1.INVALID,
+                errorCode = "REQUEST_ID_INVALID", message = it)
+        }
+        return mutationMutex.withLock {
+            receipts[requestId]?.let { cached ->
+                if (cached.first == fingerprint) return@withLock cached.second.copy(duplicate = true)
+                return@withLock receipt(requestId, DraftReviewReceiptStatusV1.DUPLICATE_REQUEST_ID,
+                    errorCode = "REQUEST_ID_REUSED", message = "请求标识已用于其他草稿操作")
+            }
+            val result = operation()
+            receipts[requestId] = fingerprint to result
+            while (receipts.size > 128) receipts.remove(receipts.keys.first())
+            result
+        }
+    }
+
+    private fun appliedCurrent(requestId: String, fallbackDraftId: Long? = null) = receipt(
+        requestId, DraftReviewReceiptStatusV1.APPLIED,
+        draftId = controller.state.currentId ?: fallbackDraftId,
+        eventSeq = controller.state.current?.eventSeq,
+        draftVersion = controller.state.version
+    )
+
+    private fun failureReceipt(
+        requestId: String, code: String, draftId: Long? = null, eventSeq: Long? = null
+    ): DraftReviewReceiptV1 {
+        val state = controller.state
+        val status = when {
+            state.conflict != null -> DraftReviewReceiptStatusV1.REVIEW_REQUIRED
+            state.restore != null -> DraftReviewReceiptStatusV1.RESTORE_REQUIRED
+            state.aiLocked -> DraftReviewReceiptStatusV1.LOCKED
+            else -> DraftReviewReceiptStatusV1.FAILED
+        }
+        return receipt(requestId, status, draftId, eventSeq,
+            draftVersion = state.version, errorCode = code, message = state.error)
+    }
+
+    private fun receipt(
+        requestId: String,
+        status: DraftReviewReceiptStatusV1,
+        draftId: Long? = null,
+        eventSeq: Long? = null,
+        revision: Long? = null,
+        draftVersion: Long? = null,
+        duplicate: Boolean = false,
+        errorCode: String? = null,
+        message: String? = null
+    ) = DraftReviewReceiptV1(requestId, status, draftId, eventSeq, revision, draftVersion,
+        events.featureRevision, duplicate, errorCode, message)
+
+    private fun invalidRequest(id: String) = when {
+        id.isBlank() || id.length > 128 -> "请求标识无效"
+        id.any(Char::isISOControl) -> "请求标识包含控制字符"
+        else -> null
+    }
+}
+
+private fun DeckController.DeckState.toDraftReviewSnapshotV1(): DraftReviewSnapshotV1 {
+    fun projected(card: DraftCard): DraftReviewCardV1 {
+        val persistedCurrent = card.draftId == currentId && !dirty
+        return card.copy(
+            form = if (persistedCurrent) form ?: card.form else card.form,
+            draftVersion = if (persistedCurrent) version else card.draftVersion
+        ).toDraftReviewCardV1()
+    }
+    return DraftReviewSnapshotV1(
+        cards = cards.map(::projected), currentId = currentId,
+        current = current?.let(::projected), form = form?.toEventFormV1(),
+        version = version, dirty = dirty, saving = saving, aiLocked = aiLocked,
+        notice = notice, error = error,
+        conflict = conflict?.let { prompt -> DraftReviewConflictV1(
+            prompt.draftId, prompt.eventSeq, prompt.current?.toEventRecordV1(),
+            prompt.changes.map { DraftReviewFieldChangeV1(it.label, it.before, it.after) },
+            projected(prompt.card), prompt.currentRevision,
+            prompt.approvedForm.toEventFormV1()
+        ) },
+        restore = restore?.let { DraftReviewRestoreV1(it.eventSeq, projected(it.card), it.message) },
+        completion = completion?.let { DraftReviewCompletionV1(it.published, it.discarded, it.conflicts) },
+        lastDiscardId = lastDiscardId, busy = busy
+    )
+}
+
+private fun DraftCard.toDraftReviewCardV1() = DraftReviewCardV1(
+    draftId, eventSeq, queueOrder, DraftOperationV1.valueOf(operation.name), form.toEventFormV1(),
+    DraftStatusV1.valueOf(status.name), baseRevision, draftVersion, createdAtMillis, updatedAtMillis
+)
+
+private fun persistedDeckFingerprint(state: DeckController.DeckState): String =
+    state.cards.joinToString("|") { card ->
+        "${card.draftId}:${card.eventSeq}:${card.queueOrder}:${card.draftVersion}:${card.status}"
+    }
 
 internal fun EventFormV1.toCoreDraftForm(): DraftForm = DraftForm(
     kind = kind.toCoreKind(),

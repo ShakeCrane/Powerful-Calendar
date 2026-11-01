@@ -12,6 +12,7 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import dev.powerfulcalendar.core.*
+import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
 import org.junit.Rule
 import org.junit.After
 import org.junit.Test
@@ -85,7 +86,8 @@ class GlassRenderTest {
                 TimelineScreen(emptyList(), TimelineCoordinate.Camera(noon, 24.0), noon, zone, 4, false,
                     {}, {}, { _, _ -> }, { _, _ -> }, {}, {}, {}, {})
             }
-            DraftDeckDialog(controller, null, {}, {}, {}, {}, { emptyList() })
+            DraftDeckDialog(controller, PowerCalCoreFeatureApiV1(database,
+                deckController = controller).draftReview, null, {}, {}, {}, {}, { emptyList() })
         } }
         capture("deck-compact-light.png", true)
         ui.onNodeWithText("轻点卡片，展开完整编辑").performClick()

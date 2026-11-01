@@ -2376,9 +2376,47 @@ class PowerStoreTest {
         ) is PowerStore.CommitOutcome.NotAuthorized)
         assertTrue(store.isRetired(eventSeq))
 
+        val staleApproval = store.restoreDraft(
+            proposal.draftId,
+            proposal.form,
+            expectedTombstoneRevision = tombstone.revision - 1,
+            expectedDraftVersion = proposal.draftVersion
+        )
+        assertTrue(staleApproval is PowerStore.CommitOutcome.Conflict)
+        assertTrue(store.isRetired(eventSeq))
+        assertNull(store.get(eventSeq))
+        assertEquals(DraftStatus.PENDING, store.draft(proposal.draftId)!!.status)
+
+        val staleDraftApproval = store.restoreDraft(
+            proposal.draftId,
+            proposal.form.copy(title = "旧草稿版本"),
+            expectedTombstoneRevision = tombstone.revision,
+            expectedDraftVersion = proposal.draftVersion + 1
+        )
+        assertTrue(staleDraftApproval is PowerStore.CommitOutcome.DraftVersionMismatch)
+        assertTrue(store.isRetired(eventSeq))
+        assertNull(store.get(eventSeq))
+
+        val unreviewedFormApproval = store.restoreDraft(
+            proposal.draftId,
+            proposal.form.copy(title = "同版本但未审核的表单"),
+            expectedTombstoneRevision = tombstone.revision,
+            expectedDraftVersion = proposal.draftVersion
+        )
+        assertTrue(unreviewedFormApproval is PowerStore.CommitOutcome.DraftVersionMismatch)
+        assertTrue(store.isRetired(eventSeq))
+        assertNull(store.get(eventSeq))
+
+        val reviewedForm = proposal.form.copy(title = "用户确认恢复")
+        assertTrue(store.stageDraft(proposal.draftId, reviewedForm, proposal.draftVersion)
+            is PowerStore.StageResult.Saved)
+        val reviewedCard = requireNotNull(store.draft(proposal.draftId))
+
         val restored = store.restoreDraft(
             proposal.draftId,
-            proposal.form.copy(title = "用户确认恢复")
+            reviewedCard.form,
+            expectedTombstoneRevision = tombstone.revision,
+            expectedDraftVersion = reviewedCard.draftVersion
         ) as PowerStore.CommitOutcome.Committed
         assertEquals(eventSeq, restored.eventSeq)
         assertEquals(tombstone.revision + 1, restored.revision)

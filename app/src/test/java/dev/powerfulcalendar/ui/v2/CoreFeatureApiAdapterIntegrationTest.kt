@@ -2,9 +2,7 @@ package dev.powerfulcalendar.ui.v2
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
-import dev.powerfulcalendar.core.DeckController
 import dev.powerfulcalendar.core.PowerStore
-import dev.powerfulcalendar.core.StoreDeckPersistence
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.api.v1.EventEditorOpenResultV1
 import dev.powerfulcalendar.core.api.v1.EventFeatureChangeTypeV1
@@ -74,7 +72,7 @@ class CoreApiAdapterTest {
 
             val service = WebSkinEditService(
                 store = store,
-                deck = DeckController(StoreDeckPersistence(store)),
+                deck = core.draftReview,
                 coreFeatureApi = core
             )
             val opened = service.execute(

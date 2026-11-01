@@ -722,6 +722,7 @@ class PowerStore(
         ) : CommitOutcome
 
         data class Conflict(val current: TemporalRecord?) : CommitOutcome
+        data class DraftVersionMismatch(val current: DraftCard) : CommitOutcome
         data class NeedsRestore(val retiredSeq: Long) : CommitOutcome
         data class Invalid(val reason: String) : CommitOutcome
         data object Locked : CommitOutcome
@@ -1307,7 +1308,8 @@ class PowerStore(
         actor: String = "user",
         aiSession: AiSession? = null,
         idempotencyKey: String? = null,
-        expectedCurrentRevision: Long? = null
+        expectedCurrentRevision: Long? = null,
+        expectedDraftVersion: Long? = null
     ): CommitOutcome = tx { db ->
         if (aiSession != null) {
             val authorization = authorize(db, aiSession, draftId)
@@ -1341,6 +1343,9 @@ class PowerStore(
 
         val draft = readDraft(db, draftId) ?: return@tx CommitOutcome.Invalid("草稿不存在")
         if (!draft.isActionable) return@tx CommitOutcome.Invalid("草稿已经处理")
+        if (expectedDraftVersion != null && draft.draftVersion != expectedDraftVersion) {
+            return@tx CommitOutcome.DraftVersionMismatch(draft)
+        }
         if (draft.form.recurrenceEditScope != null || draft.form.editOccurrenceKey != null) {
             return@tx CommitOutcome.Invalid("请从原重复事件继续编辑此范围草稿，不能将其作为普通草稿发布")
         }
@@ -1445,12 +1450,19 @@ class PowerStore(
     fun restoreDraft(
         draftId: Long,
         form: DraftForm,
-        actor: String = "user"
+        actor: String = "user",
+        expectedTombstoneRevision: Long? = null,
+        expectedDraftVersion: Long? = null
     ): CommitOutcome = tx { db ->
         if (isLocked(db)) return@tx CommitOutcome.Locked
         if (actor != "user") return@tx CommitOutcome.NotAuthorized
         val card = readDraft(db, draftId) ?: return@tx CommitOutcome.Invalid("草稿不存在")
         if (!card.isActionable) return@tx CommitOutcome.Invalid("草稿已经处理")
+        if (expectedDraftVersion != null &&
+            (card.draftVersion != expectedDraftVersion || form != card.form)
+        ) {
+            return@tx CommitOutcome.DraftVersionMismatch(card)
+        }
         if (card.form.recurrenceEditScope != null || card.form.editOccurrenceKey != null) {
             return@tx CommitOutcome.Invalid("重复范围草稿不能用于普通恢复；请从原事件继续编辑")
         }
@@ -1461,6 +1473,10 @@ class PowerStore(
         val retiredRecord = readObject(db, eventSeq, includeRetired = true)
             ?: return@tx CommitOutcome.Invalid("该事件序号从未存在")
         if (!isRetired(db, eventSeq)) return@tx CommitOutcome.Invalid("该事件未被删除，无需恢复")
+        if (expectedTombstoneRevision != null &&
+            (card.baseRevision != expectedTombstoneRevision ||
+                retiredRecord.revision != expectedTombstoneRevision)
+        ) return@tx CommitOutcome.Conflict(retiredRecord)
         val now = System.currentTimeMillis()
         val newRevision = CommitRules.nextRevision(retiredRecord.revision)
         return@tx when (val built = form.build(eventSeq, newRevision, now)) {

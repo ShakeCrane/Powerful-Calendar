@@ -142,9 +142,11 @@ class DeckControllerTest {
             return PowerStore.CommitOutcome.Committed(card.eventSeq, 3, "restore-$draftId")
         }
 
-        override fun proposeRestore(eventSeq: Long): DraftCard =
-            cards.values.firstOrNull { it.eventSeq == eventSeq }
+        override fun proposeRestore(eventSeq: Long): DraftCard {
+            val card = cards.values.firstOrNull { it.eventSeq == eventSeq }
                 ?: add("恢复提案", eventSeq, DraftOperation.REPLACE)
+            return card.copy(baseRevision = 1L).also { cards[it.draftId] = it }
+        }
 
         override fun record(eventSeq: Long): TemporalRecord? =
             currentRevisionForRecord?.let { revision ->

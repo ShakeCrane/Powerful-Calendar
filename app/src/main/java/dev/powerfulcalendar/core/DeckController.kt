@@ -7,6 +7,10 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.coroutineContext
+import java.util.concurrent.CopyOnWriteArraySet
+
+private const val REVIEWED_DRAFT_VERSION_CONFLICT_MESSAGE =
+    "草稿已被其他操作更新；本次提交未写入，请重新检查"
 
 /**
  * Interaction core of 待处理. Deliberately free of Compose and Android so the rules that protect
@@ -48,6 +52,14 @@ interface DeckPersistence {
         approveStale: Boolean,
         expectedCurrentRevision: Long? = null
     ): PowerStore.CommitOutcome
+    /** Transactional draft-version fence for a proposal that was explicitly reviewed. */
+    fun commit(
+        draftId: Long,
+        approveStale: Boolean,
+        expectedCurrentRevision: Long?,
+        expectedDraftVersion: Long?
+    ): PowerStore.CommitOutcome = commit(draftId, approveStale, expectedCurrentRevision)
+
     fun discard(draftId: Long): Boolean
     fun undo(draftId: Long): Boolean
     fun pendingCount(): Int
@@ -57,12 +69,46 @@ interface DeckPersistence {
     /** Restoration is driven by the proposing card so it cannot survive as a stale duplicate. */
     fun restoreDraft(draftId: Long, form: DraftForm): PowerStore.CommitOutcome
 
+    /** Restore also binds the tombstone revision that the user reviewed. */
+    fun restoreDraft(
+        draftId: Long,
+        form: DraftForm,
+        expectedTombstoneRevision: Long?
+    ): PowerStore.CommitOutcome = restoreDraft(draftId, form)
+
+    fun restoreDraft(
+        draftId: Long,
+        form: DraftForm,
+        expectedTombstoneRevision: Long?,
+        expectedDraftVersion: Long?
+    ): PowerStore.CommitOutcome = restoreDraft(draftId, form, expectedTombstoneRevision)
+
     /** Creates or resumes a proposal for a tombstone; confirmation remains a separate action. */
     fun proposeRestore(eventSeq: Long): DraftCard
 
     /** Current formal snapshot, used to re-verify a conflict prompt before overwriting. */
     fun record(eventSeq: Long): TemporalRecord?
+
+    /** Revision-checked proposal creation used by the shared Draft/Review API. */
+    fun proposeFormalReplacement(eventSeq: Long, expectedRevision: Long): DeckProposalResult =
+        DeckProposalResult.Failed("正式替换提案不可用")
+
+    /** Revision-checked restore proposal creation used by the shared Draft/Review API. */
+    fun proposeRestoreAtRevision(eventSeq: Long, expectedRevision: Long): DeckProposalResult =
+        DeckProposalResult.Failed("恢复提案不可用")
 }
+
+sealed interface DeckProposalResult {
+    data class Proposed(val card: DraftCard) : DeckProposalResult
+    data class Stale(val currentRevision: Long?) : DeckProposalResult
+    data object Missing : DeckProposalResult
+    data object Locked : DeckProposalResult
+    data object Conflict : DeckProposalResult
+    data class Failed(val message: String) : DeckProposalResult
+}
+
+enum class DeckEditResult { APPLIED, STALE, LOCKED }
+enum class DeckReviewCommandResult { APPLIED, STALE, NOT_APPLIED, LOCKED }
 
 class DeckController(
     private val persistence: DeckPersistence,
@@ -126,6 +172,7 @@ class DeckController(
     private var notifiedGeneration = 0L
 
     private var listener: ((DeckState) -> Unit)? = null
+    private val additionalListeners = CopyOnWriteArraySet<(DeckState, Long) -> Unit>()
     private var sessionStartedAt: Long = clock()
     private var undoDraftId: Long? = null
     private var processedInSession = 0
@@ -153,6 +200,29 @@ class DeckController(
         }
     }
 
+    /** Additional observers do not replace the single presentation listener. */
+    fun observeAdditional(block: (DeckState) -> Unit): AutoCloseable {
+        return observeAdditionalVersioned { snapshot, _ -> block(snapshot) }
+    }
+
+    /** Observer variant that keeps the state snapshot and its revision from the same transition. */
+    fun observeAdditionalVersioned(block: (DeckState, Long) -> Unit): AutoCloseable {
+        synchronized(listenerLock) {
+            val (snapshot, revision) = synchronized(stateLock) { state to stateGeneration }
+            additionalListeners += block
+            block(snapshot, revision)
+        }
+        return AutoCloseable {
+            synchronized(listenerLock) { additionalListeners -= block }
+        }
+    }
+
+    fun stateSnapshot(): Pair<DeckState, Long> = synchronized(stateLock) { state to stateGeneration }
+
+    /** Monotonic in-memory revision for rejecting delayed edits against a stale snapshot. */
+    val stateRevision: Long
+        get() = synchronized(stateLock) { stateGeneration }
+
     /**
      * Atomic state transition. Only memory work happens here: no storage call may ever be made
      * while holding [stateLock]. Listener callbacks are serialized, but invoked after releasing the
@@ -167,18 +237,42 @@ class DeckController(
             stateGeneration++
             generation = stateGeneration
         }
+        notifyListeners(next, generation)
+        return next
+    }
+
+    /** Applies an edit only if the caller's view is still the current state revision. */
+    fun editIfCurrent(form: DraftForm, expectedStateRevision: Long): DeckEditResult {
+        val next: DeckState
+        val generation: Long
+        synchronized(stateLock) {
+            if (stateGeneration != expectedStateRevision) return DeckEditResult.STALE
+            if (state.aiLocked || state.busy) return DeckEditResult.LOCKED
+            next = state.copy(
+                form = form,
+                dirty = form != state.current?.form,
+                error = null
+            )
+            state = next
+            stateGeneration++
+            generation = stateGeneration
+        }
+        notifyListeners(next, generation)
+        return DeckEditResult.APPLIED
+    }
+
+    private fun notifyListeners(next: DeckState, generation: Long) {
         synchronized(listenerLock) {
-            val target = synchronized(stateLock) {
-                if (generation <= notifiedGeneration) null else listener
-            }
-            if (target != null) {
-                target(next)
-                synchronized(stateLock) {
-                    if (generation > notifiedGeneration) notifiedGeneration = generation
+            val targets = synchronized(stateLock) {
+                if (generation <= notifiedGeneration) emptyList()
+                else buildList {
+                    notifiedGeneration = generation
+                    listener?.let { callback -> add { callback(next) } }
+                    additionalListeners.forEach { callback -> add { callback(next, generation) } }
                 }
             }
+            targets.forEach { callback -> callback() }
         }
-        return next
     }
 
     /**
@@ -198,6 +292,45 @@ class DeckController(
             withContext(ioDispatcher) {
                 coroutineContext.ensureActive()
                 block()
+            }
+        } finally {
+            update { it.copy(busy = false) }
+        }
+    }
+
+    /** Fences an approved action and marks the deck busy in the same state-lock transition. */
+    private suspend fun reviewedCommand(
+        draftId: Long,
+        expectedDraftVersion: Long,
+        expectedStateRevision: Long,
+        block: () -> Boolean
+    ): DeckReviewCommandResult = commands.withLock {
+        coroutineContext.ensureActive()
+        val started: Pair<DeckState, Long>
+        synchronized(stateLock) {
+            if (stateGeneration != expectedStateRevision || state.currentId != draftId ||
+                state.version != expectedDraftVersion
+            ) return@withLock DeckReviewCommandResult.STALE
+            if (state.aiLocked || state.busy) return@withLock DeckReviewCommandResult.LOCKED
+            val next = state.copy(busy = true)
+            state = next
+            stateGeneration++
+            started = next to stateGeneration
+        }
+        notifyListeners(started.first, started.second)
+        try {
+            val applied = withContext(ioDispatcher) {
+                coroutineContext.ensureActive()
+                block()
+            }
+            if (applied) DeckReviewCommandResult.APPLIED
+            else {
+                val latest = stateSnapshot().first
+                if (latest.currentId != draftId || latest.version != expectedDraftVersion ||
+                    (latest.dirty && latest.error == REVIEWED_DRAFT_VERSION_CONFLICT_MESSAGE)
+                )
+                    DeckReviewCommandResult.STALE
+                else DeckReviewCommandResult.NOT_APPLIED
             }
         } finally {
             update { it.copy(busy = false) }
@@ -245,24 +378,47 @@ class DeckController(
     // ---------------------------------------------------------------- durable commands
 
     suspend fun open(preferDraftId: Long? = null) = command {
-        undoDraftId = null
-        lastTerminalActionAt = 0L
-        processedInSession = 0
-        sessionStartedAt = clock()
-        update { it.copy(lastDiscardId = null, completion = null) }
+        resetSession()
         refreshInternal(preferDraftId)
     }
 
     /** Opens a tombstone restore proposal; it does not reactivate the formal event. */
     suspend fun beginRestore(eventSeq: Long): Boolean = command {
         val card = persistence.proposeRestore(eventSeq)
-        undoDraftId = null
-        lastTerminalActionAt = 0L
-        processedInSession = 0
-        sessionStartedAt = clock()
-        update { it.copy(lastDiscardId = null, completion = null) }
+        resetSession()
         refreshInternal(card.draftId)
         true
+    }
+
+    suspend fun beginRestore(eventSeq: Long, expectedRevision: Long): DeckProposalResult = command {
+        if (!flushInternal()) return@command DeckProposalResult.Failed(
+            state.error ?: "当前草稿暂存失败，仍保留在待处理列表"
+        )
+        when (val result = persistence.proposeRestoreAtRevision(eventSeq, expectedRevision)) {
+            is DeckProposalResult.Proposed -> {
+                resetSession()
+                refreshInternal(result.card.draftId)
+                result
+            }
+            else -> result
+        }
+    }
+
+    suspend fun beginFormalReplacement(
+        eventSeq: Long,
+        expectedRevision: Long
+    ): DeckProposalResult = command {
+        if (!flushInternal()) return@command DeckProposalResult.Failed(
+            state.error ?: "当前草稿暂存失败，仍保留在待处理列表"
+        )
+        when (val result = persistence.proposeFormalReplacement(eventSeq, expectedRevision)) {
+            is DeckProposalResult.Proposed -> {
+                resetSession()
+                refreshInternal(result.card.draftId)
+                result
+            }
+            else -> result
+        }
     }
 
     /**
@@ -289,16 +445,51 @@ class DeckController(
     suspend fun commit(approveStale: Boolean = false): Boolean =
         command { commitInternal(approveStale) }
 
+    suspend fun commitReviewed(
+        draftId: Long,
+        expectedDraftVersion: Long,
+        expectedStateRevision: Long
+    ): DeckReviewCommandResult = reviewedCommand(draftId, expectedDraftVersion, expectedStateRevision) {
+        commitInternal(approveStale = false, expectedDraftVersion = expectedDraftVersion)
+    }
+
     /** User explicitly approved replacing the now-current revision with this card's snapshot. */
     suspend fun confirmConflictReplacement(expectedCurrentRevision: Long? = null): Boolean =
         command { confirmConflictReplacementInternal(expectedCurrentRevision) }
 
-    suspend fun requestRestore(): Boolean = command { requestRestoreInternal() }
+    suspend fun confirmConflictReplacementReviewed(
+        draftId: Long,
+        expectedDraftVersion: Long,
+        expectedCurrentRevision: Long,
+        expectedStateRevision: Long
+    ): DeckReviewCommandResult = reviewedCommand(draftId, expectedDraftVersion, expectedStateRevision) {
+        confirmConflictReplacementInternal(expectedCurrentRevision, expectedDraftVersion)
+    }
+
+    suspend fun requestRestore(expectedTombstoneRevision: Long? = null): Boolean =
+        command { requestRestoreInternal(expectedTombstoneRevision) }
+
+    suspend fun requestRestoreReviewed(
+        draftId: Long,
+        expectedDraftVersion: Long,
+        expectedTombstoneRevision: Long,
+        expectedStateRevision: Long
+    ): DeckReviewCommandResult = reviewedCommand(draftId, expectedDraftVersion, expectedStateRevision) {
+        requestRestoreInternal(expectedTombstoneRevision, expectedDraftVersion)
+    }
 
     /** X: discard the proposal. Retention keeps the row so undo can restore the same queue slot. */
     suspend fun discard(): Boolean = command { discardInternal() }
 
     suspend fun undoDiscard(): Boolean = command { undoDiscardInternal() }
+
+    private fun resetSession() {
+        undoDraftId = null
+        lastTerminalActionAt = 0L
+        processedInSession = 0
+        sessionStartedAt = clock()
+        update { it.copy(lastDiscardId = null, completion = null) }
+    }
 
     // ---------------------------------------------------------------- internals
 
@@ -346,7 +537,7 @@ class DeckController(
         }
     }
 
-    private fun flushInternal(): Boolean {
+    private fun flushInternal(stopOnVersionMismatch: Boolean = false): Boolean {
         val snapshot = state
         val id = snapshot.currentId ?: return true
         val form = snapshot.form ?: return true
@@ -355,7 +546,7 @@ class DeckController(
             update { it.copy(error = "AI 正独占卡组，稍后可继续编辑") }
             return false
         }
-        return stageWithRetry(id, form)
+        return stageWithRetry(id, form, stopOnVersionMismatch)
     }
 
     /**
@@ -364,10 +555,10 @@ class DeckController(
      * before the command is allowed to change cards. Bounded so a permanently failing store cannot
      * spin forever.
      */
-    private fun flushFully(maxAttempts: Int = 3): Boolean {
+    private fun flushFully(maxAttempts: Int = 3, stopOnVersionMismatch: Boolean = false): Boolean {
         repeat(maxAttempts) {
             if (!state.dirty) return true
-            if (!flushInternal()) return false
+            if (!flushInternal(stopOnVersionMismatch)) return false
             if (!state.dirty) return true
         }
         // Input kept arriving faster than it could be staged. Refuse the transition instead of
@@ -376,7 +567,11 @@ class DeckController(
         return false
     }
 
-    private fun stageWithRetry(draftId: Long, formToSave: DraftForm): Boolean {
+    private fun stageWithRetry(
+        draftId: Long,
+        formToSave: DraftForm,
+        stopOnVersionMismatch: Boolean = false
+    ): Boolean {
         var version = state.version
         repeat(2) { attempt ->
             val result = try {
@@ -399,7 +594,17 @@ class DeckController(
                     // If the user kept typing while the write was in flight, the newest text is
                     // still dirty and is staged by the next debounce tick.
                     update { current ->
+                        val stagedCurrent = current.current?.takeIf { it.draftId == draftId }
+                            ?.copy(form = formToSave, draftVersion = result.draftVersion)
+                        val stagedCards = current.cards.map { card ->
+                            if (card.draftId == draftId) card.copy(
+                                form = formToSave,
+                                draftVersion = result.draftVersion
+                            ) else card
+                        }
                         current.copy(
+                            cards = stagedCards,
+                            current = stagedCurrent ?: current.current,
                             version = result.draftVersion,
                             dirty = current.form != formToSave,
                             saving = false,
@@ -409,6 +614,15 @@ class DeckController(
                     return true
                 }
                 is PowerStore.StageResult.VersionMismatch -> {
+                    if (stopOnVersionMismatch) {
+                        // A reviewed write must never rebase stale form data over a newer draft.
+                        // Keep the user's in-memory form dirty so it can be reviewed again.
+                        update { it.copy(
+                            saving = false,
+                            error = REVIEWED_DRAFT_VERSION_CONFLICT_MESSAGE
+                        ) }
+                        return false
+                    }
                     // Another writer advanced this card. Keep the text the user can see and land it
                     // on top of the newer row once; a second mismatch is surfaced, never looped.
                     version = result.current.draftVersion
@@ -511,7 +725,8 @@ class DeckController(
 
     private fun commitInternal(
         approveStale: Boolean,
-        expectedCurrentRevision: Long? = null
+        expectedCurrentRevision: Long? = null,
+        expectedDraftVersion: Long? = null
     ): Boolean {
         val snapshot = state
         val id = snapshot.currentId ?: return false
@@ -521,9 +736,23 @@ class DeckController(
             update { it.copy(error = "AI 批量处理期间不能发布卡片") }
             return false
         }
-        if (!flushFully()) return false
+        val reviewedForm = snapshot.form
+        if (expectedDraftVersion != null &&
+            (snapshot.version != expectedDraftVersion || snapshot.currentId != id)
+        ) {
+            update { it.copy(error = "草稿在审阅后已变化，请重新检查后提交") }
+            return false
+        }
+        if (!flushFully(stopOnVersionMismatch = expectedDraftVersion != null)) return false
+        if (expectedDraftVersion != null && state.form != reviewedForm) {
+            update { it.copy(error = "草稿内容在审阅后已变化，请重新检查后提交") }
+            return false
+        }
         val order = state.current?.queueOrder ?: Long.MAX_VALUE
-        return when (val outcome = persistence.commit(id, approveStale, expectedCurrentRevision)) {
+        return when (val outcome = persistence.commit(
+            id, approveStale, expectedCurrentRevision,
+            expectedDraftVersion?.let { state.version }
+        )) {
             is PowerStore.CommitOutcome.Committed -> {
                 lastTerminalActionAt = clock()
                 processedInSession++
@@ -544,6 +773,24 @@ class DeckController(
                     approvedForm = form
                 )
                 update { it.copy(conflict = prompt, error = null) }
+                false
+            }
+            is PowerStore.CommitOutcome.DraftVersionMismatch -> {
+                val latestCard = outcome.current
+                update { current ->
+                    val cards = current.cards.map { card ->
+                        if (card.draftId == latestCard.draftId) latestCard else card
+                    }
+                    current.copy(
+                        cards = cards,
+                        current = latestCard.takeIf { current.currentId == latestCard.draftId },
+                        form = latestCard.form.takeIf { current.currentId == latestCard.draftId },
+                        version = if (current.currentId == latestCard.draftId)
+                            latestCard.draftVersion else current.version,
+                        dirty = false,
+                        error = "草稿在审阅后已变化，请重新检查后提交"
+                    )
+                }
                 false
             }
             is PowerStore.CommitOutcome.NeedsRestore -> {
@@ -578,7 +825,10 @@ class DeckController(
         }
     }
 
-    private fun confirmConflictReplacementInternal(expectedCurrentRevision: Long?): Boolean {
+    private fun confirmConflictReplacementInternal(
+        expectedCurrentRevision: Long?,
+        expectedDraftVersion: Long? = null
+    ): Boolean {
         val prompt = state.conflict ?: return false
         if (prompt.draftId != state.currentId) {
             update { it.copy(conflict = null, error = "冲突卡片已切换，请重新检查") }
@@ -609,17 +859,44 @@ class DeckController(
         }
         val result = commitInternal(
             approveStale = true,
-            expectedCurrentRevision = reviewedRevision
+            expectedCurrentRevision = reviewedRevision,
+            expectedDraftVersion = expectedDraftVersion
         )
         return result
     }
 
-    private fun requestRestoreInternal(): Boolean {
+    private fun requestRestoreInternal(
+        expectedTombstoneRevision: Long?,
+        expectedDraftVersion: Long? = null
+    ): Boolean {
         val prompt = state.restore ?: return false
-        if (!flushFully()) return false
+        val reviewedForm = state.form
+        if (expectedDraftVersion != null &&
+            (state.version != expectedDraftVersion || state.currentId != prompt.card.draftId)
+        ) {
+            val latestCard = state.current ?: prompt.card
+            update { it.copy(
+                restore = prompt.copy(card = latestCard),
+                error = "恢复草稿在审阅后已变化，请重新检查"
+            ) }
+            return false
+        }
+        if (!flushFully(stopOnVersionMismatch = expectedDraftVersion != null)) return false
+        if (expectedDraftVersion != null && state.form != reviewedForm) {
+            update { it.copy(error = "恢复内容在审阅后已变化，请重新检查") }
+            return false
+        }
         val form = state.form ?: return false
         val order = state.current?.queueOrder ?: Long.MAX_VALUE
-        return when (val outcome = persistence.restoreDraft(prompt.card.draftId, form)) {
+        val reviewedRevision = expectedTombstoneRevision ?: prompt.card.baseRevision
+        if (reviewedRevision == null || prompt.card.baseRevision != reviewedRevision) {
+            update { it.copy(error = "已删除事件版本已变化，请重新审核后恢复") }
+            return false
+        }
+        return when (val outcome = persistence.restoreDraft(
+            prompt.card.draftId, form, reviewedRevision,
+            expectedDraftVersion?.let { state.version }
+        )) {
             is PowerStore.CommitOutcome.Committed -> {
                 processedInSession++
                 lastTerminalActionAt = clock()
@@ -634,6 +911,29 @@ class DeckController(
             }
             is PowerStore.CommitOutcome.Invalid -> {
                 update { it.copy(restore = null, error = outcome.reason) }
+                false
+            }
+            is PowerStore.CommitOutcome.Conflict -> {
+                update { it.copy(error = "已删除事件版本已变化，请重新审核后恢复") }
+                false
+            }
+            is PowerStore.CommitOutcome.DraftVersionMismatch -> {
+                val latestCard = outcome.current
+                update { current ->
+                    val cards = current.cards.map { card ->
+                        if (card.draftId == latestCard.draftId) latestCard else card
+                    }
+                    current.copy(
+                        cards = cards,
+                        current = latestCard.takeIf { current.currentId == latestCard.draftId },
+                        form = latestCard.form.takeIf { current.currentId == latestCard.draftId },
+                        version = if (current.currentId == latestCard.draftId)
+                            latestCard.draftVersion else current.version,
+                        dirty = false,
+                        restore = prompt.copy(card = latestCard),
+                        error = "恢复草稿在审阅后已变化，请重新检查"
+                    )
+                }
                 false
             }
             else -> {

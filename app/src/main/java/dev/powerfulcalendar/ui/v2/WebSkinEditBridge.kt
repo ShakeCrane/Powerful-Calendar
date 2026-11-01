@@ -1,6 +1,5 @@
 package dev.powerfulcalendar.ui.v2
 
-import dev.powerfulcalendar.core.DeckController
 import dev.powerfulcalendar.core.EditorSelection
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.DraftForm
@@ -32,6 +31,15 @@ import dev.powerfulcalendar.core.api.v1.EventSelectionV1
 import dev.powerfulcalendar.core.api.v1.EventFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.EventMutationReceiptV1
 import dev.powerfulcalendar.core.api.v1.EventMutationStatusV1
+import dev.powerfulcalendar.core.api.v1.DraftOperationV1
+import dev.powerfulcalendar.core.api.v1.toCoreTemporalRecord
+import dev.powerfulcalendar.core.api.v1.DraftReviewFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.DraftReviewReceiptV1
+import dev.powerfulcalendar.core.api.v1.DraftReviewReceiptStatusV1
+import dev.powerfulcalendar.core.api.v1.DraftReviewConflictV1
+import dev.powerfulcalendar.core.api.v1.DraftReviewRestoreV1
+import dev.powerfulcalendar.core.api.v1.DraftReviewCardV1
+import dev.powerfulcalendar.core.api.v1.EventFormV1
 import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.toCoreDraftForm
 import dev.powerfulcalendar.core.api.v1.toEventFormV1
@@ -88,7 +96,8 @@ internal sealed interface WebEditCommand {
         val draftVersion: Long, val eventSeq: Long, val expectedRevision: Long): WebEditCommand
     data class CreateDeck(override val requestId: String, val kind: TemporalKind): WebEditCommand
     data class PatchDeck(override val requestId: String, val draftId: Long,
-        val draftVersion: Long, val field: String, val value: String): WebEditCommand
+        val draftVersion: Long, val field: String, val value: String,
+        val stateRevision: Long? = null): WebEditCommand
     data class SelectDeck(override val requestId: String, val draftId: Long): WebEditCommand
     data class FlushDeck(override val requestId: String): WebEditCommand
     data class CloseDeck(override val requestId: String): WebEditCommand
@@ -237,10 +246,11 @@ internal object WebEditWire {
                 WebEditCommand.CreateDeck(id,kind)
             }
             "deck.patch" -> {
-                if (!exact("draftId","draftVersion","field","value")) return null
+                if (!exact("draftId","draftVersion","stateRevision","field","value")) return null
                 val f=field()?:return null
                 WebEditCommand.PatchDeck(id,number("draftId")?:return null,
-                    number("draftVersion",true)?:return null,f.first,f.second)
+                    number("draftVersion",true)?:return null,
+                    f.first,f.second,number("stateRevision",true)?:return null)
             }
             "deck.select" -> if(exact("draftId"))
                 WebEditCommand.SelectDeck(id,number("draftId")?:return null) else null
@@ -326,7 +336,25 @@ internal object WebEditWire {
         .put("recurrenceInterval",form.recurrence.interval)
         .put("recurrenceFrom",form.recurrence.activeFromDate)
         .put("recurrenceUntil",form.recurrence.activeUntilDate)
+
+    fun form(form: EventFormV1): JSONObject = form(form.toCoreDraftForm())
 }
+
+private val DraftReviewFeatureApiV1.state: dev.powerfulcalendar.core.api.v1.DraftReviewSnapshotV1
+    get() = snapshot
+
+private fun DraftReviewCardV1.toCoreDraftCard() = DraftCard(
+    draftId = draftId,
+    eventSeq = eventSeq,
+    queueOrder = queueOrder,
+    operation = DraftOperation.valueOf(operation.name),
+    form = form.toCoreDraftForm(),
+    status = DraftStatus.valueOf(status.name),
+    baseRevision = baseRevision,
+    draftVersion = draftVersion,
+    createdAtMillis = createdAtMillis,
+    updatedAtMillis = updatedAtMillis
+)
 
 /** Never projected to JavaScript: only a trusted host dialog can resolve this snapshot. */
 internal data class WebFormalWriteReview(
@@ -344,8 +372,9 @@ internal data class WebFormalWriteReview(
     val deckCard: DraftCard? = null,
     val deckForm: DraftForm? = null,
     val deckVersion: Long? = null,
-    val conflictPrompt: DeckController.ConflictPrompt? = null,
-    val restorePrompt: DeckController.RestorePrompt? = null
+    val deckStateRevision: Long? = null,
+    val conflictPrompt: DraftReviewConflictV1? = null,
+    val restorePrompt: DraftReviewRestoreV1? = null
 )
 
 /** Host-only adapter state. The Core editor object never crosses the versioned API boundary. */
@@ -395,10 +424,17 @@ internal data class TimelineMoveContext(
 
 internal class WebSkinEditService(
     private val store: PowerStore,
-    private val deck: DeckController,
+    private val deck: DraftReviewFeatureApiV1,
     private val externalEditorActive: () -> Boolean = { false },
     private val coreFeatureApi: PowerCalCoreFeatureApiV1
 ) {
+    internal constructor(
+        store: PowerStore,
+        deckController: dev.powerfulcalendar.core.DeckController,
+        externalEditorActive: () -> Boolean = { false },
+        coreFeatureApi: PowerCalCoreFeatureApiV1
+    ) : this(store, coreFeatureApi.adaptDeckController(deckController), externalEditorActive, coreFeatureApi)
+
     private val eventFeatures: EventFeatureApiV1 = coreFeatureApi.events
     private val gate = Mutex()
     private var session: WebFormalEditor? = null
@@ -457,6 +493,27 @@ internal class WebSkinEditService(
             .put("draftId", receipt.draftId ?: JSONObject.NULL)
             .put("draftVersion", receipt.draftVersion ?: JSONObject.NULL)
             .put("relatedEventSeq", receipt.relatedEventSeq ?: JSONObject.NULL)
+    }
+
+    private fun result(receipt: DraftReviewReceiptV1): JSONObject {
+        val status = if (receipt.errorCode == "SOURCE_REVISION_STALE") "stale" else when (receipt.status) {
+            DraftReviewReceiptStatusV1.APPLIED, DraftReviewReceiptStatusV1.NO_CHANGE -> "applied"
+            DraftReviewReceiptStatusV1.REVIEW_REQUIRED, DraftReviewReceiptStatusV1.CONFLICT -> "conflict"
+            DraftReviewReceiptStatusV1.RESTORE_REQUIRED -> "restore_required"
+            DraftReviewReceiptStatusV1.LOCKED -> "locked"
+            DraftReviewReceiptStatusV1.NOT_FOUND -> "missing"
+            DraftReviewReceiptStatusV1.INVALID -> "invalid"
+            DraftReviewReceiptStatusV1.FAILED -> "failed"
+            DraftReviewReceiptStatusV1.DUPLICATE_REQUEST_ID -> "duplicate_request_id"
+        }
+        return result(receipt.requestId, status,
+            receipt.message ?: receipt.errorCode ?: receipt.draftId?.toString())
+            .put("featureRevision", receipt.featureRevision)
+            .put("duplicate", receipt.duplicate)
+            .put("eventSeq", receipt.eventSeq ?: JSONObject.NULL)
+            .put("revision", receipt.revision ?: JSONObject.NULL)
+            .put("draftId", receipt.draftId ?: JSONObject.NULL)
+            .put("draftVersion", receipt.draftVersion ?: JSONObject.NULL)
     }
 
     private fun clearDeckSearch() {
@@ -535,8 +592,9 @@ internal class WebSkinEditService(
         }
         val state = deck.state
         val items = org.json.JSONArray()
-        val matches = if (deckSearchQuery.isBlank()) state.cards
-            else DraftQueueSearch.filter(state.cards, deckSearchQuery)
+        val coreCards = state.cards.map(DraftReviewCardV1::toCoreDraftCard)
+        val matches = if (deckSearchQuery.isBlank()) coreCards
+            else DraftQueueSearch.filter(coreCards, deckSearchQuery)
         val cardLimit = if (deckSearchQuery.isBlank()) 80 else 4
         matches.take(cardLimit).forEach { card ->
             items.put(JSONObject().put("draftId",card.draftId)
@@ -570,7 +628,7 @@ internal class WebSkinEditService(
                 .put("draftVersion", prompt.card.draftVersion)
                 .put("currentRevision", prompt.currentRevision ?: JSONObject.NULL)
                 .put("operation", prompt.card.operation.name)
-                .put("current", prompt.current?.let { WebEditWire.form(DraftForm.from(it)) }
+                .put("current", prompt.current?.let { WebEditWire.form(DraftForm.from(it.toCoreTemporalRecord())) }
                     ?: JSONObject.NULL)
                 .put("proposed", WebEditWire.form(prompt.approvedForm))
                 .put("changes", org.json.JSONArray().apply {
@@ -608,6 +666,7 @@ internal class WebSkinEditService(
             .put("searchQuery",deckSearchQuery).put("formalMatches",formalItems)
             .put("currentId",state.currentId)
             .put("version",state.version).put("dirty",state.dirty)
+                .put("stateRevision",state.stateRevision)
             .put("busy",state.busy).put("aiLocked",state.aiLocked)
             .put("error",state.error).put("notice",state.notice)
             .put("completion",completion)
@@ -915,7 +974,7 @@ internal class WebSkinEditService(
                             loadRestoreTombstoneIfNeeded()
                             result(cmd.requestId,"opened")
                         }
-                        else if(deck.select(cmd.draftId)) {
+                        else if(deck.select(cmd.draftId, cmd.requestId).succeeded) {
                             clearDeckSearch()
                             loadRetiredPage(0)
                             loadRestoreTombstoneIfNeeded()
@@ -962,7 +1021,7 @@ internal class WebSkinEditService(
                         !deckOpen -> result(cmd.requestId,"missing")
                         newEventSession != null -> result(cmd.requestId,"unsupported")
                         deck.state.aiLocked || deck.state.busy -> result(cmd.requestId,"locked")
-                        deck.jump(cmd.steps) -> {
+                        deck.jump(cmd.steps, cmd.requestId).succeeded -> {
                             clearDeckSearch()
                             result(cmd.requestId,"moved")
                         }
@@ -977,38 +1036,14 @@ internal class WebSkinEditService(
                         formalSearchResults.none {
                             it.eventSeq == cmd.eventSeq && it.revision == cmd.expectedRevision
                         } -> result(cmd.requestId,"stale")
-                        !deck.flush() -> result(cmd.requestId,"failed",deck.state.error)
                         else -> {
-                            val proposal = withContext(Dispatchers.IO) {
-                                // Keep the revision check, compatible-draft lookup and existing
-                                // PowerStore proposal operation under the Store monitor. All host
-                                // paths share this Store instance and its synchronized API.
-                                synchronized(store) {
-                                    val current = store.get(cmd.eventSeq)
-                                    when {
-                                        current == null -> null to "stale"
-                                        current.revision != cmd.expectedRevision -> null to "stale"
-                                        else -> {
-                                            val existing = store.pendingDraftsFor(cmd.eventSeq)
-                                                .firstOrNull {
-                                                    it.operation == DraftOperation.REPLACE ||
-                                                        it.operation == DraftOperation.CONVERT
-                                                }
-                                            val card = existing ?: store.proposeReplace(cmd.eventSeq)
-                                            if (card.operation == DraftOperation.REPLACE ||
-                                                card.operation == DraftOperation.CONVERT) card to null
-                                            else null to "conflict"
-                                        }
-                                    }
-                                }
-                            }
-                            val card = proposal.first
-                            if (card == null) result(cmd.requestId,proposal.second ?: "failed")
-                            else {
-                                deck.refresh(card.draftId)
+                            val proposal = deck.beginFormalReplacement(
+                                cmd.eventSeq, cmd.expectedRevision, cmd.requestId
+                            )
+                            if (proposal.status == DraftReviewReceiptStatusV1.APPLIED) {
                                 clearDeckSearch()
-                                result(cmd.requestId,"opened",card.draftId.toString())
-                            }
+                                result(cmd.requestId, "opened", proposal.draftId?.toString())
+                            } else result(proposal)
                         }
                     }
                 }
@@ -1030,11 +1065,13 @@ internal class WebSkinEditService(
                             withContext(Dispatchers.IO) { store.isLocked() } -> result(cmd.requestId,"locked")
                         !stillRetired -> result(cmd.requestId,"stale")
                         state.conflict != null || state.restore != null -> result(cmd.requestId,"locked")
-                        !deck.flush() -> result(cmd.requestId,"failed",deck.state.error)
                         else -> {
-                            val opened = deck.beginRestore(cmd.eventSeq)
+                            val opened = deck.beginRestore(
+                                cmd.eventSeq, cmd.expectedRevision, cmd.requestId
+                            )
                             val card = deck.state.current
-                            if (!opened || card == null) result(cmd.requestId,"failed",deck.state.error)
+                            if (opened.status != DraftReviewReceiptStatusV1.APPLIED || card == null)
+                                result(opened)
                             else {
                                 clearDeckSearch()
                                 restoreTombstone = null
@@ -1074,10 +1111,18 @@ internal class WebSkinEditService(
                             state.version!=cmd.draftVersion)result(cmd.requestId,"stale")
                         else if(state.aiLocked || state.busy)result(cmd.requestId,"locked")
                         else {
-                            val form=state.form
+                            val form=state.form?.toCoreDraftForm()
                             if(form==null) result(cmd.requestId,"missing")
-                            else {deck.edit(WebEditWire.patch(form,cmd.field,cmd.value))
-                                result(cmd.requestId,"edited")}
+                            else {
+                                val updated = WebEditWire.patch(form,cmd.field,cmd.value)
+                                val edited = deck.editCurrentDraft(
+                                    cmd.draftId, cmd.draftVersion,
+                                    cmd.stateRevision ?: state.stateRevision,
+                                    updated.toEventFormV1()
+                                )
+                                if (edited.succeeded) result(cmd.requestId,"edited")
+                                else result(edited)
+                            }
                         }
                     }
                 }
@@ -1087,7 +1132,7 @@ internal class WebSkinEditService(
                     else if(activeNew != null && activeNew.clientDraftId == cmd.draftId)
                         result(cmd.requestId,"selected")
                     else if(activeNew != null) result(cmd.requestId,"missing")
-                    else if(deck.select(cmd.draftId)) {
+                    else if(deck.select(cmd.draftId, cmd.requestId).succeeded) {
                         clearDeckSearch()
                         result(cmd.requestId,"selected")
                     }
@@ -1112,8 +1157,11 @@ internal class WebSkinEditService(
                             }
                             result(cmd.requestId,"flushed")
                         }
-                    } else if(deck.flush())result(cmd.requestId,"flushed")
-                    else result(cmd.requestId,"failed",deck.state.error)
+                    } else {
+                        val checkpoint = deck.flush(cmd.requestId)
+                        if (checkpoint.succeeded) result(cmd.requestId,"flushed")
+                        else result(checkpoint)
+                    }
                 }
                 is WebEditCommand.CloseDeck -> {
                     val activeNew = newEventSession
@@ -1133,12 +1181,14 @@ internal class WebSkinEditService(
                         clearDeckSearch()
                         runCatching { deck.open(saved.draftId) }
                         result(cmd.requestId,"closed",saved.draftId?.toString())
-                    } else if(deck.flush()) {
-                        deckOpen=false
-                        clearDeckSearch()
-                        result(cmd.requestId,"closed")
+                    } else {
+                        val flushed = deck.flush(cmd.requestId)
+                        if (flushed.succeeded) {
+                            deckOpen=false
+                            clearDeckSearch()
+                            result(cmd.requestId,"closed")
+                        } else result(flushed)
                     }
-                    else result(cmd.requestId,"failed",deck.state.error)
                 }
                 is WebEditCommand.CommitDeck -> requestCommitReview(cmd)
                 is WebEditCommand.DiscardDeck -> {
@@ -1159,15 +1209,21 @@ internal class WebSkinEditService(
                         val s=deck.state
                         if(!deckOpen || s.currentId!=cmd.draftId ||
                             s.version!=cmd.draftVersion) result(cmd.requestId,"stale")
-                        else if(deck.discard())result(cmd.requestId,"discarded")
-                        else result(cmd.requestId,"failed",deck.state.error)
+                        else {
+                            val discarded = deck.discard(cmd.draftId, s.current?.draftVersion ?: -1L,
+                                cmd.requestId)
+                            if (discarded.succeeded) result(cmd.requestId,"discarded")
+                            else result(discarded)
+                        }
                     }
                 }
                 is WebEditCommand.UndoDeck ->
                     if(!deckOpen)result(cmd.requestId,"missing")
                     else if(newEventSession != null) result(cmd.requestId,"missing")
-                    else if(deck.undoDiscard())result(cmd.requestId,"restored")
-                    else result(cmd.requestId,"failed",deck.state.error)
+                    else deck.state.lastDiscardId?.let { draftId ->
+                        val undone = deck.undoDiscard(draftId, cmd.requestId)
+                        if (undone.succeeded) result(cmd.requestId,"restored") else result(undone)
+                    } ?: result(cmd.requestId,"missing")
             }
         } catch(e:kotlinx.coroutines.CancellationException) {throw e}
           catch(e:DraftSourceRevisionMismatchException) {
@@ -1185,7 +1241,7 @@ internal class WebSkinEditService(
 
     private fun matchingConflict(
         draftId: Long, draftVersion: Long, eventSeq: Long, expectedRevision: Long
-    ): DeckController.ConflictPrompt? = deck.state.conflict?.takeIf { prompt ->
+    ): DraftReviewConflictV1? = deck.state.conflict?.takeIf { prompt ->
         prompt.draftId == draftId && prompt.card.draftVersion == draftVersion &&
             prompt.eventSeq == eventSeq && prompt.currentRevision == expectedRevision &&
             deck.state.currentId == draftId && deck.state.version == draftVersion
@@ -1193,7 +1249,7 @@ internal class WebSkinEditService(
 
     private fun matchingRestore(
         draftId: Long, draftVersion: Long, eventSeq: Long, expectedRevision: Long
-    ): DeckController.RestorePrompt? = deck.state.restore?.takeIf { prompt ->
+    ): DraftReviewRestoreV1? = deck.state.restore?.takeIf { prompt ->
         prompt.card.draftId == draftId && deck.state.currentId == draftId &&
             deck.state.version == draftVersion && prompt.eventSeq == eventSeq &&
             restoreTombstone?.eventSeq == eventSeq &&
@@ -1201,11 +1257,12 @@ internal class WebSkinEditService(
     }
 
     private fun matchesPersistedConflictDraft(
-        persisted: DraftCard?, prompt: DeckController.ConflictPrompt
+        persisted: DraftCard?, prompt: DraftReviewConflictV1
     ): Boolean = persisted != null && persisted.status == DraftStatus.CONFLICT &&
         persisted.draftId == prompt.card.draftId && persisted.eventSeq == prompt.card.eventSeq &&
         persisted.queueOrder == prompt.card.queueOrder &&
-        persisted.operation == prompt.card.operation && persisted.form == prompt.approvedForm &&
+        persisted.operation.name == prompt.card.operation.name &&
+        persisted.form == prompt.approvedForm.toCoreDraftForm() &&
         persisted.baseRevision == prompt.card.baseRevision &&
         persisted.draftVersion == prompt.card.draftVersion
 
@@ -1236,9 +1293,10 @@ internal class WebSkinEditService(
             return result(cmd.requestId, "stale", "草稿内容已变化，请重新检查")
         pendingWriteReview = WebFormalWriteReview(
             token = UUID.randomUUID().toString(), command = cmd,
-            operation = prompt.card.operation, current = live, before = live,
-            proposed = prompt.approvedForm, deckCard = persisted,
-            deckForm = prompt.approvedForm, deckVersion = state.version,
+            operation = DraftOperation.valueOf(prompt.card.operation.name), current = live, before = live,
+            proposed = prompt.approvedForm.toCoreDraftForm(), deckCard = persisted,
+            deckForm = prompt.approvedForm.toCoreDraftForm(), deckVersion = state.version,
+            deckStateRevision = deck.snapshot.stateRevision,
             conflictPrompt = prompt
         )
         return result(cmd.requestId, "confirmation_required")
@@ -1254,7 +1312,8 @@ internal class WebSkinEditService(
                     store.getIncludingRetired(prompt.eventSeq) == restoreTombstone
             }
         }
-        if (!unchanged || withContext(Dispatchers.IO) { store.draft(prompt.card.draftId) } != prompt.card)
+        if (!unchanged || withContext(Dispatchers.IO) { store.draft(prompt.card.draftId) } !=
+            prompt.card.toCoreDraftCard())
             return result(cmd.requestId, "stale", "墓碑或恢复草稿已变化")
         deck.dismissRestore()
         restoreTombstone = null
@@ -1278,15 +1337,17 @@ internal class WebSkinEditService(
                 }
             }
         } ?: return result(cmd.requestId, "stale", "已删除事件的版本已变化，请重新检查")
-        val form = state.form ?: return result(cmd.requestId, "missing")
+        val form = state.form?.toCoreDraftForm() ?: return result(cmd.requestId, "missing")
         val persisted = withContext(Dispatchers.IO) { store.draft(prompt.card.draftId) }
-        if (persisted != prompt.card || form != prompt.card.form || tombstone != restoreTombstone)
+        if (persisted != prompt.card.toCoreDraftCard() ||
+            form != prompt.card.form.toCoreDraftForm() || tombstone != restoreTombstone)
             return result(cmd.requestId, "stale", "恢复草稿或墓碑已变化，请重新检查")
         pendingWriteReview = WebFormalWriteReview(
             token = UUID.randomUUID().toString(), command = cmd,
-            operation = prompt.card.operation, current = tombstone, before = tombstone,
-            proposed = form, deckCard = prompt.card, deckForm = form,
-            deckVersion = state.version, restorePrompt = prompt
+            operation = DraftOperation.valueOf(prompt.card.operation.name), current = tombstone, before = tombstone,
+            proposed = form, deckCard = prompt.card.toCoreDraftCard(), deckForm = form,
+            deckVersion = state.version, deckStateRevision = deck.snapshot.stateRevision,
+            restorePrompt = prompt
         )
         return result(cmd.requestId, "confirmation_required")
     }
@@ -1340,11 +1401,12 @@ internal class WebSkinEditService(
         if (!deckOpen || initial.currentId != cmd.draftId || initial.version != cmd.draftVersion)
             return result(cmd.requestId, "stale")
         if (initial.aiLocked || initial.busy) return result(cmd.requestId, "locked")
-        if (!deck.flush()) return result(cmd.requestId, "failed", deck.state.error)
+        val flush = deck.flush("${cmd.requestId}:flush")
+        if (!flush.succeeded) return result(flush)
 
         val state = deck.state
         val card = state.current ?: return result(cmd.requestId, "missing")
-        val form = state.form ?: return result(cmd.requestId, "missing")
+        val form = state.form?.toCoreDraftForm() ?: return result(cmd.requestId, "missing")
         if (state.currentId != cmd.draftId || state.busy || state.aiLocked)
             return result(cmd.requestId, "locked")
         val current = if (card.operation.requiresExisting) {
@@ -1352,38 +1414,50 @@ internal class WebSkinEditService(
         } else null
         val ready = form.build(card.eventSeq.coerceAtLeast(1L), (card.baseRevision ?: 0L) + 1L)
         val changedFormalValue = when {
-            card.operation == DraftOperation.DELETE -> true
+            card.operation == dev.powerfulcalendar.core.api.v1.DraftOperationV1.DELETE -> true
             ready !is FormBuild.Ready -> false
-            card.operation == DraftOperation.CREATE -> true
+            card.operation == dev.powerfulcalendar.core.api.v1.DraftOperationV1.CREATE -> true
             current == null -> false
             else -> form.hasMeaningfulDiffFrom(DraftForm.from(current))
         }
         if (!changedFormalValue) {
             return when {
-                card.operation.requiresExisting && current == null -> commitDeckResult(cmd.requestId)
-                ready !is FormBuild.Ready -> commitDeckResult(cmd.requestId)
+                card.operation.requiresExisting && current == null ->
+                    commitDeckResult(cmd.requestId, card.draftId, card.draftVersion,
+                        deck.snapshot.stateRevision)
+                ready !is FormBuild.Ready ->
+                    commitDeckResult(cmd.requestId, card.draftId, card.draftVersion,
+                        deck.snapshot.stateRevision)
                 else -> result(cmd.requestId, "no_changes")
             }
         }
         if (card.operation.requiresExisting && current == null)
-            return commitDeckResult(cmd.requestId)
+            return commitDeckResult(cmd.requestId, card.draftId, card.draftVersion,
+                deck.snapshot.stateRevision)
 
         val persisted = withContext(Dispatchers.IO) { store.draft(card.draftId) }
             ?: return result(cmd.requestId, "stale")
-        if (persisted.operation != card.operation || persisted.form != form ||
+        if (persisted.operation.name != card.operation.name || persisted.form != form ||
             persisted.draftVersion != state.version || state.dirty)
             return result(cmd.requestId, "conflict", "草稿在审查期间发生变化")
         pendingWriteReview = WebFormalWriteReview(
             token = UUID.randomUUID().toString(), command = cmd,
-            operation = card.operation, current = current, before = current,
-            proposed = if (card.operation == DraftOperation.DELETE) null else form,
-            deckCard = persisted, deckForm = form, deckVersion = state.version
+            operation = DraftOperation.valueOf(card.operation.name), current = current, before = current,
+            proposed = if (card.operation == dev.powerfulcalendar.core.api.v1.DraftOperationV1.DELETE) null else form,
+            deckCard = persisted, deckForm = form, deckVersion = state.version,
+            deckStateRevision = deck.snapshot.stateRevision
         )
         return result(cmd.requestId, "confirmation_required")
     }
 
-    private suspend fun commitDeckResult(requestId: String): JSONObject {
-        if (deck.commit()) {
+    private suspend fun commitDeckResult(
+        requestId: String,
+        draftId: Long,
+        expectedDraftVersion: Long,
+        expectedStateRevision: Long
+    ): JSONObject {
+        val committed = deck.commit(draftId, expectedDraftVersion, expectedStateRevision, requestId)
+        if (committed.status == DraftReviewReceiptStatusV1.APPLIED) {
             restoreTombstone = null
             return result(requestId, "committed")
         }
@@ -1397,10 +1471,14 @@ internal class WebSkinEditService(
                 }
             }
         } else restoreTombstone = null
-        return result(requestId,
-            if (deck.state.conflict != null) "conflict"
-            else if (restore != null) "restore_required"
-            else "failed", deck.state.error)
+        return result(requestId, when (committed.status) {
+            DraftReviewReceiptStatusV1.REVIEW_REQUIRED, DraftReviewReceiptStatusV1.CONFLICT -> "conflict"
+            DraftReviewReceiptStatusV1.RESTORE_REQUIRED -> "restore_required"
+            DraftReviewReceiptStatusV1.LOCKED -> "locked"
+            DraftReviewReceiptStatusV1.NOT_FOUND -> "missing"
+            DraftReviewReceiptStatusV1.INVALID -> "invalid"
+            else -> "failed"
+        }, committed.message ?: committed.errorCode ?: deck.state.error ?: restore?.message)
     }
 
     private suspend fun resolveDeckCommit(review: WebFormalWriteReview): JSONObject {
@@ -1430,12 +1508,15 @@ internal class WebSkinEditService(
         val state = deck.state
         val persisted = withContext(Dispatchers.IO) { store.draft(card.draftId) }
         if (!deckOpen || state.currentId != command.draftId || state.version != review.deckVersion ||
-            state.current?.operation != card.operation || state.form != review.deckForm || state.dirty ||
+            deck.snapshot.stateRevision != review.deckStateRevision ||
+            state.current?.operation?.name != card.operation.name ||
+            state.form?.toCoreDraftForm() != review.deckForm || state.dirty ||
             state.busy || state.aiLocked || persisted != card ||
             (card.operation.requiresExisting &&
                 withContext(Dispatchers.IO) { store.get(card.eventSeq) } != review.current))
             return result(command.requestId, "conflict", "草稿或正式事件已变化，请重新审查")
-        return commitDeckResult(command.requestId)
+        return commitDeckResult(command.requestId, card.draftId, card.draftVersion,
+            review.deckStateRevision ?: return result(command.requestId, "stale"))
     }
 
     private suspend fun resolveConflictReview(
@@ -1447,7 +1528,9 @@ internal class WebSkinEditService(
         val currentPrompt = matchingConflict(command.draftId, command.draftVersion,
             command.eventSeq, command.expectedRevision)
         if (currentPrompt != prompt || !matchesPersistedConflictDraft(review.deckCard, prompt) ||
-            review.deckVersion != command.draftVersion || review.deckForm != prompt.approvedForm)
+            review.deckVersion != command.draftVersion ||
+            review.deckStateRevision != deck.snapshot.stateRevision ||
+            review.deckForm != prompt.approvedForm.toCoreDraftForm())
             return result(command.requestId, "conflict", "冲突卡片或审阅内容已变化")
         val live = withContext(Dispatchers.IO) {
             synchronized(store) { store.get(command.eventSeq) }
@@ -1455,16 +1538,23 @@ internal class WebSkinEditService(
         val persisted = withContext(Dispatchers.IO) { store.draft(command.draftId) }
         if (live != review.current || live?.revision != command.expectedRevision ||
             persisted != review.deckCard || !matchesPersistedConflictDraft(persisted, prompt) ||
-            deck.state.form != review.deckForm || deck.state.dirty)
+            deck.state.form?.toCoreDraftForm() != review.deckForm || deck.state.dirty)
             return result(command.requestId, "conflict", "正式事件或草稿已变化，请重新审查")
         if (!approved) {
             return result(command.requestId, "cancelled")
         }
-        return if (deck.confirmConflictReplacement(command.expectedRevision)) {
+        val confirmed = deck.confirmConflictReplacement(
+            command.draftId,
+            command.draftVersion,
+            review.deckStateRevision ?: return result(command.requestId, "stale"),
+            command.expectedRevision,
+            command.requestId
+        )
+        return if (confirmed.status == DraftReviewReceiptStatusV1.APPLIED) {
             if (review.operation == DraftOperation.DELETE)
                 result(command.requestId, "saved", command.eventSeq.toString())
             else result(command.requestId, "replaced", command.eventSeq.toString())
-        } else result(command.requestId, "conflict", deck.state.error ?: "请重新审查冲突")
+        } else result(confirmed)
     }
 
     private suspend fun resolveRestoreReview(
@@ -1476,8 +1566,10 @@ internal class WebSkinEditService(
         val expectedRevision = review.current?.revision ?: return result(command.requestId, "stale")
         val currentPrompt = matchingRestore(command.draftId, command.draftVersion,
             command.eventSeq, command.expectedRevision)
-        if (currentPrompt != prompt || review.deckCard != prompt.card ||
-            review.deckVersion != command.draftVersion || review.deckForm != deck.state.form ||
+        if (currentPrompt != prompt || review.deckCard != prompt.card.toCoreDraftCard() ||
+            review.deckVersion != command.draftVersion ||
+            review.deckStateRevision != deck.snapshot.stateRevision ||
+            review.deckForm != deck.state.form?.toCoreDraftForm() ||
             expectedRevision != command.expectedRevision)
             return result(command.requestId, "conflict", "恢复草稿或审阅内容已变化")
         val live = withContext(Dispatchers.IO) {
@@ -1489,15 +1581,22 @@ internal class WebSkinEditService(
         }
         val persisted = withContext(Dispatchers.IO) { store.draft(command.draftId) }
         if (live != review.current || persisted != review.deckCard ||
-            deck.state.form != review.deckForm || deck.state.dirty)
+            deck.state.form?.toCoreDraftForm() != review.deckForm || deck.state.dirty)
             return result(command.requestId, "conflict", "墓碑或恢复草稿已变化，请重新审查")
         if (!approved) {
             return result(command.requestId, "cancelled")
         }
-        return if (deck.requestRestore()) {
+        val restored = deck.requestRestore(
+            prompt.card.draftId,
+            prompt.card.draftVersion,
+            review.deckStateRevision ?: return result(command.requestId, "stale"),
+            command.expectedRevision,
+            command.requestId
+        )
+        return if (restored.status == DraftReviewReceiptStatusV1.APPLIED) {
             restoreTombstone = null
             result(command.requestId, "restored", command.eventSeq.toString())
-        } else result(command.requestId, "conflict", deck.state.error ?: "恢复未完成，草稿仍保留")
+        } else result(restored)
     }
 
     /** Called only by the host-owned confirmation UI, never by a Web command. */
@@ -1599,7 +1698,8 @@ internal class WebSkinEditService(
                 eventFeatures.checkpointNewEvent(newEvent.handle, UUID.randomUUID().toString())
             }
             if(checkpoint.status == EventMutationStatusV1.FAILED)return@withLock false
-        } else if(deckOpen && !deck.flush()) return@withLock false
+        } else if (deckOpen &&
+            !deck.flush("web-checkpoint-${UUID.randomUUID()}").succeeded) return@withLock false
         true
     }
 
@@ -1623,7 +1723,8 @@ internal class WebSkinEditService(
             if(checkpoint.status == EventMutationStatusV1.FAILED)return@withLock false
             newEventSession = null
             runCatching { deck.open(checkpoint.draftId) }
-        } else if(deckOpen && !deck.flush()) return@withLock false
+        } else if (deckOpen &&
+            !deck.flush("skin-change-${UUID.randomUUID()}").succeeded) return@withLock false
         if(session!=null) {
             withContext(Dispatchers.IO){eventFeatures.closeFormalEvent(session!!.handle)}
             session=null;sessionId=null
