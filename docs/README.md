@@ -19,6 +19,9 @@ Explicit text-to-draft creation now uses DraftReview API v1; see the
 Native and Web AI proposal review actions now share the Host-created AI Proposal API;
 see the [AI Proposal report](issues/PC-ISSUE-CORE-AI-PROPOSAL-API-V1.md) for receipt,
 authorization, and verification limits.
+Native and Web chat now share Core-owned, revision-fenced transcript commands with the
+existing Android private-file adapter; see the [AI Conversation State API report]
+(issues/PC-ISSUE-CORE-AI-CONVERSATION-STATE-API-V1.md) for compatibility and test limits.
 Native and Web reminder diagnostics and recovery now use the shared Reminder Feature API;
 see the [Reminder API report](issues/PC-ISSUE-CORE-REMINDER-API-V1.md) for reconciliation
 modes, verification evidence, and OS-delivery limits.

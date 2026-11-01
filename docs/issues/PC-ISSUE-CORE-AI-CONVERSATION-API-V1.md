@@ -47,10 +47,10 @@
 
 ## 限制与后续
 
-- 对话记录仍由 Host 持久化；清空/回退和基于历史 revision 的状态命令尚未进入 Core API。
+- 本 Issue 记录的普通聊天 API 切片尚未包含 transcript state commands。该后续已在 [AI Conversation State API Issue](PC-ISSUE-CORE-AI-CONVERSATION-STATE-API-V1.md) 单独实现和验证；此处提交与测试数据仍只描述原始 chat API 切片。
 - API 层请求收据仅进程内有效；provider 断连或进程中断后的远端幂等语义未建立。
 - 本次不是 Native/Clear 等价回放，也不提升 SEP-09 parity 状态；运行时、设备和 OEM 证据仍需单独取得。
-- **唯一后续行动：** 将聊天记录查询、持久化、清空与回退接入版本化 Core AI conversation state API，并保留现有本地文件格式及 Web 历史 revision 检查。
+- **当时的后续行动：** 将聊天记录查询、持久化、清空与回退接入版本化 Core AI conversation state API。此项由 2026-11-02 的独立后续 Issue 完成；当前路线图以该后续 Issue 记录的 NEXT_ACTION 为准。
 
 ## 主要源码
 
