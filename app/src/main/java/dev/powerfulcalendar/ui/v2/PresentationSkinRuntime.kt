@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import androidx.compose.runtime.Composable
+import dev.powerfulcalendar.core.api.v1.SettingsDataFeatureApiV1
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -391,7 +392,8 @@ internal fun ToolsPage(
     onOpenExactAlarmSettings: () -> Unit,
     onCancelBatch: () -> Unit,
     onReconcile: () -> Unit,
-    onReleaseStuck: () -> Unit
+    onReleaseStuck: () -> Unit,
+    settingsDataApi: SettingsDataFeatureApiV1
 ) {
     val settingsDisplay = remember(
         diagnostics, records, pendingCount, aiLocked, aiSession, canReleaseStuckBatch,
@@ -406,7 +408,7 @@ internal fun ToolsPage(
     val skinOptions = remember(skinChoices) {
         skinChoices.map { SettingsSkinChoice(it.id, it.name, it.builtIn) }
     }
-    val protectedProfile: @Composable () -> Unit = { HostProtectedProfileSection() }
+    val protectedProfile: @Composable () -> Unit = { HostProtectedProfileSection(settingsDataApi) }
     val protectedAiCredentials: @Composable () -> Unit = { HostProtectedAiSettingsSection() }
     val nativeFallback: @Composable () -> Unit = {
         NativeToolsPage(

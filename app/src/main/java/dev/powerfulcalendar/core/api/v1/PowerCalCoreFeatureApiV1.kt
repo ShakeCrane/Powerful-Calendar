@@ -40,7 +40,8 @@ class PowerCalCoreFeatureApiV1(
     private val store: PowerStore,
     clock: Clock = Clock.systemUTC(),
     internal val deckController: DeckController = DeckController(StoreDeckPersistence(store)),
-    reminderContext: Context? = null
+    reminderContext: Context? = null,
+    settingsContext: Context? = reminderContext
 ) : CoreFeatureApiV1 {
     override val apiVersion: Int = 1
     private val calendarService = SnapshotCalendarFeatureApiV1()
@@ -51,12 +52,14 @@ class PowerCalCoreFeatureApiV1(
     private val importExportService = StoreImportExportFeatureApiV1(
         store, draftReviewService, eventService
     )
+    private val settingsDataService = AndroidSettingsDataFeatureApiV1(settingsContext)
     override val calendar: CalendarFeatureApiV1 get() = calendarService
     override val events: EventFeatureApiV1 get() = eventService
     override val draftReview: DraftReviewFeatureApiV1 get() = draftReviewService
     override val aiProposals: AiProposalFeatureApiV1 get() = aiProposalService
     override val reminders: ReminderFeatureApiV1 get() = reminderService
     override val importExport: ImportExportFeatureApiV1 get() = importExportService
+    override val settingsData: SettingsDataFeatureApiV1 get() = settingsDataService
 
     /** Test/legacy Host seam for an explicitly supplied controller; production uses [draftReview]. */
     internal fun adaptDeckController(controller: DeckController): DraftReviewFeatureApiV1 =

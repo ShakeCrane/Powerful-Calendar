@@ -1,6 +1,5 @@
 package dev.powerfulcalendar.ui.v2
 
-import android.content.Context
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -15,6 +14,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import dev.powerfulcalendar.ai.AiFileFallbackConsent
 import dev.powerfulcalendar.ai.AiSettingsStore
+import dev.powerfulcalendar.core.api.v1.SettingsDataFeatureApiV1
 import dev.powerfulcalendar.ui.v2.NativeProtectedAiSettingsActions
 import dev.powerfulcalendar.ui.v2.NativeProtectedAiSettingsDisplay
 import dev.powerfulcalendar.ui.v2.nativeui.NativeProtectedAiSettingsSection
@@ -22,19 +22,15 @@ import dev.powerfulcalendar.ui.v2.nativeui.NativeProtectedProfileSection
 
 /** Host-owned profile editor. The visual context never receives private preferences. */
 @Composable
-internal fun HostProtectedProfileSection() {
-    val appContext = LocalContext.current.applicationContext
-    val preferences = remember(appContext) {
-        appContext.getSharedPreferences("powercal-profile", Context.MODE_PRIVATE)
-    }
-    var displayName by remember(preferences) {
-        mutableStateOf(preferences.getString("displayName", "").orEmpty())
+internal fun HostProtectedProfileSection(settingsDataApi: SettingsDataFeatureApiV1) {
+    var displayName by remember(settingsDataApi) {
+        mutableStateOf(settingsDataApi.querySettings().profileDisplayName)
     }
     NativeProtectedProfileSection(
         display = NativeProtectedProfileDisplay(displayName),
         actions = NativeProtectedProfileActions(
             onDisplayNameChange = { displayName = it },
-            onSave = { preferences.edit().putString("displayName", displayName).apply() }
+            onSave = { settingsDataApi.saveProfileDisplayName(displayName) }
         ),
         cardShape = skinCardShape()
     )

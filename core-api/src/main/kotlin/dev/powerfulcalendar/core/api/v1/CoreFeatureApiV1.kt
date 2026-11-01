@@ -294,4 +294,5 @@ interface CoreFeatureApiV1 {
     val aiProposals: AiProposalFeatureApiV1
     val reminders: ReminderFeatureApiV1
     val importExport: ImportExportFeatureApiV1
+    val settingsData: SettingsDataFeatureApiV1
 }

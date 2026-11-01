@@ -1,7 +1,10 @@
 package dev.powerfulcalendar.ui.v2
 
+import android.content.Context
+import androidx.test.core.app.ApplicationProvider
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
+import dev.powerfulcalendar.core.api.v1.AndroidSettingsDataFeatureApiV1
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -49,7 +52,10 @@ class NativeToolsPageProtectedSlotsComposeTest {
                     onOpenExactAlarmSettings = {},
                     onCancelBatch = {},
                     onReconcile = {},
-                    onReleaseStuck = {}
+                    onReleaseStuck = {},
+                    settingsDataApi = AndroidSettingsDataFeatureApiV1(
+                        ApplicationProvider.getApplicationContext<Context>()
+                    )
                 )
             }
         }

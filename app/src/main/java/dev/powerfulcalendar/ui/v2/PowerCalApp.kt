@@ -97,6 +97,7 @@ import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.StructuredCalendarEventV1
 import dev.powerfulcalendar.core.api.v1.StructuredImportBatchHandleV1
 import dev.powerfulcalendar.core.api.v1.StructuredImportStatusV1
+import dev.powerfulcalendar.core.api.v1.SettingsDataMutationStatusV1
 import dev.powerfulcalendar.core.api.v1.BackupRestoreReceiptV1
 import dev.powerfulcalendar.core.api.v1.newImportRequestId
 import dev.powerfulcalendar.core.api.v1.ReminderEventSnapshotV1
@@ -214,7 +215,7 @@ fun PowerCalApp(
     val zone = ZoneId.systemDefault()
     val scope = rememberCoroutineScope()
     val coreFeatureApi = remember(store, appContext) {
-        PowerCalCoreFeatureApiV1(store, reminderContext = appContext)
+        PowerCalCoreFeatureApiV1(store, reminderContext = appContext, settingsContext = appContext)
     }
     val calendarFeatureApi = coreFeatureApi.calendar
     val eventFeatureApi = coreFeatureApi.events
@@ -649,8 +650,7 @@ fun PowerCalApp(
         runCatching { reload() }.onFailure {
             if (message == null) message = "提醒状态刷新失败；日历数据仍可查看"
         }
-        val onboarding = appContext.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
-        if (!onboarding.getBoolean("system-calendar-import-asked", false)) {
+        if (!coreFeatureApi.settingsData.querySettings().systemCalendarImportPromptShown) {
             firstCalendarImportPrompt = true
         }
         // A process that died mid-batch is fenced and unlocked here; never leave a permanent lock.
@@ -1707,9 +1707,8 @@ fun PowerCalApp(
                 }
                 WebSkinAction.OpenProfileEditor -> if (fullCanvasWeb && canManageSkinFromSettings()) {
                     webProfileEditorSkinId = selectedSkin
-                    webProfileEditorName = appContext
-                        .getSharedPreferences("powercal-profile", Context.MODE_PRIVATE)
-                        .getString("displayName", "").orEmpty()
+                    webProfileEditorName = coreFeatureApi.settingsData.querySettings()
+                        .profileDisplayName
                     webProfileEditorSaved = false
                 }
                 is WebSkinAction.SaveProfileEditor -> if (
@@ -1718,11 +1717,16 @@ fun PowerCalApp(
                     webProfileEditorName != null && action.displayName.length <= 80 &&
                     action.displayName.none(Char::isISOControl)
                 ) {
-                    appContext.getSharedPreferences("powercal-profile", Context.MODE_PRIVATE)
-                        .edit().putString("displayName", action.displayName).apply()
-                    webProfileEditorName = action.displayName
-                    webProfileEditorSaved = true
-                    webProfileSaveRevision++
+                    val receipt = coreFeatureApi.settingsData.saveProfileDisplayName(action.displayName)
+                    if (receipt.status in setOf(
+                            SettingsDataMutationStatusV1.UPDATED,
+                            SettingsDataMutationStatusV1.NO_CHANGE
+                        )
+                    ) {
+                        webProfileEditorName = action.displayName
+                        webProfileEditorSaved = true
+                        webProfileSaveRevision++
+                    }
                 }
                 WebSkinAction.CloseProfileEditor -> if (
                     fullCanvasWeb && page == Page.SETTINGS.name
@@ -2238,7 +2242,8 @@ fun PowerCalApp(
                 },
                 onReleaseStuck = {
                     requestStuckBatchRelease()
-                }
+                },
+                settingsDataApi = coreFeatureApi.settingsData
             )
         } else if (presentedPage == Page.AI.name) {
             AiChatScreen(
@@ -3086,8 +3091,7 @@ fun PowerCalApp(
 
     if (firstCalendarImportPrompt) {
         val markCalendarImportPromptShown = {
-            appContext.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
-                .edit().putBoolean("system-calendar-import-asked", true).apply()
+            coreFeatureApi.settingsData.markSystemCalendarImportPromptShown()
             firstCalendarImportPrompt = false
         }
         NativeCalendarImportPrompt(
