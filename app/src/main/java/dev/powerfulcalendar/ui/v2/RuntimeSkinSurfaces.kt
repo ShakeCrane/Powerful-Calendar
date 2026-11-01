@@ -54,7 +54,7 @@ internal object RuntimeSkinSurfaces {
             values = mapOf("date" to context.initialDate.toString()),
             widget = { kind ->
                 if (kind == "events") EventRows(context.records, context.zone) { record ->
-                    context.onOpen(record, null)
+                    context.onOpen(record.eventSeq, record.revision, null)
                 }
             }
         ), Modifier.fillMaxSize())

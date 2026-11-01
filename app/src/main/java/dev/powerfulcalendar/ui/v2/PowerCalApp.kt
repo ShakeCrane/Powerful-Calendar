@@ -2509,9 +2509,13 @@ fun PowerCalApp(
                 Instant.ofEpochMilli(anchorMillis).atZone(zone).toLocalDate(), zone, aiLocked,
                 onBack = { page = Page.TIMELINE.name },
                 onDate = { date -> anchorMillis = date.atTime(12, 0).atZone(zone).toInstant().toEpochMilli(); page = Page.TIMELINE.name },
-                onOpen = { record, occurrenceKey ->
-                    if (aiLocked) monthInspection = record else scope.launch {
-                        openFormalEditor(record, occurrenceKey)
+                onOpen = { eventSeq, expectedRevision, occurrenceKey ->
+                    if (aiLocked) {
+                        records.firstOrNull {
+                            it.eventSeq == eventSeq && it.revision == expectedRevision
+                        }?.let { monthInspection = it }
+                    } else scope.launch {
+                        openFormalEditorByIdentity(eventSeq, expectedRevision, occurrenceKey)
                     }
                 },
                 onCreate = { date ->

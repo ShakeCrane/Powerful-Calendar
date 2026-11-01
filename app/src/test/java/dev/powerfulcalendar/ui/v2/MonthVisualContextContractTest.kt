@@ -30,7 +30,7 @@ class MonthVisualContextContractTest {
         )
         val month = YearMonth.of(2026, 10)
         val requestedMonths = mutableListOf<YearMonth>()
-        var opened: Pair<TemporalRecord, String?>? = null
+        var opened: Triple<Long, Long, String?>? = null
         val context = MonthVisualContext(
             nativeRecords = listOf(record),
             nativeRecordsForMonth = { requested ->
@@ -42,23 +42,24 @@ class MonthVisualContextContractTest {
             aiLocked = false,
             onBack = {},
             onDate = {},
-            onOpenNative = { owner, occurrenceKey -> opened = owner to occurrenceKey },
+            onOpen = { eventSeq, revision, occurrenceKey ->
+                opened = Triple(eventSeq, revision, occurrenceKey)
+            },
             onCreate = {}
         )
 
         val skinRecords: List<EventRecordV1> = context.records
         val skinRecordsForMonth: (YearMonth) -> List<EventRecordV1> = context.recordsForMonth
-        val skinOpen: (EventRecordV1, String?) -> Unit = context.onOpen
+        val skinOpen: (Long, Long, String?) -> Unit = context.onOpen
         val projected = skinRecords.single()
         val occurrenceKey = "2026-10-20T23:30"
-        skinOpen(projected, occurrenceKey)
+        skinOpen(projected.eventSeq, projected.revision, occurrenceKey)
         val projectedMonth = skinRecordsForMonth(month).single()
 
         assertEquals(record.toEventRecordV1(), projected)
         assertEquals(record.toEventRecordV1(), projectedMonth)
         assertEquals(listOf(month), requestedMonths)
-        assertEquals(record, opened?.first)
-        assertEquals(occurrenceKey, opened?.second)
+        assertEquals(Triple(record.eventSeq, record.revision, occurrenceKey), opened)
     }
 
     @Test

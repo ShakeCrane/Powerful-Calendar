@@ -238,7 +238,7 @@ class DirectEventEditorComposeTest {
             zoneId = shanghai.id,
             recurrence = Recurrence(freq = RecurrenceFreq.DAILY, count = 3)
         )
-        var opened: TemporalRecord? = null
+        var opened: Pair<Long, Long>? = null
         var key: String? = null
         PresentationSkinRegistry.useMonth(null)
         ui.setContent {
@@ -250,14 +250,17 @@ class DirectEventEditorComposeTest {
                     aiLocked = false,
                     onBack = {},
                     onDate = {},
-                    onOpen = { record, occurrenceKey -> opened = record; key = occurrenceKey },
+                    onOpen = { eventSeq, revision, occurrenceKey ->
+                        opened = eventSeq to revision
+                        key = occurrenceKey
+                    },
                     onCreate = {}
                 )
             }
         }
         ui.onNodeWithText("闹钟 · 每日闹钟").performClick()
         ui.runOnIdle {
-            assertEquals(owner, opened)
+            assertEquals(owner.eventSeq to owner.revision, opened)
             assertEquals("2026-10-21T07:30", key)
         }
     }

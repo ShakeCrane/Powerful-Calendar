@@ -34,7 +34,6 @@ import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.api.v1.MemoEntryV1
 import dev.powerfulcalendar.core.api.v1.ReminderScheduleStateV1
-import dev.powerfulcalendar.core.api.v1.toCoreTemporalRecord
 import dev.powerfulcalendar.core.api.v1.toEventRecordV1
 import dev.powerfulcalendar.ui.v2.nativeui.*
 import java.time.LocalDate
@@ -113,15 +112,12 @@ internal class MonthVisualContext internal constructor(
     val aiLocked: Boolean,
     val onBack: () -> Unit,
     val onDate: (LocalDate) -> Unit,
-    private val onOpenNative: (TemporalRecord, String?) -> Unit,
+    val onOpen: (Long, Long, String?) -> Unit,
     val onCreate: (LocalDate) -> Unit
 ) {
     val records: List<EventRecordV1> = nativeRecords.map(TemporalRecord::toEventRecordV1)
     val recordsForMonth: (java.time.YearMonth) -> List<EventRecordV1> = { month ->
         nativeRecordsForMonth(month).map(TemporalRecord::toEventRecordV1)
-    }
-    val onOpen: (EventRecordV1, String?) -> Unit = { record, occurrenceKey ->
-        onOpenNative(record.toCoreTemporalRecord(), occurrenceKey)
     }
 
     @Composable fun Native() {
@@ -169,7 +165,7 @@ internal class MonthVisualContext internal constructor(
                 onDate = onDate,
                 onOpen = { rowKey ->
                     projection.openTarget(rowKey)?.let { target ->
-                        onOpenNative(target.owner, target.occurrenceKey)
+                        onOpen(target.owner.eventSeq, target.owner.revision, target.occurrenceKey)
                     }
                 },
                 onCreate = onCreate,
@@ -183,7 +179,7 @@ internal class MonthVisualContext internal constructor(
 internal fun MonthScreen(
     records: List<TemporalRecord>, initialDate: LocalDate, zone: ZoneId, aiLocked: Boolean,
     onBack: () -> Unit, onDate: (LocalDate) -> Unit,
-    onOpen: (TemporalRecord, String?) -> Unit,
+    onOpen: (Long, Long, String?) -> Unit,
     onCreate: (LocalDate) -> Unit,
     recordsForMonth: (java.time.YearMonth) -> List<TemporalRecord> = { records }
 ) {
