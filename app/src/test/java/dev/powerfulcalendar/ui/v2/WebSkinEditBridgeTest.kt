@@ -15,6 +15,8 @@ import dev.powerfulcalendar.core.TemporalConversion
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.TimelineCoordinate
+import dev.powerfulcalendar.core.api.v1.AiBatchStateSnapshotV1
+import dev.powerfulcalendar.core.api.v1.AiFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.DraftReviewCardV1
 import dev.powerfulcalendar.core.api.v1.DraftReviewFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.EventFeatureApiV1
@@ -47,6 +49,7 @@ class WebSkinEditBridgeTest {
     private lateinit var coreFeatureApi: PowerCalCoreFeatureApiV1
     private val queriedEventSequences = mutableListOf<Long>()
     private val queriedDraftIds = mutableListOf<Long>()
+    private val queriedBatchLockStates = mutableListOf<Boolean>()
     private fun request()=UUID.randomUUID().toString()
     @Before fun setup(){
         context=ApplicationProvider.getApplicationContext()
@@ -66,9 +69,16 @@ class WebSkinEditBridgeTest {
                 return draftReviewApi.queryDraft(draftId)
             }
         }
+        val recordingAi = object : AiFeatureApiV1 by coreFeatureApi.ai {
+            override fun queryBatchState(): AiBatchStateSnapshotV1 {
+                val state = coreFeatureApi.ai.queryBatchState()
+                queriedBatchLockStates += state.locked
+                return state
+            }
+        }
         service=WebSkinEditService(
             store, recordingDraftReview, coreFeatureApi=coreFeatureApi,
-            eventFeatures=recordingEvents
+            eventFeatures=recordingEvents, aiFeatures=recordingAi
         )
     }
     @After fun teardown(){
@@ -1425,8 +1435,10 @@ class WebSkinEditBridgeTest {
         )
         val sequenceBefore = store.nextSequencePreview()
         val queueBefore = store.nextQueueOrderPreview()
+        queriedBatchLockStates.clear()
         val blocked = service.execute(WebEditCommand.CommitDeck(request(), clientId, version))
         assertEquals("locked", blocked.getString("status"))
+        assertEquals(listOf(true), queriedBatchLockStates)
         assertNull(service.pendingWriteReview)
         assertTrue(store.isLocked())
         assertEquals(1L, store.draftCount())
@@ -1439,8 +1451,10 @@ class WebSkinEditBridgeTest {
         assertEquals(note, lockedDeck.getJSONObject("form").getString("notes"))
 
         assertTrue(store.finishAiBatch(ai.sessionId))
+        queriedBatchLockStates.clear()
         val stagedReply = service.execute(WebEditCommand.CommitDeck(request(), clientId, version))
         assertEquals("staged", stagedReply.getString("status"))
+        assertEquals(listOf(false), queriedBatchLockStates)
         val staged = requireNotNull(store.pendingDrafts().singleOrNull { it.form.notes == note })
         val nextVersion = service.snapshot().getJSONObject("deck").getLong("version")
         assertEquals("edited", service.execute(WebEditCommand.PatchDeck(

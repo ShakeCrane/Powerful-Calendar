@@ -19,6 +19,8 @@ import dev.powerfulcalendar.core.RecurrenceEngine
 import dev.powerfulcalendar.core.ReminderMethod
 import dev.powerfulcalendar.core.ReminderTiming
 import dev.powerfulcalendar.core.TemporalConversion
+import dev.powerfulcalendar.core.api.v1.AiFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.AiBatchStateSnapshotV1
 import dev.powerfulcalendar.core.api.v1.EventDeleteApprovalV1
 import dev.powerfulcalendar.core.api.v1.EventEditorHandleV1
 import dev.powerfulcalendar.core.api.v1.EventEditorOpenResultV1
@@ -427,20 +429,23 @@ internal class WebSkinEditService(
     private val deck: DraftReviewFeatureApiV1,
     private val externalEditorActive: () -> Boolean = { false },
     private val coreFeatureApi: PowerCalCoreFeatureApiV1,
-    private val eventFeatures: EventFeatureApiV1 = coreFeatureApi.events
+    private val eventFeatures: EventFeatureApiV1 = coreFeatureApi.events,
+    private val aiFeatures: AiFeatureApiV1 = coreFeatureApi.ai
 ) {
     internal constructor(
         store: PowerStore,
         deckController: dev.powerfulcalendar.core.DeckController,
         externalEditorActive: () -> Boolean = { false },
         coreFeatureApi: PowerCalCoreFeatureApiV1,
-        eventFeatures: EventFeatureApiV1 = coreFeatureApi.events
+        eventFeatures: EventFeatureApiV1 = coreFeatureApi.events,
+        aiFeatures: AiFeatureApiV1 = coreFeatureApi.ai
     ) : this(
         store,
         coreFeatureApi.adaptDeckController(deckController),
         externalEditorActive,
         coreFeatureApi,
-        eventFeatures
+        eventFeatures,
+        aiFeatures
     )
     private val gate = Mutex()
     private var session: WebFormalEditor? = null
@@ -711,6 +716,9 @@ internal class WebSkinEditService(
             deck.queryDraft(draftId)?.toCoreDraftCard()
         }
 
+    private suspend fun queryAiBatchLock(): Boolean =
+        withContext(Dispatchers.IO) { aiFeatures.queryBatchState().locked }
+
     private suspend fun stageTimelineMove(
         cmd: WebEditCommand.MoveTimelineEvent,
         context: TimelineMoveContext?
@@ -719,7 +727,7 @@ internal class WebSkinEditService(
             return result(cmd.requestId, "unsupported", "只能从时间轴移动定时事件")
         if (session != null || newEventSession != null || externalEditorActive() || deckOpen)
             return result(cmd.requestId, "locked", "请先关闭当前编辑器或草稿")
-        if (withContext(Dispatchers.IO) { store.isLocked() })
+        if (queryAiBatchLock())
             return result(cmd.requestId, "locked", "当前有受保护的业务操作")
 
         val record = queryCurrentFormalEvent(cmd.eventSeq)
@@ -943,7 +951,7 @@ internal class WebSkinEditService(
                 is WebEditCommand.CreateDeck -> {
                     if(session!=null || externalEditorActive() || deckOpen)
                         result(cmd.requestId,"locked")
-                    else if(withContext(Dispatchers.IO) { store.isLocked() })
+                    else if(queryAiBatchLock())
                         result(cmd.requestId,"locked")
                     else {
                         val selection = when (newEventSelection) {
@@ -1044,7 +1052,7 @@ internal class WebSkinEditService(
                     when {
                         !deckOpen || newEventSession != null -> result(cmd.requestId,"missing")
                         session != null || externalEditorActive() -> result(cmd.requestId,"locked")
-                        withContext(Dispatchers.IO) { store.isLocked() } -> result(cmd.requestId,"locked")
+                        queryAiBatchLock() -> result(cmd.requestId,"locked")
                         formalSearchResults.none {
                             it.eventSeq == cmd.eventSeq && it.revision == cmd.expectedRevision
                         } -> result(cmd.requestId,"stale")
@@ -1071,7 +1079,7 @@ internal class WebSkinEditService(
                         !deckOpen || newEventSession != null -> result(cmd.requestId,"missing")
                         session != null || externalEditorActive() -> result(cmd.requestId,"locked")
                         state.aiLocked || state.busy ||
-                            withContext(Dispatchers.IO) { store.isLocked() } -> result(cmd.requestId,"locked")
+                            queryAiBatchLock() -> result(cmd.requestId,"locked")
                         !stillRetired -> result(cmd.requestId,"stale")
                         state.conflict != null || state.restore != null -> result(cmd.requestId,"locked")
                         else -> {
@@ -1100,7 +1108,7 @@ internal class WebSkinEditService(
                     if(activeNew != null) {
                         if(!deckOpen || activeNew.clientDraftId!=cmd.draftId ||
                             activeNew.version!=cmd.draftVersion) result(cmd.requestId,"stale")
-                        else if(withContext(Dispatchers.IO) { store.isLocked() }) result(cmd.requestId,"locked")
+                        else if(queryAiBatchLock()) result(cmd.requestId,"locked")
                         else {
                             val patched = WebEditWire.patch(activeNew.form,cmd.field,cmd.value)
                             val update = eventFeatures.updateNewEvent(
@@ -1290,8 +1298,8 @@ internal class WebSkinEditService(
             cmd.expectedRevision) ?: return result(cmd.requestId, "stale")
         if (!deckOpen || newEventSession != null || session != null || externalEditorActive())
             return result(cmd.requestId, "locked")
-        if (state.aiLocked || state.busy || state.dirty ||
-            withContext(Dispatchers.IO) { store.isLocked() }) return result(cmd.requestId, "locked")
+        if (state.aiLocked || state.busy || state.dirty || queryAiBatchLock())
+            return result(cmd.requestId, "locked")
         val live = queryCurrentFormalEvent(prompt.eventSeq)
             ?.takeIf { it.revision == cmd.expectedRevision }
             ?: return result(cmd.requestId, "stale", "正式事件已变化，请重新提交草稿以刷新差异")
@@ -1331,8 +1339,8 @@ internal class WebSkinEditService(
             cmd.expectedRevision) ?: return result(cmd.requestId, "stale")
         if (!deckOpen || newEventSession != null || session != null || externalEditorActive())
             return result(cmd.requestId, "locked")
-        if (state.aiLocked || state.busy || state.dirty ||
-            withContext(Dispatchers.IO) { store.isLocked() }) return result(cmd.requestId, "locked")
+        if (state.aiLocked || state.busy || state.dirty || queryAiBatchLock())
+            return result(cmd.requestId, "locked")
         val tombstone = withContext(Dispatchers.IO) {
             deck.queryRetiredEvent(prompt.eventSeq)?.event?.toCoreTemporalRecord()
                 ?.takeIf { it.revision == cmd.expectedRevision }
@@ -1358,7 +1366,7 @@ internal class WebSkinEditService(
             if (!deckOpen || activeNew.clientDraftId != cmd.draftId ||
                 activeNew.version != cmd.draftVersion) return result(cmd.requestId, "stale")
             if (!activeNew.meaningfulDiff) return result(cmd.requestId, "no_changes")
-            if (withContext(Dispatchers.IO) { store.isLocked() })
+            if (queryAiBatchLock())
                 return result(cmd.requestId, "locked",
                     "当前有受保护的业务操作，内容仍保留在编辑器中")
             val validation = eventFeatures.validateNewEvent(activeNew.handle)
@@ -1384,8 +1392,7 @@ internal class WebSkinEditService(
                     eventFeatures.editorSnapshot(activeNew.handle)?.let {
                         activeNew.snapshot = it
                     }
-                    if (saved.status == EventMutationStatusV1.FAILED &&
-                        withContext(Dispatchers.IO) { store.isLocked() }) {
+                    if (saved.status == EventMutationStatusV1.FAILED && queryAiBatchLock()) {
                         result(cmd.requestId, "locked",
                             "当前有受保护的业务操作，内容仍保留在编辑器中")
                     } else if (saved.status == EventMutationStatusV1.STAGED) {
