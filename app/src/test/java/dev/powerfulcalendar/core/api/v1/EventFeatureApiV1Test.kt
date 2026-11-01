@@ -165,6 +165,39 @@ class EventFeatureApiV1Test {
     }
 
     @Test
+    fun queryEventReturnsFreshDetachedRecordAndHidesMissingOrRetiredEvents() {
+        val createEditor = openNewEvent(EventKindV1.ACTIVITY)
+        val created = api.saveNewEvent(
+            createEditor.handle, createEditor.form.copy(title = "Queryable event"),
+            "query-event-create"
+        )
+        assertEquals(EventMutationStatusV1.CREATED, created.status)
+        val eventSeq = requireNotNull(created.eventSeq)
+        val original = requireNotNull(api.queryEvent(eventSeq))
+        assertEquals("Queryable event", original.title)
+        assertEquals(created.revision, original.revision)
+        assertEquals(null, api.queryEvent(Long.MAX_VALUE))
+        assertEquals(null, api.queryEvent(0L))
+
+        val edit = openFormalEvent(eventSeq, original.revision)
+        val updated = api.saveFormalEvent(
+            edit.handle, edit.form.copy(title = "Updated event"), "query-event-update"
+        )
+        assertEquals(EventMutationStatusV1.UPDATED, updated.status)
+        assertEquals("Queryable event", original.title)
+        api.closeFormalEvent(edit.handle)
+        val fresh = requireNotNull(api.queryEvent(eventSeq))
+        assertEquals("Updated event", fresh.title)
+        assertEquals(updated.revision, fresh.revision)
+
+        val deleteEditor = openFormalEvent(eventSeq, requireNotNull(updated.revision))
+        val approval = requireNotNull(core.issueFormalDeleteApproval(deleteEditor.handle))
+        val deleted = api.deleteFormalEvent(deleteEditor.handle, approval, "query-event-delete")
+        assertEquals(EventMutationStatusV1.DELETED, deleted.status)
+        assertEquals(null, api.queryEvent(eventSeq))
+    }
+
+    @Test
     fun timelineReplacementChecksRevisionAndReplaysOneDraftReceipt() {
         val createEditor = openNewEvent(EventKindV1.ACTIVITY)
         val form = createEditor.form.copy(

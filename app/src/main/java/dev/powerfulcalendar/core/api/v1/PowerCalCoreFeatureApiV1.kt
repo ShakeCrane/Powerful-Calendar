@@ -113,6 +113,10 @@ internal class StoreEventFeatureApiV1(
         events = store.all().map(TemporalRecord::toEventRecordV1)
     )
 
+    @Synchronized
+    override fun queryEvent(eventSeq: Long): EventRecordV1? =
+        if (eventSeq <= 0L) null else store.get(eventSeq)?.toEventRecordV1()
+
     override fun searchEvents(
         query: String,
         snapshot: EventQuerySnapshotV1

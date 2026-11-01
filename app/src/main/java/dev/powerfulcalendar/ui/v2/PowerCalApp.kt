@@ -1142,23 +1142,25 @@ fun PowerCalApp(
     fun captureAiProposalTargets(
         session: WebAiProposalReviewSession,
         positions: List<Int>
-    ): Map<Long, TemporalRecord>? = synchronized(store) {
+    ): Map<Long, TemporalRecord>? {
         val targets = linkedMapOf<Long, TemporalRecord>()
         for (position in positions) {
             val proposal = session.interpretation.proposals.getOrNull(position)
-                ?: return@synchronized null
+                ?: return null
             if (proposal.operation == dev.powerfulcalendar.core.DraftOperation.CREATE) {
-                if (proposal.eventSeq != null) return@synchronized null
+                if (proposal.eventSeq != null) return null
                 continue
             }
-            val seq = proposal.eventSeq ?: return@synchronized null
+            val seq = proposal.eventSeq ?: return null
             val expectedRevision = session.expectedTargetRevisions[seq]
-                ?: return@synchronized null
-            val current = store.get(seq) ?: return@synchronized null
-            if (current.revision != expectedRevision) return@synchronized null
+                ?: return null
+            val current = targets[seq] ?: eventFeatureApi.queryEvent(seq)
+                ?.toCoreTemporalRecord()?.also { targets[seq] = it }
+                ?: return null
+            if (current.revision != expectedRevision) return null
             targets[seq] = current
         }
-        targets
+        return targets
     }
 
     fun resolveWebAiProposalAction(action: WebSkinAction.ResolveAiProposal) {
@@ -2027,7 +2029,9 @@ fun PowerCalApp(
                 WebSkinAction.PickAiImage -> launchWebAiAttachmentPicker(image = true)
                 is WebSkinAction.ResolveAiProposal -> resolveWebAiProposalAction(action)
                 is WebSkinAction.OpenEvent -> scope.launch {
-                    val current = withContext(Dispatchers.IO) { store.get(action.eventSeq) }
+                    val current = withContext(Dispatchers.IO) {
+                        eventFeatureApi.queryEvent(action.eventSeq)?.toCoreTemporalRecord()
+                    }
                     val validated = validateOpenEvent(action, current, !aiLocked && editSession == null)
                     if (current == null || current.revision != action.expectedRevision) {
                         message = "Event changed or is no longer available"

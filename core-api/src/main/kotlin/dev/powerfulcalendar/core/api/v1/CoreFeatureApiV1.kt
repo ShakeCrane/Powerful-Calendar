@@ -209,6 +209,8 @@ interface EventFeatureApiV1 {
     val featureRevision: Long
 
     fun queryEvents(): EventQuerySnapshotV1
+    /** Reads one current formal event as a detached DTO; missing and retired identities return null. */
+    fun queryEvent(eventSeq: Long): EventRecordV1?
     /** Searches an API snapshot without doing synchronous Store I/O; results keep its revision. */
     fun searchEvents(query: String, snapshot: EventQuerySnapshotV1): EventSearchSnapshotV1
     /** Explicitly set an occurrence's completion state against its observed revision and state. */
