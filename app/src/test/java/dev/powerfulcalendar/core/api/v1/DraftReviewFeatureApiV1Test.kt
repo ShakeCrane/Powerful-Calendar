@@ -13,6 +13,7 @@ import dev.powerfulcalendar.core.TemporalRecord
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -168,6 +169,52 @@ class DraftReviewFeatureApiV1Test {
             assertEquals(draftCountBeforeQuery, store.draftCount())
             assertEquals(commitCountBeforeQuery, store.commitCount())
             assertEquals(revisionBeforeQuery, core.events.featureRevision)
+            assertTrue(changes.isEmpty())
+        } finally {
+            subscription.close()
+        }
+    }
+
+    @Test fun queryDraftReturnsPersistedStatusesWithoutChangingEditorOrStore() = runBlocking {
+        val pending = store.newDraft(newActivityDraft("Pending persisted"))
+        val discarded = store.newDraft(newActivityDraft("Discarded persisted"))
+        assertTrue(store.discard(discarded.draftId))
+
+        val api = core.draftReview
+        val snapshotBeforeQuery = api.snapshot
+        val revisionBeforeQuery = core.events.featureRevision
+        val identityCountBeforeQuery = store.identityCount()
+        val sequenceBeforeQuery = store.nextSequencePreview()
+        val draftCountBeforeQuery = store.draftCount()
+        val commitCountBeforeQuery = store.commitCount()
+        val changes = mutableListOf<EventFeatureChangeV1>()
+        val subscription = core.events.subscribe(changes::add)
+        try {
+            val pendingResult = requireNotNull(api.queryDraft(pending.draftId))
+            val discardedResult = requireNotNull(api.queryDraft(discarded.draftId))
+
+            assertEquals(pending.draftId, pendingResult.draftId)
+            assertEquals(pending.eventSeq, pendingResult.eventSeq)
+            assertEquals(pending.queueOrder, pendingResult.queueOrder)
+            assertEquals(pending.form.title, pendingResult.form.title)
+            assertEquals(pending.draftVersion, pendingResult.draftVersion)
+            assertEquals(discarded.draftId, discardedResult.draftId)
+            assertEquals(discarded.eventSeq, discardedResult.eventSeq)
+            assertEquals(discarded.queueOrder, discardedResult.queueOrder)
+            assertEquals(discarded.form.title, discardedResult.form.title)
+            assertEquals(discarded.draftVersion, discardedResult.draftVersion)
+            assertEquals(DraftStatusV1.PENDING, pendingResult.status)
+            assertEquals(DraftStatusV1.DISCARDED, discardedResult.status)
+            assertNull(api.queryDraft(0L))
+            assertNull(api.queryDraft(-1L))
+            assertNull(api.queryDraft(Long.MAX_VALUE))
+
+            assertEquals(snapshotBeforeQuery, api.snapshot)
+            assertEquals(revisionBeforeQuery, core.events.featureRevision)
+            assertEquals(identityCountBeforeQuery, store.identityCount())
+            assertEquals(sequenceBeforeQuery, store.nextSequencePreview())
+            assertEquals(draftCountBeforeQuery, store.draftCount())
+            assertEquals(commitCountBeforeQuery, store.commitCount())
             assertTrue(changes.isEmpty())
         } finally {
             subscription.close()

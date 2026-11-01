@@ -706,6 +706,11 @@ internal class WebSkinEditService(
             eventFeatures.queryEvent(eventSeq)?.toCoreTemporalRecord()
         }
 
+    private suspend fun queryPersistedDraft(draftId: Long): DraftCard? =
+        withContext(Dispatchers.IO) {
+            deck.queryDraft(draftId)?.toCoreDraftCard()
+        }
+
     private suspend fun stageTimelineMove(
         cmd: WebEditCommand.MoveTimelineEvent,
         context: TimelineMoveContext?
@@ -1290,7 +1295,7 @@ internal class WebSkinEditService(
         val live = queryCurrentFormalEvent(prompt.eventSeq)
             ?.takeIf { it.revision == cmd.expectedRevision }
             ?: return result(cmd.requestId, "stale", "正式事件已变化，请重新提交草稿以刷新差异")
-        val persisted = withContext(Dispatchers.IO) { store.draft(prompt.draftId) }
+        val persisted = queryPersistedDraft(prompt.draftId)
         if (!matchesPersistedConflictDraft(persisted, prompt) || state.form != prompt.approvedForm)
             return result(cmd.requestId, "stale", "草稿内容已变化，请重新检查")
         pendingWriteReview = WebFormalWriteReview(
@@ -1311,8 +1316,7 @@ internal class WebSkinEditService(
         val unchanged = withContext(Dispatchers.IO) {
             deck.queryRetiredEvent(prompt.eventSeq)?.event?.toCoreTemporalRecord() == restoreTombstone
         }
-        if (!unchanged || withContext(Dispatchers.IO) { store.draft(prompt.card.draftId) } !=
-            prompt.card.toCoreDraftCard())
+        if (!unchanged || queryPersistedDraft(prompt.card.draftId) != prompt.card.toCoreDraftCard())
             return result(cmd.requestId, "stale", "墓碑或恢复草稿已变化")
         deck.dismissRestore()
         restoreTombstone = null
@@ -1334,7 +1338,7 @@ internal class WebSkinEditService(
                 ?.takeIf { it.revision == cmd.expectedRevision }
         } ?: return result(cmd.requestId, "stale", "已删除事件的版本已变化，请重新检查")
         val form = state.form?.toCoreDraftForm() ?: return result(cmd.requestId, "missing")
-        val persisted = withContext(Dispatchers.IO) { store.draft(prompt.card.draftId) }
+        val persisted = queryPersistedDraft(prompt.card.draftId)
         if (persisted != prompt.card.toCoreDraftCard() ||
             form != prompt.card.form.toCoreDraftForm() || tombstone != restoreTombstone)
             return result(cmd.requestId, "stale", "恢复草稿或墓碑已变化，请重新检查")
@@ -1431,7 +1435,7 @@ internal class WebSkinEditService(
             return commitDeckResult(cmd.requestId, card.draftId, card.draftVersion,
                 deck.snapshot.stateRevision)
 
-        val persisted = withContext(Dispatchers.IO) { store.draft(card.draftId) }
+        val persisted = queryPersistedDraft(card.draftId)
             ?: return result(cmd.requestId, "stale")
         if (persisted.operation.name != card.operation.name || persisted.form != form ||
             persisted.draftVersion != state.version || state.dirty)
@@ -1498,7 +1502,7 @@ internal class WebSkinEditService(
 
         val card = review.deckCard ?: return result(command.requestId, "stale")
         val state = deck.state
-        val persisted = withContext(Dispatchers.IO) { store.draft(card.draftId) }
+        val persisted = queryPersistedDraft(card.draftId)
         if (!deckOpen || state.currentId != command.draftId || state.version != review.deckVersion ||
             deck.snapshot.stateRevision != review.deckStateRevision ||
             state.current?.operation?.name != card.operation.name ||
@@ -1525,7 +1529,7 @@ internal class WebSkinEditService(
             review.deckForm != prompt.approvedForm.toCoreDraftForm())
             return result(command.requestId, "conflict", "冲突卡片或审阅内容已变化")
         val live = queryCurrentFormalEvent(command.eventSeq)
-        val persisted = withContext(Dispatchers.IO) { store.draft(command.draftId) }
+        val persisted = queryPersistedDraft(command.draftId)
         if (live != review.current || live?.revision != command.expectedRevision ||
             persisted != review.deckCard || !matchesPersistedConflictDraft(persisted, prompt) ||
             deck.state.form?.toCoreDraftForm() != review.deckForm || deck.state.dirty)
@@ -1565,7 +1569,7 @@ internal class WebSkinEditService(
         val live = withContext(Dispatchers.IO) {
             deck.queryRetiredEvent(command.eventSeq)?.event?.toCoreTemporalRecord()
         }
-        val persisted = withContext(Dispatchers.IO) { store.draft(command.draftId) }
+        val persisted = queryPersistedDraft(command.draftId)
         if (live != review.current || persisted != review.deckCard ||
             deck.state.form?.toCoreDraftForm() != review.deckForm || deck.state.dirty)
             return result(command.requestId, "conflict", "墓碑或恢复草稿已变化，请重新审查")

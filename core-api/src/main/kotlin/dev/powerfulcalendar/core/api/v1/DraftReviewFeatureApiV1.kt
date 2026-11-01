@@ -131,6 +131,9 @@ interface DraftReviewFeatureApiV1 {
     /** Read the persisted actionable queue without opening, refreshing, or flushing the editor. */
     fun queryPendingDrafts(): List<DraftReviewCardV1>
 
+    /** Read one persisted draft by identity, including non-actionable terminal/conflict states. */
+    fun queryDraft(draftId: Long): DraftReviewCardV1?
+
     /** Reads a bounded, Store-ordered page of retired formal records without opening the editor. */
     fun queryRetiredEventsPage(
         offset: Int = 0,

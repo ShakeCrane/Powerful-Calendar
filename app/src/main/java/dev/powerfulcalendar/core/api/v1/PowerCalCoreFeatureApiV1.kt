@@ -1194,6 +1194,10 @@ private class StoreDraftReviewFeatureApiV1(
         store.pendingDrafts().map { it.toDraftReviewCardV1() }
 
     @Synchronized
+    override fun queryDraft(draftId: Long): DraftReviewCardV1? =
+        if (draftId <= 0L) null else store.draft(draftId)?.toDraftReviewCardV1()
+
+    @Synchronized
     override fun queryRetiredEventsPage(offset: Int, limit: Int): DraftReviewRetiredPageV1 {
         require(offset in 0..DraftReviewFeatureApiV1.MAX_RETIRED_PAGE_OFFSET) {
             "墓碑页偏移无效"

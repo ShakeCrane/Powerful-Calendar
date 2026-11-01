@@ -15,6 +15,8 @@ import dev.powerfulcalendar.core.TemporalConversion
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.TimelineCoordinate
+import dev.powerfulcalendar.core.api.v1.DraftReviewCardV1
+import dev.powerfulcalendar.core.api.v1.DraftReviewFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.EventFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.EventRecordV1
 import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
@@ -44,6 +46,7 @@ class WebSkinEditBridgeTest {
     private lateinit var service: WebSkinEditService
     private lateinit var coreFeatureApi: PowerCalCoreFeatureApiV1
     private val queriedEventSequences = mutableListOf<Long>()
+    private val queriedDraftIds = mutableListOf<Long>()
     private fun request()=UUID.randomUUID().toString()
     @Before fun setup(){
         context=ApplicationProvider.getApplicationContext()
@@ -56,8 +59,16 @@ class WebSkinEditBridgeTest {
                 return coreFeatureApi.events.queryEvent(eventSeq)
             }
         }
+        val draftReviewApi = coreFeatureApi.adaptDeckController(controller)
+        val recordingDraftReview = object : DraftReviewFeatureApiV1 by draftReviewApi {
+            override fun queryDraft(draftId: Long): DraftReviewCardV1? {
+                queriedDraftIds += draftId
+                return draftReviewApi.queryDraft(draftId)
+            }
+        }
         service=WebSkinEditService(
-            store, controller, coreFeatureApi=coreFeatureApi, eventFeatures=recordingEvents
+            store, recordingDraftReview, coreFeatureApi=coreFeatureApi,
+            eventFeatures=recordingEvents
         )
     }
     @After fun teardown(){
@@ -450,7 +461,9 @@ class WebSkinEditBridgeTest {
 
         val review = WebEditCommand.RequestConflictReviewDeck(request(), proposal.draftId,
             conflict.getLong("draftVersion"), original.eventSeq, firstCurrent.revision)
+        queriedDraftIds.clear()
         assertEquals("confirmation_required", service.execute(review).getString("status"))
+        assertEquals(listOf(proposal.draftId), queriedDraftIds)
         val token = requireNotNull(service.pendingWriteReview).token
         assertTrue(store.setCompleted(original.eventSeq, "single", false, firstCurrent.revision))
         val newer = requireNotNull(store.get(original.eventSeq))
