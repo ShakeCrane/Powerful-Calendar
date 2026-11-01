@@ -1,7 +1,6 @@
 package dev.powerfulcalendar.ui.v2
 
 import dev.powerfulcalendar.core.EditorSelection
-import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.DraftSourceRevisionMismatchException
 import dev.powerfulcalendar.core.TimelineCoordinate
@@ -425,7 +424,6 @@ internal data class TimelineMoveContext(
 )
 
 internal class WebSkinEditService(
-    private val store: PowerStore,
     private val deck: DraftReviewFeatureApiV1,
     private val externalEditorActive: () -> Boolean = { false },
     private val coreFeatureApi: PowerCalCoreFeatureApiV1,
@@ -433,14 +431,12 @@ internal class WebSkinEditService(
     private val aiFeatures: AiFeatureApiV1 = coreFeatureApi.ai
 ) {
     internal constructor(
-        store: PowerStore,
         deckController: dev.powerfulcalendar.core.DeckController,
         externalEditorActive: () -> Boolean = { false },
         coreFeatureApi: PowerCalCoreFeatureApiV1,
         eventFeatures: EventFeatureApiV1 = coreFeatureApi.events,
         aiFeatures: AiFeatureApiV1 = coreFeatureApi.ai
     ) : this(
-        store,
         coreFeatureApi.adaptDeckController(deckController),
         externalEditorActive,
         coreFeatureApi,
@@ -688,7 +684,7 @@ internal class WebSkinEditService(
             .put("retiredLoaded",retiredLoaded)
     }
 
-    /** Snapshots contain no lease token or reference to raw PowerStore objects. */
+    /** Snapshots contain no lease token or persistence object references. */
     fun snapshot(): JSONObject {
         val current=session
         return JSONObject()

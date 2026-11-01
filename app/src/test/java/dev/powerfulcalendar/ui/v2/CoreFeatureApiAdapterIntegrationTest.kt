@@ -71,7 +71,6 @@ class CoreApiAdapterTest {
             assertEquals(1L, api.featureRevision)
 
             val service = WebSkinEditService(
-                store = store,
                 deck = core.draftReview,
                 coreFeatureApi = core
             )

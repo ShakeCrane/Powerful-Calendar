@@ -39,7 +39,7 @@ class WebSkinRecurrenceBridgeTest {
         context = ApplicationProvider.getApplicationContext()
         store = PowerStore(context, "web-recurrence-${id()}.db")
         coreFeatureApi = PowerCalCoreFeatureApiV1(store)
-        service = WebSkinEditService(store, DeckController(StoreDeckPersistence(store)),
+        service = WebSkinEditService(DeckController(StoreDeckPersistence(store)),
             coreFeatureApi = coreFeatureApi)
     }
     @After fun teardown() {
@@ -411,7 +411,7 @@ class WebSkinRecurrenceBridgeTest {
                         edit.save() is PowerStore.DirectEditOutcome.Saved)
                 } finally { edit.close() }
 
-                val bridge = WebSkinEditService(web, DeckController(StoreDeckPersistence(web)),
+                val bridge = WebSkinEditService(DeckController(StoreDeckPersistence(web)),
                     coreFeatureApi = PowerCalCoreFeatureApiV1(web))
                 assertEquals("opened", bridge.execute(command("editor.open", "eventSeq" to webSeq,
                     "expectedRevision" to requireNotNull(web.get(webSeq)).revision,
@@ -459,7 +459,7 @@ class WebSkinRecurrenceBridgeTest {
                 val original = requireNotNull(target.get(draft.eventSeq))
                 val key = occurrenceKey(kind)
                 var core = PowerCalCoreFeatureApiV1(target)
-                var bridge = WebSkinEditService(target, DeckController(StoreDeckPersistence(target)),
+                var bridge = WebSkinEditService(DeckController(StoreDeckPersistence(target)),
                     coreFeatureApi = core)
                 assertEquals("opened", bridge.execute(command("editor.open", "eventSeq" to draft.eventSeq,
                     "expectedRevision" to original.revision, "occurrenceKey" to key)).getString("status"))
@@ -480,7 +480,7 @@ class WebSkinRecurrenceBridgeTest {
                 target.close()
                 target = PowerStore(context, database)
                 core = PowerCalCoreFeatureApiV1(target)
-                bridge = WebSkinEditService(target, DeckController(StoreDeckPersistence(target)),
+                bridge = WebSkinEditService(DeckController(StoreDeckPersistence(target)),
                     coreFeatureApi = core)
                 assertEquals("opened", bridge.execute(command("editor.open", "eventSeq" to draft.eventSeq,
                     "expectedRevision" to original.revision)).getString("status"))

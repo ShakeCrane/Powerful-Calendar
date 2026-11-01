@@ -77,7 +77,7 @@ class WebSkinEditBridgeTest {
             }
         }
         service=WebSkinEditService(
-            store, recordingDraftReview, coreFeatureApi=coreFeatureApi,
+            recordingDraftReview, coreFeatureApi=coreFeatureApi,
             eventFeatures=recordingEvents, aiFeatures=recordingAi
         )
     }
@@ -1166,7 +1166,7 @@ class WebSkinEditBridgeTest {
         val drafts = store.draftCount()
 
         coreFeatureApi = PowerCalCoreFeatureApiV1(store, fixedClock)
-        service = WebSkinEditService(store, controller, coreFeatureApi = coreFeatureApi)
+        service = WebSkinEditService(controller, coreFeatureApi = coreFeatureApi)
 
         for (kind in TemporalKind.entries) {
             val opened = service.execute(
@@ -1344,7 +1344,7 @@ class WebSkinEditBridgeTest {
         val clock = Clock.fixed(Instant.parse("2026-10-25T15:07:42Z"), ZoneOffset.UTC)
         val zone = ZoneId.of("Asia/Tokyo")
         coreFeatureApi = PowerCalCoreFeatureApiV1(store, clock)
-        service = WebSkinEditService(store, controller, coreFeatureApi = coreFeatureApi)
+        service = WebSkinEditService(controller, coreFeatureApi = coreFeatureApi)
 
         TemporalKind.entries.forEachIndexed { index, kind ->
             val created = service.execute(
@@ -1553,7 +1553,7 @@ class WebSkinEditBridgeTest {
         store = PowerStore(context, database)
         controller = DeckController(StoreDeckPersistence(store))
         coreFeatureApi = PowerCalCoreFeatureApiV1(store)
-        service = WebSkinEditService(store, controller, coreFeatureApi = coreFeatureApi)
+        service = WebSkinEditService(controller, coreFeatureApi = coreFeatureApi)
 
         assertEquals("opened", service.execute(WebEditCommand.OpenDeck(request(), card.draftId))
             .getString("status"))
@@ -1571,7 +1571,7 @@ class WebSkinEditBridgeTest {
     @Test fun clearDeckProjectsCompletionAndKeepsUndoSessionScoped() = runBlocking {
         var now = 1_000L
         controller = DeckController(StoreDeckPersistence(store), clock = { now })
-        service = WebSkinEditService(store, controller, coreFeatureApi = coreFeatureApi)
+        service = WebSkinEditService(controller, coreFeatureApi = coreFeatureApi)
         val card = store.newDraft(DraftForm(kind = TemporalKind.MEMO, title = "only pending draft"))
         assertEquals("opened", service.execute(WebEditCommand.OpenDeck(request(), card.draftId))
             .getString("status"))
