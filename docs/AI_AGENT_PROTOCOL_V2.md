@@ -34,8 +34,8 @@ permission. Unbounded write access or a silent approval bypass is not a capabili
 | --- | --- | --- |
 | chat.reply.v1 | bounded conversational reply | implemented; stateless restart, no cloud search |
 | chat.suggest_draft.v1 | recognize candidate and show action affordance | implemented via bounded untrusted hint; *not* automatic tool invocation |
-| calendar.propose.v1 | normalize CREATE / REPLACE / DELETE / CONVERT into review candidates | `AiChatToolRegistryV1` offers exactly one `calendar.propose.v1` function (`calendar_propose_v1`). Core accepts one validated empty-argument call, binds it to the current chat request/task, and routes it through `AiFeatureApiV1.generateProposal`; it returns detached candidates only. Chat replay is process-local. This is the first bounded tool-dispatch slice, not a general tool registry or multi-step loop |
-| calendar.query.v1 | narrow formal records by date/title/kind and return revisions | partial: explicit context slice, no broad standalone Tool Call |
+| calendar.propose.v1 | normalize CREATE / REPLACE / DELETE / CONVERT into review candidates | implemented as one bounded Core dispatch path through `AiFeatureApiV1.generateProposal`; it binds to the current chat request/task and returns detached candidates only. Chat replay is process-local |
+| calendar.query.v1 | narrow formal records by date/title/kind and return revisions | implemented as a bounded, read-only Core dispatch; the request opt-in and Android adapter's persisted sharing preference must both allow calendar context. Core validates filters and the conversation revision, returns at most 100 detached hits and a deterministic summary, and does not send query results back to the provider |
 | calendar.batch.select.v1 | select actionable draft IDs based on user description | implemented through `AiFeatureApiV1`; the model returns IDs only and the API resolves them against the exact local candidate snapshot |
 | calendar.batch.execute.v1 | publish or discard explicitly reviewed draft versions | implemented through `AiFeatureApiV1` with one-use Host approval, persisted `AiSession` fencing, transactional version checks, cancellation and recovery; no unbounded auto-approval |
 | calendar.batch.modify.v1 | select formal IDs, propose partial updates, enforce snapshot revision | partial: parser inherits unchanged fields; complete autonomous orchestration missing |
@@ -156,24 +156,33 @@ Each Skill registry entry has:
 `{name, schemaVersion, JSONSchema, inputMaxBytes, outputMaxBytes,
  requiresContext, permissionScope, readWriteClass, idempotencyPolicy}`.
 
-- `calendar.query.v1`: read-only, filter by date/title/kind, max 100 candidates,
-  return exact `eventSeq, revision, precision, zone, recurrence, source`.
+- `calendar.query.v1`: read-only, filter by inclusive local-date range, title substring, and/or
+  event kind; require a date range or nonblank title, supply both range endpoints, limit a range
+  to 366 calendar dates, title to 120 characters, and results to 1–100 (default 20). The Core
+  query reuses `CalendarFeatureApiV1` and the existing recurrence engine, returns exact
+  `eventSeq, revision, precision, zone, recurrence, source` plus minimal display fields, and
+  omits notes, location, and reminder settings. It is advertised only when the chat request opts
+  in; the Android adapter also checks the persisted sharing preference, and Core rechecks the
+  request flag and conversation revision before dispatch. Unknown or malformed fields, oversized
+  arguments, stale conversations, and calls without sharing authorization are rejected. The
+  bounded query result stays in the Core tool receipt; Core makes the user-facing summary and
+  does not make a second provider call or write calendar data. Exact chat/tool receipt replay is
+  process-local.
 - `calendar.propose.v1`: produce at most 100 operations (create/replace/delete/convert);
   `AiFeatureApiV1.generateProposal` returns detached review DTOs only and does not write.
-  Chat advertises only the Core-owned `calendar_propose_v1` schema; the Host forwards only
-  registry entries, parses provider calls as untrusted DTOs, and falls back once to plain chat
+  Chat advertises only Core-owned registry definitions that pass the request and saved-context
+  filters; the Host parses provider calls as untrusted DTOs and falls back once to plain chat
   when a provider rejects the schema with HTTP 400/422. That provider/model pair is then marked
   unsupported in a process-local cache capped at 64 provider/model keys and a 12-hour TTL. Core
-  accepts exactly one call with a
-  valid bounded ID and an empty JSON object, rejects unknown/multiple/oversized calls, checks the
-  conversation revision again, and derives the proposal request ID from the chat request for
-  replay. A valid response returns the existing review-only proposal receipt; it never stages or
-  publishes. A valid provider function-call response is evidence for that exact transport path;
+  accepts exactly one proposal call with a valid bounded ID and an empty JSON object, rejects
+  unknown/multiple/oversized calls, checks the conversation revision again, and derives the
+  proposal request ID from the chat request for replay. A valid response returns the existing
+  review-only proposal receipt; it never stages or publishes. A valid provider function-call response is evidence for that exact transport path;
   a normal text response does not prove tool support. After separate Host review,
   `AiProposalFeatureApiV1` implements staging and selected-item application; Store-backed
   `ai_task_receipts` protect item retries (taskless applies use a stable request-derived receipt
-  namespace), while chat/tool outer replay remains process-local. Query, web search, arbitrary
-  dispatch and multi-step orchestration are not implemented.
+  namespace), while chat/tool outer replay remains process-local. Web search, arbitrary dispatch,
+  and multi-step orchestration are not implemented.
 - `calendar.batch.select.v1`: `AiFeatureApiV1` returns exact candidate snapshots after
   resolving model-selected IDs against the local list; duplicate and out-of-scope IDs fail.
   Host-only explicit “all” selection bypasses the model.
@@ -183,7 +192,7 @@ Each Skill registry entry has:
   exact reviewed mode and candidate snapshots. Existing Store begin/commit transactions
   recheck versions, operations, session ID and lock epoch. State query, cancellation,
   interrupted recovery and guarded stuck-session release also route through this API.
-  Ordinary chat, reviewed evidence interpretation, and the bounded proposal-tool dispatch route
+  Ordinary chat, reviewed evidence interpretation, and the bounded query/proposal-tool dispatches route
   through `AiFeatureApiV1`; URI access, bounded reads, picker/OCR, user consent and provider
   configuration remain Host work. Core owns the allowlist, validation, dispatch and execution
   receipt. This does not implement arbitrary tools or the autonomous agent loop.
