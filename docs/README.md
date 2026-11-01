@@ -6,7 +6,7 @@ Read [Core owner sign-off](CORE_FREEZE_OWNER_SIGNOFF_2026-10-27.md),
 [Current core evidence verdict](CORE_FREEZE_VERDICT.md).
 The active master direction is the PHASE 0–5 Core-first/Skin-first plan in the
 [remote governance and separation roadmap](SEPARATION_REMOTE_GOVERNANCE_AND_ROADMAP_2026-10-30.md).
-The current task is PHASE 1, Event, Draft/Review, AI Proposal, and Reminder Feature API v1 slices. Formal
+The current task is PHASE 1, Calendar, Event, Draft/Review, AI Proposal, and Reminder Feature API v1 slices. Formal
 event search and Memo completion now use the Event API; see the
 [implemented contracts and open gaps](CORE_FEATURE_API_V1.md), the
 [Draft/Review report](issues/PC-ISSUE-CORE-DRAFT-REVIEW-API-V1.md), the
@@ -20,6 +20,9 @@ authorization, and verification limits.
 Native and Web reminder diagnostics and recovery now use the shared Reminder Feature API;
 see the [Reminder API report](issues/PC-ISSUE-CORE-REMINDER-API-V1.md) for reconciliation
 modes, verification evidence, and OS-delivery limits.
+Native and Web timeline/month reads now use the bounded Calendar Feature API; see the
+[Calendar API report](issues/PC-ISSUE-CORE-CALENDAR-API-V1.md) for snapshot, window, and
+device-verification limits.
 AndroidTest harness source migration and compile-only evidence are recorded in the
 [Feature API harness report](issues/PC-ISSUE-SEPARATION-ANDROIDTEST-FEATURE-API-MIGRATION.md).
 The [Skin separation parity matrix](SKIN_SEPARATION_PARITY_MATRIX_2026-10-27.md)
@@ -43,7 +46,7 @@ PowerCal app. The original compiled-source skin remains the trusted fallback.
 
 | 用途 | 文档 | 使用说明 |
 | --- | --- | --- |
-| Core Feature API v1 | [Event, Draft/Review, AI Proposal, and Reminder contracts](CORE_FEATURE_API_V1.md) | Implemented vertical slices and explicit API/coverage limitations; not full Core extraction, runtime separation, or parity signoff |
+| Core Feature API v1 | [Calendar, Event, Draft/Review, AI Proposal, and Reminder contracts](CORE_FEATURE_API_V1.md) | Implemented vertical slices and explicit API/coverage limitations; not full Core extraction, runtime separation, or parity signoff |
 | 最新产品冻结决策 | [Core Contract v0.9.4](CORE_CONTRACT_FREEZE_2026-10-21.md) | 2026-10-21 决策，优先于旧产品草案；仍需逐项验收 |
 | 产品来源及历史决策 | [G1–G11 基线](PRODUCT_BASELINE_G1-G11.md) | 历史上下文；旧“三种事件”被新四类模型覆盖 |
 | 数据稳定性与恢复 | [稳定数据契约](STABLE_DATA_CONTRACT_V1.md) | 拟冻结，勿视为已正式批准 |
