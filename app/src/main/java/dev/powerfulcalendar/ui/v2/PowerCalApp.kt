@@ -586,6 +586,7 @@ fun PowerCalApp(
                 }
                 if (!diagnosticsFresh || eventFeatureApi.featureRevision != revision) return@repeat
                 val batchState = aiFeatureApi.queryBatchState()
+                val coreDiagnostics = coreFeatureApi.diagnostics.queryDiagnostics()
                 loaded = AppData(
                     records = formalPage,
                     totalEventCount = eventPage.totalEvents,
@@ -597,8 +598,8 @@ fun PowerCalApp(
                     session = batchState.session,
                     cards = pending,
                     diagnostics = UiDiagnostics(
-                        nextSequence = store.nextSequencePreview(),
-                        identities = store.identityCount(),
+                        nextSequence = coreDiagnostics.nextSequencePreview,
+                        identities = coreDiagnostics.identityCount,
                         reminders = reminderRows,
                         recurrenceRecords = recurrenceRows
                     )

@@ -60,6 +60,7 @@ class PowerCalCoreFeatureApiV1(
     private val importExportService = StoreImportExportFeatureApiV1(
         store, draftReviewService, eventService
     )
+    private val diagnosticsService = StoreCoreDiagnosticsFeatureApiV1(store)
     private val settingsDataService = AndroidSettingsDataFeatureApiV1(settingsContext)
     private val memoService = StoreMemoFeatureApiV1(store) { eventService.featureRevision }
     override val calendar: CalendarFeatureApiV1 get() = calendarService
@@ -70,6 +71,7 @@ class PowerCalCoreFeatureApiV1(
     override val reminders: ReminderFeatureApiV1 get() = reminderService
     override val importExport: ImportExportFeatureApiV1 get() = importExportService
     override val settingsData: SettingsDataFeatureApiV1 get() = settingsDataService
+    override val diagnostics: CoreDiagnosticsFeatureApiV1 get() = diagnosticsService
     override val memos: MemoFeatureApiV1 get() = memoService
 
     /** Test/legacy Host seam for an explicitly supplied controller; production uses [draftReview]. */
