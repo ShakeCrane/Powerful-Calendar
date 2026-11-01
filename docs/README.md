@@ -12,6 +12,8 @@ event search and Memo completion now use the Event API; see the
 [Draft/Review report](issues/PC-ISSUE-CORE-DRAFT-REVIEW-API-V1.md), the
 [Event search report](issues/PC-ISSUE-CORE-EVENT-SEARCH-API-V1.md), and the
 [occurrence completion report](issues/PC-ISSUE-CORE-OCCURRENCE-COMPLETION-API-V1.md).
+Explicit text-to-draft creation now uses DraftReview API v1; see the
+[Draft Creation report](issues/PC-ISSUE-CORE-DRAFT-CREATION-API-V1.md).
 AndroidTest harness source migration and compile-only evidence are recorded in the
 [Feature API harness report](issues/PC-ISSUE-SEPARATION-ANDROIDTEST-FEATURE-API-MIGRATION.md).
 The [Skin separation parity matrix](SKIN_SEPARATION_PARITY_MATRIX_2026-10-27.md)
