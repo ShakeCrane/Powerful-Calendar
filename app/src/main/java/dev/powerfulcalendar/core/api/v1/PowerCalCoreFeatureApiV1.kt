@@ -120,6 +120,10 @@ internal class StoreEventFeatureApiV1(
     override val featureRevision: Long get() = revision.get()
 
     @Synchronized
+    override fun recoverAbandonedHumanEdit(staleAfterMillis: Long): Boolean =
+        store.recoverAbandonedHumanEdit(staleAfterMillis)
+
+    @Synchronized
     override fun queryEvents(): EventQuerySnapshotV1 {
         val snapshotRevision = featureRevision
         val events = buildList {

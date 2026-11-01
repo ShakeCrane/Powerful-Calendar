@@ -841,7 +841,7 @@ fun PowerCalApp(
     fun Throwable.readable(): String = message ?: javaClass.simpleName
 
     LaunchedEffect(Unit) {
-        withContext(Dispatchers.IO) { store.recoverAbandonedHumanEdit() }
+        withContext(Dispatchers.IO) { eventFeatureApi.recoverAbandonedHumanEdit() }
         val restoreDeckOnStartup = deckOpen
         val restoreDeckIdOnStartup = deckInitialId
         if (restoreDeckOnStartup) {

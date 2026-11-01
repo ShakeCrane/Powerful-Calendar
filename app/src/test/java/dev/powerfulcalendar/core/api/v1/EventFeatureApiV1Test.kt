@@ -200,6 +200,58 @@ class EventFeatureApiV1Test {
     }
 
     @Test
+    fun storeBackedApiRecoversOnlyForeignStaleHumanEditLeases() {
+        val database = "event-lease-recovery-${UUID.randomUUID()}.db"
+        val owner = PowerStore(context, database, "lease-owner")
+        val reaper = PowerStore(context, database, "lease-reaper")
+        val eventApi = PowerCalCoreFeatureApiV1(reaper, clock).events
+        val changes = mutableListOf<EventFeatureChangeV1>()
+        val subscription = eventApi.subscribe(changes::add)
+        try {
+            assertFalse(eventApi.recoverAbandonedHumanEdit())
+
+            owner.beginHumanEdit()
+            assertFalse(eventApi.recoverAbandonedHumanEdit())
+            assertTrue(owner.hasHumanEditor())
+            assertTrue(runCatching {
+                eventApi.recoverAbandonedHumanEdit(staleAfterMillis = 59_999L)
+            }.isFailure)
+            assertTrue(owner.hasHumanEditor())
+
+            owner.writableDatabase.execSQL(
+                "UPDATE human_editor SET touched_ms=? WHERE id=1",
+                arrayOf(System.currentTimeMillis() - 4 * 60_000L)
+            )
+            assertFalse(eventApi.recoverAbandonedHumanEdit())
+            assertTrue(owner.hasHumanEditor())
+
+            owner.writableDatabase.execSQL(
+                "UPDATE human_editor SET touched_ms=? WHERE id=1",
+                arrayOf(System.currentTimeMillis() - 6 * 60_000L)
+            )
+            assertTrue(eventApi.recoverAbandonedHumanEdit())
+            assertFalse(owner.hasHumanEditor())
+            assertFalse(eventApi.recoverAbandonedHumanEdit())
+
+            owner.beginHumanEdit()
+            owner.writableDatabase.execSQL(
+                "UPDATE human_editor SET touched_ms=? WHERE id=1",
+                arrayOf(System.currentTimeMillis() - 2 * 60_000L)
+            )
+            assertTrue(eventApi.recoverAbandonedHumanEdit(staleAfterMillis = 60_000L))
+            assertFalse(owner.hasHumanEditor())
+
+            assertEquals(0L, eventApi.featureRevision)
+            assertTrue(changes.isEmpty())
+        } finally {
+            subscription.close()
+            owner.close()
+            reaper.close()
+            context.deleteDatabase(database)
+        }
+    }
+
+    @Test
     fun timelineReplacementChecksRevisionAndReplaysOneDraftReceipt() {
         val createEditor = openNewEvent(EventKindV1.ACTIVITY)
         val form = createEditor.form.copy(

@@ -225,6 +225,9 @@ interface EventFeatureApiV1 {
     val apiVersion: Int
     val featureRevision: Long
 
+    /** Reclaims only another process's editor lease after its timeout; perform Store I/O off the UI thread. */
+    fun recoverAbandonedHumanEdit(staleAfterMillis: Long = 5 * 60_000L): Boolean
+
     fun queryEvents(): EventQuerySnapshotV1
     /** Returns at most [limit] events in the same axis-anchor order as `queryEvents()`. */
     fun queryEventsPage(
