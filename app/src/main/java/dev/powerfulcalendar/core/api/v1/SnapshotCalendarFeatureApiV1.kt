@@ -8,10 +8,8 @@ import java.time.ZoneId
 import java.util.Locale
 
 /** Filters a versioned event snapshot using the existing Core recurrence engine. */
-internal class SnapshotCalendarFeatureApiV1 : CalendarFeatureApiV1 {
-    override val apiVersion: Int = 1
-
-    override fun queryWindow(
+internal class SnapshotCalendarFeatureApiV1 {
+    fun queryWindow(
         query: CalendarWindowQueryV1,
         source: EventQuerySnapshotV1
     ): CalendarWindowSnapshotV1 {
@@ -50,7 +48,7 @@ internal class SnapshotCalendarFeatureApiV1 : CalendarFeatureApiV1 {
         )
     }
 
-    override fun queryEvents(
+    fun queryEvents(
         query: CalendarEventQueryV1,
         source: EventQuerySnapshotV1
     ): CalendarEventQueryResultV1 {

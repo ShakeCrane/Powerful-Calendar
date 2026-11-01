@@ -83,7 +83,7 @@ class DeckVisualContext internal constructor(
     val onDismiss: () -> Unit,
     val onOpenFormalEvent: (EventSearchHitV1) -> Unit,
     val onCancelAiBatch: () -> Unit,
-    val formalSearch: (String) -> List<EventSearchHitV1>,
+    val formalSearch: suspend (String) -> List<EventSearchHitV1>,
     val onSelect: (Long) -> Unit,
     val onBrowse: (Int) -> Unit,
     val onEdit: (EventFormV1) -> Unit,
@@ -110,7 +110,7 @@ fun DraftDeckDialog(
     onOpenFormalEvent: (EventSearchHitV1) -> Unit,
     onCancelAiBatch: () -> Unit,
     onDeckChanged: () -> Unit,
-    formalSearch: (String) -> List<EventSearchHitV1>,
+    formalSearch: suspend (String) -> List<EventSearchHitV1>,
     initialEditorOpen: Boolean = false
 ) {
     val renderer = DeckPresentationSkinRegistry.active

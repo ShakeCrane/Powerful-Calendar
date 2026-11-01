@@ -34,6 +34,7 @@ fun NativeMonthScreen(
     today: LocalDate,
     aiLocked: Boolean,
     rowsForMonth: (YearMonth) -> List<NativeMonthRow>,
+    onMonthRequest: (YearMonth) -> Unit = {},
     onBack: () -> Unit, onDate: (LocalDate) -> Unit,
     onOpen: (String) -> Unit,
     onCreate: (LocalDate) -> Unit,
@@ -43,6 +44,7 @@ fun NativeMonthScreen(
     var monthText by rememberSaveable { mutableStateOf(YearMonth.from(initialDate).toString()) }
     val selected = LocalDate.parse(selectedText)
     val month = YearMonth.parse(monthText)
+    LaunchedEffect(month, onMonthRequest) { onMonthRequest(month) }
     var yearPickerOpen by remember { mutableStateOf(false) }
     var monthPickerOpen by remember { mutableStateOf(false) }
     var yearInput by remember(monthText) { mutableStateOf(month.year.toString()) }

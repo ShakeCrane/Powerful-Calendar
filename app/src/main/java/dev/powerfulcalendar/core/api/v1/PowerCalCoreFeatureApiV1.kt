@@ -35,6 +35,9 @@ import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
+private const val MAX_EVENT_QUERY_PAGE_SIZE = 500
+private const val MAX_EVENT_SEARCH_RESULTS = 8
+
 /** Android/Core implementation adapter. All exposed values come from the pure :core-api module. */
 class PowerCalCoreFeatureApiV1(
     private val store: PowerStore,
@@ -46,8 +49,8 @@ class PowerCalCoreFeatureApiV1(
     aiConversationHistoryPort: AiConversationHistoryPortV1? = null
 ) : CoreFeatureApiV1 {
     override val apiVersion: Int = 1
-    private val calendarService = SnapshotCalendarFeatureApiV1()
     private val eventService = StoreEventFeatureApiV1(store, clock)
+    private val calendarService = StoreCalendarFeatureApiV1(store) { eventService.featureRevision }
     private val draftReviewService = StoreDraftReviewFeatureApiV1(store, deckController, eventService)
     private val aiService = StoreAiFeatureApiV1(
         store, eventService, calendarService, aiModelPort, clock, aiConversationHistoryPort
@@ -58,7 +61,7 @@ class PowerCalCoreFeatureApiV1(
         store, draftReviewService, eventService
     )
     private val settingsDataService = AndroidSettingsDataFeatureApiV1(settingsContext)
-    private val memoService = StoreMemoFeatureApiV1(store)
+    private val memoService = StoreMemoFeatureApiV1(store) { eventService.featureRevision }
     override val calendar: CalendarFeatureApiV1 get() = calendarService
     override val events: EventFeatureApiV1 get() = eventService
     override val draftReview: DraftReviewFeatureApiV1 get() = draftReviewService
@@ -107,14 +110,72 @@ internal class StoreEventFeatureApiV1(
     private val approvals = IdentityHashMap<EventDeleteApprovalV1, ApprovalClaims>()
     private val receipts = LinkedHashMap<String, Pair<String, EventMutationReceiptV1>>()
     private val checkpointReceipts = LinkedHashMap<String, Pair<String, EventCheckpointReceiptV1>>()
+    private val pageServiceInstanceId = UUID.randomUUID().toString()
+    private val eventAxisOrder = compareBy<EventRecordV1>(
+        { it.toCoreTemporalRecord().anchorMillis() == null },
+        { it.toCoreTemporalRecord().anchorMillis() ?: Long.MAX_VALUE },
+        EventRecordV1::eventSeq
+    )
 
     override val featureRevision: Long get() = revision.get()
 
     @Synchronized
-    override fun queryEvents(): EventQuerySnapshotV1 = EventQuerySnapshotV1(
-        featureRevision = featureRevision,
-        events = store.all().map(TemporalRecord::toEventRecordV1)
-    )
+    override fun queryEvents(): EventQuerySnapshotV1 {
+        val snapshotRevision = featureRevision
+        val events = buildList {
+            store.forEachActiveEventPage { page ->
+                addAll(page.map(TemporalRecord::toEventRecordV1))
+                true
+            }
+        }
+        return EventQuerySnapshotV1(snapshotRevision, events)
+    }
+
+    @Synchronized
+    override fun queryEventsPage(
+        cursor: EventQueryCursorV1?,
+        limit: Int
+    ): EventQueryPageV1 {
+        require(limit in 1..MAX_EVENT_QUERY_PAGE_SIZE) {
+            "事件查询页大小必须介于 1 和 $MAX_EVENT_QUERY_PAGE_SIZE"
+        }
+        val snapshotRevision = featureRevision
+        if (cursor != null &&
+            (cursor.serviceInstanceId != pageServiceInstanceId ||
+                cursor.featureRevision != snapshotRevision)
+        ) {
+            return EventQueryPageV1(
+                featureRevision = snapshotRevision,
+                events = emptyList(),
+                totalEvents = store.activeEventPage(limit = limit).total,
+                stale = true
+            )
+        }
+        val position = cursor?.let {
+            PowerStore.ActiveEventPosition(it.afterAnchorMillis, it.afterEventSeq)
+        }
+        val page = store.activeEventPage(position, limit)
+        val finalRevision = featureRevision
+        if (snapshotRevision != finalRevision) return EventQueryPageV1(
+            featureRevision = finalRevision,
+            events = emptyList(),
+            totalEvents = page.total,
+            stale = true
+        )
+        return EventQueryPageV1(
+            featureRevision = snapshotRevision,
+            events = page.records.map(TemporalRecord::toEventRecordV1),
+            totalEvents = page.total,
+            nextCursor = page.next?.let {
+                EventQueryCursorV1(
+                    featureRevision = snapshotRevision,
+                    afterAnchorMillis = it.anchorMillis,
+                    afterEventSeq = it.eventSeq,
+                    serviceInstanceId = pageServiceInstanceId
+                )
+            }
+        )
+    }
 
     @Synchronized
     override fun queryEvent(eventSeq: Long): EventRecordV1? =
@@ -136,6 +197,39 @@ internal class StoreEventFeatureApiV1(
             }
             .toList()
         return EventSearchSnapshotV1(snapshot.featureRevision, hits)
+    }
+
+    override suspend fun searchEvents(query: String): EventSearchSnapshotV1 = synchronized(this) {
+        val snapshotRevision = featureRevision
+        if (query.isBlank()) return@synchronized EventSearchSnapshotV1(snapshotRevision, emptyList())
+        val firstHits = java.util.PriorityQueue(
+            MAX_EVENT_SEARCH_RESULTS,
+            eventAxisOrder.reversed()
+        )
+        store.forEachActiveEventPage { page ->
+            page.asSequence()
+                .map(TemporalRecord::toEventRecordV1)
+                .filter { event ->
+                    event.title.contains(query, ignoreCase = true) ||
+                        event.eventSeq.toString().contains(query) ||
+                        TemporalRecord.formatSeq(event.eventSeq).contains(query)
+                }
+                .forEach { event ->
+                    if (firstHits.size < MAX_EVENT_SEARCH_RESULTS) firstHits.add(event)
+                    else if (eventAxisOrder.compare(event, firstHits.peek()) < 0) {
+                        firstHits.poll()
+                        firstHits.add(event)
+                    }
+                }
+            true
+        }
+        val finalRevision = featureRevision
+        val hits = if (finalRevision == snapshotRevision) {
+            firstHits.toList().sortedWith(eventAxisOrder).map {
+                EventSearchHitV1(it.eventSeq, it.revision, it.kind, it.title)
+            }
+        } else emptyList()
+        EventSearchSnapshotV1(finalRevision, hits)
     }
 
     @Synchronized

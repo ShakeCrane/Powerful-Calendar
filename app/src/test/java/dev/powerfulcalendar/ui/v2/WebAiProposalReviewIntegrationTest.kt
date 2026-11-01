@@ -97,6 +97,13 @@ class WebAiProposalReviewIntegrationTest {
             }
         }
         ui.waitForIdle()
+        try {
+            ui.waitUntil(60_000) { WebSkinBridgeRuntime.state().optBoolean("hostDataReady") }
+        } catch (error: Throwable) {
+            throw AssertionError(
+                "Host startup state: ${WebSkinBridgeRuntime.state()}", error
+            )
+        }
         ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.Routed("timeline")) }
         ui.waitForIdle()
         ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.LoadMoreMemo) }
@@ -118,10 +125,16 @@ class WebAiProposalReviewIntegrationTest {
 
         ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.LoadMoreMemo) }
         ui.waitForIdle()
-        ui.waitUntil(20_000) {
-            val state = WebSkinBridgeRuntime.state()
-            state.optJSONArray("memoEntries")?.length() == 251 &&
-                !state.optBoolean("memoTruncated") && state.optInt("memoRemainingCount") == 0
+        try {
+            ui.waitUntil(20_000) {
+                val state = WebSkinBridgeRuntime.state()
+                state.optJSONArray("memoEntries")?.length() == 251 &&
+                    !state.optBoolean("memoTruncated") && state.optInt("memoRemainingCount") == 0
+            }
+        } catch (error: Throwable) {
+            throw AssertionError(
+                "Memo Host state after next-page request: ${WebSkinBridgeRuntime.state()}", error
+            )
         }
         val allRows = WebSkinBridgeRuntime.state().getJSONArray("memoEntries")
         assertEquals("Paging Memo 251", allRows.getJSONObject(250).getString("title"))

@@ -181,7 +181,9 @@ internal class StoreAiFeatureApiV1(
                 message = "AI 聊天服务暂不可用"
             )
             val context = if (request.shareCalendarContext) {
-                events.queryEvents().events.take(MAX_CALENDAR_CONTEXT_EVENTS)
+                withContext(Dispatchers.IO) {
+                    calendarContextEvents(AiCalendarContextPolicyV1.FIRST_60_FORMAL_EVENTS)
+                }
             } else emptyList()
             val modelOutput = try {
                 port.chat(AiChatModelRequestV1(
@@ -327,7 +329,7 @@ internal class StoreAiFeatureApiV1(
         if (validDefinition.name == AiChatToolRegistryV1.CALENDAR_QUERY) {
             val query = requireNotNull(calendarQuery)
             val result = try {
-                calendar.queryEvents(query, events.queryEvents())
+                withContext(Dispatchers.IO) { calendar.queryEvents(query) }
                     .boundedForTool(validDefinition.outputMaxBytes)
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -536,21 +538,7 @@ internal class StoreAiFeatureApiV1(
         )
 
         val context = if (request.shareCalendarContext) {
-            val snapshot = events.queryEvents().events
-            when (request.contextPolicy) {
-                AiCalendarContextPolicyV1.FIRST_60_FORMAL_EVENTS ->
-                    snapshot.take(MAX_CALENDAR_CONTEXT_EVENTS)
-                AiCalendarContextPolicyV1.EVENTS_THROUGH_14_DAYS_AFTER_NOW -> {
-                    val horizon = clock.millis() + CALENDAR_CONTEXT_HORIZON_MILLIS
-                    snapshot.asSequence()
-                        .filter { record ->
-                            val temporal = record.toCoreTemporalRecord()
-                            (temporal.anchorMillis() ?: 0L) <= horizon
-                        }
-                        .take(MAX_CALENDAR_CONTEXT_EVENTS)
-                        .toList()
-                }
-            }
+            withContext(Dispatchers.IO) { calendarContextEvents(request.contextPolicy) }
         } else emptyList()
 
         val modelOutput = try {
@@ -1276,6 +1264,32 @@ internal class StoreAiFeatureApiV1(
         ),
         completedKeys = completedKeys.toSet()
     )
+
+    private fun calendarContextEvents(
+        policy: AiCalendarContextPolicyV1
+    ): List<EventRecordV1> {
+        val horizon = clock.millis() + CALENDAR_CONTEXT_HORIZON_MILLIS
+        val selected = ArrayList<EventRecordV1>(MAX_CALENDAR_CONTEXT_EVENTS)
+        var cursor: EventQueryCursorV1? = null
+        var snapshotRevision: Long? = null
+        while (selected.size < MAX_CALENDAR_CONTEXT_EVENTS) {
+            val page = events.queryEventsPage(cursor, limit = 100)
+            if (page.stale || (snapshotRevision != null && page.featureRevision != snapshotRevision)) {
+                return emptyList()
+            }
+            snapshotRevision = page.featureRevision
+            page.events.forEach { event ->
+                val matches = when (policy) {
+                    AiCalendarContextPolicyV1.FIRST_60_FORMAL_EVENTS -> true
+                    AiCalendarContextPolicyV1.EVENTS_THROUGH_14_DAYS_AFTER_NOW ->
+                        (event.toCoreTemporalRecord().anchorMillis() ?: 0L) <= horizon
+                }
+                if (matches && selected.size < MAX_CALENDAR_CONTEXT_EVENTS) selected.add(event)
+            }
+            cursor = page.nextCursor ?: break
+        }
+        return if (snapshotRevision == events.featureRevision) selected else emptyList()
+    }
 
     private class HostBatchApproval : AiBatchApprovalV1
     private class HostStuckReleaseApproval : AiBatchStuckReleaseApprovalV1

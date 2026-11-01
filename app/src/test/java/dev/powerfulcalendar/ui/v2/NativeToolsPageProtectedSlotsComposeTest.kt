@@ -4,6 +4,10 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
+import dev.powerfulcalendar.core.Recurrence
+import dev.powerfulcalendar.core.RecurrenceFreq
+import dev.powerfulcalendar.core.TemporalKind
+import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.api.v1.AndroidSettingsDataFeatureApiV1
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertEquals
@@ -117,5 +121,33 @@ class NativeToolsPageProtectedSlotsComposeTest {
         assertFalse(display.aiBatchActive)
         assertFalse(display.aiBatchCancelRequested)
         assertTrue(display.reminders.isEmpty())
+    }
+
+    @Test fun settingsProjectionKeepsExactCountAndRecurrenceFromLaterStorePages() {
+        val laterRecurrence = TemporalRecord(
+            eventSeq = 301,
+            revision = 1,
+            kind = TemporalKind.ALARM,
+            title = "later recurring event",
+            startMillis = 1_000L,
+            recurrence = Recurrence(RecurrenceFreq.DAILY),
+            zoneId = "UTC"
+        )
+        val display = projectSettingsDisplaySnapshot(
+            diagnostics = UiDiagnostics(),
+            records = emptyList(),
+            pendingCount = 0,
+            aiLocked = false,
+            aiSession = null,
+            canReleaseStuckBatch = false,
+            exactAlarmAllowed = false,
+            notificationsAllowed = false,
+            nowMillis = 0L,
+            formalEventCount = 301,
+            recurrenceRecords = listOf(laterRecurrence)
+        )
+
+        assertEquals(301, display.formalEventCount)
+        assertEquals("重复 #301", display.recurrence.single().label)
     }
 }

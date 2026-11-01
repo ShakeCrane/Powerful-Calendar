@@ -113,7 +113,8 @@ internal class MonthVisualContext internal constructor(
     val onBack: () -> Unit,
     val onDate: (LocalDate) -> Unit,
     val onOpen: (Long, Long, String?) -> Unit,
-    val onCreate: (LocalDate) -> Unit
+    val onCreate: (LocalDate) -> Unit,
+    val onRequestMonth: (java.time.YearMonth) -> Unit
 ) {
     val records: List<EventRecordV1> = nativeRecords.map(TemporalRecord::toEventRecordV1)
     val recordsForMonth: (java.time.YearMonth) -> List<EventRecordV1> = { month ->
@@ -161,6 +162,7 @@ internal class MonthVisualContext internal constructor(
                 today = LocalDate.now(zone),
                 aiLocked = aiLocked,
                 rowsForMonth = rowsForMonth,
+                onMonthRequest = onRequestMonth,
                 onBack = onBack,
                 onDate = onDate,
                 onOpen = { rowKey ->
@@ -181,10 +183,12 @@ internal fun MonthScreen(
     onBack: () -> Unit, onDate: (LocalDate) -> Unit,
     onOpen: (Long, Long, String?) -> Unit,
     onCreate: (LocalDate) -> Unit,
-    recordsForMonth: (java.time.YearMonth) -> List<TemporalRecord> = { records }
+    recordsForMonth: (java.time.YearMonth) -> List<TemporalRecord> = { records },
+    onRequestMonth: (java.time.YearMonth) -> Unit = {}
 ) {
     val context = MonthVisualContext(
-        records, recordsForMonth, initialDate, zone, aiLocked, onBack, onDate, onOpen, onCreate
+        records, recordsForMonth, initialDate, zone, aiLocked, onBack, onDate, onOpen, onCreate,
+        onRequestMonth
     )
     val renderer = PresentationSkinRegistry.month
     if (RuntimeSkinSurfaces.enabled("month")) RuntimeSkinSurfaces.month(context)
@@ -195,10 +199,13 @@ internal class MemoVisualContext internal constructor(
     val items: List<MemoEntryV1>,
     val zone: ZoneId,
     val busy: Boolean,
+    val hasMore: Boolean,
+    val loadingMore: Boolean,
     val onBack: () -> Unit,
     val onCreateMemo: () -> Unit,
     val onToggle: (String) -> Unit,
-    val onOpen: (String) -> Unit
+    val onOpen: (String) -> Unit,
+    val onLoadMore: () -> Unit
 ) {
     @Composable fun Native() {
         val rows = remember(items) { projectNativeMemoRows(items) }
@@ -206,8 +213,11 @@ internal class MemoVisualContext internal constructor(
         NativeMemoCenterScreen(
             items = rows,
             busy = busy,
+            hasMore = hasMore,
+            loadingMore = loadingMore,
             onBack = onBack,
             onCreateMemo = onCreateMemo,
+            onLoadMore = onLoadMore,
             onToggle = { rowKey -> if (rowKey in entriesByKey) onToggle(rowKey) },
             onOpen = { rowKey ->
                     entriesByKey[rowKey]?.let { onOpen(it.rowKey) }
@@ -220,9 +230,12 @@ internal class MemoVisualContext internal constructor(
 internal fun MemoCenterScreen(
     items: List<MemoEntryV1>, zone: ZoneId, busy: Boolean,
     onBack: () -> Unit, onCreateMemo: () -> Unit,
-    onToggle: (String) -> Unit, onOpen: (String) -> Unit
+    onToggle: (String) -> Unit, onOpen: (String) -> Unit,
+    hasMore: Boolean = false, loadingMore: Boolean = false, onLoadMore: () -> Unit = {}
 ) {
-    val context = MemoVisualContext(items, zone, busy, onBack, onCreateMemo, onToggle, onOpen)
+    val context = MemoVisualContext(
+        items, zone, busy, hasMore, loadingMore, onBack, onCreateMemo, onToggle, onOpen, onLoadMore
+    )
     val renderer = PresentationSkinRegistry.memo
     if (RuntimeSkinSurfaces.enabled("memo")) RuntimeSkinSurfaces.memo(context)
     else if (renderer == null) context.Native() else renderer.Render(context)
@@ -326,10 +339,12 @@ internal fun projectSettingsDisplaySnapshot(
     canReleaseStuckBatch: Boolean,
     exactAlarmAllowed: Boolean,
     notificationsAllowed: Boolean,
-    nowMillis: Long
+    nowMillis: Long,
+    formalEventCount: Int = records.size,
+    recurrenceRecords: List<TemporalRecord> = records
 ): SettingsDisplaySnapshot = SettingsDisplaySnapshot(
     pendingCount = pendingCount,
-    formalEventCount = records.size,
+    formalEventCount = formalEventCount,
     nextSequenceLabel = TemporalRecord.formatSeq(diagnostics.nextSequence),
     identityCount = diagnostics.identities,
     databaseVersion = PowerStore.VERSION,
@@ -358,7 +373,7 @@ internal fun projectSettingsDisplaySnapshot(
             execution = row.status.lastExecutionResult
         )
     },
-    recurrence = records.filter { it.recurrence.isRepeating }.take(3).map { record ->
+    recurrence = recurrenceRecords.filter { it.recurrence.isRepeating }.take(3).map { record ->
         val next = RecurrenceEngine.nextOccurrence(record, nowMillis)
         SettingsRecurrencePreview(
             label = "重复 #${record.eventSeq}",
@@ -399,15 +414,17 @@ internal fun ToolsPage(
     onCancelBatch: () -> Unit,
     onReconcile: () -> Unit,
     onReleaseStuck: () -> Unit,
-    settingsDataApi: SettingsDataFeatureApiV1
+    settingsDataApi: SettingsDataFeatureApiV1,
+    formalEventCount: Int = records.size,
+    recurrenceRecords: List<TemporalRecord> = records
 ) {
     val settingsDisplay = remember(
         diagnostics, records, pendingCount, aiLocked, aiSession, canReleaseStuckBatch,
-        exactAlarmAllowed, notificationsAllowed, nowMillis
+        exactAlarmAllowed, notificationsAllowed, nowMillis, formalEventCount, recurrenceRecords
     ) {
         projectSettingsDisplaySnapshot(
             diagnostics, records, pendingCount, aiLocked, aiSession, canReleaseStuckBatch,
-            exactAlarmAllowed, notificationsAllowed, nowMillis
+            exactAlarmAllowed, notificationsAllowed, nowMillis, formalEventCount, recurrenceRecords
         )
     }
     val settingsEffects = SettingsVisualEffects(effects.blur, effects.animationScale, effects.reduceMotion)

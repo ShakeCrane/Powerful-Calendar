@@ -999,8 +999,7 @@ internal class WebSkinEditService(
                             deckSearchQuery = cmd.query
                             formalSearchResults = if (cmd.query.isBlank()) emptyList()
                                 else withContext(Dispatchers.IO) {
-                                    val snapshot = eventFeatures.queryEvents()
-                                    eventFeatures.searchEvents(cmd.query, snapshot).hits.take(4)
+                                    eventFeatures.searchEvents(cmd.query).hits.take(4)
                                 }
                             result(cmd.requestId,"searched")
                         }

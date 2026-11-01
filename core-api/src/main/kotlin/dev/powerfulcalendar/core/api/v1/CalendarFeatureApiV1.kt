@@ -24,7 +24,8 @@ data class CalendarWindowQueryV1(
 data class CalendarWindowSnapshotV1(
     val featureRevision: Long,
     val query: CalendarWindowQueryV1,
-    val events: List<EventRecordV1>
+    val events: List<EventRecordV1>,
+    val stale: Boolean = false
 )
 
 /** Bounded read-only search over a date window, title, or both. Dates are inclusive. */
@@ -101,12 +102,19 @@ data class CalendarEventQueryResultV1(
     val query: CalendarEventQueryV1,
     val results: List<CalendarEventQueryHitV1>,
     val totalMatches: Int,
-    val truncated: Boolean
+    val truncated: Boolean,
+    val stale: Boolean = false
 )
 
 /** Versioned calendar queries for timeline and month views. */
 interface CalendarFeatureApiV1 {
     val apiVersion: Int
+
+    /**
+     * Queries the authoritative Store in bounded pages and returns every matching owner once.
+     * Results retain the Store's axis-anchor ordering and the captured Event feature revision.
+     */
+    fun queryWindow(query: CalendarWindowQueryV1): CalendarWindowSnapshotV1
 
     /**
      * Returns every owner with at least one effective occurrence in [query]. The source is an
@@ -122,4 +130,7 @@ interface CalendarFeatureApiV1 {
         query: CalendarEventQueryV1,
         source: EventQuerySnapshotV1
     ): CalendarEventQueryResultV1
+
+    /** Store-backed equivalent of [queryEvents], with bounded Store reads and capped results. */
+    fun queryEvents(query: CalendarEventQueryV1): CalendarEventQueryResultV1
 }

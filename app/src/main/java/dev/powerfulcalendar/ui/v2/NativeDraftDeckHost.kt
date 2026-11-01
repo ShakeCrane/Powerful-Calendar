@@ -92,7 +92,7 @@ fun NativeDraftDeckDialog(
     onOpenFormalEvent: (EventSearchHitV1) -> Unit,
     onCancelAiBatch: () -> Unit,
     onDeckChanged: () -> Unit,
-    formalSearch: (String) -> List<EventSearchHitV1>,
+    formalSearch: suspend (String) -> List<EventSearchHitV1>,
     initialEditorOpen: Boolean = false
 ) {
     var state by remember(draftReviewApi) { mutableStateOf(draftReviewApi.snapshot) }

@@ -135,7 +135,7 @@ data class NativeDeckActions(
     val onSelect: (String) -> Unit,
     val onBrowse: (Int) -> Unit,
     val onMove: (Int) -> Unit,
-    val onSearch: (String) -> List<NativeDeckSearchHit>,
+    val onSearch: suspend (String) -> List<NativeDeckSearchHit>,
     val onFormChange: (NativeDeckForm) -> Unit,
     val onConvert: (NativeDeckKind) -> Unit,
     val onCommit: () -> Unit,

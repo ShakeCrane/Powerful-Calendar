@@ -80,6 +80,48 @@ class PowerStoreTest {
         store.commit(card.draftId, actor = "test")
 
     @Test
+    fun activeEventPagesAreBoundedOrderedAndExcludeRetiredRecords() {
+        val cards = listOf(
+            store.newDraft(activityForm("later", minutesAhead = 120)),
+            store.newDraft(activityForm("tie one", minutesAhead = 60)),
+            store.newDraft(activityForm("tie two", minutesAhead = 60)),
+            store.newDraft(activityForm("latest", minutesAhead = 180)),
+            store.newDraft(DraftForm(kind = TemporalKind.MEMO, title = "undated", zoneId = zone.id))
+        )
+        cards.forEach { assertTrue(commit(it) is PowerStore.CommitOutcome.Committed) }
+        val delete = store.newDraft(
+            DraftForm.from(requireNotNull(store.get(cards[2].eventSeq))),
+            cards[2].eventSeq,
+            DraftOperation.DELETE
+        )
+        assertTrue(commit(delete) is PowerStore.CommitOutcome.Committed)
+
+        val axisRecords = mutableListOf<TemporalRecord>()
+        var cursor: PowerStore.ActiveEventPosition? = null
+        while (true) {
+            val page = store.activeEventPage(cursor, limit = 2)
+            assertEquals(4, page.total)
+            assertTrue(page.records.size <= 2)
+            axisRecords += page.records
+            cursor = page.next ?: break
+        }
+        assertEquals(store.all().map { it.eventSeq }, axisRecords.map { it.eventSeq })
+        assertFalse(axisRecords.any { it.eventSeq == cards[2].eventSeq })
+
+        val streamed = mutableListOf<TemporalRecord>()
+        val pageSizes = mutableListOf<Int>()
+        val visited = store.forEachActiveEventPage(pageSize = 2) { page ->
+            pageSizes += page.size
+            streamed += page
+            true
+        }
+        assertEquals(4, visited)
+        assertEquals(listOf(2, 2), pageSizes)
+        assertEquals(axisRecords.map { it.eventSeq }, streamed.map { it.eventSeq })
+        assertFalse(streamed.any { it.eventSeq == cards[2].eventSeq })
+    }
+
+    @Test
     fun directEditorCheckpointsOnceAndNoChangeSaveClearsItWithoutRevision() {
         val created = store.newDraft(activityForm("formal"))
         assertTrue(commit(created) is PowerStore.CommitOutcome.Committed)

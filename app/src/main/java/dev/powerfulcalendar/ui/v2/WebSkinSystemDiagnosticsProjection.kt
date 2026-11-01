@@ -18,10 +18,12 @@ internal object WebSkinSystemDiagnosticsProjection {
         identityCount: Long,
         effects: GlassEffects,
         nowMillis: Long,
-        zone: ZoneId = ZoneId.systemDefault()
+        zone: ZoneId = ZoneId.systemDefault(),
+        formalCount: Int = records.size,
+        recurrenceRecords: List<TemporalRecord> = records
     ): JSONObject {
         val recurrences = JSONArray().apply {
-            records.asSequence()
+            recurrenceRecords.asSequence()
                 .filter { it.recurrence.isRepeating }
                 .take(MAX_RECURRENCES)
                 .forEach { record ->
@@ -39,7 +41,7 @@ internal object WebSkinSystemDiagnosticsProjection {
         }
 
         return JSONObject()
-            .put("formalCount", records.size)
+            .put("formalCount", formalCount)
             .put("nextSequence", TemporalRecord.formatSeq(nextSequence))
             .put("identityCount", identityCount.toString())
             .put("databaseVersion", PowerStore.VERSION)

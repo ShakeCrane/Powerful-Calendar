@@ -146,7 +146,10 @@ private class StudioExampleMemo : MemoVisualRenderer {
                 TextButton(onClick = { completed = !completed }) { Text(if (completed) "未完成" else "已完成") }
                 Button(enabled = !context.busy, onClick = context.onCreateMemo) { Text("新建") }
             }
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            LazyColumn(
+                Modifier.weight(1f).fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 items(context.items.filter { it.completed == completed }, key = { it.rowKey }) { entry ->
                     Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = RoundedCornerShape(20.dp)) {
                         Row(Modifier.fillMaxWidth().heightIn(min = 60.dp).padding(10.dp),
@@ -163,6 +166,13 @@ private class StudioExampleMemo : MemoVisualRenderer {
                         }
                     }
                 }
+            }
+            if (context.hasMore) {
+                Button(
+                    enabled = !context.loadingMore,
+                    onClick = context.onLoadMore,
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text(if (context.loadingMore) "正在加载…" else "加载更多") }
             }
         }
     }

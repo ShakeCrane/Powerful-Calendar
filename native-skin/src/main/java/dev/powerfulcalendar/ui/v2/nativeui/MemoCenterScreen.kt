@@ -17,10 +17,13 @@ import dev.powerfulcalendar.ui.v2.NativeMemoRow
 fun NativeMemoCenterScreen(
     items: List<NativeMemoRow>,
     busy: Boolean,
+    hasMore: Boolean = false,
+    loadingMore: Boolean = false,
     onBack: () -> Unit,
     onCreateMemo: () -> Unit,
     onToggle: (String) -> Unit,
-    onOpen: (String) -> Unit
+    onOpen: (String) -> Unit,
+    onLoadMore: () -> Unit = {}
 ) {
     var showCompleted by remember { mutableStateOf(false) }
     val visible = items.filter { it.completed == showCompleted }
@@ -54,12 +57,12 @@ fun NativeMemoCenterScreen(
         }
         HorizontalDivider()
         if (visible.isEmpty()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Text("目前没有待处理事项", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         } else {
             LazyColumn(
-                Modifier.fillMaxSize(),
+                Modifier.weight(1f).fillMaxWidth(),
                 contentPadding = PaddingValues(vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
@@ -95,6 +98,15 @@ fun NativeMemoCenterScreen(
                         }
                     }
                 }
+            }
+        }
+        if (hasMore) {
+            Button(
+                onClick = onLoadMore,
+                enabled = !loadingMore,
+                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+            ) {
+                Text(if (loadingMore) "正在加载…" else "加载更多")
             }
         }
     }

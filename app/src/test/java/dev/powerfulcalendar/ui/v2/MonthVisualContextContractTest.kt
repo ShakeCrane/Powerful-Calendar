@@ -39,6 +39,7 @@ class MonthVisualContextContractTest {
             },
             initialDate = LocalDate.of(2026, 10, 20),
             zone = zone,
+            onRequestMonth = { requestedMonths += it },
             aiLocked = false,
             onBack = {},
             onDate = {},

@@ -43,6 +43,12 @@ class PowerStore(
     private val processIdentity: String = PROCESS_TOKEN
 ) : SQLiteOpenHelper(context.applicationContext, databaseName, null, VERSION) {
     data class RetiredPage(val records: List<TemporalRecord>, val total: Int)
+    internal data class ActiveEventPosition(val anchorMillis: Long?, val eventSeq: Long)
+    internal data class ActiveEventPage(
+        val records: List<TemporalRecord>,
+        val total: Int,
+        val next: ActiveEventPosition?
+    )
 
     private val appContext = context.applicationContext
 
@@ -2091,11 +2097,106 @@ class PowerStore(
     @Synchronized
     fun all(): List<TemporalRecord> =
         readableDatabase.rawQuery(
-            "SELECT payload FROM objects WHERE retired=0 ORDER BY CASE WHEN anchor_ms IS NULL THEN 1 ELSE 0 END, anchor_ms ASC",
+            "SELECT payload FROM objects WHERE retired=0 ORDER BY CASE WHEN anchor_ms IS NULL THEN 1 ELSE 0 END, anchor_ms ASC, event_seq ASC",
             null
         ).use { cursor ->
             buildList { while (cursor.moveToNext()) add(decodeRecord(cursor.getString(0))) }
         }
+
+    /**
+     * Reads one bounded active-event page in the same stable axis order as [all]. The cursor is
+     * keyset-based so appends or deletions do not shift later rows as OFFSET paging would.
+     */
+    @Synchronized
+    internal fun activeEventPage(
+        after: ActiveEventPosition? = null,
+        limit: Int = ACTIVE_EVENT_PAGE_SIZE
+    ): ActiveEventPage {
+        require(limit in 1..MAX_ACTIVE_EVENT_PAGE_SIZE) { "正式事件页大小无效" }
+        return readSnapshot { db -> readActiveEventPage(db, after, limit) }
+    }
+
+    /**
+     * Visits formal objects as bounded axis-ordered pages under one SQLite read transaction.
+     * The visitor may return false to stop early. No complete formal-event list is materialized.
+     */
+    @Synchronized
+    internal fun forEachActiveEventPage(
+        pageSize: Int = ACTIVE_EVENT_PAGE_SIZE,
+        visitor: (List<TemporalRecord>) -> Boolean
+    ): Int {
+        require(pageSize in 1..MAX_ACTIVE_EVENT_PAGE_SIZE) { "正式事件页大小无效" }
+        val db = readableDatabase
+        db.beginTransactionNonExclusive()
+        try {
+            var after: ActiveEventPosition? = null
+            var visited = 0
+            while (true) {
+                val rows = queryActiveEventRows(db, after, pageSize)
+                if (rows.isEmpty()) break
+                visited += rows.size
+                after = rows.last().first
+                if (!visitor(rows.map { it.second })) break
+            }
+            db.setTransactionSuccessful()
+            return visited
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    private fun readActiveEventPage(
+        db: SQLiteDatabase,
+        after: ActiveEventPosition?,
+        limit: Int
+    ): ActiveEventPage {
+        val total = db.rawQuery("SELECT COUNT(*) FROM objects WHERE retired=0", null).use {
+            if (it.moveToFirst()) it.getInt(0) else 0
+        }
+        val rows = queryActiveEventRows(db, after, limit + 1)
+        val hasMore = rows.size > limit
+        val selected = rows.take(limit)
+        return ActiveEventPage(
+            records = selected.map { it.second },
+            total = total,
+            next = selected.lastOrNull()?.first.takeIf { hasMore }
+        )
+    }
+
+    private fun queryActiveEventRows(
+        db: SQLiteDatabase,
+        after: ActiveEventPosition?,
+        limit: Int
+    ): List<Pair<ActiveEventPosition, TemporalRecord>> {
+        val (where, args) = when {
+            after == null -> "retired=0" to emptyArray()
+            after.anchorMillis == null ->
+                "retired=0 AND anchor_ms IS NULL AND event_seq>?" to
+                    arrayOf(after.eventSeq.toString())
+            else -> """retired=0 AND
+                (anchor_ms IS NULL OR anchor_ms>? OR (anchor_ms=? AND event_seq>?))""" to
+                    arrayOf(
+                        after.anchorMillis.toString(), after.anchorMillis.toString(),
+                        after.eventSeq.toString()
+                    )
+        }
+        return db.rawQuery(
+            """SELECT event_seq,anchor_ms,payload FROM objects WHERE $where
+               ORDER BY CASE WHEN anchor_ms IS NULL THEN 1 ELSE 0 END,
+                        anchor_ms ASC,event_seq ASC LIMIT ?""",
+            args + limit.toString()
+        ).use { cursor ->
+            buildList {
+                while (cursor.moveToNext()) {
+                    val anchor = if (cursor.isNull(1)) null else cursor.getLong(1)
+                    add(
+                        ActiveEventPosition(anchor, cursor.getLong(0)) to
+                            decodeRecord(cursor.getString(2))
+                    )
+                }
+            }
+        }
+    }
 
     /** Read-only, bounded tombstone page for the explicit recovery picker. */
     @Synchronized
@@ -3453,6 +3554,8 @@ class PowerStore(
     companion object {
         const val DATABASE_NAME = "powercal-v2.db"
         const val VERSION = 5
+        private const val ACTIVE_EVENT_PAGE_SIZE = 128
+        private const val MAX_ACTIVE_EVENT_PAGE_SIZE = 500
 
         /** Defensive bound for restore input; a personal calendar stays far below this. */
         const val MAX_BACKUP_ROWS = 200_000

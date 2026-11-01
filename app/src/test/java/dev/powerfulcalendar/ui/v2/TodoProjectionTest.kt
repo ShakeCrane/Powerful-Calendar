@@ -12,6 +12,7 @@ import dev.powerfulcalendar.core.TimePrecision
 import dev.powerfulcalendar.core.api.v1.EventKindV1
 import dev.powerfulcalendar.core.api.v1.EventQuerySnapshotV1
 import dev.powerfulcalendar.core.api.v1.EventMutationStatusV1
+import dev.powerfulcalendar.core.api.v1.MemoFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.toEventRecordV1
 import org.junit.Assert.assertEquals
@@ -161,6 +162,102 @@ class TodoProjectionTest {
                 it.eventSeq == repeatedActivity.eventSeq && it.occurrenceKey == "2026-10-23T09:00"
             }
             assertTrue(completedRepeatedEntry.completed)
+        } finally {
+            store.close()
+            context.deleteDatabase(databaseName)
+        }
+    }
+
+    @Test
+    fun storeBackedMemoPagesMatchSnapshotProjectionAndFenceCursors() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val databaseName = "memo-page-${UUID.randomUUID()}.db"
+        val store = PowerStore(context, databaseName)
+        try {
+            val core = PowerCalCoreFeatureApiV1(
+                store, reminderContext = context, settingsContext = context
+            )
+            val repeating = store.newDraft(DraftForm(
+                kind = TemporalKind.ACTIVITY,
+                title = "Paged daily task",
+                startText = "2026-02-07 09:00",
+                endText = "2026-02-07 10:00",
+                trackingEnabled = true,
+                zoneId = zone.id,
+                recurrence = Recurrence(freq = RecurrenceFreq.DAILY, count = 260)
+            ))
+            val recurringCommit = store.commit(repeating.draftId, actor = "memo-page-test")
+            assertTrue("recurring seed commit failed: $recurringCommit",
+                recurringCommit is PowerStore.CommitOutcome.Committed)
+            listOf("Undated one", "Undated two").forEach { title ->
+                val draft = store.newDraft(DraftForm(
+                    kind = TemporalKind.MEMO, title = title, zoneId = zone.id
+                ))
+                assertTrue(store.commit(draft.draftId, actor = "memo-page-test") is PowerStore.CommitOutcome.Committed)
+            }
+
+            val firstCompletion = core.events.setOccurrenceCompletion(
+                eventSeq = repeating.eventSeq,
+                expectedRevision = 1L,
+                occurrenceKey = "2026-02-07T09:00",
+                expectedCompleted = false,
+                completed = true,
+                requestId = "memo-page-complete-first"
+            )
+            assertEquals(EventMutationStatusV1.UPDATED, firstCompletion.status)
+
+            val expected = core.memos.queryEntries(
+                core.events.queryEvents(), now, includeCompleted = true
+            ).entries
+            val firstPage = core.memos.queryEntriesPage(
+                now, includeCompleted = true, limit = MemoFeatureApiV1.MAX_PAGE_SIZE
+            )
+            assertFalse(firstPage.stale)
+            assertEquals(262, firstPage.totalEntries)
+            assertEquals(261, firstPage.openEntries)
+            assertEquals(250, firstPage.entries.size)
+            val firstCursor = requireNotNull(firstPage.nextCursor)
+            val secondPage = core.memos.queryEntriesPage(
+                now, includeCompleted = true, cursor = firstCursor,
+                limit = MemoFeatureApiV1.MAX_PAGE_SIZE
+            )
+            assertFalse(secondPage.stale)
+            assertEquals(firstPage.totalEntries, secondPage.totalEntries)
+            assertEquals(firstPage.openEntries, secondPage.openEntries)
+            assertEquals(12, secondPage.entries.size)
+            assertNull(secondPage.nextCursor)
+            assertEquals(expected, firstPage.entries + secondPage.entries)
+            assertTrue(expected.last().startMillis == null)
+
+            val openOnly = core.memos.queryEntriesPage(now, includeCompleted = false)
+            assertEquals(261, openOnly.totalEntries)
+            assertEquals(openOnly.totalEntries, openOnly.openEntries)
+
+            val firstService = PowerCalCoreFeatureApiV1(store).memos
+            val firstServicePage = firstService.queryEntriesPage(now, includeCompleted = true, limit = 1)
+            val sameRevisionOtherService = PowerCalCoreFeatureApiV1(store).memos
+            assertEquals(firstServicePage.featureRevision, sameRevisionOtherService.queryEntriesPage(
+                now, includeCompleted = true, cursor = firstServicePage.nextCursor, limit = 1
+            ).featureRevision)
+            assertTrue(sameRevisionOtherService.queryEntriesPage(
+                now, includeCompleted = true, cursor = firstServicePage.nextCursor, limit = 1
+            ).stale)
+
+            val revisionCursor = requireNotNull(core.memos.queryEntriesPage(
+                now, includeCompleted = true, limit = 1
+            ).nextCursor)
+            val current = requireNotNull(store.get(repeating.eventSeq))
+            assertEquals(EventMutationStatusV1.UPDATED, core.events.setOccurrenceCompletion(
+                eventSeq = repeating.eventSeq,
+                expectedRevision = current.revision,
+                occurrenceKey = "2026-02-08T09:00",
+                expectedCompleted = false,
+                completed = true,
+                requestId = "memo-page-complete-second"
+            ).status)
+            assertTrue(core.memos.queryEntriesPage(
+                now, includeCompleted = true, cursor = revisionCursor
+            ).stale)
         } finally {
             store.close()
             context.deleteDatabase(databaseName)

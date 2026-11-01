@@ -65,7 +65,7 @@ class GlassComposeTest {
         onOpenFormalEvent: (EventSearchHitV1) -> Unit,
         onCancelAiBatch: () -> Unit,
         onDeckChanged: () -> Unit,
-        formalSearch: (String) -> List<EventSearchHitV1>
+        formalSearch: suspend (String) -> List<EventSearchHitV1>
     ) {
         val api = remember(store, controller) {
             PowerCalCoreFeatureApiV1(store, deckController = controller)

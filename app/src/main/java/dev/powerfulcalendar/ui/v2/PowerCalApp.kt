@@ -84,9 +84,11 @@ import dev.powerfulcalendar.core.api.v1.EventEditorOpenResultV1
 import dev.powerfulcalendar.core.api.v1.EventEditorSnapshotV1
 import dev.powerfulcalendar.core.api.v1.EventKindV1
 import dev.powerfulcalendar.core.api.v1.EventFeatureApiV1
-import dev.powerfulcalendar.core.api.v1.EventQuerySnapshotV1
+import dev.powerfulcalendar.core.api.v1.EventQueryCursorV1
 import dev.powerfulcalendar.core.api.v1.EventMutationStatusV1
 import dev.powerfulcalendar.core.api.v1.MemoEntryV1
+import dev.powerfulcalendar.core.api.v1.MemoQueryCursorV1
+import dev.powerfulcalendar.core.api.v1.MemoQueryPageV1
 import dev.powerfulcalendar.core.api.v1.EventSelectionV1
 import dev.powerfulcalendar.core.api.v1.AiProposalApplyRequestV1
 import dev.powerfulcalendar.core.api.v1.AiEvidenceAnalysisStatusV1
@@ -99,6 +101,7 @@ import dev.powerfulcalendar.core.api.v1.AiConversationMutationStatusV1
 import dev.powerfulcalendar.core.api.v1.AiConversationRewindModeV1
 import dev.powerfulcalendar.core.api.v1.AiProposalDecisionV1
 import dev.powerfulcalendar.core.api.v1.CalendarWindowQueryV1
+import dev.powerfulcalendar.core.api.v1.CalendarWindowSnapshotV1
 import dev.powerfulcalendar.core.api.v1.ImportExportFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.AndroidAiModelPortV1
@@ -137,6 +140,9 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
 internal const val POWER_CAL_SKIN_PACKAGE_MIME = "application/vnd.powercal.skin+zip"
+private const val HOST_EVENT_PAGE_SIZE = 300
+private const val MAX_CACHED_CALENDAR_WINDOWS = 12
+private const val MAX_SNAPSHOT_LOAD_ATTEMPTS = 2
 
 internal suspend fun beginSystemCalendarBatchTracked(
     api: ImportExportFeatureApiV1,
@@ -197,13 +203,19 @@ internal class LifecycleCheckpointGate {
 }
 
 internal data class ReminderDisplay(val record: TemporalRecord, val status: ReminderEventSnapshotV1)
-internal data class UiDiagnostics(val nextSequence: Long = 1, val identities: Long = 0, val reminders: List<ReminderDisplay> = emptyList())
+internal data class UiDiagnostics(
+    val nextSequence: Long = 1,
+    val identities: Long = 0,
+    val reminders: List<ReminderDisplay> = emptyList(),
+    val recurrenceRecords: List<TemporalRecord> = emptyList()
+)
 
 private data class AppData(
     val records: List<TemporalRecord>,
-    val eventSnapshot: EventQuerySnapshotV1,
+    val totalEventCount: Int,
     val eventFeatureRevision: Long,
-    val todoEntries: List<MemoEntryV1>,
+    val memoPage: MemoQueryPageV1,
+    val calendarWindows: Map<CalendarWindowQueryV1, CalendarWindowSnapshotV1>,
     val pending: Int,
     val locked: Boolean,
     val session: dev.powerfulcalendar.core.api.v1.AiBatchSessionV1?,
@@ -255,14 +267,23 @@ fun PowerCalApp(
 
     var page by rememberSaveable { mutableStateOf(Page.TIMELINE.name) }
     var records by remember { mutableStateOf<List<TemporalRecord>>(emptyList()) }
-    var eventSnapshot by remember {
-        mutableStateOf(EventQuerySnapshotV1(featureRevision = 0L, events = emptyList()))
-    }
-    var eventSnapshotGeneration by remember { mutableLongStateOf(0L) }
+    var eventDataGeneration by remember { mutableLongStateOf(0L) }
     var eventFeatureRevision by remember { mutableLongStateOf(0L) }
     val latestEventFeatureRevision by rememberUpdatedState(eventFeatureRevision)
     var hostDataReady by remember(store) { mutableStateOf(false) }
     var todoEntries by remember(store) { mutableStateOf<List<MemoEntryV1>>(emptyList()) }
+    var memoTotalEntries by remember(store) { mutableIntStateOf(0) }
+    var memoOpenEntries by remember(store) { mutableIntStateOf(0) }
+    var memoQueryNowMillis by remember(store) { mutableLongStateOf(System.currentTimeMillis()) }
+    var memoNextCursor by remember(store) { mutableStateOf<MemoQueryCursorV1?>(null) }
+    var memoLoadingMore by remember { mutableStateOf(false) }
+    var totalEventCount by remember(store) { mutableIntStateOf(0) }
+    var calendarWindows by remember(store) {
+        mutableStateOf<Map<CalendarWindowQueryV1, CalendarWindowSnapshotV1>>(emptyMap())
+    }
+    var pendingCalendarQueries by remember(store) {
+        mutableStateOf<Set<CalendarWindowQueryV1>>(emptySet())
+    }
     var pendingCount by remember { mutableIntStateOf(0) }
     var aiLocked by remember { mutableStateOf(false) }
     var aiSession by remember {
@@ -303,7 +324,7 @@ fun PowerCalApp(
     var pendingWebAiProposalPublish by remember {
         mutableStateOf<WebAiProposalPublishReview?>(null)
     }
-    fun replaceAiProposalReview(
+    suspend fun replaceAiProposalReview(
         review: dev.powerfulcalendar.core.api.v1.AiProposalReviewV1?,
         knownRecords: List<TemporalRecord> = emptyList(),
         taskSnapshot: dev.powerfulcalendar.ai.AiConversationTaskSnapshot? = null
@@ -313,7 +334,13 @@ fun PowerCalApp(
             val revision = item.expectedRevision ?: return@mapNotNull null
             eventSeq to revision
         }.toMap()
-        val reviewRecords = knownRecords.filter { expected[it.eventSeq] == it.revision }
+        val knownBySeq = knownRecords.associateBy { it.eventSeq }
+        val missingTargets = expected.keys.filterNot(knownBySeq::containsKey)
+        val currentTargets = withContext(Dispatchers.IO) {
+            missingTargets.mapNotNull { seq -> eventFeatureApi.queryEvent(seq)?.toCoreTemporalRecord() }
+        }
+        val reviewRecords = (knownRecords + currentTargets)
+            .filter { expected[it.eventSeq] == it.revision }
         val interpretation = review?.toAiInterpretation(taskSnapshot)
         webAiProposalReviewSession = interpretation?.takeIf { it.proposals.isNotEmpty() }
             ?.let { WebAiProposalReviewSession.create(it, reviewRecords) }
@@ -431,39 +458,77 @@ fun PowerCalApp(
     val timelineCalendarQuery = remember(timelineQueryDay, zone.id) {
         timelineCalendarQueryFor(camera.anchorMillis)
     }
-    val timelineCalendarRecords = remember(eventSnapshotGeneration, timelineCalendarQuery) {
-        calendarFeatureApi.queryWindow(timelineCalendarQuery, eventSnapshot)
-            .events.map { it.toCoreTemporalRecord() }
+    val timelineCalendarRecords = remember(calendarWindows, eventDataGeneration, timelineCalendarQuery) {
+        calendarWindows[timelineCalendarQuery]?.events?.map { it.toCoreTemporalRecord() }
+            ?: emptyList()
     }
     val monthQueryView = monthViewState() ?: WebSkinMonthProjection.initial(anchorMillis, zone)
     val monthCalendarQuery = remember(monthQueryView.month, zone.id) {
         monthCalendarQueryFor(monthQueryView.month)
     }
-    val monthCalendarRecords = remember(eventSnapshotGeneration, monthCalendarQuery) {
-        calendarFeatureApi.queryWindow(monthCalendarQuery, eventSnapshot)
-            .events.map { it.toCoreTemporalRecord() }
+    val monthCalendarRecords = remember(calendarWindows, eventDataGeneration, monthCalendarQuery) {
+        calendarWindows[monthCalendarQuery]?.events?.map { it.toCoreTemporalRecord() }
+            ?: emptyList()
     }
     val nativeMonth = YearMonth.from(Instant.ofEpochMilli(anchorMillis).atZone(zone))
     val nativeMonthCalendarQuery = remember(nativeMonth, zone.id) {
         monthCalendarQueryFor(nativeMonth)
     }
-    val nativeMonthCalendarRecords = remember(eventSnapshotGeneration, nativeMonthCalendarQuery) {
-        calendarFeatureApi.queryWindow(nativeMonthCalendarQuery, eventSnapshot)
-            .events.map { it.toCoreTemporalRecord() }
+    val nativeMonthCalendarRecords = remember(calendarWindows, eventDataGeneration, nativeMonthCalendarQuery) {
+        calendarWindows[nativeMonthCalendarQuery]?.events?.map { it.toCoreTemporalRecord() }
+            ?: emptyList()
     }
-    val nativeMonthRecordsForMonth = remember(eventSnapshotGeneration, zone.id) {
+    val nativeMonthRecordsForMonth = remember(calendarWindows, eventDataGeneration, zone.id) {
         { requestedMonth: YearMonth ->
             val query = monthCalendarQueryFor(requestedMonth)
-            calendarFeatureApi.queryWindow(query, eventSnapshot)
-                .events.map { it.toCoreTemporalRecord() }
+            calendarWindows[query]?.events?.map { it.toCoreTemporalRecord() }
+                ?: emptyList()
         }
     }
     val todayKey = Instant.ofEpochMilli(nowMillis).atZone(zone).toLocalDate()
-    val todoCount = todoEntries.count { !it.completed }
+    val todoCount = memoOpenEntries
     val memoEntriesByKey = remember(todoEntries) { todoEntries.associateBy { it.rowKey } }
     var memoVisibleLimit by rememberSaveable { mutableIntStateOf(MemoProjectionPaging.PAGE_SIZE) }
     val memoVisibleCount = MemoProjectionPaging.visibleCount(todoEntries.size, memoVisibleLimit)
-    val memoRemainingCount = (todoEntries.size - memoVisibleCount).coerceAtLeast(0)
+    val memoRemainingCount = (memoTotalEntries - memoVisibleCount).coerceAtLeast(0)
+    fun requestCalendarWindow(query: CalendarWindowQueryV1) {
+        if (calendarWindows[query]?.featureRevision == eventFeatureRevision ||
+            query in pendingCalendarQueries
+        ) return
+        pendingCalendarQueries = pendingCalendarQueries + query
+        scope.launch {
+            val result = withContext(Dispatchers.IO) { calendarFeatureApi.queryWindow(query) }
+            pendingCalendarQueries = pendingCalendarQueries - query
+            if (!result.stale && result.featureRevision == latestEventFeatureRevision) {
+                val updated = LinkedHashMap(calendarWindows)
+                updated.remove(query)
+                updated[query] = result
+                while (updated.size > MAX_CACHED_CALENDAR_WINDOWS) {
+                    updated.remove(updated.keys.first())
+                }
+                calendarWindows = updated
+                WebSkinBridgeRuntime.stateRevision++
+            }
+        }
+    }
+
+    LaunchedEffect(
+        hostDataReady,
+        timelineCalendarQuery,
+        monthCalendarQuery,
+        nativeMonthCalendarQuery,
+        eventFeatureRevision,
+        eventDataGeneration,
+        pendingCalendarQueries
+    ) {
+        if (!hostDataReady) return@LaunchedEffect
+        listOf(
+            timelineCalendarQuery, monthCalendarQuery, nativeMonthCalendarQuery
+        ).distinct().filter { query ->
+            calendarWindows[query]?.featureRevision != eventFeatureRevision &&
+                query !in pendingCalendarQueries
+        }.forEach(::requestCalendarWindow)
+    }
     val preferences = remember(appContext) {
         appContext.getSharedPreferences("powercal-ui", Context.MODE_PRIVATE)
     }
@@ -472,42 +537,124 @@ fun PowerCalApp(
     suspend fun reload() {
         val projectionNowMillis = nowMillis
         val data = withContext(Dispatchers.IO) {
-            val pending = store.pendingDrafts()
-            val eventSnapshot = eventFeatureApi.queryEvents()
-            val batchState = aiFeatureApi.queryBatchState()
-            val formal = eventSnapshot.events.map { it.toCoreTemporalRecord() }
-            AppData(
-                records = formal,
-                eventSnapshot = eventSnapshot,
-                eventFeatureRevision = eventSnapshot.featureRevision,
-                todoEntries = memoFeatureApi.queryEntries(
-                    eventSnapshot, projectionNowMillis, includeCompleted = true
-                ).entries,
-                pending = pending.size,
-                locked = batchState.locked,
-                session = batchState.session,
-                cards = pending,
-                diagnostics = UiDiagnostics(
-                    store.nextSequencePreview(),
-                    store.identityCount(),
-                    formal.filter { it.enabled && it.reminderMinutes >= 0 }.take(40).map {
-                        ReminderDisplay(it, reminderFeatureApi.queryEvent(it.eventSeq))
-                    }
+            var loaded: AppData? = null
+            repeat(MAX_SNAPSHOT_LOAD_ATTEMPTS) {
+                if (loaded != null) return@repeat
+                val pending = store.pendingDrafts()
+                val eventPage = eventFeatureApi.queryEventsPage(limit = HOST_EVENT_PAGE_SIZE)
+                val memoPage = memoFeatureApi.queryEntriesPage(
+                    nowMillis = projectionNowMillis,
+                    includeCompleted = true
                 )
-            )
+                val requestedWindows = listOf(
+                    timelineCalendarQuery, monthCalendarQuery, nativeMonthCalendarQuery
+                ).distinct()
+                val windows = requestedWindows.associateWith(calendarFeatureApi::queryWindow)
+                val revision = eventPage.featureRevision
+                if (eventPage.stale || memoPage.stale || memoPage.featureRevision != revision ||
+                    windows.values.any { it.stale || it.featureRevision != revision }
+                ) return@repeat
+                val formalPage = eventPage.events.map { it.toCoreTemporalRecord() }
+                val reminderRows = ArrayList<ReminderDisplay>(40)
+                val recurrenceRows = ArrayList<TemporalRecord>(3)
+                fun collectSettingsRows(events: List<dev.powerfulcalendar.core.api.v1.EventRecordV1>) {
+                    events.forEach { event ->
+                        val record = event.toCoreTemporalRecord()
+                        if (recurrenceRows.size < 3 && record.recurrence.isRepeating) {
+                            recurrenceRows += record
+                        }
+                        if (reminderRows.size < 40 && record.enabled && record.reminderMinutes >= 0) {
+                            reminderRows += ReminderDisplay(
+                                record, reminderFeatureApi.queryEvent(record.eventSeq)
+                            )
+                        }
+                    }
+                }
+                collectSettingsRows(eventPage.events)
+                var diagnosticsCursor: EventQueryCursorV1? = eventPage.nextCursor
+                var diagnosticsFresh = true
+                while ((reminderRows.size < 40 || recurrenceRows.size < 3) && diagnosticsCursor != null) {
+                    val diagnosticsPage = eventFeatureApi.queryEventsPage(
+                        diagnosticsCursor, limit = HOST_EVENT_PAGE_SIZE
+                    )
+                    if (diagnosticsPage.stale || diagnosticsPage.featureRevision != revision) {
+                        diagnosticsFresh = false
+                        break
+                    }
+                    collectSettingsRows(diagnosticsPage.events)
+                    diagnosticsCursor = diagnosticsPage.nextCursor
+                }
+                if (!diagnosticsFresh || eventFeatureApi.featureRevision != revision) return@repeat
+                val batchState = aiFeatureApi.queryBatchState()
+                loaded = AppData(
+                    records = formalPage,
+                    totalEventCount = eventPage.totalEvents,
+                    eventFeatureRevision = revision,
+                    memoPage = memoPage,
+                    calendarWindows = windows,
+                    pending = pending.size,
+                    locked = batchState.locked,
+                    session = batchState.session,
+                    cards = pending,
+                    diagnostics = UiDiagnostics(
+                        nextSequence = store.nextSequencePreview(),
+                        identities = store.identityCount(),
+                        reminders = reminderRows,
+                        recurrenceRecords = recurrenceRows
+                    )
+                )
+            }
+            requireNotNull(loaded) { "日历在刷新期间持续变化，请稍后重试" }
         }
-        withContext(Dispatchers.Main) {
-            records = data.records
-            eventSnapshot = data.eventSnapshot
-            eventSnapshotGeneration += 1L
-            eventFeatureRevision = data.eventFeatureRevision
-            todoEntries = data.todoEntries
-            hostDataReady = true
-            pendingCount = data.pending
-            aiLocked = data.locked
-            aiSession = data.session
-            pendingCards = data.cards
-            diagnostics = data.diagnostics
+        // withContext(IO) resumes on the caller's UI dispatcher; publish there directly instead
+        // of queueing a second Main dispatch that can stall under Compose's test dispatcher.
+        if (data.eventFeatureRevision != eventFeatureApi.featureRevision) return
+        records = data.records
+        totalEventCount = data.totalEventCount
+        eventDataGeneration += 1L
+        eventFeatureRevision = data.eventFeatureRevision
+        todoEntries = data.memoPage.entries
+        memoTotalEntries = data.memoPage.totalEntries
+        memoOpenEntries = data.memoPage.openEntries
+        memoQueryNowMillis = data.memoPage.nowMillis
+        memoNextCursor = data.memoPage.nextCursor
+        memoLoadingMore = false
+        calendarWindows = data.calendarWindows
+        hostDataReady = true
+        pendingCount = data.pending
+        aiLocked = data.locked
+        aiSession = data.session
+        pendingCards = data.cards
+        diagnostics = data.diagnostics
+        WebSkinBridgeRuntime.stateRevision++
+    }
+
+    fun loadMoreMemoEntries() {
+        val cursor = memoNextCursor ?: return
+        if (memoLoadingMore) return
+        memoLoadingMore = true
+        scope.launch {
+            val nextPage = withContext(Dispatchers.IO) {
+                memoFeatureApi.queryEntriesPage(
+                    nowMillis = memoQueryNowMillis,
+                    includeCompleted = true,
+                    cursor = cursor
+                )
+            }
+            if (nextPage.stale || nextPage.featureRevision != latestEventFeatureRevision) {
+                memoLoadingMore = false
+                runCatching { reload() }
+                    .onFailure { message = "待办列表已变化，刷新失败；请重新打开查看" }
+                return@launch
+            }
+            todoEntries = todoEntries + nextPage.entries
+            memoTotalEntries = nextPage.totalEntries
+            memoOpenEntries = nextPage.openEntries
+            memoNextCursor = nextPage.nextCursor
+            memoVisibleLimit = MemoProjectionPaging.nextLimit(
+                memoVisibleLimit, nextPage.totalEntries
+            )
+            memoLoadingMore = false
             WebSkinBridgeRuntime.stateRevision++
         }
     }
@@ -798,11 +945,16 @@ fun PowerCalApp(
 
     LaunchedEffect(todayKey, hostDataReady) {
         if (hostDataReady) {
-            val refreshed = memoFeatureApi.queryEntries(
-                eventSnapshot, nowMillis, includeCompleted = true
-            ).entries
-            if (refreshed != todoEntries) {
-                todoEntries = refreshed
+            val refreshed = withContext(Dispatchers.IO) {
+                memoFeatureApi.queryEntriesPage(nowMillis, includeCompleted = true)
+            }
+            if (!refreshed.stale && refreshed.featureRevision == eventFeatureRevision) {
+                todoEntries = refreshed.entries
+                memoTotalEntries = refreshed.totalEntries
+                memoOpenEntries = refreshed.openEntries
+                memoQueryNowMillis = refreshed.nowMillis
+                memoNextCursor = refreshed.nextCursor
+                memoLoadingMore = false
                 WebSkinBridgeRuntime.stateRevision++
             }
         }
@@ -1744,7 +1896,7 @@ fun PowerCalApp(
             val moveContext = if (page == Page.TIMELINE.name &&
                 command is WebEditCommand.MoveTimelineEvent) {
                 val projectedItems = WebSkinTimelineProjection.build(
-                    records, activeCamera, nowMillis, zone
+                    timelineCalendarRecords, activeCamera, nowMillis, zone
                 ).getJSONArray("items")
                 val visibleRevisions = linkedMapOf<Long, Long>()
                 for (index in 0 until projectedItems.length()) {
@@ -1970,11 +2122,7 @@ fun PowerCalApp(
                     openNewEvent(TemporalKind.MEMO)
                 }
                 WebSkinAction.LoadMoreMemo -> if (page == Page.MEMO.name) {
-                    val next = MemoProjectionPaging.nextLimit(memoVisibleLimit, todoEntries.size)
-                    if (next != memoVisibleLimit) {
-                        memoVisibleLimit = next
-                        WebSkinBridgeRuntime.stateRevision++
-                    }
+                    loadMoreMemoEntries()
                 }
                 is WebSkinAction.ToggleMemo -> if (!aiLocked && editSession == null) {
                     scope.launch {
@@ -2089,8 +2237,8 @@ fun PowerCalApp(
             val stateTimelineRecords = if (stateTimelineQuery == timelineCalendarQuery) {
                 timelineCalendarRecords
             } else {
-                calendarFeatureApi.queryWindow(stateTimelineQuery, eventSnapshot)
-                    .events.map { it.toCoreTemporalRecord() }
+                calendarWindows[stateTimelineQuery]?.events?.map { it.toCoreTemporalRecord() }
+                    ?: timelineCalendarRecords
             }
             val stateMonthView = monthViewState() ?:
                 WebSkinMonthProjection.initial(anchorMillis, zone)
@@ -2098,8 +2246,8 @@ fun PowerCalApp(
             val stateMonthRecords = if (stateMonthQuery == monthCalendarQuery) {
                 monthCalendarRecords
             } else {
-                calendarFeatureApi.queryWindow(stateMonthQuery, eventSnapshot)
-                    .events.map { it.toCoreTemporalRecord() }
+                calendarWindows[stateMonthQuery]?.events?.map { it.toCoreTemporalRecord() }
+                    ?: monthCalendarRecords
             }
             val reminderPermissions = reminderFeatureApi.queryPermissions()
             val notificationStatus = notificationPermissionStatus(
@@ -2111,11 +2259,11 @@ fun PowerCalApp(
                 reminderPermissions.exactAlarm.allowed == true
             )
             val stateTodoEntries = todoEntries
-            val stateTodoCount = stateTodoEntries.count { !it.completed }
+            val stateTodoCount = memoOpenEntries
             val stateMemoVisibleCount = MemoProjectionPaging.visibleCount(
                 stateTodoEntries.size, memoVisibleLimit
             )
-            val stateMemoRemainingCount = (stateTodoEntries.size - stateMemoVisibleCount).coerceAtLeast(0)
+            val stateMemoRemainingCount = (memoTotalEntries - stateMemoVisibleCount).coerceAtLeast(0)
             JSONObject().put("bridgeVersion", WebSkinBridgeRuntime.VERSION).put("page", page)
                 .put("hostNotice", message?.take(1_000) ?: JSONObject.NULL)
                 .put("hostDataReady", hostDataReady)
@@ -2166,7 +2314,8 @@ fun PowerCalApp(
                 } else org.json.JSONArray())
                 .put("systemDiagnostics", if (page == Page.SETTINGS.name) {
                     WebSkinSystemDiagnosticsProjection.build(
-                        records, diagnostics.nextSequence, diagnostics.identities, effects, nowMillis, zone
+                        records, diagnostics.nextSequence, diagnostics.identities, effects, nowMillis, zone,
+                        totalEventCount, diagnostics.recurrenceRecords
                     )
                 } else JSONObject())
                 .put("editing", webEditing.snapshot())
@@ -2355,7 +2504,9 @@ fun PowerCalApp(
                 onReleaseStuck = {
                     requestStuckBatchRelease()
                 },
-                settingsDataApi = coreFeatureApi.settingsData
+                settingsDataApi = coreFeatureApi.settingsData,
+                formalEventCount = totalEventCount,
+                recurrenceRecords = diagnostics.recurrenceRecords
             )
         } else if (presentedPage == Page.AI.name) {
             AiChatScreen(
@@ -2466,7 +2617,10 @@ fun PowerCalApp(
             )
         } else if (presentedPage == Page.MEMO.name) {
             MemoCenterScreen(
-                items = todoEntries, zone = zone, busy = aiLocked,
+                items = todoEntries.take(memoVisibleCount), zone = zone, busy = aiLocked,
+                hasMore = memoRemainingCount > 0,
+                loadingMore = memoLoadingMore,
+                onLoadMore = ::loadMoreMemoEntries,
                 onBack = { page = Page.TIMELINE.name },
                 onCreateMemo = {
                     openNewEvent(TemporalKind.MEMO)
@@ -2492,10 +2646,12 @@ fun PowerCalApp(
                     }
                 } },
                 onOpen = { rowKey -> memoEntriesByKey[rowKey]?.let { entry ->
-                    val record = records.firstOrNull {
-                        it.eventSeq == entry.eventSeq && it.revision == entry.revision
-                    }
-                    if (aiLocked) record?.let { monthInspection = it } else scope.launch {
+                    if (aiLocked) scope.launch {
+                        val record = withContext(Dispatchers.IO) {
+                            eventFeatureApi.queryEvent(entry.eventSeq)?.toCoreTemporalRecord()
+                        }
+                        if (record?.revision == entry.revision) monthInspection = record
+                    } else scope.launch {
                         openFormalEditorByIdentity(
                             entry.eventSeq,
                             entry.revision,
@@ -2510,10 +2666,11 @@ fun PowerCalApp(
                 onBack = { page = Page.TIMELINE.name },
                 onDate = { date -> anchorMillis = date.atTime(12, 0).atZone(zone).toInstant().toEpochMilli(); page = Page.TIMELINE.name },
                 onOpen = { eventSeq, expectedRevision, occurrenceKey ->
-                    if (aiLocked) {
-                        records.firstOrNull {
-                            it.eventSeq == eventSeq && it.revision == expectedRevision
-                        }?.let { monthInspection = it }
+                    if (aiLocked) scope.launch {
+                        val record = withContext(Dispatchers.IO) {
+                            eventFeatureApi.queryEvent(eventSeq)?.toCoreTemporalRecord()
+                        }
+                        if (record?.revision == expectedRevision) monthInspection = record
                     } else scope.launch {
                         openFormalEditorByIdentity(eventSeq, expectedRevision, occurrenceKey)
                     }
@@ -2521,7 +2678,10 @@ fun PowerCalApp(
                 onCreate = { date ->
                     openNewEvent(TemporalKind.ACTIVITY, EditorSelection.OnDate(date))
                 },
-                recordsForMonth = nativeMonthRecordsForMonth)
+                recordsForMonth = nativeMonthRecordsForMonth,
+                onRequestMonth = { requested ->
+                    requestCalendarWindow(monthCalendarQueryFor(requested))
+                })
         } else {
             SkinnableTimelineScreen(
                 records = timelineCalendarRecords,
@@ -2852,7 +3012,7 @@ fun PowerCalApp(
                 }
             },
             formalSearch = { query ->
-                eventFeatureApi.searchEvents(query, eventSnapshot).hits
+                withContext(Dispatchers.IO) { eventFeatureApi.searchEvents(query).hits }
             },
             initialEditorOpen = deckInitialId != null
         )

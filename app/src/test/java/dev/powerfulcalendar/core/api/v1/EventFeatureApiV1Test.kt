@@ -5,6 +5,7 @@ import androidx.test.core.app.ApplicationProvider
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.RecurrenceEngine
+import dev.powerfulcalendar.core.TemporalKind
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -19,6 +20,7 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.ZoneOffset
 import java.util.UUID
+import kotlinx.coroutines.runBlocking
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -271,6 +273,61 @@ class EventFeatureApiV1Test {
         assertEquals(listOf(1L), api.searchEvents("#0001", snapshot).hits.map { it.eventSeq })
         assertTrue(api.searchEvents(" \t", snapshot).hits.isEmpty())
         assertEquals(snapshot.featureRevision, titleMatches.featureRevision)
+    }
+
+    @Test
+    fun storeBackedPagesKeepAxisOrderAndRejectCursorsFromOtherRevisionsOrInstances() = runBlocking {
+        val startsAndEnds = listOf(
+            "09:00" to "10:00", "09:00" to "10:00",
+            "08:00" to "09:00", "10:00" to "11:00"
+        )
+        startsAndEnds.forEachIndexed { index, (start, end) ->
+            val draft = store.newDraft(DraftForm(
+                kind = TemporalKind.ACTIVITY,
+                title = "Axis result ${index + 1}",
+                startText = "2026-10-26 $start",
+                endText = "2026-10-26 $end",
+                zoneId = zone.id
+            ))
+            assertTrue(store.commit(draft.draftId, actor = "paging-test") is PowerStore.CommitOutcome.Committed)
+        }
+        val undated = store.newDraft(DraftForm(
+            kind = TemporalKind.MEMO, title = "Axis undated", zoneId = zone.id
+        ))
+        assertTrue(store.commit(undated.draftId, actor = "paging-test") is PowerStore.CommitOutcome.Committed)
+
+        val expected = api.queryEvents()
+        assertEquals(listOf(3L, 1L, 2L, 4L, 5L), expected.events.map { it.eventSeq })
+        val pages = mutableListOf<EventRecordV1>()
+        var cursor: EventQueryCursorV1? = null
+        var firstCursor: EventQueryCursorV1? = null
+        while (true) {
+            val page = api.queryEventsPage(cursor, limit = 2)
+            assertFalse(page.stale)
+            assertEquals(expected.featureRevision, page.featureRevision)
+            assertEquals(expected.events.size, page.totalEvents)
+            assertTrue(page.events.size <= 2)
+            pages += page.events
+            cursor = page.nextCursor ?: break
+            if (firstCursor == null) firstCursor = cursor
+        }
+        assertEquals(expected.events, pages)
+
+        val otherInstance = PowerCalCoreFeatureApiV1(store).events
+        assertTrue(otherInstance.queryEventsPage(firstCursor, limit = 2).stale)
+
+        val created = openNewEvent(EventKindV1.ACTIVITY)
+        assertEquals(
+            EventMutationStatusV1.CREATED,
+            api.saveNewEvent(created.handle, created.form.copy(title = "Axis later"), "paging-mutation").status
+        )
+        assertTrue(api.queryEventsPage(firstCursor, limit = 2).stale)
+
+        val current = api.queryEvents()
+        assertEquals(
+            api.searchEvents("Axis", current).hits,
+            api.searchEvents("Axis").hits
+        )
     }
 
     @Test

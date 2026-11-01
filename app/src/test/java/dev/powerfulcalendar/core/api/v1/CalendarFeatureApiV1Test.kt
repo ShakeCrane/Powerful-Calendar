@@ -92,14 +92,13 @@ class CalendarFeatureApiV1Test {
         )
 
         val source = core.events.queryEvents()
-        val result = core.calendar.queryWindow(
-            CalendarWindowQueryV1(
-                fromMillis = instant("2026-10-26T09:00:00Z"),
-                toMillis = instant("2026-10-26T10:00:00Z"),
-                zoneId = utc.id
-            ),
-            source
+        val query = CalendarWindowQueryV1(
+            fromMillis = instant("2026-10-26T09:00:00Z"),
+            toMillis = instant("2026-10-26T10:00:00Z"),
+            zoneId = utc.id
         )
+        val result = core.calendar.queryWindow(query, source)
+        assertEquals(result, core.calendar.queryWindow(query))
 
         assertEquals(1, core.calendar.apiVersion)
         assertEquals(source.featureRevision, result.featureRevision)
@@ -143,6 +142,7 @@ class CalendarFeatureApiV1Test {
             source
         )
 
+        assertEquals(result, core.calendar.queryWindow(result.query))
         assertEquals(setOf(deadline, memo), result.events.map { it.eventSeq }.toSet())
         assertFalse(result.events.any { it.title == "Undated memo" })
     }
@@ -186,17 +186,16 @@ class CalendarFeatureApiV1Test {
         )
         val source = core.events.queryEvents()
 
-        val result = core.calendar.queryEvents(
-            CalendarEventQueryV1(
-                zoneId = "Asia/Shanghai",
-                fromDate = "2026-10-27",
-                throughDate = "2026-10-27",
-                titleQuery = "weekly sync",
-                kind = EventKindV1.ACTIVITY,
-                maxResults = 10
-            ),
-            source
+        val query = CalendarEventQueryV1(
+            zoneId = "Asia/Shanghai",
+            fromDate = "2026-10-27",
+            throughDate = "2026-10-27",
+            titleQuery = "weekly sync",
+            kind = EventKindV1.ACTIVITY,
+            maxResults = 10
         )
+        val result = core.calendar.queryEvents(query, source)
+        assertEquals(result, core.calendar.queryEvents(query))
 
         val hit = result.results.single()
         assertEquals(source.featureRevision, result.featureRevision)

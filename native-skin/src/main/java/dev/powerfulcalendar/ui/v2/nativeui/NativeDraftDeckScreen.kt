@@ -152,10 +152,15 @@ private fun NativeDraftDeckContent() {
     var query by rememberSaveable { mutableStateOf("") }
     var expanded by rememberSaveable { mutableStateOf(context.initialEditorOpen) }
     var typeMenu by remember { mutableStateOf(false) }
+    var searchResults by remember { mutableStateOf(emptyList<NativeDeckSearchHit>()) }
+    val searchAction = rememberUpdatedState(actions.onSearch)
 
     LaunchedEffect(state.currentKey, context.initialEditorOpen) {
         expanded = context.initialEditorOpen
         typeMenu = false
+    }
+    LaunchedEffect(query, state.cards) {
+        searchResults = if (query.isBlank()) emptyList() else searchAction.value(query)
     }
 
     appearance.window(actions.onDismiss) {
@@ -197,10 +202,7 @@ private fun NativeDraftDeckContent() {
                             AiProgressBanner(aiSession, actions.onCancelAiBatch)
                         }
                         if (!short && state.completion == null) {
-                            val results = remember(query, state.cards) {
-                                if (query.isBlank()) emptyList() else actions.onSearch(query)
-                            }
-                            DeckSearch(query, { query = it }, results) { hit ->
+                            DeckSearch(query, { query = it }, searchResults) { hit ->
                                 if (hit.formal) {
                                     actions.onOpenFormalEvent(hit.rowKey)
                                     query = ""

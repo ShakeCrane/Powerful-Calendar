@@ -179,6 +179,23 @@ data class EventQuerySnapshotV1(
     val events: List<EventRecordV1>
 )
 
+/** Opaque continuation within one Event API instance and feature revision. */
+data class EventQueryCursorV1(
+    val featureRevision: Long,
+    val afterAnchorMillis: Long?,
+    val afterEventSeq: Long,
+    val serviceInstanceId: String
+)
+
+/** Bounded, axis-ordered page of active formal event DTOs. */
+data class EventQueryPageV1(
+    val featureRevision: Long,
+    val events: List<EventRecordV1>,
+    val totalEvents: Int,
+    val nextCursor: EventQueryCursorV1? = null,
+    val stale: Boolean = false
+)
+
 /** Minimal formal-event match projection; search consumers do not receive Core entities. */
 data class EventSearchHitV1(
     val eventSeq: Long,
@@ -209,10 +226,17 @@ interface EventFeatureApiV1 {
     val featureRevision: Long
 
     fun queryEvents(): EventQuerySnapshotV1
+    /** Returns at most [limit] events in the same axis-anchor order as `queryEvents()`. */
+    fun queryEventsPage(
+        cursor: EventQueryCursorV1? = null,
+        limit: Int = 100
+    ): EventQueryPageV1
     /** Reads one current formal event as a detached DTO; missing and retired identities return null. */
     fun queryEvent(eventSeq: Long): EventRecordV1?
     /** Searches an API snapshot without doing synchronous Store I/O; results keep its revision. */
     fun searchEvents(query: String, snapshot: EventQuerySnapshotV1): EventSearchSnapshotV1
+    /** Store-backed search; call from an I/O coroutine. Preserves the axis order and eight-hit cap. */
+    suspend fun searchEvents(query: String): EventSearchSnapshotV1
     /** Explicitly set an occurrence's completion state against its observed revision and state. */
     fun setOccurrenceCompletion(
         eventSeq: Long,
