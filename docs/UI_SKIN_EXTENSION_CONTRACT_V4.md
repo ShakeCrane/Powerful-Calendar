@@ -294,6 +294,17 @@ time ordering, summaries, and 70-row display cap. This Compose adapter does not 
 `NativeMonthScreen`'s separate Native Presentation Contract, enable a skin, or establish
 Native/Skin or device parity. See the [MonthVisualContext DTO Issue](issues/PC-ISSUE-CORE-MONTH-VISUAL-CONTEXT-DTO-V1.md).
 
+### Compiled Timeline renderer DTO boundary (2026-11-02)
+
+`TimelineSkinContext.records` exposes versioned `EventRecordV1` values. Its camera and camera
+callback use `NativeTimelineCamera` from the Native Presentation Contract; open and move
+callbacks carry event identity and revision, open also accepts the optional occurrence key,
+and create carries `EventKindV1`. The Host adapter resolves identities against the current input
+records before invoking existing Host callbacks. `Native()` keeps Core records and the Core camera
+private, preserving the existing recurrence projection, original-slot routing, and true-time
+coordinate mapping. This Compose context is a presentation adapter, not part of Core Feature API.
+See the [TimelineSkinContext DTO Issue](issues/PC-ISSUE-CORE-TIMELINE-SKIN-CONTEXT-DTO-V1.md).
+
 ### Native Chrome display boundary (2026-10-30)
 
 `ChromeVisualContext` and `ChromeVisualRenderer` are provided with `:native-skin`; the Host
