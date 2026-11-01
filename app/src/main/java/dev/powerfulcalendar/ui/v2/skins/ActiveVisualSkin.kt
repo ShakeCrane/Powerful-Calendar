@@ -12,8 +12,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import dev.powerfulcalendar.core.TemporalKind
-import dev.powerfulcalendar.core.TemporalText
+import dev.powerfulcalendar.core.api.v1.EventKindV1
 import dev.powerfulcalendar.ui.v2.NativeSkinHostRegistration
 
 /**
@@ -98,18 +97,23 @@ private class StudioExampleTimeline : CompiledTimelineSkin {
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Button(enabled = !context.aiLocked,
-                        onClick = { context.onCreate(TemporalKind.ACTIVITY, context.nowMillis) }) { Text("新建") }
+                        onClick = { context.onCreate(EventKindV1.ACTIVITY, context.nowMillis) }) { Text("新建") }
                     TextButton(onClick = { native = true }) { Text("精确时间轴及手势") }
                 }
                 LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(context.records.sortedBy { it.anchorMillis(context.zone) ?: Long.MAX_VALUE },
-                        key = { it.eventSeq }) { record ->
-                        Surface(onClick = { context.onOpenEvent(record, null) },
+                    val rows = projectRuntimeSkinEventRows(
+                        context.records, context.zone, maxRows = context.records.size
+                    )
+                    items(rows, key = { it.event.eventSeq }) { row ->
+                        val record = row.event
+                        Surface(onClick = {
+                            context.onOpenEvent(record.eventSeq, record.revision, null)
+                        },
                             shape = RoundedCornerShape(18.dp),
                             color = MaterialTheme.colorScheme.surfaceContainerLow) {
                             Column(Modifier.fillMaxWidth().padding(12.dp)) {
-                                Text(record.kind.label + " · " + record.title)
-                                Text(TemporalText.summarize(record),
+                                Text(record.kind.runtimeSkinLabel() + " · " + record.title)
+                                Text(row.summary,
                                     style = MaterialTheme.typography.bodySmall)
                             }
                         }

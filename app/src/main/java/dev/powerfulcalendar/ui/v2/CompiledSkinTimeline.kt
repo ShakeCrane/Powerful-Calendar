@@ -9,9 +9,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
+import dev.powerfulcalendar.core.api.v1.EventKindV1
+import dev.powerfulcalendar.core.api.v1.EventRecordV1
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.TimelineCoordinate
+import dev.powerfulcalendar.core.api.v1.toEventRecordV1
 import java.time.ZoneId
 
 /**
@@ -21,12 +24,18 @@ import java.time.ZoneId
  * replace the entire page's Compose structure, but cannot bypass store/draft authorization by
  * using this interface. A renderer is trusted application source, not untrusted user ZIP code.
  *
- * This first real adapter is TIMELINE only. Other pages still use the native screen until
- * their presentation contracts are lifted out of PowerCalApp.
+ * Event data use versioned Core DTOs and identity-only callbacks. The camera is a separate
+ * Native presentation DTO; Core records stay private to this adapter for the Native fallback.
+ *
+ * This adapter owns the compiled TIMELINE context; Month has its separate renderer context.
+ * Remaining pages continue to use Native until their presentation contracts are lifted out of
+ * PowerCalApp.
  */
-data class TimelineSkinContext(
-    val records: List<TemporalRecord>,
-    val camera: TimelineCoordinate.Camera,
+class TimelineSkinContext internal constructor(
+    private val nativeRecords: List<TemporalRecord>,
+    private val nativeCamera: TimelineCoordinate.Camera,
+    val records: List<EventRecordV1>,
+    val camera: NativeTimelineCamera,
     val nowMillis: Long,
     val zone: ZoneId,
     val pendingCount: Int,
@@ -35,10 +44,10 @@ data class TimelineSkinContext(
     val titlesOutside: Boolean,
     val blockedReminders: Int,
     val modifier: Modifier,
-    val onCameraChange: (TimelineCoordinate.Camera) -> Unit,
-    val onOpenEvent: (TemporalRecord, String?) -> Unit,
-    val onMoveEvent: (TemporalRecord, Long) -> Unit,
-    val onCreate: (TemporalKind, Long) -> Unit,
+    val onCameraChange: (NativeTimelineCamera) -> Unit,
+    val onOpenEvent: (Long, Long, String?) -> Unit,
+    val onMoveEvent: (Long, Long, Long) -> Unit,
+    val onCreate: (EventKindV1, Long) -> Unit,
     val onToday: () -> Unit,
     val onOpenDeck: () -> Unit,
     val onOpenTools: () -> Unit,
@@ -52,17 +61,23 @@ data class TimelineSkinContext(
      */
     @Composable
     fun Native() = TimelineScreen(
-        records = records,
-        camera = camera,
+        records = nativeRecords,
+        camera = nativeCamera,
         nowMillis = nowMillis,
         zone = zone,
         pendingCount = pendingCount,
         aiLocked = aiLocked,
-        onCameraChange = onCameraChange,
-        onOpenEvent = { record -> onOpenEvent(record, null) },
-        onOpenOccurrence = onOpenEvent,
-        onMoveEvent = onMoveEvent,
-        onCreate = onCreate,
+        onCameraChange = { updated ->
+            onCameraChange(NativeTimelineCamera(updated.anchorMillis, updated.hours))
+        },
+        onOpenEvent = { record -> onOpenEvent(record.eventSeq, record.revision, null) },
+        onOpenOccurrence = { record, key ->
+            onOpenEvent(record.eventSeq, record.revision, key)
+        },
+        onMoveEvent = { record, targetMillis ->
+            onMoveEvent(record.eventSeq, record.revision, targetMillis)
+        },
+        onCreate = { kind, atMillis -> onCreate(EventKindV1.valueOf(kind.name), atMillis) },
         onToday = onToday,
         onOpenDeck = onOpenDeck,
         onOpenTools = onOpenTools,
@@ -133,11 +148,36 @@ fun SkinnableTimelineScreen(
     onOpenOccurrence: (TemporalRecord, String?) -> Unit = { record, _ -> onOpenEvent(record) }
 ) {
     val context = TimelineSkinContext(
-        records, camera, nowMillis, zone, pendingCount, aiLocked, memoCount,
-        titlesOutside, blockedReminders, modifier, onCameraChange,
-        { record, key -> onOpenOccurrence(record, key) },
-        onMoveEvent, onCreate, onToday, onOpenDeck, onOpenTools, onOpenMonth,
-        onOpenMemo, onTitlesOutsideChange
+        nativeRecords = records,
+        nativeCamera = camera,
+        records = records.map(TemporalRecord::toEventRecordV1),
+        camera = NativeTimelineCamera(camera.anchorMillis, camera.hours),
+        nowMillis = nowMillis,
+        zone = zone,
+        pendingCount = pendingCount,
+        aiLocked = aiLocked,
+        memoCount = memoCount,
+        titlesOutside = titlesOutside,
+        blockedReminders = blockedReminders,
+        modifier = modifier,
+        onCameraChange = { updated ->
+            onCameraChange(TimelineCoordinate.Camera(updated.anchorMillis, updated.hours))
+        },
+        onOpenEvent = { eventSeq, revision, occurrenceKey ->
+            records.firstOrNull { it.eventSeq == eventSeq && it.revision == revision }
+                ?.let { onOpenOccurrence(it, occurrenceKey) }
+        },
+        onMoveEvent = { eventSeq, revision, targetMillis ->
+            records.firstOrNull { it.eventSeq == eventSeq && it.revision == revision }
+                ?.let { onMoveEvent(it, targetMillis) }
+        },
+        onCreate = { kind, atMillis -> onCreate(TemporalKind.valueOf(kind.name), atMillis) },
+        onToday = onToday,
+        onOpenDeck = onOpenDeck,
+        onOpenTools = onOpenTools,
+        onOpenMonth = onOpenMonth,
+        onOpenMemo = onOpenMemo,
+        onTitlesOutsideChange = onTitlesOutsideChange
     )
     val renderer = CompiledSkinRuntime.timeline
     if (RuntimeSkinSurfaces.enabled("timeline")) RuntimeSkinSurfaces.timeline(context)

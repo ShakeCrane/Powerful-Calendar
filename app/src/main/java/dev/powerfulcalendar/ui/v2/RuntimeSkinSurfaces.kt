@@ -14,8 +14,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import dev.powerfulcalendar.core.TemporalKind
-import dev.powerfulcalendar.core.TemporalText
+import dev.powerfulcalendar.core.api.v1.EventKindV1
 import dev.powerfulcalendar.core.api.v1.EventRecordV1
 import dev.powerfulcalendar.core.api.v1.AiConversationRoleV1
 import java.time.LocalDate
@@ -32,15 +31,15 @@ internal object RuntimeSkinSurfaces {
                 "today" to context.onToday, "memo" to context.onOpenMemo,
                 "month" to context.onOpenMonth, "deck" to context.onOpenDeck,
                 "settings" to context.onOpenTools,
-                "new-alarm" to { context.onCreate(TemporalKind.ALARM, context.nowMillis) },
-                "new-activity" to { context.onCreate(TemporalKind.ACTIVITY, context.nowMillis) },
-                "new-deadline" to { context.onCreate(TemporalKind.DEADLINE, context.nowMillis) }
+                "new-alarm" to { context.onCreate(EventKindV1.ALARM, context.nowMillis) },
+                "new-activity" to { context.onCreate(EventKindV1.ACTIVITY, context.nowMillis) },
+                "new-deadline" to { context.onCreate(EventKindV1.DEADLINE, context.nowMillis) }
             ),
             values = mapOf("pending" to context.pendingCount.toString(),
                 "memo" to context.memoCount.toString()),
             widget = { kind ->
-                if (kind == "events") TemporalEventRows(context.records, context.zone) { record ->
-                    context.onOpenEvent(record, null)
+                if (kind == "events") EventRows(context.records, context.zone) { record ->
+                    context.onOpenEvent(record.eventSeq, record.revision, null)
                 }
             }
         ), context.modifier.fillMaxSize())
@@ -328,25 +327,4 @@ internal object RuntimeSkinSurfaces {
         }
     }
 
-    @Composable private fun TemporalEventRows(
-        records: List<dev.powerfulcalendar.core.TemporalRecord>,
-        zone: java.time.ZoneId,
-        open: (dev.powerfulcalendar.core.TemporalRecord) -> Unit
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-            records.sortedBy { it.anchorMillis(zone) ?: Long.MAX_VALUE }.take(70).forEach { record ->
-                Surface(
-                    modifier = Modifier.fillMaxWidth().clickable { open(record) },
-                    shape = RoundedCornerShape(14.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerLow
-                ) {
-                    Column(Modifier.padding(11.dp)) {
-                        Text(record.title, style = MaterialTheme.typography.titleSmall)
-                        Text(TemporalText.summarize(record),
-                            style = MaterialTheme.typography.labelSmall, maxLines = 2)
-                    }
-                }
-            }
-        }
-    }
 }

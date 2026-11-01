@@ -15,11 +15,19 @@ internal data class RuntimeSkinEventRow(
 /** Display-only rows for the runtime Skin bridge; no Core entity is exposed to the renderer. */
 internal fun projectRuntimeSkinEventRows(
     records: List<EventRecordV1>,
-    zone: ZoneId
+    zone: ZoneId,
+    maxRows: Int = MAX_RUNTIME_SKIN_EVENT_ROWS
 ): List<RuntimeSkinEventRow> = records
     .sortedBy { it.anchorMillis(zone) ?: Long.MAX_VALUE }
-    .take(MAX_RUNTIME_SKIN_EVENT_ROWS)
+    .take(maxRows.coerceAtLeast(0))
     .map { RuntimeSkinEventRow(it, it.runtimeSummary()) }
+
+internal fun EventKindV1.runtimeSkinLabel(): String = when (this) {
+    EventKindV1.ALARM -> "闹钟"
+    EventKindV1.ACTIVITY -> "活动"
+    EventKindV1.DEADLINE -> "截止"
+    EventKindV1.MEMO -> "备忘"
+}
 
 private fun EventRecordV1.anchorMillis(inZone: ZoneId): Long? = when (kind) {
     EventKindV1.ALARM, EventKindV1.ACTIVITY -> startMillis
