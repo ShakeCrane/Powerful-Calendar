@@ -93,6 +93,10 @@ import dev.powerfulcalendar.core.api.v1.EventSelectionV1
 import dev.powerfulcalendar.core.api.v1.AiProposalApplyRequestV1
 import dev.powerfulcalendar.core.api.v1.AiProposalDecisionV1
 import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.ReminderEventSnapshotV1
+import dev.powerfulcalendar.core.api.v1.ReminderReconcileModeV1
+import dev.powerfulcalendar.core.api.v1.ReminderReconcileStatusV1
+import dev.powerfulcalendar.core.api.v1.ReminderScheduleStateV1
 import dev.powerfulcalendar.core.api.v1.toCoreDraftForm
 import dev.powerfulcalendar.core.api.v1.toCoreTemporalRecord
 import dev.powerfulcalendar.core.api.v1.toEventFormV1
@@ -178,7 +182,7 @@ internal class LifecycleCheckpointGate {
     }
 }
 
-internal data class ReminderDisplay(val record: TemporalRecord, val intent: PowerStore.ScheduleIntent?, val execution: String?)
+internal data class ReminderDisplay(val record: TemporalRecord, val status: ReminderEventSnapshotV1)
 internal data class UiDiagnostics(val nextSequence: Long = 1, val identities: Long = 0, val reminders: List<ReminderDisplay> = emptyList())
 
 private data class AppData(
@@ -205,9 +209,12 @@ fun PowerCalApp(
     // Re-read on composition so sessions opened after a timezone change capture the current zone.
     val zone = ZoneId.systemDefault()
     val scope = rememberCoroutineScope()
-    val coreFeatureApi = remember(store) { PowerCalCoreFeatureApiV1(store) }
+    val coreFeatureApi = remember(store, appContext) {
+        PowerCalCoreFeatureApiV1(store, reminderContext = appContext)
+    }
     val eventFeatureApi = coreFeatureApi.events
     val draftReviewApi = coreFeatureApi.draftReview
+    val reminderFeatureApi = coreFeatureApi.reminders
     val controller = coreFeatureApi.deckController
     val effects = LocalGlassEffects.current
     val skins = remember(appContext) { SkinPackageManager(appContext) }
@@ -371,9 +378,13 @@ fun PowerCalApp(
                 locked = store.isLocked(),
                 session = store.currentAiSession(),
                 cards = pending,
-                diagnostics = UiDiagnostics(store.nextSequencePreview(), store.identityCount(), formal.filter { it.enabled && it.reminderMinutes >= 0 }.take(40).map {
-                    ReminderDisplay(it, store.intentFor(it.eventSeq), store.lastExecution(it.eventSeq))
-                })
+                diagnostics = UiDiagnostics(
+                    store.nextSequencePreview(),
+                    store.identityCount(),
+                    formal.filter { it.enabled && it.reminderMinutes >= 0 }.take(40).map {
+                        ReminderDisplay(it, reminderFeatureApi.queryEvent(it.eventSeq))
+                    }
+                )
             )
         }
         withContext(Dispatchers.Main) {
@@ -450,8 +461,10 @@ fun PowerCalApp(
         }
     }
 
-    suspend fun reconcile(): ReminderScheduler.ReconcileReport {
-        return withContext(Dispatchers.IO) { ReminderScheduler.reconcile(appContext, store) }
+    suspend fun reconcile(
+        mode: ReminderReconcileModeV1 = ReminderReconcileModeV1.PENDING
+    ) = withContext(Dispatchers.IO) {
+        reminderFeatureApi.reconcile(mode)
     }
 
     fun reconcileCount(size: Int): String = if (size > 400) "400+" else size.toString()
@@ -463,26 +476,19 @@ fun PowerCalApp(
         WebSkinBridgeRuntime.stateRevision++
         scope.launch {
             try {
-                val report = withContext(Dispatchers.IO) {
-                    ReminderScheduler.reconcileAll(appContext, store)
-                }
-                val remaining = withContext(Dispatchers.IO) {
-                    store.intentsInState(PowerStore.DesiredSchedule.BLOCKED, limit = 401) to
-                        store.intentsInState(PowerStore.DesiredSchedule.PENDING, limit = 401)
-                }
+                val report = reconcile(ReminderReconcileModeV1.EXHAUSTIVE)
                 reload()
-                val blocked = remaining.first
-                val pending = remaining.second
-                manualReminderReconcileStatus = when {
-                    report.failed > 0 || pending.isNotEmpty() -> "ERROR"
-                    blocked.isNotEmpty() -> "BLOCKED"
-                    else -> "SUCCESS"
+                manualReminderReconcileStatus = when (report.status) {
+                    ReminderReconcileStatusV1.INCOMPLETE,
+                    ReminderReconcileStatusV1.UNAVAILABLE -> "ERROR"
+                    ReminderReconcileStatusV1.BLOCKED -> "BLOCKED"
+                    ReminderReconcileStatusV1.COMPLETE -> "SUCCESS"
                 }
                 manualReminderReconcileMessage = when (manualReminderReconcileStatus) {
-                    "ERROR" -> "重建未完成：${report.failed} 项处理失败，${reconcileCount(pending.size)} 项仍待调度。请检查执行状态后重试。"
+                    "ERROR" -> "重建未完成：${report.failed} 项处理失败，${reconcileCount(report.pendingCountCapped)} 项仍待调度。请检查执行状态后重试。"
                     "BLOCKED" -> {
-                        val hint = blocked.firstNotNullOfOrNull { it.androidHint?.takeIf(String::isNotBlank) }
-                        "重建已执行，但 ${reconcileCount(blocked.size)} 项提醒仍受阻" +
+                        val hint = report.firstBlockedHint
+                        "重建已执行，但 ${reconcileCount(report.blockedCountCapped)} 项提醒仍受阻" +
                             (hint?.let { "：$it" } ?: "。请检查提醒权限与执行状态。")
                     }
                     else -> if (report.attempted == 0) {
@@ -1898,13 +1904,14 @@ fun PowerCalApp(
             }
         }
         WebSkinBridgeRuntime.state = {
+            val reminderPermissions = reminderFeatureApi.queryPermissions()
             val notificationStatus = notificationPermissionStatus(
                 android.os.Build.VERSION.SDK_INT,
-                ReminderScheduler.notificationsAllowed(appContext)
+                reminderPermissions.notifications.allowed == true
             )
             val exactAlarmStatus = exactAlarmPermissionStatus(
                 android.os.Build.VERSION.SDK_INT,
-                ReminderScheduler.exactAlarmAllowed(appContext)
+                reminderPermissions.exactAlarm.allowed == true
             )
             val stateTodoEntries = todoEntries
             val stateTodoCount = stateTodoEntries.count { !it.completed }
@@ -2076,10 +2083,11 @@ fun PowerCalApp(
                 if (keyboardVisible || fullCanvasWeb) 0.dp else 80.dp)
         ) { presentedPage ->
         if (presentedPage == Page.TOOLS.name) {
+            val reminderPermissions = reminderFeatureApi.queryPermissions()
             ToolsPage(
                 diagnostics = diagnostics,
-                exactAlarmAllowed = ReminderScheduler.exactAlarmAllowed(appContext),
-                notificationsAllowed = ReminderScheduler.notificationsAllowed(appContext),
+                exactAlarmAllowed = reminderPermissions.exactAlarm.allowed == true,
+                notificationsAllowed = reminderPermissions.notifications.allowed == true,
                 nowMillis = nowMillis,
                 records = records,
                 pendingCount = pendingCount,
@@ -2357,7 +2365,9 @@ fun PowerCalApp(
                 },
                 onOpenDeck = { scope.launch { openDeckAt(null) } },
                 onOpenTools = { page = Page.TOOLS.name },
-                blockedReminders = diagnostics.reminders.count { it.intent?.desired == PowerStore.DesiredSchedule.BLOCKED }
+                blockedReminders = diagnostics.reminders.count {
+                    it.status.schedule?.state == ReminderScheduleStateV1.BLOCKED
+                }
             )
         }
         } // page content above the persistent bottom navigation
@@ -3229,7 +3239,7 @@ fun PowerCalApp(
                             (if (report.cancelled) "（已停止）" else "") +
                             (if (report.failures.isNotEmpty()) "；部分草稿未完成，可单独重新审核" else "")
                     }
-                    ReminderScheduler.reconcile(appContext, store)
+                    reconcile()
                     withContext(Dispatchers.Main) { reload() }
                 }
             }

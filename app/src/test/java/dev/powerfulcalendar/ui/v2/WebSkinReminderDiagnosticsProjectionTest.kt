@@ -1,9 +1,12 @@
 package dev.powerfulcalendar.ui.v2
 
-import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.ReminderMethod
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
+import dev.powerfulcalendar.core.api.v1.ReminderEventSnapshotV1
+import dev.powerfulcalendar.core.api.v1.ReminderScheduleStateV1
+import dev.powerfulcalendar.core.api.v1.ReminderScheduleV1
+import dev.powerfulcalendar.core.api.v1.ReminderTriggerRequirementV1
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -32,17 +35,21 @@ class WebSkinReminderDiagnosticsProjectionTest {
                     reminderMethod = ReminderMethod.ALARM,
                     zoneId = "UTC"
                 ),
-                intent = PowerStore.ScheduleIntent(
+                status = ReminderEventSnapshotV1(
                     eventSeq = eventSeq,
-                    triggerId = "primary",
-                    revision = 2,
-                    occurrenceKey = "single",
-                    instantMillis = instant,
-                    requirement = PowerStore.TriggerRequirement.EXACT,
-                    desired = PowerStore.DesiredSchedule.BLOCKED,
-                    androidHint = "需要精确闹钟权限"
-                ),
-                execution = "MISSED"
+                    currentRevision = 2,
+                    schedule = ReminderScheduleV1(
+                        eventSeq = eventSeq,
+                        triggerId = "primary",
+                        revision = 2,
+                        occurrenceKey = "single",
+                        instantMillis = instant,
+                        requirement = ReminderTriggerRequirementV1.EXACT,
+                        state = ReminderScheduleStateV1.BLOCKED,
+                        blockedHint = "需要精确闹钟权限"
+                    ),
+                    lastExecutionResult = "MISSED"
+                )
             )
         }
 
@@ -76,8 +83,12 @@ class WebSkinReminderDiagnosticsProjectionTest {
                 reminderMinutes = 0,
                 zoneId = "UTC"
             ),
-            intent = null,
-            execution = null
+            status = ReminderEventSnapshotV1(
+                eventSeq = 7,
+                currentRevision = 1,
+                schedule = null,
+                lastExecutionResult = null
+            )
         )
 
         val projected = WebSkinReminderDiagnosticsProjection.build(listOf(row)).getJSONObject(0)

@@ -1,5 +1,6 @@
 package dev.powerfulcalendar.core.api.v1
 
+import android.content.Context
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.DraftCard
 import dev.powerfulcalendar.core.DraftOperation
@@ -38,15 +39,18 @@ import kotlinx.coroutines.sync.withLock
 class PowerCalCoreFeatureApiV1(
     private val store: PowerStore,
     clock: Clock = Clock.systemUTC(),
-    internal val deckController: DeckController = DeckController(StoreDeckPersistence(store))
+    internal val deckController: DeckController = DeckController(StoreDeckPersistence(store)),
+    reminderContext: Context? = null
 ) : CoreFeatureApiV1 {
     override val apiVersion: Int = 1
     private val eventService = StoreEventFeatureApiV1(store, clock)
     private val draftReviewService = StoreDraftReviewFeatureApiV1(store, deckController, eventService)
     private val aiProposalService = StoreAiProposalFeatureApiV1(store, eventService, clock)
+    private val reminderService = AndroidReminderFeatureApiV1(store, reminderContext)
     override val events: EventFeatureApiV1 get() = eventService
     override val draftReview: DraftReviewFeatureApiV1 get() = draftReviewService
     override val aiProposals: AiProposalFeatureApiV1 get() = aiProposalService
+    override val reminders: ReminderFeatureApiV1 get() = reminderService
 
     /** Test/legacy Host seam for an explicitly supplied controller; production uses [draftReview]. */
     internal fun adaptDeckController(controller: DeckController): DraftReviewFeatureApiV1 =

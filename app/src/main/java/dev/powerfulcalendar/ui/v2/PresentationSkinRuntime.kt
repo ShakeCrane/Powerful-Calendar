@@ -28,6 +28,7 @@ import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.RecurrenceEngine
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
+import dev.powerfulcalendar.core.api.v1.ReminderScheduleStateV1
 import dev.powerfulcalendar.ui.v2.nativeui.*
 import java.time.LocalDate
 import java.time.ZoneId
@@ -329,21 +330,21 @@ internal fun projectSettingsDisplaySnapshot(
     aiBatchActive = aiSession?.isActive == true,
     aiBatchCancelRequested = aiSession?.state == PowerStore.AiState.CANCEL_REQUESTED,
     reminders = diagnostics.reminders.map { row ->
-        val state = row.intent?.desired
+        val state = row.status.schedule?.state
         SettingsReminderDiagnostic(
             eventLabel = row.record.displaySeq(),
             title = row.record.title,
             scheduleLabel = when (state) {
-                PowerStore.DesiredSchedule.PENDING -> "等待调度"
-                PowerStore.DesiredSchedule.SCHEDULED -> "已交给系统"
-                PowerStore.DesiredSchedule.BLOCKED -> "受阻，请检查权限"
-                PowerStore.DesiredSchedule.CANCELLED -> "已取消"
-                PowerStore.DesiredSchedule.FIRED -> "已触发"
+                ReminderScheduleStateV1.PENDING -> "等待调度"
+                ReminderScheduleStateV1.SCHEDULED -> "已交给系统"
+                ReminderScheduleStateV1.BLOCKED -> "受阻，请检查权限"
+                ReminderScheduleStateV1.CANCELLED -> "已取消"
+                ReminderScheduleStateV1.FIRED -> "已触发"
                 null -> "无待执行调度"
             },
-            blocked = state == PowerStore.DesiredSchedule.BLOCKED,
-            androidHint = row.intent?.androidHint,
-            execution = row.execution
+            blocked = state == ReminderScheduleStateV1.BLOCKED,
+            androidHint = row.status.schedule?.blockedHint,
+            execution = row.status.lastExecutionResult
         )
     },
     recurrence = records.filter { it.recurrence.isRepeating }.take(3).map { record ->
