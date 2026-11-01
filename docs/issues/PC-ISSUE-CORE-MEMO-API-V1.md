@@ -43,9 +43,9 @@ $env:ANDROID_HOME='E:\android-sdk'
 
 - `MemoFeatureApiV1.queryEntries` takes the current full `EventQuerySnapshotV1`; Store-level event paging remains unimplemented.
 - The current-entry query and JVM/compile evidence do not prove behavior through a device Native screen or packaged Android WebView.
-- `DeckVisualContext` still passes Core entity types to a runtime renderer. Web event-open and AI proposal target capture still contain direct Store re-reads.
+- `DeckVisualContext` still passes Core entity types to a runtime renderer. Web event-open and AI proposal target capture were subsequently routed through `EventFeatureApiV1.queryEvent`; see the [Event current query report](PC-ISSUE-CORE-EVENT-QUERY-API-V1.md).
 - Native fallback remains available. This report does not authorize a skin cutover or mark any broader parity row PASS.
-- The next PHASE 1 action is to remove the remaining Web event-open and AI proposal target Store reads through the existing Event API boundary, preserving stale-revision, occurrence, and editor-availability checks.
+- The next PHASE 1 action is to remove Core entity types from runtime Draft Deck projections while retaining Host-owned actions and conflict/restore gates.
 
 ## Source paths
 

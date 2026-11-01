@@ -48,7 +48,7 @@ The focused command selected `AiFeatureApiV1Test`, `AiProposalFeatureApiV1Test`,
 - The proposal-generation request has no durable replay receipt. Existing `AiProposalFeatureApiV1` replay limitations remain as documented there.
 - The API and Host/JVM integration tests do not prove behavior with a live model provider, installed Web skin, Android WebView, or physical/OEM device.
 - Native fallback remains available. This report does not authorize a skin cutover or mark any broader acceptance row PASS.
-- The Memo visibility precheck and runtime Memo projection have since moved to `MemoFeatureApiV1`; see the [Memo API report](PC-ISSUE-CORE-MEMO-API-V1.md). The current PHASE 1 action is to remove the remaining Web event-open and AI proposal target Store re-reads through the Event API while preserving revision, occurrence, and editor-availability checks.
+- The Memo visibility precheck/runtime Memo projection and Web event-open/AI proposal target reads have since moved behind `MemoFeatureApiV1` and `EventFeatureApiV1`; see the [Memo API report](PC-ISSUE-CORE-MEMO-API-V1.md) and [Event current query report](PC-ISSUE-CORE-EVENT-QUERY-API-V1.md). The current PHASE 1 action is to remove Core entity types from runtime Draft Deck projections while preserving Host-owned actions and conflict/restore gates.
 
 ## Source paths
 

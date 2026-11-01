@@ -12,6 +12,8 @@ event search and Memo completion now use the Event API; see the
 [Draft/Review report](issues/PC-ISSUE-CORE-DRAFT-REVIEW-API-V1.md), the
 [Event search report](issues/PC-ISSUE-CORE-EVENT-SEARCH-API-V1.md), and the
 [occurrence completion report](issues/PC-ISSUE-CORE-OCCURRENCE-COMPLETION-API-V1.md).
+Web event-open and AI proposal target capture now use the Event API's current-record query;
+see the [Event current query report](issues/PC-ISSUE-CORE-EVENT-QUERY-API-V1.md).
 Explicit text-to-draft creation now uses DraftReview API v1; see the
 [Draft Creation report](issues/PC-ISSUE-CORE-DRAFT-CREATION-API-V1.md).
 Native and Web AI proposal review actions now share the Host-created AI Proposal API;
