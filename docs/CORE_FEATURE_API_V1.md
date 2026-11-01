@@ -102,12 +102,13 @@ This is a Draft/Review vertical slice, not full Phase 1 closure. The Web bridge 
 
 ## 8. Current adapter coverage and open work
 
-Verified code paths in this event pilot:
+Verified code paths across the Event and Draft/Review pilots:
 
 - Native event creation and ordinary formal editing/deletion call the Host's shared `EventFeatureApiV1`.
 - `PowerCalApp.reload` obtains formal events through `queryEvents()`.
 - Web event editor create/update/checkpoint/save/delete and recurrence scope use the same API instance.
 - Web timeline movement reads a Host projection, then stages the revision-guarded replacement through `stageFormalReplacement`.
+- Native and Web Draft Decks use the shared `DraftReviewFeatureApiV1` for persisted draft edits, queue navigation, formal replacement proposals, conflict and restore review, commit, discard, and undo.
 - A Robolectric adapter integration test performs a Native-side API create followed by a Web bridge create/checkpoint and observes shared feature revision/change events and Store-backed state. Its Native-side write calls the API directly; it does not mount `PowerCalApp` and drive the entire Native UI route. Separate editor Compose tests cover the API-backed editor component callbacks.
 
 Remaining work before PHASE 1 can exit:
@@ -119,4 +120,4 @@ Remaining work before PHASE 1 can exit:
 5. Add the required per-domain API contracts before claiming other feature areas are covered. Current v1 does not define Calendar paging, completion, AI, reminders, import/export, or Settings/Data APIs. Draft/Review request replay remains process-local.
 6. Run a clean full JVM suite, boundary/build/lint gates, and required device checks when the independently owned AVD is available. Instrumentation for this Draft/Review slice is **NOT TESTED**.
 
-Latest Draft/Review verification: focused API, DeckController, Store restore, Host review UI, and Web bridge tests passed; the forced full JVM run passed **797 tests across 128 XML reports, 0 failures/errors/skips**. `verifySkinSourceBoundary`, `verifyNativeSkinBoundary`, Debug APK assembly, and `lintDebug` all passed; lint reported **0 errors / 54 warnings**. The Debug APK SHA-256 is `B1A4EC21E59461B35597CC08972627148457302252A3B0818967F315A9B552B6` (66,683,502 bytes). Instrumentation and AVD behavior are **NOT TESTED**. Logs and the prior Event pilot’s transient full-suite failures are recorded in the current [progress entry](agent-handoff/PROGRESS.md) and the [Draft/Review Issue](issues/PC-ISSUE-CORE-DRAFT-REVIEW-API-V1.md); no cause is asserted for those earlier failures.
+Latest Draft/Review verification: focused API, DeckController, Store restore, Host review UI, and Web bridge tests passed **190/190**; the forced full JVM run passed **800 tests across 128 XML reports, 0 failures/errors/skips**. `verifySkinSourceBoundary`, `verifyNativeSkinBoundary`, Debug APK assembly, and `lintDebug` all passed; lint reported **0 errors / 54 warnings**. The Debug APK SHA-256 is `C22E82E434CBE5B02CD790FF72932074DA969A10BDF9095416179D3B8331AFB4` (66,683,502 bytes). Instrumentation and AVD behavior are **NOT TESTED**. Logs and the prior Event pilot’s transient full-suite failures are recorded in the current [progress entry](agent-handoff/PROGRESS.md) and the [Draft/Review Issue](issues/PC-ISSUE-CORE-DRAFT-REVIEW-API-V1.md); no cause is asserted for those earlier failures.

@@ -9,22 +9,22 @@
 
 本节落实 `goal-objective.md` 的 PHASE 0–5 顺序，**优先级高于下文保留的 SEP/M1–M4 旧执行顺序**。功能矩阵继续记录覆盖与证据，不再决定主开发方向。
 
-**当前主阶段：PHASE 1 — ESTABLISH CORE FEATURE API。** Event Feature API v1 编辑器切片代码提交 `65a96b7ba97a639981d23eee7e05f8f39a85a68e` 已于 2026-11-01 普通快进推送至 `origin/feat/skin-first-separation`，基于分离集成检查点 `c09d39d8161b113ad62ce8348760a2620017869b`。本轮回归证据与路线图状态另以文档提交记录。独立 delivery worktree 中的未提交 AndroidTest 变更已保留，未与本任务混写。
+**当前主阶段：PHASE 1 — ESTABLISH CORE FEATURE API。** Event Feature API v1 编辑器切片已由 `65a96b7ba97a639981d23eee7e05f8f39a85a68e` 推送；本次 Draft/Review API v1 切片提交 `a12e107b868243e0563d5ca904edaf38c777f070` 于 2026-11-01 基于远端检查点 `a3b51394bc0c546f1d7d4e02a2bd8cef9a8d22e9` 普通快进推送至 `origin/feat/skin-first-separation`。本次完整回归、APK 与路线图状态在独立文档提交中记录。独立 delivery worktree 中的未提交 AndroidTest 变更仍保留，未与本任务混写。
 
-**当前切片：Event Feature API v1。** 已建立纯 Kotlin `:core-api` 契约及 app Host adapter；PowerCalApp 的 Native 新建/正式编辑/删除及 Web 编辑器适配器使用同一个 API 实例；Web 时间轴移动经 API 暂存正式替换。API DTO 不暴露 Android、Compose、PowerStore 或 Core 实体。详见 [`CORE_FEATURE_API_V1.md`](CORE_FEATURE_API_V1.md)。聚焦测试 **66/66 PASS**，含 API 合同、Native/Web 编辑器及正式写入/重复范围测试。两次强制全量 JVM 重跑各有 1 个不同的 `WebAiProposalReviewIntegrationTest` 失败；单独重跑相应方法及整个测试类 **15/15 PASS**。随后在当前 HEAD 的标准全量 JVM 运行通过 **127 suites / 789 tests，0 failure/error/skip**。强制运行的不稳定根因未确定，但最新全量门禁为 **PASS**。`verifySkinSourceBoundary`、`verifyNativeSkinBoundary`、Debug APK assemble 和单独 `lintDebug` 均 PASS；lint 为 **0 errors / 54 warnings**。Android instrumentation 未运行；当前 AVD 属于并行任务，保持未触碰。
+**当前切片：Event Feature API v1 + Draft/Review Feature API v1。** 纯 Kotlin `:core-api` 提供版本化 DTO/接口；Native 与 Web Deck 共用 Host 创建的 Draft/Review 服务。打开/刷新、编辑、暂存、选择/移动、正式替换提案、冲突与恢复审核、提交、丢弃及撤销现经此 API；正式提交与恢复保留 Store 事务、草稿版本和墓碑版本检查。被独立审查指出的“审核提交在暂存版本冲突时重试并覆盖并发草稿”已修复：审核路径只按已审版本暂存，冲突即拒绝且保留本地表单。自定义 Skin 的正式写入继续经 Host 确认 UI。详情见 [`CORE_FEATURE_API_V1.md`](CORE_FEATURE_API_V1.md) 和 [Draft/Review Issue](issues/PC-ISSUE-CORE-DRAFT-REVIEW-API-V1.md)。聚焦回归 **190/190 PASS**；强制全量 JVM **800/800，128 XML reports，0 failure/error/skip**。`verifySkinSourceBoundary`、`verifyNativeSkinBoundary`、Debug APK assemble 和 `lintDebug` 均 PASS；lint **0 errors / 54 warnings**。APK **66,683,502 bytes**，SHA-256 `C22E82E434CBE5B02CD790FF72932074DA969A10BDF9095416179D3B8331AFB4`。Clear 编辑器 `node --check` 与 `git diff --check` PASS。Android instrumentation/AVD 未测试，本次未触碰设备。
 
-**PHASE 1 尚未退出。** Web Bridge 的 Draft Deck、冲突/恢复、正式事件搜索及若干 Host 写入仍有 `DeckController` / `PowerStore` 直连；API change stream 目前只覆盖经此 adapter 的写入，进程外或旁路写入不会自动发事件。Native Presentation projection 仍在 Host 内转换 API DTO。它们是明确的后续 API 接入缺口，不得将当前切片写成全功能 API 或 Native/Skin parity PASS。
+**PHASE 1 尚未退出。** Web Bridge 的正式事件搜索、直接完成状态更新和若干 Host/Core 读取或授权写入仍绕过统一领域 API/变更源；部分 runtime Skin projection 仍包含 Core 类型。Calendar、Memo/Todo、AI、Reminder、Import/Export、Settings/Data 等必需领域接口尚未齐备。当前两个切片不代表全功能 API、Native/Skin parity、runtime separation 或 cutover PASS。
 
 | 阶段 | 当前状态 | 退出条件摘要 |
 | --- | --- | --- |
 | PHASE 0 — Current State Reconciliation | 本轮已核对 HEAD、脏工作区、远端 freshness、模块边界，以及 Native/Web 事件调用路径；全功能域架构映射和冻结后历史变更分类沿用现有验收资料，仍需按领域补齐，不做无边界历史重查 | 架构归属、冻结语义风险及剩余 API 缺口均有可核查清单 |
-| PHASE 1 — Establish Core Feature API | **进行中：Event v1 vertical slice** | Core API 有真实实现；领域契约齐全；Native/Web 使用同一服务；Skin 不依赖 Core 内部实现；Host 不承担第二套业务规则；冻结语义保持 |
+| PHASE 1 — Establish Core Feature API | **进行中：Event v1 + Draft/Review v1 vertical slices** | Core API 有真实实现；领域契约齐全；Native/Web 使用同一服务；Skin 不依赖 Core 内部实现；Host 不承担第二套业务规则；冻结语义保持 |
 | PHASE 2 — Complete Runtime Separation | 未开始 | Clear、第三方 `.pcskin`、Native fallback 对所有冻结功能使用统一数据、授权、错误与恢复语义；替换 Skin 不改 Core |
 | PHASE 3 — Complete Skin Studio | 未开始 | Clear 与结构不同的第三方 Skin 可任意编辑/重构、预览、构建、导出、重导入并在 Android 运行 |
 | PHASE 4 — AI Autonomous Skin Authoring | 未开始 | AI 通过 Studio 正式工具端到端完成项目分析、修改、素材、构建、校验、预览、修复及交付 |
 | PHASE 5 — Final Delivery | 未开始 | 同一交付基线集成 Core API/Runtime、多 Skin、Native fallback、Studio、AI、文档、测试、APK 与 `.pcskin`；实体/OEM 验收清单独立交付 |
 
-**唯一 NEXT_ACTION：** 建立显式 Draft/Review Core API，接入 Native/Web Deck 的正式新建、替换、删除与审批写入；保持现有 Event API 合同和冻结 Core 语义不变，并补齐覆盖所有授权写入的变更来源。
+**唯一 NEXT_ACTION：** 收口剩余 Event/Calendar/Memo API 路径：将正式事件搜索、Memo 完成写入及授权 Host/Core 变更接入版本化查询/命令与单一变更源，并继续移除 runtime Skin projection 中的 Core 实体类型；维持冻结语义。
 
 ## 1. 当前版本基准及实际证据
 
@@ -34,7 +34,7 @@
 | Core 冻结标签 | `core-freeze-2026-10-27` | 指向核心冻结签核提交 `af229d9` |
 | 交付构建源 | `6cd755621cc1c599dd72871d4e1eb77442998d4a` | 727 JVM / 61 Studio Python 的阶段候选构建、APK、皮肤和源码 ZIP 对应此 SHA |
 | 阶段标记 | `skin-separation-stage-2026-10-30` | 指向 `3d099d37d44fe82e72435517f0325d23cc7239e7`，后两笔只有阶段交付报告修改；非 Release |
-| 分离开发主线 | `origin/feat/skin-first-separation` | 集成和后续新功能唯一目标分支；本文件提交前为 `3d099d3` |
+| 分离开发主线 | `origin/feat/skin-first-separation` | 集成和后续新功能唯一目标分支；本轮 Draft/Review API 代码提交为 `a12e107b868243e0563d5ca904edaf38c777f070`，基于 `a3b51394bc0c546f1d7d4e02a2bd8cef9a8d22e9` 普通快进推送 |
 
 阶段构建在 `6cd7556` 报告 **88/88 Gradle Tasks、727/727 JVM（100 suites）、Lint 0 Error、Skin Studio Python 61/61、Clear APK 包同源、JS 4/4 语法检查、APK v2 签名验证**；这些是历史证据，本次远端整理**没有重新运行测试或制作新 APK**，不得写成新 HEAD 再次完整跑过。
 

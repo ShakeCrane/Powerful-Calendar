@@ -4,6 +4,10 @@ Last broad source inventory pass: 2026-10-28, separation source snapshot `cc3102
 
 ## Traced boundaries
 
+### Core Feature API — Draft/Review v1 vertical slice (2026-11-01)
+
+Native and Web Draft Deck operations now use the same Host-created `DraftReviewFeatureApiV1` service for persisted draft editing, review, conflict replacement, restore, and formal commits. The contract and implementation evidence are in [CORE_FEATURE_API_V1.md](CORE_FEATURE_API_V1.md) and [PC-ISSUE-CORE-DRAFT-REVIEW-API-V1](issues/PC-ISSUE-CORE-DRAFT-REVIEW-API-V1.md). This is an API integration milestone only: equivalent Native/Clear replay, WebView instrumentation, full runtime parity, and cutover remain **NOT TESTED / NOT SIGNED OFF**.
+
 1. **Native → core:** `PowerCalApp.kt` passes timeline/month/Memo callbacks to `openNewEvent`, `openFormalEditor`, `PowerStore.setCompleted` and `DeckController`; AI review uses `AiDraftService.applyReviewedProposals` after user selection. Settings routes to host-owned Android file and permission launchers.
 2. **Skin → Host → core:** Clear `web/app.js` and `web/edit.js` use the transferred WebMessagePort. `WebSkinHost.kt` checks active bundle, live port and `host.action`, then decodes `WebSkinAction` or `WebEditWire`. `PowerCalApp.kt` routes actions, re-reads versioned records and invokes existing services; `WebSkinEditService` owns transient `NewEventEditSession`, `EditSession` and the existing deck. Command replay, locks and checkpoints are host-side. The native settings/recovery route is retained.
 3. **Studio → source → runtime:** `skin_studio.py` serves the APK asset at `/api/template-v3`; `v3-studio.js` edits its `sourceFiles`; preview and export call `runtime_package_v3.build_files`, and import calls `unpack`. Android `SkinPackageManager` validates and decodes the package; `SkinAppShell → WebSkinRoot → SecureWebSkin` serves bundle resources and the same port to factory and imported v3 skins. Chrome preview uses a Mock host and is not Android WebView evidence.

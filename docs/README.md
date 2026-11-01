@@ -6,8 +6,9 @@ Read [Core owner sign-off](CORE_FREEZE_OWNER_SIGNOFF_2026-10-27.md),
 [Current core evidence verdict](CORE_FREEZE_VERDICT.md).
 The active master direction is the PHASE 0–5 Core-first/Skin-first plan in the
 [remote governance and separation roadmap](SEPARATION_REMOTE_GOVERNANCE_AND_ROADMAP_2026-10-30.md).
-The current task is PHASE 1, Event Feature API v1; see its
-[implemented contract and open gaps](CORE_FEATURE_API_V1.md).
+The current task is PHASE 1, Event and Draft/Review Feature API v1 slices; see the
+[implemented contracts and open gaps](CORE_FEATURE_API_V1.md) and the
+[Draft/Review implementation report](issues/PC-ISSUE-CORE-DRAFT-REVIEW-API-V1.md).
 The [Skin separation parity matrix](SKIN_SEPARATION_PARITY_MATRIX_2026-10-27.md)
 remains a functional coverage/evidence index, not the master work sequence. The v3
 Skin-First cutover is not complete and Native fallback stays intact.
@@ -29,7 +30,7 @@ PowerCal app. The original compiled-source skin remains the trusted fallback.
 
 | 用途 | 文档 | 使用说明 |
 | --- | --- | --- |
-| Core Feature API v1 | [Event domain contract](CORE_FEATURE_API_V1.md) | Implemented event pilot and explicit API/coverage limitations; not full Core extraction or parity signoff |
+| Core Feature API v1 | [Event and Draft/Review contracts](CORE_FEATURE_API_V1.md) | Implemented vertical slices and explicit API/coverage limitations; not full Core extraction, runtime separation, or parity signoff |
 | 最新产品冻结决策 | [Core Contract v0.9.4](CORE_CONTRACT_FREEZE_2026-10-21.md) | 2026-10-21 决策，优先于旧产品草案；仍需逐项验收 |
 | 产品来源及历史决策 | [G1–G11 基线](PRODUCT_BASELINE_G1-G11.md) | 历史上下文；旧“三种事件”被新四类模型覆盖 |
 | 数据稳定性与恢复 | [稳定数据契约](STABLE_DATA_CONTRACT_V1.md) | 拟冻结，勿视为已正式批准 |
