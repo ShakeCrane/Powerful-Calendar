@@ -2,7 +2,9 @@ package dev.powerfulcalendar.ui.v2
 
 import dev.powerfulcalendar.ai.AiBatchRunner
 import dev.powerfulcalendar.core.DraftCard
-import dev.powerfulcalendar.core.PowerStore
+import dev.powerfulcalendar.core.api.v1.AiBatchSessionV1
+import dev.powerfulcalendar.core.api.v1.AiBatchStateV1
+import dev.powerfulcalendar.core.api.v1.AiBatchTerminalReportV1
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -47,20 +49,15 @@ internal class WebAiBatchProgressTracker {
 /** Safe status projection for skins. It deliberately omits session IDs, epochs and draft IDs. */
 internal object WebAiBatchProjection {
     fun project(
-        session: PowerStore.AiSession?,
+        session: AiBatchSessionV1?,
         preparationMode: AiBatchRunner.Mode?,
         reviewMode: AiBatchRunner.Mode?,
         reviewCards: List<DraftCard>?,
-        progress: WebAiBatchProgress?,
-        nowMillis: Long = System.currentTimeMillis()
+        progress: WebAiBatchProgress?
     ): JSONObject {
         val active = session?.isActive == true
-        val persistedReport = session?.report?.let { raw ->
-            runCatching { JSONObject(raw) }.getOrNull()
-        }
-        val reportMode = persistedReport?.optString("mode")?.takeIf {
-            it == AiBatchRunner.Mode.PUBLISH.name || it == AiBatchRunner.Mode.DISCARD.name
-        }
+        val persistedReport = session?.terminalReport
+        val reportMode = persistedReport?.mode?.name
         val currentProgress = progress?.takeIf {
             active && it.sessionId == session?.sessionId
         }
@@ -72,22 +69,22 @@ internal object WebAiBatchProjection {
             else -> null
         }
         val phase = when {
-            session?.state == PowerStore.AiState.CANCEL_REQUESTED -> "CANCEL_REQUESTED"
-            session?.state == PowerStore.AiState.RUNNING -> "RUNNING"
+            session?.state == AiBatchStateV1.CANCEL_REQUESTED -> "CANCEL_REQUESTED"
+            session?.state == AiBatchStateV1.RUNNING -> "RUNNING"
             reviewCards != null -> "AWAITING_HOST_REVIEW"
             preparationMode != null -> "SELECTING"
-            session?.state == PowerStore.AiState.INTERRUPTED -> "INTERRUPTED"
-            session?.state == PowerStore.AiState.COMPLETED -> "COMPLETED"
-            session?.state == PowerStore.AiState.CANCELLED -> "CANCELLED"
-            session?.state == PowerStore.AiState.FAILED -> "FAILED"
+            session?.state == AiBatchStateV1.INTERRUPTED -> "INTERRUPTED"
+            session?.state == AiBatchStateV1.COMPLETED -> "COMPLETED"
+            session?.state == AiBatchStateV1.CANCELLED -> "CANCELLED"
+            session?.state == AiBatchStateV1.FAILED -> "FAILED"
             else -> "IDLE"
         }
         return JSONObject()
             .put("phase", phase)
             .put("state", session?.state?.name ?: JSONObject.NULL)
             .put("active", active)
-            .put("canCancel", session?.state == PowerStore.AiState.RUNNING)
-            .put("canRelease", PowerStore.canReleaseStuckAiBatch(session, nowMillis))
+            .put("canCancel", session?.state == AiBatchStateV1.RUNNING)
+            .put("canRelease", session?.canReleaseStuck == true)
             .put("mode", mode?.name ?: JSONObject.NULL)
             .put("scopeCount", session?.scope?.size ?: 0)
             .put("selectedCount", reviewCards?.size ?: 0)
@@ -110,33 +107,26 @@ internal object WebAiBatchProjection {
         }
     }
 
-    private fun projectReport(report: JSONObject?): JSONObject? {
+    private fun projectReport(report: AiBatchTerminalReportV1?): JSONObject? {
         if (report == null) return null
         val projected = JSONObject()
-        report.optString("mode").takeIf {
-            it == AiBatchRunner.Mode.PUBLISH.name || it == AiBatchRunner.Mode.DISCARD.name
-        }?.let { projected.put("mode", it) }
-        listOf("published", "discarded", "kept").forEach { key ->
-            if (report.has(key)) projected.put(key, report.optInt(key).coerceAtLeast(0))
-        }
-        if (report.has("cancelled")) projected.put("cancelled", report.optBoolean("cancelled"))
-        if (report.has("finishedAt")) projected.put("finishedAt", report.optLong("finishedAt"))
-        if (report.optString("failures").isNotBlank()) {
+        report.mode?.let { projected.put("mode", it.name) }
+        if (report.cancelled != null) projected.put("cancelled", report.cancelled)
+        report.finishedAtMillis?.let { projected.put("finishedAt", it) }
+        if (report.hasFailures) {
             // Stored failure details include draft IDs and exception text; keep them Host-only.
             projected.put("hasFailures", true)
             projected.put("failureSummary", "有批次操作未完成，草稿仍可单独审核。")
         }
-        val outcomeKnown = report.optBoolean("outcomeKnown",
-            report.has("published") && report.has("discarded") && report.has("kept"))
-        projected.put("outcomeKnown", outcomeKnown)
-        if (outcomeKnown) {
-            listOf("published", "discarded", "kept").forEach { key ->
-                if (report.has(key)) projected.put(key, report.optInt(key).coerceAtLeast(0))
-            }
+        projected.put("outcomeKnown", report.outcomeKnown)
+        if (report.outcomeKnown) {
+            report.published?.let { projected.put("published", it) }
+            report.discarded?.let { projected.put("discarded", it) }
+            report.kept?.let { projected.put("kept", it) }
         } else {
-            listOf("published", "discarded", "kept").forEach { projected.remove(it) }
+            listOf("published", "discarded", "kept").forEach(projected::remove)
         }
-        if (report.optString("released") == "user") projected.put("released", true)
+        if (report.releasedByUser) projected.put("released", true)
         return projected
     }
 }

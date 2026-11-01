@@ -22,7 +22,7 @@ import dev.powerfulcalendar.core.DeckController
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.TemporalConversion
 import dev.powerfulcalendar.core.TemporalKind
-import dev.powerfulcalendar.core.PowerStore
+import dev.powerfulcalendar.core.api.v1.AiBatchSessionV1
 import dev.powerfulcalendar.core.api.v1.DraftReviewFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.DraftReviewReceiptV1
 import dev.powerfulcalendar.core.api.v1.DraftReviewCardV1
@@ -77,7 +77,7 @@ private data class PendingDeckRestoreApproval(
 class DeckVisualContext internal constructor(
     val state: DeckController.DeckState,
     val busy: Boolean,
-    val aiSession: PowerStore.AiSession?,
+    val aiSession: AiBatchSessionV1?,
     val onDismiss: () -> Unit,
     val onOpenFormalEvent: (EventSearchHitV1) -> Unit,
     val onCancelAiBatch: () -> Unit,
@@ -103,7 +103,7 @@ class DeckVisualContext internal constructor(
 fun DraftDeckDialog(
     controller: DeckController,
     draftReviewApi: DraftReviewFeatureApiV1,
-    aiSession: PowerStore.AiSession?,
+    aiSession: AiBatchSessionV1?,
     onDismissRequest: () -> Unit,
     onOpenFormalEvent: (EventSearchHitV1) -> Unit,
     onCancelAiBatch: () -> Unit,

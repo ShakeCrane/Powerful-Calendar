@@ -2,6 +2,7 @@ package dev.powerfulcalendar.ai
 
 import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.DraftCard
+import dev.powerfulcalendar.core.api.v1.AiBatchCandidateV1
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -259,10 +260,10 @@ class AiClient(
      */
     suspend fun planBatchSelection(
         request: String,
-        candidates: List<DraftCard>
+        candidates: List<AiBatchCandidateV1>
     ): AiBatchSelection = withContext(Dispatchers.IO) {
         if (!settings.configured) return@withContext AiBatchSelection(error = "请先配置 AI 服务")
-        val eligible = candidates.filter { it.isActionable }
+        val eligible = candidates
         if (eligible.isEmpty()) return@withContext AiBatchSelection(question = "没有可处理的待办草稿")
         if (eligible.size > 100) {
             return@withContext AiBatchSelection(error = "待处理超过 100 张，请先缩小范围")
@@ -273,8 +274,8 @@ class AiClient(
                 list.put(JSONObject()
                     .put("draftId", card.draftId)
                     .put("draftVersion", card.draftVersion)
-                    .put("title", card.form.title.take(160))
-                    .put("kind", card.form.kind.name)
+                    .put("title", card.title.take(160))
+                    .put("kind", card.kind.name)
                     .put("operation", card.operation.name))
             }
             val prompt = JSONObject()
@@ -283,7 +284,7 @@ class AiClient(
             val messages = JSONArray()
                 .put(JSONObject().put("role", "system").put("content", BATCH_SELECT_PROMPT))
                 .put(JSONObject().put("role", "user").put("content", prompt))
-            AiBatchSelectionParser.parse(
+            AiBatchSelectionParser.parseCandidates(
                 complete(messages, diagnosticStage = "batch-selection"), eligible)
         } catch (error: CancellationException) {
             throw error

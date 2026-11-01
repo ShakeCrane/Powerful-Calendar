@@ -26,6 +26,8 @@ import dev.powerfulcalendar.ai.AiChatMessage
 import dev.powerfulcalendar.ai.AiInterpretation
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.PowerStore
+import dev.powerfulcalendar.core.api.v1.AiBatchSessionV1
+import dev.powerfulcalendar.core.api.v1.AiBatchStateV1
 import dev.powerfulcalendar.core.RecurrenceEngine
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
@@ -316,7 +318,7 @@ internal fun projectSettingsDisplaySnapshot(
     records: List<TemporalRecord>,
     pendingCount: Int,
     aiLocked: Boolean,
-    aiSession: PowerStore.AiSession?,
+    aiSession: AiBatchSessionV1?,
     canReleaseStuckBatch: Boolean,
     exactAlarmAllowed: Boolean,
     notificationsAllowed: Boolean,
@@ -333,7 +335,7 @@ internal fun projectSettingsDisplaySnapshot(
     aiLocked = aiLocked,
     canReleaseStuckBatch = canReleaseStuckBatch,
     aiBatchActive = aiSession?.isActive == true,
-    aiBatchCancelRequested = aiSession?.state == PowerStore.AiState.CANCEL_REQUESTED,
+    aiBatchCancelRequested = aiSession?.state == AiBatchStateV1.CANCEL_REQUESTED,
     reminders = diagnostics.reminders.map { row ->
         val state = row.status.schedule?.state
         SettingsReminderDiagnostic(
@@ -370,7 +372,7 @@ internal fun ToolsPage(
     records: List<TemporalRecord>,
     pendingCount: Int,
     aiLocked: Boolean,
-    aiSession: PowerStore.AiSession?,
+    aiSession: AiBatchSessionV1?,
     canReleaseStuckBatch: Boolean,
     effects: GlassEffects,
     skinChoices: List<InstalledSkin>,

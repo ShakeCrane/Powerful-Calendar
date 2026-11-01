@@ -94,6 +94,7 @@ import dev.powerfulcalendar.core.api.v1.AiProposalDecisionV1
 import dev.powerfulcalendar.core.api.v1.CalendarWindowQueryV1
 import dev.powerfulcalendar.core.api.v1.ImportExportFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.AndroidAiModelPortV1
 import dev.powerfulcalendar.core.api.v1.StructuredCalendarEventV1
 import dev.powerfulcalendar.core.api.v1.StructuredImportBatchHandleV1
 import dev.powerfulcalendar.core.api.v1.StructuredImportStatusV1
@@ -197,7 +198,7 @@ private data class AppData(
     val todoEntries: List<TodoEntry>,
     val pending: Int,
     val locked: Boolean,
-    val session: PowerStore.AiSession?,
+    val session: dev.powerfulcalendar.core.api.v1.AiBatchSessionV1?,
     val cards: List<dev.powerfulcalendar.core.DraftCard>,
     val diagnostics: UiDiagnostics
 )
@@ -215,11 +216,17 @@ fun PowerCalApp(
     val zone = ZoneId.systemDefault()
     val scope = rememberCoroutineScope()
     val coreFeatureApi = remember(store, appContext) {
-        PowerCalCoreFeatureApiV1(store, reminderContext = appContext, settingsContext = appContext)
+        PowerCalCoreFeatureApiV1(
+            store,
+            reminderContext = appContext,
+            settingsContext = appContext,
+            aiModelPort = AndroidAiModelPortV1(appContext)
+        )
     }
     val calendarFeatureApi = coreFeatureApi.calendar
     val eventFeatureApi = coreFeatureApi.events
     val draftReviewApi = coreFeatureApi.draftReview
+    val aiFeatureApi = coreFeatureApi.ai
     val reminderFeatureApi = coreFeatureApi.reminders
     val importExportApi = coreFeatureApi.importExport
     val controller = coreFeatureApi.deckController
@@ -248,7 +255,9 @@ fun PowerCalApp(
     var todoEntries by remember(store) { mutableStateOf<List<TodoEntry>>(emptyList()) }
     var pendingCount by remember { mutableIntStateOf(0) }
     var aiLocked by remember { mutableStateOf(false) }
-    var aiSession by remember { mutableStateOf<PowerStore.AiSession?>(null) }
+    var aiSession by remember {
+        mutableStateOf<dev.powerfulcalendar.core.api.v1.AiBatchSessionV1?>(null)
+    }
     var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var message by remember { mutableStateOf<String?>(null) }
     var manualReminderReconcileStatus by remember { mutableStateOf("IDLE") }
@@ -282,9 +291,20 @@ fun PowerCalApp(
     var pendingWebAiProposalPublish by remember {
         mutableStateOf<WebAiProposalPublishReview?>(null)
     }
-    fun replaceAiProposalReview(interpretation: AiInterpretation?, knownRecords: List<TemporalRecord> = emptyList()) {
+    fun replaceAiProposalReview(
+        review: dev.powerfulcalendar.core.api.v1.AiProposalReviewV1?,
+        knownRecords: List<TemporalRecord> = emptyList(),
+        taskSnapshot: dev.powerfulcalendar.ai.AiConversationTaskSnapshot? = null
+    ) {
+        val expected = review?.items.orEmpty().mapNotNull { item ->
+            val eventSeq = item.eventSeq ?: return@mapNotNull null
+            val revision = item.expectedRevision ?: return@mapNotNull null
+            eventSeq to revision
+        }.toMap()
+        val reviewRecords = knownRecords.filter { expected[it.eventSeq] == it.revision }
+        val interpretation = review?.toAiInterpretation(taskSnapshot)
         webAiProposalReviewSession = interpretation?.takeIf { it.proposals.isNotEmpty() }
-            ?.let { WebAiProposalReviewSession.create(it, knownRecords) }
+            ?.let { WebAiProposalReviewSession.create(it, reviewRecords) }
         WebSkinBridgeRuntime.stateRevision++
     }
     var chatHistory by remember { mutableStateOf(AiChatHistoryStore.load(appContext)) }
@@ -297,7 +317,9 @@ fun PowerCalApp(
         }
     }
     var confirmBatch by remember { mutableStateOf<BatchReview?>(null) }
-    var confirmStuckBatchRelease by remember { mutableStateOf<PowerStore.AiSession?>(null) }
+    var confirmStuckBatchRelease by remember {
+        mutableStateOf<dev.powerfulcalendar.core.api.v1.AiBatchSessionV1?>(null)
+    }
     var stuckBatchReleaseRequestPending by remember { mutableStateOf(false) }
     // Choosing a batch mode only starts a conversation; it is never the commit authorization.
     var pendingBatchMode by remember { mutableStateOf<AiBatchRunner.Mode?>(null) }
@@ -424,6 +446,7 @@ fun PowerCalApp(
         val data = withContext(Dispatchers.IO) {
             val pending = store.pendingDrafts()
             val eventSnapshot = eventFeatureApi.queryEvents()
+            val batchState = aiFeatureApi.queryBatchState()
             val formal = eventSnapshot.events.map { it.toCoreTemporalRecord() }
             AppData(
                 records = formal,
@@ -432,8 +455,8 @@ fun PowerCalApp(
                 todoEntries = TodoProjection.entries(formal, projectionNowMillis,
                     includeCompleted = true),
                 pending = pending.size,
-                locked = store.isLocked(),
-                session = store.currentAiSession(),
+                locked = batchState.locked,
+                session = batchState.session,
                 cards = pending,
                 diagnostics = UiDiagnostics(
                     store.nextSequencePreview(),
@@ -654,9 +677,9 @@ fun PowerCalApp(
             firstCalendarImportPrompt = true
         }
         // A process that died mid-batch is fenced and unlocked here; never leave a permanent lock.
-        val locked = withContext(Dispatchers.IO) { store.isLocked() }
-        if (locked) {
-            withContext(Dispatchers.IO) { store.recoverInterruptedAi() }
+        val batchState = withContext(Dispatchers.IO) { aiFeatureApi.queryBatchState() }
+        if (batchState.locked) {
+            withContext(Dispatchers.IO) { aiFeatureApi.recoverInterruptedBatch() }
             reload()
         }
     }
@@ -793,24 +816,31 @@ fun PowerCalApp(
                 message = "请先在设置页配置 AI 端点、模型与密钥"
                 return
             }
-            // Context sharing is opt-in and the AI Center defaults to zero context.
-            val contextForAi = if (settings.shareContext && shareForRequest) {
-                val horizon = nowMillis + 14L * 24 * 3_600_000
-                records.filter { (it.anchorMillis() ?: 0L) <= horizon }.take(60)
-            } else emptyList()
-            val result = AiClient(settings, zone).interpret(text, contextForAi)
+            val generation = aiFeatureApi.generateProposal(
+                dev.powerfulcalendar.core.api.v1.AiProposalGenerationRequestV1(
+                    requestId = java.util.UUID.randomUUID().toString(),
+                    userText = text,
+                    zoneId = zone.id,
+                    shareCalendarContext = settings.shareContext && shareForRequest,
+                    contextPolicy = dev.powerfulcalendar.core.api.v1.AiCalendarContextPolicyV1.EVENTS_THROUGH_14_DAYS_AFTER_NOW
+                )
+            )
+            val review = generation.review
+            if (review == null || review.items.isEmpty()) {
+                message = generation.warnings.firstOrNull()
+                    ?: generation.message
+                    ?: "AI 没有返回可用的结构化草稿"
+                return
+            }
             val created = withContext(Dispatchers.IO) {
                 coreFeatureApi.aiProposals.createDrafts(
-                    result.toAiProposalReviewV1(
-                        reviewId = java.util.UUID.randomUUID().toString(),
-                        expectedTargetRevisions = contextForAi.associate { it.eventSeq to it.revision }
-                    ),
+                    review,
                     requestId = java.util.UUID.randomUUID().toString()
                 )
             }
             reload()
-            val sharedNote = if (contextForAi.isEmpty()) "未共享事件上下文"
-                else "已共享 ${contextForAi.size} 条事件作为本次上下文"
+            val sharedNote = if (generation.sharedEventCount == 0) "未共享事件上下文"
+                else "已共享 ${generation.sharedEventCount} 条事件作为本次上下文"
             val firstDraft = created.itemReceipts.firstOrNull {
                 it.status == dev.powerfulcalendar.core.api.v1.AiProposalItemStatusV1.STAGED
             }?.draftId
@@ -880,18 +910,23 @@ fun PowerCalApp(
             return
         }
         scope.launch {
-            val current = withContext(Dispatchers.IO) { store.currentAiSession() }
-            val requested = current?.takeIf {
-                it.state == PowerStore.AiState.RUNNING
-            }?.let { session ->
-                withContext(Dispatchers.IO) { store.requestAiCancel(session.sessionId) }
-            } ?: false
+            val current = withContext(Dispatchers.IO) { aiFeatureApi.queryBatchState().session }
+            val result = current?.let { session ->
+                withContext(Dispatchers.IO) {
+                    aiFeatureApi.requestBatchCancellation(session.sessionId)
+                }
+            }
             reload()
-            message = when {
-                requested -> "已请求停止；已完成结果保留，未完成草稿继续等待审核"
-                current?.state == PowerStore.AiState.CANCEL_REQUESTED -> "停止请求已提交，正在等待当前操作结束"
-                confirmBatch != null -> "请在当前 Host 审核窗口取消尚未授权的批次"
-                else -> "当前没有正在运行的 AI 批次"
+            message = when (result?.status) {
+                dev.powerfulcalendar.core.api.v1.AiBatchCommandStatusV1.CANCEL_REQUESTED ->
+                    "已请求停止；已完成结果保留，未完成草稿继续等待审核"
+                dev.powerfulcalendar.core.api.v1.AiBatchCommandStatusV1.ALREADY_CANCEL_REQUESTED ->
+                    "停止请求已提交，正在等待当前操作结束"
+                else -> if (confirmBatch != null) {
+                    "请在当前 Host 审核窗口取消尚未授权的批次"
+                } else {
+                    "当前没有正在运行的 AI 批次"
+                }
             }
             WebSkinBridgeRuntime.stateRevision++
         }
@@ -901,14 +936,15 @@ fun PowerCalApp(
         if (stuckBatchReleaseRequestPending || confirmStuckBatchRelease != null) return
         stuckBatchReleaseRequestPending = true
         scope.launch {
-            val current = withContext(Dispatchers.IO) { store.currentAiSession() }
-            val now = System.currentTimeMillis()
-            if (aiLocked && PowerStore.canReleaseStuckAiBatch(current, now)) {
+            val current = withContext(Dispatchers.IO) { aiFeatureApi.queryBatchState().session }
+            if (aiLocked && current?.canReleaseStuck == true) {
                 confirmStuckBatchRelease = current
             } else {
                 message = when (current?.state) {
-                    PowerStore.AiState.RUNNING -> "请先请求停止 AI 批次；只有停止请求 10 分钟无响应后才能恢复"
-                    PowerStore.AiState.CANCEL_REQUESTED -> "停止请求尚未超过 10 分钟无响应窗口，请继续等待"
+                    dev.powerfulcalendar.core.api.v1.AiBatchStateV1.RUNNING ->
+                        "请先请求停止 AI 批次；只有停止请求 10 分钟无响应后才能恢复"
+                    dev.powerfulcalendar.core.api.v1.AiBatchStateV1.CANCEL_REQUESTED ->
+                        "停止请求尚未超过 10 分钟无响应窗口，请继续等待"
                     else -> "当前批次已结束或没有待恢复的批次"
                 }
             }
@@ -948,11 +984,21 @@ fun PowerCalApp(
                             "为避免把“确认”误当成事件内容，请重新说明要创建或修改的事项、日期和时间。")
                     } else if (task != null) {
                         val settings = AiSettingsStore.load(appContext)
-                        val share = if (settings.shareContext) records.take(60) else emptyList()
-                        val result = AiClient(settings, zone).interpret(task, share)
-                        if (result.proposals.isNotEmpty()) replaceAiProposalReview(result, share)
-                        else appendChat("assistant", "无法生成结构化提案：" +
-                            (result.warnings.firstOrNull()?.takeIf { it.isNotBlank() }
+                        val generated = aiFeatureApi.generateProposal(
+                            dev.powerfulcalendar.core.api.v1.AiProposalGenerationRequestV1(
+                                requestId = java.util.UUID.randomUUID().toString(),
+                                task = task.toAiConversationTaskV1(),
+                                zoneId = task.zoneId,
+                                shareCalendarContext = settings.shareContext,
+                                contextPolicy = dev.powerfulcalendar.core.api.v1.AiCalendarContextPolicyV1.FIRST_60_FORMAL_EVENTS
+                            )
+                        )
+                        val review = generated.review
+                        if (review != null && review.items.isNotEmpty()) {
+                            replaceAiProposalReview(review, records, task)
+                        } else appendChat("assistant", "无法生成结构化提案：" +
+                            (generated.warnings.firstOrNull()?.takeIf { it.isNotBlank() }
+                                ?: generated.message?.takeIf { it.isNotBlank() }
                                 ?: "模型回复未形成可审查提案，请补充或核对日程信息后重试。"))
                     }
                 } else {
@@ -965,20 +1011,21 @@ fun PowerCalApp(
                         appendChat("assistant", "待处理超过 100 张，本次不会默认选择前 100 张。请先在待处理中缩小范围。")
                     } else {
                         val all = text in setOf("全部", "所有", "全部草稿", "全选", "所有待处理")
-                        val selection = if (all) {
-                            dev.powerfulcalendar.ai.AiBatchSelection(
-                                selectedIds = snapshot.map { it.draftId },
-                                reply = "按用户明确的“全部”选择全部待处理草稿"
+                        val candidates = snapshot.map { it.toAiBatchCandidateV1() }
+                        val selection = aiFeatureApi.selectBatchDrafts(
+                            dev.powerfulcalendar.core.api.v1.AiBatchSelectionRequestV1(
+                                userRequest = text,
+                                candidates = candidates,
+                                selectAll = all
                             )
-                        } else {
-                            AiClient(AiSettingsStore.load(appContext), zone)
-                                .planBatchSelection(text, snapshot)
-                        }
-                        when {
-                            selection.ready -> {
-                                val ids = selection.selectedIds.toSet()
-                                val selected = snapshot.filter { it.draftId in ids }
-                                if (selected.size != ids.size) {
+                        )
+                        when (selection.status) {
+                            dev.powerfulcalendar.core.api.v1.AiBatchSelectionStatusV1.READY -> {
+                                val chosen = selection.selected.associateBy { it.draftId }
+                                val selected = snapshot.filter { card ->
+                                    chosen[card.draftId]?.draftVersion == card.draftVersion
+                                }
+                                if (selected.size != selection.selected.size) {
                                     appendChat("assistant", "部分目标已发生变化，请重新选择；没有执行任何操作。")
                                 } else {
                                     pendingBatchMode = null
@@ -987,11 +1034,12 @@ fun PowerCalApp(
                                     confirmBatch = BatchReview(mode, selected)
                                 }
                             }
-                            selection.question != null ->
-                                appendChat("assistant", selection.question)
-                            else -> appendChat("assistant",
-                                "暂时不能安全选定目标：" + (selection.error ?: "没有明确的草稿") +
-                                    "。请补充范围或回复“全部”。")
+                            dev.powerfulcalendar.core.api.v1.AiBatchSelectionStatusV1.NEEDS_CLARIFICATION ->
+                                appendChat("assistant", selection.question ?: "请补充要处理的草稿范围。")
+                            dev.powerfulcalendar.core.api.v1.AiBatchSelectionStatusV1.INVALID,
+                            dev.powerfulcalendar.core.api.v1.AiBatchSelectionStatusV1.MODEL_UNAVAILABLE ->
+                                appendChat("assistant", "暂时不能安全选定目标：" +
+                                    (selection.message ?: "没有明确的草稿") + "。请补充范围或回复“全部”。")
                         }
                     }
                 }
@@ -1032,12 +1080,19 @@ fun PowerCalApp(
                 }
                 // A document is a source of untrusted facts, never an execution instruction.
                 // Try the existing typed proposal parser before falling back to clarification.
-                val interpretation = client.interpret(
-                    "从以下文件提取真实日程，仅生成候选项；缺少时间不可猜测。文件：" +
-                        evidence.filename + "\n" + evidence.text, emptyList())
-                if (interpretation.proposals.isNotEmpty()) {
-                    replaceAiProposalReview(interpretation)
-                    appendChat("assistant", "已从文件识别 ${interpretation.proposals.size} 项候选日程，" +
+                val generated = aiFeatureApi.generateProposal(
+                    dev.powerfulcalendar.core.api.v1.AiProposalGenerationRequestV1(
+                        requestId = java.util.UUID.randomUUID().toString(),
+                        userText = "从以下文件提取真实日程，仅生成候选项；缺少时间不可猜测。文件：" +
+                            evidence.filename + "\n" + evidence.text,
+                        zoneId = zone.id,
+                        shareCalendarContext = false
+                    )
+                )
+                val review = generated.review
+                if (review != null && review.items.isNotEmpty()) {
+                    replaceAiProposalReview(review)
+                    appendChat("assistant", "已从文件识别 ${review.items.size} 项候选日程，" +
                         "请核对后选择生成草稿；尚未正式发布。" +
                         if (evidence.truncated) " 文件内容不完整，请核对遗漏。" else "")
                 } else {
@@ -2024,8 +2079,7 @@ fun PowerCalApp(
                     preparationMode = pendingBatchMode,
                     reviewMode = confirmBatch?.mode,
                     reviewCards = confirmBatch?.cards,
-                    progress = webAiBatchProgress,
-                    nowMillis = nowMillis
+                    progress = webAiBatchProgress
                 ))
                 .put("chatAttachmentAvailable", canLaunchWebAiAttachmentPicker())
                 .put("chatAttachmentBusy", aiAttachmentPickerBusy ||
@@ -2175,7 +2229,7 @@ fun PowerCalApp(
                 pendingCount = pendingCount,
                 aiLocked = aiLocked,
                 aiSession = aiSession,
-                canReleaseStuckBatch = PowerStore.canReleaseStuckAiBatch(aiSession, nowMillis),
+                canReleaseStuckBatch = aiSession?.canReleaseStuck == true,
                 effects = effects,
                 skinChoices = skinChoices,
                 selectedSkin = selectedSkin,
@@ -2702,7 +2756,9 @@ fun PowerCalApp(
                 scope.launch {
                     val session = aiSession
                     if (session != null) {
-                        withContext(Dispatchers.IO) { store.requestAiCancel(session.sessionId) }
+                        withContext(Dispatchers.IO) {
+                            aiFeatureApi.requestBatchCancellation(session.sessionId)
+                        }
                         reload()
                         message = "已请求停止 AI 批次"
                     }
@@ -3213,11 +3269,18 @@ fun PowerCalApp(
                                 appendChat("user", "已授权 AI 读取图片（原始图片不写入聊天历史）")
                                 appendChat("assistant", reply.reply, reply.proposalSource)
                                 reply.proposalSource?.let { source ->
-                                    val contextForAi = if (settings.shareContext) records.take(60)
-                                        else emptyList()
-                                    val result = AiClient(settings, zone).interpret(source, contextForAi)
-                                    if (result.proposals.isNotEmpty()) {
-                                        replaceAiProposalReview(result, contextForAi)
+                                    val generated = aiFeatureApi.generateProposal(
+                                        dev.powerfulcalendar.core.api.v1.AiProposalGenerationRequestV1(
+                                            requestId = java.util.UUID.randomUUID().toString(),
+                                            userText = source,
+                                            zoneId = zone.id,
+                                            shareCalendarContext = settings.shareContext,
+                                            contextPolicy = dev.powerfulcalendar.core.api.v1.AiCalendarContextPolicyV1.FIRST_60_FORMAL_EVENTS
+                                        )
+                                    )
+                                    val review = generated.review
+                                    if (review != null && review.items.isNotEmpty()) {
+                                        replaceAiProposalReview(review, records)
                                     }
                                 }
                             }
@@ -3291,36 +3354,56 @@ fun PowerCalApp(
             onAuthorize = { reviewedCards ->
                 confirmBatch = null
                 PowerCalStores.appScope.launch {
-                    // Authorize the exact reviewed snapshots in ONE transaction: the domain layer
-                    // re-checks every draftVersion, so a change after this dialog cannot slip in.
-                    val reviewed = reviewedCards.associate { it.draftId to it.draftVersion }
-                    val session = runCatching {
-                        store.beginAiBatch(reviewed, reviewedCards.map { it.operation }.toSet())
-                    }.getOrElse {
+                    val apiReview = dev.powerfulcalendar.core.api.v1.AiBatchReviewV1(
+                        mode = review.mode.toAiBatchModeV1(),
+                        items = reviewedCards.map { it.toAiBatchCandidateV1() }
+                    )
+                    val approval = coreFeatureApi.issueAiBatchApproval(apiReview)
+                    if (approval == null) {
                         withContext(Dispatchers.Main) {
                             reload()
-                            message = "无法开始批次：${it.message.orEmpty()}"
+                            message = "无法开始批次审核；没有执行任何操作"
                         }
                         return@launch
                     }
-                    withContext(Dispatchers.Main) { reload() }
-                    PowerCalStores.aiBatchProgress.begin(
-                        session.sessionId, review.mode, session.scope.size
-                    )
+                    var progressStarted = false
+                    var activeSessionId: String? = null
                     val report = try {
-                        AiBatchRunner(store).run(session, review.mode) { done, total ->
-                            PowerCalStores.aiBatchProgress.report(
-                                session.sessionId, review.mode, done, total
-                            )
+                        aiFeatureApi.runReviewedBatch(apiReview, approval) { progress ->
+                            activeSessionId = progress.sessionId
+                            val batchMode = progress.mode.toRunnerMode()
+                            if (!progressStarted) {
+                                progressStarted = true
+                                PowerCalStores.aiBatchProgress.begin(
+                                    progress.sessionId, batchMode, progress.total
+                                )
+                                PowerCalStores.appScope.launch(Dispatchers.Main) { reload() }
+                            } else {
+                                PowerCalStores.aiBatchProgress.report(
+                                    progress.sessionId, batchMode,
+                                    progress.completed, progress.total
+                                )
+                            }
                         }
                     } finally {
-                        PowerCalStores.aiBatchProgress.finish(session.sessionId)
+                        if (progressStarted) {
+                            activeSessionId?.let(PowerCalStores.aiBatchProgress::finish)
+                        }
+                    }
+                    if (report.status ==
+                        dev.powerfulcalendar.core.api.v1.AiBatchExecutionStatusV1.START_REJECTED) {
+                        withContext(Dispatchers.Main) {
+                            reload()
+                            message = "无法开始批次：${report.message.orEmpty()}"
+                        }
+                        return@launch
                     }
                     draftReviewApi.refresh()
                     withContext(Dispatchers.Main) {
                         reload()
                         message = "AI 批次结束：发布 ${report.published} 张，丢弃 ${report.discarded} 张，保留 ${report.kept} 张" +
-                            (if (report.cancelled) "（已停止）" else "") +
+                            (if (report.status ==
+                                dev.powerfulcalendar.core.api.v1.AiBatchExecutionStatusV1.CANCELLED) "（已停止）" else "") +
                             (if (report.failures.isNotEmpty()) "；部分草稿未完成，可单独重新审核" else "")
                     }
                     reconcile()
@@ -3335,7 +3418,7 @@ fun PowerCalApp(
         val canConfirmRelease = reviewedSession != null && aiLocked && aiSession?.isActive == true &&
             aiSession?.sessionId == reviewedSession.sessionId &&
             aiSession?.lockEpoch == reviewedSession.lockEpoch &&
-            PowerStore.canReleaseStuckAiBatch(aiSession, nowMillis)
+            aiSession?.canReleaseStuck == true
         NativeAiStuckBatchReleaseReview(
             canConfirm = canConfirmRelease,
             onConfirm = {
@@ -3343,7 +3426,12 @@ fun PowerCalApp(
                 confirmStuckBatchRelease = null
                 if (expected != null) scope.launch {
                     val released = withContext(Dispatchers.IO) {
-                        store.releaseStuckAiBatch(expected.sessionId, expected.lockEpoch)
+                        val approval = coreFeatureApi.issueAiBatchStuckReleaseApproval(
+                            expected.sessionId, expected.lockEpoch
+                        ) ?: return@withContext false
+                        aiFeatureApi.releaseStuckBatch(
+                            expected.sessionId, expected.lockEpoch, approval
+                        ).status == dev.powerfulcalendar.core.api.v1.AiBatchCommandStatusV1.RELEASED
                     }
                     reload()
                     message = if (released) {

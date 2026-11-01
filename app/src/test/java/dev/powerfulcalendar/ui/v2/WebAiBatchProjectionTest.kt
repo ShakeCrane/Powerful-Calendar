@@ -5,9 +5,11 @@ import dev.powerfulcalendar.core.DraftCard
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.DraftStatus
-import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.TemporalKind
-import org.json.JSONObject
+import dev.powerfulcalendar.core.api.v1.AiBatchSessionV1
+import dev.powerfulcalendar.core.api.v1.AiBatchStateV1
+import dev.powerfulcalendar.core.api.v1.AiBatchTerminalReportV1
+import dev.powerfulcalendar.core.api.v1.DraftOperationV1
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -40,22 +42,23 @@ class WebAiBatchProjectionTest {
 
     @Test
     fun activeStateAndTerminalReportExposeOutcomesWithoutAuthorizationIdentity() {
-        val session = PowerStore.AiSession(
+        val session = AiBatchSessionV1(
             sessionId = "private-session-id",
             lockEpoch = 991,
             scope = setOf(8101, 8102),
-            allowedOperations = setOf(DraftOperation.CREATE),
-            state = PowerStore.AiState.CANCELLED,
+            allowedOperations = setOf(DraftOperationV1.CREATE),
+            state = AiBatchStateV1.CANCELLED,
             startedAtMillis = 10,
             updatedAtMillis = 20,
-            report = JSONObject()
-                .put("mode", "PUBLISH")
-                .put("published", 1)
-                .put("discarded", 0)
-                .put("kept", 1)
-                .put("cancelled", true)
-                .put("failures", "#8102：版本冲突：PRIVATE_EVENT_TITLE")
-                .toString(),
+            terminalReport = AiBatchTerminalReportV1(
+                mode = dev.powerfulcalendar.core.api.v1.AiBatchModeV1.PUBLISH,
+                outcomeKnown = true,
+                published = 1,
+                discarded = 0,
+                kept = 1,
+                cancelled = true,
+                hasFailures = true
+            ),
             reviewedVersions = mapOf(8101L to 3L, 8102L to 5L)
         )
 
@@ -120,9 +123,9 @@ class WebAiBatchProjectionTest {
 
     @Test
     fun progressModeIsUsedOnlyForTheMatchingActiveSession() {
-        val session = PowerStore.AiSession(
+        val session = AiBatchSessionV1(
             sessionId = "active-session", lockEpoch = 7, scope = emptySet(),
-            allowedOperations = emptySet(), state = PowerStore.AiState.RUNNING,
+            allowedOperations = emptySet(), state = AiBatchStateV1.RUNNING,
             startedAtMillis = 10, updatedAtMillis = 20
         )
         val matching = WebAiBatchProgress(
@@ -137,7 +140,7 @@ class WebAiBatchProjectionTest {
             session, null, null, null, stale
         )
         val terminalProjection = WebAiBatchProjection.project(
-            session.copy(state = PowerStore.AiState.COMPLETED), null, null, null, matching
+            session.copy(state = AiBatchStateV1.COMPLETED), null, null, null, matching
         )
 
         assertEquals("PUBLISH", currentProjection.getString("mode"))
@@ -147,33 +150,33 @@ class WebAiBatchProjectionTest {
 
     @Test
     fun stuckRecoveryIsOnlyProjectedForTimedOutCancellationAndHidesUnknownCounts() {
-        val now = 100_000_000L
-        val running = PowerStore.AiSession(
+        val running = AiBatchSessionV1(
             sessionId = "running-private", lockEpoch = 7, scope = emptySet(),
-            allowedOperations = emptySet(), state = PowerStore.AiState.RUNNING,
-            startedAtMillis = now - PowerStore.DEFAULT_STALE_MS * 2,
-            updatedAtMillis = now - PowerStore.DEFAULT_STALE_MS * 2
+            allowedOperations = emptySet(), state = AiBatchStateV1.RUNNING,
+            startedAtMillis = 1, updatedAtMillis = 2
         )
         val requested = running.copy(
-            sessionId = "cancel-private", state = PowerStore.AiState.CANCEL_REQUESTED,
-            updatedAtMillis = now - PowerStore.DEFAULT_STALE_MS
+            sessionId = "cancel-private", state = AiBatchStateV1.CANCEL_REQUESTED,
+            canReleaseStuck = true
         )
-        val freshCancel = requested.copy(updatedAtMillis = now)
+        val freshCancel = requested.copy(canReleaseStuck = false)
 
-        assertFalse(WebAiBatchProjection.project(running, null, null, null, null, now)
+        assertFalse(WebAiBatchProjection.project(running, null, null, null, null)
             .getBoolean("canRelease"))
-        assertFalse(WebAiBatchProjection.project(freshCancel, null, null, null, null, now)
+        assertFalse(WebAiBatchProjection.project(freshCancel, null, null, null, null)
             .getBoolean("canRelease"))
-        assertTrue(WebAiBatchProjection.project(requested, null, null, null, null, now)
+        assertTrue(WebAiBatchProjection.project(requested, null, null, null, null)
             .getBoolean("canRelease"))
 
         val uncertain = requested.copy(
-            state = PowerStore.AiState.FAILED,
-            report = JSONObject().put("mode", "PUBLISH").put("released", "user")
-                .put("outcomeKnown", false).put("published", 99).put("discarded", 1)
-                .put("kept", 0).toString()
+            state = AiBatchStateV1.FAILED,
+            terminalReport = AiBatchTerminalReportV1(
+                mode = dev.powerfulcalendar.core.api.v1.AiBatchModeV1.PUBLISH,
+                outcomeKnown = false,
+                releasedByUser = true
+            )
         )
-        val report = WebAiBatchProjection.project(uncertain, null, null, null, null, now)
+        val report = WebAiBatchProjection.project(uncertain, null, null, null, null)
             .getJSONObject("report")
         assertFalse(report.getBoolean("outcomeKnown"))
         assertFalse(report.has("published"))

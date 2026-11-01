@@ -41,12 +41,14 @@ class PowerCalCoreFeatureApiV1(
     clock: Clock = Clock.systemUTC(),
     internal val deckController: DeckController = DeckController(StoreDeckPersistence(store)),
     reminderContext: Context? = null,
-    settingsContext: Context? = reminderContext
+    settingsContext: Context? = reminderContext,
+    aiModelPort: AiModelPortV1? = null
 ) : CoreFeatureApiV1 {
     override val apiVersion: Int = 1
     private val calendarService = SnapshotCalendarFeatureApiV1()
     private val eventService = StoreEventFeatureApiV1(store, clock)
     private val draftReviewService = StoreDraftReviewFeatureApiV1(store, deckController, eventService)
+    private val aiService = StoreAiFeatureApiV1(store, eventService, aiModelPort, clock)
     private val aiProposalService = StoreAiProposalFeatureApiV1(store, eventService, clock)
     private val reminderService = AndroidReminderFeatureApiV1(store, reminderContext)
     private val importExportService = StoreImportExportFeatureApiV1(
@@ -56,6 +58,7 @@ class PowerCalCoreFeatureApiV1(
     override val calendar: CalendarFeatureApiV1 get() = calendarService
     override val events: EventFeatureApiV1 get() = eventService
     override val draftReview: DraftReviewFeatureApiV1 get() = draftReviewService
+    override val ai: AiFeatureApiV1 get() = aiService
     override val aiProposals: AiProposalFeatureApiV1 get() = aiProposalService
     override val reminders: ReminderFeatureApiV1 get() = reminderService
     override val importExport: ImportExportFeatureApiV1 get() = importExportService
@@ -73,6 +76,17 @@ class PowerCalCoreFeatureApiV1(
     internal fun issueAiProposalPublishApproval(
         request: AiProposalApplyRequestV1
     ): AiProposalPublishApprovalV1? = aiProposalService.issueHostApproval(request)
+
+    /** Called only after the Host review surface confirms this exact batch and operation mode. */
+    internal fun issueAiBatchApproval(review: AiBatchReviewV1): AiBatchApprovalV1? =
+        aiService.issueHostBatchApproval(review)
+
+    /** Called only after the Host stuck-session review has been confirmed. */
+    internal fun issueAiBatchStuckReleaseApproval(
+        sessionId: String,
+        lockEpoch: Long
+    ): AiBatchStuckReleaseApprovalV1? =
+        aiService.issueHostStuckReleaseApproval(sessionId, lockEpoch)
 }
 
 internal class StoreEventFeatureApiV1(

@@ -66,7 +66,7 @@ data class NativeDeckSearchHit(
     val formal: Boolean
 )
 
-data class NativeDeckAiSession(val authorizedCount: Int, val remainingCount: Int, val lockEpoch: Long)
+data class NativeDeckAiSession(val authorizedCount: Int, val remainingCount: Int)
 data class NativeDeckCompletion(val published: Int, val discarded: Int, val conflicts: Int)
 data class NativeDeckDiffRow(val label: String, val before: String, val after: String, val changed: Boolean)
 data class NativeDeckConflict(

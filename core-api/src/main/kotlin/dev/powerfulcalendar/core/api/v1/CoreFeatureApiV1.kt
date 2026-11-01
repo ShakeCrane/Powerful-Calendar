@@ -291,6 +291,7 @@ interface CoreFeatureApiV1 {
     val calendar: CalendarFeatureApiV1
     val events: EventFeatureApiV1
     val draftReview: DraftReviewFeatureApiV1
+    val ai: AiFeatureApiV1
     val aiProposals: AiProposalFeatureApiV1
     val reminders: ReminderFeatureApiV1
     val importExport: ImportExportFeatureApiV1

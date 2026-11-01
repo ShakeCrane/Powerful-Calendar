@@ -1,6 +1,7 @@
 package dev.powerfulcalendar.ai
 
 import dev.powerfulcalendar.core.DraftCard
+import dev.powerfulcalendar.core.api.v1.AiBatchCandidateV1
 import org.json.JSONObject
 
 /**
@@ -19,6 +20,20 @@ data class AiBatchSelection(
 object AiBatchSelectionParser {
     private const val MAX_RAW = 32_000
     fun parse(raw: String, candidates: List<DraftCard>): AiBatchSelection {
+        return parseCandidates(raw, candidates.filter { it.isActionable }.map { card ->
+            AiBatchCandidateV1(
+                draftId = card.draftId,
+                draftVersion = card.draftVersion,
+                operation = dev.powerfulcalendar.core.api.v1.DraftOperationV1.valueOf(
+                    card.operation.name
+                ),
+                kind = dev.powerfulcalendar.core.api.v1.EventKindV1.valueOf(card.form.kind.name),
+                title = card.form.title
+            )
+        })
+    }
+
+    fun parseCandidates(raw: String, candidates: List<AiBatchCandidateV1>): AiBatchSelection {
         if (raw.length > MAX_RAW) return failure("模型选择结果超过大小上限")
         val fence = 96.toChar().toString().repeat(3)
         val trimmed = raw.trim().removePrefix(fence + "json").removePrefix(fence)
@@ -34,7 +49,7 @@ object AiBatchSelectionParser {
         if (mode != "SELECT") return failure("AI 返回了未知的选择模式")
         val arr = data.optJSONArray("draftIds") ?: return failure("缺少具体草稿 ID")
         if (arr.length() !in 1..100) return failure("选择的草稿数量无效或超过 100")
-        val allowed = candidates.filter { it.isActionable }.associateBy { it.draftId }
+        val allowed = candidates.associateBy { it.draftId }
         val ids = mutableListOf<Long>()
         for (i in 0 until arr.length()) {
             val rawId = arr.opt(i)?.toString().orEmpty()

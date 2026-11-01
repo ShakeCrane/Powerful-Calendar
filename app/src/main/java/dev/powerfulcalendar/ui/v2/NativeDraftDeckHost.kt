@@ -30,7 +30,7 @@ import dev.powerfulcalendar.core.api.v1.DraftReviewReceiptStatusV1
 import dev.powerfulcalendar.core.api.v1.toCoreDraftForm
 import dev.powerfulcalendar.core.api.v1.toCoreTemporalRecord
 import dev.powerfulcalendar.core.api.v1.toEventFormV1
-import dev.powerfulcalendar.core.PowerStore
+import dev.powerfulcalendar.core.api.v1.AiBatchSessionV1
 import dev.powerfulcalendar.core.Recurrence
 import dev.powerfulcalendar.core.RecurrenceFreq
 import dev.powerfulcalendar.core.ReminderMethod
@@ -87,7 +87,7 @@ import java.time.temporal.ChronoUnit
 @Composable
 fun NativeDraftDeckDialog(
     draftReviewApi: DraftReviewFeatureApiV1,
-    aiSession: PowerStore.AiSession?,
+    aiSession: AiBatchSessionV1?,
     onDismissRequest: () -> Unit,
     onOpenFormalEvent: (EventSearchHitV1) -> Unit,
     onCancelAiBatch: () -> Unit,
@@ -499,7 +499,7 @@ private fun DraftReviewSnapshotV1.toNativeDeckState(
     pickerNowMillis: Long,
     commandBusy: Boolean,
     conversionNote: String?,
-    aiSession: PowerStore.AiSession?
+    aiSession: AiBatchSessionV1?
 ): NativeDeckState {
     val drafts = cards.map { it.toNativeDeckCard(pickerNowMillis) }
     val currentForm = form?.toCoreDraftForm()?.toNativeDeckForm(pickerNowMillis)
@@ -527,7 +527,7 @@ private fun DraftReviewSnapshotV1.toNativeDeckState(
         dirty = dirty,
         aiLocked = aiLocked,
         aiSession = aiSession?.let { session ->
-            NativeDeckAiSession(session.scope.size, cards.count { it.draftId in session.scope }, session.lockEpoch)
+            NativeDeckAiSession(session.scope.size, cards.count { it.draftId in session.scope })
         },
         notice = notice,
         error = error,

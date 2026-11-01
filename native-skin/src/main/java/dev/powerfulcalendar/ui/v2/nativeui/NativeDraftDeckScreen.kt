@@ -904,7 +904,7 @@ private fun AiHoldCard(session: dev.powerfulcalendar.ui.v2.NativeDeckAiSession?,
             Text("AI 正在独占处理卡组", style = MaterialTheme.typography.titleMedium)
             Text("你可以查看时间轴，但不能同时编辑卡片。停止后会保留已完成的结果与剩余卡片。",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            session?.let { Text("授权 ${it.authorizedCount} 张 · 批次 ${it.lockEpoch}",
+            session?.let { Text("授权 ${it.authorizedCount} 张",
                 style = MaterialTheme.typography.labelSmall) }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(onClick = onCancel) { Text("停止批次") }

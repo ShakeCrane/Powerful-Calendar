@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.Color
 import androidx.test.core.app.ApplicationProvider
 import dev.powerfulcalendar.core.*
+import dev.powerfulcalendar.core.api.v1.AiBatchSessionV1
 import dev.powerfulcalendar.core.api.v1.EventSearchHitV1
 import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
 import dev.powerfulcalendar.ui.v2.nativeui.NativeGlassPanel
@@ -56,7 +57,7 @@ class GlassComposeTest {
     @Composable
     private fun DraftDeckDialog(
         controller: DeckController,
-        aiSession: PowerStore.AiSession?,
+        aiSession: AiBatchSessionV1?,
         onDismissRequest: () -> Unit,
         onOpenFormalEvent: (EventSearchHitV1) -> Unit,
         onCancelAiBatch: () -> Unit,
