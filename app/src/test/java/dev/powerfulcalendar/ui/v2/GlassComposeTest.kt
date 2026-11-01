@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.Color
 import androidx.test.core.app.ApplicationProvider
 import dev.powerfulcalendar.core.*
+import dev.powerfulcalendar.core.api.v1.EventSearchHitV1
 import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
 import dev.powerfulcalendar.ui.v2.nativeui.NativeGlassPanel
 import org.junit.*
@@ -57,10 +58,10 @@ class GlassComposeTest {
         controller: DeckController,
         aiSession: PowerStore.AiSession?,
         onDismissRequest: () -> Unit,
-        onOpenFormalEvent: (TemporalRecord) -> Unit,
+        onOpenFormalEvent: (EventSearchHitV1) -> Unit,
         onCancelAiBatch: () -> Unit,
         onDeckChanged: () -> Unit,
-        formalSearch: (String) -> List<TemporalRecord>
+        formalSearch: (String) -> List<EventSearchHitV1>
     ) {
         val api = remember(store, controller) {
             PowerCalCoreFeatureApiV1(store, deckController = controller)

@@ -9,6 +9,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import dev.powerfulcalendar.core.*
+import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
@@ -95,6 +96,9 @@ class ConflictReviewInstrumentedTest {
             )
             runBlocking { controller.open(staleDraft.draftId) }
             assertFalse("stale replacement must pause for explicit review", runBlocking { controller.commit() })
+            val draftReviewApi = PowerCalCoreFeatureApiV1(
+                store, deckController = controller
+            ).draftReview
             val prompt = requireNotNull(controller.state.conflict)
             val rows = snapshotRows(prompt.current, prompt.approvedForm)
             assertEquals("all editable snapshot fields must be represented", 25, rows.size)
@@ -110,7 +114,16 @@ class ConflictReviewInstrumentedTest {
 
             compose.setContent {
                 PowerCalTheme {
-                    DraftDeckDialog(controller, null, {}, {}, {}, {}, { emptyList() })
+                    DraftDeckDialog(
+                        controller = controller,
+                        draftReviewApi = draftReviewApi,
+                        aiSession = null,
+                        onDismissRequest = {},
+                        onOpenFormalEvent = {},
+                        onCancelAiBatch = {},
+                        onDeckChanged = {},
+                        formalSearch = { emptyList() }
+                    )
                 }
             }
             compose.waitForIdle()

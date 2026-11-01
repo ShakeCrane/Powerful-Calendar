@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.PowerStore
+import dev.powerfulcalendar.core.RecurrenceEngine
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -210,6 +211,143 @@ class EventFeatureApiV1Test {
         assertEquals(EventMutationStatusV1.STAGED, replay.status)
         assertTrue(replay.duplicate)
         assertEquals(1, store.pendingDraftsFor(record.eventSeq).size)
+    }
+
+    @Test
+    fun formalSearchPreservesMatchingOrderAndReturnsBoundedDisplayHits() {
+        repeat(10) { index ->
+            val editor = openNewEvent(EventKindV1.ACTIVITY)
+            val day = java.time.LocalDate.of(2026, 10, 26).plusDays(index.toLong())
+            val form = editor.form.copy(
+                title = "Alpha ${index + 1}",
+                startText = "$day 09:00",
+                endText = "$day 10:00"
+            )
+            assertEquals(
+                EventMutationStatusV1.CREATED,
+                api.saveNewEvent(editor.handle, form, "search-create-${index + 1}").status
+            )
+        }
+
+        val snapshot = api.queryEvents()
+        val titleMatches = api.searchEvents("aLpHa", snapshot)
+        assertEquals((1L..8L).toList(), titleMatches.hits.map { it.eventSeq })
+        assertEquals("Alpha 1", titleMatches.hits.first().title)
+        assertEquals(EventKindV1.ACTIVITY, titleMatches.hits.first().kind)
+        assertEquals(1L, titleMatches.hits.first().revision)
+        assertEquals(listOf(1L), api.searchEvents("#0001", snapshot).hits.map { it.eventSeq })
+        assertTrue(api.searchEvents(" \t", snapshot).hits.isEmpty())
+        assertEquals(snapshot.featureRevision, titleMatches.featureRevision)
+    }
+
+    @Test
+    fun occurrenceCompletionUsesExpectedRevisionStateAndOneChangeReceipt() {
+        val editor = openNewEvent(EventKindV1.MEMO)
+        val form = editor.form.copy(
+            title = "Completion API memo",
+            startText = "2026-10-26",
+            trackingEnabled = true
+        )
+        val created = api.saveNewEvent(editor.handle, form, "completion-create")
+        assertEquals(EventMutationStatusV1.CREATED, created.status)
+        val eventSeq = requireNotNull(created.eventSeq)
+        val before = requireNotNull(store.get(eventSeq))
+        val changes = mutableListOf<EventFeatureChangeV1>()
+        val subscription = api.subscribe(changes::add)
+        try {
+            val completed = api.setOccurrenceCompletion(
+                eventSeq, before.revision, "single", expectedCompleted = false,
+                completed = true, requestId = "completion-one"
+            )
+            assertEquals(EventMutationStatusV1.UPDATED, completed.status)
+            assertEquals(before.revision + 1L, completed.revision)
+            val completedRevision = requireNotNull(completed.revision)
+            assertEquals(2L, api.featureRevision)
+            assertEquals(setOf("single"), store.get(eventSeq)?.completedKeys)
+            assertEquals(2L, store.commitCount())
+            assertEquals(listOf(EventFeatureChangeTypeV1.FORMAL_UPDATED), changes.map { it.type })
+
+            val replay = api.setOccurrenceCompletion(
+                eventSeq, before.revision, "single", expectedCompleted = false,
+                completed = true, requestId = "completion-one"
+            )
+            assertEquals(EventMutationStatusV1.UPDATED, replay.status)
+            assertTrue(replay.duplicate)
+            assertEquals(2L, store.commitCount())
+            assertEquals(1, changes.size)
+
+            val reused = api.setOccurrenceCompletion(
+                eventSeq, completedRevision, "single", expectedCompleted = true,
+                completed = false, requestId = "completion-one"
+            )
+            assertEquals(EventMutationStatusV1.DUPLICATE_REQUEST_ID, reused.status)
+
+            val noChange = api.setOccurrenceCompletion(
+                eventSeq, completedRevision, "single", expectedCompleted = true,
+                completed = true, requestId = "completion-no-change"
+            )
+            assertEquals(EventMutationStatusV1.NO_CHANGE, noChange.status)
+            assertEquals(2L, store.commitCount())
+            assertEquals(1, changes.size)
+
+            val stale = api.setOccurrenceCompletion(
+                eventSeq, before.revision, "single", expectedCompleted = false,
+                completed = true, requestId = "completion-stale"
+            )
+            assertEquals(EventMutationStatusV1.CONFLICT, stale.status)
+            assertEquals(setOf("single"), store.get(eventSeq)?.completedKeys)
+            assertEquals(2L, store.commitCount())
+            assertEquals(1, changes.size)
+
+            val invalidOccurrence = api.setOccurrenceCompletion(
+                eventSeq, completedRevision, "not-an-occurrence", expectedCompleted = false,
+                completed = true, requestId = "completion-invalid-slot"
+            )
+            assertEquals(EventMutationStatusV1.INVALID, invalidOccurrence.status)
+        } finally {
+            subscription.close()
+        }
+    }
+
+    @Test
+    fun recurringCompletionUsesOriginalSlotKeysAndCanReopenOneSlot() {
+        val editor = openNewEvent(EventKindV1.MEMO)
+        val form = editor.form.copy(
+            title = "Repeating completion memo",
+            startText = "2026-10-26",
+            trackingEnabled = true,
+            recurrence = EventRecurrenceV1(
+                frequency = EventRecurrenceFrequencyV1.DAILY,
+                interval = 1,
+                count = 3,
+                activeFromDate = "2026-10-26"
+            )
+        )
+        val created = api.saveNewEvent(editor.handle, form, "recurring-completion-create")
+        assertEquals(EventMutationStatusV1.CREATED, created.status)
+        val record = requireNotNull(store.get(requireNotNull(created.eventSeq)))
+        val anchor = requireNotNull(record.anchorMillis())
+        val keys = RecurrenceEngine.occurrences(
+            record, anchor - 1L, anchor + 4L * 86_400_000L, limit = 10
+        ).map { it.key }
+        assertTrue("Repeating memo should expose multiple original slots", keys.size >= 2)
+
+        val slotKey = keys[1]
+        val completed = api.setOccurrenceCompletion(
+            record.eventSeq, record.revision, slotKey, expectedCompleted = false,
+            completed = true, requestId = "recurring-completion-slot"
+        )
+        assertEquals(EventMutationStatusV1.UPDATED, completed.status)
+        assertEquals(setOf(slotKey), store.get(record.eventSeq)?.completedKeys)
+
+        val reopened = api.setOccurrenceCompletion(
+            record.eventSeq, requireNotNull(completed.revision), slotKey,
+            expectedCompleted = true, completed = false,
+            requestId = "recurring-reopen-slot"
+        )
+        assertEquals(EventMutationStatusV1.UPDATED, reopened.status)
+        assertTrue(store.get(record.eventSeq)?.completedKeys.orEmpty().isEmpty())
+        assertEquals(3L, store.get(record.eventSeq)?.revision)
     }
 
     private fun openNewEvent(

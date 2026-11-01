@@ -12,7 +12,9 @@ import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.StoreDeckPersistence
 import dev.powerfulcalendar.core.TemporalKind
-import dev.powerfulcalendar.core.TemporalRecord
+import dev.powerfulcalendar.core.api.v1.EventKindV1
+import dev.powerfulcalendar.core.api.v1.EventSearchHitV1
+import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -46,21 +48,20 @@ class DraftDeckDefaultSearchInstrumentedTest {
                 StoreDeckPersistence(store), ioDispatcher = Dispatchers.Unconfined
             )
             runBlocking { controller.open(cards.first().draftId) }
+            val coreFeatureApi = PowerCalCoreFeatureApiV1(store, deckController = controller)
 
             val formalSearchQueries = mutableListOf<String>()
-            val formalOnlyResult = TemporalRecord(
+            val formalOnlyResult = EventSearchHitV1(
                 eventSeq = 900,
                 revision = 1,
-                kind = TemporalKind.ACTIVITY,
-                title = "FORMAL_ONLY_SEARCH_RESULT",
-                startMillis = day.atTime(13, 0).atZone(zone).toInstant().toEpochMilli(),
-                endMillis = day.atTime(14, 0).atZone(zone).toInstant().toEpochMilli(),
-                zoneId = zone.id
+                kind = EventKindV1.ACTIVITY,
+                title = "FORMAL_ONLY_SEARCH_RESULT"
             )
             compose.setContent {
                 PowerCalTheme {
                     DraftDeckDialog(
                         controller = controller,
+                        draftReviewApi = coreFeatureApi.draftReview,
                         aiSession = null,
                         onDismissRequest = {},
                         onOpenFormalEvent = {},

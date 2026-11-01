@@ -77,6 +77,110 @@ private class StoreEventFeatureApiV1(
         events = store.all().map(TemporalRecord::toEventRecordV1)
     )
 
+    override fun searchEvents(
+        query: String,
+        snapshot: EventQuerySnapshotV1
+    ): EventSearchSnapshotV1 {
+        val hits = if (query.isBlank()) emptyList() else snapshot.events.asSequence()
+            .filter { event ->
+                event.title.contains(query, ignoreCase = true) ||
+                    event.eventSeq.toString().contains(query) ||
+                    TemporalRecord.formatSeq(event.eventSeq).contains(query)
+            }
+            .take(8)
+            .map { event ->
+                EventSearchHitV1(event.eventSeq, event.revision, event.kind, event.title)
+            }
+            .toList()
+        return EventSearchSnapshotV1(snapshot.featureRevision, hits)
+    }
+
+    @Synchronized
+    override fun setOccurrenceCompletion(
+        eventSeq: Long,
+        expectedRevision: Long,
+        occurrenceKey: String,
+        expectedCompleted: Boolean,
+        completed: Boolean,
+        requestId: String
+    ): EventMutationReceiptV1 {
+        val fingerprint = "completion:$eventSeq:$expectedRevision:${occurrenceKey.length}:" +
+            "$occurrenceKey:$expectedCompleted:$completed"
+        return withReceipt(requestId, fingerprint) {
+            val result = synchronized(store) {
+                if (eventSeq <= 0L || expectedRevision <= 0L || occurrenceKey.isBlank()) {
+                    return@synchronized receipt(
+                        requestId, EventMutationStatusV1.INVALID,
+                        errorCode = "COMPLETION_IDENTITY_INVALID", message = "完成项身份或版本无效"
+                    )
+                }
+                if (store.isLocked()) return@synchronized receipt(
+                    requestId, EventMutationStatusV1.LOCKED, eventSeq = eventSeq,
+                    errorCode = "CORE_LOCKED", message = "事件正在批量处理中"
+                )
+                val current = store.get(eventSeq) ?: return@synchronized receipt(
+                    requestId, EventMutationStatusV1.INVALID, eventSeq = eventSeq,
+                    errorCode = "EVENT_NOT_FOUND", message = "事件不存在"
+                )
+                if (current.revision != expectedRevision) return@synchronized receipt(
+                    requestId, EventMutationStatusV1.CONFLICT, eventSeq = eventSeq,
+                    revision = current.revision, errorCode = "EVENT_REVISION_STALE",
+                    message = "事件已变化，请刷新后重试", refreshRequired = true
+                )
+                if (!current.trackingEnabled || !current.enabled) return@synchronized receipt(
+                    requestId, EventMutationStatusV1.INVALID, eventSeq = eventSeq,
+                    revision = current.revision, errorCode = "COMPLETION_UNAVAILABLE",
+                    message = "该事件当前未开放完成跟踪"
+                )
+                val occurrenceExists = if (current.recurrence.isRepeating) {
+                    RecurrenceEngine.occurrenceForKey(current, occurrenceKey) != null
+                } else occurrenceKey == "single"
+                if (!occurrenceExists) return@synchronized receipt(
+                    requestId, EventMutationStatusV1.INVALID, eventSeq = eventSeq,
+                    revision = current.revision, errorCode = "OCCURRENCE_NOT_FOUND",
+                    message = "完成项实例不存在或已失效"
+                )
+                val wasCompleted = occurrenceKey in current.completedKeys
+                if (wasCompleted != expectedCompleted) return@synchronized receipt(
+                    requestId, EventMutationStatusV1.CONFLICT, eventSeq = eventSeq,
+                    revision = current.revision, errorCode = "COMPLETION_STATE_STALE",
+                    message = "完成状态已变化，请刷新后重试", refreshRequired = true
+                )
+                if (wasCompleted == completed) return@synchronized receipt(
+                    requestId, EventMutationStatusV1.NO_CHANGE, eventSeq = eventSeq,
+                    revision = current.revision
+                )
+                if (!store.setCompleted(eventSeq, occurrenceKey, completed, expectedRevision)) {
+                    val latest = store.get(eventSeq)
+                    return@synchronized if (store.isLocked()) receipt(
+                        requestId, EventMutationStatusV1.LOCKED, eventSeq = eventSeq,
+                        errorCode = "CORE_LOCKED", message = "事件正在批量处理中"
+                    ) else receipt(
+                        requestId, EventMutationStatusV1.CONFLICT, eventSeq = eventSeq,
+                        revision = latest?.revision, errorCode = "COMPLETION_WRITE_REJECTED",
+                        message = "完成状态未保存，请刷新后重试", refreshRequired = true
+                    )
+                }
+                val updated = store.get(eventSeq)
+                if (updated == null || updated.revision != expectedRevision + 1L ||
+                    (occurrenceKey in updated.completedKeys) != completed
+                ) return@synchronized receipt(
+                    requestId, EventMutationStatusV1.FAILED, eventSeq = eventSeq,
+                    revision = updated?.revision, errorCode = "COMPLETION_RESULT_UNVERIFIED",
+                    message = "完成状态已写入，但当前版本无法确认", refreshRequired = true
+                )
+                receipt(
+                    requestId, EventMutationStatusV1.UPDATED, eventSeq = eventSeq,
+                    revision = updated.revision
+                )
+            }
+            if (result.status == EventMutationStatusV1.UPDATED) {
+                publish(EventFeatureChangeTypeV1.FORMAL_UPDATED, eventSeq, result.revision)
+            }
+            result
+        }
+    }
+
     @Synchronized
     override fun openNewEvent(
         kind: EventKindV1,

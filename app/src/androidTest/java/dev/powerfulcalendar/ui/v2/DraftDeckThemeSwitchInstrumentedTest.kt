@@ -18,6 +18,7 @@ import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.StoreDeckPersistence
 import dev.powerfulcalendar.core.TemporalKind
+import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -49,6 +50,9 @@ class DraftDeckThemeSwitchInstrumentedTest {
                 StoreDeckPersistence(store), ioDispatcher = Dispatchers.Unconfined
             )
             runBlocking { controller.open(draft.draftId) }
+            val draftReviewApi = PowerCalCoreFeatureApiV1(
+                store, deckController = controller
+            ).draftReview
 
             var darkTheme by mutableStateOf(false)
             var renderedBackground by mutableStateOf(Color.Unspecified)
@@ -57,7 +61,7 @@ class DraftDeckThemeSwitchInstrumentedTest {
                     val background = MaterialTheme.colorScheme.background
                     SideEffect { renderedBackground = background }
                     NativeDraftDeckDialog(
-                        controller = controller,
+                        draftReviewApi = draftReviewApi,
                         aiSession = null,
                         onDismissRequest = {},
                         onOpenFormalEvent = {},

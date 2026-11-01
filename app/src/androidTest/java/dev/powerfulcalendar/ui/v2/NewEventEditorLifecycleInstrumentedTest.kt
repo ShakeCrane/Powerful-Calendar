@@ -11,9 +11,13 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.powerfulcalendar.core.DraftForm
-import dev.powerfulcalendar.core.NewEventEditSession
 import dev.powerfulcalendar.core.PowerStore
-import dev.powerfulcalendar.core.TemporalKind
+import dev.powerfulcalendar.core.api.v1.EventEditorOpenResultV1
+import dev.powerfulcalendar.core.api.v1.EventEditorSnapshotV1
+import dev.powerfulcalendar.core.api.v1.EventKindV1
+import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.toCoreDraftForm
+import dev.powerfulcalendar.core.api.v1.toEventFormV1
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -33,38 +37,56 @@ class NewEventEditorLifecycleInstrumentedTest {
         val context: Context = compose.activity.applicationContext
         val databaseName = "pc-phase1-clean-${java.util.UUID.randomUUID()}.db"
         val store = PowerStore(context, databaseName)
-        var activeSession by mutableStateOf<NewEventEditSession?>(null)
+        val fixedClock = Clock.fixed(Instant.parse("2026-10-25T15:07:42Z"), ZoneOffset.UTC)
+        val zone = ZoneId.of("Asia/Shanghai")
+        val eventApi = PowerCalCoreFeatureApiV1(store, fixedClock).events
+        var activeEditor by mutableStateOf<EventEditorSnapshotV1?>(null)
         var visibleForm by mutableStateOf<DraftForm?>(null)
         try {
             compose.setContent {
                 PowerCalTheme {
-                    activeSession?.let { session ->
+                    activeEditor?.let { editor ->
                         NewEventEditorDialog(
-                            session = session,
-                            form = visibleForm ?: session.form,
+                            editor = editor,
+                            form = visibleForm ?: editor.form.toCoreDraftForm(),
                             error = null,
                             busy = false,
-                            onFormChange = { next -> session.edit(next); visibleForm = next },
+                            onFormChange = { next ->
+                                visibleForm = next
+                                eventApi.updateNewEvent(editor.handle, next.toEventFormV1())
+                                activeEditor = eventApi.editorSnapshot(editor.handle)
+                            },
                             onSave = {},
                             onExit = {
-                                session.close(store)
-                                activeSession = null
+                                eventApi.closeNewEvent(editor.handle)
+                                activeEditor = null
                                 visibleForm = null
                             },
-                            onDiscard = { session.discard(store); activeSession = null }
+                            onDiscard = {
+                                eventApi.discardNewEvent(editor.handle)
+                                activeEditor = null
+                                visibleForm = null
+                            }
                         )
                     }
                 }
             }
-            val fixedClock = Clock.fixed(Instant.parse("2026-10-25T15:07:42Z"), ZoneOffset.UTC)
-            val zone = ZoneId.of("Asia/Shanghai")
 
-            TemporalKind.entries.forEach { kind ->
-                val session = NewEventEditSession.open(kind, fixedClock, zone)
-                compose.runOnUiThread { activeSession = session; visibleForm = session.form }
+            EventKindV1.entries.forEach { kind ->
+                val editor = when (val opened = eventApi.openNewEvent(kind, zone.id)) {
+                    is EventEditorOpenResultV1.Opened -> opened.editor
+                    else -> error("Expected new-event editor to open, got $opened")
+                }
+                compose.runOnUiThread {
+                    activeEditor = editor
+                    visibleForm = editor.form.toCoreDraftForm()
+                }
                 compose.waitForIdle()
                 compose.onNodeWithText("新建事件").assertIsDisplayed()
-                assertEquals(false, session.meaningfulDiff)
+                assertEquals(
+                    false,
+                    requireNotNull(eventApi.editorSnapshot(editor.handle)).meaningfulChanges
+                )
                 compose.onNodeWithTag("new-event-close").performClick()
                 compose.waitForIdle()
 
@@ -77,7 +99,12 @@ class NewEventEditorLifecycleInstrumentedTest {
                 assertEquals(0L, store.commitCount())
             }
         } finally {
-            compose.runOnUiThread { activeSession = null; visibleForm = null; compose.activity.setContent {} }
+            compose.runOnUiThread {
+                activeEditor?.let { eventApi.discardNewEvent(it.handle) }
+                activeEditor = null
+                visibleForm = null
+                compose.activity.setContent {}
+            }
             compose.waitForIdle()
             store.close()
             context.deleteDatabase(databaseName)
@@ -89,35 +116,50 @@ class NewEventEditorLifecycleInstrumentedTest {
         val context: Context = compose.activity.applicationContext
         val databaseName = "pc-phase1-dirty-${java.util.UUID.randomUUID()}.db"
         val store = PowerStore(context, databaseName)
-        var activeSession by mutableStateOf<NewEventEditSession?>(null)
+        val fixedClock = Clock.fixed(Instant.parse("2026-10-25T15:07:42Z"), ZoneOffset.UTC)
+        val zone = ZoneId.of("Asia/Shanghai")
+        val eventApi = PowerCalCoreFeatureApiV1(store, fixedClock).events
+        var activeEditor by mutableStateOf<EventEditorSnapshotV1?>(null)
         var visibleForm by mutableStateOf<DraftForm?>(null)
         try {
             compose.setContent {
                 PowerCalTheme {
-                    activeSession?.let { session ->
+                    activeEditor?.let { editor ->
                         NewEventEditorDialog(
-                            session = session,
-                            form = visibleForm ?: session.form,
+                            editor = editor,
+                            form = visibleForm ?: editor.form.toCoreDraftForm(),
                             error = null,
                             busy = false,
-                            onFormChange = { next -> session.edit(next); visibleForm = next },
+                            onFormChange = { next ->
+                                visibleForm = next
+                                eventApi.updateNewEvent(editor.handle, next.toEventFormV1())
+                                activeEditor = eventApi.editorSnapshot(editor.handle)
+                            },
                             onSave = {},
                             onExit = {
-                                session.close(store)
-                                activeSession = null
+                                eventApi.closeNewEvent(editor.handle)
+                                activeEditor = null
                                 visibleForm = null
                             },
-                            onDiscard = { session.discard(store); activeSession = null }
+                            onDiscard = {
+                                eventApi.discardNewEvent(editor.handle)
+                                activeEditor = null
+                                visibleForm = null
+                            }
                         )
                     }
                 }
             }
-            val session = NewEventEditSession.open(
-                TemporalKind.MEMO,
-                Clock.fixed(Instant.parse("2026-10-25T15:07:42Z"), ZoneOffset.UTC),
-                ZoneId.of("Asia/Shanghai")
-            )
-            compose.runOnUiThread { activeSession = session; visibleForm = session.form }
+            val editor = when (
+                val opened = eventApi.openNewEvent(EventKindV1.MEMO, zone.id)
+            ) {
+                is EventEditorOpenResultV1.Opened -> opened.editor
+                else -> error("Expected new-event editor to open, got $opened")
+            }
+            compose.runOnUiThread {
+                activeEditor = editor
+                visibleForm = editor.form.toCoreDraftForm()
+            }
             compose.waitForIdle()
             compose.onAllNodes(hasSetTextAction())[0].performTextReplacement("DEVICE_DIRTY_MEMO")
             compose.onNodeWithTag("new-event-close").performClick()
@@ -131,7 +173,12 @@ class NewEventEditorLifecycleInstrumentedTest {
             assertEquals(0L, store.commitCount())
             assertEquals("DEVICE_DIRTY_MEMO", store.pendingDrafts().single().form.title)
         } finally {
-            compose.runOnUiThread { activeSession = null; visibleForm = null; compose.activity.setContent {} }
+            compose.runOnUiThread {
+                activeEditor?.let { eventApi.discardNewEvent(it.handle) }
+                activeEditor = null
+                visibleForm = null
+                compose.activity.setContent {}
+            }
             compose.waitForIdle()
             store.close()
             context.deleteDatabase(databaseName)

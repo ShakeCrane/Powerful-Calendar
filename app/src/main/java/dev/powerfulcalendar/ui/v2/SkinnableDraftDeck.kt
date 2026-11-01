@@ -22,12 +22,12 @@ import dev.powerfulcalendar.core.DeckController
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.TemporalConversion
 import dev.powerfulcalendar.core.TemporalKind
-import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.api.v1.DraftReviewFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.DraftReviewReceiptV1
 import dev.powerfulcalendar.core.api.v1.DraftReviewCardV1
 import dev.powerfulcalendar.core.api.v1.DraftReviewConflictV1
+import dev.powerfulcalendar.core.api.v1.EventSearchHitV1
 import dev.powerfulcalendar.core.api.v1.DraftReviewRestoreV1
 import dev.powerfulcalendar.core.api.v1.EventFormV1
 import dev.powerfulcalendar.core.api.v1.toEventFormV1
@@ -79,9 +79,9 @@ class DeckVisualContext internal constructor(
     val busy: Boolean,
     val aiSession: PowerStore.AiSession?,
     val onDismiss: () -> Unit,
-    val onOpenFormalEvent: (TemporalRecord) -> Unit,
+    val onOpenFormalEvent: (EventSearchHitV1) -> Unit,
     val onCancelAiBatch: () -> Unit,
-    val formalSearch: (String) -> List<TemporalRecord>,
+    val formalSearch: (String) -> List<EventSearchHitV1>,
     val onSelect: (Long) -> Unit,
     val onBrowse: (Int) -> Unit,
     val onEdit: (DraftForm) -> Unit,
@@ -105,10 +105,10 @@ fun DraftDeckDialog(
     draftReviewApi: DraftReviewFeatureApiV1,
     aiSession: PowerStore.AiSession?,
     onDismissRequest: () -> Unit,
-    onOpenFormalEvent: (TemporalRecord) -> Unit,
+    onOpenFormalEvent: (EventSearchHitV1) -> Unit,
     onCancelAiBatch: () -> Unit,
     onDeckChanged: () -> Unit,
-    formalSearch: (String) -> List<TemporalRecord>,
+    formalSearch: (String) -> List<EventSearchHitV1>,
     initialEditorOpen: Boolean = false
 ) {
     val renderer = DeckPresentationSkinRegistry.active
@@ -173,7 +173,7 @@ fun DraftDeckDialog(
         busy = locked,
         aiSession = aiSession,
         onDismiss = { leave() },
-        onOpenFormalEvent = { record -> leave { onOpenFormalEvent(record) } },
+        onOpenFormalEvent = { hit -> leave { onOpenFormalEvent(hit) } },
         onCancelAiBatch = onCancelAiBatch,
         formalSearch = formalSearch,
         onSelect = { id -> if (!locked) command {

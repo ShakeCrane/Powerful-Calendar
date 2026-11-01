@@ -12,6 +12,7 @@ import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.StoreDeckPersistence
 import dev.powerfulcalendar.core.TemporalKind
+import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -36,12 +37,16 @@ class DraftDeckTouchPriorityInstrumentedTest {
             runBlocking { it.open(draftId) }
         }
 
-    private fun renderExpandedDeck(controller: DeckController) {
+    private fun renderExpandedDeck(store: PowerStore, controller: DeckController) {
+        val draftReviewApi = PowerCalCoreFeatureApiV1(
+            store, deckController = controller
+        ).draftReview
         compose.activity.runOnUiThread { ActiveVisualSkin.install() }
         compose.setContent {
             PowerCalTheme {
                 DraftDeckDialog(
                     controller = controller,
+                    draftReviewApi = draftReviewApi,
                     aiSession = null,
                     onDismissRequest = {},
                     onOpenFormalEvent = {},
@@ -81,7 +86,7 @@ class DraftDeckTouchPriorityInstrumentedTest {
             )
         }
         val controller = openController(store, cards.first().draftId)
-        renderExpandedDeck(controller)
+        renderExpandedDeck(store, controller)
 
         val titleField = compose.onNode(hasSetTextAction() and hasText("标题"))
         titleField.performTextReplacement("TYPED_TITLE_SURVIVES_SWIPE")
@@ -106,7 +111,7 @@ class DraftDeckTouchPriorityInstrumentedTest {
                 .copy(title = "SCROLL_FORM_TITLE", notes = longNotes)
         )
         val controller = openController(store, card.draftId)
-        renderExpandedDeck(controller)
+        renderExpandedDeck(store, controller)
 
         val deck = compose.onNodeWithTag("draft-card")
         val cardBounds = deck.fetchSemanticsNode().boundsInRoot

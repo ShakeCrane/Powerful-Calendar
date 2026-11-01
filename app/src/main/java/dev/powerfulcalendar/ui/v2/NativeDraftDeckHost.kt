@@ -21,6 +21,7 @@ import dev.powerfulcalendar.core.DraftQueueSearch
 import dev.powerfulcalendar.core.DraftStatus
 import dev.powerfulcalendar.core.EditorDefaults
 import dev.powerfulcalendar.core.api.v1.EventEditorSnapshotV1
+import dev.powerfulcalendar.core.api.v1.EventSearchHitV1
 import dev.powerfulcalendar.core.api.v1.DraftReviewFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.DraftReviewSnapshotV1
 import dev.powerfulcalendar.core.api.v1.DraftReviewCardV1
@@ -88,10 +89,10 @@ fun NativeDraftDeckDialog(
     draftReviewApi: DraftReviewFeatureApiV1,
     aiSession: PowerStore.AiSession?,
     onDismissRequest: () -> Unit,
-    onOpenFormalEvent: (TemporalRecord) -> Unit,
+    onOpenFormalEvent: (EventSearchHitV1) -> Unit,
     onCancelAiBatch: () -> Unit,
     onDeckChanged: () -> Unit,
-    formalSearch: (String) -> List<TemporalRecord>,
+    formalSearch: (String) -> List<EventSearchHitV1>,
     initialEditorOpen: Boolean = false
 ) {
     var state by remember(draftReviewApi) { mutableStateOf(draftReviewApi.snapshot) }
@@ -100,7 +101,7 @@ fun NativeDraftDeckDialog(
     val scope = rememberCoroutineScope()
     val androidContext = LocalContext.current
     val pickerNowMillis = remember(draftReviewApi) { System.currentTimeMillis() }
-    val formalRows = remember(draftReviewApi) { mutableMapOf<String, TemporalRecord>() }
+    val formalRows = remember(draftReviewApi) { mutableMapOf<String, EventSearchHitV1>() }
 
     DisposableEffect(draftReviewApi) {
         val subscription = draftReviewApi.observe { next -> scope.launch { state = next } }
@@ -180,7 +181,7 @@ fun NativeDraftDeckDialog(
     val actions = NativeDeckActions(
         onDismiss = { leave() },
         onCancelAiBatch = onCancelAiBatch,
-        onOpenFormalEvent = { key -> formalRows[key]?.let { record -> leave { onOpenFormalEvent(record) } } },
+        onOpenFormalEvent = { key -> formalRows[key]?.let { hit -> leave { onOpenFormalEvent(hit) } } },
         onSelect = { key -> key.removePrefix("draft:").toLongOrNull()?.let { id ->
             command { draftReviewApi.select(id, java.util.UUID.randomUUID().toString()) }
         } },

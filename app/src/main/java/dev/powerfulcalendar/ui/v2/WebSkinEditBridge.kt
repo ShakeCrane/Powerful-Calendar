@@ -11,7 +11,6 @@ import dev.powerfulcalendar.core.DraftCard
 import dev.powerfulcalendar.core.DraftQueueSearch
 import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.DraftStatus
-import dev.powerfulcalendar.core.FormalEventSearch
 import dev.powerfulcalendar.core.FormBuild
 import dev.powerfulcalendar.core.RecurrenceFreq
 import dev.powerfulcalendar.core.Recurrence
@@ -29,6 +28,7 @@ import dev.powerfulcalendar.core.api.v1.EventKindV1
 import dev.powerfulcalendar.core.api.v1.EventRecurrenceScopeV1
 import dev.powerfulcalendar.core.api.v1.EventSelectionV1
 import dev.powerfulcalendar.core.api.v1.EventFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.EventSearchHitV1
 import dev.powerfulcalendar.core.api.v1.EventMutationReceiptV1
 import dev.powerfulcalendar.core.api.v1.EventMutationStatusV1
 import dev.powerfulcalendar.core.api.v1.DraftOperationV1
@@ -442,7 +442,7 @@ internal class WebSkinEditService(
     private var newEventSession: WebNewEventEditor? = null
     private var deckOpen = false
     private var deckSearchQuery = ""
-    private var formalSearchResults: List<TemporalRecord> = emptyList()
+    private var formalSearchResults: List<EventSearchHitV1> = emptyList()
     private var retiredOffset = 0
     private var retiredTotal = 0
     private var retiredResults: List<TemporalRecord> = emptyList()
@@ -999,7 +999,8 @@ internal class WebSkinEditService(
                             deckSearchQuery = cmd.query
                             formalSearchResults = if (cmd.query.isBlank()) emptyList()
                                 else withContext(Dispatchers.IO) {
-                                    FormalEventSearch.filter(store.all(), cmd.query).take(4)
+                                    val snapshot = eventFeatures.queryEvents()
+                                    eventFeatures.searchEvents(cmd.query, snapshot).hits.take(4)
                                 }
                             result(cmd.requestId,"searched")
                         }

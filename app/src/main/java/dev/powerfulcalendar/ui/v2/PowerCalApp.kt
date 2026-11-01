@@ -75,7 +75,6 @@ import dev.powerfulcalendar.core.BackupEnvelope
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.EditorSelection
-import dev.powerfulcalendar.core.FormalEventSearch
 import dev.powerfulcalendar.core.LegacyBackupConsentRequired
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.RecurrenceEditScope
@@ -89,6 +88,7 @@ import dev.powerfulcalendar.core.api.v1.EventEditorOpenResultV1
 import dev.powerfulcalendar.core.api.v1.EventEditorSnapshotV1
 import dev.powerfulcalendar.core.api.v1.EventKindV1
 import dev.powerfulcalendar.core.api.v1.EventFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.EventQuerySnapshotV1
 import dev.powerfulcalendar.core.api.v1.EventMutationStatusV1
 import dev.powerfulcalendar.core.api.v1.EventSelectionV1
 import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
@@ -182,6 +182,7 @@ internal data class UiDiagnostics(val nextSequence: Long = 1, val identities: Lo
 
 private data class AppData(
     val records: List<TemporalRecord>,
+    val eventSnapshot: EventQuerySnapshotV1,
     val eventFeatureRevision: Long,
     val todoEntries: List<TodoEntry>,
     val pending: Int,
@@ -222,6 +223,9 @@ fun PowerCalApp(
 
     var page by rememberSaveable { mutableStateOf(Page.TIMELINE.name) }
     var records by remember { mutableStateOf<List<TemporalRecord>>(emptyList()) }
+    var eventSnapshot by remember {
+        mutableStateOf(EventQuerySnapshotV1(featureRevision = 0L, events = emptyList()))
+    }
     var eventFeatureRevision by remember { mutableLongStateOf(0L) }
     val latestEventFeatureRevision by rememberUpdatedState(eventFeatureRevision)
     var hostDataReady by remember(store) { mutableStateOf(false) }
@@ -358,6 +362,7 @@ fun PowerCalApp(
             val formal = eventSnapshot.events.map { it.toCoreTemporalRecord() }
             AppData(
                 records = formal,
+                eventSnapshot = eventSnapshot,
                 eventFeatureRevision = eventSnapshot.featureRevision,
                 todoEntries = TodoProjection.entries(formal, projectionNowMillis,
                     includeCompleted = true),
@@ -372,6 +377,7 @@ fun PowerCalApp(
         }
         withContext(Dispatchers.Main) {
             records = data.records
+            eventSnapshot = data.eventSnapshot
             eventFeatureRevision = data.eventFeatureRevision
             todoEntries = data.todoEntries
             hostDataReady = true
@@ -1785,10 +1791,20 @@ fun PowerCalApp(
                             message = "Memo 已变化，请刷新"
                         } else {
                             val result = withContext(Dispatchers.IO) {
-                                store.setCompleted(action.eventSeq, action.occurrenceKey,
-                                    !action.completed, action.expectedRevision)
+                                eventFeatureApi.setOccurrenceCompletion(
+                                    eventSeq = action.eventSeq,
+                                    expectedRevision = action.expectedRevision,
+                                    occurrenceKey = action.occurrenceKey,
+                                    expectedCompleted = action.completed,
+                                    completed = !action.completed,
+                                    requestId = java.util.UUID.randomUUID().toString()
+                                )
                             }
-                            if (!result) message = "Memo 状态已变化，请刷新"
+                            if (result.status !in setOf(
+                                    EventMutationStatusV1.UPDATED,
+                                    EventMutationStatusV1.NO_CHANGE
+                                )
+                            ) message = "Memo 状态已变化，请刷新"
                         }
                         reload()
                     }
@@ -2209,11 +2225,21 @@ fun PowerCalApp(
                 },
                 onToggle = { entry ->
                     scope.launch {
-                        val success = withContext(Dispatchers.IO) {
-                            store.setCompleted(entry.owner.eventSeq, entry.occurrenceKey,
-                                !entry.completed, entry.owner.revision)
+                        val receipt = withContext(Dispatchers.IO) {
+                            eventFeatureApi.setOccurrenceCompletion(
+                                eventSeq = entry.owner.eventSeq,
+                                expectedRevision = entry.owner.revision,
+                                occurrenceKey = entry.occurrenceKey,
+                                expectedCompleted = entry.completed,
+                                completed = !entry.completed,
+                                requestId = java.util.UUID.randomUUID().toString()
+                            )
                         }
-                        if (!success) message = "状态已变化或正在批量处理，请刷新后重试"
+                        if (receipt.status !in setOf(
+                                EventMutationStatusV1.UPDATED,
+                                EventMutationStatusV1.NO_CHANGE
+                            )
+                        ) message = "状态已变化或正在批量处理，请刷新后重试"
                         reload()
                     }
                 },
@@ -2523,13 +2549,13 @@ fun PowerCalApp(
                     reload()
                 }
             },
-            onOpenFormalEvent = { record ->
+            onOpenFormalEvent = { hit ->
                 scope.launch {
                     runCatching {
                         withContext(Dispatchers.IO) {
                             draftReviewApi.beginFormalReplacement(
-                                record.eventSeq,
-                                record.revision,
+                                hit.eventSeq,
+                                hit.revision,
                                 java.util.UUID.randomUUID().toString()
                             )
                         }
@@ -2562,7 +2588,7 @@ fun PowerCalApp(
                 }
             },
             formalSearch = { query ->
-                FormalEventSearch.filter(records, query)
+                eventFeatureApi.searchEvents(query, eventSnapshot).hits
             },
             initialEditorOpen = deckInitialId != null
         )

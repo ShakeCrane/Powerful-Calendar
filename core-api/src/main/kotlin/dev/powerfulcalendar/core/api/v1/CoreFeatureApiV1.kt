@@ -179,6 +179,19 @@ data class EventQuerySnapshotV1(
     val events: List<EventRecordV1>
 )
 
+/** Minimal formal-event match projection; search consumers do not receive Core entities. */
+data class EventSearchHitV1(
+    val eventSeq: Long,
+    val revision: Long,
+    val kind: EventKindV1,
+    val title: String
+)
+
+data class EventSearchSnapshotV1(
+    val featureRevision: Long,
+    val hits: List<EventSearchHitV1>
+)
+
 enum class EventFeatureChangeTypeV1 { FORMAL_CREATED, FORMAL_UPDATED, FORMAL_DELETED, DRAFTS_CHANGED }
 
 data class EventFeatureChangeV1(
@@ -194,6 +207,17 @@ interface EventFeatureApiV1 {
     val featureRevision: Long
 
     fun queryEvents(): EventQuerySnapshotV1
+    /** Searches an API snapshot without doing synchronous Store I/O; results keep its revision. */
+    fun searchEvents(query: String, snapshot: EventQuerySnapshotV1): EventSearchSnapshotV1
+    /** Explicitly set an occurrence's completion state against its observed revision and state. */
+    fun setOccurrenceCompletion(
+        eventSeq: Long,
+        expectedRevision: Long,
+        occurrenceKey: String,
+        expectedCompleted: Boolean,
+        completed: Boolean,
+        requestId: String
+    ): EventMutationReceiptV1
     fun openNewEvent(
         kind: EventKindV1,
         zoneId: String,

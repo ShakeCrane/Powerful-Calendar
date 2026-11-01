@@ -21,6 +21,7 @@ import dev.powerfulcalendar.core.DraftStatus
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.StoreDeckPersistence
 import dev.powerfulcalendar.core.TemporalKind
+import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertTrue
@@ -63,6 +64,9 @@ class DraftDeckImeInstrumentedTest {
                 ioDispatcher = Dispatchers.Unconfined
             )
             runBlocking { controller.open(card.draftId) }
+            val draftReviewApi = PowerCalCoreFeatureApiV1(
+                store, deckController = controller
+            ).draftReview
 
             compose.activity.runOnUiThread {
                 compose.activity.window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
@@ -71,7 +75,7 @@ class DraftDeckImeInstrumentedTest {
             compose.setContent {
                 PowerCalTheme {
                     NativeDraftDeckDialog(
-                        controller = controller,
+                        draftReviewApi = draftReviewApi,
                         aiSession = null,
                         onDismissRequest = {},
                         onOpenFormalEvent = {},

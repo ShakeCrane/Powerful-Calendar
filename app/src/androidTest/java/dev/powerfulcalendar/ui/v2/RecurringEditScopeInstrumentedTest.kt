@@ -16,13 +16,17 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.powerfulcalendar.core.DraftForm
-import dev.powerfulcalendar.core.EditSession
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.Recurrence
-import dev.powerfulcalendar.core.RecurrenceEditScope
 import dev.powerfulcalendar.core.RecurrenceFreq
 import dev.powerfulcalendar.core.TemporalKind
-import dev.powerfulcalendar.core.TemporalRecord
+import dev.powerfulcalendar.core.api.v1.EventEditorOpenResultV1
+import dev.powerfulcalendar.core.api.v1.EventEditorSnapshotV1
+import dev.powerfulcalendar.core.api.v1.EventMutationReceiptV1
+import dev.powerfulcalendar.core.api.v1.EventMutationStatusV1
+import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.toCoreDraftForm
+import dev.powerfulcalendar.core.api.v1.toEventFormV1
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -46,9 +50,10 @@ class RecurringEditScopeInstrumentedTest {
             .atZone(zone).toInstant().toEpochMilli()
         val selectedKey = "2026-10-21T07:30"
         val store = PowerStore(context, databaseName)
-        var session: EditSession? = null
+        val eventApi = PowerCalCoreFeatureApiV1(store).events
+        var activeEditor by mutableStateOf<EventEditorSnapshotV1?>(null)
         var visibleForm by mutableStateOf<DraftForm?>(null)
-        var outcome: PowerStore.RecurrenceSplitOutcome? by mutableStateOf(null)
+        var outcome: EventMutationReceiptV1? by mutableStateOf(null)
         try {
             val card = store.newDraft(DraftForm(
                 kind = TemporalKind.ACTIVITY,
@@ -60,29 +65,62 @@ class RecurringEditScopeInstrumentedTest {
             ))
             assertTrue(store.commit(card.draftId, actor = "instrumented-test") is PowerStore.CommitOutcome.Committed)
             val formal = requireNotNull(store.get(card.eventSeq))
-            session = EditSession.open(store, formal, selectedKey)
-            val activeSession = requireNotNull(session)
-            visibleForm = activeSession.form
+            val editor = when (
+                val opened = eventApi.openFormalEvent(formal.eventSeq, formal.revision, selectedKey)
+            ) {
+                is EventEditorOpenResultV1.Opened -> opened.editor
+                else -> error("Expected formal-event editor to open, got $opened")
+            }
+            compose.runOnUiThread {
+                activeEditor = editor
+                visibleForm = editor.form.toCoreDraftForm()
+            }
 
             compose.setContent {
                 PowerCalTheme {
-                    DirectEventEditorContent(
-                        session = activeSession,
-                        form = visibleForm ?: activeSession.form,
-                        error = activeSession.lastError,
-                        hasChanges = activeSession.meaningfulDiff,
-                        onChange = { next -> activeSession.edit(next); visibleForm = next },
-                        onScopeChange = { selected ->
-                            activeSession.selectRecurrenceScope(selected)
-                            visibleForm = activeSession.form
-                        },
-                        onSave = {
-                            outcome = activeSession.saveThisAndFuture()
-                        },
-                        onExit = {},
-                        onDiscardChanges = {},
-                        onDelete = {}
-                    )
+                    activeEditor?.let { currentEditor ->
+                        DirectEventEditorContent(
+                            editor = currentEditor,
+                            form = visibleForm ?: currentEditor.form.toCoreDraftForm(),
+                            error = currentEditor.lastError,
+                            hasChanges = currentEditor.meaningfulChanges,
+                            onChange = { next ->
+                                visibleForm = next
+                                eventApi.updateFormalEvent(
+                                    currentEditor.handle, next.toEventFormV1()
+                                )
+                                eventApi.editorSnapshot(currentEditor.handle)?.let { updated ->
+                                    activeEditor = updated
+                                }
+                            },
+                            onScopeChange = { selected ->
+                                eventApi.selectFormalRecurrenceScope(
+                                    currentEditor.handle, selected
+                                )
+                                eventApi.editorSnapshot(currentEditor.handle)?.let { updated ->
+                                    activeEditor = updated
+                                    visibleForm = updated.form.toCoreDraftForm()
+                                }
+                            },
+                            onSave = {
+                                outcome = eventApi.saveFormalEvent(
+                                    currentEditor.handle,
+                                    (visibleForm ?: currentEditor.form.toCoreDraftForm())
+                                        .toEventFormV1(),
+                                    UUID.randomUUID().toString()
+                                )
+                            },
+                            onExit = {},
+                            onDiscardChanges = {
+                                eventApi.discardFormalChanges(currentEditor.handle)
+                                eventApi.editorSnapshot(currentEditor.handle)?.let { updated ->
+                                    activeEditor = updated
+                                    visibleForm = updated.form.toCoreDraftForm()
+                                }
+                            },
+                            onDelete = {}
+                        )
+                    }
                 }
             }
 
@@ -93,9 +131,10 @@ class RecurringEditScopeInstrumentedTest {
             compose.onNodeWithText("保存修改").performClick()
             compose.waitForIdle()
 
-            assertTrue(outcome is PowerStore.RecurrenceSplitOutcome.Applied)
+            assertEquals(EventMutationStatusV1.UPDATED, outcome?.status)
+            val futureEventSeq = requireNotNull(outcome?.relatedEventSeq)
             val old = requireNotNull(store.get(formal.eventSeq))
-            val future = requireNotNull(store.get(2L))
+            val future = requireNotNull(store.get(futureEventSeq))
             assertEquals(1, old.recurrence.count)
             assertEquals("AVD 后续系列", future.title)
             assertEquals(2, future.recurrence.count)
@@ -115,7 +154,7 @@ class RecurringEditScopeInstrumentedTest {
         } finally {
             compose.activity.runOnUiThread { compose.activity.setContent {} }
             compose.waitForIdle()
-            session?.close()
+            activeEditor?.let { eventApi.closeFormalEvent(it.handle) }
             store.close()
             context.deleteDatabase(databaseName)
         }
