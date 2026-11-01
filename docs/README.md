@@ -20,6 +20,9 @@ authorization, and verification limits.
 Native and Web reminder diagnostics and recovery now use the shared Reminder Feature API;
 see the [Reminder API report](issues/PC-ISSUE-CORE-REMINDER-API-V1.md) for reconciliation
 modes, verification evidence, and OS-delivery limits.
+Native and Web Memo projection now uses stable `MemoFeatureApiV1` DTOs and an API-owned
+current-occurrence visibility query; see the [Memo API report](issues/PC-ISSUE-CORE-MEMO-API-V1.md) for
+the recurrence window, completion behavior, and device-verification limits.
 Native and Web timeline/month reads now use the bounded Calendar Feature API; see the
 [Calendar API report](issues/PC-ISSUE-CORE-CALENDAR-API-V1.md) for snapshot, window, and
 device-verification limits.

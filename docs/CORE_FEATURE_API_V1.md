@@ -1,11 +1,11 @@
-# Core Feature API v1 — Calendar, Event, Draft/Review, AI, Reminder, Import/Export, and Settings/Data slices
+# Core Feature API v1 — Calendar, Event, Memo, Draft/Review, AI, Reminder, Import/Export, and Settings/Data slices
 
-- **Status:** Calendar window queries, Event, Draft/Review, AI Proposal/Feature, Reminder, Import/Export, and Settings/Data vertical slices implemented; PHASE 1 remains in progress.
-- **Contract source:** `:core-api`, package `dev.powerfulcalendar.core.api.v1`, including `CoreFeatureApiV1.kt`, `CalendarFeatureApiV1.kt`, `DraftReviewFeatureApiV1.kt`, `AiProposalFeatureApiV1.kt`, `AiFeatureApiV1.kt`, `ReminderFeatureApiV1.kt`, `ImportExportFeatureApiV1.kt`, and `SettingsDataFeatureApiV1.kt`.
+- **Status:** Calendar window queries, Event, Memo, Draft/Review, AI Proposal/Feature, Reminder, Import/Export, and Settings/Data vertical slices implemented; PHASE 1 remains in progress.
+- **Contract source:** `:core-api`, package `dev.powerfulcalendar.core.api.v1`, including `CoreFeatureApiV1.kt`, `CalendarFeatureApiV1.kt`, `MemoFeatureApiV1.kt`, `DraftReviewFeatureApiV1.kt`, `AiProposalFeatureApiV1.kt`, `AiFeatureApiV1.kt`, `ReminderFeatureApiV1.kt`, `ImportExportFeatureApiV1.kt`, and `SettingsDataFeatureApiV1.kt`.
 - **Runtime adapter:** `app/src/main/java/dev/powerfulcalendar/core/api/v1/PowerCalCoreFeatureApiV1.kt`.
 - **Updated:** 2026-11-01.
 
-This document describes the implemented Calendar, Event, Draft/Review, AI, Reminder, Import/Export, and Settings/Data API boundaries. It does not declare full Core extraction, full domain coverage, runtime cutover, or Native/Skin parity. The Kotlin source is authoritative when a detail here drifts.
+This document describes the implemented Calendar, Event, Memo, Draft/Review, AI, Reminder, Import/Export, and Settings/Data API boundaries. It does not declare full Core extraction, full domain coverage, runtime cutover, or Native/Skin parity. The Kotlin source is authoritative when a detail here drifts.
 
 ## 1. Contract boundaries
 
@@ -14,6 +14,7 @@ The feature contracts have separate jobs:
 | Contract | Owner | Responsibility |
 | --- | --- | --- |
 | Core Feature API | `:core-api` | Versioned domain operations, queries, DTOs, results, revisions, and change notifications |
+| Memo Feature API | `:core-api` | Versioned unified todo occurrence projections and a current-occurrence visibility query |
 | Native Presentation Contract | `:skin-api` | Native renderer inputs and callbacks; contains presentation models, not Core business services |
 | Web Bridge Transport Contract | `WebEditWire` / `WebEditCommand` | Versioned JSON command decoding and Host reply transport; it is not a domain business API |
 
@@ -30,7 +31,7 @@ The Host is the only owner of Android context, database construction, trusted co
 
 ## 2. Version and DTO rules
 
-- `CoreFeatureApiV1`, `CalendarFeatureApiV1`, `EventFeatureApiV1`, and `SettingsDataFeatureApiV1` report `apiVersion == 1`.
+- `CoreFeatureApiV1`, `CalendarFeatureApiV1`, `EventFeatureApiV1`, `MemoFeatureApiV1`, and `SettingsDataFeatureApiV1` report `apiVersion == 1`.
 - `EventKindV1` is `ALARM`, `ACTIVITY`, `DEADLINE`, or `MEMO`.
 - `EventFormV1` is the editable value. `EventRecordV1` is an immutable formal-event query result with identity and `revision`.
 - Recurrence weekday values in `EventRecurrenceV1.byDay` use ISO numbers: Monday `1` through Sunday `7`. Recurrence scope and occurrence keys preserve the existing Core recurrence semantics.
@@ -75,6 +76,18 @@ The pure-Kotlin contract is `CalendarFeatureApiV1.kt`; the app adapter is `Snaps
 | `discardFormalChanges` | Restores the current formal edit session's baseline without changing the formal record. |
 | `subscribe(listener)` | Receives changes published by mutations routed through this adapter instance. The returned `AutoCloseable` removes the listener. |
 
+### Memo query API v1
+
+`CoreFeatureApiV1.memos` exposes the unified todo query as stable `MemoEntryV1` DTOs. Both Native and Web Host paths share this service; Memo rendering receives no `TemporalRecord` or other Core entity.
+
+- `queryEntries(source, nowMillis, includeCompleted)` projects the supplied immutable `EventQuerySnapshotV1` and preserves its `featureRevision`. It retains the existing 365-day lookback, seven-day future horizon, per-series recurrence expansion limit of 1200, skipped/completed occurrence handling, and deterministic ordering by start, event sequence, and original occurrence key.
+- Projection still includes only enabled, completion-tracked events across ALARM, ACTIVITY, DEADLINE, and MEMO. Undated entries keep `startMillis == null`; date-only deadlines and date-span Memo remain stored unchanged. Repeated completion is keyed by the immutable original slot, and non-repeating items use `single`.
+- `queryCurrentEntry(eventSeq, occurrenceKey, nowMillis, includeCompleted)` re-reads the current owner through the adapter and returns a DTO only if the event remains enabled, tracked, and within the same projection window. The Web Host compares the current revision and completion state before calling the existing Event completion command, which performs the final transactional validation.
+- Native presentation and compiled runtime renderers receive `MemoEntryV1` values and opaque row-key callbacks. The Web state projection keeps its existing fields and Host-controlled 250-entry paging. The query still uses the full formal-event snapshot; Store-level paging is not part of this API slice.
+- No schema, backup format, Store transaction, recurrence rule, completion semantics, or Native fallback behavior changed.
+
+The pure-Kotlin contract is `MemoFeatureApiV1.kt`; the Store-backed adapter is `StoreMemoFeatureApiV1.kt`. The [Memo API Issue](issues/PC-ISSUE-CORE-MEMO-API-V1.md) records tests, build evidence, and the untested device scope.
+
 ## 5. Receipts, errors, revisions, and idempotency
 
 `EventEditorOpenResultV1` distinguishes `Opened`, `Stale`, `Missing`, `Locked`, and `Invalid`. Editor updates distinguish `UPDATED`, `NOT_FOUND`, `LOCKED`, and `INVALID`. Validation distinguishes `READY`, `INCOMPLETE`, `INVALID`, and `NOT_FOUND`.
@@ -114,7 +127,7 @@ For mutation and checkpoint requests:
 - Draft/Review request receipts are retained in a bounded, process-local 128-entry cache. Durable request replay across adapter recreation/process death is not provided; do not describe the receipt cache as exactly-once persistence.
 - Explicit user-owned text capture creates a draft through `DraftReviewFeatureApiV1.createDraft`. It accepts an `EventFormV1`, rejects recurrence-edit scope fields, uses the Store's existing user draft transaction and AI lock, and returns the new draft identity/version. The adapter snapshots collection fields before queueing and fingerprints them canonically for request replay. The Host opens the returned draft ID. AI proposal generation and batch control use `AiFeatureApiV1`; proposal staging/application remains on `AiProposalFeatureApiV1`.
 
-These are Calendar, Event, Draft/Review, AI Proposal/Feature, Reminder, Import/Export, and Settings/Data vertical slices, not full Phase 1 closure. Native and Web Deck formal searches use `searchEvents`, both Memo completion Host paths use `setOccurrenceCompletion`, reviewed proposal actions use `aiProposals`, AI generation and batch commands use `ai`, and Host reminder diagnostics/recovery use `reminders`. The Memo visibility precheck and other Host flows still perform direct Store reads; `DeckVisualContext` and `MemoVisualContext` still project Core types to runtime rendering; and authorized workflows outside the shared adapters do not publish to their change stream. Other domain APIs remain outside this coverage.
+These are Calendar, Event, Memo, Draft/Review, AI Proposal/Feature, Reminder, Import/Export, and Settings/Data vertical slices, not full Phase 1 closure. Native and Web Deck formal searches use `searchEvents`, both Memo completion Host paths use `setOccurrenceCompletion`, Memo projection and current-occurrence visibility use `MemoFeatureApiV1`, reviewed proposal actions use `aiProposals`, AI generation and batch commands use `ai`, and Host reminder diagnostics/recovery use `reminders`. The Web event-open route and AI proposal target capture still perform direct Store re-reads; `DeckVisualContext` and other runtime projections still pass Core types to renderers; and authorized workflows outside the shared adapters do not publish to their change stream. Other domain APIs remain outside this coverage.
 
 ## 9. AI Proposal API v1 slice
 
@@ -191,13 +204,14 @@ Native/Web routing and scoped verification are recorded in the
 
 ## 14. Current adapter coverage and open work
 
-Verified code paths across the Calendar, Event, Draft/Review, AI Proposal, Reminder, Import/Export, and Settings/Data slices:
+Verified code paths across the Calendar, Event, Memo, Draft/Review, AI Proposal, Reminder, Import/Export, and Settings/Data slices:
 
 - Native profile save, Web profile open/save, and the first-run system Calendar import prompt use the shared `SettingsDataFeatureApiV1`; the Web Host still applies its scoped editor gate.
 - Native event creation and ordinary formal editing/deletion call the Host's shared `EventFeatureApiV1`.
 - `PowerCalApp.reload` obtains formal events through `queryEvents()`.
 - Native and Web Deck formal search use `searchEvents` over an API query snapshot. The Native Host reuses its latest snapshot so typing does not synchronously read the Store; the Web Host queries and filters on its I/O dispatcher.
 - Native and Web Memo completion commands use `setOccurrenceCompletion`, with expected event revision and expected prior completion state. Only committed changes publish `FORMAL_UPDATED`.
+- Native, Web, and runtime Memo projections use `MemoFeatureApiV1` stable DTOs. The Web current-occurrence visibility precheck is API-owned, and runtime callbacks resolve opaque row keys in the Host.
 - Explicit text-to-draft capture uses `DraftReviewFeatureApiV1.createDraft`; successful persistence publishes one `DRAFTS_CHANGED` event and returns the draft ID, event sequence, and version.
 - Web event editor create/update/checkpoint/save/delete and recurrence scope use the same API instance.
 - Web timeline movement reads a Host projection, then stages the revision-guarded replacement through `stageFormalReplacement`.
@@ -211,11 +225,11 @@ Verified code paths across the Calendar, Event, Draft/Review, AI Proposal, Remin
 
 Remaining work before PHASE 1 can exit:
 
-1. Route remaining authorized Host/Core reads and writes through versioned queries/commands and one change source; current direct paths include Memo visibility checks and settings/data operations outside the profile and onboarding slice.
+1. Route remaining authorized Host/Core reads and writes through versioned queries/commands and one change source; current direct paths include Web event-open and AI proposal target re-reads, plus settings/data operations outside the profile and onboarding slice.
 2. Move remaining business decisions out of Web transport/Host adapters; keep the bridge focused on transport and trusted Host capabilities.
-3. Remove Core entity types from runtime Skin projections while maintaining the separate Native Presentation Contract.
-4. Add the remaining per-domain API contracts before claiming other feature areas are covered. Current v1 does not define Store-level Calendar paging or API-owned Memo visibility queries. Draft/Review request replay and AI proposal-generation request replay remain process-local; AI Proposal item receipts are Store-backed. Calendar source loading still uses the full Host snapshot, and other runtime Skin projections still need bounded, API-owned data paths.
-5. Run required device checks when the independently owned AVD is available. Instrumentation for Event search/completion and AI Proposal API behavior is **NOT TESTED**.
+3. Remove remaining Core entity types from runtime Skin projections while maintaining the separate Native Presentation Contract; `DeckVisualContext` is still an open projection boundary.
+4. Add the remaining per-domain API contracts before claiming other feature areas are covered. Current v1 does not define Store-level Calendar paging. Draft/Review request replay and AI proposal-generation request replay remain process-local; AI Proposal item receipts are Store-backed. Calendar and Memo queries still use the full Host event snapshot.
+5. Run required device checks when the independently owned AVD is available. Memo, Event search/completion, and AI Proposal device behavior are **NOT TESTED**.
 
 Latest Draft/Review verification: focused API, DeckController, Store restore, Host review UI, and Web bridge tests passed **190/190**; the forced full JVM run passed **800 tests across 128 XML reports, 0 failures/errors/skips**. `verifySkinSourceBoundary`, `verifyNativeSkinBoundary`, Debug APK assembly, and `lintDebug` all passed; lint reported **0 errors / 54 warnings**. The Debug APK SHA-256 is `C22E82E434CBE5B02CD790FF72932074DA969A10BDF9095416179D3B8331AFB4` (66,683,502 bytes). Instrumentation and AVD behavior are **NOT TESTED**. Logs and the prior Event pilot’s transient full-suite failures are recorded in the current [progress entry](agent-handoff/PROGRESS.md) and the [Draft/Review Issue](issues/PC-ISSUE-CORE-DRAFT-REVIEW-API-V1.md); no cause is asserted for those earlier failures.
 
@@ -230,3 +244,5 @@ Latest Reminder API verification: focused API, Web recovery, and diagnostics tes
 Latest Calendar window API verification: focused Calendar/Event/Native timeline/month and Core API adapter selection **16/16 PASS**; forced serial full JVM **831 tests across 131 XML reports, 0 failures/errors/skips**. Both source-boundary checks, Debug APK assembly, `lintDebug` (**0 errors / 54 warnings**), AndroidTest Kotlin compilation, and `git diff --check` **PASS**. The Debug APK is **66,765,422 bytes**, SHA-256 `8AA317888327AD461AAB648A4860C833235A7C10E9BA48F9D7BC8897A3B9014E`. Android instrumentation, packaged WebView behavior, and physical/OEM behavior are **NOT TESTED**. Full log SHA-256 `D7C41F4B4D3CA6436B299E46B537A231F3986658C63FB314D08C2C6F5C1B1C1A`; final focused log `D3F2B1E0CFBFB7A9DC5C78C56673E96E9D4201602111B267A1B752C56BB6240D`. See the [Calendar API Issue](issues/PC-ISSUE-CORE-CALENDAR-API-V1.md) and `.local/android-test/reports/calendar-feature-api-20261101/`. Code commit `313562e386a14334314b7b2dc0a405e4e0465ad7` was fast-forward pushed to `origin/feat/skin-first-separation`; PHASE 1 remains open.
 
 Latest AI Feature API v1 verification: focused AI/API/Host/Web selection **55/55 PASS across 10 XML suites**; forced serial offline gate **843/843 JVM tests across 134 XML suites, 0 failures/errors/skips**. verifySkinSourceBoundary, verifyNativeSkinBoundary, Debug APK assembly, lintDebug (**0 errors / 53 warnings**), AndroidTest Kotlin compilation, and git diff --check passed. APK **66,830,958 bytes**, SHA-256 98E719B76A055A9B7045086193653F62DE424BC81BADC79A3F8C2B3EA8A3CE18. Code commits 19eaf2c248cfae009904da26c6e68ee5896c448f and 98fda6ef08c53e1fd6fd1c25f3b0d9a17af3f2e3 were fast-forward pushed to origin/feat/skin-first-separation. Focused log focused-api-tests-final.log and full log full-gate-final.log are in .local/android-test/reports/core-ai-feature-api-20261101/ and the [AI Feature API Issue](issues/PC-ISSUE-CORE-AI-FEATURE-API-V1.md). ADB had no device and no AVD was configured; instrumentation, actual Native/Web UI routes, packaged WebView, live-provider behavior, and physical/OEM behavior are NOT TESTED. PHASE 1 remains open.
+
+Latest Memo Feature API v1 verification: focused recurrence-window, unified projection, and completion/current-visibility tests **3/3 PASS**; forced serial offline gate **844/844 JVM tests across 134 XML suites, 0 failures/errors/skips**. Both source boundaries, Debug APK assembly, `lintDebug` (**0 errors / 53 warnings**), AndroidTest Kotlin compilation, and `git diff --check` passed. APK **66,847,342 bytes**, SHA-256 `239B74AACCB179B048572A5990D15F0351687DD8991BF6384182177BACE92724`. Focused/full log SHA-256 `A130824BF53051F7144B598C593CA4D3AC3440F40E68B7F017739E217CA1C4A9` / `1C2F57B2DC50310C4631B16300E3E8566D2827EE57DEC05F1297CB0F6E4E496F`; both are under `.local/android-test/reports/core-memo-feature-api-20261101/`. ADB listed no device and no AVD was configured; instrumentation, actual Native/Web runtime routes, packaged WebView, and physical/OEM behavior are **NOT TESTED**. PHASE 1 remains open.

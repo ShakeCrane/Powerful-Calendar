@@ -154,6 +154,16 @@ the authoritative owner and, where supported, the original occurrence. Chrome an
 a sandbox. Core-backed projections, DeckController lifecycle/commands, picker operations, and
 renderer adapters remain in `:app`.
 
+### Memo Feature API v1 runtime projection (2026-11-01)
+
+`MemoVisualContext` now receives the versioned `MemoEntryV1` projection rather than a Core event
+entity. Native and compiled runtime renderers issue opaque row-key callbacks; the Host resolves the
+current entry and routes completion through the revision-checked Event API. Web state uses the
+same Memo API projection while keeping its existing command schema and Host paging. The API retains
+the established recurrence window and occurrence identity; complete Store-level event paging is
+still open. API implementation, tests and device limits are recorded in the
+[Memo API Issue](issues/PC-ISSUE-CORE-MEMO-API-V1.md).
+
 ### Month display boundary (2026-10-30)
 
 `NativeMonthScreen` consumes `NativeMonthRow` values, `LocalDate`/`YearMonth`, callbacks, and
@@ -314,7 +324,7 @@ Source module map:
 - `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativeTimelineScreen.kt` — Native timeline renderer consuming display DTOs and Host callbacks/slots
 - `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativeDraftDeckScreen.kt` — Native deck and shared event-form renderer consuming display DTOs
 - `app/src/main/java/dev/powerfulcalendar/ui/v2/PresentationSkinRuntime.kt` — route registry, Host projection, settings controls and slots
-- `app/src/main/java/dev/powerfulcalendar/ui/v2/MemoProjection.kt` — Core-backed occurrence projection and display-only Native row mapping
+- `app/src/main/java/dev/powerfulcalendar/ui/v2/MemoProjection.kt` — Memo API DTO to display-only Native row mapping
 - `app/src/main/java/dev/powerfulcalendar/ui/v2/NativeAiProjection.kt` — AI message, proposal and batch-review display projection plus Host batch mode mapping
 - `app/src/main/java/dev/powerfulcalendar/ui/v2/AiProposalReview.kt` — thin Host adapter projecting AI proposals and binding authorization callbacks to the Native renderer
 - `app/src/main/java/dev/powerfulcalendar/ui/v2/AiBatchAuthorizationReview.kt` — Host adapter retaining the frozen `DraftCard` snapshot and skin-aware dialog selection while projecting display-only batch review data

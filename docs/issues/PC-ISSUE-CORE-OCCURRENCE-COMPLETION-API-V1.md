@@ -36,7 +36,7 @@ Evidence logs are in `.local/android-test/reports/core-event-search-completion-2
 ## Remaining work
 
 - Request receipts are bounded and process-local; they do not provide durable exactly-once behavior across process death or adapter recreation.
-- The Memo visibility precheck and other Host workflows still use direct Core projections or Store reads. Other authorized writes and the shared change source remain to be migrated.
+- The Memo visibility precheck was subsequently routed through `MemoFeatureApiV1`; see the [Memo API report](PC-ISSUE-CORE-MEMO-API-V1.md). Other Host workflows still use direct Core projections or Store reads. Other authorized writes and the shared change source remain to be migrated.
 - Instrumentation, WebView/device parity, and cutover are **NOT TESTED / NOT SIGNED OFF**. Native fallback remains available.
 
 ## Git delivery
