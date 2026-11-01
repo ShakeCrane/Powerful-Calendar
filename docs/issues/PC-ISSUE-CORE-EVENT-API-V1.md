@@ -60,3 +60,14 @@
 实现分支：`codex/core-feature-api-event`，代码提交 `65a96b7ba97a639981d23eee7e05f8f39a85a68e`，基于 `c09d39d8161b113ad62ce8348760a2620017869b`。提交前重新 fetch 验证远端仍在该 base，并已普通快进推送至 `origin/feat/skin-first-separation`。本报告与 Progress 全量测试证据更新通过单独文档提交一并推送。
 
 Phase 1 保持进行中。下一项为显式 Draft/Review API：收口 Native/Web Deck 的 formal 写入及统一变更来源。不得据此删除 Native fallback、切换默认 Skin 或宣称 cutover GO。
+
+
+## Follow-up — startup abandoned-editor lease recovery (2026-11-02)
+
+- **Code:** `1944a3f44e5b22b4b60186995f8373dbf971e182`, fast-forward pushed from `9bb0df583afb2c7001cc5c9ffcc4fd0489ee852b` to `origin/feat/skin-first-separation`.
+- Added `EventFeatureApiV1.recoverAbandonedHumanEdit(staleAfterMillis)` to the pure Kotlin API and Store adapter. `PowerCalApp` startup now calls it on `Dispatchers.IO` instead of invoking `PowerStore` directly.
+- The existing Store rule is unchanged: only a lease owned by another process and strictly older than the threshold is deleted; the default remains five minutes and thresholds below 60 seconds fail validation. A repeated recovery returns `false`. Recovery does not modify formal event data, increment Event `featureRevision`, or publish an Event change.
+- **Focused regression:** `EventFeatureApiV1Test` **8/8 PASS**, 0 failures/errors/skips. The added `storeBackedApiRecoversOnlyForeignStaleHumanEditLeases` covers no lease, fresh lease, minimum-threshold rejection, default timeout, explicit 60-second recovery, repeated call, and unchanged revision/event notifications. JUnit XML SHA-256 `11B433B49EFAC9E77A556CD2BB66B29FC1C0AF8A1603DB9560949EAF05D787AB`.
+- **Forced serial offline gate:** **878/878 JVM tests across 137 XML suites**, 0 failures/errors/skips; both source boundaries, Debug APK assembly, lint (**0 errors / 54 warnings**), AndroidTest Kotlin compilation, and `git diff --check` passed; 154 actionable tasks executed. APK **67,011,182 bytes**, SHA-256 `CE50CEDE2D787590D8A68ED885398096DFF1B3D99B2F00C96C36972A974C3137`. Full log `.local/android-test/reports/core-event-lease-recovery-20261102/full-gate.log`, SHA-256 `0E0217931863895A408115D524D08E0EA23E119359937B3138AABD857AE442BE`.
+- No device or AVD was available; Android instrumentation and runtime WebView/Native behavior remain **NOT TESTED**. The slice changes no schema, backup format, or frozen business semantics and does not authorize a skin cutover.
+- **Next PHASE 1 action:** Add a read-only pending-draft queue query to `DraftReviewFeatureApiV1` and route the remaining `PowerCalApp.reload()` call away from `store.pendingDrafts()`. Other Store diagnostics remain separate work.
