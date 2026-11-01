@@ -1,4 +1,4 @@
-# Core Feature API v1 — Calendar, Event, Draft/Review, AI Proposal, and Reminder slices
+# Core Feature API v1 — Calendar, Event, Draft/Review, AI Proposal, Reminder, and Import/Export slices
 
 - **Status:** Calendar window queries, Event, Draft/Review, AI Proposal, and Reminder vertical slices implemented; PHASE 1 remains in progress.
 - **Contract source:** `:core-api`, package `dev.powerfulcalendar.core.api.v1`, `CoreFeatureApiV1.kt`, `CalendarFeatureApiV1.kt`, `DraftReviewFeatureApiV1.kt`, `AiProposalFeatureApiV1.kt`, and `ReminderFeatureApiV1.kt`.
@@ -139,9 +139,21 @@ These are Calendar, Event, Draft/Review, AI Proposal, and Reminder vertical slic
 
 The implementation is in `ReminderFeatureApiV1.kt` and `AndroidReminderFeatureApiV1.kt`; verification and limitations are recorded in the [Reminder API Issue](issues/PC-ISSUE-CORE-REMINDER-API-V1.md).
 
-## 11. Current adapter coverage and open work
+## 11. Import/Export API v1 slice
 
-Verified code paths across the Calendar, Event, Draft/Review, AI Proposal, and Reminder slices:
+`CoreFeatureApiV1.importExport` exposes the platform-neutral `ImportExportFeatureApiV1` contract. Native and Web Host actions use the same service instance. Android file pickers, Calendar permissions, URI reads/writes, readback I/O, legacy-backup consent, and post-restore scheduler reconciliation remain trusted Host capabilities.
+
+- ICS parsing stays local. `prepareIcsImport` delegates to the existing bounded `IcsImportPlanner`, returning typed candidate forms and unresolved untrusted evidence. Duplicate matching checks formal records, pending CREATE drafts, and earlier candidates in the same plan. `createIcsDraft` delegates to `DraftReviewFeatureApiV1.createDraft`; ICS input therefore remains reviewable and does not publish formal events. The existing `ImportCheckpoint` remains a SharedPreferences recovery hint and stores only the fingerprint and draft IDs.
+- System Calendar provider reads and permission prompts stay in Android Host code. Each imported event is sent through the API's begin/import/finish batch commands, which delegate to the existing `PowerStore` migration and `importStructured` transactions. Source-link idempotence and imported-alarm handoff rules remain Store-owned. Newly imported records publish `FORMAL_CREATED`; retries that find an existing source link do not publish a second change.
+- ICS export takes a fresh Store snapshot through the adapter and calls the existing `IcsCodec.exportActivities`; it remains an Activity-only, intentionally lossy format. Existing user disclosures remain in the Host.
+- Backup export, bounded readback verification, and restore delegate to `PowerStore.exportBackup`, `BackupEnvelope.verifyReadback`, and `PowerStore.restoreBackup`. The API returns the envelope as an opaque UTF-8 JSON document for trusted Host file I/O and enforces the existing 64 MiB bound. Hash/reference checks, the empty-target transactional restore, and the explicit legacy-v2 consent gate are unchanged. Successful restore publishes `STORE_RESTORED`; reminder reconciliation and UI refresh remain Host work.
+- The API adds no schema or backup-format changes and does not expose Android, Store, or Core entity types in `:core-api`. It does not send ICS evidence to an AI provider.
+
+Implementation is in `ImportExportFeatureApiV1.kt` and `StoreImportExportFeatureApiV1.kt`. Android picker/SAF and device interoperability evidence remains separately gated; see the [Import/Export API Issue](issues/PC-ISSUE-CORE-IMPORT-EXPORT-API-V1.md).
+
+## 12. Current adapter coverage and open work
+
+Verified code paths across the Calendar, Event, Draft/Review, AI Proposal, Reminder, and Import/Export slices:
 
 - Native event creation and ordinary formal editing/deletion call the Host's shared `EventFeatureApiV1`.
 - `PowerCalApp.reload` obtains formal events through `queryEvents()`.
@@ -154,14 +166,15 @@ Verified code paths across the Calendar, Event, Draft/Review, AI Proposal, and R
 - Native and Web AI proposal review actions use `AiProposalFeatureApiV1` for staging and reviewed publication, including Host-owned publish approval and per-item Store receipts.
 - Native and Web Host reminder diagnostics and reconciliation use the shared `ReminderFeatureApiV1`; bounded lifecycle recovery and exhaustive user-requested recovery remain distinct modes.
 - Native and Web Host timeline/month reads use `CalendarFeatureApiV1` over an immutable Event API snapshot. Native month navigation asks the Host for a fresh bounded query per month; Web synchronous state refreshes select data for the live window.
+- Native and Web ICS import/export, structured Calendar import, and native backup export/restore now call `ImportExportFeatureApiV1`. ICS draft persistence delegates to Draft/Review; structured imports retain Store batch receipts and source-link idempotence; successful backup restore emits the shared `STORE_RESTORED` change.
 - A Robolectric adapter integration test performs a Native-side API create followed by a Web bridge create/checkpoint and observes shared feature revision/change events and Store-backed state. Its Native-side write calls the API directly; it does not mount `PowerCalApp` and drive the entire Native UI route. Separate editor Compose tests cover the API-backed editor component callbacks.
 
 Remaining work before PHASE 1 can exit:
 
-1. Route remaining authorized Host/Core reads and writes through versioned queries/commands and one change source; current direct or separate paths include AI batch operations, ICS and structured Calendar import, backup restore, AI draft generation, and Memo visibility checks.
+1. Route remaining authorized Host/Core reads and writes through versioned queries/commands and one change source; current direct or separate paths include AI batch operations, AI draft generation, Memo visibility checks, and other settings/data operations.
 2. Move remaining business decisions out of Web transport/Host adapters; keep the bridge focused on transport and trusted Host capabilities.
 3. Remove Core entity types from runtime Skin projections while maintaining the separate Native Presentation Contract.
-4. Add the required per-domain API contracts before claiming other feature areas are covered. Current v1 does not define Store-level Calendar paging, AI batch control, import/export, or Settings/Data APIs. Draft/Review request replay and AI outer request replay remain process-local; AI Proposal item receipts are Store-backed. Calendar source loading still uses the full Host snapshot, and other runtime Skin projections still need bounded, API-owned data paths.
+4. Add the remaining per-domain API contracts before claiming other feature areas are covered. Current v1 does not define Store-level Calendar paging, AI batch control, or Settings/Data APIs. Draft/Review request replay and AI outer request replay remain process-local; AI Proposal item receipts are Store-backed. Calendar source loading still uses the full Host snapshot, and other runtime Skin projections still need bounded, API-owned data paths.
 5. Run required device checks when the independently owned AVD is available. Instrumentation for Event search/completion and AI Proposal API behavior is **NOT TESTED**.
 
 Latest Draft/Review verification: focused API, DeckController, Store restore, Host review UI, and Web bridge tests passed **190/190**; the forced full JVM run passed **800 tests across 128 XML reports, 0 failures/errors/skips**. `verifySkinSourceBoundary`, `verifyNativeSkinBoundary`, Debug APK assembly, and `lintDebug` all passed; lint reported **0 errors / 54 warnings**. The Debug APK SHA-256 is `C22E82E434CBE5B02CD790FF72932074DA969A10BDF9095416179D3B8331AFB4` (66,683,502 bytes). Instrumentation and AVD behavior are **NOT TESTED**. Logs and the prior Event pilot’s transient full-suite failures are recorded in the current [progress entry](agent-handoff/PROGRESS.md) and the [Draft/Review Issue](issues/PC-ISSUE-CORE-DRAFT-REVIEW-API-V1.md); no cause is asserted for those earlier failures.
