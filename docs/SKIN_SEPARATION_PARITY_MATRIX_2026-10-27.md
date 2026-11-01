@@ -4,6 +4,10 @@ Last broad source inventory pass: 2026-10-28, separation source snapshot `cc3102
 
 ## Traced boundaries
 
+### Core Feature API — ICS import recovery checkpoint (2026-11-02)
+
+Native and Web Host ICS import now query and record the same `IcsImportCheckpointV1` through `ImportExportFeatureApiV1`. The adapter retains the existing synchronous SharedPreferences format and the 12-input bound. The receipt contains only fingerprint, draft IDs, and problem count; the Host rechecks each ID and continues candidate duplicate matching, so the receipt is not an authorization to skip a missing/discarded draft or publish an event. Focused API/Host tests passed **12/12**; the later full serial gate passed **885/885 JVM tests across 138 suites** with both source boundaries, APK, lint, and AndroidTest Kotlin compilation. The initial Memo paging timeout and isolated rerun are disclosed in the [ICS checkpoint API Issue](issues/PC-ISSUE-CORE-ICS-IMPORT-CHECKPOINT-API.md). This verifies the scoped API route only; Android WebView, device behavior, and full Native/Clear parity remain **NOT TESTED**.
+
 ### Core Feature API — AI Conversation v1 (2026-11-02)
 
 Native and Web ordinary text-chat sends now call the shared `AiFeatureApiV1.chat` service with versioned conversation DTOs. Core validates bounded history, reads optional calendar context only on Host opt-in, and routes explicit tasks through the existing proposal-generation API; the response remains review-only. The compiled `AiVisualContext` now exposes versioned message, proposal-review, and batch-mode DTOs. Persistent transcript operations and attachments remain Host-owned. Verification and the no-device limitation are recorded in the [AI Conversation API Issue](issues/PC-ISSUE-CORE-AI-CONVERSATION-API-V1.md); this source/API slice does not sign full SEP-09 behavior, Native/Clear parity, or cutover.

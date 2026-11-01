@@ -37,6 +37,9 @@ for the Host callback boundary and verification limits.
 Native and Web ICS/structured Calendar import, export, and backup/restore now use Import/Export
 Feature API v1; see the [Import/Export API report](issues/PC-ISSUE-CORE-IMPORT-EXPORT-API-V1.md)
 for transaction boundaries and device/SAF verification limits.
+The ICS import recovery checkpoint now uses that same API while retaining its existing
+synchronous SharedPreferences hint semantics; see the
+[checkpoint API follow-up](issues/PC-ISSUE-CORE-ICS-IMPORT-CHECKPOINT-API.md).
 Native profile settings, Web profile editing, and first-run calendar-import prompt state now use
 Settings/Data Feature API v1; see the [Settings/Data API report](issues/PC-ISSUE-CORE-SETTINGS-DATA-API-V1.md)
 for preference compatibility and device-verification limits.
