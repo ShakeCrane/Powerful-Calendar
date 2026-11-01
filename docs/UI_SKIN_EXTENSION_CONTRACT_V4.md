@@ -283,6 +283,17 @@ editing, commit review, and conflict/restore approval; the Native fallback remai
 Compose context is a presentation adapter, not part of the Core Feature API. `NativeDeckState` and
 the Native renderer contract remain separate in `:skin-api`.
 
+### Compiled Month renderer DTO boundary (2026-11-02)
+
+`MonthVisualContext.records` and `recordsForMonth` expose versioned `EventRecordV1` values;
+`onOpen` carries only `eventSeq`, `revision`, and an optional occurrence key. The Host keeps its
+`TemporalRecord` snapshots and `NativeMonthProjectionSession` private behind `context.Native()`,
+preserving recurrence expansion, visible-date geometry, event owner identity, and original
+occurrence keys. The runtime event widget reads the DTOs directly while preserving its existing
+time ordering, summaries, and 70-row display cap. This Compose adapter does not change
+`NativeMonthScreen`'s separate Native Presentation Contract, enable a skin, or establish
+Native/Skin or device parity. See the [MonthVisualContext DTO Issue](issues/PC-ISSUE-CORE-MONTH-VISUAL-CONTEXT-DTO-V1.md).
+
 ### Native Chrome display boundary (2026-10-30)
 
 `ChromeVisualContext` and `ChromeVisualRenderer` are provided with `:native-skin`; the Host
