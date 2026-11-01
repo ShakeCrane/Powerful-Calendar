@@ -48,6 +48,102 @@ class DraftReviewFeatureApiV1Test {
         context.deleteDatabase(name)
     }
 
+    @Test fun createDraftUsesReceiptReplayAndPublishesOneDraftChange() = runBlocking {
+        val api = core.draftReview
+        val changes = mutableListOf<EventFeatureChangeV1>()
+        val subscription = core.events.subscribe(changes::add)
+        val form = newActivityDraft("Created through Draft API").toEventFormV1().copy(
+            completedKeys = linkedSetOf("2026-11-03T09:00", "2026-11-02T09:00"),
+            recurrence = EventRecurrenceV1(
+                frequency = EventRecurrenceFrequencyV1.WEEKLY,
+                byDay = linkedSetOf(3, 1),
+                exceptions = linkedSetOf("2026-11-03T09:00", "2026-11-02T09:00"),
+                overrides = linkedMapOf(
+                    "2026-11-03T09:00" to EventOccurrenceOverrideV1(1L, null),
+                    "2026-11-02T09:00" to EventOccurrenceOverrideV1(2L, null)
+                )
+            )
+        )
+        val reorderedForm = form.copy(
+            completedKeys = form.completedKeys.reversed().toSet(),
+            recurrence = form.recurrence.copy(
+                byDay = form.recurrence.byDay.reversed().toSet(),
+                exceptions = form.recurrence.exceptions.reversed().toSet(),
+                overrides = form.recurrence.overrides.entries.reversed()
+                    .associate { it.key to it.value }
+            )
+        )
+        val beforeRevision = core.events.featureRevision
+        try {
+            val created = api.createDraft(form, "draft-create-api-1")
+            assertEquals(DraftReviewReceiptStatusV1.APPLIED, created.status)
+            val draftId = requireNotNull(created.draftId)
+            val eventSeq = requireNotNull(created.eventSeq)
+            assertEquals(beforeRevision + 1, created.featureRevision)
+            assertEquals("Created through Draft API", store.draft(draftId)?.form?.title)
+            assertTrue(store.get(eventSeq) == null)
+            assertEquals(1, store.pendingDrafts().size)
+            assertEquals(listOf(EventFeatureChangeTypeV1.DRAFTS_CHANGED), changes.map { it.type })
+
+            val replay = api.createDraft(reorderedForm, "draft-create-api-1")
+            assertTrue(replay.duplicate)
+            assertEquals(draftId, replay.draftId)
+            assertEquals(beforeRevision + 1, core.events.featureRevision)
+            assertEquals(1, store.pendingDrafts().size)
+            assertEquals(1, changes.size)
+
+            val reused = api.createDraft(form.copy(title = "Different draft"), "draft-create-api-1")
+            assertEquals(DraftReviewReceiptStatusV1.DUPLICATE_REQUEST_ID, reused.status)
+            assertEquals(1, store.pendingDrafts().size)
+
+            val invalidScope = api.createDraft(
+                form.copy(recurrenceScope = EventRecurrenceScopeV1.WHOLE_SERIES),
+                "draft-create-invalid-scope"
+            )
+            assertEquals(DraftReviewReceiptStatusV1.INVALID, invalidScope.status)
+            assertEquals(1, store.pendingDrafts().size)
+            assertEquals(1, changes.size)
+
+            val opened = api.open(draftId)
+            assertEquals(draftId, opened.currentId)
+            assertEquals(1, changes.size)
+            assertEquals(beforeRevision + 1, core.events.featureRevision)
+        } finally {
+            subscription.close()
+        }
+    }
+
+    @Test fun createDraftRespectsTheExistingAiBatchLock() = runBlocking {
+        val existing = store.newDraft(newActivityDraft("Reviewed by AI"))
+        val session = store.beginAiBatch(
+            mapOf(existing.draftId to existing.draftVersion), setOf(DraftOperation.CREATE)
+        )
+        try {
+            val result = core.draftReview.createDraft(
+                newActivityDraft("Must stay out of the authorized batch").toEventFormV1(),
+                "draft-create-during-ai"
+            )
+            assertEquals(DraftReviewReceiptStatusV1.LOCKED, result.status)
+            assertEquals(1, store.pendingDrafts().size)
+        } finally {
+            if (store.isLocked()) assertTrue(store.finishAiBatch(session.sessionId))
+        }
+    }
+
+    @Test fun createDraftFingerprintSeparatesDelimiterContainingFieldValues() = runBlocking {
+        val api = core.draftReview
+        val base = newActivityDraft("Base").toEventFormV1()
+        val firstForm = base.copy(title = "x, startText=y", startText = "")
+        val changedForm = base.copy(title = "x", startText = "y, startText=")
+        assertEquals(firstForm.toString(), changedForm.toString())
+
+        val created = api.createDraft(firstForm, "draft-create-collision")
+        assertEquals(DraftReviewReceiptStatusV1.APPLIED, created.status)
+        val reused = api.createDraft(changedForm, "draft-create-collision")
+        assertEquals(DraftReviewReceiptStatusV1.DUPLICATE_REQUEST_ID, reused.status)
+        assertEquals(1, store.pendingDrafts().size)
+    }
+
     @Test fun editsRequireTheCurrentDraftVersionAndFlushPublishesOneChange() = runBlocking {
         val card = store.newDraft(newActivityDraft("Before API edit"))
         val api = core.draftReview

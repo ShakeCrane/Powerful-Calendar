@@ -997,6 +997,8 @@ private class StoreDraftReviewFeatureApiV1(
     private val mutationMutex = Mutex()
     private val receipts = LinkedHashMap<String, Pair<String, DraftReviewReceiptV1>>()
     private val initialControllerState = controller.stateSnapshot()
+    private val persistedFingerprintLock = Any()
+    private val stalePersistedFingerprints = LinkedHashSet<String>()
 
     @Volatile private var latestSnapshot = initialControllerState.first.toDraftReviewSnapshotV1().copy(
         stateRevision = initialControllerState.second
@@ -1010,11 +1012,7 @@ private class StoreDraftReviewFeatureApiV1(
             )
             latestSnapshot = next
             listeners.forEach { runCatching { it(next) } }
-            val fingerprint = persistedDeckFingerprint(state)
-            if (fingerprint != persistedFingerprint) {
-                persistedFingerprint = fingerprint
-                events.publishDeckDraftChange()
-            }
+            observePersistedDraftState(state)
         }
     }
 
@@ -1075,6 +1073,86 @@ private class StoreDraftReviewFeatureApiV1(
         if (!flushBeforeReopening()) return snapshot
         controller.refresh(preferDraftId)
         return snapshot
+    }
+
+    override suspend fun createDraft(
+        form: EventFormV1,
+        requestId: String
+    ): DraftReviewReceiptV1 {
+        val formSnapshot = form.detachedDraftSnapshot()
+        val fingerprint = canonicalDraftFormFingerprint(formSnapshot)
+        return execute(requestId, "CREATE_DRAFT:$fingerprint") {
+            if (formSnapshot.recurrenceScope != null || formSnapshot.editOccurrenceKey != null) {
+                return@execute receipt(requestId, DraftReviewReceiptStatusV1.INVALID,
+                    errorCode = "DRAFT_SCOPE_INVALID", message = "新草稿不能携带既有重复实例编辑范围")
+            }
+            val controllerFingerprintBeforeWrite =
+                persistedDeckFingerprint(controller.stateSnapshot().first)
+            val card = try {
+                store.newDraft(formSnapshot.toCoreDraftForm(), actor = "user")
+            } catch (error: IllegalArgumentException) {
+                return@execute receipt(requestId, DraftReviewReceiptStatusV1.INVALID,
+                    errorCode = "DRAFT_FORM_INVALID", message = error.message)
+            } catch (error: IllegalStateException) {
+                val locked = runCatching { store.isLocked() }.getOrDefault(false)
+                return@execute if (locked) receipt(requestId, DraftReviewReceiptStatusV1.LOCKED,
+                    errorCode = "DRAFT_CREATE_LOCKED", message = error.message)
+                else receipt(requestId, DraftReviewReceiptStatusV1.FAILED,
+                    errorCode = "DRAFT_CREATE_FAILED", message = error.message)
+            } catch (error: Exception) {
+                return@execute receipt(requestId, DraftReviewReceiptStatusV1.FAILED,
+                    errorCode = "DRAFT_CREATE_FAILED", message = error.message)
+            }
+            val publicationConfirmed = publishDraftChangeIfNeeded(controllerFingerprintBeforeWrite)
+            receipt(requestId, DraftReviewReceiptStatusV1.APPLIED,
+                draftId = card.draftId, eventSeq = card.eventSeq, draftVersion = card.draftVersion,
+                message = if (publicationConfirmed) null
+                    else "草稿已保存；变更通知未能确认，请重新打开卡组刷新")
+        }
+    }
+
+    private fun publishDraftChangeIfNeeded(staleControllerFingerprint: String): Boolean = try {
+        synchronized(persistedFingerprintLock) {
+            rememberStalePersistedFingerprint(staleControllerFingerprint)
+            val fingerprint = persistedDraftFingerprint(store.pendingDrafts())
+            if (fingerprint != persistedFingerprint) {
+                events.publishDeckDraftChange()
+                persistedFingerprint = fingerprint
+            }
+        }
+        true
+    } catch (_: Exception) {
+        false
+    }
+
+    private fun observePersistedDraftState(state: DeckController.DeckState) {
+        val observedFingerprint = persistedDeckFingerprint(state)
+        synchronized(persistedFingerprintLock) {
+            when {
+                observedFingerprint == persistedFingerprint -> stalePersistedFingerprints.clear()
+                observedFingerprint in stalePersistedFingerprints -> Unit
+                else -> {
+                    val currentFingerprint = runCatching {
+                        persistedDraftFingerprint(store.pendingDrafts())
+                    }.getOrNull() ?: return
+                    if (currentFingerprint != persistedFingerprint) {
+                        events.publishDeckDraftChange()
+                        persistedFingerprint = currentFingerprint
+                    }
+                    if (observedFingerprint != persistedFingerprint) {
+                        rememberStalePersistedFingerprint(observedFingerprint)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun rememberStalePersistedFingerprint(fingerprint: String) {
+        stalePersistedFingerprints.remove(fingerprint)
+        stalePersistedFingerprints.add(fingerprint)
+        while (stalePersistedFingerprints.size > 32) {
+            stalePersistedFingerprints.remove(stalePersistedFingerprints.first())
+        }
     }
 
     private suspend fun flushBeforeReopening(): Boolean {
@@ -1385,9 +1463,72 @@ private fun DraftCard.toDraftReviewCardV1() = DraftReviewCardV1(
 )
 
 private fun persistedDeckFingerprint(state: DeckController.DeckState): String =
-    state.cards.joinToString("|") { card ->
+    persistedDraftFingerprint(state.cards)
+
+private fun persistedDraftFingerprint(cards: List<DraftCard>): String =
+    cards.joinToString("|") { card ->
         "${card.draftId}:${card.eventSeq}:${card.queueOrder}:${card.draftVersion}:${card.status}"
     }
+
+private fun EventFormV1.detachedDraftSnapshot(): EventFormV1 = copy(
+    completedKeys = completedKeys.toSet(),
+    recurrence = recurrence.copy(
+        byDay = recurrence.byDay.toSet(),
+        exceptions = recurrence.exceptions.toSet(),
+        overrides = recurrence.overrides.mapValues { (_, value) -> value.copy() }
+    )
+)
+
+private fun canonicalDraftFormFingerprint(form: EventFormV1): String {
+    val canonical = buildString {
+        fun field(name: String, value: String?) {
+            append(name.length).append(':').append(name)
+            if (value == null) append("-1:")
+            else append(value.length).append(':').append(value)
+        }
+        fun stringSet(name: String, values: Collection<String>) {
+            field("$name.count", values.size.toString())
+            values.sorted().forEach { field(name, it) }
+        }
+
+        field("kind", form.kind.name)
+        field("title", form.title)
+        field("startText", form.startText)
+        field("endText", form.endText)
+        field("notes", form.notes)
+        field("location", form.location)
+        field("reminderMinutes", form.reminderMinutes.toString())
+        field("reminderMethod", form.reminderMethod.name)
+        field("reminderTiming", form.reminderTiming.name)
+        field("enabled", form.enabled.toString())
+        field("source", form.source)
+        field("zoneId", form.zoneId)
+        field("recurrence.frequency", form.recurrence.frequency.name)
+        field("recurrence.interval", form.recurrence.interval.toString())
+        field("recurrence.count", form.recurrence.count?.toString())
+        field("recurrence.untilMillis", form.recurrence.untilMillis?.toString())
+        field("recurrence.activeFromDate", form.recurrence.activeFromDate)
+        field("recurrence.activeUntilDate", form.recurrence.activeUntilDate)
+        field("recurrence.byDay.count", form.recurrence.byDay.size.toString())
+        form.recurrence.byDay.sorted().forEach { field("recurrence.byDay", it.toString()) }
+        stringSet("recurrence.exceptions", form.recurrence.exceptions)
+        val overrides = form.recurrence.overrides.toSortedMap()
+        field("recurrence.overrides.count", overrides.size.toString())
+        overrides.forEach { (key, value) ->
+            field("recurrence.overrides.key", key)
+            field("recurrence.overrides.startMillis", value.startMillis.toString())
+            field("recurrence.overrides.endMillis", value.endMillis?.toString())
+            field("recurrence.overrides.title", value.title)
+        }
+        field("trackingEnabled", form.trackingEnabled.toString())
+        stringSet("completedKeys", form.completedKeys)
+        field("recurrenceScope", form.recurrenceScope?.name)
+        field("editOccurrenceKey", form.editOccurrenceKey)
+    }
+    return java.security.MessageDigest.getInstance("SHA-256")
+        .digest(canonical.toByteArray(Charsets.UTF_8))
+        .joinToString("") { it.toUByte().toString(16).padStart(2, '0') }
+}
 
 internal fun EventFormV1.toCoreDraftForm(): DraftForm = DraftForm(
     kind = kind.toCoreKind(),

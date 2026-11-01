@@ -703,10 +703,14 @@ fun PowerCalApp(
             zoneId = zone.id
         )
         runCatching {
-            withContext(Dispatchers.IO) { store.newDraft(form, actor = "user") }
-        }.onSuccess { card ->
+            val receipt = withContext(Dispatchers.IO) {
+                draftReviewApi.createDraft(form.toEventFormV1(), java.util.UUID.randomUUID().toString())
+            }
+            if (!receipt.succeeded) error(receipt.message ?: "暂时无法创建草稿")
+            receipt.draftId ?: error("草稿保存结果缺少草稿身份")
+        }.onSuccess { draftId ->
             reload()
-            openDeckAt(card.draftId)
+            openDeckAt(draftId)
             message = parsed.note
         }.onFailure {
             message = it.message ?: "暂时无法创建草稿（AI 批次可能正在独占卡组）"

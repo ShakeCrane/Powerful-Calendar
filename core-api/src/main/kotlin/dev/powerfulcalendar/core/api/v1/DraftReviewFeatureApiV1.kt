@@ -125,6 +125,8 @@ interface DraftReviewFeatureApiV1 {
 
     suspend fun open(preferDraftId: Long? = null): DraftReviewSnapshotV1
     suspend fun refresh(preferDraftId: Long? = null): DraftReviewSnapshotV1
+    /** Persist one explicit user-owned draft without publishing a formal event. */
+    suspend fun createDraft(form: EventFormV1, requestId: String): DraftReviewReceiptV1
     suspend fun beginFormalReplacement(
         eventSeq: Long,
         expectedRevision: Long,
