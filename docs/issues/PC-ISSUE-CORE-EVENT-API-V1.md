@@ -55,6 +55,6 @@
 
 ## Git 与后续
 
-实现分支：`codex/core-feature-api-event`，基于 `c09d39d8161b113ad62ce8348760a2620017869b`。远端集成主线在本任务初始 fetch 时仍指向该 SHA；本报告提交前还需再次验证 freshness。当前报告随功能切片提交；只有提交及普通快进推送完成后才补录提交 SHA。
+实现分支：`codex/core-feature-api-event`，代码提交 `65a96b7ba97a639981d23eee7e05f8f39a85a68e`，基于 `c09d39d8161b113ad62ce8348760a2620017869b`。提交前重新 fetch 验证远端仍在该 base，并已普通快进推送至 `origin/feat/skin-first-separation`；推送后远端 HEAD 为 `65a96b7ba97a639981d23eee7e05f8f39a85a68e`。本报告与 Progress 后续证据更新另行提交。
 
-Phase 1 保持进行中。后续应先集成此已验证编辑器切片，再用显式 Draft/Review API 收口 Native/Web Deck 的 formal 写入及统一变更来源；不得据此删除 Native fallback、切换默认 Skin 或宣称 cutover GO。
+Phase 1 保持进行中。下一动作是查明当前全量 JVM 的跨套件失败，取得干净的强制全量运行；随后用显式 Draft/Review API 收口 Native/Web Deck 的 formal 写入及统一变更来源。不得据此删除 Native fallback、切换默认 Skin 或宣称 cutover GO。

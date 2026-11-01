@@ -2,12 +2,12 @@
 
 ## Current master goal — Core-first / Skin-first PHASE 1 (2026-11-01)
 
-- **Current slice:** Event Feature API v1 on `codex/core-feature-api-event`, based on `c09d39d8161b113ad62ce8348760a2620017869b`; the fetched `origin/feat/skin-first-separation` was unchanged at that base. Parallel delivery worktree edits remain untouched.
+- **Current slice:** Event Feature API v1 editor pilot; implementation commit [`65a96b7`](../issues/PC-ISSUE-CORE-EVENT-API-V1.md) was fast-forward pushed to `origin/feat/skin-first-separation` on `c09d39d8161b113ad62ce8348760a2620017869b`. Parallel delivery worktree edits remain untouched.
 - **Implemented in this worktree:** platform-neutral `:core-api` Event DTO/interface; one Host adapter instance injected into Native event editor flows and Web edit bridge; query, create/edit/delete, recurrence scope, guarded replacement staging, checkpoints, request receipts, Host-only delete approval and API change notifications. Not yet committed or pushed.
 - **Contract:** [`CORE_FEATURE_API_V1.md`](../CORE_FEATURE_API_V1.md) records the v1 surface, runtime adapter, receipt/revision rules, authorization boundary, and uncovered paths.
 - **Evidence:** focused API/Native/Web suites **66/66 PASS**. The latest two forced full JVM runs each completed **789 tests with one failure**: one missed the Host confirmation node in `replaceAndDeleteCandidatesCommitOnlyAfterTrustedHostConfirmation`; one timed out after 60 seconds in `memoPagingContinuesTheSortedProjectionWithoutStoreWrites` with `hostDataReady=false`. Each exact failure reproduced as PASS when isolated; the full `WebAiProposalReviewIntegrationTest` class passed **15/15**. This suggests suite-level instability but does not establish its root cause, so the full JVM gate is **NOT CLEAN**. Both boundary tasks, Debug APK assembly, and separate `lintDebug` passed; lint **0 errors / 54 warnings**. Instrumentation remains NOT TESTED; do not touch the AVD owned by the parallel task.
 - **Known Phase 1 gaps:** Web Bridge Draft Deck/recovery/conflict and some formal-event reads/writes still use `DeckController` / `PowerStore`; adapter revisions/events do not observe those bypasses. Native Host still maps Event DTOs into its presentation form. No full API, runtime, Studio, AI-authoring, or Native/Skin parity claim.
-- **唯一 NEXT_ACTION:** commit and fast-forward push the verified Event API v1 editor slice with its residual gaps explicit; keep PHASE 1 open for Deck/Draft/Review API and a unified change source.
+- **唯一 NEXT_ACTION:** diagnose the full-suite-only `WebAiProposalReviewIntegrationTest` failure and obtain one clean forced JVM run; preserve frozen semantics. Then continue PHASE 1 with Deck/Draft/Review API and a unified change source.
 
 ## Separation — SEP-10 Native/Clear formal REPLACE+DELETE paired device replay (2026-11-01, scoped PASS; SEP-10 PARTIAL / HOLD)
 
