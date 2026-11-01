@@ -16,7 +16,7 @@ Native and Web timeline/month Host projections consumed the full `TemporalRecord
 - Native and Web timeline/month projections use the same Host-created `PowerCalCoreFeatureApiV1.calendar` service. Timeline queries retain the existing 17-day horizon; month queries use the existing Monday-first 42-day grid. Native month navigation asks for the window of each navigated month. A synchronous Web Host refresh queries its live timeline/month window if Compose still holds the previous remembered window.
 - Existing projection geometry, occurrence display, and renderer presentation rules remain in use. No Store writes, schema, backup format, recurrence policy, or frozen Core behavior changed.
 
-The Calendar query is snapshot-backed, not database paging. `PowerCalApp.reload()` still loads the full formal-event snapshot into the Host. Calendar projection callers receive the window-filtered owners, but other runtime projection boundaries and conversion from DTOs to existing Core records remain open PHASE 1 work.
+At the original 2026-11-01 implementation, the Calendar query was snapshot-backed and `PowerCalApp.reload()` loaded the full formal-event snapshot. That describes the initial slice only; see the 2026-11-02 Store-backed paging follow-up below. Runtime projection boundaries and conversion to existing Native Presentation Contract values remain separate Phase 1 work.
 
 ## Verification
 
@@ -43,3 +43,15 @@ Environment: Windows PowerShell, Android SDK at `E:\android-sdk`, offline Gradle
 - The first focused run is retained at `focused.log`, SHA-256 `2AD58E86E0E1CF320B870E58219635DB05D0E295E9263FA235483FD32C88AF3B`. It exposed a missing non-repeating Memo date-range predicate and a Robolectric SQLite fixture path that was too long for Windows. The date overlap check and short test/database names fixed both; `focused-rerun.log` and `focused-final.log` passed. The final run also covers per-month Native queries and live Web window refresh integration.
 
 All logs and XML remain under ignored `.local/android-test/reports/calendar-feature-api-20261101/`. No ADB/device or user database was used. Android instrumentation, packaged WebView behavior, physical/OEM behavior, runtime projection extraction, and Native/Skin parity are **NOT TESTED** by this slice. This report does not change the Release QA HOLD or authorize a skin cutover.
+
+## Follow-up — Store-backed Event/Calendar/Memo paging (2026-11-02)
+
+The snapshot-only statement above describes the original 2026-11-01 Calendar API slice and is superseded for the Store-backed Host path by this follow-up. The snapshot-based overload remains available as a compatibility projection helper.
+
+- **Code:** `7c57da89d2556393bcd9599a8d8007d6480407d3`, fast-forward pushed from `d2162bae0c0fdfcf62db63a9065e7b4c0139d9d0` to `origin/feat/skin-first-separation`.
+- **Event:** Store-backed keyset pages use stable anchor/sequence ordering and cursors fenced by feature revision, position, and API instance. Page iteration supports bounded consumers without materializing the full active-event list.
+- **Calendar:** The Store adapter scans active Events one page at a time and applies the existing Calendar window/recurrence projection, returning all owners that match the requested time window. Native month navigation and Web live-window refresh continue through the shared API.
+- **Memo and Host:** Memo pages preserve the existing occurrence projection, sort order, horizon, exact totals/open counts, and reject stale or foreign-instance cursors. `PowerCalApp.reload()` loads the first 300 Event rows and first 250 Memo rows; the exact Event total and Memo continuation are retained through the API.
+- **Regression coverage:** `PowerStoreTest.activeEventPagesAreBoundedOrderedAndExcludeRetiredRecords`, `EventFeatureApiV1Test.storeBackedPagesKeepAxisOrderAndRejectCursorsFromOtherRevisionsOrInstances`, `TodoProjectionTest.storeBackedMemoPagesMatchSnapshotProjectionAndFenceCursors`, and `WebAiProposalReviewIntegrationTest.memoPagingContinuesTheSortedProjectionWithoutStoreWrites` passed within the full gate.
+- **Verification:** Forced serial offline gate **877/877 JVM tests across 137 XML suites**, 0 failures/errors/skips; source boundaries, Debug APK assembly, lint (**0 errors / 54 warnings**), AndroidTest Kotlin compilation, and `git diff --check` passed. APK **67,011,182 bytes**, SHA-256 `5C0DE7F3E7564A35149F1154F0023ABE87CD33AC8CB0F85D009D6F0AE5589D2B`. Log `.local/android-test/reports/core-store-query-paging-20261102/full-gate-clean.log`, SHA-256 `2003D93BC565AB0E69801CDFA0F02273FBAA251DFA44ED57B88D584204A40960`. Environment: Windows PowerShell, offline Gradle, Robolectric Store fixtures.
+- Android instrumentation, packaged WebView behavior, Native/Skin parity, and physical/OEM behavior are **NOT TESTED**. No schema, recurrence policy, backup format, or frozen Core semantics changed. This follow-up does not change Release QA HOLD or authorize cutover.

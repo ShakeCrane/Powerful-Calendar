@@ -41,11 +41,11 @@ $env:ANDROID_HOME='E:\android-sdk'
 
 ## Limits and next work
 
-- `MemoFeatureApiV1.queryEntries` takes the current full `EventQuerySnapshotV1`; Store-level event paging remains unimplemented.
+- At the original 2026-11-01 implementation, `MemoFeatureApiV1.queryEntries` accepted a full `EventQuerySnapshotV1`; the snapshot overload remains available for compatibility. Native/Web Host page reads now use the Store-backed API described in the 2026-11-02 follow-up.
 - The current-entry query and JVM/compile evidence do not prove behavior through a device Native screen or packaged Android WebView.
-- `DeckVisualContext` still passes Core entity types to a runtime renderer. Web event-open and AI proposal target capture were subsequently routed through `EventFeatureApiV1.queryEvent`; see the [Event current query report](PC-ISSUE-CORE-EVENT-QUERY-API-V1.md).
+- The Draft Deck renderer boundary was subsequently moved to versioned DTOs by `db10d79950de899f45033c6837b5d99aa22ec549`; see the [Draft Deck projection report](PC-ISSUE-CORE-DRAFT-REVIEW-PROJECTION-API-V1.md). Web event-open and AI proposal target capture use `EventFeatureApiV1.queryEvent`; see the [Event current query report](PC-ISSUE-CORE-EVENT-QUERY-API-V1.md).
 - Native fallback remains available. This report does not authorize a skin cutover or mark any broader parity row PASS.
-- The next PHASE 1 action is to remove Core entity types from runtime Draft Deck projections while retaining Host-owned actions and conflict/restore gates.
+- The original next action (Draft Deck DTO isolation) was completed by the follow-up noted above. The current PHASE 1 next action is to route startup abandoned-human-edit recovery through a versioned Event API command, preserving the existing stale-lease behavior.
 
 ## Source paths
 
@@ -59,3 +59,15 @@ $env:ANDROID_HOME='E:\android-sdk'
 - `app/src/main/java/dev/powerfulcalendar/ui/v2/WebSkinMemoProjection.kt`
 - `app/src/test/java/dev/powerfulcalendar/ui/v2/TodoProjectionTest.kt`
 - `app/src/androidTest/java/dev/powerfulcalendar/ui/v2/MemoFeatureApiTestSupport.kt`
+
+## Follow-up — Store-backed Memo pages (2026-11-02)
+
+The snapshot-based `queryEntries` statement in the original implementation remains true for the compatibility overload; Native/Web Host page reads now use the Store-backed page API.
+
+- **Code:** `7c57da89d2556393bcd9599a8d8007d6480407d3`, fast-forward pushed from `d2162bae0c0fdfcf62db63a9065e7b4c0139d9d0` to `origin/feat/skin-first-separation`.
+- **Implementation:** `queryEntriesPage` scans active Events in bounded Store pages, applies the existing Memo recurrence/horizon/filter projection, returns stable ordered rows with exact total/open counts, and fences continuation cursors by query parameters, feature revision, and API instance. Native, Web, and compiled Memo renderer continuation remains Host-controlled. The legacy snapshot-source overload remains for compatibility.
+- **Host:** `PowerCalApp.reload()` loads the first 250 Memo rows and carries the continuation cursor; subsequent page loads remain API-backed. No Store writes are performed by paging.
+- **Verification:** Forced serial offline gate **877/877 JVM tests across 137 XML suites**, 0 failures/errors/skips; both source boundaries, Debug APK assembly, lint (**0 errors / 54 warnings**), AndroidTest Kotlin compilation, and `git diff --check` passed. APK **67,011,182 bytes**, SHA-256 `5C0DE7F3E7564A35149F1154F0023ABE87CD33AC8CB0F85D009D6F0AE5589D2B`. Clean log `.local/android-test/reports/core-store-query-paging-20261102/full-gate-clean.log`, SHA-256 `2003D93BC565AB0E69801CDFA0F02273FBAA251DFA44ED57B88D584204A40960`. AndroidTest compiled but was not run; no connected device or AVD was available.
+- **Scope limits:** Device/packaged WebView and Native/Skin parity remain **NOT TESTED**. No schema, recurrence, completion, or frozen Core semantic changed. Native fallback remains available; cutover is not authorized.
+- **Other historical boundary:** The Draft Deck Core-entity concern in the original Memo report was subsequently resolved by `db10d79950de899f45033c6837b5d99aa22ec549`; see [Draft Deck projection report](PC-ISSUE-CORE-DRAFT-REVIEW-PROJECTION-API-V1.md).
+- **唯一 NEXT_ACTION:** Route startup `recoverAbandonedHumanEdit` through a versioned Event API command, preserving the existing stale-lease rules; verify fresh/stale lease behavior and the command result.
