@@ -1,30 +1,30 @@
-# Core Feature API v1 — Event, Draft/Review, and AI Proposal slices
+# Core Feature API v1 — Event, Draft/Review, AI Proposal, and Reminder slices
 
-- **Status:** Event, Draft/Review, and AI Proposal vertical slices implemented; PHASE 1 remains in progress.
-- **Contract source:** `:core-api`, package `dev.powerfulcalendar.core.api.v1`, `CoreFeatureApiV1.kt`, `DraftReviewFeatureApiV1.kt`, and `AiProposalFeatureApiV1.kt`.
+- **Status:** Event, Draft/Review, AI Proposal, and Reminder vertical slices implemented; PHASE 1 remains in progress.
+- **Contract source:** `:core-api`, package `dev.powerfulcalendar.core.api.v1`, `CoreFeatureApiV1.kt`, `DraftReviewFeatureApiV1.kt`, `AiProposalFeatureApiV1.kt`, and `ReminderFeatureApiV1.kt`.
 - **Runtime adapter:** `app/src/main/java/dev/powerfulcalendar/core/api/v1/PowerCalCoreFeatureApiV1.kt`.
 - **Updated:** 2026-11-01.
 
-This document describes the implemented Event, Draft/Review, and AI Proposal API boundaries. It does not declare full Core extraction, full domain coverage, runtime cutover, or Native/Skin parity. The Kotlin source is authoritative when a detail here drifts.
+This document describes the implemented Event, Draft/Review, AI Proposal, and Reminder API boundaries. It does not declare full Core extraction, full domain coverage, runtime cutover, or Native/Skin parity. The Kotlin source is authoritative when a detail here drifts.
 
 ## 1. Contract boundaries
 
-The three contracts have separate jobs:
+The feature contracts have separate jobs:
 
 | Contract | Owner | Responsibility |
 | --- | --- | --- |
-| Core Feature API | `:core-api` | Versioned event and reviewed AI proposal operations, queries, DTOs, results, revisions, and change notifications |
+| Core Feature API | `:core-api` | Versioned domain operations, queries, DTOs, results, revisions, and change notifications |
 | Native Presentation Contract | `:skin-api` | Native renderer inputs and callbacks; contains presentation models, not Core business services |
-| Web Bridge Transport Contract | `WebEditWire` / `WebEditCommand` | Versioned JSON command decoding and Host reply transport; it is not the event business API |
+| Web Bridge Transport Contract | `WebEditWire` / `WebEditCommand` | Versioned JSON command decoding and Host reply transport; it is not a domain business API |
 
 ```text
 Native presentation ─┐
-                     ├─ Host adapters ─ EventFeatureApiV1 ─ PowerCalCoreFeatureApiV1 ─ existing Core services/PowerStore
+                     ├─ Host adapters ─ CoreFeatureApiV1 ─ PowerCalCoreFeatureApiV1 ─ existing Core services/PowerStore
 Web transport ───────┘       │
                              └─ owns confirmation UI, Android access, and transport/session projection
 ```
 
-`:core-api` is a pure Kotlin JVM module. Its public contract contains no Android, Compose, `PowerStore`, repository, or internal Core entity types. `PowerCalApp` creates one `PowerCalCoreFeatureApiV1` per `PowerStore` and injects the same instance into the Native event callbacks and `WebSkinEditService`. The runtime adapter currently lives in the app module and delegates to existing Core services such as `NewEventEditSession`, `EditSession`, recurrence logic, and `PowerStore`; moving that implementation into a separately distributable Core runtime is not complete.
+`:core-api` is a pure Kotlin JVM module. Its public contract contains no Android, Compose, `PowerStore`, repository, or internal Core entity types. `PowerCalApp` creates one `PowerCalCoreFeatureApiV1` per `PowerStore` and shares its domain services across Native callbacks and Web Host adapters. The runtime adapter currently lives in the app module and delegates to existing Core services such as `NewEventEditSession`, `EditSession`, recurrence logic, `PowerStore`, and the platform reminder scheduler; moving that implementation into a separately distributable Core runtime is not complete.
 
 The Host is the only owner of Android context, database construction, trusted confirmation UI, and concrete deletion approval issuance. A Skin receives DTOs and opaque editor handles, never a Store reference or an approval issuer.
 
@@ -101,7 +101,7 @@ For mutation and checkpoint requests:
 - Draft/Review request receipts are retained in a bounded, process-local 128-entry cache. Durable request replay across adapter recreation/process death is not provided; do not describe the receipt cache as exactly-once persistence.
 - Explicit user-owned text capture creates a draft through `DraftReviewFeatureApiV1.createDraft`. It accepts an `EventFormV1`, rejects recurrence-edit scope fields, uses the Store's existing user draft transaction and AI lock, and returns the new draft identity/version. The adapter snapshots collection fields before queueing and fingerprints them canonically for request replay. The Host opens the returned draft ID. AI proposal writes use the separate `AiProposalFeatureApiV1`; AI batch execution and import checkpoint contracts remain separate.
 
-These are Event, Draft/Review, and AI Proposal vertical slices, not full Phase 1 closure. Native and Web Deck formal searches now use `searchEvents`, both Memo completion Host paths use `setOccurrenceCompletion`, and Native/Web reviewed proposal actions use the shared `aiProposals` service. The Memo visibility precheck and other Host flows still perform direct Store reads; `DeckVisualContext` and `MemoVisualContext` still project Core types to runtime rendering; and authorized workflows outside the shared adapters do not publish to their change stream. Other domain APIs remain outside this coverage.
+These are Event, Draft/Review, AI Proposal, and Reminder vertical slices, not full Phase 1 closure. Native and Web Deck formal searches now use `searchEvents`, both Memo completion Host paths use `setOccurrenceCompletion`, Native/Web reviewed proposal actions use the shared `aiProposals` service, and Host reminder diagnostics/recovery use `reminders`. The Memo visibility precheck and other Host flows still perform direct Store reads; `DeckVisualContext` and `MemoVisualContext` still project Core types to runtime rendering; and authorized workflows outside the shared adapters do not publish to their change stream. Other domain APIs remain outside this coverage.
 
 ## 8. AI Proposal API v1 slice
 
@@ -114,9 +114,21 @@ These are Event, Draft/Review, and AI Proposal vertical slices, not full Phase 1
 - Store change snapshots are captured while the Store monitor is held; feature changes are prepared without callbacks, then listeners run only after both the Store monitor and proposal mutation lock are released.
 - AI batch selection, locking, cancellation, and recovery remain on their existing path. This API slice does not claim that batch operations or every AI/provider tool call have moved behind the feature API.
 
-## 9. Current adapter coverage and open work
+## 9. Reminder API v1 slice
 
-Verified code paths across the Event, Draft/Review, and AI Proposal slices:
+`CoreFeatureApiV1.reminders` exposes the platform-neutral `ReminderFeatureApiV1` contract. Native and Web Host paths share the same adapter, which reads durable schedule state from the existing `PowerStore` and delegates OS scheduling to the existing `ReminderScheduler`.
+
+- `queryPermissions()` reports exact-alarm and notification permission requirements and current grants. When an API instance has no Android Host context, the permission fields are `null`.
+- `queryEvent(eventSeq)` returns the current formal-event revision, its durable schedule intent (trigger ID, schedule revision, occurrence key, instant, exact/inexact requirement, state, and optional platform hint), and the latest execution marker.
+- `reconcile(PENDING)` uses the existing bounded lifecycle reconciliation. `reconcile(EXHAUSTIVE)` uses the existing keyset-paged manual recovery path, including pending and cancelled work. The returned value reports attempted/failed counts, capped pending/blocked counts (`401` means 401 or more), status, and the first blocked hint. It is an operation receipt, not durable receipt storage and not proof of OS delivery.
+- A contextless adapter returns `UNAVAILABLE` from reconciliation and leaves durable intents unchanged. Repeated reconciliation continues to rely on the existing scheduler's idempotent desired-state handling.
+- The API adds no reminder policy, timing calculation, database schema, or backup format. Android settings launch remains a Host capability. OS receivers and boot recovery continue to use the same central scheduler.
+
+The implementation is in `ReminderFeatureApiV1.kt` and `AndroidReminderFeatureApiV1.kt`; verification and limitations are recorded in the [Reminder API Issue](issues/PC-ISSUE-CORE-REMINDER-API-V1.md).
+
+## 10. Current adapter coverage and open work
+
+Verified code paths across the Event, Draft/Review, AI Proposal, and Reminder slices:
 
 - Native event creation and ordinary formal editing/deletion call the Host's shared `EventFeatureApiV1`.
 - `PowerCalApp.reload` obtains formal events through `queryEvents()`.
@@ -127,6 +139,7 @@ Verified code paths across the Event, Draft/Review, and AI Proposal slices:
 - Web timeline movement reads a Host projection, then stages the revision-guarded replacement through `stageFormalReplacement`.
 - Native and Web Draft Decks use the shared `DraftReviewFeatureApiV1` for persisted draft edits, queue navigation, formal replacement proposals, conflict and restore review, commit, discard, and undo.
 - Native and Web AI proposal review actions use `AiProposalFeatureApiV1` for staging and reviewed publication, including Host-owned publish approval and per-item Store receipts.
+- Native and Web Host reminder diagnostics and reconciliation use the shared `ReminderFeatureApiV1`; bounded lifecycle recovery and exhaustive user-requested recovery remain distinct modes.
 - A Robolectric adapter integration test performs a Native-side API create followed by a Web bridge create/checkpoint and observes shared feature revision/change events and Store-backed state. Its Native-side write calls the API directly; it does not mount `PowerCalApp` and drive the entire Native UI route. Separate editor Compose tests cover the API-backed editor component callbacks.
 
 Remaining work before PHASE 1 can exit:
@@ -134,7 +147,7 @@ Remaining work before PHASE 1 can exit:
 1. Route remaining authorized Host/Core reads and writes through versioned queries/commands and one change source; current direct or separate paths include AI batch operations, ICS and structured Calendar import, backup restore, AI draft generation, and Memo visibility checks.
 2. Move remaining business decisions out of Web transport/Host adapters; keep the bridge focused on transport and trusted Host capabilities.
 3. Remove Core entity types from runtime Skin projections while maintaining the separate Native Presentation Contract.
-4. Add the required per-domain API contracts before claiming other feature areas are covered. Current v1 does not define Calendar paging, AI batch control, reminders, import/export, or Settings/Data APIs. Draft/Review request replay and AI outer request replay remain process-local; AI Proposal item receipts are Store-backed.
+4. Add the required per-domain API contracts before claiming other feature areas are covered. Current v1 does not define Calendar paging, AI batch control, import/export, or Settings/Data APIs. Draft/Review request replay and AI outer request replay remain process-local; AI Proposal item receipts are Store-backed. Calendar and runtime Skin projections still need bounded, API-owned data paths.
 5. Run required device checks when the independently owned AVD is available. Instrumentation for Event search/completion and AI Proposal API behavior is **NOT TESTED**.
 
 Latest Draft/Review verification: focused API, DeckController, Store restore, Host review UI, and Web bridge tests passed **190/190**; the forced full JVM run passed **800 tests across 128 XML reports, 0 failures/errors/skips**. `verifySkinSourceBoundary`, `verifyNativeSkinBoundary`, Debug APK assembly, and `lintDebug` all passed; lint reported **0 errors / 54 warnings**. The Debug APK SHA-256 is `C22E82E434CBE5B02CD790FF72932074DA969A10BDF9095416179D3B8331AFB4` (66,683,502 bytes). Instrumentation and AVD behavior are **NOT TESTED**. Logs and the prior Event pilot’s transient full-suite failures are recorded in the current [progress entry](agent-handoff/PROGRESS.md) and the [Draft/Review Issue](issues/PC-ISSUE-CORE-DRAFT-REVIEW-API-V1.md); no cause is asserted for those earlier failures.
@@ -144,3 +157,5 @@ Latest Event search/completion verification: focused API, adapter, Deck, and Web
 Latest Draft creation verification: focused DraftReview API tests **13/13 PASS**; forced full JVM **806 tests across 128 XML reports, 0 failures/errors/skips**; AndroidTest Kotlin compilation, source-boundary checks, Debug APK assembly, `lintDebug`, and `git diff --check` **PASS**. Lint reported **0 errors / 54 warnings**. Android instrumentation is **NOT TESTED**. The Debug APK is 67,552,443 bytes, SHA-256 `C7C52F7EB0079968D4A0E8548BD742CD931181CFFA94D23BD41871021D8A84F3`. Per-log hashes and residual scope are recorded in the [Draft Creation Issue](issues/PC-ISSUE-CORE-DRAFT-CREATION-API-V1.md). Code commit `cb5823c573c1cbc2c59c50f751e099cee4e30d5e` was ordinary fast-forward pushed to `origin/feat/skin-first-separation`; Phase 1 remains open.
 
 Latest AI Proposal verification: focused API and Store receipt suites **24/24 PASS**; forced serial full JVM **824 tests across 129 XML reports, 0 failures/errors/skips**. Skin and Native source-boundary checks, Debug APK assembly, `lintDebug` (**0 errors / 54 warnings**), and AndroidTest Kotlin compilation all **PASS**. The Debug APK is **66,749,038 bytes**, SHA-256 `70D6D0E70D955F82416DE352CC9E1DAA5B9E9404C7C794DF5AEF3685AA79BF9F`. One earlier full run exposed an immediate UI assertion before the asynchronous Host confirmation appeared; the isolated test passed, the test now waits for the confirmation node, and the final serial suite passed. Android instrumentation and device behavior are **NOT TESTED**. Final evidence is in `.local/android-test/reports/core-ai-proposal-api-20261101/` and the [AI Proposal Issue](issues/PC-ISSUE-CORE-AI-PROPOSAL-API-V1.md). Code commit `92200a86bb5aadcd767cc7e3a5b858dccffdca5f` was fast-forward pushed to `origin/feat/skin-first-separation`; Phase 1 remains open.
+
+Latest Reminder API verification: focused API, Web recovery, and diagnostics tests **10/10 PASS**; nine related API/receiver/Host regression classes account for **49/49 PASS** in the final suite. Forced serial full JVM **828 tests across 130 XML reports, 0 failures/errors/skips**. Both source-boundary checks, Debug APK assembly, `lintDebug` (**0 errors / 54 warnings**), AndroidTest Kotlin compilation, and `git diff --check` **PASS**. The Debug APK is **66,749,038 bytes**, SHA-256 `291A5E275D625ABEBB602DCABE80E19A91258E16FA572F4B5D2641B0E8A2A999`. Android instrumentation, actual OS alarm delivery, and device/OEM behavior are **NOT TESTED**. Logs are under `.local/android-test/reports/reminder-feature-api-20261101/`; see the [Reminder API Issue](issues/PC-ISSUE-CORE-REMINDER-API-V1.md). Code commit `03af508` is committed locally and will be fast-forward pushed with its documentation; PHASE 1 remains open.
