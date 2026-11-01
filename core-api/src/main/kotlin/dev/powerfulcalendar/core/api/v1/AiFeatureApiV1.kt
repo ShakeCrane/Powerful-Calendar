@@ -54,6 +54,62 @@ interface AiConversationHistoryPortV1 {
 
 enum class AiChatProposalIntentV1 { EXPLICIT, SUGGESTED }
 
+enum class AiToolReadWriteClassV1 { READ_ONLY, PROPOSAL_ONLY }
+enum class AiToolPermissionScopeV1 { NONE, CALENDAR_CONTEXT }
+enum class AiToolIdempotencyPolicyV1 { CHAT_REQUEST_RECEIPT }
+
+/** A Core-approved tool contract that the Host may translate to provider-specific syntax. */
+data class AiToolDefinitionV1(
+    val name: String,
+    val providerName: String,
+    val schemaVersion: Int,
+    val description: String,
+    val inputJsonSchema: String,
+    val inputMaxBytes: Int,
+    val outputMaxBytes: Int,
+    val requiresCalendarContext: Boolean,
+    val permissionScope: AiToolPermissionScopeV1,
+    val readWriteClass: AiToolReadWriteClassV1,
+    val idempotencyPolicy: AiToolIdempotencyPolicyV1
+)
+
+/** The first bounded chat registry entry only creates detached review proposals. */
+object AiChatToolRegistryV1 {
+    const val CALENDAR_PROPOSE = "calendar.propose.v1"
+    const val PROVIDER_CALENDAR_PROPOSE = "calendar_propose_v1"
+
+    val tools: List<AiToolDefinitionV1> = listOf(AiToolDefinitionV1(
+        name = CALENDAR_PROPOSE,
+        providerName = PROVIDER_CALENDAR_PROPOSE,
+        schemaVersion = 1,
+        description = "根据当前用户明确提出的日程请求生成待审核提案；不会创建或修改正式事件。",
+        inputJsonSchema = "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}",
+        inputMaxBytes = 256,
+        outputMaxBytes = 32_000,
+        requiresCalendarContext = false,
+        permissionScope = AiToolPermissionScopeV1.NONE,
+        readWriteClass = AiToolReadWriteClassV1.PROPOSAL_ONLY,
+        idempotencyPolicy = AiToolIdempotencyPolicyV1.CHAT_REQUEST_RECEIPT
+    ))
+}
+
+/** Provider-produced invocation; every field remains untrusted until Core dispatch validation. */
+data class AiChatToolCallV1(
+    val callId: String,
+    val providerName: String,
+    val argumentsJson: String
+)
+
+enum class AiChatToolExecutionStatusV1 { EXECUTED, REJECTED, FAILED }
+
+data class AiChatToolExecutionReceiptV1(
+    val callId: String,
+    val toolName: String,
+    val status: AiChatToolExecutionStatusV1,
+    val message: String? = null,
+    val proposalRequestId: String? = null
+)
+
 data class AiChatRequestV1(
     val requestId: String,
     val userMessageId: String,
@@ -68,7 +124,8 @@ data class AiChatModelRequestV1(
     val requestId: String,
     val history: List<AiConversationMessageV1>,
     val zoneId: String,
-    val shareCalendarContext: Boolean = false
+    val shareCalendarContext: Boolean = false,
+    val availableTools: List<AiToolDefinitionV1> = emptyList()
 )
 
 enum class AiChatStatusV1 {
@@ -86,7 +143,9 @@ data class AiChatModelOutputV1(
     val error: String? = null,
     val proposalSource: String? = null,
     val automaticProposalTask: AiConversationTaskV1? = null,
-    val proposalIntent: AiChatProposalIntentV1? = null
+    val proposalIntent: AiChatProposalIntentV1? = null,
+    val toolCalls: List<AiChatToolCallV1> = emptyList(),
+    val toolCallsTruncated: Boolean = false
 )
 
 data class AiChatReceiptV1(
@@ -97,6 +156,7 @@ data class AiChatReceiptV1(
     val proposalIntent: AiChatProposalIntentV1? = null,
     val automaticProposalTask: AiConversationTaskV1? = null,
     val automaticProposal: AiProposalGenerationReceiptV1? = null,
+    val toolExecutions: List<AiChatToolExecutionReceiptV1> = emptyList(),
     val clarification: String? = null,
     val errorCode: String? = null,
     val message: String? = null,
@@ -383,7 +443,7 @@ interface AiModelPortV1 {
 interface AiFeatureApiV1 {
     val apiVersion: Int
 
-    /** Runs one bounded ordinary conversation turn and returns review-only proposal output. */
+    /** Runs one bounded chat turn; Core dispatches only allowlisted, review-only tool calls. */
     suspend fun chat(request: AiChatRequestV1): AiChatReceiptV1
 
     fun queryConversation(): AiConversationSnapshotV1

@@ -6,6 +6,7 @@ import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
+import dev.powerfulcalendar.core.api.v1.AiChatToolRegistryV1
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.Assert.*
@@ -26,6 +27,107 @@ import java.util.UUID
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class AiChatClientTest {
+
+    @Test fun providerFunctionCallIsReturnedAsUntrustedCoreInput() {
+        val requestBody = AtomicReference<String>()
+        val serverError = AtomicReference<Throwable?>()
+        val served = CountDownLatch(1)
+        ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { server ->
+            server.soTimeout = 10_000
+            Thread {
+                try {
+                    server.accept().use { socket ->
+                        requestBody.set(readHttpRequest(socket))
+                        writeHttpResponse(socket, 200, """{"choices":[{"finish_reason":"tool_calls","message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_abc123","type":"function","function":{"name":"calendar_propose_v1","arguments":"{}"}}]}}]}""")
+                    }
+                } catch (error: Throwable) {
+                    serverError.set(error)
+                } finally {
+                    served.countDown()
+                }
+            }.apply { isDaemon = true; start() }
+
+            val result = runBlocking {
+                AiClient(AiSettings(
+                    endpoint = "http://127.0.0.1:${server.localPort}/v1",
+                    model = "tool-call-stub-${UUID.randomUUID()}",
+                    enabled = true,
+                    apiKey = "local-test-key"
+                )).chat(
+                    history = listOf(AiChatMessage("user", "明天十点创建会议")),
+                    availableTools = AiChatToolRegistryV1.tools
+                )
+            }
+
+            assertTrue("Server did not finish", served.await(10, TimeUnit.SECONDS))
+            assertNull("Server error: ${serverError.get()}", serverError.get())
+            assertEquals("call_abc123", result.toolCalls.single().callId)
+            assertEquals(AiChatToolRegistryV1.PROVIDER_CALENDAR_PROPOSE,
+                result.toolCalls.single().providerName)
+            assertEquals("{}", result.toolCalls.single().argumentsJson)
+            assertEquals(ChatProposalIntent.EXPLICIT, result.proposalIntent)
+            val body = JSONObject(requestBody.get())
+            assertEquals("auto", body.getString("tool_choice"))
+            assertEquals(AiChatToolRegistryV1.PROVIDER_CALENDAR_PROPOSE,
+                body.getJSONArray("tools").getJSONObject(0)
+                    .getJSONObject("function").getString("name"))
+        }
+    }
+
+    @Test fun providerRejectingToolSchemaFallsBackOnceAndCachesUnsupportedCapability() {
+        val requestBodies = java.util.Collections.synchronizedList(mutableListOf<String>())
+        val serverError = AtomicReference<Throwable?>()
+        val served = CountDownLatch(1)
+        ServerSocket(0, 2, InetAddress.getByName("127.0.0.1")).use { server ->
+            server.soTimeout = 10_000
+            Thread {
+                try {
+                    repeat(3) { index ->
+                        server.accept().use { socket ->
+                            requestBodies.add(readHttpRequest(socket))
+                            if (index == 0) writeHttpResponse(socket, 400,
+                                """{"error":{"message":"unsupported tools"}}""")
+                            else writeHttpResponse(socket, 200,
+                                """{"choices":[{"message":{"role":"assistant","content":"可以，我来帮你。"}}]}""")
+                        }
+                    }
+                } catch (error: Throwable) {
+                    serverError.set(error)
+                } finally {
+                    served.countDown()
+                }
+            }.apply { isDaemon = true; start() }
+
+            val settings = AiSettings(
+                endpoint = "http://127.0.0.1:${server.localPort}/v1",
+                model = "unsupported-tool-stub-${UUID.randomUUID()}",
+                enabled = true,
+                apiKey = "local-test-key"
+            )
+            val client = AiClient(settings)
+            val result = runBlocking {
+                client.chat(
+                    history = listOf(AiChatMessage("user", "你好")),
+                    availableTools = AiChatToolRegistryV1.tools
+                )
+            }
+            val secondResult = runBlocking {
+                client.chat(
+                    history = listOf(AiChatMessage("user", "再聊一句")),
+                    availableTools = AiChatToolRegistryV1.tools
+                )
+            }
+
+            assertTrue("Server did not finish", served.await(10, TimeUnit.SECONDS))
+            assertNull("Server error: ${serverError.get()}", serverError.get())
+            assertEquals("可以，我来帮你。", result.reply)
+            assertEquals("可以，我来帮你。", secondResult.reply)
+            assertEquals(3, requestBodies.size)
+            assertTrue(JSONObject(requestBodies[0]).has("tools"))
+            assertFalse(JSONObject(requestBodies[1]).has("tools"))
+            assertFalse(JSONObject(requestBodies[2]).has("tools"))
+        }
+    }
 
     @Test fun sharedAiContextProjectsOneFormalSnapshotWithoutWritingStore() {
         val context = ApplicationProvider.getApplicationContext<Context>()
@@ -767,6 +869,53 @@ class AiChatClientTest {
         }
         assertThrows(IllegalArgumentException::class.java) {
             AiChatMessage("user", "x".repeat(6001))
+        }
+    }
+
+    private fun readHttpRequest(socket: java.net.Socket): String {
+        val input = socket.getInputStream().buffered()
+        fun readLine(): String {
+            val line = java.io.ByteArrayOutputStream()
+            while (true) {
+                val byte = input.read()
+                require(byte >= 0) { "Unexpected end of HTTP headers" }
+                if (byte == 10) break
+                if (byte != 13) line.write(byte)
+                require(line.size() <= 8192) { "Oversized HTTP header" }
+            }
+            return line.toString(Charsets.US_ASCII.name())
+        }
+        require(readLine().startsWith("POST /v1/chat/completions HTTP/1.1"))
+        var length = -1
+        while (true) {
+            val header = readLine()
+            if (header.isEmpty()) break
+            if (header.startsWith("Content-Length:", ignoreCase = true)) {
+                length = header.substringAfter(':').trim().toInt()
+            }
+        }
+        require(length in 1..100_000)
+        val bytes = ByteArray(length)
+        var offset = 0
+        while (offset < bytes.size) {
+            val count = input.read(bytes, offset, bytes.size - offset)
+            require(count > 0) { "Unexpected end of HTTP body" }
+            offset += count
+        }
+        return String(bytes, Charsets.UTF_8)
+    }
+
+    private fun writeHttpResponse(socket: java.net.Socket, status: Int, body: String) {
+        val response = body.toByteArray(Charsets.UTF_8)
+        val reason = if (status in 200..299) "OK" else "Bad Request"
+        val headers = ("HTTP/1.1 $status $reason\r\n" +
+            "Content-Type: application/json; charset=utf-8\r\n" +
+            "Content-Length: ${response.size}\r\nConnection: close\r\n\r\n")
+            .toByteArray(Charsets.US_ASCII)
+        socket.getOutputStream().apply {
+            write(headers)
+            write(response)
+            flush()
         }
     }
 }

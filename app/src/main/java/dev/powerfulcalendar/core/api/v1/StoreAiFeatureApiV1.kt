@@ -184,7 +184,8 @@ internal class StoreAiFeatureApiV1(
                     requestId = request.requestId,
                     history = history.map { it.copy() },
                     zoneId = request.zoneId,
-                    shareCalendarContext = request.shareCalendarContext
+                    shareCalendarContext = request.shareCalendarContext,
+                    availableTools = AiChatToolRegistryV1.tools
                 ), context.map { it.copy() })
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -208,33 +209,127 @@ internal class StoreAiFeatureApiV1(
                 )
             } else {
                 val task = modelOutput.automaticProposalTask?.detached()
-                val automaticProposal = if (
-                    modelOutput.proposalIntent == AiChatProposalIntentV1.EXPLICIT && task != null
-                ) generateProposal(AiProposalGenerationRequestV1(
-                    requestId = request.proposalRequestId(),
-                    task = task,
-                    zoneId = request.zoneId,
-                    shareCalendarContext = request.shareCalendarContext,
-                    contextPolicy = AiCalendarContextPolicyV1.FIRST_60_FORMAL_EVENTS
-                )) else null
-                AiChatReceiptV1(
-                    requestId = request.requestId,
-                    status = AiChatStatusV1.COMPLETED,
-                    reply = modelOutput.reply.take(MAX_CHAT_MESSAGE_CHARS),
-                    proposalSource = modelOutput.proposalSource?.take(MAX_CHAT_MESSAGE_CHARS),
-                    proposalIntent = modelOutput.proposalIntent,
-                    automaticProposalTask = task?.takeIf {
-                        automaticProposal?.review?.items?.isNotEmpty() == true
-                    },
-                    automaticProposal = automaticProposal,
-                    clarification = if (
-                        modelOutput.proposalIntent == AiChatProposalIntentV1.EXPLICIT && task == null
-                    ) MISSING_EXPLICIT_TASK_MESSAGE else null
-                )
+                if (modelOutput.toolCalls.isNotEmpty() || modelOutput.toolCallsTruncated) {
+                    executeChatToolCall(request, modelOutput, task)
+                } else {
+                    val automaticProposal = if (
+                        modelOutput.proposalIntent == AiChatProposalIntentV1.EXPLICIT && task != null
+                    ) generateProposal(AiProposalGenerationRequestV1(
+                        requestId = request.proposalRequestId(),
+                        task = task,
+                        zoneId = request.zoneId,
+                        shareCalendarContext = request.shareCalendarContext,
+                        contextPolicy = AiCalendarContextPolicyV1.FIRST_60_FORMAL_EVENTS
+                    )) else null
+                    AiChatReceiptV1(
+                        requestId = request.requestId,
+                        status = AiChatStatusV1.COMPLETED,
+                        reply = modelOutput.reply.take(MAX_CHAT_MESSAGE_CHARS),
+                        proposalSource = modelOutput.proposalSource?.take(MAX_CHAT_MESSAGE_CHARS),
+                        proposalIntent = modelOutput.proposalIntent,
+                        automaticProposalTask = task?.takeIf {
+                            automaticProposal?.review?.items?.isNotEmpty() == true
+                        },
+                        automaticProposal = automaticProposal,
+                        clarification = if (
+                            modelOutput.proposalIntent == AiChatProposalIntentV1.EXPLICIT && task == null
+                        ) MISSING_EXPLICIT_TASK_MESSAGE else null
+                    )
+                }
             }
             rememberChatReceipt(request.requestId, fingerprint, receipt)
             receipt
         }
+    }
+
+    private suspend fun executeChatToolCall(
+        request: AiChatRequestV1,
+        modelOutput: AiChatModelOutputV1,
+        task: AiConversationTaskV1?
+    ): AiChatReceiptV1 {
+        if (synchronized(this) { request.expectedConversationRevision != conversationRevision }) {
+            return AiChatReceiptV1(
+                requestId = request.requestId,
+                status = AiChatStatusV1.STALE_CONVERSATION,
+                errorCode = "STALE_CONVERSATION",
+                message = "聊天已变化；日程工具没有执行"
+            )
+        }
+
+        val calls = modelOutput.toolCalls
+        val call = calls.singleOrNull()
+        val definition = AiChatToolRegistryV1.tools.single()
+        val rejection = when {
+            modelOutput.toolCallsTruncated -> "工具调用超出长度或数量限制"
+            call == null -> "本轮只允许一个日程工具调用"
+            call.providerName != definition.providerName -> "工具不在 Core 白名单中"
+            !call.callId.matches(TOOL_CALL_ID_PATTERN) -> "工具调用标识无效"
+            call.argumentsJson.toByteArray(Charsets.UTF_8).size > definition.inputMaxBytes ->
+                "工具参数超出大小限制"
+            modelOutput.proposalIntent != AiChatProposalIntentV1.EXPLICIT || task == null ->
+                "无法将工具调用绑定到当前用户的日程请求"
+            else -> {
+                val args = runCatching { JSONObject(call.argumentsJson) }.getOrNull()
+                if (args == null || args.length() != 0) "工具参数格式无效" else null
+            }
+        }
+        if (rejection != null) {
+            val rejected = calls.take(MAX_PROVIDER_TOOL_CALLS).map { item ->
+                AiChatToolExecutionReceiptV1(
+                    callId = item.callId.take(MAX_TOOL_CALL_ID_CHARS),
+                    toolName = item.providerName.take(MAX_PROVIDER_TOOL_NAME_CHARS),
+                    status = AiChatToolExecutionStatusV1.REJECTED,
+                    message = rejection
+                )
+            }.ifEmpty {
+                listOf(AiChatToolExecutionReceiptV1(
+                    callId = "",
+                    toolName = definition.name,
+                    status = AiChatToolExecutionStatusV1.REJECTED,
+                    message = rejection
+                ))
+            }
+            return AiChatReceiptV1(
+                requestId = request.requestId,
+                status = AiChatStatusV1.COMPLETED,
+                reply = "日程工具请求未通过 Core 校验；未生成提案，也未修改日历。",
+                toolExecutions = rejected,
+                errorCode = "INVALID_TOOL_CALL",
+                message = rejection
+            )
+        }
+
+        val validCall = requireNotNull(call)
+        val proposalRequestId = request.proposalRequestId()
+        val generated = generateProposal(AiProposalGenerationRequestV1(
+            requestId = proposalRequestId,
+            task = requireNotNull(task),
+            zoneId = request.zoneId,
+            shareCalendarContext = request.shareCalendarContext,
+            contextPolicy = AiCalendarContextPolicyV1.FIRST_60_FORMAL_EVENTS
+        ))
+        val ready = generated.status == AiProposalGenerationStatusV1.READY &&
+            generated.review?.items?.isNotEmpty() == true
+        val execution = AiChatToolExecutionReceiptV1(
+            callId = validCall.callId,
+            toolName = definition.name,
+            status = if (generated.status == AiProposalGenerationStatusV1.MODEL_UNAVAILABLE ||
+                generated.status == AiProposalGenerationStatusV1.INVALID_REQUEST
+            ) AiChatToolExecutionStatusV1.FAILED else AiChatToolExecutionStatusV1.EXECUTED,
+            message = generated.message?.take(MAX_TOOL_RECEIPT_MESSAGE_CHARS),
+            proposalRequestId = proposalRequestId
+        )
+        return AiChatReceiptV1(
+            requestId = request.requestId,
+            status = AiChatStatusV1.COMPLETED,
+            reply = if (ready) "已生成待审核提案；正式日历尚未修改。"
+                else "本次没有形成可审核提案；正式日历尚未修改。",
+            proposalIntent = AiChatProposalIntentV1.EXPLICIT,
+            automaticProposalTask = task.takeIf { ready },
+            automaticProposal = generated,
+            toolExecutions = listOf(execution),
+            clarification = generated.message.takeIf { !ready }
+        )
     }
 
     override suspend fun generateProposal(
@@ -836,7 +931,8 @@ internal class StoreAiFeatureApiV1(
             automaticProposal = proposal?.copy(
                 review = proposal.review?.detached(),
                 warnings = proposal.warnings.toList()
-            )
+            ),
+            toolExecutions = toolExecutions.map { it.copy() }
         )
     }
 
@@ -1006,6 +1102,11 @@ internal class StoreAiFeatureApiV1(
         const val MAX_STORED_CHAT_MESSAGES = 200
         const val MAX_CHAT_HISTORY_CHARS = 480_000
         const val MAX_CHAT_MESSAGE_CHARS = 6_000
+        const val MAX_PROVIDER_TOOL_CALLS = 8
+        const val MAX_TOOL_CALL_ID_CHARS = 128
+        const val MAX_PROVIDER_TOOL_NAME_CHARS = 120
+        const val MAX_TOOL_RECEIPT_MESSAGE_CHARS = 300
+        val TOOL_CALL_ID_PATTERN = Regex("[A-Za-z0-9._-]{1,128}")
         const val MAX_CHAT_MESSAGE_ID_CHARS = 100
         const val MAX_CHAT_RECEIPTS = 128
         const val MAX_AI_EVIDENCE_FILENAME_CHARS = 180

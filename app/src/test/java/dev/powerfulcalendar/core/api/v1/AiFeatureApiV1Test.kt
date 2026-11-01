@@ -122,6 +122,143 @@ class AiFeatureApiV1Test {
         assertTrue(store.pendingDrafts().isEmpty())
     }
 
+    @Test fun oneValidatedProposalToolCallUsesCoreProposalApiAndReplaysItsReceipt() = runBlocking {
+        model.chatOutput = AiChatModelOutputV1(
+            reply = "已经创建事件。",
+            automaticProposalTask = task(),
+            proposalIntent = AiChatProposalIntentV1.EXPLICIT,
+            toolCalls = listOf(AiChatToolCallV1(
+                callId = "call-propose-1",
+                providerName = AiChatToolRegistryV1.PROVIDER_CALENDAR_PROPOSE,
+                argumentsJson = "{}"
+            ))
+        )
+        model.proposalOutput = AiProposalModelOutputV1(AiProposalReviewV1(
+            reviewId = "tool-review",
+            items = listOf(AiProposalItemV1(
+                sourceIndex = 0,
+                operation = DraftOperationV1.CREATE,
+                eventSeq = null,
+                expectedRevision = null,
+                form = form("tool proposal")
+            ))
+        ), contextUsed = false)
+        val request = chatRequest("chat-tool-proposal")
+
+        val first = core.ai.chat(request)
+        val replay = core.ai.chat(request)
+
+        assertEquals(AiChatStatusV1.COMPLETED, first.status)
+        assertEquals("已生成待审核提案；正式日历尚未修改。", first.reply)
+        assertEquals(listOf(AiChatToolRegistryV1.CALENDAR_PROPOSE),
+            model.lastChatRequest?.availableTools?.map { it.name })
+        assertEquals(AiChatToolExecutionStatusV1.EXECUTED, first.toolExecutions.single().status)
+        assertEquals("call-propose-1", first.toolExecutions.single().callId)
+        assertEquals(AiProposalGenerationStatusV1.READY, first.automaticProposal?.status)
+        assertEquals(first.toolExecutions.single().proposalRequestId,
+            first.automaticProposal?.review?.reviewId)
+        assertEquals(1, model.chatCalls)
+        assertEquals(1, model.proposalCalls)
+        assertTrue(store.pendingDrafts().isEmpty())
+        assertTrue(replay.replayed)
+        assertEquals(first.toolExecutions, replay.toolExecutions)
+        assertEquals(1, model.chatCalls)
+        assertEquals(1, model.proposalCalls)
+    }
+
+    @Test fun malformedAndMultipleToolCallsAreRejectedWithoutProposalDispatch() = runBlocking {
+        model.chatOutput = AiChatModelOutputV1(
+            reply = "已修改日历。",
+            automaticProposalTask = task(),
+            proposalIntent = AiChatProposalIntentV1.EXPLICIT,
+            toolCalls = listOf(
+                AiChatToolCallV1("call-1", AiChatToolRegistryV1.PROVIDER_CALENDAR_PROPOSE,
+                    "{\"eventSeq\":7}"),
+                AiChatToolCallV1("call-2", "calendar.delete_v1", "{}")
+            )
+        )
+
+        val receipt = core.ai.chat(chatRequest("chat-tool-reject"))
+
+        assertEquals(AiChatStatusV1.COMPLETED, receipt.status)
+        assertEquals("日程工具请求未通过 Core 校验；未生成提案，也未修改日历。", receipt.reply)
+        assertEquals(2, receipt.toolExecutions.size)
+        assertTrue(receipt.toolExecutions.all {
+            it.status == AiChatToolExecutionStatusV1.REJECTED
+        })
+        assertEquals(0, model.proposalCalls)
+        assertTrue(store.pendingDrafts().isEmpty())
+    }
+
+    @Test fun proposalToolRejectsUnexpectedArguments() = runBlocking {
+        model.chatOutput = AiChatModelOutputV1(
+            automaticProposalTask = task(),
+            proposalIntent = AiChatProposalIntentV1.EXPLICIT,
+            toolCalls = listOf(AiChatToolCallV1(
+                "call-extra-args",
+                AiChatToolRegistryV1.PROVIDER_CALENDAR_PROPOSE,
+                "{\"eventSeq\":7}"
+            ))
+        )
+
+        val receipt = core.ai.chat(chatRequest("chat-tool-extra-args"))
+
+        assertEquals(AiChatToolExecutionStatusV1.REJECTED,
+            receipt.toolExecutions.single().status)
+        assertTrue(receipt.toolExecutions.single().message.orEmpty().contains("参数格式"))
+        assertEquals(0, model.proposalCalls)
+        assertTrue(store.pendingDrafts().isEmpty())
+    }
+
+    @Test fun unregisteredToolNameAndTruncatedCallsNeverReachProposalGeneration() = runBlocking {
+        model.chatOutput = AiChatModelOutputV1(
+            automaticProposalTask = task(),
+            proposalIntent = AiChatProposalIntentV1.EXPLICIT,
+            toolCalls = listOf(AiChatToolCallV1("call-unknown", "calendar.delete_v1", "{}"))
+        )
+        val unknown = core.ai.chat(chatRequest("chat-tool-unknown"))
+        assertEquals(AiChatToolExecutionStatusV1.REJECTED,
+            unknown.toolExecutions.single().status)
+        assertEquals(0, model.proposalCalls)
+
+        model.chatOutput = AiChatModelOutputV1(
+            automaticProposalTask = task(),
+            proposalIntent = AiChatProposalIntentV1.EXPLICIT,
+            toolCallsTruncated = true
+        )
+        val truncated = core.ai.chat(chatRequest("chat-tool-truncated"))
+        assertEquals(AiChatToolExecutionStatusV1.REJECTED,
+            truncated.toolExecutions.single().status)
+        assertEquals(0, model.proposalCalls)
+        assertTrue(store.pendingDrafts().isEmpty())
+    }
+
+    @Test fun conversationChangeWhileModelRunsPreventsToolExecution() = runBlocking {
+        model.chatOutput = AiChatModelOutputV1(
+            automaticProposalTask = task(),
+            proposalIntent = AiChatProposalIntentV1.EXPLICIT,
+            toolCalls = listOf(AiChatToolCallV1(
+                "call-stale", AiChatToolRegistryV1.PROVIDER_CALENDAR_PROPOSE, "{}"
+            ))
+        )
+        model.beforeChatReturn = {
+            val snapshot = core.ai.queryConversation()
+            core.ai.appendConversationMessage(AiConversationMessageV1(
+                role = AiConversationRoleV1.ASSISTANT,
+                content = "较新的对话内容",
+                messageId = "concurrent-assistant",
+                createdAtMillis = clock.millis(),
+                zoneId = zone.id
+            ), snapshot.revision)
+        }
+
+        val receipt = core.ai.chat(chatRequest("chat-tool-stale"))
+
+        assertEquals(AiChatStatusV1.STALE_CONVERSATION, receipt.status)
+        assertEquals(0, model.proposalCalls)
+        assertTrue(store.pendingDrafts().isEmpty())
+    }
+
     @Test fun invalidConversationIsRejectedBeforeProviderCall() = runBlocking {
         val request = AiChatRequestV1(
             requestId = "chat-invalid",
@@ -670,6 +807,7 @@ class AiFeatureApiV1Test {
         var textEvidenceCalls = 0
         var imageEvidenceCalls = 0
         var beforeEvidenceReturn: (() -> Unit)? = null
+        var beforeChatReturn: (() -> Unit)? = null
         var lastTextEvidence: AiTextEvidenceModelRequestV1? = null
         var lastImageEvidence: AiImageEvidenceModelRequestV1? = null
         var lastChatContext: List<EventRecordV1> = emptyList()
@@ -682,6 +820,7 @@ class AiFeatureApiV1Test {
             chatCalls++
             lastChatRequest = request.copy(history = request.history.map { it.copy() })
             lastChatContext = calendarContext.toList()
+            beforeChatReturn?.invoke()
             return chatOutput
         }
 

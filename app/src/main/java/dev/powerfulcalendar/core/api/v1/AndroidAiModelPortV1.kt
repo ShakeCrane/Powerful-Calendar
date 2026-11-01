@@ -34,7 +34,12 @@ internal class AndroidAiModelPortV1(context: Context) : AiModelPortV1 {
         }
         val result = AiClient(settings, ZoneId.of(request.zoneId)).chat(
             history,
-            calendarContext.map(EventRecordV1::toCoreTemporalRecord)
+            calendarContext.map(EventRecordV1::toCoreTemporalRecord),
+            availableTools = request.availableTools.filter { candidate ->
+                candidate in AiChatToolRegistryV1.tools &&
+                    (!candidate.requiresCalendarContext ||
+                        (request.shareCalendarContext && settings.shareContext))
+            }
         )
         return AiChatModelOutputV1(
             reply = result.reply,
@@ -45,7 +50,9 @@ internal class AndroidAiModelPortV1(context: Context) : AiModelPortV1 {
                 ChatProposalIntent.EXPLICIT -> AiChatProposalIntentV1.EXPLICIT
                 ChatProposalIntent.SUGGESTED -> AiChatProposalIntentV1.SUGGESTED
                 null -> null
-            }
+            },
+            toolCalls = result.toolCalls.toList(),
+            toolCallsTruncated = result.toolCallsTruncated
         )
     }
 
