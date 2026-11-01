@@ -426,16 +426,22 @@ internal class WebSkinEditService(
     private val store: PowerStore,
     private val deck: DraftReviewFeatureApiV1,
     private val externalEditorActive: () -> Boolean = { false },
-    private val coreFeatureApi: PowerCalCoreFeatureApiV1
+    private val coreFeatureApi: PowerCalCoreFeatureApiV1,
+    private val eventFeatures: EventFeatureApiV1 = coreFeatureApi.events
 ) {
     internal constructor(
         store: PowerStore,
         deckController: dev.powerfulcalendar.core.DeckController,
         externalEditorActive: () -> Boolean = { false },
-        coreFeatureApi: PowerCalCoreFeatureApiV1
-    ) : this(store, coreFeatureApi.adaptDeckController(deckController), externalEditorActive, coreFeatureApi)
-
-    private val eventFeatures: EventFeatureApiV1 = coreFeatureApi.events
+        coreFeatureApi: PowerCalCoreFeatureApiV1,
+        eventFeatures: EventFeatureApiV1 = coreFeatureApi.events
+    ) : this(
+        store,
+        coreFeatureApi.adaptDeckController(deckController),
+        externalEditorActive,
+        coreFeatureApi,
+        eventFeatures
+    )
     private val gate = Mutex()
     private var session: WebFormalEditor? = null
     private var sessionId: String? = null
@@ -695,6 +701,11 @@ internal class WebSkinEditService(
             .put("lastResult",latest)
     }
 
+    private suspend fun queryCurrentFormalEvent(eventSeq: Long): TemporalRecord? =
+        withContext(Dispatchers.IO) {
+            eventFeatures.queryEvent(eventSeq)?.toCoreTemporalRecord()
+        }
+
     private suspend fun stageTimelineMove(
         cmd: WebEditCommand.MoveTimelineEvent,
         context: TimelineMoveContext?
@@ -706,7 +717,7 @@ internal class WebSkinEditService(
         if (withContext(Dispatchers.IO) { store.isLocked() })
             return result(cmd.requestId, "locked", "当前有受保护的业务操作")
 
-        val record = withContext(Dispatchers.IO) { store.get(cmd.eventSeq) }
+        val record = queryCurrentFormalEvent(cmd.eventSeq)
             ?: return result(cmd.requestId, "stale", "事件已不存在")
         if (record.revision != cmd.expectedRevision)
             return result(cmd.requestId, "stale", "事件版本已变化，请刷新时间轴")
@@ -848,7 +859,7 @@ internal class WebSkinEditService(
                         result(cmd.requestId,"invalid","请先选择重复事件的编辑范围")
                     else if(session!!.meaningfulDiff) {
                         val active=session!!
-                        val current=withContext(Dispatchers.IO){store.get(active.eventSeq)}
+                        val current = queryCurrentFormalEvent(active.eventSeq)
                         val scope=active.recurrenceScope
                         val selected=active.selectedOccurrenceKey
                         val occurrence=if((scope == RecurrenceEditScope.SINGLE_OCCURRENCE ||
@@ -884,7 +895,7 @@ internal class WebSkinEditService(
                     if (!editorMatches(cmd.sessionId)) result(cmd.requestId, "stale")
                     else {
                         val active = session!!
-                        val current = withContext(Dispatchers.IO) { store.get(active.eventSeq) }
+                        val current = queryCurrentFormalEvent(active.eventSeq)
                         if (current == null) result(cmd.requestId, "stale")
                         else {
                             pendingWriteReview = WebFormalWriteReview(
@@ -1276,11 +1287,9 @@ internal class WebSkinEditService(
             return result(cmd.requestId, "locked")
         if (state.aiLocked || state.busy || state.dirty ||
             withContext(Dispatchers.IO) { store.isLocked() }) return result(cmd.requestId, "locked")
-        val live = withContext(Dispatchers.IO) {
-            synchronized(store) {
-                store.get(prompt.eventSeq)?.takeIf { it.revision == cmd.expectedRevision }
-            }
-        } ?: return result(cmd.requestId, "stale", "正式事件已变化，请重新提交草稿以刷新差异")
+        val live = queryCurrentFormalEvent(prompt.eventSeq)
+            ?.takeIf { it.revision == cmd.expectedRevision }
+            ?: return result(cmd.requestId, "stale", "正式事件已变化，请重新提交草稿以刷新差异")
         val persisted = withContext(Dispatchers.IO) { store.draft(prompt.draftId) }
         if (!matchesPersistedConflictDraft(persisted, prompt) || state.form != prompt.approvedForm)
             return result(cmd.requestId, "stale", "草稿内容已变化，请重新检查")
@@ -1397,7 +1406,7 @@ internal class WebSkinEditService(
         if (state.currentId != cmd.draftId || state.busy || state.aiLocked)
             return result(cmd.requestId, "locked")
         val current = if (card.operation.requiresExisting) {
-            withContext(Dispatchers.IO) { store.get(card.eventSeq) }
+            queryCurrentFormalEvent(card.eventSeq)
         } else null
         val ready = form.build(card.eventSeq.coerceAtLeast(1L), (card.baseRevision ?: 0L) + 1L)
         val changedFormalValue = when {
@@ -1496,7 +1505,7 @@ internal class WebSkinEditService(
             state.form?.toCoreDraftForm() != review.deckForm || state.dirty ||
             state.busy || state.aiLocked || persisted != card ||
             (card.operation.requiresExisting &&
-                withContext(Dispatchers.IO) { store.get(card.eventSeq) } != review.current))
+                queryCurrentFormalEvent(card.eventSeq) != review.current))
             return result(command.requestId, "conflict", "草稿或正式事件已变化，请重新审查")
         return commitDeckResult(command.requestId, card.draftId, card.draftVersion,
             review.deckStateRevision ?: return result(command.requestId, "stale"))
@@ -1515,9 +1524,7 @@ internal class WebSkinEditService(
             review.deckStateRevision != deck.snapshot.stateRevision ||
             review.deckForm != prompt.approvedForm.toCoreDraftForm())
             return result(command.requestId, "conflict", "冲突卡片或审阅内容已变化")
-        val live = withContext(Dispatchers.IO) {
-            synchronized(store) { store.get(command.eventSeq) }
-        }
+        val live = queryCurrentFormalEvent(command.eventSeq)
         val persisted = withContext(Dispatchers.IO) { store.draft(command.draftId) }
         if (live != review.current || live?.revision != command.expectedRevision ||
             persisted != review.deckCard || !matchesPersistedConflictDraft(persisted, prompt) ||
@@ -1594,7 +1601,7 @@ internal class WebSkinEditService(
                     val active = review.editorSession
                     if(active==null || session!==active || sessionId!=review.command.sessionId ||
                         active.form!=review.proposed || active.recurrenceScope!=review.scope ||
-                        withContext(Dispatchers.IO){store.get(review.current!!.eventSeq)}!=review.current)
+                        queryCurrentFormalEvent(review.current!!.eventSeq) != review.current)
                         result(review.command.requestId,"conflict","事件或审查内容已变化")
                     else {
                         val saved = withContext(Dispatchers.IO) {
@@ -1625,7 +1632,7 @@ internal class WebSkinEditService(
                         sessionId != review.command.sessionId ||
                         review.operation != DraftOperation.DELETE ||
                         active.form != review.editorFormSnapshot ||
-                        withContext(Dispatchers.IO) { store.get(current.eventSeq) } != current) {
+                        queryCurrentFormalEvent(current.eventSeq) != current) {
                         result(review.command.requestId, "conflict", "事件或审查内容已变化")
                     } else {
                         val approval = withContext(Dispatchers.IO) {

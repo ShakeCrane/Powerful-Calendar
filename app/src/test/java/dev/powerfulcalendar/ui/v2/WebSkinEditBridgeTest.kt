@@ -15,6 +15,8 @@ import dev.powerfulcalendar.core.TemporalConversion
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.TimelineCoordinate
+import dev.powerfulcalendar.core.api.v1.EventFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.EventRecordV1
 import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
@@ -41,13 +43,22 @@ class WebSkinEditBridgeTest {
     private lateinit var controller: DeckController
     private lateinit var service: WebSkinEditService
     private lateinit var coreFeatureApi: PowerCalCoreFeatureApiV1
+    private val queriedEventSequences = mutableListOf<Long>()
     private fun request()=UUID.randomUUID().toString()
     @Before fun setup(){
         context=ApplicationProvider.getApplicationContext()
         store=PowerStore(context,"web-edit-"+request()+".db")
         controller=DeckController(StoreDeckPersistence(store))
         coreFeatureApi=PowerCalCoreFeatureApiV1(store)
-        service=WebSkinEditService(store,controller,coreFeatureApi=coreFeatureApi)
+        val recordingEvents = object : EventFeatureApiV1 by coreFeatureApi.events {
+            override fun queryEvent(eventSeq: Long): EventRecordV1? {
+                queriedEventSequences += eventSeq
+                return coreFeatureApi.events.queryEvent(eventSeq)
+            }
+        }
+        service=WebSkinEditService(
+            store, controller, coreFeatureApi=coreFeatureApi, eventFeatures=recordingEvents
+        )
     }
     @After fun teardown(){
         val db=store.databaseName
@@ -686,6 +697,7 @@ class WebSkinEditBridgeTest {
         assertTrue(current.revision > original.revision)
         val beforeDrafts = store.draftCount()
         val target = start + 7_200_000L
+        queriedEventSequences.clear()
         val result = service.execute(WebEditCommand.MoveTimelineEvent(
             request(), original.eventSeq, original.revision, target
         ), timelineMoveContext = TimelineMoveContext(
@@ -693,6 +705,7 @@ class WebSkinEditBridgeTest {
             mapOf(original.eventSeq to original.revision)
         ))
         assertEquals("stale", result.getString("status"))
+        assertEquals(listOf(original.eventSeq), queriedEventSequences)
         assertTrue(store.pendingDraftsFor(original.eventSeq).isEmpty())
         assertEquals(beforeDrafts, store.draftCount())
         assertEquals(current, store.get(original.eventSeq))
