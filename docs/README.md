@@ -6,7 +6,7 @@ Read [Core owner sign-off](CORE_FREEZE_OWNER_SIGNOFF_2026-10-27.md),
 [Current core evidence verdict](CORE_FREEZE_VERDICT.md).
 The active master direction is the PHASE 0–5 Core-first/Skin-first plan in the
 [remote governance and separation roadmap](SEPARATION_REMOTE_GOVERNANCE_AND_ROADMAP_2026-10-30.md).
-The current task is PHASE 1, Calendar, Event, Draft/Review, AI Proposal, Reminder, Import/Export, and Settings/Data Feature API v1 slices. Formal
+The current task is PHASE 1, Calendar, Event, Memo, Draft/Review, AI Conversation/Proposal/Batch, Reminder, Import/Export, and Settings/Data Feature API v1 slices. Formal
 event search and Memo completion now use the Event API; see the
 [implemented contracts and open gaps](CORE_FEATURE_API_V1.md), the
 [Draft/Review report](issues/PC-ISSUE-CORE-DRAFT-REVIEW-API-V1.md), the
@@ -54,13 +54,13 @@ PowerCal app. The original compiled-source skin remains the trusted fallback.
 
 # PowerCal 文档总索引
 
-> 更新：2026-10-21。**设计规范、已实现代码、历史交付报告是三类不同证据**。历史报告的 BUILD SUCCESSFUL、测试数和版本状态不自动代表最新 HEAD。代码行为以实际验证为准；发现规范冲突时须显式记录、评审，而非静默选一份。
+> 更新：2026-11-02。**设计规范、已实现代码、历史交付报告是三类不同证据**。历史报告的 BUILD SUCCESSFUL、测试数和版本状态不自动代表最新 HEAD。代码行为以实际验证为准；发现规范冲突时须显式记录、评审，而非静默选一份。
 
 ## 当前决策与关键契约
 
 | 用途 | 文档 | 使用说明 |
 | --- | --- | --- |
-| Core Feature API v1 | [Calendar, Event, Draft/Review, AI, Reminder, Import/Export, and Settings/Data contracts](CORE_FEATURE_API_V1.md) | Implemented vertical slices and explicit API/coverage limitations; not full Core extraction, runtime separation, or parity signoff |
+| Core Feature API v1 | [Calendar, Event, Draft/Review, AI Conversation/Proposal/Batch, Reminder, Import/Export, and Settings/Data contracts](CORE_FEATURE_API_V1.md) | Implemented vertical slices and explicit API/coverage limitations; not full Core extraction, runtime separation, or parity signoff |
 | 最新产品冻结决策 | [Core Contract v0.9.4](CORE_CONTRACT_FREEZE_2026-10-21.md) | 2026-10-21 决策，优先于旧产品草案；仍需逐项验收 |
 | 产品来源及历史决策 | [G1–G11 基线](PRODUCT_BASELINE_G1-G11.md) | 历史上下文；旧“三种事件”被新四类模型覆盖 |
 | 数据稳定性与恢复 | [稳定数据契约](STABLE_DATA_CONTRACT_V1.md) | 拟冻结，勿视为已正式批准 |

@@ -3,7 +3,7 @@
 - **Status:** Calendar window queries, Event, Memo, Draft/Review, AI Proposal/Feature, Reminder, Import/Export, and Settings/Data vertical slices implemented; PHASE 1 remains in progress.
 - **Contract source:** `:core-api`, package `dev.powerfulcalendar.core.api.v1`, including `CoreFeatureApiV1.kt`, `CalendarFeatureApiV1.kt`, `MemoFeatureApiV1.kt`, `DraftReviewFeatureApiV1.kt`, `AiProposalFeatureApiV1.kt`, `AiFeatureApiV1.kt`, `ReminderFeatureApiV1.kt`, `ImportExportFeatureApiV1.kt`, and `SettingsDataFeatureApiV1.kt`.
 - **Runtime adapter:** `app/src/main/java/dev/powerfulcalendar/core/api/v1/PowerCalCoreFeatureApiV1.kt`.
-- **Updated:** 2026-11-01.
+- **Updated:** 2026-11-02.
 
 This document describes the implemented Calendar, Event, Memo, Draft/Review, AI, Reminder, Import/Export, and Settings/Data API boundaries. It does not declare full Core extraction, full domain coverage, runtime cutover, or Native/Skin parity. The Kotlin source is authoritative when a detail here drifts.
 
@@ -27,7 +27,7 @@ Web transport ───────┘       │
 
 `:core-api` is a pure Kotlin JVM module. Its public contract contains no Android, Compose, `PowerStore`, repository, or internal Core entity types. `PowerCalApp` creates one `PowerCalCoreFeatureApiV1` per `PowerStore` and shares its domain services across Native callbacks and Web Host adapters. The runtime adapter currently lives in the app module and delegates to existing Core services such as `NewEventEditSession`, `EditSession`, recurrence logic, `PowerStore`, and the platform reminder scheduler; moving that implementation into a separately distributable Core runtime is not complete.
 
-The Host is the only owner of Android context, database construction, trusted confirmation UI, and concrete deletion approval issuance. A Skin receives DTOs and opaque editor handles, never a Store reference or an approval issuer.
+The Host is the only owner of Android context, database construction, trusted confirmation UI, and concrete deletion approval issuance. A Skin receives DTOs and opaque editor handles, never a Store reference or an approval issuer. Ordinary text-chat requests now enter through `AiFeatureApiV1.chat`; transcript persistence and clear/rewind commands remain Host-owned pending a conversation-state API slice.
 
 ## 2. Version and DTO rules
 
@@ -139,20 +139,24 @@ These are Calendar, Event, Memo, Draft/Review, AI Proposal/Feature, Reminder, Im
 - Per-item replay uses the existing `ai_task_receipts` table. Conversation tasks use their task/revision identity. Taskless API applies use an internal, deterministic task namespace derived from the request ID, so exact retries after API recreation reuse the original staged or committed item. The outer API request cache is still process-local. No database schema or backup format changed.
 - Expired task requests may replay exact existing receipts. Staging can reuse an exact existing item receipt; publishing additionally requires a terminal receipt, enforced again inside the Store transaction. An expired request cannot create a missing receipt. Target revision and receipt fingerprint checks remain inside the transaction where required.
 - Store change snapshots are captured while the Store monitor is held; feature changes are prepared without callbacks, then listeners run only after both the Store monitor and proposal mutation lock are released.
-- Structured proposal generation and AI batch selection, state, cancellation, recovery, reviewed execution, and stuck-session release now route through `CoreFeatureApiV1.ai`. Proposal staging/application still uses `aiProposals`. The general chat reply, image/OCR and file intake, provider configuration/credentials, and broader tool orchestration remain Host-owned and are not claimed as complete Core APIs.
+- Ordinary text chat, structured proposal generation, and AI batch selection, state, cancellation, recovery, reviewed execution, and stuck-session release now route through `CoreFeatureApiV1.ai`. Proposal staging/application still uses `aiProposals`. Image/OCR and file intake, transcript persistence/clear/rewind, provider configuration/credentials, and broader tool orchestration remain Host-owned and are not claimed as complete Core APIs.
 
 ## 10. AI Feature API v1 slice
 
 `CoreFeatureApiV1.ai` exposes the pure Kotlin `AiFeatureApiV1` contract. The Android Host supplies `AndroidAiModelPortV1`, which loads the existing protected AI settings and credentials and calls the existing `AiClient`; credentials and Android context do not enter `:core-api` DTOs.
 
+- `chat` accepts versioned `AiConversationMessageV1` values, validates the IANA zone and bounded history (up to 80 messages / 480,000 characters), returns typed `AiChatReceiptV1` errors, and passes at most 60 formal events only when the Host opts in. The Android adapter reloads protected settings and `AiClient` rechecks the saved calendar-sharing preference before including context.
+- A process-local 128-entry request receipt cache replays a completed result for the same request ID and content fingerprint; reusing an ID for different content returns `DUPLICATE_REQUEST_ID`. This cache is not durable across process recreation. Explicit intent with a validated task invokes the existing proposal-generation path and returns review DTOs only. Missing tasks return a clarification; neither chat nor proposal generation stages or publishes events.
 - `generateProposal` accepts one text request or a validated conversation-task snapshot and returns detached, reviewable proposal DTOs only. The adapter supplies bounded calendar context under the existing persisted-sharing preference and request opt-in, and binds target revisions from the trusted local snapshot. Generation does not create drafts or publish events; the Host passes reviewed output to `aiProposals` for staging or application.
 - `selectBatchDrafts` gives the model bounded local candidate snapshots. The model returns IDs only; the feature API resolves them against the exact supplied IDs, versions, and operations, rejecting duplicates, out-of-scope IDs, and over-limit selection. The explicit “all” path is a Host-set flag and skips model selection.
 - `runReviewedBatch` consumes a one-use Host approval bound by object identity to the exact mode and reviewed candidate snapshots. The Store rechecks draft versions and allowed operations when it creates the existing fenced AI session; `AiBatchRunner` retains per-item transactional commits and cancellation behavior. Cancellation, interrupted recovery, and stuck-session release use the same API, with release still requiring the existing stale-session eligibility and a second explicit Host approval.
 - Queried session state and persisted terminal reports use typed DTOs. Native/Web presentation projections omit session identity, lock epoch, draft scope IDs, and detailed stored failure text. Host execution receipts retain the existing detailed result for Host feedback.
 - Approval markers and the outer generation request have no durable replay guarantee. The batch workflow continues to rely on Store-backed session fencing and transactions. No schema, backup format, or frozen business semantics changed.
-- This slice does not move ordinary AI chat, image/OCR transport, document/file selection and consent, provider configuration, or the general tool registry/orchestrator into Core.
+- The compiled `AiVisualContext` now exposes conversation messages, proposal review, and batch mode as versioned API DTOs. Persistent transcript storage, clear/rewind behavior, image/OCR transport, document/file selection and consent, provider configuration, and a general tool registry/orchestrator remain outside this slice.
 
-The pure Kotlin contract is `AiFeatureApiV1.kt`; the Android provider adapter and Store-backed implementation are `AndroidAiModelPortV1.kt` and `StoreAiFeatureApiV1.kt`. Scoped verification and device limits are in the [AI Feature API Issue](issues/PC-ISSUE-CORE-AI-FEATURE-API-V1.md).
+The pure Kotlin contract is `AiFeatureApiV1.kt`; the Android provider adapter and Store-backed implementation are `AndroidAiModelPortV1.kt` and `StoreAiFeatureApiV1.kt`. The conversation slice's verification and limits are in the [AI Conversation API Issue](issues/PC-ISSUE-CORE-AI-CONVERSATION-API-V1.md); earlier batch/generation scope is in the [AI Feature API Issue](issues/PC-ISSUE-CORE-AI-FEATURE-API-V1.md).
+
+AI Conversation API v1 verification: focused API/projection tests **15/15 PASS**; forced serial offline full gate **851/851 JVM tests**, 134 XML suites, 0 failures/errors/skips. Both source boundaries, Debug APK assembly, lint (**0 errors / 53 warnings**), and AndroidTest Kotlin compilation passed. The APK and log hashes, first-run timeout plus successful reruns, and unavailable device/AVD evidence are recorded in the [AI Conversation API Issue](issues/PC-ISSUE-CORE-AI-CONVERSATION-API-V1.md). This does not establish packaged WebView or Native/Clear parity.
 
 ## 11. Reminder API v1 slice
 
@@ -230,7 +234,7 @@ Remaining work before PHASE 1 can exit:
 
 1. Route remaining authorized Host/Core reads and writes through versioned queries/commands and one change source; settings/data operations outside the profile/onboarding slice and other Host workflows remain outside the migrated paths.
 2. Move remaining business decisions out of Web transport/Host adapters; keep the bridge focused on transport and trusted Host capabilities.
-3. Remove remaining Core entity types from runtime Skin projections while maintaining the separate Native Presentation Contract. `DeckVisualContext` no longer exposes `DeckController.DeckState`, `DraftForm`, or `TemporalKind`; `MonthVisualContext` and `AiVisualContext` still have Core-model references.
+3. Remove remaining Core entity types from runtime Skin projections while maintaining the separate Native Presentation Contract. `DeckVisualContext` no longer exposes `DeckController.DeckState`, `DraftForm`, or `TemporalKind`; `AiVisualContext` now receives versioned AI DTOs. `MonthVisualContext` remains an identified projection gap.
 4. Add the remaining per-domain API contracts before claiming other feature areas are covered. Current v1 does not define Store-level Calendar paging. Draft/Review request replay and AI proposal-generation request replay remain process-local; AI Proposal item receipts are Store-backed. Calendar and Memo queries still use the full Host event snapshot.
 5. Run required device checks when the independently owned AVD is available. Memo, Event search/completion/current-event query, AI Proposal, and Draft Deck projection device behavior are **NOT TESTED**.
 

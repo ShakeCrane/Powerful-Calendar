@@ -196,22 +196,23 @@ retains the timeline's original AI-lock explanation and “完成” button labe
 routes continue to use the renderer's default copy. Compose coverage follows a locked timeline
 event through the Host adapter, Native content, modal display and dismissal.
 
-### AI chat display boundary (2026-10-30)
+### AI chat display boundary (2026-11-02)
 
 `NativeAiChatScreen` is compiled in `:native-skin` and consumes `NativeAiMessage` plus the Native
-batch-mode enum from `:skin-api`. The Host projects provider messages into those display values,
-maps batch actions back to the existing `AiBatchRunner`, owns clipboard access, and injects proposal
-review and avatar content through composable slots. AI interpretation, proposal authorization and
-commit behavior remain in `:app`; message text and a proposal-source string are display/input values,
-not authorization. Native code has no direct provider, Core, Store or Android clipboard dependency.
+batch-mode enum from `:skin-api`. The compiled `AiVisualContext` now receives `AiConversationMessageV1`,
+`AiProposalReviewV1`, and `AiBatchModeV1`, rather than the app's internal chat, interpretation, or
+batch-runner types. The Native adapter projects those values to display DTOs, maps batch actions to
+the existing Host operation, owns clipboard access, and injects proposal review and avatar content
+through composable slots. Message text and a proposal-source string are display/input values, not
+authorization. Native code has no direct provider, Store or Android clipboard dependency.
 
-Structured proposal generation and AI batch selection/state/execution now use the shared
-`CoreFeatureApiV1.ai` service. The Android model port and provider configuration remain Host-owned;
-proposal staging and publishing still require the separate `aiProposals` service and Host review.
-Native and Web presentation projections receive display state without batch session IDs, lock epochs,
-draft-scope IDs or stored exception details. Ordinary chat, image/OCR intake, and file/consent flows
-remain Host capabilities. These are source-level boundaries; device and packaged-WebView behavior
-still require their own evidence.
+Ordinary text-chat requests, explicit-intent proposal generation, and AI batch selection/state/execution
+now use the shared `CoreFeatureApiV1.ai` service. The Android model port and provider configuration
+remain Host-owned; proposal staging and publishing still require the separate `aiProposals` service
+and explicit Host review. Native and Web presentation projections receive display state without batch
+session IDs, lock epochs, draft-scope IDs or stored exception details. Transcript persistence and
+clear/rewind, image/OCR intake, and file/consent flows remain Host capabilities. These are source-level
+boundaries; device and packaged-WebView behavior still require their own evidence.
 
 ### AI image consent and OCR review boundary (2026-10-30)
 
@@ -360,7 +361,7 @@ A renderer's Kotlin id must be nonempty and unique among installed surfaces. Som
 
 - Time-axis ACTIVITY edges must use the same yOf(start) and yOf(end) projection, never minimum visual height used as fake duration. ALARM and DEADLINE are instants; date-only deadlines are calendar dates.
 - Recurrence occurrence keys, eventSeq, revision, timezones and DST are stable core identities. A renderer must not silently turn an occurrence edit into a whole-series write.
-- An AI chat message is not a proposal authorization. The Host owns AI interpretation, proposal validation, authorization, and commit; Native review renderers receive only display DTOs and callbacks. Destructive actions cannot be executed from skin internals.
+- An AI chat message is not a proposal authorization. `CoreFeatureApiV1.ai` validates chat requests and routes explicit tasks through proposal generation; the Host retains provider configuration, confirmation UI, proposal apply approvals, and commit callbacks. Native review renderers receive only display DTOs and callbacks. Destructive actions cannot be executed from skin internals.
 - A custom Deck sees state and host callbacks only, never DeckController or PowerStore. Edits are debounced and flushed before leaving, commit/undo/restore are serialized in the domain controller. Conflict and AI lock states must be represented.
 - Text fields must remain accessible during IME, large type and landscape; reduce motion, TalkBack semantics, action focus and usable touch targets are required.
 - Canvas animation may change apparent transition or opacity, never exact event time or verified persistence status.
