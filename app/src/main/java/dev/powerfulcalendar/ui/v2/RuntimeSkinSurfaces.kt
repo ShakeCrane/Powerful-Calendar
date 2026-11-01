@@ -16,6 +16,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalText
+import dev.powerfulcalendar.core.api.v1.AiConversationRoleV1
 import java.time.LocalDate
 
 /** Typed host bridge for non-executable layout trees. All actions reuse existing callbacks. */
@@ -110,12 +111,12 @@ internal object RuntimeSkinSurfaces {
                         context.messages.takeLast(60).forEach { message ->
                             Surface(
                                 shape = RoundedCornerShape(14.dp),
-                                color = if (message.role == "user")
+                                color = if (message.role == AiConversationRoleV1.USER)
                                     MaterialTheme.colorScheme.primaryContainer
                                 else MaterialTheme.colorScheme.surfaceContainerLow
                             ) {
                                 Column(Modifier.fillMaxWidth().padding(10.dp)) {
-                                    Text(if (message.role == "user") "我" else "AI",
+                                    Text(if (message.role == AiConversationRoleV1.USER) "我" else "AI",
                                         style = MaterialTheme.typography.labelSmall)
                                     Text(message.content.take(1800), style = MaterialTheme.typography.bodyMedium)
                                 }

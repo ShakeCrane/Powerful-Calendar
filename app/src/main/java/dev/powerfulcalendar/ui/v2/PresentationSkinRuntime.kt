@@ -21,13 +21,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import dev.powerfulcalendar.ai.AiBatchRunner
-import dev.powerfulcalendar.ai.AiChatMessage
-import dev.powerfulcalendar.ai.AiInterpretation
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.PowerStore
+import dev.powerfulcalendar.core.api.v1.AiBatchModeV1
 import dev.powerfulcalendar.core.api.v1.AiBatchSessionV1
 import dev.powerfulcalendar.core.api.v1.AiBatchStateV1
+import dev.powerfulcalendar.core.api.v1.AiConversationMessageV1
+import dev.powerfulcalendar.core.api.v1.AiProposalReviewV1
 import dev.powerfulcalendar.core.RecurrenceEngine
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
@@ -222,7 +222,7 @@ internal fun MemoCenterScreen(
 }
 
 internal class AiVisualContext internal constructor(
-    val messages: List<AiChatMessage>,
+    val messages: List<AiConversationMessageV1>,
     val busy: Boolean,
     val batchActionsBusy: Boolean,
     val pendingCount: Int,
@@ -230,7 +230,7 @@ internal class AiVisualContext internal constructor(
     val onPropose: (String) -> Unit,
     val onClear: () -> Unit,
     val onClearCache: () -> Unit,
-    val proposalReview: AiInterpretation?,
+    val proposalReview: AiProposalReviewV1?,
     val onApplyProposals: (Set<Int>, Boolean) -> Unit,
     val onDiscardProposals: (Set<Int>) -> Unit,
     val onSupplementProposals: () -> Unit,
@@ -238,7 +238,7 @@ internal class AiVisualContext internal constructor(
     val onOpenDeck: () -> Unit,
     val onPickImage: () -> Unit,
     val onPickFile: () -> Unit,
-    val onPrepareBatch: (AiBatchRunner.Mode) -> Unit,
+    val onPrepareBatch: (AiBatchModeV1) -> Unit,
     val onRewind: (Int) -> Unit,
     val batchSelectionActive: Boolean,
     val onCancelBatchSelection: () -> Unit
@@ -249,7 +249,7 @@ internal class AiVisualContext internal constructor(
             platformContext.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         }
         val nativeMessages = remember(messages) { projectNativeAiMessages(messages) }
-        val review = proposalReview?.takeIf { it.proposals.isNotEmpty() }
+        val review = proposalReview?.takeIf { it.items.isNotEmpty() }?.toAiInterpretation()
         NativeAiChatScreen(
             messages = nativeMessages,
             busy = busy,
@@ -263,7 +263,7 @@ internal class AiVisualContext internal constructor(
             onOpenDeck = onOpenDeck,
             onPickImage = onPickImage,
             onPickFile = onPickFile,
-            onPrepareBatch = { onPrepareBatch(hostAiBatchMode(it)) },
+            onPrepareBatch = { onPrepareBatch(hostAiBatchMode(it).toAiBatchModeV1()) },
             onRewind = onRewind,
             onCopyMessage = { content ->
                 clipboard.setPrimaryClip(ClipData.newPlainText("PowerCal 消息", content))
@@ -288,16 +288,16 @@ internal class AiVisualContext internal constructor(
 
 @Composable
 fun AiChatScreen(
-    messages: List<AiChatMessage>, busy: Boolean, batchActionsBusy: Boolean = false, pendingCount: Int,
+    messages: List<AiConversationMessageV1>, busy: Boolean, batchActionsBusy: Boolean = false, pendingCount: Int,
     onSend: (String) -> Unit, onPropose: (String) -> Unit,
     onClear: () -> Unit, onClearCache: () -> Unit,
-    proposalReview: AiInterpretation? = null,
+    proposalReview: AiProposalReviewV1? = null,
     onApplyProposals: (Set<Int>, Boolean) -> Unit = { _, _ -> },
     onDiscardProposals: (Set<Int>) -> Unit = {},
     onSupplementProposals: () -> Unit = {},
     onSettings: () -> Unit, onOpenDeck: () -> Unit,
     onPickImage: () -> Unit, onPickFile: () -> Unit,
-    onPrepareBatch: (AiBatchRunner.Mode) -> Unit, onRewind: (Int) -> Unit,
+    onPrepareBatch: (AiBatchModeV1) -> Unit, onRewind: (Int) -> Unit,
     batchSelectionActive: Boolean = false,
     onCancelBatchSelection: () -> Unit = {}
 ) {

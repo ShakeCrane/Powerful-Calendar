@@ -1,7 +1,6 @@
 package dev.powerfulcalendar.ui.v2
 
 import dev.powerfulcalendar.ai.AiBatchRunner
-import dev.powerfulcalendar.ai.AiChatMessage
 import dev.powerfulcalendar.ai.AiInterpretation
 import dev.powerfulcalendar.ai.AiProposal
 import dev.powerfulcalendar.core.DraftCard
@@ -9,6 +8,8 @@ import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.DraftStatus
 import dev.powerfulcalendar.core.TemporalKind
+import dev.powerfulcalendar.core.api.v1.AiConversationMessageV1
+import dev.powerfulcalendar.core.api.v1.AiConversationRoleV1
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -16,8 +17,18 @@ class NativeAiProjectionTest {
     @Test fun projectsOnlyChatDisplayValues() {
         val projected = projectNativeAiMessages(
             listOf(
-                AiChatMessage(role = "user", content = "你好", proposalSource = "ignored"),
-                AiChatMessage(role = "assistant", content = "结果", proposalSource = "可选提案")
+                AiConversationMessageV1(
+                    role = AiConversationRoleV1.USER,
+                    content = "你好",
+                    proposalSource = "ignored",
+                    messageId = "user-1"
+                ),
+                AiConversationMessageV1(
+                    role = AiConversationRoleV1.ASSISTANT,
+                    content = "结果",
+                    proposalSource = "可选提案",
+                    messageId = "assistant-1"
+                )
             )
         )
 

@@ -9,7 +9,10 @@ import java.util.IdentityHashMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
+import java.security.MessageDigest
 
 /** Store-backed AI domain adapter. Provider configuration is supplied only through [modelPort]. */
 internal class StoreAiFeatureApiV1(
@@ -20,10 +23,102 @@ internal class StoreAiFeatureApiV1(
 ) : AiFeatureApiV1 {
     override val apiVersion: Int = 1
 
+    private val chatMutex = Mutex()
+    private val chatReceipts = LinkedHashMap<String, CachedChatReceipt>()
+
     private val approvalLock = Any()
     private val batchApprovals = IdentityHashMap<AiBatchApprovalV1, AiBatchReviewV1>()
     private val stuckReleaseApprovals =
         IdentityHashMap<AiBatchStuckReleaseApprovalV1, Pair<String, Long>>()
+
+    override suspend fun chat(request: AiChatRequestV1): AiChatReceiptV1 {
+        validateChatRequest(request)?.let { (code, message) ->
+            return AiChatReceiptV1(
+                requestId = request.requestId.take(MAX_REQUEST_ID_CHARS),
+                status = AiChatStatusV1.INVALID_REQUEST,
+                errorCode = code,
+                message = message
+            )
+        }
+        val fingerprint = request.fingerprint()
+        return chatMutex.withLock {
+            chatReceipts[request.requestId]?.let { cached ->
+                return@withLock if (cached.fingerprint == fingerprint) {
+                    cached.receipt.detached().copy(replayed = true)
+                } else AiChatReceiptV1(
+                    requestId = request.requestId,
+                    status = AiChatStatusV1.DUPLICATE_REQUEST_ID,
+                    errorCode = "DUPLICATE_REQUEST_ID",
+                    message = "AI 请求标识已用于不同的对话内容"
+                )
+            }
+            if (store.isLocked()) return@withLock AiChatReceiptV1(
+                requestId = request.requestId,
+                status = AiChatStatusV1.LOCKED,
+                errorCode = "CORE_LOCKED",
+                message = "AI 批次正在处理，请稍后重试"
+            )
+            val port = modelPort ?: return@withLock AiChatReceiptV1(
+                requestId = request.requestId,
+                status = AiChatStatusV1.MODEL_UNAVAILABLE,
+                errorCode = "MODEL_UNAVAILABLE",
+                message = "AI 聊天服务暂不可用"
+            )
+            val context = if (request.shareCalendarContext) {
+                events.queryEvents().events.take(MAX_CALENDAR_CONTEXT_EVENTS)
+            } else emptyList()
+            val modelOutput = try {
+                port.chat(request.detached(), context.map { it.copy() })
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                val receipt = AiChatReceiptV1(
+                    requestId = request.requestId,
+                    status = AiChatStatusV1.MODEL_UNAVAILABLE,
+                    errorCode = "MODEL_UNAVAILABLE",
+                    message = "AI 聊天暂时未完成，请检查配置后重试"
+                )
+                rememberChatReceipt(request.requestId, fingerprint, receipt)
+                return@withLock receipt
+            }
+            val modelError = modelOutput.error
+            val receipt = if (modelError != null) {
+                AiChatReceiptV1(
+                    requestId = request.requestId,
+                    status = AiChatStatusV1.MODEL_UNAVAILABLE,
+                    errorCode = "MODEL_UNAVAILABLE",
+                    message = modelError.take(300)
+                )
+            } else {
+                val task = modelOutput.automaticProposalTask?.detached()
+                val automaticProposal = if (
+                    modelOutput.proposalIntent == AiChatProposalIntentV1.EXPLICIT && task != null
+                ) generateProposal(AiProposalGenerationRequestV1(
+                    requestId = request.proposalRequestId(),
+                    task = task,
+                    zoneId = request.zoneId,
+                    shareCalendarContext = request.shareCalendarContext,
+                    contextPolicy = AiCalendarContextPolicyV1.FIRST_60_FORMAL_EVENTS
+                )) else null
+                AiChatReceiptV1(
+                    requestId = request.requestId,
+                    status = AiChatStatusV1.COMPLETED,
+                    reply = modelOutput.reply.take(MAX_CHAT_MESSAGE_CHARS),
+                    proposalSource = modelOutput.proposalSource?.take(MAX_CHAT_MESSAGE_CHARS),
+                    proposalIntent = modelOutput.proposalIntent,
+                    automaticProposalTask = task?.takeIf {
+                        automaticProposal?.review?.items?.isNotEmpty() == true
+                    },
+                    automaticProposal = automaticProposal,
+                    clarification = if (
+                        modelOutput.proposalIntent == AiChatProposalIntentV1.EXPLICIT && task == null
+                    ) MISSING_EXPLICIT_TASK_MESSAGE else null
+                )
+            }
+            rememberChatReceipt(request.requestId, fingerprint, receipt)
+            receipt
+        }
+    }
 
     override suspend fun generateProposal(
         request: AiProposalGenerationRequestV1
@@ -340,6 +435,91 @@ internal class StoreAiFeatureApiV1(
         return null
     }
 
+    private fun validateChatRequest(request: AiChatRequestV1): Pair<String, String>? {
+        if (request.requestId.isBlank() || request.requestId.length > MAX_REQUEST_ID_CHARS) {
+            return "REQUEST_ID_INVALID" to "AI 请求标识无效"
+        }
+        if (runCatching { ZoneId.of(request.zoneId) }.isFailure) {
+            return "ZONE_INVALID" to "AI 请求时区无效"
+        }
+        val history = request.history
+        if (history.isEmpty() || history.size > MAX_CHAT_HISTORY_MESSAGES ||
+            history.last().role != AiConversationRoleV1.USER ||
+            history.last().content.isBlank()
+        ) return "HISTORY_INVALID" to "请先输入一条有效消息"
+        if (history.any { message ->
+                message.messageId.isBlank() || message.messageId.length > MAX_CHAT_MESSAGE_ID_CHARS ||
+                    message.content.length > MAX_CHAT_MESSAGE_CHARS ||
+                    message.proposalSource?.length?.let { it > MAX_CHAT_MESSAGE_CHARS } == true ||
+                    (message.createdAtMillis?.let { it < 0L } == true) ||
+                    (message.zoneId != null && runCatching { ZoneId.of(message.zoneId) }.isFailure)
+            } || history.map { it.messageId }.distinct().size != history.size
+        ) return "HISTORY_INVALID" to "对话记录格式无效"
+        if (history.sumOf { it.content.length } > MAX_CHAT_HISTORY_CHARS) {
+            return "HISTORY_TOO_LARGE" to "对话上下文超出限制，请清理较早消息后重试"
+        }
+        return null
+    }
+
+    private fun rememberChatReceipt(
+        requestId: String,
+        fingerprint: String,
+        receipt: AiChatReceiptV1
+    ) {
+        chatReceipts[requestId] = CachedChatReceipt(fingerprint, receipt.detached())
+        while (chatReceipts.size > MAX_CHAT_RECEIPTS) {
+            chatReceipts.remove(chatReceipts.entries.first().key)
+        }
+    }
+
+    private fun AiChatRequestV1.detached() = copy(history = history.map { it.copy() })
+
+    private fun AiConversationTaskV1.detached() = copy(
+        userEvidence = userEvidence.map { it.copy() },
+        assistantSuggestions = assistantSuggestions.map { it.copy() }
+    )
+
+    private fun AiChatReceiptV1.detached(): AiChatReceiptV1 {
+        val proposal = automaticProposal
+        return copy(
+            automaticProposalTask = automaticProposalTask?.detached(),
+            automaticProposal = proposal?.copy(
+                review = proposal.review?.detached(),
+                warnings = proposal.warnings.toList()
+            )
+        )
+    }
+
+    private fun AiChatRequestV1.fingerprint(): String {
+        val canonical = buildString {
+            appendPart(zoneId)
+            appendPart(shareCalendarContext.toString())
+            history.forEach { message ->
+                appendPart(message.role.name)
+                appendPart(message.messageId)
+                appendPart(message.content)
+                appendPart(message.proposalSource)
+                appendPart(message.createdAtMillis?.toString())
+                appendPart(message.zoneId)
+            }
+        }
+        return MessageDigest.getInstance("SHA-256")
+            .digest(canonical.toByteArray(Charsets.UTF_8))
+            .joinToString("") { byte -> "%02x".format(byte) }
+    }
+
+    private fun StringBuilder.appendPart(value: String?) {
+        if (value == null) append("-1:") else append(value.length).append(':').append(value)
+    }
+
+    private fun AiChatRequestV1.proposalRequestId(): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(requestId.toByteArray(Charsets.UTF_8))
+            .take(20)
+            .joinToString("") { byte -> "%02x".format(byte) }
+        return "chat-proposal-$digest"
+    }
+
     private fun validateCandidates(items: List<AiBatchCandidateV1>): String? {
         if (items.isEmpty()) return null
         if (items.size > MAX_BATCH_ITEMS) return "待处理超过 100 张，请先缩小范围"
@@ -431,16 +611,28 @@ internal class StoreAiFeatureApiV1(
     private class HostBatchApproval : AiBatchApprovalV1
     private class HostStuckReleaseApproval : AiBatchStuckReleaseApprovalV1
 
+    private data class CachedChatReceipt(
+        val fingerprint: String,
+        val receipt: AiChatReceiptV1
+    )
+
     private companion object {
         const val MAX_REQUEST_ID_CHARS = 160
         const val MAX_BATCH_ITEMS = 100
         const val MAX_BATCH_REQUEST_CHARS = 2_500
         const val MAX_AI_PROPOSALS = 100
         const val MAX_CALENDAR_CONTEXT_EVENTS = 60
+        const val MAX_CHAT_HISTORY_MESSAGES = 80
+        const val MAX_CHAT_HISTORY_CHARS = 480_000
+        const val MAX_CHAT_MESSAGE_CHARS = 6_000
+        const val MAX_CHAT_MESSAGE_ID_CHARS = 100
+        const val MAX_CHAT_RECEIPTS = 128
         const val MAX_TASK_EVIDENCE_COUNT = 40
         const val MAX_TASK_EVIDENCE_CHARS = 20_000
         const val MAX_TASK_SUGGESTIONS = 40
         const val MAX_TASK_AGE_MILLIS = 24L * 60 * 60 * 1000
         const val CALENDAR_CONTEXT_HORIZON_MILLIS = 14L * 24 * 60 * 60 * 1000
+        const val MISSING_EXPLICIT_TASK_MESSAGE = "无法安全关联到一项完整的待处理日程请求。" +
+            "为避免把“确认”误当成事件内容，请重新说明要创建或修改的事项、日期和时间。"
     }
 }

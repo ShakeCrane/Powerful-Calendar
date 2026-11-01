@@ -46,6 +46,98 @@ class AiFeatureApiV1Test {
         context.deleteDatabase(name)
     }
 
+    @Test fun ordinaryChatUsesBoundedContextAndReplaysTheCompletedReceipt() = runBlocking {
+        val target = createFormal("chat context")
+        model.chatOutput = AiChatModelOutputV1(reply = "你好")
+        val request = chatRequest("chat-replay", share = true)
+
+        val first = core.ai.chat(request)
+        val replay = core.ai.chat(request)
+        val conflicting = core.ai.chat(request.copy(history = listOf(
+            AiConversationMessageV1(
+                role = AiConversationRoleV1.USER,
+                content = "不同内容",
+                messageId = "user-1"
+            )
+        )))
+
+        assertEquals(AiChatStatusV1.COMPLETED, first.status)
+        assertEquals("你好", first.reply)
+        assertEquals(listOf(target.eventSeq), model.lastChatContext.map { it.eventSeq })
+        assertEquals(1, model.chatCalls)
+        assertTrue(replay.replayed)
+        assertEquals("你好", replay.reply)
+        assertEquals(AiChatStatusV1.DUPLICATE_REQUEST_ID, conflicting.status)
+        assertEquals(1, model.chatCalls)
+        assertTrue(store.pendingDrafts().isEmpty())
+    }
+
+    @Test fun ordinaryChatDoesNotReadCalendarWhenSharingIsOff() = runBlocking {
+        createFormal("private chat context")
+        model.chatOutput = AiChatModelOutputV1(reply = "已收到")
+
+        val receipt = core.ai.chat(chatRequest("chat-private", share = false))
+
+        assertEquals(AiChatStatusV1.COMPLETED, receipt.status)
+        assertTrue(model.lastChatContext.isEmpty())
+        assertTrue(store.pendingDrafts().isEmpty())
+    }
+
+    @Test fun explicitChatIntentUsesProposalApiAndNeverStagesByItself() = runBlocking {
+        model.chatOutput = AiChatModelOutputV1(
+            reply = "我先生成一份可审核提案。",
+            automaticProposalTask = task(),
+            proposalIntent = AiChatProposalIntentV1.EXPLICIT
+        )
+        model.proposalOutput = AiProposalModelOutputV1(AiProposalReviewV1(
+            reviewId = "model-review",
+            items = listOf(AiProposalItemV1(
+                sourceIndex = 0,
+                operation = DraftOperationV1.CREATE,
+                eventSeq = null,
+                expectedRevision = null,
+                form = form("chat proposal")
+            ))
+        ), contextUsed = false)
+
+        val receipt = core.ai.chat(chatRequest("chat-explicit"))
+
+        assertEquals(AiChatStatusV1.COMPLETED, receipt.status)
+        assertEquals(AiProposalGenerationStatusV1.READY, receipt.automaticProposal?.status)
+        assertEquals(1, model.proposalCalls)
+        assertTrue(receipt.automaticProposal?.review?.reviewId?.startsWith("chat-proposal-") == true)
+        assertTrue(store.pendingDrafts().isEmpty())
+    }
+
+    @Test fun explicitChatWithoutAValidatedTaskReturnsClarification() = runBlocking {
+        model.chatOutput = AiChatModelOutputV1(
+            reply = "我可以帮你安排。",
+            proposalIntent = AiChatProposalIntentV1.EXPLICIT
+        )
+
+        val receipt = core.ai.chat(chatRequest("chat-no-task"))
+
+        assertEquals(AiChatStatusV1.COMPLETED, receipt.status)
+        assertTrue(receipt.clarification.orEmpty().contains("无法安全关联"))
+        assertEquals(0, model.proposalCalls)
+        assertTrue(store.pendingDrafts().isEmpty())
+    }
+
+    @Test fun invalidConversationIsRejectedBeforeProviderCall() = runBlocking {
+        val request = chatRequest("chat-invalid").copy(history = listOf(
+            AiConversationMessageV1(
+                role = AiConversationRoleV1.ASSISTANT,
+                content = "不是用户输入",
+                messageId = "assistant-1"
+            )
+        ))
+
+        val receipt = core.ai.chat(request)
+
+        assertEquals(AiChatStatusV1.INVALID_REQUEST, receipt.status)
+        assertEquals(0, model.chatCalls)
+    }
+
     @Test fun proposalGenerationUsesBoundedApiContextAndReturnsReviewOnly() = runBlocking {
         val target = createFormal("context target")
         val task = task()
@@ -272,15 +364,42 @@ class AiFeatureApiV1Test {
         assistantSuggestions = emptyList()
     )
 
+    private fun chatRequest(requestId: String, share: Boolean = false) = AiChatRequestV1(
+        requestId = requestId,
+        history = listOf(AiConversationMessageV1(
+            role = AiConversationRoleV1.USER,
+            content = "你好",
+            messageId = "user-1",
+            createdAtMillis = clock.millis(),
+            zoneId = zone.id
+        )),
+        zoneId = zone.id,
+        shareCalendarContext = share
+    )
+
     private class FakeAiModelPort : AiModelPortV1 {
         var proposalOutput = AiProposalModelOutputV1(AiProposalReviewV1("unused", emptyList()), false)
         var selection = AiBatchModelSelectionV1(error = "未配置假响应")
+        var chatOutput = AiChatModelOutputV1(error = "未配置假响应")
+        var chatCalls = 0
+        var proposalCalls = 0
+        var lastChatContext: List<EventRecordV1> = emptyList()
         var lastContext: List<EventRecordV1> = emptyList()
+
+        override suspend fun chat(
+            request: AiChatRequestV1,
+            calendarContext: List<EventRecordV1>
+        ): AiChatModelOutputV1 {
+            chatCalls++
+            lastChatContext = calendarContext.toList()
+            return chatOutput
+        }
 
         override suspend fun generateProposal(
             request: AiProposalGenerationRequestV1,
             calendarContext: List<EventRecordV1>
         ): AiProposalModelOutputV1 {
+            proposalCalls++
             lastContext = calendarContext.toList()
             return proposalOutput
         }

@@ -2,17 +2,52 @@ package dev.powerfulcalendar.core.api.v1
 
 import android.content.Context
 import dev.powerfulcalendar.ai.AiBatchSelection
+import dev.powerfulcalendar.ai.AiChatMessage
 import dev.powerfulcalendar.ai.AiClient
+import dev.powerfulcalendar.ai.ChatProposalIntent
 import dev.powerfulcalendar.ai.AiConversationTaskSnapshot
 import dev.powerfulcalendar.ai.AiTaskAssistantSuggestion
 import dev.powerfulcalendar.ai.AiTaskEvidence
 import dev.powerfulcalendar.ai.AiSettingsStore
 import dev.powerfulcalendar.ui.v2.toAiProposalReviewV1
+import dev.powerfulcalendar.ui.v2.toAiConversationTaskV1
 import java.time.ZoneId
 
 /** Android provider adapter; credentials and persisted AI settings stay inside the Host. */
 internal class AndroidAiModelPortV1(context: Context) : AiModelPortV1 {
     private val appContext = context.applicationContext
+
+    override suspend fun chat(
+        request: AiChatRequestV1,
+        calendarContext: List<EventRecordV1>
+    ): AiChatModelOutputV1 {
+        val settings = AiSettingsStore.load(appContext)
+        val history = request.history.map { message ->
+            AiChatMessage(
+                role = message.role.name.lowercase(),
+                content = message.content,
+                proposalSource = message.proposalSource,
+                messageId = message.messageId,
+                createdAtMillis = message.createdAtMillis,
+                zoneId = message.zoneId
+            )
+        }
+        val result = AiClient(settings, ZoneId.of(request.zoneId)).chat(
+            history,
+            calendarContext.map(EventRecordV1::toCoreTemporalRecord)
+        )
+        return AiChatModelOutputV1(
+            reply = result.reply,
+            error = result.error,
+            proposalSource = result.proposalSource,
+            automaticProposalTask = result.automaticProposalTask?.toAiConversationTaskV1(),
+            proposalIntent = when (result.proposalIntent) {
+                ChatProposalIntent.EXPLICIT -> AiChatProposalIntentV1.EXPLICIT
+                ChatProposalIntent.SUGGESTED -> AiChatProposalIntentV1.SUGGESTED
+                null -> null
+            }
+        )
+    }
 
     override suspend fun generateProposal(
         request: AiProposalGenerationRequestV1,

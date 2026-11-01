@@ -69,7 +69,6 @@ import dev.powerfulcalendar.ai.AiClient
 import dev.powerfulcalendar.ai.AiFileFallbackConsent
 import dev.powerfulcalendar.ai.AiInterpretation
 import dev.powerfulcalendar.ai.AiSettingsStore
-import dev.powerfulcalendar.ai.ChatProposalIntent
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.EditorSelection
@@ -91,6 +90,8 @@ import dev.powerfulcalendar.core.api.v1.EventMutationStatusV1
 import dev.powerfulcalendar.core.api.v1.MemoEntryV1
 import dev.powerfulcalendar.core.api.v1.EventSelectionV1
 import dev.powerfulcalendar.core.api.v1.AiProposalApplyRequestV1
+import dev.powerfulcalendar.core.api.v1.AiChatRequestV1
+import dev.powerfulcalendar.core.api.v1.AiChatStatusV1
 import dev.powerfulcalendar.core.api.v1.AiProposalDecisionV1
 import dev.powerfulcalendar.core.api.v1.CalendarWindowQueryV1
 import dev.powerfulcalendar.core.api.v1.ImportExportFeatureApiV1
@@ -289,7 +290,9 @@ fun PowerCalApp(
     var aiBusy by remember { mutableStateOf(false) }
     var chatBusy by remember { mutableStateOf(false) }
     var webAiProposalReviewSession by remember { mutableStateOf<WebAiProposalReviewSession?>(null) }
-    val proposalReview = webAiProposalReviewSession?.interpretation
+    val proposalReview = webAiProposalReviewSession?.let { session ->
+        session.interpretation.toAiProposalReviewV1(session.reviewId, session.expectedTargetRevisions)
+    }
     var pendingWebAiProposalPublish by remember {
         mutableStateOf<WebAiProposalPublishReview?>(null)
     }
@@ -980,40 +983,29 @@ fun PowerCalApp(
             try {
                 if (mode == null) {
                     val settingsForChat = AiSettingsStore.load(appContext)
-                    val sharedForChat = if (settingsForChat.shareContext)
-                        records.take(60) else emptyList()
-                    val response = AiClient(settingsForChat, zone).chat(
-                        currentHistory, sharedForChat
-                    )
-                    appendChat("assistant", if (response.succeeded) response.reply
-                        else "AI 请求未完成：" + response.error.orEmpty(),
-                        proposalSource = if (response.succeeded) response.proposalSource else null)
-                    // Only an explicit-intent marker starts an automatic structured preview.
-                    // A casual suggestion remains a button until the user taps it; neither path
-                    // writes to PowerStore without proposal review and authorization.
-                    val task = if (response.succeeded) response.automaticProposalTask else null
-                    if (response.succeeded && response.proposalIntent == ChatProposalIntent.EXPLICIT &&
-                        task == null) {
-                        appendChat("assistant", "无法安全关联到一项完整的待处理日程请求。" +
-                            "为避免把“确认”误当成事件内容，请重新说明要创建或修改的事项、日期和时间。")
-                    } else if (task != null) {
-                        val settings = AiSettingsStore.load(appContext)
-                        val generated = aiFeatureApi.generateProposal(
-                            dev.powerfulcalendar.core.api.v1.AiProposalGenerationRequestV1(
-                                requestId = java.util.UUID.randomUUID().toString(),
-                                task = task.toAiConversationTaskV1(),
-                                zoneId = task.zoneId,
-                                shareCalendarContext = settings.shareContext,
-                                contextPolicy = dev.powerfulcalendar.core.api.v1.AiCalendarContextPolicyV1.FIRST_60_FORMAL_EVENTS
-                            )
-                        )
-                        val review = generated.review
-                        if (review != null && review.items.isNotEmpty()) {
+                    val response = aiFeatureApi.chat(AiChatRequestV1(
+                        requestId = java.util.UUID.randomUUID().toString(),
+                        history = currentHistory.map { it.toAiConversationMessageV1() },
+                        zoneId = zone.id,
+                        shareCalendarContext = settingsForChat.shareContext
+                    ))
+                    if (response.status == AiChatStatusV1.COMPLETED) {
+                        appendChat("assistant", response.reply, proposalSource = response.proposalSource)
+                        response.clarification?.let { appendChat("assistant", it) }
+                        val generated = response.automaticProposal
+                        val review = generated?.review
+                        val task = response.automaticProposalTask?.toAiConversationTaskSnapshot()
+                        if (review != null && review.items.isNotEmpty() && task != null) {
                             replaceAiProposalReview(review, records, task)
-                        } else appendChat("assistant", "无法生成结构化提案：" +
-                            (generated.warnings.firstOrNull()?.takeIf { it.isNotBlank() }
-                                ?: generated.message?.takeIf { it.isNotBlank() }
-                                ?: "模型回复未形成可审查提案，请补充或核对日程信息后重试。"))
+                        } else if (response.proposalIntent == dev.powerfulcalendar.core.api.v1.AiChatProposalIntentV1.EXPLICIT &&
+                            response.clarification == null) {
+                            appendChat("assistant", "无法生成结构化提案：" +
+                                (generated?.warnings?.firstOrNull()?.takeIf { it.isNotBlank() }
+                                    ?: generated?.message?.takeIf { it.isNotBlank() }
+                                    ?: "模型回复未形成可审查提案，请补充或核对日程信息后重试。"))
+                        }
+                    } else {
+                        appendChat("assistant", "AI 请求未完成：" + response.message.orEmpty())
                     }
                 } else {
                     reload()
@@ -2322,7 +2314,7 @@ fun PowerCalApp(
             )
         } else if (presentedPage == Page.AI.name) {
             AiChatScreen(
-                messages = chatHistory,
+                messages = chatHistory.map { it.toAiConversationMessageV1() },
                 busy = chatBusy || aiBusy || aiLocked || confirmBatch != null ||
                     pendingWebAiProposalPublish != null,
                 batchActionsBusy = pendingBatchMode != null || confirmBatch != null || aiSession?.isActive == true,
@@ -2409,7 +2401,7 @@ fun PowerCalApp(
                 onOpenDeck = { scope.launch { openDeckAt(null) } },
                 onPickImage = { ocrPicker.launch("image/*") },
                 onPickFile = { openAiDocument.launch(arrayOf("*/*")) },
-                onPrepareBatch = { beginBatchConversation(it) },
+                onPrepareBatch = { beginBatchConversation(it.toRunnerMode()) },
                 onRewind = { lastIndex ->
                     replaceChatHistory(chatHistory.take((lastIndex + 1).coerceAtLeast(0)))
                     pendingBatchMode = null

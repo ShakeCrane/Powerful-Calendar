@@ -8,6 +8,60 @@ enum class AiProposalGenerationStatusV1 {
     MODEL_UNAVAILABLE
 }
 
+enum class AiConversationRoleV1 { USER, ASSISTANT }
+
+/** Detached transcript evidence; proposal markers are display metadata, never authorization. */
+data class AiConversationMessageV1(
+    val role: AiConversationRoleV1,
+    val content: String,
+    val proposalSource: String? = null,
+    val messageId: String,
+    val createdAtMillis: Long? = null,
+    val zoneId: String? = null
+)
+
+enum class AiChatProposalIntentV1 { EXPLICIT, SUGGESTED }
+
+data class AiChatRequestV1(
+    val requestId: String,
+    val history: List<AiConversationMessageV1>,
+    val zoneId: String,
+    /** Host opt-in; the Android provider adapter rechecks the persisted sharing preference. */
+    val shareCalendarContext: Boolean = false
+)
+
+enum class AiChatStatusV1 {
+    COMPLETED,
+    INVALID_REQUEST,
+    MODEL_UNAVAILABLE,
+    LOCKED,
+    DUPLICATE_REQUEST_ID
+}
+
+/** Provider result. Task and intent are untrusted model-derived evidence, not write authority. */
+data class AiChatModelOutputV1(
+    val reply: String = "",
+    val error: String? = null,
+    val proposalSource: String? = null,
+    val automaticProposalTask: AiConversationTaskV1? = null,
+    val proposalIntent: AiChatProposalIntentV1? = null
+)
+
+data class AiChatReceiptV1(
+    val requestId: String,
+    val status: AiChatStatusV1,
+    val reply: String = "",
+    val proposalSource: String? = null,
+    val proposalIntent: AiChatProposalIntentV1? = null,
+    val automaticProposalTask: AiConversationTaskV1? = null,
+    val automaticProposal: AiProposalGenerationReceiptV1? = null,
+    val clarification: String? = null,
+    val errorCode: String? = null,
+    val message: String? = null,
+    /** True only when this process returns a previously completed receipt for the same request. */
+    val replayed: Boolean = false
+)
+
 data class AiTaskEvidenceV1(
     val messageId: String,
     val text: String,
@@ -189,6 +243,11 @@ data class AiBatchExecutionReceiptV1(
 
 /** Host adapter for provider calls; implementations own configuration and credentials. */
 interface AiModelPortV1 {
+    suspend fun chat(
+        request: AiChatRequestV1,
+        calendarContext: List<EventRecordV1>
+    ): AiChatModelOutputV1
+
     suspend fun generateProposal(
         request: AiProposalGenerationRequestV1,
         calendarContext: List<EventRecordV1>
@@ -203,6 +262,9 @@ interface AiModelPortV1 {
 /** Versioned AI domain commands, state, and model-selection boundary. */
 interface AiFeatureApiV1 {
     val apiVersion: Int
+
+    /** Runs one bounded ordinary conversation turn and returns review-only proposal output. */
+    suspend fun chat(request: AiChatRequestV1): AiChatReceiptV1
 
     /** Generates reviewable proposals only; it never stages or publishes a write. */
     suspend fun generateProposal(request: AiProposalGenerationRequestV1): AiProposalGenerationReceiptV1

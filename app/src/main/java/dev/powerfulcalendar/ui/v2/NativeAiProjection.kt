@@ -1,16 +1,17 @@
 package dev.powerfulcalendar.ui.v2
 
 import dev.powerfulcalendar.ai.AiBatchRunner
-import dev.powerfulcalendar.ai.AiChatMessage
 import dev.powerfulcalendar.ai.AiInterpretation
 import dev.powerfulcalendar.core.DraftCard
 import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.TemporalRecord
+import dev.powerfulcalendar.core.api.v1.AiConversationMessageV1
+import dev.powerfulcalendar.core.api.v1.AiConversationRoleV1
 
-internal fun projectNativeAiMessages(messages: List<AiChatMessage>): List<NativeAiMessage> =
+internal fun projectNativeAiMessages(messages: List<AiConversationMessageV1>): List<NativeAiMessage> =
     messages.map { message ->
         NativeAiMessage(
-            mine = message.role == "user",
+            mine = message.role == AiConversationRoleV1.USER,
             content = message.content,
             proposalSource = message.proposalSource
         )
