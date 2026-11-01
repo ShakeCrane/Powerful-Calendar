@@ -43,10 +43,12 @@ class PowerCalCoreFeatureApiV1(
     reminderContext: Context? = null
 ) : CoreFeatureApiV1 {
     override val apiVersion: Int = 1
+    private val calendarService = SnapshotCalendarFeatureApiV1()
     private val eventService = StoreEventFeatureApiV1(store, clock)
     private val draftReviewService = StoreDraftReviewFeatureApiV1(store, deckController, eventService)
     private val aiProposalService = StoreAiProposalFeatureApiV1(store, eventService, clock)
     private val reminderService = AndroidReminderFeatureApiV1(store, reminderContext)
+    override val calendar: CalendarFeatureApiV1 get() = calendarService
     override val events: EventFeatureApiV1 get() = eventService
     override val draftReview: DraftReviewFeatureApiV1 get() = draftReviewService
     override val aiProposals: AiProposalFeatureApiV1 get() = aiProposalService

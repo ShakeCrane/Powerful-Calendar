@@ -91,14 +91,21 @@ class NativeMonthProjectionTest {
         val expectedOriginalKey = RecurrenceEngine.keyFor(
             LocalDateTime.of(2026, 10, 21, 9, 0)
         )
-        val session = NativeMonthProjectionSession(listOf(owner), zone)
-        val rows = session.rowsFor(YearMonth.of(2026, 10))
+        val requestedMonths = mutableListOf<YearMonth>()
+        val session = NativeMonthProjectionSession({ month ->
+            requestedMonths += month
+            if (month == YearMonth.of(2026, 10)) listOf(owner) else emptyList()
+        }, zone)
+        val october = YearMonth.of(2026, 10)
+        val november = YearMonth.of(2026, 11)
+        val rows = session.rowsFor(october)
         val secondOccurrence = rows.single { it.visibleDateKeys == listOf("2026-10-21") }
         val target = session.openTarget(secondOccurrence.rowKey)
 
         assertEquals(owner, target?.owner)
         assertEquals(expectedOriginalKey, target?.occurrenceKey)
-        assertTrue(session.rowsFor(YearMonth.of(2026, 11)).isEmpty())
+        assertTrue(session.rowsFor(november).isEmpty())
+        assertEquals(listOf(october, november), requestedMonths)
         assertNull(session.openTarget(secondOccurrence.rowKey))
     }
 

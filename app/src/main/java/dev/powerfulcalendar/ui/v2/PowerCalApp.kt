@@ -92,6 +92,7 @@ import dev.powerfulcalendar.core.api.v1.EventMutationStatusV1
 import dev.powerfulcalendar.core.api.v1.EventSelectionV1
 import dev.powerfulcalendar.core.api.v1.AiProposalApplyRequestV1
 import dev.powerfulcalendar.core.api.v1.AiProposalDecisionV1
+import dev.powerfulcalendar.core.api.v1.CalendarWindowQueryV1
 import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.ReminderEventSnapshotV1
 import dev.powerfulcalendar.core.api.v1.ReminderReconcileModeV1
@@ -212,6 +213,7 @@ fun PowerCalApp(
     val coreFeatureApi = remember(store, appContext) {
         PowerCalCoreFeatureApiV1(store, reminderContext = appContext)
     }
+    val calendarFeatureApi = coreFeatureApi.calendar
     val eventFeatureApi = coreFeatureApi.events
     val draftReviewApi = coreFeatureApi.draftReview
     val reminderFeatureApi = coreFeatureApi.reminders
@@ -234,6 +236,7 @@ fun PowerCalApp(
     var eventSnapshot by remember {
         mutableStateOf(EventQuerySnapshotV1(featureRevision = 0L, events = emptyList()))
     }
+    var eventSnapshotGeneration by remember { mutableLongStateOf(0L) }
     var eventFeatureRevision by remember { mutableLongStateOf(0L) }
     val latestEventFeatureRevision by rememberUpdatedState(eventFeatureRevision)
     var hostDataReady by remember(store) { mutableStateOf(false) }
@@ -351,7 +354,56 @@ fun PowerCalApp(
         setMonthViewState(WebSkinMonthProjection.initial(anchorMillis, zone))
         page = Page.MONTH.name
     }
+    fun timelineCalendarQueryFor(anchor: Long): CalendarWindowQueryV1 {
+        val day = Instant.ofEpochMilli(anchor).atZone(zone).toLocalDate()
+        return CalendarWindowQueryV1(
+            fromMillis = day.minusDays(8).atStartOfDay(zone).toInstant().toEpochMilli(),
+            toMillis = day.plusDays(9).atStartOfDay(zone).toInstant().toEpochMilli(),
+            zoneId = zone.id
+        )
+    }
+    fun monthCalendarQueryFor(month: YearMonth): CalendarWindowQueryV1 {
+        val monthFirst = month.atDay(1)
+        val gridFirst = monthFirst.minusDays((monthFirst.dayOfWeek.value - 1).toLong())
+        val gridEnd = gridFirst.plusDays(42)
+        return CalendarWindowQueryV1(
+            fromMillis = gridFirst.atStartOfDay(zone).toInstant().toEpochMilli(),
+            toMillis = gridEnd.atStartOfDay(zone).toInstant().toEpochMilli(),
+            zoneId = zone.id
+        )
+    }
     val camera = TimelineCoordinate.Camera(anchorMillis, TimelineCoordinate.clampHours(hours))
+    val timelineQueryDay = Instant.ofEpochMilli(camera.anchorMillis).atZone(zone).toLocalDate()
+    val timelineCalendarQuery = remember(timelineQueryDay, zone.id) {
+        timelineCalendarQueryFor(camera.anchorMillis)
+    }
+    val timelineCalendarRecords = remember(eventSnapshotGeneration, timelineCalendarQuery) {
+        calendarFeatureApi.queryWindow(timelineCalendarQuery, eventSnapshot)
+            .events.map { it.toCoreTemporalRecord() }
+    }
+    val monthQueryView = monthViewState() ?: WebSkinMonthProjection.initial(anchorMillis, zone)
+    val monthCalendarQuery = remember(monthQueryView.month, zone.id) {
+        monthCalendarQueryFor(monthQueryView.month)
+    }
+    val monthCalendarRecords = remember(eventSnapshotGeneration, monthCalendarQuery) {
+        calendarFeatureApi.queryWindow(monthCalendarQuery, eventSnapshot)
+            .events.map { it.toCoreTemporalRecord() }
+    }
+    val nativeMonth = YearMonth.from(Instant.ofEpochMilli(anchorMillis).atZone(zone))
+    val nativeMonthCalendarQuery = remember(nativeMonth, zone.id) {
+        monthCalendarQueryFor(nativeMonth)
+    }
+    val nativeMonthCalendarRecords = remember(eventSnapshotGeneration, nativeMonthCalendarQuery) {
+        calendarFeatureApi.queryWindow(nativeMonthCalendarQuery, eventSnapshot)
+            .events.map { it.toCoreTemporalRecord() }
+    }
+    val nativeMonthRecordsForMonth = remember(eventSnapshotGeneration, zone.id) {
+        { requestedMonth: YearMonth ->
+            val query = monthCalendarQueryFor(requestedMonth)
+            calendarFeatureApi.queryWindow(query, eventSnapshot)
+                .events.map { it.toCoreTemporalRecord() }
+        }
+    }
     val todayKey = Instant.ofEpochMilli(nowMillis).atZone(zone).toLocalDate()
     val todoCount = todoEntries.count { !it.completed }
     var memoVisibleLimit by rememberSaveable { mutableIntStateOf(MemoProjectionPaging.PAGE_SIZE) }
@@ -390,6 +442,7 @@ fun PowerCalApp(
         withContext(Dispatchers.Main) {
             records = data.records
             eventSnapshot = data.eventSnapshot
+            eventSnapshotGeneration += 1L
             eventFeatureRevision = data.eventFeatureRevision
             todoEntries = data.todoEntries
             hostDataReady = true
@@ -1904,6 +1957,26 @@ fun PowerCalApp(
             }
         }
         WebSkinBridgeRuntime.state = {
+            val stateCamera = TimelineCoordinate.Camera(
+                anchorMillis,
+                TimelineCoordinate.clampHours(hours)
+            )
+            val stateTimelineQuery = timelineCalendarQueryFor(stateCamera.anchorMillis)
+            val stateTimelineRecords = if (stateTimelineQuery == timelineCalendarQuery) {
+                timelineCalendarRecords
+            } else {
+                calendarFeatureApi.queryWindow(stateTimelineQuery, eventSnapshot)
+                    .events.map { it.toCoreTemporalRecord() }
+            }
+            val stateMonthView = monthViewState() ?:
+                WebSkinMonthProjection.initial(anchorMillis, zone)
+            val stateMonthQuery = monthCalendarQueryFor(stateMonthView.month)
+            val stateMonthRecords = if (stateMonthQuery == monthCalendarQuery) {
+                monthCalendarRecords
+            } else {
+                calendarFeatureApi.queryWindow(stateMonthQuery, eventSnapshot)
+                    .events.map { it.toCoreTemporalRecord() }
+            }
             val reminderPermissions = reminderFeatureApi.queryPermissions()
             val notificationStatus = notificationPermissionStatus(
                 android.os.Build.VERSION.SDK_INT,
@@ -1992,15 +2065,13 @@ fun PowerCalApp(
                         .put("saveRevision", webProfileSaveRevision)
                 } else JSONObject.NULL)
                 .put("timeline", WebSkinTimelineProjection.build(
-                    records,
-                    // The host republishes synchronously from the action callback, before this
-                    // composition's local camera value is rebuilt. Read live camera state here.
-                    TimelineCoordinate.Camera(anchorMillis, TimelineCoordinate.clampHours(hours)),
+                    stateTimelineRecords,
+                    stateCamera,
                     nowMillis, zone))
                 .put("month", if (page == Page.MONTH.name)
                     WebSkinMonthProjection.build(
-                        records,
-                        monthViewState() ?: WebSkinMonthProjection.initial(anchorMillis, zone),
+                        stateMonthRecords,
+                        stateMonthView,
                         zone
                     )
                     else JSONObject())
@@ -2291,7 +2362,8 @@ fun PowerCalApp(
                 }
             )
         } else if (presentedPage == Page.MONTH.name) {
-            MonthScreen(records, Instant.ofEpochMilli(anchorMillis).atZone(zone).toLocalDate(), zone, aiLocked,
+            MonthScreen(nativeMonthCalendarRecords,
+                Instant.ofEpochMilli(anchorMillis).atZone(zone).toLocalDate(), zone, aiLocked,
                 onBack = { page = Page.TIMELINE.name },
                 onDate = { date -> anchorMillis = date.atTime(12, 0).atZone(zone).toInstant().toEpochMilli(); page = Page.TIMELINE.name },
                 onOpen = { record, occurrenceKey ->
@@ -2301,10 +2373,11 @@ fun PowerCalApp(
                 },
                 onCreate = { date ->
                     openNewEvent(TemporalKind.ACTIVITY, EditorSelection.OnDate(date))
-                })
+                },
+                recordsForMonth = nativeMonthRecordsForMonth)
         } else {
             SkinnableTimelineScreen(
-                records = records,
+                records = timelineCalendarRecords,
                 camera = camera,
                 nowMillis = nowMillis,
                 zone = zone,

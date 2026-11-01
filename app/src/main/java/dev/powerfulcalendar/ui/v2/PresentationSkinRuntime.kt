@@ -100,6 +100,7 @@ internal object PresentationSkinRegistry {
 
 internal class MonthVisualContext internal constructor(
     val records: List<TemporalRecord>,
+    val recordsForMonth: (java.time.YearMonth) -> List<TemporalRecord>,
     val initialDate: LocalDate,
     val zone: ZoneId,
     val aiLocked: Boolean,
@@ -109,8 +110,8 @@ internal class MonthVisualContext internal constructor(
     val onCreate: (LocalDate) -> Unit
 ) {
     @Composable fun Native() {
-        val projection = remember(records, zone) {
-            NativeMonthProjectionSession(records, zone)
+        val projection = remember(recordsForMonth, zone) {
+            NativeMonthProjectionSession(recordsForMonth, zone)
         }
         val rowsForMonth = remember(projection) { projection::rowsFor }
         val appearance = NativeMonthAppearance(
@@ -168,9 +169,12 @@ internal fun MonthScreen(
     records: List<TemporalRecord>, initialDate: LocalDate, zone: ZoneId, aiLocked: Boolean,
     onBack: () -> Unit, onDate: (LocalDate) -> Unit,
     onOpen: (TemporalRecord, String?) -> Unit,
-    onCreate: (LocalDate) -> Unit
+    onCreate: (LocalDate) -> Unit,
+    recordsForMonth: (java.time.YearMonth) -> List<TemporalRecord> = { records }
 ) {
-    val context = MonthVisualContext(records, initialDate, zone, aiLocked, onBack, onDate, onOpen, onCreate)
+    val context = MonthVisualContext(
+        records, recordsForMonth, initialDate, zone, aiLocked, onBack, onDate, onOpen, onCreate
+    )
     val renderer = PresentationSkinRegistry.month
     if (RuntimeSkinSurfaces.enabled("month")) RuntimeSkinSurfaces.month(context)
     else if (renderer == null) context.Native() else renderer.Render(context)

@@ -69,13 +69,13 @@ internal fun projectNativeMonth(
 
 /** Keeps only the currently projected month's action map for opaque Native row keys. */
 internal class NativeMonthProjectionSession(
-    private val records: List<TemporalRecord>,
+    private val recordsForMonth: (YearMonth) -> List<TemporalRecord>,
     private val zone: ZoneId
 ) {
     private var openTargets: Map<String, NativeMonthOpenTarget> = emptyMap()
 
     fun rowsFor(month: YearMonth): List<NativeMonthRow> {
-        val projection = projectNativeMonth(records, month, zone)
+        val projection = projectNativeMonth(recordsForMonth(month), month, zone)
         openTargets = projection.openTargets
         return projection.rows
     }
