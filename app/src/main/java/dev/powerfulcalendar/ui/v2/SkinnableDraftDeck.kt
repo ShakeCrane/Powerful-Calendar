@@ -19,14 +19,15 @@ import androidx.compose.material3.TextButton
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import dev.powerfulcalendar.core.DeckController
-import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.TemporalConversion
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.api.v1.AiBatchSessionV1
+import dev.powerfulcalendar.core.api.v1.DraftReviewSnapshotV1
 import dev.powerfulcalendar.core.api.v1.DraftReviewFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.DraftReviewReceiptV1
 import dev.powerfulcalendar.core.api.v1.DraftReviewCardV1
 import dev.powerfulcalendar.core.api.v1.DraftReviewConflictV1
+import dev.powerfulcalendar.core.api.v1.EventKindV1
 import dev.powerfulcalendar.core.api.v1.EventSearchHitV1
 import dev.powerfulcalendar.core.api.v1.DraftReviewRestoreV1
 import dev.powerfulcalendar.core.api.v1.EventFormV1
@@ -70,13 +71,14 @@ private data class PendingDeckRestoreApproval(
 )
 
 /**
- * Renderer sees immutable controller state, but NOT the controller or persistence object.
+ * Renderer sees the versioned Draft/Review API snapshot, but NOT Core state or persistence.
  * Terminal actions go through the same durable controller state machine as the native deck.
  * Every callback is host-mediated; no renderer can call PowerStore.commit.
  */
 class DeckVisualContext internal constructor(
-    val state: DeckController.DeckState,
+    val state: DraftReviewSnapshotV1,
     val busy: Boolean,
+    val canCommit: Boolean,
     val aiSession: AiBatchSessionV1?,
     val onDismiss: () -> Unit,
     val onOpenFormalEvent: (EventSearchHitV1) -> Unit,
@@ -84,8 +86,8 @@ class DeckVisualContext internal constructor(
     val formalSearch: (String) -> List<EventSearchHitV1>,
     val onSelect: (Long) -> Unit,
     val onBrowse: (Int) -> Unit,
-    val onEdit: (DraftForm) -> Unit,
-    val onConvert: (TemporalKind) -> Unit,
+    val onEdit: (EventFormV1) -> Unit,
+    val onConvert: (EventKindV1) -> Unit,
     val onCommit: () -> Unit,
     val onDiscard: () -> Unit,
     val onUndoDiscard: () -> Unit,
@@ -169,8 +171,9 @@ fun DraftDeckDialog(
         }
     val locked = state.aiLocked || executing || state.busy
     val context = DeckVisualContext(
-        state = state,
+        state = draftReviewApi.snapshot.copy(error = state.error),
         busy = locked,
+        canCommit = state.form?.isPublishable() == true,
         aiSession = aiSession,
         onDismiss = { leave() },
         onOpenFormalEvent = { hit -> leave { onOpenFormalEvent(hit) } },
@@ -185,7 +188,7 @@ fun DraftDeckDialog(
         onEdit = { form -> if (!locked) draftReviewApi.snapshot.current?.let { card ->
             val receipt = draftReviewApi.editCurrentDraft(
                 card.draftId, card.draftVersion, draftReviewApi.snapshot.stateRevision,
-                form.toEventFormV1()
+                form
             )
             if (!receipt.succeeded) state = controller.state.copy(error = receipt.message ?: receipt.errorCode)
         } },
@@ -194,7 +197,7 @@ fun DraftDeckDialog(
                 val current = draftReviewApi.snapshot.current ?: return@let
                 val receipt = draftReviewApi.editCurrentDraft(
                     current.draftId, current.draftVersion, draftReviewApi.snapshot.stateRevision,
-                    TemporalConversion.convert(form, kind).form.toEventFormV1()
+                    TemporalConversion.convert(form, kind.toCoreTemporalKind()).form.toEventFormV1()
                 )
                 if (!receipt.succeeded) state = controller.state.copy(
                     error = receipt.message ?: receipt.errorCode
@@ -395,4 +398,11 @@ private fun EventFormV1.hostReviewLines(): List<String> {
         "启用：$enabled · 完成跟踪：$trackingEnabled",
         "已完成实例：${completedKeys.sorted().joinToString().ifBlank { "—" }}"
     )
+}
+
+private fun EventKindV1.toCoreTemporalKind(): TemporalKind = when (this) {
+    EventKindV1.ALARM -> TemporalKind.ALARM
+    EventKindV1.ACTIVITY -> TemporalKind.ACTIVITY
+    EventKindV1.DEADLINE -> TemporalKind.DEADLINE
+    EventKindV1.MEMO -> TemporalKind.MEMO
 }

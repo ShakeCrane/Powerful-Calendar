@@ -251,7 +251,7 @@ internal object RuntimeSkinSurfaces {
                                 OutlinedButton(onClick = { expanded = true }) { Text("完整原生编辑器") }
                                 Row {
                                     Button(onClick = context.onCommit,
-                                        enabled = !context.busy && !context.state.isEmpty) { Text("提交") }
+                                        enabled = !context.busy && context.state.cards.isNotEmpty()) { Text("提交") }
                                     OutlinedButton(onClick = context.onDismiss) { Text("关闭") }
                                 }
                             }

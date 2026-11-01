@@ -11,7 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import dev.powerfulcalendar.core.TemporalKind
+import dev.powerfulcalendar.core.api.v1.EventKindV1
 
 /**
  * Functional alternate Draft Deck. The renderer NEVER receives DeckController.
@@ -58,27 +58,27 @@ internal class StudioExampleDeck : DeckVisualRenderer {
                                 OutlinedButton(onClick = { context.onBrowse(1) },
                                     enabled = !context.busy && context.state.canGoNext) { Text("下一张") }
                             }
-                            Text("类型：" + form.kind.label)
+                            Text("类型：" + form.kind.deckLabel())
                             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                TemporalKind.entries.forEach { kind ->
+                                EventKindV1.entries.forEach { kind ->
                                     TextButton(onClick = { context.onConvert(kind) },
-                                        enabled = !context.busy) { Text(kind.label) }
+                                        enabled = !context.busy) { Text(kind.deckLabel()) }
                                 }
                             }
                             OutlinedTextField(value = form.title,
                                 onValueChange = { context.onEdit(form.copy(title = it)) },
                                 label = { Text("标题") }, modifier = Modifier.fillMaxWidth(),
                                 enabled = !context.busy)
-                            if (form.kind == TemporalKind.ALARM || form.kind == TemporalKind.ACTIVITY) {
+                            if (form.kind == EventKindV1.ALARM || form.kind == EventKindV1.ACTIVITY) {
                                 OutlinedTextField(value = form.startText,
                                     onValueChange = { context.onEdit(form.copy(startText = it)) },
                                     label = { Text("开始时间 yyyy-MM-dd HH:mm") },
                                     modifier = Modifier.fillMaxWidth(), enabled = !context.busy)
                             }
-                            if (form.kind == TemporalKind.ACTIVITY || form.kind == TemporalKind.DEADLINE) {
+                            if (form.kind == EventKindV1.ACTIVITY || form.kind == EventKindV1.DEADLINE) {
                                 OutlinedTextField(value = form.endText,
                                     onValueChange = { context.onEdit(form.copy(endText = it)) },
-                                    label = { Text(if (form.kind == TemporalKind.DEADLINE) "截止" else "结束") },
+                                    label = { Text(if (form.kind == EventKindV1.DEADLINE) "截止" else "结束") },
                                     modifier = Modifier.fillMaxWidth(), enabled = !context.busy)
                             }
                             OutlinedTextField(value = form.notes,
@@ -89,7 +89,7 @@ internal class StudioExampleDeck : DeckVisualRenderer {
                                 style = MaterialTheme.typography.bodySmall)
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Button(onClick = context.onCommit,
-                                    enabled = !context.busy && form.isPublishable()) { Text("正式发布") }
+                                    enabled = !context.busy && context.canCommit) { Text("正式发布") }
                                 OutlinedButton(onClick = context.onDiscard,
                                     enabled = !context.busy) { Text("丢弃草稿") }
                             }
@@ -122,4 +122,11 @@ internal class StudioExampleDeck : DeckVisualRenderer {
             }
         }
     }
+}
+
+private fun EventKindV1.deckLabel(): String = when (this) {
+    EventKindV1.ALARM -> "闹钟"
+    EventKindV1.ACTIVITY -> "活动"
+    EventKindV1.DEADLINE -> "截止"
+    EventKindV1.MEMO -> "备忘"
 }

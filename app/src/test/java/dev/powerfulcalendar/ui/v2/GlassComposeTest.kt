@@ -4,6 +4,7 @@ package dev.powerfulcalendar.ui.v2
 import android.content.Context
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -17,6 +18,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.test.core.app.ApplicationProvider
 import dev.powerfulcalendar.core.*
 import dev.powerfulcalendar.core.api.v1.AiBatchSessionV1
+import dev.powerfulcalendar.core.api.v1.DraftReviewSnapshotV1
+import dev.powerfulcalendar.core.api.v1.EventFormV1
 import dev.powerfulcalendar.core.api.v1.EventSearchHitV1
 import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
 import dev.powerfulcalendar.ui.v2.nativeui.NativeGlassPanel
@@ -170,6 +173,44 @@ class GlassComposeTest {
             ui.waitUntil(10_000) { store.get(card.eventSeq) != null }
             assertEquals("Host reviewed publication", store.get(card.eventSeq)?.title)
             assertEquals(1L, store.commitCount())
+        } finally {
+            DeckPresentationSkinRegistry.reset()
+        }
+    }
+
+    @Test fun runtimeDeckRendererReceivesVersionedReviewDtosAndEditsThroughApi() {
+        val card = store.newDraft(DraftForm.fresh(
+            TemporalKind.ACTIVITY, LocalDate.of(2026, 10, 20), zone
+        ).copy(title = "Before API DTO edit", startText = "2026-10-20 09:00",
+            endText = "2026-10-20 10:00"))
+        val controller = newController(StoreDeckPersistence(store)).also { it.openNow(card.draftId) }
+        val core = PowerCalCoreFeatureApiV1(store, deckController = controller)
+        var observedSnapshotType: Class<*>? = null
+        var observedFormType: Class<*>? = null
+        DeckPresentationSkinRegistry.use(object : DeckVisualRenderer {
+            override val id = "runtime-draft-review-dto-test"
+            @Composable override fun Render(context: DeckVisualContext) {
+                TextButton(onClick = {
+                    val form = context.state.form
+                    if (form != null) {
+                        observedSnapshotType = context.state.javaClass
+                        observedFormType = form.javaClass
+                        context.onEdit(form.copy(title = "Edited through API DTO"))
+                    }
+                }) { androidx.compose.material3.Text("Edit through API DTO") }
+            }
+        })
+        try {
+            ui.setContent { PowerCalTheme {
+                DraftDeckDialog(controller, core.draftReview, null, {}, {}, {}, {}, { emptyList() })
+            } }
+            ui.onNodeWithText("Edit through API DTO").performClick()
+            ui.waitUntil(5_000) { controller.state.form?.title == "Edited through API DTO" }
+            ui.runOnIdle {
+                assertEquals(DraftReviewSnapshotV1::class.java, observedSnapshotType)
+                assertEquals(EventFormV1::class.java, observedFormType)
+                assertEquals(card.draftId, controller.state.currentId)
+            }
         } finally {
             DeckPresentationSkinRegistry.reset()
         }
