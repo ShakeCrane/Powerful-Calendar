@@ -141,6 +141,76 @@ data class AiProposalGenerationRequestV1(
     val contextPolicy: AiCalendarContextPolicyV1 = AiCalendarContextPolicyV1.FIRST_60_FORMAL_EVENTS
 )
 
+enum class AiTextEvidenceSourceV1 { REVIEWED_FILE_TEXT, REVIEWED_OCR_TEXT, ICS_UNRESOLVED }
+
+enum class AiEvidenceAnalysisStatusV1 {
+    COMPLETED,
+    INVALID_REQUEST,
+    MODEL_UNAVAILABLE,
+    STALE_CONVERSATION,
+    DUPLICATE_REQUEST_ID
+}
+
+/** Reviewed text already extracted by the trusted Host; the content remains untrusted evidence. */
+data class AiReviewedTextEvidenceRequestV1(
+    val requestId: String,
+    val source: AiTextEvidenceSourceV1,
+    val filename: String,
+    val text: String,
+    val truncated: Boolean,
+    val preflightHint: String = "",
+    val expectedConversationRevision: Long,
+    val zoneId: String
+)
+
+/** Original image bytes are supplied only after explicit Host consent; URIs never cross this API. */
+data class AiConsentedImageEvidenceRequestV1(
+    val requestId: String,
+    val filename: String,
+    val mimeType: String,
+    val imageBytes: ByteArray,
+    val expectedConversationRevision: Long,
+    val zoneId: String
+)
+
+data class AiTextEvidenceModelRequestV1(
+    val requestId: String,
+    val source: AiTextEvidenceSourceV1,
+    val filename: String,
+    val text: String,
+    val truncated: Boolean,
+    val preflightHint: String,
+    val history: List<AiConversationMessageV1>,
+    val zoneId: String
+)
+
+data class AiImageEvidenceModelRequestV1(
+    val requestId: String,
+    val filename: String,
+    val mimeType: String,
+    val imageBytes: ByteArray,
+    val history: List<AiConversationMessageV1>,
+    val zoneId: String
+)
+
+/** Provider output remains untrusted; proposalSource is only eligible for a separate proposal API call. */
+data class AiEvidenceModelOutputV1(
+    val reply: String = "",
+    val proposalSource: String? = null,
+    val error: String? = null
+)
+
+data class AiEvidenceAnalysisReceiptV1(
+    val requestId: String,
+    val status: AiEvidenceAnalysisStatusV1,
+    val reply: String = "",
+    val proposalSource: String? = null,
+    val errorCode: String? = null,
+    val message: String? = null,
+    /** True when this process replays a completed result for the same request and fingerprint. */
+    val replayed: Boolean = false
+)
+
 data class AiProposalGenerationReceiptV1(
     val requestId: String,
     val status: AiProposalGenerationStatusV1,
@@ -295,6 +365,14 @@ interface AiModelPortV1 {
         calendarContext: List<EventRecordV1>
     ): AiProposalModelOutputV1
 
+    suspend fun analyzeReviewedTextEvidence(
+        request: AiTextEvidenceModelRequestV1
+    ): AiEvidenceModelOutputV1
+
+    suspend fun analyzeConsentedImageEvidence(
+        request: AiImageEvidenceModelRequestV1
+    ): AiEvidenceModelOutputV1
+
     suspend fun selectBatchDrafts(
         userRequest: String,
         candidates: List<AiBatchCandidateV1>
@@ -323,6 +401,16 @@ interface AiFeatureApiV1 {
 
     /** Generates reviewable proposals only; it never stages or publishes a write. */
     suspend fun generateProposal(request: AiProposalGenerationRequestV1): AiProposalGenerationReceiptV1
+
+    /** Interprets Host-reviewed text without selecting, staging, or publishing formal events. */
+    suspend fun analyzeReviewedTextEvidence(
+        request: AiReviewedTextEvidenceRequestV1
+    ): AiEvidenceAnalysisReceiptV1
+
+    /** Analyzes image bytes only after Host consent; callers retain URI access and local OCR. */
+    suspend fun analyzeConsentedImageEvidence(
+        request: AiConsentedImageEvidenceRequestV1
+    ): AiEvidenceAnalysisReceiptV1
 
     /** Read-only model selection. A successful result still requires exact Host review. */
     suspend fun selectBatchDrafts(request: AiBatchSelectionRequestV1): AiBatchSelectionReceiptV1

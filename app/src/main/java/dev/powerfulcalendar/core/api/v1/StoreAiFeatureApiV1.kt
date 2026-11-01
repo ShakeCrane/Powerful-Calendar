@@ -25,8 +25,10 @@ internal class StoreAiFeatureApiV1(
     override val apiVersion: Int = 1
 
     private val chatMutex = Mutex()
+    private val evidenceMutex = Mutex()
     private val conversationPersistMutex = Mutex()
     private val chatReceipts = LinkedHashMap<String, CachedChatReceipt>()
+    private val evidenceReceipts = LinkedHashMap<String, CachedEvidenceReceipt>()
     private var conversationRevision = 0L
     private var conversationMessages = runCatching {
         conversationHistoryPort?.load().orEmpty().takeLast(MAX_STORED_CHAT_MESSAGES)
@@ -322,6 +324,65 @@ internal class StoreAiFeatureApiV1(
         )
     }
 
+    override suspend fun analyzeReviewedTextEvidence(
+        request: AiReviewedTextEvidenceRequestV1
+    ): AiEvidenceAnalysisReceiptV1 {
+        validateTextEvidenceRequest(request)?.let { (code, message) ->
+            return AiEvidenceAnalysisReceiptV1(
+                requestId = request.requestId.take(MAX_REQUEST_ID_CHARS),
+                status = AiEvidenceAnalysisStatusV1.INVALID_REQUEST,
+                errorCode = code,
+                message = message
+            )
+        }
+        return runEvidenceCommand(
+            requestId = request.requestId,
+            fingerprint = request.fingerprint(),
+            expectedConversationRevision = request.expectedConversationRevision,
+            unavailableMessage = "AI 证据分析暂不可用",
+            allowProposalSource = request.source != AiTextEvidenceSourceV1.ICS_UNRESOLVED
+        ) { port, history ->
+            port.analyzeReviewedTextEvidence(AiTextEvidenceModelRequestV1(
+                requestId = request.requestId,
+                source = request.source,
+                filename = request.filename,
+                text = request.text,
+                truncated = request.truncated,
+                preflightHint = request.preflightHint,
+                history = history,
+                zoneId = request.zoneId
+            ))
+        }
+    }
+
+    override suspend fun analyzeConsentedImageEvidence(
+        request: AiConsentedImageEvidenceRequestV1
+    ): AiEvidenceAnalysisReceiptV1 {
+        validateImageEvidenceRequest(request)?.let { (code, message) ->
+            return AiEvidenceAnalysisReceiptV1(
+                requestId = request.requestId.take(MAX_REQUEST_ID_CHARS),
+                status = AiEvidenceAnalysisStatusV1.INVALID_REQUEST,
+                errorCode = code,
+                message = message
+            )
+        }
+        return runEvidenceCommand(
+            requestId = request.requestId,
+            fingerprint = request.fingerprint(),
+            expectedConversationRevision = request.expectedConversationRevision,
+            unavailableMessage = "AI 图片分析暂不可用"
+        ) { port, history ->
+            port.analyzeConsentedImageEvidence(AiImageEvidenceModelRequestV1(
+                requestId = request.requestId,
+                filename = request.filename,
+                mimeType = request.mimeType,
+                imageBytes = request.imageBytes.copyOf(),
+                history = history,
+                zoneId = request.zoneId
+            ))
+        }
+    }
+
     override suspend fun selectBatchDrafts(
         request: AiBatchSelectionRequestV1
     ): AiBatchSelectionReceiptV1 {
@@ -515,6 +576,152 @@ internal class StoreAiFeatureApiV1(
         return approval
     }
 
+    private fun validateTextEvidenceRequest(
+        request: AiReviewedTextEvidenceRequestV1
+    ): Pair<String, String>? {
+        validateEvidenceEnvelope(
+            request.requestId,
+            request.filename,
+            request.expectedConversationRevision,
+            request.zoneId
+        )?.let { return it }
+        if (request.text.isBlank() || request.text.length > MAX_AI_EVIDENCE_TEXT_CHARS ||
+            '\u0000' in request.text || request.preflightHint.length > MAX_AI_EVIDENCE_HINT_CHARS
+        ) return "EVIDENCE_INVALID" to "已审阅文本为空或超出安全限制"
+        return null
+    }
+
+    private fun validateImageEvidenceRequest(
+        request: AiConsentedImageEvidenceRequestV1
+    ): Pair<String, String>? {
+        validateEvidenceEnvelope(
+            request.requestId,
+            request.filename,
+            request.expectedConversationRevision,
+            request.zoneId
+        )?.let { return it }
+        if (!IMAGE_MIME_TYPE.matches(request.mimeType) || request.imageBytes.isEmpty() ||
+            request.imageBytes.size > MAX_AI_IMAGE_BYTES
+        ) return "IMAGE_INVALID" to "图片类型或大小超出安全限制"
+        return null
+    }
+
+    private fun validateEvidenceEnvelope(
+        requestId: String,
+        filename: String,
+        expectedConversationRevision: Long,
+        zoneId: String
+    ): Pair<String, String>? {
+        if (requestId.isBlank() || requestId.length > MAX_REQUEST_ID_CHARS) {
+            return "REQUEST_ID_INVALID" to "AI 请求标识无效"
+        }
+        if (filename.isBlank() || filename.length > MAX_AI_EVIDENCE_FILENAME_CHARS) {
+            return "FILENAME_INVALID" to "证据来源名称无效"
+        }
+        if (expectedConversationRevision < 0L) {
+            return "CONVERSATION_REVISION_INVALID" to "聊天版本无效"
+        }
+        if (runCatching { ZoneId.of(zoneId) }.isFailure) {
+            return "ZONE_INVALID" to "AI 请求时区无效"
+        }
+        return null
+    }
+
+    private fun evidenceHistoryAt(expectedRevision: Long): List<AiConversationMessageV1>? =
+        synchronized(this) {
+            if (conversationRevision != expectedRevision) return@synchronized null
+            conversationMessages.takeLast(MAX_AI_EVIDENCE_HISTORY_MESSAGES)
+                .map { it.copy() }
+        }
+
+    private fun conversationRevisionIsCurrent(expectedRevision: Long): Boolean =
+        synchronized(this) { conversationRevision == expectedRevision }
+
+    private suspend fun runEvidenceCommand(
+        requestId: String,
+        fingerprint: String,
+        expectedConversationRevision: Long,
+        unavailableMessage: String,
+        allowProposalSource: Boolean = true,
+        invokeModel: suspend (
+            AiModelPortV1,
+            List<AiConversationMessageV1>
+        ) -> AiEvidenceModelOutputV1
+    ): AiEvidenceAnalysisReceiptV1 = evidenceMutex.withLock {
+        evidenceReceipts[requestId]?.let { cached ->
+            return@withLock if (cached.fingerprint == fingerprint) {
+                cached.receipt.copy(replayed = true)
+            } else AiEvidenceAnalysisReceiptV1(
+                requestId = requestId,
+                status = AiEvidenceAnalysisStatusV1.DUPLICATE_REQUEST_ID,
+                errorCode = "DUPLICATE_REQUEST_ID",
+                message = "AI 请求标识已用于不同证据"
+            )
+        }
+        val history = evidenceHistoryAt(expectedConversationRevision)
+            ?: return@withLock staleEvidence(requestId)
+        val port = modelPort ?: return@withLock unavailableEvidence(
+            requestId, "MODEL_UNAVAILABLE", unavailableMessage
+        )
+        val output = try {
+            invokeModel(port, history)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            return@withLock unavailableEvidence(requestId, "MODEL_UNAVAILABLE",
+                error.message?.take(MAX_MODEL_ERROR_CHARS) ?: unavailableMessage)
+        }
+        if (!conversationRevisionIsCurrent(expectedConversationRevision)) {
+            return@withLock staleEvidence(requestId)
+        }
+        val receipt = evidenceReceipt(
+            requestId,
+            if (allowProposalSource) output else output.copy(proposalSource = null)
+        )
+        if (receipt.status == AiEvidenceAnalysisStatusV1.COMPLETED) {
+            evidenceReceipts[requestId] = CachedEvidenceReceipt(fingerprint, receipt)
+            while (evidenceReceipts.size > MAX_CHAT_RECEIPTS) {
+                evidenceReceipts.remove(evidenceReceipts.entries.first().key)
+            }
+        }
+        receipt
+    }
+
+    private fun evidenceReceipt(
+        requestId: String,
+        output: AiEvidenceModelOutputV1
+    ): AiEvidenceAnalysisReceiptV1 {
+        output.error?.let { return unavailableEvidence(requestId, "MODEL_UNAVAILABLE", it) }
+        if (output.reply.length > MAX_AI_EVIDENCE_REPLY_CHARS ||
+            output.proposalSource?.length?.let { it > MAX_CHAT_MESSAGE_CHARS } == true
+        ) return unavailableEvidence(requestId, "OUTPUT_LIMIT_EXCEEDED",
+            "AI 返回内容超过安全限制；没有创建草稿")
+        return AiEvidenceAnalysisReceiptV1(
+            requestId = requestId,
+            status = AiEvidenceAnalysisStatusV1.COMPLETED,
+            reply = output.reply,
+            proposalSource = output.proposalSource
+        )
+    }
+
+    private fun staleEvidence(requestId: String) = AiEvidenceAnalysisReceiptV1(
+        requestId = requestId.take(MAX_REQUEST_ID_CHARS),
+        status = AiEvidenceAnalysisStatusV1.STALE_CONVERSATION,
+        errorCode = "STALE_CONVERSATION",
+        message = "对话已变化，请重新提交证据分析"
+    )
+
+    private fun unavailableEvidence(
+        requestId: String,
+        errorCode: String,
+        message: String
+    ) = AiEvidenceAnalysisReceiptV1(
+        requestId = requestId.take(MAX_REQUEST_ID_CHARS),
+        status = AiEvidenceAnalysisStatusV1.MODEL_UNAVAILABLE,
+        errorCode = errorCode,
+        message = message.take(MAX_MODEL_ERROR_CHARS)
+    )
+
     private fun validateGenerationRequest(
         request: AiProposalGenerationRequestV1
     ): Pair<String, String>? {
@@ -645,6 +852,37 @@ internal class StoreAiFeatureApiV1(
             .joinToString("") { byte -> "%02x".format(byte) }
     }
 
+    private fun AiReviewedTextEvidenceRequestV1.fingerprint(): String {
+        val canonical = buildString {
+            appendPart(source.name)
+            appendPart(filename)
+            appendPart(text)
+            appendPart(truncated.toString())
+            appendPart(preflightHint)
+            appendPart(expectedConversationRevision.toString())
+            appendPart(zoneId)
+        }
+        return canonical.sha256()
+    }
+
+    private fun AiConsentedImageEvidenceRequestV1.fingerprint(): String {
+        val imageDigest = MessageDigest.getInstance("SHA-256")
+            .digest(imageBytes)
+            .joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
+        val canonical = buildString {
+            appendPart(filename)
+            appendPart(mimeType)
+            appendPart(imageDigest)
+            appendPart(expectedConversationRevision.toString())
+            appendPart(zoneId)
+        }
+        return canonical.sha256()
+    }
+
+    private fun String.sha256(): String = MessageDigest.getInstance("SHA-256")
+        .digest(toByteArray(Charsets.UTF_8))
+        .joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
+
     private fun StringBuilder.appendPart(value: String?) {
         if (value == null) append("-1:") else append(value.length).append(':').append(value)
     }
@@ -753,6 +991,11 @@ internal class StoreAiFeatureApiV1(
         val receipt: AiChatReceiptV1
     )
 
+    private data class CachedEvidenceReceipt(
+        val fingerprint: String,
+        val receipt: AiEvidenceAnalysisReceiptV1
+    )
+
     private companion object {
         const val MAX_REQUEST_ID_CHARS = 160
         const val MAX_BATCH_ITEMS = 100
@@ -765,6 +1008,13 @@ internal class StoreAiFeatureApiV1(
         const val MAX_CHAT_MESSAGE_CHARS = 6_000
         const val MAX_CHAT_MESSAGE_ID_CHARS = 100
         const val MAX_CHAT_RECEIPTS = 128
+        const val MAX_AI_EVIDENCE_FILENAME_CHARS = 180
+        const val MAX_AI_EVIDENCE_TEXT_CHARS = 24_000
+        const val MAX_AI_EVIDENCE_HINT_CHARS = 2_000
+        const val MAX_AI_EVIDENCE_HISTORY_MESSAGES = 8
+        const val MAX_AI_EVIDENCE_REPLY_CHARS = 12_000
+        const val MAX_AI_IMAGE_BYTES = 6_000_000
+        const val MAX_MODEL_ERROR_CHARS = 300
         const val MAX_TASK_EVIDENCE_COUNT = 40
         const val MAX_TASK_EVIDENCE_CHARS = 20_000
         const val MAX_TASK_SUGGESTIONS = 40
@@ -772,5 +1022,6 @@ internal class StoreAiFeatureApiV1(
         const val CALENDAR_CONTEXT_HORIZON_MILLIS = 14L * 24 * 60 * 60 * 1000
         const val MISSING_EXPLICIT_TASK_MESSAGE = "无法安全关联到一项完整的待处理日程请求。" +
             "为避免把“确认”误当成事件内容，请重新说明要创建或修改的事项、日期和时间。"
+        val IMAGE_MIME_TYPE = Regex("image/[A-Za-z0-9.+-]{1,64}")
     }
 }

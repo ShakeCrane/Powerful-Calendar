@@ -292,6 +292,193 @@ class AiFeatureApiV1Test {
         assertTrue(store.pendingDrafts().isEmpty())
     }
 
+    @Test fun reviewedTextEvidenceUsesCanonicalConversationAndRejectsStaleOrOversizedInput() = runBlocking {
+        val conversation = chatRequest("reviewed-evidence")
+        model.evidenceOutput = AiEvidenceModelOutputV1(
+            reply = "发现两项日期需要核对。",
+            proposalSource = "模型候选来源，仅供单独审核"
+        )
+
+        val evidenceRequest = AiReviewedTextEvidenceRequestV1(
+            requestId = "reviewed-evidence-analysis",
+            source = AiTextEvidenceSourceV1.REVIEWED_OCR_TEXT,
+            filename = "reviewed.png",
+            text = "周一 10 点课程",
+            truncated = true,
+            preflightHint = "OCR 文本已由用户确认",
+            expectedConversationRevision = conversation.expectedConversationRevision,
+            zoneId = zone.id
+        )
+        val receipt = core.ai.analyzeReviewedTextEvidence(evidenceRequest)
+
+        assertEquals(AiEvidenceAnalysisStatusV1.COMPLETED, receipt.status)
+        assertEquals("发现两项日期需要核对。", receipt.reply)
+        assertEquals("模型候选来源，仅供单独审核", receipt.proposalSource)
+        assertEquals(AiTextEvidenceSourceV1.REVIEWED_OCR_TEXT, model.lastTextEvidence?.source)
+        assertEquals("周一 10 点课程", model.lastTextEvidence?.text)
+        assertTrue(model.lastTextEvidence?.truncated == true)
+        assertEquals("OCR 文本已由用户确认", model.lastTextEvidence?.preflightHint)
+        assertEquals("user-reviewed-evidence", model.lastTextEvidence?.history?.last()?.messageId)
+        assertEquals(0, model.proposalCalls)
+        assertTrue(store.pendingDrafts().isEmpty())
+
+        val replay = core.ai.analyzeReviewedTextEvidence(evidenceRequest)
+        assertEquals(AiEvidenceAnalysisStatusV1.COMPLETED, replay.status)
+        assertTrue(replay.replayed)
+        val reusedId = core.ai.analyzeReviewedTextEvidence(evidenceRequest.copy(text = "改过的内容"))
+        assertEquals(AiEvidenceAnalysisStatusV1.DUPLICATE_REQUEST_ID, reusedId.status)
+
+        val stale = core.ai.analyzeReviewedTextEvidence(AiReviewedTextEvidenceRequestV1(
+            requestId = "stale-evidence",
+            source = AiTextEvidenceSourceV1.REVIEWED_FILE_TEXT,
+            filename = "schedule.txt",
+            text = "明天 10 点开会",
+            truncated = false,
+            expectedConversationRevision = conversation.expectedConversationRevision - 1,
+            zoneId = zone.id
+        ))
+        assertEquals(AiEvidenceAnalysisStatusV1.STALE_CONVERSATION, stale.status)
+
+        val oversized = core.ai.analyzeReviewedTextEvidence(AiReviewedTextEvidenceRequestV1(
+            requestId = "oversized-evidence",
+            source = AiTextEvidenceSourceV1.REVIEWED_FILE_TEXT,
+            filename = "schedule.txt",
+            text = "x".repeat(24_001),
+            truncated = false,
+            expectedConversationRevision = core.ai.queryConversation().revision,
+            zoneId = zone.id
+        ))
+        assertEquals(AiEvidenceAnalysisStatusV1.INVALID_REQUEST, oversized.status)
+        assertEquals(1, model.textEvidenceCalls)
+    }
+
+    @Test fun evidenceResultIsDiscardedIfConversationChangesDuringModelCall() = runBlocking {
+        val conversation = chatRequest("late-evidence")
+        model.beforeEvidenceReturn = {
+            val current = core.ai.queryConversation()
+            core.ai.appendConversationMessage(AiConversationMessageV1(
+                role = AiConversationRoleV1.USER,
+                content = "另一条输入",
+                messageId = "later-user",
+                createdAtMillis = clock.millis(),
+                zoneId = zone.id
+            ), current.revision)
+        }
+
+        val receipt = core.ai.analyzeReviewedTextEvidence(AiReviewedTextEvidenceRequestV1(
+            requestId = "late-evidence-analysis",
+            source = AiTextEvidenceSourceV1.REVIEWED_FILE_TEXT,
+            filename = "schedule.txt",
+            text = "明天十点开会",
+            truncated = false,
+            expectedConversationRevision = conversation.expectedConversationRevision,
+            zoneId = zone.id
+        ))
+
+        assertEquals(AiEvidenceAnalysisStatusV1.STALE_CONVERSATION, receipt.status)
+        assertEquals(1, model.textEvidenceCalls)
+    }
+
+    @Test fun unresolvedIcsEvidenceNeverReturnsAProposalSource() = runBlocking {
+        val conversation = chatRequest("ics-evidence")
+        model.evidenceOutput = AiEvidenceModelOutputV1(
+            reply = "该日历包含当前不支持的修改语义。",
+            proposalSource = "模型不应把修改例外当作新事件"
+        )
+
+        val receipt = core.ai.analyzeReviewedTextEvidence(AiReviewedTextEvidenceRequestV1(
+            requestId = "ics-explanation",
+            source = AiTextEvidenceSourceV1.ICS_UNRESOLVED,
+            filename = "unresolved.ics",
+            text = "BEGIN:VEVENT\nRECURRENCE-ID...",
+            truncated = false,
+            expectedConversationRevision = conversation.expectedConversationRevision,
+            zoneId = zone.id
+        ))
+
+        assertEquals(AiEvidenceAnalysisStatusV1.COMPLETED, receipt.status)
+        assertEquals("该日历包含当前不支持的修改语义。", receipt.reply)
+        assertNull(receipt.proposalSource)
+        assertTrue(store.pendingDrafts().isEmpty())
+    }
+
+    @Test fun evidenceModelOutputExceedingLimitsIsNotReturned() = runBlocking {
+        val conversation = chatRequest("large-evidence-output")
+        model.evidenceOutput = AiEvidenceModelOutputV1(reply = "x".repeat(12_001))
+        val oversizedReply = core.ai.analyzeReviewedTextEvidence(AiReviewedTextEvidenceRequestV1(
+            requestId = "large-evidence-reply",
+            source = AiTextEvidenceSourceV1.REVIEWED_FILE_TEXT,
+            filename = "schedule.txt",
+            text = "明天十点开会",
+            truncated = false,
+            expectedConversationRevision = conversation.expectedConversationRevision,
+            zoneId = zone.id
+        ))
+        assertEquals(AiEvidenceAnalysisStatusV1.MODEL_UNAVAILABLE, oversizedReply.status)
+        assertEquals("OUTPUT_LIMIT_EXCEEDED", oversizedReply.errorCode)
+        assertTrue(oversizedReply.reply.isEmpty())
+
+        model.evidenceOutput = AiEvidenceModelOutputV1(proposalSource = "x".repeat(6_001))
+        val oversizedProposalSource = core.ai.analyzeReviewedTextEvidence(AiReviewedTextEvidenceRequestV1(
+            requestId = "large-evidence-proposal-source",
+            source = AiTextEvidenceSourceV1.REVIEWED_FILE_TEXT,
+            filename = "schedule.txt",
+            text = "明天十点开会",
+            truncated = false,
+            expectedConversationRevision = conversation.expectedConversationRevision,
+            zoneId = zone.id
+        ))
+        assertEquals(AiEvidenceAnalysisStatusV1.MODEL_UNAVAILABLE, oversizedProposalSource.status)
+        assertEquals("OUTPUT_LIMIT_EXCEEDED", oversizedProposalSource.errorCode)
+        assertTrue(oversizedProposalSource.proposalSource == null)
+        assertTrue(store.pendingDrafts().isEmpty())
+    }
+
+    @Test fun consentedImageEvidenceIsBoundedAndPassedOnlyToTheModelPort() = runBlocking {
+        val conversation = chatRequest("image-evidence")
+        val bytes = byteArrayOf(1, 2, 3, 4)
+        model.evidenceOutput = AiEvidenceModelOutputV1(reply = "图片内容已识别。")
+
+        val imageRequest = AiConsentedImageEvidenceRequestV1(
+            requestId = "image-analysis",
+            filename = "calendar.png",
+            mimeType = "image/png",
+            imageBytes = bytes,
+            expectedConversationRevision = conversation.expectedConversationRevision,
+            zoneId = zone.id
+        )
+        val receipt = core.ai.analyzeConsentedImageEvidence(imageRequest)
+
+        assertEquals(AiEvidenceAnalysisStatusV1.COMPLETED, receipt.status)
+        assertEquals("图片内容已识别。", receipt.reply)
+        assertEquals("image/png", model.lastImageEvidence?.mimeType)
+        assertTrue(bytes.contentEquals(model.lastImageEvidence?.imageBytes))
+        assertEquals("user-image-evidence", model.lastImageEvidence?.history?.last()?.messageId)
+        assertEquals(0, model.proposalCalls)
+        assertTrue(store.pendingDrafts().isEmpty())
+
+        assertTrue(core.ai.analyzeConsentedImageEvidence(imageRequest).replayed)
+        val changedImage = core.ai.analyzeConsentedImageEvidence(
+            imageRequest.copy(imageBytes = byteArrayOf(9, 8, 7))
+        )
+        assertEquals(AiEvidenceAnalysisStatusV1.DUPLICATE_REQUEST_ID, changedImage.status)
+
+        val invalid = core.ai.analyzeConsentedImageEvidence(AiConsentedImageEvidenceRequestV1(
+            requestId = "oversized-image",
+            filename = "calendar.png",
+            mimeType = "image/png",
+            imageBytes = ByteArray(6_000_001),
+            expectedConversationRevision = core.ai.queryConversation().revision,
+            zoneId = zone.id
+        ))
+        assertEquals(AiEvidenceAnalysisStatusV1.INVALID_REQUEST, invalid.status)
+        val invalidMime = core.ai.analyzeConsentedImageEvidence(
+            imageRequest.copy(requestId = "invalid-image-mime", mimeType = "text/plain")
+        )
+        assertEquals(AiEvidenceAnalysisStatusV1.INVALID_REQUEST, invalidMime.status)
+        assertEquals(1, model.imageEvidenceCalls)
+    }
+
     @Test fun batchSelectionResolvesModelIdsAgainstTheExactCandidateSnapshot() = runBlocking {
         val first = candidate(1, 2, "first")
         val second = candidate(2, 5, "second", DraftOperationV1.DELETE)
@@ -474,11 +661,17 @@ class AiFeatureApiV1Test {
 
     private class FakeAiModelPort : AiModelPortV1 {
         var proposalOutput = AiProposalModelOutputV1(AiProposalReviewV1("unused", emptyList()), false)
+        var evidenceOutput = AiEvidenceModelOutputV1(error = "未配置假响应")
         var selection = AiBatchModelSelectionV1(error = "未配置假响应")
         var chatOutput = AiChatModelOutputV1(error = "未配置假响应")
         var chatCalls = 0
         var lastChatRequest: AiChatModelRequestV1? = null
         var proposalCalls = 0
+        var textEvidenceCalls = 0
+        var imageEvidenceCalls = 0
+        var beforeEvidenceReturn: (() -> Unit)? = null
+        var lastTextEvidence: AiTextEvidenceModelRequestV1? = null
+        var lastImageEvidence: AiImageEvidenceModelRequestV1? = null
         var lastChatContext: List<EventRecordV1> = emptyList()
         var lastContext: List<EventRecordV1> = emptyList()
 
@@ -499,6 +692,27 @@ class AiFeatureApiV1Test {
             proposalCalls++
             lastContext = calendarContext.toList()
             return proposalOutput
+        }
+
+        override suspend fun analyzeReviewedTextEvidence(
+            request: AiTextEvidenceModelRequestV1
+        ): AiEvidenceModelOutputV1 {
+            textEvidenceCalls++
+            lastTextEvidence = request.copy(history = request.history.map { it.copy() })
+            beforeEvidenceReturn?.invoke()
+            return evidenceOutput
+        }
+
+        override suspend fun analyzeConsentedImageEvidence(
+            request: AiImageEvidenceModelRequestV1
+        ): AiEvidenceModelOutputV1 {
+            imageEvidenceCalls++
+            lastImageEvidence = request.copy(
+                imageBytes = request.imageBytes.copyOf(),
+                history = request.history.map { it.copy() }
+            )
+            beforeEvidenceReturn?.invoke()
+            return evidenceOutput
         }
 
         override suspend fun selectBatchDrafts(

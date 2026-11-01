@@ -65,7 +65,6 @@ import com.google.mlkit.vision.text.TextRecognition
 import dev.powerfulcalendar.ai.AiBatchRunner
 import dev.powerfulcalendar.ai.AiChatHistoryStore
 import dev.powerfulcalendar.ai.AiChatMessage
-import dev.powerfulcalendar.ai.AiClient
 import dev.powerfulcalendar.ai.AiFileFallbackConsent
 import dev.powerfulcalendar.ai.AiInterpretation
 import dev.powerfulcalendar.ai.AiSettingsStore
@@ -90,6 +89,10 @@ import dev.powerfulcalendar.core.api.v1.EventMutationStatusV1
 import dev.powerfulcalendar.core.api.v1.MemoEntryV1
 import dev.powerfulcalendar.core.api.v1.EventSelectionV1
 import dev.powerfulcalendar.core.api.v1.AiProposalApplyRequestV1
+import dev.powerfulcalendar.core.api.v1.AiEvidenceAnalysisStatusV1
+import dev.powerfulcalendar.core.api.v1.AiReviewedTextEvidenceRequestV1
+import dev.powerfulcalendar.core.api.v1.AiTextEvidenceSourceV1
+import dev.powerfulcalendar.core.api.v1.AiConsentedImageEvidenceRequestV1
 import dev.powerfulcalendar.core.api.v1.AiChatRequestV1
 import dev.powerfulcalendar.core.api.v1.AiChatStatusV1
 import dev.powerfulcalendar.core.api.v1.AiConversationMutationStatusV1
@@ -1085,21 +1088,32 @@ fun PowerCalApp(
         if (chatBusy || aiBusy) return
         page = Page.AI.name
         chatBusy = true
-        appendChat("user", "上传并确认分析：" + evidence.filename +
+        if (appendChat("user", "上传并确认分析：" + evidence.filename +
             "（" + evidence.format + "）" +
-            if (evidence.truncated) " · 内容已截断" else "")
-        val prior = chatHistory.takeLast(7)
+            if (evidence.truncated) " · 内容已截断" else "") == null
+        ) {
+            chatBusy = false
+            return
+        }
+        val expectedConversationRevision = chatHistoryRevision
         scope.launch {
             try {
-                val client = AiClient(AiSettingsStore.load(appContext), zone)
                 if (evidence.format == "ics-problem") {
                     // Known RFC constructs unsupported by our domain are not candidates for
                     // invented appointments. AI may explain and ask, never bypass the codec.
-                    val reply = client.analyzeEvidence(evidence.filename,
-                        "只解释尚未解决的日历语义，优先询问必要的一个问题。" +
-                            "不要把改单次实例当成独立新日程，不得声称已导入。\n" +
-                            evidence.text, emptyList())
-                    appendChat("assistant", if (reply.succeeded) reply.reply
+                    val result = aiFeatureApi.analyzeReviewedTextEvidence(
+                        AiReviewedTextEvidenceRequestV1(
+                            requestId = java.util.UUID.randomUUID().toString(),
+                            source = AiTextEvidenceSourceV1.ICS_UNRESOLVED,
+                            filename = evidence.filename,
+                            text = evidence.text,
+                            truncated = evidence.truncated,
+                            preflightHint = hint,
+                            expectedConversationRevision = expectedConversationRevision,
+                            zoneId = zone.id
+                        )
+                    )
+                    appendChat("assistant", if (result.status == AiEvidenceAnalysisStatusV1.COMPLETED) result.reply
                         else "部分日历规则尚无法安全处理，已保存其他草稿。" +
                             "AI 当前不可用，可稍后重新选择文件。")
                     return@launch
@@ -1122,10 +1136,21 @@ fun PowerCalApp(
                         "请核对后选择生成草稿；尚未正式发布。" +
                         if (evidence.truncated) " 文件内容不完整，请核对遗漏。" else "")
                 } else {
-                    val reply = client.analyzeEvidence(evidence.filename,
-                        (if (hint.isBlank()) "" else "文件预检信息：$hint\n") + evidence.text,
-                        prior)
-                    appendChat("assistant", if (reply.succeeded) reply.reply
+                    val result = aiFeatureApi.analyzeReviewedTextEvidence(
+                        AiReviewedTextEvidenceRequestV1(
+                            requestId = java.util.UUID.randomUUID().toString(),
+                            source = if (evidence.format == "ocr") {
+                                AiTextEvidenceSourceV1.REVIEWED_OCR_TEXT
+                            } else AiTextEvidenceSourceV1.REVIEWED_FILE_TEXT,
+                            filename = evidence.filename,
+                            text = evidence.text,
+                            truncated = evidence.truncated,
+                            preflightHint = hint,
+                            expectedConversationRevision = expectedConversationRevision,
+                            zoneId = zone.id
+                        )
+                    )
+                    appendChat("assistant", if (result.status == AiEvidenceAnalysisStatusV1.COMPLETED) result.reply
                         else "文件暂时无法完成分析，已保留现有日历数据。可以稍后重试。" )
                 }
             } catch (error: kotlinx.coroutines.CancellationException) {
@@ -3289,9 +3314,10 @@ fun PowerCalApp(
                     pendingImageReview = null
                     page = Page.AI.name
                     chatBusy = true
+                    val expectedConversationRevision = chatHistoryRevision
                     scope.launch {
                         try {
-                            val dataUri = withContext(Dispatchers.IO) {
+                            val (mimeType, imageBytes) = withContext(Dispatchers.IO) {
                                 val resolver = appContext.contentResolver
                                 val mime = resolver.getType(uri).orEmpty().ifBlank { "image/jpeg" }
                                 require(mime.startsWith("image/")) { "所选文件不是图片" }
@@ -3307,20 +3333,26 @@ fun PowerCalApp(
                                         output.write(buffer, 0, size)
                                     }
                                 } ?: error("无法读取图片")
-                                "data:" + mime + ";base64," +
-                                    android.util.Base64.encodeToString(output.toByteArray(),
-                                        android.util.Base64.NO_WRAP)
+                                mime to output.toByteArray()
                             }
                             val settings = AiSettingsStore.load(appContext)
-                            val reply = AiClient(settings, zone).analyzeImage(
-                                "用户上传图片", dataUri, chatHistory.takeLast(8))
-                            if (!reply.succeeded) {
-                                message = "视觉识别不可用：" + reply.error.orEmpty() + "；已改用本地 OCR"
+                            val result = aiFeatureApi.analyzeConsentedImageEvidence(
+                                AiConsentedImageEvidenceRequestV1(
+                                    requestId = java.util.UUID.randomUUID().toString(),
+                                    filename = "用户上传图片",
+                                    mimeType = mimeType,
+                                    imageBytes = imageBytes,
+                                    expectedConversationRevision = expectedConversationRevision,
+                                    zoneId = zone.id
+                                )
+                            )
+                            if (result.status != AiEvidenceAnalysisStatusV1.COMPLETED) {
+                                message = "视觉识别不可用：" + result.message.orEmpty() + "；已改用本地 OCR"
                                 runLocalOcr(uri)
                             } else {
                                 appendChat("user", "已授权 AI 读取图片（原始图片不写入聊天历史）")
-                                appendChat("assistant", reply.reply, reply.proposalSource)
-                                reply.proposalSource?.let { source ->
+                                appendChat("assistant", result.reply, result.proposalSource)
+                                result.proposalSource?.let { source ->
                                     val generated = aiFeatureApi.generateProposal(
                                         dev.powerfulcalendar.core.api.v1.AiProposalGenerationRequestV1(
                                             requestId = java.util.UUID.randomUUID().toString(),
