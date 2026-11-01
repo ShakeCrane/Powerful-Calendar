@@ -42,7 +42,7 @@ private const val MAX_EVENT_SEARCH_RESULTS = 8
 class PowerCalCoreFeatureApiV1(
     private val store: PowerStore,
     clock: Clock = Clock.systemUTC(),
-    internal val deckController: DeckController = DeckController(StoreDeckPersistence(store)),
+    deckController: DeckController = DeckController(StoreDeckPersistence(store)),
     reminderContext: Context? = null,
     settingsContext: Context? = reminderContext,
     aiModelPort: AiModelPortV1? = null,

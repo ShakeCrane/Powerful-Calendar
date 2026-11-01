@@ -115,7 +115,6 @@ class ConflictReviewInstrumentedTest {
             compose.setContent {
                 PowerCalTheme {
                     DraftDeckDialog(
-                        controller = controller,
                         draftReviewApi = draftReviewApi,
                         aiSession = null,
                         onDismissRequest = {},

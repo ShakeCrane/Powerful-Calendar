@@ -18,7 +18,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import dev.powerfulcalendar.core.DeckController
 import dev.powerfulcalendar.core.TemporalConversion
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.api.v1.AiBatchSessionV1
@@ -31,6 +30,7 @@ import dev.powerfulcalendar.core.api.v1.EventKindV1
 import dev.powerfulcalendar.core.api.v1.EventSearchHitV1
 import dev.powerfulcalendar.core.api.v1.DraftReviewRestoreV1
 import dev.powerfulcalendar.core.api.v1.EventFormV1
+import dev.powerfulcalendar.core.api.v1.toCoreDraftForm
 import dev.powerfulcalendar.core.api.v1.toEventFormV1
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -72,7 +72,7 @@ private data class PendingDeckRestoreApproval(
 
 /**
  * Renderer sees the versioned Draft/Review API snapshot, but NOT Core state or persistence.
- * Terminal actions go through the same durable controller state machine as the native deck.
+ * Terminal actions go through the shared Draft/Review Feature API used by the Native deck.
  * Every callback is host-mediated; no renderer can call PowerStore.commit.
  */
 class DeckVisualContext internal constructor(
@@ -103,7 +103,6 @@ class DeckVisualContext internal constructor(
 
 @Composable
 fun DraftDeckDialog(
-    controller: DeckController,
     draftReviewApi: DraftReviewFeatureApiV1,
     aiSession: AiBatchSessionV1?,
     onDismissRequest: () -> Unit,
@@ -123,8 +122,8 @@ fun DraftDeckDialog(
     }
 
     val scope = rememberCoroutineScope()
-    var state by remember(controller) { mutableStateOf(controller.state) }
-    var executing by remember(controller) { mutableStateOf(false) }
+    var state by remember(draftReviewApi) { mutableStateOf(draftReviewApi.snapshot) }
+    var executing by remember(draftReviewApi) { mutableStateOf(false) }
     var pendingCommitApproval by remember(draftReviewApi) {
         mutableStateOf<PendingDeckCommitApproval?>(null)
     }
@@ -135,9 +134,9 @@ fun DraftDeckDialog(
         mutableStateOf<PendingDeckRestoreApproval?>(null)
     }
     // Keep the presentation listener separate from the API's subscription.
-    DisposableEffect(controller) {
-        val subscription = controller.observeAdditional { next -> scope.launch { state = next } }
-        state = controller.state
+    DisposableEffect(draftReviewApi) {
+        val subscription = draftReviewApi.observe { next -> scope.launch { state = next } }
+        state = draftReviewApi.snapshot
         onDispose { subscription.close() }
     }
     // Persist only at exit/navigation/lifecycle checkpoints, not every keystroke.
@@ -147,7 +146,7 @@ fun DraftDeckDialog(
         scope.launch {
             try {
                 val receipt = withContext(Dispatchers.IO) { block() }
-                state = controller.state
+                state = draftReviewApi.snapshot
                 if (changed && receipt.succeeded) onDeckChanged()
                 if (!receipt.succeeded) {
                     state = state.copy(error = receipt.message ?: receipt.errorCode ?: "操作未完成，草稿仍被保留")
@@ -155,7 +154,7 @@ fun DraftDeckDialog(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                state = controller.state.copy(error = error.message ?: "操作未完成，草稿仍被保留")
+                state = draftReviewApi.snapshot.copy(error = error.message ?: "操作未完成，草稿仍被保留")
             } finally {
                 executing = false
             }
@@ -173,7 +172,7 @@ fun DraftDeckDialog(
     val context = DeckVisualContext(
         state = draftReviewApi.snapshot.copy(error = state.error),
         busy = locked,
-        canCommit = state.form?.isPublishable() == true,
+        canCommit = state.form?.toCoreDraftForm()?.isPublishable() == true,
         aiSession = aiSession,
         onDismiss = { leave() },
         onOpenFormalEvent = { hit -> leave { onOpenFormalEvent(hit) } },
@@ -190,16 +189,17 @@ fun DraftDeckDialog(
                 card.draftId, card.draftVersion, draftReviewApi.snapshot.stateRevision,
                 form
             )
-            if (!receipt.succeeded) state = controller.state.copy(error = receipt.message ?: receipt.errorCode)
+            if (!receipt.succeeded) state = draftReviewApi.snapshot.copy(error = receipt.message ?: receipt.errorCode)
         } },
         onConvert = { kind ->
             if (!locked) state.form?.let { form ->
                 val current = draftReviewApi.snapshot.current ?: return@let
                 val receipt = draftReviewApi.editCurrentDraft(
                     current.draftId, current.draftVersion, draftReviewApi.snapshot.stateRevision,
-                    TemporalConversion.convert(form, kind.toCoreTemporalKind()).form.toEventFormV1()
+                TemporalConversion.convert(form.toCoreDraftForm(), kind.toCoreTemporalKind())
+                    .form.toEventFormV1()
                 )
-                if (!receipt.succeeded) state = controller.state.copy(
+                if (!receipt.succeeded) state = draftReviewApi.snapshot.copy(
                     error = receipt.message ?: receipt.errorCode
                 )
             }
@@ -216,7 +216,7 @@ fun DraftDeckDialog(
                 card.draftId, card.draftVersion, java.util.UUID.randomUUID().toString()
             ) }
         } },
-        onUndoDiscard = { if (!locked) controller.state.lastDiscardId?.let { draftId ->
+        onUndoDiscard = { if (!locked) draftReviewApi.snapshot.lastDiscardId?.let { draftId ->
             command(changed = true) { draftReviewApi.undoDiscard(
                 draftId, java.util.UUID.randomUUID().toString()
             ) }
@@ -274,7 +274,7 @@ fun DraftDeckDialog(
                         latest.stateRevision != approval.stateRevision || latest.form != approval.form
                     ) {
                         pendingCommitApproval = null
-                            state = controller.state.copy(error = "草稿已变化，请重新核对后提交")
+                            state = draftReviewApi.snapshot.copy(error = "草稿已变化，请重新核对后提交")
                     } else {
                         pendingCommitApproval = null
                         command(changed = true) {
@@ -312,7 +312,7 @@ fun DraftDeckDialog(
                         latest.stateRevision != approval.stateRevision
                     ) {
                         pendingConflictApproval = null
-                            state = controller.state.copy(error = "冲突内容已变化，请重新核对")
+                            state = draftReviewApi.snapshot.copy(error = "冲突内容已变化，请重新核对")
                     } else {
                         pendingConflictApproval = null
                         command(changed = true) {
@@ -350,7 +350,7 @@ fun DraftDeckDialog(
                         latest.stateRevision != approval.stateRevision || latest.form != approval.form
                     ) {
                         pendingRestoreApproval = null
-                            state = controller.state.copy(error = "恢复内容已变化，请重新核对")
+                            state = draftReviewApi.snapshot.copy(error = "恢复内容已变化，请重新核对")
                     } else {
                         pendingRestoreApproval = null
                         command(changed = true) {

@@ -86,7 +86,7 @@ class GlassRenderTest {
                 TimelineScreen(emptyList(), TimelineCoordinate.Camera(noon, 24.0), noon, zone, 4, false,
                     {}, {}, { _, _ -> }, { _, _ -> }, {}, {}, {}, {})
             }
-            DraftDeckDialog(controller, PowerCalCoreFeatureApiV1(database,
+            DraftDeckDialog(PowerCalCoreFeatureApiV1(database,
                 deckController = controller).draftReview, null, {}, {}, {}, {}, { emptyList() })
         } }
         capture("deck-compact-light.png", true)

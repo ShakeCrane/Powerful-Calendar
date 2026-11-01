@@ -251,7 +251,6 @@ fun PowerCalApp(
     val aiFeatureApi = coreFeatureApi.ai
     val reminderFeatureApi = coreFeatureApi.reminders
     val importExportApi = coreFeatureApi.importExport
-    val controller = coreFeatureApi.deckController
     val effects = LocalGlassEffects.current
     val skins = remember(appContext) { SkinPackageManager(appContext) }
     var skinChoices by remember { mutableStateOf(skins.installed()) }
@@ -393,10 +392,10 @@ fun PowerCalApp(
     var newEventError by remember { mutableStateOf<String?>(null) }
     var newEventBusy by remember { mutableStateOf(false) }
     // One Web editing coordinator per host; reloading or replacing a skin
-    // must never create a new DeckController, editor lease or command queue.
+    // must never create a new editor lease or command queue.
     val nativeEditingNow = androidx.compose.runtime.rememberUpdatedState(
         editSession != null || deckOpen || newEventSession != null)
-    val webEditing = remember(store, controller) {
+    val webEditing = remember(coreFeatureApi) {
         WebSkinEditService(
             draftReviewApi, { nativeEditingNow.value }, coreFeatureApi
         )
@@ -2962,7 +2961,6 @@ fun PowerCalApp(
 
     if (deckOpen) {
         DraftDeckDialog(
-            controller = controller,
             draftReviewApi = draftReviewApi,
             aiSession = aiSession,
             onDismissRequest = {

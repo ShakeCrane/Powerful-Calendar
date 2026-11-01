@@ -60,7 +60,6 @@ class DraftDeckDefaultSearchInstrumentedTest {
             compose.setContent {
                 PowerCalTheme {
                     DraftDeckDialog(
-                        controller = controller,
                         draftReviewApi = coreFeatureApi.draftReview,
                         aiSession = null,
                         onDismissRequest = {},
