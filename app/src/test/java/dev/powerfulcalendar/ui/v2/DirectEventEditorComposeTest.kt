@@ -8,6 +8,13 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.core.app.ApplicationProvider
 import dev.powerfulcalendar.core.*
+import dev.powerfulcalendar.core.api.v1.EventEditorOpenResultV1
+import dev.powerfulcalendar.core.api.v1.EventEditorSnapshotV1
+import dev.powerfulcalendar.core.api.v1.EventFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.EventMutationStatusV1
+import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.toCoreDraftForm
+import dev.powerfulcalendar.core.api.v1.toEventFormV1
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -27,7 +34,8 @@ class DirectEventEditorComposeTest {
     @get:Rule val ui = createComposeRule()
     private lateinit var context: Context
     private lateinit var store: PowerStore
-    private lateinit var session: EditSession
+    private lateinit var eventApi: EventFeatureApiV1
+    private lateinit var editor: EventEditorSnapshotV1
 
     @Before fun setUp() {
         context = ApplicationProvider.getApplicationContext()
@@ -39,43 +47,80 @@ class DirectEventEditorComposeTest {
             endText = DraftForm.formatInstant(now + 3_600_000L, ZoneId.systemDefault())
         ))
         assertTrue(store.commit(card.draftId, actor = "test") is PowerStore.CommitOutcome.Committed)
-        session = EditSession.open(store, store.get(card.eventSeq)!!)
+        eventApi = PowerCalCoreFeatureApiV1(store).events
+        editor = openFormalEditor(card.eventSeq, store.get(card.eventSeq)!!.revision)
     }
 
     @After fun tearDown() {
-        session.close()
+        eventApi.closeFormalEvent(editor.handle)
         val name = store.databaseName
         store.close(); context.deleteDatabase(name)
     }
 
     private fun render(onDelete: () -> Unit = {}) {
-        val form = mutableStateOf(session.form)
-        val baseline = mutableStateOf(session.baselineForm)
+        val editorState = mutableStateOf(editor)
+        val form = mutableStateOf(editor.form.toCoreDraftForm())
+        val baseline = mutableStateOf(editor.baselineForm.toCoreDraftForm())
         val error = mutableStateOf<String?>(null)
         val editorRevision = mutableIntStateOf(0)
+        fun refresh() {
+            eventApi.editorSnapshot(editorState.value.handle)?.let { updated ->
+                editorState.value = updated
+                editor = updated
+            }
+        }
         ui.setContent { PowerCalTheme {
             DirectEventEditorContent(
-                session, form.value, error.value, session.meaningfulDiff,
+                editorState.value, form.value, error.value, editorState.value.meaningfulChanges,
                 editorRevision = editorRevision.intValue,
-                onChange = { form.value = it; session.edit(it) },
+                onChange = { next ->
+                    form.value = next
+                    eventApi.updateFormalEvent(editorState.value.handle, next.toEventFormV1())
+                    refresh()
+                },
                 onScopeChange = { selected ->
-                    session.selectRecurrenceScope(selected)
-                    form.value = session.form
-                    baseline.value = session.baselineForm
+                    eventApi.selectFormalRecurrenceScope(editorState.value.handle, selected)
+                    refresh()
+                    form.value = editorState.value.form.toCoreDraftForm()
+                    baseline.value = editorState.value.baselineForm.toCoreDraftForm()
                 },
                 onSave = {
-                    val outcome = session.save()
-                    if (outcome is PowerStore.DirectEditOutcome.Saved) editorRevision.intValue++
-                    form.value = session.form
-                    baseline.value = session.baselineForm; error.value = session.lastError
+                    val outcome = eventApi.saveFormalEvent(
+                        editorState.value.handle, form.value.toEventFormV1(), UUID.randomUUID().toString()
+                    )
+                    if (outcome.status in setOf(
+                            EventMutationStatusV1.UPDATED, EventMutationStatusV1.NO_CHANGE
+                        )) editorRevision.intValue++
+                    refresh()
+                    form.value = editorState.value.form.toCoreDraftForm()
+                    baseline.value = editorState.value.baselineForm.toCoreDraftForm()
+                    error.value = outcome.message ?: editorState.value.lastError
                 },
                 onExit = {},
                 onDiscardChanges = {
-                    session.discardEditingChanges(); form.value = session.form; error.value = null
+                    eventApi.discardFormalChanges(editorState.value.handle)
+                    refresh()
+                    form.value = editorState.value.form.toCoreDraftForm()
+                    baseline.value = editorState.value.baselineForm.toCoreDraftForm()
+                    error.value = null
                 },
                 onDelete = onDelete
             )
         } }
+    }
+
+    private fun currentEditor(): EventEditorSnapshotV1 =
+        requireNotNull(eventApi.editorSnapshot(editor.handle)).also { editor = it }
+
+    private fun openFormalEditor(
+        eventSeq: Long,
+        revision: Long,
+        occurrenceKey: String? = null
+    ): EventEditorSnapshotV1 = when (
+        val opened = eventApi.openFormalEvent(eventSeq, revision, occurrenceKey)
+    ) {
+        is EventEditorOpenResultV1.Opened -> opened.editor
+        else -> error("Expected event editor to open, got $opened")
     }
 
     private fun titleField() = ui.onNode(hasSetTextAction() and hasText("Original"))
@@ -88,8 +133,11 @@ class DirectEventEditorComposeTest {
 
         ui.onNode(hasSetTextAction() and hasText("Changed")).performTextReplacement("Original")
         ui.runOnIdle {
-            assertEquals("Original", session.form.title)
-            assertFalse("reverting the business field must restore the baseline", session.meaningfulDiff)
+            assertEquals("Original", currentEditor().form.title)
+            assertFalse(
+                "reverting the business field must restore the baseline",
+                currentEditor().meaningfulChanges
+            )
         }
         ui.onNodeWithText("放弃本次修改").assertIsNotEnabled()
         titleField().performTextReplacement("Discard me")
@@ -100,7 +148,7 @@ class DirectEventEditorComposeTest {
         ui.onNodeWithText("保存修改").performClick()
         ui.onNodeWithText("Saved in place").assertExists()
         ui.onNodeWithText("放弃本次修改").assertIsNotEnabled()
-        assertEquals("Saved in place", store.get(session.eventSeq)!!.title)
+        assertEquals("Saved in place", store.get(requireNotNull(editor.eventSeq))!!.title)
     }
 
     @Test fun failedSaveKeepsTypedTextAndDeleteRequiresExplicitConfirmation() {
@@ -120,7 +168,7 @@ class DirectEventEditorComposeTest {
         ui.onNodeWithText("删除事件").performClick()
         ui.onNodeWithText("确认删除").performClick()
         assertEquals(1, deletes)
-        assertFalse(store.get(session.eventSeq) == null)
+        assertFalse(store.get(requireNotNull(editor.eventSeq)) == null)
     }
 
     @Test fun directEditUsesSameKindConversionAndReminderFieldsAsNewDraftCard() {
@@ -128,21 +176,24 @@ class DirectEventEditorComposeTest {
         // The same typed form and picker controls are shared by both editor modes.
         ui.onNodeWithText("活动 ▾").performClick()
         ui.onNodeWithText("闹钟").performClick()
-        assertEquals(TemporalKind.ALARM, session.form.kind)
+        assertEquals(TemporalKind.ALARM, TemporalKind.valueOf(currentEditor().form.kind.name))
         ui.onNodeWithText("闹钟 ▾").assertExists()
 
         ui.onNodeWithText("重复").performScrollTo()
         ui.onNodeWithText("每天").performScrollTo()
         ui.onNodeWithText("每天").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
-        assertEquals(RecurrenceFreq.DAILY, session.form.recurrence.freq)
+        assertEquals(
+            RecurrenceFreq.DAILY,
+            RecurrenceFreq.valueOf(currentEditor().form.recurrence.frequency.name)
+        )
 
         ui.onNodeWithText("保存修改").performClick()
-        assertEquals(TemporalKind.ALARM, store.get(session.eventSeq)!!.kind)
-        assertEquals(RecurrenceFreq.DAILY, store.get(session.eventSeq)!!.recurrence.freq)
+        assertEquals(TemporalKind.ALARM, store.get(requireNotNull(editor.eventSeq))!!.kind)
+        assertEquals(RecurrenceFreq.DAILY, store.get(requireNotNull(editor.eventSeq))!!.recurrence.freq)
     }
 
     @Test fun recurringEditorRequiresScopeAndSingleScopeEditsOnlySelectedTitleAndTime() {
-        session.close()
+        eventApi.closeFormalEvent(editor.handle)
         val shanghai = ZoneId.of("Asia/Shanghai")
         val firstMillis = java.time.LocalDateTime.of(2026, 10, 20, 7, 30)
             .atZone(shanghai).toInstant().toEpochMilli()
@@ -157,7 +208,7 @@ class DirectEventEditorComposeTest {
         assertTrue(store.commit(draft.draftId, actor = "test") is PowerStore.CommitOutcome.Committed)
         val formal = store.get(draft.eventSeq)!!
         val selectedKey = "2026-10-21T07:30"
-        session = EditSession.open(store, formal, selectedKey)
+        editor = openFormalEditor(formal.eventSeq, formal.revision, selectedKey)
         render()
 
         ui.onNodeWithText("保存修改").assertIsNotEnabled()

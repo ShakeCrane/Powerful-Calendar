@@ -1,7 +1,9 @@
 package dev.powerfulcalendar.ui.v2
 
-
 import android.content.Context
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -9,15 +11,18 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextReplacement
-import androidx.compose.ui.semantics.SemanticsProperties
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.test.core.app.ApplicationProvider
-import dev.powerfulcalendar.core.NewEventEditSession
 import dev.powerfulcalendar.core.PowerStore
-import dev.powerfulcalendar.core.TemporalKind
+import dev.powerfulcalendar.core.api.v1.EventEditorOpenResultV1
+import dev.powerfulcalendar.core.api.v1.EventEditorSnapshotV1
+import dev.powerfulcalendar.core.api.v1.EventFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.EventKindV1
+import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.toCoreDraftForm
+import dev.powerfulcalendar.core.api.v1.toEventFormV1
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -37,46 +42,75 @@ class NewEventEditorComposeTest {
     @get:Rule val ui = createComposeRule()
     private lateinit var context: Context
     private lateinit var store: PowerStore
+    private lateinit var eventApi: EventFeatureApiV1
+    private lateinit var activeEditor: EventEditorSnapshotV1
     private val zone = ZoneId.of("Asia/Shanghai")
+    private val clock = Clock.fixed(Instant.parse("2026-10-25T15:07:42Z"), ZoneOffset.UTC)
 
     @Before fun setUp() {
         context = ApplicationProvider.getApplicationContext()
         store = PowerStore(context, "new-event-ui-${UUID.randomUUID()}.db")
+        eventApi = PowerCalCoreFeatureApiV1(store, clock).events
     }
 
     @After fun tearDown() {
+        runCatching { eventApi.discardNewEvent(activeEditor.handle) }
         val name = store.databaseName
         store.close()
         context.deleteDatabase(name)
     }
 
-    private fun newSession() = NewEventEditSession.open(
-        TemporalKind.ALARM,
-        Clock.fixed(Instant.parse("2026-10-25T15:07:42Z"), ZoneOffset.UTC),
-        zone
-    )
+    private fun newEditor(kind: EventKindV1 = EventKindV1.ALARM): EventEditorSnapshotV1 =
+        when (val opened = eventApi.openNewEvent(kind, zone.id)) {
+            is EventEditorOpenResultV1.Opened -> opened.editor
+            else -> error("Expected new-event editor to open, got $opened")
+        }.also { activeEditor = it }
 
-    private fun render(session: NewEventEditSession) {
-        val form = mutableStateOf(session.form)
+    private fun currentEditor(): EventEditorSnapshotV1 =
+        requireNotNull(eventApi.editorSnapshot(activeEditor.handle)).also { activeEditor = it }
+
+    private fun render(editor: EventEditorSnapshotV1) {
+        val editorState = mutableStateOf(editor)
+        val form = mutableStateOf(editor.form.toCoreDraftForm())
+        fun refresh() {
+            eventApi.editorSnapshot(editorState.value.handle)?.let { updated ->
+                editorState.value = updated
+                activeEditor = updated
+            }
+        }
         ui.setContent { PowerCalTheme {
             NewEventEditorDialog(
-                session = session,
+                editor = editorState.value,
                 form = form.value,
                 error = null,
                 busy = false,
-                onFormChange = { next -> session.edit(next); form.value = next },
-                onSave = { session.save(store) },
-                onExit = { session.close(store) },
-                onDiscard = { session.discard(store) }
+                onFormChange = { next ->
+                    form.value = next
+                    eventApi.updateNewEvent(editorState.value.handle, next.toEventFormV1())
+                    refresh()
+                },
+                onSave = {
+                    eventApi.saveNewEvent(
+                        editorState.value.handle,
+                        form.value.toEventFormV1(),
+                        UUID.randomUUID().toString()
+                    )
+                },
+                onExit = {
+                    eventApi.closeNewEvent(editorState.value.handle)
+                },
+                onDiscard = {
+                    eventApi.discardNewEvent(editorState.value.handle)
+                }
             )
         } }
     }
 
     @Test fun openingAndClosingTheNativeEditorLeavesNoDraftOrIdentity() {
-        val session = newSession()
-        render(session)
+        val editor = newEditor()
+        render(editor)
         ui.onNodeWithText("新建事件").assertIsDisplayed()
-        assertEquals(false, session.meaningfulDiff)
+        assertFalse(currentEditor().meaningfulChanges)
         ui.onNodeWithTag("new-event-close").performClick()
 
         assertEquals(0L, store.draftCount())
@@ -87,11 +121,11 @@ class NewEventEditorComposeTest {
     }
 
     @Test fun nativeEditorStagesExactlyOneChangedDraftWhenClosedWithX() {
-        val session = newSession()
-        render(session)
+        val editor = newEditor()
+        render(editor)
         ui.onAllNodes(hasSetTextAction())[0].performTextReplacement("Changed title")
-        assertEquals("Changed title", session.form.title)
-        assertEquals(true, session.meaningfulDiff)
+        assertEquals("Changed title", currentEditor().form.title)
+        assertTrue(currentEditor().meaningfulChanges)
         ui.onNodeWithTag("new-event-close").performClick()
 
         assertEquals(1L, store.draftCount())
@@ -102,43 +136,53 @@ class NewEventEditorComposeTest {
         assertEquals("Changed title", store.pendingDrafts().single().form.title)
     }
 
-    @Test fun recompositionKeepsEditedTimeAndTheSessionCapturedClock() {
-        val session = NewEventEditSession.open(
-            TemporalKind.ACTIVITY,
-            Clock.fixed(Instant.parse("2026-10-25T15:07:42Z"), ZoneOffset.UTC),
-            zone
-        )
-        val form = mutableStateOf(session.form)
+    @Test fun recompositionKeepsEditedTimeAndTheFeatureSessionCapturedClock() {
+        val editor = newEditor(EventKindV1.ACTIVITY)
+        val form = mutableStateOf(editor.form.toCoreDraftForm())
+        val editorState = mutableStateOf(editor)
         val recomposition = mutableIntStateOf(0)
-        val capturedNow = session.defaults.now
+        val capturedNow = editor.defaultNowMillis
         ui.setContent {
             val revision = recomposition.intValue
             PowerCalTheme {
                 androidx.compose.material3.Text("revision $revision")
                 NewEventEditorDialog(
-                    session = session,
+                    editor = editorState.value,
                     form = form.value,
                     error = null,
                     busy = false,
-                    onFormChange = { next -> session.edit(next); form.value = next },
-                    onSave = { session.save(store) },
-                    onExit = { session.close(store) },
-                    onDiscard = { session.discard(store) }
+                    onFormChange = { next ->
+                        form.value = next
+                        eventApi.updateNewEvent(editorState.value.handle, next.toEventFormV1())
+                        eventApi.editorSnapshot(editorState.value.handle)?.let { updated ->
+                            editorState.value = updated
+                            activeEditor = updated
+                        }
+                    },
+                    onSave = {
+                        eventApi.saveNewEvent(
+                            editorState.value.handle,
+                            form.value.toEventFormV1(),
+                            UUID.randomUUID().toString()
+                        )
+                    },
+                    onExit = { eventApi.closeNewEvent(editorState.value.handle) },
+                    onDiscard = { eventApi.discardNewEvent(editorState.value.handle) }
                 )
             }
         }
 
         ui.onAllNodes(hasSetTextAction())[1].performTextReplacement("2026-10-26 08:00")
-        assertEquals("2026-10-26 08:00", session.form.startText)
+        assertEquals("2026-10-26 08:00", currentEditor().form.startText)
         ui.runOnIdle { recomposition.intValue++ }
         ui.waitForIdle()
 
         val fieldValue = ui.onAllNodes(hasSetTextAction())[1].fetchSemanticsNode()
             .config[SemanticsProperties.EditableText].text
         assertEquals("2026-10-26 08:00", fieldValue)
-        assertEquals("2026-10-26 08:00", session.form.startText)
-        assertEquals(capturedNow, session.defaults.now)
-        assertTrue(session.meaningfulDiff)
+        assertEquals("2026-10-26 08:00", currentEditor().form.startText)
+        assertEquals(capturedNow, currentEditor().defaultNowMillis)
+        assertTrue(currentEditor().meaningfulChanges)
         assertEquals(0L, store.draftCount())
     }
 }

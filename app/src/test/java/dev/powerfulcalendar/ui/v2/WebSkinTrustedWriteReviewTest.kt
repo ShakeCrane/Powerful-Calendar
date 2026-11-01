@@ -8,6 +8,7 @@ import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.StoreDeckPersistence
 import dev.powerfulcalendar.core.TemporalKind
+import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -25,13 +26,16 @@ class WebSkinTrustedWriteReviewTest {
     private lateinit var context: Context
     private lateinit var store: PowerStore
     private lateinit var service: WebSkinEditService
+    private lateinit var coreFeatureApi: PowerCalCoreFeatureApiV1
 
     private fun id() = UUID.randomUUID().toString()
 
     @Before fun setUp() {
         context = ApplicationProvider.getApplicationContext()
         store = PowerStore(context, "web-write-review-${id()}.db")
-        service = WebSkinEditService(store, DeckController(StoreDeckPersistence(store)))
+        coreFeatureApi = PowerCalCoreFeatureApiV1(store)
+        service = WebSkinEditService(store, DeckController(StoreDeckPersistence(store)),
+            coreFeatureApi = coreFeatureApi)
     }
 
     @After fun tearDown() {

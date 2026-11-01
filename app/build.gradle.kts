@@ -120,6 +120,7 @@ android {
 }
 
 dependencies {
+    implementation(project(":core-api"))
     implementation(project(":skin-api"))
     implementation(project(":native-skin"))
     val bom = platform("androidx.compose:compose-bom:2025.10.00")

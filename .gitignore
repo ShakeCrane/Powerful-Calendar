@@ -24,3 +24,4 @@ signing.properties
 /.local/android-test/
 /native-skin/build/
 /skin-api/build/
+/core-api/build/

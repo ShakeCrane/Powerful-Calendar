@@ -76,10 +76,8 @@ import dev.powerfulcalendar.core.DeckController
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.EditorSelection
-import dev.powerfulcalendar.core.EditSession
 import dev.powerfulcalendar.core.FormalEventSearch
 import dev.powerfulcalendar.core.LegacyBackupConsentRequired
-import dev.powerfulcalendar.core.NewEventEditSession
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.RecurrenceEditScope
 import dev.powerfulcalendar.core.StoreDeckPersistence
@@ -87,6 +85,17 @@ import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.TemporalText
 import dev.powerfulcalendar.core.TimelineCoordinate
+import dev.powerfulcalendar.core.api.v1.EventEditorHandleV1
+import dev.powerfulcalendar.core.api.v1.EventEditorOpenResultV1
+import dev.powerfulcalendar.core.api.v1.EventEditorSnapshotV1
+import dev.powerfulcalendar.core.api.v1.EventKindV1
+import dev.powerfulcalendar.core.api.v1.EventFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.EventMutationStatusV1
+import dev.powerfulcalendar.core.api.v1.EventSelectionV1
+import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.toCoreDraftForm
+import dev.powerfulcalendar.core.api.v1.toCoreTemporalRecord
+import dev.powerfulcalendar.core.api.v1.toEventFormV1
 import dev.powerfulcalendar.data.CalendarEvent
 import dev.powerfulcalendar.data.LegacyImporter
 import dev.powerfulcalendar.interop.AiFileEvidence
@@ -174,6 +183,7 @@ internal data class UiDiagnostics(val nextSequence: Long = 1, val identities: Lo
 
 private data class AppData(
     val records: List<TemporalRecord>,
+    val eventFeatureRevision: Long,
     val todoEntries: List<TodoEntry>,
     val pending: Int,
     val locked: Boolean,
@@ -195,6 +205,8 @@ fun PowerCalApp(
     val zone = ZoneId.systemDefault()
     val scope = rememberCoroutineScope()
     val controller = remember(store) { DeckController(StoreDeckPersistence(store)) }
+    val coreFeatureApi = remember(store) { PowerCalCoreFeatureApiV1(store) }
+    val eventFeatureApi = coreFeatureApi.events
     val effects = LocalGlassEffects.current
     val skins = remember(appContext) { SkinPackageManager(appContext) }
     var skinChoices by remember { mutableStateOf(skins.installed()) }
@@ -210,6 +222,8 @@ fun PowerCalApp(
 
     var page by rememberSaveable { mutableStateOf(Page.TIMELINE.name) }
     var records by remember { mutableStateOf<List<TemporalRecord>>(emptyList()) }
+    var eventFeatureRevision by remember { mutableLongStateOf(0L) }
+    val latestEventFeatureRevision by rememberUpdatedState(eventFeatureRevision)
     var hostDataReady by remember(store) { mutableStateOf(false) }
     var todoEntries by remember(store) { mutableStateOf<List<TodoEntry>>(emptyList()) }
     var pendingCount by remember { mutableIntStateOf(0) }
@@ -270,13 +284,15 @@ fun PowerCalApp(
     var pendingCards by remember { mutableStateOf<List<dev.powerfulcalendar.core.DraftCard>>(emptyList()) }
     var diagnostics by remember { mutableStateOf(UiDiagnostics()) }
     var monthInspection by remember { mutableStateOf<TemporalRecord?>(null) }
-    var editSession by remember { mutableStateOf<EditSession?>(null) }
+    var editSession by remember { mutableStateOf<EventEditorHandleV1?>(null) }
+    var editEditor by remember { mutableStateOf<EventEditorSnapshotV1?>(null) }
     var editForm by remember { mutableStateOf<DraftForm?>(null) }
     var editBaseline by remember { mutableStateOf<DraftForm?>(null) }
     var editError by remember { mutableStateOf<String?>(null) }
     var editBusy by remember { mutableStateOf(false) }
     var editUiRevision by remember { mutableIntStateOf(0) }
-    var newEventSession by remember { mutableStateOf<NewEventEditSession?>(null) }
+    var newEventSession by remember { mutableStateOf<EventEditorHandleV1?>(null) }
+    var newEventEditor by remember { mutableStateOf<EventEditorSnapshotV1?>(null) }
     var newEventForm by remember { mutableStateOf<DraftForm?>(null) }
     var newEventError by remember { mutableStateOf<String?>(null) }
     var newEventBusy by remember { mutableStateOf(false) }
@@ -285,7 +301,9 @@ fun PowerCalApp(
     val nativeEditingNow = androidx.compose.runtime.rememberUpdatedState(
         editSession != null || deckOpen || newEventSession != null)
     val webEditing = remember(store, controller) {
-        WebSkinEditService(store, controller) { nativeEditingNow.value }
+        WebSkinEditService(
+            store, controller, { nativeEditingNow.value }, coreFeatureApi
+        )
     }
     DisposableEffect(webEditing) {
         onDispose {
@@ -336,9 +354,11 @@ fun PowerCalApp(
         val projectionNowMillis = nowMillis
         val data = withContext(Dispatchers.IO) {
             val pending = store.pendingDrafts()
-            val formal = store.all()
+            val eventSnapshot = eventFeatureApi.queryEvents()
+            val formal = eventSnapshot.events.map { it.toCoreTemporalRecord() }
             AppData(
                 records = formal,
+                eventFeatureRevision = eventSnapshot.featureRevision,
                 todoEntries = TodoProjection.entries(formal, projectionNowMillis,
                     includeCompleted = true),
                 pending = pending.size,
@@ -352,6 +372,7 @@ fun PowerCalApp(
         }
         withContext(Dispatchers.Main) {
             records = data.records
+            eventFeatureRevision = data.eventFeatureRevision
             todoEntries = data.todoEntries
             hostDataReady = true
             pendingCount = data.pending
@@ -363,29 +384,63 @@ fun PowerCalApp(
         }
     }
 
-    suspend fun openFormalEditor(record: TemporalRecord, occurrenceKey: String? = null) {
-        val opened = runCatching {
-            withContext(Dispatchers.IO) { EditSession.open(store, record, occurrenceKey) }
+    DisposableEffect(eventFeatureApi) {
+        val subscription = eventFeatureApi.subscribe { change ->
+            scope.launch {
+                if (change.featureRevision > latestEventFeatureRevision) {
+                    eventFeatureRevision = change.featureRevision
+                    runCatching { reload() }
+                        .onFailure { message = "事件已处理，但界面状态刷新失败；请重新打开查看" }
+                    WebSkinBridgeRuntime.stateRevision++
+                }
+            }
         }
-        opened.onSuccess {
-            editSession = it
-            editForm = it.form
-            editBaseline = it.baselineForm
-            editError = it.lastError
-            editBusy = false
-            editUiRevision = 0
-        }.onFailure {
-            message = it.message ?: "Unable to open editor"
+        onDispose { subscription.close() }
+    }
+
+    suspend fun openFormalEditor(record: TemporalRecord, occurrenceKey: String? = null) {
+        when (val result = withContext(Dispatchers.IO) {
+            eventFeatureApi.openFormalEvent(record.eventSeq, record.revision, occurrenceKey)
+        }) {
+            is EventEditorOpenResultV1.Opened -> {
+                val opened = result.editor
+                editSession = opened.handle
+                editEditor = opened
+                editForm = opened.form.toCoreDraftForm()
+                editBaseline = opened.baselineForm.toCoreDraftForm()
+                editError = opened.lastError
+                editBusy = false
+                editUiRevision = 0
+            }
+            is EventEditorOpenResultV1.Stale -> message = "事件已变化，请刷新后重新打开"
+            EventEditorOpenResultV1.Missing -> message = "事件已不存在或已删除"
+            EventEditorOpenResultV1.Locked -> message = "当前业务操作暂时锁定了事件编辑"
+            is EventEditorOpenResultV1.Invalid -> message = result.message
         }
     }
 
     fun openNewEvent(kind: TemporalKind, selection: EditorSelection? = null) {
         if (aiLocked || editSession != null || deckOpen || newEventSession != null) return
-        val opened = NewEventEditSession.open(kind, zone = zone, selection = selection)
-        newEventSession = opened
-        newEventForm = opened.form
-        newEventError = null
-        newEventBusy = false
+        val apiSelection = when (selection) {
+            is EditorSelection.AtInstant -> EventSelectionV1(instantMillis = selection.millis)
+            is EditorSelection.OnDate -> EventSelectionV1(localDate = selection.date.toString())
+            null -> null
+        }
+        when (val opened = eventFeatureApi.openNewEvent(
+            EventKindV1.valueOf(kind.name), zone.id, apiSelection
+        )) {
+            is EventEditorOpenResultV1.Opened -> {
+                newEventEditor = opened.editor
+                newEventSession = opened.editor.handle
+                newEventForm = opened.editor.form.toCoreDraftForm()
+                newEventError = null
+                newEventBusy = false
+            }
+            is EventEditorOpenResultV1.Invalid -> message = opened.message
+            EventEditorOpenResultV1.Locked -> message = "当前业务操作暂时锁定了事件编辑"
+            EventEditorOpenResultV1.Missing, is EventEditorOpenResultV1.Stale ->
+                message = "无法打开事件编辑器，请刷新后重试"
+        }
     }
 
     suspend fun reconcile(): ReminderScheduler.ReconcileReport {
@@ -552,8 +607,8 @@ fun PowerCalApp(
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_START) checkpointGate.onStart()
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
-                editError = activeEditSession?.lastError
-                newEventError = activeNewEventSession?.lastError
+                editError = activeEditSession?.let(eventFeatureApi::editorSnapshot)?.lastError
+                newEventError = activeNewEventSession?.let(eventFeatureApi::editorSnapshot)?.lastError
                 scope.launch {
                     try {
                         reconcile()
@@ -581,11 +636,17 @@ fun PowerCalApp(
                 activeEditSession?.takeIf { checkpointGate.shouldCheckpoint(it) }?.let { session ->
                     // Keep the lease and live memory on failure; a successful checkpoint is the
                     // one durable write for this lifecycle boundary.
-                    PowerCalStores.appScope.launch { session.checkpoint() }
+                    PowerCalStores.appScope.launch {
+                        eventFeatureApi.checkpointFormalEvent(
+                            session, java.util.UUID.randomUUID().toString()
+                        )
+                    }
                 }
                 activeNewEventSession?.takeIf { checkpointGate.shouldCheckpoint(it) }?.let { session ->
                     PowerCalStores.appScope.launch {
-                        runCatching { session.checkpoint(store) }
+                        runCatching {
+                            eventFeatureApi.checkpointNewEvent(session, java.util.UUID.randomUUID().toString())
+                        }
                     }
                 }
             }
@@ -1817,6 +1878,7 @@ fun PowerCalApp(
             JSONObject().put("bridgeVersion", WebSkinBridgeRuntime.VERSION).put("page", page)
                 .put("hostNotice", message?.take(1_000) ?: JSONObject.NULL)
                 .put("hostDataReady", hostDataReady)
+                .put("eventFeatureRevision", eventFeatureRevision)
                 .put("aiLocked", aiLocked).put("pendingCount", pendingCount)
                 .put("memoCount", stateTodoCount)
                 .put("memoEntries", WebSkinMemoProjection.build(
@@ -2206,17 +2268,18 @@ fun PowerCalApp(
                         runCatching {
                             withContext(Dispatchers.IO) {
                                 val form = movedDraftForm(record, target)
-                                store.newDraft(
-                                    form,
+                                eventFeatureApi.stageFormalReplacement(
                                     record.eventSeq,
-                                    DraftOperation.REPLACE,
-                                    actor = "user",
-                                    expectedRevision = record.revision
+                                    record.revision,
+                                    form.toEventFormV1(),
+                                    java.util.UUID.randomUUID().toString()
                                 )
                             }
-                        }.onSuccess { card ->
-                            reload()
-                            openDeckAt(card.draftId)
+                        }.onSuccess { staged ->
+                            if (staged.status == EventMutationStatusV1.STAGED && staged.draftId != null) {
+                                reload()
+                                openDeckAt(staged.draftId)
+                            } else message = staged.message ?: "暂时无法创建修改草稿"
                         }.onFailure {
                             message = it.message ?: "暂时无法创建修改草稿"
                         }
@@ -2580,17 +2643,19 @@ fun PowerCalApp(
     }
 
     newEventSession?.let { session ->
-        val visibleForm = newEventForm ?: session.form
+        val editor = newEventEditor ?: eventFeatureApi.editorSnapshot(session) ?: return@let
+        val visibleForm = newEventForm ?: editor.form.toCoreDraftForm()
         NewEventEditorDialog(
-            session = session,
+            editor = editor,
             form = visibleForm,
             error = newEventError,
             busy = newEventBusy,
             onFormChange = { next ->
                 if (!newEventBusy) {
-                    session.edit(next)
+                    val update = eventFeatureApi.updateNewEvent(session, next.toEventFormV1())
                     newEventForm = next
-                    newEventError = null
+                    newEventEditor = eventFeatureApi.editorSnapshot(session)
+                    newEventError = update.message
                 }
             },
             onSave = {
@@ -2598,35 +2663,45 @@ fun PowerCalApp(
                     newEventBusy = true
                     scope.launch {
                         try {
-                            when (val result = withContext(Dispatchers.IO) { session.save(store) }) {
-                                is NewEventEditSession.SaveOutcome.Staged -> {
+                            val result = withContext(Dispatchers.IO) {
+                                eventFeatureApi.saveNewEvent(
+                                    session,
+                                    (newEventForm ?: eventFeatureApi.editorSnapshot(session)
+                                        ?.form?.toCoreDraftForm() ?: visibleForm).toEventFormV1(),
+                                    java.util.UUID.randomUUID().toString()
+                                )
+                            }
+                            when (result.status) {
+                                EventMutationStatusV1.STAGED -> {
+                                    newEventEditor = eventFeatureApi.editorSnapshot(session)
                                     newEventError = null
                                     val refreshFailed = runCatching { reload() }.isFailure
                                     message = if (refreshFailed) {
                                         "草稿已保存，但界面刷新失败；请重新打开待处理列表。"
                                     } else "内容尚未完整，已保存为待处理草稿，可继续编辑。"
                                 }
-                                is NewEventEditSession.SaveOutcome.Failed ->
-                                    newEventError = result.message
-                                NewEventEditSession.SaveOutcome.NoChanges ->
+                                EventMutationStatusV1.FAILED ->
+                                    newEventError = result.message ?: "保存失败；编辑内容仍保留。"
+                                EventMutationStatusV1.NO_CHANGE ->
                                     newEventError = "内容没有有效修改，未创建事件或草稿。"
-                                is NewEventEditSession.SaveOutcome.Published -> when (val outcome = result.outcome) {
-                                    is PowerStore.CommitOutcome.Committed -> {
-                                        newEventSession = null
-                                        newEventForm = null
-                                        newEventError = null
-                                        message = "事件已发布"
-                                        runCatching { reload() }
-                                            .onFailure { message = "事件已发布，但界面刷新失败；请重新打开查看。" }
-                                        runCatching { reconcile() }
-                                            .onFailure { message = "事件已发布，提醒同步尚未完成。" }
-                                    }
-                                    is PowerStore.CommitOutcome.Invalid -> newEventError = outcome.reason
-                                    is PowerStore.CommitOutcome.Conflict -> newEventError = "新建事件发生冲突，请重试。"
-                                    is PowerStore.CommitOutcome.NeedsRestore -> newEventError = "新建事件需要恢复确认。"
-                                    PowerStore.CommitOutcome.Locked -> newEventError = "待处理卡组正由 AI 独占，修改仍保留在编辑器中。"
-                                    PowerStore.CommitOutcome.NotAuthorized -> newEventError = "当前编辑会话无权发布此事件。"
+                                EventMutationStatusV1.CREATED -> {
+                                    newEventSession = null
+                                    newEventEditor = null
+                                    newEventForm = null
+                                    newEventError = null
+                                    message = "事件已发布"
+                                    runCatching { reload() }
+                                        .onFailure { message = "事件已发布，但界面刷新失败；请重新打开查看。" }
+                                    runCatching { reconcile() }
+                                        .onFailure { message = "事件已发布，提醒同步尚未完成。" }
                                 }
+                                EventMutationStatusV1.INVALID -> newEventError = result.message
+                                    ?: "事件信息无效"
+                                EventMutationStatusV1.CONFLICT -> newEventError = "新建事件发生冲突，请重试。"
+                                EventMutationStatusV1.NEEDS_RESTORE -> newEventError = "新建事件需要恢复确认。"
+                                EventMutationStatusV1.LOCKED -> newEventError = "待处理卡组正由 AI 独占，修改仍保留在编辑器中。"
+                                EventMutationStatusV1.NOT_AUTHORIZED -> newEventError = "当前编辑会话无权发布此事件。"
+                                else -> newEventError = "事件保存失败，请检查后重试。"
                             }
                         } catch (error: Exception) {
                             if (error is kotlinx.coroutines.CancellationException) throw error
@@ -2642,11 +2717,23 @@ fun PowerCalApp(
                     newEventBusy = true
                     scope.launch {
                         try {
-                            val card = withContext(Dispatchers.IO) { session.close(store) }
+                            val card = withContext(Dispatchers.IO) {
+                                eventFeatureApi.closeNewEvent(session)
+                            }
+                            if (card.status in setOf(
+                                    EventMutationStatusV1.FAILED,
+                                    EventMutationStatusV1.CONFLICT,
+                                    EventMutationStatusV1.INVALID
+                                )) {
+                                newEventError = card.message ?: "暂存失败；编辑内容仍保留。"
+                                return@launch
+                            }
                             newEventSession = null
+                            newEventEditor = null
                             newEventForm = null
                             newEventError = null
-                            if (card != null) message = "修改已保存为一张待处理草稿"
+                            if (card.status == EventMutationStatusV1.STAGED)
+                                message = "修改已保存为一张待处理草稿"
                             runCatching { reload() }
                                 .onFailure { message = "修改已暂存，但界面刷新失败；请重新打开待处理列表。" }
                         } catch (error: Exception) {
@@ -2663,14 +2750,18 @@ fun PowerCalApp(
                     newEventBusy = true
                     scope.launch {
                         try {
-                            val discarded = withContext(Dispatchers.IO) { session.discard(store) }
+                            val discarded = withContext(Dispatchers.IO) {
+                                eventFeatureApi.discardNewEvent(session)
+                            }
                             if (discarded) {
                                 newEventSession = null
+                                newEventEditor = null
                                 newEventForm = null
                                 newEventError = null
                                 runCatching { reload() }
                                     .onFailure { message = "内容已丢弃，但界面刷新失败；请重新打开查看。" }
-                            } else newEventError = session.lastError ?: "丢弃失败，请重试。"
+                            } else newEventError = eventFeatureApi.editorSnapshot(session)?.lastError
+                                ?: "丢弃失败，请重试。"
                         } catch (error: Exception) {
                             if (error is kotlinx.coroutines.CancellationException) throw error
                             newEventError = error.message ?: "丢弃失败；编辑内容仍保留。"
@@ -2684,91 +2775,110 @@ fun PowerCalApp(
     }
 
     editSession?.let { session ->
+        val editor = editEditor ?: eventFeatureApi.editorSnapshot(session) ?: return@let
         fun exitWithCheckpoint() {
             if (editBusy) return
             editBusy = true
             scope.launch {
-                val checkpoint = withContext(Dispatchers.IO) { session.checkpoint() }
-                if (session.lastError != null) {
-                    message = "Checkpoint failed; edits remain in memory: " + session.lastError
+                val checkpoint = withContext(Dispatchers.IO) {
+                    eventFeatureApi.checkpointFormalEvent(
+                        session, java.util.UUID.randomUUID().toString()
+                    )
+                }
+                if (checkpoint.status == EventMutationStatusV1.FAILED) {
+                    message = "Checkpoint failed; edits remain in memory: " +
+                        (checkpoint.message ?: eventFeatureApi.editorSnapshot(session)?.lastError)
                     editBusy = false
                 } else {
-                    withContext(Dispatchers.IO) { session.close() }
+                    withContext(Dispatchers.IO) { eventFeatureApi.closeFormalEvent(session) }
                     editSession = null
+                    editEditor = null
                     editForm = null
                     editBaseline = null
                     editError = null
                     reload()
-                    if (checkpoint != null) message = "Changes saved as one pending draft"
+                    if (checkpoint.status == EventMutationStatusV1.STAGED)
+                        message = "Changes saved as one pending draft"
                 }
             }
         }
-        val visibleForm = editForm ?: session.form
+        val visibleForm = editForm ?: editor.form.toCoreDraftForm()
         DirectEventEditorDialog(
-            session = session,
+            editor = editor,
             form = visibleForm,
             error = editError,
-            hasChanges = session.meaningfulDiff,
+            hasChanges = eventFeatureApi.editorSnapshot(session)?.meaningfulChanges ?: false,
             busy = editBusy,
             editorRevision = editUiRevision,
             onChange = { next ->
                 editForm = next
                 editError = null
-                session.edit(next)
+                val update = eventFeatureApi.updateFormalEvent(session, next.toEventFormV1())
+                editEditor = eventFeatureApi.editorSnapshot(session)
+                if (update.status != dev.powerfulcalendar.core.api.v1.EventEditorUpdateStatusV1.UPDATED)
+                    editError = update.message ?: "事件编辑状态已失效"
             },
             onScopeChange = { selectedScope ->
-                runCatching { session.selectRecurrenceScope(selectedScope) }
-                    .onSuccess {
-                        editForm = session.form
+                val update = eventFeatureApi.selectFormalRecurrenceScope(session, selectedScope)
+                if (update.status == dev.powerfulcalendar.core.api.v1.EventEditorUpdateStatusV1.UPDATED) {
+                    eventFeatureApi.editorSnapshot(session)?.let { updated ->
+                        editEditor = updated
+                        editForm = updated.form.toCoreDraftForm()
                         editError = null
                     }
-                    .onFailure { editError = it.message ?: "无法切换重复编辑范围" }
+                } else editError = update.message ?: "无法切换重复编辑范围"
             },
             onSave = {
                 if (!editBusy) {
                     editBusy = true
                     scope.launch {
                         try {
-                            if (session.recurrenceScope == RecurrenceEditScope.THIS_AND_FUTURE) {
-                                if (!session.meaningfulDiff) {
-                                    editError = "内容没有有效修改，未拆分重复序列。"
-                                } else when (val outcome = withContext(Dispatchers.IO) {
-                                    session.saveThisAndFuture()
-                                }) {
-                                    is PowerStore.RecurrenceSplitOutcome.Applied -> {
-                                        withContext(Dispatchers.IO) { session.close() }
-                                        editSession = null; editForm = null; editBaseline = null
+                            val outcome = withContext(Dispatchers.IO) {
+                                eventFeatureApi.saveFormalEvent(
+                                    session,
+                                    (editForm ?: visibleForm).toEventFormV1(),
+                                    java.util.UUID.randomUUID().toString()
+                                )
+                            }
+                            when (outcome.status) {
+                                EventMutationStatusV1.UPDATED, EventMutationStatusV1.NO_CHANGE -> {
+                                    if (outcome.relatedEventSeq != null) {
+                                        withContext(Dispatchers.IO) {
+                                            eventFeatureApi.closeFormalEvent(session)
+                                        }
+                                        editSession = null
+                                        editEditor = null
+                                        editForm = null
+                                        editBaseline = null
                                         editError = null
                                         reload(); reconcile()
                                         message = "本次及以后已拆分保存为新的重复序列"
-                                    }
-                                    is PowerStore.RecurrenceSplitOutcome.Conflict -> {
-                                        editError = session.lastError
-                                        message = "重复事件已变化，请重新打开确认"
-                                    }
-                                    is PowerStore.RecurrenceSplitOutcome.Invalid ->
-                                        editError = outcome.reason
-                                    PowerStore.RecurrenceSplitOutcome.Locked ->
-                                        editError = "编辑器当前不可写"
-                                }
-                            } else when (val outcome = withContext(Dispatchers.IO) { session.save() }) {
-                                is PowerStore.DirectEditOutcome.Saved -> {
-                                    editForm = session.form
-                                    editBaseline = session.baselineForm
+                                    } else {
+                                    val updated = eventFeatureApi.editorSnapshot(session)
+                                    editEditor = updated
+                                    editForm = updated?.form?.toCoreDraftForm()
+                                    editBaseline = updated?.baselineForm?.toCoreDraftForm()
                                     editUiRevision++
                                     editError = null
                                     reload(); reconcile()
-                                    message = if (outcome.changed) "Event saved" else "No changes; pending draft cleared"
+                                    message = if (outcome.status == EventMutationStatusV1.UPDATED)
+                                        "Event saved" else "No changes; pending draft cleared"
+                                    }
                                 }
-                                is PowerStore.DirectEditOutcome.Conflict -> {
-                                    editError = session.lastError; message = "Event changed; reopen to review"
+                                EventMutationStatusV1.CONFLICT -> {
+                                    editError = eventFeatureApi.editorSnapshot(session)?.lastError
+                                    message = "Event changed; reopen to review"
                                 }
-                                is PowerStore.DirectEditOutcome.Invalid -> {
-                                    editError = session.lastError; message = outcome.reason
+                                EventMutationStatusV1.INVALID -> {
+                                    editError = outcome.message ?:
+                                        eventFeatureApi.editorSnapshot(session)?.lastError
                                 }
-                                PowerStore.DirectEditOutcome.Locked -> {
-                                    editError = session.lastError; message = "Editor is locked"
+                                EventMutationStatusV1.LOCKED -> {
+                                    editError = outcome.message ?:
+                                        eventFeatureApi.editorSnapshot(session)?.lastError
+                                    message = "Editor is locked"
                                 }
+                                else -> editError = outcome.message ?: "Unable to save event"
                             }
                         } finally {
                             editBusy = false
@@ -2778,23 +2888,35 @@ fun PowerCalApp(
             },
             onExit = { exitWithCheckpoint() },
             onDiscardChanges = {
-                session.discardEditingChanges()
-                editForm = session.form
-                editBaseline = session.baselineForm
-                editError = null
+                val update = eventFeatureApi.discardFormalChanges(session)
+                eventFeatureApi.editorSnapshot(session)?.let { updated ->
+                    editEditor = updated
+                    editForm = updated.form.toCoreDraftForm()
+                    editBaseline = updated.baselineForm.toCoreDraftForm()
+                }
+                editError = update.message
             },
             onDelete = {
                 if (!editBusy) scope.launch {
-                    when (withContext(Dispatchers.IO) { session.delete() }) {
-                        is PowerStore.DirectEditOutcome.Saved -> {
-                            withContext(Dispatchers.IO) { session.close() }
-                            editSession = null; editForm = null; editBaseline = null; editError = null
+                    val approval = withContext(Dispatchers.IO) {
+                        coreFeatureApi.issueFormalDeleteApproval(session)
+                    }
+                    val outcome = if (approval == null) null else withContext(Dispatchers.IO) {
+                        eventFeatureApi.deleteFormalEvent(
+                            session, approval, java.util.UUID.randomUUID().toString()
+                        )
+                    }
+                    if (outcome?.status == EventMutationStatusV1.DELETED) {
+                            withContext(Dispatchers.IO) { eventFeatureApi.closeFormalEvent(session) }
+                            editSession = null; editEditor = null; editForm = null
+                            editBaseline = null; editError = null
                             reload(); reconcile(); message = "Event deleted"
-                        }
-                        else -> {
-                            editError = session.lastError
-                            message = session.lastError ?: "Delete failed"
-                        }
+                    } else {
+                        editError = outcome?.message ?:
+                            eventFeatureApi.editorSnapshot(session)?.lastError
+                        message = if (outcome?.status == EventMutationStatusV1.CONFLICT || approval == null)
+                            "Event changed; reopen to review"
+                        else eventFeatureApi.editorSnapshot(session)?.lastError ?: "Delete failed"
                     }
                 }
             }
@@ -2803,7 +2925,7 @@ fun PowerCalApp(
     LaunchedEffect(editSession) {
         while (editSession != null) {
             delay(30_000)
-            withContext(Dispatchers.IO) { editSession?.heartbeat() }
+            withContext(Dispatchers.IO) { editSession?.let(eventFeatureApi::heartbeatFormalEvent) }
         }
     }
 

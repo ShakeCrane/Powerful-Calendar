@@ -1,9 +1,7 @@
 package dev.powerfulcalendar.ui.v2
 
 import dev.powerfulcalendar.core.DeckController
-import dev.powerfulcalendar.core.EditSession
 import dev.powerfulcalendar.core.EditorSelection
-import dev.powerfulcalendar.core.NewEventEditSession
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.DraftSourceRevisionMismatchException
@@ -23,7 +21,20 @@ import dev.powerfulcalendar.core.RecurrenceEngine
 import dev.powerfulcalendar.core.ReminderMethod
 import dev.powerfulcalendar.core.ReminderTiming
 import dev.powerfulcalendar.core.TemporalConversion
-import java.time.Clock
+import dev.powerfulcalendar.core.api.v1.EventDeleteApprovalV1
+import dev.powerfulcalendar.core.api.v1.EventEditorHandleV1
+import dev.powerfulcalendar.core.api.v1.EventEditorOpenResultV1
+import dev.powerfulcalendar.core.api.v1.EventEditorSnapshotV1
+import dev.powerfulcalendar.core.api.v1.EventEditorUpdateStatusV1
+import dev.powerfulcalendar.core.api.v1.EventKindV1
+import dev.powerfulcalendar.core.api.v1.EventRecurrenceScopeV1
+import dev.powerfulcalendar.core.api.v1.EventSelectionV1
+import dev.powerfulcalendar.core.api.v1.EventFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.EventMutationReceiptV1
+import dev.powerfulcalendar.core.api.v1.EventMutationStatusV1
+import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.toCoreDraftForm
+import dev.powerfulcalendar.core.api.v1.toEventFormV1
 import java.time.LocalDate
 import java.time.Instant
 import java.time.ZoneId
@@ -327,15 +338,53 @@ internal data class WebFormalWriteReview(
     val proposed: DraftForm?,
     val scope: RecurrenceEditScope? = null,
     val occurrenceKey: String? = null,
-    val editorSession: EditSession? = null,
+    val editorSession: WebFormalEditor? = null,
     val editorFormSnapshot: DraftForm? = null,
-    val newEventSession: NewEventEditSession? = null,
+    val newEventSession: WebNewEventEditor? = null,
     val deckCard: DraftCard? = null,
     val deckForm: DraftForm? = null,
     val deckVersion: Long? = null,
     val conflictPrompt: DeckController.ConflictPrompt? = null,
     val restorePrompt: DeckController.RestorePrompt? = null
 )
+
+/** Host-only adapter state. The Core editor object never crosses the versioned API boundary. */
+internal class WebFormalEditor(
+    val handle: EventEditorHandleV1,
+    var snapshot: EventEditorSnapshotV1,
+    var form: DraftForm
+) {
+    val eventSeq: Long get() = requireNotNull(snapshot.eventSeq)
+    val requiresRecurrenceScope: Boolean get() = snapshot.recurrenceScopeRequired
+    val canEditSelectedOccurrence: Boolean get() = snapshot.selectedOccurrenceKey != null
+    val selectedOccurrenceKey: String? get() = snapshot.selectedOccurrenceKey
+    val recurrenceScope: RecurrenceEditScope? get() = form.recurrenceEditScope
+    val meaningfulDiff: Boolean get() = snapshot.meaningfulChanges
+    val lastError: String? get() = snapshot.lastError
+}
+
+/** Host-only adapter state for one temporary new-event editor. */
+internal class WebNewEventEditor(
+    val handle: EventEditorHandleV1,
+    var snapshot: EventEditorSnapshotV1,
+    var form: DraftForm
+) {
+    val clientDraftId: Long get() = requireNotNull(snapshot.clientDraftId)
+    val version: Long get() = snapshot.draftVersion ?: 0L
+    val persistedCard: Boolean get() = snapshot.hasPersistedDraft
+    val meaningfulDiff: Boolean get() = snapshot.meaningfulChanges
+    val lastError: String? get() = snapshot.lastError
+    fun previewCard() = DraftCard(
+        draftId = clientDraftId,
+        eventSeq = snapshot.eventSeq ?: 0L,
+        queueOrder = 0L,
+        operation = DraftOperation.CREATE,
+        form = form,
+        status = DraftStatus.PENDING,
+        baseRevision = null,
+        draftVersion = version
+    )
+}
 
 /** Host-owned timeline camera and zone; skins never choose the drag snap grid. */
 internal data class TimelineMoveContext(
@@ -347,12 +396,14 @@ internal data class TimelineMoveContext(
 internal class WebSkinEditService(
     private val store: PowerStore,
     private val deck: DeckController,
-    private val externalEditorActive: () -> Boolean = { false }
+    private val externalEditorActive: () -> Boolean = { false },
+    private val coreFeatureApi: PowerCalCoreFeatureApiV1
 ) {
+    private val eventFeatures: EventFeatureApiV1 = coreFeatureApi.events
     private val gate = Mutex()
-    private var session: EditSession? = null
+    private var session: WebFormalEditor? = null
     private var sessionId: String? = null
-    private var newEventSession: NewEventEditSession? = null
+    private var newEventSession: WebNewEventEditor? = null
     private var deckOpen = false
     private var deckSearchQuery = ""
     private var formalSearchResults: List<TemporalRecord> = emptyList()
@@ -373,6 +424,40 @@ internal class WebSkinEditService(
     private fun result(id: String, status: String, detail: String? = null): JSONObject =
         JSONObject().put("requestId",id).put("status",status)
             .apply { if(detail!=null)put("detail",detail.take(240)) }
+
+    private fun result(receipt: EventMutationReceiptV1): JSONObject {
+        val status = when (receipt.status) {
+            EventMutationStatusV1.CREATED -> "committed"
+            EventMutationStatusV1.STAGED -> "staged"
+            EventMutationStatusV1.UPDATED, EventMutationStatusV1.DELETED,
+            EventMutationStatusV1.NO_CHANGE -> "saved"
+            EventMutationStatusV1.CONFLICT -> "conflict"
+            EventMutationStatusV1.INVALID -> "invalid"
+            EventMutationStatusV1.LOCKED -> "locked"
+            EventMutationStatusV1.NEEDS_RESTORE -> "restore_required"
+            EventMutationStatusV1.NOT_AUTHORIZED -> "not_authorized"
+            EventMutationStatusV1.FAILED -> "failed"
+            EventMutationStatusV1.DUPLICATE_REQUEST_ID -> "duplicate_request_id"
+        }
+        val detail = when (receipt.status) {
+            EventMutationStatusV1.STAGED -> receipt.draftId?.toString() ?: receipt.message
+            EventMutationStatusV1.CREATED -> receipt.eventSeq?.toString() ?: receipt.message
+            EventMutationStatusV1.UPDATED, EventMutationStatusV1.NO_CHANGE ->
+                receipt.revision?.toString() ?: receipt.message
+            EventMutationStatusV1.DELETED -> receipt.eventSeq?.toString() ?: receipt.message
+            else -> receipt.message ?: receipt.revision?.toString()
+                ?: receipt.draftId?.toString() ?: receipt.eventSeq?.toString()
+        }
+        return result(receipt.requestId, status, detail)
+            .put("featureRevision", eventFeatures.featureRevision)
+            .put("refreshRequired", receipt.refreshRequired)
+            .put("duplicate", receipt.duplicate)
+            .put("eventSeq", receipt.eventSeq ?: JSONObject.NULL)
+            .put("revision", receipt.revision ?: JSONObject.NULL)
+            .put("draftId", receipt.draftId ?: JSONObject.NULL)
+            .put("draftVersion", receipt.draftVersion ?: JSONObject.NULL)
+            .put("relatedEventSeq", receipt.relatedEventSeq ?: JSONObject.NULL)
+    }
 
     private fun clearDeckSearch() {
         deckSearchQuery = ""
@@ -423,7 +508,7 @@ internal class WebSkinEditService(
             val preview = active.previewCard()
             val items = org.json.JSONArray().put(JSONObject()
                 .put("draftId", preview.draftId)
-                .put("eventSeq", active.persistedCard?.eventSeq ?: JSONObject.NULL)
+                .put("eventSeq", active.snapshot.eventSeq ?: JSONObject.NULL)
                 .put("draftVersion", active.version)
                 .put("title", preview.form.title.take(240))
                 .put("kind", preview.form.kind.name)
@@ -590,27 +675,24 @@ internal class WebSkinEditService(
             return result(cmd.requestId, "unchanged", "事件已位于该时间")
 
         val form = movedDraftForm(record, snappedTarget)
-        val card = withContext(Dispatchers.IO) {
-            store.newDraft(
-                form,
-                record.eventSeq,
-                DraftOperation.REPLACE,
-                actor = "user",
-                expectedRevision = cmd.expectedRevision
+        val staged = withContext(Dispatchers.IO) {
+            eventFeatures.stageFormalReplacement(
+                record.eventSeq, cmd.expectedRevision, form.toEventFormV1(), cmd.requestId
             )
         }
+        if (staged.status != EventMutationStatusV1.STAGED) return result(staged)
+        val draftId = staged.draftId ?: return result(cmd.requestId, "failed", "草稿暂存回执缺少 ID")
         // The formal event is untouched; the existing queue owns the replacement candidate.
-        deck.open(card.draftId)
+        deck.open(draftId)
         deckOpen = true
-        return result(cmd.requestId, "staged", card.draftId.toString())
+        return result(cmd.requestId, "staged", draftId.toString())
     }
 
     suspend fun execute(
         cmd: WebEditCommand,
         newEventZone: ZoneId = ZoneId.systemDefault(),
         newEventSelection: EditorSelection? = null,
-        timelineMoveContext: TimelineMoveContext? = null,
-        newEventClock: Clock = Clock.systemUTC()
+        timelineMoveContext: TimelineMoveContext? = null
     ): JSONObject = gate.withLock {
         completed[cmd.requestId]?.let { (original, reply) ->
             // A caller cannot rebind an already seen request ID to a different write.
@@ -629,21 +711,25 @@ internal class WebSkinEditService(
                 is WebEditCommand.OpenEvent -> {
                     if(session!=null || externalEditorActive() || deckOpen)
                         result(cmd.requestId,"locked")
-                    else {
-                        val record=withContext(Dispatchers.IO){ store.get(cmd.eventSeq) }
-                        if(record==null || record.revision!=cmd.revision)
-                            result(cmd.requestId,"stale")
-                        else if(cmd.occurrenceKey != null &&
-                            (!record.recurrence.isRepeating ||
-                                withContext(Dispatchers.IO) {
-                                    RecurrenceEngine.occurrenceForKey(record,cmd.occurrenceKey)
-                                } == null)) result(cmd.requestId,"invalid","所选重复实例不存在")
-                        else {
-                            val opened=withContext(Dispatchers.IO){ EditSession.open(store,record,cmd.occurrenceKey) }
-                            session=opened
+                    else when (val opened = withContext(Dispatchers.IO) {
+                        eventFeatures.openFormalEvent(cmd.eventSeq, cmd.revision, cmd.occurrenceKey)
+                    }) {
+                        is EventEditorOpenResultV1.Opened -> {
+                            val editor = opened.editor
+                            session = WebFormalEditor(
+                                editor.handle, editor, editor.form.toCoreDraftForm()
+                            )
                             sessionId=UUID.randomUUID().toString()
                             result(cmd.requestId,"opened")
                         }
+                        is EventEditorOpenResultV1.Stale ->
+                            result(cmd.requestId,"stale", opened.currentRevision?.toString())
+                        EventEditorOpenResultV1.Missing ->
+                            result(cmd.requestId,"stale")
+                        EventEditorOpenResultV1.Locked ->
+                            result(cmd.requestId,"locked")
+                        is EventEditorOpenResultV1.Invalid ->
+                            result(cmd.requestId,"invalid", opened.message)
                     }
                 }
                 is WebEditCommand.MoveTimelineEvent ->
@@ -655,15 +741,30 @@ internal class WebSkinEditService(
                         (cmd.scope != RecurrenceEditScope.WHOLE_SERIES && !current.canEditSelectedOccurrence))
                         result(cmd.requestId,"invalid","请先放弃修改并选择有效的重复范围")
                     else {
-                        withContext(Dispatchers.IO){current.selectRecurrenceScope(cmd.scope)}
-                        result(cmd.requestId,"selected")
+                        val updated = withContext(Dispatchers.IO) {
+                            eventFeatures.selectFormalRecurrenceScope(
+                                current.handle, EventRecurrenceScopeV1.valueOf(cmd.scope.name)
+                            )
+                        }
+                        if (updated.status == EventEditorUpdateStatusV1.UPDATED) {
+                            eventFeatures.editorSnapshot(current.handle)?.let { current.snapshot = it }
+                            current.form = current.snapshot.form.toCoreDraftForm()
+                            result(cmd.requestId,"selected")
+                        } else result(cmd.requestId,"invalid",updated.message)
                     }
                 }
                 is WebEditCommand.DiscardEventChanges -> {
                     if(!editorMatches(cmd.sessionId)) result(cmd.requestId,"stale")
                     else {
-                        withContext(Dispatchers.IO){session!!.discardEditingChanges()}
-                        result(cmd.requestId,"discarded_changes")
+                        val active = session!!
+                        val updated = withContext(Dispatchers.IO) {
+                            eventFeatures.discardFormalChanges(active.handle)
+                        }
+                        eventFeatures.editorSnapshot(active.handle)?.let { active.snapshot = it }
+                        active.form = active.snapshot.form.toCoreDraftForm()
+                        if (updated.status == EventEditorUpdateStatusV1.UPDATED)
+                            result(cmd.requestId,"discarded_changes")
+                        else result(cmd.requestId,"failed",updated.message)
                     }
                 }
                 is WebEditCommand.PatchEvent -> {
@@ -674,10 +775,16 @@ internal class WebSkinEditService(
                         cmd.field !in setOf("title","startText","endText"))
                         result(cmd.requestId,"invalid","仅本次只能修改标题和时间")
                     else {
-                        withContext(Dispatchers.IO) {
-                            session!!.edit(WebEditWire.patch(session!!.form,cmd.field,cmd.value))
+                        val active = session!!
+                        val patched = WebEditWire.patch(active.form,cmd.field,cmd.value)
+                        val updated = withContext(Dispatchers.IO) {
+                            eventFeatures.updateFormalEvent(active.handle, patched.toEventFormV1())
                         }
-                        result(cmd.requestId,"edited")
+                        if (updated.status == EventEditorUpdateStatusV1.UPDATED) {
+                            active.form = patched
+                            eventFeatures.editorSnapshot(active.handle)?.let { active.snapshot = it }
+                            result(cmd.requestId,"edited")
+                        } else result(cmd.requestId,"failed",updated.message)
                     }
                 }
                 is WebEditCommand.SaveEvent -> {
@@ -711,14 +818,12 @@ internal class WebSkinEditService(
                     }
                     else if(session!!.recurrenceScope == RecurrenceEditScope.THIS_AND_FUTURE)
                         result(cmd.requestId,"invalid","内容没有有效修改，未拆分重复序列")
-                    else when(val saved=withContext(Dispatchers.IO){session!!.save()}) {
-                        is PowerStore.DirectEditOutcome.Saved ->
-                            result(cmd.requestId,"saved",saved.revision.toString())
-                        is PowerStore.DirectEditOutcome.Conflict -> result(cmd.requestId,"conflict")
-                        is PowerStore.DirectEditOutcome.Invalid ->
-                            result(cmd.requestId,"invalid",saved.reason)
-                        PowerStore.DirectEditOutcome.Locked -> result(cmd.requestId,"locked")
-                    }
+                    else result(withContext(Dispatchers.IO) {
+                        val active = session!!
+                        eventFeatures.saveFormalEvent(
+                            active.handle, active.form.toEventFormV1(), cmd.requestId
+                        )
+                    })
                 }
                 is WebEditCommand.DeleteEvent -> {
                     if (!editorMatches(cmd.sessionId)) result(cmd.requestId, "stale")
@@ -746,13 +851,19 @@ internal class WebSkinEditService(
                     else {
                         val old=session!!
                         val cleanStaleSession = !old.meaningfulDiff &&
-                            !withContext(Dispatchers.IO) { old.formalVersionIsCurrent() }
+                            !withContext(Dispatchers.IO) { eventFeatures.isFormalEventCurrent(old.handle) }
                         val checkpoint = if (cleanStaleSession) null else
-                            withContext(Dispatchers.IO) { old.checkpoint() }
-                        if(old.lastError!=null && !cleanStaleSession)
-                            result(cmd.requestId,"failed",old.lastError)
+                            withContext(Dispatchers.IO) {
+                                eventFeatures.checkpointFormalEvent(old.handle, cmd.requestId)
+                            }
+                        if(!cleanStaleSession && checkpoint != null && checkpoint.status in setOf(
+                                EventMutationStatusV1.FAILED,
+                                EventMutationStatusV1.CONFLICT,
+                                EventMutationStatusV1.INVALID
+                            ))
+                            result(cmd.requestId,"failed",checkpoint.message ?: old.lastError)
                         else {
-                            withContext(Dispatchers.IO){old.close()}
+                            withContext(Dispatchers.IO){eventFeatures.closeFormalEvent(old.handle)}
                             session=null;sessionId=null
                             result(cmd.requestId,"closed",checkpoint?.draftId?.toString())
                         }
@@ -764,14 +875,31 @@ internal class WebSkinEditService(
                     else if(withContext(Dispatchers.IO) { store.isLocked() })
                         result(cmd.requestId,"locked")
                     else {
-                        val opened = NewEventEditSession.open(
-                            cmd.kind, clock = newEventClock, zone = newEventZone,
-                            selection = newEventSelection
-                        )
-                        clearDeckSearch()
-                        newEventSession = opened
-                        deckOpen = true
-                        result(cmd.requestId,"created",opened.clientDraftId.toString())
+                        val selection = when (newEventSelection) {
+                            is EditorSelection.AtInstant ->
+                                EventSelectionV1(instantMillis = newEventSelection.millis)
+                            is EditorSelection.OnDate ->
+                                EventSelectionV1(localDate = newEventSelection.date.toString())
+                            null -> null
+                        }
+                        when (val opened = eventFeatures.openNewEvent(
+                            EventKindV1.valueOf(cmd.kind.name), newEventZone.id, selection
+                        )) {
+                            is EventEditorOpenResultV1.Opened -> {
+                                val editor = opened.editor
+                                clearDeckSearch()
+                                newEventSession = WebNewEventEditor(
+                                    editor.handle, editor, editor.form.toCoreDraftForm()
+                                )
+                                deckOpen = true
+                                result(cmd.requestId,"created",editor.clientDraftId.toString())
+                            }
+                            is EventEditorOpenResultV1.Invalid ->
+                                result(cmd.requestId,"invalid",opened.message)
+                            EventEditorOpenResultV1.Locked -> result(cmd.requestId,"locked")
+                            EventEditorOpenResultV1.Missing, is EventEditorOpenResultV1.Stale ->
+                                result(cmd.requestId,"failed","无法创建事件编辑器")
+                        }
                     }
                 }
                 is WebEditCommand.OpenDeck -> {
@@ -928,8 +1056,17 @@ internal class WebSkinEditService(
                             activeNew.version!=cmd.draftVersion) result(cmd.requestId,"stale")
                         else if(withContext(Dispatchers.IO) { store.isLocked() }) result(cmd.requestId,"locked")
                         else {
-                            activeNew.edit(WebEditWire.patch(activeNew.form,cmd.field,cmd.value))
-                            result(cmd.requestId,"edited")
+                            val patched = WebEditWire.patch(activeNew.form,cmd.field,cmd.value)
+                            val update = eventFeatures.updateNewEvent(
+                                activeNew.handle, patched.toEventFormV1()
+                            )
+                            if (update.status == EventEditorUpdateStatusV1.UPDATED) {
+                                activeNew.form = patched
+                                eventFeatures.editorSnapshot(activeNew.handle)?.let {
+                                    activeNew.snapshot = it
+                                }
+                                result(cmd.requestId,"edited")
+                            } else result(cmd.requestId,"failed",update.message)
                         }
                     } else {
                         val state=deck.state
@@ -960,8 +1097,21 @@ internal class WebSkinEditService(
                     val activeNew = newEventSession
                     if(!deckOpen)result(cmd.requestId,"missing")
                     else if(activeNew != null) {
-                        withContext(Dispatchers.IO) { activeNew.checkpoint(store) }
-                        result(cmd.requestId,"flushed")
+                        val checkpoint = withContext(Dispatchers.IO) {
+                            eventFeatures.checkpointNewEvent(activeNew.handle, cmd.requestId)
+                        }
+                        if (checkpoint.status in setOf(
+                                EventMutationStatusV1.FAILED,
+                                EventMutationStatusV1.CONFLICT,
+                                EventMutationStatusV1.INVALID
+                            ))
+                            result(cmd.requestId,"failed",checkpoint.message)
+                        else {
+                            eventFeatures.editorSnapshot(activeNew.handle)?.let {
+                                activeNew.snapshot = it
+                            }
+                            result(cmd.requestId,"flushed")
+                        }
                     } else if(deck.flush())result(cmd.requestId,"flushed")
                     else result(cmd.requestId,"failed",deck.state.error)
                 }
@@ -969,12 +1119,20 @@ internal class WebSkinEditService(
                     val activeNew = newEventSession
                     if(!deckOpen)result(cmd.requestId,"closed")
                     else if(activeNew != null) {
-                        val saved = withContext(Dispatchers.IO) { activeNew.close(store) }
+                        val saved = withContext(Dispatchers.IO) {
+                            eventFeatures.closeNewEvent(activeNew.handle)
+                        }
+                        if (saved.status in setOf(
+                                EventMutationStatusV1.FAILED,
+                                EventMutationStatusV1.CONFLICT,
+                                EventMutationStatusV1.INVALID
+                            ))
+                            return@withLock result(cmd.requestId,"failed",saved.message)
                         newEventSession = null
                         deckOpen = false
                         clearDeckSearch()
-                        runCatching { deck.open(saved?.draftId) }
-                        result(cmd.requestId,"closed",saved?.draftId?.toString())
+                        runCatching { deck.open(saved.draftId) }
+                        result(cmd.requestId,"closed",saved.draftId?.toString())
                     } else if(deck.flush()) {
                         deckOpen=false
                         clearDeckSearch()
@@ -988,7 +1146,9 @@ internal class WebSkinEditService(
                     if(activeNew != null) {
                         if(!deckOpen || activeNew.clientDraftId!=cmd.draftId ||
                             activeNew.version!=cmd.draftVersion) result(cmd.requestId,"stale")
-                        else if(withContext(Dispatchers.IO) { activeNew.discard(store) }) {
+                        else if(withContext(Dispatchers.IO) {
+                                eventFeatures.discardNewEvent(activeNew.handle)
+                            }) {
                             newEventSession = null
                             deckOpen = false
                             clearDeckSearch()
@@ -1137,39 +1297,42 @@ internal class WebSkinEditService(
             if (!deckOpen || activeNew.clientDraftId != cmd.draftId ||
                 activeNew.version != cmd.draftVersion) return result(cmd.requestId, "stale")
             if (!activeNew.meaningfulDiff) return result(cmd.requestId, "no_changes")
-            // A transient new-event session has no DeckController snapshot to project aiLocked
-            // from. Check the authoritative Store before either requesting formal-write review
-            // or attempting to stage an incomplete form. Store transactions remain the final
-            // guard if a batch starts after this read.
             if (withContext(Dispatchers.IO) { store.isLocked() })
-                return result(cmd.requestId, "locked", "当前有受保护的业务操作，内容仍保留在编辑器中")
-            val form = activeNew.form
-            return when (form.build(1L, 1L, activeNew.defaults.nowMillis)) {
-                is FormBuild.Ready -> {
+                return result(cmd.requestId, "locked",
+                    "当前有受保护的业务操作，内容仍保留在编辑器中")
+            val validation = eventFeatures.validateNewEvent(activeNew.handle)
+            return when (validation.status) {
+                dev.powerfulcalendar.core.api.v1.EventValidationStatusV1.READY -> {
                     pendingWriteReview = WebFormalWriteReview(
                         token = UUID.randomUUID().toString(), command = cmd,
                         operation = DraftOperation.CREATE, current = null, before = null,
-                        proposed = form, newEventSession = activeNew,
-                        deckCard = activeNew.persistedCard, deckVersion = activeNew.version
+                        proposed = activeNew.form, newEventSession = activeNew,
+                        deckVersion = activeNew.version
                     )
                     result(cmd.requestId, "confirmation_required")
                 }
-                is FormBuild.Incomplete, is FormBuild.Invalid ->
-                    when (val saved = withContext(Dispatchers.IO) { activeNew.save(store) }) {
-                        is NewEventEditSession.SaveOutcome.Staged ->
-                            result(cmd.requestId, "staged", activeNew.clientDraftId.toString())
-                        is NewEventEditSession.SaveOutcome.Failed -> {
-                            // The batch may acquire its lock after the preflight read. Preserve
-                            // the form and report the same retryable state as a non-racy lock.
-                            if (withContext(Dispatchers.IO) { store.isLocked() })
-                                result(cmd.requestId, "locked",
-                                    "当前有受保护的业务操作，内容仍保留在编辑器中")
-                            else result(cmd.requestId, "failed", saved.message)
-                        }
-                        NewEventEditSession.SaveOutcome.NoChanges -> result(cmd.requestId, "no_changes")
-                        is NewEventEditSession.SaveOutcome.Published ->
-                            result(cmd.requestId, "failed", "发布状态变化，请重新检查")
+                dev.powerfulcalendar.core.api.v1.EventValidationStatusV1.INCOMPLETE,
+                dev.powerfulcalendar.core.api.v1.EventValidationStatusV1.INVALID -> {
+                    val saved = withContext(Dispatchers.IO) {
+                        eventFeatures.saveNewEvent(
+                            activeNew.handle,
+                            activeNew.form.toEventFormV1(),
+                            cmd.requestId
+                        )
                     }
+                    eventFeatures.editorSnapshot(activeNew.handle)?.let {
+                        activeNew.snapshot = it
+                    }
+                    if (saved.status == EventMutationStatusV1.FAILED &&
+                        withContext(Dispatchers.IO) { store.isLocked() }) {
+                        result(cmd.requestId, "locked",
+                            "当前有受保护的业务操作，内容仍保留在编辑器中")
+                    } else if (saved.status == EventMutationStatusV1.STAGED) {
+                        result(cmd.requestId, "staged", activeNew.clientDraftId.toString())
+                    } else result(saved)
+                }
+                dev.powerfulcalendar.core.api.v1.EventValidationStatusV1.NOT_FOUND ->
+                    result(cmd.requestId, "stale", validation.message)
             }
         }
 
@@ -1247,27 +1410,20 @@ internal class WebSkinEditService(
         if (transient != null) {
             if (newEventSession !== transient || !deckOpen ||
                 transient.clientDraftId != command.draftId ||
-                transient.version != review.deckVersion || transient.form != review.proposed ||
-                transient.persistedCard != review.deckCard)
+                transient.version != review.deckVersion || transient.form != review.proposed)
                 return result(command.requestId, "conflict", "新建内容已变化，请重新审查")
-            return when (val saved = withContext(Dispatchers.IO) { transient.save(store) }) {
-                is NewEventEditSession.SaveOutcome.Published -> when (val outcome = saved.outcome) {
-                    is PowerStore.CommitOutcome.Committed -> {
-                        newEventSession = null
-                        deckOpen = false
-                        runCatching { deck.open() }
-                        result(command.requestId, "committed", outcome.eventSeq.toString())
-                    }
-                    is PowerStore.CommitOutcome.Invalid -> result(command.requestId, "invalid", outcome.reason)
-                    is PowerStore.CommitOutcome.Conflict -> result(command.requestId, "conflict")
-                    is PowerStore.CommitOutcome.NeedsRestore -> result(command.requestId, "restore_required")
-                    PowerStore.CommitOutcome.Locked, PowerStore.CommitOutcome.NotAuthorized ->
-                        result(command.requestId, "locked")
-                }
-                is NewEventEditSession.SaveOutcome.Staged -> result(command.requestId, "staged")
-                is NewEventEditSession.SaveOutcome.Failed -> result(command.requestId, "failed", saved.message)
-                NewEventEditSession.SaveOutcome.NoChanges -> result(command.requestId, "no_changes")
+            val saved = withContext(Dispatchers.IO) {
+                eventFeatures.saveNewEvent(
+                    transient.handle, transient.form.toEventFormV1(), command.requestId
+                )
             }
+            eventFeatures.editorSnapshot(transient.handle)?.let { transient.snapshot = it }
+            if (saved.status == EventMutationStatusV1.CREATED) {
+                newEventSession = null
+                deckOpen = false
+                runCatching { deck.open() }
+            }
+            return result(saved)
         }
 
         val card = review.deckCard ?: return result(command.requestId, "stale")
@@ -1362,22 +1518,26 @@ internal class WebSkinEditService(
                         active.form!=review.proposed || active.recurrenceScope!=review.scope ||
                         withContext(Dispatchers.IO){store.get(review.current!!.eventSeq)}!=review.current)
                         result(review.command.requestId,"conflict","事件或审查内容已变化")
-                    else if(review.scope==RecurrenceEditScope.THIS_AND_FUTURE) {
-                        when(val split=withContext(Dispatchers.IO){active.saveThisAndFuture()}) {
-                            is PowerStore.RecurrenceSplitOutcome.Applied -> {
-                                withContext(Dispatchers.IO){active.close()}
-                                session=null;sessionId=null
-                                result(review.command.requestId,"saved",split.newEventSeq.toString())
-                            }
-                            is PowerStore.RecurrenceSplitOutcome.Conflict -> result(review.command.requestId,"conflict")
-                            is PowerStore.RecurrenceSplitOutcome.Invalid -> result(review.command.requestId,"invalid",split.reason)
-                            PowerStore.RecurrenceSplitOutcome.Locked -> result(review.command.requestId,"locked")
+                    else {
+                        val saved = withContext(Dispatchers.IO) {
+                            eventFeatures.saveFormalEvent(
+                                active.handle, active.form.toEventFormV1(), command.requestId
+                            )
                         }
-                    } else when(val saved=withContext(Dispatchers.IO){active.save()}) {
-                        is PowerStore.DirectEditOutcome.Saved -> result(review.command.requestId,"saved",saved.revision.toString())
-                        is PowerStore.DirectEditOutcome.Conflict -> result(review.command.requestId,"conflict")
-                        is PowerStore.DirectEditOutcome.Invalid -> result(review.command.requestId,"invalid",saved.reason)
-                        PowerStore.DirectEditOutcome.Locked -> result(review.command.requestId,"locked")
+                        if (saved.status == EventMutationStatusV1.UPDATED &&
+                            review.scope == RecurrenceEditScope.THIS_AND_FUTURE) {
+                            withContext(Dispatchers.IO) {
+                                eventFeatures.closeFormalEvent(active.handle)
+                            }
+                            session = null
+                            sessionId = null
+                        } else {
+                            eventFeatures.editorSnapshot(active.handle)?.let { updated ->
+                                active.snapshot = updated
+                                active.form = updated.form.toCoreDraftForm()
+                            }
+                        }
+                        result(saved)
                     }
                 }
                 is WebEditCommand.DeleteEvent -> {
@@ -1389,18 +1549,26 @@ internal class WebSkinEditService(
                         active.form != review.editorFormSnapshot ||
                         withContext(Dispatchers.IO) { store.get(current.eventSeq) } != current) {
                         result(review.command.requestId, "conflict", "事件或审查内容已变化")
-                    } else when (val deleted = withContext(Dispatchers.IO) { active.delete() }) {
-                        is PowerStore.DirectEditOutcome.Saved -> {
-                            withContext(Dispatchers.IO) { active.close() }
-                            session = null
-                            sessionId = null
-                            result(review.command.requestId, "saved", current.eventSeq.toString())
+                    } else {
+                        val approval = withContext(Dispatchers.IO) {
+                            coreFeatureApi.issueFormalDeleteApproval(active.handle)
                         }
-                        is PowerStore.DirectEditOutcome.Conflict ->
-                            result(review.command.requestId, "conflict")
-                        is PowerStore.DirectEditOutcome.Invalid ->
-                            result(review.command.requestId, "invalid", deleted.reason)
-                        PowerStore.DirectEditOutcome.Locked -> result(review.command.requestId, "locked")
+                        if (approval == null) result(review.command.requestId, "conflict")
+                        else {
+                            val deleted = withContext(Dispatchers.IO) {
+                                eventFeatures.deleteFormalEvent(
+                                    active.handle, approval, review.command.requestId
+                                )
+                            }
+                            if (deleted.status == EventMutationStatusV1.DELETED) {
+                                withContext(Dispatchers.IO) {
+                                    eventFeatures.closeFormalEvent(active.handle)
+                                }
+                                session = null
+                                sessionId = null
+                            }
+                            result(deleted)
+                        }
                     }
                 }
                 is WebEditCommand.CommitDeck -> resolveDeckCommit(review)
@@ -1420,13 +1588,17 @@ internal class WebSkinEditService(
     suspend fun checkpoint(): Boolean = gate.withLock {
         val active=session
         if(active!=null) {
-            withContext(Dispatchers.IO){active.checkpoint()}
-            if(active.lastError!=null)return@withLock false
+            val checkpoint = withContext(Dispatchers.IO) {
+                eventFeatures.checkpointFormalEvent(active.handle, UUID.randomUUID().toString())
+            }
+            if(checkpoint.status == EventMutationStatusV1.FAILED)return@withLock false
         }
         val newEvent = newEventSession
         if(deckOpen && newEvent != null) {
-            runCatching { withContext(Dispatchers.IO) { newEvent.checkpoint(store) } }
-                .onFailure { return@withLock false }
+            val checkpoint = withContext(Dispatchers.IO) {
+                eventFeatures.checkpointNewEvent(newEvent.handle, UUID.randomUUID().toString())
+            }
+            if(checkpoint.status == EventMutationStatusV1.FAILED)return@withLock false
         } else if(deckOpen && !deck.flush()) return@withLock false
         true
     }
@@ -1438,18 +1610,22 @@ internal class WebSkinEditService(
     suspend fun prepareSkinChange(): Boolean = gate.withLock {
         if(session!=null) {
             val opened=session!!
-            withContext(Dispatchers.IO){opened.checkpoint()}
-            if(opened.lastError!=null)return@withLock false
+            val checkpoint = withContext(Dispatchers.IO) {
+                eventFeatures.checkpointFormalEvent(opened.handle, UUID.randomUUID().toString())
+            }
+            if(checkpoint.status == EventMutationStatusV1.FAILED)return@withLock false
         }
         val newEvent = newEventSession
         if(deckOpen && newEvent != null) {
-            runCatching { withContext(Dispatchers.IO) { newEvent.close(store) } }
-                .onFailure { return@withLock false }
+            val checkpoint = withContext(Dispatchers.IO) {
+                eventFeatures.closeNewEvent(newEvent.handle)
+            }
+            if(checkpoint.status == EventMutationStatusV1.FAILED)return@withLock false
             newEventSession = null
-            runCatching { deck.open(newEvent.persistedCard?.draftId) }
+            runCatching { deck.open(checkpoint.draftId) }
         } else if(deckOpen && !deck.flush()) return@withLock false
         if(session!=null) {
-            withContext(Dispatchers.IO){session!!.close()}
+            withContext(Dispatchers.IO){eventFeatures.closeFormalEvent(session!!.handle)}
             session=null;sessionId=null
         }
         pendingWriteReview?.let { review ->

@@ -15,6 +15,7 @@ import dev.powerfulcalendar.core.TemporalConversion
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.TimelineCoordinate
+import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.After
@@ -39,12 +40,14 @@ class WebSkinEditBridgeTest {
     private lateinit var store: PowerStore
     private lateinit var controller: DeckController
     private lateinit var service: WebSkinEditService
+    private lateinit var coreFeatureApi: PowerCalCoreFeatureApiV1
     private fun request()=UUID.randomUUID().toString()
     @Before fun setup(){
         context=ApplicationProvider.getApplicationContext()
         store=PowerStore(context,"web-edit-"+request()+".db")
         controller=DeckController(StoreDeckPersistence(store))
-        service=WebSkinEditService(store,controller)
+        coreFeatureApi=PowerCalCoreFeatureApiV1(store)
+        service=WebSkinEditService(store,controller,coreFeatureApi=coreFeatureApi)
     }
     @After fun teardown(){
         val db=store.databaseName
@@ -1126,11 +1129,13 @@ class WebSkinEditBridgeTest {
         val commits = store.commitCount()
         val drafts = store.draftCount()
 
+        coreFeatureApi = PowerCalCoreFeatureApiV1(store, fixedClock)
+        service = WebSkinEditService(store, controller, coreFeatureApi = coreFeatureApi)
+
         for (kind in TemporalKind.entries) {
             val opened = service.execute(
                 WebEditCommand.CreateDeck(request(), kind),
-                newEventZone = zone,
-                newEventClock = fixedClock
+                newEventZone = zone
             )
             assertEquals("created", opened.getString("status"))
             val deck = service.snapshot().getJSONObject("deck")
@@ -1302,11 +1307,12 @@ class WebSkinEditBridgeTest {
     @Test fun incompleteWebPublishStagesAndResumesEveryEventKindWithoutDuplicateWrites() = runBlocking {
         val clock = Clock.fixed(Instant.parse("2026-10-25T15:07:42Z"), ZoneOffset.UTC)
         val zone = ZoneId.of("Asia/Tokyo")
+        coreFeatureApi = PowerCalCoreFeatureApiV1(store, clock)
+        service = WebSkinEditService(store, controller, coreFeatureApi = coreFeatureApi)
 
         TemporalKind.entries.forEachIndexed { index, kind ->
             val created = service.execute(
                 WebEditCommand.CreateDeck(request(), kind),
-                newEventClock = clock,
                 newEventZone = zone
             )
             assertEquals("created", created.getString("status"))
@@ -1506,7 +1512,8 @@ class WebSkinEditBridgeTest {
         store.close()
         store = PowerStore(context, database)
         controller = DeckController(StoreDeckPersistence(store))
-        service = WebSkinEditService(store, controller)
+        coreFeatureApi = PowerCalCoreFeatureApiV1(store)
+        service = WebSkinEditService(store, controller, coreFeatureApi = coreFeatureApi)
 
         assertEquals("opened", service.execute(WebEditCommand.OpenDeck(request(), card.draftId))
             .getString("status"))
@@ -1524,7 +1531,7 @@ class WebSkinEditBridgeTest {
     @Test fun clearDeckProjectsCompletionAndKeepsUndoSessionScoped() = runBlocking {
         var now = 1_000L
         controller = DeckController(StoreDeckPersistence(store), clock = { now })
-        service = WebSkinEditService(store, controller)
+        service = WebSkinEditService(store, controller, coreFeatureApi = coreFeatureApi)
         val card = store.newDraft(DraftForm(kind = TemporalKind.MEMO, title = "only pending draft"))
         assertEquals("opened", service.execute(WebEditCommand.OpenDeck(request(), card.draftId))
             .getString("status"))

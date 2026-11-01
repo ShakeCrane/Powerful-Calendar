@@ -5,6 +5,27 @@
 **权威代码与交付记录：** `main` 保持核心冻结；分离开发以 `origin/feat/skin-first-separation` 为唯一集成主线。
 本文件是下一轮 Codex/Agent 接手入口，不能取代带测试证据的 `SEPARATION_DELIVERY_CLOSURE_2026-10-30.md`、`SKIN_SEPARATION_PARITY_MATRIX_2026-10-27.md` 和各 Issue 报告。
 
+## 0. Core-first / Skin-first 主阶段路线（2026-11-01）
+
+本节落实 `goal-objective.md` 的 PHASE 0–5 顺序，**优先级高于下文保留的 SEP/M1–M4 旧执行顺序**。功能矩阵继续记录覆盖与证据，不再决定主开发方向。
+
+**当前主阶段：PHASE 1 — ESTABLISH CORE FEATURE API。** 当前任务分支 `codex/core-feature-api-event` 基于分离集成检查点 `c09d39d8161b113ad62ce8348760a2620017869b`。本任务开始前已 fetch `origin/feat/skin-first-separation`；远端仍指向该检查点。独立 delivery worktree 中的未提交 AndroidTest 变更已保留，未与本任务混写。
+
+**当前切片：Event Feature API v1。** 已建立纯 Kotlin `:core-api` 契约及 app Host adapter；PowerCalApp 的 Native 新建/正式编辑/删除及 Web 编辑器适配器使用同一个 API 实例；Web 时间轴移动经 API 暂存正式替换。API DTO 不暴露 Android、Compose、PowerStore 或 Core 实体。详见 [`CORE_FEATURE_API_V1.md`](CORE_FEATURE_API_V1.md)。聚焦测试 **66/66 PASS**，含 API 合同、Native/Web 编辑器及正式写入/重复范围测试。最近两次强制全量 JVM 重跑均为 **789 项、1 项失败**：一次 `replaceAndDeleteCandidatesCommitOnlyAfterTrustedHostConfirmation` 未找到 Host 确认节点；另一次 `memoPagingContinuesTheSortedProjectionWithoutStoreWrites` 等待 60 秒后仍未加载（`hostDataReady=false`）。失败方法单独重跑和整个 `WebAiProposalReviewIntegrationTest` 类 **15/15 PASS**，显示为全量运行时不稳定；根因未定，故全量 JVM 门禁保持 **NOT CLEAN**。`verifySkinSourceBoundary`、`verifyNativeSkinBoundary`、Debug APK assemble 和单独 `lintDebug` 均 PASS；lint 为 **0 errors / 54 warnings**。Android instrumentation 未运行；当前 AVD 属于并行任务，保持未触碰。
+
+**PHASE 1 尚未退出。** Web Bridge 的 Draft Deck、冲突/恢复、正式事件搜索及若干 Host 写入仍有 `DeckController` / `PowerStore` 直连；API change stream 目前只覆盖经此 adapter 的写入，进程外或旁路写入不会自动发事件。Native Presentation projection 仍在 Host 内转换 API DTO。它们是明确的后续 API 接入缺口，不得将当前切片写成全功能 API 或 Native/Skin parity PASS。
+
+| 阶段 | 当前状态 | 退出条件摘要 |
+| --- | --- | --- |
+| PHASE 0 — Current State Reconciliation | 本轮已核对 HEAD、脏工作区、远端 freshness、模块边界，以及 Native/Web 事件调用路径；全功能域架构映射和冻结后历史变更分类沿用现有验收资料，仍需按领域补齐，不做无边界历史重查 | 架构归属、冻结语义风险及剩余 API 缺口均有可核查清单 |
+| PHASE 1 — Establish Core Feature API | **进行中：Event v1 vertical slice** | Core API 有真实实现；领域契约齐全；Native/Web 使用同一服务；Skin 不依赖 Core 内部实现；Host 不承担第二套业务规则；冻结语义保持 |
+| PHASE 2 — Complete Runtime Separation | 未开始 | Clear、第三方 `.pcskin`、Native fallback 对所有冻结功能使用统一数据、授权、错误与恢复语义；替换 Skin 不改 Core |
+| PHASE 3 — Complete Skin Studio | 未开始 | Clear 与结构不同的第三方 Skin 可任意编辑/重构、预览、构建、导出、重导入并在 Android 运行 |
+| PHASE 4 — AI Autonomous Skin Authoring | 未开始 | AI 通过 Studio 正式工具端到端完成项目分析、修改、素材、构建、校验、预览、修复及交付 |
+| PHASE 5 — Final Delivery | 未开始 | 同一交付基线集成 Core API/Runtime、多 Skin、Native fallback、Studio、AI、文档、测试、APK 与 `.pcskin`；实体/OEM 验收清单独立交付 |
+
+**唯一 NEXT_ACTION：** 提交并普通快进推送已验证的 Event Feature API v1 编辑器切片及其显式未结缺口；Phase 1 继续保持进行中，后续补齐 Deck/Draft/Review API 与完整变更来源。
+
 ## 1. 当前版本基准及实际证据
 
 | 用途 | 指向 | 解释 |
@@ -76,7 +97,9 @@
 
 当前 **没有任何一项可以仅凭阶段报告认定为完整 100% Native/Skin 等价签核**。
 
-## 4. 下一阶段四个有明确退出条件的里程碑
+## 4. 旧 SEP 验收推进里程碑（保留作风险索引，不是当前阶段顺序）
+
+以下 M1–M4 是旧 SEP-01～SEP-16 执行框架的验收风险索引。它们继续帮助 Phase 2/5 回收真实设备证据；当前主开发顺序由第 0 节 PHASE 0–5 决定。
 
 ### M1 — 先关真正阻碍日常使用的交互和授权缺口
 

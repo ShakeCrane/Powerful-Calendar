@@ -22,7 +22,7 @@ import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.DraftQueueSearch
 import dev.powerfulcalendar.core.DraftStatus
 import dev.powerfulcalendar.core.EditorDefaults
-import dev.powerfulcalendar.core.NewEventEditSession
+import dev.powerfulcalendar.core.api.v1.EventEditorSnapshotV1
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.Recurrence
 import dev.powerfulcalendar.core.RecurrenceFreq
@@ -208,7 +208,7 @@ fun NativeDraftDeckDialog(
 /** Ordinary new-event editor. The session and its memory-only baseline remain Host-owned. */
 @Composable
 internal fun NewEventEditorDialog(
-    session: NewEventEditSession,
+    editor: EventEditorSnapshotV1,
     form: DraftForm,
     error: String?,
     busy: Boolean,
@@ -218,20 +218,21 @@ internal fun NewEventEditorDialog(
     onDiscard: () -> Unit
 ) {
     val androidContext = LocalContext.current
-    val pickerActions = createPickerActions(androidContext, form, session.defaults.nowMillis, onFormChange)
+    val nowMillis = editor.defaultNowMillis ?: System.currentTimeMillis()
+    val pickerActions = createPickerActions(androidContext, form, nowMillis, onFormChange)
     val card = NativeDeckCard(
-        cardKey = "new:${session.idempotencyKey}",
+        cardKey = "new:${editor.handle.value}",
         sequenceLabel = "新建",
         operation = NativeDeckOperation.CREATE,
         operationLabel = "新建",
         status = NativeDeckStatus.PENDING,
-        draftVersion = session.persistedCard?.draftVersion ?: 0,
-        form = form.toNativeDeckForm(session.defaults.nowMillis)
+        draftVersion = editor.draftVersion ?: 0,
+        form = form.toNativeDeckForm(nowMillis)
     )
     val state = NativeDeckState(
         cards = listOf(card), currentKey = card.cardKey, currentForm = card.form, position = 0,
         canGoPrevious = false, canGoNext = false, canUndoDiscard = false,
-        busy = busy, dirty = session.meaningfulDiff, aiLocked = false, aiSession = null,
+        busy = busy, dirty = editor.meaningfulChanges, aiLocked = false, aiSession = null,
         notice = null, error = error, conversionNote = null, completion = null, conflict = null, restore = null
     )
     val actions = NativeDeckActions(
@@ -261,7 +262,7 @@ internal fun NewEventEditorDialog(
     NativeDraftDeckScreen(dev.powerfulcalendar.ui.v2.NativeDraftDeckContext(
         state = state, actions = actions, appearance = nativeDeckAppearance(),
         initialEditorOpen = true, transientNewEvent = true,
-        alreadyPersisted = session.persistedCard != null
+        alreadyPersisted = editor.hasPersistedDraft
     ))
 }
 
