@@ -95,5 +95,7 @@ remains owner-dependent and is not changed by this read-only slice.
 
 Implementation commit `f833d56aff5e07fad831c80bd8900ffa2c1f3f1b` follows
 `ef705bfedd5e99fc39f43aa2d616a4dc58707d08` on `codex/core-feature-api-event`. The recurrence
-follow-up code commit is `17fa37b05d6c0384caa2966d1bfcf2513f83cb83`; remote freshness and
-fast-forward delivery are recorded after the documentation commit.
+follow-up code commit `17fa37b05d6c0384caa2966d1bfcf2513f83cb83` and documentation commit
+`3846429cbbfac794bda2c581dfa0295b09ed7974` were fast-forward pushed to
+`origin/feat/skin-first-separation` after fetch confirmed remote base
+`e3b6ba95e07d00a59b207c7226109281a2b0b2b9`.
