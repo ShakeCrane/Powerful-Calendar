@@ -31,4 +31,4 @@
 
 代码提交：`10837a354e017be25fbbc02695add74c50d68cfa`（`分离：将 Memo 完成跟踪规则归属 Core`）。本报告、进度与路线图在后续文档提交中记录。
 
-两次向 `origin/feat/skin-first-separation` 的普通 push 均因 GitHub HTTPS 443 不可达而失败；没有 force-push 或改写分支。恢复网络后应先 fetch 并确认 fast-forward，再重试推送。与本 Issue 直接相关的下一项是把重复实例编辑字段能力从 Bridge 的第二份规则移入 Core editor snapshot；详见进度文档的唯一 `NEXT_ACTION`。
+最初两次向 `origin/feat/skin-first-separation` 的普通 push 因 GitHub HTTPS 443 不可达而失败；随后 fetch 确认远端仍在 `1dfd5fbe729b457173f38e0c192366e63bb3427d`，普通 fast-forward 推送成功，提交 `f533bf4c56ca56a88d71227ce697104dd2373611` 已包含本 Issue 及相关代码。没有 force-push 或改写分支。后续唯一动作见 [PROGRESS](../agent-handoff/PROGRESS.md)。

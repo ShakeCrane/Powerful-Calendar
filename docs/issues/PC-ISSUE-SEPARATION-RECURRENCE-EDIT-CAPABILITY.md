@@ -31,4 +31,4 @@ The existing `EventEditorSnapshotV1.capabilities` now carries `EDIT_SINGLE_OCCUR
 
 Code commit: `c8e22ce0147dfec361362e63ba91519003944ab5` (`分离：由 Core 提供重复单次编辑能力`). Progress and roadmap are updated in the documentation commit.
 
-The next bounded issue is the duplicate event/occurrence preflight before `PowerCalCoreFeatureApiV1.openFormalEvent`; preserve Host AI-lock and active-editor orchestration, then make the existing API result own identity, revision and occurrence validity. The integration branch push is pending because GitHub HTTPS port 443 could not be reached; fetch and verify fast-forward before retrying.
+The next bounded issue is the duplicate event/occurrence preflight before `PowerCalCoreFeatureApiV1.openFormalEvent`; preserve Host AI-lock and active-editor orchestration, then make the existing API result own identity, revision and occurrence validity. This code and Issue were included in the successful fast-forward push to `feat/skin-first-separation` at `f533bf4c56ca56a88d71227ce697104dd2373611`.
