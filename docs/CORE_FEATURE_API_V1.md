@@ -36,6 +36,7 @@ The Host is the only owner of Android context, database construction, trusted co
 - `EventKindV1` is `ALARM`, `ACTIVITY`, `DEADLINE`, or `MEMO`.
 - `EventFormV1` is the editable value. `EventRecordV1` is an immutable formal-event query result with identity and `revision`.
 - Core form normalization enforces the frozen intrinsic completion-tracking rule for MEMO: `EventFormV1` inputs and kind conversions targeting MEMO produce `trackingEnabled = true`, including same-kind conversion. Host patch parsing may transport an attempted value but does not own this business rule; editor snapshots expose the normalized Core value.
+- `EventEditorSnapshotV1.capabilities` includes `EDIT_SINGLE_OCCURRENCE_TITLE_AND_TIME_ONLY` only after Core selects the single-occurrence scope. It is absent before scope selection and for whole-series / this-and-future edits. Native presentation and Web patch feedback use the same capability; it guides UI behavior and does not replace the final `EditSession` validation at save time.
 - Recurrence weekday values in `EventRecurrenceV1.byDay` use ISO numbers: Monday `1` through Sunday `7`. Recurrence scope and occurrence keys preserve the existing Core recurrence semantics.
 - `EventSelectionV1` accepts either an instant in epoch milliseconds or a local ISO date, never both. A zone is passed separately as an IANA `zoneId`.
 - `EventEditorHandleV1` is an opaque, process-local reference. Its random ID is not authorization and is invalid after the adapter instance/process is gone.
