@@ -27,6 +27,7 @@ Independent review identified and regressions now cover:
 1. An expired pending receipt could be reopened between a precheck and commit. Terminal-only receipt enforcement now runs inside the Store transaction; a second Store connection regression covers the boundary.
 2. A taskless CREATE publish retry after API recreation could create a second formal event. The stable taskless receipt namespace now provides durable item replay.
 3. Taskless REPLACE/DELETE target validation did not consult the durable item receipt. Validation now uses the same request-derived receipt identity; replay coverage includes both operations.
+4. A `createDrafts` review containing both stale and current operations for the same event could stage the current operation. Duplicate-target detection now runs over the whole eligible review in Core before target revision checks; all operations for that event are blocked, while independent CREATE items can still stage.
 
 Final reviewer follow-up found no actionable findings. Reviewers did not run the verification gates reported below.
 
@@ -70,3 +71,11 @@ The first forced parallel full run completed 824 JVM tests but had one failure i
 - `app/src/test/java/dev/powerfulcalendar/core/api/v1/AiProposalFeatureApiV1Test.kt`
 - `app/src/test/java/dev/powerfulcalendar/core/PowerStoreAiTaskReceiptTest.kt`
 - `app/src/test/java/dev/powerfulcalendar/ui/v2/WebAiProposalReviewIntegrationTest.kt`
+
+## Follow-up — mixed stale/current duplicate targets (2026-11-02)
+
+`StoreAiProposalFeatureApiV1.createDrafts()` previously premarked stale operations in the adapter. `AiDraftService` then built its duplicate-target set only from unblocked items, so a current operation sharing the same event identity could proceed. The adapter now passes the detached review unchanged; Core computes duplicate targets before revision screening and classifies every same-target operation as `BLOCKED`. A lone stale operation remains blocked, and independent CREATE proposals retain the existing partial-success behavior. Store's expected-revision checks still fence the eventual draft transaction.
+
+The new regression mixes a stale REPLACE, a current DELETE for the same event, and an independent CREATE. It asserts both target operations are blocked, only the independent draft is staged, and the formal event title/revision remain unchanged. `AiProposalFeatureApiV1Test` is **17/17 PASS** (JUnit XML SHA-256 `310B04DF35876A32DA33540B29EA331ABAE447BCE4685C7D3E38297BCED76D05`). The forced single-worker full JVM is **906/906 PASS across 139 XML suites**, with both source boundaries, APK, lint (0 errors / 54 warnings), AndroidTest Kotlin compilation, and 154 actionable tasks passing. APK SHA-256 is `A184290D72852F71F9A7C487C48ECE0AFE2847DACA2057E35D1A3B9732374D47`; full gate log SHA-256 is `8EB354C25C4AA9E2DFD81776A29A02EF530D26919AB3D9E09A503385DAED9EE4` in `.local/android-test/reports/phase1-reminder-completion-20261102/`.
+
+Follow-up code commit `71d21afa819acb3ef0f20efdca12b29d772faf41` was validated with the same full gate. Android instrumentation and on-device Native/Web parity remain **NOT TESTED**. PHASE 1 remains open.

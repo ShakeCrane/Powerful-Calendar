@@ -42,3 +42,24 @@ Evidence logs are in `.local/android-test/reports/core-event-search-completion-2
 ## Git delivery
 
 Implementation commit `c9948d5465bc93da7e59984342c756549df9e295` on `codex/core-feature-api-event`, based on remote tip `d3bb0700d6c3911c651025e92c1906e8975eae14`, was ordinary fast-forward pushed to `origin/feat/skin-first-separation` after a freshness check.
+
+## Follow-up — reminder intent consistency (2026-11-02)
+
+The first completion API slice exposed a later revision-fencing gap: `PowerStore.setCompleted()` advanced the formal event revision and wrote its audit commit, but left the durable desired reminder row bound to the previous revision. `ReminderScheduler` correctly rejected the old broadcast, so the completion could silently leave the next reminder unscheduled. The existing `changingCompletionTrackingReconcilesTheReminderAtTheNewRevision` test covered editing the tracking option, not completing or reopening one occurrence.
+
+The Store transaction now calls `writeDesiredIntent()` with the updated event after the completion/reopen commit. This preserves the independent `trackingEnabled`, `enabled`, and reminder policy fields while binding the next desired intent to the new revision. Both Native and Web Memo callbacks call the same Host helper after an `UPDATED` receipt; it reconciles through `ReminderFeatureApiV1` and reports an event-specific blocked or pending state without duplicating scheduling rules.
+
+A new regression covers a scheduled dated Memo through complete and reopen: both revisions retain the same next reminder occurrence, trigger instant, and requirement; each new durable row returns to `PENDING`, is reconciled, and validates at the current revision. The previous revision is rejected, and the Robolectric AlarmManager retains one registration. The Web Compose integration also performs the completion through the Event API and waits for the Host reconcile to leave the new row `SCHEDULED` or honestly `BLOCKED`. Before the Store fix, the regression failed with expected reminder revision `2` but observed `1`.
+
+| Follow-up check | Result |
+| --- | --- |
+| Focused Reminder and Web Memo completion tests | **20/20 PASS** (19 + 1), log SHA-256 `9F92A366C74EAC48FBB398C7D0B4D5FC3D9E02D5AA020B2E3F068D0B8C80DBE8`. |
+| Combined AI Proposal, Reminder, and Web Memo focused regressions | **37/37 PASS** (17 + 19 + 1). Relevant full-suite XML hashes: AI `310B04DF35876A32DA33540B29EA331ABAE447BCE4685C7D3E38297BCED76D05`, Reminder `61E6DC438AADD0BE222E5F333766918FC561E1F785A1498EAB7E98702D3BF036`, Compose `BF684DDA75FDFFD5146AE1FF19D139B9947F455306DC6E180F6AACCE5ADAC2F3`. |
+| Forced single-worker full JVM | **906/906 PASS**, 139 XML suites, 0 failures/errors/skips. |
+| Native and Skin source boundaries | **PASS**. |
+| Debug APK / lint / AndroidTest Kotlin compilation | **PASS**, 154 tasks; lint 0 errors / 54 warnings. APK 67,043,950 bytes, SHA-256 `A184290D72852F71F9A7C487C48ECE0AFE2847DACA2057E35D1A3B9732374D47`. |
+| Full gate log | SHA-256 `8EB354C25C4AA9E2DFD81776A29A02EF530D26919AB3D9E09A503385DAED9EE4`, under `.local/android-test/reports/phase1-reminder-completion-20261102/`. |
+| Focused integrated log | SHA-256 `3D29E621AC02FC6E462EE3A657FA4A0700CFAA8D807CA3F8BAFE59B9946FD15B`, in the same directory. |
+| Android device, instrumentation, packaged WebView, Native/Skin runtime parity, physical/OEM behavior | **NOT TESTED**; `adb devices -l` listed no device. |
+
+Implementation follow-up commit `d07ada6de56a86711dbe3dbddc2cf0c60b90352f` was validated with the forced full gate. The PHASE 1 scope remains open.
