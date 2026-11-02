@@ -19,6 +19,10 @@ Explicit text-to-draft creation now uses DraftReview API v1; see the
 Native and Web AI proposal review actions now share the Host-created AI Proposal API;
 see the [AI Proposal report](issues/PC-ISSUE-CORE-AI-PROPOSAL-API-V1.md) for receipt,
 authorization, and verification limits.
+AI batch intent and reviewed attachment evidence also use the shared Core AI API; see the
+[AI Feature report](issues/PC-ISSUE-CORE-AI-FEATURE-API-V1.md) and the
+[AI Evidence Intake report](issues/PC-ISSUE-CORE-AI-EVIDENCE-INTAKE-API-V1.md) for review and
+provider/device verification limits.
 Native and Web chat now share Core-owned, revision-fenced transcript commands with the
 existing Android private-file adapter; see the [AI Conversation State API report]
 (issues/PC-ISSUE-CORE-AI-CONVERSATION-STATE-API-V1.md) for compatibility and test limits.
@@ -41,7 +45,9 @@ categories and the Host confirmation boundary are recorded in the
 [backup restore failure API report](issues/PC-ISSUE-CORE-BACKUP-RESTORE-FAILURE-API-V1.md).
 The explicitly confirmed legacy v0.1 database migration now delegates writes and change
 notifications to that same API while keeping the old SQLite file read-only; see the
-[Core Legacy Import API report](issues/PC-ISSUE-CORE-LEGACY-IMPORT-API-V1.md).
+[Core Legacy Import API report](issues/PC-ISSUE-CORE-LEGACY-IMPORT-API-V1.md), the
+[provider identity preservation report](issues/PC-ISSUE-CORE-LEGACY-PROVIDER-IDENTITY-V1.md),
+and the [priority-loss warning report](issues/PC-ISSUE-CORE-LEGACY-PRIORITY-LOSS-WARNING.md).
 The ICS import recovery checkpoint now uses that same API while retaining its existing
 synchronous SharedPreferences hint semantics; see the
 [checkpoint API follow-up](issues/PC-ISSUE-CORE-ICS-IMPORT-CHECKPOINT-API.md).

@@ -93,3 +93,8 @@ relocate old-schema parsing into a new Core runtime module or close Phase 1. Dev
 and old-alarm handoff remain unverified. The Native fallback and selected Skin are unchanged.
 
 Code commit: `1635f90` (`分离：通过ImportExport API执行旧库迁移`). PHASE 1 remains open.
+
+2026-11-02 compatibility follow-ups are tracked independently: [provider identity preservation](PC-ISSUE-CORE-LEGACY-PROVIDER-IDENTITY-V1.md)
+and [priority-loss warning](PC-ISSUE-CORE-LEGACY-PRIORITY-LOSS-WARNING.md). They add links through
+the same structured-import operation and disclose values that the current Core model cannot keep;
+neither changes the Store schema or backup format.

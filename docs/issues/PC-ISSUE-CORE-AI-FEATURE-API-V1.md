@@ -1,10 +1,10 @@
 # PC-ISSUE-CORE-AI-FEATURE-API-V1 — Structured AI generation and batch feature API
 
-- **Date:** 2026-11-01 (Asia/Shanghai)
+- **Date:** 2026-11-02 (Asia/Shanghai)
 - **Priority:** P1 — PHASE 1 Core Feature API
 - **Status:** PASS for the verified JVM/build scope; Android instrumentation and packaged WebView behavior NOT TESTED
 - **Scope:** Structured proposal generation, batch candidate selection, reviewed batch execution, state, cancellation, recovery, and stuck-session release
-- **Code commits:** 19eaf2c248cfae009904da26c6e68ee5896c448f (implementation) and 98fda6ef08c53e1fd6fd1c25f3b0d9a17af3f2e3 (API recovery regression), both fast-forward pushed to origin/feat/skin-first-separation
+- **Code commits:** 19eaf2c248cfae009904da26c6e68ee5896c448f (implementation), 98fda6ef08c53e1fd6fd1c25f3b0d9a17af3f2e3 (API recovery regression), and `c6eb8065e77ac163e27f62a83de8cdf6e50a73cd` (Core-owned batch intent and AI adapter mapping)
 - **Phase status:** PHASE 1 remains OPEN. This slice does not establish full Core extraction, Native/Skin parity, or cutover readiness.
 
 ## Expected behavior
@@ -17,7 +17,7 @@ Structured AI generation and batch commands need a stable, versioned Core Featur
 - Added `StoreAiFeatureApiV1` over the existing `PowerStore`, `AiBatchRunner`, and `StoreEventFeatureApiV1`; no second store, scheduler, or transaction path was introduced.
 - Added the Host-owned `AndroidAiModelPortV1`. It loads existing protected AI settings and credentials and invokes `AiClient`; credentials and Android context are not part of the `:core-api` contract.
 - Routed manual structured generation, automatic conversation-task interpretation, and file/image-derived structured proposals through `generateProposal`. Results remain detached candidates; `AiProposalFeatureApiV1` continues to own staging and reviewed application.
-- Routed batch selection through the API. The model returns draft IDs only; the API resolves them against exact candidate snapshots and rejects duplicate, excessive, or out-of-scope IDs. Host-set explicit “all” selection does not call the model.
+- Routed batch selection through the API. The model returns draft IDs only; the API resolves them against exact candidate snapshots and rejects duplicate, excessive, or out-of-scope IDs. Core owns exact “all” intent phrases and the candidate limit; Host passes the request and candidates.
 - Routed batch state, cancellation, interrupted recovery, reviewed execution, and stuck-session release through the API. A one-use Host marker binds execution to the exact review mode and candidate snapshot. The API regression rejects a forged release marker, requires the stale cancellation threshold, consumes a valid Host approval once, and returns an unknown-outcome terminal DTO without raw report details. The existing Store transaction rechecks versions and operations, and `AiBatchRunner` retains per-item fencing and cancellation behavior.
 - Adapted Native and Web presentation projections to stable session DTOs and sanitized terminal reports. Skin projections omit internal session IDs, lock epochs, draft scope IDs, and stored exception details.
 - No database schema, backup format, frozen Core behavior, or default skin selection changed.
@@ -61,3 +61,25 @@ The focused command selected `AiFeatureApiV1Test`, `AiProposalFeatureApiV1Test`,
 - `app/src/main/java/dev/powerfulcalendar/ui/v2/WebAiBatchProjection.kt`
 - `app/src/test/java/dev/powerfulcalendar/core/api/v1/AiFeatureApiV1Test.kt`
 - `app/src/test/java/dev/powerfulcalendar/ui/v2/WebAiBatchProjectionTest.kt`
+
+## 2026-11-02 follow-up — Core-owned batch intent and adapter direction
+
+The prior Host boolean for “select all” duplicated a business decision. It is removed from the
+versioned request DTO; `StoreAiFeatureApiV1` recognizes only trimmed exact phrases (`全部`, `所有`,
+`全部草稿`, `全选`, `所有待处理`) after candidate validation. Requests with more than 100 candidates
+remain invalid, and fuzzy wording continues through model selection/clarification. The Host now
+distinguishes Core `INVALID` from `MODEL_UNAVAILABLE`, so an invalid oversized request is not
+misreported as a provider outage or answered with a misleading “reply 全部” suggestion.
+
+Core/API proposal DTO mapping moved from the UI package into `AiModelOutputMapping.kt`. The source
+boundary task also rejects `core/api/v1` adapter references into `ui`, so both Native and Web
+continue through the same Core service without an adapter-to-presentation dependency.
+
+`AiFeatureApiV1Test` **29/29 PASS** and `WebAiAttachmentFlowIntegrationTest` **7/7 PASS** in the
+full JUnit run. Full gate: **934/934 tests / 139 XML suites**, 0 failures/errors/skips; both source
+boundaries, Debug APK, lint (0 errors / 54 warnings), AndroidTest Kotlin compilation, and
+`git diff --check` PASS (154 Gradle tasks). Full log SHA-256
+`8B6475049A2AED96C6920381347874C94AD3EE728D9AAE767AEBF0BDFDFF7092`; Debug APK 67,060,418 bytes,
+SHA-256 `D363F8569F1751BE11B7D138DF225D7B99DE260809C02772FD25819307F10491`. Evidence is in
+`.local/android-test/reports/phase1-core-feature-api-20261102/`. Android instrumentation and
+packaged WebView behavior remain **NOT TESTED** because no device or AVD was available.

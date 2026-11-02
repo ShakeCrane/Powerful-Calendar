@@ -8,9 +8,9 @@
 
 ## 范围与合同
 
-本 Issue 处理重建验收项 `S0-TL-04`：在 Clear 时间轴上拖动一个非重复定时事件，按当前时间轴几何暂存一张替换草稿；重复事件不支持拖动。这里的“移动”不直接修改或发布正式事件，用户仍在现有 Deck 中审核候选并明确提交。
+本 Issue 处理重建验收项 `S0-TL-04`：在 Clear 时间轴上长按拖动一个非重复且有时间轴表示的正式事项，按当前时间轴几何暂存一张替换草稿；纯日期 DEADLINE 使用日期条锚点并保留 DATE 精度，重复事件不支持拖动。这里的“移动”不直接修改或发布正式事件，用户仍在现有 Deck 中审核候选并明确提交。
 
-允许的目标类型为具有实际时间锚点的非重复 `ALARM`、`ACTIVITY` 和精确时刻 `DEADLINE`。重复事件、`MEMO`、纯日期 Deadline 不允许通过该命令移动。普通点击仍打开编辑器；长按后拖动才触发移动请求。
+允许的目标类型为具有时间轴表示的非重复 `ALARM`、`ACTIVITY` 和 `DEADLINE`。重复事件和 `MEMO` 不允许通过该命令移动。纯日期 Deadline 使用其日期条作为拖动锚点，并保留 DATE 精度。普通点击仍打开编辑器；长按后拖动才触发移动请求。
 
 ## 根因
 
@@ -20,7 +20,7 @@
 
 - `WebSkinEditBridge.kt` 增加封闭 schema 命令 `timeline.move(eventSeq, expectedRevision, targetMillis)`。协议只接受整数毫秒；拒绝缺字段、浮点、字符串、未知字段和非法版本号。
 - `PowerCalApp.kt` 只在时间轴页为命令提供 Host 构造的移动上下文：当前相机、当前 zone，以及当前投影中的 `eventSeq → revision` 集合。皮肤不能指定 snap 间隔或时区。
-- Host 服务重新读取正式记录和 revision，核对该 revision 仍在当前投影中；校验编辑器/Deck/Host 锁状态；拒绝重复、Memo 和日期级 Deadline；使用 `TimelineCoordinate.snap` 和当前相机 scale 计算吸附时刻，并限制支持年份为 1900–2200。吸附后未移动则返回 `unchanged`，不创建草稿。
+- Host 服务重新读取正式记录和 revision，核对该 revision 仍在当前投影中；校验编辑器/Deck/Host 锁状态；拒绝重复和 Memo；使用 `TimelineCoordinate.snap` 和当前相机 scale 计算吸附时刻。Core 将纯日期 Deadline 的目标转换为其事件时区的本地日期，并由表单校验决定是否可以暂存，不另设目标年份范围。吸附后未移动则返回 `unchanged`，不创建草稿。
 - 有效移动经 `movedDraftForm` 保留原始事件语义和 Activity 持续时间，创建一张 `DraftOperation.REPLACE` 候选并打开现有 Deck。正式事件、正式 identity 和 commit 保持不变；用户仍通过既有审阅路径发布。
 - `PowerStore.newDraft` 增加可选 `expectedRevision`，在创建/覆盖替换草稿的同一事务内检查来源版本。若 Host 读取后事件 revision 已改变，抛出明确的 stale 结果，不留下候选。原生时间轴拖动也传入其显示 revision，防止同样的读后写竞态。
 - request ID 重放返回原响应；用户关闭 Deck 后再次拖动同一事件时复用既有替换草稿，而不是增加第二张队列记录。
@@ -35,7 +35,7 @@
 | Wire schema、负毫秒、无效类型/额外字段拒绝 | PASS | `WebSkinEditBridgeTest.timelineMoveWireUsesClosedSchemaAndSignedIntegerTarget` |
 | 有效移动生成一张 REPLACE 草稿、保留 Activity 时长、正式事件不变 | PASS | `WebSkinEditBridgeTest.timelineMoveStagesOneRevisionGuardedReplacementAndPreservesDuration` |
 | no-op 不写入；request replay 与二次移动复用同一草稿；identity、commit、seq 不增长 | PASS | 同上与 Store 计数断言 |
-| 重复事件、Memo、日期级 Deadline、无时间轴上下文拒绝；投影缺席或 revision 过期返回 stale | PASS | `timelineMoveRefusesRepeatingAndNonTimelineItemsWithoutWrites`、`timelineMoveRequiresOwnerProjectionForTheDisplayedRevision`、`timelineMoveRejectsStaleOwnerRevisionWithoutStaging` |
+| 重复事件和 Memo 拒绝；纯日期 Deadline 暂存后保持 DATE 精度；无时间轴上下文拒绝，投影缺席或 revision 过期返回 stale | PASS | `timelineMoveUsesCoreEligibilityAndMovesDateDeadlineWithoutLosingPrecision`、`timelineMoveRequiresOwnerProjectionForTheDisplayedRevision`、`timelineMoveRejectsStaleOwnerRevisionWithoutStaging` |
 | Store 事务原子拦截过期来源 revision | PASS | `PowerStoreTest.replacementDraftCanAtomicallyRequireTheDisplayedSourceRevision` |
 | Focused Kotlin suites | **116/116 PASS，2 suites** | `gradle-focused-final.log` SHA-256 `FACC2D56AE4AFF553628B585550E8CBEAB6CD4E8B35C44B57D8BAB1C762D8B85`；JUnit XML 在 `.local/android-test/reports/separation-s0-timeline-drag/focused-junit/` |
 | Chrome Headless Studio Mock（Chrome 156.0.8078.48，Studio 1460×960 viewport） | **3/3 PASS**：普通点击仅打开编辑；mouse 长按拖动将草稿时刻从 `09:00` 改至 `12:00`；repeat touch 拒绝且没有草稿。状态播报“正式事件尚未改变”。正式事件仍为 `1792630800000`。 | `.local/android-test/reports/separation-s0-timeline-drag/timeline-drag-browser-cdp.json` SHA-256 `7961B2758AF84E8E57AB48A5027975815966A6662B1DA0DAB24DC46649DB46DB`；CDP 日志 SHA-256 `FDCB5E28D9999D064A90A74D9FB87CCFCB740D9B2B5091ED9D8EAACFD8E5D788` |
@@ -118,3 +118,21 @@ Added `sameActivityFixtureLongPressMoveProducesEquivalentNativeAndClearDrafts` t
 - Debug APK SHA-256 `8CC46EED2FE1569CB349C7C913C3BFFE85344E4C6E9C527342373367C3E8F886` (66,518,075 bytes); AndroidTest APK SHA-256 `0F3F4351E0C392F9E40DD151B8D93147B2B1AA966077656D181FCC789A76FB5D` (1,581,376 bytes). Clean class log SHA-256 `B96DC11D6BA722A33ABEB9A0C78E9D28E47D22655DC040695B5CBBA40DA584D4`; focused trace SHA-256 `56CA47BB53660AE7C4311E7DF92BAFFABD57A5C99539319FB576FD6F738D74E5`. Evidence is under `.local/android-test/reports/sep01-native-clear-drag-parity-20261031/`.
 
 This closes one same-fixture Native/Clear non-repeating Activity move. Other event-kind/recurrence cases, stale projected event behavior through both UIs, TalkBack, skin editing roundtrip for the gesture, and physical/OEM checks remain **NOT TESTED**. S0-TL-04 remains **PARTIAL** and parent SEP-01 remains **PARTIAL / HOLD**.
+
+## Owner-approved behavior clarification and follow-up (2026-11-02)
+
+The owner confirmed that Native and Web both allow dragging a pure-date `DEADLINE` while keeping
+DATE precision, and that neither route imposes an independent target-year range. Existing Core form
+validation decides whether the resulting form may stage. The previous report wording that rejected
+date-only deadlines or imposed 1900–2200 is superseded by this decision; timeline navigation bounds
+remain separate.
+
+Clear's date-only Deadline chip now attaches the existing long-press drag handler. A paired
+Native/Clear Android test shares a date-only fixture and asserts equivalent next-day DATE forms, no
+`deadlineMillis`, one replacement draft, and unchanged formal data. `EventFeatureApiV1Test` verifies a
+valid pure-date move from 1900 to 1899; existing Web Bridge coverage accepts 2201. The full gate
+passed **934/934 JVM tests across 139 XML suites**, both source boundaries, Debug APK, lint, and
+AndroidTest Kotlin compilation. The paired Android test **compiled but was not executed** because
+no ADB device or AVD was available. Runtime Native/Clear gesture parity for this date-only case
+remains **NOT TESTED**. Code commit: `0419972bf8736f64a77ad051b8a352d7ba5505fd`; full-gate log
+SHA-256 `8B6475049A2AED96C6920381347874C94AD3EE728D9AAE767AEBF0BDFDFF7092`.

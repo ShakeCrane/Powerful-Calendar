@@ -63,3 +63,19 @@ The AI Feature API tests cover revision fencing, process-local replay, changed-p
 - `docs/CORE_FEATURE_API_V1.md`
 - `docs/AI_AGENT_PROTOCOL_V2.md`
 - `docs/UI_SKIN_EXTENSION_CONTRACT_V4.md`
+
+## 2026-11-02 follow-up — OCR/text proposal-source handoff
+
+The Host now forwards a nonblank `proposalSource` returned by reviewed file/OCR evidence analysis
+to the existing `AiFeatureApiV1.generateProposal` command. Any result is shown as an explicit
+reviewable proposal; this path does not create a draft or publish an event. Calendar context is
+disabled for this follow-up so reviewed attachment text is not combined with unrelated event
+context. The loopback integration regression also checks redaction and confirms Store/formal-event
+counters remain unchanged until a separate review action.
+
+`WebAiAttachmentFlowIntegrationTest` is **7/7 PASS** within the full JUnit gate. Full gate:
+**934/934 tests / 139 XML suites**, zero failures/errors/skips; both source boundaries, APK,
+lint, AndroidTest Kotlin compilation, and diff check PASS. Log SHA-256
+`8B6475049A2AED96C6920381347874C94AD3EE728D9AAE767AEBF0BDFDFF7092`; evidence directory
+`.local/android-test/reports/phase1-core-feature-api-20261102/`. The loopback stub was used; no live
+provider, Android device, or packaged WebView was tested.

@@ -383,7 +383,7 @@ A renderer's Kotlin id must be nonempty and unique among installed surfaces. Som
 
 ## Invariants
 
-- Time-axis ACTIVITY edges must use the same yOf(start) and yOf(end) projection, never minimum visual height used as fake duration. ALARM and DEADLINE are instants; date-only deadlines are calendar dates.
+- Time-axis ACTIVITY edges must use the same yOf(start) and yOf(end) projection, never minimum visual height used as fake duration. ALARM and exact-time DEADLINE are instants; date-only DEADLINE is a calendar date and remains DATE precision when moved.
 - Recurrence occurrence keys, eventSeq, revision, timezones and DST are stable core identities. A renderer must not silently turn an occurrence edit into a whole-series write.
 - An AI chat message is not a proposal authorization. `CoreFeatureApiV1.ai` validates chat requests and routes explicit tasks through proposal generation; the Host retains provider configuration, confirmation UI, proposal apply approvals, and commit callbacks. Native review renderers receive only display DTOs and callbacks. Destructive actions cannot be executed from skin internals.
 - A custom Deck sees state and host callbacks only, never DeckController or PowerStore. Edits are debounced and flushed before leaving, commit/undo/restore are serialized in the domain controller. Conflict and AI lock states must be represented.
