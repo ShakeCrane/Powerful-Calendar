@@ -1,6 +1,5 @@
 package dev.powerfulcalendar.ui.v2
 
-import dev.powerfulcalendar.ai.AiBatchRunner
 import dev.powerfulcalendar.ai.AiInterpretation
 import dev.powerfulcalendar.ai.AiProposal
 import dev.powerfulcalendar.core.DraftCard
@@ -10,6 +9,7 @@ import dev.powerfulcalendar.core.DraftStatus
 import dev.powerfulcalendar.core.Recurrence
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.api.v1.AiProposalItemReadinessV1
+import dev.powerfulcalendar.core.api.v1.AiBatchModeV1
 import dev.powerfulcalendar.core.api.v1.AiProposalReadinessStatusV1
 import dev.powerfulcalendar.core.api.v1.AiProposalReviewReadinessV1
 import dev.powerfulcalendar.core.api.v1.AiConversationMessageV1
@@ -46,8 +46,8 @@ class NativeAiProjectionTest {
     }
 
     @Test fun mapsNativeBatchActionsToExistingHostModes() {
-        assertEquals(AiBatchRunner.Mode.PUBLISH, hostAiBatchMode(NativeAiBatchMode.PUBLISH))
-        assertEquals(AiBatchRunner.Mode.DISCARD, hostAiBatchMode(NativeAiBatchMode.DISCARD))
+        assertEquals(AiBatchModeV1.PUBLISH, hostAiBatchMode(NativeAiBatchMode.PUBLISH))
+        assertEquals(AiBatchModeV1.DISCARD, hostAiBatchMode(NativeAiBatchMode.DISCARD))
     }
 
     @Test fun projectsAiReviewIntoMinimalDisplayRowsAndOriginalHostPositions() {
@@ -131,7 +131,7 @@ class NativeAiProjectionTest {
             batchCard(303, 303, DraftOperation.DELETE, "Delete three", 5)
         )
 
-        val publish = projectNativeAiBatchAuthorization(AiBatchRunner.Mode.PUBLISH, cards)
+        val publish = projectNativeAiBatchAuthorization(AiBatchModeV1.PUBLISH, cards)
         assertEquals(NativeAiBatchMode.PUBLISH, publish.mode)
         assertEquals(3, publish.count)
         assertEquals(
@@ -152,7 +152,7 @@ class NativeAiProjectionTest {
             publish.rows
         )
 
-        val discard = projectNativeAiBatchAuthorization(AiBatchRunner.Mode.DISCARD, cards)
+        val discard = projectNativeAiBatchAuthorization(AiBatchModeV1.DISCARD, cards)
         assertEquals(NativeAiBatchMode.DISCARD, discard.mode)
         assertEquals(false, discard.containsFormalDeletion)
     }

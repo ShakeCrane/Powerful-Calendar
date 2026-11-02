@@ -62,7 +62,6 @@ import androidx.core.content.ContextCompat
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
 import com.google.mlkit.vision.text.TextRecognition
-import dev.powerfulcalendar.ai.AiBatchRunner
 import dev.powerfulcalendar.ai.AiChatHistoryStore
 import dev.powerfulcalendar.ai.AiChatMessage
 import dev.powerfulcalendar.ai.AiFileFallbackConsent
@@ -104,6 +103,7 @@ import dev.powerfulcalendar.core.api.v1.AiChatStatusV1
 import dev.powerfulcalendar.core.api.v1.AiConversationMutationStatusV1
 import dev.powerfulcalendar.core.api.v1.AiConversationRewindModeV1
 import dev.powerfulcalendar.core.api.v1.AiProposalDecisionV1
+import dev.powerfulcalendar.core.api.v1.AiBatchModeV1
 import dev.powerfulcalendar.core.api.v1.CalendarWindowQueryV1
 import dev.powerfulcalendar.core.api.v1.CalendarWindowSnapshotV1
 import dev.powerfulcalendar.core.api.v1.ImportExportFeatureApiV1
@@ -184,7 +184,7 @@ object PowerCalStores {
 
 private enum class Page { TIMELINE, MONTH, MEMO, AI, SETTINGS, TOOLS }
 
-private data class BatchReview(val mode: AiBatchRunner.Mode, val cards: List<dev.powerfulcalendar.core.DraftCard>)
+private data class BatchReview(val mode: AiBatchModeV1, val cards: List<dev.powerfulcalendar.core.DraftCard>)
 
 internal const val SKIN_RECOVERY_GESTURE_COPY = "紧急回退：在屏幕上相隔的两处位置交替快速轻点，共连续轻点 8 下，即可强制恢复原生皮肤。"
 
@@ -388,7 +388,7 @@ fun PowerCalApp(
     }
     var stuckBatchReleaseRequestPending by remember { mutableStateOf(false) }
     // Choosing a batch mode only starts a conversation; it is never the commit authorization.
-    var pendingBatchMode by remember { mutableStateOf<AiBatchRunner.Mode?>(null) }
+    var pendingBatchMode by remember { mutableStateOf<AiBatchModeV1?>(null) }
     var pendingCards by remember { mutableStateOf<List<dev.powerfulcalendar.core.DraftCard>>(emptyList()) }
     var diagnostics by remember { mutableStateOf(UiDiagnostics()) }
     val recurrencePreviews = remember(diagnostics.recurrenceEvents, nowMillis, zone.id) {
@@ -1163,13 +1163,13 @@ fun PowerCalApp(
         }
     }
 
-    fun beginBatchConversation(mode: AiBatchRunner.Mode) {
-        if (chatBusy || aiBusy || aiLocked || pendingBatchMode != null || confirmBatch != null ||
+    fun beginBatchConversation(mode: AiBatchModeV1) {
+        if (chatBusy || aiBusy || aiLocked || newEventSession != null || pendingBatchMode != null || confirmBatch != null ||
             confirmStuckBatchRelease != null || webAiProposalReviewSession != null) return
         pendingBatchMode = mode
         page = Page.AI.name
         appendChat("assistant",
-            if (mode == AiBatchRunner.Mode.PUBLISH) {
+            if (mode == AiBatchModeV1.PUBLISH) {
                 "准备批量发布。请告诉我要处理哪些草稿：可以说“全部”，也可以按标题、类型或草稿编号筛选。接下来我会列出具体清单，只有你在审核弹窗确认后才会执行。"
             } else {
                 "准备批量丢弃草稿（不会删除已经发布的正式事件）。你希望丢弃哪些？可以说“全部”，或描述要筛选的草稿。随后仍需单独审核确认。"
@@ -2293,7 +2293,8 @@ fun PowerCalApp(
                     }
                 }
                 is WebSkinAction.PrepareAiBatch -> if (page == Page.AI.name && !aiLocked &&
-                    !chatBusy && !aiBusy && pendingBatchMode == null && editSession == null && confirmBatch == null &&
+                    !chatBusy && !aiBusy && pendingBatchMode == null && editSession == null &&
+                    newEventSession == null && confirmBatch == null &&
                     webAiProposalReviewSession == null && pendingWebAiProposalPublish == null && !aiAttachmentPickerBusy &&
                     pendingFileReview == null && pendingImageReview == null) {
                     beginBatchConversation(action.mode)
@@ -2703,7 +2704,7 @@ fun PowerCalApp(
                 onOpenDeck = { scope.launch { openDeckAt(null) } },
                 onPickImage = { ocrPicker.launch("image/*") },
                 onPickFile = { openAiDocument.launch(arrayOf("*/*")) },
-                onPrepareBatch = { beginBatchConversation(it.toRunnerMode()) },
+                onPrepareBatch = ::beginBatchConversation,
                 onRewind = { lastIndex ->
                     val result = if (lastIndex < 0) {
                         aiFeatureApi.clearConversation(chatHistoryRevision)
@@ -3713,7 +3714,7 @@ fun PowerCalApp(
                 confirmBatch = null
                 PowerCalStores.appScope.launch {
                     val apiReview = dev.powerfulcalendar.core.api.v1.AiBatchReviewV1(
-                        mode = review.mode.toAiBatchModeV1(),
+                        mode = review.mode,
                         items = reviewedCards.map { it.toAiBatchCandidateV1() }
                     )
                     val approval = coreFeatureApi.issueAiBatchApproval(apiReview)
@@ -3729,7 +3730,7 @@ fun PowerCalApp(
                     val report = try {
                         aiFeatureApi.runReviewedBatch(apiReview, approval) { progress ->
                             activeSessionId = progress.sessionId
-                            val batchMode = progress.mode.toRunnerMode()
+                            val batchMode = progress.mode
                             if (!progressStarted) {
                                 progressStarted = true
                                 PowerCalStores.aiBatchProgress.begin(

@@ -1,12 +1,12 @@
 package dev.powerfulcalendar.ui.v2
 
-import dev.powerfulcalendar.ai.AiBatchRunner
 import dev.powerfulcalendar.ai.AiInterpretation
 import dev.powerfulcalendar.core.DraftCard
 import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.api.v1.AiConversationMessageV1
 import dev.powerfulcalendar.core.api.v1.AiConversationRoleV1
+import dev.powerfulcalendar.core.api.v1.AiBatchModeV1
 import dev.powerfulcalendar.core.api.v1.AiProposalReviewReadinessV1
 
 internal fun projectNativeAiMessages(messages: List<AiConversationMessageV1>): List<NativeAiMessage> =
@@ -47,15 +47,15 @@ internal fun projectNativeAiProposalReview(
 )
 
 internal fun projectNativeAiBatchAuthorization(
-    mode: AiBatchRunner.Mode,
+    mode: AiBatchModeV1,
     cards: List<DraftCard>
 ): NativeAiBatchAuthorizationModel = NativeAiBatchAuthorizationModel(
-    mode = if (mode == AiBatchRunner.Mode.PUBLISH) NativeAiBatchMode.PUBLISH else NativeAiBatchMode.DISCARD,
+    mode = if (mode == AiBatchModeV1.PUBLISH) NativeAiBatchMode.PUBLISH else NativeAiBatchMode.DISCARD,
     count = cards.size,
     operationCounts = cards.groupingBy { it.operation }.eachCount().map { (operation, count) ->
         NativeAiBatchOperationCount(operation.label, count)
     },
-    containsFormalDeletion = mode == AiBatchRunner.Mode.PUBLISH &&
+    containsFormalDeletion = mode == AiBatchModeV1.PUBLISH &&
         cards.any { it.operation == DraftOperation.DELETE },
     rows = cards.map { card ->
         NativeAiBatchReviewRow(
@@ -66,7 +66,7 @@ internal fun projectNativeAiBatchAuthorization(
     }
 )
 
-internal fun hostAiBatchMode(mode: NativeAiBatchMode): AiBatchRunner.Mode = when (mode) {
-    NativeAiBatchMode.PUBLISH -> AiBatchRunner.Mode.PUBLISH
-    NativeAiBatchMode.DISCARD -> AiBatchRunner.Mode.DISCARD
+internal fun hostAiBatchMode(mode: NativeAiBatchMode): AiBatchModeV1 = when (mode) {
+    NativeAiBatchMode.PUBLISH -> AiBatchModeV1.PUBLISH
+    NativeAiBatchMode.DISCARD -> AiBatchModeV1.DISCARD
 }

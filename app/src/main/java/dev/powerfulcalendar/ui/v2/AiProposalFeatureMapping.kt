@@ -1,7 +1,6 @@
 package dev.powerfulcalendar.ui.v2
 
 import dev.powerfulcalendar.ai.AiInterpretation
-import dev.powerfulcalendar.ai.AiBatchRunner
 import dev.powerfulcalendar.ai.AiConversationTaskSnapshot
 import dev.powerfulcalendar.ai.AiChatMessage
 import dev.powerfulcalendar.ai.AiTaskAssistantSuggestion
@@ -11,7 +10,6 @@ import dev.powerfulcalendar.core.DraftCard
 import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.DraftStatus
 import dev.powerfulcalendar.core.api.v1.AiBatchCandidateV1
-import dev.powerfulcalendar.core.api.v1.AiBatchModeV1
 import dev.powerfulcalendar.core.api.v1.AiProposalReviewV1
 import dev.powerfulcalendar.core.api.v1.AiConversationMessageV1
 import dev.powerfulcalendar.core.api.v1.AiConversationRoleV1
@@ -38,7 +36,6 @@ internal fun AiProposalReviewV1.toAiInterpretation(
     warnings = warnings.toList(),
     taskSnapshot = taskSnapshot
 )
-
 internal fun AiConversationTaskV1.toAiConversationTaskSnapshot() = AiConversationTaskSnapshot(
     taskId = taskId,
     revision = revision,
@@ -96,7 +93,3 @@ internal fun DraftReviewCardV1.toHostDraftCard() = DraftCard(
     createdAtMillis = createdAtMillis,
     updatedAtMillis = updatedAtMillis
 )
-
-internal fun AiBatchRunner.Mode.toAiBatchModeV1() = AiBatchModeV1.valueOf(name)
-
-internal fun AiBatchModeV1.toRunnerMode() = AiBatchRunner.Mode.valueOf(name)

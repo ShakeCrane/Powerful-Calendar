@@ -4,6 +4,7 @@ import dev.powerfulcalendar.core.EditorSelection
 import dev.powerfulcalendar.core.TimelineCoordinate
 import dev.powerfulcalendar.core.api.v1.EventEditorOpenResultV1
 import dev.powerfulcalendar.core.api.v1.EventFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.AiBatchModeV1
 import android.annotation.SuppressLint
 import android.graphics.Color
 import android.net.Uri
@@ -168,7 +169,7 @@ internal sealed interface WebSkinAction {
         val editAndResend: Boolean
     ) : WebSkinAction
     /** Starts the Host-owned range selection conversation; this does not authorize writes. */
-    data class PrepareAiBatch(val mode: dev.powerfulcalendar.ai.AiBatchRunner.Mode) : WebSkinAction
+    data class PrepareAiBatch(val mode: AiBatchModeV1) : WebSkinAction
     /** Cancels a pending range-selection conversation or requests stop for the active Host batch. */
     data object CancelAiBatch : WebSkinAction
     /** Requests the Host's explicit stuck-batch recovery confirmation. */
@@ -633,8 +634,8 @@ internal fun decodeBridgeAction(raw: String): WebSkinAction? {
         "prepareAiBatch" -> {
             if (keys != setOf("name", "mode")) return null
             when (payload.opt("mode")) {
-                "publish" -> WebSkinAction.PrepareAiBatch(dev.powerfulcalendar.ai.AiBatchRunner.Mode.PUBLISH)
-                "discard" -> WebSkinAction.PrepareAiBatch(dev.powerfulcalendar.ai.AiBatchRunner.Mode.DISCARD)
+                "publish" -> WebSkinAction.PrepareAiBatch(AiBatchModeV1.PUBLISH)
+                "discard" -> WebSkinAction.PrepareAiBatch(AiBatchModeV1.DISCARD)
                 else -> null
             }
         }

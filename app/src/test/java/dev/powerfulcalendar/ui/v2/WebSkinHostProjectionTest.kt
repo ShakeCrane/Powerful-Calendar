@@ -10,6 +10,7 @@ import dev.powerfulcalendar.ai.AiProposal
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.api.v1.CoreRecurrenceFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.AiBatchModeV1
 import dev.powerfulcalendar.core.api.v1.RecurrenceFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.RecurrenceOccurrenceWindowQueryV1
 import dev.powerfulcalendar.core.api.v1.RecurrenceOccurrenceWindowV1
@@ -88,9 +89,9 @@ class WebSkinHostProjectionTest {
         fun decode(payload: String) = decodeBridgeAction(
             """{"version":1,"type":"action","payload":$payload}""")
 
-        assertEquals(WebSkinAction.PrepareAiBatch(dev.powerfulcalendar.ai.AiBatchRunner.Mode.PUBLISH),
+        assertEquals(WebSkinAction.PrepareAiBatch(AiBatchModeV1.PUBLISH),
             decode("""{"name":"prepareAiBatch","mode":"publish"}"""))
-        assertEquals(WebSkinAction.PrepareAiBatch(dev.powerfulcalendar.ai.AiBatchRunner.Mode.DISCARD),
+        assertEquals(WebSkinAction.PrepareAiBatch(AiBatchModeV1.DISCARD),
             decode("""{"name":"prepareAiBatch","mode":"discard"}"""))
         assertEquals(WebSkinAction.CancelAiBatch,
             decode("""{"name":"cancelAiBatch"}"""))

@@ -18,7 +18,6 @@ import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ApplicationProvider
 import dev.powerfulcalendar.ai.AiSettings
 import dev.powerfulcalendar.ai.AiSettingsStore
-import dev.powerfulcalendar.ai.AiBatchRunner
 import dev.powerfulcalendar.ai.AiChatHistoryStore
 import dev.powerfulcalendar.ai.AiChatMessage
 import dev.powerfulcalendar.core.DraftForm
@@ -27,6 +26,7 @@ import dev.powerfulcalendar.core.PowerStore.CommitOutcome
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.AiBatchModeV1
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.After
@@ -227,7 +227,7 @@ class WebAiProposalReviewIntegrationTest {
             assertEquals("自动提案测试", proposal.getString("title"))
             ui.runOnIdle {
                 WebSkinBridgeRuntime.onAction(
-                    WebSkinAction.PrepareAiBatch(AiBatchRunner.Mode.PUBLISH)
+                    WebSkinAction.PrepareAiBatch(AiBatchModeV1.PUBLISH)
                 )
             }
             assertEquals("batch selection must not start while proposal review is active", "IDLE",
@@ -872,7 +872,7 @@ class WebAiProposalReviewIntegrationTest {
         val before = counts()
         mountAiBridgePage()
 
-        prepareWholeBatch(AiBatchRunner.Mode.PUBLISH)
+        prepareWholeBatch(AiBatchModeV1.PUBLISH)
         val reviewState = WebSkinBridgeRuntime.state().getJSONObject("aiBatch")
         assertEquals("AWAITING_HOST_REVIEW", reviewState.getString("phase"))
         assertEquals(1, reviewState.getInt("selectedCount"))
@@ -887,7 +887,7 @@ class WebAiProposalReviewIntegrationTest {
         assertEquals("cancelling the Host review must leave the selected draft untouched",
             before, counts())
 
-        prepareWholeBatch(AiBatchRunner.Mode.PUBLISH)
+        prepareWholeBatch(AiBatchModeV1.PUBLISH)
         ui.onNodeWithText("授权并发布 1 张").performClick()
         ui.waitUntil(20_000) {
             shadowOf(Looper.getMainLooper()).idle()
@@ -907,6 +907,37 @@ class WebAiProposalReviewIntegrationTest {
     }
 
     @Test
+    fun webBatchModeActionIsIgnoredWhileNewEventEditorIsOpen() {
+        val before = counts()
+        mountAiBridgePage()
+        val newEventLabelsBefore = ui.onAllNodesWithText("新建").fetchSemanticsNodes().size
+
+        ui.runOnIdle {
+            WebSkinBridgeRuntime.onAction(WebSkinAction.CreateDraft("MEMO"))
+        }
+        ui.waitForIdle()
+        val newEventLabelsWithEditor = ui.onAllNodesWithText("新建").fetchSemanticsNodes().size
+        assertTrue("CreateDraft must open the new-event editor",
+            newEventLabelsWithEditor > newEventLabelsBefore)
+
+        val chatBeforeBatchAction = WebSkinBridgeRuntime.state()
+            .getJSONArray("chatMessages").length()
+        ui.runOnIdle {
+            WebSkinBridgeRuntime.onAction(WebSkinAction.PrepareAiBatch(AiBatchModeV1.PUBLISH))
+        }
+        ui.waitForIdle()
+
+        assertEquals("the open editor must reject batch range selection", "IDLE",
+            WebSkinBridgeRuntime.state().getJSONObject("aiBatch").getString("phase"))
+        assertEquals("rejected batch selection must not append a chat prompt", chatBeforeBatchAction,
+            WebSkinBridgeRuntime.state().getJSONArray("chatMessages").length())
+        assertEquals("batch action must leave the new-event editor open", newEventLabelsWithEditor,
+            ui.onAllNodesWithText("新建").fetchSemanticsNodes().size)
+        assertEquals("opening the editor and rejecting a batch action must not persist data",
+            before, counts())
+    }
+
+    @Test
     fun clearBatchProjectionPublishesLiveRunnerProgress() {
         val total = 10
         repeat(total) { index ->
@@ -917,7 +948,7 @@ class WebAiProposalReviewIntegrationTest {
             ))
         }
         mountAiBridgePage()
-        prepareWholeBatch(AiBatchRunner.Mode.PUBLISH)
+        prepareWholeBatch(AiBatchModeV1.PUBLISH)
         ui.onNodeWithText("授权并发布 $total 张").performClick()
 
         var observedProgress: JSONObject? = null
@@ -962,7 +993,7 @@ class WebAiProposalReviewIntegrationTest {
             ))
         }
         mountAiBridgePage()
-        prepareWholeBatch(AiBatchRunner.Mode.PUBLISH)
+        prepareWholeBatch(AiBatchModeV1.PUBLISH)
         ui.onNodeWithText("授权并发布 $total 张").performClick()
 
         ui.waitUntil(15_000) {
@@ -1191,7 +1222,7 @@ class WebAiProposalReviewIntegrationTest {
         }
     }
 
-    private fun prepareWholeBatch(mode: AiBatchRunner.Mode) {
+    private fun prepareWholeBatch(mode: AiBatchModeV1) {
         ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.PrepareAiBatch(mode)) }
         ui.waitUntil(10_000) {
             shadowOf(Looper.getMainLooper()).idle()

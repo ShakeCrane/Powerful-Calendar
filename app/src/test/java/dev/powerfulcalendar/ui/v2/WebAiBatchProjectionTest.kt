@@ -1,11 +1,11 @@
 package dev.powerfulcalendar.ui.v2
 
-import dev.powerfulcalendar.ai.AiBatchRunner
 import dev.powerfulcalendar.core.DraftCard
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.DraftStatus
 import dev.powerfulcalendar.core.TemporalKind
+import dev.powerfulcalendar.core.api.v1.AiBatchModeV1
 import dev.powerfulcalendar.core.api.v1.AiBatchSessionV1
 import dev.powerfulcalendar.core.api.v1.AiBatchStateV1
 import dev.powerfulcalendar.core.api.v1.AiBatchTerminalReportV1
@@ -24,18 +24,18 @@ class WebAiBatchProjectionTest {
     @Test
     fun progressTrackerIsSessionFencedMonotonicAndClearedByOwner() {
         val tracker = WebAiBatchProgressTracker()
-        tracker.begin("first", AiBatchRunner.Mode.PUBLISH, total = 3)
-        tracker.report("first", AiBatchRunner.Mode.PUBLISH, done = 1, total = 3)
-        tracker.report("first", AiBatchRunner.Mode.PUBLISH, done = 0, total = 3)
-        tracker.report("stale", AiBatchRunner.Mode.PUBLISH, done = 2, total = 3)
+        tracker.begin("first", AiBatchModeV1.PUBLISH, total = 3)
+        tracker.report("first", AiBatchModeV1.PUBLISH, done = 1, total = 3)
+        tracker.report("first", AiBatchModeV1.PUBLISH, done = 0, total = 3)
+        tracker.report("stale", AiBatchModeV1.PUBLISH, done = 2, total = 3)
 
-        assertEquals(WebAiBatchProgress("first", AiBatchRunner.Mode.PUBLISH, 1, 3),
+        assertEquals(WebAiBatchProgress("first", AiBatchModeV1.PUBLISH, 1, 3),
             tracker.progress.value)
-        tracker.begin("second", AiBatchRunner.Mode.DISCARD, total = 2)
+        tracker.begin("second", AiBatchModeV1.DISCARD, total = 2)
         tracker.finish("first")
-        assertEquals(WebAiBatchProgress("second", AiBatchRunner.Mode.DISCARD, 0, 2),
+        assertEquals(WebAiBatchProgress("second", AiBatchModeV1.DISCARD, 0, 2),
             tracker.progress.value)
-        tracker.report("second", AiBatchRunner.Mode.DISCARD, done = 2, total = 2)
+        tracker.report("second", AiBatchModeV1.DISCARD, done = 2, total = 2)
         tracker.finish("second")
         assertEquals(null, tracker.progress.value)
     }
@@ -88,7 +88,7 @@ class WebAiBatchProjectionTest {
     fun preparationAndHostReviewAreDistinctFromAuthorization() {
         val preparing = WebAiBatchProjection.project(
             session = null,
-            preparationMode = AiBatchRunner.Mode.DISCARD,
+            preparationMode = AiBatchModeV1.DISCARD,
             reviewMode = null,
             reviewCards = null,
             progress = null
@@ -110,7 +110,7 @@ class WebAiBatchProjectionTest {
         val awaitingHost = WebAiBatchProjection.project(
             session = null,
             preparationMode = null,
-            reviewMode = AiBatchRunner.Mode.PUBLISH,
+            reviewMode = AiBatchModeV1.PUBLISH,
             reviewCards = listOf(card),
             progress = null
         )
@@ -129,9 +129,9 @@ class WebAiBatchProjectionTest {
             startedAtMillis = 10, updatedAtMillis = 20
         )
         val matching = WebAiBatchProgress(
-            sessionId = "active-session", mode = AiBatchRunner.Mode.PUBLISH, done = 1, total = 2
+            sessionId = "active-session", mode = AiBatchModeV1.PUBLISH, done = 1, total = 2
         )
-        val stale = matching.copy(sessionId = "previous-session", mode = AiBatchRunner.Mode.DISCARD)
+        val stale = matching.copy(sessionId = "previous-session", mode = AiBatchModeV1.DISCARD)
 
         val currentProjection = WebAiBatchProjection.project(
             session, null, null, null, matching

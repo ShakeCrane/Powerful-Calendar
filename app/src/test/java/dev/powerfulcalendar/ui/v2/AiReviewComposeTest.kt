@@ -5,7 +5,6 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import dev.powerfulcalendar.ai.AiBatchRunner
 import dev.powerfulcalendar.ai.AiInterpretation
 import dev.powerfulcalendar.ai.AiProposal
 import dev.powerfulcalendar.core.DraftCard
@@ -13,6 +12,7 @@ import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.DraftStatus
 import dev.powerfulcalendar.core.TemporalKind
+import dev.powerfulcalendar.core.api.v1.AiBatchModeV1
 import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.api.v1.AiProposalItemReadinessV1
 import dev.powerfulcalendar.core.api.v1.AiProposalReadinessStatusV1
@@ -124,7 +124,7 @@ class AiReviewComposeTest {
         ui.setContent {
             PowerCalTheme {
                 AiBatchAuthorizationReview(
-                    mode = AiBatchRunner.Mode.PUBLISH,
+                    mode = AiBatchModeV1.PUBLISH,
                     cards = cards,
                     busy = false,
                     onAuthorize = { authorized = it },
@@ -163,7 +163,7 @@ class AiReviewComposeTest {
         ui.setContent {
             PowerCalTheme {
                 AiBatchAuthorizationReview(
-                    mode = AiBatchRunner.Mode.DISCARD,
+                    mode = AiBatchModeV1.DISCARD,
                     cards = cards,
                     busy = true,
                     onAuthorize = { authorized = true },

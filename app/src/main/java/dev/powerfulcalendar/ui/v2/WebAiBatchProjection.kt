@@ -1,7 +1,7 @@
 package dev.powerfulcalendar.ui.v2
 
-import dev.powerfulcalendar.ai.AiBatchRunner
 import dev.powerfulcalendar.core.DraftCard
+import dev.powerfulcalendar.core.api.v1.AiBatchModeV1
 import dev.powerfulcalendar.core.api.v1.AiBatchSessionV1
 import dev.powerfulcalendar.core.api.v1.AiBatchStateV1
 import dev.powerfulcalendar.core.api.v1.AiBatchTerminalReportV1
@@ -13,7 +13,7 @@ import org.json.JSONObject
 /** Process-local progress only; identity and authorization data stay in the Host. */
 internal data class WebAiBatchProgress(
     val sessionId: String,
-    val mode: AiBatchRunner.Mode,
+    val mode: AiBatchModeV1,
     val done: Int,
     val total: Int
 )
@@ -24,14 +24,14 @@ internal class WebAiBatchProgressTracker {
     val progress: StateFlow<WebAiBatchProgress?> = mutableProgress.asStateFlow()
 
     @Synchronized
-    fun begin(sessionId: String, mode: AiBatchRunner.Mode, total: Int) {
+    fun begin(sessionId: String, mode: AiBatchModeV1, total: Int) {
         mutableProgress.value = if (total > 0) {
             WebAiBatchProgress(sessionId, mode, done = 0, total = total)
         } else null
     }
 
     @Synchronized
-    fun report(sessionId: String, mode: AiBatchRunner.Mode, done: Int, total: Int) {
+    fun report(sessionId: String, mode: AiBatchModeV1, done: Int, total: Int) {
         val current = mutableProgress.value ?: return
         if (current.sessionId != sessionId || current.mode != mode || current.total != total) return
         val boundedDone = done.coerceIn(0, total)
@@ -50,8 +50,8 @@ internal class WebAiBatchProgressTracker {
 internal object WebAiBatchProjection {
     fun project(
         session: AiBatchSessionV1?,
-        preparationMode: AiBatchRunner.Mode?,
-        reviewMode: AiBatchRunner.Mode?,
+        preparationMode: AiBatchModeV1?,
+        reviewMode: AiBatchModeV1?,
         reviewCards: List<DraftCard>?,
         progress: WebAiBatchProgress?
     ): JSONObject {
@@ -65,7 +65,7 @@ internal object WebAiBatchProjection {
             currentProgress != null -> currentProgress.mode
             reviewCards != null -> reviewMode
             preparationMode != null -> preparationMode
-            reportMode != null -> runCatching { AiBatchRunner.Mode.valueOf(reportMode) }.getOrNull()
+            reportMode != null -> runCatching { AiBatchModeV1.valueOf(reportMode) }.getOrNull()
             else -> null
         }
         val phase = when {

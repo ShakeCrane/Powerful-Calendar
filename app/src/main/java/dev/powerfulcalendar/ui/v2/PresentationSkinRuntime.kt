@@ -298,7 +298,7 @@ internal class AiVisualContext internal constructor(
             onOpenDeck = onOpenDeck,
             onPickImage = onPickImage,
             onPickFile = onPickFile,
-            onPrepareBatch = { onPrepareBatch(hostAiBatchMode(it).toAiBatchModeV1()) },
+            onPrepareBatch = { onPrepareBatch(hostAiBatchMode(it)) },
             onRewind = onRewind,
             onCopyMessage = { content ->
                 clipboard.setPrimaryClip(ClipData.newPlainText("PowerCal 消息", content))
