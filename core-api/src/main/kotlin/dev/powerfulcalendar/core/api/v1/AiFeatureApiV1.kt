@@ -326,9 +326,7 @@ data class AiBatchCandidateV1(
 
 data class AiBatchSelectionRequestV1(
     val userRequest: String,
-    val candidates: List<AiBatchCandidateV1>,
-    /** Set only by the Host for its exact-match “all” actions; this bypasses model selection. */
-    val selectAll: Boolean = false
+    val candidates: List<AiBatchCandidateV1>
 )
 
 enum class AiBatchSelectionStatusV1 { READY, NEEDS_CLARIFICATION, INVALID, MODEL_UNAVAILABLE }

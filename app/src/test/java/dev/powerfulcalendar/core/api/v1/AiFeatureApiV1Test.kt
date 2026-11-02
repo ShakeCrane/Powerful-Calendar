@@ -771,6 +771,37 @@ class AiFeatureApiV1Test {
         assertTrue(outOfScope.selected.isEmpty())
     }
 
+    @Test fun explicitBatchAllIsResolvedInCoreAndCandidateLimitStillApplies() = runBlocking {
+        val first = candidate(1, 2, "first")
+        val second = candidate(2, 5, "second", DraftOperationV1.DELETE)
+        val explicitAllPhrases = listOf("全部", "所有", "全部草稿", "全选", "所有待处理")
+        explicitAllPhrases.forEach { phrase ->
+            val all = core.ai.selectBatchDrafts(AiBatchSelectionRequestV1(
+                userRequest = " $phrase ",
+                candidates = listOf(first, second)
+            ))
+            assertEquals(phrase, AiBatchSelectionStatusV1.READY, all.status)
+            assertEquals(phrase, listOf(first, second), all.selected)
+        }
+        assertEquals(0, model.selectionCalls)
+
+        model.selection = AiBatchModelSelectionV1(selectedDraftIds = listOf(2), reply = "选中第二项")
+        val ambiguous = core.ai.selectBatchDrafts(AiBatchSelectionRequestV1(
+            userRequest = "帮我处理这些草稿",
+            candidates = listOf(first, second)
+        ))
+        assertEquals(AiBatchSelectionStatusV1.READY, ambiguous.status)
+        assertEquals(listOf(second), ambiguous.selected)
+        assertEquals(1, model.selectionCalls)
+
+        val overLimit = core.ai.selectBatchDrafts(AiBatchSelectionRequestV1(
+            userRequest = "全部",
+            candidates = (1L..101L).map { candidate(it, 1, "item-$it") }
+        ))
+        assertEquals(AiBatchSelectionStatusV1.INVALID, overLimit.status)
+        assertEquals(1, model.selectionCalls)
+    }
+
     @Test fun batchApprovalBindsExactReviewedVersionAndModeAndCanBeUsedOnce() = runBlocking {
         val draft = store.newDraft(form("approved batch").toCoreDraftForm())
         val review = AiBatchReviewV1(
@@ -936,6 +967,7 @@ class AiFeatureApiV1Test {
         var chatCalls = 0
         var lastChatRequest: AiChatModelRequestV1? = null
         var proposalCalls = 0
+        var selectionCalls = 0
         var textEvidenceCalls = 0
         var imageEvidenceCalls = 0
         var beforeEvidenceReturn: (() -> Unit)? = null
@@ -989,7 +1021,10 @@ class AiFeatureApiV1Test {
         override suspend fun selectBatchDrafts(
             userRequest: String,
             candidates: List<AiBatchCandidateV1>
-        ) = selection
+        ): AiBatchModelSelectionV1 {
+            selectionCalls++
+            return selection
+        }
     }
 
     private class FakeAiConversationHistoryPort(

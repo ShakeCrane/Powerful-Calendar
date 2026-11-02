@@ -240,7 +240,7 @@ val skinForbiddenApis = listOf(
 )
 val verifySkinSourceBoundary = tasks.register("verifySkinSourceBoundary") {
     group = "verification"
-    description = "Enforce presentation-only compiled skin source imports and calls."
+    description = "Enforce presentation-only skin imports and Core adapter dependency direction."
     doLast {
         fileTree("src/main/java/dev/powerfulcalendar/ui/v2/skins") {
             include("**/*.kt")
@@ -253,6 +253,19 @@ val verifySkinSourceBoundary = tasks.register("verifySkinSourceBoundary") {
                 throw GradleException(
                     "Compiled skin " + source.name + " references forbidden service " + violation +
                         "; use only the host-provided action callbacks."
+                )
+            }
+        }
+        fileTree("src/main/java/dev/powerfulcalendar/core/api/v1") {
+            include("**/*.kt")
+        }.forEach { source ->
+            val withoutComments = source.readText()
+                .replace(Regex("""(?s)/\*.*?\*/"""), "")
+                .replace(Regex("""(?m)//[^\n]*"""), "")
+            if (withoutComments.contains("dev.powerfulcalendar.ui.")) {
+                throw GradleException(
+                    "Core Feature API adapter " + source.name +
+                        " depends on the UI package; move DTO mapping to the adapter layer."
                 )
             }
         }

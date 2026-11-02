@@ -80,6 +80,7 @@ import dev.powerfulcalendar.core.TemporalText
 import dev.powerfulcalendar.core.TimelineCoordinate
 import dev.powerfulcalendar.core.api.v1.BackupRestoreExceptionV1
 import dev.powerfulcalendar.core.api.v1.BackupRestoreFailureKindV1
+import dev.powerfulcalendar.core.api.v1.toAiProposalReviewV1
 import dev.powerfulcalendar.core.api.v1.EventEditorHandleV1
 import dev.powerfulcalendar.core.api.v1.EventEditorOpenResultV1
 import dev.powerfulcalendar.core.api.v1.EventEditorSnapshotV1
@@ -1270,16 +1271,12 @@ fun PowerCalApp(
                     if (snapshot.isEmpty()) {
                         pendingBatchMode = null
                         appendChat("assistant", "待处理已经为空，没有可授权的草稿。")
-                    } else if (snapshot.size > 100) {
-                        appendChat("assistant", "待处理超过 100 张，本次不会默认选择前 100 张。请先在待处理中缩小范围。")
                     } else {
-                        val all = text in setOf("全部", "所有", "全部草稿", "全选", "所有待处理")
                         val candidates = snapshot.map { it.toAiBatchCandidateV1() }
                         val selection = aiFeatureApi.selectBatchDrafts(
                             dev.powerfulcalendar.core.api.v1.AiBatchSelectionRequestV1(
                                 userRequest = text,
-                                candidates = candidates,
-                                selectAll = all
+                                candidates = candidates
                             )
                         )
                         when (selection.status) {
@@ -1299,7 +1296,9 @@ fun PowerCalApp(
                             }
                             dev.powerfulcalendar.core.api.v1.AiBatchSelectionStatusV1.NEEDS_CLARIFICATION ->
                                 appendChat("assistant", selection.question ?: "请补充要处理的草稿范围。")
-                            dev.powerfulcalendar.core.api.v1.AiBatchSelectionStatusV1.INVALID,
+                            dev.powerfulcalendar.core.api.v1.AiBatchSelectionStatusV1.INVALID ->
+                                appendChat("assistant", "暂时不能安全选定目标：" +
+                                    (selection.message ?: "请求无效"))
                             dev.powerfulcalendar.core.api.v1.AiBatchSelectionStatusV1.MODEL_UNAVAILABLE ->
                                 appendChat("assistant", "暂时不能安全选定目标：" +
                                     (selection.message ?: "没有明确的草稿") + "。请补充范围或回复“全部”。")
@@ -1384,8 +1383,36 @@ fun PowerCalApp(
                             zoneId = zone.id
                         )
                     )
-                    appendChat("assistant", if (result.status == AiEvidenceAnalysisStatusV1.COMPLETED) result.reply
-                        else "文件暂时无法完成分析，已保留现有日历数据。可以稍后重试。" )
+                    if (result.status != AiEvidenceAnalysisStatusV1.COMPLETED) {
+                        appendChat("assistant", "文件暂时无法完成分析，已保留现有日历数据。可以稍后重试。")
+                    } else {
+                        appendChat("assistant", result.reply, proposalSource = result.proposalSource)
+                        val proposalSource = result.proposalSource?.takeIf { it.isNotBlank() }
+                        if (proposalSource != null) {
+                            val followup = aiFeatureApi.generateProposal(
+                                dev.powerfulcalendar.core.api.v1.AiProposalGenerationRequestV1(
+                                    requestId = java.util.UUID.randomUUID().toString(),
+                                    userText = proposalSource,
+                                    zoneId = zone.id,
+                                    // The source came from a reviewed attachment, so do not add
+                                    // unrelated calendar context to this follow-up request.
+                                    shareCalendarContext = false
+                                )
+                            )
+                            val followupReview = followup.review
+                            if (followupReview != null && followupReview.items.isNotEmpty()) {
+                                replaceAiProposalReview(followupReview)
+                                appendChat("assistant", "已从已核对资料中整理出 " +
+                                    "${followupReview.items.size} 项候选，请审核后选择生成草稿；尚未正式发布。" +
+                                    if (evidence.truncated) " 文件内容不完整，请核对遗漏。" else "")
+                            } else {
+                                appendChat("assistant", "已保留资料分析结果，但无法形成可审核的结构化候选：" +
+                                    (followup.warnings.firstOrNull()?.takeIf { it.isNotBlank() }
+                                        ?: followup.message?.takeIf { it.isNotBlank() }
+                                        ?: "请补充或核对日程信息后重试。"))
+                            }
+                        }
+                    }
                 }
             } catch (error: kotlinx.coroutines.CancellationException) {
                 throw error

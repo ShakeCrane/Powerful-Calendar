@@ -239,6 +239,120 @@ class WebAiAttachmentFlowIntegrationTest {
     }
 
     @Test
+    fun reviewedTextFallbackCarriesProposalSourceIntoReviewWithoutPublishing() {
+        val zone = ZoneId.of("Asia/Shanghai")
+        val tomorrow = LocalDate.now(zone).plusDays(1).toString()
+        val sensitiveSource = "PRIVATE_ONLY=REMOVE_ME; Study group tomorrow at 14:00."
+        val reviewedText = "Study group tomorrow at 14:00."
+        val proposalSource = "Study group $tomorrow 14:00 to 15:00"
+        val uri = Uri.parse("content://powercal-test-" + namespace + "/agenda-fallback.txt")
+        val requests = CopyOnWriteArrayList<String>()
+        val serverFailure = AtomicReference<Throwable?>()
+        val served = CountDownLatch(3)
+        val before = counts()
+        val proposal = JSONObject().put("events", JSONArray().put(JSONObject()
+            .put("operation", "CREATE")
+            .put("kind", "ACTIVITY")
+            .put("title", "Study group")
+            .put("start", "$tomorrow 14:00")
+            .put("end", "$tomorrow 15:00")
+            .put("zoneId", zone.id))).toString()
+        val evidenceReply = "发现一项候选。[[POWERCAL_DRAFT]]" +
+            JSONObject().put("type", "draft").put("intent", "explicit")
+                .put("source", proposalSource).toString() + "[[/POWERCAL_DRAFT]]"
+
+        ServerSocket(0, 4, InetAddress.getByName("127.0.0.1")).use { server ->
+            server.soTimeout = 15_000
+            AiSettingsStore.save(context, AiSettings(
+                endpoint = "http://127.0.0.1:" + server.localPort + "/v1",
+                model = "local-stub:free",
+                apiKey = "LOCAL_TEST_ONLY",
+                enabled = true,
+                shareContext = false
+            ))
+            val serverThread = Thread {
+                try {
+                    repeat(3) { index ->
+                        server.accept().use { socket ->
+                            socket.soTimeout = 10_000
+                            requests += readRequest(socket)
+                            val content = when (index) {
+                                0 -> "{\"events\":[]}"
+                                1 -> evidenceReply
+                                else -> proposal
+                            }
+                            writeReply(socket, content)
+                            served.countDown()
+                        }
+                    }
+                } catch (error: Throwable) {
+                    serverFailure.set(error)
+                    repeat(3) { served.countDown() }
+                }
+            }.apply { name = "pc-skin-attachment-fallback-stub"; isDaemon = true; start() }
+
+            ui.activity.setContent {
+                CompositionLocalProvider(
+                    LocalContext provides context,
+                    LocalActivityResultRegistryOwner provides resultRegistryOwner
+                ) {
+                    PowerCalTheme { PowerCalApp(store) }
+                }
+            }
+            ui.waitForIdle()
+            ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.Routed("ai")) }
+            ui.waitForIdle()
+
+            val contentResolver = shadowOf(ui.activity.contentResolver)
+            ShadowContentResolver.registerProviderInternal(
+                requireNotNull(uri.authority), TestAttachmentProvider("agenda-fallback.txt")
+            )
+            contentResolver.registerInputStreamSupplier(uri) {
+                sensitiveSource.toByteArray(Charsets.UTF_8).inputStream()
+            }
+            ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.PickAiFile) }
+            ui.waitForIdle()
+            assertTrue(resultRegistry.dispatch(uri))
+            ui.waitUntil(10_000) {
+                ui.onAllNodesWithText("核对文件 · agenda-fallback.txt")
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+            ui.onNode(hasText(sensitiveSource, substring = false) and hasSetTextAction())
+                .performTextClearance()
+            ui.onNodeWithText("本次将发送的提取文本（可删除隐私内容）")
+                .performTextInput(reviewedText)
+            ui.onNodeWithText("交给 AI 分析并澄清").performClick()
+
+            var review: JSONObject? = null
+            ui.waitUntil(25_000) {
+                val candidate = WebSkinBridgeRuntime.state().optJSONObject("aiProposalReview")
+                if (candidate?.optJSONArray("proposals")?.length() == 1) {
+                    review = candidate
+                    true
+                } else serverFailure.get() != null
+            }
+            assertNull("local AI stub failed", serverFailure.get())
+            assertNotNull("fallback proposal source did not reach the review API", review)
+            assertTrue("the fallback pipeline did not make all three requests",
+                served.await(1, TimeUnit.SECONDS))
+            serverThread.join(2_000)
+
+            assertEquals(3, requests.size)
+            assertTrue(requests[0].contains(reviewedText))
+            assertTrue(requests[1].contains(reviewedText))
+            assertTrue("reviewed source must be sent to structured proposal generation",
+                requests[2].contains(proposalSource))
+            assertTrue("unreviewed private source text must never reach the provider",
+                requests.none { it.contains("PRIVATE_ONLY=REMOVE_ME") })
+            assertEquals("formal data and drafts remain unchanged until the user stages review",
+                before, counts())
+            assertEquals("Study group", requireNotNull(review)
+                .getJSONArray("proposals").getJSONObject(0).getString("title"))
+            assertFalse(AiFileFallbackConsent.allowed(context, AiSettingsStore.load(context)))
+        }
+    }
+
+    @Test
     fun clearMonthFileImportAndAiAttachmentShareLocalIcsImportAndIdempotence() {
         val ics = """BEGIN:VCALENDAR
 VERSION:2.0

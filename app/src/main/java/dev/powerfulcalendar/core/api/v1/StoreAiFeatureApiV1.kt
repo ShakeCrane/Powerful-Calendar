@@ -660,7 +660,7 @@ internal class StoreAiFeatureApiV1(
             status = AiBatchSelectionStatusV1.NEEDS_CLARIFICATION,
             question = "没有可处理的待办草稿"
         )
-        if (request.selectAll) return AiBatchSelectionReceiptV1(
+        if (request.userRequest.trim() in EXPLICIT_ALL_BATCH_REQUESTS) return AiBatchSelectionReceiptV1(
             status = AiBatchSelectionStatusV1.READY,
             selected = candidates,
             reply = "按用户明确的“全部”选择全部待处理草稿"
@@ -668,9 +668,6 @@ internal class StoreAiFeatureApiV1(
         if (request.userRequest.isBlank()) return AiBatchSelectionReceiptV1(
             status = AiBatchSelectionStatusV1.NEEDS_CLARIFICATION,
             question = "请说明要处理哪些草稿，或明确选择全部。"
-        )
-        if (candidates.size > MAX_BATCH_ITEMS) return selectionInvalid(
-            "待处理超过 100 张，请先缩小范围"
         )
         val port = modelPort ?: return AiBatchSelectionReceiptV1(
             status = AiBatchSelectionStatusV1.MODEL_UNAVAILABLE,
@@ -1305,6 +1302,7 @@ internal class StoreAiFeatureApiV1(
     )
 
     private companion object {
+        val EXPLICIT_ALL_BATCH_REQUESTS = setOf("全部", "所有", "全部草稿", "全选", "所有待处理")
         const val MAX_REQUEST_ID_CHARS = 160
         const val MAX_BATCH_ITEMS = 100
         const val MAX_BATCH_REQUEST_CHARS = 2_500

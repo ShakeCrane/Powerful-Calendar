@@ -9,8 +9,6 @@ import dev.powerfulcalendar.ai.AiConversationTaskSnapshot
 import dev.powerfulcalendar.ai.AiTaskAssistantSuggestion
 import dev.powerfulcalendar.ai.AiTaskEvidence
 import dev.powerfulcalendar.ai.AiSettingsStore
-import dev.powerfulcalendar.ui.v2.toAiProposalReviewV1
-import dev.powerfulcalendar.ui.v2.toAiConversationTaskV1
 import java.time.ZoneId
 
 /** Android provider adapter; credentials and persisted AI settings stay inside the Host. */
