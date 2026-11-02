@@ -4,6 +4,10 @@ Last broad source inventory pass: 2026-10-28, separation source snapshot `cc3102
 
 ## Traced boundaries
 
+### Core Feature API — Native/Web recurrence projection requires the Core service (2026-11-02)
+
+Native and Web timeline/month Host projections now require `RecurrenceFeatureApiV1`; no nullable direct-engine fallback remains. `PowerCalApp` injects the shared provider, while standalone Compose previews use the stable stateless Core adapter. The 17-day/42-day windows, ordering, date precision, occurrence identity, and visibility filters remain unchanged. Focused regressions **101/101 PASS**; full JVM remains **FAIL / unresolved** (897 tests, 2 integration failures whose exact methods passed isolated reruns); both source boundaries, APK, lint, and AndroidTest Kotlin compilation pass. Device, packaged WebView, and full Native/Clear parity remain **NOT TESTED**. See the [Recurrence window API Issue](issues/PC-ISSUE-CORE-RECURRENCE-WINDOW-API-V1.md); this does not sign any acceptance row.
+
 ### Core Feature API — ICS import recovery checkpoint (2026-11-02)
 
 Native and Web Host ICS import now query and record the same `IcsImportCheckpointV1` through `ImportExportFeatureApiV1`. The adapter retains the existing synchronous SharedPreferences format and the 12-input bound. The receipt contains only fingerprint, draft IDs, and problem count; the Host rechecks each ID and continues candidate duplicate matching, so the receipt is not an authorization to skip a missing/discarded draft or publish an event. Focused API/Host tests passed **12/12**; the later full serial gate passed **885/885 JVM tests across 138 suites** with both source boundaries, APK, lint, and AndroidTest Kotlin compilation. The initial Memo paging timeout and isolated rerun are disclosed in the [ICS checkpoint API Issue](issues/PC-ISSUE-CORE-ICS-IMPORT-CHECKPOINT-API.md). This verifies the scoped API route only; Android WebView, device behavior, and full Native/Clear parity remain **NOT TESTED**.

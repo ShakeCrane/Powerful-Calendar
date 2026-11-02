@@ -285,9 +285,11 @@ existing date-only deadline handling, visible-window filtering, item ordering, a
 `PowerCalApp` passes the same `RecurrenceFeatureApiV1` instance to the Native projections and Web
 JSON state/move-validation projections. The service stays in Host code and is not exposed through
 the compiled Skin renderer context. Native presentation and Web Bridge transport contracts remain
-separate. Standalone projection fallback overloads remain for preview/test callers; runtime routes
-in `PowerCalApp` provide the Core service. Android instrumentation and packaged WebView execution
-remain unverified. Implementation and verification are recorded in the
+separate. Native and Web timeline/month projection entry points now require the Core service; no
+nullable direct-engine fallback remains. Standalone Compose preview/test entry points use a stable
+stateless `CoreRecurrenceFeatureApiV1` adapter default, while production routes inject the shared
+service. Android instrumentation and packaged WebView execution remain unverified. Implementation
+and verification are recorded in the
 [Recurrence window API Issue](issues/PC-ISSUE-CORE-RECURRENCE-WINDOW-API-V1.md).
 
 ## 17. Current adapter coverage and open work
@@ -315,7 +317,7 @@ Verified code paths across the Calendar, Event, Recurrence query, Memo, Draft/Re
 - Native and Web Host timeline/month reads use Store-backed `CalendarFeatureApiV1` windows, then materialize occurrences through the shared `RecurrenceFeatureApiV1.queryOccurrencesInWindow()`. Native month navigation asks the Host for a fresh bounded query per month; Web synchronous state refreshes select data for the live window.
 - Native and Web ICS import/export, structured Calendar import, and native backup export/restore now call `ImportExportFeatureApiV1`. ICS draft persistence delegates to Draft/Review; structured imports retain Store batch receipts and source-link idempotence; successful backup restore emits the shared `STORE_RESTORED` change.
 - `PowerCalApp.reload()` obtains the sequence preview and identity count through the read-only `CoreDiagnosticsFeatureApiV1`; the query leaves Store counts, event revisions, and feature notifications unchanged.
-- Native and Web Settings diagnostics receive next-occurrence previews from `RecurrenceFeatureApiV1`; Native and Web timeline/month recurrence materialization also uses its bounded window query. The optional direct-engine fallback remains only for standalone projection preview/test callers; production `PowerCalApp` routes supply the shared service.
+- Native and Web Settings diagnostics receive next-occurrence previews from `RecurrenceFeatureApiV1`; Native and Web timeline/month recurrence materialization also uses its bounded window query. Every Host projection route requires the API; standalone Compose preview/test entry points default to the stateless Core adapter, and production `PowerCalApp` routes supply the shared service.
 - A Robolectric adapter integration test performs a Native-side API create followed by a Web bridge create/checkpoint and observes shared feature revision/change events and Store-backed state. Its Native-side write calls the API directly; it does not mount `PowerCalApp` and drive the entire Native UI route. Separate editor Compose tests cover the API-backed editor component callbacks.
 
 Remaining work before PHASE 1 can exit:
