@@ -61,6 +61,15 @@
 
 Phase 1 保持进行中。下一项为显式 Draft/Review API：收口 Native/Web Deck 的 formal 写入及统一变更来源。不得据此删除 Native fallback、切换默认 Skin 或宣称 cutover GO。
 
+## Follow-up — Web no-op new-event save uses Event API receipt (2026-11-02)
+
+- **Problem:** For a temporary new-event editor with no meaningful changes, `WebSkinEditBridge` returned the wire status `no_changes` from the Core-owned `meaningfulChanges` snapshot flag without calling `EventFeatureApiV1.saveNewEvent`. The Web response was correct, but the Core mutation receipt/cache and shared command path were bypassed.
+- **Change:** The Bridge now calls `saveNewEvent` for this no-op. Core returns `NO_CHANGE` before Store persistence; Web maps it to the same `no_changes` response and refreshes the detached editor snapshot. No formal event, draft, or identity is written. No API contract, Store transaction, schema, or backup format changed.
+- **Regression:** `WebSkinEditBridgeTest.unchangedWebNewEventUsesCoreNoChangeReceipt` verifies the request reaches Event API and returns `NO_CHANGE`, creates no Store rows, and an exact Web request replay does not invoke the API again.
+- **Focused:** `WebSkinEditBridgeTest` **40/40 PASS**; XML SHA-256 `FC344CA0E43771086FE3CE420272901CDA1724C7D13980F1F55708D273EC0625`; focused log SHA-256 `A874983FB0685786D9A556CD0B2FE36E2295091C601FC433230AEFB10C6FB645`.
+- **Full verification:** Forced full JVM rerun **909/909 PASS / 139 suites / 0 failures, errors, or skips**; both source boundaries, Debug APK, lint (0 errors / 54 warnings), AndroidTest Kotlin compilation, and `git diff --check` passed (154 tasks). APK **67,043,950 bytes**, SHA-256 `805F58A5748BC0A09CAAE2A2005557640FFFB14C4E1BEB273206608188F47448`. Full log SHA-256 `6A520A47F09099A58B253B16AA46B7BBEB047471D23FFD76DCF092531B55BFFE`; reports: `.local/android-test/reports/phase1-web-new-event-receipt-20261102/`. The log also contains one unassigned non-fatal `System.logW: A resource failed to call close.` warning; no corresponding test XML reports a failure.
+- **Limits:** No ADB device or AVD was available. Instrumentation, packaged WebView, and runtime Native/Skin parity are **NOT TESTED**. Phase 1 remains open. Code commit `161c143c67a7e198771eb71fd9f3e11ac0a1fc7f`.
+
 
 ## Follow-up — startup abandoned-editor lease recovery (2026-11-02)
 
