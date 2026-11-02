@@ -503,6 +503,44 @@ class AiProposalFeatureApiV1Test {
         assertEquals(listOf("independent item"), store.pendingDrafts().map { it.form.title })
     }
 
+    @Test fun createDraftsBlocksMixedStaleAndCurrentDuplicateTargets() {
+        val target = createFormal("before duplicate proposals")
+        val staleReplacement = AiProposalItemV1(
+            sourceIndex = 0,
+            operation = DraftOperationV1.REPLACE,
+            eventSeq = target.eventSeq,
+            expectedRevision = target.revision,
+            form = form("stale replacement")
+        )
+        val concurrent = store.newDraft(form("current formal event").toCoreDraftForm(),
+            target.eventSeq, DraftOperation.REPLACE, expectedRevision = target.revision)
+        assertTrue(store.commit(concurrent.draftId) is PowerStore.CommitOutcome.Committed)
+        val currentTarget = requireNotNull(store.get(target.eventSeq))
+        val currentDelete = AiProposalItemV1(
+            sourceIndex = 1,
+            operation = DraftOperationV1.DELETE,
+            eventSeq = target.eventSeq,
+            expectedRevision = currentTarget.revision,
+            form = form("current delete")
+        )
+        val independentCreate = createItem("independent create").copy(sourceIndex = 2)
+
+        val receipt = core.aiProposals.createDrafts(
+            review(staleReplacement, currentDelete, independentCreate),
+            "mixed-stale-current-duplicate-targets"
+        )
+
+        val targetAfter = requireNotNull(store.get(target.eventSeq))
+        assertEquals(AiProposalApplyStatusV1.PARTIAL, receipt.status)
+        assertEquals(1, receipt.stagedCount)
+        assertEquals(AiProposalItemStatusV1.BLOCKED, receipt.itemReceipts[0].status)
+        assertEquals(AiProposalItemStatusV1.BLOCKED, receipt.itemReceipts[1].status)
+        assertEquals(AiProposalItemStatusV1.STAGED, receipt.itemReceipts[2].status)
+        assertEquals(currentTarget.title, targetAfter.title)
+        assertEquals(currentTarget.revision, targetAfter.revision)
+        assertEquals(listOf("independent create"), store.pendingDrafts().map { it.form.title })
+    }
+
     @Test fun createDraftsRejectsDuplicateTargetsAndPreservesExistingHumanDraft() {
         val target = createFormal("duplicate target")
         val humanDraft = store.newDraft(form("human draft stays intact").toCoreDraftForm(),

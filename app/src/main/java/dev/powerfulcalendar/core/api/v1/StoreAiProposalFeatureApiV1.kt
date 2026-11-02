@@ -43,19 +43,9 @@ internal class StoreAiProposalFeatureApiV1(
 
         val mutation = synchronized(store) {
             val current = captureStoreState()
-            val safeItems = snapshot.items.mapIndexed { position, item ->
-                if (item.blockedReason != null || item.operation == DraftOperationV1.CREATE) item
-                else {
-                    val target = item.eventSeq?.let(store::get)
-                    if (target == null || target.revision != item.expectedRevision) {
-                        item.copy(blockedReason = "第 ${position + 1} 项目标事件已变化；未写入该草稿")
-                    } else item
-                }
-            }
-            val safeReview = snapshot.copy(items = safeItems)
             runCatching {
                 AiDraftService(store, clock).createDrafts(
-                    safeReview.toInterpretation(), rejectExistingTargetDrafts = true)
+                    snapshot.toInterpretation(), rejectExistingTargetDrafts = true)
             }.fold(
                 onSuccess = { result -> StoreMutation.Applied(result, changesSince(current)) },
                 onFailure = { error -> StoreMutation.Rejected(receipt(requestId,

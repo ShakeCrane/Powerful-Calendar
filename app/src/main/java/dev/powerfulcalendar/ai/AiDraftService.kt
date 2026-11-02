@@ -89,9 +89,19 @@ class AiDraftService(
             }
             val operation = proposal.operation
             val target = proposal.eventSeq
+            val targetRecord = target?.let(store::get)
+            if (rejectExistingTargetDrafts && operation != DraftOperation.CREATE &&
+                (targetRecord == null || targetRecord.revision != proposal.expectedRevision)
+            ) {
+                val warning = "第 ${index + 1} 项目标事件已变化；未写入该草稿"
+                warnings.add(warning)
+                itemResults += AiDraftItemResult(index, proposal.sourceIndex, operation,
+                    ItemState.BLOCKED, eventSeq = target, message = warning)
+                return@forEachIndexed
+            }
             // `source` is already correct: CREATE is AI-authored, REPLACE keeps the real provenance.
             val form = proposal.form
-            if (operation != DraftOperation.CREATE && (target == null || store.get(target) == null)) {
+            if (operation != DraftOperation.CREATE && (target == null || targetRecord == null)) {
                 val warning = "第 ${index + 1} 项目标事件不存在，未生成草稿"
                 warnings.add(warning)
                 itemResults += AiDraftItemResult(index, proposal.sourceIndex, operation,
