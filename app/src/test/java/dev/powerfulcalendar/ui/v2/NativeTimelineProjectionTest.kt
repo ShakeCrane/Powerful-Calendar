@@ -5,6 +5,9 @@ import dev.powerfulcalendar.core.RecurrenceFreq
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.TimelineCoordinate
+import dev.powerfulcalendar.core.api.v1.CoreRecurrenceFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.RecurrenceFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.RecurrenceOccurrenceWindowQueryV1
 import dev.powerfulcalendar.ui.v2.isDateDeadlineVisible
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -17,6 +20,16 @@ import java.time.ZoneId
 
 class NativeTimelineProjectionTest {
     private val zone = ZoneId.of("Asia/Shanghai")
+
+    private class RecordingRecurrenceFeatureApiV1(
+        private val delegate: RecurrenceFeatureApiV1
+    ) : RecurrenceFeatureApiV1 by delegate {
+        val windowQueries = mutableListOf<RecurrenceOccurrenceWindowQueryV1>()
+
+        override fun queryOccurrencesInWindow(
+            query: RecurrenceOccurrenceWindowQueryV1
+        ) = delegate.queryOccurrencesInWindow(query).also { windowQueries += query }
+    }
 
     @Test
     fun recurringRowsKeepDisplayOverridesAndResolveToOriginalOwnerSlot() {
@@ -45,7 +58,9 @@ class NativeTimelineProjectionTest {
             24.0
         )
 
-        val projection = projectNativeTimeline(listOf(owner), camera, zone)
+        val projection = projectNativeTimeline(
+            listOf(owner), camera, zone, CoreRecurrenceFeatureApiV1()
+        )
         val row = projection.events.single { it.title == "周二改名" }
         val target = projection.openTargets.getValue(row.rowKey)
 
@@ -139,7 +154,7 @@ class NativeTimelineProjectionTest {
             4.0
         )
         val projection = projectNativeTimeline(
-            listOf(deadline), camera, ZoneId.of("America/Los_Angeles")
+            listOf(deadline), camera, ZoneId.of("America/Los_Angeles"), CoreRecurrenceFeatureApiV1()
         )
         val row = projection.events.single()
 
@@ -149,6 +164,46 @@ class NativeTimelineProjectionTest {
             NativeTimelineCamera(camera.anchorMillis, camera.hours),
             CoreNativeTimelineGeometry
         ))
+    }
+
+    @Test
+    fun nativeTimelineRoutesAllVisibleOwnersThroughTheBoundedCoreQuery() {
+        val start = LocalDateTime.of(2026, 10, 21, 9, 0).atZone(zone).toInstant().toEpochMilli()
+        val recurring = TemporalRecord(
+            eventSeq = 91,
+            revision = 5,
+            kind = TemporalKind.ALARM,
+            title = "Recurring",
+            startMillis = start,
+            zoneId = zone.id,
+            recurrence = Recurrence(RecurrenceFreq.DAILY, count = 5)
+        )
+        val single = TemporalRecord(
+            eventSeq = 92,
+            revision = 2,
+            kind = TemporalKind.ACTIVITY,
+            title = "Single",
+            startMillis = start,
+            endMillis = start + 60 * 60_000,
+            zoneId = zone.id
+        )
+        val camera = TimelineCoordinate.Camera(start + 3 * 60 * 60_000, 24.0)
+        val records = listOf(recurring, single)
+        val expected = projectNativeTimeline(records, camera, zone)
+        val recurrenceApi = RecordingRecurrenceFeatureApiV1(CoreRecurrenceFeatureApiV1())
+
+        val actual = projectNativeTimeline(records, camera, zone, recurrenceApi)
+
+        assertEquals(expected.events, actual.events)
+        assertEquals(expected.openTargets, actual.openTargets)
+        assertEquals(setOf(91L, 92L), recurrenceApi.windowQueries.map { it.event.eventSeq }.toSet())
+        val localDay = LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(camera.anchorMillis), zone)
+            .toLocalDate()
+        assertTrue(recurrenceApi.windowQueries.all { query ->
+            query.fromMillis == localDay.minusDays(8).atStartOfDay(zone).toInstant().toEpochMilli() &&
+                query.toMillis == localDay.plusDays(9).atStartOfDay(zone).toInstant().toEpochMilli() &&
+                query.maxOccurrences == RecurrenceOccurrenceWindowQueryV1.MAX_OCCURRENCES
+        })
     }
 
     private fun TimelineCoordinate.Camera.toNative() =

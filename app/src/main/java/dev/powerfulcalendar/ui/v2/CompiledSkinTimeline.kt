@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import dev.powerfulcalendar.core.api.v1.EventKindV1
 import dev.powerfulcalendar.core.api.v1.EventRecordV1
+import dev.powerfulcalendar.core.api.v1.RecurrenceFeatureApiV1
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.TimelineCoordinate
@@ -34,6 +35,7 @@ import java.time.ZoneId
 class TimelineSkinContext internal constructor(
     private val nativeRecords: List<TemporalRecord>,
     private val nativeCamera: TimelineCoordinate.Camera,
+    private val recurrenceFeatures: RecurrenceFeatureApiV1?,
     val records: List<EventRecordV1>,
     val camera: NativeTimelineCamera,
     val nowMillis: Long,
@@ -87,7 +89,8 @@ class TimelineSkinContext internal constructor(
         titlesOutside = titlesOutside,
         onTitlesOutsideChange = onTitlesOutsideChange,
         modifier = modifier,
-        blockedReminders = blockedReminders
+        blockedReminders = blockedReminders,
+        recurrenceFeatures = recurrenceFeatures
     )
 
     /**
@@ -145,11 +148,13 @@ fun SkinnableTimelineScreen(
     onTitlesOutsideChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
     blockedReminders: Int = 0,
-    onOpenOccurrence: (TemporalRecord, String?) -> Unit = { record, _ -> onOpenEvent(record) }
+    onOpenOccurrence: (TemporalRecord, String?) -> Unit = { record, _ -> onOpenEvent(record) },
+    recurrenceFeatures: RecurrenceFeatureApiV1? = null
 ) {
     val context = TimelineSkinContext(
         nativeRecords = records,
         nativeCamera = camera,
+        recurrenceFeatures = recurrenceFeatures,
         records = records.map(TemporalRecord::toEventRecordV1),
         camera = NativeTimelineCamera(camera.anchorMillis, camera.hours),
         nowMillis = nowMillis,

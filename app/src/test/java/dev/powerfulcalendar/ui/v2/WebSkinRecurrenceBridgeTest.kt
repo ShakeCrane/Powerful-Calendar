@@ -18,6 +18,8 @@ import dev.powerfulcalendar.core.api.v1.RecurrenceNextOccurrenceQueryV1
 import dev.powerfulcalendar.core.api.v1.RecurrenceNextOccurrenceV1
 import dev.powerfulcalendar.core.api.v1.RecurrenceOccurrenceByKeyQueryV1
 import dev.powerfulcalendar.core.api.v1.RecurrenceOccurrenceByKeyV1
+import dev.powerfulcalendar.core.api.v1.RecurrenceOccurrenceWindowQueryV1
+import dev.powerfulcalendar.core.api.v1.RecurrenceOccurrenceWindowV1
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.After
@@ -50,6 +52,10 @@ class WebSkinRecurrenceBridgeTest {
             occurrenceQueries += query
             return delegate.queryOccurrenceByKey(query)
         }
+
+        override fun queryOccurrencesInWindow(
+            query: RecurrenceOccurrenceWindowQueryV1
+        ): RecurrenceOccurrenceWindowV1 = delegate.queryOccurrencesInWindow(query)
     }
 
     private lateinit var context: Context

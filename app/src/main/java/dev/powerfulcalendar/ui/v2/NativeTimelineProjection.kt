@@ -6,6 +6,7 @@ import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.TemporalText
 import dev.powerfulcalendar.core.TimelineCoordinate
 import dev.powerfulcalendar.core.TimelineLayout
+import dev.powerfulcalendar.core.api.v1.RecurrenceFeatureApiV1
 import java.time.Instant
 import java.time.ZoneId
 import java.util.IdentityHashMap
@@ -26,14 +27,19 @@ internal data class NativeTimelineHostProjection(
 internal fun projectNativeTimeline(
     records: List<TemporalRecord>,
     camera: TimelineCoordinate.Camera,
-    zone: ZoneId
+    zone: ZoneId,
+    recurrenceFeatures: RecurrenceFeatureApiV1? = null
 ): NativeTimelineHostProjection {
     val day = Instant.ofEpochMilli(camera.anchorMillis).atZone(zone).toLocalDate()
     val from = day.minusDays(8).atStartOfDay(zone).toInstant().toEpochMilli()
     val to = day.plusDays(9).atStartOfDay(zone).toInstant().toEpochMilli()
-    val occurrences = records.filterNot { it.recurrence.isRepeating }
-        .mapNotNull(::singleDisplayOccurrence) +
-        displayOccurrences(records.filter { it.recurrence.isRepeating }, from, to)
+    val occurrences = if (recurrenceFeatures == null) {
+        records.filterNot { it.recurrence.isRepeating }
+            .mapNotNull(::singleDisplayOccurrence) +
+            displayOccurrences(records.filter { it.recurrence.isRepeating }, from, to)
+    } else {
+        displayOccurrences(records, from, to, recurrenceFeatures)
+    }
 
     val occurrenceByRecord = IdentityHashMap<TemporalRecord, DisplayOccurrence>()
     occurrences.forEach { occurrenceByRecord[it.record] = it }

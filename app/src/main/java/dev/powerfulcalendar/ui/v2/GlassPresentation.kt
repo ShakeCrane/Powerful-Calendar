@@ -2,6 +2,9 @@ package dev.powerfulcalendar.ui.v2
 
 import dev.powerfulcalendar.core.*
 import dev.powerfulcalendar.core.api.v1.RecurrenceOccurrenceV1
+import dev.powerfulcalendar.core.api.v1.RecurrenceFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.RecurrenceOccurrenceWindowQueryV1
+import dev.powerfulcalendar.core.api.v1.toEventRecordV1
 import java.time.Instant
 import java.time.LocalDate
 import java.time.format.TextStyle
@@ -98,6 +101,44 @@ internal fun displayOccurrences(
         ).map { slot ->
             val display = occurrenceDisplayRecord(owner, slot)
             DisplayOccurrence(owner, display, "${owner.eventSeq}:${slot.key}", slot.key)
+        }
+    }
+}
+
+/** Native Host projection using the shared Core recurrence API over detached Event snapshots. */
+internal fun displayOccurrences(
+    records: List<TemporalRecord>,
+    from: Long,
+    to: Long,
+    recurrenceFeatures: RecurrenceFeatureApiV1
+): List<DisplayOccurrence> {
+    if (to <= from) return emptyList()
+    return records.flatMap { owner ->
+        val queryFrom = if (owner.isDateOnlyDeadline()) {
+            Instant.ofEpochMilli(from).atZone(owner.zone).toLocalDate().atStartOfDay(owner.zone)
+                .toInstant().toEpochMilli()
+        } else from
+        val result = recurrenceFeatures.queryOccurrencesInWindow(
+            RecurrenceOccurrenceWindowQueryV1(
+                event = owner.toEventRecordV1(),
+                fromMillis = queryFrom,
+                toMillis = to
+            )
+        )
+        check(result.eventSeq == owner.eventSeq && result.eventRevision == owner.revision) {
+            "Recurrence API returned occurrences for a different event snapshot"
+        }
+        result.occurrences.mapNotNull { slot ->
+            val display = occurrenceDisplayRecord(owner, slot)
+            val start = display.anchorMillis() ?: return@mapNotNull null
+            val end = if (display.isDateOnlyDeadline()) {
+                LocalDate.parse(display.deadlineDate).plusDays(1).atStartOfDay(owner.zone)
+                    .toInstant().toEpochMilli()
+            } else display.spanEndMillis() ?: start
+            val intersects = start < to && if (end > start) end > from else start >= from
+            if (intersects) {
+                DisplayOccurrence(owner, display, "${owner.eventSeq}:${slot.key}", slot.key)
+            } else null
         }
     }
 }

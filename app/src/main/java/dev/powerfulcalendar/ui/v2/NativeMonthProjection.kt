@@ -3,6 +3,7 @@ package dev.powerfulcalendar.ui.v2
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.TemporalText
+import dev.powerfulcalendar.core.api.v1.RecurrenceFeatureApiV1
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
@@ -21,12 +22,15 @@ internal data class NativeMonthHostProjection(
 internal fun projectNativeMonth(
     records: List<TemporalRecord>,
     month: YearMonth,
-    zone: ZoneId
+    zone: ZoneId,
+    recurrenceFeatures: RecurrenceFeatureApiV1? = null
 ): NativeMonthHostProjection {
     val from = month.atDay(1).atStartOfDay(zone).toInstant().toEpochMilli()
     val to = month.plusMonths(1).atDay(1).atStartOfDay(zone).toInstant().toEpochMilli()
     val days = (1..month.lengthOfMonth()).map(month::atDay)
-    val projected = displayOccurrences(records, from, to).mapNotNull { occurrence ->
+    val occurrences = recurrenceFeatures?.let { displayOccurrences(records, from, to, it) }
+        ?: displayOccurrences(records, from, to)
+    val projected = occurrences.mapNotNull { occurrence ->
         val display = occurrence.record
         val visibleDates = days.filter { day ->
             if (display.isDateOnlyDeadline()) display.deadlineDate == day.toString()
@@ -70,12 +74,13 @@ internal fun projectNativeMonth(
 /** Keeps only the currently projected month's action map for opaque Native row keys. */
 internal class NativeMonthProjectionSession(
     private val recordsForMonth: (YearMonth) -> List<TemporalRecord>,
-    private val zone: ZoneId
+    private val zone: ZoneId,
+    private val recurrenceFeatures: RecurrenceFeatureApiV1? = null
 ) {
     private var openTargets: Map<String, NativeMonthOpenTarget> = emptyMap()
 
     fun rowsFor(month: YearMonth): List<NativeMonthRow> {
-        val projection = projectNativeMonth(recordsForMonth(month), month, zone)
+        val projection = projectNativeMonth(recordsForMonth(month), month, zone, recurrenceFeatures)
         openTargets = projection.openTargets
         return projection.rows
     }

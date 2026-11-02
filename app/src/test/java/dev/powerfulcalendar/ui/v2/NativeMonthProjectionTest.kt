@@ -6,6 +6,9 @@ import dev.powerfulcalendar.core.RecurrenceEngine
 import dev.powerfulcalendar.core.RecurrenceFreq
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
+import dev.powerfulcalendar.core.api.v1.CoreRecurrenceFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.RecurrenceFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.RecurrenceOccurrenceWindowQueryV1
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
@@ -17,6 +20,16 @@ import java.time.ZoneId
 
 class NativeMonthProjectionTest {
     private val zone = ZoneId.of("Asia/Shanghai")
+
+    private class RecordingRecurrenceFeatureApiV1(
+        private val delegate: RecurrenceFeatureApiV1
+    ) : RecurrenceFeatureApiV1 by delegate {
+        val windowQueries = mutableListOf<RecurrenceOccurrenceWindowQueryV1>()
+
+        override fun queryOccurrencesInWindow(
+            query: RecurrenceOccurrenceWindowQueryV1
+        ) = delegate.queryOccurrencesInWindow(query).also { windowQueries += query }
+    }
 
     @Test
     fun projectionPreservesCrossDayRowsOverrideTextAndOriginalOccurrenceKey() {
@@ -61,7 +74,8 @@ class NativeMonthProjectionTest {
         )
 
         val projection = projectNativeMonth(
-            listOf(alarm, activity, dateOnlyDeadline), YearMonth.of(2026, 10), zone
+            listOf(alarm, activity, dateOnlyDeadline), YearMonth.of(2026, 10), zone,
+            CoreRecurrenceFeatureApiV1()
         )
         val overridden = projection.rows.single { it.title == "周二改名" }
         val activityRow = projection.rows.single { it.title == "跨午夜活动" }
@@ -125,5 +139,31 @@ class NativeMonthProjectionTest {
 
         assertSame(record, target.owner)
         assertNull(target.occurrenceKey)
+    }
+
+    @Test
+    fun nativeMonthSessionRoutesOccurrenceExpansionThroughTheCoreApi() {
+        val start = LocalDateTime.of(2026, 10, 20, 9, 0).atZone(zone).toInstant().toEpochMilli()
+        val owner = TemporalRecord(
+            eventSeq = 61,
+            revision = 3,
+            kind = TemporalKind.ALARM,
+            title = "Daily",
+            startMillis = start,
+            zoneId = zone.id,
+            recurrence = Recurrence(RecurrenceFreq.DAILY, count = 15)
+        )
+        val month = YearMonth.of(2026, 10)
+        val recurrenceApi = RecordingRecurrenceFeatureApiV1(CoreRecurrenceFeatureApiV1())
+        val session = NativeMonthProjectionSession({ listOf(owner) }, zone, recurrenceApi)
+
+        val rows = session.rowsFor(month)
+
+        assertEquals(projectNativeMonth(listOf(owner), month, zone).rows, rows)
+        val query = recurrenceApi.windowQueries.single()
+        assertEquals(owner.eventSeq, query.event.eventSeq)
+        assertEquals(month.atDay(1).atStartOfDay(zone).toInstant().toEpochMilli(), query.fromMillis)
+        assertEquals(month.plusMonths(1).atDay(1).atStartOfDay(zone).toInstant().toEpochMilli(), query.toMillis)
+        assertEquals(RecurrenceOccurrenceWindowQueryV1.MAX_OCCURRENCES, query.maxOccurrences)
     }
 }

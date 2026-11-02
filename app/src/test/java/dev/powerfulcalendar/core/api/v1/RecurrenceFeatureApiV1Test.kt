@@ -7,6 +7,7 @@ import dev.powerfulcalendar.core.OccurrenceOverride
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -155,5 +156,108 @@ class RecurrenceFeatureApiV1Test {
             Instant.parse("2026-11-01T14:00:00Z").toEpochMilli(),
             actual.occurrence?.startMillis
         )
+    }
+
+    @Test
+    fun occurrenceWindowPreservesMovedOriginalSlotAndReportsTheBound() {
+        val zone = ZoneId.of("UTC")
+        val anchor = Instant.parse("2026-10-01T09:00:00Z").toEpochMilli()
+        val movedStart = Instant.parse("2026-10-23T14:00:00Z").toEpochMilli()
+        val originalKey = "2026-10-21T09:00"
+        val record = TemporalRecord(
+            eventSeq = 41,
+            revision = 8,
+            kind = TemporalKind.ACTIVITY,
+            title = "Long recurring activity",
+            startMillis = anchor,
+            endMillis = anchor + 4L * 365 * 24 * 60 * 60 * 1000,
+            recurrence = Recurrence(
+                RecurrenceFreq.DAILY,
+                count = 1000,
+                overrides = mapOf(
+                    originalKey to OccurrenceOverride(movedStart, movedStart + 60 * 60 * 1000)
+                )
+            ),
+            zoneId = zone.id
+        )
+        val from = Instant.parse("2026-10-23T00:00:00Z").toEpochMilli()
+        val to = Instant.parse("2026-10-26T00:00:00Z").toEpochMilli()
+
+        val actual = api.queryOccurrencesInWindow(
+            RecurrenceOccurrenceWindowQueryV1(
+                event = record.toEventRecordV1(),
+                fromMillis = from,
+                toMillis = to,
+                maxOccurrences = 2
+            )
+        )
+
+        assertEquals(record.eventSeq, actual.eventSeq)
+        assertEquals(record.revision, actual.eventRevision)
+        assertTrue(actual.truncated)
+        assertEquals(2, actual.occurrences.size)
+        val moved = actual.occurrences.single { it.key == originalKey }
+        assertEquals(movedStart, moved.startMillis)
+        assertTrue(moved.moved)
+    }
+
+    @Test
+    fun occurrenceWindowKeepsWallClockTimeAcrossDstFallback() {
+        val zone = ZoneId.of("America/New_York")
+        val anchor = LocalDate.of(2026, 10, 31).atTime(9, 0).atZone(zone)
+            .toInstant().toEpochMilli()
+        val record = TemporalRecord(
+            eventSeq = 42,
+            revision = 2,
+            kind = TemporalKind.ALARM,
+            title = "Daily alarm",
+            startMillis = anchor,
+            recurrence = Recurrence(RecurrenceFreq.DAILY),
+            zoneId = zone.id
+        )
+
+        val actual = api.queryOccurrencesInWindow(
+            RecurrenceOccurrenceWindowQueryV1(
+                event = record.toEventRecordV1(),
+                fromMillis = Instant.parse("2026-10-31T00:00:00Z").toEpochMilli(),
+                toMillis = Instant.parse("2026-11-03T00:00:00Z").toEpochMilli()
+            )
+        )
+
+        assertFalse(actual.truncated)
+        assertEquals(3, actual.occurrences.size)
+        val fallbackDay = actual.occurrences.single { it.key == "2026-11-01T09:00" }
+        assertEquals(9, Instant.ofEpochMilli(fallbackDay.startMillis).atZone(zone).hour)
+        assertEquals(
+            Instant.parse("2026-11-01T14:00:00Z").toEpochMilli(),
+            fallbackDay.startMillis
+        )
+    }
+
+    @Test
+    fun occurrenceWindowRejectsEmptyOversizedAndOverCapRequests() {
+        val record = TemporalRecord(
+            eventSeq = 43,
+            revision = 1,
+            kind = TemporalKind.ALARM,
+            title = "Bound validation",
+            startMillis = Instant.parse("2026-10-20T09:00:00Z").toEpochMilli()
+        ).toEventRecordV1()
+        val from = Instant.parse("2026-10-20T00:00:00Z").toEpochMilli()
+
+        assertTrue(runCatching {
+            RecurrenceOccurrenceWindowQueryV1(record, from, from)
+        }.isFailure)
+        assertTrue(runCatching {
+            RecurrenceOccurrenceWindowQueryV1(
+                record, from, from + RecurrenceOccurrenceWindowQueryV1.MAX_WINDOW_MILLIS + 1
+            )
+        }.isFailure)
+        assertTrue(runCatching {
+            RecurrenceOccurrenceWindowQueryV1(
+                record, from, from + 1000, maxOccurrences =
+                    RecurrenceOccurrenceWindowQueryV1.MAX_OCCURRENCES + 1
+            )
+        }.isFailure)
     }
 }

@@ -2716,7 +2716,8 @@ fun PowerCalApp(
                 recordsForMonth = nativeMonthRecordsForMonth,
                 onRequestMonth = { requested ->
                     requestCalendarWindow(monthCalendarQueryFor(requested))
-                })
+                },
+                recurrenceFeatures = recurrenceFeatureApi)
         } else {
             SkinnableTimelineScreen(
                 records = timelineCalendarRecords,
@@ -2782,7 +2783,8 @@ fun PowerCalApp(
                 onOpenTools = { page = Page.TOOLS.name },
                 blockedReminders = diagnostics.reminders.count {
                     it.status.schedule?.state == ReminderScheduleStateV1.BLOCKED
-                }
+                },
+                recurrenceFeatures = recurrenceFeatureApi
             )
         }
         } // page content above the persistent bottom navigation

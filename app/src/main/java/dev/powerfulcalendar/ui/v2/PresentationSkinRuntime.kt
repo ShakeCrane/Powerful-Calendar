@@ -29,6 +29,7 @@ import dev.powerfulcalendar.core.api.v1.AiBatchStateV1
 import dev.powerfulcalendar.core.api.v1.AiConversationMessageV1
 import dev.powerfulcalendar.core.api.v1.AiProposalReviewV1
 import dev.powerfulcalendar.core.api.v1.EventRecordV1
+import dev.powerfulcalendar.core.api.v1.RecurrenceFeatureApiV1
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.api.v1.MemoEntryV1
@@ -114,7 +115,8 @@ internal class MonthVisualContext internal constructor(
     val onDate: (LocalDate) -> Unit,
     val onOpen: (Long, Long, String?) -> Unit,
     val onCreate: (LocalDate) -> Unit,
-    val onRequestMonth: (java.time.YearMonth) -> Unit
+    val onRequestMonth: (java.time.YearMonth) -> Unit,
+    private val recurrenceFeatures: RecurrenceFeatureApiV1? = null
 ) {
     val records: List<EventRecordV1> = nativeRecords.map(TemporalRecord::toEventRecordV1)
     val recordsForMonth: (java.time.YearMonth) -> List<EventRecordV1> = { month ->
@@ -122,8 +124,8 @@ internal class MonthVisualContext internal constructor(
     }
 
     @Composable fun Native() {
-        val projection = remember(nativeRecordsForMonth, zone) {
-            NativeMonthProjectionSession(nativeRecordsForMonth, zone)
+        val projection = remember(nativeRecordsForMonth, zone, recurrenceFeatures) {
+            NativeMonthProjectionSession(nativeRecordsForMonth, zone, recurrenceFeatures)
         }
         val rowsForMonth = remember(projection) { projection::rowsFor }
         val appearance = NativeMonthAppearance(
@@ -184,11 +186,21 @@ internal fun MonthScreen(
     onOpen: (Long, Long, String?) -> Unit,
     onCreate: (LocalDate) -> Unit,
     recordsForMonth: (java.time.YearMonth) -> List<TemporalRecord> = { records },
-    onRequestMonth: (java.time.YearMonth) -> Unit = {}
+    onRequestMonth: (java.time.YearMonth) -> Unit = {},
+    recurrenceFeatures: RecurrenceFeatureApiV1? = null
 ) {
     val context = MonthVisualContext(
-        records, recordsForMonth, initialDate, zone, aiLocked, onBack, onDate, onOpen, onCreate,
-        onRequestMonth
+        nativeRecords = records,
+        nativeRecordsForMonth = recordsForMonth,
+        initialDate = initialDate,
+        zone = zone,
+        aiLocked = aiLocked,
+        onBack = onBack,
+        onDate = onDate,
+        onOpen = onOpen,
+        onCreate = onCreate,
+        onRequestMonth = onRequestMonth,
+        recurrenceFeatures = recurrenceFeatures
     )
     val renderer = PresentationSkinRegistry.month
     if (RuntimeSkinSurfaces.enabled("month")) RuntimeSkinSurfaces.month(context)

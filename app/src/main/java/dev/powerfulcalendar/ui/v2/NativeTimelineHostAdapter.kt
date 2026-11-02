@@ -12,6 +12,7 @@ import androidx.compose.ui.unit.dp
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.TimelineCoordinate
+import dev.powerfulcalendar.core.api.v1.RecurrenceFeatureApiV1
 import dev.powerfulcalendar.ui.v2.nativeui.NativeEventInspection
 import dev.powerfulcalendar.ui.v2.nativeui.NativeTimelineScreen
 import java.time.Instant
@@ -31,11 +32,12 @@ fun TimelineScreen(
     onOpenMemo: () -> Unit = {}, memoCount: Int = 0,
     titlesOutside: Boolean = false, onTitlesOutsideChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier, blockedReminders: Int = 0,
-    onOpenOccurrence: (TemporalRecord, String?) -> Unit = { record, _ -> onOpenEvent(record) }
+    onOpenOccurrence: (TemporalRecord, String?) -> Unit = { record, _ -> onOpenEvent(record) },
+    recurrenceFeatures: RecurrenceFeatureApiV1? = null
 ) {
     val localDay = Instant.ofEpochMilli(camera.anchorMillis).atZone(zone).toLocalDate()
-    val projection = remember(records, localDay, zone) {
-        projectNativeTimeline(records, camera, zone)
+    val projection = remember(records, localDay, zone, recurrenceFeatures) {
+        projectNativeTimeline(records, camera, zone, recurrenceFeatures)
     }
     val palette = LocalAxisPalette.current
     val kindColors = NativeTimelineKind.entries.associateWith { kind ->

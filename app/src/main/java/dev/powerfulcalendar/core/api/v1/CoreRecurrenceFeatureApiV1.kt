@@ -53,4 +53,30 @@ internal class CoreRecurrenceFeatureApiV1 : RecurrenceFeatureApiV1 {
             }
         )
     }
+
+    override fun queryOccurrencesInWindow(
+        query: RecurrenceOccurrenceWindowQueryV1
+    ): RecurrenceOccurrenceWindowV1 {
+        val materialized = RecurrenceEngine.occurrences(
+            record = query.event.toCoreTemporalRecord(),
+            fromMillis = query.fromMillis,
+            toMillis = query.toMillis,
+            limit = query.maxOccurrences + 1,
+            prioritizeWindowStarts = true
+        )
+        return RecurrenceOccurrenceWindowV1(
+            eventSeq = query.event.eventSeq,
+            eventRevision = query.event.revision,
+            occurrences = materialized.take(query.maxOccurrences).map { occurrence ->
+                RecurrenceOccurrenceV1(
+                    key = occurrence.key,
+                    startMillis = occurrence.startMillis,
+                    endMillis = occurrence.endMillis,
+                    skipped = occurrence.skipped,
+                    moved = occurrence.moved
+                )
+            },
+            truncated = materialized.size > query.maxOccurrences
+        )
+    }
 }
