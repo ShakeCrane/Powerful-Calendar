@@ -71,7 +71,6 @@ import dev.powerfulcalendar.ai.AiSettingsStore
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.EditorSelection
-import dev.powerfulcalendar.core.LegacyBackupConsentRequired
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.RecurrenceEditScope
 import dev.powerfulcalendar.core.StoreDeckPersistence
@@ -79,6 +78,8 @@ import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.TemporalText
 import dev.powerfulcalendar.core.TimelineCoordinate
+import dev.powerfulcalendar.core.api.v1.BackupRestoreExceptionV1
+import dev.powerfulcalendar.core.api.v1.BackupRestoreFailureKindV1
 import dev.powerfulcalendar.core.api.v1.EventEditorHandleV1
 import dev.powerfulcalendar.core.api.v1.EventEditorOpenResultV1
 import dev.powerfulcalendar.core.api.v1.EventEditorSnapshotV1
@@ -1883,12 +1884,12 @@ fun PowerCalApp(
                     val (report, problems) = restoreAndRefresh(loaded, allowLegacy = false)
                     message = restoreMessage(report, "已恢复 ") + problems.joinToString("", "；", "") { it }
                 }.onFailure { error ->
-                    when (error) {
-                        is LegacyBackupConsentRequired -> {
-                            legacyRestoreText = text
-                            message = "该备份是早期 flat v2 格式，缺少 SHA-256；需要你确认来源可信后才能恢复"
-                        }
-                        else -> message = "恢复失败：" + RestoreFailureExplanation.explain(error)
+                    if (error is BackupRestoreExceptionV1 &&
+                        error.kind == BackupRestoreFailureKindV1.LEGACY_CONSENT_REQUIRED) {
+                        legacyRestoreText = text
+                        message = "该备份是早期 flat v2 格式，缺少 SHA-256；需要你确认来源可信后才能恢复"
+                    } else {
+                        message = "恢复失败：" + RestoreFailureExplanation.explain(error)
                     }
                 }
             } finally {

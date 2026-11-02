@@ -74,6 +74,20 @@ data class BackupRestoreReceiptV1(
     val warnings: List<String>
 )
 
+enum class BackupRestoreFailureKindV1 {
+    INPUT_TOO_LARGE,
+    INVALID_JSON,
+    LEGACY_CONSENT_REQUIRED,
+    TARGET_NOT_EMPTY,
+    INTEGRITY_FAILURE,
+    INVALID_BACKUP,
+    RESTORE_UNAVAILABLE
+}
+
+/** Stable restore failure categories; implementation exception types and messages stay in Core. */
+class BackupRestoreExceptionV1(val kind: BackupRestoreFailureKindV1) :
+    IllegalStateException("备份恢复未完成（${kind.name}）")
+
 /**
  * Shared import/export operations for Native and Web Hosts. Android pickers, provider
  * permissions, readback I/O, user consent and post-restore scheduler recovery remain Host-owned.

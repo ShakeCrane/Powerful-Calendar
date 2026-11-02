@@ -4,6 +4,7 @@ import android.content.Context
 import dev.powerfulcalendar.core.BackupEnvelope
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.DraftOperation
+import dev.powerfulcalendar.core.LegacyBackupConsentRequired
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
@@ -11,6 +12,7 @@ import dev.powerfulcalendar.interop.ImportCheckpoint
 import dev.powerfulcalendar.interop.IcsCodec
 import dev.powerfulcalendar.interop.IcsImportPlanner
 import org.json.JSONObject
+import org.json.JSONException
 import java.nio.charset.StandardCharsets
 import java.time.ZoneId
 import java.util.UUID
@@ -149,10 +151,30 @@ internal class StoreImportExportFeatureApiV1(
     }
 
     override fun restoreBackup(json: String, allowLegacyV2: Boolean): BackupRestoreReceiptV1 {
-        requireWithinBackupLimit(json)
-        val parsed = runCatching { JSONObject(json) }
-            .getOrElse { throw IllegalArgumentException("备份文件不是有效 JSON", it) }
-        val report = store.restoreBackup(parsed, allowLegacyV2)
+        if (json.toByteArray(StandardCharsets.UTF_8).size > BackupEnvelope.MAX_BYTES) {
+            throw BackupRestoreExceptionV1(BackupRestoreFailureKindV1.INPUT_TOO_LARGE)
+        }
+        val parsed = try {
+            JSONObject(json)
+        } catch (_: JSONException) {
+            throw BackupRestoreExceptionV1(BackupRestoreFailureKindV1.INVALID_JSON)
+        }
+        val report = try {
+            store.restoreBackup(parsed, allowLegacyV2)
+        } catch (_: LegacyBackupConsentRequired) {
+            throw BackupRestoreExceptionV1(BackupRestoreFailureKindV1.LEGACY_CONSENT_REQUIRED)
+        } catch (_: PowerStore.NonEmptyRestoreTargetException) {
+            throw BackupRestoreExceptionV1(BackupRestoreFailureKindV1.TARGET_NOT_EMPTY)
+        } catch (error: IllegalArgumentException) {
+            val kind = if (error.causeChainHasHashFailure()) {
+                BackupRestoreFailureKindV1.INTEGRITY_FAILURE
+            } else {
+                BackupRestoreFailureKindV1.INVALID_BACKUP
+            }
+            throw BackupRestoreExceptionV1(kind)
+        } catch (_: Exception) {
+            throw BackupRestoreExceptionV1(BackupRestoreFailureKindV1.RESTORE_UNAVAILABLE)
+        }
         events.publishStoreRestored()
         return BackupRestoreReceiptV1(
             identities = report.identities,
@@ -197,6 +219,14 @@ internal class StoreImportExportFeatureApiV1(
             "备份超过 64 MiB 安全上限"
         }
     }
+
+    private fun Throwable.causeChainHasHashFailure(): Boolean =
+        generateSequence(this) { it.cause }.take(8).any { error ->
+            error.message?.let { message ->
+                message.contains("SHA-256", ignoreCase = true) ||
+                    message.contains("hash", ignoreCase = true)
+            } == true
+        }
 }
 
 internal fun newImportRequestId(): String = "import-${UUID.randomUUID()}"

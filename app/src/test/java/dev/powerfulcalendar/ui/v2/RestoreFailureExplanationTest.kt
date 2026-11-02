@@ -1,12 +1,14 @@
 package dev.powerfulcalendar.ui.v2
 
-import dev.powerfulcalendar.core.PowerStore
+import dev.powerfulcalendar.core.api.v1.BackupRestoreExceptionV1
+import dev.powerfulcalendar.core.api.v1.BackupRestoreFailureKindV1
 import org.junit.Assert.*
 import org.junit.Test
 
 class RestoreFailureExplanationTest {
     @Test fun nonEmptyTargetExplainsThatRestoreWasRefused() {
-        val text = RestoreFailureExplanation.explain(PowerStore.NonEmptyRestoreTargetException())
+        val text = RestoreFailureExplanation.explain(
+            BackupRestoreExceptionV1(BackupRestoreFailureKindV1.TARGET_NOT_EMPTY))
         assertTrue(text.contains("不是空库"))
         assertTrue(text.contains("已拒绝"))
         assertTrue(text.contains("先导出"))
@@ -14,17 +16,17 @@ class RestoreFailureExplanationTest {
     }
 
     @Test fun wrappedFailureStillExplainsNonEmptyTarget() {
-        val cause = PowerStore.NonEmptyRestoreTargetException()
+        val cause = BackupRestoreExceptionV1(BackupRestoreFailureKindV1.TARGET_NOT_EMPTY)
         val wrapped = RuntimeException("job failed", IllegalStateException("middle", cause))
         assertTrue(RestoreFailureExplanation.explain(wrapped).contains("不是空库"))
     }
 
     @Test fun invalidJsonAndHashFailureGiveUsefulSafeMessages() {
         val invalid = RestoreFailureExplanation.explain(
-            IllegalArgumentException("备份文件不是有效 JSON"))
+            BackupRestoreExceptionV1(BackupRestoreFailureKindV1.INVALID_JSON))
         assertTrue(invalid.contains("JSON"))
         val tampered = RestoreFailureExplanation.explain(
-            IllegalArgumentException("payload SHA-256 mismatch"))
+            BackupRestoreExceptionV1(BackupRestoreFailureKindV1.INTEGRITY_FAILURE))
         assertTrue(tampered.contains("校验失败"))
     }
 

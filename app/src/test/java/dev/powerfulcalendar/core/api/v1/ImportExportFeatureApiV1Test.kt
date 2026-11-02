@@ -3,8 +3,10 @@ package dev.powerfulcalendar.core.api.v1
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import dev.powerfulcalendar.core.DraftForm
+import dev.powerfulcalendar.core.BackupEnvelope
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.TemporalKind
+import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -215,6 +217,63 @@ END:VCALENDAR
             } finally {
                 subscription.close()
             }
+        } finally {
+            val name = target.databaseName
+            target.close()
+            context.deleteDatabase(name)
+        }
+    }
+
+    @Test fun backupRestoreFailuresUseStableApiCategories() {
+        val api = core.importExport
+        val invalidJson = runCatching { api.restoreBackup("{") }.exceptionOrNull()
+        assertTrue(invalidJson is BackupRestoreExceptionV1)
+        assertEquals(BackupRestoreFailureKindV1.INVALID_JSON,
+            (invalidJson as BackupRestoreExceptionV1).kind)
+
+        val damaged = JSONObject(api.exportBackup().json).put("payloadSha256", "0".repeat(64))
+        val integrityFailure = runCatching { api.restoreBackup(damaged.toString()) }.exceptionOrNull()
+        assertTrue(integrityFailure is BackupRestoreExceptionV1)
+        assertEquals(BackupRestoreFailureKindV1.INTEGRITY_FAILURE,
+            (integrityFailure as BackupRestoreExceptionV1).kind)
+    }
+
+    @Test fun restoreApiClassifiesNonEmptyTargetWithoutChangingIt() {
+        store.newDraft(DraftForm.fresh(TemporalKind.ACTIVITY, LocalDate.of(2026, 11, 3), zone)
+            .copy(title = "Keep this draft"))
+        val backup = core.importExport.exportBackup().json
+
+        val failure = runCatching { core.importExport.restoreBackup(backup) }.exceptionOrNull()
+
+        assertTrue(failure is BackupRestoreExceptionV1)
+        assertEquals(BackupRestoreFailureKindV1.TARGET_NOT_EMPTY,
+            (failure as BackupRestoreExceptionV1).kind)
+        assertEquals("Keep this draft", store.pendingDrafts().single().form.title)
+    }
+
+    @Test fun restoreApiReportsLegacyConsentRequirementWithoutStoreTypes() {
+        val payload = JSONObject(core.importExport.exportBackup().json).getJSONObject("payload")
+        val legacy = JSONObject().apply {
+            put("format", "powercal-native")
+            put("version", 2)
+            put("exportedMs", System.currentTimeMillis())
+            payload.keys().forEach { key ->
+                if (key != "nextSeq" && key != "nextOrder" &&
+                    key !in BackupEnvelope.OPTIONAL_TABLES
+                ) put(key, payload.get(key))
+            }
+            put("nextSeq", payload.getLong("nextSeq"))
+        }
+        val target = PowerStore(context, "ix-legacy-${UUID.randomUUID().toString().take(8)}.db")
+        try {
+            val api = PowerCalCoreFeatureApiV1(target).importExport
+
+            val failure = runCatching { api.restoreBackup(legacy.toString()) }.exceptionOrNull()
+
+            assertTrue(failure is BackupRestoreExceptionV1)
+            assertEquals(BackupRestoreFailureKindV1.LEGACY_CONSENT_REQUIRED,
+                (failure as BackupRestoreExceptionV1).kind)
+            assertTrue(target.all().isEmpty())
         } finally {
             val name = target.databaseName
             target.close()
