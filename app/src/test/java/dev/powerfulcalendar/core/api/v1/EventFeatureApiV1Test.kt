@@ -115,6 +115,69 @@ class EventFeatureApiV1Test {
     }
 
     @Test
+    fun recurrenceEditorSnapshotOwnsSingleOccurrenceFieldCapability() {
+        val start = LocalDate.of(2026, 10, 20).atTime(7, 30)
+            .atZone(zone).toInstant().toEpochMilli()
+        val card = store.newDraft(DraftForm(
+            kind = TemporalKind.ACTIVITY,
+            title = "Recurring capability event",
+            startText = DraftForm.formatInstant(start, zone),
+            endText = DraftForm.formatInstant(start + 3_600_000L, zone),
+            zoneId = zone.id,
+            recurrence = dev.powerfulcalendar.core.Recurrence(
+                freq = dev.powerfulcalendar.core.RecurrenceFreq.DAILY,
+                count = 3
+            )
+        ))
+        assertTrue(store.commit(card.draftId) is PowerStore.CommitOutcome.Committed)
+        val formal = requireNotNull(store.get(card.eventSeq))
+        val key = "2026-10-21T07:30"
+        val editor = opened(api.openFormalEvent(formal.eventSeq, formal.revision, key))
+        assertTrue(EventCapabilityV1.RECURRENCE_EDIT in editor.capabilities)
+        assertFalse(
+            EventCapabilityV1.EDIT_SINGLE_OCCURRENCE_TITLE_AND_TIME_ONLY in editor.capabilities
+        )
+
+        assertEquals(
+            EventEditorUpdateStatusV1.UPDATED,
+            api.selectFormalRecurrenceScope(
+                editor.handle, EventRecurrenceScopeV1.SINGLE_OCCURRENCE
+            ).status
+        )
+        val single = requireNotNull(api.editorSnapshot(editor.handle))
+        assertEquals(
+            EventRecurrenceScopeV1.SINGLE_OCCURRENCE,
+            single.form.recurrenceScope
+        )
+        assertTrue(
+            EventCapabilityV1.EDIT_SINGLE_OCCURRENCE_TITLE_AND_TIME_ONLY in single.capabilities
+        )
+
+        assertEquals(
+            EventEditorUpdateStatusV1.UPDATED,
+            api.selectFormalRecurrenceScope(
+                editor.handle, EventRecurrenceScopeV1.WHOLE_SERIES
+            ).status
+        )
+        val whole = requireNotNull(api.editorSnapshot(editor.handle))
+        assertFalse(
+            EventCapabilityV1.EDIT_SINGLE_OCCURRENCE_TITLE_AND_TIME_ONLY in whole.capabilities
+        )
+
+        assertEquals(
+            EventEditorUpdateStatusV1.UPDATED,
+            api.selectFormalRecurrenceScope(
+                editor.handle, EventRecurrenceScopeV1.THIS_AND_FUTURE
+            ).status
+        )
+        val future = requireNotNull(api.editorSnapshot(editor.handle))
+        assertFalse(
+            EventCapabilityV1.EDIT_SINGLE_OCCURRENCE_TITLE_AND_TIME_ONLY in future.capabilities
+        )
+        api.closeFormalEvent(editor.handle)
+    }
+
+    @Test
     fun oneFeatureApiSupportsQueryCreateEditDeleteAndIdempotentReplay() {
         val changes = mutableListOf<EventFeatureChangeV1>()
         val subscription = api.subscribe(changes::add)

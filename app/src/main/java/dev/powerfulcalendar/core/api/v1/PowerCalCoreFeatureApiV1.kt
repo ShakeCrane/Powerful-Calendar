@@ -430,6 +430,9 @@ internal class StoreEventFeatureApiV1(
                         add(EventCapabilityV1.DELETE)
                         add(EventCapabilityV1.MOVE_TO_DRAFT)
                         if (session.requiresRecurrenceScope) add(EventCapabilityV1.RECURRENCE_EDIT)
+                        if (session.recurrenceScope == RecurrenceEditScope.SINGLE_OCCURRENCE) {
+                            add(EventCapabilityV1.EDIT_SINGLE_OCCURRENCE_TITLE_AND_TIME_ONLY)
+                        }
                     }
                 )
             )
@@ -484,6 +487,9 @@ internal class StoreEventFeatureApiV1(
                     add(EventCapabilityV1.DELETE)
                     add(EventCapabilityV1.MOVE_TO_DRAFT)
                     if (session.requiresRecurrenceScope) add(EventCapabilityV1.RECURRENCE_EDIT)
+                    if (session.recurrenceScope == RecurrenceEditScope.SINGLE_OCCURRENCE) {
+                        add(EventCapabilityV1.EDIT_SINGLE_OCCURRENCE_TITLE_AND_TIME_ONLY)
+                    }
                 }
             )
         }

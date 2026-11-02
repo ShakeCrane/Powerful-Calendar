@@ -17,6 +17,7 @@ import dev.powerfulcalendar.core.ReminderTiming
 import dev.powerfulcalendar.core.api.v1.AiFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.AiBatchStateSnapshotV1
 import dev.powerfulcalendar.core.api.v1.CoreFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.EventCapabilityV1
 import dev.powerfulcalendar.core.api.v1.EventDeleteApprovalV1
 import dev.powerfulcalendar.core.api.v1.EventEditorHandleV1
 import dev.powerfulcalendar.core.api.v1.EventEditorOpenResultV1
@@ -833,8 +834,11 @@ internal class WebSkinEditService(
                     if(!editorMatches(cmd.sessionId)) result(cmd.requestId,"stale")
                     else if(session!!.requiresRecurrenceScope && session!!.recurrenceScope == null)
                         result(cmd.requestId,"invalid","请先选择重复事件的编辑范围")
-                    else if(session!!.recurrenceScope == RecurrenceEditScope.SINGLE_OCCURRENCE &&
-                        cmd.field !in setOf("title","startText","endText"))
+                    else if (
+                        EventCapabilityV1.EDIT_SINGLE_OCCURRENCE_TITLE_AND_TIME_ONLY
+                            in session!!.snapshot.capabilities &&
+                        cmd.field !in setOf("title", "startText", "endText")
+                    )
                         result(cmd.requestId,"invalid","仅本次只能修改标题和时间")
                     else {
                         val active = session!!

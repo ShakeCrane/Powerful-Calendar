@@ -6,7 +6,14 @@ enum class EventRecurrenceFrequencyV1 { NONE, DAILY, WEEKLY, MONTHLY }
 enum class EventReminderMethodV1 { MESSAGE, ALARM }
 enum class EventReminderTimingV1 { OFFSET, DAY_START }
 enum class EventRecurrenceScopeV1 { SINGLE_OCCURRENCE, THIS_AND_FUTURE, WHOLE_SERIES }
-enum class EventCapabilityV1 { CREATE, EDIT, DELETE, RECURRENCE_EDIT, MOVE_TO_DRAFT }
+enum class EventCapabilityV1 {
+    CREATE,
+    EDIT,
+    DELETE,
+    RECURRENCE_EDIT,
+    EDIT_SINGLE_OCCURRENCE_TITLE_AND_TIME_ONLY,
+    MOVE_TO_DRAFT
+}
 
 data class EventOccurrenceOverrideV1(
     val startMillis: Long,

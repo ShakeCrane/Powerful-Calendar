@@ -252,6 +252,11 @@ class WebSkinRecurrenceBridgeTest {
         assertEquals("2026-10-21 07:30", editor.getJSONObject("form").getString("startText"))
         assertEquals("invalid", service.execute(command("editor.patch", "sessionId" to session,
             "field" to "notes", "value" to "not permitted for single occurrence")).getString("status"))
+        assertEquals("仅本次只能修改标题和时间", service.snapshot().getJSONObject("lastResult")
+            .optString("detail"))
+        assertEquals("", service.snapshot().getJSONObject("editor")
+            .getJSONObject("form").getString("notes"))
+        assertEquals(initial, store.get(seq))
         assertEquals("edited", service.execute(command("editor.patch", "sessionId" to session,
             "field" to "title", "value" to "仅这一次")).getString("status"))
         assertEquals("invalid", service.execute(command("editor.scope", "sessionId" to session,
@@ -260,6 +265,12 @@ class WebSkinRecurrenceBridgeTest {
             "sessionId" to session)).getString("status"))
         assertEquals("selected", service.execute(command("editor.scope", "sessionId" to session,
             "scope" to "WHOLE_SERIES")).getString("status"))
+        assertEquals("edited", service.execute(command("editor.patch", "sessionId" to session,
+            "field" to "notes", "value" to "whole series note")).getString("status"))
+        assertEquals("whole series note", service.snapshot().getJSONObject("editor")
+            .getJSONObject("form").getString("notes"))
+        assertEquals("discarded_changes", service.execute(command("editor.discardChanges",
+            "sessionId" to session)).getString("status"))
         assertEquals("selected", service.execute(command("editor.scope", "sessionId" to session,
             "scope" to "SINGLE_OCCURRENCE")).getString("status"))
         assertEquals("edited", service.execute(command("editor.patch", "sessionId" to session,

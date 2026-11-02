@@ -5,6 +5,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.TemporalRecord
+import dev.powerfulcalendar.core.api.v1.EventCapabilityV1
 import dev.powerfulcalendar.core.api.v1.EventFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.EventKindV1
 import dev.powerfulcalendar.core.api.v1.EventEditorSnapshotV1
@@ -61,7 +62,8 @@ internal fun DirectEventEditorContent(
     val recurrenceScope = editor.form.recurrenceScope
     val pickerNowMillis = remember(editor.handle) { System.currentTimeMillis() }
     val editorKey = remember(editor.handle) { editor.handle.value }
-    val singleOccurrence = recurrenceScope == EventRecurrenceScopeV1.SINGLE_OCCURRENCE
+    val singleOccurrence =
+        EventCapabilityV1.EDIT_SINGLE_OCCURRENCE_TITLE_AND_TIME_ONLY in editor.capabilities
     val nativeForm = form.toNativeDeckForm(pickerNowMillis).copy(
         occurrenceScoped = singleOccurrence,
         restrictOccurrenceFields = singleOccurrence

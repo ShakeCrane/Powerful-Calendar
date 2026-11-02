@@ -8,6 +8,7 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.core.app.ApplicationProvider
 import dev.powerfulcalendar.core.*
+import dev.powerfulcalendar.core.api.v1.EventCapabilityV1
 import dev.powerfulcalendar.core.api.v1.EventEditorOpenResultV1
 import dev.powerfulcalendar.core.api.v1.EventEditorSnapshotV1
 import dev.powerfulcalendar.core.api.v1.EventFeatureApiV1
@@ -210,10 +211,19 @@ class DirectEventEditorComposeTest {
         val formal = store.get(draft.eventSeq)!!
         val selectedKey = "2026-10-21T07:30"
         editor = openFormalEditor(formal.eventSeq, formal.revision, selectedKey)
+        assertFalse(
+            EventCapabilityV1.EDIT_SINGLE_OCCURRENCE_TITLE_AND_TIME_ONLY in editor.capabilities
+        )
         render()
 
         ui.onNodeWithText("保存修改").assertIsNotEnabled()
         ui.onNodeWithText("仅本次").performClick()
+        ui.runOnIdle {
+            assertTrue(
+                EventCapabilityV1.EDIT_SINGLE_OCCURRENCE_TITLE_AND_TIME_ONLY
+                    in currentEditor().capabilities
+            )
+        }
         ui.onNodeWithText("提醒方式与时间").assertDoesNotExist()
         ui.onNode(hasSetTextAction() and hasText("每日活动"))
             .performTextReplacement("只改周三")
