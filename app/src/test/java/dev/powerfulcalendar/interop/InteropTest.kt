@@ -2,6 +2,7 @@ package dev.powerfulcalendar.interop
 
 import dev.powerfulcalendar.data.CalendarEvent
 import dev.powerfulcalendar.data.Priority
+import dev.powerfulcalendar.core.TextDraftParser
 import org.junit.Assert.*
 import org.junit.Test
 import java.time.LocalDateTime
@@ -9,32 +10,36 @@ import java.time.ZoneId
 
 class InteropTest {
     @Test fun parsesChineseDateTime() {
-        val parsed = TextParser.parse("明天下午3点开组会", LocalDateTime.of(2026, 10, 9, 10, 0))
-        val local = java.time.Instant.ofEpochMilli(parsed.event.startMillis)
-            .atZone(ZoneId.systemDefault()).toLocalDateTime()
+        val zone = ZoneId.systemDefault()
+        val parsed = TextDraftParser.parse(
+            "明天下午3点开组会", LocalDateTime.of(2026, 10, 9, 10, 0), zone
+        )
+        val local = java.time.Instant.ofEpochMilli(parsed.startMillis)
+            .atZone(zone).toLocalDateTime()
         assertEquals(LocalDateTime.of(2026, 10, 10, 15, 0), local)
-        assertEquals("开组会", parsed.event.title)
+        assertEquals("开组会", parsed.title)
     }
 
     @Test fun timeWithoutDateRollsForward() {
-        val parsed = TextParser.parse("晚上8点复习", LocalDateTime.of(2026, 10, 9, 22, 0))
-        val local = java.time.Instant.ofEpochMilli(parsed.event.startMillis)
-            .atZone(ZoneId.systemDefault()).toLocalDateTime()
+        val zone = ZoneId.systemDefault()
+        val parsed = TextDraftParser.parse("晚上8点复习", LocalDateTime.of(2026, 10, 9, 22, 0), zone)
+        val local = java.time.Instant.ofEpochMilli(parsed.startMillis).atZone(zone).toLocalDateTime()
         assertEquals(LocalDateTime.of(2026, 10, 10, 20, 0), local)
     }
 
     @Test fun missingDateOrTimeIsNotValidatedForDraftCreation() {
         val now = LocalDateTime.of(2026, 10, 9, 10, 0)
-        val noTime = TextParser.parse("明天开会", now)
+        val zone = ZoneId.systemDefault()
+        val noTime = TextDraftParser.parse("明天开会", now, zone)
         assertTrue(noTime.hasExplicitDate)
         assertFalse(noTime.hasUnambiguousTime)
-        val noDate = TextParser.parse("下午三点开会", now)
+        val noDate = TextDraftParser.parse("下午三点开会", now, zone)
         assertFalse(noDate.hasExplicitDate)
         assertFalse(noDate.hasUnambiguousTime)
-        val vague = TextParser.parse("明天3点开会", now)
+        val vague = TextDraftParser.parse("明天3点开会", now, zone)
         assertTrue(vague.hasExplicitDate)
         assertFalse(vague.hasUnambiguousTime)
-        val certain = TextParser.parse("明天下午3点开会", now)
+        val certain = TextDraftParser.parse("明天下午3点开会", now, zone)
         assertTrue(certain.hasExplicitDate)
         assertTrue(certain.hasUnambiguousTime)
     }

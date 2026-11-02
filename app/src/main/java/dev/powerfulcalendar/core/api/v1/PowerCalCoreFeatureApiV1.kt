@@ -25,11 +25,13 @@ import dev.powerfulcalendar.core.ReminderTiming
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.TemporalConversion
+import dev.powerfulcalendar.core.TextDraftParser
 import dev.powerfulcalendar.core.StoreDeckPersistence
 import java.time.Clock
 import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.ZoneId
 import java.util.IdentityHashMap
 import java.util.UUID
@@ -1471,6 +1473,41 @@ private class StoreDraftReviewFeatureApiV1(
             while (receipts.size > 128) receipts.remove(receipts.keys.first())
             result
         }
+    }
+
+    override suspend fun createDraftFromText(request: TextDraftRequestV1): TextDraftResultV1 {
+        invalidRequest(request.requestId)?.let {
+            return TextDraftResultV1(receipt(request.requestId, DraftReviewReceiptStatusV1.INVALID,
+                errorCode = "REQUEST_ID_INVALID", message = it), "")
+        }
+        val zone = try {
+            ZoneId.of(request.zoneId)
+        } catch (_: Exception) {
+            return TextDraftResultV1(receipt(request.requestId, DraftReviewReceiptStatusV1.INVALID,
+                errorCode = "TEXT_DRAFT_ZONE_INVALID", message = "时区无效"), "")
+        }
+        val parsed = try {
+            TextDraftParser.parse(
+                request.text,
+                LocalDateTime.ofInstant(Instant.ofEpochMilli(request.nowMillis), zone),
+                zone
+            )
+        } catch (error: Exception) {
+            return TextDraftResultV1(receipt(request.requestId, DraftReviewReceiptStatusV1.INVALID,
+                errorCode = "TEXT_DRAFT_PARSE_FAILED", message = error.message), "")
+        }
+        val form = DraftForm(
+            kind = TemporalKind.ACTIVITY,
+            title = parsed.title,
+            startText = if (parsed.hasExplicitDate && parsed.hasUnambiguousTime) {
+                DraftForm.formatInstant(parsed.startMillis, zone)
+            } else "",
+            endText = "",
+            notes = ("原始文本：" + request.text.trim()).take(800),
+            source = request.source,
+            zoneId = zone.id
+        )
+        return TextDraftResultV1(createDraft(form.toEventFormV1(), request.requestId), parsed.note)
     }
 
     private fun publishDraftChangeIfNeeded(staleControllerFingerprint: String): Boolean = try {

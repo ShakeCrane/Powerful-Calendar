@@ -143,6 +143,22 @@ data class DraftReviewReceiptV1(
         status == DraftReviewReceiptStatusV1.NO_CHANGE
 }
 
+/** Explicit text input captured by a Skin and interpreted by Core as a reviewable draft. */
+data class TextDraftRequestV1(
+    val text: String,
+    val source: String,
+    val zoneId: String,
+    /** Submission time captured before Host dispatches the command to a background thread. */
+    val nowMillis: Long,
+    val requestId: String
+)
+
+/** Draft creation receipt plus Core's interpretation feedback for the review surface. */
+data class TextDraftResultV1(
+    val receipt: DraftReviewReceiptV1,
+    val interpretationNote: String
+)
+
 /** Shared versioned command surface for Native and Web draft review. */
 interface DraftReviewFeatureApiV1 {
     val apiVersion: Int
@@ -193,6 +209,8 @@ interface DraftReviewFeatureApiV1 {
     suspend fun refresh(preferDraftId: Long? = null): DraftReviewSnapshotV1
     /** Persist one explicit user-owned draft without publishing a formal event. */
     suspend fun createDraft(form: EventFormV1, requestId: String): DraftReviewReceiptV1
+    /** Parse explicitly submitted text and persist only the resulting reviewable draft. */
+    suspend fun createDraftFromText(request: TextDraftRequestV1): TextDraftResultV1
     suspend fun beginFormalReplacement(
         eventSeq: Long,
         expectedRevision: Long,

@@ -127,10 +127,8 @@ import dev.powerfulcalendar.core.api.v1.toEventFormV1
 import dev.powerfulcalendar.data.LegacyImporter
 import dev.powerfulcalendar.interop.AiFileEvidence
 import dev.powerfulcalendar.interop.AiFileEvidenceReader
-import dev.powerfulcalendar.interop.IcsCodec
 import dev.powerfulcalendar.interop.SafBackupReader
 import dev.powerfulcalendar.interop.SystemCalendar
-import dev.powerfulcalendar.interop.TextParser
 import dev.powerfulcalendar.reminders.ReminderScheduler
 import java.io.ByteArrayOutputStream
 import java.time.Instant
@@ -1057,30 +1055,24 @@ fun PowerCalApp(
     }
 
     suspend fun createDraftFromText(text: String, source: String) {
-        val parsed = TextParser.parse(text, java.time.LocalDateTime.now(zone))
-        val event = parsed.event
-        val form = DraftForm(
-            kind = TemporalKind.ACTIVITY,
-            title = event.title,
-            startText = if (parsed.hasExplicitDate && parsed.hasUnambiguousTime) {
-                DraftForm.formatInstant(event.startMillis, zone)
-            } else "",
-            // An arbitrary 1-hour default must not look like a confirmed appointment duration.
-            endText = "",
-            notes = ("原始文本：" + text.trim()).take(800),
+        val request = dev.powerfulcalendar.core.api.v1.TextDraftRequestV1(
+            text = text,
             source = source,
-            zoneId = zone.id
+            zoneId = zone.id,
+            nowMillis = System.currentTimeMillis(),
+            requestId = java.util.UUID.randomUUID().toString()
         )
         runCatching {
-            val receipt = withContext(Dispatchers.IO) {
-                draftReviewApi.createDraft(form.toEventFormV1(), java.util.UUID.randomUUID().toString())
+            val result = withContext(Dispatchers.IO) {
+                draftReviewApi.createDraftFromText(request)
             }
-            if (!receipt.succeeded) error(receipt.message ?: "暂时无法创建草稿")
-            receipt.draftId ?: error("草稿保存结果缺少草稿身份")
-        }.onSuccess { draftId ->
+            if (!result.receipt.succeeded) error(result.receipt.message ?: "暂时无法创建草稿")
+            val draftId = result.receipt.draftId ?: error("草稿保存结果缺少草稿身份")
+            result to draftId
+        }.onSuccess { (result, draftId) ->
             reload()
             openDeckAt(draftId)
-            message = parsed.note
+            message = result.interpretationNote
         }.onFailure {
             message = it.message ?: "暂时无法创建草稿（AI 批次可能正在独占卡组）"
         }
@@ -3556,17 +3548,18 @@ fun PowerCalApp(
         var localText by remember(uri) { mutableStateOf(evidence.text) }
         var rememberFileConsent by remember(uri) { mutableStateOf(false) }
         val ics = evidence.format == "ics"
-        val parsed = remember(uri, evidence.text) {
-            if (ics) runCatching { IcsCodec.parse(evidence.text) }.getOrNull() else null
+        val icsPlan = remember(uri, evidence.text, zone.id, ics) {
+            if (ics) runCatching {
+                importExportApi.prepareIcsImport(evidence.text, zone.id)
+            }.getOrNull() else null
         }
         val directIcsImport = ics && !evidence.truncated && localText == evidence.text &&
-            parsed != null && parsed.warnings.isEmpty() &&
-            (parsed.events.isNotEmpty() || parsed.series.isNotEmpty())
+            icsPlan != null
         val icsPreflight = if (ics) {
-            "ICS 本地预检：单次 " + (parsed?.events?.size ?: 0) +
-                " 条、重复系列 " + (parsed?.series?.size ?: 0) +
-                " 个；需要澄清 " + (parsed?.warnings?.size ?: 0) + " 项。" +
-                (parsed?.warnings?.firstOrNull()?.let { "\n例如：$it" } ?: "")
+            "ICS 本地预检：" + (icsPlan?.candidates?.size ?: 0) +
+                " 项可生成草稿，" + (icsPlan?.problems?.size ?: 0) + " 项需要处理。" +
+                (icsPlan?.problems?.firstOrNull()?.reason?.let { "\n例如：$it" }
+                    ?: if (icsPlan == null) "\n文件结构无法安全解析。" else "")
         } else null
         NativeAiFileReview(
             filename = evidence.filename,
@@ -3591,8 +3584,8 @@ fun PowerCalApp(
                         AiFileFallbackConsent.grant(appContext, AiSettingsStore.load(appContext))
                     }
                     // Only unsupported, partial or edited evidence takes the AI route.
-                    val report = if (ics) parsed?.warnings?.take(5)
-                        ?.joinToString("; ").orEmpty() else ""
+                    val report = if (ics) icsPlan?.problems?.take(5)
+                        ?.joinToString("; ") { it.reason }.orEmpty() else ""
                     submitEvidence(evidence.copy(text = reviewedText), report)
                 }
             },

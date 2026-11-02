@@ -8,6 +8,7 @@ import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.DraftStatus
 import dev.powerfulcalendar.core.DeadlineValue
 import dev.powerfulcalendar.core.EditorSelection
+import dev.powerfulcalendar.core.FormBuild
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.Recurrence
 import dev.powerfulcalendar.core.RecurrenceEditScope
@@ -51,6 +52,14 @@ import java.util.UUID
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk=[34])
 class WebSkinEditBridgeTest {
+    private data class RecordedTimelineMove(
+        val eventSeq: Long,
+        val expectedRevision: Long,
+        val targetMillis: Long,
+        val requestId: String,
+        val receipt: EventMutationReceiptV1
+    )
+
     private lateinit var context: Context
     private lateinit var store: PowerStore
     private lateinit var controller: DeckController
@@ -61,6 +70,7 @@ class WebSkinEditBridgeTest {
     private val queriedBatchLockStates = mutableListOf<Boolean>()
     private val selectedRecurrenceScopes = mutableListOf<EventRecurrenceScopeV1>()
     private val savedNewEventReceipts = mutableListOf<EventMutationReceiptV1>()
+    private val timelineMoveCalls = mutableListOf<RecordedTimelineMove>()
     private val testZone = ZoneId.of("Asia/Shanghai")
     private fun request()=UUID.randomUUID().toString()
     @Before fun setup(){
@@ -72,6 +82,21 @@ class WebSkinEditBridgeTest {
             override fun queryEvent(eventSeq: Long): EventRecordV1? {
                 queriedEventSequences += eventSeq
                 return coreFeatureApi.events.queryEvent(eventSeq)
+            }
+
+            override fun stageTimelineMove(
+                eventSeq: Long,
+                expectedRevision: Long,
+                targetMillis: Long,
+                requestId: String
+            ): EventMutationReceiptV1 {
+                val receipt = coreFeatureApi.events.stageTimelineMove(
+                    eventSeq, expectedRevision, targetMillis, requestId
+                )
+                timelineMoveCalls += RecordedTimelineMove(
+                    eventSeq, expectedRevision, targetMillis, requestId, receipt
+                )
+                return receipt
             }
 
             override fun selectFormalRecurrenceScope(
@@ -394,6 +419,10 @@ class WebSkinEditBridgeTest {
             request(), repeating.eventSeq, repeating.revision, target
         ), timelineMoveContext = camera)
         assertEquals("unsupported", refused.getString("status"))
+        assertEquals(1, timelineMoveCalls.size)
+        assertEquals(repeating.eventSeq, timelineMoveCalls.single().eventSeq)
+        assertEquals(EventMutationStatusV1.INVALID, timelineMoveCalls.single().receipt.status)
+        assertEquals("TIMELINE_MOVE_UNSUPPORTED", timelineMoveCalls.single().receipt.errorCode)
         assertEquals(repeating, store.get(repeating.eventSeq))
         assertTrue(store.pendingDraftsFor(repeating.eventSeq).isEmpty())
 
@@ -401,6 +430,8 @@ class WebSkinEditBridgeTest {
             request(), dateDeadline.eventSeq, dateDeadline.revision, target
         ), timelineMoveContext = camera)
         assertEquals("staged", movedDate.getString("status"))
+        assertEquals(2, timelineMoveCalls.size)
+        assertEquals(EventMutationStatusV1.STAGED, timelineMoveCalls.last().receipt.status)
         val dateCandidate = store.pendingDraftsFor(dateDeadline.eventSeq).single()
         assertEquals("2030-10-21", dateCandidate.form.endText)
         assertTrue(dateCandidate.form.parseDeadline() is DeadlineValue.Date)
@@ -412,6 +443,9 @@ class WebSkinEditBridgeTest {
             request(), memo.eventSeq, memo.revision, target
         ), timelineMoveContext = camera)
         assertEquals("unsupported", unsupportedMemo.getString("status"))
+        assertEquals(3, timelineMoveCalls.size)
+        assertEquals(EventMutationStatusV1.INVALID, timelineMoveCalls.last().receipt.status)
+        assertEquals("TIMELINE_MOVE_UNSUPPORTED", timelineMoveCalls.last().receipt.errorCode)
         assertEquals(memo, store.get(memo.eventSeq))
         assertTrue(store.pendingDraftsFor(memo.eventSeq).isEmpty())
         val outsideTimeline = service.execute(WebEditCommand.MoveTimelineEvent(
@@ -423,6 +457,49 @@ class WebSkinEditBridgeTest {
         assertEquals(commits, store.commitCount())
         assertEquals(seq, store.nextSequencePreview())
         assertEquals(order + 1, store.nextQueueOrderPreview())
+    }
+
+    @Test fun timelineMoveBeyond2200StagesDateDeadlineThroughCoreAndPreservesDatePrecision() = runBlocking {
+        val zone = ZoneId.of("Asia/Shanghai")
+        val originalDate = LocalDate.of(2200, 12, 31)
+        val start = originalDate.atTime(9, 0).atZone(zone).toInstant().toEpochMilli()
+        val original = commitFormal(DraftForm(
+            kind = TemporalKind.DEADLINE,
+            title = "Date deadline beyond bridge range",
+            endText = originalDate.toString(),
+            zoneId = zone.id
+        ))
+        val camera = TimelineMoveContext(TimelineCoordinate.Camera(start, 24.0), zone,
+            mapOf(original.eventSeq to original.revision))
+        val targetDate = LocalDate.of(2201, 1, 1)
+        val target = targetDate.atTime(10, 8).atZone(zone).toInstant().toEpochMilli()
+        val expectedTarget = TimelineCoordinate.snap(target, 24.0, zone)
+        val requestId = request()
+
+        val result = service.execute(WebEditCommand.MoveTimelineEvent(
+            requestId, original.eventSeq, original.revision, target
+        ), timelineMoveContext = camera)
+
+        assertEquals("staged", result.getString("status"))
+        assertEquals(1, timelineMoveCalls.size)
+        val apiCall = timelineMoveCalls.single()
+        assertEquals(original.eventSeq, apiCall.eventSeq)
+        assertEquals(original.revision, apiCall.expectedRevision)
+        assertEquals(expectedTarget, apiCall.targetMillis)
+        assertEquals(requestId, apiCall.requestId)
+        assertEquals(EventMutationStatusV1.STAGED, apiCall.receipt.status)
+        assertEquals(result.getString("detail").toLong(), apiCall.receipt.draftId ?: -1L)
+
+        val candidate = store.pendingDraftsFor(original.eventSeq).single()
+        assertEquals(DraftOperation.REPLACE, candidate.operation)
+        assertEquals(targetDate.toString(), candidate.form.endText)
+        assertTrue(candidate.form.parseDeadline() is DeadlineValue.Date)
+        val validated = candidate.form.build(original.eventSeq, original.revision + 1)
+        assertTrue("2201 pure date deadline should pass Core form validation", validated is FormBuild.Ready)
+        val moved = (validated as FormBuild.Ready).record
+        assertEquals(targetDate.toString(), moved.deadlineDate)
+        assertNull(moved.deadlineMillis)
+        assertEquals(original, store.get(original.eventSeq))
     }
 
     @Test fun timelineMoveRequiresOwnerProjectionForTheDisplayedRevision() = runBlocking {

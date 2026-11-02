@@ -52,6 +52,97 @@ class DraftReviewFeatureApiV1Test {
         databaseNames.forEach { context.deleteDatabase(it) }
     }
 
+    @Test fun createDraftFromTextUsesCoreRulesAndDurableLastWriteWins() = runBlocking {
+        val api = core.draftReview
+        val changes = mutableListOf<EventFeatureChangeV1>()
+        val subscription = core.events.subscribe(changes::add)
+        try {
+            val requestId = "draft-text-create-1"
+            val nowMillis = Instant.parse("2026-10-25T15:07:00Z").toEpochMilli()
+            val first = api.createDraftFromText(TextDraftRequestV1(
+                text = "明天下午3点开组会",
+                source = "text",
+                zoneId = zone.id,
+                nowMillis = nowMillis,
+                requestId = requestId
+            ))
+            assertEquals(DraftReviewReceiptStatusV1.APPLIED, first.receipt.status)
+            val draftId = requireNotNull(first.receipt.draftId)
+            val eventSeq = requireNotNull(first.receipt.eventSeq)
+            val firstForm = requireNotNull(store.draft(draftId)).form
+            assertEquals(TemporalKind.ACTIVITY, firstForm.kind)
+            assertEquals("开组会", firstForm.title)
+            assertEquals("2026-10-26 15:00", firstForm.startText)
+            assertEquals("", firstForm.endText)
+            assertEquals("原始文本：明天下午3点开组会", firstForm.notes)
+            assertEquals("text", firstForm.source)
+            assertEquals(zone.id, firstForm.zoneId)
+            assertEquals("已识别开始时间；结束时间仍需确认，不会自动补一小时",
+                first.interpretationNote)
+            assertNull(store.get(eventSeq))
+            assertEquals(1, store.pendingDrafts().size)
+            assertEquals(listOf(EventFeatureChangeTypeV1.DRAFTS_CHANGED), changes.map { it.type })
+
+            val overwritten = api.createDraftFromText(TextDraftRequestV1(
+                text = "后天晚上8点复习",
+                source = "text",
+                zoneId = zone.id,
+                nowMillis = nowMillis,
+                requestId = requestId
+            ))
+            assertEquals(DraftReviewReceiptStatusV1.APPLIED, overwritten.receipt.status)
+            assertEquals(draftId, overwritten.receipt.draftId)
+            assertEquals(eventSeq, overwritten.receipt.eventSeq)
+            assertEquals("复习", store.draft(draftId)?.form?.title)
+            assertEquals("2026-10-27 20:00", store.draft(draftId)?.form?.startText)
+            assertEquals("原始文本：后天晚上8点复习", store.draft(draftId)?.form?.notes)
+            assertEquals("已识别开始时间；结束时间仍需确认，不会自动补一小时",
+                overwritten.interpretationNote)
+            assertNull(store.get(eventSeq))
+            assertEquals(1, store.pendingDrafts().size)
+            assertEquals(2, changes.size)
+        } finally {
+            subscription.close()
+        }
+    }
+
+    @Test fun createDraftFromTextLeavesIncompleteOrAmbiguousStartBlank() = runBlocking {
+        val api = core.draftReview
+        val nowMillis = Instant.parse("2026-10-09T02:00:00Z").toEpochMilli()
+        val examples = listOf(
+            "明天开会" to "时间缺失或上午/下午不明确；不会自动填写默认时间",
+            "明天3点开会" to "时间缺失或上午/下午不明确；不会自动填写默认时间",
+            "下午三点开会" to "缺少明确日期和时间；原文已保留，请补全后发布"
+        )
+        examples.forEachIndexed { index, (text, expectedNote) ->
+            val result = api.createDraftFromText(TextDraftRequestV1(
+                text = text,
+                source = "text",
+                zoneId = zone.id,
+                nowMillis = nowMillis,
+                requestId = "draft-text-incomplete-$index"
+            ))
+            assertEquals(DraftReviewReceiptStatusV1.APPLIED, result.receipt.status)
+            val form = requireNotNull(store.draft(requireNotNull(result.receipt.draftId))).form
+            assertEquals("", form.startText)
+            assertEquals("", form.endText)
+            assertEquals("原始文本：$text", form.notes)
+            assertEquals(expectedNote, result.interpretationNote)
+        }
+        assertEquals(3, store.pendingDrafts().size)
+
+        val invalidZone = api.createDraftFromText(TextDraftRequestV1(
+            text = "明天下午3点开会",
+            source = "text",
+            zoneId = "Invalid/Zone",
+            nowMillis = nowMillis,
+            requestId = "draft-text-invalid-zone"
+        ))
+        assertEquals(DraftReviewReceiptStatusV1.INVALID, invalidZone.receipt.status)
+        assertEquals("TEXT_DRAFT_ZONE_INVALID", invalidZone.receipt.errorCode)
+        assertEquals(3, store.pendingDrafts().size)
+    }
+
     @Test fun createDraftReplaysAndOverwritesWithOneChangePerPersistedWrite() = runBlocking {
         val api = core.draftReview
         val changes = mutableListOf<EventFeatureChangeV1>()

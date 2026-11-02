@@ -1,20 +1,20 @@
-package dev.powerfulcalendar.interop
+package dev.powerfulcalendar.core
 
-import dev.powerfulcalendar.data.CalendarEvent
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 
-data class ParsedText(
-    val event: CalendarEvent,
+internal data class ParsedTextDraft(
+    val title: String,
+    val startMillis: Long,
     val note: String,
     val hasExplicitDate: Boolean,
     val hasUnambiguousTime: Boolean
 )
 
-object TextParser {
-    // Deliberately small, deterministic Chinese parser: the user always reviews its output.
-    fun parse(input: String, now: LocalDateTime = LocalDateTime.now()): ParsedText {
+/** Small deterministic Chinese parser used only to produce a draft for explicit user review. */
+internal object TextDraftParser {
+    fun parse(input: String, now: LocalDateTime, zone: ZoneId): ParsedTextDraft {
         val raw = input.trim()
         var date = now.toLocalDate()
         var dateMatched = false
@@ -71,15 +71,13 @@ object TextParser {
             .replace(Regex("""^(提醒我|帮我|请|安排|创建|添加|日程|闹钟)\s*"""), "")
             .trim(' ', '，', '。', '：', ':', '\n')
             .ifBlank { "新日程" }
-        val start = startDateTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
-        val event = CalendarEvent(title = title, startMillis = start,
-            endMillis = start + 3_600_000L)
+        val startMillis = startDateTime.atZone(zone).toInstant().toEpochMilli()
         val note = when {
             !dateMatched && !unambiguousTime -> "缺少明确日期和时间；原文已保留，请补全后发布"
             !dateMatched -> "缺少明确日期；不会把推算的今天或明天填进草稿"
             !unambiguousTime -> "时间缺失或上午/下午不明确；不会自动填写默认时间"
             else -> "已识别开始时间；结束时间仍需确认，不会自动补一小时"
         }
-        return ParsedText(event, note, dateMatched, unambiguousTime)
+        return ParsedTextDraft(title, startMillis, note, dateMatched, unambiguousTime)
     }
 }

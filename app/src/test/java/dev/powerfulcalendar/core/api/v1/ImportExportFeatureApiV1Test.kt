@@ -67,6 +67,46 @@ END:VCALENDAR
             api.duplicateIcsCandidateSourceIds(plan.candidates))
     }
 
+    @Test fun icsPreflightKeepsValidUnitsSeparateFromUnresolvedSeries() {
+        val seriesMaster = """
+            BEGIN:VEVENT
+            UID:course-series
+            DTSTART:20261103T010000Z
+            DTEND:20261103T020000Z
+            RRULE:FREQ=WEEKLY;COUNT=6
+            SUMMARY:Course
+            END:VEVENT
+        """.trimIndent()
+        val seriesOverride = """
+            BEGIN:VEVENT
+            UID:course-series
+            DTSTART:20261110T030000Z
+            DTEND:20261110T040000Z
+            RECURRENCE-ID:20261110T010000Z
+            SUMMARY:Moved course
+            END:VEVENT
+        """.trimIndent()
+        val independent = """
+            BEGIN:VEVENT
+            UID:independent
+            DTSTART:20261104T010000Z
+            DTEND:20261104T020000Z
+            SUMMARY:Independent event
+            END:VEVENT
+        """.trimIndent()
+        val text = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\n" +
+            listOf(seriesMaster, seriesOverride, independent).joinToString("\r\n") +
+            "\r\nEND:VCALENDAR\r\n"
+
+        val plan = core.importExport.prepareIcsImport(text, zone.id)
+
+        assertEquals(2, plan.units)
+        assertEquals(listOf("uid:independent"), plan.candidates.map { it.sourceId })
+        assertEquals(listOf("uid:course-series"), plan.problems.map { it.sourceId })
+        assertTrue(plan.problems.single().reason.contains("多个组件"))
+        assertTrue(plan.problems.single().evidence.contains("RECURRENCE-ID"))
+    }
+
     @Test fun icsImportCheckpointIsDurableAndUpdatedThroughFeatureApi() {
         val api = PowerCalCoreFeatureApiV1(
             store, importCheckpointContext = context

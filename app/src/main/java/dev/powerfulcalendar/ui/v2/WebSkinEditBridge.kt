@@ -44,7 +44,6 @@ import dev.powerfulcalendar.core.api.v1.RecurrenceOccurrenceByKeyQueryV1
 import dev.powerfulcalendar.core.api.v1.toCoreDraftForm
 import dev.powerfulcalendar.core.api.v1.toEventFormV1
 import java.time.LocalDate
-import java.time.Instant
 import java.time.ZoneId
 import org.json.JSONObject
 import kotlinx.coroutines.Dispatchers
@@ -730,10 +729,6 @@ internal class WebSkinEditService(
         val snappedTarget = TimelineCoordinate.snap(
             cmd.targetMillis, context.camera.hours, context.zone
         )
-        val targetYear = Instant.ofEpochMilli(snappedTarget).atZone(record.zone).year
-        if (targetYear !in 1900..2200)
-            return result(cmd.requestId, "invalid", "移动后的日期超出支持范围")
-
         val staged = withContext(Dispatchers.IO) {
             eventFeatures.stageTimelineMove(
                 record.eventSeq, cmd.expectedRevision, snappedTarget, cmd.requestId
