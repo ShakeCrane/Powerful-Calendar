@@ -27,6 +27,7 @@ import dev.powerfulcalendar.core.api.v1.AiBatchModeV1
 import dev.powerfulcalendar.core.api.v1.AiBatchSessionV1
 import dev.powerfulcalendar.core.api.v1.AiBatchStateV1
 import dev.powerfulcalendar.core.api.v1.AiConversationMessageV1
+import dev.powerfulcalendar.core.api.v1.AiProposalReviewReadinessV1
 import dev.powerfulcalendar.core.api.v1.AiProposalReviewV1
 import dev.powerfulcalendar.core.api.v1.EventRecordV1
 import dev.powerfulcalendar.core.api.v1.RecurrenceFeatureApiV1
@@ -264,6 +265,7 @@ internal class AiVisualContext internal constructor(
     val onClear: () -> Unit,
     val onClearCache: () -> Unit,
     val proposalReview: AiProposalReviewV1?,
+    val proposalReadiness: AiProposalReviewReadinessV1?,
     val onApplyProposals: (Set<Int>, Boolean) -> Unit,
     val onDiscardProposals: (Set<Int>) -> Unit,
     val onSupplementProposals: () -> Unit,
@@ -283,6 +285,7 @@ internal class AiVisualContext internal constructor(
         }
         val nativeMessages = remember(messages) { projectNativeAiMessages(messages) }
         val review = proposalReview?.takeIf { it.items.isNotEmpty() }?.toAiInterpretation()
+        val readiness = proposalReadiness?.takeIf { it.reviewId == proposalReview?.reviewId }
         NativeAiChatScreen(
             messages = nativeMessages,
             busy = busy,
@@ -306,7 +309,7 @@ internal class AiVisualContext internal constructor(
             onCancelBatchSelection = onCancelBatchSelection,
             proposalReviewContent = { actionsDisabled ->
                 review?.let {
-                    AiProposalReview(it, actionsDisabled, onApplyProposals, onDiscardProposals,
+                    AiProposalReview(it, readiness, actionsDisabled, onApplyProposals, onDiscardProposals,
                         onSupplementProposals)
                 }
             },
@@ -325,6 +328,7 @@ fun AiChatScreen(
     onSend: (String) -> Unit, onPropose: (String) -> Unit,
     onClear: () -> Unit, onClearCache: () -> Unit,
     proposalReview: AiProposalReviewV1? = null,
+    proposalReadiness: AiProposalReviewReadinessV1? = null,
     onApplyProposals: (Set<Int>, Boolean) -> Unit = { _, _ -> },
     onDiscardProposals: (Set<Int>) -> Unit = {},
     onSupplementProposals: () -> Unit = {},
@@ -335,7 +339,7 @@ fun AiChatScreen(
     onCancelBatchSelection: () -> Unit = {}
 ) {
     val context = AiVisualContext(messages, busy, batchActionsBusy, pendingCount, onSend, onPropose,
-        onClear, onClearCache, proposalReview, onApplyProposals, onDiscardProposals,
+        onClear, onClearCache, proposalReview, proposalReadiness, onApplyProposals, onDiscardProposals,
         onSupplementProposals, onSettings, onOpenDeck, onPickImage, onPickFile,
         onPrepareBatch, onRewind, batchSelectionActive, onCancelBatchSelection)
     val renderer = PresentationSkinRegistry.ai

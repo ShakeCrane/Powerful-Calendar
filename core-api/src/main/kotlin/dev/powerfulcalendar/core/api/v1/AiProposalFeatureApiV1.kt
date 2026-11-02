@@ -26,6 +26,27 @@ enum class AiProposalItemStatusV1 {
 
 enum class AiProposalItemReceiptDurabilityV1 { DURABLE_ITEM, PROCESS_LOCAL }
 
+enum class AiProposalReadinessStatusV1 { READY, INCOMPLETE, INVALID, BLOCKED, NOT_REQUIRED }
+
+/** Core's read-only form classification for one item in a detached AI review. */
+data class AiProposalItemReadinessV1(
+    val position: Int,
+    val sourceIndex: Int,
+    val status: AiProposalReadinessStatusV1,
+    val missingFields: List<String> = emptyList(),
+    val errorCode: String? = null,
+    val message: String? = null
+) {
+    /** Presentation affordance only; publication still needs Host approval and Store validation. */
+    val canPublish: Boolean get() = status == AiProposalReadinessStatusV1.READY ||
+        status == AiProposalReadinessStatusV1.NOT_REQUIRED
+}
+data class AiProposalReviewReadinessV1(
+    val reviewId: String,
+    /** Positions align with the detached review item list. */
+    val items: List<AiProposalItemReadinessV1>
+)
+
 /** Minimal task identity needed to retain PowerStore's durable task/item proposal receipts. */
 data class AiProposalTaskContextV1(
     val taskId: String,
@@ -98,6 +119,9 @@ data class AiProposalApplyReceiptV1(
 /** AI proposal writes remain separate from AI batch selection, locking, cancellation, and recovery. */
 interface AiProposalFeatureApiV1 {
     val apiVersion: Int
+
+    /** Classify all review items with Core form rules; this read-only result grants no authority. */
+    fun assessReview(review: AiProposalReviewV1): AiProposalReviewReadinessV1
 
     /** Create draft cards after an explicit Host action; no formal event is published. */
     fun createDrafts(review: AiProposalReviewV1, requestId: String): AiProposalApplyReceiptV1

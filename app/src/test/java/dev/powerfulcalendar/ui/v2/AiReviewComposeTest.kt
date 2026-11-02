@@ -14,6 +14,9 @@ import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.DraftStatus
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
+import dev.powerfulcalendar.core.api.v1.AiProposalItemReadinessV1
+import dev.powerfulcalendar.core.api.v1.AiProposalReadinessStatusV1
+import dev.powerfulcalendar.core.api.v1.AiProposalReviewReadinessV1
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -40,6 +43,13 @@ class AiReviewComposeTest {
             AiProposal(DraftOperation.DELETE, 42L,
                 DraftForm(kind = TemporalKind.ACTIVITY, title = "Delete B"))
         ))
+        val readiness = AiProposalReviewReadinessV1("compose-review", listOf(
+            AiProposalItemReadinessV1(0, 0, AiProposalReadinessStatusV1.INCOMPLETE,
+                missingFields = listOf("START", "END"), message = "还需要：开始时刻、结束时刻"),
+            AiProposalItemReadinessV1(1, 0, AiProposalReadinessStatusV1.BLOCKED,
+                message = "缺少时间"),
+            AiProposalItemReadinessV1(2, 0, AiProposalReadinessStatusV1.NOT_REQUIRED)
+        ))
         val applied = mutableListOf<Pair<Set<Int>, Boolean>>()
         val discarded = mutableListOf<Set<Int>>()
         var supplemented = 0
@@ -48,6 +58,7 @@ class AiReviewComposeTest {
             PowerCalTheme {
                 AiProposalReview(
                     interpretation = interpretation,
+                    readiness = readiness,
                     busy = false,
                     onApply = { indexes, approve -> applied += indexes to approve },
                     onDiscard = { discarded += it },

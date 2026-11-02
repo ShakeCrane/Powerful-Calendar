@@ -7,7 +7,11 @@ import dev.powerfulcalendar.core.DraftCard
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.DraftStatus
+import dev.powerfulcalendar.core.Recurrence
 import dev.powerfulcalendar.core.TemporalKind
+import dev.powerfulcalendar.core.api.v1.AiProposalItemReadinessV1
+import dev.powerfulcalendar.core.api.v1.AiProposalReadinessStatusV1
+import dev.powerfulcalendar.core.api.v1.AiProposalReviewReadinessV1
 import dev.powerfulcalendar.core.api.v1.AiConversationMessageV1
 import dev.powerfulcalendar.core.api.v1.AiConversationRoleV1
 import org.junit.Assert.assertEquals
@@ -47,8 +51,7 @@ class NativeAiProjectionTest {
     }
 
     @Test fun projectsAiReviewIntoMinimalDisplayRowsAndOriginalHostPositions() {
-        val projected = projectNativeAiProposalReview(
-            AiInterpretation(
+        val interpretation = AiInterpretation(
                 proposals = listOf(
                     AiProposal(
                         operation = DraftOperation.CREATE,
@@ -64,6 +67,13 @@ class NativeAiProjectionTest {
                 ),
                 warnings = listOf("提示一", "提示二", "不展示的后续提示")
             )
+        val projected = projectNativeAiProposalReview(
+            interpretation,
+            AiProposalReviewReadinessV1("native-review", listOf(
+                AiProposalItemReadinessV1(0, 0, AiProposalReadinessStatusV1.BLOCKED,
+                    errorCode = "AI_PROPOSAL_BLOCKED", message = "缺少时间"),
+                AiProposalItemReadinessV1(1, 0, AiProposalReadinessStatusV1.NOT_REQUIRED)
+            ))
         )
 
         assertEquals(
@@ -76,7 +86,8 @@ class NativeAiProjectionTest {
                     startText = "",
                     endText = "",
                     blockedReason = "缺少时间",
-                    publishable = false
+                    publishable = false,
+                    readinessMessage = "缺少时间"
                 ),
                 NativeAiProposalRow(
                     position = 1,
@@ -92,6 +103,25 @@ class NativeAiProjectionTest {
             projected.rows
         )
         assertEquals(listOf("提示一", "提示二"), projected.warnings)
+    }
+
+    @Test fun nativePublishabilityUsesCoreInvalidReadinessEvenWhenShallowFormCheckPasses() {
+        val form = DraftForm(kind = TemporalKind.ACTIVITY, title = "Invalid recurrence",
+            startText = "2026-11-02 10:00", endText = "2026-11-02 11:00",
+            recurrence = Recurrence(interval = 0))
+        assertEquals(true, form.isPublishable())
+        val projected = projectNativeAiProposalReview(
+            AiInterpretation(proposals = listOf(AiProposal(
+                DraftOperation.CREATE, null, form, sourceIndex = 9
+            ))),
+            AiProposalReviewReadinessV1("invalid-form-review", listOf(
+                AiProposalItemReadinessV1(0, 9, AiProposalReadinessStatusV1.INVALID,
+                    errorCode = "AI_PROPOSAL_INVALID", message = "重复间隔必须至少为 1")
+            ))
+        )
+
+        assertEquals(false, projected.rows.single().publishable)
+        assertEquals("重复间隔必须至少为 1", projected.rows.single().readinessMessage)
     }
 
     @Test fun projectsFrozenBatchReviewWithoutDraftIdsOrVersions() {

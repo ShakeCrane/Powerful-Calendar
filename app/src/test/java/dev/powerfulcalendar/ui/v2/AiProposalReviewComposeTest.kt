@@ -10,6 +10,9 @@ import dev.powerfulcalendar.ai.AiProposal
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.TemporalKind
+import dev.powerfulcalendar.core.api.v1.AiProposalItemReadinessV1
+import dev.powerfulcalendar.core.api.v1.AiProposalReadinessStatusV1
+import dev.powerfulcalendar.core.api.v1.AiProposalReviewReadinessV1
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Rule
@@ -49,6 +52,11 @@ class AiProposalReviewComposeTest {
             PowerCalTheme {
                 AiProposalReview(
                     interpretation = incomplete,
+                    readiness = AiProposalReviewReadinessV1("incomplete-review", listOf(
+                        AiProposalItemReadinessV1(0, 0,
+                            AiProposalReadinessStatusV1.INCOMPLETE,
+                            missingFields = listOf("START"), message = "还需要：开始时刻")
+                    )),
                     busy = false,
                     onApply = { selected, publish -> action = selected to publish },
                     onDiscard = {},
@@ -70,6 +78,9 @@ class AiProposalReviewComposeTest {
             PowerCalTheme {
                 AiProposalReview(
                     interpretation = preview,
+                    readiness = AiProposalReviewReadinessV1("ready-review", listOf(
+                        AiProposalItemReadinessV1(0, 3, AiProposalReadinessStatusV1.READY)
+                    )),
                     busy = false,
                     onApply = { selected, publish -> action = selected to publish },
                     onDiscard = {},

@@ -20,6 +20,31 @@ internal class StoreAiProposalFeatureApiV1(
 ) : AiProposalFeatureApiV1 {
     override val apiVersion: Int = 1
 
+    override fun assessReview(review: AiProposalReviewV1): AiProposalReviewReadinessV1 {
+        val snapshot = review.detached()
+        return AiProposalReviewReadinessV1(
+            reviewId = snapshot.reviewId,
+            items = snapshot.items.mapIndexed { position, item ->
+                when {
+                    item.blockedReason != null -> AiProposalItemReadinessV1(
+                        position, item.sourceIndex, AiProposalReadinessStatusV1.BLOCKED,
+                        errorCode = "AI_PROPOSAL_BLOCKED", message = item.blockedReason
+                    )
+                    item.form.recurrenceScope != null || item.form.editOccurrenceKey != null ->
+                        AiProposalItemReadinessV1(
+                            position, item.sourceIndex, AiProposalReadinessStatusV1.INVALID,
+                            errorCode = "AI_PROPOSAL_SCOPE_INVALID",
+                            message = "重复实例范围提案必须经过正式事件范围编辑流程"
+                        )
+                    item.operation == DraftOperationV1.DELETE -> AiProposalItemReadinessV1(
+                        position, item.sourceIndex, AiProposalReadinessStatusV1.NOT_REQUIRED
+                    )
+                    else -> classifyFormReadiness(position, item)
+                }
+            }
+        )
+    }
+
     private val mutationLock = Any()
     private val receipts = LinkedHashMap<String, Pair<String, AiProposalApplyReceiptV1>>()
     private val approvals = IdentityHashMap<AiProposalPublishApprovalV1, ApprovalClaims>()
@@ -190,12 +215,45 @@ internal class StoreAiProposalFeatureApiV1(
                 .mapNotNull { it.eventSeq }.distinct().size !=
             selected.count { it.operation != DraftOperationV1.CREATE }
         ) return "同一审核批次不能包含多个针对同一事件的提案"
-        if (selected.any { it.form.recurrenceScope != null || it.form.editOccurrenceKey != null })
+        val readinessByPosition = assessReview(request.review).items.associateBy { it.position }
+        val selectedReadiness = request.selectedPositions.sorted().mapNotNull(readinessByPosition::get)
+        if (selectedReadiness.any { it.errorCode == "AI_PROPOSAL_SCOPE_INVALID" })
             return "重复实例范围提案必须经过正式事件范围编辑流程"
-        if (request.decision == AiProposalDecisionV1.PUBLISH && selected.any {
-                it.operation != DraftOperationV1.DELETE && !it.form.isPublishableV1()
-            }) return "所选提案包含未补全项目；请先写入草稿并补全"
+        if (request.decision == AiProposalDecisionV1.PUBLISH) {
+            selectedReadiness.firstOrNull { !it.canPublish }?.let { readiness ->
+                return readiness.message ?: "所选提案包含未补全或无效项目；请先写入草稿并修正"
+            }
+        }
         return null
+    }
+
+    private fun classifyFormReadiness(
+        position: Int,
+        item: AiProposalItemV1
+    ): AiProposalItemReadinessV1 = try {
+        val form = item.form.toCoreDraftForm()
+        val missing = form.missingFields().map { it.name }
+        when (val built = form.build(seq = 1L, revision = 1L, nowMillis = 0L)) {
+            is dev.powerfulcalendar.core.FormBuild.Ready -> AiProposalItemReadinessV1(
+                position, item.sourceIndex, AiProposalReadinessStatusV1.READY
+            )
+            is dev.powerfulcalendar.core.FormBuild.Incomplete -> AiProposalItemReadinessV1(
+                position, item.sourceIndex, AiProposalReadinessStatusV1.INCOMPLETE,
+                missingFields = missing, errorCode = "AI_PROPOSAL_INCOMPLETE",
+                message = built.message
+            )
+            is dev.powerfulcalendar.core.FormBuild.Invalid -> AiProposalItemReadinessV1(
+                position, item.sourceIndex, AiProposalReadinessStatusV1.INVALID,
+                missingFields = missing, errorCode = "AI_PROPOSAL_INVALID",
+                message = built.reason
+            )
+        }
+    } catch (error: Exception) {
+        AiProposalItemReadinessV1(
+            position, item.sourceIndex, AiProposalReadinessStatusV1.INVALID,
+            errorCode = "AI_PROPOSAL_INVALID",
+            message = error.message ?: "AI 提案表单无效"
+        )
     }
 
     private fun validateReview(review: AiProposalReviewV1): String? {
@@ -623,10 +681,4 @@ internal class StoreAiProposalFeatureApiV1(
         private val REQUEST_ID_PATTERN = Regex("[A-Za-z0-9_-]{1,160}")
         private fun validRequestId(value: String) = REQUEST_ID_PATTERN.matches(value)
     }
-}
-
-private fun EventFormV1.isPublishableV1(): Boolean = try {
-    this.toCoreDraftForm().isPublishable()
-} catch (_: Exception) {
-    false
 }

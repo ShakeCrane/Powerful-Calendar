@@ -20,6 +20,9 @@ import dev.powerfulcalendar.core.RecurrenceEditScope
 import dev.powerfulcalendar.core.RecurrenceFreq
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
+import dev.powerfulcalendar.core.api.v1.AiProposalItemReadinessV1
+import dev.powerfulcalendar.core.api.v1.AiProposalReadinessStatusV1
+import dev.powerfulcalendar.core.api.v1.AiProposalReviewReadinessV1
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -259,7 +262,41 @@ class WebAiProposalReviewTest {
         assertNull(WebAiProposalProjection.validSelection(session, listOf(0, 0)))
         assertNull(WebAiProposalProjection.validSelection(session, listOf(3)))
         assertNull(WebAiProposalProjection.validSelection(session, listOf(1)))
-        assertTrue(WebAiProposalProjection.isPublishable(session.interpretation.proposals[0]))
-        assertFalse(WebAiProposalProjection.isPublishable(session.interpretation.proposals[2]))
+        val readiness = AiProposalReviewReadinessV1(session.reviewId, listOf(
+            AiProposalItemReadinessV1(0, 0, AiProposalReadinessStatusV1.READY),
+            AiProposalItemReadinessV1(1, 0, AiProposalReadinessStatusV1.BLOCKED,
+                message = "目标不存在"),
+            AiProposalItemReadinessV1(2, 0, AiProposalReadinessStatusV1.INCOMPLETE,
+                missingFields = listOf("START"), message = "还需要：开始时刻")
+        ))
+        val rows = WebAiProposalProjection.project(session, readiness)
+            .getJSONArray("proposals")
+        assertTrue(rows.getJSONObject(0).getBoolean("publishable"))
+        assertFalse(rows.getJSONObject(1).getBoolean("publishable"))
+        assertFalse(rows.getJSONObject(2).getBoolean("publishable"))
+        assertEquals("INCOMPLETE", rows.getJSONObject(2).getString("readinessStatus"))
+        assertEquals("还需要：开始时刻", rows.getJSONObject(2).getString("readinessMessage"))
+    }
+
+    @Test
+    fun webProjectionUsesCoreInvalidReadinessEvenWhenShallowFormCheckPasses() {
+        val form = DraftForm(kind = TemporalKind.ACTIVITY, title = "Invalid recurrence",
+            startText = "2026-11-02 10:00", endText = "2026-11-02 11:00",
+            recurrence = Recurrence(interval = 0))
+        assertTrue(form.isPublishable())
+        val session = WebAiProposalReviewSession.create(AiInterpretation(proposals = listOf(
+            AiProposal(DraftOperation.CREATE, null, form, sourceIndex = 9)
+        )), emptyList())
+        val readiness = AiProposalReviewReadinessV1(session.reviewId, listOf(
+            AiProposalItemReadinessV1(0, 9, AiProposalReadinessStatusV1.INVALID,
+                errorCode = "AI_PROPOSAL_INVALID", message = "重复间隔必须至少为 1")
+        ))
+
+        val item = WebAiProposalProjection.project(session, readiness)
+            .getJSONArray("proposals").getJSONObject(0)
+
+        assertFalse(item.getBoolean("publishable"))
+        assertEquals("INVALID", item.getString("readinessStatus"))
+        assertEquals("重复间隔必须至少为 1", item.getString("readinessMessage"))
     }
 }

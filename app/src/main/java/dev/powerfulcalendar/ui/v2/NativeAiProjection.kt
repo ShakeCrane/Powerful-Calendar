@@ -7,6 +7,7 @@ import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.api.v1.AiConversationMessageV1
 import dev.powerfulcalendar.core.api.v1.AiConversationRoleV1
+import dev.powerfulcalendar.core.api.v1.AiProposalReviewReadinessV1
 
 internal fun projectNativeAiMessages(messages: List<AiConversationMessageV1>): List<NativeAiMessage> =
     messages.map { message ->
@@ -18,9 +19,12 @@ internal fun projectNativeAiMessages(messages: List<AiConversationMessageV1>): L
     }
 
 internal fun projectNativeAiProposalReview(
-    interpretation: AiInterpretation
+    interpretation: AiInterpretation,
+    readiness: AiProposalReviewReadinessV1?
 ): NativeAiProposalReviewModel = NativeAiProposalReviewModel(
     rows = interpretation.proposals.mapIndexed { position, proposal ->
+        val coreReadiness = readiness?.items?.getOrNull(position)
+            ?.takeIf { it.sourceIndex == proposal.sourceIndex }
         NativeAiProposalRow(
             position = position,
             group = if (proposal.operation == DraftOperation.CREATE) {
@@ -35,8 +39,8 @@ internal fun projectNativeAiProposalReview(
             startText = proposal.form.startText,
             endText = proposal.form.endText,
             blockedReason = proposal.blocked,
-            publishable = proposal.blocked == null &&
-                (proposal.operation == DraftOperation.DELETE || proposal.form.isPublishable())
+            publishable = coreReadiness?.canPublish == true,
+            readinessMessage = coreReadiness?.message
         )
     },
     warnings = interpretation.warnings.take(2)

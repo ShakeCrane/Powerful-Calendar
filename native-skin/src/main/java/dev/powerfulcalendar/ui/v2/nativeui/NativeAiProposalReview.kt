@@ -68,6 +68,7 @@ fun NativeAiProposalReview(
                                     }
                                 )
                                 Column(Modifier.weight(1f)) {
+                                    val readinessDetail = row.blockedReason ?: row.readinessMessage
                                     Text(
                                         "${row.position + 1}. ${row.title.ifBlank { "未命名" }} · ${row.caption}",
                                         style = MaterialTheme.typography.bodySmall,
@@ -75,9 +76,9 @@ fun NativeAiProposalReview(
                                     )
                                     Text(
                                         row.startText + " " + row.endText +
-                                            (row.blockedReason?.let { " · $it" } ?: ""),
+                                            (readinessDetail?.let { " · $it" } ?: ""),
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = if (row.blockedReason != null) MaterialTheme.colorScheme.error
+                                        color = if (readinessDetail != null) MaterialTheme.colorScheme.error
                                             else MaterialTheme.colorScheme.onSurfaceVariant,
                                         maxLines = 2
                                     )

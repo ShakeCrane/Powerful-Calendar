@@ -2,9 +2,13 @@ package dev.powerfulcalendar.core.api.v1
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import dev.powerfulcalendar.ai.AiDraftService
+import dev.powerfulcalendar.ai.AiInterpretation
+import dev.powerfulcalendar.ai.AiProposal
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.PowerStore
+import dev.powerfulcalendar.core.Recurrence
 import dev.powerfulcalendar.core.TemporalKind
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -612,6 +616,101 @@ class AiProposalFeatureApiV1Test {
             "scope-selection", scopedReview, AiProposalDecisionV1.STAGE))
         assertEquals(AiProposalApplyStatusV1.INVALID, scopedResult.status)
         assertTrue(store.pendingDrafts().isEmpty())
+    }
+
+    @Test fun reviewReadinessUsesFullCoreBuildAndKeepsDeleteFormOptional() {
+        val target = createFormal("delete readiness target")
+        val malformedRecurrence = createItem("bad recurrence").copy(
+            form = form("bad recurrence").copy(recurrence = EventRecurrenceV1(interval = 0))
+        )
+        val malformedMemo = AiProposalItemV1(
+            sourceIndex = 3,
+            operation = DraftOperationV1.CREATE,
+            eventSeq = null,
+            expectedRevision = null,
+            form = DraftForm(kind = TemporalKind.MEMO, title = "Bad memo",
+                endText = "2026-12-02", zoneId = zone.id).toEventFormV1()
+        )
+        val invalidDelete = AiProposalItemV1(
+            sourceIndex = 5,
+            operation = DraftOperationV1.DELETE,
+            eventSeq = target.eventSeq,
+            expectedRevision = target.revision,
+            form = malformedRecurrence.form
+        )
+        val scopedDelete = invalidDelete.copy(
+            sourceIndex = 6,
+            form = invalidDelete.form.copy(
+                recurrenceScope = EventRecurrenceScopeV1.SINGLE_OCCURRENCE,
+                editOccurrenceKey = "2026-11-02T10:00"
+            )
+        )
+        val review = review(
+            createItem("ready"),
+            createItem("incomplete").copy(form = form("incomplete").copy(endText = "")),
+            malformedRecurrence,
+            malformedMemo,
+            createItem("blocked").copy(blockedReason = "目标不明确"),
+            invalidDelete,
+            scopedDelete
+        )
+        val commitsBefore = store.commitCount()
+
+        val readiness = core.aiProposals.assessReview(review)
+
+        assertEquals(review.reviewId, readiness.reviewId)
+        assertEquals(listOf(
+            AiProposalReadinessStatusV1.READY,
+            AiProposalReadinessStatusV1.INCOMPLETE,
+            AiProposalReadinessStatusV1.INVALID,
+            AiProposalReadinessStatusV1.INVALID,
+            AiProposalReadinessStatusV1.BLOCKED,
+            AiProposalReadinessStatusV1.NOT_REQUIRED,
+            AiProposalReadinessStatusV1.INVALID
+        ), readiness.items.map { it.status })
+        assertEquals(listOf(true, false, false, false, false, true, false),
+            readiness.items.map { it.canPublish })
+        assertEquals("重复间隔必须至少为 1", readiness.items[2].message)
+        assertEquals("备忘结束日期需要开始日期", readiness.items[3].message)
+        assertEquals("AI_PROPOSAL_SCOPE_INVALID", readiness.items[6].errorCode)
+        assertTrue(malformedRecurrence.form.toCoreDraftForm().isPublishable())
+        assertTrue(malformedMemo.form.toCoreDraftForm().isPublishable())
+        assertTrue(store.pendingDrafts().isEmpty())
+        assertEquals(commitsBefore, store.commitCount())
+        assertEquals(target, store.get(target.eventSeq))
+    }
+
+    @Test fun buildInvalidProposalCannotPublishOrBeCountedAsStaged() {
+        val malformed = DraftForm(kind = TemporalKind.ACTIVITY, title = "Invalid recurrence",
+            startText = "2026-11-02 10:00", endText = "2026-11-02 11:00",
+            recurrence = Recurrence(interval = 0), zoneId = zone.id)
+        assertTrue(malformed.isPublishable())
+        assertTrue(malformed.build(1L, 1L, clock.millis()) is
+            dev.powerfulcalendar.core.FormBuild.Invalid)
+        val review = review(createItem("invalid").copy(form = malformed.toEventFormV1()))
+        val request = request("invalid-build-publish", review, AiProposalDecisionV1.PUBLISH)
+        val commitsBefore = store.commitCount()
+
+        assertNull(core.issueAiProposalPublishApproval(request))
+        val receipt = core.aiProposals.applyReviewedProposals(request)
+        assertEquals(AiProposalApplyStatusV1.INVALID, receipt.status)
+        assertEquals(0, receipt.stagedCount)
+        assertEquals(0, receipt.publishedCount)
+        assertTrue(store.pendingDrafts().isEmpty())
+        assertEquals(commitsBefore, store.commitCount())
+
+        val serviceResult = AiDraftService(store, clock).applyReviewedProposals(
+            interpretation = AiInterpretation(listOf(AiProposal(
+                DraftOperation.CREATE, null, malformed
+            ))),
+            selectedPositions = setOf(0),
+            publish = true
+        )
+        assertEquals(0, serviceResult.stagedCount)
+        assertEquals(AiDraftService.ItemState.FAILED, serviceResult.itemResults.single().state)
+        assertTrue(serviceResult.itemResults.single().message.orEmpty().contains("重复间隔必须至少为 1"))
+        assertTrue(store.pendingDrafts().isEmpty())
+        assertEquals(commitsBefore, store.commitCount())
     }
 
     private fun createFormal(title: String): dev.powerfulcalendar.core.TemporalRecord {

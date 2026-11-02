@@ -13,11 +13,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import dev.powerfulcalendar.ai.AiInterpretation
-import dev.powerfulcalendar.ai.AiProposal
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.TemporalText
+import dev.powerfulcalendar.core.api.v1.AiProposalReviewReadinessV1
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
@@ -58,9 +58,14 @@ internal data class WebAiProposalPublishReview(
 )
 
 internal object WebAiProposalProjection {
-    fun project(session: WebAiProposalReviewSession): JSONObject {
+    fun project(
+        session: WebAiProposalReviewSession,
+        readiness: AiProposalReviewReadinessV1? = null
+    ): JSONObject {
         val proposals = JSONArray()
         session.interpretation.proposals.take(100).forEachIndexed { index, proposal ->
+            val coreReadiness = readiness?.takeIf { it.reviewId == session.reviewId }
+                ?.items?.getOrNull(index)?.takeIf { it.sourceIndex == proposal.sourceIndex }
             val form = proposal.form
             val recurrence = form.recurrence
             val exceptions = recurrence.exceptions.sorted()
@@ -119,7 +124,9 @@ internal object WebAiProposalProjection {
                 .put("rationale", proposal.rationale.take(400))
                 .put("rationaleTruncated", proposal.rationale.length > 400)
                 .put("blocked", proposal.blocked?.take(500) ?: JSONObject.NULL)
-                .put("publishable", isPublishable(proposal)))
+                .put("readinessStatus", coreReadiness?.status?.name ?: "UNKNOWN")
+                .put("readinessMessage", coreReadiness?.message ?: JSONObject.NULL)
+                .put("publishable", coreReadiness?.canPublish == true))
         }
         return JSONObject()
             .put("reviewId", session.reviewId)
@@ -138,8 +145,6 @@ internal object WebAiProposalProjection {
         return positions.sorted()
     }
 
-    fun isPublishable(proposal: AiProposal): Boolean = proposal.blocked == null &&
-        (proposal.operation == DraftOperation.DELETE || proposal.form.isPublishable())
 }
 
 @Composable

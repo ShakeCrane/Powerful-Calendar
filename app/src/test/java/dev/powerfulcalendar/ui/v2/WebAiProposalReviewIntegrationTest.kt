@@ -761,7 +761,8 @@ class WebAiProposalReviewIntegrationTest {
             assertEquals("接口评审", ready.getString("title"))
             assertEquals("2026-12-01 19:00", ready.getString("startText"))
             assertEquals("2026-12-01 20:00", ready.getString("endText"))
-            assertTrue(ready.getBoolean("publishable"))
+            assertTrue("readiness=${ready.optString("readinessStatus")} message=${ready.optString("readinessMessage")}",
+                ready.getBoolean("publishable"))
             assertEquals("supplemented structured request must include both user turns",
                 true, requests.last().contains(firstTurn) && requests.last().contains(supplement))
             assertTrue("assistant questions remain explicitly untrusted context",

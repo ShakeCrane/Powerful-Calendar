@@ -204,9 +204,16 @@ class AiDraftService(
                     ItemState.BLOCKED, eventSeq = proposal.eventSeq, message = proposal.blocked)
                 return@forEach
             }
-            if (publish && proposal.operation != DraftOperation.DELETE &&
-                !proposal.form.isPublishable()) {
-                val warning = "第 " + (position + 1) + " 项信息不完整，禁止直接发布；请先写入草稿补全"
+            val publishValidationError = if (publish && proposal.operation != DraftOperation.DELETE) {
+                when (val built = proposal.form.build(seq = 1L, revision = 1L,
+                    nowMillis = clock.millis())) {
+                    is dev.powerfulcalendar.core.FormBuild.Ready -> null
+                    is dev.powerfulcalendar.core.FormBuild.Incomplete -> built.message
+                    is dev.powerfulcalendar.core.FormBuild.Invalid -> built.reason
+                }
+            } else null
+            if (publishValidationError != null) {
+                val warning = "第 ${position + 1} 项未补全或无效，禁止直接发布：$publishValidationError；请先写入草稿并修正"
                 warnings.add(warning)
                 itemResults += AiDraftItemResult(position, proposal.sourceIndex, proposal.operation,
                     ItemState.FAILED, eventSeq = proposal.eventSeq, message = warning)
@@ -251,6 +258,16 @@ class AiDraftService(
                                 itemResults += AiDraftItemResult(position, proposal.sourceIndex,
                                     proposal.operation, ItemState.CONFLICT, draft.eventSeq,
                                     draft.draftId, draft.draftVersion, message = warning)
+                            }
+                            is PowerStore.CommitOutcome.Invalid -> {
+                                val invalidDraft = store.draft(draft.draftId) ?: draft
+                                val warning = "序号 ${draft.eventSeq} 未发布：${result.reason}；草稿仍可在草稿队列中修正"
+                                warnings.add(warning)
+                                handled.add(position)
+                                itemResults += AiDraftItemResult(position, proposal.sourceIndex,
+                                    proposal.operation, ItemState.FAILED, invalidDraft.eventSeq,
+                                    invalidDraft.draftId, invalidDraft.draftVersion,
+                                    changed = true, message = warning)
                             }
                             else -> {
                                 handled.add(position)
@@ -323,6 +340,17 @@ class AiDraftService(
                                         proposal.operation, ItemState.CONFLICT,
                                         result.draft.eventSeq, result.draft.draftId,
                                         result.draft.draftVersion, message = warning)
+                                }
+                                is PowerStore.CommitOutcome.Invalid -> {
+                                    val invalidDraft = store.draft(result.draft.draftId) ?: result.draft
+                                    val warning = "序号 ${result.draft.eventSeq} 未发布：${outcome.reason}；草稿仍可在草稿队列中修正"
+                                    warnings.add(warning)
+                                    handled.add(position)
+                                    itemResults += AiDraftItemResult(position, proposal.sourceIndex,
+                                        proposal.operation, ItemState.FAILED,
+                                        invalidDraft.eventSeq, invalidDraft.draftId,
+                                        invalidDraft.draftVersion, changed = !result.reused,
+                                        message = warning)
                                 }
                                 else -> {
                                     handled.add(position)

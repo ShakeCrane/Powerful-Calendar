@@ -331,6 +331,9 @@ fun PowerCalApp(
     val proposalReview = webAiProposalReviewSession?.let { session ->
         session.interpretation.toAiProposalReviewV1(session.reviewId, session.expectedTargetRevisions)
     }
+    val proposalReadiness = remember(coreFeatureApi, proposalReview) {
+        proposalReview?.let(coreFeatureApi.aiProposals::assessReview)
+    }
     var pendingWebAiProposalPublish by remember {
         mutableStateOf<WebAiProposalPublishReview?>(null)
     }
@@ -1505,8 +1508,10 @@ fun PowerCalApp(
                 }
             }
             AiProposalDecision.PUBLISH -> {
-                val proposals = selected.map { session.interpretation.proposals[it] }
-                if (proposals.any { !WebAiProposalProjection.isPublishable(it) }) {
+                val review = session.interpretation.toAiProposalReviewV1(
+                    session.reviewId, session.expectedTargetRevisions)
+                val readiness = coreFeatureApi.aiProposals.assessReview(review)
+                if (selected.any { readiness.items.getOrNull(it)?.canPublish != true }) {
                     appendChat("assistant", "所选项目包含未补全或不可发布的提案；请先写入草稿或补充细节。")
                     WebSkinBridgeRuntime.stateRevision++
                     return
@@ -2406,7 +2411,12 @@ fun PowerCalApp(
                     if (page == Page.AI.name) chatHistory else emptyList()
                 ))
                 .put("aiProposalReview", if (page == Page.AI.name) {
-                    webAiProposalReviewSession?.let(WebAiProposalProjection::project) ?: JSONObject.NULL
+                    webAiProposalReviewSession?.let { session ->
+                        val review = session.interpretation.toAiProposalReviewV1(
+                            session.reviewId, session.expectedTargetRevisions)
+                        WebAiProposalProjection.project(session,
+                            coreFeatureApi.aiProposals.assessReview(review))
+                    } ?: JSONObject.NULL
                 } else JSONObject.NULL)
                 .put("reducedMotion", effects.reduceMotion)
                 .put("notificationPermission", if (page == Page.SETTINGS.name) {
@@ -2630,6 +2640,7 @@ fun PowerCalApp(
                 onCancelBatchSelection = { cancelAiBatchFromSurface() },
                 pendingCount = pendingCount,
                 proposalReview = proposalReview,
+                proposalReadiness = proposalReadiness,
                 onApplyProposals = { selected, publish ->
                     val session = webAiProposalReviewSession
                     val snapshot = session?.interpretation

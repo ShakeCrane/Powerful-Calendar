@@ -75,7 +75,8 @@ data class NativeAiProposalRow(
     val startText: String,
     val endText: String,
     val blockedReason: String?,
-    val publishable: Boolean
+    val publishable: Boolean,
+    val readinessMessage: String? = null
 )
 
 /** No parser reply, AI object, DraftForm, or persistence identity crosses into Native rendering. */
