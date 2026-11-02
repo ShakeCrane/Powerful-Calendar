@@ -54,4 +54,4 @@ $env:ANDROID_HOME = 'E:\android-sdk'
 
 ## Phase 状态与后续
 
-本报告只关闭 ICS recovery receipt 的 API 路由缺口。它不代表 PHASE 1 全部退出，不改变任何 acceptance row，也不提供 release QA、device parity 或 skin cutover sign-off。下一步对 Draft/Review 与 AI Proposal 的 process-local request replay 做有界契约/调用路径盘点，区分 Store item receipts 与 API request receipt 的保证；继续保持 Native recovery/fallback 可用。
+本报告只关闭 ICS recovery receipt 的 API 路由缺口。它不代表 PHASE 1 全部退出，不改变任何 acceptance row，也不提供 release QA、device parity 或 skin cutover sign-off。撰写本报告时，下一步是对 Draft/Review 与 AI Proposal 的 process-local request replay 做有界契约/调用路径盘点。此后 `DraftReviewFeatureApiV1.createDraft` 已实现跨重启和备份恢复的持久回放，见 [Draft creation API Issue](PC-ISSUE-CORE-DRAFT-CREATION-API-V1.md)；其他 Draft/Review 请求缓存和 AI Proposal 外层请求回放仍为进程内语义，纳入当前 Phase 1 Host call-site/API 契约对照。继续保持 Native recovery/fallback 可用。

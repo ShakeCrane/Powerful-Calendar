@@ -5,7 +5,7 @@
 **目标**：允许先发布功能不完整的个人稳定试用版，但今后的升级必须能够原地保留已有事件、草稿、重复规则、身份和必要审计信息。
 **唯一权威数据源**：当前 Android 应用沙盒 SQLite `powercal-v2.db`；旧版 `powerful-calendar.db` 是只读迁移来源，不参与双写。
 **产品约束来源**：`PRODUCT_BASELINE_G1-G11.md`、`PROTOCOL_V0_RESEARCH.md`。
-**代码事实**（当前 `PowerStore.kt`）：`DATABASE_NAME = "powercal-v2.db"`，`VERSION = 2`，已有严格 v1 → v2 增量升级，降级拒绝，存在原生 JSON 导出/仅空库恢复；**本文件不会把尚未实现的安全措施写成已通过**。
+**代码事实（复核：2026-11-02）**：`PowerStore.DATABASE_NAME = "powercal-v2.db"`，`PowerStore.VERSION = 6`；schema v1→v6 使用有序增量迁移并拒绝降级。原生导出使用 BackupEnvelope v1，schema v6 payload 包含草稿请求回执，恢复仅接受空库；**本候选契约不代表稳定版发布验收已完成**。
 
 ## 1. 发布策略和兼容承诺
 
@@ -38,7 +38,9 @@
 
 ## 3. 当前 SQLite 表与演化策略
 
-**当前 v2 表**：`meta`, `identities`, `objects`, `drafts`, `commits`, `ai_sessions`, `ai_session_drafts`, `source_links`, `migrations`, `schedule_intents`, `executions`。
+**当前 schema v6 表**：`meta`, `identities`, `objects`, `drafts`, `commits`, `ai_sessions`, `ai_session_drafts`, `ai_task_receipts`, `draft_request_receipts`, `source_links`, `migrations`, `schedule_intents`, `executions`。
+
+`draft_request_receipts` 以唯一 `request_id` 保存 canonical form fingerprint 及其映射的 `draft_id` / `event_seq`。它只记录 `DraftReviewFeatureApiV1.createDraft` 的重放目标，不授予提交或恢复权限。相同 fingerprint 返回现有映射；不同内容覆盖仍可操作的 CREATE 草稿；若原草稿已终结，则创建新的待审核草稿，不改写原草稿或正式事件。schema v5→v6 只新增此表，不重置身份或草稿。
 
 这些名称是现在的物理实现记录，不要求永远固定内部列布局。但下面的逻辑实体、版本检查和迁移能力是长期契约。
 
@@ -53,15 +55,15 @@
 
 **历史实现快照（已过期，保留用于记录本节最初编写时的状态）**：`exportBackup()` 当时返回含 `format=powercal-native` / `version=2` / 数据数组的 JSON；`restoreBackup()` 当时只严格检查 `format` 且只接受空库，未对 `version` 做严格拒绝或迁移、未验证文件 hash，亦未保证跨多数据库实例读到同一个一致性快照。不要把这段历史描述当作当前代码状态。
 
-**当前实现状态（复核：2026-10-30）**：`PowerStore.exportBackup()` 生成 BackupEnvelope v1，在单一 SQLite 读快照中收集逻辑表与 `nextSeq` / `nextOrder` 水位，再对 canonical payload 计算 SHA-256；`PowerCalApp` 通过 Android `CreateDocument` 写入 JSON 文件，随后用有界读取和 `BackupEnvelope.verifyReadback` 校验。无法回读时明确显示“已写入但未经回读校验”，不得报告已验证成功；校验异常显示失败。`restoreBackup()` 对 Envelope 版本、schema、hash 和引用进行写入前校验，只向空库恢复；flat v2 需要单独确认。Core 回归与 API 35 Robolectric Host 集成证据见 [PC-ISSUE-SEPARATION-ICS-EXPORT-INTEGRATION](issues/PC-ISSUE-SEPARATION-ICS-EXPORT-INTEGRATION.md) 和 [PC-ISSUE-SEPARATION-BACKUP-EXPORT-INTEGRATION](issues/PC-ISSUE-SEPARATION-BACKUP-EXPORT-INTEGRATION.md)。真实 Android WebView、SAF provider/OEM 和设备恢复流程仍需独立验证。
+**当前实现状态（复核：2026-11-02）**：`PowerStore.exportBackup()` 生成 BackupEnvelope v1，在单一 SQLite 读快照中收集逻辑表与 `nextSeq` / `nextOrder` 水位，再对 canonical payload 计算 SHA-256；schema v6 同时导出 `aiTaskReceipts` 和 `draftRequestReceipts`。schema v6 恢复要求两数组存在；旧 schema v1–v5 允许缺少当时尚不存在的可选回执数组。`PowerCalApp` 通过 Android `CreateDocument` 写入 JSON 文件，随后用有界读取和 `BackupEnvelope.verifyReadback` 校验。无法回读时明确显示“已写入但未经回读校验”，不得报告已验证成功；校验异常显示失败。`restoreBackup()` 对 Envelope 版本、schema、hash 和引用进行写入前校验，只向空库恢复；flat v2 需要单独确认。Durable `createDraft` replay、schema migration 和备份兼容的测试证据见 [Draft creation API Issue](issues/PC-ISSUE-CORE-DRAFT-CREATION-API-V1.md)。真实 Android WebView、SAF provider/OEM 和设备恢复流程仍需独立验证。
 
-建议从首次稳定发行起固定 **BackupEnvelope v1**：
+当前实现使用 **BackupEnvelope v1**；下面展示 `databaseSchemaVersion: 6` 的 schema v6 payload 与回执数组：
 
 ```json
 {
   "format": "powercal-native",
   "backupFormatVersion": 1,
-  "databaseSchemaVersion": 2,
+  "databaseSchemaVersion": 6,
   "appVersionCode": 0,
   "exportedAtEpochMs": 0,
   "storeLineageId": "UUID-of-database-lineage",
@@ -73,6 +75,8 @@
     "commits": [],
     "sourceLinks": [],
     "migrations": [],
+    "aiTaskReceipts": [],
+    "draftRequestReceipts": [],
     "nextSeq": 1,
     "nextOrder": 1
   }
@@ -107,7 +111,7 @@ reader/writer 必须复用同一 canonical 实现；任何规范化规则变化�
 
 ## 5. 首次稳定安装与升级链路
 
-**当前 Android 工程实况**：`applicationId=dev.powerfulcalendar`；`versionCode=2`，`versionName=0.2.0`，目前只是 Debug 构建可用；未见稳定 Release 签名配置。这些都是事实，不应将 Debug APK 当作长期升级起点。
+**当前 Android 工程实况**：`applicationId=dev.powerfulcalendar`；`versionCode=905`，`versionName=0.9.5-rc.1`。本次验证使用 Debug APK；未确认稳定 Release 签名配置。这些都是事实，不应将 Debug APK 当作长期升级起点。
 
 **首次稳定版发布前（必须）**：
 

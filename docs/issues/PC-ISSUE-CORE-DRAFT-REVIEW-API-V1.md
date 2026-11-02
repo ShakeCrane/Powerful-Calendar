@@ -1,7 +1,7 @@
 # PC-ISSUE-CORE-DRAFT-REVIEW-API-V1 — Draft/Review Feature API v1 slice
 
 Date: 2026-11-01 (China Standard Time) | Priority: P1
-Status: **PARTIAL / IMPLEMENTED; PHASE 1 OPEN**
+Status: **BASE SLICE IMPLEMENTED; CREATE-DRAFT REPLAY RESOLVED IN FOLLOW-UP; PHASE 1 OPEN**
 
 ## Goal and result
 
@@ -17,7 +17,7 @@ The `:core-api` module now defines `DraftReviewFeatureApiV1` DTOs and operations
 4. Custom runtime/imported Skin requests for commit, conflict replacement, and restore open Host-owned confirmation UI. The review shows the candidate fields, recurrence, reminders, enable/tracking state, and completed instances; the Host checks the captured revision/form before dispatch.
 5. Controller state and `stateRevision` are published from the same transition. Successful Draft/Review writes publish through the shared Event API instance.
 
-The API receipt cache is bounded to 128 entries and remains process-local. It does not provide durable exactly-once behavior across process death or adapter recreation.
+At the time of this base-slice report, the API receipt cache was bounded to 128 entries and process-local. The later `createDraft` replay resolution is recorded below; other Draft/Review request caches remain process-local.
 
 ## Verification
 
@@ -43,7 +43,7 @@ Logs are under the ignored directory `.local/android-test/reports/core-draft-rev
 
 - Phase 1 remains open. Formal-event searches, direct completion writes, some Host/Core reads and authorized mutation paths still bypass the shared API/change source; runtime Skin projections still include Core types. Other required domain APIs are not yet defined.
 - Native/Skin device parity and instrumentation for this slice remain **NOT TESTED**.
-- The request-receipt cache is process-local as described above.
+- Draft/Review request caches other than `createDraft` remain process-local as described above.
 
 ## Git delivery
 
@@ -67,12 +67,16 @@ Implementation branch: `codex/core-feature-api-event`. Code commit `a12e107b8682
 ```
 
 - No ADB device or AVD was configured. Android instrumentation, packaged WebView and Native/Skin runtime behavior remain **NOT TESTED**. No schema, backup format, frozen business semantics, default Skin, or Native fallback changed.
-- **Next PHASE 1 action:** Route the remaining `PowerCalApp.reload()` Store diagnostics (`nextSequencePreview()` and `identityCount()`) through a versioned read-only Core diagnostics query.
+- **Next PHASE 1 action at the time of this report:** Route the remaining `PowerCalApp.reload()` Store diagnostics (`nextSequencePreview()` and `identityCount()`) through a versioned read-only Core diagnostics query. This was subsequently completed; see the [Core Diagnostics API Issue](PC-ISSUE-CORE-DIAGNOSTICS-API-V1.md).
 
 ## Follow-up — `createDraft` request replay across adapter recreation (2026-11-02)
 
-- A temporary Robolectric characterization invoked `DraftReviewFeatureApiV1.createDraft(form, "audit-recreated-request")`, constructed a new `PowerCalCoreFeatureApiV1` over the same `PowerStore`, and retried the identical form with the identical request ID. Both calls returned `APPLIED`, the receipts contained different `draftId` values, and the Store held two pending drafts. The assertion intentionally captures the current duplicate behavior; its passing test result is **reproduction evidence**, not a pass for durable idempotency. Process death / database reopen was not directly exercised.
+- A temporary Robolectric characterization invoked `DraftReviewFeatureApiV1.createDraft(form, "audit-recreated-request")`, constructed a new `PowerCalCoreFeatureApiV1` over the same `PowerStore`, and retried the identical form with the identical request ID. Both calls returned `APPLIED`, the receipts contained different `draftId` values, and the Store held two pending drafts. The assertion intentionally captures the behavior at audit time; its passing test result is **reproduction evidence**, not a pass for durable idempotency. Process death / database reopen was not directly exercised in that characterization.
 - Focused command: `:app:testDebugUnitTest --tests 'dev.powerfulcalendar.core.api.v1.DraftReviewFeatureApiV1Test.audit_sameRequestIdAfterAdapterRecreationReproducesDuplicateDraft' --offline --rerun-tasks --max-workers=1 --console=plain`. Result **1/1 PASS as a characterization**, with 0 failures/errors/skips; Gradle completed in 28 seconds (69 actionable tasks). The temporary test was removed after capture. Ignored evidence is under `.local/android-test/reports/phase1-request-replay-audit-20261102/`: log SHA-256 `7DD42DAC1C70B34AC9F4623F2624E2DA83D016663324DA63B5CB173CE5F73C7C`; JUnit XML SHA-256 `3CB927B25101415254BDF7D86372A3C11F6B5DF18344AE76526B0C486C24D752`; archived test source SHA-256 `8280F9E18E7FB62DEDE802B4BABCAB33EC80DD5A11F66A567043C24271902C5D`.
-- Root cause: `StoreDraftReviewFeatureApiV1.execute` stores the 128-entry request/fingerprint cache only in that adapter instance. `createDraft` delegates to `PowerStore.newDraft` without a request key, so a new adapter has no durable receipt to look up. `PowerStore` is at database schema v5 and the `drafts` table has no API request identity. `newDraft` reserves an event identity in one transaction and inserts/activates the draft in a later transaction; a correct durable receipt must account for this existing recovery boundary and commit atomically with the effective draft result.
-- Compatibility analysis: a durable implementation would require an additive Store migration (likely schema v6) and a defined retention / ID-reuse policy. The stable backup envelope is format v1, currently carries the core logical tables plus optional `aiTaskReceipts`, and schema v5 requires those AI task receipts. The owner must decide whether API request receipts survive backup/restore or start a new replay domain after restore; restoring them also affects empty-target checks and replay outcomes. SharedPreferences alone cannot atomically commit a receipt with the draft transaction. No database schema, backup format, formal state, or frozen business behavior was changed in this audit.
-- The current API contract remains explicitly process-local. Phase 1 acceptance of idempotency across adapter recreation is unresolved. If durable replay is required, implement and test it only after the owner chooses receipt scope and backup/restore semantics; otherwise keep the documented process-local contract and proceed with a separate Phase 1 API gap.
+- Historical root cause at audit time: `StoreDraftReviewFeatureApiV1.execute` stored the 128-entry request/fingerprint cache only in that adapter instance. `createDraft` delegated to `PowerStore.newDraft` without a request key, so a new adapter had no durable receipt to look up. The Store was then at schema v5 and the `drafts` table had no API request identity. `newDraft` reserved an event identity in one transaction and inserted/activated the draft in a later transaction.
+- Historical compatibility analysis at audit time: a durable implementation required an additive Store migration and a retention / ID-reuse policy. BackupEnvelope v1 then carried the core logical tables plus optional `aiTaskReceipts`, and schema v5 required those AI task receipts. The owner had not yet decided whether API request receipts should survive backup/restore or start a new replay domain. SharedPreferences alone could not atomically commit a receipt with the draft transaction. No database schema, backup format, formal state, or frozen business behavior changed during that audit.
+- At the time of this audit, the API contract remained process-local and durable replay was unresolved. This finding was superseded after the owner selected durable last-write-wins behavior across restart and backup restore.
+
+## Resolution — durable `createDraft` request replay (2026-11-02)
+
+The owner authorized the schema and backup compatibility changes. Implementation and verification are recorded in [PC-ISSUE-CORE-DRAFT-CREATION-API-V1](PC-ISSUE-CORE-DRAFT-CREATION-API-V1.md): schema v6 persists the request mapping, and BackupEnvelope v1 schema v6 payloads carry the receipt. Same-ID changed content overwrites the mapped actionable CREATE draft; exact retries after Store recreation or backup restore reuse its identity. Terminal drafts remain unchanged, and new content creates a fresh reviewable draft. The receipt does not grant publication approval.
