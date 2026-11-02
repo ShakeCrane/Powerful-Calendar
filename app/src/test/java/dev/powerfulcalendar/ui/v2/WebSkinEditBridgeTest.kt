@@ -9,6 +9,7 @@ import dev.powerfulcalendar.core.DraftStatus
 import dev.powerfulcalendar.core.EditorSelection
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.Recurrence
+import dev.powerfulcalendar.core.RecurrenceEditScope
 import dev.powerfulcalendar.core.RecurrenceFreq
 import dev.powerfulcalendar.core.StoreDeckPersistence
 import dev.powerfulcalendar.core.TemporalConversion
@@ -20,7 +21,10 @@ import dev.powerfulcalendar.core.api.v1.AiFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.DraftReviewCardV1
 import dev.powerfulcalendar.core.api.v1.DraftReviewFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.EventFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.EventEditorHandleV1
+import dev.powerfulcalendar.core.api.v1.EventEditorUpdateReceiptV1
 import dev.powerfulcalendar.core.api.v1.EventRecordV1
+import dev.powerfulcalendar.core.api.v1.EventRecurrenceScopeV1
 import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
@@ -50,6 +54,7 @@ class WebSkinEditBridgeTest {
     private val queriedEventSequences = mutableListOf<Long>()
     private val queriedDraftIds = mutableListOf<Long>()
     private val queriedBatchLockStates = mutableListOf<Boolean>()
+    private val selectedRecurrenceScopes = mutableListOf<EventRecurrenceScopeV1>()
     private fun request()=UUID.randomUUID().toString()
     @Before fun setup(){
         context=ApplicationProvider.getApplicationContext()
@@ -60,6 +65,14 @@ class WebSkinEditBridgeTest {
             override fun queryEvent(eventSeq: Long): EventRecordV1? {
                 queriedEventSequences += eventSeq
                 return coreFeatureApi.events.queryEvent(eventSeq)
+            }
+
+            override fun selectFormalRecurrenceScope(
+                handle: EventEditorHandleV1,
+                scope: EventRecurrenceScopeV1
+            ): EventEditorUpdateReceiptV1 {
+                selectedRecurrenceScopes += scope
+                return coreFeatureApi.events.selectFormalRecurrenceScope(handle, scope)
             }
         }
         val draftReviewApi = coreFeatureApi.adaptDeckController(controller)
@@ -101,6 +114,79 @@ class WebSkinEditBridgeTest {
 
     private fun patchForm(form: DraftForm, field: String, value: String): DraftForm =
         WebEditWire.patch(form, field, value, coreFeatureApi.events)
+
+    @Test fun recurrenceScopeEligibilityIsDecidedByCoreWithoutChangingBridgeResponses() = runBlocking {
+        val zone = ZoneId.of("Asia/Shanghai")
+        val start = LocalDateTime.of(2030, 10, 21, 9, 0).atZone(zone).toInstant().toEpochMilli()
+        val oneOff = commitFormal(DraftForm(
+            kind = TemporalKind.ALARM,
+            title = "One-off event",
+            startText = DraftForm.formatInstant(start, zone),
+            zoneId = zone.id
+        ))
+        val repeating = commitFormal(DraftForm(
+            kind = TemporalKind.ACTIVITY,
+            title = "Recurring event",
+            startText = DraftForm.formatInstant(start, zone),
+            endText = DraftForm.formatInstant(start + 3_600_000L, zone),
+            zoneId = zone.id,
+            recurrence = Recurrence(freq = RecurrenceFreq.DAILY, count = 3)
+        ))
+        val commitsBefore = store.commitCount()
+        val draftsBefore = store.draftCount()
+
+        assertEquals("opened", service.execute(WebEditCommand.OpenEvent(
+            request(), oneOff.eventSeq, oneOff.revision
+        )).getString("status"))
+        val oneOffSession = service.snapshot().getJSONObject("editor").getString("sessionId")
+        val nonRepeatingScope = service.execute(WebEditCommand.SelectScope(
+            request(), oneOffSession, RecurrenceEditScope.WHOLE_SERIES
+        ))
+        assertEquals("invalid", nonRepeatingScope.getString("status"))
+        assertEquals("请先放弃修改并选择有效的重复范围", nonRepeatingScope.getString("detail"))
+        assertEquals("closed", service.execute(WebEditCommand.CloseEvent(
+            request(), oneOffSession
+        )).getString("status"))
+
+        assertEquals("opened", service.execute(WebEditCommand.OpenEvent(
+            request(), repeating.eventSeq, repeating.revision
+        )).getString("status"))
+        val repeatingSession = service.snapshot().getJSONObject("editor").getString("sessionId")
+        val missingOccurrence = service.execute(WebEditCommand.SelectScope(
+            request(), repeatingSession, RecurrenceEditScope.SINGLE_OCCURRENCE
+        ))
+        assertEquals("invalid", missingOccurrence.getString("status"))
+        assertEquals("请先放弃修改并选择有效的重复范围", missingOccurrence.getString("detail"))
+
+        assertEquals("selected", service.execute(WebEditCommand.SelectScope(
+            request(), repeatingSession, RecurrenceEditScope.WHOLE_SERIES
+        )).getString("status"))
+        assertEquals("edited", service.execute(WebEditCommand.PatchEvent(
+            request(), repeatingSession, "title", "Changed in editor"
+        )).getString("status"))
+        val dirtyScope = service.execute(WebEditCommand.SelectScope(
+            request(), repeatingSession, RecurrenceEditScope.WHOLE_SERIES
+        ))
+        assertEquals("invalid", dirtyScope.getString("status"))
+        assertEquals("请先放弃修改并选择有效的重复范围", dirtyScope.getString("detail"))
+
+        assertEquals(listOf(
+            EventRecurrenceScopeV1.WHOLE_SERIES,
+            EventRecurrenceScopeV1.SINGLE_OCCURRENCE,
+            EventRecurrenceScopeV1.WHOLE_SERIES,
+            EventRecurrenceScopeV1.WHOLE_SERIES
+        ), selectedRecurrenceScopes)
+        assertEquals(oneOff, store.get(oneOff.eventSeq))
+        assertEquals(repeating, store.get(repeating.eventSeq))
+        assertEquals(commitsBefore, store.commitCount())
+        assertEquals(draftsBefore, store.draftCount())
+        assertTrue(store.pendingDraftsFor(oneOff.eventSeq).isEmpty())
+        assertTrue(store.pendingDraftsFor(repeating.eventSeq).isEmpty())
+
+        service.execute(WebEditCommand.DiscardEventChanges(request(), repeatingSession))
+        service.execute(WebEditCommand.CloseEvent(request(), repeatingSession))
+        Unit
+    }
 
     private suspend fun commitFormal(form: DraftForm): TemporalRecord {
         val card = store.newDraft(form)

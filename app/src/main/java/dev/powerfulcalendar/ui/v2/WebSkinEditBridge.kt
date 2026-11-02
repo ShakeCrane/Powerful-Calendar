@@ -806,20 +806,26 @@ internal class WebSkinEditService(
                 is WebEditCommand.SelectScope -> {
                     val current=session
                     if(!editorMatches(cmd.sessionId) || current==null) result(cmd.requestId,"stale")
-                    else if(!current.requiresRecurrenceScope || current.meaningfulDiff ||
-                        (cmd.scope != RecurrenceEditScope.WHOLE_SERIES && !current.canEditSelectedOccurrence))
-                        result(cmd.requestId,"invalid","请先放弃修改并选择有效的重复范围")
                     else {
                         val updated = withContext(Dispatchers.IO) {
                             eventFeatures.selectFormalRecurrenceScope(
                                 current.handle, EventRecurrenceScopeV1.valueOf(cmd.scope.name)
                             )
                         }
-                        if (updated.status == EventEditorUpdateStatusV1.UPDATED) {
-                            eventFeatures.editorSnapshot(current.handle)?.let { current.snapshot = it }
-                            current.form = current.snapshot.form.toCoreDraftForm()
-                            result(cmd.requestId,"selected")
-                        } else result(cmd.requestId,"invalid",updated.message)
+                        when (updated.status) {
+                            EventEditorUpdateStatusV1.UPDATED -> {
+                                val snapshot = eventFeatures.editorSnapshot(current.handle)
+                                    ?: return@withLock result(cmd.requestId,"stale")
+                                current.snapshot = snapshot
+                                current.form = snapshot.form.toCoreDraftForm()
+                                result(cmd.requestId,"selected")
+                            }
+                            EventEditorUpdateStatusV1.NOT_FOUND -> result(cmd.requestId,"stale")
+                            EventEditorUpdateStatusV1.LOCKED -> result(cmd.requestId,"locked")
+                            EventEditorUpdateStatusV1.INVALID -> result(
+                                cmd.requestId,"invalid","请先放弃修改并选择有效的重复范围"
+                            )
+                        }
                     }
                 }
                 is WebEditCommand.DiscardEventChanges -> {
