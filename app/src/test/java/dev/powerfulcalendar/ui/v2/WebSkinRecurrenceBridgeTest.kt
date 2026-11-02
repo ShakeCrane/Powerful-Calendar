@@ -12,6 +12,7 @@ import dev.powerfulcalendar.core.RecurrenceFreq
 import dev.powerfulcalendar.core.RecurrenceEditScope
 import dev.powerfulcalendar.core.StoreDeckPersistence
 import dev.powerfulcalendar.core.TemporalKind
+import dev.powerfulcalendar.core.api.v1.EventEditorOpenResultV1
 import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.RecurrenceFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.RecurrenceNextOccurrenceQueryV1
@@ -122,6 +123,44 @@ class WebSkinRecurrenceBridgeTest {
         if (kind == TemporalKind.DEADLINE || kind == TemporalKind.MEMO)
             "2026-10-22T00:00"
         else "2026-10-22T07:30"
+
+    @Test fun webOpenActionDelegatesIdentityAndOccurrenceChecksToCore() {
+        val seq = daily()
+        val formal = requireNotNull(store.get(seq))
+        val key = "2026-10-21T07:30"
+        val action = WebSkinAction.OpenEvent(seq, formal.revision, key)
+
+        assertNull(openFormalEventFromSkin(action, coreFeatureApi.events, writerAvailable = false))
+        assertFalse(store.hasHumanEditor())
+        val opened = openFormalEventFromSkin(action, coreFeatureApi.events, writerAvailable = true)
+        assertTrue(opened is EventEditorOpenResultV1.Opened)
+        val snapshot = (opened as EventEditorOpenResultV1.Opened).editor
+        assertEquals(key, snapshot.form.editOccurrenceKey)
+        assertTrue(store.hasHumanEditor())
+        val racingOpen = openFormalEventFromSkin(
+            action, coreFeatureApi.events, writerAvailable = true
+        )
+        assertTrue(racingOpen is EventEditorOpenResultV1.Invalid)
+        val leaseFailure = racingOpen as EventEditorOpenResultV1.Invalid
+        assertEquals("EDITOR_OPEN_FAILED", leaseFailure.code)
+        assertEquals(leaseFailure.message, webOpenEventFailureMessage(leaseFailure))
+        coreFeatureApi.events.closeFormalEvent(snapshot.handle)
+        assertFalse(store.hasHumanEditor())
+
+        assertTrue(openFormalEventFromSkin(
+            action.copy(expectedRevision = formal.revision + 1), coreFeatureApi.events, true
+        ) is EventEditorOpenResultV1.Stale)
+        assertTrue(openFormalEventFromSkin(
+            action.copy(eventSeq = Long.MAX_VALUE), coreFeatureApi.events, true
+        ) is EventEditorOpenResultV1.Missing)
+        assertTrue(openFormalEventFromSkin(
+            action.copy(occurrenceKey = "2026-10-30T07:30"),
+            coreFeatureApi.events,
+            writerAvailable = true
+        ) is EventEditorOpenResultV1.Invalid)
+        assertFalse(store.hasHumanEditor())
+        assertEquals(formal, store.get(seq))
+    }
 
     @Test fun formalWriteReviewUsesTheSharedOccurrenceByKeyApi() = runBlocking {
         val seq = daily()

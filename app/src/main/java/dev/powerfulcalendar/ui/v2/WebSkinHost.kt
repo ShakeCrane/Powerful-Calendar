@@ -2,7 +2,8 @@ package dev.powerfulcalendar.ui.v2
 
 import dev.powerfulcalendar.core.EditorSelection
 import dev.powerfulcalendar.core.TimelineCoordinate
-import dev.powerfulcalendar.core.api.v1.RecurrenceOccurrenceByKeyV1
+import dev.powerfulcalendar.core.api.v1.EventEditorOpenResultV1
+import dev.powerfulcalendar.core.api.v1.EventFeatureApiV1
 import android.annotation.SuppressLint
 import android.graphics.Color
 import android.net.Uri
@@ -240,18 +241,28 @@ internal fun exactAlarmPermissionStatus(
 
 internal enum class AiProposalDecision { PUBLISH, STAGE, REJECT, SUPPLEMENT }
 
-internal fun validateOpenEvent(
+internal fun openFormalEventFromSkin(
     action: WebSkinAction.OpenEvent,
-    current: dev.powerfulcalendar.core.TemporalRecord?,
-    writerAvailable: Boolean,
-    recurrenceOccurrence: RecurrenceOccurrenceByKeyV1? = null
-): dev.powerfulcalendar.core.TemporalRecord? = current?.takeIf {
-    writerAvailable && it.eventSeq == action.eventSeq && it.revision == action.expectedRevision &&
-        (action.occurrenceKey == null || (it.recurrence.isRepeating &&
-            recurrenceOccurrence?.let { result ->
-                result.eventSeq == it.eventSeq && result.eventRevision == it.revision &&
-                    result.occurrence?.key == action.occurrenceKey
-            } == true))
+    eventFeatures: EventFeatureApiV1,
+    writerAvailable: Boolean
+): EventEditorOpenResultV1? {
+    if (!writerAvailable) return null
+    return eventFeatures.openFormalEvent(
+        action.eventSeq, action.expectedRevision, action.occurrenceKey
+    )
+}
+
+internal fun webOpenEventFailureMessage(result: EventEditorOpenResultV1?): String? = when (result) {
+    null -> "Calendar editor is currently unavailable"
+    is EventEditorOpenResultV1.Opened -> null
+    is EventEditorOpenResultV1.Stale,
+    EventEditorOpenResultV1.Missing -> "Event changed or is no longer available"
+    EventEditorOpenResultV1.Locked -> "当前业务操作暂时锁定了事件编辑"
+    is EventEditorOpenResultV1.Invalid -> if (result.code == "EDITOR_OPEN_FAILED") {
+        result.message ?: "Calendar editor is currently unavailable"
+    } else {
+        "Calendar editor is currently unavailable"
+    }
 }
 
 @Composable

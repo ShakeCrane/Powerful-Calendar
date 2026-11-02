@@ -117,7 +117,6 @@ import dev.powerfulcalendar.core.api.v1.StructuredImportStatusV1
 import dev.powerfulcalendar.core.api.v1.SettingsDataMutationStatusV1
 import dev.powerfulcalendar.core.api.v1.BackupRestoreReceiptV1
 import dev.powerfulcalendar.core.api.v1.RecurrenceNextOccurrenceQueryV1
-import dev.powerfulcalendar.core.api.v1.RecurrenceOccurrenceByKeyQueryV1
 import dev.powerfulcalendar.core.api.v1.newImportRequestId
 import dev.powerfulcalendar.core.api.v1.ReminderEventSnapshotV1
 import dev.powerfulcalendar.core.api.v1.ReminderReconcileModeV1
@@ -741,6 +740,16 @@ fun PowerCalApp(
         onDispose { subscription.close() }
     }
 
+    fun beginFormalEditor(opened: EventEditorSnapshotV1) {
+        editSession = opened.handle
+        editEditor = opened
+        editForm = opened.form.toCoreDraftForm()
+        editBaseline = opened.baselineForm.toCoreDraftForm()
+        editError = opened.lastError
+        editBusy = false
+        editUiRevision = 0
+    }
+
     suspend fun openFormalEditorByIdentity(
         eventSeq: Long,
         expectedRevision: Long,
@@ -749,16 +758,7 @@ fun PowerCalApp(
         when (val result = withContext(Dispatchers.IO) {
             eventFeatureApi.openFormalEvent(eventSeq, expectedRevision, occurrenceKey)
         }) {
-            is EventEditorOpenResultV1.Opened -> {
-                val opened = result.editor
-                editSession = opened.handle
-                editEditor = opened
-                editForm = opened.form.toCoreDraftForm()
-                editBaseline = opened.baselineForm.toCoreDraftForm()
-                editError = opened.lastError
-                editBusy = false
-                editUiRevision = 0
-            }
+            is EventEditorOpenResultV1.Opened -> beginFormalEditor(result.editor)
             is EventEditorOpenResultV1.Stale -> message = "事件已变化，请刷新后重新打开"
             EventEditorOpenResultV1.Missing -> message = "事件已不存在或已删除"
             EventEditorOpenResultV1.Locked -> message = "当前业务操作暂时锁定了事件编辑"
@@ -2345,30 +2345,13 @@ fun PowerCalApp(
                 WebSkinAction.PickAiImage -> launchWebAiAttachmentPicker(image = true)
                 is WebSkinAction.ResolveAiProposal -> resolveWebAiProposalAction(action)
                 is WebSkinAction.OpenEvent -> scope.launch {
-                    val (currentRecord, recurrenceOccurrence) = withContext(Dispatchers.IO) {
-                        val snapshot = eventFeatureApi.queryEvent(action.eventSeq)
-                        val occurrence = if (snapshot != null && action.occurrenceKey != null) {
-                            recurrenceFeatureApi.queryOccurrenceByKey(
-                                RecurrenceOccurrenceByKeyQueryV1(
-                                    event = snapshot,
-                                    occurrenceKey = action.occurrenceKey,
-                                    localZoneId = java.time.ZoneId.systemDefault().id
-                                )
-                            )
-                        } else null
-                        snapshot to occurrence
+                    val result = withContext(Dispatchers.IO) {
+                        openFormalEventFromSkin(
+                            action, eventFeatureApi, !aiLocked && editSession == null
+                        )
                     }
-                    val current = currentRecord?.toCoreTemporalRecord()
-                    val validated = validateOpenEvent(
-                        action, current, !aiLocked && editSession == null, recurrenceOccurrence
-                    )
-                    if (current == null || current.revision != action.expectedRevision) {
-                        message = "Event changed or is no longer available"
-                    } else if (validated == null) {
-                        message = "Calendar editor is currently unavailable"
-                    } else {
-                        openFormalEditor(validated, action.occurrenceKey)
-                    }
+                    if (result is EventEditorOpenResultV1.Opened) beginFormalEditor(result.editor)
+                    else message = checkNotNull(webOpenEventFailureMessage(result))
                 }
             }
         }

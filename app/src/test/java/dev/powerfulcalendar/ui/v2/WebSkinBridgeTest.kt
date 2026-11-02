@@ -1,12 +1,6 @@
 package dev.powerfulcalendar.ui.v2
 
-import dev.powerfulcalendar.core.TemporalKind
-import dev.powerfulcalendar.core.TemporalRecord
-import dev.powerfulcalendar.core.Recurrence
-import dev.powerfulcalendar.core.RecurrenceFreq
-import dev.powerfulcalendar.core.api.v1.CoreRecurrenceFeatureApiV1
-import dev.powerfulcalendar.core.api.v1.RecurrenceOccurrenceByKeyQueryV1
-import dev.powerfulcalendar.core.api.v1.toEventRecordV1
+import dev.powerfulcalendar.core.api.v1.EventEditorOpenResultV1
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -109,51 +103,24 @@ class WebSkinBridgeTest {
             """{"version":1,"type":"action","payload":{"name":"saveProfileEditor","displayName":"line\nbreak"}}"""))
     }
 
-    @Test fun eventOpenRejectsMissingStaleMismatchedAndClosedWriter() {
-        val record = TemporalRecord(42, 7, TemporalKind.MEMO, "safe")
-        val action = WebSkinAction.OpenEvent(42, 7)
-        assertEquals(record, validateOpenEvent(action, record, true))
-        assertNull(validateOpenEvent(action, null, true))
-        assertNull(validateOpenEvent(action, record.copy(revision = 8), true))
-        assertNull(validateOpenEvent(action, record.copy(eventSeq = 43), true))
-        assertNull(validateOpenEvent(action, record, false))
-    }
-
-    @Test fun eventOpenPreservesOnlyAnOccurrenceOwnedByTheCurrentSeries() {
-        val recurring = TemporalRecord(
-            eventSeq = 42,
-            revision = 7,
-            kind = TemporalKind.MEMO,
-            title = "safe",
-            memoStartDate = "2026-10-22",
-            recurrence = Recurrence(freq = RecurrenceFreq.DAILY, count = 2),
-            zoneId = "Asia/Shanghai"
-        )
-        val selectedKey = "2026-10-23T00:00"
-        val action = WebSkinAction.OpenEvent(42, 7, selectedKey)
-        val recurrenceApi = CoreRecurrenceFeatureApiV1()
-        val occurrence = recurrenceApi.queryOccurrenceByKey(
-            RecurrenceOccurrenceByKeyQueryV1(
-                event = recurring.toEventRecordV1(),
-                occurrenceKey = selectedKey,
-                localZoneId = "Asia/Shanghai"
-            )
-        )
-        assertEquals(recurring, validateOpenEvent(action, recurring, true, occurrence))
-        val invalidOccurrence = recurrenceApi.queryOccurrenceByKey(
-            RecurrenceOccurrenceByKeyQueryV1(
-                event = recurring.toEventRecordV1(),
-                occurrenceKey = "2026-10-24T00:00",
-                localZoneId = "Asia/Shanghai"
-            )
-        )
-        assertNull(validateOpenEvent(
-            action.copy(occurrenceKey = "2026-10-24T00:00"), recurring, true, invalidOccurrence
+    @Test fun eventOpenOutcomesKeepHostFeedbackCategories() {
+        assertEquals("Event changed or is no longer available", webOpenEventFailureMessage(
+            EventEditorOpenResultV1.Stale(8)
         ))
-        assertNull(validateOpenEvent(
-            action, recurring.copy(recurrence = Recurrence.NONE), true, occurrence
+        assertEquals("Event changed or is no longer available", webOpenEventFailureMessage(
+            EventEditorOpenResultV1.Missing
         ))
-        assertNull(validateOpenEvent(action.copy(expectedRevision = 6), recurring, true, occurrence))
+        assertEquals("Calendar editor is currently unavailable", webOpenEventFailureMessage(
+            EventEditorOpenResultV1.Invalid("INVALID_OCCURRENCE", "invalid")
+        ))
+        assertEquals("A human editor already owns the calendar writer lease",
+            webOpenEventFailureMessage(EventEditorOpenResultV1.Invalid(
+                "EDITOR_OPEN_FAILED", "A human editor already owns the calendar writer lease"
+            )))
+        assertEquals("Calendar editor is currently unavailable", webOpenEventFailureMessage(null))
+        assertEquals("当前业务操作暂时锁定了事件编辑", webOpenEventFailureMessage(
+            EventEditorOpenResultV1.Locked
+        ))
     }
 
     @Test fun notificationPermissionUsesHostOwnedPlatformFlowAndStatus() {
