@@ -36,7 +36,8 @@ class WebSkinTrustedWriteReviewTest {
         coreFeatureApi = PowerCalCoreFeatureApiV1(store)
         service = WebSkinEditService(coreFeatureApi.adaptDeckController(
             DeckController(StoreDeckPersistence(store))),
-            coreFeatureApi = coreFeatureApi)
+            coreFeatureApi = coreFeatureApi,
+            trustedDeleteApprovalIssuer = coreFeatureApi::issueFormalDeleteApproval)
     }
 
     @After fun tearDown() {

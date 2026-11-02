@@ -9,6 +9,7 @@ import dev.powerfulcalendar.core.api.v1.EventFeatureChangeTypeV1
 import dev.powerfulcalendar.core.api.v1.EventFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.EventKindV1
 import dev.powerfulcalendar.core.api.v1.EventMutationStatusV1
+import dev.powerfulcalendar.core.api.v1.CoreFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -70,9 +71,11 @@ class CoreApiAdapterTest {
             assertEquals(EventMutationStatusV1.CREATED, nativeReceipt.status)
             assertEquals(1L, api.featureRevision)
 
+            val skinFeatureApi: CoreFeatureApiV1 = core
             val service = WebSkinEditService(
-                deck = core.draftReview,
-                coreFeatureApi = core
+                deck = skinFeatureApi.draftReview,
+                coreFeatureApi = skinFeatureApi,
+                trustedDeleteApprovalIssuer = core::issueFormalDeleteApproval
             )
             val opened = service.execute(
                 WebEditCommand.CreateDeck("web-create-01", TemporalKind.ACTIVITY),

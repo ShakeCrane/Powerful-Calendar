@@ -256,6 +256,20 @@ val verifySkinSourceBoundary = tasks.register("verifySkinSourceBoundary") {
                 )
             }
         }
+        val webEditBridge = file("src/main/java/dev/powerfulcalendar/ui/v2/WebSkinEditBridge.kt")
+        if (webEditBridge.isFile) {
+            val bridgeSource = webEditBridge.readText()
+                .replace(Regex("""(?s)/\*.*?\*/"""), "")
+                .replace(Regex("""(?m)//[^\n]*"""), "")
+            val bridgeForbiddenApis = listOf("PowerCalCoreFeatureApiV1", "PowerStore", "StoreDeckPersistence")
+            val violation = bridgeForbiddenApis.firstOrNull { bridgeSource.contains(it) }
+            if (violation != null) {
+                throw GradleException(
+                    "Web edit bridge references Core implementation/persistence type $violation; " +
+                        "depend on CoreFeatureApiV1 and inject trusted Host capabilities separately."
+                )
+            }
+        }
         fileTree("src/main/java/dev/powerfulcalendar/core/api/v1") {
             include("**/*.kt")
         }.forEach { source ->

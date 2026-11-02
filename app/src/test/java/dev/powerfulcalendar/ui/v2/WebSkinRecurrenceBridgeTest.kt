@@ -77,6 +77,7 @@ class WebSkinRecurrenceBridgeTest {
         service = WebSkinEditService(coreFeatureApi.adaptDeckController(
             DeckController(StoreDeckPersistence(store))),
             coreFeatureApi = coreFeatureApi,
+            trustedDeleteApprovalIssuer = coreFeatureApi::issueFormalDeleteApproval,
             recurrenceFeatures = recurrenceRecorder)
     }
     @After fun teardown() {
@@ -130,6 +131,7 @@ class WebSkinRecurrenceBridgeTest {
         service = WebSkinEditService(
             coreFeatureApi.adaptDeckController(DeckController(StoreDeckPersistence(store))),
             coreFeatureApi = coreFeatureApi,
+            trustedDeleteApprovalIssuer = coreFeatureApi::issueFormalDeleteApproval,
             recurrenceFeatures = recorder
         )
 
@@ -486,7 +488,8 @@ class WebSkinRecurrenceBridgeTest {
                 val webCore = PowerCalCoreFeatureApiV1(web)
                 val bridge = WebSkinEditService(
                     webCore.adaptDeckController(DeckController(StoreDeckPersistence(web))),
-                    coreFeatureApi = webCore
+                    coreFeatureApi = webCore,
+                    trustedDeleteApprovalIssuer = webCore::issueFormalDeleteApproval
                 )
                 assertEquals("opened", bridge.execute(command("editor.open", "eventSeq" to webSeq,
                     "expectedRevision" to requireNotNull(web.get(webSeq)).revision,
@@ -536,7 +539,8 @@ class WebSkinRecurrenceBridgeTest {
                 var core = PowerCalCoreFeatureApiV1(target)
                 var bridge = WebSkinEditService(core.adaptDeckController(
                     DeckController(StoreDeckPersistence(target))),
-                    coreFeatureApi = core)
+                    coreFeatureApi = core,
+                    trustedDeleteApprovalIssuer = core::issueFormalDeleteApproval)
                 assertEquals("opened", bridge.execute(command("editor.open", "eventSeq" to draft.eventSeq,
                     "expectedRevision" to original.revision, "occurrenceKey" to key)).getString("status"))
                 var editor = bridge.snapshot().getJSONObject("editor")
@@ -558,7 +562,8 @@ class WebSkinRecurrenceBridgeTest {
                 core = PowerCalCoreFeatureApiV1(target)
                 bridge = WebSkinEditService(core.adaptDeckController(
                     DeckController(StoreDeckPersistence(target))),
-                    coreFeatureApi = core)
+                    coreFeatureApi = core,
+                    trustedDeleteApprovalIssuer = core::issueFormalDeleteApproval)
                 assertEquals("opened", bridge.execute(command("editor.open", "eventSeq" to draft.eventSeq,
                     "expectedRevision" to original.revision)).getString("status"))
                 editor = bridge.snapshot().getJSONObject("editor")

@@ -16,6 +16,7 @@ import dev.powerfulcalendar.core.ReminderMethod
 import dev.powerfulcalendar.core.ReminderTiming
 import dev.powerfulcalendar.core.api.v1.AiFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.AiBatchStateSnapshotV1
+import dev.powerfulcalendar.core.api.v1.CoreFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.EventDeleteApprovalV1
 import dev.powerfulcalendar.core.api.v1.EventEditorHandleV1
 import dev.powerfulcalendar.core.api.v1.EventEditorOpenResultV1
@@ -38,7 +39,6 @@ import dev.powerfulcalendar.core.api.v1.DraftReviewConflictV1
 import dev.powerfulcalendar.core.api.v1.DraftReviewRestoreV1
 import dev.powerfulcalendar.core.api.v1.DraftReviewCardV1
 import dev.powerfulcalendar.core.api.v1.EventFormV1
-import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.RecurrenceFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.RecurrenceOccurrenceByKeyQueryV1
 import dev.powerfulcalendar.core.api.v1.toCoreDraftForm
@@ -429,7 +429,8 @@ internal data class TimelineMoveContext(
 internal class WebSkinEditService(
     private val deck: DraftReviewFeatureApiV1,
     private val externalEditorActive: () -> Boolean = { false },
-    private val coreFeatureApi: PowerCalCoreFeatureApiV1,
+    private val coreFeatureApi: CoreFeatureApiV1,
+    private val trustedDeleteApprovalIssuer: (EventEditorHandleV1) -> EventDeleteApprovalV1?,
     private val eventFeatures: EventFeatureApiV1 = coreFeatureApi.events,
     private val aiFeatures: AiFeatureApiV1 = coreFeatureApi.ai,
     private val recurrenceFeatures: RecurrenceFeatureApiV1 = coreFeatureApi.recurrence
@@ -1638,7 +1639,7 @@ internal class WebSkinEditService(
                         result(review.command.requestId, "conflict", "事件或审查内容已变化")
                     } else {
                         val approval = withContext(Dispatchers.IO) {
-                            coreFeatureApi.issueFormalDeleteApproval(active.handle)
+                            trustedDeleteApprovalIssuer(active.handle)
                         }
                         if (approval == null) result(review.command.requestId, "conflict")
                         else {

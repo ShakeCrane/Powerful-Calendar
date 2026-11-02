@@ -182,6 +182,16 @@ Native 正式事件编辑器调用 `EditSession.delete()`，最终复用 `PowerS
 
 这是 API 35 模拟器上四类事件的单次正式 DELETE 等价证据；没有改 Clear、Host、Core、Native 或 Studio 生产源码。SEP-07/SEP-16 仍为 **PARTIAL / HOLD / INCOMPLETE**：重复系列范围、其他操作配对、恢复/冲突的更广组合、TalkBack 与实体/OEM 验收仍未闭环。本次未触碰两个其他 Agent 对 `WebSkinFormalDeleteInstrumentedTest.kt`、`WebSkinRecurrenceInstrumentedTest.kt` 的未提交修改；本次也未重跑 Studio，因为其源码及接口没有变化。
 
+## Phase 1 Host/Core Feature API dependency follow-up（2026-11-02）
+
+有界 Host/Core 调用审计发现，`WebSkinEditService` 只为签发正式删除批准而持有 `PowerCalCoreFeatureApiV1`；事件、AI、重复规则操作已经通过 Feature API。删除批准签发刻意不属于 Skin 可调用的 `CoreFeatureApiV1`：Core 只有在 Host 收到用户确认后，才为当前编辑句柄签发一次性批准。因此这是依赖注入边界问题，不是删除授权规则缺失。
+
+- `WebSkinEditService` 现依赖稳定的 `CoreFeatureApiV1`，并接收独立的 `trustedDeleteApprovalIssuer` Host capability。`PowerCalApp` 仍在 Host 组装点把 Core 实现的签发方法注入；批准继续绑定原编辑会话，且仅在确认流程通过后请求。没有把签发能力添加到 Skin API，也没有改变 Store 事务或删除语义。
+- `verifySkinSourceBoundary` 现同时拒绝 Web 编辑桥直接依赖 `PowerCalCoreFeatureApiV1`、`PowerStore` 或 `StoreDeckPersistence`。`CoreApiAdapterTest` 通过接口类型 `CoreFeatureApiV1` 注入桥接服务，作为编译期契约检查。
+- 定向回归：`WebSkinEditBridgeTest` **44/44**、`WebSkinRecurrenceBridgeTest` **14/14**、`WebSkinTrustedWriteReviewTest` **4/4**、`CoreApiAdapterTest` **1/1**；边界检查 PASS。完整离线 Android 门禁 **934/934 / 139 XML suites**，0 failures/errors/skips；Debug APK **67,060,418 bytes**, SHA-256 `02B76081DBF9E7452238052A4D7EDC06EA28546A848B456FA4886694B3BB8666`；Lint **0 errors / 54 warnings**。Gradle 日志、JUnit XML 清单和 Focused 日志哈希记录在 `docs/agent-handoff/PROGRESS.md`，本地明细在 `.local/android-test/reports/phase1-bridge-coreapi-injection-20261102/`。
+- Skin Studio **65/65 PASS**；Clear 包校验 **9 files / 397,275 bytes**，SHA-256 `ad0202fc6b9f6341cd0cb9bc1937dc4dd6fe2eda42082cea252e0c8f3f13d403`。本次产品改动没有触碰 Clear 资产。
+- ADB 无设备，emulator AVD 列表为空；本次没有进行 Android WebView 或设备回放。既有 UI/设备验收状态不因这次注入重构改变。
+
 ## Recheck on fetched integration baseline e236aa0 (2026-10-31)
 
 API 35 / Android 15 / WebView 124 on `emulator-5570`: `WebSkinFormalDeleteTouchInstrumentedTest` and the complete `WebSkinAllKindsTrustedWriteInstrumentedTest` passed **16/16**. The run re-exercised actual Clear touchscreen cancel/approve, stale-revision refusal, restoration, and same-fixture Native/Clear formal tombstones for MEMO, ACTIVITY, ALARM and exact-time DEADLINE. The Clear runtime smoke also passed **26/26** across navigation, Memo, timeline/month, AI, Settings and renderer recovery; scoped logcat scan found no uncaught JS syntax/type/reference error or Android fatal exception. No product implementation changed, and SEP-07 remains PARTIAL/HOLD for recurring scopes, broader recovery/conflict combinations, accessibility and physical/OEM evidence. Full XML/logcats and build hashes are indexed at `.local/android-test/reports/skin-first-clear-sep07-20261031/manifest.json` (SHA-256 `87C0C6F00298622B45916C3C9E12A5CB6E991A56ADDB0EC5DA1FB3EBBCD73D42`). The two other-agent test modifications remain outside this change.

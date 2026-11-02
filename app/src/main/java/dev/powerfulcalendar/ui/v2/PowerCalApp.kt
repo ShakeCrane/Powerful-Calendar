@@ -424,7 +424,10 @@ fun PowerCalApp(
         editSession != null || deckOpen || newEventSession != null)
     val webEditing = remember(coreFeatureApi) {
         WebSkinEditService(
-            draftReviewApi, { nativeEditingNow.value }, coreFeatureApi
+            draftReviewApi,
+            { nativeEditingNow.value },
+            coreFeatureApi,
+            coreFeatureApi::issueFormalDeleteApproval
         )
     }
     DisposableEffect(webEditing) {

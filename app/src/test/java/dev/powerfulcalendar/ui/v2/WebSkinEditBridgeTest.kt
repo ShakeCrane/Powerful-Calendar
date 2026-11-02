@@ -133,6 +133,7 @@ class WebSkinEditBridgeTest {
         }
         service=WebSkinEditService(
             recordingDraftReview, coreFeatureApi=coreFeatureApi,
+            trustedDeleteApprovalIssuer = coreFeatureApi::issueFormalDeleteApproval,
             eventFeatures=recordingEvents, aiFeatures=recordingAi
         )
     }
@@ -1359,7 +1360,8 @@ class WebSkinEditBridgeTest {
 
         coreFeatureApi = PowerCalCoreFeatureApiV1(store, fixedClock)
         service = WebSkinEditService(
-            coreFeatureApi.adaptDeckController(controller), coreFeatureApi = coreFeatureApi
+            coreFeatureApi.adaptDeckController(controller), coreFeatureApi = coreFeatureApi,
+            trustedDeleteApprovalIssuer = coreFeatureApi::issueFormalDeleteApproval
         )
 
         for (kind in TemporalKind.entries) {
@@ -1693,7 +1695,8 @@ class WebSkinEditBridgeTest {
         val zone = ZoneId.of("Asia/Tokyo")
         coreFeatureApi = PowerCalCoreFeatureApiV1(store, clock)
         service = WebSkinEditService(
-            coreFeatureApi.adaptDeckController(controller), coreFeatureApi = coreFeatureApi
+            coreFeatureApi.adaptDeckController(controller), coreFeatureApi = coreFeatureApi,
+            trustedDeleteApprovalIssuer = coreFeatureApi::issueFormalDeleteApproval
         )
 
         TemporalKind.entries.forEachIndexed { index, kind ->
@@ -1904,7 +1907,8 @@ class WebSkinEditBridgeTest {
         controller = DeckController(StoreDeckPersistence(store))
         coreFeatureApi = PowerCalCoreFeatureApiV1(store)
         service = WebSkinEditService(
-            coreFeatureApi.adaptDeckController(controller), coreFeatureApi = coreFeatureApi
+            coreFeatureApi.adaptDeckController(controller), coreFeatureApi = coreFeatureApi,
+            trustedDeleteApprovalIssuer = coreFeatureApi::issueFormalDeleteApproval
         )
 
         assertEquals("opened", service.execute(WebEditCommand.OpenDeck(request(), card.draftId))
@@ -1924,7 +1928,8 @@ class WebSkinEditBridgeTest {
         var now = 1_000L
         controller = DeckController(StoreDeckPersistence(store), clock = { now })
         service = WebSkinEditService(
-            coreFeatureApi.adaptDeckController(controller), coreFeatureApi = coreFeatureApi
+            coreFeatureApi.adaptDeckController(controller), coreFeatureApi = coreFeatureApi,
+            trustedDeleteApprovalIssuer = coreFeatureApi::issueFormalDeleteApproval
         )
         val card = store.newDraft(DraftForm(kind = TemporalKind.MEMO, title = "only pending draft"))
         assertEquals("opened", service.execute(WebEditCommand.OpenDeck(request(), card.draftId))
