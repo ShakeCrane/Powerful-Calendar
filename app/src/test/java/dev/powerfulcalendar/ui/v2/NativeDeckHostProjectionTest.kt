@@ -8,6 +8,8 @@ import dev.powerfulcalendar.core.RecurrenceFreq
 import dev.powerfulcalendar.core.ReminderMethod
 import dev.powerfulcalendar.core.ReminderTiming
 import dev.powerfulcalendar.core.TemporalKind
+import dev.powerfulcalendar.core.api.v1.DraftReviewReadinessStatusV1
+import dev.powerfulcalendar.core.api.v1.DraftReviewReadinessV1
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -85,6 +87,36 @@ class NativeDeckHostProjectionTest {
         assertTrue(projected.publishable)
         assertEquals("2026-11-01", mappedBack.endText)
         assertEquals(TemporalKind.DEADLINE, mappedBack.kind)
+    }
+
+    @Test
+    fun draftReadinessDtoDrivesNativePublishabilityAndFieldFeedback() {
+        val form = DraftForm(
+            kind = TemporalKind.ACTIVITY,
+            title = "结束时间不晚于开始时间",
+            startText = "2026-11-01 09:00",
+            endText = "2026-11-01 09:00",
+            zoneId = zone.id
+        )
+        val readiness = DraftReviewReadinessV1(
+            status = DraftReviewReadinessStatusV1.INCOMPLETE,
+            missingFields = listOf("END"),
+            startMillis = capturedNow,
+            endMillis = capturedNow,
+            validStart = true,
+            validEnd = true,
+            activityEndBeforeStart = true
+        )
+
+        val projected = form.toNativeDeckForm(capturedNow, readiness)
+
+        assertFalse(projected.publishable)
+        assertEquals(listOf("结束时间"), projected.missingFields)
+        assertTrue(projected.activityEndBeforeStart)
+        assertTrue(projected.validEnd)
+
+        val deleteReadiness = DraftReviewReadinessV1(DraftReviewReadinessStatusV1.NOT_REQUIRED)
+        assertTrue(form.toNativeDeckForm(capturedNow, deleteReadiness).publishable)
     }
 
     @Test

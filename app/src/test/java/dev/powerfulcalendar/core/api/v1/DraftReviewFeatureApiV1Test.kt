@@ -779,6 +779,37 @@ class DraftReviewFeatureApiV1Test {
         assertEquals(0, store.commitCount())
     }
 
+    @Test fun readinessTracksCoreBuildAndDeleteDoesNotRequireAValidForm() = runBlocking {
+        val api = core.draftReview
+        val incomplete = store.newDraft(newActivityDraft("Readiness").copy(endText = ""))
+        api.open(incomplete.draftId)
+
+        val initial = api.snapshot
+        assertEquals(DraftReviewReadinessStatusV1.INCOMPLETE, initial.currentReadiness?.status)
+        assertEquals(listOf("END"), initial.currentReadiness?.missingFields)
+        assertFalse(requireNotNull(initial.currentReadiness).canCommit)
+
+        val current = requireNotNull(initial.current)
+        assertEquals(DraftReviewReceiptStatusV1.APPLIED, api.editCurrentDraft(
+            incomplete.draftId, current.draftVersion, initial.stateRevision,
+            requireNotNull(initial.form).copy(endText = "2026-10-26 10:00")
+        ).status)
+        assertEquals(DraftReviewReadinessStatusV1.READY, api.snapshot.currentReadiness?.status)
+        assertTrue(requireNotNull(api.snapshot.currentReadiness).canCommit)
+
+        val formal = createFormalEvent("Delete readiness")
+        val delete = store.newDraft(
+            DraftForm(kind = TemporalKind.ACTIVITY, zoneId = zone.id),
+            formal.eventSeq, DraftOperation.DELETE, expectedRevision = formal.revision
+        )
+        api.open(delete.draftId)
+        val deleteReadiness = requireNotNull(api.snapshot.currentReadiness)
+        assertEquals(DraftReviewReadinessStatusV1.NOT_REQUIRED, deleteReadiness.status)
+        assertTrue(deleteReadiness.canCommit)
+        assertEquals(DraftReviewReadinessStatusV1.NOT_REQUIRED,
+            api.queryDraft(delete.draftId)?.readiness?.status)
+    }
+
     @Test fun deleteThenRestoreApproval() = runBlocking {
         val original = createFormalEvent("Delete then restore")
         val deleteCard = store.newDraft(

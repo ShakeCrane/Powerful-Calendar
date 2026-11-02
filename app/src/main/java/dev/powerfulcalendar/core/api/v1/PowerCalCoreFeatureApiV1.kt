@@ -1070,6 +1070,10 @@ internal class StoreEventFeatureApiV1(
         publish(type, eventSeq, revision)
     }
 
+    internal fun publishDeckDraftChange(eventSeq: Long) {
+        publish(EventFeatureChangeTypeV1.DRAFTS_CHANGED, eventSeq)
+    }
+
     internal fun publishStoreRestored() {
         publish(EventFeatureChangeTypeV1.STORE_RESTORED)
     }
@@ -1513,14 +1517,37 @@ private class StoreDraftReviewFeatureApiV1(
                     errorCode = "DRAFT_REVIEW_STALE", message = "草稿已变化，请重新检查")
                 DeckReviewCommandResult.LOCKED -> receipt(requestId, DraftReviewReceiptStatusV1.LOCKED,
                     draftId = draftId, eventSeq = card.eventSeq, errorCode = "DRAFT_REVIEW_LOCKED")
-                DeckReviewCommandResult.NOT_APPLIED -> when {
-                    controller.state.conflict != null -> receipt(requestId,
-                        DraftReviewReceiptStatusV1.REVIEW_REQUIRED, draftId = draftId,
-                        eventSeq = card.eventSeq, errorCode = "FORMAL_CONFLICT_REVIEW_REQUIRED")
-                    controller.state.restore != null -> receipt(requestId,
-                        DraftReviewReceiptStatusV1.RESTORE_REQUIRED, draftId = draftId,
-                        eventSeq = card.eventSeq, errorCode = "FORMAL_RESTORE_REVIEW_REQUIRED")
-                    else -> failureReceipt(requestId, "DRAFT_COMMIT_NOT_APPLIED", draftId, card.eventSeq)
+                DeckReviewCommandResult.NOT_APPLIED -> {
+                    val persisted = store.draft(draftId)
+                    val readiness = (before.form ?: card.form).toDraftReviewReadiness(
+                        card.operation, card.eventSeq, card.baseRevision
+                    )
+                    if (persisted != null && persisted.status != card.status) {
+                        try {
+                            controller.refresh(draftId)
+                        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                            throw cancelled
+                        } catch (_: Exception) {
+                            // The Store mutation already happened; keep its receipt authoritative.
+                        }
+                        events.publishDeckDraftChange(card.eventSeq)
+                    }
+                    when {
+                        controller.state.conflict != null -> receipt(requestId,
+                            DraftReviewReceiptStatusV1.REVIEW_REQUIRED, draftId = draftId,
+                            eventSeq = card.eventSeq, errorCode = "FORMAL_CONFLICT_REVIEW_REQUIRED")
+                        controller.state.restore != null -> receipt(requestId,
+                            DraftReviewReceiptStatusV1.RESTORE_REQUIRED, draftId = draftId,
+                            eventSeq = card.eventSeq, errorCode = "FORMAL_RESTORE_REVIEW_REQUIRED")
+                        readiness.status == DraftReviewReadinessStatusV1.INCOMPLETE ||
+                            readiness.status == DraftReviewReadinessStatusV1.INVALID -> receipt(
+                                requestId, DraftReviewReceiptStatusV1.INVALID,
+                                draftId = draftId, eventSeq = card.eventSeq,
+                                draftVersion = persisted?.draftVersion ?: before.version,
+                                errorCode = readiness.errorCode ?: "DRAFT_FORM_INVALID",
+                                message = readiness.message ?: controller.state.error)
+                        else -> failureReceipt(requestId, "DRAFT_COMMIT_NOT_APPLIED", draftId, card.eventSeq)
+                    }
                 }
             }
         }
@@ -1707,14 +1734,81 @@ private fun DeckController.DeckState.toDraftReviewSnapshotV1(): DraftReviewSnaps
         ) },
         restore = restore?.let { DraftReviewRestoreV1(it.eventSeq, projected(it.card), it.message) },
         completion = completion?.let { DraftReviewCompletionV1(it.published, it.discarded, it.conflicts) },
-        lastDiscardId = lastDiscardId, busy = busy
+        lastDiscardId = lastDiscardId, busy = busy,
+        currentReadiness = current?.let { card ->
+            (form ?: card.form).toDraftReviewReadiness(
+                card.operation, card.eventSeq, card.baseRevision
+            )
+        }
     )
 }
 
 private fun DraftCard.toDraftReviewCardV1() = DraftReviewCardV1(
     draftId, eventSeq, queueOrder, DraftOperationV1.valueOf(operation.name), form.toEventFormV1(),
-    DraftStatusV1.valueOf(status.name), baseRevision, draftVersion, createdAtMillis, updatedAtMillis
+    DraftStatusV1.valueOf(status.name), baseRevision, draftVersion, createdAtMillis, updatedAtMillis,
+    readiness = form.toDraftReviewReadiness(operation, eventSeq, baseRevision)
 )
+
+private fun DraftForm.toDraftReviewReadiness(
+    operation: DraftOperation,
+    eventSeq: Long,
+    baseRevision: Long?
+): DraftReviewReadinessV1 {
+    val start = parseStart()
+    val end = parseEnd()
+    val deadline = parseDeadline()
+    val dateOnlyDeadline = (deadline as? dev.powerfulcalendar.core.DeadlineValue.Date)?.date
+    val invalidScope = operation != DraftOperation.DELETE &&
+        (recurrenceEditScope != null || editOccurrenceKey != null)
+    val classification = if (operation == DraftOperation.DELETE) null else build(
+        eventSeq.coerceAtLeast(1L), (baseRevision ?: 0L) + 1L, nowMillis = 0L
+    )
+    val status = when {
+        operation == DraftOperation.DELETE -> DraftReviewReadinessStatusV1.NOT_REQUIRED
+        invalidScope -> DraftReviewReadinessStatusV1.INVALID
+        classification is dev.powerfulcalendar.core.FormBuild.Ready ->
+            DraftReviewReadinessStatusV1.READY
+        classification is dev.powerfulcalendar.core.FormBuild.Incomplete ->
+            DraftReviewReadinessStatusV1.INCOMPLETE
+        else -> DraftReviewReadinessStatusV1.INVALID
+    }
+    val missing = when (classification) {
+        is dev.powerfulcalendar.core.FormBuild.Incomplete -> classification.missing.map { it.name }
+        else -> missingFields().map { it.name }
+    }
+    val message = when (classification) {
+        is dev.powerfulcalendar.core.FormBuild.Incomplete -> classification.message
+        is dev.powerfulcalendar.core.FormBuild.Invalid -> classification.reason
+        else -> null
+    } ?: if (invalidScope) "普通草稿不能携带既有重复实例编辑范围" else null
+    return DraftReviewReadinessV1(
+        status = status,
+        missingFields = missing,
+        errorCode = when (status) {
+            DraftReviewReadinessStatusV1.INCOMPLETE -> "DRAFT_FORM_INCOMPLETE"
+            DraftReviewReadinessStatusV1.INVALID -> if (invalidScope)
+                "DRAFT_SCOPE_INVALID" else "DRAFT_FORM_INVALID"
+            else -> null
+        },
+        message = message,
+        startMillis = start,
+        endMillis = end,
+        deadlineDate = dateOnlyDeadline?.toString(),
+        validStart = when (kind) {
+            TemporalKind.ALARM, TemporalKind.ACTIVITY -> start != null
+            TemporalKind.MEMO -> startText.isBlank() || DraftForm.parseDateOnly(startText) != null
+            TemporalKind.DEADLINE -> true
+        },
+        validEnd = when (kind) {
+            TemporalKind.ACTIVITY -> end != null
+            TemporalKind.DEADLINE -> deadline != null
+            TemporalKind.MEMO -> endText.isBlank() || DraftForm.parseDateOnly(endText) != null
+            TemporalKind.ALARM -> true
+        },
+        deadlineDateOnly = kind == TemporalKind.DEADLINE && dateOnlyDeadline != null,
+        activityEndBeforeStart = kind == TemporalKind.ACTIVITY && start != null && end != null && end <= start
+    )
+}
 
 private fun persistedDeckFingerprint(state: DeckController.DeckState): String =
     persistedDraftFingerprint(state.cards)

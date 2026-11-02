@@ -26,6 +26,7 @@ import dev.powerfulcalendar.core.api.v1.DraftReviewSnapshotV1
 import dev.powerfulcalendar.core.api.v1.DraftReviewCardV1
 import dev.powerfulcalendar.core.api.v1.DraftReviewReceiptV1
 import dev.powerfulcalendar.core.api.v1.DraftReviewReceiptStatusV1
+import dev.powerfulcalendar.core.api.v1.DraftReviewReadinessV1
 import dev.powerfulcalendar.core.api.v1.toCoreDraftForm
 import dev.powerfulcalendar.core.api.v1.toCoreTemporalRecord
 import dev.powerfulcalendar.core.api.v1.toEventFormV1
@@ -440,11 +441,16 @@ internal fun createPickerActions(
     )
 }
 
-internal fun DraftForm.toNativeDeckForm(pickerNowMillis: Long): NativeDeckForm {
+internal fun DraftForm.toNativeDeckForm(
+    pickerNowMillis: Long,
+    readiness: DraftReviewReadinessV1? = null
+): NativeDeckForm {
     val defaults = EditorDefaults.capture(Clock.fixed(Instant.ofEpochMilli(pickerNowMillis), zone), zone)
-    val start = parseStart()
-    val end = parseEnd()
-    val dateOnly = DraftForm.parseDateOnly(endText)
+    val start = if (readiness != null) readiness.startMillis else parseStart()
+    val end = if (readiness != null) readiness.endMillis else parseEnd()
+    val dateOnly = if (readiness != null) {
+        readiness.deadlineDate?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+    } else DraftForm.parseDateOnly(endText)
     val nextHour = start?.plus(3_600_000L)
     return NativeDeckForm(
         kind = kind.toNativeKind(), title = title, startText = startText, endText = endText,
@@ -458,20 +464,23 @@ internal fun DraftForm.toNativeDeckForm(pickerNowMillis: Long): NativeDeckForm {
         sourceLabel = TemporalText.sourceLabel(source), zoneLabel = zoneId,
         recurrenceFreq = recurrence.freq.toNativeFreq(),
         recurrenceFromDate = recurrence.activeFromDate, recurrenceUntilDate = recurrence.activeUntilDate,
-        missingFields = missingFields().map { it.label }, publishable = isPublishable(),
-        validStart = when (kind) {
+        missingFields = readiness?.missingFields?.map(::draftFieldLabel)
+            ?: missingFields().map { it.label },
+        publishable = readiness?.canCommit ?: isPublishable(),
+        validStart = readiness?.validStart ?: when (kind) {
             TemporalKind.ALARM, TemporalKind.ACTIVITY -> start != null
             TemporalKind.MEMO -> startText.isBlank() || DraftForm.parseDateOnly(startText) != null
             TemporalKind.DEADLINE -> true
         },
-        validEnd = when (kind) {
+        validEnd = readiness?.validEnd ?: when (kind) {
             TemporalKind.ACTIVITY -> end != null
             TemporalKind.DEADLINE -> parseDeadline() != null
             TemporalKind.MEMO -> endText.isBlank() || DraftForm.parseDateOnly(endText) != null
             TemporalKind.ALARM -> true
         },
-        deadlineDateOnly = kind == TemporalKind.DEADLINE && dateOnly != null,
-        activityEndBeforeStart = kind == TemporalKind.ACTIVITY && start != null && end != null && end <= start,
+        deadlineDateOnly = readiness?.deadlineDateOnly ?: (kind == TemporalKind.DEADLINE && dateOnly != null),
+        activityEndBeforeStart = readiness?.activityEndBeforeStart
+            ?: (kind == TemporalKind.ACTIVITY && start != null && end != null && end <= start),
         recoveryScoped = recurrenceEditScope != null,
         occurrenceScoped = editOccurrenceKey != null,
         repeating = recurrence.isRepeating,
@@ -505,7 +514,7 @@ private fun DraftReviewSnapshotV1.toNativeDeckState(
     aiSession: AiBatchSessionV1?
 ): NativeDeckState {
     val drafts = cards.map { it.toNativeDeckCard(pickerNowMillis) }
-    val currentForm = form?.toCoreDraftForm()?.toNativeDeckForm(pickerNowMillis)
+    val currentForm = form?.toCoreDraftForm()?.toNativeDeckForm(pickerNowMillis, currentReadiness)
     val conflict = conflict?.let { prompt ->
         val current = prompt.current?.toCoreTemporalRecord()
         val approvedForm = prompt.approvedForm.toCoreDraftForm()
@@ -548,8 +557,16 @@ private fun DraftReviewCardV1.toNativeDeckCard(pickerNowMillis: Long) = NativeDe
     operationLabel = DraftOperation.valueOf(operation.name).label,
     status = DraftStatus.valueOf(status.name).toNativeStatus(),
     draftVersion = draftVersion,
-    form = form.toCoreDraftForm().toNativeDeckForm(pickerNowMillis)
+    form = form.toCoreDraftForm().toNativeDeckForm(pickerNowMillis, readiness)
 )
+
+private fun draftFieldLabel(field: String): String = when (field) {
+    "TITLE" -> "标题"
+    "START" -> "开始时间"
+    "END" -> "结束时间"
+    "DEADLINE" -> "截止日期或时刻"
+    else -> field
+}
 
 private fun TemporalKind.toNativeKind() = when (this) {
     TemporalKind.ALARM -> NativeDeckKind.ALARM

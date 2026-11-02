@@ -7,6 +7,28 @@ enum class DraftOperationV1 {
 }
 enum class DraftStatusV1 { PENDING, CONFLICT, DISCARDED, COMMITTED, INVALID }
 
+enum class DraftReviewReadinessStatusV1 { READY, INCOMPLETE, INVALID, NOT_REQUIRED }
+
+/** Core classification of whether a draft form may proceed to explicit Host review. */
+data class DraftReviewReadinessV1(
+    val status: DraftReviewReadinessStatusV1,
+    val missingFields: List<String> = emptyList(),
+    val errorCode: String? = null,
+    val message: String? = null,
+    /** Parsed form values consumed by Host pickers and field feedback. */
+    val startMillis: Long? = null,
+    val endMillis: Long? = null,
+    val deadlineDate: String? = null,
+    val validStart: Boolean = true,
+    val validEnd: Boolean = true,
+    val deadlineDateOnly: Boolean = false,
+    val activityEndBeforeStart: Boolean = false
+) {
+    /** Readiness is only an affordance; commit still revalidates under the Store transaction. */
+    val canCommit: Boolean get() = status == DraftReviewReadinessStatusV1.READY ||
+        status == DraftReviewReadinessStatusV1.NOT_REQUIRED
+}
+
 data class DraftReviewCardV1(
     val draftId: Long,
     val eventSeq: Long,
@@ -17,7 +39,9 @@ data class DraftReviewCardV1(
     val baseRevision: Long?,
     val draftVersion: Long,
     val createdAtMillis: Long,
-    val updatedAtMillis: Long
+    val updatedAtMillis: Long,
+    /** Core-owned commit readiness for this persisted card; DELETE forms are not required. */
+    val readiness: DraftReviewReadinessV1? = null
 )
 
 data class DraftReviewFieldChangeV1(
@@ -80,7 +104,9 @@ data class DraftReviewSnapshotV1(
     val restore: DraftReviewRestoreV1? = null,
     val completion: DraftReviewCompletionV1? = null,
     val lastDiscardId: Long? = null,
-    val busy: Boolean = false
+    val busy: Boolean = false,
+    /** Core-owned readiness of [form], including unsaved edits in the current editor. */
+    val currentReadiness: DraftReviewReadinessV1? = null
 ) {
     val position: Int get() = cards.indexOfFirst { it.draftId == currentId }.coerceAtLeast(0)
     val canGoPrevious: Boolean get() = position > 0

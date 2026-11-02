@@ -21,6 +21,7 @@ import dev.powerfulcalendar.core.api.v1.AiFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.DraftReviewCardV1
 import dev.powerfulcalendar.core.api.v1.DraftReviewFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.EventFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.EventFeatureChangeTypeV1
 import dev.powerfulcalendar.core.api.v1.EventEditorHandleV1
 import dev.powerfulcalendar.core.api.v1.EventEditorUpdateReceiptV1
 import dev.powerfulcalendar.core.api.v1.EventMutationReceiptV1
@@ -58,6 +59,7 @@ class WebSkinEditBridgeTest {
     private val queriedBatchLockStates = mutableListOf<Boolean>()
     private val selectedRecurrenceScopes = mutableListOf<EventRecurrenceScopeV1>()
     private val savedNewEventReceipts = mutableListOf<EventMutationReceiptV1>()
+    private val testZone = ZoneId.of("Asia/Shanghai")
     private fun request()=UUID.randomUUID().toString()
     @Before fun setup(){
         context=ApplicationProvider.getApplicationContext()
@@ -1500,6 +1502,65 @@ class WebSkinEditBridgeTest {
         assertEquals(0,store.pendingCount())
         assertEquals(1,store.draftCount())
         assertEquals(1,store.commitCount())
+    }
+
+    @Test fun incompletePersistedDraftUsesCoreReadinessWithoutOpeningApproval() = runBlocking {
+        val card = store.newDraft(DraftForm(
+            kind = TemporalKind.ACTIVITY,
+            title = "Incomplete persisted draft",
+            startText = "2026-11-02 09:00",
+            zoneId = testZone.id
+        ))
+        assertEquals("opened", service.execute(WebEditCommand.OpenDeck(
+            request(), card.draftId
+        )).getString("status"))
+        val changes = mutableListOf<dev.powerfulcalendar.core.api.v1.EventFeatureChangeV1>()
+        val subscription = coreFeatureApi.events.subscribe(changes::add)
+
+        val version = service.snapshot().getJSONObject("deck").getLong("version")
+        val result = service.execute(WebEditCommand.CommitDeck(request(), card.draftId, version))
+
+        assertEquals("invalid", result.getString("status"))
+        assertNull(service.pendingWriteReview)
+        assertEquals(DraftStatus.INVALID, store.draft(card.draftId)?.status)
+        assertNull(store.get(card.eventSeq))
+        assertEquals(0, store.commitCount())
+        assertEquals("INVALID", coreFeatureApi.adaptDeckController(controller)
+            .snapshot.current?.status?.name)
+        assertTrue(changes.any {
+            it.type == EventFeatureChangeTypeV1.DRAFTS_CHANGED && it.eventSeq == card.eventSeq
+        })
+        subscription.close()
+    }
+
+    @Test fun deleteReadinessDoesNotRequireItsFormAndStillWaitsForHostApproval() = runBlocking {
+        val formal = commitFormal(DraftForm(
+            kind = TemporalKind.ACTIVITY,
+            title = "Delete target",
+            startText = "2026-11-02 09:00",
+            endText = "2026-11-02 10:00",
+            zoneId = testZone.id
+        ))
+        val commitsBeforeDelete = store.commitCount()
+        val delete = store.newDraft(
+            DraftForm(kind = TemporalKind.ACTIVITY, zoneId = testZone.id),
+            formal.eventSeq, DraftOperation.DELETE, expectedRevision = formal.revision
+        )
+        assertEquals("opened", service.execute(WebEditCommand.OpenDeck(
+            request(), delete.draftId
+        )).getString("status"))
+
+        val version = service.snapshot().getJSONObject("deck").getLong("version")
+        val publish = WebEditCommand.CommitDeck(request(), delete.draftId, version)
+        assertEquals("confirmation_required", service.execute(publish).getString("status"))
+        assertEquals(formal, store.get(formal.eventSeq))
+        assertEquals(commitsBeforeDelete, store.commitCount())
+        assertEquals("committed", service.resolveFormalWriteReview(
+            requireNotNull(service.pendingWriteReview).token, approved = true
+        ).getString("status"))
+        assertNull(store.get(formal.eventSeq))
+        assertTrue(store.isRetired(formal.eventSeq))
+        assertEquals(commitsBeforeDelete + 1, store.commitCount())
     }
 
     @Test fun incompleteWebPublishStagesAndResumesEveryEventKindWithoutDuplicateWrites() = runBlocking {

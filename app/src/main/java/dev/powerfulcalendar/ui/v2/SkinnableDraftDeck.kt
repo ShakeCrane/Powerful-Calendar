@@ -172,7 +172,7 @@ fun DraftDeckDialog(
     val context = DeckVisualContext(
         state = draftReviewApi.snapshot.copy(error = state.error),
         busy = locked,
-        canCommit = state.form?.toCoreDraftForm()?.isPublishable() == true,
+        canCommit = state.currentReadiness?.canCommit == true,
         aiSession = aiSession,
         onDismiss = { leave() },
         onOpenFormalEvent = { hit -> leave { onOpenFormalEvent(hit) } },

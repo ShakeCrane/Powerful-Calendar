@@ -9,7 +9,6 @@ import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.DraftCard
 import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.DraftStatus
-import dev.powerfulcalendar.core.FormBuild
 import dev.powerfulcalendar.core.RecurrenceFreq
 import dev.powerfulcalendar.core.Recurrence
 import dev.powerfulcalendar.core.RecurrenceEditScope
@@ -1439,9 +1438,7 @@ internal class WebSkinEditService(
         val current = if (card.operation.requiresExisting) {
             queryCurrentFormalEvent(card.eventSeq)
         } else null
-        val ready = form.build(card.eventSeq.coerceAtLeast(1L), (card.baseRevision ?: 0L) + 1L)
-        if (card.operation != dev.powerfulcalendar.core.api.v1.DraftOperationV1.DELETE &&
-            ready !is FormBuild.Ready)
+        if (deck.snapshot.currentReadiness?.canCommit != true)
             return commitDeckResult(cmd.requestId, card.draftId, card.draftVersion,
                 deck.snapshot.stateRevision)
         if (card.operation.requiresExisting && current == null)
