@@ -3848,7 +3848,7 @@ fun PowerCalApp(
                     confirmingLegacy = false
                     scope.launch {
                         val result = withContext(Dispatchers.IO) {
-                            LegacyImporter.migrate(appContext, store)
+                            LegacyImporter.migrate(appContext, importExportApi)
                         }
                         reload()
                         message = if (!result.available) {

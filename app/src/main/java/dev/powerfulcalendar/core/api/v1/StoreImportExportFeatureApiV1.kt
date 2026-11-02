@@ -187,7 +187,7 @@ internal class StoreImportExportFeatureApiV1(
         startMillis = startMillis,
         endMillis = endMillis.coerceAtLeast(startMillis + 60_000L),
         reminderMinutes = reminderMinutes,
-        enabled = reminderMinutes >= 0,
+        enabled = enabled,
         source = source,
         zoneId = zoneId
     )

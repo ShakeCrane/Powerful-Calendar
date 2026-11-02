@@ -2,9 +2,10 @@ package dev.powerfulcalendar.data
 
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
-import dev.powerfulcalendar.core.PowerStore
-import dev.powerfulcalendar.core.TemporalKind
-import dev.powerfulcalendar.core.TemporalRecord
+import dev.powerfulcalendar.core.api.v1.ImportExportFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.StructuredCalendarEventV1
+import dev.powerfulcalendar.core.api.v1.StructuredImportStatusV1
+import java.time.ZoneId
 
 /**
  * One-way, explicitly requested migration from the v0.1 prototype database.
@@ -27,7 +28,7 @@ object LegacyImporter {
         val warnings: List<String> = emptyList()
     )
 
-    fun migrate(context: Context, store: PowerStore): Result {
+    fun migrate(context: Context, importExport: ImportExportFeatureApiV1): Result {
         val file = context.getDatabasePath(LEGACY_DATABASE)
         if (!file.exists()) {
             return Result(available = false, warnings = listOf("没有找到旧版数据库，无需迁移"))
@@ -37,7 +38,7 @@ object LegacyImporter {
         }.getOrElse {
             return Result(available = true, warnings = listOf("无法只读打开旧版数据库：" + it.message))
         }
-        val batchId = store.beginMigration(SOURCE)
+        val batch = importExport.beginStructuredImport(SOURCE)
         val warnings = mutableListOf<String>()
         var imported = 0
         var skipped = 0
@@ -47,8 +48,8 @@ object LegacyImporter {
             ).use { it.moveToFirst() }
             if (!hasTable) {
                 val warning = "旧版数据库没有 events 表"
-                store.finishMigration(batchId, listOf(warning))
-                return Result(available = true, batchId = batchId, warnings = listOf(warning))
+                importExport.finishStructuredImport(batch, listOf(warning))
+                return Result(available = true, batchId = batch.value, warnings = listOf(warning))
             }
             legacy.rawQuery(
                 """SELECT id,title,start_ms,end_ms,notes,location,priority,reminder_minutes,
@@ -64,32 +65,30 @@ object LegacyImporter {
                     val location = cursor.getString(5).orEmpty()
                     val allDay = cursor.getInt(8) == 1
                     val origin = cursor.getString(9).orEmpty().ifBlank { "local" }
-                    val record = TemporalRecord(
-                        eventSeq = 0L,
-                        revision = 0L,
-                        kind = TemporalKind.ACTIVITY,
+                    val event = StructuredCalendarEventV1(
                         title = title,
                         notes = if (notes.isBlank()) "" else notes,
                         location = location,
                         startMillis = start,
                         endMillis = end,
                         reminderMinutes = cursor.getInt(7),
-                        enabled = true,
                         source = SOURCE,
-                        createdAtMillis = start
+                        zoneId = ZoneId.systemDefault().id,
+                        enabled = true
                     )
                     val externalId = "v01:$legacyId"
-                    when (val outcome = store.importStructured(
-                        record = record,
+                    val outcome = importExport.importStructuredEvent(
+                        batch = batch,
+                        source = SOURCE,
                         externalId = externalId,
-                        batchId = batchId,
-                        source = SOURCE
-                    )) {
-                        is PowerStore.ImportOutcome.Imported -> imported++
-                        is PowerStore.ImportOutcome.AlreadyImported -> skipped++
-                        is PowerStore.ImportOutcome.Rejected -> {
+                        event = event
+                    )
+                    when (outcome.status) {
+                        StructuredImportStatusV1.IMPORTED -> imported++
+                        StructuredImportStatusV1.ALREADY_IMPORTED -> skipped++
+                        StructuredImportStatusV1.REJECTED -> {
                             skipped++
-                            warnings.add("旧事件 #$legacyId 校验失败：" + outcome.reason)
+                            warnings.add("旧事件 #$legacyId 校验失败：" + outcome.reason.orEmpty())
                         }
                     }
                     if (allDay) {
@@ -105,7 +104,7 @@ object LegacyImporter {
         } finally {
             legacy.close()
         }
-        store.finishMigration(batchId, warnings.take(50))
-        return Result(true, batchId, imported, skipped, warnings.take(50))
+        importExport.finishStructuredImport(batch, warnings.take(50))
+        return Result(true, batch.value, imported, skipped, warnings.take(50))
     }
 }

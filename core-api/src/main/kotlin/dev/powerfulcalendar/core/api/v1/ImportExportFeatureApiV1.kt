@@ -41,7 +41,8 @@ data class StructuredCalendarEventV1(
     val location: String = "",
     val reminderMinutes: Int = 0,
     val source: String = "android-calendar",
-    val zoneId: String
+    val zoneId: String,
+    val enabled: Boolean = reminderMinutes >= 0
 )
 
 data class StructuredImportBatchHandleV1(val value: String)

@@ -5,6 +5,8 @@ import android.database.sqlite.SQLiteDatabase
 import androidx.test.core.app.ApplicationProvider
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.TemporalKind
+import dev.powerfulcalendar.core.api.v1.EventFeatureChangeTypeV1
+import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -28,12 +30,14 @@ class LegacyMigrationTest {
 
     private lateinit var context: Context
     private lateinit var store: PowerStore
+    private lateinit var core: PowerCalCoreFeatureApiV1
     private lateinit var legacyPath: java.io.File
 
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
         store = PowerStore(context, "test-" + UUID.randomUUID() + ".db")
+        core = PowerCalCoreFeatureApiV1(store, importCheckpointContext = context)
         legacyPath = context.getDatabasePath(LegacyImporter.LEGACY_DATABASE)
         legacyPath.parentFile?.mkdirs()
         context.deleteDatabase(LegacyImporter.LEGACY_DATABASE)
@@ -47,7 +51,7 @@ class LegacyMigrationTest {
         context.deleteDatabase(LegacyImporter.LEGACY_DATABASE)
     }
 
-    private fun createLegacyDatabase(rows: Int) {
+    private fun createLegacyDatabase(rows: Int, reminderMinutes: Int = 10) {
         val db = SQLiteDatabase.openOrCreateDatabase(legacyPath, null)
         db.execSQL(
             """CREATE TABLE events (
@@ -72,7 +76,7 @@ class LegacyMigrationTest {
                    VALUES(?,?,?,?,?,?,?,?,?,?)""",
                 arrayOf<Any?>(
                     "旧事件 $index", start, start + 3_600_000L, "旧备注", "老地点",
-                    "HIGH", 10, 0, "local", null
+                    "HIGH", reminderMinutes, 0, "local", null
                 )
             )
         }
@@ -122,28 +126,46 @@ class LegacyMigrationTest {
     fun migrationImportsOnceAndLeavesTheOldFileIntact() {
         createLegacyDatabase(rows = 2)
         val before = legacyPath.length()
+        val changes = mutableListOf<EventFeatureChangeTypeV1>()
+        val subscription = core.events.subscribe { changes += it.type }
+        try {
+            val first = LegacyImporter.migrate(context, core.importExport)
+            assertTrue(first.available)
+            assertEquals(2, first.imported)
+            assertEquals(0, first.skipped)
+            assertEquals(2, store.all().size)
+            assertTrue(store.all().all { it.kind == TemporalKind.ACTIVITY })
+            assertTrue(store.all().all { it.source == LegacyImporter.SOURCE })
+            assertEquals(2, store.identityCount())
+            assertEquals(3L, store.nextSequencePreview())
+            assertEquals(
+                listOf(
+                    EventFeatureChangeTypeV1.FORMAL_CREATED,
+                    EventFeatureChangeTypeV1.FORMAL_CREATED
+                ),
+                changes
+            )
+            assertEquals(2, legacyRowCount())
+            assertEquals(before, legacyPath.length())
 
-        val first = LegacyImporter.migrate(context, store)
-        assertTrue(first.available)
-        assertEquals(2, first.imported)
-        assertEquals(0, first.skipped)
-        assertEquals(2, store.all().size)
-        assertTrue(store.all().all { it.kind == TemporalKind.ACTIVITY })
-        assertTrue(store.all().all { it.source == LegacyImporter.SOURCE })
-        assertEquals(2, legacyRowCount())
-        assertEquals(before, legacyPath.length())
-
-        // Re-running is idempotent: no duplicates, everything counted as skipped.
-        val second = LegacyImporter.migrate(context, store)
-        assertEquals(0, second.imported)
-        assertEquals(2, second.skipped)
-        assertEquals(2, store.all().size)
-        assertEquals(2, legacyRowCount())
+            // Re-running is idempotent: no duplicates or duplicate change notifications.
+            val second = LegacyImporter.migrate(context, core.importExport)
+            assertEquals(0, second.imported)
+            assertEquals(2, second.skipped)
+            assertEquals(2, store.all().size)
+            assertEquals(2, store.identityCount())
+            assertEquals(3L, store.nextSequencePreview())
+            assertEquals(2, changes.size)
+            assertEquals(2, legacyRowCount())
+            assertEquals(before, legacyPath.length())
+        } finally {
+            subscription.close()
+        }
     }
 
     @Test
     fun missingLegacyDatabaseIsReportedWithoutCreatingOne() {
-        val result = LegacyImporter.migrate(context, store)
+        val result = LegacyImporter.migrate(context, core.importExport)
         assertFalse(result.available)
         assertFalse(legacyPath.exists())
         assertEquals(0, store.all().size)
@@ -154,7 +176,7 @@ class LegacyMigrationTest {
         createLegacyDatabaseWithoutEvents()
         val originalHash = legacySha256()
 
-        val first = LegacyImporter.migrate(context, store)
+        val first = LegacyImporter.migrate(context, core.importExport)
         assertTrue(first.available)
         assertEquals(listOf("旧版数据库没有 events 表"), first.warnings)
         assertEquals(1 to 0, migrationCounts())
@@ -163,7 +185,7 @@ class LegacyMigrationTest {
         assertEquals(0L, store.identityCount())
         assertEquals(1L, store.nextSequencePreview())
 
-        val second = LegacyImporter.migrate(context, store)
+        val second = LegacyImporter.migrate(context, core.importExport)
         assertTrue(second.available)
         assertEquals(listOf("旧版数据库没有 events 表"), second.warnings)
         assertEquals(2 to 0, migrationCounts())
@@ -175,8 +197,8 @@ class LegacyMigrationTest {
 
     @Test
     fun legacyRowsKeepTheirOwnMetadata() {
-        createLegacyDatabase(rows = 1)
-        LegacyImporter.migrate(context, store)
+        createLegacyDatabase(rows = 1, reminderMinutes = -1)
+        LegacyImporter.migrate(context, core.importExport)
         val record = store.all().single()
         assertEquals("旧事件 0", record.title)
         assertEquals("旧备注", record.notes)
@@ -184,6 +206,8 @@ class LegacyMigrationTest {
         assertNotNull(record.startMillis)
         assertNotNull(record.endMillis)
         assertTrue(record.endMillis!! > record.startMillis!!)
+        assertTrue(record.enabled)
+        assertEquals(-1, record.reminderMinutes)
         assertNotNull(store.sourceLink(LegacyImporter.SOURCE, "v01:1"))
     }
 }

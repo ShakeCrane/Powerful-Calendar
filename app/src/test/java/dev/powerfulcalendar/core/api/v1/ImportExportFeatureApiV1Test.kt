@@ -129,6 +129,27 @@ END:VCALENDAR
         }
     }
 
+    @Test fun structuredImportPreservesExplicitEnabledValue() {
+        val event = StructuredCalendarEventV1(
+            title = "Explicit import metadata",
+            startMillis = 1_793_583_000_000L,
+            endMillis = 1_793_586_600_000L,
+            reminderMinutes = -1,
+            source = "test-calendar",
+            zoneId = zone.id,
+            enabled = true
+        )
+        val api = core.importExport
+        val batch = api.beginStructuredImport("test-calendar")
+        val receipt = api.importStructuredEvent(batch, "test-calendar", "explicit-1", event)
+        api.finishStructuredImport(batch)
+
+        assertEquals(StructuredImportStatusV1.IMPORTED, receipt.status)
+        val imported = core.events.queryEvents().events.single()
+        assertTrue(imported.enabled)
+        assertEquals(-1, imported.reminderMinutes)
+    }
+
     @Test fun backupReadbackAndRestoreUseTheSharedApi() {
         val card = store.newDraft(
             DraftForm.fresh(TemporalKind.ACTIVITY, LocalDate.of(2026, 11, 3), zone)
