@@ -8,9 +8,9 @@
 ## 0. Core-first / Skin-first 主阶段路线（2026-11-02）
 
 本节落实 `goal-objective.md` 的 PHASE 0–5 顺序，**优先级高于下文保留的 SEP/M1–M4 旧执行顺序**。功能矩阵继续记录覆盖与证据，不再决定主开发方向。
-**2026-11-02 最新进度覆盖：** Core 现在拥有 AI 批次“全部”语义；已审核的文件/OCR `proposalSource` 进入现有 review-only 生成链；旧库迁移保留 provider identity 并明确提示所有未保留的 priority；Clear 日期级 DEADLINE 可拖动并保持 DATE 精度。完整离线门禁 **934/934 JVM / 139 XML suites**，0 failures/errors/skips；两项源码边界、Debug APK、lint（0 errors / 54 warnings）、AndroidTest Kotlin 编译均 PASS。Skin Studio **65/65 PASS**，APK 67,060,418 bytes，SHA-256 `D363F8569F1751BE11B7D138DF225D7B99DE260809C02772FD25819307F10491`。代码提交 `c6eb8065`、`ce22edde`、`0419972b` 和 `4069b269`；报告及证据见 [PROGRESS](agent-handoff/PROGRESS.md)。无设备/AVD，新增日期级拖动配对测试仅编译，设备行为 **NOT TESTED**；Phase 1 仍开放。
+**2026-11-02 最新进度覆盖：** Core 现在拥有 AI 批次“全部”语义；已审核的文件/OCR `proposalSource` 进入现有 review-only 生成链；旧库迁移保留 provider identity 并明确提示所有未保留的 priority；Clear 日期级 DEADLINE 可拖动并保持 DATE 精度。Web Bridge 已改为依赖稳定 `CoreFeatureApiV1`，删除批准签发能力由 Host 单独注入，边界门禁检查该桥不直接引用实现或持久化类型。完整离线门禁 **934/934 JVM / 139 XML suites**，0 failures/errors/skips；两项源码边界、Debug APK、lint（0 errors / 54 warnings）、AndroidTest Kotlin 编译均 PASS。Skin Studio **65/65 PASS**，APK 67,060,418 bytes，SHA-256 `02B76081DBF9E7452238052A4D7EDC06EA28546A848B456FA4886694B3BB8666`。依赖边界代码提交 `4e99ab080df57297078a2905e9ceafe654f7e11e`；报告及证据见 [PROGRESS](agent-handoff/PROGRESS.md)。无设备/AVD，设备行为 **NOT TESTED**；Phase 1 仍开放。
 
-**唯一下一步：** 有界审计 `PowerCalApp` 与 Host adapter 中剩余的 Store/Core 调用，区分必要 Android/UI 编排和应归入现有 Feature API 的业务读取/决策，再修复下一个经源码和测试确认的业务边界缺口。
+**唯一下一步：** 将 Web Wire patch 中对 MEMO 强制开启完成跟踪的业务决定移入现有 Core DTO→domain normalization，并加回归验证 Web、Native 共用 Core 规则；不改变冻结语义或增加公开 API。随后继续有界分类 Bridge 的其他模型映射和 Host 状态。
 
 **2026-11-02 补充：** `ImportExportFeatureApiV1.restoreBackup` 将目标库非空、旧格式需授权、完整性失败及无效输入映射为稳定 API 错误分类；Host 不再依赖 Core 异常类型或文案。聚焦 **15/15 PASS / 2 suites**；当时完整离线门禁 **929/929 PASS / 139 suites**，代码提交 `88bfd17222d6e1dadee54fd695c5faf2dbb27501`。之后的旧 v0.1 `source/external_id` 风险已通过额外 identity transaction 和 `LegacyMigrationTest` 回归解决，见 [Legacy provider identity Issue](issues/PC-ISSUE-CORE-LEGACY-PROVIDER-IDENTITY-V1.md)；priority 丢失也已由独立警告记录，见 [Legacy priority Issue](issues/PC-ISSUE-CORE-LEGACY-PRIORITY-LOSS-WARNING.md)。设备/SAF provider 行为仍 **NOT TESTED**。
 
