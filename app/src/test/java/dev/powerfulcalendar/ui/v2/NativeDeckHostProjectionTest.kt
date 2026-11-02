@@ -10,6 +10,8 @@ import dev.powerfulcalendar.core.ReminderTiming
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.api.v1.DraftReviewReadinessStatusV1
 import dev.powerfulcalendar.core.api.v1.DraftReviewReadinessV1
+import dev.powerfulcalendar.core.api.v1.EventValidationResultV1
+import dev.powerfulcalendar.core.api.v1.EventValidationStatusV1
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -121,6 +123,29 @@ class NativeDeckHostProjectionTest {
 
         val deleteReadiness = DraftReviewReadinessV1(DraftReviewReadinessStatusV1.NOT_REQUIRED)
         assertTrue(form.toNativeDeckForm(capturedNow, deleteReadiness).publishable)
+    }
+
+    @Test
+    fun eventFeatureValidationOverridesShallowPublishabilityForNewEventProjection() {
+        val form = DraftForm(
+            kind = TemporalKind.ACTIVITY,
+            title = "重复活动",
+            startText = "2026-11-01 09:00",
+            endText = "2026-11-01 10:00",
+            zoneId = zone.id,
+            recurrence = Recurrence(freq = RecurrenceFreq.DAILY, interval = 0)
+        )
+        assertTrue(form.isPublishable())
+
+        val coreResult = EventValidationResultV1(
+            status = EventValidationStatusV1.INVALID,
+            errorCode = "EVENT_INVALID",
+            message = "重复间隔必须至少为 1"
+        )
+        val projected = form.toNativeDeckForm(capturedNow, eventValidation = coreResult)
+
+        assertFalse(projected.publishable)
+        assertEquals("重复间隔必须至少为 1", projected.readinessMessage)
     }
 
     @Test

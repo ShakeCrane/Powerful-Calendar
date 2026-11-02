@@ -20,6 +20,8 @@ import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.DraftStatus
 import dev.powerfulcalendar.core.EditorDefaults
 import dev.powerfulcalendar.core.api.v1.EventEditorSnapshotV1
+import dev.powerfulcalendar.core.api.v1.EventValidationResultV1
+import dev.powerfulcalendar.core.api.v1.EventValidationStatusV1
 import dev.powerfulcalendar.core.api.v1.EventSearchHitV1
 import dev.powerfulcalendar.core.api.v1.DraftReviewFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.DraftReviewSnapshotV1
@@ -291,6 +293,9 @@ internal fun NewEventEditorDialog(
     val androidContext = LocalContext.current
     val nowMillis = editor.defaultNowMillis ?: System.currentTimeMillis()
     val pickerActions = createPickerActions(androidContext, form, nowMillis, onFormChange)
+    val validation = remember(eventFeatureApi, editor.handle, form) {
+        eventFeatureApi.validateNewEvent(editor.handle)
+    }
     val card = NativeDeckCard(
         cardKey = "new:${editor.handle.value}",
         sequenceLabel = "新建",
@@ -298,7 +303,7 @@ internal fun NewEventEditorDialog(
         operationLabel = "新建",
         status = NativeDeckStatus.PENDING,
         draftVersion = editor.draftVersion ?: 0,
-        form = form.toNativeDeckForm(nowMillis)
+        form = form.toNativeDeckForm(nowMillis, eventValidation = validation)
     )
     val state = NativeDeckState(
         cards = listOf(card), currentKey = card.cardKey, currentForm = card.form, position = 0,
@@ -444,7 +449,8 @@ internal fun createPickerActions(
 
 internal fun DraftForm.toNativeDeckForm(
     pickerNowMillis: Long,
-    readiness: DraftReviewReadinessV1? = null
+    readiness: DraftReviewReadinessV1? = null,
+    eventValidation: EventValidationResultV1? = null
 ): NativeDeckForm {
     val defaults = EditorDefaults.capture(Clock.fixed(Instant.ofEpochMilli(pickerNowMillis), zone), zone)
     val start = if (readiness != null) readiness.startMillis else parseStart()
@@ -453,6 +459,8 @@ internal fun DraftForm.toNativeDeckForm(
         readiness.deadlineDate?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
     } else DraftForm.parseDateOnly(endText)
     val nextHour = start?.plus(3_600_000L)
+    val activityEndBeforeStart = kind == TemporalKind.ACTIVITY &&
+        start != null && end != null && end <= start
     return NativeDeckForm(
         kind = kind.toNativeKind(), title = title, startText = startText, endText = endText,
         notes = notes, location = location,
@@ -466,8 +474,11 @@ internal fun DraftForm.toNativeDeckForm(
         recurrenceFreq = recurrence.freq.toNativeFreq(),
         recurrenceFromDate = recurrence.activeFromDate, recurrenceUntilDate = recurrence.activeUntilDate,
         missingFields = readiness?.missingFields?.map(::draftFieldLabel)
+            ?: eventValidation?.missingFields?.map(::draftFieldLabel)
             ?: missingFields().map { it.label },
-        publishable = readiness?.canCommit ?: isPublishable(),
+        publishable = readiness?.canCommit
+            ?: eventValidation?.let { it.status == EventValidationStatusV1.READY }
+            ?: isPublishable(),
         validStart = readiness?.validStart ?: when (kind) {
             TemporalKind.ALARM, TemporalKind.ACTIVITY -> start != null
             TemporalKind.MEMO -> startText.isBlank() || DraftForm.parseDateOnly(startText) != null
@@ -480,8 +491,7 @@ internal fun DraftForm.toNativeDeckForm(
             TemporalKind.ALARM -> true
         },
         deadlineDateOnly = readiness?.deadlineDateOnly ?: (kind == TemporalKind.DEADLINE && dateOnly != null),
-        activityEndBeforeStart = readiness?.activityEndBeforeStart
-            ?: (kind == TemporalKind.ACTIVITY && start != null && end != null && end <= start),
+        activityEndBeforeStart = readiness?.activityEndBeforeStart ?: activityEndBeforeStart,
         recoveryScoped = recurrenceEditScope != null,
         occurrenceScoped = editOccurrenceKey != null,
         repeating = recurrence.isRepeating,
@@ -490,7 +500,9 @@ internal fun DraftForm.toNativeDeckForm(
         deadlinePrecisionPickerMillis = end ?: dateOnly?.let(defaults::pickerInstant) ?: defaults.pickerInstant(),
         readinessMessage = readiness?.message?.takeIf {
             readiness.status == DraftReviewReadinessStatusV1.INVALID || readiness.activityEndBeforeStart
-        }
+        } ?: eventValidation?.takeIf {
+            it.status == EventValidationStatusV1.INVALID || activityEndBeforeStart
+        }?.message
     )
 }
 
