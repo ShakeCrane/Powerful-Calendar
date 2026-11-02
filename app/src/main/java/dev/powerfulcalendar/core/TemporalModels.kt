@@ -1212,7 +1212,11 @@ object TemporalConversion {
     )
 
     fun convert(form: DraftForm, target: TemporalKind): Result {
-        if (form.kind == target) return Result(form, emptyList(), "")
+        if (form.kind == target) {
+            val canonical = if (target == TemporalKind.MEMO)
+                form.copy(trackingEnabled = true) else form
+            return Result(canonical, emptyList(), "")
+        }
         val start = form.startText.trim()
         val end = form.endText.trim()
         val next = when {
@@ -1249,6 +1253,8 @@ object TemporalConversion {
         } else {
             next
         }
+        val canonical = if (target == TemporalKind.MEMO)
+            normalized.copy(trackingEnabled = true) else normalized
         val note = when {
             target == TemporalKind.ACTIVITY && DraftField.END in required ->
                 "转换为活动需要补全结束时间；原有时刻已保留为开始。"
@@ -1264,7 +1270,7 @@ object TemporalConversion {
                 "日期级截止没有具体分钟，提醒已随之关闭。"
             else -> "事件序号保持不变。"
         }
-        return Result(normalized, required, note)
+        return Result(canonical, required, note)
     }
 }
 

@@ -88,6 +88,33 @@ class EventFeatureApiV1Test {
     }
 
     @Test
+    fun memoCompletionTrackingIsIntrinsicAcrossFeatureFormUpdates() {
+        val newEditor = openNewEvent(EventKindV1.MEMO)
+        val newUpdate = api.updateNewEvent(
+            newEditor.handle,
+            newEditor.form.copy(title = "Intrinsic completion tracking", trackingEnabled = false)
+        )
+        assertEquals(EventEditorUpdateStatusV1.UPDATED, newUpdate.status)
+        val normalizedNewForm = requireNotNull(api.editorSnapshot(newEditor.handle)).form
+        assertTrue(normalizedNewForm.trackingEnabled)
+
+        val created = api.saveNewEvent(
+            newEditor.handle, normalizedNewForm, "memo-intrinsic-tracking-create"
+        )
+        assertEquals(EventMutationStatusV1.CREATED, created.status)
+        val event = requireNotNull(store.get(requireNotNull(created.eventSeq)))
+        assertTrue(event.trackingEnabled)
+
+        val formalEditor = openFormalEvent(event.eventSeq, event.revision)
+        val formalUpdate = api.updateFormalEvent(
+            formalEditor.handle, formalEditor.form.copy(trackingEnabled = false)
+        )
+        assertEquals(EventEditorUpdateStatusV1.UPDATED, formalUpdate.status)
+        assertTrue(requireNotNull(api.editorSnapshot(formalEditor.handle)).form.trackingEnabled)
+        api.closeFormalEvent(formalEditor.handle)
+    }
+
+    @Test
     fun oneFeatureApiSupportsQueryCreateEditDeleteAndIdempotentReplay() {
         val changes = mutableListOf<EventFeatureChangeV1>()
         val subscription = api.subscribe(changes::add)

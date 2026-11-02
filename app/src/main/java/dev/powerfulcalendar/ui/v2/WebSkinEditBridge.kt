@@ -285,8 +285,7 @@ internal object WebEditWire {
         "notes" -> form.copy(notes=value)
         "location" -> form.copy(location=value)
         "enabled" -> form.copy(enabled=requireBoolean(value))
-        "trackingEnabled" -> form.copy(
-            trackingEnabled=if(form.kind==TemporalKind.MEMO) true else requireBoolean(value))
+        "trackingEnabled" -> form.copy(trackingEnabled=requireBoolean(value))
         "reminderMinutes" -> {
             val minutes=value.toIntOrNull()?.takeIf { it in -1..10080 }
                 ?: throw IllegalArgumentException("Invalid reminder offset")
@@ -844,8 +843,10 @@ internal class WebSkinEditService(
                             eventFeatures.updateFormalEvent(active.handle, patched.toEventFormV1())
                         }
                         if (updated.status == EventEditorUpdateStatusV1.UPDATED) {
-                            active.form = patched
-                            eventFeatures.editorSnapshot(active.handle)?.let { active.snapshot = it }
+                            val snapshot = eventFeatures.editorSnapshot(active.handle)
+                                ?: return@withLock result(cmd.requestId,"stale")
+                            active.snapshot = snapshot
+                            active.form = snapshot.form.toCoreDraftForm()
                             result(cmd.requestId,"edited")
                         } else result(cmd.requestId,"failed",updated.message)
                     }
@@ -1110,10 +1111,10 @@ internal class WebSkinEditService(
                                 activeNew.handle, patched.toEventFormV1()
                             )
                             if (update.status == EventEditorUpdateStatusV1.UPDATED) {
-                                activeNew.form = patched
-                                eventFeatures.editorSnapshot(activeNew.handle)?.let {
-                                    activeNew.snapshot = it
-                                }
+                                val snapshot = eventFeatures.editorSnapshot(activeNew.handle)
+                                    ?: return@withLock result(cmd.requestId,"stale")
+                                activeNew.snapshot = snapshot
+                                activeNew.form = snapshot.form.toCoreDraftForm()
                                 result(cmd.requestId,"edited")
                             } else result(cmd.requestId,"failed",update.message)
                         }

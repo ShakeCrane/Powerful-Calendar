@@ -237,6 +237,24 @@ class WebSkinEditBridgeTest {
         return requireNotNull(store.get(card.eventSeq))
     }
 
+    @Test fun memoTrackingPatchIsNormalizedByCore() = runBlocking {
+        val memo = commitFormal(DraftForm(
+            kind = TemporalKind.MEMO,
+            title = "Memo tracking invariant"
+        ))
+        assertEquals("opened", service.execute(WebEditCommand.OpenEvent(
+            request(), memo.eventSeq, memo.revision
+        )).getString("status"))
+        val sessionId = service.snapshot().getJSONObject("editor").getString("sessionId")
+
+        assertEquals("edited", service.execute(WebEditCommand.PatchEvent(
+            request(), sessionId, "trackingEnabled", "false"
+        )).getString("status"))
+        assertTrue(service.snapshot().getJSONObject("editor")
+            .getJSONObject("form").getBoolean("trackingEnabled"))
+        assertEquals(memo, store.get(memo.eventSeq))
+    }
+
     @Test fun closedSchemaRejectsMetadataOverwritesAndUntrustedInput(){
         assertNotNull(WebEditWire.decode(wire("editor.open", ""","eventSeq":42,"expectedRevision":1""")))
         assertNull(WebEditWire.decode(wire("editor.open", ""","eventSeq":"42","expectedRevision":1""")))
@@ -965,8 +983,10 @@ class WebSkinEditBridgeTest {
             startText = "2026-10-22 07:30", reminderMinutes = -1,
             source = "imported-ics", zoneId = "Asia/Shanghai")
         TemporalKind.entries.forEach { target ->
-            assertEquals(TemporalConversion.convert(original, target).form,
-                patchForm(original, "kind", target.name))
+            val converted = TemporalConversion.convert(original, target).form
+            val expected = if (target == TemporalKind.MEMO)
+                converted.copy(trackingEnabled = true) else converted
+            assertEquals(expected, patchForm(original, "kind", target.name))
         }
         assertThrows(IllegalArgumentException::class.java) {
             patchForm(original, "kind", "UNSUPPORTED")

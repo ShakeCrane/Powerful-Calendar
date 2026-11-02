@@ -2029,7 +2029,8 @@ internal fun EventFormV1.toCoreDraftForm(): DraftForm = DraftForm(
     source = source,
     zoneId = zoneId,
     recurrence = recurrence.toCoreRecurrence(),
-    trackingEnabled = trackingEnabled,
+    // MEMO completion tracking is intrinsic in the frozen event contract.
+    trackingEnabled = kind == EventKindV1.MEMO || trackingEnabled,
     completedKeys = completedKeys.toSet(),
     recurrenceEditScope = recurrenceScope?.toCoreScope(),
     editOccurrenceKey = editOccurrenceKey
