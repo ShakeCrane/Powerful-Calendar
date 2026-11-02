@@ -282,12 +282,14 @@ class PowerStoreAiTaskReceiptTest {
             SQLiteDatabase.OPEN_READWRITE
         ).use { database ->
             database.execSQL("DROP TABLE ai_task_receipts")
+            database.execSQL("DROP TABLE draft_request_receipts")
             database.version = 4
         }
 
         store = openStore(name)
-        assertEquals(5, store.readableDatabase.version)
+        assertEquals(PowerStore.VERSION, store.readableDatabase.version)
         assertEquals(0, receiptCount(store))
+        assertEquals(0, draftRequestReceiptCount(store))
         assertEquals(pending.draft.draftId, store.pendingDrafts().single().draftId)
         assertEquals(1L, store.identityCount())
         assertEquals(2L, store.nextSequencePreview())
@@ -296,6 +298,7 @@ class PowerStoreAiTaskReceiptTest {
         val v4Export = v4Source.exportBackup()
         val v4Payload = JSONObject(v4Export.getJSONObject("payload").toString())
         v4Payload.remove(BackupEnvelope.AI_TASK_RECEIPTS)
+        v4Payload.remove(BackupEnvelope.DRAFT_REQUEST_RECEIPTS)
         val v4Envelope = BackupEnvelope.create(
             payload = v4Payload,
             databaseSchemaVersion = 4,
@@ -306,6 +309,58 @@ class PowerStoreAiTaskReceiptTest {
         val v4Restore = openStore("ai-task-v4-restore-${UUID.randomUUID()}.db")
         v4Restore.restoreBackup(v4Envelope)
         assertEquals(0, receiptCount(v4Restore))
+        assertEquals(0, draftRequestReceiptCount(v4Restore))
+    }
+
+    @Test
+    fun v5SchemaAndBackupMigrateDraftRequestReceipts() {
+        val pending = stage("schema-five-task", 1, 0, form()) as PowerStore.AiTaskProposalStage.Pending
+        val name = store.databaseName
+        store.close()
+        SQLiteDatabase.openDatabase(
+            context.getDatabasePath(name).absolutePath,
+            null,
+            SQLiteDatabase.OPEN_READWRITE
+        ).use { database ->
+            database.execSQL("DROP TABLE draft_request_receipts")
+            database.version = 5
+        }
+
+        store = openStore(name)
+        assertEquals(PowerStore.VERSION, store.readableDatabase.version)
+        assertEquals(1, receiptCount(store))
+        assertEquals(0, draftRequestReceiptCount(store))
+        assertEquals(pending.draft.draftId, store.pendingDrafts().single().draftId)
+
+        val currentExport = store.exportBackup()
+        val v5Payload = JSONObject(currentExport.getJSONObject("payload").toString())
+        v5Payload.remove(BackupEnvelope.DRAFT_REQUEST_RECEIPTS)
+        val v5Envelope = BackupEnvelope.create(
+            payload = v5Payload,
+            databaseSchemaVersion = 5,
+            appVersionCode = currentExport.getLong("appVersionCode"),
+            exportedAtEpochMs = currentExport.getLong("exportedAtEpochMs"),
+            storeLineageId = currentExport.getString("storeLineageId")
+        )
+        val v5Restore = openStore("ai-task-v5-restore-${UUID.randomUUID()}.db")
+        v5Restore.restoreBackup(v5Envelope)
+        assertEquals(1, receiptCount(v5Restore))
+        assertEquals(0, draftRequestReceiptCount(v5Restore))
+
+        val missingV6Payload = JSONObject(currentExport.getJSONObject("payload").toString())
+        missingV6Payload.remove(BackupEnvelope.DRAFT_REQUEST_RECEIPTS)
+        val missingV6Envelope = BackupEnvelope.create(
+            payload = missingV6Payload,
+            databaseSchemaVersion = PowerStore.VERSION,
+            appVersionCode = currentExport.getLong("appVersionCode"),
+            exportedAtEpochMs = currentExport.getLong("exportedAtEpochMs"),
+            storeLineageId = currentExport.getString("storeLineageId")
+        )
+        val rejectedTarget = openStore("v6-rejected-${UUID.randomUUID()}.db")
+        assertTrue(runCatching { rejectedTarget.restoreBackup(missingV6Envelope) }.isFailure)
+        assertEquals(0L, rejectedTarget.draftCount())
+        assertEquals(0, receiptCount(rejectedTarget))
+        assertEquals(0, draftRequestReceiptCount(rejectedTarget))
     }
 
     @Test
@@ -385,6 +440,10 @@ class PowerStoreAiTaskReceiptTest {
 
     private fun receiptCount(target: PowerStore): Int = target.readableDatabase.rawQuery(
         "SELECT COUNT(*) FROM ai_task_receipts", null
+    ).use { cursor -> cursor.moveToFirst(); cursor.getInt(0) }
+
+    private fun draftRequestReceiptCount(target: PowerStore): Int = target.readableDatabase.rawQuery(
+        "SELECT COUNT(*) FROM draft_request_receipts", null
     ).use { cursor -> cursor.moveToFirst(); cursor.getInt(0) }
 
     private fun openStore(name: String): PowerStore = PowerStore(context, name).also {

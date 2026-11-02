@@ -1289,34 +1289,57 @@ private class StoreDraftReviewFeatureApiV1(
         requestId: String
     ): DraftReviewReceiptV1 {
         val formSnapshot = form.detachedDraftSnapshot()
+        invalidRequest(requestId)?.let {
+            return receipt(requestId, DraftReviewReceiptStatusV1.INVALID,
+                errorCode = "REQUEST_ID_INVALID", message = it)
+        }
+        if (formSnapshot.recurrenceScope != null || formSnapshot.editOccurrenceKey != null) {
+            return receipt(requestId, DraftReviewReceiptStatusV1.INVALID,
+                errorCode = "DRAFT_SCOPE_INVALID", message = "新草稿不能携带既有重复实例编辑范围")
+        }
         val fingerprint = canonicalDraftFormFingerprint(formSnapshot)
-        return execute(requestId, "CREATE_DRAFT:$fingerprint") {
-            if (formSnapshot.recurrenceScope != null || formSnapshot.editOccurrenceKey != null) {
-                return@execute receipt(requestId, DraftReviewReceiptStatusV1.INVALID,
-                    errorCode = "DRAFT_SCOPE_INVALID", message = "新草稿不能携带既有重复实例编辑范围")
+        val requestFingerprint = "CREATE_DRAFT:$fingerprint"
+        return mutationMutex.withLock {
+            receipts[requestId]?.let { cached ->
+                if (!cached.first.startsWith("CREATE_DRAFT:")) {
+                    return@withLock receipt(requestId,
+                        DraftReviewReceiptStatusV1.DUPLICATE_REQUEST_ID,
+                        errorCode = "REQUEST_ID_REUSED",
+                        message = "请求标识已用于其他草稿操作")
+                }
             }
             val controllerFingerprintBeforeWrite =
                 persistedDeckFingerprint(controller.stateSnapshot().first)
-            val card = try {
-                store.newDraft(formSnapshot.toCoreDraftForm(), actor = "user")
+            val write = try {
+                controller.runSerializedDraftWrite {
+                    val result = store.createDraftForRequest(
+                        formSnapshot.toCoreDraftForm(), requestId, fingerprint, actor = "user"
+                    )
+                    result to result.card.draftId.takeIf { result.changedDraft }
+                }
             } catch (error: IllegalArgumentException) {
-                return@execute receipt(requestId, DraftReviewReceiptStatusV1.INVALID,
+                return@withLock receipt(requestId, DraftReviewReceiptStatusV1.INVALID,
                     errorCode = "DRAFT_FORM_INVALID", message = error.message)
             } catch (error: IllegalStateException) {
                 val locked = runCatching { store.isLocked() }.getOrDefault(false)
-                return@execute if (locked) receipt(requestId, DraftReviewReceiptStatusV1.LOCKED,
+                return@withLock if (locked) receipt(requestId, DraftReviewReceiptStatusV1.LOCKED,
                     errorCode = "DRAFT_CREATE_LOCKED", message = error.message)
                 else receipt(requestId, DraftReviewReceiptStatusV1.FAILED,
                     errorCode = "DRAFT_CREATE_FAILED", message = error.message)
             } catch (error: Exception) {
-                return@execute receipt(requestId, DraftReviewReceiptStatusV1.FAILED,
+                return@withLock receipt(requestId, DraftReviewReceiptStatusV1.FAILED,
                     errorCode = "DRAFT_CREATE_FAILED", message = error.message)
             }
-            val publicationConfirmed = publishDraftChangeIfNeeded(controllerFingerprintBeforeWrite)
-            receipt(requestId, DraftReviewReceiptStatusV1.APPLIED,
-                draftId = card.draftId, eventSeq = card.eventSeq, draftVersion = card.draftVersion,
+            val publicationConfirmed = !write.changedDraft ||
+                publishDraftChangeIfNeeded(controllerFingerprintBeforeWrite)
+            val result = receipt(requestId, DraftReviewReceiptStatusV1.APPLIED,
+                draftId = write.card.draftId, eventSeq = write.card.eventSeq,
+                draftVersion = write.card.draftVersion, duplicate = write.replayed,
                 message = if (publicationConfirmed) null
                     else "草稿已保存；变更通知未能确认，请重新打开卡组刷新")
+            receipts[requestId] = requestFingerprint to result
+            while (receipts.size > 128) receipts.remove(receipts.keys.first())
+            result
         }
     }
 

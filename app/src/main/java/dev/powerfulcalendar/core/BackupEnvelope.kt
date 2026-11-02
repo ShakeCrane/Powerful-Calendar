@@ -43,7 +43,9 @@ object BackupEnvelope {
     val TABLES = listOf("identities", "objects", "drafts", "commits", "sourceLinks", "migrations")
     /** Optional on pre-schema-v5 envelopes; required by PowerStore when schemaVersion is 5+. */
     const val AI_TASK_RECEIPTS = "aiTaskReceipts"
-    val OPTIONAL_TABLES = listOf(AI_TASK_RECEIPTS)
+    /** Optional on pre-schema-v6 envelopes; required by PowerStore when schemaVersion is 6+. */
+    const val DRAFT_REQUEST_RECEIPTS = "draftRequestReceipts"
+    val OPTIONAL_TABLES = listOf(AI_TASK_RECEIPTS, DRAFT_REQUEST_RECEIPTS)
 
     /**
      * Reads a backup document with a hard byte bound before the caller constructs a JSONObject.

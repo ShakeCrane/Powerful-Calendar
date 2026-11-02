@@ -61,9 +61,11 @@ class WebSkinSystemDiagnosticsIntegrationTest {
         ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.Routed("settings")) }
         ui.waitUntil(20_000) {
             shadowOf(Looper.getMainLooper()).idle()
-            WebSkinBridgeRuntime.state().optString("page") == "SETTINGS" &&
-                WebSkinBridgeRuntime.state().optJSONObject("systemDiagnostics")
-                    ?.optInt("formalCount") == 5
+            val state = WebSkinBridgeRuntime.state()
+            val diagnostics = state.optJSONObject("systemDiagnostics")
+            state.optString("page") == "SETTINGS" && diagnostics != null &&
+                diagnostics.optInt("formalCount") == 5 &&
+                diagnostics.optJSONArray("recurrences")?.length() == 3
         }
     }
 

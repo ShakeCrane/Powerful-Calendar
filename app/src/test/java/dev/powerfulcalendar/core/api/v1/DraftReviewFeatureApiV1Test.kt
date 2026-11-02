@@ -13,10 +13,12 @@ import dev.powerfulcalendar.core.TemporalRecord
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import org.json.JSONObject
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
@@ -34,22 +36,23 @@ class DraftReviewFeatureApiV1Test {
     private lateinit var context: Context
     private lateinit var store: PowerStore
     private lateinit var core: PowerCalCoreFeatureApiV1
+    private val stores = mutableListOf<PowerStore>()
+    private val databaseNames = linkedSetOf<String>()
     private val zone = ZoneId.of("Asia/Shanghai")
     private val clock = Clock.fixed(Instant.parse("2026-10-25T15:07:42Z"), ZoneOffset.UTC)
 
     @Before fun setUp() {
         context = ApplicationProvider.getApplicationContext()
-        store = PowerStore(context, "draft-review-api-${UUID.randomUUID()}.db")
+        store = openStore("draft-review-api-${UUID.randomUUID()}.db")
         core = PowerCalCoreFeatureApiV1(store, clock)
     }
 
     @After fun tearDown() {
-        val name = store.databaseName
-        store.close()
-        context.deleteDatabase(name)
+        stores.forEach { runCatching { it.close() } }
+        databaseNames.forEach { context.deleteDatabase(it) }
     }
 
-    @Test fun createDraftUsesReceiptReplayAndPublishesOneDraftChange() = runBlocking {
+    @Test fun createDraftReplaysAndOverwritesWithOneChangePerPersistedWrite() = runBlocking {
         val api = core.draftReview
         val changes = mutableListOf<EventFeatureChangeV1>()
         val subscription = core.events.subscribe(changes::add)
@@ -93,9 +96,16 @@ class DraftReviewFeatureApiV1Test {
             assertEquals(1, store.pendingDrafts().size)
             assertEquals(1, changes.size)
 
-            val reused = api.createDraft(form.copy(title = "Different draft"), "draft-create-api-1")
-            assertEquals(DraftReviewReceiptStatusV1.DUPLICATE_REQUEST_ID, reused.status)
+            val overwritten = api.createDraft(form.copy(title = "Different draft"), "draft-create-api-1")
+            assertEquals(DraftReviewReceiptStatusV1.APPLIED, overwritten.status)
+            assertFalse(overwritten.duplicate)
+            assertEquals(draftId, overwritten.draftId)
+            assertEquals(eventSeq, overwritten.eventSeq)
+            assertEquals(requireNotNull(created.draftVersion) + 1, overwritten.draftVersion)
+            assertEquals("Different draft", store.draft(draftId)?.form?.title)
             assertEquals(1, store.pendingDrafts().size)
+            assertEquals(beforeRevision + 2, core.events.featureRevision)
+            assertEquals(2, changes.size)
 
             val invalidScope = api.createDraft(
                 form.copy(recurrenceScope = EventRecurrenceScopeV1.WHOLE_SERIES),
@@ -103,15 +113,119 @@ class DraftReviewFeatureApiV1Test {
             )
             assertEquals(DraftReviewReceiptStatusV1.INVALID, invalidScope.status)
             assertEquals(1, store.pendingDrafts().size)
-            assertEquals(1, changes.size)
+            assertEquals(2, changes.size)
 
             val opened = api.open(draftId)
             assertEquals(draftId, opened.currentId)
-            assertEquals(1, changes.size)
-            assertEquals(beforeRevision + 1, core.events.featureRevision)
+            assertEquals(2, changes.size)
+            assertEquals(beforeRevision + 2, core.events.featureRevision)
         } finally {
             subscription.close()
         }
+    }
+
+    @Test fun createDraftReplaysAndOverwritesAfterStoreRecreation() = runBlocking {
+        val databaseName = store.databaseName
+        val form = newActivityDraft("Before process restart").toEventFormV1()
+        val created = core.draftReview.createDraft(form, "durable-create-restart")
+        assertEquals(DraftReviewReceiptStatusV1.APPLIED, created.status)
+        val draftId = requireNotNull(created.draftId)
+        val eventSeq = requireNotNull(created.eventSeq)
+
+        store.close()
+        store = openStore(databaseName)
+        core = PowerCalCoreFeatureApiV1(store, clock)
+
+        val replay = core.draftReview.createDraft(form, "durable-create-restart")
+        assertTrue(replay.duplicate)
+        assertEquals(draftId, replay.draftId)
+        assertEquals(eventSeq, replay.eventSeq)
+        assertEquals(1, store.pendingDrafts().size)
+
+        val overwritten = core.draftReview.createDraft(
+            form.copy(title = "After process restart"), "durable-create-restart"
+        )
+        assertEquals(DraftReviewReceiptStatusV1.APPLIED, overwritten.status)
+        assertFalse(overwritten.duplicate)
+        assertEquals(draftId, overwritten.draftId)
+        assertEquals(eventSeq, overwritten.eventSeq)
+        assertEquals("After process restart", store.draft(draftId)?.form?.title)
+        assertEquals(1, store.pendingDrafts().size)
+    }
+
+    @Test fun createDraftReceiptSurvivesBackupRestoreAndKeepsOverwriteTarget() = runBlocking {
+        val form = newActivityDraft("Before backup").toEventFormV1()
+        val created = core.draftReview.createDraft(form, "durable-create-backup")
+        val draftId = requireNotNull(created.draftId)
+        val eventSeq = requireNotNull(created.eventSeq)
+        val backup = store.exportBackup()
+
+        val restoredStore = openStore("draft-review-restore-${UUID.randomUUID()}.db")
+        restoredStore.restoreBackup(JSONObject(backup.toString()))
+        val restoredCore = PowerCalCoreFeatureApiV1(restoredStore, clock)
+        val replay = restoredCore.draftReview.createDraft(form, "durable-create-backup")
+        assertTrue(replay.duplicate)
+        assertEquals(draftId, replay.draftId)
+        assertEquals(eventSeq, replay.eventSeq)
+
+        val overwritten = restoredCore.draftReview.createDraft(
+            form.copy(title = "After backup restore"), "durable-create-backup"
+        )
+        assertEquals(DraftReviewReceiptStatusV1.APPLIED, overwritten.status)
+        assertEquals(draftId, overwritten.draftId)
+        assertEquals(eventSeq, overwritten.eventSeq)
+        assertEquals("After backup restore", restoredStore.draft(draftId)?.form?.title)
+        assertEquals(1, restoredStore.pendingDrafts().size)
+        assertNull(restoredStore.get(eventSeq))
+    }
+
+    @Test fun terminalRequestStartsNewDraftWithoutChangingFormalEvent() = runBlocking {
+        val form = newActivityDraft("Create then review").toEventFormV1()
+        val created = core.draftReview.createDraft(form, "durable-create-terminal")
+        assertEquals("${created.errorCode}: ${created.message}", DraftReviewReceiptStatusV1.APPLIED,
+            created.status)
+        val oldDraftId = requireNotNull(created.draftId)
+        val oldEventSeq = requireNotNull(created.eventSeq)
+        val api = core.draftReview
+        val reviewed = api.open(oldDraftId)
+        val committed = api.commit(oldDraftId, requireNotNull(reviewed.current).draftVersion,
+            reviewed.stateRevision, "commit-created-draft")
+        assertEquals(DraftReviewReceiptStatusV1.APPLIED, committed.status)
+        val formalBeforeOverwrite = requireNotNull(store.get(oldEventSeq))
+
+        val newer = api.createDraft(form.copy(title = "New request content"), "durable-create-terminal")
+
+        assertEquals(DraftReviewReceiptStatusV1.APPLIED, newer.status)
+        assertNotEquals(oldDraftId, newer.draftId)
+        assertNotEquals(oldEventSeq, newer.eventSeq)
+        assertEquals("Create then review", store.get(oldEventSeq)?.title)
+        assertEquals(formalBeforeOverwrite, store.get(oldEventSeq))
+        assertEquals("New request content", store.draft(requireNotNull(newer.draftId))?.form?.title)
+        assertEquals(1, store.pendingDrafts().size)
+        assertEquals(1, store.all().size)
+    }
+
+    @Test fun newerCreateRequestCannotBeOverwrittenByDirtyEditorState() = runBlocking {
+        val form = newActivityDraft("Original request").toEventFormV1()
+        val created = core.draftReview.createDraft(form, "dirty-create-overwrite")
+        val draftId = requireNotNull(created.draftId)
+        val api = core.draftReview
+        val opened = api.open(draftId)
+        val current = requireNotNull(opened.current)
+        assertEquals(DraftReviewReceiptStatusV1.APPLIED, api.editCurrentDraft(
+            draftId, current.draftVersion, opened.stateRevision,
+            current.form.copy(title = "Unsaved older editor text")
+        ).status)
+
+        val overwritten = api.createDraft(form.copy(title = "Newer request"), "dirty-create-overwrite")
+
+        assertEquals(DraftReviewReceiptStatusV1.APPLIED, overwritten.status)
+        assertEquals("Newer request", store.draft(draftId)?.form?.title)
+        assertEquals("Newer request", api.snapshot.form?.title)
+        assertFalse(api.snapshot.dirty)
+        assertEquals(DraftReviewReceiptStatusV1.NO_CHANGE,
+            api.flush("flush-after-create-overwrite").status)
+        assertEquals("Newer request", store.draft(draftId)?.form?.title)
     }
 
     @Test fun createDraftRespectsTheExistingAiBatchLock() = runBlocking {
@@ -287,7 +401,11 @@ class DraftReviewFeatureApiV1Test {
         val created = api.createDraft(firstForm, "draft-create-collision")
         assertEquals(DraftReviewReceiptStatusV1.APPLIED, created.status)
         val reused = api.createDraft(changedForm, "draft-create-collision")
-        assertEquals(DraftReviewReceiptStatusV1.DUPLICATE_REQUEST_ID, reused.status)
+        assertEquals(DraftReviewReceiptStatusV1.APPLIED, reused.status)
+        assertEquals(created.draftId, reused.draftId)
+        assertEquals(created.eventSeq, reused.eventSeq)
+        assertEquals("x", store.draft(requireNotNull(created.draftId))?.form?.title)
+        assertEquals("y, startText=", store.draft(requireNotNull(created.draftId))?.form?.startText)
         assertEquals(1, store.pendingDrafts().size)
     }
 
@@ -692,5 +810,10 @@ class DraftReviewFeatureApiV1Test {
         assertEquals(EventMutationStatusV1.UPDATED, receipt.status)
         core.events.closeFormalEvent(editor.handle)
         requireNotNull(store.get(record.eventSeq))
+    }
+
+    private fun openStore(name: String): PowerStore = PowerStore(context, name).also {
+        stores += it
+        databaseNames += name
     }
 }

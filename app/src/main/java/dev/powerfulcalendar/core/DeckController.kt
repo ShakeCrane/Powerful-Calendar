@@ -427,6 +427,23 @@ class DeckController(
      */
     suspend fun refresh(preferDraftId: Long? = null) = command { refreshInternal(preferDraftId) }
 
+    /**
+     * Runs an API-owned durable draft write in the same command queue as editor autosaves, then
+     * reloads the persisted queue. A replaced current draft is force-reloaded so stale dirty text
+     * cannot be written over the newer request after this command completes.
+     */
+    internal suspend fun <T> runSerializedDraftWrite(write: () -> Pair<T, Long?>): T = command {
+        val (result, forceReloadDraftId) = write()
+        try {
+            refreshInternal(preferDraftId = null, forceReloadDraftId = forceReloadDraftId)
+        } catch (_: Exception) {
+            // The storage transaction has already committed; do not turn it into a failed API
+            // receipt just because the follow-up projection could not be refreshed.
+            update { it.copy(error = "草稿已保存，但卡组刷新失败；请重新打开卡组") }
+        }
+        result
+    }
+
     /** Durably stages the latest text. Returns false when the caller must not navigate away. */
     /**
      * `lockEdits=false` is reserved for the debounce autosave: it is serialized with navigation,
@@ -493,7 +510,7 @@ class DeckController(
 
     // ---------------------------------------------------------------- internals
 
-    private fun refreshInternal(preferDraftId: Long?) {
+    private fun refreshInternal(preferDraftId: Long?, forceReloadDraftId: Long? = null) {
         val cards = persistence.pending()
         val aiLocked = persistence.isAiLocked()
         val snapshot = state
@@ -501,7 +518,8 @@ class DeckController(
             ?: snapshot.currentId?.takeIf { id -> cards.any { it.draftId == id } }
             ?: cards.firstOrNull()?.draftId
         val card = cards.firstOrNull { it.draftId == targetId }
-        val keepDirtyForm = snapshot.currentId == targetId && snapshot.dirty && card != null
+        val keepDirtyForm = snapshot.currentId == targetId && snapshot.dirty && card != null &&
+            snapshot.currentId != forceReloadDraftId
         val pendingInStore = persistence.pendingCount()
         // A batch that empties the queue must still produce a truthful completion card (G11-06),
         // and a batch that just ended must give the deck its editing rights back (M4).

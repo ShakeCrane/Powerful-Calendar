@@ -52,6 +52,18 @@ class PowerStore(
 
     private val appContext = context.applicationContext
 
+    internal data class DraftRequestWrite(
+        val card: DraftCard,
+        val replayed: Boolean,
+        val changedDraft: Boolean
+    )
+
+    private data class DraftRequestReceiptRow(
+        val fingerprint: String,
+        val eventSeq: Long,
+        val draftId: Long
+    )
+
     /** Stable typed preflight/transaction failure. Callers must not infer this from locale text. */
     class NonEmptyRestoreTargetException : IllegalArgumentException(
         "目标数据库不是空库；为避免覆盖已有数据，恢复已被拒绝"
@@ -194,6 +206,7 @@ class PowerStore(
         db.execSQL("CREATE INDEX executions_event ON executions(event_seq, at_ms)")
         createReviewedAuthorizationTable(db)
         createAiTaskReceiptTable(db)
+        createDraftRequestReceiptTable(db)
     }
 
     /**
@@ -234,6 +247,19 @@ class PowerStore(
         db.execSQL("CREATE INDEX IF NOT EXISTS ai_task_receipts_event ON ai_task_receipts(event_seq)")
     }
 
+    /** Durable last-write-wins receipt for explicit user-owned draft creation requests. */
+    private fun createDraftRequestReceiptTable(db: SQLiteDatabase) {
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS draft_request_receipts(
+                 request_id TEXT PRIMARY KEY,
+                 fingerprint TEXT NOT NULL,
+                 event_seq INTEGER NOT NULL,
+                 draft_id INTEGER NOT NULL,
+                 updated_ms INTEGER NOT NULL
+               )"""
+        )
+    }
+
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         // Every step is additive and ordered. A real v1/v2 user database upgrades in place; nothing
         // is recreated, and a gap in the known chain fails loudly instead of producing an empty DB.
@@ -257,6 +283,10 @@ class PowerStore(
         if (version < 5 && newVersion >= 5) {
             createAiTaskReceiptTable(db)
             version = 5
+        }
+        if (version < 6 && newVersion >= 6) {
+            createDraftRequestReceiptTable(db)
+            version = 6
         }
         require(version == newVersion) {
             "PowerCal 数据库升级路径不完整 (v$oldVersion → v$newVersion)，已拒绝打开"
@@ -894,6 +924,132 @@ class PowerStore(
                 db, form, targetSeq, baseRevision = base, operation = operation
             )
         }
+    }
+
+    /**
+     * Persists explicit createDraft replay state with the draft write. Exact retries return the
+     * current mapped card; a changed form replaces that actionable card in place. If the mapped
+     * card is terminal, a later request starts a new reviewable draft without changing its formal
+     * event. Receipt and draft mutation share one transaction.
+     */
+    @Synchronized
+    internal fun createDraftForRequest(
+        form: DraftForm,
+        requestId: String,
+        fingerprint: String,
+        actor: String = "user"
+    ): DraftRequestWrite {
+        require(requestId.isNotBlank() && requestId.length <= 128 &&
+            requestId.none(Char::isISOControl)) { "请求标识无效" }
+        require(fingerprint.matches(Regex("[0-9a-f]{64}"))) { "草稿请求 fingerprint 无效" }
+        require(form.recurrenceEditScope == null && form.editOccurrenceKey == null) {
+            "重复范围编辑只能通过正式事件检查点保存，不能分配新草稿身份"
+        }
+
+        tx { db -> resolveDraftRequest(db, form, requestId, fingerprint, actor) }
+            ?.let { return it }
+
+        // Reserve identities separately so a later draft/receipt failure never reuses a sequence.
+        val reservedSeq = tx { db ->
+            checkDraftWriteAllowed(db, actor)
+            val seq = allocateIdentity(db, form.source)
+            val retired = db.update(
+                "identities",
+                ContentValues().apply { put("retired_ms", System.currentTimeMillis()) },
+                "event_seq=? AND retired_ms IS NULL",
+                arrayOf(seq.toString())
+            )
+            check(retired == 1) { "新分配的事件序号无法暂存" }
+            seq
+        }
+
+        return tx { db ->
+            resolveDraftRequest(db, form, requestId, fingerprint, actor)?.let { return@tx it }
+            checkDraftWriteAllowed(db, actor)
+            val card = insertDraft(db, form, reservedSeq, baseRevision = null,
+                operation = DraftOperation.CREATE)
+            val activated = db.update(
+                "identities",
+                ContentValues().apply { putNull("retired_ms") },
+                "event_seq=? AND retired_ms IS NOT NULL",
+                arrayOf(reservedSeq.toString())
+            )
+            check(activated == 1) { "新建草稿的事件序号无法激活" }
+            writeDraftRequestReceipt(db, requestId, fingerprint, card)
+            DraftRequestWrite(card, replayed = false, changedDraft = true)
+        }
+    }
+
+    /** Returns null when a new identity is needed; otherwise resolves replay/replacement atomically. */
+    private fun resolveDraftRequest(
+        db: SQLiteDatabase,
+        form: DraftForm,
+        requestId: String,
+        fingerprint: String,
+        actor: String
+    ): DraftRequestWrite? {
+        val receipt = readDraftRequestReceipt(db, requestId) ?: return null
+        val previous = readDraft(db, receipt.draftId)
+            ?: error("草稿请求收据引用的草稿不存在")
+        check(previous.eventSeq == receipt.eventSeq && previous.operation == DraftOperation.CREATE &&
+            previous.baseRevision == null) { "草稿请求收据与草稿不匹配" }
+
+        if (receipt.fingerprint == fingerprint) {
+            return DraftRequestWrite(previous, replayed = true, changedDraft = false)
+        }
+
+        checkDraftWriteAllowed(db, actor)
+        if (previous.status !in setOf(DraftStatus.PENDING, DraftStatus.CONFLICT, DraftStatus.INVALID)) {
+            return null
+        }
+
+        val changedDraft = previous.form != form || previous.status != DraftStatus.PENDING
+        val card = if (changedDraft) {
+            val updated = db.update(
+                "drafts",
+                ContentValues().apply {
+                    put("payload", encodeForm(form))
+                    put("op", DraftOperation.CREATE.name)
+                    put("status", DraftStatus.PENDING.name)
+                    put("draft_version", previous.draftVersion + 1L)
+                    put("updated_ms", System.currentTimeMillis())
+                },
+                "draft_id=? AND draft_version=? AND status IN ('PENDING','CONFLICT','INVALID')",
+                arrayOf(previous.draftId.toString(), previous.draftVersion.toString())
+            )
+            check(updated == 1) { "草稿在请求覆盖期间发生变化" }
+            requireNotNull(readDraft(db, previous.draftId)) { "已覆盖草稿无法重新读取" }
+        } else previous
+
+        writeDraftRequestReceipt(db, requestId, fingerprint, card)
+        return DraftRequestWrite(card, replayed = false, changedDraft = changedDraft)
+    }
+
+    private fun readDraftRequestReceipt(db: SQLiteDatabase, requestId: String): DraftRequestReceiptRow? =
+        db.rawQuery(
+            "SELECT fingerprint,event_seq,draft_id FROM draft_request_receipts WHERE request_id=?",
+            arrayOf(requestId)
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) null else DraftRequestReceiptRow(
+                fingerprint = cursor.getString(0),
+                eventSeq = cursor.getLong(1),
+                draftId = cursor.getLong(2)
+            )
+        }
+
+    private fun writeDraftRequestReceipt(
+        db: SQLiteDatabase,
+        requestId: String,
+        fingerprint: String,
+        card: DraftCard
+    ) {
+        db.insertWithOnConflict("draft_request_receipts", null, ContentValues().apply {
+            put("request_id", requestId)
+            put("fingerprint", fingerprint)
+            put("event_seq", card.eventSeq)
+            put("draft_id", card.draftId)
+            put("updated_ms", System.currentTimeMillis())
+        }, SQLiteDatabase.CONFLICT_REPLACE)
     }
 
     private fun checkDraftWriteAllowed(db: SQLiteDatabase, actor: String) {
@@ -3121,6 +3277,20 @@ class PowerStore(
                     })
                 }
             })
+            put(BackupEnvelope.DRAFT_REQUEST_RECEIPTS, JSONArray().apply {
+                db.rawQuery(
+                    "SELECT request_id,fingerprint,event_seq,draft_id,updated_ms " +
+                        "FROM draft_request_receipts ORDER BY request_id", null
+                ).use { cursor ->
+                    while (cursor.moveToNext()) put(JSONObject().apply {
+                        put("requestId", cursor.getString(0))
+                        put("fingerprint", cursor.getString(1))
+                        put("eventSeq", cursor.getLong(2))
+                        put("draftId", cursor.getLong(3))
+                        put("updatedMs", cursor.getLong(4))
+                    })
+                }
+            })
             put("nextSeq", metaLong(db, "next_seq"))
             put("nextOrder", metaLong(db, "next_order"))
         }
@@ -3311,6 +3481,19 @@ class PowerStore(
                 }
             }
 
+            payload.optJSONArray(BackupEnvelope.DRAFT_REQUEST_RECEIPTS)?.let { receipts ->
+                for (index in 0 until receipts.length()) {
+                    val item = receipts.getJSONObject(index)
+                    db.insertOrThrow("draft_request_receipts", null, ContentValues().apply {
+                        put("request_id", item.getString("requestId"))
+                        put("fingerprint", item.getString("fingerprint"))
+                        put("event_seq", item.getLong("eventSeq"))
+                        put("draft_id", item.getLong("draftId"))
+                        put("updated_ms", item.getLong("updatedMs"))
+                    })
+                }
+            }
+
             val links = payload.getJSONArray("sourceLinks")
             for (index in 0 until links.length()) {
                 val item = links.getJSONObject(index)
@@ -3383,7 +3566,7 @@ class PowerStore(
         val tables = listOf(
             "identities", "objects", "drafts", "commits", "source_links",
             "migrations", "schedule_intents", "executions", "ai_sessions", "ai_session_drafts",
-            "ai_task_receipts"
+            "ai_task_receipts", "draft_request_receipts"
         )
         tables.forEach { table ->
             val count = db.rawQuery("SELECT COUNT(*) FROM $table", null).use {
@@ -3416,6 +3599,17 @@ class PowerStore(
         if (receiptArray != null) {
             require(receiptArray.length() <= MAX_BACKUP_ROWS) {
                 "备份 ${BackupEnvelope.AI_TASK_RECEIPTS} 数量超过上限 $MAX_BACKUP_ROWS"
+            }
+        }
+        val draftRequestReceiptArray = payload.optJSONArray(BackupEnvelope.DRAFT_REQUEST_RECEIPTS)
+        if (backupSchemaVersion >= 6) {
+            require(draftRequestReceiptArray != null) {
+                "schema v$backupSchemaVersion 备份缺少草稿请求收据"
+            }
+        }
+        if (draftRequestReceiptArray != null) {
+            require(draftRequestReceiptArray.length() <= MAX_BACKUP_ROWS) {
+                "备份 ${BackupEnvelope.DRAFT_REQUEST_RECEIPTS} 数量超过上限 $MAX_BACKUP_ROWS"
             }
         }
         payload.optJSONArray("executions")?.let {
@@ -3533,6 +3727,41 @@ class PowerStore(
             }
         }
 
+        if (draftRequestReceiptArray != null) {
+            val draftsById = (0 until drafts.length()).associate { index ->
+                val item = drafts.getJSONObject(index)
+                item.getLong("draftId") to item
+            }
+            val requestIds = HashSet<String>()
+            val receiptDraftIds = HashSet<Long>()
+            for (index in 0 until draftRequestReceiptArray.length()) {
+                val receipt = draftRequestReceiptArray.getJSONObject(index)
+                val requestId = receipt.getString("requestId")
+                val eventSeq = receipt.getLong("eventSeq")
+                val draftId = receipt.getLong("draftId")
+                require(requestId.isNotBlank() && requestId.length <= 128 &&
+                    requestId.none(Char::isISOControl) && requestIds.add(requestId)) {
+                    "草稿请求收据标识无效或重复"
+                }
+                require(receipt.optString("fingerprint").matches(Regex("[0-9a-f]{64}"))) {
+                    "草稿请求收据 fingerprint 无效"
+                }
+                require(eventSeq in seqs && draftId > 0 && receiptDraftIds.add(draftId)) {
+                    "草稿请求收据引用的身份或草稿重复/无效"
+                }
+                val draft = draftsById[draftId]
+                    ?: throw IllegalArgumentException("草稿请求收据引用的草稿不存在")
+                require(draft.getLong("eventSeq") == eventSeq &&
+                    draft.getString("op") == DraftOperation.CREATE.name &&
+                    (!draft.has("baseRev") || draft.isNull("baseRev"))) {
+                    "草稿请求收据与草稿不匹配"
+                }
+                require(receipt.getLong("updatedMs") > 0L) {
+                    "草稿请求收据更新时间无效"
+                }
+            }
+        }
+
         val links = payload.getJSONArray("sourceLinks")
         for (index in 0 until links.length()) {
             val item = links.getJSONObject(index)
@@ -3553,7 +3782,7 @@ class PowerStore(
 
     companion object {
         const val DATABASE_NAME = "powercal-v2.db"
-        const val VERSION = 5
+        const val VERSION = 6
         private const val ACTIVE_EVENT_PAGE_SIZE = 128
         private const val MAX_ACTIVE_EVENT_PAGE_SIZE = 500
 
