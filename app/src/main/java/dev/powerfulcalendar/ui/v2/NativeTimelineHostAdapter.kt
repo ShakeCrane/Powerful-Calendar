@@ -13,6 +13,7 @@ import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.TimelineCoordinate
 import dev.powerfulcalendar.core.api.v1.RecurrenceFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.RecurrenceFeatureApiV1PreviewDefault
 import dev.powerfulcalendar.ui.v2.nativeui.NativeEventInspection
 import dev.powerfulcalendar.ui.v2.nativeui.NativeTimelineScreen
 import java.time.Instant
@@ -33,7 +34,7 @@ fun TimelineScreen(
     titlesOutside: Boolean = false, onTitlesOutsideChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier, blockedReminders: Int = 0,
     onOpenOccurrence: (TemporalRecord, String?) -> Unit = { record, _ -> onOpenEvent(record) },
-    recurrenceFeatures: RecurrenceFeatureApiV1? = null
+    recurrenceFeatures: RecurrenceFeatureApiV1 = RecurrenceFeatureApiV1PreviewDefault.recurrence
 ) {
     val localDay = Instant.ofEpochMilli(camera.anchorMillis).atZone(zone).toLocalDate()
     val projection = remember(records, localDay, zone, recurrenceFeatures) {

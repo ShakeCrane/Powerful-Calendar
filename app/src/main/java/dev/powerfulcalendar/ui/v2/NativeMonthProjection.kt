@@ -23,13 +23,12 @@ internal fun projectNativeMonth(
     records: List<TemporalRecord>,
     month: YearMonth,
     zone: ZoneId,
-    recurrenceFeatures: RecurrenceFeatureApiV1? = null
+    recurrenceFeatures: RecurrenceFeatureApiV1
 ): NativeMonthHostProjection {
     val from = month.atDay(1).atStartOfDay(zone).toInstant().toEpochMilli()
     val to = month.plusMonths(1).atDay(1).atStartOfDay(zone).toInstant().toEpochMilli()
     val days = (1..month.lengthOfMonth()).map(month::atDay)
-    val occurrences = recurrenceFeatures?.let { displayOccurrences(records, from, to, it) }
-        ?: displayOccurrences(records, from, to)
+    val occurrences = displayOccurrences(records, from, to, recurrenceFeatures)
     val projected = occurrences.mapNotNull { occurrence ->
         val display = occurrence.record
         val visibleDates = days.filter { day ->
@@ -75,7 +74,7 @@ internal fun projectNativeMonth(
 internal class NativeMonthProjectionSession(
     private val recordsForMonth: (YearMonth) -> List<TemporalRecord>,
     private val zone: ZoneId,
-    private val recurrenceFeatures: RecurrenceFeatureApiV1? = null
+    private val recurrenceFeatures: RecurrenceFeatureApiV1
 ) {
     private var openTargets: Map<String, NativeMonthOpenTarget> = emptyMap()
 

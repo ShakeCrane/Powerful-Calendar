@@ -29,7 +29,7 @@ internal object WebSkinTimelineProjection {
         camera: TimelineCoordinate.Camera,
         nowMillis: Long,
         zone: ZoneId,
-        recurrenceFeatures: RecurrenceFeatureApiV1? = null
+        recurrenceFeatures: RecurrenceFeatureApiV1
     ): JSONObject {
         val hours = TimelineCoordinate.clampHours(camera.hours)
         val halfSpan = (TimelineCoordinate.spanMillis(hours) / 2).toLong()
@@ -40,13 +40,7 @@ internal object WebSkinTimelineProjection {
         val to = day.plusDays(9).atStartOfDay(zone).toInstant().toEpochMilli()
 
         val owners = records.filter { it.kind != TemporalKind.MEMO }.take(MAX_OWNERS)
-        val projected = if (recurrenceFeatures == null) {
-            owners.filter { !it.recurrence.isRepeating }
-                .mapNotNull(::singleDisplayOccurrence) +
-                displayOccurrences(owners.filter { it.recurrence.isRepeating }, from, to)
-        } else {
-            displayOccurrences(owners, from, to, recurrenceFeatures)
-        }
+        val projected = displayOccurrences(owners, from, to, recurrenceFeatures)
         val overlapping = projected.filter { slot ->
             val record = slot.record
             if (record.isDateOnlyDeadline()) {

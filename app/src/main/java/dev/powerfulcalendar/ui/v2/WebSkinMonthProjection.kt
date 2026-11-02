@@ -57,7 +57,7 @@ internal object WebSkinMonthProjection {
         records: List<TemporalRecord>,
         view: WebSkinMonthViewState,
         zone: ZoneId,
-        recurrenceFeatures: RecurrenceFeatureApiV1? = null
+        recurrenceFeatures: RecurrenceFeatureApiV1
     ): JSONObject {
         require(view.selectedDate.year in MIN_YEAR..MAX_YEAR &&
             YearMonth.from(view.selectedDate) == view.month)
@@ -68,9 +68,7 @@ internal object WebSkinMonthProjection {
         val to = gridEnd.atStartOfDay(zone).toInstant().toEpochMilli()
         val eligible = records.filter { it.kind != TemporalKind.MEMO }
         val owners = eligible.take(MAX_OWNERS)
-        val occurrences = (recurrenceFeatures?.let {
-            displayOccurrences(owners, from, to, it)
-        } ?: displayOccurrences(owners, from, to))
+        val occurrences = displayOccurrences(owners, from, to, recurrenceFeatures)
             .sortedWith(compareBy({ it.record.anchorMillis() ?: Long.MAX_VALUE },
                 { it.owner.eventSeq }, { it.key }))
         val items = JSONArray()

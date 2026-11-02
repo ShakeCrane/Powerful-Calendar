@@ -28,18 +28,12 @@ internal fun projectNativeTimeline(
     records: List<TemporalRecord>,
     camera: TimelineCoordinate.Camera,
     zone: ZoneId,
-    recurrenceFeatures: RecurrenceFeatureApiV1? = null
+    recurrenceFeatures: RecurrenceFeatureApiV1
 ): NativeTimelineHostProjection {
     val day = Instant.ofEpochMilli(camera.anchorMillis).atZone(zone).toLocalDate()
     val from = day.minusDays(8).atStartOfDay(zone).toInstant().toEpochMilli()
     val to = day.plusDays(9).atStartOfDay(zone).toInstant().toEpochMilli()
-    val occurrences = if (recurrenceFeatures == null) {
-        records.filterNot { it.recurrence.isRepeating }
-            .mapNotNull(::singleDisplayOccurrence) +
-            displayOccurrences(records.filter { it.recurrence.isRepeating }, from, to)
-    } else {
-        displayOccurrences(records, from, to, recurrenceFeatures)
-    }
+    val occurrences = displayOccurrences(records, from, to, recurrenceFeatures)
 
     val occurrenceByRecord = IdentityHashMap<TemporalRecord, DisplayOccurrence>()
     occurrences.forEach { occurrenceByRecord[it.record] = it }

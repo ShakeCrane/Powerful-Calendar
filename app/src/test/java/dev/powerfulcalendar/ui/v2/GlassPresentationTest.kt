@@ -1,12 +1,14 @@
 package dev.powerfulcalendar.ui.v2
 
 import dev.powerfulcalendar.core.*
+import dev.powerfulcalendar.core.api.v1.CoreRecurrenceFeatureApiV1
 import org.junit.Assert.*
 import org.junit.Test
 import java.time.*
 
 class GlassPresentationTest {
     private val zone = ZoneId.of("Asia/Shanghai")
+    private val recurrenceFeatures = CoreRecurrenceFeatureApiV1()
     private fun instant(text: String) = LocalDateTime.parse(text).atZone(zone).toInstant().toEpochMilli()
     private fun event(seq: Long, from: String = "2026-10-20T09:00", to: String = "2026-10-20T10:00") = TemporalRecord(
         seq, 1, TemporalKind.ACTIVITY, "活动 $seq", startMillis = instant(from), endMillis = instant(to), zoneId = zone.id
@@ -43,7 +45,7 @@ class GlassPresentationTest {
 
     @Test fun dateOnlyDeadlineIsVisibleInNoonWindowWithoutBecomingAnInstant() {
         val record = TemporalRecord(1, 1, TemporalKind.DEADLINE, "提交报告", deadlineDate = "2026-10-20", zoneId = zone.id)
-        val projection = displayOccurrences(listOf(record), instant("2026-10-20T10:00"), instant("2026-10-20T14:00"))
+        val projection = displayOccurrences(listOf(record), instant("2026-10-20T10:00"), instant("2026-10-20T14:00"), recurrenceFeatures)
         assertEquals(1, projection.size)
         assertNull(projection.single().record.deadlineMillis)
         assertEquals("2026-10-20", projection.single().record.deadlineDate)
@@ -61,15 +63,15 @@ class GlassPresentationTest {
             ))
         )
 
-        assertEquals(movedTo, singleDisplayOccurrence(overridden)!!.record.startMillis)
-        assertTrue(displayOccurrences(listOf(overridden), instant("2026-10-20T00:00"), instant("2026-10-21T00:00")).isEmpty())
-        val moved = displayOccurrences(listOf(overridden), instant("2026-10-22T00:00"), instant("2026-10-23T00:00")).single()
+        assertTrue(displayOccurrences(listOf(overridden), instant("2026-10-20T00:00"), instant("2026-10-21T00:00"), recurrenceFeatures).isEmpty())
+        val moved = displayOccurrences(listOf(overridden), instant("2026-10-22T00:00"), instant("2026-10-23T00:00"), recurrenceFeatures).single()
+        assertEquals(movedTo, moved.record.startMillis)
         assertEquals("7:$key", moved.key)
         assertEquals(movedTo, moved.record.startMillis)
         assertEquals("已移动", moved.record.title)
 
         val excepted = overridden.copy(recurrence = overridden.recurrence.copy(exceptions = setOf(key)))
-        assertTrue(displayOccurrences(listOf(excepted), instant("2026-10-22T00:00"), instant("2026-10-23T00:00")).isEmpty())
+        assertTrue(displayOccurrences(listOf(excepted), instant("2026-10-22T00:00"), instant("2026-10-23T00:00"), recurrenceFeatures).isEmpty())
     }
 
     @Test fun dayWindowTreatsActivityIntervalsAsHalfOpenAndPointsAsSingleDay() {
@@ -88,7 +90,7 @@ class GlassPresentationTest {
 
     @Test fun repeatingSlotsKeepFormalOwnerAndOriginalSlotIdentity() {
         val owner = event(42, "2026-01-01T09:00", "2026-01-01T10:00").copy(recurrence = Recurrence(RecurrenceFreq.DAILY))
-        val slots = displayOccurrences(listOf(owner), instant("2026-10-20T00:00"), instant("2026-10-22T00:00"))
+        val slots = displayOccurrences(listOf(owner), instant("2026-10-20T00:00"), instant("2026-10-22T00:00"), recurrenceFeatures)
         assertEquals(2, slots.size)
         assertTrue(slots.all { it.owner == owner })
         assertEquals(2, slots.map { it.key }.distinct().size)
@@ -98,22 +100,22 @@ class GlassPresentationTest {
 
     @Test fun ongoingActivityCrossingMidnightIsVisibleOnBothDays() {
         val record = event(1, "2026-10-19T22:00", "2026-10-20T02:00")
-        assertEquals(1, displayOccurrences(listOf(record), instant("2026-10-20T00:00"), instant("2026-10-21T00:00")).size)
+        assertEquals(1, displayOccurrences(listOf(record), instant("2026-10-20T00:00"), instant("2026-10-21T00:00"), recurrenceFeatures).size)
     }
 
     @Test fun repeatingDateOnlyDeadlineNeverAcquiresMinutePrecision() {
         val owner = TemporalRecord(1, 1, TemporalKind.DEADLINE, "周报", deadlineDate = "2026-10-01", zoneId = zone.id, recurrence = Recurrence(RecurrenceFreq.DAILY))
-        val slots = displayOccurrences(listOf(owner), instant("2026-10-20T00:00"), instant("2026-10-22T00:00"))
+        val slots = displayOccurrences(listOf(owner), instant("2026-10-20T00:00"), instant("2026-10-22T00:00"), recurrenceFeatures)
         assertTrue(slots.isNotEmpty())
         assertTrue(slots.all { it.record.isDateOnlyDeadline() && it.record.deadlineMillis == null })
     }
 
     @Test fun repeatingDateDeadlineRemainsVisibleAfterMidnightAndExpiresAtNextDay() {
         val owner = TemporalRecord(1, 1, TemporalKind.DEADLINE, "日结", deadlineDate = "2026-10-01", zoneId = zone.id, recurrence = Recurrence(RecurrenceFreq.DAILY))
-        val noon = displayOccurrences(listOf(owner), instant("2026-10-20T10:00"), instant("2026-10-20T14:00"))
+        val noon = displayOccurrences(listOf(owner), instant("2026-10-20T10:00"), instant("2026-10-20T14:00"), recurrenceFeatures)
         assertEquals(listOf("2026-10-20"), noon.map { it.record.deadlineDate })
         val single = owner.copy(recurrence = Recurrence.NONE, deadlineDate = "2026-10-19")
-        assertTrue(displayOccurrences(listOf(single), instant("2026-10-20T00:00"), instant("2026-10-21T00:00")).isEmpty())
+        assertTrue(displayOccurrences(listOf(single), instant("2026-10-20T00:00"), instant("2026-10-21T00:00"), recurrenceFeatures).isEmpty())
     }
 
     @Test fun fullSnapshotIncludesAllRecurrenceConstraintsAndRemovedTimeFields() {
@@ -188,7 +190,7 @@ class GlassPresentationTest {
         val ny = ZoneId.of("America/New_York")
         val start = LocalDate.of(2026, 10, 31).atTime(9, 0).atZone(ny).toInstant().toEpochMilli()
         val owner = TemporalRecord(1, 1, TemporalKind.ALARM, "起床", startMillis = start, zoneId = ny.id, recurrence = Recurrence(RecurrenceFreq.DAILY))
-        val slots = displayOccurrences(listOf(owner), start, start + 3 * 86_400_000L)
+        val slots = displayOccurrences(listOf(owner), start, start + 3 * 86_400_000L, recurrenceFeatures)
         assertEquals(25 * 3_600_000L, slots[1].record.startMillis!! - slots[0].record.startMillis!!)
         assertEquals(9, Instant.ofEpochMilli(slots[1].record.startMillis!!).atZone(ny).hour)
     }

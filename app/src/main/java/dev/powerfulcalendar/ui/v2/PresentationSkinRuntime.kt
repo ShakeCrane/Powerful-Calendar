@@ -30,6 +30,7 @@ import dev.powerfulcalendar.core.api.v1.AiConversationMessageV1
 import dev.powerfulcalendar.core.api.v1.AiProposalReviewV1
 import dev.powerfulcalendar.core.api.v1.EventRecordV1
 import dev.powerfulcalendar.core.api.v1.RecurrenceFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.RecurrenceFeatureApiV1PreviewDefault
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.api.v1.MemoEntryV1
@@ -116,7 +117,7 @@ internal class MonthVisualContext internal constructor(
     val onOpen: (Long, Long, String?) -> Unit,
     val onCreate: (LocalDate) -> Unit,
     val onRequestMonth: (java.time.YearMonth) -> Unit,
-    private val recurrenceFeatures: RecurrenceFeatureApiV1? = null
+    private val recurrenceFeatures: RecurrenceFeatureApiV1
 ) {
     val records: List<EventRecordV1> = nativeRecords.map(TemporalRecord::toEventRecordV1)
     val recordsForMonth: (java.time.YearMonth) -> List<EventRecordV1> = { month ->
@@ -187,7 +188,7 @@ internal fun MonthScreen(
     onCreate: (LocalDate) -> Unit,
     recordsForMonth: (java.time.YearMonth) -> List<TemporalRecord> = { records },
     onRequestMonth: (java.time.YearMonth) -> Unit = {},
-    recurrenceFeatures: RecurrenceFeatureApiV1? = null
+    recurrenceFeatures: RecurrenceFeatureApiV1 = RecurrenceFeatureApiV1PreviewDefault.recurrence
 ) {
     val context = MonthVisualContext(
         nativeRecords = records,

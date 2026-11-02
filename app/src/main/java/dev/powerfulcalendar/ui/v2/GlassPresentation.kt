@@ -1,9 +1,9 @@
 package dev.powerfulcalendar.ui.v2
 
 import dev.powerfulcalendar.core.*
-import dev.powerfulcalendar.core.api.v1.RecurrenceOccurrenceV1
 import dev.powerfulcalendar.core.api.v1.RecurrenceFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.RecurrenceOccurrenceWindowQueryV1
+import dev.powerfulcalendar.core.api.v1.RecurrenceOccurrenceV1
 import dev.powerfulcalendar.core.api.v1.toEventRecordV1
 import java.time.Instant
 import java.time.LocalDate
@@ -45,18 +45,6 @@ private fun occurrenceDisplayRecord(
     return projected.copy(title = owner.recurrence.overrides[key]?.title ?: owner.title)
 }
 
-internal fun singleDisplayOccurrence(owner: TemporalRecord): DisplayOccurrence? {
-    val anchor = owner.anchorMillis() ?: return null
-    val originalKey = RecurrenceEngine.keyFor(Instant.ofEpochMilli(anchor).atZone(owner.zone).toLocalDateTime())
-    val slot = RecurrenceEngine.occurrenceForKey(owner, originalKey) ?: return null
-    return DisplayOccurrence(
-        owner,
-        occurrenceDisplayRecord(owner, slot),
-        "${owner.eventSeq}:${slot.key}",
-        slot.key
-    )
-}
-
 /** Half-open interval intersection; point events belong to exactly one day. */
 internal fun overlapsDayWindow(record: TemporalRecord, begin: Long, end: Long): Boolean {
     val start = record.anchorMillis() ?: return false
@@ -78,30 +66,6 @@ internal fun movedDraftForm(record: TemporalRecord, target: Long): DraftForm {
         TemporalKind.DEADLINE -> base.copy(endText = if (record.isDateOnlyDeadline()) {
             Instant.ofEpochMilli(target).atZone(record.zone).toLocalDate().toString()
         } else DraftForm.formatInstant(target, record.zone))
-    }
-}
-
-internal fun displayOccurrences(
-    records: List<TemporalRecord>, from: Long, to: Long
-): List<DisplayOccurrence> = records.flatMap { owner ->
-    if (!owner.recurrence.isRepeating) {
-        val occurrence = singleDisplayOccurrence(owner) ?: return@flatMap emptyList()
-        val display = occurrence.record
-        val start = display.anchorMillis() ?: return@flatMap emptyList()
-        val end = if (display.isDateOnlyDeadline()) {
-            LocalDate.parse(display.deadlineDate).plusDays(1).atStartOfDay(owner.zone).toInstant().toEpochMilli()
-        } else display.spanEndMillis() ?: start
-        if (start < to && (if (end > start) end > from else start >= from)) {
-            listOf(occurrence)
-        } else emptyList()
-    } else {
-        val queryFrom = if (owner.isDateOnlyDeadline()) Instant.ofEpochMilli(from).atZone(owner.zone).toLocalDate().atStartOfDay(owner.zone).toInstant().toEpochMilli() else from
-        RecurrenceEngine.occurrences(
-            owner, queryFrom, to, limit = 2048, prioritizeWindowStarts = true
-        ).map { slot ->
-            val display = occurrenceDisplayRecord(owner, slot)
-            DisplayOccurrence(owner, display, "${owner.eventSeq}:${slot.key}", slot.key)
-        }
     }
 }
 

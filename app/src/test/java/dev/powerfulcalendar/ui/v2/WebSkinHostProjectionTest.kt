@@ -43,13 +43,14 @@ class WebSkinHostProjectionTest {
     private val zone = ZoneId.of("Asia/Shanghai")
     private val noon = Instant.parse("2026-10-22T04:00:00Z").toEpochMilli()
     private val start = Instant.parse("2026-10-22T01:00:00Z").toEpochMilli()
+    private val recurrenceFeatures = CoreRecurrenceFeatureApiV1()
     private fun activity(id: Long, starts: Long = start) = TemporalRecord(
         eventSeq = id, revision = 2L, kind = TemporalKind.ACTIVITY,
         title = "课程 $id", notes = "private-note-should-not-leak",
         startMillis = starts, endMillis = starts + 3_600_000L, zoneId = zone.id
     )
     private fun project(records: List<TemporalRecord>) = WebSkinTimelineProjection.build(
-        records, TimelineCoordinate.Camera(noon, 24.0), noon, zone
+        records, TimelineCoordinate.Camera(noon, 24.0), noon, zone, recurrenceFeatures
     )
 
     @Test fun skinResourceMimeTypesIgnoreExtensionCaseLikeStudioPreview() {
@@ -164,7 +165,7 @@ class WebSkinHostProjectionTest {
         assertTrue(occurrence.getString("occurrenceKey").startsWith("9:"))
         assertEquals("2026-10-22T09:00", occurrence.getString("originalOccurrenceKey"))
         val month = WebSkinMonthProjection.build(
-            listOf(daily), WebSkinMonthProjection.initial(noon, zone), zone
+            listOf(daily), WebSkinMonthProjection.initial(noon, zone), zone, recurrenceFeatures
         ).getJSONArray("items")
         val sameDay = (0 until month.length()).map { month.getJSONObject(it) }
             .single { it.getString("date") == "2026-10-22" }
@@ -180,11 +181,13 @@ class WebSkinHostProjectionTest {
         val camera = TimelineCoordinate.Camera(noon, 24.0)
         val recurrenceApi = RecordingRecurrenceFeatureApi(CoreRecurrenceFeatureApiV1())
 
-        val directTimeline = WebSkinTimelineProjection.build(records, camera, noon, zone)
+        val expectedTimeline = WebSkinTimelineProjection.build(
+            records, camera, noon, zone, CoreRecurrenceFeatureApiV1()
+        )
         val apiTimeline = WebSkinTimelineProjection.build(
             records, camera, noon, zone, recurrenceApi
         )
-        assertEquals(directTimeline.toString(), apiTimeline.toString())
+        assertEquals(expectedTimeline.toString(), apiTimeline.toString())
 
         val timelineQuery = recurrenceApi.windowQueries.first()
         val timelineDay = Instant.ofEpochMilli(camera.anchorMillis).atZone(zone).toLocalDate()
@@ -196,9 +199,11 @@ class WebSkinHostProjectionTest {
         assertEquals(2, recurrenceApi.windowQueries.size)
 
         val monthView = WebSkinMonthProjection.initial(noon, zone)
-        val directMonth = WebSkinMonthProjection.build(records, monthView, zone)
+        val expectedMonth = WebSkinMonthProjection.build(
+            records, monthView, zone, CoreRecurrenceFeatureApiV1()
+        )
         val apiMonth = WebSkinMonthProjection.build(records, monthView, zone, recurrenceApi)
-        assertEquals(directMonth.toString(), apiMonth.toString())
+        assertEquals(expectedMonth.toString(), apiMonth.toString())
 
         val monthQuery = recurrenceApi.windowQueries.last()
         val firstGridDay = monthView.month.atDay(1).minusDays(
@@ -424,7 +429,7 @@ class WebSkinHostProjectionTest {
 
     @Test fun monthProjectionUsesRealHostOccurrencesAndExactDateWindow() {
         val view = WebSkinMonthProjection.initial(noon, zone)
-        val output = WebSkinMonthProjection.build(listOf(activity(71)), view, zone)
+        val output = WebSkinMonthProjection.build(listOf(activity(71)), view, zone, recurrenceFeatures)
         assertEquals("2026-10", output.getString("month"))
         assertEquals("2026-09-28", output.getString("gridFrom"))
         assertEquals("2026-10-22", output.getString("selectedDate"))

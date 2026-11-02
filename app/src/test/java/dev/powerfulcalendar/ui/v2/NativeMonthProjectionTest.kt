@@ -20,6 +20,7 @@ import java.time.ZoneId
 
 class NativeMonthProjectionTest {
     private val zone = ZoneId.of("Asia/Shanghai")
+    private val recurrenceFeatures = CoreRecurrenceFeatureApiV1()
 
     private class RecordingRecurrenceFeatureApiV1(
         private val delegate: RecurrenceFeatureApiV1
@@ -109,7 +110,7 @@ class NativeMonthProjectionTest {
         val session = NativeMonthProjectionSession({ month ->
             requestedMonths += month
             if (month == YearMonth.of(2026, 10)) listOf(owner) else emptyList()
-        }, zone)
+        }, zone, recurrenceFeatures)
         val october = YearMonth.of(2026, 10)
         val november = YearMonth.of(2026, 11)
         val rows = session.rowsFor(october)
@@ -134,7 +135,7 @@ class NativeMonthProjectionTest {
             zoneId = zone.id
         )
         val target = projectNativeMonth(
-            listOf(record), YearMonth.of(2026, 10), zone
+            listOf(record), YearMonth.of(2026, 10), zone, recurrenceFeatures
         ).openTargets.values.single()
 
         assertSame(record, target.owner)
@@ -159,7 +160,7 @@ class NativeMonthProjectionTest {
 
         val rows = session.rowsFor(month)
 
-        assertEquals(projectNativeMonth(listOf(owner), month, zone).rows, rows)
+        assertEquals(projectNativeMonth(listOf(owner), month, zone, CoreRecurrenceFeatureApiV1()).rows, rows)
         val query = recurrenceApi.windowQueries.single()
         assertEquals(owner.eventSeq, query.event.eventSeq)
         assertEquals(month.atDay(1).atStartOfDay(zone).toInstant().toEpochMilli(), query.fromMillis)

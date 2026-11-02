@@ -2,6 +2,7 @@ package dev.powerfulcalendar.ui.v2
 
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
+import dev.powerfulcalendar.core.api.v1.CoreRecurrenceFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.EventRecordV1
 import dev.powerfulcalendar.core.api.v1.toEventRecordV1
 import org.junit.Assert.assertEquals
@@ -46,7 +47,8 @@ class MonthVisualContextContractTest {
             onOpen = { eventSeq, revision, occurrenceKey ->
                 opened = Triple(eventSeq, revision, occurrenceKey)
             },
-            onCreate = {}
+            onCreate = {},
+            recurrenceFeatures = CoreRecurrenceFeatureApiV1()
         )
 
         val skinRecords: List<EventRecordV1> = context.records

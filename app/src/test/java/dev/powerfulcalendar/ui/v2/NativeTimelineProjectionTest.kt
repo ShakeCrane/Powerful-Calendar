@@ -20,6 +20,7 @@ import java.time.ZoneId
 
 class NativeTimelineProjectionTest {
     private val zone = ZoneId.of("Asia/Shanghai")
+    private val recurrenceFeatures = CoreRecurrenceFeatureApiV1()
 
     private class RecordingRecurrenceFeatureApiV1(
         private val delegate: RecurrenceFeatureApiV1
@@ -100,7 +101,8 @@ class NativeTimelineProjectionTest {
         )
 
         val projection = projectNativeTimeline(
-            listOf(activity(71, 9, 11), activity(72, 10, 12), deadline), camera, zone
+            listOf(activity(71, 9, 11), activity(72, 10, 12), deadline), camera, zone,
+            recurrenceFeatures
         )
         val first = projection.events.single { it.eventSeq == 71L }
         val second = projection.events.single { it.eventSeq == 72L }
@@ -131,11 +133,11 @@ class NativeTimelineProjectionTest {
             24.0
         )
 
-        val projection = projectNativeTimeline(listOf(memo), camera, zone)
+        val projection = projectNativeTimeline(listOf(memo), camera, zone, recurrenceFeatures)
 
         assertTrue(projection.events.isEmpty())
         assertTrue(projection.hasRecords)
-        assertFalse(projectNativeTimeline(emptyList(), camera, zone).hasRecords)
+        assertFalse(projectNativeTimeline(emptyList(), camera, zone, recurrenceFeatures).hasRecords)
     }
 
     @Test
@@ -189,7 +191,7 @@ class NativeTimelineProjectionTest {
         )
         val camera = TimelineCoordinate.Camera(start + 3 * 60 * 60_000, 24.0)
         val records = listOf(recurring, single)
-        val expected = projectNativeTimeline(records, camera, zone)
+        val expected = projectNativeTimeline(records, camera, zone, CoreRecurrenceFeatureApiV1())
         val recurrenceApi = RecordingRecurrenceFeatureApiV1(CoreRecurrenceFeatureApiV1())
 
         val actual = projectNativeTimeline(records, camera, zone, recurrenceApi)

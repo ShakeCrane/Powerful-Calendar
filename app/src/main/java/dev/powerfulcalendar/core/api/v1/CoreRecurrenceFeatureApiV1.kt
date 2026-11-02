@@ -80,3 +80,8 @@ internal class CoreRecurrenceFeatureApiV1 : RecurrenceFeatureApiV1 {
         )
     }
 }
+
+/** Stable stateless adapter default for standalone Compose previews and test surfaces. */
+internal object RecurrenceFeatureApiV1PreviewDefault {
+    val recurrence: RecurrenceFeatureApiV1 by lazy { CoreRecurrenceFeatureApiV1() }
+}
