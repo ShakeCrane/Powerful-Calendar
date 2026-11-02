@@ -1374,7 +1374,18 @@ internal class WebSkinEditService(
         if (activeNew != null) {
             if (!deckOpen || activeNew.clientDraftId != cmd.draftId ||
                 activeNew.version != cmd.draftVersion) return result(cmd.requestId, "stale")
-            if (!activeNew.meaningfulDiff) return result(cmd.requestId, "no_changes")
+            if (!activeNew.meaningfulDiff) {
+                val saved = withContext(Dispatchers.IO) {
+                    eventFeatures.saveNewEvent(
+                        activeNew.handle, activeNew.form.toEventFormV1(), cmd.requestId
+                    )
+                }
+                eventFeatures.editorSnapshot(activeNew.handle)?.let {
+                    activeNew.snapshot = it
+                }
+                return if (saved.status == EventMutationStatusV1.NO_CHANGE)
+                    result(cmd.requestId, "no_changes") else result(saved)
+            }
             if (queryAiBatchLock())
                 return result(cmd.requestId, "locked",
                     "当前有受保护的业务操作，内容仍保留在编辑器中")

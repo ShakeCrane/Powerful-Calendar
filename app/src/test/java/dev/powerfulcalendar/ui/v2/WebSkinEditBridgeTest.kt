@@ -23,6 +23,8 @@ import dev.powerfulcalendar.core.api.v1.DraftReviewFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.EventFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.EventEditorHandleV1
 import dev.powerfulcalendar.core.api.v1.EventEditorUpdateReceiptV1
+import dev.powerfulcalendar.core.api.v1.EventMutationReceiptV1
+import dev.powerfulcalendar.core.api.v1.EventMutationStatusV1
 import dev.powerfulcalendar.core.api.v1.EventRecordV1
 import dev.powerfulcalendar.core.api.v1.EventRecurrenceScopeV1
 import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
@@ -55,6 +57,7 @@ class WebSkinEditBridgeTest {
     private val queriedDraftIds = mutableListOf<Long>()
     private val queriedBatchLockStates = mutableListOf<Boolean>()
     private val selectedRecurrenceScopes = mutableListOf<EventRecurrenceScopeV1>()
+    private val savedNewEventReceipts = mutableListOf<EventMutationReceiptV1>()
     private fun request()=UUID.randomUUID().toString()
     @Before fun setup(){
         context=ApplicationProvider.getApplicationContext()
@@ -73,6 +76,16 @@ class WebSkinEditBridgeTest {
             ): EventEditorUpdateReceiptV1 {
                 selectedRecurrenceScopes += scope
                 return coreFeatureApi.events.selectFormalRecurrenceScope(handle, scope)
+            }
+
+            override fun saveNewEvent(
+                handle: EventEditorHandleV1,
+                form: dev.powerfulcalendar.core.api.v1.EventFormV1,
+                requestId: String
+            ): EventMutationReceiptV1 {
+                val receipt = coreFeatureApi.events.saveNewEvent(handle, form, requestId)
+                savedNewEventReceipts += receipt
+                return receipt
             }
         }
         val draftReviewApi = coreFeatureApi.adaptDeckController(controller)
@@ -1403,6 +1416,26 @@ class WebSkinEditBridgeTest {
         assertEquals(0,store.pendingCount())
         assertEquals(1,store.identityCount())
         assertEquals(1,store.commitCount())
+    }
+
+    @Test fun unchangedWebNewEventUsesCoreNoChangeReceipt() = runBlocking {
+        val created = service.execute(WebEditCommand.CreateDeck(request(), TemporalKind.ACTIVITY))
+        val draftId = created.getString("detail").toLong()
+        val version = service.snapshot().getJSONObject("deck").getLong("version")
+        val requestId = request()
+        val command = WebEditCommand.CommitDeck(requestId, draftId, version)
+
+        assertEquals("no_changes", service.execute(command).getString("status"))
+        assertEquals(1, savedNewEventReceipts.size)
+        assertEquals(requestId, savedNewEventReceipts.single().requestId)
+        assertEquals(EventMutationStatusV1.NO_CHANGE, savedNewEventReceipts.single().status)
+        assertTrue(store.all().isEmpty())
+        assertEquals(0, store.draftCount())
+        assertEquals(0, store.identityCount())
+
+        assertEquals("no_changes", service.execute(command).getString("status"))
+        assertEquals("Exact Web request replay must not call the Core API again", 1,
+            savedNewEventReceipts.size)
     }
 
     @Test fun equivalentReplacementStillUsesCoreReviewedCommitAndAdvancesRevision() = runBlocking {
