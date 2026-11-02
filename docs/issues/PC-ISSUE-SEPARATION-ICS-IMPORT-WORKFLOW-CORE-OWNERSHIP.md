@@ -35,6 +35,6 @@ The recovery receipt continues using the existing SharedPreferences key, seriali
 
 ## 修改与后续
 
-Code commit: `14bd3d554d29c5231a05ce0c9bb3756eb16fdcf3` (`分离：由 Core 编排 ICS 草稿导入`), parent `fca2a4874d11104d75b5e9ef60084d51b865a4bd`. The code commit and the preceding timeline-move slice are local and awaiting an ordinary fast-forward push; the remote has not been rewritten.
+Code commit: `14bd3d554d29c5231a05ce0c9bb3756eb16fdcf3` (`分离：由 Core 编排 ICS 草稿导入`), parent `fca2a4874d11104d75b5e9ef60084d51b865a4bd`. The code and Issue/evidence commits for this slice and the preceding timeline-move slice were fast-forward pushed to `origin/feat/skin-first-separation` and verified at `5c1f1d32546f28989b4808f0829dbfffe03e0e8b`.
 
 The next bounded review is the `AiBatchModeV1` / `AiBatchRunner.Mode` Host boundary. Keep Runner types inside the execution adapter, align Native and Web Host command/state values to the existing stable mode DTO, and retain the Host's explicit confirmation/approval flow. This issue does not claim Phase 1 completion.
