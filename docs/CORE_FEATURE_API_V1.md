@@ -241,15 +241,18 @@ Native/Web routing and scoped verification are recorded in the
 
 `CoreFeatureApiV1.diagnostics` exposes the platform-neutral `CoreDiagnosticsFeatureApiV1` query.
 `queryDiagnostics()` returns `CoreDiagnosticsV1`, containing the existing Store's next sequence
-preview and durable identity count. The Store adapter delegates to the existing read methods;
-it does not write, publish feature changes, or change a feature revision. These two values are
-independent diagnostics and do not carry a shared transactional revision.
+preview, durable identity count, schema version, and the active database name. The Store adapter
+delegates the count reads and supplies the storage metadata. It does not write, publish feature
+changes, or change a feature revision. These four values are independent diagnostics and do not
+carry a shared transactional revision.
 
 `PowerCalApp.reload()` uses this query for its existing Native and Web system-diagnostics
-projection. The DTO contains only scalar values and exposes no Android, Store, database, or Core
-entity type. This moves the two direct `PowerStore` reads behind the versioned Core API without
-changing their values or Store semantics. Implementation and verification scope are recorded in
-the [Core Diagnostics API Issue](issues/PC-ISSUE-CORE-DIAGNOSTICS-API-V1.md).
+projection. The DTO contains only platform-neutral scalar values; it exposes no Android, Store,
+database-helper, or Core entity type. Native and Web Settings projections no longer read
+`PowerStore` constants directly. The active database name also remains correct for isolated or
+custom Store instances. The query leaves Store contents and feature notifications unchanged.
+Implementation and verification scope are recorded in the
+[Core Diagnostics API Issue](issues/PC-ISSUE-CORE-DIAGNOSTICS-API-V1.md).
 
 ## 15. Recurrence next-occurrence query v1
 
@@ -327,13 +330,13 @@ Verified code paths across the Calendar, Event, Recurrence query, Memo, Draft/Re
 - Native and Web Host reminder diagnostics and reconciliation use the shared `ReminderFeatureApiV1`; bounded lifecycle recovery and exhaustive user-requested recovery remain distinct modes.
 - Native and Web Host timeline/month reads use Store-backed `CalendarFeatureApiV1` windows, then materialize occurrences through the shared `RecurrenceFeatureApiV1.queryOccurrencesInWindow()`. Native month navigation asks the Host for a fresh bounded query per month; Web synchronous state refreshes select data for the live window.
 - Native and Web ICS import/export, structured Calendar import, and native backup export/restore now call `ImportExportFeatureApiV1`. ICS draft persistence delegates to Draft/Review; structured imports retain Store batch receipts and source-link idempotence; successful backup restore emits the shared `STORE_RESTORED` change.
-- `PowerCalApp.reload()` obtains the sequence preview and identity count through the read-only `CoreDiagnosticsFeatureApiV1`; the query leaves Store counts, event revisions, and feature notifications unchanged.
+- `PowerCalApp.reload()` obtains sequence preview, identity count, schema version, and active database name through the read-only `CoreDiagnosticsFeatureApiV1`; the query leaves Store counts, event revisions, and feature notifications unchanged.
 - Native and Web Settings diagnostics receive next-occurrence previews from `RecurrenceFeatureApiV1`; Native and Web timeline/month recurrence materialization also uses its bounded window query. Every Host projection route requires the API; standalone Compose preview/test entry points default to the stateless Core adapter, and production `PowerCalApp` routes supply the shared service.
 - A Robolectric adapter integration test performs a Native-side API create followed by a Web bridge create/checkpoint and observes shared feature revision/change events and Store-backed state. Its Native-side write calls the API directly; it does not mount `PowerCalApp` and drive the entire Native UI route. Separate editor Compose tests cover the API-backed editor component callbacks.
 
 Remaining work before PHASE 1 can exit:
 
-1. Route remaining authorized Host/Core reads and writes through versioned queries/commands and one change source. `PowerCalApp.reload()` now queries the pending draft queue and Store diagnostics through their feature APIs; Web Bridge active-event, retired-event, persisted-draft, and AI batch lock reads use Event/DraftReview/AI API queries. The bounded Settings/Data inventory classified provider credentials/file consent and selected Skin as protected Host/runtime state; the ICS recovery receipt now uses Import/Export API. Remaining Host workflows still need contract-to-call-site reconciliation.
+1. Route remaining authorized Host/Core reads and writes through versioned queries/commands and one change source. `PowerCalApp.reload()` now queries the pending draft queue and Store diagnostics through their feature APIs; Web Bridge active-event, retired-event, persisted-draft, and AI batch lock reads use Event/DraftReview/AI API queries. The bounded Settings/Data inventory classified provider credentials/file consent and selected Skin as protected Host/runtime state; the ICS recovery receipt now uses Import/Export API. The confirmed legacy database migration still enters through `LegacyImporter` with a Store reference and needs routing through the existing Import/Export structured-import service. Remaining Host workflows still need contract-to-call-site reconciliation.
 2. Move remaining business decisions out of Web transport/Host adapters; keep the bridge focused on transport and trusted Host capabilities.
 3. Maintain the separate Native Presentation Contract while keeping renderer data on versioned feature DTOs and identities. `DeckVisualContext`, `AiVisualContext`, `MonthVisualContext`, and `TimelineSkinContext` expose versioned DTOs or identity-only callbacks; their Native state stays private behind Host adapters. The current audit found no remaining Core entity in these compiled renderer data contexts.
 4. Add the remaining per-domain API contracts before claiming other feature areas are covered. The bounded AI `calendar.query.v1` tool now reuses `CalendarFeatureApiV1`; Store-backed Calendar windows, Event keyset pages, and Memo occurrence pages are implemented. Draft/Review request caches other than `createDraft`, and AI proposal-generation request replay, remain process-local; `createDraft` replay is durable across restart and BackupEnvelope restore. AI Proposal item receipts are Store-backed.
