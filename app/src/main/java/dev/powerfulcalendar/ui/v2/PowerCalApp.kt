@@ -1919,7 +1919,7 @@ fun PowerCalApp(
             val moveContext = if (page == Page.TIMELINE.name &&
                 command is WebEditCommand.MoveTimelineEvent) {
                 val projectedItems = WebSkinTimelineProjection.build(
-                    timelineCalendarRecords, activeCamera, nowMillis, zone
+                    timelineCalendarRecords, activeCamera, nowMillis, zone, recurrenceFeatureApi
                 ).getJSONArray("items")
                 val visibleRevisions = linkedMapOf<Long, Long>()
                 for (index in 0 until projectedItems.length()) {
@@ -2375,12 +2375,13 @@ fun PowerCalApp(
                 .put("timeline", WebSkinTimelineProjection.build(
                     stateTimelineRecords,
                     stateCamera,
-                    nowMillis, zone))
+                    nowMillis, zone, recurrenceFeatureApi))
                 .put("month", if (page == Page.MONTH.name)
                     WebSkinMonthProjection.build(
                         stateMonthRecords,
                         stateMonthView,
-                        zone
+                        zone,
+                        recurrenceFeatureApi
                     )
                     else JSONObject())
                 .put("events", org.json.JSONArray(records.take(300).map { record ->

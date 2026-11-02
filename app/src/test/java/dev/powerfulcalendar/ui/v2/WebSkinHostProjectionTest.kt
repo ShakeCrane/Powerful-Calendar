@@ -9,6 +9,10 @@ import dev.powerfulcalendar.ai.AiInterpretation
 import dev.powerfulcalendar.ai.AiProposal
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.DraftOperation
+import dev.powerfulcalendar.core.api.v1.CoreRecurrenceFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.RecurrenceFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.RecurrenceOccurrenceWindowQueryV1
+import dev.powerfulcalendar.core.api.v1.RecurrenceOccurrenceWindowV1
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
@@ -23,6 +27,19 @@ import java.time.YearMonth
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class WebSkinHostProjectionTest {
+    private class RecordingRecurrenceFeatureApi(
+        private val delegate: RecurrenceFeatureApiV1
+    ) : RecurrenceFeatureApiV1 by delegate {
+        val windowQueries = mutableListOf<RecurrenceOccurrenceWindowQueryV1>()
+
+        override fun queryOccurrencesInWindow(
+            query: RecurrenceOccurrenceWindowQueryV1
+        ): RecurrenceOccurrenceWindowV1 {
+            windowQueries += query
+            return delegate.queryOccurrencesInWindow(query)
+        }
+    }
+
     private val zone = ZoneId.of("Asia/Shanghai")
     private val noon = Instant.parse("2026-10-22T04:00:00Z").toEpochMilli()
     private val start = Instant.parse("2026-10-22T01:00:00Z").toEpochMilli()
@@ -152,6 +169,47 @@ class WebSkinHostProjectionTest {
         val sameDay = (0 until month.length()).map { month.getJSONObject(it) }
             .single { it.getString("date") == "2026-10-22" }
         assertEquals("2026-10-22T09:00", sameDay.getString("originalOccurrenceKey"))
+    }
+
+    @Test fun webTimelineAndMonthUseCoreWindowApiWithoutChangingProjection() {
+        val daily = activity(29, start - 86_400_000L).copy(
+            recurrence = Recurrence(freq = RecurrenceFreq.DAILY, count = 8)
+        )
+        val oneOffAtEleven = activity(30, start + 2 * 60 * 60_000L)
+        val records = listOf(oneOffAtEleven, daily)
+        val camera = TimelineCoordinate.Camera(noon, 24.0)
+        val recurrenceApi = RecordingRecurrenceFeatureApi(CoreRecurrenceFeatureApiV1())
+
+        val directTimeline = WebSkinTimelineProjection.build(records, camera, noon, zone)
+        val apiTimeline = WebSkinTimelineProjection.build(
+            records, camera, noon, zone, recurrenceApi
+        )
+        assertEquals(directTimeline.toString(), apiTimeline.toString())
+
+        val timelineQuery = recurrenceApi.windowQueries.first()
+        val timelineDay = Instant.ofEpochMilli(camera.anchorMillis).atZone(zone).toLocalDate()
+        assertEquals(timelineDay.minusDays(8).atStartOfDay(zone).toInstant().toEpochMilli(),
+            timelineQuery.fromMillis)
+        assertEquals(timelineDay.plusDays(9).atStartOfDay(zone).toInstant().toEpochMilli(),
+            timelineQuery.toMillis)
+        assertEquals(2048, timelineQuery.maxOccurrences)
+        assertEquals(2, recurrenceApi.windowQueries.size)
+
+        val monthView = WebSkinMonthProjection.initial(noon, zone)
+        val directMonth = WebSkinMonthProjection.build(records, monthView, zone)
+        val apiMonth = WebSkinMonthProjection.build(records, monthView, zone, recurrenceApi)
+        assertEquals(directMonth.toString(), apiMonth.toString())
+
+        val monthQuery = recurrenceApi.windowQueries.last()
+        val firstGridDay = monthView.month.atDay(1).minusDays(
+            (monthView.month.atDay(1).dayOfWeek.value - 1).toLong()
+        )
+        assertEquals(firstGridDay.atStartOfDay(zone).toInstant().toEpochMilli(),
+            monthQuery.fromMillis)
+        assertEquals(firstGridDay.plusDays(42).atStartOfDay(zone).toInstant().toEpochMilli(),
+            monthQuery.toMillis)
+        assertEquals(2048, monthQuery.maxOccurrences)
+        assertEquals(4, recurrenceApi.windowQueries.size)
     }
 
     @Test fun memoProjectionSeparatesToggleIdentityFromOptionalOriginalSlot() {

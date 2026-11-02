@@ -2,6 +2,7 @@ package dev.powerfulcalendar.ui.v2
 
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
+import dev.powerfulcalendar.core.api.v1.RecurrenceFeatureApiV1
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.Instant
@@ -55,7 +56,8 @@ internal object WebSkinMonthProjection {
     fun build(
         records: List<TemporalRecord>,
         view: WebSkinMonthViewState,
-        zone: ZoneId
+        zone: ZoneId,
+        recurrenceFeatures: RecurrenceFeatureApiV1? = null
     ): JSONObject {
         require(view.selectedDate.year in MIN_YEAR..MAX_YEAR &&
             YearMonth.from(view.selectedDate) == view.month)
@@ -66,7 +68,9 @@ internal object WebSkinMonthProjection {
         val to = gridEnd.atStartOfDay(zone).toInstant().toEpochMilli()
         val eligible = records.filter { it.kind != TemporalKind.MEMO }
         val owners = eligible.take(MAX_OWNERS)
-        val occurrences = displayOccurrences(owners, from, to)
+        val occurrences = (recurrenceFeatures?.let {
+            displayOccurrences(owners, from, to, it)
+        } ?: displayOccurrences(owners, from, to))
             .sortedWith(compareBy({ it.record.anchorMillis() ?: Long.MAX_VALUE },
                 { it.owner.eventSeq }, { it.key }))
         val items = JSONArray()

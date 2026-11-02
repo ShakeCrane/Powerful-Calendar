@@ -41,6 +41,7 @@ class WebSkinRecurrenceBridgeTest {
     ) : RecurrenceFeatureApiV1 {
         override val apiVersion: Int get() = delegate.apiVersion
         val occurrenceQueries = mutableListOf<RecurrenceOccurrenceByKeyQueryV1>()
+        val windowQueries = mutableListOf<RecurrenceOccurrenceWindowQueryV1>()
 
         override fun queryNextOccurrence(
             query: RecurrenceNextOccurrenceQueryV1
@@ -55,22 +56,28 @@ class WebSkinRecurrenceBridgeTest {
 
         override fun queryOccurrencesInWindow(
             query: RecurrenceOccurrenceWindowQueryV1
-        ): RecurrenceOccurrenceWindowV1 = delegate.queryOccurrencesInWindow(query)
+        ): RecurrenceOccurrenceWindowV1 {
+            windowQueries += query
+            return delegate.queryOccurrencesInWindow(query)
+        }
     }
 
     private lateinit var context: Context
     private lateinit var store: PowerStore
     private lateinit var service: WebSkinEditService
     private lateinit var coreFeatureApi: PowerCalCoreFeatureApiV1
+    private lateinit var recurrenceRecorder: RecordingRecurrenceFeatureApiV1
     private fun id() = UUID.randomUUID().toString()
 
     @Before fun setup() {
         context = ApplicationProvider.getApplicationContext()
         store = PowerStore(context, "web-recurrence-${id()}.db")
         coreFeatureApi = PowerCalCoreFeatureApiV1(store)
+        recurrenceRecorder = RecordingRecurrenceFeatureApiV1(coreFeatureApi.recurrence)
         service = WebSkinEditService(coreFeatureApi.adaptDeckController(
             DeckController(StoreDeckPersistence(store))),
-            coreFeatureApi = coreFeatureApi)
+            coreFeatureApi = coreFeatureApi,
+            recurrenceFeatures = recurrenceRecorder)
     }
     @After fun teardown() {
         val database = store.databaseName
@@ -191,7 +198,8 @@ class WebSkinRecurrenceBridgeTest {
         val selectedDate = LocalDate.of(2026, 10, 21)
         val anchor = selectedDate.atTime(12, 0).atZone(zone).toInstant().toEpochMilli()
         val month = WebSkinMonthProjection.build(
-            listOf(owner), WebSkinMonthProjection.initial(anchor, zone), zone
+            listOf(owner), WebSkinMonthProjection.initial(anchor, zone), zone,
+            recurrenceRecorder
         )
         val projected = month.getJSONArray("items").let { items ->
             (0 until items.length()).map(items::getJSONObject)
@@ -201,6 +209,7 @@ class WebSkinRecurrenceBridgeTest {
         assertEquals(owner.eventSeq, projected.getLong("eventSeq"))
         assertEquals(owner.revision, projected.getLong("revision"))
         assertEquals(key, projected.getString("originalOccurrenceKey"))
+        assertEquals(1, recurrenceRecorder.windowQueries.size)
         val counts = listOf(store.draftCount(), store.identityCount(), store.commitCount())
 
         assertEquals("opened", service.execute(WebEditCommand.OpenEvent(

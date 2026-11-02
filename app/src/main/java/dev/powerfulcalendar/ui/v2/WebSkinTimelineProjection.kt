@@ -4,6 +4,7 @@ import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.TimelineCoordinate
 import dev.powerfulcalendar.core.TimelineLayout
+import dev.powerfulcalendar.core.api.v1.RecurrenceFeatureApiV1
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.Instant
@@ -27,7 +28,8 @@ internal object WebSkinTimelineProjection {
         records: List<TemporalRecord>,
         camera: TimelineCoordinate.Camera,
         nowMillis: Long,
-        zone: ZoneId
+        zone: ZoneId,
+        recurrenceFeatures: RecurrenceFeatureApiV1? = null
     ): JSONObject {
         val hours = TimelineCoordinate.clampHours(camera.hours)
         val halfSpan = (TimelineCoordinate.spanMillis(hours) / 2).toLong()
@@ -38,9 +40,13 @@ internal object WebSkinTimelineProjection {
         val to = day.plusDays(9).atStartOfDay(zone).toInstant().toEpochMilli()
 
         val owners = records.filter { it.kind != TemporalKind.MEMO }.take(MAX_OWNERS)
-        val projected = owners.filter { !it.recurrence.isRepeating }
-            .mapNotNull(::singleDisplayOccurrence) +
-            displayOccurrences(owners.filter { it.recurrence.isRepeating }, from, to)
+        val projected = if (recurrenceFeatures == null) {
+            owners.filter { !it.recurrence.isRepeating }
+                .mapNotNull(::singleDisplayOccurrence) +
+                displayOccurrences(owners.filter { it.recurrence.isRepeating }, from, to)
+        } else {
+            displayOccurrences(owners, from, to, recurrenceFeatures)
+        }
         val overlapping = projected.filter { slot ->
             val record = slot.record
             if (record.isDateOnlyDeadline()) {
