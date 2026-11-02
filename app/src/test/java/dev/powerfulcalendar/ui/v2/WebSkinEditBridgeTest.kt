@@ -6,6 +6,7 @@ import dev.powerfulcalendar.core.DeckController
 import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.DraftStatus
+import dev.powerfulcalendar.core.DeadlineValue
 import dev.powerfulcalendar.core.EditorSelection
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.Recurrence
@@ -357,7 +358,7 @@ class WebSkinEditBridgeTest {
         assertEquals(original, store.get(original.eventSeq))
     }
 
-    @Test fun timelineMoveRefusesRepeatingAndNonTimelineItemsWithoutWrites() = runBlocking {
+    @Test fun timelineMoveUsesCoreEligibilityAndMovesDateDeadlineWithoutLosingPrecision() = runBlocking {
         val zone = ZoneId.of("Asia/Shanghai")
         val start = LocalDateTime.of(2030, 10, 21, 9, 0).atZone(zone).toInstant().toEpochMilli()
         val repeating = commitFormal(DraftForm(
@@ -396,23 +397,32 @@ class WebSkinEditBridgeTest {
         assertEquals(repeating, store.get(repeating.eventSeq))
         assertTrue(store.pendingDraftsFor(repeating.eventSeq).isEmpty())
 
-        for (record in listOf(dateDeadline, memo)) {
-            val unsupported = service.execute(WebEditCommand.MoveTimelineEvent(
-                request(), record.eventSeq, record.revision, target
-            ), timelineMoveContext = camera)
-            assertEquals("unsupported", unsupported.getString("status"))
-            assertEquals(record, store.get(record.eventSeq))
-            assertTrue(store.pendingDraftsFor(record.eventSeq).isEmpty())
-        }
+        val movedDate = service.execute(WebEditCommand.MoveTimelineEvent(
+            request(), dateDeadline.eventSeq, dateDeadline.revision, target
+        ), timelineMoveContext = camera)
+        assertEquals("staged", movedDate.getString("status"))
+        val dateCandidate = store.pendingDraftsFor(dateDeadline.eventSeq).single()
+        assertEquals("2030-10-21", dateCandidate.form.endText)
+        assertTrue(dateCandidate.form.parseDeadline() is DeadlineValue.Date)
+        assertEquals(dateDeadline, store.get(dateDeadline.eventSeq))
+        assertEquals("closed", service.execute(WebEditCommand.CloseDeck(request()))
+            .getString("status"))
+
+        val unsupportedMemo = service.execute(WebEditCommand.MoveTimelineEvent(
+            request(), memo.eventSeq, memo.revision, target
+        ), timelineMoveContext = camera)
+        assertEquals("unsupported", unsupportedMemo.getString("status"))
+        assertEquals(memo, store.get(memo.eventSeq))
+        assertTrue(store.pendingDraftsFor(memo.eventSeq).isEmpty())
         val outsideTimeline = service.execute(WebEditCommand.MoveTimelineEvent(
             request(), repeating.eventSeq, repeating.revision, target
         ))
         assertEquals("unsupported", outsideTimeline.getString("status"))
-        assertEquals(drafts, store.draftCount())
+        assertEquals(drafts + 1, store.draftCount())
         assertEquals(identities, store.identityCount())
         assertEquals(commits, store.commitCount())
         assertEquals(seq, store.nextSequencePreview())
-        assertEquals(order, store.nextQueueOrderPreview())
+        assertEquals(order + 1, store.nextQueueOrderPreview())
     }
 
     @Test fun timelineMoveRequiresOwnerProjectionForTheDisplayedRevision() = runBlocking {

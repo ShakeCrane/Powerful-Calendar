@@ -461,18 +461,20 @@ internal class WebSkinEditService(
             .apply { if(detail!=null)put("detail",detail.take(240)) }
 
     private fun result(receipt: EventMutationReceiptV1): JSONObject {
-        val status = when (receipt.status) {
-            EventMutationStatusV1.CREATED -> "committed"
-            EventMutationStatusV1.STAGED -> "staged"
-            EventMutationStatusV1.UPDATED, EventMutationStatusV1.DELETED,
-            EventMutationStatusV1.NO_CHANGE -> "saved"
-            EventMutationStatusV1.CONFLICT -> "conflict"
-            EventMutationStatusV1.INVALID -> "invalid"
-            EventMutationStatusV1.LOCKED -> "locked"
-            EventMutationStatusV1.NEEDS_RESTORE -> "restore_required"
-            EventMutationStatusV1.NOT_AUTHORIZED -> "not_authorized"
-            EventMutationStatusV1.FAILED -> "failed"
-            EventMutationStatusV1.DUPLICATE_REQUEST_ID -> "duplicate_request_id"
+        val status = if (receipt.errorCode == "TIMELINE_MOVE_UNSUPPORTED") "unsupported" else {
+            when (receipt.status) {
+                EventMutationStatusV1.CREATED -> "committed"
+                EventMutationStatusV1.STAGED -> "staged"
+                EventMutationStatusV1.UPDATED, EventMutationStatusV1.DELETED,
+                EventMutationStatusV1.NO_CHANGE -> "saved"
+                EventMutationStatusV1.CONFLICT -> "conflict"
+                EventMutationStatusV1.INVALID -> "invalid"
+                EventMutationStatusV1.LOCKED -> "locked"
+                EventMutationStatusV1.NEEDS_RESTORE -> "restore_required"
+                EventMutationStatusV1.NOT_AUTHORIZED -> "not_authorized"
+                EventMutationStatusV1.FAILED -> "failed"
+                EventMutationStatusV1.DUPLICATE_REQUEST_ID -> "duplicate_request_id"
+            }
         }
         val detail = when (receipt.status) {
             EventMutationStatusV1.STAGED -> receipt.draftId?.toString() ?: receipt.message
@@ -725,29 +727,20 @@ internal class WebSkinEditService(
             return result(cmd.requestId, "stale", "事件版本已变化，请刷新时间轴")
         if (context.visibleEventRevisions[cmd.eventSeq] != cmd.expectedRevision)
             return result(cmd.requestId, "stale", "事件已离开当前时间轴投影，请刷新后重试")
-        if (record.recurrence.isRepeating)
-            return result(cmd.requestId, "unsupported", "重复事件暂不支持拖动；请打开卡片选择编辑范围")
-        if (record.kind == TemporalKind.MEMO ||
-            (record.kind == TemporalKind.DEADLINE && record.isDateOnlyDeadline()))
-            return result(cmd.requestId, "unsupported", "此类事项没有可拖动的时间轴时刻")
-
-        val currentAnchor = record.anchorMillis()
-            ?: return result(cmd.requestId, "unsupported", "事件没有可移动的时间锚点")
         val snappedTarget = TimelineCoordinate.snap(
             cmd.targetMillis, context.camera.hours, context.zone
         )
         val targetYear = Instant.ofEpochMilli(snappedTarget).atZone(record.zone).year
         if (targetYear !in 1900..2200)
             return result(cmd.requestId, "invalid", "移动后的日期超出支持范围")
-        if (snappedTarget == currentAnchor)
-            return result(cmd.requestId, "unchanged", "事件已位于该时间")
 
-        val form = movedDraftForm(record, snappedTarget)
         val staged = withContext(Dispatchers.IO) {
-            eventFeatures.stageFormalReplacement(
-                record.eventSeq, cmd.expectedRevision, form.toEventFormV1(), cmd.requestId
+            eventFeatures.stageTimelineMove(
+                record.eventSeq, cmd.expectedRevision, snappedTarget, cmd.requestId
             )
         }
+        if (staged.status == EventMutationStatusV1.NO_CHANGE)
+            return result(staged).put("status", "unchanged")
         if (staged.status != EventMutationStatusV1.STAGED) return result(staged)
         val draftId = staged.draftId ?: return result(cmd.requestId, "failed", "草稿暂存回执缺少 ID")
         // The formal event is untouched; the existing queue owns the replacement candidate.

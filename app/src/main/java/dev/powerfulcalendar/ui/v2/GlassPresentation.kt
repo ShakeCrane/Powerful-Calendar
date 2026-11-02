@@ -52,23 +52,6 @@ internal fun overlapsDayWindow(record: TemporalRecord, begin: Long, end: Long): 
     return if (finish > start) start < end && finish > begin else start >= begin && start < end
 }
 
-/** A drag only fills an uncommitted form, preserving the formal owner's wall-clock zone. */
-internal fun movedDraftForm(record: TemporalRecord, target: Long): DraftForm {
-    val base = DraftForm.from(record)
-    return when (record.kind) {
-        TemporalKind.ALARM -> base.copy(startText = DraftForm.formatInstant(target, record.zone))
-        TemporalKind.ACTIVITY -> {
-            val duration = (record.endMillis ?: target) - (record.startMillis ?: target)
-            base.copy(startText = DraftForm.formatInstant(target, record.zone), endText = DraftForm.formatInstant(target + duration, record.zone))
-        }
-        TemporalKind.MEMO -> base.copy(startText =
-            Instant.ofEpochMilli(target).atZone(record.zone).toLocalDate().toString())
-        TemporalKind.DEADLINE -> base.copy(endText = if (record.isDateOnlyDeadline()) {
-            Instant.ofEpochMilli(target).atZone(record.zone).toLocalDate().toString()
-        } else DraftForm.formatInstant(target, record.zone))
-    }
-}
-
 /** Native Host projection using the shared Core recurrence API over detached Event snapshots. */
 internal fun displayOccurrences(
     records: List<TemporalRecord>,

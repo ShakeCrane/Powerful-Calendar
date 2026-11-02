@@ -28,6 +28,7 @@ import dev.powerfulcalendar.core.TemporalConversion
 import dev.powerfulcalendar.core.StoreDeckPersistence
 import java.time.Clock
 import java.time.DayOfWeek
+import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.util.IdentityHashMap
@@ -555,6 +556,78 @@ internal class StoreEventFeatureApiV1(
     }
 
     @Synchronized
+    override fun stageTimelineMove(
+        eventSeq: Long,
+        expectedRevision: Long,
+        targetMillis: Long,
+        requestId: String
+    ): EventMutationReceiptV1 = withReceipt(
+        requestId, "timeline-move:$eventSeq:$expectedRevision:$targetMillis"
+    ) {
+        val current = store.get(eventSeq)
+            ?: return@withReceipt receipt(
+                requestId, EventMutationStatusV1.CONFLICT,
+                eventSeq = eventSeq, errorCode = "EVENT_MISSING", refreshRequired = true
+            )
+        if (current.revision != expectedRevision) {
+            return@withReceipt receipt(
+                requestId, EventMutationStatusV1.CONFLICT,
+                eventSeq = eventSeq, revision = current.revision,
+                errorCode = "EVENT_CONFLICT", refreshRequired = true
+            )
+        }
+        if (current.recurrence.isRepeating) {
+            return@withReceipt receipt(
+                requestId, EventMutationStatusV1.INVALID,
+                eventSeq = eventSeq, revision = current.revision,
+                errorCode = "TIMELINE_MOVE_UNSUPPORTED",
+                message = "重复事件暂不支持逐实例拖动；打开卡片可以修改整条重复规则"
+            )
+        }
+        if (current.kind == TemporalKind.MEMO) {
+            return@withReceipt receipt(
+                requestId, EventMutationStatusV1.INVALID,
+                eventSeq = eventSeq, revision = current.revision,
+                errorCode = "TIMELINE_MOVE_UNSUPPORTED",
+                message = "备忘事项暂不支持从时间轴拖动"
+            )
+        }
+        val currentAnchor = current.anchorMillis()
+            ?: return@withReceipt receipt(
+                requestId, EventMutationStatusV1.INVALID,
+                eventSeq = eventSeq, revision = current.revision,
+                errorCode = "TIMELINE_MOVE_UNSUPPORTED",
+                message = "事件没有可移动的时间锚点"
+            )
+        val samePlacement = if (current.isDateOnlyDeadline()) {
+            val currentDate = current.deadlineDate?.let {
+                runCatching { LocalDate.parse(it) }.getOrNull()
+            }
+            val targetDate = runCatching {
+                Instant.ofEpochMilli(targetMillis).atZone(current.zone).toLocalDate()
+            }.getOrNull()
+            currentDate != null && currentDate == targetDate
+        } else targetMillis == currentAnchor
+        if (samePlacement) {
+            return@withReceipt receipt(
+                requestId, EventMutationStatusV1.NO_CHANGE,
+                eventSeq = eventSeq, revision = current.revision,
+                message = "事件已位于目标日期或时刻"
+            )
+        }
+        val form = movedTimelineForm(current, targetMillis)
+            ?: return@withReceipt receipt(
+                requestId, EventMutationStatusV1.INVALID,
+                eventSeq = eventSeq, revision = current.revision,
+                errorCode = "TIMELINE_MOVE_INVALID",
+                message = "事件时间信息无效，无法移动"
+            )
+        stageFormalReplacementBody(
+            eventSeq, expectedRevision, form.toEventFormV1(), requestId
+        )
+    }
+
+    @Synchronized
     override fun stageFormalReplacement(
         eventSeq: Long,
         expectedRevision: Long,
@@ -562,15 +635,22 @@ internal class StoreEventFeatureApiV1(
         requestId: String
     ): EventMutationReceiptV1 = withReceipt(
         requestId, "stage-replace:$eventSeq:$expectedRevision:$form"
-    ) {
-        try {
+    ) { stageFormalReplacementBody(eventSeq, expectedRevision, form, requestId) }
+
+    private fun stageFormalReplacementBody(
+        eventSeq: Long,
+        expectedRevision: Long,
+        form: EventFormV1,
+        requestId: String
+    ): EventMutationReceiptV1 {
+        return try {
             val current = store.get(eventSeq)
-                ?: return@withReceipt receipt(
+                ?: return receipt(
                     requestId, EventMutationStatusV1.CONFLICT,
                     eventSeq = eventSeq, errorCode = "EVENT_MISSING", refreshRequired = true
                 )
             if (current.revision != expectedRevision) {
-                return@withReceipt receipt(
+                return receipt(
                     requestId, EventMutationStatusV1.CONFLICT,
                     eventSeq = eventSeq, revision = current.revision,
                     errorCode = "EVENT_CONFLICT", refreshRequired = true
@@ -610,6 +690,34 @@ internal class StoreEventFeatureApiV1(
                 requestId, EventMutationStatusV1.FAILED,
                 eventSeq = eventSeq, errorCode = "STAGE_FAILED", message = error.message
             )
+        }
+    }
+
+    private fun movedTimelineForm(record: TemporalRecord, targetMillis: Long): DraftForm? {
+        val base = DraftForm.from(record)
+        return when (record.kind) {
+            TemporalKind.ALARM -> if (record.startMillis != null) {
+                base.copy(startText = DraftForm.formatInstant(targetMillis, record.zone))
+            } else null
+            TemporalKind.ACTIVITY -> {
+                val start = record.startMillis ?: return null
+                val end = record.endMillis ?: return null
+                val duration = end - start
+                if (duration <= 0L) return null
+                val movedEnd = runCatching { Math.addExact(targetMillis, duration) }.getOrNull()
+                    ?: return null
+                base.copy(
+                    startText = DraftForm.formatInstant(targetMillis, record.zone),
+                    endText = DraftForm.formatInstant(movedEnd, record.zone)
+                )
+            }
+            TemporalKind.DEADLINE -> if (record.isDateOnlyDeadline()) {
+                base.copy(endText = Instant.ofEpochMilli(targetMillis).atZone(record.zone)
+                    .toLocalDate().toString())
+            } else if (record.deadlineMillis != null) {
+                base.copy(endText = DraftForm.formatInstant(targetMillis, record.zone))
+            } else null
+            TemporalKind.MEMO -> null
         }
     }
 

@@ -2836,18 +2836,13 @@ fun PowerCalApp(
                     }
                 },
                 onMoveEvent = { record, target ->
-                    if (record.recurrence.isRepeating) {
-                        // Moving one instance of a series needs an occurrence-specific proposal.
-                        // Until that editor exists, refuse rather than silently moving the series.
-                        message = "重复事件暂不支持逐实例拖动；打开卡片可以修改整条重复规则"
-                    } else scope.launch {
+                    scope.launch {
                         runCatching {
                             withContext(Dispatchers.IO) {
-                                val form = movedDraftForm(record, target)
-                                eventFeatureApi.stageFormalReplacement(
+                                eventFeatureApi.stageTimelineMove(
                                     record.eventSeq,
                                     record.revision,
-                                    form.toEventFormV1(),
+                                    target,
                                     java.util.UUID.randomUUID().toString()
                                 )
                             }
@@ -2855,6 +2850,8 @@ fun PowerCalApp(
                             if (staged.status == EventMutationStatusV1.STAGED && staged.draftId != null) {
                                 reload()
                                 openDeckAt(staged.draftId)
+                            } else if (staged.status == EventMutationStatusV1.NO_CHANGE) {
+                                message = "事件已位于目标日期或时刻"
                             } else message = staged.message ?: "暂时无法创建修改草稿"
                         }.onFailure {
                             message = it.message ?: "暂时无法创建修改草稿"

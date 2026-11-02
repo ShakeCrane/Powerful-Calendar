@@ -195,23 +195,4 @@ class GlassPresentationTest {
         assertEquals(9, Instant.ofEpochMilli(slots[1].record.startMillis!!).atZone(ny).hour)
     }
 
-    @Test fun draggingPreservesTheEventZoneAndElapsedDuration() {
-        val record = event(42).copy(zoneId = "America/New_York", source = "ics")
-        val target = instant("2026-10-22T09:00")
-        val form = movedDraftForm(record, target)
-        assertEquals(target, form.parseStart())
-        assertEquals(3_600_000L, form.parseEnd()!! - form.parseStart()!!)
-        assertEquals("America/New_York", form.zoneId)
-        assertEquals("ics", form.source)
-        assertEquals(record, event(42).copy(zoneId = "America/New_York", source = "ics"))
-    }
-
-    @Test fun movingADateDeadlineOnlyChangesItsDateInItsOwnZone() {
-        val record = TemporalRecord(42, 1, TemporalKind.DEADLINE, "日级截止", deadlineDate = "2026-10-20", zoneId = "America/New_York")
-        val target = Instant.parse("2026-10-22T01:00:00Z").toEpochMilli()
-        val form = movedDraftForm(record, target)
-        assertEquals("2026-10-21", form.endText)
-        assertTrue(form.parseDeadline() is DeadlineValue.Date)
-        assertEquals("2026-10-20", record.deadlineDate)
-    }
 }

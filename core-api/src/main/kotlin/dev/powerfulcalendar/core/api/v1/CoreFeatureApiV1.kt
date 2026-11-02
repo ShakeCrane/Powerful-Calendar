@@ -280,6 +280,16 @@ interface EventFeatureApiV1 {
         handle: EventEditorHandleV1,
         form: EventFormV1
     ): EventEditorUpdateReceiptV1
+    /**
+     * Builds and stages the Core-owned replacement for a non-recurring timeline move.
+     * [targetMillis] is already snapped by the Host's timeline geometry.
+     */
+    fun stageTimelineMove(
+        eventSeq: Long,
+        expectedRevision: Long,
+        targetMillis: Long,
+        requestId: String
+    ): EventMutationReceiptV1
     fun stageFormalReplacement(
         eventSeq: Long,
         expectedRevision: Long,

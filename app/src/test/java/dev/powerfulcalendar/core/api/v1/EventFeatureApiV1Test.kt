@@ -339,6 +339,175 @@ class EventFeatureApiV1Test {
     }
 
     @Test
+    fun timelineMoveApiPreservesElapsedDurationAndChecksRevision() {
+        val moveZone = ZoneId.of("America/Los_Angeles")
+        val start = java.time.LocalDateTime.of(2030, 10, 21, 9, 0)
+            .atZone(moveZone).toInstant().toEpochMilli()
+        val editor = opened(api.openNewEvent(EventKindV1.ACTIVITY, moveZone.id))
+        val created = api.saveNewEvent(
+            editor.handle,
+            editor.form.copy(
+                title = "Activity move",
+                startText = DraftForm.formatInstant(start, moveZone),
+                endText = DraftForm.formatInstant(start + 5_400_000L, moveZone),
+                zoneId = moveZone.id
+            ),
+            "timeline-move-create"
+        )
+        assertEquals(EventMutationStatusV1.CREATED, created.status)
+        val record = requireNotNull(store.get(requireNotNull(created.eventSeq)))
+        val target = start + 7_200_000L
+
+        val editorBeforeConcurrentWrite = openFormalEvent(record.eventSeq, record.revision)
+        val advanced = api.saveFormalEvent(
+            editorBeforeConcurrentWrite.handle,
+            editorBeforeConcurrentWrite.form.copy(notes = "revision advanced"),
+            "timeline-move-advance-revision"
+        )
+        assertEquals(EventMutationStatusV1.UPDATED, advanced.status)
+        val current = requireNotNull(store.get(record.eventSeq))
+        assertEquals(record.revision + 1, current.revision)
+
+        val changes = mutableListOf<EventFeatureChangeV1>()
+        val subscription = api.subscribe(changes::add)
+        try {
+            val stale = api.stageTimelineMove(
+                record.eventSeq, record.revision, target, "timeline-move-stale"
+            )
+            assertEquals(EventMutationStatusV1.CONFLICT, stale.status)
+            assertTrue(stale.refreshRequired)
+            assertTrue(store.pendingDraftsFor(record.eventSeq).isEmpty())
+            assertTrue(changes.isEmpty())
+
+            val staged = api.stageTimelineMove(
+                record.eventSeq, current.revision, target, "timeline-move-activity"
+            )
+            assertEquals(EventMutationStatusV1.STAGED, staged.status)
+            val candidate = store.pendingDraftsFor(record.eventSeq).single()
+            assertEquals(DraftForm.formatInstant(target, moveZone), candidate.form.startText)
+            assertEquals(DraftForm.formatInstant(target + 5_400_000L, moveZone), candidate.form.endText)
+            assertEquals(moveZone.id, candidate.form.zoneId)
+            assertEquals(current.source, candidate.form.source)
+            assertEquals("revision advanced", candidate.form.notes)
+            assertEquals(current, store.get(record.eventSeq))
+            assertEquals(1, changes.size)
+            assertEquals(EventFeatureChangeTypeV1.DRAFTS_CHANGED, changes.single().type)
+
+            val replay = api.stageTimelineMove(
+                record.eventSeq, current.revision, target, "timeline-move-activity"
+            )
+            assertEquals(EventMutationStatusV1.STAGED, replay.status)
+            assertTrue(replay.duplicate)
+            assertEquals(staged.draftId, replay.draftId)
+            assertEquals(1, changes.size)
+            assertEquals(1, store.pendingDraftsFor(record.eventSeq).size)
+
+            val rebound = api.stageTimelineMove(
+                record.eventSeq, current.revision, target + 3_600_000L,
+                "timeline-move-activity"
+            )
+            assertEquals(EventMutationStatusV1.DUPLICATE_REQUEST_ID, rebound.status)
+            assertEquals(candidate.form, store.pendingDraftsFor(record.eventSeq).single().form)
+            assertEquals(1, changes.size)
+        } finally {
+            subscription.close()
+        }
+    }
+
+    @Test
+    fun timelineMoveApiAllowsDateDeadlineAndKeepsDatePrecision() {
+        val moveZone = ZoneId.of("America/New_York")
+        val editor = opened(api.openNewEvent(EventKindV1.DEADLINE, moveZone.id))
+        val created = api.saveNewEvent(
+            editor.handle,
+            editor.form.copy(
+                title = "Date deadline move",
+                endText = "2030-10-22",
+                zoneId = moveZone.id
+            ),
+            "timeline-move-date-create"
+        )
+        assertEquals(EventMutationStatusV1.CREATED, created.status)
+        val record = requireNotNull(store.get(requireNotNull(created.eventSeq)))
+
+        val sameDayTarget = Instant.parse("2030-10-22T20:00:00Z").toEpochMilli()
+        val unchanged = api.stageTimelineMove(
+            record.eventSeq, record.revision, sameDayTarget, "timeline-move-date-unchanged"
+        )
+        assertEquals(EventMutationStatusV1.NO_CHANGE, unchanged.status)
+        assertTrue(store.pendingDraftsFor(record.eventSeq).isEmpty())
+
+        val nextDayTarget = Instant.parse("2030-10-24T01:00:00Z").toEpochMilli()
+        val staged = api.stageTimelineMove(
+            record.eventSeq, record.revision, nextDayTarget, "timeline-move-date"
+        )
+        assertEquals(EventMutationStatusV1.STAGED, staged.status)
+        val candidate = store.pendingDraftsFor(record.eventSeq).single().form
+        assertEquals("2030-10-23", candidate.endText)
+        assertTrue(candidate.parseDeadline() is dev.powerfulcalendar.core.DeadlineValue.Date)
+        assertEquals("2030-10-22", record.deadlineDate)
+        assertEquals(record, store.get(record.eventSeq))
+    }
+
+    @Test
+    fun timelineMoveApiRejectsRepeatingEventsAndMemosWithoutWrites() {
+        val start = java.time.LocalDateTime.of(2030, 10, 21, 9, 0)
+            .atZone(zone).toInstant().toEpochMilli()
+        val repeatingEditor = openNewEvent(EventKindV1.ACTIVITY)
+        val repeatingCreated = api.saveNewEvent(
+            repeatingEditor.handle,
+            repeatingEditor.form.copy(
+                title = "Repeating move",
+                startText = DraftForm.formatInstant(start, zone),
+                endText = DraftForm.formatInstant(start + 3_600_000L, zone),
+                recurrence = EventRecurrenceV1(
+                    frequency = EventRecurrenceFrequencyV1.DAILY,
+                    interval = 1,
+                    count = 2
+                )
+            ),
+            "timeline-move-repeating-create"
+        )
+        assertEquals(EventMutationStatusV1.CREATED, repeatingCreated.status)
+        val repeating = requireNotNull(store.get(requireNotNull(repeatingCreated.eventSeq)))
+
+        val datedMemoEditor = openNewEvent(EventKindV1.MEMO)
+        val datedMemoCreated = api.saveNewEvent(
+            datedMemoEditor.handle,
+            datedMemoEditor.form.copy(title = "Dated memo", startText = "2030-10-21"),
+            "timeline-move-dated-memo-create"
+        )
+        assertEquals(EventMutationStatusV1.CREATED, datedMemoCreated.status)
+        val datedMemo = requireNotNull(store.get(requireNotNull(datedMemoCreated.eventSeq)))
+
+        val undatedMemoEditor = openNewEvent(EventKindV1.MEMO)
+        val undatedMemoCreated = api.saveNewEvent(
+            undatedMemoEditor.handle,
+            undatedMemoEditor.form.copy(title = "Undated memo"),
+            "timeline-move-undated-memo-create"
+        )
+        assertEquals(EventMutationStatusV1.CREATED, undatedMemoCreated.status)
+        val undatedMemo = requireNotNull(store.get(requireNotNull(undatedMemoCreated.eventSeq)))
+
+        val beforeDrafts = store.draftCount()
+        val beforeIdentities = store.identityCount()
+        val beforeOrder = store.nextQueueOrderPreview()
+        for (record in listOf(repeating, datedMemo, undatedMemo)) {
+            val rejected = api.stageTimelineMove(
+                record.eventSeq, record.revision, start + 7_200_000L,
+                "timeline-move-reject-${record.eventSeq}"
+            )
+            assertEquals(EventMutationStatusV1.INVALID, rejected.status)
+            assertEquals("TIMELINE_MOVE_UNSUPPORTED", rejected.errorCode)
+            assertEquals(record, store.get(record.eventSeq))
+            assertTrue(store.pendingDraftsFor(record.eventSeq).isEmpty())
+        }
+        assertEquals(beforeDrafts, store.draftCount())
+        assertEquals(beforeIdentities, store.identityCount())
+        assertEquals(beforeOrder, store.nextQueueOrderPreview())
+    }
+
+    @Test
     fun formalSearchPreservesMatchingOrderAndReturnsBoundedDisplayHits() {
         repeat(10) { index ->
             val editor = openNewEvent(EventKindV1.ACTIVITY)
