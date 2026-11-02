@@ -48,6 +48,13 @@ data class EventFormV1(
     val editOccurrenceKey: String? = null
 )
 
+/** Pure, reviewable type conversion result. Required field names are stable Core field identifiers. */
+data class EventFormConversionV1(
+    val form: EventFormV1,
+    val requiredFields: List<String>,
+    val note: String
+)
+
 /** Full immutable formal snapshot needed by feature queries; no Core entity escapes the adapter. */
 data class EventRecordV1(
     val eventSeq: Long,
@@ -261,6 +268,9 @@ interface EventFeatureApiV1 {
     ): EventEditorOpenResultV1
     fun editorSnapshot(handle: EventEditorHandleV1): EventEditorSnapshotV1?
     fun validateNewEvent(handle: EventEditorHandleV1): EventValidationResultV1
+
+    /** Applies Core's deterministic type-conversion rules without opening or mutating an editor. */
+    fun convertFormKind(form: EventFormV1, targetKind: EventKindV1): EventFormConversionV1
 
     fun updateNewEvent(
         handle: EventEditorHandleV1,

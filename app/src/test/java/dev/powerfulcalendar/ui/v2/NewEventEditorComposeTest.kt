@@ -80,6 +80,7 @@ class NewEventEditorComposeTest {
         }
         ui.setContent { PowerCalTheme {
             NewEventEditorDialog(
+                eventFeatureApi = eventApi,
                 editor = editorState.value,
                 form = form.value,
                 error = null,
@@ -147,6 +148,7 @@ class NewEventEditorComposeTest {
             PowerCalTheme {
                 androidx.compose.material3.Text("revision $revision")
                 NewEventEditorDialog(
+                    eventFeatureApi = eventApi,
                     editor = editorState.value,
                     form = form.value,
                     error = null,

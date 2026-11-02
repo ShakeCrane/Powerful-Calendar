@@ -38,14 +38,16 @@ class DraftDeckTouchPriorityInstrumentedTest {
         }
 
     private fun renderExpandedDeck(store: PowerStore, controller: DeckController) {
-        val draftReviewApi = PowerCalCoreFeatureApiV1(
+        val coreFeatureApi = PowerCalCoreFeatureApiV1(
             store, deckController = controller
-        ).draftReview
+        )
+        val draftReviewApi = coreFeatureApi.draftReview
         compose.activity.runOnUiThread { ActiveVisualSkin.install() }
         compose.setContent {
             PowerCalTheme {
                 DraftDeckDialog(
                     draftReviewApi = draftReviewApi,
+                    eventFeatureApi = coreFeatureApi.events,
                     aiSession = null,
                     onDismissRequest = {},
                     onOpenFormalEvent = {},

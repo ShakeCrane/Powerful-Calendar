@@ -71,7 +71,8 @@ class DirectEventEditorComposeTest {
         }
         ui.setContent { PowerCalTheme {
             DirectEventEditorContent(
-                editorState.value, form.value, error.value, editorState.value.meaningfulChanges,
+                eventApi, editorState.value, form.value, error.value,
+                editorState.value.meaningfulChanges,
                 editorRevision = editorRevision.intValue,
                 onChange = { next ->
                     form.value = next

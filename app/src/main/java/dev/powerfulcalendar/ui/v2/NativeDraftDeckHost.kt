@@ -35,10 +35,11 @@ import dev.powerfulcalendar.core.Recurrence
 import dev.powerfulcalendar.core.RecurrenceFreq
 import dev.powerfulcalendar.core.ReminderMethod
 import dev.powerfulcalendar.core.ReminderTiming
-import dev.powerfulcalendar.core.TemporalConversion
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.TemporalText
+import dev.powerfulcalendar.core.api.v1.EventFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.EventKindV1
 import dev.powerfulcalendar.ui.v2.LocalGlassEffects
 import dev.powerfulcalendar.ui.v2.LocalSkinVisual
 import dev.powerfulcalendar.ui.v2.NativeDeckActions
@@ -86,6 +87,7 @@ import java.time.temporal.ChronoUnit
  */
 @Composable
 fun NativeDraftDeckDialog(
+    eventFeatureApi: EventFeatureApiV1,
     draftReviewApi: DraftReviewFeatureApiV1,
     aiSession: AiBatchSessionV1?,
     onDismissRequest: () -> Unit,
@@ -210,13 +212,13 @@ fun NativeDraftDeckDialog(
         },
         onFormChange = ::editViewForm,
         onConvert = { kind ->
-            if (!busy && !state.aiLocked) state.form?.toCoreDraftForm()?.let { form ->
-                val result = TemporalConversion.convert(form, kind.toCoreKind())
+            if (!busy && !state.aiLocked) state.form?.let { form ->
+                val result = eventFeatureApi.convertFormKind(form, kind.toEventKind())
                 val current = draftReviewApi.snapshot
                 current.current?.let { card ->
                     draftReviewApi.editCurrentDraft(
                         card.draftId, card.draftVersion, current.stateRevision,
-                        result.form.toEventFormV1()
+                        result.form
                     )
                 }
                 conversionNote = result.note.ifBlank { null }
@@ -279,6 +281,7 @@ fun NativeDraftDeckDialog(
 /** Ordinary new-event editor. The session and its memory-only baseline remain Host-owned. */
 @Composable
 internal fun NewEventEditorDialog(
+    eventFeatureApi: EventFeatureApiV1,
     editor: EventEditorSnapshotV1,
     form: DraftForm,
     error: String?,
@@ -315,7 +318,12 @@ internal fun NewEventEditorDialog(
         onMove = {},
         onSearch = { emptyList() },
         onFormChange = { onFormChange(it.toCoreForm(form)) },
-        onConvert = { target -> onFormChange(TemporalConversion.convert(form, target.toCoreKind()).form) },
+        onConvert = { target ->
+            val converted = eventFeatureApi.convertFormKind(
+                form.toEventFormV1(), EventKindV1.valueOf(target.name)
+            )
+            onFormChange(converted.form.toCoreDraftForm())
+        },
         onCommit = onSave,
         onDiscard = onDiscard,
         onRetrySave = onSave,
@@ -561,6 +569,8 @@ private fun NativeDeckKind.toCoreKind() = when (this) {
     NativeDeckKind.DEADLINE -> TemporalKind.DEADLINE
     NativeDeckKind.MEMO -> TemporalKind.MEMO
 }
+
+private fun NativeDeckKind.toEventKind() = EventKindV1.valueOf(name)
 
 private fun RecurrenceFreq.toNativeFreq() = when (this) {
     RecurrenceFreq.NONE -> NativeDeckRecurrenceFreq.NONE

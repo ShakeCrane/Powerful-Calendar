@@ -47,6 +47,7 @@ class NewEventEditorLifecycleInstrumentedTest {
                 PowerCalTheme {
                     activeEditor?.let { editor ->
                         NewEventEditorDialog(
+                            eventFeatureApi = eventApi,
                             editor = editor,
                             form = visibleForm ?: editor.form.toCoreDraftForm(),
                             error = null,
@@ -126,6 +127,7 @@ class NewEventEditorLifecycleInstrumentedTest {
                 PowerCalTheme {
                     activeEditor?.let { editor ->
                         NewEventEditorDialog(
+                            eventFeatureApi = eventApi,
                             editor = editor,
                             form = visibleForm ?: editor.form.toCoreDraftForm(),
                             error = null,

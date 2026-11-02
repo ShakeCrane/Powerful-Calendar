@@ -137,6 +137,7 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -282,6 +283,10 @@ fun PowerCalApp(
     var memoQueryNowMillis by remember(store) { mutableLongStateOf(System.currentTimeMillis()) }
     var memoNextCursor by remember(store) { mutableStateOf<MemoQueryCursorV1?>(null) }
     var memoLoadingMore by remember { mutableStateOf(false) }
+    var memoRefreshInFlight by remember(store) { mutableIntStateOf(0) }
+    var memoRouteRefreshPending by remember(store) { mutableIntStateOf(0) }
+    var memoLoadMorePending by remember(store) { mutableStateOf(false) }
+    var memoProjectionGeneration by remember(store) { mutableLongStateOf(0L) }
     var totalEventCount by remember(store) { mutableIntStateOf(0) }
     var calendarWindows by remember(store) {
         mutableStateOf<Map<CalendarWindowQueryV1, CalendarWindowSnapshotV1>>(emptyMap())
@@ -551,129 +556,164 @@ fun PowerCalApp(
     // Title placement is always outside; old user preference intentionally ignored.
 
     suspend fun reload() {
-        val projectionNowMillis = nowMillis
-        val data = withContext(Dispatchers.IO) {
-            var loaded: AppData? = null
-            repeat(MAX_SNAPSHOT_LOAD_ATTEMPTS) {
-                if (loaded != null) return@repeat
-                val pending = draftReviewApi.queryPendingDrafts().map { it.toHostDraftCard() }
-                val eventPage = eventFeatureApi.queryEventsPage(limit = HOST_EVENT_PAGE_SIZE)
-                val memoPage = memoFeatureApi.queryEntriesPage(
-                    nowMillis = projectionNowMillis,
-                    includeCompleted = true
-                )
-                val requestedWindows = listOf(
-                    timelineCalendarQuery, monthCalendarQuery, nativeMonthCalendarQuery
-                ).distinct()
-                val windows = requestedWindows.associateWith(calendarFeatureApi::queryWindow)
-                val revision = eventPage.featureRevision
-                if (eventPage.stale || memoPage.stale || memoPage.featureRevision != revision ||
-                    windows.values.any { it.stale || it.featureRevision != revision }
-                ) return@repeat
-                val formalPage = eventPage.events.map { it.toCoreTemporalRecord() }
-                val reminderRows = ArrayList<ReminderDisplay>(40)
-                val recurrenceRows = ArrayList<EventRecordV1>(3)
-                fun collectSettingsRows(events: List<EventRecordV1>) {
-                    events.forEach { event ->
-                        if (recurrenceRows.size < 3 &&
-                            event.recurrence.frequency != EventRecurrenceFrequencyV1.NONE
-                        ) {
-                            recurrenceRows += event
-                        }
-                        if (reminderRows.size < 40 && event.enabled && event.reminderMinutes >= 0) {
-                            reminderRows += ReminderDisplay(
-                                event.toCoreTemporalRecord(), reminderFeatureApi.queryEvent(event.eventSeq)
-                            )
+        memoRefreshInFlight++
+        val memoGenerationAtStart = memoProjectionGeneration
+        try {
+            val projectionNowMillis = nowMillis
+            val data = withContext(Dispatchers.IO) {
+                var loaded: AppData? = null
+                repeat(MAX_SNAPSHOT_LOAD_ATTEMPTS) {
+                    if (loaded != null) return@repeat
+                    val pending = draftReviewApi.queryPendingDrafts().map { it.toHostDraftCard() }
+                    val eventPage = eventFeatureApi.queryEventsPage(limit = HOST_EVENT_PAGE_SIZE)
+                    val memoPage = memoFeatureApi.queryEntriesPage(
+                        nowMillis = projectionNowMillis,
+                        includeCompleted = true
+                    )
+                    val requestedWindows = listOf(
+                        timelineCalendarQuery, monthCalendarQuery, nativeMonthCalendarQuery
+                    ).distinct()
+                    val windows = requestedWindows.associateWith(calendarFeatureApi::queryWindow)
+                    val revision = eventPage.featureRevision
+                    if (eventPage.stale || memoPage.stale || memoPage.featureRevision != revision ||
+                        windows.values.any { it.stale || it.featureRevision != revision }
+                    ) return@repeat
+                    val formalPage = eventPage.events.map { it.toCoreTemporalRecord() }
+                    val reminderRows = ArrayList<ReminderDisplay>(40)
+                    val recurrenceRows = ArrayList<EventRecordV1>(3)
+                    fun collectSettingsRows(events: List<EventRecordV1>) {
+                        events.forEach { event ->
+                            if (recurrenceRows.size < 3 &&
+                                event.recurrence.frequency != EventRecurrenceFrequencyV1.NONE
+                            ) {
+                                recurrenceRows += event
+                            }
+                            if (reminderRows.size < 40 && event.enabled && event.reminderMinutes >= 0) {
+                                reminderRows += ReminderDisplay(
+                                    event.toCoreTemporalRecord(), reminderFeatureApi.queryEvent(event.eventSeq)
+                                )
+                            }
                         }
                     }
-                }
-                collectSettingsRows(eventPage.events)
-                var diagnosticsCursor: EventQueryCursorV1? = eventPage.nextCursor
-                var diagnosticsFresh = true
-                while ((reminderRows.size < 40 || recurrenceRows.size < 3) && diagnosticsCursor != null) {
-                    val diagnosticsPage = eventFeatureApi.queryEventsPage(
-                        diagnosticsCursor, limit = HOST_EVENT_PAGE_SIZE
-                    )
-                    if (diagnosticsPage.stale || diagnosticsPage.featureRevision != revision) {
-                        diagnosticsFresh = false
-                        break
+                    collectSettingsRows(eventPage.events)
+                    var diagnosticsCursor: EventQueryCursorV1? = eventPage.nextCursor
+                    var diagnosticsFresh = true
+                    while ((reminderRows.size < 40 || recurrenceRows.size < 3) && diagnosticsCursor != null) {
+                        val diagnosticsPage = eventFeatureApi.queryEventsPage(
+                            diagnosticsCursor, limit = HOST_EVENT_PAGE_SIZE
+                        )
+                        if (diagnosticsPage.stale || diagnosticsPage.featureRevision != revision) {
+                            diagnosticsFresh = false
+                            break
+                        }
+                        collectSettingsRows(diagnosticsPage.events)
+                        diagnosticsCursor = diagnosticsPage.nextCursor
                     }
-                    collectSettingsRows(diagnosticsPage.events)
-                    diagnosticsCursor = diagnosticsPage.nextCursor
-                }
-                if (!diagnosticsFresh || eventFeatureApi.featureRevision != revision) return@repeat
-                val batchState = aiFeatureApi.queryBatchState()
-                val coreDiagnostics = coreFeatureApi.diagnostics.queryDiagnostics()
-                loaded = AppData(
-                    records = formalPage,
-                    totalEventCount = eventPage.totalEvents,
-                    eventFeatureRevision = revision,
-                    memoPage = memoPage,
-                    calendarWindows = windows,
-                    pending = pending.size,
-                    locked = batchState.locked,
-                    session = batchState.session,
-                    cards = pending,
-                    diagnostics = UiDiagnostics(
-                        nextSequence = coreDiagnostics.nextSequencePreview,
-                        identities = coreDiagnostics.identityCount,
-                        reminders = reminderRows,
-                        recurrenceEvents = recurrenceRows
+                    if (!diagnosticsFresh || eventFeatureApi.featureRevision != revision) return@repeat
+                    val batchState = aiFeatureApi.queryBatchState()
+                    val coreDiagnostics = coreFeatureApi.diagnostics.queryDiagnostics()
+                    loaded = AppData(
+                        records = formalPage,
+                        totalEventCount = eventPage.totalEvents,
+                        eventFeatureRevision = revision,
+                        memoPage = memoPage,
+                        calendarWindows = windows,
+                        pending = pending.size,
+                        locked = batchState.locked,
+                        session = batchState.session,
+                        cards = pending,
+                        diagnostics = UiDiagnostics(
+                            nextSequence = coreDiagnostics.nextSequencePreview,
+                            identities = coreDiagnostics.identityCount,
+                            reminders = reminderRows,
+                            recurrenceEvents = recurrenceRows
+                        )
                     )
-                )
+                }
+                requireNotNull(loaded) { "日历在刷新期间持续变化，请稍后重试" }
             }
-            requireNotNull(loaded) { "日历在刷新期间持续变化，请稍后重试" }
+            // withContext(IO) resumes on the caller's UI dispatcher; publish there directly instead
+            // of queueing a second Main dispatch that can stall under Compose's test dispatcher.
+            if (data.eventFeatureRevision != eventFeatureApi.featureRevision) return
+            records = data.records
+            totalEventCount = data.totalEventCount
+            eventDataGeneration += 1L
+            eventFeatureRevision = data.eventFeatureRevision
+            // A page request may have started while this aggregate refresh was reading its snapshot.
+            // Keep that newer projection instead of replacing it with the refresh's first page.
+            if (memoProjectionGeneration == memoGenerationAtStart && !memoLoadingMore) {
+                todoEntries = data.memoPage.entries
+                memoTotalEntries = data.memoPage.totalEntries
+                memoOpenEntries = data.memoPage.openEntries
+                memoQueryNowMillis = data.memoPage.nowMillis
+                memoNextCursor = data.memoPage.nextCursor
+            }
+            calendarWindows = data.calendarWindows
+            hostDataReady = true
+            pendingCount = data.pending
+            aiLocked = data.locked
+            aiSession = data.session
+            pendingCards = data.cards
+            diagnostics = data.diagnostics
+            WebSkinBridgeRuntime.stateRevision++
+        } finally {
+            memoRefreshInFlight--
         }
-        // withContext(IO) resumes on the caller's UI dispatcher; publish there directly instead
-        // of queueing a second Main dispatch that can stall under Compose's test dispatcher.
-        if (data.eventFeatureRevision != eventFeatureApi.featureRevision) return
-        records = data.records
-        totalEventCount = data.totalEventCount
-        eventDataGeneration += 1L
-        eventFeatureRevision = data.eventFeatureRevision
-        todoEntries = data.memoPage.entries
-        memoTotalEntries = data.memoPage.totalEntries
-        memoOpenEntries = data.memoPage.openEntries
-        memoQueryNowMillis = data.memoPage.nowMillis
-        memoNextCursor = data.memoPage.nextCursor
-        memoLoadingMore = false
-        calendarWindows = data.calendarWindows
-        hostDataReady = true
-        pendingCount = data.pending
-        aiLocked = data.locked
-        aiSession = data.session
-        pendingCards = data.cards
-        diagnostics = data.diagnostics
-        WebSkinBridgeRuntime.stateRevision++
     }
 
     fun loadMoreMemoEntries() {
+        if (memoRefreshInFlight > 0 || memoRouteRefreshPending > 0) {
+            memoLoadMorePending = true
+            return
+        }
         val cursor = memoNextCursor ?: return
         if (memoLoadingMore) return
         memoLoadingMore = true
+        memoProjectionGeneration++
         scope.launch {
-            val nextPage = withContext(Dispatchers.IO) {
-                memoFeatureApi.queryEntriesPage(
-                    nowMillis = memoQueryNowMillis,
-                    includeCompleted = true,
-                    cursor = cursor
+            try {
+                val nextPage = withContext(Dispatchers.IO) {
+                    memoFeatureApi.queryEntriesPage(
+                        nowMillis = memoQueryNowMillis,
+                        includeCompleted = true,
+                        cursor = cursor
+                    )
+                }
+                if (nextPage.stale || nextPage.featureRevision != latestEventFeatureRevision) {
+                    memoLoadingMore = false
+                    memoProjectionGeneration++
+                    runCatching { reload() }
+                        .onFailure { message = "待办列表已变化，刷新失败；请重新打开查看" }
+                    return@launch
+                }
+                todoEntries = todoEntries + nextPage.entries
+                memoTotalEntries = nextPage.totalEntries
+                memoOpenEntries = nextPage.openEntries
+                memoQueryNowMillis = nextPage.nowMillis
+                memoNextCursor = nextPage.nextCursor
+                memoVisibleLimit = MemoProjectionPaging.nextLimit(
+                    memoVisibleLimit, nextPage.totalEntries
                 )
-            }
-            if (nextPage.stale || nextPage.featureRevision != latestEventFeatureRevision) {
                 memoLoadingMore = false
-                runCatching { reload() }
-                    .onFailure { message = "待办列表已变化，刷新失败；请重新打开查看" }
-                return@launch
+                memoProjectionGeneration++
+                WebSkinBridgeRuntime.stateRevision++
+            } catch (error: CancellationException) {
+                memoLoadingMore = false
+                memoProjectionGeneration++
+                throw error
+            } catch (error: Exception) {
+                memoLoadingMore = false
+                memoProjectionGeneration++
+                message = "待办列表加载失败：${error.message ?: "请重试"}"
+                WebSkinBridgeRuntime.stateRevision++
             }
-            todoEntries = todoEntries + nextPage.entries
-            memoTotalEntries = nextPage.totalEntries
-            memoOpenEntries = nextPage.openEntries
-            memoNextCursor = nextPage.nextCursor
-            memoVisibleLimit = MemoProjectionPaging.nextLimit(
-                memoVisibleLimit, nextPage.totalEntries
-            )
-            memoLoadingMore = false
-            WebSkinBridgeRuntime.stateRevision++
+        }
+    }
+
+    LaunchedEffect(memoRefreshInFlight, memoRouteRefreshPending, memoLoadMorePending) {
+        if (memoRefreshInFlight == 0 && memoRouteRefreshPending == 0 && memoLoadMorePending) {
+            memoLoadMorePending = false
+            loadMoreMemoEntries()
         }
     }
 
@@ -963,16 +1003,20 @@ fun PowerCalApp(
 
     LaunchedEffect(todayKey, hostDataReady) {
         if (hostDataReady) {
+            val generationAtStart = memoProjectionGeneration
             val refreshed = withContext(Dispatchers.IO) {
                 memoFeatureApi.queryEntriesPage(nowMillis, includeCompleted = true)
             }
-            if (!refreshed.stale && refreshed.featureRevision == eventFeatureRevision) {
+            if (!refreshed.stale && refreshed.featureRevision == eventFeatureRevision &&
+                generationAtStart == memoProjectionGeneration && !memoLoadingMore &&
+                memoRefreshInFlight == 0 && memoRouteRefreshPending == 0
+            ) {
                 todoEntries = refreshed.entries
                 memoTotalEntries = refreshed.totalEntries
                 memoOpenEntries = refreshed.openEntries
                 memoQueryNowMillis = refreshed.nowMillis
                 memoNextCursor = refreshed.nextCursor
-                memoLoadingMore = false
+                memoProjectionGeneration++
                 WebSkinBridgeRuntime.stateRevision++
             }
         }
@@ -1964,7 +2008,16 @@ fun PowerCalApp(
                         webProfileEditorName = null
                         webProfileEditorSkinId = null
                         page = Page.MEMO.name
-                        scope.launch { reload() }
+                        // Mark the refresh before launching so a same-frame load-more action is
+                        // queued even if its coroutine has not started yet.
+                        memoRouteRefreshPending++
+                        scope.launch {
+                            try {
+                                reload()
+                            } finally {
+                                memoRouteRefreshPending--
+                            }
+                        }
                     }
                     "ai" -> {
                         webProfileEditorName = null; webProfileEditorSkinId = null
@@ -3000,6 +3053,7 @@ fun PowerCalApp(
     if (deckOpen) {
         DraftDeckDialog(
             draftReviewApi = draftReviewApi,
+            eventFeatureApi = eventFeatureApi,
             aiSession = aiSession,
             onDismissRequest = {
                 deckOpen = false
@@ -3140,6 +3194,7 @@ fun PowerCalApp(
         val editor = newEventEditor ?: eventFeatureApi.editorSnapshot(session) ?: return@let
         val visibleForm = newEventForm ?: editor.form.toCoreDraftForm()
         NewEventEditorDialog(
+            eventFeatureApi = eventFeatureApi,
             editor = editor,
             form = visibleForm,
             error = newEventError,
@@ -3298,6 +3353,7 @@ fun PowerCalApp(
         }
         val visibleForm = editForm ?: editor.form.toCoreDraftForm()
         DirectEventEditorDialog(
+            eventFeatureApi = eventFeatureApi,
             editor = editor,
             form = visibleForm,
             error = editError,

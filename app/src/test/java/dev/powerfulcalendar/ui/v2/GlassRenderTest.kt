@@ -79,6 +79,7 @@ class GlassRenderTest {
             StoreDeckPersistence(database),
             ioDispatcher = kotlinx.coroutines.Dispatchers.Unconfined
         ).also { kotlinx.coroutines.runBlocking { it.open(first.draftId) } }
+        val coreApi = PowerCalCoreFeatureApiV1(database, deckController = controller)
         val dark = mutableStateOf(false)
         val noon = LocalDate.of(2026, 10, 20).atTime(12, 0).atZone(zone).toInstant().toEpochMilli()
         ui.setContent { PowerCalTheme(darkTheme = dark.value, effects = GlassEffects(reduceMotion = true)) {
@@ -86,8 +87,7 @@ class GlassRenderTest {
                 TimelineScreen(emptyList(), TimelineCoordinate.Camera(noon, 24.0), noon, zone, 4, false,
                     {}, {}, { _, _ -> }, { _, _ -> }, {}, {}, {}, {})
             }
-            DraftDeckDialog(PowerCalCoreFeatureApiV1(database,
-                deckController = controller).draftReview, null, {}, {}, {}, {}, { emptyList() })
+            DraftDeckDialog(coreApi.draftReview, coreApi.events, null, {}, {}, {}, {}, { emptyList() })
         } }
         capture("deck-compact-light.png", true)
         ui.onNodeWithText("轻点卡片，展开完整编辑").performClick()

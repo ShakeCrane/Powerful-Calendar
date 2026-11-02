@@ -4,17 +4,20 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import dev.powerfulcalendar.core.DraftForm
-import dev.powerfulcalendar.core.TemporalConversion
-import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
+import dev.powerfulcalendar.core.api.v1.EventFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.EventKindV1
 import dev.powerfulcalendar.core.api.v1.EventEditorSnapshotV1
 import dev.powerfulcalendar.core.api.v1.EventRecurrenceScopeV1
+import dev.powerfulcalendar.core.api.v1.toCoreDraftForm
+import dev.powerfulcalendar.core.api.v1.toEventFormV1
 import dev.powerfulcalendar.ui.v2.nativeui.NativeDirectEventEditor
 import java.util.UUID
 
 /** Host-owned window and callbacks surrounding the Native formal editor presentation. */
 @Composable
 internal fun DirectEventEditorDialog(
+    eventFeatureApi: EventFeatureApiV1,
     editor: EventEditorSnapshotV1,
     form: DraftForm,
     error: String?,
@@ -30,7 +33,7 @@ internal fun DirectEventEditorDialog(
 ) {
     SkinWindowDialog(onDismissRequest = onExit) {
         DirectEventEditorContent(
-            editor, form, error, hasChanges, busy, editorRevision, onChange,
+            eventFeatureApi, editor, form, error, hasChanges, busy, editorRevision, onChange,
             onScopeChange, onSave, onExit, onDiscardChanges, onDelete
         )
     }
@@ -39,6 +42,7 @@ internal fun DirectEventEditorDialog(
 /** Builds a display-only request; Core editor handles and all mutations remain Host-owned. */
 @Composable
 internal fun DirectEventEditorContent(
+    eventFeatureApi: EventFeatureApiV1,
     editor: EventEditorSnapshotV1,
     form: DraftForm,
     error: String?,
@@ -104,7 +108,12 @@ internal fun DirectEventEditorContent(
         requiresRecurrenceScope = editor.recurrenceScopeRequired,
         selectedRecurrenceScope = recurrenceScope?.let { NativeDirectEditScope.valueOf(it.name) },
         recurrenceScopes = scopeOptions,
-        onChangeKind = { selected -> onChange(TemporalConversion.convert(form, selected.toCoreKind()).form) },
+        onChangeKind = { selected ->
+            val converted = eventFeatureApi.convertFormKind(
+                form.toEventFormV1(), EventKindV1.valueOf(selected.name)
+            )
+            onChange(converted.form.toCoreDraftForm())
+        },
         onChangeRecurrenceScope = { selected ->
             onScopeChange(EventRecurrenceScopeV1.valueOf(selected.name))
         },
@@ -114,11 +123,4 @@ internal fun DirectEventEditorContent(
         onDelete = onDelete
     )
     NativeDirectEventEditor(context)
-}
-
-private fun NativeDeckKind.toCoreKind() = when (this) {
-    NativeDeckKind.ALARM -> TemporalKind.ALARM
-    NativeDeckKind.ACTIVITY -> TemporalKind.ACTIVITY
-    NativeDeckKind.DEADLINE -> TemporalKind.DEADLINE
-    NativeDeckKind.MEMO -> TemporalKind.MEMO
 }

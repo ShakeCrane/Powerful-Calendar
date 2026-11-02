@@ -48,6 +48,44 @@ class EventFeatureApiV1Test {
     }
 
     @Test
+    fun convertFormKindUsesCoreRulesAndReturnsRequiredFields() {
+        val alarm = DraftForm(
+            kind = TemporalKind.ALARM,
+            title = "Morning alarm",
+            startText = "2026-10-22 07:30",
+            reminderMinutes = -1,
+            source = "imported-ics",
+            zoneId = zone.id
+        ).toEventFormV1()
+
+        val activity = api.convertFormKind(alarm, EventKindV1.ACTIVITY)
+        assertEquals(EventKindV1.ACTIVITY, activity.form.kind)
+        assertEquals("2026-10-22 07:30", activity.form.startText)
+        assertEquals("", activity.form.endText)
+        assertEquals("imported-ics", activity.form.source)
+        assertEquals(zone.id, activity.form.zoneId)
+        assertEquals(listOf("END"), activity.requiredFields)
+        assertEquals("转换为活动需要补全结束时间；原有时刻已保留为开始。", activity.note)
+
+        val dateDeadline = DraftForm(
+            kind = TemporalKind.DEADLINE,
+            title = "Submit form",
+            endText = "2026-10-23",
+            reminderMinutes = 0,
+            zoneId = zone.id
+        ).toEventFormV1()
+        val alarmFromDate = api.convertFormKind(dateDeadline, EventKindV1.ALARM)
+        assertEquals("", alarmFromDate.form.startText)
+        assertEquals("", alarmFromDate.form.endText)
+        assertEquals(listOf("START"), alarmFromDate.requiredFields)
+
+        val unchanged = api.convertFormKind(alarm, EventKindV1.ALARM)
+        assertEquals(alarm, unchanged.form)
+        assertTrue(unchanged.requiredFields.isEmpty())
+        assertEquals("", unchanged.note)
+    }
+
+    @Test
     fun oneFeatureApiSupportsQueryCreateEditDeleteAndIdempotentReplay() {
         val changes = mutableListOf<EventFeatureChangeV1>()
         val subscription = api.subscribe(changes::add)

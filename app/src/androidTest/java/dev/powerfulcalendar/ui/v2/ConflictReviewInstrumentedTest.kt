@@ -96,9 +96,10 @@ class ConflictReviewInstrumentedTest {
             )
             runBlocking { controller.open(staleDraft.draftId) }
             assertFalse("stale replacement must pause for explicit review", runBlocking { controller.commit() })
-            val draftReviewApi = PowerCalCoreFeatureApiV1(
+            val coreFeatureApi = PowerCalCoreFeatureApiV1(
                 store, deckController = controller
-            ).draftReview
+            )
+            val draftReviewApi = coreFeatureApi.draftReview
             val prompt = requireNotNull(controller.state.conflict)
             val rows = snapshotRows(prompt.current, prompt.approvedForm)
             assertEquals("all editable snapshot fields must be represented", 25, rows.size)
@@ -116,6 +117,7 @@ class ConflictReviewInstrumentedTest {
                 PowerCalTheme {
                     DraftDeckDialog(
                         draftReviewApi = draftReviewApi,
+                        eventFeatureApi = coreFeatureApi.events,
                         aiSession = null,
                         onDismissRequest = {},
                         onOpenFormalEvent = {},

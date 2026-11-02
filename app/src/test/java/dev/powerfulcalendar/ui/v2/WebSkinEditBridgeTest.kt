@@ -99,6 +99,9 @@ class WebSkinEditBridgeTest {
             .put("payload",payload).toString()
     }
 
+    private fun patchForm(form: DraftForm, field: String, value: String): DraftForm =
+        WebEditWire.patch(form, field, value, coreFeatureApi.events)
+
     private suspend fun commitFormal(form: DraftForm): TemporalRecord {
         val card = store.newDraft(form)
         assertTrue(store.commit(card.draftId) is PowerStore.CommitOutcome.Committed)
@@ -737,29 +740,29 @@ class WebSkinEditBridgeTest {
     @Test fun semanticFieldsPreserveProtectedMetadataAndRejectOutOfRangeValues() {
         val original=DraftForm(kind=TemporalKind.ACTIVITY,title="Original",
             source="imported-ics",zoneId="Asia/Shanghai")
-        val reminded=WebEditWire.patch(original,"reminderMinutes","15")
+        val reminded=patchForm(original,"reminderMinutes","15")
         assertEquals(15,reminded.reminderMinutes)
-        val timed=WebEditWire.patch(reminded,"reminderTiming","DAY_START")
+        val timed=patchForm(reminded,"reminderTiming","DAY_START")
         assertEquals("DAY_START",timed.reminderTiming.name)
-        val daily=WebEditWire.patch(timed,"recurrenceFreq","DAILY")
-        val interval=WebEditWire.patch(daily,"recurrenceInterval","2")
-        val from=WebEditWire.patch(interval,"recurrenceFrom","2026-10-22")
+        val daily=patchForm(timed,"recurrenceFreq","DAILY")
+        val interval=patchForm(daily,"recurrenceInterval","2")
+        val from=patchForm(interval,"recurrenceFrom","2026-10-22")
         assertEquals("DAILY",from.recurrence.freq.name)
         assertEquals(2,from.recurrence.interval)
         assertEquals("2026-10-22",from.recurrence.activeFromDate)
         assertEquals("imported-ics",from.source)
         assertEquals("Asia/Shanghai",from.zoneId)
         assertThrows(IllegalArgumentException::class.java) {
-            WebEditWire.patch(original,"reminderMinutes","10081")
+            patchForm(original,"reminderMinutes","10081")
         }
         assertThrows(IllegalArgumentException::class.java) {
-            WebEditWire.patch(original,"recurrenceInterval","0")
+            patchForm(original,"recurrenceInterval","0")
         }
         assertThrows(IllegalArgumentException::class.java) {
-            WebEditWire.patch(original,"enabled","yes")
+            patchForm(original,"enabled","yes")
         }
         assertThrows(IllegalArgumentException::class.java) {
-            WebEditWire.patch(original,"source","forged")
+            patchForm(original,"source","forged")
         }
         assertNull(WebEditWire.decode(wire("deck.patch",
             ""","draftId":42,"draftVersion":1,"stateRevision":3,"field":"zoneId","value":"Etc/UTC"""")))
@@ -773,10 +776,10 @@ class WebSkinEditBridgeTest {
             source = "imported-ics", zoneId = "Asia/Shanghai")
         TemporalKind.entries.forEach { target ->
             assertEquals(TemporalConversion.convert(original, target).form,
-                WebEditWire.patch(original, "kind", target.name))
+                patchForm(original, "kind", target.name))
         }
         assertThrows(IllegalArgumentException::class.java) {
-            WebEditWire.patch(original, "kind", "UNSUPPORTED")
+            patchForm(original, "kind", "UNSUPPORTED")
         }
         val editorPayload = JSONObject().put("version", 1).put("type", "command")
             .put("payload", JSONObject().put("name", "editor.patch").put("requestId", request())

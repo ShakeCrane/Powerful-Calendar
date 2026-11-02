@@ -50,9 +50,10 @@ class DraftDeckThemeSwitchInstrumentedTest {
                 StoreDeckPersistence(store), ioDispatcher = Dispatchers.Unconfined
             )
             runBlocking { controller.open(draft.draftId) }
-            val draftReviewApi = PowerCalCoreFeatureApiV1(
+            val coreFeatureApi = PowerCalCoreFeatureApiV1(
                 store, deckController = controller
-            ).draftReview
+            )
+            val draftReviewApi = coreFeatureApi.draftReview
 
             var darkTheme by mutableStateOf(false)
             var renderedBackground by mutableStateOf(Color.Unspecified)
@@ -61,6 +62,7 @@ class DraftDeckThemeSwitchInstrumentedTest {
                     val background = MaterialTheme.colorScheme.background
                     SideEffect { renderedBackground = background }
                     NativeDraftDeckDialog(
+                        eventFeatureApi = coreFeatureApi.events,
                         draftReviewApi = draftReviewApi,
                         aiSession = null,
                         onDismissRequest = {},

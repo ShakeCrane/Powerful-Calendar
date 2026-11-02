@@ -108,34 +108,26 @@ class WebAiProposalReviewIntegrationTest {
         ui.waitForIdle()
         ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.LoadMoreMemo) }
         ui.waitForIdle()
-        ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.Routed("memo")) }
+        ui.runOnIdle {
+            WebSkinBridgeRuntime.onAction(WebSkinAction.Routed("memo"))
+            WebSkinBridgeRuntime.onAction(WebSkinAction.LoadMoreMemo)
+        }
         try {
             ui.waitUntil(60_000) {
                 val state = WebSkinBridgeRuntime.state()
-                state.optString("page") == "MEMO" && state.optInt("memoCount") == 251 &&
-                    state.optJSONArray("memoEntries")?.length() == 250 &&
-                    state.optBoolean("memoTruncated") && state.optInt("memoRemainingCount") == 1
-            }
-        } catch (error: Throwable) {
-            throw AssertionError("Memo Host state after navigation: ${WebSkinBridgeRuntime.state()}", error)
-        }
-        val firstRows = WebSkinBridgeRuntime.state().getJSONArray("memoEntries")
-        assertEquals("Paging Memo 001", firstRows.getJSONObject(0).getString("title"))
-        assertEquals("Paging Memo 250", firstRows.getJSONObject(249).getString("title"))
-
-        ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.LoadMoreMemo) }
-        ui.waitForIdle()
-        try {
-            ui.waitUntil(20_000) {
-                val state = WebSkinBridgeRuntime.state()
-                state.optJSONArray("memoEntries")?.length() == 251 &&
+                state.optString("page") == "MEMO" &&
+                    state.optJSONArray("memoEntries")?.length() == 251 &&
                     !state.optBoolean("memoTruncated") && state.optInt("memoRemainingCount") == 0
             }
         } catch (error: Throwable) {
             throw AssertionError(
-                "Memo Host state after next-page request: ${WebSkinBridgeRuntime.state()}", error
+                "Memo Host state after navigation and queued next-page request: ${WebSkinBridgeRuntime.state()}",
+                error
             )
         }
+        val firstRows = WebSkinBridgeRuntime.state().getJSONArray("memoEntries")
+        assertEquals("Paging Memo 001", firstRows.getJSONObject(0).getString("title"))
+        assertEquals("Paging Memo 250", firstRows.getJSONObject(249).getString("title"))
         val allRows = WebSkinBridgeRuntime.state().getJSONArray("memoEntries")
         assertEquals("Paging Memo 251", allRows.getJSONObject(250).getString("title"))
         assertEquals(beforePaging, counts())

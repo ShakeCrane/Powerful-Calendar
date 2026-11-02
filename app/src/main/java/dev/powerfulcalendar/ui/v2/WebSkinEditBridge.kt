@@ -16,7 +16,6 @@ import dev.powerfulcalendar.core.Recurrence
 import dev.powerfulcalendar.core.RecurrenceEditScope
 import dev.powerfulcalendar.core.ReminderMethod
 import dev.powerfulcalendar.core.ReminderTiming
-import dev.powerfulcalendar.core.TemporalConversion
 import dev.powerfulcalendar.core.api.v1.AiFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.AiBatchStateSnapshotV1
 import dev.powerfulcalendar.core.api.v1.EventDeleteApprovalV1
@@ -272,11 +271,16 @@ internal object WebEditWire {
     }
 
     /** A semantic patch may change a permitted field only, never replace hidden metadata. */
-    fun patch(form: DraftForm, field: String, value: String): DraftForm = when(field) {
+    fun patch(
+        form: DraftForm,
+        field: String,
+        value: String,
+        eventFeatures: EventFeatureApiV1
+    ): DraftForm = when(field) {
         "kind" -> {
-            val target = TemporalKind.entries.firstOrNull { it.name == value }
+            val target = EventKindV1.entries.firstOrNull { it.name == value }
                 ?: throw IllegalArgumentException("Invalid event kind")
-            TemporalConversion.convert(form, target).form
+            eventFeatures.convertFormKind(form.toEventFormV1(), target).form.toCoreDraftForm()
         }
         "title" -> form.copy(title=value)
         "startText" -> form.copy(startText=value)
@@ -844,7 +848,7 @@ internal class WebSkinEditService(
                         result(cmd.requestId,"invalid","仅本次只能修改标题和时间")
                     else {
                         val active = session!!
-                        val patched = WebEditWire.patch(active.form,cmd.field,cmd.value)
+                        val patched = WebEditWire.patch(active.form,cmd.field,cmd.value,eventFeatures)
                         val updated = withContext(Dispatchers.IO) {
                             eventFeatures.updateFormalEvent(active.handle, patched.toEventFormV1())
                         }
@@ -1108,7 +1112,9 @@ internal class WebSkinEditService(
                             activeNew.version!=cmd.draftVersion) result(cmd.requestId,"stale")
                         else if(queryAiBatchLock()) result(cmd.requestId,"locked")
                         else {
-                            val patched = WebEditWire.patch(activeNew.form,cmd.field,cmd.value)
+                            val patched = WebEditWire.patch(
+                                activeNew.form, cmd.field, cmd.value, eventFeatures
+                            )
                             val update = eventFeatures.updateNewEvent(
                                 activeNew.handle, patched.toEventFormV1()
                             )
@@ -1129,7 +1135,9 @@ internal class WebSkinEditService(
                             val form=state.form?.toCoreDraftForm()
                             if(form==null) result(cmd.requestId,"missing")
                             else {
-                                val updated = WebEditWire.patch(form,cmd.field,cmd.value)
+                                val updated = WebEditWire.patch(
+                                    form, cmd.field, cmd.value, eventFeatures
+                                )
                                 val edited = deck.editCurrentDraft(
                                     cmd.draftId, cmd.draftVersion,
                                     cmd.stateRevision ?: state.stateRevision,

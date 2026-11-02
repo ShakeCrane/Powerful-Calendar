@@ -64,9 +64,10 @@ class DraftDeckImeInstrumentedTest {
                 ioDispatcher = Dispatchers.Unconfined
             )
             runBlocking { controller.open(card.draftId) }
-            val draftReviewApi = PowerCalCoreFeatureApiV1(
+            val coreFeatureApi = PowerCalCoreFeatureApiV1(
                 store, deckController = controller
-            ).draftReview
+            )
+            val draftReviewApi = coreFeatureApi.draftReview
 
             compose.activity.runOnUiThread {
                 compose.activity.window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
@@ -75,6 +76,7 @@ class DraftDeckImeInstrumentedTest {
             compose.setContent {
                 PowerCalTheme {
                     NativeDraftDeckDialog(
+                        eventFeatureApi = coreFeatureApi.events,
                         draftReviewApi = draftReviewApi,
                         aiSession = null,
                         onDismissRequest = {},

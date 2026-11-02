@@ -69,8 +69,8 @@ class GlassComposeTest {
     ) {
         val api = remember(store, controller) {
             PowerCalCoreFeatureApiV1(store, deckController = controller)
-        }.draftReview
-        DraftDeckDialog(api, aiSession, onDismissRequest, onOpenFormalEvent,
+        }
+        DraftDeckDialog(api.draftReview, api.events, aiSession, onDismissRequest, onOpenFormalEvent,
             onCancelAiBatch, onDeckChanged, formalSearch)
     }
 
@@ -159,7 +159,7 @@ class GlassComposeTest {
         })
         try {
             ui.setContent { PowerCalTheme {
-                DraftDeckDialog(core.draftReview, null, {}, {}, {}, {}, { emptyList() })
+                DraftDeckDialog(core.draftReview, core.events, null, {}, {}, {}, {}, { emptyList() })
             } }
             ui.onNodeWithText("确认提交").assertIsDisplayed()
             ui.onNodeWithText("开始/日期：2026-10-20 09:00").assertIsDisplayed()
@@ -202,7 +202,7 @@ class GlassComposeTest {
         })
         try {
             ui.setContent { PowerCalTheme {
-                DraftDeckDialog(core.draftReview, null, {}, {}, {}, {}, { emptyList() })
+                DraftDeckDialog(core.draftReview, core.events, null, {}, {}, {}, {}, { emptyList() })
             } }
             ui.onNodeWithText("Edit through API DTO").performClick()
             ui.waitUntil(5_000) { controller.state.form?.title == "Edited through API DTO" }

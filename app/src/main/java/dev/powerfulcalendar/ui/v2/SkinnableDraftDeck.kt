@@ -18,8 +18,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import dev.powerfulcalendar.core.TemporalConversion
-import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.api.v1.AiBatchSessionV1
 import dev.powerfulcalendar.core.api.v1.DraftReviewSnapshotV1
 import dev.powerfulcalendar.core.api.v1.DraftReviewFeatureApiV1
@@ -29,6 +27,7 @@ import dev.powerfulcalendar.core.api.v1.DraftReviewConflictV1
 import dev.powerfulcalendar.core.api.v1.EventKindV1
 import dev.powerfulcalendar.core.api.v1.EventSearchHitV1
 import dev.powerfulcalendar.core.api.v1.DraftReviewRestoreV1
+import dev.powerfulcalendar.core.api.v1.EventFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.EventFormV1
 import dev.powerfulcalendar.core.api.v1.toCoreDraftForm
 import dev.powerfulcalendar.core.api.v1.toEventFormV1
@@ -104,6 +103,7 @@ class DeckVisualContext internal constructor(
 @Composable
 fun DraftDeckDialog(
     draftReviewApi: DraftReviewFeatureApiV1,
+    eventFeatureApi: EventFeatureApiV1,
     aiSession: AiBatchSessionV1?,
     onDismissRequest: () -> Unit,
     onOpenFormalEvent: (EventSearchHitV1) -> Unit,
@@ -115,7 +115,7 @@ fun DraftDeckDialog(
     val renderer = DeckPresentationSkinRegistry.active
     val runtime = RuntimeSkinSurfaces.enabled("deck")
     if ((renderer == null || NativeSkinHostRegistration.isDeckRenderer(renderer)) && !runtime) {
-        NativeDraftDeckDialog(draftReviewApi, aiSession, onDismissRequest,
+        NativeDraftDeckDialog(eventFeatureApi, draftReviewApi, aiSession, onDismissRequest,
             onOpenFormalEvent, onCancelAiBatch, onDeckChanged, formalSearch,
             initialEditorOpen = initialEditorOpen)
         return
@@ -194,10 +194,10 @@ fun DraftDeckDialog(
         onConvert = { kind ->
             if (!locked) state.form?.let { form ->
                 val current = draftReviewApi.snapshot.current ?: return@let
+                val converted = eventFeatureApi.convertFormKind(form, kind)
                 val receipt = draftReviewApi.editCurrentDraft(
                     current.draftId, current.draftVersion, draftReviewApi.snapshot.stateRevision,
-                TemporalConversion.convert(form.toCoreDraftForm(), kind.toCoreTemporalKind())
-                    .form.toEventFormV1()
+                    converted.form
                 )
                 if (!receipt.succeeded) state = draftReviewApi.snapshot.copy(
                     error = receipt.message ?: receipt.errorCode
@@ -239,7 +239,7 @@ fun DraftDeckDialog(
         } },
         onDeclineRestore = { draftReviewApi.dismissRestore() },
         native = {
-            NativeDraftDeckDialog(draftReviewApi, aiSession, onDismissRequest,
+            NativeDraftDeckDialog(eventFeatureApi, draftReviewApi, aiSession, onDismissRequest,
                 onOpenFormalEvent, onCancelAiBatch, onDeckChanged, formalSearch,
                 initialEditorOpen = initialEditorOpen)
         }
@@ -398,11 +398,4 @@ private fun EventFormV1.hostReviewLines(): List<String> {
         "启用：$enabled · 完成跟踪：$trackingEnabled",
         "已完成实例：${completedKeys.sorted().joinToString().ifBlank { "—" }}"
     )
-}
-
-private fun EventKindV1.toCoreTemporalKind(): TemporalKind = when (this) {
-    EventKindV1.ALARM -> TemporalKind.ALARM
-    EventKindV1.ACTIVITY -> TemporalKind.ACTIVITY
-    EventKindV1.DEADLINE -> TemporalKind.DEADLINE
-    EventKindV1.MEMO -> TemporalKind.MEMO
 }

@@ -61,6 +61,7 @@ class DraftDeckDefaultSearchInstrumentedTest {
                 PowerCalTheme {
                     DraftDeckDialog(
                         draftReviewApi = coreFeatureApi.draftReview,
+                        eventFeatureApi = coreFeatureApi.events,
                         aiSession = null,
                         onDismissRequest = {},
                         onOpenFormalEvent = {},

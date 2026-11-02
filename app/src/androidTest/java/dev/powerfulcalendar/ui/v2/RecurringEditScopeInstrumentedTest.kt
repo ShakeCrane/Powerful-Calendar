@@ -80,6 +80,7 @@ class RecurringEditScopeInstrumentedTest {
                 PowerCalTheme {
                     activeEditor?.let { currentEditor ->
                         DirectEventEditorContent(
+                            eventFeatureApi = eventApi,
                             editor = currentEditor,
                             form = visibleForm ?: currentEditor.form.toCoreDraftForm(),
                             error = currentEditor.lastError,

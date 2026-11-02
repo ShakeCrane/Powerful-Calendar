@@ -23,6 +23,7 @@ import dev.powerfulcalendar.core.ReminderMethod
 import dev.powerfulcalendar.core.ReminderTiming
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
+import dev.powerfulcalendar.core.TemporalConversion
 import dev.powerfulcalendar.core.StoreDeckPersistence
 import java.time.Clock
 import java.time.DayOfWeek
@@ -506,6 +507,19 @@ internal class StoreEventFeatureApiV1(
                 message = result.reason
             )
         }
+    }
+
+    @Synchronized
+    override fun convertFormKind(
+        form: EventFormV1,
+        targetKind: EventKindV1
+    ): EventFormConversionV1 {
+        val converted = TemporalConversion.convert(form.toCoreDraftForm(), targetKind.toCoreKind())
+        return EventFormConversionV1(
+            form = converted.form.toEventFormV1(),
+            requiredFields = converted.required.map { it.name },
+            note = converted.note
+        )
     }
 
     @Synchronized
