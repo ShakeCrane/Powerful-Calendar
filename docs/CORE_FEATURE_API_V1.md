@@ -1,11 +1,11 @@
 # Core Feature API v1 — Calendar, Event, Recurrence, Memo, Draft/Review, AI, Reminder, Import/Export, Settings/Data, and Core Diagnostics slices
 
-- **Status:** Calendar window and bounded event queries, Event, Recurrence next-occurrence and occurrence-by-key queries, Memo, Draft/Review, AI Proposal/Feature/Query, Reminder, Import/Export, Settings/Data, and Core Diagnostics vertical slices implemented; PHASE 1 remains in progress.
+- **Status:** Calendar window and bounded event queries, Event, Recurrence next-occurrence, occurrence-by-key, and bounded occurrence-window queries, Memo, Draft/Review, AI Proposal/Feature/Query, Reminder, Import/Export, Settings/Data, and Core Diagnostics vertical slices implemented; PHASE 1 remains in progress.
 - **Contract source:** `:core-api`, package `dev.powerfulcalendar.core.api.v1`, including `CoreFeatureApiV1.kt`, `CoreDiagnosticsFeatureApiV1.kt`, `CalendarFeatureApiV1.kt`, `EventFeatureApiV1.kt`, `RecurrenceFeatureApiV1.kt`, `MemoFeatureApiV1.kt`, `DraftReviewFeatureApiV1.kt`, `AiProposalFeatureApiV1.kt`, `AiFeatureApiV1.kt`, `ReminderFeatureApiV1.kt`, `ImportExportFeatureApiV1.kt`, and `SettingsDataFeatureApiV1.kt`.
 - **Runtime adapter:** `app/src/main/java/dev/powerfulcalendar/core/api/v1/PowerCalCoreFeatureApiV1.kt`.
 - **Updated:** 2026-11-02.
 
-This document describes the implemented Calendar, Event, Recurrence query, Memo, Draft/Review, AI, Reminder, Import/Export, Settings/Data, and Core Diagnostics API boundaries. It does not declare full Core extraction, full domain coverage, runtime cutover, or Native/Skin parity. The Kotlin source is authoritative when a detail here drifts.
+This document describes the implemented Calendar, Event, Recurrence queries, Memo, Draft/Review, AI, Reminder, Import/Export, Settings/Data, and Core Diagnostics API boundaries. It does not declare full Core extraction, full domain coverage, runtime cutover, or Native/Skin parity. The Kotlin source is authoritative when a detail here drifts.
 
 ## 1. Contract boundaries
 
@@ -262,10 +262,34 @@ explicit local zone. Its result echoes event sequence/revision and returns the m
 or `null`; it does not establish currentness. Web timeline event-open validation and Web formal
 write review use this query instead of calling `RecurrenceEngine` in the Host. The later Core event
 open/save operations and trusted approval/transaction checks remain responsible for rechecking
-write authority and freshness. This does not yet migrate Native `GlassPresentation` recurrence
-expansion or add recurrence edit commands. Evidence is in the [Recurrence API Issue](issues/PC-ISSUE-CORE-RECURRENCE-API-V1.md); the initial Settings diagnostics migration is also recorded in the [Core Diagnostics API Issue](issues/PC-ISSUE-CORE-DIAGNOSTICS-API-V1.md).
+write authority and freshness. Native timeline and month expansion now use the bounded query in
+Section 16; recurrence edit commands remain outside this query API. Evidence is in the
+[Recurrence API Issue](issues/PC-ISSUE-CORE-RECURRENCE-API-V1.md); the initial Settings diagnostics
+migration is also recorded in the [Core Diagnostics API Issue](issues/PC-ISSUE-CORE-DIAGNOSTICS-API-V1.md).
 
-## 16. Current adapter coverage and open work
+## 16. Recurrence bounded occurrence-window query v1
+
+`RecurrenceFeatureApiV1.queryOccurrencesInWindow()` materializes effective occurrence slots for
+the supplied detached `EventRecordV1` over a half-open `[fromMillis, toMillis)` interval. The
+request rejects empty or longer-than-43-day windows and caps each event at 2,048 returned
+occurrences. Core asks the existing recurrence engine for one extra slot to set `truncated`, using
+its existing window-start-prioritized selection so a bounded renderer retains the nearest
+carry-in intervals when starts inside the window are numerous. The result echoes event sequence
+and revision; it is a projection of that snapshot and does not establish event currentness or
+authorize writes. Original recurrence keys, overrides, skipped/moved flags, local-zone rules, and
+DST behavior remain owned by the existing recurrence engine.
+
+The Native Host now uses this query for both its 17-day timeline projection and 42-day month grid.
+It converts each owner to a detached DTO, verifies the echoed sequence/revision, then applies the
+existing date-only deadline normalization and visible-window intersection before constructing
+Native presentation rows. The service is passed privately by the Host and is not exposed through
+the compiled Skin renderer context. The API remains separate from Native presentation and Web
+Bridge transport contracts. Web timeline/month projection still expands recurrence in its Host
+projection and is the next adapter routing step; Android/WebView execution remains unverified.
+Implementation and verification are recorded in the
+[Recurrence window API Issue](issues/PC-ISSUE-CORE-RECURRENCE-WINDOW-API-V1.md).
+
+## 17. Current adapter coverage and open work
 
 Verified code paths across the Calendar, Event, Recurrence query, Memo, Draft/Review, AI Proposal, Reminder, Import/Export, Settings/Data, and Core Diagnostics slices:
 
@@ -290,7 +314,7 @@ Verified code paths across the Calendar, Event, Recurrence query, Memo, Draft/Re
 - Native and Web Host timeline/month reads use Store-backed `CalendarFeatureApiV1` windows. Native month navigation asks the Host for a fresh bounded query per month; Web synchronous state refreshes select data for the live window.
 - Native and Web ICS import/export, structured Calendar import, and native backup export/restore now call `ImportExportFeatureApiV1`. ICS draft persistence delegates to Draft/Review; structured imports retain Store batch receipts and source-link idempotence; successful backup restore emits the shared `STORE_RESTORED` change.
 - `PowerCalApp.reload()` obtains the sequence preview and identity count through the read-only `CoreDiagnosticsFeatureApiV1`; the query leaves Store counts, event revisions, and feature notifications unchanged.
-- Native and Web Settings diagnostics receive next-occurrence previews from `RecurrenceFeatureApiV1`; the API currently covers this query only, while other direct recurrence computations remain to be routed.
+- Native and Web Settings diagnostics receive next-occurrence previews from `RecurrenceFeatureApiV1`; Native timeline/month recurrence materialization also uses its bounded window query. Web timeline/month projection still expands recurrence in the Host projection and remains to be routed through this API.
 - A Robolectric adapter integration test performs a Native-side API create followed by a Web bridge create/checkpoint and observes shared feature revision/change events and Store-backed state. Its Native-side write calls the API directly; it does not mount `PowerCalApp` and drive the entire Native UI route. Separate editor Compose tests cover the API-backed editor component callbacks.
 
 Remaining work before PHASE 1 can exit:
