@@ -721,10 +721,6 @@ internal class WebSkinEditService(
         if (queryAiBatchLock())
             return result(cmd.requestId, "locked", "当前有受保护的业务操作")
 
-        val record = queryCurrentFormalEvent(cmd.eventSeq)
-            ?: return result(cmd.requestId, "stale", "事件已不存在")
-        if (record.revision != cmd.expectedRevision)
-            return result(cmd.requestId, "stale", "事件版本已变化，请刷新时间轴")
         if (context.visibleEventRevisions[cmd.eventSeq] != cmd.expectedRevision)
             return result(cmd.requestId, "stale", "事件已离开当前时间轴投影，请刷新后重试")
         val snappedTarget = TimelineCoordinate.snap(
@@ -732,8 +728,16 @@ internal class WebSkinEditService(
         )
         val staged = withContext(Dispatchers.IO) {
             eventFeatures.stageTimelineMove(
-                record.eventSeq, cmd.expectedRevision, snappedTarget, cmd.requestId
+                cmd.eventSeq, cmd.expectedRevision, snappedTarget, cmd.requestId
             )
+        }
+        if (staged.status == EventMutationStatusV1.CONFLICT) {
+            val detail = when (staged.errorCode) {
+                "EVENT_MISSING" -> "事件已不存在"
+                "EVENT_CONFLICT" -> "事件版本已变化，请刷新时间轴"
+                else -> staged.message ?: "事件已变化，请刷新后重试"
+            }
+            return result(staged).put("status", "stale").put("detail", detail)
         }
         if (staged.status == EventMutationStatusV1.NO_CHANGE)
             return result(staged).put("status", "unchanged")

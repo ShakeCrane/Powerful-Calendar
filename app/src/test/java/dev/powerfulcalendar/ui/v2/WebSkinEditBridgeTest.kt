@@ -541,7 +541,34 @@ class WebSkinEditBridgeTest {
         assertTrue(store.pendingDraftsFor(original.eventSeq).isEmpty())
         assertEquals(beforeDrafts, store.draftCount())
         assertEquals(beforeCommits, store.commitCount())
+        assertTrue(timelineMoveCalls.isEmpty())
+        assertTrue(queriedEventSequences.isEmpty())
         assertEquals(original, store.get(original.eventSeq))
+    }
+
+    @Test fun timelineMoveDelegatesMissingOwnerToCoreWithoutStaging() = runBlocking {
+        val zone = ZoneId.of("Asia/Shanghai")
+        val start = LocalDateTime.of(2030, 10, 21, 9, 0).atZone(zone).toInstant().toEpochMilli()
+        val beforeDrafts = store.draftCount()
+        val beforeCommits = store.commitCount()
+        val seq = Long.MAX_VALUE
+        val result = service.execute(WebEditCommand.MoveTimelineEvent(
+            request(), seq, 1L, start + 3_600_000L
+        ), timelineMoveContext = TimelineMoveContext(
+            TimelineCoordinate.Camera(start, 24.0), zone, mapOf(seq to 1L)
+        ))
+
+        assertEquals("stale", result.getString("status"))
+        assertEquals("事件已不存在", result.getString("detail"))
+        assertTrue(result.getBoolean("refreshRequired"))
+        assertEquals(1, timelineMoveCalls.size)
+        assertEquals(seq, timelineMoveCalls.single().eventSeq)
+        assertEquals(EventMutationStatusV1.CONFLICT, timelineMoveCalls.single().receipt.status)
+        assertEquals("EVENT_MISSING", timelineMoveCalls.single().receipt.errorCode)
+        assertTrue(queriedEventSequences.isEmpty())
+        assertTrue(store.pendingDraftsFor(seq).isEmpty())
+        assertEquals(beforeDrafts, store.draftCount())
+        assertEquals(beforeCommits, store.commitCount())
     }
 
     @Test fun deckSearchReturnsBoundedDraftAndFormalMatchesWithoutWrites() = runBlocking {
@@ -939,7 +966,14 @@ class WebSkinEditBridgeTest {
             mapOf(original.eventSeq to original.revision)
         ))
         assertEquals("stale", result.getString("status"))
-        assertEquals(listOf(original.eventSeq), queriedEventSequences)
+        assertEquals("事件版本已变化，请刷新时间轴", result.getString("detail"))
+        assertTrue(result.getBoolean("refreshRequired"))
+        assertTrue(queriedEventSequences.isEmpty())
+        assertEquals(1, timelineMoveCalls.size)
+        assertEquals(original.eventSeq, timelineMoveCalls.single().eventSeq)
+        assertEquals(original.revision, timelineMoveCalls.single().expectedRevision)
+        assertEquals(EventMutationStatusV1.CONFLICT, timelineMoveCalls.single().receipt.status)
+        assertEquals("EVENT_CONFLICT", timelineMoveCalls.single().receipt.errorCode)
         assertTrue(store.pendingDraftsFor(original.eventSeq).isEmpty())
         assertEquals(beforeDrafts, store.draftCount())
         assertEquals(current, store.get(original.eventSeq))
