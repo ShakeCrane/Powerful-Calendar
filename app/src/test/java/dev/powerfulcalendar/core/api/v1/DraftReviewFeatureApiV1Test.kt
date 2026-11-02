@@ -808,6 +808,28 @@ class DraftReviewFeatureApiV1Test {
         assertTrue(deleteReadiness.canCommit)
         assertEquals(DraftReviewReadinessStatusV1.NOT_REQUIRED,
             api.queryDraft(delete.draftId)?.readiness?.status)
+
+        val deleteSnapshot = api.snapshot
+        val scopedDeleteForm = requireNotNull(deleteSnapshot.form).copy(
+            recurrenceScope = EventRecurrenceScopeV1.SINGLE_OCCURRENCE,
+            editOccurrenceKey = "2026-10-26T09:00"
+        )
+        assertEquals(DraftReviewReceiptStatusV1.APPLIED, api.editCurrentDraft(
+            delete.draftId, deleteSnapshot.version, deleteSnapshot.stateRevision, scopedDeleteForm
+        ).status)
+        val scopedDeleteReadiness = requireNotNull(api.snapshot.currentReadiness)
+        assertEquals(DraftReviewReadinessStatusV1.INVALID, scopedDeleteReadiness.status)
+        assertEquals("DRAFT_SCOPE_INVALID", scopedDeleteReadiness.errorCode)
+        assertFalse(scopedDeleteReadiness.canCommit)
+
+        assertEquals(DraftReviewReceiptStatusV1.APPLIED, api.flush("stage-scoped-delete").status)
+        val scopedSnapshot = api.snapshot
+        val scopedDeleteReceipt = api.commit(
+            delete.draftId, scopedSnapshot.version, scopedSnapshot.stateRevision, "scoped-delete"
+        )
+        assertEquals(DraftReviewReceiptStatusV1.INVALID, scopedDeleteReceipt.status)
+        assertEquals("DRAFT_SCOPE_INVALID", scopedDeleteReceipt.errorCode)
+        assertEquals(formal, store.get(formal.eventSeq))
     }
 
     @Test fun deleteThenRestoreApproval() = runBlocking {

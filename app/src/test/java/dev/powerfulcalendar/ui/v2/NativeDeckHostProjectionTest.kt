@@ -100,7 +100,7 @@ class NativeDeckHostProjectionTest {
         )
         val readiness = DraftReviewReadinessV1(
             status = DraftReviewReadinessStatusV1.INCOMPLETE,
-            missingFields = listOf("END"),
+            message = "结束时间必须晚于开始时间",
             startMillis = capturedNow,
             endMillis = capturedNow,
             validStart = true,
@@ -111,9 +111,13 @@ class NativeDeckHostProjectionTest {
         val projected = form.toNativeDeckForm(capturedNow, readiness)
 
         assertFalse(projected.publishable)
-        assertEquals(listOf("结束时间"), projected.missingFields)
+        assertTrue(projected.missingFields.isEmpty())
         assertTrue(projected.activityEndBeforeStart)
         assertTrue(projected.validEnd)
+        assertEquals("结束时间必须晚于开始时间", projected.readinessMessage)
+
+        val invalidFeedback = projected.copy(readinessMessage = "备忘结束日期早于开始日期")
+        assertEquals("备忘结束日期早于开始日期", invalidFeedback.readinessMessage)
 
         val deleteReadiness = DraftReviewReadinessV1(DraftReviewReadinessStatusV1.NOT_REQUIRED)
         assertTrue(form.toNativeDeckForm(capturedNow, deleteReadiness).publishable)

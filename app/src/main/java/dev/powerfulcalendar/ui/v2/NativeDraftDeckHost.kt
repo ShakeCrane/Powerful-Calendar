@@ -27,6 +27,7 @@ import dev.powerfulcalendar.core.api.v1.DraftReviewCardV1
 import dev.powerfulcalendar.core.api.v1.DraftReviewReceiptV1
 import dev.powerfulcalendar.core.api.v1.DraftReviewReceiptStatusV1
 import dev.powerfulcalendar.core.api.v1.DraftReviewReadinessV1
+import dev.powerfulcalendar.core.api.v1.DraftReviewReadinessStatusV1
 import dev.powerfulcalendar.core.api.v1.toCoreDraftForm
 import dev.powerfulcalendar.core.api.v1.toCoreTemporalRecord
 import dev.powerfulcalendar.core.api.v1.toEventFormV1
@@ -486,7 +487,10 @@ internal fun DraftForm.toNativeDeckForm(
         repeating = recurrence.isRepeating,
         startPickerMillis = start ?: defaults.pickerInstant(),
         endPickerMillis = end ?: dateOnly?.let(defaults::pickerInstant) ?: nextHour ?: defaults.pickerInstant(),
-        deadlinePrecisionPickerMillis = end ?: dateOnly?.let(defaults::pickerInstant) ?: defaults.pickerInstant()
+        deadlinePrecisionPickerMillis = end ?: dateOnly?.let(defaults::pickerInstant) ?: defaults.pickerInstant(),
+        readinessMessage = readiness?.message?.takeIf {
+            readiness.status == DraftReviewReadinessStatusV1.INVALID || readiness.activityEndBeforeStart
+        }
     )
 }
 

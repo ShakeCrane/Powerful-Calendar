@@ -20,14 +20,15 @@ import dev.powerfulcalendar.core.api.v1.AiBatchStateSnapshotV1
 import dev.powerfulcalendar.core.api.v1.AiFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.DraftReviewCardV1
 import dev.powerfulcalendar.core.api.v1.DraftReviewFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.DraftReviewReceiptStatusV1
 import dev.powerfulcalendar.core.api.v1.EventFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.EventFeatureChangeTypeV1
 import dev.powerfulcalendar.core.api.v1.EventEditorHandleV1
 import dev.powerfulcalendar.core.api.v1.EventEditorUpdateReceiptV1
 import dev.powerfulcalendar.core.api.v1.EventMutationReceiptV1
 import dev.powerfulcalendar.core.api.v1.EventMutationStatusV1
-import dev.powerfulcalendar.core.api.v1.EventRecordV1
 import dev.powerfulcalendar.core.api.v1.EventRecurrenceScopeV1
+import dev.powerfulcalendar.core.api.v1.EventRecordV1
 import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
@@ -1527,9 +1528,9 @@ class WebSkinEditBridgeTest {
         assertEquals(0, store.commitCount())
         assertEquals("INVALID", coreFeatureApi.adaptDeckController(controller)
             .snapshot.current?.status?.name)
-        assertTrue(changes.any {
-            it.type == EventFeatureChangeTypeV1.DRAFTS_CHANGED && it.eventSeq == card.eventSeq
-        })
+        val draftChanges = changes.filter { it.type == EventFeatureChangeTypeV1.DRAFTS_CHANGED }
+        assertEquals(1, draftChanges.size)
+        assertNull(draftChanges.single().eventSeq)
         subscription.close()
     }
 
@@ -1561,6 +1562,43 @@ class WebSkinEditBridgeTest {
         assertNull(store.get(formal.eventSeq))
         assertTrue(store.isRetired(formal.eventSeq))
         assertEquals(commitsBeforeDelete + 1, store.commitCount())
+    }
+
+    @Test fun scopedDeleteReadinessStopsBeforeHostApproval() = runBlocking {
+        val formal = commitFormal(DraftForm(
+            kind = TemporalKind.ACTIVITY,
+            title = "Scoped delete target",
+            startText = "2026-11-02 09:00",
+            endText = "2026-11-02 10:00",
+            zoneId = testZone.id
+        ))
+        val commitsBeforeDelete = store.commitCount()
+        val delete = store.newDraft(
+            DraftForm(kind = TemporalKind.ACTIVITY, zoneId = testZone.id),
+            formal.eventSeq, DraftOperation.DELETE, expectedRevision = formal.revision
+        )
+        assertEquals("opened", service.execute(WebEditCommand.OpenDeck(
+            request(), delete.draftId
+        )).getString("status"))
+
+        val api = coreFeatureApi.adaptDeckController(controller)
+        val beforeEdit = api.snapshot
+        val scopedForm = requireNotNull(beforeEdit.form).copy(
+            recurrenceScope = EventRecurrenceScopeV1.SINGLE_OCCURRENCE,
+            editOccurrenceKey = "2026-10-26T09:00"
+        )
+        assertEquals(DraftReviewReceiptStatusV1.APPLIED, api.editCurrentDraft(
+            delete.draftId, beforeEdit.version, beforeEdit.stateRevision, scopedForm
+        ).status)
+        assertEquals(DraftReviewReceiptStatusV1.APPLIED, api.flush("stage-scoped-delete").status)
+        assertEquals("INVALID", api.snapshot.currentReadiness?.status?.name)
+
+        val version = service.snapshot().getJSONObject("deck").getLong("version")
+        val result = service.execute(WebEditCommand.CommitDeck(request(), delete.draftId, version))
+        assertEquals("invalid", result.getString("status"))
+        assertNull(service.pendingWriteReview)
+        assertEquals(formal, store.get(formal.eventSeq))
+        assertEquals(commitsBeforeDelete, store.commitCount())
     }
 
     @Test fun incompleteWebPublishStagesAndResumesEveryEventKindWithoutDuplicateWrites() = runBlocking {

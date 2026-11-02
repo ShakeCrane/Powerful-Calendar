@@ -1070,10 +1070,6 @@ internal class StoreEventFeatureApiV1(
         publish(type, eventSeq, revision)
     }
 
-    internal fun publishDeckDraftChange(eventSeq: Long) {
-        publish(EventFeatureChangeTypeV1.DRAFTS_CHANGED, eventSeq)
-    }
-
     internal fun publishStoreRestored() {
         publish(EventFeatureChangeTypeV1.STORE_RESTORED)
     }
@@ -1523,15 +1519,14 @@ private class StoreDraftReviewFeatureApiV1(
                         card.operation, card.eventSeq, card.baseRevision
                     )
                     if (persisted != null && persisted.status != card.status) {
-                        try {
-                            controller.refresh(draftId)
-                        } catch (cancelled: kotlinx.coroutines.CancellationException) {
-                            throw cancelled
-                        } catch (_: Exception) {
-                            // The Store mutation already happened; keep its receipt authoritative.
-                        }
-                        events.publishDeckDraftChange(card.eventSeq)
+                        // Refresh publishes the persisted queue change through the adapter observer.
+                        // Let refresh errors surface; returning a receipt with a stale snapshot hides
+                        // an incomplete projection update from the caller.
+                        controller.refresh(draftId)
                     }
+                    val persistedInvalid = persisted?.status == DraftStatus.INVALID
+                    val formInvalid = readiness.status == DraftReviewReadinessStatusV1.INCOMPLETE ||
+                        readiness.status == DraftReviewReadinessStatusV1.INVALID
                     when {
                         controller.state.conflict != null -> receipt(requestId,
                             DraftReviewReceiptStatusV1.REVIEW_REQUIRED, draftId = draftId,
@@ -1539,13 +1534,14 @@ private class StoreDraftReviewFeatureApiV1(
                         controller.state.restore != null -> receipt(requestId,
                             DraftReviewReceiptStatusV1.RESTORE_REQUIRED, draftId = draftId,
                             eventSeq = card.eventSeq, errorCode = "FORMAL_RESTORE_REVIEW_REQUIRED")
-                        readiness.status == DraftReviewReadinessStatusV1.INCOMPLETE ||
-                            readiness.status == DraftReviewReadinessStatusV1.INVALID -> receipt(
+                        persistedInvalid || formInvalid -> receipt(
                                 requestId, DraftReviewReceiptStatusV1.INVALID,
                                 draftId = draftId, eventSeq = card.eventSeq,
                                 draftVersion = persisted?.draftVersion ?: before.version,
-                                errorCode = readiness.errorCode ?: "DRAFT_FORM_INVALID",
-                                message = readiness.message ?: controller.state.error)
+                                errorCode = readiness.errorCode ?: if (persistedInvalid)
+                                    "DRAFT_STORE_INVALID" else "DRAFT_FORM_INVALID",
+                                message = readiness.message ?: controller.state.error
+                                    ?: "草稿当前不能发布，请重新检查")
                         else -> failureReceipt(requestId, "DRAFT_COMMIT_NOT_APPLIED", draftId, card.eventSeq)
                     }
                 }
@@ -1758,24 +1754,20 @@ private fun DraftForm.toDraftReviewReadiness(
     val end = parseEnd()
     val deadline = parseDeadline()
     val dateOnlyDeadline = (deadline as? dev.powerfulcalendar.core.DeadlineValue.Date)?.date
-    val invalidScope = operation != DraftOperation.DELETE &&
-        (recurrenceEditScope != null || editOccurrenceKey != null)
-    val classification = if (operation == DraftOperation.DELETE) null else build(
+    val invalidScope = recurrenceEditScope != null || editOccurrenceKey != null
+    val classification = if (operation == DraftOperation.DELETE || invalidScope) null else build(
         eventSeq.coerceAtLeast(1L), (baseRevision ?: 0L) + 1L, nowMillis = 0L
     )
     val status = when {
-        operation == DraftOperation.DELETE -> DraftReviewReadinessStatusV1.NOT_REQUIRED
         invalidScope -> DraftReviewReadinessStatusV1.INVALID
+        operation == DraftOperation.DELETE -> DraftReviewReadinessStatusV1.NOT_REQUIRED
         classification is dev.powerfulcalendar.core.FormBuild.Ready ->
             DraftReviewReadinessStatusV1.READY
         classification is dev.powerfulcalendar.core.FormBuild.Incomplete ->
             DraftReviewReadinessStatusV1.INCOMPLETE
         else -> DraftReviewReadinessStatusV1.INVALID
     }
-    val missing = when (classification) {
-        is dev.powerfulcalendar.core.FormBuild.Incomplete -> classification.missing.map { it.name }
-        else -> missingFields().map { it.name }
-    }
+    val missing = missingFields().map { it.name }
     val message = when (classification) {
         is dev.powerfulcalendar.core.FormBuild.Incomplete -> classification.message
         is dev.powerfulcalendar.core.FormBuild.Invalid -> classification.reason

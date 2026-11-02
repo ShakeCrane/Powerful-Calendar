@@ -46,7 +46,8 @@ data class NativeDeckForm(
     val repeating: Boolean,
     val startPickerMillis: Long,
     val endPickerMillis: Long,
-    val deadlinePrecisionPickerMillis: Long
+    val deadlinePrecisionPickerMillis: Long,
+    val readinessMessage: String? = null
 )
 
 data class NativeDeckCard(

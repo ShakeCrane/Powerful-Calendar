@@ -590,7 +590,10 @@ private fun DeckCardBody(
                     Text("重复事件可在原事件编辑器中选择仅本次、本次及以后或整个系列。",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.tertiary)
                 }
-                if (form.kind == NativeDeckKind.ACTIVITY && missing.isEmpty() && form.activityEndBeforeStart) {
+                val readinessMessage = form.readinessMessage
+                if (readinessMessage != null) {
+                    Text(readinessMessage, color = MaterialTheme.colorScheme.error)
+                } else if (form.kind == NativeDeckKind.ACTIVITY && missing.isEmpty() && form.activityEndBeforeStart) {
                     Text("结束时刻需要晚于开始时刻", color = MaterialTheme.colorScheme.error)
                 }
                 if (missing.isNotEmpty() && card.operation != NativeDeckOperation.DELETE) {
