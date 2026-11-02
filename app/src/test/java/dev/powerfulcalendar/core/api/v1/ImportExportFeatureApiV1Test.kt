@@ -5,6 +5,7 @@ import androidx.test.core.app.ApplicationProvider
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.BackupEnvelope
 import dev.powerfulcalendar.core.PowerStore
+import dev.powerfulcalendar.core.DraftStatus
 import dev.powerfulcalendar.core.TemporalKind
 import org.json.JSONObject
 import org.junit.After
@@ -20,6 +21,11 @@ import org.robolectric.annotation.Config
 import java.time.LocalDate
 import java.time.ZoneId
 import java.util.UUID
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.runBlocking
 
 @RunWith(RobolectricTestRunner::class)
@@ -69,7 +75,163 @@ END:VCALENDAR
             api.duplicateIcsCandidateSourceIds(plan.candidates))
     }
 
-    @Test fun icsPreflightKeepsValidUnitsSeparateFromUnresolvedSeries() {
+    @Test fun icsImportWorkflowStagesAndReusesReviewDraftsOnRetry() = runBlocking {
+        val text = """BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:import-workflow-retry
+DTSTART:20261103T010000Z
+DTEND:20261103T020000Z
+SUMMARY:Workflow imported activity
+END:VEVENT
+END:VCALENDAR
+"""
+        val workflow = PowerCalCoreFeatureApiV1(store, importCheckpointContext = context)
+        val api = workflow.importExport
+
+        val first = api.importIcsToDrafts(text, zone.id)
+        val firstDraft = store.pendingDrafts().single()
+        assertEquals(listOf(firstDraft.draftId), first.draftIds)
+        assertEquals(1, first.plan.candidates.size)
+        assertEquals(0, first.duplicateCount)
+        assertEquals(0, first.failedCount)
+        assertTrue(store.all().isEmpty())
+        assertEquals(0, store.commitCount())
+
+        val retry = api.importIcsToDrafts(text, zone.id)
+
+        assertEquals(first.draftIds, retry.draftIds)
+        assertEquals(1, retry.duplicateCount)
+        assertEquals(0, retry.failedCount)
+        assertEquals(1, store.pendingDrafts().size)
+        assertEquals(first.draftIds.toSet(), api.existingDraftIds(first.draftIds))
+        assertEquals(first.draftIds, api.queryIcsImportCheckpoint(first.plan.fingerprint)?.draftIds)
+        assertTrue(store.all().isEmpty())
+        assertEquals(0, store.commitCount())
+    }
+
+    @Test fun icsImportWorkflowRecreatesDiscardedDraftReferencedByCheckpoint() = runBlocking {
+        val text = """BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:import-workflow-discarded
+DTSTART:20261103T010000Z
+DTEND:20261103T020000Z
+SUMMARY:Recreate discarded draft
+END:VEVENT
+END:VCALENDAR
+"""
+        val workflow = PowerCalCoreFeatureApiV1(store, importCheckpointContext = context)
+        val api = workflow.importExport
+        val first = api.importIcsToDrafts(text, zone.id)
+        val discardedId = first.draftIds.single()
+        val discardedCard = requireNotNull(store.draft(discardedId))
+        assertEquals(discardedId, workflow.draftReview.open(discardedId).currentId)
+        assertTrue(workflow.draftReview.discard(
+            discardedId, discardedCard.draftVersion, "discard-ics-${UUID.randomUUID()}"
+        ).succeeded)
+        assertTrue(api.existingDraftIds(listOf(discardedId)).isEmpty())
+
+        val retry = api.importIcsToDrafts(text, zone.id)
+
+        assertEquals(0, retry.duplicateCount)
+        assertEquals(0, retry.failedCount)
+        assertEquals(1, retry.draftIds.size)
+        assertTrue(retry.draftIds.single() != discardedId)
+        assertEquals(listOf(DraftStatus.PENDING), store.pendingDrafts().map { it.status })
+        assertEquals(listOf(retry.draftIds.single()),
+            api.queryIcsImportCheckpoint(first.plan.fingerprint)?.draftIds)
+        assertTrue(store.all().isEmpty())
+    }
+
+    @Test fun icsImportWorkflowSerializesConcurrentIdenticalImports() = runBlocking {
+        val text = """BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:import-workflow-concurrent
+DTSTART:20261103T010000Z
+DTEND:20261103T020000Z
+SUMMARY:Concurrent workflow import
+END:VEVENT
+END:VCALENDAR
+"""
+        val api = PowerCalCoreFeatureApiV1(
+            store, importCheckpointContext = context
+        ).importExport
+
+        val results = coroutineScope {
+            listOf(
+                async(Dispatchers.Default) { api.importIcsToDrafts(text, zone.id) },
+                async(Dispatchers.Default) { api.importIcsToDrafts(text, zone.id) }
+            ).awaitAll()
+        }
+
+        assertEquals(1, store.pendingDrafts().size)
+        assertEquals(1, store.draftCount())
+        assertEquals(results[0].draftIds, results[1].draftIds)
+        assertEquals(1, results.sumOf { it.duplicateCount })
+        assertEquals(0, results.sumOf { it.failedCount })
+        assertEquals(0, store.commitCount())
+        assertTrue(store.all().isEmpty())
+    }
+
+    @Test fun icsImportWorkflowFailsBeforeDraftWritesWithoutCheckpointStorage() = runBlocking {
+        val text = """BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:import-workflow-no-receipt-store
+DTSTART:20261103T010000Z
+DTEND:20261103T020000Z
+SUMMARY:No receipt store
+END:VEVENT
+END:VCALENDAR
+"""
+        try {
+            core.importExport.importIcsToDrafts(text, zone.id)
+            throw AssertionError("ICS workflow must require durable recovery storage")
+        } catch (expected: IllegalStateException) {
+            assertTrue(expected.message.orEmpty().contains("恢复收据存储不可用"))
+        }
+        assertTrue(store.pendingDrafts().isEmpty())
+        assertTrue(store.all().isEmpty())
+        assertEquals(0, store.commitCount())
+    }
+
+    @Test fun icsImportWorkflowPropagatesCancellationWithoutRecordingEmptyCheckpoint() = runBlocking {
+        val text = """BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:import-workflow-cancelled
+DTSTART:20261103T010000Z
+DTEND:20261103T020000Z
+SUMMARY:Cancelled import
+END:VEVENT
+END:VCALENDAR
+"""
+        val cancellingReview = object : DraftReviewFeatureApiV1 by core.draftReview {
+            override suspend fun createDraft(
+                form: EventFormV1,
+                requestId: String
+            ): DraftReviewReceiptV1 = throw CancellationException("cancel import")
+        }
+        val api = StoreImportExportFeatureApiV1(
+            store, cancellingReview, StoreEventFeatureApiV1(store, java.time.Clock.systemUTC()), context
+        )
+        val fingerprint = api.prepareIcsImport(text, zone.id).fingerprint
+
+        try {
+            api.importIcsToDrafts(text, zone.id)
+            throw AssertionError("cancellation must propagate to the caller")
+        } catch (expected: CancellationException) {
+            assertEquals("cancel import", expected.message)
+        }
+
+        assertNull(api.queryIcsImportCheckpoint(fingerprint))
+        assertTrue(store.pendingDrafts().isEmpty())
+        assertEquals(0, store.commitCount())
+    }
+
+    @Test fun icsWorkflowStagesIndependentUnitsAndRetainsUnresolvedProblems() = runBlocking {
         val seriesMaster = """
             BEGIN:VEVENT
             UID:course-series
@@ -100,13 +262,25 @@ END:VCALENDAR
             listOf(seriesMaster, seriesOverride, independent).joinToString("\r\n") +
             "\r\nEND:VCALENDAR\r\n"
 
-        val plan = core.importExport.prepareIcsImport(text, zone.id)
+        val api = PowerCalCoreFeatureApiV1(store, importCheckpointContext = context).importExport
+        val plan = api.prepareIcsImport(text, zone.id)
 
         assertEquals(2, plan.units)
         assertEquals(listOf("uid:independent"), plan.candidates.map { it.sourceId })
         assertEquals(listOf("uid:course-series"), plan.problems.map { it.sourceId })
         assertTrue(plan.problems.single().reason.contains("多个组件"))
         assertTrue(plan.problems.single().evidence.contains("RECURRENCE-ID"))
+
+        val execution = api.importIcsToDrafts(text, zone.id)
+
+        assertEquals(plan, execution.plan)
+        assertEquals(1, execution.draftIds.size)
+        assertEquals(0, execution.duplicateCount)
+        assertEquals(0, execution.failedCount)
+        assertEquals("Independent event", store.pendingDrafts().single().form.title)
+        assertEquals(1, api.queryIcsImportCheckpoint(plan.fingerprint)?.problemCount)
+        assertTrue(store.all().isEmpty())
+        assertEquals(0, store.commitCount())
     }
 
     @Test fun icsImportCheckpointIsDurableAndUpdatedThroughFeatureApi() {

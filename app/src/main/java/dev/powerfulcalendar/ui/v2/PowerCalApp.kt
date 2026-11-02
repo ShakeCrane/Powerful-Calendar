@@ -107,7 +107,6 @@ import dev.powerfulcalendar.core.api.v1.AiProposalDecisionV1
 import dev.powerfulcalendar.core.api.v1.CalendarWindowQueryV1
 import dev.powerfulcalendar.core.api.v1.CalendarWindowSnapshotV1
 import dev.powerfulcalendar.core.api.v1.ImportExportFeatureApiV1
-import dev.powerfulcalendar.core.api.v1.IcsImportCheckpointV1
 import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.AndroidAiModelPortV1
 import dev.powerfulcalendar.core.api.v1.AndroidAiConversationHistoryPortV1
@@ -117,7 +116,6 @@ import dev.powerfulcalendar.core.api.v1.StructuredImportStatusV1
 import dev.powerfulcalendar.core.api.v1.SettingsDataMutationStatusV1
 import dev.powerfulcalendar.core.api.v1.BackupRestoreReceiptV1
 import dev.powerfulcalendar.core.api.v1.RecurrenceNextOccurrenceQueryV1
-import dev.powerfulcalendar.core.api.v1.newImportRequestId
 import dev.powerfulcalendar.core.api.v1.ReminderEventSnapshotV1
 import dev.powerfulcalendar.core.api.v1.ReminderReconcileModeV1
 import dev.powerfulcalendar.core.api.v1.ReminderReconcileStatusV1
@@ -1602,52 +1600,19 @@ fun PowerCalApp(
             } ?: error("无法读取所选文件")
             // Group by RFC UID before importing: a changed recurrence instance and its master
             // form one atomic semantic unit. Problems in independent units cannot block good ones.
-            val plan = withContext(Dispatchers.Default) {
-                importExportApi.prepareIcsImport(text, zone.id)
+            val importResult = withContext(Dispatchers.IO) {
+                importExportApi.importIcsToDrafts(text, zone.id)
             }
+            val plan = importResult.plan
             if (plan.units == 0) {
                 message = "文件里没有可导入的日历事件"
                 return
             }
-            val result = withContext(Dispatchers.IO) {
-                val duplicateSourceIds =
-                    importExportApi.duplicateIcsCandidateSourceIds(plan.candidates)
-                var duplicated = 0
-                val created = mutableListOf<Long>()
-                val failed = mutableListOf<String>()
-                val receipt = importExportApi.queryIcsImportCheckpoint(plan.fingerprint)
-                // A receipt is a recovery hint, not permission to skip missing/discarded cards.
-                receipt?.draftIds?.let(importExportApi::existingDraftIds)?.forEach { created += it }
-                plan.candidates.forEach { candidate ->
-                    if (candidate.sourceId in duplicateSourceIds) {
-                        duplicated++
-                        return@forEach
-                    }
-                    runCatching {
-                        importExportApi.createIcsDraft(candidate, newImportRequestId())
-                    }.onSuccess { draftReceipt ->
-                        val draftId = draftReceipt.draftId
-                        if (draftReceipt.succeeded && draftId != null) {
-                            created.add(draftId)
-                            importExportApi.recordIcsImportCheckpoint(
-                                IcsImportCheckpointV1(
-                                    plan.fingerprint, created.distinct(), plan.problems.size
-                                )
-                            )
-                        } else failed += candidate.sourceId.take(80)
-                    }.onFailure { failed += candidate.sourceId.take(80) }
-                }
-                importExportApi.recordIcsImportCheckpoint(
-                    IcsImportCheckpointV1(
-                        plan.fingerprint, created.distinct(), plan.problems.size
-                    )
-                )
-                Triple(created.distinct(), duplicated, failed)
-            }
             reload()
-            result.first.firstOrNull()?.let { openDeckAt(it) }
-            message = "ICS 处理完成：${result.first.size} 张已保存草稿，${result.second} 项重复，" +
-                "${plan.problems.size + result.third.size} 项待处理。尚未正式发布。" +
+            importResult.draftIds.firstOrNull()?.let { openDeckAt(it) }
+            message = "ICS 处理完成：${importResult.draftIds.size} 张已保存草稿，" +
+                "${importResult.duplicateCount} 项重复，" +
+                "${plan.problems.size + importResult.failedCount} 项待处理。尚未正式发布。" +
                 (plan.problems.firstOrNull()?.reason?.let { " 首个问题：${it.take(130)}" } ?: "")
             // Do not send the whole calendar to AI. Only explicitly unresolved components
             // may be explained or clarified, subject to separate provider-bound consent.

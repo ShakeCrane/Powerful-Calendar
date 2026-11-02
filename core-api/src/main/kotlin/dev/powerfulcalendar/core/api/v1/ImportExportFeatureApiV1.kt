@@ -27,6 +27,15 @@ data class IcsImportCheckpointV1(
     val problemCount: Int
 )
 
+/** Outcome of staging locally parsed ICS candidates as review drafts. */
+data class IcsImportExecutionV1(
+    val plan: IcsImportPlanV1,
+    /** Currently actionable drafts associated with this fingerprint, including prior successes. */
+    val draftIds: List<Long>,
+    val duplicateCount: Int,
+    val failedCount: Int
+)
+
 data class IcsExportDocumentV1(
     val content: String,
     val activityCount: Int
@@ -101,6 +110,7 @@ interface ImportExportFeatureApiV1 {
     fun prepareIcsImport(content: String, zoneId: String): IcsImportPlanV1
     /** Returns source IDs that duplicate an existing formal/pending draft or an earlier candidate. */
     fun duplicateIcsCandidateSourceIds(candidates: List<IcsImportCandidateV1>): Set<String>
+    /** Returns IDs of drafts that are still actionable for review; discarded/final drafts are omitted. */
     fun existingDraftIds(draftIds: List<Long>): Set<Long>
     /** Looks up the bounded durable recovery hint for this exact input fingerprint. */
     fun queryIcsImportCheckpoint(fingerprint: String): IcsImportCheckpointV1?
@@ -110,6 +120,8 @@ interface ImportExportFeatureApiV1 {
         candidate: IcsImportCandidateV1,
         requestId: String
     ): DraftReviewReceiptV1
+    /** Parses, deduplicates and stages review drafts while maintaining the durable recovery hint. */
+    suspend fun importIcsToDrafts(content: String, zoneId: String): IcsImportExecutionV1
 
     fun exportActivitiesIcs(): IcsExportDocumentV1
 

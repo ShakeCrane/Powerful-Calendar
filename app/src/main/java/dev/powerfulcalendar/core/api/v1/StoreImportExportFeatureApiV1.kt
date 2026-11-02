@@ -16,6 +16,9 @@ import org.json.JSONException
 import java.nio.charset.StandardCharsets
 import java.time.ZoneId
 import java.util.UUID
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /** Store-backed adapter. Import transactions and backup verification remain owned by Core. */
 internal class StoreImportExportFeatureApiV1(
@@ -25,6 +28,7 @@ internal class StoreImportExportFeatureApiV1(
     importCheckpointContext: Context?
 ) : ImportExportFeatureApiV1 {
     private val importCheckpointContext = importCheckpointContext?.applicationContext
+    private val icsImportMutex = Mutex()
     override val apiVersion: Int = 1
 
     override fun prepareIcsImport(content: String, zoneId: String): IcsImportPlanV1 {
@@ -56,7 +60,7 @@ internal class StoreImportExportFeatureApiV1(
     }
 
     override fun existingDraftIds(draftIds: List<Long>): Set<Long> =
-        draftIds.asSequence().filter { it > 0L && store.draft(it) != null }.toSet()
+        draftIds.asSequence().filter { id -> store.draft(id)?.isActionable == true }.toSet()
 
     override fun queryIcsImportCheckpoint(fingerprint: String): IcsImportCheckpointV1? {
         val context = importCheckpointContext ?: return null
@@ -77,6 +81,59 @@ internal class StoreImportExportFeatureApiV1(
         candidate: IcsImportCandidateV1,
         requestId: String
     ): DraftReviewReceiptV1 = draftReview.createDraft(candidate.form, requestId)
+
+    override suspend fun importIcsToDrafts(
+        content: String,
+        zoneId: String
+    ): IcsImportExecutionV1 = icsImportMutex.withLock {
+        checkNotNull(importCheckpointContext) { "ICS 导入恢复收据存储不可用" }
+        val plan = prepareIcsImport(content, zoneId)
+        if (plan.units == 0) return@withLock IcsImportExecutionV1(
+            plan = plan,
+            draftIds = emptyList(),
+            duplicateCount = 0,
+            failedCount = 0
+        )
+
+        val duplicateSourceIds = duplicateIcsCandidateSourceIds(plan.candidates)
+        var duplicateCount = 0
+        var failedCount = 0
+        val draftIds = mutableListOf<Long>()
+        queryIcsImportCheckpoint(plan.fingerprint)?.draftIds
+            ?.let(::existingDraftIds)
+            ?.forEach(draftIds::add)
+
+        plan.candidates.forEach { candidate ->
+            if (candidate.sourceId in duplicateSourceIds) {
+                duplicateCount++
+                return@forEach
+            }
+            val receipt = try {
+                createIcsDraft(candidate, newImportRequestId())
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                failedCount++
+                return@forEach
+            }
+            val draftId = receipt.draftId
+            if (receipt.succeeded && draftId != null) {
+                if (store.draft(draftId)?.isActionable == true) draftIds += draftId
+                recordIcsImportCheckpoint(IcsImportCheckpointV1(
+                    plan.fingerprint, draftIds.distinct(), plan.problems.size
+                ))
+            } else failedCount++
+        }
+        recordIcsImportCheckpoint(IcsImportCheckpointV1(
+            plan.fingerprint, draftIds.distinct(), plan.problems.size
+        ))
+        IcsImportExecutionV1(
+            plan = plan,
+            draftIds = draftIds.distinct(),
+            duplicateCount = duplicateCount,
+            failedCount = failedCount
+        )
+    }
 
     override fun exportActivitiesIcs(): IcsExportDocumentV1 {
         val activities = store.all().filter { it.kind == TemporalKind.ACTIVITY }
