@@ -37,6 +37,9 @@ for the Host callback boundary and verification limits.
 Native and Web ICS/structured Calendar import, export, and backup/restore now use Import/Export
 Feature API v1; see the [Import/Export API report](issues/PC-ISSUE-CORE-IMPORT-EXPORT-API-V1.md)
 for transaction boundaries and device/SAF verification limits.
+The explicitly confirmed legacy v0.1 database migration now delegates writes and change
+notifications to that same API while keeping the old SQLite file read-only; see the
+[Core Legacy Import API report](issues/PC-ISSUE-CORE-LEGACY-IMPORT-API-V1.md).
 The ICS import recovery checkpoint now uses that same API while retaining its existing
 synchronous SharedPreferences hint semantics; see the
 [checkpoint API follow-up](issues/PC-ISSUE-CORE-ICS-IMPORT-CHECKPOINT-API.md).

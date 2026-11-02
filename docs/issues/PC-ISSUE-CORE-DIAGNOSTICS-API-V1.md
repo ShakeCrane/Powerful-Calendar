@@ -90,12 +90,13 @@ by `DraftReviewFeatureApiV1`; see the [retired-event query Issue](PC-ISSUE-CORE-
 Web occurrence-by-key reads have since been routed through `RecurrenceFeatureApiV1`; see the
 [Recurrence API Issue](PC-ISSUE-CORE-RECURRENCE-API-V1.md) for its contract and current verification.
 The user's draft-create replay decision is now durable across restart and backup restore; the Event
-API implementation and its evidence are recorded in the Event API Issue. The current audit
-identified the explicitly confirmed legacy database migration as a remaining Store bypass:
-`PowerCalApp` invokes `LegacyImporter` with a Store reference instead of routing each imported row
-through the existing `ImportExportFeatureApiV1` structured-import operations. This migration
-should preserve its existing user confirmation, read-only source, source-link idempotence and
-warning behavior.
+API implementation and its evidence are recorded in the Event API Issue. The subsequent audit
+identified the explicitly confirmed legacy database migration as a remaining Store bypass; it has
+since been routed through the existing `ImportExportFeatureApiV1` structured-import operations.
+The migration preserves its user-confirmation surface, read-only source, source-link idempotence,
+enabled-state behavior and warnings; see the [Core Legacy Import API Issue]
+(PC-ISSUE-CORE-LEGACY-IMPORT-API-V1.md). Remaining Host review targets include local text-to-draft
+parsing and the typed legacy-backup consent exception.
 
 ## Git delivery
 
