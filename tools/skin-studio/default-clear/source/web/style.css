@@ -36,6 +36,8 @@ button:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outl
  min-width:150px;max-width:min(240px,72vw);min-height:48px;padding:9px 12px;
  border:1px solid var(--sep);border-radius:14px;background:var(--fill-1);color:var(--label);
  text-align:left}
+.dateDeadline.timeline-dragging{z-index:8;cursor:grabbing;outline:2px solid var(--accent);
+ outline-offset:1px;filter:drop-shadow(0 5px 9px rgba(0,0,0,.24))}
 .dateDeadline .dateDeadlineTitle{font-weight:620;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
 .dateDeadline .dateDeadlineDate{font-size:11px;color:var(--label-2)}
 .axis-scroll{height:min(67vh,680px);min-height:360px;overflow:auto;overscroll-behavior:contain;touch-action:pan-x;

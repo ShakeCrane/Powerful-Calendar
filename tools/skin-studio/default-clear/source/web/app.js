@@ -784,12 +784,14 @@ function renderTimeline(){
     dates.hidden=false;
     for(const item of dateItems){
       const title=String(item.title||"截止事项");
-      const label=`截止事项：${title}，${item.deadlineDate}，无具体时刻`;
+      const label=`截止事项：${title}，${item.deadlineDate}，无具体时刻；长按并上下拖动可更改日期`;
       const button=makeEventButton(item,"DEADLINE",label);
       button.className="dateDeadline";button.dataset.temporalGeometry="date";
       button.dataset.deadlineDate=item.deadlineDate;
+      button.dataset.startMillis=String(item.startMillis);
       button.append(node("span","dateDeadlineTitle",title),
         node("span","dateDeadlineDate",`${item.deadlineDate} · 截止，无具体时刻`));
+      attachTimelineDrag(button,item,axis);
       dates.append(button);
     }
   }

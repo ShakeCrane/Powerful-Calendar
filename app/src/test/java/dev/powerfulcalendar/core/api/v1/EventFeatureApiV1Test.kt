@@ -9,6 +9,7 @@ import dev.powerfulcalendar.core.TemporalKind
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -17,6 +18,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.time.Clock
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZoneOffset
 import java.util.UUID
@@ -446,6 +448,39 @@ class EventFeatureApiV1Test {
         assertEquals("2030-10-23", candidate.endText)
         assertTrue(candidate.parseDeadline() is dev.powerfulcalendar.core.DeadlineValue.Date)
         assertEquals("2030-10-22", record.deadlineDate)
+        assertEquals(record, store.get(record.eventSeq))
+    }
+
+    @Test
+    fun timelineMoveDateDeadlineHasNo1900LowerBoundWhenTheFormIsValid() {
+        val moveZone = ZoneId.of("UTC")
+        val editor = opened(api.openNewEvent(EventKindV1.DEADLINE, moveZone.id))
+        val created = api.saveNewEvent(
+            editor.handle,
+            editor.form.copy(
+                title = "Date deadline before former UI range",
+                endText = "1900-01-01",
+                zoneId = moveZone.id
+            ),
+            "timeline-move-date-lower-bound-create"
+        )
+        assertEquals(EventMutationStatusV1.CREATED, created.status)
+        val record = requireNotNull(store.get(requireNotNull(created.eventSeq)))
+        val targetMillis = LocalDate.of(1899, 12, 31).atTime(12, 0)
+            .atZone(moveZone).toInstant().toEpochMilli()
+
+        val moved = api.stageTimelineMove(
+            record.eventSeq, record.revision, targetMillis, "timeline-move-date-1899"
+        )
+        assertEquals(EventMutationStatusV1.STAGED, moved.status)
+        val candidate = store.pendingDraftsFor(record.eventSeq).single().form
+        assertEquals("1899-12-31", candidate.endText)
+        assertTrue(candidate.parseDeadline() is dev.powerfulcalendar.core.DeadlineValue.Date)
+        val validated = candidate.build(record.eventSeq, record.revision + 1)
+        assertTrue(validated is dev.powerfulcalendar.core.FormBuild.Ready)
+        val movedRecord = (validated as dev.powerfulcalendar.core.FormBuild.Ready).record
+        assertEquals("1899-12-31", movedRecord.deadlineDate)
+        assertNull(movedRecord.deadlineMillis)
         assertEquals(record, store.get(record.eventSeq))
     }
 

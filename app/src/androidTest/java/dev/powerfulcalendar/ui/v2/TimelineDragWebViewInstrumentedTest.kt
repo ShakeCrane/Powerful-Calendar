@@ -188,8 +188,12 @@ class TimelineDragWebViewInstrumentedTest {
         return latest
     }
 
-    private fun eventProbe(web: WebView, eventSeq: Long): JSONObject {
-        val selector = JSONObject.quote(".tEvent[data-event-seq='$eventSeq']")
+    private fun eventProbe(
+        web: WebView,
+        eventSeq: Long,
+        buttonClass: String = "tEvent"
+    ): JSONObject {
+        val selector = JSONObject.quote(".$buttonClass[data-event-seq='$eventSeq']")
         return evaluateObject(web, """
             (()=>{
               const button=document.querySelector($selector);
@@ -203,7 +207,7 @@ class TimelineDragWebViewInstrumentedTest {
                 x,y,cssWidth:innerWidth,cssHeight:innerHeight,surfaceHeight:surface.height,
                 rect:{left:rect.left,top:rect.top,right:rect.right,bottom:rect.bottom},
                 hitTag:hit?.tagName||'',hitClass:hit?.className||'',
-                hitButton:hit?.closest('.tEvent')===button};
+                hitButton:hit?.closest('.$buttonClass')===button};
             })()
         """.trimIndent())
     }
@@ -723,6 +727,166 @@ class TimelineDragWebViewInstrumentedTest {
                 "nativeViewportPx=$nativeHeight clearViewportCss=$clearHeightCss touch=$touch " +
                 "drafts=${nativeStore.draftCount()} commits=${nativeStore.commitCount()} " +
                 "identities=${nativeStore.identityCount()} sequence=${nativeStore.nextSequencePreview()}")
+        } finally {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            nativeStore.close()
+            clearStore.close()
+            nativeContext.deleteDatabase(nativeDatabase)
+            clearContext.deleteDatabase(clearDatabase)
+            listOf(nativeNamespace, clearNamespace).forEach { namespace ->
+                listOf("powercal-onboarding", "powercal-skin-choice", "powercal-skin-registry",
+                    "powercal-ui", "powercal-profile", "powercal-ai", "powercal-file-ai-consent")
+                    .forEach { storage.deleteSharedPreferences("$namespace-$it") }
+                File(storage.cacheDir, namespace).deleteRecursively()
+            }
+        }
+    }
+
+    @Test
+    fun nativeAndClearCanDragDateOnlyDeadlineAndPreserveDatePrecision() {
+        val storage = compose.activity.applicationContext
+        val nativeNamespace = "pc-date-deadline-native-" + UUID.randomUUID()
+        val clearNamespace = "pc-date-deadline-clear-" + UUID.randomUUID()
+        val nativeContext = IsolatedAppContext(compose.activity, storage, nativeNamespace)
+        val clearContext = IsolatedAppContext(compose.activity, storage, clearNamespace)
+        val nativeDatabase = "timeline-date.db"
+        val clearDatabase = "timeline-date.db"
+        val nativeStore = PowerStore(nativeContext, nativeDatabase)
+        val clearStore = PowerStore(clearContext, clearDatabase)
+        var web: WebView? = null
+        try {
+            val zone = ZoneId.systemDefault()
+            val sourceDate = LocalDate.now(zone)
+            val form = DraftForm(
+                kind = TemporalKind.DEADLINE,
+                title = "DATE_DEADLINE_DRAG_PARITY",
+                endText = sourceDate.toString(),
+                zoneId = zone.id
+            )
+            val nativeCreated = nativeStore.createFormalEvent(form, "date-deadline-drag-seed")
+                as PowerStore.CommitOutcome.Committed
+            val clearCreated = clearStore.createFormalEvent(form, "date-deadline-drag-seed")
+                as PowerStore.CommitOutcome.Committed
+            val eventSeq = nativeCreated.eventSeq
+            assertEquals(eventSeq, clearCreated.eventSeq)
+            val nativeOriginal = requireNotNull(nativeStore.get(eventSeq))
+            val clearOriginal = requireNotNull(clearStore.get(eventSeq))
+
+            nativeContext.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                .edit().putBoolean("system-calendar-import-asked", true).commit()
+            PowerCalSkinRegistry.reset()
+            SkinPackageManager(nativeContext).selectNativeForEmergencyRecovery()
+            compose.runOnUiThread {
+                compose.activity.setContent {
+                    CompositionLocalProvider(LocalContext provides nativeContext) {
+                        PowerCalTheme { PowerCalApp(nativeStore) }
+                    }
+                }
+            }
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithContentDescription("今日 · 复位为全天")
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithContentDescription("今日 · 复位为全天").performClick()
+            compose.waitUntil(15_000) {
+                hostState().getJSONObject("timeline").getDouble("hours") == 24.0
+            }
+            val nativeDeadline = compose.onAllNodes(
+                hasContentDescription(form.title, substring = true) and hasClickAction()
+            ).onFirst()
+            nativeDeadline.assertExists()
+            val nativeHeight = compose.onNodeWithTag("timeline-viewport")
+                .fetchSemanticsNode().boundsInRoot.height
+            assertTrue("Native timeline viewport must have a measurable height", nativeHeight > 0f)
+            nativeDeadline.performTouchInput {
+                down(center)
+                advanceEventTime(700)
+                moveBy(Offset(0f, nativeHeight / 24f))
+                up()
+            }
+            compose.waitUntil(30_000) {
+                nativeStore.pendingDraftsFor(eventSeq).size == 1
+            }
+            val nativeDraft = nativeStore.pendingDraftsFor(eventSeq).single()
+
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+
+            clearContext.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                .edit().putBoolean("system-calendar-import-asked", true).commit()
+            PowerCalSkinRegistry.reset()
+            SkinPackageManager(clearContext).select("powercal-clear-default")
+            compose.runOnUiThread {
+                compose.activity.setContent {
+                    CompositionLocalProvider(LocalContext provides clearContext) {
+                        PowerCalTheme { PowerCalApp(clearStore) }
+                    }
+                }
+            }
+            compose.waitUntil(30_000) {
+                compose.runOnUiThread {
+                    web = findWebView(compose.activity.findViewById(android.R.id.content))
+                }
+                web != null
+            }
+            val view = requireNotNull(web)
+            awaitJs(view, "!!window.PowerCalSkin && !!document.querySelector('#timelineSurface')")
+            evaluate(view, """document.querySelector('[data-action="today"]').click();true""")
+            compose.waitUntil(15_000) {
+                hostState().getJSONObject("timeline").getDouble("hours") == 24.0
+            }
+            awaitJs(view, """!!document.querySelector(".dateDeadline[data-event-seq='$eventSeq']")""")
+            val clearProbe = eventProbe(view, eventSeq, "dateDeadline")
+            assertTrue("Clear date-only Deadline must have a real drag target: $clearProbe",
+                clearProbe.getBoolean("found") && clearProbe.getBoolean("hitButton"))
+            val clearHeightCss = clearProbe.getDouble("surfaceHeight")
+            assertTrue("Clear timeline surface must have a measurable height", clearHeightCss > 0.0)
+            val previousRequestId = hostState().getJSONObject("editing")
+                .optJSONObject("lastResult")?.optString("requestId").orEmpty()
+            val touch = sendTouch(
+                view,
+                clearProbe,
+                holdMillis = 700,
+                deltaCssY = clearHeightCss / 24.0
+            )
+            val stagedHost = awaitHostResultAfter(previousRequestId, "staged")
+            assertEquals("Clear date-strip drag must reach the shared timeline move API",
+                "staged", stagedHost.getJSONObject("editing").getJSONObject("lastResult")
+                    .getString("status"))
+            val clearDraft = clearStore.pendingDraftsFor(eventSeq).single()
+            val expectedDate = sourceDate.plusDays(1).toString()
+            assertEquals(expectedDate, nativeDraft.form.endText)
+            assertEquals(expectedDate, clearDraft.form.endText)
+            assertEquals(nativeDraft.form, clearDraft.form)
+            assertTrue(nativeDraft.form.parseDeadline() is dev.powerfulcalendar.core.DeadlineValue.Date)
+            assertTrue(clearDraft.form.parseDeadline() is dev.powerfulcalendar.core.DeadlineValue.Date)
+            val nativeValidated = nativeDraft.form.build(eventSeq, nativeOriginal.revision + 1)
+            val clearValidated = clearDraft.form.build(eventSeq, clearOriginal.revision + 1)
+            assertTrue(nativeValidated is dev.powerfulcalendar.core.FormBuild.Ready)
+            assertTrue(clearValidated is dev.powerfulcalendar.core.FormBuild.Ready)
+            val nativeRecord = (nativeValidated as dev.powerfulcalendar.core.FormBuild.Ready).record
+            val clearRecord = (clearValidated as dev.powerfulcalendar.core.FormBuild.Ready).record
+            assertEquals(expectedDate, nativeRecord.deadlineDate)
+            assertEquals(expectedDate, clearRecord.deadlineDate)
+            assertTrue(nativeRecord.deadlineMillis == null)
+            assertTrue(clearRecord.deadlineMillis == null)
+            assertEquals(nativeOriginal, nativeStore.get(eventSeq))
+            assertEquals(clearOriginal, clearStore.get(eventSeq))
+            assertEquals(1, nativeStore.draftCount())
+            assertEquals(nativeStore.draftCount(), clearStore.draftCount())
+            assertEquals(1L, nativeStore.commitCount())
+            assertEquals(nativeStore.commitCount(), clearStore.commitCount())
+            assertEquals(nativeStore.identityCount(), clearStore.identityCount())
+            println("NATIVE_CLEAR_DATE_DEADLINE_DRAG eventSeq=$eventSeq date=$sourceDate " +
+                "target=$expectedDate native=${nativeDraft.form.endText} clear=${clearDraft.form.endText} " +
+                "nativeViewportPx=$nativeHeight clearViewportCss=$clearHeightCss touch=$touch")
         } finally {
             compose.runOnUiThread {
                 compose.activity.setContent { }
