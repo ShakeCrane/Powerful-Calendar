@@ -211,6 +211,8 @@ internal data class ReminderDisplay(val record: TemporalRecord, val status: Remi
 internal data class UiDiagnostics(
     val nextSequence: Long = 1,
     val identities: Long = 0,
+    val databaseVersion: Int = 0,
+    val databaseName: String = "",
     val reminders: List<ReminderDisplay> = emptyList(),
     val recurrenceEvents: List<EventRecordV1> = emptyList()
 )
@@ -628,6 +630,8 @@ fun PowerCalApp(
                         diagnostics = UiDiagnostics(
                             nextSequence = coreDiagnostics.nextSequencePreview,
                             identities = coreDiagnostics.identityCount,
+                            databaseVersion = coreDiagnostics.databaseVersion,
+                            databaseName = coreDiagnostics.databaseName,
                             reminders = reminderRows,
                             recurrenceEvents = recurrenceRows
                         )
@@ -2436,8 +2440,15 @@ fun PowerCalApp(
                 } else org.json.JSONArray())
                 .put("systemDiagnostics", if (page == Page.SETTINGS.name) {
                     WebSkinSystemDiagnosticsProjection.build(
-                        records, diagnostics.nextSequence, diagnostics.identities, effects, zone,
-                        totalEventCount, recurrencePreviews
+                        records = records,
+                        nextSequence = diagnostics.nextSequence,
+                        identityCount = diagnostics.identities,
+                        databaseVersion = diagnostics.databaseVersion,
+                        databaseName = diagnostics.databaseName,
+                        effects = effects,
+                        zone = zone,
+                        formalCount = totalEventCount,
+                        recurrencePreviews = recurrencePreviews
                     )
                 } else JSONObject())
                 .put("editing", webEditing.snapshot())

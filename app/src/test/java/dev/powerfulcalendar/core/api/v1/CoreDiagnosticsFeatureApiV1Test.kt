@@ -45,6 +45,8 @@ class CoreDiagnosticsFeatureApiV1Test {
             val initial = core.diagnostics.queryDiagnostics()
             assertEquals(1L, initial.nextSequencePreview)
             assertEquals(0L, initial.identityCount)
+            assertEquals(PowerStore.VERSION, initial.databaseVersion)
+            assertEquals(store.databaseName, initial.databaseName)
 
             val draft = store.newDraft(
                 DraftForm(
@@ -66,6 +68,8 @@ class CoreDiagnosticsFeatureApiV1Test {
 
             assertEquals(2L, result.nextSequencePreview)
             assertEquals(1L, result.identityCount)
+            assertEquals(PowerStore.VERSION, result.databaseVersion)
+            assertEquals(store.databaseName, result.databaseName)
             assertEquals(beforeQuery.nextSequence, result.nextSequencePreview)
             assertEquals(beforeQuery.identities, result.identityCount)
             assertEquals(beforeQuery.drafts, store.draftCount())
@@ -87,6 +91,8 @@ class CoreDiagnosticsFeatureApiV1Test {
         assertFalse(signatures.contains("SQLite"))
         assertEquals(Long::class.javaPrimitiveType, CoreDiagnosticsV1::class.java.getDeclaredField("identityCount").type)
         assertEquals(Long::class.javaPrimitiveType, CoreDiagnosticsV1::class.java.getDeclaredField("nextSequencePreview").type)
+        assertEquals(Int::class.javaPrimitiveType, CoreDiagnosticsV1::class.java.getDeclaredField("databaseVersion").type)
+        assertEquals(String::class.java, CoreDiagnosticsV1::class.java.getDeclaredField("databaseName").type)
     }
 
     @Test fun recurrenceFeatureIsRegisteredOnTheUnifiedCoreProvider() {

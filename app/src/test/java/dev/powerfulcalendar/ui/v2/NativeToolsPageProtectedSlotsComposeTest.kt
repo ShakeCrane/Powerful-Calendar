@@ -102,7 +102,12 @@ class NativeToolsPageProtectedSlotsComposeTest {
 
     @Test fun hostProjectsSettingsInputsIntoValueOnlyDisplayState() {
         val display = projectSettingsDisplaySnapshot(
-            diagnostics = UiDiagnostics(nextSequence = 42, identities = 17),
+            diagnostics = UiDiagnostics(
+                nextSequence = 42,
+                identities = 17,
+                databaseVersion = 9,
+                databaseName = "fixture-settings.db"
+            ),
             records = emptyList(),
             pendingCount = 3,
             aiLocked = true,
@@ -116,6 +121,8 @@ class NativeToolsPageProtectedSlotsComposeTest {
         assertEquals(0, display.formalEventCount)
         assertEquals("#0042", display.nextSequenceLabel)
         assertEquals(17L, display.identityCount)
+        assertEquals(9, display.databaseVersion)
+        assertEquals("fixture-settings.db", display.databaseName)
         assertTrue(display.exactAlarmAllowed)
         assertFalse(display.notificationsAllowed)
         assertTrue(display.aiLocked)

@@ -111,7 +111,7 @@ class WebSkinSystemDiagnosticsIntegrationTest {
         assertEquals(TemporalRecord.formatSeq(nextSequence), diagnostic.getString("nextSequence"))
         assertEquals(identities.toString(), diagnostic.getString("identityCount"))
         assertEquals(PowerStore.VERSION, diagnostic.getInt("databaseVersion"))
-        assertEquals(PowerStore.DATABASE_NAME, diagnostic.getString("databaseName"))
+        assertEquals(databaseName, diagnostic.getString("databaseName"))
         assertTrue(diagnostic.has("blurEnabled"))
         assertTrue(diagnostic.has("reduceMotion"))
         assertFalse(diagnostic.toString().contains("private recurrence title"))

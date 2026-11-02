@@ -1,6 +1,5 @@
 package dev.powerfulcalendar.ui.v2
 
-import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.Recurrence
 import dev.powerfulcalendar.core.RecurrenceFreq
 import dev.powerfulcalendar.core.TemporalKind
@@ -75,6 +74,8 @@ class WebSkinSystemDiagnosticsProjectionTest {
             records = records,
             nextSequence = 42,
             identityCount = 987_654_321_987_654_321L,
+            databaseVersion = 17,
+            databaseName = "fixture-diagnostics.db",
             effects = GlassEffects(blur = false, animationScale = 0f, reduceMotion = true),
             zone = zone,
             recurrencePreviews = recurrencePreviews(records)
@@ -83,8 +84,8 @@ class WebSkinSystemDiagnosticsProjectionTest {
         assertEquals(records.size, projected.getInt("formalCount"))
         assertEquals("#0042", projected.getString("nextSequence"))
         assertEquals("987654321987654321", projected.getString("identityCount"))
-        assertEquals(PowerStore.VERSION, projected.getInt("databaseVersion"))
-        assertEquals(PowerStore.DATABASE_NAME, projected.getString("databaseName"))
+        assertEquals(17, projected.getInt("databaseVersion"))
+        assertEquals("fixture-diagnostics.db", projected.getString("databaseName"))
         assertFalse(projected.getBoolean("blurEnabled"))
         assertTrue(projected.getBoolean("reduceMotion"))
         assertFalse(projected.toString().contains("private recurrence title"))
@@ -108,6 +109,8 @@ class WebSkinSystemDiagnosticsProjectionTest {
             records = listOf(ended),
             nextSequence = 8,
             identityCount = 7,
+            databaseVersion = 17,
+            databaseName = "fixture-diagnostics.db",
             effects = GlassEffects(),
             zone = zone,
             recurrencePreviews = recurrencePreviews(listOf(ended))
@@ -137,6 +140,8 @@ class WebSkinSystemDiagnosticsProjectionTest {
             records = listOf(record),
             nextSequence = 10,
             identityCount = 9,
+            databaseVersion = 17,
+            databaseName = "fixture-diagnostics.db",
             effects = GlassEffects(),
             zone = localZone,
             recurrencePreviews = recurrencePreviews(

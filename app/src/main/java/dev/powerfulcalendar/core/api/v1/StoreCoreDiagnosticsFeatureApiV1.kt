@@ -10,6 +10,8 @@ internal class StoreCoreDiagnosticsFeatureApiV1(
 
     override fun queryDiagnostics(): CoreDiagnosticsV1 = CoreDiagnosticsV1(
         nextSequencePreview = store.nextSequencePreview(),
-        identityCount = store.identityCount()
+        identityCount = store.identityCount(),
+        databaseVersion = PowerStore.VERSION,
+        databaseName = store.databaseName
     )
 }

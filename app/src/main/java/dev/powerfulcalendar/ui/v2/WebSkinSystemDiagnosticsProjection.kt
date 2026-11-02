@@ -1,7 +1,6 @@
 package dev.powerfulcalendar.ui.v2
 
 import dev.powerfulcalendar.core.DraftForm
-import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.api.v1.RecurrenceNextOccurrenceV1
 import org.json.JSONArray
@@ -16,6 +15,8 @@ internal object WebSkinSystemDiagnosticsProjection {
         records: List<TemporalRecord>,
         nextSequence: Long,
         identityCount: Long,
+        databaseVersion: Int,
+        databaseName: String,
         effects: GlassEffects,
         zone: ZoneId = ZoneId.systemDefault(),
         formalCount: Int = records.size,
@@ -42,8 +43,8 @@ internal object WebSkinSystemDiagnosticsProjection {
             .put("formalCount", formalCount)
             .put("nextSequence", TemporalRecord.formatSeq(nextSequence))
             .put("identityCount", identityCount.toString())
-            .put("databaseVersion", PowerStore.VERSION)
-            .put("databaseName", PowerStore.DATABASE_NAME)
+            .put("databaseVersion", databaseVersion)
+            .put("databaseName", databaseName)
             .put("blurEnabled", effects.blur)
             .put("reduceMotion", effects.reduceMotion)
             .put("recurrences", recurrences)

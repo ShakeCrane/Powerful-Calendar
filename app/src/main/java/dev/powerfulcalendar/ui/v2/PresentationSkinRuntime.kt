@@ -22,7 +22,6 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import dev.powerfulcalendar.core.DraftForm
-import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.api.v1.AiBatchModeV1
 import dev.powerfulcalendar.core.api.v1.AiBatchSessionV1
 import dev.powerfulcalendar.core.api.v1.AiBatchStateV1
@@ -363,8 +362,8 @@ internal fun projectSettingsDisplaySnapshot(
     formalEventCount = formalEventCount,
     nextSequenceLabel = TemporalRecord.formatSeq(diagnostics.nextSequence),
     identityCount = diagnostics.identities,
-    databaseVersion = PowerStore.VERSION,
-    databaseName = PowerStore.DATABASE_NAME,
+    databaseVersion = diagnostics.databaseVersion,
+    databaseName = diagnostics.databaseName,
     exactAlarmAllowed = exactAlarmAllowed,
     notificationsAllowed = notificationsAllowed,
     aiLocked = aiLocked,
