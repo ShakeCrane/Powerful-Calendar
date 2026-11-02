@@ -47,6 +47,9 @@ data class StructuredCalendarEventV1(
 
 data class StructuredImportBatchHandleV1(val value: String)
 
+/** A secondary stable source ID for the same structured import record. */
+data class StructuredImportIdentityV1(val source: String, val externalId: String)
+
 enum class StructuredImportStatusV1 { IMPORTED, ALREADY_IMPORTED, REJECTED }
 
 data class StructuredImportReceiptV1(
@@ -115,7 +118,8 @@ interface ImportExportFeatureApiV1 {
         batch: StructuredImportBatchHandleV1,
         source: String,
         externalId: String,
-        event: StructuredCalendarEventV1
+        event: StructuredCalendarEventV1,
+        additionalIdentities: List<StructuredImportIdentityV1> = emptyList()
     ): StructuredImportReceiptV1
     fun finishStructuredImport(batch: StructuredImportBatchHandleV1, warnings: List<String> = emptyList())
 

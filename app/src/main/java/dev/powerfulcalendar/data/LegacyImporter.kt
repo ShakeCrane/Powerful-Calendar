@@ -3,15 +3,18 @@ package dev.powerfulcalendar.data
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import dev.powerfulcalendar.core.api.v1.ImportExportFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.StructuredImportIdentityV1
 import dev.powerfulcalendar.core.api.v1.StructuredCalendarEventV1
 import dev.powerfulcalendar.core.api.v1.StructuredImportStatusV1
 import java.time.ZoneId
+import java.util.Locale
 
 /**
  * One-way, explicitly requested migration from the v0.1 prototype database.
  *
  * The old file is opened READ-ONLY and never modified or deleted. Re-running the migration is
- * idempotent because every legacy row keeps a stable `legacy-v01:<id>` external id.
+ * idempotent because every legacy row keeps a stable `legacy-v01:<id>` external id. Old Android
+ * Calendar IDs are attached to the same formal event when present.
  *
  * v0.1 stored intervals only (start + end) and delegated system clocks to the OEM alarm app, so
  * imported rows become ACTIVE activities; there is no old PowerCal alarm data to hand over.
@@ -40,6 +43,7 @@ object LegacyImporter {
         }
         val batch = importExport.beginStructuredImport(SOURCE)
         val warnings = mutableListOf<String>()
+        val unmappedPriorities = sortedMapOf<String, Int>()
         var imported = 0
         var skipped = 0
         try {
@@ -64,7 +68,12 @@ object LegacyImporter {
                     val notes = cursor.getString(4).orEmpty()
                     val location = cursor.getString(5).orEmpty()
                     val allDay = cursor.getInt(8) == 1
-                    val origin = cursor.getString(9).orEmpty().ifBlank { "local" }
+                    val origin = cursor.getString(9).orEmpty().trim().ifBlank { "local" }
+                    val oldPriority = cursor.getString(6).orEmpty().trim()
+                        .uppercase(Locale.ROOT).take(40)
+                    if (oldPriority.isNotBlank()) {
+                        unmappedPriorities[oldPriority] = (unmappedPriorities[oldPriority] ?: 0) + 1
+                    }
                     val event = StructuredCalendarEventV1(
                         title = title,
                         notes = if (notes.isBlank()) "" else notes,
@@ -77,11 +86,16 @@ object LegacyImporter {
                         enabled = true
                     )
                     val externalId = "v01:$legacyId"
+                    val oldProviderId = cursor.getString(10).orEmpty().trim()
+                    val additionalIdentities = if (origin == "android-calendar" &&
+                        oldProviderId.isNotBlank()
+                    ) listOf(StructuredImportIdentityV1(origin, oldProviderId)) else emptyList()
                     val outcome = importExport.importStructuredEvent(
                         batch = batch,
                         source = SOURCE,
                         externalId = externalId,
-                        event = event
+                        event = event,
+                        additionalIdentities = additionalIdentities
                     )
                     when (outcome.status) {
                         StructuredImportStatusV1.IMPORTED -> imported++
@@ -103,6 +117,12 @@ object LegacyImporter {
             warnings.add("读取旧版数据库时中断：" + (error.message ?: "未知错误"))
         } finally {
             legacy.close()
+        }
+        if (unmappedPriorities.isNotEmpty()) {
+            val values = unmappedPriorities.entries.joinToString("、") { (value, count) ->
+                "$value×$count"
+            }
+            warnings.add(0, "旧版 priority 未保留：$values；当前事件模型没有优先级字段")
         }
         importExport.finishStructuredImport(batch, warnings.take(50))
         return Result(true, batch.value, imported, skipped, warnings.take(50))

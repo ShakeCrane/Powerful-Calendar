@@ -7,6 +7,8 @@ import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.api.v1.EventFeatureChangeTypeV1
 import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.StructuredCalendarEventV1
+import dev.powerfulcalendar.core.api.v1.StructuredImportStatusV1
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -51,7 +53,13 @@ class LegacyMigrationTest {
         context.deleteDatabase(LegacyImporter.LEGACY_DATABASE)
     }
 
-    private fun createLegacyDatabase(rows: Int, reminderMinutes: Int = 10) {
+    private fun createLegacyDatabase(
+        rows: Int,
+        reminderMinutes: Int = 10,
+        source: String = "local",
+        externalIdPrefix: String? = null,
+        priority: String = "HIGH"
+    ) {
         val db = SQLiteDatabase.openOrCreateDatabase(legacyPath, null)
         db.execSQL(
             """CREATE TABLE events (
@@ -76,7 +84,8 @@ class LegacyMigrationTest {
                    VALUES(?,?,?,?,?,?,?,?,?,?)""",
                 arrayOf<Any?>(
                     "旧事件 $index", start, start + 3_600_000L, "旧备注", "老地点",
-                    "HIGH", reminderMinutes, 0, "local", null
+                    priority, reminderMinutes, 0, source,
+                    externalIdPrefix?.let { "$it:$index" }
                 )
             )
         }
@@ -198,7 +207,7 @@ class LegacyMigrationTest {
     @Test
     fun legacyRowsKeepTheirOwnMetadata() {
         createLegacyDatabase(rows = 1, reminderMinutes = -1)
-        LegacyImporter.migrate(context, core.importExport)
+        val result = LegacyImporter.migrate(context, core.importExport)
         val record = store.all().single()
         assertEquals("旧事件 0", record.title)
         assertEquals("旧备注", record.notes)
@@ -209,5 +218,78 @@ class LegacyMigrationTest {
         assertTrue(record.enabled)
         assertEquals(-1, record.reminderMinutes)
         assertNotNull(store.sourceLink(LegacyImporter.SOURCE, "v01:1"))
+        assertTrue(result.warnings.any {
+            it.contains("priority 未保留") && it.contains("HIGH×1")
+        })
+    }
+
+    @Test
+    fun legacyAndroidCalendarIdentityIsLinkedToTheMigratedEvent() {
+        createLegacyDatabase(
+            rows = 1,
+            source = "android-calendar",
+            externalIdPrefix = "provider-event",
+            priority = "NORMAL"
+        )
+
+        val migrated = LegacyImporter.migrate(context, core.importExport)
+        val record = store.all().single()
+        assertEquals(1, migrated.imported)
+        assertEquals(record.eventSeq, store.sourceLink(LegacyImporter.SOURCE, "v01:1"))
+        assertEquals(record.eventSeq, store.sourceLink("android-calendar", "provider-event:0"))
+        assertTrue(migrated.warnings.any {
+            it.contains("priority 未保留") && it.contains("NORMAL×1")
+        })
+
+        val retryBatch = core.importExport.beginStructuredImport("android-calendar")
+        val duplicate = core.importExport.importStructuredEvent(
+            batch = retryBatch,
+            source = "android-calendar",
+            externalId = "provider-event:0",
+            event = StructuredCalendarEventV1(
+                title = "系统日历重复项",
+                startMillis = 1_790_000_000_000L,
+                endMillis = 1_790_000_060_000L,
+                source = "android-calendar",
+                zoneId = "UTC"
+            )
+        )
+        core.importExport.finishStructuredImport(retryBatch)
+        assertEquals(StructuredImportStatusV1.ALREADY_IMPORTED, duplicate.status)
+        assertEquals(record.eventSeq, duplicate.eventSeq)
+        assertEquals(1, store.all().size)
+    }
+
+    @Test
+    fun legacyProviderIdentityJoinsAnAlreadyImportedCalendarEvent() {
+        createLegacyDatabase(
+            rows = 1,
+            source = "android-calendar",
+            externalIdPrefix = "provider-event",
+            priority = "NORMAL"
+        )
+        val calendarBatch = core.importExport.beginStructuredImport("android-calendar")
+        val existing = core.importExport.importStructuredEvent(
+            batch = calendarBatch,
+            source = "android-calendar",
+            externalId = "provider-event:0",
+            event = StructuredCalendarEventV1(
+                title = "已存在的系统日历事件",
+                startMillis = 1_790_000_000_000L,
+                endMillis = 1_790_003_600_000L,
+                source = "android-calendar",
+                zoneId = "UTC"
+            )
+        )
+        core.importExport.finishStructuredImport(calendarBatch)
+        val existingSeq = requireNotNull(existing.eventSeq)
+
+        val migrated = LegacyImporter.migrate(context, core.importExport)
+        assertEquals(0, migrated.imported)
+        assertEquals(1, migrated.skipped)
+        assertEquals(1, store.all().size)
+        assertEquals("已存在的系统日历事件", store.get(existingSeq)?.title)
+        assertEquals(existingSeq, store.sourceLink(LegacyImporter.SOURCE, "v01:1"))
+        assertEquals(existingSeq, store.sourceLink("android-calendar", "provider-event:0"))
     }
 }

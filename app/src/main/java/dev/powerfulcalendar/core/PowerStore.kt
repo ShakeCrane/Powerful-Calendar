@@ -3057,14 +3057,40 @@ class PowerStore(
         externalId: String,
         batchId: String,
         source: String = record.source,
-        alarmNeedsHandoff: Boolean = true
+        alarmNeedsHandoff: Boolean = true,
+        additionalIdentities: List<SourceIdentity> = emptyList()
     ): ImportOutcome = tx { db ->
         require(externalId.isNotBlank()) { "外部记录缺少稳定标识" }
-        val existing = db.rawQuery(
-            "SELECT event_seq FROM source_links WHERE source=? AND external_id=?",
-            arrayOf(source, externalId)
-        ).use { if (it.moveToFirst()) it.getLong(0) else null }
-        if (existing != null) {
+        val identities = (listOf(SourceIdentity(source, externalId)) + additionalIdentities)
+            .distinctBy { it.source to it.externalId }
+        if (identities.any { it.source.isBlank() || it.externalId.isBlank() }) {
+            return@tx ImportOutcome.Rejected("外部记录缺少稳定来源标识")
+        }
+        val existingByIdentity = identities.mapNotNull { identity ->
+            val eventSeq = db.rawQuery(
+                "SELECT event_seq FROM source_links WHERE source=? AND external_id=?",
+                arrayOf(identity.source, identity.externalId)
+            ).use { if (it.moveToFirst()) it.getLong(0) else null }
+            eventSeq?.let { identity to it }
+        }
+        val existingSequences = existingByIdentity.map { it.second }.distinct()
+        if (existingSequences.size > 1) {
+            return@tx ImportOutcome.Rejected("来源标识分别指向不同事件")
+        }
+        if (existingSequences.isNotEmpty()) {
+            val existing = existingSequences.single()
+            val linkedIdentities = existingByIdentity.mapTo(hashSetOf()) { it.first }
+            val missingIdentities = identities.filterNot { it in linkedIdentities }
+            if (missingIdentities.isNotEmpty() && isLocked(db)) {
+                return@tx ImportOutcome.Rejected("AI 批次运行中，暂不接受来源标识关联")
+            }
+            missingIdentities.forEach { identity ->
+                db.insertOrThrow("source_links", null, ContentValues().apply {
+                    put("source", identity.source)
+                    put("external_id", identity.externalId)
+                    put("event_seq", existing)
+                })
+            }
             db.execSQL(
                 "UPDATE migrations SET skipped=skipped+1 WHERE batch_id=?",
                 arrayOf(batchId)
@@ -3089,11 +3115,13 @@ class PowerStore(
         val seq = allocateIdentity(db, source)
         val stored = candidate.copy(eventSeq = seq)
         upsertObject(db, stored)
-        db.insertOrThrow("source_links", null, ContentValues().apply {
-            put("source", source)
-            put("external_id", externalId)
-            put("event_seq", seq)
-        })
+        identities.forEach { identity ->
+            db.insertOrThrow("source_links", null, ContentValues().apply {
+                put("source", identity.source)
+                put("external_id", identity.externalId)
+                put("event_seq", seq)
+            })
+        }
         db.insertOrThrow("commits", null, ContentValues().apply {
             put("commit_id", UUID.randomUUID().toString())
             putNull("draft_id") // structured imports own no card
@@ -3117,6 +3145,8 @@ class PowerStore(
         data class AlreadyImported(val eventSeq: Long) : ImportOutcome
         data class Rejected(val reason: String) : ImportOutcome
     }
+
+    data class SourceIdentity(val source: String, val externalId: String)
 
     @Synchronized
     fun beginMigration(source: String): String {

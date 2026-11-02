@@ -95,7 +95,8 @@ internal class StoreImportExportFeatureApiV1(
         batch: StructuredImportBatchHandleV1,
         source: String,
         externalId: String,
-        event: StructuredCalendarEventV1
+        event: StructuredCalendarEventV1,
+        additionalIdentities: List<StructuredImportIdentityV1>
     ): StructuredImportReceiptV1 {
         require(batch.value.isNotBlank()) { "结构化导入批次无效" }
         val record = event.toTemporalRecord(source)
@@ -103,7 +104,10 @@ internal class StoreImportExportFeatureApiV1(
             record = record,
             externalId = externalId,
             batchId = batch.value,
-            source = source
+            source = source,
+            additionalIdentities = additionalIdentities.map {
+                PowerStore.SourceIdentity(it.source, it.externalId)
+            }
         )) {
             is PowerStore.ImportOutcome.Imported -> {
                 events.publishDeckFormalChange(EventFeatureChangeTypeV1.FORMAL_CREATED, outcome.eventSeq)

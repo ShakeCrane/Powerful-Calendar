@@ -3875,7 +3875,8 @@ fun PowerCalApp(
                         message = if (!result.available) {
                             result.warnings.firstOrNull() ?: "没有可迁移的旧数据"
                         } else {
-                            "旧版迁移完成：导入 ${result.imported} 条，跳过 ${result.skipped} 条"
+                            "旧版迁移完成：导入 ${result.imported} 条，跳过 ${result.skipped} 条" +
+                                result.warnings.firstOrNull()?.let { "；提示：$it" }.orEmpty()
                         }
                     }
             },
