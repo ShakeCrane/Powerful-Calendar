@@ -91,3 +91,15 @@ Native `TodoProjection` 已生成排序后的 Memo 行，但 Host 只向 Clear �
 证据位于 `.local/android-test/reports/separation-s0-timeline-drag/memo-occurrence-toggle-cdp/`：`memo-paging-isolated-20261029.log` 记录首次失败；`memo-paging-revision-diagnostic-20261029.log` 记录 action 已执行但 Compose snapshot 未稳定；`memo-paging-idle-fix-focused-20261029.log` SHA-256 `C6C41B84FCBC7694C2DE838F665B62DD8B2F8DA7CFA5F1E99815AFC777DCD430` 记录修正后的隔离 PASS；`gradle-full-final-20261029.log` SHA-256 `352DBE0C2BBFEB5E270FE12B5B72D47845E7A9349A745414D3B1F9C87DB15142` 记录全量 PASS。
 
 测试同步修正独立提交 `1965f93030444cead1643c42cb8500ad89d9bb46`（`test(分离): 等待 Memo 分页状态刷新`），已推送。此结果只校正 Robolectric/Compose 测试观测时点，不扩大 Android WebView 或 Native/Clear parity 签核。
+
+## Follow-up — Memo 导航刷新与续载请求并发（2026-11-02）
+
+Phase 1 全量 JVM 回归连续两次在 `memoPagingContinuesTheSortedProjectionWithoutStoreWrites` 超时；该方法单独运行通过。失败快照为 `page=MEMO`、251 条总数、已加载 250 条、`memoTruncated=true`、剩余 1 条。复查发现测试/用户可在进入 Memo 时触发的 Host `reload()` 完成前发送 `LoadMoreMemo`：续载会读取仍有效但属于旧首屏查询的游标，而随后完成的 `reload()` 会把分页结果重置到首屏。等待初始 250 行并不能证明导航触发的异步刷新已结束。
+
+修复在导航启动协程前同步标记刷新待处理状态；刷新期间到达的续载请求排队，刷新完成后从当前游标继续。Host 另用分页代次检查，避免并发中的完整刷新或日期刷新覆盖更新的分页投影。Core 查询、Memo 排序、分页边界与 Store 写入语义不变。
+
+回归现将 `Routed("memo")` 与 `LoadMoreMemo` 放在同一 UI 回调立即顺序触发，等待 251 行按序呈现，并确认重复续载和 Store 计数稳定。修复后的隔离回归 **1/1 PASS**；最终强制串行完整 JVM **903/903 PASS，139 XML suites，0 failures/errors/skips**。两个源码边界、Debug APK、lint（0 errors / 54 warnings）、AndroidTest Kotlin 编译和 `git diff --check` 均 **PASS**，完整构建 154 actionable tasks。Debug APK 为 67,043,950 bytes，SHA-256 `56E2DB62956862F722E78C33A0EF9D16642831A57DA62EF7BD926E47956CB22D`。
+
+最终全量 Gradle 日志 SHA-256 `D5E20B82BE9A25F040F33F1E3C82AAEA116726EEEDF408A0F82E141FB974FBE2`；隔离分页回归日志 SHA-256 `A29E99CDBBE470C836BF93457A4D820E4E8068D5EA16B0EC481752FEFA5ECDC1`。两份日志均在忽略目录 `.local/android-test/reports/phase1-web-event-kind-conversion-20261102/`。
+
+ADB 当前没有连接设备；此 Compose 回归不构成实际 Android WebView、Native/Clear parity 或设备生命周期验证。其余 `NOT TESTED` 与 cutover 限制仍按本 Issue 上述范围执行。
