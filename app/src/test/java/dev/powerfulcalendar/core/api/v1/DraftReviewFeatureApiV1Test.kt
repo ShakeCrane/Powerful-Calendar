@@ -289,6 +289,53 @@ class DraftReviewFeatureApiV1Test {
         }
     }
 
+    @Test fun searchCardsSharesCoreRuleAndPreservesSnapshotOrderWithoutWrites() {
+        val first = store.newDraft(newActivityDraft("Alpha first"))
+        store.newDraft(newActivityDraft("Between"))
+        val last = store.newDraft(newActivityDraft("ALPHA last"))
+        val api = core.draftReview
+        val candidates = api.queryPendingDrafts().mapIndexed { index, card ->
+            card.copy(eventSeq = listOf(900L, 42L, 142L)[index])
+        }
+        val snapshotBefore = api.snapshot
+        val revisionBefore = core.events.featureRevision
+        val draftCountBefore = store.draftCount()
+        val commitCountBefore = store.commitCount()
+        val identityCountBefore = store.identityCount()
+        val sequenceBefore = store.nextSequencePreview()
+        val queueOrderBefore = store.nextQueueOrderPreview()
+        val changes = mutableListOf<EventFeatureChangeV1>()
+        val subscription = core.events.subscribe(changes::add)
+
+        try {
+            assertEquals(
+                listOf(first.draftId, last.draftId),
+                api.searchCards("alpha", candidates).map { it.draftId }
+            )
+            assertEquals(
+                listOf(candidates[1].draftId, candidates[2].draftId),
+                api.searchCards("42", candidates).map { it.draftId }
+            )
+            assertEquals(
+                listOf(last.draftId),
+                api.searchCards(TemporalRecord.formatSeq(142L), candidates)
+                    .map { it.draftId }
+            )
+            assertEquals(candidates.map { it.draftId },
+                api.searchCards("", candidates).map { it.draftId })
+            assertEquals(snapshotBefore, api.snapshot)
+            assertEquals(revisionBefore, core.events.featureRevision)
+            assertEquals(draftCountBefore, store.draftCount())
+            assertEquals(commitCountBefore, store.commitCount())
+            assertEquals(identityCountBefore, store.identityCount())
+            assertEquals(sequenceBefore, store.nextSequencePreview())
+            assertEquals(queueOrderBefore, store.nextQueueOrderPreview())
+            assertTrue(changes.isEmpty())
+        } finally {
+            subscription.close()
+        }
+    }
+
     @Test fun queryDraftReturnsPersistedStatusesWithoutChangingEditorOrStore() = runBlocking {
         val pending = store.newDraft(newActivityDraft("Pending persisted"))
         val discarded = store.newDraft(newActivityDraft("Discarded persisted"))

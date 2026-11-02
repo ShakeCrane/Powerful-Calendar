@@ -7,7 +7,6 @@ import dev.powerfulcalendar.core.TimelineCoordinate
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.DraftCard
-import dev.powerfulcalendar.core.DraftQueueSearch
 import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.DraftStatus
 import dev.powerfulcalendar.core.FormBuild
@@ -589,9 +588,7 @@ internal class WebSkinEditService(
         }
         val state = deck.state
         val items = org.json.JSONArray()
-        val coreCards = state.cards.map(DraftReviewCardV1::toCoreDraftCard)
-        val matches = if (deckSearchQuery.isBlank()) coreCards
-            else DraftQueueSearch.filter(coreCards, deckSearchQuery)
+        val matches = deck.searchCards(deckSearchQuery, state.cards)
         val cardLimit = if (deckSearchQuery.isBlank()) 80 else 4
         matches.take(cardLimit).forEach { card ->
             items.put(JSONObject().put("draftId",card.draftId)

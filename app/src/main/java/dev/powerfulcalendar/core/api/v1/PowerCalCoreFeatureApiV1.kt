@@ -4,6 +4,7 @@ import android.content.Context
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.DraftCard
 import dev.powerfulcalendar.core.DraftOperation
+import dev.powerfulcalendar.core.DraftQueueSearch
 import dev.powerfulcalendar.core.DraftStatus
 import dev.powerfulcalendar.core.DeckController
 import dev.powerfulcalendar.core.DeckEditResult
@@ -1210,6 +1211,13 @@ private class StoreDraftReviewFeatureApiV1(
     override fun queryPendingDrafts(): List<DraftReviewCardV1> =
         store.pendingDrafts().map { it.toDraftReviewCardV1() }
 
+    override fun searchCards(
+        query: String,
+        cards: List<DraftReviewCardV1>
+    ): List<DraftReviewCardV1> = cards.filter {
+        DraftQueueSearch.matches(it.form.title, it.eventSeq, query)
+    }
+
     @Synchronized
     override fun queryDraft(draftId: Long): DraftReviewCardV1? =
         if (draftId <= 0L) null else store.draft(draftId)?.toDraftReviewCardV1()
@@ -1838,6 +1846,19 @@ internal fun EventRecordV1.toCoreTemporalRecord(): TemporalRecord = TemporalReco
     enabled = enabled,
     source = source,
     zoneId = zoneId,
+    createdAtMillis = createdAtMillis,
+    updatedAtMillis = updatedAtMillis
+)
+
+private fun DraftReviewCardV1.toCoreDraftCard() = DraftCard(
+    draftId = draftId,
+    eventSeq = eventSeq,
+    queueOrder = queueOrder,
+    operation = DraftOperation.valueOf(operation.name),
+    form = form.toCoreDraftForm(),
+    status = DraftStatus.valueOf(status.name),
+    baseRevision = baseRevision,
+    draftVersion = draftVersion,
     createdAtMillis = createdAtMillis,
     updatedAtMillis = updatedAtMillis
 )

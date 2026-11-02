@@ -131,6 +131,12 @@ interface DraftReviewFeatureApiV1 {
     /** Read the persisted actionable queue without opening, refreshing, or flushing the editor. */
     fun queryPendingDrafts(): List<DraftReviewCardV1>
 
+    /** Apply Core's queue search rule to a detached card snapshot, preserving its input order. */
+    fun searchCards(
+        query: String,
+        cards: List<DraftReviewCardV1>
+    ): List<DraftReviewCardV1>
+
     /** Read one persisted draft by identity, including non-actionable terminal/conflict states. */
     fun queryDraft(draftId: Long): DraftReviewCardV1?
 

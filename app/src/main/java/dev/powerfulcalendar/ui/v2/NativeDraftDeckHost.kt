@@ -17,7 +17,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.DraftOperation
-import dev.powerfulcalendar.core.DraftQueueSearch
 import dev.powerfulcalendar.core.DraftStatus
 import dev.powerfulcalendar.core.EditorDefaults
 import dev.powerfulcalendar.core.api.v1.EventEditorSnapshotV1
@@ -195,11 +194,7 @@ fun NativeDraftDeckDialog(
         } },
         onSearch = { query ->
             formalRows.clear()
-            val drafts = state.cards.filter { card ->
-                card.form.title.contains(query, ignoreCase = true) ||
-                    card.eventSeq.toString().contains(query) ||
-                    TemporalRecord.formatSeq(card.eventSeq).contains(query)
-            }.take(4).map { hit ->
+            val drafts = draftReviewApi.searchCards(query, state.cards).take(4).map { hit ->
                 NativeDeckSearchHit("draft:${hit.draftId}", TemporalRecord.formatSeq(hit.eventSeq),
                     hit.form.title, formal = false)
             }

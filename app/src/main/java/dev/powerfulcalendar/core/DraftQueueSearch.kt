@@ -5,9 +5,11 @@ package dev.powerfulcalendar.core
  * The input comes from [PowerStore.pendingDrafts], whose order is oldest first.
  */
 object DraftQueueSearch {
-    fun filter(drafts: List<DraftCard>, query: String): List<DraftCard> = drafts.filter {
-        it.form.title.contains(query, ignoreCase = true) ||
-            it.eventSeq.toString().contains(query) ||
-            TemporalRecord.formatSeq(it.eventSeq).contains(query)
-    }
+    fun matches(title: String, eventSeq: Long, query: String): Boolean =
+        title.contains(query, ignoreCase = true) ||
+            eventSeq.toString().contains(query) ||
+            TemporalRecord.formatSeq(eventSeq).contains(query)
+
+    fun filter(drafts: List<DraftCard>, query: String): List<DraftCard> =
+        drafts.filter { matches(it.form.title, it.eventSeq, query) }
 }
