@@ -104,6 +104,7 @@ import dev.powerfulcalendar.core.api.v1.AiConversationMutationStatusV1
 import dev.powerfulcalendar.core.api.v1.AiConversationRewindModeV1
 import dev.powerfulcalendar.core.api.v1.AiProposalDecisionV1
 import dev.powerfulcalendar.core.api.v1.AiBatchModeV1
+import dev.powerfulcalendar.core.api.v1.DraftReviewCardV1
 import dev.powerfulcalendar.core.api.v1.CalendarWindowQueryV1
 import dev.powerfulcalendar.core.api.v1.CalendarWindowSnapshotV1
 import dev.powerfulcalendar.core.api.v1.ImportExportFeatureApiV1
@@ -184,7 +185,7 @@ object PowerCalStores {
 
 private enum class Page { TIMELINE, MONTH, MEMO, AI, SETTINGS, TOOLS }
 
-private data class BatchReview(val mode: AiBatchModeV1, val cards: List<dev.powerfulcalendar.core.DraftCard>)
+private data class BatchReview(val mode: AiBatchModeV1, val cards: List<DraftReviewCardV1>)
 
 internal const val SKIN_RECOVERY_GESTURE_COPY = "紧急回退：在屏幕上相隔的两处位置交替快速轻点，共连续轻点 8 下，即可强制恢复原生皮肤。"
 
@@ -223,7 +224,7 @@ private data class AppData(
     val pending: Int,
     val locked: Boolean,
     val session: dev.powerfulcalendar.core.api.v1.AiBatchSessionV1?,
-    val cards: List<dev.powerfulcalendar.core.DraftCard>,
+    val cards: List<DraftReviewCardV1>,
     val diagnostics: UiDiagnostics
 )
 
@@ -389,7 +390,6 @@ fun PowerCalApp(
     var stuckBatchReleaseRequestPending by remember { mutableStateOf(false) }
     // Choosing a batch mode only starts a conversation; it is never the commit authorization.
     var pendingBatchMode by remember { mutableStateOf<AiBatchModeV1?>(null) }
-    var pendingCards by remember { mutableStateOf<List<dev.powerfulcalendar.core.DraftCard>>(emptyList()) }
     var diagnostics by remember { mutableStateOf(UiDiagnostics()) }
     val recurrencePreviews = remember(diagnostics.recurrenceEvents, nowMillis, zone.id) {
         diagnostics.recurrenceEvents.map { event ->
@@ -560,7 +560,7 @@ fun PowerCalApp(
     }
     // Title placement is always outside; old user preference intentionally ignored.
 
-    suspend fun reload() {
+    suspend fun reload(): List<DraftReviewCardV1>? {
         memoRefreshInFlight++
         val memoGenerationAtStart = memoProjectionGeneration
         try {
@@ -569,7 +569,7 @@ fun PowerCalApp(
                 var loaded: AppData? = null
                 repeat(MAX_SNAPSHOT_LOAD_ATTEMPTS) {
                     if (loaded != null) return@repeat
-                    val pending = draftReviewApi.queryPendingDrafts().map { it.toHostDraftCard() }
+                    val pending = draftReviewApi.queryPendingDrafts()
                     val eventPage = eventFeatureApi.queryEventsPage(limit = HOST_EVENT_PAGE_SIZE)
                     val memoPage = memoFeatureApi.queryEntriesPage(
                         nowMillis = projectionNowMillis,
@@ -641,7 +641,7 @@ fun PowerCalApp(
             }
             // withContext(IO) resumes on the caller's UI dispatcher; publish there directly instead
             // of queueing a second Main dispatch that can stall under Compose's test dispatcher.
-            if (data.eventFeatureRevision != eventFeatureApi.featureRevision) return
+            if (data.eventFeatureRevision != eventFeatureApi.featureRevision) return null
             records = data.records
             totalEventCount = data.totalEventCount
             eventDataGeneration += 1L
@@ -660,9 +660,9 @@ fun PowerCalApp(
             pendingCount = data.pending
             aiLocked = data.locked
             aiSession = data.session
-            pendingCards = data.cards
             diagnostics = data.diagnostics
             WebSkinBridgeRuntime.stateRevision++
+            return data.cards
         } finally {
             memoRefreshInFlight--
         }
@@ -1267,8 +1267,11 @@ fun PowerCalApp(
                         appendChat("assistant", "AI 请求未完成：" + response.message.orEmpty())
                     }
                 } else {
-                    reload()
-                    val snapshot = pendingCards.filter { it.isActionable }
+                    val reloadedSnapshot = reload()
+                    val snapshot = reloadedSnapshot ?: withContext(Dispatchers.IO) {
+                        draftReviewApi.queryPendingDrafts()
+                    }
+                    if (reloadedSnapshot == null) pendingCount = snapshot.size
                     if (snapshot.isEmpty()) {
                         pendingBatchMode = null
                         appendChat("assistant", "待处理已经为空，没有可授权的草稿。")

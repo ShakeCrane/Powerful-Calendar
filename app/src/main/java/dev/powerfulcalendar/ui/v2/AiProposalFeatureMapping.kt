@@ -6,15 +6,12 @@ import dev.powerfulcalendar.ai.AiChatMessage
 import dev.powerfulcalendar.ai.AiTaskAssistantSuggestion
 import dev.powerfulcalendar.ai.AiTaskEvidence
 import dev.powerfulcalendar.ai.AiProposal
-import dev.powerfulcalendar.core.DraftCard
 import dev.powerfulcalendar.core.DraftOperation
-import dev.powerfulcalendar.core.DraftStatus
 import dev.powerfulcalendar.core.api.v1.AiBatchCandidateV1
 import dev.powerfulcalendar.core.api.v1.AiProposalReviewV1
 import dev.powerfulcalendar.core.api.v1.AiConversationMessageV1
 import dev.powerfulcalendar.core.api.v1.AiConversationRoleV1
 import dev.powerfulcalendar.core.api.v1.AiConversationTaskV1
-import dev.powerfulcalendar.core.api.v1.DraftOperationV1
 import dev.powerfulcalendar.core.api.v1.DraftReviewCardV1
 import dev.powerfulcalendar.core.api.v1.toCoreDraftForm
 
@@ -72,24 +69,10 @@ internal fun AiConversationMessageV1.toAiChatMessage() = AiChatMessage(
     zoneId = zoneId
 )
 
-internal fun DraftCard.toAiBatchCandidateV1() = AiBatchCandidateV1(
+internal fun DraftReviewCardV1.toAiBatchCandidateV1() = AiBatchCandidateV1(
     draftId = draftId,
     draftVersion = draftVersion,
-    operation = DraftOperationV1.valueOf(operation.name),
-    kind = dev.powerfulcalendar.core.api.v1.EventKindV1.valueOf(form.kind.name),
+    operation = operation,
+    kind = form.kind,
     title = form.title
-)
-
-/** Host-only projection used by the existing trusted batch review surface. */
-internal fun DraftReviewCardV1.toHostDraftCard() = DraftCard(
-    draftId = draftId,
-    eventSeq = eventSeq,
-    queueOrder = queueOrder,
-    operation = DraftOperation.valueOf(operation.name),
-    form = form.toCoreDraftForm(),
-    status = DraftStatus.valueOf(status.name),
-    baseRevision = baseRevision,
-    draftVersion = draftVersion,
-    createdAtMillis = createdAtMillis,
-    updatedAtMillis = updatedAtMillis
 )

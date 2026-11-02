@@ -1,12 +1,13 @@
 package dev.powerfulcalendar.ui.v2
 
 import dev.powerfulcalendar.ai.AiInterpretation
-import dev.powerfulcalendar.core.DraftCard
 import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.api.v1.AiConversationMessageV1
 import dev.powerfulcalendar.core.api.v1.AiConversationRoleV1
 import dev.powerfulcalendar.core.api.v1.AiBatchModeV1
+import dev.powerfulcalendar.core.api.v1.DraftOperationV1
+import dev.powerfulcalendar.core.api.v1.DraftReviewCardV1
 import dev.powerfulcalendar.core.api.v1.AiProposalReviewReadinessV1
 
 internal fun projectNativeAiMessages(messages: List<AiConversationMessageV1>): List<NativeAiMessage> =
@@ -48,23 +49,30 @@ internal fun projectNativeAiProposalReview(
 
 internal fun projectNativeAiBatchAuthorization(
     mode: AiBatchModeV1,
-    cards: List<DraftCard>
+    cards: List<DraftReviewCardV1>
 ): NativeAiBatchAuthorizationModel = NativeAiBatchAuthorizationModel(
     mode = if (mode == AiBatchModeV1.PUBLISH) NativeAiBatchMode.PUBLISH else NativeAiBatchMode.DISCARD,
     count = cards.size,
     operationCounts = cards.groupingBy { it.operation }.eachCount().map { (operation, count) ->
-        NativeAiBatchOperationCount(operation.label, count)
+        NativeAiBatchOperationCount(operation.hostBatchLabel(), count)
     },
     containsFormalDeletion = mode == AiBatchModeV1.PUBLISH &&
-        cards.any { it.operation == DraftOperation.DELETE },
+        cards.any { it.operation == DraftOperationV1.DELETE },
     rows = cards.map { card ->
         NativeAiBatchReviewRow(
             sequenceLabel = TemporalRecord.formatSeq(card.eventSeq),
-            operationLabel = card.operation.label,
+            operationLabel = card.operation.hostBatchLabel(),
             title = card.form.title
         )
     }
 )
+
+private fun DraftOperationV1.hostBatchLabel(): String = when (this) {
+    DraftOperationV1.CREATE -> "新建"
+    DraftOperationV1.REPLACE -> "修改"
+    DraftOperationV1.CONVERT -> "类型转换"
+    DraftOperationV1.DELETE -> "删除"
+}
 
 internal fun hostAiBatchMode(mode: NativeAiBatchMode): AiBatchModeV1 = when (mode) {
     NativeAiBatchMode.PUBLISH -> AiBatchModeV1.PUBLISH

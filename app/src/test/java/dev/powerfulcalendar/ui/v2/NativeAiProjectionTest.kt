@@ -2,18 +2,20 @@ package dev.powerfulcalendar.ui.v2
 
 import dev.powerfulcalendar.ai.AiInterpretation
 import dev.powerfulcalendar.ai.AiProposal
-import dev.powerfulcalendar.core.DraftCard
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.DraftOperation
-import dev.powerfulcalendar.core.DraftStatus
 import dev.powerfulcalendar.core.Recurrence
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.api.v1.AiProposalItemReadinessV1
 import dev.powerfulcalendar.core.api.v1.AiBatchModeV1
+import dev.powerfulcalendar.core.api.v1.DraftOperationV1
+import dev.powerfulcalendar.core.api.v1.DraftReviewCardV1
+import dev.powerfulcalendar.core.api.v1.DraftStatusV1
 import dev.powerfulcalendar.core.api.v1.AiProposalReadinessStatusV1
 import dev.powerfulcalendar.core.api.v1.AiProposalReviewReadinessV1
 import dev.powerfulcalendar.core.api.v1.AiConversationMessageV1
 import dev.powerfulcalendar.core.api.v1.AiConversationRoleV1
+import dev.powerfulcalendar.core.api.v1.toEventFormV1
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -163,14 +165,16 @@ class NativeAiProjectionTest {
         operation: DraftOperation,
         title: String,
         version: Long
-    ) = DraftCard(
+    ) = DraftReviewCardV1(
         draftId = draftId,
         eventSeq = eventSeq,
         queueOrder = draftId,
-        operation = operation,
-        form = DraftForm(kind = TemporalKind.ACTIVITY, title = title),
-        status = DraftStatus.PENDING,
+        operation = DraftOperationV1.valueOf(operation.name),
+        form = DraftForm(kind = TemporalKind.ACTIVITY, title = title).toEventFormV1(),
+        status = DraftStatusV1.PENDING,
         baseRevision = null,
-        draftVersion = version
+        draftVersion = version,
+        createdAtMillis = 0,
+        updatedAtMillis = 0
     )
 }

@@ -1,10 +1,11 @@
 package dev.powerfulcalendar.ui.v2
 
-import dev.powerfulcalendar.core.DraftCard
 import dev.powerfulcalendar.core.api.v1.AiBatchModeV1
 import dev.powerfulcalendar.core.api.v1.AiBatchSessionV1
 import dev.powerfulcalendar.core.api.v1.AiBatchStateV1
 import dev.powerfulcalendar.core.api.v1.AiBatchTerminalReportV1
+import dev.powerfulcalendar.core.api.v1.DraftOperationV1
+import dev.powerfulcalendar.core.api.v1.DraftReviewCardV1
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -52,7 +53,7 @@ internal object WebAiBatchProjection {
         session: AiBatchSessionV1?,
         preparationMode: AiBatchModeV1?,
         reviewMode: AiBatchModeV1?,
-        reviewCards: List<DraftCard>?,
+        reviewCards: List<DraftReviewCardV1>?,
         progress: WebAiBatchProgress?
     ): JSONObject {
         val active = session?.isActive == true
@@ -90,7 +91,7 @@ internal object WebAiBatchProjection {
             .put("selectedCount", reviewCards?.size ?: 0)
             .put("operationCounts", reviewCards?.let(::operationCounts) ?: JSONObject())
             .put("containsDelete", reviewCards?.any {
-                it.operation == dev.powerfulcalendar.core.DraftOperation.DELETE
+                it.operation == DraftOperationV1.DELETE
             } ?: false)
             .put("progress", progress?.takeIf {
                 active && it.sessionId == session?.sessionId && it.total > 0
@@ -101,7 +102,7 @@ internal object WebAiBatchProjection {
             .put("report", projectReport(persistedReport) ?: JSONObject.NULL)
     }
 
-    private fun operationCounts(cards: List<DraftCard>): JSONObject = JSONObject().apply {
+    private fun operationCounts(cards: List<DraftReviewCardV1>): JSONObject = JSONObject().apply {
         cards.groupingBy { it.operation.name }.eachCount().toSortedMap().forEach { (operation, count) ->
             put(operation, count)
         }

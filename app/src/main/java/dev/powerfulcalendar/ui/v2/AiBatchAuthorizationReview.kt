@@ -1,17 +1,17 @@
 package dev.powerfulcalendar.ui.v2
 
 import androidx.compose.runtime.Composable
-import dev.powerfulcalendar.core.DraftCard
 import dev.powerfulcalendar.core.api.v1.AiBatchModeV1
+import dev.powerfulcalendar.core.api.v1.DraftReviewCardV1
 import dev.powerfulcalendar.ui.v2.nativeui.NativeAiBatchAuthorizationReview as NativeBatchReview
 
 /** A read-only, frozen preview. The only write authorization is the explicit confirm callback. */
 @Composable
 internal fun AiBatchAuthorizationReview(
     mode: AiBatchModeV1,
-    cards: List<DraftCard>,
+    cards: List<DraftReviewCardV1>,
     busy: Boolean,
-    onAuthorize: (List<DraftCard>) -> Unit,
+    onAuthorize: (List<DraftReviewCardV1>) -> Unit,
     onDismiss: () -> Unit
 ) {
     val snapshot = cards.toList()

@@ -1,15 +1,15 @@
 package dev.powerfulcalendar.ui.v2
 
-import dev.powerfulcalendar.core.DraftCard
 import dev.powerfulcalendar.core.DraftForm
-import dev.powerfulcalendar.core.DraftOperation
-import dev.powerfulcalendar.core.DraftStatus
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.api.v1.AiBatchModeV1
 import dev.powerfulcalendar.core.api.v1.AiBatchSessionV1
 import dev.powerfulcalendar.core.api.v1.AiBatchStateV1
 import dev.powerfulcalendar.core.api.v1.AiBatchTerminalReportV1
 import dev.powerfulcalendar.core.api.v1.DraftOperationV1
+import dev.powerfulcalendar.core.api.v1.DraftReviewCardV1
+import dev.powerfulcalendar.core.api.v1.DraftStatusV1
+import dev.powerfulcalendar.core.api.v1.toEventFormV1
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -97,15 +97,17 @@ class WebAiBatchProjectionTest {
         assertEquals("DISCARD", preparing.getString("mode"))
         assertFalse(preparing.getBoolean("active"))
 
-        val card = DraftCard(
+        val card = DraftReviewCardV1(
             draftId = 8101,
             eventSeq = 72,
             queueOrder = 1,
-            operation = DraftOperation.DELETE,
-            form = DraftForm(kind = TemporalKind.MEMO, title = "待删事项"),
-            status = DraftStatus.PENDING,
+            operation = DraftOperationV1.DELETE,
+            form = DraftForm(kind = TemporalKind.MEMO, title = "待删事项").toEventFormV1(),
+            status = DraftStatusV1.PENDING,
             baseRevision = 2,
-            draftVersion = 3
+            draftVersion = 3,
+            createdAtMillis = 10,
+            updatedAtMillis = 20
         )
         val awaitingHost = WebAiBatchProjection.project(
             session = null,
