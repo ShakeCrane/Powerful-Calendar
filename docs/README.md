@@ -36,7 +36,9 @@ controller/form types; see the [Draft Deck projection report](issues/PC-ISSUE-CO
 for the Host callback boundary and verification limits.
 Native and Web ICS/structured Calendar import, export, and backup/restore now use Import/Export
 Feature API v1; see the [Import/Export API report](issues/PC-ISSUE-CORE-IMPORT-EXPORT-API-V1.md)
-for transaction boundaries and device/SAF verification limits.
+for transaction boundaries and device/SAF verification limits. Stable backup restore failure
+categories and the Host confirmation boundary are recorded in the
+[backup restore failure API report](issues/PC-ISSUE-CORE-BACKUP-RESTORE-FAILURE-API-V1.md).
 The explicitly confirmed legacy v0.1 database migration now delegates writes and change
 notifications to that same API while keeping the old SQLite file read-only; see the
 [Core Legacy Import API report](issues/PC-ISSUE-CORE-LEGACY-IMPORT-API-V1.md).
