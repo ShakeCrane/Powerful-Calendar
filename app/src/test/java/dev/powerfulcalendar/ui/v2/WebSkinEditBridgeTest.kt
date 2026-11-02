@@ -1405,6 +1405,44 @@ class WebSkinEditBridgeTest {
         assertEquals(1,store.commitCount())
     }
 
+    @Test fun equivalentReplacementStillUsesCoreReviewedCommitAndAdvancesRevision() = runBlocking {
+        val zone = ZoneId.of("Asia/Shanghai")
+        val start = LocalDateTime.of(2031, 6, 12, 9, 0).atZone(zone).toInstant().toEpochMilli()
+        val original = commitFormal(DraftForm(
+            kind = TemporalKind.ACTIVITY,
+            title = "Unchanged replacement",
+            startText = DraftForm.formatInstant(start, zone),
+            endText = DraftForm.formatInstant(start + 3_600_000L, zone),
+            zoneId = zone.id
+        ))
+        val replacement = store.newDraft(
+            DraftForm.from(original),
+            eventSeq = original.eventSeq,
+            operation = DraftOperation.REPLACE,
+            expectedRevision = original.revision
+        )
+        val commitsBefore = store.commitCount()
+
+        assertEquals("opened", service.execute(WebEditCommand.OpenDeck(
+            request(), replacement.draftId
+        )).getString("status"))
+        val version = service.snapshot().getJSONObject("deck").getLong("version")
+        val command = WebEditCommand.CommitDeck(request(), replacement.draftId, version)
+
+        assertEquals("confirmation_required", service.execute(command).getString("status"))
+        assertEquals(original, store.get(original.eventSeq))
+        assertEquals(commitsBefore, store.commitCount())
+
+        val review = requireNotNull(service.pendingWriteReview)
+        assertEquals("committed", service.resolveFormalWriteReview(review.token, approved = true)
+            .getString("status"))
+        val updated = requireNotNull(store.get(original.eventSeq))
+        assertEquals(original.revision + 1, updated.revision)
+        assertEquals(original.title, updated.title)
+        assertEquals(commitsBefore + 1, store.commitCount())
+        assertTrue(store.pendingDraftsFor(original.eventSeq).isEmpty())
+    }
+
     @Test fun incompleteWebPublishStagesOneRecoverableDraft()= runBlocking {
         val created=service.execute(WebEditCommand.CreateDeck(request(),TemporalKind.MEMO))
         val id=created.getString("detail").toLong()

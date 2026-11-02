@@ -1429,24 +1429,10 @@ internal class WebSkinEditService(
             queryCurrentFormalEvent(card.eventSeq)
         } else null
         val ready = form.build(card.eventSeq.coerceAtLeast(1L), (card.baseRevision ?: 0L) + 1L)
-        val changedFormalValue = when {
-            card.operation == dev.powerfulcalendar.core.api.v1.DraftOperationV1.DELETE -> true
-            ready !is FormBuild.Ready -> false
-            card.operation == dev.powerfulcalendar.core.api.v1.DraftOperationV1.CREATE -> true
-            current == null -> false
-            else -> form.hasMeaningfulDiffFrom(DraftForm.from(current))
-        }
-        if (!changedFormalValue) {
-            return when {
-                card.operation.requiresExisting && current == null ->
-                    commitDeckResult(cmd.requestId, card.draftId, card.draftVersion,
-                        deck.snapshot.stateRevision)
-                ready !is FormBuild.Ready ->
-                    commitDeckResult(cmd.requestId, card.draftId, card.draftVersion,
-                        deck.snapshot.stateRevision)
-                else -> result(cmd.requestId, "no_changes")
-            }
-        }
+        if (card.operation != dev.powerfulcalendar.core.api.v1.DraftOperationV1.DELETE &&
+            ready !is FormBuild.Ready)
+            return commitDeckResult(cmd.requestId, card.draftId, card.draftVersion,
+                deck.snapshot.stateRevision)
         if (card.operation.requiresExisting && current == null)
             return commitDeckResult(cmd.requestId, card.draftId, card.draftVersion,
                 deck.snapshot.stateRevision)
