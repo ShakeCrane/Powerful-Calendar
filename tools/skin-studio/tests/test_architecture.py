@@ -46,7 +46,10 @@ class PresentationBoundaryTests(unittest.TestCase):
         api = (SKIN_API / "SettingsVisualContext.kt").read_text("utf-8")
         renderer = (NATIVE_SKIN / "NativeProtectedAiSettingsSection.kt").read_text("utf-8")
         self.assertIn("internal fun HostProtectedAiSettingsSection()", host)
-        self.assertIn("internal fun HostProtectedProfileSection()", host)
+        self.assertIn(
+            "internal fun HostProtectedProfileSection(settingsDataApi: SettingsDataFeatureApiV1)",
+            host,
+        )
         self.assertIn("AiSettingsStore.load(appContext)", host)
         self.assertIn("protectedApiKeyField = {", host)
         self.assertIn("fun ProtectedAiCredentials()", api)
