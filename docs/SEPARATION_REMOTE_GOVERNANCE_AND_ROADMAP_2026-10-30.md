@@ -8,6 +8,7 @@
 ## 0. Core-first / Skin-first 主阶段路线（2026-11-02）
 
 本节落实 `goal-objective.md` 的 PHASE 0–5 顺序，**优先级高于下文保留的 SEP/M1–M4 旧执行顺序**。功能矩阵继续记录覆盖与证据，不再决定主开发方向。
+**2026-11-02 最新进度覆盖：** DraftReview API v1 现负责文本解析与草稿表单规则，并复用已批准的 durable `createDraft` 写入；Native AI-file 预检复用 Import/Export API 的 ICS plan；Native/Web 拖动不再单独限制目标年份，Core 表单验证为准。聚焦 **83/83 PASS**，完整强制串行 JVM **926/926 PASS / 139 suites**，两项源码边界、APK、lint、AndroidTest Kotlin 编译和 diff 检查均通过。代码提交 `38357b5945696e52ca4b034816dfc7c9b0f6dde5`。无 ADB/AVD；设备 instrumentation、打包 WebView 与 Native/Skin 设备 parity **NOT TESTED**。Phase 1 仍开放，当前下一步是继续审查 Settings/Data 与 AI 的 Host/Core 边界。
 
 **2026-11-02 当前进度覆盖：** Native 临时新建事件的发布就绪状态现从既有 `EventFeatureApiV1.validateNewEvent()` 读取；完整 Core 校验判无效时，即使浅层 `isPublishable()` 为真，Native 也显示“保存草稿”并呈现 Core 错误。聚焦 **9/9 PASS / 2 suites**；强制串行 JVM **920/920 PASS / 139 XML suites**；两项源码边界、Debug APK、lint、AndroidTest Kotlin 编译均 PASS，共 154 tasks。APK **67,060,334 bytes**，SHA-256 `EB610BB7F1AC3C4EC928FEDE2C2E4AADD23A9947B9225D1665D3CEFD3092F6C9`；focused/full 日志 SHA-256 `90C856FF3F8C200EED52D5947185D03FF6772EAF1AA44B040197A10DFEA95DCF` / `BB25CB4016F84CB9186047277E97F32EE36F55546FDE50993B1BD81EA04087CB`。无 ADB 设备；instrumentation、打包 WebView、设备级 Native/Skin parity **NOT TESTED**。详见 [PROGRESS](agent-handoff/PROGRESS.md) 和 [Event API Issue](issues/PC-ISSUE-CORE-EVENT-API-V1.md)。Phase 1 保持开放。
 
@@ -90,7 +91,7 @@ Import/Export API v1 聚焦 API 与 Native/Clear Host 回归 **25/25 PASS**；�
 
 **此前关闭 — AI 提案完整表单 readiness 共用 Core API（2026-11-02）：** `AiProposalFeatureApiV1.assessReview()` 对 Native/Web 返回基于 `DraftForm.build` 的逐项分类；Web 每次投影和 PUBLISH 都重新评估当前审核，避免过期状态。`AiDraftService` 也使用完整表单验证，并将 Store `INVALID` 归类为失败发布回执。聚焦 **75/75 PASS / 7 suites**；强制串行 JVM **918/918 PASS / 139 XML suites**，两项 source boundary、APK、lint（0 errors / 54 warnings）、AndroidTest Kotlin 编译和 `git diff --check` 均 PASS。APK SHA-256 `DB9F39DF332C75D9D818C87B79893895CEDF2258FDA23877305B4C09F5C4358B`；focused/full 日志哈希见 [AI Proposal Issue](issues/PC-ISSUE-CORE-AI-PROPOSAL-API-V1.md)。无 ADB/AVD；instrumentation、实际 WebView 和设备级 Native/Skin parity **NOT TESTED**。不改 schema、备份格式或冻结业务语义；Phase 1 保持开放。
 
-**唯一 NEXT_ACTION（2026-11-02 更新）：** 统一 Native/Web 时间轴移动规则并让既有 Event Feature API 拥有移动资格和表单变换。用户已明确允许两端移动纯日期 DEADLINE 且保留 DATE 精度；保留并核对 Web 的 1900–2200 目标年份限制及现有吸附行为，若它们与冻结契约存在冲突，再提出精确裁决。不编辑并行中的 acceptance CSV。
+**唯一 NEXT_ACTION（2026-11-02 更新）：** 继续有界审查剩余 Settings/Data 与 AI 工作流中的 Host/Core 边界，优先复用现有版本化 API 并迁移实际业务决定。时间轴拖动的两端年份上限已按 Owner 决策移除，仍保留现有导航范围与吸附行为。本阶段继续保持开放，不编辑并行中的 acceptance CSV。
 
 **最近关闭 — shared event-kind conversion 与 Memo paging Host race（2026-11-02）：** Event kind conversion 经 `EventFeatureApiV1.convertFormKind()` 统一供 Native 与 Web 编辑/Deck 流程使用；Core 继续拥有 `TemporalConversion`，Host 继续负责 editor 生命周期、校验编排和写入。另修复真实并发：Memo 页 reload 尚未结束时到达的 `LoadMoreMemo` 现排队到刷新完成后执行，代次 fencing 阻止旧投影覆盖新页。完整串行 JVM **903/903 PASS / 139 suites**，两个 source boundaries、Debug APK、lint（0 errors / 54 warnings）、AndroidTest Kotlin 编译和 `git diff --check` PASS；154 tasks。APK SHA-256 `56E2DB62956862F722E78C33A0EF9D16642831A57DA62EF7BD926E47956CB22D`。Android device/WebView 和 Native/Skin 设备 parity **NOT TESTED**。代码 `766b042622de042a42cb29b31e5008dbb1565893` 已推送；详见 [Event kind conversion Issue](issues/PC-ISSUE-CORE-EVENT-KIND-CONVERSION-API-V1.md) 与 [Memo paging Issue](issues/PC-ISSUE-SEPARATION-MEMO-PAGING.md)。
 

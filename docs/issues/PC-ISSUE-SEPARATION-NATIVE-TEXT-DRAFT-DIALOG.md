@@ -30,3 +30,9 @@ Final integrated full JVM and Android build logs are under `.local/android-test/
 This closes only the Native text-draft prompt presentation slice. It does not change default-time semantics or establish Clear/Studio parity or a skin cutover. Device behavior remains untested. Clear was not changed.
 
 Implementation commit `c006049edbd562725f533c5b21c82c4f3c7566da` was pushed to `origin/feat/skin-first-separation`.
+
+## PHASE 1 Core API follow-up (2026-11-02)
+
+The dialog/presentation boundary remains unchanged. The former `TextParser` and Host form decisions have since moved behind `DraftReviewFeatureApiV1.createDraftFromText`; the Host still supplies platform time/zone context and opens the returned review card. See the [Draft Creation API report](PC-ISSUE-CORE-DRAFT-CREATION-API-V1.md) for its durable replay and regression evidence. No parser UI, dialog, or Skin code was added to Core.
+
+The integrated forced serial full gate passed **926/926 JVM / 139 suites**, both source boundaries, APK, lint, AndroidTest Kotlin compilation, and diff check. Device, packaged WebView, and Native/Skin parity remain **NOT TESTED**. Code commit `38357b5945696e52ca4b034816dfc7c9b0f6dde5`; PHASE 1 remains open.

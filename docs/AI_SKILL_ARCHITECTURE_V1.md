@@ -89,7 +89,7 @@ AI Center chat UI -------- Provider ChatAdapter (free-form conversation)
 | --- | --- |
 | `AiClient.interpret` 强制单轮 JSON | 拆出 ChatAdapter 的自然语言模式；`interpret` 成为 `calendar.propose` 的兼容实现而非全部聊天路径 |
 | `PowerCalApp.ToolsPage` 集成 AI / 配置 / 待处理 | 规划底栏“时间轴 / 月历 / AI 助手 / 设置”，统一 AI 中心和顶部待处理/新建 |
-| `ocrPicker` 直接 `TextParser.parse` | OCR 输出先可视化、校对，再显式选择 AI/离线提案 |
+| OCR 文本经用户校对后进入 `AiFeatureApiV1` evidence flow；离线文本草稿另走 `DraftReviewFeatureApiV1.createDraftFromText` | 统一 OCR/文本入口选择，并保持明确的用户确认与草稿审核 |
 | `IcsCodec` 无 RRULE 展开 | 先做可靠 RFC5545 子集解析与逐条错误，再提供 document.extract Skill；课表原始 DOCX 要独立适配 |
 | 批量 AI 把既有草稿发布或丢弃 | 保留 DSH 版本化授权；新增**只读批量目标查询和提案生成**，严禁 AI 直接授权 |
 | 无对话会话持久性 | 新增隔离聊天会话历史、清除/导出控件、有限上下文与权限提示，不把完整事件库自动发给远端 |

@@ -48,3 +48,13 @@ The Debug APK was not installed. Android instrumentation, packaged WebView, phys
 ## Git delivery
 
 Implementation commit `f46855b8d632752e3d360a0347d44b2b8e306a7a` on `codex/core-feature-api-event`, based on `d8a336e7f17fd2314dd8322eb885e43587c1f1af`, contains the Store schema/backup changes, API serialization, and regression tests.
+
+## Follow-up — Core-owned text-to-draft parsing (2026-11-02)
+
+`DraftReviewFeatureApiV1.createDraftFromText(TextDraftRequestV1)` now owns deterministic Chinese parsing and the resulting reviewable ACTIVITY form. The start is populated only when date and time are both explicit and unambiguous; the end remains blank; trimmed source text is retained in notes; the response carries the existing durable `createDraft` receipt plus the interpretation note. The command cannot publish a formal event. `PowerCalApp` now supplies the captured submission time, zone, source, and request ID, then handles I/O dispatch, feedback, reload, and review navigation.
+
+The previous parser returned a legacy `CalendarEvent` and the Host made the consequential form decisions. The parser now lives under Core and returns a neutral parsed-draft result; text parsing no longer sits in the presentation callback. No database or backup change was needed because persistence uses the owner-approved schema v6 `createDraft` path.
+
+Focused `DraftReviewFeatureApiV1Test` and `InteropTest` passed **32/32** in the initial check. The integrated focused set passed **24/24 DraftReview** and **8/8 Interop**; its complete 83-test focused run passed. The forced serial full gate passed **926/926 JVM tests across 139 suites**, 0 failures/errors/skips; both boundaries, APK, lint (0 errors / 54 warnings), AndroidTest Kotlin compilation, and diff check passed (154 tasks). APK SHA-256 `51B8A7E6DD1D795098B82BF964C59FE28DF93714A9B5B257AD15A3500A6F7028`. Logs, XML, and manifest are under `.local/android-test/reports/phase1-core-text-timeline-ics-20261102-134500/`; full-log SHA-256 `5093FFF4E19340D1D171D93471E1CD6F8168237373B9599318A204D6AA978BA7`, JUnit-manifest SHA-256 `B30450DA1488A8422599E43C7B99AAAB0F5217F5410AD5AC41692CF9EC57F146`.
+
+No ADB device or AVD was available; Android instrumentation, packaged WebView, and runtime Native/Skin parity remain **NOT TESTED**. Code commit `38357b5945696e52ca4b034816dfc7c9b0f6dde5`; PHASE 1 remains open.

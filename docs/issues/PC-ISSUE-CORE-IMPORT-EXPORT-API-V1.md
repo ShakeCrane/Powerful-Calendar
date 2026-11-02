@@ -67,3 +67,11 @@ $env:ANDROID_HOME = 'E:\android-sdk'
 Android instrumentation、打包 WebView 与生产 Host 的设备连通、DocumentsUI/SAF 实际文件提供方、跨 OEM 行为和第三方日历互操作均为 `NOT TESTED`。这项 API 工作不关闭现有 Calendar 导入、ICS、备份恢复或皮肤 parity 的设备验收，也不满足 PHASE 1 退出条件。
 
 **下一步：** 盘点剩余 Settings/Data 路径并定义相应 API；继续 AI batch 与 AI draft-generation API；移除 runtime Skin projection 中剩余 Core 实体类型。Native recovery/fallback 保持可用。
+
+## Follow-up — AI-file ICS preflight reuses the Core import plan (2026-11-02)
+
+The Native AI-file review surface previously parsed raw ICS with `IcsCodec.parse()` to decide whether to start deterministic import or AI analysis, while actual import used `ImportExportFeatureApiV1.prepareIcsImport()` and its stricter UID-grouped planner. The preflight now uses that same API plan. An intact, untruncated original file with a successful plan enters deterministic import first; mixed valid/problem units remain locally grouped, and only planner-marked unresolved evidence can enter the separately consented AI clarification path. File reading, picker state, edit/truncation provenance, consent, and UI routing remain Host responsibilities. No new API or import format was added.
+
+Added a Core API regression for a valid independent event beside a master/override pair: it verifies the shared plan yields one local candidate and one unresolved grouped unit. `ImportExportFeatureApiV1Test` passed **7/7** in the integrated focused run. The complete focused set passed **83/83**; the forced serial full gate passed **926/926 JVM / 139 suites / 0 failures/errors/skips**, with source boundaries, APK, lint (0 errors / 54 warnings), AndroidTest Kotlin compilation, and `git diff --check` passing (154 tasks). Report directory: `.local/android-test/reports/phase1-core-text-timeline-ics-20261102-134500/`; full-log SHA-256 `5093FFF4E19340D1D171D93471E1CD6F8168237373B9599318A204D6AA978BA7`, JUnit-manifest SHA-256 `B30450DA1488A8422599E43C7B99AAAB0F5217F5410AD5AC41692CF9EC57F146`.
+
+Android instrumentation, packaged WebView, SAF provider behavior, and device parity remain **NOT TESTED**. Code commit `38357b5945696e52ca4b034816dfc7c9b0f6dde5`; PHASE 1 remains open.
