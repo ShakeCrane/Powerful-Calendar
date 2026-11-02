@@ -28,4 +28,4 @@ Host still blocks the action while AI is locked or a formal editor is already pr
 
 ## 修改与后续
 
-Code commit: `f4b146e25bd4e70caf23567f6897cc7b8eae2de2` (`分离：由 Core 统一校验 Web 事件打开`). The code commit is verified; the evidence/docs commit and ordinary fast-forward push are pending. The next review traces the remaining Native and Web formal-event save, move, delete and conflict paths for repeated business decisions or direct Store/service access. Phase 1 remains open.
+Code commit: `f4b146e25bd4e70caf23567f6897cc7b8eae2de2` (`分离：由 Core 统一校验 Web 事件打开`). The Issue and progress records were pushed by ordinary fast-forward; `git ls-remote` verified `feat/skin-first-separation` at `798f764702385815eb83a26f7d104d9e7f682506`. The next review traces the remaining Native and Web formal-event save, move, delete and conflict paths for repeated business decisions or direct Store/service access. Phase 1 remains open.
