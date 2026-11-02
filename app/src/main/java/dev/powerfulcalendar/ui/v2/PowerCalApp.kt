@@ -790,6 +790,26 @@ fun PowerCalApp(
         reminderFeatureApi.reconcile(mode)
     }
 
+    suspend fun reconcileMemoReminder(eventSeq: Long) {
+        try {
+            reconcile()
+            val schedule = withContext(Dispatchers.IO) {
+                reminderFeatureApi.queryEvent(eventSeq)?.schedule
+            }
+            when (schedule?.state) {
+                ReminderScheduleStateV1.BLOCKED -> message =
+                    "Memo 状态已更新，但提醒受阻：${schedule?.blockedHint?.takeIf(String::isNotBlank) ?: "请检查提醒权限"}"
+                ReminderScheduleStateV1.PENDING -> message =
+                    "Memo 状态已更新，但提醒仍待系统调度；请稍后检查提醒状态"
+                else -> Unit
+            }
+        } catch (cancel: kotlinx.coroutines.CancellationException) {
+            throw cancel
+        } catch (_: Exception) {
+            message = "Memo 状态已更新，但提醒同步暂不可用；请稍后重试"
+        }
+    }
+
     fun reconcileCount(size: Int): String = if (size > 400) "400+" else size.toString()
 
     fun requestManualReminderReconcile() {
@@ -2229,6 +2249,9 @@ fun PowerCalApp(
                                     EventMutationStatusV1.NO_CHANGE
                                 )
                             ) message = "Memo 状态已变化，请刷新"
+                            else if (result.status == EventMutationStatusV1.UPDATED) {
+                                reconcileMemoReminder(action.eventSeq)
+                            }
                         }
                         reload()
                     }
@@ -2731,6 +2754,9 @@ fun PowerCalApp(
                                 EventMutationStatusV1.NO_CHANGE
                             )
                         ) message = "状态已变化或正在批量处理，请刷新后重试"
+                        else if (receipt.status == EventMutationStatusV1.UPDATED) {
+                            reconcileMemoReminder(entry.eventSeq)
+                        }
                         reload()
                     }
                 } },

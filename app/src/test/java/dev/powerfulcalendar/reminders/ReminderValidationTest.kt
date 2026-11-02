@@ -321,6 +321,94 @@ class ReminderValidationTest {
     }
 
     @Test
+    fun completingAndReopeningTrackedOccurrenceRebindsAndReconcilesReminder() {
+        val shadowAlarmManager = Shadows.shadowOf(
+            context.getSystemService(AlarmManager::class.java)!!
+        )
+        ShadowAlarmManager.setCanScheduleExactAlarms(true)
+
+        val completionKey = "single"
+        val startDate = java.time.LocalDate.now(zone).plusDays(1).toString()
+        val initial = store.newDraft(
+            DraftForm(
+                kind = TemporalKind.MEMO,
+                title = "完成状态不应清除提醒",
+                startText = startDate,
+                reminderMinutes = 15,
+                reminderMethod = ReminderMethod.MESSAGE,
+                trackingEnabled = true,
+                enabled = true,
+                zoneId = zone.id
+            )
+        )
+        assertTrue(store.commit(initial.draftId) is PowerStore.CommitOutcome.Committed)
+
+        val original = store.intentFor(initial.eventSeq)!!
+        ReminderScheduler.reconcile(context, store)
+        assertEquals(PowerStore.DesiredSchedule.SCHEDULED,
+            store.intentFor(initial.eventSeq)!!.desired)
+        assertEquals(1, shadowAlarmManager.scheduledAlarms.size)
+
+        val completionAccepted = store.setCompleted(
+            initial.eventSeq, completionKey, completed = true,
+            expectedRevision = original.revision
+        )
+        assertTrue(
+            "completion rejected for $original with current event ${store.get(initial.eventSeq)}",
+            completionAccepted
+        )
+        val completed = store.get(initial.eventSeq)!!
+        val afterComplete = store.intentFor(initial.eventSeq)!!
+        assertTrue(completionKey in completed.completedKeys)
+        assertTrue(completed.trackingEnabled)
+        assertTrue(completed.enabled)
+        assertEquals(original.revision + 1, completed.revision)
+        assertEquals(completed.revision, afterComplete.revision)
+        assertEquals(original.occurrenceKey, afterComplete.occurrenceKey)
+        assertEquals(original.instantMillis, afterComplete.instantMillis)
+        assertEquals(original.requirement, afterComplete.requirement)
+        assertEquals(PowerStore.DesiredSchedule.PENDING, afterComplete.desired)
+        assertTrue(ReminderScheduler.validate(
+            store, initial.eventSeq, original.revision, original.occurrenceKey,
+            original.instantMillis, snooze = false
+        ) is ReminderScheduler.Validation.Rejected)
+
+        ReminderScheduler.reconcile(context, store)
+        assertEquals(PowerStore.DesiredSchedule.SCHEDULED,
+            store.intentFor(initial.eventSeq)!!.desired)
+        assertEquals(1, shadowAlarmManager.scheduledAlarms.size)
+        assertTrue(ReminderScheduler.validate(
+            store, initial.eventSeq, afterComplete.revision, afterComplete.occurrenceKey,
+            afterComplete.instantMillis, snooze = false
+        ) is ReminderScheduler.Validation.Valid)
+
+        assertTrue(store.setCompleted(
+            initial.eventSeq, completionKey, completed = false,
+            expectedRevision = completed.revision
+        ))
+        val reopened = store.get(initial.eventSeq)!!
+        val afterReopen = store.intentFor(initial.eventSeq)!!
+        assertFalse(completionKey in reopened.completedKeys)
+        assertTrue(reopened.trackingEnabled)
+        assertTrue(reopened.enabled)
+        assertEquals(completed.revision + 1, reopened.revision)
+        assertEquals(reopened.revision, afterReopen.revision)
+        assertEquals(original.occurrenceKey, afterReopen.occurrenceKey)
+        assertEquals(original.instantMillis, afterReopen.instantMillis)
+        assertEquals(original.requirement, afterReopen.requirement)
+        assertEquals(PowerStore.DesiredSchedule.PENDING, afterReopen.desired)
+
+        ReminderScheduler.reconcile(context, store)
+        assertEquals(PowerStore.DesiredSchedule.SCHEDULED,
+            store.intentFor(initial.eventSeq)!!.desired)
+        assertEquals(1, shadowAlarmManager.scheduledAlarms.size)
+        assertTrue(ReminderScheduler.validate(
+            store, initial.eventSeq, afterReopen.revision, afterReopen.occurrenceKey,
+            afterReopen.instantMillis, snooze = false
+        ) is ReminderScheduler.Validation.Valid)
+    }
+
+    @Test
     fun scheduledIntentIsRearmedAfterStoreReopen() {
         val alarmManager = context.getSystemService(AlarmManager::class.java)!!
         val shadowAlarmManager = Shadows.shadowOf(alarmManager)

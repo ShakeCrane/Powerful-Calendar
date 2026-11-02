@@ -398,6 +398,7 @@ class PowerCalCasualSuggestionComposeTest {
             kind = TemporalKind.MEMO,
             title = "重复 Memo 完成状态",
             startText = firstDate.toString(),
+            reminderMinutes = 15,
             zoneId = zone.id,
             recurrence = Recurrence(freq = RecurrenceFreq.DAILY, count = 3)
         ))
@@ -412,6 +413,13 @@ class PowerCalCasualSuggestionComposeTest {
             }
         }
         ui.waitForIdle()
+        ui.waitUntil(10_000) {
+            store.intentFor(owner.eventSeq)?.let {
+                it.revision == owner.revision &&
+                    it.desired != PowerStore.DesiredSchedule.PENDING
+            } == true
+        }
+        val originalReminder = requireNotNull(store.intentFor(owner.eventSeq))
         ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.Routed("memo")) }
         ui.waitUntil(10_000) {
             val entries = WebSkinBridgeRuntime.state().optJSONArray("memoEntries")
@@ -435,10 +443,20 @@ class PowerCalCasualSuggestionComposeTest {
         ui.runOnIdle { WebSkinBridgeRuntime.onAction(toggle) }
         ui.waitUntil(10_000) {
             val current = store.get(owner.eventSeq)
-            current?.revision == owner.revision + 1 && selectedKey in current.completedKeys
+            val reminder = store.intentFor(owner.eventSeq)
+            current?.revision == owner.revision + 1 && selectedKey in current.completedKeys &&
+                reminder?.revision == current.revision &&
+                reminder.occurrenceKey == originalReminder.occurrenceKey &&
+                reminder.instantMillis == originalReminder.instantMillis &&
+                reminder.desired != PowerStore.DesiredSchedule.PENDING
         }
         val completed = requireNotNull(store.get(owner.eventSeq))
+        val completedReminder = requireNotNull(store.intentFor(owner.eventSeq))
         assertEquals(owner.revision + 1, completed.revision)
+        assertEquals(completed.revision, completedReminder.revision)
+        assertEquals(originalReminder.occurrenceKey, completedReminder.occurrenceKey)
+        assertEquals(originalReminder.instantMillis, completedReminder.instantMillis)
+        assertEquals(originalReminder.requirement, completedReminder.requirement)
         assertTrue(selectedKey in completed.completedKeys)
         assertFalse(nextKey in completed.completedKeys)
         val countsAfterToggle = countsBeforeToggle.copy(commits = countsBeforeToggle.commits + 1)

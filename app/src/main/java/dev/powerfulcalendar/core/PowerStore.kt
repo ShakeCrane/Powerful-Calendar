@@ -2239,6 +2239,7 @@ class PowerStore(
             put("operation", if (completed) "COMPLETE" else "REOPEN")
             put("created_ms", now)
         })
+        writeDesiredIntent(db, updated, now)
         true
     }
 
