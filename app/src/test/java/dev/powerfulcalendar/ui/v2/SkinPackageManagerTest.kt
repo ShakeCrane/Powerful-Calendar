@@ -1,6 +1,7 @@
 package dev.powerfulcalendar.ui.v2
 
 import android.content.Context
+import dev.powerfulcalendar.core.PowerStore
 import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
 import org.json.JSONObject
@@ -22,6 +23,129 @@ import java.util.zip.ZipOutputStream
 class SkinPackageManagerTest {
     private val context get() = ApplicationProvider.getApplicationContext<Context>()
     private val manager get() = SkinPackageManager(context)
+
+    private fun freshSkinPreferences() =
+        context.getSharedPreferences("powercal-skin-choice", Context.MODE_PRIVATE).also {
+            it.edit().clear().commit()
+            PowerCalSkinRegistry.reset()
+        }
+
+    @Test fun qaFreshInstallActivatesVerifiedFactoryWebSkin() {
+        val prefs = freshSkinPreferences()
+        val subject = SkinPackageManager(context)
+        assertTrue(subject.factoryPackageAvailable())
+        subject.restoreSelection(SkinBootPolicy.QA_FRESH_FACTORY)
+        assertEquals("powercal-clear-default", subject.currentId())
+        assertEquals("powercal-clear-default", prefs.getString("selected", null))
+        assertEquals("powercal-clear-default", PowerCalSkinRegistry.active.key)
+        assertTrue(PowerCalSkinRegistry.active.web!!.fullCanvas)
+    }
+
+    @Test fun corruptFactoryFallsBackOnceAndPreservesNativeRecovery() {
+        val prefs = freshSkinPreferences()
+        var reads = 0
+        val subject = SkinPackageManager(context, factoryPackageBytes = {
+            reads++
+            byteArrayOf(1, 2, 3)
+        })
+        assertFalse(subject.factoryPackageAvailable())
+        subject.restoreSelection(SkinBootPolicy.QA_FRESH_FACTORY)
+        assertEquals("powercal-default", subject.currentId())
+        assertEquals("powercal-default", prefs.getString("selected", null))
+        assertEquals("powercal-default", PowerCalSkinRegistry.active.key)
+        val readsAfterFailure = reads
+        subject.restoreSelection(SkinBootPolicy.QA_FRESH_FACTORY)
+        assertEquals(readsAfterFailure, reads)
+        assertNull(PowerCalSkinRegistry.active.web)
+        assertTrue(subject.selectNativeForEmergencyRecovery())
+    }
+
+    @Test fun missingFactoryFallsBackAndDoesNotRetry() {
+        freshSkinPreferences()
+        var reads = 0
+        val subject = SkinPackageManager(context, factoryPackageBytes = {
+            reads++
+            throw java.io.FileNotFoundException("factory fixture unavailable")
+        })
+        subject.restoreSelection(SkinBootPolicy.QA_FRESH_FACTORY)
+        subject.restoreSelection(SkinBootPolicy.QA_FRESH_FACTORY)
+        assertEquals(1, reads)
+        assertEquals("powercal-default", subject.currentId())
+        assertEquals("powercal-default", PowerCalSkinRegistry.active.key)
+    }
+
+    @Test fun productionRestoreStillRevalidatesPreviouslyActiveFactory() {
+        freshSkinPreferences()
+        SkinPackageManager(context).select("powercal-clear-default")
+        val subject = SkinPackageManager(context, factoryPackageBytes = { byteArrayOf(1, 2, 3) })
+        subject.restoreSelection()
+        assertEquals("powercal-default", subject.currentId())
+        assertEquals("powercal-default", PowerCalSkinRegistry.active.key)
+    }
+
+    @Test fun qaRepeatedRestoreDoesNotRewriteOrReactivate() {
+        val prefs = freshSkinPreferences()
+        var reads = 0
+        var writes = 0
+        val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == "selected") writes++
+        }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        try {
+            val subject = SkinPackageManager(context, factoryPackageBytes = {
+                reads++
+                context.assets.open("powercal-clear-default.pcskin").use { it.readBytes() }
+            })
+            subject.restoreSelection(SkinBootPolicy.QA_FRESH_FACTORY)
+            val first = PowerCalSkinRegistry.active
+            subject.restoreSelection(SkinBootPolicy.QA_FRESH_FACTORY)
+            assertSame(first, PowerCalSkinRegistry.active)
+            assertEquals(1, reads)
+            assertEquals(1, writes)
+            assertEquals("powercal-clear-default", prefs.getString("selected", null))
+        } finally {
+            prefs.unregisterOnSharedPreferenceChangeListener(listener)
+        }
+    }
+
+    @Test fun skinBootLeavesSeededBusinessStoreUnchanged() {
+        freshSkinPreferences()
+        val name = "r02-fixture-" + UUID.randomUUID() + ".db"
+        val store = PowerStore(context, name)
+        try {
+            val db = store.writableDatabase
+            db.execSQL("UPDATE meta SET next_seq=43, next_order=2 WHERE id=1")
+            db.execSQL("INSERT INTO identities(event_seq, allocated_ms, origin) VALUES(42,1,'fixture')")
+            db.execSQL("INSERT INTO objects(event_seq,revision,kind,payload,created_ms,updated_ms) VALUES(42,7,'MEMO','{}',1,1)")
+            db.execSQL("INSERT INTO drafts(event_seq,queue_order,base_rev,op,payload,status,created_ms,updated_ms) VALUES(42,1,7,'UPDATE','{}','PENDING',1,1)")
+            db.execSQL("INSERT INTO schedule_intents(event_seq,trigger_id,revision,occurrence_key,instant_ms,requirement,desired_state,updated_ms) VALUES(42,'fixture',7,'slot',1,'NONE','PENDING',1)")
+            fun snapshot() = listOf("meta", "identities", "objects", "drafts", "schedule_intents", "ai_sessions", "commits")
+                .joinToString("|") { table -> db.rawQuery("SELECT * FROM $table ORDER BY rowid", null).use { cursor ->
+                    buildString { while (cursor.moveToNext()) { for (i in 0 until cursor.columnCount) { append(cursor.getString(i)).append('|') }; append('\n') } }
+                } }
+            val before = snapshot()
+            val databasesBefore = context.databaseList().sorted()
+            SkinPackageManager(context).restoreSelection(SkinBootPolicy.QA_FRESH_FACTORY)
+            assertEquals(before, snapshot())
+            assertEquals(databasesBefore, context.databaseList().sorted())
+        } finally {
+            store.close()
+            context.deleteDatabase(name)
+        }
+    }
+
+    @Test fun productionAndPreviouslySelectedNativeRemainNative() {
+        val prefs = freshSkinPreferences()
+        val subject = SkinPackageManager(context)
+        subject.restoreSelection()
+        assertFalse(prefs.contains("selected"))
+        assertEquals("powercal-default", subject.currentId())
+        assertEquals("powercal-default", PowerCalSkinRegistry.active.key)
+        prefs.edit().putString("selected", "powercal-default").commit()
+        subject.restoreSelection(SkinBootPolicy.QA_FRESH_FACTORY)
+        assertEquals("powercal-default", subject.currentId())
+        assertEquals("powercal-default", PowerCalSkinRegistry.active.key)
+    }
 
     @Test fun failedEmergencyPersistenceHasExplicitRecoveryMessage() {
         assertEquals(

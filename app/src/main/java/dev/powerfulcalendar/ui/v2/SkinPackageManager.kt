@@ -16,6 +16,9 @@ import java.util.zip.ZipInputStream
 
 data class InstalledSkin(val id: String, val name: String, val builtIn: Boolean = false)
 
+/** QA policy is explicitly supplied by trusted test code; production uses the default. */
+enum class SkinBootPolicy { PRESERVE_SELECTION, QA_FRESH_FACTORY }
+
 /**
  * PowerCal skin ZIP v1/v2/v3: v1 resources, v2 bounded declarative UI,
  * v3 sandboxed HTML/CSS/JS rendered in an isolated WebView presentation surface.
@@ -25,6 +28,7 @@ data class InstalledSkin(val id: String, val name: String, val builtIn: Boolean 
  */
 class SkinPackageManager(
     private val context: Context,
+    private val factoryPackageBytes: (() -> ByteArray)? = null,
     private val nativePreferenceCommit: (Context, String) -> Boolean = { appContext, id ->
         appContext.getSharedPreferences("powercal-skin-choice", Context.MODE_PRIVATE)
             .edit().putString("selected", id).commit()
@@ -39,7 +43,8 @@ class SkinPackageManager(
 
     /** Same checked-in bytes that Skin Studio offers at startup. */
     private fun readBundledClear(loadImages: Boolean = true): Verified {
-        val bytes = context.assets.open(clearAssetName).use { readBounded(it) }
+        val bytes = factoryPackageBytes?.invoke()?.let { readBounded(it.inputStream()) }
+            ?: context.assets.open(clearAssetName).use { readBounded(it) }
         // The catalogue does metadata-only validation for every origin. Activation
         // always performs the exact same full resource decode for both origins.
         return decode(bytes, loadImages).also {
@@ -100,14 +105,21 @@ class SkinPackageManager(
             }
     }
 
-    fun restoreSelection() {
-        val id = currentId()
+    /** Uses exactly the same validator as activation; does not select or persist. */
+    fun factoryPackageAvailable(): Boolean = runCatching { readBundledClear() }.isSuccess
+
+    fun restoreSelection(policy: SkinBootPolicy = SkinBootPolicy.PRESERVE_SELECTION) {
+        val freshQa = policy == SkinBootPolicy.QA_FRESH_FACTORY && !prefs.contains("selected")
+        val id = if (freshQa) clearCandidate.id else currentId()
         if (id == original.id) {
-            PowerCalSkinRegistry.reset()
+            if (PowerCalSkinRegistry.active.key != original.id) PowerCalSkinRegistry.reset()
             return
         }
+        if (policy == SkinBootPolicy.QA_FRESH_FACTORY &&
+            PowerCalSkinRegistry.active.key == id && !freshQa) return
         runCatching { loadPackage(id) }.onSuccess {
             PowerCalSkinRegistry.activate(it.pack)
+            if (freshQa) prefs.edit().putString("selected", id).apply()
         }.onFailure {
             prefs.edit().putString("selected", original.id).apply()
             PowerCalSkinRegistry.reset()

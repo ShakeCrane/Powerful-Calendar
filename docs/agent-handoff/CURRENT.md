@@ -2,11 +2,11 @@ PROJECT: Powerful-Calendar
 PLAN: PLAN-2026-11-03-R2
 BRANCH: codex/skin-single-default-closure
 BASELINE: ac8d1555a1c177e600e72e4edb5b450189f1fc2c
-CURRENT_TASK: R-02
+CURRENT_TASK: R-03
 TASK_STATUS: READY
-LAST_COMPLETED_TASK: R-01 (PASS)
-NEXT_TASK: R-02
-NEXT_ACTION: Execute R-02 only
+LAST_COMPLETED_TASK: R-02 (PASS)
+NEXT_TASK: R-03
+NEXT_ACTION: Execute R-03 only
 PHASE: R
 SEP_SIGNOFF: INCOMPLETE (historical parity remains unsigned)
 PRODUCT_CUTOVER: HOLD
@@ -36,4 +36,8 @@ LATEST_VERIFIED_EVIDENCE:
   - "G-05 identifies no newly confirmed FAIL; SSA-10 physical/OEM reminder evidence remains BLOCKED (REC-P1-086). Android interaction tests were NOT TESTED in G-05; other physical checks were NOT TESTED. Historical scoped device passes remain previous evidence only."
   - "R-01 PASS at d26d31b0f4935e0060271aa97070f511d4785c4f: runtime dispatch, startup choice, package/SAF effects, edit checkpoint, and Native recovery audited; appendix added to SINGLE_SKIN_ACCEPTANCE.md. Static path/task/source checks and diff validation passed; no Android or physical test run was required. KEEP_HOST/RECOVERY/DEFAULT_SKIN/TEST_COMPAT and retirement scopes mapped to R-02–R-07."
 
-BLOCKERS: R-01 audit has no blocker; Physical/OEM reminder evidence (REC-P1-086) remains BLOCKED; simultaneous-alarm behavior remains unresolved in the frozen contract. Historical SEP parity remains unsigned and product Cutover stays HOLD. G-04 emulator -list-avds returned no entries although adb confirmed the running QA AVD; Android instrumentation was not run in G-04 or G-05.
+  - "R-02 PASS on source baseline b6f111eb5eadcef31d6c353ddb601df495b53383 plus R-02 changes: explicit QA-only fresh factory policy; production restore remains opt-in and revalidates. Full Gradle gate PASS: JVM 953/953, skin/native boundaries, debug APK, lint (55 warnings, 0 errors), AndroidTest Kotlin compile. Targeted SkinPackageManagerTest 23/23."
+  - "API 35 isolated AVD PowerCal_ChatGPT_QA35_20261103, emulator-5584, application ID dev.powerfulcalendar.d05qar02: Android instrumentation 4/4 executions PASS (fresh WebView, corrupt-factory Native fallback, two force-stop cold WebView restarts). Native fallback also verified on an additional cold Activity launch. Store table snapshots remained unchanged for the tested boot actions."
+  - "Production debug APK SHA-256 4ab2d8915793dae697266285b7cd2b5774cf3a074c545168505fbe9c8ab9b504; isolated QA APK SHA-256 486938d9e9c87184005ac7c9af50a5444c0a4861aed102ae488066b548477321. Logs: .local/android-test/reports/R-02-20261103/ within this worktree. Initial SDK-path, snapshot-helper and PowerShell argument failures are retained in the logs; corrected reruns passed."
+
+BLOCKERS: R-02 has no task blocker; Physical/OEM reminder evidence (REC-P1-086) remains BLOCKED; simultaneous-alarm behavior remains unresolved in the frozen contract. Historical SEP parity remains unsigned and product Cutover stays HOLD. G-04 emulator -list-avds returned no entries although adb confirmed the running QA AVD; Android instrumentation was not run in G-04 or G-05.
