@@ -2,11 +2,11 @@ PROJECT: Powerful-Calendar
 PLAN: PLAN-2026-11-03-R2
 BRANCH: codex/skin-single-default-closure
 BASELINE: ac8d1555a1c177e600e72e4edb5b450189f1fc2c
-CURRENT_TASK: R-01
+CURRENT_TASK: R-02
 TASK_STATUS: READY
-LAST_COMPLETED_TASK: G-05 (PASS)
-NEXT_TASK: R-01
-NEXT_ACTION: Execute R-01 only
+LAST_COMPLETED_TASK: R-01 (PASS)
+NEXT_TASK: R-02
+NEXT_ACTION: Execute R-02 only
 PHASE: R
 SEP_SIGNOFF: INCOMPLETE (historical parity remains unsigned)
 PRODUCT_CUTOVER: HOLD
@@ -34,5 +34,6 @@ LATEST_VERIFIED_EVIDENCE:
   - "Evidence: .local/android-test/reports/single-default-G-04-20261103/ (environment, Gradle, Studio, package, device, and install logs); lint detail at app/build/reports/lint-results-debug.xml."
   - "G-05 PASS: 16 acceptance items map all 16 original SEP rows; each item is PARTIAL overall pending its declared evidence. Original SEP records are unchanged."
   - "G-05 identifies no newly confirmed FAIL; SSA-10 physical/OEM reminder evidence remains BLOCKED (REC-P1-086). Android interaction tests were NOT TESTED in G-05; other physical checks were NOT TESTED. Historical scoped device passes remain previous evidence only."
+  - "R-01 PASS at d26d31b0f4935e0060271aa97070f511d4785c4f: runtime dispatch, startup choice, package/SAF effects, edit checkpoint, and Native recovery audited; appendix added to SINGLE_SKIN_ACCEPTANCE.md. Static path/task/source checks and diff validation passed; no Android or physical test run was required. KEEP_HOST/RECOVERY/DEFAULT_SKIN/TEST_COMPAT and retirement scopes mapped to R-02–R-07."
 
-BLOCKERS: G-05 documentation has no blocker. Physical/OEM reminder evidence (REC-P1-086) remains BLOCKED; simultaneous-alarm behavior remains unresolved in the frozen contract. Historical SEP parity remains unsigned and product Cutover stays HOLD. G-04 emulator -list-avds returned no entries although adb confirmed the running QA AVD; Android instrumentation was not run in G-04 or G-05.
+BLOCKERS: R-01 audit has no blocker; Physical/OEM reminder evidence (REC-P1-086) remains BLOCKED; simultaneous-alarm behavior remains unresolved in the frozen contract. Historical SEP parity remains unsigned and product Cutover stays HOLD. G-04 emulator -list-avds returned no entries although adb confirmed the running QA AVD; Android instrumentation was not run in G-04 or G-05.

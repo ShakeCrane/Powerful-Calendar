@@ -232,3 +232,92 @@ G-04 在 `1e57da5cbb19b4b1348fe390174f629c8871fc47` 实测 JVM 946/946、Studio 
 ## 最短关键路径
 
 R-01 盘点入口 → R-02/R-03 定义并验证启动及历史迁移 → R-04～R-07 收敛日常入口和恢复 → F-01～F-09 逐项完成 Core/Host 与默认 Skin 等价，同时 S-01～S-05 完成可编辑结构、绑定、预览及包往返 → Q-01～Q-04 完成新旧安装、全流程、恢复及真机/OEM 证据 → S-06 从空白项目创作完整皮肤并在 Android 运行，S-07 验证默认源码全量再编辑 → Q-05 独立授权后切换；Q-06 安全清理。视觉美化仅在完整分离与 Studio 创作验收之后进行。顺序表示依赖关系，不能以技术基线代替正式签核。
+
+## R-01 Skin Runtime 入口和副作用审计附表
+
+审计基线：d26d31b0f4935e0060271aa97070f511d4785c4f。本附表是源码调用链审计，不代表设备验收，不改变 16 项 SSA 状态。路径相对仓库根目录；分类表达后续归属，不授权本轮删除。 表内 `ui/v2/X` 简写均指 `app/src/main/java/dev/powerfulcalendar/ui/v2/X`；`MainActivity.kt` 指 `app/src/main/java/dev/powerfulcalendar/MainActivity.kt`。
+
+### 从实际调用确认的行为
+
+1. MainActivity.onCreate 初始化 Store 后，在 setContent 前调用 SkinPackageManager.restoreSelection()，再调用 ActiveVisualSkin.install()，最后组合 PowerCalApp。restoreSelection 读取私有 SharedPreferences powercal-skin-choice/selected。新安装无该键时 currentId() 返回 powercal-default，即 Native；Clear 包不是当前新装选择。
+2. currentId() 读 selected；值类型损坏时同步选择 Native 并 reset registry。restoreSelection 对 powercal-default reset Native；对 Clear/用户包加载和校验成功才激活；未知、缺失或损坏包将 preference 写回 powercal-default 并 reset Native。currentId() 返回一个字符串不证明对应包可加载。
+3. 当前 PROFILE 实值是 native。ActiveVisualSkin.install() 因而注册 NativeSkinHostRegistration。studio-example 只有编译配置改为该值才从 install() 进入；仓库内 installExample() 的调用点只有 PresentationSkinRegistryTest 两处，不是用户运行时选择器。
+4. 实际并存的呈现路径：Native Compose；可信源码编译的 Compiled renderers；SkinPackageManager 对 ui.json 调 RuntimeSkinSchema.parse 后经 RuntimeSkinSurfaces/RuntimeSkinCompose 渲染的声明式 v2；active.web 非空时由 SkinAppShell 进入 WebSkinRoot/Android WebView 的 v3。SkinAssets 的 v1 resource slots 是局部外观覆盖，不是整页 runtime。
+5. 页面级分流分别出现在 SkinnableTimelineScreen、MonthScreen、MemoCenterScreen、AiChatScreen、ToolsPage、SkinnableDraftDeck、SkinnablePickers 和 SkinnableOverlays。Chrome 壳优先 forceNative，其次 v3 Web，再按 v2/compiled/native renderer 选择；不能把 Chrome 分支当成所有页面的单一选择器。
+6. Native 是实际 fresh-install 日常 UI。Native adapters 将 context.Native() 路由到 TimelineScreen、NativeMonthScreen、NativeMemoCenterScreen、NativeAiChatScreen、NativeToolsPage 等。Native 同时承载 Host 可信确认、附件/权限确认、SAF、系统设置等。当前 Clear 包不能独立提供所有这些 Compose 页面功能。
+7. 当前多皮肤普通入口包括 Native Tools 的皮肤区、Clear v3 Settings 的 skinChoices 选择/导出/删除与 Host 导入、v2 RuntimeSkinSurfaces.settings 的 skins 节点。NativeSkinCatalogReview 是 PowerCalApp 调用的切换/删除确认对话框。它们分别由 R-04/R-05 收敛。
+8. 普通确认切换先调用 WebSkinEditService.prepareSkinChange()；活动编辑经 EventFeatureApiV1.checkpointFormalEvent 持久化检查点，失败时阻止该次确认切换。随后 SkinPackageManager.select() 激活已验证包并用 SharedPreferences.apply() 写 selected。切换本身不写 Calendar Store；未完成编辑的检查点是有意的 Store 写入。Skin ID 不经 SettingsDataFeatureApiV1 profile 设置保存。
+9. SAF 导入验证包后写 app-private filesDir/skin-packs/<id>.pcskin，读回哈希后再 rename；不自动激活，不改 Calendar Store。导出复制到用户指定 SAF URI，不改选择或 Store。删除经二次确认；若正在运行先选 Native 并写 preference，然后实际删除用户包文件。R-01/R-04/R-05 不能触发删除。
+10. 仅移除目录 UI 不会自动删除已安装用户包，但 Native Tools/Clear Settings 是当前枚举和导出包的产品入口；包仍留在私有目录，却可能失去 App 内查找/导出能力。R-03 必须保留原文件和 ID；R-04/R-05 移除日常入口时必须继续提供经批准的 Host/SAF 兼容访问及迁移导出路线。RETIRE_DAILY_UI 不等于删除数据授权。
+11. Native 恢复独立于 .pcskin、WebView 和 Studio：MainActivity 的 Activity touch 恢复识别早于 WebView 分发；manager 写 Native preference 并 reset registry；NativeSkinHostRegistration/native-skin 提供 Compose 回退。Web 故障 callback 会尝试保存编辑检查点、切 Native、进入 Tools。风险：Activity 紧急手势不调用 prepareSkinChange；Web 故障即使检查点失败也继续回退并提示不要结束进程。R-07 必须验证两种情况下编辑数据的恢复边界。
+12. Studio 和正式 v3 runtime 共用 .pcskin schemaVersion 3、default-clear 源码与 host.action bridge。Studio builder/validator 产检包；Android 解析同一 ZIP。皮肤不直接获得 Store/Context/凭据/审批 token；消息经 WebSkinHost 解码，再由 PowerCalApp 持有的 PowerCalCoreFeatureApiV1 或 Host adapter 执行。共用格式不等于 WebView、功能等价或设备验收已通过。
+13. Native pages、可信确认、权限/附件对话框和系统 picker 仍被日常功能使用。等对应默认 Skin 流程通过后才能把页面 bodies 从日常入口退役；Host trusted UI 和 Q-03 验证过的最小 Native recovery 子集继续保留。
+
+### 当前调用图
+
+    MainActivity.onCreate
+      ├─ SkinPackageManager.restoreSelection()       [preference → load/validate → registry]
+      ├─ ActiveVisualSkin.install()                  [PROFILE=native → NativeSkinHostRegistration]
+      └─ PowerCalApp(store)
+          ├─ PowerCalCoreFeatureApiV1(store, Android Host adapters)
+          ├─ SkinAppShell(forceNative=tools)
+          │   ├─ forceNative → NativeChromeSkin.Root
+          │   ├─ active.web != null → WebSkinRoot → Android WebView
+          │   │    └─ WebMessagePort → decodeBridgeAction/capability gate
+          │   │         → PowerCalApp Host callback → Core API / Android Host
+          │   │         → state snapshot → Web skin
+          │   └─ page renderer
+          │        ├─ active.runtime → RuntimeSkinSurfaces → RuntimeSkinCompose
+          │        ├─ CompiledSkinRuntime / PresentationSkinRegistry
+          │        └─ Native renderer → context.Native() → Native Compose page
+          └─ Host-owned permissions, SAF, trusted review, reminders, recovery
+
+RuntimeSkinPickerHost 另在 Compose 壳上呈现 Host-owned 日期/时间 modal。SkinAppShell 的 Chrome 分支不等于全页面分发。
+
+### 入口、运行时和副作用处置表
+
+| 文件 / 符号 | 实际调用来源 | 可见行为 | preference / Store / 文件副作用 | 当前依赖 | 分类 | R2 后续任务 | 代码证据 |
+|---|---|---|---|---|---|---|---|
+| app/src/main/java/dev/powerfulcalendar/MainActivity.kt：onCreate | Android 启动 | 首屏前恢复选择；fresh install 当前 Native | 读 preference；初始化 Store 和提醒渠道 | Android lifecycle、Host、manager | KEEP_HOST | R-02, R-03, R-07 | MainActivity.kt:83-92 |
+| MainActivity.kt：dispatchTouchEvent | Activity 输入早于 Compose/WebView | 交替点击紧急回 Native | commit Native preference；手势自身不调 Store | Activity touch、Native recovery | KEEP_RECOVERY | R-02, R-03, R-07 | MainActivity.kt:32-68 |
+| ui/v2/SkinPackageManager.kt：currentId/restoreSelection/selectNativeForEmergencyRecovery | 启动、App 状态和故障 callback | Native、Clear、用户包；未知/损坏包回 Native | 读写 selected；reset 内存 registry；不写 Calendar Store | SharedPreferences、assets、文件校验 | KEEP_HOST | R-02, R-03, R-07 | SkinPackageManager.kt:26-138 |
+| SkinPackageManager.kt：installed/install/export/delete | PowerCalApp Native Tools/Web callbacks | 枚举、导入、导出、删除包 | import 写私有 skin-packs；export 写 SAF；delete 真删包；import 不激活 | SAF、文件系统、解码校验 | KEEP_HOST | R-03, R-04, R-05 | SkinPackageManager.kt:52-178 |
+| ui/v2/SkinAssets.kt：PowerCalSkinPack/PowerCalSkinRegistry | manager 解码后 activate，Compose 读取 | 局部资源、v2 document、v3 bundle 的内存选择 | registry 内存状态，无自身 Store 写 | decoder、Compose slots、WebSkinRoot | KEEP_DEFAULT_SKIN | R-02, R-03, R-07 | SkinAssets.kt:73-119 |
+| ui/v2/PowerCalApp.kt：Core API 与 Host adapters | MainActivity.setContent | 页面、可信确认、系统/file picker 和功能状态 | 业务经 Core API；授权和平台行为在 Host | PowerStore、Core APIs、Android ports | KEEP_HOST | R-07, F-01–F-09 | PowerCalApp.kt:232-264 |
+| app/src/main/java/dev/powerfulcalendar/ui/v2/PowerCalApp.kt：page switch and screen call sites | PowerCalApp Compose content | Displays current page and creates snapshots/callbacks for Timeline/Month/Memo/AI/Tools | Page state and feature calls are Host/Core-owned; no skin choice/package write in these call sites | Page composables and Core/Host feature APIs | KEEP_HOST | R-07, F-01–F-09 | PowerCalApp.kt:2539, 2620, 2728, 2776, 2799, 2867 |
+| app/src/main/java/dev/powerfulcalendar/ui/v2/PowerCalApp.kt：onWebSkinFailure callback | SkinAppShell passes callback to WebSkinRoot | Failed Web runtime returns to Native Tools with recovery message | Attempts edit checkpoint, commits Native preference, changes page state; checkpoint may write draft state | WebSkinRoot, WebSkinEditService, SkinPackageManager, Native Tools | KEEP_RECOVERY | R-02, R-03, R-07, Q-03 | PowerCalApp.kt:2515-2536; SkinnableChrome.kt:15-39 |
+| app/src/main/java/dev/powerfulcalendar/ui/v2/PowerCalApp.kt：皮肤目录状态投影和 skinChoices UI wiring | Native Tools / v2 Settings / Clear Web Settings bindings | 列出候选包并暴露选择/导入/导出/删除入口 | 初始读取 manager 列表/选择；投影自身不写 Store 或用户文件 | Native/Runtime/Web settings surfaces | RETIRE_DAILY_UI | R-04, R-05 | PowerCalApp.kt:262-267, 2431-2441, 2549-2573 |
+| app/src/main/java/dev/powerfulcalendar/ui/v2/PowerCalApp.kt：SAF/package host handlers | Native Tools / Web action callbacks | SAF import/export, confirmed selection/delete | Import writes user-selected package to app-private directory without activation; export copies archive; selection writes preference and may checkpoint an active edit; confirmed delete removes installed user package | manager, SAF, edit checkpoint API | KEEP_HOST | R-02, R-03, R-04, R-05, R-07 | PowerCalApp.kt:1785-1825, 2137-2158, 3152-3200; SkinPackageManager.kt:52-178 |
+| native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativeToolsPage.kt：皮肤 section | PowerCalApp ToolsPage | Native/Clear/用户包列表、切换、导入/导出/删除 | 委托 Host callbacks | Native Settings Compose、包目录 | RETIRE_DAILY_UI | R-03, R-04 | NativeToolsPage.kt:47-109 |
+| native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativeSkinCatalogReview.kt | PowerCalApp pending activation/delete | 切换/删除确认和回退提示 | 只确认；回调才调用 manager | Native Compose dialog、Host | RETIRE_DAILY_UI | R-04 | NativeSkinCatalogReview.kt:11-42；PowerCalApp.kt:3152-3200 |
+| tools/skin-studio/default-clear/source/web/app.js：skinChoices/renderSettings | Clear v3 Settings DOM | 候选选择、导出、删除按钮 | 发 host.action；副作用由 Host 执行 | manifest capability、WebSkinHost | RETIRE_DAILY_UI | R-05 | app.js:610-650 |
+| tools/skin-studio/default-clear/manifest.json 与 app/src/main/assets/powercal-clear-default.pcskin | Studio build；MainActivity restore | 唯一正式 APK .pcskin 当前为 Clear v3，但非新装选择 | APK 静态资源；选择另存 preference | WebSkinHost、Studio canonical source | KEEP_DEFAULT_SKIN | R-02, R-05, R-07, S-07 | manifest.json:1-24；main assets .pcskin 数量 1 |
+| ui/v2/skins/ActiveVisualSkin.kt：PROFILE/install/native branch | MainActivity.onCreate after restoreSelection; invalid configuration fallback | Current profile is native and registers fallback renderers; fresh-install ordinary pages currently use this route | Process renderer registries only; Web active package registry is separate | NativeSkinHostRegistration; independently loaded Web package | KEEP_RECOVERY | R-02, R-03, R-07, Q-03 | ActiveVisualSkin.kt:22-28; MainActivity.kt:86-87 |
+| ui/v2/skins/ActiveVisualSkin.kt：studio-example branch/installExample | Only compile-time PROFILE change or direct test/preview call; no user selector | Compiled example renderers replace registered renderer set | Process renderer registries only | StudioExample Kotlin renderers and typed contexts | RETIRE_AFTER_PARITY | R-06 | ActiveVisualSkin.kt:22-44; PresentationSkinRegistryTest.kt:50,93 |
+| app/src/test/java/dev/powerfulcalendar/ui/v2/PresentationSkinRegistryTest.kt | Calls installExample() for renderer contract tests | Test-only; no end-user entry | Test process registry only | Compiled example source retained for tests until R-06 fixture decision | KEEP_TEST_COMPAT | R-06 | PresentationSkinRegistryTest.kt:50,93 |
+| ui/v2/NativeSkinHostRegistration.kt：install 与恢复用 Native adapters | ActiveVisualSkin.install；Activity recovery 在同进程保留注册表 | Native Chrome/Tools/overlay/picker 等安全回退入口 | 只注册 renderer，不独立写 Store | Native Compose recovery、Host callbacks | KEEP_RECOVERY | R-02, R-03, R-04, R-07, Q-03 | NativeSkinHostRegistration.kt:15-90；MainActivity.kt:86-87 |
+| Native 默认日常页面路由（Timeline/Month/Memo/AI/Settings/Navigation/Deck） | PROFILE=native → Native adapters → 各 `context.Native()` 页面 | 当前新装和普通页面使用 Native UI | 页面业务仍走 Host/Core；展示层自身不拥有 Store | app/native-skin Compose 页面 | RETIRE_AFTER_PARITY | R-02, R-06, F-02–F-09 | ActiveVisualSkin.kt:22-28; NativeSkinHostRegistration.kt:31-90; PresentationSkinRuntime.kt:184-208, 243-254, 325-345, 401-524 |
+| ui/v2/CompiledSkinTimeline.kt：CompiledSkinRuntime.timeline dispatch | SkinnableTimelineScreen renderer dispatch | Current Native timeline or trusted compiled renderer | Registry only; actions delegate to Host/Core | Compiled renderer API | RETIRE_AFTER_PARITY | R-06, F-02 | CompiledSkinTimeline.kt:188-190 |
+| ui/v2/CompiledSkinTimeline.kt：TimelineSkinContext/SkinnableTimelineScreen adapter | PowerCalApp Timeline call | Supplies timeline DTOs and callbacks to renderer, including Native recovery view | Callbacks delegate to Host/Core | Timeline projection and stable renderer context | KEEP_HOST | R-07, F-02 | CompiledSkinTimeline.kt:40-190; PowerCalApp.kt:2799 |
+| ui/v2/PresentationSkinRuntime.kt：Registry 与页面 dispatch | PowerCalApp Month/Memo/AI/Tools/Navigation | Native、Compiled 示例或默认 renderer | registry 内存；动作交 Host/Core | Native page bodies、contexts | RETIRE_AFTER_PARITY | R-06, F-02–F-09 | PresentationSkinRuntime.kt:73-108, 184-208, 243-254, 325-346, 401-509 |
+| PresentationSkinRuntime.kt：各 VisualContext.Native() | Native adapters/示例显式委托 | Native 完整页面回退；当前也承载日常功能 | 业务副作用在 Host/Core | Native Timeline/Month/Memo/AI/Tools | KEEP_RECOVERY | R-04, R-06, F-02–F-09, Q-03 | PresentationSkinRuntime.kt 各 context.Native() |
+| ui/v2/RuntimeSkinCompose.kt、RuntimeSkinSchema.kt | manager 解析 v2 ui.json；screen surface 调 scene | 声明式 Compose 页面和组件 | action 到 Host callback；无直接 Store 能力 | v2 parser、RuntimeSkinSurfaces | RETIRE_AFTER_PARITY | R-06, F-02–F-09 | SkinPackageManager.kt:245；RuntimeSkinCompose.kt:45-82；RuntimeSkinSchema.kt:62-162 |
+| ui/v2/RuntimeSkinSurfaces.kt | page composables | v2 Timeline/Month/Memo/AI/Settings/Deck/Overlay/Chrome/picker 及 skins | actions 到 Host；自身无持久化 | v2 bindings、Native slots、registry | RETIRE_AFTER_PARITY | R-05, R-06, F-02–F-09 | RuntimeSkinSurfaces.kt:25-305 |
+| ui/v2/RuntimeSkinPickerHost.kt and SkinnablePickers.kt | v2 picker request | Host Compose date/time modal; confirm returns selected value | Cancel does not apply value | Android Compose picker and v2 schema | RETIRE_AFTER_PARITY | R-06, F-05, F-09 | RuntimeSkinPickerHost.kt:14-103; SkinnablePickers.kt:42 |
+| ui/v2/SkinnableChrome.kt | PowerCalApp shell/notice | Native Chrome、Web root、compiled/v2 chrome、恢复提示 | recovery 交 PowerCalApp；自身不写 Store | WebSkinRoot、NativeChromeSkin、registries | KEEP_HOST | R-07, Q-03 | SkinnableChrome.kt:15-58 |
+| ui/v2/WebSkinHost.kt：WebSkinRoot/decodeBridgeAction | active.web 分支、WebMessagePort | Web v3 页面在 Android WebView 运行并请求 Host 动作 | WebView 不直接持有 Context/PowerStore；Host 校验 capability/action | manifest、Host callbacks、Core APIs | KEEP_HOST | R-05, R-07, F-01–F-09 | WebSkinHost.kt:67-106, 128-186, 296-425, 496-690 |
+| ui/v2/WebSkinEditBridge.kt：WebSkinEditService | PowerCalApp 创建；web edit/draft actions | 编辑、冲突、保存和切换检查点 | DraftReview/Event API 写草稿/检查点；正式提交另经确认 | DraftReviewFeatureApiV1、EventFeatureApiV1 | KEEP_HOST | R-07, F-05, F-06, Q-03 | WebSkinEditBridge.kt:429 起；prepareSkinChange():1708-1738 |
+| Studio builder/validator 和 default-clear source | Studio CLI/Web editor | 编辑、预览、build/export/reimport | 改 Studio project 或包；不直写 App Store | 同一 v3 .pcskin 与 Host bridge | KEEP_DEFAULT_SKIN | R-05, S-01–S-07 | tools/skin-studio/build_default_clear.py；tests/test_default_clear.py |
+
+混合文件按符号分类，不扩大成整文件删除许可。KEEP_TEST_COMPAT 只用于 R-06 后明确保留的历史 parser、迁移测试和 fixtures，不表示旧 runtime 可继续日常可达。Native 页面通过 Skin 等价前不得退役；之后仍需 Q-03 验证最小 recovery 子集和 Host trusted UI。RETIRE_DAILY_UI 不授权删除用户文件。
+
+### R-02～R-07 前置依赖与风险
+
+| 任务 | 前置依赖 | 风险和约束 |
+|---|---|---|
+| R-02 | 本调用/副作用图、现有 Clear 包和 manager 行为 | Fresh install 当前 Native；保留 ID powercal-clear-default、工厂包校验和 Native recovery。先隔离 QA，不直接公开切换。 |
+| R-03 | R-02 选择策略与新测试 | 分别迁移 Native/Clear/第三方/损坏选择；保留用户包原文件、ID、SHA 和 Store/提醒；只改 skin preference。 |
+| R-04 | R-03 兼容旧选择；盘点 Native Tools 其余功能 | 移除目录会移除当前包枚举/导出入口；继续保留 SAF Host、包访问与迁移导出、备份/权限/提醒、Native recovery。 |
+| R-05 | R-02/R-03 行为已验证，R-04 Host 路径明确 | 清除 Clear app.js 的选择/导入/删除 daily entry；保留批准的用户包导出通路，不影响提醒、备份、编辑及 Host error feedback。 |
+| R-06 | 对应 F/S 功能等价完成；用本图再核调用点 | 不可整文件删除：CompiledSkinTimeline 含共用 Timeline adapter，PresentationSkinRuntime 含 Native fallback，native-skin 有恢复/trusted UI；保留任务卡要求的测试 fixtures/parser tests。 |
+| R-07 | R-02/R-03 迁移可靠；R-06 dispatch 范围明确；checkpoint 语义验证 | 覆盖缺包、坏包/未知 ID、偏好写失败、renderer crash 和脏编辑恢复。Activity 手势当前跳过 prepareSkinChange，Web 故障即使 checkpoint 失败仍回退；验证草稿可恢复及失败提示后才可关闭。 |
