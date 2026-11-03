@@ -51,11 +51,11 @@ G-04 在 `1e57da5cbb19b4b1348fe390174f629c8871fc47` 实测 JVM 946/946、Studio 
 - CORE API：core-api/src/main/kotlin/dev/powerfulcalendar/core/api/v1/CalendarFeatureApiV1.kt；app/src/main/java/dev/powerfulcalendar/core/api/v1/StoreCalendarFeatureApiV1.kt。
 - DEFAULT SKIN：中央时轴、蓝色当前线、独立左右翼、无上限事件；碰撞只隐藏标题；Today 本地午间/24h。用户动作 → API → Core → 可观察结果：缩放、左右滚动并点重叠事件 → CalendarFeatureApiV1.queryWindow / EventFeatureApiV1.queryEvent → 窗口及原实例不变 → 每个事件准确显示并可点击。
 - STUDIO：可创建时轴组件、绑定窗口和动作，修改样式并保持命中。
-- ANDROID QA：NOT TESTED（本轮）；重放多重叠、缩放、双击重置、Today 和命中并比较 Store 不变。
+- ANDROID QA：PARTIAL；F-02 在隔离 API 35 AVD 实测 Today/24h、左右翼独立滚动、月历和时间轴创建及拖动移动。多重叠布局、完整命中矩阵及无障碍仍待验收。
 - PHYSICAL：NOT TESTED（本轮）；在真机重放主要动作，记录系统、权限、界面及 Store 结果。
 - 测试入口：app/src/test/java/dev/powerfulcalendar/core/api/v1/CalendarFeatureApiV1Test.kt；app/src/androidTest/java/dev/powerfulcalendar/ui/v2/TimelineDragWebViewInstrumentedTest.kt。
-- 状态：实现 PARTIAL；JVM PARTIAL（G-04 门禁与关联测试，不等于本项签核）；模拟器 NOT TESTED（本轮，历史切片见 SOURCE）；真机 NOT TESTED；总体 PARTIAL。
-- 剩余及签核：按上述动作逐项获得目标构建的 Core/界面结果、Studio 往返、模拟器和真机证据，核对冻结契约后签核。后续任务：F-01, F-02, S-02, S-03, Q-02, Q-03。
+- 状态：实现 PARTIAL；JVM PARTIAL（F-02 全量 967/967 通过，但不等于完整验收项签核）；模拟器 PARTIAL（见 F-02 证据，完整多重叠/无障碍覆盖未完成）；真机 NOT TESTED；总体 PARTIAL。
+- 剩余及签核：补齐多重叠命中、无障碍、Studio 往返与真机证据后对照冻结契约签核。后续任务：S-02, S-03, Q-02, Q-03。
 
 ### SSA-03｜月历、日期与重复实例
 
@@ -63,10 +63,10 @@ G-04 在 `1e57da5cbb19b4b1348fe390174f629c8871fc47` 实测 JVM 946/946、Studio 
 - CORE API：core-api/src/main/kotlin/dev/powerfulcalendar/core/api/v1/RecurrenceFeatureApiV1.kt；app/src/main/java/dev/powerfulcalendar/core/api/v1/CoreRecurrenceFeatureApiV1.kt。
 - DEFAULT SKIN：月导航、日期选择、实例列表与日期创建入口。用户动作 → API → Core → 可观察结果：选择月份和日期并打开重复实例 → CalendarFeatureApiV1.queryWindow / RecurrenceFeatureApiV1.queryOccurrenceByKey → 保留原始实例键与选中日期 → 日历和编辑器显示同一实例。
 - STUDIO：创建月网格、实例组件及日期绑定。
-- ANDROID QA：NOT TESTED（本轮）；切月、选择日期、打开实例并比较键、表单和 Store。
+- ANDROID QA：PARTIAL；F-02 实测月历选中日期并创建 ACTIVITY；重复 occurrence 的 Web DOM、切月实例身份和冷启动仍待 F-03 验收。
 - PHYSICAL：NOT TESTED（本轮）；在真机重放主要动作，记录系统、权限、界面及 Store 结果。
 - 测试入口：app/src/test/java/dev/powerfulcalendar/core/api/v1/RecurrenceFeatureApiV1Test.kt；app/src/androidTest/java/dev/powerfulcalendar/ui/v2/NativeClearMonthOccurrenceParityInstrumentedTest.kt。
-- 状态：实现 PARTIAL；JVM PARTIAL（G-04 门禁与关联测试，不等于本项签核）；模拟器 NOT TESTED（本轮，历史切片见 SOURCE）；真机 NOT TESTED；总体 PARTIAL。
+- 状态：实现 PARTIAL；JVM PARTIAL（F-02 全量 967/967，但 occurrence-specific cases 尚未签核）；模拟器 PARTIAL（月历选日/创建已测，重复实例 DOM 仍待 F-03）；真机 NOT TESTED；总体 PARTIAL。
 - 剩余及签核：按上述动作逐项获得目标构建的 Core/界面结果、Studio 往返、模拟器和真机证据，核对冻结契约后签核。后续任务：F-03, F-06, S-03, Q-02。
 
 ### SSA-04｜Memo 和待办
@@ -349,7 +349,7 @@ MainActivity.setContent (MainActivity.kt:89-91)
 
 | ID | 真实源码及当前行为 | 分类与风险（未确认为产品故障） | 应由谁承担 / 既有 API | 最小验证与唯一任务 |
 | --- | --- | --- | --- | --- |
-| F01-R1 | `WebSkinTimelineProjection.build` 调用 `TimelineLayout.layout` 并把 lane 写入 Skin DTO（`WebSkinTimelineProjection.kt:69-83`）；默认 Skin 的 DOM 负责真正的事件卡片布局。 | **Presentation 逻辑落在 Host/Core 包投影内。** Skin 更换外观或组件布局时仍受 Host 预分配 lane 约束，职责与 Skin 管布局的目标不一致；目前没有从该调用点确认渲染故障。 | F-02 将像素/卡片 lane 归 Skin；时间、事件、重复实例和有效移动仍由 `CalendarFeatureApiV1`、`RecurrenceFeatureApiV1`、`EventFeatureApiV1` 提供或校验，不新增业务 API。 | 用相同测试 Store 比较 Native/Clear 时间轴中真实重叠项的 lane、命中目标、拖动与取消零写入；使用现有 `TimelineReturnViewportInstrumentedTest.kt`、`TimelineDragWebViewInstrumentedTest.kt`、`WebSkinHostProjectionTest.kt`，Android WebView 结果通过后再收敛。**任务：F-02。** |
+| F01-R1 | F-02 已收敛：WebSkinTimelineProjection.build 只输出业务身份和真实时间边界；默认 Skin 的 timelineLaneAssignments 负责视觉 side/lane（WebSkinTimelineProjection.kt:67-85；default-clear/source/web/app.js:693-722,788-812）。PowerCalApp 的 Web 状态和移动版本检查使用精确 CalendarFeatureApiV1 时间窗（PowerCalApp.kt:1982-1988,2308-2314）。 | 原 Host 预分配视觉 lane 已移除；本轮还复现并修复 WebView 激活时 Compose 记忆列表滞后、导致事件缺席或移动 revision stale 的路径。剩余时间轴完整多重叠/无障碍验收仍属 SSA-02 PARTIAL。 | 业务时间、eventSeq、revision、occurrenceKey 和移动合法性仍由 CalendarFeatureApiV1、RecurrenceFeatureApiV1、EventFeatureApiV1 提供或校验；仅布局归 Skin，不新增 API。 | WebSkinHostProjectionTest、TimelineDragWebViewInstrumentedTest.sameActivityFixtureLongPressMoveProducesEquivalentNativeAndClearDrafts、TimelineReturnViewportInstrumentedTest 及 API 35 实际 WebView 创建/移动路径均通过。证据：.local/android-test/reports/F-02-20261104/。状态：F-02 已完成。 |
 | F01-R2 | `WebSkinMonthProjection` 在 Host 保存 `month/selectedDate` 并构造 42 日查询区间及每个 occurrence 的 `date`（`WebSkinMonthProjection.kt:14-21,27-78`）；Clear `renderMonth` 再依据 month/zone 计算展示格数、日期并把 `item.date` 关联到 DOM（`default-clear/source/web/app.js:850-896`）。 | **日历网格/日期映射存在 Host 与 Skin 两处呈现计算。** 月份导航、格子数量或 zone 映射发生差异时，Host 可返回实例但 DOM 仍可能漏显/错格；这是需要复验的边界风险，不是已确认故障。 | Core `CalendarFeatureApiV1` 负责事件窗口，`RecurrenceFeatureApiV1` 负责 occurrence 与身份；F-03 复验后让 Skin 拥有其月份格子/DOM 呈现。Host 保留输入校验、可信 DTO、eventSeq/revision/occurrenceKey。 | 以跨月每日重复 ACTIVITY 逐层比对 Core → Host JSON → Web state → DOM 的日期、owner/revision/occurrenceKey；执行换月、点选和 force-stop 重启。使用 `NativeClearMonthOccurrenceParityInstrumentedTest.kt`、`WebSkinHostProjectionTest.kt`、`WebSkinRecurrenceBridgeTest.kt`。**任务：F-03。** |
 | F01-R3 | `PowerCalApp` 保存 `memoVisibleLimit`，用 `MemoProjectionPaging` 控制 visible count / load-more；再将分页后数据投给 Web（`PowerCalApp.kt:516-518,701-704,2334-2347`）。Skin `renderMemo` 负责 Open/Done 过滤和行 DOM（`default-clear/source/web/app.js:898-920`）。 | **纯展示分页状态由 Host 持有。** 页面结构和可见条数因此不能完全由 Skin 独立创作；目前未发现错误或数据丢失。 | `MemoFeatureApiV1.queryEntriesPage` 保持唯一数据/排序/完成状态来源；`EventFeatureApiV1.setOccurrenceCompletion` 保持完成事务。将“当前显示多少行/加载更多”作为 Skin 表现状态验证，不将筛选或完成规则下放为 Core 重复实现。 | 用超过 250 条并含重复 occurrence 的隔离数据验证首屏、续页、Open/Done、标题点击、完成/撤销和冷启动；Store 的 eventSeq/revision/occurrenceKey 逐项对照。使用 `ClearMemoProjectionInstrumentedTest.kt`、`WebSkinHostProjectionTest.kt`、`WebSkinBridgeTest.kt`。**任务：F-04。** |
 
@@ -360,7 +360,7 @@ MainActivity.setContent (MainActivity.kt:89-91)
 | Core 业务决策 | `core-api/src/main/kotlin/dev/powerfulcalendar/core/api/v1/` 中 Calendar、Event、Recurrence、Memo、DraftReview、AI、Reminder 等版本化契约；运行时由 `PowerCalCoreFeatureApiV1` 连接现有 Store/Core 服务。 | 事件身份、revision、重复实例、范围编辑、事务、完成状态、提醒与提案审核须留在 Core/API。`PowerCalApp` 创建 API 并传入 Android ports 是 Host composition，不是 Skin 直接访问 Store。 |
 | Host 平台/授权适配 | `MainActivity.kt:89-91`、`PowerCalApp.kt:232-260`、`WebSkinHost.kt:102-106,264-425,496-690`、`WebSkinStateFeed.kt:6-29`、`WebSkinEditBridge.kt:429-470,713-745`。 | 持有 Context/Store 构造、WebMessage/capability/action 校验、时区及页面状态、文件/权限/系统 UI、可信确认、把 API DTO 编成 Skin wire state。`WebSkinStateFeed` 只推送有版本的单向状态且没有写权限（`WebSkinHost.kt:294,385-402,451-456`）。继续保持不可向脚本暴露数据库或授权对象。 |
 | Skin 展示/输入 | `default-clear/source/web/app.js` 的 `renderTimeline`、`renderMonth`、`renderMemo`（`693-748,850-920`），及 HTML/CSS 布局和手势。 | 页面树、视觉布局、卡片/网格排列、Open/Done 可视筛选、用户动作和显示格式归 Skin。Skin 只发送带身份/版本的请求并展示 API 结果；不得维护重复规则或自行提交正式业务数据。 |
-| 待收敛交叉 | F01-R1 时间轴 lane；F01-R2 月历状态/网格映射；F01-R3 Memo 可见行分页状态。 | 仅按上表映射到已有 F-02/F-03/F-04，设置对应可观测测试；F-01 不改产品代码、不新增 API、不提高任何 SSA 状态。 |
+| 待收敛交叉 | F01-R2 月历状态/网格映射；F01-R3 Memo 可见行分页状态。F01-R1 已由 F-02 收敛。 | 仅按上表映射到已有 F-03/F-04，设置对应可观测测试；F-01 不新增 API、不提高任何 SSA 状态。 |
 
 重点调用核查结果：`PowerCalStores` 在 `PowerCalApp.kt:168-183` 创建并共享单一 `PowerStore`，Feature API 在 `PowerCalApp.kt:243-260` 装配；这属于 Android Host composition。审计到的 Web Host/编辑桥与 `native-skin` 页面源码没有直接调用 `PowerStore`、`DeckController`、`RecurrenceEngine` 或 `ReminderPolicy`；`WebSkinEditService.deck` 实际类型为 `DraftReviewFeatureApiV1`（`WebSkinEditBridge.kt:429-435`），重复实例由 `RecurrenceFeatureApiV1` 查询。提醒读取/协调经 `ReminderFeatureApiV1`（`PowerCalApp.kt:598,798-805,2323`），直接打开精确闹钟系统页是 Host 平台动作（`PowerCalApp.kt:2111,2570`）。时区由 Host 捕获并传入 API 查询/投影（`PowerCalApp.kt:240-241`）；AI 审核经 `aiProposals.assessReview`，发布审批由 Core API 签发后提交（`PowerCalApp.kt:335,1541,2614-2616`）。`WebSkinStateFeed` 的 `publish/connect/disconnect` 仅传输状态帧，不承载 action 或 Store 写入（`WebSkinStateFeed.kt:9-29`）。在本次有限扫描范围内，这些属于正确 Host/API 分层，没有发现需另立 Core 修复任务的直接调用。
 
@@ -369,3 +369,13 @@ MainActivity.setContent (MainActivity.kt:89-91)
 - **源码审计：PASS**；至少三处具体边界风险及两条正确 API 路径已标出实际符号、行号、对应测试和既有任务。风险项不是已确认 FAIL。
 - **产品功能、JVM、Android 模拟器、真机：本轮均未执行**；本任务是只读责任审计，设备等价仍由对应 F-02/F-03/F-04 验收。
 - SSA-01～SSA-16 原有实现/JVM/模拟器/真机状态未改变；SEP 历史签核仍 INCOMPLETE，Product Cutover 仍 HOLD。
+
+### F-02｜时间轴及导航：统一 Camera、窗口与事件交互
+
+- 实现：PASS（本任务范围）。Skin 根据真实事件区间分配视觉 side/lane；Host timeline DTO 不再携带 presentation lane。Web 状态快照与移动 revision 校验从当前 Core CalendarWindow 取数，避免激活时使用滞后的 Compose 记忆列表。临时新建编辑器补齐 wire patch 所需 stateRevision，仍由现有 WebEdit/Core API 流程处理。
+- JVM：PASS，完整 :app:testDebugUnitTest 为 967/967、0 failures/errors/skips；定向 Host projection 与 transient editor 回归合计 25/25 PASS。两条源码边界检查 PASS。
+- Android API 35：PARTIAL evidence, 7/7 targeted instrumented executions PASS：Today/24h 恢复、左右时间翼独立滚动、月历选择日期创建、时间轴 ACTIVITY 创建、ALARM/DEADLINE 创建、Native/Clear 同一 ACTIVITY 移动草稿等价。设备：隔离 AVD PowerCal_ChatGPT_QA35_20261103，串号 emulator-5554。真机/OEM NOT TESTED。
+- 构建与默认包：PASS；Debug APK SHA-256 878a70f8c5fe4411ad28a149a37b1335fab1104f0c6594e0c35afcc070d6cff2；APK 仅有一个 powercal-clear-default.pcskin，与构建源码字节一致，SHA-256 299e4bdd78c8936f6c15db0200172e659aaa5b0e0643f0d70c115966ac35a9f4。Lint 0 errors / 56 warnings；AndroidTest Kotlin 编译 PASS。
+- 具体修复证据：新建 ACTIVITY 的 deck.patch 曾因 transient editor 快照缺少 stateRevision 被 wire decoder 拒绝；另一个 WebView 激活竞态让可见时间窗已有 Core 事件、Skin 状态却读取到空的记忆列表，并使移动检查读到旧 revision。相应 JVM 和实际 WebView 回归验证修复；Store 仅在显式确认后写入。
+- 主要改动：PowerCalApp.kt、WebSkinEditBridge.kt、WebSkinTimelineProjection.kt、WebSkinHostProjectionTest.kt、WebSkinEditBridgeTest.kt、TimelineCreateContextWebViewInstrumentedTest.kt、TimelineDragWebViewInstrumentedTest.kt、默认 Clear app.js 与正式 .pcskin。完整门禁和设备日志位于 .local/android-test/reports/F-02-20261104/。
+- 验收边界：SSA-02 与 SSA-03 总体状态均保持 PARTIAL；本任务结果不替代重复实例 DOM 全生命周期、完整重叠/无障碍、Studio 往返或真机验证。历史 SEP 签核仍 INCOMPLETE，Product Cutover 仍 HOLD。

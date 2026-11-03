@@ -2,16 +2,16 @@
 
 唯一实时任务入口：docs/agent-handoff/CURRENT.md。本文后续内容是完整保留的历史进度；其中所有 NEXT_ACTION / NEXT 项只代表当时状态，不是当前执行命令。
 
-## 当前状态（2026-11-03）
+## 当前状态（2026-11-04）
 
-- PLAN：PLAN-2026-11-03-R2；唯一施工分支：codex/skin-single-default-closure。
-- G-03 起始 HEAD：f4c0f6c6d9e31c6bfc4d84dfc0937f550a32e92a；本状态随 G-03 文档提交记录，当前精确 HEAD 以 git rev-parse HEAD 为准。
-- G-01：PASS。独立施工 Worktree 基于 origin/feat/skin-first-separation。
-- G-02：PASS。Worktree 台账已提交；不得删除/清理其保护的修改、设计文件、测试证据或历史工作区。
-- G-03：PASS。治理裁决、历史状态标注及唯一 CURRENT 入口已完成。
-- 产品目标：Core 管功能并通过稳定 API 服务 Skin；Skin 管日常表现；正式出厂只保留唯一默认皮肤（一套未美化 .pcskin）；Native 仅用于安全恢复；Studio 从零创作完整皮肤；验收完成后才经 Studio API 应用 Claude 设计。
-- 历史 SEP 状态未完全签核；没有新设备证据。正式 Skin Cutover / Release 仍 HOLD。
-- 唯一下一动作：G-04，建立本轮可复验技术基线。细节只看 R2 的 G-04 卡和 CURRENT.md。
+- PLAN：PLAN-2026-11-03-R2；唯一施工分支：codex/skin-single-default-closure；当前 HEAD：639bf2cbd2a4cd60cb88c262ae126dfa69704d98。
+- G-01～G-05：PASS；Worktree 保护台账和历史验收证据继续保留。
+- R-01～R-05：PASS；R-06/R-07 仍 DEFERRED，相关 Native/Compiled/v2 页面不可提前删除。
+- F-01：PASS。F-02：PASS，提交 639bf2cbd2a4cd60cb88c262ae126dfa69704d98；JVM 967/967、两项边界、APK/Lint/AndroidTest Kotlin 编译通过，API 35 隔离 AVD 七项定向仪器执行通过。
+- F-02 APK SHA-256：878a70f8c5fe4411ad28a149a37b1335fab1104f0c6594e0c35afcc070d6cff2；唯一默认 .pcskin 与 APK 资源逐字节一致，SHA-256 299e4bdd78c8936f6c15db0200172e659aaa5b0e0643f0d70c115966ac35a9f4。
+- 唯一下一任务：F-03，验证重复实例从 Core 到 Host/Web state/DOM、切月、选择及冷启动。
+- 产品目标：Core 管功能和业务；Skin 管日常表现并调用稳定 API；出厂仅有一套未美化默认 .pcskin；Native 仅用于安全恢复；Studio 必须能从空白项目创作完整皮肤；全部分离验收后才通过 Studio 应用 Claude 设计。
+- 历史 SEP 状态未完全签核；真机/OEM 证据仍有缺口；正式 Skin Cutover / Release 保持 HOLD。历史进度中的 NEXT_ACTION 仅代表当时状态；唯一实时入口是 CURRENT.md。
 
 ## 历史进度正文（全文保留；不作为当前任务入口）
 
