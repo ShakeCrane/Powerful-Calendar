@@ -2,3 +2,13 @@
 body { margin: 0; background: Canvas; color: CanvasText; }
 main { padding: 1rem; }
 #content { min-height: 12rem; }
+#page-navigation { display: flex; flex-wrap: wrap; gap: .35rem; margin: .75rem 0; }
+#page-navigation button { font: inherit; }
+.pc-component { box-sizing: border-box; }
+.pc-component-container, .pc-component-scroll, .pc-component-timeline,
+.pc-component-resource-layer { display: block; padding: .5rem; border: 1px solid currentColor; }
+.pc-component-month-grid { display: grid; grid-template-columns: repeat(7, minmax(2rem, 1fr)); gap: .25rem; }
+.pc-component-date-button, .pc-component-button { min-height: 2rem; }
+.pc-component-event-card, .pc-component-memo-row, .pc-component-chat-item,
+.pc-component-settings-row { display: block; padding: .5rem; border-bottom: 1px solid currentColor; }
+.pc-component-form-field { display: grid; gap: .25rem; }

@@ -64,7 +64,8 @@ class PreviewParityTest(unittest.TestCase):
         self.assertEqual(["host.read"], blank["manifest"]["capabilities"])
         self.assertTrue(blank["manifest"]["fullCanvas"])
         files = {name: base64.b64decode(data) for name, data in blank["files"].items()}
-        self.assertEqual({"project.json", "web/index.html", "web/style.css", "web/app.js"}, set(files))
+        self.assertEqual({"project.json", "web/index.html", "web/style.css", "web/app.js",
+                          "web/project-tree-v1.js"}, set(files))
         self.assertNotIn(b"Clear", files["web/index.html"])
         self.assertIn(b"powercal-port", files["web/app.js"])
         project = json.loads(files["project.json"])
@@ -77,12 +78,18 @@ class PreviewParityTest(unittest.TestCase):
         project["pages"][1]["title"] = "Month metadata after reopen"
         project["pages"][1]["components"][0]["props"]["editorNote"] = "persisted"
         files["project.json"] = json.dumps(project, ensure_ascii=False, indent=2).encode("utf-8")
+        expected_files = dict(files)
+        expected_files["web/project-tree-v1.js"] = v3._page_tree_runtime_source(project)
         blank["files"] = {name: base64.b64encode(data).decode("ascii")
                           for name, data in files.items()}
         packed = self.post("/api/export-v3", blank)
         manifest, exported = v3.unpack(packed)
         self.assertEqual("Blank persistence fixture", manifest["name"])
-        self.assertEqual(files, exported)
+        self.assertEqual(expected_files, exported)
+        runtime_text = exported["web/project-tree-v1.js"].decode("utf-8")
+        runtime_literal = runtime_text.removeprefix(
+            "window.__POWERCAL_PAGE_TREE_V1__=JSON.parse(").removesuffix(");\n")
+        self.assertEqual(json.loads(exported["project.json"]), json.loads(json.loads(runtime_literal)))
         reopened_project = json.loads(exported["project.json"])
         self.assertEqual("Month metadata after reopen", reopened_project["pages"][1]["title"])
         self.assertEqual("persisted", reopened_project["pages"][1]["components"][0]["props"]["editorNote"])
@@ -93,7 +100,7 @@ class PreviewParityTest(unittest.TestCase):
         self.assertEqual(manifest["name"], reopened["manifest"]["name"])
         reopened_files = {name: base64.b64decode(data)
                           for name, data in reopened["files"].items()}
-        self.assertEqual(files, reopened_files)
+        self.assertEqual(expected_files, reopened_files)
 
     def test_preview_and_zip_share_exact_web_bytes(self):
         obj = json.loads(self.get("/api/template-v3"))

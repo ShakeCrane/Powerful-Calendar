@@ -35,12 +35,14 @@ async function main(){
       "--remote-allow-origins=*","--remote-debugging-port=0","--user-data-dir="+profile,
       "about:blank"],{stdio:"ignore"});
     const portFile=path.join(profile,"DevToolsActivePort");
-    for(let n=0;n<150&&!fs.existsSync(portFile);n++){
+    let port="";
+    for(let n=0;n<150&&!port;n++){
       if(browser.exitCode!==null)throw Error("Browser exited "+browser.exitCode);
-      await delay(100);
+      try{if(fs.existsSync(portFile))port=fs.readFileSync(portFile,"utf8").split(/\r?\n/)[0]}
+      catch(error){if(error.code!=="EBUSY"&&error.code!=="EPERM")throw error}
+      if(!port)await delay(100);
     }
-    if(!fs.existsSync(portFile))throw Error("Browser startup timed out");
-    const port=fs.readFileSync(portFile,"utf8").split(/\r?\n/)[0];
+    if(!port)throw Error("Browser startup timed out before its DevTools port became readable");
     const target=await (await fetch(`http://127.0.0.1:${port}/json/new?${encodeURIComponent(origin)}`,{method:"PUT"})).json();
     const socket=new WebSocket(target.webSocketDebuggerUrl);
     await new Promise((resolve,reject)=>{socket.onopen=resolve;socket.onerror=reject});

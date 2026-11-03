@@ -32,12 +32,14 @@ async function main() {
       "--remote-debugging-port=0", "--user-data-dir=" + profile, "about:blank"],
       {stdio: "ignore"});
     const activePort = path.join(profile, "DevToolsActivePort");
-    for (let n = 0; n < 150 && !fs.existsSync(activePort); n++) {
+    let port = "";
+    for (let n = 0; n < 150 && !port; n++) {
       if (browser.exitCode !== null) throw Error("Browser exited " + browser.exitCode);
-      await delay(100);
+      try { if (fs.existsSync(activePort)) port = fs.readFileSync(activePort, "utf8").split(/\r?\n/)[0]; }
+      catch (error) { if (error.code !== "EBUSY" && error.code !== "EPERM") throw error; }
+      if (!port) await delay(100);
     }
-    if (!fs.existsSync(activePort)) throw Error("Browser startup timed out");
-    const port = fs.readFileSync(activePort, "utf8").split(/\r?\n/)[0];
+    if (!port) throw Error("Browser startup timed out before its DevTools port became readable");
     const target = await (await fetch(`http://127.0.0.1:${port}/json/new?${encodeURIComponent(origin)}`,
       {method: "PUT"})).json();
     socket = new WebSocket(target.webSocketDebuggerUrl);
@@ -46,9 +48,18 @@ async function main() {
       socket.onerror = reject;
     });
     let sequence = 0;
+    const frameContexts = new Map();
     const pending = new Map();
     socket.onmessage = event => {
       const message = JSON.parse(event.data);
+      if (message.method === "Runtime.executionContextCreated") {
+        const context = message.params?.context;
+        if (context?.auxData?.isDefault && context.auxData.frameId)
+          frameContexts.set(context.auxData.frameId, context.id);
+      } else if (message.method === "Runtime.executionContextDestroyed") {
+        for (const [frameId, contextId] of frameContexts)
+          if (contextId === message.params?.executionContextId) frameContexts.delete(frameId);
+      }
       if (message.id && pending.has(message.id)) {
         const {resolve, reject} = pending.get(message.id);
         pending.delete(message.id);
@@ -74,6 +85,31 @@ async function main() {
         await delay(100);
       }
       throw Error(message);
+    };
+    const mouseClick = async selector => {
+      await evaluate(`document.querySelector(${JSON.stringify(selector)})?.scrollIntoView({block:'center'})`);
+      const documentInfo = await call("DOM.getDocument", {depth: -1});
+      const found = await call("DOM.querySelector", {
+        nodeId: documentInfo.root.nodeId, selector
+      });
+      if (!found.nodeId) throw Error("Mouse target not found: " + selector);
+      const box = await call("DOM.getBoxModel", {nodeId: found.nodeId});
+      const quad = box.model.content;
+      const x = (quad[0] + quad[2] + quad[4] + quad[6]) / 4;
+      const y = (quad[1] + quad[3] + quad[5] + quad[7]) / 4;
+      await call("Input.dispatchMouseEvent", {type: "mouseMoved", x, y});
+      await call("Input.dispatchMouseEvent", {type: "mousePressed", x, y, button: "left", clickCount: 1});
+      await call("Input.dispatchMouseEvent", {type: "mouseReleased", x, y, button: "left", clickCount: 1});
+    };
+    const evaluateFrame = async (frameId, expression) => {
+      const contextId = frameContexts.get(frameId);
+      if (!contextId) throw Error("Preview execution context not ready for frame " + frameId);
+      const result = await call("Runtime.evaluate", {
+        contextId, expression, awaitPromise: true, returnByValue: true
+      });
+      if (result.exceptionDetails)
+        throw Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text);
+      return result.result.value;
     };
     await call("Runtime.enable");
     await call("Page.enable");
@@ -117,6 +153,122 @@ async function main() {
     })()`);
     await waitFor(async () => evaluate("manifest.name==='Durable Blank Studio QA' && project.pages[1].title==='Month metadata survives reopen'"),
       "Studio did not apply the project name and page metadata edits");
+
+    const selectTreePage = async route => evaluate(`(()=>{
+      const select=document.querySelector('#componentPage');
+      const option=[...select.options].find(item=>item.textContent.endsWith('· ${route}'));
+      if(!option)throw Error('Page route is missing from the page tree: ${route}');
+      select.value=option.value;select.dispatchEvent(new Event('change',{bubbles:true}));return true;
+    })()`);
+    const selectComponentType = async type => evaluate(`(()=>{
+      const select=document.querySelector('#componentType');select.value=${JSON.stringify(type)};
+      return select.value;
+    })()`);
+    const setComponentField = async (id,value) => evaluate(`(()=>{
+      const field=document.querySelector(${JSON.stringify(id)});field.value=${JSON.stringify(value)};
+      field.dispatchEvent(new Event('change',{bubbles:true}));return true;
+    })()`);
+    const treeHasNode = async id => evaluate(
+      `!!document.querySelector("#componentTree [data-component-id='${id}']")`);
+
+    await mouseClick("#componentAddPage");
+    await waitFor(async () => evaluate("project.pages.length===6 && document.querySelector('#componentPage').options.length===6"),
+      "The page-tree GUI did not add a custom page");
+    await selectTreePage("PAGE_1");
+    const supportedComponents = ["text", "container", "button", "scroll", "form-field", "timeline",
+      "event-card", "month-grid", "date-button", "memo-row", "chat-item", "settings-row", "resource-layer"];
+    for (const type of supportedComponents) {
+      await selectComponentType(type);
+      await mouseClick("#componentAdd");
+    }
+    const authoredTypes = await evaluate(`(()=>{
+      const visit=(nodes,out=[])=>{for(const node of nodes){out.push(node.type);visit(node.children||[],out)}return out};
+      return visit(project.pages.find(page=>page.route==='PAGE_1').components);
+    })()`);
+    if (supportedComponents.some(type => !authoredTypes.includes(type)))
+      throw Error("The component palette failed to author one or more supported runtime types: " + authoredTypes);
+    await selectTreePage("MONTH");
+    await selectComponentType("text");
+    await mouseClick("#componentAdd");
+    await waitFor(async () => treeHasNode("text-2"),
+      "The page-tree GUI did not add a text component");
+    await setComponentField("#componentLabel", "November Header");
+    await setComponentField("#componentBinding", "presentation.month.header");
+    await setComponentField("#componentClassName", "qa-month-heading");
+    await setComponentField("#componentColor", "#123456");
+    await setComponentField("#componentFontSize", "18");
+
+    await selectComponentType("month-grid");
+    await mouseClick("#componentAdd");
+    await waitFor(async () => treeHasNode("month-grid-2"),
+      "The page-tree GUI did not add a month-grid container");
+    await selectComponentType("date-button");
+    await mouseClick("#componentAdd");
+    await mouseClick("#componentAdd");
+    await waitFor(async () => treeHasNode("date-button-3"),
+      "The page-tree GUI did not add nested date buttons");
+    await mouseClick("#componentTree [data-component-id=\"date-button-2\"]");
+    await setComponentField("#componentLabel", "2");
+    await mouseClick("#componentTree [data-component-id=\"date-button-3\"]");
+    await setComponentField("#componentLabel", "3");
+    await setComponentField("#componentBinding", "presentation.month.date");
+    await mouseClick("#componentMoveUp");
+    let treeState = await evaluate(`(()=>{
+      const month=project.pages.find(page=>page.route==='MONTH');
+      const root=month.components[0],grid=root.children.find(node=>node.type==='month-grid');
+      return {rootChildren:root.children.map(node=>node.type),gridChildren:grid.children.map(node=>node.id)};
+    })()`);
+    if (JSON.stringify(treeState.rootChildren) !== JSON.stringify(["text", "month-grid"]) ||
+        JSON.stringify(treeState.gridChildren) !== JSON.stringify(["date-button-3", "date-button-2"]))
+      throw Error("Component nesting/reordering did not update the canonical project tree: " + JSON.stringify(treeState));
+
+    await mouseClick("#componentDelete");
+    await waitFor(async () => !(await treeHasNode("date-button-3")),
+      "Component delete did not remove the selected node");
+    await mouseClick("#componentUndo");
+    await waitFor(async () => treeHasNode("date-button-3"),
+      "Undo did not restore the deleted component");
+    await mouseClick("#componentRedo");
+    await waitFor(async () => !(await treeHasNode("date-button-3")),
+      "Redo did not reapply component deletion");
+    await mouseClick("#componentUndo");
+    await waitFor(async () => treeHasNode("date-button-3"),
+      "Undo did not restore the saved Month structure");
+    await mouseClick("#componentTree [data-component-id=\"month-root\"]");
+    await selectComponentType("text");
+    await mouseClick("#componentAdd");
+    await waitFor(async () => treeHasNode("text-3"), "Could not create the reparenting probe");
+    await setComponentField("#componentLabel", "Reparent Probe");
+    await mouseClick("#componentNest");
+    let parentState = await evaluate(`(()=>{
+      const month=project.pages.find(page=>page.route==='MONTH'),root=month.components[0];
+      const grid=root.children.find(node=>node.type==='month-grid');
+      return {root:root.children.map(node=>node.id),grid:grid.children.map(node=>node.id)};
+    })()`);
+    if (parentState.root.includes("text-3") || !parentState.grid.includes("text-3"))
+      throw Error("Indent did not reparent the selected node under the preceding container");
+    await mouseClick("#componentOutdent");
+    parentState = await evaluate(`(()=>{
+      const root=project.pages.find(page=>page.route==='MONTH').components[0];
+      return {root:root.children.map(node=>node.id),grid:root.children.find(node=>node.type==='month-grid')
+        .children.map(node=>node.id)};
+    })()`);
+    if (!parentState.root.includes("text-3") || parentState.grid.includes("text-3"))
+      throw Error("Outdent did not restore the component to its parent level");
+    await mouseClick("#componentDelete");
+    treeState = await evaluate(`(()=>{
+      const month=project.pages.find(page=>page.route==='MONTH');
+      const root=month.components[0],heading=root.children[0],grid=root.children[1];
+      return {title:month.title,heading:heading.props,grid:grid.type,dates:grid.children.map(node=>({id:node.id,props:node.props}))};
+    })()`);
+    if (treeState.title !== "Month metadata survives reopen" ||
+        treeState.heading.label !== "November Header" ||
+        treeState.heading.binding !== "presentation.month.header" ||
+        treeState.heading.className !== "qa-month-heading" ||
+        treeState.heading.style.color !== "#123456" || treeState.heading.style.fontSize !== "18px" ||
+        treeState.dates[0]?.props.label !== "3" || treeState.dates[1]?.props.label !== "2")
+      throw Error("The component inspector did not persist editable props/style/binding metadata: " + JSON.stringify(treeState));
+
     await evaluate("document.querySelector('#validate').click();true");
     await waitFor(async () => evaluate("document.querySelector('#toast').textContent.includes('文件结构、体积')"),
       "Studio project validation did not pass");
@@ -129,8 +281,13 @@ async function main() {
     if (saved.format !== "powercal-v3-studio" || saved.manifest.name !== "Durable Blank Studio QA")
       throw Error("Saved Studio project metadata is incorrect");
     const savedProject = JSON.parse(Buffer.from(saved.files["project.json"], "base64").toString("utf8"));
-    if (savedProject.pages[1].title !== "Month metadata survives reopen" ||
-        savedProject.pages[1].components[0].props.editorNote !== "saved from Studio")
+    const savedMonthRoot=savedProject.pages[1].components[0];
+    if (savedProject.pages.length !== 6 || savedProject.pages[1].title !== "Month metadata survives reopen" ||
+        savedMonthRoot.props.editorNote !== "saved from Studio" ||
+        savedMonthRoot.children[0].props.label !== "November Header" ||
+        savedMonthRoot.children[1].type !== "month-grid" ||
+        JSON.stringify(savedMonthRoot.children[1].children.map(node=>node.id)) !==
+          JSON.stringify(["date-button-3","date-button-2"]))
       throw Error("Saved project.json lost the edited page structure");
 
     // Unload the Studio document, reopen it, then use the visible Open Project input.
@@ -165,10 +322,57 @@ async function main() {
       return {name:manifest.name,pages:p.pages,capabilities:manifest.capabilities,
         fileCount:Object.keys(files).length};
     })()`);
-    if (reopened.pages.length !== 5 || reopened.pages[1].title !== "Month metadata survives reopen" ||
+    if (reopened.pages.length !== 6 || reopened.pages[1].title !== "Month metadata survives reopen" ||
         reopened.pages[1].components[0].props.editorNote !== "saved from Studio" ||
+        reopened.pages[1].components[0].children[0].props.label !== "November Header" ||
+        JSON.stringify(reopened.pages[1].components[0].children[1].children.map(node=>node.id)) !==
+          JSON.stringify(["date-button-3","date-button-2"]) ||
         JSON.stringify(reopened.capabilities) !== '["host.read"]')
       throw Error("Reopened Studio project lost page structure or changed capabilities");
+
+    await waitFor(async () => evaluate("document.querySelector('#previewState').textContent.includes('连接成功')"),
+      "Reopened component project did not load its WebView preview");
+    const frameTreeResult = await call("Page.getFrameTree");
+    const previewFrame = frameTreeResult.frameTree.childFrames?.find(frame => frame.frame.url.includes("/preview/"));
+    if (!previewFrame) throw Error("Reopened component project has no preview frame");
+    await waitFor(async () => frameContexts.has(previewFrame.frame.id),
+      "The component preview frame did not create a browser execution context");
+    await evaluateFrame(previewFrame.frame.id, `(()=>{
+      const page=document.querySelector('[data-page-route="PAGE_1"]');
+      if(!page)throw Error('Custom page route is absent from the runtime navigation');
+      page.click();return true;
+    })()`);
+    const renderedTypes = await evaluateFrame(previewFrame.frame.id, `(()=>({
+      route:document.querySelector('#content [data-page-title]')?.dataset.pageTitle,
+      types:[...new Set([...document.querySelectorAll('#content [data-component-type]')]
+        .map(node=>node.dataset.componentType))].sort(),
+      formField:!!document.querySelector('#content input[readonly]')
+    }))()`);
+    if (renderedTypes.route !== "PAGE_1" ||
+        supportedComponents.some(type => !renderedTypes.types.includes(type)) || !renderedTypes.formField)
+      throw Error("The runtime preview did not render the Studio component palette: " + JSON.stringify(renderedTypes));
+    await evaluateFrame(previewFrame.frame.id, `(()=>{
+      const month=document.querySelector('[data-page-route="MONTH"]');
+      if(!month)throw Error('Month route is absent from the runtime page navigation');
+      month.click();return true;
+    })()`);
+    const previewTree = await evaluateFrame(previewFrame.frame.id, `(()=>{
+      const root=document.querySelector('#content [data-component-id="month-root"]');
+      const heading=root?.querySelector('[data-component-id="text-2"]');
+      const grid=root?.querySelector('[data-component-id="month-grid-2"]');
+      return {page:document.querySelector('#content [data-page-title]')?.textContent,
+        heading:heading?.textContent,headingBinding:heading?.dataset.binding,
+        headingColor:heading?.style.color,grid:!!grid,
+        dateIds:[...(grid?.children||[])].filter(node=>node.dataset.componentId)
+          .map(node=>node.dataset.componentId),dateLabels:[...(grid?.children||[])]
+          .filter(node=>node.dataset.componentId).map(node=>node.textContent)};
+    })()`);
+    if (previewTree.page !== "Month metadata survives reopen" || previewTree.heading !== "November Header" ||
+        previewTree.headingBinding !== "presentation.month.header" || previewTree.headingColor !== "rgb(18, 52, 86)" ||
+        !previewTree.grid || JSON.stringify(previewTree.dateIds) !==
+          JSON.stringify(["date-button-3","date-button-2"]) ||
+        JSON.stringify(previewTree.dateLabels) !== JSON.stringify(["3","2"]))
+      throw Error("The WebView preview DOM does not match the saved component tree: " + JSON.stringify(previewTree));
 
     await evaluate("document.querySelector('#exportPack').click();true");
     const packagePath = path.join(downloadDir, "powercal-blank-skin.pcskin");
@@ -181,11 +385,28 @@ async function main() {
     if (receipt.skinId !== "powercal-blank-skin" || receipt.runtimeVersion !== 3 ||
         JSON.stringify(receipt.manifest.capabilities) !== '["host.read"]')
       throw Error("Exported .pcskin identity or minimum capabilities changed");
+    const importedResponse = await fetch(origin + "/api/import-v3", {
+      method: "POST", headers: {"Content-Type": "application/octet-stream"},
+      body: fs.readFileSync(packagePath)
+    });
+    if (!importedResponse.ok) throw Error("Exported .pcskin could not be reimported");
+    const importedPackage = await importedResponse.json();
+    const importedProject = JSON.parse(Buffer.from(importedPackage.files["project.json"], "base64").toString("utf8"));
+    const importedRuntime = Buffer.from(importedPackage.files["web/project-tree-v1.js"], "base64").toString("utf8");
+    const runtimeLiteral=importedRuntime.match(/^window\.__POWERCAL_PAGE_TREE_V1__=JSON\.parse\((.*)\);\n$/);
+    const runtimeProject=runtimeLiteral?JSON.parse(JSON.parse(runtimeLiteral[1])):null;
+    if (JSON.stringify(importedProject.pages) !== JSON.stringify(reopened.pages) ||
+        JSON.stringify(runtimeProject?.pages) !== JSON.stringify(importedProject.pages) ||
+        runtimeProject?.pages[1]?.components[0]?.children[0]?.props?.binding !==
+          "presentation.month.header")
+      throw Error("Export/reimport did not preserve the component structure and runtime projection");
     console.log("BLANK V3 PROJECT SAVE/REOPEN/BUILD PASS", JSON.stringify({
       savedProject: projectPath, builtPackage: packagePath, pageRoutes: routes,
       stableIds: allIds, reopenedName: reopened.name, reopenedPage: reopened.pages[1],
       packageSha256: receipt.packageSha256, fileCount: receipt.fileCount,
-      capabilities: receipt.manifest.capabilities
+      capabilities: receipt.manifest.capabilities, componentTree: treeState,
+      previewDom: previewTree, runtimeComponentTypes: renderedTypes.types,
+      reimportedPageCount: importedProject.pages.length
     }));
     await call("Page.navigate", {url: "about:blank"});
     socket.close();

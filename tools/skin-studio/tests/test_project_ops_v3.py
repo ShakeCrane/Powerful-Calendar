@@ -13,7 +13,7 @@ sys.path.insert(0, str(STUDIO))
 from build_default_clear import ASSET
 from blank_project_v3 import blank_project
 from project_ops_v3 import edit_package, inspect_package, read_file, write_atomic
-from runtime_package_v3 import build_files, unpack
+from runtime_package_v3 import build_files, unpack, validate_manifest, _page_tree_runtime_source
 from skin_studio import SkinError
 
 
@@ -79,6 +79,42 @@ class ProjectOpsV3Test(unittest.TestCase):
         invalid_files["project.json"] = json.dumps(invalid).encode("utf-8")
         with self.assertRaisesRegex(SkinError, "repeated project node id"):
             build_files(manifest, invalid_files)
+
+    def test_blank_runtime_projection_is_derived_from_the_canonical_page_tree(self):
+        manifest, files = blank_project()
+        runtime_path = "web/project-tree-v1.js"
+        project = json.loads(files["project.json"].decode("utf-8"))
+        self.assertEqual("powercal-component-tree-v1", project["runtimeRenderer"])
+        runtime = files[runtime_path].decode("utf-8")
+        self.assertIn("window.__POWERCAL_PAGE_TREE_V1__=JSON.parse(", runtime)
+        runtime_literal = runtime.removeprefix("window.__POWERCAL_PAGE_TREE_V1__=JSON.parse(").removesuffix(");\n")
+        self.assertEqual(project, json.loads(json.loads(runtime_literal)))
+
+        project["pages"][1]["components"][0]["children"].append({
+            "id": "studio-header", "type": "text",
+            "props": {"label": "November", "futureProp": {"keep": True},
+                      "__proto__": {"inert": True}}, "children": []})
+        edited_files = dict(files)
+        edited_files["project.json"] = json.dumps(project, ensure_ascii=False).encode("utf-8")
+        rebuilt = build_files(manifest, edited_files)
+        _, reopened = unpack(rebuilt)
+        expected = _page_tree_runtime_source(project)
+        self.assertEqual(expected, reopened[runtime_path])
+        self.assertIn(b"futureProp", reopened[runtime_path])
+        self.assertIn(b"__proto__", reopened[runtime_path])
+        self.assertEqual("November", json.loads(reopened["project.json"])["pages"][1]
+                         ["components"][0]["children"][0]["props"]["label"])
+
+        stale = dict(reopened)
+        stale[runtime_path] = b"window.__POWERCAL_PAGE_TREE_V1__=JSON.parse(\"{}\");\n"
+        with self.assertRaisesRegex(SkinError, "does not match project.json"):
+            validate_manifest(manifest, stale, verify_hash=False)
+        without_renderer = dict(reopened)
+        unmarked_project = json.loads(without_renderer["project.json"])
+        del unmarked_project["runtimeRenderer"]
+        without_renderer["project.json"] = json.dumps(unmarked_project).encode("utf-8")
+        with self.assertRaisesRegex(SkinError, "requires the blank page-tree runtime contract"):
+            build_files(manifest, without_renderer)
 
     def test_file_crud_and_json_structure_patch_export_and_reimport(self):
         project_sha = hashlib.sha256(self.files["project.json"]).hexdigest()

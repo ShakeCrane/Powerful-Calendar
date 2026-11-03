@@ -17,6 +17,8 @@ TEXT_LIMIT = 600_000
 ASSET_LIMIT = 3_000_000
 WEB_REQUIRED = ("web/index.html", "web/style.css", "web/app.js", "project.json")
 PATH = re.compile(r"(?:web|assets)/[a-zA-Z0-9][a-zA-Z0-9_./-]{0,119}|project\.json\Z")
+PAGE_TREE_RENDERER = "powercal-component-tree-v1"
+PAGE_TREE_RUNTIME_FILE = "web/project-tree-v1.js"
 
 
 def check(ok, message):
@@ -85,6 +87,15 @@ def validate_project(project):
         _validate_component_nodes(page.get("components", []), ids, total=node_total)
     return project
 
+
+def _page_tree_runtime_source(project):
+    """Serialize the canonical project tree as inert, packaged runtime data."""
+    document = json.dumps(project, ensure_ascii=False, separators=(",", ":"))
+    document = document.replace("<", r"\u003c").replace("\u2028", r"\u2028").replace("\u2029", r"\u2029")
+    literal = json.dumps(document, ensure_ascii=False)
+    literal = literal.replace("\u2028", r"\u2028").replace("\u2029", r"\u2029")
+    return ("window.__POWERCAL_PAGE_TREE_V1__=JSON.parse(" + literal + ");\n").encode("utf-8")
+
 def validate_manifest(manifest, files, verify_hash=True):
     check(type(manifest) is dict, "manifest must be an object")
     # Preserve unknown top-level v3 metadata losslessly. Android ignores these
@@ -106,8 +117,20 @@ def validate_manifest(manifest, files, verify_hash=True):
     check(set(WEB_REQUIRED) <= set(files), "v3 package is missing complete web source/project")
     check(all(safe_path(name) for name in files), "unsafe v3 package path")
     check(len(files) <= MAX_FILES, "too many package files")
-    validate_project(json.loads(files["project.json"].decode("utf8")))
+    project = validate_project(json.loads(files["project.json"].decode("utf8")))
+    if project.get("runtimeRenderer") == PAGE_TREE_RENDERER:
+        check(files.get(PAGE_TREE_RUNTIME_FILE) == _page_tree_runtime_source(project),
+              "blank page-tree runtime does not match project.json")
     html = files["web/index.html"].decode("utf8")
+    loads_page_tree_runtime = re.search(
+        r"<script\b[^>]*\bsrc=[\"'](?:\./)?project-tree-v1\.js[\"']",
+        html, re.IGNORECASE) is not None
+    if project.get("runtimeRenderer") == PAGE_TREE_RENDERER:
+        check(loads_page_tree_runtime,
+              "blank page-tree runtime script is not loaded by web/index.html")
+    else:
+        check(not loads_page_tree_runtime,
+              "project-tree-v1.js requires the blank page-tree runtime contract")
     check("<iframe" not in html.lower() and "<object" not in html.lower(),
           "iframes and embedded objects are forbidden")
     check("<script" not in html.lower() or "src=\"app.js\"" in html or "src='app.js'" in html,
@@ -144,7 +167,13 @@ def build(manifest, source_dir):
 
 
 def build_files(manifest, files):
-    checked = validate_manifest(manifest, files, verify_hash=False)
+    package_files = dict(files)
+    project = validate_project(json.loads(package_files["project.json"].decode("utf8")))
+    if project.get("runtimeRenderer") == PAGE_TREE_RENDERER:
+        # This path is a deterministic runtime projection of project.json. The
+        # builder regenerates it for preview, export, import/rebuild and Android.
+        package_files[PAGE_TREE_RUNTIME_FILE] = _page_tree_runtime_source(project)
+    checked = validate_manifest(manifest, package_files, verify_hash=False)
     out = io.BytesIO()
     # Deterministic .pcskin bytes: APK asset, Studio starter and exported default
     # must never disagree solely because a ZIP header contains wall-clock time.
@@ -156,8 +185,8 @@ def build_files(manifest, files):
     with ZipFile(out, "w", ZIP_DEFLATED, compresslevel=6) as archive:
         archive.writestr(fixed_entry("manifest.json"),
                          json.dumps(checked, ensure_ascii=False, indent=2))
-        for name in sorted(files):
-            archive.writestr(fixed_entry(name), files[name])
+        for name in sorted(package_files):
+            archive.writestr(fixed_entry(name), package_files[name])
     blob = out.getvalue()
     check(len(blob) <= MAX_ARCHIVE, "ZIP is larger than 10MB")
     # Apply the same per-file and inflated-size checks as Android and the importer.

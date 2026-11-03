@@ -1,6 +1,7 @@
 {
   "projectVersion": 3,
   "mode": "advanced",
+  "runtimeRenderer": "powercal-component-tree-v1",
   "pages": [
     {
       "id": "page-timeline",

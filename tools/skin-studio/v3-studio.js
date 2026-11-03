@@ -48,6 +48,13 @@ let activeMode="simple", editCanvas=true, previewTimer=null, previewSeq=0;
 let previewPort=null, lastState=null, lastPreviewUrl="", dirty=false;
 let projectSourceError=null, projectDraftText=null, implicitFullCanvas=false, fullCanvasTouched=false;
 const REQUIRED_SOURCE_FILES=new Set(["web/index.html","web/style.css","web/app.js","project.json"]);
+const PAGE_TREE_RENDERER="powercal-component-tree-v1";
+const PAGE_TREE_RUNTIME_FILE="web/project-tree-v1.js";
+const REQUIRED_PAGE_ROUTES=new Set(["TIMELINE","MONTH","MEMO","AI","SETTINGS"]);
+const COMPONENT_TYPES=["text","container","button","scroll","form-field","timeline",
+  "event-card","month-grid","date-button","memo-row","chat-item","settings-row","resource-layer"];
+const CONTAINER_TYPES=new Set(["container","scroll","timeline","month-grid","resource-layer"]);
+let activeTreePageId="",selectedComponentId="",pageTreeUndo=[],pageTreeRedo=[];
 const HOST_CAPABILITY_CONTROLS=[
   ["host.read","capHostRead"],
   ["host.action","capHostAction"],
@@ -110,12 +117,21 @@ function parseProject(){
   validatePageTree(obj.pages);
   return obj;
 }
+function pageTreeRuntimeSource(value){
+  const document=JSON.stringify(value).replaceAll("<","\\u003c")
+    .replaceAll("\u2028","\\u2028").replaceAll("\u2029","\\u2029");
+  const literal=JSON.stringify(document).replaceAll("\u2028","\\u2028")
+    .replaceAll("\u2029","\\u2029");
+  return `window.__POWERCAL_PAGE_TREE_V1__=JSON.parse(${literal});\n`;
+}
 function prepareFiles(){
   const files=new Map(sourceFiles);
   // Keep imported metadata byte-for-byte until a Studio operation actually
   // changes the project model. parseProject adds an in-memory layers default.
   if(JSON.stringify(project)!==projectBaseline)
     files.set("project.json",enc.encode(JSON.stringify(project,null,2)));
+  if(project.runtimeRenderer===PAGE_TREE_RENDERER)
+    files.set(PAGE_TREE_RUNTIME_FILE,enc.encode(pageTreeRuntimeSource(project)));
   return files;
 }
 function payload(){
@@ -159,6 +175,9 @@ async function loadPackage(data){
   projectSourceError=null;projectDraftText=null;
   project=parseProject();
   projectBaseline=JSON.stringify(project);
+  activeTreePageId=project.pages?.[0]?.id||"";
+  selectedComponentId=project.pages?.[0]?.components?.[0]?.id||"";
+  pageTreeUndo=[];pageTreeRedo=[];
   mockEditing={editor:{open:false},deck:{open:false},lastResult:null};
   mockProfileEditor=null;mockProfileSaveRevision=0;
   resetMockDeckFixtures();
@@ -173,7 +192,7 @@ async function loadPackage(data){
   $("fullCanvas").checked=manifest.fullCanvas===true;
   syncHostCapabilityControls();
   switchMode(project.mode==="advanced"?"advanced":"simple");
-  syncSourceInputs();renderMaterials();renderAssets();renderLayers();
+  syncSourceInputs();renderMaterials();renderAssets();renderLayers();renderComponentTree();
   schedulePreview(0);
   say(factory
     ?"已载入 APK 同源 Clear 基础皮肤。导出使用独立 ID，不覆盖受保护的出厂包。"
@@ -194,6 +213,7 @@ function renderExtraSources(){
   const select=$("extraSourceFile"),previous=select.value;
   const strict=new TextDecoder("utf-8",{fatal:true});
   const paths=[...sourceFiles.keys()].filter(path=>{
+    if(project?.runtimeRenderer===PAGE_TREE_RENDERER&&path===PAGE_TREE_RUNTIME_FILE)return false;
     if(path==="project.json")return true;
     if(!TEXT_SOURCE_EXTENSIONS.test(path) || REQUIRED_SOURCE_FILES.has(path))return false;
     try{strict.decode(sourceFiles.get(path));return true}catch{return false}
@@ -247,14 +267,222 @@ function updateProjectSource(text){
     project=next;projectBaseline=JSON.stringify(project);
     sourceFiles.set("project.json",enc.encode(text));
     projectSourceError=null;projectDraftText=null;
+    pageTreeUndo=[];pageTreeRedo=[];
+    if(!project.pages?.some(page=>page.id===activeTreePageId))activeTreePageId=project.pages?.[0]?.id||"";
+    if(!treePage()||!locateTreeNode(treePage().components,selectedComponentId))
+      selectedComponentId=treePage()?.components?.[0]?.id||"";
     if(!project.layers.some(layer=>layer&&layer.id===selectedLayer))selectedLayer=project.layers[0]?.id||null;
-    renderMaterials();renderAssets();renderLayers();
+    renderMaterials();renderAssets();renderLayers();renderComponentTree();
     change();say("project.json 已解析并保留未知字段；预览与导出将使用此结构。");
   }catch(error){
     projectSourceError=error.message;
     dirty=true;$("previewState").textContent="project.json 无效，修复后才能预览/导出";
     say("project.json 暂未应用："+error.message,true);
   }
+}
+function treePage(){
+  return project?.pages?.find(page=>page.id===activeTreePageId)||project?.pages?.[0]||null;
+}
+function locateTreeNode(nodes,id,owner=null){
+  for(let index=0;index<nodes.length;index++){
+    const node=nodes[index];
+    if(node.id===id)return {node,array:nodes,index,owner};
+    const child=locateTreeNode(Array.isArray(node.children)?node.children:[],id,node);
+    if(child)return child;
+  }
+  return null;
+}
+function treeNodeLabel(node){
+  const props=node?.props&&typeof node.props==="object"?node.props:{};
+  return String(props.label||props.text||props.title||node?.id||"");
+}
+function renderTreeNodes(nodes){
+  const list=document.createElement("ul");
+  for(const node of nodes){
+    const item=document.createElement("li");
+    const button=document.createElement("button");
+    button.type="button";button.className="componentTreeNode";
+    button.dataset.componentId=node.id;
+    button.setAttribute("aria-pressed",String(node.id===selectedComponentId));
+    button.textContent=node.type+(treeNodeLabel(node)?" · "+treeNodeLabel(node):"");
+    button.onclick=()=>{selectedComponentId=node.id;renderComponentTree()};
+    item.append(button);
+    if(Array.isArray(node.children)&&node.children.length)item.append(renderTreeNodes(node.children));
+    list.append(item);
+  }
+  return list;
+}
+function selectedTreeNode(){
+  const page=treePage();
+  return page?locateTreeNode(page.components,selectedComponentId):null;
+}
+function renderComponentInspector(){
+  const page=treePage(),location=selectedTreeNode(),node=location?.node||null;
+  $("componentPageTitle").value=page?.title||"";
+  $("componentInspector").hidden=!node;
+  $("componentDelete").disabled=!node;
+  $("componentMoveUp").disabled=!location||location.index===0;
+  $("componentMoveDown").disabled=!location||location.index>=location.array.length-1;
+  $("componentNest").disabled=!location||location.index===0||
+    !CONTAINER_TYPES.has(location.array[location.index-1]?.type);
+  $("componentOutdent").disabled=!location||!location.owner;
+  if(!node)return;
+  const props=node.props&&typeof node.props==="object"?node.props:{};
+  const style=props.style&&typeof props.style==="object"?props.style:{};
+  $("componentLabel").value=String(props.label??props.text??props.title??"");
+  $("componentBinding").value=typeof props.binding==="string"?props.binding:"";
+  $("componentClassName").value=typeof props.className==="string"?props.className:"";
+  $("componentColor").value=typeof style.color==="string"&&/^#[0-9a-f]{6}$/i.test(style.color)
+    ?style.color:"#24334c";
+  $("componentFontSize").value=typeof style.fontSize==="string"&&/^\d{1,3}px$/.test(style.fontSize)
+    ?style.fontSize.slice(0,-2):"";
+}
+function renderComponentTree(){
+  const section=$("pageTreeSection");
+  if(!section)return;
+  const enabled=project?.runtimeRenderer===PAGE_TREE_RENDERER&&Array.isArray(project.pages);
+  section.hidden=!enabled;
+  if(!enabled)return;
+  const pageSelect=$("componentPage"),previous=activeTreePageId;
+  pageSelect.replaceChildren();
+  for(const page of project.pages){
+    const option=document.createElement("option");option.value=page.id;
+    option.textContent=page.title+" · "+page.route;pageSelect.append(option);
+  }
+  activeTreePageId=project.pages.some(page=>page.id===previous)?previous:(project.pages[0]?.id||"");
+  pageSelect.value=activeTreePageId;
+  const page=treePage(),tree=$("componentTree");tree.replaceChildren();
+  if(page)tree.append(renderTreeNodes(page.components));
+  $("componentUndo").disabled=pageTreeUndo.length===0;
+  $("componentRedo").disabled=pageTreeRedo.length===0;
+  $("componentDeletePage").disabled=!page||REQUIRED_PAGE_ROUTES.has(page.route)||project.pages.length<=1;
+  renderComponentInspector();
+}
+function persistPageTree(){
+  validatePageTree(project.pages);
+  const text=JSON.stringify(project,null,2);
+  projectBaseline=JSON.stringify(project);
+  sourceFiles.set("project.json",enc.encode(text));
+  projectDraftText=null;
+  if($("extraSourceFile").value==="project.json")$("extraSourceCode").value=text;
+  renderComponentTree();change();
+}
+function mutatePageTree(operation){
+  if(project?.runtimeRenderer!==PAGE_TREE_RENDERER)return false;
+  const before=JSON.stringify(project.pages);
+  try{
+    operation();validatePageTree(project.pages);
+    const after=JSON.stringify(project.pages);
+    if(before===after)return false;
+    pageTreeUndo.push(before);if(pageTreeUndo.length>80)pageTreeUndo.shift();
+    pageTreeRedo=[];persistPageTree();return true;
+  }catch(error){
+    project.pages=JSON.parse(before);renderComponentTree();say("页面结构未应用："+error.message,true);return false;
+  }
+}
+function restorePageTree(stack,other){
+  if(!stack.length)return;
+  other.push(JSON.stringify(project.pages));
+  project.pages=JSON.parse(stack.pop());
+  const page=treePage();
+  if(!page||!locateTreeNode(page.components,selectedComponentId))
+    selectedComponentId=page?.components?.[0]?.id||"";
+  try{persistPageTree()}catch(error){say("页面结构恢复失败："+error.message,true)}
+}
+function nextTreeId(prefix){
+  const ids=new Set();
+  const visit=nodes=>{for(const node of nodes||[]){ids.add(node.id);visit(node.children)}};
+  for(const page of project.pages){ids.add(page.id);visit(page.components)}
+  for(let number=1;number<10000;number++){
+    const id=prefix+"-"+number;if(!ids.has(id))return id;
+  }
+  throw Error("可用页面或组件 ID 已耗尽");
+}
+function addTreePage(){
+  if(!project?.pages||project.pages.length>=16){say("页面最多 16 个",true);return}
+  mutatePageTree(()=>{
+    let number=1,route="PAGE_1";
+    while(project.pages.some(page=>page.route===route)){number++;route="PAGE_"+number}
+    const page={id:nextTreeId("page-custom"),route,title:"新页面",
+      components:[{id:nextTreeId("page-root"),type:"container",props:{label:"Container"},children:[]}]};
+    project.pages.push(page);activeTreePageId=page.id;selectedComponentId=page.components[0].id;
+  });
+}
+function deleteTreePage(){
+  const page=treePage();
+  if(!page||REQUIRED_PAGE_ROUTES.has(page.route)||project.pages.length<=1)return;
+  mutatePageTree(()=>{
+    project.pages=project.pages.filter(item=>item.id!==page.id);
+    activeTreePageId=project.pages[0]?.id||"";
+    selectedComponentId=project.pages[0]?.components?.[0]?.id||"";
+  });
+}
+function addTreeComponent(){
+  const page=treePage();if(!page)return;
+  const type=$("componentType").value;
+  if(!COMPONENT_TYPES.includes(type)){say("组件类型不在 Studio 基础组件目录中",true);return}
+  mutatePageTree(()=>{
+    const id=nextTreeId(type);
+    const label=type.split("-").map(part=>part[0].toUpperCase()+part.slice(1)).join(" ");
+    const node={id,type,props:{label},children:[]};
+    const selected=locateTreeNode(page.components,selectedComponentId);
+    if(selected&&CONTAINER_TYPES.has(selected.node.type)){
+      selected.node.children=Array.isArray(selected.node.children)?selected.node.children:[];
+      selected.node.children.push(node);
+    }else if(selected)selected.array.splice(selected.index+1,0,node);
+    else page.components.push(node);
+    selectedComponentId=id;
+  });
+}
+function moveTreeComponent(direction){
+  const location=selectedTreeNode();if(!location)return;
+  mutatePageTree(()=>{
+    const target=location.index+direction;
+    if(target<0||target>=location.array.length)return;
+    [location.array[location.index],location.array[target]]=
+      [location.array[target],location.array[location.index]];
+  });
+}
+function nestTreeComponent(){
+  const location=selectedTreeNode();if(!location||location.index===0)return;
+  const parent=location.array[location.index-1];if(!CONTAINER_TYPES.has(parent.type))return;
+  mutatePageTree(()=>{
+    const [node]=location.array.splice(location.index,1);
+    parent.children=Array.isArray(parent.children)?parent.children:[];parent.children.push(node);
+  });
+}
+function outdentTreeComponent(){
+  const location=selectedTreeNode();if(!location?.owner)return;
+  mutatePageTree(()=>{
+    const ownerLocation=locateTreeNode(treePage().components,location.owner.id);
+    if(!ownerLocation)return;
+    const [node]=location.array.splice(location.index,1);
+    ownerLocation.array.splice(ownerLocation.index+1,0,node);
+  });
+}
+function deleteTreeComponent(){
+  const location=selectedTreeNode();if(!location)return;
+  const fallback=location.owner?.id||location.array[location.index-1]?.id||"";
+  if(mutatePageTree(()=>{location.array.splice(location.index,1);selectedComponentId=fallback})){}
+}
+function updateTreePageTitle(){
+  const page=treePage();if(!page)return;
+  mutatePageTree(()=>{page.title=$("componentPageTitle").value.trim()||page.route});
+}
+function updateSelectedTreeComponent(){
+  const location=selectedTreeNode();if(!location)return;
+  mutatePageTree(()=>{
+    const props=location.node.props&&typeof location.node.props==="object"?location.node.props:(location.node.props={});
+    props.label=$("componentLabel").value;
+    const binding=$("componentBinding").value.trim();if(binding)props.binding=binding;else delete props.binding;
+    const className=$("componentClassName").value.trim();if(className)props.className=className;else delete props.className;
+    const style=props.style&&typeof props.style==="object"?props.style:(props.style={});
+    style.color=$("componentColor").value;
+    const fontSize=$("componentFontSize").value.trim();
+    if(fontSize&&/^\d{1,3}$/.test(fontSize)&&Number(fontSize)>=8&&Number(fontSize)<=96)
+      style.fontSize=fontSize+"px";
+    else delete style.fontSize;
+  });
 }
 function referencedByPackage(path){
   const candidates=[path,path.replace(/^assets\//,"../assets/"),path.replace(/^web\//,"./"),path.split("/").pop()];
@@ -285,7 +513,10 @@ function addTextSource(){
 }
 function removeExtraSource(){
   const path=$("extraSourceFile").value;
-  if(!path||REQUIRED_SOURCE_FILES.has(path)){say("入口源码和 project.json 不能删除",true);return;}
+  if(!path||REQUIRED_SOURCE_FILES.has(path)||
+     (project?.runtimeRenderer===PAGE_TREE_RENDERER&&path===PAGE_TREE_RUNTIME_FILE)){
+    say("入口源码、project.json 与生成的页面结构资源不能删除",true);return;
+  }
   const references=referencedByPackage(path);
   if(references.length){say("仍被源码引用（"+references.join("、")+"），请先修改引用",true);return;}
   if(!confirm("删除包内文件 "+path+"？此操作只作用于当前未导出的工程。"))return;
@@ -2209,6 +2440,23 @@ function bindUI(){
   $("mockReject").onclick=()=>resolveMockApproval(false);
   $("simpleMode").onclick=()=>switchMode("simple");
   $("advancedMode").onclick=()=>switchMode("advanced");
+  $("componentPage").onchange=()=>{
+    activeTreePageId=$("componentPage").value;
+    selectedComponentId=treePage()?.components?.[0]?.id||"";renderComponentTree();
+  };
+  $("componentAddPage").onclick=addTreePage;
+  $("componentDeletePage").onclick=deleteTreePage;
+  $("componentAdd").onclick=addTreeComponent;
+  $("componentUndo").onclick=()=>restorePageTree(pageTreeUndo,pageTreeRedo);
+  $("componentRedo").onclick=()=>restorePageTree(pageTreeRedo,pageTreeUndo);
+  $("componentMoveUp").onclick=()=>moveTreeComponent(-1);
+  $("componentMoveDown").onclick=()=>moveTreeComponent(1);
+  $("componentNest").onclick=nestTreeComponent;
+  $("componentOutdent").onclick=outdentTreeComponent;
+  $("componentDelete").onclick=deleteTreeComponent;
+  $("componentPageTitle").onchange=updateTreePageTitle;
+  for(const id of ["componentLabel","componentBinding","componentClassName",
+    "componentColor","componentFontSize"])$(id).onchange=updateSelectedTreeComponent;
   $("editMode").onclick=()=>{
     editCanvas=true;$("editMode").classList.add("active");
     $("interactMode").classList.remove("active");refreshOverlay();

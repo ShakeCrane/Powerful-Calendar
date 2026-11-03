@@ -91,6 +91,47 @@
       <p class="muted">按钮只绑定已开放动作。新增平行选项由宿主 optionGroups 提供，样式由皮肤组件统一决定。</p>
       <div id="actionList" class="muted"></div>
     </section>
+    <section id="pageTreeSection" hidden>
+      <h2>页面与组件</h2>
+      <p class="muted">页面树保存到 project.json，并由空白皮肤运行时直接渲染。绑定字段仅作结构元数据，不会创建或调用 Host 动作。</p>
+      <label>当前页面<select id="componentPage"></select></label>
+      <div class="barActions treePageActions">
+        <button id="componentAddPage" type="button">新增页面</button>
+        <button id="componentDeletePage" class="danger" type="button">删除自建页面</button>
+      </div>
+      <label>组件类型<select id="componentType">
+        <option value="text">文字</option><option value="container">容器</option>
+        <option value="button">按钮</option><option value="scroll">滚动区</option>
+        <option value="form-field">表单字段</option><option value="timeline">时间轴容器</option>
+        <option value="event-card">事件卡片</option><option value="month-grid">月格容器</option>
+        <option value="date-button">日期按钮</option><option value="memo-row">Memo 行</option>
+        <option value="chat-item">对话行</option><option value="settings-row">设置行</option>
+        <option value="resource-layer">资源容器</option>
+      </select></label>
+      <button id="componentAdd" type="button">添加组件</button>
+      <div id="componentTree" class="componentTree" role="tree" aria-label="页面组件树"></div>
+      <div class="barActions treeHistoryActions">
+        <button id="componentUndo" type="button">撤销</button>
+        <button id="componentRedo" type="button">恢复</button>
+      </div>
+      <div class="barActions treeMoveActions">
+        <button id="componentMoveUp" type="button" aria-label="上移组件">上移</button>
+        <button id="componentMoveDown" type="button" aria-label="下移组件">下移</button>
+        <button id="componentNest" type="button">缩进</button>
+        <button id="componentOutdent" type="button">取消缩进</button>
+      </div>
+      <label>页面标题<input id="componentPageTitle" maxlength="60"></label>
+      <div id="componentInspector" hidden>
+        <label>显示文本<input id="componentLabel" maxlength="160"></label>
+        <label>绑定标识（保存元数据，不调用 Host）<input id="componentBinding" maxlength="120"></label>
+        <label>CSS 类名<input id="componentClassName" maxlength="120"></label>
+        <div class="fields">
+          <label>文字颜色<input id="componentColor" type="color" value="#24334c"></label>
+          <label>字号（px）<input id="componentFontSize" type="number" min="8" max="96"></label>
+        </div>
+        <button id="componentDelete" class="danger" type="button">删除选中组件</button>
+      </div>
+    </section>
     <section id="sourceEditor" hidden><h2>高级源码编辑</h2>
       <label>HTML<textarea id="htmlCode" spellcheck="false" rows="9"></textarea></label>
       <label>CSS<textarea id="cssCode" spellcheck="false" rows="9"></textarea></label>

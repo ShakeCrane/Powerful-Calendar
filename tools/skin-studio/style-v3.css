@@ -58,6 +58,16 @@ label.check{display:flex;align-items:center;gap:9px;line-height:1.5}
 .previewFooter{padding:10px 15px;border-top:1px solid #e4eaf2;min-height:65px}
 .previewFooter>div{font-size:12px;color:#63738d}
 .bridgeLog{margin-top:4px;max-height:70px;overflow:auto}
+.componentTree{margin:9px 0;padding:8px;max-height:280px;overflow:auto;border:1px solid #d5deeb;border-radius:8px;background:#f8faff}
+.componentTree ul{list-style:none;margin:4px 0 4px 12px;padding-left:10px;border-left:1px solid #cad5e5}
+.componentTree>ul{margin-left:0;padding-left:0;border-left:0}
+.componentTree li{margin:4px 0}
+.componentTreeNode{width:100%;text-align:left;padding:6px 8px;font-size:12px;overflow-wrap:anywhere}
+.componentTreeNode[aria-pressed="true"]{border-color:#315dde;background:#e6eeff}
+.treePageActions,.treeHistoryActions,.treeMoveActions{margin:6px 0}
+.treeMoveActions button{padding:6px 8px;font-size:11px}
+#componentInspector{margin-top:10px;padding-top:10px;border-top:1px solid #e4eaf3}
+#componentColor{display:block;max-width:100%;height:36px;padding:3px;border:1px solid #cbd5e3;border-radius:8px;background:#fff}
 .bridgeLog p{margin:3px 0}
 @media(max-width:1150px){.studio{grid-template-columns:260px minmax(360px,1fr)}.editor{grid-column:1/-1;max-height:none}}
 @media(max-width:680px){.topbar{align-items:flex-start;flex-direction:column;padding:12px}.studio{display:block;margin:10px}.panel{max-height:none;margin-bottom:12px}.previewPanel{margin-bottom:12px}.previewCanvas{height:620px}}
