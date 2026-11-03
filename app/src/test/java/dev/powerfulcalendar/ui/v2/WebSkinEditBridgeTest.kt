@@ -1012,6 +1012,64 @@ class WebSkinEditBridgeTest {
             ""","draftId":42,"draftVersion":1,"stateRevision":3,"field":"recurrenceFreq","value":"DAILY"""")))
     }
 
+    @Test fun recurrenceIntervalAbove365UsesTheSameCoreRulesInWebDeck() = runBlocking {
+        val source = store.newDraft(DraftForm(
+            kind = TemporalKind.ALARM, title = "Long interval",
+            startText = "2030-05-04 09:00", zoneId = "UTC",
+            recurrence = Recurrence(freq = RecurrenceFreq.DAILY, interval = 1)
+        ))
+        val originalCount = store.commitCount()
+        assertEquals("opened", service.execute(WebEditCommand.OpenDeck(
+            request(), source.draftId
+        )).getString("status"))
+        val initialState = service.snapshot().getJSONObject("deck")
+        val version = initialState.getLong("version")
+        val stateRevision = initialState.getLong("stateRevision")
+        val payload = JSONObject().put("name", "deck.patch").put("requestId", request())
+            .put("draftId", source.draftId).put("draftVersion", version)
+            .put("stateRevision", stateRevision).put("field", "recurrenceInterval")
+            .put("value", "366")
+        val patch = WebEditWire.decode(JSONObject().put("version", 1)
+            .put("type", "command").put("payload", payload).toString())
+        assertTrue(patch is WebEditCommand.PatchDeck)
+        assertEquals("edited", service.execute(patch!!).getString("status"))
+        assertEquals(366, service.snapshot().getJSONObject("deck")
+            .getJSONObject("form").getInt("recurrenceInterval"))
+        assertEquals("flushed", service.execute(WebEditCommand.FlushDeck(request()))
+            .getString("status"))
+        assertEquals(366, requireNotNull(store.draft(source.draftId)).form.recurrence.interval)
+        assertEquals(originalCount, store.commitCount())
+        val updatedVersion = service.snapshot().getJSONObject("deck").getLong("version")
+        val commit = WebEditCommand.CommitDeck(request(), source.draftId, updatedVersion)
+        assertEquals("confirmation_required", service.execute(commit).getString("status"))
+        assertEquals("committed", service.resolveFormalWriteReview(
+            requireNotNull(service.pendingWriteReview).token, true).getString("status"))
+        assertEquals(366, requireNotNull(store.get(source.eventSeq)).recurrence.interval)
+        assertEquals(originalCount + 1, store.commitCount())
+    }
+
+    @Test fun recurrenceIntervalWireKeepsIntegerAndLengthBounds() {
+        val base = DraftForm(kind = TemporalKind.MEMO, title = "Interval")
+        assertEquals(366, patchForm(base, "recurrenceInterval", "366").recurrence.interval)
+        assertEquals(Int.MAX_VALUE, patchForm(base, "recurrenceInterval",
+            Int.MAX_VALUE.toString()).recurrence.interval)
+        for (invalid in listOf("0", "-1", "2147483648", "not-a-number")) {
+            assertThrows(IllegalArgumentException::class.java) {
+                patchForm(base, "recurrenceInterval", invalid)
+            }
+        }
+        val sid = request()
+        fun recurrenceWire(value: String): String {
+            val payload = JSONObject().put("name", "editor.patch").put("requestId", request())
+                .put("sessionId", sid).put("field", "recurrenceInterval").put("value", value)
+            return JSONObject().put("version", 1).put("type", "command")
+                .put("payload", payload).toString()
+        }
+        assertTrue(WebEditWire.decode(recurrenceWire("2147483647"))
+            is WebEditCommand.PatchEvent)
+        assertNull(WebEditWire.decode(recurrenceWire("12345678901")))
+    }
+
     @Test fun kindPatchUsesCoreConversionForBothEditorAndDeckCommands() {
         val original = DraftForm(kind = TemporalKind.ALARM, title = "Alarm",
             startText = "2026-10-22 07:30", reminderMinutes = -1,

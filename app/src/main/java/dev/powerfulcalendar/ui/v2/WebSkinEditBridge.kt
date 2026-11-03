@@ -117,7 +117,7 @@ internal object WebEditWire {
         "endText" to 40, "notes" to 2000, "location" to 240,
         "reminderMinutes" to 6, "reminderMethod" to 20, "reminderTiming" to 20,
         "enabled" to 5, "trackingEnabled" to 5,
-        "recurrenceFreq" to 20, "recurrenceInterval" to 3,
+        "recurrenceFreq" to 20, "recurrenceInterval" to 10,
         "recurrenceFrom" to 10, "recurrenceUntil" to 10)
     fun decode(raw: String): WebEditCommand? {
         if (raw.length !in 1..MAX_FRAME) return null
@@ -305,7 +305,7 @@ internal object WebEditWire {
                 else form.recurrence.copy(freq=freq))
         }
         "recurrenceInterval" -> {
-            val interval=value.toIntOrNull()?.takeIf { it in 1..365 }
+            val interval=value.toIntOrNull()?.takeIf { it > 0 }
                 ?: throw IllegalArgumentException("Invalid recurrence interval")
             form.copy(recurrence=form.recurrence.copy(interval=interval))
         }
