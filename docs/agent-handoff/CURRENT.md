@@ -2,11 +2,11 @@ PROJECT: Powerful-Calendar
 PLAN: PLAN-2026-11-03-R2
 BRANCH: codex/skin-single-default-closure
 BASELINE: ac8d1555a1c177e600e72e4edb5b450189f1fc2c
-CURRENT_TASK: F-01
+CURRENT_TASK: F-02
 TASK_STATUS: READY
-LAST_COMPLETED_TASK: R-05 (PASS)
-NEXT_TASK: F-01
-NEXT_ACTION: Execute F-01 only
+LAST_COMPLETED_TASK: F-01 (PASS)
+NEXT_TASK: F-02
+NEXT_ACTION: Execute F-02 only
 DEFERRED_TASKS: R-06 and R-07 remain deferred until dependent Skin parity is proven
 PHASE: F
 SEP_SIGNOFF: INCOMPLETE (historical parity remains unsigned)
@@ -30,6 +30,7 @@ PROTECTED_ASSETS: docs/agent-handoff/WORKTREE_DISPOSITION.md
 ACCEPTANCE_MATRIX: docs/agent-handoff/SINGLE_SKIN_ACCEPTANCE.md
 
 LATEST_VERIFIED_EVIDENCE:
+  - "F-01 PASS: read-only source boundary audit appended to SINGLE_SKIN_ACCEPTANCE.md. Three concrete ownership risks are mapped only to F-02/F-03/F-04; two formal Core API paths are evidenced. No confirmed product failure; no SSA status changed; JVM/Android/physical tests were not run for this audit."
   - "R-05 PASS from bca20c459f19735f378bbe9fabd7f4c31b65e9cc: canonical Clear Settings no longer contains installed-skin selection/import/export/delete UI or projected skin catalogue state; Web bridge rejects those retired actions. Existing package data is not deleted. Legacy v2/Compiled direct compatibility callbacks remain pending deferred R-06/R-07."
   - "Serial offline Gradle gate PASS: both source boundaries, JVM 966/966 (0 failures/errors/skips), Debug assemble, Lint (0 errors / 56 warnings), AndroidTest Kotlin compile. Production Debug APK SHA-256 11d6018cd1d87997fbe3a6ce93c29d42266a7c72d1266f4ca95ca33537eebb6f. Exactly one APK .pcskin; source and packaged factory skin SHA-256 cbe38662a9d719f7d0f5cac956ba7eb5c9cb5fae848903473e62e96bcd087c23, byte-identical (9 files)."
   - "Skin Studio Python 68/68; changed runtime/E2E Node syntax checks PASS; Clear Studio source roundtrip E2E and notification-permission preview mock E2E PASS."

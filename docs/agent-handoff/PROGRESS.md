@@ -2575,3 +2575,10 @@ API 35 emulator-5570 真实触控 Native Compose 与打包 Clear WebView 的无 
 - API 35 AVD `PowerCal_ChatGPT_QA35_20261103`, `emulator-5584`: actual Clear WebView catalogue/retired-action and notification permission demonstration 1/1 PASS; protected AI settings 1/1 PASS; real backup SAF export/snapshot verification 1/1 PASS. Calendar Store snapshots were unchanged for cancelled/rejected actions. Logs are in `.local/android-test/reports/R-05-20261104/`.
 - Initial test attempts exposed a stale Studio assertion and an overstrict optional accessibility assertion; both were corrected/reverted and successful runs are recorded. A later optional retry lost ADB connectivity during Gradle after-all cleanup; the device is currently disconnected. No app data clear, explicit uninstall, AVD wipe/reset, or system-calendar change. No physical/OEM test was run.
 - Independent report: [Clear skin catalogue retirement](../issues/PC-ISSUE-SEPARATION-CLEAR-SKIN-CATALOGUE-RETIREMENT.md). Product Cutover remains HOLD. R-06/R-07 remain deferred; next task: F-01 only.
+
+## F-01 — Core / Host / Skin finite responsibility audit (2026-11-04)
+
+- **PASS (documentation/static audit only):** appended the bounded call graph and responsibility checklist to `SINGLE_SKIN_ACCEPTANCE.md`. Verified API-backed calendar/recurrence projection and formal event write/approval paths by source call sites.
+- **Review risks, not confirmed defects:** Host timeline projection assigns `TimelineLayout` lanes (F-02); Host month projection and Clear `renderMonth` both derive month presentation dates/grid (F-03); Host owns Memo visible-row paging state while Skin renders/filters rows (F-04). Each has a concrete existing test path and remains scoped to the assigned task.
+- No product code, Core behavior, historical SSA status, or protected historical evidence changed. JVM, Android emulator, and physical-device tests were not run because F-01 is a read-only source audit.
+- Current task is F-02 only. R-06/R-07 remain deferred until parity prerequisites; SEP historical sign-off remains incomplete and Product Cutover remains HOLD.
