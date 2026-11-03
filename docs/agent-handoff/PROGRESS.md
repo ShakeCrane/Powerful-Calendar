@@ -8,8 +8,9 @@
 - G-01～G-05：PASS；Worktree 保护台账和历史验收证据继续保留。
 - R-01～R-05：PASS；R-06/R-07 仍 DEFERRED，相关 Native/Compiled/v2 页面不可提前删除。
 - F-01、F-02：PASS。F-03：BLOCKED；两次全量 JVM 门禁均在 `SystemCalendarImportTest.rejectedItemsArePersistedAsWarningsWithoutCalendarWrites` 的只读查询触发 SQLite lock；隔离复测通过。F-03 指定 API 35 跨月 DOM/切月/实例选择/两次冷启动切片通过，但不得宣称任务 PASS。证据见 `.local/android-test/reports/F-03-20261104/`。
+- F-04：PASS，代码/仪器回归提交 `2cd39bf683c91c2406d3a3b57d48ab09cc7ddfa5`。全量串行 Gradle 门禁 967/967 JVM、边界检查、APK、Lint（0 错误/56 警告）和 AndroidTest 编译通过；相关 JVM 31/31。隔离 API 35 AVD Memo 实际 WebView 回归 7/7，含 251 条 Core/Host/DOM rowKey/revision/occurrence 对照、Open/Done、标题打开零写入、无日期第 251 条续页、完成/撤销，以及关闭重开 SQLite 并新建 Host 后完成状态保留。Native/Clear 创建、编辑、重复完成/撤销、删除对照通过。OS 进程 force-stop 冷启动和真机未测；SSA-04 仍 PARTIAL。证据见 `.local/android-test/reports/F-04-20261104/`。
 - S-01：PASS；空白 v3 工程已具备五页稳定 ID 和空容器节点。真实浏览器完成新建、改名、编辑 Month 元数据、保存、卸载并重开 Studio、导入工程、构建及 CLI 校验。Studio Python 69/69、blank browser E2E、现有 Clear browser E2E 均通过；证据见 `.local/android-test/reports/S-01-20261104/`。
-- 唯一下一任务：F-04（Memo/待办独立 parity）；F-03 全量 JVM 门禁问题仍未解决。
+- 唯一下一任务：S-02（Studio 页面树与组件组合编辑）；F-03 全量 JVM 门禁问题仍未解决，R-06/R-07 继续 DEFERRED。
 - 产品目标：Core 管功能和业务；Skin 管日常表现并调用稳定 API；出厂仅有一套未美化默认 .pcskin；Native 仅用于安全恢复；Studio 必须能从空白项目创作完整皮肤；全部分离验收后才通过 Studio 应用 Claude 设计。
 - 历史 SEP 状态未完全签核；真机/OEM 证据仍有缺口；正式 Skin Cutover / Release 保持 HOLD。历史进度中的 NEXT_ACTION 仅代表当时状态；唯一实时入口是 CURRENT.md。
 

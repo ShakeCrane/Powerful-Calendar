@@ -74,12 +74,12 @@ G-04 在 `1e57da5cbb19b4b1348fe390174f629c8871fc47` 实测 JVM 946/946、Studio 
 - SOURCE：SEP-03；冻结契约与对应原 SEP 行。当前证据：旧 SEP-03 有实例完成与恢复切片；全覆盖未签核。
 - CORE API：core-api/src/main/kotlin/dev/powerfulcalendar/core/api/v1/MemoFeatureApiV1.kt；app/src/main/java/dev/powerfulcalendar/core/api/v1/StoreMemoFeatureApiV1.kt。
 - DEFAULT SKIN：未完成统一查询含四类，未定日期不伪装今天；日期范围 Memo 是一个完成实例。用户动作 → API → Core → 可观察结果：打开未完成列表并完成、撤销重复实例 → MemoFeatureApiV1.queryEntries / EventFeatureApiV1.setOccurrenceCompletion → 按原键修改完成状态 → 计数与 Open/Done 列表更新。
-- STUDIO：创建列表、筛选、徽标和完成动作绑定。
-- ANDROID QA：NOT TESTED（本轮）；完成并撤销后重启，比较实例键、版本、计数和列表。
-- PHYSICAL：NOT TESTED（本轮）；在真机重放主要动作，记录系统、权限、界面及 Store 结果。
-- 测试入口：app/src/androidTest/java/dev/powerfulcalendar/ui/v2/ClearMemoProjectionInstrumentedTest.kt；app/src/test/java/dev/powerfulcalendar/core/api/v1/EventFeatureApiV1Test.kt。
-- 状态：实现 PARTIAL；JVM PARTIAL（G-04 门禁与关联测试，不等于本项签核）；模拟器 NOT TESTED（本轮，历史切片见 SOURCE）；真机 NOT TESTED；总体 PARTIAL。
-- 剩余及签核：按上述动作逐项获得目标构建的 Core/界面结果、Studio 往返、模拟器和真机证据，核对冻结契约后签核。后续任务：F-04, S-02, S-03, Q-02。
+- STUDIO：创建列表、筛选、徽标和完成动作绑定仍未验证；由 S-02/S-03 验收。
+- ANDROID QA：PASS（2026-11-04，隔离 API 35 AVD `PowerCal_ChatGPT_QA35_20261103` / `emulator-5554`，`.d05qaf04` 测试包；Memo 仪器回归 7/7）。WebView 中 Core/API、Host 和 DOM 对齐 251 条 rowKey/revision/occurrence；真实触摸覆盖 Open/Done、标题打开与关闭零写入、完成/撤销及第 251 条无日期续页；关闭并重开隔离 SQLite 数据库、构建新 Host 后完成状态仍为 revision 2，再撤销为 revision 3。OS 进程级 force-stop 冷启动 NOT TESTED。
+- PHYSICAL：NOT TESTED；尚未在真机重放主要动作。
+- 测试入口：`app/src/androidTest/java/dev/powerfulcalendar/ui/v2/ClearMemoProjectionInstrumentedTest.kt`；`app/src/androidTest/java/dev/powerfulcalendar/ui/v2/WebSkinAllKindsTrustedWriteInstrumentedTest.kt`；`app/src/test/java/dev/powerfulcalendar/ui/v2/WebSkinHostProjectionTest.kt`、`WebSkinBridgeTest.kt`、`app/src/test/java/dev/powerfulcalendar/core/api/v1/EventFeatureApiV1Test.kt`。
+- 状态：Clear 默认 Skin 的 F-04 场景实现 PASS；JVM PASS（全量 967/967，关联焦点测试 31/31）；模拟器 PASS（上述 7/7 场景）；Studio 与真机 NOT TESTED；整体 SSA-04 仍 PARTIAL。
+- 剩余及签核：完成 Studio 页面/组件与绑定验收，补足 OS 进程级冷启动及真机证据，并核对完整冻结契约后再签核。后续任务：S-02, S-03, Q-02。
 
 ### SSA-05｜四类事件创建、编辑、删除和恢复
 
