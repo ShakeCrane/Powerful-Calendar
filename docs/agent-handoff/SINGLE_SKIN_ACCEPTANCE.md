@@ -167,26 +167,26 @@ G-04 在 `1e57da5cbb19b4b1348fe390174f629c8871fc47` 实测 JVM 946/946、Studio 
 
 ### SSA-12｜Studio 从零创作完整皮肤
 
-- SOURCE：SEP-15；冻结契约与对应原 SEP 行。当前证据：G-04 Python 68/68 和浏览器源码往返只覆盖部分；从零完整 Android 验收未执行。
+- SOURCE：SEP-15；冻结契约与对应原 SEP 行。G-04 Python 68/68 和浏览器源码往返为此前证据；S-02 代码提交 `d0569f14` 增加空白工程 GUI 页面/组件树及运行时投影。
 - CORE API：tools/skin-studio/skin_studio.py；tools/skin-studio/v3-studio.js；core-api/src/main/kotlin/dev/powerfulcalendar/core/api/v1/CoreFeatureApiV1.kt。
 - DEFAULT SKIN：首页、四类表单、草稿、AI、设置、恢复等完整表现。用户动作 → API → Core → 可观察结果：建立空白工程、添加页面/组件/资源/绑定并预览导出 → Studio 项目操作及 Host 绑定到既有 Core API → 业务由 Core 执行 → 导出包在 Android 完成主要用户流程。
-- STUDIO：必须从空白 GUI 创作结构、绑定和资源；保留自定义源码。
+- STUDIO：本轮浏览器验收 PASS 限定在空白工程结构编辑：新增页面，创建 13 种基础组件，嵌套/取消嵌套、重排、编辑 props/样式/绑定元数据、删除、撤销/恢复、保存重开；运行时预览 DOM 与导出重导入的 `project.json`/生成资源一致。绑定目前仅为元数据，正式动作目录仍归 S-03；完整源码、资源及跨页面功能创作仍待后续签核。
 - ANDROID QA：NOT TESTED（本轮）；安装该确切导出包并执行创建、审核、导航、恢复，比较 Store 和界面。
 - PHYSICAL：NOT TESTED（本轮）；在真机重放主要动作，记录系统、权限、界面及 Store 结果。
-- 测试入口：tools/skin-studio/tests/test_project_ops_v3.py；app/src/androidTest/java/dev/powerfulcalendar/ui/v2/StudioAuthoredSkinBridgeInstrumentedTest.kt。
-- 状态：实现 PARTIAL；JVM PARTIAL（G-04 门禁与关联测试，不等于本项签核）；模拟器 NOT TESTED（本轮，历史切片见 SOURCE）；真机 NOT TESTED；总体 PARTIAL。
-- 剩余及签核：按上述动作逐项获得目标构建的 Core/界面结果、Studio 往返、模拟器和真机证据，核对冻结契约后签核。后续任务：S-01, S-02, S-03, S-04, S-05, S-06, Q-02。
+- 测试入口：tools/skin-studio/tests/test_project_ops_v3.py；tools/skin-studio/tests/test_v3_preview.py；tools/skin-studio/tests/e2e_blank_project_persistence.cjs；tools/skin-studio/tests/e2e_v3_source.cjs；app/src/androidTest/java/dev/powerfulcalendar/ui/v2/StudioAuthoredSkinBridgeInstrumentedTest.kt。
+- 状态：空白工程页面/组件 GUI 在 S-02 范围 PASS；整体实现 PARTIAL；Studio Python 70/70 和两项浏览器 E2E PASS；Android 模拟器 NOT TESTED（本轮），真机 NOT TESTED；总体 PARTIAL。
+- 剩余及签核：完成正式 Host 绑定目录、空白导出包 Android 安装及业务动作验证，补足真机证据，再核对冻结契约。后续任务映射：S-03, S-04, S-05, S-06, Q-02。
 
 ### SSA-13｜包编辑、构建、导出和重新导入
 
-- SOURCE：SEP-13, SEP-15；冻结契约与对应原 SEP 行。当前证据：G-04 builder 与浏览器往返 PASS；旧 SEP-13 母项仍 NOT TESTED。
+- SOURCE：SEP-13, SEP-15；冻结契约与对应原 SEP 行。G-04 builder 与浏览器往返为此前证据；S-02 新增空白页面树投影随 v3 包构建、校验及重导入的一致性证明。旧 SEP-13 母项状态不变。
 - CORE API：tools/skin-studio/skin_studio.py；tools/skin-studio/build_default_clear.py；Host SkinPackageManager 校验包。
 - DEFAULT SKIN：默认皮肤所有页面均可编辑及重建。用户动作 → API → Core → 可观察结果：导入默认包，编辑组件、嵌套资源和绑定 → Studio build/validate/import/export → 保留 manifest、未知字段与文件字节 → 预览和 Android 显示编辑结果。
-- STUDIO：GUI 和版本化 API 往返，自定义资源、能力请求不丢失。
+- STUDIO：S-02 浏览器流程已证明页面树、生成运行资源、导出 `.pcskin` 与重导入保持一致；其他文件/素材及能力声明继续由既有包编辑回归保护。
 - ANDROID QA：NOT TESTED（本轮）；记录导出包哈希，重新导入并安装该确切包，触摸绑定核对结果。
 - PHYSICAL：NOT TESTED（本轮）；在真机重放主要动作，记录系统、权限、界面及 Store 结果。
-- 测试入口：tools/skin-studio/tests/test_default_clear.py；tools/skin-studio/tests/test_v3_source_editing.py。
-- 状态：实现 PARTIAL；JVM PARTIAL（G-04 门禁与关联测试，不等于本项签核）；模拟器 NOT TESTED（本轮，历史切片见 SOURCE）；真机 NOT TESTED；总体 PARTIAL。
+- 测试入口：tools/skin-studio/tests/test_default_clear.py；tools/skin-studio/tests/test_v3_source_editing.py；tools/skin-studio/tests/test_project_ops_v3.py；tools/skin-studio/tests/e2e_blank_project_persistence.cjs。
+- 状态：S-02 空白工程结构与运行投影的 Studio 构建/重导入 PASS；全 SEP 包验收仍 PARTIAL；Android 模拟器和真机 NOT TESTED；总体 PARTIAL。
 - 剩余及签核：按上述动作逐项获得目标构建的 Core/界面结果、Studio 往返、模拟器和真机证据，核对冻结契约后签核。后续任务：S-04, S-05, S-07, Q-01。
 
 ### SSA-14｜损坏、加载失败与 Native 恢复
