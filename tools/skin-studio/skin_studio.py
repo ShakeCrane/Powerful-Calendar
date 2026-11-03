@@ -269,6 +269,12 @@ class Handler(BaseHTTPRequestHandler):
                  "/app.js": ("app.js", "text/javascript; charset=utf-8"),
                  "/style.css": ("style.css", "text/css; charset=utf-8"),
                  "/style-v3.css": ("style-v3.css", "text/css; charset=utf-8")}
+        if route == "/api/blank-v3":
+            # From-scratch authoring uses the same production v3 package verifier.
+            from blank_project_v3 import blank_project
+            base, files = blank_project()
+            return self.send_json(200, {"manifest": base, "files": {
+                path: base64.b64encode(data).decode("ascii") for path, data in files.items()}})
         if route == "/api/template-v3":
             # The Studio starter is byte-for-byte the very same bundled APK asset;
             # never silently generate a different or reduced demo project.

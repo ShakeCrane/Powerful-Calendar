@@ -58,6 +58,25 @@ class PreviewParityTest(unittest.TestCase):
         with urlopen(request) as response:
             return response.read()
 
+    def test_from_scratch_blank_project_roundtrips_without_copying_clear(self):
+        blank = json.loads(self.get("/api/blank-v3"))
+        self.assertEqual("powercal-blank-skin", blank["manifest"]["id"])
+        self.assertEqual(["host.read"], blank["manifest"]["capabilities"])
+        self.assertTrue(blank["manifest"]["fullCanvas"])
+        files = {name: base64.b64decode(data) for name, data in blank["files"].items()}
+        self.assertEqual({"project.json", "web/index.html", "web/style.css", "web/app.js"}, set(files))
+        self.assertEqual([], json.loads(files["project.json"])["layers"])
+        self.assertNotIn(b"Clear", files["web/index.html"])
+        self.assertIn(b"powercal-port", files["web/app.js"])
+        packed = self.post("/api/export-v3", blank)
+        manifest, exported = v3.unpack(packed)
+        self.assertEqual(blank["manifest"], manifest)
+        self.assertEqual(files, exported)
+        request = Request(self.base + "/api/import-v3", packed,
+                          {"Content-Type": "application/octet-stream"}, method="POST")
+        with urlopen(request) as response:
+            self.assertEqual(blank, json.loads(response.read()))
+
     def test_preview_and_zip_share_exact_web_bytes(self):
         obj = json.loads(self.get("/api/template-v3"))
         obj["files"]["assets/graphic.png"] = base64.b64encode(b"\x89PNG\r\nsource-bytes").decode()

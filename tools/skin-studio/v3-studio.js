@@ -2259,6 +2259,13 @@ function bindUI(){
     project.slots.push({id,label:id,type:"color",value:"#2457D6",editable:true});
     applyMaterialSource();renderMaterials();change();
   };
+  $("newBlank").onclick=async()=>{
+    if(dirty&&!confirm("尚未导出的改动会丢失。确定创建新的空白皮肤吗？"))return;
+    try{
+      await loadPackage(await api("/api/blank-v3"));
+      say("已创建空白 v3 皮肤；没有复制默认 Clear 皮肤。");
+    }catch(error){say("新建失败："+error.message,true)}
+  };
   $("importZip").onchange=async e=>{
     try{await importZip(e.target.files[0])}catch(error){say(error.message,true)}
     finally{e.target.value=""}

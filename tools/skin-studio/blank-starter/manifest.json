@@ -1,0 +1,12 @@
+{
+  "format": "powercal-skin",
+  "schemaVersion": 3,
+  "id": "powercal-blank-skin",
+  "name": "PowerCal 空白皮肤",
+  "entrypoint": "web/index.html",
+  "project": "project.json",
+  "fullCanvas": true,
+  "capabilities": [
+    "host.read"
+  ]
+}
