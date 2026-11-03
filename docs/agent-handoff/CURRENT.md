@@ -2,11 +2,11 @@ PROJECT: Powerful-Calendar
 PLAN: PLAN-2026-11-03-R2
 BRANCH: codex/skin-single-default-closure
 BASELINE: ac8d1555a1c177e600e72e4edb5b450189f1fc2c
-CURRENT_TASK: R-03
+CURRENT_TASK: R-04
 TASK_STATUS: READY
-LAST_COMPLETED_TASK: R-02 (PASS)
-NEXT_TASK: R-03
-NEXT_ACTION: Execute R-03 only
+LAST_COMPLETED_TASK: R-03 (PASS)
+NEXT_TASK: R-04
+NEXT_ACTION: Execute R-04 only
 PHASE: R
 SEP_SIGNOFF: INCOMPLETE (historical parity remains unsigned)
 PRODUCT_CUTOVER: HOLD
@@ -15,7 +15,7 @@ OWNER_OVERRIDE_2026_11_03:
   Decision: 历史皮肤不保留，正式 App 只保留一套默认 .pcskin；Native 仅用于安全恢复。
   R03: QA 迁移旧 Native/Clear/第三方/损坏选择后，仅清理测试应用私有 files/skin-packs 内的旧安装 .pcskin；不归档、不导出历史包，不保留多皮肤列表。
   Protected: Calendar Store、草稿、提醒、AI 历史、Studio 源工程、设计源稿、测试夹具、外部 SAF 文件、Git Worktree。
-  Gate: 正式生产 Cutover 仍为 HOLD；本轮文档裁决不是实际删除指令。
+  Gate: 正式生产 Cutover 仍为 HOLD；R-03 删除仅在隔离 QA 应用私有目录验证。
 
 OWNER_GOAL:
   Core: Owns business behavior, data, transactions, reminders, AI, permissions, and stable feature APIs.
@@ -46,4 +46,8 @@ LATEST_VERIFIED_EVIDENCE:
   - "API 35 isolated AVD PowerCal_ChatGPT_QA35_20261103, emulator-5584, application ID dev.powerfulcalendar.d05qar02: Android instrumentation 4/4 executions PASS (fresh WebView, corrupt-factory Native fallback, two force-stop cold WebView restarts). Native fallback also verified on an additional cold Activity launch. Store table snapshots remained unchanged for the tested boot actions."
   - "Production debug APK SHA-256 4ab2d8915793dae697266285b7cd2b5774cf3a074c545168505fbe9c8ab9b504; isolated QA APK SHA-256 486938d9e9c87184005ac7c9af50a5444c0a4861aed102ae488066b548477321. Logs: .local/android-test/reports/R-02-20261103/ within this worktree. Initial SDK-path, snapshot-helper and PowerShell argument failures are retained in the logs; corrected reruns passed."
 
-BLOCKERS: R-02 has no task blocker; Physical/OEM reminder evidence (REC-P1-086) remains BLOCKED; simultaneous-alarm behavior remains unresolved in the frozen contract. Historical SEP parity remains unsigned and product Cutover stays HOLD. G-04 emulator -list-avds returned no entries although adb confirmed the running QA AVD; Android instrumentation was not run in G-04 or G-05.
+  - "R-03 PASS against source baseline 9da0eda4e5dd44b839825b74d365b1219d143db5 plus R-03 changes: explicit isolated QA migration runs before Activity; pending/complete preference commits protect resumable deletion. On failure the QA caller must retry before normal startup. No production startup calls migration; product cutover remains HOLD."
+  - "R-03 full Gradle gate PASS: JVM 966/966, migration class 13/13, both source boundaries, debug APK, lint (56 warnings, 0 errors), AndroidTest Kotlin compile. Production debug APK from the full gate SHA-256 4ed97c462cebc17b538800fe98e8e950cc941b86cb02b102e682270e8d6773f1; later production rebuild SHA-256 29b6684a64405cf573261099dd22c8f3a01119e55cb79cadb71bbd9fd16ffe16. APK contains one factory .pcskin, SHA-256 ad0202fc6b9f6341cd0cb9bc1937dc4dd6fe2eda42082cea252e0c8f3f13d403."
+  - "API 35 AVD PowerCal_ChatGPT_QA35_20261103, emulator-5584, isolated application ID dev.powerfulcalendar.d05qar03: 23 successful instrumentation logs; six additional attempts aborted due emulator disconnections or a test package requiring reinstall, with retries passing (seven aborted log files include one copy). Fresh, historical Native, historical Clear and unknown selection each passed preparation plus two process cold starts; legacy packages to Clear, corrupt factory to Native, real recurrence/exception/completion/draft/reminder Store snapshots, commit/delete failures, symlink containment and cross-process pending cleanup retry also passed. Only the isolated QA app data was cleared. QA APK SHA-256 1582d72837d0679b19d4212fe531a65a67a205481eabdf36d63cc16bcbb19347. Logs: .local/android-test/reports/R-03-20261104/ within this worktree."
+
+BLOCKERS: R-03 has no task blocker; Physical/OEM reminder evidence (REC-P1-086) remains BLOCKED; simultaneous-alarm behavior remains unresolved in the frozen contract. Historical SEP parity remains unsigned and product Cutover stays HOLD. G-04 emulator -list-avds returned no entries although adb confirmed the running QA AVD; Android instrumentation was not run in G-04 or G-05.

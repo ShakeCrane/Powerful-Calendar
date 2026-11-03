@@ -1,6 +1,7 @@
 package dev.powerfulcalendar.ui.v2
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.compose.ui.graphics.Color
@@ -12,12 +13,17 @@ import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
 import java.security.MessageDigest
+import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.util.zip.ZipInputStream
 
 data class InstalledSkin(val id: String, val name: String, val builtIn: Boolean = false)
 
 /** QA policy is explicitly supplied by trusted test code; production uses the default. */
 enum class SkinBootPolicy { PRESERVE_SELECTION, QA_FRESH_FACTORY }
+
+/** A failed migration must be retried by the isolated QA host before normal startup. */
+enum class SkinMigrationResult { COMPLETE, PREFERENCE_FAILED, CLEANUP_FAILED }
 
 /**
  * PowerCal skin ZIP v1/v2/v3: v1 resources, v2 bounded declarative UI,
@@ -29,6 +35,8 @@ enum class SkinBootPolicy { PRESERVE_SELECTION, QA_FRESH_FACTORY }
 class SkinPackageManager(
     private val context: Context,
     private val factoryPackageBytes: (() -> ByteArray)? = null,
+    private val migrationCommit: (SharedPreferences.Editor) -> Boolean = { it.commit() },
+    private val deleteLegacyPackage: (File) -> Boolean = { it.delete() },
     private val nativePreferenceCommit: (Context, String) -> Boolean = { appContext, id ->
         appContext.getSharedPreferences("powercal-skin-choice", Context.MODE_PRIVATE)
             .edit().putString("selected", id).commit()
@@ -124,6 +132,79 @@ class SkinPackageManager(
             prefs.edit().putString("selected", original.id).apply()
             PowerCalSkinRegistry.reset()
         }
+    }
+
+    /**
+     * Explicit isolated-QA entry point. Production startup never invokes this operation.
+     * The pending marker and selected recovery target are committed together before deletion.
+     */
+    fun migrateHistoricalForQa(): SkinMigrationResult {
+        val phase = runCatching { prefs.getString("r03_migration", null) }.getOrNull()
+        if (phase == "complete") return SkinMigrationResult.COMPLETE
+        val factory = runCatching { readBundledClear() }.getOrNull()
+        val selected = runCatching { prefs.getString("selected", null) }.getOrNull()
+        val legacyFiles = runCatching { checkedLegacyPackages() }.getOrElse {
+            PowerCalSkinRegistry.reset()
+            return SkinMigrationResult.CLEANUP_FAILED
+        }
+        val validLegacy = if (selected != null && selected != original.id &&
+            selected != clearCandidate.id && legacyFiles.any { it.name == "$selected.pcskin" }) {
+            runCatching { loadPackage(selected) }.isSuccess
+        } else false
+        val target = when {
+            phase == "pending" && selected == original.id -> original.id
+            phase == "pending" && selected == clearCandidate.id && factory != null -> clearCandidate.id
+            phase == "pending" -> original.id
+            selected == original.id -> original.id
+            selected == null && prefs.contains("selected") -> original.id
+            selected == null && factory != null -> clearCandidate.id
+            selected == clearCandidate.id && factory != null -> clearCandidate.id
+            validLegacy && factory != null -> clearCandidate.id
+            else -> original.id
+        }
+        // No historical renderer is active once migration begins, even on a commit failure.
+        PowerCalSkinRegistry.reset()
+        val pending = prefs.edit().putString("selected", target).putString("r03_migration", "pending")
+        if (!runCatching { migrationCommit(pending) }.getOrDefault(false)) {
+            PowerCalSkinRegistry.reset()
+            return SkinMigrationResult.PREFERENCE_FAILED
+        }
+        if (target == clearCandidate.id) PowerCalSkinRegistry.activate(factory!!.pack)
+        val cleaned = runCatching {
+            for (file in checkedLegacyPackages()) {
+                // Recheck the directory and entry immediately before each unlink.
+                require(checkedLegacyPackages().any { it.name == file.name })
+                require(deleteLegacyPackage(file)) { "legacy skin removal failed" }
+                require(Files.notExists(file.toPath(), LinkOption.NOFOLLOW_LINKS))
+            }
+            checkedLegacyPackages().isEmpty()
+        }.getOrDefault(false)
+        if (!cleaned) return SkinMigrationResult.CLEANUP_FAILED
+        val complete = prefs.edit().putString("r03_migration", "complete")
+        if (!runCatching { migrationCommit(complete) }.getOrDefault(false)) {
+            // SharedPreferences.commit can update the in-memory map even if the disk write fails.
+            prefs.edit().putString("r03_migration", "pending").apply()
+            return SkinMigrationResult.PREFERENCE_FAILED
+        }
+        return SkinMigrationResult.COMPLETE
+    }
+
+    /** Never follows symlinks or descends into child directories. */
+    private fun checkedLegacyPackages(): List<File> {
+        val root = context.filesDir.canonicalFile
+        val path = folder.toPath()
+        require(!Files.isSymbolicLink(path)) { "skin directory is a symlink" }
+        if (Files.notExists(path, LinkOption.NOFOLLOW_LINKS)) return emptyList()
+        require(Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS) &&
+            folder.canonicalFile.parentFile == root && folder.canonicalFile.name == "skin-packs") {
+            "skin directory is outside app-private storage"
+        }
+        return requireNotNull(folder.listFiles()).filter { it.name.endsWith(".pcskin") }.map { file ->
+            require(!Files.isSymbolicLink(file.toPath()) &&
+                Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS) &&
+                file.canonicalFile.parentFile == folder.canonicalFile) { "unsafe skin package entry" }
+            file
+        }.sortedBy { it.name }
     }
 
     fun select(id: String) {
