@@ -37,14 +37,22 @@ import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.Recurrence
 import dev.powerfulcalendar.core.RecurrenceFreq
 import dev.powerfulcalendar.core.TemporalKind
+import dev.powerfulcalendar.core.api.v1.CalendarWindowQueryV1
+import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.RecurrenceOccurrenceWindowQueryV1
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
+import java.io.FileOutputStream
+import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.YearMonth
@@ -56,6 +64,322 @@ import java.util.concurrent.atomic.AtomicReference
 @RunWith(AndroidJUnit4::class)
 class NativeClearMonthOccurrenceParityInstrumentedTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+
+    private object ColdMonthProcessIdentity {
+        val token: String = UUID.randomUUID().toString()
+    }
+
+    private fun coldMonthRunId(): String = requireNotNull(
+        InstrumentationRegistry.getArguments().getString("monthOccurrenceRunId")
+    ).also { require(it.matches(Regex("[a-f0-9-]{36}"))) }
+
+    private fun coldMonthPhase(): String = requireNotNull(
+        InstrumentationRegistry.getArguments().getString("monthOccurrencePhase")
+    )
+
+    private fun coldMonthNamespace(runId: String) = "pc-month-occurrence-$runId"
+
+    private fun saveColdMonthMarker(file: File, value: JSONObject) {
+        check(file.parentFile?.mkdirs() == true || file.parentFile?.isDirectory == true)
+        FileOutputStream(file).use { output ->
+            output.write(value.toString().toByteArray(Charsets.UTF_8))
+            output.fd.sync()
+        }
+    }
+
+    private fun cleanupColdMonthFixture(
+        storage: Context,
+        context: IsolatedAppContext,
+        namespace: String,
+        database: String,
+        marker: File
+    ) {
+        context.deleteDatabase(database)
+        listOf("powercal-onboarding", "powercal-skin-choice", "powercal-ui", "powercal-profile")
+            .forEach { storage.deleteSharedPreferences("$namespace-$it") }
+        File(storage.cacheDir, namespace).deleteRecursively()
+        marker.parentFile?.deleteRecursively()
+    }
+
+    private fun attachClearMonth(context: IsolatedAppContext, store: PowerStore): WebView {
+        compose.runOnUiThread {
+            compose.activity.setContent {
+                CompositionLocalProvider(LocalContext provides context) {
+                    PowerCalTheme { PowerCalApp(store) }
+                }
+            }
+        }
+        var web: WebView? = null
+        compose.waitUntil(30_000) {
+            compose.runOnUiThread {
+                web = findWebView(compose.activity.findViewById(android.R.id.content))
+            }
+            web != null
+        }
+        return requireNotNull(web).also {
+            awaitJs(it, "!!window.PowerCalSkin && " +
+                "!!document.querySelector(\".clear-tabbar [data-action='month']\")")
+        }
+    }
+
+    private fun currentBridgeState(): JSONObject {
+        val state = AtomicReference<JSONObject>()
+        compose.runOnIdle { state.set(WebSkinBridgeRuntime.state()) }
+        return requireNotNull(state.get())
+    }
+
+    private fun assertCrossMonthOccurrenceRendering(web: WebView, store: PowerStore) {
+        val eventSeq = 1L
+        val eventZone = ZoneId.of("Asia/Shanghai")
+        val appZone = ZoneId.systemDefault()
+        val ownerBefore = requireNotNull(store.get(eventSeq))
+        val countsBefore = listOf(
+            store.draftCount(), store.pendingCount(), store.identityCount(), store.commitCount(),
+            store.nextSequencePreview(), store.nextQueueOrderPreview(), store.all().size.toLong()
+        )
+        val gridFrom = LocalDate.of(2026, 10, 26)
+        val gridTo = LocalDate.of(2026, 12, 7)
+        val fromMillis = gridFrom.atStartOfDay(appZone).toInstant().toEpochMilli()
+        val toMillis = gridTo.atStartOfDay(appZone).toInstant().toEpochMilli()
+        val core = PowerCalCoreFeatureApiV1(store)
+        val coreWindow = core.calendar.queryWindow(CalendarWindowQueryV1(
+            fromMillis = fromMillis,
+            toMillis = toMillis,
+            zoneId = appZone.id
+        ))
+        assertEquals("Core month window contains the owner exactly once", listOf(eventSeq),
+            coreWindow.events.map { it.eventSeq })
+        val coreOwner = coreWindow.events.single()
+        assertEquals(ownerBefore.revision, coreOwner.revision)
+        val coreOccurrences = core.recurrence.queryOccurrencesInWindow(
+            RecurrenceOccurrenceWindowQueryV1(coreOwner, fromMillis, toMillis)
+        )
+        assertEquals(eventSeq, coreOccurrences.eventSeq)
+        assertEquals(ownerBefore.revision, coreOccurrences.eventRevision)
+        val targetDates = (2..5).map { LocalDate.of(2026, 11, it) }
+        val coreByDate = coreOccurrences.occurrences.associateBy { occurrence ->
+            Instant.ofEpochMilli(occurrence.startMillis).atZone(eventZone).toLocalDate()
+        }
+        val expected = targetDates.associateWith { date ->
+            requireNotNull(coreByDate[date]) { "Core did not return occurrence for $date" }
+        }
+        assertEquals(targetDates, expected.keys.toList())
+
+        tapClear(web, ".clear-tabbar [data-action='month']")
+        awaitJs(web, "!document.querySelector('#monthPage').hidden")
+        tapClear(web, "#monthTitle")
+        awaitJs(web, "document.querySelector('#monthPickerDialog')?.open===true")
+        evaluate(web, "(()=>{const year=document.querySelector('#monthYear');" +
+            "year.value='2026';year.dispatchEvent(new Event('input',{bubbles:true}));" +
+            "const month=document.querySelector('#monthNumber');month.value='11';" +
+            "month.dispatchEvent(new Event('change',{bubbles:true}));return true})()")
+        val monthSubmit = tapClear(web, "#monthPickerForm button[type='submit']")
+        assertTrue("Month selection is a trusted Android touch", monthSubmit.optBoolean("trusted"))
+        awaitJs(web, "document.querySelector('#monthTitle')?.textContent.startsWith('2026-11')")
+
+        fun assertHostRows() {
+            val month = currentBridgeState().getJSONObject("month")
+            assertEquals("2026-11", month.getString("month"))
+            assertEquals(appZone.id, month.getString("zoneId"))
+            val items = month.getJSONArray("items")
+            for ((date, occurrence) in expected) {
+                val rows = (0 until items.length()).map(items::getJSONObject).filter {
+                    it.getString("date") == date.toString()
+                }
+                assertEquals("Host state must contain one row for $date", 1, rows.size)
+                val row = rows.single()
+                assertEquals(eventSeq, row.getLong("eventSeq"))
+                assertEquals(ownerBefore.revision, row.getLong("revision"))
+                assertEquals("$eventSeq:${occurrence.key}", row.getString("occurrenceKey"))
+                assertEquals(occurrence.key, row.getString("originalOccurrenceKey"))
+                assertEquals("ACTIVITY", row.getString("kind"))
+            }
+        }
+
+        fun waitForHostRows(stage: String) {
+            val lastFailure = AtomicReference("not evaluated")
+            try {
+                compose.waitUntil(30_000) {
+                    runCatching { assertHostRows() }.fold(
+                        onSuccess = { true },
+                        onFailure = { error -> lastFailure.set(error.toString()); false }
+                    )
+                }
+            } catch (timeout: Throwable) {
+                val state = runCatching { currentBridgeState().toString() }
+                    .getOrElse { "state read failed: $it" }
+                throw AssertionError(
+                    "Host occurrence rows did not converge at $stage; " +
+                        "last assertion=${lastFailure.get()}; bridgeState=$state",
+                    timeout
+                )
+            }
+        }
+        waitForHostRows("initial November selection")
+        assertHostRows()
+
+        for ((date, occurrence) in expected) {
+            val dateText = date.toString()
+            val cellSelector = "#monthGrid .month-cell[data-date='$dateText']"
+            val cellTap = tapClear(web, cellSelector)
+            assertTrue("Month date $date must use trusted Android input",
+                cellTap.optBoolean("trusted"))
+            awaitJs(web, "document.querySelector('#monthAgenda h2')?.textContent==='$dateText'")
+            val rowSelector = "#monthAgenda .agenda-event[data-event-seq='$eventSeq']" +
+                "[data-revision='${ownerBefore.revision}']" +
+                "[data-original-occurrence-key='${occurrence.key}']"
+            awaitJs(web, "!!document.querySelector(${JSONObject.quote(rowSelector)})")
+            val serialized = evaluate(web, "(()=>{const cell=document.querySelector(" +
+                "${JSONObject.quote(cellSelector)});const row=document.querySelector(" +
+                "${JSONObject.quote(rowSelector)});return JSON.stringify({date:cell?.dataset.date," +
+                "dots:cell?.querySelectorAll('.month-dot').length,dotText:cell?.querySelector('.month-dot')?.textContent," +
+                "eventSeq:row?.dataset.eventSeq,revision:row?.dataset.revision," +
+                "occurrenceKey:row?.dataset.originalOccurrenceKey})})()")
+            val dom = JSONObject(JSONArray("[$serialized]").getString(0))
+            assertEquals(dateText, dom.getString("date"))
+            assertEquals(1, dom.getInt("dots"))
+            assertEquals("•", dom.getString("dotText"))
+            assertEquals(eventSeq.toString(), dom.getString("eventSeq"))
+            assertEquals(ownerBefore.revision.toString(), dom.getString("revision"))
+            assertEquals(occurrence.key, dom.getString("occurrenceKey"))
+
+            if (date == LocalDate.of(2026, 11, 3)) {
+                val eventTap = tapClear(web, rowSelector)
+                assertTrue("Occurrence row must use trusted Android input",
+                    eventTap.optBoolean("trusted"))
+                awaitJs(web, "!document.querySelector('#skinSheet').hidden")
+                val editor = currentBridgeState().getJSONObject("editing")
+                    .getJSONObject("editor")
+                assertEquals(eventSeq, editor.getLong("eventSeq"))
+                assertTrue(editor.getBoolean("canEditSelectedOccurrence"))
+                val scopeTap = tapClear(web, "[data-scope='SINGLE_OCCURRENCE']")
+                assertTrue("Single occurrence scope must use trusted Android input",
+                    scopeTap.optBoolean("trusted"))
+                awaitJs(web, "document.querySelector('[data-scope=SINGLE_OCCURRENCE]')" +
+                    "?.getAttribute('aria-pressed')==='true'")
+                val scopedEditor = currentBridgeState().getJSONObject("editing")
+                    .getJSONObject("editor")
+                assertEquals("SINGLE_OCCURRENCE", scopedEditor.getString("recurrenceScope"))
+                assertEquals(DraftForm.formatInstant(occurrence.startMillis, eventZone),
+                    scopedEditor.getJSONObject("form").getString("startText"))
+                assertEquals(ownerBefore.title,
+                    scopedEditor.getJSONObject("form").getString("title"))
+                evaluate(web, "document.querySelector('#sheetClose').click();true")
+                awaitJs(web, "document.querySelector('#skinSheet').hidden")
+            }
+        }
+
+        tapClear(web, ".month-bar [data-action='browseMonth'][data-delta-months='-1']")
+        awaitJs(web, "document.querySelector('#monthTitle')?.textContent.startsWith('2026-10')")
+        tapClear(web, ".month-bar [data-action='browseMonth'][data-delta-months='1']")
+        awaitJs(web, "document.querySelector('#monthTitle')?.textContent.startsWith('2026-11')")
+        waitForHostRows("return from October to November")
+        assertHostRows()
+        assertEquals("Reading and opening monthly occurrences must not write the Store",
+            countsBefore, listOf(
+                store.draftCount(), store.pendingCount(), store.identityCount(), store.commitCount(),
+                store.nextSequencePreview(), store.nextQueueOrderPreview(), store.all().size.toLong()
+            ))
+        assertEquals(ownerBefore, store.get(eventSeq))
+        println("MONTH_OCCURRENCE_PARITY dates=${expected.keys} " +
+            "keys=${expected.values.map { it.key }} eventSeq=$eventSeq revision=${ownerBefore.revision} " +
+            "coreHostDomMatch=true monthSwitch=true storeUnchanged=true")
+    }
+
+    @Test fun prepareCrossMonthDailyOccurrenceForColdRestart() {
+        assumeTrue("run prepare phase with -e monthOccurrencePhase prepare",
+            coldMonthPhase() == "prepare")
+        val runId = coldMonthRunId()
+        val namespace = coldMonthNamespace(runId)
+        val storage = compose.activity.applicationContext
+        val context = IsolatedAppContext(compose.activity, storage, namespace)
+        val database = "cross-month-$runId.db"
+        val markerDir = File(storage.noBackupFilesDir, namespace)
+        val marker = File(markerDir, "session.json")
+        assertFalse("UUID-scoped month fixture must be new", marker.exists())
+        val store = PowerStore(context, database)
+        var prepared = false
+        try {
+            val zone = ZoneId.of("Asia/Shanghai")
+            val startDate = LocalDate.of(2026, 10, 31)
+            val start = startDate.atTime(9, 0).atZone(zone).toInstant().toEpochMilli()
+            val draft = store.newDraft(DraftForm(
+                kind = TemporalKind.ACTIVITY,
+                title = "F-03 deterministic cross-month daily activity",
+                startText = DraftForm.formatInstant(start, zone),
+                endText = DraftForm.formatInstant(start + 3_600_000L, zone),
+                zoneId = zone.id,
+                reminderMinutes = -1,
+                recurrence = Recurrence(freq = RecurrenceFreq.DAILY, count = 8)
+            ), actor = "f03-month-instrumented-test")
+            assertTrue(store.commit(draft.draftId, actor = "f03-month-instrumented-test") is
+                PowerStore.CommitOutcome.Committed)
+            assertEquals(1L, draft.eventSeq)
+            context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                .edit().putBoolean("system-calendar-import-asked", true).commit()
+            PowerCalSkinRegistry.reset()
+            val manager = SkinPackageManager(context)
+            manager.select("powercal-clear-default")
+            assertEquals("powercal-clear-default", manager.currentId())
+            val web = attachClearMonth(context, store)
+            assertCrossMonthOccurrenceRendering(web, store)
+            saveColdMonthMarker(marker, JSONObject()
+                .put("runId", runId)
+                .put("namespace", namespace)
+                .put("database", database)
+                .put("eventSeq", draft.eventSeq)
+                .put("revision", store.get(draft.eventSeq)?.revision)
+                .put("processPid", android.os.Process.myPid())
+                .put("processToken", ColdMonthProcessIdentity.token))
+            prepared = true
+            println("MONTH_OCCURRENCE_COLD_PREPARED runId=$runId pid=${android.os.Process.myPid()} " +
+                "processToken=${ColdMonthProcessIdentity.token}")
+        } finally {
+            compose.runOnUiThread { compose.activity.setContent { } }
+            compose.waitForIdle()
+            PowerCalSkinRegistry.reset()
+            store.close()
+            if (!prepared) cleanupColdMonthFixture(storage, context, namespace, database, marker)
+        }
+    }
+
+    @Test fun verifyCrossMonthDailyOccurrenceAfterColdRestart() {
+        assumeTrue("run restore phase with -e monthOccurrencePhase restore",
+            coldMonthPhase() == "restore")
+        val runId = coldMonthRunId()
+        val namespace = coldMonthNamespace(runId)
+        val storage = compose.activity.applicationContext
+        val context = IsolatedAppContext(compose.activity, storage, namespace)
+        val markerDir = File(storage.noBackupFilesDir, namespace)
+        val marker = File(markerDir, "session.json")
+        assertTrue("prepare phase must leave the cold restart marker", marker.isFile)
+        val metadata = JSONObject(marker.readText(Charsets.UTF_8))
+        assertEquals(runId, metadata.getString("runId"))
+        val database = metadata.getString("database")
+        val store = PowerStore(context, database)
+        try {
+            assertNotEquals("force-stop must produce a new process token",
+                metadata.getString("processToken"), ColdMonthProcessIdentity.token)
+            assertEquals(metadata.getLong("eventSeq"), store.get(metadata.getLong("eventSeq"))
+                ?.eventSeq)
+            assertEquals(metadata.getLong("revision"), store.get(metadata.getLong("eventSeq"))
+                ?.revision)
+            val manager = SkinPackageManager(context)
+            assertEquals("powercal-clear-default", manager.currentId())
+            PowerCalSkinRegistry.reset()
+            manager.restoreSelection()
+            assertEquals("powercal-clear-default", PowerCalSkinRegistry.active.key)
+            assertCrossMonthOccurrenceRendering(attachClearMonth(context, store), store)
+            println("MONTH_OCCURRENCE_COLD_RESTORED runId=$runId pid=${android.os.Process.myPid()} " +
+                "processToken=${ColdMonthProcessIdentity.token}")
+        } finally {
+            compose.runOnUiThread { compose.activity.setContent { } }
+            compose.waitForIdle()
+            PowerCalSkinRegistry.reset()
+            store.close()
+            cleanupColdMonthFixture(storage, context, namespace, database, marker)
+        }
+    }
 
     private class IsolatedAppContext(
         target: Context,

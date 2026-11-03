@@ -59,15 +59,15 @@ G-04 在 `1e57da5cbb19b4b1348fe390174f629c8871fc47` 实测 JVM 946/946、Studio 
 
 ### SSA-03｜月历、日期与重复实例
 
-- SOURCE：SEP-02, SEP-06；冻结契约与对应原 SEP 行。当前证据：旧 SEP-02 有配对实例及翻月 PASS；完整生命周期未签核。
+- SOURCE：SEP-02, SEP-06；冻结契约与对应原 SEP 行。当前证据：旧 SEP-02 有配对实例及翻月 PASS；F-03 补充了默认 Web Skin occurrence DOM 与冷进程重启证据，但完整生命周期仍未签核。
 - CORE API：core-api/src/main/kotlin/dev/powerfulcalendar/core/api/v1/RecurrenceFeatureApiV1.kt；app/src/main/java/dev/powerfulcalendar/core/api/v1/CoreRecurrenceFeatureApiV1.kt。
 - DEFAULT SKIN：月导航、日期选择、实例列表与日期创建入口。用户动作 → API → Core → 可观察结果：选择月份和日期并打开重复实例 → CalendarFeatureApiV1.queryWindow / RecurrenceFeatureApiV1.queryOccurrenceByKey → 保留原始实例键与选中日期 → 日历和编辑器显示同一实例。
 - STUDIO：创建月网格、实例组件及日期绑定。
-- ANDROID QA：PARTIAL；F-02 实测月历选中日期并创建 ACTIVITY；重复 occurrence 的 Web DOM、切月实例身份和冷启动仍待 F-03 验收。
-- PHYSICAL：NOT TESTED（本轮）；在真机重放主要动作，记录系统、权限、界面及 Store 结果。
-- 测试入口：app/src/test/java/dev/powerfulcalendar/core/api/v1/RecurrenceFeatureApiV1Test.kt；app/src/androidTest/java/dev/powerfulcalendar/ui/v2/NativeClearMonthOccurrenceParityInstrumentedTest.kt。
-- 状态：实现 PARTIAL；JVM PARTIAL（F-02 全量 967/967，但 occurrence-specific cases 尚未签核）；模拟器 PARTIAL（月历选日/创建已测，重复实例 DOM 仍待 F-03）；真机 NOT TESTED；总体 PARTIAL。
-- 剩余及签核：按上述动作逐项获得目标构建的 Core/界面结果、Studio 往返、模拟器和真机证据，核对冻结契约后签核。后续任务：F-03, F-06, S-03, Q-02。
+- ANDROID QA：PARTIAL；F-02 实测月历选中日期并创建 ACTIVITY；F-03 在隔离 API 35 AVD 两次完成跨月 daily ACTIVITY 的 Core→Host→Web state→DOM 核对、Nov 3 实例打开、Oct↔Nov 切换及 force-stop 后冷启动；每次 Store 快照均未因查询/浏览/打开而改变。该 F-03 设备切片通过，但不代表本 SSA 整体签核。
+- PHYSICAL：NOT TESTED；需在真机重放主要动作并记录系统、权限、界面及 Store 结果。
+- 测试入口：app/src/test/java/dev/powerfulcalendar/ui/v2/WebSkinHostProjectionTest.kt；app/src/androidTest/java/dev/powerfulcalendar/ui/v2/NativeClearMonthOccurrenceParityInstrumentedTest.kt；app/src/androidTest/java/dev/powerfulcalendar/ui/v2/WebSkinRecurrenceInstrumentedTest.kt。
+- 状态：实现 PARTIAL；JVM PARTIAL（F-03 Host projection 24/24 PASS；两次全量 967 项中均有 1 项 `SystemCalendarImportTest.rejectedItemsArePersistedAsWarningsWithoutCalendarWrites` 因只读 commitCount 查询触发 SQLiteDatabaseLockedException，单项隔离复测 1/1 PASS；全量门禁仍不通过）；模拟器 PARTIAL（F-03 指定 occurrence DOM、切月、选中与双冷启动切片通过，SSA 全面验收未完成）；真机 NOT TESTED；总体 PARTIAL。F-03 因必需全量 JVM 门禁失败记 BLOCKED，不据此确认月历产品缺陷。
+- 剩余及签核：调查并解除全量 JVM 中可重复出现的 SQLite 锁门禁问题，再完成剩余冻结场景、Studio 月组件往返和真机证据；不得将单项 Android 切片提升为 SSA PASS。后续映射仍包括 F-06、S-02、S-03、Q-02。
 
 ### SSA-04｜Memo 和待办
 
@@ -379,3 +379,12 @@ MainActivity.setContent (MainActivity.kt:89-91)
 - 具体修复证据：新建 ACTIVITY 的 deck.patch 曾因 transient editor 快照缺少 stateRevision 被 wire decoder 拒绝；另一个 WebView 激活竞态让可见时间窗已有 Core 事件、Skin 状态却读取到空的记忆列表，并使移动检查读到旧 revision。相应 JVM 和实际 WebView 回归验证修复；Store 仅在显式确认后写入。
 - 主要改动：PowerCalApp.kt、WebSkinEditBridge.kt、WebSkinTimelineProjection.kt、WebSkinHostProjectionTest.kt、WebSkinEditBridgeTest.kt、TimelineCreateContextWebViewInstrumentedTest.kt、TimelineDragWebViewInstrumentedTest.kt、默认 Clear app.js 与正式 .pcskin。完整门禁和设备日志位于 .local/android-test/reports/F-02-20261104/。
 - 验收边界：SSA-02 与 SSA-03 总体状态均保持 PARTIAL；本任务结果不替代重复实例 DOM 全生命周期、完整重叠/无障碍、Studio 往返或真机验证。历史 SEP 签核仍 INCOMPLETE，Product Cutover 仍 HOLD。
+
+### F-03 执行证据（2026-11-04）
+
+- **任务状态：BLOCKED。** 未复现此前“Host 有 occurrence、DOM 不显示”的产品故障；F-03 指定的功能与设备检查通过，但完整 JVM 门禁两次被同一测试失败阻断。
+- **可复验行为：** 隔离 API 35 AVD `PowerCal_ChatGPT_QA35_20261103`（`emulator-5554`）上创建 2026-10-31 起始的每日 ACTIVITY；Core 窗口/重复查询、Host JSON 和 WebView 月格/agenda DOM 对齐 11 月 2–5 日。每行保留 eventSeq、revision、原始 occurrence key；点击 11 月 3 日打开对应实例，选择 SINGLE_OCCURRENCE 后编辑器显示该槽位。切换 2026-10 再回 2026-11 后状态仍匹配。两次独立 prepare → `adb shell am force-stop` → restore 执行均产生新进程身份，并在浏览/打开之后保持测试 Store 快照不变。`WebSkinRecurrenceInstrumentedTest` 使用 Android trusted touch 的回归 1/1 PASS。
+- **JVM/门禁：** `WebSkinHostProjectionTest` 定向 24/24 PASS；两个源码边界检查 PASS。两次默认发行变体全量运行均为 967 tests / 1 failure：`SystemCalendarImportTest.rejectedItemsArePersistedAsWarningsWithoutCalendarWrites` 在只读 `commitCount()` 查询发生 `SQLiteDatabaseLockedException`；该单测隔离重跑 1/1 PASS，故记录为全量门禁稳定性阻塞，根因未确认，不能将全量标 PASS。Debug APK、Lint（0 errors/56 warnings）、AndroidTest Kotlin 编译 PASS。一次带 QA application suffix 的全量命令不作为产品门禁结果；默认变体结果见报告日志。
+- **包与改动：** 默认 APK SHA-256 `F5E5FA6FE4194AD213EF60D5933018422A818D0AFB97E7B68FD223B3F54E3522`；APK 仅含一份 `assets/powercal-clear-default.pcskin`，与源码逐字节一致，SHA-256 `299e4bdd78c8936f6c15db0200172e659aaa5b0e0643f0d70c115966ac35a9f4`。未修改产品运行时代码或默认皮肤；F-03 测试变更仅在两个 AndroidTest Kotlin 文件。真机/OEM NOT TESTED。
+- **证据目录：** `.local/android-test/reports/F-03-20261104/`，含两次全量失败、单测复测、24 项定向 JVM、APK/Lint/compile、WebView trusted-touch 测试、两次冷启动 phase 日志及不同进程身份记录。
+- **签核影响：** SSA-03 保持 PARTIAL；SEP 历史签核不变；产品 Cutover HOLD。后续可继续独立的 S-01；F-03 只有在全量 JVM 门禁干净后方可重新标记 PASS。

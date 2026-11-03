@@ -1,14 +1,15 @@
 PROJECT: Powerful-Calendar
 PLAN: PLAN-2026-11-03-R2
 BRANCH: codex/skin-single-default-closure
-BASELINE: 639bf2cbd2a4cd60cb88c262ae126dfa69704d98
-CURRENT_TASK: F-03
-TASK_STATUS: READY
+BASELINE: 7219ad61ddb5a70f6816bea2a4c1ab868372383c
+CURRENT_TASK: S-01
+TASK_STATUS: IN_PROGRESS
 LAST_COMPLETED_TASK: F-02 (PASS)
-NEXT_TASK: F-03
-NEXT_ACTION: Execute F-03 only
+LAST_ATTEMPTED_TASK: F-03 (BLOCKED: full JVM gate has a repeated SQLite lock failure outside F-03)
+NEXT_TASK: S-01
+NEXT_ACTION: Execute S-01 only; retain F-03 as blocked until the full JVM gate is clean
 DEFERRED_TASKS: R-06 and R-07 remain deferred until dependent Skin parity is proven
-PHASE: F
+PHASE: S (F-03 remains incomplete)
 SEP_SIGNOFF: INCOMPLETE (historical parity remains unsigned)
 PRODUCT_CUTOVER: HOLD
 
@@ -30,6 +31,7 @@ PROTECTED_ASSETS: docs/agent-handoff/WORKTREE_DISPOSITION.md
 ACCEPTANCE_MATRIX: docs/agent-handoff/SINGLE_SKIN_ACCEPTANCE.md
 
 LATEST_VERIFIED_EVIDENCE:
+  - "F-03 functional/device checks PASS but task BLOCKED by the full JVM gate: API 35 isolated AVD PowerCal_ChatGPT_QA35_20261103 / emulator-5554 completed two separate prepare → force-stop → restore runs. Core, Host state and Clear DOM matched Nov 2–5 daily ACTIVITY occurrences; Nov 3 opened the matching eventSeq/revision/original occurrence and single-occurrence editor; Oct↔Nov navigation remained consistent; fixture Store snapshots were unchanged. Web recurrence test 1/1 and focused WebSkinHostProjectionTest 24/24 PASS. Both source boundaries, Debug APK, Lint (0 errors/56 warnings), and AndroidTest Kotlin compilation PASS. The required default-package full JVM gate failed twice at SystemCalendarImportTest.rejectedItemsArePersistedAsWarningsWithoutCalendarWrites with SQLiteDatabaseLockedException on a read-only commit count (967 tests, 1 failure each); isolated rerun of that test passed 1/1, so the cause remains unconfirmed and the gate is not PASS. APK SHA-256 F5E5FA6FE4194AD213EF60D5933018422A818D0AFB97E7B68FD223B3F54E3522; exactly one packaged .pcskin matches source SHA-256 299e4bdd78c8936f6c15db0200172e659aaa5b0e0643f0d70c115966ac35a9f4. Evidence: .local/android-test/reports/F-03-20261104/. SSA-03 remains PARTIAL; F-03 BLOCKED; physical/OEM NOT TESTED; product Cutover HOLD."
   - "F-02 PASS: fix/parity commit 639bf2cbd2a4cd60cb88c262ae126dfa69704d98. Timeline presentation lanes now belong to the default Skin; Web state and move validation use the exact Core calendar window; transient editor patches include the required stateRevision. Full serial offline Gradle gate PASS: JVM 967/967, both source boundaries, APK, Lint 0 errors/56 warnings, AndroidTest Kotlin compile. API 35 isolated AVD targeted instrumentation 7/7 PASS. Debug APK SHA-256 878a70f8c5fe4411ad28a149a37b1335fab1104f0c6594e0c35afcc070d6cff2; the single packaged default .pcskin is byte-identical to source, SHA-256 299e4bdd78c8936f6c15db0200172e659aaa5b0e0643f0d70c115966ac35a9f4. Evidence: .local/android-test/reports/F-02-20261104/. SSA-02/SSA-03 remain PARTIAL; physical/OEM tests NOT TESTED; historical SEP signoff incomplete; Product Cutover HOLD."
   - "F-01 PASS: read-only source boundary audit appended to SINGLE_SKIN_ACCEPTANCE.md. Three concrete ownership risks are mapped only to F-02/F-03/F-04; two formal Core API paths are evidenced. No confirmed product failure; no SSA status changed; JVM/Android/physical tests were not run for this audit."
   - "R-05 PASS from bca20c459f19735f378bbe9fabd7f4c31b65e9cc: canonical Clear Settings no longer contains installed-skin selection/import/export/delete UI or projected skin catalogue state; Web bridge rejects those retired actions. Existing package data is not deleted. Legacy v2/Compiled direct compatibility callbacks remain pending deferred R-06/R-07."
@@ -62,4 +64,4 @@ LATEST_VERIFIED_EVIDENCE:
   - "R-03 full Gradle gate PASS: JVM 966/966, migration class 13/13, both source boundaries, debug APK, lint (56 warnings, 0 errors), AndroidTest Kotlin compile. Production debug APK from the full gate SHA-256 4ed97c462cebc17b538800fe98e8e950cc941b86cb02b102e682270e8d6773f1; later production rebuild SHA-256 29b6684a64405cf573261099dd22c8f3a01119e55cb79cadb71bbd9fd16ffe16. APK contains one factory .pcskin, SHA-256 ad0202fc6b9f6341cd0cb9bc1937dc4dd6fe2eda42082cea252e0c8f3f13d403."
   - "API 35 AVD PowerCal_ChatGPT_QA35_20261103, emulator-5584, isolated application ID dev.powerfulcalendar.d05qar03: 23 successful instrumentation logs; six additional attempts aborted due emulator disconnections or a test package requiring reinstall, with retries passing (seven aborted log files include one copy). Fresh, historical Native, historical Clear and unknown selection each passed preparation plus two process cold starts; legacy packages to Clear, corrupt factory to Native, real recurrence/exception/completion/draft/reminder Store snapshots, commit/delete failures, symlink containment and cross-process pending cleanup retry also passed. Only the isolated QA app data was cleared. QA APK SHA-256 1582d72837d0679b19d4212fe531a65a67a205481eabdf36d63cc16bcbb19347. Logs: .local/android-test/reports/R-03-20261104/ within this worktree."
 
-BLOCKERS: F-03 must verify recurring Month instances through Web DOM, month changes, selection, and cold restart. SSA-02/SSA-03 remain PARTIAL; physical/OEM evidence is NOT TESTED; historical SEP signoff remains incomplete; Product Cutover stays HOLD. REC-P1-086 remains BLOCKED and simultaneous-alarm behavior remains unresolved in the frozen contract.
+BLOCKERS: F-03 full-suite gate is blocked by the repeated SystemCalendarImportTest SQLite lock failure; focused F-03 device and projection checks passed. SSA-02/SSA-03 remain PARTIAL; physical/OEM evidence is NOT TESTED; historical SEP signoff remains incomplete; Product Cutover stays HOLD. REC-P1-086 remains BLOCKED and simultaneous-alarm behavior remains unresolved in the frozen contract.

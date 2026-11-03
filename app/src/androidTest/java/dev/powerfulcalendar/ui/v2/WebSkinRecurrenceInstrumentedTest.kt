@@ -2,6 +2,8 @@ package dev.powerfulcalendar.ui.v2
 
 import android.content.Context
 import android.os.SystemClock
+import android.view.InputDevice
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebView
@@ -15,11 +17,14 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.Recurrence
 import dev.powerfulcalendar.core.RecurrenceFreq
 import dev.powerfulcalendar.core.TemporalKind
+import org.json.JSONArray
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -63,7 +68,12 @@ class WebSkinRecurrenceInstrumentedTest {
             Thread.sleep(100)
         }
         val diagnostic = runCatching {
-            evaluate(web, "JSON.stringify({subtitle:document.querySelector('#sheetSubtitle')?.textContent, " +
+            evaluate(web, "JSON.stringify({monthTitle:document.querySelector('#monthTitle')?.textContent, " +
+                "monthPageHidden:document.querySelector('#monthPage')?.hidden, " +
+                "selectedDate:document.querySelector('#monthAgenda h2')?.textContent, " +
+                "monthAgenda:document.querySelector('#monthAgenda')?.innerText, " +
+                "monthRows:document.querySelectorAll('#monthAgenda .agenda-event').length, " +
+                "subtitle:document.querySelector('#sheetSubtitle')?.textContent, " +
                 "status:document.querySelector('#sheetStatus')?.textContent, " +
                 "title:document.querySelector('#sheetFields [data-field=title]')?.value, " +
                 "cards:Array.from(document.querySelectorAll('#sheetFields .sheet-cards [data-do=select]'))" +
@@ -71,6 +81,67 @@ class WebSkinRecurrenceInstrumentedTest {
                 "hidden:document.querySelector('#skinSheet')?.hidden})")
         }.getOrDefault("unavailable")
         throw AssertionError("WebView condition timed out: $condition; state=$diagnostic")
+    }
+
+    private fun tapClear(web: WebView, selector: String): JSONObject {
+        val selectorLiteral = JSONObject.quote(selector)
+        val raw = evaluate(web, """(()=>{
+          const target=document.querySelector($selectorLiteral);
+          if(!target)return JSON.stringify({found:false});
+          const rect=target.getBoundingClientRect();
+          const hit=document.elementFromPoint(rect.left+rect.width/2,rect.top+rect.height/2);
+          window.__recurrenceTestTap=null;
+          target.addEventListener('click',event=>{
+            window.__recurrenceTestTap={trusted:event.isTrusted};
+          },{once:true,capture:true});
+          return JSON.stringify({found:true,x:rect.left+rect.width/2,y:rect.top+rect.height/2,
+            cssWidth:innerWidth,cssHeight:innerHeight,
+            visible:rect.width>0&&rect.height>0&&rect.left>=0&&rect.top>=0&&
+              rect.right<=innerWidth&&rect.bottom<=innerHeight,
+            hitTarget:hit===target||target.contains(hit),
+            disabled:target.disabled===true||target.getAttribute('aria-disabled')==='true'});
+        })()""")
+        val target = JSONObject(JSONArray("[$raw]").getString(0))
+        assertTrue("Clear target is not touchable: $selector $target",
+            target.optBoolean("found") && target.optBoolean("visible") &&
+                target.optBoolean("hitTarget") && !target.optBoolean("disabled"))
+        val location = IntArray(2)
+        val size = AtomicReference<Pair<Int, Int>>()
+        compose.runOnUiThread { web.getLocationOnScreen(location); size.set(web.width to web.height) }
+        val (width, height) = requireNotNull(size.get())
+        val scaleX = width / target.getDouble("cssWidth")
+        val scaleY = height / target.getDouble("cssHeight")
+        assertEquals("WebView input mapping must preserve aspect ratio", scaleX, scaleY, 0.03)
+        val x = location[0] + (target.getDouble("x") * scaleX).toFloat()
+        val y = location[1] + (target.getDouble("y") * scaleY).toFloat()
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        val downTime = SystemClock.uptimeMillis()
+        val down = MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, y, 0).apply {
+            source = InputDevice.SOURCE_TOUCHSCREEN
+        }
+        val up = MotionEvent.obtain(downTime, downTime + 80L, MotionEvent.ACTION_UP, x, y, 0).apply {
+            source = InputDevice.SOURCE_TOUCHSCREEN
+        }
+        try {
+            assertTrue("Android rejected touchscreen down", automation.injectInputEvent(down, true))
+            assertTrue("Android rejected touchscreen up", automation.injectInputEvent(up, true))
+        } finally {
+            down.recycle()
+            up.recycle()
+        }
+        awaitJs(web, "window.__recurrenceTestTap?.trusted===true")
+        return JSONObject(JSONArray("[${evaluate(web, "JSON.stringify(window.__recurrenceTestTap)")}]" )
+            .getString(0))
+    }
+
+    private fun awaitHostDataReady() {
+        compose.waitUntil(30_000) {
+            val ready = AtomicReference(false)
+            compose.runOnIdle {
+                ready.set(WebSkinBridgeRuntime.state().optBoolean("hostDataReady"))
+            }
+            ready.get()
+        }
     }
 
     @Test fun actualWebViewMonthOccurrenceOpenPreservesOriginalSlotForSingleEdit() {
@@ -103,16 +174,28 @@ class WebSkinRecurrenceInstrumentedTest {
             }
             assertNotNull(web)
             val view = requireNotNull(web)
-            val monthTab = "document.querySelector(\".clear-tabbar [data-action='month']\")"
-            awaitJs(view, "!!$monthTab")
-            evaluate(view, "$monthTab.click(); true")
+            awaitJs(view, "!!document.querySelector(\".clear-tabbar [data-action='month']\")")
+            awaitHostDataReady()
+            val monthTabTap = tapClear(view, ".clear-tabbar [data-action='month']")
             awaitJs(view, "!document.querySelector('#monthPage').hidden")
-            evaluate(view, "document.querySelector(\".month-cell[data-date='$today']\").click(); true")
+            val dateTap = tapClear(view, ".month-cell[data-date='$today']")
             awaitJs(view, "document.querySelector('#monthAgenda h2')?.textContent==='$today'")
             val agendaEvent = "document.querySelector(\"#monthAgenda .agenda-event" +
                 "[data-event-seq='${card.eventSeq}'][data-original-occurrence-key='$key']\")"
-            awaitJs(view, "!!$agendaEvent")
-            evaluate(view, "$agendaEvent.click(); true")
+            try {
+                awaitJs(view, "!!$agendaEvent")
+            } catch (failure: AssertionError) {
+                val hostState = AtomicReference<String>()
+                compose.runOnIdle {
+                    hostState.set(WebSkinBridgeRuntime.state().getJSONObject("month").toString())
+                }
+                println("MONTH_RECURRENCE_TEST_DIAGNOSTIC owner=${store.get(card.eventSeq)?.eventSeq} " +
+                    "revision=${store.get(card.eventSeq)?.revision} month=${hostState.get()}")
+                throw failure
+            }
+            val eventTap = tapClear(view,
+                "#monthAgenda .agenda-event[data-event-seq='${card.eventSeq}']" +
+                    "[data-original-occurrence-key='$key']")
             awaitJs(view, "!document.querySelector('#skinSheet').hidden")
             var openedEditor: org.json.JSONObject? = null
             compose.runOnIdle {
@@ -125,7 +208,7 @@ class WebSkinRecurrenceInstrumentedTest {
                 editorBeforeScope.getBoolean("canEditSelectedOccurrence"))
             assertEquals("true", evaluate(view, "document.querySelector('#sheetSave').disabled"))
             assertEquals("true", evaluate(view, "!document.querySelector('#sheetFields [data-field=title]')"))
-            evaluate(view, "document.querySelector('[data-scope=SINGLE_OCCURRENCE]').click(); true")
+            val scopeTap = tapClear(view, "[data-scope='SINGLE_OCCURRENCE']")
             awaitJs(view, "document.querySelector('[data-scope=SINGLE_OCCURRENCE]').getAttribute('aria-pressed')==='true'")
             var selectedEditor: org.json.JSONObject? = null
             compose.runOnIdle {
@@ -140,13 +223,13 @@ class WebSkinRecurrenceInstrumentedTest {
             assertEquals("true", evaluate(view, "!document.querySelector('#sheetFields [data-field=notes]')"))
             evaluate(view, "const input=document.querySelector('#sheetFields [data-field=title]'); input.value='仅本次 WebView'; input.dispatchEvent(new Event('change',{bubbles:true})); true")
             awaitJs(view, "!!document.querySelector('[data-do=discardChanges]')")
-            evaluate(view, "document.querySelector('#sheetSave').click(); true")
+            val saveTap = tapClear(view, "#sheetSave")
             compose.waitUntil(30_000) {
                 compose.onAllNodesWithText("确认保存正式事件修改").fetchSemanticsNodes().isNotEmpty()
             }
             assertEquals(original, store.get(card.eventSeq))
             compose.onNodeWithText("取消").performClick()
-            awaitJs(view, "document.querySelector('#sheetStatus').textContent.includes('已取消保存')")
+            awaitJs(view, "document.querySelector('#sheetStatus').textContent.includes('已取消宿主操作')")
             assertEquals(original, store.get(card.eventSeq))
             evaluate(view, "document.querySelector('#sheetSave').click(); true")
             compose.waitUntil(30_000) {
@@ -167,6 +250,9 @@ class WebSkinRecurrenceInstrumentedTest {
             awaitJs(view, "document.querySelector('#sheetStatus').textContent.includes('事件已保存')")
             evaluate(view, "document.querySelector('#sheetClose').click(); true")
             awaitJs(view, "document.querySelector('#skinSheet').hidden")
+            assertTrue("Month occurrence editing must originate from trusted Android touches",
+                listOf(monthTabTap, dateTap, eventTap, scopeTap, saveTap)
+                    .all { it.optBoolean("trusted") })
         } finally {
             compose.runOnUiThread {
                 compose.activity.setContent { }
