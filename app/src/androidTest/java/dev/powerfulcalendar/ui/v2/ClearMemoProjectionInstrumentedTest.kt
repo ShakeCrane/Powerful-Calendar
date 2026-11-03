@@ -2,6 +2,8 @@ package dev.powerfulcalendar.ui.v2
 
 import android.content.Context
 import android.os.SystemClock
+import android.view.InputDevice
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebView
@@ -12,6 +14,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.Recurrence
@@ -54,6 +57,75 @@ class ClearMemoProjectionInstrumentedTest {
         assertTrue("WebView JavaScript response timed out", complete.await(10, TimeUnit.SECONDS))
         return result.get()
     }
+
+    private fun evaluateObject(web: WebView, expression: String): JSONObject {
+        val encoded = evaluate(web, "JSON.stringify($expression)")
+        return JSONObject(org.json.JSONArray("[$encoded]").getString(0))
+    }
+
+    private fun tapWebSelector(web: WebView, selector: String): JSONObject {
+        val quotedSelector = JSONObject.quote(selector)
+        val target = evaluateObject(web, """
+            (()=>{
+              const element=document.querySelector($quotedSelector);
+              if(!element)return {found:false};
+              const rect=element.getBoundingClientRect();
+              const x=rect.left+rect.width/2,y=rect.top+rect.height/2;
+              const hit=document.elementFromPoint(x,y);
+              window.__f04Tap=null;
+              element.addEventListener("click",event=>{
+                window.__f04Tap={trusted:event.isTrusted};
+              },{once:true,capture:true});
+              return {found:true,x,y,width:innerWidth,height:innerHeight,
+                visible:rect.width>0&&rect.height>0&&rect.left>=0&&rect.top>=0&&
+                  rect.right<=innerWidth&&rect.bottom<=innerHeight,
+                hitTarget:hit===element||hit?.closest("button")===element,
+                disabled:element.disabled===true};
+            })()
+        """.trimIndent())
+        assertTrue("Memo target must be visible and hit-testable: $selector $target",
+            target.optBoolean("found") && target.optBoolean("visible") &&
+                target.optBoolean("hitTarget") && !target.optBoolean("disabled"))
+
+        val location = IntArray(2)
+        val dimensions = AtomicReference<Pair<Int, Int>>()
+        compose.runOnUiThread {
+            web.getLocationOnScreen(location)
+            dimensions.set(web.width to web.height)
+        }
+        val (width, height) = requireNotNull(dimensions.get())
+        val scaleX = width / target.getDouble("width")
+        val scaleY = height / target.getDouble("height")
+        assertEquals("WebView touch coordinates preserve aspect ratio", scaleX, scaleY, 0.03)
+        val x = location[0] + (target.getDouble("x") * scaleX).toFloat()
+        val y = location[1] + (target.getDouble("y") * scaleY).toFloat()
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        val downTime = SystemClock.uptimeMillis()
+        val down = MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, y, 0).apply {
+            source = InputDevice.SOURCE_TOUCHSCREEN
+        }
+        val up = MotionEvent.obtain(downTime, downTime + 80L, MotionEvent.ACTION_UP, x, y, 0).apply {
+            source = InputDevice.SOURCE_TOUCHSCREEN
+        }
+        try {
+            assertTrue("Android accepted Memo touch down", automation.injectInputEvent(down, true))
+            assertTrue("Android accepted Memo touch up", automation.injectInputEvent(up, true))
+        } finally {
+            down.recycle()
+            up.recycle()
+        }
+        compose.waitUntil(5_000) {
+            evaluate(web, "window.__f04Tap?.trusted===true") == "true"
+        }
+        return JSONObject().put("selector", selector).put("trusted", true)
+    }
+
+    private fun memoSignatures(entries: org.json.JSONArray): List<String> =
+        (0 until entries.length()).map { index ->
+            val entry = entries.getJSONObject(index)
+            "${entry.getLong("eventSeq")}:${entry.getString("occurrenceKey")}:" +
+                "${entry.getLong("revision")}:${entry.getBoolean("completed")}"
+        }
 
     @Test
     fun packagedClearProjectsPersistedRecurringMemoIntoItsWebView() {
@@ -285,6 +357,239 @@ class ClearMemoProjectionInstrumentedTest {
             }
             compose.waitForIdle()
             store.close()
+            context.deleteDatabase(databaseName)
+            skinManager.select(originalSkin)
+            val restoreOnboarding = onboarding.edit()
+            if (hadAskedForCalendarImport) restoreOnboarding.putBoolean(
+                "system-calendar-import-asked", askedForCalendarImport
+            ) else restoreOnboarding.remove("system-calendar-import-asked")
+            restoreOnboarding.commit()
+        }
+    }
+
+    @Test
+    fun packagedClearPages251MemosAndKeepsTrustedTitleAndCompletionActionsDistinct() {
+        val context = compose.activity.applicationContext
+        val databaseName = "clear-memo-pages-${UUID.randomUUID()}.db"
+        var store = PowerStore(context, databaseName)
+        var storeOpen = true
+        val skinManager = SkinPackageManager(context)
+        val originalSkin = skinManager.currentId()
+        val onboarding = context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+        val hadAskedForCalendarImport = onboarding.contains("system-calendar-import-asked")
+        val askedForCalendarImport = onboarding.getBoolean("system-calendar-import-asked", false)
+        val zone = ZoneId.of("Asia/Shanghai")
+        val dateText = LocalDate.now(zone).plusDays(1).toString()
+        val firstEventSeq = 1L
+
+        fun hostState(): JSONObject {
+            val state = AtomicReference<JSONObject>()
+            compose.runOnUiThread { state.set(WebSkinBridgeRuntime.state()) }
+            return requireNotNull(state.get())
+        }
+
+        fun launchClearMemo(): WebView {
+            PowerCalSkinRegistry.reset()
+            skinManager.select("powercal-clear-default")
+            compose.runOnUiThread {
+                compose.activity.setContent { PowerCalTheme { PowerCalApp(store) } }
+            }
+            var web: WebView? = null
+            compose.waitUntil(30_000) {
+                compose.runOnUiThread {
+                    web = findWebView(compose.activity.findViewById(android.R.id.content))
+                }
+                web != null
+            }
+            val view = requireNotNull(web)
+            compose.waitUntil(30_000) {
+                evaluate(view, "!!window.PowerCalSkin && " +
+                    "!!document.querySelector('.clear-tabbar [data-action=memo]')") == "true"
+            }
+            val navigation = tapWebSelector(view, ".clear-tabbar [data-action='memo']")
+            assertTrue("Memo navigation is a trusted touchscreen action", navigation.getBoolean("trusted"))
+            compose.waitUntil(30_000) {
+                val state = hostState()
+                state.optString("page") == "MEMO" && state.optBoolean("hostDataReady") &&
+                    state.optJSONArray("memoEntries")?.length() == 250 &&
+                    state.optInt("memoRemainingCount") == 1 && state.optBoolean("memoTruncated")
+            }
+            return view
+        }
+
+        try {
+            repeat(250) { index ->
+                val outcome = store.createFormalEvent(
+                    DraftForm(
+                        kind = TemporalKind.MEMO,
+                        title = "F04 Memo ${index.toString().padStart(3, '0')}",
+                        startText = dateText,
+                        zoneId = zone.id,
+                        trackingEnabled = true
+                    ),
+                    "f04-clear-memo-page-$index"
+                )
+                assertTrue("dated Memo fixture $index must be committed", outcome is PowerStore.CommitOutcome.Committed)
+            }
+            val undated = store.createFormalEvent(
+                DraftForm(
+                    kind = TemporalKind.MEMO,
+                    title = "F04 No-date Memo 251",
+                    zoneId = zone.id,
+                    trackingEnabled = true
+                ),
+                "f04-clear-memo-page-no-date"
+            )
+            assertTrue("undated Memo fixture must be committed", undated is PowerStore.CommitOutcome.Committed)
+            assertEquals(251, store.all().size)
+            assertEquals(251L, store.commitCount())
+            assertEquals(252L, store.nextSequencePreview())
+
+            onboarding.edit().putBoolean("system-calendar-import-asked", true).commit()
+            var web = launchClearMemo()
+
+            val initialEntries = queryMemoEntriesForTest(
+                store, System.currentTimeMillis(), includeCompleted = true
+            )
+            assertEquals(251, initialEntries.size)
+            assertEquals("single", initialEntries.last().occurrenceKey)
+            assertEquals(null, initialEntries.last().startMillis)
+            val initialStateRows = hostState().getJSONArray("memoEntries")
+            assertEquals(initialEntries.take(250).map {
+                "${it.rowKey}:${it.revision}:${it.completed}"
+            }, memoSignatures(initialStateRows))
+            assertEquals(250, initialStateRows.length())
+            assertEquals("250", evaluate(web, "document.querySelectorAll('#memoList .memo-row').length"))
+            assertEquals("true", evaluate(web,
+                "!document.querySelector('#memoLimit').hidden && " +
+                    "document.querySelector('#memoLimit').textContent.includes('还有 1 项')"))
+
+            val beforeTitleOpen = requireNotNull(store.get(firstEventSeq))
+            val commitsBeforeTitleOpen = store.commitCount()
+            val openTitle = tapWebSelector(web,
+                "#memoList .memo-title[data-event-seq='$firstEventSeq']")
+            assertTrue("Memo title must open through a trusted touch", openTitle.getBoolean("trusted"))
+            compose.waitUntil(15_000) {
+                evaluate(web, "!document.querySelector('#skinSheet').hidden && " +
+                    "document.querySelector('#sheetFields [data-field=title]')?.value==='F04 Memo 000'") == "true"
+            }
+            assertEquals("title-open does not complete or mutate a Memo", beforeTitleOpen,
+                store.get(firstEventSeq))
+            assertEquals(commitsBeforeTitleOpen, store.commitCount())
+            val closeTouch = tapWebSelector(web, "#sheetClose")
+            assertTrue("Memo detail closes through a trusted touch", closeTouch.getBoolean("trusted"))
+            compose.waitUntil(10_000) {
+                evaluate(web, "document.querySelector('#skinSheet').hidden") == "true"
+            }
+
+            val completionTouch = tapWebSelector(web,
+                "#memoList [data-action='toggleMemo'][data-event-seq='$firstEventSeq'][data-occurrence-key='single']")
+            assertTrue("Memo completion uses a trusted touch", completionTouch.getBoolean("trusted"))
+            compose.waitUntil(30_000) {
+                store.get(firstEventSeq)?.let { it.revision == 2L && "single" in it.completedKeys } == true
+            }
+            compose.waitUntil(15_000) {
+                evaluate(web, "document.querySelectorAll('#memoList .memo-row').length") == "249"
+            }
+            val doneFilter = tapWebSelector(web, ".tabs [data-filter='done']")
+            assertTrue("Done filter uses a trusted touch", doneFilter.getBoolean("trusted"))
+            compose.waitUntil(15_000) {
+                evaluate(web, "document.querySelectorAll('#memoList .memo-row').length===1 && " +
+                    "document.querySelector('#memoList .memo-title')?.textContent==='F04 Memo 000'") == "true"
+            }
+
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            store.close()
+            storeOpen = false
+            store = PowerStore(context, databaseName)
+            storeOpen = true
+            val reopenedRecord = requireNotNull(store.get(firstEventSeq))
+            assertEquals(2L, reopenedRecord.revision)
+            assertEquals(setOf("single"), reopenedRecord.completedKeys)
+            assertEquals(251, queryMemoEntriesForTest(
+                store, System.currentTimeMillis(), includeCompleted = true
+            ).size)
+
+            web = launchClearMemo()
+            val reopenedDoneFilter = tapWebSelector(web, ".tabs [data-filter='done']")
+            assertTrue("Done filter after reopening the database uses a trusted touch",
+                reopenedDoneFilter.getBoolean("trusted"))
+            compose.waitUntil(15_000) {
+                evaluate(web, "document.querySelectorAll('#memoList .memo-row').length===1 && " +
+                    "document.querySelector('#memoList .memo-title')?.textContent==='F04 Memo 000'") == "true"
+            }
+            val commitsBeforeReopenedTitle = store.commitCount()
+            val completedBeforeReopenedTitle = requireNotNull(store.get(firstEventSeq))
+            val reopenedTitle = tapWebSelector(web,
+                "#memoList .memo-title[data-event-seq='$firstEventSeq']")
+            assertTrue("completed Memo title opens through a trusted touch", reopenedTitle.getBoolean("trusted"))
+            compose.waitUntil(15_000) {
+                evaluate(web, "!document.querySelector('#skinSheet').hidden && " +
+                    "document.querySelector('#sheetFields [data-field=title]')?.value==='F04 Memo 000'") == "true"
+            }
+            assertEquals(completedBeforeReopenedTitle, store.get(firstEventSeq))
+            assertEquals(commitsBeforeReopenedTitle, store.commitCount())
+            val reopenedClose = tapWebSelector(web, "#sheetClose")
+            assertTrue(reopenedClose.getBoolean("trusted"))
+            compose.waitUntil(10_000) {
+                evaluate(web, "document.querySelector('#skinSheet').hidden") == "true"
+            }
+
+            val undoTouch = tapWebSelector(web,
+                "#memoList [data-action='toggleMemo'][data-event-seq='$firstEventSeq'][data-occurrence-key='single']")
+            assertTrue("Memo undo uses a trusted touch", undoTouch.getBoolean("trusted"))
+            compose.waitUntil(30_000) {
+                store.get(firstEventSeq)?.let { it.revision == 3L && it.completedKeys.isEmpty() } == true
+            }
+            val openFilter = tapWebSelector(web, ".tabs [data-filter='open']")
+            assertTrue("Open filter uses a trusted touch", openFilter.getBoolean("trusted"))
+            compose.waitUntil(15_000) {
+                evaluate(web, "document.querySelectorAll('#memoList .memo-row').length===250 && " +
+                    "!document.querySelector('#memoLimit').hidden") == "true"
+            }
+            evaluate(web, "document.querySelector('#memoLimit').scrollIntoView({block:'center'}); true")
+            val loadMoreTouch = tapWebSelector(web, "#memoLimit")
+            assertTrue("Load more uses a trusted touch", loadMoreTouch.getBoolean("trusted"))
+            compose.waitUntil(30_000) {
+                val entries = hostState().optJSONArray("memoEntries")
+                entries?.length() == 251 &&
+                    hostState().optInt("memoRemainingCount") == 0 &&
+                    !hostState().optBoolean("memoTruncated")
+            }
+
+            val finalEntries = queryMemoEntriesForTest(
+                store, System.currentTimeMillis(), includeCompleted = true
+            )
+            assertEquals(251, finalEntries.size)
+            assertTrue("undo persists as an open occurrence", finalEntries.none { it.completed })
+            assertEquals("No-date entry must sort after dated page entries", "F04 No-date Memo 251",
+                finalEntries.last().title)
+            val finalHostState = hostState()
+            assertEquals(finalEntries.map { "${it.rowKey}:${it.revision}:${it.completed}" },
+                memoSignatures(finalHostState.getJSONArray("memoEntries")))
+            assertEquals("251", evaluate(web, "document.querySelectorAll('#memoList .memo-row').length"))
+            assertEquals("true", evaluate(web, "document.querySelector('#memoList .memo-row:last-child .memo-title')" +
+                "?.textContent==='F04 No-date Memo 251' && document.querySelector('#memoLimit').hidden"))
+            assertEquals(253L, store.commitCount())
+            assertEquals(251, store.identityCount())
+            assertEquals(252L, store.nextSequencePreview())
+            assertEquals(0L, store.draftCount())
+            assertEquals(0, store.pendingCount())
+            println("F04_MEMO_PAGING apiRows=${finalEntries.size} hostRows=" +
+                "${finalHostState.getJSONArray("memoEntries").length()} domRows=251 " +
+                "openDone=true titleZeroWrite=true reopenedCompletionRevision=2 undoRevision=3 " +
+                "noDateRow=${finalEntries.last().rowKey} commits=${store.commitCount()}")
+        } finally {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            if (storeOpen) store.close()
             context.deleteDatabase(databaseName)
             skinManager.select(originalSkin)
             val restoreOnboarding = onboarding.edit()
