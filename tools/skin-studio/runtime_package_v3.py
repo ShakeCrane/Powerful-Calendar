@@ -29,6 +29,29 @@ def safe_path(name):
     return bool(PATH.fullmatch(name) and not p.is_absolute() and ".." not in p.parts and "\\" not in name)
 
 
+def _validate_component_nodes(nodes, all_ids, depth=0, total=None):
+    check(type(nodes) is list and len(nodes) <= 128, "components must be a bounded array")
+    if total is None:
+        total = [0]
+    check(depth <= 16, "component tree is too deep")
+    for node in nodes:
+        check(type(node) is dict, "invalid component node")
+        ident = node.get("id")
+        check(type(ident) is str and re.fullmatch(r"[a-zA-Z][a-zA-Z0-9_.-]{0,63}", ident)
+              and ident not in all_ids, "invalid or repeated project node id")
+        all_ids.add(ident)
+        component_type = node.get("type")
+        check(type(component_type) is str and re.fullmatch(r"[a-z][a-z0-9-]{0,63}", component_type),
+              "invalid component type")
+        props = node.get("props", {})
+        check(type(props) is dict, "component props must be an object")
+        total[0] += 1
+        check(total[0] <= 512, "project has too many component nodes")
+        children = node.get("children", [])
+        check(type(children) is list, "component children must be an array")
+        _validate_component_nodes(children, all_ids, depth + 1, total)
+
+
 def validate_project(project):
     check(type(project) is dict, "project.json must be an object")
     check(project.get("projectVersion") == 3, "projectVersion must be 3")
@@ -45,8 +68,22 @@ def validate_project(project):
         ids.add(ident)
         check(slot.get("type") in ("color", "image", "font", "text", "number"),
               "unsupported slot type")
+    pages = project.get("pages", [])
+    check(type(pages) is list and len(pages) <= 16, "pages must be a bounded array")
+    routes = set()
+    node_total = [0]
+    for page in pages:
+        check(type(page) is dict, "invalid page metadata")
+        ident, route, title = page.get("id"), page.get("route"), page.get("title")
+        check(type(ident) is str and re.fullmatch(r"[a-zA-Z][a-zA-Z0-9_.-]{0,63}", ident)
+              and ident not in ids, "invalid or repeated project node id")
+        ids.add(ident)
+        check(type(route) is str and re.fullmatch(r"[A-Z][A-Z0-9_]{0,31}", route)
+              and route not in routes, "invalid or repeated page route")
+        routes.add(route)
+        check(type(title) is str and 1 <= len(title.strip()) <= 60, "invalid page title")
+        _validate_component_nodes(page.get("components", []), ids, total=node_total)
     return project
-
 
 def validate_manifest(manifest, files, verify_hash=True):
     check(type(manifest) is dict, "manifest must be an object")

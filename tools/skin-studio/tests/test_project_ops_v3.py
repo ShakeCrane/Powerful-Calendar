@@ -11,6 +11,7 @@ STUDIO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(STUDIO))
 
 from build_default_clear import ASSET
+from blank_project_v3 import blank_project
 from project_ops_v3 import edit_package, inspect_package, read_file, write_atomic
 from runtime_package_v3 import build_files, unpack
 from skin_studio import SkinError
@@ -57,6 +58,27 @@ class ProjectOpsV3Test(unittest.TestCase):
         self.assertEqual(utf8_binary_file["encoding"], "base64")
         self.assertEqual(base64.b64decode(utf8_binary_file["content"]),
                          self.files["assets/utf8-looking.bin"])
+
+    def test_blank_page_tree_has_stable_unique_ids_and_rejects_duplicates(self):
+        manifest, files = blank_project()
+        project = json.loads(files["project.json"].decode("utf-8"))
+        self.assertEqual(["TIMELINE", "MONTH", "MEMO", "AI", "SETTINGS"],
+                         [page["route"] for page in project["pages"]])
+        identifiers = [page["id"] for page in project["pages"]]
+        for page in project["pages"]:
+            self.assertEqual(1, len(page["components"]))
+            identifiers.append(page["components"][0]["id"])
+        self.assertEqual(len(identifiers), len(set(identifiers)))
+        rebuilt = build_files(manifest, files)
+        _, reopened_files = unpack(rebuilt)
+        self.assertEqual(files["project.json"], reopened_files["project.json"])
+
+        invalid_files = dict(files)
+        invalid = json.loads(invalid_files["project.json"].decode("utf-8"))
+        invalid["pages"][1]["components"][0]["id"] = identifiers[0]
+        invalid_files["project.json"] = json.dumps(invalid).encode("utf-8")
+        with self.assertRaisesRegex(SkinError, "repeated project node id"):
+            build_files(manifest, invalid_files)
 
     def test_file_crud_and_json_structure_patch_export_and_reimport(self):
         project_sha = hashlib.sha256(self.files["project.json"]).hexdigest()

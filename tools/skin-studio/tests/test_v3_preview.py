@@ -65,17 +65,35 @@ class PreviewParityTest(unittest.TestCase):
         self.assertTrue(blank["manifest"]["fullCanvas"])
         files = {name: base64.b64decode(data) for name, data in blank["files"].items()}
         self.assertEqual({"project.json", "web/index.html", "web/style.css", "web/app.js"}, set(files))
-        self.assertEqual([], json.loads(files["project.json"])["layers"])
         self.assertNotIn(b"Clear", files["web/index.html"])
         self.assertIn(b"powercal-port", files["web/app.js"])
+        project = json.loads(files["project.json"])
+        self.assertEqual(["TIMELINE", "MONTH", "MEMO", "AI", "SETTINGS"],
+                         [page["route"] for page in project["pages"]])
+        self.assertEqual([], project["layers"])
+
+        # Model Studio edits to the project title and an empty page component.
+        blank["manifest"]["name"] = "Blank persistence fixture"
+        project["pages"][1]["title"] = "Month metadata after reopen"
+        project["pages"][1]["components"][0]["props"]["editorNote"] = "persisted"
+        files["project.json"] = json.dumps(project, ensure_ascii=False, indent=2).encode("utf-8")
+        blank["files"] = {name: base64.b64encode(data).decode("ascii")
+                          for name, data in files.items()}
         packed = self.post("/api/export-v3", blank)
         manifest, exported = v3.unpack(packed)
-        self.assertEqual(blank["manifest"], manifest)
+        self.assertEqual("Blank persistence fixture", manifest["name"])
         self.assertEqual(files, exported)
+        reopened_project = json.loads(exported["project.json"])
+        self.assertEqual("Month metadata after reopen", reopened_project["pages"][1]["title"])
+        self.assertEqual("persisted", reopened_project["pages"][1]["components"][0]["props"]["editorNote"])
         request = Request(self.base + "/api/import-v3", packed,
                           {"Content-Type": "application/octet-stream"}, method="POST")
         with urlopen(request) as response:
-            self.assertEqual(blank, json.loads(response.read()))
+            reopened = json.loads(response.read())
+        self.assertEqual(manifest["name"], reopened["manifest"]["name"])
+        reopened_files = {name: base64.b64decode(data)
+                          for name, data in reopened["files"].items()}
+        self.assertEqual(files, reopened_files)
 
     def test_preview_and_zip_share_exact_web_bytes(self):
         obj = json.loads(self.get("/api/template-v3"))

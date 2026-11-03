@@ -1,4 +1,5 @@
 """Distribution invariant: one factory .pcskin; demo skins are authoring fixtures."""
+import json
 from pathlib import Path
 import unittest
 
@@ -21,7 +22,19 @@ class SingleDefaultDistributionTest(unittest.TestCase):
         finally:
             sys_path.pop(0)
         self.assertEqual("powercal-blank-skin", manifest["id"])
+        self.assertEqual(["host.read"], manifest["capabilities"])
         self.assertNotIn("assets", files)
+        project = json.loads(files["project.json"])
+        self.assertEqual(["TIMELINE", "MONTH", "MEMO", "AI", "SETTINGS"],
+                         [page["route"] for page in project["pages"]])
+        node_ids = [page["id"] for page in project["pages"]]
+        for page in project["pages"]:
+            self.assertEqual(1, len(page["components"]))
+            root_node = page["components"][0]
+            self.assertEqual("container", root_node["type"])
+            self.assertEqual([], root_node["children"])
+            node_ids.append(root_node["id"])
+        self.assertEqual(len(node_ids), len(set(node_ids)))
         self.assertFalse((ROOT / "app" / "src" / "main" / "assets" /
                           "powercal-blank-skin.pcskin").exists())
 

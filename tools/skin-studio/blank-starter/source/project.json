@@ -1,6 +1,73 @@
 {
   "projectVersion": 3,
   "mode": "advanced",
+  "pages": [
+    {
+      "id": "page-timeline",
+      "route": "TIMELINE",
+      "title": "时间轴",
+      "components": [
+        {
+          "id": "timeline-root",
+          "type": "container",
+          "props": {},
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "page-month",
+      "route": "MONTH",
+      "title": "月历",
+      "components": [
+        {
+          "id": "month-root",
+          "type": "container",
+          "props": {},
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "page-memo",
+      "route": "MEMO",
+      "title": "Memo",
+      "components": [
+        {
+          "id": "memo-root",
+          "type": "container",
+          "props": {},
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "page-ai",
+      "route": "AI",
+      "title": "AI 对话",
+      "components": [
+        {
+          "id": "ai-root",
+          "type": "container",
+          "props": {},
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "page-settings",
+      "route": "SETTINGS",
+      "title": "设置",
+      "components": [
+        {
+          "id": "settings-root",
+          "type": "container",
+          "props": {},
+          "children": []
+        }
+      ]
+    }
+  ],
   "slots": [],
   "layers": []
 }

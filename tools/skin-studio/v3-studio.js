@@ -72,12 +72,42 @@ function updateHostCapabilities(){
   change();
   say("Host 能力请求已更新；实际访问仍受 Android Host 校验和现有授权流程约束。");
 }
+function validatePageTree(pages){
+  if(pages===undefined)return;
+  if(!Array.isArray(pages)||pages.length>16)throw Error("pages 必须是最多 16 项的数组");
+  const ids=new Set(),routes=new Set();let total=0;
+  const idPattern=/^[A-Za-z][A-Za-z0-9_.-]{0,63}$/;
+  const visit=(nodes,depth=0)=>{
+    if(!Array.isArray(nodes)||nodes.length>128)throw Error("components 必须是有界数组");
+    if(depth>16)throw Error("组件树层级超过限制");
+    for(const node of nodes){
+      if(!node||typeof node!=="object"||Array.isArray(node)||
+         typeof node.id!=="string"||!idPattern.test(node.id)||ids.has(node.id)||
+         typeof node.type!=="string"||!/^[a-z][a-z0-9-]{0,63}$/.test(node.type))
+        throw Error("页面或组件 ID/类型非法或重复");
+      ids.add(node.id);total++;
+      if(total>512)throw Error("组件总数超过限制");
+      if(node.props!==undefined&&(!node.props||typeof node.props!=="object"||Array.isArray(node.props)))
+        throw Error("组件 props 必须是对象");
+      visit(node.children===undefined?[]:node.children,depth+1);
+    }
+  };
+  for(const page of pages){
+    if(!page||typeof page!=="object"||Array.isArray(page)||
+       typeof page.id!=="string"||!idPattern.test(page.id)||ids.has(page.id)||
+       typeof page.route!=="string"||!/^[A-Z][A-Z0-9_]{0,31}$/.test(page.route)||routes.has(page.route)||
+       typeof page.title!=="string"||!page.title.trim()||page.title.trim().length>60||
+       !Array.isArray(page.components))throw Error("页面元数据无效或重复");
+    ids.add(page.id);routes.add(page.route);visit(page.components);
+  }
+}
 function parseProject(){
   const obj=JSON.parse(getText("project.json"));
   if(!obj||typeof obj!=="object"||Array.isArray(obj)||obj.projectVersion!==3||
      (obj.slots!==undefined&&!Array.isArray(obj.slots))) throw Error("无效的 v3 项目元数据");
   if(!Array.isArray(obj.slots))obj.slots=[];
   obj.layers=Array.isArray(obj.layers)?obj.layers:[];
+  validatePageTree(obj.pages);
   return obj;
 }
 function prepareFiles(){
@@ -198,6 +228,7 @@ function updateProjectSource(text){
     if(next.layers!==undefined&&!Array.isArray(next.layers))throw Error("layers 必须为数组");
     if(!Array.isArray(next.layers))next.layers=[];
     if(next.layers.length>128)throw Error("layers 超过 128 项上限");
+    validatePageTree(next.pages);
     const ids=new Set();
     for(const slot of next.slots){
       if(!slot||typeof slot!=="object"||typeof slot.id!=="string"||

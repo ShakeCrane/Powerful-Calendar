@@ -4,12 +4,12 @@
 
 ## 当前状态（2026-11-04）
 
-- PLAN：PLAN-2026-11-03-R2；唯一施工分支：codex/skin-single-default-closure；当前 HEAD：639bf2cbd2a4cd60cb88c262ae126dfa69704d98。
+- PLAN：PLAN-2026-11-03-R2；唯一施工分支：codex/skin-single-default-closure；当前任务和提交基准以 CURRENT.md / `git rev-parse HEAD` 为准。
 - G-01～G-05：PASS；Worktree 保护台账和历史验收证据继续保留。
 - R-01～R-05：PASS；R-06/R-07 仍 DEFERRED，相关 Native/Compiled/v2 页面不可提前删除。
-- F-01：PASS。F-02：PASS，提交 639bf2cbd2a4cd60cb88c262ae126dfa69704d98；JVM 967/967、两项边界、APK/Lint/AndroidTest Kotlin 编译通过，API 35 隔离 AVD 七项定向仪器执行通过。
-- F-02 APK SHA-256：878a70f8c5fe4411ad28a149a37b1335fab1104f0c6594e0c35afcc070d6cff2；唯一默认 .pcskin 与 APK 资源逐字节一致，SHA-256 299e4bdd78c8936f6c15db0200172e659aaa5b0e0643f0d70c115966ac35a9f4。
-- 唯一下一任务：F-03，验证重复实例从 Core 到 Host/Web state/DOM、切月、选择及冷启动。
+- F-01、F-02：PASS。F-03：BLOCKED；两次全量 JVM 门禁均在 `SystemCalendarImportTest.rejectedItemsArePersistedAsWarningsWithoutCalendarWrites` 的只读查询触发 SQLite lock；隔离复测通过。F-03 指定 API 35 跨月 DOM/切月/实例选择/两次冷启动切片通过，但不得宣称任务 PASS。证据见 `.local/android-test/reports/F-03-20261104/`。
+- S-01：PASS；空白 v3 工程已具备五页稳定 ID 和空容器节点。真实浏览器完成新建、改名、编辑 Month 元数据、保存、卸载并重开 Studio、导入工程、构建及 CLI 校验。Studio Python 69/69、blank browser E2E、现有 Clear browser E2E 均通过；证据见 `.local/android-test/reports/S-01-20261104/`。
+- 唯一下一任务：F-04（Memo/待办独立 parity）；F-03 全量 JVM 门禁问题仍未解决。
 - 产品目标：Core 管功能和业务；Skin 管日常表现并调用稳定 API；出厂仅有一套未美化默认 .pcskin；Native 仅用于安全恢复；Studio 必须能从空白项目创作完整皮肤；全部分离验收后才通过 Studio 应用 Claude 设计。
 - 历史 SEP 状态未完全签核；真机/OEM 证据仍有缺口；正式 Skin Cutover / Release 保持 HOLD。历史进度中的 NEXT_ACTION 仅代表当时状态；唯一实时入口是 CURRENT.md。
 
