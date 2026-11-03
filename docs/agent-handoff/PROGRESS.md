@@ -1,5 +1,15 @@
 # Core freeze progress
 
+## Handoff 2026-11-03: recurrence interval Web transport
+
+- **CURRENT_PHASE:** 1 ? Core API / Host boundary completion. **Stage:** Web recurrence interval contract fixed; Phase 1 is NOT complete.
+- **COMPLETED:** Web Edit Bridge no longer imposes an unauthorized 365 upper bound on a valid Core positive Int recurrence interval. Wire length supports all decimal Int values. Both long-interval Core save with trusted approval and invalid-input rejection have regressions. Code SHA: eae36679.
+- **VERIFIED:** Focused 2/2, final serialized full offline gate 946/946 JVM, 139 suites, 154 tasks, zero failures; both source boundaries, APK, lint and AndroidTest compilation successful. Evidence: .local/android-test/reports/handoff-recurrence-20261103/full-gate-serial.log; issue: docs/issues/PC-ISSUE-CORE-RECURRENCE-INTERVAL-WEB-BOUNDARY.md.
+- **NOT TESTED:** Android/WebView device parity. One earlier forced build collided with another concurrently running full gate; serial gate passed.
+- **NEXT_ACTION:** Resume finite Host/Core boundary audit and Android device-level parity; reuse existing Feature API instead of starting new business stacks. Do not modify the frozen core or the protected acceptance CSV.
+- **GIT:** Handoff implementation branch codex/handoff-recurrence-20261103; normal FF push to feat/skin-first-separation after documentation commit.
+
+
 ## Current master goal — Core-first / Skin-first PHASE 1 (2026-11-02)
 
 - **Latest code slice:** AI batch candidate selection and review now carry stable `DraftReviewCardV1` values from `DraftReviewFeatureApiV1` through Host selection and projection; Host no longer reconstructs Core `DraftCard` or repeats its actionable-status filter. Native maps the DTO into `NativeAiBatchAuthorizationModel`; Web consumes the same Core DTO. `reload()` returns the exact card snapshot it publishes, with a fresh Core query only if the event revision made that refresh stale. The preceding slice still carries `AiBatchModeV1` across both Hosts and guards batch entry while a new-event editor is open.
