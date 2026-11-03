@@ -1,13 +1,13 @@
 PROJECT: Powerful-Calendar
 PLAN: PLAN-2026-11-03-R2
 BRANCH: codex/skin-single-default-closure
-BASELINE: 1e57da5cbb19b4b1348fe390174f629c8871fc47
-CURRENT_TASK: G-05
+BASELINE: ac8d1555a1c177e600e72e4edb5b450189f1fc2c
+CURRENT_TASK: R-01
 TASK_STATUS: READY
-LAST_COMPLETED_TASK: G-04 (PASS)
-NEXT_TASK: G-05
-NEXT_ACTION: Execute G-05 only
-PHASE: G
+LAST_COMPLETED_TASK: G-05 (PASS)
+NEXT_TASK: R-01
+NEXT_ACTION: Execute R-01 only
+PHASE: R
 SEP_SIGNOFF: INCOMPLETE (historical parity remains unsigned)
 PRODUCT_CUTOVER: HOLD
 
@@ -20,6 +20,7 @@ OWNER_GOAL:
 
 AUTHORITATIVE_PLAN: docs/POWERCAL_SINGLE_DEFAULT_SKIN_EXECUTION_PLAN_2026-11-03_R2.md
 PROTECTED_ASSETS: docs/agent-handoff/WORKTREE_DISPOSITION.md
+ACCEPTANCE_MATRIX: docs/agent-handoff/SINGLE_SKIN_ACCEPTANCE.md
 
 LATEST_VERIFIED_EVIDENCE:
   - "G-01 PASS: clean independent Worktree at the fetched integration baseline."
@@ -31,5 +32,7 @@ LATEST_VERIFIED_EVIDENCE:
   - "APK SHA-256 68f5f8308a6204c45662f4b39e5c4a4564d98f161953beef0db33b0742042af6. APK contains exactly one .pcskin; source/APK package SHA-256 both ad0202fc6b9f6341cd0cb9bc1937dc4dd6fe2eda42082cea252e0c8f3f13d403 (9 files, 397275 bytes)."
   - "API 35 QA AVD PowerCal_ChatGPT_QA35_20261103 booted; Debug and AndroidTest APK installs both PASS using adb install -r. Instrumentation execution NOT TESTED."
   - "Evidence: .local/android-test/reports/single-default-G-04-20261103/ (environment, Gradle, Studio, package, device, and install logs); lint detail at app/build/reports/lint-results-debug.xml."
+  - "G-05 PASS: 16 acceptance items map all 16 original SEP rows; each item is PARTIAL overall pending its declared evidence. Original SEP records are unchanged."
+  - "G-05 identifies no newly confirmed FAIL; SSA-10 physical/OEM reminder evidence remains BLOCKED (REC-P1-086). Android interaction tests were NOT TESTED in G-05; other physical checks were NOT TESTED. Historical scoped device passes remain previous evidence only."
 
-BLOCKERS: None for G-04. emulator -list-avds returned no entries although adb confirmed the already-running QA AVD; device identity, boot state, and APK installs were verified through adb. Historical SEP parity remains unsigned and product Cutover stays HOLD. Android instrumentation was not run.
+BLOCKERS: G-05 documentation has no blocker. Physical/OEM reminder evidence (REC-P1-086) remains BLOCKED; simultaneous-alarm behavior remains unresolved in the frozen contract. Historical SEP parity remains unsigned and product Cutover stays HOLD. G-04 emulator -list-avds returned no entries although adb confirmed the running QA AVD; Android instrumentation was not run in G-04 or G-05.
