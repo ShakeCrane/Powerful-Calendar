@@ -62,21 +62,19 @@ class WebSkinBridgeTest {
             """{"version":1,"type":"action","payload":{"name":"invokeOption","id":"data.legacy.migrate"}}"""))
         assertNull(decodeBridgeAction(
             """{"version":1,"type":"action","payload":{"name":"invokeOption","id":"untrusted.delete"}}"""))
-        assertEquals(WebSkinAction.SelectSkin("powercal-default"), decodeBridgeAction(
+        assertNull(decodeBridgeAction(
             """{"version":1,"type":"action","payload":{"name":"selectSkin","id":"powercal-default"}}"""))
         assertNull(decodeBridgeAction(
-            """{"version":1,"type":"action","payload":{"name":"selectSkin","id":"powercal-default","path":"/data/data"}}"""))
-        assertNull(decodeBridgeAction(
             """{"version":1,"type":"action","payload":{"name":"selectSkin","id":123}}"""))
-        assertEquals(WebSkinAction.ImportSkin, decodeBridgeAction(
+        assertNull(decodeBridgeAction(
             """{"version":1,"type":"action","payload":{"name":"importSkin"}}"""))
-        assertEquals(WebSkinAction.ExportClearSkin, decodeBridgeAction(
+        assertNull(decodeBridgeAction(
             """{"version":1,"type":"action","payload":{"name":"exportClearSkin"}}"""))
-        assertEquals(WebSkinAction.ExportInstalledSkin("pc-preview-fixture"), decodeBridgeAction(
+        assertNull(decodeBridgeAction(
             """{"version":1,"type":"action","payload":{"name":"exportInstalledSkin","id":"pc-preview-fixture"}}"""))
-        assertEquals(WebSkinAction.DeleteSkin("pc-preview-fixture"), decodeBridgeAction(
+        assertNull(decodeBridgeAction(
             """{"version":1,"type":"action","payload":{"name":"deleteSkin","id":"pc-preview-fixture"}}"""))
-        assertEquals(WebSkinAction.DeleteSkin("powercal-default"), decodeBridgeAction(
+        assertNull(decodeBridgeAction(
             """{"version":1,"type":"action","payload":{"name":"deleteSkin","id":"powercal-default"}}"""))
         assertNull(decodeBridgeAction(
             """{"version":1,"type":"action","payload":{"name":"exportInstalledSkin","id":"pc-preview-fixture","uri":"file:///private"}}"""))

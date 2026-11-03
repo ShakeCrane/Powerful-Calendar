@@ -254,9 +254,6 @@ function onAction(button){
     occurrenceKey:button.dataset.occurrenceKey,completed:button.dataset.completed==="true"});
   else if(name==="loadMoreMemo")send(name);
   else if(name==="invokeOption")send(name,{id:button.dataset.optionId});
-  else if(name==="selectSkin")send(name,{id:button.dataset.skinId});
-  else if(name==="exportInstalledSkin"||name==="deleteSkin")
-    send(name,{id:button.dataset.skinId});
   else if(name==="panTimeline")send(name,{deltaMinutes:Number(button.dataset.deltaMinutes)});
   else if(name==="zoomTimeline")send(name,{direction:button.dataset.direction});
   else if(name==="resetTimelineZoom")send(name);
@@ -604,49 +601,6 @@ function renderSettings(){
       exactLabel.textContent="精确闹钟访问未允许；需要精确时刻的提醒会保持 BLOCKED。";
       exactButton.textContent="打开精确闹钟设置";
       exactButton.hidden=false;
-    }
-  }
-
-  const skinRoot=$("skinChoices");
-  const skinStatus=$("skinSelectionStatus");
-  if(skinRoot){
-    skinRoot.replaceChildren();
-    const choices=(Array.isArray(state.skinChoices)?state.skinChoices:[])
-      .filter(item=>item&&typeof item.id==="string"&&item.id.length>0&&
-        typeof item.name==="string");
-    const selectedId=typeof state.selectedSkinId==="string"?state.selectedSkinId:"";
-    if(skinStatus)skinStatus.textContent=choices.length?
-      "切换前会由 Android 宿主再次确认。":"暂时无法读取已安装皮肤。";
-    for(const item of choices){
-      const row=node("div","skin-choice-row");
-      row.setAttribute("role","listitem");
-      const button=node("button","skin-choice-button");
-      button.type="button";
-      button.dataset.action="selectSkin";
-      button.dataset.skinId=item.id;
-      const isSelected=item.id===selectedId;
-      button.setAttribute("aria-pressed",String(isSelected));
-      button.disabled=isSelected;
-      button.append(node("span","skin-choice-name",item.name));
-      button.append(node("span","skin-choice-state",isSelected?"正在使用":"选择"));
-      row.append(button);
-      if(item.builtIn===true)row.append(node("span","skin-choice-meta","内置皮肤"));
-      else{
-        const actions=node("div","skin-choice-actions");
-        const exportButton=node("button","skin-choice-action","导出");
-        exportButton.type="button";
-        exportButton.dataset.action="exportInstalledSkin";
-        exportButton.dataset.skinId=item.id;
-        exportButton.setAttribute("aria-label","导出 "+item.name);
-        const deleteButton=node("button","skin-choice-action","删除");
-        deleteButton.type="button";
-        deleteButton.dataset.action="deleteSkin";
-        deleteButton.dataset.skinId=item.id;
-        deleteButton.setAttribute("aria-label","删除 "+item.name);
-        actions.append(exportButton,deleteButton);
-        row.append(actions);
-      }
-      skinRoot.append(row);
     }
   }
 

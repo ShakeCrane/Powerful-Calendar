@@ -51,25 +51,24 @@ class DefaultClearSingleSourceTest(unittest.TestCase):
         self.assertNotIn(b"https://",files["web/index.html"])
         self.assertLess(len(original),10_000_000)
 
-    def test_clear_settings_has_host_confirmed_installed_skin_selection(self):
+    def test_clear_settings_has_no_skin_catalogue_and_keeps_host_controls(self):
         _,files=unpack(expected_bytes())
         html=files["web/index.html"].decode("utf-8")
         script=files["web/app.js"].decode("utf-8")
         style=files["web/style.css"].decode("utf-8")
-        self.assertIn('id="skinChoices"',html)
-        self.assertIn('button.dataset.action="selectSkin"',script)
-        self.assertIn('send(name,{id:button.dataset.skinId})',script)
+        for retired in ("skinChoices","skinSelectionStatus","importSkinButton","exportClearSkinButton"):
+            self.assertNotIn(retired,html)
+        for action in ("selectSkin","importSkin","exportClearSkin","exportInstalledSkin","deleteSkin"):
+            self.assertNotIn(action,script)
+        self.assertNotIn("selectedSkinId",script)
+        self.assertNotIn("skin-choice-list",style)
         self.assertIn('id="openAiSettings"',html)
         self.assertIn('data-action="nativeSettings"',html)
         self.assertIn('密钥不会发送给皮肤',html)
-        self.assertIn('id="importSkinButton"',html)
-        self.assertIn('data-action="importSkin"',html)
-        self.assertIn('id="exportClearSkinButton"',html)
-        self.assertIn('data-action="exportClearSkin"',html)
-        for action in ("exportInstalledSkin","deleteSkin"):
-            self.assertIn(f'name==="{action}"',script)
-        self.assertIn('.skin-choice-list',style)
-        self.assertIn('item.name',script)
+        self.assertIn('id="settingsOptionGroups"',html)
+        self.assertIn('data-action="requestNotificationPermission"',html)
+        self.assertIn('data-action="reconcileReminders"',html)
+        self.assertIn('id="nativeRecoverySettings"',html)
         self.assertNotIn('innerHTML',script)
 
     def test_compiled_apk_clear_asset_verifier_checks_exact_bytes(self):

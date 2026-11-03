@@ -388,18 +388,24 @@ class ClearSettingsOptionsInstrumentedTest {
     }
 
     @Test
-    fun packagedClearSettingsExposeHostOptionsAndKeepMigrationBehindConfirmation() {
+    fun clearSettingsRetireSkinCatalogueAndKeepProtectedOperations() {
         val context = compose.activity.applicationContext
         val databaseName = "clear-settings-options-${UUID.randomUUID()}.db"
         val store = PowerStore(context, databaseName)
         val skinManager = SkinPackageManager(context)
         val originalSkin = skinManager.currentId()
+        val installedPackageId = "qa-clear-${UUID.randomUUID().toString().replace("-", "")}"
+        val installedPackagePath = File(context.cacheDir, "$installedPackageId.pcskin")
+        var packageInstalled = false
         val onboarding = context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
         val hadAskedForCalendarImport = onboarding.contains("system-calendar-import-asked")
         val askedForCalendarImport = onboarding.getBoolean("system-calendar-import-asked", false)
 
         try {
             onboarding.edit().putBoolean("system-calendar-import-asked", true).commit()
+            installedPackagePath.writeBytes(skinPackageFixture(installedPackageId))
+            assertEquals(installedPackageId, skinManager.install(Uri.fromFile(installedPackagePath)).id)
+            packageInstalled = true
             PowerCalSkinRegistry.reset()
             skinManager.select("powercal-clear-default")
             compose.runOnUiThread {
@@ -456,34 +462,75 @@ class ClearSettingsOptionsInstrumentedTest {
                 "'#settingsOptionGroups [data-option-id]')).some(el=>el.dataset.optionId===id))"))
             assertTrue(evaluate(view,
                 "document.querySelector('[data-action=nativeSettings]')?.isConnected===true") == "true")
+            assertFalse("Clear state must not expose installed skins", WebSkinBridgeRuntime.state().has("skinChoices"))
+            assertFalse("Clear state must not expose a selected skin id",
+                WebSkinBridgeRuntime.state().has("selectedSkinId"))
+            assertEquals("true", evaluate(view,
+                "(()=>{const selectors=['#skinChoices','#skinSelectionStatus','#importSkinButton'," +
+                    "'#exportClearSkinButton','[data-action=selectSkin]','[data-action=importSkin]'," +
+                    "'[data-action=exportClearSkin]','[data-action=exportInstalledSkin]'," +
+                    "'[data-action=deleteSkin]'];return selectors.every(s=>!document.querySelector(s))&&" +
+                    "!document.querySelector('#settingsPage').innerText.includes('已安装皮肤')})()"))
 
-            val projectedSkins = requireNotNull(WebSkinBridgeRuntime.state().optJSONArray("skinChoices"))
-            val projectedSkinIds = (0 until projectedSkins.length()).mapNotNull { index ->
-                projectedSkins.optJSONObject(index)?.optString("id")
+            val storeBeforeSettingsActions = listOf(
+                store.all(), store.draftCount(), store.pendingCount(), store.commitCount(),
+                store.identityCount(), store.nextSequencePreview()
+            )
+            val installedBeforeRetiredActions = skinManager.installed().map { it.id }.toSet()
+            val retiredActions = listOf(
+                "selectSkin", "importSkin", "exportClearSkin", "exportInstalledSkin", "deleteSkin"
+            )
+            retiredActions.forEach { actionName ->
+                evaluate(view, "(()=>{const b=document.createElement('button');" +
+                    "b.dataset.action='$actionName';b.dataset.skinId='$installedPackageId';" +
+                    "document.querySelector('#settingsPage').append(b);b.click();b.remove();return true})()")
+                SystemClock.sleep(100)
             }
-            assertTrue("Settings must expose the Native recovery skin", "powercal-default" in projectedSkinIds)
-            assertTrue("Settings must expose the active Clear skin", "powercal-clear-default" in projectedSkinIds)
-            assertEquals("The selected skin is host-projected", "powercal-clear-default",
-                WebSkinBridgeRuntime.state().optString("selectedSkinId"))
-            assertTrue("The skin projection must contain catalogue metadata only",
-                projectedSkins.toString().contains("powercal-clear-default") &&
-                    !projectedSkins.toString().contains("path") &&
-                    !projectedSkins.toString().contains("endpoint") &&
-                    !projectedSkins.toString().contains("apiKey"))
-            assertEquals("true", evaluate(view,
-                "document.querySelectorAll('#skinChoices [data-action=selectSkin]').length>=2"))
-            assertEquals("true", evaluate(view,
-                "document.querySelector('#skinChoices [data-skin-id=powercal-clear-default]')?.disabled===true"))
-            evaluate(view, "document.querySelector('#skinChoices [data-skin-id=powercal-default]').click(); true")
+            compose.waitForIdle()
+            assertEquals("Skin JS must not change the active runtime", "powercal-clear-default",
+                skinManager.currentId())
+            assertEquals("Skin JS must not add or delete installed packages", installedBeforeRetiredActions,
+                skinManager.installed().map { it.id }.toSet())
+            assertTrue("Existing installed packages remain in private storage",
+                installedPackageId in skinManager.installed().map { it.id })
+            assertEquals("Retired package actions must not write calendar state",
+                storeBeforeSettingsActions, listOf(
+                    store.all(), store.draftCount(), store.pendingCount(), store.commitCount(),
+                    store.identityCount(), store.nextSequencePreview()
+                ))
+
+            tapWebSelector(view, "[data-action=requestNotificationPermission]")
+            tapPickerNode(waitForPermissionAction("Don't allow", "Don’t allow", "不允许", "拒绝"))
             compose.waitUntil(15_000) {
-                compose.onAllNodesWithText("切换皮肤前请确认").fetchSemanticsNodes().isNotEmpty()
+                InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow
+                    ?.packageName?.toString() == compose.activity.packageName &&
+                    WebSkinBridgeRuntime.state().optString("page") == "SETTINGS"
             }
-            compose.onNodeWithText("取消").performClick()
-            compose.waitUntil(10_000) {
-                compose.onAllNodesWithText("切换皮肤前请确认").fetchSemanticsNodes().isEmpty()
+            assertEquals("The permission action must use Android's notification permission",
+                PackageManager.PERMISSION_DENIED,
+                context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS))
+
+            evaluate(view, "Array.from(document.querySelectorAll(" +
+                "'#settingsOptionGroups [data-option-id]')).find(" +
+                "el=>el.dataset.optionId==='data.backup.export').click(); true")
+            waitForPickerNode(contentDescription = "Show roots")
+            assertEquals("Backup export remains an Android DocumentsUI action",
+                "com.google.android.documentsui",
+                InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow
+                    ?.packageName?.toString())
+            InstrumentationRegistry.getInstrumentation().uiAutomation.performGlobalAction(
+                AccessibilityService.GLOBAL_ACTION_BACK
+            )
+            compose.waitUntil(15_000) {
+                InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow
+                    ?.packageName?.toString() == compose.activity.packageName &&
+                    WebSkinBridgeRuntime.state().optString("page") == "SETTINGS"
             }
-            assertEquals("Cancelling the Host confirmation must keep Clear active",
-                "powercal-clear-default", skinManager.currentId())
+            assertEquals("Cancelling backup export must not write calendar state",
+                storeBeforeSettingsActions, listOf(
+                    store.all(), store.draftCount(), store.pendingCount(), store.commitCount(),
+                    store.identityCount(), store.nextSequencePreview()
+                ))
 
             val initialFormal = store.all()
             val initialPending = store.pendingCount()
@@ -514,14 +561,8 @@ class ClearSettingsOptionsInstrumentedTest {
             assertEquals(initialIdentities, store.identityCount())
             assertEquals(initialSequence, store.nextSequencePreview())
 
-            evaluate(view, "document.querySelector('#skinChoices [data-skin-id=powercal-default]').click(); true")
-            compose.waitUntil(15_000) {
-                compose.onAllNodesWithText("切换皮肤前请确认").fetchSemanticsNodes().isNotEmpty()
-            }
-            compose.onNodeWithText("确认切换").performClick()
-            compose.waitUntil(15_000) { skinManager.currentId() == "powercal-default" }
-            assertEquals("Confirmed activation uses the existing Host package manager",
-                "powercal-default", skinManager.currentId())
+            assertEquals("Clear Settings must keep the default runtime active",
+                "powercal-clear-default", skinManager.currentId())
         } finally {
             compose.runOnUiThread {
                 compose.activity.setContent { }
@@ -531,6 +572,8 @@ class ClearSettingsOptionsInstrumentedTest {
             store.close()
             context.deleteDatabase(databaseName)
             skinManager.select(originalSkin)
+            if (packageInstalled) runCatching { skinManager.delete(installedPackageId) }
+            installedPackagePath.delete()
             val restoreOnboarding = onboarding.edit()
             if (hadAskedForCalendarImport) {
                 restoreOnboarding.putBoolean("system-calendar-import-asked", askedForCalendarImport)
@@ -1963,20 +2006,13 @@ class ClearSettingsOptionsInstrumentedTest {
             assertFalse("Closed profile values must be removed from the Bridge frame",
                 WebSkinBridgeRuntime.state().toString().contains(savedName) ||
                     WebSkinBridgeRuntime.state().toString().contains("UNSAVED_PROFILE_VALUE"))
-            tapWebSelector(view, "#skinChoices [data-skin-id=powercal-default]")
-            compose.waitUntil(15_000) {
-                compose.onAllNodesWithText("切换皮肤前请确认").fetchSemanticsNodes().isNotEmpty()
-            }
-            compose.onNodeWithText("确认切换").performClick()
-            compose.waitUntil(15_000) {
-                skinManager.currentId() == "powercal-default" &&
-                    WebSkinBridgeRuntime.state().isNull("profileEditor")
-            }
-            assertFalse("Changing the active skin must not retain the prior profile projection",
+            assertEquals("Settings editor flow keeps the factory skin active",
+                "powercal-clear-default", skinManager.currentId())
+            assertFalse("Closed profile values must remain absent from the Bridge frame",
                 WebSkinBridgeRuntime.state().toString().contains(savedName))
             println("SEP11_NATIVE_CLEAR_AUTHORED_PROFILE_EDITOR " +
                 "nativeSaved=true clearSkinSaved=true valueOnlyWhileOpen=true backDiscardsDraft=true " +
-                "skinSwitchClearsProjection=true storeUnchanged=true")
+                "factorySkinRemainsActive=true storeUnchanged=true")
         } finally {
             compose.runOnUiThread {
                 compose.activity.setContent { }
@@ -2108,510 +2144,6 @@ class ClearSettingsOptionsInstrumentedTest {
                 restoreOnboarding.remove("system-calendar-import-asked")
             }
             check(restoreOnboarding.commit())
-        }
-    }
-
-    @Test
-    fun clearSkinCatalogUsesHostPickersAndConfirmedDeleteWithoutCalendarWrites() {
-        assumeTrue("skin catalogue fixture must run on an isolated Android emulator",
-            Build.HARDWARE == "ranchu" || Build.HARDWARE == "goldfish")
-        val context = compose.activity.applicationContext
-        val databaseName = "clear-skin-catalog-${UUID.randomUUID()}.db"
-        val store = PowerStore(context, databaseName)
-        val skinManager = SkinPackageManager(context)
-        val originalSkin = skinManager.currentId()
-        val onboarding = context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
-        val hadAskedForCalendarImport = onboarding.contains("system-calendar-import-asked")
-        val askedForCalendarImport = onboarding.getBoolean("system-calendar-import-asked", false)
-        val existingId = "qa-clear-${UUID.randomUUID().toString().replace("-", "")}"
-        val importId = "qa-clear-${UUID.randomUUID().toString().replace("-", "")}"
-        val existingInput = File(context.cacheDir, "$existingId.pcskin")
-        val importInput = File(context.cacheDir, "$importId.pcskin")
-        val clearOutput = File(context.cacheDir, "${UUID.randomUUID()}-clear-export.pcskin")
-        val installedOutput = File(context.cacheDir, "${UUID.randomUUID()}-installed-export.pcskin")
-        val existingArchive = skinPackageFixture(existingId)
-        val importArchive = skinPackageFixture(importId)
-        var existingInstalled = false
-        var importedInstalled = false
-        try {
-            assumeTrue("test fixture IDs must not already be installed",
-                skinManager.installed().none { it.id == existingId || it.id == importId })
-            assumeTrue("installed skin capacity must be available",
-                skinManager.installed().count { !it.builtIn } < 12)
-            assertFalse(clearOutput.exists())
-            assertFalse(installedOutput.exists())
-            existingInput.writeBytes(existingArchive)
-            importInput.writeBytes(importArchive)
-            assertEquals(existingId, skinManager.install(Uri.fromFile(existingInput)).id)
-            existingInstalled = true
-            skinManager.select("powercal-clear-default")
-            onboarding.edit().putBoolean("system-calendar-import-asked", true).commit()
-            compose.runOnUiThread {
-                compose.activity.setContent { PowerCalTheme { PowerCalApp(store) } }
-            }
-
-            var web: WebView? = null
-            compose.waitUntil(30_000) {
-                compose.runOnUiThread {
-                    web = findWebView(compose.activity.findViewById(android.R.id.content))
-                }
-                web != null
-            }
-            val view = requireNotNull(web)
-            compose.waitUntil(30_000) {
-                evaluate(view, "!!window.PowerCalSkin && !!window.PowerCalSkin.receive") == "true"
-            }
-            evaluate(view, "document.querySelector('.clear-tabbar [data-action=settings]').click(); true")
-            compose.waitUntil(15_000) {
-                WebSkinBridgeRuntime.state().optString("page") == "SETTINGS"
-            }
-            compose.waitUntil(15_000) {
-                evaluate(view, "!!document.querySelector('#skinChoices [data-skin-id=$existingId]')") == "true"
-            }
-
-            fun dispatchPickerResult(action: String, uri: Uri, clickExpression: String) {
-                val instrumentation = InstrumentationRegistry.getInstrumentation()
-                val filter = IntentFilter(action).apply {
-                    addCategory(Intent.CATEGORY_OPENABLE)
-                    addDataType("*/*")
-                }
-                val monitor = instrumentation.addMonitor(
-                    filter,
-                    Instrumentation.ActivityResult(Activity.RESULT_OK, Intent().setData(uri)),
-                    true
-                )
-                try {
-                    evaluate(view, "$clickExpression; true")
-                    compose.waitUntil(10_000) { monitor.hits > 0 }
-                    instrumentation.waitForIdleSync()
-                } finally {
-                    instrumentation.removeMonitor(monitor)
-                }
-            }
-
-            dispatchPickerResult(Intent.ACTION_OPEN_DOCUMENT, Uri.fromFile(importInput),
-                "document.querySelector('#importSkinButton').click()")
-            compose.waitUntil(20_000) { skinManager.installed().any { it.id == importId } }
-            importedInstalled = true
-            assertEquals("Import never activates the candidate skin",
-                "powercal-clear-default", skinManager.currentId())
-            compose.waitUntil(15_000) {
-                evaluate(view, "!!document.querySelector('#skinChoices [data-skin-id=$importId]')") == "true"
-            }
-
-            dispatchPickerResult(Intent.ACTION_CREATE_DOCUMENT, Uri.fromFile(clearOutput),
-                "document.querySelector('#exportClearSkinButton').click()")
-            compose.waitUntil(20_000) { clearOutput.isFile && clearOutput.length() > 0 }
-            val bundledClear = context.assets.open("powercal-clear-default.pcskin").use { it.readBytes() }
-            assertTrue("Clear export returns the canonical bundle", bundledClear.contentEquals(clearOutput.readBytes()))
-
-            dispatchPickerResult(Intent.ACTION_CREATE_DOCUMENT, Uri.fromFile(installedOutput),
-                "document.querySelector('#skinChoices [data-action=exportInstalledSkin][data-skin-id=$existingId]').click()")
-            compose.waitUntil(20_000) { installedOutput.isFile && installedOutput.length() > 0 }
-            assertTrue("installed export preserves the original Studio package",
-                existingArchive.contentEquals(installedOutput.readBytes()))
-
-            val formalBefore = store.all()
-            val commitsBefore = store.commitCount()
-            val identitiesBefore = store.identityCount()
-            val sequenceBefore = store.nextSequencePreview()
-            evaluate(view,
-                "document.querySelector('#skinChoices [data-action=deleteSkin][data-skin-id=$existingId]').click()")
-            compose.waitUntil(10_000) {
-                compose.onAllNodesWithText("删除皮肤？").fetchSemanticsNodes().isNotEmpty()
-            }
-            compose.onNodeWithText("取消").performClick()
-            compose.waitUntil(10_000) {
-                compose.onAllNodesWithText("删除皮肤？").fetchSemanticsNodes().isEmpty()
-            }
-            assertTrue("Cancel keeps the third-party archive installed",
-                File(context.filesDir, "skin-packs/$existingId.pcskin").isFile)
-            evaluate(view,
-                "document.querySelector('#skinChoices [data-action=deleteSkin][data-skin-id=$existingId]').click()")
-            compose.waitUntil(10_000) {
-                compose.onAllNodesWithText("删除皮肤？").fetchSemanticsNodes().isNotEmpty()
-            }
-            compose.onNodeWithText("确认删除").performClick()
-            compose.waitUntil(15_000) {
-                skinManager.installed().none { it.id == existingId } &&
-                    evaluate(view, "!document.querySelector('#skinChoices [data-skin-id=$existingId]')") == "true"
-            }
-            existingInstalled = false
-            assertEquals("Management actions never modify formal events", formalBefore, store.all())
-            assertEquals(commitsBefore, store.commitCount())
-            assertEquals(identitiesBefore, store.identityCount())
-            assertEquals(sequenceBefore, store.nextSequencePreview())
-            assertEquals("Deleting another skin leaves active Clear selected",
-                "powercal-clear-default", skinManager.currentId())
-        } finally {
-            compose.runOnUiThread {
-                compose.activity.setContent { }
-                PowerCalSkinRegistry.reset()
-            }
-            compose.waitForIdle()
-            store.close()
-            context.deleteDatabase(databaseName)
-            skinManager.select(originalSkin)
-            if (existingInstalled) runCatching { skinManager.delete(existingId) }
-            if (importedInstalled) runCatching { skinManager.delete(importId) }
-            existingInput.delete()
-            importInput.delete()
-            clearOutput.delete()
-            installedOutput.delete()
-            val restoreOnboarding = onboarding.edit()
-            if (hadAskedForCalendarImport) {
-                restoreOnboarding.putBoolean("system-calendar-import-asked", askedForCalendarImport)
-            } else {
-                restoreOnboarding.remove("system-calendar-import-asked")
-            }
-            restoreOnboarding.commit()
-        }
-    }
-
-    @Test
-    fun clearInstalledSkinExportUsesDocumentsUiAndPreservesArchive() {
-        assumeTrue("installed-skin export must run on an isolated Android emulator",
-            Build.HARDWARE == "ranchu" || Build.HARDWARE == "goldfish")
-        assumeTrue("Downloads filesystem path requires API 29+", Build.VERSION.SDK_INT >= 29)
-
-        val arguments = InstrumentationRegistry.getArguments()
-        val requestedName = arguments.getString("outputName")
-        val outputName = requestedName?.takeIf {
-            it.matches(Regex("powercal-qa-skin-[a-fA-F0-9-]+\\.pcskin"))
-        } ?: "powercal-qa-skin-${UUID.randomUUID()}.pcskin"
-        val retainArtifact = arguments.getString("retainArtifact") == "true"
-        val outputPath = "/sdcard/Download/$outputName"
-        val context = compose.activity.applicationContext
-        val databaseName = "clear-skin-saf-export-${UUID.randomUUID()}.db"
-        val store = PowerStore(context, databaseName)
-        val skinManager = SkinPackageManager(context)
-        val skinPreferences = context.getSharedPreferences("powercal-skin-choice", Context.MODE_PRIVATE)
-        val hadSkinSelection = skinPreferences.contains("selected")
-        val originalSkin = skinPreferences.getString("selected", skinManager.currentId())
-            ?: skinManager.currentId()
-        val onboarding = context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
-        val hadOnboardingFlag = onboarding.contains("system-calendar-import-asked")
-        val originalOnboardingFlag = onboarding.getBoolean("system-calendar-import-asked", false)
-        val installedId = "qa-clear-${UUID.randomUUID().toString().replace("-", "")}"
-        val input = File(context.cacheDir, "$installedId.pcskin")
-        val expectedArchive = skinPackageFixture(installedId)
-        val storeBefore = listOf(
-            store.all(), store.pendingCount(), store.commitCount(),
-            store.identityCount(), store.nextSequencePreview()
-        )
-        var installed = false
-        var saveActionInvoked = false
-
-        try {
-            assertTrue("The generated skin ID must not already be installed",
-                skinManager.installed().none { it.id == installedId })
-            input.writeBytes(expectedArchive)
-            assertEquals(installedId, skinManager.install(Uri.fromFile(input)).id)
-            installed = true
-            PowerCalSkinRegistry.reset()
-            skinManager.select("powercal-clear-default")
-            onboarding.edit().putBoolean("system-calendar-import-asked", true).commit()
-            compose.runOnUiThread {
-                compose.activity.setContent { PowerCalTheme { PowerCalApp(store) } }
-            }
-
-            var web: WebView? = null
-            compose.waitUntil(30_000) {
-                compose.runOnUiThread {
-                    web = findWebView(compose.activity.findViewById(android.R.id.content))
-                }
-                web != null
-            }
-            val view = requireNotNull(web)
-            compose.waitUntil(30_000) {
-                evaluate(view, "!!window.PowerCalSkin?.receive") == "true"
-            }
-            evaluate(view, "document.querySelector(" +
-                "'.clear-tabbar [data-action=settings]').click(); true")
-            compose.waitUntil(15_000) {
-                WebSkinBridgeRuntime.state().optString("page") == "SETTINGS"
-            }
-            compose.waitUntil(15_000) {
-                evaluate(view,
-                    "!!document.querySelector('#skinChoices [data-skin-id=$installedId]')") == "true"
-            }
-            evaluate(view, "document.querySelector(" +
-                "'#skinChoices [data-action=exportInstalledSkin][data-skin-id=$installedId]').click(); true")
-
-            val rootsButton = waitForPickerNode(contentDescription = "Show roots")
-            assertEquals("Installed skin export must use the real Android DocumentsUI picker",
-                "com.google.android.documentsui",
-                InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow
-                    ?.packageName?.toString())
-            tapPickerNode(rootsButton)
-            tapPickerNode(waitForPickerNode(text = "Downloads"))
-            setPickerText(waitForPickerEditableNode(), outputName)
-
-            val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
-            val deadline = SystemClock.elapsedRealtime() + 15_000
-            var save: AccessibilityNodeInfo? = null
-            while (SystemClock.elapsedRealtime() < deadline && save == null) {
-                val root = automation.rootInActiveWindow
-                save = findAccessibilityNode(root, text = "SAVE")
-                    ?: findAccessibilityNode(root, text = "Save")
-                    ?: findAccessibilityNode(root, contentDescription = "Save")
-                    ?: findAccessibilityNode(root, viewId = "android:id/button1")
-                if (save == null) SystemClock.sleep(150)
-            }
-            assertTrue("DocumentsUI Save action must be available", save != null)
-            saveActionInvoked = true
-            tapPickerNode(requireNotNull(save))
-            compose.waitUntil(30_000) {
-                automation.rootInActiveWindow?.packageName?.toString() == compose.activity.packageName
-            }
-
-            val descriptor = automation.executeShellCommand("cat $outputPath")
-            val exportedArchive = ParcelFileDescriptor.AutoCloseInputStream(descriptor)
-                .buffered().use { it.readBytes() }
-            assertTrue("The saved .pcskin must preserve the installed archive byte-for-byte",
-                expectedArchive.contentEquals(exportedArchive))
-            assertEquals("Export must leave Clear selected", "powercal-clear-default",
-                skinManager.currentId())
-            assertEquals("Export must not mutate calendar data or identity counters", storeBefore,
-                listOf(store.all(), store.pendingCount(), store.commitCount(),
-                    store.identityCount(), store.nextSequencePreview()))
-            val digest = MessageDigest.getInstance("SHA-256").digest(exportedArchive)
-                .joinToString("") { "%02x".format(it.toInt() and 0xff) }
-            Log.i("ClearSkinSafExport", "artifact=$outputName; bytes=${exportedArchive.size}; sha256=$digest")
-        } finally {
-            val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
-            repeat(2) {
-                if (automation.rootInActiveWindow?.packageName?.toString() ==
-                    "com.google.android.documentsui"
-                ) {
-                    automation.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
-                    SystemClock.sleep(200)
-                }
-            }
-            if (saveActionInvoked && !retainArtifact) {
-                listOf(outputPath, "$outputPath.zip").forEach { path ->
-                    val cleanup = automation.executeShellCommand("rm -f $path")
-                    ParcelFileDescriptor.AutoCloseInputStream(cleanup).close()
-                }
-            }
-            compose.runOnUiThread {
-                compose.activity.setContent { }
-                PowerCalSkinRegistry.reset()
-            }
-            compose.waitForIdle()
-            store.close()
-            context.deleteDatabase(databaseName)
-            if (hadSkinSelection) {
-                skinManager.select(originalSkin)
-            } else {
-                check(skinPreferences.edit().remove("selected").commit())
-                PowerCalSkinRegistry.reset()
-            }
-            if (installed) runCatching { skinManager.delete(installedId) }
-            input.delete()
-            val restoreOnboarding = onboarding.edit()
-            if (hadOnboardingFlag) {
-                restoreOnboarding.putBoolean("system-calendar-import-asked", originalOnboardingFlag)
-            } else {
-                restoreOnboarding.remove("system-calendar-import-asked")
-            }
-            check(restoreOnboarding.commit())
-        }
-    }
-
-    @Test
-    fun clearSkinImportUsesDocumentsUiAndDoesNotActivateTheCandidate() {
-        assumeTrue("DocumentsUI flow must run on an isolated Android emulator",
-            Build.HARDWARE == "ranchu" || Build.HARDWARE == "goldfish")
-        assumeTrue("Downloads MediaStore requires API 29+", Build.VERSION.SDK_INT >= 29)
-        val context = compose.activity.applicationContext
-        val databaseName = "clear-skin-saf-${UUID.randomUUID()}.db"
-        val store = PowerStore(context, databaseName)
-        val skinManager = SkinPackageManager(context)
-        val originalSkin = skinManager.currentId()
-        val onboarding = context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
-        val hadAskedForCalendarImport = onboarding.contains("system-calendar-import-asked")
-        val askedForCalendarImport = onboarding.getBoolean("system-calendar-import-asked", false)
-        val fixtureId = "qa-saf-${UUID.randomUUID().toString().replace("-", "")}"
-        val requestedImportName = "powercal-saf-${UUID.randomUUID()}.pcskin"
-        val requestedInvalidImportName = "powercal-invalid-${UUID.randomUUID()}.pcskin"
-        val fixtureBytes = skinPackageFixture(fixtureId)
-        var importUri: Uri? = null
-        var invalidImportUri: Uri? = null
-        var fixtureInstalled = false
-        try {
-            assumeTrue("test fixture ID must not already be installed",
-                skinManager.installed().none { it.id == fixtureId })
-            assumeTrue("installed skin capacity must be available",
-                skinManager.installed().count { !it.builtIn } < 12)
-            fun createDownloadsPackage(name: String, bytes: ByteArray): Pair<Uri, String> {
-                val values = ContentValues().apply {
-                    put(MediaStore.MediaColumns.DISPLAY_NAME, name)
-                    put(MediaStore.MediaColumns.MIME_TYPE, "application/zip")
-                    put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/")
-                }
-                val uri = requireNotNull(context.contentResolver.insert(
-                    MediaStore.Downloads.EXTERNAL_CONTENT_URI, values
-                )) { "Could not create isolated SAF package in Downloads" }
-                context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
-                    ?: error("Could not write isolated SAF package")
-                val displayName = requireNotNull(context.contentResolver.query(
-                    uri, arrayOf(MediaStore.MediaColumns.DISPLAY_NAME), null, null, null
-                )).use { cursor ->
-                    assertTrue("Downloads provider must return the isolated fixture row",
-                        cursor.moveToFirst())
-                    cursor.getString(0)
-                }
-                assertTrue("Downloads provider should retain the .pcskin suffix",
-                    displayName.startsWith(name))
-                return uri to displayName
-            }
-            val validFixture = createDownloadsPackage(requestedImportName, fixtureBytes)
-            importUri = validFixture.first
-            val pickerName = validFixture.second
-            val invalidFixture = createDownloadsPackage(requestedInvalidImportName,
-                "not a PowerCal skin archive".toByteArray(Charsets.UTF_8))
-            invalidImportUri = invalidFixture.first
-            val invalidPickerName = invalidFixture.second
-
-            onboarding.edit().putBoolean("system-calendar-import-asked", true).commit()
-            PowerCalSkinRegistry.reset()
-            skinManager.select("powercal-clear-default")
-            compose.runOnUiThread {
-                compose.activity.setContent { PowerCalTheme { PowerCalApp(store) } }
-            }
-            var web: WebView? = null
-            compose.waitUntil(30_000) {
-                compose.runOnUiThread {
-                    web = findWebView(compose.activity.findViewById(android.R.id.content))
-                }
-                web != null
-            }
-            val view = requireNotNull(web)
-            compose.waitUntil(30_000) {
-                evaluate(view, "!!window.PowerCalSkin && !!window.PowerCalSkin.receive") == "true"
-            }
-            evaluate(view, "document.querySelector('.clear-tabbar [data-action=settings]').click(); true")
-            compose.waitUntil(15_000) { WebSkinBridgeRuntime.state().optString("page") == "SETTINGS" }
-
-            fun storeSnapshot() = listOf(
-                store.all(), store.pendingCount(), store.commitCount(),
-                store.identityCount(), store.nextSequencePreview()
-            )
-            val storeBefore = storeSnapshot()
-            val installedBefore = skinManager.installed().map { it.id }.toSet()
-
-            fun importFromDownloads(documentName: String, completed: () -> Boolean) {
-                evaluate(view, "document.querySelector('#importSkinButton').click(); true")
-                val rootsButton = waitForPickerNode(contentDescription = "Show roots")
-                assertEquals("Clear import must launch Android DocumentsUI",
-                    "com.google.android.documentsui",
-                    InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow
-                        ?.packageName?.toString())
-                tapPickerNode(rootsButton)
-                tapPickerNode(waitForPickerNode(text = "Downloads"))
-                tapPickerNode(waitForPickerNode(text = documentName))
-                val deadline = SystemClock.elapsedRealtime() + 20_000
-                while (SystemClock.elapsedRealtime() < deadline && !completed()) {
-                    val root = InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow
-                    if (root?.packageName?.toString() == "com.google.android.documentsui") {
-                        val open = findAccessibilityNode(root, text = "OPEN")
-                            ?: findAccessibilityNode(root, text = "Open")
-                            ?: findAccessibilityNode(root, contentDescription = "Open")
-                            ?: findAccessibilityNode(root, viewId = "android:id/button1")
-                        if (open != null) tapPickerNode(open)
-                    }
-                    SystemClock.sleep(200)
-                }
-                val root = InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow
-                assertTrue("The Host must finish processing '$documentName': " +
-                    accessibilitySnapshot(root), completed())
-            }
-
-            // Cancel the actual system picker first, then prove Clear Settings remains
-            // usable and a second import can be started without creating a candidate.
-            evaluate(view, "document.querySelector('#importSkinButton').click(); true")
-            waitForPickerNode(contentDescription = "Show roots")
-            assertEquals("The real Android document provider must own the picker",
-                "com.google.android.documentsui",
-                InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow
-                    ?.packageName?.toString())
-            InstrumentationRegistry.getInstrumentation().uiAutomation.performGlobalAction(
-                AccessibilityService.GLOBAL_ACTION_BACK
-            )
-            compose.waitUntil(15_000) {
-                InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow
-                    ?.packageName?.toString() == compose.activity.packageName &&
-                    WebSkinBridgeRuntime.state().optString("page") == "SETTINGS"
-            }
-            assertFalse("Cancelling OpenDocument must not install the candidate",
-                skinManager.installed().any { it.id == fixtureId })
-            assertEquals("Cancelled import must preserve installed packages",
-                installedBefore, skinManager.installed().map { it.id }.toSet())
-            assertEquals("Cancelled import must preserve the active skin",
-                "powercal-clear-default", skinManager.currentId())
-            assertEquals("Cancelled import must preserve all calendar state", storeBefore,
-                storeSnapshot())
-
-            importFromDownloads(invalidPickerName) {
-                evaluate(view, "document.getElementById('hostNotice')?.textContent?." +
-                    "startsWith('皮肤导入已拒绝：') === true") == "true"
-            }
-            assertFalse("Malformed package must not be installed",
-                skinManager.installed().any { it.id == fixtureId })
-            assertEquals("Malformed package rejection must preserve the installed-package list",
-                installedBefore, skinManager.installed().map { it.id }.toSet())
-            assertEquals("Malformed package rejection must leave Clear active",
-                "powercal-clear-default", skinManager.currentId())
-            assertEquals("Malformed package rejection must not write calendar data",
-                storeBefore, storeSnapshot())
-
-            importFromDownloads(pickerName) {
-                skinManager.installed().any { it.id == fixtureId }
-            }
-            fixtureInstalled = skinManager.installed().any { it.id == fixtureId }
-            val pickerRoot = InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow
-            val diagnostic = "requested=$requestedImportName actual=$pickerName " +
-                "activePackage=${pickerRoot?.packageName} installed=$fixtureInstalled " +
-                "screen=${accessibilitySnapshot(pickerRoot)}"
-            if (!fixtureInstalled) Log.e("ClearSkinSAF", diagnostic)
-            assertTrue(
-                "Selecting the Downloads package in DocumentsUI must install it through Host: $diagnostic",
-                fixtureInstalled
-            )
-            assertEquals("A real picker import must not auto-activate its candidate",
-                "powercal-clear-default", skinManager.currentId())
-            assertEquals("Import must not write calendar data", storeBefore, storeSnapshot())
-            Log.i("ClearSkinSAF", "cancelledPicker=true; settingsRestored=true; " +
-                "malformedPackageRejected=true; packagesUnchangedAfterReject=true; " +
-                "validPackageRetrySucceeded=true; packageNotActivated=true; " +
-                "activeSkin=${skinManager.currentId()}; storeUnchanged=true")
-        } finally {
-            val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
-            repeat(2) {
-                if (automation.rootInActiveWindow?.packageName?.toString() == "com.google.android.documentsui") {
-                    automation.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
-                    SystemClock.sleep(200)
-                }
-            }
-            importUri?.let { runCatching { context.contentResolver.delete(it, null, null) } }
-            invalidImportUri?.let { runCatching { context.contentResolver.delete(it, null, null) } }
-            compose.runOnUiThread {
-                compose.activity.setContent { }
-                PowerCalSkinRegistry.reset()
-            }
-            compose.waitForIdle()
-            store.close()
-            context.deleteDatabase(databaseName)
-            skinManager.select(originalSkin)
-            if (fixtureInstalled) runCatching { skinManager.delete(fixtureId) }
-            val restoreOnboarding = onboarding.edit()
-            if (hadAskedForCalendarImport) {
-                restoreOnboarding.putBoolean("system-calendar-import-asked", askedForCalendarImport)
-            } else {
-                restoreOnboarding.remove("system-calendar-import-asked")
-            }
-            restoreOnboarding.commit()
         }
     }
 

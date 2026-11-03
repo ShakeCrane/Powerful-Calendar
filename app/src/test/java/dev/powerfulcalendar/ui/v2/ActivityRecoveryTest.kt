@@ -72,7 +72,7 @@ class ActivityRecoveryTest {
             assertEquals("powercal-default", PowerCalSkinRegistry.active.key)
             ui.onNodeWithText("工具与设置").assertIsDisplayed()
             ui.onNodeWithText(
-                "已切换至原生设置页，日历数据及已安装皮肤均保留。"
+                "已切换至原生恢复界面，日历数据保持不变。"
             ).assertIsDisplayed()
             val restoredManager = SkinPackageManager(context)
             restoredManager.restoreSelection()

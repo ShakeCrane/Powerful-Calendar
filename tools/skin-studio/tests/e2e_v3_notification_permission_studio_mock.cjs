@@ -151,22 +151,6 @@ async function main(){
       "profile value removed after explicit close");
     await frameEval("document.querySelector('[data-action=\"openProfileEditor\"]').click()");
     await waitFor(evaluate,"Boolean(mockProfileEditor)","reopen profile editor before route change");
-    await evaluate("onSkinAction(JSON.stringify({version:1,type:'action',payload:"+
-      "{name:'selectSkin',id:'powercal-default'}}))");
-    await waitFor(evaluate,"mockApproval?.kind==='skinActivation'&&"+
-      "mockApproval?.id==='powercal-default'","profile Mock skin-change review");
-    await evaluate("document.querySelector('#mockApprove').click()");
-    await waitFor(evaluate,"mockSelectedSkinId==='powercal-default'&&"+
-      "mockProfileEditor===null&&lastState?.profileEditor===null",
-      "profile projection cleared after approved skin change");
-    await evaluate("onSkinAction(JSON.stringify({version:1,type:'action',payload:"+
-      "{name:'selectSkin',id:'powercal-clear-default'}}))");
-    await waitFor(evaluate,"mockApproval?.kind==='skinActivation'&&"+
-      "mockApproval?.id==='powercal-clear-default'","return-to-Clear Mock skin review");
-    await evaluate("document.querySelector('#mockApprove').click()");
-    await waitFor(evaluate,"mockSelectedSkinId==='powercal-clear-default'&&"+
-      "mockProfileEditor===null&&lastState?.profileEditor===null",
-      "profile projection remains closed after returning to Clear");
     await frameEval("document.querySelector('[data-action=\"openProfileEditor\"]').click()");
     await waitFor(evaluate,"Boolean(mockProfileEditor)","reopen profile editor before route change");
     await frameEval("document.querySelector('.clear-tabbar [data-action=\"timeline\"]').click()");
@@ -195,39 +179,11 @@ async function main(){
       document.querySelector('#systemDiagnostics').innerText.includes('重复 #4')`,
       "Mock system diagnostics projection");
     const systemDiagnosticText=await frameEval("document.querySelector('#systemDiagnostics').innerText");
-    await waitFor(frameEval,`document.querySelectorAll('#skinChoices [data-action="selectSkin"]').length===3&&
-      document.querySelector('#skinChoices [data-skin-id="powercal-clear-default"]')?.disabled===true`,
-      "Mock installed-skin catalogue");
-    await frameEval(`document.querySelector('#skinChoices [data-skin-id="powercal-default"]').click()`);
-    await waitFor(evaluate,"mockApproval?.kind==='skinActivation'&&lastState?.selectedSkinId==='powercal-clear-default'",
-      "Mock Host skin confirmation");
-    await evaluate("document.querySelector('#mockReject').click()");
-    await waitFor(evaluate,"mockApproval===null&&lastState?.selectedSkinId==='powercal-clear-default'",
-      "Mock skin selection cancellation");
-    await frameEval(`document.querySelector('#skinChoices [data-skin-id="powercal-default"]').click()`);
-    await waitFor(evaluate,"mockApproval?.kind==='skinActivation'","second Mock skin confirmation");
-    await evaluate("document.querySelector('#mockApprove').click()");
-    await waitFor(evaluate,"mockApproval===null&&lastState?.selectedSkinId==='powercal-default'",
-      "Mock skin selection approval");
-    await frameEval(`document.querySelector('#importSkinButton').click()`);
-    await waitFor(evaluate,"document.querySelector('#bridgeLog').textContent.includes('不会打开文件选择器或安装皮肤')",
-      "Mock skin import action");
-    await frameEval(`document.querySelector('#exportClearSkinButton').click()`);
-    await waitFor(evaluate,"document.querySelector('#bridgeLog').textContent.includes('不会打开 SAF 或写入文件')",
-      "Mock Clear package export action");
-    await frameEval(`document.querySelector('[data-action="exportInstalledSkin"][data-skin-id="studio-preview-fixture"]').click()`);
-    await waitFor(evaluate,"document.querySelector('#bridgeLog').textContent.includes('已安装皮肤导出请求')",
-      "Mock installed package export action");
-    await frameEval(`document.querySelector('[data-action="deleteSkin"][data-skin-id="studio-preview-fixture"]').click()`);
-    await waitFor(evaluate,"mockApproval?.kind==='skinDelete'","Mock installed package delete confirmation");
-    await evaluate("document.querySelector('#mockReject').click()");
-    await waitFor(evaluate,"mockApproval===null&&lastState?.skinChoices.some(item=>item.id==='studio-preview-fixture')",
-      "Mock skin deletion cancellation");
-    await frameEval(`document.querySelector('[data-action="deleteSkin"][data-skin-id="studio-preview-fixture"]').click()`);
-    await waitFor(evaluate,"mockApproval?.kind==='skinDelete'","second Mock installed package delete confirmation");
-    await evaluate("document.querySelector('#mockApprove').click()");
-    await waitFor(evaluate,"mockApproval===null&&!lastState?.skinChoices.some(item=>item.id==='studio-preview-fixture')",
-      "Mock skin deletion approval");
+    await waitFor(frameEval,`!document.querySelector('#settingsPage').hidden&&
+      ['#skinChoices','#skinSelectionStatus','#importSkinButton','#exportClearSkinButton'].every(s=>!document.querySelector(s))&&
+      !document.querySelector('[data-action="selectSkin"],[data-action="importSkin"],'+
+        '[data-action="exportClearSkin"],[data-action="exportInstalledSkin"],[data-action="deleteSkin"]')`,
+      "Mock Clear settings omit the retired skin catalogue");
     await frameEval(`document.querySelector('[data-action="requestNotificationPermission"]').click()`);
     await waitFor(evaluate,"document.querySelector('#bridgeLog').textContent.includes('不会调用 Android 系统权限')",
       "Mock permission action handling");
@@ -253,13 +209,11 @@ async function main(){
       reminderDiagnosticText,
       systemDiagnosticText,
       profileEditorMock:{opened:true,savedSyntheticName:true,closed:true,
-        projectionClearedOnRouteChange:true,skinSwitchClearsProjection:true,
+        projectionClearedOnRouteChange:true,
         androidPreferencesWritten:false,
         calendarStoreWritten:false},
       profileSourceEditor:sourceEdit,
-      skinChoiceIds:(await evaluate("lastState.skinChoices.map(item=>item.id)")),
-      mockSelectedSkinId:await evaluate("lastState.selectedSkinId"),
-      previewFixtureDeleted:await evaluate("!mockPreviewSkinInstalled"),
+      skinCatalogueAbsent:true,
       mockLog:(await evaluate("document.querySelector('#bridgeLog').innerText")).split("\n").slice(0,5)
     };
     const resultPath=path.join(reportDir,`studio-mock-${runId}.json`);

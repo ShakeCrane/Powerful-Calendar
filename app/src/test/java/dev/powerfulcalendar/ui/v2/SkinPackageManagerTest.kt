@@ -149,7 +149,7 @@ class SkinPackageManagerTest {
 
     @Test fun failedEmergencyPersistenceHasExplicitRecoveryMessage() {
         assertEquals(
-            "当前已切换至原生设置页，但未能确认回退设置已保存；请在皮肤设置中再次选择原生皮肤。",
+            "当前已切换至原生恢复界面，但未能确认回退设置已保存；请重新启动应用以重试恢复。",
             nativeRecoveryMessage(persisted = false)
         )
     }

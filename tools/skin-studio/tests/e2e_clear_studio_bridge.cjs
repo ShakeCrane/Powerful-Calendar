@@ -88,6 +88,17 @@ async function main() {
       const original=await importedResponse.json();
       check(original.manifest.id==='powercal-clear-default','source is not bundled Clear');
       const capabilities=[...original.manifest.capabilities];
+      const bundledHtml=text(original.files['web/index.html']);
+      const bundledApp=text(original.files['web/app.js']);
+      check(!/skinChoices|skinSelectionStatus|importSkinButton|exportClearSkinButton/.test(bundledHtml),
+        'Clear Settings still exposes the retired skin catalogue');
+      check(!/selectSkin|importSkin|exportClearSkin|exportInstalledSkin|deleteSkin|skinChoices|selectedSkinId/.test(bundledApp),
+        'Clear runtime still builds or sends retired skin-management actions');
+      check(bundledHtml.includes('id="settingsOptionGroups"')&&
+        bundledHtml.includes('id="openAiSettings"')&&
+        bundledHtml.includes('id="nativeRecoverySettings"')&&
+        bundledHtml.includes('data-action="requestNotificationPermission"'),
+        'Clear Settings lost reminder, data-operation, or protected Host controls');
       await loadPackage(original);
 
       const id=document.querySelector('#skinId'), name=document.querySelector('#skinName');

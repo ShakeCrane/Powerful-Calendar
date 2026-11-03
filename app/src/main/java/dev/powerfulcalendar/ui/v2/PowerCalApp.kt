@@ -190,9 +190,9 @@ private data class BatchReview(val mode: AiBatchModeV1, val cards: List<DraftRev
 internal const val SKIN_RECOVERY_GESTURE_COPY = "紧急回退：在屏幕上相隔的两处位置交替快速轻点，共连续轻点 8 下，即可强制恢复原生皮肤。"
 
 internal fun nativeRecoveryMessage(persisted: Boolean): String = if (persisted) {
-    "已切换至原生设置页，日历数据及已安装皮肤均保留。"
+    "已切换至原生恢复界面，日历数据保持不变。"
 } else {
-    "当前已切换至原生设置页，但未能确认回退设置已保存；请在皮肤设置中再次选择原生皮肤。"
+    "当前已切换至原生恢复界面，但未能确认回退设置已保存；请重新启动应用以重试恢复。"
 }
 
 internal class LifecycleCheckpointGate {
@@ -2133,31 +2133,6 @@ fun PowerCalApp(
                     action.id == "data.legacy.migrate" -> confirmingLegacy = true
                     else -> Unit
                 }
-                is WebSkinAction.SelectSkin -> {
-                    if (page == Page.SETTINGS.name && action.id != selectedSkin) {
-                        skinChoices.firstOrNull { it.id == action.id }?.let { skinToActivate = it }
-                    }
-                }
-                WebSkinAction.ImportSkin -> if (canManageSkinFromSettings()) {
-                    importSkin.launch(arrayOf(
-                        POWER_CAL_SKIN_PACKAGE_MIME, "application/zip", "application/octet-stream", "*/*"
-                    ))
-                }
-                WebSkinAction.ExportClearSkin -> if (canManageSkinFromSettings()) {
-                    exportOriginalSkin.launch("PowerCal-Clear-Preview.pcskin")
-                }
-                is WebSkinAction.ExportInstalledSkin -> if (canManageSkinFromSettings()) {
-                    skinChoices.firstOrNull { it.id == action.id && !it.builtIn }?.let { item ->
-                        pendingSkinExportId = item.id
-                        message = "请选择保存位置以导出 ${item.name}"
-                        exportInstalledSkin.launch(item.id + ".pcskin")
-                    }
-                }
-                is WebSkinAction.DeleteSkin -> if (canManageSkinFromSettings()) {
-                    skinChoices.firstOrNull { it.id == action.id && !it.builtIn }?.let {
-                        skinToDelete = it
-                    }
-                }
                 is WebSkinAction.PanTimeline -> {
                     if (page == Page.TIMELINE.name) {
                         val next = runCatching { Math.addExact(anchorMillis,
@@ -2428,15 +2403,6 @@ fun PowerCalApp(
                 } else JSONObject())
                 .put("editing", webEditing.snapshot())
                 .put("optionGroups", SemanticOptions.toJson(enabled = semanticOptionsEnabled))
-                .put("skinChoices", org.json.JSONArray().apply {
-                    if (page == Page.SETTINGS.name) {
-                        skinChoices.forEach { item ->
-                            put(JSONObject().put("id", item.id).put("name", item.name)
-                                .put("builtIn", item.builtIn))
-                        }
-                    }
-                })
-                .put("selectedSkinId", if (page == Page.SETTINGS.name) selectedSkin else JSONObject.NULL)
                 .put("profileEditor", if (fullCanvasWeb && page == Page.SETTINGS.name &&
                     webProfileEditorName != null && webProfileEditorSkinId == selectedSkin
                 ) {
@@ -2524,7 +2490,7 @@ fun PowerCalApp(
                     !safe && !persisted -> "皮肤已失效，编辑检查点失败且原生回退设置未能确认保存；当前已进入安全界面，请勿强制结束应用。"
                     !safe -> "皮肤已失效，编辑检查点失败；已进入安全界面，切勿强制结束应用。"
                     persisted -> "皮肤加载失败，编辑已存档并恢复安全界面。"
-                    else -> "编辑已存档并切换至原生界面，但未能确认回退设置已保存；请在皮肤设置中再次选择原生皮肤。"
+                    else -> "皮肤加载失败，编辑已存档，但原生回退设置未能确认保存；当前继续留在安全界面，请不要强制结束应用。"
                 }
             }
         }

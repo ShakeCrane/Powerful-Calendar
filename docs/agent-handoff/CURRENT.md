@@ -2,13 +2,13 @@ PROJECT: Powerful-Calendar
 PLAN: PLAN-2026-11-03-R2
 BRANCH: codex/skin-single-default-closure
 BASELINE: ac8d1555a1c177e600e72e4edb5b450189f1fc2c
-CURRENT_TASK: R-05
+CURRENT_TASK: F-01
 TASK_STATUS: READY
-LAST_COMPLETED_TASK: R-04 (PASS)
-NEXT_TASK: R-05
-NEXT_ACTION: Execute R-05 only
+LAST_COMPLETED_TASK: R-05 (PASS)
+NEXT_TASK: F-01
+NEXT_ACTION: Execute F-01 only
 DEFERRED_TASKS: R-06 and R-07 remain deferred until dependent Skin parity is proven
-PHASE: R
+PHASE: F
 SEP_SIGNOFF: INCOMPLETE (historical parity remains unsigned)
 PRODUCT_CUTOVER: HOLD
 
@@ -30,6 +30,11 @@ PROTECTED_ASSETS: docs/agent-handoff/WORKTREE_DISPOSITION.md
 ACCEPTANCE_MATRIX: docs/agent-handoff/SINGLE_SKIN_ACCEPTANCE.md
 
 LATEST_VERIFIED_EVIDENCE:
+  - "R-05 PASS from bca20c459f19735f378bbe9fabd7f4c31b65e9cc: canonical Clear Settings no longer contains installed-skin selection/import/export/delete UI or projected skin catalogue state; Web bridge rejects those retired actions. Existing package data is not deleted. Legacy v2/Compiled direct compatibility callbacks remain pending deferred R-06/R-07."
+  - "Serial offline Gradle gate PASS: both source boundaries, JVM 966/966 (0 failures/errors/skips), Debug assemble, Lint (0 errors / 56 warnings), AndroidTest Kotlin compile. Production Debug APK SHA-256 11d6018cd1d87997fbe3a6ce93c29d42266a7c72d1266f4ca95ca33537eebb6f. Exactly one APK .pcskin; source and packaged factory skin SHA-256 cbe38662a9d719f7d0f5cac956ba7eb5c9cb5fae848903473e62e96bcd087c23, byte-identical (9 files)."
+  - "Skin Studio Python 68/68; changed runtime/E2E Node syntax checks PASS; Clear Studio source roundtrip E2E and notification-permission preview mock E2E PASS."
+  - "API 35 isolated AVD PowerCal_ChatGPT_QA35_20261103 / emulator-5584: three WebView/Settings instrumentation runs PASS (retired catalogue/actions and permission flow 1/1; protected AI settings 1/1; backup DocumentsUI export and snapshot verification 1/1). QA app ID dev.powerfulcalendar.d05qar05; APK SHA-256 2d8dead3440fa5166e45a5d60b84b9384802a7be4e9e3ab48b204f52e1b8d0fe. Calendar Store snapshots matched. A supplemental rerun later lost the ADB device at test teardown; the current AVD is disconnected, and no data clear, uninstall command, or AVD reset was issued."
+  - "R-05 evidence: .local/android-test/reports/R-05-20261104/ (Gradle, Studio/E2E, APK package verification, device identity, three successful Android demos, and supplemental disconnect log). Product Cutover remains HOLD; physical/OEM device checks remain NOT TESTED."
   - "R-04 PASS from 88c43ac22345bf729305f50aaba1dc4ff65228a2: removed the Native Tools skin catalogue and its page-only callbacks; preserved Host/SAF/runtime compatibility callbacks required by Clear/v2 until R-05/R-06. No package or Store data was deleted or changed."
   - "Forced serial JVM rerun: 966/966, 0 failures/errors/skips. Skin and Native source boundaries PASS; Debug APK, Lint (0 errors / 56 warnings), and AndroidTest Kotlin compilation PASS. Production Debug APK SHA-256 33E831A4A194A72FA35A0B626C58183597DA7FB8120DDB1E2E432ACCF5B66431."
   - "API 35 isolated AVD PowerCal_ChatGPT_QA35_20261103 / emulator-5584: WebView renderer fault recovery test 1/1 PASS. Native recovery page omitted installed-skin import/export controls; ICS import, backup/restore and actionable notification/exact-alarm controls remained. Formal Store, pending, commit, identity and sequence snapshots matched. QA app ID dev.powerfulcalendar.d05qar04; APK SHA-256 E2954B09FD676229DC3E7D2D217CE6052C7503C7354C46845FFC8D57D994C225."
