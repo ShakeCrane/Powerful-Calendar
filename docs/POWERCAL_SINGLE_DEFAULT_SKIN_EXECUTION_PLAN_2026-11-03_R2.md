@@ -4,7 +4,7 @@
 **仓库：** `E:\Project\Powerful-Calendar`
 **建议执行工作区：** 以远端集成 HEAD 创建唯一干净工作树。现有 `...\.local\android-test\worktrees\handoff-recurrence-20261103` 在审计时干净且与远端同步，但不要求覆盖它。
 **基准与证据：** `main=af229d98`（核心冻结签核）；历史完整 JVM 946/946 PASS；Studio Python 68/68 PASS；SEP 母项 0/16 完整签核。**这些是历史证据，不代表后续修改自动通过。**
-**本文件不授权删除用户数据、改动冻结业务语义、提前切换所有既有用户默认皮肤、强推 Git、自动触碰用户真机。**
+**2026-11-03 Owner 最新裁决（覆盖本版旧的历史皮肤保留条款）：正式 App 只允许一套默认 `.pcskin`；历史安装的第三方/候选皮肤包不保留，不提供迁移后归档或导出。R-03 负责在隔离 QA 环境验证将旧选择收敛到默认或 Native 安全恢复，并清除仅限 App 私有 `files/skin-packs/` 的旧安装包。此裁决不授权删除 Git Worktree、设计源稿、Studio 项目、测试夹具、其他用户文件，也不授权提前向生产用户放开切换。业务 Store 不可修改。**
 
 ## 0. 最终产品与禁止偏离的原则
 
@@ -37,7 +37,7 @@ flowchart TD
 
 - 永不修改、清理或覆盖冻结 `main` 中的用户数据语义；`docs/CORE_FREEZE_ACCEPTANCE_LEDGER.csv` 的现有未提交改动为受保护资产。
 - 绝不对有未提交工作的 Worktree 运行 `reset --hard`、`git clean -fdx` 或直接删除目录；不使用 `git push --force`。
-- 不删除已安装用户包 `files/skin-packs/`、旧设计图、测试夹具和 Git 历史；只移除正式产品的候选入口和无引用的实现代码。旧包留待明确的非破坏性归档/导出机制。
+- **最新 Owner 裁决：历史 App 已安装皮肤包不保留。** R-03 仅清理应用私有 `files/skin-packs/` 内符合旧安装包身份的 `.pcskin`；清理前核对目录范围及业务 Store 不变量，失败则安全退回 Native 并报告。不得删 Git Worktree、Studio 源项目、旧设计图、测试夹具、外部 SAF 文件或其他数据。禁止保留第二套正常默认皮肤。
 - 保留隐藏/可达的独立宿主恢复路径和 Host 可信写入确认；Skin JavaScript 无审批权。
 - 首次默认切换必须延迟到功能和恢复验收以后，且区分**全新安装**与**旧安装迁移**。内部 QA 可以通过隔离安装测试默认启动，不可将测试偏好直接写进用户设备。
 - 没有设备回放的结果写 `NOT TESTED`；测试跳过写 `SKIP`；超时写 `FAIL` 或 `INCONCLUSIVE`，不可通过其他测试代替。
@@ -179,15 +179,15 @@ python tools/skin-studio/build_default_clear.py --verify --apk app/build/outputs
 ### R-03｜把历史选择安全迁移成“默认 / 恢复”两态
 
 - **改动**：`SkinPackageManager.kt`、`PowerCalApp.kt` 启动时读取选中值的边界；新增 `SingleSkinSelectionMigrationTest.kt` 或扩展既有 `SkinPackageManagerTest.kt`。
-- **策略**：全新安装→默认；旧 Native→保留/明确迁移策略（不可突然无提示覆盖用户设置）；旧 Clear→保持；旧第三方选择→保存原 `.pcskin` 文件与原 ID、先恢复到单一默认或安全 Native 并显示一次迁移说明；未知/损坏 ID→Native 恢复。所有操作只改皮肤偏好，不变更 Calendar Store。
-- **演示**：针对上述五种状态分别在 QA AVD 冷启动两次；检查选中项、已安装文件 SHA、事件 seq/revision、草稿、提醒 intents 不变。失败时只回滚偏好。
-- **退出**：兼容旧用户、非破坏迁移、第二次启动不重复迁移提示；不丢用户自制包。
-- **提交**：`fix(skin): migrate legacy selections without destroying installed packages`。
+- **策略（2026-11-03 Owner 覆盖）**：隔离 QA 的全新安装→唯一默认 Clear；旧 Native→保持独立安全恢复选择，不假装有第二套日常皮肤；旧 Clear→保持；旧第三方选择→验证并切换到唯一 Clear（默认包无效则 Native），在确认新状态可启动及必要迁移状态可恢复后，**删除应用私有 `files/skin-packs/` 中全部历史安装 `.pcskin`，不归档、不导出、不保留原 ID 作为可选皮肤**；未知/损坏 ID→Native，旧安装包同样清理。可显示一次性的迁移说明，但不能要求用户回选旧包。Calendar Store/草稿/提醒/AI 历史不得改变。生产环境强制迁移仍受 Cutover HOLD 门禁约束。
+- **演示**：针对上述五种状态分别在隔离 QA AVD 冷启动两次；核对最终只有 Clear 正常表现层或 Native 恢复、历史安装包目录无残留 `.pcskin`、事件 seq/revision、草稿、提醒 intents 不变。删除只限隔离测试应用私有目录；模拟删除失败时禁止报告迁移成功，不扩大删除范围。
+- **退出**：旧选中项安全收敛，只有一个正常默认皮肤与独立 Native 恢复；应用私有历史 `.pcskin` 已按 Owner 新裁决清理，第二次启动不重复迁移；任何 Core 业务数据和仓库设计资产均未损失。
+- **提交**：`fix(skin): retire historical installed skins and migrate selection safely`。
 
 ### R-04｜从 Native 正常设置移除旧“可用皮肤”目录
 
 - **改动**：`native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/NativeToolsPage.kt`、`app/src/main/java/dev/powerfulcalendar/ui/v2/PowerCalApp.kt`、`PresentationSkinRuntime.kt` 中 Settings Visual Context 装配段；`native-skin/.../NativeSkinCatalogReview.kt` 仅在没有其他恢复引用时才退役。
-- **保留**：用于验证原始包/开发导出的底层 `SkinPackageManager`、SAF Host 操作、Native 可信确认、设置/备份/权限/提醒入口，不能因为删除皮肤目录而一并删除。
+- **保留**：工厂包解析校验、必要的 Studio/QA 兼容验证、SAF 通用平台操作、Native 可信确认、设置/备份/权限/提醒入口；**不保留历史已安装包的产品导出/回选入口**。不能因为移除皮肤目录而删除其他系统功能。
 - **测试**：更新 `NativeSkinCatalogReviewComposeTest.kt` 及相关 UI 测试，过时的“多选目录应可见”测试改为“正常界面不可见、测试/恢复能力仍存在”。
 - **演示**：Native 恢复页仍能访问紧急备份和权限功能，但没有多皮肤列表/切换/商店；项目事件不变化。
 - **退出**：产品级多皮肤选择 UI 不可达；开发支持 API 尚保留。
@@ -195,7 +195,7 @@ python tools/skin-studio/build_default_clear.py --verify --apk app/build/outputs
 
 ### R-05｜从 Clear Settings 移除多皮肤候选管理入口
 
-- **改动**：`tools/skin-studio/default-clear/source/web/index.html`、`app.js`、`style.css`；`PowerCalApp.kt` 中 `WebSkinAction.SelectSkin/ImportSkin/...` 的分发**先改为不从普通页面可达**，保留有用途的 Host 控制/导出通道；使用 `build_default_clear.py` 生成 APK asset，绝不直接 ZIP 修改。
+- **改动**：`tools/skin-studio/default-clear/source/web/index.html`、`app.js`、`style.css`；`PowerCalApp.kt` 中 `WebSkinAction.SelectSkin/ImportSkin/...` 的分发**改为普通页面不可达**；保留其他业务所需的 Host SAF/确认能力，但不保留历史皮肤导出或多选入口；使用 `build_default_clear.py` 生成 APK asset，绝不直接 ZIP 修改。
 - **测试**：`WebSkinBridgeTest.kt`、`ClearSettingsOptionsInstrumentedTest.kt`；Studio `e2e_clear_studio_bridge.cjs` 按新目标更新。禁止用字符串删除造成事件处理器空引用。
 - **演示**：进入默认 Settings，可用提醒、AI 受保护参数、备份等正式功能；看不到选择第二套皮肤、删除安装包等日常入口；Skin JS 无法私自发出未授权的 Host action；Host 错误仍有可视反馈。
 - **退出**：UI 不再宣传“迁移预览/多候选皮肤”；系统功能与 UI 回退不受影响。
@@ -363,7 +363,7 @@ python tools/skin-studio/build_default_clear.py --verify --apk app/build/outputs
 ### Q-01｜新安装和历史安装同时验收
 
 - **文件/测试**：`MainActivity.kt`、`SkinPackageManager.kt`、`WebSkinPackageDeliveryInstrumentedTest.kt`、`WebSkinCorruptPackageColdRecoveryInstrumentedTest.kt`；必要时修复仅被测试发现的缺陷。
-- **演示**：① 新装（隔离 QA）进入默认 Skin；② 升级旧 Native/旧 Clear 选择保留日历；③ 旧用户第三方包仍可通过安全导出/Studio 重新使用，但正式 UI 不列多候选；④ 损坏包默认进入 Native 恢复。
+- **演示（Owner 最新裁决）**：① 新装（隔离 QA）进入唯一默认 Skin；② 升级旧 Native/旧 Clear 保留 Calendar Store 业务数据；③ 旧第三方包选择收敛到唯一默认或 Native 安全恢复，**应用私有 `skin-packs` 中旧安装包已清除且不可通过日常 UI 再次选择**；④ 损坏包进入 Native 恢复，不发生循环；⑤ 全程不删除外部设计稿、Studio 源项目和测试资产。
 - **退出**：启动、升级、回滚、恢复全通过；才允许准备将 `currentId()` 正式默认改为唯一 Skin。
 - **提交**：`test(release): verify single-default install and legacy migration`。
 

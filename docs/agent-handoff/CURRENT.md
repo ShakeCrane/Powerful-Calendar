@@ -11,6 +11,12 @@ PHASE: R
 SEP_SIGNOFF: INCOMPLETE (historical parity remains unsigned)
 PRODUCT_CUTOVER: HOLD
 
+OWNER_OVERRIDE_2026_11_03:
+  Decision: 历史皮肤不保留，正式 App 只保留一套默认 .pcskin；Native 仅用于安全恢复。
+  R03: QA 迁移旧 Native/Clear/第三方/损坏选择后，仅清理测试应用私有 files/skin-packs 内的旧安装 .pcskin；不归档、不导出历史包，不保留多皮肤列表。
+  Protected: Calendar Store、草稿、提醒、AI 历史、Studio 源工程、设计源稿、测试夹具、外部 SAF 文件、Git Worktree。
+  Gate: 正式生产 Cutover 仍为 HOLD；本轮文档裁决不是实际删除指令。
+
 OWNER_GOAL:
   Core: Owns business behavior, data, transactions, reminders, AI, permissions, and stable feature APIs.
   Skin: Owns normal presentation and requests Core capabilities through the approved APIs.

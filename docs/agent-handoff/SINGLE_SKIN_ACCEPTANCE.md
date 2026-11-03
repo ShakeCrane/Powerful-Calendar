@@ -227,7 +227,7 @@ G-04 在 `1e57da5cbb19b4b1348fe390174f629c8871fc47` 实测 JVM 946/946、Studio 
 
 ## 已取消旧产品要求
 
-**RETIRED-BY-OWNER：** 多皮肤目录、候选主题/皮肤商城及并行日常 UI 的产品要求被单一默认皮肤裁决取代；不是删除授权。旧 parser、安装包验证、版本迁移、候选/第三方测试夹具仍用于兼容与安全回归。用户已安装的皮肤文件、选择、草稿及历史设计资料必须保护；迁移需验证原文件可访问、无 Store 丢失及可恢复。Native 仍为安全恢复，不随目录入口退役。R-03 验证迁移后，R-04/R-05/R-06 才处理日常入口；正式切换需 Q-01～Q-05 及独立授权，安全确认无引用的清理属于 Q-06。任何旧文件或工作区均不可因本标记自动删除。
+**RETIRED-BY-OWNER（2026-11-03 最新裁决）：** 多皮肤目录、候选主题/皮肤商城、并行日常 UI 和**历史已安装皮肤保留/导出**均取消。正式 App 只保留唯一默认 `.pcskin`，Native 只负责安全恢复。R-03 在隔离 QA 中验证旧选择收敛并**仅删除 App 私有 `files/skin-packs/` 下的历史安装 `.pcskin`**；不需要保存旧包 ID、哈希归档或用户导出渠道。旧 parser、版本迁移测试与第三方测试夹具只为兼容性验证保留，不是产品库存。Calendar Store、草稿、提醒、AI 对话、Git Worktree、Studio 项目、设计源稿、测试夹具和外部 SAF 文件不得删除。R-04/R-05/R-06 随后退役日常入口；生产 Cutover 继续 HOLD。
 
 ## 最短关键路径
 
@@ -248,7 +248,7 @@ R-01 盘点入口 → R-02/R-03 定义并验证启动及历史迁移 → R-04～
 7. 当前多皮肤普通入口包括 Native Tools 的皮肤区、Clear v3 Settings 的 skinChoices 选择/导出/删除与 Host 导入、v2 RuntimeSkinSurfaces.settings 的 skins 节点。NativeSkinCatalogReview 是 PowerCalApp 调用的切换/删除确认对话框。它们分别由 R-04/R-05 收敛。
 8. 普通确认切换先调用 WebSkinEditService.prepareSkinChange()；活动编辑经 EventFeatureApiV1.checkpointFormalEvent 持久化检查点，失败时阻止该次确认切换。随后 SkinPackageManager.select() 激活已验证包并用 SharedPreferences.apply() 写 selected。切换本身不写 Calendar Store；未完成编辑的检查点是有意的 Store 写入。Skin ID 不经 SettingsDataFeatureApiV1 profile 设置保存。
 9. SAF 导入验证包后写 app-private filesDir/skin-packs/<id>.pcskin，读回哈希后再 rename；不自动激活，不改 Calendar Store。导出复制到用户指定 SAF URI，不改选择或 Store。删除经二次确认；若正在运行先选 Native 并写 preference，然后实际删除用户包文件。R-01/R-04/R-05 不能触发删除。
-10. 仅移除目录 UI 不会自动删除已安装用户包，但 Native Tools/Clear Settings 是当前枚举和导出包的产品入口；包仍留在私有目录，却可能失去 App 内查找/导出能力。R-03 必须保留原文件和 ID；R-04/R-05 移除日常入口时必须继续提供经批准的 Host/SAF 兼容访问及迁移导出路线。RETIRE_DAILY_UI 不等于删除数据授权。
+10. **更新裁决**：历史用户皮肤包不保留。R-03 必须在受控、仅作用于隔离 QA 应用私有 `files/skin-packs/` 的流程里验证已安装旧 `.pcskin` 的清除，同时保证 Calendar Store/草稿/提醒/AI 对话未改；无需旧包导出或再次选择入口。R-04/R-05 应移除日常枚举、导入、导出及候选选择 UI；Studio 项目和外部设计文件不在清理范围。
 11. Native 恢复独立于 .pcskin、WebView 和 Studio：MainActivity 的 Activity touch 恢复识别早于 WebView 分发；manager 写 Native preference 并 reset registry；NativeSkinHostRegistration/native-skin 提供 Compose 回退。Web 故障 callback 会尝试保存编辑检查点、切 Native、进入 Tools。风险：Activity 紧急手势不调用 prepareSkinChange；Web 故障即使检查点失败也继续回退并提示不要结束进程。R-07 必须验证两种情况下编辑数据的恢复边界。
 12. Studio 和正式 v3 runtime 共用 .pcskin schemaVersion 3、default-clear 源码与 host.action bridge。Studio builder/validator 产检包；Android 解析同一 ZIP。皮肤不直接获得 Store/Context/凭据/审批 token；消息经 WebSkinHost 解码，再由 PowerCalApp 持有的 PowerCalCoreFeatureApiV1 或 Host adapter 执行。共用格式不等于 WebView、功能等价或设备验收已通过。
 13. Native pages、可信确认、权限/附件对话框和系统 picker 仍被日常功能使用。等对应默认 Skin 流程通过后才能把页面 bodies 从日常入口退役；Host trusted UI 和 Q-03 验证过的最小 Native recovery 子集继续保留。
@@ -309,15 +309,15 @@ RuntimeSkinPickerHost 另在 Compose 壳上呈现 Host-owned 日期/时间 modal
 | ui/v2/WebSkinEditBridge.kt：WebSkinEditService | PowerCalApp 创建；web edit/draft actions | 编辑、冲突、保存和切换检查点 | DraftReview/Event API 写草稿/检查点；正式提交另经确认 | DraftReviewFeatureApiV1、EventFeatureApiV1 | KEEP_HOST | R-07, F-05, F-06, Q-03 | WebSkinEditBridge.kt:429 起；prepareSkinChange():1708-1738 |
 | Studio builder/validator 和 default-clear source | Studio CLI/Web editor | 编辑、预览、build/export/reimport | 改 Studio project 或包；不直写 App Store | 同一 v3 .pcskin 与 Host bridge | KEEP_DEFAULT_SKIN | R-05, S-01–S-07 | tools/skin-studio/build_default_clear.py；tests/test_default_clear.py |
 
-混合文件按符号分类，不扩大成整文件删除许可。KEEP_TEST_COMPAT 只用于 R-06 后明确保留的历史 parser、迁移测试和 fixtures，不表示旧 runtime 可继续日常可达。Native 页面通过 Skin 等价前不得退役；之后仍需 Q-03 验证最小 recovery 子集和 Host trusted UI。RETIRE_DAILY_UI 不授权删除用户文件。
+混合文件按符号分类，不扩大成整文件删除许可。KEEP_TEST_COMPAT 只用于历史 parser、迁移测试和 fixtures，不表示旧 Runtime 日常可达。Native 页面通过 Skin 等价前不得退役；之后仍需 Q-03 验证最小 recovery 子集和 Host trusted UI。**Owner 已单独授权 R-03 清理应用私有 `files/skin-packs/` 中历史已安装皮肤包；不授权删除业务数据、Studio 工程、外部文件或 Git 工作区。**
 
 ### R-02～R-07 前置依赖与风险
 
 | 任务 | 前置依赖 | 风险和约束 |
 |---|---|---|
 | R-02 | 本调用/副作用图、现有 Clear 包和 manager 行为 | Fresh install 当前 Native；保留 ID powercal-clear-default、工厂包校验和 Native recovery。先隔离 QA，不直接公开切换。 |
-| R-03 | R-02 选择策略与新测试 | 分别迁移 Native/Clear/第三方/损坏选择；保留用户包原文件、ID、SHA 和 Store/提醒；只改 skin preference。 |
-| R-04 | R-03 兼容旧选择；盘点 Native Tools 其余功能 | 移除目录会移除当前包枚举/导出入口；继续保留 SAF Host、包访问与迁移导出、备份/权限/提醒、Native recovery。 |
-| R-05 | R-02/R-03 行为已验证，R-04 Host 路径明确 | 清除 Clear app.js 的选择/导入/删除 daily entry；保留批准的用户包导出通路，不影响提醒、备份、编辑及 Host error feedback。 |
+| R-03 | R-02 选择策略与新测试 | 分别处理 Native/Clear/第三方/损坏选择；清理受控应用私有目录中的旧 `.pcskin`，完成后仅有一个默认 Skin 与 Native 恢复；保护 Store/提醒/草稿/AI 数据；先在隔离 QA 完整验证。 |
+| R-04 | R-03 旧选择收敛及旧包清理已验证；盘点 Native Tools 其余功能 | 移除正常产品的历史包枚举、导入/导出及候选入口；保留必要的 Host、备份/权限/提醒与 Native recovery。 |
+| R-05 | R-02/R-03 行为已验证，R-04 Host 路径明确 | 清除 Clear app.js 的旧包选择/导入/导出/删除 daily entry；不提供历史皮肤保存或回选能力，不影响提醒、备份、编辑及 Host error feedback。 |
 | R-06 | 对应 F/S 功能等价完成；用本图再核调用点 | 不可整文件删除：CompiledSkinTimeline 含共用 Timeline adapter，PresentationSkinRuntime 含 Native fallback，native-skin 有恢复/trusted UI；保留任务卡要求的测试 fixtures/parser tests。 |
 | R-07 | R-02/R-03 迁移可靠；R-06 dispatch 范围明确；checkpoint 语义验证 | 覆盖缺包、坏包/未知 ID、偏好写失败、renderer crash 和脏编辑恢复。Activity 手势当前跳过 prepareSkinChange，Web 故障即使 checkpoint 失败仍回退；验证草稿可恢复及失败提示后才可关闭。 |
