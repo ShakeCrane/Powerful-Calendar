@@ -2558,3 +2558,12 @@ API 35 emulator-5570 真实触控 Native Compose 与打包 Clear WebView 的无 
 - **NEXT_ACTION:** ??????? Clear ????????/????? Native ?????? Clear ????/???????????????? 16 ? SEP ?? PASS?
 - **EVIDENCE:** .local/android-test/reports/skin-closeout-audit-20261103/?
 - **GATE:** SEP ?? 0/16?cutover HOLD??????????? Native?429 ?????
+
+## R-04 — Native Tools skin catalogue retirement (2026-11-04)
+
+- Removed the Native Tools skin catalogue and its page-only selection/import/export/delete parameters. Host callbacks remain for Clear v3 and legacy v2/Compiled paths until their assigned retirement/parity tasks; `NativeSkinCatalogReview` still has those callers. Clear Settings catalogue retirement is R-05.
+- Compose and package-flow tests now require the Native page to omit skin management, while ICS, backup/restore and reminder permission controls remain available. The installed test package remains byte-identical and inactive; Calendar Store snapshots are unchanged.
+- Forced serial JVM rerun: 966/966 PASS, 0 failures/errors/skips. Both source boundaries, Debug assemble, Lint (0 errors / 56 warnings), and AndroidTest Kotlin compilation PASS. Logs: `.local/android-test/reports/R-04-20261104/jvm-full-rerun.log` and `full-gate-final2.log`.
+- API 35 AVD `PowerCal_ChatGPT_QA35_20261103`, serial `emulator-5584`: actual WebView renderer failure entered Native recovery; catalogue actions were absent, backup/restore and permission controls were actionable, and formal/pending/commit/identity/sequence snapshots were unchanged. Final instrumentation 1/1 PASS; log: `.local/android-test/reports/R-04-20261104/android-recovery-demo-final2.log`.
+- Production Debug APK SHA-256: `33E831A4A194A72FA35A0B626C58183597DA7FB8120DDB1E2E432ACCF5B66431`. Isolated QA APK `dev.powerfulcalendar.d05qar04` SHA-256: `E2954B09FD676229DC3E7D2D217CE6052C7503C7354C46845FFC8D57D994C225`. No app data clear, uninstall, AVD wipe, package deletion, Core/Store behavior change, or default-skin change.
+- Independent report: [Native skin catalogue retirement](../issues/PC-ISSUE-SEPARATION-NATIVE-SKIN-CATALOGUE-RETIREMENT.md). Product Cutover remains HOLD. Next task: R-05 only.

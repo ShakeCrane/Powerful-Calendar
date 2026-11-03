@@ -2,11 +2,12 @@ PROJECT: Powerful-Calendar
 PLAN: PLAN-2026-11-03-R2
 BRANCH: codex/skin-single-default-closure
 BASELINE: ac8d1555a1c177e600e72e4edb5b450189f1fc2c
-CURRENT_TASK: R-04
+CURRENT_TASK: R-05
 TASK_STATUS: READY
-LAST_COMPLETED_TASK: R-03 (PASS)
-NEXT_TASK: R-04
-NEXT_ACTION: Execute R-04 only
+LAST_COMPLETED_TASK: R-04 (PASS)
+NEXT_TASK: R-05
+NEXT_ACTION: Execute R-05 only
+DEFERRED_TASKS: R-06 and R-07 remain deferred until dependent Skin parity is proven
 PHASE: R
 SEP_SIGNOFF: INCOMPLETE (historical parity remains unsigned)
 PRODUCT_CUTOVER: HOLD
@@ -29,6 +30,10 @@ PROTECTED_ASSETS: docs/agent-handoff/WORKTREE_DISPOSITION.md
 ACCEPTANCE_MATRIX: docs/agent-handoff/SINGLE_SKIN_ACCEPTANCE.md
 
 LATEST_VERIFIED_EVIDENCE:
+  - "R-04 PASS from 88c43ac22345bf729305f50aaba1dc4ff65228a2: removed the Native Tools skin catalogue and its page-only callbacks; preserved Host/SAF/runtime compatibility callbacks required by Clear/v2 until R-05/R-06. No package or Store data was deleted or changed."
+  - "Forced serial JVM rerun: 966/966, 0 failures/errors/skips. Skin and Native source boundaries PASS; Debug APK, Lint (0 errors / 56 warnings), and AndroidTest Kotlin compilation PASS. Production Debug APK SHA-256 33E831A4A194A72FA35A0B626C58183597DA7FB8120DDB1E2E432ACCF5B66431."
+  - "API 35 isolated AVD PowerCal_ChatGPT_QA35_20261103 / emulator-5584: WebView renderer fault recovery test 1/1 PASS. Native recovery page omitted installed-skin import/export controls; ICS import, backup/restore and actionable notification/exact-alarm controls remained. Formal Store, pending, commit, identity and sequence snapshots matched. QA app ID dev.powerfulcalendar.d05qar04; APK SHA-256 E2954B09FD676229DC3E7D2D217CE6052C7503C7354C46845FFC8D57D994C225."
+  - "R-04 evidence: .local/android-test/reports/R-04-20261104/ (Gradle logs, device identity, failure/retry notes); exact AndroidTest XML and lint report remain under app/build/reports and app/build/outputs. NativeSkinCatalogReview stays while PowerCalApp's Clear/v2 host actions still call it; Clear Settings catalogue is R-05. Product Cutover remains HOLD."
   - "G-01 PASS: clean independent Worktree at the fetched integration baseline."
   - "G-02 PASS: 29 Worktrees inventoried; protected changes retained; ledger commit f4c0f6c6d9e31c6bfc4d84dfc0937f550a32e92a."
   - "G-03 PASS: UTF-8, task-pointer, history-preservation, scope, and Git diff checks passed; documentation-only commit recorded in this branch."

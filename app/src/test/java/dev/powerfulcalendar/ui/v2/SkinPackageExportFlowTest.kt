@@ -2,24 +2,16 @@ package dev.powerfulcalendar.ui.v2
 
 import android.content.Context
 import android.content.ContextWrapper
-import android.content.Intent
 import android.net.Uri
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.LocalActivityResultRegistryOwner
 import androidx.activity.compose.setContent
-import androidx.activity.result.ActivityResultRegistry
-import androidx.activity.result.contract.ActivityResultContract
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.compose.ui.test.assertHasClickAction
-import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollTo
-import androidx.core.app.ActivityOptionsCompat
 import androidx.test.core.app.ApplicationProvider
 import dev.powerfulcalendar.core.PowerStore
 import org.json.JSONObject
@@ -32,13 +24,10 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
-import org.robolectric.shadows.ShadowContentResolver
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.UUID
-import java.util.concurrent.atomic.AtomicReference
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
@@ -53,10 +42,6 @@ class SkinPackageExportFlowTest {
     private lateinit var store: PowerStore
     private lateinit var namespace: String
     private lateinit var databaseName: String
-    private val resultRegistry = RecordingActivityResultRegistry()
-    private val resultRegistryOwner = object : androidx.activity.result.ActivityResultRegistryOwner {
-        override val activityResultRegistry: ActivityResultRegistry get() = resultRegistry
-    }
 
     @Before fun setUp() {
         storage = ApplicationProvider.getApplicationContext()
@@ -81,7 +66,7 @@ class SkinPackageExportFlowTest {
         PowerCalSkinRegistry.reset()
     }
 
-    @Test fun settingsExportsAnInstalledThirdPartyPackageThroughCreateDocumentUnchanged() {
+    @Test fun nativeToolsHidesInstalledPackageExportWithoutDeletingOrActivatingIt() {
         val packageId = "reedit-" + UUID.randomUUID().toString().take(18)
         val packageName = "Installed Third Party Fixture"
         val packageBytes = thirdPartyClone(packageId, packageName)
@@ -91,52 +76,41 @@ class SkinPackageExportFlowTest {
         }
         val manager = SkinPackageManager(context)
         val installed = manager.install(Uri.fromFile(packageInput))
-        val outputUri = Uri.parse("content://skin-export-$namespace/result/$packageId.pcskin")
-        val output = ByteArrayOutputStream()
         val beforeSelection = manager.currentId()
+        val beforeRecords = store.all()
+        val beforePending = store.pendingCount()
+        val beforeSequence = store.nextSequencePreview()
         val databaseFile = File(store.readableDatabase.path)
         val beforeDatabaseLength = databaseFile.length()
 
         try {
-            shadowOf(ui.activity.contentResolver)
-                .registerOutputStreamSupplier(outputUri) { output }
             ui.activity.setContent {
-                CompositionLocalProvider(
-                    LocalContext provides context,
-                    LocalActivityResultRegistryOwner provides resultRegistryOwner
-                ) {
+                CompositionLocalProvider(LocalContext provides context) {
                     PowerCalTheme { PowerCalApp(store) }
                 }
             }
             ui.waitForIdle()
             ui.onNodeWithText("设置").performClick()
             ui.waitForIdle()
-            ui.onNodeWithContentDescription("导出 $packageName 皮肤包")
-                .performScrollTo().assertIsDisplayed().assertHasClickAction().performClick()
-            ui.waitForIdle()
+            ui.onNodeWithContentDescription("导出 $packageName 皮肤包").assertDoesNotExist()
+            ui.onNodeWithText("导入皮肤包").assertDoesNotExist()
+            ui.onNodeWithText("导出 Clear 候选皮肤").assertDoesNotExist()
+            assertTrue("ICS import remains available",
+                ui.onAllNodesWithText("从 ICS 文件导入").fetchSemanticsNodes().isNotEmpty())
+            assertTrue("backup remains available",
+                ui.onAllNodesWithText("导出原生备份（Envelope v1）").fetchSemanticsNodes().isNotEmpty())
+            assertTrue("reminder settings remain available",
+                ui.onAllNodesWithText("精确闹钟设置").fetchSemanticsNodes().isNotEmpty())
 
-            ui.onNodeWithText("请选择保存位置以导出 $packageName").assertExists()
-            val launched = requireNotNull(resultRegistry.lastIntent) {
-                "installed skin action did not launch CreateDocument"
-            }
-            assertEquals(Intent.ACTION_CREATE_DOCUMENT, launched.action)
-            assertEquals(POWER_CAL_SKIN_PACKAGE_MIME, launched.type)
-            assertEquals("$packageId.pcskin",
-                launched.getStringExtra(Intent.EXTRA_TITLE))
-            assertTrue(resultRegistry.dispatch(outputUri))
-
-            val success = "已导出皮肤包 $packageId；可在 Skin Studio 导入后继续编辑"
-            ui.waitUntil(10_000) {
-                ui.onAllNodesWithText(success).fetchSemanticsNodes().isNotEmpty()
-            }
-            assertArrayEquals("SAF export must preserve the complete installed archive",
-                packageBytes, output.toByteArray())
-            assertEquals("export must not activate the installed package", beforeSelection,
+            assertEquals("catalogue retirement must not activate the installed package", beforeSelection,
                 manager.currentId())
             assertEquals(packageId, installed.id)
-            assertArrayEquals("export must not rewrite the installed source", packageBytes,
+            assertArrayEquals("retirement must not delete or rewrite the installed fixture", packageBytes,
                 File(context.filesDir, "skin-packs/$packageId.pcskin").readBytes())
-            assertEquals("export must not change calendar persistence", beforeDatabaseLength,
+            assertEquals(beforeRecords, store.all())
+            assertEquals(beforePending, store.pendingCount())
+            assertEquals(beforeSequence, store.nextSequencePreview())
+            assertEquals("opening Native tools must not change calendar persistence", beforeDatabaseLength,
                 if (databaseFile.isFile) databaseFile.length() else -1L)
         } finally {
             ui.activity.runOnUiThread { PowerCalSkinRegistry.reset() }
@@ -167,26 +141,6 @@ class SkinPackageExportFlowTest {
             }
         }
         return result.toByteArray()
-    }
-
-    private class RecordingActivityResultRegistry : ActivityResultRegistry() {
-        private var requestCode: Int? = null
-        var lastIntent: Intent? = null
-            private set
-
-        override fun <I, O> onLaunch(
-            requestCode: Int,
-            contract: ActivityResultContract<I, O>,
-            input: I,
-            options: ActivityOptionsCompat?
-        ) {
-            this.requestCode = requestCode
-            lastIntent = contract.createIntent(ApplicationProvider.getApplicationContext(), input)
-        }
-
-        fun dispatch(uri: Uri): Boolean = dispatchResult(
-            requireNotNull(requestCode) { "No CreateDocument launch was recorded" }, uri
-        )
     }
 
     private class IsolatedContext(

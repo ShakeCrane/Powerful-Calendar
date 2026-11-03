@@ -6,6 +6,8 @@ import android.view.ViewGroup
 import android.webkit.WebView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -114,6 +116,28 @@ class WebSkinRendererRecoveryInstrumentedTest {
                     compose.onAllNodesWithText("工具与设置")
                         .fetchSemanticsNodes().isNotEmpty()
             }
+            assertTrue("Native recovery must not expose the retired skin catalogue",
+                compose.onAllNodesWithText("导入皮肤包", useUnmergedTree = true)
+                    .fetchSemanticsNodes().isEmpty())
+            assertTrue("Native recovery must not expose candidate-skin export",
+                compose.onAllNodesWithText("导出 Clear 候选皮肤", useUnmergedTree = true)
+                    .fetchSemanticsNodes().isEmpty())
+            listOf(
+                "从 ICS 文件导入",
+                "导出原生备份（Envelope v1）",
+                "从备份恢复",
+                "精确闹钟设置"
+            ).forEach { label ->
+                assertTrue("Native recovery setting is missing: $label",
+                    compose.onAllNodesWithText(label, useUnmergedTree = true)
+                        .fetchSemanticsNodes().isNotEmpty())
+            }
+            listOf("导出原生备份", "从备份恢复", "精确闹钟设置").forEach { label ->
+                compose.onNode(hasText(label, substring = true) and hasClickAction())
+                    .assertExists("Native recovery action is not reachable: $label")
+            }
+            compose.onNode(hasText("通知权限") and hasClickAction())
+                .assertExists("Native recovery must expose a notification permission action")
             compose.runOnIdle {
                 assertEquals("powercal-default", PowerCalSkinRegistry.active.key)
                 assertEquals(null, PowerCalSkinRegistry.active.web)

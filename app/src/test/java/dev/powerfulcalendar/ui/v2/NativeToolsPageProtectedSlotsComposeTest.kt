@@ -27,6 +27,7 @@ class NativeToolsPageProtectedSlotsComposeTest {
     @get:Rule val ui = createComposeRule()
 
     @Test fun nativeSettingsRendersHostOwnedProtectedProfileAndCredentialSlots() {
+        PresentationSkinRegistry.reset()
         ui.setContent {
             PowerCalTheme {
                 ToolsPage(
@@ -69,6 +70,15 @@ class NativeToolsPageProtectedSlotsComposeTest {
         ui.onNodeWithText("个人信息").assertExists()
         ui.onNodeWithText("单一 AI").assertExists()
         ui.onNodeWithText("配置端点、模型与密钥").assertExists()
+        ui.onNodeWithText("皮肤", useUnmergedTree = true).assertDoesNotExist()
+        ui.onNodeWithText("导入皮肤包").assertDoesNotExist()
+        ui.onNodeWithText("导出 Clear 候选皮肤").assertDoesNotExist()
+        ui.onNodeWithText("从 ICS 文件导入").assertExists()
+        ui.onNodeWithText("从系统日历一次性导入").assertExists()
+        ui.onNodeWithText("导出原生备份（Envelope v1）").assertExists()
+        ui.onNodeWithText("从备份恢复").assertExists()
+        ui.onNodeWithText("精确闹钟设置").assertExists()
+        ui.onNode(hasText("通知权限") and hasClickAction()).assertExists()
     }
 
     @Test fun settingsRendererApiDoesNotRetainHostModelsOrNativeImplementations() {

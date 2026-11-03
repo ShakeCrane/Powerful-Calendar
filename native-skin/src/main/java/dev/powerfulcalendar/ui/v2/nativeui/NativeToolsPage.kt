@@ -1,7 +1,6 @@
 package dev.powerfulcalendar.ui.v2.nativeui
 
 import dev.powerfulcalendar.ui.v2.SettingsDisplaySnapshot
-import dev.powerfulcalendar.ui.v2.SettingsSkinChoice
 import dev.powerfulcalendar.ui.v2.SettingsVisualEffects
 
 import androidx.compose.foundation.BorderStroke
@@ -27,7 +26,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -35,27 +33,19 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.dp
-/** First-party Native settings and recovery UI; host actions remain supplied by SettingsVisualContext. */
+/** First-party Native tools and recovery UI; skin catalogue controls live outside this surface. */
 @Composable
 fun NativeToolsPage(
     display: SettingsDisplaySnapshot,
     effects: SettingsVisualEffects,
     cardShape: Shape,
     rowShape: Shape,
-    skinChoices: List<SettingsSkinChoice>,
-    selectedSkin: String,
-    onSelectSkin: (String) -> Unit,
-    onImportSkin: () -> Unit,
-    onExportOriginalSkin: () -> Unit,
-    onExportInstalledSkin: (String) -> Unit,
-    onDeleteSkin: (String) -> Unit,
     onBack: () -> Unit,
     onOpenDeck: () -> Unit,
     onImportIcs: () -> Unit,
@@ -86,38 +76,6 @@ fun NativeToolsPage(
 
         protectedProfile()
         protectedAiCredentials()
-
-        SectionCard("皮肤", "支持独立 .pcskin 包、即时切换、重启保留；原生主题始终可用", cardShape) {
-            skinChoices.forEach { item ->
-                Row(verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth()) {
-                    FilterChip(
-                        selected = selectedSkin == item.id,
-                        onClick = { onSelectSkin(item.id) },
-                        label = { Text(item.name, maxLines = 1) }
-                    )
-                    Spacer(Modifier.weight(1f))
-                    if (!item.builtIn) {
-                        TextButton(
-                            onClick = { onExportInstalledSkin(item.id) },
-                            modifier = Modifier.semantics {
-                                contentDescription = "导出 ${item.name} 皮肤包"
-                            }
-                        ) { Text("导出") }
-                        TextButton(onClick = { onDeleteSkin(item.id) }) { Text("删除") }
-                    }
-                }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onImportSkin) { Text("导入皮肤包") }
-                TextButton(onClick = onExportOriginalSkin) { Text("导出 Clear 候选皮肤") }
-            }
-            Text("导入后不会自动启用。第三方皮肤可导出原包，在 Skin Studio 导入并继续编辑；" +
-                "v3 皮肤可使用受限 HTML/CSS/JavaScript；原生设置随时可用。",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
 
         SectionCard("导入", "日历文件在本地解析为待审核草稿；其他文件请从 AI 助手 ＋ 添加", cardShape) {
             ToolRow("从 ICS 文件导入", "校验后保存为草稿，不会直接发布", onImportIcs,
