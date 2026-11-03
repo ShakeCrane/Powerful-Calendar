@@ -10,6 +10,14 @@
 - **GIT:** Handoff implementation branch codex/handoff-recurrence-20261103; normal FF push to feat/skin-first-separation after documentation commit.
 
 
+### Isolated Android API 35 verification environment (2026-11-03)
+
+- **Provisioned:** A fresh, project-local AVD `PowerCal_Handoff_API35_20261103` under `.local/android-test/avd-handoff-20261103/`, reusing the installed API 35 Google APIs x86_64 system image (no old AVD userdata was accessed, cleared or modified). Launch with `ANDROID_AVD_HOME` set to that absolute directory.
+- **Observed:** WHPX usable, emulator `5586` booted (`sys.boot_completed=1`, SDK 35); `app-debug.apk` and `app-debug-androidTest.apk` both installed successfully; the test runner was registered as `dev.powerfulcalendar.test/androidx.test.runner.AndroidJUnitRunner`.
+- **NOT TESTED:** Instrumentation execution in this ChatGPT remote session was prevented by the execution environment before any test ran. This is not an Android assertion failure or PASS; the existing compiled Android tests remain available for a future authorized execution path.
+- **Cleanup:** Only the freshly created emulator instance `5586` was shut down gracefully after the smoke setup; other emulator `5584` was left untouched. AVD files and test build evidence are preserved.
+- **NEXT:** Continue a bounded Host/Core bypass review and run API 35 instrumentation when an execution channel is available. Do not claim Phase 1 exit, Native/Skin parity, real OEM success, or default Skin cutover.
+
 ## Current master goal — Core-first / Skin-first PHASE 1 (2026-11-02)
 
 - **Latest code slice:** AI batch candidate selection and review now carry stable `DraftReviewCardV1` values from `DraftReviewFeatureApiV1` through Host selection and projection; Host no longer reconstructs Core `DraftCard` or repeats its actionable-status filter. Native maps the DTO into `NativeAiBatchAuthorizationModel`; Web consumes the same Core DTO. `reload()` returns the exact card snapshot it publishes, with a fresh Core query only if the event revision made that refresh stale. The preceding slice still carries `AiBatchModeV1` across both Hosts and guards batch entry while a new-event editor is open.
