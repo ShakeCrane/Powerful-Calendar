@@ -1602,6 +1602,29 @@ class WebSkinEditBridgeTest {
         assertTrue(store.all().isEmpty())
     }
 
+    @Test fun transientNewEventProjectionCarriesStateRevisionRequiredByPatchWire() = runBlocking {
+        val created = service.execute(WebEditCommand.CreateDeck(request(), TemporalKind.ACTIVITY))
+        val deck = service.snapshot().getJSONObject("deck")
+        assertEquals("created", created.getString("status"))
+        assertTrue(deck.getBoolean("transient"))
+        assertTrue(deck.has("stateRevision"))
+
+        val patch = JSONObject().put("version", 1).put("type", "command").put("payload",
+            JSONObject().put("name", "deck.patch").put("requestId", request())
+                .put("draftId", deck.getLong("currentId"))
+                .put("draftVersion", deck.getLong("version"))
+                .put("stateRevision", deck.getLong("stateRevision"))
+                .put("field", "title").put("value", "Transient title"))
+        val command = requireNotNull(WebEditWire.decode(patch.toString()))
+
+        assertEquals("edited", service.execute(command).getString("status"))
+        assertEquals("Transient title", service.snapshot().getJSONObject("deck")
+            .getJSONObject("form").getString("title"))
+        assertTrue(store.all().isEmpty())
+        assertEquals(0L, store.commitCount())
+        assertEquals(0L, store.identityCount())
+    }
+
     @Test fun explicitWebPublishWritesFormalEventWithoutAQueuedDraft()= runBlocking {
         val created=service.execute(WebEditCommand.CreateDeck(request(),TemporalKind.ALARM))
         val id=created.getString("detail").toLong()

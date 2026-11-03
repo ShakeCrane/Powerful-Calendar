@@ -1982,8 +1982,11 @@ fun PowerCalApp(
                 newEventSelectionForPage(page, activeCamera, zone, monthViewState()?.selectedDate) else null
             val moveContext = if (page == Page.TIMELINE.name &&
                 command is WebEditCommand.MoveTimelineEvent) {
+                val moveQuery = timelineCalendarQueryFor(activeCamera.anchorMillis)
+                val moveRecords = calendarWindows[moveQuery]?.events
+                    ?.map { it.toCoreTemporalRecord() } ?: timelineCalendarRecords
                 val projectedItems = WebSkinTimelineProjection.build(
-                    timelineCalendarRecords, activeCamera, nowMillis, zone, recurrenceFeatureApi
+                    moveRecords, activeCamera, nowMillis, zone, recurrenceFeatureApi
                 ).getJSONArray("items")
                 val visibleRevisions = linkedMapOf<Long, Long>()
                 for (index in 0 until projectedItems.length()) {
@@ -2305,12 +2308,10 @@ fun PowerCalApp(
                 TimelineCoordinate.clampHours(hours)
             )
             val stateTimelineQuery = timelineCalendarQueryFor(stateCamera.anchorMillis)
-            val stateTimelineRecords = if (stateTimelineQuery == timelineCalendarQuery) {
-                timelineCalendarRecords
-            } else {
-                calendarWindows[stateTimelineQuery]?.events?.map { it.toCoreTemporalRecord() }
-                    ?: timelineCalendarRecords
-            }
+            // Read the exact current Core window for the Host snapshot. The remembered
+            // Compose projection may lag the updated window map during WebView activation.
+            val stateTimelineRecords = calendarWindows[stateTimelineQuery]?.events
+                ?.map { it.toCoreTemporalRecord() } ?: timelineCalendarRecords
             val stateMonthView = monthViewState() ?:
                 WebSkinMonthProjection.initial(anchorMillis, zone)
             val stateMonthQuery = monthCalendarQueryFor(stateMonthView.month)

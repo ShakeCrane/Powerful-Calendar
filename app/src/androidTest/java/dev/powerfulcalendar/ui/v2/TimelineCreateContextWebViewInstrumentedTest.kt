@@ -702,9 +702,7 @@ class TimelineCreateContextWebViewInstrumentedTest {
             val saveTouch = tapClearSelector(web, "#sheetSave")
             assertTrue("Clear publish request uses Android touchscreen input",
                 saveTouch.optBoolean("trusted"))
-            compose.waitUntil(30_000) {
-                compose.onAllNodesWithText("确认发布正式事件").fetchSemanticsNodes().isNotEmpty()
-            }
+            awaitHostPublishConfirmation("Clear timeline Activity")
             assertTrue("Host review must not write before confirmation", clearStore.all().isEmpty())
             assertEquals(clearCountsBefore, listOf(
                 clearStore.draftCount(), clearStore.pendingCount(), clearStore.identityCount(),
@@ -1034,9 +1032,7 @@ class TimelineCreateContextWebViewInstrumentedTest {
             assertEquals(0L, clearStore.identityCount())
             val saveTouch = tapClearSelector(clearView, "#sheetSave")
             assertTrue("Publish request uses a trusted touchscreen event", saveTouch.optBoolean("trusted"))
-            compose.waitUntil(30_000) {
-                compose.onAllNodesWithText("确认发布正式事件").fetchSemanticsNodes().isNotEmpty()
-            }
+            awaitHostPublishConfirmation("Clear Month Activity")
             assertTrue("Host review must not write the Clear Month candidate", clearStore.all().isEmpty())
             assertEquals(0L, clearStore.commitCount())
             compose.onNodeWithText("确认").performTouchInput { click() }
@@ -1073,11 +1069,39 @@ class TimelineCreateContextWebViewInstrumentedTest {
     }
 
     private fun editTitleForParity(web: WebView, title: String) {
+        evaluate(web, "window.__pcParityCommands=[];" +
+            "const send=window.PowerCalSkin.sendCommand;" +
+            "window.PowerCalSkin.sendCommand=(name,id,args)=>{" +
+            "window.__pcParityCommands.push({name,args});return send(name,id,args)};true")
         evaluate(web, "(()=>{const input=document.querySelector('#sheetFields [data-field=title]');" +
             "input.value=${org.json.JSONObject.quote(title)};" +
             "input.dispatchEvent(new Event('change',{bubbles:true}));return true})()")
         awaitJs(web, "document.querySelector('#sheetFields [data-field=title]')?.value===" +
             "${org.json.JSONObject.quote(title)} && !document.querySelector('#sheetSave').disabled")
+        awaitJs(web, "window.__pcParityCommands?.some(command=>command.name==='deck.patch')")
+        try {
+            compose.waitUntil(10_000) {
+                var hostTitle = ""
+                compose.runOnIdle {
+                    hostTitle = WebSkinBridgeRuntime.state().getJSONObject("editing")
+                        .getJSONObject("deck").getJSONObject("form").optString("title")
+                }
+                hostTitle == title
+            }
+        } catch (failure: Throwable) {
+            val editing = AtomicReference<String>()
+            compose.runOnIdle {
+                editing.set(WebSkinBridgeRuntime.state().getJSONObject("editing").toString())
+            }
+            val browser = evaluate(web,
+                "JSON.stringify({commands:window.__pcParityCommands,status:" +
+                    "document.querySelector('#sheetStatus')?.textContent," +
+                    "field:document.querySelector('#sheetFields [data-field=title]')?.value})")
+            throw AssertionError(
+                "Title patch did not reach Host; browser=$browser editing=${editing.get().take(4000)}",
+                failure
+            )
+        }
     }
 
     private fun launchClear(context: IsolatedAppContext, store: PowerStore): WebView {
@@ -1109,5 +1133,23 @@ class TimelineCreateContextWebViewInstrumentedTest {
             PowerCalSkinRegistry.reset()
         }
         compose.waitForIdle()
+    }
+
+    private fun awaitHostPublishConfirmation(flow: String) {
+        try {
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithText("确认发布正式事件")
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+        } catch (failure: Throwable) {
+            val editing = AtomicReference<String>()
+            compose.runOnIdle {
+                editing.set(WebSkinBridgeRuntime.state().getJSONObject("editing").toString())
+            }
+            throw AssertionError(
+                "$flow did not expose Host publish confirmation; editing=${editing.get().take(4000)}",
+                failure
+            )
+        }
     }
 }

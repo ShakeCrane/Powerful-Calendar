@@ -126,7 +126,9 @@ class WebSkinHostProjectionTest {
         assertEquals(2L, row.getLong("revision"))
         assertEquals(start, row.getLong("startMillis"))
         assertEquals(start + 3_600_000L, row.getLong("endMillis"))
-        assertEquals("RIGHT", row.getString("side"))
+        assertEquals("ACTIVITY", row.getString("kind"))
+        assertFalse("lane placement belongs to Skin presentation", row.has("lane"))
+        assertFalse("side placement belongs to Skin presentation", row.has("side"))
         assertEquals("INSTANT", row.getString("precision"))
         assertTrue(row.isNull("originalOccurrenceKey"))
         assertEquals(24.0, payload.getDouble("hours"), 0.0)
@@ -134,7 +136,7 @@ class WebSkinHostProjectionTest {
         assertFalse(payload.toString().contains("private-note-should-not-leak"))
     }
 
-    @Test fun deadlineAndAlarmStayLeftWhileActivityStaysRight() {
+    @Test fun projectsEventKindsWithoutOwningPresentationSide() {
         val deadline = TemporalRecord(
             eventSeq = 21, revision = 1, kind = TemporalKind.DEADLINE,
             title = "Deadline", deadlineMillis = start, zoneId = zone.id
@@ -145,13 +147,18 @@ class WebSkinHostProjectionTest {
         )
         val entries = project(listOf(activity(7), deadline, alarm))
             .getJSONArray("items")
-        val sides = (0 until entries.length()).associate { i ->
+        val kinds = (0 until entries.length()).associate { i ->
             val row = entries.getJSONObject(i)
-            row.getLong("eventSeq") to row.getString("side")
+            row.getLong("eventSeq") to row.getString("kind")
         }
-        assertEquals("LEFT", sides[21L])
-        assertEquals("LEFT", sides[22L])
-        assertEquals("RIGHT", sides[7L])
+        assertEquals("DEADLINE", kinds[21L])
+        assertEquals("ALARM", kinds[22L])
+        assertEquals("ACTIVITY", kinds[7L])
+        for (i in 0 until entries.length()) {
+            val row = entries.getJSONObject(i)
+            assertFalse("Host projection must not assign visual lanes", row.has("lane"))
+            assertFalse("Host projection must not assign visual sides", row.has("side"))
+        }
     }
 
     @Test fun recurrenceUsesOccurrenceStartNotOriginalSeriesStart() {

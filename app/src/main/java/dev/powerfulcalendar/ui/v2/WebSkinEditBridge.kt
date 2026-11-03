@@ -576,6 +576,9 @@ internal class WebSkinEditService(
                 .put("searchQuery", "").put("formalMatches", org.json.JSONArray())
                 .put("currentId", active.clientDraftId)
                 .put("version", active.version).put("dirty", active.meaningfulDiff)
+                // Transient Core event editors are versioned by draftVersion; the
+                // deck.patch wire requires this field only for durable DeckController drafts.
+                .put("stateRevision", 0L)
                 .put("busy", false).put("aiLocked", false)
                 .put("error", active.lastError)
                 .put("notice", JSONObject.NULL).put("completion", JSONObject.NULL)

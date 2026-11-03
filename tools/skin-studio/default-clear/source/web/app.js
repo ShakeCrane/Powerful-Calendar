@@ -690,6 +690,36 @@ function renderSettings(){
     }
   }
 }
+function timelineLaneAssignments(items,from,to){
+  const bySide=new Map([["LEFT",[]],["RIGHT",[]]]);
+  for(const item of items){
+    const kind=String(item.kind||"").toUpperCase();
+    if(!["ALARM","ACTIVITY","DEADLINE"].includes(kind))continue;
+    const start=Number(item.startMillis);
+    const isActivity=kind==="ACTIVITY";
+    const end=isActivity?Number(item.endMillis):start+1;
+    if(!Number.isFinite(start)||!Number.isFinite(end)||end<=start)continue;
+    if(isActivity ? !(start<to&&end>from) : !(start>=from&&start<to))continue;
+    const side=kind==="ACTIVITY"?"RIGHT":"LEFT";
+    bySide.get(side).push({item,start,end});
+  }
+  const lanes=new Map();
+  for(const rows of bySide.values()){
+    rows.sort((a,b)=>a.start-b.start||
+      (Number(a.item.eventSeq)||0)-(Number(b.item.eventSeq)||0)||
+      String(a.item.occurrenceKey||a.item.originalOccurrenceKey||"").localeCompare(
+        String(b.item.occurrenceKey||b.item.originalOccurrenceKey||"")));
+    const laneEnds=[];
+    for(const row of rows){
+      let lane=laneEnds.findIndex(end=>end<=row.start);
+      if(lane<0){lane=laneEnds.length;laneEnds.push(row.end)}
+      else laneEnds[lane]=row.end;
+      lanes.set(row.item,lane);
+    }
+  }
+  return lanes;
+}
+
 function renderTimeline(){
   cancelTimelineDrag();
   const t=state.timeline;
@@ -758,23 +788,26 @@ function renderTimeline(){
   const timedItems=items.filter(item=>kindLabel[String(item.kind).toUpperCase()]&&
     !isDateOnlyDeadline(item));
   const laneWidth=84,laneGap=4;
-  const laneCountFor=sideItems=>Math.max(1,...sideItems.map(item=>Math.max(0,Math.floor(Number(item.lane)||0))+1));
+  // Geometry and presentation order belong to this Skin. The Host supplies only
+  // true event bounds and stable identities; minimum hit targets never affect lanes.
+  const laneByItem=timelineLaneAssignments(timedItems,from,to);
   for(const [container,lanes,sideName] of [
     [left,leftLanes,"LEFT"],[right,rightLanes,"RIGHT"]
   ]){
     const sideItems=timedItems.filter(item=>
-      String(item.side||(String(item.kind).toUpperCase()==="ACTIVITY"?"RIGHT":"LEFT")).toUpperCase()===sideName);
-    const laneCount=laneCountFor(sideItems);
+      (String(item.kind).toUpperCase()==="ACTIVITY"?"RIGHT":"LEFT")===sideName);
+    const laneCount=Math.max(1,...sideItems.map(item=>(laneByItem.get(item)??0)+1));
     const width=Math.max(container.clientWidth,laneCount*(laneWidth+laneGap)-laneGap);
     lanes.style.width=width+"px";lanes.dataset.laneCount=String(laneCount);
   }
   for(const item of timedItems){
     const kind=String(item.kind||"ACTIVITY").toUpperCase();
     if(!kindLabel[kind])continue;
-    // Respect the Host side and lane. A date-only Deadline was already moved to its date strip.
-    const sideName=String(item.side||(kind==="ACTIVITY"?"RIGHT":"LEFT")).toUpperCase();
+    // A date-only Deadline was already moved to its date strip; all other side/lane
+    // placement is derived here from Skin presentation rules and true event bounds.
+    const sideName=kind==="ACTIVITY"?"RIGHT":"LEFT";
     const lanes=sideName==="LEFT"?leftLanes:rightLanes;
-    const startMillis=Number(item.startMillis),lane=Math.max(0,Math.floor(Number(item.lane)||0));
+    const startMillis=Number(item.startMillis),lane=laneByItem.get(item)??0;
     if(!Number.isFinite(startMillis))continue;
     const isActivity=kind==="ACTIVITY";
     let actualStart,actualEnd,anchorY;

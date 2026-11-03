@@ -37,6 +37,9 @@ import dev.powerfulcalendar.core.Recurrence
 import dev.powerfulcalendar.core.RecurrenceFreq
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TimelineCoordinate
+import dev.powerfulcalendar.core.api.v1.CalendarWindowQueryV1
+import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
+import dev.powerfulcalendar.core.api.v1.toCoreTemporalRecord
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -601,6 +604,19 @@ class TimelineDragWebViewInstrumentedTest {
             val nativeOriginal = requireNotNull(nativeStore.get(eventSeq))
             val clearOriginal = requireNotNull(clearStore.get(eventSeq))
             assertEquals(DraftForm.from(nativeOriginal), DraftForm.from(clearOriginal))
+            val directCore = PowerCalCoreFeatureApiV1(clearStore)
+            val directWindow = directCore.calendar.queryWindow(CalendarWindowQueryV1(
+                fromMillis = date.minusDays(8).atStartOfDay(zone).toInstant().toEpochMilli(),
+                toMillis = date.plusDays(9).atStartOfDay(zone).toInstant().toEpochMilli(),
+                zoneId = zone.id
+            ))
+            assertEquals(listOf(eventSeq), directWindow.events.map { it.eventSeq })
+            val directProjection = WebSkinTimelineProjection.build(
+                directWindow.events.map { it.toCoreTemporalRecord() },
+                TimelineCoordinate.Camera(date.atTime(12, 0).atZone(zone).toInstant().toEpochMilli(), 24.0),
+                System.currentTimeMillis(), zone, directCore.recurrence
+            )
+            assertEquals(1, directProjection.getJSONArray("items").length())
             assertEquals(0, nativeStore.draftCount())
             assertEquals(1L, nativeStore.commitCount())
             assertEquals(1, nativeStore.identityCount())

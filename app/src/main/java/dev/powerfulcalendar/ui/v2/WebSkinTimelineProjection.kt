@@ -3,14 +3,12 @@ package dev.powerfulcalendar.ui.v2
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.TimelineCoordinate
-import dev.powerfulcalendar.core.TimelineLayout
 import dev.powerfulcalendar.core.api.v1.RecurrenceFeatureApiV1
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
-import java.util.IdentityHashMap
 import kotlin.math.abs
 
 /**
@@ -66,10 +64,6 @@ internal object WebSkinTimelineProjection {
             { it.record.visualAxisMillis() ?: Long.MAX_VALUE },
             { it.owner.eventSeq }, { it.key }
         ))
-        val layout = TimelineLayout.layout(selected.map { it.record })
-        val lanes = IdentityHashMap<TemporalRecord, Int>()
-        layout.items.forEach { lanes[it.record] = it.lane }
-
         val entries = JSONArray()
         selected.forEach { slot ->
             val record = slot.record
@@ -81,8 +75,6 @@ internal object WebSkinTimelineProjection {
                     slot.occurrenceKey else JSONObject.NULL)
                 .put("kind", record.kind.name)
                 .put("title", record.title.take(300))
-                .put("side", record.kind.side.name)
-                .put("lane", lanes[record] ?: 0)
                 .put("startMillis", record.visualAxisMillis())
                 .put("endMillis", if (record.isDateOnlyDeadline()) JSONObject.NULL
                     else record.spanEndMillis())
