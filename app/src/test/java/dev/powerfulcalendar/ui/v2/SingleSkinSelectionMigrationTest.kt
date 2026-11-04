@@ -49,9 +49,10 @@ class SingleSkinSelectionMigrationTest {
         return File(folder, "$id.pcskin").apply { writeBytes(bytes) }
     }
     private fun assertComplete(id: String) {
-        assertEquals(SkinMigrationResult.COMPLETE, manager.migrateHistoricalForQa())
+        assertEquals(SkinMigrationResult.COMPLETE, manager.migrateLegacySkinsToDefault())
+        manager.restoreSelection()
         assertEquals(id, prefs.getString("selected", null))
-        assertEquals("complete", prefs.getString("r03_migration", null))
+        assertEquals("complete", prefs.getString(SkinPackageManager.SINGLE_DEFAULT_MIGRATION_KEY, null))
         assertEquals(id, PowerCalSkinRegistry.active.key)
     }
 
@@ -61,18 +62,18 @@ class SingleSkinSelectionMigrationTest {
         var writes = 0
         val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, _ -> writes++ }
         prefs.registerOnSharedPreferenceChangeListener(listener)
-        assertEquals(SkinMigrationResult.COMPLETE, manager.migrateHistoricalForQa())
+        assertEquals(SkinMigrationResult.COMPLETE, manager.migrateLegacySkinsToDefault())
         assertSame(active, PowerCalSkinRegistry.active)
         assertEquals(0, writes)
         prefs.unregisterOnSharedPreferenceChangeListener(listener)
     }
-    @Test fun explicitNativeRemainsRecovery() {
+    @Test fun legacyNativeChoiceMovesToFactoryAndExplicitRecoveryRemainsNative() {
         select("powercal-default")
         fixture("legacy-a")
-        assertComplete("powercal-default")
+        assertComplete("powercal-clear-default")
         assertTrue(folder.listFiles().orEmpty().isEmpty())
         assertTrue(manager.selectNativeForEmergencyRecovery())
-        assertEquals(SkinMigrationResult.COMPLETE, manager.migrateHistoricalForQa())
+        assertEquals(SkinMigrationResult.COMPLETE, manager.migrateLegacySkinsToDefault())
         assertEquals("powercal-default", manager.currentId())
     }
     @Test fun clearRemainsAndFactoryAssetUnchanged() {
@@ -96,33 +97,34 @@ class SingleSkinSelectionMigrationTest {
         assertEquals("keep", nonSkin.readText())
         assertEquals("keep", outside.readText())
     }
-    @Test fun unknownMissingAndCorruptSelectionsRecoverNative() {
+    @Test fun unknownMissingAndCorruptSelectionsMoveToFactory() {
         for (id in listOf("missing", "bad", "../outside")) {
             prefs.edit().clear().putString("selected", id).commit()
             PowerCalSkinRegistry.reset()
             if (id == "bad") { folder.mkdirs(); File(folder, "bad.pcskin").writeBytes(byteArrayOf(1)) }
-            assertComplete("powercal-default")
+            assertComplete("powercal-clear-default")
             assertTrue(folder.listFiles().orEmpty().none { it.name.endsWith(".pcskin") })
         }
     }
-    @Test fun corruptFactoryUsesNativeAndRemovesOldPackages() {
+    @Test fun corruptFactoryUsesNativeAndLeavesMigrationPendingForRepair() {
         fixture("legacy-a")
         select("legacy-a")
         val subject = SkinPackageManager(storage, factoryPackageBytes = { byteArrayOf(0) })
-        assertEquals(SkinMigrationResult.COMPLETE, subject.migrateHistoricalForQa())
+        assertEquals(SkinMigrationResult.FACTORY_UNAVAILABLE, subject.migrateLegacySkinsToDefault())
         assertEquals("powercal-default", subject.currentId())
         assertNull(PowerCalSkinRegistry.active.web)
-        assertTrue(folder.listFiles().orEmpty().isEmpty())
+        assertEquals("pending", prefs.getString(SkinPackageManager.SINGLE_DEFAULT_MIGRATION_KEY, null))
+        assertTrue(File(folder, "legacy-a.pcskin").exists())
     }
     @Test fun preferenceFailureLeavesFilesAndSafeRegistryThenRetries() {
         val old = fixture("legacy-a")
         select("legacy-a")
         manager.restoreSelection()
         val broken = SkinPackageManager(storage, migrationCommit = { false })
-        assertEquals(SkinMigrationResult.PREFERENCE_FAILED, broken.migrateHistoricalForQa())
+        assertEquals(SkinMigrationResult.PREFERENCE_FAILED, broken.migrateLegacySkinsToDefault())
         assertTrue(old.exists())
         assertEquals("powercal-default", PowerCalSkinRegistry.active.key)
-        assertNotEquals("complete", prefs.getString("r03_migration", null))
+        assertNotEquals("complete", prefs.getString(SkinPackageManager.SINGLE_DEFAULT_MIGRATION_KEY, null))
         assertComplete("powercal-clear-default")
         assertFalse(old.exists())
     }
@@ -135,27 +137,32 @@ class SingleSkinSelectionMigrationTest {
             if (count == 2) throw IllegalStateException("simulated interruption")
             it.delete()
         })
-        assertEquals(SkinMigrationResult.CLEANUP_FAILED, interrupted.migrateHistoricalForQa())
-        assertEquals("pending", prefs.getString("r03_migration", null))
+        assertEquals(SkinMigrationResult.CLEANUP_FAILED, interrupted.migrateLegacySkinsToDefault())
+        assertEquals("pending", prefs.getString(SkinPackageManager.SINGLE_DEFAULT_MIGRATION_KEY, null))
         assertEquals(2, folder.listFiles().orEmpty().count { it.name.endsWith(".pcskin") })
         PowerCalSkinRegistry.reset()
         assertComplete("powercal-clear-default")
         assertTrue(folder.listFiles().orEmpty().isEmpty())
     }
-    @Test fun deleteFailureIsNotSuccessAndNativeEmergencyIsNotOverriddenOnRetry() {
+    @Test fun deleteFailureCanStayInNativeUntilExplicitFactoryRecovery() {
         fixture("legacy-a"); select("legacy-a")
         val broken = SkinPackageManager(storage, deleteLegacyPackage = { false })
-        assertEquals(SkinMigrationResult.CLEANUP_FAILED, broken.migrateHistoricalForQa())
-        assertEquals("pending", prefs.getString("r03_migration", null))
+        assertEquals(SkinMigrationResult.CLEANUP_FAILED, broken.migrateLegacySkinsToDefault())
+        assertEquals("pending", prefs.getString(SkinPackageManager.SINGLE_DEFAULT_MIGRATION_KEY, null))
         assertTrue(manager.selectNativeForEmergencyRecovery())
-        assertComplete("powercal-default")
+        assertEquals(SkinMigrationResult.RECOVERY_ACTIVE, manager.migrateLegacySkinsToDefault())
+        assertEquals("powercal-default", manager.currentId())
+        assertTrue(File(folder, "legacy-a.pcskin").exists())
+        assertEquals(SkinMigrationResult.COMPLETE, manager.restoreFactoryDefaultAfterRecovery())
+        assertEquals("powercal-clear-default", manager.currentId())
+        assertEquals("powercal-clear-default", PowerCalSkinRegistry.active.key)
         assertTrue(folder.listFiles().orEmpty().isEmpty())
     }
     @Test fun preferenceFailureAfterMemoryUpdateRemainsRetryable() {
         fixture("legacy-a"); select("legacy-a")
         val broken = SkinPackageManager(storage, migrationCommit = { editor -> editor.apply(); false })
-        assertEquals(SkinMigrationResult.PREFERENCE_FAILED, broken.migrateHistoricalForQa())
-        assertEquals("pending", prefs.getString("r03_migration", null))
+        assertEquals(SkinMigrationResult.PREFERENCE_FAILED, broken.migrateLegacySkinsToDefault())
+        assertEquals("pending", prefs.getString(SkinPackageManager.SINGLE_DEFAULT_MIGRATION_KEY, null))
         assertEquals("powercal-default", PowerCalSkinRegistry.active.key)
         assertTrue(File(folder, "legacy-a.pcskin").exists())
         assertComplete("powercal-clear-default")
@@ -163,12 +170,13 @@ class SingleSkinSelectionMigrationTest {
     @Test fun factoryBecomingCorruptDuringPendingRecoverySelectsNative() {
         fixture("legacy-a"); fixture("legacy-b"); select("legacy-a")
         val interrupted = SkinPackageManager(storage, deleteLegacyPackage = { false })
-        assertEquals(SkinMigrationResult.CLEANUP_FAILED, interrupted.migrateHistoricalForQa())
+        assertEquals(SkinMigrationResult.CLEANUP_FAILED, interrupted.migrateLegacySkinsToDefault())
         val broken = SkinPackageManager(storage, factoryPackageBytes = { byteArrayOf(0) })
-        assertEquals(SkinMigrationResult.COMPLETE, broken.migrateHistoricalForQa())
+        assertEquals(SkinMigrationResult.FACTORY_UNAVAILABLE, broken.migrateLegacySkinsToDefault())
         assertEquals("powercal-default", prefs.getString("selected", null))
         assertEquals("powercal-default", PowerCalSkinRegistry.active.key)
-        assertTrue(folder.listFiles().orEmpty().isEmpty())
+        assertEquals("pending", prefs.getString(SkinPackageManager.SINGLE_DEFAULT_MIGRATION_KEY, null))
+        assertEquals(2, folder.listFiles().orEmpty().count { it.name.endsWith(".pcskin") })
     }
     @Test fun completionCommitFailureIsRetryable() {
         fixture("legacy-a"); select("legacy-a")
@@ -176,8 +184,8 @@ class SingleSkinSelectionMigrationTest {
         val broken = SkinPackageManager(storage, migrationCommit = { editor ->
             calls++; if (calls == 2) false else editor.commit()
         })
-        assertEquals(SkinMigrationResult.PREFERENCE_FAILED, broken.migrateHistoricalForQa())
-        assertEquals("pending", prefs.getString("r03_migration", null))
+        assertEquals(SkinMigrationResult.PREFERENCE_FAILED, broken.migrateLegacySkinsToDefault())
+        assertEquals("pending", prefs.getString(SkinPackageManager.SINGLE_DEFAULT_MIGRATION_KEY, null))
         assertTrue(folder.listFiles().orEmpty().isEmpty())
         assertComplete("powercal-clear-default")
     }
@@ -186,6 +194,6 @@ class SingleSkinSelectionMigrationTest {
         manager.restoreSelection()
         assertEquals("legacy-a", PowerCalSkinRegistry.active.key)
         assertTrue(old.exists())
-        assertFalse(prefs.contains("r03_migration"))
+        assertFalse(prefs.contains(SkinPackageManager.SINGLE_DEFAULT_MIGRATION_KEY))
     }
 }

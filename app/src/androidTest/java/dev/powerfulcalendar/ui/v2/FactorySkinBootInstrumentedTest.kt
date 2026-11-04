@@ -113,6 +113,9 @@ class FactorySkinBootInstrumentedTest {
     private fun assertFactoryFailureFallsBackToNative(factoryBytes: () -> ByteArray) {
         val hadSelection = prefs.contains("selected")
         val previousSelection = prefs.getString("selected", null)
+        val migrationKey = SkinPackageManager.SINGLE_DEFAULT_MIGRATION_KEY
+        val hadMigration = prefs.contains(migrationKey)
+        val previousMigration = prefs.getString(migrationKey, null)
         try {
             check(prefs.edit().remove("selected").commit())
             PowerCalSkinRegistry.reset()
@@ -125,6 +128,10 @@ class FactorySkinBootInstrumentedTest {
             instrument.runOnMainSync { manager.restoreSelection(SkinBootPolicy.QA_FRESH_FACTORY) }
             assertEquals("powercal-default", manager.currentId())
             assertEquals("powercal-default", prefs.getString("selected", null))
+            // Represent an already-migrated installation entering the explicit recovery path.
+            // Otherwise the one-time upgrade migration correctly treats an old Native daily
+            // selection as legacy and moves it to the factory skin.
+            check(prefs.edit().putString(migrationKey, "complete").commit())
             instrument.runOnMainSync { manager.restoreSelection(SkinBootPolicy.QA_FRESH_FACTORY) }
             assertEquals(1, reads)
             assertEquals(before, storeSnapshot())
@@ -141,6 +148,8 @@ class FactorySkinBootInstrumentedTest {
             val restore = prefs.edit()
             if (hadSelection) restore.putString("selected", previousSelection)
             else restore.remove("selected")
+            if (hadMigration) restore.putString(migrationKey, previousMigration)
+            else restore.remove(migrationKey)
             check(restore.commit())
             PowerCalSkinRegistry.reset()
             if (hadSelection) SkinPackageManager(context).restoreSelection()

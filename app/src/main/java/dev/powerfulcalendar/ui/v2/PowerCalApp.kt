@@ -260,6 +260,7 @@ fun PowerCalApp(
     val importExportApi = coreFeatureApi.importExport
     val effects = LocalGlassEffects.current
     val skins = remember(appContext) { SkinPackageManager(appContext) }
+    val factorySkinAvailable = remember(skins) { skins.factoryPackageAvailable() }
     var skinChoices by remember { mutableStateOf(skins.installed()) }
     var selectedSkin by remember { mutableStateOf(skins.currentId()) }
     var skinToDelete by remember { mutableStateOf<InstalledSkin?>(null) }
@@ -2608,7 +2609,31 @@ fun PowerCalApp(
                 },
                 settingsDataApi = coreFeatureApi.settingsData,
                 formalEventCount = totalEventCount,
-                recurrencePreviews = recurrencePreviews
+                recurrencePreviews = recurrencePreviews,
+                defaultSkinAvailable = factorySkinAvailable,
+                onReturnToDefaultSkin = {
+                    scope.launch {
+                        if (!webEditing.prepareSkinChange()) {
+                            message = "编辑内容尚未安全存档，无法退出恢复界面。"
+                            return@launch
+                        }
+                        val result = runCatching { skins.restoreFactoryDefaultAfterRecovery() }
+                            .getOrDefault(SkinMigrationResult.PREFERENCE_FAILED)
+                        if (result == SkinMigrationResult.COMPLETE ||
+                            result == SkinMigrationResult.CLEANUP_FAILED) {
+                                selectedSkin = skins.currentId()
+                                page = Page.TIMELINE.name
+                                message = if (result == SkinMigrationResult.COMPLETE) {
+                                    "已恢复唯一默认皮肤。"
+                                } else {
+                                    "默认皮肤已恢复；旧包清理将于下次启动重试。"
+                                }
+                                reload()
+                        } else {
+                            message = "默认皮肤无法验证或恢复设置未保存；Native 安全恢复仍保持可用。"
+                        }
+                    }
+                }
             )
         } else if (presentedPage == Page.AI.name) {
             AiChatScreen(

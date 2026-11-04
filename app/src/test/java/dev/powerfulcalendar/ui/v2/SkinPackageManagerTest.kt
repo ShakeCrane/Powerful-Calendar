@@ -108,6 +108,66 @@ class SkinPackageManagerTest {
         }
     }
 
+    @Test fun singleDefaultMigrationMovesLegacyNativeChoiceToFactoryAndIsIdempotent() {
+        val prefs = freshSkinPreferences()
+        val folder = File(context.filesDir, "skin-packs")
+        folder.mkdirs()
+        assertTrue(folder.listFiles().orEmpty().none { it.extension == "pcskin" })
+        val oldPackage = File(folder, "retired-choice.pcskin").apply { writeBytes(byteArrayOf(1, 2, 3)) }
+        prefs.edit().putString("selected", "powercal-default").commit()
+        var selectionWrites = 0
+        val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == "selected") selectionWrites++
+        }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        try {
+            val subject = SkinPackageManager(context)
+            assertEquals(SkinMigrationResult.COMPLETE, subject.migrateLegacySkinsToDefault())
+            assertEquals("powercal-clear-default", prefs.getString("selected", null))
+            assertEquals("complete", prefs.getString(SkinPackageManager.SINGLE_DEFAULT_MIGRATION_KEY, null))
+            assertFalse(oldPackage.exists())
+            subject.restoreSelection()
+            assertEquals("powercal-clear-default", PowerCalSkinRegistry.active.key)
+
+            val active = PowerCalSkinRegistry.active
+            assertEquals(SkinMigrationResult.COMPLETE, subject.migrateLegacySkinsToDefault())
+            assertSame(active, PowerCalSkinRegistry.active)
+            assertEquals(1, selectionWrites)
+        } finally {
+            prefs.unregisterOnSharedPreferenceChangeListener(listener)
+            oldPackage.delete()
+        }
+    }
+
+    @Test fun unavailableFactoryMigrationUsesNativeAndPreservesLegacyPackages() {
+        val prefs = freshSkinPreferences()
+        val folder = File(context.filesDir, "skin-packs")
+        folder.mkdirs()
+        assertTrue(folder.listFiles().orEmpty().none { it.extension == "pcskin" })
+        val oldPackage = File(folder, "retired-choice.pcskin").apply { writeBytes(byteArrayOf(4, 5, 6)) }
+        prefs.edit().putString("selected", "retired-choice").commit()
+        var selectionWrites = 0
+        val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == "selected") selectionWrites++
+        }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        val subject = SkinPackageManager(context, factoryPackageBytes = { byteArrayOf(1, 2, 3) })
+        try {
+            assertEquals(SkinMigrationResult.FACTORY_UNAVAILABLE, subject.migrateLegacySkinsToDefault())
+            assertEquals("powercal-default", prefs.getString("selected", null))
+            assertEquals("pending", prefs.getString(SkinPackageManager.SINGLE_DEFAULT_MIGRATION_KEY, null))
+            assertTrue(oldPackage.exists())
+            subject.restoreSelection()
+            assertEquals("powercal-default", PowerCalSkinRegistry.active.key)
+            assertNull(PowerCalSkinRegistry.active.web)
+            assertEquals(SkinMigrationResult.FACTORY_UNAVAILABLE, subject.migrateLegacySkinsToDefault())
+            assertEquals(1, selectionWrites)
+        } finally {
+            prefs.unregisterOnSharedPreferenceChangeListener(listener)
+            oldPackage.delete()
+        }
+    }
+
     @Test fun skinBootLeavesSeededBusinessStoreUnchanged() {
         freshSkinPreferences()
         val name = "r02-fixture-" + UUID.randomUUID() + ".db"

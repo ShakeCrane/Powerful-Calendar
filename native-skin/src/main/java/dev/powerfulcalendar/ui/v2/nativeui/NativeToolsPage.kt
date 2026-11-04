@@ -39,7 +39,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.dp
-/** First-party Native tools and recovery UI; skin catalogue controls live outside this surface. */
+/** First-party Native recovery/tools UI with one action to return to the verified factory skin. */
 @Composable
 fun NativeToolsPage(
     display: SettingsDisplaySnapshot,
@@ -59,6 +59,8 @@ fun NativeToolsPage(
     onCancelBatch: () -> Unit,
     onReconcile: () -> Unit,
     onReleaseStuck: () -> Unit,
+    defaultSkinAvailable: Boolean,
+    onReturnToDefaultSkin: () -> Unit,
     protectedProfile: @Composable () -> Unit,
     protectedAiCredentials: @Composable () -> Unit
 ) {
@@ -76,6 +78,23 @@ fun NativeToolsPage(
 
         protectedProfile()
         protectedAiCredentials()
+
+        SectionCard("界面恢复", "PowerCal 只有一套默认皮肤；故障时可留在此安全界面", cardShape) {
+            ToolRow(
+                "返回默认皮肤",
+                "先验证内置包，再恢复正常界面",
+                onReturnToDefaultSkin,
+                shape = rowShape,
+                enabled = defaultSkinAvailable
+            )
+            if (!defaultSkinAvailable) {
+                Text(
+                    "默认皮肤包当前不可用；Native 安全恢复仍可继续使用。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+        }
 
         SectionCard("导入", "日历文件在本地解析为待审核草稿；其他文件请从 AI 助手 ＋ 添加", cardShape) {
             ToolRow("从 ICS 文件导入", "校验后保存为草稿，不会直接发布", onImportIcs,

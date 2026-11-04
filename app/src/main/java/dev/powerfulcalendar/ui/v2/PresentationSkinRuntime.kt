@@ -430,7 +430,9 @@ internal fun ToolsPage(
     onReleaseStuck: () -> Unit,
     settingsDataApi: SettingsDataFeatureApiV1,
     formalEventCount: Int = records.size,
-    recurrencePreviews: List<RecurrenceNextOccurrenceV1> = emptyList()
+    recurrencePreviews: List<RecurrenceNextOccurrenceV1> = emptyList(),
+    defaultSkinAvailable: Boolean = false,
+    onReturnToDefaultSkin: () -> Unit = {}
 ) {
     val settingsDisplay = remember(
         diagnostics, records, pendingCount, aiLocked, aiSession, canReleaseStuckBatch,
@@ -466,6 +468,8 @@ internal fun ToolsPage(
             onCancelBatch = onCancelBatch,
             onReconcile = onReconcile,
             onReleaseStuck = onReleaseStuck,
+            defaultSkinAvailable = defaultSkinAvailable,
+            onReturnToDefaultSkin = onReturnToDefaultSkin,
             protectedProfile = protectedProfile,
             protectedAiCredentials = protectedAiCredentials
         )

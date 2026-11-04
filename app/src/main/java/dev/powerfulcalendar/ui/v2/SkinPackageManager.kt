@@ -22,8 +22,10 @@ data class InstalledSkin(val id: String, val name: String, val builtIn: Boolean 
 /** QA policy is explicitly supplied by trusted test code; production uses the default. */
 enum class SkinBootPolicy { PRESERVE_SELECTION, QA_FRESH_FACTORY }
 
-/** A failed migration must be retried by the isolated QA host before normal startup. */
-enum class SkinMigrationResult { COMPLETE, PREFERENCE_FAILED, CLEANUP_FAILED }
+/** A failed migration stays on Native recovery and is retried on the next startup. */
+enum class SkinMigrationResult {
+    COMPLETE, RECOVERY_ACTIVE, FACTORY_UNAVAILABLE, PREFERENCE_FAILED, CLEANUP_FAILED
+}
 
 /**
  * PowerCal skin ZIP v1/v2/v3: v1 resources, v2 bounded declarative UI,
@@ -45,8 +47,7 @@ class SkinPackageManager(
     private val prefs = context.getSharedPreferences("powercal-skin-choice", Context.MODE_PRIVATE)
     private val folder = File(context.filesDir, "skin-packs")
     private val original = InstalledSkin("powercal-default", "PowerCal 原生玻璃（安全回退）", true)
-    private val clearCandidate = InstalledSkin("powercal-clear-default",
-        "Clear · 迁移预览（部分业务仍待适配）", true)
+    private val clearCandidate = InstalledSkin("powercal-clear-default", "PowerCal Clear（默认）", true)
     private val clearAssetName = "powercal-clear-default.pcskin"
 
     /** Same checked-in bytes that Skin Studio offers at startup. */
@@ -100,6 +101,7 @@ class SkinPackageManager(
     } catch (_: ClassCastException) {
         // A damaged preference must not crash Activity-level emergency recovery.
         selectNativeForEmergencyRecovery()
+        prefs.edit().putString(SINGLE_DEFAULT_MIGRATION_KEY, "pending").apply()
         original.id
     }
 
@@ -129,47 +131,50 @@ class SkinPackageManager(
             PowerCalSkinRegistry.activate(it.pack)
             if (freshQa) prefs.edit().putString("selected", id).apply()
         }.onFailure {
-            prefs.edit().putString("selected", original.id).apply()
+            val fallback = prefs.edit().putString("selected", original.id)
+            if (id != original.id) fallback.putString(SINGLE_DEFAULT_MIGRATION_KEY, "pending")
+            fallback.apply()
             PowerCalSkinRegistry.reset()
         }
     }
 
     /**
-     * Explicit isolated-QA entry point. Production startup never invokes this operation.
-     * The pending marker and selected recovery target are committed together before deletion.
+     * One-time startup migration to the only normal skin. Selection and a pending marker
+     * are committed before removing app-private legacy packages so an interrupted cleanup
+     * can safely resume on the next launch. After completion, an explicitly persisted
+     * Native recovery choice remains untouched by later starts.
      */
-    fun migrateHistoricalForQa(): SkinMigrationResult {
-        val phase = runCatching { prefs.getString("r03_migration", null) }.getOrNull()
+    fun migrateLegacySkinsToDefault(): SkinMigrationResult {
+        val phase = runCatching { prefs.getString(SINGLE_DEFAULT_MIGRATION_KEY, null) }.getOrNull()
         if (phase == "complete") return SkinMigrationResult.COMPLETE
-        val factory = runCatching { readBundledClear() }.getOrNull()
-        val selected = runCatching { prefs.getString("selected", null) }.getOrNull()
-        val legacyFiles = runCatching { checkedLegacyPackages() }.getOrElse {
+        if (phase == "pending" &&
+            runCatching { prefs.getBoolean(NATIVE_RECOVERY_OVERRIDE_KEY, false) }.getOrDefault(false)) {
             PowerCalSkinRegistry.reset()
-            return SkinMigrationResult.CLEANUP_FAILED
+            return SkinMigrationResult.RECOVERY_ACTIVE
         }
-        val validLegacy = if (selected != null && selected != original.id &&
-            selected != clearCandidate.id && legacyFiles.any { it.name == "$selected.pcskin" }) {
-            runCatching { loadPackage(selected) }.isSuccess
-        } else false
-        val target = when {
-            phase == "pending" && selected == original.id -> original.id
-            phase == "pending" && selected == clearCandidate.id && factory != null -> clearCandidate.id
-            phase == "pending" -> original.id
-            selected == original.id -> original.id
-            selected == null && prefs.contains("selected") -> original.id
-            selected == null && factory != null -> clearCandidate.id
-            selected == clearCandidate.id && factory != null -> clearCandidate.id
-            validLegacy && factory != null -> clearCandidate.id
-            else -> original.id
-        }
-        // No historical renderer is active once migration begins, even on a commit failure.
-        PowerCalSkinRegistry.reset()
-        val pending = prefs.edit().putString("selected", target).putString("r03_migration", "pending")
-        if (!runCatching { migrationCommit(pending) }.getOrDefault(false)) {
+        val factory = runCatching { readBundledClear(loadImages = false) }.getOrNull()
+        // Any pre-cutover selection, including the former Native daily choice, is legacy.
+        // Native is selected only when the unique factory package cannot be verified.
+        // A pending migration is retried against current factory availability.
+        val target = if (factory != null) clearCandidate.id else original.id
+        val alreadyPending = phase == "pending" &&
+            runCatching { prefs.getString("selected", null) }.getOrNull() == target
+        if (!alreadyPending && !runCatching {
+                migrationCommit(prefs.edit().putString("selected", target)
+                    .putString(SINGLE_DEFAULT_MIGRATION_KEY, "pending"))
+            }.getOrDefault(false)) {
             PowerCalSkinRegistry.reset()
             return SkinMigrationResult.PREFERENCE_FAILED
         }
-        if (target == clearCandidate.id) PowerCalSkinRegistry.activate(factory!!.pack)
+        // No historical renderer may remain active once the new target is durably selected.
+        PowerCalSkinRegistry.reset()
+        // Never discard the only remaining user skin files while the replacement factory
+        // package is invalid or absent. Preserve them in Native recovery for a later valid
+        // app update; cleanup resumes only after the factory passes the formal validator.
+        if (factory == null) return SkinMigrationResult.FACTORY_UNAVAILABLE
+        val legacyFiles = runCatching { checkedLegacyPackages() }.getOrElse {
+            return SkinMigrationResult.CLEANUP_FAILED
+        }
         val cleaned = runCatching {
             for (file in checkedLegacyPackages()) {
                 // Recheck the directory and entry immediately before each unlink.
@@ -180,10 +185,11 @@ class SkinPackageManager(
             checkedLegacyPackages().isEmpty()
         }.getOrDefault(false)
         if (!cleaned) return SkinMigrationResult.CLEANUP_FAILED
-        val complete = prefs.edit().putString("r03_migration", "complete")
+        val complete = prefs.edit().putString(SINGLE_DEFAULT_MIGRATION_KEY, "complete")
+            .remove(NATIVE_RECOVERY_OVERRIDE_KEY)
         if (!runCatching { migrationCommit(complete) }.getOrDefault(false)) {
             // SharedPreferences.commit can update the in-memory map even if the disk write fails.
-            prefs.edit().putString("r03_migration", "pending").apply()
+            prefs.edit().putString(SINGLE_DEFAULT_MIGRATION_KEY, "pending").apply()
             return SkinMigrationResult.PREFERENCE_FAILED
         }
         return SkinMigrationResult.COMPLETE
@@ -224,10 +230,40 @@ class SkinPackageManager(
      * synchronously persisted. Callers must not present a durable-recovery success on false.
      */
     fun selectNativeForEmergencyRecovery(): Boolean {
-        val persisted = runCatching { nativePreferenceCommit(context, original.id) }
-            .getOrDefault(false)
+        val phasePending = runCatching {
+            prefs.getString(SINGLE_DEFAULT_MIGRATION_KEY, null) == "pending"
+        }.getOrDefault(false)
+        // A malformed value can have a different SharedPreferences type. Treat that
+        // read as "not Native" and still attempt the durable recovery selection.
+        val alreadyNative = runCatching {
+            prefs.getString("selected", null) == original.id
+        }.getOrDefault(false)
+        val selectedPersisted = alreadyNative ||
+            runCatching { nativePreferenceCommit(context, original.id) }.getOrDefault(false)
+        val overridePersisted = !phasePending || runCatching {
+            prefs.edit().putBoolean(NATIVE_RECOVERY_OVERRIDE_KEY, true).commit()
+        }.getOrDefault(false)
         PowerCalSkinRegistry.reset()
-        return persisted
+        return selectedPersisted && overridePersisted
+    }
+
+    /** Explicit single-action exit from Native recovery; never exposes a skin catalogue. */
+    fun restoreFactoryDefaultAfterRecovery(): SkinMigrationResult {
+        val clearedOverride = runCatching {
+            prefs.edit().remove(NATIVE_RECOVERY_OVERRIDE_KEY).commit()
+        }.getOrDefault(false)
+        if (!clearedOverride) return SkinMigrationResult.PREFERENCE_FAILED
+        val migration = migrateLegacySkinsToDefault()
+        if (migration != SkinMigrationResult.COMPLETE && migration != SkinMigrationResult.CLEANUP_FAILED) {
+            return migration
+        }
+        return runCatching {
+            select(clearCandidate.id)
+            migration
+        }.getOrElse {
+            prefs.edit().putString(SINGLE_DEFAULT_MIGRATION_KEY, "pending").apply()
+            SkinMigrationResult.FACTORY_UNAVAILABLE
+        }
     }
 
     fun install(uri: Uri): InstalledSkin {
@@ -474,6 +510,8 @@ class SkinPackageManager(
         .digest(bytes).joinToString("") { "%02x".format(it) }
 
     companion object {
+        internal const val SINGLE_DEFAULT_MIGRATION_KEY = "single_default_migration_v1"
+        private const val NATIVE_RECOVERY_OVERRIDE_KEY = "single_default_native_recovery"
         private const val FORMAT = "powercal-skin"
         private const val UI_FILE = "ui.json"
         private const val MAX_ARCHIVE = 10_000_000

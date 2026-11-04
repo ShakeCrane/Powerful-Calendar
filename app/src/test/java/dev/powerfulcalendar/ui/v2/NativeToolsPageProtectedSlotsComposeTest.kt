@@ -15,19 +15,34 @@ import dev.powerfulcalendar.core.api.v1.AndroidSettingsDataFeatureApiV1
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.After
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import java.util.concurrent.atomic.AtomicBoolean
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class NativeToolsPageProtectedSlotsComposeTest {
     @get:Rule val ui = createComposeRule()
 
-    @Test fun nativeSettingsRendersHostOwnedProtectedProfileAndCredentialSlots() {
+    @Before fun resetPresentationFixtures() {
+        RuntimeSkinSurfaces.resetV2CompatibilityForTests()
+        PowerCalSkinRegistry.reset()
         PresentationSkinRegistry.reset()
+    }
+
+    @After fun restorePresentationFixtures() {
+        RuntimeSkinSurfaces.resetV2CompatibilityForTests()
+        PowerCalSkinRegistry.reset()
+        PresentationSkinRegistry.reset()
+    }
+
+    @Test fun nativeSettingsRendersHostOwnedProtectedProfileAndCredentialSlots() {
+        val returnedToDefault = AtomicBoolean(false)
         ui.setContent {
             PowerCalTheme {
                 ToolsPage(
@@ -62,7 +77,9 @@ class NativeToolsPageProtectedSlotsComposeTest {
                     onReleaseStuck = {},
                     settingsDataApi = AndroidSettingsDataFeatureApiV1(
                         ApplicationProvider.getApplicationContext<Context>()
-                    )
+                    ),
+                    defaultSkinAvailable = true,
+                    onReturnToDefaultSkin = { returnedToDefault.set(true) }
                 )
             }
         }
@@ -79,6 +96,11 @@ class NativeToolsPageProtectedSlotsComposeTest {
         ui.onNodeWithText("从备份恢复").assertExists()
         ui.onNodeWithText("精确闹钟设置").assertExists()
         ui.onNode(hasText("通知权限") and hasClickAction()).assertExists()
+        ui.onNode(hasText("返回默认皮肤") and hasClickAction())
+            .assertIsEnabled()
+            .performScrollTo()
+            .performClick()
+        assertTrue(returnedToDefault.get())
     }
 
     @Test fun settingsRendererApiDoesNotRetainHostModelsOrNativeImplementations() {

@@ -16,6 +16,7 @@ import dev.powerfulcalendar.ui.v2.PowerCalApp
 import dev.powerfulcalendar.ui.v2.PowerCalStores
 import dev.powerfulcalendar.ui.v2.PowerCalTheme
 import dev.powerfulcalendar.ui.v2.SkinPackageManager
+import dev.powerfulcalendar.ui.v2.SkinMigrationResult
 import dev.powerfulcalendar.ui.v2.rememberSystemGlassEffects
 
 /**
@@ -90,8 +91,21 @@ class MainActivity : ComponentActivity() {
 
         ReminderScheduler.ensureChannels(this)
         val store = PowerCalStores.get(applicationContext)
-        // Restore only pre-validated, data-only presentation; corrupt packages fail to default.
-        SkinPackageManager(applicationContext).restoreSelection()
+        val skins = SkinPackageManager(applicationContext)
+        // Move every pre-cutover daily selection to the sole factory skin. A failed or
+        // interrupted migration stays on the independent Native recovery surface.
+        val migration = runCatching { skins.migrateLegacySkinsToDefault() }
+            .getOrDefault(SkinMigrationResult.PREFERENCE_FAILED)
+        if (migration == SkinMigrationResult.FACTORY_UNAVAILABLE ||
+            migration == SkinMigrationResult.RECOVERY_ACTIVE) {
+            // The migration has already persisted Native and reset the active registry.
+            // Leave the request pending so a later valid app update can recover to Clear.
+        } else if (migration == SkinMigrationResult.PREFERENCE_FAILED) {
+            skins.selectNativeForEmergencyRecovery()
+        } else {
+            runCatching { skins.restoreSelection() }
+                .onFailure { skins.selectNativeForEmergencyRecovery() }
+        }
         ActiveVisualSkin.install()
 
         setContent {

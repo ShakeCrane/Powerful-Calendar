@@ -84,9 +84,30 @@ class SingleSkinMigrationInstrumentedTest {
             assertTrue("factory WebView did not render", ready)
         }
     }
+    @Test fun freshInstallBootsFactoryWithoutHistoricalPreference() {
+        assertFalse(prefs.contains("selected"))
+        assertNull(prefs.getString(SkinPackageManager.SINGLE_DEFAULT_MIGRATION_KEY, null))
+        assertTrue(folder.listFiles().orEmpty().none { it.name.endsWith(".pcskin") })
+        val store = PowerCalStores.get(context)
+        val before = snapshot(store)
+
+        // Launch the real Activity directly from an isolated package with no prior
+        // selection or migration marker; no QA boot policy seeds the preference.
+        assertWebActivity()
+
+        assertEquals("powercal-clear-default", prefs.getString("selected", null))
+        assertEquals("complete", prefs.getString(SkinPackageManager.SINGLE_DEFAULT_MIGRATION_KEY, null))
+        assertEquals("powercal-clear-default", PowerCalSkinRegistry.active.key)
+        assertNotNull(PowerCalSkinRegistry.active.web)
+        assertEquals(before, snapshot(store))
+    }
+
     @Test fun migrateThirdPartyWithRealBusinessFixture() {
         assertFalse(prefs.contains("selected"))
+        assertNull(prefs.getString(SkinPackageManager.SINGLE_DEFAULT_MIGRATION_KEY, null))
+        assertTrue(folder.listFiles().orEmpty().none { it.name.endsWith(".pcskin") })
         val store = PowerStore(context, "r03-qa-fixture.db")
+        val mainStoreBefore = snapshot(PowerCalStores.get(context))
         val zone = ZoneId.of("Asia/Shanghai")
         val date = LocalDate.now(zone).plusDays(5)
         val exceptionKey = "${date.plusDays(2)}T00:00"
@@ -115,45 +136,77 @@ class SingleSkinMigrationInstrumentedTest {
         val factory = context.assets.open("powercal-clear-default.pcskin").use { it.readBytes() }
         choose("legacy-a")
         val manager = SkinPackageManager(context)
-        instrumentation.runOnMainSync { manager.restoreSelection() }
-        assertEquals("legacy-a", PowerCalSkinRegistry.active.key)
-        instrumentation.runOnMainSync { assertEquals(SkinMigrationResult.COMPLETE, manager.migrateHistoricalForQa()) }
+        // Exercise the real upgrade entry point: MainActivity performs migration before
+        // it restores a runtime or displays the first page.
+        assertWebActivity()
         assertEquals("powercal-clear-default", manager.currentId())
-        assertEquals("complete", prefs.getString("r03_migration", null))
+        assertEquals("powercal-clear-default", PowerCalSkinRegistry.active.key)
+        assertEquals("complete", prefs.getString(SkinPackageManager.SINGLE_DEFAULT_MIGRATION_KEY, null))
         assertFalse(a.exists()); assertFalse(b.exists())
         assertEquals("fixture", nonSkin.readText()); assertEquals("fixture", outside.readText())
         assertArrayEquals(factory, context.assets.open("powercal-clear-default.pcskin").use { it.readBytes() })
         assertEquals(before, snapshot(store))
+        assertEquals(mainStoreBefore, snapshot(PowerCalStores.get(context)))
         assertEquals("unchanged", otherSettings.getString("fixture", null))
-        assertWebActivity()
-        assertEquals(before, snapshot(store))
         store.close()
     }
+
+    @Test fun startupMigratesLegacyNativeDailyChoiceToFactorySkin() {
+        val hadSelection = prefs.contains("selected")
+        val previousSelection = prefs.getString("selected", null)
+        val migrationKey = SkinPackageManager.SINGLE_DEFAULT_MIGRATION_KEY
+        val hadMigration = prefs.contains(migrationKey)
+        val previousMigration = prefs.getString(migrationKey, null)
+        assertTrue(folder.listFiles().orEmpty().none { it.name.endsWith(".pcskin") })
+        val storeBefore = snapshot(PowerCalStores.get(context))
+        try {
+            choose("powercal-default")
+            assertTrue(prefs.edit().remove(migrationKey).commit())
+
+            assertWebActivity()
+
+            assertEquals("powercal-clear-default", prefs.getString("selected", null))
+            assertEquals("complete", prefs.getString(migrationKey, null))
+            assertEquals("powercal-clear-default", PowerCalSkinRegistry.active.key)
+            assertEquals(storeBefore, snapshot(PowerCalStores.get(context)))
+        } finally {
+            val restore = prefs.edit()
+            if (hadSelection) restore.putString("selected", previousSelection) else restore.remove("selected")
+            if (hadMigration) restore.putString(migrationKey, previousMigration) else restore.remove(migrationKey)
+            check(restore.commit())
+            PowerCalSkinRegistry.reset()
+            if (hadSelection) SkinPackageManager(context).restoreSelection()
+        }
+    }
+
     @Test fun verifyMigratedColdLaunch() {
-        assertEquals("complete", prefs.getString("r03_migration", null))
+        assertEquals("complete", prefs.getString(SkinPackageManager.SINGLE_DEFAULT_MIGRATION_KEY, null))
         assertEquals("powercal-clear-default", prefs.getString("selected", null))
         assertTrue(folder.listFiles().orEmpty().none { it.name.endsWith(".pcskin") })
         val store = PowerStore(context, "r03-qa-fixture.db")
         val expected = context.getSharedPreferences("r03-test-evidence", Context.MODE_PRIVATE).getString("store_hash", null)
         assertNotNull(expected)
         assertEquals(expected, snapshot(store))
-        instrumentation.runOnMainSync { assertEquals(SkinMigrationResult.COMPLETE, SkinPackageManager(context).migrateHistoricalForQa()) }
+        instrumentation.runOnMainSync { assertEquals(SkinMigrationResult.COMPLETE, SkinPackageManager(context).migrateLegacySkinsToDefault()) }
         assertWebActivity()
         assertEquals("powercal-clear-default", PowerCalSkinRegistry.active.key)
         assertEquals(expected, snapshot(store))
         store.close()
     }
-    @Test fun corruptFactoryCleansLegacyAndColdNativeRemains() {
+    @Test fun corruptFactoryKeepsNativeRecoveryAndLegacyFilesPending() {
         assertFalse(prefs.contains("selected"))
         val old = fixture("legacy-a"); choose("legacy-a")
         val broken = SkinPackageManager(context, factoryPackageBytes = { byteArrayOf(1, 2, 3) })
-        instrumentation.runOnMainSync { assertEquals(SkinMigrationResult.COMPLETE, broken.migrateHistoricalForQa()) }
-        assertFalse(old.exists())
+        instrumentation.runOnMainSync { assertEquals(SkinMigrationResult.FACTORY_UNAVAILABLE, broken.migrateLegacySkinsToDefault()) }
+        assertTrue(old.exists())
         assertEquals("powercal-default", prefs.getString("selected", null))
-        assertEquals("complete", prefs.getString("r03_migration", null))
-        repeat(2) { ActivityScenario.launch(MainActivity::class.java).use { scenario ->
-            scenario.onActivity { assertEquals("powercal-default", PowerCalSkinRegistry.active.key); assertNull(PowerCalSkinRegistry.active.web) }
-        } }
+        assertEquals("pending", prefs.getString(SkinPackageManager.SINGLE_DEFAULT_MIGRATION_KEY, null))
+        repeat(2) {
+            instrumentation.runOnMainSync { broken.restoreSelection() }
+            assertEquals("powercal-default", PowerCalSkinRegistry.active.key)
+            assertNull(PowerCalSkinRegistry.active.web)
+            assertEquals(SkinMigrationResult.FACTORY_UNAVAILABLE, broken.migrateLegacySkinsToDefault())
+        }
     }
     @Test fun prepareQaState() {
         assertFalse(prefs.contains("selected"))
@@ -165,19 +218,21 @@ class SingleSkinMigrationInstrumentedTest {
             "unknown" -> choose("missing-legacy")
             else -> error("unknown QA state")
         }
-        val expected = if (case == "fresh" || case == "clear") "powercal-clear-default" else "powercal-default"
-        instrumentation.runOnMainSync { assertEquals(SkinMigrationResult.COMPLETE, SkinPackageManager(context).migrateHistoricalForQa()) }
+        val expected = "powercal-clear-default"
+        val manager = SkinPackageManager(context)
+        instrumentation.runOnMainSync { assertEquals(SkinMigrationResult.COMPLETE, manager.migrateLegacySkinsToDefault()) }
+        instrumentation.runOnMainSync { manager.restoreSelection() }
         assertEquals(expected, prefs.getString("selected", null))
         assertEquals(expected, PowerCalSkinRegistry.active.key)
-        assertEquals("complete", prefs.getString("r03_migration", null))
+        assertEquals("complete", prefs.getString(SkinPackageManager.SINGLE_DEFAULT_MIGRATION_KEY, null))
     }
     @Test fun verifyQaStateAfterColdStart() {
         val case = requireNotNull(InstrumentationRegistry.getArguments().getString("r03Case"))
-        val expected = if (case == "fresh" || case == "clear") "powercal-clear-default" else "powercal-default"
-        assertEquals("complete", prefs.getString("r03_migration", null))
+        val expected = "powercal-clear-default"
+        assertEquals("complete", prefs.getString(SkinPackageManager.SINGLE_DEFAULT_MIGRATION_KEY, null))
         assertEquals(expected, prefs.getString("selected", null))
         assertTrue(folder.listFiles().orEmpty().none { it.name.endsWith(".pcskin") })
-        instrumentation.runOnMainSync { assertEquals(SkinMigrationResult.COMPLETE, SkinPackageManager(context).migrateHistoricalForQa()) }
+        instrumentation.runOnMainSync { assertEquals(SkinMigrationResult.COMPLETE, SkinPackageManager(context).migrateLegacySkinsToDefault()) }
         if (expected == "powercal-clear-default") assertWebActivity()
         else ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             scenario.onActivity {
@@ -195,16 +250,16 @@ class SingleSkinMigrationInstrumentedTest {
         val subject = SkinPackageManager(context, deleteLegacyPackage = { file ->
             count++; if (count == 2) false else file.delete()
         })
-        instrumentation.runOnMainSync { assertEquals(SkinMigrationResult.CLEANUP_FAILED, subject.migrateHistoricalForQa()) }
-        assertEquals("pending", prefs.getString("r03_migration", null))
+        instrumentation.runOnMainSync { assertEquals(SkinMigrationResult.CLEANUP_FAILED, subject.migrateLegacySkinsToDefault()) }
+        assertEquals("pending", prefs.getString(SkinPackageManager.SINGLE_DEFAULT_MIGRATION_KEY, null))
         assertEquals("powercal-clear-default", prefs.getString("selected", null))
         assertEquals(2, folder.listFiles().orEmpty().count { it.name.endsWith(".pcskin") })
     }
     @Test fun resumeInterruptedCleanupAfterProcessStop() {
-        assertEquals("pending", prefs.getString("r03_migration", null))
+        assertEquals("pending", prefs.getString(SkinPackageManager.SINGLE_DEFAULT_MIGRATION_KEY, null))
         assertEquals(2, folder.listFiles().orEmpty().count { it.name.endsWith(".pcskin") })
-        instrumentation.runOnMainSync { assertEquals(SkinMigrationResult.COMPLETE, SkinPackageManager(context).migrateHistoricalForQa()) }
-        assertEquals("complete", prefs.getString("r03_migration", null))
+        instrumentation.runOnMainSync { assertEquals(SkinMigrationResult.COMPLETE, SkinPackageManager(context).migrateLegacySkinsToDefault()) }
+        assertEquals("complete", prefs.getString(SkinPackageManager.SINGLE_DEFAULT_MIGRATION_KEY, null))
         assertEquals("powercal-clear-default", prefs.getString("selected", null))
         assertTrue(folder.listFiles().orEmpty().none { it.name.endsWith(".pcskin") })
         assertWebActivity()
@@ -213,19 +268,19 @@ class SingleSkinMigrationInstrumentedTest {
         assertFalse(prefs.contains("selected"))
         val a = fixture("legacy-a"); fixture("legacy-b"); fixture("legacy-c"); choose("legacy-a")
         val noCommit = SkinPackageManager(context, migrationCommit = { false })
-        instrumentation.runOnMainSync { assertEquals(SkinMigrationResult.PREFERENCE_FAILED, noCommit.migrateHistoricalForQa()) }
+        instrumentation.runOnMainSync { assertEquals(SkinMigrationResult.PREFERENCE_FAILED, noCommit.migrateLegacySkinsToDefault()) }
         assertTrue(a.exists()); assertEquals("powercal-default", PowerCalSkinRegistry.active.key)
         var count = 0
         val interrupted = SkinPackageManager(context, deleteLegacyPackage = { file ->
             count++; if (count == 2) throw IllegalStateException("injected interruption") else file.delete()
         })
-        instrumentation.runOnMainSync { assertEquals(SkinMigrationResult.CLEANUP_FAILED, interrupted.migrateHistoricalForQa()) }
-        assertEquals("pending", prefs.getString("r03_migration", null))
+        instrumentation.runOnMainSync { assertEquals(SkinMigrationResult.CLEANUP_FAILED, interrupted.migrateLegacySkinsToDefault()) }
+        assertEquals("pending", prefs.getString(SkinPackageManager.SINGLE_DEFAULT_MIGRATION_KEY, null))
         assertEquals(2, folder.listFiles().orEmpty().count { it.name.endsWith(".pcskin") })
         val failedDelete = SkinPackageManager(context, deleteLegacyPackage = { false })
-        instrumentation.runOnMainSync { assertEquals(SkinMigrationResult.CLEANUP_FAILED, failedDelete.migrateHistoricalForQa()) }
-        assertEquals("pending", prefs.getString("r03_migration", null))
-        instrumentation.runOnMainSync { assertEquals(SkinMigrationResult.COMPLETE, SkinPackageManager(context).migrateHistoricalForQa()) }
+        instrumentation.runOnMainSync { assertEquals(SkinMigrationResult.CLEANUP_FAILED, failedDelete.migrateLegacySkinsToDefault()) }
+        assertEquals("pending", prefs.getString(SkinPackageManager.SINGLE_DEFAULT_MIGRATION_KEY, null))
+        instrumentation.runOnMainSync { assertEquals(SkinMigrationResult.COMPLETE, SkinPackageManager(context).migrateLegacySkinsToDefault()) }
         assertTrue(folder.listFiles().orEmpty().none { it.name.endsWith(".pcskin") })
         assertEquals("powercal-clear-default", prefs.getString("selected", null))
         assertTrue(prefs.edit().clear().commit())
@@ -234,10 +289,10 @@ class SingleSkinMigrationInstrumentedTest {
         val link = File(folder, "unsafe.pcskin")
         Files.createSymbolicLink(link.toPath(), outside.toPath())
         choose("powercal-default")
-        instrumentation.runOnMainSync { assertEquals(SkinMigrationResult.CLEANUP_FAILED, SkinPackageManager(context).migrateHistoricalForQa()) }
+        instrumentation.runOnMainSync { assertEquals(SkinMigrationResult.CLEANUP_FAILED, SkinPackageManager(context).migrateLegacySkinsToDefault()) }
         assertEquals("safe", outside.readText())
         Files.delete(link.toPath())
-        instrumentation.runOnMainSync { assertEquals(SkinMigrationResult.COMPLETE, SkinPackageManager(context).migrateHistoricalForQa()) }
+        instrumentation.runOnMainSync { assertEquals(SkinMigrationResult.COMPLETE, SkinPackageManager(context).migrateLegacySkinsToDefault()) }
         assertEquals("safe", outside.readText())
     }
 }
