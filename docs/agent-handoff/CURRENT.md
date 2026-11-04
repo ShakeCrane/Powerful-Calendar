@@ -4,24 +4,33 @@ BRANCH: codex/skin-single-default-closure
 WAVE2_START_HEAD: 3b54097d6383c0349b5d3d638c228320e3c8e22c
 WAVE3_START_HEAD: 82b456fd2bfc15df379fd15d967fac3da57b899d
 LATEST_CODE_HEAD: 0cfd15564189f9c0e9e3c0436441cd084183022f
-LATEST_VERIFIED_HEAD: 0cfd15564189f9c0e9e3c0436441cd084183022f
-CURRENT_TASK: F-09
-TASK_STATUS: BLOCKED
-LAST_COMPLETED_TASK: S-07-DEFAULT-CLEAR-STUDIO-ROUNDTRIP (PASS)
-LAST_COMPLETED_COMMIT: 0cfd15564189f9c0e9e3c0436441cd084183022f
-LAST_ATTEMPTED_TASK: F-09 TalkBack follow-up (BLOCKED)
+LATEST_VERIFIED_HEAD: 96fc4bde3836724d1de88c36aa7de5e3699a8dd1
+CURRENT_TASK: R-06
+TASK_STATUS: READY
+LAST_COMPLETED_TASK: FUNCTIONAL-PREVIEW-CHECKPOINT-A (DELIVERED)
+LAST_COMPLETED_COMMIT: 96fc4bde3836724d1de88c36aa7de5e3699a8dd1 (APK build baseline)
+LAST_ATTEMPTED_TASK: F-09 TalkBack follow-up (BLOCKED; TalkBack traversal NOT TESTED)
 LAST_ATTEMPTED_COMMIT: 3932427ac7c8a06d1dabb53b732fef693954efdd
-NEXT_TASK: R-06 (BLOCKED ON F-09 PASS)
-NEXT_ACTION: Obtain an input path that demonstrably advances TalkBack focus (ADB swipes also failed to advance focus on the TalkBack settings screen), then verify the order on Clear. Begin R-06 only after F-09 is PASS.
+NEXT_TASK: R-06
+NEXT_ACTION: R-06 runtime convergence. TalkBack traversal remains NOT TESTED and is a release-quality gap; per Owner's 2026-11-05 delivery decision it does not block the Functional Preview or independent runtime convergence. Keep Product Cutover HOLD.
+PRODUCT_DELIVERY_CHECKPOINT_A:
+  status: DELIVERED (PowerCal Functional Preview; Debug only)
+  apk: dist/powercal/PowerCal-Functional-Preview-2026-11-05.apk
+  apk_sha256: 2ff316e1e350fdd4573ceac7ab154b616fb2e425ef209bde0d2b3e79d89b33a6
+  default_skin_sha256: b9035719c2e0c75d335225216ea3687b72cc2cf4692e829ca43566c730c3fee3
+  build_head: 96fc4bde3836724d1de88c36aa7de5e3699a8dd1
+  smoke: API 35 emulator, 11 focused Android instrumentation assertions passed; 970 JVM tests passed
+  evidence: .local/android-test/reports/functional-preview-20261105/
+  limitations: TalkBack traversal NOT TESTED; physical/OEM and live AI provider NOT TESTED
 WAVE2_STATUS: COMPLETE (8 authorized work packages attempted; all PASS)
-WAVE3_STATUS: IN_PROGRESS (F-08 PASS; F-09 BLOCKED; S-06 PASS; S-07 PASS; R-06 blocked by F-09; Product Cutover HOLD)
+WAVE3_STATUS: IN_PROGRESS (F-08 PASS; F-09 code/device flows PASS but TalkBack traversal NOT TESTED; S-06/S-07 PASS; Checkpoint A delivered; R-06 next; Product Cutover HOLD)
 
 WAVE3_QUEUE:
   - F-08 permissions/reminders/ICS/backup/system settings: PASS (commit c3a1e59f44e2b304314673f0030ae19c2f3f9d28)
   - F-09 Back/IME/recovery/accessibility: BLOCKED (code/test fixes committed; TalkBack traversal order not verified)
   - S-06 from-blank complete Skin: PASS (commit 03c8ba38db785b16052a2f9b440b8bf3bc5ee79b; Studio GUI/API, 88/88 Python, Android 4/4, MainActivity force-stop/restore verified)
   - S-07 default Skin Studio roundtrip: PASS (commit 0cfd15564189f9c0e9e3c0436441cd084183022f; Studio save/reopen, Settings source edit, export/import/restore, 88/88 Python, final APK byte check, API 35 WebView Settings 1/1)
-  - R-06 runtime retirement: BLOCKED/DEFERRED; requires F-08/F-09/S-06/S-07 parity; F-09 TalkBack traversal remains unverified
+  - R-06 runtime retirement: NEXT / READY under Owner 2026-11-05 delivery priority; F-09 TalkBack traversal remains unverified and release-relevant but does not block Functional Preview or independent work
   - R-07 runtime/recovery gate: CONDITIONAL; requires R-06 prerequisites and safe recovery evidence
   - Q-01 install/migration acceptance: NOT STARTED
   - Q-02 full parity replay: NOT STARTED
