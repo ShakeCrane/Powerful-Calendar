@@ -1,21 +1,24 @@
 # PowerCal 当前执行状态（R2）
 
-唯一实时任务入口：docs/agent-handoff/CURRENT.md。本文后续内容是完整保留的历史进度；其中所有 NEXT_ACTION / NEXT 项只代表当时状态，不是当前执行命令。
+唯一实时任务入口：`docs/agent-handoff/CURRENT.md`。下方历史正文完整保留；其中旧 `NEXT_ACTION` 只代表当时状态，不是当前执行命令。
 
-## 当前状态（2026-11-04）
+## 当前状态（2026-11-04 · Wave 2）
 
-- PLAN：PLAN-2026-11-03-R2；唯一施工分支：codex/skin-single-default-closure；当前任务和提交基准以 CURRENT.md / `git rev-parse HEAD` 为准。
-- G-01～G-05：PASS；Worktree 保护台账和历史验收证据继续保留。
-- R-01～R-05：PASS；R-06/R-07 仍 DEFERRED，相关 Native/Compiled/v2 页面不可提前删除。
-- F-01、F-02：PASS。F-03：BLOCKED；两次全量 JVM 门禁均在 `SystemCalendarImportTest.rejectedItemsArePersistedAsWarningsWithoutCalendarWrites` 的只读查询触发 SQLite lock；隔离复测通过。F-03 指定 API 35 跨月 DOM/切月/实例选择/两次冷启动切片通过，但不得宣称任务 PASS。证据见 `.local/android-test/reports/F-03-20261104/`。
-- F-04：PASS，代码/仪器回归提交 `2cd39bf683c91c2406d3a3b57d48ab09cc7ddfa5`。全量串行 Gradle 门禁 967/967 JVM、边界检查、APK、Lint（0 错误/56 警告）和 AndroidTest 编译通过；相关 JVM 31/31。隔离 API 35 AVD Memo 实际 WebView 回归 7/7，含 251 条 Core/Host/DOM rowKey/revision/occurrence 对照、Open/Done、标题打开零写入、无日期第 251 条续页、完成/撤销，以及关闭重开 SQLite 并新建 Host 后完成状态保留。Native/Clear 创建、编辑、重复完成/撤销、删除对照通过。OS 进程 force-stop 冷启动和真机未测；SSA-04 仍 PARTIAL。证据见 `.local/android-test/reports/F-04-20261104/`。
-- S-01：PASS；空白 v3 工程已具备五页稳定 ID 和空容器节点。真实浏览器完成新建、改名、编辑 Month 元数据、保存、卸载并重开 Studio、导入工程、构建及 CLI 校验。Studio Python 69/69、blank browser E2E、现有 Clear browser E2E 均通过；证据见 `.local/android-test/reports/S-01-20261104/`。
-- S-02：PASS；代码/测试提交 `d0569f14d383d4cc7bd8b5bef2a922008969de4c`。Studio Python 70/70、空白组件树鼠标浏览器 E2E、Clear 源码浏览器 E2E、JS 语法检查通过。空白工程支持新增页面、13 种基础组件、嵌套/取消嵌套、排序、props/样式/绑定元数据、删除、撤销/恢复；保存重开后运行时 preview DOM、导出及重导入结构一致。导出包 SHA-256 `ab431285980bbe04bc95d782c7cbc4dee6bddceb2168f59df7889305f8afde73`。Android 安装与真机未测；SSA-12/SSA-13 保持 PARTIAL。证据见 `.local/android-test/reports/S-02-20261104/`。
-- 当前八项授权施工已结束；无下一任务在本轮授权内。不得自动开始 S-03 或把 F-03 改报 PASS；F-03 全量 JVM 门禁问题仍未解决，R-06/R-07 继续 DEFERRED。
-- 产品目标：Core 管功能和业务；Skin 管日常表现并调用稳定 API；出厂仅有一套未美化默认 .pcskin；Native 仅用于安全恢复；Studio 必须能从空白项目创作完整皮肤；全部分离验收后才通过 Studio 应用 Claude 设计。
-- 历史 SEP 状态未完全签核；真机/OEM 证据仍有缺口；正式 Skin Cutover / Release 保持 HOLD。历史进度中的 NEXT_ACTION 仅代表当时状态；唯一实时入口是 CURRENT.md。
-- 本次 AFK 执行达到 8 项上限后停止；后续任务须有新的明确授权。
+- 施工 Worktree/分支：`E:\Project\Powerful-Calendar\.local\android-test\worktrees\skin-single-default-closure` / `codex/skin-single-default-closure`。Wave 2 起点 `3b54097d6383c0349b5d3d638c228320e3c8e22c`。
+- G-01～G-05、R-01～R-05：PASS。F-01、F-02、F-04、S-01 及 S-02 Studio GUI：PASS。R-06/R-07：DEFERRED。
+- F-03 Closure：PASS；代码/验收提交 `2a8c323890c0f121b80c72a2a4d1c5c2a35d010d`。测试同步屏障现等待异步系统日历导入完成后的 Host notice。完整 JVM 967/967、140 XML suites、0 failures/errors/skips；两个源边界、Debug APK、Lint（0 错误/56 警告）、AndroidTest Kotlin 编译通过。
+- F-03 当前 API 35 验证：新隔离 AVD `PowerCal_Wave2_QA35_20261104` / `emulator-5554`；月历 Native/Clear 对照 3/3、两轮独立 prepare→force-stop→restore、WebView 重复实例编辑 1/1 PASS。真机/OEM NOT TESTED；SSA-03 仍 PARTIAL。证据：`.local/android-test/reports/F-03-20261104-wave2/`。
+- S-02 Studio GUI 早前已完成，代码提交 `d0569f14d383d4cc7bd8b5bef2a922008969de4c`。当前 `S-02 Android Gate`：IN PROGRESS；必须实测 Studio 生成的五页包在 Android WebView 的结构、权限和冷启动行为。
+- 当前队列：S-02 Android Gate → S-03 → F-05 → F-06 → S-04 → S-05 → F-07。F-03 已闭环，不重做。遇到设备或功能依赖阻塞时只跳转到真正独立的后续 Studio 工作，不把 BLOCKED 标成 PASS。
+- 产品目标不变：Core 管功能；Skin 管表现并调用稳定 API；出厂唯一未美化默认 `.pcskin`；Native 仅安全恢复；Studio 从空白工程创作完整皮肤；全部分离验收后才通过 Studio 应用 Claude 设计稿。
+- 受保护 Worktree 和用户/设计/Studio/测试资产不清理、不覆盖。SEP 历史签核仍 INCOMPLETE；正式 Product Cutover 保持 HOLD。
 
+## Wave 2 handoff — F-03 closure
+
+- 根因分类：测试只等 `migrations.finished_ms`，没有等 `PowerCalApp.importSystemCalendar()` 的末尾 `reload()`/提醒协调完成，就从独立只读连接查询 `commits`。Robolectric 锁异常报告的是竞争读连接；具体锁持有者未直接埋点。最小测试改动等待末尾 Host notice，未更改生产 Store、业务事务或断言。
+- 修复 Issue：`docs/issues/PC-ISSUE-QA-SYSTEM-CALENDAR-IMPORT-ROBOLECTRIC-CONTENTION.md`。
+- 当前 Android 包 SHA-256：`F5E5FA6FE4194AD213EF60D5933018422A818D0AFB97E7B68FD223B3F54E3522`；正式默认 `.pcskin` SHA-256：`299e4bdd78c8936f6c15db0200172e659aaa5b0e0643f0d70c115966ac35a9f4`。
+- 唯一当前任务：S-02 Android Gate。执行细节以 R2 计划对应 Studio 子任务和 Wave 2 授权为准；本轮必须继续，不需等待逐项确认。
 ## 历史进度正文（全文保留；不作为当前任务入口）
 
 # Core freeze progress

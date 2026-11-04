@@ -1,70 +1,72 @@
 PROJECT: Powerful-Calendar
 PLAN: PLAN-2026-11-03-R2
 BRANCH: codex/skin-single-default-closure
-BASELINE: dae8fd1cb711de4e16a6f877d2037b8152b90a18
-CURRENT_TASK: S-02
-TASK_STATUS: PASS
-LAST_COMPLETED_TASK: S-02 (PASS; code commit d0569f14d383d4cc7bd8b5bef2a922008969de4c)
-LAST_ATTEMPTED_TASK: F-03 (BLOCKED: repeated full-suite SQLite lock; focused feature checks passed)
-NEXT_TASK: NONE_WITHIN_CURRENT_AUTHORIZATION
-NEXT_ACTION: Stop after the eighth authorized task; do not start S-03 or relabel F-03 as PASS
-DEFERRED_TASKS: R-06 and R-07 remain deferred until dependent Skin parity is proven
-PHASE: F/S (F-03 remains incomplete; S-02 complete; current authorization exhausted)
+BASELINE: 3b54097d6383c0349b5d3d638c228320e3c8e22c
+CURRENT_TASK: S-02-ANDROID-GATE
+TASK_STATUS: IN_PROGRESS
+LAST_COMPLETED_TASK: F-03-CLOSURE (PASS)
+LAST_COMPLETED_COMMIT: 2a8c323890c0f121b80c72a2a4d1c5c2a35d010d
+NEXT_TASK: S-03
+NEXT_ACTION: Complete the Android runtime gate for the previously completed S-02 Blank-v3 Studio GUI; do not mark it PASS without Android WebView evidence.
+
+WAVE_2_QUEUE:
+  - F-03 Closure: PASS
+  - S-02 Android Gate: IN_PROGRESS
+  - S-03 Host state/action binding catalog: NOT STARTED
+  - F-05 editor/draft/trusted-write parity: NOT STARTED
+  - F-06 recurrence scopes/date/DST parity: NOT STARTED
+  - S-04 Studio preview/runtime parity: NOT STARTED
+  - S-05 resource/source round-trip: NOT STARTED
+  - F-07 AI chat/proposal/review parity: NOT STARTED
+
+DEFERRED_TASKS: R-06 and R-07 remain DEFERRED until dependent Skin parity is proven.
+PHASE: F/S Wave 2
 SEP_SIGNOFF: INCOMPLETE (historical parity remains unsigned)
 PRODUCT_CUTOVER: HOLD
 
-OWNER_OVERRIDE_2026_11_03:
-  Decision: 历史皮肤不保留，正式 App 只保留一套默认 .pcskin；Native 仅用于安全恢复。
-  R03: QA 迁移旧 Native/Clear/第三方/损坏选择后，仅清理测试应用私有 files/skin-packs 内的旧安装 .pcskin；不归档、不导出历史包，不保留多皮肤列表。
-  Protected: Calendar Store、草稿、提醒、AI 历史、Studio 源工程、设计源稿、测试夹具、外部 SAF 文件、Git Worktree。
-  Gate: 正式生产 Cutover 仍为 HOLD；R-03 删除仅在隔离 QA 应用私有目录验证。
-
 OWNER_GOAL:
   Core: Owns business behavior, data, transactions, reminders, AI, permissions, and stable feature APIs.
-  Skin: Owns normal presentation and requests Core capabilities through the approved APIs.
-  Default_skin: 正式出厂只保留唯一默认皮肤（一套未美化的 .pcskin）；Native is the safety recovery path.
-  Studio: Create a complete skin from a blank project, including components, bindings, assets, editing, preview, export, and Android runtime.
-  Beautification: After separation acceptance, apply Claude design work through the Studio API without changing Core.
+  Skin: Owns normal presentation and requests Core capabilities through approved APIs.
+  Default_skin: One unbeautified factory .pcskin; Native remains the independent safety recovery path.
+  Studio: Create a complete skin from a blank project, including components, bindings, assets, editing, preview, export, import, and Android runtime.
+  Beautification: Only after separation acceptance, apply Claude design work through Studio without changing Core.
 
-AUTHORITATIVE_PLAN: docs/POWERCAL_SINGLE_DEFAULT_SKIN_EXECUTION_PLAN_2026-11-03_R2.md
-PROTECTED_ASSETS: docs/agent-handoff/WORKTREE_DISPOSITION.md
-ACCEPTANCE_MATRIX: docs/agent-handoff/SINGLE_SKIN_ACCEPTANCE.md
+RUNTIME_POLICY:
+  Factory_skin: powercal-clear-default.pcskin (id powercal-clear-default).
+  Native_recovery: powercal-default; R-06/R-07 remain deferred.
+  No second factory skin, multi-skin store, or production cutover is authorized.
+
+OWNER_OVERRIDE_2026_11_03:
+  Legacy_package_policy: R-03 cleanup was limited to isolated QA app-private installed packages; do not archive/export legacy packages or preserve a daily multi-skin list.
+  Protected: Calendar Store, drafts, reminders, AI history, Studio source projects, design sources, fixtures, external SAF files, and Git Worktrees.
+  Release_gate: Production Cutover remains HOLD.
+
+PROTECTED_ASSETS:
+  - docs/agent-handoff/WORKTREE_DISPOSITION.md
+  - Existing protected Worktrees, user files, Studio source projects, design sources, fixtures, and external SAF documents.
 
 LATEST_VERIFIED_EVIDENCE:
-  - "S-02 PASS against task baseline 2eab013e4d3cea6973eab1c860763d4d7f8617c5; code/test commit d0569f14d383d4cc7bd8b5bef2a922008969de4c. Blank-v3 Studio page/component GUI supports page creation, all 13 base component types, nesting/outdenting, reorder, property/style/binding metadata edits, deletion, undo/redo and project persistence. Chromium mouse E2E saved, closed/reopened Studio, matched Month preview DOM to the component tree, exported/validated/reimported .pcskin, and confirmed runtime projection equality; all 13 component types rendered. Existing Clear source browser E2E also PASS. Skin Studio Python 70/70; changed JS syntax checks PASS. Export package SHA-256 ab431285980bbe04bc95d782c7cbc4dee6bddceb2168f59df7889305f8afde73 (5 files, runtime v3, host.read only). Android installation/instrumentation and physical devices NOT TESTED. Evidence: .local/android-test/reports/S-02-20261104/. SSA-12/SSA-13 remain PARTIAL; Product Cutover HOLD."
-  - "F-04 PASS against task start dae8fd1cb711de4e16a6f877d2037b8152b90a18; code/test commit 2cd39bf683c91c2406d3a3b57d48ab09cc7ddfa5 (Clear Memo parity). Focused JVM projection/bridge/completion tests 31/31 PASS; serial full Gradle gate PASS with JVM 967/967, both source boundaries, Debug APK, lint 0 errors/56 warnings, AndroidTest Kotlin compile. Isolated API 35 AVD PowerCal_ChatGPT_QA35_20261103 / emulator-5554, unique QA package suffix .d05qaf04: Memo Android regression 7/7 PASS. WebView DOM and Core API rows match for 251 Memos across the 250/1 page boundary; trusted touches verified Open/Done, title open/close with no Store write, completion/undo, no-date entry; completed revision persisted after closing/reopening the isolated SQLite database and creating a fresh Host. Native/Clear create, edit, recurrence completion/undo and delete parity tests passed. Full OS process force-stop cold start and physical/OEM devices NOT TESTED. Default APK SHA-256 F5E5FA6FE4194AD213EF60D5933018422A818D0AFB97E7B68FD223B3F54E3522; exactly one .pcskin, byte-identical to source, package SHA-256 299e4bdd78c8936f6c15db0200172e659aaa5b0e0643f0d70c115966ac35a9f4. Evidence: .local/android-test/reports/F-04-20261104/. SSA-04 remains PARTIAL; Product Cutover HOLD."
-  - "S-01 PASS against baseline 238ebe576ede8db70d8958268df39557582c5cd1: the independent blank-v3 template now contains five stable page routes (TIMELINE/MONTH/MEMO/AI/SETTINGS), unique page/root IDs, empty container roots, and only host.read. Project and Studio validators preserve and check the page/component tree. Real headless-browser workflow passed: New Blank → rename → edit Month metadata/component props → Save Project → unload Studio page → reopen → Open Project/import → export .pcskin → CLI validate. Package SHA-256 18045ee795ab0e41da17af013393a13144a351eda562f2a0f5d05e263696eaec (runtime v3, 4 files); Python Studio suite 69/69 PASS; blank-project browser E2E PASS; existing Clear source browser E2E PASS; changed JS syntax checks PASS. No Android test was required or run. Evidence: .local/android-test/reports/S-01-20261104/. Existing factory package distribution and runtime remain unchanged."
-  - "F-03 functional/device checks PASS but task BLOCKED by the full JVM gate: API 35 isolated AVD PowerCal_ChatGPT_QA35_20261103 / emulator-5554 completed two separate prepare → force-stop → restore runs. Core, Host state and Clear DOM matched Nov 2–5 daily ACTIVITY occurrences; Nov 3 opened the matching eventSeq/revision/original occurrence and single-occurrence editor; Oct↔Nov navigation remained consistent; fixture Store snapshots were unchanged. Web recurrence test 1/1 and focused WebSkinHostProjectionTest 24/24 PASS. Both source boundaries, Debug APK, Lint (0 errors/56 warnings), and AndroidTest Kotlin compilation PASS. The required default-package full JVM gate failed twice at SystemCalendarImportTest.rejectedItemsArePersistedAsWarningsWithoutCalendarWrites with SQLiteDatabaseLockedException on a read-only commit count (967 tests, 1 failure each); isolated rerun of that test passed 1/1, so the cause remains unconfirmed and the gate is not PASS. APK SHA-256 F5E5FA6FE4194AD213EF60D5933018422A818D0AFB97E7B68FD223B3F54E3522; exactly one packaged .pcskin matches source SHA-256 299e4bdd78c8936f6c15db0200172e659aaa5b0e0643f0d70c115966ac35a9f4. Evidence: .local/android-test/reports/F-03-20261104/. SSA-03 remains PARTIAL; F-03 BLOCKED; physical/OEM NOT TESTED; product Cutover HOLD."
-  - "F-02 PASS: fix/parity commit 639bf2cbd2a4cd60cb88c262ae126dfa69704d98. Timeline presentation lanes now belong to the default Skin; Web state and move validation use the exact Core calendar window; transient editor patches include the required stateRevision. Full serial offline Gradle gate PASS: JVM 967/967, both source boundaries, APK, Lint 0 errors/56 warnings, AndroidTest Kotlin compile. API 35 isolated AVD targeted instrumentation 7/7 PASS. Debug APK SHA-256 878a70f8c5fe4411ad28a149a37b1335fab1104f0c6594e0c35afcc070d6cff2; the single packaged default .pcskin is byte-identical to source, SHA-256 299e4bdd78c8936f6c15db0200172e659aaa5b0e0643f0d70c115966ac35a9f4. Evidence: .local/android-test/reports/F-02-20261104/. SSA-02/SSA-03 remain PARTIAL; physical/OEM tests NOT TESTED; historical SEP signoff incomplete; Product Cutover HOLD."
-  - "F-01 PASS: read-only source boundary audit appended to SINGLE_SKIN_ACCEPTANCE.md. Three concrete ownership risks are mapped only to F-02/F-03/F-04; two formal Core API paths are evidenced. No confirmed product failure; no SSA status changed; JVM/Android/physical tests were not run for this audit."
-  - "R-05 PASS from bca20c459f19735f378bbe9fabd7f4c31b65e9cc: canonical Clear Settings no longer contains installed-skin selection/import/export/delete UI or projected skin catalogue state; Web bridge rejects those retired actions. Existing package data is not deleted. Legacy v2/Compiled direct compatibility callbacks remain pending deferred R-06/R-07."
-  - "Serial offline Gradle gate PASS: both source boundaries, JVM 966/966 (0 failures/errors/skips), Debug assemble, Lint (0 errors / 56 warnings), AndroidTest Kotlin compile. Production Debug APK SHA-256 11d6018cd1d87997fbe3a6ce93c29d42266a7c72d1266f4ca95ca33537eebb6f. Exactly one APK .pcskin; source and packaged factory skin SHA-256 cbe38662a9d719f7d0f5cac956ba7eb5c9cb5fae848903473e62e96bcd087c23, byte-identical (9 files)."
-  - "Skin Studio Python 68/68; changed runtime/E2E Node syntax checks PASS; Clear Studio source roundtrip E2E and notification-permission preview mock E2E PASS."
-  - "API 35 isolated AVD PowerCal_ChatGPT_QA35_20261103 / emulator-5584: three WebView/Settings instrumentation runs PASS (retired catalogue/actions and permission flow 1/1; protected AI settings 1/1; backup DocumentsUI export and snapshot verification 1/1). QA app ID dev.powerfulcalendar.d05qar05; APK SHA-256 2d8dead3440fa5166e45a5d60b84b9384802a7be4e9e3ab48b204f52e1b8d0fe. Calendar Store snapshots matched. A supplemental rerun later lost the ADB device at test teardown; the current AVD is disconnected, and no data clear, uninstall command, or AVD reset was issued."
-  - "R-05 evidence: .local/android-test/reports/R-05-20261104/ (Gradle, Studio/E2E, APK package verification, device identity, three successful Android demos, and supplemental disconnect log). Product Cutover remains HOLD; physical/OEM device checks remain NOT TESTED."
-  - "R-04 PASS from 88c43ac22345bf729305f50aaba1dc4ff65228a2: removed the Native Tools skin catalogue and its page-only callbacks; preserved Host/SAF/runtime compatibility callbacks required by Clear/v2 until R-05/R-06. No package or Store data was deleted or changed."
-  - "Forced serial JVM rerun: 966/966, 0 failures/errors/skips. Skin and Native source boundaries PASS; Debug APK, Lint (0 errors / 56 warnings), and AndroidTest Kotlin compilation PASS. Production Debug APK SHA-256 33E831A4A194A72FA35A0B626C58183597DA7FB8120DDB1E2E432ACCF5B66431."
-  - "API 35 isolated AVD PowerCal_ChatGPT_QA35_20261103 / emulator-5584: WebView renderer fault recovery test 1/1 PASS. Native recovery page omitted installed-skin import/export controls; ICS import, backup/restore and actionable notification/exact-alarm controls remained. Formal Store, pending, commit, identity and sequence snapshots matched. QA app ID dev.powerfulcalendar.d05qar04; APK SHA-256 E2954B09FD676229DC3E7D2D217CE6052C7503C7354C46845FFC8D57D994C225."
-  - "R-04 evidence: .local/android-test/reports/R-04-20261104/ (Gradle logs, device identity, failure/retry notes); exact AndroidTest XML and lint report remain under app/build/reports and app/build/outputs. NativeSkinCatalogReview stays while PowerCalApp's Clear/v2 host actions still call it; Clear Settings catalogue is R-05. Product Cutover remains HOLD."
-  - "G-01 PASS: clean independent Worktree at the fetched integration baseline."
-  - "G-02 PASS: 29 Worktrees inventoried; protected changes retained; ledger commit f4c0f6c6d9e31c6bfc4d84dfc0937f550a32e92a."
-  - "G-03 PASS: UTF-8, task-pointer, history-preservation, scope, and Git diff checks passed; documentation-only commit recorded in this branch."
-  - "G-04 PASS against tested SHA 1e57da5cbb19b4b1348fe390174f629c8871fc47: both source boundaries PASS; Gradle gate PASS; JVM 946/946, 0 failures/errors/skips; Debug APK, lint, and AndroidTest Kotlin compile PASS."
-  - "Lint: 54 warnings, 0 errors; Kotlin compiler emitted 16 warnings; native-library strip emitted 1 packaging warning. No Gradle/test failures."
-  - "Skin Studio: Python 68/68; four requested JS syntax checks PASS; Node title-folding tests 10/10; browser source roundtrip E2E PASS."
-  - "APK SHA-256 68f5f8308a6204c45662f4b39e5c4a4564d98f161953beef0db33b0742042af6. APK contains exactly one .pcskin; source/APK package SHA-256 both ad0202fc6b9f6341cd0cb9bc1937dc4dd6fe2eda42082cea252e0c8f3f13d403 (9 files, 397275 bytes)."
-  - "API 35 QA AVD PowerCal_ChatGPT_QA35_20261103 booted; Debug and AndroidTest APK installs both PASS using adb install -r. Instrumentation execution NOT TESTED."
-  - "Evidence: .local/android-test/reports/single-default-G-04-20261103/ (environment, Gradle, Studio, package, device, and install logs); lint detail at app/build/reports/lint-results-debug.xml."
-  - "G-05 PASS: 16 acceptance items map all 16 original SEP rows; each item is PARTIAL overall pending its declared evidence. Original SEP records are unchanged."
-  - "G-05 identifies no newly confirmed FAIL; SSA-10 physical/OEM reminder evidence remains BLOCKED (REC-P1-086). Android interaction tests were NOT TESTED in G-05; other physical checks were NOT TESTED. Historical scoped device passes remain previous evidence only."
-  - "R-01 PASS at d26d31b0f4935e0060271aa97070f511d4785c4f: runtime dispatch, startup choice, package/SAF effects, edit checkpoint, and Native recovery audited; appendix added to SINGLE_SKIN_ACCEPTANCE.md. Static path/task/source checks and diff validation passed; no Android or physical test run was required. KEEP_HOST/RECOVERY/DEFAULT_SKIN/TEST_COMPAT and retirement scopes mapped to R-02–R-07."
+  F-03_CLOSURE:
+    status: PASS
+    commit: 2a8c323890c0f121b80c72a2a4d1c5c2a35d010d
+    test_fix: SystemCalendarImportTest waits for the Host terminal notice after the async import's final reload/reconcile before opening a separate SQLite connection; all Store assertions remain.
+    jvm: 967/967; 140 XML suites; 0 failures/errors/skips. SystemCalendarImportTest 4/4; WebSkinHostProjectionTest 24/24.
+    gradle: Both source boundaries, Debug APK, lint (0 errors/56 warnings), and AndroidTest Kotlin compile PASS.
+    android: API 35 AVD PowerCal_Wave2_QA35_20261104, emulator-5554; Native/Clear month parity 3/3, two independent prepare/force-stop/restore cycles, WebView recurrence open/single-scope 1/1 PASS.
+    apk_sha256: F5E5FA6FE4194AD213EF60D5933018422A818D0AFB97E7B68FD223B3F54E3522
+    default_pcskin_sha256: 299e4bdd78c8936f6c15db0200172e659aaa5b0e0643f0d70c115966ac35a9f4
+    evidence: .local/android-test/reports/F-03-20261104-wave2/
+    remaining: Physical/OEM NOT TESTED; SSA-03 remains PARTIAL.
+  S-02_STUDIO_GUI:
+    status: PASS (prior task; not the Android gate)
+    commit: d0569f14d383d4cc7bd8b5bef2a922008969de4c
+    evidence: .local/android-test/reports/S-02-20261104/
+    remaining: Generated package's Android WebView execution is the current task.
 
-  - "R-02 PASS on source baseline b6f111eb5eadcef31d6c353ddb601df495b53383 plus R-02 changes: explicit QA-only fresh factory policy; production restore remains opt-in and revalidates. Full Gradle gate PASS: JVM 953/953, skin/native boundaries, debug APK, lint (55 warnings, 0 errors), AndroidTest Kotlin compile. Targeted SkinPackageManagerTest 23/23."
-  - "API 35 isolated AVD PowerCal_ChatGPT_QA35_20261103, emulator-5584, application ID dev.powerfulcalendar.d05qar02: Android instrumentation 4/4 executions PASS (fresh WebView, corrupt-factory Native fallback, two force-stop cold WebView restarts). Native fallback also verified on an additional cold Activity launch. Store table snapshots remained unchanged for the tested boot actions."
-  - "Production debug APK SHA-256 4ab2d8915793dae697266285b7cd2b5774cf3a074c545168505fbe9c8ab9b504; isolated QA APK SHA-256 486938d9e9c87184005ac7c9af50a5444c0a4861aed102ae488066b548477321. Logs: .local/android-test/reports/R-02-20261103/ within this worktree. Initial SDK-path, snapshot-helper and PowerShell argument failures are retained in the logs; corrected reruns passed."
+BLOCKERS:
+  - S-02 Android Gate must prove all five generated pages/components render after export/import and cold start on isolated API 35.
+  - The Android SDK had no registered AVD at task start; a new isolated API 35 AVD is now available and verified.
+  - Physical/OEM evidence remains NOT TESTED.
 
-  - "R-03 PASS against source baseline 9da0eda4e5dd44b839825b74d365b1219d143db5 plus R-03 changes: explicit isolated QA migration runs before Activity; pending/complete preference commits protect resumable deletion. On failure the QA caller must retry before normal startup. No production startup calls migration; product cutover remains HOLD."
-  - "R-03 full Gradle gate PASS: JVM 966/966, migration class 13/13, both source boundaries, debug APK, lint (56 warnings, 0 errors), AndroidTest Kotlin compile. Production debug APK from the full gate SHA-256 4ed97c462cebc17b538800fe98e8e950cc941b86cb02b102e682270e8d6773f1; later production rebuild SHA-256 29b6684a64405cf573261099dd22c8f3a01119e55cb79cadb71bbd9fd16ffe16. APK contains one factory .pcskin, SHA-256 ad0202fc6b9f6341cd0cb9bc1937dc4dd6fe2eda42082cea252e0c8f3f13d403."
-  - "API 35 AVD PowerCal_ChatGPT_QA35_20261103, emulator-5584, isolated application ID dev.powerfulcalendar.d05qar03: 23 successful instrumentation logs; six additional attempts aborted due emulator disconnections or a test package requiring reinstall, with retries passing (seven aborted log files include one copy). Fresh, historical Native, historical Clear and unknown selection each passed preparation plus two process cold starts; legacy packages to Clear, corrupt factory to Native, real recurrence/exception/completion/draft/reminder Store snapshots, commit/delete failures, symlink containment and cross-process pending cleanup retry also passed. Only the isolated QA app data was cleared. QA APK SHA-256 1582d72837d0679b19d4212fe531a65a67a205481eabdf36d63cc16bcbb19347. Logs: .local/android-test/reports/R-03-20261104/ within this worktree."
-
-BLOCKERS: F-03 full-suite gate remains blocked by the repeated SystemCalendarImportTest SQLite lock failure; focused F-03 device and projection checks passed. S-02 Android package installation is NOT TESTED. SSA-02/SSA-03/SSA-04/SSA-12/SSA-13 remain PARTIAL; physical/OEM evidence and OS process-level F-04 cold start are NOT TESTED; historical SEP signoff remains incomplete; Product Cutover stays HOLD. REC-P1-086 remains BLOCKED and simultaneous-alarm behavior remains unresolved in the frozen contract.
+AUTHORITATIVE_PLAN: docs/POWERCAL_SINGLE_DEFAULT_SKIN_EXECUTION_PLAN_2026-11-03_R2.md
+ACCEPTANCE_MATRIX: docs/agent-handoff/SINGLE_SKIN_ACCEPTANCE.md
