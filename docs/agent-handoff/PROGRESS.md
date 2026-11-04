@@ -1,5 +1,15 @@
 # PowerCal 当前执行状态（R2）
 
+## Wave 3 — F-08 系统设置与 Android 平台能力闭合（2026-11-04）
+
+- **状态：** F-08 PASS（任务范围）；SSA-09/SSA-10 继续 PARTIAL；Product Cutover = HOLD。提交 `c3a1e59f44e2b304314673f0030ae19c2f3f9d28`（`fix(settings): complete host-platform controls on default skin`）。
+- **验证：** 定向 JVM 69/69；全量 JVM 970/970、140 suites、0 failures/errors/skips；Skin/Native 边界、APK、AndroidTest Kotlin 编译 PASS；Lint 0 errors / 56 warnings。
+- **Android：** 隔离 API 35 AVD `PowerCal_Wave2_QA35_20261104` / `emulator-5554`，最终 13/13 定向 instrumentation 方法通过。覆盖系统日历权限拒绝/允许与合成导入、ICS 草稿/导出、备份导出/空库恢复/坏哈希/损坏及未来 schema 拒绝/取消零写入、受保护设置、精确闹钟设置页与空 Store 调度重建、AlarmManager FIRED。
+- **包与 Store：** APK SHA-256 `08739af8ec4967c764e738e20885a2fc8c1c96033f4e33a3414643b48422d16e`；生产 APK 恰好一份 `.pcskin`，源码和 APK 字节一致，SHA-256 `299e4bdd78c8936f6c15db0200172e659aaa5b0e0643f0d70c115966ac35a9f4`。测试使用隔离 Store/合成 provider fixture，拒绝、取消和只读系统操作前后 Store 快照不变。
+- **证据：** `.local/android-test/reports/F-08-20261104/manifest.md`；Issue：`docs/issues/PC-ISSUE-SEPARATION-F08-SETTINGS-ANDROID-VERIFICATION.md`。
+- **限制：** 物理/OEM 提醒投递、Skin 发起的通知授权允许路径、ICS 选择器取消、提醒重启/时区/DST/宽限边界 NOT TESTED。首轮广泛 AndroidTest 有失败和 3 个 skip；拆分并纠正过时 Future Schema 错误断言后，两拒绝路径均独立通过。另有一个 AI 历史顺序断言失败，属于 F-07 范围，未改动且未计入 F-08。
+- **唯一下一任务：** F-09 Back、IME、Renderer 恢复、无障碍和小屏行为验证。
+
 唯一实时任务入口：`docs/agent-handoff/CURRENT.md`。历史正文从下方标记起原样保留；旧 `NEXT_ACTION` 只代表当时状态，不是当前执行命令。
 
 ## 当前状态（2026-11-04 · Wave 2）

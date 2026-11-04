@@ -2,15 +2,27 @@ PROJECT: Powerful-Calendar
 PLAN: PLAN-2026-11-03-R2
 BRANCH: codex/skin-single-default-closure
 WAVE2_START_HEAD: 3b54097d6383c0349b5d3d638c228320e3c8e22c
-LATEST_CODE_HEAD: a008f20771062e2d037a9f810435e5328b70bd46
-LATEST_VERIFIED_HEAD: 25711d3569edfd59c23c774c3bb371fbbc192044
-CURRENT_TASK: NONE
-TASK_STATUS: COMPLETE
-LAST_COMPLETED_TASK: F-07-AI-CHAT-PROPOSAL-REVIEW-PARITY (PASS)
-LAST_COMPLETED_COMMIT: 25711d3569edfd59c23c774c3bb371fbbc192044
-NEXT_TASK: NONE
-NEXT_ACTION: Wave 2 authorization limit reached after F-07; stop until a new task is authorized.
+WAVE3_START_HEAD: 82b456fd2bfc15df379fd15d967fac3da57b899d
+LATEST_CODE_HEAD: c3a1e59f44e2b304314673f0030ae19c2f3f9d28
+LATEST_VERIFIED_HEAD: c3a1e59f44e2b304314673f0030ae19c2f3f9d28
+CURRENT_TASK: F-09
+TASK_STATUS: READY
+LAST_COMPLETED_TASK: F-08-SYSTEM-SETTINGS-ANDROID-PARITY (PASS)
+LAST_COMPLETED_COMMIT: c3a1e59f44e2b304314673f0030ae19c2f3f9d28
+NEXT_TASK: F-09
+NEXT_ACTION: Execute the R2 F-09 Back/IME/renderer recovery/accessibility task on the verified isolated API 35 AVD.
 WAVE2_STATUS: COMPLETE (8 authorized work packages attempted; all PASS)
+WAVE3_STATUS: IN_PROGRESS (F-08 PASS; Product Cutover HOLD)
+
+WAVE3_QUEUE:
+  - F-08 permissions/reminders/ICS/backup/system settings: PASS (commit c3a1e59f44e2b304314673f0030ae19c2f3f9d28)
+  - F-09 Back/IME/recovery/accessibility: READY
+  - S-06 from-blank complete Skin: NOT STARTED
+  - S-07 default Skin Studio roundtrip: NOT STARTED
+  - R-06 runtime retirement: CONDITIONAL; requires F-08/F-09/S-06/S-07 parity
+  - R-07 runtime/recovery gate: CONDITIONAL; requires R-06 prerequisites and safe recovery evidence
+  - Q-01 install/migration acceptance: NOT STARTED
+  - Q-02 full parity replay: NOT STARTED
 
 WAVE_2_QUEUE:
   - F-03 Closure: PASS (commit 2a8c323890c0f121b80c72a2a4d1c5c2a35d010d)
@@ -23,7 +35,7 @@ WAVE_2_QUEUE:
   - F-07 AI chat/proposal/review parity: PASS (commit 25711d3569edfd59c23c774c3bb371fbbc192044)
 
 DEFERRED_TASKS: R-06 and R-07 remain DEFERRED until dependent Skin parity is proven.
-PHASE: F/S Wave 2
+PHASE: F/S Wave 3
 SEP_SIGNOFF: INCOMPLETE (historical parity remains unsigned)
 PRODUCT_CUTOVER: HOLD
 
@@ -45,6 +57,18 @@ OWNER_OVERRIDE_2026_11_03:
   Release_gate: Product Cutover remains HOLD.
 
 LATEST_VERIFIED_EVIDENCE:
+  F-08:
+    status: PASS (task scope); SSA-09 and SSA-10 remain PARTIAL; Product Cutover remains HOLD.
+    commit: c3a1e59f44e2b304314673f0030ae19c2f3f9d28
+    jvm: focused settings/import-export group 69/69; full suite 970/970 across 140 suites, 0 failures/errors/skips.
+    android: API 35 isolated AVD PowerCal_Wave2_QA35_20261104 / emulator-5554; 13/13 final targeted instrumentation methods passed across permission, reminder, calendar, ICS, backup, rejection, and protected settings paths.
+    reminder: exact-alarm state/settings/reconcile passed; actual AlarmManager delivery reached receiver, recorded FIRED and posted QA notification.
+    import_export: ICS review drafts/export, synthetic system-calendar import parity, backup export/empty-Store restore and refusal/cancel zero-write paths passed.
+    boundaries: Skin and Native source checks PASS; APK assemble PASS; lint 0 errors / 56 warnings; AndroidTest Kotlin compile PASS.
+    apk_sha256: 08739af8ec4967c764e738e20885a2fc8c1c96033f4e33a3414643b48422d16e.
+    factory_package: exactly one `.pcskin`; source/APK byte-identical, SHA-256 299e4bdd78c8936f6c15db0200172e659aaa5b0e0643f0d70c115966ac35a9f4.
+    evidence: .local/android-test/reports/F-08-20261104/manifest.md
+    limits: physical/OEM alarm delivery, notification grant via Skin request, ICS picker cancellation, reminder reboot/time-zone/DST/grace-boundary NOT TESTED; unrelated AI history-order assertion observed during initial broad run remains outside F-08.
   F-07:
     status: PASS (task scope); Product Cutover and full SEP sign-off remain HOLD/INCOMPLETE.
     commit: 25711d3569edfd59c23c774c3bb371fbbc192044
