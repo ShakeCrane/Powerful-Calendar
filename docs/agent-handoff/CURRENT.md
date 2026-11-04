@@ -4,15 +4,24 @@ BRANCH: codex/skin-single-default-closure
 WAVE2_START_HEAD: 3b54097d6383c0349b5d3d638c228320e3c8e22c
 WAVE3_START_HEAD: 82b456fd2bfc15df379fd15d967fac3da57b899d
 LATEST_CODE_HEAD: b71cf0eedbd6dba9dafe0d9215ab33457258d045
-LATEST_VERIFIED_HEAD: 0d6ceb1fb6a7a7a6fbc074a508d77480aa561ef6
-CURRENT_TASK: Q-01
+LATEST_VERIFIED_HEAD: 49b0841a6ea98ceec4872b07d3b6cec260fe55a9
+CURRENT_TASK: Q-02
 TASK_STATUS: IN_PROGRESS
-LAST_COMPLETED_TASK: V-02-CLEAR-FALLBACK-VISUAL-RC (PARTIAL; Checkpoint C delivered, custom artwork unavailable)
-LAST_COMPLETED_COMMIT: 0d6ceb1fb6a7a7a6fbc074a508d77480aa561ef6
-LAST_ATTEMPTED_TASK: Q-01 install and legacy migration acceptance (IN PROGRESS)
-LAST_ATTEMPTED_COMMIT: 0d6ceb1fb6a7a7a6fbc074a508d77480aa561ef6
-NEXT_TASK: Q-01
-NEXT_ACTION: Run the Q-01 isolated fresh-install, upgrade/migration, corrupt-package recovery, and Store-preservation cases from R2. Keep tests within the verified QA app and its private fixture data; do not clear production or external data.
+LAST_COMPLETED_TASK: Q-01-INSTALL-AND-LEGACY-MIGRATION-ACCEPTANCE (PASS; state-matrix scope; no product source changes)
+LAST_COMPLETED_COMMIT: 49b0841a6ea98ceec4872b07d3b6cec260fe55a9 (tested code baseline; Q-01 evidence-only)
+LAST_ATTEMPTED_TASK: Q-02 real-user feature parity replay (IN PROGRESS)
+LAST_ATTEMPTED_COMMIT: 49b0841a6ea98ceec4872b07d3b6cec260fe55a9
+NEXT_TASK: Q-02
+NEXT_ACTION: Reconcile the current SEP-01…16 and SSA-01…16 evidence, then replay only required cases still lacking evidence on the current verified build. Keep simulator, physical-device, and untested results separate; do not upgrade historical SSA status without its full evidence.
+LAST_TASK_EVIDENCE:
+  Q-01:
+    status: PASS (isolated migration/state matrix; package uninstall/reinstall NOT TESTED)
+    source_head: 49b0841a6ea98ceec4872b07d3b6cec260fe55a9
+    android: 24 instrumentation methods PASS; one initial missing-phase invocation was assumption-skipped then rerun; API 35 AVD PowerCal_Wave2_QA35_20261104 / emulator-5554
+    apk_sha256: 66fa0941beda7ff5fce3dbbfa176d3152a002205faafaba5666e8ac0068617a3
+    store_sha256_before_after: 881b1b234520d24636d9816fe48681d0bcfb7a8b1f4d39a2c1513b33fefb9cf7
+    evidence: .local/android-test/reports/Q-01-20261105/manifest.md
+    limits: QA suffix APK build unavailable because the SDK platform/build-tools are absent; current installed app and test APK hashes matched their local artifacts; no app data clear/uninstall or production cutover.
 PRODUCT_DELIVERY_CHECKPOINT_A:
   status: DELIVERED (PowerCal Functional Preview; Debug only)
   apk: dist/powercal/PowerCal-Functional-Preview-2026-11-05.apk
@@ -45,7 +54,7 @@ PRODUCT_DELIVERY_CHECKPOINT_C:
   android: API 35 isolated AVD; five WebView pages captured; see .local/android-test/reports/V-02-20261105/manifest.md
   limitations: No approved Claude artwork source found; TalkBack, physical/OEM and full SEP gaps remain; Product Cutover HOLD
 WAVE2_STATUS: COMPLETE (8 authorized work packages attempted; all PASS)
-WAVE3_STATUS: IN_PROGRESS (F-08 PASS; F-09 TalkBack traversal NOT TESTED; S-06/S-07 PASS; Checkpoint A, B, and Clear-fallback C delivered; R-06/R-07 PASS; V-01 PASS; V-02 PARTIAL because custom artwork is unavailable; Q-01 IN PROGRESS; Product Cutover HOLD)
+WAVE3_STATUS: IN_PROGRESS (F-08 PASS; F-09 TalkBack traversal NOT TESTED; S-06/S-07 PASS; Checkpoint A, B, and Clear-fallback C delivered; R-06/R-07 PASS; V-01 PASS; V-02 PARTIAL because custom artwork is unavailable; Q-01 PASS for isolated migration state matrix; Q-02 IN PROGRESS; Product Cutover HOLD)
 
 WAVE3_QUEUE:
   - F-08 permissions/reminders/ICS/backup/system settings: PASS (commit c3a1e59f44e2b304314673f0030ae19c2f3f9d28)
@@ -56,8 +65,8 @@ WAVE3_QUEUE:
   - R-07 runtime/recovery gate: PASS (commit b71cf0eedbd6dba9dafe0d9215ab33457258d045; API 35 boot/failure/restart and dirty-editor checkpoint verified)
   - V-01 design/asset takeover: PASS (available Clear resources and Studio anchors mapped; no separate approved Claude artwork found in this worktree; see `VISUAL_ASSET_MAP.md`)
   - V-02 Clear-fallback Visual RC: PARTIAL (commit 0d6ceb1fb6a7a7a6fbc074a508d77480aa561ef6; APK and canonical .pcskin available in dist/powercal; five API 35 WebView screenshots and hashes recorded; custom art absent)
-  - Q-01 install/migration acceptance: IN PROGRESS; use the R2 Q-01 task card and verified isolated QA fixtures
-  - Q-02 full parity replay: NOT STARTED; follows Q-01
+  - Q-01 install/migration acceptance: PASS (24 API 35 instrumentation methods; third-party package cleanup, native/clear/unknown selection states, process recovery and Core Store snapshots; package uninstall/reinstall NOT TESTED; evidence `.local/android-test/reports/Q-01-20261105/manifest.md`)
+  - Q-02 full parity replay: IN PROGRESS; reconcile current matrix and target only evidence gaps; do not promote any SSA status based on prior task-level PASS alone
 
 WAVE_2_QUEUE:
   - F-03 Closure: PASS (commit 2a8c323890c0f121b80c72a2a4d1c5c2a35d010d)
@@ -70,7 +79,7 @@ WAVE_2_QUEUE:
   - F-07 AI chat/proposal/review parity: PASS (commit 25711d3569edfd59c23c774c3bb371fbbc192044)
 
 DEFERRED_TASKS: None in current Wave 3 queue; R-06 and R-07 PASS. Q-05 production Cutover remains HOLD.
-PHASE: Product delivery / visual integration
+PHASE: Product delivery / final acceptance
 SEP_SIGNOFF: INCOMPLETE (historical parity remains unsigned)
 PRODUCT_CUTOVER: HOLD
 
