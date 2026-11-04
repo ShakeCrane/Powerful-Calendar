@@ -270,6 +270,7 @@ fun PowerCalApp(
     var webProfileEditorSkinId by remember { mutableStateOf<String?>(null) }
     var webProfileEditorSaved by remember { mutableStateOf(false) }
     var webProfileSaveRevision by remember { mutableIntStateOf(0) }
+    var refreshCalendarSnapshotAfterEventConflict by remember { mutableStateOf(false) }
 
     var page by rememberSaveable { mutableStateOf(Page.TIMELINE.name) }
     var records by remember { mutableStateOf<List<TemporalRecord>>(emptyList()) }
@@ -560,7 +561,9 @@ fun PowerCalApp(
     }
     // Title placement is always outside; old user preference intentionally ignored.
 
-    suspend fun reload(): List<DraftReviewCardV1>? {
+    suspend fun reload(
+        forceFreshCalendarSnapshot: Boolean = false
+    ): List<DraftReviewCardV1>? {
         memoRefreshInFlight++
         val memoGenerationAtStart = memoProjectionGeneration
         try {
@@ -578,7 +581,13 @@ fun PowerCalApp(
                     val requestedWindows = listOf(
                         timelineCalendarQuery, monthCalendarQuery, nativeMonthCalendarQuery
                     ).distinct()
-                    val windows = requestedWindows.associateWith(calendarFeatureApi::queryWindow)
+                    val freshEventSnapshot = if (forceFreshCalendarSnapshot) {
+                        eventFeatureApi.queryEvents()
+                    } else null
+                    val windows = requestedWindows.associateWith { query ->
+                        if (freshEventSnapshot == null) calendarFeatureApi.queryWindow(query)
+                        else calendarFeatureApi.queryWindow(query, freshEventSnapshot)
+                    }
                     val revision = eventPage.featureRevision
                     if (eventPage.stale || memoPage.stale || memoPage.featureRevision != revision ||
                         windows.values.any { it.stale || it.featureRevision != revision }
@@ -2002,9 +2011,15 @@ fun PowerCalApp(
             val status = response.optString("status")
             if(status in setOf("saved","staged","committed","discarded","restored") ||
                 (status == "closed" && command is WebEditCommand.CloseEvent)) {
+                val forceFreshCalendarSnapshot = command is WebEditCommand.CloseEvent &&
+                    refreshCalendarSnapshotAfterEventConflict
+                if (forceFreshCalendarSnapshot) refreshCalendarSnapshotAfterEventConflict = false
                 // A completed host transaction must refresh the app-wide projections;
                 // an unsuccessful UI refresh must not turn success into a retryable write.
-                runCatching { reload() }
+                runCatching { reload(forceFreshCalendarSnapshot) }
+                    .onSuccess { refreshed ->
+                        if (refreshed == null) message = "操作已完成，但数据版本变化导致界面未同步；请重新打开查看"
+                    }
                     .onFailure { message = "操作已完成，但界面同步失败；请刷新查看" }
             }
             if(status in setOf("saved","committed","restored")) {
@@ -2965,6 +2980,20 @@ fun PowerCalApp(
                                 else -> "已取消保存，修改仍保留在编辑器中"
                             }
                             "kept" -> message = "已保留草稿；正式事件没有变化"
+                            "conflict", "stale" -> {
+                                val eventEditorConflict = review.command is WebEditCommand.SaveEvent ||
+                                    review.command is WebEditCommand.DeleteEvent
+                                if (eventEditorConflict) {
+                                    // A concurrent writer can change the Store without advancing
+                                    // this Host instance's in-memory revision. Defer a snapshot
+                                    // query until the editor closes so the timeline cache cannot
+                                    // overwrite the fresh projection with the same revision key.
+                                    refreshCalendarSnapshotAfterEventConflict = true
+                                }
+                                message = reply.optString("detail").ifBlank {
+                                    "版本冲突；正式事件没有改变，请重新检查"
+                                }
+                            }
                             else -> message = reply.optString("detail").ifBlank { "保存未完成，请重新检查" }
                         }
                         WebSkinBridgeRuntime.stateRevision++
