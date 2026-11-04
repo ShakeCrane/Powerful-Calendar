@@ -4,15 +4,15 @@ BRANCH: codex/skin-single-default-closure
 WAVE2_START_HEAD: 3b54097d6383c0349b5d3d638c228320e3c8e22c
 WAVE3_START_HEAD: 82b456fd2bfc15df379fd15d967fac3da57b899d
 LATEST_CODE_HEAD: b71cf0eedbd6dba9dafe0d9215ab33457258d045
-LATEST_VERIFIED_HEAD: b71cf0eedbd6dba9dafe0d9215ab33457258d045
-CURRENT_TASK: V-01
-TASK_STATUS: READY
-LAST_COMPLETED_TASK: R-07-SINGLE-RUNTIME-BOOT-AND-INDEPENDENT-RECOVERY (PASS)
-LAST_COMPLETED_COMMIT: b71cf0eedbd6dba9dafe0d9215ab33457258d045
-LAST_ATTEMPTED_TASK: R-07 single Runtime boot and recovery (PASS)
-LAST_ATTEMPTED_COMMIT: b71cf0eedbd6dba9dafe0d9215ab33457258d045
-NEXT_TASK: V-01
-NEXT_ACTION: Inventory approved Claude design work and existing visual assets, then map verified assets to default Skin pages/components without changing Core.
+LATEST_VERIFIED_HEAD: 475f739c4760feec0703aab8e6371211327a8e2c
+CURRENT_TASK: V-02
+TASK_STATUS: IN_PROGRESS
+LAST_COMPLETED_TASK: V-01-VISUAL-ASSET-INVENTORY-AND-STUDIO-MAP (PASS; separate Claude artwork not present)
+LAST_COMPLETED_COMMIT: 475f739c4760feec0703aab8e6371211327a8e2c
+LAST_ATTEMPTED_TASK: V-02 Visual RC from the validated Clear fallback (IN PROGRESS)
+LAST_ATTEMPTED_COMMIT: 475f739c4760feec0703aab8e6371211327a8e2c
+NEXT_TASK: V-02
+NEXT_ACTION: Produce the Visual Release Candidate from the verified Clear fallback using Studio's existing round-trip/build path; explicitly leave custom Claude visual integration incomplete because its artwork source is absent.
 PRODUCT_DELIVERY_CHECKPOINT_A:
   status: DELIVERED (PowerCal Functional Preview; Debug only)
   apk: dist/powercal/PowerCal-Functional-Preview-2026-11-05.apk
@@ -35,7 +35,7 @@ PRODUCT_DELIVERY_CHECKPOINT_B:
   evidence: .local/android-test/reports/R-07-20261105/
   limitations: TalkBack traversal, physical/OEM reminder delivery, live AI provider and full SEP sign-off remain NOT TESTED/INCOMPLETE; Product Cutover HOLD
 WAVE2_STATUS: COMPLETE (8 authorized work packages attempted; all PASS)
-WAVE3_STATUS: IN_PROGRESS (F-08 PASS; F-09 TalkBack traversal NOT TESTED; S-06/S-07 PASS; Checkpoint A and B delivered; R-06/R-07 PASS; V-01 next; Product Cutover HOLD)
+WAVE3_STATUS: IN_PROGRESS (F-08 PASS; F-09 TalkBack traversal NOT TESTED; S-06/S-07 PASS; Checkpoint A and B delivered; R-06/R-07 PASS; V-01 PASS; V-02 Clear fallback RC IN PROGRESS; custom artwork unavailable; Product Cutover HOLD)
 
 WAVE3_QUEUE:
   - F-08 permissions/reminders/ICS/backup/system settings: PASS (commit c3a1e59f44e2b304314673f0030ae19c2f3f9d28)
@@ -44,8 +44,8 @@ WAVE3_QUEUE:
   - S-07 default Skin Studio roundtrip: PASS (commit 0cfd15564189f9c0e9e3c0436441cd084183022f; Studio save/reopen, Settings source edit, export/import/restore, 88/88 Python, final APK byte check, API 35 WebView Settings 1/1)
   - R-06 runtime retirement: PASS (commit ffde207343454bdd998ced223f3cfbcc0527d341; compiled examples moved to test source, v2 dispatch default-off, Native recovery preserved)
   - R-07 runtime/recovery gate: PASS (commit b71cf0eedbd6dba9dafe0d9215ab33457258d045; API 35 boot/failure/restart and dirty-editor checkpoint verified)
-  - V-01 design/asset takeover: NEXT
-  - V-02 default Clear visual implementation: pending V-01 inventory; no unverified asset is treated as approved
+  - V-01 design/asset takeover: PASS (available Clear resources and Studio anchors mapped; no separate approved Claude artwork found in this worktree; see `VISUAL_ASSET_MAP.md`)
+  - V-02 default Clear visual implementation: IN PROGRESS; prepare a fresh Visual RC from verified Clear fallback; custom visual integration remains incomplete pending approved artwork
   - Q-01 install/migration acceptance: NOT STARTED; follows visual integration
   - Q-02 full parity replay: NOT STARTED; follows Q-01
 
@@ -87,6 +87,13 @@ OWNER_OVERRIDE_2026_11_05:
   Release_gate: Product Cutover remains HOLD.
 
 LATEST_VERIFIED_EVIDENCE:
+  V-01:
+    status: PASS (complete inventory and source mapping; no standalone Claude artwork available)
+    evidence: docs/agent-handoff/VISUAL_ASSET_MAP.md
+    current_source: tools/skin-studio/default-clear/source/web/clear-design.css, style.css, app.js, edit.js; licensed Inter font is bundled; no image artwork in the factory `.pcskin`.
+    studio: project.json exposes color slots but has no project.pages/component-tree IDs. S-07 verified Studio source-file roundtrip; the map uses real HTML IDs, not invented Studio component IDs.
+    host_surface: DraftDeckDialog currently uses Native Compose recovery/trusted-approval rendering; it has no matching Web `.pcskin` component/resource mapping.
+    limitations: no custom Claude artwork delivered; `design/default-skin-01/assets/pc.css` referenced by CSS comment is absent and untracked; contrast has not been fully measured.
   R-07:
     status: PASS (isolated runtime boot/recovery task scope; Product Cutover remains HOLD)
     commit: b71cf0eedbd6dba9dafe0d9215ab33457258d045
