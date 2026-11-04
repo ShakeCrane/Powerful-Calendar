@@ -3,16 +3,16 @@ PLAN: PLAN-2026-11-03-R2
 BRANCH: codex/skin-single-default-closure
 WAVE2_START_HEAD: 3b54097d6383c0349b5d3d638c228320e3c8e22c
 WAVE3_START_HEAD: 82b456fd2bfc15df379fd15d967fac3da57b899d
-LATEST_CODE_HEAD: 0cfd15564189f9c0e9e3c0436441cd084183022f
-LATEST_VERIFIED_HEAD: 96fc4bde3836724d1de88c36aa7de5e3699a8dd1
-CURRENT_TASK: R-06
+LATEST_CODE_HEAD: ffde207343454bdd998ced223f3cfbcc0527d341
+LATEST_VERIFIED_HEAD: ffde207343454bdd998ced223f3cfbcc0527d341
+CURRENT_TASK: R-07
 TASK_STATUS: READY
-LAST_COMPLETED_TASK: FUNCTIONAL-PREVIEW-CHECKPOINT-A (DELIVERED)
-LAST_COMPLETED_COMMIT: 96fc4bde3836724d1de88c36aa7de5e3699a8dd1 (APK build baseline)
-LAST_ATTEMPTED_TASK: F-09 TalkBack follow-up (BLOCKED; TalkBack traversal NOT TESTED)
-LAST_ATTEMPTED_COMMIT: 3932427ac7c8a06d1dabb53b732fef693954efdd
-NEXT_TASK: R-06
-NEXT_ACTION: R-06 runtime convergence. TalkBack traversal remains NOT TESTED and is a release-quality gap; per Owner's 2026-11-05 delivery decision it does not block the Functional Preview or independent runtime convergence. Keep Product Cutover HOLD.
+LAST_COMPLETED_TASK: R-06-COMPILED-AND-V2-RUNTIME-RETIREMENT (PASS)
+LAST_COMPLETED_COMMIT: ffde207343454bdd998ced223f3cfbcc0527d341
+LAST_ATTEMPTED_TASK: R-06 runtime convergence (PASS)
+LAST_ATTEMPTED_COMMIT: ffde207343454bdd998ced223f3cfbcc0527d341
+NEXT_TASK: R-07
+NEXT_ACTION: Verify single-default boot and independent Native recovery under failure injection; keep production Cutover HOLD and preserve existing app data.
 PRODUCT_DELIVERY_CHECKPOINT_A:
   status: DELIVERED (PowerCal Functional Preview; Debug only)
   apk: dist/powercal/PowerCal-Functional-Preview-2026-11-05.apk
@@ -23,15 +23,15 @@ PRODUCT_DELIVERY_CHECKPOINT_A:
   evidence: .local/android-test/reports/functional-preview-20261105/
   limitations: TalkBack traversal NOT TESTED; physical/OEM and live AI provider NOT TESTED
 WAVE2_STATUS: COMPLETE (8 authorized work packages attempted; all PASS)
-WAVE3_STATUS: IN_PROGRESS (F-08 PASS; F-09 code/device flows PASS but TalkBack traversal NOT TESTED; S-06/S-07 PASS; Checkpoint A delivered; R-06 next; Product Cutover HOLD)
+WAVE3_STATUS: IN_PROGRESS (F-08 PASS; F-09 TalkBack traversal NOT TESTED; S-06/S-07 PASS; Checkpoint A delivered; R-06 PASS; R-07 next; Product Cutover HOLD)
 
 WAVE3_QUEUE:
   - F-08 permissions/reminders/ICS/backup/system settings: PASS (commit c3a1e59f44e2b304314673f0030ae19c2f3f9d28)
   - F-09 Back/IME/recovery/accessibility: BLOCKED (code/test fixes committed; TalkBack traversal order not verified)
   - S-06 from-blank complete Skin: PASS (commit 03c8ba38db785b16052a2f9b440b8bf3bc5ee79b; Studio GUI/API, 88/88 Python, Android 4/4, MainActivity force-stop/restore verified)
   - S-07 default Skin Studio roundtrip: PASS (commit 0cfd15564189f9c0e9e3c0436441cd084183022f; Studio save/reopen, Settings source edit, export/import/restore, 88/88 Python, final APK byte check, API 35 WebView Settings 1/1)
-  - R-06 runtime retirement: NEXT / READY under Owner 2026-11-05 delivery priority; F-09 TalkBack traversal remains unverified and release-relevant but does not block Functional Preview or independent work
-  - R-07 runtime/recovery gate: CONDITIONAL; requires R-06 prerequisites and safe recovery evidence
+  - R-06 runtime retirement: PASS (commit ffde207343454bdd998ced223f3cfbcc0527d341; compiled examples moved to test source, v2 dispatch default-off, Native recovery preserved)
+  - R-07 runtime/recovery gate: NEXT / READY; verify boot, failures, and draft preservation before Q-01/Q-02 and any Q-05 cutover
   - Q-01 install/migration acceptance: NOT STARTED
   - Q-02 full parity replay: NOT STARTED
 
@@ -45,7 +45,7 @@ WAVE_2_QUEUE:
   - S-05 resource/source round-trip: PASS (commit a008f20771062e2d037a9f810435e5328b70bd46)
   - F-07 AI chat/proposal/review parity: PASS (commit 25711d3569edfd59c23c774c3bb371fbbc192044)
 
-DEFERRED_TASKS: R-06 and R-07 remain DEFERRED until dependent Skin parity is proven.
+DEFERRED_TASKS: None in current Wave 3 queue; R-06 PASS, R-07 READY. Q-05 production Cutover remains HOLD.
 PHASE: F/S Wave 3
 SEP_SIGNOFF: INCOMPLETE (historical parity remains unsigned)
 PRODUCT_CUTOVER: HOLD
@@ -59,15 +59,30 @@ OWNER_GOAL:
 
 RUNTIME_POLICY:
   Factory_skin: powercal-clear-default.pcskin (id powercal-clear-default).
-  Native_recovery: powercal-default; R-06/R-07 remain deferred.
-  No second factory skin, multi-skin store, or production cutover is authorized.
+  Native_recovery: powercal-default. R-06 retired compiled/v2 daily dispatch; R-07 is next. Boot preference migration and Product Cutover remain HOLD.
+  No second factory skin or multi-skin store. Q-05 may switch the default only on the protected branch after the internal RC and required boot/recovery checks; public-store release is not authorized.
 
 OWNER_OVERRIDE_2026_11_03:
   Legacy_package_policy: R-03 cleanup was limited to isolated QA app-private installed packages; do not archive/export legacy packages or preserve a daily multi-skin list.
   Protected: Calendar Store, drafts, reminders, AI history, Studio source projects, design sources, fixtures, external SAF files, and Git Worktrees.
   Release_gate: Product Cutover remains HOLD.
+OWNER_OVERRIDE_2026_11_05:
+  Functional_preview: Checkpoint A is delivered at dist/powercal/PowerCal-Functional-Preview-2026-11-05.apk; it is a Debug internal preview.
+  Runtime_work: Continue R-07 without waiting for TalkBack automation; do not migrate production preferences before its isolated boot/recovery gate. After an internal RC and required safety checks, Q-05 may switch the default on this protected branch; no public release is authorized.
+  TalkBack: F-09 focus order remains NOT TESTED after one bounded official keyboard shortcut diagnostic; no PowerCal defect was confirmed.
+  Release_gate: Product Cutover remains HOLD.
 
 LATEST_VERIFIED_EVIDENCE:
+  R-06:
+    status: PASS (compiled example and v2 daily dispatch retired; production cutover unchanged)
+    commit: ffde207343454bdd998ced223f3cfbcc0527d341
+    jvm: 971/971, 141 XML suites, 0 failures/errors/skips.
+    boundaries: Skin and Native checks PASS; APK assemble PASS; lint PASS; AndroidTest Kotlin compile PASS.
+    android: API 35 isolated AVD emulator-5554; persisted Clear cold boot, renderer failure Native recovery, uncaught JS recovery, and v2 non-dispatch fixture PASS (4/4).
+    runtime: no ActiveVisualSkin PROFILE switch; StudioExample implementations live only in JVM tests; RuntimeSkinSurfaces is disabled by default and test fixtures opt in explicitly. Native Host/recovery adapters and v3 factory package remain.
+    package: APK SHA-256 255b9df256f3e35bbce32e29cb8c1f70d985804ece6fdfc20a659de810e3f87b; exactly one .pcskin; source/APK skin SHA-256 b9035719c2e0c75d335225216ea3687b72cc2cf4692e829ca43566c730c3fee3.
+    store: instrumented v2 route had zero formal rows, drafts, or commits; renderer recovery assertions preserved isolated Store snapshots.
+    evidence: .local/android-test/reports/R-06-20261105/manifest.yaml and task logs/screenshots.
   S-07:
     status: PASS (Studio roundtrip task scope; Product Cutover and full SEP sign-off remain HOLD/INCOMPLETE)
     commit: 0cfd15564189f9c0e9e3c0436441cd084183022f
@@ -96,6 +111,7 @@ LATEST_VERIFIED_EVIDENCE:
     back_recovery: Page Back and clean editor close preserve Store snapshots; dirty editor leaves one pending draft without formal writes; JS/renderer failures retain draft and Native recovery remains available.
     accessibility: Follow-up on API 35 AVD with the actual Clear WebView (APK 2ff316e1e350fdd4573ceac7ab154b616fb2e425ef209bde0d2b3e79d89b33a6): TalkBack bound and touch exploration enabled. Touch moved accessibility highlight to the Timeline tab; horizontal right and left ADB swipe probes left the highlight on Timeline. The same ADB swipe did not advance focus on the TalkBack settings screen (after initial focus landed on Navigate up, a second swipe stayed there), so the injected gesture path is not a valid traversal oracle. Clear's TalkBack traversal order remains NOT TESTED and blocks F-09. TalkBack settings restored to null/0/0.
     followup_evidence: .local/android-test/reports/F-09-20261104/talkback-followup-20261104.txt; screenshots and hierarchy in the same directory; focused factory boot instrumentation PASS 1/1.
+    followup_2026_11_05: documented Alt+Right and Alt+Ctrl+Left tested after confirming system UI first; no stable label-verifiable Clear focus sequence, so traversal remains NOT TESTED; accessibility settings restored to null/0/0. Evidence: .local/android-test/reports/F-09-talkback-diag-20261105/.
     boundaries: Skin/Native source checks, APK assemble, Lint, and AndroidTest Kotlin compile PASS.
     apk_sha256: 4baebe7a02073cfde91e87e117c1a3f1305cac69822a3836acbbcbbd288e37f5.
     factory_package: exactly one `.pcskin`; source/APK byte-identical; SHA-256 b9035719c2e0c75d335225216ea3687b72cc2cf4692e829ca43566c730c3fee3.
@@ -195,7 +211,7 @@ LATEST_VERIFIED_EVIDENCE:
     commit: 2a8c323890c0f121b80c72a2a4d1c5c2a35d010d
     evidence: .local/android-test/reports/F-03-20261104-wave2/
 
-BLOCKERS: F-09 cannot PASS until actual TalkBack focus traversal order is directly verified. R-06/R-07 remain deferred until their required parity/recovery gates are satisfied. Physical/OEM and live-provider behavior remain NOT TESTED; full SEP signature remains INCOMPLETE; Product Cutover remains HOLD.
+BLOCKERS: R-07 boot/recovery gate is incomplete. F-09 TalkBack focus order remains NOT TESTED after the bounded keyboard diagnostic; this remains a release-quality gap, not a blocker for the delivered internal Preview or R-06. Physical/OEM reminder behavior and live AI provider reliability remain NOT TESTED; full SEP signoff remains INCOMPLETE; Product Cutover remains HOLD.
 
 AUTHORITATIVE_PLAN: docs/POWERCAL_SINGLE_DEFAULT_SKIN_EXECUTION_PLAN_2026-11-03_R2.md
 ACCEPTANCE_MATRIX: docs/agent-handoff/SINGLE_SKIN_ACCEPTANCE.md
