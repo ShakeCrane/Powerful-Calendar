@@ -89,11 +89,11 @@ G-04 在 `1e57da5cbb19b4b1348fe390174f629c8871fc47` 实测 JVM 946/946、Studio 
 - CORE API：core-api/src/main/kotlin/dev/powerfulcalendar/core/api/v1/CoreFeatureApiV1.kt；app/src/main/java/dev/powerfulcalendar/core/api/v1/PowerCalCoreFeatureApiV1.kt。
 - DEFAULT SKIN：四类精度、类型转换、验证、删除和恢复入口。用户动作 → API → Core → 可观察结果：分别新建、编辑、删除并恢复四类事件 → EventFeatureApiV1.openNewEvent/openFormalEvent/saveNewEvent/saveFormalEvent/deleteFormalEvent 与 DraftReviewFeatureApiV1.beginRestore/requestRestore → 校验版本、事务及授权 → 表单、冲突与结果可见。
 - STUDIO：创建四类表单、验证提示和结果绑定。
-- ANDROID QA：NOT TESTED（本轮）；每类比较审批前零正式写入、审批后记录及恢复的身份和版本；取消与过期版本不写入。
+- ANDROID QA：PASS（F-05 本轮切片）；API 35 隔离 AVD 上 17 项四类可信写入、3 项删除/冲突触控、2 项无修改关闭/草稿生命周期，以及独立进程 prepare/force-stop/restore 2 阶段均通过；记录审批前后 Store 结果、冲突版本和恢复身份。证据：`.local/android-test/reports/F-05-20261104-wave2/manifest.md`。该结果不覆盖真机/OEM。
 - PHYSICAL：NOT TESTED（本轮）；在真机重放主要动作，记录系统、权限、界面及 Store 结果。
 - 测试入口：app/src/test/java/dev/powerfulcalendar/core/api/v1/EventFeatureApiV1Test.kt；app/src/androidTest/java/dev/powerfulcalendar/ui/v2/WebSkinAllKindsTrustedWriteInstrumentedTest.kt。
-- 状态：实现 PARTIAL；JVM PARTIAL（G-04 门禁与关联测试，不等于本项签核）；模拟器 NOT TESTED（本轮，历史切片见 SOURCE）；真机 NOT TESTED；总体 PARTIAL。
-- 剩余及签核：按上述动作逐项获得目标构建的 Core/界面结果、Studio 往返、模拟器和真机证据，核对冻结契约后签核。后续任务：F-05, S-02, S-03, Q-02。
+- 状态：实现 PARTIAL（F-05 四类编辑、Host 审批、冲突刷新及恢复路径通过；Studio 四类事件表单的完整创作/往返仍未验收）；JVM PASS（WebSkinEditBridgeTest 49/49，本轮完整门禁 967/967）；模拟器 PASS（上述 F-05 切片）；真机 NOT TESTED；总体 PARTIAL。
+- 剩余及签核：完成 Studio 事件表单创作与往返、剩余冻结场景及真机/OEM 证据后再签核。后续任务：F-06, S-04, Q-02。
 
 ### SSA-06｜重复规则三作用域与时区
 
@@ -113,11 +113,11 @@ G-04 在 `1e57da5cbb19b4b1348fe390174f629c8871fc47` 实测 JVM 946/946、Studio 
 - CORE API：core-api/src/main/kotlin/dev/powerfulcalendar/core/api/v1/DraftReviewFeatureApiV1.kt；app/src/main/java/dev/powerfulcalendar/core/api/v1/PowerCalCoreFeatureApiV1.kt。
 - DEFAULT SKIN：草稿卡片、搜索、替换比较、冲突和恢复结果。用户动作 → API → Core → 可观察结果：创建、修改、选择、丢弃/撤销并审核发布草稿 → DraftReviewFeatureApiV1.createDraft/editCurrentDraft/flush/select/commit/undoDiscard → 校验版本和请求 ID 后事务写入 → 卡片、冲突及收据更新。
 - STUDIO：创建卡组及数据/动作绑定并重建。
-- ANDROID QA：NOT TESTED（本轮）；批准前检查正式记录不变；批准后比较草稿、记录、收据与重启恢复。
+- ANDROID QA：PASS（F-05 本轮切片）；批准前/取消/冲突路径核对正式记录和版本；批准后核对提交；冷进程恢复用独立 PID/token 验证草稿、Memo 状态及 identity/sequence/commit 不变量。队列搜索、撤销等其余母项仍未全量验收。证据：`.local/android-test/reports/F-05-20261104-wave2/manifest.md`。
 - PHYSICAL：NOT TESTED（本轮）；在真机重放主要动作，记录系统、权限、界面及 Store 结果。
 - 测试入口：app/src/test/java/dev/powerfulcalendar/core/api/v1/DraftReviewFeatureApiV1Test.kt；app/src/androidTest/java/dev/powerfulcalendar/ui/v2/DraftDeckSearchWebViewInstrumentedTest.kt。
-- 状态：实现 PARTIAL；JVM PARTIAL（G-04 门禁与关联测试，不等于本项签核）；模拟器 NOT TESTED（本轮，历史切片见 SOURCE）；真机 NOT TESTED；总体 PARTIAL。
-- 剩余及签核：按上述动作逐项获得目标构建的 Core/界面结果、Studio 往返、模拟器和真机证据，核对冻结契约后签核。后续任务：F-05, S-02, S-03, Q-02。
+- 状态：实现 PARTIAL（F-05 发布确认、草稿 checkpoint、冲突保留与冷启动恢复切片通过；完整队列操作、Studio 创作及其他审核范围未签核）；JVM PASS（关联 49/49，本轮完整门禁 967/967）；模拟器 PASS（F-05 切片）；真机 NOT TESTED；总体 PARTIAL。
+- 剩余及签核：补齐草稿队列搜索/撤销等完整流程、Studio 往返及真机/OEM 证据后再签核。后续任务：F-06, F-07, S-04, Q-02。
 
 ### SSA-08｜AI 对话、提案与人工审核
 
