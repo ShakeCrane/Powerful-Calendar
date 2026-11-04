@@ -193,6 +193,43 @@ def from_json(data):
     return data.get("manifest"), result
 
 
+def _v3_warnings(manifest, files):
+    from host_binding_catalog import binding_warnings
+    project = json.loads(files["project.json"].decode("utf-8"))
+    return binding_warnings(project, manifest.get("capabilities", []))
+
+
+def _v3_receipt(command, package):
+    from runtime_package_v3 import unpack as unpack_v3
+    checked, checked_files = unpack_v3(package)
+    return {
+        "schemaVersion": 1,
+        "command": command,
+        "ok": True,
+        "packageSchemaVersion": 3,
+        "packageSha256": hashlib.sha256(package).hexdigest(),
+        "bytes": len(package),
+        "fileCount": len(checked_files),
+        "requiredCapabilities": checked.get("capabilities", []),
+        "fileHashes": checked.get("sha256", {}),
+        "manifest": checked,
+        "errors": [],
+        "warnings": _v3_warnings(checked, checked_files),
+    }
+
+
+def _v3_error(command, message, code="INVALID_V3_PACKAGE"):
+    return {
+        "schemaVersion": 1,
+        "command": command,
+        "ok": False,
+        "error": message,
+        "errorCode": code,
+        "errors": [{"code": code, "message": message}],
+        "warnings": [],
+    }
+
+
 class Handler(BaseHTTPRequestHandler):
     def reply(self, status, payload, mime="application/json; charset=utf-8", attachment=None,
               csp=None, cors_origin=None):
@@ -292,8 +329,13 @@ class Handler(BaseHTTPRequestHandler):
         self.reply(200, (HERE / filename).read_bytes(), mime)
 
     def do_POST(self):
-        if self.path not in ("/api/validate", "/api/export", "/api/import",
-                             "/api/export-v3", "/api/import-v3", "/api/preview-v3"):
+        routes = {
+            "/api/validate", "/api/export", "/api/import",
+            "/api/build-v3", "/api/validate-v3", "/api/inspect-v3",
+            "/api/read-v3", "/api/edit-v3", "/api/export-v3",
+            "/api/import-v3", "/api/preview-v3",
+        }
+        if self.path not in routes:
             return self.send_json(404, {"error": "Not Found"})
         origin = self.headers.get("Origin")
         if origin and origin not in (f"http://127.0.0.1:{self.server.server_port}",
@@ -303,8 +345,9 @@ class Handler(BaseHTTPRequestHandler):
             size = int(self.headers.get("Content-Length", "-1"))
             check(0 <= size <= 24_000_000, "请求体过大")
             is_import = self.path in ("/api/import", "/api/import-v3")
+            is_v3_archive = self.path in ("/api/import-v3", "/api/validate-v3", "/api/inspect-v3")
             mime = self.headers.get("Content-Type", "").split(";", 1)[0].strip()
-            check(mime == ("application/octet-stream" if is_import else "application/json"),
+            check(mime == ("application/octet-stream" if is_import or is_v3_archive else "application/json"),
                   "Content-Type 不受支持")
             data = self.rfile.read(size)
             check(len(data) == size, "传输中断")
@@ -312,32 +355,81 @@ class Handler(BaseHTTPRequestHandler):
                 if self.path == "/api/import-v3":
                     from runtime_package_v3 import unpack as unpack_v3
                     manifest, files = unpack_v3(data)
-                    return self.send_json(200, {"manifest": manifest, "files": {
-                        path: base64.b64encode(blob).decode("ascii") for path, blob in files.items()}})
+                    from project_ops_v3 import inspect_package
+                    receipt = inspect_package(data)
+                    return self.send_json(200, {
+                        "schemaVersion": 1, "command": "import-v3", "ok": True,
+                        "manifest": manifest, "files": {
+                            path: base64.b64encode(blob).decode("ascii")
+                            for path, blob in files.items()},
+                        "fileHashes": manifest.get("sha256", {}),
+                        "requiredCapabilities": manifest.get("capabilities", []),
+                        "errors": [], "warnings": _v3_warnings(manifest, files),
+                        "packageSha256": receipt["packageSha256"],
+                    })
                 manifest, assets = unpack(data)
                 self.send_json(200, {"manifest": manifest, "images": {
                     path: base64.b64encode(blob).decode("ascii") for path, blob in assets.items()}})
                 return
+            if self.path in ("/api/validate-v3", "/api/inspect-v3"):
+                from runtime_package_v3 import unpack as unpack_v3
+                manifest, files = unpack_v3(data)
+                if self.path == "/api/validate-v3":
+                    return self.send_json(200, _v3_receipt("validate-v3", data))
+                from project_ops_v3 import inspect_package
+                result = inspect_package(data)
+                result.update({"ok": True, "packageSchemaVersion": 3,
+                               "requiredCapabilities": manifest.get("capabilities", []),
+                               "errors": [], "warnings": _v3_warnings(manifest, files)})
+                return self.send_json(200, result)
             obj = json.loads(data.decode("utf-8"))
-            if self.path in ("/api/export-v3", "/api/preview-v3"):
+            if self.path in ("/api/build-v3", "/api/export-v3", "/api/preview-v3"):
                 from runtime_package_v3 import build_files
                 raw_files = obj.get("files", {})
                 check(type(raw_files) is dict and len(raw_files) <= 96, "invalid v3 files")
                 files = {path: base64.b64decode(value, validate=True)
                          for path, value in raw_files.items()}
                 if self.path == "/api/preview-v3":
-                    from host_binding_catalog import binding_warnings
                     from studio_v3_preview import browser_url, publish
                     project = json.loads(files["project.json"].decode("utf-8"))
+                    compiled = build_files(obj.get("manifest"), files)
+                    checked, checked_files = __import__("runtime_package_v3").unpack(compiled)
                     resource_path = publish(obj.get("manifest"), files)
                     return self.send_json(200, {
                         "url": browser_url(resource_path, self.server.server_port),
-                        "warnings": binding_warnings(
-                            project, obj.get("manifest", {}).get("capabilities", []))
+                        "schemaVersion": 1, "command": "preview-v3", "ok": True,
+                        "packageSchemaVersion": 3,
+                        "requiredCapabilities": checked.get("capabilities", []),
+                        "fileHashes": checked.get("sha256", {}),
+                        "errors": [], "warnings": _v3_warnings(checked, checked_files),
                     })
                 compiled = build_files(obj.get("manifest"), files)
+                if self.path == "/api/build-v3":
+                    receipt = _v3_receipt("build-v3", compiled)
+                    receipt["packageBase64"] = base64.b64encode(compiled).decode("ascii")
+                    return self.send_json(200, receipt)
                 return self.reply(200, compiled, "application/octet-stream",
                                   "PowerCal-" + obj["manifest"]["id"] + ".pcskin")
+            if self.path in ("/api/read-v3", "/api/edit-v3"):
+                from project_ops_v3 import edit_package, read_file
+                from runtime_package_v3 import unpack as unpack_v3
+                try:
+                    package = base64.b64decode(obj.get("packageBase64", ""), validate=True)
+                except (binascii.Error, ValueError) as exc:
+                    raise SkinError("packageBase64 must contain a valid v3 package") from exc
+                check(0 < len(package) <= 10_000_000, "v3 package size is invalid")
+                if self.path == "/api/read-v3":
+                    manifest, files = unpack_v3(package)
+                    result = read_file(package, obj.get("path"))
+                    result.update({"ok": True, "packageSchemaVersion": 3,
+                                   "requiredCapabilities": manifest.get("capabilities", []),
+                                   "errors": [], "warnings": _v3_warnings(manifest, files)})
+                    return self.send_json(200, result)
+                manifest, files, edited_package, changes = edit_package(package, obj.get("operations"))
+                receipt = _v3_receipt("edit-v3", edited_package)
+                receipt.update({"changes": changes,
+                                "packageBase64": base64.b64encode(edited_package).decode("ascii")})
+                return self.send_json(200, receipt)
             manifest, assets = from_json(obj)
             if self.path == "/api/validate":
                 m = validated(manifest, assets, verify_hash=False)
@@ -346,7 +438,16 @@ class Handler(BaseHTTPRequestHandler):
             compiled = pack(manifest, assets)
             self.reply(200, compiled, "application/octet-stream",
                        "PowerCal-" + manifest["id"] + ".pcskin")
-        except (SkinError, ValueError, UnicodeError, TypeError) as exc:
+        except (BadZipFile, EOFError, zlib.error) as exc:
+            if self.path.endswith("-v3") or self.path == "/api/preview-v3":
+                return self.send_json(400, _v3_error(
+                    self.path.rsplit("/", 1)[-1], "Invalid or damaged v3 skin package",
+                    "INVALID_PACKAGE"))
+            self.send_json(400, {"error": str(exc)})
+        except (SkinError, ValueError, UnicodeError, TypeError, OSError, KeyError) as exc:
+            if self.path.endswith("-v3") or self.path == "/api/preview-v3":
+                return self.send_json(400, _v3_error(
+                    self.path.rsplit("/", 1)[-1], str(exc), "VALIDATION_ERROR"))
             self.send_json(400, {"error": str(exc)})
 
 
@@ -359,6 +460,9 @@ def main():
     chk.add_argument("file", type=Path)
     chk.add_argument("--json", action="store_true",
                      help="emit a machine-readable validation receipt")
+    chk3 = sub.add_parser("validate-v3", help="validate a v3 .pcskin with a versioned receipt")
+    chk3.add_argument("file", type=Path)
+    chk3.add_argument("--json", action="store_true", default=True)
     build2 = sub.add_parser("build-v2", help="compile declarative runtime UI into an importable ZIP")
     build2.add_argument("--manifest", type=Path, required=True)
     build2.add_argument("--ui", type=Path, required=True)
@@ -379,14 +483,34 @@ def main():
     edit3.add_argument("--file", type=Path, required=True)
     edit3.add_argument("--operations", type=Path, required=True)
     edit3.add_argument("--out", type=Path, required=True)
+    import3 = sub.add_parser("import-v3", help="import a v3 package into a durable Studio project file")
+    import3.add_argument("file", type=Path)
+    import3.add_argument("--out", type=Path, required=True)
+    export3 = sub.add_parser("export-v3", help="build a v3 package from a durable Studio project file")
+    export3.add_argument("file", type=Path)
+    export3.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
     try:
         if args.command == "inspect-v3":
+            from runtime_package_v3 import unpack as unpack_v3
             from project_ops_v3 import inspect_package
-            _write_machine_json(inspect_package(args.file.read_bytes()), sys.stdout)
+            package = args.file.read_bytes()
+            manifest, files = unpack_v3(package)
+            result = inspect_package(package)
+            result.update({"ok": True, "packageSchemaVersion": 3,
+                           "requiredCapabilities": manifest.get("capabilities", []),
+                           "errors": [], "warnings": _v3_warnings(manifest, files)})
+            _write_machine_json(result, sys.stdout)
         elif args.command == "read-v3":
+            from runtime_package_v3 import unpack as unpack_v3
             from project_ops_v3 import read_file
-            _write_machine_json(read_file(args.file.read_bytes(), args.path), sys.stdout)
+            package = args.file.read_bytes()
+            manifest, files = unpack_v3(package)
+            result = read_file(package, args.path)
+            result.update({"ok": True, "packageSchemaVersion": 3,
+                           "requiredCapabilities": manifest.get("capabilities", []),
+                           "errors": [], "warnings": _v3_warnings(manifest, files)})
+            _write_machine_json(result, sys.stdout)
         elif args.command == "edit-v3":
             from project_ops_v3 import edit_package, read_operation_document, write_atomic
             source_path, output_path = args.file.resolve(), args.out.resolve()
@@ -404,9 +528,56 @@ def main():
                 "fileCount": len(files),
                 "manifest": manifest,
                 "changes": changes,
+                "requiredCapabilities": manifest.get("capabilities", []),
+                "fileHashes": manifest.get("sha256", {}),
+                "errors": [],
+                "warnings": _v3_warnings(manifest, files),
             }
             _write_machine_json(result, sys.stdout)
-        elif args.command == "validate":
+        elif args.command == "import-v3":
+            from runtime_package_v3 import unpack as unpack_v3
+            from project_ops_v3 import inspect_package, write_atomic
+            source = args.file.read_bytes()
+            manifest, files = unpack_v3(source)
+            project_document = {
+                "format": "powercal-v3-studio", "projectVersion": 3,
+                "manifest": manifest,
+                "files": {path: base64.b64encode(blob).decode("ascii")
+                          for path, blob in files.items()},
+            }
+            output_path = args.out.resolve()
+            encoded = (json.dumps(project_document, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+            write_atomic(output_path, encoded)
+            inspection = inspect_package(source)
+            _write_machine_json({
+                "schemaVersion": 1, "command": "import-v3", "ok": True,
+                "output": str(output_path), "packageSha256": inspection["packageSha256"],
+                "packageSchemaVersion": 3, "fileCount": len(files),
+                "requiredCapabilities": manifest.get("capabilities", []),
+                "fileHashes": manifest.get("sha256", {}),
+                "errors": [], "warnings": _v3_warnings(manifest, files),
+            }, sys.stdout)
+        elif args.command == "export-v3":
+            from runtime_package_v3 import build_files
+            from project_ops_v3 import write_atomic
+            source_document = json.loads(args.file.read_text(encoding="utf-8"))
+            check(type(source_document) is dict and
+                  source_document.get("format") == "powercal-v3-studio" and
+                  source_document.get("projectVersion") == 3,
+                  "input must be a powercal-v3-studio project")
+            manifest, encoded_files = source_document.get("manifest"), source_document.get("files")
+            check(type(manifest) is dict and type(encoded_files) is dict and len(encoded_files) <= 96,
+                  "Studio project is missing manifest or files")
+            files = {path: base64.b64decode(value, validate=True)
+                     for path, value in encoded_files.items()}
+            package = build_files(manifest, files)
+            output_path = args.out.resolve()
+            write_atomic(output_path, package)
+            _write_machine_json({
+                "schemaVersion": 1, "command": "export-v3", "ok": True,
+                "output": str(output_path), **_v3_receipt("export-v3", package),
+            }, sys.stdout)
+        elif args.command in ("validate", "validate-v3"):
             payload = args.file.read_bytes()
             # Do not decompress attacker-provided manifest without a size cap.
             with ZipFile(io.BytesIO(payload)) as archive:
@@ -430,7 +601,18 @@ def main():
                 m, images = unpack(payload)
                 details = {"assetCount": len(images)}
                 human_result = f"OK: {m['id']} / {m['name']} / v1 / {len(images)} assets"
-            if args.json:
+            if args.command == "validate-v3":
+                from runtime_package_v3 import unpack as unpack_v3
+                if m.get("schemaVersion") != 3:
+                    raise SkinError("validate-v3 accepts only schemaVersion 3 packages")
+                checked_manifest, checked_files = unpack_v3(payload)
+                _write_machine_json({
+                    **_v3_receipt("validate-v3", payload),
+                    "file": str(args.file.resolve()),
+                    "manifest": checked_manifest,
+                    "fileCount": len(checked_files),
+                }, sys.stdout)
+            elif args.json:
                 _write_machine_json({
                     "schemaVersion": 1,
                     "command": "validate",
@@ -472,6 +654,10 @@ def main():
                     "bytes": len(result),
                     "fileCount": len(files),
                     "manifest": checked_manifest,
+                    "packageSchemaVersion": 3,
+                    "requiredCapabilities": checked_manifest.get("capabilities", []),
+                    "fileHashes": checked_manifest.get("sha256", {}),
+                    "errors": [], "warnings": _v3_warnings(checked_manifest, files),
                 }, sys.stdout)
             else:
                 print(f"Built v3 {output_path} ({len(result)} bytes)")
@@ -485,7 +671,7 @@ def main():
                     pass
     except (SkinError, OSError, ValueError, UnicodeError, TypeError, BadZipFile,
             KeyError, RuntimeError, EOFError, zlib.error) as exc:
-        if (args.command in ("inspect-v3", "read-v3", "edit-v3")
+        if (args.command in ("inspect-v3", "read-v3", "edit-v3", "import-v3", "export-v3", "validate-v3")
                 or getattr(args, "json", False)):
             _write_machine_json({"schemaVersion": 1, "command": args.command,
                                  "ok": False, "error": str(exc)}, sys.stderr)

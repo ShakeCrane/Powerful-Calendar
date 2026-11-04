@@ -59,6 +59,11 @@ sandbox.fixture = fixture;
   document.getElementById("addTextSource").onclick();
   const rejectedTextExtension = !vm.runInContext('sourceFiles.has("web/components/inaccessible.bin")', sandbox);
 
+  promptValue = "web/components/agent-note.pcal-source";
+  document.getElementById("addTextSource").onclick();
+  editor.value = "空白皮肤 UTF-8 扩展源码：保留原样。\n";
+  editor.oninput();
+
   promptValue = "web/components/agent-card.js";
   document.getElementById("addTextSource").onclick();
   editor.value = "export const card = 'custom';\n";

@@ -61,7 +61,11 @@ const HOST_CAPABILITY_CONTROLS=[
   ["host.action","capHostAction"],
   ["host.edit","capHostEdit"],
 ];
-const TEXT_SOURCE_EXTENSIONS=/\.(cjs|css|html?|ini|js|json|jsx|kt|less|md|mjs|properties|py|scss|sh|sql|toml|tsx?|txt|xml|ya?ml|svg)$/i;
+const KNOWN_BINARY_SOURCE_EXTENSIONS=/\.(bin|gif|jpe?g|png|webp|woff2?|ttf|otf|ico|pdf|zip)$/i;
+function isEditableUtf8Source(path,bytes=sourceFiles.get(path)){
+  if(!bytes||KNOWN_BINARY_SOURCE_EXTENSIONS.test(path))return false;
+  try{new TextDecoder("utf-8",{fatal:true}).decode(bytes);return true}catch{return false}
+}
 function say(message,isError=false){$("toast").textContent=message;$("toast").classList.toggle("error",isError)}
 function setText(name,value){sourceFiles.set(name,enc.encode(value))}
 function getText(name){return dec.decode(sourceFiles.get(name)||new Uint8Array())}
@@ -227,12 +231,11 @@ function syncSourceInputs(){
 }
 function renderExtraSources(){
   const select=$("extraSourceFile"),previous=select.value;
-  const strict=new TextDecoder("utf-8",{fatal:true});
   const paths=[...sourceFiles.keys()].filter(path=>{
     if(project?.runtimeRenderer===PAGE_TREE_RENDERER&&path===PAGE_TREE_RUNTIME_FILE)return false;
     if(path==="project.json")return true;
-    if(!TEXT_SOURCE_EXTENSIONS.test(path) || REQUIRED_SOURCE_FILES.has(path))return false;
-    try{strict.decode(sourceFiles.get(path));return true}catch{return false}
+    if(REQUIRED_SOURCE_FILES.has(path))return false;
+    return isEditableUtf8Source(path,sourceFiles.get(path));
   }).sort();
   select.replaceChildren();
   for(const path of paths){
@@ -680,7 +683,7 @@ function referencedByPackage(path){
   const references=[];
   const strict=new TextDecoder("utf-8",{fatal:true});
   for(const [source,bytes] of sourceFiles){
-    if(source===path||!TEXT_SOURCE_EXTENSIONS.test(source))continue;
+    if(source===path||!isEditableUtf8Source(source,bytes))continue;
     try{
       const text=strict.decode(bytes);
       if(candidates.some(candidate=>text.includes(candidate)))references.push(source);
@@ -694,8 +697,8 @@ function addTextSource(){
   if(!safePackagePath(path)||path==="project.json"||REQUIRED_SOURCE_FILES.has(path)){
     say("路径无效；只能在 web/ 或 assets/ 下创建非必需文件",true);return;
   }
-  if(!TEXT_SOURCE_EXTENSIONS.test(path)){
-    say("文本文件扩展名不受支持",true);return;
+  if(KNOWN_BINARY_SOURCE_EXTENSIONS.test(path)){
+    say("该路径使用已知二进制扩展名，不能作为 UTF-8 文本创建",true);return;
   }
   if(sourceFiles.has(path)){say("文件已存在："+path,true);return;}
   sourceFiles.set(path,enc.encode(""));
@@ -2603,10 +2606,24 @@ async function importProject(file){
   throw Error("不支持的项目文件；请选择 v3 .pcskin 或 v3 Studio 项目");
 }
 async function exportPack(){
-  const result=await api("/api/export-v3",payload());
-  download(result,manifest.id+".pcskin");
+  const result=await api("/api/build-v3",payload());
+  download(new Blob([base64ToBytes(result.packageBase64)],{type:"application/octet-stream"}),
+    manifest.id+".pcskin");
   dirty=false;
-  say("已导出 v3 包：使用与预览一致的 HTML/CSS/JS/素材字节，并完成哈希校验。");
+  showPackageInspection(result);
+  say("已构建并导出 v3 包；文件 SHA-256、schema 与能力请求已写入回执。");
+}
+function showPackageInspection(receipt){
+  const {packageBase64,...summary}=receipt;
+  $("packageInspectionOutput").textContent=JSON.stringify(summary,null,2);
+  $("packageInspection").hidden=false;
+}
+async function inspectCurrentPackage(){
+  const built=await api("/api/build-v3",payload());
+  const packageBytes=base64ToBytes(built.packageBase64);
+  const inspected=await api("/api/inspect-v3",new Blob([packageBytes]),true);
+  showPackageInspection(inspected);
+  say("包检查完成：逐文件编码、字节数、SHA-256、能力请求及警告见回执。");
 }
 function exportProject(){
   const object={format:"powercal-v3-studio",projectVersion:3,...payload()};
@@ -2750,11 +2767,18 @@ function bindUI(){
     try{exportProject()}catch(error){say(error.message,true)}
   };
   $("validate").onclick=async()=>{
-    try{await api("/api/preview-v3",payload());say("文件结构、体积、SHA-256、导入限制已通过；真机仍需设备验收。")}
+    try{
+      const receipt=await api("/api/build-v3",payload());showPackageInspection(receipt);
+      const warningCount=receipt.warnings?.length||0;
+      say(`v3 结构、资源引用、能力与 SHA-256 校验通过；${receipt.fileCount} 个文件，${warningCount} 条提示。`)
+    }
     catch(error){say(error.message,true)}
   };
   $("exportPack").onclick=async()=>{
     try{await exportPack()}catch(error){say(error.message,true)}
+  };
+  $("inspectPackage").onclick=async()=>{
+    try{await inspectCurrentPackage()}catch(error){say(error.message,true)}
   };
   window.addEventListener("beforeunload",e=>{
     if(dirty){e.preventDefault();e.returnValue="";}

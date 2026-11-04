@@ -40,7 +40,7 @@ import java.util.zip.ZipInputStream
 
 private const val BLANK_GATE_ASSET = "skin-studio-blank-five-page-gate.pcskin"
 private const val BLANK_GATE_ID = "powercal-blank-skin"
-private const val BLANK_GATE_SHA256 = "751e1f2cd59f795a66045564e500f42f25b58a2a18a9e822f396cca3b398cfda"
+private const val BLANK_GATE_SHA256 = "1f7c1053022342d3ab78c4f549fc2719f211e616b256f761c907cdfabb79f492"
 private const val BLANK_GATE_NAMESPACE = "pc-blank-studio-android-gate"
 private const val SKIN_CHOICE_PREFERENCES = "powercal-skin-choice"
 private val REQUIRED_ROUTES = listOf("TIMELINE", "MONTH", "MEMO", "AI", "SETTINGS")
@@ -102,6 +102,20 @@ class BlankStudioSkinAndroidGateInstrumentedTest {
         )))
         assertTrue("uploaded Studio PNG must be part of the exported package",
             expectedFiles.containsKey("assets/probe.png"))
+        assertTrue("Studio font must be packaged in the generated skin",
+            expectedFiles.containsKey("assets/qa-font.woff2"))
+        assertTrue("Studio-authored JavaScript must be packaged and referenced",
+            expectedFiles.containsKey("web/components/qa-probe.js") &&
+                expectedFiles.getValue("web/index.html").toString(Charsets.UTF_8)
+                    .contains("components/qa-probe.js"))
+        assertTrue("arbitrary UTF-8 source must survive package creation",
+            expectedFiles.getValue("web/components/notes.pcal-source")
+                .toString(Charsets.UTF_8).contains("保存并往返后保持不变"))
+        val hashes = manifest.getJSONObject("sha256")
+        assertEquals(expectedFiles.keys, hashes.keys().asSequence().toSet())
+        expectedFiles.forEach { (path, bytes) ->
+            assertEquals("Android package file hash differs for $path", sha256(bytes), hashes.getString(path))
+        }
 
         val keepPackageForColdRestart = phase == "prepare"
         var prepared = false
@@ -225,7 +239,7 @@ class BlankStudioSkinAndroidGateInstrumentedTest {
             "!!window.__POWERCAL_PAGE_TREE_V1__ && !!document.querySelector('#page-navigation')")
         assertEquals("https://skin.powercal.local/web/style.css",
             evaluate(web, "document.styleSheets[0].href").trim('"'))
-        assertEquals("true", evaluate(web,
+        assertEquals("Android WebView did not load the packaged PowerCalBlankFixture FontFace", "true", evaluate(web,
             "document.querySelector('script[src$=\\\"project-tree-v1.js\\\"]')!==null"))
         assertEquals("https://skin.powercal.local/web/app.js",
             evaluate(web, "[...document.querySelectorAll('script[src]')].find(x=>x.src.endsWith('/web/app.js')).src")
@@ -233,6 +247,8 @@ class BlankStudioSkinAndroidGateInstrumentedTest {
         assertTrue(expectedFiles["web/project-tree-v1.js"]!!.isNotEmpty())
         assertEquals(REQUIRED_ROUTES, jsonStrings(JSONArray(evaluateString(web,
             "JSON.stringify(window.__POWERCAL_PAGE_TREE_V1__.pages.map(page=>page.route))"))))
+        assertEquals("loaded", evaluateString(web,
+            "document.documentElement.dataset.blankStudioProbe"))
 
         for (route in REQUIRED_ROUTES) {
             assertEquals("true", evaluate(web,
@@ -267,6 +283,15 @@ class BlankStudioSkinAndroidGateInstrumentedTest {
                 expectedNodes, actualNodes)
             println("S02_ANDROID_BLANK_PAGE=$route;nodes=${actualNodes.size};routes=${REQUIRED_ROUTES.size}")
         }
+        awaitJs(web,
+            "(()=>{document.fonts.load('12px PowerCalBlankFixture');return document.fonts.check('12px PowerCalBlankFixture') && " +
+                "[...document.fonts].some(face=>face.family==='PowerCalBlankFixture' && face.status==='loaded')})()")
+        assertEquals("true", evaluate(web,
+            "[...document.fonts].some(face=>face.family==='PowerCalBlankFixture' && face.status==='loaded')"))
+        assertTrue("Android WebView did not apply the packaged WOFF2 font",
+            evaluateString(web,
+                "getComputedStyle(document.querySelector('[data-component-type=\\\"resource-layer\\\"]')).fontFamily")
+                .contains("PowerCalBlankFixture"))
 
         assertEquals("true", evaluate(web,
             "(()=>{document.querySelector('[data-page-route=\\\"MONTH\\\"]')?.click();return true})()"))

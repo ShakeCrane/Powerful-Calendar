@@ -1,12 +1,14 @@
 /* End-to-end blank v3 project creation, save, Studio restart, reopen and build. */
 const {spawn,spawnSync} = require("node:child_process");
 const fs = require("node:fs"), path = require("node:path"), readline = require("node:readline");
+const {createHash} = require("node:crypto");
 const root = path.resolve(__dirname, "../../..");
 const chrome = process.env.CHROME_PATH || "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
 const reportDir = path.resolve(process.env.POWERCAL_E2E_REPORT_DIR ||
   path.join(root, ".local/android-test/reports/S-01-20261104"));
 const downloadDir = path.join(reportDir, "blank-project-downloads-" + process.pid);
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+const sha256 = bytes => createHash("sha256").update(bytes).digest("hex");
 
 async function main() {
   fs.mkdirSync(downloadDir, {recursive: true});
@@ -147,6 +149,7 @@ async function main() {
       const project=JSON.parse(document.querySelector('#extraSourceCode').value);
       project.pages[1].title='Month metadata survives reopen';
       project.pages[1].components[0].props.editorNote='saved from Studio';
+      project.thirdPartyMetadata={publisher:'blank-studio-e2e',nested:{keep:['未知字段','保留']}};
       const source=document.querySelector('#extraSourceCode');
       source.value=JSON.stringify(project,null,2);
       source.dispatchEvent(new Event('input',{bubbles:true}));
@@ -196,17 +199,11 @@ async function main() {
     await mouseClick("#componentAdd");
     const todayButtonId = await evaluate("selectedComponentId");
     await setComponentField("#componentLabel", "Today");
-    await setComponentField("#componentHostAction", "today");
-    await mouseClick("#requestBindingCapabilities");
-    await waitFor(async () => evaluate("manifest.capabilities.includes('host.action')"),
-      "Studio did not record the explicit host.action request");
 
     await selectComponentType("button");
     await mouseClick("#componentAdd");
     const panButtonId = await evaluate("selectedComponentId");
     await setComponentField("#componentLabel", "Pan +60 minutes");
-    await setComponentField("#componentHostAction", "panTimeline");
-    await setComponentField('[data-host-param="deltaMinutes"]', "60");
     await selectComponentType("text");
     await mouseClick("#componentAdd");
     const cameraStateTextId = await evaluate("selectedComponentId");
@@ -327,21 +324,84 @@ async function main() {
     await setComponentField("#componentLabel", "Resource Layer Label");
 
     const assetPath = path.join(root, "tools/skin-studio/tests/fixtures/blank-studio/probe.png");
+    const fontPath = path.join(root, "tools/skin-studio/tests/fixtures/blank-studio/qa-font.woff2");
     const studioDocument = await call("DOM.getDocument", {depth: 2});
     const assetInput = await call("DOM.querySelector", {
       nodeId: studioDocument.root.nodeId, selector: "#assetFile"
     });
     if (!assetInput.nodeId) throw Error("Blank Studio resource upload control was not found");
-    await call("DOM.setFileInputFiles", {files: [assetPath], nodeId: assetInput.nodeId});
-    await waitFor(async () => evaluate("sourceFiles.has('assets/probe.png')"),
-      "Studio did not retain the uploaded PNG resource");
+    await call("DOM.setFileInputFiles", {files: [assetPath,fontPath], nodeId: assetInput.nodeId});
+    await waitFor(async () => evaluate("sourceFiles.has('assets/probe.png') && sourceFiles.has('assets/qa-font.woff2')"),
+      "Studio did not retain the uploaded PNG and WOFF2 resources");
     await evaluate(`(()=>{
       const source=document.querySelector('#cssCode');
-      source.value += '\\n.qa-resource-probe{width:2px;height:2px;background-image:url("../assets/probe.png")}\\n';
+      source.value += '\\n@font-face{font-family:"PowerCalBlankFixture";src:url("../assets/qa-font.woff2") format("woff2")}\\n'+
+        '.qa-resource-probe{width:2px;height:2px;background-image:url("../assets/probe.png");'+
+        'font-family:"PowerCalBlankFixture",sans-serif}\\n';
       source.dispatchEvent(new Event('input',{bubbles:true}));return true;
     })()`);
-    await waitFor(async () => evaluate("sourceFiles.has('assets/probe.png') && new TextDecoder().decode(sourceFiles.get('web/style.css')).includes('probe.png')"),
-      "Studio did not retain the CSS resource path");
+    await waitFor(async () => evaluate("sourceFiles.has('assets/probe.png') && sourceFiles.has('assets/qa-font.woff2') && new TextDecoder().decode(sourceFiles.get('web/style.css')).includes('qa-font.woff2')"),
+      "Studio did not retain the CSS references to the uploaded PNG and WOFF2 resources");
+
+    const addUtf8Source = async (filePath, contents) => {
+      await evaluate(`window.prompt=()=>${JSON.stringify(filePath)};
+        document.querySelector('#addTextSource').click();true`);
+      await waitFor(async () => evaluate(`sourceFiles.has(${JSON.stringify(filePath)})`),
+        "Studio did not create UTF-8 source " + filePath);
+      await evaluate(`(()=>{
+        const select=document.querySelector('#extraSourceFile');select.value=${JSON.stringify(filePath)};
+        select.dispatchEvent(new Event('change',{bubbles:true}));
+        const editor=document.querySelector('#extraSourceCode');editor.value=${JSON.stringify(contents)};
+        editor.dispatchEvent(new Event('input',{bubbles:true}));return true;
+      })()`);
+    };
+    await addUtf8Source("web/components/qa-probe.js",
+      "document.documentElement.dataset.blankStudioProbe='loaded';\n");
+    await addUtf8Source("web/components/notes.pcal-source",
+      "空白工程 UTF-8 源文件，保存并往返后保持不变。\n");
+    const scriptTag = '<script src="components/qa-probe.js" defer></script>';
+    await evaluate(`(()=>{
+      const html=document.querySelector('#htmlCode');
+      html.value=html.value.replace('</body>', ${JSON.stringify(scriptTag + "</body>")});
+      html.dispatchEvent(new Event('input',{bubbles:true}));return true;
+    })()`);
+    await waitFor(async () => evaluate(`new TextDecoder().decode(sourceFiles.get('web/index.html')).includes('components/qa-probe.js') &&
+      sourceFiles.has('web/components/qa-probe.js') && sourceFiles.has('web/components/notes.pcal-source')`),
+      "Studio did not retain standalone JS/UTF-8 source references");
+
+    await evaluate("document.querySelector('#validate').click();true");
+    await waitFor(async () => evaluate("document.querySelector('#toast').textContent.includes('校验通过')"),
+      "Read-only Studio package validation did not pass");
+    await evaluate("document.querySelector('#exportPack').click();true");
+    const packagePath = path.join(downloadDir, "powercal-blank-skin.pcskin");
+    const readOnlyPackagePath = path.join(downloadDir, "powercal-blank-skin-read-only.pcskin");
+    await waitFor(async () => fs.existsSync(packagePath) && fs.statSync(packagePath).size > 0,
+      "Studio did not export the read-only Android gate package");
+    const readOnlyValidation = spawnSync("python", ["tools/skin-studio/skin_studio.py", "validate-v3",
+      packagePath], {cwd: root, encoding: "utf8"});
+    if (readOnlyValidation.status !== 0)
+      throw Error("Read-only Studio export validation failed: " + readOnlyValidation.stderr);
+    const readOnlyReceipt = JSON.parse(readOnlyValidation.stdout);
+    if (readOnlyReceipt.manifest?.id !== "powercal-blank-skin" ||
+        readOnlyReceipt.packageSchemaVersion !== 3 ||
+        JSON.stringify(readOnlyReceipt.requiredCapabilities) !== '["host.read"]')
+      throw Error("Blank read-only package gained capabilities before an explicit Studio request");
+    fs.renameSync(packagePath, readOnlyPackagePath);
+    const readOnlyTarget = process.env.POWERCAL_BLANK_GATE_READONLY_OUTPUT;
+    if (readOnlyTarget) {
+      fs.mkdirSync(path.dirname(readOnlyTarget), {recursive: true});
+      fs.copyFileSync(readOnlyPackagePath, readOnlyTarget);
+    }
+
+    await selectTreePage("TIMELINE");
+    await mouseClick(`#componentTree [data-component-id="${todayButtonId}"]`);
+    await setComponentField("#componentHostAction", "today");
+    await mouseClick("#requestBindingCapabilities");
+    await waitFor(async () => evaluate("manifest.capabilities.includes('host.action')"),
+      "Studio did not record the explicit host.action request");
+    await mouseClick(`#componentTree [data-component-id="${panButtonId}"]`);
+    await setComponentField("#componentHostAction", "panTimeline");
+    await setComponentField('[data-host-param="deltaMinutes"]', "60");
 
     const authoredTypes = await evaluate(`(()=>{
       const visit=(nodes,out=[])=>{for(const node of nodes){out.push(node.type);visit(node.children||[],out)}return out};
@@ -366,8 +426,14 @@ async function main() {
       throw Error("The component inspector did not persist editable props/style/binding metadata: " + JSON.stringify(treeState));
 
     await evaluate("document.querySelector('#validate').click();true");
-    await waitFor(async () => evaluate("document.querySelector('#toast').textContent.includes('文件结构、体积')"),
+    await waitFor(async () => evaluate("document.querySelector('#toast').textContent.includes('校验通过')"),
       "Studio project validation did not pass");
+    await evaluate("document.querySelector('#inspectPackage').click();true");
+    await waitFor(async () => evaluate("document.querySelector('#packageInspectionOutput').textContent.includes('inspect-v3')"),
+      "Studio package inspection did not return a versioned file report");
+    const guiInspection=JSON.parse(await evaluate("document.querySelector('#packageInspectionOutput').textContent"));
+    if(guiInspection.packageSchemaVersion!==3||!guiInspection.files?.some(item=>item.path==='assets/qa-font.woff2'))
+      throw Error("Studio inspection did not include the v3 schema and uploaded font resource");
 
     const projectPath = path.join(downloadDir, "powercal-blank-skin.pcstudio-v3.json");
     await evaluate("document.querySelector('#exportProject').click();true");
@@ -379,6 +445,10 @@ async function main() {
     const savedProject = JSON.parse(Buffer.from(saved.files["project.json"], "base64").toString("utf8"));
     const savedMonthRoot=savedProject.pages[1].components[0];
     if (savedProject.pages.length !== 5 || savedProject.pages[1].title !== "Month metadata survives reopen" ||
+        JSON.stringify(savedProject.thirdPartyMetadata)!==JSON.stringify({publisher:"blank-studio-e2e",nested:{keep:["未知字段","保留"]}}) ||
+        !Object.hasOwn(saved.files,"assets/qa-font.woff2") ||
+        !Object.hasOwn(saved.files,"web/components/qa-probe.js") ||
+        !Object.hasOwn(saved.files,"web/components/notes.pcal-source") ||
         savedMonthRoot.props.editorNote !== "saved from Studio" ||
         savedMonthRoot.children[0].props.label !== "November Header" ||
         savedMonthRoot.children[1].type !== "month-grid" ||
@@ -416,14 +486,17 @@ async function main() {
       const files=payload().files;
       const p=JSON.parse(new TextDecoder().decode(base64ToBytes(files['project.json'])));
       return {name:manifest.name,pages:p.pages,capabilities:manifest.capabilities,
-        fileCount:Object.keys(files).length};
+        thirdPartyMetadata:p.thirdPartyMetadata,fileCount:Object.keys(files).length,files};
     })()`);
     if (reopened.pages.length !== 5 || reopened.pages[1].title !== "Month metadata survives reopen" ||
         reopened.pages[1].components[0].props.editorNote !== "saved from Studio" ||
         reopened.pages[1].components[0].children[0].props.label !== "November Header" ||
         JSON.stringify(reopened.pages[1].components[0].children[1].children.map(node=>node.id)) !==
           JSON.stringify([secondDateId,firstDateId]) ||
-        JSON.stringify(reopened.capabilities) !== '["host.read","host.action"]')
+        JSON.stringify(reopened.capabilities) !== '["host.read","host.action"]' ||
+        JSON.stringify(reopened.thirdPartyMetadata)!==JSON.stringify(savedProject.thirdPartyMetadata) ||
+        JSON.stringify(Object.keys(reopened.files).sort())!==JSON.stringify(Object.keys(saved.files).sort()) ||
+        Object.keys(saved.files).some(name=>saved.files[name]!==reopened.files[name]))
       throw Error("Reopened Studio project lost page structure or changed capabilities");
 
     await waitFor(async () => evaluate("document.querySelector('#previewState').textContent.includes('连接成功')"),
@@ -433,6 +506,9 @@ async function main() {
     if (!previewFrame) throw Error("Reopened component project has no preview frame");
     await waitFor(async () => frameContexts.has(previewFrame.frame.id),
       "The component preview frame did not create a browser execution context");
+    await waitFor(async () => evaluateFrame(previewFrame.frame.id,
+      "document.readyState==='complete' && !!window.__POWERCAL_PAGE_TREE_V1__ && !!document.querySelector('[data-page-route]')"),
+      "The imported blank skin runtime did not finish loading its page tree");
     const renderedPages = {};
     for (const route of routes) {
       await evaluateFrame(previewFrame.frame.id, `(()=>{
@@ -459,7 +535,8 @@ async function main() {
               .map(child=>child.textContent).join(""),
           stateValue:node.querySelector(':scope > .pc-bound-value')?.textContent||"",
           binding:node.dataset.binding||null,color:getComputedStyle(node).color,
-          backgroundImage:getComputedStyle(node).backgroundImage
+          backgroundImage:getComputedStyle(node).backgroundImage,
+          fontFamily:getComputedStyle(node).fontFamily
         }))
       }))()`);
     }
@@ -500,6 +577,19 @@ async function main() {
     const resourceProbe = renderedPages.SETTINGS.nodes.find(node=>node.id===resourceLayerId);
     if (!resourceProbe?.backgroundImage.includes("probe.png"))
       throw Error("Studio preview did not resolve the uploaded PNG through the package-relative CSS path");
+    const loadedResources=await evaluateFrame(previewFrame.frame.id, `(async()=>{
+      await document.fonts.ready;
+      const node=document.querySelector('[data-component-id=${JSON.stringify(resourceLayerId)}]');
+      return {script:document.documentElement.dataset.blankStudioProbe||null,
+        fontLoaded:document.fonts.check('12px PowerCalBlankFixture'),
+        fontFamily:node?getComputedStyle(node).fontFamily:'',
+        image:node?getComputedStyle(node).backgroundImage:''};
+    })()`);
+    if(loadedResources.script!=="loaded"||!loadedResources.fontLoaded||
+        !loadedResources.fontFamily.includes("PowerCalBlankFixture")||
+        !loadedResources.image.includes("probe.png"))
+      throw Error("Studio preview did not execute the authored JavaScript or load the font/image resources: "+
+        JSON.stringify(loadedResources));
     if (!renderedPages.TIMELINE.nodes.some(node=>node.id===todayButtonId && node.type==="button") ||
         !renderedPages.TIMELINE.nodes.some(node=>node.id===panButtonId && node.type==="button") ||
         !renderedPages.TIMELINE.nodes.some(node=>node.id===cameraStateTextId &&
@@ -522,7 +612,6 @@ async function main() {
       throw Error("Today action did not restore the 24-hour camera");
 
     await evaluate("document.querySelector('#exportPack').click();true");
-    const packagePath = path.join(downloadDir, "powercal-blank-skin.pcskin");
     await waitFor(async () => fs.existsSync(packagePath) && fs.statSync(packagePath).size > 0,
       "Studio did not build the blank project's .pcskin");
     const validation = spawnSync("python", ["tools/skin-studio/skin_studio.py", "validate",
@@ -554,22 +643,138 @@ async function main() {
         importedToday?.props?.hostAction?.name !== "today" ||
         importedCameraBinding?.props?.hostStateBinding !== "timeline.anchorMillis")
       throw Error("Export/reimport did not preserve the component structure and runtime projection");
+
+    const initialPackageBytes=fs.readFileSync(packagePath);
+    if(importedPackage.packageSha256!==sha256(initialPackageBytes)||
+        !importedPackage.fileHashes?.["assets/qa-font.woff2"])
+      throw Error("Versioned import receipt omitted package or uploaded font hashes");
+    const importedFiles=Object.fromEntries(Object.entries(importedPackage.files)
+      .map(([name,encoded])=>[name,Buffer.from(encoded,"base64")]));
+    for(const [name,digest] of Object.entries(importedPackage.fileHashes))
+      if(!importedFiles[name]||sha256(importedFiles[name])!==digest)
+        throw Error("Per-file SHA-256 changed during Studio export/import: "+name);
+    if(JSON.stringify(importedProject.thirdPartyMetadata)!==JSON.stringify(savedProject.thirdPartyMetadata))
+      throw Error("Unknown project metadata did not survive Studio export/import");
+
+    const initialPackageBase64=initialPackageBytes.toString("base64");
+    const readResponse=await fetch(origin+"/api/read-v3",{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({packageBase64:initialPackageBase64,path:"web/components/notes.pcal-source"})
+    });
+    const readReceipt=await readResponse.json();
+    if(!readResponse.ok||readReceipt.encoding!=="utf-8"||
+        !readReceipt.content.includes("保存并往返后保持不变"))
+      throw Error("Versioned read API lost arbitrary UTF-8 source");
+    const apiEditedNote="API 编辑后的 UTF-8 源文件。\n";
+    const apiEditResponse=await fetch(origin+"/api/edit-v3",{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({packageBase64:initialPackageBase64,operations:[{
+        op:"write",path:"web/components/notes.pcal-source",encoding:"utf-8",
+        content:apiEditedNote,expectedSha256:readReceipt.sha256
+      }]})
+    });
+    const apiEditReceipt=await apiEditResponse.json();
+    if(!apiEditResponse.ok||apiEditReceipt.requiredCapabilities.join(",")!=="host.read,host.action")
+      throw Error("Versioned edit API failed or changed declared capabilities");
+    const apiEditedPackage=Buffer.from(apiEditReceipt.packageBase64,"base64");
+    const apiEditedImportResponse=await fetch(origin+"/api/import-v3",{
+      method:"POST",headers:{"Content-Type":"application/octet-stream"},body:apiEditedPackage
+    });
+    if(!apiEditedImportResponse.ok)throw Error("API-edited package did not re-import");
+    const apiEditedImport=await apiEditedImportResponse.json();
+    const apiExportResponse=await fetch(origin+"/api/export-v3",{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({manifest:apiEditedImport.manifest,files:apiEditedImport.files})
+    });
+    if(!apiExportResponse.ok||!Buffer.from(await apiExportResponse.arrayBuffer()).equals(apiEditedPackage))
+      throw Error("Versioned export API did not reproduce the edited package");
+
+    const originalPackagePath=path.join(downloadDir,"powercal-blank-skin-before-studio-edit.pcskin");
+    fs.renameSync(packagePath,originalPackagePath);
+    const packageDocument=await call("DOM.getDocument",{depth:2});
+    const packageInput=await call("DOM.querySelector",{nodeId:packageDocument.root.nodeId,selector:"#importZip"});
+    if(!packageInput.nodeId)throw Error("Studio package import control was not found");
+    await call("DOM.setFileInputFiles",{files:[originalPackagePath],nodeId:packageInput.nodeId});
+    await evaluate("document.querySelector('#importZip').dispatchEvent(new Event('change',{bubbles:true}));true");
+    await waitFor(async()=>evaluate("document.querySelector('#toast').textContent.includes('已加载完整 v3 项目') && manifest?.id==='powercal-blank-skin' && sourceFiles.has('assets/qa-font.woff2')"),
+      "Studio did not reopen the exported package for continued editing");
+    const studioEditedNote="Studio 重新导入后继续编辑：中文资源无损。\n";
+    await evaluate(`(()=>{
+      const select=document.querySelector('#extraSourceFile');select.value="web/components/notes.pcal-source";
+      select.dispatchEvent(new Event('change',{bubbles:true}));
+      const editor=document.querySelector('#extraSourceCode');editor.value=${JSON.stringify(studioEditedNote)};
+      editor.dispatchEvent(new Event('input',{bubbles:true}));
+      const name=document.querySelector('#skinName');name.value="Durable Blank Studio Roundtrip";
+      name.dispatchEvent(new Event('change',{bubbles:true}));return payload().manifest.name;
+    })()`);
+    await waitFor(async()=>evaluate("manifest.name==='Durable Blank Studio Roundtrip'"),
+      "Studio did not apply the reimported project name edit");
+    await evaluate("document.querySelector('#validate').click();true");
+    await waitFor(async()=>evaluate("document.querySelector('#toast').textContent.includes('校验通过')"),
+      "Studio did not validate the reimported project after editing");
+    await evaluate("document.querySelector('#exportPack').click();true");
+    await waitFor(async()=>fs.existsSync(packagePath)&&fs.statSync(packagePath).size>0,
+      "Studio did not rebuild the reimported, edited project");
+    const finalPackageBytes=fs.readFileSync(packagePath);
+    const finalValidation=spawnSync("python",["tools/skin-studio/skin_studio.py","validate-v3",packagePath],
+      {cwd:root,encoding:"utf8"});
+    if(finalValidation.status!==0)throw Error("Rebuilt package validation failed: "+finalValidation.stderr);
+    const finalReceipt=JSON.parse(finalValidation.stdout);
+    if(finalReceipt.manifest.name!=="Durable Blank Studio Roundtrip")
+      throw Error("Continued Studio edits were not included in the rebuilt package: "+finalReceipt.manifest.name);
+    const finalImportResponse=await fetch(origin+"/api/import-v3",{
+      method:"POST",headers:{"Content-Type":"application/octet-stream"},body:finalPackageBytes
+    });
+    if(!finalImportResponse.ok)throw Error("Rebuilt Studio package could not be reimported");
+    const finalImported=await finalImportResponse.json();
+    const finalFiles=Object.fromEntries(Object.entries(finalImported.files)
+      .map(([name,encoded])=>[name,Buffer.from(encoded,"base64")]));
+    const finalProject=JSON.parse(finalFiles["project.json"].toString("utf8"));
+    const notePath="web/components/notes.pcal-source";
+    if(JSON.stringify(Object.keys(finalFiles).sort())!==JSON.stringify(Object.keys(importedFiles).sort())||
+        JSON.stringify(finalImported.requiredCapabilities)!==JSON.stringify(importedPackage.requiredCapabilities)||
+        JSON.stringify(finalProject.thirdPartyMetadata)!==JSON.stringify(savedProject.thirdPartyMetadata)||
+        !finalFiles[notePath].toString("utf8").includes("重新导入后继续编辑"))
+      throw Error("Second roundtrip changed unknown metadata, resources, or capability declarations");
+    for(const [name,digest] of Object.entries(finalImported.fileHashes)){
+      if(sha256(finalFiles[name])!==digest)throw Error("Rebuilt package file SHA-256 mismatch: "+name);
+      if(name!==notePath&&digest!==importedPackage.fileHashes[name])
+        throw Error("Untouched source hash changed after import/edit/rebuild: "+name);
+    }
+    if(finalImported.fileHashes[notePath]===importedPackage.fileHashes[notePath])
+      throw Error("The explicitly edited text source SHA-256 did not change");
+
+    const beforeBadImport=await evaluate("JSON.stringify(payload())");
+    const badImportPath=path.join(downloadDir,"damaged-package.zip");
+    fs.writeFileSync(badImportPath,Buffer.from("not a zip package"));
+    const badInput=await call("DOM.querySelector",{nodeId:packageDocument.root.nodeId,selector:"#importZip"});
+    await call("DOM.setFileInputFiles",{files:[badImportPath],nodeId:badInput.nodeId});
+    await evaluate("document.querySelector('#importZip').dispatchEvent(new Event('change',{bubbles:true}));true");
+    await waitFor(async()=>evaluate("document.querySelector('#toast').classList.contains('error') && document.querySelector('#toast').textContent.includes('Invalid or damaged')"),
+      "Malformed Studio import did not show a stable package error");
+    if(await evaluate("JSON.stringify(payload())")!==beforeBadImport)
+      throw Error("Malformed import replaced the open Studio project");
+
     const exportTarget = process.env.POWERCAL_HOST_BINDING_GATE_OUTPUT ||
       process.env.POWERCAL_BLANK_GATE_OUTPUT;
     if (exportTarget) {
       fs.mkdirSync(path.dirname(exportTarget), {recursive: true});
       fs.copyFileSync(packagePath, exportTarget);
     }
-    console.log("BLANK V3 PROJECT SAVE/REOPEN/BUILD PASS", JSON.stringify({
-      savedProject: projectPath, builtPackage: packagePath, pageRoutes: routes,
-      stableIds: allIds, reopenedName: reopened.name, reopenedPage: reopened.pages[1],
-      packageSha256: receipt.packageSha256, fileCount: receipt.fileCount,
-      capabilities: receipt.manifest.capabilities, componentTree: treeState,
+    console.log("BLANK V3 RESOURCE LOSSLESS ROUNDTRIP PASS", JSON.stringify({
+      savedProject: projectPath, originalPackage: originalPackagePath, rebuiltPackage: packagePath,
+      pageRoutes: routes, stableIds: allIds, reopenedName: reopened.name,
+      packageSha256: finalReceipt.packageSha256, fileCount: finalReceipt.fileCount,
+      fileHashes: finalImported.fileHashes,
+      resourceHashes: {png:finalImported.fileHashes["assets/probe.png"],font:finalImported.fileHashes["assets/qa-font.woff2"]},
+      capabilities: finalReceipt.requiredCapabilities, componentTree: treeState,
       previewDom: renderedPages, runtimeComponentTypes: renderedTypes,
-      componentIds: {memoRowId, chatItemId, formFieldId, settingsRowId, resourceLayerId},
       hostBindings: {todayButtonId, panButtonId, cameraStateTextId},
+      androidReadOnlyPackage: {path: readOnlyTarget || readOnlyPackagePath,
+        packageSha256: readOnlyReceipt.packageSha256, capabilities: readOnlyReceipt.requiredCapabilities},
+      api: {read:readReceipt.encoding,edit:apiEditReceipt.command,export:apiExportResponse.status},
+      damagedImportPreservedOpenProject: true,
       androidFixtureTarget: exportTarget||null,
-      reimportedPageCount: importedProject.pages.length
     }));
     await call("Page.navigate", {url: "about:blank"});
     socket.close();

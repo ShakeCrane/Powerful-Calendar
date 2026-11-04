@@ -17,6 +17,8 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .fileButton{display:inline-block;font-size:14px}
 .toast{margin:12px 22px;padding:10px 14px;border-radius:9px;background:#e4edff;color:#234d8e;font-size:13px;min-height:35px}
 .toast.error{background:#fff0ef;color:#a32727}
+.packageInspection{margin:0 22px 12px;padding:8px 12px;border:1px solid #d5deeb;border-radius:9px;background:#fff;color:#26364d;font-size:12px}
+.packageInspection pre{max-height:240px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere}
 .studio{display:grid;grid-template-columns:minmax(220px,270px) minmax(430px,1fr) minmax(260px,315px);gap:12px;margin:0 16px 20px;align-items:stretch}
 .panel,.previewPanel{background:#fff;border:1px solid #d5deeb;border-radius:14px;overflow:hidden;box-shadow:0 1px 4px #18366209}
 .panel{padding:15px;max-height:calc(100vh - 136px);overflow:auto}

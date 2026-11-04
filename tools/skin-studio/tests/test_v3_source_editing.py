@@ -111,7 +111,8 @@ class StudioSourceEditingTest(unittest.TestCase):
         self.assertIn("project.json", result["choices"])
         self.assertTrue(result["invalidProjectRejected"])
         self.assertTrue(result["invalidProjectDraftRestored"])
-        self.assertTrue(result["rejectedTextExtension"])
+        self.assertTrue(result["rejectedTextExtension"],
+                        "known binary extensions must not become text editor files")
 
         project_payload = result["projectPayload"]
         project_files = {name: base64.b64decode(value)
@@ -126,6 +127,8 @@ class StudioSourceEditingTest(unittest.TestCase):
         files = {name: base64.b64decode(value) for name, value in payload["files"].items()}
         self.assertEqual(files["project.json"], project_files["project.json"])
         self.assertEqual(files["web/components/agent-card.js"], b"export const card = 'custom';\n")
+        self.assertEqual(files["web/components/agent-note.pcal-source"],
+                         "空白皮肤 UTF-8 扩展源码：保留原样。\n".encode("utf-8"))
         self.assertNotIn("web/agent-unused-90f4.txt", files)
         self.assertEqual(files["assets/agent-new.bin"], bytes([0, 255, 65, 66]))
         self.assertEqual(files["assets/replace.bin"], bytes([255, 0, 128]),

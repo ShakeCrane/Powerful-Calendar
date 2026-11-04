@@ -30,6 +30,7 @@ class ProjectOpsV3Test(unittest.TestCase):
         self.manifest["name"] = "AI Project Ops Test"
         self.files["web/move-me.js"] = b"export const value = 1;\n"
         self.files["web/delete-me.txt"] = b"remove this file"
+        self.files["web/components/vendor-note.pcal-source"] = "第三方文本源码：不依赖文件扩展名白名单。\n".encode("utf-8")
         self.files["assets/raw.bin"] = b"\x00\xffold-binary"
         self.files["assets/utf8-looking.bin"] = b"valid utf8 bytes, still a binary asset"
         self.source = build_files(self.manifest, self.files)
@@ -44,6 +45,7 @@ class ProjectOpsV3Test(unittest.TestCase):
         self.assertIn("layers", result["project"])
         entries = {entry["path"]: entry for entry in result["files"]}
         self.assertEqual(entries["web/move-me.js"]["encoding"], "utf-8")
+        self.assertEqual(entries["web/components/vendor-note.pcal-source"]["encoding"], "utf-8")
         self.assertEqual(entries["assets/raw.bin"]["encoding"], "binary")
         self.assertEqual(entries["assets/utf8-looking.bin"]["encoding"], "binary")
         self.assertEqual(entries["assets/raw.bin"]["sha256"],
@@ -51,6 +53,9 @@ class ProjectOpsV3Test(unittest.TestCase):
         text_file = read_file(self.source, "web/move-me.js")
         self.assertEqual(text_file["encoding"], "utf-8")
         self.assertEqual(text_file["content"], "export const value = 1;\n")
+        arbitrary_text = read_file(self.source, "web/components/vendor-note.pcal-source")
+        self.assertEqual(arbitrary_text["encoding"], "utf-8")
+        self.assertEqual(arbitrary_text["content"], "第三方文本源码：不依赖文件扩展名白名单。\n")
         binary_file = read_file(self.source, "assets/raw.bin")
         self.assertEqual(binary_file["encoding"], "base64")
         self.assertEqual(base64.b64decode(binary_file["content"]), b"\x00\xffold-binary")
@@ -394,6 +399,67 @@ class ProjectOpsV3Test(unittest.TestCase):
             human_package = human_output_path.read_bytes()
             self.assertEqual(unpack(human_package)[1], self.files)
             self.assertEqual(human_package, before)
+
+    def test_cli_v3_import_export_round_trip_preserves_blank_project_and_unknown_metadata(self):
+        manifest, files = blank_project()
+        manifest = dict(manifest)
+        manifest["x-vendor-metadata"] = {"issuer": "test", "tags": ["blank", "lossless"]}
+        project = json.loads(files["project.json"].decode("utf-8"))
+        project["thirdPartyMetadata"] = {"备注": "未知字段应保留"}
+        files["project.json"] = json.dumps(
+            project, ensure_ascii=False, separators=(",", ":")
+        ).encode("utf-8")
+        files["web/components/custom.syntax"] = "空白源码\n".encode("utf-8")
+        source_package = build_files(manifest, files)
+        source_manifest, source_files = unpack(source_package)
+
+        with isolated_temp_dir() as temp:
+            root = Path(temp)
+            package_path = root / "blank.pcskin"
+            project_path = root / "blank.pcstudio-v3.json"
+            reexport_path = root / "blank-reexport.pcskin"
+            package_path.write_bytes(source_package)
+            imported = subprocess.run(
+                [sys.executable, str(STUDIO / "skin_studio.py"), "import-v3",
+                 str(package_path), "--out", str(project_path)],
+                text=True, encoding="utf-8", capture_output=True, check=False)
+            self.assertEqual(imported.returncode, 0, imported.stderr)
+            import_receipt = json.loads(imported.stdout)
+            self.assertEqual(import_receipt["command"], "import-v3")
+            self.assertEqual(import_receipt["packageSchemaVersion"], 3)
+            self.assertEqual(import_receipt["requiredCapabilities"], ["host.read"])
+            self.assertEqual(import_receipt["fileHashes"], source_manifest["sha256"])
+            document = json.loads(project_path.read_text(encoding="utf-8"))
+            imported_files = {name: base64.b64decode(value)
+                              for name, value in document["files"].items()}
+            self.assertEqual(imported_files, source_files)
+            self.assertEqual(document["manifest"]["x-vendor-metadata"], manifest["x-vendor-metadata"])
+
+            exported = subprocess.run(
+                [sys.executable, str(STUDIO / "skin_studio.py"), "export-v3",
+                 str(project_path), "--out", str(reexport_path)],
+                text=True, encoding="utf-8", capture_output=True, check=False)
+            self.assertEqual(exported.returncode, 0, exported.stderr)
+            export_receipt = json.loads(exported.stdout)
+            self.assertTrue(export_receipt["ok"])
+            self.assertEqual(export_receipt["fileHashes"],
+                             json.loads(imported.stdout)["fileHashes"])
+            self.assertEqual(unpack(source_package), unpack(reexport_path.read_bytes()))
+
+            validated = subprocess.run(
+                [sys.executable, str(STUDIO / "skin_studio.py"), "validate-v3",
+                 str(reexport_path)], text=True, encoding="utf-8", capture_output=True, check=False)
+            self.assertEqual(validated.returncode, 0, validated.stderr)
+            self.assertEqual(json.loads(validated.stdout)["command"], "validate-v3")
+            self.assertEqual(json.loads(validated.stdout)["fileHashes"], export_receipt["fileHashes"])
+
+            original = reexport_path.read_bytes()
+            overwrite = subprocess.run(
+                [sys.executable, str(STUDIO / "skin_studio.py"), "export-v3",
+                 str(project_path), "--out", str(reexport_path)],
+                text=True, encoding="utf-8", capture_output=True, check=False)
+            self.assertEqual(overwrite.returncode, 2)
+            self.assertEqual(reexport_path.read_bytes(), original)
 
 
 if __name__ == "__main__":

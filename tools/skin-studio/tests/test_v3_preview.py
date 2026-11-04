@@ -1,5 +1,6 @@
 """Exact-file web preview must agree byte-for-byte with the exported v3 pack."""
 import base64
+import hashlib
 import json
 import sys
 import threading
@@ -57,6 +58,14 @@ class PreviewParityTest(unittest.TestCase):
                           method="POST")
         with urlopen(request) as response:
             return response.read()
+
+    def post_raw(self, route, payload, content_type="application/octet-stream"):
+        request = Request(self.base + route, payload, {"Content-Type": content_type}, method="POST")
+        try:
+            with urlopen(request) as response:
+                return response.status, response.read()
+        except HTTPError as error:
+            return error.code, error.read()
 
     def test_host_binding_catalog_is_served_as_the_machine_readable_v1_contract(self):
         catalog = json.loads(self.get("/api/host-binding-catalog-v1"))
@@ -167,6 +176,81 @@ class PreviewParityTest(unittest.TestCase):
         self.assertEqual(exported_files,
                          {path: base64.b64decode(data)
                           for path, data in reimported["files"].items()})
+
+    def test_v3_release_api_build_validate_inspect_read_edit_export_import(self):
+        blank = json.loads(self.get("/api/blank-v3"))
+        manifest = dict(blank["manifest"])
+        manifest["x-vendor-metadata"] = {"publisher": "blank-api", "labels": ["keep", "utf8"]}
+        files = {path: base64.b64decode(value) for path, value in blank["files"].items()}
+        project = json.loads(files["project.json"].decode("utf-8"))
+        project["thirdPartyMetadata"] = {"备注": "unknown project fields survive"}
+        files["project.json"] = json.dumps(project, ensure_ascii=False,
+                                           separators=(",", ":")).encode("utf-8")
+        note_path = "web/components/vendor-note.pcal-source"
+        note = "任意 UTF-8 扩展源码\n".encode("utf-8")
+        files[note_path] = note
+        files["assets/probe-font.woff2"] = b"wOF2\x00fixture-font-bytes"
+        files["web/components/api-probe.js"] = b"window.blankApiProbe=true;\n"
+        files["web/style.css"] += b"\n@font-face{font-family:ApiProbe;src:url('../assets/probe-font.woff2')}\n"
+        payload = {"manifest": manifest, "files": {
+            path: base64.b64encode(data).decode("ascii") for path, data in files.items()}}
+
+        built = json.loads(self.post("/api/build-v3", payload))
+        self.assertTrue(built["ok"])
+        self.assertEqual(built["packageSchemaVersion"], 3)
+        self.assertEqual(built["requiredCapabilities"], ["host.read"])
+        self.assertEqual(built["errors"], [])
+        self.assertEqual(set(built["fileHashes"]), set(files))
+        package = base64.b64decode(built["packageBase64"])
+        self.assertEqual(hashlib.sha256(package).hexdigest(), built["packageSha256"])
+
+        status, validated_bytes = self.post_raw("/api/validate-v3", package)
+        self.assertEqual(status, 200)
+        validated = json.loads(validated_bytes)
+        self.assertEqual(validated["command"], "validate-v3")
+        self.assertEqual(validated["fileHashes"], built["fileHashes"])
+        status, inspected_bytes = self.post_raw("/api/inspect-v3", package)
+        self.assertEqual(status, 200)
+        inspected = json.loads(inspected_bytes)
+        self.assertEqual(inspected["manifest"]["x-vendor-metadata"], manifest["x-vendor-metadata"])
+        self.assertEqual({row["path"]: row["sha256"] for row in inspected["files"]},
+                         built["fileHashes"])
+
+        read = json.loads(self.post("/api/read-v3", {
+            "packageBase64": base64.b64encode(package).decode("ascii"), "path": note_path,
+        }))
+        self.assertEqual(read["encoding"], "utf-8")
+        self.assertEqual(read["content"], note.decode("utf-8"))
+        edited_note = "继续编辑后仍是 UTF-8\n".encode("utf-8")
+        edit = json.loads(self.post("/api/edit-v3", {
+            "packageBase64": base64.b64encode(package).decode("ascii"),
+            "operations": [{"op": "write", "path": note_path, "encoding": "utf-8",
+                            "content": edited_note.decode("utf-8"),
+                            "expectedSha256": hashlib.sha256(note).hexdigest()}],
+        }))
+        self.assertTrue(edit["ok"])
+        self.assertEqual(edit["fileHashes"][note_path], hashlib.sha256(edited_note).hexdigest())
+        edited_package = base64.b64decode(edit["packageBase64"])
+        imported_status, imported_bytes = self.post_raw("/api/import-v3", edited_package)
+        self.assertEqual(imported_status, 200)
+        imported = json.loads(imported_bytes)
+        self.assertEqual(imported["manifest"]["x-vendor-metadata"], manifest["x-vendor-metadata"])
+        imported_files = {path: base64.b64decode(value) for path, value in imported["files"].items()}
+        self.assertEqual(imported_files[note_path], edited_note)
+        self.assertEqual(imported["fileHashes"], edit["fileHashes"])
+
+        exported = self.post("/api/export-v3", {
+            "manifest": imported["manifest"], "files": imported["files"],
+        })
+        self.assertEqual(v3.unpack(exported), v3.unpack(edited_package))
+
+    def test_invalid_v3_import_returns_stable_error_without_package_replacement(self):
+        failures = [self.post_raw("/api/import-v3", b"not a zip package") for _ in range(2)]
+        self.assertEqual([status for status, _ in failures], [400, 400])
+        receipts = [json.loads(body) for _, body in failures]
+        self.assertEqual(receipts[0], receipts[1])
+        self.assertEqual(receipts[0]["errorCode"], "INVALID_PACKAGE")
+        self.assertEqual(receipts[0]["errors"][0]["code"], "INVALID_PACKAGE")
 
     def test_unedited_v3_import_preview_export_reimport_preserves_every_file(self):
         template = json.loads(self.get("/api/template-v3"))

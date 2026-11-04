@@ -6,6 +6,7 @@ import io
 import json
 import re
 from pathlib import Path, PurePosixPath
+from urllib.parse import unquote, urlsplit
 from zipfile import ZIP_DEFLATED, ZIP_STORED, ZipFile, ZipInfo
 
 import skin_studio
@@ -19,6 +20,10 @@ WEB_REQUIRED = ("web/index.html", "web/style.css", "web/app.js", "project.json")
 PATH = re.compile(r"(?:web|assets)/[a-zA-Z0-9][a-zA-Z0-9_./-]{0,119}|project\.json\Z")
 PAGE_TREE_RENDERER = "powercal-component-tree-v1"
 PAGE_TREE_RUNTIME_FILE = "web/project-tree-v1.js"
+HTML_RESOURCE = re.compile(r"\b(?:src|href|poster)\s*=\s*['\"]([^'\"]+)['\"]", re.IGNORECASE)
+HTML_SRCSET = re.compile(r"\bsrcset\s*=\s*['\"]([^'\"]+)['\"]", re.IGNORECASE)
+CSS_RESOURCE = re.compile(r"url\(\s*['\"]?([^\s)\"']+)['\"]?\s*\)", re.IGNORECASE)
+CSS_IMPORT = re.compile(r"@import\s+(?:url\(\s*)?['\"]([^'\"]+)['\"]\s*\)?", re.IGNORECASE)
 
 
 def check(ok, message):
@@ -29,6 +34,67 @@ def check(ok, message):
 def safe_path(name):
     p = PurePosixPath(name)
     return bool(PATH.fullmatch(name) and not p.is_absolute() and ".." not in p.parts and "\\" not in name)
+
+
+def _local_resource_target(owner, reference):
+    raw = reference.strip()
+    if not raw or raw.startswith(("#", "//")):
+        return None
+    parsed = urlsplit(raw)
+    if parsed.scheme or parsed.netloc:
+        return None
+    resource = unquote(parsed.path)
+    if not resource:
+        return None
+    parts = [] if resource.startswith("/") else list(PurePosixPath(owner).parent.parts)
+    for part in PurePosixPath(resource.lstrip("/")).parts:
+        if part in ("", "."):
+            continue
+        if part == "..":
+            if not parts:
+                return ""
+            parts.pop()
+        else:
+            parts.append(part)
+    return "/".join(parts)
+
+
+def _validate_local_resource_references(files):
+    for owner, data in files.items():
+        if not owner.startswith("web/") or not owner.lower().endswith((".html", ".htm", ".css")):
+            continue
+        try:
+            text = data.decode("utf-8", errors="strict")
+        except UnicodeDecodeError as exc:
+            raise skin_studio.SkinError("web source must be valid UTF-8: " + owner) from exc
+        is_html = owner.lower().endswith((".html", ".htm"))
+        is_css = owner.lower().endswith(".css")
+        references = HTML_RESOURCE.findall(text) if is_html else []
+        if is_html:
+            for srcset in HTML_SRCSET.findall(text):
+                expect_url = True
+                for token in srcset.split():
+                    if expect_url:
+                        reference = token.rstrip(",")
+                        if reference:
+                            references.append(reference)
+                    expect_url = token.endswith(",")
+        if is_css:
+            references.extend(CSS_RESOURCE.findall(text))
+            references.extend(CSS_IMPORT.findall(text))
+        for reference in references:
+            raw = reference.strip()
+            parsed = urlsplit(raw)
+            check(not raw.startswith("//") and parsed.scheme.lower() not in {"http", "https"},
+                  "remote resources are forbidden: " + owner + " -> " + reference)
+            if is_css:
+                check(not parsed.scheme or parsed.scheme.lower() == "data",
+                      "external CSS resources are forbidden: " + owner + " -> " + reference)
+            target = _local_resource_target(owner, reference)
+            if target is None:
+                continue
+            check(bool(target) and target in files,
+                  "referenced resource is missing or escapes package: " + owner + " -> " + reference)
 
 
 def _validate_component_nodes(nodes, all_ids, depth=0, total=None):
@@ -142,6 +208,7 @@ def validate_manifest(manifest, files, verify_hash=True):
           "index.html may only load packaged app.js")
     check("http://" not in html.lower() and "https://" not in html.lower(),
           "remote resources are forbidden")
+    _validate_local_resource_references(files)
     actual = {name: hashlib.sha256(data).hexdigest() for name, data in files.items()}
     hashes = manifest.get("sha256", {})
     check(type(hashes) is dict and (not verify_hash or set(hashes) == set(files)),

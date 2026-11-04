@@ -24,6 +24,10 @@ TEXT_EXTENSIONS = frozenset({
     ".less", ".md", ".mjs", ".properties", ".py", ".scss", ".sh", ".sql",
     ".toml", ".ts", ".tsx", ".txt", ".xml", ".yaml", ".yml", ".svg",
 })
+BINARY_EXTENSIONS = frozenset({
+    ".bin", ".gif", ".jpeg", ".jpg", ".otf", ".pdf", ".png", ".ttf",
+    ".webp", ".woff", ".woff2", ".zip",
+})
 
 
 def _fail(condition: bool, message: str) -> None:
@@ -34,8 +38,17 @@ def _file_sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def _is_text_path(path: str) -> bool:
-    return Path(path).suffix.lower() in TEXT_EXTENSIONS
+def _is_text_path(path: str, data: bytes) -> bool:
+    suffix = Path(path).suffix.lower()
+    if suffix in BINARY_EXTENSIONS:
+        return False
+    if suffix in TEXT_EXTENSIONS:
+        return True
+    try:
+        data.decode("utf-8", errors="strict")
+        return True
+    except UnicodeDecodeError:
+        return False
 
 
 def _manifest_sha256(manifest: dict) -> str:
@@ -323,7 +336,7 @@ def inspect_package(source: bytes) -> dict:
     file_index = []
     for path, data in sorted(files.items()):
         encoding = "binary"
-        if _is_text_path(path):
+        if _is_text_path(path, data):
             try:
                 data.decode("utf-8", errors="strict")
                 encoding = "utf-8"
@@ -352,7 +365,7 @@ def read_file(source: bytes, path: str) -> dict:
     result = {"schemaVersion": 1, "command": "read-v3", "path": path,
               "bytes": len(data), "sha256": _file_sha256(data)}
     content = None
-    if _is_text_path(path):
+    if _is_text_path(path, data):
         try:
             content = data.decode("utf-8", errors="strict")
         except UnicodeDecodeError:

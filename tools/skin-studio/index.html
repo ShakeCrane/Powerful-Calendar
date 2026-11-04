@@ -10,11 +10,15 @@
     <button id="newBlank" type="button">新建空白皮肤</button>
     <label class="fileButton">导入 .pcskin<input id="importZip" type="file" accept=".pcskin,.zip" hidden></label>
     <label class="fileButton">打开项目<input id="importProject" type="file" accept=".json,.pcstudio" hidden></label>
-    <button id="exportProject">保存编辑工程</button><button id="validate">验证</button>
+    <button id="exportProject">保存编辑工程</button><button id="validate">验证/构建</button>
+    <button id="inspectPackage">检查包</button>
     <button id="exportPack" class="primary">导出 .pcskin v3</button>
   </div>
 </header>
 <div id="toast" class="toast" role="status" aria-live="polite">正在加载 APK 同源的 Clear 候选默认皮肤。迁移完成之前请勿将它当作功能完整的出厂版本。</div>
+<details id="packageInspection" class="packageInspection" hidden>
+  <summary>v3 包检查回执</summary><pre id="packageInspectionOutput"></pre>
+</details>
 <main class="studio">
   <aside class="panel sidebar">
     <section><h2>皮肤项目</h2>
