@@ -21,8 +21,19 @@ import java.time.LocalDate
 
 /** Typed host bridge for non-executable layout trees. All actions reuse existing callbacks. */
 internal object RuntimeSkinSurfaces {
-    fun enabled(screen: String): Boolean =
+    /** Legacy v2 Compose is a test compatibility fixture, never a product daily renderer. */
+    @Volatile private var v2CompatibilityEnabledForTests = false
+
+    fun enabled(screen: String): Boolean = v2CompatibilityEnabledForTests &&
         PowerCalSkinRegistry.active.runtime?.screens?.containsKey(screen) == true
+
+    internal fun enableV2CompatibilityForTests() {
+        v2CompatibilityEnabledForTests = true
+    }
+
+    internal fun resetV2CompatibilityForTests() {
+        v2CompatibilityEnabledForTests = false
+    }
 
     @Composable fun timeline(context: TimelineSkinContext) {
         RuntimeSkinCompose.scene("timeline", RuntimeSkinBindings(

@@ -46,11 +46,13 @@ class RuntimeSkinComposeTest {
         val manager = SkinPackageManager(ApplicationProvider.getApplicationContext())
         val decoded = manager.decode(file!!.readBytes(), false)
         assertEquals(10, decoded.pack.runtime?.screens?.size)
+        RuntimeSkinSurfaces.enableV2CompatibilityForTests()
         PowerCalSkinRegistry.activate(decoded.pack)
     }
 
     @After fun recover() {
         RuntimePickerRequest.dismiss()
+        RuntimeSkinSurfaces.resetV2CompatibilityForTests()
         PowerCalSkinRegistry.reset()
     }
 

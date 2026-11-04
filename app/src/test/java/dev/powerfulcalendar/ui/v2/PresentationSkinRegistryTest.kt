@@ -47,7 +47,7 @@ class PresentationSkinRegistryTest {
     }
 
     @Test fun alternateSourceSkinRegistersEveryRouteAndRestoresThemAll() {
-        ActiveVisualSkin.installExample()
+        StudioExampleProfileFixture.install()
         assertNotNull(CompiledSkinRuntime.timeline)
         assertNotNull(PresentationSkinRegistry.month)
         assertNotNull(PresentationSkinRegistry.memo)
@@ -90,7 +90,7 @@ class PresentationSkinRegistryTest {
 
     @Test fun normalSkinPackageRegistryIsIndependentOfCompiledRenderers() {
         val before = PowerCalSkinRegistry.active
-        ActiveVisualSkin.installExample()
+        StudioExampleProfileFixture.install()
         assertSame(before, PowerCalSkinRegistry.active)
         PresentationSkinRegistry.reset()
         assertSame(before, PowerCalSkinRegistry.active)
