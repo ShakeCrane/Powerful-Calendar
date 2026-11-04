@@ -51,7 +51,7 @@ import org.junit.runner.RunWith
 private const val STUDIO_AUTHORED_SKIN_ID = "pc-clear-studio-bridge-proof"
 private const val STUDIO_AUTHORED_SKIN_ASSET = "skin-studio-authored-clear-bridge.pcskin"
 private const val STUDIO_AUTHORED_SKIN_SHA256 =
-    "3a754789878c3ab7042351b3af0cd58e204abad4770ba69eac25b940d156aaf7"
+    "267383470e215659144b1a302ee57b5daea8721bbc240cc762c87699c833d74f"
 
 @RunWith(AndroidJUnit4::class)
 class StudioAuthoredSkinBridgeInstrumentedTest {

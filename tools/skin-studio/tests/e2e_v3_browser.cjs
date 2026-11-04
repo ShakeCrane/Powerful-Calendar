@@ -35,11 +35,14 @@ fs.mkdirSync(TEST_TEMP_ROOT,{recursive:true});
     await frame.waitForSelector(".tEvent");
     let normal=await frame.evaluate(()=>({
       items:document.querySelectorAll(".tEvent").length,
-      options:document.querySelectorAll(".optionRow").length,
+      visibleOptions:[...document.querySelectorAll(".optionRow")]
+        .filter(option=>option.getClientRects().length>0).length,
       ruler:document.querySelectorAll(".timeTick").length,
       css:getComputedStyle(document.documentElement).getPropertyValue("--accent").trim()
     }));
-    assert.ok(normal.items>=2);assert.equal(normal.options,2);assert.ok(normal.ruler>=8);
+    assert.ok(normal.items>=2);assert.equal(normal.visibleOptions,0,
+      "Settings and local-option rows must remain hidden on the Timeline page");
+    assert.ok(normal.ruler>=8);
     const sides=await frame.evaluate(()=>({
       deadline:document.querySelector("#dateDeadlineBar .dateDeadline")?.textContent,
       alarm:document.querySelector("#timelineLeft .tEvent.ALARM")?.textContent,
@@ -74,7 +77,7 @@ fs.mkdirSync(TEST_TEMP_ROOT,{recursive:true});
     });
     assert.ok(validZoom);
     await page.waitForFunction(()=>document.querySelector("#bridgeLog").textContent
-      .includes("拒绝无效 zoomTimeline payload"));
+      .includes("拒绝无效动作 zoomTimeline"));
     await frame.waitForFunction(()=>document.querySelector("#timeRangeLabel").textContent==="24 小时");
     for(let i=0;i<20;i++)await frame.click('[data-action="zoomTimeline"][data-direction="in"]');
     await frame.waitForFunction(()=>document.querySelector("#timeRangeLabel").textContent==="0.25 小时");
@@ -521,8 +524,10 @@ fs.mkdirSync(TEST_TEMP_ROOT,{recursive:true});
     await frame.click('#sheetActions [data-do="flush"]');
     await frame.waitForFunction(()=>
       document.querySelector("#sheetStatus").textContent.includes("修改已暂存"));
-    await frame.click("#sheetSave");
+    await frame.click("#sheetClose");
     await frame.waitForFunction(()=>document.querySelector("#skinSheet").hidden);
+    await page.waitForFunction(()=>document.querySelector("#bridgeLog").textContent
+      .includes("deck.close → closed"));
     console.log("Clear Web editor and deck command round-trip PASS");
 
     await frame.click('[data-action="openDeck"]');
@@ -576,17 +581,41 @@ fs.mkdirSync(TEST_TEMP_ROOT,{recursive:true});
       await frame.waitForFunction(()=>document.querySelector("#skinSheet").hidden);
     }
     console.log("Timeline create chooser routes all four kinds through deck.create");
-    await page.click("#editMode");
 
     await page.select("#scenario","future");
     await page.waitForFunction(()=>{
       return document.querySelector("#bridgeLog").textContent.includes("预览") ||
         document.querySelector("#previewState").textContent.includes("连接成功");
     });
-    await frame.waitForFunction(()=>document.querySelectorAll(".optionRow").length===3);
-    const future=await frame.evaluate(()=>document.querySelectorAll(".optionRow").length);
-    assert.equal(future,3,"host-added parallel option must reuse the same row style");
+    await frame.click('.clear-tabbar [data-action="month"]');
+    await frame.waitForFunction(()=>!document.querySelector("#monthPage").hidden);
+    await frame.click('#monthPage [data-local="options"]');
+    await frame.waitForFunction(()=>!document.querySelector("#extraOptions").hidden);
+    const futureSelector='#optionGroups [data-option-id="calendar.import.future"]';
+    await frame.waitForSelector(futureSelector);
+    const future=await frame.$eval(futureSelector,button=>({
+      label:button.textContent,visible:button.getClientRects().length>0,
+      enabled:!button.disabled,rowClass:button.className
+    }));
+    assert.ok(future.label.includes("新功能：导入课程表")&&future.visible&&!future.enabled&&
+      future.rowClass.includes("optionRow"),
+      "an option whose action is absent from the formal binding catalog must remain disabled");
+    const bridgeBeforeUnknownOption=await page.$eval("#bridgeLog",node=>node.textContent);
+    await frame.$eval(futureSelector,button=>button.click());
+    await new Promise(resolve=>setTimeout(resolve,50));
+    assert.equal(await page.$eval("#bridgeLog",node=>node.textContent),bridgeBeforeUnknownOption,
+      "an unregistered option must not dispatch a Host action");
 
+    await frame.click('.clear-tabbar [data-action="month"]');
+    await frame.waitForFunction(()=>!document.querySelector("#monthPage").hidden);
+    const monthBeforeBinding=await frame.$eval("#monthTitle",node=>node.textContent);
+    await frame.click('#monthPage [data-action="browseMonth"][data-delta-months="1"]');
+    await frame.waitForFunction(previous=>document.querySelector("#monthTitle").textContent!==previous,
+      {},monthBeforeBinding);
+    await page.waitForFunction(()=>document.querySelector("#bridgeLog").textContent.includes(
+      "模拟宿主收到：browseMonth"));
+
+    await page.click("#editMode");
     await page.click("#addText");
     await page.waitForFunction(()=>document.querySelector("#layerList").textContent.includes("装饰文字"));
     await page.waitForFunction(()=>document.querySelector("#previewState").textContent.includes("连接成功"));

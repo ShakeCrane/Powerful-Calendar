@@ -1162,10 +1162,11 @@ function simulatedState(){
     {eventSeq:501,revision:4,occurrenceKey:"501:single",kind:"ACTIVITY",
       title:"可移动活动",side:"RIGHT",lane:0,startMillis:base-10800000,
       endMillis:base-7200000,precision:"INSTANT",deadlineDate:null},
-    {eventSeq:502,revision:7,occurrenceKey:"502:2026-10-22T10:00",
-      originalOccurrenceKey:"2026-10-22T10:00",kind:"ACTIVITY",
-      title:"重复活动 · 拒绝拖动",side:"RIGHT",lane:1,startMillis:base-7200000,
-      endMillis:base-3600000,precision:"INSTANT",deadlineDate:null}
+    // Keep the mock cards far enough apart that their minimum tap targets do not overlap.
+    {eventSeq:502,revision:7,occurrenceKey:"502:2026-10-22T15:00",
+      originalOccurrenceKey:"2026-10-22T15:00",kind:"ACTIVITY",
+      title:"重复活动 · 拒绝拖动",side:"RIGHT",lane:1,startMillis:base+3*3600000,
+      endMillis:base+4*3600000,precision:"INSTANT",deadlineDate:null}
   ];
   if(scenario==="repeating")rows=[
     {...rows[0],eventSeq:8,occurrenceKey:"8:20261022T090000",
@@ -1182,7 +1183,7 @@ function simulatedState(){
   ];
   if(scenario==="future")items.push({
     id:"calendar.import.future",label:"新功能：导入课程表",
-    detail:"模拟未来软件版本新增的平行选项",icon:"table",enabled:true
+    detail:"Host 动作尚未登记到绑定目录，因此此选项不可执行",icon:"table",enabled:false
   });
   const exportItems=[{
     id:"calendar.export.ics",label:"导出 ICS",
