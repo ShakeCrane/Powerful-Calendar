@@ -1,24 +1,19 @@
 # PowerCal 当前执行状态（R2）
 
-唯一实时任务入口：`docs/agent-handoff/CURRENT.md`。下方历史正文完整保留；其中旧 `NEXT_ACTION` 只代表当时状态，不是当前执行命令。
+唯一实时任务入口：`docs/agent-handoff/CURRENT.md`。历史正文从下方标记起原样保留；旧 `NEXT_ACTION` 只代表当时状态，不是当前执行命令。
 
 ## 当前状态（2026-11-04 · Wave 2）
 
-- 施工 Worktree/分支：`E:\Project\Powerful-Calendar\.local\android-test\worktrees\skin-single-default-closure` / `codex/skin-single-default-closure`。Wave 2 起点 `3b54097d6383c0349b5d3d638c228320e3c8e22c`。
-- G-01～G-05、R-01～R-05：PASS。F-01、F-02、F-04、S-01 及 S-02 Studio GUI：PASS。R-06/R-07：DEFERRED。
-- F-03 Closure：PASS；代码/验收提交 `2a8c323890c0f121b80c72a2a4d1c5c2a35d010d`。测试同步屏障现等待异步系统日历导入完成后的 Host notice。完整 JVM 967/967、140 XML suites、0 failures/errors/skips；两个源边界、Debug APK、Lint（0 错误/56 警告）、AndroidTest Kotlin 编译通过。
-- F-03 当前 API 35 验证：新隔离 AVD `PowerCal_Wave2_QA35_20261104` / `emulator-5554`；月历 Native/Clear 对照 3/3、两轮独立 prepare→force-stop→restore、WebView 重复实例编辑 1/1 PASS。真机/OEM NOT TESTED；SSA-03 仍 PARTIAL。证据：`.local/android-test/reports/F-03-20261104-wave2/`。
-- S-02 Studio GUI 早前已完成，代码提交 `d0569f14d383d4cc7bd8b5bef2a922008969de4c`。当前 `S-02 Android Gate`：IN PROGRESS；必须实测 Studio 生成的五页包在 Android WebView 的结构、权限和冷启动行为。
-- 当前队列：S-02 Android Gate → S-03 → F-05 → F-06 → S-04 → S-05 → F-07。F-03 已闭环，不重做。遇到设备或功能依赖阻塞时只跳转到真正独立的后续 Studio 工作，不把 BLOCKED 标成 PASS。
+- 施工 Worktree/分支：`E:\Project\Powerful-Calendar\.local\android-test\worktrees\skin-single-default-closure` / `codex/skin-single-default-closure`。Wave 2 起点 `3b54097d6383c0349b5d3d638c228320e3c8e22c`；当前最新代码提交 `62334dce69ac25c316b5bc39497f08adbc20bd16`。
+- G-01～G-05、R-01～R-05：PASS。F-01、F-02、F-03 Closure、F-04、S-01、S-02（Studio GUI + Android Gate）：PASS。R-06/R-07：DEFERRED。
+- F-03 Closure commit `2a8c323890c0f121b80c72a2a4d1c5c2a35d010d`；完整 JVM 967/967，API 35 月历和重复实例运行证据已记录。证据：`.local/android-test/reports/F-03-20261104-wave2/`。
+- S-02 Android Gate commit `62334dce69ac25c316b5bc39497f08adbc20bd16`。Studio 浏览器保存/重开/五页面 DOM/资源预览与包往返通过；Python 70/70。API 35 AVD `PowerCal_Wave2_QA35_20261104` / `emulator-5554`：安装/运行、五页面结构与资源、只读权限及 Store 快照、prepare→force-stop→冷启动恢复均通过。完整串行 JVM 967/967；双边界、APK、Lint（0 错误/56 警告）、AndroidTest 编译与组装通过。
+- S-02 测试包 `powercal-blank-skin` SHA-256 `751e1f2cd59f795a66045564e500f42f25b58a2a18a9e822f396cca3b398cfda`，仅在 AndroidTest fixture；生产 APK 仍恰好一份工厂包且字节一致，默认 `.pcskin` SHA-256 `299e4bdd78c8936f6c15db0200172e659aaa5b0e0643f0d70c115966ac35a9f4`。Debug APK SHA-256 `f5e5fa6fe4194ad213ef60d5933018422a818d0afb97e7b68fd223b3f54e3522`。
+- 证据：`.local/android-test/reports/S-02-20261104-wave2/manifest.md` 及同目录日志。物理/OEM 真机 NOT TESTED；S-02 证明结构包 Android 运行，不代表 S-03 API 绑定或全功能等价。
+- 当前唯一任务：S-03 正式 Core/Host 状态与动作绑定目录。下一任务：F-05 四类编辑器/草稿/可信写入等价。Wave 2 队列依赖与剩余任务以 `docs/agent-handoff/CURRENT.md` 为准。
 - 产品目标不变：Core 管功能；Skin 管表现并调用稳定 API；出厂唯一未美化默认 `.pcskin`；Native 仅安全恢复；Studio 从空白工程创作完整皮肤；全部分离验收后才通过 Studio 应用 Claude 设计稿。
-- 受保护 Worktree 和用户/设计/Studio/测试资产不清理、不覆盖。SEP 历史签核仍 INCOMPLETE；正式 Product Cutover 保持 HOLD。
+- 受保护 Worktree、用户/设计/Studio/测试资产不清理、不覆盖。SEP 历史签核仍 INCOMPLETE；正式 Product Cutover 保持 HOLD。
 
-## Wave 2 handoff — F-03 closure
-
-- 根因分类：测试只等 `migrations.finished_ms`，没有等 `PowerCalApp.importSystemCalendar()` 的末尾 `reload()`/提醒协调完成，就从独立只读连接查询 `commits`。Robolectric 锁异常报告的是竞争读连接；具体锁持有者未直接埋点。最小测试改动等待末尾 Host notice，未更改生产 Store、业务事务或断言。
-- 修复 Issue：`docs/issues/PC-ISSUE-QA-SYSTEM-CALENDAR-IMPORT-ROBOLECTRIC-CONTENTION.md`。
-- 当前 Android 包 SHA-256：`F5E5FA6FE4194AD213EF60D5933018422A818D0AFB97E7B68FD223B3F54E3522`；正式默认 `.pcskin` SHA-256：`299e4bdd78c8936f6c15db0200172e659aaa5b0e0643f0d70c115966ac35a9f4`。
-- 唯一当前任务：S-02 Android Gate。执行细节以 R2 计划对应 Studio 子任务和 Wave 2 授权为准；本轮必须继续，不需等待逐项确认。
 ## 历史进度正文（全文保留；不作为当前任务入口）
 
 # Core freeze progress
