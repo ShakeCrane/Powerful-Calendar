@@ -69,6 +69,8 @@ G-04 在 `1e57da5cbb19b4b1348fe390174f629c8871fc47` 实测 JVM 946/946、Studio 
 - 状态：实现 PARTIAL；JVM PARTIAL（F-03 Host projection 24/24 PASS；两次全量 967 项中均有 1 项 `SystemCalendarImportTest.rejectedItemsArePersistedAsWarningsWithoutCalendarWrites` 因只读 commitCount 查询触发 SQLiteDatabaseLockedException，单项隔离复测 1/1 PASS；全量门禁仍不通过）；模拟器 PARTIAL（F-03 指定 occurrence DOM、切月、选中与双冷启动切片通过，SSA 全面验收未完成）；真机 NOT TESTED；总体 PARTIAL。F-03 因必需全量 JVM 门禁失败记 BLOCKED，不据此确认月历产品缺陷。
 - 剩余及签核：调查并解除全量 JVM 中可重复出现的 SQLite 锁门禁问题，再完成剩余冻结场景、Studio 月组件往返和真机证据；不得将单项 Android 切片提升为 SSA PASS。后续映射仍包括 F-06、S-02、S-03、Q-02。
 
+**2026-11-04 Wave 2 状态更新：** F-03 task gate 现为 PASS。当前完整 JVM 套件 967/967，`SystemCalendarImportTest` 4/4、`WebSkinHostProjectionTest` 24/24；API 35 月历/重复实例指定设备切片通过，两轮冷启动和 WebView 单实例编辑测试均复验通过。SSA-03 总体仍为 PARTIAL：Studio 月组件与绑定往返、完整产品场景及真机验收尚未完成；真机为 NOT TESTED。旧 F-03 BLOCKED 叙述是首轮历史状态，详细闭环证据见下方 Wave 2 记录。
+
 ### SSA-04｜Memo 和待办
 
 - SOURCE：SEP-03；冻结契约与对应原 SEP 行。当前证据：旧 SEP-03 有实例完成与恢复切片；全覆盖未签核。
@@ -388,3 +390,10 @@ MainActivity.setContent (MainActivity.kt:89-91)
 - **包与改动：** 默认 APK SHA-256 `F5E5FA6FE4194AD213EF60D5933018422A818D0AFB97E7B68FD223B3F54E3522`；APK 仅含一份 `assets/powercal-clear-default.pcskin`，与源码逐字节一致，SHA-256 `299e4bdd78c8936f6c15db0200172e659aaa5b0e0643f0d70c115966ac35a9f4`。未修改产品运行时代码或默认皮肤；F-03 测试变更仅在两个 AndroidTest Kotlin 文件。真机/OEM NOT TESTED。
 - **证据目录：** `.local/android-test/reports/F-03-20261104/`，含两次全量失败、单测复测、24 项定向 JVM、APK/Lint/compile、WebView trusted-touch 测试、两次冷启动 phase 日志及不同进程身份记录。
 - **签核影响：** SSA-03 保持 PARTIAL；SEP 历史签核不变；产品 Cutover HOLD。后续可继续独立的 S-01；F-03 只有在全量 JVM 门禁干净后方可重新标记 PASS。
+
+### F-03 闭环复验（Wave 2，2026-11-04）
+
+- **任务状态：PASS。** 首轮两次 full-suite 锁失败来自测试完成信号不完整：测试等待 `migrations.finished_ms` 后即开第二 SQLite 连接，彼时系统日历导入协程还要执行末尾 reload/reconcile。`SystemCalendarImportTest` 现等待导入完成后的 Host notice，再读取 commit 数；没有移除 Store 断言、增加睡眠或修改生产逻辑。具体锁持有连接未直接埋点，详见 `docs/issues/PC-ISSUE-QA-SYSTEM-CALENDAR-IMPORT-ROBOLECTRIC-CONTENTION.md`。
+- **当前 JVM：PASS。** 定向回归 1/1；全量 `:app:testDebugUnitTest` 967/967，140 XML suites，0 failures/errors/skips。`SystemCalendarImportTest` 4/4，`WebSkinHostProjectionTest` 24/24。两个源边界、Debug APK、Lint（0 errors/56 warnings）、AndroidTest Kotlin 编译均 PASS。
+- **当前 Android API 35：PASS（F-03 指定范围）。** 新隔离 AVD `PowerCal_Wave2_QA35_20261104` / `emulator-5554`。Native/Clear 月历同数据集方法 3/3 PASS；两个独立 UUID 均完成 prepare → force-stop → restore，跨月 ACTIVITY 的 Core/Host/DOM 日期和 occurrence key 对齐、进程身份变化、Store 未变；`actualWebViewMonthOccurrenceOpenPreservesOriginalSlotForSingleEdit` 1/1 PASS。测试结果与冷启动输出保存在 `.local/android-test/reports/F-03-20261104-wave2/`。
+- **产物与范围：** APK SHA-256 `F5E5FA6FE4194AD213EF60D5933018422A818D0AFB97E7B68FD223B3F54E3522`；默认 `.pcskin` SHA-256 `299E4BDD78C8936F6C15DB0200172E659AAA5B0E0643F0D70C115966AC35A9F4`。产品运行时代码、冻结 Core 行为和默认包均未修改；仅补足测试同步等待。真机/OEM NOT TESTED；SSA-03 仍 PARTIAL；SEP 历史签核 INCOMPLETE；Product Cutover HOLD。

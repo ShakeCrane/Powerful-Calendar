@@ -150,6 +150,10 @@ class SystemCalendarImportTest {
         try {
             val batch = waitForBatchCount(1).single()
             assertNotNull(batch.finishedMillis)
+            // The migration row is committed before importSystemCalendar() performs its final
+            // projection reload and reminder reconciliation. Wait for the Host's terminal notice
+            // before opening a second SQLite connection for the Store invariants below.
+            waitForHostNotice("有 2 条未导入")
             assertEquals(0, batch.imported)
             assertEquals(0, batch.skipped)
             assertEquals(2, batch.warnings.size)
@@ -251,6 +255,13 @@ class SystemCalendarImportTest {
             } else false
         }
         return requireNotNull(completed)
+    }
+
+    private fun waitForHostNotice(fragment: String) {
+        ui.waitUntil(20_000) {
+            shadowOf(Looper.getMainLooper()).idle()
+            WebSkinBridgeRuntime.state().optString("hostNotice").contains(fragment)
+        }
     }
 
     private fun snapshot() = StoreSnapshot(
