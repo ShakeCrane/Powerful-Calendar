@@ -12,7 +12,7 @@ LAST_COMPLETED_COMMIT: 0cfd15564189f9c0e9e3c0436441cd084183022f
 LAST_ATTEMPTED_TASK: F-09 TalkBack follow-up (BLOCKED)
 LAST_ATTEMPTED_COMMIT: 3932427ac7c8a06d1dabb53b732fef693954efdd
 NEXT_TASK: R-06 (BLOCKED ON F-09 PASS)
-NEXT_ACTION: Resolve the API 35 Clear WebView TalkBack focus probe: touch focus reaches the Timeline tab, but left/right swipe gestures did not advance it. Validate the gesture injection method independently; begin R-06 only after F-09 is PASS.
+NEXT_ACTION: Obtain an input path that demonstrably advances TalkBack focus (ADB swipes also failed to advance focus on the TalkBack settings screen), then verify the order on Clear. Begin R-06 only after F-09 is PASS.
 WAVE2_STATUS: COMPLETE (8 authorized work packages attempted; all PASS)
 WAVE3_STATUS: IN_PROGRESS (F-08 PASS; F-09 BLOCKED; S-06 PASS; S-07 PASS; R-06 blocked by F-09; Product Cutover HOLD)
 
@@ -85,7 +85,7 @@ LATEST_VERIFIED_EVIDENCE:
     jvm: 970/970, 140 XML suites, 0 failures/errors/skips.
     android: API 35 isolated AVD PowerCal_Wave2_QA35_20261104 / emulator-5554; 11 unique instrumentation methods passed after applying required font/animation settings; extra 360dp and 288dp responsive runs passed.
     back_recovery: Page Back and clean editor close preserve Store snapshots; dirty editor leaves one pending draft without formal writes; JS/renderer failures retain draft and Native recovery remains available.
-    accessibility: Follow-up on API 35 AVD with the actual Clear WebView (APK 2ff316e1e350fdd4573ceac7ab154b616fb2e425ef209bde0d2b3e79d89b33a6): TalkBack bound and touch exploration enabled. Touch moved accessibility highlight to the Timeline tab; horizontal right and left ADB swipe probes left the highlight on Timeline. This reproduces a focus-navigation observation but cannot distinguish app semantics from ADB gesture injection; focus traversal order remains NOT TESTED and blocks F-09. TalkBack settings restored to null/0/0.
+    accessibility: Follow-up on API 35 AVD with the actual Clear WebView (APK 2ff316e1e350fdd4573ceac7ab154b616fb2e425ef209bde0d2b3e79d89b33a6): TalkBack bound and touch exploration enabled. Touch moved accessibility highlight to the Timeline tab; horizontal right and left ADB swipe probes left the highlight on Timeline. The same ADB swipe did not advance focus on the TalkBack settings screen (after initial focus landed on Navigate up, a second swipe stayed there), so the injected gesture path is not a valid traversal oracle. Clear's TalkBack traversal order remains NOT TESTED and blocks F-09. TalkBack settings restored to null/0/0.
     followup_evidence: .local/android-test/reports/F-09-20261104/talkback-followup-20261104.txt; screenshots and hierarchy in the same directory; focused factory boot instrumentation PASS 1/1.
     boundaries: Skin/Native source checks, APK assemble, Lint, and AndroidTest Kotlin compile PASS.
     apk_sha256: 4baebe7a02073cfde91e87e117c1a3f1305cac69822a3836acbbcbbd288e37f5.
