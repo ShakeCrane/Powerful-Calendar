@@ -2,13 +2,13 @@ PROJECT: Powerful-Calendar
 PLAN: PLAN-2026-11-03-R2
 BRANCH: codex/skin-single-default-closure
 WAVE2_START_HEAD: 3b54097d6383c0349b5d3d638c228320e3c8e22c
-LATEST_CODE_HEAD: 177ec0b733952ba56d5c13542e97ead08489d1d9
-CURRENT_TASK: S-04
+LATEST_CODE_HEAD: f051ca04e743b3cdbb315874150e2df36b490ae0
+CURRENT_TASK: S-05
 TASK_STATUS: IN_PROGRESS
-LAST_COMPLETED_TASK: F-06-RECURRENCE-SCOPES-DATE-DST-PARITY (PASS)
-LAST_COMPLETED_COMMIT: 177ec0b733952ba56d5c13542e97ead08489d1d9
-NEXT_TASK: S-05
-NEXT_ACTION: Compare Studio preview bridge outputs and failure/capability behavior with Android WebView Runtime using the S-03 binding catalog and fixed page fixtures; prove preview performs no formal Store writes.
+LAST_COMPLETED_TASK: S-04-STUDIO-PREVIEW-ANDROID-RUNTIME-PARITY (PASS)
+LAST_COMPLETED_COMMIT: f051ca04e743b3cdbb315874150e2df36b490ae0
+NEXT_TASK: F-07
+NEXT_ACTION: Execute S-05 resource/source lossless roundtrip from a blank project: add PNG, font, JavaScript, UTF-8 and unknown metadata; save, build, export, re-import, edit, rebuild; verify hashes, traversal defense, missing-resource rejection and no automatic capability upgrade.
 
 WAVE_2_QUEUE:
   - F-03 Closure: PASS (commit 2a8c323890c0f121b80c72a2a4d1c5c2a35d010d)
@@ -16,8 +16,8 @@ WAVE_2_QUEUE:
   - S-03 Host state/action binding catalog: PASS (commit 5eeb87d091e84bfd0906135497bc4ebca94cffba)
   - F-05 editor/draft/trusted-write parity: PASS (commit bb2007d69d90204acf0e27deb325a492f9c37746)
   - F-06 recurrence scopes/date/DST parity: PASS (commit 177ec0b733952ba56d5c13542e97ead08489d1d9)
-  - S-04 Studio preview/runtime parity: IN_PROGRESS
-  - S-05 resource/source round-trip: NOT STARTED
+  - S-04 Studio preview/runtime parity: PASS (commit f051ca04e743b3cdbb315874150e2df36b490ae0)
+  - S-05 resource/source round-trip: IN_PROGRESS
   - F-07 AI chat/proposal/review parity: NOT STARTED
 
 DEFERRED_TASKS: R-06 and R-07 remain DEFERRED until dependent Skin parity is proven.
@@ -53,6 +53,16 @@ LATEST_VERIFIED_EVIDENCE:
     apk_sha256: 08739af8ec4967c764e738e20885a2fc8c1c96033f4e33a3414643b48422d16e; exactly one factory .pcskin, source/APK byte-identical, sha256 299e4bdd78c8936f6c15db0200172e659aaa5b0e0643f0d70c115966ac35a9f4.
     evidence: .local/android-test/reports/F-06-20261104-wave2/manifest.md
     limits: device DST fold/gap and date boundaries, Studio recurrence authoring, physical/OEM NOT TESTED; Product Cutover remains HOLD.
+  S-04:
+    status: PASS (task scope); SSA-12 and SSA-13 remain PARTIAL.
+    code_commit: f051ca04e743b3cdbb315874150e2df36b490ae0
+    studio: Python 78/78; Edge 156.0.4314.58 browser E2E PASS across fixed page fixtures, formal browseMonth, capability matrix, CSP/MIME/fonts, resource errors, and source/package roundtrip.
+    android: API 35 isolated AVD PowerCal_Wave2_QA35_20261104 / emulator-5554; resource parity 1/1, capability gate 1/1, Studio-exported package browseMonth trusted-touch 1/1 with Store count unchanged, shared Native/Memo fixture regression 1/1.
+    package: AndroidTest-only Studio export SHA-256 267383470e215659144b1a302ee57b5daea8721bbc240cc762c87699c833d74f; not in production app assets.
+    production: APK SHA-256 08739af8ec4967c764e738e20885a2fc8c1c96033f4e33a3414643b48422d16e; exactly one factory .pcskin, source/APK byte-identical, SHA-256 299e4bdd78c8936f6c15db0200172e659aaa5b0e0643f0d70c115966ac35a9f4.
+    security: Preview remains a non-writing Mock; Android's formal capability bridge intentionally has no denial acknowledgement. Preview bridgeLog is diagnostic-only; unauthorized Android callbacks were not invoked and Store state stayed unchanged.
+    evidence: .local/android-test/reports/S-04-20261104-wave2/manifest.md
+    limits: physical/OEM NOT TESTED; complete blank-project authoring and full SEP signature remain incomplete; Product Cutover remains HOLD.
   F-05:
     status: PASS
     commit: bb2007d69d90204acf0e27deb325a492f9c37746
@@ -92,7 +102,7 @@ LATEST_VERIFIED_EVIDENCE:
     commit: 2a8c323890c0f121b80c72a2a4d1c5c2a35d010d
     evidence: .local/android-test/reports/F-03-20261104-wave2/
 
-BLOCKERS: None for F-06 task scope. S-04 is now in progress. Physical/OEM and full SEP signature remain NOT TESTED/INCOMPLETE; R-06/R-07 remain DEFERRED and Product Cutover remains HOLD.
+BLOCKERS: None for S-04 task scope. S-05 is in progress; F-07 follows if its dependencies and evidence pass. Physical/OEM and full SEP signature remain NOT TESTED/INCOMPLETE; R-06/R-07 remain DEFERRED and Product Cutover remains HOLD.
 
 AUTHORITATIVE_PLAN: docs/POWERCAL_SINGLE_DEFAULT_SKIN_EXECUTION_PLAN_2026-11-03_R2.md
 ACCEPTANCE_MATRIX: docs/agent-handoff/SINGLE_SKIN_ACCEPTANCE.md
