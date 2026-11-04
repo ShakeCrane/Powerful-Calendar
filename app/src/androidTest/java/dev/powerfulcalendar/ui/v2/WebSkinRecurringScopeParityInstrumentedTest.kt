@@ -38,6 +38,7 @@ import dev.powerfulcalendar.core.TemporalKind
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -105,20 +106,20 @@ class WebSkinRecurringScopeParityInstrumentedTest {
         }
     }
 
-    private data class StoredForm(val eventSeq: Long, val revision: Long, val form: DraftForm)
-
     @Test
-    fun sameDailyAlarmFixtureProducesEquivalentFutureAndWholeSeriesEdits() {
+    fun nativeAndClearMatchAllScopesForAlarmAndDateOnlyDeadline() {
         val storage = compose.activity.applicationContext
         val zone = ZoneId.systemDefault()
         val selectedDate = LocalDate.now(zone)
         val firstDate = selectedDate.minusDays(1)
         val firstStart = firstDate.atTime(9, 0).atZone(zone).toInstant().toEpochMilli()
-        val selectedKey = "${selectedDate}T09:00"
-        val baselineTitle = "SEP06 范围基线"
+        val baselineTitle = "F06 范围基线"
 
-        listOf(RecurrenceEditScope.THIS_AND_FUTURE, RecurrenceEditScope.WHOLE_SERIES)
-            .forEach { scope ->
+        listOf(TemporalKind.ALARM, TemporalKind.DEADLINE).forEach { kind ->
+            RecurrenceEditScope.entries.forEach { scope ->
+                val selectedKey = if (kind == TemporalKind.DEADLINE) {
+                    "${selectedDate}T00:00"
+                } else "${selectedDate}T09:00"
                 verifyScopePair(
                     storage = storage,
                     zone = zone,
@@ -126,10 +127,12 @@ class WebSkinRecurringScopeParityInstrumentedTest {
                     firstDate = firstDate,
                     firstStart = firstStart,
                     selectedKey = selectedKey,
-                    baselineTitle = baselineTitle,
+                    baselineTitle = "$baselineTitle ${kind.name}",
+                    kind = kind,
                     scope = scope
                 )
             }
+        }
     }
 
     private fun verifyScopePair(
@@ -140,8 +143,10 @@ class WebSkinRecurringScopeParityInstrumentedTest {
         firstStart: Long,
         selectedKey: String,
         baselineTitle: String,
+        kind: TemporalKind,
         scope: RecurrenceEditScope
     ) {
+        Log.i("F06_SCOPE_START", "kind=$kind scope=$scope key=$selectedKey")
         val namespace = "pc-sep06-${scope.name.lowercase()}-${UUID.randomUUID()}"
         val nativeContext = IsolatedAppContext(compose.activity, storage, "$namespace-native")
         val clearContext = IsolatedAppContext(compose.activity, storage, "$namespace-clear")
@@ -150,14 +155,24 @@ class WebSkinRecurringScopeParityInstrumentedTest {
         val nativeStore = PowerStore(nativeContext, nativeDatabase)
         val clearStore = PowerStore(clearContext, clearDatabase)
         val changedTitle = "${scope.name} 已修改"
-        val sourceForm = DraftForm(
-            kind = TemporalKind.ALARM,
-            title = baselineTitle,
-            startText = DraftForm.formatInstant(firstStart, zone),
-            zoneId = zone.id,
-            reminderMinutes = -1,
-            recurrence = Recurrence(freq = RecurrenceFreq.DAILY, count = 4)
-        )
+        val sourceForm = when (kind) {
+            TemporalKind.ALARM -> DraftForm(
+                kind = kind,
+                title = baselineTitle,
+                startText = DraftForm.formatInstant(firstStart, zone),
+                zoneId = zone.id,
+                reminderMinutes = -1,
+                recurrence = Recurrence(freq = RecurrenceFreq.DAILY, count = 4)
+            )
+            TemporalKind.DEADLINE -> DraftForm(
+                kind = kind,
+                title = baselineTitle,
+                endText = firstDate.toString(),
+                zoneId = zone.id,
+                recurrence = Recurrence(freq = RecurrenceFreq.DAILY, count = 4)
+            )
+            else -> error("This device parity fixture supports Alarm and date-only Deadline")
+        }
         var web: WebView? = null
         try {
             val nativeSequence = seed(nativeStore, sourceForm, "sep06-native-${scope.name}")
@@ -173,6 +188,7 @@ class WebSkinRecurringScopeParityInstrumentedTest {
                 selectedDate = selectedDate,
                 baselineTitle = baselineTitle,
                 changedTitle = changedTitle,
+                selectedKey = selectedKey,
                 scope = scope
             )
 
@@ -192,6 +208,7 @@ class WebSkinRecurringScopeParityInstrumentedTest {
                 selectedKey = selectedKey,
                 baselineTitle = baselineTitle,
                 changedTitle = changedTitle,
+                kind = kind,
                 scope = scope
             )
 
@@ -202,11 +219,14 @@ class WebSkinRecurringScopeParityInstrumentedTest {
                 selectedDate = selectedDate,
                 baselineTitle = baselineTitle,
                 changedTitle = changedTitle,
+                kind = kind,
+                selectedKey = selectedKey,
                 nativeStore = nativeStore,
                 clearStore = clearStore
             )
-            Log.i("SEP06_SCOPE_PARITY", JSONObject()
+            Log.i("F06_SCOPE_PARITY", JSONObject()
                 .put("scope", scope.name)
+                .put("kind", kind.name)
                 .put("selectedOccurrenceKey", selectedKey)
                 .put("nativeEventSeqs", JSONArray(nativeStore.all().map { it.eventSeq }))
                 .put("clearEventSeqs", JSONArray(clearStore.all().map { it.eventSeq }))
@@ -247,6 +267,7 @@ class WebSkinRecurringScopeParityInstrumentedTest {
         selectedDate: LocalDate,
         baselineTitle: String,
         changedTitle: String,
+        selectedKey: String,
         scope: RecurrenceEditScope
     ) {
         context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
@@ -283,9 +304,17 @@ class WebSkinRecurringScopeParityInstrumentedTest {
         val titleInput = hasSetTextAction() and hasText(baselineTitle)
         compose.onNode(titleInput).performTextReplacement(changedTitle)
         compose.onNodeWithText("保存修改").performClick()
-        waitForSavedState(store, scope, changedTitle)
+        try {
+            waitForSavedState(store, scope, changedTitle, selectedKey)
+        } catch (failure: Throwable) {
+            Log.e("F06_NATIVE_SCOPE_DIAG", "key=$selectedKey scope=$scope " +
+                "events=${store.all()} pending=${store.pendingDrafts()}", failure)
+            throw failure
+        }
 
-        if (scope == RecurrenceEditScope.WHOLE_SERIES) {
+        if (scope == RecurrenceEditScope.WHOLE_SERIES ||
+            scope == RecurrenceEditScope.SINGLE_OCCURRENCE
+        ) {
             compose.onNodeWithText("存档并退出").performClick()
         }
         compose.waitUntil(30_000) {
@@ -316,7 +345,18 @@ class WebSkinRecurringScopeParityInstrumentedTest {
         }
         val result = requireNotNull(web)
         awaitJs(result, "!!window.PowerCalSkin && !!document.querySelector('#timelinePage')")
+        awaitHostDataReady()
         return result
+    }
+
+    private fun awaitHostDataReady() {
+        compose.waitUntil(30_000) {
+            val ready = AtomicReference(false)
+            compose.runOnIdle {
+                ready.set(WebSkinBridgeRuntime.state().optBoolean("hostDataReady"))
+            }
+            ready.get()
+        }
     }
 
     private fun performClearEdit(
@@ -328,6 +368,7 @@ class WebSkinRecurringScopeParityInstrumentedTest {
         selectedKey: String,
         baselineTitle: String,
         changedTitle: String,
+        kind: TemporalKind,
         scope: RecurrenceEditScope
     ): List<JSONObject> {
         awaitJs(web, "!!document.querySelector(\".clear-tabbar [data-action='month']\")")
@@ -342,7 +383,19 @@ class WebSkinRecurringScopeParityInstrumentedTest {
 
         val event = "#monthAgenda .agenda-event[data-event-seq='1']" +
             "[data-original-occurrence-key='$selectedKey']"
-        awaitJs(web, "!!document.querySelector(${JSONObject.quote(event)})")
+        try {
+            awaitJs(web, "!!document.querySelector(${JSONObject.quote(event)})")
+        } catch (failure: AssertionError) {
+            val hostState = WebSkinBridgeRuntime.state()
+            val monthState = hostState.optJSONObject("month")?.toString()
+            val agendaDom = evaluate(web, "JSON.stringify([...document.querySelectorAll(" +
+                "'#monthAgenda .agenda-event')].map(node=>node.outerHTML))")
+            Log.e("F06_CLEAR_MONTH_DIAG", "kind=$kind scope=$scope key=$selectedKey " +
+                "storeEvents=${store.all()} hostDataReady=${hostState.optBoolean("hostDataReady")} " +
+                "totalEvents=${hostState.optInt("totalEvents", -1)} " +
+                "monthState=$monthState agendaDom=$agendaDom", failure)
+            throw failure
+        }
         val eventTrace = tapWebSelector(web, event)
         traces += eventTrace
         assertEquals("Clear touch must open the tapped original occurrence",
@@ -367,12 +420,21 @@ class WebSkinRecurringScopeParityInstrumentedTest {
             .getJSONObject("editor")
         assertEquals(scope.name, selectedEditor.getString("recurrenceScope"))
         val expectedFormDate = if (scope == RecurrenceEditScope.WHOLE_SERIES) firstDate else selectedDate
-        assertEquals("scope selection must bind the form to the tapped occurrence; " +
-            "key=$selectedKey open=${editingBeforeScope.getJSONObject("form").optString("startText")}; " +
-            "scopeTouch=$scopeTrace selected=${selectedEditor.getJSONObject("form").optString("startText")}",
-            DraftForm.formatInstant(
-                expectedFormDate.atTime(9, 0).atZone(zone).toInstant().toEpochMilli(), zone
-            ), selectedEditor.getJSONObject("form").getString("startText"))
+        val selectedForm = selectedEditor.getJSONObject("form")
+        if (kind == TemporalKind.DEADLINE) {
+            assertEquals("date-only Deadline must not acquire a start time", "",
+                selectedForm.getString("startText"))
+            assertEquals("scope selection must preserve the selected local deadline date; " +
+                "key=$selectedKey scopeTouch=$scopeTrace", expectedFormDate.toString(),
+                selectedForm.getString("endText"))
+        } else {
+            assertEquals("scope selection must bind the form to the tapped occurrence; " +
+                "key=$selectedKey open=${editingBeforeScope.getJSONObject("form").optString("startText")}; " +
+                "scopeTouch=$scopeTrace selected=${selectedForm.optString("startText")}",
+                DraftForm.formatInstant(
+                    expectedFormDate.atTime(9, 0).atZone(zone).toInstant().toEpochMilli(), zone
+                ), selectedForm.getString("startText"))
+        }
 
         val titleValue = JSONObject.quote(changedTitle)
         assertEquals("true", evaluate(web, """
@@ -405,7 +467,7 @@ class WebSkinRecurringScopeParityInstrumentedTest {
         awaitHostFormalReview()
         assertUnchangedBeforeApproval(store, baselineTitle)
         compose.onNodeWithText("确认").performClick()
-        waitForSavedState(store, scope, changedTitle)
+        waitForSavedState(store, scope, changedTitle, selectedKey)
         return traces
     }
 
@@ -425,14 +487,20 @@ class WebSkinRecurringScopeParityInstrumentedTest {
         assertEquals(0, store.pendingCount())
     }
 
-    private fun waitForSavedState(store: PowerStore, scope: RecurrenceEditScope, title: String) {
+    private fun waitForSavedState(
+        store: PowerStore,
+        scope: RecurrenceEditScope,
+        title: String,
+        selectedKey: String
+    ) {
         compose.waitUntil(30_000) {
             when (scope) {
                 RecurrenceEditScope.THIS_AND_FUTURE -> store.all().size == 2 &&
                     store.get(2L)?.title == title
                 RecurrenceEditScope.WHOLE_SERIES -> store.all().size == 1 &&
                     store.get(1L)?.title == title
-                RecurrenceEditScope.SINGLE_OCCURRENCE -> false
+                RecurrenceEditScope.SINGLE_OCCURRENCE -> store.all().size == 1 &&
+                    store.get(1L)?.recurrence?.overrides?.get(selectedKey)?.title == title
             }
         }
     }
@@ -444,16 +512,18 @@ class WebSkinRecurringScopeParityInstrumentedTest {
         selectedDate: LocalDate,
         baselineTitle: String,
         changedTitle: String,
+        kind: TemporalKind,
+        selectedKey: String,
         nativeStore: PowerStore,
         clearStore: PowerStore
     ) {
         val native = nativeStore.all().sortedBy { it.eventSeq }
         val clear = clearStore.all().sortedBy { it.eventSeq }
-        fun stored(records: List<dev.powerfulcalendar.core.TemporalRecord>) = records.map {
-            StoredForm(it.eventSeq, it.revision, DraftForm.from(it))
+        fun normalized(records: List<dev.powerfulcalendar.core.TemporalRecord>) = records.map {
+            it.copy(createdAtMillis = 0L, updatedAtMillis = 0L)
         }
         assertEquals("same occurrence scope must create equivalent persisted records",
-            stored(native), stored(clear))
+            normalized(native), normalized(clear))
         assertEquals(if (scope == RecurrenceEditScope.THIS_AND_FUTURE) 3L else 2L,
             nativeStore.commitCount())
         assertEquals(nativeStore.commitCount(), clearStore.commitCount())
@@ -466,6 +536,7 @@ class WebSkinRecurringScopeParityInstrumentedTest {
         assertEquals(nativeStore.pendingCount(), clearStore.pendingCount())
 
         val end = firstDate.plusDays(7).atTime(23, 59).atZone(zone).toInstant().toEpochMilli()
+        val keyTime = if (kind == TemporalKind.DEADLINE) "00:00" else "09:00"
         val nativeKeys = native.flatMap { record ->
             RecurrenceEngine.occurrences(record, firstDate.minusDays(1).atStartOfDay(zone)
                 .toInstant().toEpochMilli(), end).map { it.key }
@@ -475,6 +546,13 @@ class WebSkinRecurringScopeParityInstrumentedTest {
                 .toInstant().toEpochMilli(), end).map { it.key }
         }.sorted()
         assertEquals(nativeKeys, clearKeys)
+        assertEquals("occurrence keys retain their local wall date/time",
+            (0L..3L).map { "${firstDate.plusDays(it)}T$keyTime" }, nativeKeys)
+
+        if (kind == TemporalKind.DEADLINE) {
+            assertTrue("date-only deadlines must remain dates, never instants",
+                (native + clear).all { it.deadlineDate != null && it.deadlineMillis == null })
+        }
 
         when (scope) {
             RecurrenceEditScope.THIS_AND_FUTURE -> {
@@ -487,15 +565,20 @@ class WebSkinRecurringScopeParityInstrumentedTest {
                 assertEquals(3, future.recurrence.count)
                 assertEquals(2L, old.revision)
                 assertEquals(1L, future.revision)
-                assertEquals(listOf("${firstDate}T09:00"), RecurrenceEngine.occurrences(
+                assertEquals(listOf("${firstDate}T$keyTime"), RecurrenceEngine.occurrences(
                     old, firstDate.minusDays(1).atStartOfDay(zone).toInstant().toEpochMilli(), end
                 ).map { it.key })
-                assertEquals((0L..2L).map { "${selectedDate.plusDays(it)}T09:00" },
+                assertEquals((0L..2L).map { "${selectedDate.plusDays(it)}T$keyTime" },
                     RecurrenceEngine.occurrences(future,
                         firstDate.minusDays(1).atStartOfDay(zone).toInstant().toEpochMilli(), end
                     ).map { it.key })
                 assertEquals(3L, nativeStore.nextSequencePreview())
                 assertEquals(2L, nativeStore.identityCount())
+                if (kind == TemporalKind.DEADLINE) {
+                    assertEquals(firstDate.toString(), old.deadlineDate)
+                    assertEquals(selectedDate.toString(), future.deadlineDate)
+                    assertNull(future.deadlineMillis)
+                }
             }
             RecurrenceEditScope.WHOLE_SERIES -> {
                 assertEquals(1, native.size)
@@ -503,14 +586,38 @@ class WebSkinRecurringScopeParityInstrumentedTest {
                 assertEquals(changedTitle, series.title)
                 assertEquals(4, series.recurrence.count)
                 assertEquals(2L, series.revision)
-                assertEquals((0L..3L).map { "${firstDate.plusDays(it)}T09:00" },
+                assertEquals((0L..3L).map { "${firstDate.plusDays(it)}T$keyTime" },
                     RecurrenceEngine.occurrences(series,
                         firstDate.minusDays(1).atStartOfDay(zone).toInstant().toEpochMilli(), end
                     ).map { it.key })
                 assertEquals(2L, nativeStore.nextSequencePreview())
                 assertEquals(1L, nativeStore.identityCount())
+                if (kind == TemporalKind.DEADLINE) {
+                    assertEquals(firstDate.toString(), series.deadlineDate)
+                    assertNull(series.deadlineMillis)
+                }
             }
-            RecurrenceEditScope.SINGLE_OCCURRENCE -> error("single scope is verified separately")
+            RecurrenceEditScope.SINGLE_OCCURRENCE -> {
+                assertEquals(1, native.size)
+                val series = requireNotNull(nativeStore.get(1L))
+                assertEquals(baselineTitle, series.title)
+                assertEquals(4, series.recurrence.count)
+                assertEquals(2L, series.revision)
+                assertEquals(changedTitle, series.recurrence.overrides[selectedKey]?.title)
+                assertEquals(2L, nativeStore.nextSequencePreview())
+                assertEquals(1L, nativeStore.identityCount())
+                assertEquals("Single edits preserve the original series occurrence set",
+                    (0L..3L).map { "${firstDate.plusDays(it)}T$keyTime" },
+                    RecurrenceEngine.occurrences(series,
+                        firstDate.minusDays(1).atStartOfDay(zone).toInstant().toEpochMilli(), end
+                    ).map { it.key })
+                if (kind == TemporalKind.DEADLINE) {
+                    assertEquals(firstDate.toString(), series.deadlineDate)
+                    assertNull(series.deadlineMillis)
+                    assertEquals(selectedDate.atStartOfDay(zone).toInstant().toEpochMilli(),
+                        series.recurrence.overrides[selectedKey]?.startMillis)
+                }
+            }
         }
     }
 
@@ -586,7 +693,8 @@ class WebSkinRecurringScopeParityInstrumentedTest {
         assertTrue("touch did not reach the target WebView: selector=$selector, delivered=${delivered.get()}",
             delivered.get() >= 2)
         val trace = evaluateObject(web, "window.__pcSep06Touch||{}")
-        assertTrue("Clear action must arise from a trusted touchscreen click: $trace",
+        assertTrue("Clear action must arise from a trusted touchscreen click: " +
+            "selector=$selector target=$target trace=$trace",
             trace.optBoolean("trusted"))
         return trace
     }

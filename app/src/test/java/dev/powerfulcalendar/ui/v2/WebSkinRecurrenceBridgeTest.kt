@@ -30,8 +30,10 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import java.util.TimeZone
 import java.util.UUID
 
 @RunWith(RobolectricTestRunner::class)
@@ -341,6 +343,87 @@ class WebSkinRecurrenceBridgeTest {
         assertEquals("每日闹钟", saved.title)
         assertEquals("仅这一次", saved.recurrence.overrides[key]?.title)
         assertEquals(1, store.all().size)
+    }
+
+    @Test fun ambiguousRecurringSingleEditUsesEarlierOffsetThroughTheBridge() = runBlocking {
+        val zone = ZoneId.of("America/New_York")
+        val previousTimeZone = TimeZone.getDefault()
+        TimeZone.setDefault(TimeZone.getTimeZone(zone))
+        try {
+            val draft = store.newDraft(DraftForm(
+                kind = TemporalKind.ALARM,
+                title = "Fold recurrence",
+                startText = "2026-10-31 01:30",
+                zoneId = zone.id,
+                reminderMinutes = -1,
+                recurrence = Recurrence(RecurrenceFreq.DAILY, count = 3)
+            ))
+            assertTrue(store.commit(draft.draftId) is PowerStore.CommitOutcome.Committed)
+            val owner = requireNotNull(store.get(draft.eventSeq))
+            val key = "2026-11-01T01:30"
+            assertEquals("opened", service.execute(command("editor.open",
+                "eventSeq" to owner.eventSeq,
+                "expectedRevision" to owner.revision,
+                "occurrenceKey" to key)).getString("status"))
+            val session = service.snapshot().getJSONObject("editor").getString("sessionId")
+            assertEquals("selected", service.execute(command("editor.scope",
+                "sessionId" to session, "scope" to "SINGLE_OCCURRENCE")).getString("status"))
+            val selectedForm = service.snapshot().getJSONObject("editor").getJSONObject("form")
+            assertEquals("2026-11-01 01:30", selectedForm.getString("startText"))
+            assertEquals(zone.id, selectedForm.getString("zoneId"))
+
+            assertEquals("edited", service.execute(command("editor.patch", "sessionId" to session,
+                "field" to "title", "value" to "Earlier fold slot")).getString("status"))
+            val save = command("editor.save", "sessionId" to session)
+            assertEquals("confirmation_required", service.execute(save).getString("status"))
+            val occurrenceQuery = recurrenceRecorder.occurrenceQueries.last()
+            assertEquals(owner.eventSeq, occurrenceQuery.event.eventSeq)
+            assertEquals(owner.revision, occurrenceQuery.event.revision)
+            assertEquals(key, occurrenceQuery.occurrenceKey)
+            assertEquals(zone.id, occurrenceQuery.localZoneId)
+            assertEquals(owner, store.get(owner.eventSeq))
+            assertEquals(1, store.commitCount())
+            val cancelled = requireNotNull(service.pendingWriteReview)
+            assertEquals("cancelled", service.resolveFormalWriteReview(
+                cancelled.token, false
+            ).getString("status"))
+            assertEquals(owner, store.get(owner.eventSeq))
+            assertEquals(1, store.commitCount())
+
+            val retrySave = command("editor.save", "sessionId" to session)
+            assertEquals("confirmation_required", service.execute(retrySave).getString("status"))
+            val approved = requireNotNull(service.pendingWriteReview)
+            assertEquals(Instant.parse("2026-11-01T05:30:00Z").toEpochMilli(),
+                approved.before?.startMillis)
+            assertEquals("saved", service.resolveFormalWriteReview(
+                approved.token, true
+            ).getString("status"))
+            assertEquals("saved", service.execute(retrySave).getString("status"))
+
+            val saved = requireNotNull(store.get(owner.eventSeq))
+            val override = requireNotNull(saved.recurrence.overrides[key])
+            assertEquals(owner.eventSeq, saved.eventSeq)
+            assertEquals(owner.revision + 1, saved.revision)
+            assertEquals("Fold recurrence", saved.title)
+            assertEquals("Earlier fold slot", override.title)
+            assertEquals(Instant.parse("2026-11-01T05:30:00Z").toEpochMilli(),
+                override.startMillis)
+            assertEquals(-4 * 60 * 60, Instant.ofEpochMilli(
+                requireNotNull(override.startMillis)
+            ).atZone(zone).offset.totalSeconds)
+            assertEquals(1, store.all().size)
+            assertEquals(1L, store.identityCount())
+            assertEquals(2L, store.nextSequencePreview())
+            assertEquals(2, store.commitCount())
+            assertEquals("closed", service.execute(command("editor.close",
+                "sessionId" to session)).getString("status"))
+            assertEquals("Only the initial committed fixture draft remains", 1L,
+                store.draftCount())
+            assertTrue(store.pendingDraftsFor(owner.eventSeq).isEmpty())
+            assertEquals(0, store.pendingCount())
+        } finally {
+            TimeZone.setDefault(previousTimeZone)
+        }
     }
 
     @Test fun futureScopeSplitsOnceAndRejectsForgedOccurrence() = runBlocking {

@@ -14,6 +14,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.ZoneId
 
@@ -156,6 +157,67 @@ class RecurrenceFeatureApiV1Test {
             Instant.parse("2026-11-01T14:00:00Z").toEpochMilli(),
             actual.occurrence?.startMillis
         )
+    }
+
+    @Test
+    fun occurrenceByKeySelectsTheEarlierOffsetForAnAmbiguousFallFoldSlot() {
+        val zone = ZoneId.of("America/New_York")
+        val anchor = LocalDateTime.parse("2026-10-31T01:30")
+            .atZone(zone).toInstant().toEpochMilli()
+        val key = "2026-11-01T01:30"
+        val record = TemporalRecord(
+            eventSeq = 33,
+            revision = 5,
+            kind = TemporalKind.ALARM,
+            title = "Fall fold",
+            startMillis = anchor,
+            recurrence = Recurrence(RecurrenceFreq.DAILY, count = 3),
+            zoneId = zone.id
+        )
+
+        val actual = api.queryOccurrenceByKey(
+            RecurrenceOccurrenceByKeyQueryV1(record.toEventRecordV1(), key, zone.id)
+        )
+
+        assertEquals(record.eventSeq, actual.eventSeq)
+        assertEquals(record.revision, actual.eventRevision)
+        assertEquals(key, actual.occurrence?.key)
+        assertEquals(Instant.parse("2026-11-01T05:30:00Z").toEpochMilli(),
+            actual.occurrence?.startMillis)
+        assertEquals(-4 * 60 * 60, Instant.ofEpochMilli(
+            requireNotNull(actual.occurrence).startMillis
+        ).atZone(zone).offset.totalSeconds)
+    }
+
+    @Test
+    fun dateOnlyDeadlineOccurrencesKeepTheirLocalDatesAndNoInstantDeadline() {
+        val zone = ZoneId.of("America/New_York")
+        val record = TemporalRecord(
+            eventSeq = 34,
+            revision = 6,
+            kind = TemporalKind.DEADLINE,
+            title = "Date-only recurrence",
+            deadlineDate = "2026-10-31",
+            recurrence = Recurrence(RecurrenceFreq.DAILY, count = 3),
+            zoneId = zone.id
+        )
+        val window = api.queryOccurrencesInWindow(
+            RecurrenceOccurrenceWindowQueryV1(
+                record.toEventRecordV1(),
+                LocalDate.of(2026, 10, 31).atStartOfDay(zone).toInstant().toEpochMilli(),
+                LocalDate.of(2026, 11, 3).atStartOfDay(zone).toInstant().toEpochMilli()
+            )
+        )
+
+        assertEquals(record.eventSeq, window.eventSeq)
+        assertEquals(record.revision, window.eventRevision)
+        assertEquals(listOf("2026-10-31T00:00", "2026-11-01T00:00", "2026-11-02T00:00"),
+            window.occurrences.map { it.key })
+        assertEquals(listOf(31, 1, 2), window.occurrences.map {
+            Instant.ofEpochMilli(it.startMillis).atZone(zone).dayOfMonth
+        })
+        assertEquals("2026-10-31", record.toEventRecordV1().deadlineDate)
+        assertEquals(null, record.toEventRecordV1().deadlineMillis)
     }
 
     @Test
