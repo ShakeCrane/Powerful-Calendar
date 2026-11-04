@@ -460,3 +460,9 @@ MainActivity.setContent (MainActivity.kt:89-91)
 - TalkBack was enabled in system Settings for one bounded system-UI check. The documented Alt+Right shortcut was attempted through ADB keyboard injection; the accessibility focus remained visually on the same Back control; screenshots before/after were byte-identical. UiAutomator probes were excluded because they turned touch exploration off. A PowerCal traversal was not attempted because system traversal was not observable. Original accessibility state was restored and verified; TalkBack focus order remains **NOT TESTED**, with F-09 still BLOCKED. Low-end physical hardware is also NOT TESTED.
 - Exact logs and screenshots: `.local/android-test/reports/Q-03-20261105/manifest.md`. Current app/test APK hashes, device details, commands, and cleanup evidence are recorded there.
 - No product or test source changed; prior F-09 navigation/IME and R-07 boot results are referenced only as PREVIOUS PASS. No SSA row status was raised.
+
+## Q-04 physical/OEM reminder sign-off (2026-11-05)
+
+**Status: NOT TESTED — EXTERNAL DEVICE.** The verified ADB inventory contained only the isolated `PowerCal_Wave2_QA35_20261104` emulator (`emulator-5554`, API 35, `sdk_gphone64_x86_64`); no authorized QA handset was connected. Emulator evidence does not sign off OEM alarm delivery. No physical app install or data operation was performed.
+
+The required non-destructive handset procedure is in [`Q04_PHYSICAL_DEVICE_RUNBOOK.md`](Q04_PHYSICAL_DEVICE_RUNBOOK.md). A distinct QA application ID and synthetic data are preconditions. Current emulator checks remain separately reported in the Q-03 evidence; all physical/OEM result cells remain NOT TESTED. Product Cutover remains HOLD.
