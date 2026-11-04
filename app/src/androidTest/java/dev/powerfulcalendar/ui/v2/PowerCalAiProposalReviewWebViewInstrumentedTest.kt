@@ -95,10 +95,18 @@ class PowerCalAiProposalReviewWebViewInstrumentedTest {
         val probe = evaluateObject(web, """(() => {
           const target=document.querySelector($selectorLiteral);
           if(!target)return {found:false};
-          target.scrollIntoView({block:'center',inline:'nearest'});
+          const fixedTabbar=target.closest('.clear-tabbar');
+          if(!fixedTabbar)target.scrollIntoView({block:'center',inline:'nearest'});
           const rect=target.getBoundingClientRect(),style=getComputedStyle(target);
-          const receipt={trustedDown:false,trustedUp:false,trustedClick:false,pointerType:''};
+          const tabbarRect=fixedTabbar?.getBoundingClientRect();
+          const hit=document.elementFromPoint(rect.left+rect.width/2,rect.top+rect.height/2);
+          const receipt={trustedDown:false,trustedUp:false,trustedClick:false,pointerType:'',documentDown:null};
           window.__aiParityTrustedTap=receipt;
+          document.addEventListener('pointerdown',event=>{
+            const node=event.target;
+            receipt.documentDown={trusted:event.isTrusted,pointerType:String(event.pointerType),
+              tag:node?.tagName||'',action:node?.dataset?.action||'',className:String(node?.className||'')};
+          },{capture:true,once:true});
           target.addEventListener('pointerdown',event=>{
             receipt.trustedDown=event.isTrusted;receipt.pointerType=String(event.pointerType);
           },{once:true});
@@ -108,7 +116,10 @@ class PowerCalAiProposalReviewWebViewInstrumentedTest {
             cssWidth:document.documentElement.clientWidth,cssHeight:window.innerHeight,
             visible:style.display!=='none'&&style.visibility!=='hidden'&&rect.width>0&&rect.height>0&&
               rect.bottom>0&&rect.top<window.innerHeight&&rect.right>0&&
-              rect.left<document.documentElement.clientWidth};
+              rect.left<document.documentElement.clientWidth,
+            scrollY:window.scrollY,tabbarPosition:fixedTabbar?getComputedStyle(fixedTabbar).position:'',
+            tabbarTop:tabbarRect?.top??null,hitTag:hit?.tagName||'',hitAction:hit?.dataset?.action||'',
+            hitClass:String(hit?.className||'')};
         })()""")
         assertTrue("AI Clear control should be visible in the WebView viewport: $selector $probe",
             probe.optBoolean("found") && probe.optBoolean("visible"))
@@ -124,18 +135,27 @@ class PowerCalAiProposalReviewWebViewInstrumentedTest {
         assertEquals("Clear touch mapping must preserve WebView aspect ratio", scaleX, scaleY, 0.02)
         val x = location[0] + (probe.getDouble("x") * scaleX).toFloat()
         val y = location[1] + (probe.getDouble("y") * scaleY).toFloat()
+        probe.put("webScreenX", location[0]).put("webScreenY", location[1])
+            .put("webWidthPx", widthPx).put("webHeightPx", heightPx)
+            .put("scaleX", scaleX).put("scaleY", scaleY).put("touchX", x).put("touchY", y)
         val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val automation = instrumentation.uiAutomation
         val downTime = SystemClock.uptimeMillis()
-        for (action in intArrayOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
-            val eventTime = if (action == MotionEvent.ACTION_DOWN) downTime else downTime + 80
-            val event = MotionEvent.obtain(downTime, eventTime, action, x, y, 0)
-            try {
-                event.source = InputDevice.SOURCE_TOUCHSCREEN
-                instrumentation.sendPointerSync(event)
-            } finally {
-                event.recycle()
-            }
-            if (action == MotionEvent.ACTION_DOWN) SystemClock.sleep(80)
+        val down = MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, y, 0).apply {
+            source = InputDevice.SOURCE_TOUCHSCREEN
+        }
+        val up = MotionEvent.obtain(downTime, downTime + 80, MotionEvent.ACTION_UP, x, y, 0).apply {
+            source = InputDevice.SOURCE_TOUCHSCREEN
+        }
+        try {
+            assertTrue("Android accepted Clear AI touchscreen down",
+                automation.injectInputEvent(down, true))
+            SystemClock.sleep(80)
+            assertTrue("Android accepted Clear AI touchscreen up",
+                automation.injectInputEvent(up, true))
+        } finally {
+            down.recycle()
+            up.recycle()
         }
         var receipt = evaluateObject(web, "window.__aiParityTrustedTap")
         if (requireTrustedClick) {

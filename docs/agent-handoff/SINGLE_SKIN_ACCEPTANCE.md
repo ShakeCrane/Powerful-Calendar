@@ -402,7 +402,7 @@ MainActivity.setContent (MainActivity.kt:89-91)
 
 ## Q-02 冻结行为重放记录（2026-11-05）
 
-**Q-02 任务状态：BLOCKED（矩阵与本轮可执行重放已登记；SSA-08 的 Native→Clear 普通聊天等价仍缺有效结果）。** 本节是本轮实测索引，不改变原 SSA-01～SSA-16 状态，也不签核 SEP-01～SEP-16 全项。
+**Q-02 任务状态：PASS（16/16 SEP 母项映射及本轮矩阵记录完成；SEP-09 普通聊天触摸比较在当前 Release Candidate 经测试辅助修正后通过）。** 此 PASS 仅代表矩阵/重放交付完成；SSA-01～SSA-16 原状态未提高，SEP 历史整体签核仍 INCOMPLETE。
 
 ### 本轮共同基线
 
@@ -426,18 +426,18 @@ MainActivity.setContent (MainActivity.kt:89-91)
 | SEP-06 → SSA-03,06,16 | Single / This-and-future / Whole；Recurrence/Event API；原系列、occurrenceKey、revision、拆分和提交数比较 | Alarm 与日期型 Deadline 三种作用域、重复 Memo 单实例完成切片通过 | PARTIAL；设备 DST gap/fold 与日期边界未在本轮验证，SSA-06 保持 PARTIAL | `WebSkinRecurringScopeParity*`、Memo recurrence 日志；F-06 为 PREVIOUS PASS |
 | SEP-07 → SSA-05,07,11,16 | 触摸删除、取消、过期版本冲突、恢复已删正式记录；Event/DraftReview API；取消零写入、身份复用、revision 对照 | Native/Clear 删除等价；Host 冲突刷新；恢复前仍需明确批准 | PASS（切片）；更广泛恢复/OEM 仍未签核 | `WebSkinFormalDeleteTouch*`、`ConflictReview*`、`WebSkinAllKindsTrustedWrite*` 删除日志 |
 | SEP-08 → SSA-07,16 | Memo deck 编辑/flush/reopen/publish；编辑器脏状态跨 force-stop；DraftReview API；待处理草稿 ID/版本/Store 计数对照 | 新进程恢复原草稿及 Memo 完成实例，未重复创建正式记录 | PASS（切片）；所有队列边界、撤销与 Studio 结构仍未签核 | `WebSkinAllKindsTrustedWrite*`、`clear-process-recovery-{prepare,restore}.log` |
-| SEP-09 → SSA-08,15,16 | Local-stub chat、失败后显式重试、附件同意与聊天历史冷启动；AI API；会话/Store 及未授权数据不外泄 | Clear Stub 聊天历史 force-stop 恢复通过；Native/Clear 失败重试和附件比较通过。普通聊天 Native→Clear 对照在两次执行中，AI tab 可见但测试未收到可信 pointerdown，未到达发送动作/API | **BLOCKED**；保留原日志，不断言产品缺陷，也不签等价；默认 Clear 普通聊天触摸对照是 Q-02 唯一未解 P1 观察项 | `PowerCalAiProposalReviewWebViewInstrumentedTest-nativeAndClearRealChatSend*`（两次失败）；`clear-chat-cold-cycle-{0,1}.log`（通过）；Studio local-stub chat 测试通过 |
+| SEP-09 → SSA-08,15,16 | Local-stub chat、失败后显式重试、附件同意与聊天历史冷启动；AI API；会话/Store 及未授权数据不外泄 | Clear Stub 聊天历史 force-stop 恢复通过；Native/Clear 失败重试和附件比较通过；当前 RC 的普通聊天 Native→Clear 对照经修正测试辅助后完整通过（两条对话、请求、历史、投影、权限隔离和 Store 不变） | PASS（本轮 chat 功能切片）；SEP-09 此操作等价已验证，live provider 与全量 SEP/SSA 签核仍未完成 | `current-rc-real-touch/q02-sep09-retest.md`（当前 RC 1/1 PASS）；原两次失败日志保留为历史；`clear-chat-cold-cycle-{0,1}.log`（冷启动通过） |
 | SEP-10 → SSA-08,11,16 | 提案 CREATE/STAGE、REPLACE/DELETE scoped approval；AI/DraftReview/Event API；批准前后 formal/draft/commit 快照比较 | Native/Clear 生成待审草稿、审批后写入及拒绝未写入结果相符 | PASS（切片）；live provider 与全套恢复边界仍 NOT TESTED | 两个 `nativeAndClear*Proposal*` AI 日志及 local stub 证据 |
 | SEP-11 → SSA-09,10,16 | 通知拒绝/提醒入口、精确闹钟设置跳转、日历权限拒绝/空 provider 授权、AI 设置、ICS 选择导入草稿、篡改备份拒绝；Reminder/Settings/ImportExport API + Host SAF | 权限拒绝、取消选择、hash 错误均未造成 Core Store 写入；ICS 形成等价审核草稿 | PARTIAL；本轮未写系统 Calendar provider；F-08 的系统日历导入为 PREVIOUS PASS；OEM 实际提醒投递 NOT TESTED | 7 个 `ClearSettingsOptionsInstrumentedTest` 日志；F-08 `.local` 报告 |
 | SEP-12 → SSA-09,15,16 | Settings 外部权限/Picker 往返与取消；Android Host/SAF；Store 快照不变 | Clear 与 Blank Studio 的权限/文件取消反馈可观察，取消零写入 | PARTIAL；Back/IME 部分沿用 F-09 PREVIOUS PASS；TalkBack 与物理设备待 Q-03/Q-04 | Settings、Studio 权限日志；F-09 报告 |
 | SEP-13 → SSA-01,13,16 | 工厂包解析、注册和选择迁移；`SkinPackageManager`；Q-01 状态矩阵、APK 资产数/字节哈希 | 当前 Visual RC 实际只含一份 Clear；Q-01 对 Fresh/Native/unknown/损坏选择及恢复执行 24 方法 | PARTIAL；真实 package uninstall/reinstall 未测试，Q-01 只验证隔离安装状态矩阵 | Q-01 报告（PREVIOUS PASS，同 app/test APK SHA）；本轮 APK 包校验 |
 | SEP-14 → SSA-01,14,16 | 脏编辑跨进程恢复、损坏包冷启动 Native 回退；Host checkpoint/recovery；事件、草稿、eventSeq/revision 前后对照 | Q-02 真实 force-stop 后恢复原草稿；Q-01 对损坏工厂/已选包恢复 Native 且 Store 快照不变 | PASS（所测恢复切片）；checkpoint-I/O 注入故障及完整 SEP 签核仍未覆盖 | Q-02 process recovery logs；Q-01 recovery logs；R-07 PREVIOUS PASS |
 | SEP-15 → SSA-12,13,16 | Blank Studio 五页、组件树、四类表单、Host action/资源操作及 Force-stop 后重装载 | Studio 生成包 Android 五页与 Host API 动作通过；包与项目往返 Python/Browser 使用 S-06/S-07 PREVIOUS PASS | PASS（所测创作/运行切片）；自定义视觉稿未获，Visual RC 保持 Clear fallback；全量视觉/真机仍未签核 | 4 个 `StudioFromBlankFullRuntimeInstrumentedTest` 日志（权限用例控制重置后通过）；S-06/S-07 报告 |
-| SEP-16 → SSA-05,07,08,10,11,16 | 所有正式写入/删除/AI 提案审批和冲突确认；Event/DraftReview/AI API；批准前零正式写入、批准后匹配身份/revision | Clear 与 Native 在四类事件、删除/恢复、提案作用域对照中匹配 | PARTIAL；SEP-09 普通聊天触摸等价未闭合，因此不签最终业务等价 SSA-16 | trusted-write、delete、conflict、AI proposal 测试日志 |
+| SEP-16 → SSA-05,07,08,10,11,16 | 所有正式写入/删除/AI 提案审批和冲突确认；Event/DraftReview/AI API；批准前零正式写入、批准后匹配身份/revision | Clear 与 Native 在四类事件、删除/恢复、提案作用域对照中匹配；SEP-09 本轮普通聊天触摸切片已通过 | PARTIAL；其余全项等价、真机与正式 SEP 签核仍未闭合；不提高原 SSA-16 状态 | trusted-write、delete、conflict、AI proposal 与 `current-rc-real-touch/q02-sep09-retest.md` |
 
 ### 本轮失败、复验与状态裁定
 
-- 50 个独立 instrumentation 日志：47 次 `OK (1 test)`；3 次失败执行。失败类型只有两类：首次 Studio 权限测试受 `USER_FIXED` 前置状态影响（受控清标记后通过）；Native→Clear 普通 AI chat touch comparator 两次在同一位置断言失败，均无 API 请求。其他四条 AI Native/Clear proposal/error/attachment 对照及 Clear chat 冷启动历史回放通过。
+- 原始 50 次 instrumentation 执行保留 47 个 PASS 日志和 3 个失败日志；首次 Studio 权限前置状态经受控调整后通过。Native→Clear AI chat 的两次历史失败均未到达 API。当前 RC 上修正触摸测试辅助后的定向复测 1/1 PASS，累计 51 次调用有 48 次 PASS、3 个历史失败日志；其他 AI Native/Clear proposal/error/attachment 对照及 Clear chat 冷启动回放通过。
 - Android 主应用数据库终态 SHA 与 Q-01 基线相同；Q-02 用例中的 Native/Clear 隔离 Store 快照均按测试断言比较。主要 app selection 为 `powercal-clear-default`；通知权限测试结束后恢复为原来的 denied/user-set/user-fixed。
 - 本轮没有运行全量 JVM/Gradle：当前 Debug code 与 971/971 JVM / Source Boundary / Lint / AndroidTest compile 的已验证代码树相同，且本任务未修改产品或测试源文件。该既有门禁标记 PREVIOUS PASS，非 Q-02 本轮运行结果。
 - `SSA-01～SSA-16` 原状态全部保留；真机/OEM、实际系统闹钟投递、TalkBack、SEP 整体签核仍未完成；Product Cutover 继续 HOLD。
@@ -466,3 +466,13 @@ MainActivity.setContent (MainActivity.kt:89-91)
 **Status: NOT TESTED — EXTERNAL DEVICE.** The verified ADB inventory contained only the isolated `PowerCal_Wave2_QA35_20261104` emulator (`emulator-5554`, API 35, `sdk_gphone64_x86_64`); no authorized QA handset was connected. Emulator evidence does not sign off OEM alarm delivery. No physical app install or data operation was performed.
 
 The required non-destructive handset procedure is in [`Q04_PHYSICAL_DEVICE_RUNBOOK.md`](Q04_PHYSICAL_DEVICE_RUNBOOK.md). A distinct QA application ID and synthetic data are preconditions. Current emulator checks remain separately reported in the Q-03 evidence; all physical/OEM result cells remain NOT TESTED. Product Cutover remains HOLD.
+
+
+### Q-02 SEP-09 current Release Candidate retest (2026-11-05)
+
+- Installed RC APK SHA-256: `EC27EBE7A85FD117CB83F846F26CD4D6A374D4908F09001FC051231A8592C340`; API 35 AVD `PowerCal_Wave2_QA35_20261104`, `emulator-5554`. Main database SHA-256 before and after: `881b1b234520d24636d9816fe48681d0bcfb7a8b1f4d39a2c1513b33fefb9cf7`; selected ID remained `powercal-clear-default`.
+- An actual ADB touchscreen tap at the AI bottom-tab position navigated the installed RC from Timeline to AI. Before/after screenshots are in `.local/android-test/reports/Q-02-20261105/current-rc-real-touch/`; the Store digest did not change.
+- Root cause was the test helper calling `scrollIntoView` on the CSS-fixed `.clear-tabbar` control. An intermediate retry changing input injection alone still failed. Skipping scroll for controls inside the fixed tab bar, and using the same `UiAutomation.injectInputEvent` injection pattern as passing touch tests, made the existing comparator pass. The app itself was also reachable with the ADB touch. No product defect was reproduced.
+- `:app:compileDebugAndroidTestKotlin :app:assembleDebugAndroidTest --offline --no-daemon --max-workers=1 --no-parallel --console=plain`: BUILD SUCCESSFUL. Rebuilt AndroidTest APK SHA-256: `A7ED51676045AEC57BB67DBBE868CF25BFF95ABDCF55571657ABB871B3ABA175`. Exact test `PowerCalAiProposalReviewWebViewInstrumentedTest#nativeAndClearRealChatSendMatchHistoryAndRespectDisabledContextSharing`: **1/1 PASS**. Test assertions verify trusted touches for the tab/input/send controls, two matching local-stub provider turns, equal persisted and Host-projected history, disabled sharing excludes the synthetic private fixture, and unchanged isolated Stores.
+- Current logs, test APK, screenshots, and failure/diagnostic runs are in `.local/android-test/reports/Q-02-20261105/current-rc-real-touch/`. No product source, default Skin, user permission, or main Store changed; historical failure logs remain preserved.
+- Q-02 is complete as a traceable matrix/replay task. Individual SEP/SSA rows retain their recorded PASS/PARTIAL/NOT TESTED states; this does not declare full SEP parity or authorize Product Cutover.

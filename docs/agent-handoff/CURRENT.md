@@ -6,13 +6,13 @@ WAVE3_START_HEAD: 82b456fd2bfc15df379fd15d967fac3da57b899d
 LATEST_CODE_HEAD: b71cf0eedbd6dba9dafe0d9215ab33457258d045
 LATEST_VERIFIED_HEAD: 49b0841a6ea98ceec4872b07d3b6cec260fe55a9
 CURRENT_TASK: Q-02
-TASK_STATUS: IN_PROGRESS
-LAST_COMPLETED_TASK: Q-03-RECOVERY-PERFORMANCE-ACCESSIBILITY (BLOCKED for full accessibility sign-off; recovery/layout checks 9/9 PASS; TalkBack NOT TESTED)
-LAST_COMPLETED_COMMIT: 5e05c077d053cabcc07c0a0827716fe3f87e53c7 (Q-03 acceptance and evidence)
+TASK_STATUS: PASS (matrix/replay task complete; historical SEP/SSA sign-off remains INCOMPLETE)
+LAST_COMPLETED_TASK: Q-02 full parity replay matrix (PASS as a traceable task; individual SSA states unchanged)
+LAST_COMPLETED_COMMIT: pending Q-02 closeout commit
 LAST_ATTEMPTED_TASK: Q-04 physical/OEM reminders NOT TESTED - no authorized handset connected (BLOCKED - EXTERNAL DEVICE)
 LAST_ATTEMPTED_COMMIT: 6f6cffc0e6bd99bcf532525b0ad39a4ae3373516 (Q-04 external-device checklist and blocker evidence)
 NEXT_TASK: Q-05
-NEXT_ACTION: Resume a bounded Q-02 SEP-09 diagnostic: verify whether the Native-to-Clear AI tab pointer failure reproduces with real ADB touch on the current Release Candidate. Classify product vs test-harness behavior before Q-05; preserve TalkBack and physical/OEM NOT TESTED, keep Product Cutover HOLD until the user-visible AI path is known.
+NEXT_ACTION: Begin Q-05 on the protected branch using the current internal RC. Verify the single-default activation and migration on isolated QA states, preserve Store data, and retain Native recovery. Do not publish or remove any other worktree. Keep Product Cutover HOLD until Q-05's required evidence passes.
 LAST_TASK_EVIDENCE:
   Q-01:
     status: PASS (isolated migration/state matrix; package uninstall/reinstall NOT TESTED)
@@ -22,6 +22,15 @@ LAST_TASK_EVIDENCE:
     store_sha256_before_after: 881b1b234520d24636d9816fe48681d0bcfb7a8b1f4d39a2c1513b33fefb9cf7
     evidence: .local/android-test/reports/Q-01-20261105/manifest.md
     limits: QA suffix APK build unavailable because the SDK platform/build-tools are absent; current installed app and test APK hashes matched their local artifacts; no app data clear/uninstall or production cutover.
+  Q-02:
+    status: PASS as matrix/replay task; SEP/SSA overall sign-off remains INCOMPLETE
+    source_head: b71cf0eedbd6dba9dafe0d9215ab33457258d045
+    android: Current RC SEP-09 native/Clear chat comparator 1/1 PASS on isolated API 35 AVD; test-helper fixed-tabbar scrolling was corrected; 48/51 Q-02 invocations PASS, with three historical failures preserved
+    apk_sha256: EC27EBE7A85FD117CB83F846F26CD4D6A374D4908F09001FC051231A8592C340
+    android_test_apk_sha256: A7ED51676045AEC57BB67DBBE868CF25BFF95ABDCF55571657ABB871B3ABA175
+    store_sha256_before_after: 881b1b234520d24636d9816fe48681d0bcfb7a8b1f4d39a2c1513b33fefb9cf7
+    evidence: .local/android-test/reports/Q-02-20261105/current-rc-real-touch/q02-sep09-retest.md
+    limits: Full JVM was not rerun for the focused comparator; SSA states were not upgraded; TalkBack, physical/OEM, live provider and full SEP sign-off remain incomplete.
 PRODUCT_DELIVERY_CHECKPOINT_A:
   status: DELIVERED (PowerCal Functional Preview; Debug only)
   apk: dist/powercal/PowerCal-Functional-Preview-2026-11-05.apk
@@ -54,7 +63,7 @@ PRODUCT_DELIVERY_CHECKPOINT_C:
   android: API 35 isolated AVD; five WebView pages captured; see .local/android-test/reports/V-02-20261105/manifest.md
   limitations: No approved Claude artwork source found; TalkBack, physical/OEM and full SEP gaps remain; Product Cutover HOLD
 WAVE2_STATUS: COMPLETE (8 authorized work packages attempted; all PASS)
-WAVE3_STATUS: IN_PROGRESS (F-08 PASS; F-09 BLOCKED only for TalkBack traversal; S-06/S-07 PASS; Checkpoints A/B/C delivered; R-06/R-07 PASS; V-01 PASS; V-02 PARTIAL because custom artwork is unavailable; Q-01 PASS for isolated migration state matrix; Q-02 BLOCKED by unresolved Native-to-Clear AI chat touch comparison; Q-03 BLOCKED for complete accessibility sign-off; recovery/layout checks 9/9 PASS; TalkBack and low-end hardware NOT TESTED; Q-04 external-device signature BLOCKED - EXTERNAL DEVICE; Product Cutover HOLD)
+WAVE3_STATUS: IN_PROGRESS (F-08 PASS; F-09 BLOCKED only for TalkBack traversal; S-06/S-07 PASS; Checkpoints A/B/C delivered; R-06/R-07 PASS; V-01 PASS; V-02 PARTIAL because custom artwork is unavailable; Q-01 PASS for isolated migration state matrix; Q-02 task PASS after current RC SEP-09 touch comparator passed; Q-03 BLOCKED for complete accessibility sign-off; recovery/layout checks 9/9 PASS; TalkBack and low-end hardware NOT TESTED; Q-04 external-device signature BLOCKED - EXTERNAL DEVICE; historical SEP/SSA sign-off incomplete; Product Cutover HOLD)
 
 WAVE3_QUEUE:
   - F-08 permissions/reminders/ICS/backup/system settings: PASS (commit c3a1e59f44e2b304314673f0030ae19c2f3f9d28)
@@ -66,7 +75,7 @@ WAVE3_QUEUE:
   - V-01 design/asset takeover: PASS (available Clear resources and Studio anchors mapped; no separate approved Claude artwork found in this worktree; see `VISUAL_ASSET_MAP.md`)
   - V-02 Clear-fallback Visual RC: PARTIAL (commit 0d6ceb1fb6a7a7a6fbc074a508d77480aa561ef6; APK and canonical .pcskin available in dist/powercal; five API 35 WebView screenshots and hashes recorded; custom art absent)
   - Q-01 install/migration acceptance: PASS (24 API 35 instrumentation methods; third-party package cleanup, native/clear/unknown selection states, process recovery and Core Store snapshots; package uninstall/reinstall NOT TESTED; evidence `.local/android-test/reports/Q-01-20261105/manifest.md`)
-  - Q-02 full parity replay: BLOCKED (16/16 SEP rows and current evidence recorded; 47 of 50 instrumentation executions passed, one permission precondition failure passed after controlled reset, and the Native-to-Clear AI chat trusted-touch comparison failed twice before reaching the API); SSA statuses and historical SEP sign-off remain incomplete. Evidence `.local/android-test/reports/Q-02-20261105/manifest.md`.
+  - Q-02 full parity replay matrix: PASS as a task (16/16 SEP rows mapped; current RC Native-to-Clear AI chat trusted-touch comparator 1/1 PASS after fixing fixed-tabbar test scrolling; 48/51 invocation passes, with three historical failure logs preserved); SSA states were not raised and historical SEP sign-off remains INCOMPLETE. Evidence `.local/android-test/reports/Q-02-20261105/manifest.md` and `.local/android-test/reports/Q-02-20261105/current-rc-real-touch/`.
   - Q-03 recovery/performance/accessibility: BLOCKED for complete accessibility sign-off; 9/9 current API 35 renderer/corrupt-package/process-restart/2x-font/small-screen methods PASS; TalkBack focus traversal and low-end hardware NOT TESTED. Evidence `.local/android-test/reports/Q-03-20261105/manifest.md`.
   - Q-04 physical/OEM reminders: BLOCKED - EXTERNAL DEVICE; ADB listed only the isolated API 35 emulator. No physical/OEM test was run; see `Q04_PHYSICAL_DEVICE_RUNBOOK.md` and `.local/android-test/reports/Q-04-20261105/manifest.md`. This does not block the internal RC.
 
@@ -264,7 +273,7 @@ LATEST_VERIFIED_EVIDENCE:
     commit: 2a8c323890c0f121b80c72a2a4d1c5c2a35d010d
     evidence: .local/android-test/reports/F-03-20261104-wave2/
 
-BLOCKERS: Q-02 Native-to-Clear AI chat touch comparator fails before any Clear chat API request; product fault is unconfirmed, but SEP-09 equivalence remains unverified. TalkBack focus order, forced checkpoint-I/O failure, physical/OEM reminder delivery and live AI provider reliability remain NOT TESTED; historical SEP sign-off remains INCOMPLETE; Product Cutover remains HOLD.
+BLOCKERS: TalkBack focus order, forced checkpoint-I/O failure, physical/OEM reminder delivery and live AI provider reliability remain NOT TESTED; Q-03 full accessibility and Q-04 physical/OEM sign-offs remain incomplete; historical SEP/SSA sign-off remains INCOMPLETE. Product Cutover remains HOLD pending Q-05 verification.
 
 AUTHORITATIVE_PLAN: docs/POWERCAL_SINGLE_DEFAULT_SKIN_EXECUTION_PLAN_2026-11-03_R2.md
 ACCEPTANCE_MATRIX: docs/agent-handoff/SINGLE_SKIN_ACCEPTANCE.md
