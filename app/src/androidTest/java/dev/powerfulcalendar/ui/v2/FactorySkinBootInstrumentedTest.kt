@@ -67,26 +67,38 @@ class FactorySkinBootInstrumentedTest {
     }
 
     @Test fun freshQaFactoryBootRendersRealWebView() {
-        assertFalse("test requires fresh isolated app data", prefs.contains("selected"))
-        val before = storeSnapshot()
-        val manager = SkinPackageManager(context)
-        assertTrue(manager.factoryPackageAvailable())
-        instrument.runOnMainSync { manager.restoreSelection(SkinBootPolicy.QA_FRESH_FACTORY) }
-        assertEquals(before, storeSnapshot())
-        assertEquals("powercal-clear-default", manager.currentId())
-        assertEquals("powercal-clear-default", PowerCalSkinRegistry.active.key)
-        val web = requireNotNull(PowerCalSkinRegistry.active.web)
-        var index: ByteArray? = null
-        context.assets.open("powercal-clear-default.pcskin").use { asset ->
-            ZipInputStream(asset).use { zip ->
-                while (true) {
-                    val entry = zip.nextEntry ?: break
-                    if (entry.name == "web/index.html") index = zip.readBytes()
+        val hadSelection = prefs.contains("selected")
+        val previousSelection = prefs.getString("selected", null)
+        try {
+            check(prefs.edit().remove("selected").commit())
+            PowerCalSkinRegistry.reset()
+            val before = storeSnapshot()
+            val manager = SkinPackageManager(context)
+            assertTrue(manager.factoryPackageAvailable())
+            instrument.runOnMainSync { manager.restoreSelection(SkinBootPolicy.QA_FRESH_FACTORY) }
+            assertEquals(before, storeSnapshot())
+            assertEquals("powercal-clear-default", manager.currentId())
+            assertEquals("powercal-clear-default", PowerCalSkinRegistry.active.key)
+            val web = requireNotNull(PowerCalSkinRegistry.active.web)
+            var index: ByteArray? = null
+            context.assets.open("powercal-clear-default.pcskin").use { asset ->
+                ZipInputStream(asset).use { zip ->
+                    while (true) {
+                        val entry = zip.nextEntry ?: break
+                        if (entry.name == "web/index.html") index = zip.readBytes()
+                    }
                 }
             }
+            assertArrayEquals(requireNotNull(index), web.files["web/index.html"])
+            assertWebActivity()
+        } finally {
+            val restore = prefs.edit()
+            if (hadSelection) restore.putString("selected", previousSelection)
+            else restore.remove("selected")
+            check(restore.commit())
+            PowerCalSkinRegistry.reset()
+            if (hadSelection) SkinPackageManager(context).restoreSelection()
         }
-        assertArrayEquals(requireNotNull(index), web.files["web/index.html"])
-        assertWebActivity()
     }
 
     @Test fun persistedFactoryColdBoot() {
@@ -98,25 +110,50 @@ class FactorySkinBootInstrumentedTest {
         assertEquals(before, storeSnapshot())
     }
 
-    @Test fun corruptFactoryColdBootFallsBackToNative() {
-        assertFalse("test requires fresh isolated app data", prefs.contains("selected"))
-        val before = storeSnapshot()
-        var reads = 0
-        val manager = SkinPackageManager(context, factoryPackageBytes = { reads++; byteArrayOf(1, 2, 3) })
-        instrument.runOnMainSync { manager.restoreSelection(SkinBootPolicy.QA_FRESH_FACTORY) }
-        assertEquals("powercal-default", manager.currentId())
-        assertEquals("powercal-default", prefs.getString("selected", null))
-        instrument.runOnMainSync { manager.restoreSelection(SkinBootPolicy.QA_FRESH_FACTORY) }
-        assertEquals(1, reads)
-        assertEquals(before, storeSnapshot())
-        repeat(2) {
-            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
-                scenario.onActivity {
-                    assertEquals("powercal-default", PowerCalSkinRegistry.active.key)
-                    assertNull(PowerCalSkinRegistry.active.web)
+    private fun assertFactoryFailureFallsBackToNative(factoryBytes: () -> ByteArray) {
+        val hadSelection = prefs.contains("selected")
+        val previousSelection = prefs.getString("selected", null)
+        try {
+            check(prefs.edit().remove("selected").commit())
+            PowerCalSkinRegistry.reset()
+            val before = storeSnapshot()
+            var reads = 0
+            val manager = SkinPackageManager(context, factoryPackageBytes = {
+                reads++
+                factoryBytes()
+            })
+            instrument.runOnMainSync { manager.restoreSelection(SkinBootPolicy.QA_FRESH_FACTORY) }
+            assertEquals("powercal-default", manager.currentId())
+            assertEquals("powercal-default", prefs.getString("selected", null))
+            instrument.runOnMainSync { manager.restoreSelection(SkinBootPolicy.QA_FRESH_FACTORY) }
+            assertEquals(1, reads)
+            assertEquals(before, storeSnapshot())
+            repeat(2) {
+                ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                    scenario.onActivity {
+                        assertEquals("powercal-default", PowerCalSkinRegistry.active.key)
+                        assertNull(PowerCalSkinRegistry.active.web)
+                    }
                 }
             }
+            assertEquals("powercal-default", prefs.getString("selected", null))
+        } finally {
+            val restore = prefs.edit()
+            if (hadSelection) restore.putString("selected", previousSelection)
+            else restore.remove("selected")
+            check(restore.commit())
+            PowerCalSkinRegistry.reset()
+            if (hadSelection) SkinPackageManager(context).restoreSelection()
         }
-        assertEquals("powercal-default", prefs.getString("selected", null))
+    }
+
+    @Test fun corruptFactoryColdBootFallsBackToNative() {
+        assertFactoryFailureFallsBackToNative { byteArrayOf(1, 2, 3) }
+    }
+
+    @Test fun missingFactoryColdBootFallsBackToNative() {
+        assertFactoryFailureFallsBackToNative {
+            throw java.io.FileNotFoundException("isolated missing factory fixture")
+        }
     }
 }

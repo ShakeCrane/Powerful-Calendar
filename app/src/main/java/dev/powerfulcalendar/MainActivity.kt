@@ -2,9 +2,9 @@ package dev.powerfulcalendar
 
 import android.os.Bundle
 import android.view.MotionEvent
+import androidx.annotation.VisibleForTesting
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import dev.powerfulcalendar.ui.v2.AlternatingTapRecovery
 import androidx.activity.ComponentActivity
@@ -26,8 +26,16 @@ class MainActivity : ComponentActivity() {
     private data class Down(val x: Float, val y: Float, val startedMs: Long)
     private val fingers = mutableMapOf<Int, Down>()
     private var alternatingRecovery: AlternatingTapRecovery? = null
+    private var nativeRecoveryInProgress = false
     private var nativeRecoverySignal by mutableIntStateOf(0)
-    private var nativeRecoveryPersisted by mutableStateOf(true)
+
+    @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+    internal val nativeRecoveryRequestSignal: Int get() = nativeRecoverySignal
+
+    @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+    internal fun onNativeRecoveryHandled() {
+        nativeRecoveryInProgress = false
+    }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         // Observe at the Activity boundary, before Compose/WebView dispatch.
@@ -58,10 +66,10 @@ class MainActivity : ComponentActivity() {
                     val duration = event.eventTime - down.startedMs
                     if (movement <= 24f * resources.displayMetrics.density &&
                         detector.completedTap(x, y, event.eventTime, duration) &&
+                        !nativeRecoveryInProgress &&
                         SkinPackageManager(applicationContext).currentId() != "powercal-default") {
-                        // Switch in-memory immediately and disclose whether persistence succeeded.
-                        nativeRecoveryPersisted = SkinPackageManager(applicationContext)
-                            .selectNativeForEmergencyRecovery()
+                        // PowerCalApp checkpoints any live editor before changing the active skin.
+                        nativeRecoveryInProgress = true
                         nativeRecoverySignal++
                         return true
                     }
@@ -88,7 +96,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             PowerCalTheme(effects = rememberSystemGlassEffects()) {
-                PowerCalApp(store, nativeRecoverySignal, nativeRecoveryPersisted)
+                PowerCalApp(store, nativeRecoverySignal) { nativeRecoveryInProgress = false }
             }
         }
     }

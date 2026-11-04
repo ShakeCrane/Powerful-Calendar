@@ -232,7 +232,7 @@ private data class AppData(
 fun PowerCalApp(
     store: PowerStore,
     nativeRecoverySignal: Int = 0,
-    nativeRecoveryPersisted: Boolean = true
+    onNativeRecoveryHandled: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val appContext = context.applicationContext
@@ -308,15 +308,6 @@ fun PowerCalApp(
     }
     var backupRestoreBusy by remember { mutableStateOf(false) }
 
-    // The Activity attempts to persist native selection independently of the Web layer.
-    LaunchedEffect(nativeRecoverySignal, nativeRecoveryPersisted) {
-        if (nativeRecoverySignal > 0) {
-            selectedSkin = if (nativeRecoveryPersisted) skins.currentId() else "powercal-default"
-            skinToActivate = null
-            page = Page.TOOLS.name
-            message = nativeRecoveryMessage(nativeRecoveryPersisted)
-        }
-    }
     var deckOpen by rememberSaveable { mutableStateOf(false) }
     var deckOpening by remember { mutableStateOf(false) }
     var deckInitialId by rememberSaveable { mutableStateOf<Long?>(null) }
@@ -427,6 +418,30 @@ fun PowerCalApp(
             coreFeatureApi,
             coreFeatureApi::issueFormalDeleteApproval
         )
+    }
+    LaunchedEffect(nativeRecoverySignal) {
+        if (nativeRecoverySignal > 0) {
+            try {
+                val safe = try {
+                    webEditing.prepareSkinChange()
+                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                    throw cancelled
+                } catch (_: Throwable) {
+                    false
+                }
+                if (!safe) {
+                    message = "编辑内容尚未安全存档，紧急回退已暂停；请检查表单后重试。"
+                    return@LaunchedEffect
+                }
+                val persisted = skins.selectNativeForEmergencyRecovery()
+                selectedSkin = if (persisted) skins.currentId() else "powercal-default"
+                skinToActivate = null
+                page = Page.TOOLS.name
+                message = nativeRecoveryMessage(persisted)
+            } finally {
+                onNativeRecoveryHandled()
+            }
+        }
     }
     DisposableEffect(webEditing) {
         onDispose {

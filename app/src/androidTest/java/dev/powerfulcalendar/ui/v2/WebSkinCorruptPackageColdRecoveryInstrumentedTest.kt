@@ -55,8 +55,8 @@ class WebSkinCorruptPackageColdRecoveryInstrumentedTest {
         assumeTrue("corrupt package cold recovery is restricted to Android emulators",
             Build.HARDWARE == "ranchu" || Build.HARDWARE == "goldfish")
         val manager = SkinPackageManager(context)
-        assumeTrue("requires the original Native skin to be selected",
-            manager.currentId() == NATIVE_SKIN_ID)
+        assumeTrue("requires an existing factory or Native selection that the test can restore",
+            manager.currentId() == NATIVE_SKIN_ID || manager.currentId() == "powercal-clear-default")
         assumeTrue("requires an empty installed-skin directory",
             File(context.filesDir, "skin-packs").listFiles().orEmpty().isEmpty())
     }
