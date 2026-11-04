@@ -22,6 +22,11 @@ button:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outl
  border-radius:20px;font-size:12px;white-space:nowrap;font-weight:600}
 .toolbar button:active,.clear-tabbar button.current{background:var(--glass-select)}
 .toolbar small{font-weight:700;color:var(--now)}
+@media(max-width:320px){
+ .clear-head{align-items:stretch;flex-direction:column;padding:10px 12px 8px;gap:8px}
+ .toolbar{width:100%;justify-content:space-between;gap:2px}
+ .toolbar button{flex:1 1 0;min-width:0;padding:6px 3px;white-space:normal}
+}
 .page{padding:2px 12px 14px}
 .page[hidden],#extraOptions[hidden]{display:none}
 .section-label{color:var(--label-3);padding:6px 8px 9px;font-size:12px;display:flex;justify-content:space-between}

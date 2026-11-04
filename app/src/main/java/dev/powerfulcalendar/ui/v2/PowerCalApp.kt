@@ -2466,31 +2466,28 @@ fun PowerCalApp(
         else onUnhandled()
     }
 
-    // One stable handler avoids stale BackHandler priority while a full-canvas skin changes pages.
-    // A skin gets first refusal for its transient UI; the Host then navigates or recovers.
+    // Keep one Android Back entry point so page navigation cannot win while a
+    // Host-owned Web editor is active. The Skin still gets first refusal for
+    // its own dialogs; an unhandled Back checkpoints an active editor before
+    // navigating or entering Native recovery.
     androidx.activity.compose.BackHandler(
-        enabled = !deckOpen && (page != Page.TIMELINE.name ||
-            (fullCanvasWeb && editSession == null && !webEditing.hasLiveEditor()))
+        enabled = !deckOpen && (page != Page.TIMELINE.name || fullCanvasWeb)
     ) {
         dispatchSkinBack {
-            if (page == Page.TIMELINE.name) {
+            val editing = webEditing.snapshot()
+            val hostEditorOpen = editing.optJSONObject("editor")?.optBoolean("open") == true ||
+                editing.optJSONObject("deck")?.optBoolean("open") == true
+            if (fullCanvasWeb && hostEditorOpen) {
+                scope.launch {
+                    if (webEditing.prepareSkinChange()) WebSkinBridgeRuntime.stateRevision++
+                    else message = "编辑内容仍未安全保存，请检查后再退出"
+                }
+            } else if (page == Page.TIMELINE.name) {
                 page = Page.TOOLS.name
             } else {
                 page = Page.TIMELINE.name
                 scope.launch { reload() }
             }
-        }
-    }
-
-    // An active Web editor consumes Back before the native page navigation.
-    // It performs the same durable checkpoint as a skin change, without
-    // silently discarding any dirty form content.
-    androidx.activity.compose.BackHandler(
-        enabled = fullCanvasWeb && webEditing.hasLiveEditor()
-    ) {
-        scope.launch {
-            if (webEditing.prepareSkinChange()) WebSkinBridgeRuntime.stateRevision++
-            else message = "编辑内容仍未安全保存，请检查后再退出"
         }
     }
 

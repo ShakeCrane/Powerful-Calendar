@@ -22,6 +22,8 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import dev.powerfulcalendar.core.PowerStore
+import dev.powerfulcalendar.core.DraftForm
+import dev.powerfulcalendar.core.TemporalKind
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -30,6 +32,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.util.UUID
+import java.time.ZoneId
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
@@ -99,6 +102,255 @@ class ClearNavigationBackInstrumentedTest {
         } finally {
             down.recycle()
             up.recycle()
+        }
+    }
+
+    @Test
+    fun androidBackReturnsFromMonthMemoAndAiToClearTimelineWithoutStoreWrites() {
+        assumeTrue("run against an isolated Android emulator", Build.HARDWARE == "ranchu" ||
+            Build.HARDWARE == "goldfish")
+
+        val context = compose.activity.applicationContext
+        val databaseName = "clear-back-pages-${UUID.randomUUID()}.db"
+        val store = PowerStore(context, databaseName)
+        val manager = SkinPackageManager(context)
+        val skinPreferences = context.getSharedPreferences("powercal-skin-choice", Context.MODE_PRIVATE)
+        val hadSkinSelection = skinPreferences.contains("selected")
+        val originalSkin = skinPreferences.getString("selected", manager.currentId()) ?: manager.currentId()
+        val onboarding = context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+        val hadOnboardingFlag = onboarding.contains("system-calendar-import-asked")
+        val originalOnboardingFlag = onboarding.getBoolean("system-calendar-import-asked", false)
+
+        fun storeSnapshot() = listOf(
+            store.all(), store.draftCount(), store.pendingCount(), store.commitCount(),
+            store.identityCount(), store.nextSequencePreview()
+        )
+
+        try {
+            check(onboarding.edit().putBoolean("system-calendar-import-asked", true).commit())
+            PowerCalSkinRegistry.reset()
+            manager.select("powercal-clear-default")
+            compose.runOnUiThread {
+                compose.activity.setContent { PowerCalTheme { PowerCalApp(store) } }
+            }
+            var web: WebView? = null
+            compose.waitUntil(30_000) {
+                compose.runOnUiThread {
+                    web = findWebView(compose.activity.findViewById(android.R.id.content))
+                }
+                web != null
+            }
+            val view = requireNotNull(web)
+            compose.waitUntil(30_000) {
+                evaluate(view, "!!window.PowerCalSkin?.receive") == "true"
+            }
+
+            val before = storeSnapshot()
+            val pages = listOf(
+                "month" to ("MONTH" to "monthPage"),
+                "memo" to ("MEMO" to "memoPage"),
+                "ai" to ("AI" to "aiPage")
+            )
+            pages.forEach { (action, expected) ->
+                val (page, elementId) = expected
+                tapWebSelector(view, ".clear-tabbar [data-action=\"$action\"]")
+                compose.waitUntil(15_000) {
+                    WebSkinBridgeRuntime.state().optString("page") == page &&
+                        evaluate(view, "!document.querySelector('#$elementId').hidden") == "true"
+                }
+
+                InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+                compose.waitUntil(15_000) {
+                    WebSkinBridgeRuntime.state().optString("page") == "TIMELINE" &&
+                        evaluate(view, "!document.querySelector('#timelinePage').hidden") == "true"
+                }
+                assertEquals("Back from $page must return to Clear Timeline",
+                    "TIMELINE", WebSkinBridgeRuntime.state().optString("page"))
+                assertEquals("Back from $page must not write calendar data", before, storeSnapshot())
+            }
+
+            println("F09_CLEAR_PAGE_BACK month=memo=ai->timeline storeUnchanged=true")
+        } finally {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            store.close()
+            context.deleteDatabase(databaseName)
+            if (hadSkinSelection) manager.select(originalSkin)
+            else {
+                check(skinPreferences.edit().remove("selected").commit())
+                PowerCalSkinRegistry.reset()
+            }
+            val restoreOnboarding = onboarding.edit()
+            if (hadOnboardingFlag) restoreOnboarding.putBoolean("system-calendar-import-asked", originalOnboardingFlag)
+            else restoreOnboarding.remove("system-calendar-import-asked")
+            check(restoreOnboarding.commit())
+        }
+    }
+
+    @Test
+    fun androidBackClosesCleanEditorAndCheckpointsDirtyEditorWithoutFormalWrites() {
+        assumeTrue("run against an isolated Android emulator", Build.HARDWARE == "ranchu" ||
+            Build.HARDWARE == "goldfish")
+
+        val context = compose.activity.applicationContext
+        val databaseName = "clear-back-editors-${UUID.randomUUID()}.db"
+        val store = PowerStore(context, databaseName)
+        val manager = SkinPackageManager(context)
+        val skinPreferences = context.getSharedPreferences("powercal-skin-choice", Context.MODE_PRIVATE)
+        val hadSkinSelection = skinPreferences.contains("selected")
+        val originalSkin = skinPreferences.getString("selected", manager.currentId()) ?: manager.currentId()
+        val onboarding = context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+        val hadOnboardingFlag = onboarding.contains("system-calendar-import-asked")
+        val originalOnboardingFlag = onboarding.getBoolean("system-calendar-import-asked", false)
+        val title = "F09_BACK_CHECKPOINTED_DRAFT"
+        val zone = ZoneId.systemDefault()
+        val seed = store.createFormalEvent(
+            DraftForm(kind = TemporalKind.MEMO, title = "F09_BACK_CLEAN_MEMO", zoneId = zone.id),
+            "f09-back-clean-${UUID.randomUUID()}"
+        ) as? PowerStore.CommitOutcome.Committed
+            ?: throw AssertionError("Could not seed the clean-editor Back case")
+        val originalMemo = requireNotNull(store.get(seed.eventSeq))
+        val baseline = listOf(
+            store.all(), store.draftCount(), store.pendingCount(), store.commitCount(),
+            store.identityCount(), store.nextSequencePreview()
+        )
+
+        fun imeVisible(): Boolean = ViewCompat.getRootWindowInsets(compose.activity.window.decorView)
+            ?.isVisible(WindowInsetsCompat.Type.ime()) == true
+
+        try {
+            check(onboarding.edit().putBoolean("system-calendar-import-asked", true).commit())
+            PowerCalSkinRegistry.reset()
+            manager.select("powercal-clear-default")
+            compose.runOnUiThread {
+                compose.activity.setContent { PowerCalTheme { PowerCalApp(store) } }
+            }
+            var web: WebView? = null
+            compose.waitUntil(30_000) {
+                compose.runOnUiThread {
+                    web = findWebView(compose.activity.findViewById(android.R.id.content))
+                }
+                web != null
+            }
+            val view = requireNotNull(web)
+            compose.waitUntil(30_000) {
+                evaluate(view, "!!window.PowerCalSkin?.receive") == "true"
+            }
+
+            tapWebSelector(view, ".clear-tabbar [data-action=\"memo\"]")
+            compose.waitUntil(10_000) { evaluate(view, "!document.querySelector('#memoPage').hidden") == "true" }
+            tapWebSelector(view, "#memoList .memo-title[data-event-seq='${seed.eventSeq}']")
+            compose.waitUntil(10_000) {
+                evaluate(view, "!document.querySelector('#skinSheet').hidden && " +
+                    "document.querySelector('#sheetFields [data-field=title]')?.value==='F09_BACK_CLEAN_MEMO'") == "true"
+            }
+            if (imeVisible()) {
+                InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+                compose.waitUntil(10_000) { !imeVisible() }
+                assertEquals("first Back only dismisses IME", "true",
+                    evaluate(view, "!document.querySelector('#skinSheet').hidden"))
+            }
+            println("F09_CLEAN_EDITOR_BACK_BEFORE imeVisible=${imeVisible()} " +
+                "page=${WebSkinBridgeRuntime.state().optString("page")} " +
+                "editorOpen=${WebSkinBridgeRuntime.state().optJSONObject("editing")?.optJSONObject("editor")?.optBoolean("open")}")
+            InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+            val editorClosed = runCatching {
+                compose.waitUntil(15_000) {
+                    WebSkinBridgeRuntime.state().optJSONObject("editing")?.optJSONObject("editor")
+                        ?.optBoolean("open") == false
+                }
+            }.isSuccess
+            if (!editorClosed) {
+                val state = WebSkinBridgeRuntime.state()
+                val liveWeb = compose.runOnUiThread {
+                    findWebView(compose.activity.findViewById(android.R.id.content))
+                }
+                throw AssertionError("Clean editor Back did not close through Host: " +
+                    "imeVisible=${imeVisible()}, page=${state.optString("page")}, " +
+                    "editor=${state.optJSONObject("editing")?.optJSONObject("editor")}, " +
+                    "activeSkin=${PowerCalSkinRegistry.active.key}, " +
+                    "webAttached=${liveWeb?.isAttachedToWindow}, webSame=${liveWeb === view}")
+            }
+            assertEquals("clean formal editor Back stays on Memo page", "MEMO",
+                WebSkinBridgeRuntime.state().optString("page"))
+            assertEquals("clean formal editor sheet closes", "true",
+                evaluate(view, "document.querySelector('#skinSheet').hidden"))
+            assertEquals("clean editor Back causes no Store changes", baseline, listOf(
+                store.all(), store.draftCount(), store.pendingCount(), store.commitCount(),
+                store.identityCount(), store.nextSequencePreview()
+            ))
+
+            tapWebSelector(view, ".clear-tabbar [data-action=\"timeline\"]")
+            compose.waitUntil(10_000) { evaluate(view, "!document.querySelector('#timelinePage').hidden") == "true" }
+            tapWebSelector(view, "[data-action=\"createDraft\"]")
+            compose.waitUntil(10_000) {
+                evaluate(view, "!!document.querySelector('#timelineCreateDialog[open]')") == "true"
+            }
+            tapWebSelector(view, "[data-timeline-create-kind=\"ACTIVITY\"]")
+            compose.waitUntil(10_000) {
+                evaluate(view, "!document.querySelector('#skinSheet').hidden && " +
+                    "!!document.querySelector('#sheetFields [data-field=title]')") == "true"
+            }
+            assertEquals(baseline, listOf(
+                store.all(), store.draftCount(), store.pendingCount(), store.commitCount(),
+                store.identityCount(), store.nextSequencePreview()
+            ))
+
+            evaluate(view, "(()=>{const input=document.querySelector('#sheetFields [data-field=title]');" +
+                "input.value='$title'; input.dispatchEvent(new Event('change',{bubbles:true})); return true})()")
+            compose.waitUntil(15_000) {
+                WebSkinBridgeRuntime.state().optJSONObject("editing")?.optJSONObject("deck")
+                    ?.optJSONObject("form")?.optString("title") == title
+            }
+            assertEquals("dirty form is not formally committed before Back", 0L, store.draftCount())
+            assertEquals(1L, store.commitCount())
+            if (imeVisible()) {
+                InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+                compose.waitUntil(10_000) { !imeVisible() }
+                assertEquals("first Back only dismisses IME", "true",
+                    evaluate(view, "!document.querySelector('#skinSheet').hidden"))
+            }
+            InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+            compose.waitUntil(20_000) {
+                store.pendingCount() == 1 && store.draftCount() == 1L &&
+                    WebSkinBridgeRuntime.state().optJSONObject("editing")?.optJSONObject("deck")
+                        ?.optBoolean("open") == false
+            }
+            assertEquals("dirty Back must keep the original formal event unchanged", originalMemo,
+                store.get(seed.eventSeq))
+            assertEquals(1L, store.commitCount())
+            assertEquals(2L, store.identityCount())
+            assertEquals(3L, store.nextSequencePreview())
+            assertEquals(title, store.pendingDrafts().single().form.title)
+            assertEquals(TemporalKind.ACTIVITY, store.pendingDrafts().single().form.kind)
+            assertEquals("Web page remains on Timeline after editor Back", "TIMELINE",
+                WebSkinBridgeRuntime.state().optString("page"))
+            assertEquals("Clear WebView remains attached after editor Back", true,
+                compose.runOnUiThread { findWebView(compose.activity.findViewById(android.R.id.content)) === view })
+            assertEquals("the default Clear skin must remain active after safe editor exit",
+                "powercal-clear-default", PowerCalSkinRegistry.active.key)
+            println("F09_CLEAR_EDITOR_BACK clean-formal=no-write dirty-new-event=single-pending-draft " +
+                "formalRecords=1 seedCommit=1 title=$title")
+        } finally {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            store.close()
+            context.deleteDatabase(databaseName)
+            if (hadSkinSelection) manager.select(originalSkin)
+            else {
+                check(skinPreferences.edit().remove("selected").commit())
+                PowerCalSkinRegistry.reset()
+            }
+            val restoreOnboarding = onboarding.edit()
+            if (hadOnboardingFlag) restoreOnboarding.putBoolean("system-calendar-import-asked", originalOnboardingFlag)
+            else restoreOnboarding.remove("system-calendar-import-asked")
+            check(restoreOnboarding.commit())
         }
     }
 

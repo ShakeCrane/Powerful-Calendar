@@ -11,7 +11,6 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.platform.app.InstrumentationRegistry
 import dev.powerfulcalendar.core.DraftForm
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.TemporalKind
@@ -21,7 +20,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -30,11 +28,6 @@ import java.util.concurrent.atomic.AtomicReference
 @RunWith(AndroidJUnit4::class)
 class WebSkinRendererRecoveryInstrumentedTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
-
-    private companion object {
-        const val STUDIO_FAULT_PACKAGE_SHA256 =
-            "120bb0c2e8c022149de111b15573f1f1a39e0455e279480f52ee3c49f2fd0bd2"
-    }
 
     private fun findWebView(view: View): WebView? {
         if (view is WebView) return view
@@ -284,21 +277,26 @@ class WebSkinRendererRecoveryInstrumentedTest {
         val hadAskedForCalendarImport = onboarding.contains("system-calendar-import-asked")
         val askedForCalendarImport = onboarding.getBoolean("system-calendar-import-asked", false)
         val title = "UNCAUGHT_SKIN_RUNTIME_ERROR_CHECKPOINT"
-        val studioArchive = InstrumentationRegistry.getInstrumentation().context.assets
-            .open("skin-studio-fault-injection-clear.pcskin")
+        val factoryArchive = context.assets
+            .open("powercal-clear-default.pcskin")
             .use { it.readBytes() }
-        val archiveSha256 = MessageDigest.getInstance("SHA-256").digest(studioArchive)
-            .joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') }
-        assertEquals("runtime fault fixture must be the validated Studio v3 export",
-            STUDIO_FAULT_PACKAGE_SHA256, archiveSha256)
-        val studioPack = skins.decode(studioArchive, loadImages = true).pack
-        val studioAppSource = String(
-            requireNotNull(requireNotNull(studioPack.web).files["web/app.js"]), Charsets.UTF_8
+        val factoryPack = skins.decode(factoryArchive, loadImages = true).pack
+        assertEquals("fault injection must start from the packaged default factory skin",
+            "powercal-clear-default", factoryPack.key)
+        val factoryWeb = requireNotNull(factoryPack.web)
+        val factoryAppSource = String(
+            requireNotNull(factoryWeb.files["web/app.js"]), Charsets.UTF_8
         )
-        assertTrue("Studio v3 export must contain the explicit deferred fault trigger",
-            studioAppSource.contains("window.__pcSep14TriggerUncaughtError=()=>setTimeout("))
-        val faultyPack = studioPack.copy(
-            key = "sep14-runtime-error-${UUID.randomUUID().toString().take(8)}",
+        val faultTrigger = """
+            window.__pcSep14TriggerUncaughtError = () => setTimeout(() => {
+              throw new Error("SEP14_UNCAUGHT_SKIN_RUNTIME_ERROR");
+            }, 0);
+        """.trimIndent()
+        val faultyPack = factoryPack.copy(
+            web = factoryWeb.copy(
+                files = factoryWeb.files + ("web/app.js" to
+                    (factoryAppSource + "\n" + faultTrigger).toByteArray(Charsets.UTF_8))
+            )
         )
 
         try {
@@ -327,9 +325,19 @@ class WebSkinRendererRecoveryInstrumentedTest {
                 "!!document.querySelector('#sheetFields [data-field=title]')")
             evaluate(view, "(()=>{const input=document.querySelector('#sheetFields [data-field=title]');" +
                 "input.value='$title'; input.dispatchEvent(new Event('change',{bubbles:true})); return true})()")
-            compose.waitUntil(15_000) {
-                WebSkinBridgeRuntime.state().optJSONObject("editing")?.optJSONObject("deck")
-                    ?.optJSONObject("form")?.optString("title") == title
+            val dirtyFormPublished = runCatching {
+                compose.waitUntil(15_000) {
+                    WebSkinBridgeRuntime.state().optJSONObject("editing")?.optJSONObject("deck")
+                        ?.optJSONObject("form")?.optString("title") == title
+                }
+            }.isSuccess
+            if (!dirtyFormPublished) {
+                val dom = runCatching {
+                    evaluate(view, "JSON.stringify({title:document.querySelector('#sheetFields [data-field=title]')?.value," +
+                        "visible:!document.querySelector('#skinSheet').hidden,href:location.href})")
+                }.getOrDefault("WebView unavailable")
+                throw AssertionError("factory Clear edit did not publish to Host; " +
+                    "active=${PowerCalSkinRegistry.active.key}; state=${WebSkinBridgeRuntime.state()}; dom=$dom")
             }
 
             assertTrue("dirty editor remains transient before the runtime error", store.all().isEmpty())
@@ -371,8 +379,8 @@ class WebSkinRendererRecoveryInstrumentedTest {
             assertEquals(2L, store.nextSequencePreview())
             assertEquals(title, store.pendingDrafts().single().form.title)
             assertEquals(TemporalKind.ACTIVITY, store.pendingDrafts().single().form.kind)
-            println("SEP14_STUDIO_SKIN_JS_ERROR_RECOVERY_VERIFIED=title=$title; " +
-                "packageSha256=$archiveSha256; pending=1; commits=0; " +
+            println("SEP14_FACTORY_SKIN_JS_ERROR_RECOVERY_VERIFIED=title=$title; " +
+                "factoryId=${factoryPack.key}; pending=1; commits=0; " +
                 "formal=0; identities=${store.identityCount()}; native=true")
         } finally {
             compose.runOnUiThread {
