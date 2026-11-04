@@ -2,13 +2,13 @@ PROJECT: Powerful-Calendar
 PLAN: PLAN-2026-11-03-R2
 BRANCH: codex/skin-single-default-closure
 WAVE2_START_HEAD: 3b54097d6383c0349b5d3d638c228320e3c8e22c
-LATEST_CODE_HEAD: f051ca04e743b3cdbb315874150e2df36b490ae0
-CURRENT_TASK: S-05
+LATEST_CODE_HEAD: a008f20771062e2d037a9f810435e5328b70bd46
+CURRENT_TASK: F-07
 TASK_STATUS: IN_PROGRESS
-LAST_COMPLETED_TASK: S-04-STUDIO-PREVIEW-ANDROID-RUNTIME-PARITY (PASS)
-LAST_COMPLETED_COMMIT: f051ca04e743b3cdbb315874150e2df36b490ae0
+LAST_COMPLETED_TASK: S-05-STUDIO-RESOURCE-SOURCE-ROUNDTRIP (PASS)
+LAST_COMPLETED_COMMIT: a008f20771062e2d037a9f810435e5328b70bd46
 NEXT_TASK: F-07
-NEXT_ACTION: Execute S-05 resource/source lossless roundtrip from a blank project: add PNG, font, JavaScript, UTF-8 and unknown metadata; save, build, export, re-import, edit, rebuild; verify hashes, traversal defense, missing-resource rejection and no automatic capability upgrade.
+NEXT_ACTION: Execute F-07 AI chat, proposal, and review parity with deterministic stubs; verify approval, rejection, persistence, and zero unauthorized Core writes.
 
 WAVE_2_QUEUE:
   - F-03 Closure: PASS (commit 2a8c323890c0f121b80c72a2a4d1c5c2a35d010d)
@@ -17,8 +17,8 @@ WAVE_2_QUEUE:
   - F-05 editor/draft/trusted-write parity: PASS (commit bb2007d69d90204acf0e27deb325a492f9c37746)
   - F-06 recurrence scopes/date/DST parity: PASS (commit 177ec0b733952ba56d5c13542e97ead08489d1d9)
   - S-04 Studio preview/runtime parity: PASS (commit f051ca04e743b3cdbb315874150e2df36b490ae0)
-  - S-05 resource/source round-trip: IN_PROGRESS
-  - F-07 AI chat/proposal/review parity: NOT STARTED
+  - S-05 resource/source round-trip: PASS (commit a008f20771062e2d037a9f810435e5328b70bd46)
+  - F-07 AI chat/proposal/review parity: IN_PROGRESS
 
 DEFERRED_TASKS: R-06 and R-07 remain DEFERRED until dependent Skin parity is proven.
 PHASE: F/S Wave 2
@@ -97,12 +97,24 @@ LATEST_VERIFIED_EVIDENCE:
     apk_sha256: f5e5fa6fe4194ad213ef60d5933018422a818d0afb97e7b68fd223b3f54e3522.
     evidence: .local/android-test/reports/S-02-20261104-wave2/manifest.md
     limits: physical/OEM NOT TESTED; S-03 action bindings and full functional parity not covered.
+  S-05:
+    status: PASS (task scope); global SEP signoff remains incomplete.
+    code_commit: a008f20771062e2d037a9f810435e5328b70bd46
+    studio_python: 85/85; browser blank-project/resource roundtrip PASS; JS syntax and Python compilation PASS.
+    android: API 35 isolated AVD; generated read-only package WebView/DOM/resources PASS 1/1; prepare/force-stop/restore PASS 1/1 each; Core Store snapshots unchanged.
+    studio_package_sha256: 7ffaf4a8ee526c56afb18fd2a2b38760193bbf3daf22879db736d5472865bd8e
+    android_read_only_package_sha256: 1f7c1053022342d3ab78c4f549fc2719f211e616b256f761c907cdfabb79f492
+    android_test_apk_sha256: 2ec5efb670b6505b1fc96723b55499c7dd866b82ae4ef02be57eefab08e20aad
+    app_apk_sha256: 08739af8ec4967c764e738e20885a2fc8c1c96033f4e33a3414643b48422d16e
+    factory_package: exactly one production .pcskin; powercal-clear-default SHA-256 299e4bdd78c8936f6c15db0200172e659aaa5b0e0643f0d70c115966ac35a9f4; unchanged.
+    evidence: .local/android-test/reports/S-05-20261104/manifest.md
+    limits: physical/OEM NOT TESTED; Product Cutover remains HOLD.
   F-03:
     status: PASS
     commit: 2a8c323890c0f121b80c72a2a4d1c5c2a35d010d
     evidence: .local/android-test/reports/F-03-20261104-wave2/
 
-BLOCKERS: None for S-04 task scope. S-05 is in progress; F-07 follows if its dependencies and evidence pass. Physical/OEM and full SEP signature remain NOT TESTED/INCOMPLETE; R-06/R-07 remain DEFERRED and Product Cutover remains HOLD.
+BLOCKERS: None for S-05 task scope. F-07 is in progress. Physical/OEM and full SEP signature remain NOT TESTED/INCOMPLETE; R-06/R-07 remain DEFERRED and Product Cutover remains HOLD.
 
 AUTHORITATIVE_PLAN: docs/POWERCAL_SINGLE_DEFAULT_SKIN_EXECUTION_PLAN_2026-11-03_R2.md
 ACCEPTANCE_MATRIX: docs/agent-handoff/SINGLE_SKIN_ACCEPTANCE.md
