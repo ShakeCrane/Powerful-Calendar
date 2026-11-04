@@ -485,6 +485,219 @@ class PowerCalAiProposalReviewWebViewInstrumentedTest {
     }
 
     @Test
+    fun clearChatMessageActionsAndHistorySurviveColdProcessRestart() {
+        val args = InstrumentationRegistry.getArguments()
+        val cycle = requireNotNull(args.getString("f07AiColdCycle")).toInt()
+        assertTrue("F-07 cold restart cycle must be 0 or 1", cycle in 0..1)
+
+        val storage = compose.activity.applicationContext
+        val namespace = "f07-ai-chat-cold-restart"
+        val root = File(storage.cacheDir, namespace)
+        val database = "chat.db"
+        val testPreferences = listOf("powercal-ai", "powercal-onboarding", "powercal-ui",
+            "powercal-skin-choice", "powercal-profile", "powercal-file-ai-consent")
+        if (cycle == 0) {
+            assertFalse("Refusing to overwrite an existing F-07 fixture", root.exists())
+            assertFalse("Refusing to overwrite an existing F-07 database",
+                storage.getDatabasePath("$namespace-$database").exists())
+            testPreferences.forEach { name ->
+                assertFalse("Refusing to overwrite F-07 preference $name",
+                    File(storage.applicationInfo.dataDir,
+                        "shared_prefs/$namespace-$name.xml").exists())
+            }
+        } else {
+            assertTrue("The first F-07 cycle must leave its isolated fixture", root.isDirectory)
+            assertTrue("The first F-07 cycle must leave its isolated Core Store",
+                storage.getDatabasePath("$namespace-$database").isFile)
+        }
+        val context = IsolatedAppContext(compose.activity, storage, namespace)
+        val historyFile = File(context.filesDir, "powercal-chat-history.json")
+        val store = PowerStore(context, database)
+        val replies = listOf(
+            "F07 local stub reply one",
+            "F07 local stub reply two",
+            "F07 local stub reply after edit",
+            "F07 local stub reply after retract"
+        )
+        val promptOne = "F07 first deterministic chat turn"
+        val promptTwo = "F07 second deterministic chat turn"
+        val requests = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val serverFailure = AtomicReference<Throwable?>()
+        val server = ServerSocket(0, 4, InetAddress.getByName("127.0.0.1")).apply {
+            soTimeout = if (cycle == 0) 20_000 else 5_000
+        }
+        val served = CountDownLatch(if (cycle == 0) 4 else 1)
+        var serverThread: Thread? = null
+        var verified = false
+
+        fun storeSnapshot() = listOf(
+            store.all().size.toLong(), store.draftCount(), store.pendingCount().toLong(),
+            store.commitCount(), store.identityCount(), store.nextSequencePreview()
+        )
+
+        try {
+            val expectedHistory = listOf(
+                "user" to promptOne,
+                "assistant" to replies[2]
+            )
+            context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                .edit().putBoolean("system-calendar-import-asked", true).commit()
+            if (cycle == 0) {
+                assertFalse("The isolated chat history must begin empty", historyFile.exists())
+                AiChatHistoryStore.save(context, emptyList())
+            } else {
+                assertEquals("The isolated selection must survive the cold process restart",
+                    "powercal-clear-default", SkinPackageManager(context).currentId())
+                assertEquals("Cold restart must retain only the final two turns",
+                    expectedHistory, AiChatHistoryStore.load(context).map { it.role to it.content })
+            }
+
+            val endpoint = "http://127.0.0.1:${server.localPort}/v1"
+            AiSettingsStore.save(context, AiSettings(
+                endpoint = endpoint,
+                model = "local-stub:free",
+                apiKey = "F07_LOCAL_TEST_ONLY",
+                enabled = true,
+                shareContext = false
+            ))
+            val serverReplies = if (cycle == 0) replies else listOf("unexpected replay")
+            serverThread = Thread {
+                try {
+                    repeat(serverReplies.size) { index ->
+                        server.accept().use { socket ->
+                            requests += readRequest(socket)
+                            writeReply(socket, serverReplies[index])
+                        }
+                        served.countDown()
+                    }
+                } catch (error: java.net.SocketTimeoutException) {
+                    if (cycle == 0) serverFailure.set(error)
+                    served.countDown()
+                } catch (error: Throwable) {
+                    serverFailure.set(error)
+                    while (served.count > 0) served.countDown()
+                }
+            }.apply { name = "f07-ai-cold-restart-stub"; isDaemon = true; start() }
+
+            val before = storeSnapshot()
+            compose.runOnUiThread {
+                PowerCalSkinRegistry.reset()
+                SkinPackageManager(context).select("powercal-clear-default")
+                compose.activity.setContent {
+                    CompositionLocalProvider(LocalContext provides context) {
+                        PowerCalTheme { PowerCalApp(store) }
+                    }
+                }
+            }
+            var web: WebView? = null
+            compose.waitUntil(30_000) {
+                compose.runOnUiThread {
+                    web = findWebView(compose.activity.findViewById(android.R.id.content))
+                }
+                web != null
+            }
+            val view = requireNotNull(web)
+            awaitJs(view, "!!document.querySelector('.clear-tabbar [data-action=ai]')")
+            tapWebSelector(view, ".clear-tabbar [data-action=ai]")
+            awaitJs(view, "!document.querySelector('#aiPage').hidden")
+
+            if (cycle == 0) {
+                fun sendTurn(prompt: String, reply: String) {
+                    tapWebSelector(view, "#chatInput", requireTrustedClick = false)
+                    InstrumentationRegistry.getInstrumentation().sendStringSync(prompt)
+                    awaitJs(view, "document.querySelector('#chatInput')?.value===" +
+                        "${JSONObject.quote(prompt)}")
+                    tapWebSelector(view, "#chatSend")
+                    awaitJs(view, "document.querySelector('#chatMessages')?.textContent.includes(" +
+                        "${JSONObject.quote(reply)})")
+                }
+
+                sendTurn(promptOne, replies[0])
+                sendTurn(promptTwo, replies[1])
+                tapWebSelector(view,
+                    "#chatMessages article.chat-bubble.user:nth-of-type(1) " +
+                        "button[aria-label=\"编辑这条消息并移除后续对话\"]")
+                awaitJs(view, "document.querySelector('#chatInput')?.value===" +
+                    "${JSONObject.quote(promptOne)} && " +
+                    "document.querySelectorAll('.chat-bubble').length===0")
+                tapWebSelector(view, "#chatSend")
+                awaitJs(view, "document.querySelector('#chatMessages')?.textContent.includes(" +
+                    "${JSONObject.quote(replies[2])})")
+
+                sendTurn(promptTwo, replies[3])
+                tapWebSelector(view,
+                    "#chatMessages article.chat-bubble.user:nth-of-type(3) " +
+                        "button[aria-label=\"撤回这条消息及后续对话\"]")
+                awaitJs(view, "document.querySelectorAll('.chat-bubble').length===2 && " +
+                    "!document.querySelector('#chatMessages')?.textContent.includes(" +
+                    "${JSONObject.quote(promptTwo)} )")
+                compose.waitUntil(30_000) {
+                    AiChatHistoryStore.load(context).map { it.role to it.content } == expectedHistory
+                }
+                assertTrue("The deterministic provider should receive all four intended turns",
+                    served.await(20, TimeUnit.SECONDS))
+                assertNull("F-07 local chat server failed", serverFailure.get())
+                assertEquals(4, requests.size)
+                val requestedTexts = requests.map { body ->
+                    val messages = JSONObject(body).getJSONArray("messages")
+                    (0 until messages.length()).mapNotNull { index ->
+                        messages.getJSONObject(index).takeIf { it.optString("role") == "user" }
+                            ?.optString("content")
+                    }.lastOrNull()
+                }
+                assertEquals(listOf(promptOne, promptTwo, promptOne, promptTwo), requestedTexts)
+                assertEquals("Chat, edit/resend, and retract must not write Core calendar data",
+                    before, storeSnapshot())
+                assertEquals(expectedHistory, AiChatHistoryStore.load(context)
+                    .map { it.role to it.content })
+                println("F07_CLEAR_CHAT_ACTIONS cycle=0 requests=${requests.size} " +
+                    "historyMessages=${expectedHistory.size} coreStoreUnchanged=true")
+            } else {
+                awaitJs(view, "document.querySelector('#chatMessages')?.textContent.includes(" +
+                    "${JSONObject.quote(replies[2])}) && " +
+                    "document.querySelectorAll('.chat-bubble').length===2 && " +
+                    "!document.querySelector('#chatMessages')?.textContent.includes(" +
+                    "${JSONObject.quote(promptTwo)})")
+                assertEquals("The reopened Host projection must match durable chat history",
+                    expectedHistory, WebSkinBridgeRuntime.state().optJSONArray("chatMessages")!!
+                        .let { items -> (0 until items.length()).map { index ->
+                            items.getJSONObject(index).getString("role") to
+                                items.getJSONObject(index).getString("content")
+                        } })
+                assertTrue("No provider request may be replayed on a cold start",
+                    served.await(6, TimeUnit.SECONDS))
+                assertTrue("Cold-start restoration must not replay chat", requests.isEmpty())
+                assertEquals("Cold-start restoration must not mutate Core calendar data",
+                    before, storeSnapshot())
+                assertEquals(expectedHistory, AiChatHistoryStore.load(context)
+                    .map { it.role to it.content })
+                verified = true
+                println("F07_CLEAR_CHAT_ACTIONS cycle=1 requests=0 " +
+                    "historyMessages=${expectedHistory.size} coreStoreUnchanged=true")
+            }
+        } finally {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            server.close()
+            serverThread?.join(2_000)
+            store.close()
+            if (cycle == 1 && verified) {
+                context.deleteDatabase(database)
+                testPreferences.forEach { storage.deleteSharedPreferences("$namespace-$it") }
+                val cacheRoot = storage.cacheDir.canonicalFile
+                val fixtureRoot = root.canonicalFile
+                check(fixtureRoot.parentFile == cacheRoot) {
+                    "Refusing to remove an F-07 fixture outside the test cache"
+                }
+                check(root.deleteRecursively()) { "Could not remove the verified F-07 fixture" }
+            }
+        }
+    }
+
+    @Test
     fun nativeAndClearProviderFailureRequiresExplicitResendAndSanitizesHistory() {
         val storage = compose.activity.applicationContext
         val nativeNamespace = "pc-ai-retry-native-${UUID.randomUUID()}"
