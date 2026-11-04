@@ -146,11 +146,11 @@ G-04 在 `1e57da5cbb19b4b1348fe390174f629c8871fc47` 实测 JVM 946/946、Studio 
 - CORE API：core-api/src/main/kotlin/dev/powerfulcalendar/core/api/v1/ImportExportFeatureApiV1.kt；app/src/main/java/dev/powerfulcalendar/core/api/v1/StoreImportExportFeatureApiV1.kt；权限和系统选择器由 Host 承担。
 - DEFAULT SKIN：设置页、许可说明、导入导出及错误提示。用户动作 → API → Core → 可观察结果：授权后导入 ICS 或系统日历、导出备份并恢复 → ImportExportFeatureApiV1.importIcsToDrafts/exportBackup/restoreBackup 与 SettingsDataFeatureApiV1.querySettings → 校验来源、权限、重复项及完整性 → 显示进度、拒绝和结果。
 - STUDIO：创建设置页与 Host 动作绑定，秘密仍留 Host。
-- ANDROID QA：NOT TESTED（本轮）；隔离数据验证取消、重复导入、错误哈希与成功恢复的 Store 快照。
-- PHYSICAL：NOT TESTED（本轮）；在真机重放主要动作，记录系统、权限、界面及 Store 结果。
+- ANDROID QA：PARTIAL（2026-11-04，隔离 API 35 AVD `PowerCal_Wave2_QA35_20261104`）：本轮 13 个定向 instrumentation 方法通过，实际覆盖 Clear 通知拒绝、系统日历权限拒绝/允许及合成事件导入、ICS 导入草稿/导出、备份导出/空库恢复/取消/坏哈希/无效 JSON/未来 schema 拒绝、受保护凭据路由、精确闹钟设置页往返、空 Store 提醒重建及 AlarmManager FIRED。通知权限通过 Skin 请求后的允许路径、ICS 选择器取消和 Studio 空白创作本轮未测。
+- PHYSICAL：NOT TESTED（本轮）；真机主要动作及 OEM 提醒投递仍待独立验收。
 - 测试入口：app/src/test/java/dev/powerfulcalendar/core/api/v1/ImportExportFeatureApiV1Test.kt；app/src/androidTest/java/dev/powerfulcalendar/ui/v2/ClearSettingsOptionsInstrumentedTest.kt。
-- 状态：实现 PARTIAL；JVM PARTIAL（G-04 门禁与关联测试，不等于本项签核）；模拟器 NOT TESTED（本轮，历史切片见 SOURCE）；真机 NOT TESTED；总体 PARTIAL。
-- 剩余及签核：按上述动作逐项获得目标构建的 Core/界面结果、Studio 往返、模拟器和真机证据，核对冻结契约后签核。后续任务：F-08, F-09, S-03, Q-02。
+- 状态：实现 PARTIAL；JVM PASS（本轮全量 970/970，但不等于 SSA 整项签核）；模拟器 PARTIAL；真机 NOT TESTED；总体 PARTIAL。
+- 剩余及签核：补齐 Skin 请求通知权限后的允许/返回刷新、ICS 取消零写入、Studio 空白重建及真机系统行为；逐项核对冻结契约后签核。后续任务：F-08, F-09, S-03, Q-02。
 
 ### SSA-10｜提醒、重启和时区变化
 
@@ -158,11 +158,11 @@ G-04 在 `1e57da5cbb19b4b1348fe390174f629c8871fc47` 实测 JVM 946/946、Studio 
 - CORE API：core-api/src/main/kotlin/dev/powerfulcalendar/core/api/v1/ReminderFeatureApiV1.kt；app/src/main/java/dev/powerfulcalendar/core/api/v1/AndroidReminderFeatureApiV1.kt。
 - DEFAULT SKIN：提醒开关、权限与失败状态独立显示。用户动作 → API → Core → 可观察结果：设置提醒并重启或改变时区 → ReminderFeatureApiV1.queryPermissions/queryEvent/reconcile 与 Host 调度 → 按冻结规则重建，响铃不隐式完成 → 皮肤显示状态及拒绝。
 - STUDIO：创建提醒控件及权限状态绑定。
-- ANDROID QA：NOT TESTED（本轮）；隔离模拟器验证准点、10 分钟宽限边界、重启、时区/DST 及完成状态不变。
+- ANDROID QA：PARTIAL（2026-11-04，隔离 API 35 AVD `PowerCal_Wave2_QA35_20261104`）：真实 AlarmManager 测试 1/1 触发 receiver、记录 FIRED 并发出测试通知；Skin 精确闹钟权限状态与设置页返回、空 Store 手动重建通过。设备重启、时区/DST、10 分钟宽限和 Skin 内提醒状态列表的完整转换未在本轮执行。
 - PHYSICAL：BLOCKED：REC-P1-086 尚缺物理/OEM 提醒证据；真机验证权限、重启、时区及厂商省电。
 - 测试入口：app/src/test/java/dev/powerfulcalendar/core/api/v1/ReminderFeatureApiV1Test.kt；app/src/androidTest/java/dev/powerfulcalendar/reminders/ReminderAlarmManagerDeliveryInstrumentedTest.kt。
-- 状态：实现 PARTIAL；JVM PARTIAL（G-04 门禁与关联测试，不等于本项签核）；模拟器 NOT TESTED（本轮，历史切片见 SOURCE）；真机 BLOCKED；总体 PARTIAL。
-- 剩余及签核：按上述动作逐项获得目标构建的 Core/界面结果、Studio 往返、模拟器和真机证据，核对冻结契约后签核。后续任务：F-08, Q-02, Q-04。
+- 状态：实现 PARTIAL；JVM PASS（本轮全量 970/970，但不等于 SSA 整项签核）；模拟器 PARTIAL；真机 BLOCKED（REC-P1-086）；总体 PARTIAL。
+- 剩余及签核：在隔离设备验证重启、时区/DST、宽限边界和 Skin 状态列表；真机/OEM 权限、后台限制及投递仍需独立签核。后续任务：F-08, F-09, Q-02, Q-04。
 
 ### SSA-11｜可信授权、隔离与错误恢复
 

@@ -585,6 +585,129 @@ class ClearSettingsOptionsInstrumentedTest {
     }
 
     @Test
+    fun clearReminderSettingsOpenExactAlarmPageAndReconcileWithoutStoreWrites() {
+        assumeTrue("exact-alarm settings are available from Android 12 onward",
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+        assumeTrue("reminder settings test requires an isolated Android emulator",
+            Build.HARDWARE == "ranchu" || Build.HARDWARE == "goldfish")
+
+        val context = compose.activity.applicationContext
+        val databaseName = "clear-reminder-settings-${UUID.randomUUID()}.db"
+        val store = PowerStore(context, databaseName)
+        val skinManager = SkinPackageManager(context)
+        val originalSkin = skinManager.currentId()
+        val onboarding = context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+        val hadAskedForCalendarImport = onboarding.contains("system-calendar-import-asked")
+        val askedForCalendarImport = onboarding.getBoolean("system-calendar-import-asked", false)
+        var web: WebView? = null
+
+        fun storeSnapshot() = listOf(
+            store.all(), store.draftCount(), store.pendingCount(), store.commitCount(),
+            store.identityCount(), store.nextSequencePreview()
+        )
+
+        try {
+            check(onboarding.edit().putBoolean("system-calendar-import-asked", true).commit())
+            PowerCalSkinRegistry.reset()
+            skinManager.select("powercal-clear-default")
+            compose.runOnUiThread {
+                compose.activity.setContent { PowerCalTheme { PowerCalApp(store) } }
+            }
+            compose.waitUntil(30_000) {
+                compose.runOnUiThread {
+                    web = findWebView(compose.activity.findViewById(android.R.id.content))
+                }
+                web != null
+            }
+            val view = requireNotNull(web)
+            compose.waitUntil(30_000) {
+                evaluate(view, "!!window.PowerCalSkin?.receive") == "true"
+            }
+            tapWebSelector(view, ".clear-tabbar [data-action=settings]")
+            compose.waitUntil(15_000) {
+                WebSkinBridgeRuntime.state().optString("page") == "SETTINGS"
+            }
+
+            val before = storeSnapshot()
+            val alarmManager = context.getSystemService(android.app.AlarmManager::class.java)!!
+            val systemAllowsExactAlarms = alarmManager.canScheduleExactAlarms()
+            val exactStatus = requireNotNull(
+                WebSkinBridgeRuntime.state().optJSONObject("exactAlarmPermission")
+            )
+            assertTrue("API 35 must report the exact-alarm permission as required",
+                exactStatus.getBoolean("required"))
+            assertEquals("Clear must project the platform exact-alarm permission state",
+                systemAllowsExactAlarms, exactStatus.getBoolean("allowed"))
+            assertEquals("Clear must show an exact-alarm settings action",
+                "true", evaluate(view,
+                    "(()=>{const b=document.querySelector('[data-action=openExactAlarmSettings]');" +
+                        "return !!b&&!b.hidden})()"))
+
+            tapWebSelector(view, "[data-action=openExactAlarmSettings]")
+            val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+            var settingsText = ""
+            compose.waitUntil(15_000) {
+                val root = automation.rootInActiveWindow
+                if (root?.packageName?.toString() != "com.android.settings") return@waitUntil false
+                settingsText = accessibilitySnapshot(root)
+                settingsText.contains("Allow this app to set alarms", ignoreCase = true) ||
+                    settingsText.contains("精确闹钟")
+            }
+            assertTrue("Exact-alarm action must open Android's app-specific permission page; " +
+                "settings accessibility text=$settingsText",
+                settingsText.contains("Allow this app to set alarms", ignoreCase = true) ||
+                    settingsText.contains("设置精确闹钟") ||
+                    settingsText.contains("精确闹钟"))
+            assertTrue("Android Back must return from exact-alarm settings",
+                automation.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK))
+            compose.waitUntil(15_000) {
+                automation.rootInActiveWindow?.packageName?.toString() == compose.activity.packageName
+            }
+            compose.waitUntil(15_000) {
+                evaluate(view, "typeof window.PowerCalSkin?.receive === 'function'") == "true" &&
+                    WebSkinBridgeRuntime.state().optString("page") == "SETTINGS"
+            }
+
+            tapWebSelector(view, "#reconcileReminders")
+            compose.waitUntil(15_000) {
+                WebSkinBridgeRuntime.state().optJSONObject("reminderReconcile")
+                    ?.optString("status") in setOf("SUCCESS", "BLOCKED", "ERROR")
+            }
+            val reconcile = requireNotNull(
+                WebSkinBridgeRuntime.state().optJSONObject("reminderReconcile")
+            )
+            assertEquals("An empty Store should complete reminder reconciliation",
+                "SUCCESS", reconcile.getString("status"))
+            assertEquals("An empty Store should report that no reminders were pending",
+                "当前没有待处理的提醒调度。", reconcile.getString("message"))
+            assertEquals("Settings and reconciliation must not change calendar data",
+                before, storeSnapshot())
+            println("F08_CLEAR_REMINDER_SETTINGS exactPermissionProjected=true " +
+                "settingsOpened=true returnedToClear=true emptyReconcile=SUCCESS storeUnchanged=true")
+        } finally {
+            val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+            if (automation.rootInActiveWindow?.packageName?.toString() == "com.android.settings") {
+                automation.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+            }
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            store.close()
+            context.deleteDatabase(databaseName)
+            runCatching { skinManager.select(originalSkin) }
+            val restoreOnboarding = onboarding.edit()
+            if (hadAskedForCalendarImport) {
+                restoreOnboarding.putBoolean("system-calendar-import-asked", askedForCalendarImport)
+            } else {
+                restoreOnboarding.remove("system-calendar-import-asked")
+            }
+            check(restoreOnboarding.commit())
+        }
+    }
+
+    @Test
     fun nativeAndClearSystemCalendarPermissionDenialLeavesStoresIdentical() {
         assumeTrue("permission parity test requires an isolated Android emulator",
             Build.HARDWARE == "ranchu" || Build.HARDWARE == "goldfish")
@@ -2976,7 +3099,20 @@ class ClearSettingsOptionsInstrumentedTest {
     }
 
     @Test
-    fun nativeAndClearRestoreRejectMalformedAndFutureSchemaFilesWithoutWrites() {
+    fun nativeAndClearRestoreRejectMalformedJsonWithoutWrites() =
+        assertRestoreRejectedInBothSkins(
+            RestoreFailureDocumentsProvider.MALFORMED_BACKUP_NAME,
+            "所选文件不是有效的 PowerCal JSON 备份"
+        )
+
+    @Test
+    fun nativeAndClearRestoreRejectFutureSchemaWithoutWrites() =
+        assertRestoreRejectedInBothSkins(
+            RestoreFailureDocumentsProvider.FUTURE_SCHEMA_BACKUP_NAME,
+            "备份格式或内容无效"
+        )
+
+    private fun assertRestoreRejectedInBothSkins(documentName: String, expectedError: String) {
         assumeTrue("DocumentsUI restore flow must run on an isolated Android emulator",
             Build.HARDWARE == "ranchu" || Build.HARDWARE == "goldfish")
 
@@ -3036,13 +3172,6 @@ class ClearSettingsOptionsInstrumentedTest {
             }
         }
 
-        val invalidFixtures = listOf(
-            RestoreFailureDocumentsProvider.MALFORMED_BACKUP_NAME to
-                "所选文件不是有效的 PowerCal JSON 备份",
-            RestoreFailureDocumentsProvider.FUTURE_SCHEMA_BACKUP_NAME to
-                "无法安全恢复此文件"
-        )
-
         try {
             assertTrue(onboarding.edit().putBoolean("system-calendar-import-asked", true).commit())
             val before = persistentSnapshot()
@@ -3052,34 +3181,43 @@ class ClearSettingsOptionsInstrumentedTest {
             assertEquals(0L, store.commitCount())
             assertEquals(0L, store.identityCount())
 
-            invalidFixtures.forEach { (documentName, expectedError) ->
-                mountNativeSettings()
-                compose.onNodeWithText("从备份恢复").performScrollTo().performClick()
-                selectReadFailingProviderDocument(documentName)
+            mountNativeSettings()
+            compose.onNodeWithText("从备份恢复").performScrollTo().performClick()
+            selectReadFailingProviderDocument(documentName)
+            val nativeErrorVisible = runCatching {
                 compose.waitUntil(20_000) {
                     compose.onAllNodesWithText(expectedError, substring = true)
                         .fetchSemanticsNodes().isNotEmpty()
                 }
-                assertEquals("Native rejection of $documentName must preserve the full Store",
-                    before, persistentSnapshot())
-
-                mountClearSettings()
-                tapWebSelector(requireNotNull(web),
-                    "#settingsOptionGroups [data-option-id='data.backup.restore']")
-                selectReadFailingProviderDocument(documentName)
-                val clearView = requireNotNull(web)
-                compose.waitUntil(20_000) {
-                    evaluate(clearView,
-                        "document.getElementById('hostNotice')?.textContent||''")
-                        .contains(expectedError)
-                }
-                assertEquals("Clear rejection of $documentName must preserve the full Store",
-                    before, persistentSnapshot())
+            }.isSuccess
+            if (!nativeErrorVisible) {
+                val visibleRestoreErrors = compose.onAllNodesWithText("备份", substring = true)
+                    .fetchSemanticsNodes()
+                    .map { node -> node.config[SemanticsProperties.Text]
+                        .joinToString(separator = " ") { it.text } }
+                throw AssertionError(
+                    "Native restore did not show the expected rejection for $documentName; " +
+                        "visible backup-related text=$visibleRestoreErrors"
+                )
             }
+            assertEquals("Native rejection of $documentName must preserve the full Store",
+                before, persistentSnapshot())
 
-            println("SEP11_NATIVE_CLEAR_MALFORMED_AND_FUTURE_SCHEMA_RESTORE_REFUSAL " +
-                "nativeMalformedRejected=true clearMalformedRejected=true " +
-                "nativeFutureSchemaRejected=true clearFutureSchemaRejected=true " +
+            mountClearSettings()
+            tapWebSelector(requireNotNull(web),
+                "#settingsOptionGroups [data-option-id='data.backup.restore']")
+            selectReadFailingProviderDocument(documentName)
+            val clearView = requireNotNull(web)
+            compose.waitUntil(20_000) {
+                evaluate(clearView,
+                    "document.getElementById('hostNotice')?.textContent||''")
+                    .contains(expectedError)
+            }
+            assertEquals("Clear rejection of $documentName must preserve the full Store",
+                before, persistentSnapshot())
+
+            println("SEP11_NATIVE_CLEAR_INVALID_RESTORE_REFUSAL " +
+                "fixture=$documentName nativeRejected=true clearRejected=true " +
                 "emptyTargetSnapshotUnchanged=true trustedClearTouch=true")
         } finally {
             val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
