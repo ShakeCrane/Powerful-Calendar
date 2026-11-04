@@ -3,16 +3,16 @@ PLAN: PLAN-2026-11-03-R2
 BRANCH: codex/skin-single-default-closure
 WAVE2_START_HEAD: 3b54097d6383c0349b5d3d638c228320e3c8e22c
 WAVE3_START_HEAD: 82b456fd2bfc15df379fd15d967fac3da57b899d
-LATEST_CODE_HEAD: ffde207343454bdd998ced223f3cfbcc0527d341
-LATEST_VERIFIED_HEAD: ffde207343454bdd998ced223f3cfbcc0527d341
-CURRENT_TASK: R-07
+LATEST_CODE_HEAD: b71cf0eedbd6dba9dafe0d9215ab33457258d045
+LATEST_VERIFIED_HEAD: b71cf0eedbd6dba9dafe0d9215ab33457258d045
+CURRENT_TASK: V-01
 TASK_STATUS: READY
-LAST_COMPLETED_TASK: R-06-COMPILED-AND-V2-RUNTIME-RETIREMENT (PASS)
-LAST_COMPLETED_COMMIT: ffde207343454bdd998ced223f3cfbcc0527d341
-LAST_ATTEMPTED_TASK: R-06 runtime convergence (PASS)
-LAST_ATTEMPTED_COMMIT: ffde207343454bdd998ced223f3cfbcc0527d341
-NEXT_TASK: R-07
-NEXT_ACTION: Verify single-default boot and independent Native recovery under failure injection; keep production Cutover HOLD and preserve existing app data.
+LAST_COMPLETED_TASK: R-07-SINGLE-RUNTIME-BOOT-AND-INDEPENDENT-RECOVERY (PASS)
+LAST_COMPLETED_COMMIT: b71cf0eedbd6dba9dafe0d9215ab33457258d045
+LAST_ATTEMPTED_TASK: R-07 single Runtime boot and recovery (PASS)
+LAST_ATTEMPTED_COMMIT: b71cf0eedbd6dba9dafe0d9215ab33457258d045
+NEXT_TASK: V-01
+NEXT_ACTION: Inventory approved Claude design work and existing visual assets, then map verified assets to default Skin pages/components without changing Core.
 PRODUCT_DELIVERY_CHECKPOINT_A:
   status: DELIVERED (PowerCal Functional Preview; Debug only)
   apk: dist/powercal/PowerCal-Functional-Preview-2026-11-05.apk
@@ -22,8 +22,20 @@ PRODUCT_DELIVERY_CHECKPOINT_A:
   smoke: API 35 emulator, 11 focused Android instrumentation assertions passed; 970 JVM tests passed
   evidence: .local/android-test/reports/functional-preview-20261105/
   limitations: TalkBack traversal NOT TESTED; physical/OEM and live AI provider NOT TESTED
+PRODUCT_DELIVERY_CHECKPOINT_B:
+  status: DELIVERED (PowerCal Release Candidate; isolated internal Debug build)
+  apk: dist/powercal/PowerCal-Release-Candidate-2026-11-05.apk
+  apk_sha256: EC27EBE7A85FD117CB83F846F26CD4D6A374D4908F09001FC051231A8592C340
+  apk_bytes: 67060154
+  build_head: b71cf0eedbd6dba9dafe0d9215ab33457258d045
+  package: dev.powerfulcalendar / 0.9.5-rc.1 / versionCode 905 / Debug
+  default_skin_sha256: b9035719c2e0c75d335225216ea3687b72cc2cf4692e829ca43566c730c3fee3 (one APK .pcskin; source/APK bytes match)
+  gate: 971 JVM PASS; source boundaries, assemble, lint, AndroidTest compile/package PASS
+  android: API 35 isolated AVD; final APK emergency-checkpoint and persisted-Clear cold-boot checks 2/2 PASS; R-07 failure/restart checks PASS
+  evidence: .local/android-test/reports/R-07-20261105/
+  limitations: TalkBack traversal, physical/OEM reminder delivery, live AI provider and full SEP sign-off remain NOT TESTED/INCOMPLETE; Product Cutover HOLD
 WAVE2_STATUS: COMPLETE (8 authorized work packages attempted; all PASS)
-WAVE3_STATUS: IN_PROGRESS (F-08 PASS; F-09 TalkBack traversal NOT TESTED; S-06/S-07 PASS; Checkpoint A delivered; R-06 PASS; R-07 next; Product Cutover HOLD)
+WAVE3_STATUS: IN_PROGRESS (F-08 PASS; F-09 TalkBack traversal NOT TESTED; S-06/S-07 PASS; Checkpoint A and B delivered; R-06/R-07 PASS; V-01 next; Product Cutover HOLD)
 
 WAVE3_QUEUE:
   - F-08 permissions/reminders/ICS/backup/system settings: PASS (commit c3a1e59f44e2b304314673f0030ae19c2f3f9d28)
@@ -31,9 +43,11 @@ WAVE3_QUEUE:
   - S-06 from-blank complete Skin: PASS (commit 03c8ba38db785b16052a2f9b440b8bf3bc5ee79b; Studio GUI/API, 88/88 Python, Android 4/4, MainActivity force-stop/restore verified)
   - S-07 default Skin Studio roundtrip: PASS (commit 0cfd15564189f9c0e9e3c0436441cd084183022f; Studio save/reopen, Settings source edit, export/import/restore, 88/88 Python, final APK byte check, API 35 WebView Settings 1/1)
   - R-06 runtime retirement: PASS (commit ffde207343454bdd998ced223f3cfbcc0527d341; compiled examples moved to test source, v2 dispatch default-off, Native recovery preserved)
-  - R-07 runtime/recovery gate: NEXT / READY; verify boot, failures, and draft preservation before Q-01/Q-02 and any Q-05 cutover
-  - Q-01 install/migration acceptance: NOT STARTED
-  - Q-02 full parity replay: NOT STARTED
+  - R-07 runtime/recovery gate: PASS (commit b71cf0eedbd6dba9dafe0d9215ab33457258d045; API 35 boot/failure/restart and dirty-editor checkpoint verified)
+  - V-01 design/asset takeover: NEXT
+  - V-02 default Clear visual implementation: pending V-01 inventory; no unverified asset is treated as approved
+  - Q-01 install/migration acceptance: NOT STARTED; follows visual integration
+  - Q-02 full parity replay: NOT STARTED; follows Q-01
 
 WAVE_2_QUEUE:
   - F-03 Closure: PASS (commit 2a8c323890c0f121b80c72a2a4d1c5c2a35d010d)
@@ -45,8 +59,8 @@ WAVE_2_QUEUE:
   - S-05 resource/source round-trip: PASS (commit a008f20771062e2d037a9f810435e5328b70bd46)
   - F-07 AI chat/proposal/review parity: PASS (commit 25711d3569edfd59c23c774c3bb371fbbc192044)
 
-DEFERRED_TASKS: None in current Wave 3 queue; R-06 PASS, R-07 READY. Q-05 production Cutover remains HOLD.
-PHASE: F/S Wave 3
+DEFERRED_TASKS: None in current Wave 3 queue; R-06 and R-07 PASS. Q-05 production Cutover remains HOLD.
+PHASE: Product delivery / visual integration
 SEP_SIGNOFF: INCOMPLETE (historical parity remains unsigned)
 PRODUCT_CUTOVER: HOLD
 
@@ -59,7 +73,7 @@ OWNER_GOAL:
 
 RUNTIME_POLICY:
   Factory_skin: powercal-clear-default.pcskin (id powercal-clear-default).
-  Native_recovery: powercal-default. R-06 retired compiled/v2 daily dispatch; R-07 is next. Boot preference migration and Product Cutover remain HOLD.
+  Native_recovery: powercal-default. R-06 retired compiled/v2 daily dispatch; R-07 verified single Web runtime boot and Native recovery. Boot preference migration and Product Cutover remain HOLD.
   No second factory skin or multi-skin store. Q-05 may switch the default only on the protected branch after the internal RC and required boot/recovery checks; public-store release is not authorized.
 
 OWNER_OVERRIDE_2026_11_03:
@@ -68,11 +82,22 @@ OWNER_OVERRIDE_2026_11_03:
   Release_gate: Product Cutover remains HOLD.
 OWNER_OVERRIDE_2026_11_05:
   Functional_preview: Checkpoint A is delivered at dist/powercal/PowerCal-Functional-Preview-2026-11-05.apk; it is a Debug internal preview.
-  Runtime_work: Continue R-07 without waiting for TalkBack automation; do not migrate production preferences before its isolated boot/recovery gate. After an internal RC and required safety checks, Q-05 may switch the default on this protected branch; no public release is authorized.
+  Runtime_work: R-07 is PASS and the isolated internal RC is delivered. Do not migrate production preferences before Q-01/Q-02 and the required safety checks. After the internal RC and required safety checks, Q-05 may switch the default on this protected branch; no public release is authorized.
   TalkBack: F-09 focus order remains NOT TESTED after one bounded official keyboard shortcut diagnostic; no PowerCal defect was confirmed.
   Release_gate: Product Cutover remains HOLD.
 
 LATEST_VERIFIED_EVIDENCE:
+  R-07:
+    status: PASS (isolated runtime boot/recovery task scope; Product Cutover remains HOLD)
+    commit: b71cf0eedbd6dba9dafe0d9215ab33457258d045
+    root_cause: Activity emergency gesture selected Native before the dirty editor reached prepareSkinChange; it now requests checkpoint first and stops visibly if checkpointing fails.
+    jvm: 971/971; 141 XML suites; 0 failures/errors/skips.
+    boundaries: Skin/Native checks PASS; APK assemble and lint PASS; AndroidTest compile/package PASS.
+    android: verified API 35 AVD PowerCal_Wave2_QA35_20261104 / emulator-5554; factory present/corrupt/missing, selected-package recovery, process restart, Web renderer/JS failure, repeated boot and dirty editor recovery checked. Final exact APK emergency checkpoint 1/1 and persisted Clear boot 1/1.
+    store: emergency checkpoint produced exactly one pending draft; zero formal rows and commits. Process recovery preserved isolated draft and Memo completion; no Store implementation changed.
+    apk: dist/powercal/PowerCal-Release-Candidate-2026-11-05.apk; SHA-256 EC27EBE7A85FD117CB83F846F26CD4D6A374D4908F09001FC051231A8592C340; one factory package SHA-256 b9035719c2e0c75d335225216ea3687b72cc2cf4692e829ca43566c730c3fee3.
+    evidence: .local/android-test/reports/R-07-20261105/manifest.md
+    limits: forced checkpoint-I/O failure, TalkBack traversal, physical/OEM reminders, live AI provider and full SEP sign-off remain NOT TESTED/INCOMPLETE.
   R-06:
     status: PASS (compiled example and v2 daily dispatch retired; production cutover unchanged)
     commit: ffde207343454bdd998ced223f3cfbcc0527d341
@@ -211,7 +236,7 @@ LATEST_VERIFIED_EVIDENCE:
     commit: 2a8c323890c0f121b80c72a2a4d1c5c2a35d010d
     evidence: .local/android-test/reports/F-03-20261104-wave2/
 
-BLOCKERS: R-07 boot/recovery gate is incomplete. F-09 TalkBack focus order remains NOT TESTED after the bounded keyboard diagnostic; this remains a release-quality gap, not a blocker for the delivered internal Preview or R-06. Physical/OEM reminder behavior and live AI provider reliability remain NOT TESTED; full SEP signoff remains INCOMPLETE; Product Cutover remains HOLD.
+BLOCKERS: No confirmed P1 blocks the internal Debug RC or V-01. TalkBack focus order, forced checkpoint-I/O failure, physical/OEM reminder delivery and live AI provider reliability remain NOT TESTED; historical SEP sign-off remains INCOMPLETE; Product Cutover remains HOLD.
 
 AUTHORITATIVE_PLAN: docs/POWERCAL_SINGLE_DEFAULT_SKIN_EXECUTION_PLAN_2026-11-03_R2.md
 ACCEPTANCE_MATRIX: docs/agent-handoff/SINGLE_SKIN_ACCEPTANCE.md
