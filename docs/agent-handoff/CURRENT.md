@@ -3,24 +3,24 @@ PLAN: PLAN-2026-11-03-R2
 BRANCH: codex/skin-single-default-closure
 WAVE2_START_HEAD: 3b54097d6383c0349b5d3d638c228320e3c8e22c
 WAVE3_START_HEAD: 82b456fd2bfc15df379fd15d967fac3da57b899d
-LATEST_CODE_HEAD: 3932427ac7c8a06d1dabb53b732fef693954efdd
-LATEST_VERIFIED_HEAD: 3932427ac7c8a06d1dabb53b732fef693954efdd
-CURRENT_TASK: S-06
+LATEST_CODE_HEAD: 03c8ba38db785b16052a2f9b440b8bf3bc5ee79b
+LATEST_VERIFIED_HEAD: 03c8ba38db785b16052a2f9b440b8bf3bc5ee79b
+CURRENT_TASK: S-07
 TASK_STATUS: READY
-LAST_COMPLETED_TASK: F-08-SYSTEM-SETTINGS-ANDROID-PARITY (PASS)
-LAST_COMPLETED_COMMIT: c3a1e59f44e2b304314673f0030ae19c2f3f9d28
+LAST_COMPLETED_TASK: S-06-FROM-BLANK-FUNCTIONAL-SKIN-ANDROID (PASS)
+LAST_COMPLETED_COMMIT: 03c8ba38db785b16052a2f9b440b8bf3bc5ee79b
 LAST_ATTEMPTED_TASK: F-09 (BLOCKED; direct TalkBack navigation focus order is unverified)
 LAST_ATTEMPTED_COMMIT: 3932427ac7c8a06d1dabb53b732fef693954efdd
-NEXT_TASK: S-06
-NEXT_ACTION: Start the independent S-06 blank-project full-skin creation proof. Keep F-09 blocked until TalkBack focus traversal is directly evidenced.
+NEXT_TASK: S-07
+NEXT_ACTION: Load the canonical default Clear source into Studio, make a reversible harmless Settings edit, and verify export/import/rebuild on the isolated QA AVD. Keep F-09 blocked until TalkBack focus traversal is directly evidenced.
 WAVE2_STATUS: COMPLETE (8 authorized work packages attempted; all PASS)
-WAVE3_STATUS: IN_PROGRESS (F-08 PASS; F-09 BLOCKED; S-06 next independent task; Product Cutover HOLD)
+WAVE3_STATUS: IN_PROGRESS (F-08 PASS; F-09 BLOCKED; S-06 PASS; S-07 next independent task; Product Cutover HOLD)
 
 WAVE3_QUEUE:
   - F-08 permissions/reminders/ICS/backup/system settings: PASS (commit c3a1e59f44e2b304314673f0030ae19c2f3f9d28)
   - F-09 Back/IME/recovery/accessibility: BLOCKED (code/test fixes committed; TalkBack traversal order not verified)
-  - S-06 from-blank complete Skin: READY (independent of the remaining F-09 TalkBack evidence)
-  - S-07 default Skin Studio roundtrip: NOT STARTED
+  - S-06 from-blank complete Skin: PASS (commit 03c8ba38db785b16052a2f9b440b8bf3bc5ee79b; Studio GUI/API, 88/88 Python, Android 4/4, MainActivity force-stop/restore verified)
+  - S-07 default Skin Studio roundtrip: READY (next; make a reversible harmless Settings edit, export/import/rebuild, and restore canonical source/assets)
   - R-06 runtime retirement: DEFERRED; requires F-08/F-09/S-06/S-07 parity
   - R-07 runtime/recovery gate: CONDITIONAL; requires R-06 prerequisites and safe recovery evidence
   - Q-01 install/migration acceptance: NOT STARTED
@@ -59,6 +59,16 @@ OWNER_OVERRIDE_2026_11_03:
   Release_gate: Product Cutover remains HOLD.
 
 LATEST_VERIFIED_EVIDENCE:
+  S-06:
+    status: PASS (task scope; Product Cutover and full SEP sign-off remain HOLD/INCOMPLETE)
+    commit: 03c8ba38db785b16052a2f9b440b8bf3bc5ee79b
+    studio: Blank v3 GUI/API created and rebound 23 components across five routes; save/close/reopen/re-edit/build/export/formal-validate/import/re-edit PASS; project contains no Clear source; Python 88/88; browser E2E PASS; JS syntax checks PASS.
+    android: API 35 isolated AVD PowerCal_Wave2_QA35_20261104 / emulator-5554; final AndroidTest class 4/4, 0 failures/errors/skips. Five-page interactions, four event kinds, editor cancel/save, delete confirmation, recurrence scopes, Memo, AI Stub/review, permission denial, file-picker cancel, and Store invariants verified.
+    cold_start: Normal MainActivity selected powercal-from-blank-functional and hosted one WebView; app PID 6399 was force-stopped and absent; restore instrumentation reloaded the package in PID 6552, rendered Month, and accepted touch. Test-owned app-private package and preference state were restored after the demo.
+    packages: AndroidTest-only Skin SHA-256 e810bc0897cd3b35985067dd23c077394c0a131381795fd8136c616db71751b7. Production APK contains exactly powercal-clear-default.pcskin; source/APK hash b9035719c2e0c75d335225216ea3687b72cc2cf4692e829ca43566c730c3fee3, unchanged.
+    apk_sha256: 4baebe7a02073cfde91e87e117c1a3f1305cac69822a3836acbbcbbd288e37f5.
+    evidence: .local/android-test/reports/S-06-20261104/manifest.md
+    limits: physical/OEM behavior not tested; this proves an isolated authored Skin, not complete SEP sign-off. Product Cutover remains HOLD.
   F-09:
     status: BLOCKED; F-09 code scope has targeted PASS evidence, but TalkBack focus traversal is not verified.
     commit: 3932427ac7c8a06d1dabb53b732fef693954efdd
@@ -165,7 +175,7 @@ LATEST_VERIFIED_EVIDENCE:
     commit: 2a8c323890c0f121b80c72a2a4d1c5c2a35d010d
     evidence: .local/android-test/reports/F-03-20261104-wave2/
 
-BLOCKERS: F-09 cannot PASS until actual TalkBack focus traversal order is directly verified. S-06 is independent and is the only next task. Physical/OEM and live-provider behavior remain NOT TESTED; full SEP signature remains INCOMPLETE; R-06/R-07 remain DEFERRED; Product Cutover remains HOLD.
+BLOCKERS: F-09 cannot PASS until actual TalkBack focus traversal order is directly verified. S-07 is next and independent; R-06/R-07 remain deferred until their required parity/recovery gates are satisfied. Physical/OEM and live-provider behavior remain NOT TESTED; full SEP signature remains INCOMPLETE; Product Cutover remains HOLD.
 
 AUTHORITATIVE_PLAN: docs/POWERCAL_SINGLE_DEFAULT_SKIN_EXECUTION_PLAN_2026-11-03_R2.md
 ACCEPTANCE_MATRIX: docs/agent-handoff/SINGLE_SKIN_ACCEPTANCE.md
