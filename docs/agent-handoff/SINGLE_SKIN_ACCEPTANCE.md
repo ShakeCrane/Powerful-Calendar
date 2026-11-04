@@ -214,15 +214,15 @@ G-04 在 `1e57da5cbb19b4b1348fe390174f629c8871fc47` 实测 JVM 946/946、Studio 
 
 ### SSA-15｜无障碍、小屏、字体和 IME
 
-- SOURCE：SEP-01, SEP-09, SEP-12；冻结契约与对应原 SEP 行。当前证据：旧 SEP 有部分 Native 小屏和 Back 切片；默认 Skin TalkBack/真机未签核。
+- SOURCE：SEP-01, SEP-09, SEP-12；冻结契约与对应原 SEP 行。F-09 新增默认 Skin Back、IME、renderer 恢复、2× 字体、窄屏和 reduced-motion 设备切片；TalkBack 焦点顺序及真机仍未签核。
 - CORE API：core-api/src/main/kotlin/dev/powerfulcalendar/core/api/v1/CoreFeatureApiV1.kt；Host 处理 Android 窗口和权限。
 - DEFAULT SKIN：TalkBack 名称、可点击区域、缩放、IME 跟随与返回顺序。用户动作 → API → Core → 可观察结果：在大字体、小屏和键盘打开时导航、编辑并返回 → Host 窗口/Back 与 EventFeatureApiV1.editorSnapshot → 无额外 Store 写入 → 焦点、标签、控件和键盘不遮挡。
 - STUDIO：可创建语义标签、焦点顺序和响应式布局。
-- ANDROID QA：NOT TESTED（本轮）；使用 TalkBack、系统字体放大、窄屏与真实 IME 检查焦点、命中、遮挡和无意写入。
+- ANDROID QA：PARTIAL（2026-11-04，隔离 API 35 AVD `PowerCal_Wave2_QA35_20261104` / `emulator-5554`）。F-09 的 11 个唯一 Android instrumentation 方法在正确系统设置下通过：页面 Back、IME、清洁/脏编辑器退出、renderer/JS 故障恢复、2× 字体、360dp/288dp 窄屏、竖屏及减少动画；清洁退出和页面导航的 Store 快照不变，脏编辑器仅留下单个待处理草稿。TalkBack 服务已启用且绑定，但焦点探针没有观察到导航按钮顺序，故实际 TalkBack 遍历标记 NOT TESTED，F-09 不完整 PASS。
 - PHYSICAL：NOT TESTED（本轮）；在真机重放主要动作，记录系统、权限、界面及 Store 结果。
-- 测试入口：app/src/androidTest/java/dev/powerfulcalendar/ui/v2/TimelineSmallScreenInstrumentedTest.kt；app/src/androidTest/java/dev/powerfulcalendar/ui/v2/AiChatImeInstrumentedTest.kt。
-- 状态：实现 PARTIAL；JVM PARTIAL（G-04 门禁与关联测试，不等于本项签核）；模拟器 NOT TESTED（本轮，历史切片见 SOURCE）；真机 NOT TESTED；总体 PARTIAL。
-- 剩余及签核：按上述动作逐项获得目标构建的 Core/界面结果、Studio 往返、模拟器和真机证据，核对冻结契约后签核。后续任务：F-09, S-02, S-04, Q-03, Q-04。
+- 测试入口：`app/src/androidTest/java/dev/powerfulcalendar/ui/v2/ClearNavigationBackInstrumentedTest.kt`；`WebSkinRendererRecoveryInstrumentedTest.kt`；`ClearDisplayAdaptationInstrumentedTest.kt`；`TimelineSystemFontScaleInstrumentedTest.kt`；`TimelineSmallScreenInstrumentedTest.kt`；`SystemReducedMotionInstrumentedTest.kt`。
+- 状态：实现 PARTIAL；JVM PASS（F-09 全量门禁 970/970，0 failures/errors/skips）；模拟器 PARTIAL（上述 F-09 设备切片通过，但 TalkBack 焦点顺序未验证）；真机 NOT TESTED；总体 PARTIAL。
+- 剩余及签核：必须直接证明 TalkBack 主要操作的焦点遍历顺序，并完成真机复验；Studio 结构语义和完整 SSA 仍待相应任务签核。证据：`.local/android-test/reports/F-09-20261104/manifest.md`。后续映射：F-09、S-06、S-07、Q-02～Q-04。
 
 ### SSA-16｜业务等价与正式发布
 

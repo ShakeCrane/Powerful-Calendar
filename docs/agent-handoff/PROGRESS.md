@@ -1,5 +1,14 @@
 # PowerCal 当前执行状态（R2）
 
+## Wave 3 当前交接 — F-09（2026-11-04）
+
+- **状态：** F-09 BLOCKED；代码修复提交 `3932427a`。Back 现在先安全 checkpoint 活动编辑器，再执行页面导航；288dp/2× 字体时默认 Clear 标题裁切也已修复。TalkBack 主导航焦点顺序未能直接验证，因此不标 PASS。
+- **JVM/构建：** 当前完整门禁 970/970，0 failures/errors/skips；Skin/Native 源码边界、Debug APK、Lint 和 AndroidTest Kotlin 编译 PASS。
+- **Android：** 隔离 API 35 AVD `PowerCal_Wave2_QA35_20261104` / `emulator-5554`。导航/IME/编辑器/renderer 恢复、2× 字体、小屏、竖屏、减少动画相关 11 个唯一 instrumentation 方法最终通过；TalkBack 服务确认已绑定，但焦点采样只观测到 WebView 根节点，主按钮遍历顺序 NOT TESTED。
+- **Store/包：** 页面返回和清洁编辑退出零写入；脏编辑退出只产生一个待处理草稿；renderer 故障保留草稿并可进入 Native。APK SHA-256 `4baebe7a02073cfde91e87e117c1a3f1305cac69822a3836acbbcbbd288e37f5`；唯一默认包与 APK 字节一致，SHA-256 `b9035719c2e0c75d335225216ea3687b72cc2cf4692e829ca43566c730c3fee3`。
+- **Issue/证据：** `docs/issues/PC-ISSUE-SEPARATION-F09-BACK-EDITOR-CHECKPOINT-20261104.md`；`docs/issues/PC-ISSUE-SEPARATION-F09-CLEAR-NARROW-HEADER-20261104.md`；`.local/android-test/reports/F-09-20261104/manifest.md`。
+- **唯一下一任务：** S-06 可独立执行；F-09 的 TalkBack 焦点顺序仍须单独补齐。R-06/R-07 不得越过 F-09、S-06、S-07 前置门禁。SEP 历史签核 INCOMPLETE，Product Cutover HOLD。
+
 ## Wave 3 — F-08 系统设置与 Android 平台能力闭合（2026-11-04）
 
 - **状态：** F-08 PASS（任务范围）；SSA-09/SSA-10 继续 PARTIAL；Product Cutover = HOLD。提交 `c3a1e59f44e2b304314673f0030ae19c2f3f9d28`（`fix(settings): complete host-platform controls on default skin`）。
@@ -8,7 +17,7 @@
 - **包与 Store：** APK SHA-256 `08739af8ec4967c764e738e20885a2fc8c1c96033f4e33a3414643b48422d16e`；生产 APK 恰好一份 `.pcskin`，源码和 APK 字节一致，SHA-256 `299e4bdd78c8936f6c15db0200172e659aaa5b0e0643f0d70c115966ac35a9f4`。测试使用隔离 Store/合成 provider fixture，拒绝、取消和只读系统操作前后 Store 快照不变。
 - **证据：** `.local/android-test/reports/F-08-20261104/manifest.md`；Issue：`docs/issues/PC-ISSUE-SEPARATION-F08-SETTINGS-ANDROID-VERIFICATION.md`。
 - **限制：** 物理/OEM 提醒投递、Skin 发起的通知授权允许路径、ICS 选择器取消、提醒重启/时区/DST/宽限边界 NOT TESTED。首轮广泛 AndroidTest 有失败和 3 个 skip；拆分并纠正过时 Future Schema 错误断言后，两拒绝路径均独立通过。另有一个 AI 历史顺序断言失败，属于 F-07 范围，未改动且未计入 F-08。
-- **唯一下一任务：** F-09 Back、IME、Renderer 恢复、无障碍和小屏行为验证。
+- **当时下一任务：** F-09 Back、IME、Renderer 恢复、无障碍和小屏行为验证；结果记录见上方当前交接。
 
 唯一实时任务入口：`docs/agent-handoff/CURRENT.md`。历史正文从下方标记起原样保留；旧 `NEXT_ACTION` 只代表当时状态，不是当前执行命令。
 

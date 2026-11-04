@@ -3,23 +3,25 @@ PLAN: PLAN-2026-11-03-R2
 BRANCH: codex/skin-single-default-closure
 WAVE2_START_HEAD: 3b54097d6383c0349b5d3d638c228320e3c8e22c
 WAVE3_START_HEAD: 82b456fd2bfc15df379fd15d967fac3da57b899d
-LATEST_CODE_HEAD: c3a1e59f44e2b304314673f0030ae19c2f3f9d28
-LATEST_VERIFIED_HEAD: c3a1e59f44e2b304314673f0030ae19c2f3f9d28
-CURRENT_TASK: F-09
+LATEST_CODE_HEAD: 3932427ac7c8a06d1dabb53b732fef693954efdd
+LATEST_VERIFIED_HEAD: 3932427ac7c8a06d1dabb53b732fef693954efdd
+CURRENT_TASK: S-06
 TASK_STATUS: READY
 LAST_COMPLETED_TASK: F-08-SYSTEM-SETTINGS-ANDROID-PARITY (PASS)
 LAST_COMPLETED_COMMIT: c3a1e59f44e2b304314673f0030ae19c2f3f9d28
-NEXT_TASK: F-09
-NEXT_ACTION: Execute the R2 F-09 Back/IME/renderer recovery/accessibility task on the verified isolated API 35 AVD.
+LAST_ATTEMPTED_TASK: F-09 (BLOCKED; direct TalkBack navigation focus order is unverified)
+LAST_ATTEMPTED_COMMIT: 3932427ac7c8a06d1dabb53b732fef693954efdd
+NEXT_TASK: S-06
+NEXT_ACTION: Start the independent S-06 blank-project full-skin creation proof. Keep F-09 blocked until TalkBack focus traversal is directly evidenced.
 WAVE2_STATUS: COMPLETE (8 authorized work packages attempted; all PASS)
-WAVE3_STATUS: IN_PROGRESS (F-08 PASS; Product Cutover HOLD)
+WAVE3_STATUS: IN_PROGRESS (F-08 PASS; F-09 BLOCKED; S-06 next independent task; Product Cutover HOLD)
 
 WAVE3_QUEUE:
   - F-08 permissions/reminders/ICS/backup/system settings: PASS (commit c3a1e59f44e2b304314673f0030ae19c2f3f9d28)
-  - F-09 Back/IME/recovery/accessibility: READY
-  - S-06 from-blank complete Skin: NOT STARTED
+  - F-09 Back/IME/recovery/accessibility: BLOCKED (code/test fixes committed; TalkBack traversal order not verified)
+  - S-06 from-blank complete Skin: READY (independent of the remaining F-09 TalkBack evidence)
   - S-07 default Skin Studio roundtrip: NOT STARTED
-  - R-06 runtime retirement: CONDITIONAL; requires F-08/F-09/S-06/S-07 parity
+  - R-06 runtime retirement: DEFERRED; requires F-08/F-09/S-06/S-07 parity
   - R-07 runtime/recovery gate: CONDITIONAL; requires R-06 prerequisites and safe recovery evidence
   - Q-01 install/migration acceptance: NOT STARTED
   - Q-02 full parity replay: NOT STARTED
@@ -57,6 +59,17 @@ OWNER_OVERRIDE_2026_11_03:
   Release_gate: Product Cutover remains HOLD.
 
 LATEST_VERIFIED_EVIDENCE:
+  F-09:
+    status: BLOCKED; F-09 code scope has targeted PASS evidence, but TalkBack focus traversal is not verified.
+    commit: 3932427ac7c8a06d1dabb53b732fef693954efdd
+    jvm: 970/970, 140 XML suites, 0 failures/errors/skips.
+    android: API 35 isolated AVD PowerCal_Wave2_QA35_20261104 / emulator-5554; 11 unique instrumentation methods passed after applying required font/animation settings; extra 360dp and 288dp responsive runs passed.
+    back_recovery: Page Back and clean editor close preserve Store snapshots; dirty editor leaves one pending draft without formal writes; JS/renderer failures retain draft and Native recovery remains available.
+    accessibility: TalkBack service was enabled and bound; node tree exposed named/focusable tabs, but two focus probes observed only the WebView root. TalkBack order NOT TESTED; this is the F-09 blocker.
+    boundaries: Skin/Native source checks, APK assemble, Lint, and AndroidTest Kotlin compile PASS.
+    apk_sha256: 4baebe7a02073cfde91e87e117c1a3f1305cac69822a3836acbbcbbd288e37f5.
+    factory_package: exactly one `.pcskin`; source/APK byte-identical; SHA-256 b9035719c2e0c75d335225216ea3687b72cc2cf4692e829ca43566c730c3fee3.
+    evidence: .local/android-test/reports/F-09-20261104/manifest.md; issue reports: docs/issues/PC-ISSUE-SEPARATION-F09-*.md.
   F-08:
     status: PASS (task scope); SSA-09 and SSA-10 remain PARTIAL; Product Cutover remains HOLD.
     commit: c3a1e59f44e2b304314673f0030ae19c2f3f9d28
@@ -152,7 +165,7 @@ LATEST_VERIFIED_EVIDENCE:
     commit: 2a8c323890c0f121b80c72a2a4d1c5c2a35d010d
     evidence: .local/android-test/reports/F-03-20261104-wave2/
 
-BLOCKERS: None for F-07 task scope. Physical/OEM and live-provider behavior remain NOT TESTED; full SEP signature remains INCOMPLETE; R-06/R-07 remain DEFERRED and Product Cutover remains HOLD. No task beyond the authorized Wave 2 limit is opened.
+BLOCKERS: F-09 cannot PASS until actual TalkBack focus traversal order is directly verified. S-06 is independent and is the only next task. Physical/OEM and live-provider behavior remain NOT TESTED; full SEP signature remains INCOMPLETE; R-06/R-07 remain DEFERRED; Product Cutover remains HOLD.
 
 AUTHORITATIVE_PLAN: docs/POWERCAL_SINGLE_DEFAULT_SKIN_EXECUTION_PLAN_2026-11-03_R2.md
 ACCEPTANCE_MATRIX: docs/agent-handoff/SINGLE_SKIN_ACCEPTANCE.md
