@@ -194,6 +194,24 @@ async function main() {
     await setComponentField("#componentLabel", "Timeline Event Card");
     await selectComponentType("button");
     await mouseClick("#componentAdd");
+    const todayButtonId = await evaluate("selectedComponentId");
+    await setComponentField("#componentLabel", "Today");
+    await setComponentField("#componentHostAction", "today");
+    await mouseClick("#requestBindingCapabilities");
+    await waitFor(async () => evaluate("manifest.capabilities.includes('host.action')"),
+      "Studio did not record the explicit host.action request");
+
+    await selectComponentType("button");
+    await mouseClick("#componentAdd");
+    const panButtonId = await evaluate("selectedComponentId");
+    await setComponentField("#componentLabel", "Pan +60 minutes");
+    await setComponentField("#componentHostAction", "panTimeline");
+    await setComponentField('[data-host-param="deltaMinutes"]', "60");
+    await selectComponentType("text");
+    await mouseClick("#componentAdd");
+    const cameraStateTextId = await evaluate("selectedComponentId");
+    await setComponentField("#componentLabel", "Camera anchor");
+    await setComponentField("#componentStateBinding", "timeline.anchorMillis");
 
     await selectTreePage("MONTH");
     await selectComponentType("text");
@@ -249,7 +267,8 @@ async function main() {
     await mouseClick("#componentTree [data-component-id=\"month-root\"]");
     await selectComponentType("text");
     await mouseClick("#componentAdd");
-    await waitFor(async () => treeHasNode("text-3"), "Could not create the reparenting probe");
+    const reparentProbeId = await evaluate("selectedComponentId");
+    await waitFor(async () => treeHasNode(reparentProbeId), "Could not create the reparenting probe");
     await setComponentField("#componentLabel", "Reparent Probe");
     await mouseClick("#componentNest");
     let parentState = await evaluate(`(()=>{
@@ -257,15 +276,16 @@ async function main() {
       const grid=root.children.find(node=>node.type==='month-grid');
       return {root:root.children.map(node=>node.id),grid:grid.children.map(node=>node.id)};
     })()`);
-    if (parentState.root.includes("text-3") || !parentState.grid.includes("text-3"))
-      throw Error("Indent did not reparent the selected node under the preceding container");
+    if (parentState.root.includes(reparentProbeId) || !parentState.grid.includes(reparentProbeId))
+      throw Error("Indent did not reparent the selected node under the preceding container: " +
+        JSON.stringify(parentState));
     await mouseClick("#componentOutdent");
     parentState = await evaluate(`(()=>{
       const root=project.pages.find(page=>page.route==='MONTH').components[0];
       return {root:root.children.map(node=>node.id),grid:root.children.find(node=>node.type==='month-grid')
         .children.map(node=>node.id)};
     })()`);
-    if (!parentState.root.includes("text-3") || parentState.grid.includes("text-3"))
+    if (!parentState.root.includes(reparentProbeId) || parentState.grid.includes(reparentProbeId))
       throw Error("Outdent did not restore the component to its parent level");
     await mouseClick("#componentDelete");
 
@@ -329,8 +349,8 @@ async function main() {
     })()`);
     if (supportedComponents.some(type => !authoredTypes.includes(type)))
       throw Error("The five-page component palette did not author every supported runtime type: " + authoredTypes);
-    if (JSON.stringify(await evaluate("manifest.capabilities")) !== '["host.read"]')
-      throw Error("Blank component editing silently granted a mutating Host capability");
+    if (JSON.stringify(await evaluate("manifest.capabilities")) !== '["host.read","host.action"]')
+      throw Error("The explicit Host action capability request was not retained by the project");
 
     treeState = await evaluate(`(()=>{
       const month=project.pages.find(page=>page.route==='MONTH');
@@ -403,7 +423,7 @@ async function main() {
         reopened.pages[1].components[0].children[0].props.label !== "November Header" ||
         JSON.stringify(reopened.pages[1].components[0].children[1].children.map(node=>node.id)) !==
           JSON.stringify([secondDateId,firstDateId]) ||
-        JSON.stringify(reopened.capabilities) !== '["host.read"]')
+        JSON.stringify(reopened.capabilities) !== '["host.read","host.action"]')
       throw Error("Reopened Studio project lost page structure or changed capabilities");
 
     await waitFor(async () => evaluate("document.querySelector('#previewState').textContent.includes('连接成功')"),
@@ -417,7 +437,12 @@ async function main() {
     for (const route of routes) {
       await evaluateFrame(previewFrame.frame.id, `(()=>{
         const page=document.querySelector('[data-page-route="${route}"]');
-        if(!page)throw Error('Required route is absent from runtime navigation: ${route}');
+        if(!page)throw Error('Required route is absent from runtime navigation: ${route} '+JSON.stringify({
+          tree:window.__POWERCAL_PAGE_TREE_V1__?.pages?.map(item=>item.route),
+          navigation:document.querySelector('#page-navigation')?.innerHTML,
+          status:document.querySelector('#status')?.textContent,
+          title:document.querySelector('#content [data-page-title]')?.dataset.pageTitle
+        }));
         page.click();return true;
       })()`);
       await waitFor(async () => evaluateFrame(previewFrame.frame.id,
@@ -432,6 +457,7 @@ async function main() {
             ?node.querySelector(':scope > span')?.textContent||""
             :[...node.childNodes].filter(child=>child.nodeType===Node.TEXT_NODE)
               .map(child=>child.textContent).join(""),
+          stateValue:node.querySelector(':scope > .pc-bound-value')?.textContent||"",
           binding:node.dataset.binding||null,color:getComputedStyle(node).color,
           backgroundImage:getComputedStyle(node).backgroundImage
         }))
@@ -474,6 +500,26 @@ async function main() {
     const resourceProbe = renderedPages.SETTINGS.nodes.find(node=>node.id===resourceLayerId);
     if (!resourceProbe?.backgroundImage.includes("probe.png"))
       throw Error("Studio preview did not resolve the uploaded PNG through the package-relative CSS path");
+    if (!renderedPages.TIMELINE.nodes.some(node=>node.id===todayButtonId && node.type==="button") ||
+        !renderedPages.TIMELINE.nodes.some(node=>node.id===panButtonId && node.type==="button") ||
+        !renderedPages.TIMELINE.nodes.some(node=>node.id===cameraStateTextId &&
+          node.type==="text" && node.parent===timelineNodeId))
+      throw Error("The formal Host action/state bindings were not rendered on Timeline");
+    await evaluateFrame(previewFrame.frame.id,
+      "document.querySelector('[data-page-route=\"TIMELINE\"]')?.click();true");
+    await evaluateFrame(previewFrame.frame.id,
+      "document.querySelector('[data-host-action=\"panTimeline\"]')?.click();true");
+    const baseCamera = new Date("2026-10-22T04:00:00Z").getTime();
+    await waitFor(async () => evaluateFrame(previewFrame.frame.id,
+      "document.querySelector('[data-host-state-binding=\"timeline.anchorMillis\"] .pc-bound-value')?.textContent===" +
+        "'" + String(baseCamera+3600000) + "'"), "Mock Host did not publish the Pan camera update");
+    await evaluateFrame(previewFrame.frame.id,
+      "document.querySelector('[data-host-action=\"today\"]')?.click();true");
+    await waitFor(async () => evaluateFrame(previewFrame.frame.id,
+      "document.querySelector('[data-host-state-binding=\"timeline.anchorMillis\"] .pc-bound-value')?.textContent===" +
+        "'" + String(baseCamera) + "'"), "Mock Host did not return the bound camera to local noon");
+    if (await evaluate("mockHours") !== 24)
+      throw Error("Today action did not restore the 24-hour camera");
 
     await evaluate("document.querySelector('#exportPack').click();true");
     const packagePath = path.join(downloadDir, "powercal-blank-skin.pcskin");
@@ -484,7 +530,7 @@ async function main() {
     if (validation.status !== 0) throw Error("Exported .pcskin validation failed: " + validation.stderr);
     const receipt = JSON.parse(validation.stdout);
     if (receipt.skinId !== "powercal-blank-skin" || receipt.runtimeVersion !== 3 ||
-        JSON.stringify(receipt.manifest.capabilities) !== '["host.read"]')
+        JSON.stringify(receipt.manifest.capabilities) !== '["host.read","host.action"]')
       throw Error("Exported .pcskin identity or minimum capabilities changed");
     const importedResponse = await fetch(origin + "/api/import-v3", {
       method: "POST", headers: {"Content-Type": "application/octet-stream"},
@@ -496,12 +542,20 @@ async function main() {
     const importedRuntime = Buffer.from(importedPackage.files["web/project-tree-v1.js"], "base64").toString("utf8");
     const runtimeLiteral=importedRuntime.match(/^window\.__POWERCAL_PAGE_TREE_V1__=JSON\.parse\((.*)\);\n$/);
     const runtimeProject=runtimeLiteral?JSON.parse(JSON.parse(runtimeLiteral[1])):null;
+    const findNode=(nodes,id)=>{for(const node of nodes||[]){
+      if(node.id===id)return node;const found=findNode(node.children,id);if(found)return found;
+    }return null};
+    const importedToday=findNode(importedProject.pages[0].components,todayButtonId);
+    const importedCameraBinding=findNode(importedProject.pages[0].components,cameraStateTextId);
     if (JSON.stringify(importedProject.pages) !== JSON.stringify(reopened.pages) ||
         JSON.stringify(runtimeProject?.pages) !== JSON.stringify(importedProject.pages) ||
         runtimeProject?.pages[1]?.components[0]?.children[0]?.props?.binding !==
-          "presentation.month.header")
+          "presentation.month.header" ||
+        importedToday?.props?.hostAction?.name !== "today" ||
+        importedCameraBinding?.props?.hostStateBinding !== "timeline.anchorMillis")
       throw Error("Export/reimport did not preserve the component structure and runtime projection");
-    const exportTarget = process.env.POWERCAL_BLANK_GATE_OUTPUT;
+    const exportTarget = process.env.POWERCAL_HOST_BINDING_GATE_OUTPUT ||
+      process.env.POWERCAL_BLANK_GATE_OUTPUT;
     if (exportTarget) {
       fs.mkdirSync(path.dirname(exportTarget), {recursive: true});
       fs.copyFileSync(packagePath, exportTarget);
@@ -513,6 +567,7 @@ async function main() {
       capabilities: receipt.manifest.capabilities, componentTree: treeState,
       previewDom: renderedPages, runtimeComponentTypes: renderedTypes,
       componentIds: {memoRowId, chatItemId, formFieldId, settingsRowId, resourceLayerId},
+      hostBindings: {todayButtonId, panButtonId, cameraStateTextId},
       androidFixtureTarget: exportTarget||null,
       reimportedPageCount: importedProject.pages.length
     }));

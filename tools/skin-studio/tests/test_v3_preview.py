@@ -58,6 +58,18 @@ class PreviewParityTest(unittest.TestCase):
         with urlopen(request) as response:
             return response.read()
 
+    def test_host_binding_catalog_is_served_as_the_machine_readable_v1_contract(self):
+        catalog = json.loads(self.get("/api/host-binding-catalog-v1"))
+        self.assertEqual(1, catalog["catalogVersion"])
+        self.assertEqual(1, catalog["bridgeVersion"])
+        actions = {item["name"]: item for item in catalog["actions"]}
+        self.assertIn("today", actions)
+        self.assertEqual("host.action", actions["today"]["requiredCapability"])
+        self.assertEqual("object", actions["today"]["parameterSchema"]["type"])
+        self.assertFalse(actions["today"]["parameterSchema"]["additionalProperties"])
+        self.assertNotIn("selectSkin", actions)
+        self.assertEqual("host.read", catalog["stateFrame"]["capability"])
+
     def test_from_scratch_blank_project_roundtrips_without_copying_clear(self):
         blank = json.loads(self.get("/api/blank-v3"))
         self.assertEqual("powercal-blank-skin", blank["manifest"]["id"])

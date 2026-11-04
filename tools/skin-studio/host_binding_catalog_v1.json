@@ -1,0 +1,2253 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "catalogVersion": 1,
+  "bridgeVersion": 1,
+  "source": {
+    "state": "app/src/main/java/dev/powerfulcalendar/ui/v2/PowerCalApp.kt:WebSkinBridgeRuntime.state",
+    "actions": "app/src/main/java/dev/powerfulcalendar/ui/v2/WebSkinHost.kt:decodeBridgeAction",
+    "editCommands": "app/src/main/java/dev/powerfulcalendar/ui/v2/WebSkinEditBridge.kt:WebEditWire.decode"
+  },
+  "capabilities": {
+    "host.read": "Allows the Host to project the current versioned state frame.",
+    "host.action": "Allows the Host to receive closed-schema action and editor-command frames. Android Host validation and approval still apply.",
+    "host.edit": "Accepted only as inert v3 metadata; it grants no access by itself."
+  },
+  "stateFrame": {
+    "envelope": {
+      "version": 1,
+      "type": "state",
+      "payload": "PowerCalHostStateV1"
+    },
+    "capability": "host.read",
+    "fields": [
+      {
+        "path": "bridgeVersion",
+        "type": "integer",
+        "bindable": true,
+        "source": "WebSkinBridgeRuntime.VERSION"
+      },
+      {
+        "path": "page",
+        "type": "string",
+        "bindable": true,
+        "source": "PowerCalApp.page"
+      },
+      {
+        "path": "hostNotice",
+        "type": [
+          "string",
+          "null"
+        ],
+        "bindable": true,
+        "source": "PowerCalApp.message"
+      },
+      {
+        "path": "hostDataReady",
+        "type": "boolean",
+        "bindable": true
+      },
+      {
+        "path": "eventFeatureRevision",
+        "type": "integer",
+        "bindable": true
+      },
+      {
+        "path": "aiLocked",
+        "type": "boolean",
+        "bindable": true
+      },
+      {
+        "path": "pendingCount",
+        "type": "integer",
+        "bindable": true
+      },
+      {
+        "path": "memoCount",
+        "type": "integer",
+        "bindable": true
+      },
+      {
+        "path": "memoEntries",
+        "type": "array",
+        "bindable": false,
+        "itemSource": "WebSkinMemoProjection.build"
+      },
+      {
+        "path": "memoTruncated",
+        "type": "boolean",
+        "bindable": true
+      },
+      {
+        "path": "memoRemainingCount",
+        "type": "integer",
+        "bindable": true
+      },
+      {
+        "path": "chatBusy",
+        "type": "boolean",
+        "bindable": true
+      },
+      {
+        "path": "chatHistoryRevision",
+        "type": "integer",
+        "bindable": true
+      },
+      {
+        "path": "chatHistoryActionsAvailable",
+        "type": "boolean",
+        "bindable": true
+      },
+      {
+        "path": "chatPrefillText",
+        "type": "string",
+        "bindable": true
+      },
+      {
+        "path": "chatPrefillRevision",
+        "type": "integer",
+        "bindable": true
+      },
+      {
+        "path": "aiBatch",
+        "type": "object",
+        "bindable": false,
+        "source": "WebAiBatchProjection.project"
+      },
+      {
+        "path": "chatAttachmentAvailable",
+        "type": "boolean",
+        "bindable": true
+      },
+      {
+        "path": "chatAttachmentBusy",
+        "type": "boolean",
+        "bindable": true
+      },
+      {
+        "path": "chatMessages",
+        "type": "array",
+        "bindable": false,
+        "itemSource": "WebAiChatHistory.project"
+      },
+      {
+        "path": "aiProposalReview",
+        "type": [
+          "object",
+          "null"
+        ],
+        "bindable": false,
+        "source": "WebAiProposalProjection.project"
+      },
+      {
+        "path": "reducedMotion",
+        "type": "boolean",
+        "bindable": true
+      },
+      {
+        "path": "notificationPermission",
+        "type": "object",
+        "bindable": false,
+        "availability": "SETTINGS"
+      },
+      {
+        "path": "exactAlarmPermission",
+        "type": "object",
+        "bindable": false,
+        "availability": "SETTINGS"
+      },
+      {
+        "path": "reminderReconcile",
+        "type": "object",
+        "bindable": false,
+        "availability": "SETTINGS"
+      },
+      {
+        "path": "reminderDiagnostics",
+        "type": "array",
+        "bindable": false,
+        "availability": "SETTINGS"
+      },
+      {
+        "path": "systemDiagnostics",
+        "type": "object",
+        "bindable": false,
+        "availability": "SETTINGS"
+      },
+      {
+        "path": "editing",
+        "type": "object",
+        "bindable": false,
+        "source": "WebSkinEditBridge.snapshot"
+      },
+      {
+        "path": "optionGroups",
+        "type": "array",
+        "bindable": false,
+        "source": "SemanticOptions.toJson"
+      },
+      {
+        "path": "profileEditor",
+        "type": [
+          "object",
+          "null"
+        ],
+        "bindable": false,
+        "availability": "SETTINGS"
+      },
+      {
+        "path": "timeline",
+        "type": "object",
+        "bindable": false,
+        "source": "WebSkinTimelineProjection.build"
+      },
+      {
+        "path": "timeline.zoneId",
+        "type": "string",
+        "bindable": true,
+        "source": "WebSkinTimelineProjection.build"
+      },
+      {
+        "path": "timeline.anchorMillis",
+        "type": "integer",
+        "bindable": true,
+        "source": "WebSkinTimelineProjection.build"
+      },
+      {
+        "path": "timeline.hours",
+        "type": "number",
+        "bindable": true,
+        "source": "WebSkinTimelineProjection.build"
+      },
+      {
+        "path": "timeline.visibleStartMillis",
+        "type": "integer",
+        "bindable": true,
+        "source": "WebSkinTimelineProjection.build"
+      },
+      {
+        "path": "timeline.visibleEndMillis",
+        "type": "integer",
+        "bindable": true,
+        "source": "WebSkinTimelineProjection.build"
+      },
+      {
+        "path": "timeline.nowMillis",
+        "type": "integer",
+        "bindable": true,
+        "source": "WebSkinTimelineProjection.build"
+      },
+      {
+        "path": "timeline.items",
+        "type": "array",
+        "bindable": false,
+        "itemSource": "WebSkinTimelineProjection.build"
+      },
+      {
+        "path": "month",
+        "type": "object",
+        "bindable": false,
+        "source": "WebSkinMonthProjection.build"
+      },
+      {
+        "path": "month.zoneId",
+        "type": "string",
+        "bindable": true,
+        "availability": "MONTH"
+      },
+      {
+        "path": "month.month",
+        "type": "string",
+        "bindable": true,
+        "availability": "MONTH"
+      },
+      {
+        "path": "month.selectedDate",
+        "type": "string",
+        "bindable": true,
+        "availability": "MONTH"
+      },
+      {
+        "path": "month.gridFrom",
+        "type": "string",
+        "bindable": true,
+        "availability": "MONTH"
+      },
+      {
+        "path": "month.items",
+        "type": "array",
+        "bindable": false,
+        "itemSource": "WebSkinMonthProjection.build"
+      },
+      {
+        "path": "events",
+        "type": "array",
+        "bindable": false,
+        "source": "PowerCalApp projected record summary"
+      }
+    ],
+    "itemSchemas": {
+      "timeline.items": [
+        "eventSeq",
+        "revision",
+        "occurrenceKey",
+        "originalOccurrenceKey",
+        "kind",
+        "title",
+        "side",
+        "lane",
+        "startMillis",
+        "endMillis",
+        "precision",
+        "deadlineDate"
+      ],
+      "month.items": [
+        "eventSeq",
+        "revision",
+        "occurrenceKey",
+        "originalOccurrenceKey",
+        "title",
+        "kind",
+        "date",
+        "startMillis"
+      ],
+      "memoEntries": [
+        "eventSeq",
+        "revision",
+        "occurrenceKey",
+        "originalOccurrenceKey",
+        "title",
+        "completed",
+        "startMillis"
+      ],
+      "chatMessages": [
+        "messageId",
+        "role",
+        "content"
+      ]
+    }
+  },
+  "actionResult": {
+    "transport": "No action result frame is sent. The Host republishes a state frame after decoding an action; feedback, when present, is in hostNotice.",
+    "errors": [
+      {
+        "code": "INVALID_FRAME",
+        "behavior": "Dropped by the closed-schema decoder; no state or result is promised."
+      },
+      {
+        "code": "CAPABILITY_REQUIRED",
+        "behavior": "If host.action is absent, the Web Host ignores the request."
+      },
+      {
+        "code": "HOST_STATE_REJECTED",
+        "behavior": "Page, lock, ownership, and approval checks remain Host-owned; rejection is reflected only where the existing Host publishes feedback/state."
+      }
+    ]
+  },
+  "actions": [
+    {
+      "name": "timeline",
+      "label": "Open timeline",
+      "parameters": {},
+      "source": "WebSkinHost.decodeBridgeAction → PowerCalApp Routed",
+      "version": 1,
+      "requiredCapability": "host.action",
+      "parameterSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "resultSchema": "#/actionResult",
+      "errors": "#/actionResult/errors",
+      "wirePayloadSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "const": "timeline"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "month",
+      "label": "Open month",
+      "parameters": {},
+      "source": "WebSkinHost.decodeBridgeAction → PowerCalApp Routed",
+      "version": 1,
+      "requiredCapability": "host.action",
+      "parameterSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "resultSchema": "#/actionResult",
+      "errors": "#/actionResult/errors",
+      "wirePayloadSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "const": "month"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "memo",
+      "label": "Open Memo",
+      "parameters": {},
+      "source": "WebSkinHost.decodeBridgeAction → PowerCalApp Routed",
+      "version": 1,
+      "requiredCapability": "host.action",
+      "parameterSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "resultSchema": "#/actionResult",
+      "errors": "#/actionResult/errors",
+      "wirePayloadSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "const": "memo"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "ai",
+      "label": "Open AI",
+      "parameters": {},
+      "source": "WebSkinHost.decodeBridgeAction → PowerCalApp Routed",
+      "version": 1,
+      "requiredCapability": "host.action",
+      "parameterSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "resultSchema": "#/actionResult",
+      "errors": "#/actionResult/errors",
+      "wirePayloadSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "const": "ai"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "settings",
+      "label": "Open settings",
+      "parameters": {},
+      "source": "WebSkinHost.decodeBridgeAction → PowerCalApp Routed",
+      "version": 1,
+      "requiredCapability": "host.action",
+      "parameterSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "resultSchema": "#/actionResult",
+      "errors": "#/actionResult/errors",
+      "wirePayloadSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "const": "settings"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "nativeSettings",
+      "label": "Open Host settings/recovery",
+      "parameters": {},
+      "source": "WebSkinHost.decodeBridgeAction → PowerCalApp Routed",
+      "version": 1,
+      "requiredCapability": "host.action",
+      "parameterSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "resultSchema": "#/actionResult",
+      "errors": "#/actionResult/errors",
+      "wirePayloadSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "const": "nativeSettings"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "openDeck",
+      "label": "Open draft deck",
+      "parameters": {},
+      "source": "WebSkinHost.decodeBridgeAction → PowerCalApp Routed",
+      "version": 1,
+      "requiredCapability": "host.action",
+      "parameterSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "resultSchema": "#/actionResult",
+      "errors": "#/actionResult/errors",
+      "wirePayloadSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "const": "openDeck"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "today",
+      "label": "Go to today",
+      "parameters": {},
+      "source": "WebSkinHost.decodeBridgeAction → PowerCalApp Routed; TimelineCoordinate.todayCamera",
+      "version": 1,
+      "requiredCapability": "host.action",
+      "parameterSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "resultSchema": "#/actionResult",
+      "errors": "#/actionResult/errors",
+      "wirePayloadSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "const": "today"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "openProfileEditor",
+      "label": "Open profile editor",
+      "parameters": {},
+      "availability": "SETTINGS",
+      "source": "WebSkinHost.decodeBridgeAction → Settings Host",
+      "version": 1,
+      "requiredCapability": "host.action",
+      "parameterSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "resultSchema": "#/actionResult",
+      "errors": "#/actionResult/errors",
+      "wirePayloadSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "const": "openProfileEditor"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "closeProfileEditor",
+      "label": "Close profile editor",
+      "parameters": {},
+      "availability": "SETTINGS",
+      "source": "WebSkinHost.decodeBridgeAction → Settings Host",
+      "version": 1,
+      "requiredCapability": "host.action",
+      "parameterSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "resultSchema": "#/actionResult",
+      "errors": "#/actionResult/errors",
+      "wirePayloadSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "const": "closeProfileEditor"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "saveProfileEditor",
+      "label": "Save profile editor",
+      "parameters": {
+        "displayName": {
+          "type": "string",
+          "maxLength": 80,
+          "forbidden": "ISO control characters"
+        }
+      },
+      "availability": "SETTINGS",
+      "source": "WebSkinHost.decodeBridgeAction → Settings Host",
+      "version": 1,
+      "requiredCapability": "host.action",
+      "parameterSchema": {
+        "type": "object",
+        "properties": {
+          "displayName": {
+            "type": "string",
+            "maxLength": 80,
+            "forbidden": "ISO control characters"
+          }
+        },
+        "required": [
+          "displayName"
+        ],
+        "additionalProperties": false
+      },
+      "resultSchema": "#/actionResult",
+      "errors": "#/actionResult/errors",
+      "wirePayloadSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "const": "saveProfileEditor"
+          },
+          "displayName": {
+            "type": "string",
+            "maxLength": 80,
+            "forbidden": "ISO control characters"
+          }
+        },
+        "required": [
+          "name",
+          "displayName"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "requestNotificationPermission",
+      "label": "Request notification permission",
+      "parameters": {},
+      "availability": "SETTINGS",
+      "source": "WebSkinHost.decodeBridgeAction → Android permission adapter",
+      "version": 1,
+      "requiredCapability": "host.action",
+      "parameterSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "resultSchema": "#/actionResult",
+      "errors": "#/actionResult/errors",
+      "wirePayloadSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "const": "requestNotificationPermission"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "openExactAlarmSettings",
+      "label": "Open exact alarm settings",
+      "parameters": {},
+      "availability": "SETTINGS",
+      "source": "WebSkinHost.decodeBridgeAction → Android settings adapter",
+      "version": 1,
+      "requiredCapability": "host.action",
+      "parameterSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "resultSchema": "#/actionResult",
+      "errors": "#/actionResult/errors",
+      "wirePayloadSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "const": "openExactAlarmSettings"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "reconcileReminders",
+      "label": "Reconcile reminders",
+      "parameters": {},
+      "availability": "SETTINGS",
+      "source": "WebSkinHost.decodeBridgeAction → Reminder Feature API / scheduler",
+      "version": 1,
+      "requiredCapability": "host.action",
+      "parameterSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "resultSchema": "#/actionResult",
+      "errors": "#/actionResult/errors",
+      "wirePayloadSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "const": "reconcileReminders"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "invokeOption",
+      "label": "Invoke registered Host option",
+      "parameters": {
+        "id": {
+          "type": "string",
+          "enum": [
+            "calendar.import.file",
+            "calendar.import.system",
+            "data.legacy.migrate",
+            "calendar.export.ics",
+            "data.backup.export",
+            "data.backup.restore"
+          ]
+        }
+      },
+      "availability": "Host option registry",
+      "source": "WebSkinHost.decodeBridgeAction → SemanticOptions.supports",
+      "version": 1,
+      "requiredCapability": "host.action",
+      "parameterSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": [
+              "calendar.import.file",
+              "calendar.import.system",
+              "data.legacy.migrate",
+              "calendar.export.ics",
+              "data.backup.export",
+              "data.backup.restore"
+            ]
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      },
+      "resultSchema": "#/actionResult",
+      "errors": "#/actionResult/errors",
+      "wirePayloadSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "const": "invokeOption"
+          },
+          "id": {
+            "type": "string",
+            "enum": [
+              "calendar.import.file",
+              "calendar.import.system",
+              "data.legacy.migrate",
+              "calendar.export.ics",
+              "data.backup.export",
+              "data.backup.restore"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "id"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "panTimeline",
+      "label": "Pan timeline",
+      "parameters": {
+        "deltaMinutes": {
+          "type": "integer",
+          "minimum": -2880,
+          "maximum": 2880,
+          "not": 0
+        }
+      },
+      "availability": "TIMELINE",
+      "effect": "Changes Host camera only; no calendar write.",
+      "version": 1,
+      "requiredCapability": "host.action",
+      "parameterSchema": {
+        "type": "object",
+        "properties": {
+          "deltaMinutes": {
+            "type": "integer",
+            "minimum": -2880,
+            "maximum": 2880,
+            "not": 0
+          }
+        },
+        "required": [
+          "deltaMinutes"
+        ],
+        "additionalProperties": false
+      },
+      "resultSchema": "#/actionResult",
+      "errors": "#/actionResult/errors",
+      "wirePayloadSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "const": "panTimeline"
+          },
+          "deltaMinutes": {
+            "type": "integer",
+            "minimum": -2880,
+            "maximum": 2880,
+            "not": 0
+          }
+        },
+        "required": [
+          "name",
+          "deltaMinutes"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "zoomTimeline",
+      "label": "Zoom timeline",
+      "parameters": {
+        "direction": {
+          "type": "string",
+          "enum": [
+            "in",
+            "out"
+          ]
+        }
+      },
+      "availability": "TIMELINE",
+      "effect": "Changes vertical camera span only; no calendar write.",
+      "version": 1,
+      "requiredCapability": "host.action",
+      "parameterSchema": {
+        "type": "object",
+        "properties": {
+          "direction": {
+            "type": "string",
+            "enum": [
+              "in",
+              "out"
+            ]
+          }
+        },
+        "required": [
+          "direction"
+        ],
+        "additionalProperties": false
+      },
+      "resultSchema": "#/actionResult",
+      "errors": "#/actionResult/errors",
+      "wirePayloadSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "const": "zoomTimeline"
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "in",
+              "out"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "direction"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "resetTimelineZoom",
+      "label": "Reset timeline to 24 hours",
+      "parameters": {},
+      "availability": "TIMELINE",
+      "effect": "Resets vertical span while retaining camera center; no calendar write.",
+      "version": 1,
+      "requiredCapability": "host.action",
+      "parameterSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "resultSchema": "#/actionResult",
+      "errors": "#/actionResult/errors",
+      "wirePayloadSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "const": "resetTimelineZoom"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "jumpTimelineDay",
+      "label": "Jump to date",
+      "parameters": {
+        "date": {
+          "type": "string",
+          "format": "date",
+          "minimumYear": 1900,
+          "maximumYear": 2200
+        }
+      },
+      "effect": "Host sets timeline date while retaining its current span.",
+      "version": 1,
+      "requiredCapability": "host.action",
+      "parameterSchema": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date",
+            "minimumYear": 1900,
+            "maximumYear": 2200
+          }
+        },
+        "required": [
+          "date"
+        ],
+        "additionalProperties": false
+      },
+      "resultSchema": "#/actionResult",
+      "errors": "#/actionResult/errors",
+      "wirePayloadSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "const": "jumpTimelineDay"
+          },
+          "date": {
+            "type": "string",
+            "format": "date",
+            "minimumYear": 1900,
+            "maximumYear": 2200
+          }
+        },
+        "required": [
+          "name",
+          "date"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "createMemo",
+      "label": "Create Memo",
+      "parameters": {},
+      "source": "WebSkinHost.decodeBridgeAction → existing Host editor path",
+      "version": 1,
+      "requiredCapability": "host.action",
+      "parameterSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "resultSchema": "#/actionResult",
+      "errors": "#/actionResult/errors",
+      "wirePayloadSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "const": "createMemo"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "loadMoreMemo",
+      "label": "Load more Memo",
+      "parameters": {},
+      "availability": "MEMO",
+      "version": 1,
+      "requiredCapability": "host.action",
+      "parameterSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "resultSchema": "#/actionResult",
+      "errors": "#/actionResult/errors",
+      "wirePayloadSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "const": "loadMoreMemo"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "browseMonth",
+      "label": "Browse month",
+      "parameters": {
+        "deltaMonths": {
+          "type": "integer",
+          "minimum": -12,
+          "maximum": 12,
+          "not": 0
+        }
+      },
+      "availability": "MONTH",
+      "version": 1,
+      "requiredCapability": "host.action",
+      "parameterSchema": {
+        "type": "object",
+        "properties": {
+          "deltaMonths": {
+            "type": "integer",
+            "minimum": -12,
+            "maximum": 12,
+            "not": 0
+          }
+        },
+        "required": [
+          "deltaMonths"
+        ],
+        "additionalProperties": false
+      },
+      "resultSchema": "#/actionResult",
+      "errors": "#/actionResult/errors",
+      "wirePayloadSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "const": "browseMonth"
+          },
+          "deltaMonths": {
+            "type": "integer",
+            "minimum": -12,
+            "maximum": 12,
+            "not": 0
+          }
+        },
+        "required": [
+          "name",
+          "deltaMonths"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "selectMonthDate",
+      "label": "Select month date",
+      "parameters": {
+        "date": {
+          "type": "string",
+          "format": "date",
+          "minimumYear": 1900,
+          "maximumYear": 2100
+        }
+      },
+      "availability": "MONTH",
+      "version": 1,
+      "requiredCapability": "host.action",
+      "parameterSchema": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date",
+            "minimumYear": 1900,
+            "maximumYear": 2100
+          }
+        },
+        "required": [
+          "date"
+        ],
+        "additionalProperties": false
+      },
+      "resultSchema": "#/actionResult",
+      "errors": "#/actionResult/errors",
+      "wirePayloadSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "const": "selectMonthDate"
+          },
+          "date": {
+            "type": "string",
+            "format": "date",
+            "minimumYear": 1900,
+            "maximumYear": 2100
+          }
+        },
+        "required": [
+          "name",
+          "date"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "selectMonth",
+      "label": "Select month",
+      "parameters": {
+        "month": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$",
+          "minimumYear": 1900,
+          "maximumYear": 2100
+        }
+      },
+      "availability": "MONTH",
+      "version": 1,
+      "requiredCapability": "host.action",
+      "parameterSchema": {
+        "type": "object",
+        "properties": {
+          "month": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$",
+            "minimumYear": 1900,
+            "maximumYear": 2100
+          }
+        },
+        "required": [
+          "month"
+        ],
+        "additionalProperties": false
+      },
+      "resultSchema": "#/actionResult",
+      "errors": "#/actionResult/errors",
+      "wirePayloadSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "const": "selectMonth"
+          },
+          "month": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$",
+            "minimumYear": 1900,
+            "maximumYear": 2100
+          }
+        },
+        "required": [
+          "name",
+          "month"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "createDraft",
+      "label": "Create draft",
+      "parameters": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "ACTIVITY",
+            "ALARM",
+            "DEADLINE",
+            "MEMO"
+          ]
+        }
+      },
+      "source": "WebSkinHost.decodeBridgeAction → existing Host/Core draft path",
+      "version": 1,
+      "requiredCapability": "host.action",
+      "parameterSchema": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "ACTIVITY",
+              "ALARM",
+              "DEADLINE",
+              "MEMO"
+            ]
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "additionalProperties": false
+      },
+      "resultSchema": "#/actionResult",
+      "errors": "#/actionResult/errors",
+      "wirePayloadSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "const": "createDraft"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "ACTIVITY",
+              "ALARM",
+              "DEADLINE",
+              "MEMO"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "kind"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "sendChat",
+      "label": "Send AI chat message",
+      "parameters": {
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        }
+      },
+      "availability": "AI",
+      "source": "WebSkinHost.decodeBridgeAction → existing AI Feature API",
+      "version": 1,
+      "requiredCapability": "host.action",
+      "parameterSchema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "additionalProperties": false
+      },
+      "resultSchema": "#/actionResult",
+      "errors": "#/actionResult/errors",
+      "wirePayloadSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "const": "sendChat"
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          }
+        },
+        "required": [
+          "name",
+          "text"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "clearChat",
+      "label": "Clear AI chat history",
+      "parameters": {
+        "historyRevision": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "availability": "AI",
+      "version": 1,
+      "requiredCapability": "host.action",
+      "parameterSchema": {
+        "type": "object",
+        "properties": {
+          "historyRevision": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "historyRevision"
+        ],
+        "additionalProperties": false
+      },
+      "resultSchema": "#/actionResult",
+      "errors": "#/actionResult/errors",
+      "wirePayloadSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "const": "clearChat"
+          },
+          "historyRevision": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "name",
+          "historyRevision"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "rewindChat",
+      "label": "Rewind AI chat",
+      "parameters": {
+        "messageId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "historyRevision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "editAndResend": {
+          "type": "boolean"
+        }
+      },
+      "availability": "AI",
+      "version": 1,
+      "requiredCapability": "host.action",
+      "parameterSchema": {
+        "type": "object",
+        "properties": {
+          "messageId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "historyRevision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "editAndResend": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "messageId",
+          "historyRevision",
+          "editAndResend"
+        ],
+        "additionalProperties": false
+      },
+      "resultSchema": "#/actionResult",
+      "errors": "#/actionResult/errors",
+      "wirePayloadSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "const": "rewindChat"
+          },
+          "messageId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "historyRevision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "editAndResend": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "messageId",
+          "historyRevision",
+          "editAndResend"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "prepareAiBatch",
+      "label": "Prepare AI batch review",
+      "parameters": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "publish",
+            "discard"
+          ]
+        }
+      },
+      "availability": "AI",
+      "effect": "Begins Host-owned selection/review; does not grant write approval.",
+      "version": 1,
+      "requiredCapability": "host.action",
+      "parameterSchema": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "publish",
+              "discard"
+            ]
+          }
+        },
+        "required": [
+          "mode"
+        ],
+        "additionalProperties": false
+      },
+      "resultSchema": "#/actionResult",
+      "errors": "#/actionResult/errors",
+      "wirePayloadSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "const": "prepareAiBatch"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "publish",
+              "discard"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "mode"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "cancelAiBatch",
+      "label": "Cancel AI batch",
+      "parameters": {},
+      "availability": "AI",
+      "version": 1,
+      "requiredCapability": "host.action",
+      "parameterSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "resultSchema": "#/actionResult",
+      "errors": "#/actionResult/errors",
+      "wirePayloadSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "const": "cancelAiBatch"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "releaseStuckAiBatch",
+      "label": "Request stuck AI batch recovery",
+      "parameters": {},
+      "availability": "AI",
+      "effect": "Host confirmation remains required.",
+      "version": 1,
+      "requiredCapability": "host.action",
+      "parameterSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "resultSchema": "#/actionResult",
+      "errors": "#/actionResult/errors",
+      "wirePayloadSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "const": "releaseStuckAiBatch"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "pickAiFile",
+      "label": "Pick AI file",
+      "parameters": {},
+      "availability": "AI",
+      "effect": "Android picker and file consent remain Host-owned.",
+      "version": 1,
+      "requiredCapability": "host.action",
+      "parameterSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "resultSchema": "#/actionResult",
+      "errors": "#/actionResult/errors",
+      "wirePayloadSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "const": "pickAiFile"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "pickAiImage",
+      "label": "Pick AI image",
+      "parameters": {},
+      "availability": "AI",
+      "effect": "Android picker and file consent remain Host-owned.",
+      "version": 1,
+      "requiredCapability": "host.action",
+      "parameterSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "resultSchema": "#/actionResult",
+      "errors": "#/actionResult/errors",
+      "wirePayloadSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "const": "pickAiImage"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "resolveAiProposal",
+      "label": "Resolve AI proposal review",
+      "parameters": {
+        "reviewId": {
+          "type": "string",
+          "format": "uuid-canonical"
+        },
+        "decision": {
+          "type": "string",
+          "enum": [
+            "publish",
+            "stage",
+            "reject",
+            "supplement"
+          ]
+        },
+        "indices": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 99
+          },
+          "maxItems": 100,
+          "uniqueItems": true,
+          "decisionRule": "supplement requires []; all other decisions require at least one index"
+        }
+      },
+      "availability": "AI",
+      "effect": "Core/Host revalidates review and explicit user approval; no skin-supplied approval token.",
+      "version": 1,
+      "requiredCapability": "host.action",
+      "parameterSchema": {
+        "type": "object",
+        "properties": {
+          "reviewId": {
+            "type": "string",
+            "format": "uuid-canonical"
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "publish",
+              "stage",
+              "reject",
+              "supplement"
+            ]
+          },
+          "indices": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 99
+            },
+            "maxItems": 100,
+            "uniqueItems": true,
+            "decisionRule": "supplement requires []; all other decisions require at least one index"
+          }
+        },
+        "required": [
+          "reviewId",
+          "decision",
+          "indices"
+        ],
+        "additionalProperties": false
+      },
+      "resultSchema": "#/actionResult",
+      "errors": "#/actionResult/errors",
+      "wirePayloadSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "const": "resolveAiProposal"
+          },
+          "reviewId": {
+            "type": "string",
+            "format": "uuid-canonical"
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "publish",
+              "stage",
+              "reject",
+              "supplement"
+            ]
+          },
+          "indices": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 99
+            },
+            "maxItems": 100,
+            "uniqueItems": true,
+            "decisionRule": "supplement requires []; all other decisions require at least one index"
+          }
+        },
+        "required": [
+          "name",
+          "reviewId",
+          "decision",
+          "indices"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "toggleMemo",
+      "label": "Set Memo completion",
+      "parameters": {
+        "eventSeq": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "expectedRevision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "occurrenceKey": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "^[A-Za-z0-9:_\\-.]+$"
+        },
+        "completed": {
+          "type": "boolean"
+        }
+      },
+      "availability": "MEMO",
+      "source": "WebSkinHost.decodeBridgeAction → Memo/Event Feature API",
+      "version": 1,
+      "requiredCapability": "host.action",
+      "parameterSchema": {
+        "type": "object",
+        "properties": {
+          "eventSeq": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "occurrenceKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "^[A-Za-z0-9:_\\-.]+$"
+          },
+          "completed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "eventSeq",
+          "expectedRevision",
+          "occurrenceKey",
+          "completed"
+        ],
+        "additionalProperties": false
+      },
+      "resultSchema": "#/actionResult",
+      "errors": "#/actionResult/errors",
+      "wirePayloadSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "const": "toggleMemo"
+          },
+          "eventSeq": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "occurrenceKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "^[A-Za-z0-9:_\\-.]+$"
+          },
+          "completed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "eventSeq",
+          "expectedRevision",
+          "occurrenceKey",
+          "completed"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "openEvent",
+      "label": "Open event or occurrence",
+      "parameters": {
+        "eventSeq": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "expectedRevision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "occurrenceKey": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "^[A-Za-z0-9:_\\-.]+$",
+          "optional": true
+        }
+      },
+      "source": "WebSkinHost.decodeBridgeAction → Event Feature API editor selection",
+      "version": 1,
+      "requiredCapability": "host.action",
+      "parameterSchema": {
+        "type": "object",
+        "properties": {
+          "eventSeq": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "occurrenceKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "^[A-Za-z0-9:_\\-.]+$"
+          }
+        },
+        "required": [
+          "eventSeq",
+          "expectedRevision"
+        ],
+        "additionalProperties": false
+      },
+      "resultSchema": "#/actionResult",
+      "errors": "#/actionResult/errors",
+      "wirePayloadSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "const": "openEvent"
+          },
+          "eventSeq": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "occurrenceKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "^[A-Za-z0-9:_\\-.]+$"
+          }
+        },
+        "required": [
+          "name",
+          "eventSeq",
+          "expectedRevision"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ],
+  "editCommands": {
+    "version": 1,
+    "capability": "host.action",
+    "envelope": {
+      "version": 1,
+      "type": "command",
+      "payload": "WebEditCommandV1"
+    },
+    "requestId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{8,64}$"
+    },
+    "additionalProperties": false,
+    "fieldValueLimits": {
+      "kind": 10,
+      "title": 240,
+      "startText": 40,
+      "endText": 40,
+      "notes": 2000,
+      "location": 240,
+      "reminderMinutes": 6,
+      "reminderMethod": 20,
+      "reminderTiming": 20,
+      "enabled": 5,
+      "trackingEnabled": 5,
+      "recurrenceFreq": 20,
+      "recurrenceInterval": 10,
+      "recurrenceFrom": 10,
+      "recurrenceUntil": 10
+    },
+    "commands": [
+      {
+        "name": "editor.open",
+        "parameters": {
+          "eventSeq": "positive integer",
+          "expectedRevision": "positive integer",
+          "occurrenceKey": "optional ISO local minute"
+        },
+        "version": 1,
+        "requiredCapability": "host.action",
+        "resultSchema": "#/editCommands/result"
+      },
+      {
+        "name": "timeline.move",
+        "parameters": {
+          "eventSeq": "positive integer",
+          "expectedRevision": "positive integer",
+          "targetMillis": "integer milliseconds"
+        },
+        "version": 1,
+        "requiredCapability": "host.action",
+        "resultSchema": "#/editCommands/result"
+      },
+      {
+        "name": "editor.scope",
+        "parameters": {
+          "sessionId": "UUID",
+          "scope": {
+            "enum": [
+              "SINGLE_OCCURRENCE",
+              "THIS_AND_FUTURE",
+              "WHOLE_SERIES"
+            ]
+          }
+        },
+        "version": 1,
+        "requiredCapability": "host.action",
+        "resultSchema": "#/editCommands/result"
+      },
+      {
+        "name": "editor.discardChanges",
+        "parameters": {
+          "sessionId": "UUID"
+        },
+        "version": 1,
+        "requiredCapability": "host.action",
+        "resultSchema": "#/editCommands/result"
+      },
+      {
+        "name": "editor.patch",
+        "parameters": {
+          "sessionId": "UUID",
+          "field": "fieldValueLimits key",
+          "value": "bounded string; field-specific limit"
+        },
+        "version": 1,
+        "requiredCapability": "host.action",
+        "resultSchema": "#/editCommands/result"
+      },
+      {
+        "name": "editor.save",
+        "parameters": {
+          "sessionId": "UUID"
+        },
+        "version": 1,
+        "requiredCapability": "host.action",
+        "resultSchema": "#/editCommands/result"
+      },
+      {
+        "name": "editor.delete",
+        "parameters": {
+          "sessionId": "UUID"
+        },
+        "version": 1,
+        "requiredCapability": "host.action",
+        "resultSchema": "#/editCommands/result"
+      },
+      {
+        "name": "editor.close",
+        "parameters": {
+          "sessionId": "UUID"
+        },
+        "version": 1,
+        "requiredCapability": "host.action",
+        "resultSchema": "#/editCommands/result"
+      },
+      {
+        "name": "deck.open",
+        "parameters": {
+          "draftId": "positive integer or null"
+        },
+        "version": 1,
+        "requiredCapability": "host.action",
+        "resultSchema": "#/editCommands/result"
+      },
+      {
+        "name": "deck.search",
+        "parameters": {
+          "query": "string, max 120, no control characters"
+        },
+        "version": 1,
+        "requiredCapability": "host.action",
+        "resultSchema": "#/editCommands/result"
+      },
+      {
+        "name": "deck.retired",
+        "parameters": {
+          "offset": "integer 0..1000000"
+        },
+        "version": 1,
+        "requiredCapability": "host.action",
+        "resultSchema": "#/editCommands/result"
+      },
+      {
+        "name": "deck.jump",
+        "parameters": {
+          "steps": "integer -1000..1000"
+        },
+        "version": 1,
+        "requiredCapability": "host.action",
+        "resultSchema": "#/editCommands/result"
+      },
+      {
+        "name": "deck.proposeReplace",
+        "parameters": {
+          "eventSeq": "positive integer",
+          "expectedRevision": "positive integer"
+        },
+        "version": 1,
+        "requiredCapability": "host.action",
+        "resultSchema": "#/editCommands/result"
+      },
+      {
+        "name": "deck.beginRestore",
+        "parameters": {
+          "eventSeq": "positive integer",
+          "expectedRevision": "positive integer"
+        },
+        "version": 1,
+        "requiredCapability": "host.action",
+        "resultSchema": "#/editCommands/result"
+      },
+      {
+        "name": "deck.keepConflict",
+        "parameters": {
+          "draftId": "positive integer",
+          "draftVersion": "integer >= 0",
+          "eventSeq": "positive integer",
+          "expectedRevision": "positive integer"
+        },
+        "version": 1,
+        "requiredCapability": "host.action",
+        "resultSchema": "#/editCommands/result"
+      },
+      {
+        "name": "deck.requestConflictReview",
+        "parameters": {
+          "draftId": "positive integer",
+          "draftVersion": "integer >= 0",
+          "eventSeq": "positive integer",
+          "expectedRevision": "positive integer"
+        },
+        "version": 1,
+        "requiredCapability": "host.action",
+        "resultSchema": "#/editCommands/result"
+      },
+      {
+        "name": "deck.keepRestore",
+        "parameters": {
+          "draftId": "positive integer",
+          "draftVersion": "integer >= 0",
+          "eventSeq": "positive integer",
+          "expectedRevision": "positive integer"
+        },
+        "version": 1,
+        "requiredCapability": "host.action",
+        "resultSchema": "#/editCommands/result"
+      },
+      {
+        "name": "deck.requestRestoreReview",
+        "parameters": {
+          "draftId": "positive integer",
+          "draftVersion": "integer >= 0",
+          "eventSeq": "positive integer",
+          "expectedRevision": "positive integer"
+        },
+        "version": 1,
+        "requiredCapability": "host.action",
+        "resultSchema": "#/editCommands/result"
+      },
+      {
+        "name": "deck.create",
+        "parameters": {
+          "kind": {
+            "enum": [
+              "ALARM",
+              "ACTIVITY",
+              "DEADLINE",
+              "MEMO"
+            ]
+          }
+        },
+        "version": 1,
+        "requiredCapability": "host.action",
+        "resultSchema": "#/editCommands/result"
+      },
+      {
+        "name": "deck.patch",
+        "parameters": {
+          "draftId": "positive integer",
+          "draftVersion": "integer >= 0",
+          "stateRevision": "integer >= 0",
+          "field": "fieldValueLimits key",
+          "value": "bounded string; field-specific limit"
+        },
+        "version": 1,
+        "requiredCapability": "host.action",
+        "resultSchema": "#/editCommands/result"
+      },
+      {
+        "name": "deck.select",
+        "parameters": {
+          "draftId": "positive integer"
+        },
+        "version": 1,
+        "requiredCapability": "host.action",
+        "resultSchema": "#/editCommands/result"
+      },
+      {
+        "name": "deck.flush",
+        "parameters": {},
+        "version": 1,
+        "requiredCapability": "host.action",
+        "resultSchema": "#/editCommands/result"
+      },
+      {
+        "name": "deck.close",
+        "parameters": {},
+        "version": 1,
+        "requiredCapability": "host.action",
+        "resultSchema": "#/editCommands/result"
+      },
+      {
+        "name": "deck.commit",
+        "parameters": {
+          "draftId": "positive integer",
+          "draftVersion": "integer >= 0"
+        },
+        "version": 1,
+        "requiredCapability": "host.action",
+        "resultSchema": "#/editCommands/result"
+      },
+      {
+        "name": "deck.discard",
+        "parameters": {
+          "draftId": "positive integer",
+          "draftVersion": "integer >= 0"
+        },
+        "version": 1,
+        "requiredCapability": "host.action",
+        "resultSchema": "#/editCommands/result"
+      },
+      {
+        "name": "deck.undo",
+        "parameters": {},
+        "version": 1,
+        "requiredCapability": "host.action",
+        "resultSchema": "#/editCommands/result"
+      }
+    ],
+    "result": {
+      "envelope": {
+        "version": 1,
+        "type": "result",
+        "payload": "WebEditResultV1"
+      },
+      "schema": {
+        "requestId": "string",
+        "status": "string",
+        "detail": "optional string, max 240",
+        "featureRevision": "optional integer",
+        "refreshRequired": "optional boolean",
+        "duplicate": "optional boolean",
+        "eventSeq": "optional integer or null",
+        "revision": "optional integer or null",
+        "draftId": "optional integer or null",
+        "draftVersion": "optional integer or null",
+        "relatedEventSeq": "optional integer or null"
+      },
+      "commonStatuses": [
+        "committed",
+        "staged",
+        "saved",
+        "conflict",
+        "invalid",
+        "locked",
+        "restore_required",
+        "not_authorized",
+        "failed",
+        "duplicate_request_id",
+        "applied",
+        "stale",
+        "missing",
+        "opened",
+        "closed",
+        "discarded",
+        "restored",
+        "kept",
+        "confirmation_required",
+        "cancelled",
+        "replaced",
+        "no_changes",
+        "unsupported",
+        "selected"
+      ]
+    },
+    "resultSchema": "#/editCommands/result"
+  }
+}

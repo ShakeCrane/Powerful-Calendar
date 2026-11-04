@@ -85,6 +85,11 @@ def validate_project(project):
         routes.add(route)
         check(type(title) is str and 1 <= len(title.strip()) <= 60, "invalid page title")
         _validate_component_nodes(page.get("components", []), ids, total=node_total)
+    from host_binding_catalog import validate_project_bindings
+    try:
+        validate_project_bindings(project)
+    except ValueError as exc:
+        raise skin_studio.SkinError(str(exc)) from exc
     return project
 
 

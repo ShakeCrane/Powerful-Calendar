@@ -44,6 +44,7 @@ const base64ToBytes = text => Uint8Array.from(atob(text), c=>c.charCodeAt(0));
 const safeFilename = name => /^[A-Za-z0-9][A-Za-z0-9_.-]{0,90}$/.test(name);
 const copy = value => JSON.parse(JSON.stringify(value));
 let manifest=null, project=null, projectBaseline=null, sourceFiles=new Map(), selectedLayer=null;
+let hostBindingCatalog=null;
 let activeMode="simple", editCanvas=true, previewTimer=null, previewSeq=0;
 let previewPort=null, lastState=null, lastPreviewUrl="", dirty=false;
 let projectSourceError=null, projectDraftText=null, implicitFullCanvas=false, fullCanvasTouched=false;
@@ -78,6 +79,7 @@ function updateHostCapabilities(){
     .map(([capability])=>capability);
   change();
   say("Host 能力请求已更新；实际访问仍受 Android Host 校验和现有授权流程约束。");
+  updateBindingRequirement();
 }
 function validatePageTree(pages){
   if(pages===undefined)return;
@@ -96,6 +98,20 @@ function validatePageTree(pages){
       if(total>512)throw Error("组件总数超过限制");
       if(node.props!==undefined&&(!node.props||typeof node.props!=="object"||Array.isArray(node.props)))
         throw Error("组件 props 必须是对象");
+      const props=node.props||{};
+      if(props.hostAction!==undefined){
+        if(node.type!=="button"&&node.type!=="date-button")
+          throw Error("Host 动作只能绑定到按钮组件");
+        const binding=props.hostAction,action=hostActionByName(binding?.name);
+        if(!binding||binding.version!==1||!action||!binding.parameters||
+           typeof binding.parameters!=="object"||Array.isArray(binding.parameters))
+          throw Error("Host 动作绑定不是已知的 v1 目录项");
+        validateHostActionObject(action,binding.parameters);
+      }
+      if(props.hostStateBinding!==undefined){
+        const field=hostStateFieldByPath(props.hostStateBinding);
+        if(!field?.bindable)throw Error("Host 状态绑定不是目录中的只读标量字段");
+      }
       visit(node.children===undefined?[]:node.children,depth+1);
     }
   };
@@ -316,6 +332,171 @@ function selectedTreeNode(){
   const page=treePage();
   return page?locateTreeNode(page.components,selectedComponentId):null;
 }
+function hostActionByName(name){
+  return hostBindingCatalog?.actions?.find(action=>action.name===name)||null;
+}
+function hostStateFieldByPath(path){
+  return hostBindingCatalog?.stateFrame?.fields?.find(field=>field.path===path)||null;
+}
+function defaultHostParameter(schema,name){
+  if(schema.enum)return schema.enum[0];
+  if(schema.type==="boolean")return false;
+  if(schema.type==="integer"||schema.type==="number"){
+    let value=Number(schema.minimum??1);
+    if(schema.not===0&&value===0)value=1;
+    return value;
+  }
+  if(schema.type==="array")return name==="indices"?[0]:[];
+  if(schema.format==="date")return String(schema.minimumYear||2026)+"-01-01";
+  if(schema.pattern?.includes("(0[1-9]|1[0-2])"))return String(schema.minimumYear||2026)+"-01";
+  if(schema.format==="uuid-canonical")return "00000000-0000-4000-8000-000000000000";
+  return "";
+}
+function renderHostActionParameters(action,values={}){
+  const root=$("componentActionParameters");root.replaceChildren();
+  if(!action)return;
+  const schema=action.parameterSchema||{},required=new Set(schema.required||[]);
+  for(const [name,field] of Object.entries(schema.properties||{})){
+    const label=document.createElement("label");label.textContent=name+(required.has(name)?" *":"");
+    let input;
+    if(Array.isArray(field.enum)){
+      input=document.createElement("select");
+      if(!required.has(name)){const none=document.createElement("option");none.value="";none.textContent="（不提供）";input.append(none)}
+      for(const item of field.enum){const option=document.createElement("option");option.value=String(item);option.textContent=String(item);input.append(option)}
+      const initial=values[name]??(required.has(name)?defaultHostParameter(field,name):"");
+      input.value=String(initial);
+    }else if(field.type==="boolean"){
+      input=document.createElement("select");
+      for(const [value,text] of [["true","true"],["false","false"]]){
+        const option=document.createElement("option");option.value=value;option.textContent=text;input.append(option);
+      }
+      input.value=String(values[name]??defaultHostParameter(field,name));
+    }else if(field.type==="array"){
+      input=document.createElement("textarea");input.rows=2;
+      input.value=JSON.stringify(values[name]??defaultHostParameter(field,name));
+    }else{
+      input=document.createElement("input");
+      input.type=field.type==="integer"||field.type==="number"?"number":
+        field.format==="date"?"date":"text";
+      if(input.type==="number"){
+        if(Number.isFinite(field.minimum))input.min=String(field.minimum);
+        if(Number.isFinite(field.maximum))input.max=String(field.maximum);
+        input.step=field.type==="integer"?"1":"any";
+      }
+      if(Number.isFinite(field.maxLength))input.maxLength=field.maxLength;
+      input.value=String(values[name]??(required.has(name)?defaultHostParameter(field,name):""));
+    }
+    input.dataset.hostParam=name;input.dataset.hostParamType=field.type||"string";
+    input.title=field.description||"";label.append(input);root.append(label);
+  }
+}
+function readHostActionParameters(action){
+  const params={},schema=action.parameterSchema||{},required=new Set(schema.required||[]);
+  for(const input of $("componentActionParameters").querySelectorAll("[data-host-param]")){
+    const name=input.dataset.hostParam,field=schema.properties[name];
+    let raw=input.value;
+    if(raw===""&&!required.has(name))continue;
+    let value;
+    if(field.type==="integer"){
+      value=Number(raw);if(!Number.isSafeInteger(value))throw Error(name+" must be an integer");
+    }else if(field.type==="number"){
+      value=Number(raw);if(!Number.isFinite(value))throw Error(name+" must be a number");
+    }else if(field.type==="boolean")value=raw==="true";
+    else if(field.type==="array"){
+      try{value=JSON.parse(raw)}catch{throw Error(name+" must be a JSON array")}
+    }else value=raw;
+    validateHostParameterValue(value,field,name);
+    params[name]=value;
+  }
+  const missing=(schema.required||[]).filter(name=>!Object.hasOwn(params,name));
+  if(missing.length)throw Error("Missing required parameter: "+missing.join(", "));
+  if(action.name==="resolveAiProposal"&&
+      ((params.decision==="supplement")!==(params.indices.length===0)))
+    throw Error("supplement requires [] and other decisions require at least one index");
+  return params;
+}
+function validateHostParameterValue(value,schema,name){
+  if(schema.enum&&!schema.enum.includes(value))throw Error(name+" is not a catalog value");
+  if(schema.type==="string"){
+    if(typeof value!=="string"||value.length<(schema.minLength||0)||value.length>(schema.maxLength??Infinity))
+      throw Error(name+" has an invalid length");
+    if(schema.forbidden==="ISO control characters"&&/[\x00-\x1f\x7f]/.test(value))
+      throw Error(name+" contains a control character");
+    if(schema.pattern&&!new RegExp(schema.pattern).test(value))throw Error(name+" has an invalid format");
+    if(schema.format==="date"){
+      const date=new Date(value+"T00:00:00Z");
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(value)||Number.isNaN(date.getTime())||date.toISOString().slice(0,10)!==value)
+        throw Error(name+" must be a valid ISO date");
+      const year=Number(value.slice(0,4));
+      if(year<(schema.minimumYear||1)||year>(schema.maximumYear||9999))throw Error(name+" year is out of range");
+    }
+    if(schema.format==="uuid-canonical"&&!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(value))
+      throw Error(name+" must be a canonical UUID");
+    if((schema.minimumYear&&Number(value.slice(0,4))<schema.minimumYear)||
+       (schema.maximumYear&&Number(value.slice(0,4))>schema.maximumYear))throw Error(name+" year is out of range");
+  }else if(schema.type==="integer"||schema.type==="number"){
+    if(typeof value!=="number"||!Number.isFinite(value)||
+       (schema.type==="integer"&&!Number.isInteger(value)))throw Error(name+" has an invalid number");
+    if((schema.minimum!==undefined&&value<schema.minimum)||(schema.maximum!==undefined&&value>schema.maximum)||
+       (schema.not===0&&value===0))throw Error(name+" is outside the allowed range");
+  }else if(schema.type==="boolean"&&typeof value!=="boolean")throw Error(name+" must be boolean");
+  else if(schema.type==="array"){
+    if(!Array.isArray(value)||value.length>(schema.maxItems??Infinity))throw Error(name+" must be a bounded array");
+    for(const item of value)validateHostParameterValue(item,schema.items||{},name+"[]");
+    if(schema.uniqueItems&&new Set(value.map(item=>JSON.stringify(item))).size!==value.length)
+      throw Error(name+" must not contain duplicates");
+  }
+}
+function validateHostActionObject(action,params){
+  const schema=action.parameterSchema||{},properties=schema.properties||{};
+  for(const key of Object.keys(params))if(!Object.hasOwn(properties,key))
+    throw Error("Unknown "+action.name+" parameter: "+key);
+  for(const key of schema.required||[])if(!Object.hasOwn(params,key))
+    throw Error("Missing "+action.name+" parameter: "+key);
+  for(const [key,value] of Object.entries(params))validateHostParameterValue(value,properties[key],action.name+"."+key);
+  if(action.name==="resolveAiProposal"&&
+      ((params.decision==="supplement")!==(params.indices?.length===0)))
+    throw Error("resolveAiProposal indices do not match decision");
+}
+function updateBindingRequirement(){
+  const node=selectedTreeNode()?.node,props=node?.props||{};
+  const actionName=$("componentHostAction").value,statePath=$("componentStateBinding").value;
+  const needs=[];
+  if(actionName&&!$("capHostAction").checked)needs.push("host.action");
+  if(statePath&&!$("capHostRead").checked)needs.push("host.read");
+  const action=hostActionByName(actionName),savedAction=props.hostAction;
+  if(savedAction?.name&&!hostActionByName(savedAction.name))needs.push("未知旧动作 "+savedAction.name);
+  $("componentBindingRequirement").textContent=needs.length
+    ?"绑定要求："+needs.join("、")+"。选择绑定不会自动增加权限；请明确申请。"+
+      (action?" Host 仍执行页面、数据和人工审批校验。":"")
+    :action?"版本 "+action.version+" · host.action · Host 仍执行页面、数据和人工审批校验。"
+      :statePath?"只读状态字段 · "+(hostStateFieldByPath(statePath)?.type||"")+" · host.read"
+        :"未绑定状态或 Host 动作。";
+  $("requestBindingCapabilities").hidden=!needs.some(value=>value==="host.action"||value==="host.read");
+}
+function renderHostBindingControls(node,props){
+  const stateSelect=$("componentStateBinding"),actionSelect=$("componentHostAction");
+  stateSelect.replaceChildren();actionSelect.replaceChildren();
+  const noneState=document.createElement("option");noneState.value="";noneState.textContent="无状态绑定";stateSelect.append(noneState);
+  const noneAction=document.createElement("option");noneAction.value="";noneAction.textContent="无动作";actionSelect.append(noneAction);
+  if(hostBindingCatalog){
+    for(const field of hostBindingCatalog.stateFrame.fields.filter(item=>item.bindable)){
+      const option=document.createElement("option");option.value=field.path;
+      option.textContent=field.path+" · "+field.type;stateSelect.append(option);
+    }
+    for(const action of hostBindingCatalog.actions){
+      const option=document.createElement("option");option.value=action.name;
+      option.textContent=action.name+" · "+action.label;actionSelect.append(option);
+    }
+  }
+  stateSelect.value=typeof props.hostStateBinding==="string"?props.hostStateBinding:"";
+  const saved=props.hostAction&&typeof props.hostAction==="object"?props.hostAction:null;
+  actionSelect.value=saved&&typeof saved.name==="string"?saved.name:"";
+  actionSelect.disabled=!hostBindingCatalog||!node||!(node.type==="button"||node.type==="date-button");
+  stateSelect.disabled=!hostBindingCatalog;
+  renderHostActionParameters(hostActionByName(actionSelect.value),saved?.parameters||{});
+  updateBindingRequirement();
+}
 function renderComponentInspector(){
   const page=treePage(),location=selectedTreeNode(),node=location?.node||null;
   $("componentPageTitle").value=page?.title||"";
@@ -331,6 +512,7 @@ function renderComponentInspector(){
   const style=props.style&&typeof props.style==="object"?props.style:{};
   $("componentLabel").value=String(props.label??props.text??props.title??"");
   $("componentBinding").value=typeof props.binding==="string"?props.binding:"";
+  renderHostBindingControls(node,props);
   $("componentClassName").value=typeof props.className==="string"?props.className:"";
   $("componentColor").value=typeof style.color==="string"&&/^#[0-9a-f]{6}$/i.test(style.color)
     ?style.color:"#24334c";
@@ -471,10 +653,19 @@ function updateTreePageTitle(){
 }
 function updateSelectedTreeComponent(){
   const location=selectedTreeNode();if(!location)return;
+  const actionName=$("componentHostAction").value;
+  const action=actionName?hostActionByName(actionName):null;
+  let actionBinding=null;
+  try{if(action)actionBinding={version:action.version,name:action.name,
+    parameters:readHostActionParameters(action)}}
+  catch(error){say("动作参数未保存："+error.message,true);return}
+  const statePath=$("componentStateBinding").value;
   mutatePageTree(()=>{
     const props=location.node.props&&typeof location.node.props==="object"?location.node.props:(location.node.props={});
     props.label=$("componentLabel").value;
     const binding=$("componentBinding").value.trim();if(binding)props.binding=binding;else delete props.binding;
+    if(actionBinding)props.hostAction=actionBinding;else delete props.hostAction;
+    if(statePath)props.hostStateBinding=statePath;else delete props.hostStateBinding;
     const className=$("componentClassName").value.trim();if(className)props.className=className;else delete props.className;
     const style=props.style&&typeof props.style==="object"?props.style:(props.style={});
     style.color=$("componentColor").value;
@@ -684,24 +875,7 @@ async function addPackageAssets(list){
     say("资源文件已更新；导出保留原始字节。");
   }catch(error){say(error.message,true);}
 }
-const ACTIONS=[
-  ["","无动作"],["today","返回今天"],["createMemo","新建 Memo"],
-  ["createDraft","新建事件"],["browseMonth","浏览月份"],
-  ["selectMonthDate","选择月历日期"],["selectMonth","选择年月"],
-  ["loadMoreMemo","加载更多 Memo"],
-  ["timeline","时间轴"],
-  ["month","月历"],["memo","Memo"],["ai","AI"],
-  ["settings","设置"],["selectSkin","选择已安装皮肤"],
-  ["importSkin","导入皮肤"],["exportClearSkin","导出 Clear 皮肤"],
-  ["exportInstalledSkin","导出已安装皮肤"],["deleteSkin","删除已安装皮肤"],
-  ["requestNotificationPermission","请求通知权限"],
-  ["openExactAlarmSettings","打开精确闹钟设置"],
-  ["reconcileReminders","重建提醒调度"],
-  ["nativeSettings","打开原生设置"],["openDeck","草稿卡组"],
-  ["panTimeline","时间轴向后 30 分钟"],["zoomTimeline","时间轴缩放"],
-  ["resetTimelineZoom","重置时间轴缩放"],["jumpTimelineDay","跳到今天"],
-  ["invokeOption","导入日历文件"]
-];
+let ACTIONS=[["","无动作"]];
 function renderIconChoices(){
   const iconTarget=$("iconTarget"),iconAsset=$("iconAsset");
   const previousAction=iconTarget.value,previousFile=iconAsset.value;
@@ -736,7 +910,9 @@ function applyButtonIcon(){
 }
 function renderActions(){
   const select=$("layerAction"),root=$("actionList");
-  select.replaceChildren();root.textContent=ACTIONS.map(x=>x[1]).join(" · ");
+  select.replaceChildren();
+  root.textContent=(hostBindingCatalog?.actions||[])
+    .map(action=>action.name+" · "+action.label+" (host.action)").join(" · ");
   for(const [id,label] of ACTIONS){
     const option=document.createElement("option");option.value=id;option.textContent=label;
     select.append(option);
@@ -1886,18 +2062,17 @@ function onSkinAction(message){
     if(envelope.type==="command"){onSkinCommand(envelope.payload);return}
     if(envelope.type!=="action")return;
     const p=envelope.payload,name=p.name;
+    const action=hostActionByName(name);
+    if(!action){logAction("拒绝未知动作 "+String(name));return}
+    const parameters={...p};delete parameters.name;
+    try{validateHostActionObject(action,parameters)}
+    catch(error){logAction("拒绝无效动作 "+name+"："+error.message);return}
     if(name==="loadMoreMemo"){
       if(Object.keys(p).length!==1||$("scenario").value!=="memo-overflow"||mockPage!=="MEMO"){
         logAction("拒绝当前状态下的 Memo 续载请求");return;
       }
       mockMemoVisibleLimit=Math.min(251,mockMemoVisibleLimit+250);
       logAction("模拟宿主收到：loadMoreMemo");postState();return;
-    }
-    if(!ACTIONS.some(([x])=>x===name)&&!["openEvent","toggleMemo","sendChat","resolveAiProposal",
-      "pickAiFile","pickAiImage","prepareAiBatch","cancelAiBatch","releaseStuckAiBatch",
-      "clearChat","rewindChat","openProfileEditor","saveProfileEditor",
-      "closeProfileEditor"].includes(name)){
-      logAction("拒绝未知动作 "+String(name));return;
     }
     if(name==="panTimeline"){
       if(!Number.isInteger(p.deltaMinutes)||Math.abs(p.deltaMinutes)>2880)return;
@@ -1932,7 +2107,10 @@ function onSkinAction(message){
     if(name==="today"){
       if(mockPage==="MONTH"){
         mockMonth="2026-10";mockSelectedMonthDate="2026-10-22";
-      }else mockAnchor=null;
+      }else{
+        mockAnchor=new Date("2026-10-22T04:00:00Z").getTime();
+        mockHours=24;mockPage="TIMELINE";
+      }
     }
     if(name==="browseMonth"&&Number.isInteger(p.deltaMonths)&&
       Object.keys(p).sort().join(",")==="deltaMonths,name"&&mockPage==="MONTH"&&
@@ -2457,6 +2635,20 @@ function bindUI(){
   $("componentPageTitle").onchange=updateTreePageTitle;
   for(const id of ["componentLabel","componentBinding","componentClassName",
     "componentColor","componentFontSize"])$(id).onchange=updateSelectedTreeComponent;
+  $("componentStateBinding").onchange=updateSelectedTreeComponent;
+  $("componentHostAction").onchange=()=>{
+    const action=hostActionByName($("componentHostAction").value);
+    renderHostActionParameters(action,{});
+    updateSelectedTreeComponent();
+  };
+  $("componentActionParameters").onchange=updateSelectedTreeComponent;
+  $("requestBindingCapabilities").onclick=()=>{
+    if($("componentHostAction").value&&!$("capHostAction").checked)
+      $("capHostAction").checked=true;
+    if($("componentStateBinding").value&&!$("capHostRead").checked)
+      $("capHostRead").checked=true;
+    updateHostCapabilities();
+  };
   $("editMode").onclick=()=>{
     editCanvas=true;$("editMode").classList.add("active");
     $("interactMode").classList.remove("active");refreshOverlay();
@@ -2568,7 +2760,14 @@ function bindUI(){
   });
 }
 (async()=>{
-  bindUI();renderActions();
-  try{await loadPackage(await api("/api/template-v3"))}
+  bindUI();
+  try{
+    hostBindingCatalog=await api("/api/host-binding-catalog-v1");
+    ACTIONS=[["","无动作"],...hostBindingCatalog.actions
+      .filter(action=>Object.keys(action.parameterSchema.properties||{}).length===0)
+      .map(action=>[action.name,action.label])];
+    renderActions();renderIconChoices();
+    await loadPackage(await api("/api/template-v3"));
+  }
   catch(error){say("模板载入失败："+error.message,true)}
 })();

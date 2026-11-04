@@ -93,7 +93,7 @@
     </section>
     <section id="pageTreeSection" hidden>
       <h2>页面与组件</h2>
-      <p class="muted">页面树保存到 project.json，并由空白皮肤运行时直接渲染。绑定字段仅作结构元数据，不会创建或调用 Host 动作。</p>
+      <p class="muted">页面树保存到 project.json，并由空白皮肤运行时直接渲染。Host 状态与动作从正式 v1 目录选择。</p>
       <label>当前页面<select id="componentPage"></select></label>
       <div class="barActions treePageActions">
         <button id="componentAddPage" type="button">新增页面</button>
@@ -124,6 +124,11 @@
       <div id="componentInspector" hidden>
         <label>显示文本<input id="componentLabel" maxlength="160"></label>
         <label>绑定标识（保存元数据，不调用 Host）<input id="componentBinding" maxlength="120"></label>
+        <label>Host 状态绑定<select id="componentStateBinding"></select></label>
+        <label>正式 Host 动作<select id="componentHostAction"></select></label>
+        <div id="componentActionParameters" class="actionParameters"></div>
+        <p id="componentBindingRequirement" class="muted" aria-live="polite"></p>
+        <button id="requestBindingCapabilities" class="secondary" type="button" hidden>明确申请所需 Host 能力</button>
         <label>CSS 类名<input id="componentClassName" maxlength="120"></label>
         <div class="fields">
           <label>文字颜色<input id="componentColor" type="color" value="#24334c"></label>

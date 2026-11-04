@@ -275,6 +275,9 @@ class Handler(BaseHTTPRequestHandler):
             base, files = blank_project()
             return self.send_json(200, {"manifest": base, "files": {
                 path: base64.b64encode(data).decode("ascii") for path, data in files.items()}})
+        if route == "/api/host-binding-catalog-v1":
+            from host_binding_catalog import load_catalog
+            return self.send_json(200, load_catalog())
         if route == "/api/template-v3":
             # The Studio starter is byte-for-byte the very same bundled APK asset;
             # never silently generate a different or reduced demo project.
@@ -323,10 +326,14 @@ class Handler(BaseHTTPRequestHandler):
                 files = {path: base64.b64decode(value, validate=True)
                          for path, value in raw_files.items()}
                 if self.path == "/api/preview-v3":
+                    from host_binding_catalog import binding_warnings
                     from studio_v3_preview import browser_url, publish
+                    project = json.loads(files["project.json"].decode("utf-8"))
                     resource_path = publish(obj.get("manifest"), files)
                     return self.send_json(200, {
-                        "url": browser_url(resource_path, self.server.server_port)
+                        "url": browser_url(resource_path, self.server.server_port),
+                        "warnings": binding_warnings(
+                            project, obj.get("manifest", {}).get("capabilities", []))
                     })
                 compiled = build_files(obj.get("manifest"), files)
                 return self.reply(200, compiled, "application/octet-stream",

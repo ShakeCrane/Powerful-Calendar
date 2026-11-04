@@ -29,6 +29,16 @@
       element.style.textAlign = style.textAlign;
   }
 
+  function stateValue(path) {
+    if (typeof path !== "string" || !path) return "";
+    let value = state;
+    for (const key of path.split(".")) {
+      if (!value || typeof value !== "object" || !Object.hasOwn(value, key)) return "";
+      value = value[key];
+    }
+    return value == null || typeof value === "object" ? "" : String(value);
+  }
+
   function renderNode(node) {
     if (!node || typeof node !== "object") return document.createTextNode("");
     const props = node.props && typeof node.props === "object" ? node.props : {};
@@ -54,6 +64,27 @@
       if (node.type === "button" || node.type === "date-button") element.type = "button";
       const text = props.label ?? props.text ?? props.title;
       if (typeof text === "string" && text) element.textContent = text;
+    }
+    if (typeof props.hostStateBinding === "string") {
+      element.dataset.hostStateBinding = props.hostStateBinding;
+      const value = document.createElement("span");
+      value.className = "pc-bound-value";
+      value.textContent = stateValue(props.hostStateBinding);
+      element.append(value);
+    }
+    const hostAction = props.hostAction;
+    if ((node.type === "button" || node.type === "date-button") &&
+        hostAction && typeof hostAction.name === "string" &&
+        hostAction.parameters && typeof hostAction.parameters === "object") {
+      element.dataset.hostAction = hostAction.name;
+      element.addEventListener("click", () => {
+        if (!port) {
+          status.textContent = "Host bridge is not connected";
+          return;
+        }
+        const payload = { name: hostAction.name, ...hostAction.parameters };
+        port.postMessage(JSON.stringify({ version: 1, type: "action", payload }));
+      });
     }
     for (const child of Array.isArray(node.children) ? node.children : [])
       element.append(renderNode(child));
