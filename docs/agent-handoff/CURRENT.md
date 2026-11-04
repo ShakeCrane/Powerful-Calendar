@@ -2,21 +2,21 @@ PROJECT: Powerful-Calendar
 PLAN: PLAN-2026-11-03-R2
 BRANCH: codex/skin-single-default-closure
 WAVE2_START_HEAD: 3b54097d6383c0349b5d3d638c228320e3c8e22c
-LATEST_CODE_HEAD: bb2007d69d90204acf0e27deb325a492f9c37746
-CURRENT_TASK: F-06
+LATEST_CODE_HEAD: 177ec0b733952ba56d5c13542e97ead08489d1d9
+CURRENT_TASK: S-04
 TASK_STATUS: IN_PROGRESS
-LAST_COMPLETED_TASK: F-05-FOUR-KIND-EDITOR-DRAFT-TRUSTED-WRITE-PARITY (PASS)
-LAST_COMPLETED_COMMIT: bb2007d69d90204acf0e27deb325a492f9c37746
-NEXT_TASK: S-04
-NEXT_ACTION: Verify Single, This-and-future, and Whole recurrence editing through the existing EventFeatureApiV1 and RecurrenceFeatureApiV1, including identity/revision, date precision, DST, failure, cancellation, and Store invariants.
+LAST_COMPLETED_TASK: F-06-RECURRENCE-SCOPES-DATE-DST-PARITY (PASS)
+LAST_COMPLETED_COMMIT: 177ec0b733952ba56d5c13542e97ead08489d1d9
+NEXT_TASK: S-05
+NEXT_ACTION: Compare Studio preview bridge outputs and failure/capability behavior with Android WebView Runtime using the S-03 binding catalog and fixed page fixtures; prove preview performs no formal Store writes.
 
 WAVE_2_QUEUE:
   - F-03 Closure: PASS (commit 2a8c323890c0f121b80c72a2a4d1c5c2a35d010d)
   - S-02 Android Gate: PASS (commit 62334dce69ac25c316b5bc39497f08adbc20bd16)
   - S-03 Host state/action binding catalog: PASS (commit 5eeb87d091e84bfd0906135497bc4ebca94cffba)
   - F-05 editor/draft/trusted-write parity: PASS (commit bb2007d69d90204acf0e27deb325a492f9c37746)
-  - F-06 recurrence scopes/date/DST parity: IN_PROGRESS
-  - S-04 Studio preview/runtime parity: NOT STARTED
+  - F-06 recurrence scopes/date/DST parity: PASS (commit 177ec0b733952ba56d5c13542e97ead08489d1d9)
+  - S-04 Studio preview/runtime parity: IN_PROGRESS
   - S-05 resource/source round-trip: NOT STARTED
   - F-07 AI chat/proposal/review parity: NOT STARTED
 
@@ -43,6 +43,16 @@ OWNER_OVERRIDE_2026_11_03:
   Release_gate: Product Cutover remains HOLD.
 
 LATEST_VERIFIED_EVIDENCE:
+  F-06:
+    status: PASS (task scope); SSA-06 remains PARTIAL.
+    commit: 177ec0b733952ba56d5c13542e97ead08489d1d9
+    jvm: RecurrenceFeatureApiV1Test 9/9; WebSkinRecurrenceBridgeTest 16/16; full suite 970/970 across 140 suites, 0 failures/errors/skips.
+    android: API 35 isolated AVD PowerCal_Wave2_QA35_20261104 / emulator-5554; Native/Clear trusted-touch parity 1/1 method and six scopes (ALARM and date-only DEADLINE × Single/This-and-future/Whole); cancellation had zero Store writes and approved outcomes matched.
+    dst: API and Bridge JVM tests select the earlier New York fall-fold occurrence (2026-11-01 01:30 => 05:30Z, -04:00); date-only Deadline retains local date and null instant deadline.
+    boundaries: Skin and Native source checks PASS; APK assemble PASS; lint 0 errors / 56 warnings; AndroidTest Kotlin compile PASS.
+    apk_sha256: 08739af8ec4967c764e738e20885a2fc8c1c96033f4e33a3414643b48422d16e; exactly one factory .pcskin, source/APK byte-identical, sha256 299e4bdd78c8936f6c15db0200172e659aaa5b0e0643f0d70c115966ac35a9f4.
+    evidence: .local/android-test/reports/F-06-20261104-wave2/manifest.md
+    limits: device DST fold/gap and date boundaries, Studio recurrence authoring, physical/OEM NOT TESTED; Product Cutover remains HOLD.
   F-05:
     status: PASS
     commit: bb2007d69d90204acf0e27deb325a492f9c37746
@@ -82,7 +92,7 @@ LATEST_VERIFIED_EVIDENCE:
     commit: 2a8c323890c0f121b80c72a2a4d1c5c2a35d010d
     evidence: .local/android-test/reports/F-03-20261104-wave2/
 
-BLOCKERS: None for F-05. F-06 is in progress. Physical/OEM evidence remains NOT TESTED; Product Cutover remains HOLD.
+BLOCKERS: None for F-06 task scope. S-04 is now in progress. Physical/OEM and full SEP signature remain NOT TESTED/INCOMPLETE; R-06/R-07 remain DEFERRED and Product Cutover remains HOLD.
 
 AUTHORITATIVE_PLAN: docs/POWERCAL_SINGLE_DEFAULT_SKIN_EXECUTION_PLAN_2026-11-03_R2.md
 ACCEPTANCE_MATRIX: docs/agent-handoff/SINGLE_SKIN_ACCEPTANCE.md

@@ -4,7 +4,7 @@
 
 ## 状态和签核规则
 
-PASS 仅在本项全部必要功能、Studio、模拟器、真机/OEM 证据及结果对照通过并可复现时使用；PARTIAL 为部分实现或证据；FAIL 为已证实不符合；BLOCKED 为明确前置/外部阻塞；NOT TESTED 为未执行；RETIRED-BY-OWNER 为取消的旧产品要求。各行状态是本矩阵的审慎评估，不改写原 SEP。实现、JVM、Android、PHYSICAL 分开登记；本次 Android/PHYSICAL 交互均 NOT TESTED，旧设备结果仅作带来源的 PREVIOUS PASS，须在目标 SHA 重放。JVM 栏 PARTIAL 表示有本轮全量门禁和相关测试文件，非整项语义签核。没有对全部历史 Issue 做无失败断言；下列未确认全项 FAIL。签核记录必须含测试 ID、源码 SHA、APK/皮肤 SHA、命令、设备/API/OEM、输入、Store/界面结果及日志，失败与跳过不得计为通过。
+PASS 仅在本项全部必要功能、Studio、模拟器、真机/OEM 证据及结果对照通过并可复现时使用；PARTIAL 为部分实现或证据；FAIL 为已证实不符合；BLOCKED 为明确前置/外部阻塞；NOT TESTED 为未执行；RETIRED-BY-OWNER 为取消的旧产品要求。各行状态是本矩阵的审慎评估，不改写原 SEP。实现、JVM、Android、PHYSICAL 分开登记；设备证据按行更新，未注明本轮实测的历史结果只算带来源的 PREVIOUS PASS，缺少证据则记 NOT TESTED。JVM 栏 PARTIAL 表示有本轮全量门禁和相关测试文件，非整项语义签核。没有对全部历史 Issue 做无失败断言；下列未确认全项 FAIL。签核记录必须含测试 ID、源码 SHA、APK/皮肤 SHA、命令、设备/API/OEM、输入、Store/界面结果及日志，失败与跳过不得计为通过。
 
 G-04 在 `1e57da5cbb19b4b1348fe390174f629c8871fc47` 实测 JVM 946/946、Studio Python 68/68、两个边界及 APK 构建 PASS；API 35 仅安装两包成功。它们分别证明各自范围，不证明 SEP、完整 Studio 创作、WebView 交互或 OEM 行为。旧 SEP 原表 SEP-01～12、14～16 为 PARTIAL/HOLD，SEP-13 为 NOT TESTED；历史局部 PASS 见原表行及关联 Issue。Core scope 冻结不等于发布 GO：[CORE_FREEZE_VERDICT](../CORE_FREEZE_VERDICT.md) 仍 HOLD，REC-P1-086 OEM 证据 BLOCKED；同时响铃语义在冻结契约中未决。不得将这些缺口静默改为 PASS。
 
@@ -101,11 +101,20 @@ G-04 在 `1e57da5cbb19b4b1348fe390174f629c8871fc47` 实测 JVM 946/946、Studio 
 - CORE API：core-api/src/main/kotlin/dev/powerfulcalendar/core/api/v1/RecurrenceFeatureApiV1.kt；core-api/src/main/kotlin/dev/powerfulcalendar/core/api/v1/CoreFeatureApiV1.kt。
 - DEFAULT SKIN：明确三作用域、日期精度与冲突提示。用户动作 → API → Core → 可观察结果：编辑单次、此后和整个系列 → EventFeatureApiV1.selectFormalRecurrenceScope / saveFormalEvent 与 RecurrenceFeatureApiV1.queryOccurrencesInWindow → 原键、例外、截断与兼容迁移正确 → 提示作用域及结果。
 - STUDIO：创建作用域控件和事件绑定。
-- ANDROID QA：NOT TESTED（本轮）；验证跨午夜、日期上下界、DST 缺口跳过且消耗槽位、折叠取较早偏移及单次折叠。
+- ANDROID QA：PARTIAL（Wave 2 F-06）；隔离 API 35 AVD 上 Native 与默认 Web Skin 真实触控比较 ALARM 和纯日期 DEADLINE 的 Single、This-and-future、Whole 共六组，核对 occurrence key、系列身份/版本、拆分、取消零写入、批准后 Store 等价。设备上未执行秋季 DST fold/gap 和日期上下界场景；DST 折叠较早偏移由 JVM Core API/Bridge 测试覆盖。
 - PHYSICAL：NOT TESTED（本轮）；在真机重放主要动作，记录系统、权限、界面及 Store 结果。
 - 测试入口：app/src/test/java/dev/powerfulcalendar/core/api/v1/RecurrenceFeatureApiV1Test.kt；app/src/androidTest/java/dev/powerfulcalendar/ui/v2/WebSkinRecurringScopeParityInstrumentedTest.kt。
-- 状态：实现 PARTIAL；JVM PARTIAL（G-04 门禁与关联测试，不等于本项签核）；模拟器 NOT TESTED（本轮，历史切片见 SOURCE）；真机 NOT TESTED；总体 PARTIAL。
-- 剩余及签核：按上述动作逐项获得目标构建的 Core/界面结果、Studio 往返、模拟器和真机证据，核对冻结契约后签核。后续任务：F-06, S-03, Q-02。
+- 状态：实现 PARTIAL；JVM PASS（RecurrenceFeatureApiV1Test 9/9、WebSkinRecurrenceBridgeTest 16/16；全量 970/970，0 failures/errors/skips）；模拟器 PARTIAL（上述六组触控与 Store 对照通过）；Studio NOT TESTED；真机 NOT TESTED；总体 PARTIAL。
+- 剩余及签核：Studio 绑定和预览往返由 S-03/S-04 覆盖；完整 DST gap/fold、日期边界和真机/OEM 证据仍需在最终验收闭合。任务级 F-06 已通过，不据此提升 SSA-06 总体状态。后续任务：S-04, Q-02。
+
+#### F-06 Wave 2 执行证据（2026-11-04）
+
+- 任务级状态：PASS；无产品逻辑变更，只补充 API、Bridge 和设备回归。
+- Core/API：每日重复 ALARM 的 2026-11-01 01:30 America/New_York 歧义槽经 RecurrenceFeatureApiV1 选择较早偏移（05:30Z，-04:00）；日期型 DEADLINE 保留本地日期、`deadlineMillis=null`。Bridge 测试验证 Single 写入同一 eventSeq、revision 递增 1、只产生原槽 override；宿主拒绝/取消在批准前 Store 不变。
+- Android：隔离 AVD `PowerCal_Wave2_QA35_20261104` / `emulator-5554` / API 35；`nativeAndClearMatchAllScopesForAlarmAndDateOnlyDeadline` 1/1 PASS，内部六组触屏（两类 × 三作用域）均核对 Native/Clear 记录、身份、occurrence key、revision、提交数、草稿数与取消零写入。设备日志在 `.local/android-test/reports/F-06-20261104-wave2/android-scope-parity-renamed-final.log`。
+- JVM 与门禁：API 9/9、Bridge 16/16；完整 `:app:testDebugUnitTest` 为 970/970、140 suites、0 failures/errors/skips。两个源码边界、Debug APK、Lint（0 errors/56 warnings）、AndroidTest Kotlin 编译 PASS。
+- 产物：APK SHA-256 `08739af8ec4967c764e738e20885a2fc8c1c96033f4e33a3414643b48422d16e`；APK 中一份 `assets/powercal-clear-default.pcskin`，与源码逐字节一致，SHA-256 `299e4bdd78c8936f6c15db0200172e659aaa5b0e0643f0d70c115966ac35a9f4`。生产代码与默认皮肤未修改。
+- 限制：DST fold/gap 未在设备执行；PHYSICAL/OEM、完整 Studio recurrence 创作 NOT TESTED。SSA-06 仍 PARTIAL，SEP 历史签核 INCOMPLETE，Product Cutover HOLD。详见 `.local/android-test/reports/F-06-20261104-wave2/manifest.md`。
 
 ### SSA-07｜草稿、审核及发布
 
