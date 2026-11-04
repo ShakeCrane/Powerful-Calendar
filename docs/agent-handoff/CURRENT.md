@@ -8,9 +8,9 @@ LATEST_VERIFIED_HEAD: 49b0841a6ea98ceec4872b07d3b6cec260fe55a9
 CURRENT_TASK: Q-04
 TASK_STATUS: IN_PROGRESS
 LAST_COMPLETED_TASK: Q-03-RECOVERY-PERFORMANCE-ACCESSIBILITY (BLOCKED for full accessibility sign-off; 9/9 current Android checks passed; TalkBack focus traversal NOT TESTED)
-LAST_COMPLETED_COMMIT: pending Q-03 evidence commit
+LAST_COMPLETED_COMMIT: 5e05c077d053cabcc07c0a0827716fe3f87e53c7 (Q-03 acceptance and current handoff)
 LAST_ATTEMPTED_TASK: Q-03 recovery/layout checks completed; bounded TalkBack system shortcut diagnostic did not establish focus traversal (BLOCKED)
-LAST_ATTEMPTED_COMMIT: pending Q-03 evidence commit
+LAST_ATTEMPTED_COMMIT: 5e05c077d053cabcc07c0a0827716fe3f87e53c7
 NEXT_TASK: Q-04
 NEXT_ACTION: Execute Q-04 physical/OEM reminder checks only if an authorized QA handset is connected; otherwise record NOT TESTED - EXTERNAL DEVICE and retain the user runbook. Preserve Q-02 SEP-09 AI chat touch blocker, F-09 TalkBack NOT TESTED, and Product Cutover HOLD.
 LAST_TASK_EVIDENCE:
