@@ -61,3 +61,34 @@ adb -s <设备序列号> shell monkey -p dev.powerfulcalendar 1
 该 Debug 包使用工程调试签名。若设备装有不同签名的正式版本，Android 不允许覆盖安装；不要为安装 RC 清除正式应用数据。已验证设备、R-07 恢复场景和构建证据见 `.local/android-test/reports/R-07-20261105/manifest.md`。
 
 RC 的 API 35 隔离 AVD 验证覆盖默认启动、损坏/缺失包回退、进程恢复、Web renderer/脚本错误和紧急回退前保存编辑草稿。强制 checkpoint I/O 失败、TalkBack 焦点顺序、真机/OEM 提醒投递、实时 AI 服务商连接和历史 SEP 全量签核仍未完成。Product Cutover 仍为 HOLD。
+
+## Checkpoint C：Visual Release Candidate（Clear 回退版）
+
+没有找到独立、已批准的 Claude 图稿/素材。因此本检查点使用已验证的 Clear 视觉，不擅自生成新图形；**功能交付已有 APK，定制视觉整合仍未完成**。
+
+- APK：`PowerCal-Visual-Release-Candidate-2026-11-05.apk`
+- APK SHA-256：`66fa0941beda7ff5fce3dbbfa176d3152a002205faafaba5666e8ac0068617a3`
+- 构建提交：`447f3b6f7c8e2586cb787faa97ba9d27b9730cb5`
+- 默认包：`powercal-clear-default-Visual-Release-Candidate-2026-11-05.pcskin`
+- 默认包 SHA-256：`b9035719c2e0c75d335225216ea3687b72cc2cf4692e829ca43566c730c3fee3`
+- Studio 工程：`tools/skin-studio/default-clear/`
+- 预览截图：[`Visual-Release-Candidate-2026-11-05/`](Visual-Release-Candidate-2026-11-05/)，来自 API 35 隔离 AVD 的 Timeline、Month、Memo、AI、Settings 实际 WebView 页面
+
+### 启动 Studio 并编辑
+
+从仓库根目录启动：
+
+```powershell
+python tools/skin-studio/skin_studio.py serve --port 8765
+```
+
+打开 `http://127.0.0.1:8765`，选择“导入 .pcskin”，载入本目录中的 Clear 包；编辑后使用“导出 .pcskin v3”。直接维护默认 Clear 时，以 `tools/skin-studio/default-clear/` 为 Studio 工程。要把经审核的编辑装入 App，先同步到该规范源码，再执行：
+
+```powershell
+python tools/skin-studio/build_default_clear.py
+python tools/skin-studio/build_default_clear.py --verify --apk app/build/outputs/apk/debug/app-debug.apk
+```
+
+随后重新构建、安装和验证 APK。App 只装载唯一 bundled factory skin；导出的 `.pcskin` 不会通过运行时皮肤目录自动启用。不要把导出包加入 APK 作为第二套出厂皮肤。
+
+本 Visual RC 在 Android 15 / API 35 AVD `PowerCal_Wave2_QA35_20261104`、序列号 `emulator-5554` 安装运行。全任务重跑式 `:app:assembleDebug` 构建成功，正式皮肤构建器确认 APK 只有一份 `.pcskin` 且与源包逐字节相同；五个页面已实际打开并留图。此回退版本没有改默认外观。Host Compose Draft Review、TalkBack 焦点顺序、真机/OEM 提醒、实时 AI 服务商及完整 SEP 签核仍是独立缺口；Product Cutover 仍为 HOLD。详细构建和图片哈希见 `.local/android-test/reports/V-02-20261105/manifest.md`。
