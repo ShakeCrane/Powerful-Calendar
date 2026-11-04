@@ -3,25 +3,25 @@ PLAN: PLAN-2026-11-03-R2
 BRANCH: codex/skin-single-default-closure
 WAVE2_START_HEAD: 3b54097d6383c0349b5d3d638c228320e3c8e22c
 WAVE3_START_HEAD: 82b456fd2bfc15df379fd15d967fac3da57b899d
-LATEST_CODE_HEAD: 03c8ba38db785b16052a2f9b440b8bf3bc5ee79b
-LATEST_VERIFIED_HEAD: 03c8ba38db785b16052a2f9b440b8bf3bc5ee79b
-CURRENT_TASK: S-07
-TASK_STATUS: READY
-LAST_COMPLETED_TASK: S-06-FROM-BLANK-FUNCTIONAL-SKIN-ANDROID (PASS)
-LAST_COMPLETED_COMMIT: 03c8ba38db785b16052a2f9b440b8bf3bc5ee79b
-LAST_ATTEMPTED_TASK: F-09 (BLOCKED; direct TalkBack navigation focus order is unverified)
-LAST_ATTEMPTED_COMMIT: 3932427ac7c8a06d1dabb53b732fef693954efdd
-NEXT_TASK: S-07
-NEXT_ACTION: Load the canonical default Clear source into Studio, make a reversible harmless Settings edit, and verify export/import/rebuild on the isolated QA AVD. Keep F-09 blocked until TalkBack focus traversal is directly evidenced.
+LATEST_CODE_HEAD: 0cfd15564189f9c0e9e3c0436441cd084183022f
+LATEST_VERIFIED_HEAD: 0cfd15564189f9c0e9e3c0436441cd084183022f
+CURRENT_TASK: F-09
+TASK_STATUS: BLOCKED
+LAST_COMPLETED_TASK: S-07-DEFAULT-CLEAR-STUDIO-ROUNDTRIP (PASS)
+LAST_COMPLETED_COMMIT: 0cfd15564189f9c0e9e3c0436441cd084183022f
+LAST_ATTEMPTED_TASK: S-07 (PASS)
+LAST_ATTEMPTED_COMMIT: 0cfd15564189f9c0e9e3c0436441cd084183022f
+NEXT_TASK: R-06 (BLOCKED ON F-09 PASS)
+NEXT_ACTION: Close the F-09 TalkBack gate by directly verifying focus traversal order. Begin R-06 only after that evidence makes F-09 PASS.
 WAVE2_STATUS: COMPLETE (8 authorized work packages attempted; all PASS)
-WAVE3_STATUS: IN_PROGRESS (F-08 PASS; F-09 BLOCKED; S-06 PASS; S-07 next independent task; Product Cutover HOLD)
+WAVE3_STATUS: IN_PROGRESS (F-08 PASS; F-09 BLOCKED; S-06 PASS; S-07 PASS; R-06 blocked by F-09; Product Cutover HOLD)
 
 WAVE3_QUEUE:
   - F-08 permissions/reminders/ICS/backup/system settings: PASS (commit c3a1e59f44e2b304314673f0030ae19c2f3f9d28)
   - F-09 Back/IME/recovery/accessibility: BLOCKED (code/test fixes committed; TalkBack traversal order not verified)
   - S-06 from-blank complete Skin: PASS (commit 03c8ba38db785b16052a2f9b440b8bf3bc5ee79b; Studio GUI/API, 88/88 Python, Android 4/4, MainActivity force-stop/restore verified)
-  - S-07 default Skin Studio roundtrip: READY (next; make a reversible harmless Settings edit, export/import/rebuild, and restore canonical source/assets)
-  - R-06 runtime retirement: DEFERRED; requires F-08/F-09/S-06/S-07 parity
+  - S-07 default Skin Studio roundtrip: PASS (commit 0cfd15564189f9c0e9e3c0436441cd084183022f; Studio save/reopen, Settings source edit, export/import/restore, 88/88 Python, final APK byte check, API 35 WebView Settings 1/1)
+  - R-06 runtime retirement: BLOCKED/DEFERRED; requires F-08/F-09/S-06/S-07 parity; F-09 TalkBack traversal remains unverified
   - R-07 runtime/recovery gate: CONDITIONAL; requires R-06 prerequisites and safe recovery evidence
   - Q-01 install/migration acceptance: NOT STARTED
   - Q-02 full parity replay: NOT STARTED
@@ -59,6 +59,16 @@ OWNER_OVERRIDE_2026_11_03:
   Release_gate: Product Cutover remains HOLD.
 
 LATEST_VERIFIED_EVIDENCE:
+  S-07:
+    status: PASS (Studio roundtrip task scope; Product Cutover and full SEP sign-off remain HOLD/INCOMPLETE)
+    commit: 0cfd15564189f9c0e9e3c0436441cd084183022f
+    studio: Canonical default Clear imported through Studio GUI/API; one harmless Settings label edit was saved, closed/reopened, built/exported, and re-imported. Restoring the original label restored every one of the 9 package source/resource files byte-for-byte; normalized manifest and project metadata matched. Studio Python 88/88; browser E2E and Node syntax PASS.
+    android: API 35 isolated AVD PowerCal_Wave2_QA35_20261104 / emulator-5554; `ClearSettingsOptionsInstrumentedTest.clearSettingsRetireSkinCatalogueAndKeepProtectedOperations` PASS 1/1 on the final rebuilt APK. Default Clear Settings, protected operations, notification denial, backup chooser cancellation, and cancellation/retired-action Store invariants verified.
+    package: official builder regenerated the canonical package unchanged; APK contains exactly one `.pcskin` (`powercal-clear-default.pcskin`), source/APK asset bytes identical, SHA-256 b9035719c2e0c75d335225216ea3687b72cc2cf4692e829ca43566c730c3fee3.
+    apk_sha256: 2ff316e1e350fdd4573ceac7ab154b616fb2e425ef209bde0d2b3e79d89b33a6.
+    gradle: Full gate PASS; `testDebugUnitTest`, assemble, lint, and AndroidTest Kotlin compile were UP-TO-DATE, so JVM tests were not rerun for S-07. APK was then forced to rebuild (83/83 tasks), and the focused Android test was rerun on that APK.
+    evidence: .local/android-test/reports/S-07-20261104/manifest.md
+    limits: Studio's re-exported ZIP has a different raw SHA because manifest `sha256` keys serialize in a different order; semantic manifest and every source/resource file match. The canonical source builder and APK asset are byte-identical. No product, Core, Clear source, or APK asset was changed.
   S-06:
     status: PASS (task scope; Product Cutover and full SEP sign-off remain HOLD/INCOMPLETE)
     commit: 03c8ba38db785b16052a2f9b440b8bf3bc5ee79b
@@ -175,7 +185,7 @@ LATEST_VERIFIED_EVIDENCE:
     commit: 2a8c323890c0f121b80c72a2a4d1c5c2a35d010d
     evidence: .local/android-test/reports/F-03-20261104-wave2/
 
-BLOCKERS: F-09 cannot PASS until actual TalkBack focus traversal order is directly verified. S-07 is next and independent; R-06/R-07 remain deferred until their required parity/recovery gates are satisfied. Physical/OEM and live-provider behavior remain NOT TESTED; full SEP signature remains INCOMPLETE; Product Cutover remains HOLD.
+BLOCKERS: F-09 cannot PASS until actual TalkBack focus traversal order is directly verified. R-06/R-07 remain deferred until their required parity/recovery gates are satisfied. Physical/OEM and live-provider behavior remain NOT TESTED; full SEP signature remains INCOMPLETE; Product Cutover remains HOLD.
 
 AUTHORITATIVE_PLAN: docs/POWERCAL_SINGLE_DEFAULT_SKIN_EXECUTION_PLAN_2026-11-03_R2.md
 ACCEPTANCE_MATRIX: docs/agent-handoff/SINGLE_SKIN_ACCEPTANCE.md
