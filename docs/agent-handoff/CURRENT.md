@@ -10,7 +10,7 @@ TASK_STATUS: IN_PROGRESS
 LAST_COMPLETED_TASK: Q-03-RECOVERY-PERFORMANCE-ACCESSIBILITY (BLOCKED for full accessibility sign-off; recovery/layout checks 9/9 PASS; TalkBack NOT TESTED)
 LAST_COMPLETED_COMMIT: 5e05c077d053cabcc07c0a0827716fe3f87e53c7 (Q-03 acceptance and evidence)
 LAST_ATTEMPTED_TASK: Q-04 physical/OEM reminders NOT TESTED - no authorized handset connected (BLOCKED - EXTERNAL DEVICE)
-LAST_ATTEMPTED_COMMIT: pending Q-04 checklist/evidence commit
+LAST_ATTEMPTED_COMMIT: 6f6cffc0e6bd99bcf532525b0ad39a4ae3373516 (Q-04 external-device checklist and blocker evidence)
 NEXT_TASK: Q-05
 NEXT_ACTION: Resume a bounded Q-02 SEP-09 diagnostic: verify whether the Native-to-Clear AI tab pointer failure reproduces with real ADB touch on the current Release Candidate. Classify product vs test-harness behavior before Q-05; preserve TalkBack and physical/OEM NOT TESTED, keep Product Cutover HOLD until the user-visible AI path is known.
 LAST_TASK_EVIDENCE:
