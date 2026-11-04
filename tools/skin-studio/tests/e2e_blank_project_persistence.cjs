@@ -171,26 +171,35 @@ async function main() {
     const treeHasNode = async id => evaluate(
       `!!document.querySelector("#componentTree [data-component-id='${id}']")`);
 
-    await mouseClick("#componentAddPage");
-    await waitFor(async () => evaluate("project.pages.length===6 && document.querySelector('#componentPage').options.length===6"),
-      "The page-tree GUI did not add a custom page");
-    await selectTreePage("PAGE_1");
     const supportedComponents = ["text", "container", "button", "scroll", "form-field", "timeline",
       "event-card", "month-grid", "date-button", "memo-row", "chat-item", "settings-row", "resource-layer"];
-    for (const type of supportedComponents) {
-      await selectComponentType(type);
-      await mouseClick("#componentAdd");
-    }
-    const authoredTypes = await evaluate(`(()=>{
-      const visit=(nodes,out=[])=>{for(const node of nodes){out.push(node.type);visit(node.children||[],out)}return out};
-      return visit(project.pages.find(page=>page.route==='PAGE_1').components);
-    })()`);
-    if (supportedComponents.some(type => !authoredTypes.includes(type)))
-      throw Error("The component palette failed to author one or more supported runtime types: " + authoredTypes);
+
+    // Author components on the five required blank routes through the Studio GUI.
+    await selectTreePage("TIMELINE");
+    await selectComponentType("container");
+    await mouseClick("#componentAdd");
+    await selectComponentType("text");
+    await mouseClick("#componentAdd");
+    await waitFor(async () => evaluate("project.pages[0].components[0].children.length===1"),
+      "Timeline container did not accept a GUI-authored child");
+    const timelineHeadingId = await evaluate("selectedComponentId");
+    await setComponentField("#componentLabel", "Timeline Header");
+    await setComponentField("#componentBinding", "presentation.timeline.header");
+    await setComponentField("#componentColor", "#345678");
+    await selectComponentType("timeline");
+    await mouseClick("#componentAdd");
+    const timelineNodeId = await evaluate("selectedComponentId");
+    await selectComponentType("event-card");
+    await mouseClick("#componentAdd");
+    await setComponentField("#componentLabel", "Timeline Event Card");
+    await selectComponentType("button");
+    await mouseClick("#componentAdd");
+
     await selectTreePage("MONTH");
     await selectComponentType("text");
     await mouseClick("#componentAdd");
-    await waitFor(async () => treeHasNode("text-2"),
+    const monthTextId = await evaluate("selectedComponentId");
+    await waitFor(async () => treeHasNode(monthTextId),
       "The page-tree GUI did not add a text component");
     await setComponentField("#componentLabel", "November Header");
     await setComponentField("#componentBinding", "presentation.month.header");
@@ -200,16 +209,19 @@ async function main() {
 
     await selectComponentType("month-grid");
     await mouseClick("#componentAdd");
-    await waitFor(async () => treeHasNode("month-grid-2"),
+    const monthGridId = await evaluate("selectedComponentId");
+    await waitFor(async () => treeHasNode(monthGridId),
       "The page-tree GUI did not add a month-grid container");
     await selectComponentType("date-button");
     await mouseClick("#componentAdd");
+    const firstDateId = await evaluate("selectedComponentId");
     await mouseClick("#componentAdd");
-    await waitFor(async () => treeHasNode("date-button-3"),
+    const secondDateId = await evaluate("selectedComponentId");
+    await waitFor(async () => treeHasNode(secondDateId),
       "The page-tree GUI did not add nested date buttons");
-    await mouseClick("#componentTree [data-component-id=\"date-button-2\"]");
+    await mouseClick(`#componentTree [data-component-id="${firstDateId}"]`);
     await setComponentField("#componentLabel", "2");
-    await mouseClick("#componentTree [data-component-id=\"date-button-3\"]");
+    await mouseClick(`#componentTree [data-component-id="${secondDateId}"]`);
     await setComponentField("#componentLabel", "3");
     await setComponentField("#componentBinding", "presentation.month.date");
     await mouseClick("#componentMoveUp");
@@ -219,20 +231,20 @@ async function main() {
       return {rootChildren:root.children.map(node=>node.type),gridChildren:grid.children.map(node=>node.id)};
     })()`);
     if (JSON.stringify(treeState.rootChildren) !== JSON.stringify(["text", "month-grid"]) ||
-        JSON.stringify(treeState.gridChildren) !== JSON.stringify(["date-button-3", "date-button-2"]))
+        JSON.stringify(treeState.gridChildren) !== JSON.stringify([secondDateId, firstDateId]))
       throw Error("Component nesting/reordering did not update the canonical project tree: " + JSON.stringify(treeState));
 
     await mouseClick("#componentDelete");
-    await waitFor(async () => !(await treeHasNode("date-button-3")),
+    await waitFor(async () => !(await treeHasNode(secondDateId)),
       "Component delete did not remove the selected node");
     await mouseClick("#componentUndo");
-    await waitFor(async () => treeHasNode("date-button-3"),
+    await waitFor(async () => treeHasNode(secondDateId),
       "Undo did not restore the deleted component");
     await mouseClick("#componentRedo");
-    await waitFor(async () => !(await treeHasNode("date-button-3")),
+    await waitFor(async () => !(await treeHasNode(secondDateId)),
       "Redo did not reapply component deletion");
     await mouseClick("#componentUndo");
-    await waitFor(async () => treeHasNode("date-button-3"),
+    await waitFor(async () => treeHasNode(secondDateId),
       "Undo did not restore the saved Month structure");
     await mouseClick("#componentTree [data-component-id=\"month-root\"]");
     await selectComponentType("text");
@@ -256,6 +268,70 @@ async function main() {
     if (!parentState.root.includes("text-3") || parentState.grid.includes("text-3"))
       throw Error("Outdent did not restore the component to its parent level");
     await mouseClick("#componentDelete");
+
+    await selectTreePage("MEMO");
+    await selectComponentType("scroll");
+    await mouseClick("#componentAdd");
+    const memoScrollId = await evaluate("selectedComponentId");
+    await selectComponentType("memo-row");
+    await mouseClick("#componentAdd");
+    const memoRowId = await evaluate("selectedComponentId");
+    await setComponentField("#componentLabel", "Blank Memo Row");
+
+    await selectTreePage("AI");
+    await selectComponentType("scroll");
+    await mouseClick("#componentAdd");
+    const aiScrollId = await evaluate("selectedComponentId");
+    await selectComponentType("chat-item");
+    await mouseClick("#componentAdd");
+    const chatItemId = await evaluate("selectedComponentId");
+    await setComponentField("#componentLabel", "Blank Chat Item");
+    await selectComponentType("form-field");
+    await mouseClick("#componentAdd");
+    const formFieldId = await evaluate("selectedComponentId");
+    await setComponentField("#componentLabel", "Prompt Field");
+    await selectComponentType("button");
+    await mouseClick("#componentAdd");
+
+    await selectTreePage("SETTINGS");
+    await selectComponentType("settings-row");
+    await mouseClick("#componentAdd");
+    const settingsRowId = await evaluate("selectedComponentId");
+    await setComponentField("#componentLabel", "Blank Settings Row");
+    await selectComponentType("resource-layer");
+    await mouseClick("#componentAdd");
+    const resourceLayerId = await evaluate("selectedComponentId");
+    await setComponentField("#componentClassName", "qa-resource-probe");
+    await selectComponentType("text");
+    await mouseClick("#componentAdd");
+    await setComponentField("#componentLabel", "Resource Layer Label");
+
+    const assetPath = path.join(root, "tools/skin-studio/tests/fixtures/blank-studio/probe.png");
+    const studioDocument = await call("DOM.getDocument", {depth: 2});
+    const assetInput = await call("DOM.querySelector", {
+      nodeId: studioDocument.root.nodeId, selector: "#assetFile"
+    });
+    if (!assetInput.nodeId) throw Error("Blank Studio resource upload control was not found");
+    await call("DOM.setFileInputFiles", {files: [assetPath], nodeId: assetInput.nodeId});
+    await waitFor(async () => evaluate("sourceFiles.has('assets/probe.png')"),
+      "Studio did not retain the uploaded PNG resource");
+    await evaluate(`(()=>{
+      const source=document.querySelector('#cssCode');
+      source.value += '\\n.qa-resource-probe{width:2px;height:2px;background-image:url("../assets/probe.png")}\\n';
+      source.dispatchEvent(new Event('input',{bubbles:true}));return true;
+    })()`);
+    await waitFor(async () => evaluate("sourceFiles.has('assets/probe.png') && new TextDecoder().decode(sourceFiles.get('web/style.css')).includes('probe.png')"),
+      "Studio did not retain the CSS resource path");
+
+    const authoredTypes = await evaluate(`(()=>{
+      const visit=(nodes,out=[])=>{for(const node of nodes){out.push(node.type);visit(node.children||[],out)}return out};
+      return project.pages.flatMap(page=>visit(page.components));
+    })()`);
+    if (supportedComponents.some(type => !authoredTypes.includes(type)))
+      throw Error("The five-page component palette did not author every supported runtime type: " + authoredTypes);
+    if (JSON.stringify(await evaluate("manifest.capabilities")) !== '["host.read"]')
+      throw Error("Blank component editing silently granted a mutating Host capability");
+
     treeState = await evaluate(`(()=>{
       const month=project.pages.find(page=>page.route==='MONTH');
       const root=month.components[0],heading=root.children[0],grid=root.children[1];
@@ -282,12 +358,12 @@ async function main() {
       throw Error("Saved Studio project metadata is incorrect");
     const savedProject = JSON.parse(Buffer.from(saved.files["project.json"], "base64").toString("utf8"));
     const savedMonthRoot=savedProject.pages[1].components[0];
-    if (savedProject.pages.length !== 6 || savedProject.pages[1].title !== "Month metadata survives reopen" ||
+    if (savedProject.pages.length !== 5 || savedProject.pages[1].title !== "Month metadata survives reopen" ||
         savedMonthRoot.props.editorNote !== "saved from Studio" ||
         savedMonthRoot.children[0].props.label !== "November Header" ||
         savedMonthRoot.children[1].type !== "month-grid" ||
         JSON.stringify(savedMonthRoot.children[1].children.map(node=>node.id)) !==
-          JSON.stringify(["date-button-3","date-button-2"]))
+          JSON.stringify([secondDateId,firstDateId]))
       throw Error("Saved project.json lost the edited page structure");
 
     // Unload the Studio document, reopen it, then use the visible Open Project input.
@@ -322,11 +398,11 @@ async function main() {
       return {name:manifest.name,pages:p.pages,capabilities:manifest.capabilities,
         fileCount:Object.keys(files).length};
     })()`);
-    if (reopened.pages.length !== 6 || reopened.pages[1].title !== "Month metadata survives reopen" ||
+    if (reopened.pages.length !== 5 || reopened.pages[1].title !== "Month metadata survives reopen" ||
         reopened.pages[1].components[0].props.editorNote !== "saved from Studio" ||
         reopened.pages[1].components[0].children[0].props.label !== "November Header" ||
         JSON.stringify(reopened.pages[1].components[0].children[1].children.map(node=>node.id)) !==
-          JSON.stringify(["date-button-3","date-button-2"]) ||
+          JSON.stringify([secondDateId,firstDateId]) ||
         JSON.stringify(reopened.capabilities) !== '["host.read"]')
       throw Error("Reopened Studio project lost page structure or changed capabilities");
 
@@ -337,42 +413,67 @@ async function main() {
     if (!previewFrame) throw Error("Reopened component project has no preview frame");
     await waitFor(async () => frameContexts.has(previewFrame.frame.id),
       "The component preview frame did not create a browser execution context");
-    await evaluateFrame(previewFrame.frame.id, `(()=>{
-      const page=document.querySelector('[data-page-route="PAGE_1"]');
-      if(!page)throw Error('Custom page route is absent from the runtime navigation');
-      page.click();return true;
+    const renderedPages = {};
+    for (const route of routes) {
+      await evaluateFrame(previewFrame.frame.id, `(()=>{
+        const page=document.querySelector('[data-page-route="${route}"]');
+        if(!page)throw Error('Required route is absent from runtime navigation: ${route}');
+        page.click();return true;
+      })()`);
+      await waitFor(async () => evaluateFrame(previewFrame.frame.id,
+        `document.querySelector('#content [data-page-title]')?.dataset.pageTitle==='${route}'`),
+      `The preview did not switch to ${route}`);
+      renderedPages[route] = await evaluateFrame(previewFrame.frame.id, `(()=>({
+        title:document.querySelector('#content [data-page-title]')?.textContent,
+        nodes:[...document.querySelectorAll('#content [data-component-id]')].map(node=>({
+          id:node.dataset.componentId,type:node.dataset.componentType,
+          parent:node.parentElement.closest('[data-component-id]')?.dataset.componentId||null,
+          text:node.dataset.componentType==="form-field"
+            ?node.querySelector(':scope > span')?.textContent||""
+            :[...node.childNodes].filter(child=>child.nodeType===Node.TEXT_NODE)
+              .map(child=>child.textContent).join(""),
+          binding:node.dataset.binding||null,color:getComputedStyle(node).color,
+          backgroundImage:getComputedStyle(node).backgroundImage
+        }))
+      }))()`);
+    }
+    const expectedPages = await evaluate(`(()=>{
+      const flatten=(nodes,parent=null,out=[])=>{for(const node of nodes){
+        out.push({id:node.id,type:node.type,parent,text:node.props?.label||node.props?.text||node.props?.title||""});
+        flatten(node.children||[],node.id,out);
+      }return out};
+      return Object.fromEntries(project.pages.map(page=>[page.route,{
+        title:page.title,nodes:flatten(page.components)
+      }]));
     })()`);
-    const renderedTypes = await evaluateFrame(previewFrame.frame.id, `(()=>({
-      route:document.querySelector('#content [data-page-title]')?.dataset.pageTitle,
-      types:[...new Set([...document.querySelectorAll('#content [data-component-type]')]
-        .map(node=>node.dataset.componentType))].sort(),
-      formField:!!document.querySelector('#content input[readonly]')
-    }))()`);
-    if (renderedTypes.route !== "PAGE_1" ||
-        supportedComponents.some(type => !renderedTypes.types.includes(type)) || !renderedTypes.formField)
-      throw Error("The runtime preview did not render the Studio component palette: " + JSON.stringify(renderedTypes));
-    await evaluateFrame(previewFrame.frame.id, `(()=>{
-      const month=document.querySelector('[data-page-route="MONTH"]');
-      if(!month)throw Error('Month route is absent from the runtime page navigation');
-      month.click();return true;
-    })()`);
-    const previewTree = await evaluateFrame(previewFrame.frame.id, `(()=>{
-      const root=document.querySelector('#content [data-component-id="month-root"]');
-      const heading=root?.querySelector('[data-component-id="text-2"]');
-      const grid=root?.querySelector('[data-component-id="month-grid-2"]');
-      return {page:document.querySelector('#content [data-page-title]')?.textContent,
-        heading:heading?.textContent,headingBinding:heading?.dataset.binding,
-        headingColor:heading?.style.color,grid:!!grid,
-        dateIds:[...(grid?.children||[])].filter(node=>node.dataset.componentId)
-          .map(node=>node.dataset.componentId),dateLabels:[...(grid?.children||[])]
-          .filter(node=>node.dataset.componentId).map(node=>node.textContent)};
-    })()`);
-    if (previewTree.page !== "Month metadata survives reopen" || previewTree.heading !== "November Header" ||
-        previewTree.headingBinding !== "presentation.month.header" || previewTree.headingColor !== "rgb(18, 52, 86)" ||
-        !previewTree.grid || JSON.stringify(previewTree.dateIds) !==
-          JSON.stringify(["date-button-3","date-button-2"]) ||
-        JSON.stringify(previewTree.dateLabels) !== JSON.stringify(["3","2"]))
-      throw Error("The WebView preview DOM does not match the saved component tree: " + JSON.stringify(previewTree));
+    const renderedTypes = [...new Set(Object.values(renderedPages)
+      .flatMap(page=>page.nodes.map(node=>node.type)))].sort();
+    if (supportedComponents.some(type => !renderedTypes.includes(type)))
+      throw Error("The five-page runtime preview omitted supported components: " + JSON.stringify(renderedTypes));
+    for (const route of routes) {
+      const expected = expectedPages[route], rendered = renderedPages[route];
+      if (rendered.title !== expected.title || JSON.stringify(rendered.nodes.map(node=>({
+        id:node.id,type:node.type,parent:node.parent,text:node.text
+      }))) !== JSON.stringify(expected.nodes))
+        throw Error(`The ${route} preview DOM differs from the saved component tree: ` +
+          JSON.stringify({expected,rendered}));
+    }
+    const monthHeading = renderedPages.MONTH.nodes.find(node=>node.id===monthTextId);
+    if (monthHeading?.text !== "November Header" || monthHeading.color !== "rgb(18, 52, 86)" ||
+        !renderedPages.MONTH.nodes.some(node=>node.id===monthGridId && node.type==="month-grid") ||
+        !renderedPages.MONTH.nodes.some(node=>node.id===secondDateId && node.parent===monthGridId))
+      throw Error("Month attributes, hierarchy, or style did not survive in the preview DOM");
+    if (!renderedPages.MEMO.nodes.some(node=>node.id===memoRowId && node.parent===memoScrollId) ||
+        !renderedPages.AI.nodes.some(node=>node.id===chatItemId && node.parent===aiScrollId) ||
+        !renderedPages.AI.nodes.some(node=>node.id===formFieldId) ||
+        !renderedPages.SETTINGS.nodes.some(node=>node.id===settingsRowId) ||
+        !renderedPages.SETTINGS.nodes.some(node=>node.id===resourceLayerId) ||
+        !renderedPages.TIMELINE.nodes.some(node=>node.id===timelineNodeId) ||
+        !renderedPages.TIMELINE.nodes.some(node=>node.id===timelineHeadingId))
+      throw Error("A required page/component structure was not preserved through Studio preview");
+    const resourceProbe = renderedPages.SETTINGS.nodes.find(node=>node.id===resourceLayerId);
+    if (!resourceProbe?.backgroundImage.includes("probe.png"))
+      throw Error("Studio preview did not resolve the uploaded PNG through the package-relative CSS path");
 
     await evaluate("document.querySelector('#exportPack').click();true");
     const packagePath = path.join(downloadDir, "powercal-blank-skin.pcskin");
@@ -400,12 +501,19 @@ async function main() {
         runtimeProject?.pages[1]?.components[0]?.children[0]?.props?.binding !==
           "presentation.month.header")
       throw Error("Export/reimport did not preserve the component structure and runtime projection");
+    const exportTarget = process.env.POWERCAL_BLANK_GATE_OUTPUT;
+    if (exportTarget) {
+      fs.mkdirSync(path.dirname(exportTarget), {recursive: true});
+      fs.copyFileSync(packagePath, exportTarget);
+    }
     console.log("BLANK V3 PROJECT SAVE/REOPEN/BUILD PASS", JSON.stringify({
       savedProject: projectPath, builtPackage: packagePath, pageRoutes: routes,
       stableIds: allIds, reopenedName: reopened.name, reopenedPage: reopened.pages[1],
       packageSha256: receipt.packageSha256, fileCount: receipt.fileCount,
       capabilities: receipt.manifest.capabilities, componentTree: treeState,
-      previewDom: previewTree, runtimeComponentTypes: renderedTypes.types,
+      previewDom: renderedPages, runtimeComponentTypes: renderedTypes,
+      componentIds: {memoRowId, chatItemId, formFieldId, settingsRowId, resourceLayerId},
+      androidFixtureTarget: exportTarget||null,
       reimportedPageCount: importedProject.pages.length
     }));
     await call("Page.navigate", {url: "about:blank"});
