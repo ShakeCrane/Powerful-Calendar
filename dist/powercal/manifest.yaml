@@ -55,3 +55,22 @@ visual_release_candidate:
   status: clear_fallback_visual_rc_delivered_custom_design_incomplete
   product_cutover: HOLD
   evidence_dir: .local/android-test/reports/V-02-20261105
+q05_release_candidate:
+  artifact: PowerCal Release Candidate with single-default migration (isolated QA package)
+  created: 2026-11-05
+  apk: PowerCal-Release-Candidate-Q05-QA-2026-11-05.apk
+  apk_sha256: 08E096B994C9078666DB43732F78D11B52B3603E836763B51A789E39348BA455
+  apk_bytes: 67011026
+  application_id: dev.powerfulcalendar.d05qaq05final
+  version_name: 0.9.5-rc.1
+  version_code: 905
+  build_type: debug
+  build_head: 7197a907cacc875e0e8ecf4c662d2d550342a2f4
+  default_skin_id: powercal-clear-default
+  default_skin_sha256: b9035719c2e0c75d335225216ea3687b72cc2cf4692e829ca43566c730c3fee3
+  apk_pcskin_count: 1
+  source_asset_matches_apk: true
+  status: internal_qa_release_candidate_delivered
+  product_cutover: HOLD
+  device: PowerCal_Wave2_QA35_20261104 / emulator-5554 / API 35
+  evidence_dir: .local/android-test/reports/Q-05-20261105/manifest.md

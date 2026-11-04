@@ -62,6 +62,26 @@ adb -s <设备序列号> shell monkey -p dev.powerfulcalendar 1
 
 RC 的 API 35 隔离 AVD 验证覆盖默认启动、损坏/缺失包回退、进程恢复、Web renderer/脚本错误和紧急回退前保存编辑草稿。强制 checkpoint I/O 失败、TalkBack 焦点顺序、真机/OEM 提醒投递、实时 AI 服务商连接和历史 SEP 全量签核仍未完成。Product Cutover 仍为 HOLD。
 
+## Checkpoint B 更新：Q-05 单一默认迁移 QA Release Candidate
+
+该包基于受保护分支提交 `7197a907cacc875e0e8ecf4c662d2d550342a2f4`，已在隔离 API 35 AVD 验证新安装、旧 Native/第三方选择迁移、冷启动及损坏工厂包的 Native 恢复。默认包损坏时保留旧包文件并停留在 Native；原 `dev.powerfulcalendar` 安装未被清除、卸载或覆盖。
+
+- APK：`PowerCal-Release-Candidate-Q05-QA-2026-11-05.apk`
+- SHA-256：`08E096B994C9078666DB43732F78D11B52B3603E836763B51A789E39348BA455`
+- 大小：`67,011,026` bytes
+- 包名：`dev.powerfulcalendar.d05qaq05final`（隔离 QA suffix，可与原版并装）
+- 版本：`0.9.5-rc.1`（versionCode `905`），Debug
+- APK 内恰好一份 `.pcskin`；源码与 APK 默认包 SHA-256 均为 `b9035719c2e0c75d335225216ea3687b72cc2cf4692e829ca43566c730c3fee3`
+
+在 Android SDK Platform Tools 可用的电脑上安装并启动：
+
+```powershell
+adb -s <设备序列号> install -r .\PowerCal-Release-Candidate-Q05-QA-2026-11-05.apk
+adb -s <设备序列号> shell monkey -p dev.powerfulcalendar.d05qaq05final 1
+```
+
+这是一份内部 QA Debug 包，不用于覆盖现有正式安装或公开发布。TalkBack 焦点遍历、真机/OEM 提醒投递、实时 AI 服务商与完整 SEP/SSA 签核仍未完成，Product Cutover 保持 HOLD。命令日志和验收证据位于 `.local/android-test/reports/Q-05-20261105/`。
+
 ## Checkpoint C：Visual Release Candidate（Clear 回退版）
 
 没有找到独立、已批准的 Claude 图稿/素材。因此本检查点使用已验证的 Clear 视觉，不擅自生成新图形；**功能交付已有 APK，定制视觉整合仍未完成**。

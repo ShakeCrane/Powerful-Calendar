@@ -3,16 +3,16 @@ PLAN: PLAN-2026-11-03-R2
 BRANCH: codex/skin-single-default-closure
 WAVE2_START_HEAD: 3b54097d6383c0349b5d3d638c228320e3c8e22c
 WAVE3_START_HEAD: 82b456fd2bfc15df379fd15d967fac3da57b899d
-LATEST_CODE_HEAD: b71cf0eedbd6dba9dafe0d9215ab33457258d045
-LATEST_VERIFIED_HEAD: 49b0841a6ea98ceec4872b07d3b6cec260fe55a9
-CURRENT_TASK: Q-02
-TASK_STATUS: PASS (matrix/replay task complete; historical SEP/SSA sign-off remains INCOMPLETE)
-LAST_COMPLETED_TASK: Q-02 full parity replay matrix (PASS as a traceable task; individual SSA states unchanged)
-LAST_COMPLETED_COMMIT: pending Q-02 closeout commit
-LAST_ATTEMPTED_TASK: Q-04 physical/OEM reminders NOT TESTED - no authorized handset connected (BLOCKED - EXTERNAL DEVICE)
-LAST_ATTEMPTED_COMMIT: 6f6cffc0e6bd99bcf532525b0ad39a4ae3373516 (Q-04 external-device checklist and blocker evidence)
-NEXT_TASK: Q-05
-NEXT_ACTION: Begin Q-05 on the protected branch using the current internal RC. Verify the single-default activation and migration on isolated QA states, preserve Store data, and retain Native recovery. Do not publish or remove any other worktree. Keep Product Cutover HOLD until Q-05's required evidence passes.
+LATEST_CODE_HEAD: 7197a907cacc875e0e8ecf4c662d2d550342a2f4
+LATEST_VERIFIED_HEAD: 7197a907cacc875e0e8ecf4c662d2d550342a2f4
+CURRENT_TASK: Q-05
+TASK_STATUS: PASS
+LAST_COMPLETED_TASK: Q-05 single-default startup migration and protected-branch cutover (PASS; public release remains HOLD)
+LAST_COMPLETED_COMMIT: 7197a907cacc875e0e8ecf4c662d2d550342a2f4
+LAST_ATTEMPTED_TASK: Q-05 isolated startup, migration, recovery and package verification (PASS)
+LAST_ATTEMPTED_COMMIT: 7197a907cacc875e0e8ecf4c662d2d550342a2f4
+NEXT_TASK: PRODUCT_RELEASE_QA
+NEXT_ACTION: Keep the internal QA Release Candidate available. Remaining release gates are TalkBack focus traversal, physical/OEM reminder delivery, live AI provider behavior and complete SEP/SSA sign-off; do not publish or migrate a public production install.
 LAST_TASK_EVIDENCE:
   Q-01:
     status: PASS (isolated migration/state matrix; package uninstall/reinstall NOT TESTED)
@@ -63,7 +63,7 @@ PRODUCT_DELIVERY_CHECKPOINT_C:
   android: API 35 isolated AVD; five WebView pages captured; see .local/android-test/reports/V-02-20261105/manifest.md
   limitations: No approved Claude artwork source found; TalkBack, physical/OEM and full SEP gaps remain; Product Cutover HOLD
 WAVE2_STATUS: COMPLETE (8 authorized work packages attempted; all PASS)
-WAVE3_STATUS: IN_PROGRESS (F-08 PASS; F-09 BLOCKED only for TalkBack traversal; S-06/S-07 PASS; Checkpoints A/B/C delivered; R-06/R-07 PASS; V-01 PASS; V-02 PARTIAL because custom artwork is unavailable; Q-01 PASS for isolated migration state matrix; Q-02 task PASS after current RC SEP-09 touch comparator passed; Q-03 BLOCKED for complete accessibility sign-off; recovery/layout checks 9/9 PASS; TalkBack and low-end hardware NOT TESTED; Q-04 external-device signature BLOCKED - EXTERNAL DEVICE; historical SEP/SSA sign-off incomplete; Product Cutover HOLD)
+WAVE3_STATUS: INTERNAL RELEASE CANDIDATE DELIVERED (Q-05 PASS on protected branch; F-09 TalkBack traversal NOT TESTED; Q-03 accessibility and Q-04 physical/OEM remain incomplete; V-02 custom artwork PARTIAL; historical SEP/SSA sign-off incomplete; public Product Cutover HOLD)
 
 WAVE3_QUEUE:
   - F-08 permissions/reminders/ICS/backup/system settings: PASS (commit c3a1e59f44e2b304314673f0030ae19c2f3f9d28)
@@ -78,6 +78,7 @@ WAVE3_QUEUE:
   - Q-02 full parity replay matrix: PASS as a task (16/16 SEP rows mapped; current RC Native-to-Clear AI chat trusted-touch comparator 1/1 PASS after fixing fixed-tabbar test scrolling; 48/51 invocation passes, with three historical failure logs preserved); SSA states were not raised and historical SEP sign-off remains INCOMPLETE. Evidence `.local/android-test/reports/Q-02-20261105/manifest.md` and `.local/android-test/reports/Q-02-20261105/current-rc-real-touch/`.
   - Q-03 recovery/performance/accessibility: BLOCKED for complete accessibility sign-off; 9/9 current API 35 renderer/corrupt-package/process-restart/2x-font/small-screen methods PASS; TalkBack focus traversal and low-end hardware NOT TESTED. Evidence `.local/android-test/reports/Q-03-20261105/manifest.md`.
   - Q-04 physical/OEM reminders: BLOCKED - EXTERNAL DEVICE; ADB listed only the isolated API 35 emulator. No physical/OEM test was run; see `Q04_PHYSICAL_DEVICE_RUNBOOK.md` and `.local/android-test/reports/Q-04-20261105/manifest.md`. This does not block the internal RC.
+  - Q-05 single-default startup migration: PASS (commit 7197a907cacc875e0e8ecf4c662d2d550342a2f4; 973/973 JVM; source boundaries, APK assemble, lint and AndroidTest compile PASS; API 35 isolated AVD fresh install, Native/third-party choice migration, cold launch and corrupt-factory Native recovery PASS; legacy package files preserved when factory validation fails). QA APK: `dist/powercal/PowerCal-Release-Candidate-Q05-QA-2026-11-05.apk`, package `dev.powerfulcalendar.d05qaq05final`, SHA-256 `08E096B994C9078666DB43732F78D11B52B3603E836763B51A789E39348BA455`; evidence `.local/android-test/reports/Q-05-20261105/manifest.md`.
 
 WAVE_2_QUEUE:
   - F-03 Closure: PASS (commit 2a8c323890c0f121b80c72a2a4d1c5c2a35d010d)
@@ -89,7 +90,7 @@ WAVE_2_QUEUE:
   - S-05 resource/source round-trip: PASS (commit a008f20771062e2d037a9f810435e5328b70bd46)
   - F-07 AI chat/proposal/review parity: PASS (commit 25711d3569edfd59c23c774c3bb371fbbc192044)
 
-DEFERRED_TASKS: None in current Wave 3 queue; R-06 and R-07 PASS. Q-05 production Cutover remains HOLD.
+DEFERRED_TASKS: Q-06 optional cleanup not required for APK delivery; no Worktree, user data, Studio project, design source or history cleanup performed. R-06/R-07/Q-05 code gates PASS.
 PHASE: Product delivery / final acceptance
 SEP_SIGNOFF: INCOMPLETE (historical parity remains unsigned)
 PRODUCT_CUTOVER: HOLD
@@ -103,8 +104,8 @@ OWNER_GOAL:
 
 RUNTIME_POLICY:
   Factory_skin: powercal-clear-default.pcskin (id powercal-clear-default).
-  Native_recovery: powercal-default. R-06 retired compiled/v2 daily dispatch; R-07 verified single Web runtime boot and Native recovery. Boot preference migration and Product Cutover remain HOLD.
-  No second factory skin or multi-skin store. Q-05 may switch the default only on the protected branch after the internal RC and required boot/recovery checks; public-store release is not authorized.
+  Native_recovery: powercal-default. R-06 retired compiled/v2 daily dispatch; R-07 verified single Web runtime boot and Native recovery; Q-05 migration passes on the protected branch. Public Product Cutover remains HOLD.
+  No second factory skin or multi-skin store. Q-05 protected-branch default migration is PASS; public-store release is not authorized.
 
 OWNER_OVERRIDE_2026_11_03:
   Legacy_package_policy: R-03 cleanup was limited to isolated QA app-private installed packages; do not archive/export legacy packages or preserve a daily multi-skin list.
@@ -115,8 +116,29 @@ OWNER_OVERRIDE_2026_11_05:
   Runtime_work: R-07 is PASS and the isolated internal RC is delivered. Do not migrate production preferences before Q-01/Q-02 and the required safety checks. After the internal RC and required safety checks, Q-05 may switch the default on this protected branch; no public release is authorized.
   TalkBack: F-09 focus order remains NOT TESTED after one bounded official keyboard shortcut diagnostic; no PowerCal defect was confirmed.
   Release_gate: Product Cutover remains HOLD.
+Q05_DELIVERY:
+  status: PASS (protected branch only; no public rollout)
+  code_commit: 7197a907cacc875e0e8ecf4c662d2d550342a2f4
+  qa_apk: dist/powercal/PowerCal-Release-Candidate-Q05-QA-2026-11-05.apk
+  package: dev.powerfulcalendar.d05qaq05final / 0.9.5-rc.1 / versionCode 905 / Debug
+  apk_sha256: 08E096B994C9078666DB43732F78D11B52B3603E836763B51A789E39348BA455
+  default_skin_sha256: b9035719c2e0c75d335225216ea3687b72cc2cf4692e829ca43566c730c3fee3
+  apk_pcskin_count: 1
+  evidence: .local/android-test/reports/Q-05-20261105/manifest.md
+  limitations: TalkBack traversal, physical/OEM reminder delivery, live AI provider and full SEP/SSA sign-off remain incomplete; Product Cutover HOLD.
 
 LATEST_VERIFIED_EVIDENCE:
+  Q-05:
+    status: PASS (startup migration and internal QA package; public Product Cutover HOLD)
+    commit: 7197a907cacc875e0e8ecf4c662d2d550342a2f4
+    jvm: 973/973 across 141 suites, 0 failures/errors/skips; focused migration/Native recovery 39/39.
+    boundaries: Skin and Native boundaries PASS; Debug assemble and lint PASS; AndroidTest Kotlin compile PASS.
+    android: API 35 isolated AVD PowerCal_Wave2_QA35_20261104 / emulator-5554; direct fresh install, legacy Native selection migration, third-party selection migration, cold launch, and corrupt-factory Native fallback passed on isolated `.d05qa` package IDs. Original `dev.powerfulcalendar` was not cleared, uninstalled or overwritten.
+    store: fresh and migration snapshots unchanged; corrupt or missing factory stays on Native and preserves legacy package files until a valid factory is available.
+    apk: `dist/powercal/PowerCal-Release-Candidate-Q05-QA-2026-11-05.apk`, SHA-256 `08E096B994C9078666DB43732F78D11B52B3603E836763B51A789E39348BA455`, 67,011,026 bytes, package `dev.powerfulcalendar.d05qaq05final`, version `0.9.5-rc.1`/905, Debug.
+    factory: exactly one `assets/powercal-clear-default.pcskin`; source/APK bytes match; SHA-256 `b9035719c2e0c75d335225216ea3687b72cc2cf4692e829ca43566c730c3fee3`.
+    evidence: `.local/android-test/reports/Q-05-20261105/manifest.md` and command logs in the same directory.
+    limits: no physical/OEM, TalkBack, live AI provider or complete SEP/SSA sign-off; no public production rollout.
   V-01:
     status: PASS (complete inventory and source mapping; no standalone Claude artwork available)
     evidence: docs/agent-handoff/VISUAL_ASSET_MAP.md
@@ -273,7 +295,7 @@ LATEST_VERIFIED_EVIDENCE:
     commit: 2a8c323890c0f121b80c72a2a4d1c5c2a35d010d
     evidence: .local/android-test/reports/F-03-20261104-wave2/
 
-BLOCKERS: TalkBack focus order, forced checkpoint-I/O failure, physical/OEM reminder delivery and live AI provider reliability remain NOT TESTED; Q-03 full accessibility and Q-04 physical/OEM sign-offs remain incomplete; historical SEP/SSA sign-off remains INCOMPLETE. Product Cutover remains HOLD pending Q-05 verification.
+BLOCKERS: TalkBack focus order, forced checkpoint-I/O failure, physical/OEM reminder delivery and live AI provider reliability remain NOT TESTED; Q-03 accessibility and Q-04 physical/OEM sign-offs remain incomplete; historical SEP/SSA sign-off remains INCOMPLETE. These do not block the internal QA Release Candidate; public Product Cutover remains HOLD.
 
 AUTHORITATIVE_PLAN: docs/POWERCAL_SINGLE_DEFAULT_SKIN_EXECUTION_PLAN_2026-11-03_R2.md
 ACCEPTANCE_MATRIX: docs/agent-handoff/SINGLE_SKIN_ACCEPTANCE.md
