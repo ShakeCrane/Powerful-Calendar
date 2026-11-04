@@ -400,6 +400,50 @@ MainActivity.setContent (MainActivity.kt:89-91)
 - **证据目录：** `.local/android-test/reports/F-03-20261104/`，含两次全量失败、单测复测、24 项定向 JVM、APK/Lint/compile、WebView trusted-touch 测试、两次冷启动 phase 日志及不同进程身份记录。
 - **签核影响：** SSA-03 保持 PARTIAL；SEP 历史签核不变；产品 Cutover HOLD。后续可继续独立的 S-01；F-03 只有在全量 JVM 门禁干净后方可重新标记 PASS。
 
+## Q-02 冻结行为重放记录（2026-11-05）
+
+**Q-02 任务状态：BLOCKED（矩阵与本轮可执行重放已登记；SSA-08 的 Native→Clear 普通聊天等价仍缺有效结果）。** 本节是本轮实测索引，不改变原 SSA-01～SSA-16 状态，也不签核 SEP-01～SEP-16 全项。
+
+### 本轮共同基线
+
+- Git 分支 / 起始 HEAD：`codex/skin-single-default-closure` / `09eae6d4df1d4ae79556ec5f9f9879ccb3629f0e`。从 Clear Visual RC 构建提交 `447f3b6f7c8e2586cb787faa97ba9d27b9730cb5` 到起始 HEAD，`app/src/main`、`app/src/androidTest`、`app/src/test`、`tools/skin-studio` 均无差异；因此被拉取的安装包和本轮设备测试源码对应相同产品/测试代码。
+- 设备：隔离 AVD `PowerCal_Wave2_QA35_20261104`，`emulator-5554`，Android 15 / API 35，启动完成；设备时区 `GMT`。每个 Native/Clear 对照在同一测试方法中用同输入初始化等价的隔离 Store；冻结日期/时区场景按方法夹具显式设定。
+- 设备已安装 APK：`dist/powercal/PowerCal-Visual-Release-Candidate-2026-11-05.apk`，设备拉取 SHA-256 `66fa0941beda7ff5fce3dbbfa176d3152a002205faafaba5666e8ac0068617a3`；测试 APK SHA-256 `67dfa76aefba2536d5e6a6ff888eb4acaf8d1b628087701173c1326d42f2d02c`。两者分别与本地 Visual RC 和 AndroidTest APK 完全一致。
+- 默认包：`powercal-clear-default`，`assets/powercal-clear-default.pcskin` 唯一一份；APK 与源码逐字节相同，SHA-256 `b9035719c2e0c75d335225216ea3687b72cc2cf4692e829ca43566c730c3fee3`。`build_default_clear.py --verify --apk ...` 通过。
+- 本轮直接执行 50 次 Android instrumentation 方法：47 次通过、3 次失败。Studio 权限用例的首次失败是 AVD 上既有 `POST_NOTIFICATIONS` 拒绝且 `USER_FIXED` 导致系统不再展示首次拒绝按钮；仅临时清除 `user-set/user-fixed` 标志后重跑通过，并恢复了原拒绝状态及标志。另一个 Native→Clear 聊天触摸对照连续两次在 WebView 收到 pointerdown 之前失败，均未进入 Clear 聊天 API；作为阻塞保留，不能用其失败断言为已确认产品缺陷或记为 PASS。
+- 通过用例逐项比较 Core Store 的记录身份、revision、occurrenceKey、草稿/提交/完成状态和取消零写入；本轮所有测试使用隔离 Store。应用主数据库当前 SHA-256 与 Q-01 终态相同：`881b1b234520d24636d9816fe48681d0bcfb7a8b1f4d39a2c1513b33fefb9cf7`。本轮未在首个 Q-02 用例前另取一次主库哈希，因此该值记录为终态/既有基线相同，不宣称本轮独立的前后快照。
+- 完整逐条日志、失败栈、实际安装 APK 与测试 APK 副本：`.local/android-test/reports/Q-02-20261105/`。
+
+### SEP 母项逐项重放与剩余边界
+
+| SEP / 新矩阵映射 | 本轮用户动作 → 正式 API；Core Store 对照 | 默认 Skin / Native 可观察结果 | Q-02 结果与仍未闭合项 | 本轮证据 |
+| --- | --- | --- | --- | --- |
+| SEP-01 → SSA-02,15,16 | 今日、缩放/复位、垂直平移、两侧翼滚动；从时间轴/月份创建 ACTIVITY、ALARM、DEADLINE，拖动移动；Calendar/Event API；Camera、eventSeq/revision、草稿与取消计数同夹具比较 | Native 与 Clear Camera/记录语义匹配；Clear 触摸创建/移动流程通过 | PASS（切片）；完整重叠命中、TalkBack、真机仍待 Q-03/Q-04 | `TimelineReturnViewport*`、`TimelineCreateContext*`、`TimelineDrag*` 日志 |
+| SEP-02 → SSA-03,16 | 月份/日期导航、选中重复实例打开编辑；Calendar/Recurrence API；日期、owner、occurrenceKey、revision、写入计数对照 | Native/Clear 日期转移与实例编辑目标匹配，无导航 Store 写入 | PASS（切片）；完整跨进程/Studio 月历往返和真机仍未签核 | `NativeClearMonthOccurrenceParity*` 日志；F-03 另为 PREVIOUS PASS |
+| SEP-03 → SSA-04,16 | Memo 创建、编辑、重开、单实例完成/撤销；Memo/Event API；completion key、revision、提交计数对照 | Clear 列表/Open/Done 投影与 Core 状态匹配；Native/Clear 完成结果匹配 | PASS（切片）；Studio 绑定和全场景仍未签核 | `WebSkinAllKindsTrustedWrite*` Memo 日志 |
+| SEP-04 → SSA-05,16 | 打开/关闭四类新建表单，分别创建四类事件；Event/Draft API；无改动零序列/零提交，有改动只产生一个草稿 | Native/Clear 同夹具四类记录和版本一致；无修改关闭零持久化写入 | PASS（切片）；Studio 表单完整创作和真机仍未签核 | `WebSkinAllKindsTrustedWrite*`、`NewEventEditorLifecycle*` |
+| SEP-05 → SSA-05,16 | 四类正式编辑、类型转换；Event API；revision、身份、提交历史一致 | Native/Clear 编辑结果匹配，可信 Host 保存后才有正式版本 | PASS（切片）；并不等于 Studio 编辑表单完整签核 | `WebSkinAllKindsTrustedWrite*` 编辑日志 |
+| SEP-06 → SSA-03,06,16 | Single / This-and-future / Whole；Recurrence/Event API；原系列、occurrenceKey、revision、拆分和提交数比较 | Alarm 与日期型 Deadline 三种作用域、重复 Memo 单实例完成切片通过 | PARTIAL；设备 DST gap/fold 与日期边界未在本轮验证，SSA-06 保持 PARTIAL | `WebSkinRecurringScopeParity*`、Memo recurrence 日志；F-06 为 PREVIOUS PASS |
+| SEP-07 → SSA-05,07,11,16 | 触摸删除、取消、过期版本冲突、恢复已删正式记录；Event/DraftReview API；取消零写入、身份复用、revision 对照 | Native/Clear 删除等价；Host 冲突刷新；恢复前仍需明确批准 | PASS（切片）；更广泛恢复/OEM 仍未签核 | `WebSkinFormalDeleteTouch*`、`ConflictReview*`、`WebSkinAllKindsTrustedWrite*` 删除日志 |
+| SEP-08 → SSA-07,16 | Memo deck 编辑/flush/reopen/publish；编辑器脏状态跨 force-stop；DraftReview API；待处理草稿 ID/版本/Store 计数对照 | 新进程恢复原草稿及 Memo 完成实例，未重复创建正式记录 | PASS（切片）；所有队列边界、撤销与 Studio 结构仍未签核 | `WebSkinAllKindsTrustedWrite*`、`clear-process-recovery-{prepare,restore}.log` |
+| SEP-09 → SSA-08,15,16 | Local-stub chat、失败后显式重试、附件同意与聊天历史冷启动；AI API；会话/Store 及未授权数据不外泄 | Clear Stub 聊天历史 force-stop 恢复通过；Native/Clear 失败重试和附件比较通过。普通聊天 Native→Clear 对照在两次执行中，AI tab 可见但测试未收到可信 pointerdown，未到达发送动作/API | **BLOCKED**；保留原日志，不断言产品缺陷，也不签等价；默认 Clear 普通聊天触摸对照是 Q-02 唯一未解 P1 观察项 | `PowerCalAiProposalReviewWebViewInstrumentedTest-nativeAndClearRealChatSend*`（两次失败）；`clear-chat-cold-cycle-{0,1}.log`（通过）；Studio local-stub chat 测试通过 |
+| SEP-10 → SSA-08,11,16 | 提案 CREATE/STAGE、REPLACE/DELETE scoped approval；AI/DraftReview/Event API；批准前后 formal/draft/commit 快照比较 | Native/Clear 生成待审草稿、审批后写入及拒绝未写入结果相符 | PASS（切片）；live provider 与全套恢复边界仍 NOT TESTED | 两个 `nativeAndClear*Proposal*` AI 日志及 local stub 证据 |
+| SEP-11 → SSA-09,10,16 | 通知拒绝/提醒入口、精确闹钟设置跳转、日历权限拒绝/空 provider 授权、AI 设置、ICS 选择导入草稿、篡改备份拒绝；Reminder/Settings/ImportExport API + Host SAF | 权限拒绝、取消选择、hash 错误均未造成 Core Store 写入；ICS 形成等价审核草稿 | PARTIAL；本轮未写系统 Calendar provider；F-08 的系统日历导入为 PREVIOUS PASS；OEM 实际提醒投递 NOT TESTED | 7 个 `ClearSettingsOptionsInstrumentedTest` 日志；F-08 `.local` 报告 |
+| SEP-12 → SSA-09,15,16 | Settings 外部权限/Picker 往返与取消；Android Host/SAF；Store 快照不变 | Clear 与 Blank Studio 的权限/文件取消反馈可观察，取消零写入 | PARTIAL；Back/IME 部分沿用 F-09 PREVIOUS PASS；TalkBack 与物理设备待 Q-03/Q-04 | Settings、Studio 权限日志；F-09 报告 |
+| SEP-13 → SSA-01,13,16 | 工厂包解析、注册和选择迁移；`SkinPackageManager`；Q-01 状态矩阵、APK 资产数/字节哈希 | 当前 Visual RC 实际只含一份 Clear；Q-01 对 Fresh/Native/unknown/损坏选择及恢复执行 24 方法 | PARTIAL；真实 package uninstall/reinstall 未测试，Q-01 只验证隔离安装状态矩阵 | Q-01 报告（PREVIOUS PASS，同 app/test APK SHA）；本轮 APK 包校验 |
+| SEP-14 → SSA-01,14,16 | 脏编辑跨进程恢复、损坏包冷启动 Native 回退；Host checkpoint/recovery；事件、草稿、eventSeq/revision 前后对照 | Q-02 真实 force-stop 后恢复原草稿；Q-01 对损坏工厂/已选包恢复 Native 且 Store 快照不变 | PASS（所测恢复切片）；checkpoint-I/O 注入故障及完整 SEP 签核仍未覆盖 | Q-02 process recovery logs；Q-01 recovery logs；R-07 PREVIOUS PASS |
+| SEP-15 → SSA-12,13,16 | Blank Studio 五页、组件树、四类表单、Host action/资源操作及 Force-stop 后重装载 | Studio 生成包 Android 五页与 Host API 动作通过；包与项目往返 Python/Browser 使用 S-06/S-07 PREVIOUS PASS | PASS（所测创作/运行切片）；自定义视觉稿未获，Visual RC 保持 Clear fallback；全量视觉/真机仍未签核 | 4 个 `StudioFromBlankFullRuntimeInstrumentedTest` 日志（权限用例控制重置后通过）；S-06/S-07 报告 |
+| SEP-16 → SSA-05,07,08,10,11,16 | 所有正式写入/删除/AI 提案审批和冲突确认；Event/DraftReview/AI API；批准前零正式写入、批准后匹配身份/revision | Clear 与 Native 在四类事件、删除/恢复、提案作用域对照中匹配 | PARTIAL；SEP-09 普通聊天触摸等价未闭合，因此不签最终业务等价 SSA-16 | trusted-write、delete、conflict、AI proposal 测试日志 |
+
+### 本轮失败、复验与状态裁定
+
+- 50 个独立 instrumentation 日志：47 次 `OK (1 test)`；3 次失败执行。失败类型只有两类：首次 Studio 权限测试受 `USER_FIXED` 前置状态影响（受控清标记后通过）；Native→Clear 普通 AI chat touch comparator 两次在同一位置断言失败，均无 API 请求。其他四条 AI Native/Clear proposal/error/attachment 对照及 Clear chat 冷启动历史回放通过。
+- Android 主应用数据库终态 SHA 与 Q-01 基线相同；Q-02 用例中的 Native/Clear 隔离 Store 快照均按测试断言比较。主要 app selection 为 `powercal-clear-default`；通知权限测试结束后恢复为原来的 denied/user-set/user-fixed。
+- 本轮没有运行全量 JVM/Gradle：当前 Debug code 与 971/971 JVM / Source Boundary / Lint / AndroidTest compile 的已验证代码树相同，且本任务未修改产品或测试源文件。该既有门禁标记 PREVIOUS PASS，非 Q-02 本轮运行结果。
+- `SSA-01～SSA-16` 原状态全部保留；真机/OEM、实际系统闹钟投递、TalkBack、SEP 整体签核仍未完成；Product Cutover 继续 HOLD。
+- 历史多皮肤选择/商店/安装包导出产品需求维持 `RETIRED-BY-OWNER`；本轮只验证隔离 QA 私有目录迁移，不接触真实用户文件，不影响 Native 恢复。
+
+
 ### F-03 闭环复验（Wave 2，2026-11-04）
 
 - **任务状态：PASS。** 首轮两次 full-suite 锁失败来自测试完成信号不完整：测试等待 `migrations.finished_ms` 后即开第二 SQLite 连接，彼时系统日历导入协程还要执行末尾 reload/reconcile。`SystemCalendarImportTest` 现等待导入完成后的 Host notice，再读取 commit 数；没有移除 Store 断言、增加睡眠或修改生产逻辑。具体锁持有连接未直接埋点，详见 `docs/issues/PC-ISSUE-QA-SYSTEM-CALENDAR-IMPORT-ROBOLECTRIC-CONTENTION.md`。
