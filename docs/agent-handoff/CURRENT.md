@@ -4,15 +4,15 @@ BRANCH: codex/skin-single-default-closure
 WAVE2_START_HEAD: 3b54097d6383c0349b5d3d638c228320e3c8e22c
 WAVE3_START_HEAD: 82b456fd2bfc15df379fd15d967fac3da57b899d
 LATEST_CODE_HEAD: b71cf0eedbd6dba9dafe0d9215ab33457258d045
-LATEST_VERIFIED_HEAD: 475f739c4760feec0703aab8e6371211327a8e2c
-CURRENT_TASK: V-02
+LATEST_VERIFIED_HEAD: 0d6ceb1fb6a7a7a6fbc074a508d77480aa561ef6
+CURRENT_TASK: Q-01
 TASK_STATUS: IN_PROGRESS
-LAST_COMPLETED_TASK: V-01-VISUAL-ASSET-INVENTORY-AND-STUDIO-MAP (PASS; separate Claude artwork not present)
-LAST_COMPLETED_COMMIT: 475f739c4760feec0703aab8e6371211327a8e2c
-LAST_ATTEMPTED_TASK: V-02 Visual RC from the validated Clear fallback (IN PROGRESS)
-LAST_ATTEMPTED_COMMIT: 475f739c4760feec0703aab8e6371211327a8e2c
-NEXT_TASK: V-02
-NEXT_ACTION: Produce the Visual Release Candidate from the verified Clear fallback using Studio's existing round-trip/build path; explicitly leave custom Claude visual integration incomplete because its artwork source is absent.
+LAST_COMPLETED_TASK: V-02-CLEAR-FALLBACK-VISUAL-RC (PARTIAL; Checkpoint C delivered, custom artwork unavailable)
+LAST_COMPLETED_COMMIT: 0d6ceb1fb6a7a7a6fbc074a508d77480aa561ef6
+LAST_ATTEMPTED_TASK: Q-01 install and legacy migration acceptance (IN PROGRESS)
+LAST_ATTEMPTED_COMMIT: 0d6ceb1fb6a7a7a6fbc074a508d77480aa561ef6
+NEXT_TASK: Q-01
+NEXT_ACTION: Run the Q-01 isolated fresh-install, upgrade/migration, corrupt-package recovery, and Store-preservation cases from R2. Keep tests within the verified QA app and its private fixture data; do not clear production or external data.
 PRODUCT_DELIVERY_CHECKPOINT_A:
   status: DELIVERED (PowerCal Functional Preview; Debug only)
   apk: dist/powercal/PowerCal-Functional-Preview-2026-11-05.apk
@@ -34,8 +34,18 @@ PRODUCT_DELIVERY_CHECKPOINT_B:
   android: API 35 isolated AVD; final APK emergency-checkpoint and persisted-Clear cold-boot checks 2/2 PASS; R-07 failure/restart checks PASS
   evidence: .local/android-test/reports/R-07-20261105/
   limitations: TalkBack traversal, physical/OEM reminder delivery, live AI provider and full SEP sign-off remain NOT TESTED/INCOMPLETE; Product Cutover HOLD
+PRODUCT_DELIVERY_CHECKPOINT_C:
+  status: DELIVERED (Clear fallback Visual RC; custom visual integration PARTIAL)
+  apk: dist/powercal/PowerCal-Visual-Release-Candidate-2026-11-05.apk
+  apk_sha256: 66fa0941beda7ff5fce3dbbfa176d3152a002205faafaba5666e8ac0068617a3
+  build_head: 447f3b6f7c8e2586cb787faa97ba9d27b9730cb5
+  default_skin: dist/powercal/powercal-clear-default-Visual-Release-Candidate-2026-11-05.pcskin
+  default_skin_sha256: b9035719c2e0c75d335225216ea3687b72cc2cf4692e829ca43566c730c3fee3
+  studio_project: tools/skin-studio/default-clear/
+  android: API 35 isolated AVD; five WebView pages captured; see .local/android-test/reports/V-02-20261105/manifest.md
+  limitations: No approved Claude artwork source found; TalkBack, physical/OEM and full SEP gaps remain; Product Cutover HOLD
 WAVE2_STATUS: COMPLETE (8 authorized work packages attempted; all PASS)
-WAVE3_STATUS: IN_PROGRESS (F-08 PASS; F-09 TalkBack traversal NOT TESTED; S-06/S-07 PASS; Checkpoint A and B delivered; R-06/R-07 PASS; V-01 PASS; V-02 Clear fallback RC IN PROGRESS; custom artwork unavailable; Product Cutover HOLD)
+WAVE3_STATUS: IN_PROGRESS (F-08 PASS; F-09 TalkBack traversal NOT TESTED; S-06/S-07 PASS; Checkpoint A, B, and Clear-fallback C delivered; R-06/R-07 PASS; V-01 PASS; V-02 PARTIAL because custom artwork is unavailable; Q-01 IN PROGRESS; Product Cutover HOLD)
 
 WAVE3_QUEUE:
   - F-08 permissions/reminders/ICS/backup/system settings: PASS (commit c3a1e59f44e2b304314673f0030ae19c2f3f9d28)
@@ -45,8 +55,8 @@ WAVE3_QUEUE:
   - R-06 runtime retirement: PASS (commit ffde207343454bdd998ced223f3cfbcc0527d341; compiled examples moved to test source, v2 dispatch default-off, Native recovery preserved)
   - R-07 runtime/recovery gate: PASS (commit b71cf0eedbd6dba9dafe0d9215ab33457258d045; API 35 boot/failure/restart and dirty-editor checkpoint verified)
   - V-01 design/asset takeover: PASS (available Clear resources and Studio anchors mapped; no separate approved Claude artwork found in this worktree; see `VISUAL_ASSET_MAP.md`)
-  - V-02 default Clear visual implementation: IN PROGRESS; prepare a fresh Visual RC from verified Clear fallback; custom visual integration remains incomplete pending approved artwork
-  - Q-01 install/migration acceptance: NOT STARTED; follows visual integration
+  - V-02 Clear-fallback Visual RC: PARTIAL (commit 0d6ceb1fb6a7a7a6fbc074a508d77480aa561ef6; APK and canonical .pcskin available in dist/powercal; five API 35 WebView screenshots and hashes recorded; custom art absent)
+  - Q-01 install/migration acceptance: IN PROGRESS; use the R2 Q-01 task card and verified isolated QA fixtures
   - Q-02 full parity replay: NOT STARTED; follows Q-01
 
 WAVE_2_QUEUE:
