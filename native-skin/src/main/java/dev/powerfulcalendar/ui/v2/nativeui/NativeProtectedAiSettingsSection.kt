@@ -33,7 +33,7 @@ import androidx.compose.ui.unit.dp
 import dev.powerfulcalendar.ui.v2.NativeProtectedAiSettingsActions
 import dev.powerfulcalendar.ui.v2.NativeProtectedAiSettingsDisplay
 
-/** Native-only AI settings presentation. The Host supplies the password field and owns all data. */
+/** Protected Compose presentation. The Host supplies the password field and owns all data. */
 @Composable
 fun NativeProtectedAiSettingsSection(
     display: NativeProtectedAiSettingsDisplay,

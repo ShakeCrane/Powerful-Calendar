@@ -274,6 +274,7 @@ fun PowerCalApp(
     var refreshCalendarSnapshotAfterEventConflict by remember { mutableStateOf(false) }
 
     var page by rememberSaveable { mutableStateOf(Page.TIMELINE.name) }
+    var hostAiSettingsOpen by remember { mutableStateOf(false) }
     var records by remember { mutableStateOf<List<TemporalRecord>>(emptyList()) }
     var eventDataGeneration by remember { mutableLongStateOf(0L) }
     var eventFeatureRevision by remember { mutableLongStateOf(0L) }
@@ -1976,6 +1977,7 @@ fun PowerCalApp(
 
     LaunchedEffect(page) {
         if (page != Page.SETTINGS.name) {
+            hostAiSettingsOpen = false
             webProfileEditorName = null
             webProfileEditorSkinId = null
             webProfileEditorSaved = false
@@ -2057,6 +2059,13 @@ fun PowerCalApp(
         }
         WebSkinBridgeRuntime.onAction = { action ->
             when (action) {
+                WebSkinAction.OpenAiSettings -> {
+                    if (fullCanvasWeb && canManageSkinFromSettings()) {
+                        webProfileEditorName = null
+                        webProfileEditorSkinId = null
+                        hostAiSettingsOpen = true
+                    }
+                }
                 is WebSkinAction.Routed -> when (action.name) {
                     "timeline" -> {
                         webProfileEditorName = null; webProfileEditorSkinId = null
@@ -2928,6 +2937,10 @@ fun PowerCalApp(
                     .padding(bottom = 92.dp)
             )
         }
+    }
+
+    if (hostAiSettingsOpen) {
+        HostProtectedAiSettingsDialog(onDismiss = { hostAiSettingsOpen = false })
     }
 
     pendingWebAiProposalPublish?.let { review ->

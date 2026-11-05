@@ -485,6 +485,34 @@
       }
     },
     {
+      "name": "openAiSettings",
+      "label": "Open protected AI settings",
+      "parameters": {},
+      "source": "WebSkinHost.decodeBridgeAction → PowerCalApp HostProtectedAiSettingsDialog",
+      "version": 1,
+      "requiredCapability": "host.action",
+      "parameterSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "resultSchema": "#/actionResult",
+      "errors": "#/actionResult/errors",
+      "wirePayloadSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "const": "openAiSettings"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
       "name": "nativeSettings",
       "label": "Open Host settings/recovery",
       "parameters": {},

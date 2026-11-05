@@ -2252,6 +2252,14 @@ function onSkinAction(message){
       logAction("Studio Mock 关闭个人资料表单；合成名称已从投影移除");
       postState();return;
     }
+    if(name==="openAiSettings"){
+      if(Object.keys(p).sort().join(",")!=="name"||mockPage!=="SETTINGS"){
+        logAction("拒绝非设置页或格式无效的受保护 AI 设置请求");return;
+      }
+      mockProfileEditor=null;postState();
+      logAction("Studio Mock 打开 Host 保护的 AI 配置表单；此页面不启动 Android Host，不读取密钥或保存偏好");
+      return;
+    }
     if(name==="nativeSettings"){
       if(Object.keys(p).sort().join(",")!=="name"){
         logAction("拒绝无效 nativeSettings payload");return;

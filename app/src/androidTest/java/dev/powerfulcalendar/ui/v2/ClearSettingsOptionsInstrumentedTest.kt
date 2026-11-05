@@ -1175,6 +1175,10 @@ class ClearSettingsOptionsInstrumentedTest {
             compose.waitUntil(15_000) {
                 compose.onAllNodesWithText("单一 AI").fetchSemanticsNodes().isNotEmpty()
             }
+            assertEquals("Opening protected AI settings must leave the active Web page in Settings",
+                "SETTINGS", WebSkinBridgeRuntime.state().optString("page"))
+            assertTrue("The Native recovery/tools page must not replace ordinary Skin Settings",
+                compose.onAllNodesWithText("工具与设置").fetchSemanticsNodes().isEmpty())
             compose.onNodeWithText("配置端点、模型与密钥").performClick()
             compose.waitUntil(10_000) {
                 compose.onAllNodesWithText("允许按次共享事件上下文")
@@ -2164,7 +2168,7 @@ class ClearSettingsOptionsInstrumentedTest {
     }
 
     @Test
-    fun clearHostAiSettingsBackRestoresSelectedSkinTimeline() {
+    fun clearAiSettingsDialogCloseReturnsToSkinWithoutNativeTools() {
         assumeTrue("navigation parity test requires an isolated Android emulator",
             Build.HARDWARE == "ranchu" || Build.HARDWARE == "goldfish")
         val context = compose.activity.applicationContext
@@ -2210,10 +2214,15 @@ class ClearSettingsOptionsInstrumentedTest {
             compose.waitUntil(15_000) {
                 compose.onAllNodesWithText("单一 AI").fetchSemanticsNodes().isNotEmpty()
             }
-            assertEquals("Host AI Settings opens the Native Tools page", 1,
-                compose.onAllNodesWithText("工具与设置").fetchSemanticsNodes().size)
-
-            compose.onNodeWithContentDescription("返回时间轴").performClick()
+            assertEquals("AI settings must remain a Host dialog above Web Settings", "SETTINGS",
+                WebSkinBridgeRuntime.state().optString("page"))
+            assertTrue("The dialog must not route through Native Tools",
+                compose.onAllNodesWithText("工具与设置").fetchSemanticsNodes().isEmpty())
+            compose.onNodeWithText("关闭").performClick()
+            compose.waitUntil(10_000) {
+                compose.onAllNodesWithText("AI 配置与隐私").fetchSemanticsNodes().isEmpty()
+            }
+            tapWebSelector(clearTimeline, ".clear-tabbar [data-action=timeline]")
             var restored = false
             try {
                 compose.waitUntil(15_000) {
@@ -2243,14 +2252,14 @@ class ClearSettingsOptionsInstrumentedTest {
                     "entrypoint=$entrypoint hostPage=$page webViewFound=${web != null} " +
                     "webViewAttached=${attached.get()}")
             }
-            assertTrue("Host AI Settings Back must restore the selected Clear timeline",
+            assertTrue("Skin navigation after closing Host AI settings must restore the timeline",
                 restored)
             assertEquals("Host route/back must not create or modify calendar business data",
                 before, storeSnapshot())
             assertEquals("Returning from protected Host settings retains the selected skin",
                 "powercal-clear-default", skinManager.currentId())
-            println("SEP12_CLEAR_HOST_AI_SETTINGS_BACK_PARITY selectedSkin=" +
-                "${skinManager.currentId()} trustedEntry=true timelineRestored=true " +
+            println("SEP12_CLEAR_HOST_AI_SETTINGS_DIALOG_PARITY selectedSkin=" +
+                "${skinManager.currentId()} settingsPageRetained=true timelineRestored=true " +
                 "storeUnchanged=true")
         } finally {
             compose.runOnUiThread {

@@ -260,7 +260,7 @@ function onAction(button){
   else if(name==="jumpTimelineDay")send(name,{date:button.dataset.date});
   else if(name==="browseMonth")send(name,{deltaMonths:Number(button.dataset.deltaMonths)});
   else if(name==="selectMonthDate")send(name,{date:button.dataset.date});
-  else {if(["timeline","memo","month","ai","settings","nativeSettings"].includes(name))localOptions=false;send(name)}
+  else {if(["timeline","memo","month","ai","settings","nativeSettings","openAiSettings"].includes(name))localOptions=false;send(name)}
 }
 function cancelTimelineDrag(){
   const gesture=timelineDrag;

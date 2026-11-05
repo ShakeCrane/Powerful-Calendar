@@ -130,6 +130,8 @@ internal object WebSkinBridgeRuntime {
 
 internal sealed interface WebSkinAction {
     data class Routed(val name: String) : WebSkinAction
+    /** Opens the Host-owned protected AI settings form without leaving the active Skin page. */
+    data object OpenAiSettings : WebSkinAction
     data object OpenProfileEditor : WebSkinAction
     data object CloseProfileEditor : WebSkinAction
     data class SaveProfileEditor(val displayName: String) : WebSkinAction
@@ -526,6 +528,7 @@ internal fun decodeBridgeAction(raw: String): WebSkinAction? {
     val name = payload.optString("name")
     if (name.length !in 1..40) return null
     return when (name) {
+        "openAiSettings" -> if (keys == setOf("name")) WebSkinAction.OpenAiSettings else null
         "timeline", "month", "memo", "ai", "settings", "nativeSettings", "openDeck", "today" ->
             if (keys == setOf("name")) WebSkinAction.Routed(name) else null
         "openProfileEditor" -> if (keys == setOf("name"))

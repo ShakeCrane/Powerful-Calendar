@@ -18,6 +18,10 @@ class WebSkinBridgeTest {
             """{"version":1,"type":"action","payload":{"name":"today"}}"""))
         assertEquals(WebSkinAction.Routed("nativeSettings"), decodeBridgeAction(
             """{"version":1,"type":"action","payload":{"name":"nativeSettings"}}"""))
+        assertEquals(WebSkinAction.OpenAiSettings, decodeBridgeAction(
+            """{"version":1,"type":"action","payload":{"name":"openAiSettings"}}"""))
+        assertNull(decodeBridgeAction(
+            """{"version":1,"type":"action","payload":{"name":"openAiSettings","apiKey":"secret"}}"""))
         assertEquals(WebSkinAction.ClearAiTemporaryCache, decodeBridgeAction(
             """{"version":1,"type":"action","payload":{"name":"clearAiTemporaryCache"}}"""))
         assertNull(decodeBridgeAction(
