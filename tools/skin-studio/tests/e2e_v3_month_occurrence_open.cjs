@@ -102,7 +102,7 @@ async function main(){
       throw Error("Repeating Host Mock fixture did not load: "+JSON.stringify(fixture));
     await frameEval("document.querySelector('.clear-tabbar [data-action=\\\"month\\\"]')?.click()");
     await waitFor(frameEval,"!document.querySelector('#monthPage').hidden&&"+
-      "document.querySelector('#monthAgenda h2')?.textContent==='2026-10-22'",
+      "document.querySelector('#monthAgenda h2')?.dataset.date==='2026-10-22'",
       "Month agenda");
     const agenda=await frameEval(`(()=>{
       const button=document.querySelector("#monthAgenda .agenda-event["+

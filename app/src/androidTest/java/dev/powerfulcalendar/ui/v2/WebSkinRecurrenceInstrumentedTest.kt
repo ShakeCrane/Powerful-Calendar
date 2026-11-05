@@ -179,7 +179,7 @@ class WebSkinRecurrenceInstrumentedTest {
             val monthTabTap = tapClear(view, ".clear-tabbar [data-action='month']")
             awaitJs(view, "!document.querySelector('#monthPage').hidden")
             val dateTap = tapClear(view, ".month-cell[data-date='$today']")
-            awaitJs(view, "document.querySelector('#monthAgenda h2')?.textContent==='$today'")
+            awaitJs(view, "document.querySelector('#monthAgenda h2')?.dataset.date==='$today'")
             val agendaEvent = "document.querySelector(\"#monthAgenda .agenda-event" +
                 "[data-event-seq='${card.eventSeq}'][data-original-occurrence-key='$key']\")"
             try {

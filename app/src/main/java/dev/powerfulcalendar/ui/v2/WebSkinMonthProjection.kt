@@ -1,7 +1,7 @@
 package dev.powerfulcalendar.ui.v2
 
-import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
+import dev.powerfulcalendar.core.TemporalText
 import dev.powerfulcalendar.core.api.v1.RecurrenceFeatureApiV1
 import org.json.JSONArray
 import org.json.JSONObject
@@ -9,7 +9,6 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.YearMonth
-import java.time.temporal.ChronoUnit
 
 /** Host-owned month navigation state; selection is independent from the timeline camera. */
 internal data class WebSkinMonthViewState(
@@ -64,26 +63,46 @@ internal object WebSkinMonthProjection {
         val monthFirst = view.month.atDay(1)
         val gridFirst = monthFirst.minusDays((monthFirst.dayOfWeek.value - 1).toLong())
         val gridEnd = gridFirst.plusDays(42)
+        val monthDays = (1..view.month.lengthOfMonth()).map { monthFirst.plusDays((it - 1).toLong()) }
         val from = gridFirst.atStartOfDay(zone).toInstant().toEpochMilli()
         val to = gridEnd.atStartOfDay(zone).toInstant().toEpochMilli()
-        val eligible = records.filter { it.kind != TemporalKind.MEMO }
+        val eligible = records
         val owners = eligible.take(MAX_OWNERS)
         val occurrences = displayOccurrences(owners, from, to, recurrenceFeatures)
             .sortedWith(compareBy({ it.record.anchorMillis() ?: Long.MAX_VALUE },
                 { it.owner.eventSeq }, { it.key }))
         val items = JSONArray()
-        occurrences.take(MAX_ITEMS).forEach { item ->
-            val start = item.record.anchorMillis() ?: return@forEach
-            val day = Instant.ofEpochMilli(start).atZone(item.record.zone).toLocalDate()
+        occurrences.take(MAX_ITEMS).forEach { occurrence ->
+            val display = occurrence.record
+            val visibleDates = monthDays.filter { day ->
+                if (display.isDateOnlyDeadline()) display.deadlineDate == day.toString()
+                else {
+                    val dayStart = day.atStartOfDay(zone).toInstant().toEpochMilli()
+                    val dayEnd = day.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
+                    overlapsDayWindow(display, dayStart, dayEnd)
+                }
+            }
+            if (visibleDates.isEmpty()) return@forEach
+            val start = display.anchorMillis() ?: return@forEach
+            val displayDate = if (display.isDateOnlyDeadline()) {
+                display.deadlineDate ?: return@forEach
+            } else Instant.ofEpochMilli(start).atZone(zone).toLocalDate().toString()
+            val visibleDateKeys = JSONArray().apply {
+                visibleDates.forEach { put(it.toString()) }
+            }
             items.put(JSONObject()
-                .put("eventSeq", item.owner.eventSeq)
-                .put("revision", item.owner.revision)
-                .put("occurrenceKey", item.key.take(120))
-                .put("originalOccurrenceKey", if (item.owner.recurrence.isRepeating)
-                    item.occurrenceKey else JSONObject.NULL)
-                .put("title", item.record.title.take(200))
-                .put("kind", item.record.kind.name)
-                .put("date", day.toString())
+                .put("eventSeq", occurrence.owner.eventSeq)
+                .put("revision", occurrence.owner.revision)
+                .put("occurrenceKey", occurrence.key.take(120))
+                .put("originalOccurrenceKey", if (occurrence.owner.recurrence.isRepeating)
+                    occurrence.occurrenceKey else JSONObject.NULL)
+                .put("title", display.title.take(200))
+                .put("kind", display.kind.name)
+                .put("kindLabel", display.kind.label)
+                .put("summary", TemporalText.summarize(display).take(240))
+                .put("sequenceLabel", occurrence.owner.displaySeq())
+                .put("date", displayDate)
+                .put("visibleDateKeys", visibleDateKeys)
                 .put("startMillis", start))
         }
         return JSONObject()

@@ -472,21 +472,34 @@ $("monthGrid").addEventListener("click",event=>{
   event.preventDefault();event.stopImmediatePropagation();
   monthSwipeConsumed=false;clearTimeout(monthSwipeReset);
 },true);
-$("monthTitle").addEventListener("click",()=>{
-  const month=state.month||{};
-  const [year,number]=String(month.month||"2026-10").split("-").map(Number);
+$("monthYearTitle").addEventListener("click",()=>{
+  const [year]=String(state.month?.month||"2026-10").split("-").map(Number);
   $("monthYear").value=year;
-  $("monthNumber").value=String(number);
+  $("monthYearPickerDialog").showModal();
+});
+$("monthNumberTitle").addEventListener("click",()=>{
+  const [year]=String(state.month?.month||"2026-10").split("-").map(Number);
+  $("monthPickerHeading").textContent=`选择月份 · ${year} 年`;
   $("monthPickerDialog").showModal();
 });
 $("monthPickerCancel").addEventListener("click",()=>$("monthPickerDialog").close());
-$("monthPickerForm").addEventListener("submit",event=>{
+$("monthYearPickerCancel").addEventListener("click",()=>$("monthYearPickerDialog").close());
+$("monthYearPickerForm").addEventListener("submit",event=>{
   event.preventDefault();
-  const year=Number($("monthYear").value),month=Number($("monthNumber").value);
-  if(!Number.isInteger(year)||year<1900||year>2100||!Number.isInteger(month)||month<1||month>12)return;
-  $("monthPickerDialog").close();
+  const year=Number($("monthYear").value);
+  if(!Number.isInteger(year)||year<1900||year>2100)return;
+  const [,month]=String(state.month?.month||"2026-10").split("-").map(Number);
+  $("monthYearPickerDialog").close();
   send("selectMonth",{month:`${String(year).padStart(4,"0")}-${String(month).padStart(2,"0")}`});
 });
+document.querySelectorAll("#monthPickerForm [data-month-number]").forEach(button=>
+  button.addEventListener("click",()=>{
+    const [year]=String(state.month?.month||"2026-10").split("-").map(Number);
+    const month=Number(button.dataset.monthNumber);
+    if(!Number.isInteger(month)||month<1||month>12)return;
+    $("monthPickerDialog").close();
+    send("selectMonth",{month:`${String(year).padStart(4,"0")}-${String(month).padStart(2,"0")}`});
+  }));
 function closeProfileEditor(){
   const dialog=$("profileEditorDialog");
   if(dialog.open)dialog.close();
@@ -993,11 +1006,14 @@ function renderMonth(){
   const month=state.month||{},t=state.timeline||{};
   const zone=month.zoneId||t.zoneId||"Asia/Shanghai";
   const firstIso=month.gridFrom||new Date().toISOString().slice(0,10);
-  $("monthTitle").textContent=(month.month||"") + " · " + zone;
   const grid=$("monthGrid");grid.replaceChildren();
   const events=month.items||[];
   const counts=new Map();
-  for(const event of events)counts.set(event.date,(counts.get(event.date)||0)+1);
+  for(const event of events){
+    const dates=Array.isArray(event.visibleDateKeys)&&event.visibleDateKeys.length
+      ?event.visibleDateKeys:[event.date];
+    for(const date of dates)counts.set(date,(counts.get(date)||0)+1);
+  }
   for(const wd of ["一","二","三","四","五","六","日"])grid.append(node("div","month-weekday",wd));
   const origin=Date.parse(firstIso+"T00:00:00Z");
   const [shownYear,shownMonth]=String(month.month||firstIso.slice(0,7)).split("-").map(Number);
@@ -1011,36 +1027,58 @@ function renderMonth(){
   const monthToday=$("monthToday");
   if(monthToday)monthToday.dataset.date=todayIso;
   const [yearValue,monthValue]=String(month.month||firstIso.slice(0,7)).split("-").map(Number);
-  $("monthTitle").textContent=String(month.month||firstIso.slice(0,7));
-  $("monthTitle").dataset.nativeLabel=`${yearValue} 年   ${monthValue} 月`;
-  $("monthTitle").setAttribute("aria-label",`选择 ${yearValue} 年 ${monthValue} 月`);
+  const title=$("monthTitle");
+  title.dataset.month=String(month.month||firstIso.slice(0,7));
+  title.setAttribute("aria-label",`月份 ${yearValue} 年 ${monthValue} 月`);
+  $("monthYearTitle").textContent=`${yearValue} 年`;
+  $("monthYearTitle").setAttribute("aria-label",`选择年份，当前 ${yearValue} 年`);
+  $("monthNumberTitle").textContent=`${monthValue} 月`;
+  $("monthNumberTitle").setAttribute("aria-label",`选择月份，当前 ${monthValue} 月`);
+  $("monthPickerHeading").textContent=`选择月份 · ${yearValue} 年`;
+  document.querySelectorAll("#monthPickerForm [data-month-number]").forEach(button=>{
+    const selected=Number(button.dataset.monthNumber)===monthValue;
+    button.setAttribute("aria-pressed",String(selected));
+  });
   for(let i=0;i<cellCount;i++){
     const date=new Date(origin+i*86400000),iso=date.toISOString().slice(0,10);
     if(iso.slice(0,7)!==(month.month||firstIso.slice(0,7))){
       grid.append(node("div","month-cell-empty"));continue;
     }
-    const button=node("button","month-cell",date.getUTCDate());
+    const button=node("button","month-cell");
     button.type="button";button.dataset.action="selectMonthDate";button.dataset.date=iso;
     if(iso===month.selectedDate)button.classList.add("selected");
     if(iso===todayIso)button.classList.add("today");
     button.setAttribute("aria-pressed",String(iso===month.selectedDate));
     const count=counts.get(iso)||0;
     button.setAttribute("aria-label",`${iso}，${count} 项${iso===todayIso?"，今天":""}`);
-    if(count)button.append(node("span","month-dot",count>3?"•••":"•".repeat(count)));
+    button.append(node("span","month-day-number",date.getUTCDate()));
+    button.append(node("span","month-count",count?`${count} 项`:""));
     grid.append(button);
   }
   const agenda=$("monthAgenda");agenda.replaceChildren();
-  const picked=events.filter(item=>item.date===month.selectedDate);
   const selectedDate=String(month.selectedDate||firstIso);
-  const selectedParts=selectedDate.split("-").map(Number),weekday=new Date(Date.UTC(selectedParts[0],selectedParts[1]-1,selectedParts[2])).getUTCDay();
-  const weekdayNames=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
-  agenda.append(node("h2","",`${selectedParts[1]}月${selectedParts[2]}日 ${weekdayNames[weekday]}`));
+  const picked=events.filter(item=>Array.isArray(item.visibleDateKeys)&&item.visibleDateKeys.length
+    ?item.visibleDateKeys.includes(selectedDate):item.date===selectedDate);
+  const selectedParts=selectedDate.split("-").map(Number);
+  const weekdayLabel=new Intl.DateTimeFormat(undefined,{weekday:"long",timeZone:"UTC"})
+    .format(new Date(Date.UTC(selectedParts[0],selectedParts[1]-1,selectedParts[2])));
+  const agendaHeading=node("h2","",`${selectedParts[1]}月${selectedParts[2]}日 ${weekdayLabel}`);
+  agendaHeading.dataset.date=selectedDate;
+  agenda.append(agendaHeading);
   if(!picked.length)agenda.append(node("p","quiet","这一天还很从容。"));
   for(const item of picked){
-    const button=node("button","agenda-event",item.title);
+    const kindClass=String(item.kind||"").toLowerCase();
+    const button=node("button",`agenda-event ${kindClass}`);
     button.dataset.action="openEvent";
     button.dataset.eventSeq=item.eventSeq;button.dataset.revision=item.revision;
     if(item.originalOccurrenceKey)button.dataset.originalOccurrenceKey=item.originalOccurrenceKey;
+    button.append(node("span","agenda-event-title",`${item.kindLabel||"事件"} · ${item.title||""}`));
+    if(item.summary)button.append(node("span","agenda-event-summary",item.summary));
+    if(item.sequenceLabel)button.append(node("span","agenda-event-sequence",
+      item.sequenceLabel+(state.aiLocked?" · AI 处理中，仅查看":"")));
+    button.setAttribute("aria-label",[
+      item.kindLabel,item.title,item.summary,item.sequenceLabel
+    ].filter(Boolean).join("，"));
     agenda.append(button);
   }
   if(month.truncated)agenda.append(node("p","quiet","本月事件超过投影上限，部分数据未显示"));

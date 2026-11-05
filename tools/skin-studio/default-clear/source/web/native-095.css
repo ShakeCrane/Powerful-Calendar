@@ -41,7 +41,7 @@ html,body {height:100%;background:var(--bg-canvas)}
 body {color:var(--label);font-family:Roboto,"Noto Sans SC",system-ui,sans-serif;font-size:16px}
 button,textarea,input,select {font:inherit}
 button {color:inherit;-webkit-tap-highlight-color:transparent}
-#app {--native-bottom-inset:max(0px,env(safe-area-inset-bottom,0px));position:fixed;inset:0;height:auto;min-height:0;padding:env(safe-area-inset-top,0px) 0 calc(76px + var(--native-bottom-inset));display:flex;flex-direction:column;overflow:hidden;background:var(--bg-canvas)}
+#app {--native-bottom-inset:max(0px,env(safe-area-inset-bottom,0px));position:fixed;inset:0;height:auto;min-height:0;padding:0 0 calc(76px + var(--native-bottom-inset));display:flex;flex-direction:column;overflow:hidden;background:var(--bg-canvas)}
 .clear-head {flex:0 0 auto;min-height:48px;align-items:center;padding:10px 8px 0 16px;gap:4px}
 .clear-brand {gap:0;flex:1 1 auto}
 .clear-brand .brand-title {font-size:16px;line-height:1.2;font-weight:650;letter-spacing:0;color:var(--label)}
@@ -87,7 +87,9 @@ body[data-page="timeline"] .timeline-section-label {display:none}
 .timeline-buttons[hidden] {display:none}
 .page-head {padding:0}
 .native-page-head {display:flex;flex:0 0 auto;align-items:center;justify-content:flex-start;gap:12px;min-height:58px;padding:2px 8px 5px}
-.native-page-head h1 {flex:1;margin:0;font-size:22px;font-weight:600;letter-spacing:0;line-height:1.25}
+.month-page-head {gap:0;padding:2px 0 5px}
+.month-page-head .page-back {flex-basis:48px;width:48px;height:48px}
+.native-page-head h1 {flex:1;margin:0;font-size:24px;font-weight:600;letter-spacing:0;line-height:1.33}
 .native-page-head .page-back,.native-page-head .plain-action {background:transparent}
 .native-title-group {display:flex;min-width:0;flex:1;flex-direction:column;gap:2px}
 .native-title-group h1 {font-size:21px}
@@ -97,28 +99,52 @@ body[data-page="timeline"] .timeline-section-label {display:none}
 .plain-action {min-height:42px;padding:0 12px;border:0;border-radius:22px;background:transparent;color:var(--accent);font-size:14px;font-weight:550;white-space:nowrap}
 .compat-local-options {display:none!important}
 body[data-page="month"] #monthPage:not([hidden]),body[data-page="settings"] #settingsPage:not([hidden]),body[data-page="tools"] #extraOptions:not([hidden]) {flex:1 1 auto;overflow-y:auto;overscroll-behavior:contain;padding:8px 12px 20px}
+body[data-page="month"] #monthPage:not([hidden]) {padding-top:14px}
 body[data-page="memo"] #memoPage:not([hidden]) {display:flex;flex:1 1 auto;min-height:0;flex-direction:column;overflow:hidden;padding:8px 12px 0}
 body[data-page="month"] .clear-head,body[data-page="memo"] .clear-head,body[data-page="ai"] .clear-head,body[data-page="settings"] .clear-head {display:none}
-.month-calendar-panel {margin:11px 0 0;padding:0 13px 0;border:1px solid #C3CAD8;border-radius:28px;background:#F3F5FA;box-shadow:0 2px 7px rgba(17,21,28,.12)}
+.month-calendar-panel {margin:5px 0 0;padding:0;border:1px solid #C3CAD8;border-radius:28px;background:#F3F5FA;box-shadow:0 2px 7px rgba(17,21,28,.12)}
 html.theme-dark .month-calendar-panel {border-color:#39414F;background:#171D27}
-.month-bar {margin:0;padding:1px 6px;background:transparent;border-radius:0}
-.month-bar button {width:44px;height:44px;background:transparent;color:var(--label);font-size:30px}
+.month-bar {margin:0;padding:0;background:transparent;border-radius:0}
+.month-bar > button {width:48px;height:48px;background:transparent;color:var(--label);font-size:30px}
+.month-title-group {display:flex;align-items:center;justify-content:center;gap:0;min-width:132px}
 #monthTitle {min-width:0;color:var(--accent);font-size:0;font-weight:600}
-#monthTitle::after {content:attr(data-native-label);font-size:17px;white-space:pre}
-.month-grid {grid-template-columns:repeat(7,minmax(0,1fr));gap:0;max-width:336px;min-height:0;margin:0 auto;padding:0 3px;border-radius:4px;background:var(--bg-elevated);box-shadow:none}
-.month-weekday {padding:9px 0 7px;color:var(--label-2);font-size:12px;font-weight:550}
-.month-cell,.month-cell-empty {min-height:50px;border:0;border-radius:14px;background:transparent;color:var(--label);font-size:15px}
+.month-title-group button {width:auto;min-width:54px;height:44px;padding:0 5px;border:0;border-radius:0;background:transparent;color:var(--accent);font-size:17px;font-weight:600;white-space:nowrap}
+.month-title-group button:focus-visible {outline:2px solid var(--accent);outline-offset:1px;border-radius:6px}
+.month-grid {position:relative;grid-template-columns:repeat(7,minmax(0,1fr));gap:0;width:100%;max-width:none;min-height:0;margin:0;padding:0;border-radius:4px;background:transparent;box-shadow:none}
+.month-grid::before {content:"";position:absolute;z-index:0;inset:0 auto 0 50%;width:min(336px,100%);transform:translateX(-50%);border-radius:4px;background:var(--bg-elevated);pointer-events:none}
+.month-weekday {position:relative;z-index:1;padding:9px 0 11px;color:var(--label-2);font-size:12px;font-weight:550}
+.month-cell,.month-cell-empty {position:relative;z-index:1;min-height:52px;border:0;border-radius:14px;background:transparent;color:var(--label);font-size:15px}
+.month-cell {display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;padding:5px 0;font-variant-numeric:tabular-nums}
+.month-day-number {font-size:16px;line-height:21px}
+.month-count {min-height:12px;color:var(--label-2);font-size:10px;font-weight:400;line-height:12px;white-space:nowrap}
 .month-cell.today {border:1px solid var(--accent);border-radius:18px;color:var(--accent);font-weight:650}
 .month-cell.selected {border-radius:18px;background:var(--accent-soft);color:var(--label);font-weight:650}
-.month-dot {color:var(--accent);font-size:9px;line-height:8px}
-#monthAgenda {padding:18px 4px 4px}
+#monthAgenda {padding:18px 0 4px}
 #monthAgenda>.quiet {margin-left:0;text-align:left}
 #monthAgenda h2 {margin:0 0 8px;color:var(--label);font-size:17px;font-weight:600}
-.agenda-event {min-height:60px;padding:12px;border:0;border-radius:13px;background:var(--bg-elevated);color:var(--label);text-align:left;box-shadow:var(--shadow-card)}
-.month-actions {flex-direction:column;gap:2px;padding:10px 4px}
+.agenda-event {display:flex;flex-direction:column;align-items:flex-start;gap:3px;min-height:64px;padding:12px 16px;border:0;border-radius:13px;background:var(--bg-elevated);color:var(--label);text-align:left;box-shadow:var(--shadow-card)}
+.agenda-event-title {font-size:16px;font-weight:550;line-height:1.35}
+.agenda-event-summary {color:var(--label-2);font-size:14px;line-height:1.35}
+.agenda-event-sequence {color:var(--label-3);font-size:12px;line-height:1.3}
+.agenda-event.alarm .agenda-event-title {color:var(--alarm-ink)}
+.agenda-event.activity .agenda-event-title {color:var(--activity-ink)}
+.agenda-event.deadline .agenda-event-title {color:var(--deadline-ink)}
+.agenda-event.memo .agenda-event-title {color:var(--memo-ink)}
+.agenda-event:focus-visible {outline:2px solid var(--accent);outline-offset:2px}
+.month-actions {flex-direction:column;gap:2px;padding:10px 0}
 .month-actions button {width:100%;min-height:48px;border:1px solid var(--outline, #C3CAD8);border-radius:24px;background:transparent;color:var(--label-2);font-size:14px}
 .month-actions #viewMonthDate {border:0;background:transparent;color:var(--accent)}
 #monthPage>.quiet {display:none}
+#monthPickerDialog,#monthYearPickerDialog {width:min(340px,calc(100vw - 32px));border:1px solid var(--sep);border-radius:20px;background:var(--bg-canvas);color:var(--label);box-shadow:var(--shadow-lift)}
+#monthPickerDialog::backdrop,#monthYearPickerDialog::backdrop {background:var(--scrim)}
+#monthPickerForm,#monthYearPickerForm {display:grid;gap:10px}
+#monthPickerForm h2,#monthYearPickerForm h2 {margin:0 0 8px;font-size:18px}
+#monthYearPickerForm input {min-height:44px;padding:8px;border:1px solid var(--sep);border-radius:10px;background:var(--fill-1);color:inherit;font:inherit}
+.month-picker-grid {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.month-picker-grid button {min-height:44px;border:0;border-radius:12px;background:var(--fill-1);color:var(--label);font:inherit}
+.month-picker-grid button[aria-pressed="true"] {background:var(--accent-soft);color:var(--accent);font-weight:600}
+.month-picker-actions {display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
+.month-picker-actions button {min-height:44px;padding:0 14px;border:1px solid var(--sep);border-radius:22px;background:var(--fill-1);color:var(--accent);font:inherit}
 .memo-page-head {min-height:54px;gap:0;margin:0}
 .memo-page-head .native-title-group small {font-size:11px;letter-spacing:-.2px;white-space:nowrap}
 .memo-page-head>.icon-action {display:grid;place-items:center;flex:0 0 44px;min-width:44px;width:44px;height:44px;min-height:44px;padding:8px;border:0;border-radius:50%;background:transparent;color:var(--label)}
@@ -183,17 +209,17 @@ body[data-page="settings"] #settingsPage>#settings-diagnostics-section {order:7}
 .optionRow {border-radius:0;border-bottom:1px solid var(--sep);background:transparent;padding:12px 3px;color:var(--label)}
 .optionRow:last-child {border-bottom:0}
 .optionDescription {color:var(--label-2);font-size:12px}
-.clear-tabbar {position:fixed;z-index:30;right:0;bottom:var(--native-bottom-inset);left:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;min-height:68px;padding:5px 8px 4px;border:0;border-top:1px solid var(--sep);border-radius:0;background:#EAF0FA;box-shadow:none;backdrop-filter:none}
+.clear-tabbar {position:fixed;z-index:30;right:0;bottom:var(--native-bottom-inset);left:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;min-height:84px;padding:5px 8px 4px;border:0;border-top:1px solid var(--sep);border-radius:0;background:#EAEFFB;box-shadow:none;backdrop-filter:none}
 html.theme-dark .clear-tabbar {background:#121923}
-.clear-tabbar button {position:relative;z-index:0;display:flex;min-width:0;min-height:58px;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:2px 4px;border:0;border-radius:18px;background:transparent;color:var(--label-2);font-size:13px;font-weight:500;line-height:1.1}
-.clear-tabbar button svg {width:23px;height:23px}
+.clear-tabbar button {position:relative;z-index:0;display:flex;min-width:0;min-height:74px;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:2px 4px;border:0;border-radius:18px;background:transparent;color:var(--label-2);font-size:12px;font-weight:500;line-height:1.33}
+.clear-tabbar button svg {width:24px;height:24px}
 .clear-tabbar button.current {color:#2E7D6B;background:transparent}
-.clear-tabbar button.current::before {content:"";position:absolute;z-index:-1;width:min(58px,72%);height:30px;border-radius:24px;background:#D3EFE7}
+.clear-tabbar button.current::before {content:"";position:absolute;z-index:-1;width:min(56px,72%);height:32px;border-radius:16px;background:#D3EFE7}
 .clear-tabbar button[data-action="memo"],.compat-memo-route {display:none!important}
 .host-notice {bottom:calc(80px + env(safe-area-inset-bottom,0px));border-radius:14px;background:var(--bg-elevated);color:var(--label)}
 #skinSheet {align-items:center;padding:16px}
-.sheet-shade {background:var(--scrim)}
-.sheet-panel {width:min(100%,560px);max-height:calc(100dvh - 48px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));min-height:0;border:1px solid var(--sep);border-radius:22px;background:var(--bg-elevated);box-shadow:var(--shadow-lift)}
+.sheet-shade {z-index:0;background:var(--scrim)}
+.sheet-panel {z-index:1;width:min(100%,560px);max-height:calc(100dvh - 48px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));min-height:55%;border:1px solid var(--sep);border-radius:22px;background:var(--bg-elevated);box-shadow:var(--shadow-lift)}
 .sheet-head {min-height:58px;padding:8px 11px;border-bottom:1px solid var(--sep)}
 .sheet-head button {min-width:42px;min-height:42px;border-radius:22px;background:var(--fill-2);color:var(--label)}
 .sheet-head button#sheetSave {background:var(--accent-fill);color:var(--on-accent)}
@@ -225,7 +251,7 @@ html.theme-dark .clear-tabbar {background:#121923}
   .timeline-view-controls {min-height:48px}
   #timeRangeLabel {min-width:88px;font-size:12px}
   .native-page-head h1 {font-size:20px}
-  .month-cell,.month-cell-empty {min-height:44px}
+  .month-cell,.month-cell-empty {min-height:52px}
   .clear-tabbar button {font-size:11px}
 }
 @media(prefers-reduced-motion:reduce) {

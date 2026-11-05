@@ -23,6 +23,7 @@ import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
@@ -167,15 +168,18 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
 
         tapClear(web, ".clear-tabbar [data-action='month']")
         awaitJs(web, "!document.querySelector('#monthPage').hidden")
-        tapClear(web, "#monthTitle")
-        awaitJs(web, "document.querySelector('#monthPickerDialog')?.open===true")
+        tapClear(web, "#monthYearTitle")
+        awaitJs(web, "document.querySelector('#monthYearPickerDialog')?.open===true")
         evaluate(web, "(()=>{const year=document.querySelector('#monthYear');" +
             "year.value='2026';year.dispatchEvent(new Event('input',{bubbles:true}));" +
-            "const month=document.querySelector('#monthNumber');month.value='11';" +
-            "month.dispatchEvent(new Event('change',{bubbles:true}));return true})()")
-        val monthSubmit = tapClear(web, "#monthPickerForm button[type='submit']")
+            "return true})()")
+        val yearSubmit = tapClear(web, "#monthYearPickerForm button[type='submit']")
+        assertTrue("Year selection is a trusted Android touch", yearSubmit.optBoolean("trusted"))
+        tapClear(web, "#monthNumberTitle")
+        awaitJs(web, "document.querySelector('#monthPickerDialog')?.open===true")
+        val monthSubmit = tapClear(web, "#monthPickerForm [data-month-number='11']")
         assertTrue("Month selection is a trusted Android touch", monthSubmit.optBoolean("trusted"))
-        awaitJs(web, "document.querySelector('#monthTitle')?.textContent.startsWith('2026-11')")
+        awaitJs(web, "document.querySelector('#monthTitle')?.dataset.month==='2026-11'")
 
         fun assertHostRows() {
             val month = currentBridgeState().getJSONObject("month")
@@ -224,7 +228,7 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
             val cellTap = tapClear(web, cellSelector)
             assertTrue("Month date $date must use trusted Android input",
                 cellTap.optBoolean("trusted"))
-            awaitJs(web, "document.querySelector('#monthAgenda h2')?.textContent==='$dateText'")
+            awaitJs(web, "document.querySelector('#monthAgenda h2')?.dataset.date==='$dateText'")
             val rowSelector = "#monthAgenda .agenda-event[data-event-seq='$eventSeq']" +
                 "[data-revision='${ownerBefore.revision}']" +
                 "[data-original-occurrence-key='${occurrence.key}']"
@@ -232,13 +236,18 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
             val serialized = evaluate(web, "(()=>{const cell=document.querySelector(" +
                 "${JSONObject.quote(cellSelector)});const row=document.querySelector(" +
                 "${JSONObject.quote(rowSelector)});return JSON.stringify({date:cell?.dataset.date," +
-                "dots:cell?.querySelectorAll('.month-dot').length,dotText:cell?.querySelector('.month-dot')?.textContent," +
+                "countText:cell?.querySelector('.month-count')?.textContent," +
+                "title:row?.querySelector('.agenda-event-title')?.textContent," +
+                "summary:row?.querySelector('.agenda-event-summary')?.textContent," +
+                "sequence:row?.querySelector('.agenda-event-sequence')?.textContent," +
                 "eventSeq:row?.dataset.eventSeq,revision:row?.dataset.revision," +
                 "occurrenceKey:row?.dataset.originalOccurrenceKey})})()")
             val dom = JSONObject(JSONArray("[$serialized]").getString(0))
             assertEquals(dateText, dom.getString("date"))
-            assertEquals(1, dom.getInt("dots"))
-            assertEquals("•", dom.getString("dotText"))
+            assertEquals("1 项", dom.getString("countText"))
+            assertEquals("活动 · ${ownerBefore.title}", dom.getString("title"))
+            assertTrue(dom.getString("summary").contains("09:00"))
+            assertEquals(ownerBefore.displaySeq(), dom.getString("sequence"))
             assertEquals(eventSeq.toString(), dom.getString("eventSeq"))
             assertEquals(ownerBefore.revision.toString(), dom.getString("revision"))
             assertEquals(occurrence.key, dom.getString("occurrenceKey"))
@@ -270,9 +279,9 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
         }
 
         tapClear(web, ".month-bar [data-action='browseMonth'][data-delta-months='-1']")
-        awaitJs(web, "document.querySelector('#monthTitle')?.textContent.startsWith('2026-10')")
+        awaitJs(web, "document.querySelector('#monthTitle')?.dataset.month==='2026-10'")
         tapClear(web, ".month-bar [data-action='browseMonth'][data-delta-months='1']")
-        awaitJs(web, "document.querySelector('#monthTitle')?.textContent.startsWith('2026-11')")
+        awaitJs(web, "document.querySelector('#monthTitle')?.dataset.month==='2026-11'")
         waitForHostRows("return from October to November")
         assertHostRows()
         assertEquals("Reading and opening monthly occurrences must not write the Store",
@@ -447,12 +456,20 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
             if(!target)return JSON.stringify({found:false});
             const rect=target.getBoundingClientRect();
             const hit=document.elementFromPoint(rect.left+rect.width/2,rect.top+rect.height/2);
+            const panel=document.querySelector('#skinSheet .sheet-panel');
+            const shade=document.querySelector('#sheetShade');
+            const panelRect=panel?.getBoundingClientRect();
             window.__monthOccurrenceTap=null;
             target.addEventListener('click',event=>{
               window.__monthOccurrenceTap={trusted:event.isTrusted};
             },{once:true,capture:true});
             return JSON.stringify({found:true,x:rect.left+rect.width/2,y:rect.top+rect.height/2,
               cssWidth:innerWidth,cssHeight:innerHeight,
+              targetTag:target.tagName,targetClass:String(target.className||""),
+              hitTag:hit?.tagName||null,hitId:hit?.id||null,hitClass:String(hit?.className||""),
+              targetZ:getComputedStyle(target).zIndex,panelZ:panel?getComputedStyle(panel).zIndex:null,
+              shadeZ:shade?getComputedStyle(shade).zIndex:null,
+              panelBounds:panelRect?{top:panelRect.top,bottom:panelRect.bottom,left:panelRect.left,right:panelRect.right}:null,
               visible:rect.width>0&&rect.height>0&&rect.left>=0&&rect.top>=0&&
                 rect.right<=innerWidth&&rect.bottom<=innerHeight,
               hitTarget:hit===target||target.contains(hit),
@@ -736,9 +753,21 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
                     ".month-bar [data-action='browseMonth'][data-delta-months='1']")
             }
             val dateTap = tapClear(clearWeb, ".month-cell[data-date='$selectedDate']")
-            awaitJs(clearWeb, "document.querySelector('#monthAgenda h2')?.textContent==='$selectedDate'")
+            awaitJs(clearWeb, "document.querySelector('#monthAgenda h2')?.dataset.date==='$selectedDate'")
             val rowSelector = "#monthAgenda .agenda-event[data-event-seq='1']" +
                 "[data-original-occurrence-key='$selectedKey']"
+            compose.waitUntil(30_000) {
+                val items = currentBridgeState().optJSONObject("month")
+                    ?.optJSONArray("items") ?: return@waitUntil false
+                (0 until items.length()).any { index ->
+                    val item = items.getJSONObject(index)
+                    val dates = item.optJSONArray("visibleDateKeys") ?: JSONArray()
+                    item.optLong("eventSeq") == 1L &&
+                        item.optString("originalOccurrenceKey") == selectedKey &&
+                        (0 until dates.length()).any { dates.optString(it) == selectedDate.toString() }
+                }
+            }
+            awaitJs(clearWeb, "!!document.querySelector(${JSONObject.quote(rowSelector)})")
             val eventTap = tapClear(clearWeb, rowSelector)
             awaitJs(clearWeb, "!document.querySelector('#skinSheet').hidden")
             val opened = WebSkinBridgeRuntime.state().getJSONObject("editing")
@@ -883,6 +912,18 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
                 nativeAfterToday.getString("page"))
             assertEquals(nativeAnchor, timeline(nativeAfterToday).getLong("anchorMillis"))
             assertEquals(nativeHours, timeline(nativeAfterToday).getDouble("hours"), 0.0)
+            compose.onNodeWithText("在时间轴查看这一天").performScrollTo()
+                .performTouchInput { click() }
+            compose.waitUntil(10_000) {
+                WebSkinBridgeRuntime.state().optString("page") == "TIMELINE"
+            }
+            val expectedTodayNoon = nativeToday.atTime(12, 0).atZone(zone)
+                .toInstant().toEpochMilli()
+            val nativeAfterTimelineJump = WebSkinBridgeRuntime.state()
+            assertEquals(expectedTodayNoon,
+                timeline(nativeAfterTimelineJump).getLong("anchorMillis"))
+            assertEquals(nativeHours,
+                timeline(nativeAfterTimelineJump).getDouble("hours"), 0.0)
             assertEquals(nativeCounts, counts(nativeStore))
 
             compose.runOnUiThread {
@@ -918,24 +959,29 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
 
             tapClear(clearWeb, ".clear-tabbar [data-action='month']")
             awaitJs(clearWeb, "!document.querySelector('#monthPage').hidden")
-            tapClear(clearWeb, "#monthTitle")
-            awaitJs(clearWeb, "document.querySelector('#monthPickerDialog')?.open===true")
-            assertEquals("year and month fields are available in the real skin dialog", "true",
-                evaluate(clearWeb, "!!document.querySelector('#monthYear')&&" +
-                    "!!document.querySelector('#monthNumber')"))
+            tapClear(clearWeb, "#monthYearTitle")
+            awaitJs(clearWeb, "document.querySelector('#monthYearPickerDialog')?.open===true")
+            assertEquals("year field is available in the real Skin dialog", "true",
+                evaluate(clearWeb, "!!document.querySelector('#monthYear')"))
             evaluate(clearWeb, "(()=>{const year=document.querySelector('#monthYear');" +
                 "year.value='${targetMonth.year}';year.dispatchEvent(new Event('input',{bubbles:true}));" +
-                "const month=document.querySelector('#monthNumber');month.value='${targetMonth.monthValue}';" +
-                "month.dispatchEvent(new Event('change',{bubbles:true}));return true})()")
-            val monthSubmit = tapClear(clearWeb, "#monthPickerForm button[type='submit']")
-            awaitJs(clearWeb, "document.querySelector('#monthTitle')?.textContent.startsWith('2027-06')")
+                "return true})()")
+            val yearSubmit = tapClear(clearWeb, "#monthYearPickerForm button[type='submit']")
+            assertTrue("Year selection must be a trusted Android touch", yearSubmit.optBoolean("trusted"))
+            awaitJs(clearWeb, "document.querySelector('#monthTitle')?.dataset.month?.startsWith('${targetMonth.year}-')===true")
+            tapClear(clearWeb, "#monthNumberTitle")
+            awaitJs(clearWeb, "document.querySelector('#monthPickerDialog')?.open===true")
+            val monthSubmit = tapClear(clearWeb,
+                "#monthPickerForm [data-month-number='${targetMonth.monthValue}']")
+            assertTrue("Month selection must be a trusted Android touch", monthSubmit.optBoolean("trusted"))
+            awaitJs(clearWeb, "document.querySelector('#monthTitle')?.dataset.month==='${targetMonth}'")
             val clearFirstDay = WebSkinBridgeRuntime.state().getJSONObject("month")
             assertEquals(targetMonth.toString(), clearFirstDay.getString("month"))
             assertEquals(targetMonth.atDay(1).toString(), clearFirstDay.getString("selectedDate"))
             val clearDateTap = tapClear(clearWeb,
                 "#monthGrid .month-cell[data-date='$targetDate']")
             awaitJs(clearWeb,
-                "document.querySelector('#monthAgenda h2')?.textContent==='$targetDate'")
+                "document.querySelector('#monthAgenda h2')?.dataset.date==='$targetDate'")
             val clearAfterDate = WebSkinBridgeRuntime.state()
             val selectedMonthState = clearAfterDate.getJSONObject("month")
             assertEquals(targetMonth.toString(), selectedMonthState.getString("month"))
@@ -956,14 +1002,28 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
             awaitJs(clearWeb, "!document.querySelector('#monthPage').hidden")
 
             assertEquals(nativeToday.toString(), clearToday.toString())
-            assertEquals("Clear picker, date and Today are real trusted touchscreen actions", true,
-                listOf(monthSubmit, clearDateTap, todayTap).all { it.optBoolean("trusted") })
+            val timelineJumpTap = tapClear(clearWeb, "#viewMonthDate")
+            assertTrue("Month-to-Timeline jump must use a trusted Android touch",
+                timelineJumpTap.optBoolean("trusted"))
+            awaitJs(clearWeb, "document.querySelector('#monthPage').hidden&&" +
+                "!document.querySelector('#timelinePage').hidden")
+            val clearAfterTimelineJump = currentBridgeState()
+            assertEquals("TIMELINE", clearAfterTimelineJump.getString("page"))
+            assertEquals(expectedTodayNoon,
+                timeline(clearAfterTimelineJump).getLong("anchorMillis"))
+            assertEquals(nativeHours,
+                timeline(clearAfterTimelineJump).getDouble("hours"), 0.0)
+            assertEquals("Clear picker, date, Today and Timeline jump are trusted touches", true,
+                listOf(monthSubmit, clearDateTap, todayTap, timelineJumpTap)
+                    .all { it.optBoolean("trusted") })
             assertEquals(clearCounts, counts(clearStore))
             assertEquals(nativeCounts, counts(nativeStore))
-            println("NATIVE_CLEAR_PARITY operation=MONTH_NAVIGATION kind=STATE_ONLY " +
+            println("NATIVE_CLEAR_PARITY operation=MONTH_NAVIGATION_AND_TIMELINE_JUMP kind=ACTUAL_TOUCH " +
                 "pickedMonth=$targetMonth selectedDate=$targetDate today=$clearToday " +
-                "nativeCameraUnchanged=true clearCameraUnchanged=true storesUnchanged=true " +
-                "trustedTouches=${listOf(monthSubmit, clearDateTap, todayTap).map { it.optBoolean("trusted") }}")
+                "nativeAndClearJumpAnchor=$expectedTodayNoon nativeCameraMatched=true " +
+                "storesUnchanged=true trustedTouches=" +
+                listOf(monthSubmit, clearDateTap, todayTap, timelineJumpTap)
+                    .map { it.optBoolean("trusted") })
         } finally {
             compose.runOnUiThread {
                 compose.activity.setContent { }
@@ -1091,7 +1151,7 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
             assertEquals("Both skins begin at the same current month", initialMonth, clearInitialMonth)
 
             val clearNextTouch = swipeClearMonthGrid(clearWeb, forward = true)
-            awaitJs(clearWeb, "document.querySelector('#monthTitle')?.textContent.startsWith('$nextMonth')")
+            awaitJs(clearWeb, "document.querySelector('#monthTitle')?.dataset.month==='$nextMonth'")
             val nextMonthState = WebSkinBridgeRuntime.state().getJSONObject("month")
             assertEquals(nextMonth, YearMonth.parse(nextMonthState.getString("month")))
             assertEquals(nextMonth.atDay(1).toString(), nextMonthState.getString("selectedDate"))
@@ -1103,7 +1163,7 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
             assertEquals(clearCounts, counts(clearStore))
 
             val clearPreviousTouch = swipeClearMonthGrid(clearWeb, forward = false)
-            awaitJs(clearWeb, "document.querySelector('#monthTitle')?.textContent.startsWith('$initialMonth')")
+            awaitJs(clearWeb, "document.querySelector('#monthTitle')?.dataset.month==='$initialMonth'")
             val previousMonthState = WebSkinBridgeRuntime.state().getJSONObject("month")
             assertEquals(initialMonth, YearMonth.parse(previousMonthState.getString("month")))
             assertEquals(initialMonth.atDay(1).toString(), previousMonthState.getString("selectedDate"))

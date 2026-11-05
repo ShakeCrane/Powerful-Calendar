@@ -453,7 +453,7 @@ class TimelineCreateContextWebViewInstrumentedTest {
             evaluate(view, """document.querySelector(".month-cell[data-date='$selectedDate']").click(); true""")
             awaitJs(view,
                 """document.querySelector('.month-cell.selected')?.dataset.date==='$selectedDate' && """ +
-                    """document.querySelector('#monthAgenda h2')?.textContent==='$selectedDate'""")
+                    """document.querySelector('#monthAgenda h2')?.dataset.date==='$selectedDate'""")
             compose.waitUntil(10_000) {
                 var state: org.json.JSONObject? = null
                 compose.runOnUiThread { state = WebSkinBridgeRuntime.state() }

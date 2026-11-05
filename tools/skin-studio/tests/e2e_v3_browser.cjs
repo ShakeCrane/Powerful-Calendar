@@ -617,9 +617,9 @@ async function doubleTapTimelineAxis(frame){
 
     await frame.click('.clear-tabbar [data-action="month"]');
     await frame.waitForFunction(()=>!document.querySelector("#monthPage").hidden);
-    const monthBeforeBinding=await frame.$eval("#monthTitle",node=>node.textContent);
+    const monthBeforeBinding=await frame.$eval("#monthTitle",node=>node.dataset.month);
     await frame.click('#monthPage [data-action="browseMonth"][data-delta-months="1"]');
-    await frame.waitForFunction(previous=>document.querySelector("#monthTitle").textContent!==previous,
+    await frame.waitForFunction(previous=>document.querySelector("#monthTitle").dataset.month!==previous,
       {},monthBeforeBinding);
     await page.waitForFunction(()=>document.querySelector("#bridgeLog").textContent.includes(
       "模拟宿主收到：browseMonth"));

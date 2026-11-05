@@ -103,7 +103,7 @@ async function main(){
     await waitFrame("!document.querySelector('#monthPage').hidden","Month navigation");
     const initial=await waitFrame(`(()=>{
       const selected=document.querySelector('.month-cell.selected');
-      return selected?{month:document.querySelector('#monthTitle').textContent,
+      return selected?{month:document.querySelector('#monthTitle').dataset.month,
         date:selected.dataset.date,dayCount:document.querySelectorAll('.month-cell').length}:null;
     })()`,"Initial month state");
     if(initial.date!=="2026-10-22"||initial.dayCount!==31)
@@ -115,31 +115,35 @@ async function main(){
       const button=document.querySelector('.month-cell.selected');
       return button?.dataset.date==='2026-10-23'&&
         !document.querySelector('#monthPage').hidden&&
-        document.querySelector('#monthAgenda h2')?.textContent==='2026-10-23'
+        document.querySelector('#monthAgenda h2')?.dataset.date==='2026-10-23'
         ?{date:button.dataset.date,ariaPressed:button.getAttribute('aria-pressed')}:null;
     })()`,"In-month date selection");
     if(await evaluate("simulatedState().timeline.anchorMillis")!==initialCamera)
       throw Error("Selecting a day changed the timeline camera");
 
-    await frameEval("document.querySelector('#monthTitle')?.click()");
-    await waitFrame("document.querySelector('#monthPickerDialog').open","Month/year picker opening");
+    await frameEval("document.querySelector('#monthYearTitle')?.click()");
+    await waitFrame("document.querySelector('#monthYearPickerDialog').open","Year picker opening");
     await frameEval(`(()=>{
       const year=document.querySelector('#monthYear');year.value='2027';
       year.dispatchEvent(new Event('input',{bubbles:true}));
-      document.querySelector('#monthNumber').value='4';
-      document.querySelector('#monthPickerForm button[type=submit]').click();
+      document.querySelector('#monthYearPickerForm button[type=submit]').click();
     })()`);
+    await waitFrame("document.querySelector('#monthTitle').dataset.month==='2027-10'",
+      "Year selection keeps month number");
+    await frameEval("document.querySelector('#monthNumberTitle')?.click()");
+    await waitFrame("document.querySelector('#monthPickerDialog').open","Month picker opening");
+    await frameEval("document.querySelector(\"#monthPickerForm [data-month-number='4']\")?.click()");
     const picked=await waitFrame(`(()=>{
       const selected=document.querySelector('.month-cell.selected');
       return selected?.dataset.date==='2027-04-01'&&
-        document.querySelector('#monthTitle').textContent.startsWith('2027-04')
+        document.querySelector('#monthTitle').dataset.month==='2027-04'
         ?{month:'2027-04',date:selected.dataset.date}:null;
     })()`,"Year/month selection");
     if(await evaluate("simulatedState().timeline.anchorMillis")!==initialCamera)
       throw Error("Year/month selection changed the timeline camera");
 
     await frameEval("document.querySelector('.month-bar [data-delta-months=\\\"1\\\"]')?.click()");
-    await waitFrame("document.querySelector('#monthTitle').textContent.startsWith('2027-05')",
+    await waitFrame("document.querySelector('#monthTitle').dataset.month==='2027-05'",
       "Month arrow navigation");
     await frameEval(`(()=>{
       const grid=document.querySelector('#monthGrid'),rect=grid.getBoundingClientRect();
@@ -151,14 +155,14 @@ async function main(){
       // Real browsers dispatch a click after pointerup; the month handler consumes it after a swipe.
       grid.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,view:window}));
     })()`);
-    await waitFrame("document.querySelector('#monthTitle').textContent.startsWith('2027-06')",
+    await waitFrame("document.querySelector('#monthTitle').dataset.month==='2027-06'",
       "Month swipe navigation");
     await frameEval("document.querySelector('.month-cell[data-date=\\\"2027-06-19\\\"]')?.click()");
     const june=await waitFrame(`(()=>{
       const selected=document.querySelector('.month-cell.selected');
       return selected?.dataset.date==='2027-06-19'?{
         date:selected.dataset.date,ariaPressed:selected.getAttribute('aria-pressed'),
-        agenda:document.querySelector('#monthAgenda h2')?.textContent}:null;
+        agenda:document.querySelector('#monthAgenda h2')?.dataset.date}:null;
     })()`,"Post-navigation date selection");
     if(june.agenda!=="2027-06-19"||
       await evaluate("simulatedState().timeline.anchorMillis")!==initialCamera)
@@ -187,7 +191,7 @@ async function main(){
       throw Error("Explicit month date action did not set the selected timeline day");
     await frameEval("document.querySelector('.clear-tabbar [data-action=\\\"month\\\"]')?.click()");
     await waitFrame(`!document.querySelector('#monthPage').hidden&&
-      document.querySelector('#monthTitle').textContent.startsWith('2027-06')`,
+      document.querySelector('#monthTitle').dataset.month==='2027-06'`,
       "Month reopen from selected timeline day");
 
     const clock=await evaluate("simulatedState().timeline");
@@ -204,7 +208,7 @@ async function main(){
       throw Error("Month Today changed the timeline camera");
 
     const beforeTimeline=await frameEval(`(()=>({
-      month:document.querySelector('#monthTitle').textContent,
+      month:document.querySelector('#monthTitle').dataset.month,
       selected:document.querySelector('.month-cell.selected')?.dataset.date,
       selectedRect:(()=>{const r=document.querySelector('.month-cell.selected').getBoundingClientRect();
         return {left:r.left,top:r.top,right:r.right,bottom:r.bottom}})()

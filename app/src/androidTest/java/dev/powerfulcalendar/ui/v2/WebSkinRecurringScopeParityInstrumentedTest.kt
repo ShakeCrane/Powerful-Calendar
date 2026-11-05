@@ -379,7 +379,7 @@ class WebSkinRecurringScopeParityInstrumentedTest {
         val cell = ".month-cell[data-date='${selectedDate}']"
         awaitJs(web, "!!document.querySelector(${JSONObject.quote(cell)})")
         traces += tapWebSelector(web, cell)
-        awaitJs(web, "document.querySelector('#monthAgenda h2')?.textContent==='${selectedDate}'")
+        awaitJs(web, "document.querySelector('#monthAgenda h2')?.dataset.date==='${selectedDate}'")
 
         val event = "#monthAgenda .agenda-event[data-event-seq='1']" +
             "[data-original-occurrence-key='$selectedKey']"

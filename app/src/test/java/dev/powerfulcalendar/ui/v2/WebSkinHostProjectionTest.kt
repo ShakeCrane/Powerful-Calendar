@@ -4,6 +4,7 @@ import dev.powerfulcalendar.core.Recurrence
 import dev.powerfulcalendar.core.RecurrenceFreq
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TemporalRecord
+import dev.powerfulcalendar.core.TemporalText
 import dev.powerfulcalendar.core.TimelineCoordinate
 import dev.powerfulcalendar.ai.AiInterpretation
 import dev.powerfulcalendar.ai.AiProposal
@@ -447,6 +448,56 @@ class WebSkinHostProjectionTest {
         assertEquals(2, first.getInt("revision"))
         assertFalse(output.getBoolean("truncated"))
     }
+
+    @Test fun monthProjectionMatchesNativeVisibleDatesAndCarriesAgendaDetailsForEveryKind() {
+        fun local(date: String, hour: Int, minute: Int = 0) =
+            LocalDate.parse(date).atTime(hour, minute).atZone(zone).toInstant().toEpochMilli()
+        val month = requireNotNull(WebSkinMonthProjection.selectMonth(YearMonth.of(2026, 11)))
+        val multiDay = activity(72, local("2026-11-01", 23)).copy(
+            endMillis = local("2026-11-02", 1)
+        )
+        val alarm = TemporalRecord(
+            eventSeq = 73, revision = 4, kind = TemporalKind.ALARM, title = "Morning alarm",
+            startMillis = local("2026-11-04", 8), zoneId = zone.id
+        )
+        val deadline = TemporalRecord(
+            eventSeq = 74, revision = 5, kind = TemporalKind.DEADLINE, title = "Date deadline",
+            deadlineDate = "2026-11-05", zoneId = zone.id
+        )
+        val memo = TemporalRecord(
+            eventSeq = 75, revision = 6, kind = TemporalKind.MEMO, title = "Two day memo",
+            memoStartDate = "2026-11-06", memoEndDate = "2026-11-07", zoneId = zone.id
+        )
+        val items = WebSkinMonthProjection.build(
+            listOf(multiDay, alarm, deadline, memo), month, zone, recurrenceFeatures
+        ).getJSONArray("items")
+        val bySequence = (0 until items.length()).map(items::getJSONObject)
+            .associateBy { it.getLong("eventSeq") }
+
+        assertEquals(setOf(72L, 73L, 74L, 75L), bySequence.keys)
+        assertEquals(listOf("2026-11-01", "2026-11-02"),
+            bySequence.getValue(72L).getJSONArray("visibleDateKeys").toStringList())
+        assertEquals("ACTIVITY", bySequence.getValue(72L).getString("kind"))
+        assertEquals("活动", bySequence.getValue(72L).getString("kindLabel"))
+        assertTrue(bySequence.getValue(72L).getString("summary").contains("23:00"))
+        assertEquals("2026-11-04", bySequence.getValue(73L).getString("date"))
+        assertEquals("08:00", bySequence.getValue(73L).getString("summary"))
+        assertEquals(listOf("2026-11-05"),
+            bySequence.getValue(74L).getJSONArray("visibleDateKeys").toStringList())
+        assertTrue(bySequence.getValue(74L).getString("summary").contains("日期"))
+        assertEquals(listOf("2026-11-06", "2026-11-07"),
+            bySequence.getValue(75L).getJSONArray("visibleDateKeys").toStringList())
+        assertTrue(bySequence.getValue(75L).getString("summary").contains("待办"))
+        for ((sequence, owner) in listOf(72L to multiDay, 73L to alarm, 74L to deadline, 75L to memo)) {
+            val projected = bySequence.getValue(sequence)
+            assertEquals(owner.revision, projected.getLong("revision"))
+            assertEquals(owner.displaySeq(), projected.getString("sequenceLabel"))
+            assertEquals(TemporalText.summarize(owner), projected.getString("summary"))
+        }
+    }
+
+    private fun org.json.JSONArray.toStringList(): List<String> =
+        (0 until length()).map { getString(it) }
 
     @Test fun monthSelectionNavigationTodayAndProjectionStayIndependentFromTimelineAnchor() {
         val initial = WebSkinMonthProjection.initial(noon, zone)
