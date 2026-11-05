@@ -7,24 +7,43 @@ OWNER_VISUAL_REFERENCE_APK: .local/android-test/artifacts/physical-qa/PowerCal-0
 OWNER_VISUAL_REFERENCE_APK_SHA256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
 WAVE2_START_HEAD: 3b54097d6383c0349b5d3d638c228320e3c8e22c
 WAVE3_START_HEAD: 82b456fd2bfc15df379fd15d967fac3da57b899d
-LATEST_CODE_HEAD: 24fbb376eb8b0ccf1825d70e0b4f7f68fceaa552 (Native 0.9.5 Month empty-agenda text and action-spacing slice)
-LATEST_VERIFIED_HEAD: 24fbb376eb8b0ccf1825d70e0b4f7f68fceaa552 (976/976 JVM XML; serial full Gradle gate; month CDP E2E; distribution 2/2; targeted API 35 instrumentation PASS)
+LATEST_CODE_HEAD: 1ffd87499c8d6d6089eb1c158178d6c39f1e9bf5 (Month agenda body/sequence foreground and Material typography tokens)
+LATEST_VERIFIED_HEAD: 6d8118f4a34cc50647bdf3b5a35c7bac008d91e8 (product CSS/package full gate at 1ffd: 976/976 JVM; after AndroidTest-only expectation correction, compile/package and targeted API 35 method PASS; Month CDP and corrected Studio bridge E2E PASS; distribution 2/2)
 CURRENT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
 TASK_STATUS: IN_PROGRESS
 PRODUCT_CUTOVER: HOLD
 TASK_BASE_HEAD: e41246d7ebe5b329adbdc657bd3e53735695efa1
-WORKING_APK_SHA256: 24F92FC77FE64BDA5CE15747234A1C3E221172713D6C67BEC7D21D0FE4FB6934
-WORKING_DEFAULT_SKIN_SHA256: 0C60CB77F99A7074698025630B49FA8CA00BB7ED583EC16B153FA3A09B1FC53A
+WORKING_APK_SHA256: 1AB2F1FA90223CDD07D5B181F86562BE646260A384398E53360EA93F3FCAF094
+WORKING_DEFAULT_SKIN_SHA256: 57A5498366AD40E7BCF671F4EEB76E23B264546CA9C567C8F4D25BCE2A99FC7C
 WORKING_DEFAULT_SKIN_ID: powercal-clear-default
 NATIVE_VISUAL_PARITY_AUDIT: docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md (inventory complete; implementation and full parity remain IN PROGRESS)
 PREVIOUS_TASK_STATE: Q-05 single-default startup migration and protected-branch cutover (PASS; public release remains HOLD)
-LAST_COMPLETED_TASK: Month no-event agenda typography and action spacing narrow parity slice (PASS; Month page remains PARTIAL)
-LAST_COMPLETED_COMMIT: 24fbb376eb8b0ccf1825d70e0b4f7f68fceaa552
+LAST_COMPLETED_TASK: Month agenda text foreground/Material tracking slice and stale Studio export toast E2E assertion (both narrow changes verified; Month remains PARTIAL)
+LAST_COMPLETED_COMMIT: 6d8118f4a34cc50647bdf3b5a35c7bac008d91e8 (Studio E2E test-only assertion; agenda CSS is commit 1ffd87499c8d6d6089eb1c158178d6c39f1e9bf5)
 LAST_ATTEMPTED_TASK: Native 0.9.5 visual and interaction parity migration (IN PROGRESS; see audit and latest Android evidence)
-LAST_ATTEMPTED_COMMIT: 24fbb376eb8b0ccf1825d70e0b4f7f68fceaa552 (Month empty agenda typography and action-spacing slice; see Issue and audit appendix)
+LAST_ATTEMPTED_COMMIT: 6d8118f4a34cc50647bdf3b5a35c7bac008d91e8 (agenda typography slice plus Studio export test assertion correction)
 NEXT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
-NEXT_ACTION: Compare a dense Month agenda against frozen Native, including one-to-one event geometry and greedy title folding, then compare dark mode. This empty-state slice is PASS only; Month and full Native parity remain PARTIAL/IN_PROGRESS and Product Cutover remains HOLD.
+NEXT_ACTION: Build deterministic multi-event Month fixtures and compare Native/Web order, per-card bounds, summary/sequence geometry, long-title wrapping, and greedy folding; continue with dark theme after the dense agenda. The typography-token slice is PASS with 1px vertical and 6px summary-ink width raster residual; Month and full Native parity remain PARTIAL/IN_PROGRESS and Product Cutover remains HOLD.
 LAST_TASK_EVIDENCE:
+  NATIVE_095_MONTH_AGENDA_TYPOGRAPHY:
+    status: PASS (light-theme foreground and Material text tokens only; Month remains PARTIAL)
+    code_commit: 1ffd87499c8d6d6089eb1c158178d6c39f1e9bf5
+    test_only_commit: 6d8118f4a34cc50647bdf3b5a35c7bac008d91e8 (Studio export toast assertion)
+    reference_source: b1f7629f0c52812e1887443872f43aa6c49908c4
+    reference_apk_sha256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
+    android: PowerCal_Native095_Parity_20261105 / emulator-5580, API 35, 1080x2400, 420dpi, WebView 124.0.6367.219
+    text_pixels: summary and sequence median RGB Native/Web both (17,21,28); Native/Web summary bbox (77,1554)-(298,1580)/(77,1555)-(304,1581); sequence bbox (75,1604)-(155,1625)/(75,1605)-(156,1626)
+    tests: full serial app gate 976/976 JVM PASS; after correcting AndroidTest expected `#11151C`, AndroidTest compile/package and target instrumentation 1/1 PASS; Month CDP E2E PASS; corrected Studio bridge E2E PASS; distribution 2/2; package verification PASS
+    apk_sha256: 1AB2F1FA90223CDD07D5B181F86562BE646260A384398E53360EA93F3FCAF094 (installed base.apk matches)
+    default_skin_sha256: 57A5498366AD40E7BCF671F4EEB76E23B264546CA9C567C8F4D25BCE2A99FC7C (10 files, 410062 bytes, one package, source/APK identical)
+    screenshot_sha256: Native 9915F9DFF8D1F421F2233F6BEBB38CCBA5D7A44F33C5CEA092BD19C6F5B8B59A; Web 0115C306758C3A00974E351EA3C006E296C5BD433679405D51B2492423619499
+    evidence: .local/android-test/reports/native095-month-card-type-20261106/; Issue docs/issues/PC-ISSUE-SEPARATION-NATIVE-MONTH-AGENDA-TYPOGRAPHY-20261106.md
+    residual: Web glyph bbox is 1px lower; summary ink is 6px wider; tokens/color match but glyph geometry is not pixel-identical
+  STUDIO_CLEAR_BRIDGE_EXPORT_TOAST_ASSERTION:
+    status: PASS (test-only stale substring fixed; product behavior unchanged)
+    commit: 6d8118f4a34cc50647bdf3b5a35c7bac008d91e8
+    evidence: .local/android-test/reports/native095-month-card-type-20261106/studio-export-toast-e2e.log
+    issue: docs/issues/PC-ISSUE-STUDIO-E2E-EXPORT-TOAST-ASSERTION-20261106.md
   NATIVE_095_MONTH_EMPTY_AGENDA:
     status: PASS (empty-state typography and action spacing only; Month remains PARTIAL)
     code_commit: 24fbb376eb8b0ccf1825d70e0b4f7f68fceaa552

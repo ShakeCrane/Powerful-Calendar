@@ -1,5 +1,13 @@
 # Native 0.9.5 视觉/交互基准迁移续接（2026-11-05）
 
+## 2026-11-06 Month agenda 正文/序号前景和 Material 字体参数（窄切片 PASS）
+
+- 冻结主题 `onSurface` 常量为 `#11151C`。Web agenda 原先把 summary/sequence 画成较浅变体色，且标题/摘要/序号缺少原生 Material 对应 tracking，序号缺少 500 字重。`native-095.css` 已按 `titleMedium` / `bodyMedium` / `labelSmall` 对齐前景、字号、字重、行高与 tracking，Android WebView 仪器断言覆盖这些计算值。
+- 隔离 API 35 AVD `emulator-5580` 上真实 Native/Web 截图测得摘要和序号墨迹中位 RGB 均为 `(17,21,28)`。Native/Web 摘要 ink bbox `(77,1554)-(298,1580)` / `(77,1555)-(304,1581)`；序号 bbox `(75,1604)-(155,1625)` / `(75,1605)-(156,1626)`。仍有 1px 垂直和约 6px 摘要宽度栅格差，未宣称字形几何完全相同。
+- 完整串行 Android gate 在同一产品 CSS/包状态下 **976/976 JVM PASS**；随后按源码核准 `#11151C` 并修正 AndroidTest 期望，单独完成 AndroidTest 编译/组装及目标 WebView 仪器 `1/1 PASS`。Month Chromium E2E、分发测试 2/2 与源/APK 包哈希验证 PASS。APK SHA `1AB2F1FA90223CDD07D5B181F86562BE646260A384398E53360EA93F3FCAF094`；唯一默认包 SHA `57A5498366AD40E7BCF671F4EEB76E23B264546CA9C567C8F4D25BCE2A99FC7C`。
+- 初次额外执行的 Studio bridge E2E 因旧断言查找 `已导出`、运行时提示已改为 `已构建并导出 v3 包` 而失败；导出 Blob 已生成。独立测试修正提交 `6d8118f4a34cc50647bdf3b5a35c7bac008d91e8` 后 Node syntax 与实际 Chromium export/reopen/continue-edit E2E PASS。产品 Studio 未修改。详细证据见 `.local/android-test/reports/native095-month-card-type-20261106/` 和两份 PC Issue。
+- 代码提交 `1ffd87499c8d6d6089eb1c158178d6c39f1e9bf5`。该文字样式切片 PASS，不代表密集卡片、深色主题、Month 全页或整体 Native parity 通过。下一项仍是多事件密集 agenda 几何、标题换行与 Native 贪心折叠；Product Cutover 继续 HOLD。
+
 ## 最新窄切片：年月选择器系统栏遮罩和恢复（2026-11-06）
 
 - **状态：**年份/月选择弹窗面板、内容、焦点、校验、真实触控及 Android 系统栏压暗/恢复窄切片 `PASS`；Month 整页与 Native 0.9.5 总体迁移继续 `PARTIAL/IN_PROGRESS`；Product Cutover `HOLD`。

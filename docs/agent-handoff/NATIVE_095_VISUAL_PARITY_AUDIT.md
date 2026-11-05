@@ -422,3 +422,19 @@ Web `showModal()` 后将焦点放在 dialog 容器本身，打开时不把焦点
 完整串行 Gradle 门禁 PASS：141 份 JVM XML、976/976、0 failures/errors/skips；源码边界、assemble、Lint、AndroidTest 编译/组装 PASS。Chromium 月历 E2E PASS，默认分发 Python 2/2 PASS，正式构建器校验 PASS。Debug APK SHA-256 `24F92FC77FE64BDA5CE15747234A1C3E221172713D6C67BEC7D21D0FE4FB6934`；唯一 `powercal-clear-default.pcskin` 10 个文件、410057 bytes、SHA-256 `0C60CB77F99A7074698025630B49FA8CA00BB7ED583EC16B153FA3A09B1FC53A`，源码和 APK 资产字节一致。主截图 Native SHA `99F96C44646D2CFC3FAEE8427E376B0A4C4E0FC065D479DB89C027ED6E725249`、Web SHA `88C5A28FFE5912AA5CF649249E11C7B5BC22B9C8E39E89D1810CB2ED0662B498`。Issue `docs/issues/PC-ISSUE-SEPARATION-NATIVE-MONTH-EMPTY-AGENDA-20261106.md`；所有详细日志、截图与像素脚本在 `.local/android-test/reports/native095-month-empty-20261106/`。
 
 此窄切片 `PASS`，Month 整页仍 `PARTIAL`。尚未验证密集 agenda 状态的框外标题、贪心标题折叠与逐事件几何、深色主题、Month 全状态矩阵或其余 Native 页面；Product Cutover 仍 `HOLD`。下一项是密集 Month agenda 与 Native 贪心标题折叠对照。
+
+## 2026-11-06 后续：Month agenda 摘要/序号颜色与 Material 文字参数（窄切片 PASS）
+
+冻结 Native `NativeSkinThemeDefaults.lightScheme.onSurface` 为 `#11151C`；`MonthScreen.kt` 事件卡片标题、摘要、序号分别采用 Material `titleMedium`、`bodyMedium`、`labelSmall`。旧 Web 摘要和序号误用浅色变体，且漏掉字距/序号字重。提交 `1ffd87499c8d6d6089eb1c158178d6c39f1e9bf5` 更新 `native-095.css`：标题 `16px/500/24px/.15px`；摘要 `#11151C`、`14px/400/20px/.25px`；序号 `#11151C`、`11px/500/16px/.5px`。测试断言位于 `NativeClearMonthOccurrenceParityInstrumentedTest.kt`。
+
+| 对照 | Native 0.9.5-rc.1 | Web v3 最终结果 |
+|---|---|---|
+| 设备与版本 | 隔离 API 35 AVD `PowerCal_Native095_Parity_20261105` / `emulator-5580`，1080×2400、420 dpi | 同一 AVD；WebView `124.0.6367.219` |
+| 摘要暗色墨迹 | 中位 `(17,21,28)`；bbox `(77,1554)-(298,1580)` | 中位 `(17,21,28)`；bbox `(77,1555)-(304,1581)` |
+| 序号暗色墨迹 | 中位 `(17,21,28)`；bbox `(75,1604)-(155,1625)` | 中位 `(17,21,28)`；bbox `(75,1605)-(156,1626)` |
+| CSS/Material 计算值 | titleMedium 16/500/24/.15；bodyMedium 14/400/20/.25；labelSmall 11/500/16/.5 | 同一组 WebView computed style，仪器断言通过 |
+| 实际交互/Store | 同一 MonthFixture 页面 | 真实日期触控、卡片渲染、Store 计数/序列不变；仪器用例最终 `1/1 PASS` |
+
+最终串行完整 Gradle gate 在相同产品 CSS/工厂包上 `PASS`：976/976 JVM，无失败、错误或跳过；源码边界、assemble、Lint、AndroidTest 编译/组装 PASS。之后只按冻结主题常量修正 AndroidTest 颜色期望，重新编译/组装并在设备上重跑目标方法 `1/1 PASS`。Chromium Month E2E 与分发测试 2/2 PASS；`build_default_clear.py --verify --apk` PASS。Debug APK SHA-256 `1AB2F1FA90223CDD07D5B181F86562BE646260A384398E53360EA93F3FCAF094`；唯一默认包 `powercal-clear-default`，10 files / 410062 bytes / SHA-256 `57A5498366AD40E7BCF671F4EEB76E23B264546CA9C567C8F4D25BCE2A99FC7C`，APK 资源和源包逐字节一致。最终 Web 截图 SHA-256 `0115C306758C3A00974E351EA3C006E296C5BD433679405D51B2492423619499`；冻结 Native 截图 SHA-256 `9915F9DFF8D1F421F2233F6BEBB38CCBA5D7A44F33C5CEA092BD19C6F5B8B59A`。
+
+字色和样式 tokens 已一致，但 Web 字形 ink bbox 比 Native 下移 1px、摘要宽 6px；这项证据不声称逐字形像素完全相同。密集 agenda 多卡片、长标题换行/贪心折叠、暗色 Month、Month 全状态及其它 Native 页面仍未签核。完整日志/图像在 `.local/android-test/reports/native095-month-card-type-20261106/`，Issue `docs/issues/PC-ISSUE-SEPARATION-NATIVE-MONTH-AGENDA-TYPOGRAPHY-20261106.md`。
