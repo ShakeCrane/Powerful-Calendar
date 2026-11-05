@@ -1,6 +1,16 @@
 # Native 0.9.5 视觉/交互基准迁移续接（2026-11-05）
 
-## 最新窄切片：Month 选中日内容色（2026-11-05）
+## 最新窄切片：Month 内层玻璃网格填充颜色（2026-11-05）
+
+- **状态：**月格内层 GlassPanel 填充颜色窄切片 `PASS`；表面覆盖范围 `PARTIAL`；Month 整页和 Native 0.9.5 总体迁移仍 `PARTIAL/IN_PROGRESS`。唯一视觉基准仍是冻结原生源码 `b1f7629f0c52812e1887443872f43aa6c49908c4`，Product Cutover `HOLD`。
+- **提交：**`ccc5761d514287f2c4223050bebd30bf2bdaedca`（`fix(month): 对齐原生月格玻璃填充颜色`）。默认 Skin 月格内层使用冻结浅色 80% 白、深色 70% `#1A2130` 玻璃填充；Core、Host、日历数据和外层面板未改。
+- **验证：**浏览器 computed-style/导航 E2E、分发 2/2、Node 语法、源码边界、assemble、Lint、AndroidTest 编译/组装 PASS；API 35 WebView instrumentation 1/1 PASS，可信选日及 Store 快照不变。完整 JVM 本切片未重跑；此前 975 项中 1 项 SQLite `SQLITE_BUSY` 仍是已知未解决门禁失败。
+- **同设备图像：**`PowerCal_Native095_Parity_20261105` / `emulator-5580`，1080×2400、420 dpi。Native 图 SHA-256 `9915F9DFF8D1F421F2233F6BEBB38CCBA5D7A44F33C5CEA092BD19C6F5B8B59A`；Web 图 `3ABDE008043CC294CF00EA6E96A94E2F789363B5DF7E1E635BDBF0B854F79D8C`。中心 `#FDFDFE` 框 Native `(105,338)-(973,1235)`、Web `(100,393)-(981,1244)`；颜色一致，范围有明显差异。
+- **工厂产物：**Debug APK SHA-256 `D960BA9367626430506F910F727AB3A8F79D7C2BB83BCBC0A224E2669FD1E57F`；唯一默认 `.pcskin` SHA-256 `C8AB68A5A029F2908EFCAF2352FFA264D2846E75060C1BA396FAFC71F3DA748D`，APK 内仅一份且与源码逐字节一致。
+- **证据：**`.local/android-test/reports/native095-month-grid-surface-20261105/manifest.md`；`docs/issues/PC-ISSUE-SEPARATION-NATIVE-MONTH-GRID-GLASS-SURFACE-20261105.md`；差异和几何记录见 `docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md`。
+- **唯一下一动作：**基于冻结 Compose Month `GlassPanel` 的实际布局约束，对齐内层月格表面的上/下边界与宽度。外层面板填充、描边/阴影及 agenda 表面/间距分别处理；不得宣称 Month 整页通过。
+
+## 前一窄切片：Month 选中日内容色（2026-11-05）
 
 - **状态：**选中日期数字和计数前景色窄切片 `PASS`；Month 页面仍 `PARTIAL`，Native 0.9.5 整体迁移仍 `IN_PROGRESS`。Owner 冻结原生 `b1f7629f0c52812e1887443872f43aa6c49908c4` 仍是唯一视觉/交互基准。
 - **提交：**`35c294d445a4280166cdd7d3de0030efaba04d7f`（`fix(month): 对齐原生选中日内容色`）。默认 Skin 选中日文字和计数现继承冻结 `onPrimaryContainer`；Core、Host、业务状态和月份规则未改。
@@ -8,7 +18,7 @@
 - **同设备图像：**API 35 AVD `PowerCal_Native095_Parity_20261105` / `emulator-5580`，1080×2400、420 dpi。Native/Web 截图 SHA 和填充像素框记于 `docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md`；Web 截图与全部本地命令日志在 `.local/android-test/reports/native095-month-count-20261105/`。
 - **工厂产物：**Debug APK SHA-256 `6CEA8B862C55C23F76262FE7D1B59F30A1B795EBFEE5AB78F7CCB7A321E7C64C`；唯一默认 `.pcskin` SHA-256 `85E2DD18688CF622823BFBF23233DD6957617CDF772CC551E1323CAF54EBE120`，APK 内仅一份且逐字节等于源码资源。
 - **剩余差异：**月格表面和 agenda 卡片表面/间距仍待分开测量、移植；Month 整页未签核。Product Cutover `HOLD`。Issue：`docs/issues/PC-ISSUE-SEPARATION-NATIVE-MONTH-SELECTION-COLOR-20261105.md`。
-- **唯一下一动作：**先对照冻结 Compose 与 Web 的 Month 网格表面填充和边界，再处理 agenda 卡片几何；不得把本切片写成整页等价。
+- **当时下一动作：**对照冻结 Compose 与 Web 的 Month 网格表面填充和边界，再处理 agenda 卡片几何；此切片已完成，当前执行入口以 `docs/agent-handoff/CURRENT.md` 为准。
 
 以下既有记录按原时间线保留；其中的 `NEXT_ACTION` 表示当时状态，当前任务入口以 `docs/agent-handoff/CURRENT.md` 为准。
 
