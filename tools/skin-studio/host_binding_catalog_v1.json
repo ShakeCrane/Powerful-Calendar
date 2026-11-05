@@ -1510,6 +1510,77 @@
       }
     },
     {
+      "name": "createDraftFromChatMessage",
+      "label": "Create a staged draft from a chat message",
+      "parameters": {
+        "messageId": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "historyRevision": { "type": "integer", "minimum": 0 },
+        "source": { "type": "string", "enum": ["MESSAGE_CONTENT", "PROPOSAL_SOURCE"] }
+      },
+      "availability": "AI",
+      "effect": "Selects content from the Host-owned conversation at the supplied revision and asks the existing proposal API to stage a draft; the Skin supplies no message text and cannot publish.",
+      "source": "WebSkinHost.decodeBridgeAction → PowerCalApp → existing AI Proposal Feature API",
+      "version": 1,
+      "requiredCapability": "host.action",
+      "parameterSchema": {
+        "type": "object",
+        "properties": {
+          "messageId": { "type": "string", "minLength": 1, "maxLength": 100 },
+          "historyRevision": { "type": "integer", "minimum": 0 },
+          "source": { "type": "string", "enum": ["MESSAGE_CONTENT", "PROPOSAL_SOURCE"] }
+        },
+        "required": ["messageId", "historyRevision", "source"],
+        "additionalProperties": false
+      },
+      "resultSchema": "#/actionResult",
+      "errors": "#/actionResult/errors",
+      "wirePayloadSchema": {
+        "type": "object",
+        "properties": {
+          "name": { "const": "createDraftFromChatMessage" },
+          "messageId": { "type": "string", "minLength": 1, "maxLength": 100 },
+          "historyRevision": { "type": "integer", "minimum": 0 },
+          "source": { "type": "string", "enum": ["MESSAGE_CONTENT", "PROPOSAL_SOURCE"] }
+        },
+        "required": ["name", "messageId", "historyRevision", "source"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "copyChatMessage",
+      "label": "Copy a Host-owned chat message",
+      "parameters": {
+        "messageId": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "historyRevision": { "type": "integer", "minimum": 0 }
+      },
+      "availability": "AI",
+      "effect": "Copies the selected canonical chat message from Host-owned history to the system clipboard; the Skin supplies no text.",
+      "source": "WebSkinHost.decodeBridgeAction → PowerCalApp → Android ClipboardManager",
+      "version": 1,
+      "requiredCapability": "host.action",
+      "parameterSchema": {
+        "type": "object",
+        "properties": {
+          "messageId": { "type": "string", "minLength": 1, "maxLength": 100 },
+          "historyRevision": { "type": "integer", "minimum": 0 }
+        },
+        "required": ["messageId", "historyRevision"],
+        "additionalProperties": false
+      },
+      "resultSchema": "#/actionResult",
+      "errors": "#/actionResult/errors",
+      "wirePayloadSchema": {
+        "type": "object",
+        "properties": {
+          "name": { "const": "copyChatMessage" },
+          "messageId": { "type": "string", "minLength": 1, "maxLength": 100 },
+          "historyRevision": { "type": "integer", "minimum": 0 }
+        },
+        "required": ["name", "messageId", "historyRevision"],
+        "additionalProperties": false
+      }
+    },
+    {
       "name": "prepareAiBatch",
       "label": "Prepare AI batch review",
       "parameters": {

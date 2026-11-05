@@ -116,6 +116,24 @@ class HostBindingCatalogTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unknown parameter"):
             validate_action_parameters("today", {"jump": True})
 
+    def test_chat_message_actions_select_only_host_owned_history(self):
+        validate_action_parameters("createDraftFromChatMessage", {
+            "messageId": "message-1", "historyRevision": 4, "source": "MESSAGE_CONTENT"})
+        validate_action_parameters("createDraftFromChatMessage", {
+            "messageId": "message-1", "historyRevision": 4, "source": "PROPOSAL_SOURCE"})
+        with self.assertRaisesRegex(ValueError, "catalogued value"):
+            validate_action_parameters("createDraftFromChatMessage", {
+                "messageId": "message-1", "historyRevision": 4, "source": "ARBITRARY_TEXT"})
+        with self.assertRaisesRegex(ValueError, "unknown parameter"):
+            validate_action_parameters("createDraftFromChatMessage", {
+                "messageId": "message-1", "historyRevision": 4,
+                "source": "MESSAGE_CONTENT", "text": "untrusted"})
+        validate_action_parameters("copyChatMessage", {
+            "messageId": "message-1", "historyRevision": 4})
+        with self.assertRaisesRegex(ValueError, "unknown parameter"):
+            validate_action_parameters("copyChatMessage", {
+                "messageId": "message-1", "historyRevision": 4, "content": "untrusted"})
+
     def test_project_bindings_are_validated_without_automatic_capability_upgrade(self):
         project = blank_project()
         project["pages"][0]["components"][0]["props"]["hostAction"] = {

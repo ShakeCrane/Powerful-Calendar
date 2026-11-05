@@ -15,8 +15,26 @@ let titleFoldFrame=0,titleFoldResizeObserver=null;
 let aiReviewSelectionId="",aiReviewSelected=new Set();
 let attachmentRequestPending=false;
 let appliedChatPrefillRevision=null;
+let activeChatMessagePress=null;
 let timelineCreateDialog=null;
 let profileEditorSaveRevision=-1,profileEditorDirty=false;
+function closeChatMessageMenus(){
+  for(const menu of document.querySelectorAll(".chat-message-actions:not([hidden])"))menu.hidden=true;
+  for(const trigger of document.querySelectorAll('.chat-message-menu-trigger[aria-expanded="true"]'))
+    trigger.setAttribute("aria-expanded","false");
+}
+function cancelChatMessagePress(pointerId){
+  if(!activeChatMessagePress||activeChatMessagePress.pointerId!==pointerId)return;
+  clearTimeout(activeChatMessagePress.timer);activeChatMessagePress=null;
+}
+document.addEventListener("pointermove",event=>{
+  const press=activeChatMessagePress;
+  if(press&&press.pointerId===event.pointerId&&
+    Math.hypot(event.clientX-press.x,event.clientY-press.y)>12)
+    cancelChatMessagePress(event.pointerId);
+},{passive:true});
+document.addEventListener("pointerup",event=>cancelChatMessagePress(event.pointerId),{passive:true});
+document.addEventListener("pointercancel",event=>cancelChatMessagePress(event.pointerId),{passive:true});
 function postBridgeMessage(message){
   const encoded=JSON.stringify(message);
   if(!port||!bridgeReady){
@@ -416,6 +434,7 @@ document.addEventListener("pointercancel",event=>{
   if(timelineCameraPan?.pointerId===event.pointerId)timelineCameraPan=null;
 });
 document.addEventListener("click",e=>{
+  if(!e.target.closest(".chat-message-action-container"))closeChatMessageMenus();
   const local=e.target.closest("[data-local]");
   if(local){localOptions=local.dataset.local==="options";renderPage();return}
   const toggle=e.target.closest("[data-filter]");
@@ -1119,26 +1138,73 @@ function renderMemo(){
 function renderChat(){
   installChatAttachmentControls();
   const list=$("chatMessages");list.replaceChildren();
+  closeChatMessageMenus();
   const messages=state.chatMessages||[];
   $("chatEmptyHint").hidden=messages.length>0;
   for(const item of messages){
     const bubble=node("article","chat-bubble "+(item.role==="user"?"user":"assistant"));
-    bubble.append(node("p","chat-message-content",item.content));
-    const actions=node("div","chat-message-actions");
-    const addAction=(label,accessible,edit)=>{
-      const button=node("button","",label);button.type="button";
-      button.setAttribute("aria-label",accessible);
-      button.disabled=state.chatHistoryActionsAvailable!==true||typeof item.messageId!=="string";
-      button.addEventListener("click",()=>{
-        if(!button.disabled)rewindChat(item.messageId,edit);
+    const header=node("div","chat-message-head");
+    header.append(node("span","chat-message-role",item.role==="user"?"我":"PowerCal AI"));
+    const actionContainer=node("div","chat-message-action-container");
+    const trigger=node("button","chat-message-menu-trigger","⋮");trigger.type="button";
+    trigger.setAttribute("aria-label",item.role==="user"?"我的消息操作":"PowerCal AI 消息操作");
+    trigger.setAttribute("aria-haspopup","menu");trigger.setAttribute("aria-expanded","false");
+    const actions=node("div","chat-message-actions");actions.hidden=true;actions.setAttribute("role","menu");
+    actions.setAttribute("aria-label",item.role==="user"?"我的消息操作":"PowerCal AI 消息操作");
+    const messageId=typeof item.messageId==="string"?item.messageId:"";
+    const historyRevision=Number(state.chatHistoryRevision)||0;
+    const closeActions=()=>{actions.hidden=true;trigger.setAttribute("aria-expanded","false")};
+    const openActions=()=>{
+      closeChatMessageMenus();actions.hidden=false;trigger.setAttribute("aria-expanded","true");
+    };
+    trigger.addEventListener("click",event=>{
+      event.stopPropagation();
+      const shouldOpen=actions.hidden;closeChatMessageMenus();
+      if(shouldOpen)openActions();
+    });
+    bubble.addEventListener("pointerdown",event=>{
+      if(event.pointerType==="mouse")return;
+      if(activeChatMessagePress){
+        clearTimeout(activeChatMessagePress.timer);activeChatMessagePress=null;
+      }
+      const press={pointerId:event.pointerId,x:event.clientX,y:event.clientY,timer:0};
+      press.timer=window.setTimeout(()=>{
+        if(activeChatMessagePress!==press||!bubble.isConnected)return;
+        activeChatMessagePress=null;openActions();
+      },520);
+      activeChatMessagePress=press;
+    });
+    bubble.addEventListener("contextmenu",event=>{event.preventDefault();openActions()});
+    const addMenuAction=(label,accessible,disabled,onClick)=>{
+      const button=node("button","",label);button.type="button";button.setAttribute("role","menuitem");
+      button.setAttribute("aria-label",accessible);button.disabled=disabled;
+      button.addEventListener("click",event=>{
+        event.stopPropagation();closeActions();onClick();
       });
       actions.append(button);
     };
-    if(item.role==="user"){
-      addAction("编辑并重新发送","编辑这条消息并移除后续对话",true);
-      addAction("撤回及后续","撤回这条消息及后续对话",false);
-    }else addAction("回退到此条","保留这条回复并移除后续对话",false);
-    bubble.append(actions);list.append(bubble);
+    addMenuAction("从此消息创建事件草稿","从此消息创建事件草稿",
+      !messageId||!!state.aiLocked||!!state.chatBusy,
+      ()=>send("createDraftFromChatMessage",{messageId,historyRevision,source:"MESSAGE_CONTENT"}));
+    if(item.role==="user")addMenuAction("编辑并重新发送","编辑这条消息并移除后续对话",
+      state.chatHistoryActionsAvailable!==true||!messageId,
+      ()=>rewindChat(messageId,true));
+    addMenuAction(item.role==="user"?"撤回此消息及后续对话":"回退到此消息",
+      item.role==="user"?"撤回这条消息及后续对话":"回退到此消息",
+      state.chatHistoryActionsAvailable!==true||!messageId,
+      ()=>rewindChat(messageId,false));
+    addMenuAction("复制文字","复制消息文字",!messageId,
+      ()=>send("copyChatMessage",{messageId,historyRevision}));
+    actionContainer.append(trigger,actions);header.append(actionContainer);bubble.append(header);
+    bubble.append(node("p","chat-message-content",item.content));
+    if(item.role!=="user"&&item.proposalAvailable===true){
+      const proposal=node("button","chat-message-proposal","从此消息创建事件草稿");
+      proposal.type="button";proposal.disabled=!messageId||!!state.aiLocked||!!state.chatBusy;
+      proposal.addEventListener("click",()=>send("createDraftFromChatMessage",{
+        messageId,historyRevision,source:"PROPOSAL_SOURCE"}));
+      bubble.append(proposal);
+    }
+    list.append(bubble);
   }
   renderAiBatchControls();
   renderAiProposalReview(list);

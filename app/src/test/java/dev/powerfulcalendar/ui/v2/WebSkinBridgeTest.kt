@@ -84,6 +84,24 @@ class WebSkinBridgeTest {
             """{"version":1,"type":"action","payload":{"name":"deleteSkin","id":"pc-preview-fixture"}}"""))
         assertNull(decodeBridgeAction(
             """{"version":1,"type":"action","payload":{"name":"deleteSkin","id":"powercal-default"}}"""))
+        assertEquals(WebSkinAction.CreateDraftFromChatMessage(
+            "message-1", 4, ChatMessageDraftSource.MESSAGE_CONTENT
+        ), decodeBridgeAction(
+            """{"version":1,"type":"action","payload":{"name":"createDraftFromChatMessage","messageId":"message-1","historyRevision":4,"source":"MESSAGE_CONTENT"}}"""))
+        assertEquals(WebSkinAction.CreateDraftFromChatMessage(
+            "message-1", 4, ChatMessageDraftSource.PROPOSAL_SOURCE
+        ), decodeBridgeAction(
+            """{"version":1,"type":"action","payload":{"name":"createDraftFromChatMessage","messageId":"message-1","historyRevision":4,"source":"PROPOSAL_SOURCE"}}"""))
+        assertNull(decodeBridgeAction(
+            """{"version":1,"type":"action","payload":{"name":"createDraftFromChatMessage","messageId":"message-1","historyRevision":4,"source":"MESSAGE_CONTENT","text":"untrusted"}}"""))
+        assertNull(decodeBridgeAction(
+            """{"version":1,"type":"action","payload":{"name":"createDraftFromChatMessage","messageId":"message-1","historyRevision":-1,"source":"MESSAGE_CONTENT"}}"""))
+        assertNull(decodeBridgeAction(
+            """{"version":1,"type":"action","payload":{"name":"createDraftFromChatMessage","messageId":"message-1","historyRevision":4,"source":"ARBITRARY_TEXT"}}"""))
+        assertEquals(WebSkinAction.CopyChatMessage("message-1", 4), decodeBridgeAction(
+            """{"version":1,"type":"action","payload":{"name":"copyChatMessage","messageId":"message-1","historyRevision":4}}"""))
+        assertNull(decodeBridgeAction(
+            """{"version":1,"type":"action","payload":{"name":"copyChatMessage","messageId":"message-1","historyRevision":4,"content":"untrusted"}}"""))
         assertNull(decodeBridgeAction(
             """{"version":1,"type":"action","payload":{"name":"exportInstalledSkin","id":"pc-preview-fixture","uri":"file:///private"}}"""))
         assertNull(decodeBridgeAction(

@@ -21,19 +21,29 @@ Owner 于 2026-11-05 明确将 **2026-10-27 冻结的 PowerCal 0.9.5-rc.1 原生
 
 ## Native 全部日常表现面清点
 
-冻结版实际日常界面不止时间轴。页面由冻结树中的 app/src/main/java/dev/powerfulcalendar/ui/v2/PowerCalApp.kt 与 NativePowerNavigation.kt 路由；页面实现位于 app/src/main/java/dev/powerfulcalendar/ui/v2/。分离后对应源码位于 native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/。
+冻结版实际日常界面不止时间轴。冻结 SHA b1f7629f0c52812e1887443872f43aa6c49908c4 中，路由和原生页面源码实际位于 app/src/main/java/dev/powerfulcalendar/ui/v2/，例如 PowerCalApp.kt、NativePowerNavigation.kt、NativeTimelineScreen.kt、MonthScreen.kt、MemoCenterScreen.kt、AiChatScreen.kt 与 GreedyTitleFolding.kt。分离后对应实现被抽取到 native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/；审计冻结行为时以 b1 文件为权威，审计现行恢复实现时才使用抽取后的路径。
 
 | 页面 / 表面 | Native 组件、状态与交互 | 当前 Web v3 对应 | 差异与迁移边界 |
 |---|---|---|---|
-| 应用壳 / 主导航 | NativePowerNavigation 四项：时间轴、日历、AI 助手、设置；底栏固定。时间轴顶部显示品牌、日期、今日、Memo 计数、待处理计数、新建。颜色、选中态、面板和系统栏使用 Native 主题。 | index.html 的 clear-head、clear-tabbar；顶部文字工具条，底部五项含 Memo。 | 视觉/导航差异。Memo 应由时间轴快捷入口打开，底栏改回四项。保留当前唯一 Web v3 正常 Runtime。 |
-| 时间轴 | NativeTimelineScreen：中心垂直时间尺、左右独立泳道（ALARM 左；ACTIVITY/DEADLINE 右）、真实时间区间、当前时间蓝线、框外标题、按实际文字矩形贪心折叠、拖动与惯性、左右横向滚动、纵向相机平移、缩放、双击时间尺复位 24 小时、“今日”定位本地中午、事件点击、提醒受阻提示、新建四类入口。 | app.js::renderTimeline、title-folding.js、.timelineWing/.timelineLanes；正式投影/Host 动作已存在。最新 WebView ACTIVITY 固定夹具显示蓝色现在线、双翼、框外贪心标题，并通过了折叠事件触控与 Camera 断言。 | 冻结原始 APK 与 WebView 的当前 ACTIVITY 夹具在同屏行、填充色及主要文字位置接近；Web 绘制仍有 1px 水平边界/文字墨迹差。局部测试不覆盖 ALARM、DEADLINE、重复实例、长标题/多泳道、大字体等，不能视作整个时间轴或全产品签核。继续按冻结参考移植双翼、真实时间几何、框外标题与已冻结手势；未验证的类型和状态逐项补齐。 |
-| 月历 | NativeMonthScreen：返回时间轴（保留相机）、今天、上/下月、年份输入选择、月份选择、横向月切换、七列日期网格、日期选中、当天事件摘要/重复实例、为选定日期新建、跳转到时间轴。底栏仍为四项。 | index.html::monthPage、app.js::renderMonth，由月份和日期的正式 Host 投影驱动；现已实现分离年份/月份选择、原生式网格计数、按可见日期筛选 agenda，并通过正式 Host action 跳转时间轴。 | 本轮 Month 空态截图已与冻结 APK 实屏配对；标题、卡片、日期格和 agenda 已接近，但像素/文字灰度仍有差异，且没有用原始 APK 与 Web 对同一事件 fixture 做成对截图。当前 Native Compose 与 Web 的重复实例点击、日期选择、Today、月份手势、跳到本地中午和跨进程恢复有 Android 触控/测试证据。Month 子集仍为 PARTIAL，不代表完整页面或整产品签核。 |
-| Memo / 待办 | NativeMemoCenterScreen：顶部返回与新增无日期 Memo、Open/Done、完成可撤销提示、行内完成/撤销、标题打开编辑、分页加载。重复待办显示范围由 Host 提供。 | memoPage、renderMemo、toggleMemo、分页按钮；当前为底部第五个页面，Filter 为大分段控件。 | 功能路径有先前 F-04 PREVIOUS PASS；视觉/导航有差异。迁移 Native 标题行、轻量 Open/Done 操作、行密度与返回/新增入口；分页和完成状态继续走现有正式 API。 |
-| AI 聊天 | NativeAiChatScreen：标题/副标题、配置、待处理计数、溢出菜单（批次处理、清理缓存、清空聊天）、消息列表、长按消息菜单（提案、编辑重发、回退、复制）、附件“+”菜单、输入和发送、忙碌/锁定状态。提案补充与审核有独立卡面。 | aiPage、renderChat、renderAiBatchControls、renderAiProposalReview、消息/附件桥接。当前把清空聊天和批量发布/丢弃常驻显示，图片/文件按钮同时展开。 | 功能路径有先前 F-07 PREVIOUS PASS（真服务商仍未测）；视觉/信息架构有差异。迁移原生标题、溢出菜单、输入附件入口、消息/提案卡片层级；审核和审批保持 Host/Core 授权。 |
-| 设置 / 工具 | NativeToolsPage 的个人资料、AI 受保护配置、通知/精确闹钟权限、提醒重建与状态、诊断、系统日历一次性导入、旧版只读迁移、原生备份恢复、ICS 导出。滚动卡片和每行说明构成设置结构。 | settingsPage、renderSettings、Host options、profile editor；当前默认 Web 底栏“设置”触控实际进入 PowerCalApp 的 Native `Page.TOOLS`，不是 Web `settingsPage`。 | 功能路径有先前 F-08 PREVIOUS PASS；视觉差异明显且存在普通用户日常 Native 路由。除必要的可信系统/恢复界面外，默认 Skin 应承接 Settings 表现与导航；SAF、权限提示、密钥持有和可信授权仍由 Host/Android 承担，不能暴露给 JS。需单独修复底栏路由并逐行实测，不能在 Month 子任务中顺手更改。 |
-| 待处理草稿卡组 | NativeDraftDeckScreen：叠卡、内外滑动、逐卡/快速浏览、搜索草稿与正式事件、恢复/删除条目、空态、AI 批次进度、冲突处理、审批/撤销/关闭。 | 当前 #pendingDeck overlay，有卡组/发布、搜索、恢复、删除和完成退出。 | 业务与状态功能有前序 F-05/F-07 PREVIOUS PASS；Native 是深色 scrim 上的白色浮层/叠卡，Web 当前为高面积极白底板，结构不等价。视觉/动作层次需迁移；写入仍 Host/Core。 |
-| 四类事件编辑与详情 | NativeDirectEventEditor、NativeDeckEventForm、NativeEventInspection：类型选择、标题、时间/日期、地点/备注、提醒和启用状态、重复规则与作用域、详情、修改前后状态、只在业务修改后暂存、未修改关闭不落草稿。 | edit.js 生成编辑 Sheet 和字段；当前新建先弹四类选择对话框，再进入滚动表单。截图显示编辑中计数“1 张·已暂存”，关闭后卡组实际为 0；与 Native “只在修改后暂存 / 未修改”表达不一致。 | F-05/F-06 冻结业务路径有 PREVIOUS PASS；无修改关闭在本轮 Web AVD 操作后显示 0 张。保持真实零写入语义，修正临时状态文案；迁移原生全屏编辑/底部操作及四类表单的布局层级。 |
-| 审核/安全子表面 | NativeFormalWriteReview、NativeAiProposalReview、NativeAiBatchAuthorizationReview、NativeAiInputReview（图片、OCR、文件）、NativeAiStuckBatchReleaseReview、NativeLegacyDataReview、NativeCalendarImportPrompt、NativeTextDraftDialog、原生 Date/Time Picker。 | Clear 有 Web 提案卡、正式写入确认入口、Web 状态卡；系统选择器、SAF 和受保护操作由 Host 调度。 | 属于完整审计面，不能只迁主页面。Skin 可表达的审核信息/布局由 Skin 接手；操作系统 Picker、SAF、权限页以及密钥/授权确认的可信面必须继续由 Android Host 提供。单独对照确认文案、字段、拒绝/取消和可访问性。 |
+| 应用壳 / 主导航 | 冻结 Native NativePowerNavigation 固定四项：时间轴、日历、AI 助手、设置；Memo 从时间轴顶部入口打开。时间轴标题行提供品牌、日期、今日、Memo/待处理、日历、草稿与新建入口。 | 当前 Web v3 也显示四项主导航，Memo 保留为独立 Host 路由并由顶部快捷入口到达；最新真实截图 current-web-native095-timeline-final.png、current-web-native095-ai-final.png 显示了 Native 风格标题行、底栏与选中态。 | 共享壳已经接近冻结结构；剩余差异以同一时刻/设备的图标墨迹、边界和触控矩形对照。早期五项 Clear 底栏截图是历史快照，不能代表当前 Web。 |
+| 时间轴 | NativeTimelineScreen：中心垂直时间尺、ALARM 左翼与 ACTIVITY/DEADLINE 右翼、真实时间区间、蓝色现在标记、框外标题、按实际文字矩形贪心折叠、双翼滚动/相机/缩放、双击时间尺复位 24 小时、今日定位本地中午、事件点击、受阻提示与四类新建。 | 当前 renderTimeline、title-folding.js、.timelineWing/.timelineLanes 通过现有正式投影/Host；最新 current-web-native095-timeline-final.png 已采用 Native 页面背景、标题、控制行与四项底栏。固定 ACTIVITY 夹具已测折叠触控和 Camera。 | 同数据 ACTIVITY 固定夹具的事件行/填色/主要文字位置接近，仍有约 1px 横向边界与字形栅格差。完整 ALARM、DEADLINE、重复实例、长标题/多泳道、大字体与空/忙/错误状态未签核；Timeline 整页仍 PARTIAL。 |
+| 月历 | NativeMonthScreen：返回且保留 Camera、今天、前后月、年份/月份选择、横向切月、七列日格、日期选择、当天事件/重复实例、选定日新建、跳转时间轴。 | 当前 monthPage/renderMonth 由正式 Host 月份和日期投影供数；真实 WebView 截图 current-web-native095-month-final.png 已匹配 Native 标题、七列、agenda、返回/Today 和四项底栏结构。 | 当前选中日期是圆形，而冻结 Native 是圆角方形；日格内白色底面、容器边界/间距及 agenda 垂直位置仍不同。截图跨越本地午夜、选中日不同，不据其宣称像素等价；重复实例和日期交互沿用 F-03 PREVIOUS PASS，需在固定时钟/同 fixture 重放。 |
+| Memo / 待办 | NativeMemoCenterScreen：返回与新增无日期 Memo、Open/Done、完成后可撤销、行内完成/撤销、标题打开编辑、分页；重复待办范围由 Host 提供。 | 当前 memoPage/renderMemo 采用同一返回、新增、完成筛选、分页和四项底栏；真实 WebView 空态截图 current-web-native095-memo-final.png 与 Native 结构接近。 | 空态文字基线/垂直位置、列表分隔线和行密度仍需固定数据对照；完整行点击、完成撤销和分页虽有旧 F-04 证据，未在本轮以相同 Native/Web fixture 重放。Memo 整页 PARTIAL。 |
+| AI 聊天 | NativeAiChatScreen：标题/副标题、配置、待处理菜单、消息列表、消息长按菜单、附件“+”、输入/发送、忙碌状态和独立提案审核卡。 | 当前 aiPage/renderChat 已有 Native 风格标题、待处理溢出菜单、附件入口和 Host 消息动作；消息角色标签与长按菜单已补齐，Web 状态仅暴露 proposalAvailable 布尔值，Host 按 messageId/revision 取规范消息。 | 该消息动作子集 Android 触控测试通过；本次未取得原始 APK 消息菜单的实屏截图，故 Native/Web 菜单像素对照 NOT TESTED。AI 历史、附件授权、提案审核、错误/重试仍未逐状态签核；当前额外发送说明文字与 Native 空态文案布局有差异。AI 页面 PARTIAL。 |
+| 设置 / 工具 | 冻结 NativeToolsPage 含资料、AI 受保护配置、通知/精确闹钟、提醒重建/诊断、系统日历导入、只读迁移、备份恢复、ICS 导出。 | 当前普通 settings Host action 路由至 Page.SETTINGS 并由 Web settingsPage/renderSettings 表现；仅显式 nativeSettings 进入 Page.TOOLS 安全恢复。AI 密钥输入为 Host Compose 受保护表面，不投影给 Web。 | 真实 Web 设置截图保持四项底栏和原生式卡片顺序；卡片白底/阴影与 Native 轮廓面、资料编辑入口和间距仍不同。原始 Native 皮肤目录是已退役产品入口，不得移植；系统 SAF、权限和可信密钥面继续归 Host。 |
+| 待处理草稿卡组 | NativeDraftDeckScreen：卡片堆叠、卡内/卡外滑动、逐卡/快速浏览、搜索、恢复/删除、空态、AI 批次进度、冲突、审批/撤销/关闭。 | 当前 #pendingDeck 具备卡组、发布、搜索、恢复、删除和退出动作，调用正式 Host/Core。 | Native 是深色 scrim 上的白色浮层/叠卡；Web 当前仍为高面积的全高白色编辑/卡组面板。视觉层级、拖动/滚动手势、错误/冲突状态需移植并实触。 |
+| 四类事件编辑与详情 | NativeDirectEventEditor、NativeDeckEventForm、NativeEventInspection：类型、标题、时段/日期、地点/备注、提醒/启用、重复规则/作用域、详情与前后状态；只在业务变化后暂存。 | Web edit.js 现有四类编辑、草稿、日期/时间选择与动作调用；旧 F-05/F-06 业务 API 路径保留。 | Native 是覆盖当前页面的暗 scrim 编辑面并有紧凑底部动作；Web 用高面积极白面板及纵向表单。旧 Web 截图里“1 张·已暂存”是编辑会话计数，关闭后 Store 为 0；须保持实际零写入并让可见状态不误导。四类表单与取消/审核视觉仍 PARTIAL。 |
+| 审核/安全子表面 | NativeFormalWriteReview、NativeAiProposalReview、NativeAiBatchAuthorizationReview、NativeAiInputReview、NativeAiStuckBatchReleaseReview、NativeLegacyDataReview、NativeCalendarImportPrompt、NativeTextDraftDialog 与 Android 日期/时间 Picker。 | Web 有提案/正式写入 Review 卡和状态错误层；Picker、SAF、权限、密钥与可信确认继续由 Host/Android 承担。 | 业务 API 路径有旧任务覆盖，但 Compose 与 Web 每种确认、拒绝、冲突、取消布局尚未逐一配对。Native/Host 安全边界保留，Skin 只显示最小必要状态。 |
+
+### 有限差异审计结论（2026-11-05）
+
+- **窄范围等价证据：**四项主导航的页面顺序与角色一致；时间轴固定 ACTIVITY fixture 的双翼、时间几何、框外标题和点击 Camera 已有 WebView 证据（残留约 1px 绘制差）；本轮补齐的 AI 消息角色与长按菜单动作通过真实 Android WebView 触控和 Store 不变断言。以上均只是组件/行为子集，不代表页面整体 PASS。
+- **部分接近、需继续移植：**Native 样式 Web 的 Timeline、Month、Memo、AI、Settings 实屏已有 1080×2400/420 dpi 截图。共享标题/底栏已接近；Month 选中日期仍为圆形而 Native 为圆角方形，容器/agenda 几何有差异；AI 空态多一行“向 AI 发送消息”说明，聊天历史和附件/提案状态未配对；Settings 卡片表面、资料编辑入口和间距仍不同。
+- **明确待移植且尚无当前版本成对验收：**Draft Deck 的暗 scrim/叠卡结构、四类事件编辑器的 Native 弹层和底部操作、审核/冲突/拒绝子表面。旧编辑器截图中“1 张·已暂存”是 UI 会话计数，关闭后 Store 为 0；必须保留零写入行为并校正可见说明。
+- **明确不迁移：**冻结 APK 中的皮肤候选/目录/导入导出 UI 已被 Owner 退役；当前 Native Settings 截图里的该区块不属于复刻目标。保留仅用于安全恢复的 Native 路由与 Host 可信能力。
+- **对照限制：**现有 Native 与 Web 截图分别来自 2026-11-04/05，系统时间、所选日和数据状态并非全都相同。因此它们可用于页面结构差异盘点，不能作为逐像素签核。之后每个实现切片要使用同一固定时钟、同一隔离 Store fixture、同一 API 35 AVD 重拍/触控；尚未重放的状态保持 PARTIAL 或 NOT TESTED。
+
+**审计结论：当前没有任何完整页面可据此宣称已达到 0.9.5-rc.1 全量视觉/交互等价。**
 
 ## 当前已等价、已验证与尚需移植
 
@@ -249,3 +259,19 @@ Owner 于 2026-11-05 明确将 **2026-10-27 冻结的 PowerCal 0.9.5-rc.1 原生
 | 证据 | `.local/android-test/reports/host-ai-settings-20261105/`；实现提交 `07c62fbf16c0aa72181f92783e84a5826905fc56`；Issue `docs/issues/PC-ISSUE-SEPARATION-AI-SETTINGS-HOST-SURFACE-20261105.md`。 |
 
 **剩余差异：**脏表单的“放弃更改”确认分支尚未单独执行；冻结原始 APK 的 AI 配置弹层截图尚未配对；Native/Web 聊天历史、附件授权、提案审核、错误与重试仍未验收。Memo、编辑器/审核以及其他 Settings 操作仍按原生 0.9.5 基准逐页迁移。Native 紧急恢复、默认包 ID/数量、Core 业务规则未改；Product Cutover 仍 HOLD。
+
+## 2026-11-05 AI 消息操作菜单与 Host 内容解析（局部 PASS；AI 页面仍 PARTIAL）
+
+冻结实现位于 `b1f7629f0c52812e1887443872f43aa6c49908c4:app/src/main/java/dev/powerfulcalendar/ui/v2/AiChatScreen.kt`。消息角色标识为“我”/“PowerCal AI”；长按菜单顺序为“从此消息创建事件草稿”、用户消息专属“编辑并重新发送”、按角色显示撤回/回退、复制文字。助手消息的结构化提案另有独立入口。
+
+当前 Web v3 将角色标签和菜单顺序对齐，触屏长按约 520ms 打开菜单，并提供键盘可达的菜单按钮。桥接只发送 `messageId`、`historyRevision` 和封闭来源枚举；`PowerCalApp` 按当前 Host 历史解析文本，助手提案可用状态只投影布尔值。复制由 Host 从规范消息读取后写入 Android 剪贴板。Skin 不能提供自造文本、提案正文或剪贴板内容。草稿仍进入现有 AI/Host 提案链，不更改 Core 业务规则。
+
+| 验证项 | 实际结果 |
+|---|---|
+| 冻结行为与新实现 | 菜单项目、角色条件、消息 ID/历史版本解析已按冻结 `AiChatScreen` 对照；助手提案入口依赖 Host 投影的 `proposalAvailable`，原始 `proposalSource` 不进入 Web state。 |
+| Android WebView | 隔离 API 35 AVD `PowerCal_Native095_AI_20261105` / `emulator-5556`，1080×2400、420 dpi、WebView 124.0.6367.219。`clearChatMessagesMatchNativeLabelsAndUseHostOwnedMenuActions` 实际执行触屏长按、菜单项顺序和 Host 剪贴板复制，1/1 PASS；操作前后 Store 事件、草稿、待处理项、提交数、身份数与序列预览一致。仪器日志：`.local/android-test/reports/native095-ai-message-menu-20261105/instrument-final-ui.log`。 |
+| 自动测试与构建 | 串行 Gradle 门禁 `154/154` tasks BUILD SUCCESSFUL；JVM `975/975`、141 suites、无失败/错误/跳过；两项源码边界、Debug APK 构建、Lint（0 errors）及 AndroidTest 编译通过。Studio Host catalog Python 定向测试 `8/8`、Node 语法检查和 Chromium E2E 通过。全套 Studio Python 为 `86/89`，3 项失败分别是 `test_architecture.PresentationBoundaryTests.test_full_route_registry_has_one_restore`、`test_architecture.PresentationBoundaryTests.test_privacy_editors_remain_host_owned_but_placeable`、`test_native_recovery_contract.NativeRecoveryContractTest.test_native_settings_and_hidden_activity_rescue_are_both_available`；这些断言针对源码字面量/路由结构，本切片未修改或重标它们，不能记为通过。 |
+| APK 与默认包 | Debug APK SHA-256 `40BF867049F303EA32DA6B3C06D3321C30F0A56BA5AA20B2F07A38D1D07B770D`。APK 中仅有 `assets/powercal-clear-default.pcskin`；源码与 APK 包均为 `81A99440F5F9E67608460611FECE5825C61229852A8372B2455216086EE88456`，逐字节一致，ID 保持 `powercal-clear-default`。 |
+| 未完成证据 | 原始冻结 APK 的长按菜单实屏无法恢复到前台，故 Native/Web 原 APK 菜单截图对照 `NOT TESTED`；本轮依据冻结源码核对菜单语义，并实测新 WebView。提案动作触控、历史并发冲突、附件授权、提案审核和错误/重试仍未作为完整 AI 页签核。 |
+
+**结论：**消息标签、消息菜单和 Host 规范内容解析切片有 Android WebView 与 Store 不变证据；AI 页面和 Native 0.9.5 全量视觉/交互迁移继续 `PARTIAL/IN_PROGRESS`。Product Cutover 保持 `HOLD`。

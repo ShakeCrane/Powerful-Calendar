@@ -12,6 +12,8 @@ import dev.powerfulcalendar.ui.v2.nativeui.NativeSkinCatalogReview
 import dev.powerfulcalendar.ui.v2.nativeui.NativeTextDraftDialog
 
 import android.content.Context
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.Manifest
@@ -1171,6 +1173,20 @@ fun PowerCalApp(
         confirmStuckBatchRelease == null && editSession == null && newEventSession == null && !deckOpen &&
         pendingWebAiProposalPublish == null && !aiAttachmentPickerBusy &&
         pendingFileReview == null && pendingImageReview == null
+
+    fun resolveChatMessage(messageId: String, expectedRevision: Long): AiChatMessage? {
+        if (page != Page.AI.name || expectedRevision != chatHistoryRevision) {
+            message = "聊天已变化，请刷新后重试"
+            return null
+        }
+        return chatHistory.firstOrNull { it.messageId == messageId } ?: run {
+            message = "这条消息已不存在，请刷新后重试"
+            null
+        }
+    }
+
+    fun canCreateDraftFromChatMessage(): Boolean = canEditChatHistory() &&
+        webAiProposalReviewSession == null && aiSession?.isActive != true
 
     fun canClearAiTemporaryCache(): Boolean = page == Page.AI.name && !aiLocked &&
         !chatBusy && !aiBusy && pendingBatchMode == null && confirmBatch == null &&
@@ -2335,6 +2351,32 @@ fun PowerCalApp(
                         AiConversationMutationStatusV1.NO_CHANGE ->
                             message = "这条回复后没有更多对话可回退"
                         else -> message = "聊天已变化或目标已不存在，请刷新后重试"
+                    }
+                }
+                is WebSkinAction.CreateDraftFromChatMessage -> if (canCreateDraftFromChatMessage()) {
+                    val target = resolveChatMessage(action.messageId, action.historyRevision)
+                    val source = when (action.source) {
+                        ChatMessageDraftSource.MESSAGE_CONTENT -> target?.content
+                        ChatMessageDraftSource.PROPOSAL_SOURCE -> target?.proposalSource
+                    }?.takeIf { it.isNotBlank() }
+                    if (source == null) {
+                        if (target != null) message = "这条消息没有可用的提案内容"
+                    } else {
+                        scope.launch { generateAiDraft(source, shareForRequest = false) }
+                    }
+                }
+                is WebSkinAction.CopyChatMessage -> {
+                    val target = resolveChatMessage(action.messageId, action.historyRevision)
+                    if (target != null) {
+                        val clipboard = appContext.getSystemService(Context.CLIPBOARD_SERVICE)
+                            as? ClipboardManager
+                        if (clipboard == null) {
+                            message = "复制消息失败；聊天记录未更改"
+                        } else {
+                            clipboard.setPrimaryClip(ClipData.newPlainText("PowerCal 消息", target.content))
+                            message = "已复制消息"
+                        }
+                        WebSkinBridgeRuntime.stateRevision++
                     }
                 }
                 is WebSkinAction.PrepareAiBatch -> if (page == Page.AI.name && !aiLocked &&

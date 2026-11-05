@@ -168,6 +168,12 @@ internal sealed interface WebSkinAction {
         val historyRevision: Long,
         val editAndResend: Boolean
     ) : WebSkinAction
+    data class CreateDraftFromChatMessage(
+        val messageId: String,
+        val historyRevision: Long,
+        val source: ChatMessageDraftSource
+    ) : WebSkinAction
+    data class CopyChatMessage(val messageId: String, val historyRevision: Long) : WebSkinAction
     /** Starts the Host-owned range selection conversation; this does not authorize writes. */
     data class PrepareAiBatch(val mode: AiBatchModeV1) : WebSkinAction
     /** Cancels a pending range-selection conversation or requests stop for the active Host batch. */
@@ -187,6 +193,8 @@ internal sealed interface WebSkinAction {
 }
 
 internal enum class TimelineZoomDirection { IN, OUT }
+
+internal enum class ChatMessageDraftSource { MESSAGE_CONTENT, PROPOSAL_SOURCE }
 
 internal enum class NotificationPermissionLaunch {
     UNAVAILABLE,
@@ -643,6 +651,35 @@ internal fun decodeBridgeAction(raw: String): WebSkinAction? {
             }?.takeIf { it >= 0 } ?: return null
             val editAndResend = payload.opt("editAndResend") as? Boolean ?: return null
             WebSkinAction.RewindChat(messageId, revision, editAndResend)
+        }
+        "createDraftFromChatMessage" -> {
+            if (keys != setOf("name", "messageId", "historyRevision", "source")) return null
+            val messageId = (payload.opt("messageId") as? String)?.takeIf { it.length in 1..100 }
+                ?: return null
+            val rawRevision = payload.opt("historyRevision")
+            val revision = when (rawRevision) {
+                is Int -> rawRevision.toLong()
+                is Long -> rawRevision
+                else -> null
+            }?.takeIf { it >= 0 } ?: return null
+            val source = when (payload.opt("source")) {
+                "MESSAGE_CONTENT" -> ChatMessageDraftSource.MESSAGE_CONTENT
+                "PROPOSAL_SOURCE" -> ChatMessageDraftSource.PROPOSAL_SOURCE
+                else -> return null
+            }
+            WebSkinAction.CreateDraftFromChatMessage(messageId, revision, source)
+        }
+        "copyChatMessage" -> {
+            if (keys != setOf("name", "messageId", "historyRevision")) return null
+            val messageId = (payload.opt("messageId") as? String)?.takeIf { it.length in 1..100 }
+                ?: return null
+            val rawRevision = payload.opt("historyRevision")
+            val revision = when (rawRevision) {
+                is Int -> rawRevision.toLong()
+                is Long -> rawRevision
+                else -> null
+            }?.takeIf { it >= 0 } ?: return null
+            WebSkinAction.CopyChatMessage(messageId, revision)
         }
         "prepareAiBatch" -> {
             if (keys != setOf("name", "mode")) return null

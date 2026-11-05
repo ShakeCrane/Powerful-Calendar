@@ -90,7 +90,9 @@ class PowerCalAiProposalReviewWebViewInstrumentedTest {
     private fun tapWebSelector(
         web: WebView,
         selector: String,
-        requireTrustedClick: Boolean = true
+        requireTrustedClick: Boolean = true,
+        holdMillis: Long = 80,
+        requireTrustedUp: Boolean = true
     ): JSONObject {
         val selectorLiteral = JSONObject.quote(selector)
         val probe = evaluateObject(web, """(() => {
@@ -142,16 +144,27 @@ class PowerCalAiProposalReviewWebViewInstrumentedTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val automation = instrumentation.uiAutomation
         val downTime = SystemClock.uptimeMillis()
-        val down = MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, y, 0).apply {
-            source = InputDevice.SOURCE_TOUCHSCREEN
+        fun touch(action: Int, eventTime: Long): MotionEvent {
+            val properties = MotionEvent.PointerProperties().apply {
+                id = 0
+                toolType = MotionEvent.TOOL_TYPE_FINGER
+            }
+            val coordinates = MotionEvent.PointerCoords().apply {
+                this.x = x
+                this.y = y
+                pressure = 1f
+                this.size = 1f
+            }
+            return MotionEvent.obtain(downTime, eventTime, action, 1,
+                arrayOf(properties), arrayOf(coordinates), 0, 0, 1f, 1f,
+                0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0)
         }
-        val up = MotionEvent.obtain(downTime, downTime + 80, MotionEvent.ACTION_UP, x, y, 0).apply {
-            source = InputDevice.SOURCE_TOUCHSCREEN
-        }
+        val down = touch(MotionEvent.ACTION_DOWN, downTime)
+        val up = touch(MotionEvent.ACTION_UP, downTime + holdMillis)
         try {
             assertTrue("Android accepted Clear AI touchscreen down",
                 automation.injectInputEvent(down, true))
-            SystemClock.sleep(80)
+            SystemClock.sleep(holdMillis)
             assertTrue("Android accepted Clear AI touchscreen up",
                 automation.injectInputEvent(up, true))
         } finally {
@@ -169,7 +182,7 @@ class PowerCalAiProposalReviewWebViewInstrumentedTest {
         }
         assertTrue("Clear AI control must receive trusted touchscreen pointerdown: " +
             "selector=$selector probe=$probe receipt=$receipt", receipt.optBoolean("trustedDown"))
-        assertTrue("Clear AI control must receive trusted touchscreen pointerup: " +
+        if (requireTrustedUp) assertTrue("Clear AI control must receive trusted touchscreen pointerup: " +
             "selector=$selector probe=$probe receipt=$receipt", receipt.optBoolean("trustedUp"))
         if (requireTrustedClick) {
             assertTrue("Clear AI control must receive trusted click: selector=$selector probe=$probe receipt=$receipt",
@@ -317,6 +330,106 @@ class PowerCalAiProposalReviewWebViewInstrumentedTest {
             "expected=${compose.activity.packageName}; active=${activeRoot?.packageName}; " +
             "nodes=$activeNodes",
             activeRoot?.packageName?.toString() == compose.activity.packageName)
+    }
+
+    @Test
+    fun clearChatMessagesMatchNativeLabelsAndUseHostOwnedMenuActions() {
+        val storage: Context = compose.activity.applicationContext
+        val namespace = "pc-ai-message-menu-${UUID.randomUUID()}"
+        val context = IsolatedAppContext(compose.activity, storage, namespace)
+        val database = "message-menu.db"
+        val store = PowerStore(context, database)
+        val userMessage = "isolated synthetic user message"
+        val assistantMessage = "isolated synthetic assistant reply"
+        val untrustedProposalSource = "untrusted proposal source sentinel"
+        val history = listOf(
+            AiChatMessage("user", userMessage, messageId = "synthetic-user-message"),
+            AiChatMessage("assistant", assistantMessage, proposalSource = untrustedProposalSource,
+                messageId = "synthetic-assistant-message")
+        )
+        var web: WebView? = null
+
+        try {
+            store.readableDatabase
+            context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                .edit().putBoolean("system-calendar-import-asked", true).commit()
+            AiChatHistoryStore.save(context, history)
+            compose.runOnUiThread {
+                PowerCalSkinRegistry.reset()
+                SkinPackageManager(context).select("powercal-clear-default")
+                compose.activity.setContent {
+                    CompositionLocalProvider(LocalContext provides context) {
+                        PowerCalTheme { PowerCalApp(store) }
+                    }
+                }
+            }
+            compose.waitUntil(30_000) {
+                compose.runOnUiThread {
+                    web = findWebView(compose.activity.findViewById(android.R.id.content))
+                }
+                web != null
+            }
+            val view = requireNotNull(web)
+            awaitJs(view, "!!document.querySelector('.clear-tabbar [data-action=ai]')")
+            tapWebSelector(view, ".clear-tabbar [data-action=ai]")
+            awaitJs(view, "!document.querySelector('#aiPage').hidden && " +
+                "document.querySelectorAll('#chatMessages .chat-bubble').length===2")
+
+            val projected = WebSkinBridgeRuntime.state().getJSONArray("chatMessages")
+            assertFalse("Raw proposal source must not be exposed in the Web state",
+                WebSkinBridgeRuntime.state().toString().contains(untrustedProposalSource))
+            assertTrue("the assistant proposal affordance must be exposed as a boolean",
+                projected.getJSONObject(1).getBoolean("proposalAvailable"))
+            awaitJs(view, "document.querySelectorAll('#chatMessages .chat-message-role')[0]?.textContent==='我' && " +
+                "document.querySelectorAll('#chatMessages .chat-message-role')[1]?.textContent==='PowerCal AI' && " +
+                "document.querySelector('#chatMessages .chat-message-proposal')?.textContent==='从此消息创建事件草稿'")
+
+            val before = listOf(store.all().size.toLong(), store.draftCount(), store.pendingCount().toLong(),
+                store.commitCount(), store.identityCount(), store.nextSequencePreview())
+            tapWebSelector(view,
+                "#chatMessages article.chat-bubble.assistant", requireTrustedClick = false,
+                holdMillis = 650, requireTrustedUp = false)
+            awaitJs(view, "!document.querySelector('#chatMessages article.chat-bubble.assistant " +
+                ".chat-message-actions').hidden")
+            awaitJs(view, "[...document.querySelectorAll('#chatMessages article.chat-bubble.assistant " +
+                ".chat-message-actions [role=menuitem]')].map(x=>x.textContent).join('|')===" +
+                "'从此消息创建事件草稿|回退到此消息|复制文字'")
+            tapWebSelector(view,
+                "#chatMessages article.chat-bubble.assistant .chat-message-actions " +
+                    "button[aria-label=\"复制消息文字\"]")
+            compose.waitUntil(5_000) {
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE)
+                    as? android.content.ClipboardManager
+                clipboard?.primaryClip?.getItemAt(0)?.text?.toString() == assistantMessage
+            }
+            assertEquals("The copy action must resolve only the selected Host-owned message",
+                assistantMessage,
+                (context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
+                    .primaryClip?.getItemAt(0)?.text?.toString())
+            assertEquals("message menu and copy must not mutate calendar data", before,
+                listOf(store.all().size.toLong(), store.draftCount(), store.pendingCount().toLong(),
+                    store.commitCount(), store.identityCount(), store.nextSequencePreview()))
+            println("NATIVE_095_AI_MESSAGE_MENU labels=true longPress=true proposalTextNotProjected=true " +
+                "hostClipboard=true coreStoreUnchanged=true")
+        } finally {
+            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE)
+                as? android.content.ClipboardManager
+            if (clipboard?.primaryClip?.getItemAt(0)?.text?.toString() == assistantMessage) {
+                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("PowerCal", ""))
+            }
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            store.close()
+            context.deleteDatabase(database)
+            listOf("powercal-ai", "powercal-onboarding", "powercal-ui", "powercal-skin-choice",
+                "powercal-profile", "powercal-file-ai-consent").forEach { name ->
+                storage.deleteSharedPreferences("$namespace-$name")
+            }
+            File(storage.cacheDir, namespace).deleteRecursively()
+        }
     }
 
     @Test
@@ -705,8 +818,10 @@ class PowerCalAiProposalReviewWebViewInstrumentedTest {
                 sendTurn(promptOne, replies[0])
                 sendTurn(promptTwo, replies[1])
                 tapWebSelector(view,
+                    "#chatMessages article.chat-bubble.user:nth-of-type(1) .chat-message-menu-trigger")
+                tapWebSelector(view,
                     "#chatMessages article.chat-bubble.user:nth-of-type(1) " +
-                        "button[aria-label=\"编辑这条消息并移除后续对话\"]")
+                        ".chat-message-actions button[aria-label=\"编辑这条消息并移除后续对话\"]")
                 awaitJs(view, "document.querySelector('#chatInput')?.value===" +
                     "${JSONObject.quote(promptOne)} && " +
                     "document.querySelectorAll('.chat-bubble').length===0")
@@ -716,8 +831,10 @@ class PowerCalAiProposalReviewWebViewInstrumentedTest {
 
                 sendTurn(promptTwo, replies[3])
                 tapWebSelector(view,
+                    "#chatMessages article.chat-bubble.user:nth-of-type(3) .chat-message-menu-trigger")
+                tapWebSelector(view,
                     "#chatMessages article.chat-bubble.user:nth-of-type(3) " +
-                        "button[aria-label=\"撤回这条消息及后续对话\"]")
+                        ".chat-message-actions button[aria-label=\"撤回这条消息及后续对话\"]")
                 awaitJs(view, "document.querySelectorAll('.chat-bubble').length===2 && " +
                     "!document.querySelector('#chatMessages')?.textContent.includes(" +
                     "${JSONObject.quote(promptTwo)} )")

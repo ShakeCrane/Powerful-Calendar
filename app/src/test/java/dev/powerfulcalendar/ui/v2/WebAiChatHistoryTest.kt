@@ -22,4 +22,17 @@ class WebAiChatHistoryTest {
         assertEquals("id-2", projected.getJSONObject(0).getString("messageId"))
         assertEquals("id-41", projected.getJSONObject(39).getString("messageId"))
     }
+
+    @Test
+    fun projectionExposesOnlyWhetherTheNativeManualProposalAffordanceExists() {
+        val projected = WebAiChatHistory.project(listOf(
+            AiChatMessage("assistant", "reply", messageId = "plain"),
+            AiChatMessage("assistant", "reply with source", proposalSource = "untrusted proposal input",
+                messageId = "proposal")
+        ))
+
+        assertEquals(false, projected.getJSONObject(0).getBoolean("proposalAvailable"))
+        assertEquals(true, projected.getJSONObject(1).getBoolean("proposalAvailable"))
+        assertEquals(false, projected.getJSONObject(1).has("proposalSource"))
+    }
 }

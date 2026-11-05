@@ -15,6 +15,7 @@ internal object WebAiChatHistory {
                 .put("messageId", message.messageId)
                 .put("role", message.role)
                 .put("content", message.content.take(PROJECTED_CONTENT_LIMIT))
+                .put("proposalAvailable", !message.proposalSource.isNullOrBlank())
         }
     )
 

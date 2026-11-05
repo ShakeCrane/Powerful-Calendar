@@ -871,7 +871,16 @@ async function main(){
         const firstBubble=[...list.querySelectorAll('.chat-bubble.user')]
           .find(bubble=>bubble.querySelector('.chat-message-content')?.textContent===first);
         check(firstBubble,'first user message is missing before rewind');
-        firstBubble.querySelector('.chat-message-actions button').click();
+        check(firstBubble.querySelector('.chat-message-role')?.textContent==='我',
+          'Native 0.9.5 user-message identity label is missing');
+        firstBubble.querySelector('.chat-message-menu-trigger').click();
+        check(!firstBubble.querySelector('.chat-message-actions').hidden,
+          'message action menu did not open from its accessible trigger');
+        check(firstBubble.querySelector('.chat-message-actions [role="menuitem"]')?.textContent===
+          '从此消息创建事件草稿','Native manual proposal action is missing');
+        check([...firstBubble.querySelectorAll('.chat-message-actions [role="menuitem"]')]
+          .some(item=>item.textContent==='复制文字'),'Native copy action is missing');
+        firstBubble.querySelector('.chat-message-actions button[aria-label="编辑这条消息并移除后续对话"]').click();
         await wait(()=>field.value===first&&!list.textContent.includes(second),
           'edit-and-resend did not prefill the selected user message and remove later turns');
         const edited='修改后的第一条请求';
@@ -889,9 +898,12 @@ async function main(){
           .find(bubble=>bubble.querySelector('.chat-message-content')?.textContent===
             '预览 Mock：消息已保留在本地聊天历史；没有调用真实 AI 或写入日历。');
         check(retainedReply,'deterministic post-rewind Mock reply is missing');
+        check(retainedReply.querySelector('.chat-message-role')?.textContent==='PowerCal AI',
+          'Native 0.9.5 assistant identity label is missing');
         const unsentDraft='暂不发送的输入草稿';
         field.value=unsentDraft;field.dispatchEvent(new Event('input',{bubbles:true}));
-        retainedReply.querySelector('.chat-message-actions button').click();
+        retainedReply.querySelector('.chat-message-menu-trigger').click();
+        retainedReply.querySelector('.chat-message-actions button[aria-label="回退到此消息"]').click();
         await wait(()=>field.value===unsentDraft&&!list.textContent.includes(later)&&
           list.textContent.includes('没有调用真实 AI 或写入日历'),
           'assistant rewind changed the composer or failed to remove later turns');

@@ -31,6 +31,14 @@
 
 唯一实时任务入口：`docs/agent-handoff/CURRENT.md`。历史正文从下方标记起原样保留；旧 `NEXT_ACTION` 只代表当时状态，不是当前执行命令。
 
+## Native 0.9.5 AI 消息菜单迁移切片（2026-11-05，局部 PASS）
+
+- **范围：**按冻结源码 `b1f7629f0c52812e1887443872f43aa6c49908c4` 对齐 AI 消息角色、长按菜单顺序和 Host 规范内容解析。Skin 只发送消息 ID/历史版本/闭合枚举；提案正文不投影到 Web，复制由 Host 读取规范消息。未改 Core/业务 API。详细报告：`docs/issues/PC-ISSUE-SEPARATION-AI-MESSAGE-CONTEXT-MENU-20261105.md`。
+- **验证：**完整串行 Gradle 门禁 `975/975` JVM、141 suites、0 failures/errors/skips；两项源码边界、APK、Lint（0 errors）和 AndroidTest Kotlin compile PASS。API 35 AVD `PowerCal_Native095_AI_20261105` / `emulator-5556` 的真实 WebView 长按菜单/Host 剪贴板/Store 不变测试 1/1 PASS。Studio catalog Python 8/8、Node 语法与浏览器 E2E PASS；Studio 全套 86/89，三个源代码字面量/结构断言 FAIL，未计为通过。
+- **产物：**Debug APK SHA-256 `40BF867049F303EA32DA6B3C06D3321C30F0A56BA5AA20B2F07A38D1D07B770D`；唯一 `powercal-clear-default.pcskin` SHA-256 `81A99440F5F9E67608460611FECE5825C61229852A8372B2455216086EE88456`，APK 内逐字节一致。
+- **证据：**`.local/android-test/reports/native095-ai-message-menu-20261105/`；差异审计：`docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md`。原始 Native APK 消息菜单实屏配对 `NOT TESTED`；AI 页面整体与视觉迁移保持 `PARTIAL/IN_PROGRESS`，Product Cutover `HOLD`。
+- **下一步：**在固定设备/数据条件下继续移植并对照 Month 选中日期形状和日历/agenda 几何；随后处理 AI 状态、Memo 行状态及事件编辑/草稿浮层。不得将局部测试写成整页等价。
+
 ## 当前状态（2026-11-04 · Wave 2）
 
 - 施工 Worktree/分支：`E:\Project\Powerful-Calendar\.local\android-test\worktrees\skin-single-default-closure` / `codex/skin-single-default-closure`。Wave 2 起点 `3b54097d6383c0349b5d3d638c228320e3c8e22c`；当前最新代码提交 `62334dce69ac25c316b5bc39497f08adbc20bd16`。
