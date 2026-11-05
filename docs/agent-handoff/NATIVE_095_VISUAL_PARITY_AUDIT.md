@@ -27,7 +27,7 @@ Owner 于 2026-11-05 明确将 **2026-10-27 冻结的 PowerCal 0.9.5-rc.1 原生
 |---|---|---|---|
 | 应用壳 / 主导航 | 冻结 Native NativePowerNavigation 固定四项：时间轴、日历、AI 助手、设置；Memo 从时间轴顶部入口打开。时间轴标题行提供品牌、日期、今日、Memo/待处理、日历、草稿与新建入口。 | 当前 Web v3 也显示四项主导航，Memo 保留为独立 Host 路由并由顶部快捷入口到达；最新真实截图 current-web-native095-timeline-final.png、current-web-native095-ai-final.png 显示了 Native 风格标题行、底栏与选中态。 | 共享壳已经接近冻结结构；剩余差异以同一时刻/设备的图标墨迹、边界和触控矩形对照。早期五项 Clear 底栏截图是历史快照，不能代表当前 Web。 |
 | 时间轴 | NativeTimelineScreen：中心垂直时间尺、ALARM 左翼与 ACTIVITY/DEADLINE 右翼、真实时间区间、蓝色现在标记、框外标题、按实际文字矩形贪心折叠、双翼滚动/相机/缩放、双击时间尺复位 24 小时、今日定位本地中午、事件点击、受阻提示与四类新建。 | 当前 renderTimeline、title-folding.js、.timelineWing/.timelineLanes 通过现有正式投影/Host；最新 current-web-native095-timeline-final.png 已采用 Native 页面背景、标题、控制行与四项底栏。固定 ACTIVITY 夹具已测折叠触控和 Camera。 | 同数据 ACTIVITY 固定夹具的事件行/填色/主要文字位置接近，仍有约 1px 横向边界与字形栅格差。完整 ALARM、DEADLINE、重复实例、长标题/多泳道、大字体与空/忙/错误状态未签核；Timeline 整页仍 PARTIAL。 |
-| 月历 | NativeMonthScreen：返回且保留 Camera、今天、前后月、年份/月份选择、横向切月、七列日格、日期选择、当天事件/重复实例、选定日新建、跳转时间轴。 | 当前 monthPage/renderMonth 由正式 Host 月份和日期投影供数；同设备、同选中日期和 MonthFixture 的原生 APK/Web 截图已配对。 | 当前 Web 与 Native 都使用圆角矩形选中态，但 CSS `border-radius:24px` 大于冻结 `GlassShapes.chip = RoundedCornerShape(14.dp)`；日格行高、日历底面/容器边界及 agenda 卡片表面和间距仍需逐项测量。早期跨午夜/异日截图只作结构证据，不据其宣称像素等价；重复实例和日期交互沿用 F-03 PREVIOUS PASS。 |
+| 月历 | NativeMonthScreen：返回且保留 Camera、今天、前后月、年份/月份选择、横向切月、七列日格、日期选择、当天事件/重复实例、选定日新建、跳转时间轴。 | 当前 monthPage/renderMonth 由正式 Host 月份和日期投影供数；同设备、同选中日期和 MonthFixture 的原生 APK/Web 截图已配对。 | 选中态圆角已按 `GlassShapes.chip = RoundedCornerShape(14.dp)` 移植，WebView 计算样式为 `14px`，日格高度 52 CSS px；当前剩余差异包括选中日期计数文字颜色、内格表面以及 agenda 卡片表面/间距。早期跨午夜/异日截图只作结构证据，不据其宣称像素等价；重复实例和日期交互沿用 F-03 PREVIOUS PASS。 |
 | Memo / 待办 | NativeMemoCenterScreen：返回与新增无日期 Memo、Open/Done、完成后可撤销、行内完成/撤销、标题打开编辑、分页；重复待办范围由 Host 提供。 | 当前 memoPage/renderMemo 采用同一返回、新增、完成筛选、分页和四项底栏；真实 WebView 空态截图 current-web-native095-memo-final.png 与 Native 结构接近。 | 空态文字基线/垂直位置、列表分隔线和行密度仍需固定数据对照；完整行点击、完成撤销和分页虽有旧 F-04 证据，未在本轮以相同 Native/Web fixture 重放。Memo 整页 PARTIAL。 |
 | AI 聊天 | NativeAiChatScreen：标题/副标题、配置、待处理菜单、消息列表、消息长按菜单、附件“+”、输入/发送、忙碌状态和独立提案审核卡。 | 当前 aiPage/renderChat 已有 Native 风格标题、待处理溢出菜单、附件入口和 Host 消息动作；消息角色标签与长按菜单已补齐，Web 状态仅暴露 proposalAvailable 布尔值，Host 按 messageId/revision 取规范消息。 | 该消息动作子集 Android 触控测试通过；本次未取得原始 APK 消息菜单的实屏截图，故 Native/Web 菜单像素对照 NOT TESTED。AI 历史、附件授权、提案审核、错误/重试仍未逐状态签核；当前额外发送说明文字与 Native 空态文案布局有差异。AI 页面 PARTIAL。 |
 | 设置 / 工具 | 冻结 NativeToolsPage 含资料、AI 受保护配置、通知/精确闹钟、提醒重建/诊断、系统日历导入、只读迁移、备份恢复、ICS 导出。 | 当前普通 settings Host action 路由至 Page.SETTINGS 并由 Web settingsPage/renderSettings 表现；仅显式 nativeSettings 进入 Page.TOOLS 安全恢复。AI 密钥输入为 Host Compose 受保护表面，不投影给 Web。 | 真实 Web 设置截图保持四项底栏和原生式卡片顺序；卡片白底/阴影与 Native 轮廓面、资料编辑入口和间距仍不同。原始 Native 皮肤目录是已退役产品入口，不得移植；系统 SAF、权限和可信密钥面继续归 Host。 |
@@ -38,7 +38,7 @@ Owner 于 2026-11-05 明确将 **2026-10-27 冻结的 PowerCal 0.9.5-rc.1 原生
 ### 有限差异审计结论（2026-11-05）
 
 - **窄范围等价证据：**四项主导航的页面顺序与角色一致；时间轴固定 ACTIVITY fixture 的双翼、时间几何、框外标题和点击 Camera 已有 WebView 证据（残留约 1px 绘制差）；本轮补齐的 AI 消息角色与长按菜单动作通过真实 Android WebView 触控和 Store 不变断言。以上均只是组件/行为子集，不代表页面整体 PASS。
-- **部分接近、需继续移植：**Native 样式 Web 的 Timeline、Month、Memo、AI、Settings 实屏已有 1080×2400/420 dpi 截图。共享标题/底栏已接近；同设备 Month 配对截图显示选中态都是圆角矩形，当前 Web 半径 24 CSS px、冻结 Native 为 14 dp；日格行高、表面和 agenda 几何仍有差异。AI 空态多一行“向 AI 发送消息”说明，聊天历史和附件/提案状态未配对；Settings 卡片表面、资料编辑入口和间距仍不同。
+- **部分接近、需继续移植：**Native 样式 Web 的 Timeline、Month、Memo、AI、Settings 实屏已有 1080×2400/420 dpi 截图。共享标题/底栏已接近；Month 选中态 14dp 圆角和 52dp 日格高度已用真实 WebView 检查，剩余选中日期计数色、格面和 agenda 卡片表面/间距仍不同。AI 空态多一行“向 AI 发送消息”说明，聊天历史和附件/提案状态未配对；Settings 卡片表面、资料编辑入口和间距仍不同。
 - **明确待移植且尚无当前版本成对验收：**Draft Deck 的暗 scrim/叠卡结构、四类事件编辑器的 Native 弹层和底部操作、审核/冲突/拒绝子表面。旧编辑器截图中“1 张·已暂存”是 UI 会话计数，关闭后 Store 为 0；必须保留零写入行为并校正可见说明。
 - **明确不迁移：**冻结 APK 中的皮肤候选/目录/导入导出 UI 已被 Owner 退役；当前 Native Settings 截图里的该区块不属于复刻目标。保留仅用于安全恢复的 Native 路由与 Host 可信能力。
 - **对照限制：**现有 Native 与 Web 截图分别来自 2026-11-04/05，系统时间、所选日和数据状态并非全都相同。因此它们可用于页面结构差异盘点，不能作为逐像素签核。之后每个实现切片要使用同一固定时钟、同一隔离 Store fixture、同一 API 35 AVD 重拍/触控；尚未重放的状态保持 PARTIAL 或 NOT TESTED。
@@ -275,3 +275,17 @@ Owner 于 2026-11-05 明确将 **2026-10-27 冻结的 PowerCal 0.9.5-rc.1 原生
 | 未完成证据 | 原始冻结 APK 的长按菜单实屏无法恢复到前台，故 Native/Web 原 APK 菜单截图对照 `NOT TESTED`；本轮依据冻结源码核对菜单语义，并实测新 WebView。提案动作触控、历史并发冲突、附件授权、提案审核和错误/重试仍未作为完整 AI 页签核。 |
 
 **结论：**消息标签、消息菜单和 Host 规范内容解析切片有 Android WebView 与 Store 不变证据；AI 页面和 Native 0.9.5 全量视觉/交互迁移继续 `PARTIAL/IN_PROGRESS`。Product Cutover 保持 `HOLD`。
+
+## 2026-11-05 Month 选中日期圆角迁移（窄切片 PASS；Month 整页 PARTIAL）
+
+冻结源码 `MonthScreen.kt` 以 `GlassShapes.chip` 呈现日期格；冻结 `PowerTheme.kt` 将该 shape 定义为 `RoundedCornerShape(14.dp)`，日格最小高度为 52dp。首轮检查只看到基础 `style.css` 的 24px，浏览器计算样式和打包结果进一步证明实际生效的 `native-095.css` 后置规则仍覆盖为 18px；Android/Browser 几何断言捕获了这个来源。现在 base 与 Native-095 两处 `.month-cell.selected` 以及 `.month-cell.today` 均为 14px，避免今天边框再次把选中形状覆盖。
+
+| 验证项 | 实际结果 |
+|---|---|
+| Studio/浏览器 | `e2e_v3_month_selection.cjs` 加入运行时 computed-style 断言，Canonical Skin 仍有 10 个文件，选中格 `borderTopLeftRadius=14px`，月份/日期/Today/Camera 流程通过。`test_single_default_distribution.py` 2/2 PASS；JS 语法检查 PASS。 |
+| 构建与 Android | 正式 `build_default_clear.py` 生成 409320 bytes 包，SHA-256 `DDA39D12548368A33CB0F90041B61EAFE08AA7D53C710822491B29819F5345D3`。APK SHA-256 `A064F2F66AEEB0BC726CC15F79C6ACDA3D4179160991030C2ACD083D103DF40D`，只含一个默认包且和源码逐字节一致。串行 `verifySkinSourceBoundary`、`verifyNativeSkinBoundary`、`assembleDebug`、AndroidTest Kotlin 编译/组装通过；本轮未重跑完整 JVM/Lint。 |
+| 同设备 Native/Web 对照 | AVD `PowerCal_Native095_Parity_20261105` / `emulator-5580`，API 35、1080×2400、420 dpi。Native 原始 APK 图 [month-native-original-20261105.png](../../.local/android-test/reports/native095-month-radius-20261105/month-native-original-20261105.png)，SHA-256 `9915F9DFF8D1F421F2233F6BEBB38CCBA5D7A44F33C5CEA092BD19C6F5B8B59A`；新 WebView 图 [month-web-selected-20261105.png](../../.local/android-test/reports/native095-month-radius-20261105/month-web-selected-20261105.png)，SHA-256 `A3A7E1CEDDF54B3C89490DD5283D870F0873C25A654B3761A2EEB34C03E3653E`。两图为同设备、2026-11-05 选中日、`MonthFixture` ACTIVITY；Web 图由真实 Android WebView 仪器测试截取，状态栏/导航栏 ROI 已从图像误差统计中排除。 |
+| 触控与几何 | `monthSelectedDayRadiusMatchesFrozenNativeChipAndTapKeepsStoreUnchanged` 1/1 PASS。真实日期触控 `event.isTrusted=true`；Web computed radius `14px`、选中格边界为 `{x:178.476,y:215.286,width:55.238,height:52}` CSS px；议程显示 `MonthFixture`。选日动作前后事件、草稿、待处理、提交数、身份数及序列预览相同。第一轮即时读取议程失败，已用显式 DOM 等待屏障修正测试时序，没有加入 sleep；最终复跑通过。 |
+| 剩余实屏差异 | Native 选中日期的 `1 项` 文本继承 primary-container 深色，Web 仍使用次级灰；Native agenda 表面与 Web 白色高亮卡片、边距/垂直间距仍不同。当前截图的内容区域 MAE `7.264/255`、P95 `13`、完全相同像素比例 `41.20%`；日历 ROI MAE `7.611`、agenda ROI MAE `9.863`。这些指标仅描述截图，不设为像素 PASS 阈值；状态栏外观不一致已裁除。 |
+
+**结论：**选中形状和格高有冻结源码、浏览器 computed-style 与 Android WebView 证据；选中计数、面板表面和 agenda 视觉仍待迁移。Month 整页保持 `PARTIAL`，Product Cutover `HOLD`。

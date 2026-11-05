@@ -31,6 +31,14 @@
 
 唯一实时任务入口：`docs/agent-handoff/CURRENT.md`。历史正文从下方标记起原样保留；旧 `NEXT_ACTION` 只代表当时状态，不是当前执行命令。
 
+## Native 0.9.5 Month 选中日期圆角迁移（2026-11-05，窄切片 PASS）
+
+- **根因/修改：**冻结 `GlassShapes.chip` 为 14dp；基础 CSS 与实际覆盖它的 `native-095.css` 原来分别是 24px/18px。E2E computed style 发现 WebView 真正使用 18px；已将选中/今天形状统一为 14px。未改 Core/Host 行为。
+- **验证：**Studio 月历 CDP E2E 运行时半径 14px，单默认分发 2/2 PASS；串行皮肤边界、APK 和 AndroidTest 编译/组装 PASS。隔离 AVD `PowerCal_Native095_Parity_20261105` / `emulator-5580` 实际 WebView 触控与 Store 不变 1/1 PASS，Web 截图与原始 APK 同设备、同日期/fixture。未重跑完整 JVM/Lint。
+- **APK/包：**Debug APK `A064F2F66AEEB0BC726CC15F79C6ACDA3D4179160991030C2ACD083D103DF40D`；唯一 `powercal-clear-default.pcskin` `DDA39D12548368A33CB0F90041B61EAFE08AA7D53C710822491B29819F5345D3`，源码/APK 字节一致。
+- **证据：**`.local/android-test/reports/native095-month-radius-20261105/`；`docs/issues/PC-ISSUE-SEPARATION-NATIVE-MONTH-CHIP-RADIUS-20261105.md`；全页和图像度量见 `docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md`。Month 整页仍 `PARTIAL`；选中计数色、格面、agenda 卡片与间距待处理；Product Cutover `HOLD`。
+- **唯一下一动作：**对齐选中日期格内事件计数的前景色。冻结 Compose 的计数继承 `primaryContainer` 内容色；当前 Web `.month-count` 明确覆写为 `var(--label-2)`。先按冻结调色板确认实际目标色，再在同 AVD 重拍，不改 Core 或重复规则。
+
 ## Native 0.9.5 AI 消息菜单迁移切片（2026-11-05，局部 PASS）
 
 - **范围：**按冻结源码 `b1f7629f0c52812e1887443872f43aa6c49908c4` 对齐 AI 消息角色、长按菜单顺序和 Host 规范内容解析。Skin 只发送消息 ID/历史版本/闭合枚举；提案正文不投影到 Web，复制由 Host 读取规范消息。未改 Core/业务 API。详细报告：`docs/issues/PC-ISSUE-SEPARATION-AI-MESSAGE-CONTEXT-MENU-20261105.md`。

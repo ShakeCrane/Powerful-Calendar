@@ -117,8 +117,8 @@ html.theme-dark .month-calendar-panel {border-color:#39414F;background:#171D27}
 .month-cell {display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;padding:5px 0;font-variant-numeric:tabular-nums}
 .month-day-number {font-size:16px;line-height:21px}
 .month-count {min-height:12px;color:var(--label-2);font-size:10px;font-weight:400;line-height:12px;white-space:nowrap}
-.month-cell.today {border:1px solid var(--accent);border-radius:18px;color:var(--accent);font-weight:650}
-.month-cell.selected {border-radius:18px;background:var(--accent-soft);color:var(--label);font-weight:650}
+.month-cell.today {border:1px solid var(--accent);border-radius:14px;color:var(--accent);font-weight:650}
+.month-cell.selected {border-radius:14px;background:var(--accent-soft);color:var(--label);font-weight:650}
 #monthAgenda {padding:18px 0 4px}
 #monthAgenda>.quiet {margin-left:0;text-align:left}
 #monthAgenda h2 {margin:0 0 8px;color:var(--label);font-size:17px;font-weight:600}

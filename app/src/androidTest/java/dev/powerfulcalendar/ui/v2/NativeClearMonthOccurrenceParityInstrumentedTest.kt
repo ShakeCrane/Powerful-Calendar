@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.database.DatabaseErrorHandler
 import android.database.sqlite.SQLiteDatabase
+import android.graphics.Bitmap
 import android.os.SystemClock
 import android.view.InputDevice
 import android.view.MotionEvent
@@ -449,6 +450,24 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
         compose.waitUntil(30_000) { evaluate(web, condition) == "true" }
     }
 
+    private fun captureWindowScreenshot(name: String): File {
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        val file = File(requireNotNull(compose.activity.externalCacheDir), name)
+        val bitmap = requireNotNull(
+            InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
+        )
+        try {
+            file.outputStream().use { output ->
+                assertTrue("Month WebView screenshot must encode",
+                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, output))
+            }
+        } finally {
+            bitmap.recycle()
+        }
+        println("NATIVE_095_MONTH_WEB_SCREENSHOT=${file.absolutePath} bytes=${file.length()}")
+        return file
+    }
+
     private fun tapClear(web: WebView, selector: String): JSONObject {
         val selectorLiteral = JSONObject.quote(selector)
         val encoded = evaluate(web, """(()=>{
@@ -820,6 +839,81 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
                     .forEach { storage.deleteSharedPreferences("$namespace-$it") }
                 File(storage.cacheDir, namespace).deleteRecursively()
             }
+        }
+    }
+
+    @Test
+    fun monthSelectedDayRadiusMatchesFrozenNativeChipAndTapKeepsStoreUnchanged() {
+        val storage = compose.activity.applicationContext
+        val namespace = "pc-month-radius-${UUID.randomUUID()}"
+        val context = IsolatedAppContext(compose.activity, storage, namespace)
+        val database = "month-radius.db"
+        val store = PowerStore(context, database)
+        val selectedDate = LocalDate.of(2026, 11, 5)
+        val zone = ZoneId.of("Asia/Shanghai")
+        var web: WebView? = null
+        try {
+            context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                .edit().putBoolean("system-calendar-import-asked", true).commit()
+            val fixture = store.newDraft(DraftForm.fresh(TemporalKind.ACTIVITY, selectedDate, zone).copy(
+                title = "MonthFixture",
+                startText = "2026-11-05 12:00",
+                endText = "2026-11-05 13:00"
+            ))
+            assertTrue("the isolated Month fixture must commit",
+                store.commit(fixture.draftId) is PowerStore.CommitOutcome.Committed)
+            val countsBefore = listOf(
+                store.all().size.toLong(), store.draftCount(), store.pendingCount().toLong(),
+                store.commitCount(), store.identityCount(), store.nextSequencePreview()
+            )
+            SkinPackageManager(context).select("powercal-clear-default")
+            val clearWeb = attachClearMonth(context, store).also { web = it }
+            tapClear(clearWeb, ".clear-tabbar [data-action='month']")
+            awaitJs(clearWeb, "!document.querySelector('#monthPage').hidden")
+            tapClear(clearWeb, "#monthYearTitle")
+            awaitJs(clearWeb, "document.querySelector('#monthYearPickerDialog')?.open===true")
+            evaluate(clearWeb, "(()=>{const year=document.querySelector('#monthYear');" +
+                "year.value='2026';year.dispatchEvent(new Event('input',{bubbles:true}));true})()")
+            tapClear(clearWeb, "#monthYearPickerForm button[type='submit']")
+            awaitJs(clearWeb, "document.querySelector('#monthTitle')?.dataset.month?.startsWith('2026-')===true")
+            tapClear(clearWeb, "#monthNumberTitle")
+            awaitJs(clearWeb, "document.querySelector('#monthPickerDialog')?.open===true")
+            tapClear(clearWeb, "#monthPickerForm [data-month-number='11']")
+            awaitJs(clearWeb, "document.querySelector('#monthTitle')?.dataset.month==='2026-11'")
+            val dateTap = tapClear(clearWeb, "#monthGrid .month-cell[data-date='$selectedDate']")
+            assertTrue("selected-day tap must be a trusted Android input", dateTap.optBoolean("trusted"))
+            awaitJs(clearWeb,
+                "document.querySelector('#monthAgenda h2')?.dataset.date==='$selectedDate'")
+            compose.waitUntil(30_000) {
+                evaluate(clearWeb,
+                    "!!document.querySelector('#monthAgenda .agenda-event-title')?.textContent.includes('MonthFixture')") == "true"
+            }
+            val radius = evaluate(clearWeb,
+                "getComputedStyle(document.querySelector('#monthGrid .month-cell.selected')).borderTopLeftRadius")
+            assertEquals("CSS chip corner must match frozen GlassShapes.chip = 14.dp", "\"14px\"", radius)
+            assertEquals("selected agenda must retain the deterministic fixture", "true",
+                evaluate(clearWeb,
+                    "document.querySelector('#monthAgenda .agenda-event-title')?.textContent.includes('MonthFixture')"))
+            val bounds = evaluate(clearWeb, "(()=>{const r=document.querySelector('#monthGrid .month-cell.selected')" +
+                ".getBoundingClientRect();return JSON.stringify({x:r.x,y:r.y,width:r.width,height:r.height})})()")
+            captureWindowScreenshot("native095-month-web-selected-20261105.png")
+            assertEquals("month selection must not write Calendar Store data", countsBefore, listOf(
+                store.all().size.toLong(), store.draftCount(), store.pendingCount().toLong(),
+                store.commitCount(), store.identityCount(), store.nextSequencePreview()
+            ))
+            println("NATIVE_095_MONTH_SELECTED_SHAPE radius=$radius bounds=$bounds date=$selectedDate " +
+                "fixture=MonthFixture trustedTouch=true storeUnchanged=true")
+        } finally {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            store.close()
+            context.deleteDatabase(database)
+            listOf("powercal-onboarding", "powercal-skin-choice", "powercal-ui", "powercal-profile")
+                .forEach { storage.deleteSharedPreferences("$namespace-$it") }
+            File(storage.cacheDir, namespace).deleteRecursively()
         }
     }
 

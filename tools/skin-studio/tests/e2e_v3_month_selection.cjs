@@ -104,10 +104,14 @@ async function main(){
     const initial=await waitFrame(`(()=>{
       const selected=document.querySelector('.month-cell.selected');
       return selected?{month:document.querySelector('#monthTitle').dataset.month,
-        date:selected.dataset.date,dayCount:document.querySelectorAll('.month-cell').length}:null;
+        date:selected.dataset.date,dayCount:document.querySelectorAll('.month-cell').length,
+        selectedRadius:getComputedStyle(selected).borderTopLeftRadius}:null;
     })()`,"Initial month state");
     if(initial.date!=="2026-10-22"||initial.dayCount!==31)
       throw Error("Unexpected initial month: "+JSON.stringify(initial));
+    if(initial.selectedRadius!=="14px")
+      throw Error("Selected month-day shape differs from frozen Native chip radius: "+
+        JSON.stringify(initial));
     const initialCamera=await evaluate("simulatedState().timeline.anchorMillis");
 
     await frameEval("document.querySelector('.month-cell[data-date=\\\"2026-10-23\\\"]')?.click()");

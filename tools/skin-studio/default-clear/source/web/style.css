@@ -92,7 +92,7 @@ button:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outl
 .month-cell{min-height:57px;text-align:center;border:0;border-top:1px solid var(--sep);
  background:transparent;font-variant-numeric:tabular-nums;touch-action:pan-y}
 .month-cell.today{color:var(--now);font-weight:700}
-.month-cell.selected{background:var(--accent-soft);border-radius:24px}
+.month-cell.selected{background:var(--accent-soft);border-radius:14px}
 .month-weekday{font-size:11px;color:var(--label-3);text-align:center}
 .tabs{display:flex;background:var(--fill-2);border-radius:12px;padding:3px;margin:0 8px 10px}
 .tabs button{border:0;flex:1;padding:8px;border-radius:10px;background:transparent}
