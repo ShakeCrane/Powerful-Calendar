@@ -494,12 +494,28 @@ $("monthGrid").addEventListener("click",event=>{
 $("monthYearTitle").addEventListener("click",()=>{
   const [year]=String(state.month?.month||"2026-10").split("-").map(Number);
   $("monthYear").value=year;
-  $("monthYearPickerDialog").showModal();
+  updateMonthYearSubmit();
+  openMonthSelectionDialog($("monthYearPickerDialog"));
 });
 $("monthNumberTitle").addEventListener("click",()=>{
   const [year]=String(state.month?.month||"2026-10").split("-").map(Number);
   $("monthPickerHeading").textContent=`选择月份 · ${year} 年`;
-  $("monthPickerDialog").showModal();
+  openMonthSelectionDialog($("monthPickerDialog"));
+});
+function openMonthSelectionDialog(dialog){
+  dialog.showModal();
+  dialog.focus({preventScroll:true});
+}
+function updateMonthYearSubmit(){
+  const year=Number($("monthYear").value);
+  $("monthYearPickerSubmit").disabled=!Number.isInteger(year)||year<1900||year>2100;
+}
+$("monthYear").addEventListener("input",updateMonthYearSubmit);
+$("monthYearPickerDialog").addEventListener("click",event=>{
+  if(event.target===$("monthYearPickerDialog"))$("monthYearPickerDialog").close();
+});
+$("monthPickerDialog").addEventListener("click",event=>{
+  if(event.target===$("monthPickerDialog"))$("monthPickerDialog").close();
 });
 $("monthPickerCancel").addEventListener("click",()=>$("monthPickerDialog").close());
 $("monthYearPickerCancel").addEventListener("click",()=>$("monthYearPickerDialog").close());

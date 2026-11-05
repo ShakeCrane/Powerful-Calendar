@@ -450,7 +450,11 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
         compose.waitUntil(30_000) { evaluate(web, condition) == "true" }
     }
 
-    private fun captureWindowScreenshot(web: WebView, name: String): File {
+    private fun captureWindowScreenshot(
+        web: WebView,
+        name: String,
+        requirePickerSurface: Boolean = false
+    ): File {
         evaluate(web, "window.__native095ScreenshotFrameReady=false;" +
             "requestAnimationFrame(()=>requestAnimationFrame(()=>window.__native095ScreenshotFrameReady=true));true")
         awaitJs(web, "window.__native095ScreenshotFrameReady===true")
@@ -466,11 +470,34 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
         assertTrue("WebView visual state must be drawn before screenshot capture",
             visualStateDrawn.await(10, TimeUnit.SECONDS))
         InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        if (requirePickerSurface) {
+            SystemClock.sleep(300)
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        }
         val file = File(requireNotNull(compose.activity.externalCacheDir), name)
         val bitmap = requireNotNull(
             InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
         )
         try {
+            if (requirePickerSurface) {
+                val expectedSurface = android.graphics.Color.rgb(231, 235, 244)
+                var matchingSurfaceSamples = 0
+                for (y in 0 until bitmap.height step 2) {
+                    for (x in 0 until bitmap.width step 2) {
+                        val pixel = bitmap.getPixel(x, y)
+                        if (kotlin.math.abs(android.graphics.Color.red(pixel) - 231) <= 2 &&
+                            kotlin.math.abs(android.graphics.Color.green(pixel) - 235) <= 2 &&
+                            kotlin.math.abs(android.graphics.Color.blue(pixel) - 244) <= 2) {
+                            matchingSurfaceSamples++
+                        }
+                    }
+                }
+                assertTrue("Picker surface must be visible in its captured Android screenshot: $name",
+                    matchingSurfaceSamples > 20_000)
+                println("NATIVE_095_MONTH_PICKER_CAPTURE=$name " +
+                    "surfaceSamples=$matchingSurfaceSamples " +
+                    "expectedArgb=0x${expectedSurface.toUInt().toString(16)}")
+            }
             file.outputStream().use { output ->
                 assertTrue("Month WebView screenshot must encode",
                     bitmap.compress(Bitmap.CompressFormat.PNG, 100, output))
@@ -480,6 +507,43 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
         }
         println("NATIVE_095_MONTH_WEB_SCREENSHOT=${file.absolutePath} bytes=${file.length()}")
         return file
+    }
+
+    private fun captureDisplayScreenshot(name: String): File {
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        val file = File(requireNotNull(compose.activity.externalCacheDir), name)
+        val bitmap = requireNotNull(
+            InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
+        )
+        try {
+            file.outputStream().use { output ->
+                assertTrue("Month picker screenshot must encode",
+                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, output))
+            }
+        } finally {
+            bitmap.recycle()
+        }
+        println("NATIVE_095_MONTH_NATIVE_SCREENSHOT=${file.absolutePath} bytes=${file.length()}")
+        return file
+    }
+
+    private fun assertCenteredPicker(style: JSONObject, label: String) {
+        val dialog = style.getJSONObject("dialog")
+        val viewport = style.getJSONObject("viewport")
+        assertEquals("$label must match the frozen 320dp AlertDialog width",
+            320.0, dialog.getDouble("width"), 1.0)
+        assertEquals("$label must be horizontally centered in the WebView",
+            (viewport.getDouble("width") - dialog.getDouble("width")) / 2.0,
+            dialog.getDouble("x"), 1.0)
+        assertEquals("$label must be vertically centered in the WebView",
+            (viewport.getDouble("height") - dialog.getDouble("height")) / 2.0 + 12.0,
+            dialog.getDouble("y"), 1.0)
+        assertEquals("$label surface must match the frozen Material surface",
+            "rgb(231, 235, 244)", style.getString("background"))
+        assertEquals("$label shape must match the frozen 28dp dialog",
+            "28px", style.getString("radius"))
+        assertEquals("$label must use the measured dim scrim",
+            "rgba(0, 0, 0, 0.6)", style.getString("backdrop"))
     }
 
     private fun tapClear(web: WebView, selector: String): JSONObject {
@@ -539,6 +603,52 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
         }
         awaitJs(web, "window.__monthOccurrenceTap?.trusted===true")
         return JSONObject(JSONArray("[${evaluate(web, "JSON.stringify(window.__monthOccurrenceTap)")}]" )
+            .getString(0))
+    }
+
+    private fun tapClearDialogBackdrop(web: WebView, selector: String): JSONObject {
+        val selectorLiteral = JSONObject.quote(selector)
+        val encoded = evaluate(web, """(()=>{
+          const dialog=document.querySelector($selectorLiteral);
+          if(!dialog?.open)return JSON.stringify({found:false});
+          window.__dialogBackdropTap=null;
+          dialog.addEventListener('click',event=>{
+            window.__dialogBackdropTap={trusted:event.isTrusted,backdrop:event.target===dialog};
+          },{once:true,capture:true});
+          return JSON.stringify({found:true,width:innerWidth,height:innerHeight});
+        })()""")
+        val viewport = JSONObject(JSONArray("[$encoded]").getString(0))
+        assertTrue("Open picker dialog is required before tapping its backdrop",
+            viewport.optBoolean("found"))
+
+        val location = IntArray(2)
+        val bounds = AtomicReference<Pair<Int, Int>>()
+        compose.runOnUiThread { web.getLocationOnScreen(location); bounds.set(web.width to web.height) }
+        val (width, height) = requireNotNull(bounds.get())
+        val scaleX = width / viewport.getDouble("width")
+        val scaleY = height / viewport.getDouble("height")
+        assertEquals("WebView backdrop input mapping must preserve aspect ratio", scaleX, scaleY, 0.03)
+        val x = location[0] + 10f * scaleX.toFloat()
+        val y = location[1] + ((viewport.getDouble("height") / 2.0) + 12.0).toFloat() * scaleY.toFloat()
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        val downTime = SystemClock.uptimeMillis()
+        val down = MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, y, 0).apply {
+            source = InputDevice.SOURCE_TOUCHSCREEN
+        }
+        val up = MotionEvent.obtain(downTime, downTime + 80L, MotionEvent.ACTION_UP, x, y, 0).apply {
+            source = InputDevice.SOURCE_TOUCHSCREEN
+        }
+        try {
+            assertTrue("Android rejected picker-backdrop touchscreen down",
+                automation.injectInputEvent(down, true))
+            assertTrue("Android rejected picker-backdrop touchscreen up",
+                automation.injectInputEvent(up, true))
+        } finally {
+            down.recycle()
+            up.recycle()
+        }
+        awaitJs(web, "window.__dialogBackdropTap?.trusted===true")
+        return JSONObject(JSONArray("[${evaluate(web, "JSON.stringify(window.__dialogBackdropTap)")}]" )
             .getString(0))
     }
 
@@ -1138,6 +1248,8 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
             compose.onNodeWithText("${nativeInitialMonth.year} 年")
                 .performTouchInput { click() }
             compose.onNodeWithText("选择年份").assertExists()
+            compose.waitForIdle()
+            captureDisplayScreenshot("native095-month-year-dialog-20261106.png")
             compose.onNode(hasSetTextAction()).performTextClearance()
             compose.onNode(hasSetTextAction()).performTextInput(targetMonth.year.toString())
             compose.onNodeWithText("跳转").performTouchInput { click() }
@@ -1147,6 +1259,9 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
             }
             compose.onNodeWithText("${nativeInitialMonth.monthValue} 月")
                 .performTouchInput { click() }
+            compose.onNodeWithText("选择月份 · ${targetMonth.year} 年").assertExists()
+            compose.waitForIdle()
+            captureDisplayScreenshot("native095-month-number-dialog-20261106.png")
             compose.onNodeWithText("${targetMonth.monthValue} 月")
                 .performTouchInput { click() }
             val nativeTargetDescription = "$targetDate，0 项"
@@ -1226,14 +1341,110 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
             awaitJs(clearWeb, "!document.querySelector('#monthPage').hidden")
             tapClear(clearWeb, "#monthYearTitle")
             awaitJs(clearWeb, "document.querySelector('#monthYearPickerDialog')?.open===true")
+            captureWindowScreenshot(clearWeb, "clear-month-year-dialog-20261106.png",
+                requirePickerSurface = true)
+            val yearPickerStyle = JSONObject(evaluate(clearWeb, """(()=>{
+                const d=document.querySelector('#monthYearPickerDialog'),r=e=>{const b=e.getBoundingClientRect();
+                    return {x:b.x,y:b.y,width:b.width,height:b.height}};
+                const s=getComputedStyle(d);return {dialog:r(d),viewport:{width:innerWidth,height:innerHeight},
+                    computed:{height:s.height,minHeight:s.minHeight,maxHeight:s.maxHeight,position:s.position,
+                        top:s.top,left:s.left,right:s.right,bottom:s.bottom,transform:s.transform,
+                        display:s.display,boxSizing:s.boxSizing,overflow:s.overflow},
+                    offsetHeight:d.offsetHeight,clientHeight:d.clientHeight,scrollHeight:d.scrollHeight,
+                    form:r(d.querySelector('form')),heading:r(d.querySelector('h2')),input:r(d.querySelector('input')),
+                    actions:r(d.querySelector('.month-picker-actions')),radius:s.borderTopLeftRadius,
+                    background:s.backgroundColor,border:s.borderTopWidth+' '+s.borderTopColor,
+                    shadow:s.boxShadow,formGap:getComputedStyle(d.querySelector('form')).rowGap,
+                    titleSize:getComputedStyle(d.querySelector('h2')).fontSize,
+                    activeElement:document.activeElement.id,
+                    submitDisabled:document.querySelector('#monthYearPickerSubmit').disabled,
+                    backdrop:getComputedStyle(d,'::backdrop').backgroundColor};})()"""))
+            assertCenteredPicker(yearPickerStyle, "Year picker")
+            assertEquals("Year title must use the Native AlertDialog title size",
+                "24px", yearPickerStyle.getString("titleSize"))
+            assertEquals("Year input must retain the 56dp Native field height",
+                56.0, yearPickerStyle.getJSONObject("input").getDouble("height"), 1.0)
+            assertEquals("Opening the picker must not auto-focus the editor or raise the IME",
+                "monthYearPickerDialog", yearPickerStyle.getString("activeElement"))
+            assertEquals("A valid current year keeps Jump enabled", false,
+                yearPickerStyle.getBoolean("submitDisabled"))
+            println("NATIVE_095_MONTH_YEAR_DIALOG_STYLE=$yearPickerStyle")
             assertEquals("year field is available in the real Skin dialog", "true",
                 evaluate(clearWeb, "!!document.querySelector('#monthYear')"))
+            val monthBeforeYearCancel = WebSkinBridgeRuntime.state()
+                .getJSONObject("month").getString("month")
+            evaluate(clearWeb, "(()=>{const year=document.querySelector('#monthYear');" +
+                "year.value='1800';year.dispatchEvent(new Event('input',{bubbles:true}));return true})()")
+            assertEquals("Out-of-range year disables Jump", true,
+                evaluate(clearWeb, "document.querySelector('#monthYearPickerSubmit').disabled").toBoolean())
+            val yearCancel = tapClear(clearWeb, "#monthYearPickerCancel")
+            assertTrue("Cancel must be a trusted Android touch", yearCancel.optBoolean("trusted"))
+            awaitJs(clearWeb, "document.querySelector('#monthYearPickerDialog')?.open!==true")
+            assertEquals("Cancelling year selection must preserve Month", monthBeforeYearCancel,
+                WebSkinBridgeRuntime.state().getJSONObject("month").getString("month"))
+            assertEquals("Cancelling year selection must not write the Store", clearCounts,
+                counts(clearStore))
+            tapClear(clearWeb, "#monthYearTitle")
+            awaitJs(clearWeb, "document.querySelector('#monthYearPickerDialog')?.open===true")
+            val backdropTap = tapClearDialogBackdrop(clearWeb, "#monthYearPickerDialog")
+            assertTrue("Backdrop dismissal must be a trusted touch", backdropTap.optBoolean("trusted"))
+            assertTrue("Backdrop touch must target the dialog backdrop", backdropTap.optBoolean("backdrop"))
+            awaitJs(clearWeb, "document.querySelector('#monthYearPickerDialog')?.open!==true")
+            assertEquals("Backdrop dismissal must preserve Month", monthBeforeYearCancel,
+                WebSkinBridgeRuntime.state().getJSONObject("month").getString("month"))
+            assertEquals("Backdrop dismissal must not write the Store", clearCounts,
+                counts(clearStore))
+            tapClear(clearWeb, "#monthYearTitle")
+            awaitJs(clearWeb, "document.querySelector('#monthYearPickerDialog')?.open===true")
             evaluate(clearWeb, "(()=>{const year=document.querySelector('#monthYear');" +
                 "year.value='${targetMonth.year}';year.dispatchEvent(new Event('input',{bubbles:true}));" +
                 "return true})()")
             val yearSubmit = tapClear(clearWeb, "#monthYearPickerForm button[type='submit']")
             assertTrue("Year selection must be a trusted Android touch", yearSubmit.optBoolean("trusted"))
             awaitJs(clearWeb, "document.querySelector('#monthTitle')?.dataset.month?.startsWith('${targetMonth.year}-')===true")
+            tapClear(clearWeb, "#monthNumberTitle")
+            awaitJs(clearWeb, "document.querySelector('#monthPickerDialog')?.open===true")
+            captureWindowScreenshot(clearWeb, "clear-month-number-dialog-20261106.png",
+                requirePickerSurface = true)
+            val monthPickerStyle = JSONObject(evaluate(clearWeb, """(()=>{
+                const d=document.querySelector('#monthPickerDialog'),r=e=>{const b=e.getBoundingClientRect();
+                    return {x:b.x,y:b.y,width:b.width,height:b.height}};
+                const s=getComputedStyle(d),buttons=[...d.querySelectorAll('[data-month-number]')];
+                return {dialog:r(d),viewport:{width:innerWidth,height:innerHeight},heading:r(d.querySelector('h2')),
+                    grid:r(d.querySelector('.month-picker-grid')),button:buttons[0]?r(buttons[0]):null,
+                    selected:buttons.find(b=>b.getAttribute('aria-pressed')==='true')?.dataset.monthNumber,
+                    radius:s.borderTopLeftRadius,background:s.backgroundColor,
+                    border:s.borderTopWidth+' '+s.borderTopColor,shadow:s.boxShadow,
+                    gridGap:getComputedStyle(d.querySelector('.month-picker-grid')).rowGap,
+                    buttonColor:getComputedStyle(buttons[0]).color,
+                    buttonBackground:getComputedStyle(buttons.find(b=>b.dataset.monthNumber==='${targetMonth.monthValue}')).backgroundColor,
+                    titleSize:getComputedStyle(d.querySelector('h2')).fontSize,
+                    activeElement:document.activeElement.id,
+                    actionBorder:getComputedStyle(d.querySelector('.month-picker-actions button')).borderTopWidth,
+                    backdrop:getComputedStyle(d,'::backdrop').backgroundColor};})()"""))
+            assertCenteredPicker(monthPickerStyle, "Month picker")
+            assertEquals("Month title must use the Native AlertDialog title size",
+                "24px", monthPickerStyle.getString("titleSize"))
+            assertEquals("Month grid must use the Native 4dp row spacing",
+                "4px", monthPickerStyle.getString("gridGap"))
+            assertEquals("Month choices must use Native TextButton blue",
+                "rgb(36, 87, 214)", monthPickerStyle.getString("buttonColor"))
+            assertEquals("Selected month must not gain a surface absent from Native UI",
+                "rgba(0, 0, 0, 0)", monthPickerStyle.getString("buttonBackground"))
+            assertEquals("Month actions must remain flat Native TextButtons",
+                "0px", monthPickerStyle.getString("actionBorder"))
+            assertEquals("Opening the picker must focus the dialog, not a month action",
+                "monthPickerDialog", monthPickerStyle.getString("activeElement"))
+            println("NATIVE_095_MONTH_NUMBER_DIALOG_STYLE=$monthPickerStyle")
+            val monthBeforeCancel = WebSkinBridgeRuntime.state()
+                .getJSONObject("month").getString("month")
+            val monthCancel = tapClear(clearWeb, "#monthPickerCancel")
+            assertTrue("Month Close must be a trusted Android touch", monthCancel.optBoolean("trusted"))
+            awaitJs(clearWeb, "document.querySelector('#monthPickerDialog')?.open!==true")
+            assertEquals("Closing month selection must preserve Month", monthBeforeCancel,
+                WebSkinBridgeRuntime.state().getJSONObject("month").getString("month"))
+            assertEquals("Closing month selection must not write the Store", clearCounts,
+                counts(clearStore))
             tapClear(clearWeb, "#monthNumberTitle")
             awaitJs(clearWeb, "document.querySelector('#monthPickerDialog')?.open===true")
             val monthSubmit = tapClear(clearWeb,
