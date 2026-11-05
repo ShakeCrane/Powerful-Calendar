@@ -151,6 +151,40 @@ async function main(){
         initial.gridSurfaceBox.width!=="331px")
       throw Error("Month grid surface bounds differ from measured frozen Native fill geometry: "+
         JSON.stringify(initial));
+    const agendaCard=await frameEval(`(()=>{
+      const probe=document.createElement('button');probe.className='agenda-event activity';
+      probe.innerHTML='<span class="agenda-event-title">活动 · MonthFixture</span>'+\
+        '<span class="agenda-event-summary">12:00 – 13:00</span>'+\
+        '<span class="agenda-event-sequence">#0001</span>';
+      const next=probe.cloneNode(true);
+      document.querySelector('#monthAgenda').append(probe,next);
+      const card=getComputedStyle(probe),title=getComputedStyle(probe.querySelector('.agenda-event-title')),
+        summary=getComputedStyle(probe.querySelector('.agenda-event-summary')),
+        sequence=getComputedStyle(probe.querySelector('.agenda-event-sequence'));
+      const result={fill:card.backgroundColor,radius:card.borderTopLeftRadius,shadow:card.boxShadow,
+        padding:card.padding,gap:card.rowGap,titleColor:title.color,titleSize:title.fontSize,
+        titleWeight:title.fontWeight,titleLine:title.lineHeight,summarySize:summary.fontSize,
+        summaryLine:summary.lineHeight,sequenceSize:sequence.fontSize,sequenceLine:sequence.lineHeight,
+        nextCardGap:getComputedStyle(next).marginTop,
+        headingGap:getComputedStyle(document.querySelector('#monthAgenda h2')).marginBottom,
+        headingSize:getComputedStyle(document.querySelector('#monthAgenda h2')).fontSize,
+        headingWeight:getComputedStyle(document.querySelector('#monthAgenda h2')).fontWeight,
+        headingLine:getComputedStyle(document.querySelector('#monthAgenda h2')).lineHeight,
+        headingLetterSpacing:getComputedStyle(document.querySelector('#monthAgenda h2')).letterSpacing,
+        agendaPaddingTop:getComputedStyle(document.querySelector('#monthAgenda')).paddingTop};
+      probe.remove();next.remove();return result;
+    })()`);
+    if(agendaCard.fill!=="rgb(246, 248, 252)"||agendaCard.radius!=="20px"||
+        agendaCard.shadow!=="none"||agendaCard.padding!=="16px"||agendaCard.gap!=="0px"||
+        agendaCard.titleColor!=="rgb(23, 122, 99)"||agendaCard.titleWeight!=="500"||
+        agendaCard.titleLine!=="24px"||agendaCard.summaryLine!=="20px"||
+        agendaCard.sequenceSize!=="11px"||agendaCard.sequenceLine!=="16px"||
+        agendaCard.nextCardGap!=="12px"||agendaCard.headingGap!=="11px"||
+        agendaCard.headingSize!=="16px"||agendaCard.headingWeight!=="500"||
+        agendaCard.headingLine!=="24px"||agendaCard.headingLetterSpacing!=="0.15px"||
+        agendaCard.agendaPaddingTop!=="12px")
+      throw Error("Month agenda card differs from frozen Native Surface/typography: "+
+        JSON.stringify(agendaCard));
     const initialCamera=await evaluate("simulatedState().timeline.anchorMillis");
 
     await frameEval("document.querySelector('.month-cell[data-date=\\\"2026-10-23\\\"]')?.click()");
@@ -259,7 +293,7 @@ async function main(){
     const screenshot=await call("Page.captureScreenshot",{format:"png",captureBeyondViewport:false});
     fs.writeFileSync(path.join(reportDir,"month-selected-studio-preview.png"),
       Buffer.from(screenshot.data,"base64"));
-    const result={package:loaded,initial,initialCamera,selected,picked,june,today,beforeTimeline,
+    const result={package:loaded,initial,agendaCard,initialCamera,selected,picked,june,today,beforeTimeline,
       juneCamera,
       createDate,created,finalPage:await frameEval(`({monthHidden:document.querySelector('#monthPage').hidden,
         timelineVisible:!document.querySelector('#timelinePage').hidden})`)};

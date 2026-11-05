@@ -3,6 +3,7 @@
 :root,html,.light {
   color-scheme:light;
   --bg-canvas:#F3F5FA; --bg-grouped:#EFF2F8; --bg-elevated:#FFFFFF; --bg-sunken:#E4E8F1;
+  --month-agenda-card:#F6F8FC;
   --label:#11151C; --label-1:#11151C; --label-2:#4A5261; --label-3:#6B7485; --label-4:#C3CAD8;
   --sep:rgba(11,18,32,.12); --sep-strong:rgba(11,18,32,.19);
   --fill-1:#F6F8FC; --fill-2:#EFF2F8; --fill-3:#E7EBF4;
@@ -25,6 +26,7 @@
 html.theme-dark {
   color-scheme:dark;
   --bg-canvas:#0A0D13; --bg-grouped:#0A0D13; --bg-elevated:#12161E; --bg-sunken:#2A303B;
+  --month-agenda-card:#141922;
   --label:#E6EAF2; --label-1:#E6EAF2; --label-2:#B4BCCB; --label-3:#8A93A3; --label-4:#39414F;
   --sep:rgba(255,255,255,.10); --sep-strong:rgba(255,255,255,.16);
   --fill-1:#171D27; --fill-2:#1C2330; --fill-3:#222A38;
@@ -125,17 +127,18 @@ body[data-page="month"] .clear-head,body[data-page="memo"] .clear-head,body[data
 .month-cell.today {border:1px solid var(--accent);border-radius:14px;color:var(--accent);font-weight:650}
 .month-cell.selected {border-radius:14px;background:var(--accent-soft);color:var(--on-accent-container);font-weight:650}
 .month-cell.selected .month-count {color:inherit}
-#monthAgenda {padding:18px 0 4px}
+#monthAgenda {padding:12px 0 4px}
 #monthAgenda>.quiet {margin-left:0;text-align:left}
-#monthAgenda h2 {margin:0 0 8px;color:var(--label);font-size:17px;font-weight:600}
-.agenda-event {display:flex;flex-direction:column;align-items:flex-start;gap:3px;min-height:64px;padding:12px 16px;border:0;border-radius:13px;background:var(--bg-elevated);color:var(--label);text-align:left;box-shadow:var(--shadow-card)}
-.agenda-event-title {font-size:16px;font-weight:550;line-height:1.35}
-.agenda-event-summary {color:var(--label-2);font-size:14px;line-height:1.35}
-.agenda-event-sequence {color:var(--label-3);font-size:12px;line-height:1.3}
-.agenda-event.alarm .agenda-event-title {color:var(--alarm-ink)}
-.agenda-event.activity .agenda-event-title {color:var(--activity-ink)}
-.agenda-event.deadline .agenda-event-title {color:var(--deadline-ink)}
-.agenda-event.memo .agenda-event-title {color:var(--memo-ink)}
+#monthAgenda h2 {margin:0 0 11px;color:var(--label);font-size:16px;font-weight:500;line-height:24px;letter-spacing:.15px}
+.agenda-event {display:flex;flex-direction:column;align-items:flex-start;gap:0;min-height:64px;padding:16px;border:0;border-radius:20px;background:var(--month-agenda-card);color:var(--label);text-align:left;box-shadow:none}
+.agenda-event + .agenda-event {margin-top:12px}
+.agenda-event-title {font-size:16px;font-weight:500;line-height:24px}
+.agenda-event-summary {color:var(--label-2);font-size:14px;line-height:20px}
+.agenda-event-sequence {color:var(--label-3);font-size:11px;line-height:16px}
+.agenda-event.alarm .agenda-event-title {color:var(--alarm)}
+.agenda-event.activity .agenda-event-title {color:var(--activity)}
+.agenda-event.deadline .agenda-event-title {color:var(--deadline)}
+.agenda-event.memo .agenda-event-title {color:var(--activity)}
 .agenda-event:focus-visible {outline:2px solid var(--accent);outline-offset:2px}
 .month-actions {flex-direction:column;gap:2px;padding:10px 0}
 .month-actions button {width:100%;min-height:48px;border:1px solid var(--outline, #C3CAD8);border-radius:24px;background:transparent;color:var(--label-2);font-size:14px}

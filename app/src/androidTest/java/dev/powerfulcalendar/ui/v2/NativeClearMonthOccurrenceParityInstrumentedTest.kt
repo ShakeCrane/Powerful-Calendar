@@ -922,6 +922,54 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
                 evaluate(clearWeb,
                     "!!document.querySelector('#monthAgenda .agenda-event-title')?.textContent.includes('MonthFixture')") == "true"
             }
+            val agendaCardStyle = evaluate(clearWeb, """(()=>{
+                const card=document.querySelector('#monthAgenda .agenda-event.activity');
+                const title=card?.querySelector('.agenda-event-title');
+                const summary=card?.querySelector('.agenda-event-summary');
+                const sequence=card?.querySelector('.agenda-event-sequence');
+                if(!card||!title||!summary||!sequence)return null;
+                const c=getComputedStyle(card),t=getComputedStyle(title),s=getComputedStyle(summary),
+                    q=getComputedStyle(sequence),r=card.getBoundingClientRect();
+                return JSON.stringify({fill:c.backgroundColor,radius:c.borderTopLeftRadius,
+                    shadow:c.boxShadow,padding:c.padding,gap:c.rowGap,titleColor:t.color,
+                    titleSize:t.fontSize,titleWeight:t.fontWeight,titleLine:t.lineHeight,
+                    summarySize:s.fontSize,summaryLine:s.lineHeight,sequenceSize:q.fontSize,
+                    sequenceLine:q.lineHeight,bounds:{x:r.x,y:r.y,width:r.width,height:r.height}});
+            })()""")
+            assertEquals("MonthFixture agenda card must exist in the host-projected Web state",
+                false, agendaCardStyle == "null")
+            assertEquals("agenda card face must match Native surfaceContainerLow",
+                "\"rgb(246, 248, 252)\"",
+                evaluate(clearWeb, "getComputedStyle(document.querySelector('#monthAgenda .agenda-event.activity')).backgroundColor"))
+            assertEquals("agenda row shape must match Native 20dp bar shape", "\"20px\"",
+                evaluate(clearWeb, "getComputedStyle(document.querySelector('#monthAgenda .agenda-event.activity')).borderTopLeftRadius"))
+            assertEquals("Native Month Surface has no card shadow", "\"none\"",
+                evaluate(clearWeb, "getComputedStyle(document.querySelector('#monthAgenda .agenda-event.activity')).boxShadow"))
+            assertEquals("agenda content uses the Native 16dp inset", "\"16px\"",
+                evaluate(clearWeb, "getComputedStyle(document.querySelector('#monthAgenda .agenda-event.activity')).paddingTop"))
+            assertEquals("activity title uses the frozen event-kind color", "\"rgb(23, 122, 99)\"",
+                evaluate(clearWeb, "getComputedStyle(document.querySelector('#monthAgenda .agenda-event.activity .agenda-event-title')).color"))
+            assertEquals("Native titleMedium line height", "\"24px\"",
+                evaluate(clearWeb, "getComputedStyle(document.querySelector('#monthAgenda .agenda-event-title')).lineHeight"))
+            assertEquals("Native bodyMedium line height", "\"20px\"",
+                evaluate(clearWeb, "getComputedStyle(document.querySelector('#monthAgenda .agenda-event-summary')).lineHeight"))
+            assertEquals("Native labelSmall size", "\"11px\"",
+                evaluate(clearWeb, "getComputedStyle(document.querySelector('#monthAgenda .agenda-event-sequence')).fontSize"))
+            assertEquals("Native labelSmall line height", "\"16px\"",
+                evaluate(clearWeb, "getComputedStyle(document.querySelector('#monthAgenda .agenda-event-sequence')).lineHeight"))
+            assertEquals("Month agenda begins at the Native 12dp item spacing", "\"12px\"",
+                evaluate(clearWeb, "getComputedStyle(document.querySelector('#monthAgenda')).paddingTop"))
+            assertEquals("Native selected-date titleMedium size", "\"16px\"",
+                evaluate(clearWeb, "getComputedStyle(document.querySelector('#monthAgenda h2')).fontSize"))
+            assertEquals("Native selected-date titleMedium weight", "\"500\"",
+                evaluate(clearWeb, "getComputedStyle(document.querySelector('#monthAgenda h2')).fontWeight"))
+            assertEquals("Native selected-date titleMedium line height", "\"24px\"",
+                evaluate(clearWeb, "getComputedStyle(document.querySelector('#monthAgenda h2')).lineHeight"))
+            assertEquals("selected-date titleMedium letter spacing", "\"0.15px\"",
+                evaluate(clearWeb, "getComputedStyle(document.querySelector('#monthAgenda h2')).letterSpacing"))
+            assertEquals("selected-date title-to-card gap matches Native screenshot geometry", "\"11px\"",
+                evaluate(clearWeb, "getComputedStyle(document.querySelector('#monthAgenda h2')).marginBottom"))
+            println("NATIVE_095_MONTH_AGENDA_CARD_STYLE=$agendaCardStyle")
             val radius = evaluate(clearWeb,
                 "getComputedStyle(document.querySelector('#monthGrid .month-cell.selected')).borderTopLeftRadius")
             assertEquals("CSS chip corner must match frozen GlassShapes.chip = 14.dp", "\"14px\"", radius)
@@ -965,7 +1013,7 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
                     "document.querySelector('#monthAgenda .agenda-event-title')?.textContent.includes('MonthFixture')"))
             val bounds = evaluate(clearWeb, "(()=>{const r=document.querySelector('#monthGrid .month-cell.selected')" +
                 ".getBoundingClientRect();return JSON.stringify({x:r.x,y:r.y,width:r.width,height:r.height})})()")
-            captureWindowScreenshot(clearWeb, "native095-month-web-selected-20261105.png")
+            captureWindowScreenshot(clearWeb, "native095-month-agenda-web-20261106.png")
             assertEquals("month selection must not write Calendar Store data", countsBefore, listOf(
                 store.all().size.toLong(), store.draftCount(), store.pendingCount().toLong(),
                 store.commitCount(), store.identityCount(), store.nextSequencePreview()
