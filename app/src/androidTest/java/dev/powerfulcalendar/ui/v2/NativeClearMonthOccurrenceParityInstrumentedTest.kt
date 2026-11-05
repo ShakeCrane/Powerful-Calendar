@@ -1078,8 +1078,11 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
                 return JSON.stringify({fill:c.backgroundColor,radius:c.borderTopLeftRadius,
                     shadow:c.boxShadow,padding:c.padding,gap:c.rowGap,titleColor:t.color,
                     titleSize:t.fontSize,titleWeight:t.fontWeight,titleLine:t.lineHeight,
-                    summarySize:s.fontSize,summaryLine:s.lineHeight,sequenceSize:q.fontSize,
-                    sequenceLine:q.lineHeight,bounds:{x:r.x,y:r.y,width:r.width,height:r.height}});
+                    titleTracking:t.letterSpacing,summaryColor:s.color,summarySize:s.fontSize,
+                    summaryLine:s.lineHeight,summaryTracking:s.letterSpacing,
+                    sequenceColor:q.color,sequenceSize:q.fontSize,sequenceWeight:q.fontWeight,
+                    sequenceLine:q.lineHeight,sequenceTracking:q.letterSpacing,
+                    bounds:{x:r.x,y:r.y,width:r.width,height:r.height}});
             })()""")
             assertEquals("MonthFixture agenda card must exist in the host-projected Web state",
                 false, agendaCardStyle == "null")
@@ -1096,12 +1099,24 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
                 evaluate(clearWeb, "getComputedStyle(document.querySelector('#monthAgenda .agenda-event.activity .agenda-event-title')).color"))
             assertEquals("Native titleMedium line height", "\"24px\"",
                 evaluate(clearWeb, "getComputedStyle(document.querySelector('#monthAgenda .agenda-event-title')).lineHeight"))
+            assertEquals("Native titleMedium letter spacing", "\"0.15px\"",
+                evaluate(clearWeb, "getComputedStyle(document.querySelector('#monthAgenda .agenda-event-title')).letterSpacing"))
+            assertEquals("Native bodyMedium uses onSurface", "\"rgb(17, 21, 28)\"",
+                evaluate(clearWeb, "getComputedStyle(document.querySelector('#monthAgenda .agenda-event-summary')).color"))
+            assertEquals("Native bodyMedium letter spacing", "\"0.25px\"",
+                evaluate(clearWeb, "getComputedStyle(document.querySelector('#monthAgenda .agenda-event-summary')).letterSpacing"))
             assertEquals("Native bodyMedium line height", "\"20px\"",
                 evaluate(clearWeb, "getComputedStyle(document.querySelector('#monthAgenda .agenda-event-summary')).lineHeight"))
+            assertEquals("Native labelSmall uses onSurface", "\"rgb(17, 21, 28)\"",
+                evaluate(clearWeb, "getComputedStyle(document.querySelector('#monthAgenda .agenda-event-sequence')).color"))
             assertEquals("Native labelSmall size", "\"11px\"",
                 evaluate(clearWeb, "getComputedStyle(document.querySelector('#monthAgenda .agenda-event-sequence')).fontSize"))
+            assertEquals("Native labelSmall weight", "\"500\"",
+                evaluate(clearWeb, "getComputedStyle(document.querySelector('#monthAgenda .agenda-event-sequence')).fontWeight"))
             assertEquals("Native labelSmall line height", "\"16px\"",
                 evaluate(clearWeb, "getComputedStyle(document.querySelector('#monthAgenda .agenda-event-sequence')).lineHeight"))
+            assertEquals("Native labelSmall letter spacing", "\"0.5px\"",
+                evaluate(clearWeb, "getComputedStyle(document.querySelector('#monthAgenda .agenda-event-sequence')).letterSpacing"))
             assertEquals("Month agenda begins at the Native 12dp item spacing", "\"12px\"",
                 evaluate(clearWeb, "getComputedStyle(document.querySelector('#monthAgenda')).paddingTop"))
             assertEquals("Native selected-date titleMedium size", "\"16px\"",

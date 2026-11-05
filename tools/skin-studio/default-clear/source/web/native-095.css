@@ -132,9 +132,9 @@ body[data-page="month"] .clear-head,body[data-page="memo"] .clear-head,body[data
 #monthAgenda h2 {margin:0 0 11px;color:var(--label);font-size:16px;font-weight:500;line-height:24px;letter-spacing:.15px}
 .agenda-event {display:flex;flex-direction:column;align-items:flex-start;gap:0;min-height:64px;padding:16px;border:0;border-radius:20px;background:var(--month-agenda-card);color:var(--label);text-align:left;box-shadow:none}
 .agenda-event + .agenda-event {margin-top:12px}
-.agenda-event-title {font-size:16px;font-weight:500;line-height:24px}
-.agenda-event-summary {color:var(--label-2);font-size:14px;line-height:20px}
-.agenda-event-sequence {color:var(--label-3);font-size:11px;line-height:16px}
+.agenda-event-title {font-size:16px;font-weight:500;line-height:24px;letter-spacing:.15px}
+.agenda-event-summary {color:var(--label);font-size:14px;line-height:20px;letter-spacing:.25px}
+.agenda-event-sequence {color:var(--label);font-size:11px;font-weight:500;line-height:16px;letter-spacing:.5px}
 .agenda-event.alarm .agenda-event-title {color:var(--alarm)}
 .agenda-event.activity .agenda-event-title {color:var(--activity)}
 .agenda-event.deadline .agenda-event-title {color:var(--deadline)}
