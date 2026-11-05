@@ -133,7 +133,7 @@ async function main() {
         check(window.__powercalStudioCapturedBlob instanceof Blob,
           'Studio export button did not create a package');
         const bytes=new Uint8Array(await window.__powercalStudioCapturedBlob.arrayBuffer());
-        check(document.querySelector('#toast').textContent.includes('已导出'),
+        check(document.querySelector('#toast').textContent.includes('已构建并导出 v3 包'),
           'Studio did not report a successful export');
         return bytes;
       };
