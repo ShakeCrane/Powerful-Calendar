@@ -264,6 +264,10 @@ html.theme-dark .clear-tabbar {background:#121923}
   border-radius:22px;
   background:var(--month-agenda-card,#F6F8FC);
 }
+#skinSheet[data-mode="event"] .sheet-actions {
+  border-top:0;
+  background:var(--month-agenda-card,#F6F8FC);
+}
 .sheet-cards {border-color:var(--sep)}
 .sheet-card {border-color:var(--sep);border-radius:12px;background:var(--fill-1)}
 .sheet-card.selected {border-color:var(--accent);background:var(--accent-soft);color:var(--label)}
