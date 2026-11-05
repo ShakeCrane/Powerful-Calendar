@@ -1,5 +1,7 @@
 # 单一默认皮肤验收矩阵（G-05）
 
+> **Owner 视觉基准更正（2026-11-06）：**本矩阵中 `DEFAULT SKIN` 的视觉、页面结构与交互验收，以冻结原生 PowerCal 0.9.5-rc.1 为基准：源码 SHA `b1f7629f0c52812e1887443872f43aa6c49908c4`；参考 APK `.local/android-test/artifacts/physical-qa/PowerCal-0.9.5-rc.1-b1f7629-debug-core-HOLD.apk`，SHA-256 `DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76`。当前 `powercal-clear-default.pcskin` 保持唯一正式包身份，但当前 Clear 外观不是最终视觉验收标准；未经批准的 Claude 概念不是目标。应将原生正常页面表现通过正式 Studio/Web v3 实现，Native 仅用于独立恢复。原矩阵 PASS/PARTIAL/FAIL/BLOCKED/NOT TESTED 历史状态不因本更正而改变。原生框外标题、贪心折叠、真实时间几何、双翼布局和冻结交互均须保留并用原始 APK 实际对照。
+
 基线：`ac8d1555a1c177e600e72e4edb5b450189f1fc2c`。本文件是验收定义，不是产品已完成声明。权威目标及任务见 [R2 路线图](../POWERCAL_SINGLE_DEFAULT_SKIN_EXECUTION_PLAN_2026-11-03_R2.md)；原始母项及历史证据见 [SEP 矩阵](../SKIN_SEPARATION_PARITY_MATRIX_2026-10-27.md)，冻结语义见 [Core 契约](../CORE_CONTRACT_FREEZE_2026-10-21.md) 和 [Core API v1](../CORE_FEATURE_API_V1.md)。Core 拥有业务、数据与授权；正常 UI 属于唯一默认 Skin；Native 是安全恢复；Studio 从空白创作完整皮肤；分离验收后才通过 Studio 使用 Claude 设计稿美化。
 
 ## 状态和签核规则
@@ -433,7 +435,7 @@ MainActivity.setContent (MainActivity.kt:89-91)
 | SEP-12 → SSA-09,15,16 | Settings 外部权限/Picker 往返与取消；Android Host/SAF；Store 快照不变 | Clear 与 Blank Studio 的权限/文件取消反馈可观察，取消零写入 | PARTIAL；Back/IME 部分沿用 F-09 PREVIOUS PASS；TalkBack 与物理设备待 Q-03/Q-04 | Settings、Studio 权限日志；F-09 报告 |
 | SEP-13 → SSA-01,13,16 | 工厂包解析、注册和选择迁移；`SkinPackageManager`；Q-01 状态矩阵、APK 资产数/字节哈希 | 当前 Visual RC 实际只含一份 Clear；Q-01 对 Fresh/Native/unknown/损坏选择及恢复执行 24 方法 | PARTIAL；真实 package uninstall/reinstall 未测试，Q-01 只验证隔离安装状态矩阵 | Q-01 报告（PREVIOUS PASS，同 app/test APK SHA）；本轮 APK 包校验 |
 | SEP-14 → SSA-01,14,16 | 脏编辑跨进程恢复、损坏包冷启动 Native 回退；Host checkpoint/recovery；事件、草稿、eventSeq/revision 前后对照 | Q-02 真实 force-stop 后恢复原草稿；Q-01 对损坏工厂/已选包恢复 Native 且 Store 快照不变 | PASS（所测恢复切片）；checkpoint-I/O 注入故障及完整 SEP 签核仍未覆盖 | Q-02 process recovery logs；Q-01 recovery logs；R-07 PREVIOUS PASS |
-| SEP-15 → SSA-12,13,16 | Blank Studio 五页、组件树、四类表单、Host action/资源操作及 Force-stop 后重装载 | Studio 生成包 Android 五页与 Host API 动作通过；包与项目往返 Python/Browser 使用 S-06/S-07 PREVIOUS PASS | PASS（所测创作/运行切片）；自定义视觉稿未获，Visual RC 保持 Clear fallback；全量视觉/真机仍未签核 | 4 个 `StudioFromBlankFullRuntimeInstrumentedTest` 日志（权限用例控制重置后通过）；S-06/S-07 报告 |
+| SEP-15 → SSA-12,13,16 | Blank Studio 五页、组件树、四类表单、Host action/资源操作及 Force-stop 后重装载 | Studio 生成包 Android 五页与 Host API 动作通过；包与项目往返 Python/Browser 使用 S-06/S-07 PREVIOUS PASS | PASS（所测创作/运行切片）；自定义视觉仍未签核。此前“Visual RC 保持 Clear fallback”是当时状态，已被 2026-11-06 Owner 视觉基准更正取代；全量 Native 0.9.5 视觉交互/真机仍未签核 | 4 个 `StudioFromBlankFullRuntimeInstrumentedTest` 日志（权限用例控制重置后通过）；S-06/S-07 报告 |
 | SEP-16 → SSA-05,07,08,10,11,16 | 所有正式写入/删除/AI 提案审批和冲突确认；Event/DraftReview/AI API；批准前零正式写入、批准后匹配身份/revision | Clear 与 Native 在四类事件、删除/恢复、提案作用域对照中匹配；SEP-09 本轮普通聊天触摸切片已通过 | PARTIAL；其余全项等价、真机与正式 SEP 签核仍未闭合；不提高原 SSA-16 状态 | trusted-write、delete、conflict、AI proposal 与 `current-rc-real-touch/q02-sep09-retest.md` |
 
 ### 本轮失败、复验与状态裁定

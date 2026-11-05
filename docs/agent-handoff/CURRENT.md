@@ -7,24 +7,39 @@ OWNER_VISUAL_REFERENCE_APK: .local/android-test/artifacts/physical-qa/PowerCal-0
 OWNER_VISUAL_REFERENCE_APK_SHA256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
 WAVE2_START_HEAD: 3b54097d6383c0349b5d3d638c228320e3c8e22c
 WAVE3_START_HEAD: 82b456fd2bfc15df379fd15d967fac3da57b899d
-LATEST_CODE_HEAD: 1ffd87499c8d6d6089eb1c158178d6c39f1e9bf5 (Month agenda body/sequence foreground and Material typography tokens)
-LATEST_VERIFIED_HEAD: 6d8118f4a34cc50647bdf3b5a35c7bac008d91e8 (product CSS/package full gate at 1ffd: 976/976 JVM; after AndroidTest-only expectation correction, compile/package and targeted API 35 method PASS; Month CDP and corrected Studio bridge E2E PASS; distribution 2/2)
+LATEST_CODE_HEAD: f05a7e7a1eab8ebdf2cfd30db3a0390b574d8907 (Native event-editor shell surface color)
+LATEST_VERIFIED_HEAD: f05a7e7a1eab8ebdf2cfd30db3a0390b574d8907 (source boundaries, assembleDebug, lintDebug, package verification, Node syntax, Studio bridge E2E PASS; API 35 dense-month instrumentation 1/1 PASS before the final editor-footer-only CSS tweak; side-by-side original-APK/Web interaction and post-tweak editor shell measurement PASS; full Studio Python 86/89 with 3 source-shape failures; no full JVM run for this CSS-only slice)
 CURRENT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
 TASK_STATUS: IN_PROGRESS
 PRODUCT_CUTOVER: HOLD
 TASK_BASE_HEAD: e41246d7ebe5b329adbdc657bd3e53735695efa1
-WORKING_APK_SHA256: 1AB2F1FA90223CDD07D5B181F86562BE646260A384398E53360EA93F3FCAF094
-WORKING_DEFAULT_SKIN_SHA256: 57A5498366AD40E7BCF671F4EEB76E23B264546CA9C567C8F4D25BCE2A99FC7C
+WORKING_APK_SHA256: B9D7105231CE8ECEBAE2A83E6701E4F46D0425180518B0470BAFD465719CA0EF
+WORKING_DEFAULT_SKIN_SHA256: 1A5C89E0A0CFA8AD30A7CEDFF28C2B382FF3962A78DF47AA00BA746E9D552918
 WORKING_DEFAULT_SKIN_ID: powercal-clear-default
 NATIVE_VISUAL_PARITY_AUDIT: docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md (inventory complete; implementation and full parity remain IN PROGRESS)
 PREVIOUS_TASK_STATE: Q-05 single-default startup migration and protected-branch cutover (PASS; public release remains HOLD)
-LAST_COMPLETED_TASK: Month agenda text foreground/Material tracking slice and stale Studio export toast E2E assertion (both narrow changes verified; Month remains PARTIAL)
-LAST_COMPLETED_COMMIT: 6d8118f4a34cc50647bdf3b5a35c7bac008d91e8 (Studio E2E test-only assertion; agenda CSS is commit 1ffd87499c8d6d6089eb1c158178d6c39f1e9bf5)
+LAST_COMPLETED_TASK: Native 0.9.5 parity narrow slices: dense Month ordering/title wrapping/tap and event-editor outer geometry/surface (all narrow; Month/editor remain PARTIAL)
+LAST_COMPLETED_COMMIT: f05a7e7a1eab8ebdf2cfd30db3a0390b574d8907 (editor footer surface; preceding evidence/test commits b578c52e88e65ba5eee7c4e9946c6907e3c303e8 and 668bf33f21eaef757bc362f88282a8ed65404685)
 LAST_ATTEMPTED_TASK: Native 0.9.5 visual and interaction parity migration (IN PROGRESS; see audit and latest Android evidence)
-LAST_ATTEMPTED_COMMIT: 6d8118f4a34cc50647bdf3b5a35c7bac008d91e8 (agenda typography slice plus Studio export test assertion correction)
+LAST_ATTEMPTED_COMMIT: f05a7e7a1eab8ebdf2cfd30db3a0390b574d8907 (dense agenda instrumentation and event-editor outer shell)
 NEXT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
-NEXT_ACTION: Build deterministic multi-event Month fixtures and compare Native/Web order, per-card bounds, summary/sequence geometry, long-title wrapping, and greedy folding; continue with dark theme after the dense agenda. The typography-token slice is PASS with 1px vertical and 6px summary-ink width raster residual; Month and full Native parity remain PARTIAL/IN_PROGRESS and Product Cutover remains HOLD.
+NEXT_ACTION: Continue the finite page-by-page migration against the frozen 0.9.5-rc.1 APK. Next compare Timeline true-time geometry, dual wings, outside titles, and greedy title folding on identical multi-event data; then continue the event-editor internal component layout. Dense Month behavior and editor shell are narrow PASS only. Month/editor and full Native parity remain PARTIAL/IN_PROGRESS; Product Cutover remains HOLD.
 LAST_TASK_EVIDENCE:
+  NATIVE_095_DENSE_MONTH_AND_EVENT_EDITOR_SHELL:
+    status: PARTIAL (dense Month ordering/title wrapping/tap and editor outer shell geometry/surface are narrow PASS; no page is fully signed off)
+    source_baseline: b1f7629f0c52812e1887443872f43aa6c49908c4
+    original_apk_sha256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
+    commits: b578c52e88e65ba5eee7c4e9946c6907e3c303e8, 668bf33f21eaef757bc362f88282a8ed65404685, f05a7e7a1eab8ebdf2cfd30db3a0390b574d8907
+    current_apk_sha256: B9D7105231CE8ECEBAE2A83E6701E4F46D0425180518B0470BAFD465719CA0EF
+    current_skin_sha256: 1A5C89E0A0CFA8AD30A7CEDFF28C2B382FF3962A78DF47AA00BA746E9D552918
+    current_skin_id: powercal-clear-default
+    checks: source boundaries, assembleDebug, lintDebug, build_default_clear --verify --apk, Node syntax, Studio bridge E2E PASS; API 35 Compose/Web dense-month instrumented comparison 1/1 PASS; direct original APK/Web screenshot and card tap comparison PASS; read-only Store snapshot unchanged
+    studio_python: 86/89 passed, 3 failed source-shape tests (test_full_route_registry_has_one_restore, test_privacy_editors_remain_host_owned_but_placeable, test_native_settings_and_hidden_activity_rescue_are_both_available); not represented as PASS
+    full_jvm: NOT RUN for this CSS-only slice
+    geometry: editor Web panel x=58.095,y=49.524,w=296,h=792 CSS px at viewport 412x867 DPR 2.625; frozen Compose bounds [152,193][928,2272] physical px; panel color #F6F8FC, radius 22, scrim alpha 0.60
+    evidence: .local/android-test/reports/native095-month-dense-20261106/manifest.md
+    issue_docs: docs/issues/PC-ISSUE-SEPARATION-NATIVE-MONTH-DENSE-AGENDA-20261106.md; docs/issues/PC-ISSUE-SEPARATION-NATIVE-EVENT-EDITOR-SHELL-20261106.md
+    limitations: editor fields/actions still differ; Timeline true-time/dual-wing/outside-title/greedy-folding comparison remains next; other Native pages remain PARTIAL; Product Cutover HOLD
   NATIVE_095_MONTH_AGENDA_TYPOGRAPHY:
     status: PASS (light-theme foreground and Material text tokens only; Month remains PARTIAL)
     code_commit: 1ffd87499c8d6d6089eb1c158178d6c39f1e9bf5

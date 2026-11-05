@@ -423,6 +423,33 @@ Web `showModal()` 后将焦点放在 dialog 容器本身，打开时不把焦点
 
 此窄切片 `PASS`，Month 整页仍 `PARTIAL`。尚未验证密集 agenda 状态的框外标题、贪心标题折叠与逐事件几何、深色主题、Month 全状态矩阵或其余 Native 页面；Product Cutover 仍 `HOLD`。下一项是密集 Month agenda 与 Native 贪心标题折叠对照。
 
+## 2026-11-06 原始 APK 全页面差异清点与密集月历 / 编辑器外框对照
+
+本节把冻结版实际路由、页面、常见状态和用户动作与当前唯一 Web v3 默认皮肤逐项归类。冻结源码以 `b1f7629f0c52812e1887443872f43aa6c49908c4` 的 `app/src/main/java/dev/powerfulcalendar/ui/v2/` 为准；文件名、行为和状态来自该 SHA 中的实现，不由迁移后恢复界面推测。
+
+| Native 页面 / 表面（冻结源码） | 实际状态与交互 | 当前 Web v3 对应 | 差异状态 / 下一步 |
+|---|---|---|---|
+| 应用壳与导航：`NativePowerNavigation.kt::NativePowerNavigation`、`PowerCalApp.kt` | 四个常驻目的地：时间轴、日历、AI 助手、设置；Memo 由时间轴入口另行打开。时间轴头部还提供今日、草稿、待处理和新建。 | `default-clear/source/web/index.html` 的 `.clear-tabbar`，`app.js` 的页面路由及快捷入口。 | 路由数量/角色接近；图标墨迹、页面头间距、选中态几何和各状态的返回触控矩形仍须用原始 APK 对照。`PARTIAL`。 |
+| 时间轴：`TimelineScreen.kt::TimelineScreen`、`GreedyTitleFolding.kt::GreedyTitleFolding.fold`、`TimelineTickLabels.kt` | 中央垂直时间尺；ALARM 左翼、ACTIVITY/DEADLINE 右翼；真实时间几何、蓝色现在标记、框外标题、按可见矩形贪心折叠；独立滚动/相机、缩放、点击、双击刻度恢复 24 小时、今日定位本地中午、新建入口；还包含无事件、重叠、多泳道和错误反馈状态。 | `app.js::renderTimeline`、`title-folding.js`、`.timelineWing/.timelineLanes`，通过既有时间轴投影与 Host action。 | 左右翼、固定 ACTIVITY 夹具和一部分标题折叠/点击已有 WebView 窄证据；其它事件类型、重叠/泳道、滚动/缩放组合、大字体、忙碌/受阻状态仍未与原始 APK 全量重放。双翼和框外标题是必须保留的基准行为，页面 `PARTIAL`。 |
+| 月历：`MonthScreen.kt::NativeMonthScreen` | 年/月栏、前后月、今天、七列格、选中日及事件数、横向切月、年份/月选择、日程卡/重复实例、选中日新建、跳回该日时间轴；具有空 agenda 与多事件 agenda 状态。 | `app.js::renderMonth`、`WebSkinMonthProjection`、`#monthGrid/#monthAgenda` 和正式 Host action。 | 年/月弹窗、日期触控和本轮同数据密集列表顺序、卡片标题行数、打开目标有窄证据；滚动原点受两 AVD 物理触摸差异影响，卡片像素和 Month 全状态仍 `PARTIAL`。见下方同夹具记录。 |
+| Memo / 待办：`MemoCenterScreen.kt::NativeMemoCenterScreen` | 新建无日期 Memo；Open/Done 筛选；完成/撤销；点标题打开编辑；分页与空/有数据状态；返回时间轴。 | `app.js::renderMemo`、Memo API 状态投影、`#memoList`、筛选与加载更多。 | 同屏结构接近，历史 Core/Host 功能测试仍有效，但本轮未从原始 APK 与最终 APK 用同一行夹具重放完成撤销、标题点击和分页。视觉及实际触控保持 `PARTIAL`。 |
+| AI 聊天：`AiChatScreen.kt::NativeAiChatScreen`、`AiProposalReview.kt::AiProposalReview`、`AiBatchAuthorizationReview.kt::AiBatchAuthorizationReview` | 空/历史消息、用户与助手角色、发送/忙碌/错误重试、配置、附件授权、消息长按菜单、待处理入口、结构化提案审核/拒绝/批准、批次授权与冲突。 | `app.js::renderChat`、正式 AI/Review Host 接口、`#chatMessages/#chatForm/#aiOverflow`。 | 一些导航、消息菜单和 Host 路径已有证据；原始 APK 下消息/提案/授权/错误各态的截图、触控和焦点顺序尚未一一配对。保留安全授权 Host 语义，不把恢复原生设置页当作视觉目标。`PARTIAL`。 |
+| 设置与系统工具：`PowerCalApp.kt::NativeToolsPage` | 资料、受保护 AI 配置、通知/精确闹钟权限、提醒执行/重建、ICS、系统日历迁入、备份/恢复、诊断与错误反馈。冻结工具页还显示旧皮肤目录，该目录为 Owner 退役项，不进入新皮肤。 | `app.js::renderSettings` 负责普通页面；权限、SAF、密钥和可信确认通过 Host/Android 完成；显式恢复路径才显示 Native 工具页。 | 普通设置卡片、权限拒绝/取消/恢复结果仍须与原始 Native 页面逐项对照；不得把凭据、文件 URI 或审批令牌复制到 Skin。`PARTIAL`。 |
+| 四类事件详情/编辑：`DirectEventEditor.kt::DirectEventEditorDialog/Content`、`PowerCalApp.kt` 的编辑分支 | ACTIVITY、ALARM、DEADLINE、MEMO 各自日期/时刻字段；标题、地点/备注、启用、提醒、重复规则/范围；干净关闭、脏修改、检查点、取消/丢弃、冲突、删除前可信确认。 | `edit.js::renderForm/render`，调用既有 Event/Recurrence/DraftReview Host API。 | 外层边界、颜色、圆角、遮罩本轮按原始 APK 对照；标题/类型同排布局、字段控件形态/高度、提醒控件、保存/丢弃/删除动作的结构仍显著不同，不能把外框 PASS 写成编辑器等价。`PARTIAL`。 |
+| 待处理草稿卡组：`DraftDeck.kt::NativeDraftDeckDialog` 与 `PowerCalApp.kt` 草稿路由 | 卡片叠层、逐卡/搜索/切换、恢复、删除、发布、AI 批次进度、冲突、关闭与撤销状态。 | `edit.js` 的 deck 模式及 `#pendingDeck` / `#skinSheet`。 | 全高白色编辑面与原生暗遮罩、叠卡/紧凑操作结构不同；需要同一草稿集和冲突状态做真实配对。`PARTIAL`。 |
+| 可信子表面与平台窗口：`AiProposalReview.kt`、`AiBatchAuthorizationReview.kt`、`SkinnablePickers.kt`、`PowerCalApp.kt` 导入/确认分支 | 提案审核、批量授权、文本输入、日历导入提示、日期/时间选择器、权限和 SAF 回调；批准、拒绝、取消、错误各态。 | 部分由 Web 展示最小业务状态；系统 picker、SAF、权限和凭据由 Host/Android 正式窗口承担。 | Skin 的卡片和状态消息须按冻结 Native 布局迁移；Android 可信提示继续由 Host 承担，不伪造成可由 Skin 控制的 Web 对话框。其它验证 `PARTIAL/NOT TESTED`。 |
+| 安全恢复：`PowerCalApp.kt` 的 Native 恢复路由及 `NativeToolsPage` | Web 包缺失、解析失败或 renderer 故障时的独立恢复、Host 可信设置和返回。 | 当前唯一正常路径是 Web v3；Native 仅保留故障恢复。 | Native 恢复不是第二套日常页面，也不是要被 Web 复制的目标；维持独立 Host 恢复能力。 |
+
+### 本轮直接 Android 对照
+
+- 冻结原始 APK：`.local/android-test/artifacts/physical-qa/PowerCal-0.9.5-rc.1-b1f7629-debug-core-HOLD.apk`，SHA-256 `DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76`。与当前包分装在两个空白隔离 API 35 AVD，均为 1080×2400、420 dpi、字体 1.0、GMT。原始 APK 在 `emulator-5558`；当前最终测试 APK 在 `emulator-5582`，WebView 124.0.6367.219。两者各有同一组四条合成事件，目标日期为 2026-11-15。
+- 密集 Month 实屏顺序均为 DEADLINE `eventSeq=1`、MEMO `4`、ALARM `3`、ACTIVITY `2`；活动长标题在两屏都折成两行。真实点击第一张卡在两版本均打开 `#0001 DEADLINE`。原始/Web 截图分别为 `.local/android-test/reports/native095-month-dense-20261106/emulator-5558-month-15-scrolled.png` 和 `emulator-5582-month-final-dense.png`。这是密集卡片顺序/标题换行/点击窄 PASS；两 AVD 的滚动手势起始偏移约 5–6 CSS px，故不签核绝对屏幕纵坐标或逐像素完全一致。
+- 另一个 `denseMonthAgendaOrderAndLongTitleWrappingMatchNativeReferenceRoute` 仪器用例在隔离 context 中比较冻结布局的现行 Native Compose 路径与 Web v3：`OK (1 test)`；它是量测/回归补充，不能代替上面的原始 APK 实屏对照。
+- 事件编辑器冻结 Compose surface bounds 为屏幕像素 `[152,193][928,2272]`，对应约 `x=57.90dp, y=73.52dp, w=295.62dp, h=792dp`。扣除 WebView 在屏幕上的 24dp 顶 inset 后，其内容区坐标为 `y=49.52dp`。最终 Web DOM 在 412×867 CSS px、DPR 2.625 的视口为 `x=58.095, y=49.524, w=296, h=792`；宽差约 0.38dp（1px），高度/顶边相同。Native/Web 面板底色均采样为 `#F6F8FC`，圆角 22px，遮罩 alpha 为 0.60。事件卡真实触控后打开相同 `#0001 DEADLINE` 编辑器；无修改返回后只读验证 `eventSeq 1..4`、identity count 4、next sequence 5、pending draft count 0，仪器 `OK (1 test)`。
+- 初试用 `100dvh` 做高度约束时，这个真实 WebView 返回 `max-height:0px`，面板高度坍为 0；改用基于全屏 `#skinSheet` 的百分比高度后，实测恢复上述边界。该调整只作用于事件编辑器。最终包 ID 仍为 `powercal-clear-default`，资源只有一个工厂 `.pcskin`，未改 Core、Host 业务 API、事件规则或恢复分流。
+
+本轮全页差异审计确认：密集 Month 卡片顺序/换行/点击，以及事件编辑器外框几何已有可复验窄证据；没有一整页可以据此标成 Native 0.9.5 完整等价。编辑器内部字段与动作层级、Timeline 多状态、Memo、AI、Settings、Deck 和各类审核表面继续按上表移植与验证。Production Cutover 仍 `HOLD`。
+
 ## 2026-11-06 后续：Month agenda 摘要/序号颜色与 Material 文字参数（窄切片 PASS）
 
 冻结 Native `NativeSkinThemeDefaults.lightScheme.onSurface` 为 `#11151C`；`MonthScreen.kt` 事件卡片标题、摘要、序号分别采用 Material `titleMedium`、`bodyMedium`、`labelSmall`。旧 Web 摘要和序号误用浅色变体，且漏掉字距/序号字重。提交 `1ffd87499c8d6d6089eb1c158178d6c39f1e9bf5` 更新 `native-095.css`：标题 `16px/500/24px/.15px`；摘要 `#11151C`、`14px/400/20px/.25px`；序号 `#11151C`、`11px/500/16px/.5px`。测试断言位于 `NativeClearMonthOccurrenceParityInstrumentedTest.kt`。

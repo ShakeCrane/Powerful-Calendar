@@ -1,5 +1,14 @@
 # Native 0.9.5 视觉/交互基准迁移续接（2026-11-05）
 
+## 2026-11-06 原始 APK 全页差异审计后的窄切片
+
+- Owner 视觉基准确认是冻结 Native 0.9.5-rc.1（源码 `b1f7629f0c52812e1887443872f43aa6c49908c4`，APK SHA `DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76`），不是当前 Clear 外观或 Claude 概念稿。全页/全状态差异索引已补入 `docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md`；总体任务仍 `IN_PROGRESS`。
+- 密集 Month 同数据 Android 对照：Native/Web 卡片顺序 `[DEADLINE, MEMO, ALARM, ACTIVITY]`、ACTIVITY 长标题两行、首卡真实点击目标均一致；API 35 Native Compose/Web 仪器 `1/1 PASS`、Store 不变。滚动偏移有 5–6 CSS px 物理触摸差异，Month 整页仍 `PARTIAL`。问题报告：`docs/issues/PC-ISSUE-SEPARATION-NATIVE-MONTH-DENSE-AGENDA-20261106.md`。
+- 事件编辑器外框：WebView 高度单位实测为 0 的初版被记录；百分比约束后实屏 bounds 与原生外框在约 1px 内，统一表面底色/圆角/遮罩，卡片打开目标一致；无修改退出后 Store 只读检查 `1/1 PASS`。编辑器字段与操作层级仍有差异，整体仍 `PARTIAL`。报告：`docs/issues/PC-ISSUE-SEPARATION-NATIVE-EVENT-EDITOR-SHELL-20261106.md`。
+- 代码提交：`b578c52e88e65ba5eee7c4e9946c6907e3c303e8`、`668bf33f21eaef757bc362f88282a8ed65404685`、`f05a7e7a1eab8ebdf2cfd30db3a0390b574d8907`。最终 Debug APK SHA `B9D7105231CE8ECEBAE2A83E6701E4F46D0425180518B0470BAFD465719CA0EF`；唯一默认 `powercal-clear-default.pcskin` SHA `1A5C89E0A0CFA8AD30A7CEDFF28C2B382FF3962A78DF47AA00BA746E9D552918`，包验证确认 APK 中只有一份且与源码字节一致。
+- 当前 slice 的源码边界、assemble、Lint、Node syntax、Studio bridge E2E、正式包验证 PASS。Studio Python 89 项中 86 通过、3 个 source-shape 架构断言失败；本轮完整 JVM `NOT RUN`。日志和截图见 `.local/android-test/reports/native095-month-dense-20261106/manifest.md`。
+- 下一动作：用冻结 APK 与当前 Web 包对照 Timeline 的真实时间几何、双翼、框外标题和贪心折叠，再继续事件编辑器内部组件。其余 Native 页面与完整 parity 未签核；Product Cutover 继续 `HOLD`。
+
 ## 2026-11-06 Month agenda 正文/序号前景和 Material 字体参数（窄切片 PASS）
 
 - 冻结主题 `onSurface` 常量为 `#11151C`。Web agenda 原先把 summary/sequence 画成较浅变体色，且标题/摘要/序号缺少原生 Material 对应 tracking，序号缺少 500 字重。`native-095.css` 已按 `titleMedium` / `bodyMedium` / `labelSmall` 对齐前景、字号、字重、行高与 tracking，Android WebView 仪器断言覆盖这些计算值。

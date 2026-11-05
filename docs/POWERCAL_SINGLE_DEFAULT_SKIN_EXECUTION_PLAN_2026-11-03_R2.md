@@ -6,6 +6,8 @@
 **基准与证据：** `main=af229d98`（核心冻结签核）；历史完整 JVM 946/946 PASS；Studio Python 68/68 PASS；SEP 母项 0/16 完整签核。**这些是历史证据，不代表后续修改自动通过。**
 **2026-11-03 Owner 最新裁决（覆盖本版旧的历史皮肤保留条款）：正式 App 只允许一套默认 `.pcskin`；历史安装的第三方/候选皮肤包不保留，不提供迁移后归档或导出。R-03 负责在隔离 QA 环境验证将旧选择收敛到默认或 Native 安全恢复，并清除仅限 App 私有 `files/skin-packs/` 的旧安装包。此裁决不授权删除 Git Worktree、设计源稿、Studio 项目、测试夹具、其他用户文件，也不授权提前向生产用户放开切换。业务 Store 不可修改。**
 
+**2026-11-06 Owner 视觉基准更正（覆盖本路线图中关于默认皮肤视觉目标、Clear 作为最终视觉 fallback 及 Claude 设计输入时序的旧裁决）：唯一正式默认皮肤的视觉、页面结构与交互基准是冻结原生 PowerCal 0.9.5-rc.1，源码 `b1f7629f0c52812e1887443872f43aa6c49908c4`，参考 APK `.local/android-test/artifacts/physical-qa/PowerCal-0.9.5-rc.1-b1f7629-debug-core-HOLD.apk`（SHA-256 `DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76`）。当前 Clear 仅是唯一既有包身份与迁移载体，不是视觉验收终点；未经批准的 Claude 概念不作为目标。通过正式 Skin Studio/Web v3 迁移原生页面表现与交互；不恢复第二套正常 Runtime，Native 仅保留独立安全恢复。原生参考中的框外标题、贪心折叠、真实时间几何、双翼布局和冻结交互不得静默降级。此更正不改变 Core 语义、Skin ID、唯一 `.pcskin` 身份或现有安全门禁。**
+
 ## 0. 最终产品与禁止偏离的原则
 
 ### 唯一目标
