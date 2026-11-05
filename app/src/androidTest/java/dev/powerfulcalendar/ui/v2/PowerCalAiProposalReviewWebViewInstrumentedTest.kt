@@ -30,6 +30,7 @@ import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import dev.powerfulcalendar.ai.AiChatHistoryStore
+import dev.powerfulcalendar.ai.AiChatMessage
 import dev.powerfulcalendar.ai.AiSettings
 import dev.powerfulcalendar.ai.AiSettingsStore
 import dev.powerfulcalendar.core.DraftForm
@@ -316,6 +317,75 @@ class PowerCalAiProposalReviewWebViewInstrumentedTest {
             "expected=${compose.activity.packageName}; active=${activeRoot?.packageName}; " +
             "nodes=$activeNodes",
             activeRoot?.packageName?.toString() == compose.activity.packageName)
+    }
+
+    @Test
+    fun clearAiTemporaryCacheUsesHostActionAndPreservesChatAndCalendarStore() {
+        val storage: Context = compose.activity.applicationContext
+        val context = IsolatedAppContext(compose.activity, storage,
+            "pc-ai-cache-clear-${UUID.randomUUID()}")
+        val store = PowerStore(context, "cache-clear.db")
+        context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+            .edit().putBoolean("system-calendar-import-asked", true).commit()
+        val draft = store.newDraft(DraftForm(kind = TemporalKind.MEMO,
+            title = "cache-clear-store-sentinel", zoneId = ZoneId.systemDefault().id))
+        assertTrue(store.commit(draft.draftId) is PowerStore.CommitOutcome.Committed)
+        val storeBefore = listOf(store.draftCount(), store.pendingCount().toLong(),
+            store.identityCount(), store.commitCount())
+        val chat = listOf(AiChatMessage(role = "user", content = "keep this chat"))
+        AiChatHistoryStore.save(context, chat)
+        val cacheFile = File(context.cacheDir, "powercal-ai-cache-clear-test.bin")
+        cacheFile.writeText("temporary test evidence")
+        assertTrue(cacheFile.isFile)
+        var web: WebView? = null
+
+        try {
+            compose.runOnUiThread {
+                PowerCalSkinRegistry.reset()
+                SkinPackageManager(context).select("powercal-clear-default")
+                compose.activity.setContent {
+                    CompositionLocalProvider(LocalContext provides context) {
+                        PowerCalTheme { PowerCalApp(store) }
+                    }
+                }
+            }
+            compose.waitUntil(30_000) {
+                compose.runOnUiThread {
+                    web = findWebView(compose.activity.findViewById(android.R.id.content))
+                }
+                web != null
+            }
+            val view = requireNotNull(web)
+            awaitJs(view, "!!window.PowerCalSkin?.receive && !!document.querySelector('#aiPage')")
+            tapWebSelector(view, ".clear-tabbar [data-action='ai']")
+            awaitJs(view, "!document.querySelector('#aiPage').hidden")
+            tapWebSelector(view, "#aiOverflow > summary")
+            awaitJs(view, "document.querySelector('#aiOverflow').open")
+            tapWebSelector(view, ".clear-tabbar [data-action='month']")
+            awaitJs(view, "document.body.dataset.page==='month' && !document.querySelector('#aiOverflow').open")
+            tapWebSelector(view, ".clear-tabbar [data-action='ai']")
+            awaitJs(view, "document.body.dataset.page==='ai' && !document.querySelector('#aiPage').hidden")
+            tapWebSelector(view, "#aiOverflow > summary")
+            awaitJs(view, "document.querySelector('#aiOverflow').open")
+            val menuTouch = tapWebSelector(view, "#chatClearCache")
+            awaitJs(view, "document.querySelector('#hostNotice').textContent.includes('已清理 1 个应用私有 AI 临时缓存文件')")
+
+            assertTrue("Host action must delete only the prefixed app-private cache file",
+                !cacheFile.exists())
+            assertEquals("Temporary cache clearing must preserve chat history", chat,
+                AiChatHistoryStore.load(context))
+            assertEquals("Temporary cache clearing must not write Core calendar data",
+                storeBefore, listOf(store.draftCount(), store.pendingCount().toLong(),
+                    store.identityCount(), store.commitCount()))
+            println("NATIVE095_AI_CACHE_MENU hostAction=clearAiTemporaryCache " +
+                "cacheDeleted=true chatPreserved=true storeUnchanged=true trustedTouch=$menuTouch")
+        } finally {
+            cacheFile.delete()
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+        }
     }
 
     @Test
@@ -999,6 +1069,7 @@ class PowerCalAiProposalReviewWebViewInstrumentedTest {
 
         fun launchClearImagePicker(web: WebView) {
             awaitJs(web, "document.querySelector('#aiPage') && !document.querySelector('#aiPage').hidden")
+            tapWebSelector(web, ".chat-attachment-trigger")
             tapWebSelector(web,
                 ".chat-attachment-controls button[aria-label='选择图片附件']")
             compose.waitUntil(15_000) {

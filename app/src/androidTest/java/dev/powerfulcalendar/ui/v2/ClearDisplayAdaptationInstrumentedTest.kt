@@ -98,7 +98,7 @@ class ClearDisplayAdaptationInstrumentedTest {
                 .filter(visible);
               const unnamed=controls.filter(e=>!(e.getAttribute('aria-label')||e.getAttribute('aria-labelledby')||
                 e.innerText?.trim()||e.value||e.title));
-              const nav=[...document.querySelectorAll('.clear-tabbar button')].map(e=>
+              const nav=[...document.querySelectorAll('.clear-tabbar button')].filter(visible).map(e=>
                 e.getAttribute('aria-label')||e.innerText.trim());
               const title=document.querySelector('#dayTitle').getBoundingClientRect();
               const tab=document.querySelector('.clear-tabbar').getBoundingClientRect();
@@ -125,7 +125,7 @@ class ClearDisplayAdaptationInstrumentedTest {
                 compose.activity.resources.configuration.orientation)
             val nav = webMetrics.getJSONArray("nav")
             assertEquals("bottom navigation actions remain in the expected reading order",
-                listOf("时间轴", "月历", "Memo", "AI", "设置"),
+                listOf("时间轴", "日历", "AI 助手", "设置"),
                 (0 until nav.length()).map { nav.getString(it) })
             assertEquals("visible controls need an accessible name", 0,
                 webMetrics.getInt("unnamedControls"))

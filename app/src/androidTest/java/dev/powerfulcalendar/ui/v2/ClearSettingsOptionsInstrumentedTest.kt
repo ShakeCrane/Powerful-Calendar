@@ -1606,6 +1606,7 @@ class ClearSettingsOptionsInstrumentedTest {
                     WebSkinBridgeRuntime.state().optString("page") == "AI" &&
                         WebSkinBridgeRuntime.state().optBoolean("chatAttachmentAvailable")
                 }
+                tapWebSelector(view, ".chat-attachment-trigger")
                 tapWebSelector(view,
                     ".chat-attachment-controls button[aria-label='选择日历或文档附件']")
             } else {
@@ -3573,6 +3574,7 @@ class ClearSettingsOptionsInstrumentedTest {
                     WebSkinBridgeRuntime.state().optString("page") == "AI" &&
                         WebSkinBridgeRuntime.state().optBoolean("chatAttachmentAvailable")
                 }
+                tapWebSelector(view, ".chat-attachment-trigger")
                 tapWebSelector(view,
                     ".chat-attachment-controls button[aria-label='选择日历或文档附件']")
             } else {

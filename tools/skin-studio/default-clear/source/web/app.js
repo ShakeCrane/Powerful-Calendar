@@ -426,6 +426,28 @@ document.addEventListener("click",e=>{
   }
   if(button)onAction(button);
 });
+const axisResetHit=$("axisResetHit");
+let lastAxisResetTap=null,lastAxisResetSentAt=0;
+axisResetHit?.addEventListener("pointerup",event=>{
+  if(event.pointerType!=="touch"&&event.pointerType!=="pen")return;
+  const now=performance.now(),point={x:event.clientX,y:event.clientY};
+  if(lastAxisResetTap&&now-lastAxisResetTap.at<=420&&
+      Math.hypot(point.x-lastAxisResetTap.x,point.y-lastAxisResetTap.y)<=28){
+    send("resetTimelineZoom");lastAxisResetSentAt=performance.now();lastAxisResetTap=null;
+  }else lastAxisResetTap={at:now,...point};
+  event.preventDefault();event.stopPropagation();
+});
+axisResetHit?.addEventListener("dblclick",event=>{
+  event.preventDefault();event.stopPropagation();lastAxisResetTap=null;
+  if(performance.now()-lastAxisResetSentAt<500)return;
+  lastAxisResetSentAt=performance.now();
+  send("resetTimelineZoom");
+});
+axisResetHit?.addEventListener("keydown",event=>{
+  if(event.key==="Enter"||event.key===" "){
+    event.preventDefault();send("resetTimelineZoom");
+  }
+});
 let monthSwipeStart=null,monthSwipeConsumed=false,monthSwipeReset=0;
 $("monthGrid").addEventListener("pointerdown",event=>{
   if(event.isPrimary&&event.button===0)
@@ -531,6 +553,7 @@ function receive(raw){
   state=parsed.payload||{};currentPage=String(state.page||"TIMELINE").toUpperCase();
   attachmentRequestPending=Boolean(state.chatAttachmentBusy);
   $("pendingCounter").textContent=Number(state.pendingCount)||"";
+  $("aiPendingCount").textContent=`待处理 ${Number(state.pendingCount)||0}`;
   $("memoCounter").textContent=Number(state.memoCount)||"";
   const hostNotice=typeof state.hostNotice==="string"?state.hostNotice.trim():"";
   $("hostNotice").textContent=hostNotice;
@@ -542,17 +565,23 @@ function receive(raw){
 }
 function renderPage(){
   const page=currentPage==="TOOLS"?"TIMELINE":currentPage;
+  document.body.dataset.page=page.toLowerCase();
   const createButton=document.querySelector('[data-action="createDraft"]');
   if(createButton){createButton.title="新建事件";createButton.setAttribute("aria-label","新建事件")}
   const pages={TIMELINE:"timelinePage",MONTH:"monthPage",MEMO:"memoPage",AI:"aiPage",SETTINGS:"settingsPage"};
   for(const [key,id] of Object.entries(pages))$(id).hidden=key!==page||localOptions;
   $("extraOptions").hidden=!localOptions;
   document.querySelectorAll(".clear-tabbar button").forEach(b=>{
-    b.classList.toggle("current",b.dataset.action?.toUpperCase()===page)
+    const selected=page!=="MEMO"&&b.dataset.action?.toUpperCase()===page;
+    b.classList.toggle("current",selected);
+    if(selected)b.setAttribute("aria-current","page");else b.removeAttribute("aria-current");
   });
   const anchor=state.timeline?.anchorMillis||Date.now(),zone=state.timeline?.zoneId;
-  $("dayTitle").textContent=dateText(anchor,zone,{month:"long",day:"numeric"});
-  $("dateSubtitle").textContent=dateText(anchor,zone,{weekday:"long",year:"numeric"});
+  $("dayTitle").textContent=dateText(anchor,zone,{year:"numeric",month:"long",day:"numeric",weekday:"short"}).replace(/日(?=周)/,"日 ");
+  $("dateSubtitle").textContent="";
+  const memoTitle=$("memoTitle"),memoSubtitle=$("memoSubtitle");
+  if(memoTitle)memoTitle.textContent=memoFilter==="done"?"Memo · 已完成":"Memo · 未完成";
+  if(memoSubtitle)memoSubtitle.textContent=`统一待办中心 · ${Number(state.memoCount)||0} 项 · 勾选状态可撤销`;
   if(page==="TIMELINE")renderTimeline();
   if(page==="MONTH")renderMonth();
   if(page==="MEMO")renderMemo();
@@ -731,14 +760,15 @@ function renderTimeline(){
   const previousRightOverflow=right.scrollWidth>right.clientWidth+1;
   for(const el of [labels,leftLanes,rightLanes,now,dates])el.replaceChildren();
   dates.hidden=true;
-  if(!t){$("timeRangeLabel").textContent="尚无宿主数据";return}
-  $("timeRangeLabel").textContent=t.hours+" 小时";
+  if(!t){$("timeRangeLabel").textContent="尚无宿主数据";$("timelineEmpty").hidden=false;return}
+  $("timeRangeLabel").textContent=t.hours+" 小时 / 屏";
   const from=Number(t.visibleStartMillis),to=Number(t.visibleEndMillis),span=Math.max(1,to-from);
   const zone=t.zoneId,axis=$("timelineSurface"),height=Math.max(1,axis.clientHeight);
   if(!Number.isFinite(from)||!Number.isFinite(to)||to<=from)return;
   const position=ms=>100*(ms-from)/span;
   const kindLabel={ACTIVITY:"活动",ALARM:"提醒",DEADLINE:"截止事项"};
   const items=Array.isArray(t.items)?t.items:[];
+  $("timelineEmpty").hidden=items.length!==0;
   const isDateOnlyDeadline=item=>String(item.kind).toUpperCase()==="DEADLINE"&&
     typeof item.deadlineDate==="string"&&/^\d{4}-\d{2}-\d{2}$/.test(item.deadlineDate);
   const dateItems=items.filter(isDateOnlyDeadline);
@@ -779,11 +809,39 @@ function renderTimeline(){
       dates.append(button);
     }
   }
-  for(let i=0;i<=Math.ceil(t.hours);i++){
-    const ms=from+i*3600000;if(ms>to)break;
-    const top=position(ms)+"%";
+  const tickMinutes=t.hours<=0.75?1:t.hours<=2?5:t.hours<=4?10:t.hours<=6?30:t.hours<=12?60:t.hours<=26?120:240;
+  const tickStep=tickMinutes*60000;
+  const zonedParts=ms=>Object.fromEntries(new Intl.DateTimeFormat("en-CA",{
+    timeZone:zone||"Asia/Shanghai",year:"numeric",month:"2-digit",day:"2-digit",
+    hour:"2-digit",minute:"2-digit",hourCycle:"h23"
+  }).formatToParts(new Date(ms)).map(part=>[part.type,part.value]));
+  const localOffset=ms=>{
+    const p=zonedParts(ms);
+    return Date.UTC(Number(p.year),Number(p.month)-1,Number(p.day),Number(p.hour),Number(p.minute))-
+      Math.floor(ms/60000)*60000;
+  };
+  const parts=zonedParts(from),minuteOfDay=Number(parts.hour)*60+Number(parts.minute);
+  const flooredMinute=minuteOfDay-(minuteOfDay%tickMinutes);
+  const wallTick=Date.UTC(Number(parts.year),Number(parts.month)-1,Number(parts.day),
+    Math.floor(flooredMinute/60),flooredMinute%60);
+  let firstTick=wallTick-localOffset(from);
+  while(firstTick>from)firstTick-=tickStep;
+  let dayCursor=Date.UTC(Number(parts.year),Number(parts.month)-1,Number(parts.day));
+  const dayCount=Math.min(400,Math.ceil((to-from)/86400000)+3);
+  for(let day=0;day<dayCount;day++,dayCursor+=86400000){
+    const noonGuess=dayCursor+12*3600000;
+    const dayStart=dayCursor-localOffset(noonGuess),y=position(dayStart)*height/100;
+    if(y < -30 || y > height+30)continue;
+    const marker=node("div","timeline-day-separator");marker.style.top=y+"px";
+    marker.append(node("span","timeline-day-label",dateText(dayStart,zone,
+      {month:"long",day:"numeric",weekday:"short"}).replace(/日(?=周)/,"日 ")));
+    labels.append(marker);
+  }
+  for(let ms=firstTick,count=0;ms<=to&&count<400;ms+=tickStep,count++){
+    const y=position(ms)*height/100;
+    if(y < -24 || y > height+24)continue;
     const grid=node("div","timeGrid"),tick=node("div","timeTick",relativeTime(ms,zone));
-    grid.style.top=top;tick.style.top=top;labels.append(grid,tick);
+    grid.style.top=y+"px";tick.style.top=y+"px";labels.append(grid,tick);
   }
   const timedItems=items.filter(item=>kindLabel[String(item.kind).toUpperCase()]&&
     !isDateOnlyDeadline(item));
@@ -865,7 +923,9 @@ function renderTimeline(){
     lanes.append(button);
   }
   if(t.nowMillis>=from&&t.nowMillis<to){
-    const marker=node("div","now-line");marker.style.top=position(t.nowMillis)+"%";now.append(marker);
+    const marker=node("div","now-line");marker.style.top=position(t.nowMillis)+"%";
+    marker.append(node("span","now-label","现在 "+relativeTime(t.nowMillis,zone)));
+    now.append(marker);
   }
   if(t.truncated){
     const warning=node("p","quiet","可见事件过多，未全部显示");
@@ -878,7 +938,28 @@ function renderTimeline(){
   right.scrollLeft=(!timelineScrollInitialized||(!previousRightOverflow&&newRightOverflow))
     ?0:previousRightScroll;
   timelineScrollInitialized=true;
+  positionNowBadge(axis);
   recomputeTimelineTitleFolding();
+}
+function positionNowBadge(axis){
+  const label=axis.querySelector(".now-label");
+  if(!label)return;
+  const bounds=axis.getBoundingClientRect(),obstacles=[...document.querySelectorAll(
+    ".timeTick,.tEventVisual,.timelineTitle,.timeline-empty,.timeline-day-label")];
+  const offsets=[0];
+  for(let distance=8;distance<=Math.min(180,bounds.height/2);distance+=8)offsets.push(-distance,distance);
+  for(const offset of offsets){
+    label.style.top=offset+"px";
+    const rect=label.getBoundingClientRect();
+    if(rect.top<bounds.top||rect.bottom>bounds.bottom)continue;
+    const collides=obstacles.some(element=>{
+      const other=element.getBoundingClientRect();
+      return other.width>0&&other.height>0&&rect.left<other.right+2&&other.left-2<rect.right&&
+        rect.top<other.bottom+2&&other.top-2<rect.bottom;
+    });
+    if(!collides)return;
+  }
+  label.style.top="0px";
 }
 function renderMonth(){
   const month=state.month||{},t=state.timeline||{};
@@ -899,6 +980,12 @@ function renderMonth(){
     timeZone:zone,year:"numeric",month:"2-digit",day:"2-digit"
   }).formatToParts(new Date(t.nowMillis||Date.now())).map(part=>[part.type,part.value]));
   const todayIso=`${nowParts.year}-${nowParts.month}-${nowParts.day}`;
+  const monthToday=$("monthToday");
+  if(monthToday)monthToday.dataset.date=todayIso;
+  const [yearValue,monthValue]=String(month.month||firstIso.slice(0,7)).split("-").map(Number);
+  $("monthTitle").textContent=String(month.month||firstIso.slice(0,7));
+  $("monthTitle").dataset.nativeLabel=`${yearValue} 年   ${monthValue} 月`;
+  $("monthTitle").setAttribute("aria-label",`选择 ${yearValue} 年 ${monthValue} 月`);
   for(let i=0;i<cellCount;i++){
     const date=new Date(origin+i*86400000),iso=date.toISOString().slice(0,10);
     if(iso.slice(0,7)!==(month.month||firstIso.slice(0,7))){
@@ -916,8 +1003,11 @@ function renderMonth(){
   }
   const agenda=$("monthAgenda");agenda.replaceChildren();
   const picked=events.filter(item=>item.date===month.selectedDate);
-  agenda.append(node("h2","",month.selectedDate||""));
-  if(!picked.length)agenda.append(node("p","quiet","当天暂无日程"));
+  const selectedDate=String(month.selectedDate||firstIso);
+  const selectedParts=selectedDate.split("-").map(Number),weekday=new Date(Date.UTC(selectedParts[0],selectedParts[1]-1,selectedParts[2])).getUTCDay();
+  const weekdayNames=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+  agenda.append(node("h2","",`${selectedParts[1]}月${selectedParts[2]}日 ${weekdayNames[weekday]}`));
+  if(!picked.length)agenda.append(node("p","quiet","这一天还很从容。"));
   for(const item of picked){
     const button=node("button","agenda-event",item.title);
     button.dataset.action="openEvent";
@@ -931,10 +1021,14 @@ function renderMonth(){
 function renderMemo(){
   const list=$("memoList");list.replaceChildren();
   const completed=memoFilter==="done";
-  document.querySelectorAll("[data-filter]").forEach(button=>
-    button.classList.toggle("selected",button.dataset.filter===memoFilter));
   const entries=(state.memoEntries||[]).filter(x=>Boolean(x.completed)===completed);
-  if(!entries.length){list.append(node("p","quiet",completed?"暂无已完成项目":"暂无待完成项目"))}
+  document.querySelectorAll(".memo-mode-row [data-filter]").forEach(button=>{
+    const active=button.dataset.filter===memoFilter;
+    button.hidden=active;
+  });
+  $("memoTitle").textContent=completed?"Memo · 已完成":"Memo · 未完成";
+  $("memoSubtitle").textContent=`统一待办中心 · ${entries.length} 项（重复任务展示近一年及未来七日）`;
+  if(!entries.length){list.append(node("p","quiet",completed?"目前没有已完成事项":"目前没有待处理事项"))}
   for(const item of entries){
     const row=node("div","memo-row"+(item.completed?" done":""));
     const button=node("button","",item.completed?"✓":"");
@@ -960,7 +1054,7 @@ function renderChat(){
   installChatAttachmentControls();
   const list=$("chatMessages");list.replaceChildren();
   const messages=state.chatMessages||[];
-  if(!messages.length)list.append(node("p","quiet","从这里开始与 AI 讨论日程"));
+  $("chatEmptyHint").hidden=messages.length>0;
   for(const item of messages){
     const bubble=node("article","chat-bubble "+(item.role==="user"?"user":"assistant"));
     bubble.append(node("p","chat-message-content",item.content));
@@ -984,12 +1078,22 @@ function renderChat(){
   renderAiProposalReview(list);
   const batchPhase=String(state.aiBatch?.phase||"IDLE");
   const disabled=!!(state.aiLocked||state.chatBusy||batchPhase==="AWAITING_HOST_REVIEW");
-  $("chatInput").disabled=disabled;$("chatSend").disabled=disabled;
+  $("chatInput").disabled=disabled;
   const reviewPending=!!state.aiProposalReview?.proposals?.length;
   const attachmentUnavailable=state.chatAttachmentAvailable===false;
+  const cacheBusy=["SELECTING","AWAITING_HOST_REVIEW","RUNNING","CANCEL_REQUESTED"]
+    .includes(batchPhase);
+  $("chatClearCache").disabled=disabled||cacheBusy||Boolean(state.chatAttachmentBusy)||
+    attachmentRequestPending||reviewPending;
+  $("chatAttachmentTrigger").disabled=disabled||Boolean(state.chatAttachmentBusy)||
+    attachmentRequestPending||reviewPending||attachmentUnavailable;
   for(const button of document.querySelectorAll(".chat-attachment-controls button"))
     button.disabled=disabled||Boolean(state.chatAttachmentBusy)||attachmentRequestPending||
       reviewPending||attachmentUnavailable;
+  if(disabled||state.chatAttachmentBusy||attachmentRequestPending||reviewPending||attachmentUnavailable){
+    $("chatAttachmentControls").hidden=true;
+    $("chatAttachmentTrigger").setAttribute("aria-expanded","false");
+  }
   if(disabled)list.append(node("p","quiet","AI 正在处理，暂不可发送"));
   else if(state.chatAttachmentBusy||attachmentRequestPending)
     list.append(node("p","quiet","请先完成系统附件选择或确认"));
@@ -1004,6 +1108,7 @@ function renderChat(){
     $("chatInput").value=String(state.chatPrefillText||"");
     appliedChatPrefillRevision=prefillRevision;
   }
+  updateChatSendState();
   list.scrollTop=list.scrollHeight;
 }
 function renderAiBatchControls(){
@@ -1046,25 +1151,83 @@ function installChatAttachmentControls(){
   const composer=$("chatForm").querySelector(".composer");
   if(!composer||$("chatAttachmentControls"))return;
   const style=node("style");
-  style.textContent=`.chat-attachment-controls{display:flex;flex-direction:column;gap:4px;flex:0 0 auto;align-self:center}
-    .chat-attachment-controls button{font:inherit;font-size:11px;min-height:28px;padding:4px 8px;
-      border:1px solid var(--sep);border-radius:12px;background:var(--bg-elevated);color:var(--label)}
-    .chat-attachment-controls button:disabled{opacity:.45}`;
+  style.textContent=`.composer{position:relative}
+    .composer .chat-attachment-trigger{display:grid;place-items:center;flex:0 0 44px;width:44px;height:44px;
+      min-height:44px;padding:0;border:0;border-radius:50%;background:transparent;color:var(--label);font-size:28px}
+    .chat-attachment-controls{position:absolute;z-index:20;left:0;bottom:calc(100% + 8px);display:flex;
+      flex-direction:column;gap:2px;min-width:min(250px,76vw);padding:6px;border:1px solid var(--sep);
+      border-radius:14px;background:var(--bg-elevated);box-shadow:var(--shadow-lift)}
+    .chat-attachment-controls[hidden]{display:none!important}
+    .chat-attachment-controls button{font:inherit;font-size:14px;min-height:44px;padding:8px 12px;
+      border:0;border-radius:9px;background:transparent;color:var(--label);text-align:left}
+    .chat-attachment-controls button:disabled,.chat-attachment-trigger:disabled{opacity:.45}`;
   document.head.append(style);
+  const trigger=node("button","chat-attachment-trigger","＋");trigger.id="chatAttachmentTrigger";
+  trigger.type="button";trigger.setAttribute("aria-label","添加图片或文件");
+  trigger.setAttribute("aria-haspopup","menu");trigger.setAttribute("aria-expanded","false");
+  const options=()=>Array.from(controls.querySelectorAll("button:not(:disabled)"));
+  const close=(returnFocus=false)=>{
+    controls.hidden=true;trigger.setAttribute("aria-expanded","false");
+    if(returnFocus)trigger.focus();
+  };
+  trigger.addEventListener("click",()=>{
+    if(controls.hidden){
+      controls.hidden=false;trigger.setAttribute("aria-expanded","true");
+      requestAnimationFrame(()=>options()[0]?.focus());
+    }else close(true);
+  });
   const controls=node("div","chat-attachment-controls");controls.id="chatAttachmentControls";
+  controls.hidden=true;controls.setAttribute("role","menu");
+  controls.setAttribute("aria-label","选择 AI 附件类型");
   for(const [name,label,accessible] of [
     ["pickAiImage","图片","选择图片附件"],["pickAiFile","文件","选择日历或文档附件"]
   ]){
     const button=node("button","",label);button.type="button";
     button.setAttribute("aria-label",accessible);
+    button.setAttribute("role","menuitem");
     button.addEventListener("click",()=>{
       if(!port||button.disabled)return;
+      close();
       attachmentRequestPending=true;renderChat();send(name);
     });
     controls.append(button);
   }
+  controls.addEventListener("keydown",event=>{
+    const enabled=options(),index=enabled.indexOf(document.activeElement);
+    let next=-1;
+    if(event.key==="ArrowDown")next=(index+1)%enabled.length;
+    else if(event.key==="ArrowUp")next=(index-1+enabled.length)%enabled.length;
+    else if(event.key==="Home")next=0;
+    else if(event.key==="End")next=enabled.length-1;
+    else if(event.key==="Escape"){event.preventDefault();close(true);return}
+    if(next>=0&&enabled.length){event.preventDefault();enabled[next].focus()}
+  });
+  document.addEventListener("pointerdown",event=>{
+    if(!controls.hidden&&!controls.contains(event.target)&&!trigger.contains(event.target))close();
+  },true);
+  document.addEventListener("keydown",event=>{
+    if(!controls.hidden&&event.key==="Escape"){event.preventDefault();close(true)}
+  });
+  composer.insertBefore(trigger,$("chatInput"));
   composer.insertBefore(controls,$("chatSend"));
+  const overflow=$("aiOverflow");
+  overflow?.addEventListener("click",event=>{
+    if(event.target.closest("button"))overflow.open=false;
+  });
+  document.addEventListener("pointerdown",event=>{
+    if(overflow?.open&&!overflow.contains(event.target))overflow.open=false;
+  },true);
+  document.addEventListener("keydown",event=>{
+    if(!overflow?.open||event.key!=="Escape")return;
+    event.preventDefault();overflow.open=false;overflow.querySelector("summary")?.focus();
+  });
 }
+function updateChatSendState(){
+  const batchPhase=String(state.aiBatch?.phase||"IDLE");
+  $("chatSend").disabled=!!(state.aiLocked||state.chatBusy||batchPhase==="AWAITING_HOST_REVIEW")||
+    !$("chatInput").value.trim();
+}
+$("chatInput").addEventListener("input",updateChatSendState);
 function installAiProposalStyles(){
   if($("aiProposalStyles"))return;
   const style=node("style");style.id="aiProposalStyles";

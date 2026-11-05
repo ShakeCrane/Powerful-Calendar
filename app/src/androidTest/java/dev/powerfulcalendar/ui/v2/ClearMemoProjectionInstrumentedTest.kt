@@ -406,7 +406,7 @@ class ClearMemoProjectionInstrumentedTest {
                 evaluate(view, "!!window.PowerCalSkin && " +
                     "!!document.querySelector('.clear-tabbar [data-action=memo]')") == "true"
             }
-            val navigation = tapWebSelector(view, ".clear-tabbar [data-action='memo']")
+            val navigation = tapWebSelector(view, ".clear-head [data-action='memo']")
             assertTrue("Memo navigation is a trusted touchscreen action", navigation.getBoolean("trusted"))
             compose.waitUntil(30_000) {
                 val state = hostState()

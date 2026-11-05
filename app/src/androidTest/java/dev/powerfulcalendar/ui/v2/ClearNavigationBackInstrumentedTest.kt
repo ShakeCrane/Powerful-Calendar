@@ -240,7 +240,7 @@ class ClearNavigationBackInstrumentedTest {
                 evaluate(view, "!!window.PowerCalSkin?.receive") == "true"
             }
 
-            tapWebSelector(view, ".clear-tabbar [data-action=\"memo\"]")
+            tapWebSelector(view, ".clear-head [data-action=\"memo\"]")
             compose.waitUntil(10_000) { evaluate(view, "!document.querySelector('#memoPage').hidden") == "true" }
             tapWebSelector(view, "#memoList .memo-title[data-event-seq='${seed.eventSeq}']")
             compose.waitUntil(10_000) {
@@ -568,7 +568,7 @@ class ClearNavigationBackInstrumentedTest {
             compose.waitUntil(20_000) {
                 evaluate(view, "!!window.PowerCalSkin?.receive") == "true"
             }
-            tapWebSelector(view, ".clear-tabbar [data-action=memo]")
+            tapWebSelector(view, ".clear-head [data-action=memo]")
             compose.waitUntil(15_000) { evaluate(view, "!document.querySelector('#memoPage').hidden") == "true" }
             tapWebSelector(view, "#memoPage [data-action=createMemo]")
             compose.waitUntil(15_000) {

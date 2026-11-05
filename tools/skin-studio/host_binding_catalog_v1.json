@@ -1380,6 +1380,35 @@
       }
     },
     {
+      "name": "clearAiTemporaryCache",
+      "label": "Clear app-private AI temporary cache",
+      "parameters": {},
+      "availability": "AI",
+      "effect": "Deletes only app-private files named powercal-ai-* in the cache directory; chat history, credentials, drafts and calendar data are untouched.",
+      "version": 1,
+      "requiredCapability": "host.action",
+      "parameterSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "resultSchema": "#/actionResult",
+      "errors": "#/actionResult/errors",
+      "wirePayloadSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "const": "clearAiTemporaryCache"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
       "name": "rewindChat",
       "label": "Rewind AI chat",
       "parameters": {

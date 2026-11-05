@@ -121,6 +121,9 @@ envelope and known fields only:
 {"version":1,"type":"action","payload":{"name":"clearChat","historyRevision":12}}
 ```
 ```json
+{"version":1,"type":"action","payload":{"name":"clearAiTemporaryCache"}}
+```
+```json
 {"version":1,"type":"action","payload":{"name":"rewindChat","messageId":"host-message-id","historyRevision":12,"editAndResend":true}}
 ```
 ```json
@@ -284,6 +287,12 @@ envelope and known fields only:
   attachment review is active.
   Studio Preview covers these flows with a non-writing Mock; it does not prove
   production Android WebView transport.
+- `clearAiTemporaryCache` accepts only `name` and only on the active AI page
+  while no chat, batch, editor, picker, or proposal review is active. The Host
+  delegates to the existing `AiChatHistoryStore.clearTemporaryCache()` helper,
+  which removes only app-private cache files prefixed `powercal-ai-`. It never
+  clears chat history, credentials, drafts, formal events, or Calendar Store
+  state. Studio Preview logs a non-writing Mock and does not access local files.
 - Memo list state is projected from the complete, deterministically sorted
   Native `TodoProjection` result within its existing recurrence window. On the
   `memo` navigation action, the Host refreshes its current formal-record

@@ -7,7 +7,8 @@ const reportDir = path.resolve(process.env.POWERCAL_E2E_REPORT_DIR ||
   path.join(root, ".local/android-test/reports/separation-20261027/source-editor"));
 const studioPackageOut = process.env.POWERCAL_E2E_STUDIO_PACKAGE_OUT
   ? path.resolve(process.env.POWERCAL_E2E_STUDIO_PACKAGE_OUT) : null;
-const canonicalClearFiles=Object.fromEntries(["index.html","style.css","app.js","edit.js"].map(name=>[
+const canonicalClearFiles=Object.fromEntries(["index.html","clear-design.css","style.css",
+  "native-095.css","title-folding.js","app.js","edit.js","fonts/InterVariable.woff2"].map(name=>[
   "web/"+name,fs.readFileSync(path.join(root,"tools/skin-studio/default-clear/source/web",name)).toString("base64")
 ]));
 const androidDeliveryFixture=fs.readFileSync(path.join(root,
@@ -376,7 +377,7 @@ async function main(){
       check(JSON.stringify(project.manifest.capabilities)==='["host.read"]','capabilities changed');
       check(project.files['project.json']===data.files['project.json'],'untouched project metadata changed');
       const post=async(url,body,type)=>{const r=await fetch(url,{method:'POST',headers:{'Content-Type':type},body});
-        check(r.ok,url+' returned '+r.status);return r};
+        check(r.ok,url+' returned '+r.status+': '+await r.clone().text());return r};
       select.value='project.json';select.dispatchEvent(new Event('change'));
       const projectField=document.querySelector('#extraSourceCode');
       const editedMeta=JSON.parse(projectField.value);
@@ -898,7 +899,9 @@ async function main(){
         check(!clear.disabled,'clear history is unavailable for a non-empty chat');
         clear.click();
         await wait(()=>list.querySelectorAll('.chat-bubble').length===0&&
-          list.textContent.includes('从这里开始与 AI 讨论日程')&&clear.disabled&&field.value===unsentDraft,
+          !document.querySelector('#chatEmptyHint').hidden&&
+          document.querySelector('#chatEmptyHint').textContent.includes('在这里直接聊天')&&
+          clear.disabled&&field.value===unsentDraft,
           'clear history changed the composer or failed to leave the chat empty');
         return {userEditAndResend:true,assistantRewind:true,clear:true,
           pendingComposerPreserved:true,providerCalled:false,calendarWrites:false};

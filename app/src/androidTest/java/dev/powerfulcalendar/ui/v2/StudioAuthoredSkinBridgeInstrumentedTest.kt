@@ -423,7 +423,7 @@ class StudioAuthoredSkinBridgeInstrumentedTest {
             compose.waitUntil(30_000) {
                 evaluate(web, "!!window.PowerCalSkin") == "true"
             }
-            val memoTabTouch = tapBySelector(web, ".clear-tabbar [data-action='memo']")
+            val memoTabTouch = tapBySelector(web, ".clear-head [data-action='memo']")
             compose.waitUntil(10_000) {
                 evaluate(web, "!document.querySelector('#memoPage').hidden") == "true"
             }

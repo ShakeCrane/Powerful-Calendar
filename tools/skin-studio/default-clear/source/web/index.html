@@ -1,32 +1,35 @@
 <!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="color-scheme" content="light dark"><title>PowerCal Clear</title><link rel="stylesheet" href="clear-design.css"><link rel="stylesheet" href="style.css"></head>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="color-scheme" content="light dark"><title>PowerCal</title><link rel="stylesheet" href="clear-design.css"><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="native-095.css"></head>
 <body><main id="app" aria-label="PowerCal">
-<header class="clear-head"><div class="clear-brand"><span id="dayTitle">今天</span><small id="dateSubtitle">日历 · Clear</small></div><div class="toolbar glass">
-<button data-action="today" aria-label="返回今天" title="返回今天">今日</button>
-<button data-action="memo" title="Memo">Memo <small id="memoCounter"></small></button>
-<button data-action="openDeck" title="草稿">待办 <small id="pendingCounter"></small></button>
-<button data-action="createDraft" data-kind="ACTIVITY" title="新建活动">＋</button>
+<header class="clear-head"><div class="clear-brand"><span class="brand-title">Powerful Calendar</span><small id="dayTitle">今天</small><small id="dateSubtitle" hidden>日历</small></div><div class="toolbar">
+<button class="icon-action" data-action="today" aria-label="今日 · 复位为全天" title="返回今天"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V9h14v11zM7 11h5v5H7z"/></svg></button>
+<button class="icon-action badge-action" data-action="memo" aria-label="Memo 未完成" title="Memo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m2 6 2 2 4-4-1.4-1.4L4 5.2 3.4 4.6 2 6zm8-1h12v2H10V5zm0 6h12v2H10v-2zm0 6h12v2H10v-2zm-8-5 2 2 4-4-1.4-1.4L4 11.2l-.6-.6L2 12zm0 6 2 2 4-4-1.4-1.4L4 17.2l-.6-.6L2 18z"/></svg><small id="memoCounter"></small></button>
+<button class="icon-action badge-action" data-action="openDeck" aria-label="待处理草稿" title="待处理"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2 9 5-9 5-9-5 9-5zm-9 9 9 5 9-5v3l-9 5-9-5v-3zm0 6 9 5 9-5v3l-9 5-9-5v-3z"/></svg><small id="pendingCounter"></small></button>
+<button class="icon-action" data-action="createDraft" data-kind="ACTIVITY" aria-label="新建事件" title="新建事件"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg></button>
 </div></header>
 <div id="hostNotice" class="host-notice" role="status" aria-live="polite" aria-atomic="true" hidden></div>
 <section id="timelinePage" class="page">
-<div class="section-label">时间轴 <span id="timeRangeLabel"></span></div>
+<div class="section-label timeline-section-label">时间轴</div>
 <div class="timeline-view-controls" role="group" aria-label="时间轴缩放与复位">
 <button type="button" data-action="zoomTimeline" data-direction="out" aria-label="缩小时间轴，显示更多小时" title="缩小时间轴">−</button>
+<span id="timeRangeLabel" aria-live="polite">24 小时 / 屏</span>
 <button type="button" data-action="zoomTimeline" data-direction="in" aria-label="放大时间轴，显示更少小时" title="放大时间轴">＋</button>
-<button type="button" data-action="resetTimelineZoom" aria-label="重置时间轴缩放为24小时" title="重置为24小时">24h</button>
+<span class="timeline-gesture-hint" aria-hidden="true">↕ 时间</span>
+<button class="compat-reset-action" type="button" data-action="resetTimelineZoom" aria-label="将时间轴缩放重置为24小时">重置 24 小时</button>
 </div>
 <p id="timelineMoveStatus" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></p>
+<p id="timelineEmpty" class="timeline-empty" hidden>还没有事件 · 点击右上角 + 开始</p>
 <div id="dateDeadlineBar" class="deadline-date-bar" role="region" aria-label="日期级截止事项" hidden></div>
 <div id="axisScroll" class="axis-scroll" role="region" aria-label="时间轴" tabindex="0">
-<div class="timeline-surface" id="timelineSurface"><div class="tl-axis" id="tlAxis"></div><div id="timelineLeft" class="timelineWing left" role="region" aria-label="左侧事件泳道，可独立水平滚动" tabindex="0"><div class="timelineLanes"></div></div><div id="timelineRight" class="timelineWing right" role="region" aria-label="右侧事件泳道，可独立水平滚动" tabindex="0"><div class="timelineLanes"></div></div><div id="timeLabels"></div><div id="timeNow"></div></div>
-</div><div class="timeline-buttons glass"><button data-action="panTimeline" data-delta-minutes="-180">较早</button><button data-action="panTimeline" data-delta-minutes="180">稍后</button></div></section>
-<section id="monthPage" class="page" hidden><div class="page-head"><h1>月历</h1><button data-local="options">数据选项</button><button data-action="today">今天</button></div><div class="month-bar"><button data-action="browseMonth" data-delta-months="-1" aria-label="上个月">‹</button><button id="monthTitle" type="button" aria-haspopup="dialog" aria-label="选择年份和月份"></button><button data-action="browseMonth" data-delta-months="1" aria-label="下个月">›</button></div><div id="monthGrid" class="month-grid"></div><div id="monthAgenda"></div><div class="month-actions"><button data-action="createDraft" data-kind="ACTIVITY">为这一天新建活动</button><button id="viewMonthDate" data-action="jumpTimelineDay">在时间轴查看这一天</button></div><p class="quiet">只显示宿主实际投影的日程；尚未投影到此范围的重复事项不会被推测。</p></section>
+<div class="timeline-surface" id="timelineSurface"><div class="tl-axis" id="tlAxis"></div><button id="axisResetHit" class="axis-reset-hit" type="button" aria-label="双击当前时间刻度尺返回24小时视图"></button><div id="timelineLeft" class="timelineWing left" role="region" aria-label="左侧事件泳道，可独立水平滚动" tabindex="0"><div class="timelineLanes"></div></div><div id="timelineRight" class="timelineWing right" role="region" aria-label="右侧事件泳道，可独立水平滚动" tabindex="0"><div class="timelineLanes"></div></div><div id="timeLabels"></div><div id="timeNow"></div></div>
+</div><div class="timeline-buttons glass" hidden><button data-action="panTimeline" data-delta-minutes="-180">较早</button><button data-action="panTimeline" data-delta-minutes="180">稍后</button></div></section>
+<section id="monthPage" class="page" hidden><div class="page-head native-page-head"><button class="page-back" data-action="timeline" aria-label="返回时间轴">‹</button><h1>日历</h1><button id="monthToday" class="plain-action" data-action="selectMonthDate">今天</button><button class="compat-local-options" data-local="options" aria-hidden="true" tabindex="-1">数据选项</button></div><div class="month-calendar-panel"><div class="month-bar"><button data-action="browseMonth" data-delta-months="-1" aria-label="上个月">‹</button><button id="monthTitle" type="button" aria-haspopup="dialog" aria-label="选择年份和月份"></button><button data-action="browseMonth" data-delta-months="1" aria-label="下个月">›</button></div><div id="monthGrid" class="month-grid"></div></div><div id="monthAgenda"></div><div class="month-actions"><button data-action="createDraft" data-kind="ACTIVITY">＋ 为这一天新建活动</button><button id="viewMonthDate" data-action="jumpTimelineDay">在时间轴查看这一天</button></div><p class="quiet">只显示宿主实际投影的日程；尚未投影到此范围的重复事项不会被推测。</p></section>
 <dialog id="monthPickerDialog" aria-labelledby="monthPickerHeading"><form id="monthPickerForm" method="dialog"><h2 id="monthPickerHeading">选择年份和月份</h2><label for="monthYear">年份</label><input id="monthYear" type="number" min="1900" max="2100" required><label for="monthNumber">月份</label><select id="monthNumber"><option value="1">1 月</option><option value="2">2 月</option><option value="3">3 月</option><option value="4">4 月</option><option value="5">5 月</option><option value="6">6 月</option><option value="7">7 月</option><option value="8">8 月</option><option value="9">9 月</option><option value="10">10 月</option><option value="11">11 月</option><option value="12">12 月</option></select><div class="month-picker-actions"><button id="monthPickerCancel" type="button">取消</button><button type="submit">跳转</button></div></form></dialog>
-<section id="memoPage" class="page" hidden><div class="page-head"><h1>Memo</h1><button data-action="createMemo">＋ 新建</button></div><div class="tabs"><button data-filter="open" class="selected">未完成</button><button data-filter="done">已完成</button></div><div id="memoList" class="memo-list"></div><button id="memoLimit" class="memo-limit" type="button" data-action="loadMoreMemo" aria-controls="memoList" hidden>加载更多 Memo</button></section>
-<section id="aiPage" class="page" hidden><div class="page-head"><h1>AI 助手</h1><button id="chatClear" type="button" aria-label="清空 AI 聊天历史" title="清空 AI 聊天历史">清空聊天</button><button data-action="settings">配置</button></div><div id="aiBatchControls" class="ai-batch-controls" role="group" aria-label="AI 批次操作"><button type="button" data-ai-batch="publish">批量发布草稿</button><button type="button" data-ai-batch="discard">批量丢弃草稿</button><button id="aiBatchCancel" type="button" hidden></button><button id="aiBatchRelease" type="button" hidden>强制解除卡住的批次</button></div><div id="aiBatchStatus" class="ai-batch-status" role="status" aria-live="polite" hidden></div><div id="chatMessages" class="chat-list" aria-live="polite"></div><form id="chatForm"><label for="chatInput">向 AI 发送消息</label><div class="composer"><textarea id="chatInput" maxlength="4000" rows="2" placeholder="描述你的日程需求…"></textarea><button id="chatSend" type="submit">发送</button></div></form></section>
+<section id="memoPage" class="page" hidden><div class="page-head native-page-head memo-page-head"><button class="page-back" data-action="timeline" aria-label="返回时间轴">‹</button><div class="native-title-group"><h1 id="memoTitle">Memo · 未完成</h1><small id="memoSubtitle">统一待办中心</small></div><button data-action="createMemo" class="icon-action" aria-label="新增无日期 Memo" title="新增 Memo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg></button></div><div class="tabs memo-mode-row" role="group" aria-label="Memo 状态筛选"><button type="button" data-filter="open">查看未完成</button><button type="button" data-filter="done" hidden>查看已完成</button><span>勾选状态可撤销</span></div><div id="memoList" class="memo-list"></div><button id="memoLimit" class="memo-limit" type="button" data-action="loadMoreMemo" aria-controls="memoList" hidden>加载更多 Memo</button></section>
+<section id="aiPage" class="page" hidden><div class="page-head native-page-head ai-page-head"><div class="native-title-group"><h1>AI 助手</h1><small>聊天 · 文件理解 · 日程 Skills</small></div><button class="plain-action" data-action="settings">配置</button><details id="aiOverflow" class="ai-overflow"><summary aria-label="待处理草稿与更多聊天操作"><span id="aiPendingCount">待处理 0</span><span class="ai-overflow-more" aria-hidden="true">⋮</span></summary><div class="ai-overflow-menu"><button type="button" data-action="openDeck">处理事件</button><button id="chatClearCache" type="button" data-action="clearAiTemporaryCache">清理 AI 临时缓存</button><hr class="ai-menu-divider"><button id="chatClear" type="button" aria-label="清空 AI 聊天历史" title="清空 AI 聊天历史">清空聊天</button><div id="aiBatchControls" class="ai-batch-controls" role="group" aria-label="AI 批次操作"><button type="button" data-ai-batch="publish">批量发布草稿</button><button type="button" data-ai-batch="discard">批量丢弃草稿</button><button id="aiBatchCancel" type="button" hidden></button><button id="aiBatchRelease" type="button" hidden>强制解除卡住的批次</button></div></div></details></div><div id="aiBatchStatus" class="ai-batch-status" role="status" aria-live="polite" hidden></div><p id="chatEmptyHint" class="chat-empty-hint" hidden>在这里直接聊天，或点 + 上传图片、ICS、文档和表格。通常 AI 会主动提供结构化提案；长按消息创建仅用于识别失败后的手动补救。</p><div id="chatMessages" class="chat-list" aria-live="polite"></div><form id="chatForm"><label for="chatInput">向 AI 发送消息</label><div class="composer"><textarea id="chatInput" maxlength="4000" rows="2" placeholder="发送消息…"></textarea><button id="chatSend" type="submit">发送</button></div></form></section>
 <section id="settingsPage" class="page" hidden>
-<div class="page-head"><h1>设置</h1></div>
-<div class="section-label">提醒可靠性</div>
+<div class="page-head native-page-head settings-page-head"><button class="page-back" data-action="timeline" aria-label="返回时间轴">‹</button><h1>工具与设置</h1></div>
+<section id="settings-reminder-section" class="settings-section"><div class="section-label">提醒可靠性</div><div class="settings-card">
 <p id="exactAlarmPermissionStatus" class="quiet" role="status" aria-live="polite" aria-atomic="true">正在读取精确闹钟权限状态…</p>
 <button class="memo-limit" type="button" data-action="openExactAlarmSettings" hidden>打开精确闹钟设置</button>
 <p class="quiet">精确闹钟访问被拒绝时，需要精确时刻的提醒会保持 BLOCKED。</p>
@@ -35,23 +38,30 @@
 <p class="quiet">通知权限被拒绝时，提醒触发会被记录为 BLOCKED；PowerCal 不会假装已提醒。</p>
 <p id="reminderReconcileStatus" class="quiet" role="status" aria-live="polite" aria-atomic="true">可以按当前已保存的数据手动重建提醒调度。</p>
 <button id="reconcileReminders" class="memo-limit" type="button" data-action="reconcileReminders">按当前数据重建提醒调度</button>
-<div class="section-label">执行状态 <span>最多 40 项</span></div>
+</div></section>
+<section id="settings-execution-section" class="settings-section"><div class="section-label">执行状态 <span>最多 40 项</span></div><div class="settings-card">
 <div id="reminderDiagnostics" class="reminder-diagnostics" role="list" aria-label="提醒调度与执行状态"></div>
-<div class="section-label">诊断</div>
+</div></section>
+<section id="settings-diagnostics-section" class="settings-section"><div class="section-label">诊断</div><div class="settings-card">
 <p class="quiet">本机数据与系统状态 · 只读</p>
 <div id="systemDiagnostics" class="system-diagnostics" role="list" aria-label="本机数据与系统诊断"></div>
-<div class="section-label">日历与数据</div>
+</div></section>
+<section id="settings-data-section" class="settings-section"><div class="section-label">日历与数据</div><div class="settings-card">
 <p class="quiet">导入、导出与备份由 Android 宿主处理；需要迁移或恢复时，宿主会先显示确认。</p>
 <div id="settingsOptionGroups" role="group" aria-label="日历与数据操作"></div>
-<div class="section-label">个人资料</div>
-<p class="quiet">个人显示名称仍由 Android 宿主保存；仅在打开编辑器时提供给当前皮肤。</p>
+</div></section>
+<section id="settings-profile-section" class="settings-section"><div class="section-label">个人信息</div><div class="settings-card">
+<p class="quiet">本机资料 · 不上传给 AI。个人显示名称由 Android 宿主保存。</p>
 <button id="openProfileSettings" class="memo-limit" type="button" data-action="openProfileEditor">编辑个人资料</button>
-<div class="section-label">AI 连接与隐私</div>
+</div></section>
+<section id="settings-ai-section" class="settings-section"><div class="section-label">单一 AI</div><div class="settings-card">
 <p class="quiet">端点、模型、密钥、事件上下文与文件处理授权由 Android 宿主的受保护设置管理；密钥不会发送给皮肤。</p>
 <button id="openAiSettings" class="memo-limit" type="button" data-action="nativeSettings">打开 AI 配置与隐私设置</button>
-<div class="section-label">恢复</div>
+</div></section>
+<section id="settings-recovery-section" class="settings-section"><div class="section-label">界面恢复</div><div class="settings-card">
 <p class="quiet">皮肤或页面不可用时，原生完整设置和恢复工具仍可使用。</p>
 <button id="nativeRecoverySettings" class="memo-limit" type="button" data-action="nativeSettings">打开原生完整设置与恢复工具</button>
+</div></section>
 </section>
 <dialog id="profileEditorDialog" aria-labelledby="profileEditorHeading" aria-describedby="profileEditorPrivacy">
   <form id="profileEditorForm">
@@ -67,7 +77,7 @@
   </form>
 </dialog>
 <section id="extraOptions" class="page" hidden><h1>可用选项</h1><div id="optionGroups"></div></section>
-<nav class="clear-tabbar glass" aria-label="页面导航"><button data-action="timeline" class="current">时间轴</button><button data-action="month">月历</button><button data-action="memo">Memo</button><button data-action="ai">AI</button><button data-action="settings">设置</button></nav>
+<nav class="clear-tabbar" aria-label="页面导航"><button data-action="timeline" class="current" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17h2.2l4.1-5.2 3.4 2.6 6.1-7.1L17.3 6l-4.9 5.7L9 9.2 4.4 15H3zM19 3h2v2h-2z"/></svg><span>时间轴</span></button><button data-action="month"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V9h14v11zM7 11h3v3H7zm5 0h3v3h-3z"/></svg><span>日历</span></button><button data-action="ai"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2 1.8 6.2L20 10l-6.2 1.8L12 18l-1.8-6.2L4 10l6.2-1.8L12 2zm7 13 .8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15zM5 15l.8 2.2L8 18l-2.2.8L5 21l-.8-2.2L2 18l2.2-.8L5 15z"/></svg><span>AI 助手</span></button><button data-action="settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.14 12.94c.04-.31.06-.62.06-.94s-.02-.63-.07-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.61-.22l-2.39.96a7.2 7.2 0 0 0-1.63-.94l-.36-2.54A.49.49 0 0 0 13.88 2h-3.76a.49.49 0 0 0-.49.42L9.27 4.96c-.59.23-1.14.55-1.63.94l-2.39-.96a.5.5 0 0 0-.61.22L2.72 8.48a.5.5 0 0 0 .12.64l2.03 1.58c-.05.31-.07.63-.07.95s.02.63.07.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.31.61.22l2.39-.96c.49.39 1.04.71 1.63.94l.36 2.54c.04.24.24.42.49.42h3.76c.25 0 .45-.18.49-.42l.36-2.54c.59-.23 1.14-.55 1.63-.94l2.39.96c.22.09.48 0 .61-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.02-1.58zM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg><span>设置</span></button><button class="compat-memo-route" data-action="memo" aria-label="Memo 路由兼容" aria-hidden="true" tabindex="-1" hidden>Memo</button></nav>
 <section id="skinSheet" role="dialog" aria-modal="true" aria-label="编辑" hidden>
   <div id="sheetShade" class="sheet-shade"></div>
   <div class="sheet-panel">

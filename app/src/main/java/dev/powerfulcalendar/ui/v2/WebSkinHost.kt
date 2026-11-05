@@ -157,6 +157,7 @@ internal sealed interface WebSkinAction {
     data object LoadMoreMemo : WebSkinAction
     data class SendChat(val text: String) : WebSkinAction
     data class ClearChat(val historyRevision: Long) : WebSkinAction
+    data object ClearAiTemporaryCache : WebSkinAction
     data class RewindChat(
         val messageId: String,
         val historyRevision: Long,
@@ -598,6 +599,8 @@ internal fun decodeBridgeAction(raw: String): WebSkinAction? {
             }
             revision?.takeIf { it >= 0 }?.let { WebSkinAction.ClearChat(it) }
         }
+        "clearAiTemporaryCache" -> if (keys == setOf("name"))
+            WebSkinAction.ClearAiTemporaryCache else null
         "rewindChat" -> {
             if (keys != setOf("name", "messageId", "historyRevision", "editAndResend")) return null
             val messageId = (payload.opt("messageId") as? String)?.takeIf { it.length in 1..100 }

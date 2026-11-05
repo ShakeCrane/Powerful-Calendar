@@ -2323,6 +2323,13 @@ function onSkinAction(message){
       logAction("Preview Mock：清空 AI 聊天历史；没有修改事件或草稿");
       postState();return;
     }
+    if(name==="clearAiTemporaryCache"){
+      if(Object.keys(p).join(",")!=="name"||mockPage!=="AI"||scenario==="locked"){
+        logAction("拒绝当前状态下的 AI 临时缓存清理请求");return;
+      }
+      logAction("Studio Preview Mock：模拟清理 AI 临时缓存；未访问本机文件、聊天记录或日历数据");
+      return;
+    }
     if(name==="rewindChat"){
       const expectedKeys="editAndResend,historyRevision,messageId,name";
       const messages=simulatedState().chatMessages;

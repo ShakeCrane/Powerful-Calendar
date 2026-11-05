@@ -1171,6 +1171,14 @@ fun PowerCalApp(
         pendingWebAiProposalPublish == null && !aiAttachmentPickerBusy &&
         pendingFileReview == null && pendingImageReview == null
 
+    fun canClearAiTemporaryCache(): Boolean = page == Page.AI.name && !aiLocked &&
+        !chatBusy && !aiBusy && pendingBatchMode == null && confirmBatch == null &&
+        confirmStuckBatchRelease == null && aiSession?.isActive != true &&
+        editSession == null && newEventSession == null && !deckOpen &&
+        pendingWebAiProposalPublish == null && !aiAttachmentPickerBusy &&
+        pendingFileReview == null && pendingImageReview == null &&
+        webAiProposalReviewSession == null
+
     fun appendChat(role: String, text: String, proposalSource: String? = null): String? {
         val message = AiChatMessage(
             role = role,
@@ -2282,6 +2290,22 @@ fun PowerCalApp(
                         }
                         AiConversationMutationStatusV1.NO_CHANGE -> message = "聊天记录已经为空"
                         else -> message = "聊天已变化，请刷新后重试清理"
+                    }
+                }
+                WebSkinAction.ClearAiTemporaryCache -> if (canClearAiTemporaryCache()) {
+                    scope.launch {
+                        val result = runCatching {
+                            withContext(Dispatchers.IO) {
+                                AiChatHistoryStore.clearTemporaryCache(appContext)
+                            }
+                        }
+                        message = result.fold(
+                            onSuccess = { count ->
+                                "已清理 $count 个应用私有 AI 临时缓存文件；聊天和正式事件保留"
+                            },
+                            onFailure = { "清理 AI 临时缓存失败；聊天和正式事件未更改" }
+                        )
+                        WebSkinBridgeRuntime.stateRevision++
                     }
                 }
                 is WebSkinAction.RewindChat -> if (canEditChatHistory()) {

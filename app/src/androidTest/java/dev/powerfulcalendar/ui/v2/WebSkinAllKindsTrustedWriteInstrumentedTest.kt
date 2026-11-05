@@ -1357,7 +1357,7 @@ class WebSkinAllKindsTrustedWriteInstrumentedTest {
             compose.waitForIdle()
 
             web = launchClear(clearContext, clearStore)
-            val memoTabTouch = tapWebSelector(web, ".clear-tabbar [data-action='memo']")
+            val memoTabTouch = tapWebSelector(web, ".clear-head [data-action='memo']")
             assertTrue("Memo navigation must use a trusted Android touchscreen input",
                 memoTabTouch.getJSONObject("trustedClick").optBoolean("trusted"))
             awaitJs(web, "!document.querySelector('#memoPage').hidden")

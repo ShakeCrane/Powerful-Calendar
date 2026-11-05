@@ -688,7 +688,7 @@ fs.mkdirSync(TEST_TEMP_ROOT,{recursive:true});
     console.log("Existing action button icon binding works");
 
     await page.click("#interactMode");
-    await frame.click('.clear-tabbar [data-action="memo"]');
+    await frame.click('.clear-head [data-action="memo"]');
     await frame.waitForFunction(()=>!document.querySelector("#memoPage").hidden);
     let before=await frame.evaluate(()=>document.querySelectorAll(".memo-row").length);
     assert.equal(before,2,"Memo must use real host-shaped entries");

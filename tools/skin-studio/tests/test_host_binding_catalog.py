@@ -103,8 +103,11 @@ class HostBindingCatalogTest(unittest.TestCase):
     def test_today_binding_is_closed_and_schema_checked(self):
         validate_action_parameters("today", {})
         validate_action_parameters("panTimeline", {"deltaMinutes": 30})
+        validate_action_parameters("clearAiTemporaryCache", {})
         with self.assertRaisesRegex(ValueError, "unknown Host action"):
             validate_action_parameters("inventedBusinessAction", {})
+        with self.assertRaisesRegex(ValueError, "unknown parameter"):
+            validate_action_parameters("clearAiTemporaryCache", {"path": "/private"})
         with self.assertRaisesRegex(ValueError, "must not be zero"):
             validate_action_parameters("panTimeline", {"deltaMinutes": 0})
         with self.assertRaisesRegex(ValueError, "unknown parameter"):
