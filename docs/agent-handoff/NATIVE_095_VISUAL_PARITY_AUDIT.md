@@ -9,8 +9,8 @@ Owner 于 2026-11-05 明确将 **2026-10-27 冻结的 PowerCal 0.9.5-rc.1 原生
 | 原生参考 APK | .local/android-test/artifacts/physical-qa/PowerCal-0.9.5-rc.1-b1f7629-debug-core-HOLD.apk |
 | 原生 APK SHA-256 | DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76 |
 | 冻结源码 | b1f7629f0c52812e1887443872f43aa6c49908c4 |
-| 当前 Web 侧代码 | e41246d7ebe5b329adbdc657bd3e53735695efa1 |
-| 当前 Web 侧 APK SHA-256 | 49DA3DA24E928B8099B0792E1D5C1BC29E8660048D990CEB2C564DC05D79E052 |
+| 首轮视觉盘点时的 Web 侧代码 | e41246d7ebe5b329adbdc657bd3e53735695efa1 |
+| 首轮视觉盘点时的 Web 侧 APK SHA-256 | 49DA3DA24E928B8099B0792E1D5C1BC29E8660048D990CEB2C564DC05D79E052 |
 | 隔离设备 | 新建 AVD PowerCal_Native095_Parity_20261105，Android API 35，Pixel 6 设备配置 |
 | 实际显示参数 | 1080×2400，420 dpi；模拟器运行属性 sdk_gphone64_x86_64 |
 | 视觉证据目录 | .local/android-test/reports/skin-baseline-parity-20261105/ |
@@ -26,7 +26,7 @@ Owner 于 2026-11-05 明确将 **2026-10-27 冻结的 PowerCal 0.9.5-rc.1 原生
 | 页面 / 表面 | Native 组件、状态与交互 | 当前 Web v3 对应 | 差异与迁移边界 |
 |---|---|---|---|
 | 应用壳 / 主导航 | NativePowerNavigation 四项：时间轴、日历、AI 助手、设置；底栏固定。时间轴顶部显示品牌、日期、今日、Memo 计数、待处理计数、新建。颜色、选中态、面板和系统栏使用 Native 主题。 | index.html 的 clear-head、clear-tabbar；顶部文字工具条，底部五项含 Memo。 | 视觉/导航差异。Memo 应由时间轴快捷入口打开，底栏改回四项。保留当前唯一 Web v3 正常 Runtime。 |
-| 时间轴 | NativeTimelineScreen：中心垂直时间尺、左右独立泳道（ALARM 左；ACTIVITY/DEADLINE 右）、真实时间区间、当前时间蓝线、框外标题、按实际文字矩形贪心折叠、拖动与惯性、左右横向滚动、纵向相机平移、缩放、双击时间尺复位 24 小时、“今日”定位本地中午、事件点击、提醒受阻提示、新建四类入口。 | app.js::renderTimeline、title-folding.js、.timelineWing/.timelineLanes；正式投影/Host 动作已存在。Web 实屏目前显示红色现在标记、每小时刻度、独立“较早/稍后”按钮以及额外 24h 按钮。 | 几何和标题算法已有实现及此前 F-02 证据；本轮现屏未用确定性事件集验证标题矩形。视觉/交互有差异。保留两翼、真实几何、框外标题、贪心折叠与冻结手势；迁移蓝线、刻度/工具栏层次，移除以按钮代替手势的额外控制。 |
+| 时间轴 | NativeTimelineScreen：中心垂直时间尺、左右独立泳道（ALARM 左；ACTIVITY/DEADLINE 右）、真实时间区间、当前时间蓝线、框外标题、按实际文字矩形贪心折叠、拖动与惯性、左右横向滚动、纵向相机平移、缩放、双击时间尺复位 24 小时、“今日”定位本地中午、事件点击、提醒受阻提示、新建四类入口。 | app.js::renderTimeline、title-folding.js、.timelineWing/.timelineLanes；正式投影/Host 动作已存在。最新 WebView ACTIVITY 固定夹具显示蓝色现在线、双翼、框外贪心标题，并通过了折叠事件触控与 Camera 断言。 | 冻结原始 APK 与 WebView 的当前 ACTIVITY 夹具在同屏行、填充色及主要文字位置接近；Web 绘制仍有 1px 水平边界/文字墨迹差。局部测试不覆盖 ALARM、DEADLINE、重复实例、长标题/多泳道、大字体等，不能视作整个时间轴或全产品签核。继续按冻结参考移植双翼、真实时间几何、框外标题与已冻结手势；未验证的类型和状态逐项补齐。 |
 | 月历 | NativeMonthScreen：返回时间轴（保留相机）、今天、上/下月、年份输入选择、月份选择、横向月切换、七列日期网格、日期选中、当天事件摘要/重复实例、为选定日期新建、跳转到时间轴。底栏仍为四项。 | index.html::monthPage、app.js::renderMonth，由月份和日期的正式 Host 投影驱动。 | 先前 F-03 的实例投影/点击回归为 PREVIOUS PASS；当前实屏不同。当前月历仍露出时间轴顶部工具条，显示 2026-11 · GMT，网格/选中态和 Native 不同。需迁移原生页面头、卡片网格、月份/日期状态表现；不复制重复规则。 |
 | Memo / 待办 | NativeMemoCenterScreen：顶部返回与新增无日期 Memo、Open/Done、完成可撤销提示、行内完成/撤销、标题打开编辑、分页加载。重复待办显示范围由 Host 提供。 | memoPage、renderMemo、toggleMemo、分页按钮；当前为底部第五个页面，Filter 为大分段控件。 | 功能路径有先前 F-04 PREVIOUS PASS；视觉/导航有差异。迁移 Native 标题行、轻量 Open/Done 操作、行密度与返回/新增入口；分页和完成状态继续走现有正式 API。 |
 | AI 聊天 | NativeAiChatScreen：标题/副标题、配置、待处理计数、溢出菜单（批次处理、清理缓存、清空聊天）、消息列表、长按消息菜单（提案、编辑重发、回退、复制）、附件“+”菜单、输入和发送、忙碌/锁定状态。提案补充与审核有独立卡面。 | aiPage、renderChat、renderAiBatchControls、renderAiProposalReview、消息/附件桥接。当前把清空聊天和批量发布/丢弃常驻显示，图片/文件按钮同时展开。 | 功能路径有先前 F-07 PREVIOUS PASS（真服务商仍未测）；视觉/信息架构有差异。迁移原生标题、溢出菜单、输入附件入口、消息/提案卡片层级；审核和审批保持 Host/Core 授权。 |
@@ -132,3 +132,27 @@ Owner 于 2026-11-05 明确将 **2026-10-27 冻结的 PowerCal 0.9.5-rc.1 原生
 本轮为使验收真实复现 Native 冻结行为，删除了皮肤中原先隐藏的单击 `resetTimelineZoom` 兼容按钮，保留 Web Host action 但仅通过时间尺双击/键盘语义触发；其不再占用工具栏布局或形成额外无障碍入口。未修改 Core 业务语义、默认皮肤 ID 或 Native 恢复。
 
 整体结论仍为 `IN_PROGRESS`。下一步：将 Native 与 Web 标题 bounds、事件区间、轴及可视区域统一到物理屏幕坐标，基于原始 APK 的对应布局校准 CSS；再用原始 APK 与 Web 运行包重放同一 fixture。完成后继续逐页处理 Month、Memo、AI、Settings、编辑器、草稿及审核面，不以当前 Native 路由对照替代冻结 APK 的最终实屏签核。
+
+## 2026-11-05 冻结 APK 与 WebView 时间轴实屏复核
+
+本节更新前文“原始 APK 与 Web 尚未同基准对照”以及“标题 bounds 尚未换算到屏幕坐标”的时间轴状态。参考为冻结原始 APK（SHA-256 `DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76`）；Web 侧为 `a9211c1c` 源码构建的 Debug APK。两侧使用同一设备本地四条 ACTIVITY 夹具及固定 UTC 时刻 `2026-11-05 03:16:08` 截图。屏幕为 API 35、1080×2400、420 dpi；原始 APK 与 Web 主 Activity 截图来自隔离 AVD `PowerCal_Native095_Original_20261105` / `emulator-5582`。另用同一测试事件在原生 Compose 与 WebView 路由运行仪器测试，以获取可映射到物理屏幕的布局边界。该测试隔离了应用偏好与文件目录，复用并核对预置 QA Calendar Store；执行前后正式事件快照、revision 和 commitCount 一致。
+
+本轮 Web 改动只涉及默认皮肤表现：同步原生标题字宽/位置、蓝绿色字色、刻度标签可视范围与间距；对不足 2 CSS px 的活动段，以共享物理像素边界绘制底色和 2dp 色条，避免相邻分钟段产生额外像素行。`.pcskin` 由正式 `build_default_clear.py` 重建，没有手改 ZIP；ID 和资源数量保持不变。
+
+| 对照项 | 结果 |
+|---|---|
+| 原始 APK / Web 主 Activity | 使用冻结 APK 与实际 `MainActivity` Web v3 截图；不是 Studio Preview 或模拟 DOM。固定时钟、分辨率与四条事件夹具一致。完整截图的平均通道差为 3.29/255；时间轴 ROI 为 1.68/255、像素完全相同占比 97.71%。这些是截图对照指标，不代表其他页面通过。 |
+| 标题与触控 | `Fold_A`、`Fold_C` 是可见贪心标题；`Fold_B`、`Fold_D` 折叠但按钮及完整无障碍标题保留。仪器将 Native 与 Web 标题框映射至物理屏幕坐标，四边误差不超过 2.5px。真实触控 `Fold_B` 打开其正确事件编辑器；关闭后正式 Store 快照与 commitCount 不变。 |
+| 时间几何与刻度 | 四段 ACTIVITY 的真实起止位置误差不超过 0.25 CSS px；相邻分钟区间共享边界。轴标签必须完整位于视口，且纵向间隔不少于 4 CSS px。Today 触控通过正式 Host action 将 Camera 定位本地中午；双击复位仍回到 24 小时视图。 |
+| 物理像素对照 | Native 与 Web 活动条的纵向物理行及混合填充色 `(170,206,198)` 一致。Web 的横向边界为 x=594..813，Native 为 x=593..813，存在 1px 差。标题墨迹核心框也有约 1px 的右移/宽度差；因此不是逐像素完全等价。 |
+| 本轮测试 | 目标 API 35 Android WebView 测试 `actualClearTimelineFoldsOnlyCollidingMeasuredTitlesAndKeepsEventTapAndGeometry`：1/1 PASS。完整 Gradle 门禁：两项源码边界、973/973 JVM、Debug APK、Lint、AndroidTest Kotlin 编译及测试 APK 组装均 PASS。Studio 默认包 Python 测试 5/5、应用 JS 语法检查及 `e2e_v3_source.cjs` PASS。Gradle 首行另有 SDK XML v4 与旧工具版本提示；不是构建/测试失败。 |
+| 正式包 | `powercal-clear-default`，10 个资源，407164 bytes。正式构建器确认源码与 APK 内包 SHA-256 均为 `505535824f4780a4a6a50edd2e22130cd36131382baaae6bed18e86565a56177`；APK SHA-256 为 `AB97D9AD1B6E57EFB43AC519D7A649F4D55C1004054DBA023F286297923B4F62`。APK 内仍只有一份 `.pcskin`。 |
+
+实屏文件及校验值：
+
+- 原始冻结 APK：[original-apk-native-fixture-today.png](../../.local/android-test/reports/native095-parity-20261105/original-apk-native-fixture-today.png)，SHA-256 `43B471F7C410BAB4474CE050CF24BA0845994C3A97143D8852972C0D95ACB6E2`。
+- 当前 Web v3 主页面：[webv3-mainactivity-native095-final.png](../../.local/android-test/reports/native095-parity-20261105/webv3-mainactivity-native095-final.png)，SHA-256 `25DED40F5211E4683F1FBA826A4E3098B06080FB8C2F77E8260FC60A6C66FBDA`。
+- 同夹具 Compose/Web 布局截图：[native095-pixel-raster-native.png](../../.local/android-test/reports/native095-parity-20261105/native095-pixel-raster-native.png)，SHA-256 `FED2805D0C1457383C3B6DACAD9683F93E8F8954E19CEB3259A904F4765ECDB0`；[native095-pixel-raster-web.png](../../.local/android-test/reports/native095-parity-20261105/native095-pixel-raster-web.png)，SHA-256 `FD18CD103835768EAA2D3B124AA6566007CA29765987046C59D7C15F5FC081EE`。
+- 仪器日志：`.local/android-test/reports/native095-parity-20261105/timeline-native-pixel-raster-final.log`；边界、JVM、APK、Lint 与 AndroidTest 门禁日志：`.local/android-test/reports/native095-parity-20261105/final-gate-native095-timeline.log`。
+
+状态：**时间轴 ACTIVITY 子集实现与交互有真实 WebView 证据，但该切片仍标记 PARTIAL；整体 Native 0.9.5 视觉/交互迁移保持 IN_PROGRESS。** 仍需验证 ALARM 左翼、DEADLINE、重复事件、横向泳道、多重重叠、长标题、缩放和无障碍目标，以及原生时间轴的其他冻结状态。下一任务唯一为 Month 页面：在同一参考 APK、设备几何、日期/Store fixture 下逐项对比月头、日期格、重复实例、选择与跳转行为。全局仍保留 `powercal-clear-default` 唯一正常 Skin、`powercal-default` Native 安全恢复；未修改 Core/Host 业务 API、数据或冻结语义，Product Cutover 仍为 HOLD。

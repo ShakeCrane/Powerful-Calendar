@@ -837,11 +837,20 @@ function renderTimeline(){
       {month:"long",day:"numeric",weekday:"short"}).replace(/日(?=周)/,"日 ")));
     labels.append(marker);
   }
+  let lastTickLabelBottom=Number.NEGATIVE_INFINITY;
+  const axisViewport=axis.getBoundingClientRect();
   for(let ms=firstTick,count=0;ms<=to&&count<400;ms+=tickStep,count++){
     const y=position(ms)*height/100;
     if(y < -24 || y > height+24)continue;
     const grid=node("div","timeGrid"),tick=node("div","timeTick",relativeTime(ms,zone));
     grid.style.top=y+"px";tick.style.top=y+"px";labels.append(grid,tick);
+    const tickRect=tick.getBoundingClientRect();
+    if(tickRect.top<axisViewport.top||tickRect.bottom>axisViewport.bottom||
+        tickRect.top<lastTickLabelBottom+4){
+      tick.remove();
+    }else{
+      lastTickLabelBottom=tickRect.bottom;
+    }
   }
   const timedItems=items.filter(item=>kindLabel[String(item.kind).toUpperCase()]&&
     !isDateOnlyDeadline(item));
@@ -890,6 +899,7 @@ function renderTimeline(){
     button.style.width=laneWidth+"px";
     if(sideName==="LEFT")button.style.right=(lane*(laneWidth+laneGap))+"px";
     else button.style.left=(lane*(laneWidth+laneGap))+"px";
+    let subpixelVisual=null;
     if(isActivity){
       const visualTop=(actualStart-from)/span*height;
       const visualBottom=(actualEnd-from)/span*height;
@@ -900,8 +910,9 @@ function renderTimeline(){
       button.style.top=hitTop+"px";button.style.height=hitHeight+"px";
       const visual=node("div","tEventVisual ACTIVITY");
       visual.setAttribute("aria-hidden","true");
+      if(visualHeight<2){visual.classList.add("subpixel-interval");subpixelVisual=visual;}
       visual.style.top=(visualTop-hitTop)+"px";visual.style.height=visualHeight+"px";
-      const title=makeTimelineTitle(item,kind,String(item.title||""),laneWidth-13);
+      const title=makeTimelineTitle(item,kind,String(item.title||""),laneWidth-6);
       title.classList.add("tActivityTitle");
       title.dataset.titleFrameTop=String(visualTop-hitTop);
       title.dataset.titleFrameHeight=String(visualHeight);
@@ -921,6 +932,23 @@ function renderTimeline(){
     }
     attachTimelineDrag(button,item,axis);
     lanes.append(button);
+    if(subpixelVisual){
+      const bounds=subpixelVisual.getBoundingClientRect(),dpr=window.devicePixelRatio||1;
+      const paintStart=Math.ceil(bounds.top*dpr),paintEnd=Math.ceil(bounds.bottom*dpr);
+      const paintWidth=Math.round(bounds.width*dpr),paintBorderWidth=Math.round(2*dpr);
+      subpixelVisual.style.setProperty("--native-paint-top",
+        (paintStart/dpr-bounds.top)+"px");
+      subpixelVisual.style.setProperty("--native-paint-height",
+        (Math.max(1,paintEnd-paintStart)/dpr)+"px");
+      subpixelVisual.style.setProperty("--native-paint-width",
+        (paintWidth/dpr)+"px");
+      subpixelVisual.style.setProperty("--native-paint-content-width",
+        (Math.max(0,paintWidth-paintBorderWidth)/dpr)+"px");
+      subpixelVisual.style.setProperty("--native-paint-border-width",
+        (paintBorderWidth/dpr)+"px");
+      subpixelVisual.style.setProperty("--native-paint-left-shift",
+        (Math.floor(bounds.left*dpr)/dpr-bounds.left)+"px");
+    }
   }
   if(t.nowMillis>=from&&t.nowMillis<to){
     const marker=node("div","now-line");marker.style.top=position(t.nowMillis)+"%";
