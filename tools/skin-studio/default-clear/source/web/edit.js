@@ -134,7 +134,7 @@ function render(){
   const next=editor.open?"event":deck.open?"deck":"";
   const id=next==="event"?"event:"+editor.sessionId:
     next==="deck"?"deck:"+deck.currentId:"";
-  if(!next){mode="";identity="";fingerprint="";visible(false);return}
+  if(!next){mode="";identity="";fingerprint="";$('skinSheet').removeAttribute('data-mode');visible(false);return}
   visible(true);
   const form=next==="event"?editor.form:deck.form;
   const deckView=next==="deck"?{
@@ -154,7 +154,7 @@ function render(){
   const focused=!!document.activeElement?.matches?.(
     "#sheetFields input,#sheetFields textarea,#sheetFields select,#sheetFields [contenteditable=true]");
   const changed=mode!==next||identity!==id||(!focused&&fingerprint!==current);
-  mode=next;identity=id;
+  mode=next;identity=id;$('skinSheet').dataset.mode=mode;
   if(!changed)return;
   fingerprint=current;
   fields.replaceChildren();actions.replaceChildren();

@@ -252,6 +252,18 @@ html.theme-dark .clear-tabbar {background:#121923}
 .sheet-actions {gap:6px;padding:8px 12px max(10px,env(safe-area-inset-bottom));border-top:1px solid var(--sep);background:var(--bg-elevated)}
 .sheet-actions>button {min-height:42px;border:1px solid var(--sep);background:var(--fill-1);color:var(--label);font-size:13px}
 .sheet-actions>button[data-action="approveDraft"],.sheet-actions>button.primary {background:var(--accent-fill);color:var(--on-accent)}
+#skinSheet[data-mode="event"] {align-items:center;padding:0 12px}
+#skinSheet[data-mode="event"] .sheet-shade {background:rgba(0,0,0,.60)}
+#skinSheet[data-mode="event"] .sheet-panel {
+  width:min(296px,calc(100vw - 24px));
+  height:min(792px,calc(100% - 75px));
+  max-height:calc(100% - 75px);
+  min-height:0;
+  transform:translateY(12px);
+  border:0;
+  border-radius:22px;
+  background:var(--month-agenda-card,#F6F8FC);
+}
 .sheet-cards {border-color:var(--sep)}
 .sheet-card {border-color:var(--sep);border-radius:12px;background:var(--fill-1)}
 .sheet-card.selected {border-color:var(--accent);background:var(--accent-soft);color:var(--label)}
