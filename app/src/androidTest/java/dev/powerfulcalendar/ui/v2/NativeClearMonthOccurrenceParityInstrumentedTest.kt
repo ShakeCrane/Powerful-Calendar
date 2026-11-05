@@ -15,23 +15,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.test.hasScrollToIndexAction
-import androidx.compose.ui.test.hasSetTextAction
-import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.compose.ui.test.onAllNodesWithContentDescription
-import androidx.compose.ui.test.onAllNodesWithText
-import androidx.compose.ui.test.onNodeWithContentDescription
-import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performScrollTo
-import androidx.compose.ui.test.performScrollToNode
-import androidx.compose.ui.test.performTextClearance
-import androidx.compose.ui.test.performTextInput
-import androidx.compose.ui.test.performTouchInput
-import androidx.compose.ui.test.click
-import androidx.compose.ui.test.swipeLeft
-import androidx.compose.ui.test.swipeRight
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import dev.powerfulcalendar.core.DraftForm
@@ -1322,6 +1307,11 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
             compose.onNodeWithContentDescription(nativeTargetDescription)
                 .performTouchInput { click() }
                 .assertIsSelected()
+            compose.onNodeWithText("这一天还很从容。").assertExists()
+            val nativeEmptyStateBounds = compose.onNodeWithText("这一天还很从容。")
+                .fetchSemanticsNode().boundsInRoot
+            captureDisplayScreenshot("native095-month-empty-agenda-20261106.png")
+            println("NATIVE_095_MONTH_EMPTY_NATIVE bounds=$nativeEmptyStateBounds date=$targetDate")
             val nativeAfterDate = WebSkinBridgeRuntime.state()
             assertEquals("year/month picker must remain on Month", "MONTH",
                 nativeAfterDate.getString("page"))
@@ -1515,6 +1505,34 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
                 "#monthGrid .month-cell[data-date='$targetDate']")
             awaitJs(clearWeb,
                 "document.querySelector('#monthAgenda h2')?.dataset.date==='$targetDate'")
+            val clearEmptyStateStyle = JSONObject(evaluate(clearWeb, """(()=>{
+                const empty=document.querySelector('#monthAgenda>.quiet');
+                if(!empty)return null;
+                const range=document.createRange();range.selectNodeContents(empty);
+                const r=range.getBoundingClientRect(),s=getComputedStyle(empty);
+                return {text:empty.textContent.trim(),color:s.color,fontSize:s.fontSize,
+                    fontWeight:s.fontWeight,lineHeight:s.lineHeight,letterSpacing:s.letterSpacing,
+                    padding:s.padding,margin:s.margin,top:s.top,
+                    textRect:{x:r.x,y:r.y,width:r.width,height:r.height},dpr:devicePixelRatio};
+            })()"""))
+            assertEquals("Clear Month empty agenda keeps the Native empty-state copy",
+                "这一天还很从容。", clearEmptyStateStyle.getString("text"))
+            assertEquals("Native bodyLarge empty-state color uses onSurface",
+                "rgb(17, 21, 28)", clearEmptyStateStyle.getString("color"))
+            assertEquals("Native bodyLarge empty-state font size", "16px",
+                clearEmptyStateStyle.getString("fontSize"))
+            assertEquals("Native bodyLarge empty-state line height", "24px",
+                clearEmptyStateStyle.getString("lineHeight"))
+            assertEquals("Native Text applies 16dp vertical and zero horizontal padding",
+                "16px 0px", clearEmptyStateStyle.getString("padding"))
+            assertEquals("Native LazyColumn supplies the following item spacing",
+                "0px", clearEmptyStateStyle.getString("margin"))
+            assertEquals("Native Material bodyLarge uses 0.5sp tracking",
+                "0.5px", clearEmptyStateStyle.getString("letterSpacing"))
+            assertEquals("Small raster baseline offset aligns the native text ink",
+                "1px", clearEmptyStateStyle.getString("top"))
+            captureWindowScreenshot(clearWeb, "clear-month-empty-agenda-20261106.png")
+            println("NATIVE_095_MONTH_EMPTY_CLEAR=$clearEmptyStateStyle")
             val clearAfterDate = WebSkinBridgeRuntime.state()
             val selectedMonthState = clearAfterDate.getJSONObject("month")
             assertEquals(targetMonth.toString(), selectedMonthState.getString("month"))
