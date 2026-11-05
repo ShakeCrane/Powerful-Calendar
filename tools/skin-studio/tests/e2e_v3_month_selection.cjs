@@ -10,6 +10,12 @@ const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 
 async function main(){
   fs.mkdirSync(reportDir,{recursive:true});
+  const nativeThemeCss=fs.readFileSync(path.join(root,
+    "tools/skin-studio/default-clear/source/web/native-095.css"),"utf8");
+  if(!nativeThemeCss.includes("--accent-soft:#DCE5FF; --on-accent-container:#0B2A66")||
+      !nativeThemeCss.includes("--accent-soft:#1B3A7A; --on-accent-container:#DCE5FF")||
+      !nativeThemeCss.includes(".month-cell.selected .month-count {color:inherit}"))
+    throw Error("Frozen primary-container foreground mapping is incomplete");
   const profile=fs.mkdtempSync(path.join(reportDir,"chrome-profile-"));
   const server=spawn("python",["tools/skin-studio/skin_studio.py","serve","--port","0"],
     {cwd:root,stdio:["ignore","pipe","pipe"]});
@@ -105,12 +111,23 @@ async function main(){
       const selected=document.querySelector('.month-cell.selected');
       return selected?{month:document.querySelector('#monthTitle').dataset.month,
         date:selected.dataset.date,dayCount:document.querySelectorAll('.month-cell').length,
-        selectedRadius:getComputedStyle(selected).borderTopLeftRadius}:null;
+        selectedRadius:getComputedStyle(selected).borderTopLeftRadius,
+        selectedColor:getComputedStyle(selected).color,
+        dayColor:getComputedStyle(selected.querySelector('.month-day-number')).color,
+        countColor:getComputedStyle(selected.querySelector('.month-count')).color,
+        onAccentContainer:getComputedStyle(document.documentElement)
+          .getPropertyValue('--on-accent-container').trim()}:null;
     })()`,"Initial month state");
     if(initial.date!=="2026-10-22"||initial.dayCount!==31)
       throw Error("Unexpected initial month: "+JSON.stringify(initial));
     if(initial.selectedRadius!=="14px")
       throw Error("Selected month-day shape differs from frozen Native chip radius: "+
+        JSON.stringify(initial));
+    const expectedSelectedColor=initial.onAccentContainer.toLowerCase()==="#dce5ff"
+      ?"rgb(220, 229, 255)":"rgb(11, 42, 102)";
+    if([initial.selectedColor,initial.dayColor,initial.countColor].some(color=>
+        color!==expectedSelectedColor))
+      throw Error("Selected month-day foreground differs from Native onPrimaryContainer: "+
         JSON.stringify(initial));
     const initialCamera=await evaluate("simulatedState().timeline.anchorMillis");
 

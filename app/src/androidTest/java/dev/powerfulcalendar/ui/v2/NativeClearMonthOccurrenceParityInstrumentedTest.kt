@@ -891,6 +891,17 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
             val radius = evaluate(clearWeb,
                 "getComputedStyle(document.querySelector('#monthGrid .month-cell.selected')).borderTopLeftRadius")
             assertEquals("CSS chip corner must match frozen GlassShapes.chip = 14.dp", "\"14px\"", radius)
+            val selectedForegroundMatchesNative = evaluate(clearWeb, """(()=>{
+                const selected=document.querySelector('#monthGrid .month-cell.selected');
+                const expected=getComputedStyle(document.documentElement)
+                    .getPropertyValue('--on-accent-container').trim().toLowerCase()==='#dce5ff'
+                    ?'rgb(220, 229, 255)':'rgb(11, 42, 102)';
+                return [selected,selected?.querySelector('.month-day-number'),
+                    selected?.querySelector('.month-count')].every(node=>node &&
+                    getComputedStyle(node).color===expected);
+            })()""")
+            assertEquals("selected day number/count inherit frozen onPrimaryContainer", "true",
+                selectedForegroundMatchesNative)
             assertEquals("selected agenda must retain the deterministic fixture", "true",
                 evaluate(clearWeb,
                     "document.querySelector('#monthAgenda .agenda-event-title')?.textContent.includes('MonthFixture')"))
@@ -901,7 +912,8 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
                 store.all().size.toLong(), store.draftCount(), store.pendingCount().toLong(),
                 store.commitCount(), store.identityCount(), store.nextSequencePreview()
             ))
-            println("NATIVE_095_MONTH_SELECTED_SHAPE radius=$radius bounds=$bounds date=$selectedDate " +
+            println("NATIVE_095_MONTH_SELECTED_SHAPE radius=$radius foregroundMatchesNative=" +
+                "$selectedForegroundMatchesNative bounds=$bounds date=$selectedDate " +
                 "fixture=MonthFixture trustedTouch=true storeUnchanged=true")
         } finally {
             compose.runOnUiThread {

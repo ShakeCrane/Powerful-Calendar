@@ -6,7 +6,7 @@
   --label:#11151C; --label-1:#11151C; --label-2:#4A5261; --label-3:#6B7485; --label-4:#C3CAD8;
   --sep:rgba(11,18,32,.12); --sep-strong:rgba(11,18,32,.19);
   --fill-1:#F6F8FC; --fill-2:#EFF2F8; --fill-3:#E7EBF4;
-  --accent:#2457D6; --accent-press:#1948C0; --accent-soft:#DCE5FF;
+  --accent:#2457D6; --accent-press:#1948C0; --accent-soft:#DCE5FF; --on-accent-container:#0B2A66;
   --accent-fill:#2457D6; --on-accent:#FFFFFF; --now:#2457D6; --now-soft:rgba(36,87,214,.12); --now-fill:#2457D6;
   --danger:#B3261E; --danger-fill:#B3261E; --success:#177A63; --warning:#A8501C;
   --alarm:#3D5FD8; --alarm-ink:#2947B6; --alarm-tint:rgba(61,95,216,.09);
@@ -25,7 +25,7 @@ html.theme-dark {
   --label:#E6EAF2; --label-1:#E6EAF2; --label-2:#B4BCCB; --label-3:#8A93A3; --label-4:#39414F;
   --sep:rgba(255,255,255,.10); --sep-strong:rgba(255,255,255,.16);
   --fill-1:#171D27; --fill-2:#1C2330; --fill-3:#222A38;
-  --accent:#9DB8FF; --accent-press:#B2C7FF; --accent-soft:#1B3A7A;
+  --accent:#9DB8FF; --accent-press:#B2C7FF; --accent-soft:#1B3A7A; --on-accent-container:#DCE5FF;
   --accent-fill:#9DB8FF; --on-accent:#0B2A66; --now:#9DB8FF; --now-soft:rgba(157,184,255,.18); --now-fill:#9DB8FF;
   --danger:#FFB4AB; --danger-fill:#B3261E; --success:#7FD6C2; --warning:#FFB68C;
   --alarm:#9DB8FF; --alarm-ink:#DCE5FF; --alarm-tint:rgba(157,184,255,.17);
@@ -118,7 +118,8 @@ html.theme-dark .month-calendar-panel {border-color:#39414F;background:#171D27}
 .month-day-number {font-size:16px;line-height:21px}
 .month-count {min-height:12px;color:var(--label-2);font-size:10px;font-weight:400;line-height:12px;white-space:nowrap}
 .month-cell.today {border:1px solid var(--accent);border-radius:14px;color:var(--accent);font-weight:650}
-.month-cell.selected {border-radius:14px;background:var(--accent-soft);color:var(--label);font-weight:650}
+.month-cell.selected {border-radius:14px;background:var(--accent-soft);color:var(--on-accent-container);font-weight:650}
+.month-cell.selected .month-count {color:inherit}
 #monthAgenda {padding:18px 0 4px}
 #monthAgenda>.quiet {margin-left:0;text-align:left}
 #monthAgenda h2 {margin:0 0 8px;color:var(--label);font-size:17px;font-weight:600}
