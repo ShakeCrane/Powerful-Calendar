@@ -24,6 +24,7 @@ import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.Recurrence
 import dev.powerfulcalendar.core.RecurrenceFreq
 import dev.powerfulcalendar.core.TemporalKind
+import dev.powerfulcalendar.core.TemporalText
 import dev.powerfulcalendar.core.api.v1.CalendarWindowQueryV1
 import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.RecurrenceOccurrenceWindowQueryV1
@@ -1234,6 +1235,371 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
                 "foregroundMatchesNative=" +
                 "$selectedForegroundMatchesNative bounds=$bounds date=$selectedDate " +
                 "geometry=$monthGeometry fixture=MonthFixture trustedTouch=true storeUnchanged=true")
+        } finally {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            store.close()
+            context.deleteDatabase(database)
+            listOf("powercal-onboarding", "powercal-skin-choice", "powercal-ui", "powercal-profile")
+                .forEach { storage.deleteSharedPreferences("$namespace-$it") }
+            File(storage.cacheDir, namespace).deleteRecursively()
+        }
+    }
+
+    @Test
+    fun denseMonthAgendaOrderAndLongTitleWrappingMatchNativeReferenceRoute() {
+        val storage = compose.activity.applicationContext
+        val namespace = "pc-month-dense-${UUID.randomUUID()}"
+        val context = IsolatedAppContext(compose.activity, storage, namespace)
+        val database = "month-dense.db"
+        val store = PowerStore(context, database)
+        val zone = ZoneId.systemDefault()
+        val selectedDate = YearMonth.now(zone).atDay(15)
+        val longTitle = "月历长标题折行对照测试用于验证原生与Web卡片文本布局"
+        var web: WebView? = null
+
+        fun localTime(hour: Int, minute: Int): String = DraftForm.formatInstant(
+            selectedDate.atTime(hour, minute).atZone(zone).toInstant().toEpochMilli(), zone
+        )
+
+        fun counts() = listOf(
+            store.draftCount(), store.pendingCount(), store.identityCount(), store.commitCount(),
+            store.nextSequencePreview(), store.nextQueueOrderPreview(), store.all().size.toLong()
+        )
+
+        try {
+            context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                .edit().putBoolean("system-calendar-import-asked", true).commit()
+
+            val forms = listOf(
+                DraftForm.fresh(TemporalKind.DEADLINE, selectedDate, zone).copy(
+                    title = "项目交付截止"
+                ),
+                DraftForm.fresh(TemporalKind.ACTIVITY, selectedDate, zone).copy(
+                    title = longTitle,
+                    startText = localTime(9, 15),
+                    endText = localTime(10, 15)
+                ),
+                DraftForm.fresh(TemporalKind.ALARM, selectedDate, zone).copy(
+                    title = "晨间提醒",
+                    startText = localTime(7, 30)
+                ),
+                DraftForm.fresh(TemporalKind.MEMO, selectedDate, zone).copy(
+                    title = "月历待办",
+                    startText = selectedDate.toString()
+                )
+            )
+            val created = forms.map { form ->
+                store.newDraft(form, actor = "native095-dense-month-test").also { draft ->
+                    assertTrue(
+                        "isolated ${form.kind} fixture must commit",
+                        store.commit(draft.draftId, actor = "native095-dense-month-test") is
+                            PowerStore.CommitOutcome.Committed
+                    )
+                }
+            }
+            assertEquals((1L..4L).toList(), created.map { it.eventSeq })
+
+            val fixtureRecords = store.all().associateBy { it.eventSeq }
+            val expectedSequenceOrder = listOf(1L, 4L, 3L, 2L)
+            assertEquals(
+                "fixture anchors deliberately cover date-only ties and timed rows",
+                expectedSequenceOrder,
+                fixtureRecords.values.sortedWith(
+                    compareBy({ it.anchorMillis() }, { it.eventSeq })
+                ).map { it.eventSeq }
+            )
+            val fixtureCounts = counts()
+            val fixtureSnapshot = store.all()
+            val titleTextBySequence = fixtureRecords.mapValues { (_, record) ->
+                "${record.kind.label} · ${record.title}"
+            }
+
+            PowerCalSkinRegistry.reset()
+            SkinPackageManager(context).selectNativeForEmergencyRecovery()
+            compose.runOnUiThread {
+                compose.activity.setContent {
+                    CompositionLocalProvider(LocalContext provides context) {
+                        PowerCalTheme { PowerCalApp(store) }
+                    }
+                }
+            }
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithText("日历").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText("日历").performTouchInput { click() }
+            val today = LocalDate.now(zone)
+            val dateDescription = "$selectedDate，4 项" +
+                if (selectedDate == today) "，今天" else ""
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithContentDescription(dateDescription)
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithContentDescription(dateDescription)
+                .performTouchInput { click() }
+
+            val nativeMeasurements = JSONArray()
+            val density = compose.activity.resources.displayMetrics.density
+            for (eventSeq in expectedSequenceOrder) {
+                val rowText = requireNotNull(titleTextBySequence[eventSeq])
+                compose.onNode(hasScrollToIndexAction())
+                    .performScrollToNode(hasText(rowText))
+                val rowBounds = compose.onNodeWithText(rowText)
+                    .fetchSemanticsNode().boundsInRoot
+                val titleBounds = compose.onNodeWithText(rowText, useUnmergedTree = true)
+                    .fetchSemanticsNode().boundsInRoot
+                val record = requireNotNull(fixtureRecords[eventSeq])
+                val summaryText = TemporalText.summarize(record)
+                val sequenceText = record.displaySeq()
+                val summaryBounds = compose.onNodeWithText(summaryText, useUnmergedTree = true)
+                    .fetchSemanticsNode().boundsInRoot
+                val sequenceBounds = compose.onNodeWithText(sequenceText, useUnmergedTree = true)
+                    .fetchSemanticsNode().boundsInRoot
+                val titleHeightDp = titleBounds.height / density
+                val lineCount = (titleHeightDp / 24f + 0.5f).toInt()
+                nativeMeasurements.put(JSONObject()
+                    .put("eventSeq", eventSeq)
+                    .put("text", rowText)
+                    .put("x", rowBounds.left / density)
+                    .put("top", rowBounds.top / density)
+                    .put("width", rowBounds.width / density)
+                    .put("height", rowBounds.height / density)
+                    .put("titleLeft", (titleBounds.left - rowBounds.left) / density)
+                    .put("titleTop", (titleBounds.top - rowBounds.top) / density)
+                    .put("titleHeight", titleHeightDp)
+                    .put("titleLines", lineCount)
+                    .put("summaryLeft", (summaryBounds.left - rowBounds.left) / density)
+                    .put("summaryTop", (summaryBounds.top - rowBounds.top) / density)
+                    .put("summaryHeight", summaryBounds.height / density)
+                    .put("summaryLines", (summaryBounds.height / density / 20f + 0.5f).toInt())
+                    .put("sequenceLeft", (sequenceBounds.left - rowBounds.left) / density)
+                    .put("sequenceTop", (sequenceBounds.top - rowBounds.top) / density)
+                    .put("sequenceHeight", sequenceBounds.height / density)
+                    .put("sequenceLines", (sequenceBounds.height / density / 16f + 0.5f).toInt()))
+            }
+            val longNative = (0 until nativeMeasurements.length())
+                .map(nativeMeasurements::getJSONObject)
+                .single { it.getLong("eventSeq") == 2L }
+            assertTrue("frozen Native wraps the long event title", longNative.getInt("titleLines") > 1)
+            val nativeLastRowText = requireNotNull(titleTextBySequence[2L])
+            compose.onNode(hasScrollToIndexAction())
+                .performScrollToNode(hasText(nativeLastRowText))
+            val nativeVisibleRows = expectedSequenceOrder.map { eventSeq ->
+                val bounds = compose.onNodeWithText(
+                    requireNotNull(titleTextBySequence[eventSeq])
+                ).fetchSemanticsNode().boundsInRoot
+                Triple(eventSeq, bounds.top, bounds.height)
+            }
+            assertTrue("all four Native agenda cards are visibly laid out",
+                nativeVisibleRows.all { it.third > 0f })
+            val nativeUiOrder = nativeVisibleRows.sortedBy { it.second }.map { it.first }
+            assertEquals("visible Native card order matches its frozen projection",
+                expectedSequenceOrder, nativeUiOrder)
+            captureDisplayScreenshot("native095-month-dense-compose-reference.png")
+            println(
+                "NATIVE_095_MONTH_DENSE_COMPOSE date=$selectedDate " +
+                    "projectionOrder=$expectedSequenceOrder visibleUiOrder=$nativeUiOrder " +
+                    "measurements=$nativeMeasurements " +
+                    "fixtureCount=${fixtureSnapshot.size}"
+            )
+
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            SkinPackageManager(context).select("powercal-clear-default")
+            compose.runOnUiThread {
+                compose.activity.setContent {
+                    CompositionLocalProvider(LocalContext provides context) {
+                        PowerCalTheme { PowerCalApp(store) }
+                    }
+                }
+            }
+            compose.waitUntil(30_000) {
+                compose.runOnUiThread {
+                    web = findWebView(compose.activity.findViewById(android.R.id.content))
+                }
+                web != null
+            }
+            val clearWeb = requireNotNull(web)
+            awaitJs(clearWeb, "!!window.PowerCalSkin && " +
+                "!!document.querySelector('.clear-tabbar [data-action=month]')")
+            tapClear(clearWeb, ".clear-tabbar [data-action='month']")
+            awaitJs(clearWeb, "!document.querySelector('#monthPage').hidden")
+            val dateTap = tapClear(clearWeb,
+                "#monthGrid .month-cell[data-date='$selectedDate']")
+            assertTrue("selecting the dense agenda date must be a trusted touch",
+                dateTap.optBoolean("trusted"))
+            awaitJs(clearWeb,
+                "document.querySelector('#monthAgenda h2')?.dataset.date==='$selectedDate'")
+            compose.waitUntil(30_000) {
+                val month = currentBridgeState().optJSONObject("month") ?: return@waitUntil false
+                val items = month.optJSONArray("items") ?: return@waitUntil false
+                (0 until items.length()).count { index ->
+                    val item = items.getJSONObject(index)
+                    val dates = item.optJSONArray("visibleDateKeys") ?: JSONArray()
+                    (0 until dates.length()).any { dates.optString(it) == selectedDate.toString() }
+                } == 4
+            }
+            val hostItems = currentBridgeState().getJSONObject("month")
+                .getJSONArray("items")
+            val hostSequenceOrder = (0 until hostItems.length()).mapNotNull { index ->
+                val item = hostItems.getJSONObject(index)
+                val dates = item.optJSONArray("visibleDateKeys") ?: JSONArray()
+                if ((0 until dates.length()).any { dates.optString(it) == selectedDate.toString() }) {
+                    item.getLong("eventSeq")
+                } else null
+            }
+            assertEquals("Host projection preserves anchor order and tie order",
+                expectedSequenceOrder, hostSequenceOrder)
+
+            evaluate(clearWeb, "document.querySelector('#monthAgenda h2')" +
+                "?.scrollIntoView({block:'start'});true")
+            val webRowsEncoded = evaluate(clearWeb, """(()=>{
+                const rows=[...document.querySelectorAll('#monthAgenda .agenda-event')];
+                return JSON.stringify(rows.map(row=>{
+                    const title=row.querySelector('.agenda-event-title');
+                    const summary=row.querySelector('.agenda-event-summary');
+                    const sequence=row.querySelector('.agenda-event-sequence');
+                    const rect=e=>{const r=e.getBoundingClientRect();return {
+                        x:r.x,top:r.top,width:r.width,height:r.height};};
+                    const lineRects=e=>{const range=document.createRange();
+                        range.selectNodeContents(e);return [...range.getClientRects()].map(r=>({
+                            x:r.x,y:r.y,width:r.width,height:r.height}));};
+                    return {eventSeq:Number(row.dataset.eventSeq),text:title.textContent,
+                        summary:summary?.textContent||'',sequence:sequence?.textContent||'',
+                        card:rect(row),titleBounds:rect(title),titleLines:lineRects(title),
+                        summaryBounds:summary?rect(summary):null,
+                        summaryLines:summary?lineRects(summary):[],
+                        sequenceBounds:sequence?rect(sequence):null,
+                        sequenceLines:sequence?lineRects(sequence):[]};
+                }));
+            })()""")
+            val webRows = JSONArray(JSONArray("[$webRowsEncoded]").getString(0))
+            val webSequenceOrder = (0 until webRows.length()).map {
+                webRows.getJSONObject(it).getLong("eventSeq")
+            }
+            assertEquals("Web DOM order matches the frozen Native agenda",
+                expectedSequenceOrder, webSequenceOrder)
+            val nativeBySequence = (0 until nativeMeasurements.length())
+                .map(nativeMeasurements::getJSONObject).associateBy { it.getLong("eventSeq") }
+            for (index in 0 until webRows.length()) {
+                val webRow = webRows.getJSONObject(index)
+                val eventSeq = webRow.getLong("eventSeq")
+                val nativeRow = requireNotNull(nativeBySequence[eventSeq])
+                assertEquals("row title is unchanged for eventSeq=$eventSeq",
+                    titleTextBySequence[eventSeq], webRow.getString("text"))
+                assertEquals("summary is unchanged for eventSeq=$eventSeq",
+                    fixtureRecords.getValue(eventSeq).let {
+                        dev.powerfulcalendar.core.TemporalText.summarize(it)
+                    }, webRow.getString("summary"))
+                assertEquals("sequence identity is unchanged for eventSeq=$eventSeq",
+                    fixtureRecords.getValue(eventSeq).displaySeq(), webRow.getString("sequence"))
+                assertEquals("long/short title wrapping matches for eventSeq=$eventSeq",
+                    nativeRow.getInt("titleLines"),
+                    webRow.getJSONArray("titleLines").length())
+                assertEquals("summary line count matches for eventSeq=$eventSeq",
+                    nativeRow.getInt("summaryLines"),
+                    webRow.getJSONArray("summaryLines").length())
+                assertEquals("sequence remains a single line for eventSeq=$eventSeq", 1,
+                    webRow.getJSONArray("sequenceLines").length())
+                assertEquals("sequence wrapping matches Native for eventSeq=$eventSeq",
+                    nativeRow.getInt("sequenceLines"),
+                    webRow.getJSONArray("sequenceLines").length())
+                assertEquals("card width matches within 2dp for eventSeq=$eventSeq",
+                    nativeRow.getDouble("width"),
+                    webRow.getJSONObject("card").getDouble("width"), 2.0)
+                assertEquals("card height matches within 2dp for eventSeq=$eventSeq",
+                    nativeRow.getDouble("height"),
+                    webRow.getJSONObject("card").getDouble("height"), 2.0)
+                val cardTop = webRow.getJSONObject("card").getDouble("top")
+                val cardLeft = webRow.getJSONObject("card").getDouble("x")
+                assertEquals("title keeps the same horizontal card inset for eventSeq=$eventSeq",
+                    nativeRow.getDouble("titleLeft"),
+                    webRow.getJSONObject("titleBounds").getDouble("x") - cardLeft, 2.0)
+                assertEquals("title starts at the same card inset for eventSeq=$eventSeq",
+                    nativeRow.getDouble("titleTop"),
+                    webRow.getJSONObject("titleBounds").getDouble("top") - cardTop, 2.0)
+                assertEquals("title block height matches for eventSeq=$eventSeq",
+                    nativeRow.getDouble("titleHeight"),
+                    webRow.getJSONObject("titleBounds").getDouble("height"), 2.0)
+                assertEquals("summary keeps the same horizontal inset for eventSeq=$eventSeq",
+                    nativeRow.getDouble("summaryLeft"),
+                    webRow.getJSONObject("summaryBounds").getDouble("x") - cardLeft, 2.0)
+                assertEquals("summary starts at the same card offset for eventSeq=$eventSeq",
+                    nativeRow.getDouble("summaryTop"),
+                    webRow.getJSONObject("summaryBounds").getDouble("top") - cardTop, 2.0)
+                assertEquals("summary block height matches for eventSeq=$eventSeq",
+                    nativeRow.getDouble("summaryHeight"),
+                    webRow.getJSONObject("summaryBounds").getDouble("height"), 2.0)
+                assertEquals("sequence keeps the same horizontal inset for eventSeq=$eventSeq",
+                    nativeRow.getDouble("sequenceLeft"),
+                    webRow.getJSONObject("sequenceBounds").getDouble("x") - cardLeft, 2.0)
+                assertEquals("sequence starts at the same card offset for eventSeq=$eventSeq",
+                    nativeRow.getDouble("sequenceTop"),
+                    webRow.getJSONObject("sequenceBounds").getDouble("top") - cardTop, 2.0)
+                assertEquals("sequence block height matches for eventSeq=$eventSeq",
+                    nativeRow.getDouble("sequenceHeight"),
+                    webRow.getJSONObject("sequenceBounds").getDouble("height"), 2.0)
+                println("NATIVE_095_MONTH_DENSE_ROW " + JSONObject()
+                    .put("eventSeq", eventSeq)
+                    .put("text", webRow.getString("text"))
+                    .put("nativeCard", JSONObject()
+                        .put("width", nativeRow.getDouble("width"))
+                        .put("height", nativeRow.getDouble("height")))
+                    .put("webCard", JSONObject()
+                        .put("width", webRow.getJSONObject("card").getDouble("width"))
+                        .put("height", webRow.getJSONObject("card").getDouble("height")))
+                    .put("nativeText", JSONObject()
+                        .put("titleLines", nativeRow.getInt("titleLines"))
+                        .put("titleInset", nativeRow.getDouble("titleLeft"))
+                        .put("titleTop", nativeRow.getDouble("titleTop"))
+                        .put("titleHeight", nativeRow.getDouble("titleHeight"))
+                        .put("summaryTop", nativeRow.getDouble("summaryTop"))
+                        .put("summaryHeight", nativeRow.getDouble("summaryHeight"))
+                        .put("sequenceTop", nativeRow.getDouble("sequenceTop"))
+                        .put("sequenceHeight", nativeRow.getDouble("sequenceHeight")))
+                    .put("webText", JSONObject()
+                        .put("titleLines", webRow.getJSONArray("titleLines").length())
+                        .put("titleInset", webRow.getJSONObject("titleBounds").getDouble("x") - cardLeft)
+                        .put("titleTop", webRow.getJSONObject("titleBounds").getDouble("top") - cardTop)
+                        .put("titleHeight", webRow.getJSONObject("titleBounds").getDouble("height"))
+                        .put("summaryTop", webRow.getJSONObject("summaryBounds").getDouble("top") - cardTop)
+                        .put("summaryHeight", webRow.getJSONObject("summaryBounds").getDouble("height"))
+                        .put("sequenceTop", webRow.getJSONObject("sequenceBounds").getDouble("top") - cardTop)
+                        .put("sequenceHeight", webRow.getJSONObject("sequenceBounds").getDouble("height")))
+                    .toString())
+            }
+            val clearLong = (0 until webRows.length()).map(webRows::getJSONObject)
+                .single { it.getLong("eventSeq") == 2L }
+            assertTrue("Web keeps the native multi-line long title",
+                clearLong.getJSONArray("titleLines").length() > 1)
+            val webRowSpacing = evaluate(clearWeb, """(()=>{
+                const rows=[...document.querySelectorAll('#monthAgenda .agenda-event')];
+                return JSON.stringify(rows.slice(1).map((row,index)=>
+                    row.getBoundingClientRect().top-rows[index].getBoundingClientRect().bottom));
+            })()""")
+            val rowGaps = JSONArray(JSONArray("[$webRowSpacing]").getString(0))
+            assertEquals("all adjacent agenda rows are measured", 3, rowGaps.length())
+            for (index in 0 until rowGaps.length()) {
+                assertEquals("Web renders native 12dp spacing after row $index",
+                    12.0, rowGaps.getDouble(index), 0.05)
+            }
+            assertEquals("agenda selection and rendering must not write Calendar Store data",
+                fixtureCounts, counts())
+            assertEquals("Native and Web share the exact isolated committed records",
+                fixtureSnapshot, store.all())
+            captureWindowScreenshot(clearWeb, "native095-month-dense-web.png")
+            println(
+                "NATIVE_095_MONTH_DENSE_WEB date=$selectedDate " +
+                    "hostOrder=$hostSequenceOrder domOrder=$webSequenceOrder " +
+                    "rowGaps=$webRowSpacing " +
+                    "trustedDateTouch=true storeUnchanged=true"
+            )
         } finally {
             compose.runOnUiThread {
                 compose.activity.setContent { }
