@@ -23,7 +23,7 @@ LAST_COMPLETED_COMMIT: dcd283a9d6cc6cfa1b7b08609fd8c2f4f6162bdb
 LAST_ATTEMPTED_TASK: Native 0.9.5 visual and interaction parity migration (IN PROGRESS; see audit and latest Android evidence)
 LAST_ATTEMPTED_COMMIT: dcd283a9d6cc6cfa1b7b08609fd8c2f4f6162bdb (AI message menu slice; see issue report and audit appendix)
 NEXT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
-NEXT_ACTION: Migrate the measured Month differences next: selected-day rounded-square geometry, calendar panel fill/bounds, and agenda spacing. Use the frozen original APK and current Web v3 on the same isolated API 35 device, same date/time, and same empty/fixture store before changing CSS; record screenshots and observable touch behavior. AI remains PARTIAL; original APK message-menu screenshot, attachment authorization, proposal review, and error/retry remain open. Product Cutover remains HOLD.
+NEXT_ACTION: Migrate the measured Month differences next: reduce selected-day CSS radius from 24px to the frozen Compose 14dp chip radius, then re-capture the same-device/same-date Native APK and Web pair. Measure remaining calendar row height, panel surface, and agenda card spacing before changing them. AI remains PARTIAL; original APK message-menu screenshot, attachment authorization, proposal review, and error/retry remain open. Product Cutover remains HOLD.
 LAST_TASK_EVIDENCE:
   NATIVE_095_AI_MESSAGE_CONTEXT_MENU:
     status: PASS (WebView message-role/menu/copy slice only; Native original APK menu screenshot NOT TESTED; AI page remains PARTIAL)
