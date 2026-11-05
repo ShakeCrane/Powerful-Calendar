@@ -6,9 +6,10 @@ import dev.powerfulcalendar.core.api.v1.EventEditorOpenResultV1
 import dev.powerfulcalendar.core.api.v1.EventFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.AiBatchModeV1
 import android.annotation.SuppressLint
-import android.graphics.Color
 import android.net.Uri
+import android.graphics.Color
 import android.os.Build
+import android.view.WindowInsets
 import android.webkit.ConsoleMessage
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -19,8 +20,8 @@ import android.webkit.WebViewClient
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -36,6 +37,8 @@ import android.webkit.WebMessagePort
 import java.util.concurrent.atomic.AtomicBoolean
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.viewinterop.AndroidView
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
@@ -268,6 +271,27 @@ internal fun WebSkinRoot(
     native: @Composable BoxScope.() -> Unit,
     onSkinFailure: () -> Unit = {}
 ) {
+    val rootView = LocalView.current
+    val density = LocalDensity.current
+    val topSystemInset = remember(rootView, density) {
+        val platformInsets = rootView.rootWindowInsets
+        val statusBarId = rootView.resources.getIdentifier(
+            "status_bar_height_default", "dimen", "android"
+        ).takeIf { it != 0 } ?: rootView.resources.getIdentifier(
+            "status_bar_height", "dimen", "android"
+        )
+        val resourceHeight = statusBarId.takeIf { it != 0 }
+            ?.let { rootView.resources.getDimensionPixelSize(it) } ?: 0
+        val topInsetPx = resourceHeight.takeIf { it > 0 } ?: if (
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+        ) {
+            platformInsets?.getInsets(WindowInsets.Type.statusBars())?.top ?: 0
+        } else {
+            @Suppress("DEPRECATION")
+            platformInsets?.systemWindowInsetTop ?: 0
+        }
+        with(density) { topInsetPx.toDp() }
+    }
     var failed by remember(bundle) { mutableStateOf(false) }
     val failureReported = remember(bundle) { AtomicBoolean(false) }
     val currentOnSkinFailure by rememberUpdatedState(onSkinFailure)
@@ -279,7 +303,10 @@ internal fun WebSkinRoot(
     }
     Box(modifier) {
         if (!failed) SecureWebSkin(
-            bundle, Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding(),
+            // Prefer the visible default bar height; status_bar_height can include extra
+            // edge-to-edge spacing on modern Android windows.
+            bundle,
+            Modifier.fillMaxSize().padding(top = topSystemInset).navigationBarsPadding(),
             onFailure = reportFailure
         )
         if (!bundle.fullCanvas || failed) native()

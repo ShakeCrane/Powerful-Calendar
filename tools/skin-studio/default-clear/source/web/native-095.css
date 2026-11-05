@@ -100,7 +100,7 @@ body[data-page="timeline"] .timeline-section-label {display:none}
 .compat-local-options {display:none!important}
 body[data-page="month"] #monthPage:not([hidden]),body[data-page="settings"] #settingsPage:not([hidden]),body[data-page="tools"] #extraOptions:not([hidden]) {flex:1 1 auto;overflow-y:auto;overscroll-behavior:contain;padding:8px 12px 20px}
 body[data-page="month"] #monthPage:not([hidden]) {padding-top:14px}
-body[data-page="memo"] #memoPage:not([hidden]) {display:flex;flex:1 1 auto;min-height:0;flex-direction:column;overflow:hidden;padding:8px 16px 0}
+body[data-page="memo"] #memoPage:not([hidden]) {display:flex;flex:1 1 auto;min-height:0;flex-direction:column;overflow:hidden;padding:32px 16px 0}
 body[data-page="month"] .clear-head,body[data-page="memo"] .clear-head,body[data-page="ai"] .clear-head,body[data-page="settings"] .clear-head {display:none}
 .month-calendar-panel {margin:5px 0 0;padding:0;border:1px solid #C3CAD8;border-radius:28px;background:#F3F5FA;box-shadow:0 2px 7px rgba(17,21,28,.12)}
 html.theme-dark .month-calendar-panel {border-color:#39414F;background:#171D27}
@@ -162,7 +162,7 @@ html.theme-dark .month-calendar-panel {border-color:#39414F;background:#171D27}
 .memo-row .memo-title {font-size:15px}
 .memo-limit {margin:8px 0;min-height:44px;padding:9px 14px;border:1px solid var(--sep);border-radius:22px;background:var(--bg-elevated);color:var(--accent);font-size:14px}
 body[data-page="ai"] #aiPage:not([hidden]) {display:flex;flex:1 1 auto;flex-direction:column;height:auto;min-height:0;overflow:hidden;padding:6px 12px 8px}
-.ai-page-head {position:relative;gap:8px;min-height:58px}
+.ai-page-head {position:relative;gap:8px;min-height:58px;padding-left:0;padding-right:0}
 .ai-overflow {position:relative;flex:0 0 auto}
 .ai-overflow>summary {display:flex;align-items:center;justify-content:flex-end;gap:3px;width:auto;min-width:92px;height:42px;padding:0 6px;border-radius:22px;list-style:none;color:var(--accent);font-size:14px;font-weight:550;line-height:1;white-space:nowrap;cursor:pointer}
 .ai-overflow-more {font-size:24px;line-height:1}
@@ -177,7 +177,7 @@ body[data-page="ai"] #aiPage:not([hidden]) {display:flex;flex:1 1 auto;flex-dire
 .ai-overflow #chatClear {display:block}
 .ai-overflow .ai-batch-controls button {min-height:40px;border:0;border-radius:10px;background:transparent;color:var(--label);text-align:left;font-size:14px}
 .ai-batch-status {margin:0 0 6px;border-color:var(--sep);border-radius:12px;background:var(--bg-elevated)}
-.chat-empty-hint {flex:0 0 auto;margin:8px 0 0;padding:6px 0;color:var(--label-2);font-size:14px;line-height:1.45}
+.chat-empty-hint {flex:0 0 auto;margin:4.5px 0 0;padding:6px 6px 10px;color:var(--label-2);font-size:12.4px;line-height:16px}
 .chat-empty-hint[hidden] {display:none!important}
 .chat-list {flex:1 1 auto;gap:12px;min-height:0;padding:8px 2px;max-height:none}
 .chat-bubble {border-radius:17px;background:var(--bg-elevated);box-shadow:var(--shadow-card);font-size:15px;line-height:1.45}
