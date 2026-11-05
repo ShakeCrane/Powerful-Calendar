@@ -14,6 +14,8 @@ async function main(){
     "tools/skin-studio/default-clear/source/web/native-095.css"),"utf8");
   if(!nativeThemeCss.includes("--accent-soft:#DCE5FF; --on-accent-container:#0B2A66")||
       !nativeThemeCss.includes("--accent-soft:#1B3A7A; --on-accent-container:#DCE5FF")||
+      !nativeThemeCss.includes("--month-grid-surface:rgba(255,255,255,.80)")||
+      !nativeThemeCss.includes("--month-grid-surface:rgba(26,33,48,.70)")||
       !nativeThemeCss.includes(".month-cell.selected .month-count {color:inherit}"))
     throw Error("Frozen primary-container foreground mapping is incomplete");
   const profile=fs.mkdtempSync(path.join(reportDir,"chrome-profile-"));
@@ -115,6 +117,7 @@ async function main(){
         selectedColor:getComputedStyle(selected).color,
         dayColor:getComputedStyle(selected.querySelector('.month-day-number')).color,
         countColor:getComputedStyle(selected.querySelector('.month-count')).color,
+        gridSurface:getComputedStyle(document.querySelector('#monthGrid'),'::before').backgroundColor,
         onAccentContainer:getComputedStyle(document.documentElement)
           .getPropertyValue('--on-accent-container').trim()}:null;
     })()`,"Initial month state");
@@ -128,6 +131,9 @@ async function main(){
     if([initial.selectedColor,initial.dayColor,initial.countColor].some(color=>
         color!==expectedSelectedColor))
       throw Error("Selected month-day foreground differs from Native onPrimaryContainer: "+
+        JSON.stringify(initial));
+    if(initial.gridSurface!=="rgba(255, 255, 255, 0.8)")
+      throw Error("Month grid glass surface differs from frozen 80% light GlassPanel: "+
         JSON.stringify(initial));
     const initialCamera=await evaluate("simulatedState().timeline.anchorMillis");
 

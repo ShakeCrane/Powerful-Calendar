@@ -14,6 +14,7 @@
   --deadline:#A8501C; --deadline-ink:#7E3A13; --deadline-tint:rgba(168,80,28,.10);
   --memo:#4A5261; --memo-ink:#343B48; --memo-tint:rgba(74,82,97,.08);
   --glass-fill:rgba(255,255,255,.80); --glass-fill-strong:rgba(255,255,255,.96);
+  --month-grid-surface:rgba(255,255,255,.80);
   --glass-blur:10px; --glass-rim-lo:rgba(11,18,32,.08); --glass-rim-hi:#fff;
   --glass-shadow:0 2px 8px rgba(22,34,55,.08); --glass-select:#D3EFE7;
   --shadow-card:0 1px 3px rgba(17,21,28,.08); --shadow-lift:0 8px 24px rgba(17,21,28,.18);
@@ -34,6 +35,7 @@ html.theme-dark {
   --memo:#B4BCCB; --memo-ink:#E6EAF2; --memo-tint:rgba(180,188,203,.14);
   --glass-fill:rgba(26,33,48,.82); --glass-fill-strong:rgba(26,33,48,.96);
   --glass-rim-lo:rgba(255,255,255,.12); --glass-shadow:0 2px 8px rgba(0,0,0,.22); --glass-select:#173B33;
+  --month-grid-surface:rgba(26,33,48,.70);
   --shadow-card:0 1px 3px rgba(0,0,0,.3); --shadow-lift:0 8px 24px rgba(0,0,0,.45);
   --scrim:rgba(0,0,0,.58);
 }
@@ -111,7 +113,7 @@ html.theme-dark .month-calendar-panel {border-color:#39414F;background:#171D27}
 .month-title-group button {width:auto;min-width:54px;height:44px;padding:0 5px;border:0;border-radius:0;background:transparent;color:var(--accent);font-size:17px;font-weight:600;white-space:nowrap}
 .month-title-group button:focus-visible {outline:2px solid var(--accent);outline-offset:1px;border-radius:6px}
 .month-grid {position:relative;grid-template-columns:repeat(7,minmax(0,1fr));gap:0;width:100%;max-width:none;min-height:0;margin:0;padding:0;border-radius:4px;background:transparent;box-shadow:none}
-.month-grid::before {content:"";position:absolute;z-index:0;inset:0 auto 0 50%;width:min(336px,100%);transform:translateX(-50%);border-radius:4px;background:var(--bg-elevated);pointer-events:none}
+.month-grid::before {content:"";position:absolute;z-index:0;inset:0 auto 0 50%;width:min(336px,100%);transform:translateX(-50%);border-radius:4px;background:var(--month-grid-surface);pointer-events:none}
 .month-weekday {position:relative;z-index:1;padding:9px 0 11px;color:var(--label-2);font-size:12px;font-weight:550}
 .month-cell,.month-cell-empty {position:relative;z-index:1;min-height:52px;border:0;border-radius:14px;background:transparent;color:var(--label);font-size:15px}
 .month-cell {display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;padding:5px 0;font-variant-numeric:tabular-nums}

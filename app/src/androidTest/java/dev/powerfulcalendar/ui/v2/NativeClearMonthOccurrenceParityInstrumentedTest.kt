@@ -891,6 +891,10 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
             val radius = evaluate(clearWeb,
                 "getComputedStyle(document.querySelector('#monthGrid .month-cell.selected')).borderTopLeftRadius")
             assertEquals("CSS chip corner must match frozen GlassShapes.chip = 14.dp", "\"14px\"", radius)
+            val gridSurface = evaluate(clearWeb,
+                "getComputedStyle(document.querySelector('#monthGrid'),'::before').backgroundColor")
+            assertEquals("month grid pseudo-surface must use frozen light GlassPanel fill",
+                "\"rgba(255, 255, 255, 0.8)\"", gridSurface)
             val selectedForegroundMatchesNative = evaluate(clearWeb, """(()=>{
                 const selected=document.querySelector('#monthGrid .month-cell.selected');
                 const expected=getComputedStyle(document.documentElement)
@@ -912,7 +916,8 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
                 store.all().size.toLong(), store.draftCount(), store.pendingCount().toLong(),
                 store.commitCount(), store.identityCount(), store.nextSequencePreview()
             ))
-            println("NATIVE_095_MONTH_SELECTED_SHAPE radius=$radius foregroundMatchesNative=" +
+            println("NATIVE_095_MONTH_SELECTED_SHAPE radius=$radius gridSurface=$gridSurface " +
+                "foregroundMatchesNative=" +
                 "$selectedForegroundMatchesNative bounds=$bounds date=$selectedDate " +
                 "fixture=MonthFixture trustedTouch=true storeUnchanged=true")
         } finally {
