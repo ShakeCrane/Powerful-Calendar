@@ -1,7 +1,7 @@
 # Native 0.9.5 事件编辑器外框几何与表面
 
-**状态：**外框几何与表面窄切片 PASS；事件编辑器整体仍 PARTIAL。  
-**冻结视觉基线：**`b1f7629f0c52812e1887443872f43aa6c49908c4`。  
+**状态：**外框几何与表面窄切片 PASS；事件编辑器整体仍 PARTIAL。
+**冻结视觉基线：**`b1f7629f0c52812e1887443872f43aa6c49908c4`。
 **原始 APK：**`.local/android-test/artifacts/physical-qa/PowerCal-0.9.5-rc.1-b1f7629-debug-core-HOLD.apk`，SHA-256 `DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76`。
 
 ## 问题与处理
