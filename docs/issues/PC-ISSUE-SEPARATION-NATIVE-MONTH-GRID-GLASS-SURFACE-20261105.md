@@ -1,34 +1,34 @@
 # Month 内层玻璃网格表面迁移
 
 **日期：**2026-11-05
-**范围状态：**颜色 PASS；表面范围 PARTIAL
-**页面状态：**Month 仍 PARTIAL；Product Cutover HOLD
+**本窄切片：**内层玻璃面颜色与像素边界 `PASS`
+**Month 整页：**`PARTIAL`；Product Cutover：`HOLD`
 
-## 基准与差异
+## 基准
 
-视觉基准是冻结源码 `b1f7629f0c52812e1887443872f43aa6c49908c4` 和原始 0.9.5-rc.1 APK（SHA-256 `DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76`）。Native `PowerTheme.kt` 的浅色 `AxisPalette.glassFill` 为 `0xCCFFFFFF`，深色为 `0xB31A2130`；`GlassPanel` 在 blur 效果开启时使用该半透明填充。原 Web 月格 `#monthGrid::before` 使用不透明 `--bg-elevated`，与冻结效果不同。
+唯一视觉基准为冻结源码 `b1f7629f0c52812e1887443872f43aa6c49908c4` 和原始 PowerCal 0.9.5-rc.1 APK（SHA-256 `DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76`）。Native `PowerTheme.kt` 浅色 `AxisPalette.glassFill` 是 `0xCCFFFFFF`，深色为 `0xB31A2130`；Month 的网格与月份栏共用 `GlassPanel`。
 
 ## 实施
 
-在默认 Skin 的 `native-095.css` 增加 `--month-grid-surface`：浅色 `rgba(255,255,255,.80)`、深色 `rgba(26,33,48,.70)`，并将其用于月格伪元素。没有改变外层面板、日历布局、状态投影、Core/Host API 或 Store 行为。浏览器 E2E 和 Android instrumentation 检查实际 computed background。
+默认 Skin 的 `native-095.css` 现将内层玻璃面放在 `.month-calendar-panel::before`，以 `top:27px; bottom:29px; width:min(331px,100%)` 对齐设备像素测量。面板建立独立层叠上下文，月份栏和网格内容置于填充层上方，避免伪元素遮挡月份标题和导航。颜色 token 对应浅色 80% 白、深色 70% `#1A2130`。未改月份数据、布局规则、Core/Host API 或 Store。
 
-## 验证结果
+## 验证
 
-- Chromium E2E：PASS。computed background 为 `rgba(255, 255, 255, 0.8)`；月历切换、选日、Today、Camera 和预览新建流程通过。
-- 单默认分发测试：2/2 PASS；相关 JavaScript 语法检查 PASS。
-- Android API 35 WebView instrumentation：1/1 PASS，方法 `monthSelectedDayRadiusMatchesFrozenNativeChipAndTapKeepsStoreUnchanged`。包含 computed surface、日期可信触控和 Store 快照不变断言。
-- 串行 Gradle 的源码边界、Debug assemble、Lint、AndroidTest Kotlin 编译及组装：PASS。完整 JVM 门禁本切片未重跑；此前门禁有 SQLite `SQLITE_BUSY` 失败，不能据此声称完整 JVM 通过。
-- Debug APK SHA-256：`D960BA9367626430506F910F727AB3A8F79D7C2BB83BCBC0A224E2669FD1E57F`。
-- 正式默认包 SHA-256：`C8AB68A5A029F2908EFCAF2352FFA264D2846E75060C1BA396FAFC71F3DA748D`。APK 恰含一份 `assets/powercal-clear-default.pcskin`，与源码资源逐字节相同。
+- Chromium `e2e_v3_month_selection.cjs`：PASS，检查伪元素颜色、27px/29px/331px 几何以及月份、日期、Today、Camera 和预览新建流程。
+- 默认包分发 Python 测试：2/2 PASS；相关 JS `node --check`：PASS。
+- 串行源码边界、Debug assemble、Lint、AndroidTest Kotlin 编译/组装门禁：PASS。后续新增的 WebView visual-state screenshot barrier 首次以 lambda 编译失败，改用 `WebView.VisualStateCallback` 后，定向 AndroidTest 通过。
+- API 35 隔离 AVD `PowerCal_Native095_Parity_20261105`（`emulator-5580`，1080×2400、420dpi）：`monthSelectedDayRadiusMatchesFrozenNativeChipAndTapKeepsStoreUnchanged` 1/1 PASS。再次手动安装本轮 Debug 和 AndroidTest APK 后同一用例 1/1 PASS，以便在应用卸载前取回图像；选中日触控可信、`MonthFixture` 可见，Core Store 快照不变。没有清除应用数据。
+- WebView 通过 `postVisualStateCallback` 屏障后截图，确认显示 2026-11-05 和 MonthFixture，避免了旧截图中异步合成的 11-01 画面。
+- 本窄切片未运行完整 JVM 套件。先前完整运行记录 975 项、1 项 `SystemCalendarImportTest.rejectedItemsArePersistedAsWarningsWithoutCalendarWrites` 遇到 SQLite `SQLITE_BUSY`；本次不将其记为通过。
 
-## 实屏范围差异
+## 同设备截图与边界
 
-同设备 API 35 AVD `PowerCal_Native095_Parity_20261105` / `emulator-5580`，分辨率 1080×2400、420 dpi。原生截图 SHA-256 `9915F9DFF8D1F421F2233F6BEBB38CCBA5D7A44F33C5CEA092BD19C6F5B8B59A`；Web 截图 SHA-256 `3ABDE008043CC294CF00EA6E96A94E2F789363B5DF7E1E635BDBF0B854F79D8C`。
+Native 截图 SHA-256 `9915F9DFF8D1F421F2233F6BEBB38CCBA5D7A44F33C5CEA092BD19C6F5B8B59A`；同步后的 WebView 截图 SHA-256 `163A5BE271320D25CEE3E2161866B507DF3DF9E6365B9817B81D8C798ED29A65`。在完整截图的月历 ROI `(80,300)-(1000,1300)` 中扫描精确 `#FDFDFE` 像素，Native 边界 `(105,338)-(973,1235)`，Web `(107,338)-(974,1234)`；各边差异不超过约 2px。这里记录的最大坐标为像素扫描包含端点。
 
-在月历 ROI 内，精确 `#FDFDFE` 中心面 bbox：Native `(105,338)-(973,1235)`，Web `(100,393)-(981,1244)`。因此颜色切片通过，但 Web 表面上沿低约 55 px、下沿低约 9 px，宽约多 13 px；表面范围未通过。冻结外层面板主色约 `#F2F3F3`，Web 当前约 `#F3F5FA`，描边/阴影和 agenda 表面/间距仍是独立缺口。
+Debug APK SHA-256 `896D5BAB6A01A145FDA97D53706DCB7DF30E31CE77B3E0998C89730C7B2278D6`。源码默认包为 409395 bytes，SHA-256 `0B41CAC7FA5BF65C5A5D64D97AA740D6656B93560F1269EC59359B1B9C6B5331`；APK 仅包含 `assets/powercal-clear-default.pcskin` 一份，且与源码逐字节一致。
 
-## 后续
+## 未闭合差异
 
-下一步依据冻结 `MonthScreen.kt` / `GlassPanel` 的实际布局约束与同一 WebView 测量，收敛月格中心玻璃面的垂直边界和宽度。此后另行处理外层面板与 agenda。不得把本记录当作整页视觉等价签核。
+当前内层玻璃填充颜色和几何通过；Native 外层 Month 面板的 `#F2F3F3` 材料、outlineVariant 描边/阴影及 agenda 卡片表面与间距仍不同。下一窄切片先对照 Native `GlassPanel` 实际参数，处理外层面板材质；agenda 独立验证。Month 整页继续 `PARTIAL`，不得据此放开 Cutover。
 
-详细命令、构建与设备日志位于 `.local/android-test/reports/native095-month-grid-surface-20261105/`（本地忽略目录）。
+本地详细证据位于 `.local/android-test/reports/native095-month-grid-surface-20261105/`。

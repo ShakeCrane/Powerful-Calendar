@@ -307,20 +307,17 @@ Owner 于 2026-11-05 明确将 **2026-10-27 冻结的 PowerCal 0.9.5-rc.1 原生
 
 **结论：**选中格文字前景色窄切片有冻结色值、浏览器样式、真实 WebView、截图和 Store 不变证据，标记 `PASS`。内层日格玻璃填充颜色切片现有 Compose token、computed style 与同设备像素证据，但其范围仍有几何差异；外层面板和 agenda 卡片仍待迁移。Month 整页继续 `PARTIAL`，Product Cutover `HOLD`。
 
-## 2026-11-05 Month 内层玻璃网格填充迁移（颜色 PASS；范围 PARTIAL）
+## 2026-11-05 Month 内层玻璃网格填充迁移（颜色与范围 PASS；Month 整页 PARTIAL）
 
-冻结 `PowerTheme.kt` 的浅色 `AxisPalette.glassFill` 是 `0xCCFFFFFF`（80% 白色），深色为 `0xB31A2130`；`GlassPanel` 在 effects.blur 开启时使用该填充。冻结 APK 同设备截图的月格内层主色为 `#FDFDFE`，与浅色玻璃填充叠加在页面底色上的实际像素一致。当前 Web 伪元素原来使用不透明 `--bg-elevated`，像素为 `#FFFFFF`。
-
-默认 Skin 为月格内层增加独立浅/深色 `--month-grid-surface` token：浅色 `rgba(255,255,255,.80)`、深色 `rgba(26,33,48,.70)`，其中深色 alpha 对应冻结 `0xB3`。只调整 `#monthGrid::before` 的颜色，不改外层卡片、导航、网格数据或业务 API。
+冻结 `PowerTheme.kt` 的浅色 `AxisPalette.glassFill` 为 `0xCCFFFFFF`（80% 白），深色为 `0xB31A2130`；Month 网格与月份栏处于同一个 Native `GlassPanel`。当前默认 Skin 使用同一玻璃色 token，并把填充层锚定到 `.month-calendar-panel::before`，而不是网格内容层；父面板设置 `isolation:isolate`，标题栏和网格内容置于填充层之上，避免伪元素盖住月份标题、箭头或日期交互。
 
 | 验证项 | 实际结果 |
 |---|---|
-| Studio/浏览器 | `e2e_v3_month_selection.cjs` computed style 为 `rgba(255, 255, 255, 0.8)`，月份/日期/Today/Camera 与预览新建流程 PASS；深色 token 静态值检查通过。正式包分布测试 2/2，JS 语法检查 PASS。 |
-| Android WebView | API 35 AVD `PowerCal_Native095_Parity_20261105` / `emulator-5580`。`monthSelectedDayRadiusMatchesFrozenNativeChipAndTapKeepsStoreUnchanged` 1/1 PASS；instrumentation 检查 `::before` computed background、选中形状与颜色、可信日期触控、MonthFixture agenda 和 Store 不变。 |
-| 同设备像素 | Native 原图 SHA-256 `9915F9DFF8D1F421F2233F6BEBB38CCBA5D7A44F33C5CEA092BD19C6F5B8B59A`，Web 新图 SHA-256 `3ABDE008043CC294CF00EA6E96A94E2F789363B5DF7E1E635BDBF0B854F79D8C`，均 1080×2400。只在 Month 网格 ROI `(95,330)-(984,1244)` 统计，Native 与 Web 均以 `#FDFDFE` 为主色；Web 伪元素浅色 token 计算为 80% 白色。 |
-| 范围几何差 | 精确 `#FDFDFE` 的中心面像素框 Native `(105,338)-(973,1235)`，Web `(100,393)-(981,1244)`：Web 上边界低 55 px、下边界低 9 px，中心宽约多 13 px。颜色已对齐，表面覆盖范围不能标记 PASS，下一切片只处理其 Compose/Web 几何边界。 |
-| 外层与其他差异 | Native 外层采样主色 `#F2F3F3`，当前 Web 外层仍为页面底色 `#F3F5FA`；Native outlineVariant 半透明描边与 Web 现有实色边框/阴影不同。agenda 卡片表面和间距也仍不同。本切片均未调整这些独立层。 |
-| 构建与包 | 源码边界、`assembleDebug`、`lintDebug`、AndroidTest 编译/组装 PASS。完整 JVM 本切片未重跑；上一个完整 JVM 记录 975 项中 1 项 SQLite `SQLITE_BUSY`，不是本切片通过。Debug APK SHA-256 `D960BA9367626430506F910F727AB3A8F79D7C2BB83BCBC0A224E2669FD1E57F`；APK 唯一 `.pcskin` 与源码字节一致，包 SHA-256 `C8AB68A5A029F2908EFCAF2352FFA264D2846E75060C1BA396FAFC71F3DA748D`。 |
-| 证据 | `.local/android-test/reports/native095-month-grid-surface-20261105/`；Native 原图沿用 `.local/android-test/reports/native095-month-radius-20261105/month-native-original-20261105.png`。Issue：`docs/issues/PC-ISSUE-SEPARATION-NATIVE-MONTH-GRID-GLASS-SURFACE-20261105.md`。 |
+| Studio/浏览器 | `e2e_v3_month_selection.cjs` PASS；实测背景 `rgba(255,255,255,.8)`、top `27px`、bottom `29px`、width `331px`。月份/日期/Today/Camera 和预览新建流程通过；默认包分发 2/2、相关 JS 语法检查 PASS。 |
+| Android WebView | API 35 隔离 AVD `PowerCal_Native095_Parity_20261105` / `emulator-5580`。`monthSelectedDayRadiusMatchesFrozenNativeChipAndTapKeepsStoreUnchanged` 定向 instrumentation 1/1 PASS；真实可信日期触控后 11 月 5 日和 `MonthFixture` 可见，Core Store 计数快照不变。截图在 `WebView.postVisualStateCallback` 完成后捕获，旧的异步合成帧已被替代。 |
+| 同设备像素 | Native 1080×2400 截图 SHA-256 `9915F9DFF8D1F421F2233F6BEBB38CCBA5D7A44F33C5CEA092BD19C6F5B8B59A`；同步 Web 截图 SHA-256 `163A5BE271320D25CEE3E2161866B507DF3DF9E6365B9817B81D8C798ED29A65`。在 ROI `(80,300)-(1000,1300)` 扫描精确 `#FDFDFE` 像素，Native 边界 `(105,338)-(973,1235)`，Web `(107,338)-(974,1234)`；各边差约 0–2 px。边界最大值为扫描包含端点。 |
+| 构建与包 | 串行源码边界、Debug assemble、Lint、AndroidTest Kotlin 编译/组装 PASS。新增 screenshot barrier 首次编译错误已改为 `WebView.VisualStateCallback` 后通过；定向 connected test 1/1。完整 JVM 本切片未重跑；先前 975 项中一项 SQLite `SQLITE_BUSY` 仍未解决，本记录不把完整 JVM 标记 PASS。Debug APK SHA-256 `896D5BAB6A01A145FDA97D53706DCB7DF30E31CE77B3E0998C89730C7B2278D6`；默认包 409395 bytes，SHA-256 `0B41CAC7FA5BF65C5A5D64D97AA740D6656B93560F1269EC59359B1B9C6B5331`。APK 只含一份 `.pcskin` 且与源资源逐字节一致。 |
+| 外层与其他差异 | 冻结 Native 外层采样主色约 `#F2F3F3`；Web 外层仍为 `#F3F5FA`，描边和阴影也不同。agenda 卡片表面与间距仍待逐项比对。本切片没有调整这些层。 |
+| 证据 | `.local/android-test/reports/native095-month-grid-surface-20261105/`，包括同步截图、Gradle 和 instrumentation 日志；Native 原图沿用 `.local/android-test/reports/native095-month-radius-20261105/month-native-original-20261105.png`。Issue：`docs/issues/PC-ISSUE-SEPARATION-NATIVE-MONTH-GRID-GLASS-SURFACE-20261105.md`。代码提交：`4a0a3f5303e13f682abf9ccbea2875d988f15a68`。 |
 
-**结论：**月格内层填充颜色切片 `PASS`；其覆盖范围以及外层面板和 agenda 卡片仍有明确差异。Month 整页保持 `PARTIAL`，Product Cutover `HOLD`。
+**结论：**月格内层玻璃面颜色与像素范围窄切片 `PASS`。外层 Month 卡片、agenda 及其他页面仍未签核；Month 整页保持 `PARTIAL`，Product Cutover `HOLD`。

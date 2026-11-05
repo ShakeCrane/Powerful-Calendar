@@ -1,11 +1,21 @@
 # Native 0.9.5 视觉/交互基准迁移续接（2026-11-05）
 
-## 最新窄切片：Month 内层玻璃网格填充颜色（2026-11-05）
+## 最新窄切片：Month 内层玻璃面几何对齐（2026-11-05）
+
+- **状态：**内层填充颜色与像素边界 `PASS`；Month 整页和 Native 0.9.5 总体迁移仍 `PARTIAL/IN_PROGRESS`；Product Cutover `HOLD`。
+- **提交：**`4a0a3f5303e13f682abf9ccbea2875d988f15a68`（`fix(month): 对齐原生月格玻璃面几何`）。将填充锚定到月历外层面板并修正层级，避免遮住月份栏；默认 Skin 包已重建。未改 Core/Host/日历行为。
+- **验证：**浏览器 E2E、分发测试 2/2、Node 语法、源码边界、assemble、Lint、AndroidTest 编译/组装 PASS。API 35 AVD `emulator-5580` 指定 instrumentation 1/1 PASS，并手动复跑同一隔离用例以保留截图。visual-state callback 后截图显示选中 11 月 5 日及 `MonthFixture`；可信触控、Store 快照不变。完整 JVM 本切片未运行，历史 `SQLITE_BUSY` 仍未闭合。
+- **同设备图像：**Native SHA-256 `9915F9DFF8D1F421F2233F6BEBB38CCBA5D7A44F33C5CEA092BD19C6F5B8B59A`；同步 Web SHA-256 `163A5BE271320D25CEE3E2161866B507DF3DF9E6365B9817B81D8C798ED29A65`。ROI 精确 `#FDFDFE` 边界 Native `(105,338)-(973,1235)`、Web `(107,338)-(974,1234)`，差约 0–2px。
+- **工厂产物：**Debug APK SHA-256 `896D5BAB6A01A145FDA97D53706DCB7DF30E31CE77B3E0998C89730C7B2278D6`；唯一默认 `.pcskin` SHA-256 `0B41CAC7FA5BF65C5A5D64D97AA740D6656B93560F1269EC59359B1B9C6B5331`，APK 内唯一一份且与源码逐字节一致。
+- **证据：**`.local/android-test/reports/native095-month-grid-surface-20261105/manifest.md` 与 `docs/issues/PC-ISSUE-SEPARATION-NATIVE-MONTH-GRID-GLASS-SURFACE-20261105.md`。
+- **唯一下一动作：**对照冻结 Native `GlassPanel` 参数迁移 Month 外层填充、outlineVariant 描边和阴影；agenda 单独处理。整页 Month 继续 `PARTIAL`。
+
+## 前一窄切片：Month 内层玻璃网格填充颜色与首次范围测量（2026-11-05）
 
 - **状态：**月格内层 GlassPanel 填充颜色窄切片 `PASS`；表面覆盖范围 `PARTIAL`；Month 整页和 Native 0.9.5 总体迁移仍 `PARTIAL/IN_PROGRESS`。唯一视觉基准仍是冻结原生源码 `b1f7629f0c52812e1887443872f43aa6c49908c4`，Product Cutover `HOLD`。
 - **提交：**`ccc5761d514287f2c4223050bebd30bf2bdaedca`（`fix(month): 对齐原生月格玻璃填充颜色`）。默认 Skin 月格内层使用冻结浅色 80% 白、深色 70% `#1A2130` 玻璃填充；Core、Host、日历数据和外层面板未改。
 - **验证：**浏览器 computed-style/导航 E2E、分发 2/2、Node 语法、源码边界、assemble、Lint、AndroidTest 编译/组装 PASS；API 35 WebView instrumentation 1/1 PASS，可信选日及 Store 快照不变。完整 JVM 本切片未重跑；此前 975 项中 1 项 SQLite `SQLITE_BUSY` 仍是已知未解决门禁失败。
-- **同设备图像：**`PowerCal_Native095_Parity_20261105` / `emulator-5580`，1080×2400、420 dpi。Native 图 SHA-256 `9915F9DFF8D1F421F2233F6BEBB38CCBA5D7A44F33C5CEA092BD19C6F5B8B59A`；Web 图 `3ABDE008043CC294CF00EA6E96A94E2F789363B5DF7E1E635BDBF0B854F79D8C`。中心 `#FDFDFE` 框 Native `(105,338)-(973,1235)`、Web `(100,393)-(981,1244)`；颜色一致，范围有明显差异。
+- **同设备图像：**`PowerCal_Native095_Parity_20261105` / `emulator-5580`，1080×2400、420 dpi。Native 图 SHA-256 `9915F9DFF8D1F421F2233F6BEBB38CCBA5D7A44F33C5CEA092BD19C6F5B8B59A`；Web 图 `3ABDE008043CC294CF00EA6E96A94E2F789363B5DF7E1E635BDBF0B854F79D8C`。完整图扫描中心 `#FDFDFE` 框 Native `(105,338)-(973,1235)`、Web `(100,393)-(981,1310)`；早期 ROI 在 y=1244 截断 Web，现已更正。颜色一致，Web 表面上/下边分别低 55/75px，整体高约20px且宽约多13px。
 - **工厂产物：**Debug APK SHA-256 `D960BA9367626430506F910F727AB3A8F79D7C2BB83BCBC0A224E2669FD1E57F`；唯一默认 `.pcskin` SHA-256 `C8AB68A5A029F2908EFCAF2352FFA264D2846E75060C1BA396FAFC71F3DA748D`，APK 内仅一份且与源码逐字节一致。
 - **证据：**`.local/android-test/reports/native095-month-grid-surface-20261105/manifest.md`；`docs/issues/PC-ISSUE-SEPARATION-NATIVE-MONTH-GRID-GLASS-SURFACE-20261105.md`；差异和几何记录见 `docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md`。
 - **唯一下一动作：**基于冻结 Compose Month `GlassPanel` 的实际布局约束，对齐内层月格表面的上/下边界与宽度。外层面板填充、描边/阴影及 agenda 表面/间距分别处理；不得宣称 Month 整页通过。
