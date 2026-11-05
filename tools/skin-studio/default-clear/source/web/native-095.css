@@ -14,7 +14,9 @@
   --deadline:#A8501C; --deadline-ink:#7E3A13; --deadline-tint:rgba(168,80,28,.10);
   --memo:#4A5261; --memo-ink:#343B48; --memo-tint:rgba(74,82,97,.08);
   --glass-fill:rgba(255,255,255,.80); --glass-fill-strong:rgba(255,255,255,.96);
-  --month-grid-surface:rgba(255,255,255,.80);
+  --month-panel-fill:#F2F3F3; --month-panel-outline:rgba(195,202,216,.55);
+  --month-panel-shadow:0 1px 3px rgba(17,21,28,.28);
+  --month-grid-surface:#FDFDFE;
   --glass-blur:10px; --glass-rim-lo:rgba(11,18,32,.08); --glass-rim-hi:#fff;
   --glass-shadow:0 2px 8px rgba(22,34,55,.08); --glass-select:#D3EFE7;
   --shadow-card:0 1px 3px rgba(17,21,28,.08); --shadow-lift:0 8px 24px rgba(17,21,28,.18);
@@ -35,6 +37,8 @@ html.theme-dark {
   --memo:#B4BCCB; --memo-ink:#E6EAF2; --memo-tint:rgba(180,188,203,.14);
   --glass-fill:rgba(26,33,48,.82); --glass-fill-strong:rgba(26,33,48,.96);
   --glass-rim-lo:rgba(255,255,255,.12); --glass-shadow:0 2px 8px rgba(0,0,0,.22); --glass-select:#173B33;
+  --month-panel-fill:rgba(26,33,48,.70); --month-panel-outline:rgba(57,65,79,.55);
+  --month-panel-shadow:0 1px 4px rgba(0,0,0,.22);
   --month-grid-surface:rgba(26,33,48,.70);
   --shadow-card:0 1px 3px rgba(0,0,0,.3); --shadow-lift:0 8px 24px rgba(0,0,0,.45);
   --scrim:rgba(0,0,0,.58);
@@ -104,9 +108,8 @@ body[data-page="month"] #monthPage:not([hidden]),body[data-page="settings"] #set
 body[data-page="month"] #monthPage:not([hidden]) {padding-top:14px}
 body[data-page="memo"] #memoPage:not([hidden]) {display:flex;flex:1 1 auto;min-height:0;flex-direction:column;overflow:hidden;padding:32px 16px 0}
 body[data-page="month"] .clear-head,body[data-page="memo"] .clear-head,body[data-page="ai"] .clear-head,body[data-page="settings"] .clear-head {display:none}
-.month-calendar-panel {position:relative;isolation:isolate;margin:5px 0 0;padding:0;border:1px solid #C3CAD8;border-radius:28px;background:#F3F5FA;box-shadow:0 2px 7px rgba(17,21,28,.12)}
+.month-calendar-panel {position:relative;isolation:isolate;margin:5px 0 0;padding:0;border:1.5px solid var(--month-panel-outline);border-radius:28px;background:var(--month-panel-fill);box-shadow:var(--month-panel-shadow)}
 .month-calendar-panel::before {content:"";position:absolute;z-index:0;top:27px;right:auto;bottom:29px;left:50%;width:min(331px,100%);transform:translateX(-50%);border-radius:4px;background:var(--month-grid-surface);pointer-events:none}
-html.theme-dark .month-calendar-panel {border-color:#39414F;background:#171D27}
 .month-bar {position:relative;z-index:1;margin:0;padding:0;background:transparent;border-radius:0}
 .month-bar > button {width:48px;height:48px;background:transparent;color:var(--label);font-size:30px}
 .month-title-group {display:flex;align-items:center;justify-content:center;gap:0;min-width:132px}

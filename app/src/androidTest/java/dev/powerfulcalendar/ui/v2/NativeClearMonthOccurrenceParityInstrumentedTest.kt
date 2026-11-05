@@ -451,6 +451,9 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
     }
 
     private fun captureWindowScreenshot(web: WebView, name: String): File {
+        evaluate(web, "window.__native095ScreenshotFrameReady=false;" +
+            "requestAnimationFrame(()=>requestAnimationFrame(()=>window.__native095ScreenshotFrameReady=true));true")
+        awaitJs(web, "window.__native095ScreenshotFrameReady===true")
         val visualStateDrawn = CountDownLatch(1)
         compose.runOnUiThread {
             web.postVisualStateCallback(SystemClock.uptimeMillis(),
@@ -890,7 +893,11 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
                 const before=getComputedStyle(panel,'::before');
                 const beforeWidth=parseFloat(before.width),beforeTop=parseFloat(before.top),
                     beforeBottom=parseFloat(before.bottom);
-                return JSON.stringify({dpr:devicePixelRatio,viewport:{width:innerWidth,height:innerHeight},
+                const panelStyle=getComputedStyle(panel);
+                return JSON.stringify({dpr:devicePixelRatio,visualScale:visualViewport?.scale,
+                    rootZoom:getComputedStyle(document.documentElement).zoom,
+                    panelBorderWidth:panelStyle.borderTopWidth,
+                    viewport:{width:innerWidth,height:innerHeight},
                     page:rect('#monthPage'),panel:rect('.month-calendar-panel'),bar:rect('.month-bar'),
                     grid:rect('#monthGrid'),surface:{x:p.left+p.width/2-beforeWidth/2,
                         y:p.top+beforeTop,width:beforeWidth,height:p.height-beforeTop-beforeBottom},
@@ -920,8 +927,22 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
             assertEquals("CSS chip corner must match frozen GlassShapes.chip = 14.dp", "\"14px\"", radius)
             val gridSurface = evaluate(clearWeb,
                 "getComputedStyle(document.querySelector('.month-calendar-panel'),'::before').backgroundColor")
-            assertEquals("month grid pseudo-surface must use frozen light GlassPanel fill",
-                "\"rgba(255, 255, 255, 0.8)\"", gridSurface)
+            assertEquals("month grid face must preserve the measured frozen Native composite",
+                "\"rgb(253, 253, 254)\"", gridSurface)
+            assertEquals("outer panel fill must match the frozen Native month surface",
+                "\"rgb(242, 243, 243)\"",
+                evaluate(clearWeb, "getComputedStyle(document.querySelector('.month-calendar-panel')).backgroundColor"))
+            assertEquals("outer border must use outlineVariant at the frozen 0.55 alpha",
+                "\"rgba(195, 202, 216, 0.55)\"",
+                evaluate(clearWeb, "getComputedStyle(document.querySelector('.month-calendar-panel')).borderTopColor"))
+            assertEquals("Native 1dp outline rasterizes to three pixels on this 420dpi AVD",
+                "\"3\"",
+                evaluate(clearWeb, "Math.round(parseFloat(getComputedStyle(document.querySelector('.month-calendar-panel')).borderTopWidth)*devicePixelRatio).toString()"))
+            assertEquals("outer card corner must preserve the frozen 28dp card radius",
+                "\"28px\"",
+                evaluate(clearWeb, "getComputedStyle(document.querySelector('.month-calendar-panel')).borderTopLeftRadius"))
+            assertEquals("2dp Native elevation maps to the calibrated CSS shadow preset", "true",
+                evaluate(clearWeb, "getComputedStyle(document.querySelector('.month-calendar-panel')).boxShadow.includes('0px 1px 3px 0px')"))
             assertEquals("surface must align with frozen native fill start", "\"27px\"",
                 evaluate(clearWeb, "getComputedStyle(document.querySelector('.month-calendar-panel'),'::before').top"))
             assertEquals("surface must stop at frozen native fill lower edge", "\"29px\"",

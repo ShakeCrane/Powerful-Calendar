@@ -14,8 +14,9 @@ async function main(){
     "tools/skin-studio/default-clear/source/web/native-095.css"),"utf8");
   if(!nativeThemeCss.includes("--accent-soft:#DCE5FF; --on-accent-container:#0B2A66")||
       !nativeThemeCss.includes("--accent-soft:#1B3A7A; --on-accent-container:#DCE5FF")||
-      !nativeThemeCss.includes("--month-grid-surface:rgba(255,255,255,.80)")||
+      !nativeThemeCss.includes("--month-grid-surface:#FDFDFE")||
       !nativeThemeCss.includes("--month-grid-surface:rgba(26,33,48,.70)")||
+      !nativeThemeCss.includes("border:1.5px solid var(--month-panel-outline)")||
       !nativeThemeCss.includes(".month-cell.selected .month-count {color:inherit}"))
     throw Error("Frozen primary-container foreground mapping is incomplete");
   const profile=fs.mkdtempSync(path.join(reportDir,"chrome-profile-"));
@@ -117,6 +118,9 @@ async function main(){
         selectedColor:getComputedStyle(selected).color,
         dayColor:getComputedStyle(selected.querySelector('.month-day-number')).color,
         countColor:getComputedStyle(selected.querySelector('.month-count')).color,
+        panel:(()=>{const s=getComputedStyle(document.querySelector('.month-calendar-panel'));
+          return {fill:s.backgroundColor,border:s.borderTopColor,borderWidth:s.borderTopWidth,
+            radius:s.borderTopLeftRadius,shadow:s.boxShadow}})(),
         gridSurface:getComputedStyle(document.querySelector('.month-calendar-panel'),'::before').backgroundColor,
          gridSurfaceBox:(()=>{const s=getComputedStyle(document.querySelector('.month-calendar-panel'),'::before');
            return {top:s.top,bottom:s.bottom,width:s.width}})(),
@@ -125,6 +129,12 @@ async function main(){
     })()`,"Initial month state");
     if(initial.date!=="2026-10-22"||initial.dayCount!==31)
       throw Error("Unexpected initial month: "+JSON.stringify(initial));
+    if(initial.panel.fill!=="rgb(242, 243, 243)"||
+        initial.panel.border!=="rgba(195, 202, 216, 0.55)"||
+        initial.panel.borderWidth!=="1px"||initial.panel.radius!=="28px"||
+        !initial.panel.shadow.includes("1px 3px"))
+      throw Error("Month outer surface differs from frozen Native GlassPanel: "+
+        JSON.stringify(initial.panel));
     if(initial.selectedRadius!=="14px")
       throw Error("Selected month-day shape differs from frozen Native chip radius: "+
         JSON.stringify(initial));
@@ -134,8 +144,8 @@ async function main(){
         color!==expectedSelectedColor))
       throw Error("Selected month-day foreground differs from Native onPrimaryContainer: "+
         JSON.stringify(initial));
-    if(initial.gridSurface!=="rgba(255, 255, 255, 0.8)")
-      throw Error("Month grid glass surface differs from frozen 80% light GlassPanel: "+
+    if(initial.gridSurface!=="rgb(253, 253, 254)")
+      throw Error("Month grid surface composite differs from the measured frozen Native face: "+
         JSON.stringify(initial));
     if(initial.gridSurfaceBox.top!=="27px"||initial.gridSurfaceBox.bottom!=="29px"||
         initial.gridSurfaceBox.width!=="331px")
