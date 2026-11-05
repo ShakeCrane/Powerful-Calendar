@@ -7,22 +7,23 @@ OWNER_VISUAL_REFERENCE_APK: .local/android-test/artifacts/physical-qa/PowerCal-0
 OWNER_VISUAL_REFERENCE_APK_SHA256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
 WAVE2_START_HEAD: 3b54097d6383c0349b5d3d638c228320e3c8e22c
 WAVE3_START_HEAD: 82b456fd2bfc15df379fd15d967fac3da57b899d
-LATEST_CODE_HEAD: fcffd4635c139fdcaff9d045ee1afde4a1f3a44f (native 0.9.5 Memo first-pass parity; Memo remains PARTIAL)
-LATEST_VERIFIED_HEAD: fcffd4635c139fdcaff9d045ee1afde4a1f3a44f (974/974 JVM; source boundaries, assemble, lint, AndroidTest compile; API 35 same-AVD Native/Web Memo Open/Done screenshots and filter touch)
+LATEST_CODE_HEAD: 1e11116be0b22922988e8a0c777826ad0c7e8629 (Native 0.9.5 AI header and WebView safe-area parity slice; overall parity remains IN_PROGRESS)
+LATEST_VERIFIED_HEAD: 1e11116be0b22922988e8a0c777826ad0c7e8629 (parent 96fa0265 full gate 974/974; latest CSS package rebuilt, APK asset verified, API 35 WebView screenshot and bounds recaptured)
 CURRENT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
 TASK_STATUS: IN_PROGRESS
+PRODUCT_CUTOVER: HOLD
 TASK_BASE_HEAD: e41246d7ebe5b329adbdc657bd3e53735695efa1
-WORKING_APK_SHA256: 5AED08E4161F64E939A4C0F79C1B5A259B97982AF3AD1D7A2C1D3AF04A97F2EA
-WORKING_DEFAULT_SKIN_SHA256: D8469959DBA9DBF0DDE3B4A200B8981BB939CEE3884D6664E7D386D4F61C42F7
+WORKING_APK_SHA256: 996247646604CA935029920B5C2A2CA6CC1624ECF3C62B44A1CF6D1BA68546C0
+WORKING_DEFAULT_SKIN_SHA256: D9CFAD9FFD368D60BE6D75316952463FFF6D42BAD97DB3F116B526312275B6DB
 WORKING_DEFAULT_SKIN_ID: powercal-clear-default
 NATIVE_VISUAL_PARITY_AUDIT: docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md (inventory complete; implementation and full parity remain IN PROGRESS)
 PREVIOUS_TASK_STATE: Q-05 single-default startup migration and protected-branch cutover (PASS; public release remains HOLD)
-LAST_COMPLETED_TASK: Native 0.9.5 Memo parity slice (PARTIAL; overall visual parity task remains IN_PROGRESS)
-LAST_COMPLETED_COMMIT: fcffd4635c139fdcaff9d045ee1afde4a1f3a44f
+LAST_COMPLETED_TASK: Native 0.9.5 AI home and WebView safe-area parity slice (PARTIAL; only empty AI home shell verified)
+LAST_COMPLETED_COMMIT: 1e11116be0b22922988e8a0c777826ad0c7e8629
 LAST_ATTEMPTED_TASK: Native 0.9.5 visual and interaction parity migration (IN PROGRESS; see audit and latest Android evidence)
-LAST_ATTEMPTED_COMMIT: fcffd4635c139fdcaff9d045ee1afde4a1f3a44f (fix(skin): 对齐原生 Memo 空态与筛选布局)
+LAST_ATTEMPTED_COMMIT: 1e11116be0b22922988e8a0c777826ad0c7e8629 (AI header/safe-area alignment; see audit evidence)
 NEXT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
-NEXT_ACTION: Audit and implement the AI page against the frozen 0.9.5-rc.1 Native APK. Inventory its actual layout, states, and gestures; compare on the same isolated API 35 device and route all data operations through existing Core/Host APIs. Preserve the single powercal-clear-default package, Native recovery, and Product Cutover HOLD. Memo remains PARTIAL: empty Open/Done screens are paired; row completion, paging/detail, and editor/deck surfaces still need comparison.
+NEXT_ACTION: Continue the frozen Native 0.9.5 AI-page audit by comparing configuration and overflow states on the isolated API 35 AVD; do not save credentials, send AI content, or claim unseen states. AI empty-home shell is PARTIAL, and Memo remains PARTIAL (row completion, paging/detail, and editor/deck surfaces still need comparison). Product Cutover remains HOLD.
 LAST_TASK_EVIDENCE:
   NATIVE_095_ORIGINAL_APK_TIMELINE:
     status: PARTIAL (real WebView ACTIVITY fixture interaction/geometry passed; 1px raster deltas remain and other event kinds/timeline states are not signed off)

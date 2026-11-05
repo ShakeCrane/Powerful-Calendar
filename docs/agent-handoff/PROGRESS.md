@@ -1,3 +1,13 @@
+# Native 0.9.5 视觉/交互基准迁移续接（2026-11-05）
+
+- **状态：**总体视觉与交互迁移仍 `IN_PROGRESS`；本轮 AI 空首页及 WebView 系统栏视口 `PARTIAL`。Native 0.9.5-rc.1（冻结源码 `b1f7629f0c52812e1887443872f43aa6c49908c4`）是唯一视觉与交互基准；不以旧 Web Clear 或 Claude 概念稿验收。
+- **代码提交：**`96fa026594e8f085c6221c6bbda83a311829e779` 修复 API 35 WebView 顶边偏移并校正 AI/Memo 空态样式；`1e11116be0b22922988e8a0c777826ad0c7e8629` 微调 AI 标题排版。两个提交均已推送到施工分支。
+- **验证：**根视口改动后的完整串行 Gradle 门禁 `974/974` JVM PASS、源码边界、Debug APK、Lint、AndroidTest Kotlin 编译 PASS；之后的 CSS 变更通过 Studio 默认包测试 `2/2`、Node 语法检查、Debug assemble、正式包/APK 一致性验证和 API 35 实屏复核。最终 APK SHA-256 `996247646604CA935029920B5C2A2CA6CC1624ECF3C62B44A1CF6D1BA68546C0`；唯一默认包 SHA-256 `D9CFAD9FFD368D60BE6D75316952463FFF6D42BAD97DB3F116B526312275B6DB`。
+- **Android：**隔离 AVD `PowerCal_Native095_AI_20261105` / `emulator-5556`，API 35，1080×2400，420 dpi，WebView 124.0.6367.219。UIAutomator 复核 WebView bounds `[0,63][1080,2337]`；Native/Web AI 标题、副标题与空态文字实屏 bbox 接近。只启动并打开 AI 页，未发消息、上传文件、修改凭据；没有 Store 快照，因此不宣称 Store 哈希验收。
+- **证据：**`docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md` 的 AI/视口附表；`.local/android-test/reports/native095-parity-20261105/native095-ai-host-inset-full-gate.log`、`native095-ai-title-final2-assemble.log`、`ai-native-home.png`、`ai-web-final-paired-20261105.png`、`ai-web-final-window-20261105.xml`。Issue：`docs/issues/PC-ISSUE-SEPARATION-WEBVIEW-SAFE-AREA-20261105.md`。
+- **未完成：**AI 配置/溢出/聊天/附件/提案审核仍 `NOT TESTED`；Memo 行完成、分页/详情、编辑器/草稿浮层仍 `PARTIAL`；Settings、事件编辑器和系统操作仍需原生对照。无生产切换，Product Cutover `HOLD`。
+- **唯一下一动作：**继续同一冻结参考下的 AI 配置与溢出状态对照；不保存凭据、不发送内容，保持 Native 恢复路径和唯一默认包。
+
 # PowerCal 当前执行状态（R2）
 
 ## Wave 3 当前交接 — F-09（2026-11-04）

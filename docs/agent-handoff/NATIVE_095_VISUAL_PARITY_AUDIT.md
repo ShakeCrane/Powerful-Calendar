@@ -206,3 +206,20 @@ Owner 于 2026-11-05 明确将 **2026-10-27 冻结的 PowerCal 0.9.5-rc.1 原生
 本次只调整 Web 默认皮肤表现：Memo 返回箭头 SVG、Open/Done 空态沿用冻结 Native 文案、Native 样式表中的页面水平留白及空态字号/偏移。未修改 Core、Host、Native 恢复、Skin ID 或默认选择。最终串行 Gradle 门禁日志为 `.local/android-test/reports/native095-parity-20261105/memo-adjusted-final-gradle-gate.log`：两个源码边界、974/974 JVM（0 failures/errors/skips）、Debug assemble、lint 和 AndroidTest Kotlin compile 均通过；`build_default_clear.py --verify --apk ...` 通过。Studio 分发定向测试 2/2 通过，`node --check` 用于本页 JS 的语法检查通过。
 
 **本页状态为 PARTIAL。**冻结空态与筛选状态已在同设备实屏比对，空态边界已收敛到约 1px；Memo 行样式和完成状态业务触控、分页/详情、编辑浮层与草稿恢复尚未完成原生逐项配对。下一项按原生页面清单进入 AI 页面；产品 Cutover 仍为 HOLD。
+
+## 2026-11-05 WebView 系统栏视口与 AI 首页配对（PARTIAL）
+
+本切片继续以冻结原生 0.9.5-rc.1 为基准。参考 APK SHA-256 为 `DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76`，冻结源码 SHA 为 `b1f7629f0c52812e1887443872f43aa6c49908c4`。AI 的 Native 截图与最终 Web 截图来自隔离 AVD `PowerCal_Native095_AI_20261105` / `emulator-5556`，API 35、1080×2400、420 dpi；当前系统 WebView 为 `com.google.android.webview 124.0.6367.219`。升级安装使用 `adb install -r`，未清除应用数据。
+
+| 对照项 | 实际结果 |
+|---|---|
+| Host 内容视口 | 旧 `statusBarsPadding()` 在该 API 35 edge-to-edge AVD 上将 WebView 顶边放在 y=128；系统默认状态栏可见内容边界为 y=63。Host 改为优先读 `status_bar_height_default`，UIAutomator 最终测得 WebView bounds `[0,63][1080,2337]`，底边避开导航栏。该修正统一了 Timeline 与 AI 页面原点；Native/Compose 与 Web 的页面顶边现已对齐。 |
+| AI 标题 | 原生墨迹 bbox `(32,101)–(211,155)`；Web `(32,101)–(213,154)`。字号和字宽已调整到接近原生。 |
+| AI 副标题 | 原生 `(33,175)–(398,201)`；Web `(33,175)–(397,202)`。 |
+| AI 空态说明 | 原生 `(50,263)–(1021,336)`；Web `(49,264)–(1021,337)`。两行内容与换行相同，约 1px 的边界差异保留为字体栅格误差，不据此宣称整页 PASS。 |
+| 同设备截图 | Native [ai-native-home.png](../../.local/android-test/worktrees/skin-single-default-closure/.local/android-test/reports/native095-parity-20261105/ai-native-home.png)，SHA-256 `14201DF4234A4C268110640061FAE9AFEDEF2E59DE6E5F297E2AD965BF75454D`；最终 Web [ai-web-final-paired-20261105.png](../../.local/android-test/worktrees/skin-single-default-closure/.local/android-test/reports/native095-parity-20261105/ai-web-final-paired-20261105.png)，SHA-256 `931A44AB20E4D6CFD8458C4439AC1B70D41CCA6B97BADC70DFA71BEEA1D9A871`。UIAutomator 结构记录 [ai-web-final-window-20261105.xml](../../.local/android-test/worktrees/skin-single-default-closure/.local/android-test/reports/native095-parity-20261105/ai-web-final-window-20261105.xml)。 |
+| Memo 空态回归 | 系统栏修正后增加 Memo 内容区上边距，冻结 Native 空态 bbox `(352,1254)–(731,1293)`；当前 Web `(351,1253)–(731,1291)`。参考图 `memo-native-empty.png` 与 Web 图 `memo-web-final-inset-20261105.png` 的哈希及先前触控证据保留在上一节记录。行完成、分页/详情和编辑器/草稿浮层仍未签核。 |
+| 构建与包 | 根视口 Kotlin 修正提交 `96fa026594e8f085c6221c6bbda83a311829e779` 后，完整串行 Gradle 门禁 `BUILD SUCCESSFUL`，JVM `974/974`，0 failure/error/skip；源码边界、assemble、lint、AndroidTest Kotlin compile 均通过。随后仅修改默认皮肤 CSS，定向 `test_single_default_distribution.py` 为 `2/2 PASS`，Node 语法检查、Debug assemble、正式包校验及 AVD 实屏复核通过。最终 APK SHA-256 `996247646604CA935029920B5C2A2CA6CC1624ECF3C62B44A1CF6D1BA68546C0`；唯一包 `powercal-clear-default.pcskin` 为 10 文件、408148 字节，源码/APK 资源 SHA-256 同为 `D9CFAD9FFD368D60BE6D75316952463FFF6D42BAD97DB3F116B526312275B6DB`。 |
+| 交互和数据边界 | 实际操作只冷启动应用并点开 AI 底栏；没有点击配置、发送消息、上传文件或调用服务商。没有执行 Store 快照测试，因此只记录“未触发业务写入入口”，不声称已证明 Store 哈希不变。Native 恢复、Core 行为、包 ID 和选择偏好未改。 |
+
+**AI 页面仍为 PARTIAL。**本轮只验证空首页的框架、文字排版、WebView 视口和底栏入口；Native 配置面、溢出菜单、聊天记录/附件/消息、AI 提案审核以及相关失败状态仍需逐项对照。其余 Settings、事件编辑器、草稿审核与系统操作也尚未完成冻结 Native 配对。当前默认 Clear 仍是唯一 `.pcskin`，Native 仅保留既有恢复用途；Product Cutover 保持 HOLD。
