@@ -2669,3 +2669,11 @@ API 35 emulator-5570 真实触控 Native Compose 与打包 Clear WebView 的无 
 - Internal Release Candidate: `dist/powercal/PowerCal-Release-Candidate-2026-11-05.apk`, SHA-256 `EC27EBE7A85FD117CB83F846F26CD4D6A374D4908F09001FC051231A8592C340`, built from code commit `b71cf0eedbd6dba9dafe0d9215ab33457258d045`. APK contains exactly one unchanged default `.pcskin`; source/APK package verification passed.
 - No Calendar Store behavior, frozen Core, default skin source, or factory asset changed. The final APK is a Debug internal RC, not a public release. TalkBack traversal, physical/OEM reminder behavior, live AI provider reliability and full SEP sign-off remain incomplete; Product Cutover remains HOLD.
 - Independent issue report: `docs/issues/PC-ISSUE-RUNTIME-EMERGENCY-RECOVERY-EDITOR-CHECKPOINT.md`. Next task: V-01 visual asset takeover; Q-01/Q-02 remain unstarted.
+
+## Native 0.9.5 Month outer GlassPanel visual slice (2026-11-05)
+
+- **PASS for the outer panel slice; Month page remains PARTIAL.** Calibrated the default Web v3 Month outer surface, outline, radius and shadow against the frozen 0.9.5-rc.1 screenshot. The left-side panel ROI on the same API 35 AVD has MAE 0.786/255 and P95 channel delta 2; Native and Web borders each span three device pixels.
+- Serial source-boundary, Debug assemble, Lint, AndroidTest compile/package gate PASS. Browser month-selection E2E PASS; default distribution tests 2/2; Android instrumentation 1/1 with a trusted day touch, visible `MonthFixture` and unchanged isolated Store snapshot. No JVM suite run for this CSS/AndroidTest-only change; the previously recorded SQLite `SQLITE_BUSY` failure remains unresolved.
+- APK SHA-256 `B7659FC55A3188D2915940FF879702E0FC6658E3750F0ADA0D5BBCE7C4DA7F37`; single default `.pcskin` SHA-256 `0AE888C5BC9CB7335AC2499A6A1D85DE11EB989BF37EEE9855A92411CF2B203C`, source/APK bytes identical. Code commit `c268902482d14b7d4462c440253e0bf9f2493454`.
+- Evidence: `.local/android-test/reports/native095-month-outer-panel-20261105/`; independent issue report: `docs/issues/PC-ISSUE-SEPARATION-NATIVE-MONTH-OUTER-GLASSPANEL-20261105.md`.
+- Next: migrate the Month agenda event-card surface and spacing, then continue native baseline comparisons. Month full-page and SEP parity remain incomplete; Native recovery is intact and Product Cutover remains HOLD.

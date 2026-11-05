@@ -7,23 +7,23 @@ OWNER_VISUAL_REFERENCE_APK: .local/android-test/artifacts/physical-qa/PowerCal-0
 OWNER_VISUAL_REFERENCE_APK_SHA256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
 WAVE2_START_HEAD: 3b54097d6383c0349b5d3d638c228320e3c8e22c
 WAVE3_START_HEAD: 82b456fd2bfc15df379fd15d967fac3da57b899d
-LATEST_CODE_HEAD: 4a0a3f5303e13f682abf9ccbea2875d988f15a68 (Month inner glass-grid fill color and measured pixel bounds match frozen GlassPanel within about 2 px; overall Native 0.9.5 parity remains IN_PROGRESS)
-LATEST_VERIFIED_HEAD: 4a0a3f5303e13f682abf9ccbea2875d988f15a68 (Browser and API 35 WebView checks pass; selected-date screenshot synchronized; APK/package byte match; full JVM was not rerun for this visual/test slice and prior full gate had one SQLite lock failure)
+LATEST_CODE_HEAD: c268902482d14b7d4462c440253e0bf9f2493454 (Month outer GlassPanel fill, outline, 28dp radius and edge shadow calibrated against frozen Native screenshot; overall Native 0.9.5 parity remains IN_PROGRESS)
+LATEST_VERIFIED_HEAD: c268902482d14b7d4462c440253e0bf9f2493454 (Browser and API 35 WebView checks pass; screenshot has synchronized November 5/MonthFixture state; APK/package byte match; full JVM was not run for this CSS/test slice and prior full gate had one SQLite lock failure)
 CURRENT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
 TASK_STATUS: IN_PROGRESS
 PRODUCT_CUTOVER: HOLD
 TASK_BASE_HEAD: e41246d7ebe5b329adbdc657bd3e53735695efa1
-WORKING_APK_SHA256: 896D5BAB6A01A145FDA97D53706DCB7DF30E31CE77B3E0998C89730C7B2278D6
-WORKING_DEFAULT_SKIN_SHA256: 0B41CAC7FA5BF65C5A5D64D97AA740D6656B93560F1269EC59359B1B9C6B5331
+WORKING_APK_SHA256: B7659FC55A3188D2915940FF879702E0FC6658E3750F0ADA0D5BBCE7C4DA7F37
+WORKING_DEFAULT_SKIN_SHA256: 0AE888C5BC9CB7335AC2499A6A1D85DE11EB989BF37EEE9855A92411CF2B203C
 WORKING_DEFAULT_SKIN_ID: powercal-clear-default
 NATIVE_VISUAL_PARITY_AUDIT: docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md (inventory complete; implementation and full parity remain IN PROGRESS)
 PREVIOUS_TASK_STATE: Q-05 single-default startup migration and protected-branch cutover (PASS; public release remains HOLD)
-LAST_COMPLETED_TASK: Month inner glass-grid fill color and pixel-geometry parity slice (PASS; Month page remains PARTIAL)
-LAST_COMPLETED_COMMIT: 4a0a3f5303e13f682abf9ccbea2875d988f15a68
+LAST_COMPLETED_TASK: Month outer GlassPanel material and physical-edge parity slice (PASS; Month page remains PARTIAL)
+LAST_COMPLETED_COMMIT: c268902482d14b7d4462c440253e0bf9f2493454
 LAST_ATTEMPTED_TASK: Native 0.9.5 visual and interaction parity migration (IN PROGRESS; see audit and latest Android evidence)
-LAST_ATTEMPTED_COMMIT: 4a0a3f5303e13f682abf9ccbea2875d988f15a68 (Month inner glass-grid fill color and geometry slice; see Issue report and audit appendix)
+LAST_ATTEMPTED_COMMIT: c268902482d14b7d4462c440253e0bf9f2493454 (Month outer GlassPanel material slice; see Issue report and audit appendix)
 NEXT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
-NEXT_ACTION: 对照冻结 Native GlassPanel 测量并迁移 Month 外层面板填充、outlineVariant 描边和阴影；agenda 卡片表面/间距另做一片。内层月格玻璃面的同设备像素边界已对齐（Native #FDFDFE bbox x105..973 y338..1235；Web x107..974 y338..1234）。Month 和 AI 仍 PARTIAL；原 APK 的 AI 消息菜单截图、附件授权、提案审核和错误/重试仍未完成。Product Cutover 继续 HOLD。
+NEXT_ACTION: 移植 Month agenda 事件卡片的冻结原生表面与间距，并保留重复实例/触控目标回归。外层面板实屏侧边 ROI MAE 0.786/255、P95 通道差 2，Native 与 Web 描边均为 3 个设备像素；日格中心玻璃面和外层面板窄切片已 PASS。Month 整页与 AI 仍 PARTIAL；原 APK 的 AI 消息菜单截图、附件授权、提案审核和错误/重试仍未完成。完整 JVM 本切片未运行，先前单个 SQLite SQLITE_BUSY 仍需后续解决。Product Cutover 继续 HOLD。
 LAST_TASK_EVIDENCE:
   NATIVE_095_MONTH_GRID_GLASS_SURFACE:
     status: PASS (inner fill color and pixel extent within about 2 px; outer Month and agenda remain PARTIAL)
@@ -37,6 +37,19 @@ LAST_TASK_EVIDENCE:
     default_skin_sha256: 0B41CAC7FA5BF65C5A5D64D97AA740D6656B93560F1269EC59359B1B9C6B5331 (single APK entry; byte-identical to source)
     evidence: .local/android-test/reports/native095-month-grid-surface-20261105/manifest.md; docs/issues/PC-ISSUE-SEPARATION-NATIVE-MONTH-GRID-GLASS-SURFACE-20261105.md
     verified_geometry: ROI x80..1000/y300..1300 exact #FDFDFE bbox Native (105,338)-(973,1235); Web (107,338)-(974,1234), edges within 2 px; earlier screenshot had stale selected-date composition and is superseded by synchronized capture
+  NATIVE_095_MONTH_OUTER_GLASS_PANEL:
+    status: PASS (outer panel fill, outline, 28dp radius and side shadow profile; Month page remains PARTIAL)
+    code_commit: c268902482d14b7d4462c440253e0bf9f2493454
+    reference_source: b1f7629f0c52812e1887443872f43aa6c49908c4
+    reference_apk_sha256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
+    tests: browser CDP month-selection E2E PASS; distribution 2/2; JS syntax PASS; source boundaries, assembleDebug, lintDebug, AndroidTest compile/package PASS; targeted API 35 instrumentation 1/1; no JVM suite run for CSS/test-only changes
+    android: isolated API 35 AVD PowerCal_Native095_Parity_20261105 / emulator-5580, 1080x2400, 420dpi, WebView 124.0.6367.219; trusted date touch, MonthFixture visible, Store snapshot unchanged
+    screenshots: Native SHA 9915F9DFF8D1F421F2233F6BEBB38CCBA5D7A44F33C5CEA092BD19C6F5B8B59A; synchronized Web SHA D0AD6368B24434BBA64A84C9593ECABC22E114FCEC54FF6B496CF9CAC9932D86
+    pixel_compare: side ROI x22..35/y600..1200 MAE 0.786/255, P95 per-channel delta 2; border x32..34 is 3 physical pixels on both captures
+    apk_sha256: B7659FC55A3188D2915940FF879702E0FC6658E3750F0ADA0D5BBCE7C4DA7F37
+    default_skin_sha256: 0AE888C5BC9CB7335AC2499A6A1D85DE11EB989BF37EEE9855A92411CF2B203C (one APK entry; source/APK bytes match)
+    evidence: .local/android-test/reports/native095-month-outer-panel-20261105/; docs/issues/PC-ISSUE-SEPARATION-NATIVE-MONTH-OUTER-GLASSPANEL-20261105.md
+    limitations: agenda event-card surface/spacing, dark-theme panel comparison and complete Month parity remain open; previous full JVM gate has one SQLite SQLITE_BUSY failure; Product Cutover HOLD
   NATIVE_095_MONTH_SELECTION_COLOR:
     status: PASS (selected date number/count foreground only; Month page remains PARTIAL)
     code_commit: 35c294d445a4280166cdd7d3de0030efaba04d7f
