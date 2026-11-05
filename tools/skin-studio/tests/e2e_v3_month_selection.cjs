@@ -117,7 +117,9 @@ async function main(){
         selectedColor:getComputedStyle(selected).color,
         dayColor:getComputedStyle(selected.querySelector('.month-day-number')).color,
         countColor:getComputedStyle(selected.querySelector('.month-count')).color,
-        gridSurface:getComputedStyle(document.querySelector('#monthGrid'),'::before').backgroundColor,
+        gridSurface:getComputedStyle(document.querySelector('.month-calendar-panel'),'::before').backgroundColor,
+         gridSurfaceBox:(()=>{const s=getComputedStyle(document.querySelector('.month-calendar-panel'),'::before');
+           return {top:s.top,bottom:s.bottom,width:s.width}})(),
         onAccentContainer:getComputedStyle(document.documentElement)
           .getPropertyValue('--on-accent-container').trim()}:null;
     })()`,"Initial month state");
@@ -134,6 +136,10 @@ async function main(){
         JSON.stringify(initial));
     if(initial.gridSurface!=="rgba(255, 255, 255, 0.8)")
       throw Error("Month grid glass surface differs from frozen 80% light GlassPanel: "+
+        JSON.stringify(initial));
+    if(initial.gridSurfaceBox.top!=="27px"||initial.gridSurfaceBox.bottom!=="29px"||
+        initial.gridSurfaceBox.width!=="331px")
+      throw Error("Month grid surface bounds differ from measured frozen Native fill geometry: "+
         JSON.stringify(initial));
     const initialCamera=await evaluate("simulatedState().timeline.anchorMillis");
 

@@ -450,7 +450,18 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
         compose.waitUntil(30_000) { evaluate(web, condition) == "true" }
     }
 
-    private fun captureWindowScreenshot(name: String): File {
+    private fun captureWindowScreenshot(web: WebView, name: String): File {
+        val visualStateDrawn = CountDownLatch(1)
+        compose.runOnUiThread {
+            web.postVisualStateCallback(SystemClock.uptimeMillis(),
+                object : WebView.VisualStateCallback() {
+                    override fun onComplete(requestId: Long) {
+                        visualStateDrawn.countDown()
+                    }
+                })
+        }
+        assertTrue("WebView visual state must be drawn before screenshot capture",
+            visualStateDrawn.await(10, TimeUnit.SECONDS))
         InstrumentationRegistry.getInstrumentation().waitForIdleSync()
         val file = File(requireNotNull(compose.activity.externalCacheDir), name)
         val bitmap = requireNotNull(
@@ -868,8 +879,24 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
             )
             SkinPackageManager(context).select("powercal-clear-default")
             val clearWeb = attachClearMonth(context, store).also { web = it }
-            tapClear(clearWeb, ".clear-tabbar [data-action='month']")
+            evaluate(clearWeb,
+                "document.querySelector('.clear-tabbar [data-action=\\\"month\\\"]')?.click();true")
             awaitJs(clearWeb, "!document.querySelector('#monthPage').hidden")
+            val monthGeometry = evaluate(clearWeb, """(()=>{
+                const rect=s=>{const r=document.querySelector(s)?.getBoundingClientRect();return r?{
+                    x:r.x,y:r.y,width:r.width,height:r.height,top:r.top,bottom:r.bottom}:null};
+                const grid=document.querySelector('#monthGrid'),r=grid.getBoundingClientRect();
+                const panel=document.querySelector('.month-calendar-panel'),p=panel.getBoundingClientRect();
+                const before=getComputedStyle(panel,'::before');
+                const beforeWidth=parseFloat(before.width),beforeTop=parseFloat(before.top),
+                    beforeBottom=parseFloat(before.bottom);
+                return JSON.stringify({dpr:devicePixelRatio,viewport:{width:innerWidth,height:innerHeight},
+                    page:rect('#monthPage'),panel:rect('.month-calendar-panel'),bar:rect('.month-bar'),
+                    grid:rect('#monthGrid'),surface:{x:p.left+p.width/2-beforeWidth/2,
+                        y:p.top+beforeTop,width:beforeWidth,height:p.height-beforeTop-beforeBottom},
+                    firstCell:rect('#monthGrid .month-cell'),lastCell:rect('#monthGrid .month-cell:last-of-type')});
+            })()""")
+            println("NATIVE_095_MONTH_WEB_GEOMETRY=$monthGeometry")
             tapClear(clearWeb, "#monthYearTitle")
             awaitJs(clearWeb, "document.querySelector('#monthYearPickerDialog')?.open===true")
             evaluate(clearWeb, "(()=>{const year=document.querySelector('#monthYear');" +
@@ -892,9 +919,15 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
                 "getComputedStyle(document.querySelector('#monthGrid .month-cell.selected')).borderTopLeftRadius")
             assertEquals("CSS chip corner must match frozen GlassShapes.chip = 14.dp", "\"14px\"", radius)
             val gridSurface = evaluate(clearWeb,
-                "getComputedStyle(document.querySelector('#monthGrid'),'::before').backgroundColor")
+                "getComputedStyle(document.querySelector('.month-calendar-panel'),'::before').backgroundColor")
             assertEquals("month grid pseudo-surface must use frozen light GlassPanel fill",
                 "\"rgba(255, 255, 255, 0.8)\"", gridSurface)
+            assertEquals("surface must align with frozen native fill start", "\"27px\"",
+                evaluate(clearWeb, "getComputedStyle(document.querySelector('.month-calendar-panel'),'::before').top"))
+            assertEquals("surface must stop at frozen native fill lower edge", "\"29px\"",
+                evaluate(clearWeb, "getComputedStyle(document.querySelector('.month-calendar-panel'),'::before').bottom"))
+            assertEquals("visible fill width must match measured frozen native bounds", "\"331px\"",
+                evaluate(clearWeb, "getComputedStyle(document.querySelector('.month-calendar-panel'),'::before').width"))
             val selectedForegroundMatchesNative = evaluate(clearWeb, """(()=>{
                 const selected=document.querySelector('#monthGrid .month-cell.selected');
                 const expected=getComputedStyle(document.documentElement)
@@ -911,7 +944,7 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
                     "document.querySelector('#monthAgenda .agenda-event-title')?.textContent.includes('MonthFixture')"))
             val bounds = evaluate(clearWeb, "(()=>{const r=document.querySelector('#monthGrid .month-cell.selected')" +
                 ".getBoundingClientRect();return JSON.stringify({x:r.x,y:r.y,width:r.width,height:r.height})})()")
-            captureWindowScreenshot("native095-month-web-selected-20261105.png")
+            captureWindowScreenshot(clearWeb, "native095-month-web-selected-20261105.png")
             assertEquals("month selection must not write Calendar Store data", countsBefore, listOf(
                 store.all().size.toLong(), store.draftCount(), store.pendingCount().toLong(),
                 store.commitCount(), store.identityCount(), store.nextSequencePreview()
@@ -919,7 +952,7 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
             println("NATIVE_095_MONTH_SELECTED_SHAPE radius=$radius gridSurface=$gridSurface " +
                 "foregroundMatchesNative=" +
                 "$selectedForegroundMatchesNative bounds=$bounds date=$selectedDate " +
-                "fixture=MonthFixture trustedTouch=true storeUnchanged=true")
+                "geometry=$monthGeometry fixture=MonthFixture trustedTouch=true storeUnchanged=true")
         } finally {
             compose.runOnUiThread {
                 compose.activity.setContent { }
