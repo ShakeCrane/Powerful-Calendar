@@ -27,7 +27,7 @@ Owner 于 2026-11-05 明确将 **2026-10-27 冻结的 PowerCal 0.9.5-rc.1 原生
 |---|---|---|---|
 | 应用壳 / 主导航 | 冻结 Native NativePowerNavigation 固定四项：时间轴、日历、AI 助手、设置；Memo 从时间轴顶部入口打开。时间轴标题行提供品牌、日期、今日、Memo/待处理、日历、草稿与新建入口。 | 当前 Web v3 也显示四项主导航，Memo 保留为独立 Host 路由并由顶部快捷入口到达；最新真实截图 current-web-native095-timeline-final.png、current-web-native095-ai-final.png 显示了 Native 风格标题行、底栏与选中态。 | 共享壳已经接近冻结结构；剩余差异以同一时刻/设备的图标墨迹、边界和触控矩形对照。早期五项 Clear 底栏截图是历史快照，不能代表当前 Web。 |
 | 时间轴 | NativeTimelineScreen：中心垂直时间尺、ALARM 左翼与 ACTIVITY/DEADLINE 右翼、真实时间区间、蓝色现在标记、框外标题、按实际文字矩形贪心折叠、双翼滚动/相机/缩放、双击时间尺复位 24 小时、今日定位本地中午、事件点击、受阻提示与四类新建。 | 当前 renderTimeline、title-folding.js、.timelineWing/.timelineLanes 通过现有正式投影/Host；最新 current-web-native095-timeline-final.png 已采用 Native 页面背景、标题、控制行与四项底栏。固定 ACTIVITY 夹具已测折叠触控和 Camera。 | 同数据 ACTIVITY 固定夹具的事件行/填色/主要文字位置接近，仍有约 1px 横向边界与字形栅格差。完整 ALARM、DEADLINE、重复实例、长标题/多泳道、大字体与空/忙/错误状态未签核；Timeline 整页仍 PARTIAL。 |
-| 月历 | 冻结 Native Month：保留 Camera、今天、前后月、年份/月选择、横向切月、七列日格、日期/事件/重复实例选择与跳转时间轴。 | Web v3 的月份/日期投影与 agenda 继续使用既有 Host/Core；本轮依据同一隔离 API 35 AVD 的原始 APK 与 WebView 截图，对齐所选日期标题与 agenda 事件卡片材质、排版和间距。 | 已完成窄切片：卡面 #F6F8FC、20px 圆角、无阴影、16px 内边距、事件类型色、标题/摘要/序号字体行高、卡片间距及日期标题样式均有 computed-style 和 Android 断言；Native/Web 卡面 bbox 纵向差 2px、右边界差 3px，ROI MAE 4.583、P95 通道差 2。完整 Month 仍 PARTIAL：底部动作按钮、年月控件/导航完整触控、深色主题与全部状态组合尚未签核；重复实例既有功能证据不替代本轮视觉全页验收。 |
+| 月历 | 冻结 Native Month：保留 Camera、今天、前后月、年份/月选择、横向切月、七列日格、日期/事件/重复实例选择与跳转时间轴。 | Web v3 的月份/日期投影与 agenda 继续使用既有 Host/Core；以冻结原始 APK 对照同一隔离 API 35 WebView。 | 已完成窄切片：agenda 卡片/日期标题、底部操作按钮、年份/月选择弹窗的面板内容/焦点/取消/遮罩/选择触控各自有实屏证据。弹窗边界约差 1px，Core Store 不变。仍 PARTIAL：Android 系统状态栏/导航栏未随 Web 对话框压暗；月格/agenda 仍有已记录的细微 raster 差；深色、空态/密集态、TalkBack 和完整 Month 状态矩阵未签核。 |
 | Memo / 待办 | NativeMemoCenterScreen：返回与新增无日期 Memo、Open/Done、完成后可撤销、行内完成/撤销、标题打开编辑、分页；重复待办范围由 Host 提供。 | 当前 memoPage/renderMemo 采用同一返回、新增、完成筛选、分页和四项底栏；真实 WebView 空态截图 current-web-native095-memo-final.png 与 Native 结构接近。 | 空态文字基线/垂直位置、列表分隔线和行密度仍需固定数据对照；完整行点击、完成撤销和分页虽有旧 F-04 证据，未在本轮以相同 Native/Web fixture 重放。Memo 整页 PARTIAL。 |
 | AI 聊天 | NativeAiChatScreen：标题/副标题、配置、待处理菜单、消息列表、消息长按菜单、附件“+”、输入/发送、忙碌状态和独立提案审核卡。 | 当前 aiPage/renderChat 已有 Native 风格标题、待处理溢出菜单、附件入口和 Host 消息动作；消息角色标签与长按菜单已补齐，Web 状态仅暴露 proposalAvailable 布尔值，Host 按 messageId/revision 取规范消息。 | 该消息动作子集 Android 触控测试通过；本次未取得原始 APK 消息菜单的实屏截图，故 Native/Web 菜单像素对照 NOT TESTED。AI 历史、附件授权、提案审核、错误/重试仍未逐状态签核；当前额外发送说明文字与 Native 空态文案布局有差异。AI 页面 PARTIAL。 |
 | 设置 / 工具 | 冻结 NativeToolsPage 含资料、AI 受保护配置、通知/精确闹钟、提醒重建/诊断、系统日历导入、只读迁移、备份恢复、ICS 导出。 | 当前普通 settings Host action 路由至 Page.SETTINGS 并由 Web settingsPage/renderSettings 表现；仅显式 nativeSettings 进入 Page.TOOLS 安全恢复。AI 密钥输入为 Host Compose 受保护表面，不投影给 Web。 | 真实 Web 设置截图保持四项底栏和原生式卡片顺序；卡片白底/阴影与 Native 轮廓面、资料编辑入口和间距仍不同。原始 Native 皮肤目录是已退役产品入口，不得移植；系统 SAF、权限和可信密钥面继续归 Host。 |
@@ -372,3 +372,22 @@ CSS computed-style 与 Android WebView 断言确认浅色卡面 #F6F8FC、20px �
 | 证据与变更 | 本地日志/图像在 `.local/android-test/reports/native095-month-actions-20261106/`；Issue `docs/issues/PC-ISSUE-SEPARATION-NATIVE-MONTH-ACTIONS-20261106.md`；代码提交 `b8376da7bb46c2ae41d8a86618998a282b16d816`。仅修改默认 Skin Month 结构/CSS、重建工厂包和对应浏览器/Android 样式测试；无 Core、Host、Native、Store 或 ID 变更。 |
 
 **结论与下一步：**创建及跳转按钮这一视觉/交互窄切片 `PASS`，捕获到的残余垂直差为 1 个物理像素。Month 整页仍 `PARTIAL`；下一项仅审计并对照年份/月选择控件及选择对话框的外观、状态与触控。深色主题、空态/密集态及其它 Native 页面仍未签核。Native 独立安全恢复不变，Product Cutover 仍 `HOLD`。
+
+## 2026-11-06 年份/月选择器冻结 Native 对照（面板与控件交互窄切片 PASS；系统栏 PARTIAL）
+
+冻结参考仍为 Native 0.9.5-rc.1 源码 `b1f7629f0c52812e1887443872f43aa6c49908c4` 和原始 APK SHA-256 `DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76`。实际校验文件的 SHA-256 为 `DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76`。Native 年份和月份弹窗来自 `native-skin/.../MonthScreen.kt:170-215` 的 `AlertDialog`，主题表面由 `NativeOverlaySkin.kt:48` 提供；默认 Skin 实现位于 `default-clear/source/web/index.html`、`app.js` 与 `native-095.css`。
+
+Web `showModal()` 后将焦点放在 dialog 容器本身，打开时不把焦点移到年份输入框、不弹出 IME。年份范围 1900–2100；范围外禁用“跳转”。“取消/关闭”、真实触控遮罩关闭和选择月份仍走已有月份功能 action。没有新增运行时或业务权限。
+
+| 验证项 | 实际结果 |
+|---|---|
+| 参考与运行时 | 原始冻结 APK 与新版 Web v3 均在隔离 API 35 AVD `PowerCal_Native095_Parity_20261105` / `emulator-5580` 实际截图，1080×2400、420 dpi；Android WebView `124.0.6367.219`。原图和最终 Web 图哈希列于 Issue 与本地 manifest。 |
+| 面板与内容几何 | `#E7EBF4` 面板掩模年份边界 Native `(120,924)-(959,1540)`、Web `(121,925)-(960,1539)`；月份 Native `(120,739)-(959,1724)`、Web `(121,740)-(960,1725)`。320 CSS px 宽、横向居中；按实测垂直中心偏移 +12 CSS px；圆角 28px，遮罩 `rgba(0,0,0,.6)`。WebView 剩余约 1 物理像素 raster 偏差。 |
+| 焦点、输入和交互 | Android instrumentation `monthYearMonthDateAndTodayTransitionsMatchWithoutMovingTimelineOrWritingStore` 1/1 PASS。打开不自动启动 IME；1800 年输入禁用跳转；年份取消、月份关闭、可信触控遮罩关闭均保持所选月份和 Store；有效年份跳转及月份选择通过真实触控。 |
+| Store 与 Camera | 弹窗打开、取消、遮罩关闭及月份选择不创建/编辑/删除事件或草稿，不改变 commitCount、revision、event sequence；仅月份导航更新月历状态。Timeline Camera 在选择器打开/关闭过程中不变。 |
+| 构建与自动验证 | 完整串行 Gradle 门禁最终 PASS；JUnit XML 为 975/975、0 failures/errors/skips；源码边界、assembleDebug、Lint、AndroidTest 编译通过。最终设备用例 1/1。Chromium `e2e_v3_month_selection.cjs` PASS；Node syntax PASS；默认分发测试 2/2 PASS。正式包校验 PASS。 |
+| 默认包 | APK SHA-256 `6EA8DE42ABB70D75B458DF9E747449486161D2D6FE3C06C3127A8AAE9C867CA3`。APK 中唯一 `powercal-clear-default.pcskin` 与源包字节一致：10 files、409855 bytes、SHA-256 `E585A83C1F5F2560297E66AA754B4F1DEFB4B760661475182581400E9C4D44F2`。 |
+| 系统栏差异 | 当前 Web `<dialog>::backdrop` 只遮盖 WebView，不改变 Android 状态栏/导航栏。屏幕点 `(500,20)`、`(500,55)`、`(500,2350)`、`(500,2380)` Native 采样 `(97,98,100)`，Web `(250,250,250)`。这仍需 Host/平台层遮罩；因此选择器整体还不能标为完全等价。 |
+| 证据 | `.local/android-test/reports/native095-month-picker-audit-20261106/manifest.md`；Issue `docs/issues/PC-ISSUE-SEPARATION-NATIVE-MONTH-YEAR-PICKERS-20261106.md`。 |
+
+**状态与后续：**年份/月选择弹窗的面板内容、焦点、校验、取消/遮罩关闭和真实选择触控这一窄切片 `PASS`；Android 系统栏 dim 生命周期 `PARTIAL`；Month 整页继续 `PARTIAL`，Native 0.9.5 迁移 `IN_PROGRESS`。后续应先为 Web 模态弹窗建立 Host/system-bar scrim 对照与恢复测试，再继续 Month 其它未闭合状态。此前“下一动作是年月选择器”的历史记录保留为当时状态，由本节更新。

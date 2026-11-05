@@ -1,5 +1,15 @@
 # Native 0.9.5 视觉/交互基准迁移续接（2026-11-05）
 
+## 最新窄切片：Native 冻结年月选择器（2026-11-06）
+
+- **状态：**弹窗面板/内容/焦点/校验/关闭与实际选择触控窄切片 PASS；Android 系统栏遮罩仍 PARTIAL；Month 整页 PARTIAL，Native 视觉迁移 IN_PROGRESS，Product Cutover HOLD。
+- **代码提交：**`800cb630dd9037688908ffbfb2785b0c0a063830`（`fix(month): 对齐冻结原生年月选择器`）。没有改 Core/Host 业务规则或 Native 恢复；默认 Skin ID 与唯一包身份不变。
+- **实屏对照：**冻结 APK SHA-256 `DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76`。隔离 API 35 AVD `PowerCal_Native095_Parity_20261105` / `emulator-5580`，1080×2400、420 dpi，WebView 124.0.6367.219。冻结 APK / WebView 年弹窗截图 SHA `E5F9E21CD4BE9DAF28D78BFBB484830BB7213EEDD4171D836D540165DB691151` / `5EE40BD8D7F631DD74A14343C208BB4189FF2E97AAC550891BF0A5A3919B0CA6`；月弹窗 SHA `958C2AA7148E7DC508742A3BF8CF323CF6B565F656847178085BA1492BE44ED7` / `340BF684FFD5959A24A400E82A17AE314E53D825C812E21A0F257B1ADA51799A`。实测边界各约差 1px。
+- **交互与数据：**Android `monthYearMonthDateAndTodayTransitionsMatchWithoutMovingTimelineOrWritingStore` 1/1 PASS。真实触控覆盖有效/非法年份、取消、遮罩关闭和月份选择；不自动调起 IME；取消/关闭不改 Store 与 Camera。无事件、草稿、commitCount、revision 或 event sequence 写入。
+- **回归：**Gradle 全门禁 PASS；JUnit XML 975/975、141 文件、无失败/错误/跳过；API 35 仪器 1/1；Month 浏览器 E2E PASS；分发测试 2/2；Node syntax PASS。正式工厂包校验 PASS。
+- **产物：**Debug APK SHA `6EA8DE42ABB70D75B458DF9E747449486161D2D6FE3C06C3127A8AAE9C867CA3`；唯一默认包 10 files / 409855 bytes / SHA `E585A83C1F5F2560297E66AA754B4F1DEFB4B760661475182581400E9C4D44F2`，源码/APK 字节相同。
+- **残差：**Native AlertDialog 遮罩会压暗 Android 状态栏/导航栏，Web backdrop 当前不会；四点采样 Native `(97,98,100)`、Web `(250,250,250)`。不能将选择器整体标成 PASS，需后续 Host/system-bar scrim 对照。完整日志、截图与精确边界见 `.local/android-test/reports/native095-month-picker-audit-20261106/manifest.md`；Issue `docs/issues/PC-ISSUE-SEPARATION-NATIVE-MONTH-YEAR-PICKERS-20261106.md`。
+- **下一动作：**解决 Web 模态弹窗期间 Host/system-bar scrim 的视觉生命周期与关闭恢复，再继续 Month 余下状态。深色、空/密集态、其他页面、TalkBack 与 OEM 行为仍未全签核；Product Cutover HOLD。
 ## 最新窄切片：Month 底部动作按钮几何与导航（2026-11-06）
 
 - **状态：**创建活动与“在时间轴查看这一天”动作窄切片 `PASS`；Month 整页 `PARTIAL`，原生 0.9.5 基准迁移 `IN_PROGRESS`，Product Cutover `HOLD`。
