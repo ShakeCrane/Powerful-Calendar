@@ -7,24 +7,35 @@ OWNER_VISUAL_REFERENCE_APK: .local/android-test/artifacts/physical-qa/PowerCal-0
 OWNER_VISUAL_REFERENCE_APK_SHA256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
 WAVE2_START_HEAD: 3b54097d6383c0349b5d3d638c228320e3c8e22c
 WAVE3_START_HEAD: 82b456fd2bfc15df379fd15d967fac3da57b899d
-LATEST_CODE_HEAD: 84229c8a707761e295ff4bc366619804a653f82d (Month selected-day radius matches frozen 14dp chip; overall Native 0.9.5 parity remains IN_PROGRESS)
-LATEST_VERIFIED_HEAD: 84229c8a707761e295ff4bc366619804a653f82d (Month browser computed-style and API 35 WebView touch/screenshot pass; source boundaries/package/AndroidTest compile pass; full JVM/Lint not rerun for this CSS/test slice)
+LATEST_CODE_HEAD: 35c294d445a4280166cdd7d3de0030efaba04d7f (Month selected-day foreground matches frozen onPrimaryContainer; overall Native 0.9.5 parity remains IN_PROGRESS)
+LATEST_VERIFIED_HEAD: 35c294d445a4280166cdd7d3de0030efaba04d7f (Browser and API 35 WebView foreground/touch checks pass; APK/package byte match; complete JVM gate has one unrelated SQLite lock failure)
 CURRENT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
 TASK_STATUS: IN_PROGRESS
 PRODUCT_CUTOVER: HOLD
 TASK_BASE_HEAD: e41246d7ebe5b329adbdc657bd3e53735695efa1
-WORKING_APK_SHA256: a064f2f66aeeb0bc726cc15f79c6acda3d4179160991030c2acd083d103df40d
-WORKING_DEFAULT_SKIN_SHA256: dda39d12548368a33cb0f90041b61eafe08aa7d53c710822491b29819f5345d3
+WORKING_APK_SHA256: 6cea8b862c55c23f76262fe7d1b59f30a1b795ebfee5ab78f7ccb7a321e7c64c
+WORKING_DEFAULT_SKIN_SHA256: 85e2dd18688cf622823bfbf23233dd6957617cdf772cc551e1323caf54ebe120
 WORKING_DEFAULT_SKIN_ID: powercal-clear-default
 NATIVE_VISUAL_PARITY_AUDIT: docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md (inventory complete; implementation and full parity remain IN PROGRESS)
 PREVIOUS_TASK_STATE: Q-05 single-default startup migration and protected-branch cutover (PASS; public release remains HOLD)
-LAST_COMPLETED_TASK: Month selected-day radius parity slice (PASS; Month page remains PARTIAL)
-LAST_COMPLETED_COMMIT: 84229c8a707761e295ff4bc366619804a653f82d
+LAST_COMPLETED_TASK: Month selected-day foreground parity slice (PASS; Month page remains PARTIAL)
+LAST_COMPLETED_COMMIT: 35c294d445a4280166cdd7d3de0030efaba04d7f
 LAST_ATTEMPTED_TASK: Native 0.9.5 visual and interaction parity migration (IN PROGRESS; see audit and latest Android evidence)
-LAST_ATTEMPTED_COMMIT: 84229c8a707761e295ff4bc366619804a653f82d (Month selected-day radius slice; see Issue report and audit appendix)
+LAST_ATTEMPTED_COMMIT: 35c294d445a4280166cdd7d3de0030efaba04d7f (Month selected-day foreground slice; see Issue report and audit appendix)
 NEXT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
-NEXT_ACTION: Align the Month selected-count foreground. Frozen Compose count text inherits the selected Surface primary-container content color, while Web `.month-count` still overrides it with `var(--label-2)`. Confirm the exact token color from frozen palette/source, then update the canonical Studio project, rebuild, and recapture the same-device 2026-11-05 fixture pair. Keep calendar fill and agenda-card geometry as separate measured follow-ups. AI remains PARTIAL; original APK message-menu screenshot, attachment authorization, proposal review, and error/retry remain open. Product Cutover remains HOLD.
+NEXT_ACTION: Compare the frozen Native Month calendar-grid surface with the current Web surface using the same AVD and fixed fixture; measure the winning Compose/Web backgrounds and geometry, then migrate only that surface. Treat agenda-card surface and spacing as a separate later slice. Month remains PARTIAL; AI remains PARTIAL; original APK message-menu screenshot, attachment authorization, proposal review, and error/retry remain open. Product Cutover remains HOLD.
 LAST_TASK_EVIDENCE:
+  NATIVE_095_MONTH_SELECTION_COLOR:
+    status: PASS (selected date number/count foreground only; Month page remains PARTIAL)
+    code_commit: 35c294d445a4280166cdd7d3de0030efaba04d7f
+    reference_source: b1f7629f0c52812e1887443872f43aa6c49908c4
+    reference_apk_sha256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
+    tests: browser computed color and navigation E2E PASS; distribution 2/2; Android instrumentation 1/1; source boundaries, assemble, lint, AndroidTest compile/package PASS; full JVM 975 tests/1 SQLite lock failure
+    android: isolated API 35 AVD PowerCal_Native095_Parity_20261105 / emulator-5580, 1080x2400, 420 dpi; trusted touch and Store unchanged
+    screenshots: .local/android-test/reports/native095-month-count-20261105/month-web-selected-20261105.png; Native/Web fill bounds and hashes in audit appendix
+    apk_sha256: 6CEA8B862C55C23F76262FE7D1B59F30A1B795EBFEE5AB78F7CCB7A321E7C64C
+    default_skin_sha256: 85E2DD18688CF622823BFBF23233DD6957617CDF772CC551E1323CAF54EBE120
+    issue: docs/issues/PC-ISSUE-SEPARATION-NATIVE-MONTH-SELECTION-COLOR-20261105.md
   NATIVE_095_MONTH_SELECTED_RADIUS:
     status: PASS (selected-day/today radius and tap only; Month page remains PARTIAL)
     code_commit: 84229c8a707761e295ff4bc366619804a653f82d

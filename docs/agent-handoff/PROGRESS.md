@@ -1,5 +1,17 @@
 # Native 0.9.5 视觉/交互基准迁移续接（2026-11-05）
 
+## 最新窄切片：Month 选中日内容色（2026-11-05）
+
+- **状态：**选中日期数字和计数前景色窄切片 `PASS`；Month 页面仍 `PARTIAL`，Native 0.9.5 整体迁移仍 `IN_PROGRESS`。Owner 冻结原生 `b1f7629f0c52812e1887443872f43aa6c49908c4` 仍是唯一视觉/交互基准。
+- **提交：**`35c294d445a4280166cdd7d3de0030efaba04d7f`（`fix(month): 对齐原生选中日内容色`）。默认 Skin 选中日文字和计数现继承冻结 `onPrimaryContainer`；Core、Host、业务状态和月份规则未改。
+- **验证：**浏览器 computed-style E2E 与正式包分布测试 2/2 PASS；Android 真实 WebView 选日 instrumentation 1/1 PASS，触控可信、MonthFixture 可见、Store 前后快照一致。源码边界、APK assemble、Lint、AndroidTest 编译/组装 PASS。完整 JVM 975 项中 1 项 `SystemCalendarImportTest.rejectedItemsArePersistedAsWarningsWithoutCalendarWrites` 报 SQLite `SQLITE_BUSY`，明确记为门禁失败。
+- **同设备图像：**API 35 AVD `PowerCal_Native095_Parity_20261105` / `emulator-5580`，1080×2400、420 dpi。Native/Web 截图 SHA 和填充像素框记于 `docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md`；Web 截图与全部本地命令日志在 `.local/android-test/reports/native095-month-count-20261105/`。
+- **工厂产物：**Debug APK SHA-256 `6CEA8B862C55C23F76262FE7D1B59F30A1B795EBFEE5AB78F7CCB7A321E7C64C`；唯一默认 `.pcskin` SHA-256 `85E2DD18688CF622823BFBF23233DD6957617CDF772CC551E1323CAF54EBE120`，APK 内仅一份且逐字节等于源码资源。
+- **剩余差异：**月格表面和 agenda 卡片表面/间距仍待分开测量、移植；Month 整页未签核。Product Cutover `HOLD`。Issue：`docs/issues/PC-ISSUE-SEPARATION-NATIVE-MONTH-SELECTION-COLOR-20261105.md`。
+- **唯一下一动作：**先对照冻结 Compose 与 Web 的 Month 网格表面填充和边界，再处理 agenda 卡片几何；不得把本切片写成整页等价。
+
+以下既有记录按原时间线保留；其中的 `NEXT_ACTION` 表示当时状态，当前任务入口以 `docs/agent-handoff/CURRENT.md` 为准。
+
 - **状态：**AI 设置路由切片 `PASS`，总体 Native 0.9.5 视觉/交互迁移仍 `IN_PROGRESS`。冻结源码 `b1f7629f0c52812e1887443872f43aa6c49908c4` 仍是唯一基准；不以旧 Web Clear 或 Claude 概念稿验收。
 - **代码提交：**`07c62fbf16c0aa72181f92783e84a5826905fc56` 将 AI 配置入口从 `nativeSettings → Page.TOOLS` 改为受版本化 catalog 管理的 `openAiSettings` Host 表单弹层；日常 Web Settings 保持活动，独立恢复入口和 Native 恢复行为保留。未修改 Core 业务语义。
 - **验证：**最终完整串行 Gradle 门禁 `974/974` JVM、两项源码边界、Debug APK、Lint（0 errors / 63 warnings）、AndroidTest 编译 PASS；Studio Python 定向测试 `14/14`、JS 语法、Mock 浏览器 E2E PASS；正式包/APK 字节一致性 PASS。APK SHA-256 `a27588ea0a5e2251e14bd4bdaa269703a336a38c9fbe2bbccb2e3af2b91a7bf6`；唯一默认包 SHA-256 `eaa55919a071107938db08e788b59a89625adf4bd7a3c6547d6ac235bf1ceeb6`。
