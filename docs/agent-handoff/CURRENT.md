@@ -7,24 +7,38 @@ OWNER_VISUAL_REFERENCE_APK: .local/android-test/artifacts/physical-qa/PowerCal-0
 OWNER_VISUAL_REFERENCE_APK_SHA256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
 WAVE2_START_HEAD: 3b54097d6383c0349b5d3d638c228320e3c8e22c
 WAVE3_START_HEAD: 82b456fd2bfc15df379fd15d967fac3da57b899d
-LATEST_CODE_HEAD: c8d8724720f395d425fe8fb1116e2b781d780aaa (Native-equivalent month year/month pickers including Android system-bar dim/restore narrow slice)
-LATEST_VERIFIED_HEAD: c8d8724720f395d425fe8fb1116e2b781d780aaa (976/976 JVM XML; serial full Gradle gate, month browser E2E, distribution 2/2, and targeted API 35 instrumentation PASS)
+LATEST_CODE_HEAD: 24fbb376eb8b0ccf1825d70e0b4f7f68fceaa552 (Native 0.9.5 Month empty-agenda text and action-spacing slice)
+LATEST_VERIFIED_HEAD: 24fbb376eb8b0ccf1825d70e0b4f7f68fceaa552 (976/976 JVM XML; serial full Gradle gate; month CDP E2E; distribution 2/2; targeted API 35 instrumentation PASS)
 CURRENT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
 TASK_STATUS: IN_PROGRESS
 PRODUCT_CUTOVER: HOLD
 TASK_BASE_HEAD: e41246d7ebe5b329adbdc657bd3e53735695efa1
-WORKING_APK_SHA256: 590E3897512122EA216C92751B8CE6E63FD939A5EF03A4355E555149C3197753
-WORKING_DEFAULT_SKIN_SHA256: 5D39562345B00DD719B89E2CCAB51A59964DFB8530AFC8AF046FF06B790EAEA7
+WORKING_APK_SHA256: 24F92FC77FE64BDA5CE15747234A1C3E221172713D6C67BEC7D21D0FE4FB6934
+WORKING_DEFAULT_SKIN_SHA256: 0C60CB77F99A7074698025630B49FA8CA00BB7ED583EC16B153FA3A09B1FC53A
 WORKING_DEFAULT_SKIN_ID: powercal-clear-default
 NATIVE_VISUAL_PARITY_AUDIT: docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md (inventory complete; implementation and full parity remain IN PROGRESS)
 PREVIOUS_TASK_STATE: Q-05 single-default startup migration and protected-branch cutover (PASS; public release remains HOLD)
-LAST_COMPLETED_TASK: Month year/month picker panel, content, trusted touch and Android system-bar dim/restore narrow slice (PASS; Month page remains PARTIAL)
-LAST_COMPLETED_COMMIT: c8d8724720f395d425fe8fb1116e2b781d780aaa
+LAST_COMPLETED_TASK: Month no-event agenda typography and action spacing narrow parity slice (PASS; Month page remains PARTIAL)
+LAST_COMPLETED_COMMIT: 24fbb376eb8b0ccf1825d70e0b4f7f68fceaa552
 LAST_ATTEMPTED_TASK: Native 0.9.5 visual and interaction parity migration (IN PROGRESS; see audit and latest Android evidence)
-LAST_ATTEMPTED_COMMIT: c8d8724720f395d425fe8fb1116e2b781d780aaa (system-bar scrim and restoration; see Issue and audit appendix)
+LAST_ATTEMPTED_COMMIT: 24fbb376eb8b0ccf1825d70e0b4f7f68fceaa552 (Month empty agenda typography and action-spacing slice; see Issue and audit appendix)
 NEXT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
-NEXT_ACTION: Continue finite Native-vs-Web Month state comparisons (empty and dense agenda states, then dark theme), using the same frozen 0.9.5-rc.1 APK and isolated API 35 AVD. The picker/system-bar narrow slice is complete; Month and full Native parity remain PARTIAL/IN_PROGRESS and Product Cutover remains HOLD.
+NEXT_ACTION: Compare a dense Month agenda against frozen Native, including one-to-one event geometry and greedy title folding, then compare dark mode. This empty-state slice is PASS only; Month and full Native parity remain PARTIAL/IN_PROGRESS and Product Cutover remains HOLD.
 LAST_TASK_EVIDENCE:
+  NATIVE_095_MONTH_EMPTY_AGENDA:
+    status: PASS (empty-state typography and action spacing only; Month remains PARTIAL)
+    code_commit: 24fbb376eb8b0ccf1825d70e0b4f7f68fceaa552
+    reference_source: b1f7629f0c52812e1887443872f43aa6c49908c4
+    reference_apk_sha256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
+    android: isolated API 35 AVD PowerCal_Native095_Parity_20261105 / emulator-5580, 1080x2400, 420dpi, WebView 124.0.6367.219; frozen Native and Clear both selected 2026-11-05 with empty agenda
+    text_geometry: Native bbox (34,1492)-(349,1531), Web (33,1492)-(348,1531); median RGB Native (18,22,29), Web (17,21,28); button outline top Native y=1615, Web y=1617
+    tests: final serial Gradle gate PASS; 976/976 JVM XML, 0 failures/errors/skips; source boundaries, APK, lint, AndroidTest compile/package PASS; month CDP E2E PASS; distribution 2/2; targeted Android instrumentation 1/1 PASS; package verifier PASS
+    apk_sha256: 24F92FC77FE64BDA5CE15747234A1C3E221172713D6C67BEC7D21D0FE4FB6934 (installed base.apk SHA matches)
+    default_skin_sha256: 0C60CB77F99A7074698025630B49FA8CA00BB7ED583EC16B153FA3A09B1FC53A (10 files, 410057 bytes, single APK entry, source/APK byte-identical)
+    screenshots: Frozen Native 99F96C44646D2CFC3FAEE8427E376B0A4C4E0FC065D479DB89C027ED6E725249; final MainActivity Web 88C5A28FFE5912AA5CF649249E11C7B5BC22B9C8E39E89D1810CB2ED0662B498; instrumented screenshots and pixel script under .local/android-test/reports/native095-month-empty-20261106/
+    store: instrumented parity operation asserted Native and Clear store counts and Timeline Camera remain unchanged
+    retries: first CDP E2E lost a transient iframe execution context; fresh run PASS. First Gradle compile rejected a package-level fetchSemanticsNode import; using the existing Compose test package wildcard pattern compiled and the final full gate passed.
+    limits: dense agenda/title folding, dark mode, complete Month page and other Native pages remain open; Product Cutover HOLD
   NATIVE_095_MONTH_YEAR_PICKERS:
     status: PASS (year/month panel, content, focus, validation, real touch and system-bar dim/restore narrow slice; Month overall remains PARTIAL)
     code_commit: c8d8724720f395d425fe8fb1116e2b781d780aaa

@@ -406,3 +406,19 @@ Web `showModal()` 后将焦点放在 dialog 容器本身，打开时不把焦点
 | 对照截图 | 年弹窗最终 Web 图 SHA-256 `149FC804AF187995C027744194071B00C022885771765653F8B01EBA589B5913`；月弹窗 `FDB90DEE33F471C2E11D44A9F34A19024575B671430E602EA560C042130A67C0`。日志、图像与失败尝试均位于 `.local/android-test/reports/native095-month-picker-audit-20261106/`。 |
 
 因此系统栏遮罩/恢复窄切片已 `PASS`，不改变前文作为早期测量的 `(250,250,250)` 记录。Month 整页、暗色主题、空态/密集态及其他 Native 页面仍未签核；Native 0.9.5 迁移继续 `IN_PROGRESS`，Product Cutover 继续 `HOLD`。下一动作是继续有限 Month 状态对照，不再重做年月弹窗。
+
+## 2026-11-06 后续：Month 无事件 agenda 空状态与动作间距（窄切片 PASS）
+
+对照冻结 0.9.5-rc.1 的 `MonthScreen.kt`：空状态文字使用 Material 3 `bodyLarge`，16sp/24sp、默认 0.5sp 字距、上下 16dp padding；列表项之间为 12dp。旧 Clear 使用通用 `.quiet` 的小号三级标签色，并在空状态段落、agenda 容器和动作区重复叠加底部间距。现在只在 `native-095.css` 的 Month agenda 空节点上复刻对应排版，移除冗余 margin；工厂包通过正式构建器从源码重建。业务 API、Store 和 Native 恢复路径未变。
+
+| 对照项 | 冻结 Native 0.9.5-rc.1 | 默认 Web v3 最终结果 |
+|---|---:|---:|
+| 实际截图环境 | API 35 隔离 AVD `PowerCal_Native095_Parity_20261105` / `emulator-5580`；1080×2400、420 dpi | 同一 AVD、同一日期和空 Store；Android WebView 124.0.6367.219 |
+| “这一天还很从容。”墨迹边界 | `(34,1492)-(349,1531)` | `(33,1492)-(348,1531)`；横向两端差 1px，纵向边界一致 |
+| 墨迹中位色 | `(18,22,29)` | `(17,21,28)`；每通道差 1 |
+| 创建按钮边框顶行 | `1615..1617` | `1617..1619`；残余下移 2 个物理像素 |
+| 行为与 Store | 日期切换后显示所选日期空状态；Store / Camera 不变 | 同一仪器用例 1/1 PASS，断言状态和 Store / Camera 不变量 |
+
+完整串行 Gradle 门禁 PASS：141 份 JVM XML、976/976、0 failures/errors/skips；源码边界、assemble、Lint、AndroidTest 编译/组装 PASS。Chromium 月历 E2E PASS，默认分发 Python 2/2 PASS，正式构建器校验 PASS。Debug APK SHA-256 `24F92FC77FE64BDA5CE15747234A1C3E221172713D6C67BEC7D21D0FE4FB6934`；唯一 `powercal-clear-default.pcskin` 10 个文件、410057 bytes、SHA-256 `0C60CB77F99A7074698025630B49FA8CA00BB7ED583EC16B153FA3A09B1FC53A`，源码和 APK 资产字节一致。主截图 Native SHA `99F96C44646D2CFC3FAEE8427E376B0A4C4E0FC065D479DB89C027ED6E725249`、Web SHA `88C5A28FFE5912AA5CF649249E11C7B5BC22B9C8E39E89D1810CB2ED0662B498`。Issue `docs/issues/PC-ISSUE-SEPARATION-NATIVE-MONTH-EMPTY-AGENDA-20261106.md`；所有详细日志、截图与像素脚本在 `.local/android-test/reports/native095-month-empty-20261106/`。
+
+此窄切片 `PASS`，Month 整页仍 `PARTIAL`。尚未验证密集 agenda 状态的框外标题、贪心标题折叠与逐事件几何、深色主题、Month 全状态矩阵或其余 Native 页面；Product Cutover 仍 `HOLD`。下一项是密集 Month agenda 与 Native 贪心标题折叠对照。
