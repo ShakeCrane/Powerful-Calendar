@@ -222,4 +222,15 @@ Owner 于 2026-11-05 明确将 **2026-10-27 冻结的 PowerCal 0.9.5-rc.1 原生
 | 构建与包 | 根视口 Kotlin 修正提交 `96fa026594e8f085c6221c6bbda83a311829e779` 后，完整串行 Gradle 门禁 `BUILD SUCCESSFUL`，JVM `974/974`，0 failure/error/skip；源码边界、assemble、lint、AndroidTest Kotlin compile 均通过。随后仅修改默认皮肤 CSS，定向 `test_single_default_distribution.py` 为 `2/2 PASS`，Node 语法检查、Debug assemble、正式包校验及 AVD 实屏复核通过。最终 APK SHA-256 `996247646604CA935029920B5C2A2CA6CC1624ECF3C62B44A1CF6D1BA68546C0`；唯一包 `powercal-clear-default.pcskin` 为 10 文件、408148 字节，源码/APK 资源 SHA-256 同为 `D9CFAD9FFD368D60BE6D75316952463FFF6D42BAD97DB3F116B526312275B6DB`。 |
 | 交互和数据边界 | 实际操作只冷启动应用并点开 AI 底栏；没有点击配置、发送消息、上传文件或调用服务商。没有执行 Store 快照测试，因此只记录“未触发业务写入入口”，不声称已证明 Store 哈希不变。Native 恢复、Core 行为、包 ID 和选择偏好未改。 |
 
-**AI 页面仍为 PARTIAL。**本轮只验证空首页的框架、文字排版、WebView 视口和底栏入口；Native 配置面、溢出菜单、聊天记录/附件/消息、AI 提案审核以及相关失败状态仍需逐项对照。其余 Settings、事件编辑器、草稿审核与系统操作也尚未完成冻结 Native 配对。当前默认 Clear 仍是唯一 `.pcskin`，Native 仅保留既有恢复用途；Product Cutover 保持 HOLD。
+## 2026-11-05 AI 溢出菜单与设置路由复核（PARTIAL）
+
+| 对照项 | 实际结果 |
+|---|---|
+| Native 菜单基准 | `native-skin/.../AiChatScreen.kt` 中真实 `DropdownMenu` 顺序为“处理事件 → AI 批量发布/丢弃（先选择范围）→ 分隔线 → 清理 AI 临时缓存（保留聊天与事件）→ 清空聊天（不改变事件）”。批量操作在 pending count 为 0 时禁用。 |
+| Web 修正 | `default-clear/source/web/index.html` 已按该顺序及文案重排；未改 action 名称或批次业务逻辑。Web 同设备实际展开截图 [ai-web-overflow-final-20261105.png](../../.local/android-test/worktrees/skin-single-default-closure/.local/android-test/reports/native095-parity-20261105/ai-web-overflow-final-20261105.png)，SHA-256 `73F1EDB6A075CE5E3C088A27458B2A56AE0C21D8C90681F99D0A182CAE91013E`；菜单外点按关闭截图 [ai-web-overflow-dismissed-final-20261105.png](../../.local/android-test/worktrees/skin-single-default-closure/.local/android-test/reports/native095-parity-20261105/ai-web-overflow-dismissed-final-20261105.png)，SHA-256 `FE3822B42FE1EBC0BD62D6BF19EF3D02610CAD531EF62C67C5DAAA04C7C5142B`。 |
+| Native 实屏限制 | 曾在 `PowerCal_Native095_AI_20261105` 上以 `adb install -r` 安装冻结 APK，安装成功但显式启动后 Native `MainActivity` 未成为 resumed activity；随即恢复当前 Debug APK，未清除数据。另一个名为 `PowerCal_Native095_Original_20261105` 的 AVD 实测层级仍含 WebView，不能作为 Native 菜单参照。因此 Native 原始 APK 菜单截图本轮 `NOT TESTED`；上面的 Native 菜单顺序仅依据冻结源码，不冒充实机截图验收。 |
+| 触控异常记录 | 第一次尝试点菜单外时坐标落在 Web“清理 AI 临时缓存”项；App 明确回报清理 `0` 个应用私有缓存文件，并提示聊天与正式事件保留。没有文件被删除；未触发批量发布/丢弃或清空聊天。之后用菜单左侧位置真实点按，菜单成功关闭。该误触不计入菜单关闭结果。 |
+| AI 配置路由 | AI 顶部“配置”按钮实际打开 Web Skin 的“工具与设置”页（截图 `ai-web-config-route-20261105.png`）。该页“打开 AI 配置与隐私设置”按钮的源码 action 为 `nativeSettings`；`WebSkinHost.kt` 接受该 action，`PowerCalApp.kt` 将整页路由到 `Page.TOOLS`。这是仍从日常 Skin 进入完整 Native Tools 的实际调用链，必须后续收敛为 Web Settings 加受保护的窄 Host 配置表面。该按钮本轮未点击，凭据未查看或修改。 |
+| 构建与包 | 当前 `aceae50b` 的默认包为 10 文件、408186 字节，SHA-256 `C8F8D3AE09B29A365A2B87BE2A9FEA4BB356E71F6E2DE93C0F9AA2667DA50338`；Debug APK SHA-256 `37E66E35ED14751E0FD3E71554CF42F5200762ED5F87B81A2BB886BDAD642B13`。官方构建器确认 APK 内唯一包与源码字节一致；分发测试 2/2、Node 语法检查、assemble 和真实 WebView 打开/关闭操作通过。Kotlin 完整门禁仍为前置 Host 修正提交 `96fa0265` 上的 974/974；此后只有 Skin HTML/CSS/包资源改变。 |
+
+**AI 页面仍为 PARTIAL。**空首页、视口、菜单顺序和 Web 菜单关闭已验证；原始 APK 菜单截图、AI 配置表面、聊天记录/附件/消息、提案审核和失败状态仍未签核。Settings 通过 `nativeSettings` 进入完整 Native Tools 的链路是明确的迁移缺口，不得把它计作“Native 仅恢复”。Memo 行完成、分页/详情和编辑器/草稿浮层仍未签核。默认 Clear 仍是唯一 `.pcskin`，Product Cutover 保持 HOLD。
