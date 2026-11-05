@@ -64,6 +64,7 @@ G-04 在 `1e57da5cbb19b4b1348fe390174f629c8871fc47` 实测 JVM 946/946、Studio 
 - DEFAULT SKIN：月导航、日期选择、实例列表与日期创建入口。用户动作 → API → Core → 可观察结果：选择月份和日期并打开重复实例 → CalendarFeatureApiV1.queryWindow / RecurrenceFeatureApiV1.queryOccurrenceByKey → 保留原始实例键与选中日期 → 日历和编辑器显示同一实例。
 - STUDIO：创建月网格、实例组件及日期绑定。
 - ANDROID QA：PARTIAL；F-02 实测月历选中日期并创建 ACTIVITY；F-03 在隔离 API 35 AVD 两次完成跨月 daily ACTIVITY 的 Core→Host→Web state→DOM 核对、Nov 3 实例打开、Oct↔Nov 切换及 force-stop 后冷启动；每次 Store 快照均未因查询/浏览/打开而改变。该 F-03 设备切片通过，但不代表本 SSA 整体签核。
+- Native 0.9.5 实际对照补充（2026-11-06）：年份/月选择器的面板、内容、焦点、校验、真实触控及系统栏压暗/关闭恢复窄切片 PASS；隔离 API 35 AVD 的系统栏四点最大 RGB 通道差 3，Month 整页仍 PARTIAL。证据：`.local/android-test/reports/native095-month-picker-audit-20261106/manifest.md` 和 `docs/issues/PC-ISSUE-SEPARATION-NATIVE-MONTH-YEAR-PICKERS-20261106.md`。
 - PHYSICAL：NOT TESTED；需在真机重放主要动作并记录系统、权限、界面及 Store 结果。
 - 测试入口：app/src/test/java/dev/powerfulcalendar/ui/v2/WebSkinHostProjectionTest.kt；app/src/androidTest/java/dev/powerfulcalendar/ui/v2/NativeClearMonthOccurrenceParityInstrumentedTest.kt；app/src/androidTest/java/dev/powerfulcalendar/ui/v2/WebSkinRecurrenceInstrumentedTest.kt。
 - 状态：实现 PARTIAL；JVM PARTIAL（F-03 Host projection 24/24 PASS；两次全量 967 项中均有 1 项 `SystemCalendarImportTest.rejectedItemsArePersistedAsWarningsWithoutCalendarWrites` 因只读 commitCount 查询触发 SQLiteDatabaseLockedException，单项隔离复测 1/1 PASS；全量门禁仍不通过）；模拟器 PARTIAL（F-03 指定 occurrence DOM、切月、选中与双冷启动切片通过，SSA 全面验收未完成）；真机 NOT TESTED；总体 PARTIAL。F-03 因必需全量 JVM 门禁失败记 BLOCKED，不据此确认月历产品缺陷。

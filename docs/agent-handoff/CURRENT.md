@@ -7,38 +7,39 @@ OWNER_VISUAL_REFERENCE_APK: .local/android-test/artifacts/physical-qa/PowerCal-0
 OWNER_VISUAL_REFERENCE_APK_SHA256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
 WAVE2_START_HEAD: 3b54097d6383c0349b5d3d638c228320e3c8e22c
 WAVE3_START_HEAD: 82b456fd2bfc15df379fd15d967fac3da57b899d
-LATEST_CODE_HEAD: 800cb630dd9037688908ffbfb2785b0c0a063830 (Month year/month picker content and touch parity; Android system-bar dim remains partial)
-LATEST_VERIFIED_HEAD: 800cb630dd9037688908ffbfb2785b0c0a063830 (975/975 JVM reports; full serial Gradle gate, browser E2E, distribution 2/2, and targeted API 35 picker instrumentation PASS; Host system bars remain different)
+LATEST_CODE_HEAD: c8d8724720f395d425fe8fb1116e2b781d780aaa (Native-equivalent month year/month pickers including Android system-bar dim/restore narrow slice)
+LATEST_VERIFIED_HEAD: c8d8724720f395d425fe8fb1116e2b781d780aaa (976/976 JVM XML; serial full Gradle gate, month browser E2E, distribution 2/2, and targeted API 35 instrumentation PASS)
 CURRENT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
 TASK_STATUS: IN_PROGRESS
 PRODUCT_CUTOVER: HOLD
 TASK_BASE_HEAD: e41246d7ebe5b329adbdc657bd3e53735695efa1
-WORKING_APK_SHA256: 6EA8DE42ABB70D75B458DF9E747449486161D2D6FE3C06C3127A8AAE9C867CA3
-WORKING_DEFAULT_SKIN_SHA256: E585A83C1F5F2560297E66AA754B4F1DEFB4B760661475182581400E9C4D44F2
+WORKING_APK_SHA256: 590E3897512122EA216C92751B8CE6E63FD939A5EF03A4355E555149C3197753
+WORKING_DEFAULT_SKIN_SHA256: 5D39562345B00DD719B89E2CCAB51A59964DFB8530AFC8AF046FF06B790EAEA7
 WORKING_DEFAULT_SKIN_ID: powercal-clear-default
 NATIVE_VISUAL_PARITY_AUDIT: docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md (inventory complete; implementation and full parity remain IN PROGRESS)
 PREVIOUS_TASK_STATE: Q-05 single-default startup migration and protected-branch cutover (PASS; public release remains HOLD)
-LAST_COMPLETED_TASK: Month year/month picker panel, content and trusted-touch slice (PARTIAL overall: Android system-bar dim still open; Month page remains PARTIAL)
-LAST_COMPLETED_COMMIT: 800cb630dd9037688908ffbfb2785b0c0a063830
+LAST_COMPLETED_TASK: Month year/month picker panel, content, trusted touch and Android system-bar dim/restore narrow slice (PASS; Month page remains PARTIAL)
+LAST_COMPLETED_COMMIT: c8d8724720f395d425fe8fb1116e2b781d780aaa
 LAST_ATTEMPTED_TASK: Native 0.9.5 visual and interaction parity migration (IN PROGRESS; see audit and latest Android evidence)
-LAST_ATTEMPTED_COMMIT: 800cb630dd9037688908ffbfb2785b0c0a063830 (Month picker panel/content/touch slice; see Issue and audit appendix)
+LAST_ATTEMPTED_COMMIT: c8d8724720f395d425fe8fb1116e2b781d780aaa (system-bar scrim and restoration; see Issue and audit appendix)
 NEXT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
-NEXT_ACTION: Implement and verify the Host/platform system-bar scrim while the Web month picker is open, including dismissal/restoration; then continue the remaining Month states. Keep Month and full Native parity PARTIAL/IN_PROGRESS and Product Cutover HOLD.
+NEXT_ACTION: Continue finite Native-vs-Web Month state comparisons (empty and dense agenda states, then dark theme), using the same frozen 0.9.5-rc.1 APK and isolated API 35 AVD. The picker/system-bar narrow slice is complete; Month and full Native parity remain PARTIAL/IN_PROGRESS and Product Cutover remains HOLD.
 LAST_TASK_EVIDENCE:
   NATIVE_095_MONTH_YEAR_PICKERS:
-    status: PARTIAL (Native-equivalent dialog panel, contents, focus, validation and real touch interactions PASS; system-bar scrim differs)
-    code_commit: 800cb630dd9037688908ffbfb2785b0c0a063830
+    status: PASS (year/month panel, content, focus, validation, real touch and system-bar dim/restore narrow slice; Month overall remains PARTIAL)
+    code_commit: c8d8724720f395d425fe8fb1116e2b781d780aaa
+    picker_commit: 800cb630dd9037688908ffbfb2785b0c0a063830
     reference_source: b1f7629f0c52812e1887443872f43aa6c49908c4
     reference_apk_sha256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
-    tests: final serial Gradle gate PASS; 975/975 JUnit XML, 0 failures/errors/skips; source boundaries, APK, lint and AndroidTest Kotlin compile PASS; month browser E2E PASS; distribution 2/2; Node syntax PASS; targeted Android test 1/1 PASS
-    android: isolated API 35 AVD PowerCal_Native095_Parity_20261105 / emulator-5580, 1080x2400, 420dpi, WebView 124.0.6367.219; real touch covers valid/invalid year, cancel, backdrop dismissal and month selection; Store and Timeline Camera invariants checked
+    tests: final serial Gradle gate PASS; 976/976 JUnit XML, 0 failures/errors/skips; source boundaries, APK, lint, AndroidTest Kotlin compile/package PASS; month browser E2E PASS; distribution 2/2; Node syntax PASS; targeted Android instrumentation 1/1 PASS
+    android: isolated API 35 AVD PowerCal_Native095_Parity_20261105 / emulator-5580, 1080x2400, 420dpi, WebView 124.0.6367.219; final actual device test verifies dim and restore at four status/navigation samples, touch dismissal/selection and Store/Camera invariants
     screenshots: Native year E5F9E21CD4BE9DAF28D78BFBB484830BB7213EEDD4171D836D540165DB691151; Web year 5EE40BD8D7F631DD74A14343C208BB4189FF2E97AAC550891BF0A5A3919B0CA6; Native month 958C2AA7148E7DC508742A3BF8CF323CF6B565F656847178085BA1492BE44ED7; Web month 340BF684FFD5959A24A400E82A17AE314E53D825C812E21A0F257B1ADA51799A
     verified_geometry: Native/Web surface bounds year (120,924)-(959,1540)/(121,925)-(960,1539); month (120,739)-(959,1724)/(121,740)-(960,1725); remaining about 1 physical pixel raster offset
-    apk_sha256: 6EA8DE42ABB70D75B458DF9E747449486161D2D6FE3C06C3127A8AAE9C867CA3
-    default_skin_sha256: E585A83C1F5F2560297E66AA754B4F1DEFB4B760661475182581400E9C4D44F2 (10 files, 409855 bytes, one APK entry, source/APK byte-identical)
-    system_bar_gap: Native sample pixels (97,98,100); Web sample pixels (250,250,250) at status/navigation bar points; Web dialog backdrop does not dim Android system bars
-    evidence: .local/android-test/reports/native095-month-picker-audit-20261106/manifest.md; docs/issues/PC-ISSUE-SEPARATION-NATIVE-MONTH-YEAR-PICKERS-20261106.md
-    limitations: Month full-page, system-bar scrim, dark theme, empty/dense states, TalkBack and OEM behavior remain open; Product Cutover HOLD
+    apk_sha256: 590E3897512122EA216C92751B8CE6E63FD939A5EF03A4355E555149C3197753
+    default_skin_sha256: 5D39562345B00DD719B89E2CCAB51A59964DFB8530AFC8AF046FF06B790EAEA7 (10 files, 410037 bytes, one APK entry, source/APK byte-identical)
+    system_bar_parity: Native sample pixels (97,98,100); Web (97,97,97), maximum channel delta 3; final instrumentation verifies restoration after dismiss
+    evidence: .local/android-test/reports/native095-month-picker-audit-20261106/manifest.md; docs/issues/PC-ISSUE-SEPARATION-NATIVE-MONTH-YEAR-PICKERS-20261106.md; system-bar-decor-instrumentation-final.log; gradle-systembar-final-gate.log; final screenshot SHA values in manifest.md
+    limitations: Month full-page, dark theme, empty/dense states, TalkBack and OEM behavior remain open; Product Cutover HOLD
   NATIVE_095_MONTH_ACTIONS:
     status: PASS (bottom create/jump actions only; Month page remains PARTIAL)
     code_commit: b8376da7bb46c2ae41d8a86618998a282b16d816

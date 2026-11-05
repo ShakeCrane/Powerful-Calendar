@@ -1,5 +1,15 @@
 # Native 0.9.5 视觉/交互基准迁移续接（2026-11-05）
 
+## 最新窄切片：年月选择器系统栏遮罩和恢复（2026-11-06）
+
+- **状态：**年份/月选择弹窗面板、内容、焦点、校验、真实触控及 Android 系统栏压暗/恢复窄切片 `PASS`；Month 整页与 Native 0.9.5 总体迁移继续 `PARTIAL/IN_PROGRESS`；Product Cutover `HOLD`。
+- **代码提交：**`c8d8724720f395d425fe8fb1116e2b781d780aaa`（`fix(skin): 对齐原生弹窗系统栏遮罩`）；选择器内容提交 `800cb630dd9037688908ffbfb2785b0c0a063830`。
+- **实现边界：**Web 仅通过现有 MessagePort 提交严格布尔型模态可见状态；Host 检查当前皮肤 `host.read`，只在 Activity DecorView 的 system-bar Insets 绘制不可交互的临时遮罩。无 Core action、写权限、业务数据或 Store 操作；关闭和 WebView dispose 均恢复原系统栏。
+- **实屏结果：**隔离 API 35 AVD `PowerCal_Native095_Parity_20261105` / `emulator-5580`，1080×2400、420 dpi、WebView 124.0.6367.219。冻结 Native 四采样点均为 `(97,98,100)`；Web 为 `(97,97,97)`，最大单通道差 3；关闭后恢复基线。最终月份面板 `#E7EBF4` 未被二次压暗；真实取消、遮罩关闭、年月选择和 Store/Camera 检查通过。
+- **验证与产物：**最终串行 Gradle 完整门禁 PASS；JUnit XML 141 文件、976 tests、0 failures/errors/skips；源码边界、Debug APK、Lint、AndroidTest compile/package PASS。Month Chromium E2E、Node syntax、默认包分发 2/2 PASS。APK SHA-256 `590E3897512122EA216C92751B8CE6E63FD939A5EF03A4355E555149C3197753`；唯一 `powercal-clear-default.pcskin` 10 files / 410037 bytes / SHA-256 `5D39562345B00DD719B89E2CCAB51A59964DFB8530AFC8AF046FF06B790EAEA7`，APK 与源包逐字节相同。
+- **证据：**`.local/android-test/reports/native095-month-picker-audit-20261106/manifest.md`、最终截图和日志；Issue `docs/issues/PC-ISSUE-SEPARATION-NATIVE-MONTH-YEAR-PICKERS-20261106.md`。最终 Web 截图 SHA：年弹窗 `149FC804AF187995C027744194071B00C022885771765653F8B01EBA589B5913`，月弹窗 `FDB90DEE33F471C2E11D44A9F34A19024575B671430E602EA560C042130A67C0`。
+- **下一动作：**对照空 agenda、密集 agenda、深色主题下的冻结 Native Month 状态。年月弹窗及系统栏切片不重做；其他 Native 页面、TalkBack、OEM 与全量业务等价仍未签核。
+
 ## 最新窄切片：Native 冻结年月选择器（2026-11-06）
 
 - **状态：**弹窗面板/内容/焦点/校验/关闭与实际选择触控窄切片 PASS；Android 系统栏遮罩仍 PARTIAL；Month 整页 PARTIAL，Native 视觉迁移 IN_PROGRESS，Product Cutover HOLD。

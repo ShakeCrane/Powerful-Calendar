@@ -391,3 +391,18 @@ Web `showModal()` 后将焦点放在 dialog 容器本身，打开时不把焦点
 | 证据 | `.local/android-test/reports/native095-month-picker-audit-20261106/manifest.md`；Issue `docs/issues/PC-ISSUE-SEPARATION-NATIVE-MONTH-YEAR-PICKERS-20261106.md`。 |
 
 **状态与后续：**年份/月选择弹窗的面板内容、焦点、校验、取消/遮罩关闭和真实选择触控这一窄切片 `PASS`；Android 系统栏 dim 生命周期 `PARTIAL`；Month 整页继续 `PARTIAL`，Native 0.9.5 迁移 `IN_PROGRESS`。后续应先为 Web 模态弹窗建立 Host/system-bar scrim 对照与恢复测试，再继续 Month 其它未闭合状态。此前“下一动作是年月选择器”的历史记录保留为当时状态，由本节更新。
+
+## 2026-11-06 后续：年月弹窗 Android 系统栏遮罩与恢复（窄切片 PASS）
+
+后续通过已有 Host MessagePort 增加严格限制的 `presentation/modalOpen:boolean` 状态提示，仅在当前 Skin 具有 `host.read` 时响应。Host 将不可点击、不可聚焦、对无障碍隐藏的轻量 View 临时挂到 Activity DecorView，只绘制 WindowInsets 标出的 status/navigation bar 区域；弹窗关闭和 WebView dispose 均移除覆盖层。它不接收 action、业务数据或写授权，不调用 Core、不修改 Store，也不改变 Web 弹窗面板亮度。
+
+| 验证项 | 最终结果 |
+|---|---|
+| 原生与 Web 系统栏像素 | 冻结 APK 四点 `(500,20),(500,55),(500,2350),(500,2380)` 均为 `(97,98,100)`；Web 四点均为 `(97,97,97)`，单通道最大差 3。对话框关闭后，系统栏恢复到打开前基线，由最终 instrumentation 断言验证。 |
+| Web 面板保持未压暗 | 年弹窗背景采样 Native `(101,101,102)`、Web `(100,100,101)`；月份面板保持 `#E7EBF4`。整屏图的面板可见性断言和真实触控均通过。 |
+| 最终设备测试 | `PowerCal_Native095_Parity_20261105` / `emulator-5580`、API 35、1080×2400、420 dpi、WebView 124.0.6367.219。最终 APK 安装后 `monthYearMonthDateAndTodayTransitionsMatchWithoutMovingTimelineOrWritingStore` `OK (1 test)`，覆盖打开、关闭/取消、遮罩关闭、年月选取及 Store/Camera 不变量。 |
+| 回归 | 最终串行 Gradle 门禁 PASS；JUnit XML 141 份、976 tests、0 failures/errors/skips；源码边界、assemble、Lint、AndroidTest 编译/组装 PASS。`e2e_v3_month_selection.cjs` PASS，Node syntax PASS，默认分发测试 2/2 PASS，正式包校验 PASS。 |
+| 包身份 | Debug APK `590E3897512122EA216C92751B8CE6E63FD939A5EF03A4355E555149C3197753`；唯一默认 Skin `powercal-clear-default` 10 files / 410037 bytes / SHA-256 `5D39562345B00DD719B89E2CCAB51A59964DFB8530AFC8AF046FF06B790EAEA7`，APK 资产与源码字节一致。 |
+| 对照截图 | 年弹窗最终 Web 图 SHA-256 `149FC804AF187995C027744194071B00C022885771765653F8B01EBA589B5913`；月弹窗 `FDB90DEE33F471C2E11D44A9F34A19024575B671430E602EA560C042130A67C0`。日志、图像与失败尝试均位于 `.local/android-test/reports/native095-month-picker-audit-20261106/`。 |
+
+因此系统栏遮罩/恢复窄切片已 `PASS`，不改变前文作为早期测量的 `(250,250,250)` 记录。Month 整页、暗色主题、空态/密集态及其他 Native 页面仍未签核；Native 0.9.5 迁移继续 `IN_PROGRESS`，Product Cutover 继续 `HOLD`。下一动作是继续有限 Month 状态对照，不再重做年月弹窗。
