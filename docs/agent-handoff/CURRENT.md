@@ -7,22 +7,22 @@ OWNER_VISUAL_REFERENCE_APK: .local/android-test/artifacts/physical-qa/PowerCal-0
 OWNER_VISUAL_REFERENCE_APK_SHA256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
 WAVE2_START_HEAD: 3b54097d6383c0349b5d3d638c228320e3c8e22c
 WAVE3_START_HEAD: 82b456fd2bfc15df379fd15d967fac3da57b899d
-LATEST_CODE_HEAD: 10eae7e5 (native 0.9.5 timeline ACTIVITY pixel and title alignment)
-LATEST_VERIFIED_HEAD: 10eae7e5 (973/973 JVM; both source boundaries, assemble, lint, AndroidTest compile/package; API 35 WebView touch and geometry 1/1)
+LATEST_CODE_HEAD: 707dacce48ffa64e756bf2ad0a90fab73678b6d0 (native 0.9.5 Month first-pass parity; Month remains PARTIAL)
+LATEST_VERIFIED_HEAD: 707dacce48ffa64e756bf2ad0a90fab73678b6d0 (974/974 JVM; source boundaries, assemble, lint, AndroidTest compile; API 35 same-device screenshot/touch and cold-restart occurrence checks)
 CURRENT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
 TASK_STATUS: IN_PROGRESS
 TASK_BASE_HEAD: e41246d7ebe5b329adbdc657bd3e53735695efa1
-WORKING_APK_SHA256: AB97D9AD1B6E57EFB43AC519D7A649F4D55C1004054DBA023F286297923B4F62
-WORKING_DEFAULT_SKIN_SHA256: 505535824F4780A4A6A50EDD2E22130CD36131382BAAAE6BED18E86565A56177
+WORKING_APK_SHA256: 3D333AC5A96BDE2BF29B5FA7D9D6AEA4347A2D5084CC50F6DFAAD5DF6FEB0D4A
+WORKING_DEFAULT_SKIN_SHA256: E43A6EADC577069476F63F2E8F82A92F710D1A7D74E53CD67B48737FD7E16498
 WORKING_DEFAULT_SKIN_ID: powercal-clear-default
 NATIVE_VISUAL_PARITY_AUDIT: docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md (inventory complete; implementation and full parity remain IN PROGRESS)
 PREVIOUS_TASK_STATE: Q-05 single-default startup migration and protected-branch cutover (PASS; public release remains HOLD)
-LAST_COMPLETED_TASK: Q-05 single-default startup migration and protected-branch cutover (PASS; public release remains HOLD)
-LAST_COMPLETED_COMMIT: 7197a907cacc875e0e8ecf4c662d2d550342a2f4
+LAST_COMPLETED_TASK: Native 0.9.5 Month parity slice (PARTIAL; overall visual parity task remains IN_PROGRESS)
+LAST_COMPLETED_COMMIT: 707dacce48ffa64e756bf2ad0a90fab73678b6d0
 LAST_ATTEMPTED_TASK: Native 0.9.5 visual and interaction parity migration (IN PROGRESS; see audit and latest Android evidence)
-LAST_ATTEMPTED_COMMIT: 10eae7e5 (fix(timeline): 对齐原生时间轴像素绘制)
+LAST_ATTEMPTED_COMMIT: 707dacce48ffa64e756bf2ad0a90fab73678b6d0 (fix(skin): 对齐原生月历布局与交互)
 NEXT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
-NEXT_ACTION: Migrate the Month page against the frozen 0.9.5-rc.1 APK using the same API 35 device geometry and deterministic Store fixture. Compare month header, date grid/selection, recurrence instances, date navigation, and timeline jump through real WebView touches. Keep the only official package ID powercal-clear-default, retain Native recovery, and keep Product Cutover HOLD.
+NEXT_ACTION: Audit and implement the Memo page against the frozen 0.9.5-rc.1 Native APK. Inventory its actual layout, states, and gestures; compare on the same isolated API 35 device and route all data operations through existing Core/Host APIs. Preserve the single powercal-clear-default package, Native recovery, and Product Cutover HOLD. Do not treat the Month PARTIAL slice as page-wide or product-wide parity.
 LAST_TASK_EVIDENCE:
   NATIVE_095_ORIGINAL_APK_TIMELINE:
     status: PARTIAL (real WebView ACTIVITY fixture interaction/geometry passed; 1px raster deltas remain and other event kinds/timeline states are not signed off)
@@ -348,8 +348,18 @@ LATEST_VERIFIED_EVIDENCE:
     status: PASS
     commit: 2a8c323890c0f121b80c72a2a4d1c5c2a35d010d
     evidence: .local/android-test/reports/F-03-20261104-wave2/
+  NATIVE_095_MONTH:
+    status: PARTIAL (same-device layout/touch and recurrence cold-restart evidence; visual differences and other page parity remain)
+    commit: 707dacce48ffa64e756bf2ad0a90fab73678b6d0
+    reference_apk_sha256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58A73FC626F76
+    app_apk_sha256: 3D333AC5A96BDE2BF29B5FA7D9D6AEA4347A2D5084CC50F6DFAAD5DF6FEB0D4A
+    default_skin_sha256: E43A6EADC577069476F63F2E8F82A92F710D1A7D74E53CD67B48737FD7E16498
+    tests: 974/974 JVM; skin/native source boundaries, assemble, lint and AndroidTest Kotlin compile PASS; isolated recurrence prepare/restore 1/1 each PASS; Studio full Python 86/88 with two documented architecture/recovery source-literal failures; targeted Python 13/13 PASS.
+    android: API 35 isolated AVD PowerCal_Native095_Parity_20261105 / emulator-5580, same device before/after APK update; actual month navigation, pickers, date, Today, event open and Back; Core Store unchanged.
+    evidence: .local/android-test/reports/native095-parity-20261105/month-visual-parity-final-full-gate.log; month-real-device-touch-sequence.jsonl; month-recurrence-prepare.log; month-recurrence-restore.log; docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md
+    limits: screenshot metrics show remaining panel/agenda deltas; original-APK recurrence pixel pairing, Puppeteer browser E2E and Memo/AI/Settings/editor/review parity remain NOT TESTED; physical/OEM not tested.
 
-BLOCKERS: TalkBack focus order, forced checkpoint-I/O failure, physical/OEM reminder delivery and live AI provider reliability remain NOT TESTED; Q-03 accessibility and Q-04 physical/OEM sign-offs remain incomplete; historical SEP/SSA sign-off remains INCOMPLETE. These do not block the internal QA Release Candidate; public Product Cutover remains HOLD.
+BLOCKERS: TalkBack focus order, forced checkpoint-I/O failure, physical/OEM reminder delivery and live AI provider reliability remain NOT TESTED; Studio full Python has two existing architecture/recovery source-literal failures and Puppeteer browser E2E is blocked by a missing local dependency; Memo and later page parity remain outstanding. Q-03 accessibility, Q-04 physical/OEM and historical SEP/SSA sign-offs remain incomplete. Public Product Cutover remains HOLD.
 
 AUTHORITATIVE_PLAN: docs/POWERCAL_SINGLE_DEFAULT_SKIN_EXECUTION_PLAN_2026-11-03_R2.md
 ACCEPTANCE_MATRIX: docs/agent-handoff/SINGLE_SKIN_ACCEPTANCE.md
