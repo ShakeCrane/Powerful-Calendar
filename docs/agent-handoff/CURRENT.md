@@ -7,23 +7,36 @@ OWNER_VISUAL_REFERENCE_APK: .local/android-test/artifacts/physical-qa/PowerCal-0
 OWNER_VISUAL_REFERENCE_APK_SHA256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
 WAVE2_START_HEAD: 3b54097d6383c0349b5d3d638c228320e3c8e22c
 WAVE3_START_HEAD: 82b456fd2bfc15df379fd15d967fac3da57b899d
-LATEST_CODE_HEAD: e75abbd1 (Native axis double-tap reset and timeline fixture verification)
-LATEST_VERIFIED_HEAD: e75abbd1 (full product gate plus post-change AndroidTest compile/package and 3 targeted API 35 device passes)
+LATEST_CODE_HEAD: 10eae7e5 (native 0.9.5 timeline ACTIVITY pixel and title alignment)
+LATEST_VERIFIED_HEAD: 10eae7e5 (973/973 JVM; both source boundaries, assemble, lint, AndroidTest compile/package; API 35 WebView touch and geometry 1/1)
 CURRENT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
 TASK_STATUS: IN_PROGRESS
 TASK_BASE_HEAD: e41246d7ebe5b329adbdc657bd3e53735695efa1
-WORKING_APK_SHA256: 5D92A32FD112BEA78422C9702FF337BFDC7B9B0E9237FC036B4C4758D76C5FF6
-WORKING_DEFAULT_SKIN_SHA256: 0E0F51897CDC7AA784925EEBACCDAC395E45CD10D7B33F22D348DD6ECA26F598
+WORKING_APK_SHA256: AB97D9AD1B6E57EFB43AC519D7A649F4D55C1004054DBA023F286297923B4F62
+WORKING_DEFAULT_SKIN_SHA256: 505535824F4780A4A6A50EDD2E22130CD36131382BAAAE6BED18E86565A56177
 WORKING_DEFAULT_SKIN_ID: powercal-clear-default
 NATIVE_VISUAL_PARITY_AUDIT: docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md (inventory complete; implementation and full parity remain IN PROGRESS)
 PREVIOUS_TASK_STATE: Q-05 single-default startup migration and protected-branch cutover (PASS; public release remains HOLD)
 LAST_COMPLETED_TASK: Q-05 single-default startup migration and protected-branch cutover (PASS; public release remains HOLD)
 LAST_COMPLETED_COMMIT: 7197a907cacc875e0e8ecf4c662d2d550342a2f4
 LAST_ATTEMPTED_TASK: Native 0.9.5 visual and interaction parity migration (IN PROGRESS; see audit and latest Android evidence)
-LAST_ATTEMPTED_COMMIT: e75abbd1 (fix(timeline): 对齐原生中轴双击复位并验证标题折叠)
+LAST_ATTEMPTED_COMMIT: 10eae7e5 (fix(timeline): 对齐原生时间轴像素绘制)
 NEXT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
-NEXT_ACTION: Map Native and Web title/event bounds into the same physical-screen coordinate space, pin the same Camera/time, then replay the deterministic fixture against the actual frozen 0.9.5-rc.1 APK and current Web v3. Use that delta to tune Timeline typography/axis/layout. Keep the only official package ID powercal-clear-default, retain Native recovery, and keep Product Cutover HOLD.
+NEXT_ACTION: Migrate the Month page against the frozen 0.9.5-rc.1 APK using the same API 35 device geometry and deterministic Store fixture. Compare month header, date grid/selection, recurrence instances, date navigation, and timeline jump through real WebView touches. Keep the only official package ID powercal-clear-default, retain Native recovery, and keep Product Cutover HOLD.
 LAST_TASK_EVIDENCE:
+  NATIVE_095_ORIGINAL_APK_TIMELINE:
+    status: PARTIAL (real WebView ACTIVITY fixture interaction/geometry passed; 1px raster deltas remain and other event kinds/timeline states are not signed off)
+    commit: 10eae7e560e6b793e256e03482ac81cddd136117
+    reference_source: b1f7629f0c52812e1887443872f43aa6c49908c4
+    reference_apk_sha256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
+    apk_sha256: AB97D9AD1B6E57EFB43AC519D7A649F4D55C1004054DBA023F286297923B4F62
+    default_skin_id: powercal-clear-default
+    default_skin_sha256: 505535824f4780a4a6a50edd2e22130cd36131382baaae6bed18e86565a56177
+    tests: 973/973 JVM; source boundaries, APK, lint, AndroidTest compile/package PASS; WebView fold/touch/geometry 1/1 PASS; Studio default package 5/5 Python; JS syntax and source Chromium E2E PASS
+    android: API 35 AVD PowerCal_Native095_Original_20261105 / emulator-5582, 1080x2400, 420 dpi; fixed UTC time and four ACTIVITY fixture
+    store: preseeded QA Calendar Store records, revisions and commitCount unchanged; preferences/files isolated
+    evidence: .local/android-test/reports/native095-parity-20261105/timeline-native-pixel-raster-final.log; final-gate-native095-timeline.log; original-apk-native-fixture-today.png; webv3-mainactivity-native095-final.png; docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md
+    limitations: Web bar x-boundary and title-ink core differ by about 1px; ALARM/DEADLINE/recurrence/overlap/lane and full Native surface parity remain untested; complete owner visual sign-off is not claimed
   NATIVE_095_TIMELINE_FIXTURE:
     status: PARTIAL (current Native Compose route vs Web fixed event fixture PASS; original APK same-fixture comparison and pixel geometry remain incomplete)
     source_head: e75abbd1
@@ -160,6 +173,15 @@ Q05_DELIVERY:
   limitations: TalkBack traversal, physical/OEM reminder delivery, live AI provider and full SEP/SSA sign-off remain incomplete; Product Cutover HOLD.
 
 LATEST_VERIFIED_EVIDENCE:
+  NATIVE_095_ORIGINAL_APK_TIMELINE:
+    status: PARTIAL (ACTIVITY fixture interaction and geometry verified; 1px paint/text delta and other page/timeline states remain open)
+    commit: 10eae7e560e6b793e256e03482ac81cddd136117
+    jvm: 973/973, 0 failures/errors/skips; both source boundaries, Debug assemble, lint, AndroidTest compile/package PASS.
+    android: API 35 isolated AVD PowerCal_Native095_Original_20261105 / emulator-5582; frozen original APK and current Web v3 screenshot with fixed UTC and same four-ACTIVITY fixture; fold-title tap and Store no-write assertion 1/1 PASS.
+    skin: exactly one assets/powercal-clear-default.pcskin; package and APK asset SHA-256 505535824f4780a4a6a50edd2e22130cd36131382baaae6bed18e86565a56177; APK SHA-256 AB97D9AD1B6E57EFB43AC519D7A649F4D55C1004054DBA023F286297923B4F62.
+    studio: default-package Python 5/5; app.js syntax and source Chromium E2E PASS.
+    evidence: .local/android-test/reports/native095-parity-20261105/timeline-native-pixel-raster-final.log; final-gate-native095-timeline.log; original-apk-native-fixture-today.png; webv3-mainactivity-native095-final.png; docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md.
+    limits: ALARM, DEADLINE, recurrence, overlaps, all other surfaces, accessibility and full native visual parity remain unsigned; Product Cutover HOLD.
   Q-05:
     status: PASS (startup migration and internal QA package; public Product Cutover HOLD)
     commit: 7197a907cacc875e0e8ecf4c662d2d550342a2f4

@@ -135,7 +135,7 @@ Owner 于 2026-11-05 明确将 **2026-10-27 冻结的 PowerCal 0.9.5-rc.1 原生
 
 ## 2026-11-05 冻结 APK 与 WebView 时间轴实屏复核
 
-本节更新前文“原始 APK 与 Web 尚未同基准对照”以及“标题 bounds 尚未换算到屏幕坐标”的时间轴状态。参考为冻结原始 APK（SHA-256 `DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76`）；Web 侧为 `a9211c1c` 源码构建的 Debug APK。两侧使用同一设备本地四条 ACTIVITY 夹具及固定 UTC 时刻 `2026-11-05 03:16:08` 截图。屏幕为 API 35、1080×2400、420 dpi；原始 APK 与 Web 主 Activity 截图来自隔离 AVD `PowerCal_Native095_Original_20261105` / `emulator-5582`。另用同一测试事件在原生 Compose 与 WebView 路由运行仪器测试，以获取可映射到物理屏幕的布局边界。该测试隔离了应用偏好与文件目录，复用并核对预置 QA Calendar Store；执行前后正式事件快照、revision 和 commitCount 一致。
+本节更新前文“原始 APK 与 Web 尚未同基准对照”以及“标题 bounds 尚未换算到屏幕坐标”的时间轴状态。参考为冻结原始 APK（SHA-256 `DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76`）；Web 侧为本节施工提交 `10eae7e5` 的源码树所构建的 Debug APK。两侧使用同一设备本地四条 ACTIVITY 夹具及固定 UTC 时刻 `2026-11-05 03:16:08` 截图。屏幕为 API 35、1080×2400、420 dpi；原始 APK 与 Web 主 Activity 截图来自隔离 AVD `PowerCal_Native095_Original_20261105` / `emulator-5582`。另用同一测试事件在原生 Compose 与 WebView 路由运行仪器测试，以获取可映射到物理屏幕的布局边界。该测试隔离了应用偏好与文件目录，复用并核对预置 QA Calendar Store；执行前后正式事件快照、revision 和 commitCount 一致。
 
 本轮 Web 改动只涉及默认皮肤表现：同步原生标题字宽/位置、蓝绿色字色、刻度标签可视范围与间距；对不足 2 CSS px 的活动段，以共享物理像素边界绘制底色和 2dp 色条，避免相邻分钟段产生额外像素行。`.pcskin` 由正式 `build_default_clear.py` 重建，没有手改 ZIP；ID 和资源数量保持不变。
 
