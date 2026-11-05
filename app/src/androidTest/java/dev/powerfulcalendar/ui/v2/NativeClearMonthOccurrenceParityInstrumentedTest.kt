@@ -509,6 +509,56 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
         return file
     }
 
+    private fun captureSystemBarSamples(): IntArray {
+        val bitmap = requireNotNull(
+            InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
+        )
+        try {
+            assertTrue("System bar pixel assertions require the parity AVD size",
+                bitmap.width >= 501 && bitmap.height >= 2381)
+            return intArrayOf(
+                bitmap.getPixel(500, 20), bitmap.getPixel(500, 55),
+                bitmap.getPixel(500, 2350), bitmap.getPixel(500, 2380)
+            )
+        } finally {
+            bitmap.recycle()
+        }
+    }
+
+    private fun awaitSystemBarScrim(baseline: IntArray, dimmed: Boolean) {
+        val deadline = SystemClock.uptimeMillis() + 8_000L
+        var latest = IntArray(4)
+        fun matches(): Boolean = latest.indices.all { index ->
+            val source = baseline[index]
+            val expected = if (dimmed) {
+                android.graphics.Color.rgb(
+                    (android.graphics.Color.red(source) * 0.4f).toInt(),
+                    (android.graphics.Color.green(source) * 0.4f).toInt(),
+                    (android.graphics.Color.blue(source) * 0.4f).toInt()
+                )
+            } else source
+            kotlin.math.abs(android.graphics.Color.red(latest[index]) -
+                android.graphics.Color.red(expected)) <= 5 &&
+                kotlin.math.abs(android.graphics.Color.green(latest[index]) -
+                    android.graphics.Color.green(expected)) <= 5 &&
+                kotlin.math.abs(android.graphics.Color.blue(latest[index]) -
+                    android.graphics.Color.blue(expected)) <= 5
+        }
+        do {
+            latest = captureSystemBarSamples()
+            if (matches()) {
+                println("NATIVE_095_SYSTEM_BAR_SCRIM dimmed=$dimmed " +
+                    latest.joinToString(",") { "#%06X".format(it and 0xFFFFFF) })
+                return
+            }
+            SystemClock.sleep(100)
+        } while (SystemClock.uptimeMillis() < deadline)
+        throw AssertionError(
+            "Android status/navigation bar pixels did not ${if (dimmed) "dim" else "restore"}: " +
+                latest.joinToString(",") { "#%06X".format(it and 0xFFFFFF) }
+        )
+    }
+
     private fun captureDisplayScreenshot(name: String): File {
         InstrumentationRegistry.getInstrumentation().waitForIdleSync()
         val file = File(requireNotNull(compose.activity.externalCacheDir), name)
@@ -1336,11 +1386,13 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
             val clearAnchor = clearCamera.getLong("anchorMillis")
             val clearHours = clearCamera.getDouble("hours")
             val clearCounts = counts(clearStore)
+            val normalSystemBars = captureSystemBarSamples()
 
             tapClear(clearWeb, ".clear-tabbar [data-action='month']")
             awaitJs(clearWeb, "!document.querySelector('#monthPage').hidden")
             tapClear(clearWeb, "#monthYearTitle")
             awaitJs(clearWeb, "document.querySelector('#monthYearPickerDialog')?.open===true")
+            awaitSystemBarScrim(normalSystemBars, dimmed = true)
             captureWindowScreenshot(clearWeb, "clear-month-year-dialog-20261106.png",
                 requirePickerSurface = true)
             val yearPickerStyle = JSONObject(evaluate(clearWeb, """(()=>{
@@ -1380,6 +1432,7 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
             val yearCancel = tapClear(clearWeb, "#monthYearPickerCancel")
             assertTrue("Cancel must be a trusted Android touch", yearCancel.optBoolean("trusted"))
             awaitJs(clearWeb, "document.querySelector('#monthYearPickerDialog')?.open!==true")
+            awaitSystemBarScrim(normalSystemBars, dimmed = false)
             assertEquals("Cancelling year selection must preserve Month", monthBeforeYearCancel,
                 WebSkinBridgeRuntime.state().getJSONObject("month").getString("month"))
             assertEquals("Cancelling year selection must not write the Store", clearCounts,
@@ -1390,6 +1443,7 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
             assertTrue("Backdrop dismissal must be a trusted touch", backdropTap.optBoolean("trusted"))
             assertTrue("Backdrop touch must target the dialog backdrop", backdropTap.optBoolean("backdrop"))
             awaitJs(clearWeb, "document.querySelector('#monthYearPickerDialog')?.open!==true")
+            awaitSystemBarScrim(normalSystemBars, dimmed = false)
             assertEquals("Backdrop dismissal must preserve Month", monthBeforeYearCancel,
                 WebSkinBridgeRuntime.state().getJSONObject("month").getString("month"))
             assertEquals("Backdrop dismissal must not write the Store", clearCounts,
@@ -1404,6 +1458,7 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
             awaitJs(clearWeb, "document.querySelector('#monthTitle')?.dataset.month?.startsWith('${targetMonth.year}-')===true")
             tapClear(clearWeb, "#monthNumberTitle")
             awaitJs(clearWeb, "document.querySelector('#monthPickerDialog')?.open===true")
+            awaitSystemBarScrim(normalSystemBars, dimmed = true)
             captureWindowScreenshot(clearWeb, "clear-month-number-dialog-20261106.png",
                 requirePickerSurface = true)
             val monthPickerStyle = JSONObject(evaluate(clearWeb, """(()=>{
@@ -1441,6 +1496,7 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
             val monthCancel = tapClear(clearWeb, "#monthPickerCancel")
             assertTrue("Month Close must be a trusted Android touch", monthCancel.optBoolean("trusted"))
             awaitJs(clearWeb, "document.querySelector('#monthPickerDialog')?.open!==true")
+            awaitSystemBarScrim(normalSystemBars, dimmed = false)
             assertEquals("Closing month selection must preserve Month", monthBeforeCancel,
                 WebSkinBridgeRuntime.state().getJSONObject("month").getString("month"))
             assertEquals("Closing month selection must not write the Store", clearCounts,
@@ -1450,6 +1506,7 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
             val monthSubmit = tapClear(clearWeb,
                 "#monthPickerForm [data-month-number='${targetMonth.monthValue}']")
             assertTrue("Month selection must be a trusted Android touch", monthSubmit.optBoolean("trusted"))
+            awaitSystemBarScrim(normalSystemBars, dimmed = false)
             awaitJs(clearWeb, "document.querySelector('#monthTitle')?.dataset.month==='${targetMonth}'")
             val clearFirstDay = WebSkinBridgeRuntime.state().getJSONObject("month")
             assertEquals(targetMonth.toString(), clearFirstDay.getString("month"))

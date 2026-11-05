@@ -13,6 +13,22 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class WebSkinBridgeTest {
+    @Test fun modalPresentationSignalCarriesOnlyBooleanUiState() {
+        assertEquals(true, decodeWebSkinModalVisibility(
+            """{"version":1,"type":"presentation","payload":{"modalOpen":true}}"""))
+        assertEquals(false, decodeWebSkinModalVisibility(
+            """{"version":1,"type":"presentation","payload":{"modalOpen":false}}"""))
+        assertNull(decodeWebSkinModalVisibility(
+            """{"version":1,"type":"presentation","payload":{"modalOpen":true,"action":"delete"}}"""))
+        assertNull(decodeWebSkinModalVisibility(
+            """{"version":1,"type":"presentation","payload":{"modalOpen":"true"}}"""))
+        assertNull(decodeWebSkinModalVisibility(
+            """{"version":1,"type":"action","payload":{"modalOpen":true}}"""))
+        assertNull(decodeWebSkinModalVisibility(
+            """{"version":2,"type":"presentation","payload":{"modalOpen":true}}"""))
+        assertNull(decodeWebSkinModalVisibility("x".repeat(513)))
+    }
+
     @Test fun acceptsOnlyClosedTypedActions() {
         assertEquals(WebSkinAction.Routed("today"), decodeBridgeAction(
             """{"version":1,"type":"action","payload":{"name":"today"}}"""))

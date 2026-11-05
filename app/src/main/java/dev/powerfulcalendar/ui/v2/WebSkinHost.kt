@@ -6,10 +6,18 @@ import dev.powerfulcalendar.core.api.v1.EventEditorOpenResultV1
 import dev.powerfulcalendar.core.api.v1.EventFeatureApiV1
 import dev.powerfulcalendar.core.api.v1.AiBatchModeV1
 import android.annotation.SuppressLint
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.net.Uri
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
 import android.os.Build
+import android.view.View
+import android.view.ViewGroup
 import android.view.WindowInsets
+import android.widget.FrameLayout
 import android.webkit.ConsoleMessage
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -84,6 +92,18 @@ internal fun webSkinResponseHeaders(contentLength: Int): Map<String, String> = m
     "Cache-Control" to "no-store",
     "Content-Length" to contentLength.toString()
 )
+
+/** Presentation-only signal; it carries no Host action, data, or write authority. */
+internal fun decodeWebSkinModalVisibility(raw: String): Boolean? {
+    if (raw.length !in 1..512) return null
+    val message = runCatching { JSONObject(raw) }.getOrNull() ?: return null
+    if (message.keys().asSequence().toSet() != setOf("version", "type", "payload") ||
+        message.optInt("version") != WebSkinBridgeRuntime.VERSION ||
+        message.optString("type") != "presentation") return null
+    val payload = message.optJSONObject("payload") ?: return null
+    if (payload.keys().asSequence().toSet() != setOf("modalOpen")) return null
+    return payload.opt("modalOpen") as? Boolean
+}
 
 /** Resource MIME selection follows the v3 package path extension, case-insensitively. */
 internal fun webSkinMimeType(path: String): String = when (
@@ -320,15 +340,103 @@ internal fun WebSkinRoot(
             onFailure = reportFailure
         )
         if (!bundle.fullCanvas || failed) native()
+    }
+}
 
+/**
+ * Paint only the Activity's transparent system-bar regions. Keeping this view inside the existing
+ * full-screen decor avoids dimming the Web dialog panel or changing its touch behavior.
+ */
+private class WebSkinModalSystemBarScrim(context: Context) {
+    private val activity = requireNotNull(findActivity(context)) {
+        "WebSkin needs an Activity context to match native system-bar modal dimming"
+    }
+    private val overlay = WebSkinSystemBarOverlayView(context)
+
+    fun setVisible(visible: Boolean) {
+        val decor = activity.window.decorView as? ViewGroup ?: return
+        if (visible) {
+            if (overlay.parent !== decor) {
+                (overlay.parent as? ViewGroup)?.removeView(overlay)
+                decor.addView(overlay, FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                ))
+            }
+            overlay.bringToFront()
+            overlay.requestApplyInsets()
+        } else {
+            (overlay.parent as? ViewGroup)?.removeView(overlay)
+        }
+    }
+}
+
+private fun findActivity(context: Context): Activity? {
+    var current = context
+    while (current is ContextWrapper) {
+        if (current is Activity) return current
+        current = current.baseContext
+    }
+    return current as? Activity
+}
+
+private class WebSkinSystemBarOverlayView(context: Context) : View(context) {
+    private val scrimPaint = Paint().apply { color = Color.argb(156, 0, 0, 0) }
+    private var statusInset = 0
+    private var navigationInset = 0
+
+    init {
+        setWillNotDraw(false)
+        isClickable = false
+        isFocusable = false
+        importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
+    }
+
+    override fun onApplyWindowInsets(insets: WindowInsets): WindowInsets {
+        updateInsets(insets)
+        return super.onApplyWindowInsets(insets)
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        rootWindowInsets?.let(::updateInsets)
+        if (statusInset > 0) {
+            canvas.drawRect(0f, 0f, width.toFloat(), statusInset.toFloat(), scrimPaint)
+        }
+        if (navigationInset > 0) {
+            val top = (height - navigationInset).coerceAtLeast(0).toFloat()
+            canvas.drawRect(0f, top, width.toFloat(), height.toFloat(), scrimPaint)
+        }
+    }
+
+    private fun updateInsets(insets: WindowInsets) {
+        val (top, bottom) = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val bars = insets.getInsets(
+                WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars()
+            )
+            bars.top to bars.bottom
+        } else {
+            @Suppress("DEPRECATION")
+            insets.systemWindowInsetTop to insets.systemWindowInsetBottom
+        }
+        if (statusInset != top || navigationInset != bottom) {
+            statusInset = top
+            navigationInset = bottom
+            invalidate()
+        }
     }
 }
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-private fun SecureWebSkin(bundle: WebSkinBundle, modifier: Modifier, onFailure: () -> Unit) {
+private fun SecureWebSkin(
+    bundle: WebSkinBundle,
+    modifier: Modifier,
+    onFailure: () -> Unit
+) {
     val origin = "https://skin.powercal.local/"
     val context = androidx.compose.ui.platform.LocalContext.current
+    val modalScrim = remember(bundle) { WebSkinModalSystemBarScrim(context) }
     val feed = remember(bundle) { WebSkinStateFeed() }
     val live = remember(bundle) { AtomicBoolean(true) }
     val session = remember(bundle) { WebSkinWebSession() }
@@ -393,9 +501,16 @@ private fun SecureWebSkin(bundle: WebSkinBundle, modifier: Modifier, onFailure: 
                         override fun onMessage(port: android.webkit.WebMessagePort, message: android.webkit.WebMessage) {
                             view.post {
                                 if (!live.get() || session.port !== port ||
-                                    PowerCalSkinRegistry.active.web !== bundle ||
-                                    !WebSkinCapabilityPolicy.mayAct(bundle)) return@post
+                                    PowerCalSkinRegistry.active.web !== bundle) return@post
                                 val raw = message.data.orEmpty()
+                                val modalOpen = decodeWebSkinModalVisibility(raw)
+                                if (modalOpen != null) {
+                                    if (WebSkinCapabilityPolicy.mayRead(bundle)) {
+                                        modalScrim.setVisible(modalOpen)
+                                    }
+                                    return@post
+                                }
+                                if (!WebSkinCapabilityPolicy.mayAct(bundle)) return@post
                                 val command = WebEditWire.decode(raw)
                                 if(command!=null) {
                                     // The write survives WebView/composition cancellation. A
@@ -500,6 +615,7 @@ private fun SecureWebSkin(bundle: WebSkinBundle, modifier: Modifier, onFailure: 
     }
     DisposableEffect(webView) { onDispose {
         live.set(false)
+        modalScrim.setVisible(false)
         feed.disconnect()
         session.close()
         webView.stopLoading()

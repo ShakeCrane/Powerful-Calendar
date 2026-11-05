@@ -587,7 +587,21 @@ window.addEventListener("message",e=>{
     window.PowerCalEdit?.resetTransport();
   }
   port=e.ports[0];
+  lastModalVisibility=null;
   port.onmessage=event=>receive(event.data);
+  publishModalVisibility();
+});
+let lastModalVisibility=null;
+function publishModalVisibility(){
+  if(!port)return;
+  const modalOpen=document.querySelector('dialog[open]')!==null;
+  if(lastModalVisibility===modalOpen)return;
+  lastModalVisibility=modalOpen;
+  try{port.postMessage(JSON.stringify({version:1,type:"presentation",payload:{modalOpen}}))}catch{}
+}
+const modalVisibilityObserver=new MutationObserver(publishModalVisibility);
+modalVisibilityObserver.observe(document.documentElement,{
+  subtree:true,childList:true,attributes:true,attributeFilter:["open"]
 });
 function receive(raw){
   let parsed;
