@@ -5,6 +5,16 @@ const puppeteer=require(process.env.PUPPETEER_PATH||"puppeteer");
 const URL=process.env.STUDIO_URL||"http://127.0.0.1:8875";
 const TEST_TEMP_ROOT=path.resolve(__dirname,"../../..",".local","android-test");
 fs.mkdirSync(TEST_TEMP_ROOT,{recursive:true});
+async function doubleTapTimelineAxis(frame){
+  await frame.evaluate(()=>{
+    const target=document.querySelector("#axisResetHit"),rect=target.getBoundingClientRect();
+    const x=rect.left+rect.width/2,y=rect.top+rect.height/2;
+    const tap=()=>target.dispatchEvent(new PointerEvent("pointerup",{
+      pointerType:"touch",pointerId:1,clientX:x,clientY:y,bubbles:true,cancelable:true
+    }));
+    tap();tap();
+  });
+}
 (async()=>{
   const browserProfile=fs.mkdtempSync(path.join(os.tmpdir(),"powercal-puppeteer-"));
   let browser;
@@ -61,14 +71,13 @@ fs.mkdirSync(TEST_TEMP_ROOT,{recursive:true});
     await page.click("#interactMode");
     const zoomLabels=await frame.$$eval('.timeline-view-controls button',buttons=>
       buttons.map(button=>button.getAttribute("aria-label")));
-    assert.deepEqual(zoomLabels,["缩小时间轴，显示更多小时","放大时间轴，显示更少小时",
-      "重置时间轴缩放为24小时"]);
+    assert.deepEqual(zoomLabels,["缩小时间轴，显示更多小时","放大时间轴，显示更少小时"]);
     await frame.click('[data-action="zoomTimeline"][data-direction="in"]');
-    await frame.waitForFunction(()=>document.querySelector("#timeRangeLabel").textContent==="16 小时");
+    await frame.waitForFunction(()=>document.querySelector("#timeRangeLabel").textContent.startsWith("16 小时"));
     await page.waitForFunction(()=>document.querySelector("#bridgeLog").textContent
       .includes("zoomTimeline · in · 16 小时"));
     await frame.click('[data-action="zoomTimeline"][data-direction="out"]');
-    await frame.waitForFunction(()=>document.querySelector("#timeRangeLabel").textContent==="24 小时");
+    await frame.waitForFunction(()=>document.querySelector("#timeRangeLabel").textContent.startsWith("24 小时"));
     await page.waitForFunction(()=>document.querySelector("#bridgeLog").textContent
       .includes("zoomTimeline · out · 24 小时"));
     const validZoom=await frame.$eval('[data-action="zoomTimeline"][data-direction="in"]',button=>{
@@ -78,13 +87,13 @@ fs.mkdirSync(TEST_TEMP_ROOT,{recursive:true});
     assert.ok(validZoom);
     await page.waitForFunction(()=>document.querySelector("#bridgeLog").textContent
       .includes("拒绝无效动作 zoomTimeline"));
-    await frame.waitForFunction(()=>document.querySelector("#timeRangeLabel").textContent==="24 小时");
+    await frame.waitForFunction(()=>document.querySelector("#timeRangeLabel").textContent.startsWith("24 小时"));
     for(let i=0;i<20;i++)await frame.click('[data-action="zoomTimeline"][data-direction="in"]');
-    await frame.waitForFunction(()=>document.querySelector("#timeRangeLabel").textContent==="0.25 小时");
+    await frame.waitForFunction(()=>document.querySelector("#timeRangeLabel").textContent.startsWith("0.25 小时"));
     for(let i=0;i<20;i++)await frame.click('[data-action="zoomTimeline"][data-direction="out"]');
-    await frame.waitForFunction(()=>document.querySelector("#timeRangeLabel").textContent==="48 小时");
-    await frame.click('[data-action="resetTimelineZoom"]');
-    await frame.waitForFunction(()=>document.querySelector("#timeRangeLabel").textContent==="24 小时");
+    await frame.waitForFunction(()=>document.querySelector("#timeRangeLabel").textContent.startsWith("48 小时"));
+    await doubleTapTimelineAxis(frame);
+    await frame.waitForFunction(()=>document.querySelector("#timeRangeLabel").textContent.startsWith("24 小时"));
     await page.waitForFunction(()=>document.querySelector("#bridgeLog").textContent
       .includes("resetTimelineZoom · 24 小时"));
     console.log("Studio Mock validates zoom/reset actions, clamps hours, and restores 24h");
@@ -331,7 +340,7 @@ fs.mkdirSync(TEST_TEMP_ROOT,{recursive:true});
     await frame.waitForFunction(()=>document.querySelector('[data-event-seq="101"] .timelineTitle')
       .dataset.titleFoldState==="clipped");
     await frame.click('[data-action="zoomTimeline"][data-direction="in"]');
-    await frame.waitForFunction(()=>document.querySelector("#timeRangeLabel").textContent==="16 小时");
+    await frame.waitForFunction(()=>document.querySelector("#timeRangeLabel").textContent.startsWith("16 小时"));
     await frame.waitForFunction(()=>document.querySelector('[data-event-seq="301"] .timelineTitle')
       .dataset.titleFoldState==="clipped");
     const zoomedScroll=await frame.evaluate(()=>({
@@ -354,8 +363,8 @@ fs.mkdirSync(TEST_TEMP_ROOT,{recursive:true});
     }));
     assert.deepEqual(zoomedFoldTrace.map(item=>item[0]),["visible","folded","visible","folded"],
       "Zoom recalculates the same deterministic greedy lead sequence");
-    await frame.click('[data-action="resetTimelineZoom"]');
-    await frame.waitForFunction(()=>document.querySelector("#timeRangeLabel").textContent==="24 小时");
+    await doubleTapTimelineAxis(frame);
+    await frame.waitForFunction(()=>document.querySelector("#timeRangeLabel").textContent.startsWith("24 小时"));
     await frame.waitForFunction(()=>document.querySelector('[data-event-seq="301"] .timelineTitle')
       .dataset.titleFoldState==="folded");
     await frame.evaluate(()=>{document.querySelector("#timelineRight").scrollLeft=0});
@@ -770,8 +779,9 @@ fs.mkdirSync(TEST_TEMP_ROOT,{recursive:true});
     const source=await page.evaluate(()=>payload());
     const clearHtml=Buffer.from(source.files["web/index.html"],"base64").toString("utf8");
     assert.ok(clearHtml.includes('data-action="zoomTimeline"')&&
-      clearHtml.includes('data-action="resetTimelineZoom"'),
-      "The editable canonical Clear source must contain both Host action controls");
+      clearHtml.includes('id="axisResetHit"')&&
+      !clearHtml.includes('data-action="resetTimelineZoom"'),
+      "The editable canonical Clear source must expose zoom controls and native axis double-tap reset");
     const exportResponse=await page.evaluate(async()=>{
       const data=payload();
       const r=await fetch("/api/export-v3",{method:"POST",

@@ -532,14 +532,24 @@ class TimelineReturnViewportInstrumentedTest {
                 "[data-direction=\\\"in\\\"]').click();true")
             val clearZoomed = awaitCamera(clearToday.anchorMillis, 16.0)
             assertEquals(clearToday.anchorMillis, clearZoomed.anchorMillis)
-            evaluate(web, "document.querySelector('[data-action=\\\"resetTimelineZoom\\\"]').click();true")
+            evaluate(web, """
+                (() => {
+                  const target=document.querySelector('#axisResetHit');
+                  const rect=target.getBoundingClientRect();
+                  const x=rect.left+rect.width/2,y=rect.top+rect.height/2;
+                  const tap=()=>target.dispatchEvent(new PointerEvent('pointerup',{
+                    pointerType:'touch',pointerId:1,clientX:x,clientY:y,bubbles:true,cancelable:true
+                  }));
+                  tap();tap();return true;
+                })()
+            """.trimIndent())
             val clearReset = awaitCamera(clearZoomed.anchorMillis, 24.0)
             assertEquals("Clear reset changes zoom without moving the anchor",
                 clearZoomed.anchorMillis, clearReset.anchorMillis)
 
             assertEquals("Native and Clear Today must produce the same camera", nativeToday, clearToday)
             assertEquals("Native and Clear zoom must produce the same camera", nativeZoomed, clearZoomed)
-            assertEquals("Native axis double-tap and Clear reset control must agree",
+            assertEquals("Native and Clear axis double-tap must agree",
                 nativeReset, clearReset)
             println("NATIVE_CLEAR_CAMERA_PARITY today=$nativeToday zoom=$nativeZoomed reset=$nativeReset")
         } finally {

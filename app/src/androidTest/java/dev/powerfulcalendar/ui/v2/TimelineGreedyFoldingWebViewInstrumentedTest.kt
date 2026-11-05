@@ -193,6 +193,10 @@ class TimelineGreedyFoldingWebViewInstrumentedTest {
                 })
         }
         assertTrue("WebView visual state timed out", visualState.await(10, TimeUnit.SECONDS))
+        return saveWindowScreenshot(name)
+    }
+
+    private fun saveWindowScreenshot(name: String): File {
         InstrumentationRegistry.getInstrumentation().waitForIdleSync()
         val file = File(requireNotNull(compose.activity.externalCacheDir), name)
         val bitmap = AtomicReference<Bitmap>()
@@ -218,7 +222,7 @@ class TimelineGreedyFoldingWebViewInstrumentedTest {
         } finally {
             frame.recycle()
         }
-        println("S0_TL05_SCREENSHOT=" + file.absolutePath + " bytes=" + file.length())
+        println("S0_TL05_WINDOW_SCREENSHOT=" + file.absolutePath + " bytes=" + file.length())
         return file
     }
 
@@ -293,6 +297,7 @@ class TimelineGreedyFoldingWebViewInstrumentedTest {
             target.optString("touchAction"))
         tap(web, target.getDouble("x"), target.getDouble("y"),
             target.getDouble("width"), target.getDouble("height"))
+        awaitJs(web, "window.__pcTestTouchClickCount===1", 3_000L)
         val after = evaluateObject(web, """
             (()=>({target:$query,clickCount:window.__pcTestTouchClickCount||0,
               range:document.querySelector("#timeRangeLabel")?.textContent||"",
@@ -300,6 +305,17 @@ class TimelineGreedyFoldingWebViewInstrumentedTest {
         """.trimIndent())
         after.put("touchProbe", target)
         return after
+    }
+
+    private fun doubleTapElementCenter(web: WebView, selector: String): JSONObject {
+        val firstTap = tapElementCenter(web, selector)
+        val target = firstTap.getJSONObject("touchProbe")
+        SystemClock.sleep(100L)
+        tap(web, target.getDouble("x"), target.getDouble("y"),
+            target.getDouble("width"), target.getDouble("height"))
+        val posts = evaluateObject(web, "({messages:window.__pcTestPortPosts||[]})")
+            .getJSONArray("messages")
+        return JSONObject().put("firstTap", firstTap).put("messages", posts)
     }
 
     private fun overlaps(first: JSONObject, second: JSONObject): Boolean =
@@ -355,7 +371,7 @@ class TimelineGreedyFoldingWebViewInstrumentedTest {
             }
             val view = requireNotNull(web)
             awaitJs(view, "!!window.PowerCalSkin && !!document.querySelector('#timelineSurface')")
-            awaitJs(view, "document.querySelector('#timeRangeLabel')?.textContent==='24 小时'")
+            awaitJs(view, "document.querySelector('#timeRangeLabel')?.textContent?.startsWith('24 小时')===true")
             val actualAction = AtomicReference<String>()
             compose.runOnUiThread {
                 val previous = WebSkinBridgeRuntime.onAction
@@ -382,14 +398,14 @@ class TimelineGreedyFoldingWebViewInstrumentedTest {
             val zoomedHost = actualHost
             assertEquals("Host timeline scale changes after zoom input; host=${timelineSummary(zoomedHost)}", 16.0,
                 zoomedHost.getJSONObject("timeline").getDouble("hours"), 0.001)
-            awaitJs(view, "document.querySelector('#timeRangeLabel')?.textContent==='16 小时'", 8_000L)
-            val resetTouch = tapElementCenter(view, "[data-action='resetTimelineZoom']")
-            assertEquals("Android touchscreen must click 24-hour reset", 1,
-                resetTouch.getInt("clickCount"))
+            awaitJs(view, "document.querySelector('#timeRangeLabel')?.textContent?.startsWith('16 小时')===true", 8_000L)
+            val resetTouch = doubleTapElementCenter(view, "#axisResetHit")
+            assertTrue("Android touchscreen double-tap must send the 24-hour reset action",
+                resetTouch.getJSONArray("messages").toString().contains("resetTimelineZoom"))
             val resetHost = awaitHostTimelineHours(24.0)
             assertEquals("Host returns to 24-hour scale after reset; host=${timelineSummary(resetHost)}", 24.0,
                 resetHost.getJSONObject("timeline").getDouble("hours"), 0.001)
-            awaitJs(view, "document.querySelector('#timeRangeLabel')?.textContent==='24 小时'", 8_000L)
+            awaitJs(view, "document.querySelector('#timeRangeLabel')?.textContent?.startsWith('24 小时')===true", 8_000L)
             println("S0_TL05_ZOOM_API35=" + JSONObject().put("zoomHost", timelineSummary(zoomedHost))
                 .put("resetHost", timelineSummary(resetHost)).put("zoomTouch", zoomTouch)
                 .put("resetTouch", resetTouch))
@@ -495,6 +511,9 @@ class TimelineGreedyFoldingWebViewInstrumentedTest {
                     .put("height", compose.activity.window.decorView.height))
                 .put("density", compose.activity.resources.displayMetrics.density)
                 .put("titleBoundsRootPx", JSONObject(nativeRectangles))
+            val evidenceSuffix = namespace.takeLast(8)
+            val nativeScreenshot = saveWindowScreenshot("s0-tl05-native-api35-$evidenceSuffix.png")
+            nativeEvidence.put("screenshot", nativeScreenshot.absolutePath)
             println("S0_TL05_NATIVE_API35_TRACE=" + nativeEvidence)
 
             SkinPackageManager(context).select("powercal-clear-default")
@@ -623,7 +642,6 @@ class TimelineGreedyFoldingWebViewInstrumentedTest {
             assertEquals("Adjacent C/D intervals stay adjacent", c.getLong("end"), d.getLong("start"))
             assertTrue("A/B/C/D event intervals do not overlap", b.getLong("end") <= c.getLong("start"))
 
-            val evidenceSuffix = namespace.takeLast(8)
             val screenshot = saveScreenshot("s0-tl05-greedy-folding-api35-$evidenceSuffix.png", view)
 
             fun reflowTrace(): JSONObject = evaluateObject(view, """
@@ -798,7 +816,7 @@ class TimelineGreedyFoldingWebViewInstrumentedTest {
             assertEquals("Zoom action updates host timeline scale; host=${timelineSummary(zoomHostState)} " +
                 "action=${actionSeen.get()}", 16.0,
                 zoomHostState.getJSONObject("timeline").getDouble("hours"), 0.001)
-            awaitJs(view, "document.querySelector('#timeRangeLabel')?.textContent==='16 小时'", 8_000L)
+            awaitJs(view, "document.querySelector('#timeRangeLabel')?.textContent?.startsWith('16 小时')===true", 8_000L)
             awaitJs(view, "(()=>{const items=Array.from(document.querySelectorAll('#timelineRight .timelineTitle'));" +
                 "return items.length===4&&items.every(title=>['visible','folded'].includes(title.dataset.titleFoldState))})()")
             val zoomed = reflowTrace()
@@ -808,11 +826,11 @@ class TimelineGreedyFoldingWebViewInstrumentedTest {
                     "document.querySelectorAll('#timeLabels .timeTick').length>0").toBoolean())
             assertCurrentLineMatchesHost(view, zoomHostState, "16-hour zoom")
 
-            val resetTouch = tapElementCenter(view, "[data-action='resetTimelineZoom']")
+            val resetTouch = doubleTapElementCenter(view, "#axisResetHit")
             println("S0_TL05_RESET_TOUCH=" + resetTouch)
-            assertEquals("Android touchscreen must dispatch a real click to 24-hour reset", 1,
-                resetTouch.getInt("clickCount"))
-            awaitJs(view, "document.querySelector('#timeRangeLabel')?.textContent==='24 小时'", 8_000L)
+            assertTrue("Android touchscreen double-tap must dispatch the 24-hour reset action",
+                resetTouch.getJSONArray("messages").toString().contains("resetTimelineZoom"))
+            awaitJs(view, "document.querySelector('#timeRangeLabel')?.textContent?.startsWith('24 小时')===true", 8_000L)
             awaitJs(view, "(()=>{const items=Array.from(document.querySelectorAll('#timelineRight .timelineTitle'));" +
                 "return items.length===4&&items.every(title=>['visible','folded'].includes(title.dataset.titleFoldState))})()")
             val reset24Hour = reflowTrace()

@@ -61,7 +61,6 @@ body[data-page="timeline"] .timeline-section-label {display:none}
 .timeline-view-controls button:active {background:var(--fill-3)}
 #timeRangeLabel {min-width:104px;color:var(--label);font-size:14px;font-weight:550;white-space:nowrap}
 .timeline-gesture-hint {margin-left:auto;padding-right:8px;color:var(--label-2);font-size:13px;white-space:nowrap}
-.compat-reset-action {position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
 .timeline-empty {position:absolute;z-index:5;top:114px;left:8px;right:8px;margin:0;color:var(--label-2);text-align:center;font-size:14px;pointer-events:none}
 .timeline-empty[hidden] {display:none}
 .axis-scroll {position:relative;flex:1 1 auto;height:auto;min-height:0;overflow:auto;border-radius:0;background:var(--bg-canvas);touch-action:pan-x;scrollbar-width:none}

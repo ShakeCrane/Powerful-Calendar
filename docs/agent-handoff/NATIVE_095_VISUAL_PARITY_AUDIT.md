@@ -105,3 +105,30 @@ Owner 于 2026-11-05 明确将 **2026-10-27 冻结的 PowerCal 0.9.5-rc.1 原生
 结论：本次只完成 Native 0.9.5 方向的首轮 Web 页面迁移和一项真实 Host 交互收敛。页面截图显示部分头部、卡片和空态已经接近冻结原生结构，但尚无固定 fixture 逐项尺寸/交互比对，也未覆盖所有重要表面，不能签核“用户看到并操作与 0.9.5-rc.1 等价”。继续实施并保持 `PRODUCT_CUTOVER: HOLD`。
 
 补充：`e2e_v3_source.cjs` 首次复测暴露其拼装 Clear 预览包时没有带上 `index.html` 新引用的 `clear-design.css`、`native-095.css` 和字体资源；夹具已改为包含实际页面依赖。随后浏览器流程按当前已移到 `#chatEmptyHint` 的空态节点验证清空聊天，最终该 E2E 全流程 PASS。该夹具和断言修正不改变产品逻辑。
+
+## 2026-11-05 时间轴固定事件集复验与双击复位对齐
+
+本节更新前文“时间轴还没有确定性事件集”的状态。当前在隔离 API 35 AVD `PowerCal_Native095_Parity_20261105`（`emulator-5580`、1080×2400、420 dpi、density 2.625）使用同一个 UUID 隔离 Store，依次运行当前 Native Compose 时间轴和默认 Web v3 时间轴。事件日期/时刻固定，但系统时钟未冻结；两条路由分别从运行时当前时间初始化 Camera，截图相隔数秒。该 Native 图像来自当前工程的 Native 路由；它可作为移植前后对照，但**不是**冻结原始 APK 在此事件集上的截图。原始 APK 本轮仍只有空数据页截图。因此原始 APK 与新版 WebView 的同数据、同固定 Camera 对照仍待完成。
+
+确定性 Store 数据为设备本地 2026-11-05 的四个一分钟 ACTIVITY：`Fold_A` 12:00–12:01、`Fold_B` 12:01–12:02、`Fold_C` 14:00–14:01、`Fold_D` 14:01–14:02。Core 正式创建后，Native 与 Web 使用同一 Store 和系统时区；Camera 使用每次路由启动时的系统时钟。测试只在关闭已折叠标题对应编辑页后比较原事件快照及提交数量。
+
+| 对照项 | 本轮实测结果 |
+|---|---|
+| 标题贪心折叠 | Native 与 Web 均显示 `Fold_A`、`Fold_C`；`Fold_B` 折叠到 A，`Fold_D` 折叠到 C。决策使用实测文字矩形；B/D 的事件按钮和完整无障碍标题仍保留。 |
+| 真实时间几何 | Web 四个 ACTIVITY 的 interval 顶/底与 Host 投影时间差误差不超过 1.25 CSS px；相邻一分钟区间仍相邻，缩放/复位后仍有事件按钮、刻度和当前时刻线。 |
+| 点按命中 | 对折叠的 `Fold_B` 可见文字区域执行 Android touchscreen 点按，打开标题为 `Fold_B` 的编辑器；正式事件快照、revision 与 commitCount 不变。 |
+| 复位交互 | 24→16 小时缩放通过真实 Android 触控；对 `#axisResetHit` 发送两次真实触控后 Host 回到 24 小时。Native 与 Clear 的今日、本地中午 Camera、缩放及中轴双击复位对照用例 1/1 PASS。 |
+| 本轮设备用例 | `actualClearTimelineFoldsOnlyCollidingMeasuredTitlesAndKeepsEventTapAndGeometry`、`actualClearZoomControlsUpdateHostAndWebViewTimelineScale`、`nativeAndClearTodayZoomAndResetProduceTheSameCamera` 共 3/3 PASS。早期复跑暴露的标签文案、隐藏按钮选择器和测试助手坐标层级问题均已修正；最终结果来自随后通过的编译产物。 |
+| 当前工厂包 | 仍是唯一 `powercal-clear-default`，10 个文件、406599 bytes；正式构建器确认源码与 APK 资源 SHA-256 均为 `0e0f51897cdc7aa784925eebaccdac395e45cd10d7b33f22d348dd6eca26f598`。 |
+
+同一夹具 Native 与 Web 的真实 Android 截图：
+
+- Native Compose 路由：[native-fixed-event-geometry.png](../../.local/android-test/reports/native095-parity-20261105/native-fixed-event-geometry.png)，SHA-256 `06E906380D06203D26FE3B1B523B078F7840B0921F8387F4319DC8A5E597353D`。
+- Web v3 Runtime：[web-fixed-event-geometry.png](../../.local/android-test/reports/native095-parity-20261105/web-fixed-event-geometry.png)，SHA-256 `D499775CD186D1F38FA70AD37E5A2FD3AD84B5847B19E391CFBE1E466EB55B0C`。
+- 设备日志：`.local/android-test/reports/native095-parity-20261105/timeline-greedy-webview-api35-paired-screenshots.log`、`timeline-zoom-doubletap-api35.log`、`timeline-return-doubletap-api35.log`。
+
+当前标题 bounds 尚不能直接当作同坐标系下的像素等价：Native Compose 语义 bounds 相对 Compose 根节点，Web 记录为 WebView CSS viewport 坐标；还需记录两侧屏幕原点并统一映射。空页菜单、标题/轴行起始位置与底部安全区仍能看到几何差异。此次测试主要验证右侧 ACTIVITY，不签核 ALARM 左翼、DEADLINE、重复实例、长标题剪裁、横向 lane 或大字体下的全部标题边界。
+
+本轮为使验收真实复现 Native 冻结行为，删除了皮肤中原先隐藏的单击 `resetTimelineZoom` 兼容按钮，保留 Web Host action 但仅通过时间尺双击/键盘语义触发；其不再占用工具栏布局或形成额外无障碍入口。未修改 Core 业务语义、默认皮肤 ID 或 Native 恢复。
+
+整体结论仍为 `IN_PROGRESS`。下一步：将 Native 与 Web 标题 bounds、事件区间、轴及可视区域统一到物理屏幕坐标，基于原始 APK 的对应布局校准 CSS；再用原始 APK 与 Web 运行包重放同一 fixture。完成后继续逐页处理 Month、Memo、AI、Settings、编辑器、草稿及审核面，不以当前 Native 路由对照替代冻结 APK 的最终实屏签核。
