@@ -7,24 +7,35 @@ OWNER_VISUAL_REFERENCE_APK: .local/android-test/artifacts/physical-qa/PowerCal-0
 OWNER_VISUAL_REFERENCE_APK_SHA256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
 WAVE2_START_HEAD: 3b54097d6383c0349b5d3d638c228320e3c8e22c
 WAVE3_START_HEAD: 82b456fd2bfc15df379fd15d967fac3da57b899d
-LATEST_CODE_HEAD: dcd283a9d6cc6cfa1b7b08609fd8c2f4f6162bdb (AI message roles, Host-owned long-press actions, and copy behavior aligned to frozen Native; overall Native 0.9.5 parity remains IN_PROGRESS)
-LATEST_VERIFIED_HEAD: dcd283a9d6cc6cfa1b7b08609fd8c2f4f6162bdb (full serial Gradle gate 975/975; API 35 WebView long-press and Store invariance 1/1; Studio full suite 86/89 with three recorded failures)
+LATEST_CODE_HEAD: 84229c8a707761e295ff4bc366619804a653f82d (Month selected-day radius matches frozen 14dp chip; overall Native 0.9.5 parity remains IN_PROGRESS)
+LATEST_VERIFIED_HEAD: 84229c8a707761e295ff4bc366619804a653f82d (Month browser computed-style and API 35 WebView touch/screenshot pass; source boundaries/package/AndroidTest compile pass; full JVM/Lint not rerun for this CSS/test slice)
 CURRENT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
 TASK_STATUS: IN_PROGRESS
 PRODUCT_CUTOVER: HOLD
 TASK_BASE_HEAD: e41246d7ebe5b329adbdc657bd3e53735695efa1
-WORKING_APK_SHA256: 40bf867049f303ea32da6b3c06d3321c30f0a56ba5aa20b2f07a38d1d07b770d
-WORKING_DEFAULT_SKIN_SHA256: 81a99440f5f9e67608460611fece5825c61229852a8372b2455216086ee88456
+WORKING_APK_SHA256: a064f2f66aeeb0bc726cc15f79c6acda3d4179160991030c2acd083d103df40d
+WORKING_DEFAULT_SKIN_SHA256: dda39d12548368a33cb0f90041b61eafe08aa7d53c710822491b29819f5345d3
 WORKING_DEFAULT_SKIN_ID: powercal-clear-default
 NATIVE_VISUAL_PARITY_AUDIT: docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md (inventory complete; implementation and full parity remain IN PROGRESS)
 PREVIOUS_TASK_STATE: Q-05 single-default startup migration and protected-branch cutover (PASS; public release remains HOLD)
-LAST_COMPLETED_TASK: AI message roles, Host-owned long-press menu, and clipboard resolution slice (PASS; original APK menu screenshot NOT TESTED; overall AI page remains PARTIAL)
-LAST_COMPLETED_COMMIT: dcd283a9d6cc6cfa1b7b08609fd8c2f4f6162bdb
+LAST_COMPLETED_TASK: Month selected-day radius parity slice (PASS; Month page remains PARTIAL)
+LAST_COMPLETED_COMMIT: 84229c8a707761e295ff4bc366619804a653f82d
 LAST_ATTEMPTED_TASK: Native 0.9.5 visual and interaction parity migration (IN PROGRESS; see audit and latest Android evidence)
-LAST_ATTEMPTED_COMMIT: dcd283a9d6cc6cfa1b7b08609fd8c2f4f6162bdb (AI message menu slice; see issue report and audit appendix)
+LAST_ATTEMPTED_COMMIT: 84229c8a707761e295ff4bc366619804a653f82d (Month selected-day radius slice; see Issue report and audit appendix)
 NEXT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
-NEXT_ACTION: Migrate the measured Month differences next: reduce selected-day CSS radius from 24px to the frozen Compose 14dp chip radius, then re-capture the same-device/same-date Native APK and Web pair. Measure remaining calendar row height, panel surface, and agenda card spacing before changing them. AI remains PARTIAL; original APK message-menu screenshot, attachment authorization, proposal review, and error/retry remain open. Product Cutover remains HOLD.
+NEXT_ACTION: Align the Month selected-count foreground. Frozen Compose count text inherits the selected Surface primary-container content color, while Web `.month-count` still overrides it with `var(--label-2)`. Confirm the exact token color from frozen palette/source, then update the canonical Studio project, rebuild, and recapture the same-device 2026-11-05 fixture pair. Keep calendar fill and agenda-card geometry as separate measured follow-ups. AI remains PARTIAL; original APK message-menu screenshot, attachment authorization, proposal review, and error/retry remain open. Product Cutover remains HOLD.
 LAST_TASK_EVIDENCE:
+  NATIVE_095_MONTH_SELECTED_RADIUS:
+    status: PASS (selected-day/today radius and tap only; Month page remains PARTIAL)
+    code_commit: 84229c8a707761e295ff4bc366619804a653f82d
+    reference_source: b1f7629f0c52812e1887443872f43aa6c49908c4
+    reference_apk_sha256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
+    apk_sha256: A064F2F66AEEB0BC726CC15F79C6ACDA3D4179160991030C2ACD083D103DF40D
+    default_skin_sha256: DDA39D12548368A33CB0F90041B61EAFE08AA7D53C710822491B29819F5345D3
+    tests: Studio month-selection E2E and distribution 2/2 PASS; source boundaries, assembleDebug, AndroidTest compile/package PASS; no full JVM/Lint rerun for CSS/test-only changes
+    android: API 35 AVD PowerCal_Native095_Parity_20261105 / emulator-5580, 1080x2400, 420 dpi; selected-day trusted touch, 14px computed radius, 52px cell height, MonthFixture visible; Store unchanged
+    screenshots: .local/android-test/reports/native095-month-radius-20261105/ (Native/Web same-device pair, SHA-256 and descriptive ROI metrics in audit)
+    limitations: selected count color, calendar surface, agenda card geometry remain visibly different; Product Cutover HOLD
   NATIVE_095_AI_MESSAGE_CONTEXT_MENU:
     status: PASS (WebView message-role/menu/copy slice only; Native original APK menu screenshot NOT TESTED; AI page remains PARTIAL)
     code_commit: dcd283a9d6cc6cfa1b7b08609fd8c2f4f6162bdb
