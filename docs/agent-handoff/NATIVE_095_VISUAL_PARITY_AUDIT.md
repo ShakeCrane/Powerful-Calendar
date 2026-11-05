@@ -234,3 +234,18 @@ Owner 于 2026-11-05 明确将 **2026-10-27 冻结的 PowerCal 0.9.5-rc.1 原生
 | 构建与包 | 当前 `aceae50b` 的默认包为 10 文件、408186 字节，SHA-256 `C8F8D3AE09B29A365A2B87BE2A9FEA4BB356E71F6E2DE93C0F9AA2667DA50338`；Debug APK SHA-256 `37E66E35ED14751E0FD3E71554CF42F5200762ED5F87B81A2BB886BDAD642B13`。官方构建器确认 APK 内唯一包与源码字节一致；分发测试 2/2、Node 语法检查、assemble 和真实 WebView 打开/关闭操作通过。Kotlin 完整门禁仍为前置 Host 修正提交 `96fa0265` 上的 974/974；此后只有 Skin HTML/CSS/包资源改变。 |
 
 **AI 页面仍为 PARTIAL。**空首页、视口、菜单顺序和 Web 菜单关闭已验证；原始 APK 菜单截图、AI 配置表面、聊天记录/附件/消息、提案审核和失败状态仍未签核。Settings 通过 `nativeSettings` 进入完整 Native Tools 的链路是明确的迁移缺口，不得把它计作“Native 仅恢复”。Memo 行完成、分页/详情和编辑器/草稿浮层仍未签核。默认 Clear 仍是唯一 `.pcskin`，Product Cutover 保持 HOLD。
+
+## 2026-11-05 AI 设置路由收敛（路由切片 PASS；AI 页面仍 PARTIAL）
+
+针对上节记录的调用链 `#openAiSettings → nativeSettings → Page.TOOLS`，将 AI 配置入口收敛为独立 Host 保护表面。`#openAiSettings` 现在只发送闭合动作 `openAiSettings`；该动作已加入正式 v1 Host binding catalog，Host 仅在活动全画布 Web Skin 的 `SETTINGS` 页接受。`PowerCalApp` 不切换页面，而显示 `HostProtectedAiSettingsDialog`，复用 Host-owned 的 `HostProtectedAiSettingsSection` 与 `NativeProtectedAiSettingsSection`。API Key 留在 Compose Host 私有状态并继续密码遮罩；没有进入 Web state、DOM、Studio Mock 或 action payload。关闭存在未保存修改的表单前要求确认。
+
+`#nativeRecoverySettings` 仍发送 `nativeSettings`，用于独立访问 Native 恢复/工具面；该路径没有被改成日常 AI 设置路由。AI 页面整体仍是 PARTIAL，不能将此路由切片计为 AI/chat/提案等功能等价。
+
+| 验证项 | 结果 |
+|---|---|
+| 版本化动作与 Studio | Host catalog 与实际 closed decoder 一致；参数严格为空对象且拒绝额外字段。Studio Mock 验证动作只在 Settings 页模拟打开，不启动 Android Host、不读密钥或保存偏好。Catalog Python 测试 7/7，默认包/单默认分发 7/7，Mock Chromium/CDP E2E PASS；变更 JS 语法检查 PASS。第一次 E2E 的等待文本未与新 Mock 日志一致，更新断言文案后复跑通过。 |
+| Android 真实交互 | AVD `PowerCal_Native095_AI_20261105` / `emulator-5556`，API 35、1080×2400、420 dpi。`clearSettingsRoutesAiCredentialsAndContextControlsToProtectedHostUi` 与 `clearAiSettingsDialogCloseReturnsToSkinWithoutNativeTools` 各 1/1 PASS。验证打开表单、展开模型字段、Settings 页面保持、关闭后仍在 Skin 并可回到时间轴；关闭/导航测试的 Core Store 快照一致。没有清除 App 数据；未输入、检查或保存凭据值。 |
+| 构建/包 | 最终串行 Gradle 门禁 974/974 JVM（141 suites，0 failures/errors/skips）；Skin/Native 源码边界、Debug assemble、Lint（0 errors / 63 warnings）、AndroidTest Kotlin compile PASS。Debug APK SHA-256 `a27588ea0a5e2251e14bd4bdaa269703a336a38c9fbe2bbccb2e3af2b91a7bf6`。官方构建器验证唯一包 `powercal-clear-default.pcskin` 为 10 文件、408192 bytes，SHA-256 `eaa55919a071107938db08e788b59a89625adf4bd7a3c6547d6ac235bf1ceeb6`，与 APK asset 字节一致。 |
+| 证据 | `.local/android-test/reports/host-ai-settings-20261105/`；实现提交 `07c62fbf16c0aa72181f92783e84a5826905fc56`；Issue `docs/issues/PC-ISSUE-SEPARATION-AI-SETTINGS-HOST-SURFACE-20261105.md`。 |
+
+**剩余差异：**脏表单的“放弃更改”确认分支尚未单独执行；冻结原始 APK 的 AI 配置弹层截图尚未配对；Native/Web 聊天历史、附件授权、提案审核、错误与重试仍未验收。Memo、编辑器/审核以及其他 Settings 操作仍按原生 0.9.5 基准逐页迁移。Native 紧急恢复、默认包 ID/数量、Core 业务规则未改；Product Cutover 仍 HOLD。

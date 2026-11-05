@@ -7,24 +7,36 @@ OWNER_VISUAL_REFERENCE_APK: .local/android-test/artifacts/physical-qa/PowerCal-0
 OWNER_VISUAL_REFERENCE_APK_SHA256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
 WAVE2_START_HEAD: 3b54097d6383c0349b5d3d638c228320e3c8e22c
 WAVE3_START_HEAD: 82b456fd2bfc15df379fd15d967fac3da57b899d
-LATEST_CODE_HEAD: aceae50b9241509d1914f54493161e28af037f40 (Native 0.9.5 AI home/overflow order and WebView safe-area parity; overall parity remains IN_PROGRESS)
-LATEST_VERIFIED_HEAD: aceae50b9241509d1914f54493161e28af037f40 (parent 96fa0265 full gate 974/974; final HTML/CSS package rebuilt, APK asset verified, API 35 menu open/outside-dismiss touch captured)
+LATEST_CODE_HEAD: 07c62fbf16c0aa72181f92783e84a5826905fc56 (AI settings now opens a protected Host dialog above Web Settings; overall Native 0.9.5 parity remains IN_PROGRESS)
+LATEST_VERIFIED_HEAD: 07c62fbf16c0aa72181f92783e84a5826905fc56 (full serial Gradle gate 974/974; Studio action catalog/mock and API 35 route/dismiss checks passed)
 CURRENT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
 TASK_STATUS: IN_PROGRESS
 PRODUCT_CUTOVER: HOLD
 TASK_BASE_HEAD: e41246d7ebe5b329adbdc657bd3e53735695efa1
-WORKING_APK_SHA256: 37E66E35ED14751E0FD3E71554CF42F5200762ED5F87B81A2BB886BDAD642B13
-WORKING_DEFAULT_SKIN_SHA256: C8F8D3AE09B29A365A2B87BE2A9FEA4BB356E71F6E2DE93C0F9AA2667DA50338
+WORKING_APK_SHA256: a27588ea0a5e2251e14bd4bdaa269703a336a38c9fbe2bbccb2e3af2b91a7bf6
+WORKING_DEFAULT_SKIN_SHA256: eaa55919a071107938db08e788b59a89625adf4bd7a3c6547d6ac235bf1ceeb6
 WORKING_DEFAULT_SKIN_ID: powercal-clear-default
 NATIVE_VISUAL_PARITY_AUDIT: docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md (inventory complete; implementation and full parity remain IN PROGRESS)
 PREVIOUS_TASK_STATE: Q-05 single-default startup migration and protected-branch cutover (PASS; public release remains HOLD)
-LAST_COMPLETED_TASK: Native 0.9.5 AI home/overflow presentation slice (PARTIAL; menu order aligned, Native original menu screenshot NOT TESTED)
-LAST_COMPLETED_COMMIT: aceae50b9241509d1914f54493161e28af037f40
+LAST_COMPLETED_TASK: AI settings protected Host-surface route slice (PASS; overall AI page remains PARTIAL)
+LAST_COMPLETED_COMMIT: 07c62fbf16c0aa72181f92783e84a5826905fc56
 LAST_ATTEMPTED_TASK: Native 0.9.5 visual and interaction parity migration (IN PROGRESS; see audit and latest Android evidence)
-LAST_ATTEMPTED_COMMIT: aceae50b9241509d1914f54493161e28af037f40 (AI home/overflow; see audit evidence)
+LAST_ATTEMPTED_COMMIT: 07c62fbf16c0aa72181f92783e84a5826905fc56 (AI settings Host surface; see issue report and audit appendix)
 NEXT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
-NEXT_ACTION: Trace and migrate the Skin Settings “打开 AI 配置与隐私设置” route so ordinary settings stay in Web Skin and only the protected credential editor is a narrow Host surface; do not save credentials or expose secret values. The current route enters Native Tools via nativeSettings. AI remains PARTIAL (chat, attachment, proposal and Native original menu screenshot not signed off); Memo remains PARTIAL. Product Cutover remains HOLD.
+NEXT_ACTION: Continue Native 0.9.5 AI-page parity with deterministic chat/history, attachment authorization, proposal review, and error/retry states; use no live provider and do not inspect or save credential values. AI remains PARTIAL; Memo/editor/review and other settings interactions remain open. Product Cutover remains HOLD.
 LAST_TASK_EVIDENCE:
+  NATIVE_095_AI_SETTINGS_HOST_SURFACE:
+    status: PASS (route and Host-surface slice only; full AI parity remains PARTIAL)
+    code_commit: 07c62fbf16c0aa72181f92783e84a5826905fc56
+    reference_source: b1f7629f0c52812e1887443872f43aa6c49908c4
+    reference_apk_sha256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
+    apk_sha256: a27588ea0a5e2251e14bd4bdaa269703a336a38c9fbe2bbccb2e3af2b91a7bf6
+    default_skin_sha256: eaa55919a071107938db08e788b59a89625adf4bd7a3c6547d6ac235bf1ceeb6
+    tests: 974/974 JVM; source boundaries, assemble, lint (0 errors), AndroidTest compile PASS; Studio Python 14/14, JS syntax, Studio Mock E2E PASS
+    android: API 35 AVD PowerCal_Native095_AI_20261105 / emulator-5556, 1080x2400, 420 dpi; protected settings route and close/navigation 2/2 PASS; no app data clear and no credential values inspected or changed
+    store: route/close test snapshot unchanged; Web state contains no apiKey field; one factory .pcskin, APK bytes match source
+    evidence: .local/android-test/reports/host-ai-settings-20261105/; docs/issues/PC-ISSUE-SEPARATION-AI-SETTINGS-HOST-SURFACE-20261105.md
+    limitations: dirty-form discard prompt not separately exercised; original frozen APK AI-settings screenshot not paired; chat/history/attachments/proposals/error parity and live provider remain unverified; Product Cutover HOLD
   NATIVE_095_AI_HOME_AND_OVERFLOW:
     status: PARTIAL (AI empty home and Web overflow order/outside dismissal verified; frozen original APK menu screenshot NOT TESTED; AI configuration/chat/attachment/proposal states remain open)
     commits: 96fa026594e8f085c6221c6bbda83a311829e779, 1e11116be0b22922988e8a0c777826ad0c7e8629, aceae50b9241509d1914f54493161e28af037f40

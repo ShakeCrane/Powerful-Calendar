@@ -1,12 +1,12 @@
 # Native 0.9.5 视觉/交互基准迁移续接（2026-11-05）
 
-- **状态：**总体视觉与交互迁移仍 `IN_PROGRESS`；本轮 AI 空首页及 WebView 系统栏视口 `PARTIAL`。Native 0.9.5-rc.1（冻结源码 `b1f7629f0c52812e1887443872f43aa6c49908c4`）是唯一视觉与交互基准；不以旧 Web Clear 或 Claude 概念稿验收。
-- **代码提交：**`96fa026594e8f085c6221c6bbda83a311829e779` 修复 API 35 WebView 顶边偏移并校正 AI/Memo 空态样式；`1e11116be0b22922988e8a0c777826ad0c7e8629` 微调 AI 标题；`aceae50b9241509d1914f54493161e28af037f40` 对齐 Native AI 更多菜单顺序/文案。均已推送。
-- **验证：**根视口改动后的完整串行 Gradle 门禁 `974/974` JVM PASS、源码边界、Debug APK、Lint、AndroidTest Kotlin 编译 PASS；最终 HTML 变更后 Studio 默认包测试 `2/2`、Node 语法检查、Debug assemble、正式包/APK 一致性和真实 WebView 菜单开合通过。最终 APK SHA-256 `37E66E35ED14751E0FD3E71554CF42F5200762ED5F87B81A2BB886BDAD642B13`；默认包 SHA-256 `C8F8D3AE09B29A365A2B87BE2A9FEA4BB356E71F6E2DE93C0F9AA2667DA50338`。
-- **Android：**隔离 AVD `PowerCal_Native095_AI_20261105` / `emulator-5556`，API 35，1080×2400，420 dpi，WebView 124.0.6367.219。WebView bounds `[0,63][1080,2337]`；AI 首页与更多菜单开合已实测。试装冻结 APK 后 Native Activity 未恢复前台，已恢复当前 APK且未清除数据；原始 Native 菜单截图 `NOT TESTED`。一次菜单触控误触缓存项，App 回报清理 0 个文件；未触发聊天/事件修改。没有 Store 快照，不宣称 Store 哈希验收。
-- **证据：**`docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md` 的 AI/视口附表；`.local/android-test/reports/native095-parity-20261105/native095-ai-host-inset-full-gate.log`、`native095-ai-menu-assemble.log`、`ai-native-home.png`、`ai-web-final-paired-20261105.png`、`ai-web-overflow-final-20261105.png`、`ai-web-overflow-dismissed-final-20261105.png`。Issue：`docs/issues/PC-ISSUE-SEPARATION-WEBVIEW-SAFE-AREA-20261105.md`、`PC-ISSUE-SEPARATION-AI-MENU-ORDER-20261105.md`。
-- **未完成：**Settings 中的 `nativeSettings` 仍把 AI 配置路由到完整 Native Tools；AI 配置/聊天/附件/提案审核未闭合；Memo 行完成、分页/详情、编辑器/草稿浮层仍 `PARTIAL`；其他页面继续原生对照。无生产切换，Product Cutover `HOLD`。
-- **唯一下一动作：**将 AI 配置入口收敛为 Web Skin Settings 加受保护的窄 Host 表面；先确认现有 Host 安全表单/API，不保存或显示任何凭据。
+- **状态：**AI 设置路由切片 `PASS`，总体 Native 0.9.5 视觉/交互迁移仍 `IN_PROGRESS`。冻结源码 `b1f7629f0c52812e1887443872f43aa6c49908c4` 仍是唯一基准；不以旧 Web Clear 或 Claude 概念稿验收。
+- **代码提交：**`07c62fbf16c0aa72181f92783e84a5826905fc56` 将 AI 配置入口从 `nativeSettings → Page.TOOLS` 改为受版本化 catalog 管理的 `openAiSettings` Host 表单弹层；日常 Web Settings 保持活动，独立恢复入口和 Native 恢复行为保留。未修改 Core 业务语义。
+- **验证：**最终完整串行 Gradle 门禁 `974/974` JVM、两项源码边界、Debug APK、Lint（0 errors / 63 warnings）、AndroidTest 编译 PASS；Studio Python 定向测试 `14/14`、JS 语法、Mock 浏览器 E2E PASS；正式包/APK 字节一致性 PASS。APK SHA-256 `a27588ea0a5e2251e14bd4bdaa269703a336a38c9fbe2bbccb2e3af2b91a7bf6`；唯一默认包 SHA-256 `eaa55919a071107938db08e788b59a89625adf4bd7a3c6547d6ac235bf1ceeb6`。
+- **Android：**隔离 AVD `PowerCal_Native095_AI_20261105` / `emulator-5556`，API 35、1080×2400、420 dpi。受保护 AI 设置打开/关闭与 Skin 导航 2/2 instrumentation PASS；Web bridge 不投影 `apiKey`，关闭/导航 Store 快照一致。用 `adb install -r` 更新，未清除应用数据；未输入、检查或保存凭据值。
+- **证据：**`.local/android-test/reports/host-ai-settings-20261105/`；Native/AI 差异审计 `docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md`；Issue `docs/issues/PC-ISSUE-SEPARATION-AI-SETTINGS-HOST-SURFACE-20261105.md`。
+- **未完成：**AI 聊天/历史、附件授权、提案审核和错误/重试尚未与冻结基准签核；冻结原始 APK 的 AI 设置弹层截图未配对。Memo 行完成/分页/详情、编辑器与审核浮层及权限交互仍 `PARTIAL`。Product Cutover `HOLD`。
+- **唯一下一动作：**继续用确定性数据对照冻结 Native 与 Web v3 的 AI 聊天/历史状态和错误重试；不调用实时服务商，不查看或保存凭据。
 
 # PowerCal 当前执行状态（R2）
 
