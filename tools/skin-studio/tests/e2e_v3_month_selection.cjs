@@ -185,6 +185,39 @@ async function main(){
         agendaCard.agendaPaddingTop!=="12px")
       throw Error("Month agenda card differs from frozen Native Surface/typography: "+
         JSON.stringify(agendaCard));
+    const monthActions=await frameEval("(()=>{const row=document.querySelector('#monthPage .month-actions'),"+
+      "create=row?.querySelector('[data-action=createDraft]'),jump=row?.querySelector('#viewMonthDate'),"+
+      "icon=create?.querySelector('svg'),"+
+      "rect=e=>{const r=e?.getBoundingClientRect();return r?"+
+      "{width:r.width,height:r.height}:null},style=e=>{const s=getComputedStyle(e);return "+
+      "{height:s.height,minHeight:s.minHeight,padding:s.padding,borderWidth:s.borderTopWidth,"+
+      "borderColor:s.borderTopColor,radius:s.borderTopLeftRadius,background:s.backgroundColor,"+
+      "color:s.color,fontSize:s.fontSize,fontWeight:s.fontWeight,lineHeight:s.lineHeight,"+
+      "letterSpacing:s.letterSpacing,gap:s.gap}};return ({gap:getComputedStyle(row).rowGap,"+
+      "create:{...style(create),bounds:rect(create),"+
+      "iconBounds:rect(icon),iconFill:getComputedStyle(icon).fill,"+
+      "iconPath:icon?.querySelector('path')?.getAttribute('d'),label:create?.textContent.trim()},"+
+      "jump:{...style(jump),bounds:rect(jump)}})})()");
+    const actionCss=fs.readFileSync(path.join(root,"tools/skin-studio/default-clear/source/web/native-095.css"),"utf8");
+    if(!/\.month-actions button\s*\{[^}]*border:1\.5px solid var\(--outline/.test(actionCss)||
+        !/\.month-actions\s*\{[^}]*gap:12px;padding:8px 0/.test(actionCss)||
+        monthActions.gap!=="12px"||monthActions.create.height!=="48px"||
+        monthActions.create.minHeight!=="48px"||monthActions.create.padding!=="0px 24px"||
+        monthActions.create.borderColor!=="rgb(195, 202, 216)"||
+        monthActions.create.radius!=="24px"||
+        monthActions.create.color!=="rgb(74, 82, 97)"||
+        monthActions.create.fontSize!=="14px"||monthActions.create.fontWeight!=="500"||
+        monthActions.create.lineHeight!=="20px"||monthActions.create.letterSpacing!=="0.1px"||
+        monthActions.create.gap!=="0px"||
+        monthActions.create.iconBounds?.width!==24||monthActions.create.iconBounds?.height!==24||
+        monthActions.create.iconFill!=="rgb(74, 82, 97)"||
+        monthActions.create.iconPath!=="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z"||
+        monthActions.create.label!=="为这一天新建活动"||
+        monthActions.jump.height!=="48px"||monthActions.jump.minHeight!=="48px"||
+        monthActions.jump.padding!=="0px 8px"||monthActions.jump.borderWidth!=="0px"||
+        monthActions.jump.color!=="rgb(36, 87, 214)"||monthActions.jump.fontWeight!=="500"||
+        monthActions.jump.lineHeight!=="20px")
+      throw Error("Month action targets differ from frozen Native buttons: "+JSON.stringify(monthActions));
     const initialCamera=await evaluate("simulatedState().timeline.anchorMillis");
 
     await frameEval("document.querySelector('.month-cell[data-date=\\\"2026-10-23\\\"]')?.click()");

@@ -970,6 +970,58 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
             assertEquals("selected-date title-to-card gap matches Native screenshot geometry", "\"11px\"",
                 evaluate(clearWeb, "getComputedStyle(document.querySelector('#monthAgenda h2')).marginBottom"))
             println("NATIVE_095_MONTH_AGENDA_CARD_STYLE=$agendaCardStyle")
+            val monthActionsJson = org.json.JSONTokener(evaluate(clearWeb, """(()=>{
+                const row=document.querySelector('#monthPage .month-actions');
+                const create=row?.querySelector('[data-action="createDraft"]');
+                const jump=row?.querySelector('#viewMonthDate');
+                const icon=create?.querySelector('svg');
+                const rect=e=>{const r=e?.getBoundingClientRect();return r?{top:r.top,bottom:r.bottom,
+                    width:r.width,height:r.height}:null};
+                const cards=[...document.querySelectorAll('#monthAgenda .agenda-event')];
+                const lastCard=rect(cards.at(-1));
+                const style=e=>{const s=getComputedStyle(e);return {height:s.height,minHeight:s.minHeight,
+                    padding:s.padding,borderWidth:s.borderTopWidth,borderColor:s.borderTopColor,
+                    radius:s.borderTopLeftRadius,background:s.backgroundColor,color:s.color,
+                    fontSize:s.fontSize,fontWeight:s.fontWeight,lineHeight:s.lineHeight,
+                    letterSpacing:s.letterSpacing,gap:s.gap,
+                    borderDevicePixels:Math.round(parseFloat(s.borderTopWidth)*devicePixelRatio)}};
+                return JSON.stringify({gap:getComputedStyle(row).rowGap,
+                    agendaButtonGap:create&&lastCard?rect(create).top-lastCard.bottom:null,
+                    create:{...style(create),bounds:rect(create),iconBounds:rect(icon),
+                        iconFill:getComputedStyle(icon).fill,iconPath:icon?.querySelector('path')?.getAttribute('d'),
+                        label:create?.textContent.trim()},
+                    jump:{...style(jump),bounds:rect(jump)}});
+            })()""")).nextValue() as String
+            val monthActionsStyle = JSONObject(monthActionsJson)
+            assertEquals("Native LazyColumn action item spacing is 12dp", "12px",
+                monthActionsStyle.getString("gap"))
+            assertEquals("Native agenda card to create action spacing is 12dp", 12.0,
+                monthActionsStyle.getDouble("agendaButtonGap"), 0.05)
+            val createStyle = monthActionsStyle.getJSONObject("create")
+            assertEquals("Native OutlinedButton height", "48px", createStyle.getString("height"))
+            assertEquals("Native OutlinedButton minimum target", "48px", createStyle.getString("minHeight"))
+            assertEquals("Native OutlinedButton horizontal content padding", "0px 24px",
+                createStyle.getString("padding"))
+            assertEquals("Native OutlinedButton outline color", "rgb(195, 202, 216)",
+                createStyle.getString("borderColor"))
+            assertEquals("Native 1dp OutlinedButton border rasterizes to three device pixels",
+                3, createStyle.getInt("borderDevicePixels"))
+            assertEquals("Native OutlinedButton pill shape", "24px", createStyle.getString("radius"))
+            assertEquals("Native labelLarge weight and line height", "500/20px",
+                createStyle.getString("fontWeight") + "/" + createStyle.getString("lineHeight"))
+            assertEquals("Native Add icon uses a 24dp viewport", 24.0,
+                createStyle.getJSONObject("iconBounds").getDouble("width"), 0.0)
+            assertEquals("Native Add vector path", "M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z",
+                createStyle.getString("iconPath"))
+            assertEquals("Native icon and label keep the source Row spacing", "0px",
+                createStyle.getString("gap"))
+            assertEquals("Native Add icon label remains localized", "为这一天新建活动",
+                createStyle.getString("label"))
+            val jumpStyle = monthActionsStyle.getJSONObject("jump")
+            assertEquals("Native TextButton minimum target", "48px", jumpStyle.getString("minHeight"))
+            assertEquals("Native action buttons are separated by 12dp",
+                "12px", monthActionsStyle.getString("gap"))
+            println("NATIVE_095_MONTH_ACTIONS_STYLE=$monthActionsStyle")
             val radius = evaluate(clearWeb,
                 "getComputedStyle(document.querySelector('#monthGrid .month-cell.selected')).borderTopLeftRadius")
             assertEquals("CSS chip corner must match frozen GlassShapes.chip = 14.dp", "\"14px\"", radius)
