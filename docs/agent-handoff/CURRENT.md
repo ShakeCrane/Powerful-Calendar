@@ -7,23 +7,34 @@ OWNER_VISUAL_REFERENCE_APK: .local/android-test/artifacts/physical-qa/PowerCal-0
 OWNER_VISUAL_REFERENCE_APK_SHA256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
 WAVE2_START_HEAD: 3b54097d6383c0349b5d3d638c228320e3c8e22c
 WAVE3_START_HEAD: 82b456fd2bfc15df379fd15d967fac3da57b899d
-LATEST_CODE_HEAD: e41810fa (Native 0.9.5 first visual migration slice)
-LATEST_VERIFIED_HEAD: e41810fa (full Gradle gate, targeted Android touch, package check, and Studio source E2E)
+LATEST_CODE_HEAD: e75abbd1 (Native axis double-tap reset and timeline fixture verification)
+LATEST_VERIFIED_HEAD: e75abbd1 (full product gate plus post-change AndroidTest compile/package and 3 targeted API 35 device passes)
 CURRENT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
 TASK_STATUS: IN_PROGRESS
 TASK_BASE_HEAD: e41246d7ebe5b329adbdc657bd3e53735695efa1
-WORKING_APK_SHA256: 1304586DC5E3189B4DB215D731618812D58DEC751C0C99FEEF497889F9F60E2A
-WORKING_DEFAULT_SKIN_SHA256: ba4d9831fb774e4bc02e440b00a58b7608c7d390b9b97083e9e9596cfe930d81
+WORKING_APK_SHA256: 5D92A32FD112BEA78422C9702FF337BFDC7B9B0E9237FC036B4C4758D76C5FF6
+WORKING_DEFAULT_SKIN_SHA256: 0E0F51897CDC7AA784925EEBACCDAC395E45CD10D7B33F22D348DD6ECA26F598
 WORKING_DEFAULT_SKIN_ID: powercal-clear-default
 NATIVE_VISUAL_PARITY_AUDIT: docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md (inventory complete; implementation and full parity remain IN PROGRESS)
 PREVIOUS_TASK_STATE: Q-05 single-default startup migration and protected-branch cutover (PASS; public release remains HOLD)
 LAST_COMPLETED_TASK: Q-05 single-default startup migration and protected-branch cutover (PASS; public release remains HOLD)
 LAST_COMPLETED_COMMIT: 7197a907cacc875e0e8ecf4c662d2d550342a2f4
 LAST_ATTEMPTED_TASK: Native 0.9.5 visual and interaction parity migration (IN PROGRESS; see audit and latest Android evidence)
-LAST_ATTEMPTED_COMMIT: e41810fa (feat(skin): 移植冻结原生页面结构与 AI 菜单行为)
+LAST_ATTEMPTED_COMMIT: e75abbd1 (fix(timeline): 对齐原生中轴双击复位并验证标题折叠)
 NEXT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
-NEXT_ACTION: Continue measured migration against frozen Native 0.9.5-rc.1 using the isolated API 35 WebView: create a fixed-time/event fixture for Timeline geometry and greedy title folding, then close remaining page/editor/draft/review differences. Keep the only official package ID powercal-clear-default, retain Native recovery, and keep Product Cutover HOLD.
+NEXT_ACTION: Map Native and Web title/event bounds into the same physical-screen coordinate space, pin the same Camera/time, then replay the deterministic fixture against the actual frozen 0.9.5-rc.1 APK and current Web v3. Use that delta to tune Timeline typography/axis/layout. Keep the only official package ID powercal-clear-default, retain Native recovery, and keep Product Cutover HOLD.
 LAST_TASK_EVIDENCE:
+  NATIVE_095_TIMELINE_FIXTURE:
+    status: PARTIAL (current Native Compose route vs Web fixed event fixture PASS; original APK same-fixture comparison and pixel geometry remain incomplete)
+    source_head: e75abbd1
+    reference_source: b1f7629f0c52812e1887443872f43aa6c49908c4
+    apk_sha256: 5D92A32FD112BEA78422C9702FF337BFDC7B9B0E9237FC036B4C4758D76C5FF6
+    default_skin_sha256: 0E0F51897CDC7AA784925EEBACCDAC395E45CD10D7B33F22D348DD6ECA26F598
+    tests: 973/973 JVM; source boundaries, APK, lint PASS; AndroidTest assembly PASS; title-fold/geometry/touch 1/1, zoom+axis-doubletap 1/1, Native/Clear Today-camera-doubletap 1/1; Studio catalog 7/7; source Chromium E2E PASS
+    android: isolated API 35 AVD PowerCal_Native095_Parity_20261105 / emulator-5580, 1080x2400, 420 dpi
+    evidence: .local/android-test/reports/native095-parity-20261105/timeline-greedy-webview-api35-paired-screenshots.log; screenshots `native-fixed-event-geometry.png` and `web-fixed-event-geometry.png`
+    audit: docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md
+    limitations: event date/time fixed but system clock and camera were not frozen; Native capture is current Native Compose route, not the original APK; Native/Web physical-screen origin conversion and typography deltas not yet measured
   NATIVE_095_PARITY_SLICE:
     status: PARTIAL (visual and interaction parity remains IN_PROGRESS)
     source_head: e41810fa
