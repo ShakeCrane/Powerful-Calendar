@@ -2677,3 +2677,11 @@ API 35 emulator-5570 真实触控 Native Compose 与打包 Clear WebView 的无 
 - APK SHA-256 `B7659FC55A3188D2915940FF879702E0FC6658E3750F0ADA0D5BBCE7C4DA7F37`; single default `.pcskin` SHA-256 `0AE888C5BC9CB7335AC2499A6A1D85DE11EB989BF37EEE9855A92411CF2B203C`, source/APK bytes identical. Code commit `c268902482d14b7d4462c440253e0bf9f2493454`.
 - Evidence: `.local/android-test/reports/native095-month-outer-panel-20261105/`; independent issue report: `docs/issues/PC-ISSUE-SEPARATION-NATIVE-MONTH-OUTER-GLASSPANEL-20261105.md`.
 - Next: migrate the Month agenda event-card surface and spacing, then continue native baseline comparisons. Month full-page and SEP parity remain incomplete; Native recovery is intact and Product Cutover remains HOLD.
+
+## Native 0.9.5 Month agenda 卡片与日期标题视觉切片（2026-11-06）
+
+- **PASS（窄切片；Month 整页仍 PARTIAL）。**按冻结 Native MonthScreen.kt / PowerTheme.kt 对齐 Clear Web v3 的 agenda 卡片材质、间距、事件类型色、标题/摘要/序号排版与选中日期标题。Native/Web 同设备像素 bbox 仍有 2px 垂直和 3px 右侧边界差；ROI MAE 4.583、P95 通道差 2，未宣称逐像素相同。
+- 本轮串行 Gradle 完整门禁 **975/975 JVM、0 failures/errors/skips**，源码边界、assemble、Lint、AndroidTest 编译/打包 PASS；Studio Chromium E2E、Node 语法、分发测试 2/2 PASS；API 35 WebView 日期触控及重复实例目标路径各 1/1。Store 日期选择快照不变；此前 SQLite SQLITE_BUSY 本轮未复现。
+- APK SHA-256 1A6C36F310295A0594C72C43B73F478A4F0A7C5A5C84A688BAC44FA670AA7ACD；唯一 powercal-clear-default.pcskin SHA-256 F7ECF2A168A8D65968362A8A464053DA10248148E4837DC7ACF0DCB73F0B1826，10 文件、409458 bytes，源码/APK 逐字节一致。实现提交 caa1d18e7160df5ee51ed33783b4bf4fe36df1ee。
+- 证据目录 .local/android-test/reports/native095-month-agenda-20261106/；Issue docs/issues/PC-ISSUE-SEPARATION-NATIVE-MONTH-AGENDA-CARD-20261106.md。未签核深色主题、Month 底部动作、完整 Month 状态矩阵或其它 Native 页面；Product Cutover 保持 HOLD。
+- 下一项：测量并对齐 Month 底部动作按钮的材质、尺寸、间距和触控导航结果；不得把 agenda 窄切片升级为 Month 整页 PASS。

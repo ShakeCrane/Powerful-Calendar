@@ -7,24 +7,37 @@ OWNER_VISUAL_REFERENCE_APK: .local/android-test/artifacts/physical-qa/PowerCal-0
 OWNER_VISUAL_REFERENCE_APK_SHA256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
 WAVE2_START_HEAD: 3b54097d6383c0349b5d3d638c228320e3c8e22c
 WAVE3_START_HEAD: 82b456fd2bfc15df379fd15d967fac3da57b899d
-LATEST_CODE_HEAD: c268902482d14b7d4462c440253e0bf9f2493454 (Month outer GlassPanel fill, outline, 28dp radius and edge shadow calibrated against frozen Native screenshot; overall Native 0.9.5 parity remains IN_PROGRESS)
-LATEST_VERIFIED_HEAD: c268902482d14b7d4462c440253e0bf9f2493454 (Browser and API 35 WebView checks pass; screenshot has synchronized November 5/MonthFixture state; APK/package byte match; full JVM was not run for this CSS/test slice and prior full gate had one SQLite lock failure)
+LATEST_CODE_HEAD: caa1d18e7160df5ee51ed33783b4bf4fe36df1ee (Month agenda card surface/spacing and selected-date heading slice; overall Native parity remains IN_PROGRESS)
+LATEST_VERIFIED_HEAD: caa1d18e7160df5ee51ed33783b4bf4fe36df1ee (serial full gate 975/975 JVM, 0 failures; browser E2E and distribution tests; targeted API 35 WebView visual/touch checks; source/APK package byte match)
 CURRENT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
 TASK_STATUS: IN_PROGRESS
 PRODUCT_CUTOVER: HOLD
 TASK_BASE_HEAD: e41246d7ebe5b329adbdc657bd3e53735695efa1
-WORKING_APK_SHA256: B7659FC55A3188D2915940FF879702E0FC6658E3750F0ADA0D5BBCE7C4DA7F37
-WORKING_DEFAULT_SKIN_SHA256: 0AE888C5BC9CB7335AC2499A6A1D85DE11EB989BF37EEE9855A92411CF2B203C
+WORKING_APK_SHA256: 1A6C36F310295A0594C72C43B73F478A4F0A7C5A5C84A688BAC44FA670AA7ACD
+WORKING_DEFAULT_SKIN_SHA256: F7ECF2A168A8D65968362A8A464053DA10248148E4837DC7ACF0DCB73F0B1826
 WORKING_DEFAULT_SKIN_ID: powercal-clear-default
 NATIVE_VISUAL_PARITY_AUDIT: docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md (inventory complete; implementation and full parity remain IN PROGRESS)
 PREVIOUS_TASK_STATE: Q-05 single-default startup migration and protected-branch cutover (PASS; public release remains HOLD)
-LAST_COMPLETED_TASK: Month outer GlassPanel material and physical-edge parity slice (PASS; Month page remains PARTIAL)
-LAST_COMPLETED_COMMIT: c268902482d14b7d4462c440253e0bf9f2493454
+LAST_COMPLETED_TASK: Month agenda card and selected-date heading style/spacing parity slice (PASS; Month page remains PARTIAL)
+LAST_COMPLETED_COMMIT: caa1d18e7160df5ee51ed33783b4bf4fe36df1ee
 LAST_ATTEMPTED_TASK: Native 0.9.5 visual and interaction parity migration (IN PROGRESS; see audit and latest Android evidence)
-LAST_ATTEMPTED_COMMIT: c268902482d14b7d4462c440253e0bf9f2493454 (Month outer GlassPanel material slice; see Issue report and audit appendix)
+LAST_ATTEMPTED_COMMIT: caa1d18e7160df5ee51ed33783b4bf4fe36df1ee (Month agenda visual and touch slice; see Issue report and audit appendix)
 NEXT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
-NEXT_ACTION: 移植 Month agenda 事件卡片的冻结原生表面与间距，并保留重复实例/触控目标回归。外层面板实屏侧边 ROI MAE 0.786/255、P95 通道差 2，Native 与 Web 描边均为 3 个设备像素；日格中心玻璃面和外层面板窄切片已 PASS。Month 整页与 AI 仍 PARTIAL；原 APK 的 AI 消息菜单截图、附件授权、提案审核和错误/重试仍未完成。完整 JVM 本切片未运行，先前单个 SQLite SQLITE_BUSY 仍需后续解决。Product Cutover 继续 HOLD。
+NEXT_ACTION: 继续有限差异审计：对照冻结 Native Month 底部动作按钮的尺寸、轮廓、间隔、导航动作与触控结果；复用同一 fixture 并确认 Store 零写入。当前事件卡片/日期标题窄切片 PASS；Month 整页 PARTIAL，深色主题、年份/月选择与其他页面仍未签核。本轮完整 Gradle 门禁 975/975 JVM PASS，先前 SQLite SQLITE_BUSY 本轮未复现。Product Cutover 继续 HOLD。
 LAST_TASK_EVIDENCE:
+  NATIVE_095_MONTH_AGENDA_CARD:
+    status: PASS (agenda card/selected-date heading style slice only; Month page remains PARTIAL)
+    code_commit: caa1d18e7160df5ee51ed33783b4bf4fe36df1ee
+    reference_source: b1f7629f0c52812e1887443872f43aa6c49908c4
+    reference_apk_sha256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
+    tests: serial full Gradle gate PASS; 975/975 JVM, 0 failures/errors/skips; source boundaries, assembleDebug, lintDebug, AndroidTest Kotlin compile/package PASS; Chromium month-selection E2E PASS; distribution 2/2; Node syntax checks PASS; two targeted Android methods PASS 1/1 each
+    android: isolated API 35 AVD PowerCal_Native095_Parity_20261105 / emulator-5580, 1080x2400, 420dpi, WebView 124.0.6367.219; trusted date touch and recurring-instance editor path verified; Store snapshot unchanged for selection
+    screenshots: Native SHA 9915F9DFF8D1F421F2233F6BEBB38CCBA5D7A44F33C5CEA092BD19C6F5B8B59A; Web SHA 6021DC49EED9315B105C3A84D8701B0250F9E32E220206B52FFD12DE7443E16F
+    verified_geometry: card bbox Native (32,1436)-(1047,1677), Web (32,1438)-(1050,1679); Web card begins 2px lower and right edge is 3px farther right; heading ink bbox Native (37,1357)-(379,1398), Web (35,1358)-(376,1398); ROI x0..1079/y1420..1689 MAE 4.583, P95 channel delta 2, >2 delta pixels 5.3443%, surface-mask IoU 0.948156
+    apk_sha256: 1A6C36F310295A0594C72C43B73F478A4F0A7C5A5C84A688BAC44FA670AA7ACD
+    default_skin_sha256: F7ECF2A168A8D65968362A8A464053DA10248148E4837DC7ACF0DCB73F0B1826 (10 files; one APK entry; source/APK bytes match; ID powercal-clear-default)
+    evidence: .local/android-test/reports/native095-month-agenda-20261106/manifest.md; docs/issues/PC-ISSUE-SEPARATION-NATIVE-MONTH-AGENDA-CARD-20261106.md
+    limitations: dark-mode agenda card, Month bottom actions, full Month state matrix, other Native pages, TalkBack and OEM behavior remain unverified; Product Cutover HOLD
   NATIVE_095_MONTH_GRID_GLASS_SURFACE:
     status: PASS (inner fill color and pixel extent within about 2 px; outer Month and agenda remain PARTIAL)
     code_commit: 4a0a3f5303e13f682abf9ccbea2875d988f15a68
