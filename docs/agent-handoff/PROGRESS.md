@@ -1,5 +1,15 @@
 # Native 0.9.5 视觉/交互基准迁移续接（2026-11-05）
 
+## 最新窄切片：Month 底部动作按钮几何与导航（2026-11-06）
+
+- **状态：**创建活动与“在时间轴查看这一天”动作窄切片 `PASS`；Month 整页 `PARTIAL`，原生 0.9.5 基准迁移 `IN_PROGRESS`，Product Cutover `HOLD`。
+- **提交：**`b8376da7bb46c2ae41d8a86618998a282b16d816`（`fix(month): 对齐原生日历操作按钮间距与几何`）。默认 Skin 新增 Material Add 向量，按钮达到冻结 OutlinedButton/TextButton 的 48dp 高度、样式、颜色和 12dp 列表间距；Host 动作和 ID 不变。
+- **几何发现：**冻结 Compose 的 `LazyColumn` 使用 `Arrangement.spacedBy(12.dp)`。旧 Web 合成卡片底 4px + 动作区顶 10px 共 14 CSS px，Web 截图按钮低 6 个物理像素。合计改为 12 CSS px 后，Native 按钮边框行为像素 y=1710..1835，Web y=1711..1836，仅差 1px；颜色掩模 IoU 原始 0.457，平移 Web 1px 后为 0.863。WebView 对 1.5 CSS px 边框报告 1.14286 CSS px，DPR 2.625 下栅格化为 3 个物理像素，与 Native 1dp 描边一致。
+- **验证：**完整串行 Gradle 门禁 PASS，JVM 975/975、0 failures/errors/skips，源码边界、assembleDebug、Lint、AndroidTest 编译/组装均 PASS；Chromium Month E2E、Node 检查及分发测试 2/2 PASS；`build_default_clear.py --verify --apk` PASS。API 35 隔离 AVD `emulator-5580` 上两个真实 WebView instrumentation 用例各 1/1 PASS，日期动作/跳转正常，Core Store 快照不变。
+- **产物：**APK SHA-256 `19D52E6ED16AD42855E8DD5798A3B8D1B425C60A3B9951FD637ABA3BD4A9C818`；默认 `.pcskin` SHA-256 `04AC4E3358448C18C2D0FBCF03853C9F2B16BCE3DDBDB0CD01C6DB9F01022D77`，409520 bytes、10 files，APK 仅一份且与源码包逐字节一致。
+- **证据：**`.local/android-test/reports/native095-month-actions-20261106/manifest.md`；Issue `docs/issues/PC-ISSUE-SEPARATION-NATIVE-MONTH-ACTIONS-20261106.md`。对照图 Native SHA `9915F9DFF8D1F421F2233F6BEBB38CCBA5D7A44F33C5CEA092BD19C6F5B8B59A`、Web SHA `51CCEC518B5D31A4C249784048A641448901A9D34B337D3C5B6CC87E2742B254`。
+- **限制与下一动作：**按钮文本区域仍有 1px 栅格偏差；Month 整页不签核。下一项对照 Native 年份/月选择控件和对话框的尺寸、状态及确认/取消触控；深色主题、空/密集状态及其他页面仍待审计。
+
 ## 最新窄切片：Month 内层玻璃面几何对齐（2026-11-05）
 
 - **状态：**内层填充颜色与像素边界 `PASS`；Month 整页和 Native 0.9.5 总体迁移仍 `PARTIAL/IN_PROGRESS`；Product Cutover `HOLD`。

@@ -352,4 +352,23 @@ CSS computed-style 与 Android WebView 断言确认浅色卡面 #F6F8FC、20px �
 | 改动与数据边界 | 代码提交 caa1d18e7160df5ee51ed33783b4bf4fe36df1ee 修改 native-095.css、Canonical .pcskin 生成产物、Month instrumentation 样式/截图断言和 Studio month E2E。没有改 Core/Host、Native 源码、Skin ID、默认包数量或 Calendar 业务规则。Android 日期选择测试的 Store 计数与序列快照保持不变。 |
 | 证据 | 本地原始日志、截图、比较 JSON 位于 .local/android-test/reports/native095-month-agenda-20261106/；独立 Issue：docs/issues/PC-ISSUE-SEPARATION-NATIVE-MONTH-AGENDA-CARD-20261106.md。本附录只关闭 agenda 卡片/标题窄视觉切片；Month 整页继续 PARTIAL，Native 恢复保持不变，Product Cutover 继续 HOLD。 |
 
-**未签核差异：**Month 底部两个动作按钮的尺寸/材质/间距与实际导航、年份和月份控件的 Native 对照及点击路径、深色主题、其它日期/空态/密集事件状态仍待逐项测量。下一项只处理 Month 底部动作按钮这一有限差异；不得据此提前签核整个 Month 或其他页面。
+**未签核差异（下述动作按钮切片之前）：**Month 底部两个动作按钮、年份和月份控件、深色主题、其它日期/空态/密集事件状态仍待逐项测量。不得据此提前签核整个 Month 或其他页面。底部动作按钮后续状态见下方追加记录。
+
+## 2026-11-06 Month 底部动作按钮（尺寸、间距、点击窄切片 PASS；Month 整页 PARTIAL）
+
+冻结基准为 Native 0.9.5-rc.1 源码 `b1f7629f0c52812e1887443872f43aa6c49908c4` 与 APK SHA-256 `DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76`。`MonthScreen.kt` 中创建按钮是 `OutlinedButton`、最小高度 48dp，图标和文字同一 Row（无显式间隔）；时间轴跳转是最小高度 48dp 的 `TextButton`；两项由 `LazyColumn` 的 `Arrangement.spacedBy(12.dp)` 分隔。Web v3 原动作区 gap 为 2px、边框 1 CSS px，且 agenda 底 padding 4px 与动作区 top padding 10px 叠加为 14px。
+
+更新后，创建动作使用 Material Add 路径 `M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z`、24dp 图标、零图文间隙、14sp/500/20sp 标签和 24dp 横向内容 padding；操作区使用 12px gap 和 48dp 触控高度。1.5 CSS px 边框在当前 WebView 的 computed width 为 1.14286 CSS px，DPR 2.625 下形成 3 个设备像素，和原生 1dp 描边的 3 像素一致。agenda 底部 4px + 动作区顶部 8px = 12 CSS px，并由 WebView 几何断言验证。
+
+| 验证项 | 本轮结果 |
+|---|---|
+| 冻结 Native 实际图 | `month-native-original-20261105.png`，1080×2400；SHA-256 `9915F9DFF8D1F421F2233F6BEBB38CCBA5D7A44F33C5CEA092BD19C6F5B8B59A`。截图含 Nov 5 `MonthFixture` 及两个底部动作。 |
+| 新版 Android WebView 实际图 | 隔离 API 35 AVD `PowerCal_Native095_Parity_20261105` / `emulator-5580`、1080×2400、420dpi、WebView 124.0.6367.219；图 `month-actions-web-20261106.png` SHA-256 `51CCEC518B5D31A4C249784048A641448901A9D34B337D3C5B6CC87E2742B254`。截图等待 visual-state callback，和 Native 参考为相同月份/日期/fixture。 |
+| 像素几何 | 以 `#C3CAD8` ±8 RGB 掩模定位按钮描边：Native y 行 `1710..1835`，Web `1711..1836`，按钮高度同为 126 个采样像素、Web 仅低 1px。ROI `x20..1059,y1690..1859` 的未平移描边掩模 IoU `0.4574`；将 Web 图按实测 1px 向上对齐后 IoU `0.8634`。 |
+| 实际交互与 Store | `monthSelectedDayRadiusMatchesFrozenNativeChipAndTapKeepsStoreUnchanged` 1/1 PASS；`monthYearMonthDateAndTodayTransitionsMatchWithoutMovingTimelineOrWritingStore` 1/1 PASS。Native 与 Clear 日期选择、Create/Timeline 路由以及 Store 快照检查均通过；本次操作没有事件、草稿、待处理项、提交、身份或 event sequence 变化。 |
+| 自动化和构建 | 串行完整命令包括 `:app:verifySkinSourceBoundary :app:verifyNativeSkinBoundary :app:testDebugUnitTest :app:assembleDebug :app:lintDebug :app:compileDebugAndroidTestKotlin :app:assembleDebugAndroidTest`，PASS。JUnit XML 实计 975 tests、0 failures/errors/skips、141 reports。Chromium `e2e_v3_month_selection.cjs` PASS；JS syntax PASS；`test_single_default_distribution.py` 2/2 PASS；`build_default_clear.py --verify --apk` PASS。 |
+| 包身份 | APK SHA-256 `19D52E6ED16AD42855E8DD5798A3B8D1B425C60A3B9951FD637ABA3BD4A9C818`。唯一 `assets/powercal-clear-default.pcskin` 为 409520 bytes、10 files、SHA-256 `04AC4E3358448C18C2D0FBCF03853C9F2B16BCE3DDBDB0CD01C6DB9F01022D77`，与正式构建器输出及源资源字节一致。 |
+| 失败和重试 | 首次设备样式用例因 JSON 探针漏回传按钮 `gap` 而失败；已补齐探针字段后设备用例通过。曾在重建 APK 之前用旧 APK 做包校验，资源长度不符；完整串行构建后正式验证通过。无产品缺陷由这些失败引起。 |
+| 证据与变更 | 本地日志/图像在 `.local/android-test/reports/native095-month-actions-20261106/`；Issue `docs/issues/PC-ISSUE-SEPARATION-NATIVE-MONTH-ACTIONS-20261106.md`；代码提交 `b8376da7bb46c2ae41d8a86618998a282b16d816`。仅修改默认 Skin Month 结构/CSS、重建工厂包和对应浏览器/Android 样式测试；无 Core、Host、Native、Store 或 ID 变更。 |
+
+**结论与下一步：**创建及跳转按钮这一视觉/交互窄切片 `PASS`，捕获到的残余垂直差为 1 个物理像素。Month 整页仍 `PARTIAL`；下一项仅审计并对照年份/月选择控件及选择对话框的外观、状态与触控。深色主题、空态/密集态及其它 Native 页面仍未签核。Native 独立安全恢复不变，Product Cutover 仍 `HOLD`。
