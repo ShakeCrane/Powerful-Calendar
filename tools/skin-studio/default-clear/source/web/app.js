@@ -1094,7 +1094,7 @@ function renderMemo(){
   });
   $("memoTitle").textContent=completed?"Memo · 已完成":"Memo · 未完成";
   $("memoSubtitle").textContent=`统一待办中心 · ${entries.length} 项（重复任务展示近一年及未来七日）`;
-  if(!entries.length){list.append(node("p","quiet",completed?"目前没有已完成事项":"目前没有待处理事项"))}
+  if(!entries.length){list.append(node("p","quiet","目前没有待处理事项"))}
   for(const item of entries){
     const row=node("div","memo-row"+(item.completed?" done":""));
     const button=node("button","",item.completed?"✓":"");

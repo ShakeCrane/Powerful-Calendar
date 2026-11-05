@@ -159,7 +159,7 @@ Owner 于 2026-11-05 明确将 **2026-10-27 冻结的 PowerCal 0.9.5-rc.1 原生
 
 ## 2026-11-05 月历首轮冻结 APK 对照与 Web 交互验证
 
-本节记录 Month 页首轮迁移，不视为全页面验收。冻结参考包为原始 0.9.5-rc.1 APK，已从 `emulator-5580` 安装包路径读取 SHA-256，确认与授权原件一致：`DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A8D73FC626F76`。新版为当前施工 Worktree 的实际 Debug APK。两台 AVD 均为 Android API 35、1080×2400、420 dpi；原始 APK 在 `PowerCal_Native095_Parity_20261105` / `emulator-5580`，新版 APK 在 `PowerCal_Native095_Original_20261105` / `emulator-5582`。两者在 2026-11-05 同一 UTC/GMT 日期、相同月份、空事件库下真实打开 Month 并截图；截图没有被 Studio Preview 或 DOM mock 替代。
+本节记录 Month 页首轮迁移，不视为全页面验收。冻结参考包为原始 0.9.5-rc.1 APK，已从 `emulator-5580` 安装包路径读取 SHA-256，确认与授权原件一致：`DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76`。新版为当前施工 Worktree 的实际 Debug APK。两台 AVD 均为 Android API 35、1080×2400、420 dpi；原始 APK 在 `PowerCal_Native095_Parity_20261105` / `emulator-5580`，新版 APK 在 `PowerCal_Native095_Original_20261105` / `emulator-5582`。两者在 2026-11-05 同一 UTC/GMT 日期、相同月份、空事件库下真实打开 Month 并截图；截图没有被 Studio Preview 或 DOM mock 替代。
 
 | 对照项 | 本轮结果 |
 |---|---|
@@ -175,7 +175,7 @@ Owner 于 2026-11-05 明确将 **2026-10-27 冻结的 PowerCal 0.9.5-rc.1 原生
 
 ## 2026-11-05 月历同设备几何复核与冷启动证据
 
-本节补充并在**屏幕几何比较**上取代上节的跨 AVD 截图指标；上节的截图、操作和测试历史仍保留。参考 APK 文件名与 SHA-256 已再次核对，均正确：`PowerCal-0.9.5-rc.1-b1f7629-debug-core-HOLD.apk`，`DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58A73FC626F76`。本轮在同一隔离 API 35 AVD `PowerCal_Native095_Parity_20261105` / `emulator-5580`、1080×2400、420 dpi 上，先截取原 APK，再以 `adb install -r` 更新新版；未清除 App 数据或重置 AVD。两侧保留同一 `MonthFixture` 与选中日期。
+本节补充并在**屏幕几何比较**上取代上节的跨 AVD 截图指标；上节的截图、操作和测试历史仍保留。参考 APK 文件名与 SHA-256 已从文件重新计算：`PowerCal-0.9.5-rc.1-b1f7629-debug-core-HOLD.apk`，`DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76`。此前首轮 Month 文字记录中有两处 SHA 字符误录，已在本次复核中更正；现在审计文件中的引用与原始文件计算值一致。本轮在同一隔离 API 35 AVD `PowerCal_Native095_Parity_20261105` / `emulator-5580`、1080×2400、420 dpi 上，先截取原 APK，再以 `adb install -r` 更新新版；未清除 App 数据或重置 AVD。两侧保留同一 `MonthFixture` 与选中日期。
 
 | 对照项 | 实测结果 |
 |---|---|
@@ -188,3 +188,21 @@ Owner 于 2026-11-05 明确将 **2026-10-27 冻结的 PowerCal 0.9.5-rc.1 原生
 | 工厂产物 | 本轮 Debug APK SHA-256 `3D333AC5A96BDE2BF29B5FA7D9D6AEA4347A2D5084CC50F6DFAAD5DF6FEB0D4A`；源码工厂包 SHA-256 `E43A6EADC577069476F63F2E8F82A92F710D1A7D74E53CD67B48737FD7E16498`，408006 bytes。APK 内恰有一个 `assets/powercal-clear-default.pcskin`，逐字节匹配源码包；ID 仍为 `powercal-clear-default`。 |
 
 **结论仍为 PARTIAL。**同设备校正消除了此前跨设备 status-bar 原点差造成的几何误判；它没有消除日历网格颜色/文字栅格、事件 agenda 密度等可见差异。重复实例已有 Web DOM、触控目标和冷启动验证，但尚未在冻结原始 APK 上建立相同重复数据的像素配对。其余 Memo、AI、Settings、编辑器、草稿/审核和系统权限页面仍需逐页以原始冻结界面对照。无生产默认切换；唯一正式工厂 Skin 包身份不变，Native 安全恢复与 Core/Host 行为未在本切片改动。
+
+## 2026-11-05 Memo 同设备实屏对照（PARTIAL）
+
+本切片以 Owner 冻结原生 0.9.5-rc.1 的 Memo 页面为参照，不以旧 Web Clear 的外观作为目标。冻结参考 APK SHA-256 为 `DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76`，源码基线为 `b1f7629f0c52812e1887443872f43aa6c49908c4`。两侧均在新建隔离 AVD `PowerCal_Native095_Memo_20261105` / `emulator-5554` 上运行；Android API 35、1080×2400、420 dpi。先运行原始 APK 截取 Native，再用 `adb install -r` 安装当前 Worktree APK；没有清除应用数据。原有 AVD `emulator-5580` 上的旧数据库拒绝原始 APK 降级启动，Core 的降级保护正常生效；未清除该 AVD 数据，并改用新建隔离 AVD 完成配对。
+
+| 项目 | 实际结果 |
+|---|---|
+| Native Open | [memo-native-empty.png](../../.local/android-test/reports/native095-parity-20261105/memo-native-empty.png)，SHA-256 `8CEF8635BA996CF7062F12AA2A8AB31EA81A1ABB058610C80590F9FCD42BADB`；显示“Memo · 未完成”、0 项、“查看已完成”、撤销提示及空态。 |
+| Web Open | [memo-web-adjusted-open.png](../../.local/android-test/reports/native095-parity-20261105/memo-web-adjusted-open.png)，SHA-256 `F7D3F9BE578EF5F085CE52523C7823FB8E357E5C8DD19598C175D3C669038A89`。实屏空态 ink bounds 为 (351,1253)–(733,1294)，Native 为 (351,1254)–(732,1294)；空态 ROI MAE 为 0.935/255，精确像素占比 98.19%。 |
+| Native Done | [memo-native-done-empty.png](../../.local/android-test/reports/native095-parity-20261105/memo-native-done-empty.png)，SHA-256 `B30E084613DB851A75A0B696BC9F72E583547ADEC630D0447CF21CDC95EA7843`。 |
+| Web Done | [memo-web-adjusted-done.png](../../.local/android-test/reports/native095-parity-20261105/memo-web-adjusted-done.png)，SHA-256 `F60CF8682A2114A99967FE805344BCB4C954D7FC995B8C91E5AE31C3005F1C6A`；空态 ROI MAE 为 0.935/255、精确像素占比 98.19%。 |
+| 页面框架差异 | Open 全内容 MAE 2.648/255、精确像素 97.29%；Done 全内容 MAE 2.668/255、精确像素 96.52%。标题/筛选区仍有字体与图标栅格差异；没有据整体截图指标宣称整页通过。 |
+| 实际触控 | WebView 中打开 Memo、点击“查看已完成”，标题切换为“Memo · 已完成”，再点新增入口；新增入口打开“待处理草稿”编辑面，显示 1 张已暂存记录。随后只关闭该面板，没有发布、丢弃或编辑。由于触控前没有记录草稿数量快照，不能判断该草稿是已有还是本次创建；因此本切片不声称 Core Store 零写入。列表为空，行内完成/撤销、分页、标题打开详情仍 NOT TESTED。 |
+| Runtime 与包 | Debug APK SHA-256 `5AED08E4161F64E939A4C0F79C1B5A259B97982AF3AD1D7A2C1D3AF04A97F2EA`；正式工具重建并验证的默认包 SHA-256 `D8469959DBA9DBF0DDE3B4A200B8981BB939CEE3884D6664E7D386D4F61C42F7`，源码包/APK 资源字节一致。APK 仅含 `assets/powercal-clear-default.pcskin` 一份，manifest ID 仍为 `powercal-clear-default`。 |
+
+本次只调整 Web 默认皮肤表现：Memo 返回箭头 SVG、Open/Done 空态沿用冻结 Native 文案、Native 样式表中的页面水平留白及空态字号/偏移。未修改 Core、Host、Native 恢复、Skin ID 或默认选择。最终串行 Gradle 门禁日志为 `.local/android-test/reports/native095-parity-20261105/memo-adjusted-final-gradle-gate.log`：两个源码边界、974/974 JVM（0 failures/errors/skips）、Debug assemble、lint 和 AndroidTest Kotlin compile 均通过；`build_default_clear.py --verify --apk ...` 通过。Studio 分发定向测试 2/2 通过，`node --check` 用于本页 JS 的语法检查通过。
+
+**本页状态为 PARTIAL。**冻结空态与筛选状态已在同设备实屏比对，空态边界已收敛到约 1px；Memo 行样式和完成状态业务触控、分页/详情、编辑浮层与草稿恢复尚未完成原生逐项配对。下一项按原生页面清单进入 AI 页面；产品 Cutover 仍为 HOLD。
